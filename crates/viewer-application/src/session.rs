@@ -56,6 +56,16 @@ impl ProjectSession {
         }
     }
 
+    pub fn fail_open(&mut self) -> Result<(), SessionTransitionError> {
+        match self.state {
+            SessionState::Opening => {
+                self.state = SessionState::Closing;
+                Ok(())
+            }
+            _ => Err(SessionTransitionError::Invalid),
+        }
+    }
+
     pub fn begin_close(&mut self) -> Result<(), SessionTransitionError> {
         match self.state {
             SessionState::ActiveReadWrite | SessionState::ActiveReadOnly => {
@@ -111,6 +121,16 @@ mod tests {
     }
 
     #[test]
+    fn failed_open_uses_the_close_cleanup_path() {
+        let mut session = ProjectSession::default();
+        session.begin_open().unwrap();
+        session.fail_open().unwrap();
+        assert_eq!(session.state(), SessionState::Closing);
+        session.finish_close().unwrap();
+        assert_eq!(session.state(), SessionState::Empty);
+    }
+
+    #[test]
     fn invalid_transitions_preserve_the_current_state() {
         let mut session = ProjectSession::default();
         assert_eq!(
@@ -134,6 +154,7 @@ mod tests {
             BeginOpen,
             ActivateReadWrite,
             ActivateReadOnly,
+            FailOpen,
             BeginClose,
             FinishClose,
         }
@@ -149,6 +170,7 @@ mod tests {
             Operation::BeginOpen,
             Operation::ActivateReadWrite,
             Operation::ActivateReadOnly,
+            Operation::FailOpen,
             Operation::BeginClose,
             Operation::FinishClose,
         ];
@@ -161,6 +183,7 @@ mod tests {
                     (SessionState::Empty, Operation::BeginOpen)
                         | (SessionState::Opening, Operation::ActivateReadWrite)
                         | (SessionState::Opening, Operation::ActivateReadOnly)
+                        | (SessionState::Opening, Operation::FailOpen)
                         | (SessionState::ActiveReadWrite, Operation::BeginClose)
                         | (SessionState::ActiveReadOnly, Operation::BeginClose)
                         | (SessionState::Closing, Operation::FinishClose)
@@ -175,6 +198,7 @@ mod tests {
                     Operation::BeginOpen => session.begin_open(),
                     Operation::ActivateReadWrite => session.activate(ProjectAccess::ReadWrite),
                     Operation::ActivateReadOnly => session.activate(ProjectAccess::ReadOnly),
+                    Operation::FailOpen => session.fail_open(),
                     Operation::BeginClose => session.begin_close(),
                     Operation::FinishClose => session.finish_close(),
                 };
@@ -192,6 +216,6 @@ mod tests {
             }
         }
 
-        assert_eq!(invalid_cells, 19);
+        assert_eq!(invalid_cells, 23);
     }
 }

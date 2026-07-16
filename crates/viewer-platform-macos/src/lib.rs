@@ -1,30 +1,33 @@
-use async_trait::async_trait;
 use std::fs::{self, OpenOptions};
 use std::io::ErrorKind;
 use std::path::Path;
 use uuid::Uuid;
-use viewer_application::{ProjectAccess, ProjectProbePort};
+use viewer_application::{
+    ProjectAccess, ProjectProbeError, ProjectProbeOperation, ProjectProbePort,
+};
 
 pub struct MacProjectProbe;
 
-#[async_trait]
+fn is_read_only_write_error(error: &std::io::Error) -> bool {
+    matches!(
+        error.kind(),
+        ErrorKind::PermissionDenied | ErrorKind::ReadOnlyFilesystem
+    )
+}
+
 impl ProjectProbePort for MacProjectProbe {
-    async fn probe(&self, root: &Path) -> Result<ProjectAccess, String> {
+    fn probe(&self, root: &Path) -> Result<ProjectAccess, ProjectProbeError> {
         let metadata = fs::metadata(root).map_err(|error| {
-            format!(
-                "failed to read project root metadata at {}: {error}",
-                root.display()
-            )
+            ProjectProbeError::io(ProjectProbeOperation::ReadMetadata, root, &error)
         })?;
         if !metadata.is_dir() {
-            return Err(format!(
-                "project root is not a directory: {}",
-                root.display()
-            ));
+            return Err(ProjectProbeError::NotDirectory {
+                path: root.to_path_buf(),
+            });
         }
 
         let entries = fs::read_dir(root).map_err(|error| {
-            format!("failed to read project root at {}: {error}", root.display())
+            ProjectProbeError::io(ProjectProbeOperation::ReadDirectory, root, &error)
         })?;
         drop(entries);
 
@@ -35,23 +38,21 @@ impl ProjectProbePort for MacProjectProbe {
             .open(&probe_path)
         {
             Ok(file) => file,
-            Err(error) if error.kind() == ErrorKind::PermissionDenied => {
+            Err(error) if is_read_only_write_error(&error) => {
                 return Ok(ProjectAccess::ReadOnly);
             }
             Err(error) => {
-                return Err(format!(
-                    "failed to create write probe at {}: {error}",
-                    probe_path.display()
+                return Err(ProjectProbeError::io(
+                    ProjectProbeOperation::CreateWriteProbe,
+                    &probe_path,
+                    &error,
                 ));
             }
         };
         drop(probe_file);
 
         fs::remove_file(&probe_path).map_err(|error| {
-            format!(
-                "failed to remove write probe at {}: {error}",
-                probe_path.display()
-            )
+            ProjectProbeError::io(ProjectProbeOperation::RemoveWriteProbe, &probe_path, &error)
         })?;
 
         Ok(ProjectAccess::ReadWrite)
@@ -61,8 +62,8 @@ impl ProjectProbePort for MacProjectProbe {
 #[cfg(test)]
 mod tests {
     use super::MacProjectProbe;
-    use futures::executor::block_on;
     use std::fs;
+    use std::io::ErrorKind;
     use std::os::unix::fs::PermissionsExt;
     use tempfile::tempdir;
     use viewer_application::{ProjectAccess, ProjectProbePort};
@@ -73,7 +74,7 @@ mod tests {
         let viewer_directory = root.path().join(".viewer");
         fs::create_dir(&viewer_directory).expect("create empty .viewer directory");
 
-        let result = block_on(MacProjectProbe.probe(root.path()));
+        let result = MacProjectProbe.probe(root.path());
 
         assert_eq!(result, Ok(ProjectAccess::ReadWrite));
         let root_entries = fs::read_dir(root.path())
@@ -98,7 +99,7 @@ mod tests {
         fs::set_permissions(root.path(), fs::Permissions::from_mode(0o555))
             .expect("make project root read-only");
 
-        let result = block_on(MacProjectProbe.probe(root.path()));
+        let result = MacProjectProbe.probe(root.path());
         fs::set_permissions(root.path(), original_permissions)
             .expect("restore project root permissions before assertions");
 
@@ -114,7 +115,7 @@ mod tests {
         fs::set_permissions(root.path(), fs::Permissions::from_mode(0o000))
             .expect("make project root unreadable");
 
-        let result = block_on(MacProjectProbe.probe(root.path()));
+        let result = MacProjectProbe.probe(root.path());
         fs::set_permissions(root.path(), original_permissions)
             .expect("restore project root permissions before assertions");
 
@@ -122,5 +123,16 @@ mod tests {
             result.is_err(),
             "expected unreadable root error, got {result:?}"
         );
+    }
+
+    #[test]
+    fn write_probe_classifies_permission_and_read_only_filesystems() {
+        for kind in [ErrorKind::PermissionDenied, ErrorKind::ReadOnlyFilesystem] {
+            let error = std::io::Error::from(kind);
+            assert!(super::is_read_only_write_error(&error));
+        }
+
+        let other = std::io::Error::from(ErrorKind::Other);
+        assert!(!super::is_read_only_write_error(&other));
     }
 }

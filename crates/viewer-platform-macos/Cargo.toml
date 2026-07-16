@@ -5,10 +5,8 @@ edition.workspace = true
 publish = false
 
 [dependencies]
-async-trait.workspace = true
 uuid.workspace = true
 viewer-application = { path = "../viewer-application" }
 
 [dev-dependencies]
-futures.workspace = true
 tempfile.workspace = true

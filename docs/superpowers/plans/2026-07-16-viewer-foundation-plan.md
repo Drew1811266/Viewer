@@ -915,9 +915,19 @@ viewer-application = { path = "../viewer-application" }
 In `viewer-test-support`, define a test requiring
 `FixedClock::new(42).unix_millis() == 42`. In `viewer-infrastructure`, define a
 test proving `SystemClock::unix_millis()` falls between wall-clock readings
-taken immediately before and after it. In `viewer-platform-macos`, use
-`tempfile` plus `futures::executor::block_on` to verify that a readable
-temporary directory returns either `ReadWrite` or `ReadOnly`, never an error.
+taken immediately before and after it.
+
+In `viewer-platform-macos`, use `tempfile`,
+`futures::executor::block_on`, and macOS/Unix permission modes for three
+contract tests:
+
+- A writable project root returns `ReadWrite`, leaves no probe file behind,
+  and does not create or modify a `.viewer` directory. Pre-create an empty
+  `.viewer` directory and assert it remains empty after the probe.
+- A readable but non-writable root (`0o555`) returns `ReadOnly`. Always restore
+  the original permissions before the temporary directory is dropped.
+- An unreadable root (`0o000`) returns an error rather than `ReadOnly`. Always
+  restore the original permissions before the temporary directory is dropped.
 
 Run:
 
@@ -954,11 +964,19 @@ impl ClockPort for FixedClock {
 }
 ```
 
-Implement `MacProjectProbe` by checking directory metadata and attempting to create and remove a uniquely named zero-byte probe file. Convert `PermissionDenied` to `ProjectAccess::ReadOnly`; propagate unreadable-directory errors. Never probe inside `.viewer` at this stage.
+Implement `MacProjectProbe` by checking that the root metadata describes a
+directory, then opening `read_dir(root)` to prove the root is readable before
+the write probe. Create a uniquely named zero-byte file directly under the
+project root with `create_new(true)`, close it, and remove it. Return
+`ReadWrite` only after successful removal. Convert `PermissionDenied` from
+probe-file creation to `ProjectAccess::ReadOnly`; propagate metadata,
+read-directory, non-permission creation, and removal errors. Never create or
+write inside `.viewer` at this stage.
 
 - [ ] **Step 3: Verify and commit**
 
-Run `cargo test --workspace`. Expected: all workspace tests PASS.
+Run `cargo test --workspace`. Expected: all workspace tests PASS, including
+the five new adapter contract tests.
 
 ```bash
 git add Cargo.toml Cargo.lock crates/viewer-infrastructure crates/viewer-platform-macos crates/viewer-test-support

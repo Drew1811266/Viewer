@@ -735,6 +735,31 @@ mod tests {
         session.activate(ProjectAccess::ReadOnly).unwrap();
         assert_eq!(session.begin_open(), Err(SessionTransitionError::Invalid));
     }
+
+    #[test]
+    fn session_supports_the_read_only_path() {
+        let mut session = ProjectSession::default();
+        session.begin_open().unwrap();
+        session.activate(ProjectAccess::ReadOnly).unwrap();
+        assert_eq!(session.state(), SessionState::ActiveReadOnly);
+        session.begin_close().unwrap();
+        session.finish_close().unwrap();
+        assert_eq!(session.state(), SessionState::Empty);
+    }
+
+    #[test]
+    fn invalid_transitions_preserve_the_current_state() {
+        let mut session = ProjectSession::default();
+        assert_eq!(session.activate(ProjectAccess::ReadWrite), Err(SessionTransitionError::Invalid));
+        assert_eq!(session.begin_close(), Err(SessionTransitionError::Invalid));
+        assert_eq!(session.finish_close(), Err(SessionTransitionError::Invalid));
+        assert_eq!(session.state(), SessionState::Empty);
+
+        session.begin_open().unwrap();
+        assert_eq!(session.begin_open(), Err(SessionTransitionError::Invalid));
+        assert_eq!(session.begin_close(), Err(SessionTransitionError::Invalid));
+        assert_eq!(session.state(), SessionState::Opening);
+    }
 }
 ```
 
@@ -755,6 +780,12 @@ pub enum SessionState { Empty, Opening, ActiveReadWrite, ActiveReadOnly, Closing
 #[derive(Debug)]
 pub struct ProjectSession { state: SessionState }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, thiserror::Error)]
+pub enum SessionTransitionError {
+    #[error("invalid session state transition")]
+    Invalid,
+}
+
 impl Default for ProjectSession {
     fn default() -> Self { Self { state: SessionState::Empty } }
 }
@@ -767,6 +798,15 @@ impl ProjectSession {
     pub fn finish_close(&mut self) -> Result<(), SessionTransitionError>;
 }
 ```
+
+Implement this complete transition matrix and leave state unchanged on every
+error:
+
+- `begin_open`: `Empty → Opening` only.
+- `activate(ReadWrite)`: `Opening → ActiveReadWrite` only.
+- `activate(ReadOnly)`: `Opening → ActiveReadOnly` only.
+- `begin_close`: either active state → `Closing` only.
+- `finish_close`: `Closing → Empty` only.
 
 Create `ports.rs`:
 
@@ -798,7 +838,7 @@ cargo fmt --check
 cargo test -p viewer-application
 ```
 
-Expected: 2 session tests PASS.
+Expected: 4 session tests PASS.
 
 ```bash
 git add Cargo.toml Cargo.lock crates/viewer-application

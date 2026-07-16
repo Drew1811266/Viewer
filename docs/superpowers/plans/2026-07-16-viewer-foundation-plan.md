@@ -763,6 +763,16 @@ mod tests {
 }
 ```
 
+Also add one matrix-style test named
+`every_invalid_transition_preserves_state`. Enumerate all five
+`SessionState` values against these five operations: `begin_open`,
+`activate(ReadWrite)`, `activate(ReadOnly)`, `begin_close`, and
+`finish_close`. Skip the six legal state/operation pairs from the transition
+matrix; for each of the remaining 19 pairs, construct a session in the initial
+state, assert `Err(SessionTransitionError::Invalid)`, and assert the state is
+unchanged. Tests inside `session.rs` may construct `ProjectSession { state }`
+directly to isolate each matrix cell.
+
 Run `cargo test -p viewer-application`. Expected: FAIL with unresolved session
 types or methods. A missing-package or missing-manifest error is not valid RED
 evidence.
@@ -838,7 +848,7 @@ cargo fmt --check
 cargo test -p viewer-application
 ```
 
-Expected: 4 session tests PASS.
+Expected: 5 session tests PASS, including all 19 invalid matrix cells.
 
 ```bash
 git add Cargo.toml Cargo.lock crates/viewer-application

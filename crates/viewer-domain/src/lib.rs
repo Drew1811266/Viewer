@@ -57,9 +57,10 @@ pub enum RelativePathError {
 impl RelativePath {
     pub fn parse(value: &str) -> Result<Self, RelativePathError> {
         let path = Path::new(value);
-        let segments_are_canonical = value
-            .split('/')
-            .all(|segment| !matches!(segment, "" | "." | ".." | ".viewer"));
+        let segments_are_canonical = !value.contains('\0')
+            && value.split('/').all(|segment| {
+                !matches!(segment, "" | "." | "..") && !segment.eq_ignore_ascii_case(".viewer")
+            });
         let valid = segments_are_canonical
             && !path.is_absolute()
             && path
@@ -110,7 +111,11 @@ mod tests {
             "products/./front.png",
             "products/../front.png",
             ".viewer/metadata.sqlite",
+            ".VIEWER/metadata.sqlite",
+            ".Viewer/metadata.sqlite",
             "products/.viewer/metadata.sqlite",
+            "products/.vIeWeR/metadata.sqlite",
+            "products/id-1/front\0.png",
             "products//front.png",
             "products/front.png/",
         ] {
@@ -122,6 +127,14 @@ mod tests {
     fn relative_path_deserialization_preserves_validation() {
         let invalid = StrDeserializer::<ValueError>::new("../outside");
         assert!(RelativePath::deserialize(invalid).is_err());
+
+        for value in [".VIEWER/metadata.sqlite", "products/.Viewer/file", "a\0b"] {
+            let invalid = StrDeserializer::<ValueError>::new(value);
+            assert!(
+                RelativePath::deserialize(invalid).is_err(),
+                "accepted {value:?}"
+            );
+        }
 
         let valid = StrDeserializer::<ValueError>::new("products/id-1/front.png");
         assert_eq!(

@@ -1131,13 +1131,23 @@ Run `pnpm verify`. Expected: PASS.
 
 - [ ] **Step 2: Add Cargo deny policy**
 
-Install `cargo-deny` with `cargo install cargo-deny --locked`. Create `deny.toml` permitting MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, Unicode-3.0, CC0-1.0 and MPL-2.0, while denying unmaintained/yanked advisories and unknown git sources.
+Install the reviewed `cargo-deny` release with
+`cargo install cargo-deny --version 0.20.2 --locked`. Create `deny.toml`
+permitting MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, Unicode-3.0,
+CC0-1.0 and MPL-2.0, while denying unmaintained/yanked advisories and unknown
+git sources.
 
 Run `cargo deny check`. Expected: PASS for the foundation dependency graph.
 
 - [ ] **Step 3: Add CI**
 
-Create `.github/workflows/ci.yml` with a `macos-14` job that checks out code, installs stable Rust with the Apple Silicon target, sets up current Node LTS and pnpm 10, runs `pnpm install --frozen-lockfile`, `pnpm verify`, and `cargo deny check`.
+Create `.github/workflows/ci.yml` with a `macos-14` job. This GitHub-hosted
+label resolves to an Apple Silicon M1/arm64 runner. Use the official
+`actions/checkout@v7` and `actions/setup-node@v7` actions, Node 24 LTS, and
+pnpm 10.0.0 activated through Corepack. Assert that `uname -m` reports
+`arm64`, install stable Rust with the `aarch64-apple-darwin` target, then run
+`pnpm install --frozen-lockfile`, `pnpm verify`, install cargo-deny 0.20.2 with
+`--locked`, and run `cargo deny check`.
 
 Do not add signing, release upload, updater or network runtime tests in this foundation task.
 

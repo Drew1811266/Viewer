@@ -6,7 +6,8 @@
     "dev": "pnpm --dir ui dev",
     "test:ui": "pnpm --dir ui test",
     "build:ui": "pnpm --dir ui build",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "verify": "pnpm --dir ui test && pnpm --dir ui build && cargo fmt --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.0.0"

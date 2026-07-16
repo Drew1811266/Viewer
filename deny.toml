@@ -1,0 +1,42 @@
+[graph]
+targets = ["aarch64-apple-darwin"]
+
+[advisories]
+unmaintained = "all"
+yanked = "deny"
+# Tauri 2.11.5 transitively depends on this unmaintained unic-* chain and has
+# no safe upgrade. Remove these exact exceptions when Tauri removes the chain.
+ignore = [
+    { id = "RUSTSEC-2025-0075", reason = "Tauri transitive dependency with no safe upgrade; remove when Tauri removes the unic-* chain" },
+    { id = "RUSTSEC-2025-0080", reason = "Tauri transitive dependency with no safe upgrade; remove when Tauri removes the unic-* chain" },
+    { id = "RUSTSEC-2025-0081", reason = "Tauri transitive dependency with no safe upgrade; remove when Tauri removes the unic-* chain" },
+    { id = "RUSTSEC-2025-0098", reason = "Tauri transitive dependency with no safe upgrade; remove when Tauri removes the unic-* chain" },
+    { id = "RUSTSEC-2025-0100", reason = "Tauri transitive dependency with no safe upgrade; remove when Tauri removes the unic-* chain" },
+]
+
+[licenses]
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Unicode-3.0",
+    "CC0-1.0",
+    "MPL-2.0",
+]
+confidence-threshold = 0.8
+# foldhash is inherited through Tauri; do not allow Zlib for unrelated crates.
+exceptions = [
+    { allow = ["Zlib"], crate = "foldhash@0.2.0" },
+]
+
+[licenses.private]
+# Viewer has not selected a project license; ignore only unpublished workspace crates.
+ignore = true
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []

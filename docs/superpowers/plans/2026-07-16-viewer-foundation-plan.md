@@ -1,5 +1,12 @@
 # Viewer Foundation Implementation Plan
 
+> **Hardening supersession:** The approved
+> `2026-07-16-viewer-foundation-hardening-design.md` and
+> `2026-07-16-viewer-foundation-hardening-plan.md` supersede this plan's
+> capability, navigation, session-failure, reserved-path, project-probe, and
+> reproducibility snippets. Those original snippets are retained only as task
+> history and must not be copied into new work.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Create a reproducible Viewer repository with a working Tauri 2 window, React UI, Rust workspace boundaries, typed IPC baseline, tests and CI.

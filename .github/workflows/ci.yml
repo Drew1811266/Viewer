@@ -10,21 +10,21 @@ permissions:
 jobs:
   verify:
     name: Foundation verification
-    runs-on: macos-14
+    runs-on: macos-15
     timeout-minutes: 30
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
 
       - name: Assert Apple Silicon runner
         shell: bash
         run: test "$(uname -m)" = "arm64"
 
-      - name: Set up Node.js 24 LTS
-        uses: actions/setup-node@v7
+      - name: Set up Node.js 24.18.0
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
-          node-version: "24"
+          node-version: "24.18.0"
 
       - name: Activate pnpm 10.0.0 through Corepack
         shell: bash
@@ -33,10 +33,10 @@ jobs:
           corepack prepare pnpm@10.0.0 --activate
           pnpm --version
 
-      - name: Install stable Rust for Apple Silicon
+      - name: Install Rust 1.97.0 for Apple Silicon
         shell: bash
         run: |
-          rustup toolchain install stable --profile minimal --component clippy,rustfmt --target aarch64-apple-darwin
+          rustup toolchain install 1.97.0 --profile minimal --component clippy,rustfmt --target aarch64-apple-darwin
           rustc --version --verbose
 
       - name: Install JavaScript dependencies
@@ -49,4 +49,4 @@ jobs:
         run: cargo install cargo-deny --version 0.20.2 --locked
 
       - name: Enforce dependency policy
-        run: cargo deny check
+        run: cargo deny --locked check

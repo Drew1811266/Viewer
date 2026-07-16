@@ -7,7 +7,7 @@
     "test:ui": "pnpm --dir ui test",
     "build:ui": "pnpm --dir ui build",
     "tauri": "tauri",
-    "verify": "pnpm --dir ui test && pnpm --dir ui build && cargo fmt --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace"
+    "verify": "node --test scripts/repository-policy.test.mjs && pnpm --dir ui test && pnpm --dir ui build && cargo fmt --check && cargo clippy --locked --workspace --all-targets -- -D warnings && cargo test --locked --workspace"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.0.0"

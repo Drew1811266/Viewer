@@ -1,6 +1,6 @@
 # Viewer Foundation Hardening Design
 
-**Status:** Approved design direction; pending written-spec review
+**Status:** Approved
 
 **Date:** 2026-07-16
 

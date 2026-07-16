@@ -39,6 +39,7 @@ Viewer/
 │   ├── Cargo.toml
 │   ├── build.rs
 │   ├── capabilities/main.json
+│   ├── icons/icon.png
 │   ├── src/{lib.rs,main.rs}
 │   └── tauri.conf.json
 └── crates/
@@ -171,6 +172,7 @@ git commit -m "chore: initialize Viewer development environment"
 - Create: `src-tauri/src/lib.rs`
 - Create: `src-tauri/tauri.conf.json`
 - Create: `src-tauri/capabilities/main.json`
+- Create: `src-tauri/icons/icon.png`
 
 **Interfaces:**
 - Consumes: verified toolchain from Task 1.
@@ -408,6 +410,12 @@ Create `src-tauri/capabilities/main.json`:
   "permissions": ["core:default"]
 }
 ```
+
+Tauri 2.11.5 resolves a default application icon while expanding
+`generate_context!()`. Add exactly one neutral, valid 32×32 RGBA PNG at
+`src-tauri/icons/icon.png`. It is a required foundation build asset and a
+temporary placeholder, not final Viewer branding. Do not generate an expanded
+icon set in this task.
 
 - [ ] **Step 5: Verify the shell**
 

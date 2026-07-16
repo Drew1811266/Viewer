@@ -1135,7 +1135,17 @@ Install the reviewed `cargo-deny` release with
 `cargo install cargo-deny --version 0.20.2 --locked`. Create `deny.toml`
 permitting MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, Unicode-3.0,
 CC0-1.0 and MPL-2.0, while denying unmaintained/yanked advisories and unknown
-git sources.
+git sources. The dependency graph currently requires three user-approved,
+narrow exceptions:
+
+- allow Zlib only for `foldhash 0.2.0`, which is inherited through Tauri;
+- ignore license declarations for unpublished private workspace crates so the
+  policy does not imply a Viewer project license before one is selected; and
+- temporarily ignore only `RUSTSEC-2025-0075`, `RUSTSEC-2025-0080`,
+  `RUSTSEC-2025-0081`, `RUSTSEC-2025-0098`, and `RUSTSEC-2025-0100`. These are
+  unmaintained `unic-*` transitive dependencies in the current Tauri graph with
+  no safe upgrade. Keep the IDs explicit and remove them when Tauri removes the
+  dependency; do not relax `unmaintained = "all"`.
 
 Run `cargo deny check`. Expected: PASS for the foundation dependency graph.
 

@@ -1,5 +1,8 @@
-use serde::{Deserialize, Serialize};
-use std::{fmt, path::{Component, Path}};
+use serde::{Deserialize, Deserializer, Serialize};
+use std::{
+    fmt,
+    path::{Component, Path},
+};
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -9,15 +12,21 @@ macro_rules! id_type {
         pub struct $name(Uuid);
 
         impl $name {
-            pub fn new() -> Self { Self(Uuid::new_v4()) }
+            pub fn new() -> Self {
+                Self(Uuid::new_v4())
+            }
         }
 
         impl Default for $name {
-            fn default() -> Self { Self::new() }
+            fn default() -> Self {
+                Self::new()
+            }
         }
 
         impl fmt::Display for $name {
-            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result { self.0.fmt(f) }
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                self.0.fmt(f)
+            }
         }
 
         impl std::str::FromStr for $name {
@@ -36,7 +45,7 @@ id_type!(EntityId);
 id_type!(TaskId);
 id_type!(OperationId);
 
-#[derive(Clone, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq, Serialize)]
 pub struct RelativePath(String);
 
 #[derive(Debug, Error, Eq, PartialEq)]
@@ -48,27 +57,83 @@ pub enum RelativePathError {
 impl RelativePath {
     pub fn parse(value: &str) -> Result<Self, RelativePathError> {
         let path = Path::new(value);
-        let valid = !value.is_empty()
+        let segments_are_canonical = value
+            .split('/')
+            .all(|segment| !matches!(segment, "" | "." | ".." | ".viewer"));
+        let valid = segments_are_canonical
             && !path.is_absolute()
-            && path.components().all(|part| {
-                matches!(part, Component::Normal(name) if name != ".viewer")
-            });
-        valid.then(|| Self(value.to_owned())).ok_or(RelativePathError::Invalid)
+            && path
+                .components()
+                .all(|part| matches!(part, Component::Normal(_)));
+        valid
+            .then(|| Self(value.to_owned()))
+            .ok_or(RelativePathError::Invalid)
     }
 
-    pub fn as_str(&self) -> &str { &self.0 }
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl<'de> Deserialize<'de> for RelativePath {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let value = String::deserialize(deserializer)?;
+        Self::parse(&value).map_err(serde::de::Error::custom)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde::{
+        Deserialize,
+        de::value::{Error as ValueError, StrDeserializer},
+    };
+    use std::str::FromStr;
 
     #[test]
-    fn relative_path_rejects_escape_and_absolute_paths() {
-        assert!(RelativePath::parse("../outside").is_err());
-        assert!(RelativePath::parse("/absolute").is_err());
-        assert!(RelativePath::parse(".viewer/metadata.sqlite").is_err());
-        assert!(RelativePath::parse("products/id-1/front.png").is_ok());
+    fn relative_path_accepts_a_canonical_project_path() {
+        let path = RelativePath::parse("products/id-1/front.png").unwrap();
+        assert_eq!(path.as_str(), "products/id-1/front.png");
+    }
+
+    #[test]
+    fn relative_path_rejects_non_canonical_or_reserved_paths() {
+        for invalid in [
+            "",
+            "../outside",
+            "/absolute",
+            "./front.png",
+            "products/./front.png",
+            "products/../front.png",
+            ".viewer/metadata.sqlite",
+            "products/.viewer/metadata.sqlite",
+            "products//front.png",
+            "products/front.png/",
+        ] {
+            assert!(RelativePath::parse(invalid).is_err(), "accepted {invalid}");
+        }
+    }
+
+    #[test]
+    fn relative_path_deserialization_preserves_validation() {
+        let invalid = StrDeserializer::<ValueError>::new("../outside");
+        assert!(RelativePath::deserialize(invalid).is_err());
+
+        let valid = StrDeserializer::<ValueError>::new("products/id-1/front.png");
+        assert_eq!(
+            RelativePath::deserialize(valid).unwrap().as_str(),
+            "products/id-1/front.png"
+        );
+    }
+
+    #[test]
+    fn id_display_and_parse_round_trip() {
+        let id = ProjectId::new();
+        assert_eq!(ProjectId::from_str(&id.to_string()).unwrap(), id);
     }
 
     #[test]

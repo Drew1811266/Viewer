@@ -1115,6 +1115,12 @@ git commit -m "feat: add Viewer empty state and typed health IPC"
 - Create: `deny.toml`
 - Modify: `package.json`
 - Modify: `ACKNOWLEDGEMENTS.md`
+- Modify: `src-tauri/Cargo.toml`
+- Modify: `crates/viewer-domain/Cargo.toml`
+- Modify: `crates/viewer-application/Cargo.toml`
+- Modify: `crates/viewer-infrastructure/Cargo.toml`
+- Modify: `crates/viewer-platform-macos/Cargo.toml`
+- Modify: `crates/viewer-test-support/Cargo.toml`
 
 **Interfaces:**
 - Produces: one `pnpm verify` command and CI checks for format, lint, unit tests, UI build and licenses.
@@ -1139,7 +1145,8 @@ git sources. The dependency graph currently requires three user-approved,
 narrow exceptions:
 
 - allow Zlib only for `foldhash 0.2.0`, which is inherited through Tauri;
-- ignore license declarations for unpublished private workspace crates so the
+- mark all six application/workspace packages `publish = false`, then ignore
+  license declarations for those unpublished private workspace crates so the
   policy does not imply a Viewer project license before one is selected; and
 - temporarily ignore only `RUSTSEC-2025-0075`, `RUSTSEC-2025-0080`,
   `RUSTSEC-2025-0081`, `RUSTSEC-2025-0098`, and `RUSTSEC-2025-0100`. These are
@@ -1177,7 +1184,7 @@ cargo deny check
 Expected: PASS.
 
 ```bash
-git add .github deny.toml package.json ACKNOWLEDGEMENTS.md
+git add .github deny.toml package.json ACKNOWLEDGEMENTS.md src-tauri/Cargo.toml crates/*/Cargo.toml
 git commit -m "ci: enforce Viewer foundation checks"
 ```
 

@@ -1,0 +1,14 @@
+{
+  "name": "viewer",
+  "private": true,
+  "packageManager": "pnpm@10.0.0",
+  "scripts": {
+    "dev": "pnpm --dir ui dev",
+    "test:ui": "pnpm --dir ui test",
+    "build:ui": "pnpm --dir ui build",
+    "tauri": "tauri"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.0.0"
+  }
+}

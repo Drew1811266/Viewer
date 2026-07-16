@@ -1071,13 +1071,24 @@ pub struct HealthResponse {
     version: &'static str,
 }
 
-#[tauri::command]
-pub fn health() -> HealthResponse {
-    HealthResponse { app_name: APP_NAME, version: env!("CARGO_PKG_VERSION") }
+mod commands {
+    use super::{HealthResponse, APP_NAME};
+
+    #[tauri::command]
+    pub fn health() -> HealthResponse {
+        HealthResponse { app_name: APP_NAME, version: env!("CARGO_PKG_VERSION") }
+    }
 }
+
+pub use commands::health;
 ```
 
 Register it with `.invoke_handler(tauri::generate_handler![health])` immediately before the existing `.run(tauri::generate_context!())` call.
+
+The private module is required by tauri-macros 2.6.3: a public command defined
+at crate root exports helper macros and re-imports them into the same namespace,
+which produces E0255 under the locked toolchain. The root re-export preserves
+the public `viewer_desktop::health()` API and the `health` IPC command name.
 
 - [ ] **Step 4: Verify and commit**
 

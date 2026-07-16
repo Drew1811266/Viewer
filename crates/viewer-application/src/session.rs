@@ -126,4 +126,72 @@ mod tests {
         assert_eq!(session.begin_close(), Err(SessionTransitionError::Invalid));
         assert_eq!(session.state(), SessionState::Opening);
     }
+
+    #[test]
+    fn every_invalid_transition_preserves_state() {
+        #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+        enum Operation {
+            BeginOpen,
+            ActivateReadWrite,
+            ActivateReadOnly,
+            BeginClose,
+            FinishClose,
+        }
+
+        let states = [
+            SessionState::Empty,
+            SessionState::Opening,
+            SessionState::ActiveReadWrite,
+            SessionState::ActiveReadOnly,
+            SessionState::Closing,
+        ];
+        let operations = [
+            Operation::BeginOpen,
+            Operation::ActivateReadWrite,
+            Operation::ActivateReadOnly,
+            Operation::BeginClose,
+            Operation::FinishClose,
+        ];
+        let mut invalid_cells = 0;
+
+        for state in states {
+            for operation in operations {
+                let is_legal = matches!(
+                    (state, operation),
+                    (SessionState::Empty, Operation::BeginOpen)
+                        | (SessionState::Opening, Operation::ActivateReadWrite)
+                        | (SessionState::Opening, Operation::ActivateReadOnly)
+                        | (SessionState::ActiveReadWrite, Operation::BeginClose)
+                        | (SessionState::ActiveReadOnly, Operation::BeginClose)
+                        | (SessionState::Closing, Operation::FinishClose)
+                );
+                if is_legal {
+                    continue;
+                }
+
+                invalid_cells += 1;
+                let mut session = ProjectSession { state };
+                let result = match operation {
+                    Operation::BeginOpen => session.begin_open(),
+                    Operation::ActivateReadWrite => session.activate(ProjectAccess::ReadWrite),
+                    Operation::ActivateReadOnly => session.activate(ProjectAccess::ReadOnly),
+                    Operation::BeginClose => session.begin_close(),
+                    Operation::FinishClose => session.finish_close(),
+                };
+
+                assert_eq!(
+                    result,
+                    Err(SessionTransitionError::Invalid),
+                    "{state:?} with {operation:?}"
+                );
+                assert_eq!(
+                    session.state(),
+                    state,
+                    "{state:?} changed after {operation:?}"
+                );
+            }
+        }
+
+        assert_eq!(invalid_cells, 19);
+    }
 }

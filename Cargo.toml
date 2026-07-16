@@ -1,12 +1,17 @@
 [workspace]
 resolver = "2"
-members = ["src-tauri", "crates/viewer-domain"]
+members = [
+    "src-tauri",
+    "crates/viewer-domain",
+    "crates/viewer-application",
+]
 
 [workspace.package]
 edition = "2024"
 rust-version = "1.85"
 
 [workspace.dependencies]
+async-trait = "0.1"
 serde = { version = "1", features = ["derive"] }
 thiserror = "2"
 uuid = { version = "1", features = ["v4", "serde"] }

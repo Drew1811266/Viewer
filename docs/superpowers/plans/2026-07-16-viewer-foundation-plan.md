@@ -182,9 +182,32 @@ Run:
 
 ```bash
 pnpm create vite ui --template react-ts
-pnpm --dir ui install
-pnpm --dir ui add @tauri-apps/api@^2
-pnpm --dir ui add -D vitest @testing-library/react @testing-library/jest-dom jsdom
+```
+
+Remove the generated demonstration-only files (`ui/public/vite.svg`,
+`ui/src/assets/react.svg`, `ui/src/App.css`, `ui/src/index.css`,
+`ui/README.md` and `ui/eslint.config.js`). Keep Vite/TypeScript files required
+to build the application. Replace the generated components with this minimal
+shell so no deleted asset remains imported:
+
+```tsx
+// ui/src/App.tsx
+export default function App() {
+  return <main><h1>Viewer</h1></main>
+}
+```
+
+```tsx
+// ui/src/main.tsx
+import { StrictMode } from 'react'
+import { createRoot } from 'react-dom/client'
+import App from './App'
+
+createRoot(document.getElementById('root')!).render(
+  <StrictMode>
+    <App />
+  </StrictMode>,
+)
 ```
 
 Create root `package.json`:
@@ -213,7 +236,17 @@ packages:
   - ui
 ```
 
-Run `pnpm install`. Expected: root `pnpm-lock.yaml` is created.
+Run all installs only after the root workspace files exist, so the repository
+has one root lockfile and no nested `ui/pnpm-lock.yaml`:
+
+```bash
+pnpm install
+pnpm --dir ui add @tauri-apps/api@^2
+pnpm --dir ui add -D vitest @testing-library/react @testing-library/jest-dom jsdom
+```
+
+Expected: root `pnpm-lock.yaml` is created and `ui/pnpm-lock.yaml` does not
+exist.
 
 - [ ] **Step 2: Create the Rust workspace**
 
@@ -222,14 +255,7 @@ Create root `Cargo.toml`:
 ```toml
 [workspace]
 resolver = "2"
-members = [
-  "src-tauri",
-  "crates/viewer-domain",
-  "crates/viewer-application",
-  "crates/viewer-infrastructure",
-  "crates/viewer-platform-macos",
-  "crates/viewer-test-support",
-]
+members = ["src-tauri"]
 
 [workspace.package]
 edition = "2024"
@@ -241,11 +267,30 @@ thiserror = "2"
 uuid = { version = "1", features = ["v4", "serde"] }
 ```
 
+Register only crates that exist. Tasks 3–5 append each crate to `members` in
+the same commit that creates it; the completed Foundation workspace still has
+all six planned members.
+
 If the installed stable compiler cannot compile edition 2024 with `rust-version = "1.85"`, stop: the wrong Rust installation is active. Do not lower the project baseline silently.
 
 - [ ] **Step 3: Write the failing Tauri smoke test**
 
-Create `src-tauri/src/lib.rs`:
+Create the minimal package manifest first so RED exercises the requested
+symbol rather than failing because the package is absent. Create
+`src-tauri/Cargo.toml`:
+
+```toml
+[package]
+name = "viewer-desktop"
+version = "0.1.0"
+edition.workspace = true
+
+[lib]
+name = "viewer_desktop"
+crate-type = ["lib", "cdylib", "staticlib"]
+```
+
+Then create `src-tauri/src/lib.rs`:
 
 ```rust
 #[cfg(test)]
@@ -263,11 +308,12 @@ Run:
 cargo test -p viewer-desktop app_name_is_viewer
 ```
 
-Expected: FAIL because the package and `APP_NAME` do not exist.
+Expected: FAIL with an unresolved `APP_NAME` error. The package must be found;
+a missing-package or missing-manifest error is not valid RED evidence.
 
 - [ ] **Step 4: Add the minimal Tauri package**
 
-Create `src-tauri/Cargo.toml`:
+Replace `src-tauri/Cargo.toml` with the complete Tauri package manifest:
 
 ```toml
 [package]
@@ -384,6 +430,7 @@ git commit -m "feat: scaffold Viewer Tauri shell"
 ### Task 3: Create domain identifiers and safe relative paths
 
 **Files:**
+- Modify: `Cargo.toml`
 - Create: `crates/viewer-domain/Cargo.toml`
 - Create: `crates/viewer-domain/src/lib.rs`
 - Test: `crates/viewer-domain/src/lib.rs`
@@ -392,6 +439,21 @@ git commit -m "feat: scaffold Viewer Tauri shell"
 - Produces: `ProjectId`, `SessionId`, `EntityId`, `TaskId`, `OperationId`, `RelativePath::parse(&str)`.
 
 - [ ] **Step 1: Write failing domain tests**
+
+Append `"crates/viewer-domain"` to the root workspace `members`, then create
+`crates/viewer-domain/Cargo.toml` before running RED:
+
+```toml
+[package]
+name = "viewer-domain"
+version = "0.1.0"
+edition.workspace = true
+
+[dependencies]
+serde.workspace = true
+thiserror.workspace = true
+uuid.workspace = true
+```
 
 Create `crates/viewer-domain/src/lib.rs`:
 
@@ -415,23 +477,11 @@ mod tests {
 }
 ```
 
-Run `cargo test -p viewer-domain`. Expected: FAIL because the crate/types do not exist.
+Run `cargo test -p viewer-domain`. Expected: FAIL with unresolved
+`RelativePath`/`ProjectId` symbols. A missing-package or missing-manifest error
+is not valid RED evidence.
 
 - [ ] **Step 2: Implement the minimal domain primitives**
-
-Create `crates/viewer-domain/Cargo.toml`:
-
-```toml
-[package]
-name = "viewer-domain"
-version = "0.1.0"
-edition.workspace = true
-
-[dependencies]
-serde.workspace = true
-thiserror.workspace = true
-uuid.workspace = true
-```
 
 Replace `crates/viewer-domain/src/lib.rs` with:
 
@@ -528,6 +578,7 @@ git commit -m "feat: add Viewer domain primitives"
 ### Task 4: Define the application session and adapter ports
 
 **Files:**
+- Modify: `Cargo.toml`
 - Create: `crates/viewer-application/Cargo.toml`
 - Create: `crates/viewer-application/src/lib.rs`
 - Create: `crates/viewer-application/src/session.rs`
@@ -539,6 +590,27 @@ git commit -m "feat: add Viewer domain primitives"
 - Produces: `SessionState`, `ProjectSession`, `ProjectAccess`, `ClockPort`, `ProjectProbePort`.
 
 - [ ] **Step 1: Write the failing session transition test**
+
+Add `async-trait = "0.1"` to root workspace dependencies, append
+`"crates/viewer-application"` to workspace `members`, and create
+`crates/viewer-application/Cargo.toml`:
+
+```toml
+[package]
+name = "viewer-application"
+version = "0.1.0"
+edition.workspace = true
+
+[dependencies]
+async-trait.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+viewer-domain = { path = "../viewer-domain" }
+```
+
+Create `crates/viewer-application/src/lib.rs` containing `pub mod session;`,
+then create `session.rs` with the tests below. This makes the crate resolvable
+while leaving the requested session behavior unimplemented for RED.
 
 Create `crates/viewer-application/src/session.rs` with a test asserting `Empty → Opening → ActiveReadWrite → Closing → Empty` and rejecting a second `open` while active.
 
@@ -567,11 +639,13 @@ mod tests {
 }
 ```
 
-Run `cargo test -p viewer-application`. Expected: FAIL because the crate and session types do not exist.
+Run `cargo test -p viewer-application`. Expected: FAIL with unresolved session
+types or methods. A missing-package or missing-manifest error is not valid RED
+evidence.
 
 - [ ] **Step 2: Implement session types and ports**
 
-Create `crates/viewer-application/Cargo.toml` with dependencies on `viewer-domain`, `async-trait`, `serde` and `thiserror`. Implement the exact public surface:
+Implement the exact public surface in `session.rs`:
 
 ```rust
 use crate::ports::ProjectAccess;
@@ -635,6 +709,7 @@ git commit -m "feat: define application session boundaries"
 ### Task 5: Create Infrastructure, macOS and test-support adapter crates
 
 **Files:**
+- Modify: `Cargo.toml`
 - Create: `crates/viewer-infrastructure/{Cargo.toml,src/lib.rs}`
 - Create: `crates/viewer-platform-macos/{Cargo.toml,src/lib.rs}`
 - Create: `crates/viewer-test-support/{Cargo.toml,src/lib.rs}`
@@ -645,15 +720,64 @@ git commit -m "feat: define application session boundaries"
 
 - [ ] **Step 1: Write failing adapter contract tests**
 
-In `viewer-test-support`, define a test requiring `FixedClock::new(42).unix_millis() == 42`. In `viewer-platform-macos`, define a test that a readable temporary directory returns either `ReadWrite` or `ReadOnly`, never an error.
+Append the three adapter crates to workspace `members` in dependency order.
+Add `futures = "0.3"` and `tempfile = "3"` to workspace dependencies for
+adapter contract tests. Create each crate manifest before RED:
+
+```toml
+# crates/viewer-infrastructure/Cargo.toml
+[package]
+name = "viewer-infrastructure"
+version = "0.1.0"
+edition.workspace = true
+
+[dependencies]
+viewer-application = { path = "../viewer-application" }
+```
+
+```toml
+# crates/viewer-platform-macos/Cargo.toml
+[package]
+name = "viewer-platform-macos"
+version = "0.1.0"
+edition.workspace = true
+
+[dependencies]
+async-trait.workspace = true
+uuid.workspace = true
+viewer-application = { path = "../viewer-application" }
+
+[dev-dependencies]
+futures.workspace = true
+tempfile.workspace = true
+```
+
+```toml
+# crates/viewer-test-support/Cargo.toml
+[package]
+name = "viewer-test-support"
+version = "0.1.0"
+edition.workspace = true
+
+[dependencies]
+viewer-application = { path = "../viewer-application" }
+```
+
+In `viewer-test-support`, define a test requiring
+`FixedClock::new(42).unix_millis() == 42`. In `viewer-infrastructure`, define a
+test proving `SystemClock::unix_millis()` falls between wall-clock readings
+taken immediately before and after it. In `viewer-platform-macos`, use
+`tempfile` plus `futures::executor::block_on` to verify that a readable
+temporary directory returns either `ReadWrite` or `ReadOnly`, never an error.
 
 Run:
 
 ```bash
-cargo test -p viewer-test-support -p viewer-platform-macos
+cargo test -p viewer-infrastructure -p viewer-test-support -p viewer-platform-macos
 ```
 
-Expected: FAIL because the crates do not exist.
+Expected: FAIL with unresolved adapter types. Missing-package or
+missing-manifest errors are not valid RED evidence.
 
 - [ ] **Step 2: Implement the minimal adapters**
 
@@ -732,7 +856,24 @@ describe('Viewer empty state', () => {
 
 Configure Vitest in `vite.config.ts` with `environment: 'jsdom'` and `setupFiles: './src/setupTests.ts'`; add `"test": "vitest run"` to `ui/package.json`.
 
-Run `pnpm --dir ui test`. Expected: FAIL against the Vite starter UI.
+Run `pnpm --dir ui test`. Expected: FAIL because the minimal shell does not
+yet contain the import guidance.
+
+Add a Rust test to the existing test module in `src-tauri/src/lib.rs` before
+the health command exists:
+
+```rust
+#[test]
+fn health_returns_app_identity() {
+    let response = super::health();
+    assert_eq!(response.app_name, "Viewer");
+    assert_eq!(response.version, env!("CARGO_PKG_VERSION"));
+}
+```
+
+Run `cargo test -p viewer-desktop health_returns_app_identity`. Expected:
+FAIL with an unresolved `health` function. A package/configuration failure is
+not valid RED evidence.
 
 - [ ] **Step 2: Implement the minimal empty state**
 

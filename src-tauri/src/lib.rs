@@ -64,11 +64,22 @@ mod tests {
     }
 
     #[test]
+    fn health_serializes_the_exact_ipc_shape() {
+        let value = serde_json::to_value(super::health()).expect("serialize health response");
+        assert_eq!(
+            value,
+            serde_json::json!({
+                "appName": "Viewer",
+                "version": env!("CARGO_PKG_VERSION"),
+            })
+        );
+    }
+
+    #[test]
     fn main_capability_grants_no_core_or_plugin_permissions() {
-        let capability: serde_json::Value = serde_json::from_str(include_str!(
-            "../capabilities/main.json"
-        ))
-        .expect("main capability must be valid JSON");
+        let capability: serde_json::Value =
+            serde_json::from_str(include_str!("../capabilities/main.json"))
+                .expect("main capability must be valid JSON");
 
         assert_eq!(capability["windows"], serde_json::json!(["main"]));
         assert_eq!(capability["permissions"], serde_json::json!([]));

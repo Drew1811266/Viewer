@@ -4,6 +4,9 @@ members = [
     "src-tauri",
     "crates/viewer-domain",
     "crates/viewer-application",
+    "crates/viewer-infrastructure",
+    "crates/viewer-platform-macos",
+    "crates/viewer-test-support",
 ]
 
 [workspace.package]
@@ -12,6 +15,8 @@ rust-version = "1.85"
 
 [workspace.dependencies]
 async-trait = "0.1"
+futures = "0.3"
 serde = { version = "1", features = ["derive"] }
+tempfile = "3"
 thiserror = "2"
 uuid = { version = "1", features = ["v4", "serde"] }

@@ -3613,6 +3613,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "viewer-domain"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "thiserror 2.0.18",
+ "uuid",
+]
+
+[[package]]
 name = "vswhom"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

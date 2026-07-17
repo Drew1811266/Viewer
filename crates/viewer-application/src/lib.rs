@@ -1,6 +1,7 @@
 pub mod image;
 pub mod operation;
 pub mod ports;
+pub mod project;
 pub mod scan;
 pub mod scheduler;
 pub mod search;
@@ -14,5 +15,6 @@ pub use ports::{
     ClockPort, FileMutationPort, ImagePort, ProjectAccess, ProjectProbeError,
     ProjectProbeOperation, ProjectProbePort, ScanPort, SearchPort, TrashPort, VolumePort,
 };
+pub use project::{ActiveProject, ProjectOpenError, ProjectSessionService};
 pub use session::{ProjectSession, SessionState, SessionTransitionError};
 pub use watcher::{WatchSubscription, WatcherError, WatcherPort, WatcherSink};

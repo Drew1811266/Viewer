@@ -11,3 +11,6 @@ serde.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 viewer-domain = { path = "../viewer-domain" }
+
+[dev-dependencies]
+tempfile.workspace = true

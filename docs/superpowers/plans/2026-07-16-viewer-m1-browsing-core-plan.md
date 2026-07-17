@@ -78,7 +78,7 @@
 - Consumes: `ProjectProbePort::probe`, `ProjectSession`, `TaskCoordinator::begin_session`.
 - Produces: `ActiveProject { project_id, session_id, generation, root, display_name, access }`, `ProjectSessionService<P>::open`, `active`, and `close`.
 
-- [ ] **Step 1: Write the failing use-case tests**
+- [x] **Step 1: Write the failing use-case tests**
 
 ```rust
 #[test]
@@ -102,13 +102,13 @@ fn open_rejects_a_symlinked_root_before_probe() {
 }
 ```
 
-- [ ] **Step 2: Run the focused tests and verify RED**
+- [x] **Step 2: Run the focused tests and verify RED**
 
 Run: `cargo test -p viewer-application project::tests -- --nocapture`
 
 Expected: FAIL because `project` and `ProjectSessionService` do not exist.
 
-- [ ] **Step 3: Implement the minimal application service**
+- [x] **Step 3: Implement the minimal application service**
 
 ```rust
 pub struct ActiveProject {
@@ -135,13 +135,13 @@ impl<P: ProjectProbePort> ProjectSessionService<P> {
 
 Implementation rules: use `symlink_metadata` before `canonicalize`, reject a link or non-directory, call the probe only after canonicalization, derive `display_name` from the final path component, begin exactly one coordinator generation, and drive every failure through `fail_open`/`finish_close`.
 
-- [ ] **Step 4: Run application tests and verify GREEN**
+- [x] **Step 4: Run application tests and verify GREEN**
 
 Run: `cargo test -p viewer-application project::tests`
 
 Expected: PASS including read-write, read-only, failed-open cleanup, close cancellation, and second-open cases.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add crates/viewer-application/src/project.rs crates/viewer-application/src/lib.rs

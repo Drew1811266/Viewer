@@ -21,5 +21,12 @@ objc2-image-io.workspace = true
 objc2-quick-look-thumbnailing.workspace = true
 
 [dev-dependencies]
+libc.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 tempfile.workspace = true
 viewer-test-support = { path = "../viewer-test-support" }
+
+[[bench]]
+name = "image_pipeline"
+harness = false

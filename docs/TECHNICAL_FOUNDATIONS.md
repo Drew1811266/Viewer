@@ -1,6 +1,6 @@
 # Viewer 技术框架与开源来源
 
-> 状态：全局架构已确认，正式依赖版本待技术原型验证  
+> 状态：全局架构已确认；G1 图片管线已验证，G2～G4 仍待完成
 > 原则：采用通用框架，独立实现 Viewer，不复制其他完整应用
 
 完整模块、数据流、安全和测试设计见 `docs/superpowers/specs/2026-07-16-viewer-system-architecture-design.md`。
@@ -25,11 +25,17 @@
 | 核心语言 | Rust | 扫描、索引、文件操作、任务、缓存和系统集成 | 正式工具链 |
 | 前端 | React + TypeScript + Vite | 两栏界面、状态呈现、快捷键和交互 | 正式依赖 |
 | 数据库 | SQLite + rusqlite | 持久标记、会话索引和 FTS5 全文搜索 | 正式依赖 |
-| 图片后端 | Quick Look Thumbnailing + Image I/O + Core Graphics + ColorSync | 系统缩略图、JPG/PNG 解析、高清预览、ICC 和 EXIF | macOS 系统框架 |
+| 图片后端 | Quick Look Thumbnailing + Image I/O + Core Graphics + ColorSync | Quick Look 主缩略图、Image I/O 回退与高清预览、ICC 和 EXIF | 已通过 G1，见 ADR 0001 |
 | 文件监听 | notify + notify-debouncer-full + file-id | FSEvents、事件归并、重命名/移动关联 | 正式依赖候选 |
 | 网格虚拟化 | TanStack Virtual | 缩略图、目录卡片和搜索结果虚拟化 | 正式依赖候选 |
 | 系统废纸篓 | trash-rs | 将文件移入 macOS 废纸篓 | 正式依赖候选 |
 | 模糊匹配 | nucleo-matcher | Unicode/中文路径和文件名匹配 | 正式依赖候选，需确认 MPL-2.0 义务 |
+
+### 2.1 G1 图片管线结论
+
+[ADR 0001](adr/0001-macos-image-pipeline.md) 已将 macOS 0.1 的策略确定为“Quick Look 主缩略图，Image I/O 失败回退；Fit/100% 预览使用 Image I/O”。项目原图不复制到 Viewer 缓存；缓存只保存可重建的会话表示，通过会话绑定的随机 token 交给 WebView。
+
+Apple M4 标准开发设备上的合成样本 gate 验证了 sRGB、Display P3、EXIF orientation 6、Alpha、损坏图片、100 次取消、4 路代理、受限协议和 700 MB 峰值预算。当前结果不能替代用户后续提供的约 10 MB 真实素材验收，因此最终性能结论仍在 M4 内部发布阶段复核。
 
 ## 3. 架构方法来源
 

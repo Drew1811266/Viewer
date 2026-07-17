@@ -10,7 +10,7 @@ Viewer's project license has not yet been selected. This acknowledgement records
 - [React](https://github.com/facebook/react) and React DOM — user-interface rendering.
 - [Vite](https://github.com/vitejs/vite) and `@vitejs/plugin-react` — frontend development and production builds.
 - [TypeScript](https://github.com/microsoft/TypeScript), Node.js, pnpm, and the React/Node type declarations — frontend language and toolchain.
-- [Rust](https://github.com/rust-lang/rust) and Cargo — native application language and build toolchain. The direct Rust crates currently include `async-trait`, `blake3`, `block2`, `getrandom`, the `objc2` Foundation/Core Foundation/Core Graphics/Image I/O/Quick Look Thumbnailing bindings, `serde`, `serde_json` (tests), `tempfile` (tests), `thiserror`, `tokio`, and `uuid`.
+- [Rust](https://github.com/rust-lang/rust) and Cargo — native application language and build toolchain. The direct Rust crates currently include `async-trait`, `blake3`, `block2`, `getrandom`, `libc` (benchmark RSS sampling), the `objc2` Foundation/Core Foundation/Core Graphics/Image I/O/Quick Look Thumbnailing bindings, `serde`, `serde_json` (tests and benchmark reports), `tempfile` (tests), `thiserror`, `tokio`, and `uuid`.
 - [Vitest](https://github.com/vitest-dev/vitest), [Testing Library](https://github.com/testing-library/react-testing-library), `jest-dom`, and jsdom — frontend unit and DOM testing.
 
 ## Research and product inspiration (not code dependencies)

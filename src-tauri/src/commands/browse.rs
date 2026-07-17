@@ -37,7 +37,7 @@ pub async fn request_image_representation(
         .await
 }
 
-fn parse_entity_id(value: &str) -> Result<EntityId, CommandError> {
+pub(crate) fn parse_entity_id(value: &str) -> Result<EntityId, CommandError> {
     EntityId::from_str(value).map_err(|_| {
         CommandError::new(
             "invalid_entity_id",

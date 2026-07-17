@@ -7,6 +7,7 @@ pub mod commands;
 pub mod dto;
 pub mod error;
 pub mod image_protocol;
+pub mod markdown;
 pub mod state;
 
 pub const APP_NAME: &str = "Viewer";
@@ -95,7 +96,9 @@ pub fn run() {
             commands::project::cancel_task,
             commands::browse::folder_tree,
             commands::browse::query_folder,
-            commands::browse::request_image_representation
+            commands::browse::request_image_representation,
+            commands::preview::preview_text,
+            commands::preview::open_external_link
         ])
         .setup(move |app| {
             let cache_base = app.path().app_cache_dir()?.join("sessions");

@@ -633,7 +633,7 @@ git commit -m "feat: query folders and deliver cached images"
 - Consumes: `TextPreviewPort`, indexed text entity, local image representation path.
 - Produces: `preview_text`, `open_external_link`, sanitized `plainText` or `markdownHtml`, encoding/truncation metadata.
 
-- [ ] **Step 1: Write failing malicious-content and encoding-choice tests**
+- [x] **Step 1: Write failing malicious-content and encoding-choice tests**
 
 ```rust
 #[tokio::test]
@@ -655,33 +655,33 @@ fn external_link_policy_allows_only_user_clicked_http_and_https() {
 }
 ```
 
-- [ ] **Step 2: Run focused tests and verify RED**
+- [x] **Step 2: Run focused tests and verify RED**
 
 Run: `cargo test -p viewer-desktop markdown_preview external_link_policy -- --nocapture`
 
 Expected: FAIL because Markdown conversion and external URL policy are missing.
 
-- [ ] **Step 3: Add and review `pulldown-cmark`**
+- [x] **Step 3: Add and review `pulldown-cmark`**
 
 Run: `cargo add pulldown-cmark@0.13 --package viewer-desktop`
 
 Record the exact locked version, MIT license, purpose, and upstream in `THIRD_PARTY_NOTICES.md`; verify with the locked dependency script.
 
-- [ ] **Step 4: Implement safe preview conversion**
+- [x] **Step 4: Implement safe preview conversion**
 
 Enable headings, paragraphs, lists, blockquotes, fenced code, tables, emphasis, and rules. Disable raw HTML events. Pre-resolve only relative JPG/JPEG/PNG image destinations against the Markdown file's parent, then pass them through the same root/entity/image representation validation and rewrite to registered `viewer-image` URLs. Strip remote, absolute, escaping, linked, alias, unsupported, and failed resources. Sanitize the final HTML through the existing explicit ammonia policy.
 
-- [ ] **Step 5: Implement explicit external-link handoff**
+- [x] **Step 5: Implement explicit external-link handoff**
 
 `open_external_link` accepts only normalized HTTP/HTTPS URLs, only after a UI click, and delegates to a macOS adapter that invokes the system default handler. It must never fetch the URL inside Viewer. Unit-test validation; make any real-launch smoke test opt-in.
 
-- [ ] **Step 6: Run text/security/dependency regressions and verify GREEN**
+- [x] **Step 6: Run text/security/dependency regressions and verify GREEN**
 
 Run: `cargo test --test m1_text_preview && cargo test -p viewer-desktop && ./scripts/check-tauri-security.sh && ./scripts/check-locked-dependencies.sh`
 
 Expected: PASS for syntax, encodings, truncation, sanitization, local-resource boundaries, and explicit URL policy.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add Cargo.toml Cargo.lock THIRD_PARTY_NOTICES.md crates/viewer-platform-macos src-tauri tests

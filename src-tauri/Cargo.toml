@@ -15,6 +15,7 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 ammonia.workspace = true
 libc.workspace = true
+pulldown-cmark.workspace = true
 serde.workspace = true
 tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"

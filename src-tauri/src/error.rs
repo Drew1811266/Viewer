@@ -1,6 +1,7 @@
 use serde::Serialize;
 use viewer_application::{
     BrowseError, BrowseIndexError, ImageError, ProjectOpenError, ProjectProbeError,
+    TextPreviewError,
 };
 use viewer_infrastructure::{
     image_cache::ImageArtifactRegistryError, search::index::SessionIndexError,
@@ -154,6 +155,25 @@ impl From<ImageError> for CommandError {
 impl From<ImageArtifactRegistryError> for CommandError {
     fn from(_error: ImageArtifactRegistryError) -> Self {
         internal_error()
+    }
+}
+
+impl From<TextPreviewError> for CommandError {
+    fn from(error: TextPreviewError) -> Self {
+        match error {
+            TextPreviewError::EncodingRequired => Self::new(
+                "text_encoding_required",
+                ErrorCategory::Content,
+                "无法自动识别文本编码，请选择编码后重试。",
+                true,
+            ),
+            TextPreviewError::Io(_) => Self::new(
+                "text_unavailable",
+                ErrorCategory::Content,
+                "无法读取该文本文件。",
+                true,
+            ),
+        }
     }
 }
 

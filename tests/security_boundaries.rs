@@ -6,7 +6,9 @@ use viewer_application::{
 };
 use viewer_desktop::{
     image_protocol::{ActiveImageSession, ImageProtocolResolver, ProtocolError},
-    is_allowed_navigation, sanitize_markdown_html,
+    is_allowed_navigation,
+    markdown::ExternalUrl,
+    sanitize_markdown_html,
 };
 use viewer_domain::{EntityId, RelativePath, SessionId, search::Generation};
 use viewer_infrastructure::{image_cache::ImageArtifactRegistry, scan::walker::ProjectWalker};
@@ -24,6 +26,21 @@ fn project_paths_reject_lexical_and_symlink_escape_boundaries() {
             RelativePath::parse(rejected).is_err(),
             "accepted {rejected}"
         );
+    }
+}
+
+#[test]
+fn external_link_policy_allows_only_normalized_http_and_https() {
+    assert!(ExternalUrl::parse("https://example.com/a").is_ok());
+    assert!(ExternalUrl::parse("http://example.com:8080/a?b=c#d").is_ok());
+    for rejected in [
+        "file:///etc/passwd",
+        "javascript:alert(1)",
+        "data:text/html,unsafe",
+        "https://user:password@example.com/",
+        "../relative",
+    ] {
+        assert!(ExternalUrl::parse(rejected).is_err(), "accepted {rejected}");
     }
 }
 

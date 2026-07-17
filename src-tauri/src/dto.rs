@@ -300,6 +300,24 @@ pub struct ImageRepresentationDto {
     pub backend: ImageBackendDto,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TextPreviewFormatDto {
+    PlainText,
+    Markdown,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TextPreviewDto {
+    pub entity_id: String,
+    pub format: TextPreviewFormatDto,
+    pub plain_text: Option<String>,
+    pub markdown_html: Option<String>,
+    pub encoding: viewer_application::TextEncoding,
+    pub truncated: bool,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ImageRepresentationRequestDto {

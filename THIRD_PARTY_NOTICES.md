@@ -24,6 +24,7 @@ This inventory records the direct third-party dependencies in the Viewer 0.1 loc
 | `objc2-foundation` | 0.3.2 | MIT | Foundation URLs, strings, objects and errors | [madsmtm/objc2](https://github.com/madsmtm/objc2) | Yes |
 | `objc2-image-io` | 0.3.2 | Zlib OR Apache-2.0 OR MIT | JPG/PNG metadata, fallback thumbnails and full previews | [madsmtm/objc2](https://github.com/madsmtm/objc2) | Yes |
 | `objc2-quick-look-thumbnailing` | 0.3.2 | Zlib OR Apache-2.0 OR MIT | Primary macOS thumbnail generation | [madsmtm/objc2](https://github.com/madsmtm/objc2) | Yes |
+| `pulldown-cmark` | 0.13.4 | MIT | Parse Markdown into a filtered event stream before HTML sanitization | [raphlinus/pulldown-cmark](https://github.com/raphlinus/pulldown-cmark) | Yes |
 | `rusqlite` | 0.40.1 | MIT | Portable metadata and rebuildable session/search indexes | [rusqlite/rusqlite](https://github.com/rusqlite/rusqlite) | Yes |
 | `serde` | 1.0.228 | MIT OR Apache-2.0 | Typed serialization at IPC and persistence boundaries | [serde-rs/serde](https://github.com/serde-rs/serde) | Yes |
 | `thiserror` | 2.0.18 | MIT OR Apache-2.0 | Structured domain, application and adapter errors | [dtolnay/thiserror](https://github.com/dtolnay/thiserror) | Yes |

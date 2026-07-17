@@ -1,4 +1,5 @@
 pub(crate) mod browse;
+pub(crate) mod preview;
 pub(crate) mod project;
 
 use crate::{APP_NAME, HealthResponse};

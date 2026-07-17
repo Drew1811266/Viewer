@@ -9,7 +9,7 @@ use std::{
 };
 use viewer_application::{
     ImageArtifact, ImageBackend, ImageError, ImagePort, ImageRequest, ProjectAccess,
-    ProjectOpenError, ProjectProbeError, ProjectProbeOperation, ProjectProbePort,
+    ProjectOpenError, ProjectProbeError, ProjectProbeOperation, ProjectProbePort, TextEncoding,
 };
 use viewer_desktop::{
     dto::{FolderWorkspaceDto, ProjectAccessDto},
@@ -275,5 +275,59 @@ async fn folder_query_and_image_representation_revalidate_and_reuse_cache() {
     assert_eq!(first.cache_key, second.cache_key);
     assert_ne!(first.url, second.url);
     assert_eq!(renders.load(Ordering::SeqCst), 1);
+    runtime.close_project().await.unwrap();
+}
+
+#[tokio::test]
+async fn markdown_preview_strips_active_remote_and_escaping_resources() {
+    let cache_base = tempfile::tempdir().unwrap();
+    let project = tempfile::tempdir().unwrap();
+    fs::write(project.path().join("front.jpg"), b"jpeg source").unwrap();
+    fs::write(
+        project.path().join("prompt.md"),
+        br#"# Product
+
+<script>alert('unsafe')</script>
+<img src="https://remote.example/raw.png" onerror="unsafe()">
+
+![local](front.jpg)
+![remote](https://remote.example/image.png)
+![escape](../../outside.png)
+"#,
+    )
+    .unwrap();
+    let runtime = DesktopRuntime::new_with_image_factory(
+        cache_base.path().to_path_buf(),
+        Arc::new(FixedProbe(ProjectAccess::ReadWrite)),
+        Arc::new(ProjectWalker),
+        Arc::new(RecordingEvents::default()),
+        Arc::new(CountingImageFactory {
+            renders: Arc::new(AtomicUsize::new(0)),
+        }),
+        Arc::new(ImageArtifactRegistry::default()),
+    );
+    runtime.open_project(project.path()).await.unwrap();
+    runtime.wait_for_scan().await.unwrap();
+    let FolderWorkspaceDto::Content { text_files, .. } = runtime.query_folder(None).await.unwrap()
+    else {
+        panic!("root should contain Markdown")
+    };
+    let markdown_id = text_files
+        .iter()
+        .find(|file| file.name == "prompt.md")
+        .unwrap()
+        .entity_id
+        .parse::<EntityId>()
+        .unwrap();
+
+    let preview = runtime.preview_text(markdown_id, None).await.unwrap();
+    let html = preview.markdown_html.unwrap();
+
+    assert_eq!(preview.encoding, TextEncoding::Utf8);
+    assert!(!html.contains("<script"));
+    assert!(!html.contains("onerror"));
+    assert!(!html.contains("remote.example"));
+    assert!(!html.contains("../../outside.png"));
+    assert!(html.contains("viewer-image://localhost/"));
     runtime.close_project().await.unwrap();
 }

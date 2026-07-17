@@ -66,6 +66,16 @@ impl ProjectProbePort for MacProjectProbe {
     }
 }
 
+pub fn open_external_url(url: &str) -> std::io::Result<()> {
+    let status = std::process::Command::new("/usr/bin/open")
+        .arg("--")
+        .arg(url)
+        .status()?;
+    status.success().then_some(()).ok_or_else(|| {
+        std::io::Error::other(format!("system URL opener exited with status {status}"))
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::MacProjectProbe;
@@ -141,5 +151,13 @@ mod tests {
 
         let other = std::io::Error::from(ErrorKind::Other);
         assert!(!super::is_read_only_write_error(&other));
+    }
+
+    #[test]
+    fn real_external_url_open_requires_explicit_opt_in() {
+        if std::env::var("VIEWER_ALLOW_EXTERNAL_OPEN_TEST").as_deref() != Ok("1") {
+            return;
+        }
+        super::open_external_url("https://example.com/").unwrap();
     }
 }

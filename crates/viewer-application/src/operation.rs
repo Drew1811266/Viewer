@@ -1,4 +1,5 @@
 use std::path::PathBuf;
+use viewer_domain::{OperationId, operation::OperationState};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct FileSnapshot {
@@ -40,5 +41,33 @@ impl FileOperationError {
             path: path.into(),
             message: error.to_string(),
         }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, thiserror::Error)]
+#[error("injected crash after operation {operation_id} persisted state {state:?}")]
+pub struct InjectedCrash {
+    pub operation_id: OperationId,
+    pub state: OperationState,
+}
+
+pub trait FaultInjector: Send + Sync {
+    fn after_persist(
+        &self,
+        operation_id: OperationId,
+        state: OperationState,
+    ) -> Result<(), InjectedCrash>;
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct NoFaults;
+
+impl FaultInjector for NoFaults {
+    fn after_persist(
+        &self,
+        _operation_id: OperationId,
+        _state: OperationState,
+    ) -> Result<(), InjectedCrash> {
+        Ok(())
     }
 }

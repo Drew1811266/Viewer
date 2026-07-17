@@ -3,7 +3,10 @@ use std::{
     path::{Component, Path, PathBuf},
     sync::Arc,
 };
-use viewer_application::{ClockPort, FileMutationPort, FileOperationError, FileSnapshot};
+use viewer_application::{
+    ClockPort, FaultInjector, FileMutationPort, FileOperationError, FileSnapshot, InjectedCrash,
+    NoFaults,
+};
 use viewer_domain::{EntityId, OperationId, RelativePath, operation::OperationState};
 
 use super::{
@@ -65,6 +68,27 @@ pub struct RenameItemResult {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RenameBatchResult {
     pub items: Vec<RenameItemResult>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, thiserror::Error)]
+#[error(transparent)]
+pub struct RenameExecutionError(#[from] InjectedCrash);
+
+impl RenameExecutionError {
+    pub const fn state(&self) -> OperationState {
+        self.0.state
+    }
+}
+
+enum RenameStepError {
+    Operational(String),
+    Injected(InjectedCrash),
+}
+
+impl From<InjectedCrash> for RenameStepError {
+    fn from(value: InjectedCrash) -> Self {
+        Self::Injected(value)
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, thiserror::Error)]
@@ -224,6 +248,7 @@ pub struct RenameExecutor {
     journal: Arc<OperationJournal>,
     mutation: Arc<dyn FileMutationPort>,
     clock: Arc<dyn ClockPort>,
+    faults: Arc<dyn FaultInjector>,
 }
 
 impl RenameExecutor {
@@ -232,6 +257,16 @@ impl RenameExecutor {
         journal: Arc<OperationJournal>,
         mutation: Arc<dyn FileMutationPort>,
         clock: Arc<dyn ClockPort>,
+    ) -> Result<Self, FileOperationError> {
+        Self::with_faults(project_root, journal, mutation, clock, Arc::new(NoFaults))
+    }
+
+    pub fn with_faults(
+        project_root: impl AsRef<Path>,
+        journal: Arc<OperationJournal>,
+        mutation: Arc<dyn FileMutationPort>,
+        clock: Arc<dyn ClockPort>,
+        faults: Arc<dyn FaultInjector>,
     ) -> Result<Self, FileOperationError> {
         let project_root = std::fs::canonicalize(project_root.as_ref()).map_err(|error| {
             FileOperationError::io(
@@ -245,10 +280,26 @@ impl RenameExecutor {
             journal,
             mutation,
             clock,
+            faults,
         })
     }
 
     pub async fn execute(&self, plan: &RenamePlan) -> RenameBatchResult {
+        match self.execute_interruptible(plan).await {
+            Ok(result) => result,
+            Err(error) => RenameBatchResult {
+                items: vec![RenameItemResult {
+                    operation_id: error.0.operation_id,
+                    status: RenameItemStatus::Failed(error.to_string()),
+                }],
+            },
+        }
+    }
+
+    pub async fn execute_interruptible(
+        &self,
+        plan: &RenamePlan,
+    ) -> Result<RenameBatchResult, RenameExecutionError> {
         let mut snapshots = HashMap::new();
         let mut statuses = HashMap::new();
         let mut operation_order = Vec::new();
@@ -266,6 +317,36 @@ impl RenameExecutor {
             };
             match self.capture_identity(source).await {
                 Ok(snapshot) => {
+                    let temporary = plan.stages.iter().find_map(|candidate| match candidate {
+                        RenameStage::ToTemporary {
+                            operation_id: candidate_id,
+                            temporary,
+                            ..
+                        } if *candidate_id == operation_id => Some(temporary),
+                        _ => None,
+                    });
+                    let temporary_relative = match temporary
+                        .map(|path| self.relative_path(path))
+                        .transpose()
+                    {
+                        Ok(temporary) => temporary,
+                        Err(error) => {
+                            statuses
+                                .insert(operation_id, RenameItemStatus::Failed(error.to_string()));
+                            continue;
+                        }
+                    };
+                    if let Err(error) = self.journal.record_prepared_evidence(
+                        operation_id,
+                        temporary_relative.as_ref(),
+                        snapshot.snapshot.len,
+                        snapshot.hash,
+                        self.now(),
+                    ) {
+                        statuses.insert(operation_id, RenameItemStatus::Failed(error.to_string()));
+                        continue;
+                    }
+                    self.after_persist(operation_id, OperationState::Prepared)?;
                     snapshots.insert(operation_id, snapshot);
                     statuses.insert(operation_id, RenameItemStatus::Completed);
                 }
@@ -303,11 +384,18 @@ impl RenameExecutor {
                 }
             };
             if let Err(error) = result {
-                statuses.insert(operation_id, RenameItemStatus::Failed(error));
+                match error {
+                    RenameStepError::Operational(message) => {
+                        statuses.insert(operation_id, RenameItemStatus::Failed(message));
+                    }
+                    RenameStepError::Injected(error) => {
+                        return Err(RenameExecutionError(error));
+                    }
+                }
             }
         }
 
-        RenameBatchResult {
+        Ok(RenameBatchResult {
             items: operation_order
                 .into_iter()
                 .map(|operation_id| RenameItemResult {
@@ -317,7 +405,7 @@ impl RenameExecutor {
                         .unwrap_or_else(|| RenameItemStatus::Failed("missing batch status".into())),
                 })
                 .collect(),
-        }
+        })
     }
 
     async fn execute_temporary_stage(
@@ -325,25 +413,31 @@ impl RenameExecutor {
         operation_id: OperationId,
         source: &Path,
         temporary: &Path,
-    ) -> Result<(), String> {
+    ) -> Result<(), RenameStepError> {
         let temporary_relative = self
             .relative_path(temporary)
-            .map_err(|error| error.to_string())?;
-        self.journal
-            .register_temporary(
-                operation_id,
-                OperationState::Prepared,
-                &temporary_relative,
-                self.now(),
-            )
-            .map_err(|error| error.to_string())?;
+            .map_err(|error| RenameStepError::Operational(error.to_string()))?;
+        let persisted = self
+            .journal
+            .item(operation_id)
+            .map_err(|error| RenameStepError::Operational(error.to_string()))?
+            .ok_or_else(|| {
+                RenameStepError::Operational(format!(
+                    "operation {operation_id} is absent from journal"
+                ))
+            })?;
+        if persisted.temporary.as_ref() != Some(&temporary_relative) {
+            return Err(RenameStepError::Operational(
+                "registered rename temporary changed after planning".into(),
+            ));
+        }
         self.mutation
             .rename(source, temporary)
             .await
-            .map_err(|error| error.to_string())?;
+            .map_err(|error| RenameStepError::Operational(error.to_string()))?;
         sync_path_parent(temporary)
             .await
-            .map_err(|error| error.to_string())?;
+            .map_err(|error| RenameStepError::Operational(error.to_string()))?;
         self.journal
             .advance(
                 operation_id,
@@ -351,7 +445,9 @@ impl RenameExecutor {
                 OperationState::Staged,
                 self.now(),
             )
-            .map_err(|error| error.to_string())
+            .map_err(|error| RenameStepError::Operational(error.to_string()))?;
+        self.after_persist(operation_id, OperationState::Staged)?;
+        Ok(())
     }
 
     async fn execute_final_stage(
@@ -360,95 +456,79 @@ impl RenameExecutor {
         source: &Path,
         destination: &Path,
         expected: &RenameExpectedIdentity,
-    ) -> Result<(), String> {
+    ) -> Result<(), RenameStepError> {
         let item = self
             .journal
             .item(operation_id)
-            .map_err(|error| error.to_string())?
-            .ok_or_else(|| format!("operation {operation_id} is absent from journal"))?;
+            .map_err(|error| RenameStepError::Operational(error.to_string()))?
+            .ok_or_else(|| {
+                RenameStepError::Operational(format!(
+                    "operation {operation_id} is absent from journal"
+                ))
+            })?;
         match item.state {
-            OperationState::Prepared => self
-                .journal
-                .advance(
-                    operation_id,
-                    OperationState::Prepared,
-                    OperationState::Staged,
-                    self.now(),
-                )
-                .map_err(|error| error.to_string())?,
+            OperationState::Prepared => {
+                self.journal
+                    .advance(
+                        operation_id,
+                        OperationState::Prepared,
+                        OperationState::Staged,
+                        self.now(),
+                    )
+                    .map_err(|error| RenameStepError::Operational(error.to_string()))?;
+                self.after_persist(operation_id, OperationState::Staged)?;
+            }
             OperationState::Staged => {}
             state => {
-                return Err(format!(
+                return Err(RenameStepError::Operational(format!(
                     "operation {operation_id} cannot rename from {state:?}"
-                ));
+                )));
             }
         }
 
         self.mutation
             .rename(source, destination)
             .await
-            .map_err(|error| error.to_string())?;
+            .map_err(|error| RenameStepError::Operational(error.to_string()))?;
         sync_path_parent(destination)
             .await
-            .map_err(|error| error.to_string())?;
+            .map_err(|error| RenameStepError::Operational(error.to_string()))?;
         let actual = self
             .mutation
             .snapshot(destination)
             .await
-            .map_err(|error| error.to_string())?;
-        let actual_fallback_hash = if expected.snapshot.file_id.is_none() {
-            Some(
-                hash_path(destination)
-                    .await
-                    .map_err(|error| error.to_string())?,
-            )
-        } else {
-            None
-        };
-        if !same_identity(expected, &actual, actual_fallback_hash) {
-            return Err(FileOperationError::IdentityChanged.to_string());
+            .map_err(|error| RenameStepError::Operational(error.to_string()))?;
+        let actual_hash = hash_path(destination)
+            .await
+            .map_err(|error| RenameStepError::Operational(error.to_string()))?;
+        if !same_identity(expected, &actual, actual_hash) {
+            return Err(RenameStepError::Operational(
+                FileOperationError::IdentityChanged.to_string(),
+            ));
         }
 
         self.journal
-            .advance(
+            .record_fs_applied(
                 operation_id,
                 OperationState::Staged,
-                OperationState::FsApplied,
+                expected.snapshot.len,
+                expected.hash,
                 self.now(),
             )
-            .and_then(|()| {
-                self.journal.advance(
-                    operation_id,
-                    OperationState::FsApplied,
-                    OperationState::Verified,
-                    self.now(),
-                )
-            })
-            .and_then(|()| {
-                self.journal.advance(
-                    operation_id,
-                    OperationState::Verified,
-                    OperationState::MetaCommitted,
-                    self.now(),
-                )
-            })
-            .and_then(|()| {
-                self.journal.advance(
-                    operation_id,
-                    OperationState::MetaCommitted,
-                    OperationState::IndexSynced,
-                    self.now(),
-                )
-            })
-            .and_then(|()| {
-                self.journal.advance(
-                    operation_id,
-                    OperationState::IndexSynced,
-                    OperationState::Completed,
-                    self.now(),
-                )
-            })
-            .map_err(|error| error.to_string())
+            .map_err(|error| RenameStepError::Operational(error.to_string()))?;
+        self.after_persist(operation_id, OperationState::FsApplied)?;
+        for (current, next) in [
+            (OperationState::FsApplied, OperationState::Verified),
+            (OperationState::Verified, OperationState::MetaCommitted),
+            (OperationState::MetaCommitted, OperationState::IndexSynced),
+            (OperationState::IndexSynced, OperationState::Completed),
+        ] {
+            self.journal
+                .advance(operation_id, current, next, self.now())
+                .map_err(|error| RenameStepError::Operational(error.to_string()))?;
+            self.after_persist(operation_id, next)?;
+        }
+        Ok(())
     }
 
     fn relative_path(&self, path: &Path) -> Result<RelativePath, FileOperationError> {
@@ -470,15 +550,16 @@ impl RenameExecutor {
         path: &Path,
     ) -> Result<RenameExpectedIdentity, FileOperationError> {
         let snapshot = self.mutation.snapshot(path).await?;
-        let fallback_hash = if snapshot.file_id.is_none() {
-            Some(hash_path(path).await?)
-        } else {
-            None
-        };
-        Ok(RenameExpectedIdentity {
-            snapshot,
-            fallback_hash,
-        })
+        let hash = hash_path(path).await?;
+        Ok(RenameExpectedIdentity { snapshot, hash })
+    }
+
+    fn after_persist(
+        &self,
+        operation_id: OperationId,
+        state: OperationState,
+    ) -> Result<(), InjectedCrash> {
+        self.faults.after_persist(operation_id, state)
     }
 }
 
@@ -496,7 +577,7 @@ async fn sync_path_parent(path: &Path) -> Result<(), FileOperationError> {
 
 struct RenameExpectedIdentity {
     snapshot: FileSnapshot,
-    fallback_hash: Option<[u8; 32]>,
+    hash: [u8; 32],
 }
 
 async fn hash_path(path: &Path) -> Result<[u8; 32], FileOperationError> {
@@ -514,13 +595,15 @@ async fn hash_path(path: &Path) -> Result<[u8; 32], FileOperationError> {
 fn same_identity(
     expected: &RenameExpectedIdentity,
     actual: &FileSnapshot,
-    actual_fallback_hash: Option<[u8; 32]>,
+    actual_hash: [u8; 32],
 ) -> bool {
     expected.snapshot.volume_id == actual.volume_id
         && expected.snapshot.len == actual.len
         && match (expected.snapshot.file_id, actual.file_id) {
-            (Some(expected), Some(actual)) => expected == actual,
-            (None, None) => expected.fallback_hash == actual_fallback_hash,
+            (Some(expected_file_id), Some(actual_file_id)) => {
+                expected_file_id == actual_file_id && expected.hash == actual_hash
+            }
+            (None, None) => expected.hash == actual_hash,
             _ => false,
         }
 }

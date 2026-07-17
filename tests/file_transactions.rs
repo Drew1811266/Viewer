@@ -13,13 +13,14 @@ use viewer_domain::{
     operation::{ConflictPolicy, OperationItemPlan, OperationKind, OperationState},
 };
 use viewer_infrastructure::operation::{
-    conflict::{ConflictError, ConflictExecutor, ConflictResult},
+    conflict::{ConflictError, ConflictExecutor, ConflictResult, ReplaceExecutor},
     copy::LocalFileMutation,
     executor::{CopyExecutor, CopyResumeResult},
     journal::OperationJournal,
+    recovery::RecoveryService,
     rename::{RenameExecutor, RenameItemStatus, RenameMapping, RenamePlanner},
 };
-use viewer_test_support::{FixedClock, project_fixture::ProjectFixture};
+use viewer_test_support::{FixedClock, faults::FailAfterState, project_fixture::ProjectFixture};
 
 fn copy_item(
     batch_id: OperationId,
@@ -836,4 +837,582 @@ async fn undo_stack_accepts_only_session_undoable_batches_and_revalidates_identi
     assert_eq!(stack.len(), 2);
     stack.close_session(session_id);
     assert!(stack.is_empty());
+}
+
+const RECOVERY_STATES: [OperationState; 7] = [
+    OperationState::Prepared,
+    OperationState::Staged,
+    OperationState::FsApplied,
+    OperationState::Verified,
+    OperationState::MetaCommitted,
+    OperationState::IndexSynced,
+    OperationState::Completed,
+];
+
+struct DurableFakeTrashPort {
+    directory: std::path::PathBuf,
+}
+
+#[async_trait]
+impl TrashPort for DurableFakeTrashPort {
+    async fn trash(&self, path: &Path) -> Result<(), FileOperationError> {
+        fs::create_dir_all(&self.directory).map_err(|error| {
+            FileOperationError::io("create fake Trash", &self.directory, &error)
+        })?;
+        let destination = self
+            .directory
+            .join(path.file_name().ok_or(FileOperationError::OutsideProject)?);
+        if destination.exists() {
+            return Err(FileOperationError::DestinationExists);
+        }
+        fs::rename(path, &destination)
+            .map_err(|error| FileOperationError::io("move to fake Trash", path, &error))
+    }
+}
+
+fn durable_trash(project: &ProjectFixture) -> Arc<dyn TrashPort> {
+    Arc::new(DurableFakeTrashPort {
+        directory: project.root().join(".test-trash"),
+    })
+}
+
+async fn recover_twice(
+    project: &ProjectFixture,
+    journal: Arc<OperationJournal>,
+    trash: Arc<dyn TrashPort>,
+) {
+    let recovery = RecoveryService::new(
+        project.root(),
+        journal,
+        Arc::new(LocalFileMutation),
+        trash,
+        Arc::new(FixedClock::new(9_000)),
+    )
+    .unwrap();
+    recovery.recover_project().await.unwrap();
+    let second = recovery.recover_project().await.unwrap();
+    assert!(
+        second.actions.is_empty(),
+        "recovery must be idempotent on the second pass"
+    );
+}
+
+async fn copy_recovery_case(fail_after: OperationState) {
+    let project = ProjectFixture::new();
+    let (journal, item, contents) = prepared_copy(&project);
+    let executor = CopyExecutor::with_faults(
+        project.root(),
+        Arc::clone(&journal),
+        Arc::new(LocalFileMutation),
+        Arc::new(FixedClock::new(2_000)),
+        Arc::new(FailAfterState(fail_after)),
+    )
+    .unwrap();
+    let error = executor.execute(&item).await.unwrap_err();
+    assert_eq!(error.injected_state(), Some(fail_after));
+    drop(executor);
+    drop(journal);
+
+    let reopened = Arc::new(OperationJournal::open(project.metadata_path()).unwrap());
+    recover_twice(&project, Arc::clone(&reopened), durable_trash(&project)).await;
+
+    assert_eq!(
+        fs::read(project.root().join(item.source.as_str())).unwrap(),
+        contents
+    );
+    let destination = project
+        .root()
+        .join(item.destination.as_ref().unwrap().as_str());
+    if destination.exists() {
+        assert_eq!(fs::read(destination).unwrap(), contents);
+    }
+    let persisted = reopened.item(item.operation_id).unwrap().unwrap();
+    if let Some(temporary) = persisted.temporary {
+        assert!(!project.root().join(temporary.as_str()).exists());
+    }
+    assert!(matches!(
+        persisted.state,
+        OperationState::Completed | OperationState::Failed
+    ));
+}
+
+async fn rename_or_move_recovery_case(fail_after: OperationState, kind: OperationKind) {
+    let project = ProjectFixture::new();
+    project.create_file("source.jpg", b"rename-payload");
+    let mapping = rename_mapping("source.jpg", "destination.jpg");
+    let plan = RenamePlanner::plan(project.root(), true, std::slice::from_ref(&mapping)).unwrap();
+    let journal = Arc::new(OperationJournal::open(project.metadata_path()).unwrap());
+    prepare_rename_items(
+        &journal,
+        OperationId::new(),
+        std::slice::from_ref(&mapping),
+        kind,
+    );
+    let executor = RenameExecutor::with_faults(
+        project.root(),
+        Arc::clone(&journal),
+        Arc::new(LocalFileMutation),
+        Arc::new(FixedClock::new(3_000)),
+        Arc::new(FailAfterState(fail_after)),
+    )
+    .unwrap();
+    let error = executor.execute_interruptible(&plan).await.unwrap_err();
+    assert_eq!(error.state(), fail_after);
+    drop(executor);
+    drop(journal);
+
+    let reopened = Arc::new(OperationJournal::open(project.metadata_path()).unwrap());
+    recover_twice(&project, Arc::clone(&reopened), durable_trash(&project)).await;
+
+    let candidates = [
+        project.root().join("source.jpg"),
+        project.root().join("destination.jpg"),
+    ];
+    let existing = candidates
+        .iter()
+        .filter(|candidate| candidate.exists())
+        .collect::<Vec<_>>();
+    assert_eq!(existing.len(), 1);
+    assert_eq!(fs::read(existing[0]).unwrap(), b"rename-payload");
+    let persisted = reopened.item(mapping.operation_id).unwrap().unwrap();
+    if let Some(temporary) = persisted.temporary {
+        assert!(!project.root().join(temporary.as_str()).exists());
+    }
+    assert!(matches!(
+        persisted.state,
+        OperationState::Completed | OperationState::Failed
+    ));
+}
+
+async fn replace_recovery_case(fail_after: OperationState) {
+    let project = ProjectFixture::new();
+    let source = project.create_file("replacement.jpg", b"replacement-payload");
+    let destination = project.create_file("existing.jpg", b"previous-payload");
+    let batch_id = OperationId::new();
+    let item = OperationItemPlan {
+        batch_id,
+        operation_id: OperationId::new(),
+        entity_id: EntityId::new(),
+        kind: OperationKind::Move,
+        source,
+        destination: Some(destination),
+        conflict_policy: ConflictPolicy::Replace,
+    };
+    let journal = Arc::new(OperationJournal::open(project.metadata_path()).unwrap());
+    journal
+        .create_batch(batch_id, OperationKind::Move, 1_000)
+        .unwrap();
+    journal.record_item(&item, 1_001).unwrap();
+    let trash = durable_trash(&project);
+    let executor = ReplaceExecutor::with_faults(
+        project.root(),
+        Arc::clone(&journal),
+        Arc::new(LocalFileMutation),
+        Arc::clone(&trash),
+        Arc::new(FixedClock::new(4_000)),
+        Arc::new(FailAfterState(fail_after)),
+    )
+    .unwrap();
+    let error = executor.execute(&item).await.unwrap_err();
+    assert_eq!(error.injected_state(), Some(fail_after));
+    drop(executor);
+    drop(journal);
+
+    let reopened = Arc::new(OperationJournal::open(project.metadata_path()).unwrap());
+    recover_twice(&project, Arc::clone(&reopened), trash).await;
+
+    let new_candidates = [
+        project.root().join("replacement.jpg"),
+        project.root().join("existing.jpg"),
+    ];
+    assert_eq!(
+        new_candidates
+            .iter()
+            .filter(|candidate| {
+                candidate.exists()
+                    && fs::read(candidate).unwrap().as_slice() == b"replacement-payload"
+            })
+            .count(),
+        1
+    );
+    let old_candidates = [
+        project.root().join("existing.jpg"),
+        project.root().join(".test-trash/existing.jpg"),
+    ];
+    assert_eq!(
+        old_candidates
+            .iter()
+            .filter(|candidate| {
+                candidate.exists() && fs::read(candidate).unwrap().as_slice() == b"previous-payload"
+            })
+            .count(),
+        1
+    );
+    let persisted = reopened.item(item.operation_id).unwrap().unwrap();
+    if let Some(temporary) = persisted.temporary {
+        assert!(!project.root().join(temporary.as_str()).exists());
+    }
+    assert!(matches!(
+        persisted.state,
+        OperationState::Completed | OperationState::Failed
+    ));
+}
+
+#[tokio::test]
+async fn recovery_matrix_is_data_safe_and_idempotent_after_every_persisted_state() {
+    for state in RECOVERY_STATES {
+        copy_recovery_case(state).await;
+        rename_or_move_recovery_case(state, OperationKind::Rename).await;
+        rename_or_move_recovery_case(state, OperationKind::Move).await;
+        replace_recovery_case(state).await;
+    }
+}
+
+async fn interrupted_verified_copy(
+    project: &ProjectFixture,
+) -> (Arc<OperationJournal>, OperationItemPlan) {
+    let (journal, item, _) = prepared_copy(project);
+    let executor = CopyExecutor::with_faults(
+        project.root(),
+        Arc::clone(&journal),
+        Arc::new(LocalFileMutation),
+        Arc::new(FixedClock::new(2_000)),
+        Arc::new(FailAfterState(OperationState::Verified)),
+    )
+    .unwrap();
+    assert_eq!(
+        executor.execute(&item).await.unwrap_err().injected_state(),
+        Some(OperationState::Verified)
+    );
+    (journal, item)
+}
+
+#[tokio::test]
+async fn recovery_requires_review_for_unknown_or_ambiguous_candidates() {
+    for duplicate_verified_contents in [false, true] {
+        let project = ProjectFixture::new();
+        let (journal, item) = interrupted_verified_copy(&project).await;
+        let persisted = journal.item(item.operation_id).unwrap().unwrap();
+        let temporary = project
+            .root()
+            .join(persisted.temporary.as_ref().unwrap().as_str());
+        let destination = project
+            .root()
+            .join(item.destination.as_ref().unwrap().as_str());
+        if duplicate_verified_contents {
+            fs::copy(&temporary, &destination).unwrap();
+        } else {
+            fs::write(&destination, b"unknown destination occupant").unwrap();
+        }
+        let recovery = RecoveryService::new(
+            project.root(),
+            Arc::clone(&journal),
+            Arc::new(LocalFileMutation),
+            durable_trash(&project),
+            Arc::new(FixedClock::new(9_000)),
+        )
+        .unwrap();
+
+        let first = recovery.recover_project().await.unwrap();
+        let second = recovery.recover_project().await.unwrap();
+
+        assert!(first.actions.is_empty());
+        assert_eq!(first.needs_user_review.len(), 1);
+        assert!(second.actions.is_empty());
+        assert!(temporary.is_file());
+        assert!(destination.is_file());
+        assert_eq!(
+            journal.item(item.operation_id).unwrap().unwrap().state,
+            OperationState::Verified
+        );
+    }
+
+    let project = ProjectFixture::new();
+    project.create_file("source.jpg", b"rename-payload");
+    let mapping = rename_mapping("source.jpg", "destination.jpg");
+    let plan = RenamePlanner::plan(project.root(), true, std::slice::from_ref(&mapping)).unwrap();
+    let journal = Arc::new(OperationJournal::open(project.metadata_path()).unwrap());
+    prepare_rename_items(
+        &journal,
+        OperationId::new(),
+        std::slice::from_ref(&mapping),
+        OperationKind::Rename,
+    );
+    let executor = RenameExecutor::with_faults(
+        project.root(),
+        Arc::clone(&journal),
+        Arc::new(LocalFileMutation),
+        Arc::new(FixedClock::new(3_000)),
+        Arc::new(FailAfterState(OperationState::Staged)),
+    )
+    .unwrap();
+    executor.execute_interruptible(&plan).await.unwrap_err();
+    fs::write(project.root().join("destination.jpg"), b"unknown").unwrap();
+    let recovery = RecoveryService::new(
+        project.root(),
+        Arc::clone(&journal),
+        Arc::new(LocalFileMutation),
+        durable_trash(&project),
+        Arc::new(FixedClock::new(9_000)),
+    )
+    .unwrap();
+    let report = recovery.recover_project().await.unwrap();
+    assert!(report.actions.is_empty());
+    assert_eq!(report.needs_user_review.len(), 1);
+    assert_eq!(
+        fs::read(project.root().join("source.jpg")).unwrap(),
+        b"rename-payload"
+    );
+    assert_eq!(
+        fs::read(project.root().join("destination.jpg")).unwrap(),
+        b"unknown"
+    );
+}
+
+#[tokio::test]
+async fn recovery_never_deletes_a_non_deterministic_registered_temporary_path() {
+    let project = ProjectFixture::new();
+    let source = project.create_file("source.jpg", b"source");
+    project.create_directory("exports");
+    project.create_file("do-not-delete.jpg", b"user-file");
+    let batch_id = OperationId::new();
+    let item = copy_item(
+        batch_id,
+        source,
+        RelativePath::parse("exports/source.jpg").unwrap(),
+    );
+    let journal = Arc::new(OperationJournal::open(project.metadata_path()).unwrap());
+    journal
+        .create_batch(batch_id, OperationKind::Copy, 1_000)
+        .unwrap();
+    journal.record_item(&item, 1_001).unwrap();
+    journal
+        .register_temporary(
+            item.operation_id,
+            OperationState::Prepared,
+            &RelativePath::parse("do-not-delete.jpg").unwrap(),
+            1_002,
+        )
+        .unwrap();
+    let recovery = RecoveryService::new(
+        project.root(),
+        Arc::clone(&journal),
+        Arc::new(LocalFileMutation),
+        durable_trash(&project),
+        Arc::new(FixedClock::new(9_000)),
+    )
+    .unwrap();
+
+    let report = recovery.recover_project().await.unwrap();
+
+    assert!(report.actions.is_empty());
+    assert_eq!(report.needs_user_review.len(), 1);
+    assert_eq!(
+        fs::read(project.root().join("do-not-delete.jpg")).unwrap(),
+        b"user-file"
+    );
+    assert_eq!(
+        journal.item(item.operation_id).unwrap().unwrap().state,
+        OperationState::Prepared
+    );
+
+    let project = ProjectFixture::new();
+    let (journal, item, _) = prepared_copy(&project);
+    let colliding_path = project
+        .root()
+        .join(format!("exports/.viewer-copy-{}.part", item.operation_id));
+    fs::write(&colliding_path, b"pre-existing-user-file").unwrap();
+    let executor = CopyExecutor::new(
+        project.root(),
+        Arc::clone(&journal),
+        Arc::new(LocalFileMutation),
+        Arc::new(FixedClock::new(2_000)),
+    )
+    .unwrap();
+    assert!(executor.execute(&item).await.is_err());
+    assert!(
+        journal
+            .item(item.operation_id)
+            .unwrap()
+            .unwrap()
+            .temporary
+            .is_none()
+    );
+    let recovery = RecoveryService::new(
+        project.root(),
+        Arc::clone(&journal),
+        Arc::new(LocalFileMutation),
+        durable_trash(&project),
+        Arc::new(FixedClock::new(9_000)),
+    )
+    .unwrap();
+    let report = recovery.recover_project().await.unwrap();
+    assert!(report.actions.is_empty());
+    assert_eq!(report.needs_user_review.len(), 1);
+    assert_eq!(fs::read(colliding_path).unwrap(), b"pre-existing-user-file");
+}
+
+#[tokio::test]
+async fn recovery_finishes_when_filesystem_truth_is_one_step_ahead_of_journal() {
+    let project = ProjectFixture::new();
+    let (journal, item) = interrupted_verified_copy(&project).await;
+    let persisted = journal.item(item.operation_id).unwrap().unwrap();
+    let temporary = project
+        .root()
+        .join(persisted.temporary.as_ref().unwrap().as_str());
+    let destination = project
+        .root()
+        .join(item.destination.as_ref().unwrap().as_str());
+    fs::rename(&temporary, &destination).unwrap();
+    drop(journal);
+    let reopened = Arc::new(OperationJournal::open(project.metadata_path()).unwrap());
+
+    recover_twice(&project, Arc::clone(&reopened), durable_trash(&project)).await;
+
+    assert_eq!(
+        reopened.item(item.operation_id).unwrap().unwrap().state,
+        OperationState::Completed
+    );
+    assert!(destination.is_file());
+
+    let project = ProjectFixture::new();
+    project.create_file("source.jpg", b"rename-payload");
+    let mapping = rename_mapping("source.jpg", "destination.jpg");
+    let plan = RenamePlanner::plan(project.root(), true, std::slice::from_ref(&mapping)).unwrap();
+    let journal = Arc::new(OperationJournal::open(project.metadata_path()).unwrap());
+    prepare_rename_items(
+        &journal,
+        OperationId::new(),
+        std::slice::from_ref(&mapping),
+        OperationKind::Rename,
+    );
+    let executor = RenameExecutor::with_faults(
+        project.root(),
+        Arc::clone(&journal),
+        Arc::new(LocalFileMutation),
+        Arc::new(FixedClock::new(3_000)),
+        Arc::new(FailAfterState(OperationState::Staged)),
+    )
+    .unwrap();
+    executor.execute_interruptible(&plan).await.unwrap_err();
+    fs::rename(
+        project.root().join("source.jpg"),
+        project.root().join("destination.jpg"),
+    )
+    .unwrap();
+    drop(executor);
+    drop(journal);
+    let reopened = Arc::new(OperationJournal::open(project.metadata_path()).unwrap());
+
+    recover_twice(&project, Arc::clone(&reopened), durable_trash(&project)).await;
+
+    assert_eq!(
+        reopened.item(mapping.operation_id).unwrap().unwrap().state,
+        OperationState::Completed
+    );
+    assert_eq!(
+        fs::read(project.root().join("destination.jpg")).unwrap(),
+        b"rename-payload"
+    );
+}
+
+struct FailFinalReplacementPort {
+    delegate: LocalFileMutation,
+}
+
+#[async_trait]
+impl FileMutationPort for FailFinalReplacementPort {
+    async fn snapshot(&self, path: &Path) -> Result<FileSnapshot, FileOperationError> {
+        self.delegate.snapshot(path).await
+    }
+
+    async fn copy_and_hash(
+        &self,
+        source: &Path,
+        temporary: &Path,
+    ) -> Result<(u64, [u8; 32]), FileOperationError> {
+        self.delegate.copy_and_hash(source, temporary).await
+    }
+
+    async fn rename(&self, source: &Path, destination: &Path) -> Result<(), FileOperationError> {
+        if destination.file_name().and_then(|name| name.to_str()) == Some("existing.jpg") {
+            return Err(FileOperationError::Io {
+                action: "injected final replacement placement",
+                path: destination.to_path_buf(),
+                message: "injected failure".into(),
+            });
+        }
+        self.delegate.rename(source, destination).await
+    }
+
+    async fn remove_registered_temporary(&self, path: &Path) -> Result<(), FileOperationError> {
+        self.delegate.remove_registered_temporary(path).await
+    }
+}
+
+#[tokio::test]
+async fn recovery_restores_replacement_source_when_previous_destination_is_already_in_trash() {
+    let project = ProjectFixture::new();
+    let source = project.create_file("replacement.jpg", b"replacement-payload");
+    let destination = project.create_file("existing.jpg", b"previous-payload");
+    let batch_id = OperationId::new();
+    let item = OperationItemPlan {
+        batch_id,
+        operation_id: OperationId::new(),
+        entity_id: EntityId::new(),
+        kind: OperationKind::Move,
+        source,
+        destination: Some(destination),
+        conflict_policy: ConflictPolicy::Replace,
+    };
+    let journal = Arc::new(OperationJournal::open(project.metadata_path()).unwrap());
+    journal
+        .create_batch(batch_id, OperationKind::Move, 1_000)
+        .unwrap();
+    journal.record_item(&item, 1_001).unwrap();
+    let trash = durable_trash(&project);
+    let executor = ReplaceExecutor::new(
+        project.root(),
+        Arc::clone(&journal),
+        Arc::new(FailFinalReplacementPort {
+            delegate: LocalFileMutation,
+        }),
+        Arc::clone(&trash),
+        Arc::new(FixedClock::new(4_000)),
+    )
+    .unwrap();
+    assert!(matches!(
+        executor.execute(&item).await,
+        Err(viewer_infrastructure::operation::conflict::ReplaceError::PlacementAfterTrash(_))
+    ));
+    assert_eq!(
+        journal.item(item.operation_id).unwrap().unwrap().state,
+        OperationState::Staged
+    );
+
+    let recovery = RecoveryService::new(
+        project.root(),
+        Arc::clone(&journal),
+        Arc::new(LocalFileMutation),
+        trash,
+        Arc::new(FixedClock::new(9_000)),
+    )
+    .unwrap();
+    let report = recovery.recover_project().await.unwrap();
+
+    assert_eq!(report.actions.len(), 1);
+    assert!(report.needs_user_review.is_empty());
+    assert_eq!(
+        fs::read(project.root().join("replacement.jpg")).unwrap(),
+        b"replacement-payload"
+    );
+    assert_eq!(
+        fs::read(project.root().join(".test-trash/existing.jpg")).unwrap(),
+        b"previous-payload"
+    );
+    assert!(!project.root().join("existing.jpg").exists());
+    assert_eq!(
+        journal.item(item.operation_id).unwrap().unwrap().state,
+        OperationState::Failed
+    );
 }

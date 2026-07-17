@@ -186,6 +186,33 @@ impl OperationJournal {
         )
     }
 
+    pub fn record_prepared_evidence(
+        &self,
+        operation_id: OperationId,
+        temporary: Option<&RelativePath>,
+        expected_size: u64,
+        expected_hash: [u8; 32],
+        updated_at_ms: i64,
+    ) -> Result<(), JournalError> {
+        let expected_size = checked_size(expected_size)?;
+        self.update_expected_state(
+            operation_id,
+            OperationState::Prepared,
+            "UPDATE operation_items
+             SET temporary_path = ?3, expected_size = ?4, expected_hash = ?5,
+                 updated_at_ms = ?6
+             WHERE operation_id = ?1 AND state = ?2",
+            params![
+                operation_id.to_string(),
+                OperationState::Prepared.as_str(),
+                temporary.map(RelativePath::as_str),
+                expected_size,
+                expected_hash.as_slice(),
+                updated_at_ms,
+            ],
+        )
+    }
+
     pub fn record_fs_applied(
         &self,
         operation_id: OperationId,
@@ -196,11 +223,7 @@ impl OperationJournal {
     ) -> Result<(), JournalError> {
         let mut checked = expected_current;
         checked.transition_to(OperationState::FsApplied)?;
-        let expected_size =
-            i64::try_from(expected_size).map_err(|_| JournalError::InvalidPersistedValue {
-                field: "expected_size",
-                value: expected_size.to_string(),
-            })?;
+        let expected_size = checked_size(expected_size)?;
         self.update_expected_state(
             operation_id,
             expected_current,
@@ -278,6 +301,13 @@ impl OperationJournal {
             Ok(())
         })
     }
+}
+
+fn checked_size(expected_size: u64) -> Result<i64, JournalError> {
+    i64::try_from(expected_size).map_err(|_| JournalError::InvalidPersistedValue {
+        field: "expected_size",
+        value: expected_size.to_string(),
+    })
 }
 
 fn initialize_schema(connection: &Connection) -> Result<(), JournalError> {

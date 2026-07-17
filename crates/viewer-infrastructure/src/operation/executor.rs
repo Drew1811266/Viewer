@@ -6,7 +6,9 @@ use std::{
     path::{Path, PathBuf},
     sync::Arc,
 };
-use viewer_application::{ClockPort, FileMutationPort, FileOperationError};
+use viewer_application::{
+    ClockPort, FaultInjector, FileMutationPort, FileOperationError, InjectedCrash, NoFaults,
+};
 use viewer_domain::{
     OperationId, RelativePath,
     operation::{OperationItemPlan, OperationKind, OperationState},
@@ -30,6 +32,8 @@ pub enum CopyError {
     File(#[from] FileOperationError),
     #[error(transparent)]
     Journal(#[from] JournalError),
+    #[error(transparent)]
+    Injected(#[from] InjectedCrash),
     #[error("copy executor received a non-copy operation")]
     WrongOperationKind,
     #[error("operation {0} is not present in the journal")]
@@ -43,11 +47,21 @@ pub enum CopyError {
     },
 }
 
+impl CopyError {
+    pub const fn injected_state(&self) -> Option<OperationState> {
+        match self {
+            Self::Injected(error) => Some(error.state),
+            _ => None,
+        }
+    }
+}
+
 pub struct CopyExecutor {
     project_root: PathBuf,
     journal: Arc<OperationJournal>,
     mutation: Arc<dyn FileMutationPort>,
     clock: Arc<dyn ClockPort>,
+    faults: Arc<dyn FaultInjector>,
 }
 
 impl CopyExecutor {
@@ -57,6 +71,16 @@ impl CopyExecutor {
         mutation: Arc<dyn FileMutationPort>,
         clock: Arc<dyn ClockPort>,
     ) -> Result<Self, FileOperationError> {
+        Self::with_faults(project_root, journal, mutation, clock, Arc::new(NoFaults))
+    }
+
+    pub fn with_faults(
+        project_root: impl AsRef<Path>,
+        journal: Arc<OperationJournal>,
+        mutation: Arc<dyn FileMutationPort>,
+        clock: Arc<dyn ClockPort>,
+        faults: Arc<dyn FaultInjector>,
+    ) -> Result<Self, FileOperationError> {
         let project_root = std::fs::canonicalize(project_root.as_ref()).map_err(|error| {
             FileOperationError::io("canonicalize project root", project_root.as_ref(), &error)
         })?;
@@ -65,6 +89,7 @@ impl CopyExecutor {
             journal,
             mutation,
             clock,
+            faults,
         })
     }
 
@@ -84,12 +109,6 @@ impl CopyExecutor {
         let temporary_relative = temporary_relative_path(destination_relative, item.operation_id)?;
         let temporary = self.resolve_destination(&temporary_relative)?;
 
-        self.journal.register_temporary(
-            item.operation_id,
-            OperationState::Prepared,
-            &temporary_relative,
-            self.now(),
-        )?;
         let temporary_for_create = temporary.clone();
         tokio::task::spawn_blocking(move || create_temporary_sync(&temporary_for_create))
             .await
@@ -98,12 +117,25 @@ impl CopyExecutor {
                 path: temporary.clone(),
                 message: error.to_string(),
             })??;
+        if let Err(error) = self.journal.register_temporary(
+            item.operation_id,
+            OperationState::Prepared,
+            &temporary_relative,
+            self.now(),
+        ) {
+            self.mutation
+                .remove_registered_temporary(&temporary)
+                .await?;
+            return Err(error.into());
+        }
+        self.after_persist(item.operation_id, OperationState::Prepared)?;
         self.journal.advance(
             item.operation_id,
             OperationState::Prepared,
             OperationState::Staged,
             self.now(),
         )?;
+        self.after_persist(item.operation_id, OperationState::Staged)?;
 
         let source_before = self.mutation.snapshot(&source).await?;
         let copied = match self.mutation.copy_and_hash(&source, &temporary).await {
@@ -133,6 +165,7 @@ impl CopyExecutor {
             copied.1,
             self.now(),
         )?;
+        self.after_persist(item.operation_id, OperationState::FsApplied)?;
 
         self.verify_expected(&temporary, copied).await?;
         self.journal.advance(
@@ -141,6 +174,7 @@ impl CopyExecutor {
             OperationState::Verified,
             self.now(),
         )?;
+        self.after_persist(item.operation_id, OperationState::Verified)?;
 
         self.place_verified(item.operation_id, &temporary, &destination)
             .await?;
@@ -192,6 +226,7 @@ impl CopyExecutor {
                     OperationState::Verified,
                     self.now(),
                 )?;
+                self.after_persist(operation_id, OperationState::Verified)?;
                 self.place_verified(operation_id, &temporary, &destination)
                     .await?;
                 Ok(CopyResumeResult::Completed(CopyResult {
@@ -201,9 +236,16 @@ impl CopyExecutor {
             }
             OperationState::Verified => {
                 let expected = expected_copy_evidence(&item)?;
-                self.verify_expected(&temporary, expected).await?;
-                self.place_verified(operation_id, &temporary, &destination)
-                    .await?;
+                if temporary.exists() {
+                    self.verify_expected(&temporary, expected).await?;
+                    self.place_verified(operation_id, &temporary, &destination)
+                        .await?;
+                } else if destination.exists() {
+                    self.verify_expected(&destination, expected).await?;
+                    self.finish_journal(operation_id, OperationState::Verified)?;
+                } else {
+                    return Err(CopyError::MissingEvidence(operation_id));
+                }
                 Ok(CopyResumeResult::Completed(CopyResult {
                     len: expected.0,
                     hash: expected.1,
@@ -227,6 +269,7 @@ impl CopyExecutor {
                     OperationState::Completed,
                     self.now(),
                 )?;
+                self.after_persist(operation_id, OperationState::Completed)?;
                 Ok(CopyResumeResult::Completed(CopyResult {
                     len: expected.0,
                     hash: expected.1,
@@ -286,40 +329,45 @@ impl CopyExecutor {
         &self,
         operation_id: OperationId,
         current: OperationState,
-    ) -> Result<(), JournalError> {
+    ) -> Result<(), CopyError> {
         self.journal.advance(
             operation_id,
             current,
             OperationState::MetaCommitted,
             self.now(),
         )?;
+        self.after_persist(operation_id, OperationState::MetaCommitted)?;
         self.journal.advance(
             operation_id,
             OperationState::MetaCommitted,
             OperationState::IndexSynced,
             self.now(),
         )?;
+        self.after_persist(operation_id, OperationState::IndexSynced)?;
         self.journal.advance(
             operation_id,
             OperationState::IndexSynced,
             OperationState::Completed,
             self.now(),
-        )
+        )?;
+        self.after_persist(operation_id, OperationState::Completed)
     }
 
-    fn finish_after_meta_committed(&self, operation_id: OperationId) -> Result<(), JournalError> {
+    fn finish_after_meta_committed(&self, operation_id: OperationId) -> Result<(), CopyError> {
         self.journal.advance(
             operation_id,
             OperationState::MetaCommitted,
             OperationState::IndexSynced,
             self.now(),
         )?;
+        self.after_persist(operation_id, OperationState::IndexSynced)?;
         self.journal.advance(
             operation_id,
             OperationState::IndexSynced,
             OperationState::Completed,
             self.now(),
-        )
+        )?;
+        self.after_persist(operation_id, OperationState::Completed)
     }
 
     fn resolve_existing(&self, relative: &RelativePath) -> Result<PathBuf, FileOperationError> {
@@ -357,6 +405,16 @@ impl CopyExecutor {
     fn now(&self) -> i64 {
         self.clock.unix_millis()
     }
+
+    fn after_persist(
+        &self,
+        operation_id: OperationId,
+        state: OperationState,
+    ) -> Result<(), CopyError> {
+        self.faults
+            .after_persist(operation_id, state)
+            .map_err(Into::into)
+    }
 }
 
 fn expected_copy_evidence(item: &JournalItem) -> Result<(u64, [u8; 32]), CopyError> {
@@ -365,7 +423,7 @@ fn expected_copy_evidence(item: &JournalItem) -> Result<(u64, [u8; 32]), CopyErr
         .ok_or(CopyError::MissingEvidence(item.operation_id))
 }
 
-fn temporary_relative_path(
+pub(crate) fn temporary_relative_path(
     destination: &RelativePath,
     operation_id: OperationId,
 ) -> Result<RelativePath, FileOperationError> {

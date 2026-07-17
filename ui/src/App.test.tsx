@@ -22,6 +22,7 @@ function bridge(access: 'read_write' | 'read_only' = 'read_write'): ViewerBridge
     openExternalLink: vi.fn(),
     cancelTask: vi.fn().mockResolvedValue(false),
     listenScan: vi.fn().mockResolvedValue(() => undefined),
+    listenProjectClosed: vi.fn().mockResolvedValue(() => undefined),
     listenProjectDrops: vi.fn().mockResolvedValue(() => undefined),
   }
 }
@@ -84,6 +85,24 @@ describe('Viewer empty state', () => {
     })
 
     await waitFor(() => expect(viewer.projectSnapshot).toHaveBeenCalledOnce())
+  })
+
+  it('returns to the empty surface when the native window closes the session', async () => {
+    const viewer = bridge()
+    let receiveProjectClosed: (() => void) | undefined
+    vi.mocked(viewer.listenProjectClosed).mockImplementation(async (handler) => {
+      receiveProjectClosed = handler
+      return () => undefined
+    })
+    render(<App bridge={viewer} />)
+    await waitFor(() => expect(receiveProjectClosed).toBeDefined())
+    fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
+    await screen.findByText('Catalog')
+
+    act(() => receiveProjectClosed?.())
+
+    expect(await screen.findByRole('heading', { name: 'Viewer' })).toBeVisible()
+    expect(viewer.closeProject).not.toHaveBeenCalled()
   })
 
   it('renders a safe fallback instead of raw thrown details', async () => {

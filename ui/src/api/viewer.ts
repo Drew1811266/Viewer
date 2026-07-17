@@ -26,6 +26,7 @@ export interface ViewerBridge {
   openExternalLink(url: string): Promise<void>
   cancelTask(taskId: string): Promise<boolean>
   listenScan(handler: (event: ScanEvent) => void): Promise<UnlistenFn>
+  listenProjectClosed(handler: () => void): Promise<UnlistenFn>
   listenProjectDrops(handler: (paths: string[]) => void): Promise<UnlistenFn>
 }
 
@@ -72,6 +73,9 @@ export const tauriViewerBridge: ViewerBridge = {
   },
   listenScan(handler) {
     return listen<ScanEvent>('viewer://scan-progress', ({ payload }) => handler(payload))
+  },
+  listenProjectClosed(handler) {
+    return listen<void>('viewer://project-closed', handler)
   },
   listenProjectDrops(handler) {
     return getCurrentWebview().onDragDropEvent(({ payload }) => {

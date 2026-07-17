@@ -159,6 +159,33 @@ export function useViewerController(bridge: ViewerBridge) {
     let unlisten: (() => void) | undefined
     void Promise.resolve()
       .then(() =>
+        bridge.listenProjectClosed(() => {
+          projectionRequestRef.current += 1
+          reconcilingGenerationRef.current = null
+          desiredProjectionRef.current = {
+            selectedFolderId: null,
+            selectedFolderPath: '',
+            showingAggregate: false,
+          }
+          dispatch({ type: 'project_closed' })
+        }),
+      )
+      .then((cleanup) => {
+        if (disposed) cleanup()
+        else unlisten = cleanup
+      })
+      .catch(() => undefined)
+    return () => {
+      disposed = true
+      unlisten?.()
+    }
+  }, [bridge])
+
+  useEffect(() => {
+    let disposed = false
+    let unlisten: (() => void) | undefined
+    void Promise.resolve()
+      .then(() =>
         bridge.listenProjectDrops((paths) => {
           if (!['empty', 'error'].includes(stateRef.current.status)) return
           if (paths.length !== 1) {

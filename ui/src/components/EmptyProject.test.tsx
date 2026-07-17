@@ -22,6 +22,7 @@ function bridge(): ViewerBridge {
     openExternalLink: vi.fn(),
     cancelTask: vi.fn().mockResolvedValue(false),
     listenScan: vi.fn().mockResolvedValue(() => undefined),
+    listenProjectClosed: vi.fn().mockResolvedValue(() => undefined),
     listenProjectDrops: vi.fn().mockResolvedValue(() => undefined),
   }
 }

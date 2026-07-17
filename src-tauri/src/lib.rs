@@ -11,6 +11,7 @@ pub mod markdown;
 pub mod state;
 
 pub const APP_NAME: &str = "Viewer";
+const PROJECT_CLOSED_EVENT: &str = "viewer://project-closed";
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -129,6 +130,7 @@ pub fn run() {
                         tauri::async_runtime::spawn(async move {
                             let runtime = app_handle.state::<Arc<state::DesktopRuntime>>();
                             let _ = runtime.close_project().await;
+                            let _ = app_handle.emit(PROJECT_CLOSED_EVENT, ());
                             if let Some(window) = app_handle.get_webview_window("main") {
                                 let _ = window.hide();
                             }
@@ -147,6 +149,7 @@ pub fn run() {
             let _ = tauri::async_runtime::block_on(runtime.close_project());
         }
         tauri::RunEvent::Reopen { .. } => {
+            let _ = app.emit(PROJECT_CLOSED_EVENT, ());
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.show();
                 let _ = window.set_focus();

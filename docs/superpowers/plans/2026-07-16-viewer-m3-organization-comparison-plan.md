@@ -128,7 +128,7 @@ git commit -m "feat: make operation barriers truthful"
 **Interfaces:**
 - Produces: `RenameRuleSet { find, replacement, prefix, suffix, sequence }`, `SequenceRule { start, digits }`, `RenamePreviewRow`, `RenamePreflight`, `preview_rename`, and platform `name_max` validation through `VolumePort`.
 
-- [ ] **Step 1: Write failing rule/validation matrix**
+- [x] **Step 1: Write failing rule/validation matrix**
 
 Cover literal replace, prefix, suffix-before-extension, fixed-order composition, visible-order numbering, start 0/maximum, 1–6 digits, dotfiles/multiple extensions, Unicode, no-op, empty/`.`/`..`, slash/NUL, reserved/temp names, volume name limit, same-batch duplicate, case-fold collision, occupied target, cycles and case-only rename.
 
@@ -136,19 +136,19 @@ Run: `cargo test --test m3_rename_preflight -- --nocapture`
 
 Expected: RED because no product rename preflight exists.
 
-- [ ] **Step 2: Implement pure deterministic preview**
+- [x] **Step 2: Implement pure deterministic preview**
 
 Take ordered current nodes plus rules and return every old/new relative path without filesystem mutation. Each row has stable error codes; any error makes `executable=false`. Preserve extensions according to the design and never infer order from a hash map or directory enumeration.
 
-- [ ] **Step 3: Connect volume/collision preflight**
+- [x] **Step 3: Connect volume/collision preflight**
 
 Revalidate canonical parents, writable destination, `_PC_NAME_MAX`, case sensitivity, existing occupants, source uniqueness and `.viewer`/hidden-temporary boundaries. Pass valid mappings to the accepted cycle/case staging planner.
 
-- [ ] **Step 4: Verify GREEN**
+- [x] **Step 4: Verify GREEN**
 
 Run: `cargo test --test m3_rename_preflight && cargo test --test file_transactions rename && cargo clippy --locked --workspace --all-targets -- -D warnings`
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add crates/viewer-domain crates/viewer-application crates/viewer-infrastructure tests/m3_rename_preflight.rs

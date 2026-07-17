@@ -5,6 +5,7 @@ pub mod operation;
 pub mod operation_commit;
 pub mod ports;
 pub mod project;
+pub mod rename;
 pub mod scan;
 pub mod scheduler;
 pub mod search;

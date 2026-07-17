@@ -121,6 +121,103 @@ pub struct OperationPlan {
     pub items: Vec<OperationItemPlan>,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct SequenceRule {
+    pub start: u32,
+    pub digits: u8,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct RenameRuleSet {
+    pub find: String,
+    pub replacement: String,
+    pub prefix: String,
+    pub suffix: String,
+    pub sequence: Option<SequenceRule>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct RenameTarget {
+    pub entity_id: EntityId,
+    pub relative_path: RelativePath,
+}
+
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RenameErrorCode {
+    InvalidSequence,
+    SequenceOutOfRange,
+    EmptyName,
+    DotName,
+    ContainsSeparator,
+    ContainsNul,
+    ReservedName,
+    TemporaryName,
+    NameTooLong,
+    NoOp,
+    DuplicateSource,
+    DuplicateDestination,
+    CaseCollision,
+    DestinationOccupied,
+    SourceMissing,
+    UnsafeParent,
+    DestinationReadOnly,
+}
+
+impl RenameErrorCode {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::InvalidSequence => "invalid_sequence",
+            Self::SequenceOutOfRange => "sequence_out_of_range",
+            Self::EmptyName => "empty_name",
+            Self::DotName => "dot_name",
+            Self::ContainsSeparator => "contains_separator",
+            Self::ContainsNul => "contains_nul",
+            Self::ReservedName => "reserved_name",
+            Self::TemporaryName => "temporary_name",
+            Self::NameTooLong => "name_too_long",
+            Self::NoOp => "no_op",
+            Self::DuplicateSource => "duplicate_source",
+            Self::DuplicateDestination => "duplicate_destination",
+            Self::CaseCollision => "case_collision",
+            Self::DestinationOccupied => "destination_occupied",
+            Self::SourceMissing => "source_missing",
+            Self::UnsafeParent => "unsafe_parent",
+            Self::DestinationReadOnly => "destination_read_only",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct RenamePreviewRow {
+    pub entity_id: EntityId,
+    pub source: RelativePath,
+    pub destination: Option<RelativePath>,
+    pub proposed_name: String,
+    pub errors: Vec<RenameErrorCode>,
+}
+
+impl RenamePreviewRow {
+    pub fn push_error(&mut self, error: RenameErrorCode) {
+        if !self.errors.contains(&error) {
+            self.errors.push(error);
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct RenamePreflight {
+    pub rows: Vec<RenamePreviewRow>,
+    pub executable: bool,
+}
+
+impl RenamePreflight {
+    pub fn refresh_executable(&mut self) {
+        self.executable =
+            !self.rows.is_empty() && self.rows.iter().all(|row| row.errors.is_empty());
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{OperationState, OperationTransitionError};

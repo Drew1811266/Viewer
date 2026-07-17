@@ -95,6 +95,7 @@ pub trait TrashPort: Send + Sync {
 pub trait VolumePort: Send + Sync {
     fn volume_id(&self, path: &Path) -> Result<u64, FileOperationError>;
     fn is_case_sensitive(&self, path: &Path) -> Result<bool, FileOperationError>;
+    fn name_max(&self, path: &Path) -> Result<usize, FileOperationError>;
 }
 
 #[async_trait]

@@ -5,7 +5,8 @@ use std::{
 };
 use viewer_application::{
     ClockPort, FaultInjector, FileMutationPort, FileOperationError, FileSnapshot, InjectedCrash,
-    NoFaults, OperationCommit, OperationCommitPort,
+    NoFaults, OperationCommit, OperationCommitPort, VolumePort,
+    rename::{RenameErrorCode, RenamePreflight, RenameRuleSet, RenameTarget, preview_rename},
 };
 use viewer_domain::{EntityId, OperationId, RelativePath, operation::OperationState};
 
@@ -51,6 +52,20 @@ impl RenameStage {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RenamePlan {
     pub stages: Vec<RenameStage>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PreparedRename {
+    pub preview: RenamePreflight,
+    pub plan: Option<RenamePlan>,
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum RenamePreflightError {
+    #[error(transparent)]
+    File(#[from] FileOperationError),
+    #[error(transparent)]
+    Plan(#[from] RenamePlanError),
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -116,6 +131,150 @@ pub enum RenamePlanError {
 pub struct RenamePlanner;
 
 impl RenamePlanner {
+    pub fn preflight(
+        project_root: impl AsRef<Path>,
+        volume: &dyn VolumePort,
+        targets: &[RenameTarget],
+        rules: &RenameRuleSet,
+    ) -> Result<PreparedRename, RenamePreflightError> {
+        Self::preflight_preview(project_root, volume, preview_rename(targets, rules))
+    }
+
+    pub fn preflight_preview(
+        project_root: impl AsRef<Path>,
+        volume: &dyn VolumePort,
+        mut preview: RenamePreflight,
+    ) -> Result<PreparedRename, RenamePreflightError> {
+        let project_root = std::fs::canonicalize(project_root.as_ref()).map_err(|error| {
+            FileOperationError::io(
+                "canonicalize rename preflight root",
+                project_root.as_ref(),
+                &error,
+            )
+        })?;
+        let mut case_sensitive = true;
+        let mut resolved = vec![None; preview.rows.len()];
+
+        for (index, row) in preview.rows.iter_mut().enumerate() {
+            let source_candidate = project_root.join(row.source.as_str());
+            match std::fs::symlink_metadata(&source_candidate) {
+                Ok(metadata) if metadata.is_file() && !metadata.file_type().is_symlink() => {}
+                _ => {
+                    row.push_error(RenameErrorCode::SourceMissing);
+                    continue;
+                }
+            };
+            let source = match std::fs::canonicalize(&source_candidate) {
+                Ok(source) if source.starts_with(&project_root) => source,
+                _ => {
+                    row.push_error(RenameErrorCode::UnsafeParent);
+                    continue;
+                }
+            };
+            let Some(destination_relative) = row.destination.as_ref() else {
+                continue;
+            };
+            let destination_candidate = project_root.join(destination_relative.as_str());
+            let Some(destination_parent) = destination_candidate.parent() else {
+                row.push_error(RenameErrorCode::UnsafeParent);
+                continue;
+            };
+            let destination_parent = match std::fs::canonicalize(destination_parent) {
+                Ok(parent) if parent.starts_with(&project_root) => parent,
+                _ => {
+                    row.push_error(RenameErrorCode::UnsafeParent);
+                    continue;
+                }
+            };
+            if source.parent() != Some(destination_parent.as_path()) {
+                row.push_error(RenameErrorCode::UnsafeParent);
+                continue;
+            }
+            case_sensitive &= volume.is_case_sensitive(&destination_parent)?;
+            if std::fs::metadata(&destination_parent)
+                .map(|metadata| metadata.permissions().readonly())
+                .unwrap_or(true)
+            {
+                row.push_error(RenameErrorCode::DestinationReadOnly);
+            }
+            if row.proposed_name.len() > volume.name_max(&destination_parent)? {
+                row.push_error(RenameErrorCode::NameTooLong);
+            }
+            let Some(file_name) = destination_candidate.file_name() else {
+                row.push_error(RenameErrorCode::UnsafeParent);
+                continue;
+            };
+            let destination = destination_parent.join(file_name);
+            resolved[index] = Some((source, destination));
+        }
+
+        let source_keys = resolved
+            .iter()
+            .filter_map(|pair| {
+                pair.as_ref()
+                    .map(|(source, _)| path_key(source, case_sensitive))
+            })
+            .collect::<HashSet<_>>();
+        let mut destination_positions: HashMap<String, Vec<usize>> = HashMap::new();
+        for (index, pair) in resolved.iter().enumerate() {
+            if let Some((_, destination)) = pair {
+                destination_positions
+                    .entry(path_key(destination, case_sensitive))
+                    .or_default()
+                    .push(index);
+            }
+        }
+        if !case_sensitive {
+            for positions in destination_positions
+                .values()
+                .filter(|positions| positions.len() > 1)
+            {
+                for index in positions {
+                    preview.rows[*index].push_error(RenameErrorCode::CaseCollision);
+                }
+            }
+        }
+        for (index, pair) in resolved.iter().enumerate() {
+            let Some((_, destination)) = pair else {
+                continue;
+            };
+            let destination_key = path_key(destination, case_sensitive);
+            if std::fs::symlink_metadata(destination).is_ok()
+                && !source_keys.contains(&destination_key)
+            {
+                preview.rows[index].push_error(RenameErrorCode::DestinationOccupied);
+            }
+        }
+
+        preview.refresh_executable();
+        if !preview.executable {
+            return Ok(PreparedRename {
+                preview,
+                plan: None,
+            });
+        }
+        let mappings = preview
+            .rows
+            .iter()
+            .map(|row| RenameMapping {
+                operation_id: OperationId::new(),
+                entity_id: row.entity_id,
+                source: PathBuf::from(row.source.as_str()),
+                destination: PathBuf::from(
+                    row.destination
+                        .as_ref()
+                        .expect("executable preflight row has a destination")
+                        .as_str(),
+                ),
+            })
+            .collect::<Vec<_>>();
+        let plan = Self::plan(&project_root, case_sensitive, &mappings)?;
+        Ok(PreparedRename {
+            preview,
+            plan: Some(plan),
+        })
+    }
+
     pub fn plan(
         project_root: impl AsRef<Path>,
         case_sensitive: bool,

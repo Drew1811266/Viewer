@@ -6,7 +6,13 @@ import type {
   IndexProgressEvent,
   Marker,
   MarkerChange,
+  OperationProgressEvent,
+  OperationResultPage,
+  FileCommandKind,
+  CloseBlockedEvent,
   ProjectSnapshot,
+  ProjectChangedEvent,
+  RecoveryReport,
   ReviewState,
   ScanEvent,
   SearchFilters,
@@ -95,7 +101,30 @@ export interface ViewerState {
   search: SearchState
   selectedEntityIds: string[]
   selectionInfo: SelectionInfo | null
+  operation: OperationState
+  recoveryReport: RecoveryReport | null
+  pendingProjectChange: ProjectChangedEvent | null
+  previewEntityId: string | null
+  compareEntityIds: string[]
+  contextRepair: ContextRepair | null
+  closeBlocked: CloseBlockedEvent | null
   errorMessage: string | null
+}
+
+export interface OperationState {
+  kind: FileCommandKind | null
+  active: OperationProgressEvent | null
+  results: OperationResultPage | null
+}
+
+export interface ContextRepair {
+  removedEntityIds: string[]
+  suggestedEntityId: string | null
+  message: string
+}
+
+function initialOperationState(): OperationState {
+  return { kind: null, active: null, results: null }
 }
 
 export const initialViewerState: ViewerState = {
@@ -111,6 +140,13 @@ export const initialViewerState: ViewerState = {
   search: initialSearchState(),
   selectedEntityIds: [],
   selectionInfo: null,
+  operation: initialOperationState(),
+  recoveryReport: null,
+  pendingProjectChange: null,
+  previewEntityId: null,
+  compareEntityIds: [],
+  contextRepair: null,
+  closeBlocked: null,
   errorMessage: null,
 }
 
@@ -189,6 +225,33 @@ export type ViewerAction =
       snippet: string | null
     }
   | { type: 'selection_changed'; entityIds: string[] }
+  | { type: 'preview_context_changed'; entityId: string | null }
+  | { type: 'compare_context_changed'; entityIds: string[] }
+  | {
+      type: 'operation_started'
+      sessionId: string
+      generation: number
+      batchId: string
+      kind: FileCommandKind
+    }
+  | { type: 'operation_progress_received'; progress: OperationProgressEvent }
+  | {
+      type: 'operation_results_loaded'
+      sessionId: string
+      generation: number
+      batchId: string
+      page: OperationResultPage
+    }
+  | {
+      type: 'operation_failed'
+      sessionId: string
+      generation: number
+      message: string
+    }
+  | { type: 'search_refresh_requested' }
+  | { type: 'project_changed_received'; change: ProjectChangedEvent }
+  | { type: 'close_blocked_received'; event: CloseBlockedEvent }
+  | { type: 'close_blocked_cleared' }
   | {
       type: 'selection_info_loaded'
       sessionId: string
@@ -208,7 +271,11 @@ export function viewerReducer(state: ViewerState, action: ViewerAction): ViewerS
     case 'project_open_requested':
       return freshState('opening')
     case 'project_opened':
-      return { ...freshState('active'), project: action.project }
+      return {
+        ...freshState('active'),
+        project: action.project,
+        recoveryReport: action.project.recoveryReport ?? null,
+      }
     case 'project_reconciled':
       if (state.project?.sessionId !== action.project.sessionId) return state
       return { ...state, status: 'active', project: action.project }
@@ -239,7 +306,7 @@ export function viewerReducer(state: ViewerState, action: ViewerAction): ViewerS
       return { ...state, scan: { ...state.scan, phase: 'cancelled' } }
     case 'projection_loaded':
       if (!isCurrentProjection(state, action.sessionId, action.generation)) return state
-      return {
+      return repairContextAfterProjection(state, {
         ...state,
         folders: action.folders,
         workspace: action.workspace,
@@ -247,7 +314,7 @@ export function viewerReducer(state: ViewerState, action: ViewerAction): ViewerS
         selectedFolderPath: action.selectedFolderPath,
         showingAggregate: action.showingAggregate,
         errorMessage: null,
-      }
+      })
     case 'projection_failed':
       if (!isCurrentProjection(state, action.sessionId, action.generation)) return state
       return { ...state, errorMessage: action.message }
@@ -373,6 +440,93 @@ export function viewerReducer(state: ViewerState, action: ViewerAction): ViewerS
         selectedEntityIds: unique(action.entityIds),
         selectionInfo: null,
       }
+    case 'preview_context_changed':
+      return { ...state, previewEntityId: action.entityId }
+    case 'compare_context_changed':
+      return { ...state, compareEntityIds: unique(action.entityIds).slice(0, 4) }
+    case 'operation_started':
+      if (!isCurrentProjection(state, action.sessionId, action.generation)) return state
+      return {
+        ...state,
+        operation: {
+          kind: action.kind,
+          active: {
+            sessionId: action.sessionId,
+            generation: action.generation,
+            batchId: action.batchId,
+            lifecycle: 'queued',
+            requested: 0,
+            completed: 0,
+            failed: 0,
+            skipped: 0,
+            cancelled: 0,
+            activeEntityId: null,
+          },
+          results: null,
+        },
+        errorMessage: null,
+      }
+    case 'operation_progress_received':
+      if (
+        !isCurrentProjection(
+          state,
+          action.progress.sessionId,
+          action.progress.generation,
+        ) ||
+        state.operation.active?.batchId !== action.progress.batchId
+      ) {
+        return state
+      }
+      return {
+        ...state,
+        operation: { ...state.operation, active: action.progress },
+      }
+    case 'operation_results_loaded':
+      if (
+        !isCurrentProjection(state, action.sessionId, action.generation) ||
+        state.operation.active?.batchId !== action.batchId
+      ) {
+        return state
+      }
+      return {
+        ...state,
+        operation: { ...state.operation, results: action.page },
+      }
+    case 'operation_failed':
+      if (!isCurrentProjection(state, action.sessionId, action.generation)) return state
+      return { ...state, errorMessage: action.message }
+    case 'search_refresh_requested':
+      if (!state.search.showResults) return state
+      return {
+        ...state,
+        search: {
+          ...state.search,
+          queryVersion: state.search.queryVersion + 1,
+          schedule: 'immediate',
+        },
+      }
+    case 'project_changed_received':
+      if (!isCurrentProjection(state, action.change.sessionId, action.change.generation)) {
+        return state
+      }
+      return {
+        ...state,
+        pendingProjectChange: action.change,
+        search: state.search.showResults
+          ? {
+              ...state.search,
+              queryVersion: state.search.queryVersion + 1,
+              schedule: 'immediate',
+            }
+          : state.search,
+      }
+    case 'close_blocked_received':
+      if (!isCurrentProjection(state, action.event.sessionId, action.event.generation)) {
+        return state
+      }
+      return { ...state, status: 'active', closeBlocked: action.event }
+    case 'close_blocked_cleared':
+      return { ...state, closeBlocked: null }
     case 'selection_info_loaded':
       if (
         !isCurrentProjection(state, action.sessionId, action.generation) ||
@@ -392,8 +546,72 @@ function freshState(status: ViewerStatus): ViewerState {
     ...initialViewerState,
     status,
     search: initialSearchState(),
+    operation: initialOperationState(),
     selectedEntityIds: [],
+    compareEntityIds: [],
   }
+}
+
+function repairContextAfterProjection(
+  previous: ViewerState,
+  next: ViewerState,
+): ViewerState {
+  if (previous.pendingProjectChange === null) return next
+  const previousOrder = orderedWorkspaceEntityIds(previous.workspace)
+  const nextOrder = orderedWorkspaceEntityIds(next.workspace)
+  const previouslyKnown = new Set([
+    ...previous.folders.map((folder) => folder.entityId),
+    ...previousOrder,
+  ])
+  const currentlyLive = new Set([
+    ...next.folders.map((folder) => folder.entityId),
+    ...nextOrder,
+  ])
+  const active = unique([
+    ...previous.selectedEntityIds,
+    ...(previous.previewEntityId ? [previous.previewEntityId] : []),
+    ...previous.compareEntityIds,
+  ])
+  const removedEntityIds = active.filter(
+    (entityId) => previouslyKnown.has(entityId) && !currentlyLive.has(entityId),
+  )
+  if (removedEntityIds.length === 0) {
+    return {
+      ...next,
+      pendingProjectChange: null,
+      contextRepair: null,
+    }
+  }
+  const removed = new Set(removedEntityIds)
+  const firstRemovedIndex = previousOrder.findIndex((entityId) => removed.has(entityId))
+  const suggestedEntityId =
+    firstRemovedIndex < 0 || nextOrder.length === 0
+      ? null
+      : (nextOrder[Math.min(firstRemovedIndex, nextOrder.length - 1)] ?? null)
+  return {
+    ...next,
+    pendingProjectChange: null,
+    selectedEntityIds: previous.selectedEntityIds.filter((id) => !removed.has(id)),
+    selectionInfo: null,
+    previewEntityId:
+      previous.previewEntityId && removed.has(previous.previewEntityId)
+        ? null
+        : previous.previewEntityId,
+    compareEntityIds: previous.compareEntityIds.filter((id) => !removed.has(id)),
+    contextRepair: {
+      removedEntityIds,
+      suggestedEntityId,
+      message: '部分正在查看的文件已在项目外发生变化。',
+    },
+  }
+}
+
+function orderedWorkspaceEntityIds(workspace: FolderWorkspace | null): string[] {
+  if (workspace === null || workspace.workspace === 'empty') return []
+  if (workspace.workspace === 'category') {
+    return workspace.folders.map((folder) => folder.entityId)
+  }
+  return [...workspace.images, ...workspace.textFiles].map((file) => file.entityId)
 }
 
 function queryChanged(

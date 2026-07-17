@@ -4,13 +4,24 @@ import { listen } from '@tauri-apps/api/event'
 import { getCurrentWebview } from '@tauri-apps/api/webview'
 import { open } from '@tauri-apps/plugin-dialog'
 import type {
+  CancelOperationRequest,
+  CloseBlockedEvent,
+  ExecuteFileCommandRequest,
   FolderTreeItem,
   FolderWorkspace,
   ImageRepresentation,
   ImageRequest,
   IndexProgressEvent,
   MarkerBatchResult,
+  OperationProgressEvent,
+  OperationResultPage,
+  OperationResultsRequest,
+  OperationStarted,
+  OperationStatusRequest,
+  PreviewRenameRequest,
   ProjectSnapshot,
+  ProjectChangedEvent,
+  RenamePreview,
   ScanEvent,
   SearchPage,
   SearchProjectRequest,
@@ -22,6 +33,8 @@ import type {
   TextPreviewRequest,
   TextSnippet,
   ToggleFavoriteRequest,
+  UndoLastOperationRequest,
+  UndoReceipt,
 } from './types'
 
 export interface ViewerBridge {
@@ -40,8 +53,18 @@ export interface ViewerBridge {
   setReviewState(request: SetReviewStateRequest): Promise<MarkerBatchResult>
   toggleFavorite(request: ToggleFavoriteRequest): Promise<MarkerBatchResult>
   selectionInfo(request: SelectionInfoRequest): Promise<SelectionInfo>
+  previewRename(request: PreviewRenameRequest): Promise<RenamePreview>
+  executeFileCommand(request: ExecuteFileCommandRequest): Promise<OperationStarted>
+  operationStatus(request: OperationStatusRequest): Promise<OperationProgressEvent>
+  operationResults(request: OperationResultsRequest): Promise<OperationResultPage>
+  cancelOperation(request: CancelOperationRequest): Promise<boolean>
+  undoLastOperation(request: UndoLastOperationRequest): Promise<UndoReceipt | null>
+  openPermissionSettings(): Promise<void>
   listenScan(handler: (event: ScanEvent) => void): Promise<UnlistenFn>
   listenIndexProgress(handler: (event: IndexProgressEvent) => void): Promise<UnlistenFn>
+  listenOperationProgress(handler: (event: OperationProgressEvent) => void): Promise<UnlistenFn>
+  listenProjectChanged(handler: (event: ProjectChangedEvent) => void): Promise<UnlistenFn>
+  listenCloseBlocked(handler: (event: CloseBlockedEvent) => void): Promise<UnlistenFn>
   listenProjectClosed(handler: () => void): Promise<UnlistenFn>
   listenProjectDrops(handler: (paths: string[]) => void): Promise<UnlistenFn>
 }
@@ -102,11 +125,47 @@ export const tauriViewerBridge: ViewerBridge = {
   selectionInfo(request) {
     return invoke<SelectionInfo>('selection_info', { request })
   },
+  previewRename(request) {
+    return invoke<RenamePreview>('preview_rename', { request })
+  },
+  executeFileCommand(request) {
+    return invoke<OperationStarted>('execute_file_command', { request })
+  },
+  operationStatus(request) {
+    return invoke<OperationProgressEvent>('operation_status', { request })
+  },
+  operationResults(request) {
+    return invoke<OperationResultPage>('operation_results', { request })
+  },
+  cancelOperation(request) {
+    return invoke<boolean>('cancel_operation', { request })
+  },
+  undoLastOperation(request) {
+    return invoke<UndoReceipt | null>('undo_last_operation', { request })
+  },
+  openPermissionSettings() {
+    return invoke<void>('open_permission_settings')
+  },
   listenScan(handler) {
     return listen<ScanEvent>('viewer://scan-progress', ({ payload }) => handler(payload))
   },
   listenIndexProgress(handler) {
     return listen<IndexProgressEvent>('viewer://index-progress', ({ payload }) =>
+      handler(payload),
+    )
+  },
+  listenOperationProgress(handler) {
+    return listen<OperationProgressEvent>('viewer://operation-progress', ({ payload }) =>
+      handler(payload),
+    )
+  },
+  listenProjectChanged(handler) {
+    return listen<ProjectChangedEvent>('viewer://project-changed', ({ payload }) =>
+      handler(payload),
+    )
+  },
+  listenCloseBlocked(handler) {
+    return listen<CloseBlockedEvent>('viewer://close-blocked', ({ payload }) =>
       handler(payload),
     )
   },

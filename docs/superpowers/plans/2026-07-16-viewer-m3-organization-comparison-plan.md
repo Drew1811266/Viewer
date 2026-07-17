@@ -388,25 +388,25 @@ git commit -m "feat: expose safe file operation commands"
 **Interfaces:**
 - Produces: exact M3 bridge, operation/dialog/recovery state, current task/results, external-change context repair and close coordination intents.
 
-- [ ] **Step 1: Write failing reducer/controller tests**
+- [x] **Step 1: Write failing reducer/controller tests**
 
 Cover command preflight/execute, stale operation/project events, task progress/results, cancellation, projection/search refresh after mutation, selected entity preservation by ID, deleted selection/preview repair intents, compare removal intents, error summaries, read-only suppression and project-close reset.
 
 Run: `pnpm --dir ui test -- src/state/viewerReducer.test.ts src/state/useViewerController.test.tsx`
 
-- [ ] **Step 2: Implement exact bridge and session-only state**
+- [x] **Step 2: Implement exact bridge and session-only state**
 
 Add no path-bearing API. Operation events apply only to the current session/generation/task. Successful results trigger one projection/search refresh; old responses cannot reopen dialogs or alter a new session. Project close clears tasks, conflicts, recovery and operation selections.
 
-- [ ] **Step 3: Implement active-context repair**
+- [x] **Step 3: Implement active-context repair**
 
 For `project-changed`, keep live entity IDs, remove confirmed missing IDs and choose the nearest surviving file using the prior ordered workspace. Emit one concise message only when active selection/preview/compare changed.
 
-- [ ] **Step 4: Verify GREEN**
+- [x] **Step 4: Verify GREEN**
 
 Run: `pnpm --dir ui test && pnpm --dir ui build`
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add ui/src/api ui/src/state

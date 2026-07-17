@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import type { ProjectSnapshot, ScanEvent, SearchPage } from '../api/types'
+import type {
+  BrowserFile,
+  OperationProgressEvent,
+  ProjectChangedEvent,
+  ProjectSnapshot,
+  ScanEvent,
+  SearchPage,
+} from '../api/types'
 import {
   emptySearchFilters,
   initialViewerState,
@@ -172,7 +179,189 @@ describe('viewerReducer', () => {
     expect(state.folders[0]?.marker).toEqual({ reviewState: 'keep', favorite: true })
     expect(state.selectedEntityIds).toEqual(['folder-1', 'image-1'])
   })
+
+  it('keeps operation recovery and close state scoped to the current session', () => {
+    let state = viewerReducer(initialViewerState, {
+      type: 'project_opened',
+      project: {
+        ...project,
+        recoveryReport: { recovered: 2, needsUserReview: 1 },
+      },
+    })
+    expect(state.recoveryReport).toEqual({ recovered: 2, needsUserReview: 1 })
+    state = viewerReducer(state, {
+      type: 'operation_started',
+      sessionId: project.sessionId,
+      generation: project.generation,
+      batchId: 'batch-1',
+      kind: 'rename',
+    })
+    const current = progress('session-1', 7, 'batch-1', 'running')
+    expect(
+      viewerReducer(state, {
+        type: 'operation_progress_received',
+        progress: { ...current, sessionId: 'old-session' },
+      }),
+    ).toEqual(state)
+    state = viewerReducer(state, { type: 'operation_progress_received', progress: current })
+    expect(state.operation.active?.lifecycle).toBe('running')
+    state = viewerReducer(state, {
+      type: 'operation_results_loaded',
+      sessionId: project.sessionId,
+      generation: project.generation,
+      batchId: 'batch-1',
+      page: {
+        total: 1,
+        offset: 0,
+        items: [
+          {
+            entityId: 'image-1',
+            relativePath: 'id/image.jpg',
+            status: 'completed',
+            code: 'renamed',
+          },
+        ],
+      },
+    })
+    expect(state.operation.results?.items[0]?.code).toBe('renamed')
+    state = viewerReducer(state, {
+      type: 'close_blocked_received',
+      event: { sessionId: project.sessionId, generation: 7, batchId: 'batch-1' },
+    })
+    expect(state.closeBlocked?.batchId).toBe('batch-1')
+    expect(viewerReducer(state, { type: 'project_closed' })).toEqual(initialViewerState)
+  })
+
+  it('repairs only active entities confirmed missing from the prior projection', () => {
+    let state = viewerReducer(initialViewerState, { type: 'project_opened', project })
+    state = viewerReducer(state, {
+      type: 'projection_loaded',
+      sessionId: project.sessionId,
+      generation: project.generation,
+      folders: [],
+      workspace: contentWorkspace(['a', 'b', 'c']),
+      selectedFolderId: null,
+      selectedFolderPath: '',
+      showingAggregate: false,
+    })
+    state = viewerReducer(state, { type: 'selection_changed', entityIds: ['b', 'c'] })
+    state = viewerReducer(state, { type: 'preview_context_changed', entityId: 'b' })
+    state = viewerReducer(state, {
+      type: 'compare_context_changed',
+      entityIds: ['a', 'b', 'c'],
+    })
+    state = viewerReducer(state, {
+      type: 'project_changed_received',
+      change: projectChange('session-1', 7),
+    })
+    state = viewerReducer(state, {
+      type: 'projection_loaded',
+      sessionId: project.sessionId,
+      generation: project.generation,
+      folders: [],
+      workspace: contentWorkspace(['a', 'c']),
+      selectedFolderId: null,
+      selectedFolderPath: '',
+      showingAggregate: false,
+    })
+    expect(state.selectedEntityIds).toEqual(['c'])
+    expect(state.previewEntityId).toBeNull()
+    expect(state.compareEntityIds).toEqual(['a', 'c'])
+    expect(state.contextRepair).toEqual({
+      removedEntityIds: ['b'],
+      suggestedEntityId: 'c',
+      message: '部分正在查看的文件已在项目外发生变化。',
+    })
+
+    const stable = viewerReducer(state, {
+      type: 'project_changed_received',
+      change: projectChange('session-1', 7),
+    })
+    const refreshed = viewerReducer(stable, {
+      type: 'projection_loaded',
+      sessionId: project.sessionId,
+      generation: project.generation,
+      folders: [],
+      workspace: contentWorkspace(['a', 'c', 'd']),
+      selectedFolderId: null,
+      selectedFolderPath: '',
+      showingAggregate: false,
+    })
+    expect(refreshed.contextRepair).toBeNull()
+  })
+
+  it('ignores stale project change and close-blocked events', () => {
+    const active = viewerReducer(initialViewerState, { type: 'project_opened', project })
+    expect(
+      viewerReducer(active, {
+        type: 'project_changed_received',
+        change: projectChange('old-session', 7),
+      }),
+    ).toEqual(active)
+    expect(
+      viewerReducer(active, {
+        type: 'close_blocked_received',
+        event: { sessionId: 'session-1', generation: 6, batchId: 'old' },
+      }),
+    ).toEqual(active)
+  })
 })
+
+function progress(
+  sessionId: string,
+  generation: number,
+  batchId: string,
+  lifecycle: OperationProgressEvent['lifecycle'],
+): OperationProgressEvent {
+  return {
+    sessionId,
+    generation,
+    batchId,
+    lifecycle,
+    requested: 1,
+    completed: 0,
+    failed: 0,
+    skipped: 0,
+    cancelled: 0,
+    activeEntityId: 'image-1',
+  }
+}
+
+function projectChange(sessionId: string, generation: number): ProjectChangedEvent {
+  return {
+    sessionId,
+    generation,
+    reason: 'external_change',
+    added: 0,
+    removed: 1,
+    modified: 0,
+    moved: 0,
+    markerPathsMoved: 0,
+    failed: 0,
+  }
+}
+
+function contentWorkspace(ids: string[]) {
+  return {
+    workspace: 'content' as const,
+    images: ids.map(file),
+    textFiles: [],
+  }
+}
+
+function file(entityId: string): BrowserFile {
+  return {
+    entityId,
+    relativePath: `${entityId}.jpg`,
+    name: `${entityId}.jpg`,
+    kind: 'jpeg',
+    size: 1,
+    modifiedNs: '1',
+    marker: { reviewState: null, favorite: false },
+    imageMetadata: { width: 1, height: 1 },
+    imageUrl: null,
+  }
+}
 
 function page(revision: number, name: string): SearchPage {
   return {

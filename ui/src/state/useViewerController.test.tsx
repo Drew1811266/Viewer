@@ -1,7 +1,14 @@
 import { act, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ViewerBridge } from '../api/viewer'
-import type { IndexProgressEvent, SearchPage } from '../api/types'
+import type {
+  CloseBlockedEvent,
+  IndexProgressEvent,
+  OperationProgressEvent,
+  OperationStarted,
+  ProjectChangedEvent,
+  SearchPage,
+} from '../api/types'
 import { emptySearchFilters } from './viewerReducer'
 import { useViewerController } from './useViewerController'
 
@@ -46,8 +53,18 @@ function bridge(access: 'read_write' | 'read_only' = 'read_write'): ViewerBridge
       commonReview: { state: 'none_selected' },
       commonFavorite: { state: 'none_selected' },
     }),
+    previewRename: vi.fn().mockResolvedValue({ rows: [], executable: false }),
+    executeFileCommand: vi.fn().mockResolvedValue({ batchId: 'batch-1' }),
+    operationStatus: vi.fn(),
+    operationResults: vi.fn().mockResolvedValue({ total: 0, offset: 0, items: [] }),
+    cancelOperation: vi.fn().mockResolvedValue(true),
+    undoLastOperation: vi.fn().mockResolvedValue(null),
+    openPermissionSettings: vi.fn().mockResolvedValue(undefined),
     listenScan: vi.fn().mockResolvedValue(() => undefined),
     listenIndexProgress: vi.fn().mockResolvedValue(() => undefined),
+    listenOperationProgress: vi.fn().mockResolvedValue(() => undefined),
+    listenProjectChanged: vi.fn().mockResolvedValue(() => undefined),
+    listenCloseBlocked: vi.fn().mockResolvedValue(() => undefined),
     listenProjectClosed: vi.fn().mockResolvedValue(() => undefined),
     listenProjectDrops: vi.fn().mockResolvedValue(() => undefined),
   }
@@ -183,7 +200,215 @@ describe('useViewerController M2 coordination', () => {
     expect(readOnly.setReviewState).not.toHaveBeenCalled()
     expect(readOnly.toggleFavorite).not.toHaveBeenCalled()
   })
+
+  it('coordinates one current operation and refreshes projection once after completed results', async () => {
+    const viewer = bridge()
+    let receiveOperation: ((event: OperationProgressEvent) => void) | undefined
+    let receiveProjectChanged: ((event: ProjectChangedEvent) => void) | undefined
+    vi.mocked(viewer.listenOperationProgress).mockImplementation(async (handler) => {
+      receiveOperation = handler
+      return () => undefined
+    })
+    vi.mocked(viewer.listenProjectChanged).mockImplementation(async (handler) => {
+      receiveProjectChanged = handler
+      return () => undefined
+    })
+    vi.mocked(viewer.operationResults).mockResolvedValue({
+      total: 1,
+      offset: 0,
+      items: [
+        {
+          entityId: 'image-1',
+          relativePath: 'id/image.jpg',
+          status: 'completed',
+          code: 'renamed',
+        },
+      ],
+    })
+    const { result } = renderHook(() => useViewerController(viewer))
+    await act(() => result.current.openProject('/fixture/project'))
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    expect(receiveOperation).toBeDefined()
+    await act(() =>
+      result.current.executeFileCommand('rename', [
+        {
+          entityId: 'image-1',
+          action: { kind: 'rename', proposedName: 'hero.jpg', editExtension: true },
+        },
+      ]),
+    )
+    expect(viewer.executeFileCommand).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: 'session-1',
+        generation: 1,
+        kind: 'rename',
+      }),
+    )
+    act(() => receiveOperation?.(operationProgress('old-session', 1, 'batch-1')))
+    expect(result.current.state.operation.active?.lifecycle).toBe('queued')
+    await act(async () => {
+      receiveOperation?.(operationProgress('session-1', 1, 'batch-1'))
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    expect(viewer.operationResults).toHaveBeenCalledOnce()
+    expect(result.current.state.operation.results?.items[0]?.code).toBe('renamed')
+    expect(viewer.folderTree).toHaveBeenCalledTimes(2)
+    expect(viewer.queryFolder).toHaveBeenCalledTimes(2)
+    await act(async () => {
+      receiveProjectChanged?.({
+        ...projectChanged('session-1', 1),
+        reason: 'expected_viewer_change',
+      })
+      await Promise.resolve()
+    })
+    expect(viewer.folderTree).toHaveBeenCalledTimes(2)
+    expect(viewer.queryFolder).toHaveBeenCalledTimes(2)
+  })
+
+  it('admits only one command request while startup is pending and cancels the current batch', async () => {
+    const viewer = bridge()
+    const start = deferred<OperationStarted>()
+    vi.mocked(viewer.executeFileCommand).mockImplementation(() => start.promise)
+    const { result } = renderHook(() => useViewerController(viewer))
+    await act(() => result.current.openProject('/fixture/project'))
+
+    let first!: Promise<OperationStarted | null>
+    act(() => {
+      first = result.current.executeFileCommand('trash', [
+        { entityId: 'image-1', action: { kind: 'trash' } },
+      ])
+      void result.current.executeFileCommand('trash', [
+        { entityId: 'image-2', action: { kind: 'trash' } },
+      ])
+    })
+    expect(viewer.executeFileCommand).toHaveBeenCalledOnce()
+    await act(async () => {
+      start.resolve({ batchId: 'batch-1' })
+      await first
+    })
+    await act(() => result.current.cancelOperation())
+    expect(viewer.cancelOperation).toHaveBeenCalledWith({
+      sessionId: 'session-1',
+      generation: 1,
+      batchId: 'batch-1',
+    })
+  })
+
+  it('repairs current context after project changes and records close coordination', async () => {
+    const viewer = bridge()
+    let receiveProjectChanged: ((event: ProjectChangedEvent) => void) | undefined
+    let receiveCloseBlocked: ((event: CloseBlockedEvent) => void) | undefined
+    vi.mocked(viewer.listenProjectChanged).mockImplementation(async (handler) => {
+      receiveProjectChanged = handler
+      return () => undefined
+    })
+    vi.mocked(viewer.listenCloseBlocked).mockImplementation(async (handler) => {
+      receiveCloseBlocked = handler
+      return () => undefined
+    })
+    vi.mocked(viewer.queryFolder)
+      .mockResolvedValueOnce(contentWorkspace(['a', 'b', 'c']))
+      .mockResolvedValueOnce(contentWorkspace(['a', 'c']))
+    const { result } = renderHook(() => useViewerController(viewer))
+    await act(() => result.current.openProject('/fixture/project'))
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    act(() => {
+      result.current.setSelectedEntityIds(['b', 'c'])
+      result.current.setPreviewEntityId('b')
+      result.current.setCompareEntityIds(['a', 'b', 'c'])
+    })
+    await act(async () => {
+      receiveProjectChanged?.(projectChanged('session-1', 1))
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    expect(result.current.state.selectedEntityIds).toEqual(['c'])
+    expect(result.current.state.compareEntityIds).toEqual(['a', 'c'])
+    expect(result.current.state.contextRepair?.suggestedEntityId).toBe('c')
+    act(() => {
+      receiveCloseBlocked?.({
+        sessionId: 'session-1',
+        generation: 1,
+        batchId: 'batch-9',
+      })
+    })
+    expect(result.current.state.closeBlocked?.batchId).toBe('batch-9')
+  })
+
+  it('suppresses organization commands for read-only projects', async () => {
+    const viewer = bridge('read_only')
+    const { result } = renderHook(() => useViewerController(viewer))
+    await act(() => result.current.openProject('/fixture/project'))
+    await act(() =>
+      result.current.executeFileCommand('trash', [
+        { entityId: 'image-1', action: { kind: 'trash' } },
+      ]),
+    )
+    await act(() => result.current.undoLastOperation())
+    expect(viewer.executeFileCommand).not.toHaveBeenCalled()
+    expect(viewer.undoLastOperation).not.toHaveBeenCalled()
+  })
 })
+
+function operationProgress(
+  sessionId: string,
+  generation: number,
+  batchId: string,
+): OperationProgressEvent {
+  return {
+    sessionId,
+    generation,
+    batchId,
+    lifecycle: 'completed',
+    requested: 1,
+    completed: 1,
+    failed: 0,
+    skipped: 0,
+    cancelled: 0,
+    activeEntityId: null,
+  }
+}
+
+function projectChanged(sessionId: string, generation: number): ProjectChangedEvent {
+  return {
+    sessionId,
+    generation,
+    reason: 'external_change',
+    added: 0,
+    removed: 1,
+    modified: 0,
+    moved: 0,
+    markerPathsMoved: 0,
+    failed: 0,
+  }
+}
+
+function contentWorkspace(ids: string[]) {
+  return {
+    workspace: 'content' as const,
+    images: ids.map((entityId) => ({
+      entityId,
+      relativePath: `${entityId}.jpg`,
+      name: `${entityId}.jpg`,
+      kind: 'jpeg' as const,
+      size: 1,
+      modifiedNs: '1',
+      marker: { reviewState: null, favorite: false },
+      imageMetadata: null,
+      imageUrl: null,
+    })),
+    textFiles: [],
+  }
+}
 
 function page(
   revision: number,

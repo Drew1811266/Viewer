@@ -6,6 +6,12 @@ export interface ProjectSnapshot {
   generation: number
   displayName: string
   access: ProjectAccess
+  recoveryReport?: RecoveryReport
+}
+
+export interface RecoveryReport {
+  recovered: number
+  needsUserReview: number
 }
 
 export type FileKind = 'directory' | 'jpeg' | 'png' | 'markdown' | 'text'
@@ -288,4 +294,150 @@ export interface SelectionInfo {
 export interface IndexProgressEvent extends SearchProgress {
   sessionId: string
   generation: number
+}
+
+export type FileCommandKind = 'rename' | 'copy' | 'move' | 'trash'
+export type ConflictPolicy = 'skip' | 'keep_both' | 'replace'
+
+export interface RenameRules {
+  find: string
+  replacement: string
+  prefix: string
+  suffix: string
+  sequence: { start: number; digits: number } | null
+}
+
+export interface PreviewRenameRequest {
+  sessionId: string
+  generation: number
+  entityIds: string[]
+  rules: RenameRules
+}
+
+export interface RenamePreviewRow {
+  entityId: string
+  sourceRelativePath: string
+  destinationRelativePath: string | null
+  proposedName: string
+  errors: string[]
+}
+
+export interface RenamePreview {
+  rows: RenamePreviewRow[]
+  executable: boolean
+}
+
+export type FileCommandAction =
+  | { kind: 'rename'; proposedName: string; editExtension: boolean }
+  | { kind: 'copy'; destinationFolderId: string }
+  | { kind: 'move'; destinationFolderId: string }
+  | { kind: 'trash' }
+
+export interface FileCommandItem {
+  entityId: string
+  action: FileCommandAction
+}
+
+export interface ConflictResolution {
+  entityId: string
+  policy: ConflictPolicy
+  applyToRemaining: boolean
+}
+
+export interface ExecuteFileCommandRequest {
+  sessionId: string
+  generation: number
+  kind: FileCommandKind
+  items: FileCommandItem[]
+  conflicts: ConflictResolution[]
+}
+
+export interface OperationStarted {
+  batchId: string
+}
+
+export type BatchLifecycle = 'queued' | 'running' | 'cancelling' | 'completed'
+export type BatchItemStatus = 'completed' | 'failed' | 'skipped' | 'cancelled'
+export type BatchResultCode =
+  | 'renamed'
+  | 'copied'
+  | 'moved'
+  | 'moved_to_trash'
+  | 'conflict_skipped'
+  | 'cancelled'
+  | 'session_stale'
+  | 'source_missing'
+  | 'destination_occupied'
+  | 'permission_denied'
+  | 'verification_failed'
+  | 'projection_stale'
+  | 'backend_unavailable'
+  | 'invalid_target'
+
+export interface OperationProgressEvent {
+  sessionId: string
+  generation: number
+  batchId: string
+  lifecycle: BatchLifecycle
+  requested: number
+  completed: number
+  failed: number
+  skipped: number
+  cancelled: number
+  activeEntityId: string | null
+}
+
+export interface OperationStatusRequest {
+  sessionId: string
+  generation: number
+  batchId: string
+}
+
+export interface OperationResultItem {
+  entityId: string
+  relativePath: string
+  status: BatchItemStatus
+  code: BatchResultCode
+}
+
+export interface OperationResultPage {
+  total: number
+  offset: number
+  items: OperationResultItem[]
+}
+
+export interface OperationResultsRequest extends OperationStatusRequest {
+  offset: number
+  limit: number
+}
+
+export type CancelOperationRequest = OperationStatusRequest
+
+export interface UndoLastOperationRequest {
+  sessionId: string
+  generation: number
+}
+
+export interface UndoReceipt {
+  batchId: string
+  kind: Exclude<FileCommandKind, 'trash' | 'copy'> | 'set_review_state' | 'set_favorite'
+  actionCount: number
+}
+
+export interface ProjectChangedEvent {
+  sessionId: string
+  generation: number
+  reason: 'external_change' | 'expected_viewer_change' | 'overflow'
+  added: number
+  removed: number
+  modified: number
+  moved: number
+  markerPathsMoved: number
+  failed: number
+}
+
+export interface CloseBlockedEvent {
+  sessionId: string
+  generation: number
+  batchId: string
 }

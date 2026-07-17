@@ -9,15 +9,30 @@ export function useViewerController(bridge: ViewerBridge) {
   const stateRef = useRef(state)
   const projectionRequestRef = useRef(0)
   const reconcilingGenerationRef = useRef<number | null>(null)
+  const desiredProjectionRef = useRef({
+    selectedFolderId: null as string | null,
+    selectedFolderPath: '',
+    showingAggregate: false,
+  })
   stateRef.current = state
 
   const refreshProjection = useCallback(
-    async (project: ProjectSnapshot) => {
+    async (
+      project: ProjectSnapshot,
+      selectedFolderId: string | null,
+      selectedFolderPath: string,
+      showingAggregate: boolean,
+    ) => {
+      desiredProjectionRef.current = {
+        selectedFolderId,
+        selectedFolderPath,
+        showingAggregate,
+      }
       const requestId = ++projectionRequestRef.current
       try {
         const [folders, workspace] = await Promise.all([
           bridge.folderTree(),
-          bridge.queryFolder(null),
+          bridge.queryFolder(selectedFolderId, showingAggregate),
         ])
         if (requestId !== projectionRequestRef.current) return
         dispatch({
@@ -26,6 +41,9 @@ export function useViewerController(bridge: ViewerBridge) {
           generation: project.generation,
           folders,
           workspace,
+          selectedFolderId,
+          selectedFolderPath,
+          showingAggregate,
         })
       } catch (error) {
         if (requestId !== projectionRequestRef.current) return
@@ -47,7 +65,7 @@ export function useViewerController(bridge: ViewerBridge) {
       try {
         const project = await bridge.openProject(path)
         dispatch({ type: 'project_opened', project })
-        await refreshProjection(project)
+        await refreshProjection(project, null, '', false)
       } catch (error) {
         dispatch({ type: 'project_open_failed', message: safeUserMessage(error) })
       }
@@ -59,6 +77,11 @@ export function useViewerController(bridge: ViewerBridge) {
     if (stateRef.current.project === null || stateRef.current.status === 'closing') return
     dispatch({ type: 'project_close_requested' })
     projectionRequestRef.current += 1
+    desiredProjectionRef.current = {
+      selectedFolderId: null,
+      selectedFolderPath: '',
+      showingAggregate: false,
+    }
     try {
       await bridge.closeProject()
       dispatch({ type: 'project_closed' })
@@ -73,8 +96,14 @@ export function useViewerController(bridge: ViewerBridge) {
       if (project === null || event.sessionId !== project.sessionId) return
       if (event.generation < project.generation) return
       if (event.generation === project.generation) {
+        const desired = desiredProjectionRef.current
         dispatch({ type: 'scan_received', event })
-        void refreshProjection(project)
+        void refreshProjection(
+          project,
+          desired.selectedFolderId,
+          desired.selectedFolderPath,
+          desired.showingAggregate,
+        )
         return
       }
       if (reconcilingGenerationRef.current === event.generation) return
@@ -91,7 +120,13 @@ export function useViewerController(bridge: ViewerBridge) {
           }
           dispatch({ type: 'project_reconciled', project: snapshot })
           dispatch({ type: 'scan_received', event })
-          void refreshProjection(snapshot)
+          const desired = desiredProjectionRef.current
+          void refreshProjection(
+            snapshot,
+            desired.selectedFolderId,
+            desired.selectedFolderPath,
+            desired.showingAggregate,
+          )
         })
         .catch(() => undefined)
         .finally(() => {
@@ -144,5 +179,29 @@ export function useViewerController(bridge: ViewerBridge) {
     }
   }, [bridge, openProject])
 
-  return { state, openProject, closeProject }
+  const selectFolder = useCallback(
+    async (entityId: string | null) => {
+      const project = stateRef.current.project
+      if (project === null || stateRef.current.status !== 'active') return
+      const selected = entityId
+        ? stateRef.current.folders.find((folder) => folder.entityId === entityId)
+        : undefined
+      await refreshProjection(project, entityId, selected?.relativePath ?? '', false)
+    },
+    [refreshProjection],
+  )
+
+  const showAllDescendants = useCallback(async () => {
+    const current = stateRef.current
+    if (current.project === null || current.status !== 'active') return
+    const desired = desiredProjectionRef.current
+    await refreshProjection(
+      current.project,
+      desired.selectedFolderId,
+      desired.selectedFolderPath,
+      true,
+    )
+  }, [refreshProjection])
+
+  return { state, openProject, closeProject, selectFolder, showAllDescendants }
 }

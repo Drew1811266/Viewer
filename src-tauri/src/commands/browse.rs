@@ -21,9 +21,12 @@ pub async fn folder_tree(
 pub async fn query_folder(
     runtime: State<'_, Arc<DesktopRuntime>>,
     folder_id: Option<String>,
+    aggregate: Option<bool>,
 ) -> Result<FolderWorkspaceDto, CommandError> {
     let folder = folder_id.map(|value| parse_entity_id(&value)).transpose()?;
-    runtime.query_folder(folder).await
+    runtime
+        .query_folder_projection(folder, aggregate.unwrap_or(false))
+        .await
 }
 
 #[tauri::command]

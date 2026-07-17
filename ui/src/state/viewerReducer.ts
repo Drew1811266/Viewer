@@ -21,6 +21,9 @@ export interface ViewerState {
   project: ProjectSnapshot | null
   folders: FolderTreeItem[]
   workspace: FolderWorkspace | null
+  selectedFolderId: string | null
+  selectedFolderPath: string
+  showingAggregate: boolean
   scan: ScanState | null
   errorMessage: string | null
 }
@@ -30,6 +33,9 @@ export const initialViewerState: ViewerState = {
   project: null,
   folders: [],
   workspace: null,
+  selectedFolderId: null,
+  selectedFolderPath: '',
+  showingAggregate: false,
   scan: null,
   errorMessage: null,
 }
@@ -50,6 +56,9 @@ export type ViewerAction =
       generation: number
       folders: FolderTreeItem[]
       workspace: FolderWorkspace
+      selectedFolderId: string | null
+      selectedFolderPath: string
+      showingAggregate: boolean
     }
   | {
       type: 'projection_failed'
@@ -94,6 +103,9 @@ export function viewerReducer(state: ViewerState, action: ViewerAction): ViewerS
         ...state,
         folders: action.folders,
         workspace: action.workspace,
+        selectedFolderId: action.selectedFolderId,
+        selectedFolderPath: action.selectedFolderPath,
+        showingAggregate: action.showingAggregate,
         errorMessage: null,
       }
     case 'projection_failed':

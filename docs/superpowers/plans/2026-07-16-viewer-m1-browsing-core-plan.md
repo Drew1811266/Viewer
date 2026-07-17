@@ -779,7 +779,7 @@ git commit -m "feat: control one frontend project session"
 - Consumes: progressive `FolderTreeItem[]`, `FolderWorkspace.Category`.
 - Produces: resizable/collapsible left column, virtual flat rows, current-folder context, metadata-first 2×2 cards.
 
-- [ ] **Step 1: Write failing tree/card tests**
+- [x] **Step 1: Write failing tree/card tests**
 
 ```tsx
 it('renders only folders, including deep and empty folders, with full relative path labels', () => {
@@ -805,27 +805,27 @@ it('offers an explicit aggregate view without changing the selected category pat
 })
 ```
 
-- [ ] **Step 2: Run focused UI tests and verify RED**
+- [x] **Step 2: Run focused UI tests and verify RED**
 
 Run: `pnpm --dir ui test -- FolderTree.test.tsx FolderOverview.test.tsx`
 
 Expected: FAIL because these components do not exist.
 
-- [ ] **Step 3: Implement fixed-row virtualization and tree behavior**
+- [x] **Step 3: Implement fixed-row virtualization and tree behavior**
 
 Flatten only expanded nodes, compute visible `[start,end)` from `scrollTop`, viewport height, 28 px row height, and six-row overscan. Preserve selection when the column collapses/resizes. Use full relative path as accessible label and basename as primary visual label.
 
-- [ ] **Step 4: Implement metadata-first cards**
+- [x] **Step 4: Implement metadata-first cards**
 
 Render name/path/counts immediately; independently request up to four representative thumbnails while the card is visible. Keep stable cell positions for failures/empty slots. Selecting a category card queries that content folder without changing project context. An explicit `显示全部后代文件` action requests the backend aggregate projection while the breadcrumb/tree selection remains on the category folder; mixed descendant files are never the default.
 
-- [ ] **Step 5: Run tests/build and verify GREEN**
+- [x] **Step 5: Run tests/build and verify GREEN**
 
 Run: `pnpm --dir ui test && pnpm --dir ui build`
 
 Expected: PASS for deep/empty/duplicate-name trees, expand/collapse, resize, category cards, and progressive thumbnail states.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add ui/src/components/FolderTree* ui/src/components/FolderOverview* ui/src/components/VirtualList.tsx ui/src/styles/app.css ui/src/App.tsx ui/src/main.tsx

@@ -303,9 +303,22 @@ impl DesktopRuntime {
         &self,
         folder: Option<EntityId>,
     ) -> Result<FolderWorkspaceDto, CommandError> {
+        self.query_folder_projection(folder, false).await
+    }
+
+    pub async fn query_folder_projection(
+        &self,
+        folder: Option<EntityId>,
+        aggregate: bool,
+    ) -> Result<FolderWorkspaceDto, CommandError> {
         let index = self.active_index().await?;
-        BrowseService::new(index.as_ref())
-            .folder_workspace(folder)
+        let service = BrowseService::new(index.as_ref());
+        let result = if aggregate {
+            service.aggregate_workspace(folder)
+        } else {
+            service.folder_workspace(folder)
+        };
+        result
             .map(FolderWorkspaceDto::from)
             .map_err(CommandError::from)
     }

@@ -20,7 +20,7 @@ export interface ViewerBridge {
   closeProject(): Promise<void>
   projectSnapshot(): Promise<ProjectSnapshot | null>
   folderTree(): Promise<FolderTreeItem[]>
-  queryFolder(entityId: string | null): Promise<FolderWorkspace>
+  queryFolder(entityId: string | null, aggregate?: boolean): Promise<FolderWorkspace>
   requestImage(request: ImageRequest): Promise<ImageRepresentation>
   previewText(request: TextPreviewRequest): Promise<TextPreview>
   openExternalLink(url: string): Promise<void>
@@ -52,8 +52,8 @@ export const tauriViewerBridge: ViewerBridge = {
   folderTree() {
     return invoke<FolderTreeItem[]>('folder_tree')
   },
-  queryFolder(entityId) {
-    return invoke<FolderWorkspace>('query_folder', { folderId: entityId })
+  queryFolder(entityId, aggregate = false) {
+    return invoke<FolderWorkspace>('query_folder', { folderId: entityId, aggregate })
   },
   requestImage({ entityId, representation }) {
     return invoke<ImageRepresentation>('request_image_representation', {

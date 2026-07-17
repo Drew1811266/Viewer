@@ -1,3 +1,5 @@
+pub mod image_cache;
+
 use viewer_application::ClockPort;
 
 pub struct SystemClock;

@@ -6,10 +6,12 @@ use std::{
 };
 use viewer_application::{
     FileMutationPort, FileOperationError, FileSnapshot, TrashPort,
+    metadata::MarkerTarget,
     undo::{UndoAction, UndoError, UndoStack},
 };
 use viewer_domain::{
     EntityId, OperationId, RelativePath,
+    file::{FileKind, Marker},
     operation::{ConflictPolicy, OperationItemPlan, OperationKind, OperationState},
 };
 use viewer_infrastructure::operation::{
@@ -895,16 +897,30 @@ async fn undo_stack_accepts_only_session_undoable_batches_and_revalidates_identi
         OperationId::new(),
         OperationKind::SetReviewState,
         vec![UndoAction::ReviewState {
-            entity_id: EntityId::new(),
-            previous: Some("approved".into()),
+            target: MarkerTarget {
+                entity_id: EntityId::new(),
+                relative_path: RelativePath::parse("review.jpg").unwrap(),
+                kind: FileKind::Jpeg,
+                size: 1,
+                modified_ns: 1,
+            },
+            previous: Marker::default(),
+            expected: Marker::default(),
         }],
     ));
     assert!(stack.record_batch(
         OperationId::new(),
         OperationKind::SetFavorite,
         vec![UndoAction::Favorite {
-            entity_id: EntityId::new(),
-            previous: false,
+            target: MarkerTarget {
+                entity_id: EntityId::new(),
+                relative_path: RelativePath::parse("favorite.jpg").unwrap(),
+                kind: FileKind::Jpeg,
+                size: 1,
+                modified_ns: 1,
+            },
+            previous: Marker::default(),
+            expected: Marker::default(),
         }],
     ));
     stack.close_session(viewer_domain::SessionId::new());

@@ -4,6 +4,7 @@ use viewer_application::{
     TextPreviewError,
     metadata::{MarkerServiceError, MarkerStoreError},
     search::SearchError,
+    undo::{UndoError, UndoServiceError},
 };
 use viewer_infrastructure::{
     image_cache::ImageArtifactRegistryError,
@@ -193,6 +194,61 @@ impl From<MarkerServiceError> for CommandError {
                 "marker_projection_stale",
                 ErrorCategory::Consistency,
                 "标记已保存，界面索引需要重新加载。",
+                true,
+            ),
+        }
+    }
+}
+
+impl From<UndoServiceError> for CommandError {
+    fn from(error: UndoServiceError) -> Self {
+        match error {
+            UndoServiceError::StaleSession => Self::new(
+                "stale_project_session",
+                ErrorCategory::Conflict,
+                "项目会话已变化，请重试。",
+                true,
+            ),
+            UndoServiceError::ReadOnly | UndoServiceError::Store(MarkerStoreError::ReadOnly) => {
+                Self::new(
+                    "project_read_only",
+                    ErrorCategory::Conflict,
+                    "当前项目为只读，无法撤销。",
+                    false,
+                )
+            }
+            UndoServiceError::Undo(UndoError::DestinationOccupied) => Self::new(
+                "undo_destination_occupied",
+                ErrorCategory::Conflict,
+                "原位置已被占用，未执行撤销。",
+                false,
+            ),
+            UndoServiceError::Undo(UndoError::IdentityChanged | UndoError::OutsideProject) => {
+                Self::new(
+                    "undo_target_changed",
+                    ErrorCategory::Conflict,
+                    "文件已变化，未执行撤销。",
+                    false,
+                )
+            }
+            UndoServiceError::Undo(UndoError::File(_))
+            | UndoServiceError::Store(MarkerStoreError::Unavailable)
+            | UndoServiceError::StackChanged => Self::new(
+                "undo_unavailable",
+                ErrorCategory::Consistency,
+                "暂时无法撤销，请重试。",
+                true,
+            ),
+            UndoServiceError::Store(MarkerStoreError::InvalidTarget) => Self::new(
+                "undo_target_changed",
+                ErrorCategory::Conflict,
+                "标记已变化，未执行撤销。",
+                false,
+            ),
+            UndoServiceError::CommittedButProjectionStale => Self::new(
+                "undo_projection_stale",
+                ErrorCategory::Consistency,
+                "撤销已保存，界面索引需要重新加载。",
                 true,
             ),
         }

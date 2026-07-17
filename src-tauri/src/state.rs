@@ -13,7 +13,7 @@ use std::{
     path::Path,
     path::PathBuf,
     sync::{
-        Arc,
+        Arc, Mutex as StdMutex,
         atomic::{AtomicU64, Ordering},
     },
     time::Duration,
@@ -29,6 +29,7 @@ use viewer_application::{
     },
     scan::{CoordinatedScan, ScanEvent, ScanRequest},
     scheduler::{TaskClass, TaskCoordinator},
+    undo::{UndoBatch, UndoError, UndoFilePort, UndoReceipt, UndoService, UndoStack},
 };
 use viewer_domain::{
     EntityId, RelativePath, SessionId, TaskId,
@@ -36,6 +37,7 @@ use viewer_domain::{
     image::ImageRepresentationKind,
     search::{Generation, SearchQuery, SearchScope},
 };
+use viewer_infrastructure::operation::copy::LocalFileMutation;
 use viewer_infrastructure::{
     SystemClock,
     image_cache::{ImageArtifactRegistry, ImageCacheKey, ImageCacheKeyInput},
@@ -105,10 +107,24 @@ struct DesktopSession {
     portable_store: Option<Arc<PortableMarkerStore>>,
     marker_projection: Arc<dyn MarkerProjectionPort>,
     marker_lock: Arc<Mutex<()>>,
+    undo_stack: Arc<StdMutex<UndoStack>>,
     search_revision: Arc<AtomicU64>,
     image: Arc<dyn ImagePort>,
     scan_task_id: TaskId,
     scan_task: Option<JoinHandle<Result<(), CommandError>>>,
+}
+
+struct DeferredFileUndoPort;
+
+#[async_trait::async_trait]
+impl UndoFilePort for DeferredFileUndoPort {
+    async fn reverse_batch(
+        &self,
+        _project_root: &Path,
+        _batch: &UndoBatch,
+    ) -> Result<(), UndoError> {
+        Err(UndoError::OutsideProject)
+    }
 }
 
 struct ScanServices {
@@ -326,6 +342,7 @@ impl DesktopRuntime {
         let active_session_id = active.session_id;
         let scan_task_id = TaskId::new();
         let marker_lock = Arc::new(Mutex::new(()));
+        let undo_stack = Arc::new(StdMutex::new(UndoStack::new(active_session_id)));
         let scan_task = tokio::spawn(run_scan(
             active.clone(),
             scan_task_id,
@@ -347,6 +364,7 @@ impl DesktopRuntime {
             portable_store,
             marker_projection,
             marker_lock,
+            undo_stack,
             search_revision: Arc::new(AtomicU64::new(0)),
             image,
             scan_task_id,
@@ -366,6 +384,11 @@ impl DesktopRuntime {
         self.project_service.close().map_err(CommandError::from)?;
         let marker_lock = Arc::clone(&session.marker_lock);
         let _marker_guard = marker_lock.lock().await;
+        session
+            .undo_stack
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .close_session(session.active.session_id);
         session
             .image
             .cancel_session(session.active.session_id)
@@ -603,7 +626,7 @@ impl DesktopRuntime {
         entity_ids: &[EntityId],
         patch: MarkerPatch,
     ) -> Result<MarkerBatchResultDto, CommandError> {
-        let (active, index, store, projection, marker_lock) = {
+        let (active, index, store, projection, marker_lock, undo_stack) = {
             let session = self.session.lock().await;
             let session = session.as_ref().ok_or_else(project_not_open)?;
             validate_project_request(&session.active, expected_session, expected_generation)?;
@@ -629,6 +652,7 @@ impl DesktopRuntime {
                 store,
                 Arc::clone(&session.marker_projection),
                 Arc::clone(&session.marker_lock),
+                Arc::clone(&session.undo_stack),
             )
         };
         let _marker_guard = marker_lock.lock().await;
@@ -651,7 +675,14 @@ impl DesktopRuntime {
                 })
                 .collect::<Result<Vec<_>, CommandError>>()?;
             MarkerService::new(store.as_ref(), projection.as_ref(), true)
-                .apply(&targets, patch, updated_at_ms)
+                .apply_with_undo(
+                    &targets,
+                    patch,
+                    updated_at_ms,
+                    &mut undo_stack
+                        .lock()
+                        .unwrap_or_else(|poisoned| poisoned.into_inner()),
+                )
                 .map_err(CommandError::from)
         })
         .await
@@ -659,6 +690,52 @@ impl DesktopRuntime {
         self.ensure_project_current(active.session_id, active.generation)
             .await?;
         Ok(changes.into())
+    }
+
+    pub async fn undo_last(
+        &self,
+        expected_session: SessionId,
+        expected_generation: Generation,
+    ) -> Result<Option<UndoReceipt>, CommandError> {
+        let (active, store, projection, undo_stack, write_lane) = {
+            let session = self.session.lock().await;
+            let session = session.as_ref().ok_or_else(project_not_open)?;
+            validate_project_request(&session.active, expected_session, expected_generation)?;
+            let store = session.portable_store.clone().ok_or_else(|| {
+                CommandError::new(
+                    "portable_metadata_unavailable",
+                    ErrorCategory::Consistency,
+                    "项目审阅数据不可用，请重新打开项目。",
+                    true,
+                )
+            })?;
+            (
+                session.active.clone(),
+                store,
+                Arc::clone(&session.marker_projection),
+                Arc::clone(&session.undo_stack),
+                Arc::clone(&session.marker_lock),
+            )
+        };
+        let service = UndoService::new(
+            active.session_id,
+            active.access,
+            active.root.clone(),
+            Arc::new(LocalFileMutation),
+            Arc::new(DeferredFileUndoPort),
+            store,
+            projection,
+            Arc::clone(&self.clock),
+            undo_stack,
+            write_lane,
+        );
+        let outcome = service
+            .undo_last(expected_session)
+            .await
+            .map_err(CommandError::from)?;
+        self.ensure_project_current(expected_session, expected_generation)
+            .await?;
+        Ok(outcome)
     }
 
     async fn ensure_search_current(

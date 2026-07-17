@@ -1,4 +1,6 @@
-use crate::{ProjectAccess, ports::LocalFileCommandPort, scheduler::TaskCoordinator};
+use crate::{
+    ProjectAccess, ports::LocalFileCommandPort, scheduler::TaskCoordinator, undo::UndoStack,
+};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{HashMap, HashSet},
@@ -273,7 +275,8 @@ pub struct FileCommandService {
     access: ProjectAccess,
     coordinator: Arc<TaskCoordinator>,
     port: Arc<dyn LocalFileCommandPort>,
-    write_lane: AsyncMutex<()>,
+    write_lane: Arc<AsyncMutex<()>>,
+    undo_stack: Option<Arc<Mutex<UndoStack>>>,
     state: Mutex<ServiceState>,
 }
 
@@ -289,9 +292,33 @@ impl FileCommandService {
             access,
             coordinator,
             port,
-            write_lane: AsyncMutex::new(()),
+            write_lane: Arc::new(AsyncMutex::new(())),
+            undo_stack: None,
             state: Mutex::new(ServiceState::default()),
         }
+    }
+
+    pub fn new_with_undo(
+        session_id: SessionId,
+        access: ProjectAccess,
+        coordinator: Arc<TaskCoordinator>,
+        port: Arc<dyn LocalFileCommandPort>,
+        write_lane: Arc<AsyncMutex<()>>,
+        undo_stack: Arc<Mutex<UndoStack>>,
+    ) -> Self {
+        Self {
+            session_id,
+            access,
+            coordinator,
+            port,
+            write_lane,
+            undo_stack: Some(undo_stack),
+            state: Mutex::new(ServiceState::default()),
+        }
+    }
+
+    pub fn write_lane(&self) -> Arc<AsyncMutex<()>> {
+        Arc::clone(&self.write_lane)
     }
 
     pub async fn preflight(
@@ -472,6 +499,24 @@ impl FileCommandService {
         let summary =
             BatchSummary::try_from_results(preflight.batch_id, progress.requested, results)
                 .ok_or(FileCommandServiceError::BackendUnavailable)?;
+        if matches!(
+            preflight.kind,
+            FileCommandKind::Rename | FileCommandKind::Move
+        ) {
+            let actions = self
+                .port
+                .take_undo_actions(preflight.batch_id)
+                .await
+                .unwrap_or_default();
+            if let Some(stack) = self.undo_stack.as_ref()
+                && !actions.is_empty()
+            {
+                stack
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner())
+                    .record_batch(preflight.batch_id, preflight.kind.into(), actions);
+            }
+        }
         active_registration.finish();
         progress.lifecycle = BatchLifecycle::Completed;
         progress.active_entity_id = None;

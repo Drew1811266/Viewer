@@ -139,6 +139,13 @@ pub trait LocalFileCommandPort: Send + Sync {
     ) -> Result<LocalFileCommandOutcome, LocalFileCommandError> {
         Ok(outcome)
     }
+
+    async fn take_undo_actions(
+        &self,
+        _batch_id: BatchId,
+    ) -> Result<Vec<crate::undo::UndoAction>, LocalFileCommandError> {
+        Ok(Vec::new())
+    }
 }
 
 #[async_trait]

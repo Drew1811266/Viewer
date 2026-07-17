@@ -13,7 +13,7 @@ use viewer_application::{
     metadata::{MarkerProjectionError, MarkerProjectionPort},
 };
 use viewer_desktop::{
-    dto::{FolderWorkspaceDto, IndexProgressDto},
+    dto::{FolderWorkspaceDto, IndexProgressDto, SelectionAgreementDto},
     state::{
         DesktopEventSink, DesktopImageFactory, DesktopMarkerProjectionFactory, DesktopRuntime,
         ScanEventDto,
@@ -369,6 +369,77 @@ async fn marker_commands_support_mixed_targets_and_survive_project_copy_with_sta
     assert_eq!(images[0].marker.review_state, Some(ReviewState::Keep));
     assert!(images[0].marker.favorite);
     assert_eq!(text_files[0].marker.review_state, Some(ReviewState::Keep));
+    runtime.close_project().await.unwrap();
+}
+
+#[tokio::test]
+async fn marker_undo_is_lifo_and_close_reopen_starts_with_an_empty_session_stack() {
+    let cache = tempfile::tempdir().unwrap();
+    let project = tempfile::tempdir().unwrap();
+    create_review_project(project.path());
+    let runtime = review_runtime(cache.path(), ProjectAccess::ReadWrite);
+    let (snapshot, _, image, _) = indexed_fixture(&runtime, project.path()).await;
+    let session: SessionId = snapshot.session_id.parse().unwrap();
+    let generation = Generation::new(snapshot.generation);
+
+    runtime
+        .set_review_state(session, generation, &[image], Some(ReviewState::Keep))
+        .await
+        .unwrap();
+    runtime
+        .toggle_favorite(session, generation, &[image])
+        .await
+        .unwrap();
+    let favorite_undo = runtime
+        .undo_last(session, generation)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        favorite_undo.kind,
+        viewer_domain::operation::OperationKind::SetFavorite
+    );
+    let after_favorite = runtime
+        .selection_info(session, generation, &[image])
+        .await
+        .unwrap();
+    assert_eq!(after_favorite.common_review.state_name(), "common");
+    assert_eq!(after_favorite.common_favorite.state_name(), "common");
+    assert_eq!(
+        after_favorite.common_favorite,
+        SelectionAgreementDto::Common(false)
+    );
+
+    let review_undo = runtime
+        .undo_last(session, generation)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        review_undo.kind,
+        viewer_domain::operation::OperationKind::SetReviewState
+    );
+    let after_review = runtime
+        .selection_info(session, generation, &[image])
+        .await
+        .unwrap();
+    assert_eq!(
+        after_review.common_review,
+        SelectionAgreementDto::Common(None)
+    );
+
+    runtime.close_project().await.unwrap();
+    let reopened = runtime.open_project(project.path()).await.unwrap();
+    runtime.wait_for_scan().await.unwrap();
+    let reopened_session: SessionId = reopened.session_id.parse().unwrap();
+    let reopened_generation = Generation::new(reopened.generation);
+    assert_eq!(
+        runtime
+            .undo_last(reopened_session, reopened_generation)
+            .await
+            .unwrap(),
+        None
+    );
     runtime.close_project().await.unwrap();
 }
 

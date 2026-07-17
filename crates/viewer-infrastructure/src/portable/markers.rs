@@ -4,8 +4,8 @@ use rusqlite::{
 };
 use std::{collections::HashSet, path::Path, str::FromStr, sync::Mutex};
 use viewer_application::metadata::{
-    FavoritePatch, FilePathMove, Marker, MarkerChange, MarkerPatch, MarkerStoreError, MarkerTarget,
-    PortableMarker, PortableMetadataPort, ReviewPatch,
+    FavoritePatch, FilePathMove, Marker, MarkerChange, MarkerPatch, MarkerRestore,
+    MarkerStoreError, MarkerTarget, PortableMarker, PortableMetadataPort, ReviewPatch,
 };
 use viewer_domain::{
     EntityId, RelativePath,
@@ -164,6 +164,54 @@ impl PortableMetadataPort for PortableMarkerStore {
         Ok(changes)
     }
 
+    fn restore_batch(
+        &self,
+        restores: &[MarkerRestore],
+        updated_at_ms: i64,
+    ) -> Result<Vec<MarkerChange>, MarkerStoreError> {
+        if !self.writable {
+            return Err(MarkerStoreError::ReadOnly);
+        }
+        if restores.is_empty() || updated_at_ms < 0 {
+            return Err(MarkerStoreError::InvalidTarget);
+        }
+        let mut entities = HashSet::with_capacity(restores.len());
+        let mut paths = HashSet::with_capacity(restores.len());
+        if restores.iter().any(|restore| {
+            !entities.insert(restore.target.entity_id)
+                || !paths.insert(restore.target.relative_path.clone())
+        }) {
+            return Err(MarkerStoreError::InvalidTarget);
+        }
+        let mut connection = self.lock_connection();
+        let transaction = connection
+            .transaction()
+            .map_err(|_| MarkerStoreError::Unavailable)?;
+        for restore in restores {
+            let current = read_current_marker(&transaction, &restore.target.relative_path)?;
+            if current != restore.expected {
+                return Err(MarkerStoreError::InvalidTarget);
+            }
+        }
+        let mut changes = Vec::with_capacity(restores.len());
+        for restore in restores {
+            write_marker(
+                &transaction,
+                &restore.target,
+                restore.previous,
+                updated_at_ms,
+            )?;
+            changes.push(MarkerChange {
+                target: restore.target.clone(),
+                marker: restore.previous,
+            });
+        }
+        transaction
+            .commit()
+            .map_err(|_| MarkerStoreError::Unavailable)?;
+        Ok(changes)
+    }
+
     fn move_paths(
         &self,
         moves: &[FilePathMove],
@@ -258,6 +306,79 @@ impl PortableMetadataPort for PortableMarkerStore {
             .map_err(|_| MarkerStoreError::Unavailable)?;
         Ok(affected.len())
     }
+}
+
+fn read_current_marker(
+    connection: &Connection,
+    path: &RelativePath,
+) -> Result<Marker, MarkerStoreError> {
+    connection
+        .query_row(
+            "SELECT review_state, favorite FROM markers WHERE relative_path = ?1",
+            [path.as_str()],
+            |row| {
+                Ok(Marker {
+                    review_state: row
+                        .get::<_, Option<i64>>(0)?
+                        .map(decode_review_state)
+                        .transpose()?,
+                    favorite: row.get(1)?,
+                })
+            },
+        )
+        .optional()
+        .map(|marker| marker.unwrap_or_default())
+        .map_err(|_| MarkerStoreError::Unavailable)
+}
+
+fn write_marker(
+    connection: &Connection,
+    target: &MarkerTarget,
+    marker: Marker,
+    updated_at_ms: i64,
+) -> Result<(), MarkerStoreError> {
+    if marker == Marker::default() {
+        connection
+            .execute(
+                "DELETE FROM markers WHERE relative_path = ?1",
+                [target.relative_path.as_str()],
+            )
+            .map_err(|_| MarkerStoreError::Unavailable)?;
+        return Ok(());
+    }
+    let evidence_size = if target.kind == FileKind::Directory {
+        None
+    } else {
+        Some(i64::try_from(target.size).map_err(|_| MarkerStoreError::InvalidTarget)?)
+    };
+    let evidence_modified_ns =
+        (target.kind != FileKind::Directory).then(|| target.modified_ns.to_string());
+    connection
+        .execute(
+            "INSERT INTO markers(
+                marker_id, relative_path, kind, review_state, favorite,
+                evidence_size, evidence_modified_ns, updated_at_ms
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+             ON CONFLICT(relative_path) DO UPDATE SET
+                kind = excluded.kind,
+                review_state = excluded.review_state,
+                favorite = excluded.favorite,
+                evidence_size = excluded.evidence_size,
+                evidence_modified_ns = excluded.evidence_modified_ns,
+                updated_at_ms = excluded.updated_at_ms",
+            params![
+                EntityId::new().to_string(),
+                target.relative_path.as_str(),
+                encode_kind(target.kind),
+                marker.review_state.map(encode_review_state),
+                marker.favorite,
+                evidence_size,
+                evidence_modified_ns,
+                updated_at_ms,
+            ],
+        )
+        .map_err(|_| MarkerStoreError::Unavailable)?;
+    Ok(())
 }
 
 #[derive(Debug)]

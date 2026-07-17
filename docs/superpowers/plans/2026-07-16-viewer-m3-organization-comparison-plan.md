@@ -274,25 +274,25 @@ git commit -m "feat: execute recoverable file command batches"
 **Interfaces:**
 - Produces: `UndoStack` recording committed marker/favorite/rename/move batches, `UndoService::undo_last`, batch prevalidation and close reset.
 
-- [ ] **Step 1: Write failing undo matrix**
+- [x] **Step 1: Write failing undo matrix**
 
 Cover single/batch review, favorite, rename and move; LIFO order; mixed partial file results; occupied restore; identity/path drift; symlink/alias/root escape; copy/Trash exclusion; failed reverse action; close/reopen reset and read-only rejection.
 
 Run: `cargo test --test m3_undo -- --nocapture`
 
-- [ ] **Step 2: Record prior marker values after durable commit**
+- [x] **Step 2: Record prior marker values after durable commit**
 
 M2 marker commands capture every previous marker, write portable truth, sync the index, then append one undo batch. Undo uses one inverse marker batch and does not recursively create another undo entry.
 
-- [ ] **Step 3: Execute file undo through the same coordinator**
+- [x] **Step 3: Execute file undo through the same coordinator**
 
 Prevalidate the complete top batch before mutation. Reverse only completed rename/move items with matching snapshots; retain the stack entry on validation failure. Successful inverse moves use journal/expected-change/projection paths and consume the entry.
 
-- [ ] **Step 4: Verify GREEN**
+- [x] **Step 4: Verify GREEN**
 
 Run: `cargo test --test m3_undo && cargo test -p viewer-desktop --test m2_desktop_runtime marker && cargo clippy --locked --workspace --all-targets -- -D warnings`
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add crates/viewer-application src-tauri/src/state.rs tests/m3_undo.rs tests/m2_desktop_runtime.rs

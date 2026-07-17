@@ -62,6 +62,13 @@ pub struct MarkerChange {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MarkerRestore {
+    pub target: MarkerTarget,
+    pub expected: Marker,
+    pub previous: Marker,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PortableMarker {
     pub relative_path: RelativePath,
     pub kind: FileKind,
@@ -100,6 +107,12 @@ pub trait PortableMetadataPort: Send + Sync {
         &self,
         targets: &[MarkerTarget],
         patch: MarkerPatch,
+        updated_at_ms: i64,
+    ) -> Result<Vec<MarkerChange>, MarkerStoreError>;
+
+    fn restore_batch(
+        &self,
+        restores: &[MarkerRestore],
         updated_at_ms: i64,
     ) -> Result<Vec<MarkerChange>, MarkerStoreError>;
 
@@ -188,6 +201,79 @@ impl<'a> MarkerService<'a> {
         patch: MarkerPatch,
         updated_at_ms: i64,
     ) -> Result<Vec<MarkerChange>, MarkerServiceError> {
+        self.validate_targets(targets)?;
+
+        let changes = self.store.apply_batch(targets, patch, updated_at_ms)?;
+        self.projection
+            .sync_markers(&changes)
+            .map_err(|_| MarkerServiceError::CommittedButProjectionStale)?;
+        Ok(changes)
+    }
+
+    pub fn apply_with_undo(
+        &self,
+        targets: &[MarkerTarget],
+        patch: MarkerPatch,
+        updated_at_ms: i64,
+        undo: &mut crate::undo::UndoStack,
+    ) -> Result<Vec<MarkerChange>, MarkerServiceError> {
+        self.validate_targets(targets)?;
+        let paths = targets
+            .iter()
+            .map(|target| target.relative_path.clone())
+            .collect::<Vec<_>>();
+        let previous = self
+            .store
+            .markers_for_paths(&paths)?
+            .into_iter()
+            .map(|stored| (stored.relative_path, stored.marker))
+            .collect::<std::collections::HashMap<_, _>>();
+        let changes = self.store.apply_batch(targets, patch, updated_at_ms)?;
+        let kind = match (patch.review, patch.favorite) {
+            (ReviewPatch::Set(_) | ReviewPatch::Clear, FavoritePatch::Unchanged) => {
+                Some(viewer_domain::operation::OperationKind::SetReviewState)
+            }
+            (ReviewPatch::Unchanged, FavoritePatch::Set(_) | FavoritePatch::Toggle) => {
+                Some(viewer_domain::operation::OperationKind::SetFavorite)
+            }
+            _ => None,
+        };
+        if let Some(kind) = kind {
+            let actions = changes
+                .iter()
+                .filter_map(|change| {
+                    let previous = previous
+                        .get(&change.target.relative_path)
+                        .copied()
+                        .unwrap_or_default();
+                    (previous != change.marker).then(|| match kind {
+                        viewer_domain::operation::OperationKind::SetReviewState => {
+                            crate::undo::UndoAction::ReviewState {
+                                target: change.target.clone(),
+                                previous,
+                                expected: change.marker,
+                            }
+                        }
+                        viewer_domain::operation::OperationKind::SetFavorite => {
+                            crate::undo::UndoAction::Favorite {
+                                target: change.target.clone(),
+                                previous,
+                                expected: change.marker,
+                            }
+                        }
+                        _ => unreachable!("marker undo kind is fixed above"),
+                    })
+                })
+                .collect();
+            undo.record_batch(viewer_domain::OperationId::new(), kind, actions);
+        }
+        self.projection
+            .sync_markers(&changes)
+            .map_err(|_| MarkerServiceError::CommittedButProjectionStale)?;
+        Ok(changes)
+    }
+
+    fn validate_targets(&self, targets: &[MarkerTarget]) -> Result<(), MarkerServiceError> {
         if !self.writable {
             return Err(MarkerServiceError::ReadOnly);
         }
@@ -201,12 +287,7 @@ impl<'a> MarkerService<'a> {
         }) {
             return Err(MarkerServiceError::DuplicateTarget);
         }
-
-        let changes = self.store.apply_batch(targets, patch, updated_at_ms)?;
-        self.projection
-            .sync_markers(&changes)
-            .map_err(|_| MarkerServiceError::CommittedButProjectionStale)?;
-        Ok(changes)
+        Ok(())
     }
 }
 

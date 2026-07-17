@@ -1,3 +1,4 @@
+pub mod browse;
 pub mod image;
 pub mod operation;
 pub mod ports;
@@ -9,6 +10,7 @@ pub mod session;
 pub mod undo;
 pub mod watcher;
 
+pub use browse::{BrowseError, BrowseIndexError, BrowseIndexPort, BrowseService};
 pub use image::{ImageArtifact, ImageBackend, ImageError, ImageRequest};
 pub use operation::{FaultInjector, FileOperationError, FileSnapshot, InjectedCrash, NoFaults};
 pub use ports::{

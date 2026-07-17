@@ -35,3 +35,7 @@ path = "../../tests/progressive_scan.rs"
 [[test]]
 name = "search"
 path = "../../tests/search.rs"
+
+[[test]]
+name = "m1_browse_queries"
+path = "../../tests/m1_browse_queries.rs"

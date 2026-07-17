@@ -238,7 +238,7 @@ git commit -m "feat: add disposable session cache"
 - Consumes: indexed `FileNode` rows.
 - Produces: `FolderTreeItem`, `BrowserFile`, `ContentFolderCard`, `FolderWorkspace`, `BrowseIndexPort`, and `BrowseService`.
 
-- [ ] **Step 1: Write failing deep-tree and category/content tests**
+- [x] **Step 1: Write failing deep-tree and category/content tests**
 
 ```rust
 #[test]
@@ -258,21 +258,21 @@ fn category_query_returns_descendant_content_folders_at_arbitrary_depth() {
 }
 ```
 
-- [ ] **Step 2: Run the integration test and verify RED**
+- [x] **Step 2: Run the integration test and verify RED**
 
 Run: `cargo test --test m1_browse_queries -- --nocapture`
 
 Expected: FAIL because the browse port/projections are missing.
 
-- [ ] **Step 3: Add exact platform-neutral browse interfaces**
+- [x] **Step 3: Add exact platform-neutral browse interfaces**
 
 ```rust
 pub trait BrowseIndexPort: Send + Sync {
-    fn all_folders(&self) -> Result<Vec<FileNode>, BrowseError>;
-    fn node(&self, entity_id: EntityId) -> Result<Option<FileNode>, BrowseError>;
-    fn node_by_relative_path(&self, path: &RelativePath) -> Result<Option<FileNode>, BrowseError>;
-    fn direct_children(&self, folder: Option<EntityId>) -> Result<Vec<FileNode>, BrowseError>;
-    fn descendants(&self, folder: EntityId) -> Result<Vec<FileNode>, BrowseError>;
+    fn all_folders(&self) -> Result<Vec<FileNode>, BrowseIndexError>;
+    fn node(&self, entity_id: EntityId) -> Result<Option<FileNode>, BrowseIndexError>;
+    fn node_by_relative_path(&self, path: &RelativePath) -> Result<Option<FileNode>, BrowseIndexError>;
+    fn direct_children(&self, folder: Option<EntityId>) -> Result<Vec<FileNode>, BrowseIndexError>;
+    fn descendants(&self, folder: Option<EntityId>) -> Result<Vec<FileNode>, BrowseIndexError>;
 }
 
 pub enum FolderWorkspace {
@@ -284,17 +284,17 @@ pub enum FolderWorkspace {
 
 `BrowseService::folder_workspace(Option<EntityId>)` supports the project root as `None`, derives parents by validated relative path, includes empty folders in the tree, treats a folder with direct supported files as content, treats an ancestor with descendant content folders as category, and uses the first four image rows in stable `name COLLATE NOCASE, relative_path, entity_id` order for card representatives. `node_by_relative_path` is the only Markdown-resource lookup and returns no body or absolute path.
 
-- [ ] **Step 4: Implement `BrowseIndexPort for SessionIndex` with parameterized SQL**
+- [x] **Step 4: Implement `BrowseIndexPort for SessionIndex` with parameterized SQL**
 
 Add entity lookup, all-folder, direct-child, and prefix-bounded descendant queries. Do not return text bodies or absolute paths.
 
-- [ ] **Step 5: Run browse plus G3 regression tests and verify GREEN**
+- [x] **Step 5: Run browse plus G3 regression tests and verify GREEN**
 
 Run: `cargo test --test m1_browse_queries && cargo test --test progressive_scan && cargo test --test search`
 
 Expected: PASS for arbitrary depth, duplicate names, empty folders, 0–4 representative images, and existing scan/search behavior.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add crates/viewer-application/src/browse.rs crates/viewer-application/src/lib.rs crates/viewer-infrastructure/src/search/index.rs tests/m1_browse_queries.rs

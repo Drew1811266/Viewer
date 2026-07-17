@@ -1,5 +1,6 @@
 use rusqlite::{Connection, OptionalExtension, params};
 use std::{path::Path, str::FromStr, sync::Mutex, time::Duration};
+use viewer_application::browse::{BrowseIndexError, BrowseIndexPort};
 use viewer_domain::{
     EntityId, RelativePath,
     file::{FileKind, FileNode, ReviewState},
@@ -220,6 +221,115 @@ impl SessionIndex {
         self.connection
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+}
+
+impl BrowseIndexPort for SessionIndex {
+    fn all_folders(&self) -> Result<Vec<FileNode>, BrowseIndexError> {
+        let connection = self.lock_connection();
+        let mut statement = connection
+            .prepare_cached(
+                "SELECT entity_id, relative_path, kind, size, modified_ns
+                 FROM nodes
+                 WHERE kind = 0
+                 ORDER BY relative_path COLLATE NOCASE, relative_path, entity_id",
+            )
+            .map_err(SessionIndexError::from)?;
+        statement
+            .query_map([], read_node)
+            .map_err(SessionIndexError::from)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(SessionIndexError::from)
+            .map_err(Into::into)
+    }
+
+    fn node(&self, entity_id: EntityId) -> Result<Option<FileNode>, BrowseIndexError> {
+        let connection = self.lock_connection();
+        connection
+            .query_row(
+                "SELECT entity_id, relative_path, kind, size, modified_ns
+                 FROM nodes WHERE entity_id = ?1",
+                [entity_id.to_string()],
+                read_node,
+            )
+            .optional()
+            .map_err(SessionIndexError::from)
+            .map_err(Into::into)
+    }
+
+    fn node_by_relative_path(
+        &self,
+        path: &RelativePath,
+    ) -> Result<Option<FileNode>, BrowseIndexError> {
+        let connection = self.lock_connection();
+        connection
+            .query_row(
+                "SELECT entity_id, relative_path, kind, size, modified_ns
+                 FROM nodes WHERE relative_path = ?1",
+                [path.as_str()],
+                read_node,
+            )
+            .optional()
+            .map_err(SessionIndexError::from)
+            .map_err(Into::into)
+    }
+
+    fn direct_children(&self, folder: Option<EntityId>) -> Result<Vec<FileNode>, BrowseIndexError> {
+        self.directory_children(folder).map_err(Into::into)
+    }
+
+    fn descendants(&self, folder: Option<EntityId>) -> Result<Vec<FileNode>, BrowseIndexError> {
+        let connection = self.lock_connection();
+        match folder {
+            Some(folder) => {
+                let Some(path) = connection
+                    .query_row(
+                        "SELECT relative_path FROM nodes WHERE entity_id = ?1 AND kind = 0",
+                        [folder.to_string()],
+                        |row| row.get::<_, String>(0),
+                    )
+                    .optional()
+                    .map_err(SessionIndexError::from)?
+                else {
+                    return Ok(Vec::new());
+                };
+                let mut statement = connection
+                    .prepare_cached(
+                        "SELECT entity_id, relative_path, kind, size, modified_ns
+                         FROM nodes
+                         WHERE substr(relative_path, 1, length(?1) + 1) = ?1 || '/'
+                         ORDER BY relative_path COLLATE NOCASE, relative_path, entity_id",
+                    )
+                    .map_err(SessionIndexError::from)?;
+                statement
+                    .query_map([path], read_node)
+                    .map_err(SessionIndexError::from)?
+                    .collect::<Result<Vec<_>, _>>()
+                    .map_err(SessionIndexError::from)
+                    .map_err(Into::into)
+            }
+            None => {
+                let mut statement = connection
+                    .prepare_cached(
+                        "SELECT entity_id, relative_path, kind, size, modified_ns
+                         FROM nodes
+                         ORDER BY relative_path COLLATE NOCASE, relative_path, entity_id",
+                    )
+                    .map_err(SessionIndexError::from)?;
+                statement
+                    .query_map([], read_node)
+                    .map_err(SessionIndexError::from)?
+                    .collect::<Result<Vec<_>, _>>()
+                    .map_err(SessionIndexError::from)
+                    .map_err(Into::into)
+            }
+        }
+    }
+}
+
+impl From<SessionIndexError> for BrowseIndexError {
+    fn from(error: SessionIndexError) -> Self {
+        Self::Unavailable(error.to_string())
     }
 }
 

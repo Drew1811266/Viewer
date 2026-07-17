@@ -178,7 +178,12 @@ async fn runtime_rename_exposes_progress_results_and_a_safe_session_undo() {
         )
         .await
         .unwrap();
-    runtime.wait_for_operation(started.batch_id).await.unwrap();
+    let results = runtime
+        .operation_results(session_id, generation, started.batch_id, 0, 500)
+        .await
+        .unwrap();
+    assert_eq!(results.total, 1);
+    assert_eq!(results.items[0].code.as_str(), "renamed");
     let status = runtime
         .operation_status(session_id, generation, started.batch_id)
         .await
@@ -188,12 +193,6 @@ async fn runtime_rename_exposes_progress_results_and_a_safe_session_undo() {
         viewer_domain::operation::BatchLifecycle::Completed
     );
     assert_eq!((status.completed, status.failed), (1, 0));
-    let results = runtime
-        .operation_results(session_id, generation, started.batch_id, 0, 500)
-        .await
-        .unwrap();
-    assert_eq!(results.total, 1);
-    assert_eq!(results.items[0].code.as_str(), "renamed");
     assert!(project.path().join("approved-front.png").is_file());
     assert!(!project.path().join("front.png").exists());
 

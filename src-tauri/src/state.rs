@@ -1083,8 +1083,14 @@ impl DesktopRuntime {
         offset: usize,
         limit: usize,
     ) -> Result<BatchResultPage, CommandError> {
-        self.active_operations(expected_session, expected_generation)
-            .await?
+        let operations = self
+            .active_operations(expected_session, expected_generation)
+            .await?;
+        operations
+            .wait(batch_id)
+            .await
+            .map_err(operation_runtime_error)?;
+        operations
             .results(batch_id, offset, limit)
             .map_err(operation_runtime_error)
     }

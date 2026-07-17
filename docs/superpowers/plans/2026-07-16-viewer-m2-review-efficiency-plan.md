@@ -575,7 +575,7 @@ pnpm gate:m2
 
 Expected: fast-forward merge and exact M2 gate pass on `main`.
 
-- [ ] **Step 5: Begin M3 only after M2 is merged**
+- [x] **Step 5: Begin M3 only after M2 is merged**
 
 Create the M3 Organization and Comparison plan/worktree from the verified `main`. Do not implement any M3 feature before that plan is committed.
 

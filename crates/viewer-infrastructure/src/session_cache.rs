@@ -6,6 +6,7 @@ use std::{
     str::FromStr,
     sync::Mutex,
 };
+use viewer_application::ImageBackend;
 use viewer_domain::SessionId;
 
 pub const SESSION_CACHE_LIMIT_BYTES: u64 = 2 * 1024 * 1024 * 1024;
@@ -16,6 +17,7 @@ pub struct CachedImage {
     pub mime: String,
     pub width: u32,
     pub height: u32,
+    pub backend: ImageBackend,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -235,6 +237,7 @@ mod tests {
     use super::{CachedImage, SessionCache, SessionCacheError};
     use crate::image_cache::{ImageCacheKey, ImageCacheKeyInput};
     use std::{fs, str::FromStr};
+    use viewer_application::ImageBackend;
     use viewer_domain::{ProjectId, RelativePath, SessionId, image::ImageRepresentationKind};
 
     fn fixed_session(value: u128) -> SessionId {
@@ -264,6 +267,7 @@ mod tests {
             mime: "image/png".to_owned(),
             width: 64,
             height: 64,
+            backend: ImageBackend::ImageIo,
         }
     }
 
@@ -340,6 +344,7 @@ mod tests {
                 mime: "image/png".to_owned(),
                 width: 1,
                 height: 1,
+                backend: ImageBackend::ImageIo,
             },
         );
 
@@ -362,6 +367,7 @@ mod tests {
             mime: "image/png".to_owned(),
             width: 1,
             height: 1,
+            backend: ImageBackend::ImageIo,
         };
 
         cache.insert_image(key(9), image.clone()).unwrap();

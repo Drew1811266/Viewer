@@ -5,7 +5,7 @@ use viewer_application::{
     scan::{ScanEvent, ScanRequest},
 };
 use viewer_desktop::{
-    image_protocol::{ImageProtocolResolver, ProtocolError},
+    image_protocol::{ActiveImageSession, ImageProtocolResolver, ProtocolError},
     is_allowed_navigation, sanitize_markdown_html,
 };
 use viewer_domain::{EntityId, RelativePath, SessionId, search::Generation};
@@ -72,7 +72,9 @@ async fn project_scan_never_publishes_a_symlink_target() {
 fn image_protocol_rejects_unknown_cross_session_non_image_and_traversal_inputs() {
     let registry = Arc::new(ImageArtifactRegistry::default());
     let session_id = SessionId::new();
-    let resolver = ImageProtocolResolver::new(session_id, Arc::clone(&registry));
+    let active_session = ActiveImageSession::default();
+    active_session.set(Some(session_id));
+    let resolver = ImageProtocolResolver::new(active_session, Arc::clone(&registry));
     let directory = tempfile::tempdir().unwrap();
     let artifact = directory.path().join("artifact");
     fs::write(&artifact, b"not an image").unwrap();

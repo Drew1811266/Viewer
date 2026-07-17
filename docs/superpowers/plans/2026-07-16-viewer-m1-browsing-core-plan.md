@@ -552,7 +552,7 @@ git commit -m "feat: open and close progressive project sessions"
 - Consumes: `BrowseService`, `ImagePort`, `SessionCache`, `ImageArtifactRegistry`.
 - Produces: `folder_tree`, `query_folder`, `request_image_representation`, and session-bound `viewer-image://localhost/{session}/{token}` URLs.
 
-- [ ] **Step 1: Write failing browse/image command tests**
+- [x] **Step 1: Write failing browse/image command tests**
 
 ```rust
 #[tokio::test]
@@ -576,21 +576,21 @@ fn protocol_tracks_the_current_session_across_close_and_reopen() {
 }
 ```
 
-- [ ] **Step 2: Run focused tests and verify RED**
+- [x] **Step 2: Run focused tests and verify RED**
 
 Run: `cargo test -p viewer-desktop request_image protocol_tracks -- --nocapture`
 
 Expected: FAIL because the browse/image commands and active-session resolver are missing.
 
-- [ ] **Step 3: Implement query DTO mapping**
+- [x] **Step 3: Implement query DTO mapping**
 
 Return IDs as opaque strings, paths as validated relative strings, and file metadata only. Folder-card representative entries initially contain nullable image URLs; React requests visible thumbnails separately.
 
-- [ ] **Step 4: Implement the cached representation path**
+- [x] **Step 4: Implement the cached representation path**
 
 Re-read the indexed node by entity ID, require JPEG/PNG, join against the private root, canonicalize the file and parent, reject any escape/link/reserved component, compute `ImageCacheKey`, render only on cache miss, register the artifact, and return width/height/backend/url. A fit preview uses Image I/O; thumbnails use Quick Look with the accepted fallback.
 
-- [ ] **Step 5: Make the protocol follow `ActiveImageSession`**
+- [x] **Step 5: Make the protocol follow `ActiveImageSession`**
 
 ```rust
 #[derive(Clone, Default)]
@@ -599,13 +599,13 @@ pub struct ActiveImageSession(Arc<RwLock<Option<SessionId>>>);
 
 Set it only after project activation and clear it before removing registry/cache entries. Continue requiring exact GET, localhost authority, two normalized path segments, current session, registered random token, image MIME, and no-store headers.
 
-- [ ] **Step 6: Run M1 image and G1/security regression tests and verify GREEN**
+- [x] **Step 6: Run M1 image and G1/security regression tests and verify GREEN**
 
 Run: `cargo test -p viewer-desktop && ./scripts/run-g1-image-gate.sh && ./scripts/check-tauri-security.sh`
 
 Expected: PASS with one render for identical source/representation and no cross-session access.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src-tauri/src/commands src-tauri/src/dto.rs src-tauri/src/state.rs src-tauri/src/image_protocol.rs src-tauri/src/lib.rs tests/m1_desktop_runtime.rs

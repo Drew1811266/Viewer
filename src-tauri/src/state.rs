@@ -1,15 +1,23 @@
-use crate::{dto::ProjectSnapshot, error::CommandError};
+use crate::{
+    dto::{FolderTreeItemDto, FolderWorkspaceDto, ImageRepresentationDto, ProjectSnapshot},
+    error::CommandError,
+    image_protocol::ActiveImageSession,
+};
 use std::{path::Path, path::PathBuf, sync::Arc, time::Duration};
 use tokio::{sync::Mutex, task::JoinHandle, time::Instant};
 use viewer_application::{
-    ActiveProject, ProjectAccess, ProjectOpenError, ProjectProbeError, ProjectProbePort,
-    ProjectSessionService, ScanPort,
+    ActiveProject, BrowseIndexPort, BrowseService, ImageError, ImagePort, ImageRequest,
+    ProjectAccess, ProjectOpenError, ProjectProbeError, ProjectProbePort, ProjectSessionService,
+    ScanPort,
     scan::{CoordinatedScan, ScanEvent, ScanRequest},
     scheduler::{TaskClass, TaskCoordinator},
 };
-use viewer_domain::TaskId;
+use viewer_domain::{EntityId, TaskId, file::FileKind, image::ImageRepresentationKind};
 use viewer_infrastructure::{
-    scan::walker::ProjectWalker, search::index::SessionIndex, session_cache::SessionCache,
+    image_cache::{ImageArtifactRegistry, ImageCacheKey, ImageCacheKeyInput},
+    scan::walker::{ProjectWalker, is_macos_alias},
+    search::index::SessionIndex,
+    session_cache::{CachedImage, SessionCache},
 };
 
 pub use crate::dto::ScanEventDto;
@@ -23,6 +31,21 @@ struct NoopEventSink;
 
 impl DesktopEventSink for NoopEventSink {
     fn emit_scan(&self, _event: ScanEventDto) {}
+}
+
+pub trait DesktopImageFactory: Send + Sync {
+    fn create(&self, cache_root: &Path) -> Result<Arc<dyn ImagePort>, ImageError>;
+}
+
+#[derive(Default)]
+pub struct MacDesktopImageFactory;
+
+impl DesktopImageFactory for MacDesktopImageFactory {
+    fn create(&self, cache_root: &Path) -> Result<Arc<dyn ImagePort>, ImageError> {
+        Ok(Arc::new(viewer_platform_macos::image::MacImagePort::new(
+            cache_root,
+        )?))
+    }
 }
 
 #[derive(Clone)]
@@ -39,6 +62,7 @@ struct DesktopSession {
     snapshot: ProjectSnapshot,
     cache: Arc<SessionCache>,
     index: Arc<SessionIndex>,
+    image: Arc<dyn ImagePort>,
     scan_task_id: TaskId,
     scan_task: Option<JoinHandle<Result<(), CommandError>>>,
 }
@@ -49,6 +73,9 @@ pub struct DesktopRuntime {
     project_service: ProjectSessionService<SharedProjectProbe>,
     scanner: Arc<dyn ScanPort>,
     events: Arc<dyn DesktopEventSink>,
+    image_factory: Arc<dyn DesktopImageFactory>,
+    image_registry: Arc<ImageArtifactRegistry>,
+    active_image_session: ActiveImageSession,
     session: Mutex<Option<DesktopSession>>,
 }
 
@@ -68,6 +95,44 @@ impl DesktopRuntime {
         scanner: Arc<dyn ScanPort>,
         events: Arc<dyn DesktopEventSink>,
     ) -> Self {
+        Self::new_with_image_factory(
+            cache_base,
+            probe,
+            scanner,
+            events,
+            Arc::new(MacDesktopImageFactory),
+            Arc::new(ImageArtifactRegistry::default()),
+        )
+    }
+
+    pub fn new_with_image_factory(
+        cache_base: PathBuf,
+        probe: Arc<dyn ProjectProbePort>,
+        scanner: Arc<dyn ScanPort>,
+        events: Arc<dyn DesktopEventSink>,
+        image_factory: Arc<dyn DesktopImageFactory>,
+        image_registry: Arc<ImageArtifactRegistry>,
+    ) -> Self {
+        Self::new_with_image_services(
+            cache_base,
+            probe,
+            scanner,
+            events,
+            image_factory,
+            image_registry,
+            ActiveImageSession::default(),
+        )
+    }
+
+    pub fn new_with_image_services(
+        cache_base: PathBuf,
+        probe: Arc<dyn ProjectProbePort>,
+        scanner: Arc<dyn ScanPort>,
+        events: Arc<dyn DesktopEventSink>,
+        image_factory: Arc<dyn DesktopImageFactory>,
+        image_registry: Arc<ImageArtifactRegistry>,
+        active_image_session: ActiveImageSession,
+    ) -> Self {
         let coordinator = Arc::new(TaskCoordinator::default());
         Self {
             cache_base,
@@ -78,6 +143,9 @@ impl DesktopRuntime {
             coordinator,
             scanner,
             events,
+            image_factory,
+            image_registry,
+            active_image_session,
             session: Mutex::new(None),
         }
     }
@@ -106,7 +174,17 @@ impl DesktopRuntime {
                 return Err(error.into());
             }
         };
+        let image = match self.image_factory.create(&cache.image_root()) {
+            Ok(image) => image,
+            Err(error) => {
+                drop(index);
+                let _ = cache.cleanup();
+                let _ = self.project_service.close();
+                return Err(error.into());
+            }
+        };
         let snapshot = ProjectSnapshot::from(&active);
+        let active_session_id = active.session_id;
         let scan_task_id = TaskId::new();
         let scan_task = tokio::spawn(run_scan(
             active.clone(),
@@ -121,9 +199,11 @@ impl DesktopRuntime {
             snapshot: snapshot.clone(),
             cache,
             index,
+            image,
             scan_task_id,
             scan_task: Some(scan_task),
         });
+        self.active_image_session.set(Some(active_session_id));
         Ok(snapshot)
     }
 
@@ -131,7 +211,14 @@ impl DesktopRuntime {
         let Some(mut session) = self.session.lock().await.take() else {
             return Ok(());
         };
+        self.active_image_session.set(None);
+        self.image_registry
+            .remove_session(session.active.session_id);
         self.project_service.close().map_err(CommandError::from)?;
+        session
+            .image
+            .cancel_session(session.active.session_id)
+            .await;
         if let Some(scan_task) = session.scan_task.take() {
             scan_task.abort();
             let _ = scan_task.await;
@@ -195,6 +282,129 @@ impl DesktopRuntime {
             .map(|session| session.snapshot.clone())
     }
 
+    pub async fn folder_tree(&self) -> Result<Vec<FolderTreeItemDto>, CommandError> {
+        let index = self.active_index().await?;
+        BrowseService::new(index.as_ref())
+            .folder_tree()
+            .map(|folders| folders.into_iter().map(FolderTreeItemDto::from).collect())
+            .map_err(CommandError::from)
+    }
+
+    pub async fn query_folder(
+        &self,
+        folder: Option<EntityId>,
+    ) -> Result<FolderWorkspaceDto, CommandError> {
+        let index = self.active_index().await?;
+        BrowseService::new(index.as_ref())
+            .folder_workspace(folder)
+            .map(FolderWorkspaceDto::from)
+            .map_err(CommandError::from)
+    }
+
+    pub async fn request_image(
+        &self,
+        entity_id: EntityId,
+        kind: ImageRepresentationKind,
+    ) -> Result<ImageRepresentationDto, CommandError> {
+        let (active, index, cache, image) = {
+            let session = self.session.lock().await;
+            let session = session.as_ref().ok_or_else(project_not_open)?;
+            (
+                session.active.clone(),
+                Arc::clone(&session.index),
+                Arc::clone(&session.cache),
+                Arc::clone(&session.image),
+            )
+        };
+        let node = BrowseIndexPort::node(index.as_ref(), entity_id)
+            .map_err(CommandError::from)?
+            .ok_or_else(image_not_found)?;
+        if !matches!(node.kind, FileKind::Jpeg | FileKind::Png) {
+            return Err(image_not_found());
+        }
+        let (source, source_size, source_mtime_ns) = validated_image_source(&active, &node)?;
+        let cache_key = ImageCacheKey::from_request(&ImageCacheKeyInput {
+            project_id: active.project_id,
+            relative_path: &node.relative_path,
+            source_size,
+            source_mtime_ns,
+            kind,
+            renderer_version: 1,
+        });
+        let cached = match cache.lookup_image(cache_key) {
+            Some(cached) => cached,
+            None => {
+                let artifact = image
+                    .render(ImageRequest {
+                        session_id: active.session_id,
+                        entity_id,
+                        source,
+                        kind,
+                    })
+                    .await
+                    .map_err(CommandError::from)?;
+                let cached = CachedImage {
+                    path: artifact.cache_path,
+                    mime: artifact.mime.to_owned(),
+                    width: artifact.width,
+                    height: artifact.height,
+                    backend: artifact.backend,
+                };
+                cache
+                    .insert_image(cache_key, cached.clone())
+                    .map_err(CommandError::from)?;
+                cached
+            }
+        };
+        let token = self
+            .register_if_session_active(&active, entity_id, &cached)
+            .await?;
+        Ok(ImageRepresentationDto {
+            cache_key: cache_key.to_hex(),
+            url: format!(
+                "viewer-image://localhost/{}/{}",
+                active.session_id,
+                token.as_str()
+            ),
+            width: cached.width,
+            height: cached.height,
+            backend: cached.backend.into(),
+        })
+    }
+
+    async fn active_index(&self) -> Result<Arc<SessionIndex>, CommandError> {
+        self.session
+            .lock()
+            .await
+            .as_ref()
+            .map(|session| Arc::clone(&session.index))
+            .ok_or_else(project_not_open)
+    }
+
+    async fn register_if_session_active(
+        &self,
+        active: &ActiveProject,
+        entity_id: EntityId,
+        cached: &CachedImage,
+    ) -> Result<viewer_infrastructure::image_cache::ImageArtifactToken, CommandError> {
+        let session = self.session.lock().await;
+        if session
+            .as_ref()
+            .is_none_or(|session| session.active.session_id != active.session_id)
+            || self.active_image_session.get() != Some(active.session_id)
+        {
+            return Err(CommandError::from(ImageError::Cancelled));
+        }
+        self.image_registry
+            .insert(
+                active.session_id,
+                entity_id,
+                &cached.path,
+                cached.mime.clone(),
+            )
+            .map_err(CommandError::from)
+    }
+
     pub async fn resources_ready(&self) -> bool {
         let session = self.session.lock().await;
         let Some(session) = session.as_ref() else {
@@ -204,6 +414,81 @@ impl DesktopRuntime {
             && session.cache.root().is_dir()
             && session.index.directory_children(None).is_ok()
     }
+}
+
+fn project_not_open() -> CommandError {
+    CommandError::new(
+        "project_not_open",
+        crate::error::ErrorCategory::Conflict,
+        "请先打开一个项目。",
+        false,
+    )
+}
+
+fn image_not_found() -> CommandError {
+    CommandError::new(
+        "image_not_found",
+        crate::error::ErrorCategory::Content,
+        "该图片已不可用，请刷新项目后重试。",
+        true,
+    )
+}
+
+fn validated_image_source(
+    active: &ActiveProject,
+    node: &viewer_domain::file::FileNode,
+) -> Result<(PathBuf, u64, i128), CommandError> {
+    let candidate = active.root.join(node.relative_path.as_str());
+    let metadata = std::fs::symlink_metadata(&candidate).map_err(|_| image_not_found())?;
+    if metadata.file_type().is_symlink() || !metadata.is_file() || is_macos_alias(&candidate) {
+        return Err(image_not_found());
+    }
+    if entity_id_for_metadata(&metadata, &node.relative_path) != node.entity_id {
+        return Err(image_not_found());
+    }
+    let parent = candidate.parent().ok_or_else(image_not_found)?;
+    let canonical_parent = std::fs::canonicalize(parent).map_err(|_| image_not_found())?;
+    let canonical_source = std::fs::canonicalize(&candidate).map_err(|_| image_not_found())?;
+    if !canonical_parent.starts_with(&active.root) || !canonical_source.starts_with(&active.root) {
+        return Err(image_not_found());
+    }
+    Ok((canonical_source, metadata.len(), modified_ns(&metadata)))
+}
+
+#[cfg(unix)]
+fn entity_id_for_metadata(
+    metadata: &std::fs::Metadata,
+    _relative_path: &viewer_domain::RelativePath,
+) -> EntityId {
+    use std::os::unix::fs::MetadataExt;
+    EntityId::from_u128((u128::from(metadata.dev()) << 64) | u128::from(metadata.ino()))
+}
+
+#[cfg(not(unix))]
+fn entity_id_for_metadata(
+    metadata: &std::fs::Metadata,
+    relative_path: &viewer_domain::RelativePath,
+) -> EntityId {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    relative_path.as_str().hash(&mut hasher);
+    metadata.len().hash(&mut hasher);
+    EntityId::from_u128(u128::from(hasher.finish()))
+}
+
+#[cfg(unix)]
+fn modified_ns(metadata: &std::fs::Metadata) -> i128 {
+    use std::os::unix::fs::MetadataExt;
+    i128::from(metadata.mtime()) * 1_000_000_000 + i128::from(metadata.mtime_nsec())
+}
+
+#[cfg(not(unix))]
+fn modified_ns(metadata: &std::fs::Metadata) -> i128 {
+    metadata
+        .modified()
+        .ok()
+        .and_then(|modified| modified.duration_since(std::time::UNIX_EPOCH).ok())
+        .map_or(0, |duration| duration.as_nanos() as i128)
 }
 
 async fn run_scan(

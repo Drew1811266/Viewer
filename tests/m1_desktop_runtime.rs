@@ -2,16 +2,25 @@ use serde_json::json;
 use std::{
     fs,
     path::Path,
-    sync::{Arc, Mutex},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicUsize, Ordering},
+    },
 };
 use viewer_application::{
-    ProjectAccess, ProjectOpenError, ProjectProbeError, ProjectProbeOperation, ProjectProbePort,
+    ImageArtifact, ImageBackend, ImageError, ImagePort, ImageRequest, ProjectAccess,
+    ProjectOpenError, ProjectProbeError, ProjectProbeOperation, ProjectProbePort,
 };
 use viewer_desktop::{
-    dto::ProjectAccessDto,
+    dto::{FolderWorkspaceDto, ProjectAccessDto},
     error::{CommandError, ErrorCategory},
-    state::{DesktopEventSink, DesktopRuntime, ScanEventDto},
+    state::{DesktopEventSink, DesktopImageFactory, DesktopRuntime, ScanEventDto},
 };
+use viewer_domain::{
+    EntityId, SessionId,
+    image::{ImageFormat, ImageProbe, ImageRepresentationKind},
+};
+use viewer_infrastructure::image_cache::ImageArtifactRegistry;
 use viewer_infrastructure::scan::walker::ProjectWalker;
 
 struct FixedProbe(ProjectAccess);
@@ -35,6 +44,53 @@ impl DesktopEventSink for RecordingEvents {
     fn emit_scan(&self, event: ScanEventDto) {
         self.0.lock().unwrap().push(event);
     }
+}
+
+struct CountingImageFactory {
+    renders: Arc<AtomicUsize>,
+}
+
+impl DesktopImageFactory for CountingImageFactory {
+    fn create(&self, cache_root: &Path) -> Result<Arc<dyn ImagePort>, ImageError> {
+        Ok(Arc::new(CountingImagePort {
+            cache_root: cache_root.to_path_buf(),
+            renders: Arc::clone(&self.renders),
+        }))
+    }
+}
+
+struct CountingImagePort {
+    cache_root: std::path::PathBuf,
+    renders: Arc<AtomicUsize>,
+}
+
+#[async_trait::async_trait]
+impl ImagePort for CountingImagePort {
+    async fn probe(&self, _source: &Path) -> Result<ImageProbe, ImageError> {
+        Ok(ImageProbe {
+            format: ImageFormat::Jpeg,
+            width: 640,
+            height: 480,
+            orientation: 1,
+            has_alpha: false,
+            icc_profile_name: None,
+        })
+    }
+
+    async fn render(&self, _request: ImageRequest) -> Result<ImageArtifact, ImageError> {
+        let render = self.renders.fetch_add(1, Ordering::SeqCst) + 1;
+        let cache_path = self.cache_root.join(format!("render-{render}.png"));
+        fs::write(&cache_path, b"png artifact").unwrap();
+        Ok(ImageArtifact {
+            cache_path,
+            mime: "image/png",
+            width: 320,
+            height: 240,
+            backend: ImageBackend::ImageIo,
+        })
+    }
+
+    async fn cancel_session(&self, _session_id: SessionId) {}
 }
 
 #[test]
@@ -177,5 +233,47 @@ async fn read_only_project_scan_never_writes_viewer_metadata_into_the_project() 
 
     assert_eq!(opened.access, ProjectAccessDto::ReadOnly);
     assert!(!project.path().join(".viewer").exists());
+    runtime.close_project().await.unwrap();
+}
+
+#[tokio::test]
+async fn folder_query_and_image_representation_revalidate_and_reuse_cache() {
+    let cache_base = tempfile::tempdir().unwrap();
+    let project = tempfile::tempdir().unwrap();
+    fs::write(project.path().join("front.jpg"), b"jpeg source").unwrap();
+    fs::write(project.path().join("notes.txt"), b"notes").unwrap();
+    let renders = Arc::new(AtomicUsize::new(0));
+    let runtime = DesktopRuntime::new_with_image_factory(
+        cache_base.path().to_path_buf(),
+        Arc::new(FixedProbe(ProjectAccess::ReadWrite)),
+        Arc::new(ProjectWalker),
+        Arc::new(RecordingEvents::default()),
+        Arc::new(CountingImageFactory {
+            renders: Arc::clone(&renders),
+        }),
+        Arc::new(ImageArtifactRegistry::default()),
+    );
+    runtime.open_project(project.path()).await.unwrap();
+    runtime.wait_for_scan().await.unwrap();
+
+    let FolderWorkspaceDto::Content { images, text_files } =
+        runtime.query_folder(None).await.unwrap()
+    else {
+        panic!("root should be a content folder")
+    };
+    assert_eq!(images.len(), 1);
+    assert_eq!(text_files.len(), 1);
+    let entity_id = images[0].entity_id.parse::<EntityId>().unwrap();
+    let kind = ImageRepresentationKind::Thumbnail {
+        max_pixels: 320,
+        scale_milli: 2_000,
+    };
+
+    let first = runtime.request_image(entity_id, kind).await.unwrap();
+    let second = runtime.request_image(entity_id, kind).await.unwrap();
+
+    assert_eq!(first.cache_key, second.cache_key);
+    assert_ne!(first.url, second.url);
+    assert_eq!(renders.load(Ordering::SeqCst), 1);
     runtime.close_project().await.unwrap();
 }

@@ -275,7 +275,7 @@ fn modified_ns(metadata: &std::fs::Metadata) -> i128 {
 }
 
 #[cfg(target_os = "macos")]
-fn is_macos_alias(path: &Path) -> bool {
+pub fn is_macos_alias(path: &Path) -> bool {
     use std::{ffi::CString, os::unix::ffi::OsStrExt};
     let Ok(path) = CString::new(path.as_os_str().as_bytes()) else {
         return false;
@@ -298,6 +298,6 @@ fn is_macos_alias(path: &Path) -> bool {
 }
 
 #[cfg(not(target_os = "macos"))]
-fn is_macos_alias(_path: &Path) -> bool {
+pub fn is_macos_alias(_path: &Path) -> bool {
     false
 }

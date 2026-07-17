@@ -1,7 +1,6 @@
 use serde::Serialize;
 use std::sync::{Arc, OnceLock};
 use tauri::{Emitter, Manager};
-use viewer_domain::SessionId;
 use viewer_infrastructure::image_cache::ImageArtifactRegistry;
 
 pub mod commands;
@@ -71,10 +70,13 @@ fn navigation_guard<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
 
 pub fn run() {
     let registry = Arc::new(ImageArtifactRegistry::default());
+    let active_image_session = image_protocol::ActiveImageSession::default();
     let image_resolver = Arc::new(image_protocol::ImageProtocolResolver::new(
-        SessionId::new(),
-        registry,
+        active_image_session.clone(),
+        Arc::clone(&registry),
     ));
+    let runtime_registry = Arc::clone(&registry);
+    let runtime_active_image_session = active_image_session.clone();
     let app = tauri::Builder::default()
         .plugin(navigation_guard())
         .plugin(tauri_plugin_dialog::init())
@@ -90,9 +92,12 @@ pub fn run() {
             commands::project::open_project,
             commands::project::close_project,
             commands::project::project_snapshot,
-            commands::project::cancel_task
+            commands::project::cancel_task,
+            commands::browse::folder_tree,
+            commands::browse::query_folder,
+            commands::browse::request_image_representation
         ])
-        .setup(|app| {
+        .setup(move |app| {
             let cache_base = app.path().app_cache_dir()?.join("sessions");
             let _ = viewer_infrastructure::session_cache::SessionCache::cleanup_stale(
                 &cache_base,
@@ -101,11 +106,14 @@ pub fn run() {
             let event_sink = Arc::new(TauriEventSink::default());
             event_sink.attach(app.handle().clone());
             let event_port: Arc<dyn state::DesktopEventSink> = event_sink;
-            let runtime = Arc::new(state::DesktopRuntime::new_with_dependencies(
+            let runtime = Arc::new(state::DesktopRuntime::new_with_image_services(
                 cache_base,
                 Arc::new(viewer_platform_macos::MacProjectProbe),
                 Arc::new(viewer_infrastructure::scan::walker::ProjectWalker),
                 event_port,
+                Arc::new(state::MacDesktopImageFactory),
+                Arc::clone(&runtime_registry),
+                runtime_active_image_session.clone(),
             ));
             app.manage(runtime);
 

@@ -4079,6 +4079,8 @@ name = "viewer-desktop"
 version = "0.1.0"
 dependencies = [
  "ammonia",
+ "async-trait",
+ "libc",
  "serde",
  "serde_json",
  "tauri",

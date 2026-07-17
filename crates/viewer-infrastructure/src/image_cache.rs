@@ -144,11 +144,13 @@ impl ImageArtifactRegistry {
         mime: impl Into<String>,
     ) -> Result<ImageArtifactToken, ImageArtifactRegistryError> {
         let cache_path = cache_path.into();
-        let metadata = fs::metadata(&cache_path)
+        let metadata = fs::symlink_metadata(&cache_path)
             .map_err(|error| ImageArtifactRegistryError::ArtifactUnavailable(error.to_string()))?;
-        if !metadata.is_file() {
+        if metadata.file_type().is_symlink() || !metadata.is_file() {
             return Err(ImageArtifactRegistryError::NotAFile);
         }
+        let cache_path = fs::canonicalize(cache_path)
+            .map_err(|error| ImageArtifactRegistryError::ArtifactUnavailable(error.to_string()))?;
         let artifact = RegisteredImageArtifact {
             entity_id,
             cache_path,

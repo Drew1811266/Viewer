@@ -1,6 +1,11 @@
 use serde::Serialize;
-use viewer_application::{ProjectOpenError, ProjectProbeError};
-use viewer_infrastructure::{search::index::SessionIndexError, session_cache::SessionCacheError};
+use viewer_application::{
+    BrowseError, BrowseIndexError, ImageError, ProjectOpenError, ProjectProbeError,
+};
+use viewer_infrastructure::{
+    image_cache::ImageArtifactRegistryError, search::index::SessionIndexError,
+    session_cache::SessionCacheError,
+};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -92,6 +97,63 @@ impl From<SessionIndexError> for CommandError {
             "项目临时索引不可用，请重新打开项目。",
             true,
         )
+    }
+}
+
+impl From<BrowseIndexError> for CommandError {
+    fn from(_error: BrowseIndexError) -> Self {
+        Self::new(
+            "session_index_unavailable",
+            ErrorCategory::Consistency,
+            "项目临时索引不可用，请重新打开项目。",
+            true,
+        )
+    }
+}
+
+impl From<BrowseError> for CommandError {
+    fn from(error: BrowseError) -> Self {
+        match error {
+            BrowseError::Index(error) => error.into(),
+            BrowseError::FolderNotFound | BrowseError::NotAFolder => Self::new(
+                "folder_not_found",
+                ErrorCategory::Content,
+                "该文件夹已不可用，请刷新项目后重试。",
+                true,
+            ),
+        }
+    }
+}
+
+impl From<ImageError> for CommandError {
+    fn from(error: ImageError) -> Self {
+        match error {
+            ImageError::Unsupported | ImageError::Corrupt => Self::new(
+                "image_unavailable",
+                ErrorCategory::Content,
+                "无法预览该图片。",
+                false,
+            ),
+            ImageError::BudgetExceeded => Self::new(
+                "image_budget_exceeded",
+                ErrorCategory::Content,
+                "图片尺寸超出安全预览限制。",
+                false,
+            ),
+            ImageError::Cancelled => Self::new(
+                "image_cancelled",
+                ErrorCategory::Conflict,
+                "图片预览已取消。",
+                true,
+            ),
+            ImageError::Io(_) => internal_error(),
+        }
+    }
+}
+
+impl From<ImageArtifactRegistryError> for CommandError {
+    fn from(_error: ImageArtifactRegistryError) -> Self {
+        internal_error()
     }
 }
 

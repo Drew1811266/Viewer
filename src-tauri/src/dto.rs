@@ -6,11 +6,12 @@ use viewer_application::{
         BrowserFile, ContentFolderCard, FolderReviewProgress, FolderTreeItem, FolderWorkspace,
         SelectionAgreement, SelectionInfo, SelectionTypeCounts,
     },
-    metadata::IndexProgress,
+    metadata::{IndexProgress, MarkerChange},
 };
 use viewer_domain::{
     RelativePath, TaskId,
     file::{FileNode, ImageMetadata, Marker, ReviewState},
+    search::{MatchRange, SearchHit, SearchPage},
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
@@ -368,6 +369,25 @@ where
     }
 }
 
+impl<T> SelectionAgreementDto<T> {
+    pub const fn state_name(&self) -> &'static str {
+        match self {
+            Self::NoneSelected => "none_selected",
+            Self::Common(_) => "common",
+            Self::Mixed => "mixed",
+        }
+    }
+}
+
+impl SelectionAgreementDto<Option<ReviewState>> {
+    pub const fn review_value(&self) -> Option<ReviewState> {
+        match self {
+            Self::Common(value) => *value,
+            Self::NoneSelected | Self::Mixed => None,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SelectionTypeCountsDto {
@@ -412,6 +432,231 @@ impl From<SelectionInfo> for SelectionInfoDto {
                 SelectionAgreement::Mixed => SelectionAgreementDto::Mixed,
             },
             common_favorite: info.common_favorite.into(),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MatchRangeDto {
+    pub start: u32,
+    pub end: u32,
+}
+
+impl From<MatchRange> for MatchRangeDto {
+    fn from(range: MatchRange) -> Self {
+        Self {
+            start: range.start,
+            end: range.end,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchHitDto {
+    pub entity_id: String,
+    pub relative_path: String,
+    pub name: String,
+    pub kind: viewer_domain::file::FileKind,
+    pub size: u64,
+    pub modified_ns: String,
+    pub marker: MarkerDto,
+    pub image_metadata: Option<ImageMetadataDto>,
+    pub matched_field: viewer_domain::search::MatchedField,
+    pub score: i64,
+    pub group_relative_path: Option<String>,
+    pub match_ranges: Vec<MatchRangeDto>,
+}
+
+impl From<SearchHit> for SearchHitDto {
+    fn from(hit: SearchHit) -> Self {
+        let name = hit
+            .node
+            .relative_path
+            .as_str()
+            .rsplit_once('/')
+            .map_or(hit.node.relative_path.as_str(), |(_, name)| name)
+            .to_owned();
+        Self {
+            entity_id: hit.node.entity_id.to_string(),
+            relative_path: hit.node.relative_path.as_str().to_owned(),
+            name,
+            kind: hit.node.kind,
+            size: hit.node.size,
+            modified_ns: hit.node.modified_ns.to_string(),
+            marker: hit.marker.into(),
+            image_metadata: hit.image_metadata.map(Into::into),
+            matched_field: hit.matched_field,
+            score: hit.score,
+            group_relative_path: hit.group_relative_path.map(|path| path.as_str().to_owned()),
+            match_ranges: hit.match_ranges.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchPageDto {
+    pub revision: u64,
+    pub total: u32,
+    pub hits: Vec<SearchHitDto>,
+    pub progress: SearchProgressDto,
+}
+
+impl SearchPageDto {
+    pub fn from_page(revision: u64, page: SearchPage) -> Self {
+        Self {
+            revision,
+            total: page.total,
+            hits: page.hits.into_iter().map(Into::into).collect(),
+            progress: page.progress.into(),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchProgressDto {
+    pub images_total: u64,
+    pub images_ready: u64,
+    pub images_failed: u64,
+    pub text_total: u64,
+    pub text_ready: u64,
+    pub text_skipped: u64,
+    pub text_failed: u64,
+    pub complete: bool,
+}
+
+impl From<IndexProgress> for SearchProgressDto {
+    fn from(progress: IndexProgress) -> Self {
+        Self {
+            images_total: progress.images_total,
+            images_ready: progress.images_ready,
+            images_failed: progress.images_failed,
+            text_total: progress.text_total,
+            text_ready: progress.text_ready,
+            text_skipped: progress.text_skipped,
+            text_failed: progress.text_failed,
+            complete: progress.is_complete(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TextSnippetDto {
+    pub revision: u64,
+    pub entity_id: String,
+    pub snippet: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MarkerChangeDto {
+    pub entity_id: String,
+    pub relative_path: String,
+    pub kind: viewer_domain::file::FileKind,
+    pub marker: MarkerDto,
+}
+
+impl From<MarkerChange> for MarkerChangeDto {
+    fn from(change: MarkerChange) -> Self {
+        Self {
+            entity_id: change.target.entity_id.to_string(),
+            relative_path: change.target.relative_path.as_str().to_owned(),
+            kind: change.target.kind,
+            marker: change.marker.into(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MarkerBatchResultDto {
+    pub changes: Vec<MarkerChangeDto>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize)]
+#[serde(default, deny_unknown_fields, rename_all = "camelCase")]
+pub struct SearchFiltersRequestDto {
+    pub kinds: Vec<viewer_domain::file::FileKind>,
+    pub review_states: Vec<ReviewState>,
+    pub favorite_only: bool,
+    pub unmarked_only: bool,
+    pub orientations: Vec<viewer_domain::search::ImageOrientation>,
+    pub width_min: Option<u32>,
+    pub width_max: Option<u32>,
+    pub height_min: Option<u32>,
+    pub height_max: Option<u32>,
+    pub size_min: Option<u64>,
+    pub size_max: Option<u64>,
+    pub modified_ns_min: Option<String>,
+    pub modified_ns_max: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct SearchSortRequestDto {
+    pub key: viewer_domain::search::SearchSortKey,
+    pub direction: viewer_domain::search::SortDirection,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct SearchProjectRequestDto {
+    pub session_id: String,
+    pub generation: u64,
+    pub revision: u64,
+    pub text: String,
+    pub scope_folder_id: Option<String>,
+    #[serde(default)]
+    pub filters: SearchFiltersRequestDto,
+    pub sort: SearchSortRequestDto,
+    pub layout: viewer_domain::search::SearchLayout,
+    pub offset: u32,
+    pub limit: u32,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct SearchTextSnippetRequestDto {
+    pub session_id: String,
+    pub generation: u64,
+    pub revision: u64,
+    pub entity_id: String,
+    pub query: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct SetReviewStateRequestDto {
+    pub session_id: String,
+    pub generation: u64,
+    pub entity_ids: Vec<String>,
+    pub review_state: Option<ReviewState>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct ToggleFavoriteRequestDto {
+    pub session_id: String,
+    pub generation: u64,
+    pub entity_ids: Vec<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct SelectionInfoRequestDto {
+    pub session_id: String,
+    pub generation: u64,
+    pub entity_ids: Vec<String>,
+}
+
+impl From<Vec<MarkerChange>> for MarkerBatchResultDto {
+    fn from(changes: Vec<MarkerChange>) -> Self {
+        Self {
+            changes: changes.into_iter().map(Into::into).collect(),
         }
     }
 }
@@ -568,5 +813,39 @@ mod tests {
         assert_eq!(json["commonReview"]["state"], "common");
         assert!(json["commonReview"]["value"].is_null());
         assert_eq!(json["commonFavorite"]["state"], "mixed");
+    }
+
+    #[test]
+    fn m2_command_requests_accept_only_the_frozen_camel_case_shape() {
+        let request: super::SearchProjectRequestDto = serde_json::from_value(serde_json::json!({
+            "sessionId": "00000000-0000-0000-0000-000000000001",
+            "generation": 3,
+            "revision": 7,
+            "text": "鞋",
+            "scopeFolderId": null,
+            "filters": {
+                "kinds": ["jpeg"],
+                "reviewStates": ["keep"],
+                "favoriteOnly": true,
+                "modifiedNsMin": "123"
+            },
+            "sort": { "key": "natural_name", "direction": "ascending" },
+            "layout": "flat",
+            "offset": 0,
+            "limit": 200
+        }))
+        .unwrap();
+        assert_eq!(request.generation, 3);
+        assert_eq!(request.revision, 7);
+        assert_eq!(request.filters.modified_ns_min.as_deref(), Some("123"));
+
+        let invalid =
+            serde_json::from_value::<super::SetReviewStateRequestDto>(serde_json::json!({
+                "session_id": "not-camel-case",
+                "generation": 1,
+                "entityIds": [],
+                "reviewState": null
+            }));
+        assert!(invalid.is_err());
     }
 }

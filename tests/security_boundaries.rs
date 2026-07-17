@@ -1,7 +1,7 @@
-use std::{fs, sync::Arc};
+use std::{fs, path::Path, sync::Arc};
 use tauri::Url;
 use viewer_application::{
-    ScanPort,
+    ProjectAccess, ProjectProbeError, ProjectProbePort, ScanPort,
     scan::{ScanEvent, ScanRequest},
 };
 use viewer_desktop::{
@@ -9,6 +9,7 @@ use viewer_desktop::{
     is_allowed_navigation,
     markdown::ExternalUrl,
     sanitize_markdown_html,
+    state::DesktopRuntime,
 };
 use viewer_domain::{EntityId, RelativePath, SessionId, search::Generation};
 use viewer_infrastructure::{image_cache::ImageArtifactRegistry, scan::walker::ProjectWalker};
@@ -217,4 +218,47 @@ fn directive<'a>(csp: &'a str, name: &str) -> Vec<&'a str> {
             (parts.next() == Some(name)).then(|| parts.collect())
         })
         .unwrap_or_default()
+}
+
+struct WritableProbe;
+
+impl ProjectProbePort for WritableProbe {
+    fn probe(&self, _root: &Path) -> Result<ProjectAccess, ProjectProbeError> {
+        Ok(ProjectAccess::ReadWrite)
+    }
+}
+
+#[tokio::test]
+async fn portable_metadata_failures_return_safe_errors_and_leave_no_active_session() {
+    let cache = tempfile::tempdir().unwrap();
+    let project = tempfile::tempdir().unwrap();
+    fs::create_dir(project.path().join(".viewer")).unwrap();
+    fs::write(
+        project.path().join(".viewer/project.json"),
+        b"{not-valid-json",
+    )
+    .unwrap();
+    let runtime = DesktopRuntime::new(cache.path().to_owned(), Arc::new(WritableProbe));
+
+    let error = runtime.open_project(project.path()).await.unwrap_err();
+    assert_eq!(error.code, "portable_metadata_unavailable");
+    let serialized = serde_json::to_string(&error).unwrap();
+    for secret in [
+        project.path().to_str().unwrap(),
+        "metadata.sqlite",
+        "SQLite",
+        "database",
+    ] {
+        assert!(
+            !serialized.contains(secret),
+            "leaked {secret}: {serialized}"
+        );
+    }
+    assert!(runtime.snapshot().await.is_none());
+    assert_eq!(fs::read_dir(cache.path()).unwrap().count(), 0);
+
+    fs::remove_file(project.path().join(".viewer/project.json")).unwrap();
+    let snapshot = runtime.open_project(project.path()).await.unwrap();
+    assert!(!snapshot.project_id.is_empty());
+    runtime.close_project().await.unwrap();
 }

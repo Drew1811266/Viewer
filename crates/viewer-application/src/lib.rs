@@ -20,7 +20,7 @@ pub use ports::{
     ProjectProbeOperation, ProjectProbePort, ScanPort, SearchPort, SearchSnippetPort, TrashPort,
     VolumePort,
 };
-pub use project::{ActiveProject, ProjectOpenError, ProjectSessionService};
+pub use project::{ActiveProject, PreparedProject, ProjectOpenError, ProjectSessionService};
 pub use session::{ProjectSession, SessionState, SessionTransitionError};
 pub use text::{
     MAX_TEXT_PREVIEW_BYTES, TextEncoding, TextPreview, TextPreviewError, TextPreviewPort,

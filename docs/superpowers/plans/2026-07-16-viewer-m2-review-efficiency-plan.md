@@ -331,7 +331,7 @@ git commit -m "feat: project review statistics"
 **Interfaces:**
 - Produces: `search_project`, `search_text_snippet`, `set_review_state`, `toggle_favorite`, and `selection_info`.
 
-- [ ] **Step 1: Write failing runtime/security tests**
+- [x] **Step 1: Write failing runtime/security tests**
 
 Cover exact camelCase DTO shapes, 200-row cap, wrong-session/stale revision suppression, batch marker success, committed-but-stale recovery, read-only rejection, unknown IDs, mixed file/folder targets, project-copy reopen, snippet bounds, and no path/body/SQLite details in errors.
 
@@ -339,23 +339,23 @@ Run: `cargo test -p viewer-desktop --test m2_desktop_runtime -- --nocapture`
 
 Expected: RED because commands are absent.
 
-- [ ] **Step 2: Compose portable identity/store before session activation**
+- [x] **Step 2: Compose portable identity/store before session activation**
 
 Make `ActiveProject.project_id` the stable manifest ID when available. The runtime owns at most one portable store and closes it before cache teardown. Writable first-open metadata creation happens only after root validation/probe succeeds.
 
-- [ ] **Step 3: Implement request revision tracking and command validation**
+- [x] **Step 3: Implement request revision tracking and command validation**
 
 Keep one atomic latest search revision per active session. Check session/project generation and revision before work and publication. Validate entity IDs against the current index and re-resolve relative paths before durable marker writes.
 
-- [ ] **Step 4: Register only narrow commands/events**
+- [x] **Step 4: Register only narrow commands/events**
 
 Do not add frontend filesystem/SQL/network permissions. Map read-only writes to a capability error and all internals to existing safe error categories.
 
-- [ ] **Step 5: Verify GREEN and security regression**
+- [x] **Step 5: Verify GREEN and security regression**
 
 Run: `cargo test -p viewer-desktop --test m2_desktop_runtime && cargo test -p viewer-desktop --test security_boundaries && ./scripts/check-tauri-security.sh`
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src-tauri tests/m2_desktop_runtime.rs tests/security_boundaries.rs

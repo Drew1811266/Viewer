@@ -2,9 +2,13 @@ use serde::Serialize;
 use viewer_application::{
     BrowseError, BrowseIndexError, ImageError, ProjectOpenError, ProjectProbeError,
     TextPreviewError,
+    metadata::{MarkerServiceError, MarkerStoreError},
+    search::SearchError,
 };
 use viewer_infrastructure::{
-    image_cache::ImageArtifactRegistryError, search::index::SessionIndexError,
+    image_cache::ImageArtifactRegistryError,
+    portable::{PortableMarkerStoreError, PortableMetadataError},
+    search::index::SessionIndexError,
     session_cache::SessionCacheError,
 };
 
@@ -137,6 +141,91 @@ impl From<BrowseError> for CommandError {
             BrowseError::SelectionSizeOverflow => internal_error(),
         }
     }
+}
+
+impl From<PortableMetadataError> for CommandError {
+    fn from(_error: PortableMetadataError) -> Self {
+        Self::new(
+            "portable_metadata_unavailable",
+            ErrorCategory::Consistency,
+            "项目审阅数据不可用，请检查项目权限或元数据后重试。",
+            true,
+        )
+    }
+}
+
+impl From<PortableMarkerStoreError> for CommandError {
+    fn from(_error: PortableMarkerStoreError) -> Self {
+        Self::new(
+            "portable_metadata_unavailable",
+            ErrorCategory::Consistency,
+            "项目审阅数据不可用，请重新打开项目。",
+            true,
+        )
+    }
+}
+
+impl From<MarkerServiceError> for CommandError {
+    fn from(error: MarkerServiceError) -> Self {
+        match error {
+            MarkerServiceError::ReadOnly
+            | MarkerServiceError::Store(MarkerStoreError::ReadOnly) => Self::new(
+                "project_read_only",
+                ErrorCategory::Conflict,
+                "当前项目为只读，无法保存标记。",
+                false,
+            ),
+            MarkerServiceError::EmptyTargets
+            | MarkerServiceError::DuplicateTarget
+            | MarkerServiceError::Store(MarkerStoreError::InvalidTarget) => Self::new(
+                "invalid_marker_targets",
+                ErrorCategory::Validation,
+                "所选标记目标无效，请刷新后重试。",
+                false,
+            ),
+            MarkerServiceError::Store(MarkerStoreError::Unavailable) => Self::new(
+                "portable_metadata_unavailable",
+                ErrorCategory::Consistency,
+                "无法保存项目审阅数据，请重试。",
+                true,
+            ),
+            MarkerServiceError::CommittedButProjectionStale => Self::new(
+                "marker_projection_stale",
+                ErrorCategory::Consistency,
+                "标记已保存，界面索引需要重新加载。",
+                true,
+            ),
+        }
+    }
+}
+
+impl From<SearchError> for CommandError {
+    fn from(error: SearchError) -> Self {
+        match error {
+            SearchError::InvalidSession | SearchError::Stale => stale_search_revision(),
+            SearchError::InvalidQuery => Self::new(
+                "invalid_search_query",
+                ErrorCategory::Validation,
+                "搜索条件无效，请调整后重试。",
+                false,
+            ),
+            SearchError::Backend(_) => Self::new(
+                "search_unavailable",
+                ErrorCategory::Consistency,
+                "搜索索引暂时不可用，请重试。",
+                true,
+            ),
+        }
+    }
+}
+
+pub fn stale_search_revision() -> CommandError {
+    CommandError::new(
+        "stale_search_revision",
+        ErrorCategory::Conflict,
+        "该搜索请求已过期。",
+        false,
+    )
 }
 
 impl From<ImageError> for CommandError {

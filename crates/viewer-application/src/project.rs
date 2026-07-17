@@ -19,6 +19,13 @@ pub struct ActiveProject {
     pub access: ProjectAccess,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PreparedProject {
+    pub root: PathBuf,
+    pub display_name: String,
+    pub access: ProjectAccess,
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum ProjectOpenError {
     #[error("a project is already open")]
@@ -56,25 +63,56 @@ where
     }
 
     pub fn open(&self, requested: &Path) -> Result<ActiveProject, ProjectOpenError> {
+        let prepared = self.prepare_open(requested)?;
+        self.activate_prepared(prepared, ProjectId::new())
+    }
+
+    pub fn prepare_open(&self, requested: &Path) -> Result<PreparedProject, ProjectOpenError> {
+        {
+            let mut state = self.lock_state();
+            if state.active.is_some() {
+                return Err(ProjectOpenError::AlreadyOpen);
+            }
+            state.session.begin_open()?;
+        }
+        match self.prepare_project(requested) {
+            Ok(prepared) => Ok(prepared),
+            Err(error) => {
+                self.abort_open()?;
+                Err(error)
+            }
+        }
+    }
+
+    pub fn activate_prepared(
+        &self,
+        prepared: PreparedProject,
+        project_id: ProjectId,
+    ) -> Result<ActiveProject, ProjectOpenError> {
         let mut state = self.lock_state();
         if state.active.is_some() {
             return Err(ProjectOpenError::AlreadyOpen);
         }
-        state.session.begin_open()?;
+        state.session.activate(prepared.access)?;
+        let session_id = SessionId::new();
+        let generation = self.coordinator.begin_session(session_id);
+        let active = ActiveProject {
+            project_id,
+            session_id,
+            generation,
+            root: prepared.root,
+            display_name: prepared.display_name,
+            access: prepared.access,
+        };
+        state.active = Some(active.clone());
+        Ok(active)
+    }
 
-        let result = self.prepare_active_project(requested);
-        match result {
-            Ok(prepared) => {
-                state.session.activate(prepared.access)?;
-                state.active = Some(prepared.clone());
-                Ok(prepared)
-            }
-            Err(error) => {
-                state.session.fail_open()?;
-                state.session.finish_close()?;
-                Err(error)
-            }
-        }
+    pub fn abort_open(&self) -> Result<(), ProjectOpenError> {
+        let mut state = self.lock_state();
+        state.session.fail_open()?;
+        state.session.finish_close()?;
+        Ok(())
     }
 
     pub fn active(&self) -> Option<ActiveProject> {
@@ -92,7 +130,7 @@ where
         Ok(Some(active))
     }
 
-    fn prepare_active_project(&self, requested: &Path) -> Result<ActiveProject, ProjectOpenError> {
+    fn prepare_project(&self, requested: &Path) -> Result<PreparedProject, ProjectOpenError> {
         let metadata =
             std::fs::symlink_metadata(requested).map_err(|_| ProjectOpenError::UnsafeRoot)?;
         if metadata.file_type().is_symlink() || !metadata.is_dir() {
@@ -105,17 +143,12 @@ where
             return Err(ProjectOpenError::UnsafeRoot);
         }
         let access = self.probe.probe(&root)?;
-        let session_id = SessionId::new();
-        let generation = self.coordinator.begin_session(session_id);
         let display_name = root
             .file_name()
             .map(|name| name.to_string_lossy().into_owned())
             .filter(|name| !name.is_empty())
             .unwrap_or_else(|| "项目".to_owned());
-        Ok(ActiveProject {
-            project_id: ProjectId::new(),
-            session_id,
-            generation,
+        Ok(PreparedProject {
             root,
             display_name,
             access,

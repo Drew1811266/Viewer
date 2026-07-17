@@ -105,7 +105,12 @@ pub fn run() {
             commands::browse::query_folder,
             commands::browse::request_image_representation,
             commands::preview::preview_text,
-            commands::preview::open_external_link
+            commands::preview::open_external_link,
+            commands::search::search_project,
+            commands::search::search_text_snippet,
+            commands::markers::set_review_state,
+            commands::markers::toggle_favorite,
+            commands::markers::selection_info
         ])
         .setup(move |app| {
             let cache_base = app.path().app_cache_dir()?.join("sessions");

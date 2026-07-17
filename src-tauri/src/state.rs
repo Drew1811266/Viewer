@@ -1,30 +1,47 @@
 use crate::{
     dto::{
         FolderTreeItemDto, FolderWorkspaceDto, ImageRepresentationDto, IndexProgressDto,
-        ProjectSnapshot, TextPreviewDto, TextPreviewFormatDto,
+        MarkerBatchResultDto, ProjectSnapshot, SearchPageDto, SelectionInfoDto, TextPreviewDto,
+        TextPreviewFormatDto, TextSnippetDto,
     },
-    error::{CommandError, ErrorCategory},
+    error::{CommandError, ErrorCategory, stale_search_revision},
     image_protocol::ActiveImageSession,
     markdown::{ExternalUrl, image_destinations, render_safe_markdown},
 };
-use std::{collections::HashMap, path::Path, path::PathBuf, sync::Arc, time::Duration};
+use std::{
+    collections::HashMap,
+    path::Path,
+    path::PathBuf,
+    sync::{
+        Arc,
+        atomic::{AtomicU64, Ordering},
+    },
+    time::Duration,
+};
 use tokio::{sync::Mutex, task::JoinHandle, time::Instant};
 use viewer_application::{
-    ActiveProject, BrowseIndexPort, BrowseService, ImageError, ImagePort, ImageRequest,
+    ActiveProject, BrowseIndexPort, BrowseService, ClockPort, ImageError, ImagePort, ImageRequest,
     ProjectAccess, ProjectOpenError, ProjectProbeError, ProjectProbePort, ProjectSessionService,
-    ScanPort, TextEncoding, TextPreviewPort,
+    ScanPort, SearchPort, SearchSnippetPort, TextEncoding, TextPreviewPort,
+    metadata::{
+        FavoritePatch, MarkerPatch, MarkerProjectionPort, MarkerService, MarkerTarget,
+        PortableMetadataPort, ReviewPatch,
+    },
     scan::{CoordinatedScan, ScanEvent, ScanRequest},
     scheduler::{TaskClass, TaskCoordinator},
 };
 use viewer_domain::{
     EntityId, RelativePath, SessionId, TaskId,
-    file::{FileKind, ImageIndexStatus, ImageMetadata},
+    file::{FileKind, ImageIndexStatus, ImageMetadata, ReviewState},
     image::ImageRepresentationKind,
+    search::{Generation, SearchQuery, SearchScope},
 };
 use viewer_infrastructure::{
+    SystemClock,
     image_cache::{ImageArtifactRegistry, ImageCacheKey, ImageCacheKeyInput},
+    portable::{PortableMarkerStore, PortableProjectMetadata},
     scan::walker::{ProjectWalker, is_macos_alias},
-    search::{index::SessionIndex, text::TextExtractor},
+    search::{index::SessionIndex, query::SessionSearch, text::TextExtractor},
     session_cache::{CachedImage, SessionCache},
     text::preview::TextPreviewReader,
 };
@@ -45,6 +62,19 @@ impl DesktopEventSink for NoopEventSink {
 
 pub trait DesktopImageFactory: Send + Sync {
     fn create(&self, cache_root: &Path) -> Result<Arc<dyn ImagePort>, ImageError>;
+}
+
+pub trait DesktopMarkerProjectionFactory: Send + Sync {
+    fn create(&self, index: Arc<SessionIndex>) -> Arc<dyn MarkerProjectionPort>;
+}
+
+#[derive(Default)]
+struct SessionMarkerProjectionFactory;
+
+impl DesktopMarkerProjectionFactory for SessionMarkerProjectionFactory {
+    fn create(&self, index: Arc<SessionIndex>) -> Arc<dyn MarkerProjectionPort> {
+        index
+    }
 }
 
 #[derive(Default)]
@@ -72,9 +102,23 @@ struct DesktopSession {
     snapshot: ProjectSnapshot,
     cache: Arc<SessionCache>,
     index: Arc<SessionIndex>,
+    portable_store: Option<Arc<PortableMarkerStore>>,
+    marker_projection: Arc<dyn MarkerProjectionPort>,
+    marker_lock: Arc<Mutex<()>>,
+    search_revision: Arc<AtomicU64>,
     image: Arc<dyn ImagePort>,
     scan_task_id: TaskId,
     scan_task: Option<JoinHandle<Result<(), CommandError>>>,
+}
+
+struct ScanServices {
+    scanner: Arc<dyn ScanPort>,
+    coordinator: Arc<TaskCoordinator>,
+    index: Arc<SessionIndex>,
+    image: Arc<dyn ImagePort>,
+    events: Arc<dyn DesktopEventSink>,
+    portable_store: Option<Arc<PortableMarkerStore>>,
+    marker_lock: Arc<Mutex<()>>,
 }
 
 pub struct DesktopRuntime {
@@ -87,6 +131,8 @@ pub struct DesktopRuntime {
     image_registry: Arc<ImageArtifactRegistry>,
     active_image_session: ActiveImageSession,
     text_reader: Arc<dyn TextPreviewPort>,
+    clock: Arc<dyn ClockPort>,
+    marker_projection_factory: Arc<dyn DesktopMarkerProjectionFactory>,
     session: Mutex<Option<DesktopSession>>,
 }
 
@@ -144,6 +190,53 @@ impl DesktopRuntime {
         image_registry: Arc<ImageArtifactRegistry>,
         active_image_session: ActiveImageSession,
     ) -> Self {
+        Self::new_with_runtime_services(
+            cache_base,
+            probe,
+            scanner,
+            events,
+            image_factory,
+            image_registry,
+            active_image_session,
+            Arc::new(SystemClock),
+            Arc::new(SessionMarkerProjectionFactory),
+        )
+    }
+
+    pub fn new_with_marker_projection_factory(
+        cache_base: PathBuf,
+        probe: Arc<dyn ProjectProbePort>,
+        scanner: Arc<dyn ScanPort>,
+        events: Arc<dyn DesktopEventSink>,
+        image_factory: Arc<dyn DesktopImageFactory>,
+        image_registry: Arc<ImageArtifactRegistry>,
+        marker_projection_factory: Arc<dyn DesktopMarkerProjectionFactory>,
+    ) -> Self {
+        Self::new_with_runtime_services(
+            cache_base,
+            probe,
+            scanner,
+            events,
+            image_factory,
+            image_registry,
+            ActiveImageSession::default(),
+            Arc::new(SystemClock),
+            marker_projection_factory,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn new_with_runtime_services(
+        cache_base: PathBuf,
+        probe: Arc<dyn ProjectProbePort>,
+        scanner: Arc<dyn ScanPort>,
+        events: Arc<dyn DesktopEventSink>,
+        image_factory: Arc<dyn DesktopImageFactory>,
+        image_registry: Arc<ImageArtifactRegistry>,
+        active_image_session: ActiveImageSession,
+        clock: Arc<dyn ClockPort>,
+        marker_projection_factory: Arc<dyn DesktopMarkerProjectionFactory>,
+    ) -> Self {
         let coordinator = Arc::new(TaskCoordinator::default());
         Self {
             cache_base,
@@ -158,6 +251,8 @@ impl DesktopRuntime {
             image_registry,
             active_image_session,
             text_reader: Arc::new(TextPreviewReader),
+            clock,
+            marker_projection_factory,
             session: Mutex::new(None),
         }
     }
@@ -167,10 +262,41 @@ impl DesktopRuntime {
         if session.is_some() {
             return Err(CommandError::from(ProjectOpenError::AlreadyOpen));
         }
-        let active = self
+        let prepared = self
             .project_service
-            .open(root)
+            .prepare_open(root)
             .map_err(CommandError::from)?;
+        let portable_metadata = match PortableProjectMetadata::open(
+            &prepared.root,
+            prepared.access,
+            self.clock.unix_millis(),
+        ) {
+            Ok(metadata) => metadata,
+            Err(error) => {
+                let _ = self.project_service.abort_open();
+                return Err(error.into());
+            }
+        };
+        let portable_store = match portable_metadata.database_path() {
+            Some(path) => match PortableMarkerStore::open(path, portable_metadata.is_writable()) {
+                Ok(store) => Some(Arc::new(store)),
+                Err(error) => {
+                    let _ = self.project_service.abort_open();
+                    return Err(error.into());
+                }
+            },
+            None => None,
+        };
+        let active = match self
+            .project_service
+            .activate_prepared(prepared, portable_metadata.project_id())
+        {
+            Ok(active) => active,
+            Err(error) => {
+                let _ = self.project_service.abort_open();
+                return Err(error.into());
+            }
+        };
         let cache = match SessionCache::create_in(&self.cache_base, active.session_id) {
             Ok(cache) => Arc::new(cache),
             Err(error) => {
@@ -195,23 +321,33 @@ impl DesktopRuntime {
                 return Err(error.into());
             }
         };
+        let marker_projection = self.marker_projection_factory.create(Arc::clone(&index));
         let snapshot = ProjectSnapshot::from(&active);
         let active_session_id = active.session_id;
         let scan_task_id = TaskId::new();
+        let marker_lock = Arc::new(Mutex::new(()));
         let scan_task = tokio::spawn(run_scan(
             active.clone(),
             scan_task_id,
-            Arc::clone(&self.scanner),
-            Arc::clone(&self.coordinator),
-            Arc::clone(&index),
-            Arc::clone(&image),
-            Arc::clone(&self.events),
+            ScanServices {
+                scanner: Arc::clone(&self.scanner),
+                coordinator: Arc::clone(&self.coordinator),
+                index: Arc::clone(&index),
+                image: Arc::clone(&image),
+                events: Arc::clone(&self.events),
+                portable_store: portable_store.clone(),
+                marker_lock: Arc::clone(&marker_lock),
+            },
         ));
         *session = Some(DesktopSession {
             active,
             snapshot: snapshot.clone(),
             cache,
             index,
+            portable_store,
+            marker_projection,
+            marker_lock,
+            search_revision: Arc::new(AtomicU64::new(0)),
             image,
             scan_task_id,
             scan_task: Some(scan_task),
@@ -228,6 +364,8 @@ impl DesktopRuntime {
         self.image_registry
             .remove_session(session.active.session_id);
         self.project_service.close().map_err(CommandError::from)?;
+        let marker_lock = Arc::clone(&session.marker_lock);
+        let _marker_guard = marker_lock.lock().await;
         session
             .image
             .cancel_session(session.active.session_id)
@@ -236,6 +374,8 @@ impl DesktopRuntime {
             scan_task.abort();
             let _ = scan_task.await;
         }
+        drop(session.marker_projection);
+        drop(session.portable_store.take());
         drop(session.index);
         session.cache.cleanup().map_err(CommandError::from)
     }
@@ -300,6 +440,251 @@ impl DesktopRuntime {
         let session = session.as_ref().ok_or_else(project_not_open)?;
         let progress = session.index.index_progress().map_err(CommandError::from)?;
         Ok(IndexProgressDto::from_progress(&session.active, progress))
+    }
+
+    pub async fn search_project(
+        &self,
+        expected_session: SessionId,
+        expected_generation: Generation,
+        revision: u64,
+        query: SearchQuery,
+    ) -> Result<SearchPageDto, CommandError> {
+        if !query.is_valid() {
+            return Err(CommandError::from(
+                viewer_application::search::SearchError::InvalidQuery,
+            ));
+        }
+        let (active, index, latest_revision) = {
+            let session = self.session.lock().await;
+            let session = session.as_ref().ok_or_else(project_not_open)?;
+            validate_project_request(&session.active, expected_session, expected_generation)?;
+            (
+                session.active.clone(),
+                Arc::clone(&session.index),
+                Arc::clone(&session.search_revision),
+            )
+        };
+        if let SearchScope::Subtree(folder) = query.scope {
+            let indexed = index
+                .indexed_node(folder)
+                .map_err(CommandError::from)?
+                .ok_or_else(selection_not_found)?;
+            if indexed.node.kind != FileKind::Directory {
+                return Err(selection_not_found());
+            }
+        }
+        if !claim_search_revision(&latest_revision, revision) {
+            return Err(stale_search_revision());
+        }
+
+        let search = SessionSearch::new(active.session_id, Arc::clone(&index));
+        let page = search
+            .search(active.session_id, active.generation, query)
+            .await
+            .map_err(CommandError::from)?;
+        self.ensure_search_current(
+            active.session_id,
+            active.generation,
+            revision,
+            &latest_revision,
+        )
+        .await?;
+        Ok(SearchPageDto::from_page(revision, page))
+    }
+
+    pub async fn search_text_snippet(
+        &self,
+        expected_session: SessionId,
+        expected_generation: Generation,
+        revision: u64,
+        entity_id: EntityId,
+        query: String,
+    ) -> Result<TextSnippetDto, CommandError> {
+        let (active, index, latest_revision) = {
+            let session = self.session.lock().await;
+            let session = session.as_ref().ok_or_else(project_not_open)?;
+            validate_project_request(&session.active, expected_session, expected_generation)?;
+            (
+                session.active.clone(),
+                Arc::clone(&session.index),
+                Arc::clone(&session.search_revision),
+            )
+        };
+        if latest_revision.load(Ordering::Acquire) != revision {
+            return Err(stale_search_revision());
+        }
+        let indexed = index
+            .indexed_node(entity_id)
+            .map_err(CommandError::from)?
+            .ok_or_else(selection_not_found)?;
+        if !matches!(indexed.node.kind, FileKind::Markdown | FileKind::Text) {
+            return Err(selection_not_found());
+        }
+
+        let search = SessionSearch::new(active.session_id, Arc::clone(&index));
+        let snippet = search
+            .text_snippet(active.session_id, active.generation, entity_id, query)
+            .await
+            .map_err(CommandError::from)?;
+        self.ensure_search_current(
+            active.session_id,
+            active.generation,
+            revision,
+            &latest_revision,
+        )
+        .await?;
+        Ok(TextSnippetDto {
+            revision,
+            entity_id: entity_id.to_string(),
+            snippet,
+        })
+    }
+
+    pub async fn set_review_state(
+        &self,
+        expected_session: SessionId,
+        expected_generation: Generation,
+        entity_ids: &[EntityId],
+        review_state: Option<ReviewState>,
+    ) -> Result<MarkerBatchResultDto, CommandError> {
+        let review = review_state.map_or(ReviewPatch::Clear, ReviewPatch::Set);
+        self.apply_marker_patch(
+            expected_session,
+            expected_generation,
+            entity_ids,
+            MarkerPatch {
+                review,
+                favorite: FavoritePatch::Unchanged,
+            },
+        )
+        .await
+    }
+
+    pub async fn toggle_favorite(
+        &self,
+        expected_session: SessionId,
+        expected_generation: Generation,
+        entity_ids: &[EntityId],
+    ) -> Result<MarkerBatchResultDto, CommandError> {
+        self.apply_marker_patch(
+            expected_session,
+            expected_generation,
+            entity_ids,
+            MarkerPatch {
+                review: ReviewPatch::Unchanged,
+                favorite: FavoritePatch::Toggle,
+            },
+        )
+        .await
+    }
+
+    pub async fn selection_info(
+        &self,
+        expected_session: SessionId,
+        expected_generation: Generation,
+        entity_ids: &[EntityId],
+    ) -> Result<SelectionInfoDto, CommandError> {
+        let index = {
+            let session = self.session.lock().await;
+            let session = session.as_ref().ok_or_else(project_not_open)?;
+            validate_project_request(&session.active, expected_session, expected_generation)?;
+            Arc::clone(&session.index)
+        };
+        BrowseService::new(index.as_ref())
+            .selection_info(entity_ids)
+            .map(SelectionInfoDto::from)
+            .map_err(CommandError::from)
+    }
+
+    async fn apply_marker_patch(
+        &self,
+        expected_session: SessionId,
+        expected_generation: Generation,
+        entity_ids: &[EntityId],
+        patch: MarkerPatch,
+    ) -> Result<MarkerBatchResultDto, CommandError> {
+        let (active, index, store, projection, marker_lock) = {
+            let session = self.session.lock().await;
+            let session = session.as_ref().ok_or_else(project_not_open)?;
+            validate_project_request(&session.active, expected_session, expected_generation)?;
+            if session.active.access != ProjectAccess::ReadWrite {
+                return Err(CommandError::new(
+                    "project_read_only",
+                    ErrorCategory::Conflict,
+                    "当前项目为只读，无法保存标记。",
+                    false,
+                ));
+            }
+            let store = session.portable_store.clone().ok_or_else(|| {
+                CommandError::new(
+                    "portable_metadata_unavailable",
+                    ErrorCategory::Consistency,
+                    "项目审阅数据不可用，请重新打开项目。",
+                    true,
+                )
+            })?;
+            (
+                session.active.clone(),
+                Arc::clone(&session.index),
+                store,
+                Arc::clone(&session.marker_projection),
+                Arc::clone(&session.marker_lock),
+            )
+        };
+        let _marker_guard = marker_lock.lock().await;
+        self.ensure_project_current(active.session_id, active.generation)
+            .await?;
+        let ids = entity_ids.to_vec();
+        let active_for_work = active.clone();
+        let index_for_work = Arc::clone(&index);
+        let updated_at_ms = self.clock.unix_millis();
+        let changes = tokio::task::spawn_blocking(move || {
+            let targets = ids
+                .into_iter()
+                .map(|entity_id| {
+                    let indexed = index_for_work
+                        .indexed_node(entity_id)
+                        .map_err(CommandError::from)?
+                        .ok_or_else(selection_not_found)?;
+                    validated_marker_target(&active_for_work, &indexed.node)
+                        .ok_or_else(selection_not_found)
+                })
+                .collect::<Result<Vec<_>, CommandError>>()?;
+            MarkerService::new(store.as_ref(), projection.as_ref(), true)
+                .apply(&targets, patch, updated_at_ms)
+                .map_err(CommandError::from)
+        })
+        .await
+        .map_err(|_| internal_command_error())??;
+        self.ensure_project_current(active.session_id, active.generation)
+            .await?;
+        Ok(changes.into())
+    }
+
+    async fn ensure_search_current(
+        &self,
+        expected_session: SessionId,
+        expected_generation: Generation,
+        revision: u64,
+        latest_revision: &AtomicU64,
+    ) -> Result<(), CommandError> {
+        self.ensure_project_current(expected_session, expected_generation)
+            .await?;
+        if latest_revision.load(Ordering::Acquire) == revision {
+            Ok(())
+        } else {
+            Err(stale_search_revision())
+        }
+    }
+
+    async fn ensure_project_current(
+        &self,
+        expected_session: SessionId,
+        expected_generation: Generation,
+    ) -> Result<(), CommandError> {
+        let session = self.session.lock().await;
+        let session = session.as_ref().ok_or_else(stale_project_session)?;
+        validate_project_request(&session.active, expected_session, expected_generation)
     }
 
     pub async fn folder_tree(&self) -> Result<Vec<FolderTreeItemDto>, CommandError> {
@@ -584,6 +969,45 @@ impl DesktopRuntime {
     }
 }
 
+fn validate_project_request(
+    active: &ActiveProject,
+    expected_session: SessionId,
+    expected_generation: Generation,
+) -> Result<(), CommandError> {
+    if active.session_id == expected_session && active.generation == expected_generation {
+        Ok(())
+    } else {
+        Err(stale_project_session())
+    }
+}
+
+fn claim_search_revision(latest: &AtomicU64, revision: u64) -> bool {
+    revision != 0
+        && latest
+            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |current| {
+                (revision > current).then_some(revision)
+            })
+            .is_ok()
+}
+
+fn stale_project_session() -> CommandError {
+    CommandError::new(
+        "stale_project_session",
+        ErrorCategory::Conflict,
+        "该请求不属于当前项目会话。",
+        false,
+    )
+}
+
+fn selection_not_found() -> CommandError {
+    CommandError::new(
+        "selection_not_found",
+        ErrorCategory::Content,
+        "部分所选文件已不可用，请刷新项目后重试。",
+        true,
+    )
+}
+
 fn project_not_open() -> CommandError {
     CommandError::new(
         "project_not_open",
@@ -591,6 +1015,39 @@ fn project_not_open() -> CommandError {
         "请先打开一个项目。",
         false,
     )
+}
+
+fn validated_marker_target(
+    active: &ActiveProject,
+    node: &viewer_domain::file::FileNode,
+) -> Option<MarkerTarget> {
+    let candidate = active.root.join(node.relative_path.as_str());
+    let metadata = std::fs::symlink_metadata(&candidate).ok()?;
+    if metadata.file_type().is_symlink() || is_macos_alias(&candidate) {
+        return None;
+    }
+    let kind_matches = match node.kind {
+        FileKind::Directory => metadata.is_dir(),
+        FileKind::Jpeg | FileKind::Png | FileKind::Markdown | FileKind::Text => metadata.is_file(),
+    };
+    if !kind_matches || entity_id_for_metadata(&metadata, &node.relative_path) != node.entity_id {
+        return None;
+    }
+    let canonical = std::fs::canonicalize(&candidate).ok()?;
+    if !canonical.starts_with(&active.root) {
+        return None;
+    }
+    Some(MarkerTarget {
+        entity_id: node.entity_id,
+        relative_path: node.relative_path.clone(),
+        kind: node.kind,
+        size: if node.kind == FileKind::Directory {
+            0
+        } else {
+            metadata.len()
+        },
+        modified_ns: modified_ns(&metadata),
+    })
 }
 
 fn image_not_found() -> CommandError {
@@ -717,12 +1174,17 @@ fn modified_ns(metadata: &std::fs::Metadata) -> i128 {
 async fn run_scan(
     active: ActiveProject,
     task_id: TaskId,
-    scanner: Arc<dyn ScanPort>,
-    coordinator: Arc<TaskCoordinator>,
-    index: Arc<SessionIndex>,
-    image: Arc<dyn ImagePort>,
-    events: Arc<dyn DesktopEventSink>,
+    services: ScanServices,
 ) -> Result<(), CommandError> {
+    let ScanServices {
+        scanner,
+        coordinator,
+        index,
+        image,
+        events,
+        portable_store,
+        marker_lock,
+    } = services;
     let request = ScanRequest {
         session_id: active.session_id,
         generation: active.generation,
@@ -791,7 +1253,37 @@ async fn run_scan(
             ));
         }
     }
+    if let Some(store) = portable_store {
+        let _marker_guard = marker_lock.lock().await;
+        hydrate_portable_markers(&index, store.as_ref())?;
+    }
     run_derived_indexing(active, coordinator, index, image, events).await
+}
+
+fn hydrate_portable_markers(
+    index: &SessionIndex,
+    store: &dyn PortableMetadataPort,
+) -> Result<(), CommandError> {
+    let paths = BrowseIndexPort::descendants(index, None)
+        .map_err(CommandError::from)?
+        .into_iter()
+        .map(|node| node.relative_path)
+        .collect::<Vec<_>>();
+    let mut markers = Vec::new();
+    for chunk in paths.chunks(400) {
+        markers.extend(store.markers_for_paths(chunk).map_err(|_| {
+            CommandError::new(
+                "portable_metadata_unavailable",
+                ErrorCategory::Consistency,
+                "无法读取项目审阅数据，请重新打开项目。",
+                true,
+            )
+        })?);
+    }
+    index
+        .hydrate_markers(&markers)
+        .map_err(CommandError::from)?;
+    Ok(())
 }
 
 async fn run_derived_indexing(

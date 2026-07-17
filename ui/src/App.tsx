@@ -1,9 +1,12 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { ViewerBridge } from './api/viewer'
 import { tauriViewerBridge } from './api/viewer'
 import EmptyProject from './components/EmptyProject'
+import ContentBrowser from './components/ContentBrowser'
 import FolderOverview from './components/FolderOverview'
 import FolderTree from './components/FolderTree'
+import TaskBar from './components/TaskBar'
+import type { TaskFeedback } from './components/TaskBar'
 import { useViewerController } from './state/useViewerController'
 import type { BrowserFile } from './api/types'
 
@@ -12,10 +15,16 @@ interface AppProps {
 }
 
 export default function App({ bridge = tauriViewerBridge }: AppProps) {
-  const { state, openProject, closeProject, selectFolder, showAllDescendants } =
+  const { state, openProject, closeProject, selectFolder, showAllDescendants, cancelTask } =
     useViewerController(bridge)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [sidebarWidth, setSidebarWidth] = useState(260)
+  const [thumbnailTask, setThumbnailTask] = useState<TaskFeedback | null>(null)
+  const [dismissedTasks, setDismissedTasks] = useState<Set<string>>(() => new Set())
+  useEffect(() => {
+    setThumbnailTask(null)
+    setDismissedTasks(new Set())
+  }, [state.project?.sessionId])
   const requestThumbnail = useCallback(
     (file: BrowserFile) =>
       bridge
@@ -25,6 +34,54 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
         })
         .then((image) => image.url),
     [bridge],
+  )
+  const requestContentThumbnail = useCallback(
+    (file: BrowserFile, maxPixels: number, scaleMilli: number) =>
+      bridge
+        .requestImage({
+          entityId: file.entityId,
+          representation: { kind: 'thumbnail', maxPixels, scaleMilli },
+        })
+        .then((image) => image.url),
+    [bridge],
+  )
+  const scanTask = useMemo<TaskFeedback | null>(() => {
+    if (state.scan === null) return null
+    const published = state.scan.publishedFolders + state.scan.publishedFiles
+    const failed = state.scan.totals?.failed ?? state.scan.failedItems.length
+    const requested = state.scan.totals
+      ? state.scan.totals.folders + state.scan.totals.files + failed
+      : published + failed + 1
+    return {
+      id: state.scan.taskId,
+      label: '扫描项目',
+      status:
+        state.scan.phase === 'running'
+          ? 'running'
+          : state.scan.phase === 'cancelled'
+            ? 'cancelled'
+            : failed > 0
+              ? 'failed'
+              : 'complete',
+      requested,
+      completed: state.scan.totals
+        ? state.scan.totals.folders + state.scan.totals.files
+        : published,
+      failed,
+      cancellable: state.scan.phase === 'running',
+      failures: state.scan.failedItems.map((failure) => ({
+        item: failure.relativePath,
+        code: failure.code,
+      })),
+    }
+  }, [state.scan])
+  const visibleTasks = useMemo(
+    () =>
+      [scanTask, thumbnailTask].filter(
+        (task): task is TaskFeedback =>
+          task !== null && (!dismissedTasks.has(task.id) || task.status === 'running'),
+      ),
+    [dismissedTasks, scanTask, thumbnailTask],
   )
 
   if (state.project === null) {
@@ -110,10 +167,24 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
             />
           )}
           {state.workspace?.workspace === 'content' && (
-            <p>{state.showingAggregate ? '全部后代文件' : '文件夹内容'}</p>
+            <>
+              {state.showingAggregate && <p className="aggregate-label">全部后代文件</p>}
+              <ContentBrowser
+                workspace={state.workspace}
+                requestThumbnail={requestContentThumbnail}
+                onThumbnailTaskChange={setThumbnailTask}
+              />
+            </>
           )}
         </section>
       </div>
+      <TaskBar
+        tasks={visibleTasks}
+        onCancel={(taskId) => void cancelTask(taskId)}
+        onDismiss={(taskId) =>
+          setDismissedTasks((current) => new Set([...current, taskId]))
+        }
+      />
     </main>
   )
 }

@@ -203,5 +203,25 @@ export function useViewerController(bridge: ViewerBridge) {
     )
   }, [refreshProjection])
 
-  return { state, openProject, closeProject, selectFolder, showAllDescendants }
+  const cancelTask = useCallback(
+    async (taskId: string) => {
+      try {
+        if (await bridge.cancelTask(taskId)) {
+          dispatch({ type: 'scan_cancelled', taskId })
+        }
+      } catch (error) {
+        dispatch({ type: 'input_rejected', message: safeUserMessage(error) })
+      }
+    },
+    [bridge],
+  )
+
+  return {
+    state,
+    openProject,
+    closeProject,
+    selectFolder,
+    showAllDescendants,
+    cancelTask,
+  }
 }

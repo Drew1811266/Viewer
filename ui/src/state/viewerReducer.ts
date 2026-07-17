@@ -9,7 +9,7 @@ export type ViewerStatus = 'empty' | 'opening' | 'active' | 'closing' | 'error'
 
 export interface ScanState {
   taskId: string
-  phase: 'running' | 'finished'
+  phase: 'running' | 'finished' | 'cancelled'
   publishedFolders: number
   publishedFiles: number
   failedItems: Array<{ relativePath: string; code: string }>
@@ -50,6 +50,7 @@ export type ViewerAction =
   | { type: 'project_closed' }
   | { type: 'input_rejected'; message: string }
   | { type: 'scan_received'; event: ScanEvent }
+  | { type: 'scan_cancelled'; taskId: string }
   | {
       type: 'projection_loaded'
       sessionId: string
@@ -97,6 +98,9 @@ export function viewerReducer(state: ViewerState, action: ViewerAction): ViewerS
     case 'scan_received':
       if (!isCurrentEvent(state, action.event)) return state
       return { ...state, scan: reduceScan(state.scan, action.event) }
+    case 'scan_cancelled':
+      if (state.scan?.taskId !== action.taskId) return state
+      return { ...state, scan: { ...state.scan, phase: 'cancelled' } }
     case 'projection_loaded':
       if (!isCurrentProjection(state, action.sessionId, action.generation)) return state
       return {

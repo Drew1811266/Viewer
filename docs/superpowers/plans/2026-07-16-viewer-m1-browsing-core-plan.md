@@ -847,7 +847,7 @@ git commit -m "feat: browse progressive folder hierarchy"
 - Consumes: `FolderWorkspace.Content`, image representation requests, scan progress/failures.
 - Produces: virtual responsive grid, independent Markdown/TXT list, standard selection, active item, thumbnail requests only for visible cells, compact expandable task bar.
 
-- [ ] **Step 1: Write failing selection/virtualization/task tests**
+- [x] **Step 1: Write failing selection/virtualization/task tests**
 
 ```tsx
 it('supports click command-toggle shift-range arrows and space without losing grid state', async () => {
@@ -868,31 +868,31 @@ it('shows progress compactly and keeps failures until dismissed', () => {
 })
 ```
 
-- [ ] **Step 2: Run focused UI tests and verify RED**
+- [x] **Step 2: Run focused UI tests and verify RED**
 
 Run: `pnpm --dir ui test -- ContentBrowser.test.tsx TaskBar.test.tsx`
 
 Expected: FAIL because the content browser/task bar do not exist.
 
-- [ ] **Step 3: Implement grid windowing and visible work**
+- [x] **Step 3: Implement grid windowing and visible work**
 
 Compute column count from measured width and selected small/medium/large cell size; window rows with two-row overscan. The thumbnail effect keys by visible entity/size/device scale, aborts stale requests, never schedules all project images, and reports coalesced requested/completed/failed counts to the task model.
 
-- [ ] **Step 4: Implement standard selection and keyboard rules**
+- [x] **Step 4: Implement standard selection and keyboard rules**
 
 Single click replaces selection, Command toggles, Shift selects the inclusive stable list range, arrows move the active item, double-click or Space previews an image/text, and Enter only emits a future rename intent (disabled until M3). Suppress global shortcuts while input/contenteditable owns focus.
 
-- [ ] **Step 5: Implement independent text list and task bar**
+- [x] **Step 5: Implement independent text list and task bar**
 
 Markdown/TXT appear below a labelled `文本文件` divider and never pair with images. Task bar shows scan and visible-image work counts/progress/failures, expands for safe relative-item details, offers cancel only for cancellable derived work, auto-collapses on clean completion, and retains failures. Text preview work is represented while active but never exposes file contents in task details.
 
-- [ ] **Step 6: Run UI tests/build and verify GREEN**
+- [x] **Step 6: Run UI tests/build and verify GREEN**
 
 Run: `pnpm --dir ui test && pnpm --dir ui build`
 
 Expected: PASS with bounded rendered-cell counts for a 1,000-item fixture and all selection/task states.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add ui/src/components/VirtualGrid.tsx ui/src/components/ContentBrowser* ui/src/components/TaskBar* ui/src/App.tsx ui/src/styles/app.css

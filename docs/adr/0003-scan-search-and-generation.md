@@ -56,10 +56,10 @@ The gate generated a deterministic corpus with 1,000 image placeholders, 100 Mar
 
 | Measurement | Samples | p50 | p95 | Budget | Result |
 | --- | ---: | ---: | ---: | ---: | --- |
-| First usable folder event | 20 | 20.07 ms | 20.10 ms | 1,500 ms | Pass |
-| Base metadata scan | 20 | 42.43 ms | 45.76 ms | 3,000 ms | Pass |
-| Indexed search page | 80 | 0.72 ms | 0.95 ms | 100 ms | Pass |
-| Peak RSS | process | — | 6.83 MB | 700 MB | Pass |
+| First usable folder event | 20 | 20.07 ms | 20.08 ms | 1,500 ms | Pass |
+| Base metadata scan | 20 | 38.72 ms | 39.17 ms | 3,000 ms | Pass |
+| Indexed search page | 80 | 0.66 ms | 0.86 ms | 100 ms | Pass |
+| Peak RSS | process | — | 6.67 MB | 700 MB | Pass |
 
 The gate also ran stale-generation races, atomic index tests, Unicode/short-query search tests, watcher reconciliation tests, strict Clippy, and dependency policy checks. It hashed the portable `.viewer/metadata.sqlite` sentinel before and after all disposable-index rebuilds; the hash was unchanged.
 

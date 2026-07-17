@@ -1,5 +1,6 @@
 pub mod image_cache;
 pub mod operation;
+pub mod scan;
 
 use viewer_application::ClockPort;
 

@@ -20,6 +20,10 @@ macro_rules! id_type {
             pub fn new() -> Self {
                 Self(Uuid::new_v4())
             }
+
+            pub const fn from_u128(value: u128) -> Self {
+                Self(Uuid::from_u128(value))
+            }
         }
 
         impl Default for $name {

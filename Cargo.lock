@@ -3805,6 +3805,7 @@ dependencies = [
  "async-trait",
  "serde",
  "thiserror 2.0.18",
+ "tokio",
  "viewer-domain",
 ]
 
@@ -3845,6 +3846,7 @@ dependencies = [
  "viewer-application",
  "viewer-domain",
  "viewer-test-support",
+ "walkdir",
 ]
 
 [[package]]

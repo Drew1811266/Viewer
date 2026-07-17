@@ -1,4 +1,7 @@
-use crate::{FileOperationError, FileSnapshot, ImageArtifact, ImageError, ImageRequest};
+use crate::{
+    FileOperationError, FileSnapshot, ImageArtifact, ImageError, ImageRequest,
+    scan::{ScanError, ScanRequest, ScanSink},
+};
 use async_trait::async_trait;
 use std::fmt;
 use std::path::{Path, PathBuf};
@@ -87,6 +90,11 @@ pub trait TrashPort: Send + Sync {
 pub trait VolumePort: Send + Sync {
     fn volume_id(&self, path: &Path) -> Result<u64, FileOperationError>;
     fn is_case_sensitive(&self, path: &Path) -> Result<bool, FileOperationError>;
+}
+
+#[async_trait]
+pub trait ScanPort: Send + Sync {
+    async fn scan(&self, request: ScanRequest, sink: ScanSink) -> Result<(), ScanError>;
 }
 
 #[async_trait]

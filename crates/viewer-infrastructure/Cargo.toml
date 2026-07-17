@@ -14,6 +14,7 @@ thiserror.workspace = true
 tokio.workspace = true
 viewer-application = { path = "../viewer-application" }
 viewer-domain = { path = "../viewer-domain" }
+walkdir.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
@@ -22,3 +23,7 @@ viewer-test-support = { path = "../viewer-test-support" }
 [[test]]
 name = "file_transactions"
 path = "../../tests/file_transactions.rs"
+
+[[test]]
+name = "progressive_scan"
+path = "../../tests/progressive_scan.rs"

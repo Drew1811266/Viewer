@@ -4,20 +4,34 @@ import type { FolderTreeItem } from '../api/types'
 import FolderTree from './FolderTree'
 
 const folders: FolderTreeItem[] = [
-  { entityId: '1', parentEntityId: null, relativePath: 'catalog', name: 'catalog' },
+  {
+    entityId: '1',
+    parentEntityId: null,
+    relativePath: 'catalog',
+    name: 'catalog',
+    marker: { reviewState: null, favorite: false },
+  },
   {
     entityId: '2',
     parentEntityId: '1',
     relativePath: 'catalog/shoes',
     name: 'shoes',
+    marker: { reviewState: null, favorite: false },
   },
   {
     entityId: '3',
     parentEntityId: '2',
     relativePath: 'catalog/shoes/id-001',
     name: 'id-001',
+    marker: { reviewState: null, favorite: false },
   },
-  { entityId: '4', parentEntityId: null, relativePath: 'empty', name: 'empty' },
+  {
+    entityId: '4',
+    parentEntityId: null,
+    relativePath: 'empty',
+    name: 'empty',
+    marker: { reviewState: null, favorite: false },
+  },
 ]
 
 describe('FolderTree', () => {
@@ -51,6 +65,7 @@ describe('FolderTree', () => {
       parentEntityId: null,
       relativePath: `folder-${String(index).padStart(4, '0')}`,
       name: `folder-${index}`,
+      marker: { reviewState: null, favorite: false },
     }))
     render(<FolderTree folders={many} selectedId={null} onSelect={vi.fn()} height={280} />)
 

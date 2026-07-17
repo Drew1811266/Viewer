@@ -8,10 +8,20 @@ import type {
   FolderWorkspace,
   ImageRepresentation,
   ImageRequest,
+  IndexProgressEvent,
+  MarkerBatchResult,
   ProjectSnapshot,
   ScanEvent,
+  SearchPage,
+  SearchProjectRequest,
+  SearchTextSnippetRequest,
+  SelectionInfo,
+  SelectionInfoRequest,
+  SetReviewStateRequest,
   TextPreview,
   TextPreviewRequest,
+  TextSnippet,
+  ToggleFavoriteRequest,
 } from './types'
 
 export interface ViewerBridge {
@@ -25,7 +35,13 @@ export interface ViewerBridge {
   previewText(request: TextPreviewRequest): Promise<TextPreview>
   openExternalLink(url: string): Promise<void>
   cancelTask(taskId: string): Promise<boolean>
+  searchProject(request: SearchProjectRequest): Promise<SearchPage>
+  searchTextSnippet(request: SearchTextSnippetRequest): Promise<TextSnippet>
+  setReviewState(request: SetReviewStateRequest): Promise<MarkerBatchResult>
+  toggleFavorite(request: ToggleFavoriteRequest): Promise<MarkerBatchResult>
+  selectionInfo(request: SelectionInfoRequest): Promise<SelectionInfo>
   listenScan(handler: (event: ScanEvent) => void): Promise<UnlistenFn>
+  listenIndexProgress(handler: (event: IndexProgressEvent) => void): Promise<UnlistenFn>
   listenProjectClosed(handler: () => void): Promise<UnlistenFn>
   listenProjectDrops(handler: (paths: string[]) => void): Promise<UnlistenFn>
 }
@@ -71,8 +87,28 @@ export const tauriViewerBridge: ViewerBridge = {
   cancelTask(taskId) {
     return invoke<boolean>('cancel_task', { taskId })
   },
+  searchProject(request) {
+    return invoke<SearchPage>('search_project', { request })
+  },
+  searchTextSnippet(request) {
+    return invoke<TextSnippet>('search_text_snippet', { request })
+  },
+  setReviewState(request) {
+    return invoke<MarkerBatchResult>('set_review_state', { request })
+  },
+  toggleFavorite(request) {
+    return invoke<MarkerBatchResult>('toggle_favorite', { request })
+  },
+  selectionInfo(request) {
+    return invoke<SelectionInfo>('selection_info', { request })
+  },
   listenScan(handler) {
     return listen<ScanEvent>('viewer://scan-progress', ({ payload }) => handler(payload))
+  },
+  listenIndexProgress(handler) {
+    return listen<IndexProgressEvent>('viewer://index-progress', ({ payload }) =>
+      handler(payload),
+    )
   },
   listenProjectClosed(handler) {
     return listen<void>('viewer://project-closed', handler)

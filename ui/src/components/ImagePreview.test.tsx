@@ -11,6 +11,8 @@ function image(index: number): BrowserFile {
     kind: 'jpeg',
     size: index * 100,
     modifiedNs: String(index),
+    marker: { reviewState: null, favorite: false },
+    imageMetadata: null,
     imageUrl: null,
   }
 }

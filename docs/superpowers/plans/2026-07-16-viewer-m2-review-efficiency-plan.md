@@ -373,7 +373,7 @@ git commit -m "feat: expose safe review commands"
 **Interfaces:**
 - Produces: exact search/marker/progress bridge, session-only query model, 120 ms debounce, and stale-request cancellation.
 
-- [ ] **Step 1: Write failing reducer/controller tests**
+- [x] **Step 1: Write failing reducer/controller tests**
 
 Cover Cmd-F intent, query/scope/filter/sort/group changes, chip removal/clear all, folder-switch persistence, close reset, rapid-typing out-of-order responses, progress events, visible-only snippet requests, selection-preserving marker responses, and read-only write suppression.
 
@@ -381,19 +381,19 @@ Run: `pnpm --dir ui test -- viewerReducer.test.ts useViewerController.test.tsx`
 
 Expected: RED because M2 frontend state is absent.
 
-- [ ] **Step 2: Add exact bridge types and fakeable methods**
+- [x] **Step 2: Add exact bridge types and fakeable methods**
 
 No `any`, filesystem path, body, or backend-error escape hatch. Keep production Tauri imports inside `viewer.ts`.
 
-- [ ] **Step 3: Implement deterministic session state**
+- [x] **Step 3: Implement deterministic session state**
 
 Debounce text input by 120 ms; filter/scope/sort changes may run immediately. Increment request revision, ignore old results, request snippets only for visible body hits, and clear every M2 field on project close/event.
 
-- [ ] **Step 4: Verify GREEN**
+- [x] **Step 4: Verify GREEN**
 
 Run: `pnpm --dir ui test -- viewerReducer.test.ts useViewerController.test.tsx && pnpm --dir ui build`
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add ui/src/api ui/src/state

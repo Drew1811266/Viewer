@@ -10,6 +10,8 @@ const file: BrowserFile = {
   kind: 'markdown',
   size: 100,
   modifiedNs: '1',
+  marker: { reviewState: null, favorite: false },
+  imageMetadata: null,
   imageUrl: null,
 }
 

@@ -11,6 +11,8 @@ function image(index: number): BrowserFile {
     kind: 'jpeg',
     size: index * 10,
     modifiedNs: String(index),
+    marker: { reviewState: null, favorite: false },
+    imageMetadata: null,
     imageUrl: null,
   }
 }
@@ -27,6 +29,8 @@ function workspace(count = 10): Extract<FolderWorkspace, { workspace: 'content' 
         kind: 'markdown',
         size: 40,
         modifiedNs: '11',
+        marker: { reviewState: null, favorite: false },
+        imageMetadata: null,
         imageUrl: null,
       },
     ],

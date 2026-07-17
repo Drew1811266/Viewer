@@ -10,6 +10,8 @@ const image: BrowserFile = {
   kind: 'jpeg',
   size: 1_024,
   modifiedNs: '1000000',
+  marker: { reviewState: null, favorite: false },
+  imageMetadata: null,
   imageUrl: null,
 }
 

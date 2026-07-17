@@ -21,7 +21,13 @@ function bridge(): ViewerBridge {
     previewText: vi.fn(),
     openExternalLink: vi.fn(),
     cancelTask: vi.fn().mockResolvedValue(false),
+    searchProject: vi.fn(),
+    searchTextSnippet: vi.fn(),
+    setReviewState: vi.fn(),
+    toggleFavorite: vi.fn(),
+    selectionInfo: vi.fn(),
     listenScan: vi.fn().mockResolvedValue(() => undefined),
+    listenIndexProgress: vi.fn().mockResolvedValue(() => undefined),
     listenProjectClosed: vi.fn().mockResolvedValue(() => undefined),
     listenProjectDrops: vi.fn().mockResolvedValue(() => undefined),
   }

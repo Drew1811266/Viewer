@@ -7,8 +7,17 @@ const card: ContentFolderCard = {
   entityId: 'folder-1',
   relativePath: 'catalog/shoes/id-001',
   name: 'id-001',
+  marker: { reviewState: null, favorite: false },
   imageCount: 4,
   textCount: 1,
+  reviewProgress: {
+    total: 5,
+    keep: 0,
+    pending: 0,
+    reject: 0,
+    unmarked: 5,
+    favorite: 0,
+  },
   representativeImages: ['1', '2', '3', '4'].map((entityId) => ({
     entityId,
     relativePath: `catalog/shoes/id-001/${entityId}.jpg`,
@@ -16,6 +25,8 @@ const card: ContentFolderCard = {
     kind: 'jpeg' as const,
     size: 10,
     modifiedNs: '1',
+    marker: { reviewState: null, favorite: false },
+    imageMetadata: null,
     imageUrl: null,
   })),
 }

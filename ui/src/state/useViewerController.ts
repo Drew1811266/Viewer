@@ -1,13 +1,25 @@
 import { useCallback, useEffect, useReducer, useRef } from 'react'
 import type { ViewerBridge } from '../api/viewer'
 import { safeUserMessage } from '../api/viewer'
-import type { ProjectSnapshot, ScanEvent } from '../api/types'
+import type {
+  ProjectSnapshot,
+  ReviewState,
+  ScanEvent,
+  SearchFilters,
+  SearchLayout,
+  SearchQueryModel,
+  SearchSort,
+} from '../api/types'
+import type { SearchFilterChip } from './viewerReducer'
 import { initialViewerState, viewerReducer } from './viewerReducer'
 
 export function useViewerController(bridge: ViewerBridge) {
   const [state, dispatch] = useReducer(viewerReducer, initialViewerState)
   const stateRef = useRef(state)
   const projectionRequestRef = useRef(0)
+  const searchRevisionRef = useRef(0)
+  const selectionRequestRef = useRef(0)
+  const requestedSnippetsRef = useRef(new Set<string>())
   const reconcilingGenerationRef = useRef<number | null>(null)
   const desiredProjectionRef = useRef({
     selectedFolderId: null as string | null,
@@ -15,6 +27,98 @@ export function useViewerController(bridge: ViewerBridge) {
     showingAggregate: false,
   })
   stateRef.current = state
+
+  const executeSearch = useCallback(
+    async (project: ProjectSnapshot, query: SearchQueryModel) => {
+      const revision = ++searchRevisionRef.current
+      requestedSnippetsRef.current.clear()
+      dispatch({ type: 'search_requested', revision })
+      try {
+        const page = await bridge.searchProject({
+          sessionId: project.sessionId,
+          generation: project.generation,
+          revision,
+          ...query,
+          offset: 0,
+          limit: 200,
+        })
+        dispatch({
+          type: 'search_loaded',
+          sessionId: project.sessionId,
+          generation: project.generation,
+          page,
+        })
+      } catch (error) {
+        dispatch({
+          type: 'search_failed',
+          sessionId: project.sessionId,
+          generation: project.generation,
+          revision,
+          message: safeUserMessage(error),
+        })
+      }
+    },
+    [bridge],
+  )
+
+  useEffect(() => {
+    const project = state.project
+    if (
+      project === null ||
+      state.status !== 'active' ||
+      state.search.queryVersion === 0
+    ) {
+      return
+    }
+    const delay = state.search.schedule === 'debounced' ? 120 : 0
+    const query = state.search.query
+    const timer = window.setTimeout(() => void executeSearch(project, query), delay)
+    return () => window.clearTimeout(timer)
+  }, [
+    executeSearch,
+    state.project,
+    state.search.query,
+    state.search.queryVersion,
+    state.search.schedule,
+    state.status,
+  ])
+
+  useEffect(() => {
+    const project = state.project
+    const page = state.search.page
+    if (project === null || page === null || page.revision !== state.search.revision) return
+    const visible = new Set(state.search.visibleEntityIds)
+    for (const hit of page.hits) {
+      if (hit.matchedField !== 'body' || !visible.has(hit.entityId)) continue
+      const key = `${page.revision}:${hit.entityId}`
+      if (requestedSnippetsRef.current.has(key)) continue
+      requestedSnippetsRef.current.add(key)
+      void bridge
+        .searchTextSnippet({
+          sessionId: project.sessionId,
+          generation: project.generation,
+          revision: page.revision,
+          entityId: hit.entityId,
+          query: state.search.query.text,
+        })
+        .then((result) => {
+          dispatch({
+            type: 'search_snippet_loaded',
+            revision: result.revision,
+            entityId: result.entityId,
+            snippet: result.snippet,
+          })
+        })
+        .catch(() => undefined)
+    }
+  }, [
+    bridge,
+    state.project,
+    state.search.page,
+    state.search.query.text,
+    state.search.revision,
+    state.search.visibleEntityIds,
+  ])
 
   const refreshProjection = useCallback(
     async (
@@ -77,6 +181,9 @@ export function useViewerController(bridge: ViewerBridge) {
     if (stateRef.current.project === null || stateRef.current.status === 'closing') return
     dispatch({ type: 'project_close_requested' })
     projectionRequestRef.current += 1
+    searchRevisionRef.current += 1
+    selectionRequestRef.current += 1
+    requestedSnippetsRef.current.clear()
     desiredProjectionRef.current = {
       selectedFolderId: null,
       selectedFolderPath: '',
@@ -159,8 +266,42 @@ export function useViewerController(bridge: ViewerBridge) {
     let unlisten: (() => void) | undefined
     void Promise.resolve()
       .then(() =>
+        bridge.listenIndexProgress((progress) => {
+          dispatch({ type: 'index_progress_received', progress })
+        }),
+      )
+      .then((cleanup) => {
+        if (disposed) cleanup()
+        else unlisten = cleanup
+      })
+      .catch(() => undefined)
+    return () => {
+      disposed = true
+      unlisten?.()
+    }
+  }, [bridge])
+
+  useEffect(() => {
+    function requestSearchFocus(event: KeyboardEvent) {
+      if (!(event.metaKey && event.key.toLowerCase() === 'f')) return
+      if (stateRef.current.project === null) return
+      event.preventDefault()
+      dispatch({ type: 'search_focus_requested' })
+    }
+    window.addEventListener('keydown', requestSearchFocus)
+    return () => window.removeEventListener('keydown', requestSearchFocus)
+  }, [])
+
+  useEffect(() => {
+    let disposed = false
+    let unlisten: (() => void) | undefined
+    void Promise.resolve()
+      .then(() =>
         bridge.listenProjectClosed(() => {
           projectionRequestRef.current += 1
+          searchRevisionRef.current += 1
+          selectionRequestRef.current += 1
+          requestedSnippetsRef.current.clear()
           reconcilingGenerationRef.current = null
           desiredProjectionRef.current = {
             selectedFolderId: null,
@@ -243,6 +384,121 @@ export function useViewerController(bridge: ViewerBridge) {
     [bridge],
   )
 
+  const setSearchText = useCallback((text: string) => {
+    dispatch({ type: 'search_text_changed', text })
+  }, [])
+
+  const setSearchScope = useCallback((folderId: string | null) => {
+    dispatch({ type: 'search_scope_changed', folderId })
+  }, [])
+
+  const setSearchFilters = useCallback((filters: SearchFilters) => {
+    dispatch({ type: 'search_filters_changed', filters })
+  }, [])
+
+  const setSearchSort = useCallback((sort: SearchSort) => {
+    dispatch({ type: 'search_sort_changed', sort })
+  }, [])
+
+  const setSearchLayout = useCallback((layout: SearchLayout) => {
+    dispatch({ type: 'search_layout_changed', layout })
+  }, [])
+
+  const removeSearchFilter = useCallback((chip: SearchFilterChip) => {
+    dispatch({ type: 'search_filter_chip_removed', chip })
+  }, [])
+
+  const clearSearchFilters = useCallback(() => {
+    dispatch({ type: 'search_filters_cleared' })
+  }, [])
+
+  const setVisibleSearchHits = useCallback((entityIds: string[]) => {
+    dispatch({ type: 'visible_search_hits_changed', entityIds })
+  }, [])
+
+  const setSelectedEntityIds = useCallback(
+    (entityIds: string[]) => {
+      dispatch({ type: 'selection_changed', entityIds })
+      const project = stateRef.current.project
+      if (project === null) return
+      const request = ++selectionRequestRef.current
+      void bridge
+        .selectionInfo({
+          sessionId: project.sessionId,
+          generation: project.generation,
+          entityIds,
+        })
+        .then((info) => {
+          if (request !== selectionRequestRef.current) return
+          dispatch({
+            type: 'selection_info_loaded',
+            sessionId: project.sessionId,
+            generation: project.generation,
+            entityIds,
+            info,
+          })
+        })
+        .catch(() => undefined)
+    },
+    [bridge],
+  )
+
+  const setReviewState = useCallback(
+    async (reviewState: ReviewState | null) => {
+      const current = stateRef.current
+      if (
+        current.project === null ||
+        current.project.access === 'read_only' ||
+        current.selectedEntityIds.length === 0
+      ) {
+        return
+      }
+      try {
+        const result = await bridge.setReviewState({
+          sessionId: current.project.sessionId,
+          generation: current.project.generation,
+          entityIds: current.selectedEntityIds,
+          reviewState,
+        })
+        dispatch({
+          type: 'marker_changes_applied',
+          sessionId: current.project.sessionId,
+          generation: current.project.generation,
+          changes: result.changes,
+        })
+      } catch (error) {
+        dispatch({ type: 'input_rejected', message: safeUserMessage(error) })
+      }
+    },
+    [bridge],
+  )
+
+  const toggleFavorite = useCallback(async () => {
+    const current = stateRef.current
+    if (
+      current.project === null ||
+      current.project.access === 'read_only' ||
+      current.selectedEntityIds.length === 0
+    ) {
+      return
+    }
+    try {
+      const result = await bridge.toggleFavorite({
+        sessionId: current.project.sessionId,
+        generation: current.project.generation,
+        entityIds: current.selectedEntityIds,
+      })
+      dispatch({
+        type: 'marker_changes_applied',
+        sessionId: current.project.sessionId,
+        generation: current.project.generation,
+        changes: result.changes,
+      })
+    } catch (error) {
+      dispatch({ type: 'input_rejected', message: safeUserMessage(error) })
+    }
+  }, [bridge])
+
   return {
     state,
     openProject,
@@ -250,5 +506,16 @@ export function useViewerController(bridge: ViewerBridge) {
     selectFolder,
     showAllDescendants,
     cancelTask,
+    setSearchText,
+    setSearchScope,
+    setSearchFilters,
+    setSearchSort,
+    setSearchLayout,
+    removeSearchFilter,
+    clearSearchFilters,
+    setVisibleSearchHits,
+    setSelectedEntityIds,
+    setReviewState,
+    toggleFavorite,
   }
 }

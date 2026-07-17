@@ -541,19 +541,19 @@ The review lists every M2 requirement, automated command output, GUI evidence, p
 - Modify: `docs/superpowers/plans/2026-07-16-viewer-0.1-roadmap.md`
 - Modify: `docs/superpowers/plans/2026-07-16-viewer-m2-review-efficiency-plan.md`
 
-- [ ] **Step 1: Run verification-before-completion evidence**
+- [x] **Step 1: Run verification-before-completion evidence**
 
 Run fresh: `git status --short && pnpm gate:m2 && pnpm build:macos`
 
 Expected: clean worktree before generated artifacts, exact gate pass, valid arm64/macOS 13 package, and no stale output substituted for current evidence.
 
-- [ ] **Step 2: Review the complete branch diff**
+- [x] **Step 2: Review the complete branch diff**
 
 Run: `git diff --check main...HEAD && git diff --stat main...HEAD && git log --oneline main..HEAD`
 
 Review architecture boundaries, correctness, durability, read-only behavior, security/privacy, accessibility baseline, test quality, and scope exclusions. Record no unresolved Critical/Important finding.
 
-- [ ] **Step 3: Approve and commit the stage review**
+- [x] **Step 3: Approve and commit the stage review**
 
 Mark M2 complete in the roadmap only after the review is approved.
 

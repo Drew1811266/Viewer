@@ -1,11 +1,11 @@
 # M2 Review Efficiency Stage Review
 
-- Status: Packaged-app acceptance passed; final branch approval pending
+- Status: Passed
 - Date: 2026-07-16
 - Base: `c738ed4` (accepted M1 on `main`)
-- Reviewed implementation head: `c3d1922`
+- Reviewed branch head: `fef4de9`
 - Review method: M2 requirement traceability, exact aggregate gate, portable-metadata validation, Apple Silicon package inspection, release-app acceptance on writable/copied/read-only fixtures, cache/network inspection and complete branch diff review
-- Decision: Pending Task 14 fresh verification and final approval
+- Decision: **Approved for local fast-forward merge to `main`**
 
 ## Exit-criteria traceability
 
@@ -52,7 +52,7 @@ For each active project, Viewer created only its owned session SQLite/images dir
 ## Package and automated evidence
 
 ```text
-pnpm gate:m2                         PASS twice consecutively before GUI acceptance
+pnpm gate:m2                         PASS twice before GUI acceptance and fresh in Task 14
   inherited M1 aggregate gate       PASS
   repository policy                 PASS
   UI                                46 tests + production build
@@ -83,6 +83,6 @@ lsof release process TCP/UDP         no sockets
 - The synthetic fixture validates integrated M2 behavior but does not replace M4 acceptance with the user's supplied approximately 10 MiB production images.
 - The application and DMG are ad-hoc signed and not notarized because Developer ID credentials were not provided; this is allowed for the current internal-only distribution scope.
 
-## Pending final decision
+## Decision
 
-Task 13 packaged-app acceptance passes. Task 14 must still run a fresh exact M2 gate and package build, inspect the complete `main...HEAD` diff, resolve any Critical/Important finding, update this decision, and only then mark M2 complete and fast-forward merge to `main`.
+The fresh exact M2 gate, production build, arm64/macOS 13 package inspection and `main...HEAD` review all pass. The complete diff was reviewed for architecture direction, durable portable writes, stale-request handling, read-only behavior, error redaction, security/capability boundaries, test quality and M2/M3 scope separation. No unresolved Critical or Important finding remains. M2 meets its exit criteria and may be fast-forward merged to `main`; M3 planning may begin only after the merged `main` reruns the exact M2 gate successfully.

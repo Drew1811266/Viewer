@@ -2,7 +2,7 @@
 
 Viewer is independently designed and implemented. The project learns from the engineering experience and product patterns of the open-source community without copying complete application implementations.
 
-Viewer's project license has not yet been selected. This acknowledgement records the direct tools and dependencies used by the current implementation; the manifests and lockfiles remain the source of truth for exact versions.
+Viewer is licensed under Apache License 2.0. This acknowledgement distinguishes the tools and packages used by the implementation from projects consulted only for engineering or interaction patterns; the manifests, lockfiles and `THIRD_PARTY_NOTICES.md` remain the source of truth for exact build dependencies.
 
 ## Direct tools and dependencies
 
@@ -22,4 +22,4 @@ The projects in this section were reviewed for engineering and interaction patte
 - [digiKam](https://github.com/KDE/digikam) — separation of durable metadata, search data, fingerprints, and rebuildable thumbnails.
 - [Tiefsee4](https://github.com/hbl917070/Tiefsee4), [Oculante](https://github.com/woelper/oculante), [qView](https://github.com/jurplel/qView), and [nomacs](https://github.com/nomacs/nomacs) — image-viewer interaction patterns and edge-case research.
 
-Third-party license notices will be maintained separately in `THIRD_PARTY_NOTICES.md` when that artifact is introduced. No project license is implied by this acknowledgement.
+Exact versions, upstream links, license expressions and distribution status for direct build dependencies are maintained in `THIRD_PARTY_NOTICES.md`. The research projects above are not linked code dependencies and their inclusion does not imply endorsement of Viewer.

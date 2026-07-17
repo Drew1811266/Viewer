@@ -1,6 +1,6 @@
 # Viewer 技术框架与开源来源
 
-> 状态：全局架构已确认；G1 图片管线、G2 文件事务与 G3 扫描搜索已验证，G4 仍待完成
+> 状态：全局架构已确认；G1 图片管线、G2 文件事务与 G3 扫描搜索已验证；G4 的 Apache-2.0 与锁定依赖基线已完成，待最终整体验收
 > 原则：采用通用框架，独立实现 Viewer，不复制其他完整应用
 
 完整模块、数据流、安全和测试设计见 `docs/superpowers/specs/2026-07-16-viewer-system-architecture-design.md`。
@@ -50,6 +50,21 @@ Apple M4 标准开发设备上的合成样本 gate 验证了 sRGB、Display P3�
 Apple M4 标准开发设备上的 20 轮新会话基准覆盖 1,000 个图片占位文件、100 个中文/英文 Markdown/TXT 和 210 个三级目录。首个文件夹事件 p95 为 20.08 ms，基础扫描 p95 为 39.17 ms，80 次索引查询 p95 为 0.86 ms，峰值 RSS 为 6.67 MB；旧代次发布为零，便携 `.viewer` 元数据哨兵在全部会话索引删除/重建后哈希不变。
 
 这些数值验证扫描和索引架构，不代表约 10 MB 真实图片的联合体验。最终 M4 内部发布门禁仍需使用用户提供的测试文件夹复核扫描、缩略图、高清预览和滚动的组合行为。
+
+### 2.4 G4 许可证与依赖冻结基线
+
+Viewer 源码采用 **Apache-2.0**。Rust 和 npm 解析结果分别由 `Cargo.lock` 与 `pnpm-lock.yaml` 固定，`scripts/check-locked-dependencies.sh` 使用 locked/frozen 模式重新解析和安装，并在执行前后比较两个锁文件的 SHA-256。任何直接依赖变更都必须同步更新审计、本文和 `THIRD_PARTY_NOTICES.md`。
+
+| 依赖组 | Viewer 0.1 锁定结果 |
+| --- | --- |
+| 桌面与前端运行时 | Tauri 2.11.5、`@tauri-apps/api` 2.11.1、React/React DOM 19.2.7 |
+| 图片与 macOS 绑定 | `objc2` 0.6.4、`objc2-*` 0.3.2、`block2` 0.6.2；系统 Quick Look/Image I/O/Core Graphics |
+| 文件、索引与搜索 | rusqlite 0.40.1、notify 8.2.0、notify-debouncer-full 0.7.0、nucleo-matcher 0.3.1、trash 5.2.6、walkdir 2.5.0 |
+| 核心运行时 | tokio 1.52.3、serde 1.0.228、uuid 1.24.0、thiserror 2.0.18、blake3 1.8.5 |
+| 前端构建 | `@tauri-apps/cli` 2.11.4、Vite 8.1.5、TypeScript 6.0.3、`@vitejs/plugin-react` 6.0.3 |
+| 测试工具 | Vitest 4.1.10、jsdom 29.1.1、Testing Library React 16.3.2、tempfile 3.27.0 |
+
+完整逐项版本、许可证、用途、上游与是否进入分发产物的人工复核记录见仓库根目录 `THIRD_PARTY_NOTICES.md`。`nucleo-matcher` 以未修改 MPL-2.0 依赖使用；架构灵感项目不进入构建，单独列于 `ACKNOWLEDGEMENTS.md`。
 
 ## 3. 架构方法来源
 

@@ -31,10 +31,6 @@ exceptions = [
     { allow = ["Zlib"], crate = "foldhash@0.2.0" },
 ]
 
-[licenses.private]
-# Viewer has not selected a project license; ignore only unpublished workspace crates.
-ignore = true
-
 [sources]
 unknown-registry = "deny"
 unknown-git = "deny"

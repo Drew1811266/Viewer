@@ -12,6 +12,7 @@ crate-type = ["lib", "cdylib", "staticlib"]
 tauri-build = { version = "2" }
 
 [dependencies]
+ammonia.workspace = true
 serde.workspace = true
 tauri = { version = "2" }
 viewer-domain = { path = "../crates/viewer-domain" }
@@ -20,3 +21,9 @@ viewer-infrastructure = { path = "../crates/viewer-infrastructure" }
 [dev-dependencies]
 serde_json.workspace = true
 tempfile.workspace = true
+tokio.workspace = true
+viewer-application = { path = "../crates/viewer-application" }
+
+[[test]]
+name = "security_boundaries"
+path = "../tests/security_boundaries.rs"

@@ -3,7 +3,7 @@ use std::sync::Arc;
 use viewer_domain::SessionId;
 use viewer_infrastructure::image_cache::ImageArtifactRegistry;
 
-mod image_protocol;
+pub mod image_protocol;
 
 pub const APP_NAME: &str = "Viewer";
 
@@ -28,7 +28,20 @@ mod commands {
 
 pub use commands::health;
 
-fn is_allowed_navigation(url: &tauri::Url) -> bool {
+pub fn sanitize_markdown_html(input: &str) -> String {
+    let mut builder = ammonia::Builder::default();
+    builder
+        .url_relative(ammonia::UrlRelative::Deny)
+        .add_url_schemes(&["viewer-image"])
+        .attribute_filter(|element, attribute, value| match (element, attribute) {
+            ("img", "src") if value.starts_with("viewer-image:") => Some(value.into()),
+            ("img", "src") => None,
+            _ => Some(value.into()),
+        });
+    builder.clean(input).to_string()
+}
+
+pub fn is_allowed_navigation(url: &tauri::Url) -> bool {
     if !url.username().is_empty() || url.password().is_some() {
         return false;
     }

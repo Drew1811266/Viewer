@@ -19,6 +19,12 @@ pub enum ReviewState {
     Reject,
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct Marker {
+    pub review_state: Option<ReviewState>,
+    pub favorite: bool,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ImageIndexStatus {

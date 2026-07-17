@@ -13,7 +13,10 @@ use viewer_application::{
 use viewer_domain::{
     SessionId,
     file::FileKind,
-    search::{Generation, SearchQuery, SearchScope},
+    search::{
+        Generation, SearchFilters, SearchLayout, SearchQuery, SearchScope, SearchSort,
+        SearchSortKey, SortDirection,
+    },
 };
 use viewer_infrastructure::{
     scan::walker::ProjectWalker,
@@ -255,9 +258,12 @@ fn search_query(text: &str) -> SearchQuery {
     SearchQuery {
         text: text.into(),
         scope: SearchScope::Project,
-        kinds: Vec::new(),
-        review_states: Vec::new(),
-        favorite_only: false,
+        filters: SearchFilters::default(),
+        sort: SearchSort {
+            key: SearchSortKey::Relevance,
+            direction: SortDirection::Ascending,
+        },
+        layout: SearchLayout::Flat,
         offset: 0,
         limit: 50,
     }

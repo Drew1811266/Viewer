@@ -248,7 +248,7 @@ git commit -m "feat: index bounded review metadata"
 **Interfaces:**
 - Produces: complete `SearchQuery`, `SearchSort`, `SearchLayout`, `SearchFilters`, bounded `SearchPage`, match ranges, and `text_snippet`.
 
-- [ ] **Step 1: Write failing query-matrix tests**
+- [x] **Step 1: Write failing query-matrix tests**
 
 Cover exact/fuzzy Unicode filename and path, CJK body search, project/subtree scope, every filter independently, OR-within/AND-between algebra, favorite/unmarked distinction, image orientation/dimension bounds, size/time bounds, natural name ordering, modified/size/pixel/review sorts in both directions, grouped/flat layout, stable ties, offset/limit cap, and partial index status.
 
@@ -256,25 +256,25 @@ Run: `cargo test --test m2_search_queries -- --nocapture`
 
 Expected: RED because G3 contracts cover only a subset.
 
-- [ ] **Step 2: Extend domain contracts without exposing bodies**
+- [x] **Step 2: Extend domain contracts without exposing bodies**
 
 Return enriched node metadata plus match field, score, group relative path, and normalized filename/path match ranges. Reject limits over 200 and invalid ranges. A blank query with filters/sort is valid.
 
-- [ ] **Step 3: Implement SQL prefilter plus Rust rank/sort**
+- [x] **Step 3: Implement SQL prefilter plus Rust rank/sort**
 
 Use parameterized SQL for scope and filters, existing FTS/nucleo matching for text, and one deterministic natural comparator for all user-visible ordering. Group before page slicing in grouped mode. Search never probes files or decodes images.
 
-- [ ] **Step 4: Implement the separate bounded body-snippet port**
+- [x] **Step 4: Implement the separate bounded body-snippet port**
 
 Require current session/generation, entity kind Markdown/TXT, a body match for the normalized query, and an indexed FTS row. Return escaped/plain normalized context of at most 160 scalar values with no absolute path. Result pages themselves remain body-free.
 
-- [ ] **Step 5: Verify GREEN and performance prototype**
+- [x] **Step 5: Verify GREEN and performance prototype**
 
 Run: `cargo test --test m2_search_queries && cargo test --test search && ./scripts/run-g3-scan-search-gate.sh`
 
 Expected: all query cases pass and the existing indexed-search p95 remains within 100 ms.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add crates/viewer-domain crates/viewer-application crates/viewer-infrastructure tests/m2_search_queries.rs

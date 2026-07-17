@@ -113,6 +113,17 @@ pub trait SearchPort: Send + Sync {
 }
 
 #[async_trait]
+pub trait SearchSnippetPort: Send + Sync {
+    async fn text_snippet(
+        &self,
+        session_id: SessionId,
+        generation: Generation,
+        entity_id: viewer_domain::EntityId,
+        query: String,
+    ) -> Result<Option<String>, SearchError>;
+}
+
+#[async_trait]
 pub trait ImagePort: Send + Sync {
     async fn probe(&self, source: &Path) -> Result<ImageProbe, ImageError>;
     async fn render(&self, request: ImageRequest) -> Result<ImageArtifact, ImageError>;

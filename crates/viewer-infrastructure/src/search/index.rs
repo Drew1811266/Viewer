@@ -30,6 +30,8 @@ pub enum SessionIndexError {
     MissingNode(EntityId),
     #[error("derived metadata does not match a current supported node: {0}")]
     InvalidDerivedMetadata(EntityId),
+    #[error("search query is invalid")]
+    InvalidSearchQuery,
     #[error("invalid persisted {field}: {value}")]
     InvalidPersistedValue { field: &'static str, value: String },
 }
@@ -591,7 +593,7 @@ pub(super) fn read_node(row: &rusqlite::Row<'_>) -> rusqlite::Result<FileNode> {
     })
 }
 
-fn read_indexed_node(row: &rusqlite::Row<'_>) -> rusqlite::Result<IndexedNode> {
+pub(super) fn read_indexed_node(row: &rusqlite::Row<'_>) -> rusqlite::Result<IndexedNode> {
     let node = read_node(row)?;
     let review_state = row
         .get::<_, Option<i64>>(5)?

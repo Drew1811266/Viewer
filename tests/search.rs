@@ -9,7 +9,10 @@ use viewer_application::{
 use viewer_domain::{
     EntityId, RelativePath, SessionId,
     file::{FileKind, FileNode, ReviewState},
-    search::{Generation, MatchedField, SearchQuery, SearchScope},
+    search::{
+        Generation, MatchedField, SearchFilters, SearchLayout, SearchQuery, SearchScope,
+        SearchSort, SearchSortKey, SortDirection,
+    },
 };
 use viewer_infrastructure::search::{
     index::SessionIndex,
@@ -247,8 +250,8 @@ async fn scope_and_filters_are_applied_before_search_scoring() {
         SearchScope::Subtree(fixture.product_a),
         vec![FileKind::Png],
     );
-    filtered.review_states = vec![ReviewState::Keep];
-    filtered.favorite_only = true;
+    filtered.filters.review_states = vec![ReviewState::Keep];
+    filtered.filters.favorite_only = true;
     let page = search
         .search(fixture.session_id, Generation::new(3), filtered)
         .await
@@ -298,9 +301,19 @@ fn query(text: &str, scope: SearchScope, kinds: Vec<FileKind>) -> SearchQuery {
     SearchQuery {
         text: text.into(),
         scope,
-        kinds,
-        review_states: Vec::new(),
-        favorite_only: false,
+        filters: SearchFilters {
+            kinds,
+            ..SearchFilters::default()
+        },
+        sort: SearchSort {
+            key: if text.is_empty() {
+                SearchSortKey::NaturalName
+            } else {
+                SearchSortKey::Relevance
+            },
+            direction: SortDirection::Ascending,
+        },
+        layout: SearchLayout::Flat,
         offset: 0,
         limit: 100,
     }
@@ -336,6 +349,7 @@ impl SearchPort for BarrierSearch {
         Ok(viewer_domain::search::SearchPage {
             total: 0,
             hits: Vec::new(),
+            progress: viewer_domain::search::IndexProgress::default(),
         })
     }
 }

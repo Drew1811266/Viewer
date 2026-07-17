@@ -19,6 +19,30 @@ pub enum ReviewState {
     Reject,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ImageIndexStatus {
+    Pending,
+    Ready,
+    Failed,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TextIndexStatus {
+    Pending,
+    Ready,
+    UnsupportedEncoding,
+    TooLarge,
+    Failed,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ImageMetadata {
+    pub width: u32,
+    pub height: u32,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct FileNode {
     pub entity_id: EntityId,

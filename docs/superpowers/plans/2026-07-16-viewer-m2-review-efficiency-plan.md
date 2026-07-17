@@ -167,7 +167,7 @@ git commit -m "feat: persist portable review markers"
 **Interfaces:**
 - Produces: `Marker`, `ImageMetadata { width, height }`, `IndexedNode`, `IndexProgress`, batch marker hydration, image-header updates, and text-status progress.
 
-- [ ] **Step 1: Write failing hydration/progress tests**
+- [x] **Step 1: Write failing hydration/progress tests**
 
 Prove scan upsert preserves marker/image/text-derived columns, hydration matches portable rows by exact relative path, stale portable paths are ignored, batch marker sync is atomic, image dimensions reject invalid/overflow values, and progress is monotonic.
 
@@ -175,19 +175,19 @@ Run: `cargo test --test m2_session_projection -- --nocapture`
 
 Expected: RED because enriched projections/progress do not exist.
 
-- [ ] **Step 2: Extend the disposable schema and exact index API**
+- [x] **Step 2: Extend the disposable schema and exact index API**
 
 Add width, height, image metadata status, text metadata status, review/favorite indexes, modified/size indexes, and batch update methods. Keep session WAL/NORMAL and make all pages obtain marker/image values from the disposable database, never by opening portable SQLite from the UI path.
 
-- [ ] **Step 3: Implement post-scan hydration**
+- [x] **Step 3: Implement the transactional hydration projection contract**
 
-After each committed scan file/folder batch, query portable markers for those relative paths and synchronize matches. A projection-sync failure marks the index stale and schedules one complete rehydrate; it never overwrites portable truth.
+Provide exact-path/kind hydration and atomic batch projection methods in the index. Task 8 composes them after each committed scan file/folder batch, queries portable markers for those relative paths, and schedules one complete rehydrate after a projection-sync failure. Portable truth is never overwritten by projection recovery.
 
-- [ ] **Step 4: Verify GREEN and M1 regression**
+- [x] **Step 4: Verify GREEN and M1 regression**
 
 Run: `cargo test --test m2_session_projection && cargo test --test m1_browse_queries && cargo test --test progressive_scan`
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add crates/viewer-domain crates/viewer-infrastructure tests/m2_session_projection.rs

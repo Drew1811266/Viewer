@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 use viewer_domain::{
     EntityId, RelativePath,
-    file::{FileKind, ReviewState},
+    file::{FileKind, FileNode, ImageIndexStatus, ImageMetadata, ReviewState, TextIndexStatus},
 };
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -55,6 +55,44 @@ pub struct PortableMarker {
     pub evidence_size: Option<u64>,
     pub evidence_modified_ns: Option<i128>,
     pub content_hash: Option<[u8; 32]>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct IndexedNode {
+    pub node: FileNode,
+    pub marker: Marker,
+    pub image_metadata: Option<ImageMetadata>,
+    pub image_status: ImageIndexStatus,
+    pub text_status: TextIndexStatus,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct IndexProgress {
+    pub images_total: u64,
+    pub images_ready: u64,
+    pub images_failed: u64,
+    pub text_total: u64,
+    pub text_ready: u64,
+    pub text_skipped: u64,
+    pub text_failed: u64,
+}
+
+impl IndexProgress {
+    pub const fn completed_items(self) -> u64 {
+        self.images_ready
+            + self.images_failed
+            + self.text_ready
+            + self.text_skipped
+            + self.text_failed
+    }
+
+    pub const fn total_items(self) -> u64 {
+        self.images_total + self.text_total
+    }
+
+    pub const fn is_complete(self) -> bool {
+        self.completed_items() == self.total_items()
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, thiserror::Error)]

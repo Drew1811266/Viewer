@@ -1,9 +1,15 @@
 use rusqlite::{Connection, OptionalExtension, params};
 use std::{path::Path, str::FromStr, sync::Mutex, time::Duration};
-use viewer_application::browse::{BrowseIndexError, BrowseIndexPort};
+use viewer_application::{
+    browse::{BrowseIndexError, BrowseIndexPort},
+    metadata::{
+        IndexProgress, IndexedNode, Marker, MarkerChange, MarkerProjectionError,
+        MarkerProjectionPort, PortableMarker,
+    },
+};
 use viewer_domain::{
     EntityId, RelativePath,
-    file::{FileKind, FileNode, ReviewState},
+    file::{FileKind, FileNode, ImageIndexStatus, ImageMetadata, ReviewState, TextIndexStatus},
 };
 
 use super::text::TextStatus;
@@ -22,6 +28,8 @@ pub enum SessionIndexError {
     MissingTextNode { entity_id: EntityId, path: String },
     #[error("session index node does not exist: {0}")]
     MissingNode(EntityId),
+    #[error("derived metadata does not match a current supported node: {0}")]
+    InvalidDerivedMetadata(EntityId),
     #[error("invalid persisted {field}: {value}")]
     InvalidPersistedValue { field: &'static str, value: String },
 }
@@ -164,8 +172,134 @@ impl SessionIndex {
                 params![entity_id.to_string(), relative_path.as_str(), body],
             )?;
         }
+        transaction.execute(
+            "UPDATE nodes SET text_status = ?2 WHERE entity_id = ?1",
+            params![entity_id.to_string(), encode_text_status(status)],
+        )?;
         transaction.commit()?;
         Ok(())
+    }
+
+    pub fn mark_text_failed(
+        &self,
+        entity_id: EntityId,
+        relative_path: &RelativePath,
+    ) -> Result<(), SessionIndexError> {
+        let connection = self.lock_connection();
+        let changed = connection.execute(
+            "UPDATE nodes SET text_status = 4
+             WHERE entity_id = ?1 AND relative_path = ?2 AND kind IN (3, 4)",
+            params![entity_id.to_string(), relative_path.as_str()],
+        )?;
+        if changed == 0 {
+            return Err(SessionIndexError::InvalidDerivedMetadata(entity_id));
+        }
+        Ok(())
+    }
+
+    pub fn replace_image_metadata(
+        &self,
+        entity_id: EntityId,
+        relative_path: &RelativePath,
+        result: Result<ImageMetadata, ImageIndexStatus>,
+    ) -> Result<(), SessionIndexError> {
+        let (width, height, status) = match result {
+            Ok(metadata) if metadata.width > 0 && metadata.height > 0 => (
+                Some(i64::from(metadata.width)),
+                Some(i64::from(metadata.height)),
+                ImageIndexStatus::Ready,
+            ),
+            Ok(_) => return Err(SessionIndexError::InvalidDerivedMetadata(entity_id)),
+            Err(ImageIndexStatus::Failed) => (None, None, ImageIndexStatus::Failed),
+            Err(_) => return Err(SessionIndexError::InvalidDerivedMetadata(entity_id)),
+        };
+        let connection = self.lock_connection();
+        let changed = connection.execute(
+            "UPDATE nodes
+             SET image_width = ?3, image_height = ?4, image_status = ?5
+             WHERE entity_id = ?1 AND relative_path = ?2 AND kind IN (1, 2)",
+            params![
+                entity_id.to_string(),
+                relative_path.as_str(),
+                width,
+                height,
+                encode_image_status(status),
+            ],
+        )?;
+        if changed == 0 {
+            return Err(SessionIndexError::InvalidDerivedMetadata(entity_id));
+        }
+        Ok(())
+    }
+
+    pub fn hydrate_markers(&self, markers: &[PortableMarker]) -> Result<usize, SessionIndexError> {
+        let mut connection = self.lock_connection();
+        let transaction = connection.transaction()?;
+        let mut hydrated = 0_usize;
+        {
+            let mut update = transaction.prepare_cached(
+                "UPDATE nodes SET review_state = ?3, favorite = ?4
+                 WHERE relative_path = ?1 AND kind = ?2",
+            )?;
+            for stored in markers {
+                let changed = update.execute(params![
+                    stored.relative_path.as_str(),
+                    encode_kind(stored.kind),
+                    stored.marker.review_state.map(encode_review_state),
+                    stored.marker.favorite,
+                ])?;
+                hydrated = hydrated.saturating_add(changed);
+            }
+        }
+        transaction.commit()?;
+        Ok(hydrated)
+    }
+
+    pub fn indexed_node(
+        &self,
+        entity_id: EntityId,
+    ) -> Result<Option<IndexedNode>, SessionIndexError> {
+        let connection = self.lock_connection();
+        connection
+            .query_row(
+                "SELECT entity_id, relative_path, kind, size, modified_ns,
+                        review_state, favorite, image_width, image_height,
+                        image_status, text_status
+                 FROM nodes WHERE entity_id = ?1",
+                [entity_id.to_string()],
+                read_indexed_node,
+            )
+            .optional()
+            .map_err(Into::into)
+    }
+
+    pub fn index_progress(&self) -> Result<IndexProgress, SessionIndexError> {
+        let connection = self.lock_connection();
+        connection
+            .query_row(
+                "SELECT
+                    SUM(CASE WHEN kind IN (1, 2) THEN 1 ELSE 0 END),
+                    SUM(CASE WHEN kind IN (1, 2) AND image_status = 1 THEN 1 ELSE 0 END),
+                    SUM(CASE WHEN kind IN (1, 2) AND image_status = 2 THEN 1 ELSE 0 END),
+                    SUM(CASE WHEN kind IN (3, 4) THEN 1 ELSE 0 END),
+                    SUM(CASE WHEN kind IN (3, 4) AND text_status = 1 THEN 1 ELSE 0 END),
+                    SUM(CASE WHEN kind IN (3, 4) AND text_status IN (2, 3) THEN 1 ELSE 0 END),
+                    SUM(CASE WHEN kind IN (3, 4) AND text_status = 4 THEN 1 ELSE 0 END)
+                 FROM nodes",
+                [],
+                |row| {
+                    Ok(IndexProgress {
+                        images_total: read_count(row, 0)?,
+                        images_ready: read_count(row, 1)?,
+                        images_failed: read_count(row, 2)?,
+                        text_total: read_count(row, 3)?,
+                        text_ready: read_count(row, 4)?,
+                        text_skipped: read_count(row, 5)?,
+                        text_failed: read_count(row, 6)?,
+                    })
+                },
+            )
+            .map_err(Into::into)
     }
 
     pub fn set_review_metadata(
@@ -221,6 +355,36 @@ impl SessionIndex {
         self.connection
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+}
+
+impl MarkerProjectionPort for SessionIndex {
+    fn sync_markers(&self, changes: &[MarkerChange]) -> Result<(), MarkerProjectionError> {
+        let mut connection = self.lock_connection();
+        let transaction = connection
+            .transaction()
+            .map_err(|_| MarkerProjectionError::Unavailable)?;
+        for change in changes {
+            let changed = transaction
+                .execute(
+                    "UPDATE nodes SET review_state = ?4, favorite = ?5
+                     WHERE entity_id = ?1 AND relative_path = ?2 AND kind = ?3",
+                    params![
+                        change.target.entity_id.to_string(),
+                        change.target.relative_path.as_str(),
+                        encode_kind(change.target.kind),
+                        change.marker.review_state.map(encode_review_state),
+                        change.marker.favorite,
+                    ],
+                )
+                .map_err(|_| MarkerProjectionError::Unavailable)?;
+            if changed != 1 {
+                return Err(MarkerProjectionError::Unavailable);
+            }
+        }
+        transaction
+            .commit()
+            .map_err(|_| MarkerProjectionError::Unavailable)
     }
 }
 
@@ -351,6 +515,51 @@ pub(super) fn encode_review_state(state: ReviewState) -> i64 {
     }
 }
 
+fn decode_review_state(value: i64) -> rusqlite::Result<ReviewState> {
+    match value {
+        0 => Ok(ReviewState::Keep),
+        1 => Ok(ReviewState::Pending),
+        2 => Ok(ReviewState::Reject),
+        _ => Err(persisted_error("review_state", value)),
+    }
+}
+
+fn encode_image_status(status: ImageIndexStatus) -> i64 {
+    match status {
+        ImageIndexStatus::Pending => 0,
+        ImageIndexStatus::Ready => 1,
+        ImageIndexStatus::Failed => 2,
+    }
+}
+
+fn decode_image_status(value: i64) -> rusqlite::Result<ImageIndexStatus> {
+    match value {
+        0 => Ok(ImageIndexStatus::Pending),
+        1 => Ok(ImageIndexStatus::Ready),
+        2 => Ok(ImageIndexStatus::Failed),
+        _ => Err(persisted_error("image_status", value)),
+    }
+}
+
+fn encode_text_status(status: &TextStatus) -> i64 {
+    match status {
+        TextStatus::Indexed(_) => 1,
+        TextStatus::UnsupportedEncoding => 2,
+        TextStatus::TooLarge => 3,
+    }
+}
+
+fn decode_text_status(value: i64) -> rusqlite::Result<TextIndexStatus> {
+    match value {
+        0 => Ok(TextIndexStatus::Pending),
+        1 => Ok(TextIndexStatus::Ready),
+        2 => Ok(TextIndexStatus::UnsupportedEncoding),
+        3 => Ok(TextIndexStatus::TooLarge),
+        4 => Ok(TextIndexStatus::Failed),
+        _ => Err(persisted_error("text_status", value)),
+    }
+}
+
 fn decode_kind(value: i64) -> rusqlite::Result<FileKind> {
     match value {
         0 => Ok(FileKind::Directory),
@@ -380,6 +589,39 @@ pub(super) fn read_node(row: &rusqlite::Row<'_>) -> rusqlite::Result<FileNode> {
         size,
         modified_ns,
     })
+}
+
+fn read_indexed_node(row: &rusqlite::Row<'_>) -> rusqlite::Result<IndexedNode> {
+    let node = read_node(row)?;
+    let review_state = row
+        .get::<_, Option<i64>>(5)?
+        .map(decode_review_state)
+        .transpose()?;
+    let width = row.get::<_, Option<i64>>(7)?;
+    let height = row.get::<_, Option<i64>>(8)?;
+    let image_metadata = match (width, height) {
+        (Some(width), Some(height)) => Some(ImageMetadata {
+            width: u32::try_from(width).map_err(|_| persisted_error("image_width", width))?,
+            height: u32::try_from(height).map_err(|_| persisted_error("image_height", height))?,
+        }),
+        (None, None) => None,
+        _ => return Err(persisted_error("image_dimensions", "partial")),
+    };
+    Ok(IndexedNode {
+        node,
+        marker: Marker {
+            review_state,
+            favorite: row.get(6)?,
+        },
+        image_metadata,
+        image_status: decode_image_status(row.get(9)?)?,
+        text_status: decode_text_status(row.get(10)?)?,
+    })
+}
+
+fn read_count(row: &rusqlite::Row<'_>, index: usize) -> rusqlite::Result<u64> {
+    let value = row.get::<_, Option<i64>>(index)?.unwrap_or(0);
+    u64::try_from(value).map_err(|_| persisted_error("progress_count", value))
 }
 
 fn parse_id<T>(value: String, field: &'static str) -> rusqlite::Result<T>

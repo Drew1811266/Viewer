@@ -38,7 +38,7 @@ fn identity_first_open_is_atomic_and_reopen_is_stable() {
 
     assert!(first.is_persistent());
     assert!(first.is_writable());
-    assert_eq!(schema_version(&database), 2);
+    assert_eq!(schema_version(&database), 3);
     assert!(project.path().join(".viewer/project.json").is_file());
     assert!(database.is_file());
     assert!(!project.path().join(".viewer/project.json.tmp").exists());
@@ -182,18 +182,22 @@ fn version_one_database_migrates_once_with_a_durable_backup() {
     let migrated =
         PortableProjectMetadata::open(project.path(), ProjectAccess::ReadWrite, 42).unwrap();
     assert_eq!(migrated.project_id(), project_id);
-    assert_eq!(schema_version(&database), 2);
-    let backup = viewer.join("metadata.sqlite.v1.bak");
-    assert!(backup.is_file());
-    let backup_before = fs::read(&backup).unwrap();
+    assert_eq!(schema_version(&database), 3);
+    let v1_backup = viewer.join("metadata.sqlite.v1.bak");
+    let v2_backup = viewer.join("metadata.sqlite.v2.bak");
+    assert!(v1_backup.is_file());
+    assert!(v2_backup.is_file());
+    let v1_before = fs::read(&v1_backup).unwrap();
+    let v2_before = fs::read(&v2_backup).unwrap();
     drop(migrated);
 
     let reopened =
         PortableProjectMetadata::open(project.path(), ProjectAccess::ReadWrite, 43).unwrap();
     assert_eq!(reopened.project_id(), project_id);
-    assert_eq!(fs::read(&backup).unwrap(), backup_before);
+    assert_eq!(fs::read(&v1_backup).unwrap(), v1_before);
+    assert_eq!(fs::read(&v2_backup).unwrap(), v2_before);
     drop(reopened);
-    OperationJournal::open(&database).expect("operation journal accepts schema v2");
+    OperationJournal::open(&database).expect("operation journal accepts schema v3");
 }
 
 #[test]

@@ -4,7 +4,7 @@ use std::{
 };
 use viewer_application::{
     ClockPort, FaultInjector, FileMutationPort, FileOperationError, InjectedCrash, NoFaults,
-    TrashPort,
+    OperationCommit, OperationCommitError, OperationCommitPort, TrashPort,
 };
 use viewer_domain::{
     OperationId, RelativePath,
@@ -212,6 +212,8 @@ pub enum ReplaceError {
     Journal(#[from] JournalError),
     #[error(transparent)]
     Injected(#[from] InjectedCrash),
+    #[error(transparent)]
+    Commit(#[from] OperationCommitError),
     #[error("replace executor requires rename or move with Replace conflict policy")]
     WrongOperation,
     #[error("previous destination is in the system Trash, but replacement placement failed: {0}")]
@@ -233,6 +235,7 @@ pub struct ReplaceExecutor {
     mutation: Arc<dyn FileMutationPort>,
     trash: Arc<dyn TrashPort>,
     clock: Arc<dyn ClockPort>,
+    commits: Arc<dyn OperationCommitPort>,
     faults: Arc<dyn FaultInjector>,
 }
 
@@ -243,6 +246,7 @@ impl ReplaceExecutor {
         mutation: Arc<dyn FileMutationPort>,
         trash: Arc<dyn TrashPort>,
         clock: Arc<dyn ClockPort>,
+        commits: Arc<dyn OperationCommitPort>,
     ) -> Result<Self, FileOperationError> {
         Self::with_faults(
             project_root,
@@ -250,6 +254,7 @@ impl ReplaceExecutor {
             mutation,
             trash,
             clock,
+            commits,
             Arc::new(NoFaults),
         )
     }
@@ -260,6 +265,7 @@ impl ReplaceExecutor {
         mutation: Arc<dyn FileMutationPort>,
         trash: Arc<dyn TrashPort>,
         clock: Arc<dyn ClockPort>,
+        commits: Arc<dyn OperationCommitPort>,
         faults: Arc<dyn FaultInjector>,
     ) -> Result<Self, FileOperationError> {
         let project_root = std::fs::canonicalize(project_root.as_ref()).map_err(|error| {
@@ -275,6 +281,7 @@ impl ReplaceExecutor {
             mutation,
             trash,
             clock,
+            commits,
             faults,
         })
     }
@@ -336,16 +343,43 @@ impl ReplaceExecutor {
         )?;
         self.after_persist(item.operation_id, OperationState::FsApplied)?;
 
-        for (current, next) in [
-            (OperationState::FsApplied, OperationState::Verified),
-            (OperationState::Verified, OperationState::MetaCommitted),
-            (OperationState::MetaCommitted, OperationState::IndexSynced),
-            (OperationState::IndexSynced, OperationState::Completed),
-        ] {
-            self.journal
-                .advance(item.operation_id, current, next, self.now())?;
-            self.after_persist(item.operation_id, next)?;
-        }
+        self.journal.advance(
+            item.operation_id,
+            OperationState::FsApplied,
+            OperationState::Verified,
+            self.now(),
+        )?;
+        self.after_persist(item.operation_id, OperationState::Verified)?;
+        let commit = OperationCommit {
+            operation_id: item.operation_id,
+            entity_id: item.entity_id,
+            kind: item.kind,
+            source: item.source.clone(),
+            destination: item.destination.clone(),
+        };
+        self.commits.commit_metadata(&commit).await?;
+        self.journal.advance(
+            item.operation_id,
+            OperationState::Verified,
+            OperationState::MetaCommitted,
+            self.now(),
+        )?;
+        self.after_persist(item.operation_id, OperationState::MetaCommitted)?;
+        self.commits.sync_index(&commit).await?;
+        self.journal.advance(
+            item.operation_id,
+            OperationState::MetaCommitted,
+            OperationState::IndexSynced,
+            self.now(),
+        )?;
+        self.after_persist(item.operation_id, OperationState::IndexSynced)?;
+        self.journal.complete_item(
+            item.operation_id,
+            OperationState::IndexSynced,
+            "completed",
+            self.now(),
+        )?;
+        self.after_persist(item.operation_id, OperationState::Completed)?;
         Ok(())
     }
 

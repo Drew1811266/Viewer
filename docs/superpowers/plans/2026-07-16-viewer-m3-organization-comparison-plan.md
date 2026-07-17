@@ -87,7 +87,7 @@ git commit -m "docs: plan M3 organization and comparison"
 **Interfaces:**
 - Produces: `OperationCommit { operation_id, entity_id, kind, source, destination }`, `OperationCommitPort::{commit_metadata,sync_index}`, batch lifecycle/count/result-code journal APIs, schema v3 and `metadata.sqlite.v2.bak`.
 
-- [ ] **Step 1: Write failing migration and barrier tests**
+- [x] **Step 1: Write failing migration and barrier tests**
 
 Cover v2→v3 one-time backup/migration, exact schema rejection, batch requested/completed/failed/skipped counts, stable result codes, and fault injection immediately before/after real metadata and index callbacks. Assert `MetaCommitted` is impossible before `commit_metadata` succeeds and `IndexSynced` is impossible before `sync_index` succeeds.
 
@@ -95,21 +95,21 @@ Run: `cargo test --test m3_operation_journal -- --nocapture`
 
 Expected: RED because schema v3 and commit callbacks do not exist and G2 executors currently advance logical barriers internally.
 
-- [ ] **Step 2: Add schema v3 and strict journal APIs**
+- [x] **Step 2: Add schema v3 and strict journal APIs**
 
 Add batch `state`, counts and timestamps plus item `result_code` with database CHECK constraints. Keep DELETE/FULL/foreign keys, exclusive synced backup creation and exact version sequence `[1,2,3]`. Expose `begin_batch`, `complete_item`, `fail_item`, `skip_item`, `finish_batch` and paged result reads; reject invalid counters/transitions.
 
-- [ ] **Step 3: Make commit barriers truthful**
+- [x] **Step 3: Make commit barriers truthful**
 
 Refactor filesystem executors so verified placement calls `OperationCommitPort::commit_metadata`, advances `Verified → MetaCommitted`, calls `sync_index`, advances `MetaCommitted → IndexSynced`, then completes. Recovery uses the same port. A failed callback leaves the last truthful durable state for replay and never reports completion.
 
-- [ ] **Step 4: Verify G2 recovery remains exact**
+- [x] **Step 4: Verify G2 recovery remains exact**
 
 Run: `cargo test --test m3_operation_journal && cargo test --test file_transactions && ./scripts/run-g2-file-transaction-gate.sh`
 
 Expected: all seven-state/four-operation crash cases and second-run idempotence pass with real barrier fakes.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add crates/viewer-application crates/viewer-infrastructure tests/m3_operation_journal.rs tests/file_transactions.rs

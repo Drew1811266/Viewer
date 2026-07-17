@@ -5,7 +5,7 @@ use std::{
 };
 use viewer_application::{
     ClockPort, FaultInjector, FileMutationPort, FileOperationError, FileSnapshot, InjectedCrash,
-    NoFaults,
+    NoFaults, OperationCommit, OperationCommitPort,
 };
 use viewer_domain::{EntityId, OperationId, RelativePath, operation::OperationState};
 
@@ -248,6 +248,7 @@ pub struct RenameExecutor {
     journal: Arc<OperationJournal>,
     mutation: Arc<dyn FileMutationPort>,
     clock: Arc<dyn ClockPort>,
+    commits: Arc<dyn OperationCommitPort>,
     faults: Arc<dyn FaultInjector>,
 }
 
@@ -257,8 +258,16 @@ impl RenameExecutor {
         journal: Arc<OperationJournal>,
         mutation: Arc<dyn FileMutationPort>,
         clock: Arc<dyn ClockPort>,
+        commits: Arc<dyn OperationCommitPort>,
     ) -> Result<Self, FileOperationError> {
-        Self::with_faults(project_root, journal, mutation, clock, Arc::new(NoFaults))
+        Self::with_faults(
+            project_root,
+            journal,
+            mutation,
+            clock,
+            commits,
+            Arc::new(NoFaults),
+        )
     }
 
     pub fn with_faults(
@@ -266,6 +275,7 @@ impl RenameExecutor {
         journal: Arc<OperationJournal>,
         mutation: Arc<dyn FileMutationPort>,
         clock: Arc<dyn ClockPort>,
+        commits: Arc<dyn OperationCommitPort>,
         faults: Arc<dyn FaultInjector>,
     ) -> Result<Self, FileOperationError> {
         let project_root = std::fs::canonicalize(project_root.as_ref()).map_err(|error| {
@@ -280,6 +290,7 @@ impl RenameExecutor {
             journal,
             mutation,
             clock,
+            commits,
             faults,
         })
     }
@@ -517,17 +528,57 @@ impl RenameExecutor {
             )
             .map_err(|error| RenameStepError::Operational(error.to_string()))?;
         self.after_persist(operation_id, OperationState::FsApplied)?;
-        for (current, next) in [
-            (OperationState::FsApplied, OperationState::Verified),
-            (OperationState::Verified, OperationState::MetaCommitted),
-            (OperationState::MetaCommitted, OperationState::IndexSynced),
-            (OperationState::IndexSynced, OperationState::Completed),
-        ] {
-            self.journal
-                .advance(operation_id, current, next, self.now())
-                .map_err(|error| RenameStepError::Operational(error.to_string()))?;
-            self.after_persist(operation_id, next)?;
-        }
+        self.journal
+            .advance(
+                operation_id,
+                OperationState::FsApplied,
+                OperationState::Verified,
+                self.now(),
+            )
+            .map_err(|error| RenameStepError::Operational(error.to_string()))?;
+        self.after_persist(operation_id, OperationState::Verified)?;
+        let commit = OperationCommit {
+            operation_id,
+            entity_id: item.entity_id,
+            kind: item.kind,
+            source: item.source,
+            destination: item.destination,
+        };
+        self.commits
+            .commit_metadata(&commit)
+            .await
+            .map_err(|error| RenameStepError::Operational(error.to_string()))?;
+        self.journal
+            .advance(
+                operation_id,
+                OperationState::Verified,
+                OperationState::MetaCommitted,
+                self.now(),
+            )
+            .map_err(|error| RenameStepError::Operational(error.to_string()))?;
+        self.after_persist(operation_id, OperationState::MetaCommitted)?;
+        self.commits
+            .sync_index(&commit)
+            .await
+            .map_err(|error| RenameStepError::Operational(error.to_string()))?;
+        self.journal
+            .advance(
+                operation_id,
+                OperationState::MetaCommitted,
+                OperationState::IndexSynced,
+                self.now(),
+            )
+            .map_err(|error| RenameStepError::Operational(error.to_string()))?;
+        self.after_persist(operation_id, OperationState::IndexSynced)?;
+        self.journal
+            .complete_item(
+                operation_id,
+                OperationState::IndexSynced,
+                "completed",
+                self.now(),
+            )
+            .map_err(|error| RenameStepError::Operational(error.to_string()))?;
+        self.after_persist(operation_id, OperationState::Completed)?;
         Ok(())
     }
 

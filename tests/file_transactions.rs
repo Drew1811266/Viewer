@@ -20,7 +20,14 @@ use viewer_infrastructure::operation::{
     recovery::RecoveryService,
     rename::{RenameExecutor, RenameItemStatus, RenameMapping, RenamePlanner},
 };
-use viewer_test_support::{FixedClock, faults::FailAfterState, project_fixture::ProjectFixture};
+use viewer_test_support::{
+    FixedClock, faults::FailAfterState, operation_commits::InMemoryOperationCommitPort,
+    project_fixture::ProjectFixture,
+};
+
+fn operation_commits() -> Arc<InMemoryOperationCommitPort> {
+    Arc::new(InMemoryOperationCommitPort::default())
+}
 
 fn copy_item(
     batch_id: OperationId,
@@ -48,7 +55,7 @@ fn prepared_copy(project: &ProjectFixture) -> (Arc<OperationJournal>, OperationI
     let item = copy_item(batch_id, source, destination);
     let journal = Arc::new(OperationJournal::open(project.metadata_path()).unwrap());
     journal
-        .create_batch(batch_id, OperationKind::Copy, 1_000)
+        .begin_batch(batch_id, OperationKind::Copy, 1, 1_000)
         .unwrap();
     journal.record_item(&item, 1_001).unwrap();
     (journal, item, contents)
@@ -63,6 +70,7 @@ async fn verified_copy_writes_identical_bytes_and_completes_journal() {
         Arc::clone(&journal),
         Arc::new(LocalFileMutation),
         Arc::new(FixedClock::new(2_000)),
+        operation_commits(),
     )
     .unwrap();
 
@@ -158,6 +166,7 @@ async fn verified_copy_failure_before_final_rename_leaves_only_registered_tempor
             delegate: LocalFileMutation,
         }),
         Arc::new(FixedClock::new(2_000)),
+        operation_commits(),
     )
     .unwrap();
 
@@ -190,6 +199,7 @@ async fn verified_copy_retry_after_reopen_finishes_registered_temporary() {
             delegate: LocalFileMutation,
         }),
         Arc::new(FixedClock::new(2_000)),
+        operation_commits(),
     )
     .unwrap();
     assert!(executor.execute(&item).await.is_err());
@@ -202,6 +212,7 @@ async fn verified_copy_retry_after_reopen_finishes_registered_temporary() {
         Arc::clone(&reopened),
         Arc::new(LocalFileMutation),
         Arc::new(FixedClock::new(3_000)),
+        operation_commits(),
     )
     .unwrap();
     let outcome = retry.resume(item.operation_id).await.unwrap();
@@ -233,6 +244,7 @@ async fn verified_copy_cancellation_removes_only_registered_temporary() {
             delegate: LocalFileMutation,
         }),
         Arc::new(FixedClock::new(2_000)),
+        operation_commits(),
     )
     .unwrap();
 
@@ -288,7 +300,7 @@ async fn verified_copy_rejects_source_and_destination_symlink_escapes() {
         );
         let journal = Arc::new(OperationJournal::open(project.metadata_path()).unwrap());
         journal
-            .create_batch(batch_id, OperationKind::Copy, 1_000)
+            .begin_batch(batch_id, OperationKind::Copy, 1, 1_000)
             .unwrap();
         journal.record_item(&item, 1_001).unwrap();
         let executor = CopyExecutor::new(
@@ -296,6 +308,7 @@ async fn verified_copy_rejects_source_and_destination_symlink_escapes() {
             journal,
             Arc::new(LocalFileMutation),
             Arc::new(FixedClock::new(2_000)),
+            operation_commits(),
         )
         .unwrap();
 
@@ -314,7 +327,9 @@ fn prepare_rename_items(
     mappings: &[RenameMapping],
     kind: OperationKind,
 ) {
-    journal.create_batch(batch_id, kind, 4_000).unwrap();
+    journal
+        .begin_batch(batch_id, kind, mappings.len() as u32, 4_000)
+        .unwrap();
     for mapping in mappings {
         journal
             .record_item(
@@ -366,6 +381,7 @@ async fn rename_cycle_swaps_files_without_data_loss() {
         Arc::clone(&journal),
         Arc::new(LocalFileMutation),
         Arc::new(FixedClock::new(5_000)),
+        operation_commits(),
     )
     .unwrap();
 
@@ -411,6 +427,7 @@ async fn rename_case_only_uses_temporary_stage() {
         journal,
         Arc::new(LocalFileMutation),
         Arc::new(FixedClock::new(5_000)),
+        operation_commits(),
     )
     .unwrap();
 
@@ -442,6 +459,7 @@ async fn rename_in_project_move_preserves_file_identity() {
         journal,
         mutation.clone(),
         Arc::new(FixedClock::new(5_000)),
+        operation_commits(),
     )
     .unwrap();
 
@@ -516,6 +534,7 @@ async fn rename_partial_failure_keeps_completed_items() {
             fail_source_name: "B.jpg",
         }),
         Arc::new(FixedClock::new(5_000)),
+        operation_commits(),
     )
     .unwrap();
 
@@ -995,6 +1014,7 @@ async fn recover_twice(
         Arc::new(LocalFileMutation),
         trash,
         Arc::new(FixedClock::new(9_000)),
+        operation_commits(),
     )
     .unwrap();
     recovery.recover_project().await.unwrap();
@@ -1013,6 +1033,7 @@ async fn copy_recovery_case(fail_after: OperationState) {
         Arc::clone(&journal),
         Arc::new(LocalFileMutation),
         Arc::new(FixedClock::new(2_000)),
+        operation_commits(),
         Arc::new(FailAfterState(fail_after)),
     )
     .unwrap();
@@ -1061,6 +1082,7 @@ async fn rename_or_move_recovery_case(fail_after: OperationState, kind: Operatio
         Arc::clone(&journal),
         Arc::new(LocalFileMutation),
         Arc::new(FixedClock::new(3_000)),
+        operation_commits(),
         Arc::new(FailAfterState(fail_after)),
     )
     .unwrap();
@@ -1108,7 +1130,7 @@ async fn replace_recovery_case(fail_after: OperationState) {
     };
     let journal = Arc::new(OperationJournal::open(project.metadata_path()).unwrap());
     journal
-        .create_batch(batch_id, OperationKind::Move, 1_000)
+        .begin_batch(batch_id, OperationKind::Move, 1, 1_000)
         .unwrap();
     journal.record_item(&item, 1_001).unwrap();
     let trash = durable_trash(&project);
@@ -1118,6 +1140,7 @@ async fn replace_recovery_case(fail_after: OperationState) {
         Arc::new(LocalFileMutation),
         Arc::clone(&trash),
         Arc::new(FixedClock::new(4_000)),
+        operation_commits(),
         Arc::new(FailAfterState(fail_after)),
     )
     .unwrap();
@@ -1185,6 +1208,7 @@ async fn interrupted_verified_copy(
         Arc::clone(&journal),
         Arc::new(LocalFileMutation),
         Arc::new(FixedClock::new(2_000)),
+        operation_commits(),
         Arc::new(FailAfterState(OperationState::Verified)),
     )
     .unwrap();
@@ -1218,6 +1242,7 @@ async fn recovery_requires_review_for_unknown_or_ambiguous_candidates() {
             Arc::new(LocalFileMutation),
             durable_trash(&project),
             Arc::new(FixedClock::new(9_000)),
+            operation_commits(),
         )
         .unwrap();
 
@@ -1251,6 +1276,7 @@ async fn recovery_requires_review_for_unknown_or_ambiguous_candidates() {
         Arc::clone(&journal),
         Arc::new(LocalFileMutation),
         Arc::new(FixedClock::new(3_000)),
+        operation_commits(),
         Arc::new(FailAfterState(OperationState::Staged)),
     )
     .unwrap();
@@ -1262,6 +1288,7 @@ async fn recovery_requires_review_for_unknown_or_ambiguous_candidates() {
         Arc::new(LocalFileMutation),
         durable_trash(&project),
         Arc::new(FixedClock::new(9_000)),
+        operation_commits(),
     )
     .unwrap();
     let report = recovery.recover_project().await.unwrap();
@@ -1291,7 +1318,7 @@ async fn recovery_never_deletes_a_non_deterministic_registered_temporary_path() 
     );
     let journal = Arc::new(OperationJournal::open(project.metadata_path()).unwrap());
     journal
-        .create_batch(batch_id, OperationKind::Copy, 1_000)
+        .begin_batch(batch_id, OperationKind::Copy, 1, 1_000)
         .unwrap();
     journal.record_item(&item, 1_001).unwrap();
     journal
@@ -1308,6 +1335,7 @@ async fn recovery_never_deletes_a_non_deterministic_registered_temporary_path() 
         Arc::new(LocalFileMutation),
         durable_trash(&project),
         Arc::new(FixedClock::new(9_000)),
+        operation_commits(),
     )
     .unwrap();
 
@@ -1335,6 +1363,7 @@ async fn recovery_never_deletes_a_non_deterministic_registered_temporary_path() 
         Arc::clone(&journal),
         Arc::new(LocalFileMutation),
         Arc::new(FixedClock::new(2_000)),
+        operation_commits(),
     )
     .unwrap();
     assert!(executor.execute(&item).await.is_err());
@@ -1352,6 +1381,7 @@ async fn recovery_never_deletes_a_non_deterministic_registered_temporary_path() 
         Arc::new(LocalFileMutation),
         durable_trash(&project),
         Arc::new(FixedClock::new(9_000)),
+        operation_commits(),
     )
     .unwrap();
     let report = recovery.recover_project().await.unwrap();
@@ -1399,6 +1429,7 @@ async fn recovery_finishes_when_filesystem_truth_is_one_step_ahead_of_journal() 
         Arc::clone(&journal),
         Arc::new(LocalFileMutation),
         Arc::new(FixedClock::new(3_000)),
+        operation_commits(),
         Arc::new(FailAfterState(OperationState::Staged)),
     )
     .unwrap();
@@ -1475,7 +1506,7 @@ async fn recovery_restores_replacement_source_when_previous_destination_is_alrea
     };
     let journal = Arc::new(OperationJournal::open(project.metadata_path()).unwrap());
     journal
-        .create_batch(batch_id, OperationKind::Move, 1_000)
+        .begin_batch(batch_id, OperationKind::Move, 1, 1_000)
         .unwrap();
     journal.record_item(&item, 1_001).unwrap();
     let trash = durable_trash(&project);
@@ -1487,6 +1518,7 @@ async fn recovery_restores_replacement_source_when_previous_destination_is_alrea
         }),
         Arc::clone(&trash),
         Arc::new(FixedClock::new(4_000)),
+        operation_commits(),
     )
     .unwrap();
     assert!(matches!(
@@ -1504,6 +1536,7 @@ async fn recovery_restores_replacement_source_when_previous_destination_is_alrea
         Arc::new(LocalFileMutation),
         trash,
         Arc::new(FixedClock::new(9_000)),
+        operation_commits(),
     )
     .unwrap();
     let report = recovery.recover_project().await.unwrap();

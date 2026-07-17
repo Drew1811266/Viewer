@@ -8,6 +8,7 @@ use std::{
 };
 use viewer_application::{
     ClockPort, FaultInjector, FileMutationPort, FileOperationError, InjectedCrash, NoFaults,
+    OperationCommit, OperationCommitError, OperationCommitPort,
 };
 use viewer_domain::{
     OperationId, RelativePath,
@@ -34,6 +35,8 @@ pub enum CopyError {
     Journal(#[from] JournalError),
     #[error(transparent)]
     Injected(#[from] InjectedCrash),
+    #[error(transparent)]
+    Commit(#[from] OperationCommitError),
     #[error("copy executor received a non-copy operation")]
     WrongOperationKind,
     #[error("operation {0} is not present in the journal")]
@@ -61,6 +64,7 @@ pub struct CopyExecutor {
     journal: Arc<OperationJournal>,
     mutation: Arc<dyn FileMutationPort>,
     clock: Arc<dyn ClockPort>,
+    commits: Arc<dyn OperationCommitPort>,
     faults: Arc<dyn FaultInjector>,
 }
 
@@ -70,8 +74,16 @@ impl CopyExecutor {
         journal: Arc<OperationJournal>,
         mutation: Arc<dyn FileMutationPort>,
         clock: Arc<dyn ClockPort>,
+        commits: Arc<dyn OperationCommitPort>,
     ) -> Result<Self, FileOperationError> {
-        Self::with_faults(project_root, journal, mutation, clock, Arc::new(NoFaults))
+        Self::with_faults(
+            project_root,
+            journal,
+            mutation,
+            clock,
+            commits,
+            Arc::new(NoFaults),
+        )
     }
 
     pub fn with_faults(
@@ -79,6 +91,7 @@ impl CopyExecutor {
         journal: Arc<OperationJournal>,
         mutation: Arc<dyn FileMutationPort>,
         clock: Arc<dyn ClockPort>,
+        commits: Arc<dyn OperationCommitPort>,
         faults: Arc<dyn FaultInjector>,
     ) -> Result<Self, FileOperationError> {
         let project_root = std::fs::canonicalize(project_root.as_ref()).map_err(|error| {
@@ -89,6 +102,7 @@ impl CopyExecutor {
             journal,
             mutation,
             clock,
+            commits,
             faults,
         })
     }
@@ -242,7 +256,8 @@ impl CopyExecutor {
                         .await?;
                 } else if destination.exists() {
                     self.verify_expected(&destination, expected).await?;
-                    self.finish_journal(operation_id, OperationState::Verified)?;
+                    self.finish_journal(operation_id, OperationState::Verified)
+                        .await?;
                 } else {
                     return Err(CopyError::MissingEvidence(operation_id));
                 }
@@ -254,7 +269,8 @@ impl CopyExecutor {
             OperationState::MetaCommitted => {
                 let expected = expected_copy_evidence(&item)?;
                 self.verify_expected(&destination, expected).await?;
-                self.finish_after_meta_committed(operation_id)?;
+                self.finish_journal(operation_id, OperationState::MetaCommitted)
+                    .await?;
                 Ok(CopyResumeResult::Completed(CopyResult {
                     len: expected.0,
                     hash: expected.1,
@@ -263,10 +279,10 @@ impl CopyExecutor {
             OperationState::IndexSynced => {
                 let expected = expected_copy_evidence(&item)?;
                 self.verify_expected(&destination, expected).await?;
-                self.journal.advance(
+                self.journal.complete_item(
                     operation_id,
                     OperationState::IndexSynced,
-                    OperationState::Completed,
+                    "completed",
                     self.now(),
                 )?;
                 self.after_persist(operation_id, OperationState::Completed)?;
@@ -321,50 +337,47 @@ impl CopyExecutor {
                 path: error_path,
                 message: error.to_string(),
             })??;
-        self.finish_journal(operation_id, OperationState::Verified)?;
+        self.finish_journal(operation_id, OperationState::Verified)
+            .await?;
         Ok(())
     }
 
-    fn finish_journal(
+    async fn finish_journal(
         &self,
         operation_id: OperationId,
-        current: OperationState,
+        mut current: OperationState,
     ) -> Result<(), CopyError> {
-        self.journal.advance(
-            operation_id,
-            current,
-            OperationState::MetaCommitted,
-            self.now(),
-        )?;
-        self.after_persist(operation_id, OperationState::MetaCommitted)?;
-        self.journal.advance(
-            operation_id,
-            OperationState::MetaCommitted,
-            OperationState::IndexSynced,
-            self.now(),
-        )?;
-        self.after_persist(operation_id, OperationState::IndexSynced)?;
-        self.journal.advance(
-            operation_id,
-            OperationState::IndexSynced,
-            OperationState::Completed,
-            self.now(),
-        )?;
-        self.after_persist(operation_id, OperationState::Completed)
-    }
-
-    fn finish_after_meta_committed(&self, operation_id: OperationId) -> Result<(), CopyError> {
-        self.journal.advance(
-            operation_id,
-            OperationState::MetaCommitted,
-            OperationState::IndexSynced,
-            self.now(),
-        )?;
-        self.after_persist(operation_id, OperationState::IndexSynced)?;
-        self.journal.advance(
+        let item = self
+            .journal
+            .item(operation_id)?
+            .ok_or(CopyError::MissingJournalItem(operation_id))?;
+        let commit = operation_commit(&item);
+        if current == OperationState::Verified {
+            self.commits.commit_metadata(&commit).await?;
+            self.journal.advance(
+                operation_id,
+                OperationState::Verified,
+                OperationState::MetaCommitted,
+                self.now(),
+            )?;
+            current = OperationState::MetaCommitted;
+            self.after_persist(operation_id, current)?;
+        }
+        if current == OperationState::MetaCommitted {
+            self.commits.sync_index(&commit).await?;
+            self.journal.advance(
+                operation_id,
+                OperationState::MetaCommitted,
+                OperationState::IndexSynced,
+                self.now(),
+            )?;
+            current = OperationState::IndexSynced;
+            self.after_persist(operation_id, current)?;
+        }
+        self.journal.complete_item(
             operation_id,
             OperationState::IndexSynced,
-            OperationState::Completed,
+            "completed",
             self.now(),
         )?;
         self.after_persist(operation_id, OperationState::Completed)
@@ -414,6 +427,16 @@ impl CopyExecutor {
         self.faults
             .after_persist(operation_id, state)
             .map_err(Into::into)
+    }
+}
+
+fn operation_commit(item: &JournalItem) -> OperationCommit {
+    OperationCommit {
+        operation_id: item.operation_id,
+        entity_id: item.entity_id,
+        kind: item.kind,
+        source: item.source.clone(),
+        destination: item.destination.clone(),
     }
 }
 

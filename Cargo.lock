@@ -4181,6 +4181,7 @@ dependencies = [
 name = "viewer-test-support"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "tempfile",
  "viewer-application",
  "viewer-domain",

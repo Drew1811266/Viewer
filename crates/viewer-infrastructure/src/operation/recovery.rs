@@ -3,7 +3,10 @@ use std::{
     sync::Arc,
 };
 
-use viewer_application::{ClockPort, FileMutationPort, FileOperationError, TrashPort};
+use viewer_application::{
+    ClockPort, FileMutationPort, FileOperationError, OperationCommit, OperationCommitError,
+    OperationCommitPort, TrashPort,
+};
 use viewer_domain::{
     OperationId, RelativePath,
     operation::{ConflictPolicy, OperationKind, OperationState},
@@ -51,6 +54,8 @@ pub enum RecoveryError {
     Journal(#[from] JournalError),
     #[error(transparent)]
     Copy(#[from] CopyError),
+    #[error(transparent)]
+    Commit(#[from] OperationCommitError),
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -66,6 +71,7 @@ pub struct RecoveryService {
     mutation: Arc<dyn FileMutationPort>,
     _trash: Arc<dyn TrashPort>,
     clock: Arc<dyn ClockPort>,
+    commits: Arc<dyn OperationCommitPort>,
 }
 
 impl RecoveryService {
@@ -75,6 +81,7 @@ impl RecoveryService {
         mutation: Arc<dyn FileMutationPort>,
         trash: Arc<dyn TrashPort>,
         clock: Arc<dyn ClockPort>,
+        commits: Arc<dyn OperationCommitPort>,
     ) -> Result<Self, FileOperationError> {
         let project_root = std::fs::canonicalize(project_root.as_ref()).map_err(|error| {
             FileOperationError::io(
@@ -89,6 +96,7 @@ impl RecoveryService {
             mutation,
             _trash: trash,
             clock,
+            commits,
         })
     }
 
@@ -194,7 +202,7 @@ impl RecoveryService {
                     && temporary_status == CandidateStatus::Missing
                     && destination_status == CandidateStatus::Match
                 {
-                    self.finish_from(item, OperationState::FsApplied)?;
+                    self.finish_from(item, OperationState::FsApplied).await?;
                     return Ok(RecoveryOutcome::Action(RecoveryActionKind::Completed));
                 }
 
@@ -220,6 +228,7 @@ impl RecoveryService {
                     Arc::clone(&self.journal),
                     Arc::clone(&self.mutation),
                     Arc::clone(&self.clock),
+                    Arc::clone(&self.commits),
                 )?;
                 let result = executor.resume(item.operation_id).await?;
                 Ok(RecoveryOutcome::Action(match result {
@@ -329,7 +338,7 @@ impl RecoveryService {
                     && source_status == CandidateStatus::Missing
                     && temporary_status == CandidateStatus::Missing
                 {
-                    self.record_applied_and_finish(item, expected)?;
+                    self.record_applied_and_finish(item, expected).await?;
                     return Ok(RecoveryOutcome::Action(RecoveryActionKind::Completed));
                 }
             }
@@ -341,7 +350,7 @@ impl RecoveryService {
                     && source_status == CandidateStatus::Missing
                     && temporary_status == CandidateStatus::Missing
                 {
-                    self.finish_from(item, item.state)?;
+                    self.finish_from(item, item.state).await?;
                     return Ok(RecoveryOutcome::Action(RecoveryActionKind::Completed));
                 }
             }
@@ -429,7 +438,7 @@ impl RecoveryService {
                     && source_status == CandidateStatus::Missing
                     && temporary_status == CandidateStatus::Missing
                 {
-                    self.record_applied_and_finish(item, expected)?;
+                    self.record_applied_and_finish(item, expected).await?;
                     return Ok(RecoveryOutcome::Action(RecoveryActionKind::Completed));
                 }
             }
@@ -441,7 +450,7 @@ impl RecoveryService {
                     && source_status == CandidateStatus::Missing
                     && temporary_status == CandidateStatus::Missing
                 {
-                    self.finish_from(item, item.state)?;
+                    self.finish_from(item, item.state).await?;
                     return Ok(RecoveryOutcome::Action(RecoveryActionKind::Completed));
                 }
             }
@@ -465,7 +474,7 @@ impl RecoveryService {
         if candidate_status(destination, expected).await? != CandidateStatus::Match {
             return Err(FileOperationError::VerificationFailed.into());
         }
-        self.record_applied_and_finish(item, expected)
+        self.record_applied_and_finish(item, expected).await
     }
 
     async fn restore_source(
@@ -482,7 +491,7 @@ impl RecoveryService {
         self.mark_failed(item, "restored_interrupted_source")
     }
 
-    fn record_applied_and_finish(
+    async fn record_applied_and_finish(
         &self,
         item: &JournalItem,
         expected: (u64, [u8; 32]),
@@ -494,26 +503,53 @@ impl RecoveryService {
             expected.1,
             self.now(),
         )?;
-        self.finish_from(item, OperationState::FsApplied)
+        self.finish_from(item, OperationState::FsApplied).await
     }
 
-    fn finish_from(
+    async fn finish_from(
         &self,
         item: &JournalItem,
         mut current: OperationState,
     ) -> Result<(), RecoveryError> {
-        for next in [
-            OperationState::Verified,
-            OperationState::MetaCommitted,
-            OperationState::IndexSynced,
-            OperationState::Completed,
-        ] {
-            if state_rank(next) <= state_rank(current) {
-                continue;
-            }
+        if state_rank(current) < state_rank(OperationState::Verified) {
+            self.journal.advance(
+                item.operation_id,
+                current,
+                OperationState::Verified,
+                self.now(),
+            )?;
+            current = OperationState::Verified;
+        }
+        let commit = OperationCommit {
+            operation_id: item.operation_id,
+            entity_id: item.entity_id,
+            kind: item.kind,
+            source: item.source.clone(),
+            destination: item.destination.clone(),
+        };
+        if current == OperationState::Verified {
+            self.commits.commit_metadata(&commit).await?;
+            self.journal.advance(
+                item.operation_id,
+                current,
+                OperationState::MetaCommitted,
+                self.now(),
+            )?;
+            current = OperationState::MetaCommitted;
+        }
+        if current == OperationState::MetaCommitted {
+            self.commits.sync_index(&commit).await?;
+            self.journal.advance(
+                item.operation_id,
+                current,
+                OperationState::IndexSynced,
+                self.now(),
+            )?;
+            current = OperationState::IndexSynced;
+        }
+        if current == OperationState::IndexSynced {
             self.journal
-                .advance(item.operation_id, current, next, self.now())?;
-            current = next;
+                .complete_item(item.operation_id, current, "completed", self.now())?;
         }
         Ok(())
     }

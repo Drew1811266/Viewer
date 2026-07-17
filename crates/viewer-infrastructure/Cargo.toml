@@ -30,6 +30,10 @@ name = "file_transactions"
 path = "../../tests/file_transactions.rs"
 
 [[test]]
+name = "m3_operation_journal"
+path = "../../tests/m3_operation_journal.rs"
+
+[[test]]
 name = "progressive_scan"
 path = "../../tests/progressive_scan.rs"
 

@@ -562,7 +562,7 @@ git add docs/reviews/2026-07-16-m2-review-efficiency-review.md docs/superpowers/
 git commit -m "docs: approve M2 review efficiency"
 ```
 
-- [ ] **Step 4: Merge locally to `main` and verify the merge**
+- [x] **Step 4: Merge locally to `main` and verify the merge**
 
 From `/Users/abc/Project/Viewer`:
 

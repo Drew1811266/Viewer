@@ -86,3 +86,5 @@ lsof release process TCP/UDP         no sockets
 ## Decision
 
 The fresh exact M2 gate, production build, arm64/macOS 13 package inspection and `main...HEAD` review all pass. The complete diff was reviewed for architecture direction, durable portable writes, stale-request handling, read-only behavior, error redaction, security/capability boundaries, test quality and M2/M3 scope separation. No unresolved Critical or Important finding remains. M2 meets its exit criteria and may be fast-forward merged to `main`; M3 planning may begin only after the merged `main` reruns the exact M2 gate successfully.
+
+Post-approval evidence: `codex/m2-review-efficiency` was fast-forward merged at `873134f`; `pnpm install --frozen-lockfile` and the exact `pnpm gate:m2` both passed from merged `main` with no worktree changes.

@@ -1,8 +1,10 @@
 use serde::Serialize;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
+use tauri::{Emitter, Manager};
 use viewer_domain::SessionId;
 use viewer_infrastructure::image_cache::ImageArtifactRegistry;
 
+pub mod commands;
 pub mod dto;
 pub mod error;
 pub mod image_protocol;
@@ -17,19 +19,24 @@ pub struct HealthResponse {
     version: &'static str,
 }
 
-mod commands {
-    use super::{APP_NAME, HealthResponse};
+pub use commands::health;
 
-    #[tauri::command]
-    pub fn health() -> HealthResponse {
-        HealthResponse {
-            app_name: APP_NAME,
-            version: env!("CARGO_PKG_VERSION"),
-        }
+#[derive(Default)]
+struct TauriEventSink(OnceLock<tauri::AppHandle>);
+
+impl TauriEventSink {
+    fn attach(&self, app: tauri::AppHandle) {
+        let _ = self.0.set(app);
     }
 }
 
-pub use commands::health;
+impl state::DesktopEventSink for TauriEventSink {
+    fn emit_scan(&self, event: dto::ScanEventDto) {
+        if let Some(app) = self.0.get() {
+            let _ = app.emit("viewer://scan-progress", event);
+        }
+    }
+}
 
 pub fn sanitize_markdown_html(input: &str) -> String {
     let mut builder = ammonia::Builder::default();
@@ -68,8 +75,9 @@ pub fn run() {
         SessionId::new(),
         registry,
     ));
-    tauri::Builder::default()
+    let app = tauri::Builder::default()
         .plugin(navigation_guard())
+        .plugin(tauri_plugin_dialog::init())
         .manage(Arc::clone(&image_resolver))
         .register_asynchronous_uri_scheme_protocol(
             "viewer-image",
@@ -77,9 +85,64 @@ pub fn run() {
                 image_protocol::handle_request(Arc::clone(&image_resolver), request, responder);
             },
         )
-        .invoke_handler(tauri::generate_handler![health])
-        .run(tauri::generate_context!())
-        .expect("failed to run Viewer");
+        .invoke_handler(tauri::generate_handler![
+            health,
+            commands::project::open_project,
+            commands::project::close_project,
+            commands::project::project_snapshot,
+            commands::project::cancel_task
+        ])
+        .setup(|app| {
+            let cache_base = app.path().app_cache_dir()?.join("sessions");
+            let _ = viewer_infrastructure::session_cache::SessionCache::cleanup_stale(
+                &cache_base,
+                None,
+            );
+            let event_sink = Arc::new(TauriEventSink::default());
+            event_sink.attach(app.handle().clone());
+            let event_port: Arc<dyn state::DesktopEventSink> = event_sink;
+            let runtime = Arc::new(state::DesktopRuntime::new_with_dependencies(
+                cache_base,
+                Arc::new(viewer_platform_macos::MacProjectProbe),
+                Arc::new(viewer_infrastructure::scan::walker::ProjectWalker),
+                event_port,
+            ));
+            app.manage(runtime);
+
+            if let Some(window) = app.get_webview_window("main") {
+                let app_handle = app.handle().clone();
+                window.on_window_event(move |event| {
+                    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                        api.prevent_close();
+                        let app_handle = app_handle.clone();
+                        tauri::async_runtime::spawn(async move {
+                            let runtime = app_handle.state::<Arc<state::DesktopRuntime>>();
+                            let _ = runtime.close_project().await;
+                            if let Some(window) = app_handle.get_webview_window("main") {
+                                let _ = window.hide();
+                            }
+                        });
+                    }
+                });
+            }
+            Ok(())
+        })
+        .build(tauri::generate_context!())
+        .expect("failed to build Viewer");
+
+    app.run(|app, event| match event {
+        tauri::RunEvent::ExitRequested { .. } => {
+            let runtime = app.state::<Arc<state::DesktopRuntime>>();
+            let _ = tauri::async_runtime::block_on(runtime.close_project());
+        }
+        tauri::RunEvent::Reopen { .. } => {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+        }
+        _ => {}
+    });
 }
 
 #[cfg(test)]
@@ -109,13 +172,20 @@ mod tests {
     }
 
     #[test]
-    fn main_capability_grants_no_core_or_plugin_permissions() {
+    fn main_capability_grants_only_dialog_open_and_event_subscription() {
         let capability: serde_json::Value =
             serde_json::from_str(include_str!("../capabilities/main.json"))
                 .expect("main capability must be valid JSON");
 
         assert_eq!(capability["windows"], serde_json::json!(["main"]));
-        assert_eq!(capability["permissions"], serde_json::json!([]));
+        assert_eq!(
+            capability["permissions"],
+            serde_json::json!([
+                "dialog:allow-open",
+                "core:event:allow-listen",
+                "core:event:allow-unlisten"
+            ])
+        );
         assert!(capability.get("remote").is_none());
     }
 

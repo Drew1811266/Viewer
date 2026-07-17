@@ -32,12 +32,14 @@ This inventory records the direct third-party dependencies in the Viewer 0.1 loc
 | `uuid` | 1.24.0 | Apache-2.0 OR MIT | Stable session, file, task and operation identifiers | [uuid-rs/uuid](https://github.com/uuid-rs/uuid) | Yes |
 | `walkdir` | 2.5.0 | Unlicense OR MIT | Bounded recursive project traversal | [BurntSushi/walkdir](https://github.com/BurntSushi/walkdir) | Yes |
 | `tauri` | 2.11.5 | Apache-2.0 OR MIT | Native desktop shell, WebView/IPC boundary and application runtime | [tauri-apps/tauri](https://github.com/tauri-apps/tauri) | Yes |
+| `tauri-plugin-dialog` | 2.7.1 | Apache-2.0 OR MIT | Native project-folder chooser with open-only capability | [tauri-apps/plugins-workspace](https://github.com/tauri-apps/plugins-workspace) | Yes |
 
 ## Frontend runtime dependencies
 
 | Package | Version | License | Viewer purpose | Upstream | Distributed |
 | --- | --- | --- | --- | --- | --- |
 | `@tauri-apps/api` | 2.11.1 | Apache-2.0 OR MIT | Typed frontend access to the restricted Tauri API | [tauri-apps/tauri](https://github.com/tauri-apps/tauri) | Yes |
+| `@tauri-apps/plugin-dialog` | 2.7.1 | MIT OR Apache-2.0 | Frontend binding for the native project-folder chooser | [tauri-apps/plugins-workspace](https://github.com/tauri-apps/plugins-workspace) | Yes |
 | `react` | 19.2.7 | MIT | User-interface rendering and state composition | [facebook/react](https://github.com/facebook/react) | Yes |
 | `react-dom` | 19.2.7 | MIT | React DOM/WebView renderer | [facebook/react](https://github.com/facebook/react) | Yes |
 
@@ -78,7 +80,7 @@ This inventory records the direct third-party dependencies in the Viewer 0.1 loc
 ## Distribution notes
 
 - Viewer itself is licensed under Apache License 2.0; see `LICENSE`.
-- The npm transitive graph is mechanically restricted to the reviewed MIT, MIT-0, Apache-2.0, Apache-2.0 OR MIT, BSD-2-Clause, BSD-3-Clause, ISC, CC0-1.0, MPL-2.0 and BlueOak-1.0.0 expressions. An unknown or unreviewed expression fails `scripts/check-npm-licenses.mjs`.
+- The npm transitive graph is mechanically restricted to the reviewed MIT, MIT-0, Apache-2.0, Apache-2.0 OR MIT, MIT OR Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, CC0-1.0, MPL-2.0 and BlueOak-1.0.0 expressions. An unknown or unreviewed expression fails `scripts/check-npm-licenses.mjs`.
 - The npm MPL-2.0 entries are unmodified `lightningcss` build packages and the BlueOak-1.0.0 entry is the permissively licensed `lru-cache` build/test transitive dependency; none is bundled into Viewer's React production chunk.
 - Source distributions must retain the upstream license and attribution files shipped by dependencies. Binary distributions must include notices required by the selected upstream license terms.
 - `nucleo-matcher` remains an unmodified MPL-2.0 library. Its source and license remain available at the exact upstream/version listed above; Viewer source files are not derived from it.

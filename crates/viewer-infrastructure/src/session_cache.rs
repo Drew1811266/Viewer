@@ -164,7 +164,7 @@ impl SessionCache {
         Ok(())
     }
 
-    pub fn cleanup(self) -> Result<(), SessionCacheError> {
+    pub fn cleanup(&self) -> Result<(), SessionCacheError> {
         if !self.root.exists() {
             return Ok(());
         }

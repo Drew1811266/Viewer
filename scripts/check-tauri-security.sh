@@ -11,9 +11,9 @@ import { readFileSync } from "node:fs";
 const capability = JSON.parse(readFileSync("src-tauri/capabilities/main.json", "utf8"));
 const configuration = JSON.parse(readFileSync("src-tauri/tauri.conf.json", "utf8"));
 const allowedPermissions = new Set([
-  "core:default",
   "dialog:allow-open",
-  "opener:allow-open-url",
+  "core:event:allow-listen",
+  "core:event:allow-unlisten",
 ]);
 const forbiddenPrefixes = [
   "fs:",
@@ -39,6 +39,9 @@ for (const permission of capability.permissions ?? []) {
   if (forbiddenPrefixes.some((prefix) => identifier.startsWith(prefix))) {
     throw new Error(`forbidden capability prefix: ${identifier}`);
   }
+}
+if ((capability.permissions ?? []).length !== allowedPermissions.size) {
+  throw new Error("main capability must contain the exact reviewed permission set");
 }
 
 const csp = configuration?.app?.security?.csp;

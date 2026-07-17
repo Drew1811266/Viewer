@@ -1,19 +1,39 @@
 use serde_json::json;
-use std::{path::Path, sync::Arc};
+use std::{
+    fs,
+    path::Path,
+    sync::{Arc, Mutex},
+};
 use viewer_application::{
     ProjectAccess, ProjectOpenError, ProjectProbeError, ProjectProbeOperation, ProjectProbePort,
 };
 use viewer_desktop::{
     dto::ProjectAccessDto,
     error::{CommandError, ErrorCategory},
-    state::DesktopRuntime,
+    state::{DesktopEventSink, DesktopRuntime, ScanEventDto},
 };
+use viewer_infrastructure::scan::walker::ProjectWalker;
 
 struct FixedProbe(ProjectAccess);
 
 impl ProjectProbePort for FixedProbe {
     fn probe(&self, _root: &Path) -> Result<ProjectAccess, ProjectProbeError> {
         Ok(self.0)
+    }
+}
+
+#[derive(Default)]
+struct RecordingEvents(Mutex<Vec<ScanEventDto>>);
+
+impl RecordingEvents {
+    fn snapshot(&self) -> Vec<ScanEventDto> {
+        self.0.lock().unwrap().clone()
+    }
+}
+
+impl DesktopEventSink for RecordingEvents {
+    fn emit_scan(&self, event: ScanEventDto) {
+        self.0.lock().unwrap().push(event);
     }
 }
 
@@ -97,4 +117,65 @@ async fn project_snapshot_contains_no_absolute_or_cache_path() {
     assert!(!serialized.contains(project.path().to_str().unwrap()));
     assert!(!serialized.contains(cache_base.path().to_str().unwrap()));
     assert_eq!(serde_json::to_value(opened).unwrap()["access"], "read_only");
+}
+
+#[tokio::test]
+async fn project_scan_commits_progressive_batches_and_close_removes_cache() {
+    let cache_base = tempfile::tempdir().unwrap();
+    let project = tempfile::tempdir().unwrap();
+    fs::create_dir_all(project.path().join("catalog/id-001")).unwrap();
+    fs::write(project.path().join("catalog/id-001/front.jpg"), b"jpeg").unwrap();
+    fs::write(project.path().join("catalog/id-001/prompt.md"), b"prompt").unwrap();
+    let events = Arc::new(RecordingEvents::default());
+    let runtime = DesktopRuntime::new_with_dependencies(
+        cache_base.path().to_path_buf(),
+        Arc::new(FixedProbe(ProjectAccess::ReadWrite)),
+        Arc::new(ProjectWalker),
+        events.clone(),
+    );
+
+    runtime.open_project(project.path()).await.unwrap();
+    runtime.wait_for_scan().await.unwrap();
+
+    let published = events.snapshot();
+    let first_nodes = published
+        .iter()
+        .position(|event| matches!(event, ScanEventDto::Folders { .. }))
+        .unwrap();
+    let first_files = published
+        .iter()
+        .position(|event| matches!(event, ScanEventDto::Files { .. }))
+        .unwrap();
+    assert!(first_nodes < first_files);
+    assert!(matches!(
+        published.last(),
+        Some(ScanEventDto::Finished { .. })
+    ));
+    assert_eq!(fs::read_dir(cache_base.path()).unwrap().count(), 1);
+
+    runtime.close_project().await.unwrap();
+
+    assert_eq!(runtime.snapshot().await, None);
+    assert_eq!(fs::read_dir(cache_base.path()).unwrap().count(), 0);
+}
+
+#[tokio::test]
+async fn read_only_project_scan_never_writes_viewer_metadata_into_the_project() {
+    let cache_base = tempfile::tempdir().unwrap();
+    let project = tempfile::tempdir().unwrap();
+    fs::write(project.path().join("notes.txt"), b"notes").unwrap();
+    let events = Arc::new(RecordingEvents::default());
+    let runtime = DesktopRuntime::new_with_dependencies(
+        cache_base.path().to_path_buf(),
+        Arc::new(FixedProbe(ProjectAccess::ReadOnly)),
+        Arc::new(ProjectWalker),
+        events,
+    );
+
+    let opened = runtime.open_project(project.path()).await.unwrap();
+    runtime.wait_for_scan().await.unwrap();
+
+    assert_eq!(opened.access, ProjectAccessDto::ReadOnly);
+    assert!(!project.path().join(".viewer").exists());
+    runtime.close_project().await.unwrap();
 }

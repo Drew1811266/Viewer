@@ -16,10 +16,12 @@ tauri-build = { version = "2", features = [] }
 ammonia.workspace = true
 serde.workspace = true
 tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
 tokio.workspace = true
 viewer-application = { path = "../crates/viewer-application" }
 viewer-domain = { path = "../crates/viewer-domain" }
 viewer-infrastructure = { path = "../crates/viewer-infrastructure" }
+viewer-platform-macos = { path = "../crates/viewer-platform-macos" }
 
 [dev-dependencies]
 serde_json.workspace = true

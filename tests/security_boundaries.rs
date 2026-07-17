@@ -132,7 +132,12 @@ fn capability_and_csp_are_exact_local_allowlists() {
     let capability: serde_json::Value =
         serde_json::from_str(include_str!("../src-tauri/capabilities/main.json")).unwrap();
     let permissions = capability["permissions"].as_array().unwrap();
-    let allowed = ["core:default", "dialog:allow-open", "opener:allow-open-url"];
+    let allowed = [
+        "dialog:allow-open",
+        "core:event:allow-listen",
+        "core:event:allow-unlisten",
+    ];
+    assert_eq!(permissions.len(), allowed.len());
     for permission in permissions {
         let identifier = permission
             .as_str()

@@ -478,7 +478,7 @@ git commit -m "feat: compose safe desktop runtime"
 - Consumes: `DesktopRuntime`, `ProjectWalker`, `CoordinatedScan`, official folder dialog.
 - Produces: `open_project`, `close_project`, `project_snapshot`, `cancel_task`, and coalesced `viewer://scan-progress` events.
 
-- [ ] **Step 1: Write failing project-flow tests**
+- [x] **Step 1: Write failing project-flow tests**
 
 ```rust
 #[tokio::test]
@@ -503,33 +503,33 @@ async fn a_readable_non_writable_root_opens_read_only_without_project_metadata_w
 }
 ```
 
-- [ ] **Step 2: Run focused test and verify RED**
+- [x] **Step 2: Run focused test and verify RED**
 
 Run: `cargo test -p viewer-desktop --test m1_desktop_runtime project_flow -- --nocapture`
 
 Expected: FAIL because scanning/event/close orchestration is not implemented.
 
-- [ ] **Step 3: Add the official dialog plugin and exact narrow capability**
+- [x] **Step 3: Add the official dialog plugin and exact narrow capability**
 
 Run: `cargo add tauri-plugin-dialog@2 --package viewer-desktop && pnpm --dir ui add @tauri-apps/plugin-dialog@^2`
 
 Set `permissions` to exactly `dialog:allow-open`, `core:event:allow-listen`, and `core:event:allow-unlisten`. Update the G4 security test to assert this reviewed allowlist and still reject fs/shell/http/process capabilities. Add exact locked dependency entries and licenses to `THIRD_PARTY_NOTICES.md`.
 
-- [ ] **Step 4: Implement progressive scan orchestration**
+- [x] **Step 4: Implement progressive scan orchestration**
 
 On open: create cache/index/image services, publish an immediate active-project DTO, then spawn `CoordinatedScan`. For each event, verify session/generation, commit the batch to `SessionIndex`, and emit a safe event only after commit. Coalesce progress to at most 20 Hz while never delaying the first folder batch. On close: take the session, cancel coordinator/image work, abort and await scan, clear artifact tokens, drop services, then delete the owned cache.
 
-- [ ] **Step 5: Wire commands and lifecycle hooks**
+- [x] **Step 5: Wire commands and lifecycle hooks**
 
 Register only Viewer commands plus `health`. Intercept window destroy/close and application exit to call the same close path; Dock reopen creates an empty window state. Do not restore a path from disk.
 
-- [ ] **Step 6: Run project flow, security, and dependency checks and verify GREEN**
+- [x] **Step 6: Run project flow, security, and dependency checks and verify GREEN**
 
 Run: `cargo test -p viewer-desktop --test m1_desktop_runtime && ./scripts/check-tauri-security.sh && ./scripts/check-locked-dependencies.sh`
 
 Expected: PASS; folders precede files, close removes cache, stale generations emit nothing, and only the reviewed dialog/event permissions exist.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add Cargo.lock pnpm-lock.yaml THIRD_PARTY_NOTICES.md src-tauri ui/package.json tests/security_boundaries.rs tests/m1_desktop_runtime.rs

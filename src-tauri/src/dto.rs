@@ -6,7 +6,10 @@ use viewer_application::{
         BrowserFile, ContentFolderCard, FolderReviewProgress, FolderTreeItem, FolderWorkspace,
         SelectionAgreement, SelectionInfo, SelectionTypeCounts,
     },
-    file_commands::{ConflictResolution, FileCommandAction, FileCommandItem, FileCommandKind},
+    file_commands::{
+        ConflictResolution, FileCommandAction, FileCommandItem, FileCommandKind,
+        FileCommandPreflight, FileCommandPreflightState,
+    },
     metadata::{IndexProgress, MarkerChange},
 };
 use viewer_domain::{
@@ -160,6 +163,71 @@ pub struct ExecuteFileCommandRequestDto {
     pub kind: FileCommandKind,
     pub items: Vec<FileCommandItemRequestDto>,
     pub conflicts: Vec<ConflictResolutionRequestDto>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct PreflightFileCommandRequestDto {
+    pub session_id: String,
+    pub generation: u64,
+    pub kind: FileCommandKind,
+    pub items: Vec<FileCommandItemRequestDto>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FileCommandPreflightStateDto {
+    Ready,
+    Conflict,
+    Blocked,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileCommandPreflightRowDto {
+    pub entity_id: String,
+    pub relative_path: String,
+    pub state: FileCommandPreflightStateDto,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub code: Option<viewer_domain::operation::BatchResultCode>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileCommandPreflightDto {
+    pub rows: Vec<FileCommandPreflightRowDto>,
+    pub executable: bool,
+}
+
+impl From<FileCommandPreflight> for FileCommandPreflightDto {
+    fn from(preflight: FileCommandPreflight) -> Self {
+        Self {
+            rows: preflight
+                .rows()
+                .iter()
+                .map(|row| {
+                    let (state, code) = match row.state {
+                        FileCommandPreflightState::Ready => {
+                            (FileCommandPreflightStateDto::Ready, None)
+                        }
+                        FileCommandPreflightState::Conflict => {
+                            (FileCommandPreflightStateDto::Conflict, None)
+                        }
+                        FileCommandPreflightState::Blocked(code) => {
+                            (FileCommandPreflightStateDto::Blocked, Some(code))
+                        }
+                    };
+                    FileCommandPreflightRowDto {
+                        entity_id: row.entity_id.to_string(),
+                        relative_path: row.relative_path.as_str().to_owned(),
+                        state,
+                        code,
+                    }
+                })
+                .collect(),
+            executable: preflight.is_executable(),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]

@@ -160,6 +160,7 @@ pub fn run() {
             commands::markers::toggle_favorite,
             commands::markers::selection_info,
             commands::operations::preview_rename,
+            commands::operations::preflight_file_command,
             commands::operations::execute_file_command,
             commands::operations::operation_status,
             commands::operations::operation_results,

@@ -7,13 +7,15 @@ use std::{
 };
 use viewer_application::{
     ProjectAccess, ProjectProbeError, ProjectProbePort,
-    file_commands::{FileCommandAction, FileCommandItem, FileCommandKind},
+    file_commands::{
+        FileCommand, FileCommandAction, FileCommandItem, FileCommandKind, FileCommandPreflightState,
+    },
     watcher::ReconcileSummary,
 };
 use viewer_desktop::{
     dto::{
         ExecuteFileCommandRequestDto, FileCommandActionRequestDto, FileCommandItemRequestDto,
-        FolderWorkspaceDto, PreviewRenameRequestDto,
+        FolderWorkspaceDto, PreflightFileCommandRequestDto, PreviewRenameRequestDto,
     },
     state::{CloseRequestOutcome, DesktopEventSink, DesktopRuntime},
 };
@@ -105,6 +107,20 @@ fn m3_requests_are_exact_camel_case_and_never_accept_raw_paths() {
         execute.items[0].action,
         FileCommandActionRequestDto::Move { .. }
     ));
+    let preflight: PreflightFileCommandRequestDto = serde_json::from_value(serde_json::json!({
+        "sessionId": "00000000-0000-0000-0000-000000000001",
+        "generation": 4,
+        "kind": "copy",
+        "items": [{
+            "entityId": "00000000-0000-0000-0000-000000000002",
+            "action": {
+                "kind": "copy",
+                "destinationFolderId": "00000000-0000-0000-0000-000000000003"
+            }
+        }]
+    }))
+    .unwrap();
+    assert_eq!(preflight.kind, FileCommandKind::Copy);
 
     for invalid in [
         serde_json::json!({
@@ -162,6 +178,23 @@ async fn runtime_rename_exposes_progress_results_and_a_safe_session_undo() {
         .unwrap();
     assert!(preview.executable);
     assert_eq!(preview.rows[0].proposed_name, "approved-front.png");
+    let preflight = runtime
+        .preflight_file_command(FileCommand {
+            session_id,
+            generation,
+            kind: FileCommandKind::Rename,
+            items: vec![FileCommandItem {
+                entity_id,
+                action: FileCommandAction::Rename {
+                    proposed_name: "approved-front.png".into(),
+                    edit_extension: true,
+                },
+            }],
+        })
+        .await
+        .unwrap();
+    assert!(preflight.is_executable());
+    assert_eq!(preflight.rows()[0].state, FileCommandPreflightState::Ready);
     let started = runtime
         .execute_file_command(
             session_id,

@@ -15,8 +15,8 @@ use viewer_application::{
     OperationCommitPort, VolumePort,
     file_commands::{
         BatchId, BatchProgress, BatchResultPage, BatchSummary, ConflictResolution, FileCommand,
-        FileCommandItem, FileCommandKind, FileCommandPreflightState, FileCommandService,
-        FileCommandServiceError,
+        FileCommandItem, FileCommandKind, FileCommandPreflight, FileCommandPreflightState,
+        FileCommandService, FileCommandServiceError,
     },
     metadata::{
         FileCopyProjection, FileMoveProjection, FilePathMove, MarkerRestore, MarkerTarget,
@@ -126,6 +126,13 @@ impl OperationRuntime {
             start_gate: AsyncMutex::new(()),
             state: Arc::new(Mutex::new(OperationRuntimeState::default())),
         }
+    }
+
+    pub async fn preflight(
+        &self,
+        command: FileCommand,
+    ) -> Result<FileCommandPreflight, OperationRuntimeError> {
+        self.service.preflight(command).await.map_err(Into::into)
     }
 
     pub async fn start(

@@ -29,8 +29,8 @@ use viewer_application::{
     ProjectAccess, ProjectOpenError, ProjectProbeError, ProjectProbePort, ProjectSessionService,
     ScanPort, SearchPort, SearchSnippetPort, TextEncoding, TextPreviewPort, VolumePort,
     file_commands::{
-        BatchId, BatchProgress, BatchResultPage, ConflictResolution, FileCommandItem,
-        FileCommandKind, FileCommandService,
+        BatchId, BatchProgress, BatchResultPage, ConflictResolution, FileCommand, FileCommandItem,
+        FileCommandKind, FileCommandPreflight, FileCommandService,
     },
     metadata::{
         FavoritePatch, MarkerPatch, MarkerProjectionPort, MarkerService, MarkerTarget,
@@ -1059,6 +1059,19 @@ impl DesktopRuntime {
                 items,
                 conflicts,
             )
+            .await
+            .map_err(operation_runtime_error)
+    }
+
+    pub async fn preflight_file_command(
+        &self,
+        command: FileCommand,
+    ) -> Result<FileCommandPreflight, CommandError> {
+        let operations = self
+            .active_operations(command.session_id, command.generation)
+            .await?;
+        operations
+            .preflight(command)
             .await
             .map_err(operation_runtime_error)
     }

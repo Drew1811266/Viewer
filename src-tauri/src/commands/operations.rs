@@ -1,10 +1,10 @@
 use crate::{
     commands::{browse::parse_entity_id, search::parse_session_id},
     dto::{
-        CancelOperationRequestDto, ExecuteFileCommandRequestDto, OperationProgressDto,
-        OperationResultPageDto, OperationResultsRequestDto, OperationStartedDto,
-        OperationStatusRequestDto, PreviewRenameRequestDto, RenamePreviewDto,
-        UndoLastOperationRequestDto, UndoReceiptDto,
+        CancelOperationRequestDto, ExecuteFileCommandRequestDto, FileCommandPreflightDto,
+        OperationProgressDto, OperationResultPageDto, OperationResultsRequestDto,
+        OperationStartedDto, OperationStatusRequestDto, PreflightFileCommandRequestDto,
+        PreviewRenameRequestDto, RenamePreviewDto, UndoLastOperationRequestDto, UndoReceiptDto,
     },
     error::{CommandError, ErrorCategory},
     state::DesktopRuntime,
@@ -60,6 +60,27 @@ pub async fn execute_file_command(
         .map(|started| OperationStartedDto {
             batch_id: started.batch_id.to_string(),
         })
+}
+
+#[tauri::command]
+pub async fn preflight_file_command(
+    runtime: State<'_, Arc<DesktopRuntime>>,
+    request: PreflightFileCommandRequestDto,
+) -> Result<FileCommandPreflightDto, CommandError> {
+    let items = request
+        .items
+        .into_iter()
+        .map(|item| item.into_domain().map_err(|_| invalid_operation_target()))
+        .collect::<Result<Vec<_>, _>>()?;
+    runtime
+        .preflight_file_command(viewer_application::file_commands::FileCommand {
+            session_id: parse_session_id(&request.session_id)?,
+            generation: Generation::new(request.generation),
+            kind: request.kind,
+            items,
+        })
+        .await
+        .map(Into::into)
 }
 
 #[tauri::command]

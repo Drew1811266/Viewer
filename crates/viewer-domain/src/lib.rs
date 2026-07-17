@@ -1,3 +1,5 @@
+pub mod image;
+
 use serde::{Deserialize, Deserializer, Serialize};
 use std::{
     fmt,

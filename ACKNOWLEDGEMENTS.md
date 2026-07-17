@@ -2,15 +2,15 @@
 
 Viewer is independently designed and implemented. The project learns from the engineering experience and product patterns of the open-source community without copying complete application implementations.
 
-Viewer's project license has not yet been selected. This acknowledgement records the direct tools and dependencies used by the current foundation; the manifests and lockfiles remain the source of truth for exact versions.
+Viewer's project license has not yet been selected. This acknowledgement records the direct tools and dependencies used by the current implementation; the manifests and lockfiles remain the source of truth for exact versions.
 
-## Direct foundation tools and dependencies
+## Direct tools and dependencies
 
 - [Tauri](https://github.com/tauri-apps/tauri) — desktop shell, JavaScript API, Rust build integration, CLI, webview boundary, and macOS packaging.
 - [React](https://github.com/facebook/react) and React DOM — user-interface rendering.
 - [Vite](https://github.com/vitejs/vite) and `@vitejs/plugin-react` — frontend development and production builds.
 - [TypeScript](https://github.com/microsoft/TypeScript), Node.js, pnpm, and the React/Node type declarations — frontend language and toolchain.
-- [Rust](https://github.com/rust-lang/rust) and Cargo — native application language and build toolchain. The direct Rust crates in the foundation are `serde`, `serde_json` (tests), `tempfile` (tests), `thiserror`, and `uuid`.
+- [Rust](https://github.com/rust-lang/rust) and Cargo — native application language and build toolchain. The direct Rust crates currently include `async-trait`, `serde`, `serde_json` (tests), `tempfile` (tests), `thiserror`, and `uuid`.
 - [Vitest](https://github.com/vitest-dev/vitest), [Testing Library](https://github.com/testing-library/react-testing-library), `jest-dom`, and jsdom — frontend unit and DOM testing.
 
 ## Research and product inspiration (not code dependencies)

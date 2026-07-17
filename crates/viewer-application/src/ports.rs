@@ -1,5 +1,8 @@
+use crate::{ImageArtifact, ImageError, ImageRequest};
+use async_trait::async_trait;
 use std::fmt;
 use std::path::{Path, PathBuf};
+use viewer_domain::{SessionId, image::ImageProbe};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ProjectAccess {
@@ -59,6 +62,13 @@ pub trait ProjectProbePort: Send + Sync {
 
 pub trait ClockPort: Send + Sync {
     fn unix_millis(&self) -> i64;
+}
+
+#[async_trait]
+pub trait ImagePort: Send + Sync {
+    async fn probe(&self, source: &Path) -> Result<ImageProbe, ImageError>;
+    async fn render(&self, request: ImageRequest) -> Result<ImageArtifact, ImageError>;
+    async fn cancel_session(&self, session_id: SessionId);
 }
 
 #[cfg(test)]

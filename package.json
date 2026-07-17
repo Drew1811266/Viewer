@@ -9,6 +9,7 @@
     "build:ui": "pnpm --dir ui build",
     "build:macos": "CI=true tauri build --target aarch64-apple-darwin",
     "gate:m1": "./scripts/run-m1-browsing-gate.sh",
+    "gate:m2": "./scripts/run-m2-review-gate.sh",
     "tauri": "tauri",
     "verify": "node --test scripts/repository-policy.test.mjs && pnpm --dir ui test && pnpm --dir ui build && cargo fmt --check && cargo clippy --locked --workspace --all-targets -- -D warnings && cargo test --locked --workspace"
   },

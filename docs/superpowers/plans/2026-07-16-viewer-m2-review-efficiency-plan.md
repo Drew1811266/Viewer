@@ -481,7 +481,7 @@ git commit -m "feat: add batch review workflow"
 - Modify: `package.json`
 - Modify: `docs/milestones/viewer-0.1-scope-matrix.md` only if test ownership needs a clarified filename, not scope changes
 
-- [ ] **Step 1: Write the failing validator policy test**
+- [x] **Step 1: Write the failing validator policy test**
 
 Generate valid and invalid `.viewer` fixtures. Reject originals, text bodies, thumbnails/proxies, absolute paths, symlinks, unknown files, wrong schema versions, invalid review states, and missing Apache license metadata. Accept only the manifest, database, SQLite transient sidecars during a live transaction, and versioned migration backup.
 
@@ -489,17 +489,17 @@ Run: `node --test scripts/m2-portable-metadata.test.mjs`
 
 Expected: RED because the validator is absent.
 
-- [ ] **Step 2: Implement the M2 gate**
+- [x] **Step 2: Implement the M2 gate**
 
 `pnpm gate:m2` must run M1 gate, portable policy tests, complete UI tests/build, fmt, strict Clippy, all locked workspace tests, M2 integration/runtime/security tests, dependency/license/audit checks, scope coverage, G3 search performance, and portable metadata validation.
 
-- [ ] **Step 3: Verify exact gate GREEN twice**
+- [x] **Step 3: Verify exact gate GREEN twice**
 
 Run: `pnpm gate:m2 && pnpm gate:m2`
 
 Expected: two clean consecutive passes with no uncommitted generated artifact.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add package.json scripts docs/milestones/viewer-0.1-scope-matrix.md

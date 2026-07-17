@@ -166,25 +166,25 @@ git commit -m "feat: preflight single and batch rename"
 **Interfaces:**
 - Produces: `PortableMetadataPort::move_paths`, `OperationProjectionPort::{apply_copy,apply_move,apply_trash}`, and atomic `SessionIndex` operation projections.
 
-- [ ] **Step 1: Write failing metadata/index projection tests**
+- [x] **Step 1: Write failing metadata/index projection tests**
 
 Prove rename/move retain marker UUID/state/favorite and update paths atomically, copy adds a new unmarked node, Trash removes session/FTS rows but leaves a dormant portable marker at its old path, directory/subtree moves rewrite descendant marker paths, duplicate destinations roll back and absolute/reserved paths are rejected.
 
 Run: `cargo test --test m3_operation_projections -- --nocapture`
 
-- [ ] **Step 2: Implement portable path transactions**
+- [x] **Step 2: Implement portable path transactions**
 
 Use one IMMEDIATE transaction to validate every old/new relative path, detect case/duplicate collisions and update all matching marker rows. Never create a marker for an unmarked copy and never write a source file.
 
-- [ ] **Step 3: Implement disposable projection transactions**
+- [x] **Step 3: Implement disposable projection transactions**
 
 Move/rename preserves entity ID and derived values when evidence still matches. Copy inserts the verified destination as a fresh node and schedules derivation. Trash removes the node/subtree and FTS rows. Every projection can be rebuilt from disk when commit returns stale.
 
-- [ ] **Step 4: Verify GREEN and M2 hydration**
+- [x] **Step 4: Verify GREEN and M2 hydration**
 
 Run: `cargo test --test m3_operation_projections && cargo test --test m2_portable_metadata && cargo test --test m2_session_projection`
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add crates/viewer-application crates/viewer-infrastructure tests/m3_operation_projections.rs

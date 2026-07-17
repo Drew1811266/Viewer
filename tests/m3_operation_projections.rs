@@ -1,0 +1,604 @@
+use rusqlite::{Connection, params};
+use std::{collections::BTreeMap, fs};
+use tempfile::TempDir;
+use viewer_application::{
+    ProjectAccess,
+    metadata::{
+        FavoritePatch, FileCopyProjection, FileMoveProjection, FilePathMove, Marker, MarkerPatch,
+        MarkerProjectionPort, MarkerTarget, OperationProjectionError, OperationProjectionPort,
+        PortableMetadataPort, ReviewPatch,
+    },
+};
+use viewer_domain::{
+    EntityId, RelativePath,
+    file::{FileKind, FileNode, ImageIndexStatus, ImageMetadata, ReviewState, TextIndexStatus},
+};
+use viewer_infrastructure::{
+    portable::{PortableMarkerStore, PortableProjectMetadata},
+    search::{index::SessionIndex, text::TextStatus},
+};
+
+fn path(value: &str) -> RelativePath {
+    RelativePath::parse(value).unwrap()
+}
+
+fn node(entity_id: EntityId, relative_path: &str, kind: FileKind) -> FileNode {
+    FileNode {
+        entity_id,
+        relative_path: path(relative_path),
+        kind,
+        size: if kind == FileKind::Directory { 0 } else { 128 },
+        modified_ns: 7,
+    }
+}
+
+fn target(node: &FileNode) -> MarkerTarget {
+    MarkerTarget {
+        entity_id: node.entity_id,
+        relative_path: node.relative_path.clone(),
+        kind: node.kind,
+        size: node.size,
+        modified_ns: node.modified_ns,
+    }
+}
+
+fn portable_store(project: &TempDir) -> (PortableMarkerStore, std::path::PathBuf) {
+    let metadata =
+        PortableProjectMetadata::open(project.path(), ProjectAccess::ReadWrite, 1).unwrap();
+    let database = metadata.database_path().unwrap().to_owned();
+    (
+        PortableMarkerStore::open(&database, true).unwrap(),
+        database,
+    )
+}
+
+fn marker_ids(database: &std::path::Path) -> BTreeMap<String, String> {
+    let connection = Connection::open(database).unwrap();
+    let mut statement = connection
+        .prepare("SELECT relative_path, marker_id FROM markers ORDER BY relative_path")
+        .unwrap();
+    statement
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+        .unwrap()
+        .collect::<Result<_, _>>()
+        .unwrap()
+}
+
+#[test]
+fn portable_subtree_move_preserves_marker_identity_and_never_touches_source_files() {
+    let project = TempDir::new().unwrap();
+    let source_file = project.path().join("products/id-1/front.jpg");
+    fs::create_dir_all(source_file.parent().unwrap()).unwrap();
+    fs::write(&source_file, b"source bytes stay outside portable metadata").unwrap();
+    let source_before = fs::read(&source_file).unwrap();
+    let (store, database) = portable_store(&project);
+    let folder = node(EntityId::new(), "products/id-1", FileKind::Directory);
+    let image = node(EntityId::new(), "products/id-1/front.jpg", FileKind::Jpeg);
+    store
+        .apply_batch(
+            &[target(&folder), target(&image)],
+            MarkerPatch {
+                review: ReviewPatch::Set(ReviewState::Keep),
+                favorite: FavoritePatch::Set(true),
+            },
+            10,
+        )
+        .unwrap();
+    let before = marker_ids(&database);
+
+    let moved = store
+        .move_paths(
+            &[FilePathMove {
+                source: path("products/id-1"),
+                destination: path("archive/id-1"),
+            }],
+            false,
+            11,
+        )
+        .unwrap();
+
+    assert_eq!(moved, 2);
+    assert_eq!(fs::read(source_file).unwrap(), source_before);
+    assert!(
+        store
+            .markers_for_paths(&[path("products/id-1"), path("products/id-1/front.jpg")])
+            .unwrap()
+            .is_empty()
+    );
+    let recovered = store
+        .markers_for_paths(&[path("archive/id-1"), path("archive/id-1/front.jpg")])
+        .unwrap();
+    assert_eq!(recovered.len(), 2);
+    assert!(recovered.iter().all(|stored| {
+        stored.marker
+            == Marker {
+                review_state: Some(ReviewState::Keep),
+                favorite: true,
+            }
+    }));
+    let after = marker_ids(&database);
+    assert_eq!(after["archive/id-1"], before["products/id-1"]);
+    assert_eq!(
+        after["archive/id-1/front.jpg"],
+        before["products/id-1/front.jpg"]
+    );
+}
+
+#[test]
+fn portable_path_collisions_reject_the_whole_batch_and_paths_are_type_safe() {
+    let project = TempDir::new().unwrap();
+    let (store, database) = portable_store(&project);
+    let first = node(EntityId::new(), "a.jpg", FileKind::Jpeg);
+    let second = node(EntityId::new(), "b.jpg", FileKind::Jpeg);
+    store
+        .apply_batch(
+            &[target(&first), target(&second)],
+            MarkerPatch {
+                review: ReviewPatch::Set(ReviewState::Pending),
+                favorite: FavoritePatch::Unchanged,
+            },
+            1,
+        )
+        .unwrap();
+    let before = marker_ids(&database);
+
+    assert!(
+        store
+            .move_paths(
+                &[
+                    FilePathMove {
+                        source: path("a.jpg"),
+                        destination: path("same.jpg"),
+                    },
+                    FilePathMove {
+                        source: path("b.jpg"),
+                        destination: path("SAME.jpg"),
+                    },
+                ],
+                false,
+                2,
+            )
+            .is_err()
+    );
+    assert_eq!(marker_ids(&database), before);
+    assert!(
+        store
+            .move_paths(
+                &[FilePathMove {
+                    source: path("a.jpg"),
+                    destination: path("b.jpg"),
+                }],
+                true,
+                3,
+            )
+            .is_err()
+    );
+    assert_eq!(marker_ids(&database), before);
+    let read_only = PortableMarkerStore::open(&database, false).unwrap();
+    assert!(
+        read_only
+            .move_paths(
+                &[FilePathMove {
+                    source: path("a.jpg"),
+                    destination: path("renamed.jpg"),
+                }],
+                true,
+                4,
+            )
+            .is_err()
+    );
+    assert_eq!(marker_ids(&database), before);
+    for invalid in ["/absolute.jpg", "../outside.jpg", ".viewer/metadata.sqlite"] {
+        assert!(RelativePath::parse(invalid).is_err(), "accepted {invalid}");
+    }
+    Connection::open(&database)
+        .unwrap()
+        .execute(
+            "UPDATE markers SET relative_path = '/absolute.jpg' WHERE relative_path = 'a.jpg'",
+            [],
+        )
+        .unwrap();
+    assert!(
+        store
+            .move_paths(
+                &[FilePathMove {
+                    source: path("b.jpg"),
+                    destination: path("renamed.jpg"),
+                }],
+                true,
+                5,
+            )
+            .is_err()
+    );
+    let persisted = marker_ids(&database);
+    assert!(persisted.contains_key("/absolute.jpg"));
+    assert!(persisted.contains_key("b.jpg"));
+    assert!(!persisted.contains_key("renamed.jpg"));
+}
+
+#[test]
+fn marker_and_session_path_swaps_stage_away_from_unique_constraints() {
+    let project = TempDir::new().unwrap();
+    let (store, portable_database) = portable_store(&project);
+    let first = node(EntityId::new(), "a.png", FileKind::Png);
+    let second = node(EntityId::new(), "b.png", FileKind::Png);
+    store
+        .apply_batch(
+            &[target(&first), target(&second)],
+            MarkerPatch {
+                review: ReviewPatch::Set(ReviewState::Keep),
+                favorite: FavoritePatch::Set(true),
+            },
+            1,
+        )
+        .unwrap();
+    let portable_before = marker_ids(&portable_database);
+    store
+        .move_paths(
+            &[
+                FilePathMove {
+                    source: path("a.png"),
+                    destination: path("b.png"),
+                },
+                FilePathMove {
+                    source: path("b.png"),
+                    destination: path("a.png"),
+                },
+            ],
+            true,
+            2,
+        )
+        .unwrap();
+    let portable_after = marker_ids(&portable_database);
+    assert_eq!(portable_after["b.png"], portable_before["a.png"]);
+    assert_eq!(portable_after["a.png"], portable_before["b.png"]);
+
+    let session_database = project.path().join("swap-session.sqlite");
+    let index = SessionIndex::open(session_database).unwrap();
+    index
+        .upsert_batch(&[first.clone(), second.clone()])
+        .unwrap();
+    index
+        .replace_image_metadata(
+            first.entity_id,
+            &first.relative_path,
+            Ok(ImageMetadata {
+                width: 111,
+                height: 222,
+            }),
+        )
+        .unwrap();
+    index
+        .replace_image_metadata(
+            second.entity_id,
+            &second.relative_path,
+            Ok(ImageMetadata {
+                width: 333,
+                height: 444,
+            }),
+        )
+        .unwrap();
+    index
+        .apply_move(
+            &[
+                FileMoveProjection {
+                    source: first.clone(),
+                    destination: path("b.png"),
+                },
+                FileMoveProjection {
+                    source: second.clone(),
+                    destination: path("a.png"),
+                },
+            ],
+            true,
+        )
+        .unwrap();
+    let projected_first = index.indexed_node(first.entity_id).unwrap().unwrap();
+    let projected_second = index.indexed_node(second.entity_id).unwrap().unwrap();
+    assert_eq!(projected_first.node.relative_path, path("b.png"));
+    assert_eq!(
+        projected_first.image_metadata,
+        Some(ImageMetadata {
+            width: 111,
+            height: 222,
+        })
+    );
+    assert_eq!(projected_second.node.relative_path, path("a.png"));
+    assert_eq!(
+        projected_second.image_metadata,
+        Some(ImageMetadata {
+            width: 333,
+            height: 444,
+        })
+    );
+
+    index
+        .apply_move(
+            &[FileMoveProjection {
+                source: projected_second.node,
+                destination: path("A.png"),
+            }],
+            false,
+        )
+        .unwrap();
+    assert_eq!(
+        index
+            .indexed_node(second.entity_id)
+            .unwrap()
+            .unwrap()
+            .node
+            .relative_path,
+        path("A.png")
+    );
+}
+
+#[test]
+fn session_subtree_move_preserves_entities_markers_derived_values_and_fts() {
+    let directory = TempDir::new().unwrap();
+    let database = directory.path().join("session.sqlite");
+    let index = SessionIndex::open(&database).unwrap();
+    let products = node(EntityId::new(), "products", FileKind::Directory);
+    let source = node(EntityId::new(), "products/id-1", FileKind::Directory);
+    let archive = node(EntityId::new(), "archive", FileKind::Directory);
+    let image = node(EntityId::new(), "products/id-1/front.png", FileKind::Png);
+    let text = node(
+        EntityId::new(),
+        "products/id-1/prompt.md",
+        FileKind::Markdown,
+    );
+    index
+        .upsert_batch(&[
+            products,
+            source.clone(),
+            archive,
+            image.clone(),
+            text.clone(),
+        ])
+        .unwrap();
+    index
+        .sync_markers(&[viewer_application::metadata::MarkerChange {
+            target: target(&image),
+            marker: Marker {
+                review_state: Some(ReviewState::Keep),
+                favorite: true,
+            },
+        }])
+        .unwrap();
+    index
+        .replace_image_metadata(
+            image.entity_id,
+            &image.relative_path,
+            Ok(ImageMetadata {
+                width: 2048,
+                height: 1024,
+            }),
+        )
+        .unwrap();
+    index
+        .replace_text(
+            text.entity_id,
+            &text.relative_path,
+            &TextStatus::Indexed("ceramic product prompt".into()),
+        )
+        .unwrap();
+
+    assert_eq!(
+        index.apply_move(
+            &[
+                FileMoveProjection {
+                    source: image.clone(),
+                    destination: path("archive/collision"),
+                },
+                FileMoveProjection {
+                    source: text.clone(),
+                    destination: path("archive/COLLISION"),
+                },
+            ],
+            false,
+        ),
+        Err(OperationProjectionError::Conflict)
+    );
+    assert_eq!(
+        index
+            .indexed_node(image.entity_id)
+            .unwrap()
+            .unwrap()
+            .node
+            .relative_path,
+        image.relative_path
+    );
+    assert_eq!(
+        index
+            .indexed_node(text.entity_id)
+            .unwrap()
+            .unwrap()
+            .node
+            .relative_path,
+        text.relative_path
+    );
+
+    index
+        .apply_move(
+            &[FileMoveProjection {
+                source: source.clone(),
+                destination: path("archive/id-1"),
+            }],
+            false,
+        )
+        .unwrap();
+
+    assert_eq!(
+        index
+            .indexed_node(source.entity_id)
+            .unwrap()
+            .unwrap()
+            .node
+            .relative_path,
+        path("archive/id-1")
+    );
+    let moved_image = index.indexed_node(image.entity_id).unwrap().unwrap();
+    assert_eq!(
+        moved_image.node.relative_path,
+        path("archive/id-1/front.png")
+    );
+    assert_eq!(
+        moved_image.marker,
+        Marker {
+            review_state: Some(ReviewState::Keep),
+            favorite: true,
+        }
+    );
+    assert_eq!(
+        moved_image.image_metadata,
+        Some(ImageMetadata {
+            width: 2048,
+            height: 1024,
+        })
+    );
+    assert_eq!(moved_image.image_status, ImageIndexStatus::Ready);
+    let moved_text = index.indexed_node(text.entity_id).unwrap().unwrap();
+    assert_eq!(
+        moved_text.node.relative_path,
+        path("archive/id-1/prompt.md")
+    );
+    assert_eq!(moved_text.text_status, TextIndexStatus::Ready);
+    let fts_path: String = Connection::open(database)
+        .unwrap()
+        .query_row(
+            "SELECT relative_path FROM text_fts WHERE entity_id = ?1 AND body = ?2",
+            params![text.entity_id.to_string(), "ceramic product prompt"],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(fts_path, "archive/id-1/prompt.md");
+}
+
+#[test]
+fn session_copy_is_fresh_unmarked_pending_and_conflict_batches_roll_back() {
+    let directory = TempDir::new().unwrap();
+    let index = SessionIndex::open(directory.path().join("session.sqlite")).unwrap();
+    let folder = node(EntityId::new(), "id-1", FileKind::Directory);
+    let source = node(EntityId::new(), "id-1/front.png", FileKind::Png);
+    index.upsert_batch(&[folder, source.clone()]).unwrap();
+    index
+        .sync_markers(&[viewer_application::metadata::MarkerChange {
+            target: target(&source),
+            marker: Marker {
+                review_state: Some(ReviewState::Reject),
+                favorite: true,
+            },
+        }])
+        .unwrap();
+    index
+        .replace_image_metadata(
+            source.entity_id,
+            &source.relative_path,
+            Ok(ImageMetadata {
+                width: 800,
+                height: 600,
+            }),
+        )
+        .unwrap();
+    let copied = node(EntityId::new(), "id-1/front copy.png", FileKind::Png);
+
+    index
+        .apply_copy(
+            &[FileCopyProjection {
+                source: source.clone(),
+                destination: copied.clone(),
+            }],
+            false,
+        )
+        .unwrap();
+
+    let projected = index.indexed_node(copied.entity_id).unwrap().unwrap();
+    assert_eq!(projected.marker, Marker::default());
+    assert_eq!(projected.image_metadata, None);
+    assert_eq!(projected.image_status, ImageIndexStatus::Pending);
+    assert_eq!(projected.text_status, TextIndexStatus::Pending);
+
+    let first = node(EntityId::new(), "id-1/collision.png", FileKind::Png);
+    let second = node(EntityId::new(), "id-1/COLLISION.png", FileKind::Png);
+    assert_eq!(
+        index.apply_copy(
+            &[
+                FileCopyProjection {
+                    source: source.clone(),
+                    destination: first.clone(),
+                },
+                FileCopyProjection {
+                    source,
+                    destination: second.clone(),
+                },
+            ],
+            false,
+        ),
+        Err(OperationProjectionError::Conflict)
+    );
+    assert!(index.indexed_node(first.entity_id).unwrap().is_none());
+    assert!(index.indexed_node(second.entity_id).unwrap().is_none());
+}
+
+#[test]
+fn trash_removes_session_subtree_and_fts_but_keeps_dormant_portable_marker() {
+    let project = TempDir::new().unwrap();
+    let (store, _portable_database) = portable_store(&project);
+    let portable_text = node(EntityId::new(), "id-1/prompt.md", FileKind::Markdown);
+    store
+        .apply_batch(
+            &[target(&portable_text)],
+            MarkerPatch {
+                review: ReviewPatch::Set(ReviewState::Keep),
+                favorite: FavoritePatch::Set(true),
+            },
+            1,
+        )
+        .unwrap();
+
+    let session_database = project.path().join("session.sqlite");
+    let index = SessionIndex::open(&session_database).unwrap();
+    let folder = node(EntityId::new(), "id-1", FileKind::Directory);
+    let text = FileNode {
+        entity_id: portable_text.entity_id,
+        ..portable_text.clone()
+    };
+    index.upsert_batch(&[folder, text.clone()]).unwrap();
+    index
+        .replace_text(
+            text.entity_id,
+            &text.relative_path,
+            &TextStatus::Indexed("restorable prompt".into()),
+        )
+        .unwrap();
+    let missing = node(EntityId::new(), "id-1/missing.md", FileKind::Markdown);
+
+    assert_eq!(
+        index.apply_trash(&[text.clone(), missing]),
+        Err(OperationProjectionError::Stale)
+    );
+    assert!(index.indexed_node(text.entity_id).unwrap().is_some());
+
+    index.apply_trash(std::slice::from_ref(&text)).unwrap();
+
+    assert!(index.indexed_node(text.entity_id).unwrap().is_none());
+    let fts_rows: i64 = Connection::open(session_database)
+        .unwrap()
+        .query_row(
+            "SELECT COUNT(*) FROM text_fts WHERE entity_id = ?1",
+            [text.entity_id.to_string()],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(fts_rows, 0);
+    let dormant = store
+        .markers_for_paths(std::slice::from_ref(&text.relative_path))
+        .unwrap();
+    assert_eq!(dormant.len(), 1);
+    assert_eq!(
+        dormant[0].marker,
+        Marker {
+            review_state: Some(ReviewState::Keep),
+            favorite: true,
+        }
+    );
+}

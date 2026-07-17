@@ -38,6 +38,10 @@ name = "m3_rename_preflight"
 path = "../../tests/m3_rename_preflight.rs"
 
 [[test]]
+name = "m3_operation_projections"
+path = "../../tests/m3_operation_projections.rs"
+
+[[test]]
 name = "progressive_scan"
 path = "../../tests/progressive_scan.rs"
 

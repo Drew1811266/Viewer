@@ -15,6 +15,24 @@ pub struct MarkerTarget {
     pub modified_ns: i128,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct FilePathMove {
+    pub source: RelativePath,
+    pub destination: RelativePath,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct FileCopyProjection {
+    pub source: FileNode,
+    pub destination: FileNode,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct FileMoveProjection {
+    pub source: FileNode,
+    pub destination: RelativePath,
+}
+
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum ReviewPatch {
     #[default]
@@ -84,6 +102,41 @@ pub trait PortableMetadataPort: Send + Sync {
         patch: MarkerPatch,
         updated_at_ms: i64,
     ) -> Result<Vec<MarkerChange>, MarkerStoreError>;
+
+    fn move_paths(
+        &self,
+        moves: &[FilePathMove],
+        case_sensitive: bool,
+        updated_at_ms: i64,
+    ) -> Result<usize, MarkerStoreError>;
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, thiserror::Error)]
+pub enum OperationProjectionError {
+    #[error("operation projection input is invalid")]
+    InvalidInput,
+    #[error("operation projection conflicts with the current index")]
+    Conflict,
+    #[error("operation projection is stale and must be rebuilt from disk")]
+    Stale,
+    #[error("operation projection is unavailable")]
+    Unavailable,
+}
+
+pub trait OperationProjectionPort: Send + Sync {
+    fn apply_copy(
+        &self,
+        copies: &[FileCopyProjection],
+        case_sensitive: bool,
+    ) -> Result<(), OperationProjectionError>;
+
+    fn apply_move(
+        &self,
+        moves: &[FileMoveProjection],
+        case_sensitive: bool,
+    ) -> Result<(), OperationProjectionError>;
+
+    fn apply_trash(&self, sources: &[FileNode]) -> Result<(), OperationProjectionError>;
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, thiserror::Error)]

@@ -1,8 +1,10 @@
 use super::schema::{PortableSchemaError, open_database};
-use rusqlite::{Connection, OptionalExtension, params, params_from_iter, types::Value};
+use rusqlite::{
+    Connection, OptionalExtension, TransactionBehavior, params, params_from_iter, types::Value,
+};
 use std::{collections::HashSet, path::Path, str::FromStr, sync::Mutex};
 use viewer_application::metadata::{
-    FavoritePatch, Marker, MarkerChange, MarkerPatch, MarkerStoreError, MarkerTarget,
+    FavoritePatch, FilePathMove, Marker, MarkerChange, MarkerPatch, MarkerStoreError, MarkerTarget,
     PortableMarker, PortableMetadataPort, ReviewPatch,
 };
 use viewer_domain::{
@@ -160,6 +162,194 @@ impl PortableMetadataPort for PortableMarkerStore {
             .commit()
             .map_err(|_| MarkerStoreError::Unavailable)?;
         Ok(changes)
+    }
+
+    fn move_paths(
+        &self,
+        moves: &[FilePathMove],
+        case_sensitive: bool,
+        updated_at_ms: i64,
+    ) -> Result<usize, MarkerStoreError> {
+        if !self.writable {
+            return Err(MarkerStoreError::ReadOnly);
+        }
+        validate_path_moves(moves, case_sensitive, updated_at_ms)?;
+
+        let mut connection = self.lock_connection();
+        let transaction = connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(|_| MarkerStoreError::Unavailable)?;
+        let rows = {
+            let mut statement = transaction
+                .prepare(
+                    "SELECT marker_id, relative_path, kind, review_state, favorite,
+                            evidence_size, evidence_modified_ns, content_hash
+                     FROM markers ORDER BY relative_path, marker_id",
+                )
+                .map_err(|_| MarkerStoreError::Unavailable)?;
+            statement
+                .query_map([], read_marker_row)
+                .map_err(|_| MarkerStoreError::Unavailable)?
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|_| MarkerStoreError::Unavailable)?
+        };
+
+        let mut affected = Vec::new();
+        let mut unaffected_keys = HashSet::new();
+        for row in rows {
+            if RelativePath::parse(&row.relative_path).is_err() {
+                return Err(MarkerStoreError::Unavailable);
+            }
+            if let Some(destination) = projected_marker_path(&row.relative_path, moves) {
+                if RelativePath::parse(&destination).is_err() {
+                    return Err(MarkerStoreError::InvalidTarget);
+                }
+                affected.push((row, destination));
+            } else if !unaffected_keys.insert(path_key(&row.relative_path, case_sensitive)) {
+                return Err(MarkerStoreError::InvalidTarget);
+            }
+        }
+
+        let mut destination_keys = HashSet::with_capacity(affected.len());
+        for (_, destination) in &affected {
+            let key = path_key(destination, case_sensitive);
+            if unaffected_keys.contains(&key) || !destination_keys.insert(key) {
+                return Err(MarkerStoreError::InvalidTarget);
+            }
+        }
+
+        {
+            let mut delete = transaction
+                .prepare_cached("DELETE FROM markers WHERE marker_id = ?1")
+                .map_err(|_| MarkerStoreError::Unavailable)?;
+            for (row, _) in &affected {
+                delete
+                    .execute([&row.marker_id])
+                    .map_err(|_| MarkerStoreError::Unavailable)?;
+            }
+        }
+        {
+            let mut insert = transaction
+                .prepare_cached(
+                    "INSERT INTO markers(
+                        marker_id, relative_path, kind, review_state, favorite,
+                        evidence_size, evidence_modified_ns, content_hash, updated_at_ms
+                     ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                )
+                .map_err(|_| MarkerStoreError::Unavailable)?;
+            for (row, destination) in &affected {
+                insert
+                    .execute(params![
+                        &row.marker_id,
+                        destination,
+                        row.kind,
+                        row.review_state,
+                        row.favorite,
+                        row.evidence_size,
+                        &row.evidence_modified_ns,
+                        &row.content_hash,
+                        updated_at_ms,
+                    ])
+                    .map_err(|_| MarkerStoreError::Unavailable)?;
+            }
+        }
+        transaction
+            .commit()
+            .map_err(|_| MarkerStoreError::Unavailable)?;
+        Ok(affected.len())
+    }
+}
+
+#[derive(Debug)]
+struct MarkerRow {
+    marker_id: String,
+    relative_path: String,
+    kind: i64,
+    review_state: Option<i64>,
+    favorite: bool,
+    evidence_size: Option<i64>,
+    evidence_modified_ns: Option<String>,
+    content_hash: Option<Vec<u8>>,
+}
+
+fn read_marker_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<MarkerRow> {
+    Ok(MarkerRow {
+        marker_id: row.get(0)?,
+        relative_path: row.get(1)?,
+        kind: row.get(2)?,
+        review_state: row.get(3)?,
+        favorite: row.get(4)?,
+        evidence_size: row.get(5)?,
+        evidence_modified_ns: row.get(6)?,
+        content_hash: row.get(7)?,
+    })
+}
+
+fn validate_path_moves(
+    moves: &[FilePathMove],
+    case_sensitive: bool,
+    updated_at_ms: i64,
+) -> Result<(), MarkerStoreError> {
+    if moves.is_empty() || updated_at_ms < 0 {
+        return Err(MarkerStoreError::InvalidTarget);
+    }
+    let mut sources = HashSet::with_capacity(moves.len());
+    let mut destinations = HashSet::with_capacity(moves.len());
+    for mapping in moves {
+        if mapping.source == mapping.destination
+            || !sources.insert(path_key(mapping.source.as_str(), case_sensitive))
+            || !destinations.insert(path_key(mapping.destination.as_str(), case_sensitive))
+            || is_descendant(
+                mapping.destination.as_str(),
+                mapping.source.as_str(),
+                case_sensitive,
+            )
+        {
+            return Err(MarkerStoreError::InvalidTarget);
+        }
+    }
+    for (index, mapping) in moves.iter().enumerate() {
+        if moves[index + 1..].iter().any(|other| {
+            is_descendant(
+                mapping.source.as_str(),
+                other.source.as_str(),
+                case_sensitive,
+            ) || is_descendant(
+                other.source.as_str(),
+                mapping.source.as_str(),
+                case_sensitive,
+            )
+        }) {
+            return Err(MarkerStoreError::InvalidTarget);
+        }
+    }
+    Ok(())
+}
+
+fn projected_marker_path(path: &str, moves: &[FilePathMove]) -> Option<String> {
+    moves.iter().find_map(|mapping| {
+        if path == mapping.source.as_str() {
+            return Some(mapping.destination.as_str().to_owned());
+        }
+        path.strip_prefix(mapping.source.as_str())
+            .and_then(|suffix| suffix.strip_prefix('/'))
+            .map(|suffix| format!("{}/{suffix}", mapping.destination.as_str()))
+    })
+}
+
+fn is_descendant(candidate: &str, ancestor: &str, case_sensitive: bool) -> bool {
+    let candidate = path_key(candidate, case_sensitive);
+    let ancestor = path_key(ancestor, case_sensitive);
+    candidate
+        .strip_prefix(&ancestor)
+        .is_some_and(|suffix| suffix.starts_with('/'))
+}
+
+fn path_key(path: &str, case_sensitive: bool) -> String {
+    if case_sensitive {
+        path.to_owned()
+    } else {
+        path.to_lowercase()
     }
 }
 

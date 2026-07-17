@@ -64,6 +64,27 @@ describe('ContentBrowser', () => {
     expect(screen.getByRole('option', { name: 'prompt.md' })).toBeVisible()
   })
 
+  it('shows text marker labels and preserves selection when marker projections refresh', () => {
+    const changed = vi.fn()
+    const rendered = render(
+      <ContentBrowser workspace={workspace(2)} onSelectionChange={changed} />,
+    )
+    fireEvent.click(screen.getByRole('option', { name: '1.jpg' }))
+    const updated = workspace(2)
+    updated.images[0] = {
+      ...updated.images[0]!,
+      marker: { reviewState: 'keep', favorite: true },
+    }
+    rendered.rerender(
+      <ContentBrowser workspace={updated} onSelectionChange={changed} />,
+    )
+    expect(screen.getByRole('option', { name: '1.jpg' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    )
+    expect(screen.getByText('保留 · 收藏')).toBeVisible()
+  })
+
   it('mounts and requests thumbnails only for a bounded visible window', async () => {
     const requestThumbnail = vi.fn(() => new Promise<string>(() => undefined))
     render(

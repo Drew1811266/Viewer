@@ -7,6 +7,7 @@ import FolderOverview from './components/FolderOverview'
 import FolderTree from './components/FolderTree'
 import ImagePreview from './components/ImagePreview'
 import InfoOverlay from './components/InfoOverlay'
+import MarkerControls from './components/MarkerControls'
 import SearchResults from './components/SearchResults'
 import SearchToolbar from './components/SearchToolbar'
 import TaskBar from './components/TaskBar'
@@ -41,6 +42,9 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
     setVisibleSearchHits,
     setSearchPage,
     returnToFolderContext,
+    setSelectedEntityIds,
+    setReviewState,
+    toggleFavorite,
   } = useViewerController(bridge)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [sidebarWidth, setSidebarWidth] = useState(260)
@@ -150,6 +154,21 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
       ),
     [dismissedTasks, scanTask, textTask, thumbnailTask],
   )
+  const selectFolderTarget = useCallback(
+    (entityId: string | null) => {
+      setSelectedFiles([])
+      setSelectedEntityIds(entityId === null ? [] : [entityId])
+      void selectFolder(entityId)
+    },
+    [selectFolder, setSelectedEntityIds],
+  )
+  const selectFiles = useCallback(
+    (files: BrowserFile[]) => {
+      setSelectedFiles(files)
+      setSelectedEntityIds(files.map((file) => file.entityId))
+    },
+    [setSelectedEntityIds],
+  )
 
   if (state.project === null) {
     return (
@@ -192,6 +211,13 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
         onRemoveFilter={removeSearchFilter}
         onClearFilters={clearSearchFilters}
       />
+      <MarkerControls
+        selectedCount={state.selectedEntityIds.length}
+        selectionInfo={state.selectionInfo}
+        readOnly={state.project.access === 'read_only'}
+        onSetReview={(reviewState) => void setReviewState(reviewState)}
+        onToggleFavorite={() => void toggleFavorite()}
+      />
       <div className="viewer-columns">
         <aside
           className="folder-sidebar"
@@ -211,14 +237,14 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
                 type="button"
                 className="project-root-button"
                 aria-pressed={state.selectedFolderId === null}
-                onClick={() => void selectFolder(null)}
+                onClick={() => selectFolderTarget(null)}
               >
                 项目根目录
               </button>
               <FolderTree
                 folders={state.folders}
                 selectedId={state.selectedFolderId}
-                onSelect={(entityId) => void selectFolder(entityId)}
+                onSelect={selectFolderTarget}
               />
               <label className="sidebar-resize">
                 文件夹栏宽度
@@ -265,7 +291,7 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
               folders={state.workspace.folders}
               currentPath={state.selectedFolderPath || state.project.displayName}
               requestThumbnail={requestThumbnail}
-              onSelect={(entityId) => void selectFolder(entityId)}
+              onSelect={selectFolderTarget}
               onShowAll={() => void showAllDescendants()}
             />
           )}
@@ -277,7 +303,7 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
                 requestThumbnail={requestContentThumbnail}
                 onThumbnailTaskChange={setThumbnailTask}
                 onPreview={setActivePreview}
-                onSelectionChange={setSelectedFiles}
+                onSelectionChange={selectFiles}
               />
             </>
           )}
@@ -316,6 +342,7 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
       {infoOpen && (
         <InfoOverlay
           files={selectedFiles}
+          selectionInfo={state.selectionInfo}
           dimensions={dimensions}
           onClose={() => setInfoOpen(false)}
         />

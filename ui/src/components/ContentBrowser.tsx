@@ -61,6 +61,8 @@ export default function ContentBrowser({
     const filtered = new Set([...selected].filter((id) => ids.has(id)))
     if (filtered.size !== selected.size) {
       setSelected(filtered)
+    }
+    if (filtered.size > 0 || filtered.size !== selected.size) {
       onSelectionChange?.(allFiles.filter((file) => filtered.has(file.entityId)))
     }
     if (activeId && !ids.has(activeId)) setActiveId(null)
@@ -199,7 +201,7 @@ export default function ContentBrowser({
       <VirtualGrid
         items={workspace.images}
         cellWidth={cellPixels}
-        cellHeight={cellPixels + 34}
+        cellHeight={cellPixels + 54}
         viewportHeight={viewportHeight}
         getKey={(file) => file.entityId}
         ariaLabel="图片文件"
@@ -237,8 +239,9 @@ export default function ContentBrowser({
             onClick={(event) => selectFile(file, event)}
             onDoubleClick={() => onPreview?.(file)}
           >
-            <span>{file.name}</span>
-            <span>{file.relativePath}</span>
+            <span className="text-file-name">{file.name}</span>
+            <span className="text-file-path">{file.relativePath}</span>
+            <span className="file-marker">{markerLabel(file.marker)}</span>
           </button>
         ))}
       </div>
@@ -303,6 +306,19 @@ function ImageCell({
         )}
       </div>
       <span>{file.name}</span>
+      <span className="file-marker">{markerLabel(file.marker)}</span>
     </div>
   )
+}
+
+function markerLabel(marker: BrowserFile['marker']): string {
+  const review =
+    marker.reviewState === 'keep'
+      ? '保留'
+      : marker.reviewState === 'pending'
+        ? '待定'
+        : marker.reviewState === 'reject'
+          ? '淘汰'
+          : '未标记'
+  return marker.favorite ? `${review} · 收藏` : review
 }

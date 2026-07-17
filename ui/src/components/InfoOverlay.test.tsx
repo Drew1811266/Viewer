@@ -43,4 +43,26 @@ describe('InfoOverlay', () => {
     expect(screen.getByText('3 KiB')).toBeVisible()
     expect(screen.getByText('JPEG 1 · PNG 1')).toBeVisible()
   })
+
+  it('uses aggregate selection information for folders/files and common markers', () => {
+    render(
+      <InfoOverlay
+        files={[image, { ...image, entityId: '2', kind: 'png', size: 2_048 }]}
+        selectionInfo={{
+          relativePaths: ['catalog/id-1', 'catalog/id-1/front.jpg'],
+          totalSize: 3_072,
+          types: { folders: 1, images: 1, textFiles: 0 },
+          commonReview: { state: 'common', value: 'keep' },
+          commonFavorite: { state: 'mixed' },
+        }}
+        dimensions={{}}
+        onClose={vi.fn()}
+      />,
+    )
+    expect(screen.getByText('2 个项目')).toBeVisible()
+    expect(screen.getByText('文件夹 1 · 图片 1 · 文本 0')).toBeVisible()
+    expect(screen.getByText('保留')).toBeVisible()
+    expect(screen.getByText('混合')).toBeVisible()
+    expect(screen.queryByText(/\/Users\//)).not.toBeInTheDocument()
+  })
 })

@@ -213,6 +213,67 @@ select {
   padding: 2px 7px;
 }
 
+.marker-controls {
+  align-items: center;
+  background: #fafbfc;
+  border-bottom: 1px solid #d8dce2;
+  display: flex;
+  gap: 14px;
+  justify-content: space-between;
+  min-height: 42px;
+  padding: 5px 12px;
+}
+
+.marker-buttons,
+.marker-selection-summary {
+  align-items: center;
+  display: flex;
+  gap: 7px;
+}
+
+.marker-buttons button {
+  align-items: center;
+  background: #fff;
+  border: 1px solid #c8ced6;
+  border-radius: 6px;
+  display: inline-flex;
+  gap: 7px;
+  min-height: 30px;
+  padding: 4px 8px;
+}
+
+.marker-buttons button[aria-pressed="true"] {
+  background: #d9e8ff;
+  border-color: #2477d4;
+}
+
+.marker-buttons button:disabled {
+  opacity: 0.5;
+}
+
+.marker-buttons kbd {
+  background: #eef0f3;
+  border: 1px solid #c8ced6;
+  border-radius: 4px;
+  color: #59616c;
+  font-size: 10px;
+  line-height: 1;
+  padding: 2px 4px;
+}
+
+.marker-selection-summary {
+  color: #59616c;
+  flex-wrap: wrap;
+  font-size: 12px;
+  justify-content: flex-end;
+}
+
+.marker-selection-summary span + span::before {
+  color: #abb1b9;
+  content: "·";
+  margin-right: 7px;
+}
+
 .search-results-heading,
 .search-pagination,
 .search-empty > div {
@@ -371,6 +432,12 @@ select {
   text-overflow: ellipsis;
 }
 
+.folder-marker-badge {
+  color: #965f00;
+  flex: 0 0 auto;
+  font-size: 10px;
+}
+
 .sidebar-resize {
   display: grid;
   font-size: 11px;
@@ -429,10 +496,23 @@ select {
   width: 100%;
 }
 
-.folder-card > p {
+.folder-card-counts {
   display: flex;
   gap: 12px;
   margin: 8px 0 0;
+}
+
+.folder-card-marker,
+.folder-card-review-total,
+.folder-card-review-breakdown {
+  color: #59616c;
+  font-size: 11px;
+  margin: 5px 0 0;
+}
+
+.folder-card-marker {
+  color: #714d00;
+  font-weight: 600;
 }
 
 .grid-toolbar {
@@ -473,7 +553,7 @@ select {
   align-items: center;
   background: #e5e8ed;
   display: flex;
-  height: calc(100% - 28px);
+  height: calc(100% - 48px);
   justify-content: center;
 }
 
@@ -483,10 +563,20 @@ select {
   width: 100%;
 }
 
-.image-cell > span {
+.image-cell > span:not(.file-marker) {
   display: block;
   overflow: hidden;
   padding: 5px 2px 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-marker {
+  color: #714d00;
+  display: block;
+  font-size: 10px;
+  overflow: hidden;
+  padding: 2px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -520,9 +610,14 @@ select {
   border-color: #2477d4;
 }
 
-.text-file-list > button span:last-child {
+.text-file-path {
   color: #737982;
   font-size: 12px;
+}
+
+.text-file-list > button .file-marker {
+  flex: 0 0 auto;
+  margin-left: 10px;
 }
 
 .task-bar {

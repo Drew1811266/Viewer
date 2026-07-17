@@ -50,15 +50,37 @@ export default function FolderOverview({
                 )
               })}
             </div>
-            <p>
+            <p className="folder-card-counts">
               <span>{folder.imageCount} 张图片</span>
               <span>{folder.textCount} 个文本</span>
+            </p>
+            <p className="folder-card-marker">文件夹：{markerLabel(folder.marker)}</p>
+            <p className="folder-card-review-total">
+              已审阅 {folder.reviewProgress.total - folder.reviewProgress.unmarked} /{' '}
+              {folder.reviewProgress.total}
+            </p>
+            <p className="folder-card-review-breakdown">
+              保留 {folder.reviewProgress.keep} · 待定 {folder.reviewProgress.pending} · 淘汰{' '}
+              {folder.reviewProgress.reject} · 未标记 {folder.reviewProgress.unmarked} · 收藏{' '}
+              {folder.reviewProgress.favorite}
             </p>
           </article>
         ))}
       </div>
     </section>
   )
+}
+
+function markerLabel(marker: ContentFolderCard['marker']): string {
+  const review =
+    marker.reviewState === 'keep'
+      ? '保留'
+      : marker.reviewState === 'pending'
+        ? '待定'
+        : marker.reviewState === 'reject'
+          ? '淘汰'
+          : '未标记'
+  return marker.favorite ? `${review} · 收藏` : review
 }
 
 function FolderThumbnail({

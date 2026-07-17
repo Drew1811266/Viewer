@@ -445,7 +445,7 @@ git commit -m "feat: add indexed search workspace"
 - Modify: `ui/src/App.tsx`
 - Modify: `ui/src/styles/app.css`
 
-- [ ] **Step 1: Write failing batch/shortcut tests**
+- [x] **Step 1: Write failing batch/shortcut tests**
 
 Cover buttons and `1/2/3/0/F`, single/multi-selection, file/folder targets, independent favorite/review values, no shortcut while input/textarea/contenteditable owns focus, read-only disabled state, folder progress updates, and multi-selection information.
 
@@ -453,19 +453,19 @@ Run: `pnpm --dir ui test -- MarkerControls.test.tsx ContentBrowser.test.tsx Fold
 
 Expected: RED because M2 marker controls/statistics are absent.
 
-- [ ] **Step 2: Implement marker controls and keyboard policy**
+- [x] **Step 2: Implement marker controls and keyboard policy**
 
 Apply review/favorite changes to all selected IDs. Preserve selection and active item after refresh. Use labelled icons plus text/status, not color alone. Folder selection may be marked from the tree/card action without marking descendants.
 
-- [ ] **Step 3: Render review progress and aggregate info**
+- [x] **Step 3: Render review progress and aggregate info**
 
 Cards show reviewed/total plus state/favorite counts. The information overlay shows total bytes, type counts, and common marker values for multi-selection; it never shows an absolute path.
 
-- [ ] **Step 4: Verify GREEN and complete UI suite**
+- [x] **Step 4: Verify GREEN and complete UI suite**
 
 Run: `pnpm --dir ui test && pnpm --dir ui build`
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add ui/src

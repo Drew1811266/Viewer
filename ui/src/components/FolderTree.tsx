@@ -86,6 +86,12 @@ export default function FolderTree({
               <span className="folder-disclosure-placeholder" aria-hidden="true" />
             )}
             <span className="folder-name">{folder.name}</span>
+            <span
+              className="folder-marker-badge"
+              aria-label={folderMarkerAriaLabel(folder)}
+            >
+              {folderMarkerLabel(folder)}
+            </span>
             {folder.relativePath.includes('/') && (
               <span className="folder-path">{folder.relativePath}</span>
             )}
@@ -139,4 +145,22 @@ function flattenFolders(
 
 function isReserved(path: string): boolean {
   return path.split('/').some((segment) => segment.toLowerCase() === '.viewer')
+}
+
+function folderMarkerLabel(folder: FolderTreeItem): string {
+  const review = reviewLabel(folder.marker.reviewState)
+  if (folder.marker.favorite) return `${review} ★`
+  return folder.marker.reviewState === null ? '' : review
+}
+
+function folderMarkerAriaLabel(folder: FolderTreeItem): string {
+  const favorite = folder.marker.favorite ? '，已收藏' : ''
+  return `${folder.name}：${reviewLabel(folder.marker.reviewState)}${favorite}`
+}
+
+function reviewLabel(value: FolderTreeItem['marker']['reviewState']): string {
+  if (value === 'keep') return '保留'
+  if (value === 'pending') return '待定'
+  if (value === 'reject') return '淘汰'
+  return '未标记'
 }

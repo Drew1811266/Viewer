@@ -30,7 +30,7 @@ const folders: FolderTreeItem[] = [
     parentEntityId: null,
     relativePath: 'empty',
     name: 'empty',
-    marker: { reviewState: null, favorite: false },
+    marker: { reviewState: 'keep', favorite: true },
   },
 ]
 
@@ -57,6 +57,7 @@ describe('FolderTree', () => {
 
     fireEvent.click(screen.getByRole('treeitem', { name: 'empty' }))
     expect(onSelect).toHaveBeenCalledWith('4')
+    expect(screen.getByLabelText('empty：保留，已收藏')).toBeVisible()
   })
 
   it('keeps a large flat hierarchy bounded to the visible virtual window', () => {

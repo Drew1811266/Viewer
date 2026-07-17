@@ -68,4 +68,31 @@ describe('FolderOverview', () => {
     fireEvent.click(screen.getByRole('button', { name: '打开 id-001' }))
     expect(select).toHaveBeenCalledWith('folder-1')
   })
+
+  it('shows the folder marker separately from descendant review progress and favorites', () => {
+    render(
+      <FolderOverview
+        folders={[
+          {
+            ...card,
+            marker: { reviewState: 'reject', favorite: true },
+            reviewProgress: {
+              total: 5,
+              keep: 2,
+              pending: 1,
+              reject: 1,
+              unmarked: 1,
+              favorite: 3,
+            },
+          },
+        ]}
+        currentPath="catalog"
+        onSelect={vi.fn()}
+        onShowAll={vi.fn()}
+      />,
+    )
+    expect(screen.getByText('文件夹：淘汰 · 收藏')).toBeVisible()
+    expect(screen.getByText('已审阅 4 / 5')).toBeVisible()
+    expect(screen.getByText('保留 2 · 待定 1 · 淘汰 1 · 未标记 1 · 收藏 3')).toBeVisible()
+  })
 })

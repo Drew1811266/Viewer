@@ -431,31 +431,38 @@ export function useViewerController(bridge: ViewerBridge) {
     dispatch({ type: 'search_context_closed' })
   }, [])
 
+  const refreshSelectionInfo = useCallback(
+    async (project: ProjectSnapshot, entityIds: string[]) => {
+      const request = ++selectionRequestRef.current
+      try {
+        const info = await bridge.selectionInfo({
+          sessionId: project.sessionId,
+          generation: project.generation,
+          entityIds,
+        })
+        if (request !== selectionRequestRef.current) return
+        dispatch({
+          type: 'selection_info_loaded',
+          sessionId: project.sessionId,
+          generation: project.generation,
+          entityIds,
+          info,
+        })
+      } catch {
+        // Selection summaries are supplemental; the selection itself remains usable.
+      }
+    },
+    [bridge],
+  )
+
   const setSelectedEntityIds = useCallback(
     (entityIds: string[]) => {
       dispatch({ type: 'selection_changed', entityIds })
       const project = stateRef.current.project
       if (project === null) return
-      const request = ++selectionRequestRef.current
-      void bridge
-        .selectionInfo({
-          sessionId: project.sessionId,
-          generation: project.generation,
-          entityIds,
-        })
-        .then((info) => {
-          if (request !== selectionRequestRef.current) return
-          dispatch({
-            type: 'selection_info_loaded',
-            sessionId: project.sessionId,
-            generation: project.generation,
-            entityIds,
-            info,
-          })
-        })
-        .catch(() => undefined)
+      void refreshSelectionInfo(project, entityIds)
     },
-    [bridge],
+    [refreshSelectionInfo],
   )
 
   const setReviewState = useCallback(
@@ -481,11 +488,21 @@ export function useViewerController(bridge: ViewerBridge) {
           generation: current.project.generation,
           changes: result.changes,
         })
+        const desired = desiredProjectionRef.current
+        await Promise.all([
+          refreshSelectionInfo(current.project, current.selectedEntityIds),
+          refreshProjection(
+            current.project,
+            desired.selectedFolderId,
+            desired.selectedFolderPath,
+            desired.showingAggregate,
+          ),
+        ])
       } catch (error) {
         dispatch({ type: 'input_rejected', message: safeUserMessage(error) })
       }
     },
-    [bridge],
+    [bridge, refreshProjection, refreshSelectionInfo],
   )
 
   const toggleFavorite = useCallback(async () => {
@@ -509,10 +526,20 @@ export function useViewerController(bridge: ViewerBridge) {
         generation: current.project.generation,
         changes: result.changes,
       })
+      const desired = desiredProjectionRef.current
+      await Promise.all([
+        refreshSelectionInfo(current.project, current.selectedEntityIds),
+        refreshProjection(
+          current.project,
+          desired.selectedFolderId,
+          desired.selectedFolderPath,
+          desired.showingAggregate,
+        ),
+      ])
     } catch (error) {
       dispatch({ type: 'input_rejected', message: safeUserMessage(error) })
     }
-  }, [bridge])
+  }, [bridge, refreshProjection, refreshSelectionInfo])
 
   return {
     state,

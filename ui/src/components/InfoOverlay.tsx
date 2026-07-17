@@ -1,17 +1,31 @@
-import type { BrowserFile } from '../api/types'
+import type {
+  BrowserFile,
+  ReviewState,
+  SelectionAgreement,
+  SelectionInfo,
+} from '../api/types'
 
 interface InfoOverlayProps {
   files: BrowserFile[]
+  selectionInfo?: SelectionInfo | null
   dimensions: Record<string, { width: number; height: number } | undefined>
   onClose: () => void
 }
 
-export default function InfoOverlay({ files, dimensions, onClose }: InfoOverlayProps) {
+export default function InfoOverlay({
+  files,
+  selectionInfo,
+  dimensions,
+  onClose,
+}: InfoOverlayProps) {
   const totalSize = files.reduce((sum, file) => sum + file.size, 0)
   const counts = files.reduce<Record<string, number>>((result, file) => {
     result[file.kind] = (result[file.kind] ?? 0) + 1
     return result
   }, {})
+  const hasSelection = selectionInfo !== undefined &&
+    selectionInfo !== null &&
+    selectionInfo.relativePaths.length > 0
 
   return (
     <aside className="info-overlay" aria-label="文件信息">
@@ -21,9 +35,18 @@ export default function InfoOverlay({ files, dimensions, onClose }: InfoOverlayP
           ×
         </button>
       </header>
-      {files.length === 0 && <p>请选择文件以查看信息。</p>}
-      {files.length === 1 && <SingleFileInfo file={files[0]} dimensions={dimensions} />}
-      {files.length > 1 && (
+      {files.length === 0 && !hasSelection && (
+        <p>请选择文件或文件夹以查看信息。</p>
+      )}
+      {files.length === 1 && (selectionInfo?.types.folders ?? 0) === 0 && (
+        <SingleFileInfo file={files[0]} dimensions={dimensions} />
+      )}
+      {selectionInfo !== undefined &&
+        selectionInfo !== null &&
+        (selectionInfo.relativePaths.length > 1 || selectionInfo.types.folders > 0) && (
+          <AggregateSelectionInfo info={selectionInfo} />
+        )}
+      {files.length > 1 && selectionInfo === undefined && (
         <dl>
           <dt>所选项目</dt>
           <dd>{files.length} 个文件</dd>
@@ -57,6 +80,10 @@ function SingleFileInfo({
       <dd>{file.relativePath}</dd>
       <dt>类型</dt>
       <dd>{kindLabel(file.kind)}</dd>
+      <dt>审阅状态</dt>
+      <dd>{reviewLabel(file.marker.reviewState)}</dd>
+      <dt>收藏</dt>
+      <dd>{file.marker.favorite ? '是' : '否'}</dd>
       {size && (
         <>
           <dt>尺寸</dt>
@@ -71,6 +98,41 @@ function SingleFileInfo({
       <dd>{formatModifiedNs(file.modifiedNs)}</dd>
     </dl>
   )
+}
+
+function AggregateSelectionInfo({ info }: { info: SelectionInfo }) {
+  return (
+    <dl>
+      <dt>所选项目</dt>
+      <dd>{info.relativePaths.length} 个项目</dd>
+      <dt>总大小</dt>
+      <dd>{formatBytes(info.totalSize)}</dd>
+      <dt>类型</dt>
+      <dd>
+        文件夹 {info.types.folders} · 图片 {info.types.images} · 文本 {info.types.textFiles}
+      </dd>
+      <dt>审阅状态</dt>
+      <dd>{agreementLabel(info.commonReview, reviewLabel)}</dd>
+      <dt>收藏</dt>
+      <dd>{agreementLabel(info.commonFavorite, (value) => (value ? '是' : '否'))}</dd>
+    </dl>
+  )
+}
+
+function agreementLabel<T>(
+  agreement: SelectionAgreement<T>,
+  label: (value: T) => string,
+): string {
+  if (agreement.state === 'common') return label(agreement.value)
+  if (agreement.state === 'mixed') return '混合'
+  return '未选择'
+}
+
+function reviewLabel(value: ReviewState | null): string {
+  if (value === 'keep') return '保留'
+  if (value === 'pending') return '待定'
+  if (value === 'reject') return '淘汰'
+  return '未标记'
 }
 
 function kindLabel(kind: string): string {

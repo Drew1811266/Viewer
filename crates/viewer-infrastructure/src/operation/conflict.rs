@@ -38,13 +38,29 @@ pub enum ConflictError {
 }
 
 pub struct ConflictExecutor {
+    project_root: PathBuf,
     mutation: Arc<dyn FileMutationPort>,
     trash: Arc<dyn TrashPort>,
 }
 
 impl ConflictExecutor {
-    pub fn new(mutation: Arc<dyn FileMutationPort>, trash: Arc<dyn TrashPort>) -> Self {
-        Self { mutation, trash }
+    pub fn new(
+        project_root: impl AsRef<Path>,
+        mutation: Arc<dyn FileMutationPort>,
+        trash: Arc<dyn TrashPort>,
+    ) -> Result<Self, FileOperationError> {
+        let project_root = std::fs::canonicalize(project_root.as_ref()).map_err(|error| {
+            FileOperationError::io(
+                "canonicalize conflict project root",
+                project_root.as_ref(),
+                &error,
+            )
+        })?;
+        Ok(Self {
+            project_root,
+            mutation,
+            trash,
+        })
     }
 
     pub async fn place(
@@ -53,30 +69,110 @@ impl ConflictExecutor {
         requested_destination: &Path,
         policy: ConflictPolicy,
     ) -> Result<ConflictResult, ConflictError> {
+        let source = self.resolve_existing(source)?;
+        let requested_destination = self.resolve_destination(requested_destination)?;
         if !requested_destination.exists() {
-            self.mutation.rename(source, requested_destination).await?;
-            return Ok(ConflictResult::Placed(requested_destination.to_path_buf()));
+            self.mutation
+                .rename(&source, &requested_destination)
+                .await?;
+            sync_path(&requested_destination).await?;
+            return Ok(ConflictResult::Placed(requested_destination));
         }
 
         match policy {
             ConflictPolicy::Skip => Ok(ConflictResult::Skipped),
             ConflictPolicy::KeepBoth => {
-                let destination = keep_both_destination(requested_destination)?;
-                self.mutation.rename(source, &destination).await?;
+                let destination = keep_both_destination(&requested_destination)?;
+                self.mutation.rename(&source, &destination).await?;
+                sync_path(&destination).await?;
                 Ok(ConflictResult::Placed(destination))
             }
             ConflictPolicy::Replace => {
-                self.trash.trash(requested_destination).await?;
-                if let Err(cause) = self.mutation.rename(source, requested_destination).await {
+                self.trash.trash(&requested_destination).await?;
+                if let Err(cause) = self.mutation.rename(&source, &requested_destination).await {
                     return Err(ConflictError::PlacementAfterTrash {
-                        source: source.to_path_buf(),
-                        destination: requested_destination.to_path_buf(),
+                        source,
+                        destination: requested_destination,
                         cause,
                     });
                 }
-                Ok(ConflictResult::Placed(requested_destination.to_path_buf()))
+                if let Err(cause) = sync_path(&requested_destination).await {
+                    return Err(ConflictError::PlacementAfterTrash {
+                        source,
+                        destination: requested_destination,
+                        cause,
+                    });
+                }
+                Ok(ConflictResult::Placed(requested_destination))
             }
         }
+    }
+
+    fn resolve_existing(&self, path: &Path) -> Result<PathBuf, FileOperationError> {
+        let candidate = self.candidate(path)?;
+        let metadata = std::fs::symlink_metadata(&candidate).map_err(|error| {
+            if error.kind() == std::io::ErrorKind::NotFound {
+                FileOperationError::SourceMissing
+            } else {
+                FileOperationError::io("inspect conflict source", &candidate, &error)
+            }
+        })?;
+        if metadata.file_type().is_symlink() || !metadata.is_file() {
+            return Err(FileOperationError::OutsideProject);
+        }
+        let canonical = std::fs::canonicalize(&candidate).map_err(|error| {
+            FileOperationError::io("resolve conflict source", &candidate, &error)
+        })?;
+        let relative = canonical
+            .strip_prefix(&self.project_root)
+            .map_err(|_| FileOperationError::OutsideProject)?;
+        reject_reserved(relative)?;
+        Ok(canonical)
+    }
+
+    fn resolve_destination(&self, path: &Path) -> Result<PathBuf, FileOperationError> {
+        let candidate = self.candidate(path)?;
+        let parent = candidate
+            .parent()
+            .ok_or(FileOperationError::OutsideProject)?;
+        let canonical_parent = std::fs::canonicalize(parent).map_err(|error| {
+            FileOperationError::io("resolve conflict destination parent", parent, &error)
+        })?;
+        let relative_parent = canonical_parent
+            .strip_prefix(&self.project_root)
+            .map_err(|_| FileOperationError::OutsideProject)?;
+        reject_reserved(relative_parent)?;
+        let file_name = candidate
+            .file_name()
+            .ok_or(FileOperationError::OutsideProject)?;
+        if file_name.to_string_lossy().eq_ignore_ascii_case(".viewer") {
+            return Err(FileOperationError::ReservedPath);
+        }
+        let destination = canonical_parent.join(file_name);
+        if let Ok(metadata) = std::fs::symlink_metadata(&destination)
+            && (metadata.file_type().is_symlink() || !metadata.is_file())
+        {
+            return Err(FileOperationError::OutsideProject);
+        }
+        Ok(destination)
+    }
+
+    fn candidate(&self, path: &Path) -> Result<PathBuf, FileOperationError> {
+        Ok(if path.is_absolute() {
+            path.to_path_buf()
+        } else {
+            self.project_root.join(path)
+        })
+    }
+}
+
+fn reject_reserved(relative: &Path) -> Result<(), FileOperationError> {
+    if relative.components().any(|component| {
+        matches!(component, std::path::Component::Normal(value) if value.to_string_lossy().eq_ignore_ascii_case(".viewer"))
+    }) {
+        Err(FileOperationError::ReservedPath)
+    } else {
+        Ok(())
     }
 }
 

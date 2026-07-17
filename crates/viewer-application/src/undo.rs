@@ -35,6 +35,8 @@ pub enum UndoError {
     OutsideProject,
     #[error("undo target identity no longer matches the recorded file")]
     IdentityChanged,
+    #[error("undo restore destination is occupied by another filesystem item")]
+    DestinationOccupied,
 }
 
 pub struct UndoStack {
@@ -92,17 +94,69 @@ impl UndoStack {
         })?;
         for action in &batch.actions {
             let UndoAction::File {
-                current, expected, ..
+                current,
+                restore,
+                expected,
+                ..
             } = action
             else {
                 continue;
             };
             let candidate = root.join(current.as_str());
+            let source_metadata = std::fs::symlink_metadata(&candidate).map_err(|error| {
+                FileOperationError::io("inspect undo source", &candidate, &error)
+            })?;
+            if source_metadata.file_type().is_symlink() || !source_metadata.is_file() {
+                return Err(UndoError::OutsideProject);
+            }
             let canonical = std::fs::canonicalize(&candidate).map_err(|error| {
                 FileOperationError::io("resolve undo target", &candidate, &error)
             })?;
             if !canonical.starts_with(&root) {
                 return Err(UndoError::OutsideProject);
+            }
+            let restore_candidate = root.join(restore.as_str());
+            let restore_parent = restore_candidate
+                .parent()
+                .ok_or(UndoError::OutsideProject)?;
+            let canonical_restore_parent =
+                std::fs::canonicalize(restore_parent).map_err(|error| {
+                    FileOperationError::io("resolve undo restore parent", restore_parent, &error)
+                })?;
+            if !canonical_restore_parent.starts_with(&root) {
+                return Err(UndoError::OutsideProject);
+            }
+            let restore_path = canonical_restore_parent.join(
+                restore_candidate
+                    .file_name()
+                    .ok_or(UndoError::OutsideProject)?,
+            );
+            match std::fs::symlink_metadata(&restore_path) {
+                Ok(metadata) => {
+                    if metadata.file_type().is_symlink() || !metadata.is_file() {
+                        return Err(UndoError::DestinationOccupied);
+                    }
+                    let canonical_restore =
+                        std::fs::canonicalize(&restore_path).map_err(|error| {
+                            FileOperationError::io(
+                                "resolve occupied undo destination",
+                                &restore_path,
+                                &error,
+                            )
+                        })?;
+                    if canonical_restore != canonical {
+                        return Err(UndoError::DestinationOccupied);
+                    }
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => {
+                    return Err(FileOperationError::io(
+                        "inspect undo restore destination",
+                        &restore_path,
+                        &error,
+                    )
+                    .into());
+                }
             }
             if mutation.snapshot(&canonical).await? != *expected {
                 return Err(UndoError::IdentityChanged);

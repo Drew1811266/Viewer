@@ -50,7 +50,7 @@ The G2 prototype advances metadata/index states as explicit journal barriers; G3
 
 ### Undo policy
 
-`UndoStack` is memory-only and bound to one project session. Rename, in-project move, review state and favorite changes may add one batch-level reverse plan. Copy and Trash never do. Before returning a reverse plan, Viewer canonicalizes the current path and revalidates the recorded file snapshot; identity drift refuses the undo. Closing the owning session clears the stack.
+`UndoStack` is memory-only and bound to one project session. Rename, in-project move, review state and favorite changes may add one batch-level reverse plan. Copy and Trash never do. Before returning a reverse plan, Viewer canonicalizes the current path, rejects symlinked/escaped restore parents, refuses an independently occupied restore destination and revalidates the recorded file snapshot; identity drift refuses the undo. Closing the owning session clears the stack.
 
 ## Recovery decision table
 

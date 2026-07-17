@@ -6,7 +6,7 @@ use std::{
 };
 use viewer_application::{
     FileMutationPort, FileOperationError, FileSnapshot, TrashPort,
-    undo::{UndoAction, UndoStack},
+    undo::{UndoAction, UndoError, UndoStack},
 };
 use viewer_domain::{
     EntityId, OperationId, RelativePath,
@@ -653,7 +653,8 @@ async fn conflict_skip_keep_both_and_replace_are_deterministic() {
     let trash: Arc<dyn TrashPort> = Arc::new(FakeTrashPort {
         events: Arc::clone(&events),
     });
-    let executor = ConflictExecutor::new(Arc::clone(&mutation), Arc::clone(&trash));
+    let executor =
+        ConflictExecutor::new(project.root(), Arc::clone(&mutation), Arc::clone(&trash)).unwrap();
 
     let skipped_source = project.root().join("skip.part");
     let skipped_destination = project.root().join("skip.jpg");
@@ -683,7 +684,11 @@ async fn conflict_skip_keep_both_and_replace_are_deterministic() {
             .place(&keep_source, &keep_destination, ConflictPolicy::KeepBoth)
             .await
             .unwrap(),
-        ConflictResult::Placed(project.root().join("name copy 2.jpg"))
+        ConflictResult::Placed(
+            fs::canonicalize(project.root())
+                .unwrap()
+                .join("name copy 2.jpg")
+        )
     );
 
     events
@@ -722,7 +727,7 @@ async fn replace_placement_failure_reports_that_previous_destination_is_in_trash
     let trash: Arc<dyn TrashPort> = Arc::new(FakeTrashPort {
         events: Arc::clone(&events),
     });
-    let executor = ConflictExecutor::new(mutation, trash);
+    let executor = ConflictExecutor::new(project.root(), mutation, trash).unwrap();
     let source = project.root().join("replacement.part");
     let destination = project.root().join("replacement.jpg");
     fs::write(&source, b"replacement").unwrap();
@@ -739,7 +744,8 @@ async fn replace_placement_failure_reports_that_previous_destination_is_in_trash
             source: failed_source,
             destination: failed_destination,
             ..
-        } if failed_source == source && failed_destination == destination
+        } if failed_source == fs::canonicalize(&source).unwrap()
+            && failed_destination == fs::canonicalize(project.root()).unwrap().join("replacement.jpg")
     ));
     assert_eq!(
         *events
@@ -752,6 +758,55 @@ async fn replace_placement_failure_reports_that_previous_destination_is_in_trash
     );
     assert!(source.is_file());
     assert!(!destination.exists());
+}
+
+#[tokio::test]
+async fn conflict_executor_rejects_a_source_outside_the_project_before_mutation() {
+    let project = ProjectFixture::new();
+    let outside = tempfile::tempdir().unwrap();
+    let source = outside.path().join("outside.part");
+    fs::write(&source, b"outside").unwrap();
+    let destination = project.root().join("inside.jpg");
+    let events = Arc::new(Mutex::new(Vec::new()));
+    let mutation: Arc<dyn FileMutationPort> = Arc::new(RecordingMutationPort {
+        delegate: LocalFileMutation,
+        events: Arc::clone(&events),
+    });
+    let trash: Arc<dyn TrashPort> = Arc::new(FakeTrashPort {
+        events: Arc::clone(&events),
+    });
+    let executor = ConflictExecutor::new(project.root(), mutation, trash).unwrap();
+
+    assert!(matches!(
+        executor
+            .place(&source, &destination, ConflictPolicy::Replace)
+            .await,
+        Err(ConflictError::File(FileOperationError::OutsideProject))
+    ));
+    assert!(source.is_file());
+    assert!(!destination.exists());
+    assert!(events.lock().unwrap().is_empty());
+
+    let inside_source = project.root().join("inside.part");
+    let outside_destination = outside.path().join("outside.jpg");
+    fs::write(&inside_source, b"inside").unwrap();
+    fs::write(&outside_destination, b"outside destination").unwrap();
+    assert!(matches!(
+        executor
+            .place(
+                &inside_source,
+                &outside_destination,
+                ConflictPolicy::Replace,
+            )
+            .await,
+        Err(ConflictError::File(FileOperationError::OutsideProject))
+    ));
+    assert!(inside_source.is_file());
+    assert_eq!(
+        fs::read(outside_destination).unwrap(),
+        b"outside destination"
+    );
+    assert!(events.lock().unwrap().is_empty());
 }
 
 #[tokio::test]
@@ -837,6 +892,59 @@ async fn undo_stack_accepts_only_session_undoable_batches_and_revalidates_identi
     assert_eq!(stack.len(), 2);
     stack.close_session(session_id);
     assert!(stack.is_empty());
+}
+
+#[tokio::test]
+async fn undo_refuses_an_occupied_or_escaped_restore_destination() {
+    let project = ProjectFixture::new();
+    project.create_file("current.jpg", b"current");
+    project.create_file("occupied.jpg", b"occupied");
+    let mutation = LocalFileMutation;
+    let expected = mutation
+        .snapshot(&project.root().join("current.jpg"))
+        .await
+        .unwrap();
+    let session_id = viewer_domain::SessionId::new();
+    let mut stack = UndoStack::new(session_id);
+    assert!(stack.record_batch(
+        OperationId::new(),
+        OperationKind::Rename,
+        vec![UndoAction::File {
+            entity_id: EntityId::new(),
+            current: RelativePath::parse("current.jpg").unwrap(),
+            restore: RelativePath::parse("occupied.jpg").unwrap(),
+            expected: expected.clone(),
+        }],
+    ));
+    assert!(matches!(
+        stack.pop_validated(project.root(), &mutation).await,
+        Err(UndoError::DestinationOccupied)
+    ));
+    assert_eq!(stack.len(), 1);
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::symlink;
+
+        stack.close_session(session_id);
+        let outside = tempfile::tempdir().unwrap();
+        symlink(outside.path(), project.root().join("escaped-parent")).unwrap();
+        assert!(stack.record_batch(
+            OperationId::new(),
+            OperationKind::Move,
+            vec![UndoAction::File {
+                entity_id: EntityId::new(),
+                current: RelativePath::parse("current.jpg").unwrap(),
+                restore: RelativePath::parse("escaped-parent/restored.jpg").unwrap(),
+                expected,
+            }],
+        ));
+        assert!(matches!(
+            stack.pop_validated(project.root(), &mutation).await,
+            Err(UndoError::OutsideProject)
+        ));
+        assert_eq!(stack.len(), 1);
+    }
 }
 
 const RECOVERY_STATES: [OperationState; 7] = [

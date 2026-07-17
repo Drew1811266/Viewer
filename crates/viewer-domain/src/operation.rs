@@ -1,6 +1,197 @@
 use crate::{EntityId, OperationId, RelativePath};
 use serde::{Deserialize, Serialize};
 
+pub type BatchId = OperationId;
+
+pub const MAX_BATCH_RESULT_PAGE_SIZE: usize = 200;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BatchLifecycle {
+    Queued,
+    Running,
+    Cancelling,
+    Completed,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BatchItemStatus {
+    Completed,
+    Failed,
+    Skipped,
+    Cancelled,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BatchResultCode {
+    Renamed,
+    Copied,
+    Moved,
+    MovedToTrash,
+    ConflictSkipped,
+    Cancelled,
+    SessionStale,
+    SourceMissing,
+    DestinationOccupied,
+    PermissionDenied,
+    VerificationFailed,
+    ProjectionStale,
+    BackendUnavailable,
+    InvalidTarget,
+}
+
+impl BatchResultCode {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Renamed => "renamed",
+            Self::Copied => "copied",
+            Self::Moved => "moved",
+            Self::MovedToTrash => "moved_to_trash",
+            Self::ConflictSkipped => "conflict_skipped",
+            Self::Cancelled => "cancelled",
+            Self::SessionStale => "session_stale",
+            Self::SourceMissing => "source_missing",
+            Self::DestinationOccupied => "destination_occupied",
+            Self::PermissionDenied => "permission_denied",
+            Self::VerificationFailed => "verification_failed",
+            Self::ProjectionStale => "projection_stale",
+            Self::BackendUnavailable => "backend_unavailable",
+            Self::InvalidTarget => "invalid_target",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct BatchProgress {
+    pub batch_id: BatchId,
+    pub lifecycle: BatchLifecycle,
+    pub requested: u32,
+    pub completed: u32,
+    pub failed: u32,
+    pub skipped: u32,
+    pub cancelled: u32,
+    pub active_entity_id: Option<EntityId>,
+}
+
+impl BatchProgress {
+    pub const fn processed(&self) -> u32 {
+        self.completed + self.failed + self.skipped + self.cancelled
+    }
+
+    pub fn counts_are_consistent(&self) -> bool {
+        self.processed() <= self.requested
+            && (self.lifecycle != BatchLifecycle::Completed || self.processed() == self.requested)
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct BatchItemResult {
+    pub entity_id: EntityId,
+    pub relative_path: RelativePath,
+    pub status: BatchItemStatus,
+    pub code: BatchResultCode,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct BatchResultPage {
+    pub total: u32,
+    pub offset: u32,
+    pub items: Vec<BatchItemResult>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct BatchSummary {
+    batch_id: BatchId,
+    lifecycle: BatchLifecycle,
+    requested: u32,
+    completed: u32,
+    failed: u32,
+    skipped: u32,
+    cancelled: u32,
+    results: Vec<BatchItemResult>,
+}
+
+impl BatchSummary {
+    pub fn try_from_results(
+        batch_id: BatchId,
+        requested: u32,
+        results: Vec<BatchItemResult>,
+    ) -> Option<Self> {
+        if usize::try_from(requested).ok() != Some(results.len()) {
+            return None;
+        }
+        let mut summary = Self {
+            batch_id,
+            lifecycle: BatchLifecycle::Completed,
+            requested,
+            completed: 0,
+            failed: 0,
+            skipped: 0,
+            cancelled: 0,
+            results,
+        };
+        for item in &summary.results {
+            match item.status {
+                BatchItemStatus::Completed => summary.completed += 1,
+                BatchItemStatus::Failed => summary.failed += 1,
+                BatchItemStatus::Skipped => summary.skipped += 1,
+                BatchItemStatus::Cancelled => summary.cancelled += 1,
+            }
+        }
+        debug_assert!(summary.counts_are_consistent());
+        Some(summary)
+    }
+
+    pub const fn batch_id(&self) -> BatchId {
+        self.batch_id
+    }
+
+    pub const fn lifecycle(&self) -> BatchLifecycle {
+        self.lifecycle
+    }
+
+    pub const fn requested(&self) -> u32 {
+        self.requested
+    }
+
+    pub const fn completed(&self) -> u32 {
+        self.completed
+    }
+
+    pub const fn failed(&self) -> u32 {
+        self.failed
+    }
+
+    pub const fn skipped(&self) -> u32 {
+        self.skipped
+    }
+
+    pub const fn cancelled(&self) -> u32 {
+        self.cancelled
+    }
+
+    pub const fn processed(&self) -> u32 {
+        self.completed + self.failed + self.skipped + self.cancelled
+    }
+
+    pub const fn counts_are_consistent(&self) -> bool {
+        self.processed() == self.requested
+    }
+
+    pub fn result_page(&self, offset: usize, limit: usize) -> BatchResultPage {
+        let offset = offset.min(self.results.len());
+        let limit = limit.min(MAX_BATCH_RESULT_PAGE_SIZE);
+        let end = offset.saturating_add(limit).min(self.results.len());
+        BatchResultPage {
+            total: self.requested,
+            offset: u32::try_from(offset).unwrap_or(u32::MAX),
+            items: self.results[offset..end].to_vec(),
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum OperationKind {
@@ -220,7 +411,11 @@ impl RenamePreflight {
 
 #[cfg(test)]
 mod tests {
-    use super::{OperationState, OperationTransitionError};
+    use super::{
+        BatchItemResult, BatchItemStatus, BatchResultCode, BatchSummary, OperationState,
+        OperationTransitionError,
+    };
+    use crate::{EntityId, OperationId, RelativePath};
 
     #[test]
     fn operation_accepts_only_forward_protocol_transitions() {
@@ -255,5 +450,23 @@ mod tests {
 
         let mut completed = OperationState::Completed;
         assert!(completed.transition_to(OperationState::Failed).is_err());
+    }
+
+    #[test]
+    fn batch_summary_requires_exactly_one_terminal_result_per_request() {
+        let result = BatchItemResult {
+            entity_id: EntityId::new(),
+            relative_path: RelativePath::parse("front.png").unwrap(),
+            status: BatchItemStatus::Completed,
+            code: BatchResultCode::Copied,
+        };
+
+        assert!(
+            BatchSummary::try_from_results(OperationId::new(), 2, vec![result.clone()]).is_none()
+        );
+        let summary = BatchSummary::try_from_results(OperationId::new(), 1, vec![result]).unwrap();
+        assert!(summary.counts_are_consistent());
+        assert_eq!(summary.requested(), 1);
+        assert_eq!(summary.completed(), 1);
     }
 }

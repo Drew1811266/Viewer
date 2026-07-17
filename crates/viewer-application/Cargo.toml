@@ -14,3 +14,7 @@ viewer-domain = { path = "../viewer-domain" }
 
 [dev-dependencies]
 tempfile.workspace = true
+
+[[test]]
+name = "m3_command_service"
+path = "../../tests/m3_command_service.rs"

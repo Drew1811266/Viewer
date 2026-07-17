@@ -1,5 +1,9 @@
 use crate::{
     FileOperationError, FileSnapshot, ImageArtifact, ImageError, ImageRequest,
+    file_commands::{
+        FileCommand, FileCommandCancellation, FileCommandItemExecution, LocalFileCommandError,
+        LocalFileCommandOutcome, LocalFileCommandPreflightItem,
+    },
     scan::{ScanError, ScanRequest, ScanSink},
     search::SearchError,
 };
@@ -96,6 +100,20 @@ pub trait VolumePort: Send + Sync {
     fn volume_id(&self, path: &Path) -> Result<u64, FileOperationError>;
     fn is_case_sensitive(&self, path: &Path) -> Result<bool, FileOperationError>;
     fn name_max(&self, path: &Path) -> Result<usize, FileOperationError>;
+}
+
+#[async_trait]
+pub trait LocalFileCommandPort: Send + Sync {
+    async fn preflight(
+        &self,
+        command: &FileCommand,
+    ) -> Result<Vec<LocalFileCommandPreflightItem>, LocalFileCommandError>;
+
+    async fn execute_item(
+        &self,
+        request: FileCommandItemExecution,
+        cancellation: FileCommandCancellation,
+    ) -> Result<LocalFileCommandOutcome, LocalFileCommandError>;
 }
 
 #[async_trait]

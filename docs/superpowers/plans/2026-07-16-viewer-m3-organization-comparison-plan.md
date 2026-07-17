@@ -202,25 +202,25 @@ git commit -m "feat: project file operation projections"
 **Interfaces:**
 - Produces: `FileCommand`, `FileCommandKind`, `BatchId`, `BatchProgress`, `BatchSummary`, `BatchItemResult`, `FileCommandService::{preflight,execute,cancel_pending}`, and one-active-batch admission.
 
-- [ ] **Step 1: Write failing service-state tests**
+- [x] **Step 1: Write failing service-state tests**
 
 Cover read-only rejection, stale session/generation, empty/duplicate/over-10,000 targets, one active batch, ordered preflight, per-item success/skip/failure, apply-to-remaining conflict choice, cancellation before start, active-item completion, coalesced progress and batch final counts.
 
 Run: `cargo test --test m3_command_service -- --nocapture`
 
-- [ ] **Step 2: Implement command/result domain contracts**
+- [x] **Step 2: Implement command/result domain contracts**
 
 Model queued/running/cancelling/completed lifecycle and `completed + failed + skipped + cancelled == requested`. Item results contain entity ID, safe relative path, status and stable code only. Page detail at 200 rows.
 
-- [ ] **Step 3: Implement single-writer admission and cancellation**
+- [x] **Step 3: Implement single-writer admission and cancellation**
 
 Serialize batches with a Tokio mutex owned by the active project session. Revalidate session/access before preflight and again before each item. Cancellation marks queued items cancelled and signals stream-copy cancellation; no completed item is reversed.
 
-- [ ] **Step 4: Verify GREEN**
+- [x] **Step 4: Verify GREEN**
 
 Run: `cargo test --test m3_command_service && cargo test -p viewer-application undo && cargo fmt --check`
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add crates/viewer-domain crates/viewer-application tests/m3_command_service.rs

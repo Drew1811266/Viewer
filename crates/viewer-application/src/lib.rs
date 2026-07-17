@@ -1,4 +1,5 @@
 pub mod browse;
+pub mod file_commands;
 pub mod image;
 pub mod metadata;
 pub mod operation;
@@ -21,7 +22,7 @@ pub use operation_commit::{
     CommitStage, OperationCommit, OperationCommitError, OperationCommitPort,
 };
 pub use ports::{
-    ClockPort, FileMutationPort, ImagePort, ProjectAccess, ProjectProbeError,
+    ClockPort, FileMutationPort, ImagePort, LocalFileCommandPort, ProjectAccess, ProjectProbeError,
     ProjectProbeOperation, ProjectProbePort, ScanPort, SearchPort, SearchSnippetPort, TrashPort,
     VolumePort,
 };

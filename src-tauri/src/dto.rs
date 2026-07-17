@@ -3,6 +3,7 @@ use viewer_application::scan::{ScanEvent, ScanTotals};
 use viewer_application::{
     ActiveProject, ImageBackend, ProjectAccess,
     browse::{BrowserFile, ContentFolderCard, FolderTreeItem, FolderWorkspace},
+    metadata::IndexProgress,
 };
 use viewer_domain::{RelativePath, TaskId, file::FileNode};
 
@@ -158,6 +159,38 @@ impl ScanEventDto {
                 task_id,
                 totals: (*totals).into(),
             },
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IndexProgressDto {
+    pub session_id: String,
+    pub generation: u64,
+    pub images_total: u64,
+    pub images_ready: u64,
+    pub images_failed: u64,
+    pub text_total: u64,
+    pub text_ready: u64,
+    pub text_skipped: u64,
+    pub text_failed: u64,
+    pub complete: bool,
+}
+
+impl IndexProgressDto {
+    pub fn from_progress(active: &ActiveProject, progress: IndexProgress) -> Self {
+        Self {
+            session_id: active.session_id.to_string(),
+            generation: active.generation.get(),
+            images_total: progress.images_total,
+            images_ready: progress.images_ready,
+            images_failed: progress.images_failed,
+            text_total: progress.text_total,
+            text_ready: progress.text_ready,
+            text_skipped: progress.text_skipped,
+            text_failed: progress.text_failed,
+            complete: progress.is_complete(),
         }
     }
 }

@@ -1,7 +1,7 @@
 use crate::{
     dto::{
-        FolderTreeItemDto, FolderWorkspaceDto, ImageRepresentationDto, ProjectSnapshot,
-        TextPreviewDto, TextPreviewFormatDto,
+        FolderTreeItemDto, FolderWorkspaceDto, ImageRepresentationDto, IndexProgressDto,
+        ProjectSnapshot, TextPreviewDto, TextPreviewFormatDto,
     },
     error::{CommandError, ErrorCategory},
     image_protocol::ActiveImageSession,
@@ -17,12 +17,14 @@ use viewer_application::{
     scheduler::{TaskClass, TaskCoordinator},
 };
 use viewer_domain::{
-    EntityId, RelativePath, SessionId, TaskId, file::FileKind, image::ImageRepresentationKind,
+    EntityId, RelativePath, SessionId, TaskId,
+    file::{FileKind, ImageIndexStatus, ImageMetadata},
+    image::ImageRepresentationKind,
 };
 use viewer_infrastructure::{
     image_cache::{ImageArtifactRegistry, ImageCacheKey, ImageCacheKeyInput},
     scan::walker::{ProjectWalker, is_macos_alias},
-    search::index::SessionIndex,
+    search::{index::SessionIndex, text::TextExtractor},
     session_cache::{CachedImage, SessionCache},
     text::preview::TextPreviewReader,
 };
@@ -31,6 +33,7 @@ pub use crate::dto::ScanEventDto;
 
 pub trait DesktopEventSink: Send + Sync {
     fn emit_scan(&self, event: ScanEventDto);
+    fn emit_index(&self, _event: IndexProgressDto) {}
 }
 
 #[derive(Default)]
@@ -201,6 +204,7 @@ impl DesktopRuntime {
             Arc::clone(&self.scanner),
             Arc::clone(&self.coordinator),
             Arc::clone(&index),
+            Arc::clone(&image),
             Arc::clone(&self.events),
         ));
         *session = Some(DesktopSession {
@@ -289,6 +293,13 @@ impl DesktopRuntime {
             .await
             .as_ref()
             .map(|session| session.snapshot.clone())
+    }
+
+    pub async fn index_progress(&self) -> Result<IndexProgressDto, CommandError> {
+        let session = self.session.lock().await;
+        let session = session.as_ref().ok_or_else(project_not_open)?;
+        let progress = session.index.index_progress().map_err(CommandError::from)?;
+        Ok(IndexProgressDto::from_progress(&session.active, progress))
     }
 
     pub async fn folder_tree(&self) -> Result<Vec<FolderTreeItemDto>, CommandError> {
@@ -709,6 +720,7 @@ async fn run_scan(
     scanner: Arc<dyn ScanPort>,
     coordinator: Arc<TaskCoordinator>,
     index: Arc<SessionIndex>,
+    image: Arc<dyn ImagePort>,
     events: Arc<dyn DesktopEventSink>,
 ) -> Result<(), CommandError> {
     let request = ScanRequest {
@@ -716,7 +728,7 @@ async fn run_scan(
         generation: active.generation,
         root: active.root.clone(),
     };
-    let coordinated = CoordinatedScan::new(scanner, coordinator);
+    let coordinated = CoordinatedScan::new(scanner, Arc::clone(&coordinator));
     let (sink, mut incoming) =
         tokio::sync::mpsc::channel(TaskClass::FolderPublication.queue_capacity());
     let worker = tokio::spawn(async move { coordinated.scan(request, sink).await });
@@ -760,21 +772,113 @@ async fn run_scan(
     }
 
     match worker.await {
-        Ok(Ok(())) => Ok(()),
-        Ok(Err(viewer_application::scan::ScanError::Cancelled)) => Ok(()),
-        Ok(Err(_)) => Err(CommandError::new(
-            "project_scan_failed",
-            crate::error::ErrorCategory::Environment,
-            "无法完成项目扫描，请检查文件夹后重试。",
-            true,
-        )),
-        Err(_) => Err(CommandError::new(
-            "scan_worker_failed",
-            crate::error::ErrorCategory::Internal,
-            "项目扫描意外终止，请重新打开项目。",
-            true,
-        )),
+        Ok(Ok(())) => {}
+        Ok(Err(viewer_application::scan::ScanError::Cancelled)) => return Ok(()),
+        Ok(Err(_)) => {
+            return Err(CommandError::new(
+                "project_scan_failed",
+                crate::error::ErrorCategory::Environment,
+                "无法完成项目扫描，请检查文件夹后重试。",
+                true,
+            ));
+        }
+        Err(_) => {
+            return Err(CommandError::new(
+                "scan_worker_failed",
+                crate::error::ErrorCategory::Internal,
+                "项目扫描意外终止，请重新打开项目。",
+                true,
+            ));
+        }
     }
+    run_derived_indexing(active, coordinator, index, image, events).await
+}
+
+async fn run_derived_indexing(
+    active: ActiveProject,
+    coordinator: Arc<TaskCoordinator>,
+    index: Arc<SessionIndex>,
+    image: Arc<dyn ImagePort>,
+    events: Arc<dyn DesktopEventSink>,
+) -> Result<(), CommandError> {
+    if !coordinator.is_publishable(active.session_id, active.generation) {
+        return Ok(());
+    }
+    let nodes = BrowseIndexPort::descendants(index.as_ref(), None).map_err(CommandError::from)?;
+    emit_index_progress_if_current(&active, &coordinator, &index, events.as_ref())?;
+    let mut last_progress = Instant::now();
+
+    for node in nodes.into_iter().filter(|node| {
+        matches!(
+            node.kind,
+            FileKind::Jpeg | FileKind::Png | FileKind::Markdown | FileKind::Text
+        )
+    }) {
+        if !coordinator.is_publishable(active.session_id, active.generation) {
+            return Ok(());
+        }
+        let source = validated_indexed_source(&active, &node)
+            .map(|(source, _, _)| source)
+            .ok();
+        match node.kind {
+            FileKind::Jpeg | FileKind::Png => {
+                let result = match source {
+                    Some(source) => match image.probe(&source).await {
+                        Ok(probe) => {
+                            let (width, height) = if matches!(probe.orientation, 5..=8) {
+                                (probe.height, probe.width)
+                            } else {
+                                (probe.width, probe.height)
+                            };
+                            Ok(ImageMetadata { width, height })
+                        }
+                        Err(_) => Err(ImageIndexStatus::Failed),
+                    },
+                    None => Err(ImageIndexStatus::Failed),
+                };
+                index
+                    .replace_image_metadata(node.entity_id, &node.relative_path, result)
+                    .map_err(CommandError::from)?;
+            }
+            FileKind::Markdown | FileKind::Text => match source {
+                Some(source) => {
+                    let extracted =
+                        tokio::task::spawn_blocking(move || TextExtractor::extract(source)).await;
+                    match extracted {
+                        Ok(Ok(status)) => index
+                            .replace_text(node.entity_id, &node.relative_path, &status)
+                            .map_err(CommandError::from)?,
+                        Ok(Err(_)) | Err(_) => index
+                            .mark_text_failed(node.entity_id, &node.relative_path)
+                            .map_err(CommandError::from)?,
+                    }
+                }
+                None => index
+                    .mark_text_failed(node.entity_id, &node.relative_path)
+                    .map_err(CommandError::from)?,
+            },
+            FileKind::Directory => unreachable!("directories were filtered out"),
+        }
+
+        if last_progress.elapsed() >= Duration::from_millis(50) {
+            emit_index_progress_if_current(&active, &coordinator, &index, events.as_ref())?;
+            last_progress = Instant::now();
+        }
+    }
+    emit_index_progress_if_current(&active, &coordinator, &index, events.as_ref())
+}
+
+fn emit_index_progress_if_current(
+    active: &ActiveProject,
+    coordinator: &TaskCoordinator,
+    index: &SessionIndex,
+    events: &dyn DesktopEventSink,
+) -> Result<(), CommandError> {
+    if coordinator.is_publishable(active.session_id, active.generation) {
+        let progress = index.index_progress().map_err(CommandError::from)?;
+        events.emit_index(IndexProgressDto::from_progress(active, progress));
+    }
+    Ok(())
 }
 
 fn commit_scan_event(index: &SessionIndex, event: &ScanEvent) -> Result<(), CommandError> {

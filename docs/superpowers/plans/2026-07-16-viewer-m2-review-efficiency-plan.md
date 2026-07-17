@@ -206,7 +206,7 @@ git commit -m "feat: hydrate disposable review projections"
 **Interfaces:**
 - Produces: bounded text extraction for M1 encodings, header-only image metadata indexing, `viewer://index-progress`, and cancellation on close.
 
-- [ ] **Step 1: Write failing derived-work tests**
+- [x] **Step 1: Write failing derived-work tests**
 
 Cover UTF-8/UTF-16/GB18030 text, invalid/over-10-MiB text isolation, valid/corrupt JPG/PNG headers, no rendered image artifact during search indexing, progressive counters, generation cancellation, and close cleanup.
 
@@ -214,23 +214,23 @@ Run: `cargo test --test m2_derived_indexing && cargo test -p viewer-desktop --te
 
 Expected: RED because M1 runtime does not schedule derived indexing.
 
-- [ ] **Step 2: Share strict bounded encoding behavior**
+- [x] **Step 2: Share strict bounded encoding behavior**
 
 Reuse the M1 text decoding policy without preview HTML or source mutation. Store normalized indexed text only in session FTS. Index failures become per-item statuses and do not stop other work.
 
-- [ ] **Step 3: Schedule bounded lower-priority derived work**
+- [x] **Step 3: Schedule bounded lower-priority derived work**
 
 Queue text jobs at P3 and image probes at P3/P4 after base rows exist. Probe through `ImagePort::probe`, record width/height only, and never call render. Cap concurrent work and validate session/project generation immediately before publication.
 
-- [ ] **Step 4: Publish coalesced safe progress**
+- [x] **Step 4: Publish coalesced safe progress**
 
 Emit counts/status at no more than 20 Hz, plus final events. DTOs contain no absolute path, text, image content, or cache location.
 
-- [ ] **Step 5: Verify GREEN**
+- [x] **Step 5: Verify GREEN**
 
 Run: `cargo test --test m2_derived_indexing && cargo test -p viewer-desktop --test m2_desktop_runtime derived && ./scripts/run-g1-image-gate.sh`
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add crates/viewer-infrastructure src-tauri tests/m2_derived_indexing.rs tests/m2_desktop_runtime.rs

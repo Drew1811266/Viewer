@@ -1,8 +1,6 @@
-use std::{
-    fs::File,
-    io::{self, Read},
-    path::Path,
-};
+use crate::text::preview::TextPreviewReader;
+use std::{fs, io, path::Path};
+use viewer_application::{TextPreviewPort, text::TextPreviewError};
 
 pub const MAX_INDEXED_TEXT_BYTES: usize = 10 * 1024 * 1024;
 
@@ -24,19 +22,17 @@ pub struct TextExtractor;
 
 impl TextExtractor {
     pub fn extract(path: impl AsRef<Path>) -> Result<TextStatus, TextExtractError> {
-        let file = File::open(path)?;
-        let mut bytes = Vec::with_capacity(MAX_INDEXED_TEXT_BYTES.min(64 * 1024));
-        file.take((MAX_INDEXED_TEXT_BYTES + 1) as u64)
-            .read_to_end(&mut bytes)?;
-        if bytes.len() > MAX_INDEXED_TEXT_BYTES {
+        let path = path.as_ref();
+        if fs::metadata(path)?.len() > MAX_INDEXED_TEXT_BYTES as u64 {
             return Ok(TextStatus::TooLarge);
         }
-        let bytes = bytes.strip_prefix(&[0xef, 0xbb, 0xbf]).unwrap_or(&bytes);
-        let Ok(text) = std::str::from_utf8(bytes) else {
-            return Ok(TextStatus::UnsupportedEncoding);
-        };
-        Ok(TextStatus::Indexed(
-            text.replace("\r\n", "\n").replace('\r', "\n"),
-        ))
+        match TextPreviewReader.read(path, None) {
+            Ok(preview) if preview.truncated => Ok(TextStatus::TooLarge),
+            Ok(preview) => Ok(TextStatus::Indexed(preview.text)),
+            Err(TextPreviewError::EncodingRequired) => Ok(TextStatus::UnsupportedEncoding),
+            Err(TextPreviewError::Io(message)) => {
+                Err(TextExtractError::Io(io::Error::other(message)))
+            }
+        }
     }
 }

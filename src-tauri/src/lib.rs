@@ -37,6 +37,12 @@ impl state::DesktopEventSink for TauriEventSink {
             let _ = app.emit("viewer://scan-progress", event);
         }
     }
+
+    fn emit_index(&self, event: dto::IndexProgressDto) {
+        if let Some(app) = self.0.get() {
+            let _ = app.emit("viewer://index-progress", event);
+        }
+    }
 }
 
 pub fn sanitize_markdown_html(input: &str) -> String {

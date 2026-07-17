@@ -7,9 +7,11 @@ publish = false
 [dependencies]
 blake3.workspace = true
 getrandom.workspace = true
+rusqlite.workspace = true
 thiserror.workspace = true
 viewer-application = { path = "../viewer-application" }
 viewer-domain = { path = "../viewer-domain" }
 
 [dev-dependencies]
+tempfile.workspace = true
 viewer-test-support = { path = "../viewer-test-support" }

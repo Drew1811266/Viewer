@@ -105,6 +105,24 @@ describe('Viewer empty state', () => {
     expect(viewer.closeProject).not.toHaveBeenCalled()
   })
 
+  it('opens exactly one project path delivered by the native drop bridge', async () => {
+    const viewer = bridge()
+    let receiveProjectDrop: ((paths: string[]) => void) | undefined
+    vi.mocked(viewer.listenProjectDrops).mockImplementation(async (handler) => {
+      receiveProjectDrop = handler
+      return () => undefined
+    })
+    render(<App bridge={viewer} />)
+    await waitFor(() => expect(receiveProjectDrop).toBeDefined())
+
+    act(() => receiveProjectDrop?.(['/fixture/dropped-project']))
+
+    await waitFor(() =>
+      expect(viewer.openProject).toHaveBeenCalledWith('/fixture/dropped-project'),
+    )
+    expect(await screen.findByText('Catalog')).toBeVisible()
+  })
+
   it('renders a safe fallback instead of raw thrown details', async () => {
     const viewer = bridge()
     vi.mocked(viewer.openProject).mockRejectedValue(

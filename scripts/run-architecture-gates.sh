@@ -21,6 +21,8 @@ done
 ./scripts/run-g1-image-gate.sh
 ./scripts/run-g2-file-transaction-gate.sh
 ./scripts/run-g3-scan-search-gate.sh
+./scripts/check-tauri-security.sh
+node scripts/check-scope-coverage.mjs
 pnpm verify
 cargo deny --offline --locked check
 

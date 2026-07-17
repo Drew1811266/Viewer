@@ -512,25 +512,25 @@ git commit -m "test: gate M2 review efficiency"
 - Create: `docs/reviews/2026-07-16-m2-review-efficiency-review.md`
 - Modify: `docs/superpowers/plans/2026-07-16-viewer-m2-review-efficiency-plan.md`
 
-- [ ] **Step 1: Build the Apple Silicon release artifact**
+- [x] **Step 1: Build the Apple Silicon release artifact**
 
 Run: `pnpm build:macos`
 
 Inspect `.app` and DMG architecture/minimum macOS metadata; require arm64 and macOS 13.0 minimum.
 
-- [ ] **Step 2: Run real GUI acceptance on a writable fixture**
+- [x] **Step 2: Run real GUI acceptance on a writable fixture**
 
 Using the packaged app, open a deep project, search names/paths/CJK text, exercise all filters/sorts/grouping, verify partial progress, mark file/folder single and batch, use shortcuts, inspect card statistics and multi-info, close/reopen, and confirm marks persist while session filters reset.
 
-- [ ] **Step 3: Run copied-project and read-only acceptance**
+- [x] **Step 3: Run copied-project and read-only acceptance**
 
 Copy the whole project to another path and verify stable project ID/marks. Open a read-only project with and without existing `.viewer`; browsing/search must work, marker actions must be unavailable, and absent metadata must not be created.
 
-- [ ] **Step 4: Inspect lifecycle and content boundaries**
+- [x] **Step 4: Inspect lifecycle and content boundaries**
 
 After close, confirm the session cache/index is deleted. Validate `.viewer` contains no original, text body, thumbnail/proxy, absolute path, or cache path. Confirm no network request, telemetry, updater, or broad Tauri capability was introduced.
 
-- [ ] **Step 5: Record evidence and defects**
+- [x] **Step 5: Record evidence and defects**
 
 The review lists every M2 requirement, automated command output, GUI evidence, package inspection, and severity. Critical/Important defects block approval; fixes return to the relevant TDD task and rerun the exact M2 gate.
 

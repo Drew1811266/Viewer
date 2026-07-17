@@ -26,7 +26,7 @@
 | 前端 | React + TypeScript + Vite | 两栏界面、状态呈现、快捷键和交互 | 正式依赖 |
 | 数据库 | SQLite + rusqlite | 持久标记、会话索引和 FTS5 全文搜索 | 正式依赖 |
 | 图片后端 | Quick Look Thumbnailing + Image I/O + Core Graphics + ColorSync | Quick Look 主缩略图、Image I/O 回退与高清预览、ICC 和 EXIF | 已通过 G1，见 ADR 0001 |
-| 文件监听 | notify + notify-debouncer-full + file-id | FSEvents、事件归并、重命名/移动关联 | 已通过 G3，见 ADR 0003 |
+| 文件监听 | notify + notify-debouncer-full + Unix device/inode identity | FSEvents、事件归并、重命名/移动关联 | 已通过 G3，见 ADR 0003；未直接引入 `file-id` |
 | 网格虚拟化 | TanStack Virtual | 缩略图、目录卡片和搜索结果虚拟化 | 正式依赖候选 |
 | 系统废纸篓 | trash-rs | 将文件移入 macOS 废纸篓 | 已通过 G2，封装于平台 Adapter |
 | 模糊匹配 | nucleo-matcher | Unicode/中文路径和文件名匹配 | 已通过 G3；发布时履行 MPL-2.0 notice/source 义务 |
@@ -53,7 +53,7 @@ Apple M4 标准开发设备上的 20 轮新会话基准覆盖 1,000 个图片占
 
 ### 2.4 G4 许可证与依赖冻结基线
 
-Viewer 源码采用 **Apache-2.0**。Rust 和 npm 解析结果分别由 `Cargo.lock` 与 `pnpm-lock.yaml` 固定，`scripts/check-locked-dependencies.sh` 使用 locked/frozen 模式重新解析和安装，并在执行前后比较两个锁文件的 SHA-256。任何直接依赖变更都必须同步更新审计、本文和 `THIRD_PARTY_NOTICES.md`。
+Viewer 源码采用 **Apache-2.0**。Rust 和 npm 解析结果分别由 `Cargo.lock` 与 `pnpm-lock.yaml` 固定，`scripts/check-locked-dependencies.sh` 使用 locked/frozen 模式重新解析和安装，并在执行前后比较两个锁文件的 SHA-256。Rust 全图由 `cargo-deny` 执行漏洞、重复版本、许可证与来源策略；npm 全图由 `pnpm licenses list` 生成清单并拒绝未知/未审查许可证表达式，同时由 `pnpm audit` 检查已知高危漏洞。任何直接依赖变更都必须同步更新审计、本文和 `THIRD_PARTY_NOTICES.md`。
 
 | 依赖组 | Viewer 0.1 锁定结果 |
 | --- | --- |

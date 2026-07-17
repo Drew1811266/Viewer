@@ -1,6 +1,6 @@
 # Viewer 0.1 third-party notices
 
-This inventory records the direct third-party dependencies in the Viewer 0.1 locked build graph. Exact versions come from `Cargo.lock` and `pnpm-lock.yaml`; manifests remain the machine-readable source of truth. Viewer does not modify the listed packages. License expressions are copied from package metadata and were reviewed with `cargo-deny` plus `pnpm audit` on 2026-07-16.
+This inventory records the direct third-party dependencies in the Viewer 0.1 locked build graph. Exact versions come from `Cargo.lock` and `pnpm-lock.yaml`; manifests remain the machine-readable source of truth. Viewer does not modify the listed packages. License expressions are copied from package metadata and were reviewed with `cargo-deny` plus `pnpm licenses list` on 2026-07-16; `pnpm audit` separately checks known vulnerabilities.
 
 “Distributed” means code from the dependency is linked into the native application or bundled into the production frontend. Build and test tools are listed separately even when they do not enter the shipped application.
 
@@ -77,6 +77,8 @@ This inventory records the direct third-party dependencies in the Viewer 0.1 loc
 ## Distribution notes
 
 - Viewer itself is licensed under Apache License 2.0; see `LICENSE`.
+- The npm transitive graph is mechanically restricted to the reviewed MIT, MIT-0, Apache-2.0, Apache-2.0 OR MIT, BSD-2-Clause, BSD-3-Clause, ISC, CC0-1.0, MPL-2.0 and BlueOak-1.0.0 expressions. An unknown or unreviewed expression fails `scripts/check-npm-licenses.mjs`.
+- The npm MPL-2.0 entries are unmodified `lightningcss` build packages and the BlueOak-1.0.0 entry is the permissively licensed `lru-cache` build/test transitive dependency; none is bundled into Viewer's React production chunk.
 - Source distributions must retain the upstream license and attribution files shipped by dependencies. Binary distributions must include notices required by the selected upstream license terms.
 - `nucleo-matcher` remains an unmodified MPL-2.0 library. Its source and license remain available at the exact upstream/version listed above; Viewer source files are not derived from it.
 - Architecture and product references that do not enter the build are intentionally documented in `ACKNOWLEDGEMENTS.md`, not in this dependency inventory.

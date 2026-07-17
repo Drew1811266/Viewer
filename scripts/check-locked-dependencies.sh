@@ -10,6 +10,7 @@ before_pnpm=$(shasum -a 256 pnpm-lock.yaml)
 cargo metadata --locked --format-version 1 >/dev/null
 pnpm install --frozen-lockfile
 cargo deny check advisories bans licenses sources
+node scripts/check-npm-licenses.mjs
 pnpm audit --audit-level high
 
 after_cargo=$(shasum -a 256 Cargo.lock)

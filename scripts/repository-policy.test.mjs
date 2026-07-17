@@ -182,3 +182,26 @@ test('the macOS release command is non-interactive and uses a valid bundle ident
   assert.deepEqual(tauri.bundle.targets, ['app', 'dmg'])
   assert.equal(tauri.bundle.macOS.minimumSystemVersion, '13.0')
 })
+
+test('the npm dependency graph rejects unreviewed license expressions', async () => {
+  const { validateLicenseInventory } = await import('./check-npm-licenses.mjs')
+  const reviewed = {
+    MIT: [{ name: 'react', versions: ['19.2.7'] }],
+    'Apache-2.0': [{ name: 'typescript', versions: ['6.0.3'] }],
+    'MPL-2.0': [{ name: 'lightningcss', versions: ['1.32.0'] }],
+    'BlueOak-1.0.0': [{ name: 'lru-cache', versions: ['11.5.2'] }],
+  }
+
+  assert.equal(validateLicenseInventory(reviewed), 4)
+  assert.throws(
+    () => validateLicenseInventory({ 'GPL-3.0-only': [{ name: 'forbidden', versions: ['1.0.0'] }] }),
+    /unreviewed npm license expression GPL-3\.0-only: forbidden@1\.0\.0/,
+  )
+  assert.throws(
+    () => validateLicenseInventory({ UNKNOWN: [{ name: 'unlicensed', versions: ['1.0.0'] }] }),
+    /unreviewed npm license expression UNKNOWN/,
+  )
+
+  const lockCheck = await read('scripts/check-locked-dependencies.sh')
+  assert.match(lockCheck, /node scripts\/check-npm-licenses\.mjs/)
+})

@@ -1,11 +1,19 @@
 use async_trait::async_trait;
-use std::{fs, path::Path, sync::Arc};
-use viewer_application::{FileMutationPort, FileOperationError, FileSnapshot};
+use std::{
+    fs,
+    path::Path,
+    sync::{Arc, Mutex},
+};
+use viewer_application::{
+    FileMutationPort, FileOperationError, FileSnapshot, TrashPort,
+    undo::{UndoAction, UndoStack},
+};
 use viewer_domain::{
     EntityId, OperationId, RelativePath,
     operation::{ConflictPolicy, OperationItemPlan, OperationKind, OperationState},
 };
 use viewer_infrastructure::operation::{
+    conflict::{ConflictError, ConflictExecutor, ConflictResult},
     copy::LocalFileMutation,
     executor::{CopyExecutor, CopyResumeResult},
     journal::OperationJournal,
@@ -536,4 +544,296 @@ async fn rename_partial_failure_keeps_completed_items() {
             .state,
         OperationState::Staged
     );
+}
+
+#[derive(Default)]
+struct FakeTrashPort {
+    events: Arc<Mutex<Vec<String>>>,
+}
+
+#[async_trait]
+impl TrashPort for FakeTrashPort {
+    async fn trash(&self, path: &Path) -> Result<(), FileOperationError> {
+        self.events
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .push(format!(
+                "trash:{}",
+                path.file_name().unwrap().to_string_lossy()
+            ));
+        fs::remove_file(path).map_err(|error| FileOperationError::io("fake trash", path, &error))
+    }
+}
+
+struct RecordingMutationPort {
+    delegate: LocalFileMutation,
+    events: Arc<Mutex<Vec<String>>>,
+}
+
+struct FailingPlacementPort {
+    delegate: LocalFileMutation,
+    events: Arc<Mutex<Vec<String>>>,
+}
+
+#[async_trait]
+impl FileMutationPort for FailingPlacementPort {
+    async fn snapshot(&self, path: &Path) -> Result<FileSnapshot, FileOperationError> {
+        self.delegate.snapshot(path).await
+    }
+
+    async fn copy_and_hash(
+        &self,
+        source: &Path,
+        temporary: &Path,
+    ) -> Result<(u64, [u8; 32]), FileOperationError> {
+        self.delegate.copy_and_hash(source, temporary).await
+    }
+
+    async fn rename(&self, source: &Path, destination: &Path) -> Result<(), FileOperationError> {
+        self.events
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .push(format!(
+                "rename:{}->{}",
+                source.file_name().unwrap().to_string_lossy(),
+                destination.file_name().unwrap().to_string_lossy()
+            ));
+        Err(FileOperationError::Io {
+            action: "injected replacement placement",
+            path: destination.to_path_buf(),
+            message: "injected failure".into(),
+        })
+    }
+
+    async fn remove_registered_temporary(&self, path: &Path) -> Result<(), FileOperationError> {
+        self.delegate.remove_registered_temporary(path).await
+    }
+}
+
+#[async_trait]
+impl FileMutationPort for RecordingMutationPort {
+    async fn snapshot(&self, path: &Path) -> Result<FileSnapshot, FileOperationError> {
+        self.delegate.snapshot(path).await
+    }
+
+    async fn copy_and_hash(
+        &self,
+        source: &Path,
+        temporary: &Path,
+    ) -> Result<(u64, [u8; 32]), FileOperationError> {
+        self.delegate.copy_and_hash(source, temporary).await
+    }
+
+    async fn rename(&self, source: &Path, destination: &Path) -> Result<(), FileOperationError> {
+        self.events
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .push(format!(
+                "rename:{}->{}",
+                source.file_name().unwrap().to_string_lossy(),
+                destination.file_name().unwrap().to_string_lossy()
+            ));
+        self.delegate.rename(source, destination).await
+    }
+
+    async fn remove_registered_temporary(&self, path: &Path) -> Result<(), FileOperationError> {
+        self.delegate.remove_registered_temporary(path).await
+    }
+}
+
+#[tokio::test]
+async fn conflict_skip_keep_both_and_replace_are_deterministic() {
+    let project = ProjectFixture::new();
+    let events = Arc::new(Mutex::new(Vec::new()));
+    let mutation: Arc<dyn FileMutationPort> = Arc::new(RecordingMutationPort {
+        delegate: LocalFileMutation,
+        events: Arc::clone(&events),
+    });
+    let trash: Arc<dyn TrashPort> = Arc::new(FakeTrashPort {
+        events: Arc::clone(&events),
+    });
+    let executor = ConflictExecutor::new(Arc::clone(&mutation), Arc::clone(&trash));
+
+    let skipped_source = project.root().join("skip.part");
+    let skipped_destination = project.root().join("skip.jpg");
+    fs::write(&skipped_source, b"new").unwrap();
+    fs::write(&skipped_destination, b"existing").unwrap();
+    assert_eq!(
+        executor
+            .place(&skipped_source, &skipped_destination, ConflictPolicy::Skip,)
+            .await
+            .unwrap(),
+        ConflictResult::Skipped
+    );
+    assert!(
+        events
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .is_empty()
+    );
+
+    let keep_source = project.root().join("keep.part");
+    let keep_destination = project.root().join("name.jpg");
+    fs::write(&keep_source, b"new").unwrap();
+    fs::write(&keep_destination, b"existing").unwrap();
+    fs::write(project.root().join("name copy.jpg"), b"existing-copy").unwrap();
+    assert_eq!(
+        executor
+            .place(&keep_source, &keep_destination, ConflictPolicy::KeepBoth)
+            .await
+            .unwrap(),
+        ConflictResult::Placed(project.root().join("name copy 2.jpg"))
+    );
+
+    events
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .clear();
+    let replace_source = project.root().join("replace.part");
+    let replace_destination = project.root().join("replace.jpg");
+    fs::write(&replace_source, b"replacement").unwrap();
+    fs::write(&replace_destination, b"previous").unwrap();
+    executor
+        .place(
+            &replace_source,
+            &replace_destination,
+            ConflictPolicy::Replace,
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        *events
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()),
+        ["trash:replace.jpg", "rename:replace.part->replace.jpg"]
+    );
+    assert_eq!(fs::read(replace_destination).unwrap(), b"replacement");
+}
+
+#[tokio::test]
+async fn replace_placement_failure_reports_that_previous_destination_is_in_trash() {
+    let project = ProjectFixture::new();
+    let events = Arc::new(Mutex::new(Vec::new()));
+    let mutation: Arc<dyn FileMutationPort> = Arc::new(FailingPlacementPort {
+        delegate: LocalFileMutation,
+        events: Arc::clone(&events),
+    });
+    let trash: Arc<dyn TrashPort> = Arc::new(FakeTrashPort {
+        events: Arc::clone(&events),
+    });
+    let executor = ConflictExecutor::new(mutation, trash);
+    let source = project.root().join("replacement.part");
+    let destination = project.root().join("replacement.jpg");
+    fs::write(&source, b"replacement").unwrap();
+    fs::write(&destination, b"previous").unwrap();
+
+    let error = executor
+        .place(&source, &destination, ConflictPolicy::Replace)
+        .await
+        .unwrap_err();
+
+    assert!(matches!(
+        error,
+        ConflictError::PlacementAfterTrash {
+            source: failed_source,
+            destination: failed_destination,
+            ..
+        } if failed_source == source && failed_destination == destination
+    ));
+    assert_eq!(
+        *events
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()),
+        [
+            "trash:replacement.jpg",
+            "rename:replacement.part->replacement.jpg"
+        ]
+    );
+    assert!(source.is_file());
+    assert!(!destination.exists());
+}
+
+#[tokio::test]
+async fn undo_stack_accepts_only_session_undoable_batches_and_revalidates_identity() {
+    let project = ProjectFixture::new();
+    project.create_file("renamed.jpg", b"rename");
+    let mutation = LocalFileMutation;
+    let expected = mutation
+        .snapshot(&project.root().join("renamed.jpg"))
+        .await
+        .unwrap();
+    let session_id = viewer_domain::SessionId::new();
+    let mut stack = UndoStack::new(session_id);
+    let action = UndoAction::File {
+        entity_id: EntityId::new(),
+        current: RelativePath::parse("renamed.jpg").unwrap(),
+        restore: RelativePath::parse("original.jpg").unwrap(),
+        expected,
+    };
+
+    assert!(!stack.record_batch(
+        OperationId::new(),
+        OperationKind::Copy,
+        vec![action.clone()]
+    ));
+    assert!(!stack.record_batch(
+        OperationId::new(),
+        OperationKind::Trash,
+        vec![action.clone()]
+    ));
+    assert!(stack.record_batch(OperationId::new(), OperationKind::Rename, vec![action]));
+    assert_eq!(stack.len(), 1);
+    let undo = stack
+        .pop_validated(project.root(), &mutation)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(undo.kind, OperationKind::Rename);
+
+    let changed_snapshot = mutation
+        .snapshot(&project.root().join("renamed.jpg"))
+        .await
+        .unwrap();
+    assert!(stack.record_batch(
+        OperationId::new(),
+        OperationKind::Move,
+        vec![UndoAction::File {
+            entity_id: EntityId::new(),
+            current: RelativePath::parse("renamed.jpg").unwrap(),
+            restore: RelativePath::parse("elsewhere.jpg").unwrap(),
+            expected: changed_snapshot,
+        }],
+    ));
+    fs::remove_file(project.root().join("renamed.jpg")).unwrap();
+    fs::write(project.root().join("renamed.jpg"), b"different identity").unwrap();
+    assert!(
+        stack
+            .pop_validated(project.root(), &mutation)
+            .await
+            .is_err()
+    );
+    assert_eq!(stack.len(), 1);
+    stack.close_session(session_id);
+    assert!(stack.is_empty());
+
+    assert!(stack.record_batch(
+        OperationId::new(),
+        OperationKind::SetReviewState,
+        vec![UndoAction::ReviewState {
+            entity_id: EntityId::new(),
+            previous: Some("approved".into()),
+        }],
+    ));
+    assert!(stack.record_batch(
+        OperationId::new(),
+        OperationKind::SetFavorite,
+        vec![UndoAction::Favorite {
+            entity_id: EntityId::new(),
+            previous: false,
+        }],
+    ));
+    stack.close_session(viewer_domain::SessionId::new());
+    assert_eq!(stack.len(), 2);
+    stack.close_session(session_id);
+    assert!(stack.is_empty());
 }

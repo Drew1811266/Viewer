@@ -80,6 +80,16 @@ pub trait FileMutationPort: Send + Sync {
 }
 
 #[async_trait]
+pub trait TrashPort: Send + Sync {
+    async fn trash(&self, path: &Path) -> Result<(), FileOperationError>;
+}
+
+pub trait VolumePort: Send + Sync {
+    fn volume_id(&self, path: &Path) -> Result<u64, FileOperationError>;
+    fn is_case_sensitive(&self, path: &Path) -> Result<bool, FileOperationError>;
+}
+
+#[async_trait]
 pub trait ImagePort: Send + Sync {
     async fn probe(&self, source: &Path) -> Result<ImageProbe, ImageError>;
     async fn render(&self, request: ImageRequest) -> Result<ImageArtifact, ImageError>;

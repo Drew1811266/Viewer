@@ -1,4 +1,6 @@
 #[cfg(target_os = "macos")]
+pub mod files;
+#[cfg(target_os = "macos")]
 pub mod image;
 
 use std::fs::{self, OpenOptions};

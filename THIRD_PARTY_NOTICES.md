@@ -12,6 +12,7 @@ This inventory records the direct third-party dependencies in the Viewer 0.1 loc
 | `async-trait` | 0.1.89 | MIT OR Apache-2.0 | Async Application port traits and adapters | [dtolnay/async-trait](https://github.com/dtolnay/async-trait) | Yes, as expanded code |
 | `blake3` | 1.8.5 | CC0-1.0 OR Apache-2.0 OR Apache-2.0 WITH LLVM-exception | File-operation evidence and recovery fingerprints | [BLAKE3-team/BLAKE3](https://github.com/BLAKE3-team/BLAKE3) | Yes |
 | `block2` | 0.6.2 | MIT | Objective-C completion blocks for Quick Look | [madsmtm/objc2](https://github.com/madsmtm/objc2) | Yes |
+| `encoding_rs` | 0.8.35 | (Apache-2.0 OR MIT) AND BSD-3-Clause | Strict UTF-8, UTF-16 and GB18030 text-preview decoding | [hsivonen/encoding_rs](https://github.com/hsivonen/encoding_rs) | Yes |
 | `getrandom` | 0.4.3 | MIT OR Apache-2.0 | Random transaction identifiers and protected temporary names | [rust-random/getrandom](https://github.com/rust-random/getrandom) | Yes |
 | `libc` | 0.2.186 | MIT OR Apache-2.0 | Native filesystem primitives and memory measurements | [rust-lang/libc](https://github.com/rust-lang/libc) | Yes |
 | `nucleo-matcher` | 0.3.1 | MPL-2.0 | Unicode-aware fuzzy filename and path scoring; consumed unmodified | [helix-editor/nucleo](https://github.com/helix-editor/nucleo) | Yes |

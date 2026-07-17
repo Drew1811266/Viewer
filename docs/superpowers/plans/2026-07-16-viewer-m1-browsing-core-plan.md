@@ -319,7 +319,7 @@ git commit -m "feat: query folder browsing projections"
 - Consumes: one canonical project file and optional `TextEncoding` override.
 - Produces: `TextPreviewPort::read`, `TextPreview { text, encoding, truncated }`, and typed content errors.
 
-- [ ] **Step 1: Write failing encoding/boundary tests**
+- [x] **Step 1: Write failing encoding/boundary tests**
 
 ```rust
 #[test]
@@ -343,19 +343,19 @@ fn reader_stops_at_ten_mib_on_a_character_boundary() {
 }
 ```
 
-- [ ] **Step 2: Run the integration test and verify RED**
+- [x] **Step 2: Run the integration test and verify RED**
 
 Run: `cargo test --test m1_text_preview -- --nocapture`
 
 Expected: FAIL because the preview port/reader are missing.
 
-- [ ] **Step 3: Add and review `encoding_rs` as a direct dependency**
+- [x] **Step 3: Add and review `encoding_rs` as a direct dependency**
 
 Run: `cargo add encoding_rs@0.8 --package viewer-infrastructure`
 
 Record its exact locked version, MPL-2.0/Apache-2.0 license expression, purpose, and upstream in `THIRD_PARTY_NOTICES.md`; run `./scripts/check-locked-dependencies.sh` before committing.
 
-- [ ] **Step 4: Implement the bounded reader**
+- [x] **Step 4: Implement the bounded reader**
 
 ```rust
 pub const MAX_TEXT_PREVIEW_BYTES: usize = 10 * 1024 * 1024;
@@ -370,13 +370,13 @@ pub trait TextPreviewPort: Send + Sync {
 
 Read at most `MAX_TEXT_PREVIEW_BYTES + 4`, prefer BOM, then strict UTF-8, then strict GB18030. A manual encoding bypasses detection for this call only. Normalize CRLF/CR to LF. Return `EncodingRequired` rather than replacement characters when strict decoding fails.
 
-- [ ] **Step 5: Run text, dependency, and formatting checks and verify GREEN**
+- [x] **Step 5: Run text, dependency, and formatting checks and verify GREEN**
 
 Run: `cargo test --test m1_text_preview && ./scripts/check-locked-dependencies.sh && cargo fmt --check`
 
 Expected: PASS for empty, BOM, UTF-8, UTF-16 LE/BE, GB18030, invalid bytes, truncation, and I/O isolation.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add Cargo.toml Cargo.lock THIRD_PARTY_NOTICES.md crates/viewer-application crates/viewer-infrastructure

@@ -3,6 +3,7 @@ pub mod operation;
 pub mod scan;
 pub mod search;
 pub mod session_cache;
+pub mod text;
 
 use viewer_application::ClockPort;
 

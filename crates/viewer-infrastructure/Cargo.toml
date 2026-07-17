@@ -8,6 +8,7 @@ publish = false
 [dependencies]
 async-trait.workspace = true
 blake3.workspace = true
+encoding_rs.workspace = true
 getrandom.workspace = true
 libc.workspace = true
 nucleo-matcher.workspace = true
@@ -39,3 +40,7 @@ path = "../../tests/search.rs"
 [[test]]
 name = "m1_browse_queries"
 path = "../../tests/m1_browse_queries.rs"
+
+[[test]]
+name = "m1_text_preview"
+path = "../../tests/m1_text_preview.rs"

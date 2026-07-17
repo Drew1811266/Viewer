@@ -7,6 +7,7 @@ pub mod scan;
 pub mod scheduler;
 pub mod search;
 pub mod session;
+pub mod text;
 pub mod undo;
 pub mod watcher;
 
@@ -19,4 +20,7 @@ pub use ports::{
 };
 pub use project::{ActiveProject, ProjectOpenError, ProjectSessionService};
 pub use session::{ProjectSession, SessionState, SessionTransitionError};
+pub use text::{
+    MAX_TEXT_PREVIEW_BYTES, TextEncoding, TextPreview, TextPreviewError, TextPreviewPort,
+};
 pub use watcher::{WatchSubscription, WatcherError, WatcherPort, WatcherSink};

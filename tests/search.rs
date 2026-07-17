@@ -1,6 +1,11 @@
+use async_trait::async_trait;
 use rusqlite::{Connection, OptionalExtension};
 use std::{fs, sync::Arc};
-use viewer_application::{SearchPort, search::SearchError};
+use viewer_application::{
+    SearchPort,
+    scheduler::TaskCoordinator,
+    search::{CoordinatedSearch, SearchError},
+};
 use viewer_domain::{
     EntityId, RelativePath, SessionId,
     file::{FileKind, FileNode, ReviewState},
@@ -309,4 +314,82 @@ fn search_node(entity_id: EntityId, path: &str, kind: FileKind) -> FileNode {
         size: if kind == FileKind::Directory { 0 } else { 10 },
         modified_ns: 20,
     }
+}
+
+struct BarrierSearch {
+    started: Arc<tokio::sync::Notify>,
+    release: Arc<tokio::sync::Notify>,
+}
+
+#[async_trait]
+impl SearchPort for BarrierSearch {
+    async fn search(
+        &self,
+        _session_id: SessionId,
+        _generation: Generation,
+        query: SearchQuery,
+    ) -> Result<viewer_domain::search::SearchPage, SearchError> {
+        if query.text == "old" {
+            self.started.notify_one();
+            self.release.notified().await;
+        }
+        Ok(viewer_domain::search::SearchPage {
+            total: 0,
+            hits: Vec::new(),
+        })
+    }
+}
+
+#[tokio::test]
+async fn stale_search_generation_never_reaches_the_result_sink() {
+    let coordinator = Arc::new(TaskCoordinator::default());
+    let session_id = SessionId::new();
+    let old_generation = coordinator.begin_session(session_id);
+    let started = Arc::new(tokio::sync::Notify::new());
+    let release = Arc::new(tokio::sync::Notify::new());
+    let search = Arc::new(CoordinatedSearch::new(
+        Arc::new(BarrierSearch {
+            started: Arc::clone(&started),
+            release: Arc::clone(&release),
+        }),
+        Arc::clone(&coordinator),
+    ));
+    let (results, mut published) = tokio::sync::mpsc::channel(2);
+    let old_search = Arc::clone(&search);
+    let old_results = results.clone();
+    let old_task = tokio::spawn(async move {
+        let result = old_search
+            .search(
+                session_id,
+                old_generation,
+                query("old", SearchScope::Project, vec![]),
+            )
+            .await;
+        if result.is_ok() {
+            old_results.send(old_generation).await.unwrap();
+        }
+        result
+    });
+    started.notified().await;
+
+    let current_generation = coordinator.bump_generation(session_id).unwrap();
+    search
+        .search(
+            session_id,
+            current_generation,
+            query("new", SearchScope::Project, vec![]),
+        )
+        .await
+        .unwrap();
+    results.send(current_generation).await.unwrap();
+    release.notify_one();
+    assert!(matches!(old_task.await.unwrap(), Err(SearchError::Stale)));
+    drop(search);
+    drop(results);
+
+    let mut generations = Vec::new();
+    while let Some(generation) = published.recv().await {
+        generations.push(generation);
+    }
+    assert_eq!(generations, [current_generation]);
 }

@@ -1,7 +1,9 @@
-use std::fs;
+use async_trait::async_trait;
+use std::{fs, sync::Arc};
 use viewer_application::{
     ScanPort,
-    scan::{ScanError, ScanEvent, ScanRequest},
+    scan::{CoordinatedScan, ScanError, ScanEvent, ScanRequest, ScanSink, ScanTotals},
+    scheduler::TaskCoordinator,
 };
 use viewer_domain::{
     EntityId, RelativePath, SessionId,
@@ -260,4 +262,84 @@ fn paths(nodes: &[FileNode]) -> Vec<&str> {
         .iter()
         .map(|node| node.relative_path.as_str())
         .collect()
+}
+
+struct BarrierScanner {
+    started: Arc<tokio::sync::Notify>,
+    release: Arc<tokio::sync::Notify>,
+    blocked_generation: Generation,
+}
+
+#[async_trait]
+impl ScanPort for BarrierScanner {
+    async fn scan(&self, request: ScanRequest, sink: ScanSink) -> Result<(), ScanError> {
+        if request.generation == self.blocked_generation {
+            self.started.notify_one();
+            self.release.notified().await;
+        }
+        sink.send(ScanEvent::Finished {
+            generation: request.generation,
+            totals: ScanTotals::default(),
+        })
+        .await
+        .map_err(|_| ScanError::Cancelled)
+    }
+}
+
+#[tokio::test]
+async fn stale_scan_generation_never_reaches_the_publication_sink() {
+    let coordinator = Arc::new(TaskCoordinator::default());
+    let session_id = SessionId::new();
+    let old_generation = coordinator.begin_session(session_id);
+    let started = Arc::new(tokio::sync::Notify::new());
+    let release = Arc::new(tokio::sync::Notify::new());
+    let scanner = Arc::new(CoordinatedScan::new(
+        Arc::new(BarrierScanner {
+            started: Arc::clone(&started),
+            release: Arc::clone(&release),
+            blocked_generation: old_generation,
+        }),
+        Arc::clone(&coordinator),
+    ));
+    let (sink, mut events) = tokio::sync::mpsc::channel(8);
+    let root = tempfile::tempdir().unwrap();
+    let old_scanner = Arc::clone(&scanner);
+    let old_sink = sink.clone();
+    let old_root = root.path().to_path_buf();
+    let old_task = tokio::spawn(async move {
+        old_scanner
+            .scan(
+                ScanRequest {
+                    session_id,
+                    generation: old_generation,
+                    root: old_root,
+                },
+                old_sink,
+            )
+            .await
+    });
+    started.notified().await;
+
+    let current_generation = coordinator.bump_generation(session_id).unwrap();
+    scanner
+        .scan(
+            ScanRequest {
+                session_id,
+                generation: current_generation,
+                root: root.path().to_path_buf(),
+            },
+            sink.clone(),
+        )
+        .await
+        .unwrap();
+    release.notify_one();
+    assert!(matches!(old_task.await.unwrap(), Err(ScanError::Cancelled)));
+    drop(scanner);
+    drop(sink);
+
+    let mut published = Vec::new();
+    while let Some(event) = events.recv().await {
+        published.push(event.generation());
+    }
+    assert_eq!(published, [current_generation]);
 }

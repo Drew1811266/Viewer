@@ -129,27 +129,27 @@ git commit -m "feat: version portable project metadata"
 **Interfaces:**
 - Produces: `Marker { review_state, favorite }`, `MarkerTarget`, `MarkerPatch`, `PortableMetadataPort::markers_for_paths`, `apply_batch`, and `MarkerService`.
 
-- [ ] **Step 1: Write failing marker truth tests**
+- [x] **Step 1: Write failing marker truth tests**
 
 Cover all review/favorite combinations, file and folder rows, clear review without clearing favorite, favorite toggle without changing review, atomic multi-selection update, duplicate targets, rollback on invalid path, reopen, project copy, and no source-file content/mtime mutation.
 
-Run: `cargo test --test m2_portable_metadata markers -- --nocapture`
+Run: `cargo test --test m2_portable_metadata -- --nocapture`
 
 Expected: RED because marker storage is absent.
 
-- [ ] **Step 2: Implement schema and repository**
+- [x] **Step 2: Implement schema and repository**
 
 Store a marker UUID, canonical relative path, kind, review state, favorite, optional size/mtime/BLAKE3 evidence, and update time. Enforce unique relative paths, valid enums, and no `.viewer` path. Batch changes use one immediate transaction and return committed rows. Clearing both fields may remove the marker row.
 
-- [ ] **Step 3: Implement the application service**
+- [x] **Step 3: Implement the application service**
 
 Validate non-empty unique targets and write capability. Commit portable truth first, then call a disposable-index synchronization port. If index sync fails, return a typed `CommittedButProjectionStale` error so the desktop can rehydrate rather than retry the durable mutation blindly.
 
-- [ ] **Step 4: Verify GREEN**
+- [x] **Step 4: Verify GREEN**
 
-Run: `cargo test --test m2_portable_metadata markers && cargo test -p viewer-application metadata && cargo clippy --locked --workspace --all-targets -- -D warnings`
+Run: `cargo test --test m2_portable_metadata && cargo test -p viewer-application metadata && cargo clippy --locked --workspace --all-targets -- -D warnings`
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add crates/viewer-application crates/viewer-infrastructure tests/m2_portable_metadata.rs

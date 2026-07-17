@@ -1,5 +1,6 @@
 pub mod browse;
 pub mod image;
+pub mod metadata;
 pub mod operation;
 pub mod ports;
 pub mod project;

@@ -1,11 +1,21 @@
 use rusqlite::Connection;
 use std::fs;
 use tempfile::TempDir;
-use viewer_application::ProjectAccess;
-use viewer_domain::ProjectId;
+use viewer_application::{
+    ProjectAccess,
+    metadata::{
+        FavoritePatch, Marker, MarkerChange, MarkerPatch, MarkerProjectionError,
+        MarkerProjectionPort, MarkerService, MarkerServiceError, MarkerTarget,
+        PortableMetadataPort, ReviewPatch,
+    },
+};
+use viewer_domain::{
+    EntityId, ProjectId, RelativePath,
+    file::{FileKind, ReviewState},
+};
 use viewer_infrastructure::{
     operation::journal::OperationJournal,
-    portable::{PortableMetadataError, PortableProjectMetadata},
+    portable::{PortableMarkerStore, PortableMetadataError, PortableProjectMetadata},
 };
 
 fn schema_version(database: &std::path::Path) -> i64 {
@@ -207,4 +217,292 @@ fn identity_and_database_project_ids_must_agree() {
         error,
         PortableMetadataError::ProjectIdentityMismatch
     ));
+}
+
+fn marker_target(path: &str, kind: FileKind) -> MarkerTarget {
+    MarkerTarget {
+        entity_id: EntityId::new(),
+        relative_path: RelativePath::parse(path).unwrap(),
+        kind,
+        size: if kind == FileKind::Directory { 0 } else { 128 },
+        modified_ns: 9,
+    }
+}
+
+fn writable_marker_store(project: &TempDir) -> PortableMarkerStore {
+    let metadata =
+        PortableProjectMetadata::open(project.path(), ProjectAccess::ReadWrite, 1).unwrap();
+    PortableMarkerStore::open(metadata.database_path().unwrap(), true).unwrap()
+}
+
+#[test]
+fn markers_keep_review_and_favorite_independent_for_files_and_folders() {
+    let project = TempDir::new().unwrap();
+    let store = writable_marker_store(&project);
+    let file = marker_target("products/id-1/front.jpg", FileKind::Jpeg);
+    let folder = marker_target("products/id-1", FileKind::Directory);
+
+    let changes = store
+        .apply_batch(
+            &[file.clone(), folder.clone()],
+            MarkerPatch {
+                review: ReviewPatch::Set(ReviewState::Keep),
+                favorite: FavoritePatch::Unchanged,
+            },
+            10,
+        )
+        .unwrap();
+    assert!(changes.iter().all(|change| {
+        change.marker
+            == Marker {
+                review_state: Some(ReviewState::Keep),
+                favorite: false,
+            }
+    }));
+
+    let changes = store
+        .apply_batch(
+            std::slice::from_ref(&file),
+            MarkerPatch {
+                review: ReviewPatch::Unchanged,
+                favorite: FavoritePatch::Toggle,
+            },
+            11,
+        )
+        .unwrap();
+    assert_eq!(
+        changes[0].marker,
+        Marker {
+            review_state: Some(ReviewState::Keep),
+            favorite: true,
+        }
+    );
+
+    let changes = store
+        .apply_batch(
+            std::slice::from_ref(&file),
+            MarkerPatch {
+                review: ReviewPatch::Clear,
+                favorite: FavoritePatch::Unchanged,
+            },
+            12,
+        )
+        .unwrap();
+    assert_eq!(
+        changes[0].marker,
+        Marker {
+            review_state: None,
+            favorite: true,
+        }
+    );
+    assert_eq!(
+        store
+            .markers_for_paths(&[file.relative_path.clone(), folder.relative_path.clone()])
+            .unwrap()
+            .len(),
+        2
+    );
+}
+
+#[test]
+fn clearing_both_marker_dimensions_removes_the_portable_row() {
+    let project = TempDir::new().unwrap();
+    let store = writable_marker_store(&project);
+    let target = marker_target("notes/prompt.md", FileKind::Markdown);
+    store
+        .apply_batch(
+            std::slice::from_ref(&target),
+            MarkerPatch {
+                review: ReviewPatch::Set(ReviewState::Pending),
+                favorite: FavoritePatch::Set(true),
+            },
+            1,
+        )
+        .unwrap();
+
+    let cleared = store
+        .apply_batch(
+            std::slice::from_ref(&target),
+            MarkerPatch {
+                review: ReviewPatch::Clear,
+                favorite: FavoritePatch::Set(false),
+            },
+            2,
+        )
+        .unwrap();
+
+    assert_eq!(cleared[0].marker, Marker::default());
+    assert!(
+        store
+            .markers_for_paths(std::slice::from_ref(&target.relative_path))
+            .unwrap()
+            .is_empty()
+    );
+}
+
+#[test]
+fn marker_batch_rolls_back_when_any_evidence_is_out_of_range() {
+    let project = TempDir::new().unwrap();
+    let store = writable_marker_store(&project);
+    let valid = marker_target("products/valid.png", FileKind::Png);
+    let mut invalid = marker_target("products/invalid.png", FileKind::Png);
+    invalid.size = u64::MAX;
+
+    assert!(
+        store
+            .apply_batch(
+                &[valid.clone(), invalid],
+                MarkerPatch {
+                    review: ReviewPatch::Set(ReviewState::Reject),
+                    favorite: FavoritePatch::Unchanged,
+                },
+                4,
+            )
+            .is_err()
+    );
+    assert!(
+        store
+            .markers_for_paths(std::slice::from_ref(&valid.relative_path))
+            .unwrap()
+            .is_empty()
+    );
+}
+
+#[test]
+fn markers_survive_reopen_and_whole_project_copy_without_touching_source_files() {
+    let source = TempDir::new().unwrap();
+    let source_file = source.path().join("front.jpg");
+    fs::write(&source_file, b"original image fixture").unwrap();
+    let before = fs::metadata(&source_file).unwrap().modified().unwrap();
+    let target = marker_target("front.jpg", FileKind::Jpeg);
+    {
+        let store = writable_marker_store(&source);
+        store
+            .apply_batch(
+                std::slice::from_ref(&target),
+                MarkerPatch {
+                    review: ReviewPatch::Set(ReviewState::Keep),
+                    favorite: FavoritePatch::Set(true),
+                },
+                9,
+            )
+            .unwrap();
+    }
+    assert_eq!(fs::read(&source_file).unwrap(), b"original image fixture");
+    assert_eq!(
+        fs::metadata(&source_file).unwrap().modified().unwrap(),
+        before
+    );
+
+    let destination = TempDir::new().unwrap();
+    fs::create_dir(destination.path().join(".viewer")).unwrap();
+    for name in ["project.json", "metadata.sqlite"] {
+        fs::copy(
+            source.path().join(".viewer").join(name),
+            destination.path().join(".viewer").join(name),
+        )
+        .unwrap();
+    }
+    let copied =
+        PortableProjectMetadata::open(destination.path(), ProjectAccess::ReadWrite, 10).unwrap();
+    let store = PortableMarkerStore::open(copied.database_path().unwrap(), true).unwrap();
+    let recovered = store
+        .markers_for_paths(std::slice::from_ref(&target.relative_path))
+        .unwrap();
+    assert_eq!(recovered.len(), 1);
+    assert_eq!(
+        recovered[0].marker,
+        Marker {
+            review_state: Some(ReviewState::Keep),
+            favorite: true,
+        }
+    );
+}
+
+#[derive(Default)]
+struct Projection {
+    fail: bool,
+    changes: std::sync::Mutex<Vec<MarkerChange>>,
+}
+
+impl MarkerProjectionPort for Projection {
+    fn sync_markers(&self, changes: &[MarkerChange]) -> Result<(), MarkerProjectionError> {
+        if self.fail {
+            return Err(MarkerProjectionError::Unavailable);
+        }
+        self.changes.lock().unwrap().extend_from_slice(changes);
+        Ok(())
+    }
+}
+
+#[test]
+fn marker_service_rejects_duplicates_and_reports_committed_projection_failure() {
+    let project = TempDir::new().unwrap();
+    let store = writable_marker_store(&project);
+    let target = marker_target("id-1/front.jpg", FileKind::Jpeg);
+    let projection = Projection::default();
+    let service = MarkerService::new(&store, &projection, true);
+    let patch = MarkerPatch {
+        review: ReviewPatch::Set(ReviewState::Keep),
+        favorite: FavoritePatch::Unchanged,
+    };
+    assert!(matches!(
+        service.apply(&[target.clone(), target.clone()], patch, 1),
+        Err(MarkerServiceError::DuplicateTarget)
+    ));
+    assert!(
+        store
+            .markers_for_paths(std::slice::from_ref(&target.relative_path))
+            .unwrap()
+            .is_empty()
+    );
+
+    let failing_projection = Projection {
+        fail: true,
+        ..Projection::default()
+    };
+    let service = MarkerService::new(&store, &failing_projection, true);
+    assert!(matches!(
+        service.apply(std::slice::from_ref(&target), patch, 2),
+        Err(MarkerServiceError::CommittedButProjectionStale)
+    ));
+    assert_eq!(
+        store
+            .markers_for_paths(std::slice::from_ref(&target.relative_path))
+            .unwrap()[0]
+            .marker
+            .review_state,
+        Some(ReviewState::Keep)
+    );
+}
+
+#[test]
+fn read_only_marker_service_rejects_writes_without_touching_the_database() {
+    let project = TempDir::new().unwrap();
+    let writable = writable_marker_store(&project);
+    drop(writable);
+    let metadata =
+        PortableProjectMetadata::open(project.path(), ProjectAccess::ReadOnly, 2).unwrap();
+    let store = PortableMarkerStore::open(metadata.database_path().unwrap(), false).unwrap();
+    let target = marker_target("id-1", FileKind::Directory);
+    let projection = Projection::default();
+    let service = MarkerService::new(&store, &projection, false);
+
+    assert!(matches!(
+        service.apply(
+            std::slice::from_ref(&target),
+            MarkerPatch {
+                review: ReviewPatch::Set(ReviewState::Reject),
+                favorite: FavoritePatch::Unchanged,
+            },
+            3,
+        ),
+        Err(MarkerServiceError::ReadOnly)
+    ));
+    assert!(
+        store
+            .markers_for_paths(std::slice::from_ref(&target.relative_path))
+            .unwrap()
+            .is_empty()
+    );
 }

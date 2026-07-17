@@ -198,6 +198,33 @@ async fn progressive_scan_rejects_a_non_directory_root() {
     assert!(matches!(result, Err(ScanError::RootUnreadable(_))));
 }
 
+#[cfg(unix)]
+#[tokio::test]
+async fn progressive_scan_rejects_a_symlinked_project_root() {
+    use std::os::unix::fs::symlink;
+
+    let directory = tempfile::tempdir().unwrap();
+    let actual_root = directory.path().join("actual-project");
+    fs::create_dir(&actual_root).unwrap();
+    fs::write(actual_root.join("front.jpg"), b"image").unwrap();
+    let linked_root = directory.path().join("linked-project");
+    symlink(&actual_root, &linked_root).unwrap();
+    let (sink, _events) = tokio::sync::mpsc::channel(8);
+
+    let result = ProjectWalker
+        .scan(
+            ScanRequest {
+                session_id: SessionId::new(),
+                generation: Generation::new(1),
+                root: linked_root,
+            },
+            sink,
+        )
+        .await;
+
+    assert!(matches!(result, Err(ScanError::RootUnreadable(_))));
+}
+
 #[test]
 fn session_index_commits_a_batch_and_reopens_with_the_same_hierarchy() {
     let directory = tempfile::tempdir().unwrap();

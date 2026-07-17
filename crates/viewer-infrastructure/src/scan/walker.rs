@@ -110,9 +110,14 @@ fn scan_blocking(request: ScanRequest, sink: ScanSink) -> Result<(), ScanError> 
 }
 
 fn validate_root(root: &Path) -> Result<PathBuf, ScanError> {
-    let metadata =
-        std::fs::metadata(root).map_err(|error| ScanError::RootUnreadable(error.to_string()))?;
-    if !metadata.is_dir() {
+    let metadata = std::fs::symlink_metadata(root)
+        .map_err(|error| ScanError::RootUnreadable(error.to_string()))?;
+    if metadata.file_type().is_symlink() {
+        return Err(ScanError::RootUnreadable(
+            "project root cannot be a symbolic link".into(),
+        ));
+    }
+    if !metadata.is_dir() || is_macos_alias(root) {
         return Err(ScanError::RootUnreadable("path is not a directory".into()));
     }
     std::fs::read_dir(root).map_err(|error| ScanError::RootUnreadable(error.to_string()))?;

@@ -1,0 +1,68 @@
+{
+  "project": {
+    "projectId": "018f0000-0000-7000-8000-000000000001",
+    "sessionId": "018f0000-0000-7000-8000-000000000002",
+    "generation": 1,
+    "displayName": "Catalog",
+    "access": "read_write"
+  },
+  "folderTree": [
+    {
+      "entityId": "018f0000-0000-7000-8000-000000000010",
+      "parentEntityId": null,
+      "relativePath": "catalog",
+      "name": "catalog",
+      "kind": "directory"
+    },
+    {
+      "entityId": "018f0000-0000-7000-8000-000000000011",
+      "parentEntityId": "018f0000-0000-7000-8000-000000000010",
+      "relativePath": "catalog/id-001",
+      "name": "id-001",
+      "kind": "directory"
+    }
+  ],
+  "content": {
+    "workspace": "content",
+    "images": [
+      {
+        "entityId": "018f0000-0000-7000-8000-000000000020",
+        "relativePath": "catalog/id-001/front.jpg",
+        "name": "front.jpg",
+        "kind": "jpeg",
+        "size": 10485760,
+        "modifiedNs": "1000000",
+        "imageUrl": null
+      },
+      {
+        "entityId": "018f0000-0000-7000-8000-000000000021",
+        "relativePath": "catalog/id-001/back.png",
+        "name": "back.png",
+        "kind": "png",
+        "size": 2048,
+        "modifiedNs": "1000001",
+        "imageUrl": null
+      }
+    ],
+    "textFiles": [
+      {
+        "entityId": "018f0000-0000-7000-8000-000000000022",
+        "relativePath": "catalog/id-001/prompt.md",
+        "name": "prompt.md",
+        "kind": "markdown",
+        "size": 256,
+        "modifiedNs": "1000002",
+        "imageUrl": null
+      },
+      {
+        "entityId": "018f0000-0000-7000-8000-000000000023",
+        "relativePath": "catalog/id-001/notes.txt",
+        "name": "notes.txt",
+        "kind": "text",
+        "size": 128,
+        "modifiedNs": "1000003",
+        "imageUrl": null
+      }
+    ]
+  }
+}

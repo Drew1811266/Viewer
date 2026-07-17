@@ -983,7 +983,7 @@ git commit -m "feat: preview images and text in context"
 - Consumes: every M1 slice and G1–G4 gates.
 - Produces: one reproducible `pnpm gate:m1` command and stage-review evidence suitable for the merge decision.
 
-- [ ] **Step 1: Add a failing repository-policy assertion for the M1 gate**
+- [x] **Step 1: Add a failing repository-policy assertion for the M1 gate**
 
 ```js
 test('M1 browsing gate is exact and mandatory', () => {
@@ -994,13 +994,13 @@ test('M1 browsing gate is exact and mandatory', () => {
 })
 ```
 
-- [ ] **Step 2: Run policy test and verify RED**
+- [x] **Step 2: Run policy test and verify RED**
 
 Run: `node --test scripts/repository-policy.test.mjs`
 
 Expected: FAIL because the gate script/package command do not exist.
 
-- [ ] **Step 3: Implement the aggregate M1 gate**
+- [x] **Step 3: Implement the aggregate M1 gate**
 
 The executable script must run, with locked inputs:
 
@@ -1016,25 +1016,25 @@ node scripts/check-scope-coverage.mjs
 
 It must also fail if `.viewer`, an absolute project path, a cache path, or unsupported file kind appears in captured IPC fixtures.
 
-- [ ] **Step 4: Exercise the real application with a disposable M1 fixture**
+- [x] **Step 4: Exercise the real application with a disposable M1 fixture**
 
 Run the Tauri dev app against a fixture containing deep folders, empty folders, duplicate names, JPG/PNG, corrupt image, Markdown/TXT encodings, unsupported/hidden/link entries, and at least 1,000 lightweight indexed items. Verify picker and drag-in, folder-first progressive tree, category cards, virtual grid, selection/keyboard preview, text rendering, close-to-empty, reopen-empty, and cache removal. Record observed results; do not claim final M4 performance acceptance.
 
-- [ ] **Step 5: Run the complete M1 gate and Apple Silicon build**
+- [x] **Step 5: Run the complete M1 gate and Apple Silicon build**
 
 Run: `pnpm gate:m1 && pnpm build:macos`
 
 Expected: PASS; `.app` and DMG build for arm64/macOS 13+; no test, lint, dependency, scope, or security failure.
 
-- [ ] **Step 6: Review the full M1 diff**
+- [x] **Step 6: Review the full M1 diff**
 
 Review `git diff 8149d57...HEAD` for Critical/Important issues, architecture/API drift, stale publication, path disclosure, unbounded work, cache ownership, keyboard race, and scope creep. Fix every Critical/Important issue with a failing test and rerun the gate. Record findings, fixes, commands, accepted M4 deferrals, and product evidence in `docs/reviews/2026-07-16-m1-browsing-core-review.md`.
 
-- [ ] **Step 7: Mark M1 complete only after evidence is green**
+- [x] **Step 7: Mark M1 complete only after evidence is green**
 
 Update the roadmap M1 status and its link to the stage review. Do not start M2 or merge while any M1 gate is red.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add package.json scripts/run-m1-browsing-gate.sh scripts/repository-policy.test.mjs docs/superpowers/plans/2026-07-16-viewer-0.1-roadmap.md docs/reviews/2026-07-16-m1-browsing-core-review.md

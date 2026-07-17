@@ -82,6 +82,7 @@ const directDependencies = [
   'async-trait',
   'blake3',
   'block2',
+  'encoding_rs',
   'getrandom',
   'libc',
   'nucleo-matcher',
@@ -93,6 +94,7 @@ const directDependencies = [
   'objc2-foundation',
   'objc2-image-io',
   'objc2-quick-look-thumbnailing',
+  'pulldown-cmark',
   'rusqlite',
   'serde',
   'serde_json',
@@ -104,8 +106,10 @@ const directDependencies = [
   'walkdir',
   'tauri',
   'tauri-build',
+  'tauri-plugin-dialog',
   '@tauri-apps/api',
   '@tauri-apps/cli',
+  '@tauri-apps/plugin-dialog',
   'react',
   'react-dom',
   '@testing-library/jest-dom',
@@ -204,4 +208,43 @@ test('the npm dependency graph rejects unreviewed license expressions', async ()
 
   const lockCheck = await read('scripts/check-locked-dependencies.sh')
   assert.match(lockCheck, /node scripts\/check-npm-licenses\.mjs/)
+})
+
+test('M1 browsing gate is exact, executable and mandatory', async () => {
+  const [packageText, gate, gateStat] = await Promise.all([
+    read('package.json'),
+    read('scripts/run-m1-browsing-gate.sh'),
+    stat(new URL('../scripts/run-m1-browsing-gate.sh', import.meta.url)),
+  ])
+  const packageJson = JSON.parse(packageText)
+
+  assert.equal(packageJson.scripts['gate:m1'], './scripts/run-m1-browsing-gate.sh')
+  assert.ok((gateStat.mode & 0o111) !== 0, 'M1 gate must be executable')
+  for (const required of [
+    'pnpm verify',
+    './scripts/check-locked-dependencies.sh',
+    './scripts/check-tauri-security.sh',
+    'cargo test --locked --test m1_browse_queries',
+    'cargo test --locked --test m1_text_preview',
+    'cargo test --locked -p viewer-desktop --test m1_desktop_runtime',
+    'node scripts/check-scope-coverage.mjs',
+    'node scripts/check-m1-ipc-fixtures.mjs',
+  ]) {
+    assert.ok(gate.includes(required), `M1 gate is missing: ${required}`)
+  }
+})
+
+test('M1 IPC fixture validation rejects path disclosure and unsupported kinds', async () => {
+  const { validateIpcPayload } = await import('./check-m1-ipc-fixtures.mjs')
+  assert.doesNotThrow(() =>
+    validateIpcPayload({ kind: 'jpeg', relativePath: 'catalog/id-1/front.jpg' }, 'safe'),
+  )
+  for (const unsafe of [
+    { kind: 'jpeg', relativePath: '/Users/private/front.jpg' },
+    { kind: 'jpeg', relativePath: 'catalog/.viewer/front.jpg' },
+    { kind: 'jpeg', cachePath: '/Users/a/Library/Caches/Viewer/sessions/1' },
+    { kind: 'webp', relativePath: 'catalog/front.webp' },
+  ]) {
+    assert.throws(() => validateIpcPayload(unsafe, 'unsafe'))
+  }
 })

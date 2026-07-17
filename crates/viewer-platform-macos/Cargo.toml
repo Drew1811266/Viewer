@@ -5,14 +5,20 @@ edition.workspace = true
 publish = false
 
 [dependencies]
+async-trait.workspace = true
+tokio.workspace = true
 uuid.workspace = true
 viewer-application = { path = "../viewer-application" }
 viewer-domain = { path = "../viewer-domain" }
 
 [target.'cfg(target_os = "macos")'.dependencies]
+block2.workspace = true
+objc2.workspace = true
 objc2-core-foundation.workspace = true
 objc2-core-graphics.workspace = true
+objc2-foundation.workspace = true
 objc2-image-io.workspace = true
+objc2-quick-look-thumbnailing.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

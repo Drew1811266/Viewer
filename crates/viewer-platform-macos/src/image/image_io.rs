@@ -9,11 +9,24 @@ use objc2_image_io::{
 };
 use std::path::Path;
 use viewer_application::ImageError;
-use viewer_domain::image::{ImageFormat, ImageProbe};
+use viewer_domain::image::{DecodeBudget, ImageFormat, ImageProbe, ImageRepresentationKind};
 
-pub struct ImageIoBackend;
+#[derive(Clone, Copy)]
+pub struct ImageIoBackend {
+    decode_budget: DecodeBudget,
+}
+
+impl Default for ImageIoBackend {
+    fn default() -> Self {
+        Self::new(DecodeBudget::new(700_000_000, 100_000_000))
+    }
+}
 
 impl ImageIoBackend {
+    pub const fn new(decode_budget: DecodeBudget) -> Self {
+        Self { decode_budget }
+    }
+
     pub fn probe_sync(&self, source: impl AsRef<Path>) -> Result<ImageProbe, ImageError> {
         let image_source = open_image_source(source.as_ref())?;
         let format = image_format(&image_source)?;
@@ -85,6 +98,75 @@ impl ImageIoBackend {
         encode_png(&thumbnail, destination.as_ref())?;
         Ok((width, height))
     }
+
+    pub fn render_sync(
+        &self,
+        source: impl AsRef<Path>,
+        kind: ImageRepresentationKind,
+        destination: impl AsRef<Path>,
+    ) -> Result<(u32, u32), ImageError> {
+        let source = source.as_ref();
+        let max_dimension = match kind {
+            ImageRepresentationKind::Thumbnail { max_pixels, .. } => max_pixels,
+            ImageRepresentationKind::FitPreview {
+                max_width,
+                max_height,
+                ..
+            } => {
+                let probe = self.probe_sync(source)?;
+                fit_max_dimension(&probe, max_width, max_height)?
+            }
+            ImageRepresentationKind::Original100Percent => {
+                let probe = self.probe_sync(source)?;
+                if !self
+                    .decode_budget
+                    .allows_full_decode(probe.width, probe.height, 4)
+                {
+                    return Err(ImageError::BudgetExceeded);
+                }
+                let (width, height) = oriented_dimensions(&probe);
+                width.max(height)
+            }
+        };
+
+        self.render_thumbnail_sync(source, max_dimension, destination)
+    }
+}
+
+fn oriented_dimensions(probe: &ImageProbe) -> (u32, u32) {
+    if matches!(probe.orientation, 5..=8) {
+        (probe.height, probe.width)
+    } else {
+        (probe.width, probe.height)
+    }
+}
+
+fn fit_max_dimension(
+    probe: &ImageProbe,
+    max_width: u32,
+    max_height: u32,
+) -> Result<u32, ImageError> {
+    if max_width == 0 || max_height == 0 {
+        return Err(ImageError::BudgetExceeded);
+    }
+
+    let (width, height) = oriented_dimensions(probe);
+    if width == 0 || height == 0 {
+        return Err(ImageError::Corrupt);
+    }
+    if width <= max_width && height <= max_height {
+        return Ok(width.max(height));
+    }
+
+    let (numerator, denominator) =
+        if u64::from(max_width) * u64::from(height) <= u64::from(max_height) * u64::from(width) {
+            (max_width, width)
+        } else {
+            (max_height, height)
+        };
+    let target_width = u64::from(width) * u64::from(numerator) / u64::from(denominator);
+    let target_height = u64::from(height) * u64::from(numerator) / u64::from(denominator);
+    u32::try_from(target_width.max(target_height).max(1)).map_err(|_| ImageError::BudgetExceeded)
 }
 
 fn open_image_source(
@@ -171,11 +253,12 @@ fn optional_string_property(properties: &CFDictionary, key: &CFString) -> Option
 mod tests {
     use super::ImageIoBackend;
     use viewer_application::ImageError;
+    use viewer_domain::image::{DecodeBudget, ImageRepresentationKind};
     use viewer_test_support::image_fixtures::{image_fixture, png_dimensions};
 
     #[test]
     fn probe_reads_dimensions_orientation_alpha_and_profile() {
-        let backend = ImageIoBackend;
+        let backend = ImageIoBackend::default();
         let rotated = backend.probe_sync(image_fixture("rotated-6.jpg")).unwrap();
         assert_eq!((rotated.width, rotated.height), (800, 600));
         assert_eq!(rotated.orientation, 6);
@@ -190,7 +273,7 @@ mod tests {
 
     #[test]
     fn corrupt_jpeg_is_isolated() {
-        let backend = ImageIoBackend;
+        let backend = ImageIoBackend::default();
         assert!(matches!(
             backend.probe_sync(image_fixture("corrupt.jpg")),
             Err(ImageError::Corrupt)
@@ -200,10 +283,42 @@ mod tests {
     #[test]
     fn thumbnail_respects_max_pixel_size() {
         let output = tempfile::NamedTempFile::new().unwrap();
-        ImageIoBackend
+        ImageIoBackend::default()
             .render_thumbnail_sync(image_fixture("srgb.jpg"), 256, output.path())
             .unwrap();
         let (width, height) = png_dimensions(output.path()).unwrap();
         assert!(width <= 256 && height <= 256);
+    }
+
+    #[test]
+    fn fit_preview_respects_oriented_bounding_box() {
+        let output = tempfile::NamedTempFile::new().unwrap();
+        let dimensions = ImageIoBackend::default()
+            .render_sync(
+                image_fixture("rotated-6.jpg"),
+                ImageRepresentationKind::FitPreview {
+                    max_width: 300,
+                    max_height: 300,
+                    scale_milli: 2_000,
+                },
+                output.path(),
+            )
+            .unwrap();
+        assert_eq!(dimensions, (225, 300));
+        assert_eq!(png_dimensions(output.path()).unwrap(), dimensions);
+    }
+
+    #[test]
+    fn original_decode_respects_the_hard_budget() {
+        let output = tempfile::NamedTempFile::new().unwrap();
+        let backend = ImageIoBackend::new(DecodeBudget::new(1, 1));
+        assert!(matches!(
+            backend.render_sync(
+                image_fixture("srgb.jpg"),
+                ImageRepresentationKind::Original100Percent,
+                output.path(),
+            ),
+            Err(ImageError::BudgetExceeded)
+        ));
     }
 }

@@ -122,6 +122,19 @@ impl From<BrowseError> for CommandError {
                 "该文件夹已不可用，请刷新项目后重试。",
                 true,
             ),
+            BrowseError::SelectionNotFound(_) => Self::new(
+                "selection_not_found",
+                ErrorCategory::Content,
+                "部分所选文件已不可用，请刷新项目后重试。",
+                true,
+            ),
+            BrowseError::DuplicateSelection => Self::new(
+                "duplicate_selection",
+                ErrorCategory::Validation,
+                "所选文件不能重复。",
+                false,
+            ),
+            BrowseError::SelectionSizeOverflow => internal_error(),
         }
     }
 }

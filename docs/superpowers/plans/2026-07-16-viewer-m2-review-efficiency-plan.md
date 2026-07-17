@@ -292,7 +292,7 @@ git commit -m "feat: complete indexed search and sorting"
 **Interfaces:**
 - Produces: marker-aware `BrowserFile`, `FolderTreeItem`, `ContentFolderCard`, `FolderReviewProgress`, and `SelectionInfo`.
 
-- [ ] **Step 1: Write failing projection tests**
+- [x] **Step 1: Write failing projection tests**
 
 Cover natural folder/file order, folder marker independence, descendant file review counts, favorite counts, empty and mixed folders, progressive updates, and multi-selection total size/type/common-review/common-favorite values.
 
@@ -300,19 +300,19 @@ Run: `cargo test --test m2_browse_projections -- --nocapture`
 
 Expected: RED because M1 projections omit markers/statistics.
 
-- [ ] **Step 2: Implement enriched projections**
+- [x] **Step 2: Implement enriched projections**
 
 Cards show keep/pending/reject/unmarked/favorite counts across supported descendant files but never infer a folder's own marker. Info aggregation returns relative paths only and a common value only when every selected item agrees.
 
-- [ ] **Step 3: Use the same natural comparator everywhere**
+- [x] **Step 3: Use the same natural comparator everywhere**
 
 Tree/card folders are always ascending. Content files honor the active session sort. Folder switches preserve sort; project close restores natural ascending.
 
-- [ ] **Step 4: Verify GREEN**
+- [x] **Step 4: Verify GREEN**
 
 Run: `cargo test --test m2_browse_projections && cargo test --test m1_browse_queries`
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add crates/viewer-application crates/viewer-infrastructure src-tauri/src/dto.rs tests/m2_browse_projections.rs

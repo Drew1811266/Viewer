@@ -409,6 +409,25 @@ impl BrowseIndexPort for SessionIndex {
             .map_err(Into::into)
     }
 
+    fn all_indexed_nodes(&self) -> Result<Vec<IndexedNode>, BrowseIndexError> {
+        let connection = self.lock_connection();
+        let mut statement = connection
+            .prepare_cached(
+                "SELECT entity_id, relative_path, kind, size, modified_ns,
+                        review_state, favorite, image_width, image_height,
+                        image_status, text_status
+                 FROM nodes
+                 ORDER BY relative_path COLLATE NOCASE, relative_path, entity_id",
+            )
+            .map_err(SessionIndexError::from)?;
+        statement
+            .query_map([], read_indexed_node)
+            .map_err(SessionIndexError::from)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(SessionIndexError::from)
+            .map_err(Into::into)
+    }
+
     fn node(&self, entity_id: EntityId) -> Result<Option<FileNode>, BrowseIndexError> {
         let connection = self.lock_connection();
         connection

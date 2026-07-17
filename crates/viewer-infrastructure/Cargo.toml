@@ -60,3 +60,7 @@ path = "../../tests/m2_derived_indexing.rs"
 [[test]]
 name = "m2_search_queries"
 path = "../../tests/m2_search_queries.rs"
+
+[[test]]
+name = "m2_browse_projections"
+path = "../../tests/m2_browse_projections.rs"

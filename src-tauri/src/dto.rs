@@ -2,10 +2,16 @@ use serde::{Deserialize, Serialize};
 use viewer_application::scan::{ScanEvent, ScanTotals};
 use viewer_application::{
     ActiveProject, ImageBackend, ProjectAccess,
-    browse::{BrowserFile, ContentFolderCard, FolderTreeItem, FolderWorkspace},
+    browse::{
+        BrowserFile, ContentFolderCard, FolderReviewProgress, FolderTreeItem, FolderWorkspace,
+        SelectionAgreement, SelectionInfo, SelectionTypeCounts,
+    },
     metadata::IndexProgress,
 };
-use viewer_domain::{RelativePath, TaskId, file::FileNode};
+use viewer_domain::{
+    RelativePath, TaskId,
+    file::{FileNode, ImageMetadata, Marker, ReviewState},
+};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -201,6 +207,62 @@ fn safe_relative_display(value: &str) -> String {
         .unwrap_or_else(|_| "unavailable".to_owned())
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MarkerDto {
+    pub review_state: Option<ReviewState>,
+    pub favorite: bool,
+}
+
+impl From<Marker> for MarkerDto {
+    fn from(marker: Marker) -> Self {
+        Self {
+            review_state: marker.review_state,
+            favorite: marker.favorite,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImageMetadataDto {
+    pub width: u32,
+    pub height: u32,
+}
+
+impl From<ImageMetadata> for ImageMetadataDto {
+    fn from(metadata: ImageMetadata) -> Self {
+        Self {
+            width: metadata.width,
+            height: metadata.height,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FolderReviewProgressDto {
+    pub total: u64,
+    pub keep: u64,
+    pub pending: u64,
+    pub reject: u64,
+    pub unmarked: u64,
+    pub favorite: u64,
+}
+
+impl From<FolderReviewProgress> for FolderReviewProgressDto {
+    fn from(progress: FolderReviewProgress) -> Self {
+        Self {
+            total: progress.total,
+            keep: progress.keep,
+            pending: progress.pending,
+            reject: progress.reject,
+            unmarked: progress.unmarked,
+            favorite: progress.favorite,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FolderTreeItemDto {
@@ -208,6 +270,7 @@ pub struct FolderTreeItemDto {
     pub parent_entity_id: Option<String>,
     pub relative_path: String,
     pub name: String,
+    pub marker: MarkerDto,
 }
 
 impl From<FolderTreeItem> for FolderTreeItemDto {
@@ -217,6 +280,7 @@ impl From<FolderTreeItem> for FolderTreeItemDto {
             parent_entity_id: folder.parent_entity_id.map(|id| id.to_string()),
             relative_path: folder.relative_path.as_str().to_owned(),
             name: folder.name,
+            marker: folder.marker.into(),
         }
     }
 }
@@ -230,6 +294,8 @@ pub struct BrowserFileDto {
     pub kind: viewer_domain::file::FileKind,
     pub size: u64,
     pub modified_ns: String,
+    pub marker: MarkerDto,
+    pub image_metadata: Option<ImageMetadataDto>,
     pub image_url: Option<String>,
 }
 
@@ -242,6 +308,8 @@ impl From<BrowserFile> for BrowserFileDto {
             kind: file.kind,
             size: file.size,
             modified_ns: file.modified_ns.to_string(),
+            marker: file.marker.into(),
+            image_metadata: file.image_metadata.map(Into::into),
             image_url: None,
         }
     }
@@ -253,8 +321,10 @@ pub struct ContentFolderCardDto {
     pub entity_id: String,
     pub relative_path: String,
     pub name: String,
+    pub marker: MarkerDto,
     pub image_count: u64,
     pub text_count: u64,
+    pub review_progress: FolderReviewProgressDto,
     pub representative_images: Vec<BrowserFileDto>,
 }
 
@@ -264,13 +334,84 @@ impl From<ContentFolderCard> for ContentFolderCardDto {
             entity_id: folder.entity_id.to_string(),
             relative_path: folder.relative_path.as_str().to_owned(),
             name: folder.name,
+            marker: folder.marker.into(),
             image_count: folder.image_count,
             text_count: folder.text_count,
+            review_progress: folder.review_progress.into(),
             representative_images: folder
                 .representative_images
                 .into_iter()
                 .map(BrowserFileDto::from)
                 .collect(),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(tag = "state", content = "value", rename_all = "snake_case")]
+pub enum SelectionAgreementDto<T> {
+    NoneSelected,
+    Common(T),
+    Mixed,
+}
+
+impl<T, U> From<SelectionAgreement<T>> for SelectionAgreementDto<U>
+where
+    U: From<T>,
+{
+    fn from(agreement: SelectionAgreement<T>) -> Self {
+        match agreement {
+            SelectionAgreement::NoneSelected => Self::NoneSelected,
+            SelectionAgreement::Common(value) => Self::Common(value.into()),
+            SelectionAgreement::Mixed => Self::Mixed,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SelectionTypeCountsDto {
+    pub folders: u64,
+    pub images: u64,
+    pub text_files: u64,
+}
+
+impl From<SelectionTypeCounts> for SelectionTypeCountsDto {
+    fn from(types: SelectionTypeCounts) -> Self {
+        Self {
+            folders: types.folders,
+            images: types.images,
+            text_files: types.text_files,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SelectionInfoDto {
+    pub relative_paths: Vec<String>,
+    pub total_size: u64,
+    pub types: SelectionTypeCountsDto,
+    pub common_review: SelectionAgreementDto<Option<ReviewState>>,
+    pub common_favorite: SelectionAgreementDto<bool>,
+}
+
+impl From<SelectionInfo> for SelectionInfoDto {
+    fn from(info: SelectionInfo) -> Self {
+        Self {
+            relative_paths: info
+                .relative_paths
+                .into_iter()
+                .map(|path| path.as_str().to_owned())
+                .collect(),
+            total_size: info.total_size,
+            types: info.types.into(),
+            common_review: match info.common_review {
+                SelectionAgreement::NoneSelected => SelectionAgreementDto::NoneSelected,
+                SelectionAgreement::Common(value) => SelectionAgreementDto::Common(value),
+                SelectionAgreement::Mixed => SelectionAgreementDto::Mixed,
+            },
+            common_favorite: info.common_favorite.into(),
         }
     }
 }
@@ -397,11 +538,35 @@ impl From<ImageRepresentationRequestDto> for viewer_domain::image::ImageRepresen
 
 #[cfg(test)]
 mod tests {
+    use viewer_application::browse::{SelectionAgreement, SelectionInfo, SelectionTypeCounts};
+    use viewer_domain::RelativePath;
+
     #[test]
     fn failed_scan_item_display_never_exposes_an_absolute_or_reserved_path() {
         assert_eq!(super::safe_relative_display("catalog/id-1"), "catalog/id-1");
         for unsafe_value in ["/Users/example/secret", "../outside", ".viewer/index"] {
             assert_eq!(super::safe_relative_display(unsafe_value), "unavailable");
         }
+    }
+
+    #[test]
+    fn selection_dto_keeps_unmarked_distinct_from_mixed_and_exposes_relative_paths_only() {
+        let dto = super::SelectionInfoDto::from(SelectionInfo {
+            relative_paths: vec![RelativePath::parse("catalog/id-2/image.jpg").unwrap()],
+            total_size: 42,
+            types: SelectionTypeCounts {
+                folders: 0,
+                images: 1,
+                text_files: 0,
+            },
+            common_review: SelectionAgreement::Common(None),
+            common_favorite: SelectionAgreement::Mixed,
+        });
+
+        let json = serde_json::to_value(dto).unwrap();
+        assert_eq!(json["relativePaths"][0], "catalog/id-2/image.jpg");
+        assert_eq!(json["commonReview"]["state"], "common");
+        assert!(json["commonReview"]["value"].is_null());
+        assert_eq!(json["commonFavorite"]["state"], "mixed");
     }
 }

@@ -2,6 +2,8 @@
 pub mod files;
 #[cfg(target_os = "macos")]
 pub mod image;
+#[cfg(target_os = "macos")]
+pub mod watcher;
 
 use std::fs::{self, OpenOptions};
 use std::io::ErrorKind;

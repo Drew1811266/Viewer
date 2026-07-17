@@ -6,6 +6,7 @@ pub mod scheduler;
 pub mod search;
 pub mod session;
 pub mod undo;
+pub mod watcher;
 
 pub use image::{ImageArtifact, ImageBackend, ImageError, ImageRequest};
 pub use operation::{FaultInjector, FileOperationError, FileSnapshot, InjectedCrash, NoFaults};
@@ -14,3 +15,4 @@ pub use ports::{
     ProjectProbeOperation, ProjectProbePort, ScanPort, SearchPort, TrashPort, VolumePort,
 };
 pub use session::{ProjectSession, SessionState, SessionTransitionError};
+pub use watcher::{WatchSubscription, WatcherError, WatcherPort, WatcherSink};

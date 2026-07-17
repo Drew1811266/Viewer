@@ -14,6 +14,8 @@ viewer-domain = { path = "../viewer-domain" }
 [target.'cfg(target_os = "macos")'.dependencies]
 block2.workspace = true
 libc.workspace = true
+notify.workspace = true
+notify-debouncer-full.workspace = true
 objc2.workspace = true
 objc2-core-foundation.workspace = true
 objc2-core-graphics.workspace = true
@@ -28,6 +30,11 @@ serde.workspace = true
 serde_json.workspace = true
 tempfile.workspace = true
 viewer-test-support = { path = "../viewer-test-support" }
+viewer-infrastructure = { path = "../viewer-infrastructure" }
+
+[[test]]
+name = "watcher_reconcile"
+path = "../../tests/watcher_reconcile.rs"
 
 [[bench]]
 name = "image_pipeline"

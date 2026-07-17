@@ -9,6 +9,7 @@ async-trait.workspace = true
 blake3.workspace = true
 getrandom.workspace = true
 libc.workspace = true
+nucleo-matcher.workspace = true
 rusqlite.workspace = true
 thiserror.workspace = true
 tokio.workspace = true

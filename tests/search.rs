@@ -1,11 +1,14 @@
 use rusqlite::{Connection, OptionalExtension};
-use std::fs;
+use std::{fs, sync::Arc};
+use viewer_application::{SearchPort, search::SearchError};
 use viewer_domain::{
-    EntityId, RelativePath,
-    file::{FileKind, FileNode},
+    EntityId, RelativePath, SessionId,
+    file::{FileKind, FileNode, ReviewState},
+    search::{Generation, MatchedField, SearchQuery, SearchScope},
 };
 use viewer_infrastructure::search::{
     index::SessionIndex,
+    query::SessionSearch,
     text::{TextExtractor, TextStatus},
 };
 
@@ -114,4 +117,196 @@ fn text_index_replacement_is_atomic_and_removes_stale_rows() {
         .optional()
         .unwrap();
     assert_eq!(stale_body, None);
+}
+
+struct SearchFixture {
+    _directory: tempfile::TempDir,
+    index: Arc<SessionIndex>,
+    session_id: SessionId,
+    product_a: EntityId,
+    front: EntityId,
+}
+
+impl SearchFixture {
+    fn new() -> Self {
+        let directory = tempfile::tempdir().unwrap();
+        let database = directory.path().join("session.sqlite");
+        let index = Arc::new(SessionIndex::open(&database).unwrap());
+        let product_a = EntityId::new();
+        let front = EntityId::new();
+        let side = EntityId::new();
+        let path_only = EntityId::new();
+        let explanation = EntityId::new();
+        let notes = EntityId::new();
+        index
+            .upsert_batch(&[
+                search_node(product_a, "产品-A", FileKind::Directory),
+                search_node(EntityId::new(), "front-set", FileKind::Directory),
+                search_node(front, "产品-A/front.png", FileKind::Png),
+                search_node(side, "产品-A/side.png", FileKind::Png),
+                search_node(path_only, "front-set/angle.png", FileKind::Png),
+                search_node(explanation, "产品说明.md", FileKind::Markdown),
+                search_node(notes, "notes.txt", FileKind::Text),
+            ])
+            .unwrap();
+        index
+            .replace_text(
+                explanation,
+                &RelativePath::parse("产品说明.md").unwrap(),
+                &TextStatus::Indexed("白色陶瓷杯，正面产品图".into()),
+            )
+            .unwrap();
+        index
+            .replace_text(
+                notes,
+                &RelativePath::parse("notes.txt").unwrap(),
+                &TextStatus::Indexed("普通备注".into()),
+            )
+            .unwrap();
+        index
+            .set_review_metadata(front, Some(ReviewState::Keep), true)
+            .unwrap();
+        index
+            .set_review_metadata(side, Some(ReviewState::Reject), false)
+            .unwrap();
+        Self {
+            _directory: directory,
+            index,
+            session_id: SessionId::new(),
+            product_a,
+            front,
+        }
+    }
+
+    fn search(&self) -> SessionSearch {
+        SessionSearch::new(self.session_id, Arc::clone(&self.index))
+    }
+}
+
+#[tokio::test]
+async fn ranking_prefers_an_exact_or_filename_match_over_a_path_match() {
+    let fixture = SearchFixture::new();
+    let search = fixture.search();
+    let exact = search
+        .search(
+            fixture.session_id,
+            Generation::new(1),
+            query("front.png", SearchScope::Project, vec![FileKind::Png]),
+        )
+        .await
+        .unwrap();
+    assert_eq!(exact.hits[0].node.entity_id, fixture.front);
+    assert_eq!(exact.hits[0].matched_field, MatchedField::ExactFilename);
+
+    let fuzzy = search
+        .search(
+            fixture.session_id,
+            Generation::new(1),
+            query("front", SearchScope::Project, vec![FileKind::Png]),
+        )
+        .await
+        .unwrap();
+    assert_eq!(fuzzy.hits[0].node.entity_id, fixture.front);
+    assert_eq!(fuzzy.hits[0].matched_field, MatchedField::Filename);
+    assert!(fuzzy.hits.iter().any(|hit| {
+        hit.node.relative_path.as_str() == "front-set/angle.png"
+            && hit.matched_field == MatchedField::Path
+    }));
+}
+
+#[tokio::test]
+async fn cjk_search_combines_trigram_and_bounded_short_query_fallback() {
+    let fixture = SearchFixture::new();
+    let search = fixture.search();
+    for text in ["产品图", "陶瓷杯", "白色"] {
+        let page = search
+            .search(
+                fixture.session_id,
+                Generation::new(2),
+                query(text, SearchScope::Project, vec![FileKind::Markdown]),
+            )
+            .await
+            .unwrap();
+        assert_eq!(page.hits.len(), 1, "query {text}");
+        assert_eq!(page.hits[0].node.relative_path.as_str(), "产品说明.md");
+        assert_eq!(page.hits[0].matched_field, MatchedField::Body);
+    }
+}
+
+#[tokio::test]
+async fn scope_and_filters_are_applied_before_search_scoring() {
+    let fixture = SearchFixture::new();
+    let search = fixture.search();
+    let mut filtered = query(
+        "",
+        SearchScope::Subtree(fixture.product_a),
+        vec![FileKind::Png],
+    );
+    filtered.review_states = vec![ReviewState::Keep];
+    filtered.favorite_only = true;
+    let page = search
+        .search(fixture.session_id, Generation::new(3), filtered)
+        .await
+        .unwrap();
+    assert_eq!(page.total, 1);
+    assert_eq!(page.hits[0].node.entity_id, fixture.front);
+
+    let subtree = search
+        .search(
+            fixture.session_id,
+            Generation::new(3),
+            query(
+                "",
+                SearchScope::Subtree(fixture.product_a),
+                vec![FileKind::Png],
+            ),
+        )
+        .await
+        .unwrap();
+    assert_eq!(subtree.total, 2);
+    assert!(
+        subtree
+            .hits
+            .iter()
+            .all(|hit| hit.node.relative_path.as_str().starts_with("产品-A/"))
+    );
+    assert!(
+        subtree.hits[0].node.relative_path.as_str() < subtree.hits[1].node.relative_path.as_str()
+    );
+}
+
+#[tokio::test]
+async fn search_rejects_a_different_project_session() {
+    let fixture = SearchFixture::new();
+    let result = fixture
+        .search()
+        .search(
+            SessionId::new(),
+            Generation::new(1),
+            query("front", SearchScope::Project, vec![]),
+        )
+        .await;
+    assert!(matches!(result, Err(SearchError::InvalidSession)));
+}
+
+fn query(text: &str, scope: SearchScope, kinds: Vec<FileKind>) -> SearchQuery {
+    SearchQuery {
+        text: text.into(),
+        scope,
+        kinds,
+        review_states: Vec::new(),
+        favorite_only: false,
+        offset: 0,
+        limit: 100,
+    }
+}
+
+fn search_node(entity_id: EntityId, path: &str, kind: FileKind) -> FileNode {
+    FileNode {
+        entity_id,
+        relative_path: RelativePath::parse(path).unwrap(),
+        kind,
+        size: if kind == FileKind::Directory { 0 } else { 10 },
+        modified_ns: 20,
+    }
 }

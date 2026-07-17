@@ -19,6 +19,7 @@ blake3 = "1.8"
 block2 = "0.6.2"
 getrandom = "0.4"
 libc = "0.2"
+nucleo-matcher = "0.3.1"
 objc2 = "0.6.4"
 objc2-core-foundation = { version = "0.3.2", default-features = false, features = ["std", "CFDictionary", "CFNumber", "CFString", "CFURL"] }
 objc2-core-graphics = { version = "0.3.2", default-features = false, features = ["std", "CGImage"] }

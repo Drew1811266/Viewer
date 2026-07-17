@@ -1,11 +1,16 @@
 use crate::{
     FileOperationError, FileSnapshot, ImageArtifact, ImageError, ImageRequest,
     scan::{ScanError, ScanRequest, ScanSink},
+    search::SearchError,
 };
 use async_trait::async_trait;
 use std::fmt;
 use std::path::{Path, PathBuf};
-use viewer_domain::{SessionId, image::ImageProbe};
+use viewer_domain::{
+    SessionId,
+    image::ImageProbe,
+    search::{Generation, SearchPage, SearchQuery},
+};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ProjectAccess {
@@ -95,6 +100,16 @@ pub trait VolumePort: Send + Sync {
 #[async_trait]
 pub trait ScanPort: Send + Sync {
     async fn scan(&self, request: ScanRequest, sink: ScanSink) -> Result<(), ScanError>;
+}
+
+#[async_trait]
+pub trait SearchPort: Send + Sync {
+    async fn search(
+        &self,
+        session_id: SessionId,
+        generation: Generation,
+        query: SearchQuery,
+    ) -> Result<SearchPage, SearchError>;
 }
 
 #[async_trait]

@@ -2,7 +2,7 @@ use rusqlite::{Connection, OptionalExtension, params};
 use std::{path::Path, str::FromStr, sync::Mutex, time::Duration};
 use viewer_domain::{
     EntityId, RelativePath,
-    file::{FileKind, FileNode},
+    file::{FileKind, FileNode, ReviewState},
 };
 
 use super::text::TextStatus;
@@ -19,6 +19,8 @@ pub enum SessionIndexError {
     SizeOutOfRange(u64),
     #[error("text index node does not exist or its path changed: {entity_id} at {path}")]
     MissingTextNode { entity_id: EntityId, path: String },
+    #[error("session index node does not exist: {0}")]
+    MissingNode(EntityId),
     #[error("invalid persisted {field}: {value}")]
     InvalidPersistedValue { field: &'static str, value: String },
 }
@@ -165,6 +167,27 @@ impl SessionIndex {
         Ok(())
     }
 
+    pub fn set_review_metadata(
+        &self,
+        entity_id: EntityId,
+        review_state: Option<ReviewState>,
+        favorite: bool,
+    ) -> Result<(), SessionIndexError> {
+        let connection = self.lock_connection();
+        let changed = connection.execute(
+            "UPDATE nodes SET review_state = ?2, favorite = ?3 WHERE entity_id = ?1",
+            params![
+                entity_id.to_string(),
+                review_state.map(encode_review_state),
+                favorite,
+            ],
+        )?;
+        if changed == 0 {
+            return Err(SessionIndexError::MissingNode(entity_id));
+        }
+        Ok(())
+    }
+
     pub fn directory_children(
         &self,
         parent: Option<EntityId>,
@@ -193,20 +216,28 @@ impl SessionIndex {
             .map_err(|(_, error)| SessionIndexError::Database(error))
     }
 
-    fn lock_connection(&self) -> std::sync::MutexGuard<'_, Connection> {
+    pub(super) fn lock_connection(&self) -> std::sync::MutexGuard<'_, Connection> {
         self.connection
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 }
 
-fn encode_kind(kind: FileKind) -> i64 {
+pub(super) fn encode_kind(kind: FileKind) -> i64 {
     match kind {
         FileKind::Directory => 0,
         FileKind::Jpeg => 1,
         FileKind::Png => 2,
         FileKind::Markdown => 3,
         FileKind::Text => 4,
+    }
+}
+
+pub(super) fn encode_review_state(state: ReviewState) -> i64 {
+    match state {
+        ReviewState::Keep => 0,
+        ReviewState::Pending => 1,
+        ReviewState::Reject => 2,
     }
 }
 
@@ -221,7 +252,7 @@ fn decode_kind(value: i64) -> rusqlite::Result<FileKind> {
     }
 }
 
-fn read_node(row: &rusqlite::Row<'_>) -> rusqlite::Result<FileNode> {
+pub(super) fn read_node(row: &rusqlite::Row<'_>) -> rusqlite::Result<FileNode> {
     let entity_id = parse_id(row.get(0)?, "entity_id")?;
     let relative_path = parse_path(row.get(1)?, "relative_path")?;
     let kind = decode_kind(row.get(2)?)?;

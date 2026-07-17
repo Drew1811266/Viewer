@@ -50,6 +50,10 @@ name = "m3_undo"
 path = "../../tests/m3_undo.rs"
 
 [[test]]
+name = "m3_watcher_runtime"
+path = "../../tests/m3_watcher_runtime.rs"
+
+[[test]]
 name = "progressive_scan"
 path = "../../tests/progressive_scan.rs"
 

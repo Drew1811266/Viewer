@@ -17,6 +17,19 @@ use viewer_domain::{
 };
 use walkdir::{DirEntry, WalkDir};
 
+#[derive(Debug, thiserror::Error)]
+pub enum SubtreeSnapshotError {
+    #[error("reconcile root is invalid")]
+    InvalidRoot,
+}
+
+pub(crate) struct SubtreeSnapshot {
+    pub scopes: Vec<Option<RelativePath>>,
+    pub nodes: Vec<FileNode>,
+    pub protected: Vec<Option<RelativePath>>,
+    pub failed: u64,
+}
+
 #[derive(Clone, Copy, Debug, Default)]
 pub struct ProjectWalker;
 
@@ -107,6 +120,176 @@ fn scan_blocking(request: ScanRequest, sink: ScanSink) -> Result<(), ScanError> 
         send(&sink, ScanEvent::Files { generation, nodes })?;
     }
     send(&sink, ScanEvent::Finished { generation, totals })
+}
+
+pub(crate) fn snapshot_subtrees(
+    project_root: &Path,
+    requested_roots: &[PathBuf],
+) -> Result<SubtreeSnapshot, SubtreeSnapshotError> {
+    let project_root =
+        std::fs::canonicalize(project_root).map_err(|_| SubtreeSnapshotError::InvalidRoot)?;
+    if requested_roots.is_empty() || !project_root.is_dir() {
+        return Err(SubtreeSnapshotError::InvalidRoot);
+    }
+    let mut roots = requested_roots
+        .iter()
+        .map(|requested| validate_subtree_root(&project_root, requested))
+        .collect::<Result<Vec<_>, _>>()?;
+    roots.sort_by(|left, right| left.0.cmp(&right.0));
+    roots.dedup_by(|left, right| left.0 == right.0);
+    let mut minimized = Vec::<(PathBuf, Option<RelativePath>, bool)>::new();
+    for root in roots {
+        if minimized
+            .iter()
+            .any(|(parent, _, _)| root.0.starts_with(parent))
+        {
+            continue;
+        }
+        minimized.push(root);
+    }
+
+    let mut nodes = Vec::new();
+    let mut protected = Vec::new();
+    let mut failed = 0_u64;
+    for (root, scope, exists) in &minimized {
+        if !exists {
+            continue;
+        }
+        let entries = WalkDir::new(root)
+            .follow_links(false)
+            .into_iter()
+            .filter_entry(is_visible_entry);
+        for result in entries {
+            let entry = match result {
+                Ok(entry) => entry,
+                Err(error) => {
+                    failed = failed.saturating_add(1);
+                    protected.push(
+                        error
+                            .path()
+                            .and_then(|path| relative_scope(&project_root, path))
+                            .unwrap_or_else(|| scope.clone()),
+                    );
+                    continue;
+                }
+            };
+            if (entry.depth() == 0 && root == &project_root) || entry.file_type().is_symlink() {
+                continue;
+            }
+            match node_from_entry(&project_root, &project_root, &entry) {
+                Ok(Some(node)) => nodes.push(node),
+                Ok(None) => {}
+                Err((display, _)) => {
+                    failed = failed.saturating_add(1);
+                    protected.push(
+                        RelativePath::parse(&display)
+                            .ok()
+                            .map(Some)
+                            .unwrap_or_else(|| scope.clone()),
+                    );
+                }
+            }
+        }
+    }
+    nodes.sort_by(|left, right| {
+        let left_depth = left.relative_path.as_str().matches('/').count();
+        let right_depth = right.relative_path.as_str().matches('/').count();
+        left_depth.cmp(&right_depth).then_with(|| {
+            left.relative_path
+                .as_str()
+                .cmp(right.relative_path.as_str())
+        })
+    });
+    Ok(SubtreeSnapshot {
+        scopes: minimized.into_iter().map(|(_, scope, _)| scope).collect(),
+        nodes,
+        protected,
+        failed,
+    })
+}
+
+fn validate_subtree_root(
+    project_root: &Path,
+    requested: &Path,
+) -> Result<(PathBuf, Option<RelativePath>, bool), SubtreeSnapshotError> {
+    let normalized = normalize_absolute(requested).ok_or(SubtreeSnapshotError::InvalidRoot)?;
+    let relative = normalized
+        .strip_prefix(project_root)
+        .map_err(|_| SubtreeSnapshotError::InvalidRoot)?;
+    if relative.components().any(|component| {
+        component
+            .as_os_str()
+            .to_str()
+            .is_none_or(|name| name.starts_with('.') || name.eq_ignore_ascii_case(".viewer"))
+    }) {
+        return Err(SubtreeSnapshotError::InvalidRoot);
+    }
+    let scope = if relative.as_os_str().is_empty() {
+        None
+    } else {
+        Some(
+            relative
+                .to_str()
+                .and_then(|value| RelativePath::parse(value).ok())
+                .ok_or(SubtreeSnapshotError::InvalidRoot)?,
+        )
+    };
+    let mut ancestor = normalized.as_path();
+    let exists = loop {
+        match std::fs::symlink_metadata(ancestor) {
+            Ok(metadata) => {
+                if metadata.file_type().is_symlink()
+                    || !metadata.is_dir()
+                    || is_macos_alias(ancestor)
+                {
+                    return Err(SubtreeSnapshotError::InvalidRoot);
+                }
+                let canonical = std::fs::canonicalize(ancestor)
+                    .map_err(|_| SubtreeSnapshotError::InvalidRoot)?;
+                if canonical != ancestor || !canonical.starts_with(project_root) {
+                    return Err(SubtreeSnapshotError::InvalidRoot);
+                }
+                break ancestor == normalized;
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                ancestor = ancestor.parent().ok_or(SubtreeSnapshotError::InvalidRoot)?;
+            }
+            Err(_) => return Err(SubtreeSnapshotError::InvalidRoot),
+        }
+    };
+    Ok((normalized, scope, exists))
+}
+
+fn relative_scope(project_root: &Path, path: &Path) -> Option<Option<RelativePath>> {
+    let relative = path.strip_prefix(project_root).ok()?;
+    if relative.as_os_str().is_empty() {
+        Some(None)
+    } else {
+        relative
+            .to_str()
+            .and_then(|value| RelativePath::parse(value).ok())
+            .map(Some)
+    }
+}
+
+fn normalize_absolute(path: &Path) -> Option<PathBuf> {
+    use std::path::Component;
+    if !path.is_absolute() {
+        return None;
+    }
+    let mut normalized = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::Prefix(prefix) => normalized.push(prefix.as_os_str()),
+            Component::RootDir => normalized.push(component.as_os_str()),
+            Component::CurDir => {}
+            Component::ParentDir => {
+                normalized.pop();
+            }
+            Component::Normal(segment) => normalized.push(segment),
+        }
+    }
+    Some(normalized)
 }
 
 fn validate_root(root: &Path) -> Result<PathBuf, ScanError> {

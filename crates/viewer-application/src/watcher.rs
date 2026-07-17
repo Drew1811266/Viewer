@@ -75,6 +75,17 @@ pub struct ReconcileRequest {
     pub reason: ReconcileReason,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ReconcileSummary {
+    pub reason: ReconcileReason,
+    pub added: u64,
+    pub removed: u64,
+    pub modified: u64,
+    pub moved: u64,
+    pub marker_paths_moved: u64,
+    pub failed: u64,
+}
+
 pub type WatcherSink = tokio::sync::mpsc::Sender<Vec<WatcherEvent>>;
 
 #[derive(Clone, Debug, Eq, PartialEq, thiserror::Error)]

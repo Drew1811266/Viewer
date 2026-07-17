@@ -314,25 +314,25 @@ git commit -m "feat: undo session review and file moves"
 **Interfaces:**
 - Produces: `ProjectReconciler::reconcile(ReconcileRequest) -> ReconcileSummary`, project-relative subtree walking, atomic index delta, same-session identity marker relocation and derived invalidation.
 
-- [ ] **Step 1: Write failing real-filesystem Watcher scenarios**
+- [x] **Step 1: Write failing real-filesystem Watcher scenarios**
 
 Cover create, partial-write then finalize, image/text modify, rename, move, delete, directory subtree move, burst coalescing, Viewer expected changes, wrong identity, hidden/reserved/symlink/alias exclusion, overflow root minimization, stale generation, active close and marker relocation by device/inode.
 
 Run: `cargo test --test m3_watcher_runtime -- --nocapture`
 
-- [ ] **Step 2: Implement safe project-relative subtree snapshots**
+- [x] **Step 2: Implement safe project-relative subtree snapshots**
 
 Walk only requested roots while deriving paths against the canonical project root. Return folders before files, supported regular items only and isolated per-item failures. Never follow a link/alias or enumerate `.viewer`.
 
-- [ ] **Step 3: Compute and commit one identity-aware delta**
+- [x] **Step 3: Compute and commit one identity-aware delta**
 
 Compare indexed/current nodes by entity ID first and exact path second. In one index transaction, update renamed paths, remove vanished node/FTS rows, add nodes and reset derived statuses for changed sources. Move portable markers only for an unambiguous same-session identity; M4 retains cross-reopen fingerprint recovery.
 
-- [ ] **Step 4: Verify GREEN and G3 regression**
+- [x] **Step 4: Verify GREEN and G3 regression**
 
 Run: `cargo test --test m3_watcher_runtime && cargo test --test watcher_reconcile && ./scripts/run-g3-scan-search-gate.sh`
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add crates/viewer-application crates/viewer-infrastructure crates/viewer-platform-macos tests/m3_watcher_runtime.rs tests/watcher_reconcile.rs

@@ -159,7 +159,7 @@ git commit -m "feat: add project session use case"
 - Consumes: `SessionId`, `ImageCacheKey`, rendered artifact paths.
 - Produces: `SessionCache::create`, `index_path`, `image_root`, `lookup_image`, `insert_image`, `cleanup`, and `cleanup_stale`.
 
-- [ ] **Step 1: Write failing cache-lifecycle tests**
+- [x] **Step 1: Write failing cache-lifecycle tests**
 
 ```rust
 #[test]
@@ -184,13 +184,13 @@ fn representation_cache_reuses_a_live_artifact_and_evicts_lru_over_budget() {
 }
 ```
 
-- [ ] **Step 2: Run the focused tests and verify RED**
+- [x] **Step 2: Run the focused tests and verify RED**
 
 Run: `cargo test -p viewer-infrastructure session_cache::tests -- --nocapture`
 
 Expected: FAIL because `SessionCache` does not exist.
 
-- [ ] **Step 3: Implement owned cleanup and a 2 GiB LRU**
+- [x] **Step 3: Implement owned cleanup and a 2 GiB LRU**
 
 ```rust
 pub const SESSION_CACHE_LIMIT_BYTES: u64 = 2 * 1024 * 1024 * 1024;
@@ -213,13 +213,13 @@ impl SessionCache {
 
 Only delete descendants whose directory name parses as `SessionId`; validate canonical containment before removal. Missing artifacts are removed from the map on lookup. Eviction deletes only paths under this session's `images` directory.
 
-- [ ] **Step 4: Run cache and security tests and verify GREEN**
+- [x] **Step 4: Run cache and security tests and verify GREEN**
 
 Run: `cargo test -p viewer-infrastructure session_cache::tests && cargo test --test security_boundaries project_paths`
 
 Expected: PASS with no deletion outside the owned cache root.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add crates/viewer-infrastructure/src/session_cache.rs crates/viewer-infrastructure/src/lib.rs

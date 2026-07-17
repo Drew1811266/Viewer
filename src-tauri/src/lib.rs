@@ -3,7 +3,10 @@ use std::sync::Arc;
 use viewer_domain::SessionId;
 use viewer_infrastructure::image_cache::ImageArtifactRegistry;
 
+pub mod dto;
+pub mod error;
 pub mod image_protocol;
+pub mod state;
 
 pub const APP_NAME: &str = "Viewer";
 

@@ -16,15 +16,19 @@ tauri-build = { version = "2", features = [] }
 ammonia.workspace = true
 serde.workspace = true
 tauri = { version = "2", features = [] }
+tokio.workspace = true
+viewer-application = { path = "../crates/viewer-application" }
 viewer-domain = { path = "../crates/viewer-domain" }
 viewer-infrastructure = { path = "../crates/viewer-infrastructure" }
 
 [dev-dependencies]
 serde_json.workspace = true
 tempfile.workspace = true
-tokio.workspace = true
-viewer-application = { path = "../crates/viewer-application" }
 
 [[test]]
 name = "security_boundaries"
 path = "../tests/security_boundaries.rs"
+
+[[test]]
+name = "m1_desktop_runtime"
+path = "../tests/m1_desktop_runtime.rs"

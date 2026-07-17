@@ -397,7 +397,7 @@ git commit -m "feat: add bounded text preview reader"
 - Consumes: frozen internal error types and Tasks 1–4 services.
 - Produces: `CommandError { code, category, user_message, retryable, task_id, item_id }`, one `DesktopRuntime`, and exact serializable project/browse/task DTOs.
 
-- [ ] **Step 1: Write failing DTO/error tests**
+- [x] **Step 1: Write failing DTO/error tests**
 
 ```rust
 #[test]
@@ -419,13 +419,13 @@ async fn runtime_allows_exactly_one_active_desktop_session() {
 }
 ```
 
-- [ ] **Step 2: Run the desktop-runtime test and verify RED**
+- [x] **Step 2: Run the desktop-runtime test and verify RED**
 
 Run: `cargo test -p viewer-desktop --test m1_desktop_runtime -- --nocapture`
 
 Expected: FAIL because the DTO, error, and runtime modules do not exist.
 
-- [ ] **Step 3: Implement the one safe boundary error**
+- [x] **Step 3: Implement the one safe boundary error**
 
 ```rust
 #[derive(Clone, Debug, Serialize)]
@@ -442,17 +442,17 @@ pub struct CommandError {
 
 Map errors exhaustively by type. Never format an internal error with `Debug` or expose source/cache/SQLite paths. Content failures identify only the project-relative item when one is available.
 
-- [ ] **Step 4: Implement `DesktopRuntime` and dependency-injected test constructor**
+- [x] **Step 4: Implement `DesktopRuntime` and dependency-injected test constructor**
 
 `DesktopRuntime` owns `Mutex<Option<DesktopSession>>`, the application project service, artifact registry, and cache base. `DesktopSession` owns canonical root only inside Rust, session/project IDs, access, generation, `Arc<SessionIndex>`, `Arc<dyn ImagePort>`, `Arc<SessionCache>`, and optional scan task. No DTO contains canonical root or cache path.
 
-- [ ] **Step 5: Run focused and boundary tests and verify GREEN**
+- [x] **Step 5: Run focused and boundary tests and verify GREEN**
 
 Run: `cargo test -p viewer-desktop --test m1_desktop_runtime && cargo test -p viewer-desktop --test security_boundaries`
 
 Expected: PASS with exact error serialization and no secret paths.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src-tauri/src/error.rs src-tauri/src/dto.rs src-tauri/src/state.rs src-tauri/src/lib.rs src-tauri/Cargo.toml tests/m1_desktop_runtime.rs

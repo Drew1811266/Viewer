@@ -5,6 +5,8 @@ use viewer_domain::{
     file::{FileKind, FileNode},
 };
 
+use super::text::TextStatus;
+
 const SESSION_MIGRATION_V1: &str = include_str!("../../migrations/session/0001_initial.sql");
 
 #[derive(Debug, thiserror::Error)]
@@ -15,6 +17,8 @@ pub enum SessionIndexError {
     MissingParent { path: String, parent_path: String },
     #[error("file size cannot be represented in SQLite: {0}")]
     SizeOutOfRange(u64),
+    #[error("text index node does not exist or its path changed: {entity_id} at {path}")]
+    MissingTextNode { entity_id: EntityId, path: String },
     #[error("invalid persisted {field}: {value}")]
     InvalidPersistedValue { field: &'static str, value: String },
 }
@@ -124,6 +128,41 @@ impl SessionIndex {
         )?;
         transaction.commit()?;
         Ok(removed)
+    }
+
+    pub fn replace_text(
+        &self,
+        entity_id: EntityId,
+        relative_path: &RelativePath,
+        status: &TextStatus,
+    ) -> Result<(), SessionIndexError> {
+        let mut connection = self.lock_connection();
+        let transaction = connection.transaction()?;
+        let exists = transaction.query_row(
+            "SELECT EXISTS(
+                SELECT 1 FROM nodes WHERE entity_id = ?1 AND relative_path = ?2
+             )",
+            params![entity_id.to_string(), relative_path.as_str()],
+            |row| row.get::<_, bool>(0),
+        )?;
+        if !exists {
+            return Err(SessionIndexError::MissingTextNode {
+                entity_id,
+                path: relative_path.as_str().to_owned(),
+            });
+        }
+        transaction.execute(
+            "DELETE FROM text_fts WHERE entity_id = ?1",
+            [entity_id.to_string()],
+        )?;
+        if let TextStatus::Indexed(body) = status {
+            transaction.execute(
+                "INSERT INTO text_fts(entity_id, relative_path, body) VALUES (?1, ?2, ?3)",
+                params![entity_id.to_string(), relative_path.as_str(), body],
+            )?;
+        }
+        transaction.commit()?;
+        Ok(())
     }
 
     pub fn directory_children(

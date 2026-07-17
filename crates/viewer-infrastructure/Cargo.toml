@@ -27,3 +27,7 @@ path = "../../tests/file_transactions.rs"
 [[test]]
 name = "progressive_scan"
 path = "../../tests/progressive_scan.rs"
+
+[[test]]
+name = "search"
+path = "../../tests/search.rs"

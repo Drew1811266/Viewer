@@ -1,15 +1,15 @@
 # ADR 0004: Viewer 0.1 architecture freeze
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-07-16
 - Gate: G4 architecture freeze
-- Reproduce: `./scripts/run-architecture-gates.sh`
+- Reproduce: `./scripts/check-locked-dependencies.sh`, `./scripts/run-architecture-gates.sh`, `pnpm build:macos`
 
 ## Context
 
 G1 through G3 tested the highest-risk Viewer 0.1 assumptions before product milestone implementation: native image rendering, recoverable filesystem mutation, progressive traversal, disposable indexing, Unicode search, stale-work rejection, and filesystem reconciliation. G4 converts those prototype results into one auditable dependency, security, performance, and cross-crate API baseline.
 
-No product feature is accepted by this decision. M1 through M4 may start only after this record is accepted and all architecture gates pass from the frozen dependency graph.
+No product feature is accepted by this decision. M1 through M4 may now start against this frozen baseline; incompatible dependency, security or Domain/Application API changes reopen architecture review.
 
 ## Gate evidence manifest
 
@@ -23,26 +23,28 @@ All rows use the standard development device: MacBook Air `Mac16,12`, Apple M4 (
 
 Generated files under `target/` are reproducible evidence and are intentionally not versioned. The accepted ADRs and reviews retain the selected result, environment, sample count, budgets, and limitations.
 
-## Provisional freeze outcome
+## Accepted freeze outcome
 
-G1–G3 are accepted individually. This G4 record remains proposed until locked dependencies and licenses, the Tauri boundary, the documented public API surface, and the complete Viewer 0.1 requirement-to-milestone matrix have each passed their executable checks.
+G1–G3 are accepted individually. The locked dependencies and licenses, Tauri boundary, documented public API surface, complete Viewer 0.1 requirement-to-milestone matrix and Apple Silicon release build all passed their executable checks.
 
-The candidate baseline freezes these evidence-backed choices:
+The baseline freezes these evidence-backed choices:
 
 - Quick Look raw grid thumbnails with Image I/O fallback; Image I/O owns fit and budget-approved 100% previews.
 - The seven-state durable file-operation protocol, BLAKE3-verified copy, Darwin no-replace rename, macOS Trash adapter, and conservative recovery table.
 - Folder-first batches of 128/20 ms with bounded forwarding, disposable SQLite WAL/NORMAL indexes, FTS5 trigram plus `nucleo-matcher`, a 2,000-entity short-query bound, session generations, and 250 ms watcher reconciliation.
 - A Tauri frontend with no broad filesystem, shell, SQL, HTTP, updater, websocket, or upload permission; custom images are confined to `img-src`, navigation is local-only, and Markdown HTML passes a Rust-side allowlist sanitizer.
 - The Domain/Application surface in [the Viewer 0.1 API baseline](../architecture/viewer-0.1-api-baseline.md). Redundant prototype-only `ScanBatch` and `GenerationGuard` APIs are not frozen.
+- Apache-2.0 for Viewer source, Cargo/npm lockfiles as the resolved dependency authority, `cargo-deny` for Rust policy, and an explicit npm license-expression allowlist plus direct dependency inventory in `THIRD_PARTY_NOTICES.md`.
 
-The exact repository SPDX license, resulting package metadata, and reviewed third-party inventory remain the only unresolved dependency-freeze input.
+The accepted stage review is [G4 Architecture Freeze Stage Review](../reviews/2026-07-16-g4-architecture-freeze-review.md).
 
-## Acceptance conditions
+## Acceptance evidence
 
-This ADR may move to `Accepted` only when:
-
-1. `scripts/check-locked-dependencies.sh` passes without changing either lockfile;
-2. `scripts/check-tauri-security.sh` proves the negative path, protocol, Markdown, capability, CSP, and navigation boundaries;
-3. the public Domain/Application API inventory matches generated documentation and the reconciled architecture specification;
-4. every confirmed product requirement maps to one M1–M4 owner and acceptance test; and
-5. `scripts/run-architecture-gates.sh` and the Apple Silicon release build both pass.
+| Condition | Accepted evidence |
+| --- | --- |
+| Locked dependencies and licenses | `check-locked-dependencies.sh` passed without lockfile changes; Rust advisories/bans/licenses/sources passed; 118 installed npm packages matched 10 reviewed expressions; npm reported no known vulnerabilities |
+| Tauri boundary | `check-tauri-security.sh` passed its static allowlist and 6 negative integration tests |
+| Public API | `cargo doc --locked --workspace --no-deps` and strict workspace Clippy match the frozen Domain/Application inventory |
+| Product scope | `check-scope-coverage.mjs` mapped all 47 stable product requirement IDs exactly once to M1–M4 with tests and acceptance criteria |
+| Aggregate gates | `run-architecture-gates.sh` passed G1–G4, repository verification and dependency policy on the standard Apple M4 device |
+| Distribution | `pnpm build:macos` produced `Viewer.app` and `Viewer_0.1.0_aarch64.dmg`; the executable is Mach-O arm64 with `minos 13.0`, Info.plist declares macOS 13.0, and `hdiutil verify` reports a valid DMG |

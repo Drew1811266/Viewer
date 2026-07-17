@@ -1,6 +1,6 @@
 # Viewer 系统架构设计
 
-> 状态：G1～G3 已验证，G4 冻结候选
+> 状态：G1～G4 已验证，Viewer 0.1 架构已由 ADR 0004 冻结
 > 日期：2026-07-16
 > 适用版本：Viewer 0.1（macOS Apple Silicon）
 > 关联文档：`docs/PRODUCT_SPEC.md`、`docs/TECHNICAL_FOUNDATIONS.md`、`docs/OPEN_SOURCE_RESEARCH.md`

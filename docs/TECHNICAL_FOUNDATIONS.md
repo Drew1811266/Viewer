@@ -1,6 +1,6 @@
 # Viewer 技术框架与开源来源
 
-> 状态：全局架构已确认；G1 图片管线、G2 文件事务与 G3 扫描搜索已验证；G4 的 Apache-2.0 与锁定依赖基线已完成，待最终整体验收
+> 状态：G1～G4 已完成并通过整体验收；Viewer 0.1 技术基线已冻结
 > 原则：采用通用框架，独立实现 Viewer，不复制其他完整应用
 
 完整模块、数据流、安全和测试设计见 `docs/superpowers/specs/2026-07-16-viewer-system-architecture-design.md`。

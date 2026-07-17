@@ -255,7 +255,7 @@ Run:
 ./scripts/check-locked-dependencies.sh
 ./scripts/check-tauri-security.sh
 ./scripts/run-architecture-gates.sh
-pnpm tauri build --target aarch64-apple-darwin
+pnpm build:macos
 git status --short
 ```
 

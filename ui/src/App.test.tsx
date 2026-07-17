@@ -184,4 +184,51 @@ describe('Viewer empty state', () => {
       'true',
     )
   })
+
+  it('replaces only the right workspace with search and returns to folder context', async () => {
+    const viewer = bridge()
+    vi.mocked(viewer.searchProject).mockResolvedValue({
+      revision: 1,
+      total: 1,
+      progress: {
+        imagesTotal: 1,
+        imagesReady: 1,
+        imagesFailed: 0,
+        textTotal: 0,
+        textReady: 0,
+        textSkipped: 0,
+        textFailed: 0,
+        complete: true,
+      },
+      hits: [
+        {
+          entityId: 'image-1',
+          relativePath: 'id-1/shoe.jpg',
+          name: 'shoe.jpg',
+          kind: 'jpeg',
+          size: 10,
+          modifiedNs: '1',
+          marker: { reviewState: null, favorite: false },
+          imageMetadata: null,
+          matchedField: 'filename',
+          score: 1,
+          groupRelativePath: 'id-1',
+          matchRanges: [{ start: 0, end: 4 }],
+        },
+      ],
+    })
+    render(<App bridge={viewer} />)
+    fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
+    const search = await screen.findByRole('searchbox', { name: '搜索项目' })
+
+    fireEvent.keyDown(window, { key: 'f', metaKey: true })
+    expect(search).toHaveFocus()
+    fireEvent.change(search, { target: { value: 'shoe' } })
+    await waitFor(() => expect(viewer.searchProject).toHaveBeenCalledOnce())
+    expect(await screen.findByRole('option', { name: /shoe.jpg/ })).toBeVisible()
+    expect(screen.getByRole('tree', { name: '项目文件夹' })).toBeVisible()
+
+    fireEvent.click(screen.getByRole('button', { name: '返回文件夹内容' }))
+    expect(await screen.findByText('此文件夹中没有支持的文件。')).toBeVisible()
+  })
 })

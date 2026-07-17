@@ -29,7 +29,7 @@ export function useViewerController(bridge: ViewerBridge) {
   stateRef.current = state
 
   const executeSearch = useCallback(
-    async (project: ProjectSnapshot, query: SearchQueryModel) => {
+    async (project: ProjectSnapshot, query: SearchQueryModel, offset: number) => {
       const revision = ++searchRevisionRef.current
       requestedSnippetsRef.current.clear()
       dispatch({ type: 'search_requested', revision })
@@ -39,7 +39,7 @@ export function useViewerController(bridge: ViewerBridge) {
           generation: project.generation,
           revision,
           ...query,
-          offset: 0,
+          offset,
           limit: 200,
         })
         dispatch({
@@ -72,7 +72,11 @@ export function useViewerController(bridge: ViewerBridge) {
     }
     const delay = state.search.schedule === 'debounced' ? 120 : 0
     const query = state.search.query
-    const timer = window.setTimeout(() => void executeSearch(project, query), delay)
+    const offset = state.search.offset
+    const timer = window.setTimeout(
+      () => void executeSearch(project, query, offset),
+      delay,
+    )
     return () => window.clearTimeout(timer)
   }, [
     executeSearch,
@@ -80,6 +84,7 @@ export function useViewerController(bridge: ViewerBridge) {
     state.search.query,
     state.search.queryVersion,
     state.search.schedule,
+    state.search.offset,
     state.status,
   ])
 
@@ -416,6 +421,16 @@ export function useViewerController(bridge: ViewerBridge) {
     dispatch({ type: 'visible_search_hits_changed', entityIds })
   }, [])
 
+  const setSearchPage = useCallback((offset: number) => {
+    dispatch({ type: 'search_page_changed', offset })
+  }, [])
+
+  const returnToFolderContext = useCallback(() => {
+    searchRevisionRef.current += 1
+    requestedSnippetsRef.current.clear()
+    dispatch({ type: 'search_context_closed' })
+  }, [])
+
   const setSelectedEntityIds = useCallback(
     (entityIds: string[]) => {
       dispatch({ type: 'selection_changed', entityIds })
@@ -514,6 +529,8 @@ export function useViewerController(bridge: ViewerBridge) {
     removeSearchFilter,
     clearSearchFilters,
     setVisibleSearchHits,
+    setSearchPage,
+    returnToFolderContext,
     setSelectedEntityIds,
     setReviewState,
     toggleFavorite,

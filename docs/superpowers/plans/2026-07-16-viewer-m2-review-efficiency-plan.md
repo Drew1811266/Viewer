@@ -409,7 +409,7 @@ git commit -m "feat: coordinate session review state"
 - Modify: `ui/src/styles/app.css`
 - Test: `ui/src/App.test.tsx`
 
-- [ ] **Step 1: Write failing interaction/accessibility tests**
+- [x] **Step 1: Write failing interaction/accessibility tests**
 
 Cover Cmd-F focus, fuzzy query, scope selector, every filter control, chips, clear all, sort key/direction, grouped/flat toggle, partial-index status, result highlighting, bounded body snippet rendering, pagination, useful zero state with clear/expand actions, and return to folder context.
 
@@ -417,19 +417,19 @@ Run: `pnpm --dir ui test -- SearchToolbar.test.tsx SearchResults.test.tsx App.te
 
 Expected: RED because components do not exist.
 
-- [ ] **Step 2: Implement a compact top toolbar and virtual results**
+- [x] **Step 2: Implement a compact top toolbar and virtual results**
 
 Keep the two-column shell. Search replaces only the right workspace while preserving tree selection. Use removable chips and Chinese labels. Group headings display validated relative folder paths. Do not render hidden full result bodies.
 
-- [ ] **Step 3: Implement search feedback**
+- [x] **Step 3: Implement search feedback**
 
 Show `结果仍在更新` while base/text/image metadata is incomplete. Empty state states the query, scope, and active filters and offers `清除筛选` and, for subtree searches, `搜索整个项目`.
 
-- [ ] **Step 4: Verify GREEN and build**
+- [x] **Step 4: Verify GREEN and build**
 
 Run: `pnpm --dir ui test -- SearchToolbar.test.tsx SearchResults.test.tsx App.test.tsx && pnpm --dir ui build`
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add ui/src/components ui/src/App.tsx ui/src/styles/app.css

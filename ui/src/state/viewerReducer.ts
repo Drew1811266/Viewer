@@ -54,6 +54,7 @@ export const initialSearchQuery: SearchQueryModel = {
 
 export interface SearchState {
   focusRequest: number
+  showResults: boolean
   query: SearchQueryModel
   queryVersion: number
   schedule: 'debounced' | 'immediate'
@@ -62,11 +63,13 @@ export interface SearchState {
   page: SearchPage | null
   snippets: Record<string, string | null>
   visibleEntityIds: string[]
+  offset: number
 }
 
 function initialSearchState(): SearchState {
   return {
     focusRequest: 0,
+    showResults: false,
     query: initialSearchQuery,
     queryVersion: 0,
     schedule: 'immediate',
@@ -75,6 +78,7 @@ function initialSearchState(): SearchState {
     page: null,
     snippets: {},
     visibleEntityIds: [],
+    offset: 0,
   }
 }
 
@@ -161,6 +165,8 @@ export type ViewerAction =
   | { type: 'search_layout_changed'; layout: SearchLayout }
   | { type: 'search_filter_chip_removed'; chip: SearchFilterChip }
   | { type: 'search_filters_cleared' }
+  | { type: 'search_page_changed'; offset: number }
+  | { type: 'search_context_closed' }
   | { type: 'search_requested'; revision: number }
   | {
       type: 'search_loaded'
@@ -288,14 +294,40 @@ export function viewerReducer(state: ViewerState, action: ViewerAction): ViewerS
         { ...state.search.query, filters: emptySearchFilters },
         'immediate',
       )
+    case 'search_page_changed':
+      return {
+        ...state,
+        search: {
+          ...state.search,
+          showResults: true,
+          offset: Math.max(0, action.offset),
+          queryVersion: state.search.queryVersion + 1,
+          schedule: 'immediate',
+        },
+      }
+    case 'search_context_closed':
+      return {
+        ...state,
+        search: {
+          ...state.search,
+          showResults: false,
+          status: 'idle',
+          page: null,
+          snippets: {},
+          visibleEntityIds: [],
+        },
+      }
     case 'search_requested':
       return {
         ...state,
         search: {
           ...state.search,
+          showResults: true,
           revision: action.revision,
           status: 'searching',
+          page: null,
           snippets: {},
+          visibleEntityIds: [],
         },
       }
     case 'search_loaded':
@@ -373,7 +405,9 @@ function queryChanged(
     ...state,
     search: {
       ...state.search,
+      showResults: true,
       query,
+      offset: 0,
       queryVersion: state.search.queryVersion + 1,
       schedule,
     },

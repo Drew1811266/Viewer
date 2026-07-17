@@ -7,6 +7,8 @@ import FolderOverview from './components/FolderOverview'
 import FolderTree from './components/FolderTree'
 import ImagePreview from './components/ImagePreview'
 import InfoOverlay from './components/InfoOverlay'
+import SearchResults from './components/SearchResults'
+import SearchToolbar from './components/SearchToolbar'
 import TaskBar from './components/TaskBar'
 import type { TaskFeedback } from './components/TaskBar'
 import TextPreview from './components/TextPreview'
@@ -22,8 +24,24 @@ interface AppProps {
 }
 
 export default function App({ bridge = tauriViewerBridge }: AppProps) {
-  const { state, openProject, closeProject, selectFolder, showAllDescendants, cancelTask } =
-    useViewerController(bridge)
+  const {
+    state,
+    openProject,
+    closeProject,
+    selectFolder,
+    showAllDescendants,
+    cancelTask,
+    setSearchText,
+    setSearchScope,
+    setSearchFilters,
+    setSearchSort,
+    setSearchLayout,
+    removeSearchFilter,
+    clearSearchFilters,
+    setVisibleSearchHits,
+    setSearchPage,
+    returnToFolderContext,
+  } = useViewerController(bridge)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [sidebarWidth, setSidebarWidth] = useState(260)
   const [thumbnailTask, setThumbnailTask] = useState<TaskFeedback | null>(null)
@@ -162,6 +180,18 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
         </p>
       )}
       {state.errorMessage && <p role="alert">{state.errorMessage}</p>}
+      <SearchToolbar
+        query={state.search.query}
+        folders={state.folders}
+        focusRequest={state.search.focusRequest}
+        onTextChange={setSearchText}
+        onScopeChange={setSearchScope}
+        onFiltersChange={setSearchFilters}
+        onSortChange={setSearchSort}
+        onLayoutChange={setSearchLayout}
+        onRemoveFilter={removeSearchFilter}
+        onClearFilters={clearSearchFilters}
+      />
       <div className="viewer-columns">
         <aside
           className="folder-sidebar"
@@ -204,9 +234,33 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
           )}
         </aside>
         <section className="workspace" aria-label="项目内容">
-          {state.workspace === null && <p>正在读取项目…</p>}
-          {state.workspace?.workspace === 'empty' && <p>此文件夹中没有支持的文件。</p>}
-          {state.workspace?.workspace === 'category' && (
+          {state.search.showResults &&
+            state.search.page === null &&
+            state.search.status === 'searching' && (
+            <p role="status">正在搜索…</p>
+          )}
+          {state.search.showResults &&
+            state.search.page === null &&
+            state.search.status === 'error' && <p>搜索未完成，请调整条件或重试。</p>}
+          {state.search.showResults && state.search.page !== null && (
+            <SearchResults
+              page={state.search.page}
+              query={state.search.query}
+              snippets={state.search.snippets}
+              offset={state.search.offset}
+              limit={200}
+              onPageChange={setSearchPage}
+              onVisibleHits={setVisibleSearchHits}
+              onClearFilters={clearSearchFilters}
+              onSearchProject={() => setSearchScope(null)}
+              onReturnToFolder={returnToFolderContext}
+            />
+          )}
+          {!state.search.showResults && state.workspace === null && <p>正在读取项目…</p>}
+          {!state.search.showResults && state.workspace?.workspace === 'empty' && (
+            <p>此文件夹中没有支持的文件。</p>
+          )}
+          {!state.search.showResults && state.workspace?.workspace === 'category' && (
             <FolderOverview
               folders={state.workspace.folders}
               currentPath={state.selectedFolderPath || state.project.displayName}
@@ -215,7 +269,7 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
               onShowAll={() => void showAllDescendants()}
             />
           )}
-          {state.workspace?.workspace === 'content' && (
+          {!state.search.showResults && state.workspace?.workspace === 'content' && (
             <>
               {state.showingAggregate && <p className="aggregate-label">全部后代文件</p>}
               <ContentBrowser

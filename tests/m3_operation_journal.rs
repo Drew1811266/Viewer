@@ -9,7 +9,7 @@ use viewer_application::{
 };
 use viewer_domain::{
     EntityId, OperationId, RelativePath,
-    operation::{ConflictPolicy, OperationItemPlan, OperationKind, OperationState},
+    operation::{ConflictPolicy, OperationItemPlan, OperationKind, OperationPlan, OperationState},
 };
 use viewer_infrastructure::operation::{
     copy::LocalFileMutation,
@@ -45,6 +45,43 @@ fn item(batch_id: OperationId, source: &str, destination: &str) -> OperationItem
         destination: Some(RelativePath::parse(destination).unwrap()),
         conflict_policy: ConflictPolicy::Skip,
     }
+}
+
+#[test]
+fn complete_plan_registration_is_atomic_even_when_a_late_item_conflicts() {
+    let directory = tempfile::tempdir().unwrap();
+    let journal = OperationJournal::open(directory.path().join("metadata.sqlite")).unwrap();
+    let existing_batch = OperationId::new();
+    let existing = item(existing_batch, "existing.jpg", "out/existing.jpg");
+    journal
+        .begin_batch(existing_batch, OperationKind::Copy, 1, 1)
+        .unwrap();
+    journal.record_item(&existing, 2).unwrap();
+
+    let attempted_batch = OperationId::new();
+    let first = item(attempted_batch, "first.jpg", "out/first.jpg");
+    let mut late_conflict = item(attempted_batch, "second.jpg", "out/second.jpg");
+    late_conflict.operation_id = existing.operation_id;
+    let plan = OperationPlan {
+        batch_id: attempted_batch,
+        kind: OperationKind::Copy,
+        items: vec![first.clone(), late_conflict],
+    };
+
+    assert!(matches!(
+        journal.begin_plan(&plan, 3),
+        Err(JournalError::Database(_))
+    ));
+    assert!(journal.batch(attempted_batch).unwrap().is_none());
+    assert!(journal.item(first.operation_id).unwrap().is_none());
+    assert_eq!(
+        journal
+            .item(existing.operation_id)
+            .unwrap()
+            .unwrap()
+            .batch_id,
+        existing_batch
+    );
 }
 
 #[test]

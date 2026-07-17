@@ -1,4 +1,5 @@
 use std::{
+    collections::HashSet,
     path::{Path, PathBuf},
     sync::Arc,
 };
@@ -69,7 +70,7 @@ pub struct RecoveryService {
     project_root: PathBuf,
     journal: Arc<OperationJournal>,
     mutation: Arc<dyn FileMutationPort>,
-    _trash: Arc<dyn TrashPort>,
+    trash: Arc<dyn TrashPort>,
     clock: Arc<dyn ClockPort>,
     commits: Arc<dyn OperationCommitPort>,
 }
@@ -94,7 +95,7 @@ impl RecoveryService {
             project_root,
             journal,
             mutation,
-            _trash: trash,
+            trash,
             clock,
             commits,
         })
@@ -102,7 +103,12 @@ impl RecoveryService {
 
     pub async fn recover_project(&self) -> Result<RecoveryReport, RecoveryError> {
         let mut report = RecoveryReport::default();
-        for item in self.journal.incomplete_items()? {
+        let items = self.journal.incomplete_items()?;
+        let batch_ids = items
+            .iter()
+            .map(|item| item.batch_id)
+            .collect::<HashSet<_>>();
+        for item in items {
             let outcome = match item.kind {
                 OperationKind::Copy => self.recover_copy(&item).await,
                 OperationKind::Rename | OperationKind::Move
@@ -128,6 +134,16 @@ impl RecoveryService {
                         reason,
                     });
                 }
+            }
+        }
+        for batch_id in batch_ids {
+            let Some(batch) = self.journal.batch(batch_id)? else {
+                continue;
+            };
+            if batch.completed_count + batch.failed_count + batch.skipped_count
+                == batch.requested_count
+            {
+                self.journal.finish_batch(batch_id, self.now())?;
             }
         }
         Ok(report)
@@ -243,6 +259,9 @@ impl RecoveryService {
     }
 
     async fn recover_rename(&self, item: &JournalItem) -> Result<RecoveryOutcome, RecoveryError> {
+        if self.is_cross_volume_move(item)? {
+            return self.recover_cross_volume_move(item).await;
+        }
         let expected = match optional_evidence(item) {
             Some(expected) => expected,
             None => {
@@ -359,6 +378,88 @@ impl RecoveryService {
 
         Ok(RecoveryOutcome::Review(
             "rename paths do not match one evidence-backed recovery decision".into(),
+        ))
+    }
+
+    fn is_cross_volume_move(&self, item: &JournalItem) -> Result<bool, RecoveryError> {
+        if item.kind != OperationKind::Move {
+            return Ok(false);
+        }
+        let Some(destination) = item.destination.as_ref() else {
+            return Ok(false);
+        };
+        Ok(item.temporary.as_ref()
+            == Some(&temporary_relative_path(destination, item.operation_id)?))
+    }
+
+    async fn recover_cross_volume_move(
+        &self,
+        item: &JournalItem,
+    ) -> Result<RecoveryOutcome, RecoveryError> {
+        let source = self.resolve_candidate(&item.source)?;
+        let destination = self.resolve_required_destination(item)?;
+        let temporary = item
+            .temporary
+            .as_ref()
+            .ok_or(FileOperationError::DestinationRequired)
+            .and_then(|path| self.resolve_candidate(path))?;
+        let Some(expected) = optional_evidence(item) else {
+            if !safe_regular_file(&source) {
+                return Ok(RecoveryOutcome::Review(
+                    "cross-volume move has no evidence and its source is not intact".into(),
+                ));
+            }
+            self.mutation
+                .remove_registered_temporary(&temporary)
+                .await?;
+            self.mark_failed(item, "recovered_before_verified_cross_volume_move")?;
+            return Ok(RecoveryOutcome::Action(
+                RecoveryActionKind::CleanedTemporary,
+            ));
+        };
+        let source_status = candidate_status(&source, expected).await?;
+        let destination_status = candidate_status(&destination, expected).await?;
+        let temporary_status = candidate_status(&temporary, expected).await?;
+
+        if source_status == CandidateStatus::Match {
+            if destination_status == CandidateStatus::Conflict {
+                return Ok(RecoveryOutcome::Review(
+                    "cross-volume move destination contains unknown content".into(),
+                ));
+            }
+            if destination_status == CandidateStatus::Match
+                && temporary_status == CandidateStatus::Missing
+            {
+                self.trash.trash(&destination).await?;
+                if destination.exists() {
+                    return Ok(RecoveryOutcome::Review(
+                        "cross-volume rollback could not verify destination removal".into(),
+                    ));
+                }
+                self.mark_failed(item, "rolled_back_cross_volume_move_copy")?;
+                return Ok(RecoveryOutcome::Action(RecoveryActionKind::MarkedFailed));
+            }
+            if destination_status == CandidateStatus::Missing {
+                self.mutation
+                    .remove_registered_temporary(&temporary)
+                    .await?;
+                self.mark_failed(item, "recovered_cross_volume_move_before_placement")?;
+                return Ok(RecoveryOutcome::Action(
+                    RecoveryActionKind::CleanedTemporary,
+                ));
+            }
+        }
+
+        if source_status == CandidateStatus::Missing
+            && destination_status == CandidateStatus::Match
+            && temporary_status == CandidateStatus::Missing
+        {
+            self.finish_from(item, item.state).await?;
+            return Ok(RecoveryOutcome::Action(RecoveryActionKind::Completed));
+        }
+
+        Ok(RecoveryOutcome::Review(
+            "cross-volume move paths do not match one safe recovery decision".into(),
         ))
     }
 

@@ -4,3 +4,4 @@ pub mod executor;
 pub mod journal;
 pub mod recovery;
 pub mod rename;
+pub mod service;

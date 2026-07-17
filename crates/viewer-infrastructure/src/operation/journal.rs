@@ -4,7 +4,8 @@ use std::{path::Path, str::FromStr, sync::Mutex};
 use viewer_domain::{
     EntityId, OperationId, RelativePath,
     operation::{
-        ConflictPolicy, OperationItemPlan, OperationKind, OperationState, OperationTransitionError,
+        ConflictPolicy, OperationItemPlan, OperationKind, OperationPlan, OperationState,
+        OperationTransitionError,
     },
 };
 
@@ -92,6 +93,8 @@ pub enum JournalError {
     },
     #[error("terminal operation transitions require a result-aware journal API")]
     TerminalTransitionRequiresResultApi,
+    #[error("operation plan is empty, oversized, duplicated, or inconsistent with its batch")]
+    InvalidPlan,
 }
 
 pub struct OperationJournal {
@@ -133,6 +136,65 @@ impl OperationJournal {
         })
     }
 
+    /// Persists a complete batch and every item in one SQLite transaction.
+    /// Preflight remains side-effect free; callers use this immediately before
+    /// the first filesystem mutation or durable skipped/cancelled result.
+    pub fn begin_plan(&self, plan: &OperationPlan, created_at_ms: i64) -> Result<(), JournalError> {
+        if plan.items.is_empty() || plan.items.len() > 10_000 {
+            return Err(JournalError::InvalidPlan);
+        }
+        let mut operations = std::collections::HashSet::with_capacity(plan.items.len());
+        let mut entities = std::collections::HashSet::with_capacity(plan.items.len());
+        if plan.items.iter().any(|item| {
+            item.batch_id != plan.batch_id
+                || item.kind != plan.kind
+                || !operations.insert(item.operation_id)
+                || !entities.insert(item.entity_id)
+        }) {
+            return Err(JournalError::InvalidPlan);
+        }
+        let requested = u32::try_from(plan.items.len()).map_err(|_| JournalError::InvalidPlan)?;
+        let mut connection = self
+            .connection
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let transaction = connection.transaction()?;
+        transaction.execute(
+            "INSERT INTO operation_batches(
+                batch_id, kind, created_at_ms, state, requested_count,
+                completed_count, failed_count, skipped_count, started_at_ms
+             ) VALUES (?1, ?2, ?3, 'running', ?4, 0, 0, 0, ?3)",
+            params![
+                plan.batch_id.to_string(),
+                plan.kind.as_str(),
+                created_at_ms,
+                requested,
+            ],
+        )?;
+        {
+            let mut insert = transaction.prepare_cached(
+                "INSERT INTO operation_items(
+                    operation_id, batch_id, entity_id, kind, state, source_path,
+                    destination_path, conflict_policy, updated_at_ms
+                 ) VALUES (?1, ?2, ?3, ?4, 'prepared', ?5, ?6, ?7, ?8)",
+            )?;
+            for item in &plan.items {
+                insert.execute(params![
+                    item.operation_id.to_string(),
+                    item.batch_id.to_string(),
+                    item.entity_id.to_string(),
+                    item.kind.as_str(),
+                    item.source.as_str(),
+                    item.destination.as_ref().map(RelativePath::as_str),
+                    item.conflict_policy.as_str(),
+                    created_at_ms,
+                ])?;
+            }
+        }
+        transaction.commit()?;
+        Ok(())
+    }
+
     pub fn record_item(
         &self,
         item: &OperationItemPlan,
@@ -172,6 +234,48 @@ impl OperationJournal {
             }
             Ok(())
         })
+    }
+
+    pub fn set_conflict_policy(
+        &self,
+        operation_id: OperationId,
+        policy: ConflictPolicy,
+        updated_at_ms: i64,
+    ) -> Result<(), JournalError> {
+        self.update_expected_state(
+            operation_id,
+            OperationState::Prepared,
+            "UPDATE operation_items
+             SET conflict_policy = ?3, updated_at_ms = ?4
+             WHERE operation_id = ?1 AND state = ?2",
+            params![
+                operation_id.to_string(),
+                OperationState::Prepared.as_str(),
+                policy.as_str(),
+                updated_at_ms,
+            ],
+        )
+    }
+
+    pub fn set_destination(
+        &self,
+        operation_id: OperationId,
+        destination: &RelativePath,
+        updated_at_ms: i64,
+    ) -> Result<(), JournalError> {
+        self.update_expected_state(
+            operation_id,
+            OperationState::Prepared,
+            "UPDATE operation_items
+             SET destination_path = ?3, updated_at_ms = ?4
+             WHERE operation_id = ?1 AND state = ?2",
+            params![
+                operation_id.to_string(),
+                OperationState::Prepared.as_str(),
+                destination.as_str(),
+                updated_at_ms,
+            ],
+        )
     }
 
     pub fn advance(

@@ -208,6 +208,14 @@ impl LocalFileCommandOutcome {
             code,
         }
     }
+
+    pub const fn status(self) -> BatchItemStatus {
+        self.status
+    }
+
+    pub const fn code(self) -> BatchResultCode {
+        self.code
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, thiserror::Error)]
@@ -295,9 +303,10 @@ impl FileCommandService {
             .write_lane
             .try_lock()
             .map_err(|_| FileCommandServiceError::BatchActive)?;
+        let batch_id = BatchId::new();
         let rows = self
             .port
-            .preflight(&command)
+            .preflight(batch_id, &command)
             .await
             .map_err(|_| FileCommandServiceError::BackendUnavailable)?;
         self.ensure_current(&command)?;
@@ -321,7 +330,7 @@ impl FileCommandService {
             .iter()
             .all(|row| !matches!(row.state, FileCommandPreflightState::Blocked(_)));
         Ok(FileCommandPreflight {
-            batch_id: BatchId::new(),
+            batch_id,
             kind: command.kind,
             rows,
             executable,
@@ -386,17 +395,35 @@ impl FileCommandService {
             if let Some(code) = pending_code {
                 progress.lifecycle = BatchLifecycle::Cancelling;
                 progress.active_entity_id = None;
-                for (pending_item, pending_row) in preflight.command.items[index..]
+                for ((pending_item, pending_row), pending_policy) in preflight.command.items
+                    [index..]
                     .iter()
                     .zip(&preflight.rows[index..])
+                    .zip(&policies[index..])
                 {
+                    let outcome = self
+                        .port
+                        .settle_unstarted(
+                            FileCommandItemExecution {
+                                batch_id: preflight.batch_id,
+                                kind: preflight.kind,
+                                item: pending_item.clone(),
+                                relative_path: pending_row.relative_path.clone(),
+                                conflict_policy: *pending_policy,
+                            },
+                            LocalFileCommandOutcome::cancelled(code),
+                        )
+                        .await
+                        .unwrap_or_else(|_| {
+                            LocalFileCommandOutcome::failed(BatchResultCode::BackendUnavailable)
+                        });
                     results.push(BatchItemResult {
                         entity_id: pending_item.entity_id,
                         relative_path: pending_row.relative_path.clone(),
-                        status: BatchItemStatus::Cancelled,
-                        code,
+                        status: outcome.status,
+                        code: outcome.code,
                     });
-                    progress.cancelled += 1;
+                    increment_progress(&mut progress, outcome.status);
                 }
                 publish_progress(&shared_progress, &progress_sink, &progress);
                 break;
@@ -404,20 +431,26 @@ impl FileCommandService {
 
             progress.active_entity_id = Some(item.entity_id);
             publish_progress(&shared_progress, &progress_sink, &progress);
+            let request = FileCommandItemExecution {
+                batch_id: preflight.batch_id,
+                kind: preflight.kind,
+                item: item.clone(),
+                relative_path: row.relative_path.clone(),
+                conflict_policy: *policy,
+            };
             let outcome = if *policy == Some(ConflictPolicy::Skip) {
-                LocalFileCommandOutcome::skipped(BatchResultCode::ConflictSkipped)
+                self.port
+                    .settle_unstarted(
+                        request,
+                        LocalFileCommandOutcome::skipped(BatchResultCode::ConflictSkipped),
+                    )
+                    .await
+                    .unwrap_or_else(|_| {
+                        LocalFileCommandOutcome::failed(BatchResultCode::BackendUnavailable)
+                    })
             } else {
                 self.port
-                    .execute_item(
-                        FileCommandItemExecution {
-                            batch_id: preflight.batch_id,
-                            kind: preflight.kind,
-                            item: item.clone(),
-                            relative_path: row.relative_path.clone(),
-                            conflict_policy: *policy,
-                        },
-                        cancellation.clone(),
-                    )
+                    .execute_item(request, cancellation.clone())
                     .await
                     .unwrap_or_else(|_| {
                         LocalFileCommandOutcome::failed(BatchResultCode::BackendUnavailable)
@@ -429,12 +462,7 @@ impl FileCommandService {
                 status: outcome.status,
                 code: outcome.code,
             });
-            match outcome.status {
-                BatchItemStatus::Completed => progress.completed += 1,
-                BatchItemStatus::Failed => progress.failed += 1,
-                BatchItemStatus::Skipped => progress.skipped += 1,
-                BatchItemStatus::Cancelled => progress.cancelled += 1,
-            }
+            increment_progress(&mut progress, outcome.status);
             if cancellation.is_cancelled() {
                 progress.lifecycle = BatchLifecycle::Cancelling;
             }
@@ -605,5 +633,14 @@ fn publish_progress(
     drop(current);
     if let Some(sink) = sink {
         sink.send_replace(published);
+    }
+}
+
+fn increment_progress(progress: &mut BatchProgress, status: BatchItemStatus) {
+    match status {
+        BatchItemStatus::Completed => progress.completed += 1,
+        BatchItemStatus::Failed => progress.failed += 1,
+        BatchItemStatus::Skipped => progress.skipped += 1,
+        BatchItemStatus::Cancelled => progress.cancelled += 1,
     }
 }

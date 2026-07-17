@@ -1,8 +1,8 @@
 use crate::{
     FileOperationError, FileSnapshot, ImageArtifact, ImageError, ImageRequest,
     file_commands::{
-        FileCommand, FileCommandCancellation, FileCommandItemExecution, LocalFileCommandError,
-        LocalFileCommandOutcome, LocalFileCommandPreflightItem,
+        BatchId, FileCommand, FileCommandCancellation, FileCommandItemExecution,
+        LocalFileCommandError, LocalFileCommandOutcome, LocalFileCommandPreflightItem,
     },
     scan::{ScanError, ScanRequest, ScanSink},
     search::SearchError,
@@ -86,6 +86,22 @@ pub trait FileMutationPort: Send + Sync {
         temporary: &Path,
     ) -> Result<(u64, [u8; 32]), FileOperationError>;
 
+    async fn copy_and_hash_cancellable(
+        &self,
+        source: &Path,
+        temporary: &Path,
+        cancellation: &FileCommandCancellation,
+    ) -> Result<(u64, [u8; 32]), FileOperationError> {
+        if cancellation.is_cancelled() {
+            return Err(FileOperationError::Cancelled);
+        }
+        let result = self.copy_and_hash(source, temporary).await?;
+        if cancellation.is_cancelled() {
+            return Err(FileOperationError::Cancelled);
+        }
+        Ok(result)
+    }
+
     async fn rename(&self, source: &Path, destination: &Path) -> Result<(), FileOperationError>;
 
     async fn remove_registered_temporary(&self, path: &Path) -> Result<(), FileOperationError>;
@@ -106,6 +122,7 @@ pub trait VolumePort: Send + Sync {
 pub trait LocalFileCommandPort: Send + Sync {
     async fn preflight(
         &self,
+        batch_id: BatchId,
         command: &FileCommand,
     ) -> Result<Vec<LocalFileCommandPreflightItem>, LocalFileCommandError>;
 
@@ -114,6 +131,14 @@ pub trait LocalFileCommandPort: Send + Sync {
         request: FileCommandItemExecution,
         cancellation: FileCommandCancellation,
     ) -> Result<LocalFileCommandOutcome, LocalFileCommandError>;
+
+    async fn settle_unstarted(
+        &self,
+        _request: FileCommandItemExecution,
+        outcome: LocalFileCommandOutcome,
+    ) -> Result<LocalFileCommandOutcome, LocalFileCommandError> {
+        Ok(outcome)
+    }
 }
 
 #[async_trait]

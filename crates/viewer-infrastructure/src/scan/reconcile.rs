@@ -1,6 +1,7 @@
 use std::{
     collections::HashSet,
     path::{Component, Path, PathBuf},
+    sync::{Arc, Mutex},
 };
 use viewer_application::watcher::{
     FileIdentity, ReconcileReason, ReconcileRequest, WATCHER_DEBOUNCE_MS, WatcherEvent,
@@ -17,25 +18,25 @@ pub struct ExpectedChange {
     pub expires_at_ms: u64,
 }
 
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct ExpectedChangeLedger {
-    changes: Vec<ExpectedChange>,
+    changes: Arc<Mutex<Vec<ExpectedChange>>>,
 }
 
 impl ExpectedChangeLedger {
-    pub fn register(&mut self, change: ExpectedChange) {
-        self.changes.push(change);
+    pub fn register(&self, change: ExpectedChange) {
+        self.lock_changes().push(change);
     }
 
-    fn matching_operation(
-        &mut self,
-        event: &WatcherEvent,
-        observed_at_ms: u64,
-    ) -> Option<OperationId> {
-        self.changes
-            .retain(|change| change.expires_at_ms >= observed_at_ms);
+    pub fn pending_count(&self) -> usize {
+        self.lock_changes().len()
+    }
+
+    fn matching_operation(&self, event: &WatcherEvent, observed_at_ms: u64) -> Option<OperationId> {
+        let mut changes = self.lock_changes();
+        changes.retain(|change| change.expires_at_ms >= observed_at_ms);
         let identity = event.identity?;
-        self.changes
+        changes
             .iter()
             .find(|change| {
                 change.expected_identity == identity
@@ -45,6 +46,12 @@ impl ExpectedChangeLedger {
                     })
             })
             .map(|change| change.operation_id)
+    }
+
+    fn lock_changes(&self) -> std::sync::MutexGuard<'_, Vec<ExpectedChange>> {
+        self.changes
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 }
 

@@ -64,6 +64,7 @@ impl FakePort {
 impl LocalFileCommandPort for FakePort {
     async fn preflight(
         &self,
+        _batch_id: viewer_application::file_commands::BatchId,
         command: &FileCommand,
     ) -> Result<Vec<LocalFileCommandPreflightItem>, LocalFileCommandError> {
         *self.preflight_calls.lock().unwrap() += 1;

@@ -4,7 +4,9 @@ use std::{
     io::{BufReader, BufWriter, Read, Write},
     path::{Path, PathBuf},
 };
-use viewer_application::{FileMutationPort, FileOperationError, FileSnapshot};
+use viewer_application::{
+    FileMutationPort, FileOperationError, FileSnapshot, file_commands::FileCommandCancellation,
+};
 
 const COPY_BUFFER_BYTES: usize = 1024 * 1024;
 
@@ -32,6 +34,23 @@ impl FileMutationPort for LocalFileMutation {
         tokio::task::spawn_blocking(move || copy_and_hash_sync(&source, &temporary))
             .await
             .map_err(|error| worker_error("copy worker", &error_path, error))?
+    }
+
+    async fn copy_and_hash_cancellable(
+        &self,
+        source: &Path,
+        temporary: &Path,
+        cancellation: &FileCommandCancellation,
+    ) -> Result<(u64, [u8; 32]), FileOperationError> {
+        let source = source.to_path_buf();
+        let temporary = temporary.to_path_buf();
+        let error_path = temporary.clone();
+        let cancellation = cancellation.clone();
+        tokio::task::spawn_blocking(move || {
+            copy_and_hash_cancellable_sync(&source, &temporary, &cancellation)
+        })
+        .await
+        .map_err(|error| worker_error("cancellable copy worker", &error_path, error))?
     }
 
     async fn rename(&self, source: &Path, destination: &Path) -> Result<(), FileOperationError> {
@@ -166,6 +185,55 @@ fn copy_and_hash_sync(
                 message: "file length overflow".into(),
             })?;
         hasher.update(&buffer[..read]);
+    }
+    writer.flush().map_err(|error| {
+        FileOperationError::io("flush registered copy temporary", temporary, &error)
+    })?;
+    writer.get_ref().sync_all().map_err(|error| {
+        FileOperationError::io("sync registered copy temporary", temporary, &error)
+    })?;
+    Ok((length, *hasher.finalize().as_bytes()))
+}
+
+fn copy_and_hash_cancellable_sync(
+    source: &Path,
+    temporary: &Path,
+    cancellation: &FileCommandCancellation,
+) -> Result<(u64, [u8; 32]), FileOperationError> {
+    let input = File::open(source)
+        .map_err(|error| FileOperationError::io("open copy source", source, &error))?;
+    let output = OpenOptions::new()
+        .write(true)
+        .truncate(true)
+        .open(temporary)
+        .map_err(|error| {
+            FileOperationError::io("open registered copy temporary", temporary, &error)
+        })?;
+    let mut reader = BufReader::with_capacity(COPY_BUFFER_BYTES, input);
+    let mut writer = BufWriter::with_capacity(COPY_BUFFER_BYTES, output);
+    let mut buffer = vec![0_u8; COPY_BUFFER_BYTES];
+    let mut hasher = blake3::Hasher::new();
+    let mut length = 0_u64;
+    loop {
+        if cancellation.is_cancelled() {
+            return Err(FileOperationError::Cancelled);
+        }
+        let read = reader
+            .read(&mut buffer)
+            .map_err(|error| FileOperationError::io("read copy source", source, &error))?;
+        if read == 0 {
+            break;
+        }
+        writer.write_all(&buffer[..read]).map_err(|error| {
+            FileOperationError::io("write registered copy temporary", temporary, &error)
+        })?;
+        length = length
+            .checked_add(read as u64)
+            .ok_or(FileOperationError::VerificationFailed)?;
+        hasher.update(&buffer[..read]);
+    }
+    if cancellation.is_cancelled() {
+        return Err(FileOperationError::Cancelled);
     }
     writer.flush().map_err(|error| {
         FileOperationError::io("flush registered copy temporary", temporary, &error)

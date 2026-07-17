@@ -238,25 +238,25 @@ git commit -m "feat: coordinate serial file command batches"
 **Interfaces:**
 - Produces: `LocalFileCommandPort`, same-volume atomic move, cross-volume verified-copy-then-Trash, copy conflict execution, safe Trash batch and real operation progress callbacks.
 
-- [ ] **Step 1: Write failing end-to-end operation matrix**
+- [x] **Step 1: Write failing end-to-end operation matrix**
 
 Use disposable projects to cover single/batch rename, cycle/case rename, copy/move to deep folders, same/cross-volume routing fakes, corrupt-but-regular source operations, Skip/KeepBoth/Replace, destination race, permission loss, disk/write/copy failure, cancellation, partial success and Trash adapter fakes.
 
 Run: `cargo test --test m3_file_commands -- --nocapture`
 
-- [ ] **Step 2: Implement rename/copy/move routing**
+- [x] **Step 2: Implement rename/copy/move routing**
 
 Resolve entity IDs immediately before work. Use `MacVolumePort` to choose atomic rename or verified copy plus source Trash. Extend replace to copy without overwriting. Register deterministic temporaries and expected changes before mutation.
 
-- [ ] **Step 3: Implement Trash and safe results**
+- [x] **Step 3: Implement Trash and safe results**
 
 Trash only validated supported regular files under the root. Record intent before calling `MacTrashPort`, verify source disappearance, commit portable/session projections and return `moved_to_trash`. Never expose the resulting Trash location or offer permanent delete.
 
-- [ ] **Step 4: Verify GREEN and the fault matrix**
+- [x] **Step 4: Verify GREEN and the fault matrix**
 
 Run: `cargo test --test m3_file_commands && cargo test --test file_transactions && ./scripts/run-g2-file-transaction-gate.sh`
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add crates/viewer-infrastructure crates/viewer-platform-macos tests/m3_file_commands.rs

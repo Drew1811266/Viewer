@@ -66,7 +66,7 @@ fn watcher_reconcile_marks_expected_viewer_events_but_still_reconciles_once() {
         volume: 42,
         file: 99,
     };
-    let mut ledger = ExpectedChangeLedger::default();
+    let ledger = ExpectedChangeLedger::default();
     ledger.register(ExpectedChange {
         operation_id,
         old_canonical_path: old_path.clone(),
@@ -124,7 +124,7 @@ fn watcher_reconcile_does_not_match_expired_or_wrong_identity_entries() {
     let project = tempfile::tempdir().unwrap();
     let root = project.path().canonicalize().unwrap();
     let path = root.join("notes.txt");
-    let mut ledger = ExpectedChangeLedger::default();
+    let ledger = ExpectedChangeLedger::default();
     ledger.register(ExpectedChange {
         operation_id: OperationId::new(),
         old_canonical_path: path.clone(),

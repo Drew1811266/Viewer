@@ -1,5 +1,7 @@
+pub mod file;
 pub mod image;
 pub mod operation;
+pub mod search;
 
 use serde::{Deserialize, Deserializer, Serialize};
 use std::{

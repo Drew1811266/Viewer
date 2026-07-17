@@ -1,6 +1,7 @@
 pub mod image;
 pub mod operation;
 pub mod ports;
+pub mod scheduler;
 pub mod session;
 pub mod undo;
 

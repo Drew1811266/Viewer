@@ -9,12 +9,6 @@ use crate::{
 pub const SCAN_BATCH_SIZE: usize = 128;
 pub const SCAN_BATCH_MAX_LATENCY_MS: u64 = 20;
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct ScanBatch {
-    pub generation: Generation,
-    pub nodes: Vec<FileNode>,
-}
-
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct ScanTotals {
     pub folders: u64,

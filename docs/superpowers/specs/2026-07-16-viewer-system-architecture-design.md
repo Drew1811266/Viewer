@@ -1,6 +1,6 @@
 # Viewer 系统架构设计
 
-> 状态：已确认
+> 状态：G1～G3 已验证，G4 冻结候选
 > 日期：2026-07-16
 > 适用版本：Viewer 0.1（macOS Apple Silicon）
 > 关联文档：`docs/PRODUCT_SPEC.md`、`docs/TECHNICAL_FOUNDATIONS.md`、`docs/OPEN_SOURCE_RESEARCH.md`
@@ -20,9 +20,10 @@
 5. 跨平台 Rust 核心从第一天与平台能力隔离；Viewer 0.1 只实现 macOS Adapter。
 6. 原始素材始终保留在用户项目文件夹中，Viewer 不建立第二份完整素材库。
 7. 项目便携元数据保存在项目根目录 `.viewer` 中；全文索引、缩略图和预览代理属于可抛弃的会话数据。
-8. 缩略图优先使用 macOS Quick Look Thumbnailing；Image I/O 负责回退和高清预览。
-9. 文件系统与 SQLite 之间通过持久操作日志实现可恢复的最终一致性，不宣称跨介质原子事务。
+8. 缩略图优先使用 macOS Quick Look Thumbnailing；Image I/O 负责回退和高清预览，详见 [ADR 0001](../../adr/0001-macos-image-pipeline.md)。
+9. 文件系统与 SQLite 之间通过持久操作日志实现可恢复的最终一致性，不宣称跨介质原子事务，详见 [ADR 0002](../../adr/0002-file-transaction-protocol.md)。
 10. Viewer 0.1 按零网络依赖、无遥测和最小权限设计。
+11. 扫描、会话索引、Unicode 搜索、generation 与 Watcher 协作采用 [ADR 0003](../../adr/0003-scan-search-and-generation.md) 的验证结果。
 
 ## 3. 架构原则
 
@@ -225,11 +226,11 @@ OPENING 失败 ─────────────────────�
 
 | 优先级 | 任务 |
 | --- | --- |
-| P0 | 文件操作控制、元数据提交、崩溃恢复 |
-| P1 | 当前高清预览、用户主动搜索、当前目录查询 |
-| P2 | 视口内缩略图、当前对比图代理 |
-| P3 | 相邻图片预载、当前子树文本索引 |
-| P4 | 全项目指纹、非可见缩略图、缓存清理和校验 |
+| P0 | 文件操作控制、元数据提交、崩溃恢复；由串行写通道保护，不进入 G3 的可丢弃任务队列 |
+| P1 | 用户主动搜索与目录发布；每类队列容量 8 |
+| P2 | 当前高清预览、视口内缩略图和对比图代理；容量 32 |
+| P3 | 当前子树文本索引与相邻预载；容量 8 |
+| P4 | 全项目指纹、非可见派生工作和缓存校验；容量 4 |
 
 同一通道采用有界队列和加权公平调度，避免 P4 永久饥饿。
 
@@ -363,7 +364,7 @@ Watcher 事件不是最终事实，只是增量重扫提示：
 
 - 文件名与相对路径使用 `nucleo-matcher` 进行 Unicode 模糊匹配。
 - Markdown/TXT 正文使用 SQLite FTS5 trigram tokenizer。
-- 1～2 个 Unicode 字符的正文查询在当前受控范围进行线性扫描，避免 trigram 短查询缺口。
+- 1～2 个 Unicode 字符的正文查询在 SQL 范围/类型/标记/收藏过滤后最多线性检查 2,000 个文本实体，避免 trigram 短查询缺口并保持资源有界。
 - 超过 10 MB 的 Markdown/TXT 不进入正文索引，只参与名称、路径和属性搜索。
 
 ### 12.3 排序
@@ -395,7 +396,7 @@ Watcher 事件不是最终事实，只是增量重扫提示：
 ### 13.3 网格缩略图
 
 1. 按单元格尺寸乘显示 scale 构建 Quick Look 请求。
-2. 优先使用 `QLThumbnailGenerator` 的最佳表现，并支持取消。
+2. 优先请求 `QLThumbnailGenerator` 的 raw、无装饰表现并支持取消；发布前统一处理方向并编码为会话 PNG 表现。
 3. Quick Look 失败、质量异常或验证不一致时回退 Image I/O。
 4. 只调度视口内项目和小范围 overscan，不为所有图片同时创建解码任务。
 5. 缩略图完整适配统一单元格，不裁切原始内容。
@@ -418,11 +419,10 @@ Quick Look 与 Image I/O 必须通过 ICC、Display P3、EXIF 旋转和透明 PN
 
 ### 13.6 结果交付
 
-React 获得 opaque file ID 和当前 session 有效的受限本地协议 URL。协议处理器必须验证：
+React 获得 opaque entity ID 和当前 session 有效的受限本地协议 URL。原始项目路径只在生成会话表现时经过根边界验证；协议处理器只解析已登记的缓存表现，并必须验证：
 
 - session token。
-- file ID 属于当前项目。
-- 规范化路径位于项目根目录内。
+- opaque token 属于当前 session 的登记表。
 - 请求的是允许的图片 MIME 和表现类型。
 - 目标不是 `.viewer` 内部文件或符号链接。
 
@@ -463,9 +463,9 @@ PREPARED
 #### 复制
 
 1. 在目标目录创建 Viewer 专用、不会进入索引的隐藏临时文件。
-2. 流式复制并计算校验值。
+2. 使用 1 MiB 缓冲区流式复制并计算 BLAKE3 大小/哈希证据。
 3. 刷新数据，验证大小和指纹。
-4. 将临时文件原子重命名为最终名称。
+4. 使用 Darwin `renamex_np(..., RENAME_EXCL)` 将临时文件无覆盖地原子重命名为最终名称。
 5. 提交实体和索引。
 
 崩溃遗留临时文件通过操作日志识别和清理，不误删未知用户文件。
@@ -545,7 +545,7 @@ React 不获得宽泛的 Tauri filesystem、shell、HTTP 或数据库权限。
 
 ### 15.3 Markdown/TXT
 
-- Markdown 使用显式元素和属性允许列表。
+- Markdown 生成的 HTML 通过 Rust 侧 `ammonia` 显式元素/属性允许列表净化。
 - 禁止脚本、内联事件、远程图片、远程样式和自动网络请求。
 - 相对资源接受与普通文件相同的根边界验证。
 - 外部链接只有用户点击后才交给系统默认浏览器。
@@ -661,7 +661,7 @@ Rust 调试字符串、堆栈和原始系统路径不得直接显示给用户。
 
 ### G4 架构冻结
 
-汇总 G1～G3 的性能与异常证据，确认直接依赖许可证、Tauri 权限/CSP、模块接口和 ADR。只有通过后才冻结 Viewer 0.1 的正式依赖版本和跨模块 API。
+汇总 G1～G3 的性能与异常证据，确认直接依赖许可证、Tauri 权限/CSP、模块接口和 ADR。冻结结果记录于 [ADR 0004](../../adr/0004-viewer-0.1-architecture-freeze.md) 和 [跨 crate API 基线](../../architecture/viewer-0.1-api-baseline.md)。只有 ADR 0004 接受后才开始 M1。
 
 这些原型使用最小验证界面即可，不需要向用户提供阶段性测试包。
 

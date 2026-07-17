@@ -705,7 +705,7 @@ git commit -m "feat: preview local text safely"
 - Consumes: exact Tasks 5–8 command/event DTOs and dialog API.
 - Produces: injectable `ViewerBridge`, reducer states `empty|opening|active|closing|error`, and import/drop/close actions.
 
-- [ ] **Step 1: Write failing reducer and empty-entry tests**
+- [x] **Step 1: Write failing reducer and empty-entry tests**
 
 ```tsx
 it('always starts empty and ignores stale scan generations', () => {
@@ -722,13 +722,13 @@ it('opens only a dropped directory and reports a rejected file', async () => {
 })
 ```
 
-- [ ] **Step 2: Run UI tests and verify RED**
+- [x] **Step 2: Run UI tests and verify RED**
 
 Run: `pnpm --dir ui test -- App.test.tsx viewerReducer.test.ts EmptyProject.test.tsx`
 
 Expected: FAIL because the bridge/controller/components do not exist.
 
-- [ ] **Step 3: Implement exact frontend types and injectable bridge**
+- [x] **Step 3: Implement exact frontend types and injectable bridge**
 
 ```ts
 export interface ViewerBridge {
@@ -746,17 +746,17 @@ export interface ViewerBridge {
 
 The production bridge is the only module importing Tauri APIs. Tests inject a fake. Error display uses `userMessage`, never raw thrown objects.
 
-- [ ] **Step 4: Implement controller lifecycle**
+- [x] **Step 4: Implement controller lifecycle**
 
 Subscribe once, discard wrong session/generation, fetch a snapshot after event gaps, close on explicit project close, and remove listeners on unmount. Display a persistent `只读项目` banner whenever `ProjectSnapshot.access === 'read_only'`; do not render write actions in M1. Keep an unreadable-root failure on the entry surface with a retry/reselect action. Do not persist a root/path in localStorage, IndexedDB, URL, or settings.
 
-- [ ] **Step 5: Run UI tests/build and verify GREEN**
+- [x] **Step 5: Run UI tests/build and verify GREEN**
 
 Run: `pnpm --dir ui test && pnpm --dir ui build`
 
 Expected: PASS and production TypeScript compiles with no `any` DTO escape hatch.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add ui/src/api ui/src/state ui/src/components/EmptyProject.tsx ui/src/App.tsx ui/src/App.test.tsx

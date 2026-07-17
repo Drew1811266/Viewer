@@ -1,6 +1,6 @@
 # Viewer 技术框架与开源来源
 
-> 状态：全局架构已确认；G1 图片管线与 G2 文件事务已验证，G3～G4 仍待完成
+> 状态：全局架构已确认；G1 图片管线、G2 文件事务与 G3 扫描搜索已验证，G4 仍待完成
 > 原则：采用通用框架，独立实现 Viewer，不复制其他完整应用
 
 完整模块、数据流、安全和测试设计见 `docs/superpowers/specs/2026-07-16-viewer-system-architecture-design.md`。
@@ -26,10 +26,10 @@
 | 前端 | React + TypeScript + Vite | 两栏界面、状态呈现、快捷键和交互 | 正式依赖 |
 | 数据库 | SQLite + rusqlite | 持久标记、会话索引和 FTS5 全文搜索 | 正式依赖 |
 | 图片后端 | Quick Look Thumbnailing + Image I/O + Core Graphics + ColorSync | Quick Look 主缩略图、Image I/O 回退与高清预览、ICC 和 EXIF | 已通过 G1，见 ADR 0001 |
-| 文件监听 | notify + notify-debouncer-full + file-id | FSEvents、事件归并、重命名/移动关联 | 正式依赖候选 |
+| 文件监听 | notify + notify-debouncer-full + file-id | FSEvents、事件归并、重命名/移动关联 | 已通过 G3，见 ADR 0003 |
 | 网格虚拟化 | TanStack Virtual | 缩略图、目录卡片和搜索结果虚拟化 | 正式依赖候选 |
 | 系统废纸篓 | trash-rs | 将文件移入 macOS 废纸篓 | 已通过 G2，封装于平台 Adapter |
-| 模糊匹配 | nucleo-matcher | Unicode/中文路径和文件名匹配 | 正式依赖候选，需确认 MPL-2.0 义务 |
+| 模糊匹配 | nucleo-matcher | Unicode/中文路径和文件名匹配 | 已通过 G3；发布时履行 MPL-2.0 notice/source 义务 |
 
 ### 2.1 G1 图片管线结论
 
@@ -42,6 +42,14 @@ Apple M4 标准开发设备上的合成样本 gate 验证了 sRGB、Display P3�
 [ADR 0002](adr/0002-file-transaction-protocol.md) 已确定“逐项持久日志 + 确定性临时路径 + BLAKE3 证据 + no-replace 原子落位 + 证据驱动恢复”的文件事务协议。复制、同卷重命名/移动、循环与大小写重命名、Skip/KeepBoth/Replace、macOS Trash Adapter 和会话撤销边界均有真实文件系统测试。
 
 故障矩阵覆盖复制、重命名、移动和替换各自 7 个持久状态，共 28 个强制终止点。恢复第二次运行无动作；未知目标、多个匹配候选、被篡改的临时路径或外部身份变化都会停止并进入人工审查，不覆盖或猜测删除用户文件。真实系统废纸篓测试默认跳过，只允许开发者显式设置环境变量后本地执行。
+
+### 2.3 G3 扫描、搜索与代次安全结论
+
+[ADR 0003](adr/0003-scan-search-and-generation.md) 已确定“文件夹优先的 128 节点渐进批次 + 可丢弃 WAL 会话索引 + FTS5 trigram/nucleo 分层搜索 + `(SessionId, Generation)` 双边界校验 + Watcher 只触发范围化重扫”的方案。
+
+Apple M4 标准开发设备上的 20 轮新会话基准覆盖 1,000 个图片占位文件、100 个中文/英文 Markdown/TXT 和 210 个三级目录。首个文件夹事件 p95 为 20.10 ms，基础扫描 p95 为 45.76 ms，80 次索引查询 p95 为 0.95 ms，峰值 RSS 为 6.83 MB；旧代次发布为零，便携 `.viewer` 元数据哨兵在全部会话索引删除/重建后哈希不变。
+
+这些数值验证扫描和索引架构，不代表约 10 MB 真实图片的联合体验。最终 M4 内部发布门禁仍需使用用户提供的测试文件夹复核扫描、缩略图、高清预览和滚动的组合行为。
 
 ## 3. 架构方法来源
 

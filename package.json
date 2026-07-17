@@ -7,6 +7,7 @@
     "dev": "pnpm --dir ui dev",
     "test:ui": "pnpm --dir ui test",
     "build:ui": "pnpm --dir ui build",
+    "build:macos": "CI=true tauri build --target aarch64-apple-darwin",
     "tauri": "tauri",
     "verify": "node --test scripts/repository-policy.test.mjs && pnpm --dir ui test && pnpm --dir ui build && cargo fmt --check && cargo clippy --locked --workspace --all-targets -- -D warnings && cargo test --locked --workspace"
   },

@@ -10,12 +10,12 @@ name = "viewer_desktop"
 crate-type = ["lib", "cdylib", "staticlib"]
 
 [build-dependencies]
-tauri-build = { version = "2" }
+tauri-build = { version = "2", features = [] }
 
 [dependencies]
 ammonia.workspace = true
 serde.workspace = true
-tauri = { version = "2" }
+tauri = { version = "2", features = [] }
 viewer-domain = { path = "../crates/viewer-domain" }
 viewer-infrastructure = { path = "../crates/viewer-infrastructure" }
 

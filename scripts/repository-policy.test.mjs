@@ -164,3 +164,21 @@ test('Apache-2.0 and the Viewer 0.1 direct dependency inventory are frozen', asy
   const lockCheck = await stat(new URL('../scripts/check-locked-dependencies.sh', import.meta.url))
   assert.ok((lockCheck.mode & 0o111) !== 0, 'locked dependency check must be executable')
 })
+
+test('the macOS release command is non-interactive and uses a valid bundle identifier', async () => {
+  const [packageText, tauriText] = await Promise.all([
+    read('package.json'),
+    read('src-tauri/tauri.conf.json'),
+  ])
+  const packageJson = JSON.parse(packageText)
+  const tauri = JSON.parse(tauriText)
+
+  assert.equal(
+    packageJson.scripts['build:macos'],
+    'CI=true tauri build --target aarch64-apple-darwin',
+  )
+  assert.equal(tauri.identifier, 'com.viewer.desktop')
+  assert.doesNotMatch(tauri.identifier, /\.app$/)
+  assert.deepEqual(tauri.bundle.targets, ['app', 'dmg'])
+  assert.equal(tauri.bundle.macOS.minimumSystemVersion, '13.0')
+})

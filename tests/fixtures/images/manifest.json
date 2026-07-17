@@ -1,0 +1,48 @@
+{
+  "fixtures" : {
+    "alpha.png" : {
+      "format" : "png",
+      "hasAlpha" : true,
+      "height" : 480,
+      "orientation" : 1,
+      "profile" : "sRGB IEC61966-2.1",
+      "sha256" : "f514f2a5563166aaa73d0549d3708a4fdf66a140d97ac57edefb050371699f77",
+      "width" : 640
+    },
+    "corrupt.jpg" : {
+      "format" : "jpeg",
+      "hasAlpha" : false,
+      "height" : 0,
+      "orientation" : 1,
+      "sha256" : "aceb8316e3cde3097156c3d3d1ee66128b29ea0a88c4d74cffe5dfb2d270c4ae",
+      "width" : 0
+    },
+    "p3.jpg" : {
+      "format" : "jpeg",
+      "hasAlpha" : false,
+      "height" : 768,
+      "orientation" : 1,
+      "profile" : "Display P3",
+      "sha256" : "e2889994f629953d85a41c432818b2483afce0e7d48d804cda5aed47c4d86837",
+      "width" : 1024
+    },
+    "rotated-6.jpg" : {
+      "format" : "jpeg",
+      "hasAlpha" : false,
+      "height" : 600,
+      "orientation" : 6,
+      "profile" : "sRGB IEC61966-2.1",
+      "sha256" : "15471349db35f00c31944db308a5d33edd5ee493a9a1634a88e44fdbd6fffc06",
+      "width" : 800
+    },
+    "srgb.jpg" : {
+      "format" : "jpeg",
+      "hasAlpha" : false,
+      "height" : 768,
+      "orientation" : 1,
+      "profile" : "sRGB IEC61966-2.1",
+      "sha256" : "ffb89121baa0aafd524f82eb0ed6d0338e596f9a5e2b20d0749348f9d22dc2c7",
+      "width" : 1024
+    }
+  }
+}

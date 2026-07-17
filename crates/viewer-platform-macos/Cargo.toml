@@ -7,6 +7,13 @@ publish = false
 [dependencies]
 uuid.workspace = true
 viewer-application = { path = "../viewer-application" }
+viewer-domain = { path = "../viewer-domain" }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2-core-foundation.workspace = true
+objc2-core-graphics.workspace = true
+objc2-image-io.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
+viewer-test-support = { path = "../viewer-test-support" }

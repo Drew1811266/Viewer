@@ -1,3 +1,5 @@
+pub mod image_fixtures;
+
 use viewer_application::ClockPort;
 
 pub struct FixedClock(i64);

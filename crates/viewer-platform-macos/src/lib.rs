@@ -1,3 +1,6 @@
+#[cfg(target_os = "macos")]
+pub mod image;
+
 use std::fs::{self, OpenOptions};
 use std::io::ErrorKind;
 use std::path::Path;

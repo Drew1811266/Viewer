@@ -1,4 +1,9 @@
 use serde::Serialize;
+use std::sync::Arc;
+use viewer_domain::SessionId;
+use viewer_infrastructure::image_cache::ImageArtifactRegistry;
+
+mod image_protocol;
 
 pub const APP_NAME: &str = "Viewer";
 
@@ -42,8 +47,20 @@ fn navigation_guard<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
 }
 
 pub fn run() {
+    let registry = Arc::new(ImageArtifactRegistry::default());
+    let image_resolver = Arc::new(image_protocol::ImageProtocolResolver::new(
+        SessionId::new(),
+        registry,
+    ));
     tauri::Builder::default()
         .plugin(navigation_guard())
+        .manage(Arc::clone(&image_resolver))
+        .register_asynchronous_uri_scheme_protocol(
+            "viewer-image",
+            move |_context, request, responder| {
+                image_protocol::handle_request(Arc::clone(&image_resolver), request, responder);
+            },
+        )
         .invoke_handler(tauri::generate_handler![health])
         .run(tauri::generate_context!())
         .expect("failed to run Viewer");
@@ -117,5 +134,25 @@ mod tests {
             let url = tauri::Url::parse(rejected).expect("valid test URL");
             assert!(!super::is_allowed_navigation(&url), "accepted {rejected}");
         }
+    }
+
+    #[test]
+    fn csp_allows_only_the_explicit_viewer_image_origins() {
+        let configuration: serde_json::Value =
+            serde_json::from_str(include_str!("../tauri.conf.json"))
+                .expect("tauri configuration must be valid JSON");
+        let csp = configuration["app"]["security"]["csp"]
+            .as_str()
+            .expect("CSP must be a string");
+        let image_directive = csp
+            .split(';')
+            .map(str::trim)
+            .find(|directive| directive.starts_with("img-src "))
+            .expect("CSP must define img-src");
+        assert_eq!(
+            image_directive,
+            "img-src 'self' asset: data: viewer-image: http://viewer-image.localhost"
+        );
+        assert!(!csp.contains('*'));
     }
 }

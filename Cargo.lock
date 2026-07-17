@@ -3751,6 +3751,9 @@ dependencies = [
  "serde_json",
  "tauri",
  "tauri-build",
+ "tempfile",
+ "viewer-domain",
+ "viewer-infrastructure",
 ]
 
 [[package]]

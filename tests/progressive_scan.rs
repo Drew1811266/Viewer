@@ -3,8 +3,12 @@ use viewer_application::{
     ScanPort,
     scan::{ScanError, ScanEvent, ScanRequest},
 };
-use viewer_domain::{SessionId, file::FileKind, search::Generation};
-use viewer_infrastructure::scan::walker::ProjectWalker;
+use viewer_domain::{
+    EntityId, RelativePath, SessionId,
+    file::{FileKind, FileNode},
+    search::Generation,
+};
+use viewer_infrastructure::{scan::walker::ProjectWalker, search::index::SessionIndex};
 use viewer_test_support::project_fixture::ProjectFixture;
 
 #[tokio::test]
@@ -190,4 +194,70 @@ async fn progressive_scan_rejects_a_non_directory_root() {
         .await;
 
     assert!(matches!(result, Err(ScanError::RootUnreadable(_))));
+}
+
+#[test]
+fn session_index_commits_a_batch_and_reopens_with_the_same_hierarchy() {
+    let directory = tempfile::tempdir().unwrap();
+    let database = directory.path().join("session.sqlite");
+    let products_id = EntityId::new();
+    let item_id = EntityId::new();
+    let nodes = vec![
+        indexed_node(products_id, "products", FileKind::Directory),
+        indexed_node(item_id, "products/id-1", FileKind::Directory),
+        indexed_node(EntityId::new(), "products/id-1/front.jpg", FileKind::Jpeg),
+        indexed_node(EntityId::new(), "notes.txt", FileKind::Text),
+    ];
+
+    let index = SessionIndex::open(&database).unwrap();
+    index.upsert_batch(&nodes).unwrap();
+    index.close().unwrap();
+
+    let index = SessionIndex::open(&database).unwrap();
+    let root_children = index.directory_children(None).unwrap();
+    assert_eq!(paths(&root_children), ["notes.txt", "products"]);
+    let product_children = index.directory_children(Some(products_id)).unwrap();
+    assert_eq!(paths(&product_children), ["products/id-1"]);
+    let item_children = index.directory_children(Some(item_id)).unwrap();
+    assert_eq!(paths(&item_children), ["products/id-1/front.jpg"]);
+    assert_eq!(index.remove_subtree(products_id).unwrap(), 3);
+    assert_eq!(
+        paths(&index.directory_children(None).unwrap()),
+        ["notes.txt"]
+    );
+    assert!(index.directory_children(Some(item_id)).unwrap().is_empty());
+}
+
+#[test]
+fn session_index_rolls_back_the_entire_batch_when_one_item_conflicts() {
+    let directory = tempfile::tempdir().unwrap();
+    let database = directory.path().join("session.sqlite");
+    let duplicate_path = "products";
+    let nodes = vec![
+        indexed_node(EntityId::new(), duplicate_path, FileKind::Directory),
+        indexed_node(EntityId::new(), "products/id-1", FileKind::Directory),
+        indexed_node(EntityId::new(), duplicate_path, FileKind::Directory),
+        indexed_node(EntityId::new(), "notes.txt", FileKind::Text),
+    ];
+
+    let index = SessionIndex::open(&database).unwrap();
+    assert!(index.upsert_batch(&nodes).is_err());
+    assert!(index.directory_children(None).unwrap().is_empty());
+}
+
+fn indexed_node(entity_id: EntityId, path: &str, kind: FileKind) -> FileNode {
+    FileNode {
+        entity_id,
+        relative_path: RelativePath::parse(path).unwrap(),
+        kind,
+        size: if kind == FileKind::Directory { 0 } else { 42 },
+        modified_ns: 1_725_000_000_123_456_789,
+    }
+}
+
+fn paths(nodes: &[FileNode]) -> Vec<&str> {
+    nodes
+        .iter()
+        .map(|node| node.relative_path.as_str())
+        .collect()
 }

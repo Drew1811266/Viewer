@@ -1,4 +1,4 @@
-use rusqlite::{Connection, params};
+use rusqlite::{Connection, OptionalExtension, params};
 use std::{path::Path, str::FromStr, sync::Mutex, time::Duration};
 use viewer_domain::{
     EntityId, OperationId, RelativePath,
@@ -164,6 +164,76 @@ impl OperationJournal {
         })
     }
 
+    pub fn register_temporary(
+        &self,
+        operation_id: OperationId,
+        expected_current: OperationState,
+        temporary: &RelativePath,
+        updated_at_ms: i64,
+    ) -> Result<(), JournalError> {
+        self.update_expected_state(
+            operation_id,
+            expected_current,
+            "UPDATE operation_items
+             SET temporary_path = ?3, updated_at_ms = ?4
+             WHERE operation_id = ?1 AND state = ?2",
+            params![
+                operation_id.to_string(),
+                expected_current.as_str(),
+                temporary.as_str(),
+                updated_at_ms,
+            ],
+        )
+    }
+
+    pub fn record_fs_applied(
+        &self,
+        operation_id: OperationId,
+        expected_current: OperationState,
+        expected_size: u64,
+        expected_hash: [u8; 32],
+        updated_at_ms: i64,
+    ) -> Result<(), JournalError> {
+        let mut checked = expected_current;
+        checked.transition_to(OperationState::FsApplied)?;
+        let expected_size =
+            i64::try_from(expected_size).map_err(|_| JournalError::InvalidPersistedValue {
+                field: "expected_size",
+                value: expected_size.to_string(),
+            })?;
+        self.update_expected_state(
+            operation_id,
+            expected_current,
+            "UPDATE operation_items
+             SET state = 'fs_applied', expected_size = ?3, expected_hash = ?4,
+                 updated_at_ms = ?5
+             WHERE operation_id = ?1 AND state = ?2",
+            params![
+                operation_id.to_string(),
+                expected_current.as_str(),
+                expected_size,
+                expected_hash.as_slice(),
+                updated_at_ms,
+            ],
+        )
+    }
+
+    pub fn item(&self, operation_id: OperationId) -> Result<Option<JournalItem>, JournalError> {
+        self.with_connection(|connection| {
+            connection
+                .query_row(
+                    "SELECT operation_id, batch_id, entity_id, kind, state, source_path,
+                            destination_path, temporary_path, expected_size, expected_hash,
+                            conflict_policy, error_code, updated_at_ms
+                     FROM operation_items WHERE operation_id = ?1",
+                    [operation_id.to_string()],
+                    read_journal_row,
+                )
+                .optional()
+                .map_err(Into::into)
+        })
+    }
+
     pub fn incomplete_items(&self) -> Result<Vec<JournalItem>, JournalError> {
         self.with_connection(|connection| {
             let mut statement = connection.prepare(
@@ -188,6 +258,25 @@ impl OperationJournal {
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         operation(&connection)
+    }
+
+    fn update_expected_state(
+        &self,
+        operation_id: OperationId,
+        expected_current: OperationState,
+        sql: &str,
+        parameters: impl rusqlite::Params,
+    ) -> Result<(), JournalError> {
+        self.with_connection(|connection| {
+            let changed = connection.execute(sql, parameters)?;
+            if changed != 1 {
+                return Err(JournalError::ConcurrentStateChange {
+                    operation_id,
+                    expected: expected_current,
+                });
+            }
+            Ok(())
+        })
     }
 }
 

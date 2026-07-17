@@ -5,4 +5,6 @@ edition.workspace = true
 publish = false
 
 [dependencies]
+tempfile.workspace = true
 viewer-application = { path = "../viewer-application" }
+viewer-domain = { path = "../viewer-domain" }

@@ -1,4 +1,5 @@
 pub mod image_fixtures;
+pub mod project_fixture;
 
 use viewer_application::ClockPort;
 

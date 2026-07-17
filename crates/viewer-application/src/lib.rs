@@ -1,9 +1,12 @@
 pub mod image;
+pub mod operation;
 pub mod ports;
 pub mod session;
 
 pub use image::{ImageArtifact, ImageBackend, ImageError, ImageRequest};
+pub use operation::{FileOperationError, FileSnapshot};
 pub use ports::{
-    ClockPort, ImagePort, ProjectAccess, ProjectProbeError, ProjectProbeOperation, ProjectProbePort,
+    ClockPort, FileMutationPort, ImagePort, ProjectAccess, ProjectProbeError,
+    ProjectProbeOperation, ProjectProbePort,
 };
 pub use session::{ProjectSession, SessionState, SessionTransitionError};

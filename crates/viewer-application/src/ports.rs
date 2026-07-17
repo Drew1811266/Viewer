@@ -1,4 +1,4 @@
-use crate::{ImageArtifact, ImageError, ImageRequest};
+use crate::{FileOperationError, FileSnapshot, ImageArtifact, ImageError, ImageRequest};
 use async_trait::async_trait;
 use std::fmt;
 use std::path::{Path, PathBuf};
@@ -62,6 +62,21 @@ pub trait ProjectProbePort: Send + Sync {
 
 pub trait ClockPort: Send + Sync {
     fn unix_millis(&self) -> i64;
+}
+
+#[async_trait]
+pub trait FileMutationPort: Send + Sync {
+    async fn snapshot(&self, path: &Path) -> Result<FileSnapshot, FileOperationError>;
+
+    async fn copy_and_hash(
+        &self,
+        source: &Path,
+        temporary: &Path,
+    ) -> Result<(u64, [u8; 32]), FileOperationError>;
+
+    async fn rename(&self, source: &Path, destination: &Path) -> Result<(), FileOperationError>;
+
+    async fn remove_registered_temporary(&self, path: &Path) -> Result<(), FileOperationError>;
 }
 
 #[async_trait]

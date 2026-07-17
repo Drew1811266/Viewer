@@ -9,6 +9,7 @@ use viewer_infrastructure::operation::{
     copy::LocalFileMutation,
     executor::{CopyExecutor, CopyResumeResult},
     journal::OperationJournal,
+    rename::{RenameExecutor, RenameItemStatus, RenameMapping, RenamePlanner},
 };
 use viewer_test_support::{FixedClock, project_fixture::ProjectFixture};
 
@@ -296,4 +297,243 @@ async fn verified_copy_rejects_source_and_destination_symlink_escapes() {
             ))
         ));
     }
+}
+
+fn prepare_rename_items(
+    journal: &OperationJournal,
+    batch_id: OperationId,
+    mappings: &[RenameMapping],
+    kind: OperationKind,
+) {
+    journal.create_batch(batch_id, kind, 4_000).unwrap();
+    for mapping in mappings {
+        journal
+            .record_item(
+                &OperationItemPlan {
+                    batch_id,
+                    operation_id: mapping.operation_id,
+                    entity_id: mapping.entity_id,
+                    kind,
+                    source: RelativePath::parse(mapping.source.to_str().unwrap()).unwrap(),
+                    destination: Some(
+                        RelativePath::parse(mapping.destination.to_str().unwrap()).unwrap(),
+                    ),
+                    conflict_policy: ConflictPolicy::Skip,
+                },
+                4_001,
+            )
+            .unwrap();
+    }
+}
+
+fn rename_mapping(source: &str, destination: &str) -> RenameMapping {
+    RenameMapping {
+        operation_id: OperationId::new(),
+        entity_id: EntityId::new(),
+        source: source.into(),
+        destination: destination.into(),
+    }
+}
+
+#[tokio::test]
+async fn rename_cycle_swaps_files_without_data_loss() {
+    let project = ProjectFixture::new();
+    project.create_file("A.jpg", b"contents-A");
+    project.create_file("B.jpg", b"contents-B");
+    let mappings = [
+        rename_mapping("A.jpg", "B.jpg"),
+        rename_mapping("B.jpg", "A.jpg"),
+    ];
+    let plan = RenamePlanner::plan(project.root(), true, &mappings).unwrap();
+    let journal = Arc::new(OperationJournal::open(project.metadata_path()).unwrap());
+    prepare_rename_items(
+        &journal,
+        OperationId::new(),
+        &mappings,
+        OperationKind::Rename,
+    );
+    let executor = RenameExecutor::new(
+        project.root(),
+        Arc::clone(&journal),
+        Arc::new(LocalFileMutation),
+        Arc::new(FixedClock::new(5_000)),
+    )
+    .unwrap();
+
+    let result = executor.execute(&plan).await;
+
+    assert!(
+        result
+            .items
+            .iter()
+            .all(|item| item.status == RenameItemStatus::Completed)
+    );
+    assert_eq!(
+        fs::read(project.root().join("A.jpg")).unwrap(),
+        b"contents-B"
+    );
+    assert_eq!(
+        fs::read(project.root().join("B.jpg")).unwrap(),
+        b"contents-A"
+    );
+    for mapping in mappings {
+        assert_eq!(
+            journal.item(mapping.operation_id).unwrap().unwrap().state,
+            OperationState::Completed
+        );
+    }
+}
+
+#[tokio::test]
+async fn rename_case_only_uses_temporary_stage() {
+    let project = ProjectFixture::new();
+    project.create_file("A.jpg", b"case-only");
+    let mappings = [rename_mapping("A.jpg", "a.jpg")];
+    let plan = RenamePlanner::plan(project.root(), false, &mappings).unwrap();
+    let journal = Arc::new(OperationJournal::open(project.metadata_path()).unwrap());
+    prepare_rename_items(
+        &journal,
+        OperationId::new(),
+        &mappings,
+        OperationKind::Rename,
+    );
+    let executor = RenameExecutor::new(
+        project.root(),
+        journal,
+        Arc::new(LocalFileMutation),
+        Arc::new(FixedClock::new(5_000)),
+    )
+    .unwrap();
+
+    let result = executor.execute(&plan).await;
+
+    assert_eq!(result.items[0].status, RenameItemStatus::Completed);
+    assert_eq!(
+        fs::read(project.root().join("a.jpg")).unwrap(),
+        b"case-only"
+    );
+}
+
+#[tokio::test]
+async fn rename_in_project_move_preserves_file_identity() {
+    let project = ProjectFixture::new();
+    project.create_file("source/A.jpg", b"move-me");
+    project.create_directory("destination");
+    let mappings = [rename_mapping("source/A.jpg", "destination/A.jpg")];
+    let plan = RenamePlanner::plan(project.root(), true, &mappings).unwrap();
+    let journal = Arc::new(OperationJournal::open(project.metadata_path()).unwrap());
+    prepare_rename_items(&journal, OperationId::new(), &mappings, OperationKind::Move);
+    let mutation = Arc::new(LocalFileMutation);
+    let before = mutation
+        .snapshot(&project.root().join("source/A.jpg"))
+        .await
+        .unwrap();
+    let executor = RenameExecutor::new(
+        project.root(),
+        journal,
+        mutation.clone(),
+        Arc::new(FixedClock::new(5_000)),
+    )
+    .unwrap();
+
+    let result = executor.execute(&plan).await;
+    let after = mutation
+        .snapshot(&project.root().join("destination/A.jpg"))
+        .await
+        .unwrap();
+
+    assert_eq!(result.items[0].status, RenameItemStatus::Completed);
+    assert_eq!(before, after);
+    assert!(!project.root().join("source/A.jpg").exists());
+}
+
+struct FailNamedRenamePort {
+    delegate: LocalFileMutation,
+    fail_source_name: &'static str,
+}
+
+#[async_trait]
+impl FileMutationPort for FailNamedRenamePort {
+    async fn snapshot(&self, path: &Path) -> Result<FileSnapshot, FileOperationError> {
+        self.delegate.snapshot(path).await
+    }
+
+    async fn copy_and_hash(
+        &self,
+        source: &Path,
+        temporary: &Path,
+    ) -> Result<(u64, [u8; 32]), FileOperationError> {
+        self.delegate.copy_and_hash(source, temporary).await
+    }
+
+    async fn rename(&self, source: &Path, destination: &Path) -> Result<(), FileOperationError> {
+        if source.file_name().and_then(|value| value.to_str()) == Some(self.fail_source_name) {
+            return Err(FileOperationError::Io {
+                action: "injected batch rename",
+                path: source.to_path_buf(),
+                message: "injected partial failure".into(),
+            });
+        }
+        self.delegate.rename(source, destination).await
+    }
+
+    async fn remove_registered_temporary(&self, path: &Path) -> Result<(), FileOperationError> {
+        self.delegate.remove_registered_temporary(path).await
+    }
+}
+
+#[tokio::test]
+async fn rename_partial_failure_keeps_completed_items() {
+    let project = ProjectFixture::new();
+    project.create_file("A.jpg", b"A");
+    project.create_file("B.jpg", b"B");
+    let mappings = [
+        rename_mapping("A.jpg", "C.jpg"),
+        rename_mapping("B.jpg", "D.jpg"),
+    ];
+    let plan = RenamePlanner::plan(project.root(), true, &mappings).unwrap();
+    let journal = Arc::new(OperationJournal::open(project.metadata_path()).unwrap());
+    prepare_rename_items(
+        &journal,
+        OperationId::new(),
+        &mappings,
+        OperationKind::Rename,
+    );
+    let executor = RenameExecutor::new(
+        project.root(),
+        Arc::clone(&journal),
+        Arc::new(FailNamedRenamePort {
+            delegate: LocalFileMutation,
+            fail_source_name: "B.jpg",
+        }),
+        Arc::new(FixedClock::new(5_000)),
+    )
+    .unwrap();
+
+    let result = executor.execute(&plan).await;
+
+    assert_eq!(result.items[0].status, RenameItemStatus::Completed);
+    assert!(matches!(
+        result.items[1].status,
+        RenameItemStatus::Failed(_)
+    ));
+    assert_eq!(fs::read(project.root().join("C.jpg")).unwrap(), b"A");
+    assert_eq!(fs::read(project.root().join("B.jpg")).unwrap(), b"B");
+    assert!(!project.root().join("D.jpg").exists());
+    assert_eq!(
+        journal
+            .item(mappings[0].operation_id)
+            .unwrap()
+            .unwrap()
+            .state,
+        OperationState::Completed
+    );
+    assert_eq!(
+        journal
+            .item(mappings[1].operation_id)
+            .unwrap()
+            .unwrap()
+            .state,
+        OperationState::Staged
+    );
 }

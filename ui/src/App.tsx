@@ -5,10 +5,17 @@ import EmptyProject from './components/EmptyProject'
 import ContentBrowser from './components/ContentBrowser'
 import FolderOverview from './components/FolderOverview'
 import FolderTree from './components/FolderTree'
+import ImagePreview from './components/ImagePreview'
+import InfoOverlay from './components/InfoOverlay'
 import TaskBar from './components/TaskBar'
 import type { TaskFeedback } from './components/TaskBar'
+import TextPreview from './components/TextPreview'
 import { useViewerController } from './state/useViewerController'
-import type { BrowserFile } from './api/types'
+import type {
+  BrowserFile,
+  ImageRepresentationRequest,
+  TextEncoding,
+} from './api/types'
 
 interface AppProps {
   bridge?: ViewerBridge
@@ -20,10 +27,22 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [sidebarWidth, setSidebarWidth] = useState(260)
   const [thumbnailTask, setThumbnailTask] = useState<TaskFeedback | null>(null)
+  const [textTask, setTextTask] = useState<TaskFeedback | null>(null)
   const [dismissedTasks, setDismissedTasks] = useState<Set<string>>(() => new Set())
+  const [activePreview, setActivePreview] = useState<BrowserFile | null>(null)
+  const [selectedFiles, setSelectedFiles] = useState<BrowserFile[]>([])
+  const [infoOpen, setInfoOpen] = useState(false)
+  const [dimensions, setDimensions] = useState<
+    Record<string, { width: number; height: number } | undefined>
+  >({})
   useEffect(() => {
     setThumbnailTask(null)
+    setTextTask(null)
     setDismissedTasks(new Set())
+    setActivePreview(null)
+    setSelectedFiles([])
+    setInfoOpen(false)
+    setDimensions({})
   }, [state.project?.sessionId])
   const requestThumbnail = useCallback(
     (file: BrowserFile) =>
@@ -45,6 +64,36 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
         .then((image) => image.url),
     [bridge],
   )
+  const requestPreviewImage = useCallback(
+    (file: BrowserFile, representation: ImageRepresentationRequest) =>
+      bridge.requestImage({ entityId: file.entityId, representation }),
+    [bridge],
+  )
+  const requestTextPreview = useCallback(
+    (file: BrowserFile, encoding?: TextEncoding) =>
+      bridge.previewText({ entityId: file.entityId, encoding }),
+    [bridge],
+  )
+  const rememberDimensions = useCallback((entityId: string, width: number, height: number) => {
+    setDimensions((current) => ({ ...current, [entityId]: { width, height } }))
+  }, [])
+  useEffect(() => {
+    function toggleInfo(event: KeyboardEvent) {
+      const target = event.target
+      if (
+        !(event.metaKey && event.key.toLowerCase() === 'i') ||
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        (target instanceof HTMLElement && target.isContentEditable)
+      ) {
+        return
+      }
+      event.preventDefault()
+      setInfoOpen((open) => !open)
+    }
+    window.addEventListener('keydown', toggleInfo)
+    return () => window.removeEventListener('keydown', toggleInfo)
+  }, [])
   const scanTask = useMemo<TaskFeedback | null>(() => {
     if (state.scan === null) return null
     const published = state.scan.publishedFolders + state.scan.publishedFiles
@@ -77,11 +126,11 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
   }, [state.scan])
   const visibleTasks = useMemo(
     () =>
-      [scanTask, thumbnailTask].filter(
+      [scanTask, thumbnailTask, textTask].filter(
         (task): task is TaskFeedback =>
           task !== null && (!dismissedTasks.has(task.id) || task.status === 'running'),
       ),
-    [dismissedTasks, scanTask, thumbnailTask],
+    [dismissedTasks, scanTask, textTask, thumbnailTask],
   )
 
   if (state.project === null) {
@@ -173,6 +222,8 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
                 workspace={state.workspace}
                 requestThumbnail={requestContentThumbnail}
                 onThumbnailTaskChange={setThumbnailTask}
+                onPreview={setActivePreview}
+                onSelectionChange={setSelectedFiles}
               />
             </>
           )}
@@ -185,6 +236,40 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
           setDismissedTasks((current) => new Set([...current, taskId]))
         }
       />
+      {activePreview && matchesImage(activePreview) && state.workspace?.workspace === 'content' && (
+        <ImagePreview
+          file={
+            state.workspace.images.find(
+              (file) => file.entityId === activePreview.entityId,
+            ) ?? activePreview
+          }
+          files={state.workspace.images}
+          requestImage={requestPreviewImage}
+          onNavigate={setActivePreview}
+          onClose={() => setActivePreview(null)}
+          onDimensions={rememberDimensions}
+        />
+      )}
+      {activePreview && !matchesImage(activePreview) && (
+        <TextPreview
+          file={activePreview}
+          requestPreview={requestTextPreview}
+          openExternalLink={bridge.openExternalLink}
+          onClose={() => setActivePreview(null)}
+          onTaskChange={setTextTask}
+        />
+      )}
+      {infoOpen && (
+        <InfoOverlay
+          files={selectedFiles}
+          dimensions={dimensions}
+          onClose={() => setInfoOpen(false)}
+        />
+      )}
     </main>
   )
+}
+
+function matchesImage(file: BrowserFile): boolean {
+  return file.kind === 'jpeg' || file.kind === 'png'
 }

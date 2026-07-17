@@ -98,4 +98,45 @@ describe('Viewer empty state', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('操作未完成，请重试。')
     expect(screen.queryByText(/Users\/private/)).not.toBeInTheDocument()
   })
+
+  it('keeps grid selection and scroll mounted across image preview', async () => {
+    const viewer = bridge()
+    vi.mocked(viewer.queryFolder).mockResolvedValue({
+      workspace: 'content',
+      images: Array.from({ length: 20 }, (_, index) => ({
+        entityId: `image-${index}`,
+        relativePath: `id-1/${index}.jpg`,
+        name: `${index}.jpg`,
+        kind: 'jpeg',
+        size: 100,
+        modifiedNs: String(index),
+        imageUrl: null,
+      })),
+      textFiles: [],
+    })
+    vi.mocked(viewer.requestImage).mockImplementation(async ({ entityId }) => ({
+      cacheKey: entityId,
+      url: `viewer-image://localhost/session/${entityId}`,
+      width: 800,
+      height: 600,
+      backend: 'quick_look',
+    }))
+    render(<App bridge={viewer} />)
+    fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
+    const grid = await screen.findByRole('listbox', { name: '图片文件' })
+    fireEvent.click(screen.getByRole('option', { name: '1.jpg' }))
+    grid.scrollTop = 200
+    fireEvent.scroll(grid)
+    fireEvent.keyDown(grid, { key: ' ' })
+    await screen.findByRole('img', { name: '1.jpg' })
+
+    fireEvent.click(screen.getByRole('button', { name: '关闭预览' }))
+
+    expect(screen.getByRole('listbox', { name: '图片文件' })).toBe(grid)
+    expect(grid.scrollTop).toBe(200)
+    expect(screen.getByRole('option', { name: '1.jpg' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    )
+  })
 })

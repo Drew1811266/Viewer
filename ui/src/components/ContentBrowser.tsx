@@ -58,9 +58,13 @@ export default function ContentBrowser({
 
   useEffect(() => {
     const ids = new Set(allFiles.map((file) => file.entityId))
-    setSelected((current) => new Set([...current].filter((id) => ids.has(id))))
+    const filtered = new Set([...selected].filter((id) => ids.has(id)))
+    if (filtered.size !== selected.size) {
+      setSelected(filtered)
+      onSelectionChange?.(allFiles.filter((file) => filtered.has(file.entityId)))
+    }
     if (activeId && !ids.has(activeId)) setActiveId(null)
-  }, [activeId, allFiles])
+  }, [activeId, allFiles, onSelectionChange, selected])
 
   useEffect(() => {
     if (onThumbnailTaskChange === undefined || work.requested === 0) {

@@ -915,7 +915,7 @@ git commit -m "feat: browse virtual image and text content"
 - Consumes: image/text preview DTOs and current content order.
 - Produces: fit/100%/free zoom, pan, display-only quarter-turn rotation, previous/next, Markdown/TXT preview, encoding retry, Command-I overlay, and grid restoration.
 
-- [ ] **Step 1: Write failing preview-state tests**
+- [x] **Step 1: Write failing preview-state tests**
 
 ```tsx
 it('restores selection and scroll after fit zoom rotate and next-image preview', async () => {
@@ -937,31 +937,31 @@ it('renders sanitized markdown and retries only the current preview encoding', a
 })
 ```
 
-- [ ] **Step 2: Run focused UI tests and verify RED**
+- [x] **Step 2: Run focused UI tests and verify RED**
 
 Run: `pnpm --dir ui test -- ImagePreview.test.tsx TextPreview.test.tsx InfoOverlay.test.tsx`
 
 Expected: FAIL because preview components do not exist.
 
-- [ ] **Step 3: Implement bounded image-preview state**
+- [x] **Step 3: Implement bounded image-preview state**
 
 Default to fit. Request original only for explicit 100% and accept a typed `budget_exceeded` fallback. Clamp zoom to 10%–800%, pan only when content exceeds viewport, apply rotation after EXIF-correct proxy display, and never write rotation. Request at most previous/current/next fit representations and release URLs/state outside that window.
 
-- [ ] **Step 4: Implement text preview and link handling**
+- [x] **Step 4: Implement text preview and link handling**
 
 TXT uses a selectable `<pre>` and Markdown uses only backend-sanitized HTML. Intercept anchor clicks, prevent WebView navigation, and call `openExternalLink`; never render backend text with a client Markdown parser. Show encoding selector and truncation note when supplied.
 
-- [ ] **Step 5: Implement on-demand information overlay**
+- [x] **Step 5: Implement on-demand information overlay**
 
 Command-I toggles an edge overlay rather than a third column. Single selection shows name, full relative path, kind, dimensions when known, size, and modified time. Multi-selection in M1 shows count, total size, and kind distribution; common review markers remain an M2 addition.
 
-- [ ] **Step 6: Run UI tests/build and verify GREEN**
+- [x] **Step 6: Run UI tests/build and verify GREEN**
 
 Run: `pnpm --dir ui test && pnpm --dir ui build`
 
 Expected: PASS for preview navigation, zoom/rotation state, grid restoration, text selection, encoding, sanitization, explicit links, and overlay toggling.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add ui/src/components/ImagePreview* ui/src/components/TextPreview* ui/src/components/InfoOverlay* ui/src/App.tsx ui/src/styles/app.css

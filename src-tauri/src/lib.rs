@@ -8,7 +8,9 @@ pub mod dto;
 pub mod error;
 pub mod image_protocol;
 pub mod markdown;
+pub mod operation_runtime;
 pub mod state;
+pub mod watcher_runtime;
 
 pub const APP_NAME: &str = "Viewer";
 const PROJECT_CLOSED_EVENT: &str = "viewer://project-closed";
@@ -41,6 +43,52 @@ impl state::DesktopEventSink for TauriEventSink {
     fn emit_index(&self, event: dto::IndexProgressDto) {
         if let Some(app) = self.0.get() {
             let _ = app.emit("viewer://index-progress", event);
+        }
+    }
+
+    fn emit_operation(
+        &self,
+        session_id: viewer_domain::SessionId,
+        generation: viewer_domain::search::Generation,
+        event: viewer_application::file_commands::BatchProgress,
+    ) {
+        if let Some(app) = self.0.get() {
+            let _ = app.emit(
+                "viewer://operation-progress",
+                dto::OperationProgressDto::from_progress(session_id, generation.get(), event),
+            );
+        }
+    }
+
+    fn emit_project_changed(
+        &self,
+        session_id: viewer_domain::SessionId,
+        generation: viewer_domain::search::Generation,
+        summary: viewer_application::watcher::ReconcileSummary,
+    ) {
+        if let Some(app) = self.0.get() {
+            let _ = app.emit(
+                "viewer://project-changed",
+                dto::ProjectChangedDto::from_summary(session_id, generation.get(), summary),
+            );
+        }
+    }
+
+    fn emit_close_blocked(
+        &self,
+        session_id: viewer_domain::SessionId,
+        generation: viewer_domain::search::Generation,
+        batch_id: viewer_domain::operation::BatchId,
+    ) {
+        if let Some(app) = self.0.get() {
+            let _ = app.emit(
+                "viewer://close-blocked",
+                dto::CloseBlockedDto {
+                    session_id: session_id.to_string(),
+                    generation: generation.get(),
+                    batch_id: batch_id.to_string(),
+                },
+            );
         }
     }
 }
@@ -110,7 +158,14 @@ pub fn run() {
             commands::search::search_text_snippet,
             commands::markers::set_review_state,
             commands::markers::toggle_favorite,
-            commands::markers::selection_info
+            commands::markers::selection_info,
+            commands::operations::preview_rename,
+            commands::operations::execute_file_command,
+            commands::operations::operation_status,
+            commands::operations::operation_results,
+            commands::operations::cancel_operation,
+            commands::operations::undo_last_operation,
+            commands::operations::open_permission_settings
         ])
         .setup(move |app| {
             let cache_base = app.path().app_cache_dir()?.join("sessions");
@@ -140,10 +195,13 @@ pub fn run() {
                         let app_handle = app_handle.clone();
                         tauri::async_runtime::spawn(async move {
                             let runtime = app_handle.state::<Arc<state::DesktopRuntime>>();
-                            let _ = runtime.close_project().await;
-                            let _ = app_handle.emit(PROJECT_CLOSED_EVENT, ());
-                            if let Some(window) = app_handle.get_webview_window("main") {
-                                let _ = window.hide();
+                            if runtime.request_close(None).await
+                                == Ok(state::CloseRequestOutcome::Closed)
+                            {
+                                let _ = app_handle.emit(PROJECT_CLOSED_EVENT, ());
+                                if let Some(window) = app_handle.get_webview_window("main") {
+                                    let _ = window.hide();
+                                }
                             }
                         });
                     }

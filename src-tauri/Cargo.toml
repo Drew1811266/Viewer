@@ -20,6 +20,7 @@ pulldown-cmark.workspace = true
 serde.workspace = true
 tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
+thiserror.workspace = true
 tokio.workspace = true
 viewer-application = { path = "../crates/viewer-application" }
 viewer-domain = { path = "../crates/viewer-domain" }
@@ -41,3 +42,7 @@ path = "../tests/m1_desktop_runtime.rs"
 [[test]]
 name = "m2_desktop_runtime"
 path = "../tests/m2_desktop_runtime.rs"
+
+[[test]]
+name = "m3_desktop_runtime"
+path = "../tests/m3_desktop_runtime.rs"

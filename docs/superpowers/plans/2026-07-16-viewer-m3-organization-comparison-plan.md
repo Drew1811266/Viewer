@@ -353,25 +353,25 @@ git commit -m "feat: reconcile external project changes"
 **Interfaces:**
 - Produces: `preview_rename`, `execute_file_command`, `operation_status`, `operation_results`, `cancel_operation`, `undo_last_operation`, `open_permission_settings`, `viewer://operation-progress`, `viewer://project-changed` and `viewer://close-blocked`.
 
-- [ ] **Step 1: Write failing DTO/runtime/security tests**
+- [x] **Step 1: Write failing DTO/runtime/security tests**
 
 Cover exact camelCase/deny-unknown DTOs, session/generation/access validation, target/order bounds, destination folder validation, conflict enums, one active batch, progress/result pagination, cancellation, undo, Watcher start/drop, close wait/cancel choices, recovery reports and safe error redaction.
 
 Run: `cargo test -p viewer-desktop --test m3_desktop_runtime -- --nocapture`
 
-- [ ] **Step 2: Split operation and Watcher runtime ownership**
+- [x] **Step 2: Split operation and Watcher runtime ownership**
 
 Keep `DesktopRuntime` as session owner but delegate write-lane and Watcher loops to focused modules. `DesktopSession` owns journal/store/index, undo, cancellation, operation status, expected ledger and Watcher subscription. Open performs safe recovery before active publication; close stops new commands before dropping Watcher/resources.
 
-- [ ] **Step 3: Register only Viewer-owned commands/events**
+- [x] **Step 3: Register only Viewer-owned commands/events**
 
 No raw path command is accepted. Destination folders are current-session entity IDs; rename preview names are validated in Rust. Errors contain stable code/category/message/retry/task/item and no absolute path, SQLite text, hash or temporary name.
 
-- [ ] **Step 4: Verify GREEN and security boundaries**
+- [x] **Step 4: Verify GREEN and security boundaries**
 
 Run: `cargo test -p viewer-desktop --test m3_desktop_runtime && cargo test -p viewer-desktop --test security_boundaries && ./scripts/check-tauri-security.sh`
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src-tauri tests/m3_desktop_runtime.rs tests/security_boundaries.rs

@@ -1,12 +1,17 @@
 use crate::{
     dto::{
         FolderTreeItemDto, FolderWorkspaceDto, ImageRepresentationDto, IndexProgressDto,
-        MarkerBatchResultDto, ProjectSnapshot, SearchPageDto, SelectionInfoDto, TextPreviewDto,
-        TextPreviewFormatDto, TextSnippetDto,
+        MarkerBatchResultDto, ProjectSnapshot, RecoveryReportDto, SearchPageDto, SelectionInfoDto,
+        TextPreviewDto, TextPreviewFormatDto, TextSnippetDto,
     },
     error::{CommandError, ErrorCategory, stale_search_revision},
     image_protocol::ActiveImageSession,
     markdown::{ExternalUrl, image_destinations, render_safe_markdown},
+    operation_runtime::{
+        DesktopOperationCommitPort, OperationRuntime, OperationRuntimeError, OperationStarted,
+        adapter_as_undo_port,
+    },
+    watcher_runtime::WatcherRuntime,
 };
 use std::{
     collections::HashMap,
@@ -22,30 +27,43 @@ use tokio::{sync::Mutex, task::JoinHandle, time::Instant};
 use viewer_application::{
     ActiveProject, BrowseIndexPort, BrowseService, ClockPort, ImageError, ImagePort, ImageRequest,
     ProjectAccess, ProjectOpenError, ProjectProbeError, ProjectProbePort, ProjectSessionService,
-    ScanPort, SearchPort, SearchSnippetPort, TextEncoding, TextPreviewPort,
+    ScanPort, SearchPort, SearchSnippetPort, TextEncoding, TextPreviewPort, VolumePort,
+    file_commands::{
+        BatchId, BatchProgress, BatchResultPage, ConflictResolution, FileCommandItem,
+        FileCommandKind, FileCommandService,
+    },
     metadata::{
         FavoritePatch, MarkerPatch, MarkerProjectionPort, MarkerService, MarkerTarget,
         PortableMetadataPort, ReviewPatch,
     },
     scan::{CoordinatedScan, ScanEvent, ScanRequest},
     scheduler::{TaskClass, TaskCoordinator},
-    undo::{UndoBatch, UndoError, UndoFilePort, UndoReceipt, UndoService, UndoStack},
+    undo::{UndoFilePort, UndoReceipt, UndoService, UndoStack},
 };
 use viewer_domain::{
     EntityId, RelativePath, SessionId, TaskId,
     file::{FileKind, ImageIndexStatus, ImageMetadata, ReviewState},
     image::ImageRepresentationKind,
+    operation::{RenamePreflight, RenameRuleSet, RenameTarget},
     search::{Generation, SearchQuery, SearchScope},
 };
-use viewer_infrastructure::operation::copy::LocalFileMutation;
+use viewer_infrastructure::operation::{
+    copy::LocalFileMutation, journal::OperationJournal, recovery::RecoveryService,
+    rename::RenamePlanner, service::LocalFileCommandAdapter,
+};
 use viewer_infrastructure::{
     SystemClock,
     image_cache::{ImageArtifactRegistry, ImageCacheKey, ImageCacheKeyInput},
     portable::{PortableMarkerStore, PortableProjectMetadata},
     scan::walker::{ProjectWalker, is_macos_alias},
+    scan::{reconcile::ExpectedChangeLedger, reconcile_service::ProjectReconciler},
     search::{index::SessionIndex, query::SessionSearch, text::TextExtractor},
     session_cache::{CachedImage, SessionCache},
     text::preview::TextPreviewReader,
+};
+use viewer_platform_macos::{
+    files::{MacTrashPort, MacVolumePort},
+    watcher::MacWatcherPort,
 };
 
 pub use crate::dto::ScanEventDto;
@@ -53,6 +71,40 @@ pub use crate::dto::ScanEventDto;
 pub trait DesktopEventSink: Send + Sync {
     fn emit_scan(&self, event: ScanEventDto);
     fn emit_index(&self, _event: IndexProgressDto) {}
+    fn emit_operation(
+        &self,
+        _session_id: SessionId,
+        _generation: Generation,
+        _event: viewer_application::file_commands::BatchProgress,
+    ) {
+    }
+    fn emit_project_changed(
+        &self,
+        _session_id: SessionId,
+        _generation: Generation,
+        _summary: viewer_application::watcher::ReconcileSummary,
+    ) {
+    }
+    fn emit_close_blocked(
+        &self,
+        _session_id: SessionId,
+        _generation: Generation,
+        _batch_id: BatchId,
+    ) {
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CloseChoice {
+    Wait,
+    CancelPending,
+    Stay,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CloseRequestOutcome {
+    Closed,
+    Stayed,
 }
 
 #[derive(Default)]
@@ -108,22 +160,25 @@ struct DesktopSession {
     marker_projection: Arc<dyn MarkerProjectionPort>,
     marker_lock: Arc<Mutex<()>>,
     undo_stack: Arc<StdMutex<UndoStack>>,
+    file_undo_port: Arc<dyn UndoFilePort>,
+    operations: Option<Arc<OperationRuntime>>,
+    watcher: Option<WatcherRuntime>,
     search_revision: Arc<AtomicU64>,
     image: Arc<dyn ImagePort>,
     scan_task_id: TaskId,
     scan_task: Option<JoinHandle<Result<(), CommandError>>>,
 }
 
-struct DeferredFileUndoPort;
+struct UnavailableFileUndoPort;
 
 #[async_trait::async_trait]
-impl UndoFilePort for DeferredFileUndoPort {
+impl UndoFilePort for UnavailableFileUndoPort {
     async fn reverse_batch(
         &self,
         _project_root: &Path,
-        _batch: &UndoBatch,
-    ) -> Result<(), UndoError> {
-        Err(UndoError::OutsideProject)
+        _batch: &viewer_application::undo::UndoBatch,
+    ) -> Result<(), viewer_application::undo::UndoError> {
+        Err(viewer_application::undo::UndoError::OutsideProject)
     }
 }
 
@@ -135,6 +190,14 @@ struct ScanServices {
     events: Arc<dyn DesktopEventSink>,
     portable_store: Option<Arc<PortableMarkerStore>>,
     marker_lock: Arc<Mutex<()>>,
+    scan_ready: tokio::sync::watch::Sender<bool>,
+}
+
+struct OrganizationServices {
+    file_undo_port: Arc<dyn UndoFilePort>,
+    operations: Option<Arc<OperationRuntime>>,
+    expected_changes: ExpectedChangeLedger,
+    recovery_report: Option<RecoveryReportDto>,
 }
 
 pub struct DesktopRuntime {
@@ -273,6 +336,118 @@ impl DesktopRuntime {
         }
     }
 
+    async fn prepare_organization_services(
+        &self,
+        active: &ActiveProject,
+        index: Arc<SessionIndex>,
+        portable_store: Option<Arc<PortableMarkerStore>>,
+        portable_database_path: Option<&Path>,
+        marker_lock: Arc<Mutex<()>>,
+        undo_stack: Arc<StdMutex<UndoStack>>,
+    ) -> Result<OrganizationServices, CommandError> {
+        if active.access != ProjectAccess::ReadWrite {
+            return Ok(OrganizationServices {
+                file_undo_port: Arc::new(UnavailableFileUndoPort),
+                operations: None,
+                expected_changes: ExpectedChangeLedger::default(),
+                recovery_report: None,
+            });
+        }
+        let store = portable_store.ok_or_else(|| {
+            CommandError::new(
+                "portable_metadata_unavailable",
+                ErrorCategory::Consistency,
+                "项目审阅数据不可用，请重新打开项目。",
+                true,
+            )
+        })?;
+        let database_path = portable_database_path.ok_or_else(|| {
+            CommandError::new(
+                "portable_metadata_unavailable",
+                ErrorCategory::Consistency,
+                "项目审阅数据不可用，请重新打开项目。",
+                true,
+            )
+        })?;
+        let journal = Arc::new(OperationJournal::open(database_path).map_err(|_| {
+            CommandError::new(
+                "operation_journal_unavailable",
+                ErrorCategory::Consistency,
+                "文件操作记录不可用，请重新打开项目。",
+                true,
+            )
+        })?);
+        let browse_index: Arc<dyn BrowseIndexPort> = index.clone();
+        let projection: Arc<dyn viewer_application::metadata::OperationProjectionPort> = index;
+        let metadata: Arc<dyn PortableMetadataPort> = store;
+        let volume: Arc<dyn viewer_application::VolumePort> = Arc::new(MacVolumePort);
+        let commits = Arc::new(DesktopOperationCommitPort::new(
+            active.root.clone(),
+            Arc::clone(&browse_index),
+            Arc::clone(&projection),
+            Arc::clone(&metadata),
+            Arc::clone(&volume),
+            Arc::clone(&self.clock),
+            Arc::clone(&journal),
+        ));
+        let recovery_commits = Arc::new(DesktopOperationCommitPort::for_recovery(
+            active.root.clone(),
+            Arc::clone(&browse_index),
+            projection,
+            metadata,
+            Arc::clone(&volume),
+            Arc::clone(&self.clock),
+            Arc::clone(&journal),
+        ));
+        let recovery = RecoveryService::new(
+            &active.root,
+            Arc::clone(&journal),
+            Arc::new(LocalFileMutation),
+            Arc::new(MacTrashPort),
+            Arc::clone(&self.clock),
+            recovery_commits,
+        )
+        .map_err(|_| operation_backend_unavailable())?
+        .recover_project()
+        .await
+        .map_err(|_| operation_backend_unavailable())?;
+        let adapter = Arc::new(
+            LocalFileCommandAdapter::new(
+                &active.root,
+                browse_index,
+                journal,
+                Arc::new(LocalFileMutation),
+                Arc::new(MacTrashPort),
+                volume,
+                Arc::clone(&self.clock),
+                commits,
+            )
+            .map_err(|_| operation_backend_unavailable())?,
+        );
+        let expected_changes = adapter.expected_change_ledger();
+        let port: Arc<dyn viewer_application::ports::LocalFileCommandPort> = adapter.clone();
+        let service = Arc::new(FileCommandService::new_with_undo(
+            active.session_id,
+            active.access,
+            Arc::clone(&self.coordinator),
+            port,
+            marker_lock,
+            undo_stack,
+        ));
+        let operations = Arc::new(OperationRuntime::new(service, Arc::clone(&self.events)));
+        Ok(OrganizationServices {
+            file_undo_port: adapter_as_undo_port(adapter),
+            operations: Some(operations),
+            expected_changes,
+            recovery_report: Some(RecoveryReportDto {
+                recovered: u32::try_from(recovery.actions.len()).unwrap_or(u32::MAX),
+                needs_user_review: u32::try_from(recovery.needs_user_review.len())
+                    .unwrap_or(u32::MAX),
+            })
+            .filter(|report| report.recovered > 0 || report.needs_user_review > 0),
+        })
+    }
+
     pub async fn open_project(&self, root: &Path) -> Result<ProjectSnapshot, CommandError> {
         let mut session = self.session.lock().await;
         if session.is_some() {
@@ -293,6 +468,7 @@ impl DesktopRuntime {
                 return Err(error.into());
             }
         };
+        let portable_database_path = portable_metadata.database_path().map(Path::to_path_buf);
         let portable_store = match portable_metadata.database_path() {
             Some(path) => match PortableMarkerStore::open(path, portable_metadata.is_writable()) {
                 Ok(store) => Some(Arc::new(store)),
@@ -338,11 +514,87 @@ impl DesktopRuntime {
             }
         };
         let marker_projection = self.marker_projection_factory.create(Arc::clone(&index));
-        let snapshot = ProjectSnapshot::from(&active);
+        let mut snapshot = ProjectSnapshot::from(&active);
         let active_session_id = active.session_id;
         let scan_task_id = TaskId::new();
         let marker_lock = Arc::new(Mutex::new(()));
         let undo_stack = Arc::new(StdMutex::new(UndoStack::new(active_session_id)));
+        let organization = match self
+            .prepare_organization_services(
+                &active,
+                Arc::clone(&index),
+                portable_store.clone(),
+                portable_database_path.as_deref(),
+                Arc::clone(&marker_lock),
+                Arc::clone(&undo_stack),
+            )
+            .await
+        {
+            Ok(services) => services,
+            Err(error) => {
+                image.cancel_session(active.session_id).await;
+                drop(marker_projection);
+                drop(index);
+                drop(portable_store);
+                let _ = cache.cleanup();
+                let _ = self.project_service.close();
+                return Err(error);
+            }
+        };
+        snapshot.recovery_report = organization.recovery_report;
+        let OrganizationServices {
+            file_undo_port,
+            operations,
+            expected_changes,
+            ..
+        } = organization;
+        let (scan_ready, scan_ready_rx) = tokio::sync::watch::channel(false);
+        let watcher_result = (|| {
+            let case_sensitive = MacVolumePort
+                .is_case_sensitive(&active.root)
+                .map_err(|_| operation_backend_unavailable())?;
+            let marker_metadata = portable_store
+                .clone()
+                .map(|store| store as Arc<dyn PortableMetadataPort>);
+            let reconciler = Arc::new(
+                ProjectReconciler::new(
+                    &active.root,
+                    Arc::clone(&self.coordinator),
+                    Arc::clone(&index),
+                    marker_metadata,
+                    Arc::clone(&self.clock),
+                    Arc::clone(&marker_lock),
+                    case_sensitive,
+                )
+                .map_err(|_| operation_backend_unavailable())?,
+            );
+            WatcherRuntime::start(
+                active.root.clone(),
+                active.session_id,
+                active.generation,
+                Arc::new(MacWatcherPort),
+                expected_changes,
+                reconciler,
+                Arc::clone(&self.clock),
+                Arc::clone(&self.events),
+                scan_ready_rx,
+            )
+            .map_err(|_| operation_backend_unavailable())
+        })();
+        let watcher = match watcher_result {
+            Ok(watcher) => Some(watcher),
+            Err(error) => {
+                drop(operations);
+                drop(file_undo_port);
+                image.cancel_session(active.session_id).await;
+                drop(marker_projection);
+                drop(index);
+                drop(portable_store);
+                let _ = cache.cleanup();
+                let _ = self.project_service.close();
+                return Err(error);
+            }
+        };
         let scan_task = tokio::spawn(run_scan(
             active.clone(),
             scan_task_id,
@@ -354,6 +606,7 @@ impl DesktopRuntime {
                 events: Arc::clone(&self.events),
                 portable_store: portable_store.clone(),
                 marker_lock: Arc::clone(&marker_lock),
+                scan_ready,
             },
         ));
         *session = Some(DesktopSession {
@@ -365,6 +618,9 @@ impl DesktopRuntime {
             marker_projection,
             marker_lock,
             undo_stack,
+            file_undo_port,
+            operations,
+            watcher,
             search_revision: Arc::new(AtomicU64::new(0)),
             image,
             scan_task_id,
@@ -381,6 +637,12 @@ impl DesktopRuntime {
         self.active_image_session.set(None);
         self.image_registry
             .remove_session(session.active.session_id);
+        if let Some(operations) = session.operations.take() {
+            operations.cancel_and_wait_active().await;
+        }
+        if let Some(mut watcher) = session.watcher.take() {
+            watcher.stop().await;
+        }
         self.project_service.close().map_err(CommandError::from)?;
         let marker_lock = Arc::clone(&session.marker_lock);
         let _marker_guard = marker_lock.lock().await;
@@ -401,6 +663,49 @@ impl DesktopRuntime {
         drop(session.portable_store.take());
         drop(session.index);
         session.cache.cleanup().map_err(CommandError::from)
+    }
+
+    pub async fn request_close(
+        &self,
+        choice: Option<CloseChoice>,
+    ) -> Result<CloseRequestOutcome, CommandError> {
+        let active = {
+            let session = self.session.lock().await;
+            session.as_ref().and_then(|session| {
+                session.operations.as_ref().and_then(|operations| {
+                    operations.active_batch().map(|batch_id| {
+                        (
+                            Arc::clone(operations),
+                            session.active.session_id,
+                            session.active.generation,
+                            batch_id,
+                        )
+                    })
+                })
+            })
+        };
+        let Some((operations, session_id, generation, batch_id)) = active else {
+            self.close_project().await?;
+            return Ok(CloseRequestOutcome::Closed);
+        };
+        match choice {
+            Some(CloseChoice::Wait) => {
+                let _ = operations.wait(batch_id).await;
+                self.close_project().await?;
+                Ok(CloseRequestOutcome::Closed)
+            }
+            Some(CloseChoice::CancelPending) => {
+                let _ = operations.cancel(batch_id);
+                let _ = operations.wait(batch_id).await;
+                self.close_project().await?;
+                Ok(CloseRequestOutcome::Closed)
+            }
+            None | Some(CloseChoice::Stay) => {
+                self.events
+                    .emit_close_blocked(session_id, generation, batch_id);
+                Ok(CloseRequestOutcome::Stayed)
+            }
+        }
     }
 
     pub async fn wait_for_scan(&self) -> Result<(), CommandError> {
@@ -692,12 +997,153 @@ impl DesktopRuntime {
         Ok(changes.into())
     }
 
+    pub async fn preview_rename(
+        &self,
+        expected_session: SessionId,
+        expected_generation: Generation,
+        entity_ids: &[EntityId],
+        rules: RenameRuleSet,
+    ) -> Result<RenamePreflight, CommandError> {
+        let (active, index) = {
+            let session = self.session.lock().await;
+            let session = session.as_ref().ok_or_else(project_not_open)?;
+            validate_project_request(&session.active, expected_session, expected_generation)?;
+            if session.active.access != ProjectAccess::ReadWrite {
+                return Err(project_read_only_operation());
+            }
+            (session.active.clone(), Arc::clone(&session.index))
+        };
+        let ids = entity_ids.to_vec();
+        let prepared = tokio::task::spawn_blocking(move || {
+            let targets = ids
+                .into_iter()
+                .map(|entity_id| {
+                    index
+                        .node(entity_id)
+                        .map_err(CommandError::from)?
+                        .filter(|node| node.kind != FileKind::Directory)
+                        .map(|node| RenameTarget {
+                            entity_id: node.entity_id,
+                            relative_path: node.relative_path,
+                        })
+                        .ok_or_else(selection_not_found)
+                })
+                .collect::<Result<Vec<_>, CommandError>>()?;
+            RenamePlanner::preflight(&active.root, &MacVolumePort, &targets, &rules)
+                .map(|prepared| prepared.preview)
+                .map_err(|_| invalid_rename_preview())
+        })
+        .await
+        .map_err(|_| internal_command_error())??;
+        self.ensure_project_current(expected_session, expected_generation)
+            .await?;
+        Ok(prepared)
+    }
+
+    pub async fn execute_file_command(
+        &self,
+        expected_session: SessionId,
+        expected_generation: Generation,
+        kind: FileCommandKind,
+        items: Vec<FileCommandItem>,
+        conflicts: Vec<ConflictResolution>,
+    ) -> Result<OperationStarted, CommandError> {
+        let operations = self
+            .active_operations(expected_session, expected_generation)
+            .await?;
+        operations
+            .start(
+                expected_session,
+                expected_generation,
+                kind,
+                items,
+                conflicts,
+            )
+            .await
+            .map_err(operation_runtime_error)
+    }
+
+    pub async fn operation_status(
+        &self,
+        expected_session: SessionId,
+        expected_generation: Generation,
+        batch_id: BatchId,
+    ) -> Result<BatchProgress, CommandError> {
+        self.active_operations(expected_session, expected_generation)
+            .await?
+            .status(batch_id)
+            .map_err(operation_runtime_error)
+    }
+
+    pub async fn operation_results(
+        &self,
+        expected_session: SessionId,
+        expected_generation: Generation,
+        batch_id: BatchId,
+        offset: usize,
+        limit: usize,
+    ) -> Result<BatchResultPage, CommandError> {
+        self.active_operations(expected_session, expected_generation)
+            .await?
+            .results(batch_id, offset, limit)
+            .map_err(operation_runtime_error)
+    }
+
+    pub async fn cancel_operation(
+        &self,
+        expected_session: SessionId,
+        expected_generation: Generation,
+        batch_id: BatchId,
+    ) -> Result<bool, CommandError> {
+        self.active_operations(expected_session, expected_generation)
+            .await?
+            .cancel(batch_id)
+            .map_err(operation_runtime_error)
+    }
+
+    pub async fn wait_for_operation(&self, batch_id: BatchId) -> Result<(), CommandError> {
+        let operations = {
+            let session = self.session.lock().await;
+            let session = session.as_ref().ok_or_else(project_not_open)?;
+            session
+                .operations
+                .clone()
+                .ok_or_else(project_read_only_operation)?
+        };
+        operations
+            .wait(batch_id)
+            .await
+            .map_err(operation_runtime_error)
+    }
+
+    pub async fn undo_last_operation(
+        &self,
+        expected_session: SessionId,
+        expected_generation: Generation,
+    ) -> Result<Option<UndoReceipt>, CommandError> {
+        self.undo_last(expected_session, expected_generation).await
+    }
+
+    async fn active_operations(
+        &self,
+        expected_session: SessionId,
+        expected_generation: Generation,
+    ) -> Result<Arc<OperationRuntime>, CommandError> {
+        let session = self.session.lock().await;
+        let session = session.as_ref().ok_or_else(project_not_open)?;
+        validate_project_request(&session.active, expected_session, expected_generation)?;
+        session
+            .operations
+            .clone()
+            .ok_or_else(project_read_only_operation)
+    }
+
     pub async fn undo_last(
         &self,
         expected_session: SessionId,
         expected_generation: Generation,
     ) -> Result<Option<UndoReceipt>, CommandError> {
-        let (active, store, projection, undo_stack, write_lane) = {
+        let (active, store, projection, undo_stack, write_lane, file_undo_port) = {
             let session = self.session.lock().await;
             let session = session.as_ref().ok_or_else(project_not_open)?;
             validate_project_request(&session.active, expected_session, expected_generation)?;
@@ -715,6 +1161,7 @@ impl DesktopRuntime {
                 Arc::clone(&session.marker_projection),
                 Arc::clone(&session.undo_stack),
                 Arc::clone(&session.marker_lock),
+                Arc::clone(&session.file_undo_port),
             )
         };
         let service = UndoService::new(
@@ -722,7 +1169,7 @@ impl DesktopRuntime {
             active.access,
             active.root.clone(),
             Arc::new(LocalFileMutation),
-            Arc::new(DeferredFileUndoPort),
+            file_undo_port,
             store,
             projection,
             Arc::clone(&self.clock),
@@ -1154,6 +1601,76 @@ fn internal_command_error() -> CommandError {
     )
 }
 
+fn operation_backend_unavailable() -> CommandError {
+    CommandError::new(
+        "operation_backend_unavailable",
+        ErrorCategory::Environment,
+        "文件操作服务不可用，请重新打开项目。",
+        true,
+    )
+}
+
+fn project_read_only_operation() -> CommandError {
+    CommandError::new(
+        "project_read_only",
+        ErrorCategory::Conflict,
+        "当前项目为只读，无法执行文件操作。",
+        false,
+    )
+}
+
+fn invalid_rename_preview() -> CommandError {
+    CommandError::new(
+        "invalid_rename_preview",
+        ErrorCategory::Validation,
+        "无法生成安全的重命名预览，请刷新项目后重试。",
+        false,
+    )
+}
+
+fn operation_runtime_error(error: OperationRuntimeError) -> CommandError {
+    use viewer_application::file_commands::FileCommandServiceError as ServiceError;
+    match error {
+        OperationRuntimeError::Service(ServiceError::ReadOnly) => project_read_only_operation(),
+        OperationRuntimeError::Service(ServiceError::StaleSession) => stale_project_session(),
+        OperationRuntimeError::Service(ServiceError::EmptyTargets)
+        | OperationRuntimeError::Service(ServiceError::TooManyTargets)
+        | OperationRuntimeError::Service(ServiceError::DuplicateTarget)
+        | OperationRuntimeError::Service(ServiceError::ActionKindMismatch) => CommandError::new(
+            "invalid_operation_targets",
+            ErrorCategory::Validation,
+            "所选文件操作目标无效，请检查选择后重试。",
+            false,
+        ),
+        OperationRuntimeError::Service(ServiceError::BatchActive) => CommandError::new(
+            "operation_batch_active",
+            ErrorCategory::Conflict,
+            "已有文件操作正在进行，请等待或取消后重试。",
+            true,
+        ),
+        OperationRuntimeError::Service(ServiceError::PreflightBlocked)
+        | OperationRuntimeError::Service(ServiceError::MissingConflictResolution)
+        | OperationRuntimeError::Service(ServiceError::InvalidConflictResolution) => {
+            CommandError::new(
+                "operation_conflict_unresolved",
+                ErrorCategory::Conflict,
+                "部分文件存在冲突，请选择处理方式后重试。",
+                false,
+            )
+        }
+        OperationRuntimeError::Service(ServiceError::AlreadyExecuted)
+        | OperationRuntimeError::Service(ServiceError::PreflightContract)
+        | OperationRuntimeError::Service(ServiceError::BackendUnavailable)
+        | OperationRuntimeError::BatchFailed => operation_backend_unavailable(),
+        OperationRuntimeError::BatchNotFound => CommandError::new(
+            "operation_not_found",
+            ErrorCategory::Content,
+            "该文件操作记录已不可用。",
+            false,
+        ),
+    }
+}
+
 fn validated_indexed_source(
     active: &ActiveProject,
     node: &viewer_domain::file::FileNode,
@@ -1261,6 +1778,7 @@ async fn run_scan(
         events,
         portable_store,
         marker_lock,
+        scan_ready,
     } = services;
     let request = ScanRequest {
         session_id: active.session_id,
@@ -1334,7 +1852,11 @@ async fn run_scan(
         let _marker_guard = marker_lock.lock().await;
         hydrate_portable_markers(&index, store.as_ref())?;
     }
-    run_derived_indexing(active, coordinator, index, image, events).await
+    let result = run_derived_indexing(active, coordinator, index, image, events).await;
+    if result.is_ok() {
+        scan_ready.send_replace(true);
+    }
+    result
 }
 
 fn hydrate_portable_markers(

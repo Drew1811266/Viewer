@@ -87,29 +87,29 @@ git commit -m "docs: plan M2 review efficiency"
 **Interfaces:**
 - Produces: `PortableProjectIdentity::open(root, access, now_ms)`, `PortableDatabase::open`, schema v2 migration, and migration backup evidence.
 
-- [ ] **Step 1: Write failing manifest/migration/read-only tests**
+- [x] **Step 1: Write failing manifest/migration/read-only tests**
 
 Cover first writable open, stable reopen, project-directory copy, existing read-only metadata, absent read-only metadata, malformed/forward manifest rejection, v1 database migration, one-time v1 backup, and operation-journal reopen after v2 migration. Assert the manifest/database contain no absolute/cache path.
 
-Run: `cargo test --test m2_portable_metadata identity migration -- --nocapture`
+Run: `cargo test --test m2_portable_metadata -- --nocapture`
 
 Expected: RED because portable identity/schema v2 do not exist.
 
-- [ ] **Step 2: Implement atomic `project.json`**
+- [x] **Step 2: Implement atomic `project.json`**
 
 Use format `{ schemaVersion: 1, projectId, createdAtMs }`. Create the `.viewer` directory only for read-write access. Write a same-directory temporary file, `sync_all`, rename atomically, and sync the directory. Reject symlinks, case variants, non-regular files, unsupported versions, and project-ID/database disagreement. Read-only without metadata returns an ephemeral identity and no writable store.
 
-- [ ] **Step 3: Centralize portable database initialization**
+- [x] **Step 3: Centralize portable database initialization**
 
 Move the existing journal initializer behind one shared opener. Upgrade v1 to v2 inside one transaction after creating `metadata.sqlite.v1.bak` with exclusive creation and syncing it. Keep `journal_mode=DELETE`, `synchronous=FULL`, and foreign keys. Both marker and operation repositories must accept schema v2 and reject newer versions.
 
-- [ ] **Step 4: Verify GREEN and compatibility**
+- [x] **Step 4: Verify GREEN and compatibility**
 
 Run: `cargo test --test m2_portable_metadata && cargo test -p viewer-infrastructure operation_journal && cargo fmt --check`
 
 Expected: all identity, backup, migration, journal, and read-only cases pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add crates/viewer-infrastructure tests/m2_portable_metadata.rs

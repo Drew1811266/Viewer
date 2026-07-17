@@ -1,13 +1,12 @@
+use crate::portable::schema::{PortableSchemaError, open_database};
 use rusqlite::{Connection, OptionalExtension, params};
-use std::{path::Path, str::FromStr, sync::Mutex, time::Duration};
+use std::{path::Path, str::FromStr, sync::Mutex};
 use viewer_domain::{
     EntityId, OperationId, RelativePath,
     operation::{
         ConflictPolicy, OperationItemPlan, OperationKind, OperationState, OperationTransitionError,
     },
 };
-
-const PORTABLE_MIGRATION_V1: &str = include_str!("../../migrations/portable/0001_initial.sql");
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct JournalItem {
@@ -39,6 +38,8 @@ pub enum JournalError {
     },
     #[error("unsupported portable metadata schema version {0}")]
     UnsupportedSchema(i64),
+    #[error(transparent)]
+    Schema(#[from] PortableSchemaError),
     #[error("invalid persisted {field}: {value}")]
     InvalidPersistedValue { field: &'static str, value: String },
 }
@@ -49,12 +50,7 @@ pub struct OperationJournal {
 
 impl OperationJournal {
     pub fn open(path: impl AsRef<Path>) -> Result<Self, JournalError> {
-        let connection = Connection::open(path)?;
-        connection.busy_timeout(Duration::from_secs(5))?;
-        connection.execute_batch(
-            "PRAGMA foreign_keys = ON; PRAGMA journal_mode = DELETE; PRAGMA synchronous = FULL;",
-        )?;
-        initialize_schema(&connection)?;
+        let connection = open_database(path.as_ref(), true)?;
         Ok(Self {
             connection: Mutex::new(connection),
         })
@@ -308,29 +304,6 @@ fn checked_size(expected_size: u64) -> Result<i64, JournalError> {
         field: "expected_size",
         value: expected_size.to_string(),
     })
-}
-
-fn initialize_schema(connection: &Connection) -> Result<(), JournalError> {
-    let has_migrations_table = connection.query_row(
-        "SELECT EXISTS(
-            SELECT 1 FROM sqlite_master
-            WHERE type = 'table' AND name = 'schema_migrations'
-        )",
-        [],
-        |row| row.get::<_, bool>(0),
-    )?;
-    if !has_migrations_table {
-        connection.execute_batch(PORTABLE_MIGRATION_V1)?;
-        return Ok(());
-    }
-
-    match connection.query_row("SELECT MAX(version) FROM schema_migrations", [], |row| {
-        row.get::<_, Option<i64>>(0)
-    })? {
-        Some(1) => Ok(()),
-        Some(version) => Err(JournalError::UnsupportedSchema(version)),
-        None => Err(JournalError::UnsupportedSchema(0)),
-    }
 }
 
 fn read_journal_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<JournalItem> {

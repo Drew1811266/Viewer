@@ -13,6 +13,8 @@ getrandom.workspace = true
 libc.workspace = true
 nucleo-matcher.workspace = true
 rusqlite.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 viewer-application = { path = "../viewer-application" }
@@ -20,8 +22,6 @@ viewer-domain = { path = "../viewer-domain" }
 walkdir.workspace = true
 
 [dev-dependencies]
-serde.workspace = true
-serde_json.workspace = true
 tempfile.workspace = true
 viewer-test-support = { path = "../viewer-test-support" }
 
@@ -44,3 +44,7 @@ path = "../../tests/m1_browse_queries.rs"
 [[test]]
 name = "m1_text_preview"
 path = "../../tests/m1_text_preview.rs"
+
+[[test]]
+name = "m2_portable_metadata"
+path = "../../tests/m2_portable_metadata.rs"

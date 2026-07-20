@@ -4,6 +4,7 @@ import { tauriViewerBridge } from './api/viewer'
 import EmptyProject from './components/EmptyProject'
 import BatchRenameDialog from './components/BatchRenameDialog'
 import ContentBrowser from './components/ContentBrowser'
+import CompareWorkspace from './components/CompareWorkspace'
 import DestinationDialog from './components/DestinationDialog'
 import FileActionToolbar from './components/FileActionToolbar'
 import FolderOverview from './components/FolderOverview'
@@ -88,6 +89,7 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
   const draggedEntityIdsRef = useRef<string[]>([])
   const finderExportStartedRef = useRef(false)
   const [finderDragMessage, setFinderDragMessage] = useState<string | null>(null)
+  const [compareStatus, setCompareStatus] = useState<string | null>(null)
   const [operationDialog, setOperationDialog] = useState<OperationDialog | null>(null)
   const [operationSubmitting, setOperationSubmitting] = useState(false)
   const [resultsBatchId, setResultsBatchId] = useState<string | null>(null)
@@ -105,6 +107,7 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
     draggedEntityIdsRef.current = []
     finderExportStartedRef.current = false
     setFinderDragMessage(null)
+    setCompareStatus(null)
     setOperationDialog(null)
     setOperationSubmitting(false)
     setResultsBatchId(null)
@@ -412,6 +415,81 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
     setPreviewEntityId(null)
   }, [setPreviewEntityId])
 
+  const compareFiles = useMemo(() => {
+    if (state.workspace?.workspace !== 'content') return []
+    const byId = new Map(state.workspace.images.map((file) => [file.entityId, file]))
+    return state.compareEntityIds.flatMap((entityId) => {
+      const file = byId.get(entityId)
+      return file === undefined ? [] : [file]
+    })
+  }, [state.compareEntityIds, state.workspace])
+  const compareOpen = state.compareEntityIds.length >= 2 && compareFiles.length >= 2
+  const compareEntryAvailable =
+    state.workspace?.workspace === 'content' &&
+    !state.search.showResults &&
+    !operationBusy
+
+  const openComparison = useCallback(() => {
+    if (!compareEntryAvailable) {
+      setCompareStatus(
+        operationBusy
+          ? '请等待当前文件操作完成后再开始对比。'
+          : '请先返回文件夹内容，再选择图片进行对比。',
+      )
+      return
+    }
+    if (
+      selectedFiles.length < 2 ||
+      selectedFiles.length > 4 ||
+      !selectedFiles.every(matchesImage)
+    ) {
+      setCompareStatus('请选择 2–4 张 JPG 或 PNG 图片进行对比。')
+      return
+    }
+    setCompareStatus(null)
+    setActivePreview(null)
+    setPreviewEntityId(null)
+    setCompareEntityIds(selectedFiles.map((file) => file.entityId))
+  }, [
+    compareEntryAvailable,
+    operationBusy,
+    selectedFiles,
+    setCompareEntityIds,
+    setPreviewEntityId,
+  ])
+
+  const changeComparedEntities = useCallback(
+    (entityIds: string[]) => {
+      setCompareStatus(null)
+      if (entityIds.length >= 2) {
+        setCompareEntityIds(entityIds)
+        return
+      }
+      setCompareEntityIds([])
+      if (entityIds.length !== 1 || state.workspace?.workspace !== 'content') return
+      const survivor = state.workspace.images.find(
+        (file) => file.entityId === entityIds[0],
+      )
+      if (survivor !== undefined) openPreview(survivor)
+    },
+    [openPreview, setCompareEntityIds, state.workspace],
+  )
+
+  useEffect(() => {
+    if (state.compareEntityIds.length === 0) return
+    const liveIds = compareFiles.map((file) => file.entityId)
+    if (
+      liveIds.length !== state.compareEntityIds.length ||
+      liveIds.length < 2
+    ) {
+      changeComparedEntities(liveIds)
+    }
+  }, [changeComparedEntities, compareFiles, state.compareEntityIds])
+
+  useEffect(() => {
+    if (compareOpen && state.search.showResults) changeComparedEntities([])
+  }, [changeComparedEntities, compareOpen, state.search.showResults])
+
   useEffect(() => {
     const active = state.operation.active
     if (active?.lifecycle === 'completed' && state.operation.results !== null) {
@@ -435,6 +513,7 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
         isOrganizationShortcutTargetBlocked(event.target) ||
         operationDialog !== null ||
         activePreview !== null ||
+        compareOpen ||
         infoOpen ||
         resultsBatchId !== null ||
         hasTextSelection()
@@ -454,7 +533,10 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
         return
       }
       if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return
-      if (event.key === 'Enter') {
+      if (event.key.toLowerCase() === 'c') {
+        event.preventDefault()
+        openComparison()
+      } else if (event.key === 'Enter') {
         if (!canMutateSelection) return
         event.preventDefault()
         openRenameDialog()
@@ -469,8 +551,10 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
   }, [
     activePreview,
     canMutateSelection,
+    compareOpen,
     infoOpen,
     openRenameDialog,
+    openComparison,
     openTrashDialog,
     operationDialog,
     operationBusy,
@@ -528,6 +612,11 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
           {finderDragMessage}
         </p>
       )}
+      {compareStatus && (
+        <p className="compare-status" role="status">
+          {compareStatus}
+        </p>
+      )}
       <SearchToolbar
         query={state.search.query}
         folders={state.folders}
@@ -544,6 +633,7 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
         selectedCount={state.selectedEntityIds.length}
         selectionInfo={state.selectionInfo}
         readOnly={state.project.access === 'read_only'}
+        shortcutsDisabled={compareOpen}
         onSetReview={(reviewState) => void setReviewState(reviewState)}
         onToggleFavorite={() => void toggleFavorite()}
       />
@@ -551,14 +641,13 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
         selectedCount={selectedFiles.length}
         selectedImageCount={selectedFiles.filter(matchesImage).length}
         readOnly={state.project.access === 'read_only'}
-        busy={operationBusy}
+        busy={operationBusy || compareOpen}
+        compareContextAvailable={compareEntryAvailable}
         onRename={openRenameDialog}
         onCopy={() => openDestinationDialog('copy')}
         onMove={() => openDestinationDialog('move')}
         onTrash={openTrashDialog}
-        onCompare={() =>
-          setCompareEntityIds(selectedFiles.filter(matchesImage).map((file) => file.entityId))
-        }
+        onCompare={openComparison}
         onInfo={() => setInfoOpen(true)}
       />
       <div className="viewer-columns">
@@ -646,25 +735,40 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
           )}
           {!state.search.showResults && state.workspace?.workspace === 'content' && (
             <>
-              {state.showingAggregate && <p className="aggregate-label">全部后代文件</p>}
-              <ContentBrowser
-                workspace={state.workspace}
-                requestThumbnail={requestContentThumbnail}
-                onThumbnailTaskChange={setThumbnailTask}
-                onPreview={openPreview}
-                onSelectionChange={selectFiles}
-                onDragSelectionStart={(entityIds) => {
-                  finderExportStartedRef.current = false
-                  setFinderDragMessage(null)
-                  draggedEntityIdsRef.current = entityIds
-                  setDraggedEntityIds(entityIds)
-                }}
-                onDragSelectionEnd={() => {
-                  finderExportStartedRef.current = false
-                  draggedEntityIdsRef.current = []
-                  setDraggedEntityIds([])
-                }}
-              />
+              <div className="content-workspace-surface" hidden={compareOpen}>
+                {state.showingAggregate && <p className="aggregate-label">全部后代文件</p>}
+                <ContentBrowser
+                  workspace={state.workspace}
+                  requestThumbnail={requestContentThumbnail}
+                  onThumbnailTaskChange={setThumbnailTask}
+                  onPreview={openPreview}
+                  onSelectionChange={selectFiles}
+                  onDragSelectionStart={(entityIds) => {
+                    finderExportStartedRef.current = false
+                    setFinderDragMessage(null)
+                    draggedEntityIdsRef.current = entityIds
+                    setDraggedEntityIds(entityIds)
+                  }}
+                  onDragSelectionEnd={() => {
+                    finderExportStartedRef.current = false
+                    draggedEntityIdsRef.current = []
+                    setDraggedEntityIds([])
+                  }}
+                />
+              </div>
+              {compareOpen && (
+                <CompareWorkspace
+                  files={compareFiles}
+                  readOnly={state.project.access === 'read_only'}
+                  requestImage={requestPreviewImage}
+                  onEntityIdsChange={changeComparedEntities}
+                  onSetReview={(entityId, reviewState) =>
+                    void setReviewState(reviewState, [entityId])
+                  }
+                  onToggleFavorite={(entityId) => void toggleFavorite([entityId])}
+                  onStatus={setCompareStatus}
+                />
+              )}
             </>
           )}
         </section>

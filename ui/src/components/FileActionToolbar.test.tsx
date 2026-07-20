@@ -69,5 +69,8 @@ describe('FileActionToolbar', () => {
     expect(screen.getByRole('button', { name: '批量重命名' })).toBeDisabled()
     expect(screen.getByRole('button', { name: '并排对比' })).toBeDisabled()
     expect(screen.getByRole('button', { name: '信息' })).toBeEnabled()
+
+    rerender(<FileActionToolbar {...props} selectedCount={4} selectedImageCount={3} />)
+    expect(screen.getByRole('button', { name: '并排对比' })).toBeDisabled()
   })
 })

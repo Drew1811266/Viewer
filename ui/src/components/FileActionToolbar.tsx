@@ -3,6 +3,7 @@ interface FileActionToolbarProps {
   selectedImageCount: number
   readOnly: boolean
   busy: boolean
+  compareContextAvailable?: boolean
   onRename: () => void
   onCopy: () => void
   onMove: () => void
@@ -16,6 +17,7 @@ export default function FileActionToolbar({
   selectedImageCount,
   readOnly,
   busy,
+  compareContextAvailable = true,
   onRename,
   onCopy,
   onMove,
@@ -24,7 +26,12 @@ export default function FileActionToolbar({
   onInfo,
 }: FileActionToolbarProps) {
   const writesDisabled = selectedCount === 0 || readOnly || busy
-  const compareDisabled = selectedImageCount < 2 || selectedImageCount > 4 || busy
+  const compareDisabled =
+    selectedCount !== selectedImageCount ||
+    !compareContextAvailable ||
+    selectedImageCount < 2 ||
+    selectedImageCount > 4 ||
+    busy
   return (
     <div className="file-action-toolbar" aria-label="文件操作">
       <span>{selectedCount > 0 ? `已选择 ${selectedCount} 项` : '未选择文件'}</span>

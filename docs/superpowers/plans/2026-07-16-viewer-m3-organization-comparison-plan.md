@@ -546,25 +546,25 @@ git commit -m "feat: define bounded comparison model"
 **Interfaces:**
 - Produces: `C`/toolbar compare entry, 2-column/3-asymmetric/2×2 layouts, synchronized/independent pan/zoom, inline marker/favorite and graceful pane removal.
 
-- [ ] **Step 1: Write failing workspace interaction tests**
+- [x] **Step 1: Write failing workspace interaction tests**
 
 Cover invalid cardinality/type feedback, all layouts, actual viewport proxy requests, fit/100%/zoom/pan/rotation, sync toggle, keyboard focus, inline single-pane marker updates without selection loss, removal/reflow, one-pane preview transition, external deletion and read-only marker disable.
 
 Run: `pnpm --dir ui test -- src/components/CompareWorkspace.test.tsx src/components/ComparePane.test.tsx src/App.test.tsx`
 
-- [ ] **Step 2: Implement reusable pane rendering**
+- [x] **Step 2: Implement reusable pane rendering**
 
 Use ResizeObserver viewport dimensions and existing `requestImage` opaque URLs. Cancel/ignore stale pane requests by entity/request revision. Show a bounded-memory downgrade message when 100% cannot be supplied.
 
-- [ ] **Step 3: Integrate workspace and inline review**
+- [x] **Step 3: Integrate workspace and inline review**
 
 Open only from 2–4 selected images. Preserve folder/grid selection underneath. Pane marker actions target that pane's entity through the existing marker command and refresh all projections. `C` is suppressed in text/editable/modal contexts.
 
-- [ ] **Step 4: Verify GREEN and UI build**
+- [x] **Step 4: Verify GREEN and UI build**
 
 Run: `pnpm --dir ui test && pnpm --dir ui build && cargo test --test m3_compare_budget`
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add ui/src tests/m3_compare_budget.rs

@@ -7,6 +7,7 @@ interface MarkerControlsProps {
   readOnly: boolean
   onSetReview: (state: ReviewState | null) => void
   onToggleFavorite: () => void
+  shortcutsDisabled?: boolean
 }
 
 export default function MarkerControls({
@@ -15,11 +16,19 @@ export default function MarkerControls({
   readOnly,
   onSetReview,
   onToggleFavorite,
+  shortcutsDisabled = false,
 }: MarkerControlsProps) {
   const disabled = readOnly || selectedCount === 0
   useEffect(() => {
     function shortcut(event: KeyboardEvent) {
-      if (disabled || event.metaKey || event.ctrlKey || event.altKey || ownsTextInput(event.target)) {
+      if (
+        disabled ||
+        shortcutsDisabled ||
+        event.metaKey ||
+        event.ctrlKey ||
+        event.altKey ||
+        ownsTextInput(event.target)
+      ) {
         return
       }
       const key = event.key.toLowerCase()
@@ -43,52 +52,17 @@ export default function MarkerControls({
     }
     window.addEventListener('keydown', shortcut)
     return () => window.removeEventListener('keydown', shortcut)
-  }, [disabled, onSetReview, onToggleFavorite])
+  }, [disabled, onSetReview, onToggleFavorite, shortcutsDisabled])
 
   return (
     <section className="marker-controls" aria-label="批量标记">
-      <div className="marker-buttons">
-        <MarkerButton
-          label="标记为保留"
-          text="✓ 保留"
-          shortcut="1"
-          pressed={commonReview(selectionInfo) === 'keep'}
-          disabled={disabled}
-          onClick={() => onSetReview('keep')}
-        />
-        <MarkerButton
-          label="标记为待定"
-          text="• 待定"
-          shortcut="2"
-          pressed={commonReview(selectionInfo) === 'pending'}
-          disabled={disabled}
-          onClick={() => onSetReview('pending')}
-        />
-        <MarkerButton
-          label="标记为淘汰"
-          text="× 淘汰"
-          shortcut="3"
-          pressed={commonReview(selectionInfo) === 'reject'}
-          disabled={disabled}
-          onClick={() => onSetReview('reject')}
-        />
-        <MarkerButton
-          label="清除审阅状态"
-          text="○ 清除"
-          shortcut="0"
-          pressed={commonReview(selectionInfo) === null}
-          disabled={disabled}
-          onClick={() => onSetReview(null)}
-        />
-        <MarkerButton
-          label="切换收藏"
-          text="★ 收藏"
-          shortcut="F"
-          pressed={commonFavorite(selectionInfo) === true}
-          disabled={disabled}
-          onClick={onToggleFavorite}
-        />
-      </div>
+      <MarkerButtons
+        reviewState={commonReview(selectionInfo)}
+        favorite={commonFavorite(selectionInfo)}
+        disabled={disabled}
+        onSetReview={onSetReview}
+        onToggleFavorite={onToggleFavorite}
+      />
       <div className="marker-selection-summary" role="status">
         <span>{selectedCount === 0 ? '未选择项目' : `已选 ${selectedCount} 项`}</span>
         {selectedCount > 0 && (
@@ -103,6 +77,69 @@ export default function MarkerControls({
   )
 }
 
+export function MarkerButtons({
+  reviewState,
+  favorite,
+  disabled,
+  labelPrefix = '',
+  showShortcuts = true,
+  onSetReview,
+  onToggleFavorite,
+}: {
+  reviewState: ReviewState | null | 'mixed' | undefined
+  favorite: boolean | 'mixed' | undefined
+  disabled: boolean
+  labelPrefix?: string
+  showShortcuts?: boolean
+  onSetReview: (state: ReviewState | null) => void
+  onToggleFavorite: () => void
+}) {
+  return (
+    <div className="marker-buttons">
+      <MarkerButton
+        label={`${labelPrefix}标记为保留`}
+        text="✓ 保留"
+        shortcut={showShortcuts ? '1' : undefined}
+        pressed={reviewState === 'keep'}
+        disabled={disabled}
+        onClick={() => onSetReview('keep')}
+      />
+      <MarkerButton
+        label={`${labelPrefix}标记为待定`}
+        text="• 待定"
+        shortcut={showShortcuts ? '2' : undefined}
+        pressed={reviewState === 'pending'}
+        disabled={disabled}
+        onClick={() => onSetReview('pending')}
+      />
+      <MarkerButton
+        label={`${labelPrefix}标记为淘汰`}
+        text="× 淘汰"
+        shortcut={showShortcuts ? '3' : undefined}
+        pressed={reviewState === 'reject'}
+        disabled={disabled}
+        onClick={() => onSetReview('reject')}
+      />
+      <MarkerButton
+        label={`${labelPrefix}清除审阅状态`}
+        text="○ 清除"
+        shortcut={showShortcuts ? '0' : undefined}
+        pressed={reviewState === null}
+        disabled={disabled}
+        onClick={() => onSetReview(null)}
+      />
+      <MarkerButton
+        label={`${labelPrefix}切换收藏`}
+        text="★ 收藏"
+        shortcut={showShortcuts ? 'F' : undefined}
+        pressed={favorite === true}
+        disabled={disabled}
+        onClick={onToggleFavorite}
+      />
+    </div>
+  )
+}
+
 function MarkerButton({
   label,
   text,
@@ -113,7 +150,7 @@ function MarkerButton({
 }: {
   label: string
   text: string
-  shortcut: string
+  shortcut?: string
   pressed: boolean
   disabled: boolean
   onClick: () => void
@@ -124,11 +161,11 @@ function MarkerButton({
       aria-label={label}
       aria-pressed={pressed}
       disabled={disabled}
-      title={`${label}（${shortcut}）`}
+      title={shortcut ? `${label}（${shortcut}）` : label}
       onClick={onClick}
     >
       {text}
-      <kbd>{shortcut}</kbd>
+      {shortcut && <kbd>{shortcut}</kbd>}
     </button>
   )
 }

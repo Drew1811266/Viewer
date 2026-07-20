@@ -502,12 +502,15 @@ export function useViewerController(bridge: ViewerBridge) {
   )
 
   const setReviewState = useCallback(
-    async (reviewState: ReviewState | null) => {
+    async (reviewState: ReviewState | null, entityIdsOverride?: string[]) => {
       const current = stateRef.current
+      const targetEntityIds = uniqueEntityIds(
+        entityIdsOverride ?? current.selectedEntityIds,
+      )
       if (
         current.project === null ||
         current.project.access === 'read_only' ||
-        current.selectedEntityIds.length === 0
+        targetEntityIds.length === 0
       ) {
         return
       }
@@ -515,7 +518,7 @@ export function useViewerController(bridge: ViewerBridge) {
         const result = await bridge.setReviewState({
           sessionId: current.project.sessionId,
           generation: current.project.generation,
-          entityIds: current.selectedEntityIds,
+          entityIds: targetEntityIds,
           reviewState,
         })
         dispatch({
@@ -541,12 +544,15 @@ export function useViewerController(bridge: ViewerBridge) {
     [bridge, refreshProjection, refreshSelectionInfo],
   )
 
-  const toggleFavorite = useCallback(async () => {
+  const toggleFavorite = useCallback(async (entityIdsOverride?: string[]) => {
     const current = stateRef.current
+    const targetEntityIds = uniqueEntityIds(
+      entityIdsOverride ?? current.selectedEntityIds,
+    )
     if (
       current.project === null ||
       current.project.access === 'read_only' ||
-      current.selectedEntityIds.length === 0
+      targetEntityIds.length === 0
     ) {
       return
     }
@@ -554,7 +560,7 @@ export function useViewerController(bridge: ViewerBridge) {
       const result = await bridge.toggleFavorite({
         sessionId: current.project.sessionId,
         generation: current.project.generation,
-        entityIds: current.selectedEntityIds,
+        entityIds: targetEntityIds,
       })
       dispatch({
         type: 'marker_changes_applied',
@@ -981,4 +987,8 @@ export function useViewerController(bridge: ViewerBridge) {
     clearCloseBlocked,
     openPermissionSettings,
   }
+}
+
+function uniqueEntityIds(entityIds: readonly string[]): string[] {
+  return [...new Set(entityIds)]
 }

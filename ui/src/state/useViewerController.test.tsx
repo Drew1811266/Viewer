@@ -203,6 +203,25 @@ describe('useViewerController M2 coordination', () => {
       'image-1',
       'image-2',
     ])
+    await act(() =>
+      writableHook.result.current.setReviewState('reject', ['image-2', 'image-2']),
+    )
+    expect(writable.setReviewState).toHaveBeenLastCalledWith({
+      sessionId: 'session-1',
+      generation: 1,
+      entityIds: ['image-2'],
+      reviewState: 'reject',
+    })
+    await act(() => writableHook.result.current.toggleFavorite(['image-1']))
+    expect(writable.toggleFavorite).toHaveBeenLastCalledWith({
+      sessionId: 'session-1',
+      generation: 1,
+      entityIds: ['image-1'],
+    })
+    expect(writableHook.result.current.state.selectedEntityIds).toEqual([
+      'image-1',
+      'image-2',
+    ])
 
     const readOnly = bridge('read_only')
     const readOnlyHook = renderHook(() => useViewerController(readOnly))

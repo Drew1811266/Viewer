@@ -545,6 +545,109 @@ describe('Viewer empty state', () => {
     expect(screen.queryByText(/Users\/private/)).not.toBeInTheDocument()
   })
 
+  it('opens compare with C and restores the mounted grid selection after closing', async () => {
+    const viewer = bridge()
+    vi.mocked(viewer.queryFolder).mockResolvedValue(compareContentWorkspace())
+    render(<App bridge={viewer} />)
+    fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
+    const front = await screen.findByRole('option', { name: 'front.jpg' })
+    const back = screen.getByRole('option', { name: 'back.jpg' })
+    fireEvent.click(front)
+    fireEvent.click(back, { metaKey: true })
+
+    fireEvent.keyDown(window, { key: 'c' })
+    const compare = await screen.findByRole('region', { name: '图片对比' })
+    expect(compare).toHaveAttribute(
+      'data-layout',
+      'two_columns',
+    )
+    expect(compare).toHaveFocus()
+    fireEvent.click(screen.getByRole('button', { name: '关闭对比' }))
+
+    expect(front).toHaveAttribute('aria-selected', 'true')
+    expect(back).toHaveAttribute('aria-selected', 'true')
+  })
+
+  it('applies an inline pane marker without replacing the underlying grid selection', async () => {
+    const viewer = bridge()
+    vi.mocked(viewer.queryFolder).mockResolvedValue(compareContentWorkspace())
+    vi.mocked(viewer.setReviewState).mockResolvedValue({ changes: [] })
+    render(<App bridge={viewer} />)
+    fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
+    const front = await screen.findByRole('option', { name: 'front.jpg' })
+    const back = screen.getByRole('option', { name: 'back.jpg' })
+    fireEvent.click(front)
+    fireEvent.click(back, { metaKey: true })
+    fireEvent.click(screen.getByRole('button', { name: '并排对比' }))
+
+    fireEvent.click(await screen.findByRole('button', { name: 'front.jpg 标记为保留' }))
+    await waitFor(() =>
+      expect(viewer.setReviewState).toHaveBeenCalledWith({
+        sessionId: 'session-1',
+        generation: 1,
+        entityIds: ['image-1'],
+        reviewState: 'keep',
+      }),
+    )
+    fireEvent.click(screen.getByRole('button', { name: '关闭对比' }))
+    expect(front).toHaveAttribute('aria-selected', 'true')
+    expect(back).toHaveAttribute('aria-selected', 'true')
+  })
+
+  it('falls back to the surviving image preview when compare reaches one pane', async () => {
+    const viewer = bridge()
+    vi.mocked(viewer.queryFolder).mockResolvedValue(compareContentWorkspace())
+    render(<App bridge={viewer} />)
+    fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
+    const front = await screen.findByRole('option', { name: 'front.jpg' })
+    const back = screen.getByRole('option', { name: 'back.jpg' })
+    fireEvent.click(front)
+    fireEvent.click(back, { metaKey: true })
+    fireEvent.click(screen.getByRole('button', { name: '并排对比' }))
+
+    fireEvent.click(await screen.findByRole('button', { name: '移除 front.jpg' }))
+    expect(await screen.findByRole('dialog', { name: '图片预览' })).toHaveTextContent(
+      'back.jpg',
+    )
+    expect(screen.queryByRole('region', { name: '图片对比' })).not.toBeInTheDocument()
+  })
+
+  it('suppresses the C compare shortcut while an editable control owns the event', async () => {
+    const viewer = bridge()
+    vi.mocked(viewer.queryFolder).mockResolvedValue(compareContentWorkspace())
+    render(<App bridge={viewer} />)
+    fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
+    const front = await screen.findByRole('option', { name: 'front.jpg' })
+    const back = screen.getByRole('option', { name: 'back.jpg' })
+    fireEvent.click(front)
+    fireEvent.click(back, { metaKey: true })
+
+    fireEvent.keyDown(screen.getByRole('searchbox', { name: '搜索项目' }), { key: 'c' })
+    expect(screen.queryByRole('region', { name: '图片对比' })).not.toBeInTheDocument()
+  })
+
+  it('does not open a stale grid selection from search results and closes compare on search', async () => {
+    const viewer = bridge()
+    vi.mocked(viewer.queryFolder).mockResolvedValue(compareContentWorkspace())
+    render(<App bridge={viewer} />)
+    fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
+    const front = await screen.findByRole('option', { name: 'front.jpg' })
+    const back = screen.getByRole('option', { name: 'back.jpg' })
+    fireEvent.click(front)
+    fireEvent.click(back, { metaKey: true })
+    fireEvent.keyDown(window, { key: 'c' })
+    expect(await screen.findByRole('region', { name: '图片对比' })).toHaveFocus()
+
+    const search = screen.getByRole('searchbox', { name: '搜索项目' })
+    fireEvent.change(search, { target: { value: 'shoe' } })
+    await waitFor(() =>
+      expect(screen.queryByRole('region', { name: '图片对比' })).not.toBeInTheDocument(),
+    )
+    expect(screen.getByRole('button', { name: '并排对比' })).toBeDisabled()
+    fireEvent.keyDown(window, { key: 'c' })
+    expect(screen.queryByRole('region', { name: '图片对比' })).not.toBeInTheDocument()
+  })
+
   it('opens the equivalent preselected conflict dialog when a dropped item is not ready', async () => {
     const viewer = bridge()
     vi.mocked(viewer.folderTree).mockResolvedValue([
@@ -616,6 +719,24 @@ function contentWorkspace() {
         marker: { reviewState: null, favorite: false },
         imageMetadata: null,
         imageUrl: null,
+      },
+    ],
+    textFiles: [],
+  }
+}
+
+function compareContentWorkspace() {
+  const first = contentWorkspace().images[0]!
+  return {
+    workspace: 'content' as const,
+    images: [
+      first,
+      {
+        ...first,
+        entityId: 'image-2',
+        relativePath: 'id/back.jpg',
+        name: 'back.jpg',
+        modifiedNs: '2',
       },
     ],
     textFiles: [],

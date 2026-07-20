@@ -5,9 +5,11 @@ import { getCurrentWebview } from '@tauri-apps/api/webview'
 import { open } from '@tauri-apps/plugin-dialog'
 import type {
   CancelOperationRequest,
+  BeginFinderDragRequest,
   CloseBlockedEvent,
   ExecuteFileCommandRequest,
   FileCommandPreflight,
+  FinderDragReceipt,
   FolderTreeItem,
   FolderWorkspace,
   ImageRepresentation,
@@ -62,6 +64,7 @@ export interface ViewerBridge {
   operationResults(request: OperationResultsRequest): Promise<OperationResultPage>
   cancelOperation(request: CancelOperationRequest): Promise<boolean>
   undoLastOperation(request: UndoLastOperationRequest): Promise<UndoReceipt | null>
+  beginFinderDrag(request: BeginFinderDragRequest): Promise<FinderDragReceipt>
   openPermissionSettings(): Promise<void>
   listenScan(handler: (event: ScanEvent) => void): Promise<UnlistenFn>
   listenIndexProgress(handler: (event: IndexProgressEvent) => void): Promise<UnlistenFn>
@@ -148,6 +151,9 @@ export const tauriViewerBridge: ViewerBridge = {
   },
   undoLastOperation(request) {
     return invoke<UndoReceipt | null>('undo_last_operation', { request })
+  },
+  beginFinderDrag(request) {
+    return invoke<FinderDragReceipt>('begin_finder_drag', { request })
   },
   openPermissionSettings() {
     return invoke<void>('open_permission_settings')

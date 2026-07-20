@@ -174,6 +174,20 @@ pub struct PreflightFileCommandRequestDto {
     pub items: Vec<FileCommandItemRequestDto>,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct BeginFinderDragRequestDto {
+    pub session_id: String,
+    pub generation: u64,
+    pub entity_ids: Vec<String>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FinderDragReceiptDto {
+    pub file_count: usize,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum FileCommandPreflightStateDto {

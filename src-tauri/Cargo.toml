@@ -16,6 +16,7 @@ tauri-build = { version = "2", features = [] }
 ammonia.workspace = true
 async-trait.workspace = true
 libc.workspace = true
+objc2-app-kit.workspace = true
 pulldown-cmark.workspace = true
 serde.workspace = true
 tauri = { version = "2", features = [] }
@@ -46,3 +47,7 @@ path = "../tests/m2_desktop_runtime.rs"
 [[test]]
 name = "m3_desktop_runtime"
 path = "../tests/m3_desktop_runtime.rs"
+
+[[test]]
+name = "m3_drag_export"
+path = "../tests/m3_drag_export.rs"

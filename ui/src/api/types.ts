@@ -440,6 +440,16 @@ export interface UndoReceipt {
   actionCount: number
 }
 
+export interface BeginFinderDragRequest {
+  sessionId: string
+  generation: number
+  entityIds: string[]
+}
+
+export interface FinderDragReceipt {
+  fileCount: number
+}
+
 export interface ProjectChangedEvent {
   sessionId: string
   generation: number

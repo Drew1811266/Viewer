@@ -100,4 +100,40 @@ describe('ContentBrowser', () => {
     await waitFor(() => expect(requestThumbnail).toHaveBeenCalled())
     expect(requestThumbnail.mock.calls.length).toBeLessThan(50)
   })
+
+  it('starts a multi-selection drag with an opaque Viewer marker and current entity IDs only', () => {
+    const start = vi.fn()
+    const setData = vi.fn()
+    render(<ContentBrowser workspace={workspace(4)} onDragSelectionStart={start} />)
+    fireEvent.click(screen.getByRole('option', { name: '1.jpg' }))
+    fireEvent.click(screen.getByRole('option', { name: '3.jpg' }), { metaKey: true })
+
+    fireEvent.dragStart(screen.getByRole('option', { name: '3.jpg' }), {
+      dataTransfer: { setData, effectAllowed: 'none' },
+    })
+
+    expect(start).toHaveBeenCalledWith(['image-1', 'image-3'])
+    expect(setData).toHaveBeenCalledWith('application/x-viewer-selection', 'viewer-selection')
+    expect(setData).not.toHaveBeenCalledWith(expect.anything(), expect.stringContaining('image-'))
+    expect(setData).not.toHaveBeenCalledWith(expect.anything(), expect.stringContaining('/'))
+  })
+
+  it('suppresses stale selected IDs when a refreshed workspace starts a drag', () => {
+    const start = vi.fn()
+    const rendered = render(
+      <ContentBrowser workspace={workspace(3)} onDragSelectionStart={start} />,
+    )
+    fireEvent.click(screen.getByRole('option', { name: '1.jpg' }))
+    fireEvent.click(screen.getByRole('option', { name: '2.jpg' }), { metaKey: true })
+    const refreshed = workspace(3)
+    refreshed.images = refreshed.images.filter((file) => file.entityId !== 'image-1')
+    rendered.rerender(
+      <ContentBrowser workspace={refreshed} onDragSelectionStart={start} />,
+    )
+
+    fireEvent.dragStart(screen.getByRole('option', { name: '2.jpg' }), {
+      dataTransfer: { setData: vi.fn(), effectAllowed: 'none' },
+    })
+    expect(start).toHaveBeenLastCalledWith(['image-2'])
+  })
 })

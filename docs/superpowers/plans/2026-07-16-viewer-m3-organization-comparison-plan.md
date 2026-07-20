@@ -471,25 +471,25 @@ git commit -m "feat: add safe organization dialogs"
 **Interfaces:**
 - Produces: `FinderDragPort`, `begin_finder_drag(entity_ids)`, entity-only HTML drag payload, move/Option-copy target state and drop-to-command equivalence.
 
-- [ ] **Step 1: Write failing internal-drag tests**
+- [x] **Step 1: Write failing internal-drag tests**
 
 Cover multi-selection payload, default move, Option-copy at drop, valid target highlight, self/descendant/read-only/reserved/outside rejection, drop command equivalence and stale selection suppression.
 
-- [ ] **Step 2: Implement entity-only internal drag**
+- [x] **Step 2: Implement entity-only internal drag**
 
 The frontend transfer holds a Viewer MIME marker and in-memory entity IDs only, never paths. Folder targets calculate visual validity but Rust revalidates every drop. Dropping calls the same destination preflight/execute controller used by dialogs.
 
-- [ ] **Step 3: Implement AppKit Finder export**
+- [x] **Step 3: Implement AppKit Finder export**
 
 Resolve and canonicalize current-session files in Rust, obtain the WKWebView native view on the main thread, and start an AppKit dragging session with file URLs and copy operation mask. Use `NSApplication.currentEvent`; reject absent mouse-drag context, directories, stale IDs, symlink/alias and outside-root paths. Add no filesystem capability and no user-supplied path command.
 
-- [ ] **Step 4: Verify automated and opt-in real drag evidence**
+- [x] **Step 4: Verify automated and opt-in real drag evidence**
 
 Run: `cargo test --test m3_drag_export && pnpm --dir ui test -- src/components/ContentBrowser.test.tsx src/components/FolderTree.test.tsx && ./scripts/check-tauri-security.sh`
 
 Expected: adapter/payload tests pass. A physical packaged-app drag to Finder is mandatory in Task 17.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add crates/viewer-application crates/viewer-platform-macos src-tauri ui/src/components tests/m3_drag_export.rs

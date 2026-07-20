@@ -63,17 +63,30 @@ impl TaskCoordinator {
         self.lock_state().active == Some((session_id, generation))
     }
 
+    /// Runs a short synchronous action while the session token is held current.
+    /// Session cancellation and generation changes wait until the action returns.
+    pub fn run_if_current<T>(
+        &self,
+        session_id: SessionId,
+        generation: Generation,
+        action: impl FnOnce() -> T,
+    ) -> Option<T> {
+        let state = self.lock_state();
+        if state.active != Some((session_id, generation)) {
+            return None;
+        }
+        let result = action();
+        drop(state);
+        Some(result)
+    }
+
     pub(crate) fn publish_if_current<T>(
         &self,
         session_id: SessionId,
         generation: Generation,
         publish: impl FnOnce() -> T,
     ) -> Option<T> {
-        let state = self.lock_state();
-        if state.active != Some((session_id, generation)) {
-            return None;
-        }
-        Some(publish())
+        self.run_if_current(session_id, generation, publish)
     }
 
     pub fn cancel_session(&self, session_id: SessionId) -> bool {
@@ -145,5 +158,19 @@ mod tests {
         let result = coordinator.publish_if_current(session, old, || published = true);
         assert_eq!(result, None);
         assert!(!published);
+    }
+
+    #[test]
+    fn guarded_action_does_not_run_after_the_session_is_cancelled() {
+        let coordinator = TaskCoordinator::default();
+        let session = SessionId::new();
+        let generation = coordinator.begin_session(session);
+        assert!(coordinator.cancel_session(session));
+
+        let mut ran = false;
+        let result = coordinator.run_if_current(session, generation, || ran = true);
+
+        assert_eq!(result, None);
+        assert!(!ran);
     }
 }

@@ -26,8 +26,9 @@ use std::{
 use tokio::{sync::Mutex, task::JoinHandle, time::Instant};
 use viewer_application::{
     ActiveProject, BrowseIndexPort, BrowseService, ClockPort, ImageError, ImagePort, ImageRequest,
-    ProjectAccess, ProjectOpenError, ProjectProbeError, ProjectProbePort, ProjectSessionService,
-    ScanPort, SearchPort, SearchSnippetPort, TextEncoding, TextPreviewPort, VolumePort,
+    PreparedFinderDrag, ProjectAccess, ProjectOpenError, ProjectProbeError, ProjectProbePort,
+    ProjectSessionService, ScanPort, SearchPort, SearchSnippetPort, TextEncoding, TextPreviewPort,
+    VolumePort,
     file_commands::{
         BatchId, BatchProgress, BatchResultPage, ConflictResolution, FileCommand, FileCommandItem,
         FileCommandKind, FileCommandPreflight, FileCommandService,
@@ -634,6 +635,9 @@ impl DesktopRuntime {
         let Some(mut session) = self.session.lock().await.take() else {
             return Ok(());
         };
+        // Invalidate the session before the first cleanup await. Native actions
+        // guarded by this token must not start after close has taken ownership.
+        self.coordinator.cancel_session(session.active.session_id);
         self.active_image_session.set(None);
         self.image_registry
             .remove_session(session.active.session_id);
@@ -1038,6 +1042,41 @@ impl DesktopRuntime {
         self.ensure_project_current(expected_session, expected_generation)
             .await?;
         Ok(prepared)
+    }
+
+    pub async fn prepare_finder_drag(
+        &self,
+        expected_session: SessionId,
+        expected_generation: Generation,
+        entity_ids: &[EntityId],
+    ) -> Result<PreparedFinderDrag, CommandError> {
+        let (root, index) = {
+            let session = self.session.lock().await;
+            let session = session.as_ref().ok_or_else(project_not_open)?;
+            validate_project_request(&session.active, expected_session, expected_generation)?;
+            (session.active.root.clone(), Arc::clone(&session.index))
+        };
+        let ids = entity_ids.to_vec();
+        let prepared = tokio::task::spawn_blocking(move || {
+            viewer_application::prepare_finder_drag(&root, index.as_ref(), &ids)
+        })
+        .await
+        .map_err(|_| internal_command_error())?
+        .map_err(CommandError::from)?;
+        self.ensure_project_current(expected_session, expected_generation)
+            .await?;
+        Ok(prepared)
+    }
+
+    pub fn run_if_project_current<T>(
+        &self,
+        expected_session: SessionId,
+        expected_generation: Generation,
+        action: impl FnOnce() -> T,
+    ) -> Result<T, CommandError> {
+        self.coordinator
+            .run_if_current(expected_session, expected_generation, action)
+            .ok_or_else(stale_project_session)
     }
 
     pub async fn execute_file_command(

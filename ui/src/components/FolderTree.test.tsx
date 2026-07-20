@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { createEvent, fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import type { FolderTreeItem } from '../api/types'
 import FolderTree from './FolderTree'
@@ -71,5 +71,121 @@ describe('FolderTree', () => {
     render(<FolderTree folders={many} selectedId={null} onSelect={vi.fn()} height={280} />)
 
     expect(screen.getAllByRole('treeitem').length).toBeLessThanOrEqual(20)
+  })
+
+  it('highlights valid move/copy targets and emits the same entity-only drop intent', () => {
+    const drop = vi.fn()
+    render(
+      <FolderTree
+        folders={folders}
+        selectedId={null}
+        onSelect={vi.fn()}
+        draggedEntityIds={['file-1', 'file-2']}
+        onDropFiles={drop}
+      />,
+    )
+    const target = screen.getByRole('treeitem', { name: 'empty' })
+    const transfer = { types: ['application/x-viewer-selection'], dropEffect: 'none' }
+    fireEvent.dragOver(target, { dataTransfer: transfer })
+    expect(target).toHaveAttribute('data-drop-mode', 'move')
+    const copyOver = createEvent.dragOver(target, { dataTransfer: transfer })
+    Object.defineProperty(copyOver, 'altKey', { value: true })
+    fireEvent(target, copyOver)
+    expect(target).toHaveAttribute('data-drop-mode', 'copy')
+    const copyDrop = createEvent.drop(target, { dataTransfer: transfer })
+    Object.defineProperty(copyDrop, 'altKey', { value: true })
+    fireEvent(target, copyDrop)
+    expect(drop).toHaveBeenCalledWith(['file-1', 'file-2'], '4', 'copy')
+  })
+
+  it('rejects read-only and explicitly invalid internal drop targets', () => {
+    const drop = vi.fn()
+    const rendered = render(
+      <FolderTree
+        folders={folders}
+        selectedId={null}
+        onSelect={vi.fn()}
+        draggedEntityIds={['file-1']}
+        readOnly
+        onDropFiles={drop}
+      />,
+    )
+    const target = screen.getByRole('treeitem', { name: 'empty' })
+    const transfer = { types: ['application/x-viewer-selection'], dropEffect: 'none' }
+    fireEvent.dragOver(target, { dataTransfer: transfer })
+    fireEvent.drop(target, { dataTransfer: transfer })
+    expect(target).not.toHaveAttribute('data-drop-mode')
+    expect(drop).not.toHaveBeenCalled()
+
+    rendered.rerender(
+      <FolderTree
+        folders={folders}
+        selectedId={null}
+        onSelect={vi.fn()}
+        draggedEntityIds={['file-1']}
+        invalidDropTargetIds={['4']}
+        onDropFiles={drop}
+      />,
+    )
+    fireEvent.dragOver(target, { dataTransfer: transfer })
+    fireEvent.drop(target, { dataTransfer: transfer })
+    expect(target).toHaveAttribute('data-drop-invalid', 'true')
+    expect(drop).not.toHaveBeenCalled()
+  })
+
+  it('validates the destination against the current move/copy mode', () => {
+    const drop = vi.fn()
+    const validate = vi.fn((_folderId: string, mode: 'move' | 'copy') => mode === 'copy')
+    render(
+      <FolderTree
+        folders={folders}
+        selectedId={null}
+        onSelect={vi.fn()}
+        draggedEntityIds={['file-1']}
+        isDropTargetValid={validate}
+        onDropFiles={drop}
+      />,
+    )
+    const target = screen.getByRole('treeitem', { name: 'empty' })
+    const transfer = { types: ['application/x-viewer-selection'], dropEffect: 'none' }
+
+    fireEvent.dragOver(target, { dataTransfer: transfer })
+    expect(target).toHaveAttribute('data-drop-invalid', 'true')
+    fireEvent.drop(target, { dataTransfer: transfer })
+    expect(drop).not.toHaveBeenCalled()
+
+    const copyOver = createEvent.dragOver(target, { dataTransfer: transfer })
+    Object.defineProperty(copyOver, 'altKey', { value: true })
+    fireEvent(target, copyOver)
+    expect(target).toHaveAttribute('data-drop-mode', 'copy')
+    const copyDrop = createEvent.drop(target, { dataTransfer: transfer })
+    Object.defineProperty(copyDrop, 'altKey', { value: true })
+    fireEvent(target, copyDrop)
+    expect(drop).toHaveBeenCalledWith(['file-1'], '4', 'copy')
+    expect(validate).toHaveBeenCalledWith('4', 'move')
+    expect(validate).toHaveBeenCalledWith('4', 'copy')
+  })
+
+  it('clears a highlighted target when the drag ends', () => {
+    const rendered = render(
+      <FolderTree
+        folders={folders}
+        selectedId={null}
+        onSelect={vi.fn()}
+        draggedEntityIds={['file-1']}
+      />,
+    )
+    const target = screen.getByRole('treeitem', { name: 'empty' })
+    fireEvent.dragOver(target, {
+      dataTransfer: { types: ['application/x-viewer-selection'], dropEffect: 'none' },
+    })
+    expect(target).toHaveAttribute('data-drop-mode', 'move')
+
+    rendered.rerender(
+      <FolderTree folders={folders} selectedId={null} onSelect={vi.fn()} draggedEntityIds={[]} />,
+    )
+
+    expect(target).not.toHaveAttribute('data-drop-mode')
+    expect(target).not.toHaveAttribute('data-drop-invalid')
   })
 })

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ViewerBridge } from './api/viewer'
 import { tauriViewerBridge } from './api/viewer'
 import EmptyProject from './components/EmptyProject'
@@ -24,6 +24,7 @@ import type {
   BrowserFile,
   ConflictResolution,
   FileCommandItem,
+  FileCommandPreflight,
   ImageRepresentationRequest,
   RenamePreview,
   RenameRules,
@@ -37,7 +38,13 @@ interface AppProps {
 type OperationDialog =
   | { kind: 'rename'; file: BrowserFile }
   | { kind: 'batch_rename'; files: BrowserFile[] }
-  | { kind: 'destination'; mode: 'copy' | 'move'; files: BrowserFile[] }
+  | {
+      kind: 'destination'
+      mode: 'copy' | 'move'
+      files: BrowserFile[]
+      initialDestinationId?: string
+      initialPreflight?: FileCommandPreflight
+    }
   | { kind: 'trash'; files: BrowserFile[] }
 
 export default function App({ bridge = tauriViewerBridge }: AppProps) {
@@ -77,6 +84,10 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
   const [dismissedTasks, setDismissedTasks] = useState<Set<string>>(() => new Set())
   const [activePreview, setActivePreview] = useState<BrowserFile | null>(null)
   const [selectedFiles, setSelectedFiles] = useState<BrowserFile[]>([])
+  const [draggedEntityIds, setDraggedEntityIds] = useState<string[]>([])
+  const draggedEntityIdsRef = useRef<string[]>([])
+  const finderExportStartedRef = useRef(false)
+  const [finderDragMessage, setFinderDragMessage] = useState<string | null>(null)
   const [operationDialog, setOperationDialog] = useState<OperationDialog | null>(null)
   const [operationSubmitting, setOperationSubmitting] = useState(false)
   const [resultsBatchId, setResultsBatchId] = useState<string | null>(null)
@@ -90,6 +101,10 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
     setDismissedTasks(new Set())
     setActivePreview(null)
     setSelectedFiles([])
+    setDraggedEntityIds([])
+    draggedEntityIdsRef.current = []
+    finderExportStartedRef.current = false
+    setFinderDragMessage(null)
     setOperationDialog(null)
     setOperationSubmitting(false)
     setResultsBatchId(null)
@@ -239,6 +254,39 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
   const canMutateSelection =
     selectedFiles.length > 0 && state.project?.access === 'read_write' && !operationBusy
 
+  const exportDraggedSelection = useCallback(
+    (clientX: number, clientY: number) => {
+      const project = state.project
+      const entityIds = draggedEntityIdsRef.current
+      const outside =
+        clientX <= 0 ||
+        clientY <= 0 ||
+        clientX >= window.innerWidth ||
+        clientY >= window.innerHeight
+      if (
+        project === null ||
+        state.status !== 'active' ||
+        entityIds.length === 0 ||
+        !outside ||
+        finderExportStartedRef.current
+      ) {
+        return
+      }
+      finderExportStartedRef.current = true
+      void bridge
+        .beginFinderDrag({
+          sessionId: project.sessionId,
+          generation: project.generation,
+          entityIds: [...entityIds],
+        })
+        .catch(() => {
+          finderExportStartedRef.current = false
+          setFinderDragMessage('无法拖到 Finder，请重新拖动。')
+        })
+    },
+    [bridge, state.project, state.status],
+  )
+
   useEffect(() => {
     if (
       operationDialog !== null &&
@@ -288,6 +336,67 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
       }
     },
     [executeFileCommand],
+  )
+
+  const dropFiles = useCallback(
+    async (entityIds: string[], destinationId: string, mode: 'move' | 'copy') => {
+      setDraggedEntityIds([])
+      draggedEntityIdsRef.current = []
+      finderExportStartedRef.current = false
+      if (
+        operationBusy ||
+        state.project?.access !== 'read_write' ||
+        state.workspace?.workspace !== 'content'
+      ) {
+        return
+      }
+      const currentFiles = [...state.workspace.images, ...state.workspace.textFiles]
+      const byId = new Map(currentFiles.map((file) => [file.entityId, file]))
+      const files = entityIds.map((entityId) => byId.get(entityId))
+      if (files.some((file) => file === undefined)) return
+      const items: FileCommandItem[] = entityIds.map((entityId) => ({
+        entityId,
+        action:
+          mode === 'copy'
+            ? { kind: 'copy', destinationFolderId: destinationId }
+            : { kind: 'move', destinationFolderId: destinationId },
+      }))
+      const preflight = await preflightFileCommand(mode, items)
+      if (preflight === null) return
+      if (preflight.executable && preflight.rows.every((row) => row.state === 'ready')) {
+        await submitFileCommand(mode, items)
+        return
+      }
+      setOperationDialog({
+        kind: 'destination',
+        mode,
+        files: files as BrowserFile[],
+        initialDestinationId: destinationId,
+        initialPreflight: preflight,
+      })
+    },
+    [operationBusy, preflightFileCommand, state.project?.access, state.workspace, submitFileCommand],
+  )
+
+  const isDropTargetValid = useCallback(
+    (destinationId: string, mode: 'move' | 'copy') => {
+      if (state.workspace?.workspace !== 'content') return false
+      const destination = state.folders.find((folder) => folder.entityId === destinationId)
+      if (!destination) return false
+      const currentFiles = [...state.workspace.images, ...state.workspace.textFiles]
+      const byId = new Map(currentFiles.map((file) => [file.entityId, file]))
+      const files = draggedEntityIds.map((entityId) => byId.get(entityId))
+      if (files.some((file) => file === undefined)) return false
+      return (
+        mode === 'copy' ||
+        files.every(
+          (file) =>
+            file !== undefined &&
+            parentRelativePath(file.relativePath) !== destination.relativePath,
+        )
+      )
+    },
+    [draggedEntityIds, state.folders, state.workspace],
   )
 
   const openPreview = useCallback(
@@ -381,7 +490,11 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
   }
 
   return (
-    <main className="viewer-shell">
+    <main
+      className="viewer-shell"
+      onDragOverCapture={(event) => exportDraggedSelection(event.clientX, event.clientY)}
+      onDragLeaveCapture={(event) => exportDraggedSelection(event.clientX, event.clientY)}
+    >
       <header>
         <h1>{state.project.displayName}</h1>
         <button
@@ -410,6 +523,11 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
         </p>
       )}
       {state.errorMessage && <p role="alert">{state.errorMessage}</p>}
+      {finderDragMessage && (
+        <p className="finder-drag-error" role="alert">
+          {finderDragMessage}
+        </p>
+      )}
       <SearchToolbar
         query={state.search.query}
         folders={state.folders}
@@ -470,6 +588,12 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
                 folders={state.folders}
                 selectedId={state.selectedFolderId}
                 onSelect={selectFolderTarget}
+                draggedEntityIds={draggedEntityIds}
+                readOnly={state.project.access !== 'read_write' || operationBusy}
+                isDropTargetValid={isDropTargetValid}
+                onDropFiles={(entityIds, destinationId, mode) =>
+                  void dropFiles(entityIds, destinationId, mode)
+                }
               />
               <label className="sidebar-resize">
                 文件夹栏宽度
@@ -529,6 +653,17 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
                 onThumbnailTaskChange={setThumbnailTask}
                 onPreview={openPreview}
                 onSelectionChange={selectFiles}
+                onDragSelectionStart={(entityIds) => {
+                  finderExportStartedRef.current = false
+                  setFinderDragMessage(null)
+                  draggedEntityIdsRef.current = entityIds
+                  setDraggedEntityIds(entityIds)
+                }}
+                onDragSelectionEnd={() => {
+                  finderExportStartedRef.current = false
+                  draggedEntityIdsRef.current = []
+                  setDraggedEntityIds([])
+                }}
               />
             </>
           )}
@@ -618,6 +753,8 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
           entityIds={operationDialog.files.map((file) => file.entityId)}
           folders={state.folders}
           busy={operationBusy}
+          initialDestinationId={operationDialog.initialDestinationId}
+          initialPreflight={operationDialog.initialPreflight}
           requestPreflight={(items) => preflightFileCommand(operationDialog.mode, items)}
           onCancel={() => setOperationDialog(null)}
           onConfirm={(items, conflicts) =>
@@ -658,6 +795,11 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
 
 function matchesImage(file: BrowserFile): boolean {
   return file.kind === 'jpeg' || file.kind === 'png'
+}
+
+function parentRelativePath(relativePath: string): string {
+  const separator = relativePath.lastIndexOf('/')
+  return separator === -1 ? '' : relativePath.slice(0, separator)
 }
 
 function operationLabel(kind: 'rename' | 'copy' | 'move' | 'trash' | null): string {

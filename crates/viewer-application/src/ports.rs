@@ -4,9 +4,14 @@ use crate::{
         BatchId, FileCommand, FileCommandCancellation, FileCommandItemExecution,
         LocalFileCommandError, LocalFileCommandOutcome, LocalFileCommandPreflightItem,
     },
+    finder_drag::{FinderDragError, PreparedFinderDrag},
     scan::{ScanError, ScanRequest, ScanSink},
     search::SearchError,
 };
+
+pub trait FinderDragPort {
+    fn begin_drag(&self, selection: &PreparedFinderDrag) -> Result<(), FinderDragError>;
+}
 use async_trait::async_trait;
 use std::fmt;
 use std::path::{Path, PathBuf};

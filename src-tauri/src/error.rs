@@ -1,11 +1,59 @@
 use serde::Serialize;
 use viewer_application::{
-    BrowseError, BrowseIndexError, ImageError, ProjectOpenError, ProjectProbeError,
-    TextPreviewError,
+    BrowseError, BrowseIndexError, FinderDragError, ImageError, ProjectOpenError,
+    ProjectProbeError, TextPreviewError,
     metadata::{MarkerServiceError, MarkerStoreError},
     search::SearchError,
     undo::{UndoError, UndoServiceError},
 };
+
+impl From<FinderDragError> for CommandError {
+    fn from(error: FinderDragError) -> Self {
+        match error {
+            FinderDragError::EmptySelection | FinderDragError::DuplicateSelection => Self::new(
+                "invalid_finder_drag_selection",
+                ErrorCategory::Validation,
+                "请选择至少一个且不重复的文件。",
+                false,
+            ),
+            FinderDragError::TooManySelection => Self::new(
+                "finder_drag_selection_too_large",
+                ErrorCategory::Validation,
+                "一次拖动的文件数量过多，请减少选择后重试。",
+                false,
+            ),
+            FinderDragError::EntityNotFound | FinderDragError::IndexUnavailable => Self::new(
+                "finder_drag_selection_stale",
+                ErrorCategory::Consistency,
+                "部分所选文件已不可用，请刷新项目后重试。",
+                true,
+            ),
+            FinderDragError::DirectoryNotAllowed
+            | FinderDragError::SymlinkNotAllowed
+            | FinderDragError::AliasNotAllowed
+            | FinderDragError::NotRegularFile
+            | FinderDragError::OutsideProject
+            | FinderDragError::ProjectRootUnavailable => Self::new(
+                "finder_drag_target_rejected",
+                ErrorCategory::Validation,
+                "该选择不能拖出 Viewer。",
+                false,
+            ),
+            FinderDragError::MissingMouseDrag => Self::new(
+                "finder_drag_event_expired",
+                ErrorCategory::Conflict,
+                "拖动已结束，请重新拖动文件。",
+                true,
+            ),
+            FinderDragError::NativeUnavailable => Self::new(
+                "finder_drag_unavailable",
+                ErrorCategory::Environment,
+                "当前无法启动 Finder 拖动，请重试。",
+                true,
+            ),
+        }
+    }
+}
 use viewer_infrastructure::{
     image_cache::ImageArtifactRegistryError,
     portable::{PortableMarkerStoreError, PortableMetadataError},

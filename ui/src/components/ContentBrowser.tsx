@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { KeyboardEvent, MouseEvent } from 'react'
+import type { DragEvent, KeyboardEvent, MouseEvent } from 'react'
 import type { BrowserFile, FolderWorkspace } from '../api/types'
 import VirtualGrid from './VirtualGrid'
 import type { TaskFeedback } from './TaskBar'
@@ -18,6 +18,8 @@ interface ContentBrowserProps {
   onPreview?: (file: BrowserFile) => void
   onSelectionChange?: (files: BrowserFile[]) => void
   onThumbnailTaskChange?: (task: TaskFeedback | null) => void
+  onDragSelectionStart?: (entityIds: string[]) => void
+  onDragSelectionEnd?: () => void
 }
 
 interface ThumbnailWork {
@@ -32,6 +34,8 @@ const GRID_PIXELS: Record<GridSize, number> = {
   large: 240,
 }
 
+export const VIEWER_SELECTION_MIME = 'application/x-viewer-selection'
+
 export default function ContentBrowser({
   workspace,
   viewportHeight = 520,
@@ -39,6 +43,8 @@ export default function ContentBrowser({
   onPreview,
   onSelectionChange,
   onThumbnailTaskChange,
+  onDragSelectionStart,
+  onDragSelectionEnd,
 }: ContentBrowserProps) {
   const [gridSize, setGridSize] = useState<GridSize>('medium')
   const [selected, setSelected] = useState<Set<string>>(() => new Set())
@@ -147,6 +153,24 @@ export default function ContentBrowser({
     }
   }
 
+  function startFileDrag(file: BrowserFile, event: DragEvent<HTMLElement>) {
+    const dragSelection = selected.has(file.entityId) ? selected : new Set([file.entityId])
+    if (!selected.has(file.entityId)) {
+      anchorId.current = file.entityId
+      commitSelection(dragSelection)
+    }
+    const entityIds = allFiles
+      .filter((candidate) => dragSelection.has(candidate.entityId))
+      .map((candidate) => candidate.entityId)
+    if (entityIds.length === 0) {
+      event.preventDefault()
+      return
+    }
+    event.dataTransfer.effectAllowed = 'copyMove'
+    event.dataTransfer.setData(VIEWER_SELECTION_MIME, 'viewer-selection')
+    onDragSelectionStart?.(entityIds)
+  }
+
   function handleKeyboard(event: KeyboardEvent<HTMLElement>) {
     const target = event.target as HTMLElement
     if (
@@ -217,6 +241,8 @@ export default function ContentBrowser({
             loadThumbnail={loadThumbnail}
             onClick={selectFile}
             onPreview={(selectedFile) => onPreview?.(selectedFile)}
+            onDragStart={startFileDrag}
+            onDragEnd={() => onDragSelectionEnd?.()}
           />
         )}
       />
@@ -236,8 +262,11 @@ export default function ContentBrowser({
             aria-label={file.name}
             aria-selected={selected.has(file.entityId)}
             key={file.entityId}
+            draggable
             onClick={(event) => selectFile(file, event)}
             onDoubleClick={() => onPreview?.(file)}
+            onDragStart={(event) => startFileDrag(file, event)}
+            onDragEnd={() => onDragSelectionEnd?.()}
           >
             <span className="text-file-name">{file.name}</span>
             <span className="text-file-path">{file.relativePath}</span>
@@ -258,6 +287,8 @@ function ImageCell({
   loadThumbnail,
   onClick,
   onPreview,
+  onDragStart,
+  onDragEnd,
 }: {
   file: BrowserFile
   selected: boolean
@@ -267,6 +298,8 @@ function ImageCell({
   loadThumbnail: (file: BrowserFile, maxPixels: number, scaleMilli: number) => Promise<string>
   onClick: (file: BrowserFile, event: MouseEvent) => void
   onPreview: (file: BrowserFile) => void
+  onDragStart: (file: BrowserFile, event: DragEvent<HTMLElement>) => void
+  onDragEnd: () => void
 }) {
   const [url, setUrl] = useState<string | null>(file.imageUrl)
   const [failed, setFailed] = useState(false)
@@ -295,8 +328,11 @@ function ImageCell({
       aria-selected={selected}
       data-active={active || undefined}
       className="image-cell"
+      draggable
       onClick={(event) => onClick(file, event)}
       onDoubleClick={() => onPreview(file)}
+      onDragStart={(event) => onDragStart(file, event)}
+      onDragEnd={onDragEnd}
     >
       <div className="image-cell-preview">
         {url ? (

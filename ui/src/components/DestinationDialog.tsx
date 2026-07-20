@@ -13,6 +13,8 @@ interface DestinationDialogProps {
   entityIds: string[]
   folders: FolderTreeItem[]
   busy: boolean
+  initialDestinationId?: string
+  initialPreflight?: FileCommandPreflight
   requestPreflight: (items: FileCommandItem[]) => Promise<FileCommandPreflight | null>
   onConfirm: (items: FileCommandItem[], conflicts: ConflictResolution[]) => void
   onCancel: () => void
@@ -25,12 +27,18 @@ export default function DestinationDialog({
   entityIds,
   folders,
   busy,
+  initialDestinationId,
+  initialPreflight,
   requestPreflight,
   onConfirm,
   onCancel,
 }: DestinationDialogProps) {
-  const [destinationId, setDestinationId] = useState<string | null>(null)
-  const [preflight, setPreflight] = useState<FileCommandPreflight | null>(null)
+  const [destinationId, setDestinationId] = useState<string | null>(
+    initialDestinationId ?? null,
+  )
+  const [preflight, setPreflight] = useState<FileCommandPreflight | null>(
+    initialPreflight ?? null,
+  )
   const [decisions, setDecisions] = useState<DecisionMap>({})
   const [applyRemainingId, setApplyRemainingId] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)

@@ -283,6 +283,14 @@ select {
   padding: 6px 16px;
 }
 
+.finder-drag-error {
+  background: #fff0ef;
+  border-bottom: 1px solid #e7c2bf;
+  color: #8b2b25;
+  margin: 0;
+  padding: 6px 16px;
+}
+
 .file-action-toolbar {
   align-items: center;
   background: #fafbfc;
@@ -455,6 +463,24 @@ select {
 
 .folder-tree-row[aria-selected="true"] {
   background: #d9e8ff;
+  border-radius: 5px;
+}
+
+.folder-tree-row[data-drop-mode="move"] {
+  background: #d8ebff;
+  box-shadow: inset 0 0 0 2px #3478c8;
+  border-radius: 5px;
+}
+
+.folder-tree-row[data-drop-mode="copy"] {
+  background: #dcf4e3;
+  box-shadow: inset 0 0 0 2px #2d8a4b;
+  border-radius: 5px;
+}
+
+.folder-tree-row[data-drop-invalid="true"] {
+  background: #f8e0e0;
+  box-shadow: inset 0 0 0 2px #b94343;
   border-radius: 5px;
 }
 

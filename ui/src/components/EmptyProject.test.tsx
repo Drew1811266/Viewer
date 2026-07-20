@@ -33,6 +33,7 @@ function bridge(): ViewerBridge {
     operationResults: vi.fn().mockResolvedValue({ total: 0, offset: 0, items: [] }),
     cancelOperation: vi.fn().mockResolvedValue(false),
     undoLastOperation: vi.fn().mockResolvedValue(null),
+    beginFinderDrag: vi.fn().mockResolvedValue({ fileCount: 1 }),
     openPermissionSettings: vi.fn().mockResolvedValue(undefined),
     listenScan: vi.fn().mockResolvedValue(() => undefined),
     listenIndexProgress: vi.fn().mockResolvedValue(() => undefined),

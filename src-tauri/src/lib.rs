@@ -166,7 +166,8 @@ pub fn run() {
             commands::operations::operation_results,
             commands::operations::cancel_operation,
             commands::operations::undo_last_operation,
-            commands::operations::open_permission_settings
+            commands::operations::open_permission_settings,
+            commands::finder_drag::begin_finder_drag
         ])
         .setup(move |app| {
             let cache_base = app.path().app_cache_dir()?.join("sessions");

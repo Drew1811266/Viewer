@@ -1,4 +1,5 @@
 pub(crate) mod browse;
+pub(crate) mod finder_drag;
 pub(crate) mod markers;
 pub(crate) mod operations;
 pub(crate) mod preview;

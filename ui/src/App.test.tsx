@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, createEvent, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import type { ViewerBridge } from './api/viewer'
 import App from './App'
@@ -64,6 +64,7 @@ function bridge(access: 'read_write' | 'read_only' = 'read_write'): ViewerBridge
     operationResults: vi.fn().mockResolvedValue({ total: 0, offset: 0, items: [] }),
     cancelOperation: vi.fn().mockResolvedValue(false),
     undoLastOperation: vi.fn().mockResolvedValue(null),
+    beginFinderDrag: vi.fn().mockResolvedValue({ fileCount: 1 }),
     openPermissionSettings: vi.fn().mockResolvedValue(undefined),
     listenScan: vi.fn().mockResolvedValue(() => undefined),
     listenIndexProgress: vi.fn().mockResolvedValue(() => undefined),
@@ -400,7 +401,206 @@ describe('Viewer empty state', () => {
     fireEvent.keyDown(window, { key: 'z', metaKey: true })
     expect(viewer.undoLastOperation).not.toHaveBeenCalled()
   })
+
+  it('routes an internal file drop through the same preflight and execute commands', async () => {
+    const viewer = bridge()
+    vi.mocked(viewer.folderTree).mockResolvedValue([
+      {
+        entityId: 'folder-a',
+        parentEntityId: null,
+        relativePath: 'id',
+        name: 'id',
+        marker: { reviewState: null, favorite: false },
+      },
+      {
+        entityId: 'folder-b',
+        parentEntityId: null,
+        relativePath: 'selected',
+        name: 'selected',
+        marker: { reviewState: null, favorite: false },
+      },
+    ])
+    vi.mocked(viewer.queryFolder).mockResolvedValue(contentWorkspace())
+    vi.mocked(viewer.preflightFileCommand).mockResolvedValue({
+      rows: [{ entityId: 'image-1', relativePath: 'selected/front.jpg', state: 'ready' }],
+      executable: true,
+    })
+    render(<App bridge={viewer} />)
+    fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
+    const file = await screen.findByRole('option', { name: 'front.jpg' })
+    const transfer = viewerDragTransfer()
+
+    fireEvent.dragStart(file, { dataTransfer: transfer })
+    const destination = await screen.findByRole('treeitem', { name: 'selected' })
+    fireEvent.dragOver(destination, { dataTransfer: transfer })
+    fireEvent.drop(destination, { dataTransfer: transfer })
+
+    await waitFor(() =>
+      expect(viewer.preflightFileCommand).toHaveBeenCalledWith({
+        sessionId: 'session-1',
+        generation: 1,
+        kind: 'move',
+        items: [
+          {
+            entityId: 'image-1',
+            action: { kind: 'move', destinationFolderId: 'folder-b' },
+          },
+        ],
+      }),
+    )
+    await waitFor(() =>
+      expect(viewer.executeFileCommand).toHaveBeenCalledWith(
+        expect.objectContaining({
+          kind: 'move',
+          items: [
+            {
+              entityId: 'image-1',
+              action: { kind: 'move', destinationFolderId: 'folder-b' },
+            },
+          ],
+        }),
+      ),
+    )
+  })
+
+  it('starts copy-only native export only after a Viewer drag leaves the window', async () => {
+    const viewer = bridge()
+    vi.mocked(viewer.queryFolder).mockResolvedValue(contentWorkspace())
+    render(<App bridge={viewer} />)
+    fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
+    const file = await screen.findByRole('option', { name: 'front.jpg' })
+
+    fireEvent.dragStart(file, { dataTransfer: viewerDragTransfer() })
+    expect(viewer.beginFinderDrag).not.toHaveBeenCalled()
+    const shell = document.querySelector('main')
+    expect(shell).not.toBeNull()
+    const boundaryDrag = createEvent.dragOver(shell!)
+    Object.defineProperties(boundaryDrag, {
+      clientX: { value: -1 },
+      clientY: { value: 40 },
+    })
+    fireEvent(shell!, boundaryDrag)
+
+    await waitFor(() =>
+      expect(viewer.beginFinderDrag).toHaveBeenCalledWith({
+        sessionId: 'session-1',
+        generation: 1,
+        entityIds: ['image-1'],
+      }),
+    )
+  })
+
+  it('rejects a same-folder move target while allowing Option-copy', async () => {
+    const viewer = bridge()
+    vi.mocked(viewer.folderTree).mockResolvedValue([
+      {
+        entityId: 'folder-a',
+        parentEntityId: null,
+        relativePath: 'id',
+        name: 'id',
+        marker: { reviewState: null, favorite: false },
+      },
+    ])
+    vi.mocked(viewer.queryFolder).mockResolvedValue(contentWorkspace())
+    render(<App bridge={viewer} />)
+    fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
+    const file = await screen.findByRole('option', { name: 'front.jpg' })
+    const target = await screen.findByRole('treeitem', { name: 'id' })
+    const transfer = viewerDragTransfer()
+
+    fireEvent.dragStart(file, { dataTransfer: transfer })
+    fireEvent.dragOver(target, { dataTransfer: transfer })
+    expect(target).toHaveAttribute('data-drop-invalid', 'true')
+    fireEvent.drop(target, { dataTransfer: transfer })
+    expect(viewer.preflightFileCommand).not.toHaveBeenCalled()
+
+    const copyOver = createEvent.dragOver(target, { dataTransfer: transfer })
+    Object.defineProperty(copyOver, 'altKey', { value: true })
+    fireEvent(target, copyOver)
+    expect(target).toHaveAttribute('data-drop-mode', 'copy')
+  })
+
+  it('shows a safe retry message when native Finder drag cannot start', async () => {
+    const viewer = bridge()
+    vi.mocked(viewer.queryFolder).mockResolvedValue(contentWorkspace())
+    vi.mocked(viewer.beginFinderDrag).mockRejectedValue(
+      new Error('/Users/private/project/front.jpg could not be dragged'),
+    )
+    render(<App bridge={viewer} />)
+    fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
+    const file = await screen.findByRole('option', { name: 'front.jpg' })
+    fireEvent.dragStart(file, { dataTransfer: viewerDragTransfer() })
+    const shell = document.querySelector('main')
+    expect(shell).not.toBeNull()
+    const boundaryDrag = createEvent.dragOver(shell!)
+    Object.defineProperties(boundaryDrag, {
+      clientX: { value: -1 },
+      clientY: { value: 40 },
+    })
+    fireEvent(shell!, boundaryDrag)
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      '无法拖到 Finder，请重新拖动。',
+    )
+    expect(screen.queryByText(/Users\/private/)).not.toBeInTheDocument()
+  })
+
+  it('opens the equivalent preselected conflict dialog when a dropped item is not ready', async () => {
+    const viewer = bridge()
+    vi.mocked(viewer.folderTree).mockResolvedValue([
+      {
+        entityId: 'folder-b',
+        parentEntityId: null,
+        relativePath: 'selected',
+        name: 'selected',
+        marker: { reviewState: null, favorite: false },
+      },
+    ])
+    vi.mocked(viewer.queryFolder).mockResolvedValue(contentWorkspace())
+    vi.mocked(viewer.preflightFileCommand).mockResolvedValue({
+      rows: [
+        {
+          entityId: 'image-1',
+          relativePath: 'selected/front.jpg',
+          state: 'conflict',
+          code: 'destination_occupied',
+        },
+      ],
+      executable: true,
+    })
+    render(<App bridge={viewer} />)
+    fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
+    const file = await screen.findByRole('option', { name: 'front.jpg' })
+    const transfer = viewerDragTransfer()
+    fireEvent.dragStart(file, { dataTransfer: transfer })
+    fireEvent.drop(await screen.findByRole('treeitem', { name: 'selected' }), {
+      dataTransfer: transfer,
+    })
+
+    const dialog = await screen.findByRole('dialog', { name: '选择移动目标' })
+    expect(within(dialog).getByRole('radio')).toBeChecked()
+    expect(within(dialog).getByText('selected/front.jpg')).toBeVisible()
+    expect(within(dialog).getByRole('combobox')).toHaveValue('')
+    expect(viewer.executeFileCommand).not.toHaveBeenCalled()
+  })
 })
+
+function viewerDragTransfer() {
+  const data = new Map<string, string>()
+  return {
+    effectAllowed: 'uninitialized',
+    dropEffect: 'none',
+    get types() {
+      return [...data.keys()]
+    },
+    setData(type: string, value: string) {
+      data.set(type, value)
+    },
+    getData(type: string) {
+      return data.get(type) ?? ''
+    },
+  }
+}
 
 function contentWorkspace() {
   return {

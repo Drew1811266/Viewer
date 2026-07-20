@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import type { DragEvent } from 'react'
 import type { FolderTreeItem } from '../api/types'
 import VirtualList from './VirtualList'
 
@@ -7,6 +8,11 @@ interface FolderTreeProps {
   selectedId: string | null
   onSelect: (entityId: string) => void
   height?: number
+  draggedEntityIds?: string[]
+  invalidDropTargetIds?: string[]
+  readOnly?: boolean
+  isDropTargetValid?: (folderId: string, mode: 'move' | 'copy') => boolean
+  onDropFiles?: (entityIds: string[], destinationId: string, mode: 'move' | 'copy') => void
 }
 
 interface VisibleFolder {
@@ -20,6 +26,11 @@ export default function FolderTree({
   selectedId,
   onSelect,
   height = 420,
+  draggedEntityIds = [],
+  invalidDropTargetIds = [],
+  readOnly = false,
+  isDropTargetValid,
+  onDropFiles,
 }: FolderTreeProps) {
   const safeFolders = useMemo(
     () => folders.filter((folder) => !isReserved(folder.relativePath)),
@@ -28,6 +39,12 @@ export default function FolderTree({
   const childIds = useMemo(() => parentIds(safeFolders), [safeFolders])
   const [expanded, setExpanded] = useState(() => new Set(childIds))
   const knownExpandable = useRef(new Set(childIds))
+  const [dropTarget, setDropTarget] = useState<{
+    entityId: string
+    mode: 'move' | 'copy'
+    valid: boolean
+  } | null>(null)
+  const invalidTargets = useMemo(() => new Set(invalidDropTargetIds), [invalidDropTargetIds])
 
   useEffect(() => {
     const added = childIds.filter((id) => !knownExpandable.current.has(id))
@@ -36,6 +53,14 @@ export default function FolderTree({
       setExpanded((current) => new Set([...current, ...added]))
     }
   }, [childIds])
+
+  useEffect(() => {
+    setDropTarget((current) => {
+      if (current === null) return null
+      const stillVisible = safeFolders.some((folder) => folder.entityId === current.entityId)
+      return draggedEntityIds.length === 0 || readOnly || !stillVisible ? null : current
+    })
+  }, [draggedEntityIds.length, readOnly, safeFolders])
 
   const visible = useMemo(
     () => flattenFolders(safeFolders, expanded),
@@ -49,6 +74,42 @@ export default function FolderTree({
       else next.add(entityId)
       return next
     })
+  }
+
+  function dragMode(event: DragEvent<HTMLElement>): 'move' | 'copy' {
+    return event.altKey ? 'copy' : 'move'
+  }
+
+  function acceptsViewerDrag(event: DragEvent<HTMLElement>): boolean {
+    return Array.from(event.dataTransfer.types).includes('application/x-viewer-selection')
+  }
+
+  function dragOver(folderId: string, event: DragEvent<HTMLElement>) {
+    if (!acceptsViewerDrag(event) || draggedEntityIds.length === 0) return
+    const mode = dragMode(event)
+    const valid =
+      !readOnly &&
+      !invalidTargets.has(folderId) &&
+      (isDropTargetValid?.(folderId, mode) ?? true)
+    event.preventDefault()
+    event.dataTransfer.dropEffect = valid ? mode : 'none'
+    setDropTarget({ entityId: folderId, mode, valid })
+  }
+
+  function drop(folderId: string, event: DragEvent<HTMLElement>) {
+    if (!acceptsViewerDrag(event) || draggedEntityIds.length === 0) return
+    event.preventDefault()
+    const mode = dragMode(event)
+    const valid =
+      !readOnly &&
+      !invalidTargets.has(folderId) &&
+      (isDropTargetValid?.(folderId, mode) ?? true)
+    if (!valid) {
+      setDropTarget({ entityId: folderId, mode, valid: false })
+      return
+    }
+    setDropTarget(null)
+    onDropFiles?.([...draggedEntityIds], folderId, mode)
   }
 
   return (
@@ -67,8 +128,25 @@ export default function FolderTree({
             aria-level={depth + 1}
             aria-selected={folder.entityId === selectedId}
             aria-expanded={hasChildren ? expanded.has(folder.entityId) : undefined}
+            data-drop-mode={
+              dropTarget?.entityId === folder.entityId && dropTarget.valid
+                ? dropTarget.mode
+                : undefined
+            }
+            data-drop-invalid={
+              dropTarget?.entityId === folder.entityId && !dropTarget.valid ? true : undefined
+            }
             style={{ paddingInlineStart: depth * 16 }}
             onClick={() => onSelect(folder.entityId)}
+            onDragOver={(event) => dragOver(folder.entityId, event)}
+            onDragLeave={(event) => {
+              if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                setDropTarget((current) =>
+                  current?.entityId === folder.entityId ? null : current,
+                )
+              }
+            }}
+            onDrop={(event) => drop(folder.entityId, event)}
           >
             {hasChildren ? (
               <button

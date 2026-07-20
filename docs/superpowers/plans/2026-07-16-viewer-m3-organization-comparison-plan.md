@@ -696,11 +696,13 @@ Run: `git status --short && pnpm gate:m3 && pnpm build:macos`
 
 Expected: clean start, exact gate pass and fresh valid arm64/macOS 13 artifacts.
 
-- [ ] **Step 2: Review the complete branch diff**
+- [x] **Step 2: Review the complete branch diff**
 
 Run: `git diff --check main...HEAD && git diff --stat main...HEAD && git log --oneline main..HEAD`
 
 Review architecture direction, data-loss safety, durable state truth, read-only enforcement, recovery, cancellation, Watcher generations, image budget, native unsafe code, path/security/privacy boundaries, accessibility baseline, test quality and scope exclusions. No unresolved Critical/Important finding may remain.
+
+Independent review of `ba5148e` reported Critical 0, Important 0 and Minor 0 after confirming the post-staging Replace evidence check and atomic Replace marker/journal barrier. Code review is READY; stage approval remains blocked only by Task 17's mandatory physical Finder drag.
 
 - [ ] **Step 3: Approve and commit the stage review**
 

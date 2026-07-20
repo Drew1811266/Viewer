@@ -1,11 +1,11 @@
 # M3 Organization and Comparison Stage Review
 
-- Status: Task 18 code findings corrected and verified; mandatory physical Finder drag pending
+- Status: Task 18 independent code review READY; mandatory physical Finder drag pending
 - Date: 2026-07-19
 - Base: `1642957` (paused M3 checkpoint)
-- Acceptance head: `55f5a90` (Task 18 code corrections)
+- Acceptance head: `ba5148e` (Task 18 final code corrections)
 - Review method: exact M3 aggregate gate, Apple Silicon package inspection, release-app acceptance on writable/copied/read-only fixtures, real filesystem and Trash operations, portable-metadata validation, cache/network inspection and final complete-diff review
-- Decision: **Not yet approved or merged; physical Finder drag is the only open Important acceptance item**
+- Decision: **Code review READY, but not yet approved or merged; physical Finder drag is the only open Important acceptance item**
 
 ## Exit-criteria traceability
 
@@ -49,13 +49,20 @@ Every correction followed a failing focused test, implementation, focused green 
 
 ## Independent Task 18 review findings
 
-The complete branch review reported no Critical findings and four Important findings. Three code findings are corrected on the branch and covered by new regressions:
+The initial complete-branch review reported no Critical findings and four Important findings. Three code findings were corrected first and covered by new regressions:
 
 1. **Concurrent same-inode rewrites:** file snapshots now carry nanosecond modification/change evidence; Replace destinations are fingerprinted and revalidated immediately before Trash; copy verifies the current source fingerprint against the copied bytes; and cross-volume move revalidates the source immediately before Trash. Same-length in-place source and destination rewrites now fail without deleting either current source or destination.
 2. **Replace recovery marker ownership:** recovery no longer depends on the disposable session index to identify the replaced destination. A narrow portable-metadata path deletion clears the old destination marker before Copy/Rename/Move Replace projection, including a real close/reopen with an initially empty index.
 3. **Display-preflight retention:** the display-only preview path now disposes its prepared backend batch, and invalid/blocked start paths do the same. Repeated previews retain zero prepared batches.
 
-The fourth finding is the still-open physical Finder gesture. It cannot be closed by unit/integration evidence alone. Before M3 approval, a human must verify both single- and multi-file drag from the packaged Viewer into Finder, confirm copies appear at the Finder destination, and confirm the Viewer project sources remain present.
+The follow-up review then found two deeper Important consistency windows, both corrected in `ba5148e`:
+
+4. **Replace destination mutation during source staging:** Rename/Move Replace now carries the preflight destination snapshot+hash into the executor, calculates fresh strong evidence after the source is staged and immediately before Trash, and restores the source plus terminalizes the journal if the destination changed. A mutation-hook regression rewrites the destination in place with the same byte length during staging and verifies that the current destination and source both remain while Trash is never called.
+5. **Replace marker/journal crash window:** destination-marker deletion, source-marker movement and `Verified -> MetaCommitted` now commit in one SQLite `IMMEDIATE` transaction. A committed barrier replays as a no-op, and a close/reopen regression confirms the moved source marker cannot be erased by recovery.
+
+The final independent review of `ba5148e` reported Critical 0, Important 0 and Minor 0 and marked the code READY. Its focused verification passed `m3_file_commands` 21/21, `m3_desktop_runtime` 12/12, `file_transactions` 19/19 and `m3_operation_projections` 6/6.
+
+The physical Finder gesture remains the only open acceptance finding. It cannot be closed by unit/integration evidence alone. Before M3 approval, a human must verify both single- and multi-file drag from the packaged Viewer into Finder, confirm copies appear at the Finder destination, and confirm the Viewer project sources remain present.
 
 ## Package, integrity and privacy evidence
 
@@ -82,15 +89,15 @@ session cache after close             empty
 lsof release process TCP/UDP          no sockets
 ```
 
-The exact gate and package build above were repeated from the clean committed `55f5a90` branch after the Task 18 corrections. The `.viewer` validator accepts only the manifest, schema-v3 SQLite database, exact SQLite sidecars and approved prior-schema backup. It rejects originals, text bodies, thumbnails/proxies, absolute/cache paths, unknown tables/columns/enums/result codes/files and symlinks. Static policy and runtime socket inspection found no updater, analytics, crash upload or application network behavior.
+The exact gate and package build above were repeated from the clean committed `ba5148e` branch after the final Task 18 corrections. The first aggregate-gate attempt recorded one non-reproducible Finder-boundary UI test failure; the focused test, the full 128-test UI suite and both UI passes inside the fresh successful aggregate gate then passed without code changes. The `.viewer` validator accepts only the manifest, schema-v3 SQLite database, exact SQLite sidecars and approved prior-schema backup. It rejects originals, text bodies, thumbnails/proxies, absolute/cache paths, unknown tables/columns/enums/result codes/files and symlinks. Static policy and runtime socket inspection found no updater, analytics, crash upload or application network behavior.
 
 ## Scope and remaining review work
 
 - No Windows implementation or cloud behavior was introduced.
 - The app and DMG remain ad-hoc signed and are not notarized because Developer ID credentials are outside the internal-only 0.1 scope.
 - The synthetic fixture validates correctness but does not replace M4 acceptance with the user's supplied approximately 10 MiB production images.
-- Task 18 must independently re-review the code corrections, complete the physical Finder-drag acceptance, and leave no unresolved Critical or Important finding before approval.
+- Task 18 independent code review is complete and READY. Physical Finder-drag acceptance remains mandatory before approval.
 
 ## Task 17 decision
 
-The exact gate, package checks, real file/Trash operations, compare/read-only/lifecycle behavior and portable/privacy boundaries pass after five acceptance-found defects were corrected. The independent Task 18 review then found three additional code defects; all three now have failing-before/green-after regressions and pass the fresh exact gate and package checks. Task 17 remains open only for the mandatory physical Finder drag, which is explicitly disclosed rather than inferred from automation.
+The exact gate, package checks, real file/Trash operations, compare/read-only/lifecycle behavior and portable/privacy boundaries pass after five acceptance-found defects were corrected. Independent Task 18 reviews then found five code defects across two passes; all five now have failing-before/green-after regressions, pass the fresh exact gate/package checks and have an independent READY re-review. Task 17 remains open only for the mandatory physical Finder drag, which is explicitly disclosed rather than inferred from automation.

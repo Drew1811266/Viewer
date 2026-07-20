@@ -414,11 +414,24 @@ async fn validate_file_batch(
             return Err(UndoError::OutsideProject);
         }
         match std::fs::symlink_metadata(&restore_candidate) {
-            Ok(metadata)
-                if current_paths.contains(&restore_candidate)
-                    && metadata.is_file()
-                    && !metadata.file_type().is_symlink() => {}
-            Ok(_) => return Err(UndoError::DestinationOccupied),
+            Ok(metadata) => {
+                if metadata.file_type().is_symlink() || !metadata.is_file() {
+                    return Err(UndoError::DestinationOccupied);
+                }
+                if !current_paths.contains(&restore_candidate) {
+                    let canonical_restore =
+                        std::fs::canonicalize(&restore_candidate).map_err(|error| {
+                            FileOperationError::io(
+                                "resolve occupied undo restore destination",
+                                &restore_candidate,
+                                &error,
+                            )
+                        })?;
+                    if canonical_restore != canonical {
+                        return Err(UndoError::DestinationOccupied);
+                    }
+                }
+            }
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
             Err(error) => {
                 return Err(FileOperationError::io(

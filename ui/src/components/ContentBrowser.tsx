@@ -128,7 +128,17 @@ export default function ContentBrowser({
     )
   }
 
+  function selectAllFiles() {
+    const first = allFiles[0]
+    if (first && activeId === null) {
+      setActiveId(first.entityId)
+      anchorId.current = first.entityId
+    }
+    commitSelection(new Set(allFiles.map((file) => file.entityId)))
+  }
+
   function selectFile(file: BrowserFile, event: MouseEvent) {
+    event.currentTarget.closest<HTMLElement>('[role="listbox"]')?.focus()
     setActiveId(file.entityId)
     if (event.shiftKey && anchorId.current !== null) {
       const anchor = allFiles.findIndex((candidate) => candidate.entityId === anchorId.current)
@@ -180,6 +190,11 @@ export default function ContentBrowser({
     ) {
       return
     }
+    if (event.metaKey && event.key.toLowerCase() === 'a') {
+      event.preventDefault()
+      selectAllFiles()
+      return
+    }
     const activeIndex = Math.max(
       0,
       allFiles.findIndex((file) => file.entityId === activeId),
@@ -194,8 +209,22 @@ export default function ContentBrowser({
       const file = allFiles[Math.max(0, Math.min(allFiles.length - 1, nextIndex))]
       if (file) {
         setActiveId(file.entityId)
-        anchorId.current = file.entityId
-        commitSelection(new Set([file.entityId]))
+        if (event.shiftKey && anchorId.current !== null) {
+          const anchor = allFiles.findIndex(
+            (candidate) => candidate.entityId === anchorId.current,
+          )
+          const target = allFiles.findIndex(
+            (candidate) => candidate.entityId === file.entityId,
+          )
+          const next = new Set(selected)
+          for (const candidate of allFiles.slice(Math.min(anchor, target), Math.max(anchor, target) + 1)) {
+            next.add(candidate.entityId)
+          }
+          commitSelection(next)
+        } else {
+          anchorId.current = file.entityId
+          commitSelection(new Set([file.entityId]))
+        }
       }
       return
     }
@@ -221,6 +250,9 @@ export default function ContentBrowser({
           </select>
         </label>
         <span>{workspace.images.length} 张图片</span>
+        <button type="button" onClick={selectAllFiles} disabled={allFiles.length === 0}>
+          全选当前文件夹
+        </button>
       </div>
       <VirtualGrid
         items={workspace.images}

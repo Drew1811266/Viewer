@@ -64,6 +64,20 @@ test('accepts only schema v3, exact SQLite sidecars and every retained prior bac
   ])
 })
 
+test('accepts canonical versionless UUID entity IDs derived from filesystem identity', async () => {
+  const root = await portableFixture()
+  mutate(
+    root,
+    `UPDATE operation_items
+     SET entity_id = '00000000-0100-0012-0000-00000024ba10'
+     WHERE operation_id = '${OPERATION_IDS[0]}'`,
+  )
+
+  const result = await validateV3(root)
+
+  assert.equal(result.operationCount, 3)
+})
+
 test('rejects content disguised as an allowed SQLite sidecar', async (t) => {
   for (const [name, contents] of [
     ['metadata.sqlite-journal', Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 16])],

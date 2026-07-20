@@ -642,6 +642,46 @@ async fn file_undo_prevalidates_the_whole_batch_and_retains_failures() {
 }
 
 #[tokio::test]
+async fn case_only_rename_undo_treats_the_current_file_as_the_restore_target() {
+    let project = tempfile::tempdir().unwrap();
+    let current = project.path().join("A.jpg");
+    fs::write(&current, b"case-only").unwrap();
+    let session = SessionId::new();
+    let stack = Arc::new(Mutex::new(UndoStack::new(session)));
+    stack.lock().unwrap().record_batch(
+        OperationId::new(),
+        OperationKind::Rename,
+        vec![UndoAction::File {
+            entity_id: EntityId::new(),
+            current: RelativePath::parse("A.jpg").unwrap(),
+            restore: RelativePath::parse("a.jpg").unwrap(),
+            expected: futures_snapshot(&current),
+        }],
+    );
+    let service = UndoService::new(
+        session,
+        ProjectAccess::ReadWrite,
+        project.path().to_path_buf(),
+        Arc::new(FsMutation),
+        Arc::new(FakeFileUndo::default()),
+        Arc::new(MemoryMarkers::default()),
+        Arc::new(MemoryProjection::default()),
+        Arc::new(FixedClock),
+        Arc::clone(&stack),
+        Arc::new(tokio::sync::Mutex::new(())),
+    );
+
+    service.undo_last(session).await.unwrap().unwrap();
+
+    assert!(project.path().join("a.jpg").exists());
+    assert_eq!(
+        fs::read(project.path().join("a.jpg")).unwrap(),
+        b"case-only"
+    );
+    assert!(stack.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
 async fn identity_drift_and_symlink_escape_are_rejected_without_consuming_undo() {
     let project = tempfile::tempdir().unwrap();
     let current = project.path().join("current.png");

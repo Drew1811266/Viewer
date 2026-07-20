@@ -57,6 +57,55 @@ describe('ContentBrowser', () => {
     expect(preview).toHaveBeenCalledWith(expect.objectContaining({ entityId: 'image-7' }))
   })
 
+  it('extends a contiguous selection with Shift plus an arrow key', () => {
+    render(<ContentBrowser workspace={workspace(5)} />)
+
+    fireEvent.click(screen.getByRole('option', { name: '1.jpg' }))
+    const grid = screen.getByRole('listbox', { name: '图片文件' })
+    fireEvent.keyDown(grid, { key: 'ArrowRight', shiftKey: true })
+    fireEvent.keyDown(grid, { key: 'ArrowRight', shiftKey: true })
+
+    const selected = screen
+      .getAllByRole('option')
+      .filter((item) => item.getAttribute('aria-selected') === 'true')
+      .map((item) => item.getAttribute('aria-label'))
+    expect(selected).toEqual(['1.jpg', '2.jpg', '3.jpg'])
+  })
+
+  it('selects every file in the current folder with Command-A', () => {
+    render(<ContentBrowser workspace={workspace(3)} />)
+
+    const grid = screen.getByRole('listbox', { name: '图片文件' })
+    fireEvent.keyDown(grid, { key: 'a', metaKey: true })
+
+    expect(
+      screen
+        .getAllByRole('option')
+        .filter((item) => item.getAttribute('aria-selected') === 'true'),
+    ).toHaveLength(4)
+  })
+
+  it('offers an explicit select-all action for mouse and assistive users', () => {
+    render(<ContentBrowser workspace={workspace(3)} />)
+
+    fireEvent.click(screen.getByRole('button', { name: '全选当前文件夹' }))
+
+    expect(
+      screen
+        .getAllByRole('option')
+        .filter((item) => item.getAttribute('aria-selected') === 'true'),
+    ).toHaveLength(4)
+  })
+
+  it('moves keyboard focus to the owning listbox when a file is clicked', () => {
+    render(<ContentBrowser workspace={workspace(2)} />)
+
+    const grid = screen.getByRole('listbox', { name: '图片文件' })
+    fireEvent.click(screen.getByRole('option', { name: '1.jpg' }))
+
+    expect(grid).toHaveFocus()
+  })
+
   it('keeps Markdown and TXT in an independent labelled list', () => {
     render(<ContentBrowser workspace={workspace()} />)
 

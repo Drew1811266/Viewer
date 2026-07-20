@@ -655,29 +655,31 @@ git commit -m "test: gate M3 organization and comparison"
 - Create: `docs/reviews/2026-07-16-m3-organization-comparison-review.md`
 - Modify: `docs/superpowers/plans/2026-07-16-viewer-m3-organization-comparison-plan.md`
 
-- [ ] **Step 1: Build and inspect the release artifacts**
+- [x] **Step 1: Build and inspect the release artifacts**
 
 Run: `pnpm build:macos`
 
 Require arm64 only, macOS 13.0 minimum, valid `.app`/DMG, ad-hoc signing explicitly recorded, and no updater/telemetry/network capability.
 
-- [ ] **Step 2: Exercise real file operations on a disposable project**
+- [x] **Step 2: Exercise real file operations on a disposable project**
 
 Using the packaged app, cover single/batch rename rules including cycle/case, copy/move to deep folders, all conflict policies, partial permission failure, active copy cancellation, corrupt-file operations, real Trash and system restoration. Hash source/destination evidence and verify no silent overwrite/data loss.
 
-- [ ] **Step 3: Exercise undo, drag and comparison**
+- [x] **Step 3: Exercise undo, drag and comparison**
 
 Cover marker/favorite/rename/move Command-Z and unsafe-undo refusal; internal move and Option-copy target feedback; physical copy-only drag into Finder; 2/3/4 compare layouts, sync/independent pan/zoom, inline markers, removal and one-pane fallback.
 
-- [ ] **Step 4: Exercise external changes, read-only and lifecycle**
+Packaged undo and comparison behavior passed. Drag behavior passed the complete UI/Rust/AppKit contract suite, but Computer Use could not emit the WebView HTML5 `dragstart` event; the review records the physical Finder gesture as an explicit M4 human release check rather than claiming GUI evidence.
+
+- [x] **Step 4: Exercise external changes, read-only and lifecycle**
 
 From Finder, create/modify/rename/move/delete while Viewer is open and verify tree/grid/search/preview/compare repair. Open read-only projects with/without metadata and verify the complete capability matrix. Close during an active operation through wait/cancel/stay paths and confirm Watcher/cache/undo teardown.
 
-- [ ] **Step 5: Validate portable/recovery/privacy boundaries**
+- [x] **Step 5: Validate portable/recovery/privacy boundaries**
 
 Validate copied project identity/markers, schema-v3 journal/results, a fault-injected recoverable batch, cache deletion, `.viewer` content allow-list, no absolute/text/original/proxy content and no release-process TCP/UDP socket.
 
-- [ ] **Step 6: Record evidence and defects**
+- [x] **Step 6: Record evidence and defects**
 
 Map every M3 requirement to automated and GUI evidence. Critical/Important defects block approval, return to the relevant TDD task and rerun the exact M3 gate.
 

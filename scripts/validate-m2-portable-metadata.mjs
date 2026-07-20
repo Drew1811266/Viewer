@@ -69,6 +69,7 @@ const EXPECTED_COLUMNS = {
   },
 }
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+const ENTITY_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const OPERATION_KINDS = new Set([
   'rename',
   'copy',
@@ -482,7 +483,11 @@ function validateOperationJournal(database, version) {
     ]),
   )
   for (const row of database.prepare('SELECT * FROM operation_items').iterate()) {
-    if (!UUID.test(row.operation_id) || !UUID.test(row.batch_id) || !UUID.test(row.entity_id)) {
+    if (
+      !UUID.test(row.operation_id) ||
+      !UUID.test(row.batch_id) ||
+      !ENTITY_UUID.test(row.entity_id)
+    ) {
       throw new Error('invalid portable operation identity')
     }
     if (!OPERATION_KINDS.has(row.kind) || !OPERATION_STATES.has(row.state)) {

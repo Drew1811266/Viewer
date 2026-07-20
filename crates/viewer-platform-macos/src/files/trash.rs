@@ -1,9 +1,19 @@
 use async_trait::async_trait;
 use std::path::Path;
+use trash::{
+    TrashContext,
+    macos::{DeleteMethod, TrashContextExtMacos},
+};
 use viewer_application::{FileOperationError, TrashPort};
 
 #[derive(Clone, Copy, Debug, Default)]
 pub struct MacTrashPort;
+
+fn mac_trash_context() -> TrashContext {
+    let mut context = TrashContext::new();
+    context.set_delete_method(DeleteMethod::NsFileManager);
+    context
+}
 
 #[async_trait]
 impl TrashPort for MacTrashPort {
@@ -11,11 +21,13 @@ impl TrashPort for MacTrashPort {
         let path = path.to_path_buf();
         let error_path = path.clone();
         tokio::task::spawn_blocking(move || {
-            ::trash::delete(&path).map_err(|error| FileOperationError::Io {
-                action: "move item to macOS Trash",
-                path,
-                message: error.to_string(),
-            })
+            mac_trash_context()
+                .delete(&path)
+                .map_err(|error| FileOperationError::Io {
+                    action: "move item to macOS Trash",
+                    path,
+                    message: error.to_string(),
+                })
         })
         .await
         .map_err(|error| FileOperationError::Io {
@@ -28,8 +40,17 @@ impl TrashPort for MacTrashPort {
 
 #[cfg(test)]
 mod tests {
-    use super::MacTrashPort;
+    use super::{MacTrashPort, mac_trash_context};
+    use trash::macos::{DeleteMethod, TrashContextExtMacos};
     use viewer_application::TrashPort;
+
+    #[test]
+    fn trash_uses_ns_file_manager_without_finder_automation() {
+        assert!(matches!(
+            mac_trash_context().delete_method(),
+            DeleteMethod::NsFileManager
+        ));
+    }
 
     #[tokio::test]
     async fn real_trash_smoke_test_requires_explicit_opt_in() {

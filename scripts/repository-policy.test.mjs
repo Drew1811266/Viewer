@@ -218,6 +218,7 @@ test('the macOS release command is non-interactive and uses a valid bundle ident
   assert.doesNotMatch(tauri.identifier, /\.app$/)
   assert.deepEqual(tauri.bundle.targets, ['app', 'dmg'])
   assert.equal(tauri.bundle.macOS.minimumSystemVersion, '13.0')
+  assert.equal(tauri.bundle.macOS.signingIdentity, '-')
 })
 
 test('the npm dependency graph rejects unreviewed license expressions', async () => {

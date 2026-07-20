@@ -36,7 +36,7 @@
 - `scripts/repository-policy.test.mjs`: locks the native source architecture and prevents edge-handoff regression.
 - `ACKNOWLEDGEMENTS.md`: records `drag-rs` as a consulted architecture reference, not a dependency.
 
-### Task 1: Split ContentBrowser and FolderTree drag contracts
+### Task 1: Rebuild frontend drag ownership end to end
 
 **Files:**
 - Modify: `ui/src/components/ContentBrowser.tsx`
@@ -44,9 +44,11 @@
 - Modify: `ui/src/components/FolderTree.tsx`
 - Modify: `ui/src/components/FolderTree.test.tsx`
 - Modify: `ui/src/styles/app.css`
+- Modify: `ui/src/App.tsx`
+- Modify: `ui/src/App.test.tsx`
 
 **Interfaces:**
-- Produces: `onFinderDragStart(entityIds: string[])`, `onOrganizationDragStart(entityIds, mode)`, `onOrganizationDragEnd()`, `organizationDragDisabled`, and `internalDragMode`.
+- Produces: `onFinderDragStart(entityIds: string[])`, `onOrganizationDragStart(entityIds, mode)`, `onOrganizationDragEnd()`, `organizationDragDisabled`, `internalDragMode`, atomic `InternalDragState`, immediate `beginFinderDrag` invocation and safe stale/generic messages.
 - Preserves: ordered current-folder selection, `VIEWER_SELECTION_MIME`, folder validation callback and `onDropFiles(entityIds, destinationId, mode)`.
 
 - [ ] **Step 1: Replace the old component tests with failing owner-specific tests**
@@ -225,37 +227,17 @@ const mode = internalDragMode
 
 Use that same `mode` in `dragOver` and `drop`; never read `event.altKey`. Clear `dropTarget` if the frozen mode becomes `null` or the dragged selection becomes empty.
 
-- [ ] **Step 5: Run focused and complete UI component tests**
+- [ ] **Step 5: Run focused component tests and verify GREEN before App wiring**
 
 Run:
 
 ```bash
 pnpm --dir ui test -- src/components/ContentBrowser.test.tsx src/components/FolderTree.test.tsx
-pnpm --dir ui test
 ```
 
-Expected: focused tests PASS; the complete suite may still fail only in `App.test.tsx` because App still consumes the superseded component props. Do not alter the new component contract to preserve old App behavior.
+Expected: all focused component tests PASS. Do not commit yet; App must consume the new contract in the same task.
 
-- [ ] **Step 6: Review and commit Task 1**
-
-Review the diff against design sections 8.1–8.2. Confirm nested drag events cannot bubble from the organization handle to the Finder owner and `DataTransfer` contains no ID/path. Then run:
-
-```bash
-git add ui/src/components/ContentBrowser.tsx ui/src/components/ContentBrowser.test.tsx ui/src/components/FolderTree.tsx ui/src/components/FolderTree.test.tsx ui/src/styles/app.css
-git commit -m "refactor: split internal and Finder drag initiators"
-```
-
-### Task 2: Replace App edge handoff with immediate ID-only export
-
-**Files:**
-- Modify: `ui/src/App.tsx`
-- Modify: `ui/src/App.test.tsx`
-
-**Interfaces:**
-- Consumes: Task 1's explicit ContentBrowser callbacks and `FolderTree.internalDragMode`.
-- Produces: atomic `InternalDragState`, immediate `beginFinderDrag` invocation and safe stale/generic messages.
-
-- [ ] **Step 1: Replace edge-handoff tests with failing orchestration tests**
+- [ ] **Step 6: Replace edge-handoff tests with failing orchestration tests**
 
 Delete tests named for leaving the window, inside-edge handoff, source `drag`, and root `dragleave`. Add:
 
@@ -319,7 +301,7 @@ it('uses the organization handle for a frozen default move without Finder export
 
 Add a parallel Option-at-handle-start test that releases Option over the folder but still expects `kind: 'copy'`. Update the safe-error test so the error occurs immediately after body `dragstart`. Add a stale error object `{ code: 'finder_drag_selection_stale' }` and expect `部分文件已发生变化，请刷新后重试。`. Extend the read-only test: the organization handle is disabled, but body drag invokes `beginFinderDrag`.
 
-- [ ] **Step 2: Run App tests and verify RED**
+- [ ] **Step 7: Run App tests and verify RED**
 
 Run:
 
@@ -329,7 +311,7 @@ pnpm --dir ui test -- src/App.test.tsx
 
 Expected: FAIL because App still uses edge/depth refs and the superseded ContentBrowser callbacks; it does not pass a frozen mode to FolderTree.
 
-- [ ] **Step 3: Implement atomic internal state and immediate export**
+- [ ] **Step 8: Implement atomic internal state and immediate export**
 
 Remove `FINDER_DRAG_HANDOFF_MARGIN_PX`, `draggedEntityIdsRef`, `finderExportStartedRef`, `viewerDragDepthRef`, all root drag capture handlers, `exportDraggedSelection(clientX, clientY, leftViewer)`, and every edge/source/root-exit branch.
 
@@ -375,20 +357,28 @@ const exportToFinder = useCallback(
 )
 ```
 
-Wire Task 1:
+Wire the explicit component contracts:
 
 ```tsx
 <FolderTree
-  // existing props
+  folders={state.folders}
+  selectedId={state.selectedFolderId}
+  onSelect={selectFolderTarget}
   draggedEntityIds={draggedEntityIds}
   internalDragMode={internalDrag?.mode ?? null}
+  readOnly={state.project.access !== 'read_write' || operationBusy}
+  isDropTargetValid={isDropTargetValid}
   onDropFiles={(entityIds, destinationId, mode) =>
     void dropFiles(entityIds, destinationId, mode)
   }
 />
 
 <ContentBrowser
-  // existing props
+  workspace={state.workspace}
+  requestThumbnail={requestContentThumbnail}
+  onThumbnailTaskChange={setThumbnailTask}
+  onPreview={openPreview}
+  onSelectionChange={selectFiles}
   organizationDragDisabled={state.project.access !== 'read_write' || operationBusy}
   onFinderDragStart={exportToFinder}
   onOrganizationDragStart={(entityIds, mode) => {
@@ -401,7 +391,7 @@ Wire Task 1:
 
 `dropFiles` clears `internalDrag` before preflight. Session reset also clears it. `isDropTargetValid` reads only `draggedEntityIds` derived from the atomic state.
 
-- [ ] **Step 4: Run the entire UI suite and production build**
+- [ ] **Step 9: Run the entire UI suite and production build**
 
 Run:
 
@@ -418,16 +408,16 @@ rg -n "FINDER_DRAG_HANDOFF|viewerDragDepth|onDragSelectionMove|onDragOverCapture
 
 Expected `rg` exit status: 1 with no matches.
 
-- [ ] **Step 5: Review and commit Task 2**
+- [ ] **Step 10: Review and commit Task 1**
 
 Review that the body call occurs exactly once at `dragstart`, the organization handle cannot invoke Finder export, read-only export remains enabled, and safe UI messages expose no path. Then run:
 
 ```bash
-git add ui/src/App.tsx ui/src/App.test.tsx
-git commit -m "fix: start Finder export at drag ownership boundary"
+git add ui/src/App.tsx ui/src/App.test.tsx ui/src/components/ContentBrowser.tsx ui/src/components/ContentBrowser.test.tsx ui/src/components/FolderTree.tsx ui/src/components/FolderTree.test.tsx ui/src/styles/app.css
+git commit -m "refactor: split internal and Finder drag ownership"
 ```
 
-### Task 3: Make AppKit publication independent of the live WebView event
+### Task 2: Make AppKit publication independent of the live WebView event
 
 **Files:**
 - Modify: `Cargo.toml`
@@ -562,7 +552,7 @@ rg -n "viewer_finder_drag_|MissingMouseDrag|finder_drag_event_expired|filter\(\|
 
 Expected `rg` exit status: 1 with no matches.
 
-- [ ] **Step 7: Review and commit Task 3**
+- [ ] **Step 7: Review and commit Task 2**
 
 Review main-thread confinement, source lifetime, copy-only operation, no frontend paths, optional current-event timestamp, and unchanged Tauri incoming-drop configuration. Then run:
 
@@ -571,14 +561,14 @@ git add Cargo.toml crates/viewer-application/src/finder_drag.rs crates/viewer-pl
 git commit -m "fix: start Finder drag from a synthetic AppKit session"
 ```
 
-### Task 4: Complete automated, packaged and physical M3 acceptance
+### Task 3: Complete automated, packaged and physical M3 acceptance
 
 **Files:**
 - Modify: `docs/superpowers/plans/2026-07-16-viewer-m3-organization-comparison-plan.md`
 - Modify: `docs/reviews/2026-07-16-m3-organization-comparison-review.md`
 
 **Interfaces:**
-- Consumes: Tasks 1–3 and the existing `gate:m3`.
+- Consumes: Tasks 1–2 and the existing `gate:m3`.
 - Produces: reproducible Finder hash evidence, one final M3 review decision, and a merge-ready branch.
 
 - [ ] **Step 1: Run the exact automated M3 gate**
@@ -627,7 +617,7 @@ No test passes from visual drag feedback alone; destination existence and source
 
 In the original M3 plan, append a dated correction below Task 12 explaining that the edge-handoff implementation failed physical acceptance and was superseded by the 2026-07-20 two-owner design/plan. Mark Task 17 drag acceptance complete only with the fixture path, source/destination hashes, packaged app path and relaunch result.
 
-Add a `Drag architecture correction and physical evidence — 2026-07-20` section to the M3 review. Populate it with the literal output of `git log --format='%h %s' --reverse f906e60..HEAD` for the three implementation commits and `git rev-parse HEAD` for the gated implementation SHA. Record the packaged build result, each of the eight physical checks, every source/destination SHA-256 pair, and the final Critical/Important finding counts. Do not write or commit the section until every recorded value has been directly observed.
+Add a `Drag architecture correction and physical evidence — 2026-07-20` section to the M3 review. Record the Task 1 frontend commit and Task 2 native commit from their agent reports, plus the literal output of `git rev-parse HEAD` for the gated implementation SHA. Record the packaged build result, each of the eight physical checks, every source/destination SHA-256 pair, and the final Critical/Important finding counts. Do not write or commit the section until every recorded value has been directly observed.
 
 - [ ] **Step 5: Run final review and commit evidence**
 
@@ -648,7 +638,7 @@ Confirm the feature worktree is clean, switch to `/Users/abc/Project/Viewer`, fa
 
 ## Plan self-review
 
-- Spec coverage: amended design sections 2.4, 3, 8.1, 8.2, 13 and 14 map to Tasks 1–4.
+- Spec coverage: amended design sections 2.4, 3, 8.1, 8.2, 13 and 14 map to Tasks 1–3.
 - Security coverage: entity-only IPC, path confinement, identity revalidation, no capability/dependency expansion and incoming-drop preservation are tested.
 - Regression coverage: image/text, single/multi, read-only, stale selection, internal move/Option-copy, cancellation, relaunch and folder import are explicit.
 - Architecture cleanup: every edge/source/leave heuristic and live-event precondition is explicitly removed and guarded against recurrence.

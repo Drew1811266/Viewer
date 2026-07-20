@@ -99,6 +99,7 @@ struct Fixture {
     journal: Arc<OperationJournal>,
     trash: Arc<FakeTrash>,
     volume: Arc<FakeVolume>,
+    adapter: Arc<LocalFileCommandAdapter>,
     expected_changes: ExpectedChangeLedger,
     session_id: SessionId,
     generation: Generation,
@@ -153,7 +154,7 @@ impl Fixture {
             session_id,
             ProjectAccess::ReadWrite,
             coordinator,
-            adapter,
+            adapter.clone(),
         ));
         Self {
             project,
@@ -161,6 +162,7 @@ impl Fixture {
             journal,
             trash,
             volume,
+            adapter,
             expected_changes,
             session_id,
             generation,
@@ -207,6 +209,30 @@ impl Fixture {
             items,
         }
     }
+}
+
+#[tokio::test]
+async fn repeated_display_preflights_leave_no_prepared_batch_registered() {
+    let fixture = Fixture::new(false);
+    fixture.directory("source");
+    let destination = fixture.directory("exports");
+    let source = fixture.file("source/item.png", b"source");
+    let command = fixture.command(
+        FileCommandKind::Copy,
+        vec![FileCommandItem {
+            entity_id: source,
+            action: FileCommandAction::Copy {
+                destination_folder: destination,
+            },
+        }],
+    );
+
+    for _ in 0..32 {
+        let preview = fixture.service.preview(command.clone()).await.unwrap();
+        assert!(preview.is_executable());
+    }
+
+    assert_eq!(fixture.adapter.prepared_batch_count(), 0);
 }
 
 #[tokio::test]
@@ -547,6 +573,36 @@ async fn source_identity_replacement_after_preflight_is_never_operated_on() {
 }
 
 #[tokio::test]
+async fn same_size_in_place_source_rewrite_after_preflight_is_never_copied() {
+    let fixture = Fixture::new(false);
+    fixture.directory("source");
+    let destination = fixture.directory("exports");
+    let source = fixture.file("source/item.png", b"AAAA");
+    let command = fixture.command(
+        FileCommandKind::Copy,
+        vec![FileCommandItem {
+            entity_id: source,
+            action: FileCommandAction::Copy {
+                destination_folder: destination,
+            },
+        }],
+    );
+    let preflight = fixture.service.preflight(command).await.unwrap();
+    let source_path = fixture.project.root().join("source/item.png");
+    fs::write(&source_path, b"BBBB").unwrap();
+
+    let summary = fixture.service.execute(preflight, &[], None).await.unwrap();
+
+    assert_eq!(summary.failed(), 1);
+    assert_eq!(
+        summary.result_page(0, 1).items[0].code,
+        BatchResultCode::VerificationFailed
+    );
+    assert_eq!(fs::read(source_path).unwrap(), b"BBBB");
+    assert!(!fixture.project.root().join("exports/item.png").exists());
+}
+
+#[tokio::test]
 async fn replace_revalidates_the_exact_destination_before_using_trash() {
     let fixture = Fixture::new(false);
     fixture.directory("source");
@@ -590,6 +646,53 @@ async fn replace_revalidates_the_exact_destination_before_using_trash() {
         fs::read(destination_path).unwrap(),
         b"replacement destination"
     );
+    assert_eq!(
+        fs::read(fixture.project.root().join("source/item.png")).unwrap(),
+        b"source"
+    );
+    assert_eq!(fixture.trash.count(), 0);
+}
+
+#[tokio::test]
+async fn replace_rejects_same_size_in_place_destination_rewrite_before_trash() {
+    let fixture = Fixture::new(false);
+    fixture.directory("source");
+    let destination = fixture.directory("exports");
+    let source = fixture.file("source/item.png", b"source");
+    fixture.file("exports/item.png", b"AAAA");
+    let command = fixture.command(
+        FileCommandKind::Copy,
+        vec![FileCommandItem {
+            entity_id: source,
+            action: FileCommandAction::Copy {
+                destination_folder: destination,
+            },
+        }],
+    );
+    let preflight = fixture.service.preflight(command).await.unwrap();
+    let destination_path = fixture.project.root().join("exports/item.png");
+    fs::write(&destination_path, b"BBBB").unwrap();
+
+    let summary = fixture
+        .service
+        .execute(
+            preflight,
+            &[ConflictResolution {
+                entity_id: source,
+                policy: ConflictPolicy::Replace,
+                apply_to_remaining: false,
+            }],
+            None,
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(summary.failed(), 1);
+    assert_eq!(
+        summary.result_page(0, 1).items[0].code,
+        BatchResultCode::VerificationFailed
+    );
+    assert_eq!(fs::read(destination_path).unwrap(), b"BBBB");
     assert_eq!(
         fs::read(fixture.project.root().join("source/item.png")).unwrap(),
         b"source"
@@ -809,6 +912,85 @@ async fn copy_faults_are_isolated_and_batch_reports_exact_partial_success() {
     );
     let persisted = fixture.journal.batch(batch_id).unwrap().unwrap();
     assert_eq!((persisted.completed_count, persisted.failed_count), (1, 2));
+}
+
+struct RewriteSourceAfterCopy {
+    delegate: LocalFileMutation,
+}
+
+#[async_trait]
+impl FileMutationPort for RewriteSourceAfterCopy {
+    async fn snapshot(&self, path: &Path) -> Result<FileSnapshot, FileOperationError> {
+        self.delegate.snapshot(path).await
+    }
+
+    async fn copy_and_hash(
+        &self,
+        source: &Path,
+        temporary: &Path,
+    ) -> Result<(u64, [u8; 32]), FileOperationError> {
+        self.delegate.copy_and_hash(source, temporary).await
+    }
+
+    async fn copy_and_hash_cancellable(
+        &self,
+        source: &Path,
+        temporary: &Path,
+        cancellation: &FileCommandCancellation,
+    ) -> Result<(u64, [u8; 32]), FileOperationError> {
+        let copied = self
+            .delegate
+            .copy_and_hash_cancellable(source, temporary, cancellation)
+            .await?;
+        fs::write(source, b"mutated!")
+            .map_err(|error| FileOperationError::io("rewrite copy source", source, &error))?;
+        Ok(copied)
+    }
+
+    async fn rename(&self, source: &Path, destination: &Path) -> Result<(), FileOperationError> {
+        self.delegate.rename(source, destination).await
+    }
+
+    async fn remove_registered_temporary(&self, path: &Path) -> Result<(), FileOperationError> {
+        self.delegate.remove_registered_temporary(path).await
+    }
+}
+
+#[tokio::test]
+async fn cross_volume_move_never_trashes_a_source_rewritten_during_copy() {
+    let fixture = Fixture::with_mutation(
+        true,
+        Arc::new(RewriteSourceAfterCopy {
+            delegate: LocalFileMutation,
+        }),
+    );
+    fixture.directory("source");
+    let destination = fixture.directory("exports");
+    let source = fixture.file("source/item.png", b"original");
+    let command = fixture.command(
+        FileCommandKind::Move,
+        vec![FileCommandItem {
+            entity_id: source,
+            action: FileCommandAction::Move {
+                destination_folder: destination,
+            },
+        }],
+    );
+    let preflight = fixture.service.preflight(command).await.unwrap();
+
+    let summary = fixture.service.execute(preflight, &[], None).await.unwrap();
+
+    assert_eq!(summary.failed(), 1);
+    assert_eq!(
+        summary.result_page(0, 1).items[0].code,
+        BatchResultCode::VerificationFailed
+    );
+    assert_eq!(
+        fs::read(fixture.project.root().join("source/item.png")).unwrap(),
+        b"mutated!"
+    );
+    assert!(!fixture.project.root().join("exports/item.png").exists());
+    assert_eq!(fixture.trash.count(), 0);
 }
 
 struct BlockingCopy {

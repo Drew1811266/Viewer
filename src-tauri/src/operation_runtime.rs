@@ -19,14 +19,14 @@ use viewer_application::{
         FileCommandService, FileCommandServiceError,
     },
     metadata::{
-        FileCopyProjection, FileMoveProjection, FilePathMove, MarkerRestore, MarkerTarget,
-        OperationProjectionPort, PortableMetadataPort,
+        FileCopyProjection, FileMoveProjection, FilePathMove, OperationProjectionPort,
+        PortableMetadataPort,
     },
 };
 use viewer_domain::{
     EntityId, RelativePath, SessionId,
     file::FileNode,
-    operation::{BatchLifecycle, OperationKind},
+    operation::{BatchLifecycle, ConflictPolicy, OperationKind},
     search::Generation,
 };
 use viewer_infrastructure::operation::{
@@ -132,7 +132,7 @@ impl OperationRuntime {
         &self,
         command: FileCommand,
     ) -> Result<FileCommandPreflight, OperationRuntimeError> {
-        self.service.preflight(command).await.map_err(Into::into)
+        self.service.preview(command).await.map_err(Into::into)
     }
 
     pub async fn start(
@@ -156,8 +156,12 @@ impl OperationRuntime {
                 items,
             })
             .await?;
-        validate_conflict_resolutions(preflight.rows(), &resolutions)?;
+        if let Err(error) = validate_conflict_resolutions(preflight.rows(), &resolutions) {
+            self.service.discard_preflight(preflight.batch_id()).await?;
+            return Err(error.into());
+        }
         if !preflight.is_executable() {
+            self.service.discard_preflight(preflight.batch_id()).await?;
             return Err(FileCommandServiceError::PreflightBlocked.into());
         }
         let batch_id = preflight.batch_id();
@@ -466,6 +470,9 @@ impl DesktopOperationCommitPort {
         batch: &[JournalItem],
         destination: &RelativePath,
     ) -> Result<(), OperationCommitError> {
+        if current.conflict_policy != ConflictPolicy::Replace {
+            return Ok(());
+        }
         let is_cycle_blocker = batch.iter().any(|item| {
             item.operation_id != current.operation_id
                 && item.source == *destination
@@ -474,40 +481,8 @@ impl DesktopOperationCommitPort {
         if is_cycle_blocker {
             return Ok(());
         }
-        let Some(node) = self
-            .index
-            .node_by_relative_path(destination)
-            .map_err(|_| metadata_commit_error("index_unavailable"))?
-        else {
-            return Ok(());
-        };
-        if node.entity_id == current.entity_id {
-            return Ok(());
-        }
-        let Some(marker) = self
-            .metadata
-            .markers_for_paths(std::slice::from_ref(destination))
-            .map_err(|_| metadata_commit_error("metadata_unavailable"))?
-            .into_iter()
-            .find(|marker| marker.relative_path == *destination)
-        else {
-            return Ok(());
-        };
         self.metadata
-            .restore_batch(
-                &[MarkerRestore {
-                    target: MarkerTarget {
-                        entity_id: node.entity_id,
-                        relative_path: destination.clone(),
-                        kind: node.kind,
-                        size: node.size,
-                        modified_ns: node.modified_ns,
-                    },
-                    expected: marker.marker,
-                    previous: viewer_domain::file::Marker::default(),
-                }],
-                self.clock.unix_millis(),
-            )
+            .clear_paths(std::slice::from_ref(destination), self.clock.unix_millis())
             .map_err(|_| metadata_commit_error("metadata_unavailable"))?;
         Ok(())
     }

@@ -137,6 +137,8 @@ fn snapshot_sync(path: &Path) -> Result<FileSnapshot, FileOperationError> {
             len: metadata.len(),
             volume_id: metadata.dev(),
             file_id: Some(u128::from(metadata.ino())),
+            modified_ns: Some(unix_timestamp_ns(metadata.mtime(), metadata.mtime_nsec())),
+            changed_ns: Some(unix_timestamp_ns(metadata.ctime(), metadata.ctime_nsec())),
         })
     }
     #[cfg(not(unix))]
@@ -145,8 +147,27 @@ fn snapshot_sync(path: &Path) -> Result<FileSnapshot, FileOperationError> {
             len: metadata.len(),
             volume_id: 0,
             file_id: None,
+            modified_ns: system_modified_ns(&metadata),
+            changed_ns: None,
         })
     }
+}
+
+#[cfg(unix)]
+fn unix_timestamp_ns(seconds: i64, nanoseconds: i64) -> i128 {
+    i128::from(seconds)
+        .saturating_mul(1_000_000_000)
+        .saturating_add(i128::from(nanoseconds))
+}
+
+#[cfg(not(unix))]
+fn system_modified_ns(metadata: &fs::Metadata) -> Option<i128> {
+    metadata
+        .modified()
+        .ok()?
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()
+        .and_then(|duration| i128::try_from(duration.as_nanos()).ok())
 }
 
 fn copy_and_hash_sync(

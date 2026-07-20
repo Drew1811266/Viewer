@@ -336,13 +336,17 @@ impl FileCommandService {
             .preflight(batch_id, &command)
             .await
             .map_err(|_| FileCommandServiceError::BackendUnavailable)?;
-        self.ensure_current(&command)?;
+        if let Err(error) = self.ensure_current(&command) {
+            let _ = self.port.discard_preflight(batch_id).await;
+            return Err(error);
+        }
         if rows.len() != command.items.len()
             || rows
                 .iter()
                 .zip(&command.items)
                 .any(|(row, item)| row.entity_id != item.entity_id)
         {
+            let _ = self.port.discard_preflight(batch_id).await;
             return Err(FileCommandServiceError::PreflightContract);
         }
         let rows = rows
@@ -363,6 +367,25 @@ impl FileCommandService {
             executable,
             command,
         })
+    }
+
+    pub async fn preview(
+        &self,
+        command: FileCommand,
+    ) -> Result<FileCommandPreflight, FileCommandServiceError> {
+        let preflight = self.preflight(command).await?;
+        self.discard_preflight(preflight.batch_id).await?;
+        Ok(preflight)
+    }
+
+    pub async fn discard_preflight(
+        &self,
+        batch_id: BatchId,
+    ) -> Result<(), FileCommandServiceError> {
+        self.port
+            .discard_preflight(batch_id)
+            .await
+            .map_err(|_| FileCommandServiceError::BackendUnavailable)
     }
 
     pub async fn execute(

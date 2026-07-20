@@ -52,7 +52,13 @@ struct PreparedItem {
     state: FileCommandPreflightState,
     route: PreparedRoute,
     source_evidence: Option<FileSnapshot>,
-    destination_evidence: Option<FileSnapshot>,
+    destination_evidence: Option<FileContentEvidence>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct FileContentEvidence {
+    snapshot: FileSnapshot,
+    hash: [u8; 32],
 }
 
 struct PreparedBatch {
@@ -118,6 +124,10 @@ impl LocalFileCommandAdapter {
 
     pub fn expected_change_ledger(&self) -> ExpectedChangeLedger {
         self.expected_changes.clone()
+    }
+
+    pub fn prepared_batch_count(&self) -> usize {
+        self.lock_batches().len()
     }
 
     fn prepare(&self, batch_id: BatchId, command: &FileCommand) -> PreparedBatch {
@@ -247,7 +257,7 @@ impl LocalFileCommandAdapter {
                 let (state, destination_evidence) = match std::fs::symlink_metadata(&candidate) {
                     Ok(metadata) if metadata.is_file() && !metadata.file_type().is_symlink() => (
                         FileCommandPreflightState::Conflict,
-                        snapshot_sync(&candidate).ok(),
+                        stable_content_evidence_sync(&candidate).ok(),
                     ),
                     Ok(_) => (
                         FileCommandPreflightState::Blocked(BatchResultCode::InvalidTarget),
@@ -402,7 +412,7 @@ impl LocalFileCommandAdapter {
             };
             let source_evidence = snapshot_sync(&self.project_root.join(row.source.as_str())).ok();
             let destination_evidence = row.destination.as_ref().and_then(|destination| {
-                snapshot_sync(&self.project_root.join(destination.as_str())).ok()
+                stable_content_evidence_sync(&self.project_root.join(destination.as_str())).ok()
             });
             if state == FileCommandPreflightState::Ready
                 && let Some(destination) = row.destination.as_ref()
@@ -572,7 +582,8 @@ impl LocalFileCommandAdapter {
             .destination_evidence
             .as_ref()
             .ok_or(FileOperationError::IdentityChanged)?;
-        if snapshot_sync(&self.project_root.join(destination.as_str()))? != *expected {
+        if stable_content_evidence_sync(&self.project_root.join(destination.as_str()))? != *expected
+        {
             return Err(FileOperationError::IdentityChanged);
         }
         Ok(())
@@ -807,6 +818,7 @@ impl LocalFileCommandAdapter {
             .await?;
         }
         if policy == ConflictPolicy::Replace {
+            self.revalidate_replace_destination(&item, Some(policy))?;
             let executor = ReplaceExecutor::new(
                 &self.project_root,
                 Arc::clone(&self.journal),
@@ -937,8 +949,19 @@ impl LocalFileCommandAdapter {
                 return Err(error);
             }
         };
-        let after = self.mutation.snapshot(&source_path).await?;
-        if before != after || before.len != copied.0 {
+        let after = match stable_content_evidence_async(&source_path).await {
+            Ok(after) => after,
+            Err(error) => {
+                self.mutation
+                    .remove_registered_temporary(&temporary_path)
+                    .await?;
+                return Err(error);
+            }
+        };
+        if before != after.snapshot || (after.snapshot.len, after.hash) != copied {
+            self.mutation
+                .remove_registered_temporary(&temporary_path)
+                .await?;
             return Err(FileOperationError::IdentityChanged);
         }
         self.journal
@@ -984,6 +1007,7 @@ impl LocalFileCommandAdapter {
         }
 
         if policy == Some(ConflictPolicy::Replace) && destination_path.exists() {
+            self.revalidate_replace_destination(&item, policy)?;
             self.validate_regular_source(&destination_path)?;
             self.register_expected_change(
                 item.plan.operation_id,
@@ -1003,6 +1027,11 @@ impl LocalFileCommandAdapter {
         sync_parent_async(&destination_path).await?;
 
         if item.route == PreparedRoute::CrossVolumeMove {
+            let before_trash = stable_content_evidence_async(&source_path).await?;
+            if before_trash != after {
+                let _ = self.trash.trash(&destination_path).await;
+                return Err(FileOperationError::IdentityChanged);
+            }
             if let Err(error) = self.trash.trash(&source_path).await {
                 let _ = self.trash.trash(&destination_path).await;
                 return Err(error);
@@ -1027,11 +1056,9 @@ impl LocalFileCommandAdapter {
     ) -> Result<LocalFileCommandOutcome, FileOperationError> {
         let source = self.project_root.join(item.plan.source.as_str());
         self.validate_regular_source(&source)?;
-        let before = self.mutation.snapshot(&source).await?;
-        let hash_path = source.clone();
-        let (_, hash) = tokio::task::spawn_blocking(move || hash_file_sync(&hash_path))
-            .await
-            .map_err(|error| worker_file_error("fingerprint Trash source", &source, error))??;
+        let evidence = stable_content_evidence_async(&source).await?;
+        let before = evidence.snapshot;
+        let hash = evidence.hash;
         self.journal
             .record_prepared_evidence(item.plan.operation_id, None, before.len, hash, self.now())
             .map_err(journal_file_error)?;
@@ -1319,6 +1346,18 @@ impl LocalFileCommandPort for LocalFileCommandAdapter {
             self.lock_batches().insert(batch_id, batch);
         }
         Ok(rows)
+    }
+
+    async fn discard_preflight(&self, batch_id: BatchId) -> Result<(), LocalFileCommandError> {
+        let mut batches = self.lock_batches();
+        match batches.get(&batch_id) {
+            Some(batch) if batch.journal_started => Err(LocalFileCommandError::Unavailable),
+            Some(_) => {
+                batches.remove(&batch_id);
+                Ok(())
+            }
+            None => Ok(()),
+        }
     }
 
     async fn execute_item(
@@ -1653,6 +1692,8 @@ fn snapshot_sync(path: &Path) -> Result<FileSnapshot, FileOperationError> {
             len: metadata.len(),
             volume_id: metadata.dev(),
             file_id: Some(u128::from(metadata.ino())),
+            modified_ns: Some(unix_timestamp_ns(metadata.mtime(), metadata.mtime_nsec())),
+            changed_ns: Some(unix_timestamp_ns(metadata.ctime(), metadata.ctime_nsec())),
         })
     }
     #[cfg(not(unix))]
@@ -1661,8 +1702,50 @@ fn snapshot_sync(path: &Path) -> Result<FileSnapshot, FileOperationError> {
             len: metadata.len(),
             volume_id: 0,
             file_id: None,
+            modified_ns: system_modified_ns(&metadata),
+            changed_ns: None,
         })
     }
+}
+
+fn stable_content_evidence_sync(path: &Path) -> Result<FileContentEvidence, FileOperationError> {
+    let before = snapshot_sync(path)?;
+    let (len, hash) = hash_file_sync(path)?;
+    let after = snapshot_sync(path)?;
+    if before != after || after.len != len {
+        return Err(FileOperationError::IdentityChanged);
+    }
+    Ok(FileContentEvidence {
+        snapshot: after,
+        hash,
+    })
+}
+
+async fn stable_content_evidence_async(
+    path: &Path,
+) -> Result<FileContentEvidence, FileOperationError> {
+    let path = path.to_path_buf();
+    let error_path = path.clone();
+    tokio::task::spawn_blocking(move || stable_content_evidence_sync(&path))
+        .await
+        .map_err(|error| worker_file_error("fingerprint stable file", &error_path, error))?
+}
+
+#[cfg(unix)]
+fn unix_timestamp_ns(seconds: i64, nanoseconds: i64) -> i128 {
+    i128::from(seconds)
+        .saturating_mul(1_000_000_000)
+        .saturating_add(i128::from(nanoseconds))
+}
+
+#[cfg(not(unix))]
+fn system_modified_ns(metadata: &std::fs::Metadata) -> Option<i128> {
+    metadata
+        .modified()
+        .ok()?
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()
+        .and_then(|duration| i128::try_from(duration.as_nanos()).ok())
 }
 
 #[cfg(unix)]

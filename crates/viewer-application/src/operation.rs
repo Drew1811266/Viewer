@@ -6,6 +6,8 @@ pub struct FileSnapshot {
     pub len: u64,
     pub volume_id: u64,
     pub file_id: Option<u128>,
+    pub modified_ns: Option<i128>,
+    pub changed_ns: Option<i128>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, thiserror::Error)]

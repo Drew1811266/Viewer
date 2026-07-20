@@ -179,6 +179,8 @@ impl FileMutationPort for FsMutation {
             len: metadata.len(),
             volume_id: metadata.dev(),
             file_id: Some(u128::from(metadata.ino())),
+            modified_ns: Some(unix_timestamp_ns(metadata.mtime(), metadata.mtime_nsec())),
+            changed_ns: Some(unix_timestamp_ns(metadata.ctime(), metadata.ctime_nsec())),
         })
     }
 
@@ -756,6 +758,8 @@ async fn read_only_wrong_session_exclusions_and_close_reset_are_enforced() {
             len: 1,
             volume_id: 1,
             file_id: Some(1),
+            modified_ns: Some(1),
+            changed_ns: Some(1),
         },
     };
     assert!(!stack.lock().unwrap().record_batch(
@@ -799,5 +803,11 @@ fn futures_snapshot(path: &Path) -> FileSnapshot {
         len: metadata.len(),
         volume_id: metadata.dev(),
         file_id: Some(u128::from(metadata.ino())),
+        modified_ns: Some(unix_timestamp_ns(metadata.mtime(), metadata.mtime_nsec())),
+        changed_ns: Some(unix_timestamp_ns(metadata.ctime(), metadata.ctime_nsec())),
     }
+}
+
+fn unix_timestamp_ns(seconds: i64, nanoseconds: i64) -> i128 {
+    i128::from(seconds) * 1_000_000_000 + i128::from(nanoseconds)
 }

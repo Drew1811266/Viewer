@@ -665,11 +665,11 @@ Require arm64 only, macOS 13.0 minimum, valid `.app`/DMG, ad-hoc signing explici
 
 Using the packaged app, cover single/batch rename rules including cycle/case, copy/move to deep folders, all conflict policies, partial permission failure, active copy cancellation, corrupt-file operations, real Trash and system restoration. Hash source/destination evidence and verify no silent overwrite/data loss.
 
-- [x] **Step 3: Exercise undo, drag and comparison**
+- [ ] **Step 3: Exercise undo, drag and comparison**
 
 Cover marker/favorite/rename/move Command-Z and unsafe-undo refusal; internal move and Option-copy target feedback; physical copy-only drag into Finder; 2/3/4 compare layouts, sync/independent pan/zoom, inline markers, removal and one-pane fallback.
 
-Packaged undo and comparison behavior passed. Drag behavior passed the complete UI/Rust/AppKit contract suite, but Computer Use could not emit the WebView HTML5 `dragstart` event; the review records the physical Finder gesture as an explicit M4 human release check rather than claiming GUI evidence.
+Packaged undo and comparison behavior passed. Drag behavior passed the complete UI/Rust/AppKit contract suite, but Computer Use could not emit the WebView HTML5 `dragstart` event. The mandatory physical Finder gesture remains an open M3 human acceptance check and is not claimed or deferred.
 
 - [x] **Step 4: Exercise external changes, read-only and lifecycle**
 

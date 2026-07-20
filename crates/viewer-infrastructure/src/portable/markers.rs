@@ -212,6 +212,49 @@ impl PortableMetadataPort for PortableMarkerStore {
         Ok(changes)
     }
 
+    fn clear_paths(
+        &self,
+        paths: &[RelativePath],
+        updated_at_ms: i64,
+    ) -> Result<usize, MarkerStoreError> {
+        if !self.writable {
+            return Err(MarkerStoreError::ReadOnly);
+        }
+        if updated_at_ms < 0 {
+            return Err(MarkerStoreError::InvalidTarget);
+        }
+        if paths.is_empty() {
+            return Ok(0);
+        }
+        let unique = paths.iter().cloned().collect::<HashSet<_>>();
+        if unique.len() != paths.len() {
+            return Err(MarkerStoreError::InvalidTarget);
+        }
+        let mut connection = self.lock_connection();
+        let transaction = connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(|_| MarkerStoreError::Unavailable)?;
+        let mut removed = 0_usize;
+        {
+            let mut delete = transaction
+                .prepare_cached("DELETE FROM markers WHERE relative_path = ?1")
+                .map_err(|_| MarkerStoreError::Unavailable)?;
+            for path in paths {
+                removed = removed
+                    .checked_add(
+                        delete
+                            .execute([path.as_str()])
+                            .map_err(|_| MarkerStoreError::Unavailable)?,
+                    )
+                    .ok_or(MarkerStoreError::Unavailable)?;
+            }
+        }
+        transaction
+            .commit()
+            .map_err(|_| MarkerStoreError::Unavailable)?;
+        Ok(removed)
+    }
+
     fn move_paths(
         &self,
         moves: &[FilePathMove],

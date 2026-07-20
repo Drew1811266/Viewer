@@ -131,6 +131,10 @@ pub trait LocalFileCommandPort: Send + Sync {
         command: &FileCommand,
     ) -> Result<Vec<LocalFileCommandPreflightItem>, LocalFileCommandError>;
 
+    async fn discard_preflight(&self, _batch_id: BatchId) -> Result<(), LocalFileCommandError> {
+        Ok(())
+    }
+
     async fn execute_item(
         &self,
         request: FileCommandItemExecution,

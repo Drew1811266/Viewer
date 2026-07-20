@@ -6,7 +6,7 @@ use std::{
     time::Duration,
 };
 use viewer_application::{
-    ProjectAccess, ProjectProbeError, ProjectProbePort,
+    FileMutationPort, ProjectAccess, ProjectProbeError, ProjectProbePort,
     file_commands::{
         FileCommand, FileCommandAction, FileCommandItem, FileCommandKind, FileCommandPreflightState,
     },
@@ -28,7 +28,7 @@ use viewer_domain::{
     },
     search::Generation,
 };
-use viewer_infrastructure::operation::journal::OperationJournal;
+use viewer_infrastructure::operation::{copy::LocalFileMutation, journal::OperationJournal};
 
 struct FixedProbe(ProjectAccess);
 
@@ -65,6 +65,63 @@ impl DesktopEventSink for RecordingEvents {
     ) {
         self.close_blocked.lock().unwrap().push(batch_id);
     }
+}
+
+async fn persist_verified_replace(project: &Path, item: OperationItemPlan, placed_path: &Path) {
+    let scratch = project.join(".viewer-recovery-hash.tmp");
+    fs::write(&scratch, []).unwrap();
+    let copied = LocalFileMutation
+        .copy_and_hash(placed_path, &scratch)
+        .await
+        .unwrap();
+    fs::remove_file(scratch).unwrap();
+    let journal = OperationJournal::open(project.join(".viewer/metadata.sqlite")).unwrap();
+    journal
+        .begin_plan(
+            &OperationPlan {
+                batch_id: item.batch_id,
+                kind: item.kind,
+                items: vec![item.clone()],
+            },
+            1,
+        )
+        .unwrap();
+    let temporary_name = match item.kind {
+        OperationKind::Copy => format!(".viewer-copy-{}.part", item.operation_id),
+        OperationKind::Rename | OperationKind::Move => {
+            format!(".viewer-replace-{}.part", item.operation_id)
+        }
+        other => panic!("unsupported recovery fixture kind: {other:?}"),
+    };
+    let temporary = viewer_domain::RelativePath::parse(&temporary_name).unwrap();
+    journal
+        .record_prepared_evidence(item.operation_id, Some(&temporary), copied.0, copied.1, 2)
+        .unwrap();
+    journal
+        .advance(
+            item.operation_id,
+            OperationState::Prepared,
+            OperationState::Staged,
+            3,
+        )
+        .unwrap();
+    journal
+        .record_fs_applied(
+            item.operation_id,
+            OperationState::Staged,
+            copied.0,
+            copied.1,
+            4,
+        )
+        .unwrap();
+    journal
+        .advance(
+            item.operation_id,
+            OperationState::FsApplied,
+            OperationState::Verified,
+            5,
+        )
+        .unwrap();
 }
 
 #[test]
@@ -491,6 +548,171 @@ async fn open_recovers_incomplete_journal_before_publishing_the_session() {
     assert_eq!((report.recovered, report.needs_user_review), (1, 0));
     let serialized = serde_json::to_string(&reopened).unwrap();
     assert!(!serialized.contains(project.path().to_str().unwrap()));
+    runtime.close_project().await.unwrap();
+}
+
+#[tokio::test]
+async fn reopen_recovery_clears_a_replaced_destination_marker_with_an_empty_session_index() {
+    let cache = tempfile::tempdir().unwrap();
+    let project = tempfile::tempdir().unwrap();
+    fs::write(project.path().join("source.txt"), b"source bytes").unwrap();
+    fs::write(project.path().join("destination.txt"), b"old destination").unwrap();
+    let runtime = DesktopRuntime::new(
+        cache.path().to_path_buf(),
+        Arc::new(FixedProbe(ProjectAccess::ReadWrite)),
+    );
+    let opened = runtime.open_project(project.path()).await.unwrap();
+    runtime.wait_for_scan().await.unwrap();
+    let FolderWorkspaceDto::Content { text_files, .. } = runtime.query_folder(None).await.unwrap()
+    else {
+        panic!("root should contain text files")
+    };
+    let source_id = EntityId::from_str(
+        &text_files
+            .iter()
+            .find(|file| file.name == "source.txt")
+            .unwrap()
+            .entity_id,
+    )
+    .unwrap();
+    let destination_id = EntityId::from_str(
+        &text_files
+            .iter()
+            .find(|file| file.name == "destination.txt")
+            .unwrap()
+            .entity_id,
+    )
+    .unwrap();
+    runtime
+        .set_review_state(
+            SessionId::from_str(&opened.session_id).unwrap(),
+            Generation::new(opened.generation),
+            &[destination_id],
+            Some(ReviewState::Reject),
+        )
+        .await
+        .unwrap();
+    runtime.close_project().await.unwrap();
+
+    fs::write(project.path().join("destination.txt"), b"source bytes").unwrap();
+    let batch_id = viewer_domain::OperationId::new();
+    let item = OperationItemPlan {
+        batch_id,
+        operation_id: viewer_domain::OperationId::new(),
+        entity_id: source_id,
+        kind: OperationKind::Copy,
+        source: viewer_domain::RelativePath::parse("source.txt").unwrap(),
+        destination: Some(viewer_domain::RelativePath::parse("destination.txt").unwrap()),
+        conflict_policy: ConflictPolicy::Replace,
+    };
+    persist_verified_replace(
+        project.path(),
+        item,
+        &project.path().join("destination.txt"),
+    )
+    .await;
+
+    runtime.open_project(project.path()).await.unwrap();
+    runtime.wait_for_scan().await.unwrap();
+    let FolderWorkspaceDto::Content { text_files, .. } = runtime.query_folder(None).await.unwrap()
+    else {
+        panic!("root should contain recovered text files")
+    };
+    let destination = text_files
+        .iter()
+        .find(|file| file.name == "destination.txt")
+        .unwrap();
+    assert_eq!(destination.marker.review_state, None);
+    assert!(!destination.marker.favorite);
+    runtime.close_project().await.unwrap();
+}
+
+#[tokio::test]
+async fn reopen_recovery_replaces_the_old_marker_before_moving_the_source_marker() {
+    let cache = tempfile::tempdir().unwrap();
+    let project = tempfile::tempdir().unwrap();
+    fs::write(project.path().join("source.txt"), b"source bytes").unwrap();
+    fs::write(project.path().join("destination.txt"), b"old destination").unwrap();
+    let runtime = DesktopRuntime::new(
+        cache.path().to_path_buf(),
+        Arc::new(FixedProbe(ProjectAccess::ReadWrite)),
+    );
+    let opened = runtime.open_project(project.path()).await.unwrap();
+    runtime.wait_for_scan().await.unwrap();
+    let FolderWorkspaceDto::Content { text_files, .. } = runtime.query_folder(None).await.unwrap()
+    else {
+        panic!("root should contain text files")
+    };
+    let source_id = EntityId::from_str(
+        &text_files
+            .iter()
+            .find(|file| file.name == "source.txt")
+            .unwrap()
+            .entity_id,
+    )
+    .unwrap();
+    let destination_id = EntityId::from_str(
+        &text_files
+            .iter()
+            .find(|file| file.name == "destination.txt")
+            .unwrap()
+            .entity_id,
+    )
+    .unwrap();
+    let session_id = SessionId::from_str(&opened.session_id).unwrap();
+    let generation = Generation::new(opened.generation);
+    runtime
+        .set_review_state(
+            session_id,
+            generation,
+            &[source_id],
+            Some(ReviewState::Keep),
+        )
+        .await
+        .unwrap();
+    runtime
+        .set_review_state(
+            session_id,
+            generation,
+            &[destination_id],
+            Some(ReviewState::Reject),
+        )
+        .await
+        .unwrap();
+    runtime.close_project().await.unwrap();
+
+    fs::remove_file(project.path().join("destination.txt")).unwrap();
+    fs::rename(
+        project.path().join("source.txt"),
+        project.path().join("destination.txt"),
+    )
+    .unwrap();
+    let batch_id = viewer_domain::OperationId::new();
+    let item = OperationItemPlan {
+        batch_id,
+        operation_id: viewer_domain::OperationId::new(),
+        entity_id: source_id,
+        kind: OperationKind::Rename,
+        source: viewer_domain::RelativePath::parse("source.txt").unwrap(),
+        destination: Some(viewer_domain::RelativePath::parse("destination.txt").unwrap()),
+        conflict_policy: ConflictPolicy::Replace,
+    };
+    persist_verified_replace(
+        project.path(),
+        item,
+        &project.path().join("destination.txt"),
+    )
+    .await;
+
+    runtime.open_project(project.path()).await.unwrap();
+    runtime.wait_for_scan().await.unwrap();
+    let FolderWorkspaceDto::Content { text_files, .. } = runtime.query_folder(None).await.unwrap()
+    else {
+        panic!("root should contain the recovered rename")
+    };
+    assert_eq!(text_files.len(), 1);
+    assert_eq!(text_files[0].name, "destination.txt");
+    assert_eq!(text_files[0].marker.review_state, Some(ReviewState::Keep));
     runtime.close_project().await.unwrap();
 }
 

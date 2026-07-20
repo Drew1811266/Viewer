@@ -472,7 +472,10 @@ async fn rename_in_project_move_preserves_file_identity() {
         .unwrap();
 
     assert_eq!(result.items[0].status, RenameItemStatus::Completed);
-    assert_eq!(before, after);
+    assert_eq!(before.volume_id, after.volume_id);
+    assert_eq!(before.file_id, after.file_id);
+    assert_eq!(before.len, after.len);
+    assert_eq!(before.modified_ns, after.modified_ns);
     assert!(!project.root().join("source/A.jpg").exists());
 }
 

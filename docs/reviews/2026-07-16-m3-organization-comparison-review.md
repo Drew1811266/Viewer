@@ -1,11 +1,11 @@
 # M3 Organization and Comparison Stage Review
 
-- Status: Packaged-app acceptance complete; final branch review pending
+- Status: Task 18 code findings corrected and verified; mandatory physical Finder drag pending
 - Date: 2026-07-19
 - Base: `1642957` (paused M3 checkpoint)
-- Acceptance head: `078208c` plus the Task 17 fixes listed below
+- Acceptance head: `13b86c0` plus the uncommitted Task 18 corrections listed below
 - Review method: exact M3 aggregate gate, Apple Silicon package inspection, release-app acceptance on writable/copied/read-only fixtures, real filesystem and Trash operations, portable-metadata validation, cache/network inspection and final complete-diff review
-- Decision: **Ready for Task 18 review; not yet approved or merged**
+- Decision: **Not yet approved or merged; physical Finder drag is the only open Important acceptance item**
 
 ## Exit-criteria traceability
 
@@ -35,7 +35,7 @@ The disposable writable fixture contained JPG/PNG files at arbitrary folder dept
 - Viewer moved `viewer-restore-proof.png` to the macOS Trash, Finder exposed `放回原处`, restoration returned it to its original folder, and Viewer reconciled the count;
 - the copied project retained project identity and its Keep marker; read-only operation controls were disabled; startup/close always returned to the empty surface.
 
-Computer Use attempted internal and Viewer-to-Finder drag gestures, but its instantaneous pointer primitive did not emit the WebView HTML5 `dragstart` event. The product's complete drag contract remains covered by `App`, `ContentBrowser`, `FolderTree` and `m3_drag_export` tests, including copy-only AppKit source masks and entity/path revalidation. A human physical drag into Finder remains an explicit M4 release acceptance item; this review does not represent it as GUI evidence.
+Computer Use attempted internal and Viewer-to-Finder drag gestures, but its instantaneous pointer primitive did not emit the WebView HTML5 `dragstart` event. The product's complete drag contract remains covered by `App`, `ContentBrowser`, `FolderTree` and `m3_drag_export` tests, including copy-only AppKit source masks and entity/path revalidation. The frozen M3 design nevertheless requires a human physical drag into Finder before approval; this review does not represent automated contract coverage as GUI evidence and does not defer the requirement to M4.
 
 ## Defects found and corrected during acceptance
 
@@ -46,6 +46,16 @@ Computer Use attempted internal and Viewer-to-Finder drag gestures, but its inst
 5. **Portable entity-ID false rejection:** stable filesystem-derived UUID-shaped entity IDs are canonical but need not carry RFC version/variant bits. The validator now distinguishes entity IDs from project/operation IDs and retains strict shape, with positive and negative policy tests.
 
 Every correction followed a failing focused test, implementation, focused green verification and a fresh exact M3 aggregate gate.
+
+## Independent Task 18 review findings
+
+The complete branch review reported no Critical findings and four Important findings. Three code findings are corrected on the branch and covered by new regressions:
+
+1. **Concurrent same-inode rewrites:** file snapshots now carry nanosecond modification/change evidence; Replace destinations are fingerprinted and revalidated immediately before Trash; copy verifies the current source fingerprint against the copied bytes; and cross-volume move revalidates the source immediately before Trash. Same-length in-place source and destination rewrites now fail without deleting either current source or destination.
+2. **Replace recovery marker ownership:** recovery no longer depends on the disposable session index to identify the replaced destination. A narrow portable-metadata path deletion clears the old destination marker before Copy/Rename/Move Replace projection, including a real close/reopen with an initially empty index.
+3. **Display-preflight retention:** the display-only preview path now disposes its prepared backend batch, and invalid/blocked start paths do the same. Repeated previews retain zero prepared batches.
+
+The fourth finding is the still-open physical Finder gesture. It cannot be closed by unit/integration evidence alone. Before M3 approval, a human must verify both single- and multi-file drag from the packaged Viewer into Finder, confirm copies appear at the Finder destination, and confirm the Viewer project sources remain present.
 
 ## Package, integrity and privacy evidence
 
@@ -83,4 +93,4 @@ The `.viewer` validator accepts only the manifest, schema-v3 SQLite database, ex
 
 ## Task 17 decision
 
-The exact gate, package checks, real file/Trash operations, compare/read-only/lifecycle behavior and portable/privacy boundaries pass after five acceptance-found defects were corrected. No known data-loss, security, read-only or lifecycle defect remains. Task 17 is ready for independent Task 18 review, with the physical Finder drag gesture explicitly disclosed rather than inferred from automation.
+The exact gate, package checks, real file/Trash operations, compare/read-only/lifecycle behavior and portable/privacy boundaries pass after five acceptance-found defects were corrected. The independent Task 18 review then found three additional code defects; all three now have failing-before/green-after regressions and pass the fresh exact gate and package checks. Task 17 remains open only for the mandatory physical Finder drag, which is explicitly disclosed rather than inferred from automation.

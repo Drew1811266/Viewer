@@ -116,6 +116,14 @@ pub trait PortableMetadataPort: Send + Sync {
         updated_at_ms: i64,
     ) -> Result<Vec<MarkerChange>, MarkerStoreError>;
 
+    fn clear_paths(
+        &self,
+        _paths: &[RelativePath],
+        _updated_at_ms: i64,
+    ) -> Result<usize, MarkerStoreError> {
+        Err(MarkerStoreError::Unavailable)
+    }
+
     fn move_paths(
         &self,
         moves: &[FilePathMove],

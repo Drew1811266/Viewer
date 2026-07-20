@@ -690,7 +690,7 @@ Map every M3 requirement to automated and GUI evidence. Critical/Important defec
 - Modify: `docs/superpowers/plans/2026-07-16-viewer-0.1-roadmap.md`
 - Modify: `docs/superpowers/plans/2026-07-16-viewer-m3-organization-comparison-plan.md`
 
-- [ ] **Step 1: Run fresh verification-before-completion evidence**
+- [x] **Step 1: Run fresh verification-before-completion evidence**
 
 Run: `git status --short && pnpm gate:m3 && pnpm build:macos`
 

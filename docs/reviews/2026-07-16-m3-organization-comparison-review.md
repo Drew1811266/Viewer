@@ -3,7 +3,7 @@
 - Status: Task 18 code findings corrected and verified; mandatory physical Finder drag pending
 - Date: 2026-07-19
 - Base: `1642957` (paused M3 checkpoint)
-- Acceptance head: `13b86c0` plus the uncommitted Task 18 corrections listed below
+- Acceptance head: `55f5a90` (Task 18 code corrections)
 - Review method: exact M3 aggregate gate, Apple Silicon package inspection, release-app acceptance on writable/copied/read-only fixtures, real filesystem and Trash operations, portable-metadata validation, cache/network inspection and final complete-diff review
 - Decision: **Not yet approved or merged; physical Finder drag is the only open Important acceptance item**
 
@@ -82,14 +82,14 @@ session cache after close             empty
 lsof release process TCP/UDP          no sockets
 ```
 
-The `.viewer` validator accepts only the manifest, schema-v3 SQLite database, exact SQLite sidecars and approved prior-schema backup. It rejects originals, text bodies, thumbnails/proxies, absolute/cache paths, unknown tables/columns/enums/result codes/files and symlinks. Static policy and runtime socket inspection found no updater, analytics, crash upload or application network behavior.
+The exact gate and package build above were repeated from the clean committed `55f5a90` branch after the Task 18 corrections. The `.viewer` validator accepts only the manifest, schema-v3 SQLite database, exact SQLite sidecars and approved prior-schema backup. It rejects originals, text bodies, thumbnails/proxies, absolute/cache paths, unknown tables/columns/enums/result codes/files and symlinks. Static policy and runtime socket inspection found no updater, analytics, crash upload or application network behavior.
 
 ## Scope and remaining review work
 
 - No Windows implementation or cloud behavior was introduced.
 - The app and DMG remain ad-hoc signed and are not notarized because Developer ID credentials are outside the internal-only 0.1 scope.
 - The synthetic fixture validates correctness but does not replace M4 acceptance with the user's supplied approximately 10 MiB production images.
-- Task 18 must review `main...HEAD`, classify the physical Finder-drag automation gap, rerun the exact gate and package build from a clean committed branch, and leave no unresolved Critical or Important finding before approval.
+- Task 18 must independently re-review the code corrections, complete the physical Finder-drag acceptance, and leave no unresolved Critical or Important finding before approval.
 
 ## Task 17 decision
 

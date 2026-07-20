@@ -1,0 +1,73 @@
+import { useEffect, useId, useRef } from 'react'
+import type { ReactNode, RefObject } from 'react'
+
+interface ModalSheetProps {
+  title: string
+  children: ReactNode
+  onCancel: () => void
+  initialFocusRef?: RefObject<HTMLElement | null>
+  destructive?: boolean
+}
+
+const FOCUSABLE =
+  'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [href], [tabindex]:not([tabindex="-1"])'
+
+export default function ModalSheet({
+  title,
+  children,
+  onCancel,
+  initialFocusRef,
+  destructive = false,
+}: ModalSheetProps) {
+  const titleId = useId()
+  const dialogRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    const target = initialFocusRef?.current ?? dialogRef.current?.querySelector<HTMLElement>(FOCUSABLE)
+    target?.focus()
+    return () => previous?.focus()
+  }, [initialFocusRef])
+
+  function containFocus(event: React.KeyboardEvent<HTMLDivElement>) {
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      event.stopPropagation()
+      onCancel()
+      return
+    }
+    if (event.key !== 'Tab' || dialogRef.current === null) return
+    const focusable = [...dialogRef.current.querySelectorAll<HTMLElement>(FOCUSABLE)]
+    if (focusable.length === 0) {
+      event.preventDefault()
+      dialogRef.current.focus()
+      return
+    }
+    const first = focusable[0]!
+    const last = focusable.at(-1)!
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault()
+      last.focus()
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault()
+      first.focus()
+    }
+  }
+
+  return (
+    <div className="modal-backdrop" data-destructive={destructive || undefined}>
+      <div
+        ref={dialogRef}
+        className="modal-sheet"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        tabIndex={-1}
+        onKeyDown={containFocus}
+      >
+        <h2 id={titleId}>{title}</h2>
+        {children}
+      </div>
+    </div>
+  )
+}

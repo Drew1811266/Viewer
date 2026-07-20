@@ -2,27 +2,43 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { ViewerBridge } from './api/viewer'
 import { tauriViewerBridge } from './api/viewer'
 import EmptyProject from './components/EmptyProject'
+import BatchRenameDialog from './components/BatchRenameDialog'
 import ContentBrowser from './components/ContentBrowser'
+import DestinationDialog from './components/DestinationDialog'
+import FileActionToolbar from './components/FileActionToolbar'
 import FolderOverview from './components/FolderOverview'
 import FolderTree from './components/FolderTree'
 import ImagePreview from './components/ImagePreview'
 import InfoOverlay from './components/InfoOverlay'
 import MarkerControls from './components/MarkerControls'
+import OperationResults from './components/OperationResults'
+import RenameDialog from './components/RenameDialog'
 import SearchResults from './components/SearchResults'
 import SearchToolbar from './components/SearchToolbar'
 import TaskBar from './components/TaskBar'
 import type { TaskFeedback } from './components/TaskBar'
 import TextPreview from './components/TextPreview'
+import TrashConfirmation from './components/TrashConfirmation'
 import { useViewerController } from './state/useViewerController'
 import type {
   BrowserFile,
+  ConflictResolution,
+  FileCommandItem,
   ImageRepresentationRequest,
+  RenamePreview,
+  RenameRules,
   TextEncoding,
 } from './api/types'
 
 interface AppProps {
   bridge?: ViewerBridge
 }
+
+type OperationDialog =
+  | { kind: 'rename'; file: BrowserFile }
+  | { kind: 'batch_rename'; files: BrowserFile[] }
+  | { kind: 'destination'; mode: 'copy' | 'move'; files: BrowserFile[] }
+  | { kind: 'trash'; files: BrowserFile[] }
 
 export default function App({ bridge = tauriViewerBridge }: AppProps) {
   const {
@@ -45,6 +61,14 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
     setSelectedEntityIds,
     setReviewState,
     toggleFavorite,
+    previewRename,
+    preflightFileCommand,
+    executeFileCommand,
+    cancelOperation,
+    loadOperationResults,
+    undoLastOperation,
+    setPreviewEntityId,
+    setCompareEntityIds,
   } = useViewerController(bridge)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [sidebarWidth, setSidebarWidth] = useState(260)
@@ -53,6 +77,9 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
   const [dismissedTasks, setDismissedTasks] = useState<Set<string>>(() => new Set())
   const [activePreview, setActivePreview] = useState<BrowserFile | null>(null)
   const [selectedFiles, setSelectedFiles] = useState<BrowserFile[]>([])
+  const [operationDialog, setOperationDialog] = useState<OperationDialog | null>(null)
+  const [operationSubmitting, setOperationSubmitting] = useState(false)
+  const [resultsBatchId, setResultsBatchId] = useState<string | null>(null)
   const [infoOpen, setInfoOpen] = useState(false)
   const [dimensions, setDimensions] = useState<
     Record<string, { width: number; height: number } | undefined>
@@ -63,6 +90,9 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
     setDismissedTasks(new Set())
     setActivePreview(null)
     setSelectedFiles([])
+    setOperationDialog(null)
+    setOperationSubmitting(false)
+    setResultsBatchId(null)
     setInfoOpen(false)
     setDimensions({})
   }, [state.project?.sessionId])
@@ -103,10 +133,15 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
     function toggleInfo(event: KeyboardEvent) {
       const target = event.target
       if (
-        !(event.metaKey && event.key.toLowerCase() === 'i') ||
-        target instanceof HTMLInputElement ||
-        target instanceof HTMLTextAreaElement ||
-        (target instanceof HTMLElement && target.isContentEditable)
+        !(
+          event.metaKey &&
+          !event.ctrlKey &&
+          !event.altKey &&
+          !event.shiftKey &&
+          event.key.toLowerCase() === 'i'
+        ) ||
+        isOrganizationShortcutTargetBlocked(target) ||
+        operationDialog !== null
       ) {
         return
       }
@@ -115,7 +150,7 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
     }
     window.addEventListener('keydown', toggleInfo)
     return () => window.removeEventListener('keydown', toggleInfo)
-  }, [])
+  }, [operationDialog])
   const scanTask = useMemo<TaskFeedback | null>(() => {
     if (state.scan === null) return null
     const published = state.scan.publishedFolders + state.scan.publishedFiles
@@ -146,13 +181,41 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
       })),
     }
   }, [state.scan])
+  const operationTask = useMemo<TaskFeedback | null>(() => {
+    const progress = state.operation.active
+    if (progress === null) return null
+    const running = progress.lifecycle !== 'completed'
+    const failures =
+      state.operation.results?.items
+        .filter((item) => item.status === 'failed')
+        .map((item) => ({ item: item.relativePath, code: item.code })) ?? []
+    return {
+      id: progress.batchId,
+      label: operationLabel(state.operation.kind),
+      status: running
+        ? 'running'
+        : progress.failed > 0
+          ? 'failed'
+          : progress.cancelled === progress.requested && progress.requested > 0
+            ? 'cancelled'
+            : 'complete',
+      requested: progress.requested,
+      completed: progress.completed,
+      failed: progress.failed,
+      skipped: progress.skipped,
+      cancelled: progress.cancelled,
+      cancellable: progress.lifecycle === 'queued' || progress.lifecycle === 'running',
+      failures,
+      hasResults: state.operation.results !== null,
+    }
+  }, [state.operation])
   const visibleTasks = useMemo(
     () =>
-      [scanTask, thumbnailTask, textTask].filter(
+      [scanTask, thumbnailTask, textTask, operationTask].filter(
         (task): task is TaskFeedback =>
           task !== null && (!dismissedTasks.has(task.id) || task.status === 'running'),
       ),
-    [dismissedTasks, scanTask, textTask, thumbnailTask],
+    [dismissedTasks, operationTask, scanTask, textTask, thumbnailTask],
   )
   const selectFolderTarget = useCallback(
     (entityId: string | null) => {
@@ -169,6 +232,142 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
     },
     [setSelectedEntityIds],
   )
+  const operationBusy =
+    operationSubmitting ||
+    state.status !== 'active' ||
+    (state.operation.active !== null && state.operation.active.lifecycle !== 'completed')
+  const canMutateSelection =
+    selectedFiles.length > 0 && state.project?.access === 'read_write' && !operationBusy
+
+  useEffect(() => {
+    if (
+      operationDialog !== null &&
+      (state.status !== 'active' ||
+        state.project?.access !== 'read_write' ||
+        (state.operation.active !== null && state.operation.active.lifecycle !== 'completed'))
+    ) {
+      setOperationDialog(null)
+    }
+  }, [operationDialog, state.operation.active, state.project?.access, state.status])
+
+  const openRenameDialog = useCallback(() => {
+    if (!canMutateSelection) return
+    setOperationDialog(
+      selectedFiles.length === 1
+        ? { kind: 'rename', file: selectedFiles[0]! }
+        : { kind: 'batch_rename', files: selectedFiles },
+    )
+  }, [canMutateSelection, selectedFiles])
+
+  const openDestinationDialog = useCallback(
+    (mode: 'copy' | 'move') => {
+      if (!canMutateSelection) return
+      setOperationDialog({ kind: 'destination', mode, files: selectedFiles })
+    },
+    [canMutateSelection, selectedFiles],
+  )
+
+  const openTrashDialog = useCallback(() => {
+    if (!canMutateSelection) return
+    setOperationDialog({ kind: 'trash', files: selectedFiles })
+  }, [canMutateSelection, selectedFiles])
+
+  const submitFileCommand = useCallback(
+    async (
+      kind: 'rename' | 'copy' | 'move' | 'trash',
+      items: FileCommandItem[],
+      conflicts: ConflictResolution[] = [],
+    ) => {
+      setOperationSubmitting(true)
+      try {
+        const started = await executeFileCommand(kind, items, conflicts)
+        if (started) setOperationDialog(null)
+        return started
+      } finally {
+        setOperationSubmitting(false)
+      }
+    },
+    [executeFileCommand],
+  )
+
+  const openPreview = useCallback(
+    (file: BrowserFile) => {
+      setActivePreview(file)
+      setPreviewEntityId(file.entityId)
+    },
+    [setPreviewEntityId],
+  )
+
+  const closePreview = useCallback(() => {
+    setActivePreview(null)
+    setPreviewEntityId(null)
+  }, [setPreviewEntityId])
+
+  useEffect(() => {
+    const active = state.operation.active
+    if (active?.lifecycle === 'completed' && state.operation.results !== null) {
+      setResultsBatchId(active.batchId)
+    }
+  }, [state.operation.active, state.operation.results])
+
+  useEffect(() => {
+    if (
+      activePreview &&
+      state.contextRepair?.removedEntityIds.includes(activePreview.entityId)
+    ) {
+      setActivePreview(null)
+    }
+  }, [activePreview, state.contextRepair])
+
+  useEffect(() => {
+    function handleOrganizationShortcut(event: KeyboardEvent) {
+      if (
+        event.defaultPrevented ||
+        isOrganizationShortcutTargetBlocked(event.target) ||
+        operationDialog !== null ||
+        activePreview !== null ||
+        infoOpen ||
+        resultsBatchId !== null ||
+        hasTextSelection()
+      ) {
+        return
+      }
+      if (
+        event.metaKey &&
+        !event.ctrlKey &&
+        !event.altKey &&
+        !event.shiftKey &&
+        event.key.toLowerCase() === 'z'
+      ) {
+        if (operationBusy) return
+        event.preventDefault()
+        void undoLastOperation()
+        return
+      }
+      if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return
+      if (event.key === 'Enter') {
+        if (!canMutateSelection) return
+        event.preventDefault()
+        openRenameDialog()
+      } else if (event.key === 'Delete' || event.key === 'Backspace') {
+        if (!canMutateSelection) return
+        event.preventDefault()
+        openTrashDialog()
+      }
+    }
+    window.addEventListener('keydown', handleOrganizationShortcut)
+    return () => window.removeEventListener('keydown', handleOrganizationShortcut)
+  }, [
+    activePreview,
+    canMutateSelection,
+    infoOpen,
+    openRenameDialog,
+    openTrashDialog,
+    operationDialog,
+    operationBusy,
+    resultsBatchId,
+    undoLastOperation,
+  ])
 
   if (state.project === null) {
     return (
@@ -198,6 +397,18 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
           只读项目
         </p>
       )}
+      {state.recoveryReport &&
+        (state.recoveryReport.recovered > 0 || state.recoveryReport.needsUserReview > 0) && (
+          <p className="recovery-banner" role="status">
+            已恢复 {state.recoveryReport.recovered} 项操作；
+            {state.recoveryReport.needsUserReview} 项需要检查。
+          </p>
+        )}
+      {state.contextRepair && (
+        <p className="context-repair-banner" role="status">
+          {state.contextRepair.message}
+        </p>
+      )}
       {state.errorMessage && <p role="alert">{state.errorMessage}</p>}
       <SearchToolbar
         query={state.search.query}
@@ -217,6 +428,20 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
         readOnly={state.project.access === 'read_only'}
         onSetReview={(reviewState) => void setReviewState(reviewState)}
         onToggleFavorite={() => void toggleFavorite()}
+      />
+      <FileActionToolbar
+        selectedCount={selectedFiles.length}
+        selectedImageCount={selectedFiles.filter(matchesImage).length}
+        readOnly={state.project.access === 'read_only'}
+        busy={operationBusy}
+        onRename={openRenameDialog}
+        onCopy={() => openDestinationDialog('copy')}
+        onMove={() => openDestinationDialog('move')}
+        onTrash={openTrashDialog}
+        onCompare={() =>
+          setCompareEntityIds(selectedFiles.filter(matchesImage).map((file) => file.entityId))
+        }
+        onInfo={() => setInfoOpen(true)}
       />
       <div className="viewer-columns">
         <aside
@@ -302,7 +527,7 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
                 workspace={state.workspace}
                 requestThumbnail={requestContentThumbnail}
                 onThumbnailTaskChange={setThumbnailTask}
-                onPreview={setActivePreview}
+                onPreview={openPreview}
                 onSelectionChange={selectFiles}
               />
             </>
@@ -311,10 +536,14 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
       </div>
       <TaskBar
         tasks={visibleTasks}
-        onCancel={(taskId) => void cancelTask(taskId)}
+        onCancel={(taskId) => {
+          if (taskId === state.operation.active?.batchId) void cancelOperation()
+          else void cancelTask(taskId)
+        }}
         onDismiss={(taskId) =>
           setDismissedTasks((current) => new Set([...current, taskId]))
         }
+        onShowResults={(taskId) => setResultsBatchId(taskId)}
       />
       {activePreview && matchesImage(activePreview) && state.workspace?.workspace === 'content' && (
         <ImagePreview
@@ -325,8 +554,8 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
           }
           files={state.workspace.images}
           requestImage={requestPreviewImage}
-          onNavigate={setActivePreview}
-          onClose={() => setActivePreview(null)}
+          onNavigate={openPreview}
+          onClose={closePreview}
           onDimensions={rememberDimensions}
         />
       )}
@@ -335,7 +564,7 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
           file={activePreview}
           requestPreview={requestTextPreview}
           openExternalLink={bridge.openExternalLink}
-          onClose={() => setActivePreview(null)}
+          onClose={closePreview}
           onTaskChange={setTextTask}
         />
       )}
@@ -347,10 +576,116 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
           onClose={() => setInfoOpen(false)}
         />
       )}
+      {operationDialog?.kind === 'rename' && (
+        <RenameDialog
+          currentName={operationDialog.file.name}
+          busy={operationBusy}
+          onCancel={() => setOperationDialog(null)}
+          onConfirm={(proposedName, editExtension) =>
+            void submitFileCommand('rename', [
+              {
+                entityId: operationDialog.file.entityId,
+                action: { kind: 'rename', proposedName, editExtension },
+              },
+            ])
+          }
+        />
+      )}
+      {operationDialog?.kind === 'batch_rename' && (
+        <BatchRenameDialog
+          entityIds={operationDialog.files.map((file) => file.entityId)}
+          busy={operationBusy}
+          requestPreview={(entityIds, rules) => previewRename(entityIds, rules)}
+          onCancel={() => setOperationDialog(null)}
+          onConfirm={(_rules: RenameRules, preview: RenamePreview) =>
+            void submitFileCommand(
+              'rename',
+              preview.rows.map((row) => ({
+                entityId: row.entityId,
+                action: {
+                  kind: 'rename',
+                  proposedName: row.proposedName,
+                  editExtension: true,
+                },
+              })),
+            )
+          }
+        />
+      )}
+      {operationDialog?.kind === 'destination' && (
+        <DestinationDialog
+          mode={operationDialog.mode}
+          entityIds={operationDialog.files.map((file) => file.entityId)}
+          folders={state.folders}
+          busy={operationBusy}
+          requestPreflight={(items) => preflightFileCommand(operationDialog.mode, items)}
+          onCancel={() => setOperationDialog(null)}
+          onConfirm={(items, conflicts) =>
+            void submitFileCommand(operationDialog.mode, items, conflicts)
+          }
+        />
+      )}
+      {operationDialog?.kind === 'trash' && (
+        <TrashConfirmation
+          count={operationDialog.files.length}
+          busy={operationBusy}
+          onCancel={() => setOperationDialog(null)}
+          onConfirm={() =>
+            void submitFileCommand(
+              'trash',
+              operationDialog.files.map((file) => ({
+                entityId: file.entityId,
+                action: { kind: 'trash' },
+              })),
+            )
+          }
+        />
+      )}
+      {resultsBatchId !== null &&
+        state.operation.active?.batchId === resultsBatchId &&
+        state.operation.results !== null && (
+          <OperationResults
+            batchId={resultsBatchId}
+            progress={state.operation.active}
+            page={state.operation.results}
+            onPageChange={(offset) => void loadOperationResults(offset)}
+            onClose={() => setResultsBatchId(null)}
+          />
+        )}
     </main>
   )
 }
 
 function matchesImage(file: BrowserFile): boolean {
   return file.kind === 'jpeg' || file.kind === 'png'
+}
+
+function operationLabel(kind: 'rename' | 'copy' | 'move' | 'trash' | null): string {
+  if (kind === 'rename') return '重命名文件'
+  if (kind === 'copy') return '复制文件'
+  if (kind === 'move') return '移动文件'
+  if (kind === 'trash') return '移到废纸篓'
+  return '文件操作'
+}
+
+function isEditableTarget(target: EventTarget | null): boolean {
+  return (
+    target instanceof HTMLInputElement ||
+    target instanceof HTMLTextAreaElement ||
+    target instanceof HTMLSelectElement ||
+    (target instanceof HTMLElement && target.isContentEditable)
+  )
+}
+
+function isOrganizationShortcutTargetBlocked(target: EventTarget | null): boolean {
+  if (isEditableTarget(target)) return true
+  return (
+    target instanceof HTMLElement &&
+    target.closest('button, a, summary, [role="button"], [role="dialog"], [aria-modal="true"]') !== null
+  )
+}
+
+function hasTextSelection(): boolean {
+  const selection = window.getSelection()
+  return selection !== null && !selection.isCollapsed && selection.toString().length > 0
 }

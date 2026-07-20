@@ -27,6 +27,7 @@ function bridge(): ViewerBridge {
     toggleFavorite: vi.fn(),
     selectionInfo: vi.fn(),
     previewRename: vi.fn().mockResolvedValue({ rows: [], executable: false }),
+    preflightFileCommand: vi.fn().mockResolvedValue({ rows: [], executable: false }),
     executeFileCommand: vi.fn().mockResolvedValue({ batchId: 'batch-1' }),
     operationStatus: vi.fn(),
     operationResults: vi.fn().mockResolvedValue({ total: 0, offset: 0, items: [] }),

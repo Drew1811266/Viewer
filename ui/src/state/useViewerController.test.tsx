@@ -54,8 +54,20 @@ function bridge(access: 'read_write' | 'read_only' = 'read_write'): ViewerBridge
       commonFavorite: { state: 'none_selected' },
     }),
     previewRename: vi.fn().mockResolvedValue({ rows: [], executable: false }),
+    preflightFileCommand: vi.fn().mockResolvedValue({ rows: [], executable: false }),
     executeFileCommand: vi.fn().mockResolvedValue({ batchId: 'batch-1' }),
-    operationStatus: vi.fn(),
+    operationStatus: vi.fn().mockResolvedValue({
+      sessionId: 'session-1',
+      generation: 1,
+      batchId: 'batch-1',
+      lifecycle: 'queued',
+      requested: 1,
+      completed: 0,
+      failed: 0,
+      skipped: 0,
+      cancelled: 0,
+      activeEntityId: null,
+    }),
     operationResults: vi.fn().mockResolvedValue({ total: 0, offset: 0, items: [] }),
     cancelOperation: vi.fn().mockResolvedValue(true),
     undoLastOperation: vi.fn().mockResolvedValue(null),
@@ -259,6 +271,14 @@ describe('useViewerController M2 coordination', () => {
     expect(result.current.state.operation.results?.items[0]?.code).toBe('renamed')
     expect(viewer.folderTree).toHaveBeenCalledTimes(2)
     expect(viewer.queryFolder).toHaveBeenCalledTimes(2)
+    await act(() => result.current.loadOperationResults(200))
+    expect(viewer.operationResults).toHaveBeenLastCalledWith({
+      sessionId: 'session-1',
+      generation: 1,
+      batchId: 'batch-1',
+      offset: 200,
+      limit: 200,
+    })
     await act(async () => {
       receiveProjectChanged?.({
         ...projectChanged('session-1', 1),
@@ -286,17 +306,97 @@ describe('useViewerController M2 coordination', () => {
         { entityId: 'image-2', action: { kind: 'trash' } },
       ])
     })
+    await act(() => result.current.undoLastOperation())
     expect(viewer.executeFileCommand).toHaveBeenCalledOnce()
+    expect(viewer.undoLastOperation).not.toHaveBeenCalled()
     await act(async () => {
       start.resolve({ batchId: 'batch-1' })
       await first
     })
+    await act(() => result.current.undoLastOperation())
+    expect(viewer.undoLastOperation).not.toHaveBeenCalled()
     await act(() => result.current.cancelOperation())
     expect(viewer.cancelOperation).toHaveBeenCalledWith({
       sessionId: 'session-1',
       generation: 1,
       batchId: 'batch-1',
     })
+  })
+
+  it('refreshes the file projection even when completed result details cannot be loaded', async () => {
+    const viewer = bridge()
+    let receiveOperation: ((event: OperationProgressEvent) => void) | undefined
+    vi.mocked(viewer.listenOperationProgress).mockImplementation(async (handler) => {
+      receiveOperation = handler
+      return () => undefined
+    })
+    vi.mocked(viewer.operationResults).mockRejectedValue(new Error('result unavailable'))
+    const { result } = renderHook(() => useViewerController(viewer))
+    await act(() => result.current.openProject('/fixture/project'))
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    await act(() => result.current.executeFileCommand('trash', [
+      { entityId: 'image-1', action: { kind: 'trash' } },
+    ]))
+
+    await act(async () => {
+      receiveOperation?.(operationProgress('session-1', 1, 'batch-1'))
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(viewer.operationResults).toHaveBeenCalledOnce()
+    expect(viewer.folderTree).toHaveBeenCalledTimes(2)
+    expect(viewer.queryFolder).toHaveBeenCalledTimes(2)
+  })
+
+  it('keeps the newest operation result page when navigation responses arrive out of order', async () => {
+    const viewer = bridge()
+    let receiveOperation: ((event: OperationProgressEvent) => void) | undefined
+    vi.mocked(viewer.listenOperationProgress).mockImplementation(async (handler) => {
+      receiveOperation = handler
+      return () => undefined
+    })
+    vi.mocked(viewer.operationResults).mockResolvedValueOnce({ total: 500, offset: 0, items: [] })
+    const { result } = renderHook(() => useViewerController(viewer))
+    await act(() => result.current.openProject('/fixture/project'))
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    await act(() => result.current.executeFileCommand('trash', [
+      { entityId: 'image-1', action: { kind: 'trash' } },
+    ]))
+    await act(async () => {
+      receiveOperation?.(operationProgress('session-1', 1, 'batch-1'))
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    const older = deferred<{ total: number; offset: number; items: [] }>()
+    const newer = deferred<{ total: number; offset: number; items: [] }>()
+    vi.mocked(viewer.operationResults)
+      .mockImplementationOnce(() => older.promise)
+      .mockImplementationOnce(() => newer.promise)
+    let olderRequest!: Promise<unknown>
+    let newerRequest!: Promise<unknown>
+    act(() => {
+      olderRequest = result.current.loadOperationResults(200)
+      newerRequest = result.current.loadOperationResults(400)
+    })
+    await act(async () => {
+      newer.resolve({ total: 500, offset: 400, items: [] })
+      await newerRequest
+    })
+    await act(async () => {
+      older.resolve({ total: 500, offset: 200, items: [] })
+      await olderRequest
+    })
+    expect(result.current.state.operation.results?.offset).toBe(400)
   })
 
   it('repairs current context after project changes and records close coordination', async () => {
@@ -356,6 +456,43 @@ describe('useViewerController M2 coordination', () => {
     await act(() => result.current.undoLastOperation())
     expect(viewer.executeFileCommand).not.toHaveBeenCalled()
     expect(viewer.undoLastOperation).not.toHaveBeenCalled()
+  })
+
+  it('rejects organization previews and mutations once project closing begins', async () => {
+    const viewer = bridge()
+    const closing = deferred<void>()
+    vi.mocked(viewer.closeProject).mockImplementation(() => closing.promise)
+    const { result } = renderHook(() => useViewerController(viewer))
+    await act(() => result.current.openProject('/fixture/project'))
+
+    let close!: Promise<void>
+    act(() => {
+      close = result.current.closeProject()
+    })
+    expect(result.current.state.status).toBe('closing')
+    await act(() => result.current.previewRename(['image-1'], {
+      find: '',
+      replacement: '',
+      prefix: 'x-',
+      suffix: '',
+      sequence: null,
+    }))
+    await act(() => result.current.preflightFileCommand('trash', [
+      { entityId: 'image-1', action: { kind: 'trash' } },
+    ]))
+    await act(() => result.current.executeFileCommand('trash', [
+      { entityId: 'image-1', action: { kind: 'trash' } },
+    ]))
+    await act(() => result.current.undoLastOperation())
+
+    expect(viewer.previewRename).not.toHaveBeenCalled()
+    expect(viewer.preflightFileCommand).not.toHaveBeenCalled()
+    expect(viewer.executeFileCommand).not.toHaveBeenCalled()
+    expect(viewer.undoLastOperation).not.toHaveBeenCalled()
+    await act(async () => {
+      closing.resolve(undefined)
+      await close
+    })
   })
 })
 

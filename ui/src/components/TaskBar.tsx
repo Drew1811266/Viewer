@@ -7,8 +7,11 @@ export interface TaskFeedback {
   requested: number
   completed: number
   failed: number
+  skipped?: number
+  cancelled?: number
   cancellable: boolean
   failures: Array<{ item: string; code: string }>
+  hasResults?: boolean
 }
 
 interface TaskBarProps {
@@ -16,9 +19,16 @@ interface TaskBarProps {
   tasks?: TaskFeedback[]
   onCancel?: (taskId: string) => void
   onDismiss?: (taskId: string) => void
+  onShowResults?: (taskId: string) => void
 }
 
-export default function TaskBar({ task = null, tasks, onCancel, onDismiss }: TaskBarProps) {
+export default function TaskBar({
+  task = null,
+  tasks,
+  onCancel,
+  onDismiss,
+  onShowResults,
+}: TaskBarProps) {
   const visibleTasks = tasks ?? (task ? [task] : [])
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null)
 
@@ -35,7 +45,10 @@ export default function TaskBar({ task = null, tasks, onCancel, onDismiss }: Tas
         const expanded = expandedTaskId === currentTask.id
         const finished = Math.min(
           currentTask.requested,
-          currentTask.completed + currentTask.failed,
+          currentTask.completed +
+            currentTask.failed +
+            (currentTask.skipped ?? 0) +
+            (currentTask.cancelled ?? 0),
         )
         const detailLabel =
           visibleTasks.length === 1
@@ -57,6 +70,10 @@ export default function TaskBar({ task = null, tasks, onCancel, onDismiss }: Tas
               {finished}/{currentTask.requested}
             </span>
             {currentTask.failed > 0 && <span>{currentTask.failed} 项失败</span>}
+            {(currentTask.skipped ?? 0) > 0 && <span>{currentTask.skipped} 项跳过</span>}
+            {(currentTask.cancelled ?? 0) > 0 && (
+              <span>{currentTask.cancelled} 项取消</span>
+            )}
             {currentTask.cancellable && currentTask.status === 'running' && onCancel && (
               <button type="button" onClick={() => onCancel(currentTask.id)}>
                 取消任务
@@ -65,6 +82,15 @@ export default function TaskBar({ task = null, tasks, onCancel, onDismiss }: Tas
             {currentTask.status !== 'running' && onDismiss && (
               <button type="button" onClick={() => onDismiss(currentTask.id)}>
                 关闭任务
+              </button>
+            )}
+            {currentTask.hasResults && onShowResults && (
+              <button
+                type="button"
+                aria-label={`查看${currentTask.label}结果`}
+                onClick={() => onShowResults(currentTask.id)}
+              >
+                查看结果
               </button>
             )}
             {expanded && (

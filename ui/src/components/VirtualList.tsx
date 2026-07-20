@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode, UIEvent } from 'react'
 
 interface VirtualListProps<T> {
@@ -9,6 +9,7 @@ interface VirtualListProps<T> {
   getKey: (item: T) => string
   renderItem: (item: T, index: number) => ReactNode
   className?: string
+  scrollToIndex?: number
 }
 
 export default function VirtualList<T>({
@@ -19,8 +20,18 @@ export default function VirtualList<T>({
   getKey,
   renderItem,
   className,
+  scrollToIndex,
 }: VirtualListProps<T>) {
-  const [scrollTop, setScrollTop] = useState(0)
+  const initialScrollTop = scrollOffset(scrollToIndex, items.length, rowHeight)
+  const [scrollTop, setScrollTop] = useState(initialScrollTop)
+  const viewportRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (scrollToIndex === undefined) return
+    const next = scrollOffset(scrollToIndex, items.length, rowHeight)
+    setScrollTop(next)
+    if (viewportRef.current) viewportRef.current.scrollTop = next
+  }, [items.length, rowHeight, scrollToIndex])
   const window = useMemo(() => {
     const firstVisible = Math.floor(scrollTop / rowHeight)
     const visibleCount = Math.ceil(height / rowHeight)
@@ -35,6 +46,7 @@ export default function VirtualList<T>({
 
   return (
     <div
+      ref={viewportRef}
       className={className}
       style={{ height, overflowY: 'auto', position: 'relative' }}
       onScroll={scrolled}
@@ -60,4 +72,9 @@ export default function VirtualList<T>({
       </div>
     </div>
   )
+}
+
+function scrollOffset(index: number | undefined, itemCount: number, rowHeight: number): number {
+  if (index === undefined || itemCount === 0) return 0
+  return Math.max(0, Math.min(itemCount - 1, index)) * rowHeight
 }

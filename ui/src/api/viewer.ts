@@ -7,6 +7,7 @@ import type {
   CancelOperationRequest,
   CloseBlockedEvent,
   ExecuteFileCommandRequest,
+  FileCommandPreflight,
   FolderTreeItem,
   FolderWorkspace,
   ImageRepresentation,
@@ -19,6 +20,7 @@ import type {
   OperationStarted,
   OperationStatusRequest,
   PreviewRenameRequest,
+  PreflightFileCommandRequest,
   ProjectSnapshot,
   ProjectChangedEvent,
   RenamePreview,
@@ -54,6 +56,7 @@ export interface ViewerBridge {
   toggleFavorite(request: ToggleFavoriteRequest): Promise<MarkerBatchResult>
   selectionInfo(request: SelectionInfoRequest): Promise<SelectionInfo>
   previewRename(request: PreviewRenameRequest): Promise<RenamePreview>
+  preflightFileCommand(request: PreflightFileCommandRequest): Promise<FileCommandPreflight>
   executeFileCommand(request: ExecuteFileCommandRequest): Promise<OperationStarted>
   operationStatus(request: OperationStatusRequest): Promise<OperationProgressEvent>
   operationResults(request: OperationResultsRequest): Promise<OperationResultPage>
@@ -127,6 +130,9 @@ export const tauriViewerBridge: ViewerBridge = {
   },
   previewRename(request) {
     return invoke<RenamePreview>('preview_rename', { request })
+  },
+  preflightFileCommand(request) {
+    return invoke<FileCommandPreflight>('preflight_file_command', { request })
   },
   executeFileCommand(request) {
     return invoke<OperationStarted>('execute_file_command', { request })

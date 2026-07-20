@@ -1,7 +1,15 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import type { ViewerBridge } from './api/viewer'
 import App from './App'
+
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>((next) => {
+    resolve = next
+  })
+  return { promise, resolve }
+}
 
 function bridge(access: 'read_write' | 'read_only' = 'read_write'): ViewerBridge {
   return {
@@ -17,7 +25,13 @@ function bridge(access: 'read_write' | 'read_only' = 'read_write'): ViewerBridge
     projectSnapshot: vi.fn().mockResolvedValue(null),
     folderTree: vi.fn().mockResolvedValue([]),
     queryFolder: vi.fn().mockResolvedValue({ workspace: 'empty' }),
-    requestImage: vi.fn(),
+    requestImage: vi.fn().mockResolvedValue({
+      cacheKey: 'test-image',
+      url: 'viewer-image://localhost/session/test-image',
+      width: 800,
+      height: 600,
+      backend: 'quick_look',
+    }),
     previewText: vi.fn(),
     openExternalLink: vi.fn(),
     cancelTask: vi.fn().mockResolvedValue(false),
@@ -33,8 +47,20 @@ function bridge(access: 'read_write' | 'read_only' = 'read_write'): ViewerBridge
       commonFavorite: { state: 'none_selected' },
     }),
     previewRename: vi.fn().mockResolvedValue({ rows: [], executable: false }),
+    preflightFileCommand: vi.fn().mockResolvedValue({ rows: [], executable: false }),
     executeFileCommand: vi.fn().mockResolvedValue({ batchId: 'batch-1' }),
-    operationStatus: vi.fn(),
+    operationStatus: vi.fn().mockResolvedValue({
+      sessionId: 'session-1',
+      generation: 1,
+      batchId: 'batch-1',
+      lifecycle: 'queued',
+      requested: 1,
+      completed: 0,
+      failed: 0,
+      skipped: 0,
+      cancelled: 0,
+      activeEntityId: null,
+    }),
     operationResults: vi.fn().mockResolvedValue({ total: 0, offset: 0, items: [] }),
     cancelOperation: vi.fn().mockResolvedValue(false),
     undoLastOperation: vi.fn().mockResolvedValue(null),
@@ -247,4 +273,151 @@ describe('Viewer empty state', () => {
     fireEvent.click(screen.getByRole('button', { name: '返回文件夹内容' }))
     expect(await screen.findByText('此文件夹中没有支持的文件。')).toBeVisible()
   })
+
+  it('opens safe rename and Trash surfaces from keyboard without immediate deletion', async () => {
+    const viewer = bridge()
+    vi.mocked(viewer.queryFolder).mockResolvedValue(contentWorkspace())
+    vi.mocked(viewer.operationStatus).mockResolvedValue({
+      sessionId: 'session-1',
+      generation: 1,
+      batchId: 'batch-1',
+      lifecycle: 'completed',
+      requested: 1,
+      completed: 1,
+      failed: 0,
+      skipped: 0,
+      cancelled: 0,
+      activeEntityId: null,
+    })
+    render(<App bridge={viewer} />)
+    fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
+    const file = await screen.findByRole('option', { name: 'front.jpg' })
+    fireEvent.click(file)
+
+    fireEvent.keyDown(window, { key: 'Enter' })
+    const renameDialog = screen.getByRole('dialog', { name: '重命名文件' })
+    expect(renameDialog).toBeVisible()
+    fireEvent.change(within(renameDialog).getByRole('textbox', { name: '新文件名' }), {
+      target: { value: 'hero.jpg' },
+    })
+    fireEvent.click(within(renameDialog).getByRole('button', { name: '重命名' }))
+    await waitFor(() =>
+      expect(viewer.executeFileCommand).toHaveBeenCalledWith(
+        expect.objectContaining({
+          kind: 'rename',
+          items: [
+            {
+              entityId: 'image-1',
+              action: { kind: 'rename', proposedName: 'hero', editExtension: false },
+            },
+          ],
+        }),
+      ),
+    )
+    await waitFor(() => expect(viewer.operationResults).toHaveBeenCalledOnce())
+
+    fireEvent.keyDown(window, { key: 'Delete' })
+    expect(screen.getByRole('dialog', { name: '将文件移到废纸篓？' })).toBeVisible()
+    expect(viewer.executeFileCommand).toHaveBeenCalledTimes(1)
+    fireEvent.click(screen.getByRole('button', { name: '移入废纸篓' }))
+    await waitFor(() => expect(viewer.executeFileCommand).toHaveBeenCalledTimes(2))
+  })
+
+  it('routes Command-Z only outside editable and modal contexts', async () => {
+    const viewer = bridge()
+    vi.mocked(viewer.queryFolder).mockResolvedValue(contentWorkspace())
+    render(<App bridge={viewer} />)
+    fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
+    const file = await screen.findByRole('option', { name: 'front.jpg' })
+    fireEvent.click(file)
+
+    fireEvent.keyDown(window, { key: 'z', metaKey: true })
+    await waitFor(() => expect(viewer.undoLastOperation).toHaveBeenCalledOnce())
+    fireEvent.keyDown(window, { key: 'z', metaKey: true, shiftKey: true })
+    expect(viewer.undoLastOperation).toHaveBeenCalledOnce()
+    fireEvent.keyDown(window, { key: 'z', metaKey: true, altKey: true })
+    fireEvent.keyDown(window, { key: 'z', metaKey: true, ctrlKey: true })
+    expect(viewer.undoLastOperation).toHaveBeenCalledOnce()
+
+    const renameButton = screen.getByRole('button', { name: '重命名' })
+    renameButton.focus()
+    fireEvent.keyDown(renameButton, { key: 'Enter' })
+    expect(screen.queryByRole('dialog', { name: '重命名文件' })).not.toBeInTheDocument()
+
+    const search = screen.getByRole('searchbox', { name: '搜索项目' })
+    search.focus()
+    fireEvent.keyDown(search, { key: 'z', metaKey: true })
+    fireEvent.keyDown(search, { key: 'Delete' })
+    expect(viewer.undoLastOperation).toHaveBeenCalledOnce()
+    expect(screen.queryByRole('dialog', { name: '将文件移到废纸篓？' })).not.toBeInTheDocument()
+
+    fireEvent.doubleClick(file)
+    expect(screen.getByRole('dialog', { name: '图片预览' })).toBeVisible()
+    fireEvent.keyDown(window, { key: 'Delete' })
+    expect(screen.queryByRole('dialog', { name: '将文件移到废纸篓？' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '关闭预览' }))
+
+    fireEvent.keyDown(window, { key: 'Delete' })
+    fireEvent.keyDown(window, { key: 'z', metaKey: true })
+    expect(viewer.undoLastOperation).toHaveBeenCalledOnce()
+  })
+
+  it('invalidates an open operation dialog when project closing begins', async () => {
+    const viewer = bridge()
+    const closing = deferred<void>()
+    vi.mocked(viewer.closeProject).mockImplementation(() => closing.promise)
+    vi.mocked(viewer.queryFolder).mockResolvedValue(contentWorkspace())
+    render(<App bridge={viewer} />)
+    fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
+    fireEvent.click(await screen.findByRole('option', { name: 'front.jpg' }))
+    fireEvent.keyDown(window, { key: 'Enter' })
+    expect(screen.getByRole('dialog', { name: '重命名文件' })).toBeVisible()
+
+    fireEvent.click(screen.getByRole('button', { name: '关闭项目' }))
+    expect(screen.queryByRole('dialog', { name: '重命名文件' })).not.toBeInTheDocument()
+    expect(viewer.executeFileCommand).not.toHaveBeenCalled()
+
+    await act(async () => {
+      closing.resolve(undefined)
+      await closing.promise
+    })
+  })
+
+  it('does not route Command-Z while a file operation is active', async () => {
+    const viewer = bridge()
+    vi.mocked(viewer.queryFolder).mockResolvedValue(contentWorkspace())
+    render(<App bridge={viewer} />)
+    fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
+    fireEvent.click(await screen.findByRole('option', { name: 'front.jpg' }))
+    fireEvent.keyDown(window, { key: 'Enter' })
+    const dialog = screen.getByRole('dialog', { name: '重命名文件' })
+    fireEvent.change(within(dialog).getByRole('textbox', { name: '新文件名' }), {
+      target: { value: 'hero.jpg' },
+    })
+    fireEvent.click(within(dialog).getByRole('button', { name: '重命名' }))
+    await waitFor(() => expect(viewer.executeFileCommand).toHaveBeenCalledOnce())
+
+    fireEvent.keyDown(window, { key: 'z', metaKey: true })
+    expect(viewer.undoLastOperation).not.toHaveBeenCalled()
+  })
 })
+
+function contentWorkspace() {
+  return {
+    workspace: 'content' as const,
+    images: [
+      {
+        entityId: 'image-1',
+        relativePath: 'id/front.jpg',
+        name: 'front.jpg',
+        kind: 'jpeg' as const,
+        size: 100,
+        modifiedNs: '1',
+        marker: { reviewState: null, favorite: false },
+        imageMetadata: null,
+        imageUrl: null,
+      },
+    ],
+    textFiles: [],
+  }
+}

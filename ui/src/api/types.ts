@@ -352,6 +352,22 @@ export interface ExecuteFileCommandRequest {
   conflicts: ConflictResolution[]
 }
 
+export type PreflightFileCommandRequest = Omit<ExecuteFileCommandRequest, 'conflicts'>
+
+export type FileCommandPreflightState = 'ready' | 'conflict' | 'blocked'
+
+export interface FileCommandPreflightRow {
+  entityId: string
+  relativePath: string
+  state: FileCommandPreflightState
+  code?: BatchResultCode
+}
+
+export interface FileCommandPreflight {
+  rows: FileCommandPreflightRow[]
+  executable: boolean
+}
+
 export interface OperationStarted {
   batchId: string
 }

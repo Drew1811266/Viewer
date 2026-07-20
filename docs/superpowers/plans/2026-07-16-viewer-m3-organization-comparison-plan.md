@@ -429,25 +429,25 @@ git commit -m "feat: coordinate organization workspace state"
 **Interfaces:**
 - Produces: selection-aware actions, virtualized full rename preview, destination/conflict choices, safe Trash confirmation, paged results and Enter/Delete/Command-Z behavior.
 
-- [ ] **Step 1: Write failing interaction/accessibility tests**
+- [x] **Step 1: Write failing interaction/accessibility tests**
 
 Cover button capability matrix, single vs batch rename, full preview/error focus, destination tree, per-item/apply-rest conflict policy, cancel, partial result summary, corrupt-file actions, task bar progress, Enter/Delete/Command-Z, focus trap/restore and text-input shortcut suppression.
 
 Run: `pnpm --dir ui test -- src/components/FileActionToolbar.test.tsx src/components/RenameDialog.test.tsx src/components/BatchRenameDialog.test.tsx src/components/DestinationDialog.test.tsx src/components/TrashConfirmation.test.tsx src/components/OperationResults.test.tsx`
 
-- [ ] **Step 2: Implement transient operation surfaces**
+- [x] **Step 2: Implement transient operation surfaces**
 
 Keep dialogs inside the right workspace/overlay layer and the two-column shell intact. Batch preview renders every mapping through a virtual list. Validation blocks Execute and identifies exact rows. Trash copy says restoration uses macOS Trash; no permanent-delete control exists.
 
-- [ ] **Step 3: Wire commands and safe keyboard behavior**
+- [x] **Step 3: Wire commands and safe keyboard behavior**
 
 Actions use current selected entity IDs in visible order. Disable while read-only/closing/another batch is active. Command-Z calls undo only outside editable/content-selection/modal controls; Delete always opens confirmation and never executes immediately.
 
-- [ ] **Step 4: Verify GREEN**
+- [x] **Step 4: Verify GREEN**
 
 Run: `pnpm --dir ui test && pnpm --dir ui build`
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add ui/src

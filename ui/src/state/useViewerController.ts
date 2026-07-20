@@ -28,6 +28,7 @@ export function useViewerController(bridge: ViewerBridge) {
   const reconcilingGenerationRef = useRef<number | null>(null)
   const activeBatchRef = useRef<string | null>(null)
   const operationRequestPendingRef = useRef(false)
+  const operationResultsRequestRef = useRef(0)
   const completedBatchesRef = useRef(new Set<string>())
   const desiredProjectionRef = useRef({
     selectedFolderId: null as string | null,
@@ -218,6 +219,7 @@ export function useViewerController(bridge: ViewerBridge) {
     requestedSnippetsRef.current.clear()
     activeBatchRef.current = null
     operationRequestPendingRef.current = false
+    operationResultsRequestRef.current += 1
     completedBatchesRef.current.clear()
     desiredProjectionRef.current = {
       selectedFolderId: null,
@@ -339,6 +341,7 @@ export function useViewerController(bridge: ViewerBridge) {
           requestedSnippetsRef.current.clear()
           activeBatchRef.current = null
           operationRequestPendingRef.current = false
+          operationResultsRequestRef.current += 1
           completedBatchesRef.current.clear()
           reconcilingGenerationRef.current = null
           desiredProjectionRef.current = {
@@ -577,13 +580,40 @@ export function useViewerController(bridge: ViewerBridge) {
   const previewRename = useCallback(
     async (entityIds: string[], rules: RenameRules) => {
       const current = stateRef.current
-      if (current.project === null || current.project.access === 'read_only') return null
+      if (
+        current.status !== 'active' ||
+        current.project === null ||
+        current.project.access === 'read_only'
+      ) return null
       try {
         return await bridge.previewRename({
           sessionId: current.project.sessionId,
           generation: current.project.generation,
           entityIds,
           rules,
+        })
+      } catch (error) {
+        dispatch({ type: 'input_rejected', message: safeUserMessage(error) })
+        return null
+      }
+    },
+    [bridge],
+  )
+
+  const preflightFileCommand = useCallback(
+    async (kind: FileCommandKind, items: FileCommandItem[]) => {
+      const current = stateRef.current
+      if (
+        current.status !== 'active' ||
+        current.project === null ||
+        current.project.access === 'read_only'
+      ) return null
+      try {
+        return await bridge.preflightFileCommand({
+          sessionId: current.project.sessionId,
+          generation: current.project.generation,
+          kind,
+          items,
         })
       } catch (error) {
         dispatch({ type: 'input_rejected', message: safeUserMessage(error) })
@@ -606,39 +636,47 @@ export function useViewerController(bridge: ViewerBridge) {
         return
       }
       completedBatchesRef.current.add(progress.batchId)
-      try {
-        const page = await bridge.operationResults({
+      const loadResults = bridge
+        .operationResults({
           sessionId: project.sessionId,
           generation: project.generation,
           batchId: progress.batchId,
           offset: 0,
           limit: 200,
         })
-        dispatch({
-          type: 'operation_results_loaded',
-          sessionId: project.sessionId,
-          generation: project.generation,
-          batchId: progress.batchId,
-          page,
+        .then((page) => {
+          dispatch({
+            type: 'operation_results_loaded',
+            sessionId: project.sessionId,
+            generation: project.generation,
+            batchId: progress.batchId,
+            page,
+          })
         })
-        if (progress.completed > 0) {
-          const desired = desiredProjectionRef.current
-          await refreshProjection(
-            project,
-            desired.selectedFolderId,
-            desired.selectedFolderPath,
-            desired.showingAggregate,
-            true,
-          )
-          dispatch({ type: 'search_refresh_requested' })
-        }
-      } catch (error) {
-        dispatch({
-          type: 'operation_failed',
-          sessionId: project.sessionId,
-          generation: project.generation,
-          message: safeUserMessage(error),
+        .catch((error: unknown) => {
+          dispatch({
+            type: 'operation_failed',
+            sessionId: project.sessionId,
+            generation: project.generation,
+            message: safeUserMessage(error),
+          })
         })
+      const refreshAfterMutation =
+        progress.completed > 0
+          ? (async () => {
+              const desired = desiredProjectionRef.current
+              await refreshProjection(
+                project,
+                desired.selectedFolderId,
+                desired.selectedFolderPath,
+                desired.showingAggregate,
+                true,
+              )
+              dispatch({ type: 'search_refresh_requested' })
+            })()
+          : Promise.resolve()
+      try {
+        await Promise.all([loadResults, refreshAfterMutation])
       } finally {
         if (activeBatchRef.current === progress.batchId) {
           activeBatchRef.current = null
@@ -673,6 +711,7 @@ export function useViewerController(bridge: ViewerBridge) {
     ) => {
       const current = stateRef.current
       if (
+        current.status !== 'active' ||
         current.project === null ||
         current.project.access === 'read_only' ||
         operationRequestPendingRef.current ||
@@ -697,6 +736,7 @@ export function useViewerController(bridge: ViewerBridge) {
           return null
         }
         activeBatchRef.current = started.batchId
+        operationResultsRequestRef.current += 1
         dispatch({
           type: 'operation_started',
           sessionId: project.sessionId,
@@ -741,9 +781,59 @@ export function useViewerController(bridge: ViewerBridge) {
     }
   }, [bridge])
 
+  const loadOperationResults = useCallback(
+    async (offset: number) => {
+      const current = stateRef.current
+      const active = current.operation.active
+      if (current.project === null || active === null) return null
+      const requestId = ++operationResultsRequestRef.current
+      const project = current.project
+      const batchId = active.batchId
+      try {
+        const page = await bridge.operationResults({
+          sessionId: project.sessionId,
+          generation: project.generation,
+          batchId,
+          offset: Math.max(0, offset),
+          limit: 200,
+        })
+        if (
+          requestId !== operationResultsRequestRef.current ||
+          stateRef.current.project?.sessionId !== project.sessionId ||
+          stateRef.current.project.generation !== project.generation ||
+          stateRef.current.operation.active?.batchId !== batchId
+        ) return null
+        dispatch({
+          type: 'operation_results_loaded',
+          sessionId: project.sessionId,
+          generation: project.generation,
+          batchId,
+          page,
+        })
+        return page
+      } catch (error) {
+        if (requestId !== operationResultsRequestRef.current) return null
+        dispatch({
+          type: 'operation_failed',
+          sessionId: project.sessionId,
+          generation: project.generation,
+          message: safeUserMessage(error),
+        })
+        return null
+      }
+    },
+    [bridge],
+  )
+
   const undoLastOperation = useCallback(async () => {
     const current = stateRef.current
-    if (current.project === null || current.project.access === 'read_only') return null
+    if (
+      current.status !== 'active' ||
+      current.project === null ||
+      current.project.access === 'read_only' ||
+      operationRequestPendingRef.current ||
+      activeBatchRef.current !== null
+    ) return null
     try {
       const receipt = await bridge.undoLastOperation({
         sessionId: current.project.sessionId,
@@ -881,8 +971,10 @@ export function useViewerController(bridge: ViewerBridge) {
     setReviewState,
     toggleFavorite,
     previewRename,
+    preflightFileCommand,
     executeFileCommand,
     cancelOperation,
+    loadOperationResults,
     undoLastOperation,
     setPreviewEntityId,
     setCompareEntityIds,

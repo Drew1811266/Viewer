@@ -796,6 +796,7 @@ select {
   height: 100%;
   overflow: hidden;
   padding: 4px;
+  position: relative;
 }
 
 .image-cell[aria-selected="true"] {
@@ -848,7 +849,7 @@ select {
   outline: none;
 }
 
-.text-file-list > button {
+.text-file-row {
   align-items: center;
   background: white;
   border: 1px solid #d8dce2;
@@ -859,7 +860,7 @@ select {
   text-align: left;
 }
 
-.text-file-list > button[aria-selected="true"] {
+.text-file-row[aria-selected="true"] {
   background: #d9e8ff;
   border-color: #2477d4;
 }
@@ -869,7 +870,43 @@ select {
   font-size: 12px;
 }
 
-.text-file-list > button .file-marker {
+.text-file-row .file-marker {
+  flex: 0 0 auto;
+  margin-left: 10px;
+}
+
+.organization-drag-handle {
+  align-items: center;
+  background: rgb(255 255 255 / 88%);
+  border: 1px solid #aeb7c3;
+  border-radius: 4px;
+  color: #465364;
+  cursor: grab;
+  display: inline-flex;
+  font-size: 14px;
+  height: 24px;
+  justify-content: center;
+  line-height: 1;
+  padding: 0 5px;
+}
+
+.organization-drag-handle:focus-visible {
+  box-shadow: 0 0 0 2px #2477d4;
+  outline: none;
+}
+
+.organization-drag-handle:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.image-cell > .organization-drag-handle {
+  position: absolute;
+  right: 8px;
+  top: 8px;
+}
+
+.text-file-row > .organization-drag-handle {
   flex: 0 0 auto;
   margin-left: 10px;
 }

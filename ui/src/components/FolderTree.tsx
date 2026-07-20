@@ -9,6 +9,7 @@ interface FolderTreeProps {
   onSelect: (entityId: string) => void
   height?: number
   draggedEntityIds?: string[]
+  internalDragMode?: 'move' | 'copy' | null
   invalidDropTargetIds?: string[]
   readOnly?: boolean
   isDropTargetValid?: (folderId: string, mode: 'move' | 'copy') => boolean
@@ -27,6 +28,7 @@ export default function FolderTree({
   onSelect,
   height = 420,
   draggedEntityIds = [],
+  internalDragMode = null,
   invalidDropTargetIds = [],
   readOnly = false,
   isDropTargetValid,
@@ -58,9 +60,11 @@ export default function FolderTree({
     setDropTarget((current) => {
       if (current === null) return null
       const stillVisible = safeFolders.some((folder) => folder.entityId === current.entityId)
-      return draggedEntityIds.length === 0 || readOnly || !stillVisible ? null : current
+      return draggedEntityIds.length === 0 || internalDragMode === null || readOnly || !stillVisible
+        ? null
+        : current
     })
-  }, [draggedEntityIds.length, readOnly, safeFolders])
+  }, [draggedEntityIds.length, internalDragMode, readOnly, safeFolders])
 
   const visible = useMemo(
     () => flattenFolders(safeFolders, expanded),
@@ -76,17 +80,17 @@ export default function FolderTree({
     })
   }
 
-  function dragMode(event: DragEvent<HTMLElement>): 'move' | 'copy' {
-    return event.altKey ? 'copy' : 'move'
-  }
-
   function acceptsViewerDrag(event: DragEvent<HTMLElement>): boolean {
-    return Array.from(event.dataTransfer.types).includes('application/x-viewer-selection')
+    return (
+      internalDragMode !== null &&
+      Array.from(event.dataTransfer.types).includes('application/x-viewer-selection')
+    )
   }
 
   function dragOver(folderId: string, event: DragEvent<HTMLElement>) {
     if (!acceptsViewerDrag(event) || draggedEntityIds.length === 0) return
-    const mode = dragMode(event)
+    const mode = internalDragMode
+    if (mode === null) return
     const valid =
       !readOnly &&
       !invalidTargets.has(folderId) &&
@@ -99,7 +103,8 @@ export default function FolderTree({
   function drop(folderId: string, event: DragEvent<HTMLElement>) {
     if (!acceptsViewerDrag(event) || draggedEntityIds.length === 0) return
     event.preventDefault()
-    const mode = dragMode(event)
+    const mode = internalDragMode
+    if (mode === null) return
     const valid =
       !readOnly &&
       !invalidTargets.has(folderId) &&

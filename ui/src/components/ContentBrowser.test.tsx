@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { createEvent, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import type { BrowserFile, FolderWorkspace } from '../api/types'
 import ContentBrowser from './ContentBrowser'
@@ -150,39 +150,80 @@ describe('ContentBrowser', () => {
     expect(requestThumbnail.mock.calls.length).toBeLessThan(50)
   })
 
-  it('starts a multi-selection drag with an opaque Viewer marker and current entity IDs only', () => {
-    const start = vi.fn()
+  it('starts Finder export immediately from the file body without an HTML payload', () => {
+    const exportFiles = vi.fn()
     const setData = vi.fn()
-    render(<ContentBrowser workspace={workspace(4)} onDragSelectionStart={start} />)
+    render(<ContentBrowser workspace={workspace(4)} onFinderDragStart={exportFiles} />)
     fireEvent.click(screen.getByRole('option', { name: '1.jpg' }))
     fireEvent.click(screen.getByRole('option', { name: '3.jpg' }), { metaKey: true })
 
-    fireEvent.dragStart(screen.getByRole('option', { name: '3.jpg' }), {
+    const event = createEvent.dragStart(screen.getByRole('option', { name: '3.jpg' }), {
       dataTransfer: { setData, effectAllowed: 'none' },
     })
+    fireEvent(screen.getByRole('option', { name: '3.jpg' }), event)
 
-    expect(start).toHaveBeenCalledWith(['image-1', 'image-3'])
+    expect(event.defaultPrevented).toBe(true)
+    expect(exportFiles).toHaveBeenCalledWith(['image-1', 'image-3'])
+    expect(setData).not.toHaveBeenCalled()
+  })
+
+  it('starts entity-only internal drag from the organization handle and freezes Option-copy', () => {
+    const organize = vi.fn()
+    const exportFiles = vi.fn()
+    const setData = vi.fn()
+    render(
+      <ContentBrowser
+        workspace={workspace(2)}
+        onFinderDragStart={exportFiles}
+        onOrganizationDragStart={organize}
+      />,
+    )
+
+    const event = createEvent.dragStart(screen.getByRole('button', { name: '整理 1.jpg' }), {
+      dataTransfer: { setData, effectAllowed: 'none' },
+    })
+    Object.defineProperty(event, 'altKey', { value: true })
+    fireEvent(screen.getByRole('button', { name: '整理 1.jpg' }), event)
+
+    expect(organize).toHaveBeenCalledWith(['image-1'], 'copy')
+    expect(exportFiles).not.toHaveBeenCalled()
     expect(setData).toHaveBeenCalledWith('application/x-viewer-selection', 'viewer-selection')
     expect(setData).not.toHaveBeenCalledWith(expect.anything(), expect.stringContaining('image-'))
     expect(setData).not.toHaveBeenCalledWith(expect.anything(), expect.stringContaining('/'))
   })
 
-  it('suppresses stale selected IDs when a refreshed workspace starts a drag', () => {
+  it('keeps Finder export available but disables the organization handle in read-only mode', () => {
+    const exportFiles = vi.fn()
+    render(
+      <ContentBrowser
+        workspace={workspace(1)}
+        organizationDragDisabled
+        onFinderDragStart={exportFiles}
+      />,
+    )
+
+    expect(screen.getByRole('button', { name: '整理 1.jpg' })).toBeDisabled()
+    fireEvent.dragStart(screen.getByRole('option', { name: '1.jpg' }))
+    expect(exportFiles).toHaveBeenCalledWith(['image-1'])
+  })
+
+  it('suppresses stale selected IDs when a refreshed workspace starts a drag', async () => {
     const start = vi.fn()
     const rendered = render(
-      <ContentBrowser workspace={workspace(3)} onDragSelectionStart={start} />,
+      <ContentBrowser workspace={workspace(3)} onOrganizationDragStart={start} />,
     )
     fireEvent.click(screen.getByRole('option', { name: '1.jpg' }))
     fireEvent.click(screen.getByRole('option', { name: '2.jpg' }), { metaKey: true })
     const refreshed = workspace(3)
     refreshed.images = refreshed.images.filter((file) => file.entityId !== 'image-1')
     rendered.rerender(
-      <ContentBrowser workspace={refreshed} onDragSelectionStart={start} />,
+      <ContentBrowser workspace={refreshed} onOrganizationDragStart={start} />,
     )
 
-    fireEvent.dragStart(screen.getByRole('option', { name: '2.jpg' }), {
+    const event = createEvent.dragStart(screen.getByRole('button', { name: '整理 2.jpg' }), {
       dataTransfer: { setData: vi.fn(), effectAllowed: 'none' },
     })
-    expect(start).toHaveBeenLastCalledWith(['image-2'])
+    fireEvent(screen.getByRole('button', { name: '整理 2.jpg' }), event)
+    await waitFor(() => expect(start).toHaveBeenLastCalledWith(['image-2'], 'move'))
   })
 })

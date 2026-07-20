@@ -124,6 +124,15 @@ describe('Viewer empty state', () => {
     expect(screen.getByRole('button', { name: '移动到…' })).toBeDisabled()
     expect(screen.getByRole('button', { name: '移到废纸篓' })).toBeDisabled()
     expect(screen.getByRole('button', { name: '标记为保留' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: '整理 front.jpg' })).toBeDisabled()
+    fireEvent.dragStart(front, { dataTransfer: viewerDragTransfer() })
+    await waitFor(() =>
+      expect(viewer.beginFinderDrag).toHaveBeenCalledWith({
+        sessionId: 'session-1',
+        generation: 1,
+        entityIds: ['image-1', 'image-2'],
+      }),
+    )
 
     fireEvent.click(screen.getByRole('button', { name: '信息' }))
     expect(screen.getByRole('complementary', { name: '文件信息' })).toBeVisible()
@@ -536,10 +545,11 @@ describe('Viewer empty state', () => {
     })
     render(<App bridge={viewer} />)
     fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
-    const file = await screen.findByRole('option', { name: 'front.jpg' })
     const transfer = viewerDragTransfer()
 
-    fireEvent.dragStart(file, { dataTransfer: transfer })
+    fireEvent.dragStart(await screen.findByRole('button', { name: '整理 front.jpg' }), {
+      dataTransfer: transfer,
+    })
     const destination = await screen.findByRole('treeitem', { name: 'selected' })
     fireEvent.dragOver(destination, { dataTransfer: transfer })
     fireEvent.drop(destination, { dataTransfer: transfer })
@@ -572,24 +582,17 @@ describe('Viewer empty state', () => {
     )
   })
 
-  it('starts copy-only native export only after a Viewer drag leaves the window', async () => {
+  it('starts copy-only native export during the file-body dragstart', async () => {
     const viewer = bridge()
     vi.mocked(viewer.queryFolder).mockResolvedValue(contentWorkspace())
     render(<App bridge={viewer} />)
     fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
     const file = await screen.findByRole('option', { name: 'front.jpg' })
 
-    fireEvent.dragStart(file, { dataTransfer: viewerDragTransfer() })
-    expect(viewer.beginFinderDrag).not.toHaveBeenCalled()
-    const shell = document.querySelector('main')
-    expect(shell).not.toBeNull()
-    const boundaryDrag = createEvent.dragOver(shell!)
-    Object.defineProperties(boundaryDrag, {
-      clientX: { value: -1 },
-      clientY: { value: 40 },
-    })
-    fireEvent(shell!, boundaryDrag)
+    const event = createEvent.dragStart(file, { dataTransfer: viewerDragTransfer() })
+    fireEvent(file, event)
 
+    expect(event.defaultPrevented).toBe(true)
     await waitFor(() =>
       expect(viewer.beginFinderDrag).toHaveBeenCalledWith({
         sessionId: 'session-1',
@@ -597,6 +600,79 @@ describe('Viewer empty state', () => {
         entityIds: ['image-1'],
       }),
     )
+  })
+
+  it('uses the organization handle for a frozen default move without Finder export', async () => {
+    const viewer = bridge()
+    vi.mocked(viewer.folderTree).mockResolvedValue([
+      {
+        entityId: 'folder-b',
+        parentEntityId: null,
+        relativePath: 'selected',
+        name: 'selected',
+        marker: { reviewState: null, favorite: false },
+      },
+    ])
+    vi.mocked(viewer.queryFolder).mockResolvedValue(contentWorkspace())
+    render(<App bridge={viewer} />)
+    fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
+    const transfer = viewerDragTransfer()
+
+    fireEvent.dragStart(await screen.findByRole('button', { name: '整理 front.jpg' }), {
+      dataTransfer: transfer,
+    })
+    fireEvent.dragOver(await screen.findByRole('treeitem', { name: 'selected' }), {
+      altKey: true,
+      dataTransfer: transfer,
+    })
+    fireEvent.drop(screen.getByRole('treeitem', { name: 'selected' }), {
+      altKey: true,
+      dataTransfer: transfer,
+    })
+
+    expect(viewer.beginFinderDrag).not.toHaveBeenCalled()
+    await waitFor(() =>
+      expect(viewer.preflightFileCommand).toHaveBeenCalledWith(
+        expect.objectContaining({ kind: 'move' }),
+      ),
+    )
+  })
+
+  it('keeps Option-copy frozen after it is released over the destination', async () => {
+    const viewer = bridge()
+    vi.mocked(viewer.folderTree).mockResolvedValue([
+      {
+        entityId: 'folder-b',
+        parentEntityId: null,
+        relativePath: 'selected',
+        name: 'selected',
+        marker: { reviewState: null, favorite: false },
+      },
+    ])
+    vi.mocked(viewer.queryFolder).mockResolvedValue(contentWorkspace())
+    render(<App bridge={viewer} />)
+    fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
+    const handle = await screen.findByRole('button', { name: '整理 front.jpg' })
+    const transfer = viewerDragTransfer()
+    const start = createEvent.dragStart(handle, { dataTransfer: transfer })
+    Object.defineProperty(start, 'altKey', { value: true })
+    fireEvent(handle, start)
+
+    fireEvent.dragOver(await screen.findByRole('treeitem', { name: 'selected' }), {
+      altKey: false,
+      dataTransfer: transfer,
+    })
+    fireEvent.drop(screen.getByRole('treeitem', { name: 'selected' }), {
+      altKey: false,
+      dataTransfer: transfer,
+    })
+
+    await waitFor(() =>
+      expect(viewer.preflightFileCommand).toHaveBeenCalledWith(
+        expect.objectContaining({ kind: 'copy' }),
+      ),
+    )
+    expect(viewer.beginFinderDrag).not.toHaveBeenCalled()
   })
 
   it('rejects a same-folder move target while allowing Option-copy', async () => {
@@ -613,43 +689,36 @@ describe('Viewer empty state', () => {
     vi.mocked(viewer.queryFolder).mockResolvedValue(contentWorkspace())
     render(<App bridge={viewer} />)
     fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
-    const file = await screen.findByRole('option', { name: 'front.jpg' })
     const target = await screen.findByRole('treeitem', { name: 'id' })
     const transfer = viewerDragTransfer()
 
-    fireEvent.dragStart(file, { dataTransfer: transfer })
+    fireEvent.dragStart(await screen.findByRole('button', { name: '整理 front.jpg' }), {
+      dataTransfer: transfer,
+    })
     fireEvent.dragOver(target, { dataTransfer: transfer })
     expect(target).toHaveAttribute('data-drop-invalid', 'true')
     fireEvent.drop(target, { dataTransfer: transfer })
     expect(viewer.preflightFileCommand).not.toHaveBeenCalled()
 
-    const copyOver = createEvent.dragOver(target, { dataTransfer: transfer })
-    Object.defineProperty(copyOver, 'altKey', { value: true })
-    fireEvent(target, copyOver)
+    const handle = screen.getByRole('button', { name: '整理 front.jpg' })
+    const copyStart = createEvent.dragStart(handle, { dataTransfer: transfer })
+    Object.defineProperty(copyStart, 'altKey', { value: true })
+    fireEvent(handle, copyStart)
+    fireEvent.dragOver(target, { altKey: false, dataTransfer: transfer })
     expect(target).toHaveAttribute('data-drop-mode', 'copy')
   })
 
   it('shows a safe retry message when native Finder drag cannot start', async () => {
     const viewer = bridge()
     vi.mocked(viewer.queryFolder).mockResolvedValue(contentWorkspace())
-    vi.mocked(viewer.beginFinderDrag).mockRejectedValue(
-      new Error('/Users/private/project/front.jpg could not be dragged'),
-    )
+    vi.mocked(viewer.beginFinderDrag).mockRejectedValue({ code: 'finder_drag_selection_stale' })
     render(<App bridge={viewer} />)
     fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
     const file = await screen.findByRole('option', { name: 'front.jpg' })
     fireEvent.dragStart(file, { dataTransfer: viewerDragTransfer() })
-    const shell = document.querySelector('main')
-    expect(shell).not.toBeNull()
-    const boundaryDrag = createEvent.dragOver(shell!)
-    Object.defineProperties(boundaryDrag, {
-      clientX: { value: -1 },
-      clientY: { value: 40 },
-    })
-    fireEvent(shell!, boundaryDrag)
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
-      '无法拖到 Finder，请重新拖动。',
+      '部分文件已发生变化，请刷新后重试。',
     )
     expect(screen.queryByText(/Users\/private/)).not.toBeInTheDocument()
   })
@@ -782,9 +851,10 @@ describe('Viewer empty state', () => {
     })
     render(<App bridge={viewer} />)
     fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
-    const file = await screen.findByRole('option', { name: 'front.jpg' })
     const transfer = viewerDragTransfer()
-    fireEvent.dragStart(file, { dataTransfer: transfer })
+    fireEvent.dragStart(await screen.findByRole('button', { name: '整理 front.jpg' }), {
+      dataTransfer: transfer,
+    })
     fireEvent.drop(await screen.findByRole('treeitem', { name: 'selected' }), {
       dataTransfer: transfer,
     })

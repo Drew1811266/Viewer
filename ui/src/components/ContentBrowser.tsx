@@ -6,6 +6,7 @@ import type { TaskFeedback } from './TaskBar'
 
 type ContentWorkspace = Extract<FolderWorkspace, { workspace: 'content' }>
 type GridSize = 'small' | 'medium' | 'large'
+type InternalDragMode = 'move' | 'copy'
 
 interface ContentBrowserProps {
   workspace: ContentWorkspace
@@ -18,8 +19,10 @@ interface ContentBrowserProps {
   onPreview?: (file: BrowserFile) => void
   onSelectionChange?: (files: BrowserFile[]) => void
   onThumbnailTaskChange?: (task: TaskFeedback | null) => void
-  onDragSelectionStart?: (entityIds: string[]) => void
-  onDragSelectionEnd?: () => void
+  organizationDragDisabled?: boolean
+  onFinderDragStart?: (entityIds: string[]) => void
+  onOrganizationDragStart?: (entityIds: string[], mode: InternalDragMode) => void
+  onOrganizationDragEnd?: () => void
 }
 
 interface ThumbnailWork {
@@ -43,8 +46,10 @@ export default function ContentBrowser({
   onPreview,
   onSelectionChange,
   onThumbnailTaskChange,
-  onDragSelectionStart,
-  onDragSelectionEnd,
+  organizationDragDisabled = false,
+  onFinderDragStart,
+  onOrganizationDragStart,
+  onOrganizationDragEnd,
 }: ContentBrowserProps) {
   const [gridSize, setGridSize] = useState<GridSize>('medium')
   const [selected, setSelected] = useState<Set<string>>(() => new Set())
@@ -163,22 +168,38 @@ export default function ContentBrowser({
     }
   }
 
-  function startFileDrag(file: BrowserFile, event: DragEvent<HTMLElement>) {
+  function freezeDragSelection(file: BrowserFile): string[] {
     const dragSelection = selected.has(file.entityId) ? selected : new Set([file.entityId])
     if (!selected.has(file.entityId)) {
       anchorId.current = file.entityId
       commitSelection(dragSelection)
     }
-    const entityIds = allFiles
+    return allFiles
       .filter((candidate) => dragSelection.has(candidate.entityId))
       .map((candidate) => candidate.entityId)
+  }
+
+  function startFinderDrag(file: BrowserFile, event: DragEvent<HTMLElement>) {
+    const entityIds = freezeDragSelection(file)
+    event.preventDefault()
+    event.stopPropagation()
+    if (entityIds.length > 0) onFinderDragStart?.(entityIds)
+  }
+
+  function startOrganizationDrag(file: BrowserFile, event: DragEvent<HTMLElement>) {
+    event.stopPropagation()
+    if (organizationDragDisabled) {
+      event.preventDefault()
+      return
+    }
+    const entityIds = freezeDragSelection(file)
     if (entityIds.length === 0) {
       event.preventDefault()
       return
     }
     event.dataTransfer.effectAllowed = 'copyMove'
     event.dataTransfer.setData(VIEWER_SELECTION_MIME, 'viewer-selection')
-    onDragSelectionStart?.(entityIds)
+    onOrganizationDragStart?.(entityIds, event.altKey ? 'copy' : 'move')
   }
 
   function handleKeyboard(event: KeyboardEvent<HTMLElement>) {
@@ -273,8 +294,10 @@ export default function ContentBrowser({
             loadThumbnail={loadThumbnail}
             onClick={selectFile}
             onPreview={(selectedFile) => onPreview?.(selectedFile)}
-            onDragStart={startFileDrag}
-            onDragEnd={() => onDragSelectionEnd?.()}
+            organizationDragDisabled={organizationDragDisabled}
+            onFinderDragStart={startFinderDrag}
+            onOrganizationDragStart={startOrganizationDrag}
+            onOrganizationDragEnd={onOrganizationDragEnd}
           />
         )}
       />
@@ -287,23 +310,28 @@ export default function ContentBrowser({
         onKeyDown={handleKeyboard}
       >
         {workspace.textFiles.map((file) => (
-          <button
-            type="button"
+          <div
             role="option"
             id={`file-${file.entityId}`}
             aria-label={file.name}
             aria-selected={selected.has(file.entityId)}
             key={file.entityId}
+            className="text-file-row"
             draggable
             onClick={(event) => selectFile(file, event)}
             onDoubleClick={() => onPreview?.(file)}
-            onDragStart={(event) => startFileDrag(file, event)}
-            onDragEnd={() => onDragSelectionEnd?.()}
+            onDragStart={(event) => startFinderDrag(file, event)}
           >
             <span className="text-file-name">{file.name}</span>
             <span className="text-file-path">{file.relativePath}</span>
             <span className="file-marker">{markerLabel(file.marker)}</span>
-          </button>
+            <OrganizationDragHandle
+              file={file}
+              disabled={organizationDragDisabled}
+              onDragStart={startOrganizationDrag}
+              onDragEnd={onOrganizationDragEnd}
+            />
+          </div>
         ))}
       </div>
     </section>
@@ -319,8 +347,10 @@ function ImageCell({
   loadThumbnail,
   onClick,
   onPreview,
-  onDragStart,
-  onDragEnd,
+  organizationDragDisabled,
+  onFinderDragStart,
+  onOrganizationDragStart,
+  onOrganizationDragEnd,
 }: {
   file: BrowserFile
   selected: boolean
@@ -330,8 +360,10 @@ function ImageCell({
   loadThumbnail: (file: BrowserFile, maxPixels: number, scaleMilli: number) => Promise<string>
   onClick: (file: BrowserFile, event: MouseEvent) => void
   onPreview: (file: BrowserFile) => void
-  onDragStart: (file: BrowserFile, event: DragEvent<HTMLElement>) => void
-  onDragEnd: () => void
+  organizationDragDisabled: boolean
+  onFinderDragStart: (file: BrowserFile, event: DragEvent<HTMLElement>) => void
+  onOrganizationDragStart: (file: BrowserFile, event: DragEvent<HTMLElement>) => void
+  onOrganizationDragEnd?: () => void
 }) {
   const [url, setUrl] = useState<string | null>(file.imageUrl)
   const [failed, setFailed] = useState(false)
@@ -363,8 +395,7 @@ function ImageCell({
       draggable
       onClick={(event) => onClick(file, event)}
       onDoubleClick={() => onPreview(file)}
-      onDragStart={(event) => onDragStart(file, event)}
-      onDragEnd={onDragEnd}
+      onDragStart={(event) => onFinderDragStart(file, event)}
     >
       <div className="image-cell-preview">
         {url ? (
@@ -375,7 +406,41 @@ function ImageCell({
       </div>
       <span>{file.name}</span>
       <span className="file-marker">{markerLabel(file.marker)}</span>
+      <OrganizationDragHandle
+        file={file}
+        disabled={organizationDragDisabled}
+        onDragStart={onOrganizationDragStart}
+        onDragEnd={onOrganizationDragEnd}
+      />
     </div>
+  )
+}
+
+function OrganizationDragHandle({
+  file,
+  disabled,
+  onDragStart,
+  onDragEnd,
+}: {
+  file: BrowserFile
+  disabled: boolean
+  onDragStart: (file: BrowserFile, event: DragEvent<HTMLElement>) => void
+  onDragEnd?: () => void
+}) {
+  return (
+    <button
+      type="button"
+      className="organization-drag-handle"
+      aria-label={`整理 ${file.name}`}
+      title="拖到左侧文件夹，按住 Option 复制"
+      disabled={disabled}
+      draggable={!disabled}
+      onClick={(event) => event.stopPropagation()}
+      onDragStart={(event) => onDragStart(file, event)}
+      onDragEnd={() => onDragEnd?.()}
+    >
+      ⋮⋮
+    </button>
   )
 }
 

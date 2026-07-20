@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { ViewerBridge } from './api/viewer'
 import { tauriViewerBridge } from './api/viewer'
 import EmptyProject from './components/EmptyProject'
@@ -50,6 +50,11 @@ type OperationDialog =
     }
   | { kind: 'trash'; files: BrowserFile[] }
 
+type InternalDragState = {
+  entityIds: string[]
+  mode: 'move' | 'copy'
+}
+
 export default function App({ bridge = tauriViewerBridge }: AppProps) {
   const {
     state,
@@ -90,9 +95,8 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
   const [dismissedTasks, setDismissedTasks] = useState<Set<string>>(() => new Set())
   const [activePreview, setActivePreview] = useState<BrowserFile | null>(null)
   const [selectedFiles, setSelectedFiles] = useState<BrowserFile[]>([])
-  const [draggedEntityIds, setDraggedEntityIds] = useState<string[]>([])
-  const draggedEntityIdsRef = useRef<string[]>([])
-  const finderExportStartedRef = useRef(false)
+  const [internalDrag, setInternalDrag] = useState<InternalDragState | null>(null)
+  const draggedEntityIds = internalDrag?.entityIds ?? []
   const [finderDragMessage, setFinderDragMessage] = useState<string | null>(null)
   const [compareStatus, setCompareStatus] = useState<string | null>(null)
   const [operationDialog, setOperationDialog] = useState<OperationDialog | null>(null)
@@ -108,9 +112,7 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
     setDismissedTasks(new Set())
     setActivePreview(null)
     setSelectedFiles([])
-    setDraggedEntityIds([])
-    draggedEntityIdsRef.current = []
-    finderExportStartedRef.current = false
+    setInternalDrag(null)
     setFinderDragMessage(null)
     setCompareStatus(null)
     setOperationDialog(null)
@@ -262,34 +264,27 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
   const canMutateSelection =
     selectedFiles.length > 0 && state.project?.access === 'read_write' && !operationBusy
 
-  const exportDraggedSelection = useCallback(
-    (clientX: number, clientY: number) => {
+  const exportToFinder = useCallback(
+    (entityIds: string[]) => {
       const project = state.project
-      const entityIds = draggedEntityIdsRef.current
-      const outside =
-        clientX <= 0 ||
-        clientY <= 0 ||
-        clientX >= window.innerWidth ||
-        clientY >= window.innerHeight
-      if (
-        project === null ||
-        state.status !== 'active' ||
-        entityIds.length === 0 ||
-        !outside ||
-        finderExportStartedRef.current
-      ) {
-        return
-      }
-      finderExportStartedRef.current = true
+      setFinderDragMessage(null)
+      if (project === null || state.status !== 'active' || entityIds.length === 0) return
       void bridge
         .beginFinderDrag({
           sessionId: project.sessionId,
           generation: project.generation,
           entityIds: [...entityIds],
         })
-        .catch(() => {
-          finderExportStartedRef.current = false
-          setFinderDragMessage('无法拖到 Finder，请重新拖动。')
+        .catch((error: unknown) => {
+          const code =
+            typeof error === 'object' && error !== null && 'code' in error
+              ? String(error.code)
+              : null
+          setFinderDragMessage(
+            code === 'finder_drag_selection_stale' || code === 'stale_project_session'
+              ? '部分文件已发生变化，请刷新后重试。'
+              : '无法拖到 Finder，请重新拖动。',
+          )
         })
     },
     [bridge, state.project, state.status],
@@ -348,9 +343,7 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
 
   const dropFiles = useCallback(
     async (entityIds: string[], destinationId: string, mode: 'move' | 'copy') => {
-      setDraggedEntityIds([])
-      draggedEntityIdsRef.current = []
-      finderExportStartedRef.current = false
+      setInternalDrag(null)
       if (
         operationBusy ||
         state.project?.access !== 'read_write' ||
@@ -579,11 +572,7 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
   }
 
   return (
-    <main
-      className="viewer-shell"
-      onDragOverCapture={(event) => exportDraggedSelection(event.clientX, event.clientY)}
-      onDragLeaveCapture={(event) => exportDraggedSelection(event.clientX, event.clientY)}
-    >
+    <main className="viewer-shell">
       <header>
         <h1>{state.project.displayName}</h1>
         <button
@@ -685,6 +674,7 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
                 selectedId={state.selectedFolderId}
                 onSelect={selectFolderTarget}
                 draggedEntityIds={draggedEntityIds}
+                internalDragMode={internalDrag?.mode ?? null}
                 readOnly={state.project.access !== 'read_write' || operationBusy}
                 isDropTargetValid={isDropTargetValid}
                 onDropFiles={(entityIds, destinationId, mode) =>
@@ -750,17 +740,13 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
                   onThumbnailTaskChange={setThumbnailTask}
                   onPreview={openPreview}
                   onSelectionChange={selectFiles}
-                  onDragSelectionStart={(entityIds) => {
-                    finderExportStartedRef.current = false
+                  organizationDragDisabled={state.project.access !== 'read_write' || operationBusy}
+                  onFinderDragStart={exportToFinder}
+                  onOrganizationDragStart={(entityIds, mode) => {
                     setFinderDragMessage(null)
-                    draggedEntityIdsRef.current = entityIds
-                    setDraggedEntityIds(entityIds)
+                    setInternalDrag({ entityIds, mode })
                   }}
-                  onDragSelectionEnd={() => {
-                    finderExportStartedRef.current = false
-                    draggedEntityIdsRef.current = []
-                    setDraggedEntityIds([])
-                  }}
+                  onOrganizationDragEnd={() => setInternalDrag(null)}
                 />
               </div>
               {compareOpen && (

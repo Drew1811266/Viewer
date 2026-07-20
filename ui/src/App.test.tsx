@@ -723,6 +723,22 @@ describe('Viewer empty state', () => {
     expect(screen.queryByText(/Users\/private/)).not.toBeInTheDocument()
   })
 
+  it('shows a generic retry message without exposing a native Finder error path', async () => {
+    const viewer = bridge()
+    vi.mocked(viewer.queryFolder).mockResolvedValue(contentWorkspace())
+    vi.mocked(viewer.beginFinderDrag).mockRejectedValue(
+      new Error('/Users/private/project/front.jpg could not be dragged'),
+    )
+    render(<App bridge={viewer} />)
+    fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
+    fireEvent.dragStart(await screen.findByRole('option', { name: 'front.jpg' }), {
+      dataTransfer: viewerDragTransfer(),
+    })
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('无法拖到 Finder，请重新拖动。')
+    expect(screen.queryByText(/Users\/private/)).not.toBeInTheDocument()
+  })
+
   it('opens compare with C and restores the mounted grid selection after closing', async () => {
     const viewer = bridge()
     vi.mocked(viewer.queryFolder).mockResolvedValue(compareContentWorkspace())

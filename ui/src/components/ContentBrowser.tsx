@@ -315,6 +315,7 @@ export default function ContentBrowser({
             id={`file-${file.entityId}`}
             aria-label={file.name}
             aria-selected={selected.has(file.entityId)}
+            tabIndex={-1}
             key={file.entityId}
             className="text-file-row"
             draggable

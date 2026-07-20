@@ -110,7 +110,7 @@ describe('ContentBrowser', () => {
     render(<ContentBrowser workspace={workspace()} />)
 
     expect(screen.getByText('文本文件')).toBeVisible()
-    expect(screen.getByRole('option', { name: 'prompt.md' })).toBeVisible()
+    expect(screen.getByRole('option', { name: 'prompt.md' })).toHaveAttribute('tabindex', '-1')
   })
 
   it('shows text marker labels and preserves selection when marker projections refresh', () => {

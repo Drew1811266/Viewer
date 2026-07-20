@@ -703,18 +703,21 @@ impl RenameExecutor {
             source: item.source,
             destination: item.destination,
         };
-        self.commits
-            .commit_metadata(&commit)
+        let outcome = self
+            .commits
+            .commit_metadata_barrier(&commit)
             .await
             .map_err(|error| RenameStepError::Operational(error.to_string()))?;
-        self.journal
-            .advance(
-                operation_id,
-                OperationState::Verified,
-                OperationState::MetaCommitted,
-                self.now(),
-            )
-            .map_err(|error| RenameStepError::Operational(error.to_string()))?;
+        if outcome == viewer_application::MetadataCommitOutcome::CallerAdvancesJournal {
+            self.journal
+                .advance(
+                    operation_id,
+                    OperationState::Verified,
+                    OperationState::MetaCommitted,
+                    self.now(),
+                )
+                .map_err(|error| RenameStepError::Operational(error.to_string()))?;
+        }
         self.after_persist(operation_id, OperationState::MetaCommitted)?;
         self.commits
             .sync_index(&commit)

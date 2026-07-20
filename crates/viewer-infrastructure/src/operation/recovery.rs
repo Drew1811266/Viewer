@@ -629,13 +629,15 @@ impl RecoveryService {
             destination: item.destination.clone(),
         };
         if current == OperationState::Verified {
-            self.commits.commit_metadata(&commit).await?;
-            self.journal.advance(
-                item.operation_id,
-                current,
-                OperationState::MetaCommitted,
-                self.now(),
-            )?;
+            let outcome = self.commits.commit_metadata_barrier(&commit).await?;
+            if outcome == viewer_application::MetadataCommitOutcome::CallerAdvancesJournal {
+                self.journal.advance(
+                    item.operation_id,
+                    current,
+                    OperationState::MetaCommitted,
+                    self.now(),
+                )?;
+            }
             current = OperationState::MetaCommitted;
         }
         if current == OperationState::MetaCommitted {

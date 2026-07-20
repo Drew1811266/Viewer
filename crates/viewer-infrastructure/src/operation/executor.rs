@@ -353,13 +353,15 @@ impl CopyExecutor {
             .ok_or(CopyError::MissingJournalItem(operation_id))?;
         let commit = operation_commit(&item);
         if current == OperationState::Verified {
-            self.commits.commit_metadata(&commit).await?;
-            self.journal.advance(
-                operation_id,
-                OperationState::Verified,
-                OperationState::MetaCommitted,
-                self.now(),
-            )?;
+            let outcome = self.commits.commit_metadata_barrier(&commit).await?;
+            if outcome == viewer_application::MetadataCommitOutcome::CallerAdvancesJournal {
+                self.journal.advance(
+                    operation_id,
+                    OperationState::Verified,
+                    OperationState::MetaCommitted,
+                    self.now(),
+                )?;
+            }
             current = OperationState::MetaCommitted;
             self.after_persist(operation_id, current)?;
         }

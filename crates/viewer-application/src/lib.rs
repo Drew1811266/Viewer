@@ -21,9 +21,11 @@ pub use finder_drag::{
     FinderDragError, FinderDragReceipt, PreparedFinderDrag, begin_finder_drag, prepare_finder_drag,
 };
 pub use image::{ImageArtifact, ImageBackend, ImageError, ImageRequest};
-pub use operation::{FaultInjector, FileOperationError, FileSnapshot, InjectedCrash, NoFaults};
+pub use operation::{
+    FaultInjector, FileContentEvidence, FileOperationError, FileSnapshot, InjectedCrash, NoFaults,
+};
 pub use operation_commit::{
-    CommitStage, OperationCommit, OperationCommitError, OperationCommitPort,
+    CommitStage, MetadataCommitOutcome, OperationCommit, OperationCommitError, OperationCommitPort,
 };
 pub use ports::{
     ClockPort, FileMutationPort, FinderDragPort, ImagePort, LocalFileCommandPort, ProjectAccess,

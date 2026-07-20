@@ -11,8 +11,8 @@ use std::{
 };
 use tokio::sync::{Mutex as AsyncMutex, Notify, watch};
 use viewer_application::{
-    BrowseIndexPort, ClockPort, CommitStage, OperationCommit, OperationCommitError,
-    OperationCommitPort, VolumePort,
+    BrowseIndexPort, ClockPort, CommitStage, MetadataCommitOutcome, OperationCommit,
+    OperationCommitError, OperationCommitPort, VolumePort,
     file_commands::{
         BatchId, BatchProgress, BatchResultPage, BatchSummary, ConflictResolution, FileCommand,
         FileCommandItem, FileCommandKind, FileCommandPreflight, FileCommandPreflightState,
@@ -464,14 +464,14 @@ impl DesktopOperationCommitPort {
             .find(|path| markers.iter().any(|marker| marker.relative_path == *path)))
     }
 
-    fn clear_replaced_destination_marker(
+    fn replaced_destination_marker(
         &self,
         current: &JournalItem,
         batch: &[JournalItem],
         destination: &RelativePath,
-    ) -> Result<(), OperationCommitError> {
+    ) -> Option<RelativePath> {
         if current.conflict_policy != ConflictPolicy::Replace {
-            return Ok(());
+            return None;
         }
         let is_cycle_blocker = batch.iter().any(|item| {
             item.operation_id != current.operation_id
@@ -479,12 +479,28 @@ impl DesktopOperationCommitPort {
                 && item.temporary.is_some()
         });
         if is_cycle_blocker {
-            return Ok(());
+            return None;
         }
-        self.metadata
-            .clear_paths(std::slice::from_ref(destination), self.clock.unix_millis())
-            .map_err(|_| metadata_commit_error("metadata_unavailable"))?;
-        Ok(())
+        Some(destination.clone())
+    }
+
+    fn metadata_moves(
+        &self,
+        current: &JournalItem,
+        batch: &[JournalItem],
+        destination: &RelativePath,
+    ) -> Result<Vec<FilePathMove>, OperationCommitError> {
+        if current.kind == OperationKind::Copy {
+            return Ok(Vec::new());
+        }
+        let mut moves = self.blocking_cycle_moves(current, batch, destination)?;
+        if let Some(source) = self.marker_source(current)? {
+            moves.push(FilePathMove {
+                source,
+                destination: destination.clone(),
+            });
+        }
+        Ok(moves)
     }
 
     fn source(&self, entity_id: EntityId) -> Result<Option<FileNode>, OperationCommitError> {
@@ -542,21 +558,11 @@ impl OperationCommitPort for DesktopOperationCommitPort {
             .as_ref()
             .ok_or_else(|| metadata_commit_error("destination_missing"))?;
         let (current, batch) = self.journal_batch(commit.operation_id, CommitStage::Metadata)?;
-        self.clear_replaced_destination_marker(&current, &batch, destination)?;
-        if commit.kind == OperationKind::Copy {
-            return Ok(());
-        }
         let case_sensitive = self
             .volume
             .is_case_sensitive(&self.root)
             .map_err(|_| metadata_commit_error("volume_unavailable"))?;
-        let mut moves = self.blocking_cycle_moves(&current, &batch, destination)?;
-        if let Some(source) = self.marker_source(&current)? {
-            moves.push(FilePathMove {
-                source,
-                destination: destination.clone(),
-            });
-        }
+        let moves = self.metadata_moves(&current, &batch, destination)?;
         if moves.is_empty() {
             return Ok(());
         }
@@ -564,6 +570,41 @@ impl OperationCommitPort for DesktopOperationCommitPort {
             .move_paths(&moves, case_sensitive, self.clock.unix_millis())
             .map_err(|_| metadata_commit_error("metadata_unavailable"))?;
         Ok(())
+    }
+
+    async fn commit_metadata_barrier(
+        &self,
+        commit: &OperationCommit,
+    ) -> Result<MetadataCommitOutcome, OperationCommitError> {
+        if commit.kind == OperationKind::Trash {
+            return Ok(MetadataCommitOutcome::CallerAdvancesJournal);
+        }
+        let destination = commit
+            .destination
+            .as_ref()
+            .ok_or_else(|| metadata_commit_error("destination_missing"))?;
+        let (current, batch) = self.journal_batch(commit.operation_id, CommitStage::Metadata)?;
+        if current.conflict_policy != ConflictPolicy::Replace {
+            self.commit_metadata(commit).await?;
+            return Ok(MetadataCommitOutcome::CallerAdvancesJournal);
+        }
+
+        let case_sensitive = self
+            .volume
+            .is_case_sensitive(&self.root)
+            .map_err(|_| metadata_commit_error("volume_unavailable"))?;
+        let moves = self.metadata_moves(&current, &batch, destination)?;
+        let replaced_destination = self.replaced_destination_marker(&current, &batch, destination);
+        self.metadata
+            .commit_replace(
+                current.operation_id,
+                replaced_destination.as_ref(),
+                &moves,
+                case_sensitive,
+                self.clock.unix_millis(),
+            )
+            .map_err(|_| metadata_commit_error("metadata_unavailable"))?;
+        Ok(MetadataCommitOutcome::JournalAdvanced)
     }
 
     async fn sync_index(&self, commit: &OperationCommit) -> Result<(), OperationCommitError> {

@@ -3,8 +3,8 @@ use std::{
     sync::Arc,
 };
 use viewer_application::{
-    ClockPort, FaultInjector, FileMutationPort, FileOperationError, InjectedCrash, NoFaults,
-    OperationCommit, OperationCommitError, OperationCommitPort, TrashPort,
+    ClockPort, FaultInjector, FileContentEvidence, FileMutationPort, FileOperationError,
+    InjectedCrash, NoFaults, OperationCommit, OperationCommitError, OperationCommitPort, TrashPort,
 };
 use viewer_domain::{
     OperationId, RelativePath,
@@ -292,6 +292,26 @@ impl ReplaceExecutor {
         {
             return Err(ReplaceError::WrongOperation);
         }
+        let destination = item
+            .destination
+            .as_ref()
+            .ok_or(FileOperationError::DestinationRequired)?;
+        let destination = self.resolve_existing(destination)?;
+        let evidence = self.stable_content_evidence(&destination).await?;
+        self.execute_with_destination_evidence(item, &evidence)
+            .await
+    }
+
+    pub async fn execute_with_destination_evidence(
+        &self,
+        item: &OperationItemPlan,
+        expected_destination: &FileContentEvidence,
+    ) -> Result<(), ReplaceError> {
+        if !matches!(item.kind, OperationKind::Rename | OperationKind::Move)
+            || item.conflict_policy != ConflictPolicy::Replace
+        {
+            return Err(ReplaceError::WrongOperation);
+        }
         let destination_relative = item
             .destination
             .as_ref()
@@ -300,6 +320,10 @@ impl ReplaceExecutor {
         let destination = self.resolve_existing(destination_relative)?;
         let temporary_relative = replace_temporary_path(&item.source, item.operation_id)?;
         let temporary = self.resolve_destination(&temporary_relative)?;
+
+        if self.stable_content_evidence(&destination).await? != *expected_destination {
+            return Err(FileOperationError::IdentityChanged.into());
+        }
 
         let before = self.mutation.snapshot(&source).await?;
         let expected = hash_path(&source).await?;
@@ -325,6 +349,26 @@ impl ReplaceExecutor {
             self.now(),
         )?;
         self.after_persist(item.operation_id, OperationState::Staged)?;
+
+        let destination_after_stage = self.stable_content_evidence(&destination).await;
+        let destination_changed = match &destination_after_stage {
+            Ok(actual) => actual != expected_destination,
+            Err(_) => true,
+        };
+        if destination_changed {
+            self.mutation.rename(&temporary, &source).await?;
+            sync_path(&source).await?;
+            self.journal.fail(
+                item.operation_id,
+                OperationState::Staged,
+                "verification_failed",
+                self.now(),
+            )?;
+            return Err(destination_after_stage
+                .err()
+                .unwrap_or(FileOperationError::IdentityChanged)
+                .into());
+        }
 
         self.trash.trash(&destination).await?;
         if let Err(error) = self.mutation.rename(&temporary, &destination).await {
@@ -357,13 +401,15 @@ impl ReplaceExecutor {
             source: item.source.clone(),
             destination: item.destination.clone(),
         };
-        self.commits.commit_metadata(&commit).await?;
-        self.journal.advance(
-            item.operation_id,
-            OperationState::Verified,
-            OperationState::MetaCommitted,
-            self.now(),
-        )?;
+        let outcome = self.commits.commit_metadata_barrier(&commit).await?;
+        if outcome == viewer_application::MetadataCommitOutcome::CallerAdvancesJournal {
+            self.journal.advance(
+                item.operation_id,
+                OperationState::Verified,
+                OperationState::MetaCommitted,
+                self.now(),
+            )?;
+        }
         self.after_persist(item.operation_id, OperationState::MetaCommitted)?;
         self.commits.sync_index(&commit).await?;
         self.journal.advance(
@@ -381,6 +427,22 @@ impl ReplaceExecutor {
         )?;
         self.after_persist(item.operation_id, OperationState::Completed)?;
         Ok(())
+    }
+
+    async fn stable_content_evidence(
+        &self,
+        path: &Path,
+    ) -> Result<FileContentEvidence, FileOperationError> {
+        let before = self.mutation.snapshot(path).await?;
+        let (len, hash) = hash_path(path).await?;
+        let after = self.mutation.snapshot(path).await?;
+        if before != after || after.len != len {
+            return Err(FileOperationError::IdentityChanged);
+        }
+        Ok(FileContentEvidence {
+            snapshot: after,
+            hash,
+        })
     }
 
     fn resolve_existing(&self, relative: &RelativePath) -> Result<PathBuf, FileOperationError> {

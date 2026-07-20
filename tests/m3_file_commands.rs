@@ -993,6 +993,99 @@ async fn cross_volume_move_never_trashes_a_source_rewritten_during_copy() {
     assert_eq!(fixture.trash.count(), 0);
 }
 
+struct RewriteDestinationAfterSourceStage {
+    delegate: LocalFileMutation,
+    destination: Mutex<Option<PathBuf>>,
+}
+
+#[async_trait]
+impl FileMutationPort for RewriteDestinationAfterSourceStage {
+    async fn snapshot(&self, path: &Path) -> Result<FileSnapshot, FileOperationError> {
+        self.delegate.snapshot(path).await
+    }
+
+    async fn copy_and_hash(
+        &self,
+        source: &Path,
+        temporary: &Path,
+    ) -> Result<(u64, [u8; 32]), FileOperationError> {
+        self.delegate.copy_and_hash(source, temporary).await
+    }
+
+    async fn rename(&self, source: &Path, destination: &Path) -> Result<(), FileOperationError> {
+        self.delegate.rename(source, destination).await?;
+        let staged_replace = destination
+            .file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| name.starts_with(".viewer-replace-") && name.ends_with(".part"));
+        if staged_replace && let Some(target) = self.destination.lock().unwrap().take() {
+            fs::write(&target, b"BBBB").map_err(|error| {
+                FileOperationError::io("rewrite replace destination", &target, &error)
+            })?;
+        }
+        Ok(())
+    }
+
+    async fn remove_registered_temporary(&self, path: &Path) -> Result<(), FileOperationError> {
+        self.delegate.remove_registered_temporary(path).await
+    }
+}
+
+#[tokio::test]
+async fn rename_replace_revalidates_destination_after_staging_source() {
+    let mutation = Arc::new(RewriteDestinationAfterSourceStage {
+        delegate: LocalFileMutation,
+        destination: Mutex::new(None),
+    });
+    let fixture = Fixture::with_mutation(false, mutation.clone());
+    fixture.directory("products");
+    let source = fixture.file("products/source.png", b"source");
+    fixture.file("products/destination.png", b"AAAA");
+    let destination_path = fixture.project.root().join("products/destination.png");
+    *mutation.destination.lock().unwrap() = Some(destination_path.clone());
+    let command = fixture.command(
+        FileCommandKind::Rename,
+        vec![FileCommandItem {
+            entity_id: source,
+            action: FileCommandAction::Rename {
+                proposed_name: "destination.png".into(),
+                edit_extension: true,
+            },
+        }],
+    );
+    let preflight = fixture.service.preflight(command).await.unwrap();
+    assert_eq!(
+        preflight.rows()[0].state,
+        FileCommandPreflightState::Conflict
+    );
+
+    let summary = fixture
+        .service
+        .execute(
+            preflight,
+            &[ConflictResolution {
+                entity_id: source,
+                policy: ConflictPolicy::Replace,
+                apply_to_remaining: false,
+            }],
+            None,
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(summary.failed(), 1);
+    assert_eq!(
+        summary.result_page(0, 1).items[0].code,
+        BatchResultCode::VerificationFailed
+    );
+    assert_eq!(fs::read(destination_path).unwrap(), b"BBBB");
+    assert_eq!(
+        fs::read(fixture.project.root().join("products/source.png")).unwrap(),
+        b"source"
+    );
+    assert_eq!(fixture.trash.count(), 0);
+}
+
 struct BlockingCopy {
     delegate: LocalFileMutation,
     started: Notify,

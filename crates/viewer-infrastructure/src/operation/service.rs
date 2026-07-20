@@ -5,8 +5,8 @@ use std::{
     sync::{Arc, Mutex},
 };
 use viewer_application::{
-    ClockPort, FileMutationPort, FileOperationError, FileSnapshot, LocalFileCommandPort,
-    OperationCommit, OperationCommitPort, TrashPort, VolumePort,
+    ClockPort, FileContentEvidence, FileMutationPort, FileOperationError, FileSnapshot,
+    LocalFileCommandPort, OperationCommit, OperationCommitPort, TrashPort, VolumePort,
     browse::BrowseIndexPort,
     file_commands::{
         BatchId, BatchResultCode, FileCommand, FileCommandAction, FileCommandCancellation,
@@ -53,12 +53,6 @@ struct PreparedItem {
     route: PreparedRoute,
     source_evidence: Option<FileSnapshot>,
     destination_evidence: Option<FileContentEvidence>,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-struct FileContentEvidence {
-    snapshot: FileSnapshot,
-    hash: [u8; 32],
 }
 
 struct PreparedBatch {
@@ -779,6 +773,7 @@ impl LocalFileCommandAdapter {
         mut item: PreparedItem,
         policy: ConflictPolicy,
     ) -> Result<LocalFileCommandOutcome, FileOperationError> {
+        item.plan.conflict_policy = policy;
         let requested = item
             .plan
             .destination
@@ -819,6 +814,10 @@ impl LocalFileCommandAdapter {
         }
         if policy == ConflictPolicy::Replace {
             self.revalidate_replace_destination(&item, Some(policy))?;
+            let expected_destination = item
+                .destination_evidence
+                .as_ref()
+                .ok_or(FileOperationError::IdentityChanged)?;
             let executor = ReplaceExecutor::new(
                 &self.project_root,
                 Arc::clone(&self.journal),
@@ -828,7 +827,7 @@ impl LocalFileCommandAdapter {
                 Arc::clone(&self.commits),
             )?;
             executor
-                .execute(&item.plan)
+                .execute_with_destination_evidence(&item.plan, expected_destination)
                 .await
                 .map_err(replace_file_error)?;
         } else {
@@ -1112,18 +1111,21 @@ impl LocalFileCommandAdapter {
             source: item.source.clone(),
             destination: persisted.destination,
         };
-        self.commits
-            .commit_metadata(&commit)
+        let outcome = self
+            .commits
+            .commit_metadata_barrier(&commit)
             .await
             .map_err(commit_file_error)?;
-        self.journal
-            .advance(
-                item.operation_id,
-                OperationState::Verified,
-                OperationState::MetaCommitted,
-                self.now(),
-            )
-            .map_err(journal_file_error)?;
+        if outcome == viewer_application::MetadataCommitOutcome::CallerAdvancesJournal {
+            self.journal
+                .advance(
+                    item.operation_id,
+                    OperationState::Verified,
+                    OperationState::MetaCommitted,
+                    self.now(),
+                )
+                .map_err(journal_file_error)?;
+        }
         self.commits
             .sync_index(&commit)
             .await
@@ -1919,9 +1921,12 @@ fn commit_file_error(error: viewer_application::OperationCommitError) -> FileOpe
 }
 
 fn replace_file_error(error: super::conflict::ReplaceError) -> FileOperationError {
-    FileOperationError::Io {
-        action: "execute replace",
-        path: PathBuf::new(),
-        message: error.to_string(),
+    match error {
+        super::conflict::ReplaceError::File(error) => error,
+        error => FileOperationError::Io {
+            action: "execute replace",
+            path: PathBuf::new(),
+            message: error.to_string(),
+        },
     }
 }

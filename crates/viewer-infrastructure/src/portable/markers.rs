@@ -8,7 +8,7 @@ use viewer_application::metadata::{
     MarkerStoreError, MarkerTarget, PortableMarker, PortableMetadataPort, ReviewPatch,
 };
 use viewer_domain::{
-    EntityId, RelativePath,
+    EntityId, OperationId, RelativePath,
     file::{FileKind, ReviewState},
 };
 
@@ -270,85 +270,178 @@ impl PortableMetadataPort for PortableMarkerStore {
         let transaction = connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(|_| MarkerStoreError::Unavailable)?;
-        let rows = {
-            let mut statement = transaction
-                .prepare(
-                    "SELECT marker_id, relative_path, kind, review_state, favorite,
-                            evidence_size, evidence_modified_ns, content_hash
-                     FROM markers ORDER BY relative_path, marker_id",
+        let moved = apply_path_moves(&transaction, moves, case_sensitive, updated_at_ms)?;
+        transaction
+            .commit()
+            .map_err(|_| MarkerStoreError::Unavailable)?;
+        Ok(moved)
+    }
+
+    fn commit_replace(
+        &self,
+        operation_id: OperationId,
+        replaced_destination: Option<&RelativePath>,
+        moves: &[FilePathMove],
+        case_sensitive: bool,
+        updated_at_ms: i64,
+    ) -> Result<usize, MarkerStoreError> {
+        if !self.writable || updated_at_ms < 0 {
+            return Err(if self.writable {
+                MarkerStoreError::InvalidTarget
+            } else {
+                MarkerStoreError::ReadOnly
+            });
+        }
+        if !moves.is_empty() {
+            validate_path_moves(moves, case_sensitive, updated_at_ms)?;
+        }
+        if replaced_destination
+            .is_some_and(|destination| moves.iter().any(|mapping| mapping.source == *destination))
+        {
+            return Err(MarkerStoreError::InvalidTarget);
+        }
+
+        let mut connection = self.lock_connection();
+        let transaction = connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(|_| MarkerStoreError::Unavailable)?;
+        let state = transaction
+            .query_row(
+                "SELECT state FROM operation_items WHERE operation_id = ?1",
+                [operation_id.to_string()],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()
+            .map_err(|_| MarkerStoreError::Unavailable)?;
+        match state.as_deref() {
+            Some("meta_committed") => {
+                transaction
+                    .commit()
+                    .map_err(|_| MarkerStoreError::Unavailable)?;
+                return Ok(0);
+            }
+            Some("verified") => {}
+            _ => return Err(MarkerStoreError::InvalidTarget),
+        }
+
+        let mut changed = 0_usize;
+        if let Some(destination) = replaced_destination {
+            changed = transaction
+                .execute(
+                    "DELETE FROM markers WHERE relative_path = ?1",
+                    [destination.as_str()],
                 )
                 .map_err(|_| MarkerStoreError::Unavailable)?;
-            statement
-                .query_map([], read_marker_row)
-                .map_err(|_| MarkerStoreError::Unavailable)?
-                .collect::<Result<Vec<_>, _>>()
-                .map_err(|_| MarkerStoreError::Unavailable)?
-        };
-
-        let mut affected = Vec::new();
-        let mut unaffected_keys = HashSet::new();
-        for row in rows {
-            if RelativePath::parse(&row.relative_path).is_err() {
-                return Err(MarkerStoreError::Unavailable);
-            }
-            if let Some(destination) = projected_marker_path(&row.relative_path, moves) {
-                if RelativePath::parse(&destination).is_err() {
-                    return Err(MarkerStoreError::InvalidTarget);
-                }
-                affected.push((row, destination));
-            } else if !unaffected_keys.insert(path_key(&row.relative_path, case_sensitive)) {
-                return Err(MarkerStoreError::InvalidTarget);
-            }
         }
-
-        let mut destination_keys = HashSet::with_capacity(affected.len());
-        for (_, destination) in &affected {
-            let key = path_key(destination, case_sensitive);
-            if unaffected_keys.contains(&key) || !destination_keys.insert(key) {
-                return Err(MarkerStoreError::InvalidTarget);
-            }
+        if !moves.is_empty() {
+            changed = changed
+                .checked_add(apply_path_moves(
+                    &transaction,
+                    moves,
+                    case_sensitive,
+                    updated_at_ms,
+                )?)
+                .ok_or(MarkerStoreError::Unavailable)?;
         }
-
-        {
-            let mut delete = transaction
-                .prepare_cached("DELETE FROM markers WHERE marker_id = ?1")
-                .map_err(|_| MarkerStoreError::Unavailable)?;
-            for (row, _) in &affected {
-                delete
-                    .execute([&row.marker_id])
-                    .map_err(|_| MarkerStoreError::Unavailable)?;
-            }
-        }
-        {
-            let mut insert = transaction
-                .prepare_cached(
-                    "INSERT INTO markers(
-                        marker_id, relative_path, kind, review_state, favorite,
-                        evidence_size, evidence_modified_ns, content_hash, updated_at_ms
-                     ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
-                )
-                .map_err(|_| MarkerStoreError::Unavailable)?;
-            for (row, destination) in &affected {
-                insert
-                    .execute(params![
-                        &row.marker_id,
-                        destination,
-                        row.kind,
-                        row.review_state,
-                        row.favorite,
-                        row.evidence_size,
-                        &row.evidence_modified_ns,
-                        &row.content_hash,
-                        updated_at_ms,
-                    ])
-                    .map_err(|_| MarkerStoreError::Unavailable)?;
-            }
+        let advanced = transaction
+            .execute(
+                "UPDATE operation_items
+                 SET state = 'meta_committed', updated_at_ms = ?2
+                 WHERE operation_id = ?1 AND state = 'verified'",
+                params![operation_id.to_string(), updated_at_ms],
+            )
+            .map_err(|_| MarkerStoreError::Unavailable)?;
+        if advanced != 1 {
+            return Err(MarkerStoreError::InvalidTarget);
         }
         transaction
             .commit()
             .map_err(|_| MarkerStoreError::Unavailable)?;
-        Ok(affected.len())
+        Ok(changed)
     }
+}
+
+fn apply_path_moves(
+    transaction: &rusqlite::Transaction<'_>,
+    moves: &[FilePathMove],
+    case_sensitive: bool,
+    updated_at_ms: i64,
+) -> Result<usize, MarkerStoreError> {
+    let rows = {
+        let mut statement = transaction
+            .prepare(
+                "SELECT marker_id, relative_path, kind, review_state, favorite,
+                        evidence_size, evidence_modified_ns, content_hash
+                 FROM markers ORDER BY relative_path, marker_id",
+            )
+            .map_err(|_| MarkerStoreError::Unavailable)?;
+        statement
+            .query_map([], read_marker_row)
+            .map_err(|_| MarkerStoreError::Unavailable)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|_| MarkerStoreError::Unavailable)?
+    };
+
+    let mut affected = Vec::new();
+    let mut unaffected_keys = HashSet::new();
+    for row in rows {
+        if RelativePath::parse(&row.relative_path).is_err() {
+            return Err(MarkerStoreError::Unavailable);
+        }
+        if let Some(destination) = projected_marker_path(&row.relative_path, moves) {
+            if RelativePath::parse(&destination).is_err() {
+                return Err(MarkerStoreError::InvalidTarget);
+            }
+            affected.push((row, destination));
+        } else if !unaffected_keys.insert(path_key(&row.relative_path, case_sensitive)) {
+            return Err(MarkerStoreError::InvalidTarget);
+        }
+    }
+
+    let mut destination_keys = HashSet::with_capacity(affected.len());
+    for (_, destination) in &affected {
+        let key = path_key(destination, case_sensitive);
+        if unaffected_keys.contains(&key) || !destination_keys.insert(key) {
+            return Err(MarkerStoreError::InvalidTarget);
+        }
+    }
+
+    {
+        let mut delete = transaction
+            .prepare_cached("DELETE FROM markers WHERE marker_id = ?1")
+            .map_err(|_| MarkerStoreError::Unavailable)?;
+        for (row, _) in &affected {
+            delete
+                .execute([&row.marker_id])
+                .map_err(|_| MarkerStoreError::Unavailable)?;
+        }
+    }
+    {
+        let mut insert = transaction
+            .prepare_cached(
+                "INSERT INTO markers(
+                    marker_id, relative_path, kind, review_state, favorite,
+                    evidence_size, evidence_modified_ns, content_hash, updated_at_ms
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+            )
+            .map_err(|_| MarkerStoreError::Unavailable)?;
+        for (row, destination) in &affected {
+            insert
+                .execute(params![
+                    &row.marker_id,
+                    destination,
+                    row.kind,
+                    row.review_state,
+                    row.favorite,
+                    row.evidence_size,
+                    &row.evidence_modified_ns,
+                    &row.content_hash,
+                    updated_at_ms,
+                ])
+                .map_err(|_| MarkerStoreError::Unavailable)?;
+        }
+    }
+    Ok(affected.len())
 }
 
 fn read_current_marker(

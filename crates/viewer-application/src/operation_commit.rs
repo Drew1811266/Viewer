@@ -25,6 +25,12 @@ pub struct OperationCommit {
     pub destination: Option<RelativePath>,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum MetadataCommitOutcome {
+    CallerAdvancesJournal,
+    JournalAdvanced,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, thiserror::Error)]
 #[error("{stage:?} operation commit failed with code {code}")]
 pub struct OperationCommitError {
@@ -44,6 +50,14 @@ impl OperationCommitError {
 #[async_trait]
 pub trait OperationCommitPort: Send + Sync {
     async fn commit_metadata(&self, commit: &OperationCommit) -> Result<(), OperationCommitError>;
+
+    async fn commit_metadata_barrier(
+        &self,
+        commit: &OperationCommit,
+    ) -> Result<MetadataCommitOutcome, OperationCommitError> {
+        self.commit_metadata(commit).await?;
+        Ok(MetadataCommitOutcome::CallerAdvancesJournal)
+    }
 
     async fn sync_index(&self, commit: &OperationCommit) -> Result<(), OperationCommitError>;
 }

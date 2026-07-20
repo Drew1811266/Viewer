@@ -10,6 +10,7 @@ use viewer_application::{
     file_commands::{
         FileCommand, FileCommandAction, FileCommandItem, FileCommandKind, FileCommandPreflightState,
     },
+    metadata::{FilePathMove, PortableMetadataPort},
     watcher::ReconcileSummary,
 };
 use viewer_desktop::{
@@ -28,7 +29,10 @@ use viewer_domain::{
     },
     search::Generation,
 };
-use viewer_infrastructure::operation::{copy::LocalFileMutation, journal::OperationJournal};
+use viewer_infrastructure::{
+    operation::{copy::LocalFileMutation, journal::OperationJournal},
+    portable::PortableMarkerStore,
+};
 
 struct FixedProbe(ProjectAccess);
 
@@ -703,6 +707,136 @@ async fn reopen_recovery_replaces_the_old_marker_before_moving_the_source_marker
         &project.path().join("destination.txt"),
     )
     .await;
+
+    runtime.open_project(project.path()).await.unwrap();
+    runtime.wait_for_scan().await.unwrap();
+    let FolderWorkspaceDto::Content { text_files, .. } = runtime.query_folder(None).await.unwrap()
+    else {
+        panic!("root should contain the recovered rename")
+    };
+    assert_eq!(text_files.len(), 1);
+    assert_eq!(text_files[0].name, "destination.txt");
+    assert_eq!(text_files[0].marker.review_state, Some(ReviewState::Keep));
+    runtime.close_project().await.unwrap();
+}
+
+#[tokio::test]
+async fn reopen_recovery_preserves_replace_marker_after_atomic_metadata_commit() {
+    let cache = tempfile::tempdir().unwrap();
+    let project = tempfile::tempdir().unwrap();
+    fs::write(project.path().join("source.txt"), b"source bytes").unwrap();
+    fs::write(project.path().join("destination.txt"), b"old destination").unwrap();
+    let runtime = DesktopRuntime::new(
+        cache.path().to_path_buf(),
+        Arc::new(FixedProbe(ProjectAccess::ReadWrite)),
+    );
+    let opened = runtime.open_project(project.path()).await.unwrap();
+    runtime.wait_for_scan().await.unwrap();
+    let FolderWorkspaceDto::Content { text_files, .. } = runtime.query_folder(None).await.unwrap()
+    else {
+        panic!("root should contain text files")
+    };
+    let source_id = EntityId::from_str(
+        &text_files
+            .iter()
+            .find(|file| file.name == "source.txt")
+            .unwrap()
+            .entity_id,
+    )
+    .unwrap();
+    let destination_id = EntityId::from_str(
+        &text_files
+            .iter()
+            .find(|file| file.name == "destination.txt")
+            .unwrap()
+            .entity_id,
+    )
+    .unwrap();
+    let session_id = SessionId::from_str(&opened.session_id).unwrap();
+    let generation = Generation::new(opened.generation);
+    runtime
+        .set_review_state(
+            session_id,
+            generation,
+            &[source_id],
+            Some(ReviewState::Keep),
+        )
+        .await
+        .unwrap();
+    runtime
+        .set_review_state(
+            session_id,
+            generation,
+            &[destination_id],
+            Some(ReviewState::Reject),
+        )
+        .await
+        .unwrap();
+    runtime.close_project().await.unwrap();
+
+    fs::remove_file(project.path().join("destination.txt")).unwrap();
+    fs::rename(
+        project.path().join("source.txt"),
+        project.path().join("destination.txt"),
+    )
+    .unwrap();
+    let item = OperationItemPlan {
+        batch_id: viewer_domain::OperationId::new(),
+        operation_id: viewer_domain::OperationId::new(),
+        entity_id: source_id,
+        kind: OperationKind::Rename,
+        source: viewer_domain::RelativePath::parse("source.txt").unwrap(),
+        destination: Some(viewer_domain::RelativePath::parse("destination.txt").unwrap()),
+        conflict_policy: ConflictPolicy::Replace,
+    };
+    persist_verified_replace(
+        project.path(),
+        item.clone(),
+        &project.path().join("destination.txt"),
+    )
+    .await;
+
+    let store =
+        PortableMarkerStore::open(&project.path().join(".viewer/metadata.sqlite"), true).unwrap();
+    let destination = viewer_domain::RelativePath::parse("destination.txt").unwrap();
+    store
+        .commit_replace(
+            item.operation_id,
+            Some(&destination),
+            &[FilePathMove {
+                source: viewer_domain::RelativePath::parse("source.txt").unwrap(),
+                destination: destination.clone(),
+            }],
+            true,
+            6,
+        )
+        .unwrap();
+    assert_eq!(
+        store
+            .commit_replace(
+                item.operation_id,
+                Some(&destination),
+                &[FilePathMove {
+                    source: viewer_domain::RelativePath::parse("source.txt").unwrap(),
+                    destination: destination.clone(),
+                }],
+                true,
+                7,
+            )
+            .unwrap(),
+        0,
+        "replaying an already committed metadata barrier must be harmless"
+    );
+    drop(store);
+    assert_eq!(
+        OperationJournal::open(project.path().join(".viewer/metadata.sqlite"))
+            .unwrap()
+            .item(item.operation_id)
+            .unwrap()
+            .unwrap()
+            .state,
+        OperationState::MetaCommitted
+    );
 
     runtime.open_project(project.path()).await.unwrap();
     runtime.wait_for_scan().await.unwrap();

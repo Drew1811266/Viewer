@@ -10,6 +10,12 @@ pub struct FileSnapshot {
     pub changed_ns: Option<i128>,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct FileContentEvidence {
+    pub snapshot: FileSnapshot,
+    pub hash: [u8; 32],
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, thiserror::Error)]
 pub enum FileOperationError {
     #[error("file operation path is outside the current project")]

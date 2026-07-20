@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 use viewer_domain::{
-    EntityId, RelativePath,
+    EntityId, OperationId, RelativePath,
     file::{FileKind, FileNode, ImageIndexStatus, ImageMetadata, ReviewState, TextIndexStatus},
 };
 
@@ -119,6 +119,17 @@ pub trait PortableMetadataPort: Send + Sync {
     fn clear_paths(
         &self,
         _paths: &[RelativePath],
+        _updated_at_ms: i64,
+    ) -> Result<usize, MarkerStoreError> {
+        Err(MarkerStoreError::Unavailable)
+    }
+
+    fn commit_replace(
+        &self,
+        _operation_id: OperationId,
+        _replaced_destination: Option<&RelativePath>,
+        _moves: &[FilePathMove],
+        _case_sensitive: bool,
         _updated_at_ms: i64,
     ) -> Result<usize, MarkerStoreError> {
         Err(MarkerStoreError::Unavailable)

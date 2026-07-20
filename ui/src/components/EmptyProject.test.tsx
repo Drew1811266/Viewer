@@ -13,7 +13,7 @@ function bridge(): ViewerBridge {
       displayName: 'project',
       access: 'read_write',
     }),
-    closeProject: vi.fn().mockResolvedValue(undefined),
+    closeProject: vi.fn().mockResolvedValue('closed'),
     projectSnapshot: vi.fn().mockResolvedValue(null),
     folderTree: vi.fn().mockResolvedValue([]),
     queryFolder: vi.fn().mockResolvedValue({ workspace: 'empty' }),

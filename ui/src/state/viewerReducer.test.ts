@@ -226,8 +226,18 @@ describe('viewerReducer', () => {
     expect(state.operation.results?.items[0]?.code).toBe('renamed')
     state = viewerReducer(state, {
       type: 'close_blocked_received',
-      event: { sessionId: project.sessionId, generation: 7, batchId: 'batch-1' },
+      event: {
+        sessionId: project.sessionId,
+        generation: 7,
+        batchId: 'batch-1',
+        target: 'project',
+      },
     })
+    expect(state.closeBlocked?.batchId).toBe('batch-1')
+    state = viewerReducer(state, { type: 'project_close_requested' })
+    expect(state.status).toBe('closing')
+    state = viewerReducer(state, { type: 'project_close_stayed' })
+    expect(state.status).toBe('active')
     expect(state.closeBlocked?.batchId).toBe('batch-1')
     expect(viewerReducer(state, { type: 'project_closed' })).toEqual(initialViewerState)
   })
@@ -301,7 +311,12 @@ describe('viewerReducer', () => {
     expect(
       viewerReducer(active, {
         type: 'close_blocked_received',
-        event: { sessionId: 'session-1', generation: 6, batchId: 'old' },
+        event: {
+          sessionId: 'session-1',
+          generation: 6,
+          batchId: 'old',
+          target: 'project',
+        },
       }),
     ).toEqual(active)
   })

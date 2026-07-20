@@ -21,7 +21,7 @@ function bridge(access: 'read_write' | 'read_only' = 'read_write'): ViewerBridge
       displayName: 'Catalog',
       access,
     }),
-    closeProject: vi.fn().mockResolvedValue(undefined),
+    closeProject: vi.fn().mockResolvedValue('closed'),
     projectSnapshot: vi.fn().mockResolvedValue(null),
     folderTree: vi.fn().mockResolvedValue([]),
     queryFolder: vi.fn().mockResolvedValue({ workspace: 'empty' }),
@@ -53,6 +53,7 @@ function bridge(access: 'read_write' | 'read_only' = 'read_write'): ViewerBridge
       sessionId: 'session-1',
       generation: 1,
       batchId: 'batch-1',
+      target: 'project',
       lifecycle: 'queued',
       requested: 1,
       completed: 0,
@@ -83,13 +84,121 @@ describe('Viewer empty state', () => {
     expect(screen.getByText('拖入或选择一个项目文件夹')).toBeVisible()
   })
 
-  it('shows a persistent read-only banner for an active read-only project', async () => {
-    render(<App bridge={bridge('read_only')} />)
+  it('keeps read-only browsing and comparison available while disabling every write', async () => {
+    const viewer = bridge('read_only')
+    vi.mocked(viewer.queryFolder).mockResolvedValue(readOnlyContentWorkspace())
+    vi.mocked(viewer.previewText).mockResolvedValue({
+      entityId: 'text-1',
+      format: 'plain_text',
+      plainText: 'readonly product notes',
+      markdownHtml: null,
+      encoding: 'utf8',
+      truncated: false,
+    })
+    render(<App bridge={viewer} />)
 
     fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
 
-    expect(await screen.findByText('只读项目')).toBeVisible()
+    expect(await screen.findByRole('status', { name: '只读模式' })).toBeVisible()
     expect(screen.getByText('Catalog')).toBeVisible()
+    expect(viewer.openPermissionSettings).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { name: '打开权限设置' }))
+    expect(viewer.openPermissionSettings).toHaveBeenCalledOnce()
+    expect(screen.getByRole('searchbox', { name: '搜索项目' })).toBeEnabled()
+    expect(screen.getByRole('combobox', { name: '排序方式' })).toBeEnabled()
+    expect(screen.getByText('筛选')).toBeVisible()
+
+    const front = await screen.findByRole('option', { name: 'front.jpg' })
+    const back = screen.getByRole('option', { name: 'back.jpg' })
+    fireEvent.doubleClick(front)
+    expect(screen.getByRole('dialog', { name: '图片预览' })).toBeVisible()
+    fireEvent.click(screen.getByRole('button', { name: '关闭预览' }))
+    fireEvent.click(front)
+    fireEvent.click(back, { metaKey: true })
+
+    expect(screen.getByRole('button', { name: '并排对比' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: '信息' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: '批量重命名' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: '复制到…' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: '移动到…' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: '移到废纸篓' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: '标记为保留' })).toBeDisabled()
+
+    fireEvent.click(screen.getByRole('button', { name: '信息' }))
+    expect(screen.getByRole('complementary', { name: '文件信息' })).toBeVisible()
+    fireEvent.click(screen.getByRole('button', { name: '关闭信息' }))
+
+    fireEvent.click(screen.getByRole('button', { name: '并排对比' }))
+    expect(screen.getByRole('region', { name: '图片对比' })).toBeVisible()
+    expect(screen.getByRole('status', { name: '只读模式' })).toBeVisible()
+    fireEvent.click(screen.getByRole('button', { name: '关闭对比' }))
+    fireEvent.doubleClick(screen.getByRole('option', { name: 'notes.txt' }))
+    expect(await screen.findByText('readonly product notes')).toBeVisible()
+  })
+
+  it('reselects from a read-only project through normal close and forgets the old path', async () => {
+    const viewer = bridge('read_only')
+    render(<App bridge={viewer} />)
+    fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
+    await screen.findByText('Catalog')
+
+    fireEvent.click(screen.getByRole('button', { name: '重新选择目录' }))
+
+    await waitFor(() =>
+      expect(viewer.closeProject).toHaveBeenCalledWith(undefined, 'project'),
+    )
+    expect(await screen.findByRole('heading', { name: 'Viewer' })).toBeVisible()
+    expect(screen.getByRole('alert')).toHaveTextContent('已关闭只读项目，请选择已授权的目录。')
+    expect(viewer.chooseProject).toHaveBeenCalledOnce()
+  })
+
+  it('offers stay, wait and cancel-pending choices when close is blocked', async () => {
+    const viewer = bridge()
+    let receiveCloseBlocked: Parameters<ViewerBridge['listenCloseBlocked']>[0] | undefined
+    vi.mocked(viewer.listenCloseBlocked).mockImplementation(async (handler) => {
+      receiveCloseBlocked = handler
+      return () => undefined
+    })
+    render(<App bridge={viewer} />)
+    await waitFor(() => expect(receiveCloseBlocked).toBeDefined())
+    fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
+    await screen.findByText('Catalog')
+
+    act(() => receiveCloseBlocked?.({
+      sessionId: 'session-1',
+      generation: 1,
+      batchId: 'batch-1',
+      target: 'project',
+    }))
+    fireEvent.click(screen.getByRole('button', { name: '保持打开' }))
+    expect(screen.queryByRole('dialog', { name: '文件操作尚未完成' })).not.toBeInTheDocument()
+    expect(screen.getByText('Catalog')).toBeVisible()
+    expect(viewer.closeProject).not.toHaveBeenCalled()
+
+    act(() => receiveCloseBlocked?.({
+      sessionId: 'session-1',
+      generation: 1,
+      batchId: 'batch-1',
+      target: 'project',
+    }))
+    fireEvent.click(screen.getByRole('button', { name: '等待完成后关闭' }))
+    await waitFor(() => expect(viewer.closeProject).toHaveBeenCalledWith('wait', 'project'))
+    expect(await screen.findByRole('heading', { name: 'Viewer' })).toBeVisible()
+
+    fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
+    await screen.findByText('Catalog')
+    act(() => receiveCloseBlocked?.({
+      sessionId: 'session-1',
+      generation: 1,
+      batchId: 'batch-2',
+      target: 'application',
+    }))
+    fireEvent.click(screen.getByRole('button', { name: '取消待处理项目并关闭' }))
+    await waitFor(() =>
+      expect(viewer.closeProject).toHaveBeenLastCalledWith('cancel_pending', 'application'),
+    )
+    expect(await screen.findByRole('heading', { name: 'Viewer' })).toBeVisible()
   })
 
   it('removes the scan listener when unmounted', async () => {
@@ -365,7 +474,7 @@ describe('Viewer empty state', () => {
 
   it('invalidates an open operation dialog when project closing begins', async () => {
     const viewer = bridge()
-    const closing = deferred<void>()
+    const closing = deferred<'closed'>()
     vi.mocked(viewer.closeProject).mockImplementation(() => closing.promise)
     vi.mocked(viewer.queryFolder).mockResolvedValue(contentWorkspace())
     render(<App bridge={viewer} />)
@@ -379,7 +488,7 @@ describe('Viewer empty state', () => {
     expect(viewer.executeFileCommand).not.toHaveBeenCalled()
 
     await act(async () => {
-      closing.resolve(undefined)
+      closing.resolve('closed')
       await closing.promise
     })
   })
@@ -740,5 +849,24 @@ function compareContentWorkspace() {
       },
     ],
     textFiles: [],
+  }
+}
+
+function readOnlyContentWorkspace() {
+  return {
+    ...compareContentWorkspace(),
+    textFiles: [
+      {
+        entityId: 'text-1',
+        relativePath: 'id/notes.txt',
+        name: 'notes.txt',
+        kind: 'text' as const,
+        size: 20,
+        modifiedNs: '3',
+        marker: { reviewState: null, favorite: false },
+        imageMetadata: null,
+        imageUrl: null,
+      },
+    ],
   }
 }

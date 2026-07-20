@@ -55,3 +55,7 @@ path = "../tests/m3_drag_export.rs"
 [[test]]
 name = "m3_compare_budget"
 path = "../tests/m3_compare_budget.rs"
+
+[[test]]
+name = "m3_readonly_lifecycle"
+path = "../tests/m3_readonly_lifecycle.rs"

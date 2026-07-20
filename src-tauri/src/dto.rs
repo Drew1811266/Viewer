@@ -23,6 +23,29 @@ use viewer_domain::{
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CloseChoiceDto {
+    Wait,
+    CancelPending,
+    Stay,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CloseRequestOutcomeDto {
+    Closed,
+    Stayed,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CloseTargetDto {
+    Project,
+    Window,
+    Application,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct SequenceRuleRequestDto {
     pub start: u32,
@@ -443,6 +466,7 @@ pub struct CloseBlockedDto {
     pub session_id: String,
     pub generation: u64,
     pub batch_id: String,
+    pub target: CloseTargetDto,
 }
 
 impl ProjectChangedDto {

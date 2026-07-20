@@ -587,23 +587,23 @@ git commit -m "feat: compare two to four images"
 **Interfaces:**
 - Produces: fixed Privacy & Security opener, reselect-directory flow, full read-only capability matrix and wait/cancel-pending/stay close coordination.
 
-- [ ] **Step 1: Write failing dual-layer capability tests**
+- [x] **Step 1: Write failing dual-layer capability tests**
 
 For read-only with/without `.viewer`, cover browse/search/filter/sort/image/text/info/compare allowed; marker/rename/copy/move/Trash/undo/internal drop rejected; no metadata created/changed; banner persistent; settings/reselect direct-click actions; unreadable root safe failure.
 
-- [ ] **Step 2: Implement fixed permission/reselect actions**
+- [x] **Step 2: Implement fixed permission/reselect actions**
 
 The settings command opens only the compile-time macOS Privacy & Security destination and accepts no URL/path. Reselect ends the session through normal cleanup and shows the empty picker surface; it does not remember the old path.
 
-- [ ] **Step 3: Coordinate close with the write lane**
+- [x] **Step 3: Coordinate close with the write lane**
 
 When an operation is active, native/app close emits wait/cancel-pending/stay. Wait closes after idle. Cancel stops queued/cancellable copy work then closes after the active atomic step. Stay leaves session unchanged. Stop Watcher before index/cache teardown; clear undo and all frontend state.
 
-- [ ] **Step 4: Verify GREEN**
+- [x] **Step 4: Verify GREEN**
 
 Run: `cargo test --test m3_readonly_lifecycle && pnpm --dir ui test && pnpm --dir ui build && ./scripts/check-tauri-security.sh`
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add crates/viewer-platform-macos src-tauri ui/src tests/m3_readonly_lifecycle.rs

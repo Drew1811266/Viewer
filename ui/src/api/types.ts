@@ -466,4 +466,11 @@ export interface CloseBlockedEvent {
   sessionId: string
   generation: number
   batchId: string
+  target: CloseTarget
 }
+
+export type CloseChoice = 'wait' | 'cancel_pending' | 'stay'
+
+export type CloseRequestOutcome = 'closed' | 'stayed'
+
+export type CloseTarget = 'project' | 'window' | 'application'

@@ -30,7 +30,7 @@ function bridge(access: 'read_write' | 'read_only' = 'read_write'): ViewerBridge
       displayName: 'Catalog',
       access,
     }),
-    closeProject: vi.fn().mockResolvedValue(undefined),
+    closeProject: vi.fn().mockResolvedValue('closed'),
     projectSnapshot: vi.fn().mockResolvedValue(null),
     folderTree: vi.fn().mockResolvedValue([]),
     queryFolder: vi.fn().mockResolvedValue({ workspace: 'empty' }),
@@ -459,6 +459,7 @@ describe('useViewerController M2 coordination', () => {
         sessionId: 'session-1',
         generation: 1,
         batchId: 'batch-9',
+        target: 'project',
       })
     })
     expect(result.current.state.closeBlocked?.batchId).toBe('batch-9')
@@ -480,12 +481,12 @@ describe('useViewerController M2 coordination', () => {
 
   it('rejects organization previews and mutations once project closing begins', async () => {
     const viewer = bridge()
-    const closing = deferred<void>()
+    const closing = deferred<'closed'>()
     vi.mocked(viewer.closeProject).mockImplementation(() => closing.promise)
     const { result } = renderHook(() => useViewerController(viewer))
     await act(() => result.current.openProject('/fixture/project'))
 
-    let close!: Promise<void>
+    let close!: ReturnType<typeof result.current.closeProject>
     act(() => {
       close = result.current.closeProject()
     })
@@ -510,9 +511,32 @@ describe('useViewerController M2 coordination', () => {
     expect(viewer.executeFileCommand).not.toHaveBeenCalled()
     expect(viewer.undoLastOperation).not.toHaveBeenCalled()
     await act(async () => {
-      closing.resolve(undefined)
+      closing.resolve('closed')
       await close
     })
+  })
+
+  it('retains the complete session when close stays and clears it only after a chosen close', async () => {
+    const viewer = bridge()
+    vi.mocked(viewer.closeProject)
+      .mockResolvedValueOnce('stayed')
+      .mockResolvedValueOnce('closed')
+    const { result } = renderHook(() => useViewerController(viewer))
+    await act(() => result.current.openProject('/fixture/project'))
+    act(() => result.current.setSelectedEntityIds(['image-1']))
+
+    await act(() => result.current.closeProject())
+
+    expect(result.current.state.status).toBe('active')
+    expect(result.current.state.project?.sessionId).toBe('session-1')
+    expect(result.current.state.selectedEntityIds).toEqual(['image-1'])
+
+    await act(() => result.current.closeProject('wait'))
+
+    expect(viewer.closeProject).toHaveBeenNthCalledWith(1, undefined, 'project')
+    expect(viewer.closeProject).toHaveBeenNthCalledWith(2, 'wait', 'project')
+    expect(result.current.state.project).toBeNull()
+    expect(result.current.state.status).toBe('empty')
   })
 })
 

@@ -6,7 +6,10 @@ import { open } from '@tauri-apps/plugin-dialog'
 import type {
   CancelOperationRequest,
   BeginFinderDragRequest,
+  CloseChoice,
   CloseBlockedEvent,
+  CloseRequestOutcome,
+  CloseTarget,
   ExecuteFileCommandRequest,
   FileCommandPreflight,
   FinderDragReceipt,
@@ -44,7 +47,7 @@ import type {
 export interface ViewerBridge {
   chooseProject(): Promise<string | null>
   openProject(path: string): Promise<ProjectSnapshot>
-  closeProject(): Promise<void>
+  closeProject(choice?: CloseChoice, target?: CloseTarget): Promise<CloseRequestOutcome>
   projectSnapshot(): Promise<ProjectSnapshot | null>
   folderTree(): Promise<FolderTreeItem[]>
   queryFolder(entityId: string | null, aggregate?: boolean): Promise<FolderWorkspace>
@@ -89,8 +92,11 @@ export const tauriViewerBridge: ViewerBridge = {
   openProject(path) {
     return invoke<ProjectSnapshot>('open_project', { root: path })
   },
-  closeProject() {
-    return invoke<void>('close_project')
+  closeProject(choice, target) {
+    return invoke<CloseRequestOutcome>('close_project', {
+      choice: choice ?? null,
+      target: target ?? 'project',
+    })
   },
   projectSnapshot() {
     return invoke<ProjectSnapshot | null>('project_snapshot')

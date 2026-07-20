@@ -171,8 +171,9 @@ export type ViewerAction =
   | { type: 'project_reconciled'; project: ProjectSnapshot }
   | { type: 'project_open_failed'; message: string }
   | { type: 'project_close_requested' }
+  | { type: 'project_close_stayed' }
   | { type: 'project_close_failed'; message: string }
-  | { type: 'project_closed' }
+  | { type: 'project_closed'; message?: string }
   | { type: 'input_rejected'; message: string }
   | { type: 'scan_received'; event: ScanEvent }
   | { type: 'index_progress_received'; progress: IndexProgressEvent }
@@ -283,12 +284,14 @@ export function viewerReducer(state: ViewerState, action: ViewerAction): ViewerS
       return { ...freshState('error'), errorMessage: action.message }
     case 'project_close_requested':
       return state.project ? { ...state, status: 'closing', errorMessage: null } : state
+    case 'project_close_stayed':
+      return state.project ? { ...state, status: 'active' } : state
     case 'project_close_failed':
       return state.project
         ? { ...state, status: 'active', errorMessage: action.message }
         : { ...freshState('error'), errorMessage: action.message }
     case 'project_closed':
-      return freshState('empty')
+      return { ...freshState('empty'), errorMessage: action.message ?? null }
     case 'input_rejected':
       return state.project
         ? { ...state, errorMessage: action.message }

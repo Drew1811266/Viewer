@@ -2,6 +2,7 @@
 pub mod files;
 #[cfg(target_os = "macos")]
 pub mod image;
+pub mod settings;
 #[cfg(target_os = "macos")]
 pub mod watcher;
 

@@ -61,6 +61,7 @@ impl DesktopEventSink for RecordingEvents {
         _session_id: SessionId,
         _generation: Generation,
         batch_id: viewer_domain::operation::BatchId,
+        _target: viewer_desktop::state::CloseTarget,
     ) {
         self.close_blocked.lock().unwrap().push(batch_id);
     }

@@ -5,6 +5,7 @@ import EmptyProject from './components/EmptyProject'
 import BatchRenameDialog from './components/BatchRenameDialog'
 import ContentBrowser from './components/ContentBrowser'
 import CompareWorkspace from './components/CompareWorkspace'
+import CloseOperationDialog from './components/CloseOperationDialog'
 import DestinationDialog from './components/DestinationDialog'
 import FileActionToolbar from './components/FileActionToolbar'
 import FolderOverview from './components/FolderOverview'
@@ -14,6 +15,7 @@ import InfoOverlay from './components/InfoOverlay'
 import MarkerControls from './components/MarkerControls'
 import OperationResults from './components/OperationResults'
 import RenameDialog from './components/RenameDialog'
+import ReadOnlyBanner from './components/ReadOnlyBanner'
 import SearchResults from './components/SearchResults'
 import SearchToolbar from './components/SearchToolbar'
 import TaskBar from './components/TaskBar'
@@ -53,6 +55,7 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
     state,
     openProject,
     closeProject,
+    reselectProject,
     selectFolder,
     showAllDescendants,
     cancelTask,
@@ -77,6 +80,8 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
     undoLastOperation,
     setPreviewEntityId,
     setCompareEntityIds,
+    clearCloseBlocked,
+    openPermissionSettings,
   } = useViewerController(bridge)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [sidebarWidth, setSidebarWidth] = useState(260)
@@ -590,9 +595,11 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
         </button>
       </header>
       {state.project.access === 'read_only' && (
-        <p className="read-only-banner" role="status">
-          只读项目
-        </p>
+        <ReadOnlyBanner
+          busy={state.status === 'closing'}
+          onOpenSettings={() => void openPermissionSettings()}
+          onReselect={() => void reselectProject()}
+        />
       )}
       {state.recoveryReport &&
         (state.recoveryReport.recovered > 0 || state.recoveryReport.needsUserReview > 0) && (
@@ -893,6 +900,16 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
             onClose={() => setResultsBatchId(null)}
           />
         )}
+      {state.closeBlocked !== null && (
+        <CloseOperationDialog
+          busy={state.status === 'closing'}
+          onWait={() => void closeProject('wait', state.closeBlocked?.target ?? 'project')}
+          onCancelPending={() =>
+            void closeProject('cancel_pending', state.closeBlocked?.target ?? 'project')
+          }
+          onStay={clearCloseBlocked}
+        />
+      )}
     </main>
   )
 }

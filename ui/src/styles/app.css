@@ -66,9 +66,28 @@ select {
 }
 
 .read-only-banner {
+  align-items: center;
   background: #fff2c2;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
   margin: 0;
   padding: 6px 16px;
+}
+
+.read-only-banner > div,
+.read-only-actions {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+}
+
+.read-only-actions {
+  flex: 0 0 auto;
+}
+
+.close-operation-actions {
+  flex-wrap: wrap;
 }
 
 .search-toolbar {

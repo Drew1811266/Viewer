@@ -2,6 +2,9 @@ import { useCallback, useEffect, useReducer, useRef } from 'react'
 import type { ViewerBridge } from '../api/viewer'
 import { safeUserMessage } from '../api/viewer'
 import type {
+  CloseChoice,
+  CloseRequestOutcome,
+  CloseTarget,
   ConflictResolution,
   FileCommandItem,
   FileCommandKind,
@@ -30,6 +33,7 @@ export function useViewerController(bridge: ViewerBridge) {
   const operationRequestPendingRef = useRef(false)
   const operationResultsRequestRef = useRef(0)
   const completedBatchesRef = useRef(new Set<string>())
+  const closeRequestPendingRef = useRef(false)
   const desiredProjectionRef = useRef({
     selectedFolderId: null as string | null,
     selectedFolderPath: '',
@@ -210,9 +214,7 @@ export function useViewerController(bridge: ViewerBridge) {
     [bridge, refreshProjection],
   )
 
-  const closeProject = useCallback(async () => {
-    if (stateRef.current.project === null || stateRef.current.status === 'closing') return
-    dispatch({ type: 'project_close_requested' })
+  const resetSessionRequests = useCallback(() => {
     projectionRequestRef.current += 1
     searchRevisionRef.current += 1
     selectionRequestRef.current += 1
@@ -226,13 +228,47 @@ export function useViewerController(bridge: ViewerBridge) {
       selectedFolderPath: '',
       showingAggregate: false,
     }
+  }, [])
+
+  const requestProjectClose = useCallback(async (
+    choice?: CloseChoice,
+    closedMessage?: string,
+    target: CloseTarget = 'project',
+  ): Promise<CloseRequestOutcome | undefined> => {
+    if (
+      stateRef.current.project === null ||
+      stateRef.current.status === 'closing' ||
+      closeRequestPendingRef.current
+    ) return
+    closeRequestPendingRef.current = true
+    dispatch({ type: 'project_close_requested' })
     try {
-      await bridge.closeProject()
-      dispatch({ type: 'project_closed' })
+      const outcome = await bridge.closeProject(choice, target)
+      if (outcome === 'stayed') {
+        dispatch({ type: 'project_close_stayed' })
+        return outcome
+      }
+      resetSessionRequests()
+      dispatch({ type: 'project_closed', message: closedMessage })
+      return outcome
     } catch (error) {
       dispatch({ type: 'project_close_failed', message: safeUserMessage(error) })
+      return undefined
+    } finally {
+      closeRequestPendingRef.current = false
     }
-  }, [bridge])
+  }, [bridge, resetSessionRequests])
+
+  const closeProject = useCallback(
+    (choice?: CloseChoice, target: CloseTarget = 'project') =>
+      requestProjectClose(choice, undefined, target),
+    [requestProjectClose],
+  )
+
+  const reselectProject = useCallback(
+    () => requestProjectClose(undefined, '已关闭只读项目，请选择已授权的目录。', 'project'),
+    [requestProjectClose],
+  )
 
   const receiveScan = useCallback(
     (event: ScanEvent) => {
@@ -335,20 +371,8 @@ export function useViewerController(bridge: ViewerBridge) {
     void Promise.resolve()
       .then(() =>
         bridge.listenProjectClosed(() => {
-          projectionRequestRef.current += 1
-          searchRevisionRef.current += 1
-          selectionRequestRef.current += 1
-          requestedSnippetsRef.current.clear()
-          activeBatchRef.current = null
-          operationRequestPendingRef.current = false
-          operationResultsRequestRef.current += 1
-          completedBatchesRef.current.clear()
+          resetSessionRequests()
           reconcilingGenerationRef.current = null
-          desiredProjectionRef.current = {
-            selectedFolderId: null,
-            selectedFolderPath: '',
-            showingAggregate: false,
-          }
           dispatch({ type: 'project_closed' })
         }),
       )
@@ -361,7 +385,7 @@ export function useViewerController(bridge: ViewerBridge) {
       disposed = true
       unlisten?.()
     }
-  }, [bridge])
+  }, [bridge, resetSessionRequests])
 
   useEffect(() => {
     let disposed = false
@@ -960,6 +984,7 @@ export function useViewerController(bridge: ViewerBridge) {
     state,
     openProject,
     closeProject,
+    reselectProject,
     selectFolder,
     showAllDescendants,
     cancelTask,

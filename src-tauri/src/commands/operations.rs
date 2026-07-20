@@ -13,9 +13,6 @@ use std::{str::FromStr, sync::Arc};
 use tauri::State;
 use viewer_domain::{OperationId, search::Generation};
 
-const PERMISSION_SETTINGS_URL: &str =
-    "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles";
-
 #[tauri::command]
 pub async fn preview_rename(
     runtime: State<'_, Arc<DesktopRuntime>>,
@@ -150,7 +147,7 @@ pub async fn undo_last_operation(
 
 #[tauri::command]
 pub async fn open_permission_settings() -> Result<(), CommandError> {
-    viewer_platform_macos::open_external_url(PERMISSION_SETTINGS_URL).map_err(|_| {
+    viewer_platform_macos::settings::open_privacy_and_security().map_err(|_| {
         CommandError::new(
             "permission_settings_unavailable",
             ErrorCategory::Environment,

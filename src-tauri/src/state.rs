@@ -91,6 +91,7 @@ pub trait DesktopEventSink: Send + Sync {
         _session_id: SessionId,
         _generation: Generation,
         _batch_id: BatchId,
+        _target: CloseTarget,
     ) {
     }
 }
@@ -106,6 +107,32 @@ pub enum CloseChoice {
 pub enum CloseRequestOutcome {
     Closed,
     Stayed,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CloseTarget {
+    Project,
+    Window,
+    Application,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CloseCompletionAction {
+    KeepOpen,
+    ShowEmptyProject,
+    HideWindow,
+    ExitApplication,
+}
+
+impl CloseRequestOutcome {
+    pub const fn completion_action(self, target: CloseTarget) -> CloseCompletionAction {
+        match (self, target) {
+            (Self::Stayed, _) => CloseCompletionAction::KeepOpen,
+            (Self::Closed, CloseTarget::Project) => CloseCompletionAction::ShowEmptyProject,
+            (Self::Closed, CloseTarget::Window) => CloseCompletionAction::HideWindow,
+            (Self::Closed, CloseTarget::Application) => CloseCompletionAction::ExitApplication,
+        }
+    }
 }
 
 #[derive(Default)]
@@ -647,7 +674,10 @@ impl DesktopRuntime {
         if let Some(mut watcher) = session.watcher.take() {
             watcher.stop().await;
         }
-        self.project_service.close().map_err(CommandError::from)?;
+        // Taking `self.session` is the close commit point. Cleanup failures
+        // after this point must never resurrect a frontend session whose
+        // backend resources are already being dismantled.
+        let _ = self.project_service.close();
         let marker_lock = Arc::clone(&session.marker_lock);
         let _marker_guard = marker_lock.lock().await;
         session
@@ -666,12 +696,23 @@ impl DesktopRuntime {
         drop(session.marker_projection);
         drop(session.portable_store.take());
         drop(session.index);
-        session.cache.cleanup().map_err(CommandError::from)
+        // A stale cache is safe to leave behind: startup cleanup owns retries,
+        // while `SessionCache::cleanup` still refuses unsafe symlink targets.
+        let _ = session.cache.cleanup();
+        Ok(())
     }
 
     pub async fn request_close(
         &self,
         choice: Option<CloseChoice>,
+    ) -> Result<CloseRequestOutcome, CommandError> {
+        self.request_close_for(choice, CloseTarget::Project).await
+    }
+
+    pub async fn request_close_for(
+        &self,
+        choice: Option<CloseChoice>,
+        target: CloseTarget,
     ) -> Result<CloseRequestOutcome, CommandError> {
         let active = {
             let session = self.session.lock().await;
@@ -706,7 +747,7 @@ impl DesktopRuntime {
             }
             None | Some(CloseChoice::Stay) => {
                 self.events
-                    .emit_close_blocked(session_id, generation, batch_id);
+                    .emit_close_blocked(session_id, generation, batch_id, target);
                 Ok(CloseRequestOutcome::Stayed)
             }
         }
@@ -1205,6 +1246,9 @@ impl DesktopRuntime {
             let session = self.session.lock().await;
             let session = session.as_ref().ok_or_else(project_not_open)?;
             validate_project_request(&session.active, expected_session, expected_generation)?;
+            if session.active.access != ProjectAccess::ReadWrite {
+                return Err(project_read_only_operation());
+            }
             let store = session.portable_store.clone().ok_or_else(|| {
                 CommandError::new(
                     "portable_metadata_unavailable",

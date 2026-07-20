@@ -1,5 +1,8 @@
 use serde::Serialize;
-use std::sync::{Arc, OnceLock};
+use std::sync::{
+    Arc, OnceLock,
+    atomic::{AtomicBool, Ordering},
+};
 use tauri::{Emitter, Manager};
 use viewer_infrastructure::image_cache::ImageArtifactRegistry;
 
@@ -14,6 +17,19 @@ pub mod watcher_runtime;
 
 pub const APP_NAME: &str = "Viewer";
 const PROJECT_CLOSED_EVENT: &str = "viewer://project-closed";
+
+#[derive(Default)]
+pub struct ExitGate(AtomicBool);
+
+impl ExitGate {
+    pub(crate) fn allow_exit(&self) {
+        self.0.store(true, Ordering::Release);
+    }
+
+    fn exit_is_allowed(&self) -> bool {
+        self.0.load(Ordering::Acquire)
+    }
+}
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -79,6 +95,7 @@ impl state::DesktopEventSink for TauriEventSink {
         session_id: viewer_domain::SessionId,
         generation: viewer_domain::search::Generation,
         batch_id: viewer_domain::operation::BatchId,
+        target: state::CloseTarget,
     ) {
         if let Some(app) = self.0.get() {
             let _ = app.emit(
@@ -87,6 +104,11 @@ impl state::DesktopEventSink for TauriEventSink {
                     session_id: session_id.to_string(),
                     generation: generation.get(),
                     batch_id: batch_id.to_string(),
+                    target: match target {
+                        state::CloseTarget::Project => dto::CloseTargetDto::Project,
+                        state::CloseTarget::Window => dto::CloseTargetDto::Window,
+                        state::CloseTarget::Application => dto::CloseTargetDto::Application,
+                    },
                 },
             );
         }
@@ -188,6 +210,7 @@ pub fn run() {
                 runtime_active_image_session.clone(),
             ));
             app.manage(runtime);
+            app.manage(ExitGate::default());
 
             if let Some(window) = app.get_webview_window("main") {
                 let app_handle = app.handle().clone();
@@ -197,9 +220,13 @@ pub fn run() {
                         let app_handle = app_handle.clone();
                         tauri::async_runtime::spawn(async move {
                             let runtime = app_handle.state::<Arc<state::DesktopRuntime>>();
-                            if runtime.request_close(None).await
-                                == Ok(state::CloseRequestOutcome::Closed)
-                            {
+                            let outcome = runtime
+                                .request_close_for(None, state::CloseTarget::Window)
+                                .await;
+                            if outcome.is_ok_and(|outcome| {
+                                outcome.completion_action(state::CloseTarget::Window)
+                                    == state::CloseCompletionAction::HideWindow
+                            }) {
                                 let _ = app_handle.emit(PROJECT_CLOSED_EVENT, ());
                                 if let Some(window) = app_handle.get_webview_window("main") {
                                     let _ = window.hide();
@@ -215,9 +242,23 @@ pub fn run() {
         .expect("failed to build Viewer");
 
     app.run(|app, event| match event {
-        tauri::RunEvent::ExitRequested { .. } => {
+        tauri::RunEvent::ExitRequested { api, .. } => {
+            let exit_gate = app.state::<ExitGate>();
+            if exit_gate.exit_is_allowed() {
+                return;
+            }
+            api.prevent_exit();
             let runtime = app.state::<Arc<state::DesktopRuntime>>();
-            let _ = tauri::async_runtime::block_on(runtime.close_project());
+            let outcome = tauri::async_runtime::block_on(
+                runtime.request_close_for(None, state::CloseTarget::Application),
+            );
+            if outcome.is_ok_and(|outcome| {
+                outcome.completion_action(state::CloseTarget::Application)
+                    == state::CloseCompletionAction::ExitApplication
+            }) {
+                exit_gate.allow_exit();
+                app.exit(0);
+            }
         }
         tauri::RunEvent::Reopen { .. } => {
             let _ = app.emit(PROJECT_CLOSED_EVENT, ());
@@ -232,6 +273,14 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn exit_gate_changes_only_after_a_committed_application_close() {
+        let gate = super::ExitGate::default();
+        assert!(!gate.exit_is_allowed());
+        gate.allow_exit();
+        assert!(gate.exit_is_allowed());
+    }
+
     #[test]
     fn app_name_is_viewer() {
         assert_eq!(super::APP_NAME, "Viewer");

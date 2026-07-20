@@ -507,25 +507,25 @@ git commit -m "feat: drag files within Viewer and to Finder"
 **Interfaces:**
 - Produces: `CompareState`, `PaneTransform { scale, centerX, centerY, rotation }`, synchronized/independent reducers, 2/3/4 layouts and proxy/original admission evidence.
 
-- [ ] **Step 1: Write failing compare model tests**
+- [x] **Step 1: Write failing compare model tests**
 
 Cover exactly 2–4 unique JPG/PNG IDs, layout selection, fit/100%/zoom clamp, normalized pan, synchronized propagation with per-pane clamp, independent retention, rotation, removal/reflow, one-pane single-preview fallback and zero-pane grid fallback.
 
 Run: `pnpm --dir ui test -- src/state/compareModel.test.ts && cargo test --test m3_compare_budget -- --nocapture`
 
-- [ ] **Step 2: Implement pure compare state transitions**
+- [x] **Step 2: Implement pure compare state transitions**
 
 Keep transforms keyed by entity ID and a separate shared normalized transform. Mode switching seeds independent panes from the shared transform or derives shared state from the active pane. Removal never resets surviving transforms.
 
-- [ ] **Step 3: Lock proxy-first memory admission**
+- [x] **Step 3: Lock proxy-first memory admission**
 
 Extend tests around existing `DecodeBudget` for four viewport proxies, denial/degradation of unsafe simultaneous originals and cancellation of removed panes. Do not add a second image cache or return source paths.
 
-- [ ] **Step 4: Verify GREEN**
+- [x] **Step 4: Verify GREEN**
 
 Run: `pnpm --dir ui test -- src/state/compareModel.test.ts && cargo test --test m3_compare_budget && ./scripts/run-g1-image-gate.sh`
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add ui/src/state/compareModel.ts ui/src/state/compareModel.test.ts crates/viewer-domain/src/image.rs tests/m3_compare_budget.rs

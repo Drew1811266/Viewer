@@ -1,7 +1,7 @@
 # Viewer M3 Organization and Comparison Design
 
-- Status: Approved refinement of the accepted Product Spec and system architecture
-- Date: 2026-07-16
+- Status: Approved refinement of the accepted Product Spec and system architecture; drag architecture amended and approved 2026-07-20
+- Date: 2026-07-16 (drag architecture amendment: 2026-07-20)
 - Baseline: merged and verified M2 at `ff23c6e`
 - Owned milestone: M3 Organization and Comparison
 
@@ -12,7 +12,7 @@ M3 turns Viewer from a read-only reviewer into a controlled local organizer with
 - two-to-four-image comparison with synchronized or independent viewport transforms;
 - single and batch rename, copy, in-project move and macOS Trash;
 - replace/prefix/suffix/number batch-rename previews and validation;
-- internal move/Option-copy drag, equivalent command dialogs and Finder copy export;
+- explicit-handle internal move/Option-copy drag, equivalent command dialogs and native Finder copy export from the file surface;
 - session undo for markers, favorites, rename and in-project move;
 - current-project Watcher reconciliation for external create/modify/rename/move/delete;
 - complete read-only capability enforcement and active-file recovery feedback;
@@ -40,16 +40,22 @@ M3 does not add cloud features, accounts, editing, permanent deletion, automatic
 2. Apply FSEvents payloads directly. Events can be coalesced, incomplete or overflowed, so treating them as truth risks false deletes and stale paths.
 3. Full-project rescan for every event. Correctness is possible, but frequent AI-generator writes would repeatedly discard useful derived work and violate the accepted smallest-safe-rescan architecture.
 
+### 2.4 Drag-session ownership
+
+1. **Separate internal and external drag initiators — selected.** Dragging a file card/row body immediately starts a native copy-only Finder session. A visible organization handle starts an entity-only HTML drag to the folder tree; its mode is fixed to move by default or copy when Option is held at drag start. Each gesture has one owner from its first frame, so no WebView-to-AppKit handoff is attempted after the pointer reaches the window boundary.
+2. Add a global Organization/Export mode switch. This avoids competing sessions but introduces persistent mode errors and extra interaction cost for a frequent productivity-tool action.
+3. Use one fully native AppKit session for both Viewer-internal and Finder destinations. This could eventually unify the gesture, but it requires a custom pasteboard type, native destination routing, modifier-aware operation negotiation and folder hit testing. It is disproportionate for Viewer 0.1 and increases M3 risk.
+
 ## 3. Architectural decomposition
 
 M3 remains a modular-monolith milestone and is delivered in four reviewable slices that share one session model and one final gate:
 
 1. **Transaction integration:** portable schema v3, truthful commit barriers, batch planning/execution, recovery, progress, conflict results and undo records.
-2. **Organization UI:** rename/copy/move/Trash dialogs, batch rename preview, task summaries, shortcuts and drag intent.
+2. **Organization UI:** rename/copy/move/Trash dialogs, batch rename preview, task summaries, shortcuts, explicit internal organization handles and native Finder drag initiation from file surfaces.
 3. **Comparison:** reusable viewport transform, 2–4 pane workspace, inline marker controls and graceful removal.
 4. **Reconciliation and lifecycle:** Watcher subscription, expected-change ledger, targeted re-indexing, selection/preview/compare repair, read-only recovery controls and close coordination.
 
-Domain owns operation/compare/reconcile value types and state rules. Application owns planners, command/undo/reconcile services and ports. Infrastructure owns SQLite journals, filesystem executors and index reconciliation. `viewer-platform-macos` owns Darwin no-replace rename, volume checks, Trash, Watcher and native Finder export. `src-tauri` is the composition root and converts stable DTOs/errors. React owns dialogs, focus, selection, transforms and presentation only.
+Domain owns operation/compare/reconcile value types and state rules. Application owns planners, command/undo/reconcile services and ports. Infrastructure owns SQLite journals, filesystem executors and index reconciliation. `viewer-platform-macos` owns Darwin no-replace rename, volume checks, Trash, Watcher and the AppKit Finder-drag adapter. `src-tauri` is the composition root and converts stable DTOs/errors. React owns dialogs, focus, selection, explicit drag initiators and presentation only. Tauri's native incoming file-drop channel remains enabled exclusively for Finder-to-Viewer project import; it is not reused as the outgoing drag source.
 
 ## 4. Portable data and truthful operation states
 
@@ -130,9 +136,21 @@ The image scheduler admits proxies under the existing four-way budget. Compare n
 
 ## 8. Drag and Finder export
 
-Internal drag is a UI intent, not a path-bearing HTML transfer. The drag payload contains only selected entity IDs and `move` or `copy`; folder rows advertise valid/invalid drop state from writable status, ancestry and reserved-boundary checks. Drop calls the same preflight/execute commands as menu actions. Holding Option at drop selects copy.
+Internal organization and Finder export are distinct gestures with distinct session owners. A drag must never begin as HTML5 internal drag and later attempt to become an AppKit drag at the WebView edge.
 
-Finder export is implemented in the macOS adapter with AppKit dragging/pasteboard APIs. Rust resolves and revalidates the selected entities, then starts a native file-URL drag as copy-only. The frontend never receives source paths and no filesystem capability is added. If the exact WebView/AppKit drag session cannot be made reliable without broad permission or private API, the command/menu copy-to-user-selected-folder path remains available but M3 cannot be approved until the required Finder drag is implemented and physically tested.
+### 8.1 Internal organization drag
+
+Every image card and text-file row exposes a visible organization handle. Only that handle is HTML-draggable. Its transfer payload contains the Viewer MIME marker while the actual ordered selection remains in React state as opaque entity IDs; no path is placed in `DataTransfer`. Dragging a selected item uses the complete frozen selection, while dragging an unselected item first selects only that item. Operation mode is sampled at drag start and remains fixed for the session: move by default, copy when Option is held. Folder rows advertise valid/invalid state from writable status, ancestry and reserved-boundary checks. Drop calls the same preflight, conflict and execute commands as menu actions. The handle is disabled in read-only sessions.
+
+### 8.2 Native Finder export
+
+The body of every image card and text-file row is the external drag initiator. Its `dragstart` handler freezes the selected entity IDs, calls `preventDefault()` to stop WebKit from owning an HTML session and immediately invokes the Viewer-owned Finder command. Dragging a selected item exports the complete selection; dragging an unselected item exports only that item. Read-only projects may export because the operation never writes to the project.
+
+Rust validates `sessionId`, `generation`, entity kind, project containment, symlink/alias exclusions and the current device/inode immediately before native publication. The frontend never receives source paths and no broad filesystem capability is added. The macOS adapter starts one copy-only AppKit file-URL session from the window content view on the main thread. It derives the current mouse position from the window and creates the required `LeftMouseDragged` event for the session; it does not require `NSApplication.currentEvent` to survive frontend IPC or asynchronous revalidation. The drag image is bounded and derived from a system icon or existing safe representation, never a new copy of the original file.
+
+Tauri's native incoming file-drop handler remains enabled so a Finder folder can still open a project. External export does not depend on DOM `drag`, `dragover`, window-edge thresholds or `dragleave`, and the former edge/depth handoff state is removed.
+
+Finder export is always copy-only. A cancelled session or invalid Finder destination leaves Viewer unchanged and is not an error. Failure before native-session start produces a stable safe message; stale generation or changed/missing file identity produces a refresh-and-retry message. M3 cannot be approved until single image, multi-image, Markdown/TXT, cancellation and post-relaunch exports pass against a real Finder destination.
 
 ## 9. Watcher reconciliation
 
@@ -196,9 +214,11 @@ Every implementation task follows red-green-refactor and ends in a focused commi
 - integration tests for truthful journal barriers, metadata path moves, copy/move/Trash partial failures, cancellation, undo validation and crash recovery at every state;
 - Watcher tests for create/partial-write/modify/rename/move/delete, bursts, expected changes, overflow, marker relocation and generation teardown;
 - desktop command tests for exact DTOs, read-only rejection, stale sessions, safe errors, one-write-lane behavior, close coordination and recovery reports;
-- React tests for all dialogs, keyboard suppression, task/results UI, drag target semantics, 2–4 comparison, inline markers and external-change recovery;
+- React tests for all dialogs, keyboard suppression, task/results UI, immediate card-body native export, organization-handle-only internal drag, frozen move/Option-copy semantics, drag target semantics, 2–4 comparison, inline markers and external-change recovery;
 - security/license/scope checks and a portable-metadata validator upgraded for schema v3;
-- packaged-app GUI acceptance for normal/conflict/partial-failure operations on disposable files, real macOS Trash, internal drag/Option-copy, Finder export, undo, compare, external Finder changes, read-only mode and cache cleanup.
+- packaged-app GUI acceptance for normal/conflict/partial-failure operations on disposable files, real macOS Trash, organization-handle internal drag/Option-copy, single/multi/image/text Finder export, cancelled Finder drag, Finder-folder project import, undo, compare, external Finder changes, read-only mode and cache cleanup.
+
+The native drag adapter has focused tests proving copy-only operation, bounded item preparation and removal of the live-`currentEvent` precondition. The packaged app must prove that Finder receives bytes matching the source hash and that Viewer never mutates the source during export.
 
 The exact `gate:m3` must include inherited `gate:m2`, all new suites, G2 crash matrix, G3 watcher/search gate, UI build/tests, fmt, strict Clippy, locked dependencies, license/audit/security/scope checks and schema-v3 live validation. M3 is approved only after the packaged Apple Silicon app passes, no Critical/Important finding remains and the branch is fast-forward merged to `main` with the exact gate passing again there.
 
@@ -207,6 +227,9 @@ The exact `gate:m3` must include inherited `gate:m2`, all new suites, G2 crash m
 - One serial Rust file-operation lane; no frontend transaction orchestration.
 - Stable entity IDs only across IPC; no source absolute paths in React.
 - Destination folders are project-internal; Finder export is copy-only.
+- File card/row bodies own native Finder export; explicit organization handles own entity-only internal drag. No session changes owner at the window boundary.
+- Internal drag samples Option at drag start; default is move and Option is copy for the full session.
+- Tauri native incoming drop remains enabled for project-folder import; outgoing export starts a Viewer-owned AppKit session immediately at `dragstart`.
 - Rename/move retain markers; copies start unmarked; Trash is system-restored and not Viewer-undoable.
 - Conflicts are only Skip, Keep Both or Replace-to-Trash.
 - Batch rename rule order is replace, prefix, suffix, sequence.

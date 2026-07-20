@@ -10,6 +10,8 @@ import { readFileSync } from "node:fs";
 
 const capability = JSON.parse(readFileSync("src-tauri/capabilities/main.json", "utf8"));
 const configuration = JSON.parse(readFileSync("src-tauri/tauri.conf.json", "utf8"));
+const mainWindow = configuration?.app?.windows?.find((window) => window.label === "main")
+  ?? configuration?.app?.windows?.[0];
 const allowedPermissions = new Set([
   "dialog:allow-open",
   "core:event:allow-listen",
@@ -42,6 +44,9 @@ for (const permission of capability.permissions ?? []) {
 }
 if ((capability.permissions ?? []).length !== allowedPermissions.size) {
   throw new Error("main capability must contain the exact reviewed permission set");
+}
+if (mainWindow?.dragDropEnabled === false) {
+  throw new Error("main window dragDropEnabled must not disable native Finder-folder import");
 }
 
 const csp = configuration?.app?.security?.csp;

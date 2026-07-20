@@ -39,12 +39,6 @@ impl From<FinderDragError> for CommandError {
                 "该选择不能拖出 Viewer。",
                 false,
             ),
-            FinderDragError::MissingMouseDrag => Self::new(
-                "finder_drag_event_expired",
-                ErrorCategory::Conflict,
-                "拖动已结束，请重新拖动文件。",
-                true,
-            ),
             FinderDragError::NativeUnavailable => Self::new(
                 "finder_drag_unavailable",
                 ErrorCategory::Environment,

@@ -202,6 +202,18 @@ test('M3 adds no broad desktop capability or network/update dependency', async (
   )
 })
 
+test('Finder export starts a synthetic AppKit drag from the owning window content view', async () => {
+  const adapter = await read('crates/viewer-platform-macos/src/files/drag.rs')
+
+  assert.match(adapter, /mouseLocationOutsideOfEventStream/)
+  assert.match(
+    adapter,
+    /mouseEventWithType_location_modifierFlags_timestamp_windowNumber_context_eventNumber_clickCount_pressure/,
+  )
+  assert.match(adapter, /contentView\(\)/)
+  assert.doesNotMatch(adapter, /filter\(\|event\| event\.r#type\(\) == NSEventType::LeftMouseDragged\)/)
+})
+
 test('the macOS release command is non-interactive and uses a valid bundle identifier', async () => {
   const [packageText, tauriText] = await Promise.all([
     read('package.json'),

@@ -31,8 +31,6 @@ pub enum FinderDragError {
     ProjectRootUnavailable,
     #[error("project index is unavailable")]
     IndexUnavailable,
-    #[error("no active mouse-drag event is available")]
-    MissingMouseDrag,
     #[error("native Finder drag is unavailable")]
     NativeUnavailable,
 }

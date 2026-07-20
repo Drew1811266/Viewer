@@ -155,6 +155,17 @@ fn preparation_rejects_an_excessive_selection_before_resolving_entities() {
     assert!(error.user_message.contains("数量过多"));
 }
 
+#[test]
+fn changed_selection_maps_to_a_safe_refreshable_error() {
+    let error = CommandError::from(FinderDragError::EntityNotFound);
+    assert_eq!(error.code, "finder_drag_selection_stale");
+    assert_eq!(
+        error.user_message,
+        "部分所选文件已不可用，请刷新项目后重试。"
+    );
+    assert!(error.retryable);
+}
+
 #[cfg(unix)]
 #[test]
 fn preparation_rejects_an_indexed_id_after_the_file_at_its_path_is_replaced() {

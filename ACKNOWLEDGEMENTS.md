@@ -21,5 +21,6 @@ The projects in this section were reviewed for engineering and interaction patte
 - [Spacedrive](https://github.com/spacedriveapp/spacedrive) — content identity, transactional action previews, and treating file operations as durable tasks.
 - [digiKam](https://github.com/KDE/digikam) — separation of durable metadata, search data, fingerprints, and rebuildable thumbnails.
 - [Tiefsee4](https://github.com/hbl917070/Tiefsee4), [Oculante](https://github.com/woelper/oculante), [qView](https://github.com/jurplel/qView), and [nomacs](https://github.com/nomacs/nomacs) — image-viewer interaction patterns and edge-case research.
+- [CrabNebula drag-rs](https://github.com/crabnebula-dev/drag-rs) — reference for the public AppKit pattern of starting a native file drag from the window content view with a synthesized mouse-drag event. Viewer does not depend on or copy the crate; its adapter keeps Viewer-specific entity validation, identity checks, error boundaries and pasteboard construction.
 
 Exact versions, upstream links, license expressions and distribution status for direct build dependencies are maintained in `THIRD_PARTY_NOTICES.md`. The research projects above are not linked code dependencies and their inclusion does not imply endorsement of Viewer.

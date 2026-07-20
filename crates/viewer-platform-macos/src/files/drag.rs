@@ -1,7 +1,7 @@
 use objc2::{AnyThread, MainThreadMarker, MainThreadOnly, define_class, msg_send};
 use objc2_app_kit::{
     NSApplication, NSDragOperation, NSDraggingContext, NSDraggingItem, NSDraggingSession,
-    NSDraggingSource, NSEventType, NSView, NSWorkspace,
+    NSDraggingSource, NSEvent, NSEventModifierFlags, NSEventType, NSView, NSWorkspace,
 };
 use objc2_foundation::{NSArray, NSObject, NSObjectProtocol, NSRect, NSSize, NSString, NSURL};
 use std::{cell::RefCell, ffi::CString, os::unix::ffi::OsStrExt, path::Path};
@@ -61,13 +61,28 @@ impl FinderDragPort for MacFinderDragPort<'_> {
     fn begin_drag(&self, selection: &PreparedFinderDrag) -> Result<(), FinderDragError> {
         let mtm = MainThreadMarker::new().ok_or(FinderDragError::NativeUnavailable)?;
         let application = NSApplication::sharedApplication(mtm);
-        let event = application
-            .currentEvent()
-            .filter(|event| event.r#type() == NSEventType::LeftMouseDragged)
-            .ok_or(FinderDragError::MissingMouseDrag)?;
-        let origin = self
+        let window = self
             .view
-            .convertPoint_fromView(event.locationInWindow(), None);
+            .window()
+            .ok_or(FinderDragError::NativeUnavailable)?;
+        let content_view = window
+            .contentView()
+            .ok_or(FinderDragError::NativeUnavailable)?;
+        let mouse = window.mouseLocationOutsideOfEventStream();
+        let current_event = application.currentEvent();
+        let event = NSEvent::mouseEventWithType_location_modifierFlags_timestamp_windowNumber_context_eventNumber_clickCount_pressure(
+            NSEventType::LeftMouseDragged,
+            mouse,
+            NSEventModifierFlags::empty(),
+            drag_event_timestamp(current_event.as_deref()),
+            window.windowNumber(),
+            None,
+            0,
+            1,
+            1.0,
+        )
+        .ok_or(FinderDragError::NativeUnavailable)?;
+        let origin = content_view.convertPoint_fromView(mouse, None);
         let workspace = NSWorkspace::sharedWorkspace();
         let mut items = Vec::with_capacity(selection.files().len());
         for index in 0..selection.files().len() {
@@ -94,7 +109,7 @@ impl FinderDragPort for MacFinderDragPort<'_> {
         }
         let items = NSArray::from_retained_slice(&items);
         let source = ViewerDraggingSource::new(mtm);
-        self.view.beginDraggingSessionWithItems_event_source(
+        content_view.beginDraggingSessionWithItems_event_source(
             &items,
             &event,
             objc2::runtime::ProtocolObject::from_ref(&*source),
@@ -102,6 +117,10 @@ impl FinderDragPort for MacFinderDragPort<'_> {
         ACTIVE_SOURCE.with(|active| *active.borrow_mut() = Some(source));
         Ok(())
     }
+}
+
+fn drag_event_timestamp(event: Option<&NSEvent>) -> f64 {
+    event.map(NSEvent::timestamp).unwrap_or(0.0)
 }
 
 fn is_macos_alias(path: &Path) -> bool {
@@ -127,9 +146,14 @@ fn is_macos_alias(path: &Path) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::is_macos_alias;
+    use super::{drag_event_timestamp, is_macos_alias};
     use std::{ffi::CString, fs, os::unix::ffi::OsStrExt};
     use tempfile::tempdir;
+
+    #[test]
+    fn a_missing_current_event_uses_a_valid_synthetic_timestamp() {
+        assert_eq!(drag_event_timestamp(None), 0.0);
+    }
 
     #[test]
     fn finder_info_alias_bit_is_detected() {

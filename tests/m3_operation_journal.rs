@@ -117,7 +117,7 @@ fn schema_v3_is_exact_and_enforces_lifecycle_constraints() {
 }
 
 #[test]
-fn version_two_migrates_once_with_an_immutable_v2_backup() {
+fn version_two_migrates_once_with_a_sanitized_immutable_v2_backup() {
     let directory = tempfile::tempdir().unwrap();
     let database = directory.path().join("metadata.sqlite");
     Connection::open(&database)
@@ -127,6 +127,8 @@ fn version_two_migrates_once_with_an_immutable_v2_backup() {
     let legacy_batch = OperationId::new();
     let legacy_operation = OperationId::new();
     let legacy_entity = EntityId::new();
+    let missing_error_operation = OperationId::new();
+    let missing_error_entity = EntityId::new();
     Connection::open(&database)
         .unwrap()
         .execute_batch(&format!(
@@ -138,10 +140,24 @@ fn version_two_migrates_once_with_an_immutable_v2_backup() {
              ) VALUES (
                '{legacy_operation}', '{legacy_batch}', '{legacy_entity}', 'copy', 'failed',
                'source.jpg', 'target.jpg', 'skip', '../../private/path raw OS error', 2
+             );
+             INSERT INTO operation_items(
+               operation_id, batch_id, entity_id, kind, state, source_path,
+               destination_path, conflict_policy, error_code, updated_at_ms
+             ) VALUES (
+               '{missing_error_operation}', '{legacy_batch}', '{missing_error_entity}', 'copy',
+               'failed', 'other.jpg', 'other-target.jpg', 'skip', NULL, 3
              );"
         ))
         .unwrap();
-    let v2_bytes = fs::read(&database).unwrap();
+    let backup = directory.path().join("metadata.sqlite.v2.bak");
+    fs::copy(&database, &backup).unwrap();
+    assert!(
+        fs::read(&backup)
+            .unwrap()
+            .windows(b"../../private/path raw OS error".len())
+            .any(|window| window == b"../../private/path raw OS error")
+    );
 
     drop(OperationJournal::open(&database).unwrap());
 
@@ -156,12 +172,113 @@ fn version_two_migrates_once_with_an_immutable_v2_backup() {
         .unwrap();
     assert_eq!(result_code, "legacy_failure");
     assert_eq!(error_code, "legacy_failure");
+    let (result_code, error_code): (String, String) = migrated
+        .query_row(
+            "SELECT result_code, error_code FROM operation_items WHERE operation_id = ?1",
+            [missing_error_operation.to_string()],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!(result_code, "failed");
+    assert_eq!(error_code, "failed");
     drop(migrated);
-    let backup = directory.path().join("metadata.sqlite.v2.bak");
-    assert_eq!(fs::read(&backup).unwrap(), v2_bytes);
+    assert_eq!(schema_versions(&backup), vec![1, 2]);
+    let backup_connection = Connection::open(&backup).unwrap();
+    let sanitized_error: String = backup_connection
+        .query_row(
+            "SELECT error_code FROM operation_items WHERE operation_id = ?1",
+            [legacy_operation.to_string()],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(sanitized_error, "legacy_failure");
+    drop(backup_connection);
+    assert!(
+        !fs::read(&backup)
+            .unwrap()
+            .windows(b"private/path".len())
+            .any(|window| window == b"private/path")
+    );
     let backup_before_reopen = fs::read(&backup).unwrap();
     drop(OperationJournal::open(&database).unwrap());
     assert_eq!(fs::read(backup).unwrap(), backup_before_reopen);
+}
+
+#[test]
+fn interrupted_truncated_backup_is_atomically_rebuilt_before_migration() {
+    let directory = tempfile::tempdir().unwrap();
+    let database = directory.path().join("metadata.sqlite");
+    Connection::open(&database)
+        .unwrap()
+        .execute_batch(&format!("{MIGRATION_V1}\n{MIGRATION_V2}"))
+        .unwrap();
+    let backup = directory.path().join("metadata.sqlite.v2.bak");
+    fs::write(&backup, b"SQLite format 3\0truncated backup").unwrap();
+
+    drop(OperationJournal::open(&database).unwrap());
+
+    assert_eq!(schema_versions(&database), vec![1, 2, 3]);
+    assert_eq!(schema_versions(&backup), vec![1, 2]);
+    let integrity: String = Connection::open(&backup)
+        .unwrap()
+        .query_row("PRAGMA integrity_check", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(integrity, "ok");
+    assert!(
+        !directory
+            .path()
+            .join(".metadata.sqlite.v2.bak.tmp")
+            .exists()
+    );
+}
+
+#[test]
+fn complete_same_version_backup_with_different_contents_is_atomically_rebuilt() {
+    let directory = tempfile::tempdir().unwrap();
+    let database = directory.path().join("metadata.sqlite");
+    let backup = directory.path().join("metadata.sqlite.v2.bak");
+    let main_batch = OperationId::new();
+    let foreign_batch = OperationId::new();
+    Connection::open(&database)
+        .unwrap()
+        .execute_batch(&format!(
+            "{MIGRATION_V1}\n{MIGRATION_V2}
+             INSERT INTO operation_batches(batch_id, kind, created_at_ms)
+             VALUES ('{main_batch}', 'copy', 1);"
+        ))
+        .unwrap();
+    Connection::open(&backup)
+        .unwrap()
+        .execute_batch(&format!(
+            "{MIGRATION_V1}\n{MIGRATION_V2}
+             INSERT INTO operation_batches(batch_id, kind, created_at_ms)
+             VALUES ('{foreign_batch}', 'copy', 1);"
+        ))
+        .unwrap();
+
+    drop(OperationJournal::open(&database).unwrap());
+
+    let retained = Connection::open(&backup).unwrap();
+    assert_eq!(
+        retained
+            .query_row(
+                "SELECT COUNT(*) FROM operation_batches WHERE batch_id = ?1",
+                [main_batch.to_string()],
+                |row| row.get::<_, i64>(0),
+            )
+            .unwrap(),
+        1
+    );
+    assert_eq!(
+        retained
+            .query_row(
+                "SELECT COUNT(*) FROM operation_batches WHERE batch_id = ?1",
+                [foreign_batch.to_string()],
+                |row| row.get::<_, i64>(0),
+            )
+            .unwrap(),
+        0
+    );
 }
 
 #[test]

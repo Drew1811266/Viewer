@@ -89,6 +89,7 @@ const directDependencies = [
   'notify',
   'notify-debouncer-full',
   'objc2',
+  'objc2-app-kit',
   'objc2-core-foundation',
   'objc2-core-graphics',
   'objc2-foundation',
@@ -165,8 +166,40 @@ test('Apache-2.0 and the Viewer 0.1 direct dependency inventory are frozen', asy
     assert.ok(notices.includes(`| \`${dependency}\` |`), dependency)
   }
 
+  const observedDependencies = collectDirectDependencies({
+    workspace,
+    manifests,
+    packages: [JSON.parse(packageText), JSON.parse(uiPackageText)],
+  })
+  assert.deepEqual(observedDependencies, [...directDependencies].sort())
+
   const lockCheck = await stat(new URL('../scripts/check-locked-dependencies.sh', import.meta.url))
   assert.ok((lockCheck.mode & 0o111) !== 0, 'locked dependency check must be executable')
+})
+
+test('M3 adds no broad desktop capability or network/update dependency', async () => {
+  const [capabilityText, workspace, desktopManifest, packageText, uiPackageText] =
+    await Promise.all([
+      read('src-tauri/capabilities/main.json'),
+      read('Cargo.toml'),
+      read('src-tauri/Cargo.toml'),
+      read('package.json'),
+      read('ui/package.json'),
+    ])
+  const capability = JSON.parse(capabilityText)
+  assert.deepEqual(capability.windows, ['main'])
+  assert.deepEqual(capability.permissions, [
+    'dialog:allow-open',
+    'core:event:allow-listen',
+    'core:event:allow-unlisten',
+  ])
+  assert.equal(Object.hasOwn(capability, 'remote'), false)
+
+  const dependencyText = `${workspace}\n${desktopManifest}\n${packageText}\n${uiPackageText}`
+  assert.doesNotMatch(
+    dependencyText,
+    /(?:tauri-plugin-(?:fs|http|shell|updater|websocket)|reqwest|axios|electron-updater)/i,
+  )
 })
 
 test('the macOS release command is non-interactive and uses a valid bundle identifier', async () => {
@@ -248,3 +281,26 @@ test('M1 IPC fixture validation rejects path disclosure and unsupported kinds', 
     assert.throws(() => validateIpcPayload(unsafe, 'unsafe'))
   }
 })
+
+function collectDirectDependencies({ workspace, manifests, packages }) {
+  const dependencies = new Set()
+  for (const manifest of [workspace, ...manifests]) {
+    let dependencySection = false
+    for (const line of manifest.split(/\r?\n/)) {
+      const section = /^\s*\[\[?([^\]]+)\]\]?\s*$/.exec(line)
+      if (section !== null) {
+        dependencySection = /(?:^|\.)(?:build-|dev-)?dependencies$/.test(section[1])
+        continue
+      }
+      if (!dependencySection) continue
+      const dependency = /^\s*([A-Za-z0-9_-]+)\s*=/.exec(line)?.[1]
+      if (dependency && !dependency.startsWith('viewer-')) dependencies.add(dependency)
+    }
+  }
+  for (const packageJson of packages) {
+    for (const group of ['dependencies', 'devDependencies']) {
+      for (const dependency of Object.keys(packageJson[group] ?? {})) dependencies.add(dependency)
+    }
+  }
+  return [...dependencies].sort()
+}

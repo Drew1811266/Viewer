@@ -17,6 +17,21 @@ const matrixRows = matrix
   .filter((line) => /^\|\s*REQ-[A-Z0-9-]+\s*\|/.test(line))
   .map((line) => line.split("|").slice(1, -1).map((cell) => cell.trim()));
 const matrixIds = matrixRows.map(([id]) => id);
+const expectedM3Ids = [
+  "REQ-FLOW-BATCH-RENAME",
+  "REQ-FLOW-COMPARE",
+  "REQ-FLOW-DRAG-DROP",
+  "REQ-FLOW-EXTERNAL-CHANGES",
+  "REQ-FLOW-LIFECYCLE",
+  "REQ-FLOW-ORGANIZE",
+  "REQ-FLOW-READONLY-ERRORS",
+  "REQ-FLOW-SHORTCUTS",
+  "REQ-FLOW-UNDO",
+  "REQ-IA-TASK-BAR",
+  "REQ-TECH-FILE-CONSISTENCY",
+  "REQ-TECH-PATH-SECURITY",
+  "REQ-TECH-WATCHER",
+];
 const matrixDuplicates = duplicates(matrixIds);
 if (matrixDuplicates.length > 0) {
   throw new Error(`duplicate requirement IDs in scope matrix: ${matrixDuplicates.join(", ")}`);
@@ -47,11 +62,23 @@ for (const row of matrixRows) {
   }
 }
 
+const actualM3Ids = matrixRows
+  .filter(([, , , milestone]) => milestone.split("/").includes("M3"))
+  .map(([id]) => id)
+  .sort();
+if (JSON.stringify(actualM3Ids) !== JSON.stringify(expectedM3Ids)) {
+  throw new Error(
+    `M3 scope changed without review; expected=[${expectedM3Ids.join(", ")}], actual=[${actualM3Ids.join(", ")}]`,
+  );
+}
+
 if (specIds.length === 0) {
   throw new Error("product spec contains no stable requirement IDs");
 }
 
-console.log(`Viewer scope coverage passed: ${specIds.length} requirements mapped exactly once`);
+console.log(
+  `Viewer scope coverage passed: ${specIds.length} requirements mapped exactly once; ${actualM3Ids.length} frozen M3 requirements`,
+);
 
 function duplicates(values) {
   const seen = new Set();

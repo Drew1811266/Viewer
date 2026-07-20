@@ -19,6 +19,7 @@ This inventory records the direct third-party dependencies in the Viewer 0.1 loc
 | `notify` | 8.2.0 | CC0-1.0 | macOS filesystem event source | [notify-rs/notify](https://github.com/notify-rs/notify) | Yes |
 | `notify-debouncer-full` | 0.7.0 | MIT OR Apache-2.0 | Coalesce filesystem hints before scoped rescans | [notify-rs/notify](https://github.com/notify-rs/notify) | Yes |
 | `objc2` | 0.6.4 | MIT | Objective-C runtime bindings | [madsmtm/objc2](https://github.com/madsmtm/objc2) | Yes |
+| `objc2-app-kit` | 0.3.2 | Zlib OR Apache-2.0 OR MIT | Native Finder drag sessions and macOS application lifecycle integration | [madsmtm/objc2](https://github.com/madsmtm/objc2) | Yes |
 | `objc2-core-foundation` | 0.3.2 | Zlib OR Apache-2.0 OR MIT | Core Foundation types for image APIs | [madsmtm/objc2](https://github.com/madsmtm/objc2) | Yes |
 | `objc2-core-graphics` | 0.3.2 | Zlib OR Apache-2.0 OR MIT | Core Graphics image representation | [madsmtm/objc2](https://github.com/madsmtm/objc2) | Yes |
 | `objc2-foundation` | 0.3.2 | MIT | Foundation URLs, strings, objects and errors | [madsmtm/objc2](https://github.com/madsmtm/objc2) | Yes |

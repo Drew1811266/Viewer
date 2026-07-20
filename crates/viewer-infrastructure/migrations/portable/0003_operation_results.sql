@@ -40,6 +40,11 @@ WHERE error_code IS NOT NULL
   );
 
 UPDATE operation_items
+SET error_code = 'failed'
+WHERE state = 'failed'
+  AND error_code IS NULL;
+
+UPDATE operation_items
 SET result_code = CASE
   WHEN state = 'completed' THEN 'completed'
   WHEN state = 'failed' THEN COALESCE(error_code, 'failed')

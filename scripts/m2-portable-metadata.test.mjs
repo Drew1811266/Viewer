@@ -9,6 +9,10 @@ import { validatePortableMetadata } from './validate-m2-portable-metadata.mjs'
 
 const PROJECT_ID = '00000000-0000-4000-8000-000000000001'
 const MARKER_ID = '00000000-0000-4000-8000-000000000002'
+const MIGRATIONS = await Promise.all([
+  readFile(new URL('../crates/viewer-infrastructure/migrations/portable/0001_initial.sql', import.meta.url), 'utf8'),
+  readFile(new URL('../crates/viewer-infrastructure/migrations/portable/0002_markers.sql', import.meta.url), 'utf8'),
+])
 
 test('accepts only the current portable files, live SQLite sidecars, and a v1 backup', async () => {
   const root = await portableFixture()
@@ -167,53 +171,10 @@ async function portableFixture({ databaseVersion = 2 } = {}) {
 
 function createDatabase(path, version) {
   const database = new DatabaseSync(path)
-  database.exec(`
-    PRAGMA foreign_keys = ON;
-    CREATE TABLE schema_migrations(version INTEGER PRIMARY KEY, applied_at_ms INTEGER NOT NULL);
-    CREATE TABLE operation_batches(
-      batch_id TEXT PRIMARY KEY,
-      kind TEXT NOT NULL,
-      created_at_ms INTEGER NOT NULL,
-      completed_at_ms INTEGER
-    );
-    CREATE TABLE operation_items(
-      operation_id TEXT PRIMARY KEY,
-      batch_id TEXT NOT NULL REFERENCES operation_batches(batch_id),
-      entity_id TEXT NOT NULL,
-      kind TEXT NOT NULL,
-      state TEXT NOT NULL,
-      source_path TEXT NOT NULL,
-      destination_path TEXT,
-      temporary_path TEXT,
-      expected_size INTEGER,
-      expected_hash BLOB,
-      conflict_policy TEXT NOT NULL,
-      error_code TEXT,
-      updated_at_ms INTEGER NOT NULL
-    );
-    INSERT INTO schema_migrations VALUES (1, 0);
-  `)
+  database.exec('PRAGMA foreign_keys = ON;')
+  for (const migration of MIGRATIONS.slice(0, version)) database.exec(migration)
   if (version >= 2) {
-    database.exec(`
-      CREATE TABLE project_metadata(
-        singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
-        project_id TEXT NOT NULL UNIQUE,
-        created_at_ms INTEGER NOT NULL
-      );
-      CREATE TABLE markers(
-        marker_id TEXT PRIMARY KEY,
-        relative_path TEXT NOT NULL UNIQUE,
-        kind INTEGER NOT NULL,
-        review_state INTEGER,
-        favorite INTEGER NOT NULL DEFAULT 0 CHECK (favorite IN (0, 1)),
-        evidence_size INTEGER,
-        evidence_modified_ns TEXT,
-        content_hash BLOB,
-        updated_at_ms INTEGER NOT NULL
-      );
-      INSERT INTO schema_migrations VALUES (2, 0);
-      INSERT INTO project_metadata VALUES (1, '${PROJECT_ID}', 1);
-    `)
+    database.exec(`INSERT INTO project_metadata VALUES (1, '${PROJECT_ID}', 1);`)
   }
   if (version > 2) {
     database.exec(`INSERT INTO schema_migrations VALUES (${version}, 0)`)

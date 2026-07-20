@@ -49,12 +49,17 @@ pub fn open_database(path: &Path, writable: bool) -> Result<Connection, Portable
         return Err(PortableSchemaError::RequiresMigration);
     }
     if version == 1 {
+        sanitize_legacy_error_codes(path)?;
         backup_schema(path, 1)?;
         apply_migration(path, PORTABLE_MIGRATION_V2)?;
     }
     if version <= 2 {
+        sanitize_legacy_error_codes(path)?;
         backup_schema(path, 2)?;
         apply_migration(path, PORTABLE_MIGRATION_V3)?;
+    }
+    if writable {
+        sanitize_retained_backups(path)?;
     }
 
     let connection = open_connection(path, writable, false)?;
@@ -138,22 +143,115 @@ fn apply_migration(path: &Path, migration: &str) -> Result<(), PortableSchemaErr
 
 fn backup_schema(path: &Path, version: i64) -> Result<(), PortableSchemaError> {
     let backup = backup_path(path, version)?;
-    if backup.exists() {
-        return Ok(());
+    if let Ok(metadata) = fs::symlink_metadata(&backup) {
+        if metadata.file_type().is_symlink() || !metadata.is_file() {
+            return Err(PortableSchemaError::UnsafePath);
+        }
+        if backup_is_valid(&backup, version)? {
+            sanitize_legacy_error_codes(&backup)?;
+            if files_are_identical(path, &backup)? {
+                return Ok(());
+            }
+        }
+    }
+
+    let temporary = backup_temporary_path(&backup)?;
+    if let Ok(metadata) = fs::symlink_metadata(&temporary) {
+        if metadata.file_type().is_symlink() || !metadata.is_file() {
+            return Err(PortableSchemaError::UnsafePath);
+        }
+        fs::remove_file(&temporary)?;
     }
     let bytes = fs::read(path)?;
-    let mut output = match OpenOptions::new()
+    let mut output = OpenOptions::new()
         .write(true)
         .create_new(true)
-        .open(&backup)
-    {
-        Ok(output) => output,
-        Err(error) if error.kind() == io::ErrorKind::AlreadyExists => return Ok(()),
-        Err(error) => return Err(error.into()),
-    };
+        .open(&temporary)?;
     output.write_all(&bytes)?;
     output.sync_all()?;
+    drop(output);
+    sanitize_legacy_error_codes(&temporary)?;
+    if !backup_is_valid(&temporary, version)? {
+        return Err(PortableSchemaError::InvalidSchemaHistory);
+    }
+    fs::rename(&temporary, &backup)?;
     sync_parent(&backup)?;
+    Ok(())
+}
+
+fn backup_is_valid(path: &Path, expected_version: i64) -> Result<bool, PortableSchemaError> {
+    validate_database_path(path)?;
+    let version = match inspect_version(path) {
+        Ok(version) => version,
+        Err(_) => return Ok(false),
+    };
+    if version != expected_version {
+        return Ok(false);
+    }
+    let connection = match open_connection(path, false, false) {
+        Ok(connection) => connection,
+        Err(_) => return Ok(false),
+    };
+    let integrity =
+        connection.query_row("PRAGMA integrity_check", [], |row| row.get::<_, String>(0));
+    Ok(matches!(integrity, Ok(result) if result == "ok"))
+}
+
+fn backup_temporary_path(backup: &Path) -> Result<PathBuf, PortableSchemaError> {
+    let name = backup
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or(PortableSchemaError::UnsafePath)?;
+    Ok(backup.with_file_name(format!(".{name}.tmp")))
+}
+
+fn files_are_identical(left: &Path, right: &Path) -> Result<bool, io::Error> {
+    if fs::metadata(left)?.len() != fs::metadata(right)?.len() {
+        return Ok(false);
+    }
+    Ok(fs::read(left)? == fs::read(right)?)
+}
+
+fn sanitize_retained_backups(path: &Path) -> Result<(), PortableSchemaError> {
+    for version in 1..LATEST_PORTABLE_SCHEMA_VERSION {
+        let backup = backup_path(path, version)?;
+        if backup.exists() {
+            sanitize_legacy_error_codes(&backup)?;
+        }
+    }
+    Ok(())
+}
+
+fn sanitize_legacy_error_codes(path: &Path) -> Result<(), PortableSchemaError> {
+    validate_database_path(path)?;
+    let connection = open_connection(path, true, false)?;
+    configure(&connection, true)?;
+    connection.execute_batch("PRAGMA secure_delete = ON;")?;
+    let unsafe_count = connection.query_row(
+        "SELECT COUNT(*)
+         FROM operation_items
+         WHERE error_code IS NOT NULL
+           AND (
+             length(error_code) NOT BETWEEN 1 AND 64
+             OR error_code GLOB '*[^a-z0-9_]*'
+           )",
+        [],
+        |row| row.get::<_, i64>(0),
+    )?;
+    if unsafe_count > 0 {
+        connection.execute(
+            "UPDATE operation_items
+             SET error_code = 'legacy_failure'
+             WHERE error_code IS NOT NULL
+               AND (
+                 length(error_code) NOT BETWEEN 1 AND 64
+                 OR error_code GLOB '*[^a-z0-9_]*'
+               )",
+            [],
+        )?;
+    }
+    drop(connection);
+    sync_parent(path)?;
     Ok(())
 }
 

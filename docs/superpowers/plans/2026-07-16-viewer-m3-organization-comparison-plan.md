@@ -624,7 +624,7 @@ git commit -m "feat: complete read-only and close lifecycle"
 **Interfaces:**
 - Produces: `pnpm gate:m3`, exact schema-v3 portable allow-list and frozen M3 dependency/capability/scope policy.
 
-- [ ] **Step 1: Write failing gate/validator policy tests**
+- [x] **Step 1: Write failing gate/validator policy tests**
 
 Generate valid/invalid v3 projects. Accept only current manifest/database, exact SQLite sidecars and prior-version backup. Validate exact tables/columns/enums/transitions/counters/relative paths/result codes. Reject originals, text bodies, thumbnails/proxies, absolute/cache paths, unknown tables/files/symlinks and unreviewed licenses.
 
@@ -632,17 +632,17 @@ Run: `node --test scripts/m3-portable-metadata.test.mjs`
 
 Expected: RED because validator expects v2 and no M3 gate exists.
 
-- [ ] **Step 2: Implement the exact aggregate gate**
+- [x] **Step 2: Implement the exact aggregate gate**
 
 `pnpm gate:m3` runs inherited M2, UI tests/build, fmt, strict Clippy, all locked workspace tests, every M3 suite, G2 fault matrix, G3 Watcher/search benchmark, repository/dependency/license/audit/security/scope checks and portable schema-v3 live validation.
 
-- [ ] **Step 3: Verify two consecutive clean passes**
+- [x] **Step 3: Verify two consecutive clean passes**
 
 Run: `pnpm gate:m3 && pnpm gate:m3`
 
 Expected: both runs exit 0 with no stale artifact substitution.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add scripts package.json

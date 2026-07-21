@@ -392,7 +392,7 @@ async fn skip_conflict_choice_never_starts_the_file_mutation() {
 }
 
 #[tokio::test]
-async fn one_write_lane_cancels_queued_items_but_allows_the_active_atomic_item_to_finish() {
+async fn one_write_lane_cancels_queued_items_and_then_runs_the_next_admitted_batch() {
     let fixture = Fixture::new(ProjectAccess::ReadWrite);
     fixture.port.block_first.store(true, Ordering::SeqCst);
     let first = fixture
@@ -406,15 +406,16 @@ async fn one_write_lane_cancels_queued_items_but_allows_the_active_atomic_item_t
         .preflight(fixture.command(FileCommandKind::Trash, 1))
         .await
         .unwrap();
+    let second_batch = second.batch_id();
     let (progress_tx, mut progress_rx) = watch::channel(first.initial_progress());
     let service = Arc::clone(&fixture.service);
     let running = tokio::spawn(async move { service.execute(first, &[], Some(progress_tx)).await });
     fixture.port.first_started.notified().await;
 
-    assert_eq!(
-        fixture.service.execute(second, &[], None).await,
-        Err(FileCommandServiceError::BatchActive)
-    );
+    let service = Arc::clone(&fixture.service);
+    let next = tokio::spawn(async move { service.execute(second, &[], None).await });
+    tokio::task::yield_now().await;
+    assert!(!next.is_finished());
     progress_rx.borrow_and_update();
     assert!(fixture.service.cancel_pending(first_batch));
     tokio::time::timeout(Duration::from_millis(100), progress_rx.changed())
@@ -424,18 +425,57 @@ async fn one_write_lane_cancels_queued_items_but_allows_the_active_atomic_item_t
     assert_eq!(progress_rx.borrow().lifecycle, BatchLifecycle::Cancelling);
     fixture.port.release_first.notify_one();
     let summary = running.await.unwrap().unwrap();
+    let next_summary = next.await.unwrap().unwrap();
 
     assert_eq!(summary.completed(), 1);
     assert_eq!(summary.cancelled(), 2);
     assert_eq!(summary.failed() + summary.skipped(), 0);
     assert!(summary.counts_are_consistent());
-    assert_eq!(fixture.port.executed().len(), 1);
+    let executed = fixture.port.executed();
+    assert_eq!(executed.len(), 2);
+    assert_eq!(
+        executed
+            .iter()
+            .filter(|request| request.batch_id == first_batch)
+            .count(),
+        1
+    );
+    assert_eq!(executed[1].batch_id, second_batch);
     let latest = progress_rx.borrow().clone();
     assert_eq!(latest.lifecycle, BatchLifecycle::Completed);
     assert_eq!(latest.completed, 1);
     assert_eq!(latest.cancelled, 2);
     assert_eq!(latest.active_entity_id, None);
     assert!(!fixture.service.cancel_pending(first_batch));
+    assert_eq!(next_summary.completed(), 1);
+}
+
+#[tokio::test]
+async fn admitted_batch_waits_for_the_shared_write_lane_instead_of_failing_after_preflight() {
+    let fixture = Fixture::new(ProjectAccess::ReadWrite);
+    let preflight = fixture
+        .service
+        .preflight(fixture.command(FileCommandKind::Trash, 1))
+        .await
+        .unwrap();
+    let write_lane = fixture.service.write_lane();
+    let background_write = write_lane.lock().await;
+    let service = Arc::clone(&fixture.service);
+    let execution = tokio::spawn(async move { service.execute(preflight, &[], None).await });
+
+    tokio::task::yield_now().await;
+    assert!(
+        !execution.is_finished(),
+        "a batch admitted by preflight must wait rather than lose the write lane"
+    );
+
+    drop(background_write);
+    let summary = execution.await.unwrap().unwrap();
+    assert_eq!(summary.completed(), 1);
+    assert_eq!(
+        summary.failed() + summary.cancelled() + summary.skipped(),
+        0
+    );
 }
 
 #[tokio::test]

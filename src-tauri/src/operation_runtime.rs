@@ -194,12 +194,13 @@ impl OperationRuntime {
 
         let service = Arc::clone(&self.service);
         let state = Arc::clone(&self.state);
+        let terminal_events = Arc::clone(&self.events);
         tokio::spawn(async move {
             let result = service
                 .execute(preflight, &resolutions, Some(progress_tx))
                 .await;
-            if let Ok(summary) = &result {
-                let completed = BatchProgress {
+            let completed = match &result {
+                Ok(summary) => BatchProgress {
                     batch_id,
                     lifecycle: BatchLifecycle::Completed,
                     requested: summary.requested(),
@@ -208,16 +209,32 @@ impl OperationRuntime {
                     skipped: summary.skipped(),
                     cancelled: summary.cancelled(),
                     active_entity_id: None,
-                };
-                record.publish(completed);
+                },
+                Err(_) => {
+                    let requested = record.progress().requested;
+                    BatchProgress {
+                        batch_id,
+                        lifecycle: BatchLifecycle::Completed,
+                        requested,
+                        completed: 0,
+                        failed: requested,
+                        skipped: 0,
+                        cancelled: 0,
+                        active_entity_id: None,
+                    }
+                }
+            };
+            record.publish(completed.clone());
+            terminal_events.emit_operation(session_id, generation, completed);
+            {
+                let mut state = state
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner());
+                if state.active == Some(batch_id) {
+                    state.active = None;
+                }
             }
             record.finish(result);
-            let mut state = state
-                .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner());
-            if state.active == Some(batch_id) {
-                state.active = None;
-            }
         });
         Ok(OperationStarted { batch_id })
     }
@@ -733,4 +750,229 @@ pub fn adapter_as_undo_port(
     adapter: Arc<LocalFileCommandAdapter>,
 ) -> Arc<dyn viewer_application::undo::UndoFilePort> {
     adapter
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use viewer_application::{
+        LocalFileCommandPort, ProjectAccess,
+        file_commands::{
+            BatchResultCode, FileCommandAction, FileCommandCancellation, FileCommandItemExecution,
+            LocalFileCommandError, LocalFileCommandOutcome, LocalFileCommandPreflightItem,
+        },
+        scheduler::TaskCoordinator,
+    };
+
+    #[derive(Default)]
+    struct TestPort {
+        block_execution: AtomicBool,
+        started: Notify,
+        release: Notify,
+        returned: Notify,
+    }
+
+    #[async_trait]
+    impl LocalFileCommandPort for TestPort {
+        async fn preflight(
+            &self,
+            _batch_id: BatchId,
+            command: &FileCommand,
+        ) -> Result<Vec<LocalFileCommandPreflightItem>, LocalFileCommandError> {
+            Ok(command
+                .items
+                .iter()
+                .enumerate()
+                .map(|(index, item)| LocalFileCommandPreflightItem {
+                    entity_id: item.entity_id,
+                    relative_path: RelativePath::parse(&format!("item-{index}.txt")).unwrap(),
+                    state: FileCommandPreflightState::Ready,
+                })
+                .collect())
+        }
+
+        async fn execute_item(
+            &self,
+            _request: FileCommandItemExecution,
+            _cancellation: FileCommandCancellation,
+        ) -> Result<LocalFileCommandOutcome, LocalFileCommandError> {
+            self.started.notify_one();
+            if self.block_execution.load(Ordering::Acquire) {
+                self.release.notified().await;
+            }
+            self.returned.notify_one();
+            Ok(LocalFileCommandOutcome::completed(
+                BatchResultCode::MovedToTrash,
+            ))
+        }
+    }
+
+    #[derive(Default)]
+    struct RecordingEvents {
+        progress: Mutex<Vec<BatchProgress>>,
+    }
+
+    impl DesktopEventSink for RecordingEvents {
+        fn emit_scan(&self, _event: crate::dto::ScanEventDto) {}
+
+        fn emit_operation(
+            &self,
+            _session_id: SessionId,
+            _generation: Generation,
+            event: BatchProgress,
+        ) {
+            self.progress
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .push(event);
+        }
+    }
+
+    struct CancelSessionOnAdmission {
+        coordinator: Arc<TaskCoordinator>,
+        session_id: SessionId,
+        cancelled: AtomicBool,
+        progress: Mutex<Vec<BatchProgress>>,
+    }
+
+    impl DesktopEventSink for CancelSessionOnAdmission {
+        fn emit_scan(&self, _event: crate::dto::ScanEventDto) {}
+
+        fn emit_operation(
+            &self,
+            _session_id: SessionId,
+            _generation: Generation,
+            event: BatchProgress,
+        ) {
+            self.progress
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .push(event.clone());
+            if event.lifecycle == BatchLifecycle::Queued
+                && !self.cancelled.swap(true, Ordering::AcqRel)
+            {
+                self.coordinator.cancel_session(self.session_id);
+            }
+        }
+    }
+
+    fn command_item() -> FileCommandItem {
+        FileCommandItem {
+            entity_id: EntityId::new(),
+            action: FileCommandAction::Trash,
+        }
+    }
+
+    #[tokio::test]
+    async fn execution_failure_after_admission_publishes_terminal_progress() {
+        let session_id = SessionId::new();
+        let coordinator = Arc::new(TaskCoordinator::default());
+        let generation = coordinator.begin_session(session_id);
+        let port = Arc::new(TestPort::default());
+        let service = Arc::new(FileCommandService::new(
+            session_id,
+            ProjectAccess::ReadWrite,
+            Arc::clone(&coordinator),
+            port,
+        ));
+        let events = Arc::new(CancelSessionOnAdmission {
+            coordinator,
+            session_id,
+            cancelled: AtomicBool::new(false),
+            progress: Mutex::new(Vec::new()),
+        });
+        let runtime = OperationRuntime::new(service, events.clone());
+
+        let started = runtime
+            .start(
+                session_id,
+                generation,
+                FileCommandKind::Trash,
+                vec![command_item()],
+                Vec::new(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            runtime.wait(started.batch_id).await,
+            Err(OperationRuntimeError::Service(
+                FileCommandServiceError::StaleSession
+            ))
+        );
+
+        let status = runtime.status(started.batch_id).unwrap();
+        assert_eq!(status.lifecycle, BatchLifecycle::Completed);
+        assert_eq!(status.failed, status.requested);
+        assert_eq!(status.processed(), status.requested);
+        let published = events.progress.lock().unwrap();
+        assert_eq!(
+            published.last().unwrap().lifecycle,
+            BatchLifecycle::Completed
+        );
+    }
+
+    #[tokio::test]
+    async fn wait_does_not_finish_before_the_runtime_clears_its_active_batch() {
+        use std::{sync::mpsc, thread, time::Duration};
+
+        let session_id = SessionId::new();
+        let coordinator = Arc::new(TaskCoordinator::default());
+        let generation = coordinator.begin_session(session_id);
+        let port = Arc::new(TestPort::default());
+        port.block_execution.store(true, Ordering::Release);
+        let service = Arc::new(FileCommandService::new(
+            session_id,
+            ProjectAccess::ReadWrite,
+            coordinator,
+            port.clone(),
+        ));
+        let events = Arc::new(RecordingEvents::default());
+        let runtime = Arc::new(OperationRuntime::new(service, events));
+        let started = runtime
+            .start(
+                session_id,
+                generation,
+                FileCommandKind::Trash,
+                vec![command_item()],
+                Vec::new(),
+            )
+            .await
+            .unwrap();
+        port.started.notified().await;
+        let record = runtime.record(started.batch_id).unwrap();
+        let holder_runtime = Arc::clone(&runtime);
+        let holder_record = Arc::clone(&record);
+        let (locked_tx, locked_rx) = mpsc::sync_channel(0);
+        let holder = thread::spawn(move || {
+            let state = holder_runtime
+                .state
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            assert_eq!(state.active, Some(started.batch_id));
+            locked_tx.send(()).unwrap();
+            let deadline = std::time::Instant::now() + Duration::from_millis(100);
+            let completed_while_active = loop {
+                if holder_record.complete.load(Ordering::Acquire) {
+                    break true;
+                }
+                if std::time::Instant::now() >= deadline {
+                    break false;
+                }
+                thread::yield_now();
+            };
+            drop(state);
+            completed_while_active
+        });
+        locked_rx.recv().unwrap();
+        port.release.notify_one();
+        port.returned.notified().await;
+        tokio::time::sleep(Duration::from_millis(1)).await;
+        let completed_while_active = holder.join().unwrap();
+        assert!(
+            !completed_while_active,
+            "completion publication must happen only after active is cleared"
+        );
+        runtime.wait(started.batch_id).await.unwrap();
+        assert_eq!(runtime.active_batch(), None);
+    }
 }

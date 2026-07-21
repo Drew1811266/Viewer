@@ -399,10 +399,7 @@ impl FileCommandService {
             return Err(FileCommandServiceError::PreflightBlocked);
         }
         let policies = resolve_conflicts(&preflight.rows, resolutions)?;
-        let _lane = self
-            .write_lane
-            .try_lock()
-            .map_err(|_| FileCommandServiceError::BatchActive)?;
+        let _lane = self.write_lane.lock().await;
         let cancellation = FileCommandCancellation::default();
         let mut progress = preflight.initial_progress();
         progress.lifecycle = BatchLifecycle::Running;

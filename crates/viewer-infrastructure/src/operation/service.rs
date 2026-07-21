@@ -673,6 +673,7 @@ impl LocalFileCommandAdapter {
         &self,
         batch_id: BatchId,
         entity_id: EntityId,
+        cancellation: &FileCommandCancellation,
     ) -> LocalFileCommandOutcome {
         let (already, plan) = {
             let batches = self.lock_batches();
@@ -692,31 +693,22 @@ impl LocalFileCommandAdapter {
         let Some(plan) = plan else {
             return LocalFileCommandOutcome::failed(BatchResultCode::BackendUnavailable);
         };
-        let rename_items = {
+        let (items_by_operation, entity_by_operation) = {
             let batches = self.lock_batches();
-            batches[&batch_id]
+            let items = batches[&batch_id]
                 .items
-                .values()
-                .filter(|item| item.route == PreparedRoute::RenameGroup)
-                .cloned()
-                .collect::<Vec<_>>()
+                .iter()
+                .filter(|(_, item)| item.route == PreparedRoute::RenameGroup);
+            (
+                items
+                    .clone()
+                    .map(|(_, item)| (item.plan.operation_id, item.clone()))
+                    .collect::<HashMap<_, _>>(),
+                items
+                    .map(|(entity, item)| (item.plan.operation_id, *entity))
+                    .collect::<HashMap<_, _>>(),
+            )
         };
-        for item in &rename_items {
-            if let Err(error) = self.revalidate_source(item) {
-                return self.fail_outcome_for_entity(batch_id, entity_id, &error);
-            }
-            let source = self.project_root.join(item.plan.source.as_str());
-            let Some(destination) = item.plan.destination.as_ref() else {
-                continue;
-            };
-            let destination = self.project_root.join(destination.as_str());
-            if let Err(error) = self
-                .register_expected_change(item.plan.operation_id, &source, &destination, &source)
-                .await
-            {
-                return self.fail_outcome_for_entity(batch_id, entity_id, &error);
-            }
-        }
         let executor = match RenameExecutor::new(
             &self.project_root,
             Arc::clone(&self.journal),
@@ -727,31 +719,82 @@ impl LocalFileCommandAdapter {
             Ok(executor) => executor,
             Err(error) => return self.fail_outcome_for_entity(batch_id, entity_id, &error),
         };
-        let result = executor.execute(&plan).await;
-        let entity_by_operation = {
-            let batches = self.lock_batches();
-            batches[&batch_id]
-                .items
-                .iter()
-                .map(|(entity, item)| (item.plan.operation_id, *entity))
-                .collect::<HashMap<_, _>>()
-        };
         let mut outcomes = HashMap::new();
-        for result in result.items {
-            let Some(entity) = entity_by_operation.get(&result.operation_id).copied() else {
+        for component in plan.independent_components() {
+            if cancellation.is_cancelled() {
+                break;
+            }
+            let component_operations = component
+                .stages
+                .iter()
+                .map(|stage| stage.operation_id())
+                .collect::<HashSet<_>>();
+            let component_items = component_operations
+                .iter()
+                .filter_map(|operation_id| items_by_operation.get(operation_id))
+                .collect::<Vec<_>>();
+            let mut validation_error = None;
+            for item in &component_items {
+                if let Err(error) = self.revalidate_source(item) {
+                    validation_error = Some(error);
+                    break;
+                }
+                let source = self.project_root.join(item.plan.source.as_str());
+                let Some(destination) = item.plan.destination.as_ref() else {
+                    continue;
+                };
+                let destination = self.project_root.join(destination.as_str());
+                if let Err(error) = self
+                    .register_expected_change(
+                        item.plan.operation_id,
+                        &source,
+                        &destination,
+                        &source,
+                        item.source_evidence.as_ref(),
+                    )
+                    .await
+                {
+                    validation_error = Some(error);
+                    break;
+                }
+            }
+            if let Some(error) = validation_error {
+                let code = classify_message(&error.to_string());
+                for item in component_items {
+                    self.mark_failed(item.plan.operation_id, code);
+                    if let Some(entity) = entity_by_operation.get(&item.plan.operation_id) {
+                        outcomes.insert(*entity, LocalFileCommandOutcome::failed(code));
+                    }
+                }
                 continue;
-            };
-            let outcome = match result.status {
-                RenameItemStatus::Completed => {
-                    LocalFileCommandOutcome::completed(BatchResultCode::Renamed)
-                }
-                RenameItemStatus::Failed(message) => {
-                    let code = classify_message(&message);
-                    self.mark_failed(result.operation_id, code);
-                    LocalFileCommandOutcome::failed(code)
-                }
-            };
-            outcomes.insert(entity, outcome);
+            }
+            let expected = component_items
+                .iter()
+                .filter_map(|item| {
+                    item.source_evidence
+                        .clone()
+                        .map(|evidence| (item.plan.operation_id, evidence))
+                })
+                .collect::<HashMap<_, _>>();
+            let result = executor
+                .execute_with_expectations(&component, &expected)
+                .await;
+            for result in result.items {
+                let Some(entity) = entity_by_operation.get(&result.operation_id).copied() else {
+                    continue;
+                };
+                let outcome = match result.status {
+                    RenameItemStatus::Completed => {
+                        LocalFileCommandOutcome::completed(BatchResultCode::Renamed)
+                    }
+                    RenameItemStatus::Failed(message) => {
+                        let code = classify_message(&message);
+                        self.mark_failed(result.operation_id, code);
+                        LocalFileCommandOutcome::failed(code)
+                    }
+                };
+                outcomes.insert(entity, outcome);
+            }
         }
         let mut batches = self.lock_batches();
         let batch = batches
@@ -801,14 +844,23 @@ impl LocalFileCommandAdapter {
                 .ok_or(FileOperationError::DestinationRequired)?
                 .as_str(),
         );
-        self.register_expected_change(item.plan.operation_id, &source, &destination, &source)
-            .await?;
+        self.register_expected_change(
+            item.plan.operation_id,
+            &source,
+            &destination,
+            &source,
+            item.source_evidence.as_ref(),
+        )
+        .await?;
         if policy == ConflictPolicy::Replace && destination.exists() {
             self.register_expected_change(
                 item.plan.operation_id,
                 &destination,
                 &destination,
                 &destination,
+                item.destination_evidence
+                    .as_ref()
+                    .map(|evidence| &evidence.snapshot),
             )
             .await?;
         }
@@ -846,15 +898,19 @@ impl LocalFileCommandAdapter {
             let plan =
                 RenamePlanner::plan(&self.project_root, self.case_sensitive_root(), &[mapping])
                     .map_err(|_| FileOperationError::DestinationExists)?;
-            let result = RenameExecutor::new(
+            let executor = RenameExecutor::new(
                 &self.project_root,
                 Arc::clone(&self.journal),
                 Arc::clone(&self.mutation),
                 Arc::clone(&self.clock),
                 Arc::clone(&self.commits),
-            )?
-            .execute(&plan)
-            .await;
+            )?;
+            let expected = item
+                .source_evidence
+                .clone()
+                .map(|evidence| HashMap::from([(item.plan.operation_id, evidence)]))
+                .unwrap_or_default();
+            let result = executor.execute_with_expectations(&plan, &expected).await;
             if !matches!(
                 result.items.first().map(|item| &item.status),
                 Some(RenameItemStatus::Completed)
@@ -935,6 +991,16 @@ impl LocalFileCommandAdapter {
             .map_err(journal_file_error)?;
 
         let before = self.mutation.snapshot(&source_path).await?;
+        if item
+            .source_evidence
+            .as_ref()
+            .is_some_and(|expected| *expected != before)
+        {
+            self.mutation
+                .remove_registered_temporary(&temporary_path)
+                .await?;
+            return Err(FileOperationError::IdentityChanged);
+        }
         let copied = match self
             .mutation
             .copy_and_hash_cancellable(&source_path, &temporary_path, cancellation)
@@ -993,6 +1059,7 @@ impl LocalFileCommandAdapter {
             &destination_path,
             &destination_path,
             &temporary_path,
+            None,
         )
         .await?;
         if item.route == PreparedRoute::CrossVolumeMove {
@@ -1001,6 +1068,7 @@ impl LocalFileCommandAdapter {
                 &source_path,
                 &source_path,
                 &source_path,
+                Some(&after.snapshot),
             )
             .await?;
         }
@@ -1013,6 +1081,9 @@ impl LocalFileCommandAdapter {
                 &destination_path,
                 &destination_path,
                 &destination_path,
+                item.destination_evidence
+                    .as_ref()
+                    .map(|evidence| &evidence.snapshot),
             )
             .await?;
             self.trash.trash(&destination_path).await?;
@@ -1056,7 +1127,7 @@ impl LocalFileCommandAdapter {
         let source = self.project_root.join(item.plan.source.as_str());
         self.validate_regular_source(&source)?;
         let evidence = stable_content_evidence_async(&source).await?;
-        let before = evidence.snapshot;
+        let before = evidence.snapshot.clone();
         let hash = evidence.hash;
         self.journal
             .record_prepared_evidence(item.plan.operation_id, None, before.len, hash, self.now())
@@ -1069,8 +1140,14 @@ impl LocalFileCommandAdapter {
                 self.now(),
             )
             .map_err(journal_file_error)?;
-        self.register_expected_change(item.plan.operation_id, &source, &source, &source)
-            .await?;
+        self.register_expected_change(
+            item.plan.operation_id,
+            &source,
+            &source,
+            &source,
+            Some(&evidence.snapshot),
+        )
+        .await?;
         self.trash.trash(&source).await?;
         if source.exists() {
             return Err(FileOperationError::VerificationFailed);
@@ -1154,8 +1231,12 @@ impl LocalFileCommandAdapter {
         old_path: &Path,
         new_path: &Path,
         identity_path: &Path,
+        expected_identity: Option<&FileSnapshot>,
     ) -> Result<(), FileOperationError> {
         let snapshot = self.mutation.snapshot(identity_path).await?;
+        if expected_identity.is_some_and(|expected| *expected != snapshot) {
+            return Err(FileOperationError::IdentityChanged);
+        }
         let file = snapshot
             .file_id
             .and_then(|file| u64::try_from(file).ok())
@@ -1399,7 +1480,7 @@ impl LocalFileCommandPort for LocalFileCommandAdapter {
         }
         let outcome = match item.route {
             PreparedRoute::RenameGroup => {
-                self.execute_rename_group(request.batch_id, request.item.entity_id)
+                self.execute_rename_group(request.batch_id, request.item.entity_id, &cancellation)
                     .await
             }
             PreparedRoute::RenameConflict => match self
@@ -1631,18 +1712,28 @@ impl UndoFilePort for LocalFileCommandAdapter {
                     &source,
                     &destination,
                     &source,
+                    item.source_evidence.as_ref(),
                 )
                 .await?;
             }
-            let result = RenameExecutor::new(
+            let executor = RenameExecutor::new(
                 &root,
                 Arc::clone(&self.journal),
                 Arc::clone(&self.mutation),
                 Arc::clone(&self.clock),
                 Arc::clone(&self.commits),
-            )?
-            .execute(&rename_plan)
-            .await;
+            )?;
+            let expected = atomic
+                .iter()
+                .filter_map(|item| {
+                    item.source_evidence
+                        .clone()
+                        .map(|evidence| (item.plan.operation_id, evidence))
+                })
+                .collect::<HashMap<_, _>>();
+            let result = executor
+                .execute_with_expectations(&rename_plan, &expected)
+                .await;
             if let Some(message) = result.items.iter().find_map(|item| match &item.status {
                 RenameItemStatus::Completed => None,
                 RenameItemStatus::Failed(message) => Some(message.clone()),

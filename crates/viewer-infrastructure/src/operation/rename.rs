@@ -52,6 +52,27 @@ impl RenameStage {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RenamePlan {
     pub stages: Vec<RenameStage>,
+    groups: Vec<Vec<OperationId>>,
+}
+
+impl RenamePlan {
+    pub(crate) fn independent_components(&self) -> Vec<Self> {
+        self.groups
+            .iter()
+            .map(|group| {
+                let operations = group.iter().copied().collect::<HashSet<_>>();
+                Self {
+                    stages: self
+                        .stages
+                        .iter()
+                        .filter(|stage| operations.contains(&stage.operation_id()))
+                        .cloned()
+                        .collect(),
+                    groups: vec![group.clone()],
+                }
+            })
+            .collect()
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -398,7 +419,10 @@ impl RenamePlanner {
             });
         }
 
-        Ok(RenamePlan { stages })
+        Ok(RenamePlan {
+            stages,
+            groups: rename_groups(&validated),
+        })
     }
 }
 
@@ -455,7 +479,18 @@ impl RenameExecutor {
     }
 
     pub async fn execute(&self, plan: &RenamePlan) -> RenameBatchResult {
-        match self.execute_interruptible(plan).await {
+        self.execute_with_expectations(plan, &HashMap::new()).await
+    }
+
+    pub async fn execute_with_expectations(
+        &self,
+        plan: &RenamePlan,
+        expected: &HashMap<OperationId, FileSnapshot>,
+    ) -> RenameBatchResult {
+        match self
+            .execute_interruptible_with_expectations(plan, expected)
+            .await
+        {
             Ok(result) => result,
             Err(error) => RenameBatchResult {
                 items: vec![RenameItemResult {
@@ -469,6 +504,15 @@ impl RenameExecutor {
     pub async fn execute_interruptible(
         &self,
         plan: &RenamePlan,
+    ) -> Result<RenameBatchResult, RenameExecutionError> {
+        self.execute_interruptible_with_expectations(plan, &HashMap::new())
+            .await
+    }
+
+    async fn execute_interruptible_with_expectations(
+        &self,
+        plan: &RenamePlan,
+        expected: &HashMap<OperationId, FileSnapshot>,
     ) -> Result<RenameBatchResult, RenameExecutionError> {
         let mut snapshots = HashMap::new();
         let mut statuses = HashMap::new();
@@ -487,6 +531,18 @@ impl RenameExecutor {
             };
             match self.capture_identity(source).await {
                 Ok(snapshot) => {
+                    if expected
+                        .get(&operation_id)
+                        .is_some_and(|expected| *expected != snapshot.snapshot)
+                    {
+                        statuses.insert(
+                            operation_id,
+                            RenameItemStatus::Failed(
+                                FileOperationError::IdentityChanged.to_string(),
+                            ),
+                        );
+                        continue;
+                    }
                     let temporary = plan.stages.iter().find_map(|candidate| match candidate {
                         RenameStage::ToTemporary {
                             operation_id: candidate_id,
@@ -852,6 +908,45 @@ fn cycle_members(
         }
     }
     cycles
+}
+
+fn rename_groups(mappings: &[ValidatedMapping]) -> Vec<Vec<OperationId>> {
+    let mut visited = vec![false; mappings.len()];
+    let mut groups = Vec::new();
+    for start in 0..mappings.len() {
+        if visited[start] {
+            continue;
+        }
+        visited[start] = true;
+        let mut pending = vec![start];
+        let mut positions = Vec::new();
+        while let Some(index) = pending.pop() {
+            positions.push(index);
+            for candidate in 0..mappings.len() {
+                if visited[candidate] {
+                    continue;
+                }
+                let current = &mappings[index];
+                let other = &mappings[candidate];
+                let connected = current.source_key == other.source_key
+                    || current.source_key == other.destination_key
+                    || current.destination_key == other.source_key
+                    || current.destination_key == other.destination_key;
+                if connected {
+                    visited[candidate] = true;
+                    pending.push(candidate);
+                }
+            }
+        }
+        positions.sort_unstable();
+        groups.push(
+            positions
+                .into_iter()
+                .map(|index| mappings[index].mapping.operation_id)
+                .collect(),
+        );
+    }
+    groups
 }
 
 fn resolve_source(root: &Path, relative: &Path) -> Result<PathBuf, RenamePlanError> {

@@ -1324,6 +1324,68 @@ async fn recovery_requires_review_for_unknown_or_ambiguous_candidates() {
 }
 
 #[tokio::test]
+async fn cross_volume_recovery_never_deletes_when_source_and_destination_both_match() {
+    let project = ProjectFixture::new();
+    let contents = b"duplicated move payload";
+    let source = project.create_file("source.jpg", contents);
+    project.create_directory("exports");
+    let destination = project.create_file("exports/source.jpg", contents);
+    let batch_id = OperationId::new();
+    let item = OperationItemPlan {
+        batch_id,
+        operation_id: OperationId::new(),
+        entity_id: EntityId::new(),
+        kind: OperationKind::Move,
+        source,
+        destination: Some(destination.clone()),
+        conflict_policy: ConflictPolicy::Skip,
+    };
+    let temporary =
+        RelativePath::parse(&format!("exports/.viewer-copy-{}.part", item.operation_id)).unwrap();
+    let journal = Arc::new(OperationJournal::open(project.metadata_path()).unwrap());
+    journal
+        .begin_batch(batch_id, OperationKind::Move, 1, 1_000)
+        .unwrap();
+    journal.record_item(&item, 1_001).unwrap();
+    journal
+        .record_prepared_evidence(
+            item.operation_id,
+            Some(&temporary),
+            contents.len() as u64,
+            *blake3::hash(contents).as_bytes(),
+            1_002,
+        )
+        .unwrap();
+    let recovery = RecoveryService::new(
+        project.root(),
+        Arc::clone(&journal),
+        Arc::new(LocalFileMutation),
+        durable_trash(&project),
+        Arc::new(FixedClock::new(9_000)),
+        operation_commits(),
+    )
+    .unwrap();
+
+    let report = recovery.recover_project().await.unwrap();
+
+    assert!(report.actions.is_empty());
+    assert_eq!(report.needs_user_review.len(), 1);
+    assert_eq!(report.needs_user_review[0].operation_id, item.operation_id);
+    assert_eq!(
+        fs::read(project.root().join("source.jpg")).unwrap(),
+        contents
+    );
+    assert_eq!(
+        fs::read(project.root().join("exports/source.jpg")).unwrap(),
+        contents
+    );
+    assert_eq!(
+        journal.item(item.operation_id).unwrap().unwrap().state,
+        OperationState::Prepared
+    );
+}
+
+#[tokio::test]
 async fn recovery_never_deletes_a_non_deterministic_registered_temporary_path() {
     let project = ProjectFixture::new();
     let source = project.create_file("source.jpg", b"source");

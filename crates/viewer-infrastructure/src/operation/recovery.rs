@@ -70,7 +70,7 @@ pub struct RecoveryService {
     project_root: PathBuf,
     journal: Arc<OperationJournal>,
     mutation: Arc<dyn FileMutationPort>,
-    trash: Arc<dyn TrashPort>,
+    _trash: Arc<dyn TrashPort>,
     clock: Arc<dyn ClockPort>,
     commits: Arc<dyn OperationCommitPort>,
 }
@@ -95,7 +95,7 @@ impl RecoveryService {
             project_root,
             journal,
             mutation,
-            trash,
+            _trash: trash,
             clock,
             commits,
         })
@@ -430,14 +430,9 @@ impl RecoveryService {
             if destination_status == CandidateStatus::Match
                 && temporary_status == CandidateStatus::Missing
             {
-                self.trash.trash(&destination).await?;
-                if destination.exists() {
-                    return Ok(RecoveryOutcome::Review(
-                        "cross-volume rollback could not verify destination removal".into(),
-                    ));
-                }
-                self.mark_failed(item, "rolled_back_cross_volume_move_copy")?;
-                return Ok(RecoveryOutcome::Action(RecoveryActionKind::MarkedFailed));
+                return Ok(RecoveryOutcome::Review(
+                    "cross-volume move evidence matches both source and destination".into(),
+                ));
             }
             if destination_status == CandidateStatus::Missing {
                 self.mutation

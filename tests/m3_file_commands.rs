@@ -918,6 +918,92 @@ struct RewriteSourceAfterCopy {
     delegate: LocalFileMutation,
 }
 
+struct SwapSourceBeforeMutationSnapshot {
+    delegate: LocalFileMutation,
+    swap: Mutex<Option<(PathBuf, PathBuf)>>,
+}
+
+#[async_trait]
+impl FileMutationPort for SwapSourceBeforeMutationSnapshot {
+    async fn snapshot(&self, path: &Path) -> Result<FileSnapshot, FileOperationError> {
+        let paths = {
+            let mut swap = self.swap.lock().unwrap();
+            if swap
+                .as_ref()
+                .is_some_and(|(source, _)| source.as_path() == path)
+            {
+                swap.take()
+            } else {
+                None
+            }
+        };
+        if let Some((source, parked_original)) = paths {
+            fs::rename(&source, &parked_original)
+                .map_err(|error| FileOperationError::io("park selected source", &source, &error))?;
+            fs::write(&source, b"replacement").map_err(|error| {
+                FileOperationError::io("install replacement source", &source, &error)
+            })?;
+        }
+        self.delegate.snapshot(path).await
+    }
+
+    async fn copy_and_hash(
+        &self,
+        source: &Path,
+        temporary: &Path,
+    ) -> Result<(u64, [u8; 32]), FileOperationError> {
+        self.delegate.copy_and_hash(source, temporary).await
+    }
+
+    async fn rename(&self, source: &Path, destination: &Path) -> Result<(), FileOperationError> {
+        self.delegate.rename(source, destination).await
+    }
+
+    async fn remove_registered_temporary(&self, path: &Path) -> Result<(), FileOperationError> {
+        self.delegate.remove_registered_temporary(path).await
+    }
+}
+
+#[tokio::test]
+async fn rename_rejects_a_source_entity_swapped_after_dispatch_validation() {
+    let mutation = Arc::new(SwapSourceBeforeMutationSnapshot {
+        delegate: LocalFileMutation,
+        swap: Mutex::new(None),
+    });
+    let fixture = Fixture::with_mutation(false, mutation.clone());
+    fixture.directory("products");
+    let source = fixture.file("products/source.png", b"selected");
+    let source_path = fixture.project.root().join("products/source.png");
+    let canonical_source = fs::canonicalize(&source_path).unwrap();
+    let parked_original = canonical_source
+        .parent()
+        .unwrap()
+        .join("original-selected.png");
+    *mutation.swap.lock().unwrap() = Some((canonical_source, parked_original.clone()));
+    let command = fixture.command(
+        FileCommandKind::Rename,
+        vec![FileCommandItem {
+            entity_id: source,
+            action: FileCommandAction::Rename {
+                proposed_name: "renamed.png".into(),
+                edit_extension: true,
+            },
+        }],
+    );
+    let preflight = fixture.service.preflight(command).await.unwrap();
+
+    let summary = fixture.service.execute(preflight, &[], None).await.unwrap();
+
+    assert_eq!(summary.failed(), 1);
+    assert_eq!(
+        summary.result_page(0, 1).items[0].code,
+        BatchResultCode::VerificationFailed
+    );
+    assert_eq!(fs::read(&source_path).unwrap(), b"replacement");
+    assert_eq!(fs::read(&parked_original).unwrap(), b"selected");
+    assert!(!fixture.project.root().join("products/renamed.png").exists());
+}
+
 #[async_trait]
 impl FileMutationPort for RewriteSourceAfterCopy {
     async fn snapshot(&self, path: &Path) -> Result<FileSnapshot, FileOperationError> {
@@ -1089,6 +1175,106 @@ async fn rename_replace_revalidates_destination_after_staging_source() {
 struct BlockingCopy {
     delegate: LocalFileMutation,
     started: Notify,
+}
+
+struct BlockingFirstRename {
+    delegate: LocalFileMutation,
+    started: Notify,
+    release: Notify,
+    rename_count: Mutex<usize>,
+}
+
+#[async_trait]
+impl FileMutationPort for BlockingFirstRename {
+    async fn snapshot(&self, path: &Path) -> Result<FileSnapshot, FileOperationError> {
+        self.delegate.snapshot(path).await
+    }
+
+    async fn copy_and_hash(
+        &self,
+        source: &Path,
+        temporary: &Path,
+    ) -> Result<(u64, [u8; 32]), FileOperationError> {
+        self.delegate.copy_and_hash(source, temporary).await
+    }
+
+    async fn rename(&self, source: &Path, destination: &Path) -> Result<(), FileOperationError> {
+        let first = {
+            let mut count = self.rename_count.lock().unwrap();
+            *count += 1;
+            *count == 1
+        };
+        if first {
+            self.started.notify_one();
+            self.release.notified().await;
+        }
+        self.delegate.rename(source, destination).await
+    }
+
+    async fn remove_registered_temporary(&self, path: &Path) -> Result<(), FileOperationError> {
+        self.delegate.remove_registered_temporary(path).await
+    }
+}
+
+#[tokio::test]
+async fn rename_cancellation_stops_not_started_independent_components() {
+    let mutation = Arc::new(BlockingFirstRename {
+        delegate: LocalFileMutation,
+        started: Notify::new(),
+        release: Notify::new(),
+        rename_count: Mutex::new(0),
+    });
+    let fixture = Fixture::with_mutation(false, mutation.clone());
+    fixture.directory("products");
+    let first = fixture.file("products/first.png", b"first");
+    let second = fixture.file("products/second.png", b"second");
+    let command = fixture.command(
+        FileCommandKind::Rename,
+        vec![
+            FileCommandItem {
+                entity_id: first,
+                action: FileCommandAction::Rename {
+                    proposed_name: "first-renamed.png".into(),
+                    edit_extension: true,
+                },
+            },
+            FileCommandItem {
+                entity_id: second,
+                action: FileCommandAction::Rename {
+                    proposed_name: "second-renamed.png".into(),
+                    edit_extension: true,
+                },
+            },
+        ],
+    );
+    let preflight = fixture.service.preflight(command).await.unwrap();
+    let batch_id = preflight.batch_id();
+    let service = Arc::clone(&fixture.service);
+    let execution = tokio::spawn(async move { service.execute(preflight, &[], None).await });
+    mutation.started.notified().await;
+
+    assert!(fixture.service.cancel_pending(batch_id));
+    mutation.release.notify_one();
+    let summary = execution.await.unwrap().unwrap();
+
+    assert_eq!((summary.completed(), summary.cancelled()), (1, 1));
+    assert_eq!(
+        fs::read(fixture.project.root().join("products/first-renamed.png")).unwrap(),
+        b"first"
+    );
+    assert_eq!(
+        fs::read(fixture.project.root().join("products/second.png")).unwrap(),
+        b"second"
+    );
+    assert!(
+        !fixture
+            .project
+            .root()
+            .join("products/second-renamed.png")
+            .exists(),
+        "cancellation must be observed between independent rename components"
+    );
+    assert_eq!(*mutation.rename_count.lock().unwrap(), 1);
 }
 
 #[async_trait]

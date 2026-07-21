@@ -844,6 +844,18 @@ impl OperationProjectionPort for SessionIndex {
             if !node_matches(&transaction, &mapping.source)? {
                 return Err(OperationProjectionError::Stale);
             }
+            if mapping.destination.entity_id != mapping.source.entity_id {
+                let destination_exists = transaction
+                    .query_row(
+                        "SELECT EXISTS(SELECT 1 FROM nodes WHERE entity_id = ?1)",
+                        [mapping.destination.entity_id.to_string()],
+                        |row| row.get::<_, bool>(0),
+                    )
+                    .map_err(|_| OperationProjectionError::Unavailable)?;
+                if destination_exists {
+                    return Err(OperationProjectionError::Conflict);
+                }
+            }
         }
 
         let existing = projection_nodes(&transaction)?;
@@ -883,13 +895,19 @@ impl OperationProjectionPort for SessionIndex {
             .map(|row| (row.path, (row.entity_id, row.kind)))
             .collect::<HashMap<_, _>>();
         for row in &affected {
-            future_nodes.insert(row.new_path.clone(), (row.entity_id.clone(), row.kind));
+            let mapping = &moves[row.mapping_index];
+            let entity_id = if row.old_path == mapping.source.relative_path.as_str() {
+                mapping.destination.entity_id.to_string()
+            } else {
+                row.entity_id.clone()
+            };
+            future_nodes.insert(row.new_path.clone(), (entity_id, row.kind));
         }
         let mut root_parents = HashMap::with_capacity(moves.len());
         for (index, mapping) in moves.iter().enumerate() {
             root_parents.insert(
                 index,
-                projection_parent(mapping.destination.as_str(), &future_nodes)?,
+                projection_parent(mapping.destination.relative_path.as_str(), &future_nodes)?,
             );
         }
 
@@ -912,16 +930,23 @@ impl OperationProjectionPort for SessionIndex {
             .then(|| root_parents[&row.mapping_index].clone())
             .flatten();
             if row.old_path == moves[row.mapping_index].source.relative_path.as_str() {
+                let destination = &moves[row.mapping_index].destination;
+                let size = i64::try_from(destination.size)
+                    .map_err(|_| OperationProjectionError::InvalidInput)?;
                 transaction
                     .execute(
                         "UPDATE nodes
-                         SET parent_entity_id = ?2, relative_path = ?3, name = ?4
+                         SET entity_id = ?2, parent_entity_id = ?3, relative_path = ?4,
+                             name = ?5, size = ?6, modified_ns = ?7
                          WHERE entity_id = ?1",
                         params![
                             &row.entity_id,
+                            destination.entity_id.to_string(),
                             parent_id,
                             &row.new_path,
                             projection_name(&row.new_path),
+                            size,
+                            destination.modified_ns.to_string(),
                         ],
                     )
                     .map_err(|_| OperationProjectionError::Unavailable)?;
@@ -939,8 +964,16 @@ impl OperationProjectionPort for SessionIndex {
             }
             transaction
                 .execute(
-                    "UPDATE text_fts SET relative_path = ?2 WHERE entity_id = ?1",
-                    params![&row.entity_id, &row.new_path],
+                    "UPDATE text_fts SET entity_id = ?2, relative_path = ?3 WHERE entity_id = ?1",
+                    params![
+                        &row.entity_id,
+                        if row.old_path == moves[row.mapping_index].source.relative_path.as_str() {
+                            moves[row.mapping_index].destination.entity_id.to_string()
+                        } else {
+                            row.entity_id.clone()
+                        },
+                        &row.new_path,
+                    ],
                 )
                 .map_err(|_| OperationProjectionError::Unavailable)?;
         }
@@ -1088,17 +1121,23 @@ fn validate_move_projections(
         return Err(OperationProjectionError::InvalidInput);
     }
     let mut entities = HashSet::with_capacity(moves.len());
+    let mut destination_entities = HashSet::with_capacity(moves.len());
     let mut sources = HashSet::with_capacity(moves.len());
     let mut destinations = HashSet::with_capacity(moves.len());
     for mapping in moves {
-        if mapping.source.relative_path == mapping.destination
+        if mapping.source.relative_path == mapping.destination.relative_path
+            || mapping.source.kind != mapping.destination.kind
+            || mapping.source.size != mapping.destination.size
+            || (mapping.source.kind == FileKind::Directory
+                && mapping.source.entity_id != mapping.destination.entity_id)
             || !entities.insert(mapping.source.entity_id)
+            || !destination_entities.insert(mapping.destination.entity_id)
             || !sources.insert(projection_path_key(
                 mapping.source.relative_path.as_str(),
                 case_sensitive,
             ))
             || projection_is_descendant(
-                mapping.destination.as_str(),
+                mapping.destination.relative_path.as_str(),
                 mapping.source.relative_path.as_str(),
                 case_sensitive,
             )
@@ -1106,7 +1145,7 @@ fn validate_move_projections(
             return Err(OperationProjectionError::InvalidInput);
         }
         if !destinations.insert(projection_path_key(
-            mapping.destination.as_str(),
+            mapping.destination.relative_path.as_str(),
             case_sensitive,
         )) {
             return Err(OperationProjectionError::Conflict);
@@ -1162,11 +1201,16 @@ fn validate_trash_projections(sources: &[FileNode]) -> Result<(), OperationProje
 fn projected_session_path(path: &str, moves: &[FileMoveProjection]) -> Option<(usize, String)> {
     moves.iter().enumerate().find_map(|(index, mapping)| {
         if path == mapping.source.relative_path.as_str() {
-            return Some((index, mapping.destination.as_str().to_owned()));
+            return Some((index, mapping.destination.relative_path.as_str().to_owned()));
         }
         path.strip_prefix(mapping.source.relative_path.as_str())
             .and_then(|suffix| suffix.strip_prefix('/'))
-            .map(|suffix| (index, format!("{}/{suffix}", mapping.destination.as_str())))
+            .map(|suffix| {
+                (
+                    index,
+                    format!("{}/{suffix}", mapping.destination.relative_path.as_str()),
+                )
+            })
     })
 }
 

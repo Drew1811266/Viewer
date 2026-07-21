@@ -8,13 +8,14 @@ use viewer_application::{
 use viewer_domain::{SessionId, search::Generation};
 use viewer_infrastructure::scan::{
     reconcile::{ExpectedChangeLedger, ReconcilePlanner},
-    reconcile_service::ProjectReconciler,
+    reconcile_service::{ProjectReconcileError, ProjectReconciler},
 };
 
 const MAX_QUEUED_RECONCILES: usize = 64;
 
 pub struct WatcherRuntime {
     subscription: Option<Box<dyn WatchSubscription>>,
+    stop: Option<watch::Sender<bool>>,
     task: Option<JoinHandle<()>>,
 }
 
@@ -32,6 +33,7 @@ impl WatcherRuntime {
         mut scan_ready: watch::Receiver<bool>,
     ) -> Result<Self, WatcherError> {
         let (sink, mut incoming) = tokio::sync::mpsc::channel(64);
+        let (stop, mut stop_requested) = watch::channel(false);
         let subscription = watcher.watch(&root, sink)?;
         let watched_root = root.clone();
         let mut planner =
@@ -50,6 +52,9 @@ impl WatcherRuntime {
             tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
             loop {
                 tokio::select! {
+                    changed = stop_requested.changed() => {
+                        if changed.is_err() || *stop_requested.borrow() { break; }
+                    }
                     batch = incoming.recv() => {
                         let Some(batch) = batch else { break };
                         let now = u64::try_from(clock.unix_millis()).unwrap_or(0);
@@ -84,9 +89,18 @@ impl WatcherRuntime {
                 }
                 if ready {
                     while let Some(request) = queued.pop_front() {
+                        if *stop_requested.borrow() {
+                            return;
+                        }
                         let reason = request.reason;
-                        let summary = reconciler.reconcile(request).await.unwrap_or(
-                            viewer_application::watcher::ReconcileSummary {
+                        let result = reconciler.reconcile(request).await;
+                        if *stop_requested.borrow() {
+                            return;
+                        }
+                        let summary = match result {
+                            Ok(summary) => summary,
+                            Err(ProjectReconcileError::StaleSession) => continue,
+                            Err(_) => viewer_application::watcher::ReconcileSummary {
                                 reason,
                                 added: 0,
                                 removed: 0,
@@ -95,7 +109,7 @@ impl WatcherRuntime {
                                 marker_paths_moved: 0,
                                 failed: 1,
                             },
-                        );
+                        };
                         events.emit_project_changed(session_id, generation, summary);
                     }
                 }
@@ -103,14 +117,17 @@ impl WatcherRuntime {
         });
         Ok(Self {
             subscription: Some(subscription),
+            stop: Some(stop),
             task: Some(task),
         })
     }
 
     pub async fn stop(&mut self) {
         self.subscription.take();
+        if let Some(stop) = self.stop.take() {
+            stop.send_replace(true);
+        }
         if let Some(task) = self.task.take() {
-            task.abort();
             let _ = task.await;
         }
     }
@@ -134,4 +151,242 @@ fn enqueue_reconcile(
         roots: vec![root.to_path_buf()],
         reason: viewer_application::watcher::ReconcileReason::Overflow,
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::{
+        fs,
+        path::Path,
+        sync::{
+            Condvar, Mutex,
+            atomic::{AtomicBool, AtomicI64, Ordering},
+        },
+    };
+    use viewer_application::{
+        ProjectAccess, WatcherSink,
+        metadata::{
+            FilePathMove, MarkerChange, MarkerPatch, MarkerRestore, MarkerStoreError, MarkerTarget,
+            PortableMarker, PortableMetadataPort,
+        },
+        scheduler::TaskCoordinator,
+        watcher::{ReconcileSummary, WatcherEvent},
+    };
+    use viewer_domain::{
+        EntityId, RelativePath,
+        file::{FileKind, FileNode},
+    };
+    use viewer_infrastructure::{
+        portable::{PortableMarkerStore, PortableProjectMetadata},
+        search::index::SessionIndex,
+    };
+
+    #[derive(Default)]
+    struct TestWatcher {
+        sink: Mutex<Option<WatcherSink>>,
+    }
+
+    struct TestSubscription;
+    impl WatchSubscription for TestSubscription {}
+
+    impl WatcherPort for TestWatcher {
+        fn watch(
+            &self,
+            _root: &Path,
+            sink: WatcherSink,
+        ) -> Result<Box<dyn WatchSubscription>, WatcherError> {
+            *self.sink.lock().unwrap() = Some(sink);
+            Ok(Box::new(TestSubscription))
+        }
+    }
+
+    #[derive(Default)]
+    struct AdjustableClock(AtomicI64);
+
+    impl ClockPort for AdjustableClock {
+        fn unix_millis(&self) -> i64 {
+            self.0.load(Ordering::Acquire)
+        }
+    }
+
+    struct BlockingMarkers {
+        delegate: Arc<PortableMarkerStore>,
+        started: tokio::sync::Notify,
+        release: (Mutex<bool>, Condvar),
+        finished: AtomicBool,
+    }
+
+    impl BlockingMarkers {
+        fn release(&self) {
+            let mut released = self.release.0.lock().unwrap();
+            *released = true;
+            self.release.1.notify_all();
+        }
+    }
+
+    impl PortableMetadataPort for BlockingMarkers {
+        fn markers_for_paths(
+            &self,
+            paths: &[RelativePath],
+        ) -> Result<Vec<PortableMarker>, MarkerStoreError> {
+            self.delegate.markers_for_paths(paths)
+        }
+
+        fn apply_batch(
+            &self,
+            targets: &[MarkerTarget],
+            patch: MarkerPatch,
+            updated_at_ms: i64,
+        ) -> Result<Vec<MarkerChange>, MarkerStoreError> {
+            self.delegate.apply_batch(targets, patch, updated_at_ms)
+        }
+
+        fn restore_batch(
+            &self,
+            restores: &[MarkerRestore],
+            updated_at_ms: i64,
+        ) -> Result<Vec<MarkerChange>, MarkerStoreError> {
+            self.delegate.restore_batch(restores, updated_at_ms)
+        }
+
+        fn move_paths(
+            &self,
+            moves: &[FilePathMove],
+            case_sensitive: bool,
+            updated_at_ms: i64,
+        ) -> Result<usize, MarkerStoreError> {
+            self.started.notify_one();
+            let mut released = self.release.0.lock().unwrap();
+            while !*released {
+                released = self.release.1.wait(released).unwrap();
+            }
+            drop(released);
+            let result = self
+                .delegate
+                .move_paths(moves, case_sensitive, updated_at_ms);
+            self.finished.store(true, Ordering::Release);
+            result
+        }
+    }
+
+    #[derive(Default)]
+    struct RecordingEvents(Mutex<Vec<ReconcileSummary>>);
+
+    impl DesktopEventSink for RecordingEvents {
+        fn emit_scan(&self, _event: crate::dto::ScanEventDto) {}
+
+        fn emit_project_changed(
+            &self,
+            _session_id: SessionId,
+            _generation: Generation,
+            summary: ReconcileSummary,
+        ) {
+            self.0.lock().unwrap().push(summary);
+        }
+    }
+
+    fn filesystem_node(root: &Path, relative: &str) -> FileNode {
+        use std::os::unix::fs::MetadataExt;
+        let metadata = fs::symlink_metadata(root.join(relative)).unwrap();
+        FileNode {
+            entity_id: EntityId::from_u128(
+                (u128::from(metadata.dev()) << 64) | u128::from(metadata.ino()),
+            ),
+            relative_path: RelativePath::parse(relative).unwrap(),
+            kind: FileKind::Text,
+            size: metadata.len(),
+            modified_ns: i128::from(metadata.mtime()) * 1_000_000_000
+                + i128::from(metadata.mtime_nsec()),
+        }
+    }
+
+    #[tokio::test]
+    async fn stop_drains_inflight_marker_work_and_rejects_stale_publication() {
+        let project = tempfile::tempdir().unwrap();
+        fs::write(project.path().join("before.txt"), b"marker move").unwrap();
+        let portable =
+            PortableProjectMetadata::open(project.path(), ProjectAccess::ReadWrite, 1).unwrap();
+        let database = portable.database_path().unwrap().to_path_buf();
+        drop(portable);
+        let delegate = Arc::new(PortableMarkerStore::open(&database, true).unwrap());
+        let markers = Arc::new(BlockingMarkers {
+            delegate,
+            started: tokio::sync::Notify::new(),
+            release: (Mutex::new(false), Condvar::new()),
+            finished: AtomicBool::new(false),
+        });
+        let index =
+            Arc::new(SessionIndex::open(project.path().join(".viewer/session.sqlite")).unwrap());
+        index
+            .upsert_batch(&[filesystem_node(project.path(), "before.txt")])
+            .unwrap();
+        let coordinator = Arc::new(TaskCoordinator::default());
+        let session_id = SessionId::new();
+        let generation = coordinator.begin_session(session_id);
+        let clock = Arc::new(AdjustableClock::default());
+        let reconciler = Arc::new(
+            ProjectReconciler::new(
+                project.path(),
+                Arc::clone(&coordinator),
+                index,
+                Some(markers.clone() as Arc<dyn PortableMetadataPort>),
+                clock.clone(),
+                Arc::new(tokio::sync::Mutex::new(())),
+                true,
+            )
+            .unwrap(),
+        );
+        let watcher = Arc::new(TestWatcher::default());
+        let events = Arc::new(RecordingEvents::default());
+        let (_scan_ready, scan_ready_rx) = watch::channel(true);
+        let mut runtime = WatcherRuntime::start(
+            project.path().to_path_buf(),
+            session_id,
+            generation,
+            watcher.clone(),
+            ExpectedChangeLedger::default(),
+            reconciler,
+            clock.clone(),
+            events.clone(),
+            scan_ready_rx,
+        )
+        .unwrap();
+        let old = fs::canonicalize(project.path().join("before.txt")).unwrap();
+        let new = project.path().join("after.txt");
+        fs::rename(&old, &new).unwrap();
+        watcher
+            .sink
+            .lock()
+            .unwrap()
+            .as_ref()
+            .unwrap()
+            .send(vec![WatcherEvent::renamed(old, new)])
+            .await
+            .unwrap();
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        clock.0.store(1_000, Ordering::Release);
+        tokio::time::timeout(Duration::from_secs(2), markers.started.notified())
+            .await
+            .expect("reconcile should reach the blocking marker commit");
+
+        coordinator.cancel_session(session_id);
+        let stopping = tokio::spawn(async move { runtime.stop().await });
+        tokio::task::yield_now().await;
+        let stopped_before_drain = stopping.is_finished();
+        let marker_finished_before_release = markers.finished.load(Ordering::Acquire);
+        markers.release();
+        tokio::time::timeout(Duration::from_secs(2), stopping)
+            .await
+            .expect("watcher stop should finish after the marker worker drains")
+            .unwrap();
+
+        assert!(
+            !stopped_before_drain,
+            "stop must wait for an in-flight blocking marker commit"
+        );
+        assert!(!marker_finished_before_release);
+        assert!(markers.finished.load(Ordering::Acquire));
+        assert!(events.0.lock().unwrap().is_empty());
+    }
 }

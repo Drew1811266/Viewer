@@ -30,7 +30,7 @@ pub struct FileCopyProjection {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct FileMoveProjection {
     pub source: FileNode,
-    pub destination: RelativePath,
+    pub destination: FileNode,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]

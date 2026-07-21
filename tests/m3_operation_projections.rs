@@ -283,11 +283,17 @@ fn marker_and_session_path_swaps_stage_away_from_unique_constraints() {
             &[
                 FileMoveProjection {
                     source: first.clone(),
-                    destination: path("b.png"),
+                    destination: FileNode {
+                        relative_path: path("b.png"),
+                        ..first.clone()
+                    },
                 },
                 FileMoveProjection {
                     source: second.clone(),
-                    destination: path("a.png"),
+                    destination: FileNode {
+                        relative_path: path("a.png"),
+                        ..second.clone()
+                    },
                 },
             ],
             true,
@@ -315,8 +321,11 @@ fn marker_and_session_path_swaps_stage_away_from_unique_constraints() {
     index
         .apply_move(
             &[FileMoveProjection {
-                source: projected_second.node,
-                destination: path("A.png"),
+                source: projected_second.node.clone(),
+                destination: FileNode {
+                    relative_path: path("A.png"),
+                    ..projected_second.node
+                },
             }],
             false,
         )
@@ -387,11 +396,17 @@ fn session_subtree_move_preserves_entities_markers_derived_values_and_fts() {
             &[
                 FileMoveProjection {
                     source: image.clone(),
-                    destination: path("archive/collision"),
+                    destination: FileNode {
+                        relative_path: path("archive/collision"),
+                        ..image.clone()
+                    },
                 },
                 FileMoveProjection {
                     source: text.clone(),
-                    destination: path("archive/COLLISION"),
+                    destination: FileNode {
+                        relative_path: path("archive/COLLISION"),
+                        ..text.clone()
+                    },
                 },
             ],
             false,
@@ -421,7 +436,10 @@ fn session_subtree_move_preserves_entities_markers_derived_values_and_fts() {
         .apply_move(
             &[FileMoveProjection {
                 source: source.clone(),
-                destination: path("archive/id-1"),
+                destination: FileNode {
+                    relative_path: path("archive/id-1"),
+                    ..source.clone()
+                },
             }],
             false,
         )
@@ -471,6 +489,57 @@ fn session_subtree_move_preserves_entities_markers_derived_values_and_fts() {
         )
         .unwrap();
     assert_eq!(fts_path, "archive/id-1/prompt.md");
+}
+
+#[test]
+fn identity_changing_move_rekeys_the_session_node_and_search_projection() {
+    let directory = TempDir::new().unwrap();
+    let database = directory.path().join("session.sqlite");
+    let index = SessionIndex::open(&database).unwrap();
+    let source = node(EntityId::new(), "source.txt", FileKind::Text);
+    let destination = FileNode {
+        entity_id: EntityId::new(),
+        relative_path: path("archive.txt"),
+        modified_ns: 11,
+        ..source.clone()
+    };
+    index.upsert_batch(std::slice::from_ref(&source)).unwrap();
+    index
+        .replace_text(
+            source.entity_id,
+            &source.relative_path,
+            &TextStatus::Indexed("identity-aware search body".into()),
+        )
+        .unwrap();
+
+    index
+        .apply_move(
+            &[FileMoveProjection {
+                source: source.clone(),
+                destination: destination.clone(),
+            }],
+            true,
+        )
+        .unwrap();
+
+    assert!(index.indexed_node(source.entity_id).unwrap().is_none());
+    let projected = index
+        .indexed_node(destination.entity_id)
+        .unwrap()
+        .expect("the destination filesystem identity must own the moved row");
+    assert_eq!(projected.node, destination);
+    let fts: (String, String) = Connection::open(database)
+        .unwrap()
+        .query_row(
+            "SELECT relative_path, body FROM text_fts WHERE entity_id = ?1",
+            [projected.node.entity_id.to_string()],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!(
+        fts,
+        ("archive.txt".into(), "identity-aware search body".into())
+    );
 }
 
 #[test]

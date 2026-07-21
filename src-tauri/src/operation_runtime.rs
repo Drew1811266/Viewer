@@ -631,16 +631,17 @@ impl OperationCommitPort for DesktopOperationCommitPort {
         let case_sensitive = self.case_sensitive()?;
         match commit.kind {
             OperationKind::Rename | OperationKind::Move => {
-                let destination = commit
+                let destination_path = commit
                     .destination
                     .clone()
                     .ok_or_else(|| index_commit_error("destination_missing"))?;
+                let destination = self.destination_node(&destination_path, source.kind)?;
                 let (current, batch) =
                     self.journal_batch(commit.operation_id, CommitStage::Index)?;
                 let mut moves = Vec::new();
                 if let Some(blocker) = self
                     .index
-                    .node_by_relative_path(&destination)
+                    .node_by_relative_path(&destination_path)
                     .map_err(|_| index_commit_error("index_unavailable"))?
                     .filter(|blocker| blocker.entity_id != source.entity_id)
                 {
@@ -649,13 +650,17 @@ impl OperationCommitPort for DesktopOperationCommitPort {
                         .find(|item| {
                             item.operation_id != current.operation_id
                                 && item.entity_id == blocker.entity_id
-                                && item.source == destination
+                                && item.source == destination_path
                         })
                         .and_then(|item| item.temporary.clone())
                     {
+                        let temporary_destination = FileNode {
+                            relative_path: temporary,
+                            ..blocker.clone()
+                        };
                         moves.push(FileMoveProjection {
                             source: blocker,
-                            destination: temporary,
+                            destination: temporary_destination,
                         });
                     } else {
                         self.projection

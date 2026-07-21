@@ -355,13 +355,8 @@ mod tests {
         let old = fs::canonicalize(project.path().join("before.txt")).unwrap();
         let new = project.path().join("after.txt");
         fs::rename(&old, &new).unwrap();
-        watcher
-            .sink
-            .lock()
-            .unwrap()
-            .as_ref()
-            .unwrap()
-            .send(vec![WatcherEvent::renamed(old, new)])
+        let sink = watcher.sink.lock().unwrap().as_ref().unwrap().clone();
+        sink.send(vec![WatcherEvent::renamed(old, new)])
             .await
             .unwrap();
         tokio::time::sleep(Duration::from_millis(20)).await;

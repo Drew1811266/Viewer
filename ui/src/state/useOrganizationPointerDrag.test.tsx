@@ -172,6 +172,71 @@ describe('useOrganizationPointerDrag', () => {
     expect(capture.release).toHaveBeenCalledOnce()
   })
 
+  it('cancels the armed session when pointer capture throws and accepts the next start', () => {
+    const onDrop = vi.fn()
+    const { result } = renderHook(() =>
+      useOrganizationPointerDrag({
+        disabled: false,
+        resetKey: 'generation-1',
+        isDropTargetValid: () => true,
+        onDrop,
+      }),
+    )
+    const failedCapture = captureNode(7)
+    failedCapture.set.mockImplementation(() => {
+      throw new DOMException('capture unavailable')
+    })
+
+    act(() => {
+      result.current.handlePointerInput(
+        start(failedCapture, { entityIds: ['stale-entity'] }),
+      )
+      result.current.handlePointerInput({
+        type: 'move',
+        pointerId: 7,
+        clientX: 54,
+        clientY: 50,
+      })
+      result.current.handlePointerInput({
+        type: 'end',
+        pointerId: 7,
+        clientX: 54,
+        clientY: 50,
+      })
+    })
+    expect(onDrop).not.toHaveBeenCalled()
+
+    const validCapture = captureNode(8)
+    act(() => {
+      result.current.handlePointerInput(
+        start(validCapture, {
+          pointerId: 8,
+          entityIds: ['fresh-entity'],
+        }),
+      )
+      result.current.handlePointerInput({
+        type: 'move',
+        pointerId: 8,
+        clientX: 54,
+        clientY: 50,
+      })
+      result.current.handlePointerInput({
+        type: 'end',
+        pointerId: 8,
+        clientX: 54,
+        clientY: 50,
+      })
+    })
+
+    expect(validCapture.set).toHaveBeenCalledWith(8)
+    expect(onDrop).toHaveBeenCalledOnce()
+    expect(onDrop).toHaveBeenCalledWith(
+      ['fresh-entity'],
+      'folder-target',
+      'move',
+    )
+  })
+
   it('activates at exactly 4 px and resolves the closest controlled folder row', () => {
     const capture = captureNode()
     const { result } = renderHook(() =>

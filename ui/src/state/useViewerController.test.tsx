@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ViewerBridge } from '../api/viewer'
 import type {
   CloseBlockedEvent,
+  FileCommandPreflight,
   IndexProgressEvent,
   OperationProgressEvent,
   OperationStarted,
@@ -515,6 +516,64 @@ describe('useViewerController M2 coordination', () => {
       await close
     })
   })
+
+  it.each([
+    [
+      'all-ready',
+      {
+        rows: [{ entityId: 'image-1', relativePath: 'image-1.png', state: 'ready' }],
+        executable: true,
+      },
+    ],
+    [
+      'conflict',
+      {
+        rows: [
+          {
+            entityId: 'image-1',
+            relativePath: 'image-1.png',
+            state: 'conflict',
+            code: 'destination_occupied',
+          },
+        ],
+        executable: true,
+      },
+    ],
+  ] satisfies [string, FileCommandPreflight][]) (
+    'drops a late %s preflight after closing and reopening the same backend identity',
+    async (_label, response) => {
+      const viewer = bridge()
+      const pending = deferred<FileCommandPreflight>()
+      vi.mocked(viewer.preflightFileCommand).mockImplementationOnce(() => pending.promise)
+      const { result } = renderHook(() => useViewerController(viewer))
+      await act(() => result.current.openProject('/fixture/project'))
+
+      let request!: ReturnType<typeof result.current.preflightFileCommand>
+      act(() => {
+        request = result.current.preflightFileCommand('move', [
+          {
+            entityId: 'image-1',
+            action: { kind: 'move', destinationFolderId: 'folder-2' },
+          },
+        ])
+      })
+      expect(viewer.preflightFileCommand).toHaveBeenCalledOnce()
+      await act(() => result.current.closeProject())
+      await act(() => result.current.openProject('/fixture/project'))
+
+      let resolved: FileCommandPreflight | null | undefined
+      await act(async () => {
+        pending.resolve(response)
+        resolved = await request
+      })
+
+      expect(result.current.state.project).toMatchObject({
+        sessionId: 'session-1',
+        generation: 1,
+      })
+      expect(resolved).toBeNull()
+    },
+  )
 
   it('retains the complete session when close stays and clears it only after a chosen close', async () => {
     const viewer = bridge()

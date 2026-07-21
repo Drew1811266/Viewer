@@ -215,7 +215,7 @@ export function useOrganizationPointerDrag({
         try {
           input.captureNode.setPointerCapture(input.pointerId)
         } catch {
-          // Capture is an optimization; lifecycle cleanup remains idempotent without it.
+          cancel()
         }
         return
       }

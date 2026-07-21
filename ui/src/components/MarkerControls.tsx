@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import type { ReviewState, SelectionAgreement, SelectionInfo } from '../api/types'
+import { organizationShortcutIsOwned } from '../state/organizationShortcutOwnership'
 
 interface MarkerControlsProps {
   selectedCount: number
@@ -22,12 +23,11 @@ export default function MarkerControls({
   useEffect(() => {
     function shortcut(event: KeyboardEvent) {
       if (
-        disabled ||
-        shortcutsDisabled ||
+        organizationShortcutIsOwned(event, disabled || shortcutsDisabled) ||
         event.metaKey ||
         event.ctrlKey ||
         event.altKey ||
-        ownsTextInput(event.target)
+        event.shiftKey
       ) {
         return
       }
@@ -167,17 +167,6 @@ function MarkerButton({
       {text}
       {shortcut && <kbd>{shortcut}</kbd>}
     </button>
-  )
-}
-
-function ownsTextInput(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) return false
-  return (
-    target instanceof HTMLInputElement ||
-    target instanceof HTMLTextAreaElement ||
-    target instanceof HTMLSelectElement ||
-    target.isContentEditable ||
-    target.closest('[contenteditable="true"]') !== null
   )
 }
 

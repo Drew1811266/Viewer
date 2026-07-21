@@ -23,6 +23,7 @@ import TaskBar from './components/TaskBar'
 import type { TaskFeedback } from './components/TaskBar'
 import TextPreview from './components/TextPreview'
 import TrashConfirmation from './components/TrashConfirmation'
+import { organizationShortcutIsOwned } from './state/organizationShortcutOwnership'
 import { useOrganizationPointerDrag } from './state/useOrganizationPointerDrag'
 import type { OrganizationDragMode } from './state/useOrganizationPointerDrag'
 import { useViewerController } from './state/useViewerController'
@@ -149,28 +150,6 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
   const rememberDimensions = useCallback((entityId: string, width: number, height: number) => {
     setDimensions((current) => ({ ...current, [entityId]: { width, height } }))
   }, [])
-  useEffect(() => {
-    function toggleInfo(event: KeyboardEvent) {
-      const target = event.target
-      if (
-        !(
-          event.metaKey &&
-          !event.ctrlKey &&
-          !event.altKey &&
-          !event.shiftKey &&
-          event.key.toLowerCase() === 'i'
-        ) ||
-        isOrganizationShortcutTargetBlocked(target) ||
-        operationDialog !== null
-      ) {
-        return
-      }
-      event.preventDefault()
-      setInfoOpen((open) => !open)
-    }
-    window.addEventListener('keydown', toggleInfo)
-    return () => window.removeEventListener('keydown', toggleInfo)
-  }, [operationDialog])
   const scanTask = useMemo<TaskFeedback | null>(() => {
     if (state.scan === null) return null
     const published = state.scan.publishedFolders + state.scan.publishedFiles
@@ -271,6 +250,42 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
     state.workspace?.workspace === 'content' &&
     !state.search.showResults &&
     !operationBusy
+
+  useEffect(() => {
+    function toggleInfo(event: KeyboardEvent) {
+      if (
+        !(
+          event.metaKey &&
+          !event.ctrlKey &&
+          !event.altKey &&
+          !event.shiftKey &&
+          event.key.toLowerCase() === 'i'
+        ) ||
+        organizationShortcutIsOwned(
+          event,
+          operationDialog !== null ||
+            activePreview !== null ||
+            compareOpen ||
+            resultsBatchId !== null ||
+            operationBusy ||
+            state.closeBlocked !== null,
+        )
+      ) {
+        return
+      }
+      event.preventDefault()
+      setInfoOpen((open) => !open)
+    }
+    window.addEventListener('keydown', toggleInfo)
+    return () => window.removeEventListener('keydown', toggleInfo)
+  }, [
+    activePreview,
+    compareOpen,
+    operationBusy,
+    operationDialog,
+    resultsBatchId,
+    state.closeBlocked,
+  ])
 
   const exportToFinder = useCallback(
     (entityIds: string[]) => {
@@ -534,14 +549,17 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
   useEffect(() => {
     function handleOrganizationShortcut(event: KeyboardEvent) {
       if (
-        event.defaultPrevented ||
-        isOrganizationShortcutTargetBlocked(event.target) ||
-        operationDialog !== null ||
-        activePreview !== null ||
-        compareOpen ||
-        infoOpen ||
-        resultsBatchId !== null ||
-        hasTextSelection()
+        organizationShortcutIsOwned(
+          event,
+          operationDialog !== null ||
+            activePreview !== null ||
+            compareOpen ||
+            infoOpen ||
+            resultsBatchId !== null ||
+            operationBusy ||
+            state.status !== 'active' ||
+            state.closeBlocked !== null,
+        )
       ) {
         return
       }
@@ -584,6 +602,8 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
     operationDialog,
     operationBusy,
     resultsBatchId,
+    state.closeBlocked,
+    state.status,
     undoLastOperation,
   ])
 
@@ -659,7 +679,16 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
         selectedCount={state.selectedEntityIds.length}
         selectionInfo={state.selectionInfo}
         readOnly={state.project.access === 'read_only'}
-        shortcutsDisabled={compareOpen}
+        shortcutsDisabled={
+          operationBusy ||
+          state.status !== 'active' ||
+          operationDialog !== null ||
+          activePreview !== null ||
+          compareOpen ||
+          infoOpen ||
+          resultsBatchId !== null ||
+          state.closeBlocked !== null
+        }
         onSetReview={(reviewState) => void setReviewState(reviewState)}
         onToggleFavorite={() => void toggleFavorite()}
       />
@@ -951,26 +980,4 @@ function operationLabel(kind: 'rename' | 'copy' | 'move' | 'trash' | null): stri
   if (kind === 'move') return '移动文件'
   if (kind === 'trash') return '移到废纸篓'
   return '文件操作'
-}
-
-function isEditableTarget(target: EventTarget | null): boolean {
-  return (
-    target instanceof HTMLInputElement ||
-    target instanceof HTMLTextAreaElement ||
-    target instanceof HTMLSelectElement ||
-    (target instanceof HTMLElement && target.isContentEditable)
-  )
-}
-
-function isOrganizationShortcutTargetBlocked(target: EventTarget | null): boolean {
-  if (isEditableTarget(target)) return true
-  return (
-    target instanceof HTMLElement &&
-    target.closest('button, a, summary, [role="button"], [role="dialog"], [aria-modal="true"]') !== null
-  )
-}
-
-function hasTextSelection(): boolean {
-  const selection = window.getSelection()
-  return selection !== null && !selection.isCollapsed && selection.toString().length > 0
 }

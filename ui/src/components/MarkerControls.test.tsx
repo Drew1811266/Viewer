@@ -88,4 +88,66 @@ describe('MarkerControls', () => {
     expect(review).not.toHaveBeenCalled()
     expect(favorite).not.toHaveBeenCalled()
   })
+
+  it('honors shared shortcut ownership for prevented, modal, selected-text, busy, and interactive contexts', () => {
+    const review = vi.fn()
+    const favorite = vi.fn()
+    const rendered = render(
+      <>
+        <button type="button">其他操作</button>
+        <MarkerControls
+          selectedCount={1}
+          selectionInfo={mixed}
+          readOnly={false}
+          onSetReview={review}
+          onToggleFavorite={favorite}
+        />
+      </>,
+    )
+
+    const prevented = new KeyboardEvent('keydown', {
+      key: '1',
+      bubbles: true,
+      cancelable: true,
+    })
+    prevented.preventDefault()
+    window.dispatchEvent(prevented)
+    expect(review).not.toHaveBeenCalled()
+
+    const interactive = screen.getByRole('button', { name: '其他操作' })
+    interactive.focus()
+    fireEvent.keyDown(interactive, { key: '2' })
+    expect(review).not.toHaveBeenCalled()
+    interactive.blur()
+
+    const modal = document.createElement('div')
+    modal.setAttribute('aria-modal', 'true')
+    document.body.append(modal)
+    fireEvent.keyDown(window, { key: '3' })
+    expect(review).not.toHaveBeenCalled()
+    modal.remove()
+
+    const selection = vi.spyOn(window, 'getSelection').mockReturnValue({
+      isCollapsed: false,
+      toString: () => 'selected text',
+    } as Selection)
+    fireEvent.keyDown(window, { key: '0' })
+    expect(review).not.toHaveBeenCalled()
+    selection.mockRestore()
+
+    rendered.rerender(
+      <MarkerControls
+        selectedCount={1}
+        selectionInfo={mixed}
+        readOnly={false}
+        shortcutsDisabled
+        onSetReview={review}
+        onToggleFavorite={favorite}
+      />,
+    )
+    fireEvent.keyDown(window, { key: 'f' })
+
+    expect(review).not.toHaveBeenCalled()
+    expect(favorite).not.toHaveBeenCalled()
+  })
 })

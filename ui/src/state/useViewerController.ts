@@ -25,6 +25,7 @@ export function useViewerController(bridge: ViewerBridge) {
   const [state, dispatch] = useReducer(viewerReducer, initialViewerState)
   const stateRef = useRef(state)
   const projectionRequestRef = useRef(0)
+  const projectEpochRef = useRef(0)
   const searchRevisionRef = useRef(0)
   const selectionRequestRef = useRef(0)
   const requestedSnippetsRef = useRef(new Set<string>())
@@ -202,12 +203,15 @@ export function useViewerController(bridge: ViewerBridge) {
   const openProject = useCallback(
     async (path: string) => {
       if (!path || !['empty', 'error'].includes(stateRef.current.status)) return
+      const projectEpoch = ++projectEpochRef.current
       dispatch({ type: 'project_open_requested' })
       try {
         const project = await bridge.openProject(path)
+        if (projectEpoch !== projectEpochRef.current) return
         dispatch({ type: 'project_opened', project })
         await refreshProjection(project, null, '', false)
       } catch (error) {
+        if (projectEpoch !== projectEpochRef.current) return
         dispatch({ type: 'project_open_failed', message: safeUserMessage(error) })
       }
     },
@@ -215,6 +219,7 @@ export function useViewerController(bridge: ViewerBridge) {
   )
 
   const resetSessionRequests = useCallback(() => {
+    projectEpochRef.current += 1
     projectionRequestRef.current += 1
     searchRevisionRef.current += 1
     selectionRequestRef.current += 1
@@ -615,14 +620,27 @@ export function useViewerController(bridge: ViewerBridge) {
         current.project === null ||
         current.project.access === 'read_only'
       ) return null
+      const project = current.project
+      const projectEpoch = projectEpochRef.current
       try {
-        return await bridge.previewRename({
-          sessionId: current.project.sessionId,
-          generation: current.project.generation,
+        const preview = await bridge.previewRename({
+          sessionId: project.sessionId,
+          generation: project.generation,
           entityIds,
           rules,
         })
+        const latest = stateRef.current
+        if (
+          projectEpoch !== projectEpochRef.current ||
+          latest.status !== 'active' ||
+          latest.project?.sessionId !== project.sessionId ||
+          latest.project.generation !== project.generation
+        ) {
+          return null
+        }
+        return preview
       } catch (error) {
+        if (projectEpoch !== projectEpochRef.current) return null
         dispatch({ type: 'input_rejected', message: safeUserMessage(error) })
         return null
       }
@@ -638,14 +656,27 @@ export function useViewerController(bridge: ViewerBridge) {
         current.project === null ||
         current.project.access === 'read_only'
       ) return null
+      const project = current.project
+      const projectEpoch = projectEpochRef.current
       try {
-        return await bridge.preflightFileCommand({
-          sessionId: current.project.sessionId,
-          generation: current.project.generation,
+        const preflight = await bridge.preflightFileCommand({
+          sessionId: project.sessionId,
+          generation: project.generation,
           kind,
           items,
         })
+        const latest = stateRef.current
+        if (
+          projectEpoch !== projectEpochRef.current ||
+          latest.status !== 'active' ||
+          latest.project?.sessionId !== project.sessionId ||
+          latest.project.generation !== project.generation
+        ) {
+          return null
+        }
+        return preflight
       } catch (error) {
+        if (projectEpoch !== projectEpochRef.current) return null
         dispatch({ type: 'input_rejected', message: safeUserMessage(error) })
         return null
       }

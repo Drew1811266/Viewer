@@ -980,6 +980,25 @@ function organizationPointerMove(
   target: HTMLElement,
   { pointerId, altKey }: { pointerId: number; altKey: boolean },
 ) {
+  let capturedPointerId: number | null = null
+  Object.defineProperties(handle, {
+    setPointerCapture: {
+      configurable: true,
+      value: vi.fn((nextPointerId: number) => {
+        capturedPointerId = nextPointerId
+      }),
+    },
+    hasPointerCapture: {
+      configurable: true,
+      value: vi.fn((nextPointerId: number) => capturedPointerId === nextPointerId),
+    },
+    releasePointerCapture: {
+      configurable: true,
+      value: vi.fn((nextPointerId: number) => {
+        if (capturedPointerId === nextPointerId) capturedPointerId = null
+      }),
+    },
+  })
   const surface = target.closest<HTMLElement>('[data-organization-drop-surface]')!
   vi.spyOn(surface, 'getBoundingClientRect').mockReturnValue({
     left: 0,

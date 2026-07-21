@@ -149,5 +149,7 @@ describe('MarkerControls', () => {
 
     expect(review).not.toHaveBeenCalled()
     expect(favorite).not.toHaveBeenCalled()
+    expect(screen.getByRole('button', { name: '标记为保留' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: '切换收藏' })).toBeDisabled()
   })
 })

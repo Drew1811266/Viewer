@@ -235,6 +235,7 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
     operationSubmitting ||
     state.status !== 'active' ||
     state.operation.finishing ||
+    state.operation.pending ||
     (state.operation.active !== null && state.operation.active.lifecycle !== 'completed')
   const canMutateSelection =
     selectedFiles.length > 0 && state.project?.access === 'read_write' && !operationBusy
@@ -571,7 +572,7 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
         !event.shiftKey &&
         event.key.toLowerCase() === 'z'
       ) {
-        if (operationBusy) return
+        if (operationBusy || event.repeat) return
         event.preventDefault()
         void undoLastOperation()
         return
@@ -799,6 +800,7 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
                   }
                   onFinderDragStart={exportToFinder}
                   onOrganizationPointerInput={handleOrganizationPointerInput}
+                  repairSelectionId={state.contextRepair?.suggestedEntityId ?? null}
                 />
               </div>
               {compareOpen && (

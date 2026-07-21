@@ -32,6 +32,7 @@ export function useViewerController(bridge: ViewerBridge) {
   const reconcilingGenerationRef = useRef<number | null>(null)
   const activeBatchRef = useRef<string | null>(null)
   const operationRequestPendingRef = useRef(false)
+  const undoRequestPendingRef = useRef(false)
   const operationResultsRequestRef = useRef(0)
   const completedBatchesRef = useRef(new Set<string>())
   const closeRequestPendingRef = useRef(false)
@@ -226,6 +227,7 @@ export function useViewerController(bridge: ViewerBridge) {
     requestedSnippetsRef.current.clear()
     activeBatchRef.current = null
     operationRequestPendingRef.current = false
+    undoRequestPendingRef.current = false
     operationResultsRequestRef.current += 1
     completedBatchesRef.current.clear()
     desiredProjectionRef.current = {
@@ -533,12 +535,21 @@ export function useViewerController(bridge: ViewerBridge) {
   const setReviewState = useCallback(
     async (reviewState: ReviewState | null, entityIdsOverride?: string[]) => {
       const current = stateRef.current
-      const targetEntityIds = uniqueEntityIds(
+      const requestedEntityIds = uniqueEntityIds(
         entityIdsOverride ?? current.selectedEntityIds,
       )
+      const targetEntityIds = current.search.showResults
+        ? requestedEntityIds.filter((entityId) =>
+            current.search.visibleEntityIds.includes(entityId),
+          )
+        : requestedEntityIds
       if (
+        current.status !== 'active' ||
         current.project === null ||
         current.project.access === 'read_only' ||
+        operationRequestPendingRef.current ||
+        undoRequestPendingRef.current ||
+        activeBatchRef.current !== null ||
         targetEntityIds.length === 0
       ) {
         return
@@ -575,12 +586,21 @@ export function useViewerController(bridge: ViewerBridge) {
 
   const toggleFavorite = useCallback(async (entityIdsOverride?: string[]) => {
     const current = stateRef.current
-    const targetEntityIds = uniqueEntityIds(
+    const requestedEntityIds = uniqueEntityIds(
       entityIdsOverride ?? current.selectedEntityIds,
     )
+    const targetEntityIds = current.search.showResults
+      ? requestedEntityIds.filter((entityId) =>
+          current.search.visibleEntityIds.includes(entityId),
+        )
+      : requestedEntityIds
     if (
+      current.status !== 'active' ||
       current.project === null ||
       current.project.access === 'read_only' ||
+      operationRequestPendingRef.current ||
+      undoRequestPendingRef.current ||
+      activeBatchRef.current !== null ||
       targetEntityIds.length === 0
     ) {
       return
@@ -782,6 +802,7 @@ export function useViewerController(bridge: ViewerBridge) {
         current.project === null ||
         current.project.access === 'read_only' ||
         operationRequestPendingRef.current ||
+        undoRequestPendingRef.current ||
         activeBatchRef.current !== null
       ) {
         return null
@@ -899,8 +920,11 @@ export function useViewerController(bridge: ViewerBridge) {
       current.project === null ||
       current.project.access === 'read_only' ||
       operationRequestPendingRef.current ||
+      undoRequestPendingRef.current ||
       activeBatchRef.current !== null
     ) return null
+    undoRequestPendingRef.current = true
+    dispatch({ type: 'operation_request_pending', pending: true })
     try {
       const receipt = await bridge.undoLastOperation({
         sessionId: current.project.sessionId,
@@ -921,6 +945,9 @@ export function useViewerController(bridge: ViewerBridge) {
     } catch (error) {
       dispatch({ type: 'input_rejected', message: safeUserMessage(error) })
       return null
+    } finally {
+      undoRequestPendingRef.current = false
+      dispatch({ type: 'operation_request_pending', pending: false })
     }
   }, [bridge, refreshProjection])
 

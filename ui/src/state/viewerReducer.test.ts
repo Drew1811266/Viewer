@@ -211,6 +211,11 @@ describe('viewerReducer', () => {
     })
     expect(state.operation.finishing).toBe(true)
     state = viewerReducer(state, {
+      type: 'operation_progress_received',
+      progress: { ...current, lifecycle: 'running' },
+    })
+    expect(state.operation.active?.lifecycle).toBe('completed')
+    state = viewerReducer(state, {
       type: 'operation_finish_settled',
       sessionId: project.sessionId,
       generation: project.generation,
@@ -336,6 +341,16 @@ describe('viewerReducer', () => {
         },
       }),
     ).toEqual(active)
+  })
+
+  it('clears hidden folder selection whenever search context enters or changes', () => {
+    let state = viewerReducer(initialViewerState, { type: 'project_opened', project })
+    state = viewerReducer(state, { type: 'selection_changed', entityIds: ['hidden-a'] })
+    state = viewerReducer(state, { type: 'search_text_changed', text: 'needle' })
+    expect(state.selectedEntityIds).toEqual([])
+    state = viewerReducer(state, { type: 'selection_changed', entityIds: ['hidden-b'] })
+    state = viewerReducer(state, { type: 'search_page_changed', offset: 200 })
+    expect(state.selectedEntityIds).toEqual([])
   })
 })
 

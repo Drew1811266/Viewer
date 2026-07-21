@@ -19,7 +19,7 @@ export default function MarkerControls({
   onToggleFavorite,
   shortcutsDisabled = false,
 }: MarkerControlsProps) {
-  const disabled = readOnly || selectedCount === 0
+  const disabled = readOnly || selectedCount === 0 || shortcutsDisabled
   useEffect(() => {
     function shortcut(event: KeyboardEvent) {
       if (

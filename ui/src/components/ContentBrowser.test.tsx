@@ -96,6 +96,33 @@ function finishMarquee(end: [number, number]) {
 }
 
 describe('ContentBrowser', () => {
+  it('applies an external repair target to selection, active item, and range anchor', () => {
+    const selection = vi.fn()
+    const rendered = render(
+      <ContentBrowser
+        workspace={workspace(4)}
+        repairSelectionId={null}
+        onSelectionChange={selection}
+      />,
+    )
+    fireEvent.click(screen.getByRole('option', { name: '1.jpg' }))
+    rendered.rerender(
+      <ContentBrowser
+        workspace={workspace(4)}
+        repairSelectionId="image-3"
+        onSelectionChange={selection}
+      />,
+    )
+
+    expect(selectedLabels()).toEqual(['3.jpg'])
+    expect(screen.getByRole('listbox', { name: '图片文件' })).toHaveAttribute(
+      'aria-activedescendant',
+      'file-image-3',
+    )
+    fireEvent.click(screen.getByRole('option', { name: '4.jpg' }), { shiftKey: true })
+    expect(selectedLabels()).toEqual(['3.jpg', '4.jpg'])
+  })
+
   it('supports click command-toggle shift-range arrows and Space preview', () => {
     const preview = vi.fn()
     render(<ContentBrowser workspace={workspace()} onPreview={preview} />)

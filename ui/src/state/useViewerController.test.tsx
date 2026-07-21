@@ -523,6 +523,49 @@ describe('useViewerController M2 coordination', () => {
     expect(viewer.undoLastOperation).not.toHaveBeenCalled()
   })
 
+  it('admits only one undo and blocks a new file command until undo settles', async () => {
+    const viewer = bridge()
+    const undo = deferred<Awaited<ReturnType<ViewerBridge['undoLastOperation']>>>()
+    vi.mocked(viewer.undoLastOperation).mockImplementation(() => undo.promise)
+    const { result } = renderHook(() => useViewerController(viewer))
+    await act(() => result.current.openProject('/fixture/project'))
+
+    let first!: ReturnType<typeof result.current.undoLastOperation>
+    act(() => {
+      first = result.current.undoLastOperation()
+      void result.current.undoLastOperation()
+      void result.current.executeFileCommand('trash', [
+        { entityId: 'image-1', action: { kind: 'trash' } },
+      ])
+    })
+    expect(viewer.undoLastOperation).toHaveBeenCalledOnce()
+    expect(viewer.executeFileCommand).not.toHaveBeenCalled()
+    expect(result.current.state.operation.pending).toBe(true)
+
+    await act(async () => {
+      undo.resolve(null)
+      await first
+    })
+    expect(result.current.state.operation.pending).toBe(false)
+  })
+
+  it('never mutates a hidden folder selection while search results show another entity', async () => {
+    const viewer = bridge()
+    const { result } = renderHook(() => useViewerController(viewer))
+    await act(() => result.current.openProject('/fixture/project'))
+    act(() => {
+      result.current.setSelectedEntityIds(['hidden-a'])
+      result.current.setSearchText('needle')
+      result.current.setSelectedEntityIds(['hidden-a'])
+      result.current.setVisibleSearchHits(['visible-b'])
+    })
+    await act(() => result.current.setReviewState('keep'))
+    await act(() => result.current.toggleFavorite())
+
+    expect(viewer.setReviewState).not.toHaveBeenCalled()
+    expect(viewer.toggleFavorite).not.toHaveBeenCalled()
+  })
+
   it('rejects organization previews and mutations once project closing begins', async () => {
     const viewer = bridge()
     const closing = deferred<'closed'>()

@@ -23,6 +23,7 @@ interface ContentBrowserProps {
   organizationDragDisabled?: boolean
   onFinderDragStart?: (entityIds: string[]) => void
   onOrganizationPointerInput?: (input: OrganizationPointerInput) => void
+  repairSelectionId?: string | null
 }
 
 interface ThumbnailWork {
@@ -47,6 +48,7 @@ export default function ContentBrowser({
   organizationDragDisabled = false,
   onFinderDragStart,
   onOrganizationPointerInput,
+  repairSelectionId = null,
 }: ContentBrowserProps) {
   const [gridSize, setGridSize] = useState<GridSize>('medium')
   const [selected, setSelected] = useState<Set<string>>(() => new Set())
@@ -83,6 +85,15 @@ export default function ContentBrowser({
   useEffect(() => {
     marqueeSelection.current = null
   }, [allFiles])
+
+  useEffect(() => {
+    if (repairSelectionId === null || !fileById.has(repairSelectionId)) return
+    const repaired = new Set([repairSelectionId])
+    setSelected(repaired)
+    setActiveId(repairSelectionId)
+    anchorId.current = repairSelectionId
+    onSelectionChange?.(allFiles.filter((file) => repaired.has(file.entityId)))
+  }, [allFiles, fileById, onSelectionChange, repairSelectionId])
 
   useEffect(() => {
     if (onThumbnailTaskChange === undefined || work.requested === 0) {

@@ -116,6 +116,7 @@ export interface OperationState {
   active: OperationProgressEvent | null
   results: OperationResultPage | null
   finishing: boolean
+  pending: boolean
 }
 
 export interface ContextRepair {
@@ -125,7 +126,7 @@ export interface ContextRepair {
 }
 
 function initialOperationState(): OperationState {
-  return { kind: null, active: null, results: null, finishing: false }
+  return { kind: null, active: null, results: null, finishing: false, pending: false }
 }
 
 export const initialViewerState: ViewerState = {
@@ -237,6 +238,7 @@ export type ViewerAction =
       kind: FileCommandKind
     }
   | { type: 'operation_progress_received'; progress: OperationProgressEvent }
+  | { type: 'operation_request_pending'; pending: boolean }
   | {
       type: 'operation_finish_settled'
       sessionId: string
@@ -374,6 +376,8 @@ export function viewerReducer(state: ViewerState, action: ViewerAction): ViewerS
     case 'search_page_changed':
       return {
         ...state,
+        selectedEntityIds: [],
+        selectionInfo: null,
         search: {
           ...state.search,
           showResults: true,
@@ -397,6 +401,8 @@ export function viewerReducer(state: ViewerState, action: ViewerAction): ViewerS
     case 'search_requested':
       return {
         ...state,
+        selectedEntityIds: [],
+        selectionInfo: null,
         search: {
           ...state.search,
           showResults: true,
@@ -474,6 +480,7 @@ export function viewerReducer(state: ViewerState, action: ViewerAction): ViewerS
           },
           results: null,
           finishing: false,
+          pending: false,
         },
         errorMessage: null,
       }
@@ -488,6 +495,12 @@ export function viewerReducer(state: ViewerState, action: ViewerAction): ViewerS
       ) {
         return state
       }
+      if (
+        state.operation.active.lifecycle === 'completed' &&
+        action.progress.lifecycle !== 'completed'
+      ) {
+        return state
+      }
       return {
         ...state,
         operation: {
@@ -499,6 +512,11 @@ export function viewerReducer(state: ViewerState, action: ViewerAction): ViewerS
               ? true
               : state.operation.finishing,
         },
+      }
+    case 'operation_request_pending':
+      return {
+        ...state,
+        operation: { ...state.operation, pending: action.pending },
       }
     case 'operation_finish_settled':
       if (
@@ -651,6 +669,8 @@ function queryChanged(
 ): ViewerState {
   return {
     ...state,
+    selectedEntityIds: [],
+    selectionInfo: null,
     search: {
       ...state.search,
       showResults: true,

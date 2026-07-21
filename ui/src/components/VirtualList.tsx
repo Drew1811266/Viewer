@@ -10,6 +10,9 @@ interface VirtualListProps<T> {
   renderItem: (item: T, index: number) => ReactNode
   className?: string
   scrollToIndex?: number
+  viewportProps?: {
+    'data-organization-drop-surface'?: string
+  }
 }
 
 export default function VirtualList<T>({
@@ -21,6 +24,7 @@ export default function VirtualList<T>({
   renderItem,
   className,
   scrollToIndex,
+  viewportProps,
 }: VirtualListProps<T>) {
   const initialScrollTop = scrollOffset(scrollToIndex, items.length, rowHeight)
   const [scrollTop, setScrollTop] = useState(initialScrollTop)
@@ -46,6 +50,7 @@ export default function VirtualList<T>({
 
   return (
     <div
+      {...viewportProps}
       ref={viewportRef}
       className={className}
       style={{ height, overflowY: 'auto', position: 'relative' }}

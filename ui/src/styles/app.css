@@ -819,6 +819,15 @@ select {
   border-color: #2477d4;
 }
 
+.file-export-surface {
+  cursor: grab;
+  min-width: 0;
+}
+
+.image-cell > .file-export-surface {
+  height: 100%;
+}
+
 .image-cell-preview {
   align-items: center;
   background: #e5e8ed;
@@ -833,7 +842,7 @@ select {
   width: 100%;
 }
 
-.image-cell > span:not(.file-marker) {
+.image-cell > .file-export-surface > span:not(.file-marker) {
   display: block;
   overflow: hidden;
   padding: 5px 2px 0;
@@ -873,6 +882,20 @@ select {
   justify-content: space-between;
   padding: 8px 10px;
   text-align: left;
+}
+
+.text-file-row > .file-export-surface {
+  align-items: center;
+  display: grid;
+  flex: 1 1 auto;
+  gap: 10px;
+  grid-template-columns: 1.2fr 2fr minmax(90px, 0.7fr);
+}
+
+.text-file-row > .file-export-surface > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .text-file-row[aria-selected="true"] {
@@ -915,6 +938,11 @@ select {
   opacity: 0.45;
 }
 
+.viewer-shell[data-organization-drag-active="true"]
+  .organization-drag-handle:not(:disabled) {
+  cursor: grabbing;
+}
+
 .image-cell > .organization-drag-handle {
   position: absolute;
   right: 8px;
@@ -924,6 +952,41 @@ select {
 .text-file-row > .organization-drag-handle {
   flex: 0 0 auto;
   margin-left: 10px;
+}
+
+.organization-drag-preview {
+  --organization-drag-x: 0px;
+  --organization-drag-y: 0px;
+
+  background: rgb(31 35 40 / 92%);
+  border: 1px solid rgb(255 255 255 / 28%);
+  border-radius: 7px;
+  box-shadow: 0 5px 18px rgb(0 0 0 / 24%);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 650;
+  left: 0;
+  max-width: 124px;
+  overflow: hidden;
+  padding: 6px 9px;
+  pointer-events: none;
+  position: fixed;
+  text-overflow: ellipsis;
+  top: 0;
+  transform: translate(
+    clamp(8px, calc(var(--organization-drag-x) + 12px), calc(100vw - 132px)),
+    clamp(8px, calc(var(--organization-drag-y) + 12px), calc(100vh - 42px))
+  );
+  white-space: nowrap;
+  z-index: 30;
+}
+
+@media (prefers-color-scheme: dark) {
+  .organization-drag-preview {
+    background: rgb(245 246 248 / 94%);
+    border-color: rgb(31 35 40 / 32%);
+    color: #1f2328;
+  }
 }
 
 .task-bar {

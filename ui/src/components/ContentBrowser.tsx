@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { DragEvent, KeyboardEvent, MouseEvent } from 'react'
+import type { DragEvent, KeyboardEvent, MouseEvent, PointerEvent } from 'react'
 import type { BrowserFile, FolderWorkspace } from '../api/types'
+import type { OrganizationPointerInput } from '../state/useOrganizationPointerDrag'
 import VirtualGrid from './VirtualGrid'
 import type { MarqueeSelectionChange } from './VirtualGrid'
 import type { TaskFeedback } from './TaskBar'
 
 type ContentWorkspace = Extract<FolderWorkspace, { workspace: 'content' }>
 type GridSize = 'small' | 'medium' | 'large'
-type InternalDragMode = 'move' | 'copy'
 
 interface ContentBrowserProps {
   workspace: ContentWorkspace
@@ -22,8 +22,7 @@ interface ContentBrowserProps {
   onThumbnailTaskChange?: (task: TaskFeedback | null) => void
   organizationDragDisabled?: boolean
   onFinderDragStart?: (entityIds: string[]) => void
-  onOrganizationDragStart?: (entityIds: string[], mode: InternalDragMode) => void
-  onOrganizationDragEnd?: () => void
+  onOrganizationPointerInput?: (input: OrganizationPointerInput) => void
 }
 
 interface ThumbnailWork {
@@ -38,8 +37,6 @@ const GRID_PIXELS: Record<GridSize, number> = {
   large: 240,
 }
 
-export const VIEWER_SELECTION_MIME = 'application/x-viewer-selection'
-
 export default function ContentBrowser({
   workspace,
   viewportHeight = 520,
@@ -49,8 +46,7 @@ export default function ContentBrowser({
   onThumbnailTaskChange,
   organizationDragDisabled = false,
   onFinderDragStart,
-  onOrganizationDragStart,
-  onOrganizationDragEnd,
+  onOrganizationPointerInput,
 }: ContentBrowserProps) {
   const [gridSize, setGridSize] = useState<GridSize>('medium')
   const [selected, setSelected] = useState<Set<string>>(() => new Set())
@@ -226,20 +222,49 @@ export default function ContentBrowser({
     if (entityIds.length > 0) onFinderDragStart?.(entityIds)
   }
 
-  function startOrganizationDrag(file: BrowserFile, event: DragEvent<HTMLElement>) {
+  function startPointerOrganization(file: BrowserFile, event: PointerEvent<HTMLElement>) {
+    event.preventDefault()
     event.stopPropagation()
-    if (organizationDragDisabled) {
-      event.preventDefault()
-      return
-    }
+    if (organizationDragDisabled || event.button !== 0) return
     const entityIds = freezeDragSelection(file)
-    if (entityIds.length === 0) {
-      event.preventDefault()
-      return
-    }
-    event.dataTransfer.effectAllowed = 'copyMove'
-    event.dataTransfer.setData(VIEWER_SELECTION_MIME, 'viewer-selection')
-    onOrganizationDragStart?.(entityIds, event.altKey ? 'copy' : 'move')
+    if (entityIds.length === 0) return
+    onOrganizationPointerInput?.({
+      type: 'start',
+      pointerId: event.pointerId,
+      entityIds,
+      mode: event.altKey ? 'copy' : 'move',
+      clientX: event.clientX,
+      clientY: event.clientY,
+      captureNode: event.currentTarget,
+    })
+  }
+
+  function movePointerOrganization(event: PointerEvent<HTMLElement>) {
+    event.preventDefault()
+    event.stopPropagation()
+    onOrganizationPointerInput?.({
+      type: 'move',
+      pointerId: event.pointerId,
+      clientX: event.clientX,
+      clientY: event.clientY,
+    })
+  }
+
+  function endPointerOrganization(event: PointerEvent<HTMLElement>) {
+    event.preventDefault()
+    event.stopPropagation()
+    onOrganizationPointerInput?.({
+      type: 'end',
+      pointerId: event.pointerId,
+      clientX: event.clientX,
+      clientY: event.clientY,
+    })
+  }
+
+  function cancelPointerOrganization(event: PointerEvent<HTMLElement>) {
+    event.preventDefault()
+    event.stopPropagation()
+    onOrganizationPointerInput?.({ type: 'cancel', pointerId: event.pointerId })
   }
 
   function handleKeyboard(event: KeyboardEvent<HTMLElement>) {
@@ -338,8 +363,10 @@ export default function ContentBrowser({
             onPreview={(selectedFile) => onPreview?.(selectedFile)}
             organizationDragDisabled={organizationDragDisabled}
             onFinderDragStart={startFinderDrag}
-            onOrganizationDragStart={startOrganizationDrag}
-            onOrganizationDragEnd={onOrganizationDragEnd}
+            onPointerDown={startPointerOrganization}
+            onPointerMove={movePointerOrganization}
+            onPointerUp={endPointerOrganization}
+            onPointerCancel={cancelPointerOrganization}
           />
         )}
       />
@@ -360,19 +387,26 @@ export default function ContentBrowser({
             tabIndex={-1}
             key={file.entityId}
             className="text-file-row"
-            draggable
             onClick={(event) => selectFile(file, event)}
             onDoubleClick={() => onPreview?.(file)}
-            onDragStart={(event) => startFinderDrag(file, event)}
           >
-            <span className="text-file-name">{file.name}</span>
-            <span className="text-file-path">{file.relativePath}</span>
-            <span className="file-marker">{markerLabel(file.marker)}</span>
+            <div
+              className="file-export-surface"
+              draggable
+              title="拖到 Finder"
+              onDragStart={(event) => startFinderDrag(file, event)}
+            >
+              <span className="text-file-name">{file.name}</span>
+              <span className="text-file-path">{file.relativePath}</span>
+              <span className="file-marker">{markerLabel(file.marker)}</span>
+            </div>
             <OrganizationDragHandle
               file={file}
               disabled={organizationDragDisabled}
-              onDragStart={startOrganizationDrag}
-              onDragEnd={onOrganizationDragEnd}
+              onPointerDown={startPointerOrganization}
+              onPointerMove={movePointerOrganization}
+              onPointerUp={endPointerOrganization}
+              onPointerCancel={cancelPointerOrganization}
             />
           </div>
         ))}
@@ -392,8 +426,10 @@ function ImageCell({
   onPreview,
   organizationDragDisabled,
   onFinderDragStart,
-  onOrganizationDragStart,
-  onOrganizationDragEnd,
+  onPointerDown,
+  onPointerMove,
+  onPointerUp,
+  onPointerCancel,
 }: {
   file: BrowserFile
   selected: boolean
@@ -405,8 +441,10 @@ function ImageCell({
   onPreview: (file: BrowserFile) => void
   organizationDragDisabled: boolean
   onFinderDragStart: (file: BrowserFile, event: DragEvent<HTMLElement>) => void
-  onOrganizationDragStart: (file: BrowserFile, event: DragEvent<HTMLElement>) => void
-  onOrganizationDragEnd?: () => void
+  onPointerDown: (file: BrowserFile, event: PointerEvent<HTMLElement>) => void
+  onPointerMove: (event: PointerEvent<HTMLElement>) => void
+  onPointerUp: (event: PointerEvent<HTMLElement>) => void
+  onPointerCancel: (event: PointerEvent<HTMLElement>) => void
 }) {
   const [url, setUrl] = useState<string | null>(file.imageUrl)
   const [failed, setFailed] = useState(false)
@@ -435,25 +473,32 @@ function ImageCell({
       aria-selected={selected}
       data-active={active || undefined}
       className="image-cell"
-      draggable
       onClick={(event) => onClick(file, event)}
       onDoubleClick={() => onPreview(file)}
-      onDragStart={(event) => onFinderDragStart(file, event)}
     >
-      <div className="image-cell-preview">
-        {url ? (
-          <img src={url} alt="" />
-        ) : (
-          <span aria-label={failed ? '缩略图不可用' : '缩略图加载中'} />
-        )}
+      <div
+        className="file-export-surface"
+        draggable
+        title="拖到 Finder"
+        onDragStart={(event) => onFinderDragStart(file, event)}
+      >
+        <div className="image-cell-preview">
+          {url ? (
+            <img src={url} alt="" />
+          ) : (
+            <span aria-label={failed ? '缩略图不可用' : '缩略图加载中'} />
+          )}
+        </div>
+        <span>{file.name}</span>
+        <span className="file-marker">{markerLabel(file.marker)}</span>
       </div>
-      <span>{file.name}</span>
-      <span className="file-marker">{markerLabel(file.marker)}</span>
       <OrganizationDragHandle
         file={file}
         disabled={organizationDragDisabled}
-        onDragStart={onOrganizationDragStart}
-        onDragEnd={onOrganizationDragEnd}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerCancel}
       />
     </div>
   )
@@ -462,13 +507,17 @@ function ImageCell({
 function OrganizationDragHandle({
   file,
   disabled,
-  onDragStart,
-  onDragEnd,
+  onPointerDown,
+  onPointerMove,
+  onPointerUp,
+  onPointerCancel,
 }: {
   file: BrowserFile
   disabled: boolean
-  onDragStart: (file: BrowserFile, event: DragEvent<HTMLElement>) => void
-  onDragEnd?: () => void
+  onPointerDown: (file: BrowserFile, event: PointerEvent<HTMLElement>) => void
+  onPointerMove: (event: PointerEvent<HTMLElement>) => void
+  onPointerUp: (event: PointerEvent<HTMLElement>) => void
+  onPointerCancel: (event: PointerEvent<HTMLElement>) => void
 }) {
   return (
     <button
@@ -477,10 +526,23 @@ function OrganizationDragHandle({
       aria-label={`整理 ${file.name}`}
       title="拖到左侧文件夹，按住 Option 复制"
       disabled={disabled}
-      draggable={!disabled}
-      onClick={(event) => event.stopPropagation()}
-      onDragStart={(event) => onDragStart(file, event)}
-      onDragEnd={() => onDragEnd?.()}
+      draggable={false}
+      onClick={(event) => {
+        event.preventDefault()
+        event.stopPropagation()
+      }}
+      onDoubleClick={(event) => {
+        event.preventDefault()
+        event.stopPropagation()
+      }}
+      onDragStart={(event) => {
+        event.preventDefault()
+        event.stopPropagation()
+      }}
+      onPointerDown={(event) => onPointerDown(file, event)}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerCancel={onPointerCancel}
     >
       ⋮⋮
     </button>

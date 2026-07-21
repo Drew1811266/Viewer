@@ -6,10 +6,22 @@ ROOT_DIRECTORY="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIRECTORY"
 
 node --input-type=module <<'NODE'
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 
 const capability = JSON.parse(readFileSync("src-tauri/capabilities/main.json", "utf8"));
 const configuration = JSON.parse(readFileSync("src-tauri/tauri.conf.json", "utf8"));
+function productionTypeScript(directory) {
+  return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const path = `${directory}/${entry.name}`;
+    if (entry.isDirectory()) return productionTypeScript(path);
+    return /\.(ts|tsx)$/.test(entry.name) && !/\.test\.(ts|tsx)$/.test(entry.name)
+      ? [readFileSync(path, "utf8")]
+      : [];
+  });
+}
+
+const organizationSources = productionTypeScript("ui/src").join("\n");
+const folderTreeSource = readFileSync("ui/src/components/FolderTree.tsx", "utf8");
 const mainWindow = configuration?.app?.windows?.find((window) => window.label === "main")
   ?? configuration?.app?.windows?.[0];
 const allowedPermissions = new Set([
@@ -47,6 +59,16 @@ if ((capability.permissions ?? []).length !== allowedPermissions.size) {
 }
 if (mainWindow?.dragDropEnabled === false) {
   throw new Error("main window dragDropEnabled must not disable native Finder-folder import");
+}
+for (const forbidden of ["application/x-viewer-selection", "dataTransfer.setData"]) {
+  if (organizationSources.includes(forbidden)) {
+    throw new Error(`HTML5 internal organization drag is forbidden: ${forbidden}`);
+  }
+}
+for (const forbidden of [/\bonDragOver\b/, /\bonDrop\b/]) {
+  if (forbidden.test(folderTreeSource)) {
+    throw new Error(`FolderTree must remain a passive pointer drop surface: ${forbidden.source}`);
+  }
 }
 
 const csp = configuration?.app?.security?.csp;

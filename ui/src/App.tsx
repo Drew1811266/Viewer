@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import type { CSSProperties } from 'react'
 import type { ViewerBridge } from './api/viewer'
 import { tauriViewerBridge } from './api/viewer'
 import EmptyProject from './components/EmptyProject'
@@ -22,6 +23,8 @@ import TaskBar from './components/TaskBar'
 import type { TaskFeedback } from './components/TaskBar'
 import TextPreview from './components/TextPreview'
 import TrashConfirmation from './components/TrashConfirmation'
+import { useOrganizationPointerDrag } from './state/useOrganizationPointerDrag'
+import type { OrganizationDragMode } from './state/useOrganizationPointerDrag'
 import { useViewerController } from './state/useViewerController'
 import type {
   BrowserFile,
@@ -49,11 +52,6 @@ type OperationDialog =
       initialPreflight?: FileCommandPreflight
     }
   | { kind: 'trash'; files: BrowserFile[] }
-
-type InternalDragState = {
-  entityIds: string[]
-  mode: 'move' | 'copy'
-}
 
 export default function App({ bridge = tauriViewerBridge }: AppProps) {
   const {
@@ -95,8 +93,6 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
   const [dismissedTasks, setDismissedTasks] = useState<Set<string>>(() => new Set())
   const [activePreview, setActivePreview] = useState<BrowserFile | null>(null)
   const [selectedFiles, setSelectedFiles] = useState<BrowserFile[]>([])
-  const [internalDrag, setInternalDrag] = useState<InternalDragState | null>(null)
-  const draggedEntityIds = internalDrag?.entityIds ?? []
   const [finderDragMessage, setFinderDragMessage] = useState<string | null>(null)
   const [compareStatus, setCompareStatus] = useState<string | null>(null)
   const [operationDialog, setOperationDialog] = useState<OperationDialog | null>(null)
@@ -112,7 +108,6 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
     setDismissedTasks(new Set())
     setActivePreview(null)
     setSelectedFiles([])
-    setInternalDrag(null)
     setFinderDragMessage(null)
     setCompareStatus(null)
     setOperationDialog(null)
@@ -263,6 +258,19 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
     (state.operation.active !== null && state.operation.active.lifecycle !== 'completed')
   const canMutateSelection =
     selectedFiles.length > 0 && state.project?.access === 'read_write' && !operationBusy
+  const compareFiles = useMemo(() => {
+    if (state.workspace?.workspace !== 'content') return []
+    const byId = new Map(state.workspace.images.map((file) => [file.entityId, file]))
+    return state.compareEntityIds.flatMap((entityId) => {
+      const file = byId.get(entityId)
+      return file === undefined ? [] : [file]
+    })
+  }, [state.compareEntityIds, state.workspace])
+  const compareOpen = state.compareEntityIds.length >= 2 && compareFiles.length >= 2
+  const compareEntryAvailable =
+    state.workspace?.workspace === 'content' &&
+    !state.search.showResults &&
+    !operationBusy
 
   const exportToFinder = useCallback(
     (entityIds: string[]) => {
@@ -343,7 +351,6 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
 
   const dropFiles = useCallback(
     async (entityIds: string[], destinationId: string, mode: 'move' | 'copy') => {
-      setInternalDrag(null)
       if (
         operationBusy ||
         state.project?.access !== 'read_write' ||
@@ -379,14 +386,18 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
     [operationBusy, preflightFileCommand, state.project?.access, state.workspace, submitFileCommand],
   )
 
-  const isDropTargetValid = useCallback(
-    (destinationId: string, mode: 'move' | 'copy') => {
+  const isOrganizationDropTargetValid = useCallback(
+    (
+      entityIds: readonly string[],
+      destinationId: string,
+      mode: OrganizationDragMode,
+    ) => {
       if (state.workspace?.workspace !== 'content') return false
       const destination = state.folders.find((folder) => folder.entityId === destinationId)
       if (!destination) return false
       const currentFiles = [...state.workspace.images, ...state.workspace.textFiles]
       const byId = new Map(currentFiles.map((file) => [file.entityId, file]))
-      const files = draggedEntityIds.map((entityId) => byId.get(entityId))
+      const files = entityIds.map((entityId) => byId.get(entityId))
       if (files.some((file) => file === undefined)) return false
       return (
         mode === 'copy' ||
@@ -397,8 +408,33 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
         )
       )
     },
-    [draggedEntityIds, state.folders, state.workspace],
+    [state.folders, state.workspace],
   )
+
+  const organizationWorkspaceIdentity = [
+    state.workspace?.workspace ?? 'none',
+    state.selectedFolderId ?? 'root',
+    state.showingAggregate ? 'aggregate' : 'folder',
+    state.search.showResults ? 'search' : 'browser',
+  ].join(':')
+  const organizationDragResetKey = [
+    state.project?.sessionId ?? 'no-session',
+    state.project?.generation ?? 'no-generation',
+    organizationWorkspaceIdentity,
+  ].join(':')
+  const {
+    dragView: organizationDragView,
+    dropTarget: organizationDropTarget,
+    handlePointerInput: handleOrganizationPointerInput,
+  } = useOrganizationPointerDrag({
+    disabled:
+      state.project?.access !== 'read_write' ||
+      operationBusy ||
+      compareOpen,
+    resetKey: organizationDragResetKey,
+    isDropTargetValid: isOrganizationDropTargetValid,
+    onDrop: dropFiles,
+  })
 
   const openPreview = useCallback(
     (file: BrowserFile) => {
@@ -412,20 +448,6 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
     setActivePreview(null)
     setPreviewEntityId(null)
   }, [setPreviewEntityId])
-
-  const compareFiles = useMemo(() => {
-    if (state.workspace?.workspace !== 'content') return []
-    const byId = new Map(state.workspace.images.map((file) => [file.entityId, file]))
-    return state.compareEntityIds.flatMap((entityId) => {
-      const file = byId.get(entityId)
-      return file === undefined ? [] : [file]
-    })
-  }, [state.compareEntityIds, state.workspace])
-  const compareOpen = state.compareEntityIds.length >= 2 && compareFiles.length >= 2
-  const compareEntryAvailable =
-    state.workspace?.workspace === 'content' &&
-    !state.search.showResults &&
-    !operationBusy
 
   const openComparison = useCallback(() => {
     if (!compareEntryAvailable) {
@@ -572,7 +594,10 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
   }
 
   return (
-    <main className="viewer-shell">
+    <main
+      className="viewer-shell"
+      data-organization-drag-active={organizationDragView ? true : undefined}
+    >
       <header>
         <h1>{state.project.displayName}</h1>
         <button
@@ -673,13 +698,7 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
                 folders={state.folders}
                 selectedId={state.selectedFolderId}
                 onSelect={selectFolderTarget}
-                draggedEntityIds={draggedEntityIds}
-                internalDragMode={internalDrag?.mode ?? null}
-                readOnly={state.project.access !== 'read_write' || operationBusy}
-                isDropTargetValid={isDropTargetValid}
-                onDropFiles={(entityIds, destinationId, mode) =>
-                  void dropFiles(entityIds, destinationId, mode)
-                }
+                organizationDropTarget={organizationDropTarget}
               />
               <label className="sidebar-resize">
                 文件夹栏宽度
@@ -740,13 +759,11 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
                   onThumbnailTaskChange={setThumbnailTask}
                   onPreview={openPreview}
                   onSelectionChange={selectFiles}
-                  organizationDragDisabled={state.project.access !== 'read_write' || operationBusy}
+                  organizationDragDisabled={
+                    state.project.access !== 'read_write' || operationBusy || compareOpen
+                  }
                   onFinderDragStart={exportToFinder}
-                  onOrganizationDragStart={(entityIds, mode) => {
-                    setFinderDragMessage(null)
-                    setInternalDrag({ entityIds, mode })
-                  }}
-                  onOrganizationDragEnd={() => setInternalDrag(null)}
+                  onOrganizationPointerInput={handleOrganizationPointerInput}
                 />
               </div>
               {compareOpen && (
@@ -766,6 +783,20 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
           )}
         </section>
       </div>
+      {organizationDragView && (
+        <div
+          className="organization-drag-preview"
+          style={
+            {
+              '--organization-drag-x': `${organizationDragView.clientX}px`,
+              '--organization-drag-y': `${organizationDragView.clientY}px`,
+            } as CSSProperties
+          }
+        >
+          {organizationDragView.mode === 'copy' ? '复制' : '移动'}{' '}
+          {organizationDragView.itemCount} 项
+        </div>
+      )}
       <TaskBar
         tasks={visibleTasks}
         onCancel={(taskId) => {

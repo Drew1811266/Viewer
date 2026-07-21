@@ -199,30 +199,35 @@ describe('ContentBrowser', () => {
     expect(screen.queryByTestId('marquee-selection')).not.toBeInTheDocument()
   })
 
-  it('keeps background marquee, card Finder export, and handle organization drag isolated', () => {
+  it('keeps background marquee, image Finder export, and pointer organization isolated', () => {
     const exportFiles = vi.fn()
     const organize = vi.fn()
     render(
       <ContentBrowser
         workspace={workspace(3)}
         onFinderDragStart={exportFiles}
-        onOrganizationDragStart={organize}
+        onOrganizationPointerInput={organize}
       />,
     )
-    fireEvent.pointerDown(screen.getByRole('option', { name: '1.jpg' }), {
-      pointerId: 9,
-      button: 0,
-    })
-    fireEvent.dragStart(screen.getByRole('option', { name: '1.jpg' }))
+
+    const option = screen.getByRole('option', { name: '1.jpg' })
+    const exportSurface = option.querySelector<HTMLElement>('.file-export-surface')!
+    const handle = screen.getByRole('button', { name: '整理 2.jpg' })
+    expect(option).not.toHaveAttribute('draggable')
+    expect(exportSurface).toHaveAttribute('draggable', 'true')
+    expect(handle).toHaveAttribute('draggable', 'false')
+
+    fireEvent.dragStart(exportSurface)
     expect(exportFiles).toHaveBeenCalledTimes(1)
-    fireEvent.pointerDown(screen.getByRole('button', { name: '整理 2.jpg' }), {
+    fireEvent.pointerDown(handle, {
       pointerId: 10,
       button: 0,
+      clientX: 12,
+      clientY: 14,
     })
-    fireEvent.dragStart(screen.getByRole('button', { name: '整理 2.jpg' }), {
-      dataTransfer: { setData: vi.fn(), effectAllowed: 'none' },
-    })
+    fireEvent.dragStart(handle)
     expect(organize).toHaveBeenCalledTimes(1)
+    expect(exportFiles).toHaveBeenCalledTimes(1)
     expect(screen.queryByTestId('marquee-selection')).not.toBeInTheDocument()
   })
 
@@ -270,46 +275,166 @@ describe('ContentBrowser', () => {
     expect(requestThumbnail.mock.calls.length).toBeLessThan(50)
   })
 
-  it('starts Finder export immediately from the file body without an HTML payload', () => {
+  it.each([
+    ['image cell', '2.jpg'],
+    ['text row', 'prompt.md'],
+  ])('splits the %s body export surface from its pointer handle', (_kind, name) => {
     const exportFiles = vi.fn()
     const setData = vi.fn()
     render(<ContentBrowser workspace={workspace(4)} onFinderDragStart={exportFiles} />)
-    marqueeImages({ start: [378, 100], end: [0, 0] })
-    finishMarquee([0, 0])
+    const option = screen.getByRole('option', { name })
+    const exportSurface = option.querySelector<HTMLElement>('.file-export-surface')!
+    const handle = screen.getByRole('button', { name: `整理 ${name}` })
 
-    const event = createEvent.dragStart(screen.getByRole('option', { name: '2.jpg' }), {
+    expect(option).not.toHaveAttribute('draggable')
+    expect(exportSurface).toHaveAttribute('draggable', 'true')
+    expect(handle).toHaveAttribute('draggable', 'false')
+
+    const event = createEvent.dragStart(exportSurface, {
       dataTransfer: { setData, effectAllowed: 'none' },
     })
-    fireEvent(screen.getByRole('option', { name: '2.jpg' }), event)
+    fireEvent(exportSurface, event)
 
     expect(event.defaultPrevented).toBe(true)
-    expect(exportFiles).toHaveBeenCalledWith(['image-1', 'image-2'])
+    expect(exportFiles).toHaveBeenCalledWith([
+      name === 'prompt.md' ? 'text-1' : 'image-2',
+    ])
     expect(setData).not.toHaveBeenCalled()
+
+    const handleDrag = createEvent.dragStart(handle)
+    fireEvent(handle, handleDrag)
+    expect(handleDrag.defaultPrevented).toBe(true)
+    expect(exportFiles).toHaveBeenCalledTimes(1)
   })
 
-  it('starts entity-only internal drag from the organization handle and freezes Option-copy', () => {
-    const organize = vi.fn()
+  it.each([
+    ['image cell', '2.jpg', 'image-2'],
+    ['text row', 'prompt.md', 'text-1'],
+  ])('normalizes the captured %s pointer session and freezes Option-copy', (_kind, name, id) => {
+    const inputs = vi.fn()
     const exportFiles = vi.fn()
-    const setData = vi.fn()
     render(
       <ContentBrowser
         workspace={workspace(2)}
         onFinderDragStart={exportFiles}
-        onOrganizationDragStart={organize}
+        onOrganizationPointerInput={inputs}
       />,
     )
+    fireEvent.click(screen.getByRole('option', { name: '1.jpg' }))
+    if (name === '2.jpg') {
+      fireEvent.click(screen.getByRole('option', { name: '2.jpg' }), { metaKey: true })
+    }
+    const handle = screen.getByRole('button', { name: `整理 ${name}` })
 
-    const event = createEvent.dragStart(screen.getByRole('button', { name: '整理 1.jpg' }), {
-      dataTransfer: { setData, effectAllowed: 'none' },
+    const down = createEvent.pointerDown(handle, {
+      pointerId: 17,
+      button: 0,
+      altKey: true,
+      clientX: 21,
+      clientY: 34,
     })
-    Object.defineProperty(event, 'altKey', { value: true })
-    fireEvent(screen.getByRole('button', { name: '整理 1.jpg' }), event)
+    fireEvent(handle, down)
+    fireEvent.pointerMove(handle, {
+      pointerId: 17,
+      altKey: false,
+      clientX: 28,
+      clientY: 39,
+    })
+    fireEvent.pointerUp(handle, {
+      pointerId: 17,
+      altKey: false,
+      clientX: 31,
+      clientY: 42,
+    })
 
-    expect(organize).toHaveBeenCalledWith(['image-1'], 'copy')
+    expect(down.defaultPrevented).toBe(true)
+    expect(inputs).toHaveBeenNthCalledWith(1, {
+      type: 'start',
+      pointerId: 17,
+      entityIds: name === '2.jpg' ? ['image-1', 'image-2'] : [id],
+      mode: 'copy',
+      clientX: 21,
+      clientY: 34,
+      captureNode: handle,
+    })
+    expect(inputs).toHaveBeenNthCalledWith(2, {
+      type: 'move',
+      pointerId: 17,
+      clientX: 28,
+      clientY: 39,
+    })
+    expect(inputs).toHaveBeenNthCalledWith(3, {
+      type: 'end',
+      pointerId: 17,
+      clientX: 31,
+      clientY: 42,
+    })
     expect(exportFiles).not.toHaveBeenCalled()
-    expect(setData).toHaveBeenCalledWith('application/x-viewer-selection', 'viewer-selection')
-    expect(setData).not.toHaveBeenCalledWith(expect.anything(), expect.stringContaining('image-'))
-    expect(setData).not.toHaveBeenCalledWith(expect.anything(), expect.stringContaining('/'))
+  })
+
+  it('emits cancel but ignores nonprimary and disabled pointer starts', () => {
+    const inputs = vi.fn()
+    const rendered = render(
+      <ContentBrowser workspace={workspace(1)} onOrganizationPointerInput={inputs} />,
+    )
+    const handle = screen.getByRole('button', { name: '整理 1.jpg' })
+    fireEvent.pointerDown(handle, {
+      pointerId: 18,
+      button: 1,
+      clientX: 1,
+      clientY: 2,
+    })
+    expect(inputs).not.toHaveBeenCalled()
+
+    fireEvent.pointerDown(handle, {
+      pointerId: 19,
+      button: 0,
+      clientX: 3,
+      clientY: 4,
+    })
+    fireEvent.pointerCancel(handle, { pointerId: 19 })
+    expect(inputs).toHaveBeenLastCalledWith({ type: 'cancel', pointerId: 19 })
+
+    inputs.mockClear()
+    rendered.rerender(
+      <ContentBrowser
+        workspace={workspace(1)}
+        organizationDragDisabled
+        onOrganizationPointerInput={inputs}
+      />,
+    )
+    fireEvent.pointerDown(screen.getByRole('button', { name: '整理 1.jpg' }), {
+      pointerId: 20,
+      button: 0,
+      clientX: 5,
+      clientY: 6,
+    })
+    expect(inputs).not.toHaveBeenCalled()
+  })
+
+  it('prevents handle pointer, click, and double-click events from changing selection or preview', () => {
+    const preview = vi.fn()
+    const inputs = vi.fn()
+    render(
+      <ContentBrowser
+        workspace={workspace(2)}
+        onPreview={preview}
+        onOrganizationPointerInput={inputs}
+      />,
+    )
+    const handle = screen.getByRole('button', { name: '整理 2.jpg' })
+    fireEvent.pointerDown(handle, {
+      pointerId: 21,
+      button: 0,
+      clientX: 7,
+      clientY: 8,
+    })
+    fireEvent.click(handle)
+    fireEvent.doubleClick(handle)
+
+    expect(selectedLabels()).toEqual(['2.jpg'])
+    expect(preview).not.toHaveBeenCalled()
+    expect(inputs).toHaveBeenCalledOnce()
   })
 
   it('keeps Finder export available but disables the organization handle in read-only mode', () => {
@@ -323,27 +448,41 @@ describe('ContentBrowser', () => {
     )
 
     expect(screen.getByRole('button', { name: '整理 1.jpg' })).toBeDisabled()
-    fireEvent.dragStart(screen.getByRole('option', { name: '1.jpg' }))
+    const option = screen.getByRole('option', { name: '1.jpg' })
+    fireEvent.dragStart(option.querySelector('.file-export-surface')!)
     expect(exportFiles).toHaveBeenCalledWith(['image-1'])
   })
 
   it('suppresses stale selected IDs when a refreshed workspace starts a drag', async () => {
     const start = vi.fn()
     const rendered = render(
-      <ContentBrowser workspace={workspace(3)} onOrganizationDragStart={start} />,
+      <ContentBrowser workspace={workspace(3)} onOrganizationPointerInput={start} />,
     )
     fireEvent.click(screen.getByRole('option', { name: '1.jpg' }))
     fireEvent.click(screen.getByRole('option', { name: '2.jpg' }), { metaKey: true })
     const refreshed = workspace(3)
     refreshed.images = refreshed.images.filter((file) => file.entityId !== 'image-1')
     rendered.rerender(
-      <ContentBrowser workspace={refreshed} onOrganizationDragStart={start} />,
+      <ContentBrowser workspace={refreshed} onOrganizationPointerInput={start} />,
     )
 
-    const event = createEvent.dragStart(screen.getByRole('button', { name: '整理 2.jpg' }), {
-      dataTransfer: { setData: vi.fn(), effectAllowed: 'none' },
+    const handle = screen.getByRole('button', { name: '整理 2.jpg' })
+    fireEvent.pointerDown(handle, {
+      pointerId: 22,
+      button: 0,
+      clientX: 9,
+      clientY: 10,
     })
-    fireEvent(screen.getByRole('button', { name: '整理 2.jpg' }), event)
-    await waitFor(() => expect(start).toHaveBeenLastCalledWith(['image-2'], 'move'))
+    await waitFor(() =>
+      expect(start).toHaveBeenLastCalledWith({
+        type: 'start',
+        pointerId: 22,
+        entityIds: ['image-2'],
+        mode: 'move',
+        clientX: 9,
+        clientY: 10,
+        captureNode: handle,
+      }),
+    )
   })
 })

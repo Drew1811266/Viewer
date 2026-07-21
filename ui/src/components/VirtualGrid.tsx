@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { KeyboardEventHandler, PointerEventHandler, ReactNode, UIEvent } from 'react'
 import {
   intersectingGridIndexes,
@@ -26,6 +26,17 @@ interface MarqueeSession {
   metaKey: boolean
   activated: boolean
   keys: string[]
+}
+
+interface MarqueeLayout<T> {
+  items: readonly T[]
+  columns: number
+  cellWidth: number
+  cellHeight: number
+  gap: number
+  rowStride: number
+  getKey: (item: T) => string
+  onChange?: (change: MarqueeSelectionChange) => void
 }
 
 interface VirtualGridProps<T> {
@@ -61,7 +72,9 @@ export default function VirtualGrid<T>({
 }: VirtualGridProps<T>) {
   const container = useRef<HTMLDivElement>(null)
   const marqueeSession = useRef<MarqueeSession | null>(null)
+  const captureOwner = useRef<HTMLDivElement | null>(null)
   const animationFrame = useRef<number | null>(null)
+  const marqueeLayout = useRef<MarqueeLayout<T> | null>(null)
   const [width, setWidth] = useState(900)
   const [scrollTop, setScrollTop] = useState(0)
   const [marqueeRect, setMarqueeRect] = useState<MarqueeRect | null>(null)
@@ -99,16 +112,30 @@ export default function VirtualGrid<T>({
 
   function clearMarqueeSession() {
     const session = marqueeSession.current
-    const node = container.current
+    const node = container.current ?? captureOwner.current
     if (session !== null && node?.releasePointerCapture !== undefined) {
       node.releasePointerCapture(session.pointerId)
     }
     cancelAutoScroll()
     marqueeSession.current = null
+    captureOwner.current = null
     setMarqueeRect(null)
   }
 
-  useEffect(() => () => clearMarqueeSession(), [items])
+  useLayoutEffect(() => {
+    marqueeLayout.current = {
+      items,
+      columns,
+      cellWidth,
+      cellHeight,
+      gap,
+      rowStride,
+      getKey,
+      onChange: onMarqueeSelectionChange,
+    }
+  })
+
+  useLayoutEffect(() => () => clearMarqueeSession(), [items])
 
   function contentPoint(clientX: number, clientY: number): MarqueePoint {
     const node = container.current!
@@ -120,18 +147,20 @@ export default function VirtualGrid<T>({
   }
 
   function updateMarquee(session: MarqueeSession) {
+    const layout = marqueeLayout.current
+    if (layout === null) return
     const rect = normalizeMarquee(session.start, session.current)
     const indexes = intersectingGridIndexes(rect, {
-      itemCount: items.length,
-      columns,
-      cellWidth,
-      cellHeight,
-      columnStride: cellWidth + gap,
-      rowStride,
+      itemCount: layout.items.length,
+      columns: layout.columns,
+      cellWidth: layout.cellWidth,
+      cellHeight: layout.cellHeight,
+      columnStride: layout.cellWidth + layout.gap,
+      rowStride: layout.rowStride,
     })
-    session.keys = indexes.map((index) => getKey(items[index]!))
+    session.keys = indexes.map((index) => layout.getKey(layout.items[index]!))
     setMarqueeRect(rect)
-    onMarqueeSelectionChange?.({ phase: 'change', keys: session.keys, metaKey: session.metaKey })
+    layout.onChange?.({ phase: 'change', keys: session.keys, metaKey: session.metaKey })
   }
 
   function queueAutoScroll() {
@@ -191,6 +220,7 @@ export default function VirtualGrid<T>({
       activated: false,
       keys: [],
     }
+    captureOwner.current = node
     node.setPointerCapture?.(event.pointerId)
     onMarqueeSelectionChange({ phase: 'start', keys: [], metaKey: event.metaKey })
     event.preventDefault()

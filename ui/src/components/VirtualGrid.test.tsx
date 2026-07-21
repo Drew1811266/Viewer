@@ -6,7 +6,7 @@ afterEach(() => vi.unstubAllGlobals())
 
 function renderGrid(changed: (change: MarqueeSelectionChange) => void) {
   const items = Array.from({ length: 6 }, (_, index) => `item-${index}`)
-  render(
+  return render(
     <VirtualGrid
       items={items}
       cellWidth={100}
@@ -37,11 +37,13 @@ describe('VirtualGrid marquee selection', () => {
     const grid = screen.getByRole('listbox', { name: 'files' })
     installPointerSurface(grid)
     fireEvent.pointerDown(grid, { pointerId: 7, button: 0, clientX: 122, clientY: 110 })
+    expect(grid.setPointerCapture).toHaveBeenCalledWith(7)
     fireEvent.pointerMove(grid, { pointerId: 7, clientX: 12, clientY: 22 })
     expect(changed).toHaveBeenNthCalledWith(1, { phase: 'start', keys: [], metaKey: false })
     expect(changed).toHaveBeenLastCalledWith({ phase: 'change', keys: ['item-0', 'item-1'], metaKey: false })
     expect(screen.getByTestId('marquee-selection')).toBeVisible()
     fireEvent.pointerUp(grid, { pointerId: 7, clientX: 12, clientY: 22 })
+    expect(grid.releasePointerCapture).toHaveBeenCalledWith(7)
     expect(changed).toHaveBeenLastCalledWith({ phase: 'end', keys: ['item-0', 'item-1'], metaKey: false })
     expect(screen.queryByTestId('marquee-selection')).not.toBeInTheDocument()
   })
@@ -81,6 +83,7 @@ describe('VirtualGrid marquee selection', () => {
     fireEvent.pointerDown(grid, { pointerId: 5, button: 0, clientX: 122, clientY: 110 })
     fireEvent.pointerMove(grid, { pointerId: 5, clientX: 12, clientY: 22 })
     fireEvent.pointerCancel(grid, { pointerId: 5 })
+    expect(grid.releasePointerCapture).toHaveBeenCalledWith(5)
     expect(changed).toHaveBeenLastCalledWith({ phase: 'cancel', keys: [], metaKey: false })
     expect(screen.queryByTestId('marquee-selection')).not.toBeInTheDocument()
     expect(grid).not.toHaveAttribute('data-marquee-active')
@@ -135,4 +138,135 @@ describe('VirtualGrid marquee selection', () => {
 
     expect(cancelFrame).toHaveBeenCalledWith(1)
   })
+
+  it('uses the resized column layout when a queued frame recomputes marquee hits', () => {
+    const resize = installResizeObserver()
+    let frame: FrameRequestCallback | null = null
+    const requestFrame = vi.fn((callback: FrameRequestCallback) => {
+      frame = callback
+      return 1
+    })
+    vi.stubGlobal('requestAnimationFrame', requestFrame)
+    const changed = vi.fn()
+    const items = Array.from({ length: 12 }, (_, index) => `item-${index}`)
+    render(
+      <VirtualGrid
+        items={items}
+        cellWidth={100}
+        cellHeight={80}
+        viewportHeight={200}
+        gap={12}
+        getKey={(item) => item}
+        renderItem={(item) => <span>{item}</span>}
+        ariaLabel="files"
+        onMarqueeSelectionChange={changed}
+      />,
+    )
+    const grid = screen.getByRole('listbox', { name: 'files' })
+    installPointerSurface(grid)
+    Object.defineProperty(grid, 'scrollHeight', { value: 800, configurable: true })
+    Object.defineProperty(grid, 'clientHeight', { value: 200, configurable: true })
+
+    fireEvent.pointerDown(grid, { pointerId: 9, button: 0, clientX: 230, clientY: 200 })
+    fireEvent.pointerMove(grid, { pointerId: 9, clientX: 12, clientY: 220 })
+    act(() => resize(300))
+    act(() => frame?.(0))
+
+    expect(changed).toHaveBeenLastCalledWith({ phase: 'change', keys: ['item-4', 'item-5'], metaKey: false })
+  })
+
+  it('silently clears a queued session when items are replaced before its frame runs', () => {
+    let frame: FrameRequestCallback | null = null
+    const requestFrame = vi.fn((callback: FrameRequestCallback) => {
+      frame = callback
+      return 1
+    })
+    const cancelFrame = vi.fn()
+    vi.stubGlobal('requestAnimationFrame', requestFrame)
+    vi.stubGlobal('cancelAnimationFrame', cancelFrame)
+    const changed = vi.fn()
+    const initialItems = Array.from({ length: 6 }, (_, index) => `old-${index}`)
+    const replacementItems = Array.from({ length: 6 }, (_, index) => `new-${index}`)
+    const { rerender } = render(
+      <VirtualGrid
+        items={initialItems}
+        cellWidth={100}
+        cellHeight={80}
+        viewportHeight={200}
+        gap={12}
+        getKey={(item) => item}
+        renderItem={(item) => <span>{item}</span>}
+        ariaLabel="files"
+        onMarqueeSelectionChange={changed}
+      />,
+    )
+    const grid = screen.getByRole('listbox', { name: 'files' })
+    installPointerSurface(grid)
+    fireEvent.pointerDown(grid, { pointerId: 10, button: 0, clientX: 200, clientY: 180 })
+    fireEvent.pointerMove(grid, { pointerId: 10, clientX: 200, clientY: 220 })
+    changed.mockClear()
+
+    rerender(
+      <VirtualGrid
+        items={replacementItems}
+        cellWidth={100}
+        cellHeight={80}
+        viewportHeight={200}
+        gap={12}
+        getKey={(item) => item}
+        renderItem={(item) => <span>{item}</span>}
+        ariaLabel="files"
+        onMarqueeSelectionChange={changed}
+      />,
+    )
+    act(() => frame?.(0))
+
+    expect(changed).not.toHaveBeenCalled()
+    expect(grid.releasePointerCapture).toHaveBeenCalledWith(10)
+    expect(cancelFrame).toHaveBeenCalledWith(1)
+  })
+
+  it('silently cleans capture and a queued frame on unmount', () => {
+    let frame: FrameRequestCallback | null = null
+    const requestFrame = vi.fn((callback: FrameRequestCallback) => {
+      frame = callback
+      return 1
+    })
+    const cancelFrame = vi.fn()
+    vi.stubGlobal('requestAnimationFrame', requestFrame)
+    vi.stubGlobal('cancelAnimationFrame', cancelFrame)
+    const changed = vi.fn()
+    const rendered = renderGrid(changed)
+    const grid = screen.getByRole('listbox', { name: 'files' })
+    installPointerSurface(grid)
+    fireEvent.pointerDown(grid, { pointerId: 11, button: 0, clientX: 200, clientY: 180 })
+    fireEvent.pointerMove(grid, { pointerId: 11, clientX: 200, clientY: 220 })
+    changed.mockClear()
+
+    rendered.unmount()
+    act(() => frame?.(0))
+
+    expect(grid.releasePointerCapture).toHaveBeenCalledWith(11)
+    expect(cancelFrame).toHaveBeenCalledWith(1)
+    expect(changed).not.toHaveBeenCalled()
+  })
 })
+
+function installResizeObserver() {
+  let callback: ResizeObserverCallback | undefined
+  class Observer {
+    constructor(next: ResizeObserverCallback) {
+      callback = next
+    }
+
+    observe() {}
+    disconnect() {}
+  }
+  vi.stubGlobal('ResizeObserver', Observer)
+  return (width: number, height = 200) => {
+    callback?.(
+      [{ contentRect: { width, height } } as ResizeObserverEntry],
+      {} as ResizeObserver,
+    )
+  }
+}

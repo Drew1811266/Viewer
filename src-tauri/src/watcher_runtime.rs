@@ -504,16 +504,8 @@ mod tests {
         .unwrap();
         let note = root.join("note.txt");
         fs::write(&note, b"watcher searchable text").unwrap();
-        watcher
-            .sink
-            .lock()
-            .unwrap()
-            .as_ref()
-            .unwrap()
-            .clone()
-            .send(vec![WatcherEvent::added(note)])
-            .await
-            .unwrap();
+        let sink = watcher.sink.lock().unwrap().as_ref().unwrap().clone();
+        sink.send(vec![WatcherEvent::added(note)]).await.unwrap();
         tokio::time::sleep(Duration::from_millis(20)).await;
         clock.0.store(1_000, Ordering::Release);
         let entity_id = filesystem_node(&root, "note.txt").entity_id;

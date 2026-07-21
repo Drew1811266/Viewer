@@ -1,8 +1,10 @@
-use crate::state::DesktopEventSink;
+use crate::state::{DesktopEventSink, rebuild_derived_nodes};
 use std::{collections::VecDeque, path::PathBuf, sync::Arc, time::Duration};
 use tokio::{sync::watch, task::JoinHandle};
 use viewer_application::{
-    ClockPort, WatchSubscription, WatcherError, WatcherPort,
+    ActiveProject, BrowseIndexPort, ClockPort, ImagePort, WatchSubscription, WatcherError,
+    WatcherPort,
+    scheduler::TaskCoordinator,
     watcher::{ReconcileRequest, WATCHER_DEBOUNCE_MS},
 };
 use viewer_domain::{SessionId, search::Generation};
@@ -10,6 +12,7 @@ use viewer_infrastructure::scan::{
     reconcile::{ExpectedChangeLedger, ReconcilePlanner},
     reconcile_service::{ProjectReconcileError, ProjectReconciler},
 };
+use viewer_infrastructure::search::index::SessionIndex;
 
 const MAX_QUEUED_RECONCILES: usize = 64;
 
@@ -17,6 +20,44 @@ pub struct WatcherRuntime {
     subscription: Option<Box<dyn WatchSubscription>>,
     stop: Option<watch::Sender<bool>>,
     task: Option<JoinHandle<()>>,
+}
+
+pub struct WatcherDerivedServices {
+    pub active: ActiveProject,
+    pub coordinator: Arc<TaskCoordinator>,
+    pub index: Arc<SessionIndex>,
+    pub image: Arc<dyn ImagePort>,
+    pub events: Arc<dyn DesktopEventSink>,
+}
+
+impl WatcherDerivedServices {
+    async fn rebuild(&self, roots: &[PathBuf]) {
+        if !self
+            .coordinator
+            .is_publishable(self.active.session_id, self.active.generation)
+        {
+            return;
+        }
+        let Ok(nodes) = BrowseIndexPort::descendants(self.index.as_ref(), None) else {
+            return;
+        };
+        let nodes = nodes
+            .into_iter()
+            .filter(|node| {
+                let absolute = self.active.root.join(node.relative_path.as_str());
+                roots.iter().any(|root| absolute.starts_with(root))
+            })
+            .collect();
+        let _ = rebuild_derived_nodes(
+            self.active.clone(),
+            Arc::clone(&self.coordinator),
+            Arc::clone(&self.index),
+            Arc::clone(&self.image),
+            Arc::clone(&self.events),
+            nodes,
+        )
+        .await;
+    }
 }
 
 impl WatcherRuntime {
@@ -31,6 +72,7 @@ impl WatcherRuntime {
         clock: Arc<dyn ClockPort>,
         events: Arc<dyn DesktopEventSink>,
         mut scan_ready: watch::Receiver<bool>,
+        derived: Option<WatcherDerivedServices>,
     ) -> Result<Self, WatcherError> {
         let (sink, mut incoming) = tokio::sync::mpsc::channel(64);
         let (stop, mut stop_requested) = watch::channel(false);
@@ -93,6 +135,7 @@ impl WatcherRuntime {
                             return;
                         }
                         let reason = request.reason;
+                        let roots = request.roots.clone();
                         let result = reconciler.reconcile(request).await;
                         if *stop_requested.borrow() {
                             return;
@@ -110,6 +153,12 @@ impl WatcherRuntime {
                                 failed: 1,
                             },
                         };
+                        if let Some(derived) = derived.as_ref() {
+                            derived.rebuild(&roots).await;
+                        }
+                        if *stop_requested.borrow() {
+                            return;
+                        }
                         events.emit_project_changed(session_id, generation, summary);
                     }
                 }
@@ -165,7 +214,7 @@ mod tests {
         },
     };
     use viewer_application::{
-        ProjectAccess, WatcherSink,
+        ImageArtifact, ImageError, ImageRequest, ProjectAccess, WatcherSink,
         metadata::{
             FilePathMove, MarkerChange, MarkerPatch, MarkerRestore, MarkerStoreError, MarkerTarget,
             PortableMarker, PortableMetadataPort,
@@ -174,8 +223,9 @@ mod tests {
         watcher::{ReconcileSummary, WatcherEvent},
     };
     use viewer_domain::{
-        EntityId, RelativePath,
-        file::{FileKind, FileNode},
+        EntityId, ProjectId, RelativePath,
+        file::{FileKind, FileNode, TextIndexStatus},
+        image::ImageProbe,
     };
     use viewer_infrastructure::{
         portable::{PortableMarkerStore, PortableProjectMetadata},
@@ -189,6 +239,21 @@ mod tests {
 
     struct TestSubscription;
     impl WatchSubscription for TestSubscription {}
+
+    struct UnusedImage;
+
+    #[async_trait::async_trait]
+    impl ImagePort for UnusedImage {
+        async fn probe(&self, _source: &Path) -> Result<ImageProbe, ImageError> {
+            Err(ImageError::Unsupported)
+        }
+
+        async fn render(&self, _request: ImageRequest) -> Result<ImageArtifact, ImageError> {
+            Err(ImageError::Unsupported)
+        }
+
+        async fn cancel_session(&self, _session_id: SessionId) {}
+    }
 
     impl WatcherPort for TestWatcher {
         fn watch(
@@ -350,6 +415,7 @@ mod tests {
             clock.clone(),
             events.clone(),
             scan_ready_rx,
+            None,
         )
         .unwrap();
         let old = fs::canonicalize(project.path().join("before.txt")).unwrap();
@@ -383,5 +449,89 @@ mod tests {
         assert!(!marker_finished_before_release);
         assert!(markers.finished.load(Ordering::Acquire));
         assert!(events.0.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn watcher_rebuilds_text_derivation_in_its_single_bounded_session() {
+        let project = tempfile::tempdir().unwrap();
+        let root = fs::canonicalize(project.path()).unwrap();
+        fs::create_dir(root.join(".viewer")).unwrap();
+        let index = Arc::new(SessionIndex::open(root.join(".viewer/session.sqlite")).unwrap());
+        let coordinator = Arc::new(TaskCoordinator::default());
+        let session_id = SessionId::new();
+        let generation = coordinator.begin_session(session_id);
+        let clock = Arc::new(AdjustableClock::default());
+        let reconciler = Arc::new(
+            ProjectReconciler::new(
+                &root,
+                Arc::clone(&coordinator),
+                Arc::clone(&index),
+                None,
+                clock.clone(),
+                Arc::new(tokio::sync::Mutex::new(())),
+                true,
+            )
+            .unwrap(),
+        );
+        let watcher = Arc::new(TestWatcher::default());
+        let events = Arc::new(RecordingEvents::default());
+        let (_scan_ready, scan_ready_rx) = watch::channel(true);
+        let mut runtime = WatcherRuntime::start(
+            root.clone(),
+            session_id,
+            generation,
+            watcher.clone(),
+            ExpectedChangeLedger::default(),
+            reconciler,
+            clock.clone(),
+            events.clone(),
+            scan_ready_rx,
+            Some(WatcherDerivedServices {
+                active: ActiveProject {
+                    project_id: ProjectId::new(),
+                    session_id,
+                    generation,
+                    root: root.clone(),
+                    display_name: "fixture".into(),
+                    access: ProjectAccess::ReadWrite,
+                },
+                coordinator,
+                index: Arc::clone(&index),
+                image: Arc::new(UnusedImage),
+                events,
+            }),
+        )
+        .unwrap();
+        let note = root.join("note.txt");
+        fs::write(&note, b"watcher searchable text").unwrap();
+        watcher
+            .sink
+            .lock()
+            .unwrap()
+            .as_ref()
+            .unwrap()
+            .clone()
+            .send(vec![WatcherEvent::added(note)])
+            .await
+            .unwrap();
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        clock.0.store(1_000, Ordering::Release);
+        let entity_id = filesystem_node(&root, "note.txt").entity_id;
+
+        tokio::time::timeout(Duration::from_secs(2), async {
+            loop {
+                if index
+                    .indexed_node(entity_id)
+                    .unwrap()
+                    .is_some_and(|node| node.text_status == TextIndexStatus::Ready)
+                {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("watcher-derived text should become searchable");
+        runtime.stop().await;
     }
 }

@@ -11,7 +11,7 @@ use crate::{
         DesktopOperationCommitPort, OperationRuntime, OperationRuntimeError, OperationStarted,
         adapter_as_undo_port,
     },
-    watcher_runtime::WatcherRuntime,
+    watcher_runtime::{WatcherDerivedServices, WatcherRuntime},
 };
 use std::{
     collections::HashMap,
@@ -43,7 +43,7 @@ use viewer_application::{
 };
 use viewer_domain::{
     EntityId, RelativePath, SessionId, TaskId,
-    file::{FileKind, ImageIndexStatus, ImageMetadata, ReviewState},
+    file::{FileKind, FileNode, ImageIndexStatus, ImageMetadata, ReviewState, TextIndexStatus},
     image::ImageRepresentationKind,
     operation::{RenamePreflight, RenameRuleSet, RenameTarget},
     search::{Generation, SearchQuery, SearchScope},
@@ -606,6 +606,13 @@ impl DesktopRuntime {
                 Arc::clone(&self.clock),
                 Arc::clone(&self.events),
                 scan_ready_rx,
+                Some(WatcherDerivedServices {
+                    active: active.clone(),
+                    coordinator: Arc::clone(&self.coordinator),
+                    index: Arc::clone(&index),
+                    image: Arc::clone(&image),
+                    events: Arc::clone(&self.events),
+                }),
             )
             .map_err(|_| operation_backend_unavailable())
         })();
@@ -1955,9 +1962,7 @@ async fn run_scan(
         hydrate_portable_markers(&index, store.as_ref())?;
     }
     let result = run_derived_indexing(active, coordinator, index, image, events).await;
-    if result.is_ok() {
-        scan_ready.send_replace(true);
-    }
+    scan_ready.send_replace(true);
     result
 }
 
@@ -1998,6 +2003,17 @@ async fn run_derived_indexing(
         return Ok(());
     }
     let nodes = BrowseIndexPort::descendants(index.as_ref(), None).map_err(CommandError::from)?;
+    rebuild_derived_nodes(active, coordinator, index, image, events, nodes).await
+}
+
+pub(crate) async fn rebuild_derived_nodes(
+    active: ActiveProject,
+    coordinator: Arc<TaskCoordinator>,
+    index: Arc<SessionIndex>,
+    image: Arc<dyn ImagePort>,
+    events: Arc<dyn DesktopEventSink>,
+    nodes: Vec<FileNode>,
+) -> Result<(), CommandError> {
     emit_index_progress_if_current(&active, &coordinator, &index, events.as_ref())?;
     let mut last_progress = Instant::now();
 
@@ -2009,6 +2025,19 @@ async fn run_derived_indexing(
     }) {
         if !coordinator.is_publishable(active.session_id, active.generation) {
             return Ok(());
+        }
+        let current = match index.indexed_node(node.entity_id) {
+            Ok(Some(current)) if current.node == node => current,
+            Ok(_) => continue,
+            Err(_) => continue,
+        };
+        let pending = match node.kind {
+            FileKind::Jpeg | FileKind::Png => current.image_status == ImageIndexStatus::Pending,
+            FileKind::Markdown | FileKind::Text => current.text_status == TextIndexStatus::Pending,
+            FileKind::Directory => false,
+        };
+        if !pending {
+            continue;
         }
         let source = validated_indexed_source(&active, &node)
             .map(|(source, _, _)| source)
@@ -2029,26 +2058,25 @@ async fn run_derived_indexing(
                     },
                     None => Err(ImageIndexStatus::Failed),
                 };
-                index
-                    .replace_image_metadata(node.entity_id, &node.relative_path, result)
-                    .map_err(CommandError::from)?;
+                let _ = index.replace_image_metadata(node.entity_id, &node.relative_path, result);
             }
             FileKind::Markdown | FileKind::Text => match source {
                 Some(source) => {
                     let extracted =
                         tokio::task::spawn_blocking(move || TextExtractor::extract(source)).await;
                     match extracted {
-                        Ok(Ok(status)) => index
-                            .replace_text(node.entity_id, &node.relative_path, &status)
-                            .map_err(CommandError::from)?,
-                        Ok(Err(_)) | Err(_) => index
-                            .mark_text_failed(node.entity_id, &node.relative_path)
-                            .map_err(CommandError::from)?,
+                        Ok(Ok(status)) => {
+                            let _ =
+                                index.replace_text(node.entity_id, &node.relative_path, &status);
+                        }
+                        Ok(Err(_)) | Err(_) => {
+                            let _ = index.mark_text_failed(node.entity_id, &node.relative_path);
+                        }
                     }
                 }
-                None => index
-                    .mark_text_failed(node.entity_id, &node.relative_path)
-                    .map_err(CommandError::from)?,
+                None => {
+                    let _ = index.mark_text_failed(node.entity_id, &node.relative_path);
+                }
             },
             FileKind::Directory => unreachable!("directories were filtered out"),
         }

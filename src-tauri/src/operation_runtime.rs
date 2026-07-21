@@ -242,10 +242,10 @@ impl OperationRuntime {
                     }
                 }
             };
-            record.publish(completed.clone());
-            record.store_result(result);
             let _ = stop_progress_tx.send(());
             let _ = progress_forwarder.await;
+            record.publish(completed.clone());
+            record.store_result(result);
             {
                 let mut state = state
                     .lock()
@@ -254,8 +254,8 @@ impl OperationRuntime {
                     state.active = None;
                 }
             }
-            record.mark_complete();
             terminal_events.emit_operation(session_id, generation, completed);
+            record.mark_complete();
         });
         Ok(OperationStarted { batch_id })
     }
@@ -858,6 +858,32 @@ mod tests {
         progress: Mutex<Vec<BatchProgress>>,
     }
 
+    struct BlockingTerminalEvents {
+        terminal_entered: Notify,
+        release_terminal: AtomicBool,
+        terminal_returned: AtomicBool,
+    }
+
+    impl DesktopEventSink for BlockingTerminalEvents {
+        fn emit_scan(&self, _event: crate::dto::ScanEventDto) {}
+
+        fn emit_operation(
+            &self,
+            _session_id: SessionId,
+            _generation: Generation,
+            event: BatchProgress,
+        ) {
+            if event.lifecycle != BatchLifecycle::Completed {
+                return;
+            }
+            self.terminal_entered.notify_one();
+            while !self.release_terminal.load(Ordering::Acquire) {
+                std::thread::yield_now();
+            }
+            self.terminal_returned.store(true, Ordering::Release);
+        }
+    }
+
     #[derive(Default)]
     struct AdmissionPort {
         preflight_started: Notify,
@@ -990,6 +1016,46 @@ mod tests {
                 .all(|progress| progress.lifecycle == BatchLifecycle::Completed),
             "no non-terminal progress may follow completion"
         );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn wait_does_not_complete_until_terminal_event_publication_returns() {
+        let session_id = SessionId::new();
+        let coordinator = Arc::new(TaskCoordinator::default());
+        let generation = coordinator.begin_session(session_id);
+        let service = Arc::new(FileCommandService::new(
+            session_id,
+            ProjectAccess::ReadWrite,
+            coordinator,
+            Arc::new(TestPort::default()),
+        ));
+        let events = Arc::new(BlockingTerminalEvents {
+            terminal_entered: Notify::new(),
+            release_terminal: AtomicBool::new(false),
+            terminal_returned: AtomicBool::new(false),
+        });
+        let runtime = Arc::new(OperationRuntime::new(service, events.clone()));
+        let started = runtime
+            .start(
+                session_id,
+                generation,
+                FileCommandKind::Trash,
+                vec![command_item()],
+                Vec::new(),
+            )
+            .await
+            .unwrap();
+
+        events.terminal_entered.notified().await;
+        assert!(
+            tokio::time::timeout(Duration::from_millis(25), runtime.wait(started.batch_id),)
+                .await
+                .is_err(),
+            "completion must remain latched false while the terminal sink is in flight"
+        );
+        events.release_terminal.store(true, Ordering::Release);
+        runtime.wait(started.batch_id).await.unwrap();
+        assert!(events.terminal_returned.load(Ordering::Acquire));
     }
 
     #[tokio::test]

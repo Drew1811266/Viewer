@@ -109,7 +109,7 @@ describe('VirtualGrid marquee selection', () => {
     fireEvent.pointerMove(grid, { pointerId: 6, clientX: 200, clientY: 220 })
     expect(requestFrame).toHaveBeenCalledTimes(1)
     const firstFrame = frame
-    act(() => firstFrame?.(0))
+    runFrame(firstFrame, 0)
     expect(grid.scrollTop).toBeGreaterThan(0)
     expect(grid.scrollTop).toBeLessThanOrEqual(18)
     expect(changed).toHaveBeenLastCalledWith(expect.objectContaining({ phase: 'change' }))
@@ -117,7 +117,7 @@ describe('VirtualGrid marquee selection', () => {
     const staleFrame = frame
     fireEvent.pointerUp(grid, { pointerId: 6, clientX: 200, clientY: 220 })
     const requestCountAtEnd = requestFrame.mock.calls.length
-    act(() => staleFrame?.(16))
+    runFrame(staleFrame, 16)
     expect(requestFrame).toHaveBeenCalledTimes(requestCountAtEnd)
     expect(cancelFrame).toHaveBeenCalled()
   })
@@ -170,7 +170,7 @@ describe('VirtualGrid marquee selection', () => {
     fireEvent.pointerDown(grid, { pointerId: 9, button: 0, clientX: 230, clientY: 200 })
     fireEvent.pointerMove(grid, { pointerId: 9, clientX: 12, clientY: 220 })
     act(() => resize(300))
-    act(() => frame?.(0))
+    runFrame(frame, 0)
 
     expect(changed).toHaveBeenLastCalledWith({ phase: 'change', keys: ['item-4', 'item-5'], metaKey: false })
   })
@@ -219,7 +219,7 @@ describe('VirtualGrid marquee selection', () => {
         onMarqueeSelectionChange={changed}
       />,
     )
-    act(() => frame?.(0))
+    runFrame(frame, 0)
 
     expect(changed).not.toHaveBeenCalled()
     expect(grid.releasePointerCapture).toHaveBeenCalledWith(10)
@@ -244,7 +244,7 @@ describe('VirtualGrid marquee selection', () => {
     changed.mockClear()
 
     rendered.unmount()
-    act(() => frame?.(0))
+    runFrame(frame, 0)
 
     expect(grid.releasePointerCapture).toHaveBeenCalledWith(11)
     expect(cancelFrame).toHaveBeenCalledWith(1)
@@ -269,4 +269,9 @@ function installResizeObserver() {
       {} as ResizeObserver,
     )
   }
+}
+
+function runFrame(frame: FrameRequestCallback | null, timestamp: number) {
+  if (frame === null) throw new Error('Expected a queued animation frame')
+  act(() => frame(timestamp))
 }

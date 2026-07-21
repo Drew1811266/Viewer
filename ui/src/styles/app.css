@@ -785,6 +785,21 @@ select {
   outline: none;
 }
 
+.virtual-grid[data-marquee-active="true"] {
+  cursor: crosshair;
+  user-select: none;
+}
+
+.virtual-grid-marquee {
+  background: rgb(36 119 212 / 18%);
+  border: 1px solid #2477d4;
+  border-radius: 3px;
+  box-sizing: border-box;
+  pointer-events: none;
+  position: absolute;
+  z-index: 2;
+}
+
 .virtual-grid:focus-visible {
   box-shadow: 0 0 0 2px #2477d4;
 }

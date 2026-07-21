@@ -37,6 +37,64 @@ function workspace(count = 10): Extract<FolderWorkspace, { workspace: 'content' 
   }
 }
 
+function selectedLabels(): string[] {
+  return screen
+    .getAllByRole('option')
+    .filter((item) => item.getAttribute('aria-selected') === 'true')
+    .map((item) => item.getAttribute('aria-label')!)
+}
+
+function imageGrid(): HTMLElement {
+  const grid = screen.getByRole('listbox', { name: '图片文件' })
+  vi.spyOn(grid, 'getBoundingClientRect').mockReturnValue({
+    left: 0,
+    top: 0,
+    right: 900,
+    bottom: 520,
+    width: 900,
+    height: 520,
+    x: 0,
+    y: 0,
+    toJSON: () => undefined,
+  })
+  Object.defineProperty(grid, 'setPointerCapture', { value: vi.fn(), configurable: true })
+  Object.defineProperty(grid, 'releasePointerCapture', { value: vi.fn(), configurable: true })
+  return grid
+}
+
+function marqueeImages({
+  start,
+  end,
+  metaKey = false,
+}: {
+  start: [number, number]
+  end: [number, number]
+  metaKey?: boolean
+}) {
+  const grid = imageGrid()
+  fireEvent.pointerDown(grid, {
+    pointerId: 41,
+    button: 0,
+    metaKey,
+    clientX: start[0],
+    clientY: start[1],
+  })
+  fireEvent.pointerMove(grid, {
+    pointerId: 41,
+    metaKey: false,
+    clientX: end[0],
+    clientY: end[1],
+  })
+}
+
+function finishMarquee(end: [number, number]) {
+  fireEvent.pointerUp(screen.getByRole('listbox', { name: '图片文件' }), {
+    pointerId: 41,
+    clientX: end[0],
+    clientY: end[1],
+  })
+}
+
 describe('ContentBrowser', () => {
   it('supports click command-toggle shift-range arrows and Space preview', () => {
     const preview = vi.fn()
@@ -106,6 +164,68 @@ describe('ContentBrowser', () => {
     expect(grid).toHaveFocus()
   })
 
+  it('replaces image selection live with a visible background marquee', () => {
+    render(<ContentBrowser workspace={workspace(4)} />)
+    fireEvent.click(screen.getByRole('option', { name: '4.jpg' }))
+    marqueeImages({ start: [378, 100], end: [0, 0] })
+    expect(selectedLabels()).toEqual(['1.jpg', '2.jpg'])
+    expect(screen.getByTestId('marquee-selection')).toBeVisible()
+    finishMarquee([0, 0])
+    expect(screen.queryByTestId('marquee-selection')).not.toBeInTheDocument()
+  })
+
+  it('toggles marquee hits against the frozen Command selection snapshot', () => {
+    render(<ContentBrowser workspace={workspace(4)} />)
+    fireEvent.click(screen.getByRole('option', { name: '1.jpg' }))
+    fireEvent.click(screen.getByRole('option', { name: '3.jpg' }), { metaKey: true })
+    marqueeImages({ start: [378, 100], end: [0, 0], metaKey: true })
+    finishMarquee([0, 0])
+    expect(selectedLabels()).toEqual(['2.jpg', '3.jpg'])
+  })
+
+  it('clears on a background click and restores the start snapshot on Escape', () => {
+    render(<ContentBrowser workspace={workspace(4)} />)
+    fireEvent.click(screen.getByRole('option', { name: '1.jpg' }))
+    const grid = imageGrid()
+    fireEvent.pointerDown(grid, { pointerId: 41, button: 0, clientX: 500, clientY: 300 })
+    fireEvent.pointerUp(grid, { pointerId: 41, clientX: 500, clientY: 300 })
+    expect(selectedLabels()).toEqual([])
+
+    fireEvent.click(screen.getByRole('option', { name: '1.jpg' }))
+    marqueeImages({ start: [378, 100], end: [0, 0] })
+    expect(selectedLabels()).toEqual(['1.jpg', '2.jpg'])
+    fireEvent.keyDown(screen.getByRole('listbox', { name: '图片文件' }), { key: 'Escape' })
+    expect(selectedLabels()).toEqual(['1.jpg'])
+    expect(screen.queryByTestId('marquee-selection')).not.toBeInTheDocument()
+  })
+
+  it('keeps background marquee, card Finder export, and handle organization drag isolated', () => {
+    const exportFiles = vi.fn()
+    const organize = vi.fn()
+    render(
+      <ContentBrowser
+        workspace={workspace(3)}
+        onFinderDragStart={exportFiles}
+        onOrganizationDragStart={organize}
+      />,
+    )
+    fireEvent.pointerDown(screen.getByRole('option', { name: '1.jpg' }), {
+      pointerId: 9,
+      button: 0,
+    })
+    fireEvent.dragStart(screen.getByRole('option', { name: '1.jpg' }))
+    expect(exportFiles).toHaveBeenCalledTimes(1)
+    fireEvent.pointerDown(screen.getByRole('button', { name: '整理 2.jpg' }), {
+      pointerId: 10,
+      button: 0,
+    })
+    fireEvent.dragStart(screen.getByRole('button', { name: '整理 2.jpg' }), {
+      dataTransfer: { setData: vi.fn(), effectAllowed: 'none' },
+    })
+    expect(organize).toHaveBeenCalledTimes(1)
+    expect(screen.queryByTestId('marquee-selection')).not.toBeInTheDocument()
+  })
+
   it('keeps Markdown and TXT in an independent labelled list', () => {
     render(<ContentBrowser workspace={workspace()} />)
 
@@ -154,16 +274,16 @@ describe('ContentBrowser', () => {
     const exportFiles = vi.fn()
     const setData = vi.fn()
     render(<ContentBrowser workspace={workspace(4)} onFinderDragStart={exportFiles} />)
-    fireEvent.click(screen.getByRole('option', { name: '1.jpg' }))
-    fireEvent.click(screen.getByRole('option', { name: '3.jpg' }), { metaKey: true })
+    marqueeImages({ start: [378, 100], end: [0, 0] })
+    finishMarquee([0, 0])
 
-    const event = createEvent.dragStart(screen.getByRole('option', { name: '3.jpg' }), {
+    const event = createEvent.dragStart(screen.getByRole('option', { name: '2.jpg' }), {
       dataTransfer: { setData, effectAllowed: 'none' },
     })
-    fireEvent(screen.getByRole('option', { name: '3.jpg' }), event)
+    fireEvent(screen.getByRole('option', { name: '2.jpg' }), event)
 
     expect(event.defaultPrevented).toBe(true)
-    expect(exportFiles).toHaveBeenCalledWith(['image-1', 'image-3'])
+    expect(exportFiles).toHaveBeenCalledWith(['image-1', 'image-2'])
     expect(setData).not.toHaveBeenCalled()
   })
 

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { DragEvent, KeyboardEvent, MouseEvent } from 'react'
 import type { BrowserFile, FolderWorkspace } from '../api/types'
 import VirtualGrid from './VirtualGrid'
+import type { MarqueeSelectionChange } from './VirtualGrid'
 import type { TaskFeedback } from './TaskBar'
 
 type ContentWorkspace = Extract<FolderWorkspace, { workspace: 'content' }>
@@ -55,6 +56,10 @@ export default function ContentBrowser({
   const [selected, setSelected] = useState<Set<string>>(() => new Set())
   const [activeId, setActiveId] = useState<string | null>(null)
   const anchorId = useRef<string | null>(null)
+  const marqueeSelection = useRef<{
+    baseline: Set<string>
+    metaKey: boolean
+  } | null>(null)
   const cache = useRef(new Map<string, string>())
   const pending = useRef(new Map<string, Promise<string>>())
   const [work, setWork] = useState<ThumbnailWork>({ requested: 0, completed: 0, failed: 0 })
@@ -78,6 +83,10 @@ export default function ContentBrowser({
     }
     if (activeId && !ids.has(activeId)) setActiveId(null)
   }, [activeId, allFiles, onSelectionChange, selected])
+
+  useEffect(() => {
+    marqueeSelection.current = null
+  }, [allFiles])
 
   useEffect(() => {
     if (onThumbnailTaskChange === undefined || work.requested === 0) {
@@ -131,6 +140,37 @@ export default function ContentBrowser({
     onSelectionChange?.(
       allFiles.filter((file) => next.has(file.entityId)),
     )
+  }
+
+  function updateMarqueeSelection(change: MarqueeSelectionChange) {
+    if (change.phase === 'start') {
+      marqueeSelection.current = { baseline: new Set(selected), metaKey: change.metaKey }
+      return
+    }
+    const session = marqueeSelection.current
+    if (session === null) return
+    if (change.phase === 'cancel') {
+      commitSelection(new Set(session.baseline))
+      marqueeSelection.current = null
+      return
+    }
+    const hits = new Set(change.keys)
+    const next = session.metaKey ? new Set(session.baseline) : new Set<string>()
+    if (session.metaKey) {
+      for (const id of hits) {
+        if (next.has(id)) next.delete(id)
+        else next.add(id)
+      }
+    } else {
+      for (const id of hits) next.add(id)
+    }
+    commitSelection(next)
+    if (change.phase === 'end') {
+      const first = workspace.images.find((file) => hits.has(file.entityId))
+      setActiveId(first?.entityId ?? null)
+      anchorId.current = first?.entityId ?? null
+      marqueeSelection.current = null
+    }
   }
 
   function selectAllFiles() {
@@ -284,6 +324,8 @@ export default function ContentBrowser({
         ariaLabel="图片文件"
         activeDescendant={activeId ? `file-${activeId}` : undefined}
         onKeyDown={handleKeyboard}
+        ariaMultiselectable
+        onMarqueeSelectionChange={updateMarqueeSelection}
         renderItem={(file) => (
           <ImageCell
             file={file}

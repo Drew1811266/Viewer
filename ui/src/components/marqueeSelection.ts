@@ -1,7 +1,12 @@
-export interface MarqueePoint {
-  x: number
-  y: number
-}
+import {
+  pointDistance,
+  verticalEdgeScrollDelta,
+  type PointerPoint,
+} from './pointerGeometry'
+
+export type MarqueePoint = PointerPoint
+export const marqueeDistance = pointDistance
+export const verticalAutoScrollDelta = verticalEdgeScrollDelta
 
 export interface MarqueeRect {
   left: number
@@ -27,10 +32,6 @@ export function normalizeMarquee(start: MarqueePoint, current: MarqueePoint): Ma
   const right = Math.max(start.x, current.x)
   const bottom = Math.max(start.y, current.y)
   return { left, top, right, bottom, width: right - left, height: bottom - top }
-}
-
-export function marqueeDistance(start: MarqueePoint, current: MarqueePoint): number {
-  return Math.hypot(current.x - start.x, current.y - start.y)
 }
 
 export function intersectingGridIndexes(
@@ -62,21 +63,4 @@ export function intersectingGridIndexes(
   }
 
   return hits
-}
-
-export function verticalAutoScrollDelta(
-  pointerY: number,
-  viewportTop: number,
-  viewportBottom: number,
-): number {
-  const edge = 32
-  const max = 18
-
-  if (pointerY < viewportTop + edge) {
-    return -Math.min(max, Math.max(0, ((viewportTop + edge - pointerY) / edge) * max))
-  }
-  if (pointerY > viewportBottom - edge) {
-    return Math.min(max, Math.max(0, ((pointerY - (viewportBottom - edge)) / edge) * max))
-  }
-  return 0
 }

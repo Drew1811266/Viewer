@@ -445,7 +445,7 @@ fn filesystem_preflight_accepts_unicode_and_produces_a_staged_plan() {
     );
     assert!(matches!(
         prepared.plan.unwrap().stages.as_slice(),
-        [RenameStage::ToFinal { .. }]
+        [RenameStage::ToTemporary { .. }, RenameStage::ToFinal { .. }]
     ));
 }
 

@@ -477,16 +477,21 @@ async fn external_changes_reconcile_after_scan_and_watcher_stops_before_close_re
     let mut reconciled = false;
     for _ in 0..50 {
         tokio::time::sleep(Duration::from_millis(100)).await;
-        if let FolderWorkspaceDto::Content { text_files, .. } =
-            runtime.query_folder(None).await.unwrap()
-            && text_files.iter().any(|file| file.name == "external.txt")
-        {
+        let projection_published = matches!(
+            runtime.query_folder(None).await.unwrap(),
+            FolderWorkspaceDto::Content { text_files, .. }
+                if text_files.iter().any(|file| file.name == "external.txt")
+        );
+        let change_emitted = !events.project_changes.lock().unwrap().is_empty();
+        if projection_published && change_emitted {
             reconciled = true;
             break;
         }
     }
-    assert!(reconciled, "watcher did not publish the external file");
-    assert!(!events.project_changes.lock().unwrap().is_empty());
+    assert!(
+        reconciled,
+        "watcher did not publish both the external file projection and its change event"
+    );
 
     runtime.close_project().await.unwrap();
     let event_count = events.project_changes.lock().unwrap().len();

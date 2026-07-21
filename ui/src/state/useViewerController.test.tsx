@@ -311,6 +311,49 @@ describe('useViewerController M2 coordination', () => {
     expect(viewer.queryFolder).toHaveBeenCalledTimes(2)
   })
 
+  it('keeps the operation in finishing state until results and projection cleanup settle', async () => {
+    const viewer = bridge()
+    const results = deferred<{ total: number; offset: number; items: [] }>()
+    let receiveOperation: ((event: OperationProgressEvent) => void) | undefined
+    vi.mocked(viewer.listenOperationProgress).mockImplementation(async (handler) => {
+      receiveOperation = handler
+      return () => undefined
+    })
+    vi.mocked(viewer.operationResults).mockImplementation(() => results.promise)
+    const { result } = renderHook(() => useViewerController(viewer))
+    await act(() => result.current.openProject('/fixture/project'))
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    await act(() =>
+      result.current.executeFileCommand('rename', [
+        {
+          entityId: 'image-1',
+          action: { kind: 'rename', proposedName: 'hero.jpg', editExtension: true },
+        },
+      ]),
+    )
+
+    act(() => receiveOperation?.(operationProgress('session-1', 1, 'batch-1')))
+    expect(result.current.state.operation.active?.lifecycle).toBe('completed')
+    expect(result.current.state.operation.finishing).toBe(true)
+    await act(() =>
+      result.current.executeFileCommand('trash', [
+        { entityId: 'image-2', action: { kind: 'trash' } },
+      ]),
+    )
+    expect(viewer.executeFileCommand).toHaveBeenCalledOnce()
+
+    await act(async () => {
+      results.resolve({ total: 0, offset: 0, items: [] })
+      await results.promise
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    expect(result.current.state.operation.finishing).toBe(false)
+  })
+
   it('admits only one command request while startup is pending and cancels the current batch', async () => {
     const viewer = bridge()
     const start = deferred<OperationStarted>()

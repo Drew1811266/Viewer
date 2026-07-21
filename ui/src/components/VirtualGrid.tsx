@@ -113,13 +113,18 @@ export default function VirtualGrid<T>({
   function clearMarqueeSession() {
     const session = marqueeSession.current
     const node = container.current ?? captureOwner.current
-    if (session !== null && node?.releasePointerCapture !== undefined) {
-      node.releasePointerCapture(session.pointerId)
-    }
-    cancelAutoScroll()
     marqueeSession.current = null
     captureOwner.current = null
+    cancelAutoScroll()
     setMarqueeRect(null)
+    if (session !== null && node?.releasePointerCapture !== undefined) {
+      try {
+        node.releasePointerCapture(session.pointerId)
+      } catch {
+        // The browser may have already revoked capture. Local session cleanup
+        // must still complete so stale pointer events cannot revive it.
+      }
+    }
   }
 
   useLayoutEffect(() => {
@@ -210,6 +215,11 @@ export default function VirtualGrid<T>({
     if (node === null) return
     node.focus()
     const point = contentPoint(event.clientX, event.clientY)
+    try {
+      node.setPointerCapture?.(event.pointerId)
+    } catch {
+      return
+    }
     marqueeSession.current = {
       pointerId: event.pointerId,
       start: point,
@@ -221,7 +231,6 @@ export default function VirtualGrid<T>({
       keys: [],
     }
     captureOwner.current = node
-    node.setPointerCapture?.(event.pointerId)
     onMarqueeSelectionChange({ phase: 'start', keys: [], metaKey: event.metaKey })
     event.preventDefault()
   }

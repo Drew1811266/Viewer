@@ -206,6 +206,23 @@ describe('viewerReducer', () => {
     state = viewerReducer(state, { type: 'operation_progress_received', progress: current })
     expect(state.operation.active?.lifecycle).toBe('running')
     state = viewerReducer(state, {
+      type: 'operation_progress_received',
+      progress: { ...current, lifecycle: 'completed' },
+    })
+    expect(state.operation.finishing).toBe(true)
+    state = viewerReducer(state, {
+      type: 'operation_finish_settled',
+      sessionId: project.sessionId,
+      generation: project.generation,
+      batchId: 'batch-1',
+    })
+    expect(state.operation.finishing).toBe(false)
+    state = viewerReducer(state, {
+      type: 'operation_progress_received',
+      progress: { ...current, lifecycle: 'completed' },
+    })
+    expect(state.operation.finishing).toBe(false)
+    state = viewerReducer(state, {
       type: 'operation_results_loaded',
       sessionId: project.sessionId,
       generation: project.generation,

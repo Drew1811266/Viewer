@@ -250,6 +250,54 @@ describe('VirtualGrid marquee selection', () => {
     expect(cancelFrame).toHaveBeenCalledWith(1)
     expect(changed).not.toHaveBeenCalled()
   })
+
+  it('abandons pointer-down cleanly when capture acquisition throws', () => {
+    const changed = vi.fn()
+    renderGrid(changed)
+    const grid = screen.getByRole('listbox', { name: 'files' })
+    installPointerSurface(grid)
+    vi.mocked(grid.setPointerCapture).mockImplementation(() => {
+      throw new Error('capture unavailable')
+    })
+
+    expect(() =>
+      fireEvent.pointerDown(grid, {
+        pointerId: 12,
+        button: 0,
+        clientX: 200,
+        clientY: 180,
+      }),
+    ).not.toThrow()
+    fireEvent.pointerMove(grid, { pointerId: 12, clientX: 12, clientY: 22 })
+    fireEvent.pointerUp(grid, { pointerId: 12, clientX: 12, clientY: 22 })
+
+    expect(changed).not.toHaveBeenCalled()
+    expect(screen.queryByTestId('marquee-selection')).not.toBeInTheDocument()
+    expect(grid).not.toHaveAttribute('data-marquee-active')
+  })
+
+  it('clears session and overlay even when pointer-capture release throws', () => {
+    const changed = vi.fn()
+    renderGrid(changed)
+    const grid = screen.getByRole('listbox', { name: 'files' })
+    installPointerSurface(grid)
+    vi.mocked(grid.releasePointerCapture).mockImplementation(() => {
+      throw new Error('capture already lost')
+    })
+    fireEvent.pointerDown(grid, { pointerId: 13, button: 0, clientX: 200, clientY: 180 })
+    fireEvent.pointerMove(grid, { pointerId: 13, clientX: 12, clientY: 22 })
+
+    expect(() =>
+      fireEvent.pointerUp(grid, { pointerId: 13, clientX: 12, clientY: 22 }),
+    ).not.toThrow()
+    fireEvent.pointerMove(grid, { pointerId: 13, clientX: 200, clientY: 220 })
+
+    expect(screen.queryByTestId('marquee-selection')).not.toBeInTheDocument()
+    expect(grid).not.toHaveAttribute('data-marquee-active')
+    expect(changed).toHaveBeenLastCalledWith(
+      expect.objectContaining({ phase: 'end' }),
+    )
+  })
 })
 
 function installResizeObserver() {

@@ -115,6 +115,7 @@ export interface OperationState {
   kind: FileCommandKind | null
   active: OperationProgressEvent | null
   results: OperationResultPage | null
+  finishing: boolean
 }
 
 export interface ContextRepair {
@@ -124,7 +125,7 @@ export interface ContextRepair {
 }
 
 function initialOperationState(): OperationState {
-  return { kind: null, active: null, results: null }
+  return { kind: null, active: null, results: null, finishing: false }
 }
 
 export const initialViewerState: ViewerState = {
@@ -236,6 +237,12 @@ export type ViewerAction =
       kind: FileCommandKind
     }
   | { type: 'operation_progress_received'; progress: OperationProgressEvent }
+  | {
+      type: 'operation_finish_settled'
+      sessionId: string
+      generation: number
+      batchId: string
+    }
   | {
       type: 'operation_results_loaded'
       sessionId: string
@@ -466,6 +473,7 @@ export function viewerReducer(state: ViewerState, action: ViewerAction): ViewerS
             activeEntityId: null,
           },
           results: null,
+          finishing: false,
         },
         errorMessage: null,
       }
@@ -482,7 +490,26 @@ export function viewerReducer(state: ViewerState, action: ViewerAction): ViewerS
       }
       return {
         ...state,
-        operation: { ...state.operation, active: action.progress },
+        operation: {
+          ...state.operation,
+          active: action.progress,
+          finishing:
+            action.progress.lifecycle === 'completed' &&
+            state.operation.active?.lifecycle !== 'completed'
+              ? true
+              : state.operation.finishing,
+        },
+      }
+    case 'operation_finish_settled':
+      if (
+        !isCurrentProjection(state, action.sessionId, action.generation) ||
+        state.operation.active?.batchId !== action.batchId
+      ) {
+        return state
+      }
+      return {
+        ...state,
+        operation: { ...state.operation, finishing: false },
       }
     case 'operation_results_loaded':
       if (

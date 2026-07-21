@@ -539,6 +539,46 @@ describe('Viewer empty state', () => {
     expect(viewer.undoLastOperation).not.toHaveBeenCalled()
   })
 
+  it('keeps write surfaces disabled while completed-operation cleanup is pending', async () => {
+    const viewer = bridge()
+    const results = deferred<{ total: number; offset: number; items: [] }>()
+    vi.mocked(viewer.queryFolder).mockResolvedValue(contentWorkspace())
+    vi.mocked(viewer.operationResults).mockImplementation(() => results.promise)
+    vi.mocked(viewer.operationStatus).mockResolvedValue({
+      sessionId: 'session-1',
+      generation: 1,
+      batchId: 'batch-1',
+      lifecycle: 'completed',
+      requested: 1,
+      completed: 1,
+      failed: 0,
+      skipped: 0,
+      cancelled: 0,
+      activeEntityId: null,
+    })
+    render(<App bridge={viewer} />)
+    fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
+    fireEvent.click(await screen.findByRole('option', { name: 'front.jpg' }))
+    fireEvent.keyDown(window, { key: 'Enter' })
+    const dialog = screen.getByRole('dialog', { name: '重命名文件' })
+    fireEvent.change(within(dialog).getByRole('textbox', { name: '新文件名' }), {
+      target: { value: 'hero.jpg' },
+    })
+    fireEvent.click(within(dialog).getByRole('button', { name: '重命名' }))
+    await waitFor(() => expect(viewer.operationResults).toHaveBeenCalledOnce())
+
+    expect(screen.getByRole('button', { name: '重命名' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: '移到废纸篓' })).toBeDisabled()
+    fireEvent.keyDown(window, { key: 'Enter' })
+    expect(screen.queryByRole('dialog', { name: '重命名文件' })).not.toBeInTheDocument()
+
+    await act(async () => {
+      results.resolve({ total: 0, offset: 0, items: [] })
+      await results.promise
+    })
+    await waitFor(() => expect(screen.getByRole('button', { name: '重命名' })).toBeEnabled())
+  })
+
   it('routes an ordered frozen Option-copy pointer drop through the same commands', async () => {
     const viewer = bridge()
     vi.mocked(viewer.folderTree).mockResolvedValue([

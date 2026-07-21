@@ -234,6 +234,7 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
   const operationBusy =
     operationSubmitting ||
     state.status !== 'active' ||
+    state.operation.finishing ||
     (state.operation.active !== null && state.operation.active.lifecycle !== 'completed')
   const canMutateSelection =
     selectedFiles.length > 0 && state.project?.access === 'read_write' && !operationBusy

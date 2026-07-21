@@ -742,6 +742,12 @@ export function useViewerController(bridge: ViewerBridge) {
         if (activeBatchRef.current === progress.batchId) {
           activeBatchRef.current = null
         }
+        dispatch({
+          type: 'operation_finish_settled',
+          sessionId: project.sessionId,
+          generation: project.generation,
+          batchId: progress.batchId,
+        })
       }
     },
     [bridge, refreshProjection],

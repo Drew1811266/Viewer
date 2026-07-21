@@ -1048,25 +1048,13 @@ impl LocalFileCommandAdapter {
                 self.now(),
             )
             .map_err(journal_file_error)?;
-        self.mutation
-            .create_registered_temporary(&temporary_path, destination_parent_identity)
-            .await?;
-        self.journal
-            .advance(
-                item.plan.operation_id,
-                OperationState::Prepared,
-                OperationState::Staged,
-                self.now(),
-            )
-            .map_err(journal_file_error)?;
-
         let before = item
             .source_evidence
             .clone()
             .ok_or(FileOperationError::IdentityChanged)?;
         let copied = match self
             .mutation
-            .copy_and_hash_cancellable_verified(
+            .create_and_copy_cancellable_verified(
                 &source_path,
                 &temporary_path,
                 cancellation,
@@ -1087,16 +1075,24 @@ impl LocalFileCommandAdapter {
                 return Err(error);
             }
         };
+        self.journal
+            .advance(
+                item.plan.operation_id,
+                OperationState::Prepared,
+                OperationState::Staged,
+                self.now(),
+            )
+            .map_err(journal_file_error)?;
         let after = FileContentEvidence {
             snapshot: before.clone(),
-            hash: copied.1,
+            hash: copied.hash,
         };
         self.journal
             .record_fs_applied(
                 item.plan.operation_id,
                 OperationState::Staged,
-                copied.0,
-                copied.1,
+                copied.snapshot.len,
+                copied.hash,
                 self.now(),
             )
             .map_err(journal_file_error)?;
@@ -1146,12 +1142,11 @@ impl LocalFileCommandAdapter {
         if destination_path.exists() {
             return Err(FileOperationError::DestinationExists);
         }
-        let temporary_snapshot = self.mutation.snapshot(&temporary_path).await?;
         self.mutation
             .rename_verified(
                 &temporary_path,
                 &destination_path,
-                &temporary_snapshot,
+                &copied.snapshot,
                 destination_parent_identity,
                 destination_parent_identity,
             )

@@ -5,15 +5,13 @@ use std::{
     path::{Path, PathBuf},
 };
 use viewer_application::{
-    FileMutationPort, FileOperationError, FileSnapshot, file_commands::FileCommandCancellation,
-    watcher::FileIdentity,
+    FileContentEvidence, FileMutationPort, FileOperationError, FileSnapshot,
+    file_commands::FileCommandCancellation, watcher::FileIdentity,
 };
 
 const COPY_BUFFER_BYTES: usize = 1024 * 1024;
 #[cfg(target_os = "macos")]
 const RENAME_NOFOLLOW_ANY: u32 = 0x0000_0010;
-#[cfg(target_os = "macos")]
-const RENAME_RESOLVE_BENEATH: u32 = 0x0000_0020;
 
 #[derive(Clone, Copy, Debug, Default)]
 pub struct LocalFileMutation;
@@ -84,6 +82,35 @@ impl FileMutationPort for LocalFileMutation {
         })
         .await
         .map_err(|error| worker_error("bound copy worker", &error_path, error))?
+    }
+
+    async fn create_and_copy_cancellable_verified(
+        &self,
+        source: &Path,
+        temporary: &Path,
+        cancellation: &FileCommandCancellation,
+        expected_source: &FileSnapshot,
+        source_parent: FileIdentity,
+        temporary_parent: FileIdentity,
+    ) -> Result<FileContentEvidence, FileOperationError> {
+        let source = source.to_path_buf();
+        let temporary = temporary.to_path_buf();
+        let error_path = temporary.clone();
+        let cancellation = cancellation.clone();
+        let expected_source = expected_source.clone();
+        tokio::task::spawn_blocking(move || {
+            create_copy_and_hash_cancellable_verified_sync_with_hook(
+                &source,
+                &temporary,
+                &cancellation,
+                &expected_source,
+                source_parent,
+                temporary_parent,
+                || {},
+            )
+        })
+        .await
+        .map_err(|error| worker_error("bound registered copy worker", &error_path, error))?
     }
 
     async fn rename(&self, source: &Path, destination: &Path) -> Result<(), FileOperationError> {
@@ -310,7 +337,7 @@ fn renameat_no_replace(
     use std::os::fd::AsRawFd;
     let source_name = encoded_file_name(source, "encode bound rename source")?;
     let destination_name = encoded_file_name(destination, "encode bound rename destination")?;
-    let flags = libc::RENAME_EXCL | RENAME_NOFOLLOW_ANY | RENAME_RESOLVE_BENEATH;
+    let flags = libc::RENAME_EXCL | RENAME_NOFOLLOW_ANY;
     // SAFETY: Both descriptors bind verified directories and both C strings
     // contain one relative component. The flags reject overwrite and links.
     let result = unsafe {
@@ -337,7 +364,6 @@ fn renameat_no_replace(
     }
 }
 
-#[cfg(target_os = "macos")]
 fn file_snapshot(file: &File) -> Result<FileSnapshot, FileOperationError> {
     let metadata = file.metadata().map_err(|error| {
         FileOperationError::io("inspect bound file", Path::new("bound-file"), &error)
@@ -345,14 +371,27 @@ fn file_snapshot(file: &File) -> Result<FileSnapshot, FileOperationError> {
     if !metadata.is_file() {
         return Err(FileOperationError::SourceMissing);
     }
-    use std::os::unix::fs::MetadataExt;
-    Ok(FileSnapshot {
-        len: metadata.len(),
-        volume_id: metadata.dev(),
-        file_id: Some(u128::from(metadata.ino())),
-        modified_ns: Some(unix_timestamp_ns(metadata.mtime(), metadata.mtime_nsec())),
-        changed_ns: Some(unix_timestamp_ns(metadata.ctime(), metadata.ctime_nsec())),
-    })
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        Ok(FileSnapshot {
+            len: metadata.len(),
+            volume_id: metadata.dev(),
+            file_id: Some(u128::from(metadata.ino())),
+            modified_ns: Some(unix_timestamp_ns(metadata.mtime(), metadata.mtime_nsec())),
+            changed_ns: Some(unix_timestamp_ns(metadata.ctime(), metadata.ctime_nsec())),
+        })
+    }
+    #[cfg(not(unix))]
+    {
+        Ok(FileSnapshot {
+            len: metadata.len(),
+            volume_id: 0,
+            file_id: None,
+            modified_ns: None,
+            changed_ns: None,
+        })
+    }
 }
 
 #[cfg(target_os = "macos")]
@@ -542,6 +581,197 @@ fn copy_and_hash_cancellable_verified_sync(
         return Err(FileOperationError::IdentityChanged);
     }
     Ok(copied)
+}
+
+#[cfg(target_os = "macos")]
+fn create_copy_and_hash_cancellable_verified_sync_with_hook<F>(
+    source: &Path,
+    temporary: &Path,
+    cancellation: &FileCommandCancellation,
+    expected_source: &FileSnapshot,
+    source_parent_identity: FileIdentity,
+    temporary_parent_identity: FileIdentity,
+    after_create: F,
+) -> Result<FileContentEvidence, FileOperationError>
+where
+    F: FnOnce(),
+{
+    let source_parent = open_bound_parent(
+        source.parent().ok_or(FileOperationError::OutsideProject)?,
+        source_parent_identity,
+    )?;
+    let temporary_parent_path = temporary
+        .parent()
+        .ok_or(FileOperationError::OutsideProject)?;
+    let temporary_parent = open_bound_parent(temporary_parent_path, temporary_parent_identity)?;
+    let source_file = openat_file(
+        &source_parent,
+        source,
+        libc::O_RDONLY | libc::O_CLOEXEC | libc::O_NOFOLLOW,
+        0,
+        "open bound copy source",
+    )?;
+    if file_snapshot(&source_file)? != *expected_source {
+        return Err(FileOperationError::IdentityChanged);
+    }
+    let temporary_file = openat_file(
+        &temporary_parent,
+        temporary,
+        libc::O_RDWR | libc::O_CREAT | libc::O_EXCL | libc::O_CLOEXEC | libc::O_NOFOLLOW,
+        0o600,
+        "create bound registered copy temporary",
+    )?;
+    temporary_parent.sync_all().map_err(|error| {
+        FileOperationError::io(
+            "sync bound registered copy directory",
+            temporary_parent_path,
+            &error,
+        )
+    })?;
+    after_create();
+    copy_open_files_and_evidence(
+        source_file,
+        temporary_file,
+        source,
+        temporary,
+        cancellation,
+        expected_source,
+    )
+}
+
+#[cfg(not(target_os = "macos"))]
+fn create_copy_and_hash_cancellable_verified_sync_with_hook<F>(
+    source: &Path,
+    temporary: &Path,
+    cancellation: &FileCommandCancellation,
+    expected_source: &FileSnapshot,
+    source_parent_identity: FileIdentity,
+    temporary_parent_identity: FileIdentity,
+    after_create: F,
+) -> Result<FileContentEvidence, FileOperationError>
+where
+    F: FnOnce(),
+{
+    verify_parent_identity(source, source_parent_identity)?;
+    verify_parent_identity(temporary, temporary_parent_identity)?;
+    let source_file = File::open(source)
+        .map_err(|error| FileOperationError::io("open bound copy source", source, &error))?;
+    if file_snapshot(&source_file)? != *expected_source {
+        return Err(FileOperationError::IdentityChanged);
+    }
+    let temporary_file = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create_new(true)
+        .open(temporary)
+        .map_err(|error| {
+            FileOperationError::io("create bound registered copy temporary", temporary, &error)
+        })?;
+    sync_parent(temporary)?;
+    after_create();
+    copy_open_files_and_evidence(
+        source_file,
+        temporary_file,
+        source,
+        temporary,
+        cancellation,
+        expected_source,
+    )
+}
+
+#[cfg(not(target_os = "macos"))]
+fn verify_parent_identity(path: &Path, expected: FileIdentity) -> Result<(), FileOperationError> {
+    let parent = path.parent().ok_or(FileOperationError::OutsideProject)?;
+    let metadata = fs::symlink_metadata(parent)
+        .map_err(|error| FileOperationError::io("inspect bound directory", parent, &error))?;
+    if metadata.file_type().is_symlink() || !metadata.is_dir() {
+        return Err(FileOperationError::OutsideProject);
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        if metadata.dev() != expected.volume || metadata.ino() != expected.file {
+            return Err(FileOperationError::IdentityChanged);
+        }
+    }
+    Ok(())
+}
+
+fn copy_open_files_and_evidence(
+    source_file: File,
+    temporary_file: File,
+    source: &Path,
+    temporary: &Path,
+    cancellation: &FileCommandCancellation,
+    expected_source: &FileSnapshot,
+) -> Result<FileContentEvidence, FileOperationError> {
+    let mut reader = BufReader::with_capacity(COPY_BUFFER_BYTES, source_file);
+    let mut writer = BufWriter::with_capacity(COPY_BUFFER_BYTES, temporary_file);
+    let mut buffer = vec![0_u8; COPY_BUFFER_BYTES];
+    let mut hasher = blake3::Hasher::new();
+    let mut length = 0_u64;
+    loop {
+        if cancellation.is_cancelled() {
+            return Err(FileOperationError::Cancelled);
+        }
+        let read = reader
+            .read(&mut buffer)
+            .map_err(|error| FileOperationError::io("read bound copy source", source, &error))?;
+        if read == 0 {
+            break;
+        }
+        writer.write_all(&buffer[..read]).map_err(|error| {
+            FileOperationError::io("write bound copy temporary", temporary, &error)
+        })?;
+        length = length
+            .checked_add(read as u64)
+            .ok_or(FileOperationError::VerificationFailed)?;
+        hasher.update(&buffer[..read]);
+    }
+    if cancellation.is_cancelled() {
+        return Err(FileOperationError::Cancelled);
+    }
+    writer
+        .flush()
+        .map_err(|error| FileOperationError::io("flush bound copy temporary", temporary, &error))?;
+    let mut temporary_file = writer.into_inner().map_err(|error| {
+        FileOperationError::io("finish bound copy temporary", temporary, error.error())
+    })?;
+    temporary_file
+        .sync_all()
+        .map_err(|error| FileOperationError::io("sync bound copy temporary", temporary, &error))?;
+    let copied = (length, *hasher.finalize().as_bytes());
+    temporary_file.seek(SeekFrom::Start(0)).map_err(|error| {
+        FileOperationError::io("rewind bound copy temporary", temporary, &error)
+    })?;
+    let mut verify = BufReader::with_capacity(COPY_BUFFER_BYTES, temporary_file);
+    let mut verified_hasher = blake3::Hasher::new();
+    let mut verified_len = 0_u64;
+    loop {
+        let read = verify.read(&mut buffer).map_err(|error| {
+            FileOperationError::io("verify bound copy temporary", temporary, &error)
+        })?;
+        if read == 0 {
+            break;
+        }
+        verified_len = verified_len
+            .checked_add(read as u64)
+            .ok_or(FileOperationError::VerificationFailed)?;
+        verified_hasher.update(&buffer[..read]);
+    }
+    if copied != (verified_len, *verified_hasher.finalize().as_bytes())
+        || file_snapshot(reader.get_ref())? != *expected_source
+    {
+        return Err(FileOperationError::IdentityChanged);
+    }
+    let snapshot = file_snapshot(verify.get_ref())?;
+    if snapshot.len != copied.0 {
+        return Err(FileOperationError::VerificationFailed);
+    }
+    Ok(FileContentEvidence {
+        snapshot,
+        hash: copied.1,
+    })
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -800,5 +1030,48 @@ fn worker_error(
         action,
         path: PathBuf::from(path),
         message: error.to_string(),
+    }
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::*;
+    use std::os::unix::fs::MetadataExt;
+
+    #[test]
+    fn bound_copy_keeps_the_created_leaf_open_when_its_name_is_replaced_by_a_hardlink() {
+        let directory = tempfile::tempdir().unwrap();
+        let root = fs::canonicalize(directory.path()).unwrap();
+        let source = root.join("source.bin");
+        let temporary = root.join(".viewer-copy-test.part");
+        let victim = root.join("victim.bin");
+        fs::write(&source, b"selected bytes").unwrap();
+        fs::write(&victim, b"victim sentinel").unwrap();
+        let parent_metadata = fs::metadata(&root).unwrap();
+        let parent_identity = FileIdentity {
+            volume: parent_metadata.dev(),
+            file: parent_metadata.ino(),
+        };
+        let source_snapshot = snapshot_sync(&source).unwrap();
+
+        let evidence = create_copy_and_hash_cancellable_verified_sync_with_hook(
+            &source,
+            &temporary,
+            &FileCommandCancellation::default(),
+            &source_snapshot,
+            parent_identity,
+            parent_identity,
+            || {
+                fs::remove_file(&temporary).unwrap();
+                fs::hard_link(&victim, &temporary).unwrap();
+            },
+        )
+        .unwrap();
+
+        assert_eq!(fs::read(&victim).unwrap(), b"victim sentinel");
+        assert_eq!(fs::read(&temporary).unwrap(), b"victim sentinel");
+        assert_ne!(snapshot_sync(&temporary).unwrap(), evidence.snapshot);
+        assert_eq!(evidence.snapshot.len, b"selected bytes".len() as u64);
+        assert_eq!(evidence.hash, *blake3::hash(b"selected bytes").as_bytes());
     }
 }

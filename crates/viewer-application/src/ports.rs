@@ -1,5 +1,5 @@
 use crate::{
-    FileOperationError, FileSnapshot, ImageArtifact, ImageError, ImageRequest,
+    FileContentEvidence, FileOperationError, FileSnapshot, ImageArtifact, ImageError, ImageRequest,
     file_commands::{
         BatchId, FileCommand, FileCommandCancellation, FileCommandItemExecution,
         LocalFileCommandError, LocalFileCommandOutcome, LocalFileCommandPreflightItem,
@@ -132,6 +132,34 @@ pub trait FileMutationPort: Send + Sync {
         }
         self.copy_and_hash_cancellable(source, temporary, cancellation)
             .await
+    }
+
+    async fn create_and_copy_cancellable_verified(
+        &self,
+        source: &Path,
+        temporary: &Path,
+        cancellation: &FileCommandCancellation,
+        expected_source: &FileSnapshot,
+        source_parent: FileIdentity,
+        temporary_parent: FileIdentity,
+    ) -> Result<FileContentEvidence, FileOperationError> {
+        self.create_registered_temporary(temporary, temporary_parent)
+            .await?;
+        let (len, hash) = self
+            .copy_and_hash_cancellable_verified(
+                source,
+                temporary,
+                cancellation,
+                expected_source,
+                source_parent,
+                temporary_parent,
+            )
+            .await?;
+        let snapshot = self.snapshot(temporary).await?;
+        if snapshot.len != len {
+            return Err(FileOperationError::IdentityChanged);
+        }
+        Ok(FileContentEvidence { snapshot, hash })
     }
 
     async fn rename(&self, source: &Path, destination: &Path) -> Result<(), FileOperationError>;

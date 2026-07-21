@@ -7,9 +7,9 @@ use std::{
 };
 use tokio::sync::{Mutex as AsyncMutex, Notify};
 use viewer_application::{
-    BrowseIndexPort, CommitStage, FileMutationPort, FileOperationError, FileSnapshot,
-    OperationCommit, OperationCommitError, OperationCommitPort, ProjectAccess, TrashPort,
-    VolumePort,
+    BrowseIndexPort, CommitStage, FileContentEvidence, FileMutationPort, FileOperationError,
+    FileSnapshot, OperationCommit, OperationCommitError, OperationCommitPort, ProjectAccess,
+    TrashPort, VolumePort,
     file_commands::{
         BatchResultCode, ConflictResolution, FileCommand, FileCommandAction,
         FileCommandCancellation, FileCommandItem, FileCommandKind, FileCommandPreflightState,
@@ -1123,6 +1123,102 @@ async fn copy_faults_are_isolated_and_batch_reports_exact_partial_success() {
 
 struct RewriteSourceAfterCopy {
     delegate: LocalFileMutation,
+}
+
+struct ReplaceTemporaryAfterBoundCopy {
+    delegate: LocalFileMutation,
+    outside_victim: PathBuf,
+}
+
+#[async_trait]
+impl FileMutationPort for ReplaceTemporaryAfterBoundCopy {
+    async fn snapshot(&self, path: &Path) -> Result<FileSnapshot, FileOperationError> {
+        self.delegate.snapshot(path).await
+    }
+
+    async fn copy_and_hash(
+        &self,
+        source: &Path,
+        temporary: &Path,
+    ) -> Result<(u64, [u8; 32]), FileOperationError> {
+        self.delegate.copy_and_hash(source, temporary).await
+    }
+
+    async fn create_and_copy_cancellable_verified(
+        &self,
+        source: &Path,
+        temporary: &Path,
+        cancellation: &FileCommandCancellation,
+        expected_source: &FileSnapshot,
+        source_parent: FileIdentity,
+        temporary_parent: FileIdentity,
+    ) -> Result<FileContentEvidence, FileOperationError> {
+        let evidence = self
+            .delegate
+            .create_and_copy_cancellable_verified(
+                source,
+                temporary,
+                cancellation,
+                expected_source,
+                source_parent,
+                temporary_parent,
+            )
+            .await?;
+        fs::remove_file(temporary).map_err(|error| {
+            FileOperationError::io("remove copied temporary in race hook", temporary, &error)
+        })?;
+        fs::hard_link(&self.outside_victim, temporary).map_err(|error| {
+            FileOperationError::io("replace copied temporary in race hook", temporary, &error)
+        })?;
+        Ok(evidence)
+    }
+
+    async fn rename(&self, source: &Path, destination: &Path) -> Result<(), FileOperationError> {
+        self.delegate.rename(source, destination).await
+    }
+
+    async fn remove_registered_temporary(&self, path: &Path) -> Result<(), FileOperationError> {
+        self.delegate.remove_registered_temporary(path).await
+    }
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn cross_volume_move_rejects_an_after_copy_leaf_replacement_without_touching_outside_or_source()
+ {
+    let outside = tempfile::tempdir().unwrap();
+    let outside_victim = outside.path().join("victim.bin");
+    fs::write(&outside_victim, b"outside sentinel").unwrap();
+    let fixture = Fixture::with_mutation(
+        true,
+        Arc::new(ReplaceTemporaryAfterBoundCopy {
+            delegate: LocalFileMutation,
+            outside_victim: outside_victim.clone(),
+        }),
+    );
+    fixture.directory("source");
+    let destination = fixture.directory("exports");
+    let source = fixture.file("source/item.png", b"selected bytes");
+    let command = fixture.command(
+        FileCommandKind::Move,
+        vec![FileCommandItem {
+            entity_id: source,
+            action: FileCommandAction::Move {
+                destination_folder: destination,
+            },
+        }],
+    );
+    let preflight = fixture.service.preflight(command).await.unwrap();
+
+    let summary = fixture.service.execute(preflight, &[], None).await.unwrap();
+
+    assert_eq!(summary.failed(), 1);
+    assert_eq!(fs::read(&outside_victim).unwrap(), b"outside sentinel");
+    let source_bytes = fs::read(fixture.project.root().join("source/item.png")).unwrap();
+    assert_eq!(source_bytes, b"selected bytes");
+    assert_eq!(blake3::hash(&source_bytes), blake3::hash(b"selected bytes"));
+    assert!(!fixture.project.root().join("exports/item.png").exists());
+    assert_eq!(fixture.trash.count(), 0);
 }
 
 struct SwapSourceBeforeMutationSnapshot {

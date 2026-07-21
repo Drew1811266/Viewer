@@ -45,7 +45,12 @@ pub fn open_database(path: &Path, writable: bool) -> Result<Connection, Portable
     }
 
     let version = inspect_version(path)?;
-    if version < LATEST_PORTABLE_SCHEMA_VERSION && !writable {
+    if !writable {
+        if version == 2 || version == LATEST_PORTABLE_SCHEMA_VERSION {
+            let connection = open_connection(path, false, false)?;
+            configure(&connection, false)?;
+            return Ok(connection);
+        }
         return Err(PortableSchemaError::RequiresMigration);
     }
     if version == 1 {

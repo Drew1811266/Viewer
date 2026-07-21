@@ -103,6 +103,47 @@ fn read_only_open_reads_existing_metadata_but_never_creates_it() {
 }
 
 #[test]
+fn read_only_schema_v2_uses_marker_adapter_without_migrating_portable_bytes() {
+    let project = TempDir::new().unwrap();
+    let writable =
+        PortableProjectMetadata::open(project.path(), ProjectAccess::ReadWrite, 1).unwrap();
+    let database = writable.database_path().unwrap().to_path_buf();
+    let store = PortableMarkerStore::open(&database, true).unwrap();
+    let target = marker_target("notes.txt", FileKind::Text);
+    store
+        .apply_batch(
+            std::slice::from_ref(&target),
+            MarkerPatch {
+                review: ReviewPatch::Set(ReviewState::Keep),
+                favorite: FavoritePatch::Set(true),
+            },
+            2,
+        )
+        .unwrap();
+    drop(store);
+    drop(writable);
+    Connection::open(&database)
+        .unwrap()
+        .execute("DELETE FROM schema_migrations WHERE version = 3", [])
+        .unwrap();
+    assert_eq!(schema_version(&database), 2);
+    let before = fs::read(&database).unwrap();
+
+    let metadata =
+        PortableProjectMetadata::open(project.path(), ProjectAccess::ReadOnly, 3).unwrap();
+    let readonly = PortableMarkerStore::open(metadata.database_path().unwrap(), false).unwrap();
+    let markers = readonly
+        .markers_for_paths(std::slice::from_ref(&target.relative_path))
+        .unwrap();
+
+    assert_eq!(markers.len(), 1);
+    assert_eq!(markers[0].marker.review_state, Some(ReviewState::Keep));
+    assert!(markers[0].marker.favorite);
+    assert_eq!(fs::read(&database).unwrap(), before);
+    assert_eq!(schema_version(&database), 2);
+}
+
+#[test]
 fn malformed_and_forward_manifests_are_rejected_without_replacement() {
     for document in [
         br#"{"schemaVersion":1,"projectId":"not-a-uuid","createdAtMs":1}"#.as_slice(),

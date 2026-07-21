@@ -3,6 +3,8 @@ import { createHash } from 'node:crypto'
 import { readFile, stat } from 'node:fs/promises'
 import test from 'node:test'
 
+import { validateFinderDragAppKitWiring } from './validate-finder-drag-appkit-wiring.mjs'
+
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8')
 const normalizeNewlines = (text) => text.replace(/\r\n?/g, '\n')
 
@@ -205,6 +207,16 @@ test('M3 adds no broad desktop capability or network/update dependency', async (
 test('Finder export starts a synthetic AppKit drag from the owning window content view', async () => {
   const adapter = await read('crates/viewer-platform-macos/src/files/drag.rs')
 
+  assert.doesNotThrow(() => validateFinderDragAppKitWiring(adapter))
+  for (const drift of [
+    adapter.replace(
+      'content_view.beginDraggingSessionWithItems_event_source(',
+      'self.view.beginDraggingSessionWithItems_event_source(',
+    ),
+    adapter.replace('&event,', 'current_event.as_ref().unwrap(),'),
+  ]) {
+    assert.throws(() => validateFinderDragAppKitWiring(drift), /exact AppKit drag wiring/i)
+  }
   assert.match(adapter, /mouseLocationOutsideOfEventStream/)
   assert.match(
     adapter,

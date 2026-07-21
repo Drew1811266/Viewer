@@ -20,52 +20,97 @@ const EXPECTED_TABLES = {
   2: ['markers', 'operation_batches', 'operation_items', 'project_metadata', 'schema_migrations'],
   3: ['markers', 'operation_batches', 'operation_items', 'project_metadata', 'schema_migrations'],
 }
-const BASE_EXPECTED_COLUMNS = {
-  schema_migrations: ['version', 'applied_at_ms'],
-  operation_batches: ['batch_id', 'kind', 'created_at_ms', 'completed_at_ms'],
-  operation_items: [
-    'operation_id',
-    'batch_id',
-    'entity_id',
-    'kind',
-    'state',
-    'source_path',
-    'destination_path',
-    'temporary_path',
-    'expected_size',
-    'expected_hash',
-    'conflict_policy',
-    'error_code',
-    'updated_at_ms',
+const BASE_EXPECTED_COLUMN_DEFINITIONS = {
+  schema_migrations: [
+    ['version', 'INTEGER', 0, null, 1],
+    ['applied_at_ms', 'INTEGER', 1, null, 0],
   ],
-  project_metadata: ['singleton', 'project_id', 'created_at_ms'],
+  operation_batches: [
+    ['batch_id', 'TEXT', 0, null, 1],
+    ['kind', 'TEXT', 1, null, 0],
+    ['created_at_ms', 'INTEGER', 1, null, 0],
+    ['completed_at_ms', 'INTEGER', 0, null, 0],
+  ],
+  operation_items: [
+    ['operation_id', 'TEXT', 0, null, 1],
+    ['batch_id', 'TEXT', 1, null, 0],
+    ['entity_id', 'TEXT', 1, null, 0],
+    ['kind', 'TEXT', 1, null, 0],
+    ['state', 'TEXT', 1, null, 0],
+    ['source_path', 'TEXT', 1, null, 0],
+    ['destination_path', 'TEXT', 0, null, 0],
+    ['temporary_path', 'TEXT', 0, null, 0],
+    ['expected_size', 'INTEGER', 0, null, 0],
+    ['expected_hash', 'BLOB', 0, null, 0],
+    ['conflict_policy', 'TEXT', 1, null, 0],
+    ['error_code', 'TEXT', 0, null, 0],
+    ['updated_at_ms', 'INTEGER', 1, null, 0],
+  ],
+  project_metadata: [
+    ['singleton', 'INTEGER', 0, null, 1],
+    ['project_id', 'TEXT', 1, null, 0],
+    ['created_at_ms', 'INTEGER', 1, null, 0],
+  ],
   markers: [
-    'marker_id',
-    'relative_path',
-    'kind',
-    'review_state',
-    'favorite',
-    'evidence_size',
-    'evidence_modified_ns',
-    'content_hash',
-    'updated_at_ms',
+    ['marker_id', 'TEXT', 0, null, 1],
+    ['relative_path', 'TEXT', 1, null, 0],
+    ['kind', 'INTEGER', 1, null, 0],
+    ['review_state', 'INTEGER', 0, null, 0],
+    ['favorite', 'INTEGER', 1, '0', 0],
+    ['evidence_size', 'INTEGER', 0, null, 0],
+    ['evidence_modified_ns', 'TEXT', 0, null, 0],
+    ['content_hash', 'BLOB', 0, null, 0],
+    ['updated_at_ms', 'INTEGER', 1, null, 0],
   ],
 }
-const EXPECTED_COLUMNS = {
-  1: BASE_EXPECTED_COLUMNS,
-  2: BASE_EXPECTED_COLUMNS,
+const EXPECTED_COLUMN_DEFINITIONS = {
+  1: BASE_EXPECTED_COLUMN_DEFINITIONS,
+  2: BASE_EXPECTED_COLUMN_DEFINITIONS,
   3: {
-    ...BASE_EXPECTED_COLUMNS,
+    ...BASE_EXPECTED_COLUMN_DEFINITIONS,
     operation_batches: [
-      ...BASE_EXPECTED_COLUMNS.operation_batches,
-      'state',
-      'requested_count',
-      'completed_count',
-      'failed_count',
-      'skipped_count',
-      'started_at_ms',
+      ...BASE_EXPECTED_COLUMN_DEFINITIONS.operation_batches,
+      ['state', 'TEXT', 1, "'running'", 0],
+      ['requested_count', 'INTEGER', 1, '0', 0],
+      ['completed_count', 'INTEGER', 1, '0', 0],
+      ['failed_count', 'INTEGER', 1, '0', 0],
+      ['skipped_count', 'INTEGER', 1, '0', 0],
+      ['started_at_ms', 'INTEGER', 0, null, 0],
     ],
-    operation_items: [...BASE_EXPECTED_COLUMNS.operation_items, 'result_code'],
+    operation_items: [
+      ...BASE_EXPECTED_COLUMN_DEFINITIONS.operation_items,
+      ['result_code', 'TEXT', 0, null, 0],
+    ],
+  },
+}
+const BASE_EXPECTED_CHECK_CONSTRAINTS = {
+  schema_migrations: [],
+  operation_batches: [],
+  operation_items: [],
+  project_metadata: ['CHECK (singleton = 1)'],
+  markers: ['CHECK (favorite IN (0, 1))'],
+}
+const EXPECTED_CHECK_CONSTRAINTS = {
+  1: BASE_EXPECTED_CHECK_CONSTRAINTS,
+  2: BASE_EXPECTED_CHECK_CONSTRAINTS,
+  3: {
+    ...BASE_EXPECTED_CHECK_CONSTRAINTS,
+    operation_batches: [
+      "CHECK (state IN ('running', 'completed'))",
+      'CHECK (requested_count >= 0)',
+      'CHECK (completed_count >= 0)',
+      'CHECK (failed_count >= 0)',
+      'CHECK (skipped_count >= 0)',
+      'CHECK (started_at_ms IS NULL OR started_at_ms >= 0)',
+    ],
+    operation_items: [
+      `CHECK (
+        result_code IS NULL OR (
+          length(result_code) BETWEEN 1 AND 64
+          AND result_code NOT GLOB '*[^a-z0-9_]*'
+        )
+      )`,
+    ],
   },
 }
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
@@ -379,14 +424,38 @@ function validateSchema(database, version) {
     const columns = database
       .prepare(`PRAGMA table_info(${table})`)
       .all()
-      .map((row) => row.name)
-    if (!sameValues(columns, EXPECTED_COLUMNS[version][table])) {
+    const expectedDefinitions = EXPECTED_COLUMN_DEFINITIONS[version][table]
+    const names = columns.map((row) => row.name)
+    if (!sameValues(names, expectedDefinitions.map((column) => column[0]))) {
       throw new Error(`unexpected portable database columns: ${table}`)
     }
+    const definitions = columns.map((row) => [
+      row.name,
+      row.type,
+      Number(row.notnull),
+      row.dflt_value,
+      Number(row.pk),
+    ])
+    if (JSON.stringify(definitions) !== JSON.stringify(expectedDefinitions)) {
+      throw new Error(`unexpected portable database column definition: ${table}`)
+    }
+    validateCheckConstraints(database, table, EXPECTED_CHECK_CONSTRAINTS[version][table])
     validateIndexSignatures(database, table, EXPECTED_INDEX_SIGNATURES[version][table])
   }
   validateCustomSchemaObjects(database, version)
   validateForeignKeys(database, expected)
+}
+
+function validateCheckConstraints(database, table, expected) {
+  const sql = database
+    .prepare("SELECT sql FROM sqlite_schema WHERE type = 'table' AND name = ?")
+    .get(table)?.sql
+  const normalized = normalizeSchemaSql(sql)
+  const count = normalized.match(/\bcheck\(/g)?.length ?? 0
+  const required = expected.map(normalizeSchemaSql)
+  if (count !== required.length || required.some((constraint) => !normalized.includes(constraint))) {
+    throw new Error(`unexpected portable database check constraint: ${table}`)
+  }
 }
 
 function validateIndexSignatures(database, table, expected) {

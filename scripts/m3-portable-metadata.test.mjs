@@ -200,6 +200,70 @@ test('rejects unknown tables and columns even when they contain plausible local 
   })
 })
 
+test('rejects exact v3 column-definition and check-constraint drift', async (t) => {
+  const drifts = [
+    {
+      label: 'column type',
+      table: 'markers',
+      from: 'kind INTEGER NOT NULL',
+      to: 'kind TEXT NOT NULL',
+      error: /column definition/i,
+    },
+    {
+      label: 'not-null flag',
+      table: 'markers',
+      from: 'updated_at_ms INTEGER NOT NULL',
+      to: 'updated_at_ms INTEGER',
+      error: /column definition/i,
+    },
+    {
+      label: 'default value',
+      table: 'markers',
+      from: 'favorite INTEGER NOT NULL DEFAULT 0',
+      to: 'favorite INTEGER NOT NULL DEFAULT 1',
+      error: /column definition/i,
+    },
+    {
+      label: 'primary key flag',
+      apply: removeSchemaMigrationPrimaryKey,
+      error: /column definition/i,
+    },
+    {
+      label: 'v3 batch lifecycle check',
+      table: 'operation_batches',
+      from: "CHECK (state IN ('running', 'completed'))",
+      to: "CHECK (state IN ('queued', 'running', 'completed'))",
+      error: /check constraint/i,
+    },
+    {
+      label: 'v3 batch counter check',
+      table: 'operation_batches',
+      from: 'CHECK (requested_count >= 0)',
+      to: 'CHECK (requested_count >= -1)',
+      error: /check constraint/i,
+    },
+    {
+      label: 'v3 item result check',
+      table: 'operation_items',
+      from: 'length(result_code) BETWEEN 1 AND 64',
+      to: 'length(result_code) BETWEEN 0 AND 64',
+      error: /check constraint/i,
+    },
+  ]
+
+  for (const drift of drifts) {
+    await t.test(drift.label, async () => {
+      const root = await portableFixture({ withRows: false })
+      if (drift.apply) {
+        drift.apply(root)
+      } else {
+        rewriteTableSchema(root, drift.table, drift.from, drift.to)
+      }
+      await assert.rejects(validateV3(root), drift.error)
+    })
+  }
+})
+
 test('rejects unknown enums, impossible terminal transitions and unreviewed result codes', async (t) => {
   await t.test('operation state', async () => {
     const root = await portableFixture()
@@ -332,15 +396,16 @@ test('defines one executable M3 gate containing every inherited and new contract
 export async function portableFixture({
   databaseVersion = 3,
   batchState = 'completed',
+  withRows = databaseVersion >= 3,
 } = {}) {
   const root = await mkdtemp(join(tmpdir(), 'viewer-m3-portable-'))
-  await writePortableFixture(root, { databaseVersion, batchState })
+  await writePortableFixture(root, { databaseVersion, batchState, withRows })
   return root
 }
 
 export async function writePortableFixture(
   root,
-  { databaseVersion = 3, batchState = 'completed' } = {},
+  { databaseVersion = 3, batchState = 'completed', withRows = databaseVersion >= 3 } = {},
 ) {
   const viewer = join(root, '.viewer')
   await mkdir(viewer)
@@ -349,7 +414,7 @@ export async function writePortableFixture(
     `${JSON.stringify({ schemaVersion: 1, projectId: PROJECT_ID, createdAtMs: 1 })}\n`,
   )
   createDatabase(join(viewer, 'metadata.sqlite'), databaseVersion, {
-    withRows: databaseVersion >= 3,
+    withRows,
     batchState,
   })
   return root
@@ -395,6 +460,32 @@ function mutate(root, sql) {
   const database = new DatabaseSync(join(root, '.viewer', 'metadata.sqlite'))
   database.exec('PRAGMA ignore_check_constraints = ON;')
   database.exec(sql)
+  database.close()
+}
+
+function rewriteTableSchema(root, table, from, to) {
+  const database = new DatabaseSync(join(root, '.viewer', 'metadata.sqlite'))
+  database.enableDefensive(false)
+  database.exec('PRAGMA writable_schema = ON;')
+  const result = database
+    .prepare("UPDATE sqlite_schema SET sql = replace(sql, ?, ?) WHERE type = 'table' AND name = ?")
+    .run(from, to, table)
+  database.exec('PRAGMA writable_schema = OFF;')
+  database.close()
+  assert.equal(result.changes, 1, `${table} schema drift fixture did not match`)
+}
+
+function removeSchemaMigrationPrimaryKey(root) {
+  const database = new DatabaseSync(join(root, '.viewer', 'metadata.sqlite'))
+  database.exec(`
+    ALTER TABLE schema_migrations RENAME TO schema_migrations_old;
+    CREATE TABLE schema_migrations (
+      version INTEGER,
+      applied_at_ms INTEGER NOT NULL
+    );
+    INSERT INTO schema_migrations SELECT version, applied_at_ms FROM schema_migrations_old;
+    DROP TABLE schema_migrations_old;
+  `)
   database.close()
 }
 

@@ -1066,10 +1066,12 @@ impl LocalFileCommandAdapter {
         {
             Ok(copied) => copied,
             Err(error) => {
+                let temporary_evidence = self.mutation.snapshot(&temporary_path).await.ok();
                 self.mutation
-                    .remove_registered_temporary_verified(
+                    .remove_registered_temporary_bound(
                         &temporary_path,
                         destination_parent_identity,
+                        temporary_evidence.as_ref(),
                     )
                     .await?;
                 return Err(error);
@@ -1137,7 +1139,17 @@ impl LocalFileCommandAdapter {
                     .map(|evidence| &evidence.snapshot),
             )
             .await?;
-            self.trash.trash(&destination_path).await?;
+            self.trash
+                .trash_verified(
+                    &destination_path,
+                    &item
+                        .destination_evidence
+                        .as_ref()
+                        .ok_or(FileOperationError::IdentityChanged)?
+                        .snapshot,
+                    destination_parent_identity,
+                )
+                .await?;
         }
         if destination_path.exists() {
             return Err(FileOperationError::DestinationExists);
@@ -1156,7 +1168,14 @@ impl LocalFileCommandAdapter {
         if item.route == PreparedRoute::CrossVolumeMove {
             let before_trash = stable_content_evidence_async(&source_path).await?;
             if before_trash != after {
-                let _ = self.trash.trash(&destination_path).await;
+                let _ = self
+                    .trash
+                    .trash_verified(
+                        &destination_path,
+                        &copied.snapshot,
+                        destination_parent_identity,
+                    )
+                    .await;
                 return Err(FileOperationError::IdentityChanged);
             }
             let source_temporary = trash_temporary_for(&item.plan.source, item.plan.operation_id)?;
@@ -1180,7 +1199,14 @@ impl LocalFileCommandAdapter {
                 )
                 .await
             {
-                let _ = self.trash.trash(&destination_path).await;
+                let _ = self
+                    .trash
+                    .trash_verified(
+                        &destination_path,
+                        &copied.snapshot,
+                        destination_parent_identity,
+                    )
+                    .await;
                 return Err(error);
             }
             if !same_staged_content_evidence(
@@ -1200,11 +1226,33 @@ impl LocalFileCommandAdapter {
                         )
                         .await;
                 }
-                let _ = self.trash.trash(&destination_path).await;
+                let _ = self
+                    .trash
+                    .trash_verified(
+                        &destination_path,
+                        &copied.snapshot,
+                        destination_parent_identity,
+                    )
+                    .await;
                 return Err(FileOperationError::IdentityChanged);
             }
-            if let Err(error) = self.trash.trash(&source_temporary_path).await {
-                let _ = self.trash.trash(&destination_path).await;
+            if let Err(error) = self
+                .trash
+                .trash_verified(
+                    &source_temporary_path,
+                    &after.snapshot,
+                    source_parent_identity,
+                )
+                .await
+            {
+                let _ = self
+                    .trash
+                    .trash_verified(
+                        &destination_path,
+                        &copied.snapshot,
+                        destination_parent_identity,
+                    )
+                    .await;
                 return Err(error);
             }
             if source_path.exists() || source_temporary_path.exists() {
@@ -1295,7 +1343,9 @@ impl LocalFileCommandAdapter {
                 self.now(),
             )
             .map_err(journal_file_error)?;
-        self.trash.trash(&temporary_path).await?;
+        self.trash
+            .trash_verified(&temporary_path, &before, parent_identity)
+            .await?;
         if temporary_path.exists() || source.exists() {
             return Err(FileOperationError::VerificationFailed);
         }
@@ -1435,7 +1485,14 @@ impl LocalFileCommandAdapter {
             return;
         };
         let safe_to_terminalize = match item.state {
-            OperationState::Prepared => true,
+            OperationState::Prepared => {
+                let source_exists = self.project_root.join(item.source.as_str()).is_file();
+                let temporary_exists = item
+                    .temporary
+                    .as_ref()
+                    .is_some_and(|path| self.project_root.join(path.as_str()).exists());
+                source_exists && !temporary_exists
+            }
             OperationState::Staged => {
                 let source_exists = self.project_root.join(item.source.as_str()).is_file();
                 let destination_exists = item

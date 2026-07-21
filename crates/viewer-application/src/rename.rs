@@ -147,9 +147,14 @@ fn validate_name(name: &str, errors: &mut Vec<RenameErrorCode>) {
         errors.push(RenameErrorCode::ReservedName);
     }
     let lowercase = name.to_ascii_lowercase();
-    if [".viewer-copy-", ".viewer-rename-", ".viewer-replace-"]
-        .iter()
-        .any(|prefix| lowercase.starts_with(prefix))
+    if [
+        ".viewer-copy-",
+        ".viewer-rename-",
+        ".viewer-replace-",
+        ".viewer-trash-",
+    ]
+    .iter()
+    .any(|prefix| lowercase.starts_with(prefix))
     {
         errors.push(RenameErrorCode::TemporaryName);
     }

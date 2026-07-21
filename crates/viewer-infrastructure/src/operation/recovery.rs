@@ -118,11 +118,12 @@ impl RecoveryService {
                     self.recover_replace(&item).await
                 }
                 OperationKind::Rename | OperationKind::Move => self.recover_rename(&item).await,
-                OperationKind::Trash
-                | OperationKind::SetReviewState
-                | OperationKind::SetFavorite => Ok(RecoveryOutcome::Review(
-                    "operation kind has no automatic filesystem recovery protocol".into(),
-                )),
+                OperationKind::Trash => self.recover_trash(&item).await,
+                OperationKind::SetReviewState | OperationKind::SetFavorite => {
+                    Ok(RecoveryOutcome::Review(
+                        "operation kind has no automatic filesystem recovery protocol".into(),
+                    ))
+                }
             }?;
             match outcome {
                 RecoveryOutcome::Action(kind) => report.actions.push(RecoveryAction {
@@ -180,9 +181,7 @@ impl RecoveryService {
                         "copy source is missing, a symlink, or no longer a regular file".into(),
                     ));
                 }
-                self.mutation
-                    .remove_registered_temporary(&temporary)
-                    .await?;
+                self.remove_bound_temporary(&temporary).await?;
                 self.journal.fail(
                     item.operation_id,
                     item.state,
@@ -257,6 +256,71 @@ impl RecoveryService {
                 "terminal operation unexpectedly appeared in recovery query".into(),
             )),
         }
+    }
+
+    async fn recover_trash(&self, item: &JournalItem) -> Result<RecoveryOutcome, RecoveryError> {
+        let Some(expected) = optional_evidence(item) else {
+            return Ok(RecoveryOutcome::Review(
+                "Trash recovery has no persisted content evidence".into(),
+            ));
+        };
+        let source = self.resolve_candidate(&item.source)?;
+        let expected_temporary = trash_temporary_for(&item.source, item.operation_id)?;
+        if item.temporary.as_ref() != Some(&expected_temporary) {
+            return Ok(RecoveryOutcome::Review(
+                "Trash registered temporary path does not match its operation ID".into(),
+            ));
+        }
+        let temporary = self.resolve_candidate(&expected_temporary)?;
+        let source_status = candidate_status(&source, expected).await?;
+        let temporary_status = candidate_status(&temporary, expected).await?;
+        if source_status == CandidateStatus::Conflict
+            || temporary_status == CandidateStatus::Conflict
+            || (source_status == CandidateStatus::Match
+                && temporary_status == CandidateStatus::Match)
+        {
+            return Ok(RecoveryOutcome::Review(
+                "Trash recovery paths contain conflicting identity evidence".into(),
+            ));
+        }
+        match item.state {
+            OperationState::Prepared | OperationState::Staged => {
+                if source_status == CandidateStatus::Match
+                    && temporary_status == CandidateStatus::Missing
+                {
+                    self.mark_failed(item, "recovered_before_trash_isolation")?;
+                    return Ok(RecoveryOutcome::Action(RecoveryActionKind::MarkedFailed));
+                }
+                if source_status == CandidateStatus::Missing
+                    && temporary_status == CandidateStatus::Match
+                {
+                    self.restore_source(item, &temporary, &source).await?;
+                    return Ok(RecoveryOutcome::Action(RecoveryActionKind::RestoredSource));
+                }
+                if source_status == CandidateStatus::Missing
+                    && temporary_status == CandidateStatus::Missing
+                    && item.state == OperationState::Staged
+                {
+                    self.record_applied_and_finish(item, expected).await?;
+                    return Ok(RecoveryOutcome::Action(RecoveryActionKind::Completed));
+                }
+            }
+            OperationState::FsApplied
+            | OperationState::Verified
+            | OperationState::MetaCommitted
+            | OperationState::IndexSynced => {
+                if source_status == CandidateStatus::Missing
+                    && temporary_status == CandidateStatus::Missing
+                {
+                    self.finish_from(item, item.state).await?;
+                    return Ok(RecoveryOutcome::Action(RecoveryActionKind::Completed));
+                }
+            }
+            OperationState::Completed | OperationState::Failed => {}
+        }
+        Ok(RecoveryOutcome::Review(
+            "Trash paths do not match one evidence-backed recovery decision".into(),
+        ))
     }
 
     async fn recover_rename(&self, item: &JournalItem) -> Result<RecoveryOutcome, RecoveryError> {
@@ -412,9 +476,7 @@ impl RecoveryService {
                     "cross-volume move has no evidence and its source is not intact".into(),
                 ));
             }
-            self.mutation
-                .remove_registered_temporary(&temporary)
-                .await?;
+            self.remove_bound_temporary(&temporary).await?;
             self.mark_failed(item, "recovered_before_verified_cross_volume_move")?;
             return Ok(RecoveryOutcome::Action(
                 RecoveryActionKind::CleanedTemporary,
@@ -438,9 +500,7 @@ impl RecoveryService {
                 ));
             }
             if destination_status == CandidateStatus::Missing {
-                self.mutation
-                    .remove_registered_temporary(&temporary)
-                    .await?;
+                self.remove_bound_temporary(&temporary).await?;
                 self.mark_failed(item, "recovered_cross_volume_move_before_placement")?;
                 return Ok(RecoveryOutcome::Action(
                     RecoveryActionKind::CleanedTemporary,
@@ -568,7 +628,7 @@ impl RecoveryService {
         destination: &Path,
         expected: (u64, [u8; 32]),
     ) -> Result<(), RecoveryError> {
-        self.mutation.rename(source, destination).await?;
+        self.rename_bound(source, destination).await?;
         sync_path(destination).await?;
         if candidate_status(destination, expected).await? != CandidateStatus::Match {
             return Err(FileOperationError::VerificationFailed.into());
@@ -585,9 +645,43 @@ impl RecoveryService {
         if source.exists() {
             return Err(FileOperationError::DestinationExists.into());
         }
-        self.mutation.rename(temporary, source).await?;
+        self.rename_bound(temporary, source).await?;
         sync_path(source).await?;
         self.mark_failed(item, "restored_interrupted_source")
+    }
+
+    async fn rename_bound(&self, source: &Path, destination: &Path) -> Result<(), RecoveryError> {
+        let expected = self.mutation.snapshot(source).await?;
+        let source_parent =
+            directory_identity(source.parent().ok_or(FileOperationError::OutsideProject)?)?;
+        let destination_parent = directory_identity(
+            destination
+                .parent()
+                .ok_or(FileOperationError::OutsideProject)?,
+        )?;
+        self.mutation
+            .rename_verified(
+                source,
+                destination,
+                &expected,
+                source_parent,
+                destination_parent,
+            )
+            .await?;
+        Ok(())
+    }
+
+    async fn remove_bound_temporary(&self, path: &Path) -> Result<(), RecoveryError> {
+        let expected = match self.mutation.snapshot(path).await {
+            Ok(expected) => Some(expected),
+            Err(FileOperationError::SourceMissing) => None,
+            Err(error) => return Err(error.into()),
+        };
+        let parent = directory_identity(path.parent().ok_or(FileOperationError::OutsideProject)?)?;
+        self.mutation
+            .remove_registered_temporary_bound(path, parent, expected.as_ref())
+            .await?;
+        Ok(())
     }
 
     async fn record_applied_and_finish(
@@ -751,6 +845,28 @@ async fn candidate_status(
 fn safe_regular_file(path: &Path) -> bool {
     std::fs::symlink_metadata(path)
         .is_ok_and(|metadata| metadata.is_file() && !metadata.file_type().is_symlink())
+}
+
+fn directory_identity(
+    path: &Path,
+) -> Result<viewer_application::watcher::FileIdentity, FileOperationError> {
+    let metadata = std::fs::symlink_metadata(path)
+        .map_err(|error| FileOperationError::io("inspect recovery parent", path, &error))?;
+    if metadata.file_type().is_symlink() || !metadata.is_dir() {
+        return Err(FileOperationError::OutsideProject);
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        Ok(viewer_application::watcher::FileIdentity {
+            volume: metadata.dev(),
+            file: metadata.ino(),
+        })
+    }
+    #[cfg(not(unix))]
+    {
+        Ok(viewer_application::watcher::FileIdentity { volume: 0, file: 0 })
+    }
 }
 
 fn is_expected_rename_temporary(

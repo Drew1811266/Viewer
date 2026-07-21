@@ -2,7 +2,10 @@ use async_trait::async_trait;
 use std::{
     fs,
     path::{Path, PathBuf},
-    sync::{Arc, Mutex},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
     time::Duration,
 };
 use tokio::sync::{Mutex as AsyncMutex, Notify};
@@ -26,7 +29,7 @@ use viewer_application::{
 use viewer_domain::{
     EntityId, RelativePath, SessionId,
     file::{FileKind, FileNode, Marker, ReviewState},
-    operation::{ConflictPolicy, OperationState},
+    operation::{ConflictPolicy, OperationKind, OperationState},
     search::Generation,
 };
 use viewer_infrastructure::{
@@ -71,6 +74,8 @@ impl VolumePort for FakeVolume {
 struct FakeTrash {
     directory: tempfile::TempDir,
     trashed: Mutex<Vec<PathBuf>>,
+    swap_before_verified: Mutex<Option<(PathBuf, PathBuf)>>,
+    fail_next_verified: AtomicBool,
 }
 
 #[derive(Default)]
@@ -143,11 +148,21 @@ impl FakeTrash {
         Self {
             directory: tempfile::tempdir().unwrap(),
             trashed: Mutex::new(Vec::new()),
+            swap_before_verified: Mutex::new(None),
+            fail_next_verified: AtomicBool::new(false),
         }
     }
 
     fn count(&self) -> usize {
         self.trashed.lock().unwrap().len()
+    }
+
+    fn swap_before_verified(&self, parked_original: PathBuf, replacement: PathBuf) {
+        *self.swap_before_verified.lock().unwrap() = Some((parked_original, replacement));
+    }
+
+    fn fail_next_verified(&self) {
+        self.fail_next_verified.store(true, Ordering::Release);
     }
 }
 
@@ -162,6 +177,47 @@ impl TrashPort for FakeTrash {
             .map_err(|error| FileOperationError::io("fake Trash", path, &error))?;
         self.trashed.lock().unwrap().push(destination);
         Ok(())
+    }
+
+    async fn trash_verified(
+        &self,
+        path: &Path,
+        expected: &FileSnapshot,
+        expected_parent: FileIdentity,
+    ) -> Result<(), FileOperationError> {
+        if let Some((parked, replacement)) = self.swap_before_verified.lock().unwrap().take() {
+            fs::rename(path, &parked).map_err(|error| {
+                FileOperationError::io("park Trash candidate in race hook", path, &error)
+            })?;
+            fs::hard_link(&replacement, path).map_err(|error| {
+                FileOperationError::io("replace Trash candidate in race hook", path, &error)
+            })?;
+        }
+        let parent = fs::metadata(path.parent().ok_or(FileOperationError::OutsideProject)?)
+            .map_err(|error| FileOperationError::io("inspect fake Trash parent", path, &error))?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::MetadataExt;
+            if parent.dev() != expected_parent.volume || parent.ino() != expected_parent.file {
+                return Err(FileOperationError::IdentityChanged);
+            }
+        }
+        let actual = LocalFileMutation.snapshot(path).await?;
+        if actual.volume_id != expected.volume_id
+            || actual.file_id != expected.file_id
+            || actual.len != expected.len
+            || actual.modified_ns != expected.modified_ns
+        {
+            return Err(FileOperationError::IdentityChanged);
+        }
+        if self.fail_next_verified.swap(false, Ordering::AcqRel) {
+            return Err(FileOperationError::Io {
+                action: "injected verified Trash failure",
+                path: path.to_path_buf(),
+                message: "injected failure".into(),
+            });
+        }
+        self.trash(path).await
     }
 }
 
@@ -1358,6 +1414,177 @@ async fn trash_rejects_a_source_replacement_before_safe_isolation() {
     assert_eq!(fs::read(&source_path).unwrap(), b"replacement");
     assert_eq!(fs::read(&parked_original).unwrap(), b"selected");
     assert_eq!(fixture.trash.count(), 0);
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn verified_trash_rejects_internal_leaf_swaps_for_direct_copy_replace_and_rename_replace() {
+    for scenario in ["direct", "copy_replace", "rename_replace"] {
+        let outside = tempfile::tempdir().unwrap();
+        let outside_victim = outside.path().join("victim.bin");
+        fs::write(&outside_victim, b"outside sentinel").unwrap();
+        let fixture = Fixture::new(false);
+        let products = fixture.directory("products");
+        fixture.directory("source");
+        let parked = fixture
+            .project
+            .root()
+            .join(format!("parked-{scenario}.bin"));
+
+        let (kind, item, conflicts, selected_source) = match scenario {
+            "direct" => {
+                let source = fixture.file("products/source.png", b"selected source");
+                (
+                    FileCommandKind::Trash,
+                    FileCommandItem {
+                        entity_id: source,
+                        action: FileCommandAction::Trash,
+                    },
+                    Vec::new(),
+                    fixture.project.root().join("products/source.png"),
+                )
+            }
+            "copy_replace" => {
+                let source = fixture.file("source/item.png", b"selected source");
+                let destination = fixture.file("products/item.png", b"original destination");
+                let _ = destination;
+                (
+                    FileCommandKind::Copy,
+                    FileCommandItem {
+                        entity_id: source,
+                        action: FileCommandAction::Copy {
+                            destination_folder: products,
+                        },
+                    },
+                    vec![ConflictResolution {
+                        entity_id: source,
+                        policy: ConflictPolicy::Replace,
+                        apply_to_remaining: false,
+                    }],
+                    fixture.project.root().join("source/item.png"),
+                )
+            }
+            _ => {
+                let source = fixture.file("products/source.png", b"selected source");
+                fixture.file("products/destination.png", b"original destination");
+                (
+                    FileCommandKind::Rename,
+                    FileCommandItem {
+                        entity_id: source,
+                        action: FileCommandAction::Rename {
+                            proposed_name: "destination.png".into(),
+                            edit_extension: true,
+                        },
+                    },
+                    vec![ConflictResolution {
+                        entity_id: source,
+                        policy: ConflictPolicy::Replace,
+                        apply_to_remaining: false,
+                    }],
+                    fixture.project.root().join("products/source.png"),
+                )
+            }
+        };
+        fixture
+            .trash
+            .swap_before_verified(parked.clone(), outside_victim.clone());
+        let command = fixture.command(kind, vec![item]);
+        let preflight = fixture.service.preflight(command).await.unwrap();
+        let summary = fixture
+            .service
+            .execute(preflight, &conflicts, None)
+            .await
+            .unwrap();
+
+        assert_eq!(summary.failed(), 1, "scenario {scenario}");
+        assert_eq!(fs::read(&outside_victim).unwrap(), b"outside sentinel");
+        assert_eq!(fixture.trash.count(), 0);
+        assert!(parked.is_file());
+        if scenario == "copy_replace" {
+            assert_eq!(fs::read(&selected_source).unwrap(), b"selected source");
+        } else if scenario == "rename_replace" {
+            let persisted = fixture
+                .journal
+                .incomplete_items()
+                .unwrap()
+                .into_iter()
+                .find(|item| item.kind == OperationKind::Rename)
+                .unwrap();
+            assert_eq!(persisted.state, OperationState::Staged);
+            assert_eq!(
+                fs::read(
+                    fixture
+                        .project
+                        .root()
+                        .join(persisted.temporary.unwrap().as_str()),
+                )
+                .unwrap(),
+                b"selected source"
+            );
+        }
+    }
+}
+
+#[tokio::test]
+async fn post_isolation_trash_failure_remains_recovery_required_and_restores_on_reopen() {
+    let fixture = Fixture::new(false);
+    fixture.directory("products");
+    let source = fixture.file("products/source.png", b"selected source");
+    fixture.trash.fail_next_verified();
+    let command = fixture.command(
+        FileCommandKind::Trash,
+        vec![FileCommandItem {
+            entity_id: source,
+            action: FileCommandAction::Trash,
+        }],
+    );
+    let preflight = fixture.service.preflight(command).await.unwrap();
+
+    let summary = fixture.service.execute(preflight, &[], None).await.unwrap();
+
+    assert_eq!(summary.failed(), 1);
+    let persisted = fixture
+        .journal
+        .incomplete_items()
+        .unwrap()
+        .into_iter()
+        .find(|item| item.kind == OperationKind::Trash)
+        .expect("post-isolation failure must remain in the recovery query");
+    assert_eq!(persisted.state, OperationState::Staged);
+    assert!(!fixture.project.root().join("products/source.png").exists());
+    assert!(
+        fixture
+            .project
+            .root()
+            .join(persisted.temporary.as_ref().unwrap().as_str())
+            .is_file()
+    );
+
+    let recovery = RecoveryService::new(
+        fixture.project.root(),
+        Arc::clone(&fixture.journal),
+        Arc::new(LocalFileMutation),
+        fixture.trash.clone(),
+        Arc::new(FixedClock::new(20_000)),
+        Arc::new(InMemoryOperationCommitPort::default()),
+    )
+    .unwrap();
+    let report = recovery.recover_project().await.unwrap();
+
+    assert_eq!(report.actions[0].kind, RecoveryActionKind::RestoredSource);
+    assert_eq!(
+        fs::read(fixture.project.root().join("products/source.png")).unwrap(),
+        b"selected source"
+    );
+    assert_eq!(
+        fixture
+            .journal
+            .item(persisted.operation_id)
+            .unwrap()
+            .unwrap()
+            .state,
+        OperationState::Failed
+    );
 }
 
 #[tokio::test]

@@ -190,6 +190,89 @@ impl FileMutationPort for LocalFileMutation {
         .await
         .map_err(|error| worker_error("bound temporary cleanup worker", &error_path, error))?
     }
+
+    async fn remove_registered_temporary_bound(
+        &self,
+        path: &Path,
+        expected_parent: FileIdentity,
+        expected_leaf: Option<&FileSnapshot>,
+    ) -> Result<(), FileOperationError> {
+        let path = path.to_path_buf();
+        let error_path = path.clone();
+        let expected_leaf = expected_leaf.cloned();
+        tokio::task::spawn_blocking(move || {
+            remove_registered_temporary_bound_sync(&path, expected_parent, expected_leaf.as_ref())
+        })
+        .await
+        .map_err(|error| {
+            worker_error(
+                "identity-bound temporary cleanup worker",
+                &error_path,
+                error,
+            )
+        })?
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn remove_registered_temporary_bound_sync(
+    path: &Path,
+    expected_parent: FileIdentity,
+    expected_leaf: Option<&FileSnapshot>,
+) -> Result<(), FileOperationError> {
+    use std::os::fd::AsRawFd;
+    let parent_path = path.parent().ok_or(FileOperationError::OutsideProject)?;
+    let parent = open_bound_parent(parent_path, expected_parent)?;
+    let name = encoded_file_name(path, "encode identity-bound temporary cleanup")?;
+    if let Some(expected) = expected_leaf {
+        let leaf = openat_file(
+            &parent,
+            path,
+            libc::O_RDONLY | libc::O_CLOEXEC | libc::O_NOFOLLOW,
+            0,
+            "open identity-bound temporary cleanup leaf",
+        )?;
+        if !snapshot_matches_bound_move(expected, &file_snapshot(&leaf)?) {
+            return Err(FileOperationError::IdentityChanged);
+        }
+    }
+    let result = unsafe { libc::unlinkat(parent.as_raw_fd(), name.as_ptr(), 0) };
+    if result == 0 {
+        return Ok(());
+    }
+    let error = std::io::Error::last_os_error();
+    if error.kind() == std::io::ErrorKind::NotFound {
+        Ok(())
+    } else {
+        Err(FileOperationError::io(
+            "remove identity-bound registered temporary",
+            path,
+            &error,
+        ))
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn remove_registered_temporary_bound_sync(
+    path: &Path,
+    expected_parent: FileIdentity,
+    expected_leaf: Option<&FileSnapshot>,
+) -> Result<(), FileOperationError> {
+    verify_parent_identity(path, expected_parent)?;
+    if let Some(expected) = expected_leaf
+        && !snapshot_matches_bound_move(expected, &snapshot_sync(path)?)
+    {
+        return Err(FileOperationError::IdentityChanged);
+    }
+    match fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(FileOperationError::io(
+            "remove identity-bound registered temporary",
+            path,
+            &error,
+        )),
+    }
 }
 
 #[cfg(target_os = "macos")]
@@ -431,6 +514,53 @@ fn rename_verified_sync(
     source_parent_identity: FileIdentity,
     destination_parent_identity: FileIdentity,
 ) -> Result<(), FileOperationError> {
+    rename_verified_sync_with_hook(
+        source,
+        destination,
+        expected,
+        source_parent_identity,
+        destination_parent_identity,
+        || {},
+    )
+}
+
+#[cfg(target_os = "macos")]
+fn rename_verified_sync_with_hook<F>(
+    source: &Path,
+    destination: &Path,
+    expected: &FileSnapshot,
+    source_parent_identity: FileIdentity,
+    destination_parent_identity: FileIdentity,
+    after_leaf_open: F,
+) -> Result<(), FileOperationError>
+where
+    F: FnOnce(),
+{
+    rename_verified_sync_with_hooks(
+        source,
+        destination,
+        expected,
+        source_parent_identity,
+        destination_parent_identity,
+        after_leaf_open,
+        || {},
+    )
+}
+
+#[cfg(target_os = "macos")]
+fn rename_verified_sync_with_hooks<F, G>(
+    source: &Path,
+    destination: &Path,
+    expected: &FileSnapshot,
+    source_parent_identity: FileIdentity,
+    destination_parent_identity: FileIdentity,
+    after_leaf_open: F,
+    after_rename: G,
+) -> Result<(), FileOperationError>
+where
+    F: FnOnce(),
+    G: FnOnce(),
+{
     let source_parent_path = source.parent().ok_or(FileOperationError::OutsideProject)?;
     let destination_parent_path = destination
         .parent()
@@ -448,7 +578,46 @@ fn rename_verified_sync(
     if !snapshot_matches_bound_move(expected, &file_snapshot(&source_file)?) {
         return Err(FileOperationError::IdentityChanged);
     }
+    after_leaf_open();
+    validate_bound_parent_location(&source_parent, source_parent_path, source_parent_identity)?;
+    validate_bound_parent_location(
+        &destination_parent,
+        destination_parent_path,
+        destination_parent_identity,
+    )?;
     renameat_no_replace(&source_parent, source, &destination_parent, destination)?;
+    after_rename();
+    if let Err(validation_error) =
+        validate_bound_parent_location(&source_parent, source_parent_path, source_parent_identity)
+            .and_then(|()| {
+                validate_bound_parent_location(
+                    &destination_parent,
+                    destination_parent_path,
+                    destination_parent_identity,
+                )
+            })
+    {
+        match renameat_no_replace(&destination_parent, destination, &source_parent, source) {
+            Ok(()) => return Err(validation_error),
+            Err(FileOperationError::DestinationExists) => {
+                // The source name was occupied while rolling back. Keep the
+                // expected leaf at the journal-visible destination, but only
+                // after proving that path still names the moved identity.
+                let destination_file = openat_file(
+                    &destination_parent,
+                    destination,
+                    libc::O_RDONLY | libc::O_CLOEXEC | libc::O_NOFOLLOW,
+                    0,
+                    "verify recovery-bound rename destination",
+                )?;
+                if snapshot_matches_bound_move(expected, &file_snapshot(&destination_file)?) {
+                    return Err(validation_error);
+                }
+                return Err(FileOperationError::IdentityChanged);
+            }
+            Err(rollback_error) => return Err(rollback_error),
+        }
+    }
     let destination_file = openat_file(
         &destination_parent,
         destination,
@@ -463,6 +632,36 @@ fn rename_verified_sync(
     // entry to its original name without overwrite and stop the operation.
     renameat_no_replace(&destination_parent, destination, &source_parent, source)?;
     Err(FileOperationError::IdentityChanged)
+}
+
+#[cfg(target_os = "macos")]
+fn validate_bound_parent_location(
+    directory: &File,
+    expected_path: &Path,
+    expected_identity: FileIdentity,
+) -> Result<(), FileOperationError> {
+    use std::{ffi::CStr, os::fd::AsRawFd, os::unix::ffi::OsStrExt};
+    let metadata = directory.metadata().map_err(|error| {
+        FileOperationError::io("revalidate bound rename parent", expected_path, &error)
+    })?;
+    use std::os::unix::fs::MetadataExt;
+    if metadata.dev() != expected_identity.volume || metadata.ino() != expected_identity.file {
+        return Err(FileOperationError::IdentityChanged);
+    }
+    let mut path = vec![0_i8; libc::PATH_MAX as usize];
+    let result = unsafe { libc::fcntl(directory.as_raw_fd(), libc::F_GETPATH, path.as_mut_ptr()) };
+    if result < 0 {
+        return Err(FileOperationError::io(
+            "resolve bound rename parent",
+            expected_path,
+            &std::io::Error::last_os_error(),
+        ));
+    }
+    let current = unsafe { CStr::from_ptr(path.as_ptr()) };
+    if current.to_bytes() != expected_path.as_os_str().as_bytes() {
+        return Err(FileOperationError::OutsideProject);
+    }
+    Ok(())
 }
 
 fn snapshot_matches_bound_move(expected: &FileSnapshot, actual: &FileSnapshot) -> bool {
@@ -1073,5 +1272,175 @@ mod tests {
         assert_ne!(snapshot_sync(&temporary).unwrap(), evidence.snapshot);
         assert_eq!(evidence.snapshot.len, b"selected bytes".len() as u64);
         assert_eq!(evidence.hash, *blake3::hash(b"selected bytes").as_bytes());
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn verified_rename_rolls_back_a_leaf_swap_after_the_validated_fd_is_opened() {
+        let directory = tempfile::tempdir().unwrap();
+        let root = fs::canonicalize(directory.path()).unwrap();
+        let source = root.join("source.bin");
+        let destination = root.join("destination.bin");
+        let parked = root.join("parked-original.bin");
+        fs::write(&source, b"selected bytes").unwrap();
+        let parent_metadata = fs::metadata(&root).unwrap();
+        let parent_identity = FileIdentity {
+            volume: parent_metadata.dev(),
+            file: parent_metadata.ino(),
+        };
+        let expected = snapshot_sync(&source).unwrap();
+
+        let result = rename_verified_sync_with_hook(
+            &source,
+            &destination,
+            &expected,
+            parent_identity,
+            parent_identity,
+            || {
+                fs::rename(&source, &parked).unwrap();
+                fs::write(&source, b"replacement").unwrap();
+            },
+        );
+
+        assert_eq!(result, Err(FileOperationError::IdentityChanged));
+        assert_eq!(fs::read(&source).unwrap(), b"replacement");
+        assert_eq!(fs::read(&parked).unwrap(), b"selected bytes");
+        assert!(!destination.exists());
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn verified_rename_rejects_a_parent_fd_reparented_outside_after_leaf_validation() {
+        let directory = tempfile::tempdir().unwrap();
+        let root = fs::canonicalize(directory.path()).unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        let outside_root = fs::canonicalize(outside.path()).unwrap();
+        let source_parent = root.join("source");
+        let destination_parent = root.join("destination");
+        fs::create_dir(&source_parent).unwrap();
+        fs::create_dir(&destination_parent).unwrap();
+        let source = source_parent.join("item.bin");
+        let destination = destination_parent.join("item.bin");
+        fs::write(&source, b"selected bytes").unwrap();
+        let source_metadata = fs::metadata(&source_parent).unwrap();
+        let destination_metadata = fs::metadata(&destination_parent).unwrap();
+        let expected = snapshot_sync(&source).unwrap();
+        let moved_parent = outside_root.join("moved-source");
+
+        let result = rename_verified_sync_with_hook(
+            &source,
+            &destination,
+            &expected,
+            FileIdentity {
+                volume: source_metadata.dev(),
+                file: source_metadata.ino(),
+            },
+            FileIdentity {
+                volume: destination_metadata.dev(),
+                file: destination_metadata.ino(),
+            },
+            || {
+                fs::rename(&source_parent, &moved_parent).unwrap();
+                fs::create_dir(&source_parent).unwrap();
+                fs::write(source_parent.join("item.bin"), b"replacement").unwrap();
+            },
+        );
+
+        assert!(matches!(result, Err(FileOperationError::OutsideProject)));
+        assert_eq!(
+            fs::read(moved_parent.join("item.bin")).unwrap(),
+            b"selected bytes"
+        );
+        assert_eq!(fs::read(&source).unwrap(), b"replacement");
+        assert!(!destination.exists());
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn verified_rename_rolls_back_when_a_parent_is_reparented_after_the_syscall() {
+        let directory = tempfile::tempdir().unwrap();
+        let root = fs::canonicalize(directory.path()).unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        let outside_root = fs::canonicalize(outside.path()).unwrap();
+        let source_parent = root.join("source");
+        let destination_parent = root.join("destination");
+        fs::create_dir(&source_parent).unwrap();
+        fs::create_dir(&destination_parent).unwrap();
+        let source = source_parent.join("item.bin");
+        let destination = destination_parent.join("item.bin");
+        fs::write(&source, b"selected bytes").unwrap();
+        let source_metadata = fs::metadata(&source_parent).unwrap();
+        let destination_metadata = fs::metadata(&destination_parent).unwrap();
+        let expected = snapshot_sync(&source).unwrap();
+        let moved_parent = outside_root.join("moved-source");
+
+        let result = rename_verified_sync_with_hooks(
+            &source,
+            &destination,
+            &expected,
+            FileIdentity {
+                volume: source_metadata.dev(),
+                file: source_metadata.ino(),
+            },
+            FileIdentity {
+                volume: destination_metadata.dev(),
+                file: destination_metadata.ino(),
+            },
+            || {},
+            || fs::rename(&source_parent, &moved_parent).unwrap(),
+        );
+
+        assert!(matches!(result, Err(FileOperationError::OutsideProject)));
+        assert_eq!(
+            fs::read(moved_parent.join("item.bin")).unwrap(),
+            b"selected bytes"
+        );
+        assert!(!destination.exists());
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn verified_rename_keeps_a_recoverable_destination_when_reparent_rollback_is_blocked() {
+        let directory = tempfile::tempdir().unwrap();
+        let root = fs::canonicalize(directory.path()).unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        let outside_root = fs::canonicalize(outside.path()).unwrap();
+        let source_parent = root.join("source");
+        let destination_parent = root.join("destination");
+        fs::create_dir(&source_parent).unwrap();
+        fs::create_dir(&destination_parent).unwrap();
+        let source = source_parent.join("item.bin");
+        let destination = destination_parent.join("item.bin");
+        fs::write(&source, b"selected bytes").unwrap();
+        let source_metadata = fs::metadata(&source_parent).unwrap();
+        let destination_metadata = fs::metadata(&destination_parent).unwrap();
+        let expected = snapshot_sync(&source).unwrap();
+        let moved_parent = outside_root.join("moved-source");
+
+        let result = rename_verified_sync_with_hooks(
+            &source,
+            &destination,
+            &expected,
+            FileIdentity {
+                volume: source_metadata.dev(),
+                file: source_metadata.ino(),
+            },
+            FileIdentity {
+                volume: destination_metadata.dev(),
+                file: destination_metadata.ino(),
+            },
+            || {},
+            || {
+                fs::rename(&source_parent, &moved_parent).unwrap();
+                fs::write(moved_parent.join("item.bin"), b"replacement").unwrap();
+            },
+        );
+
+        assert!(matches!(result, Err(FileOperationError::OutsideProject)));
+        assert_eq!(fs::read(&destination).unwrap(), b"selected bytes");
+        assert_eq!(
+            fs::read(moved_parent.join("item.bin")).unwrap(),
+            b"replacement"
+        );
     }
 }

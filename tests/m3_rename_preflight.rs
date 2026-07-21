@@ -171,6 +171,12 @@ fn lexical_validation_returns_stable_row_codes_without_touching_disk() {
             ".viewer-rename-x.part",
             RenameErrorCode::TemporaryName,
         ),
+        (
+            "a",
+            "",
+            ".viewer-trash-x.part",
+            RenameErrorCode::TemporaryName,
+        ),
     ];
     for (source, prefix, replacement, expected) in cases {
         let preview = preview_rename(

@@ -222,6 +222,21 @@ pub trait FileMutationPort: Send + Sync {
         )?;
         self.remove_registered_temporary(path).await
     }
+
+    async fn remove_registered_temporary_bound(
+        &self,
+        path: &Path,
+        expected_parent: FileIdentity,
+        expected_leaf: Option<&FileSnapshot>,
+    ) -> Result<(), FileOperationError> {
+        if let Some(expected) = expected_leaf
+            && !snapshot_matches_bound_move(expected, &self.snapshot(path).await?)
+        {
+            return Err(FileOperationError::IdentityChanged);
+        }
+        self.remove_registered_temporary_verified(path, expected_parent)
+            .await
+    }
 }
 
 fn verify_directory_identity(
@@ -253,6 +268,44 @@ fn snapshot_matches_bound_move(expected: &FileSnapshot, actual: &FileSnapshot) -
 #[async_trait]
 pub trait TrashPort: Send + Sync {
     async fn trash(&self, path: &Path) -> Result<(), FileOperationError>;
+
+    async fn trash_verified(
+        &self,
+        path: &Path,
+        expected: &FileSnapshot,
+        expected_parent: FileIdentity,
+    ) -> Result<(), FileOperationError> {
+        verify_directory_identity(
+            path.parent().ok_or(FileOperationError::OutsideProject)?,
+            expected_parent,
+        )?;
+        let metadata = std::fs::symlink_metadata(path)
+            .map_err(|error| FileOperationError::io("inspect bound Trash leaf", path, &error))?;
+        if metadata.file_type().is_symlink() || !metadata.is_file() {
+            return Err(FileOperationError::IdentityChanged);
+        }
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::MetadataExt;
+            let actual = FileSnapshot {
+                len: metadata.len(),
+                volume_id: metadata.dev(),
+                file_id: Some(u128::from(metadata.ino())),
+                modified_ns: Some(
+                    i128::from(metadata.mtime()) * 1_000_000_000
+                        + i128::from(metadata.mtime_nsec()),
+                ),
+                changed_ns: Some(
+                    i128::from(metadata.ctime()) * 1_000_000_000
+                        + i128::from(metadata.ctime_nsec()),
+                ),
+            };
+            if !snapshot_matches_bound_move(expected, &actual) {
+                return Err(FileOperationError::IdentityChanged);
+            }
+        }
+        self.trash(path).await
+    }
 }
 
 pub trait VolumePort: Send + Sync {

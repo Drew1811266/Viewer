@@ -1219,6 +1219,64 @@ async fn recovery_matrix_is_data_safe_and_idempotent_after_every_persisted_state
     }
 }
 
+#[tokio::test]
+async fn staged_trash_recovery_restores_the_registered_identity_and_is_idempotent() {
+    let project = ProjectFixture::new();
+    let contents = b"recover staged trash";
+    let source = project.create_file("source.jpg", contents);
+    let batch_id = OperationId::new();
+    let operation_id = OperationId::new();
+    let item = OperationItemPlan {
+        batch_id,
+        operation_id,
+        entity_id: EntityId::new(),
+        kind: OperationKind::Trash,
+        source: source.clone(),
+        destination: None,
+        conflict_policy: ConflictPolicy::Skip,
+    };
+    let temporary = RelativePath::parse(&format!(".viewer-trash-{operation_id}.part")).unwrap();
+    let journal = Arc::new(OperationJournal::open(project.metadata_path()).unwrap());
+    journal
+        .begin_batch(batch_id, OperationKind::Trash, 1, 1_000)
+        .unwrap();
+    journal.record_item(&item, 1_001).unwrap();
+    journal
+        .record_prepared_evidence(
+            operation_id,
+            Some(&temporary),
+            contents.len() as u64,
+            *blake3::hash(contents).as_bytes(),
+            1_002,
+        )
+        .unwrap();
+    fs::rename(
+        project.root().join(source.as_str()),
+        project.root().join(temporary.as_str()),
+    )
+    .unwrap();
+    journal
+        .advance(
+            operation_id,
+            OperationState::Prepared,
+            OperationState::Staged,
+            1_003,
+        )
+        .unwrap();
+
+    recover_twice(&project, Arc::clone(&journal), durable_trash(&project)).await;
+
+    assert_eq!(
+        fs::read(project.root().join(source.as_str())).unwrap(),
+        contents
+    );
+    assert!(!project.root().join(temporary.as_str()).exists());
+    assert_eq!(
+        journal.item(operation_id).unwrap().unwrap().state,
+        OperationState::Failed
+    );
+}
+
 async fn interrupted_verified_copy(
     project: &ProjectFixture,
 ) -> (Arc<OperationJournal>, OperationItemPlan) {

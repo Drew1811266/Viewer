@@ -89,7 +89,15 @@ impl ConflictExecutor {
                 Ok(ConflictResult::Placed(destination))
             }
             ConflictPolicy::Replace => {
-                self.trash.trash(&requested_destination).await?;
+                let expected = self.mutation.snapshot(&requested_destination).await?;
+                let parent = directory_identity(
+                    requested_destination
+                        .parent()
+                        .ok_or(FileOperationError::OutsideProject)?,
+                )?;
+                self.trash
+                    .trash_verified(&requested_destination, &expected, parent)
+                    .await?;
                 if let Err(cause) = self.mutation.rename(&source, &requested_destination).await {
                     return Err(ConflictError::PlacementAfterTrash {
                         source,
@@ -423,7 +431,13 @@ impl ReplaceExecutor {
                 .into());
         }
 
-        self.trash.trash(&destination).await?;
+        self.trash
+            .trash_verified(
+                &destination,
+                &expected_destination.snapshot,
+                destination_parent_identity,
+            )
+            .await?;
         let staged = self.mutation.snapshot(&temporary).await?;
         if let Err(error) = self
             .mutation

@@ -710,6 +710,65 @@ describe('Viewer empty state', () => {
     expect(viewer.executeFileCommand).not.toHaveBeenCalled()
   })
 
+  it('cancels an active pointer drag when the current workspace projection is replaced', async () => {
+    const viewer = bridge()
+    let receiveProjectChanged: Parameters<ViewerBridge['listenProjectChanged']>[0] | undefined
+    vi.mocked(viewer.listenProjectChanged).mockImplementation(async (handler) => {
+      receiveProjectChanged = handler
+      return () => undefined
+    })
+    vi.mocked(viewer.folderTree).mockResolvedValue([
+      {
+        entityId: 'folder-b',
+        parentEntityId: null,
+        relativePath: 'selected',
+        name: 'selected',
+        marker: { reviewState: null, favorite: false },
+      },
+    ])
+    const refreshedWorkspace = {
+      ...contentWorkspace(),
+      images: [
+        {
+          ...contentWorkspace().images[0]!,
+          modifiedNs: '2',
+          marker: { reviewState: 'keep' as const, favorite: true },
+        },
+      ],
+    }
+    vi.mocked(viewer.queryFolder)
+      .mockResolvedValueOnce(contentWorkspace())
+      .mockResolvedValueOnce(refreshedWorkspace)
+    render(<App bridge={viewer} />)
+    await waitFor(() => expect(receiveProjectChanged).toBeDefined())
+    fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
+    const handle = await screen.findByRole('button', { name: '整理 front.jpg' })
+    const destination = await screen.findByRole('treeitem', { name: 'selected' })
+    organizationPointerMove(handle, destination, { pointerId: 38, altKey: false })
+    expect(destination).toHaveAttribute('data-drop-mode', 'move')
+
+    act(() => {
+      receiveProjectChanged?.({
+        sessionId: 'session-1',
+        generation: 1,
+        reason: 'external_change',
+        added: 0,
+        removed: 0,
+        modified: 1,
+        moved: 0,
+        markerPathsMoved: 0,
+        failed: 0,
+      })
+    })
+    expect(await screen.findByText('保留 · 收藏')).toBeVisible()
+    await waitFor(() => expect(destination).not.toHaveAttribute('data-drop-mode'))
+
+    fireEvent.pointerUp(handle, { pointerId: 38, clientX: 20, clientY: 50 })
+
+    expect(viewer.preflightFileCommand).not.toHaveBeenCalled()
+    expect(viewer.executeFileCommand).not.toHaveBeenCalled()
+  })
+
   it('rejects a same-folder move target while allowing Option-copy', async () => {
     const viewer = bridge()
     vi.mocked(viewer.folderTree).mockResolvedValue([

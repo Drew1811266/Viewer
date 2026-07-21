@@ -426,6 +426,7 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
     dragView: organizationDragView,
     dropTarget: organizationDropTarget,
     handlePointerInput: handleOrganizationPointerInput,
+    cancel: cancelOrganizationPointerDrag,
   } = useOrganizationPointerDrag({
     disabled:
       state.project?.access !== 'read_write' ||
@@ -435,6 +436,10 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
     isDropTargetValid: isOrganizationDropTargetValid,
     onDrop: dropFiles,
   })
+
+  useEffect(() => {
+    cancelOrganizationPointerDrag()
+  }, [cancelOrganizationPointerDrag, state.workspace])
 
   const openPreview = useCallback(
     (file: BrowserFile) => {

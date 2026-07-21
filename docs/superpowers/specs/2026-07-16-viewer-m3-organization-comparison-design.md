@@ -42,7 +42,7 @@ M3 does not add cloud features, accounts, editing, permanent deletion, automatic
 
 ### 2.4 Drag-session ownership
 
-1. **Separate internal and external drag initiators — selected.** Dragging a file card/row body immediately starts a native copy-only Finder session. A visible organization handle starts an entity-only HTML drag to the folder tree; its mode is fixed to move by default or copy when Option is held at drag start. Each gesture has one owner from its first frame, so no WebView-to-AppKit handoff is attempted after the pointer reaches the window boundary.
+1. **Separate internal and external drag initiators — selected, corrected after physical acceptance.** Dragging a dedicated file card/row body surface immediately starts a native copy-only Finder session. A visible organization handle starts a custom Pointer Events session to the folder tree; its mode is fixed to move by default or copy when Option is held at pointer-down. It never creates HTML `DataTransfer`, because Tauri's required native incoming file-drop handler and a complete WebView HTML5 drag/drop session are mutually incompatible. Each gesture has one owner from its first frame, so no WebView-to-AppKit handoff or native-handler/HTML-drop coexistence is attempted.
 2. Add a global Organization/Export mode switch. This avoids competing sessions but introduces persistent mode errors and extra interaction cost for a frequent productivity-tool action.
 3. Use one fully native AppKit session for both Viewer-internal and Finder destinations. This could eventually unify the gesture, but it requires a custom pasteboard type, native destination routing, modifier-aware operation negotiation and folder hit testing. It is disproportionate for Viewer 0.1 and increases M3 risk.
 
@@ -55,7 +55,7 @@ M3 remains a modular-monolith milestone and is delivered in four reviewable slic
 3. **Comparison:** reusable viewport transform, 2–4 pane workspace, inline marker controls and graceful removal.
 4. **Reconciliation and lifecycle:** Watcher subscription, expected-change ledger, targeted re-indexing, selection/preview/compare repair, read-only recovery controls and close coordination.
 
-Domain owns operation/compare/reconcile value types and state rules. Application owns planners, command/undo/reconcile services and ports. Infrastructure owns SQLite journals, filesystem executors and index reconciliation. `viewer-platform-macos` owns Darwin no-replace rename, volume checks, Trash, Watcher and the AppKit Finder-drag adapter. `src-tauri` is the composition root and converts stable DTOs/errors. React owns dialogs, focus, selection, explicit drag initiators and presentation only. Tauri's native incoming file-drop channel remains enabled exclusively for Finder-to-Viewer project import; it is not reused as the outgoing drag source.
+Domain owns operation/compare/reconcile value types and state rules. Application owns planners, command/undo/reconcile services and ports. Infrastructure owns SQLite journals, filesystem executors and index reconciliation. `viewer-platform-macos` owns Darwin no-replace rename, volume checks, Trash, Watcher and the AppKit Finder-drag adapter. `src-tauri` is the composition root and converts stable DTOs/errors. React owns dialogs, focus, selection, explicit drag initiators, the internal Pointer drag coordinator and presentation only. Tauri's native incoming file-drop channel remains enabled exclusively for Finder-to-Viewer project import; it is not reused as the outgoing drag source.
 
 ## 4. Portable data and truthful operation states
 
@@ -140,7 +140,11 @@ Internal organization and Finder export are distinct gestures with distinct sess
 
 ### 8.1 Internal organization drag
 
-Every image card and text-file row exposes a visible organization handle. Only that handle is HTML-draggable. Its transfer payload contains the Viewer MIME marker while the actual ordered selection remains in React state as opaque entity IDs; no path is placed in `DataTransfer`. Dragging a selected item uses the complete frozen selection, while dragging an unselected item first selects only that item. Operation mode is sampled at drag start and remains fixed for the session: move by default, copy when Option is held. Folder rows advertise valid/invalid state from writable status, ancestry and reserved-boundary checks. Drop calls the same preflight, conflict and execute commands as menu actions. The handle is disabled in read-only sessions.
+Every image card and text-file row exposes a visible organization handle. Only that handle starts a custom Pointer Events organization session; it is explicitly non-HTML-draggable and creates no `DataTransfer` or Viewer MIME payload. The ordered selection remains in React state as opaque entity IDs. Dragging a selected item uses the complete frozen selection, while dragging an unselected item first selects only that item. Operation mode is sampled at pointer-down and remains fixed for the session: move by default, copy when Option is held.
+
+After a 4 CSS px threshold, a safe count/mode floating label follows the pointer. Folder rows expose only opaque entity IDs for `elementFromPoint` hit testing and advertise valid/invalid state from writable status, ancestry and reserved-boundary checks. The virtual folder list auto-scrolls within a 32 CSS px vertical edge zone at no more than 18 CSS px per animation frame and re-hits after scrolling. Valid PointerUp calls the same preflight, conflict and execute commands as menu actions; invalid/no-target release, Escape, pointer cancel, window blur, workspace replacement and unmount have no filesystem effect. The handle is disabled in read-only or busy sessions.
+
+File item outer option nodes are not draggable. A dedicated body export surface and the Pointer-only organization handle are siblings, guaranteeing that the handle cannot fall through to Finder export. Tauri's native incoming drag-drop handler remains enabled and no HTML5 internal `dragover`/`drop` protocol is used.
 
 ### 8.2 Native Finder export
 
@@ -214,7 +218,7 @@ Every implementation task follows red-green-refactor and ends in a focused commi
 - integration tests for truthful journal barriers, metadata path moves, copy/move/Trash partial failures, cancellation, undo validation and crash recovery at every state;
 - Watcher tests for create/partial-write/modify/rename/move/delete, bursts, expected changes, overflow, marker relocation and generation teardown;
 - desktop command tests for exact DTOs, read-only rejection, stale sessions, safe errors, one-write-lane behavior, close coordination and recovery reports;
-- React tests for all dialogs, keyboard suppression, task/results UI, immediate card-body native export, organization-handle-only internal drag, frozen move/Option-copy semantics, drag target semantics, 2–4 comparison, inline markers and external-change recovery;
+- React tests for all dialogs, keyboard suppression, task/results UI, immediate dedicated-body native export, Pointer-only organization handles, frozen pointer-down move/Option-copy semantics, threshold/target/auto-scroll/cancel behavior, gesture-surface isolation, 2–4 comparison, inline markers and external-change recovery;
 - security/license/scope checks and a portable-metadata validator upgraded for schema v3;
 - packaged-app GUI acceptance for normal/conflict/partial-failure operations on disposable files, real macOS Trash, organization-handle internal drag/Option-copy, single/multi/image/text Finder export, cancelled Finder drag, Finder-folder project import, undo, compare, external Finder changes, read-only mode and cache cleanup.
 

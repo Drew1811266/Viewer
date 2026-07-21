@@ -268,6 +268,7 @@ struct ActiveBatch {
 struct ServiceState {
     active: Option<ActiveBatch>,
     claimed: HashSet<BatchId>,
+    cancel_intents: HashSet<BatchId>,
 }
 
 pub struct FileCommandService {
@@ -408,6 +409,10 @@ impl FileCommandService {
             let mut state = self.lock_state();
             if !state.claimed.insert(preflight.batch_id) {
                 return Err(FileCommandServiceError::AlreadyExecuted);
+            }
+            if state.cancel_intents.remove(&preflight.batch_id) {
+                cancellation.cancel();
+                progress.lifecycle = BatchLifecycle::Cancelling;
             }
             state.active = Some(ActiveBatch {
                 batch_id: preflight.batch_id,
@@ -563,6 +568,27 @@ impl FileCommandService {
             sink.send_replace(progress.clone());
         }
         true
+    }
+
+    /// Records cancellation for a batch that the runtime has admitted even
+    /// when it is still waiting to register its active service token.
+    pub fn request_cancel(&self, batch_id: BatchId) {
+        let mut state = self.lock_state();
+        if let Some(active) = &state.active
+            && active.batch_id == batch_id
+        {
+            active.cancellation.cancel();
+            let mut progress = active
+                .progress
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            progress.lifecycle = BatchLifecycle::Cancelling;
+            if let Some(sink) = &active.progress_sink {
+                sink.send_replace(progress.clone());
+            }
+            return;
+        }
+        state.cancel_intents.insert(batch_id);
     }
 
     fn validate_command(&self, command: &FileCommand) -> Result<(), FileCommandServiceError> {

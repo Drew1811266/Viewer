@@ -4,12 +4,9 @@ use std::{
     collections::{HashMap, HashSet},
     fs,
     path::PathBuf,
-    sync::{
-        Arc, Mutex,
-        atomic::{AtomicBool, Ordering},
-    },
+    sync::{Arc, Mutex},
 };
-use tokio::sync::{Mutex as AsyncMutex, Notify, watch};
+use tokio::sync::{Mutex as AsyncMutex, oneshot, watch};
 use viewer_application::{
     BrowseIndexPort, ClockPort, CommitStage, MetadataCommitOutcome, OperationCommit,
     OperationCommitError, OperationCommitPort, VolumePort,
@@ -55,18 +52,17 @@ struct OperationRecord {
     progress: Mutex<BatchProgress>,
     summary: Mutex<Option<BatchSummary>>,
     failure: Mutex<Option<FileCommandServiceError>>,
-    complete: AtomicBool,
-    notify: Notify,
+    complete: watch::Sender<bool>,
 }
 
 impl OperationRecord {
     fn new(progress: BatchProgress) -> Self {
+        let (complete, _) = watch::channel(false);
         Self {
             progress: Mutex::new(progress),
             summary: Mutex::new(None),
             failure: Mutex::new(None),
-            complete: AtomicBool::new(false),
-            notify: Notify::new(),
+            complete,
         }
     }
 
@@ -84,7 +80,7 @@ impl OperationRecord {
             .unwrap_or_else(|poisoned| poisoned.into_inner()) = progress;
     }
 
-    fn finish(&self, result: Result<BatchSummary, FileCommandServiceError>) {
+    fn store_result(&self, result: Result<BatchSummary, FileCommandServiceError>) {
         match result {
             Ok(summary) => {
                 *self
@@ -99,8 +95,18 @@ impl OperationRecord {
                     .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(error);
             }
         }
-        self.complete.store(true, Ordering::Release);
-        self.notify.notify_waiters();
+    }
+
+    fn mark_complete(&self) {
+        self.complete.send_replace(true);
+    }
+
+    fn is_complete(&self) -> bool {
+        *self.complete.borrow()
+    }
+
+    fn subscribe_completion(&self) -> watch::Receiver<bool> {
+        self.complete.subscribe()
     }
 }
 
@@ -182,13 +188,25 @@ impl OperationRuntime {
         self.events.emit_operation(session_id, generation, initial);
 
         let (progress_tx, mut progress_rx) = watch::channel(record.progress());
+        let (stop_progress_tx, mut stop_progress_rx) = oneshot::channel();
         let progress_record = Arc::clone(&record);
         let progress_events = Arc::clone(&self.events);
-        tokio::spawn(async move {
-            while progress_rx.changed().await.is_ok() {
-                let progress = progress_rx.borrow_and_update().clone();
-                progress_record.publish(progress.clone());
-                progress_events.emit_operation(session_id, generation, progress);
+        let progress_forwarder = tokio::spawn(async move {
+            loop {
+                tokio::select! {
+                    biased;
+                    _ = &mut stop_progress_rx => break,
+                    changed = progress_rx.changed() => {
+                        if changed.is_err() {
+                            break;
+                        }
+                        let progress = progress_rx.borrow_and_update().clone();
+                        if progress.lifecycle != BatchLifecycle::Completed {
+                            progress_record.publish(progress.clone());
+                            progress_events.emit_operation(session_id, generation, progress);
+                        }
+                    }
+                }
             }
         });
 
@@ -225,7 +243,9 @@ impl OperationRuntime {
                 }
             };
             record.publish(completed.clone());
-            terminal_events.emit_operation(session_id, generation, completed);
+            record.store_result(result);
+            let _ = stop_progress_tx.send(());
+            let _ = progress_forwarder.await;
             {
                 let mut state = state
                     .lock()
@@ -234,7 +254,8 @@ impl OperationRuntime {
                     state.active = None;
                 }
             }
-            record.finish(result);
+            record.mark_complete();
+            terminal_events.emit_operation(session_id, generation, completed);
         });
         Ok(OperationStarted { batch_id })
     }
@@ -269,21 +290,9 @@ impl OperationRuntime {
 
     pub fn cancel(&self, batch_id: BatchId) -> Result<bool, OperationRuntimeError> {
         let record = self.record(batch_id)?;
-        if self.service.cancel_pending(batch_id) {
-            return Ok(true);
-        }
-        let accepted =
-            self.lock_state().active == Some(batch_id) && !record.complete.load(Ordering::Acquire);
+        let accepted = self.lock_state().active == Some(batch_id) && !record.is_complete();
         if accepted {
-            let service = Arc::clone(&self.service);
-            tokio::spawn(async move {
-                loop {
-                    if service.cancel_pending(batch_id) || record.complete.load(Ordering::Acquire) {
-                        break;
-                    }
-                    tokio::task::yield_now().await;
-                }
-            });
+            self.service.request_cancel(batch_id);
         }
         Ok(accepted)
     }
@@ -294,15 +303,19 @@ impl OperationRuntime {
 
     pub async fn wait(&self, batch_id: BatchId) -> Result<(), OperationRuntimeError> {
         let record = self.record(batch_id)?;
+        let mut completion = record.subscribe_completion();
         loop {
-            if record.complete.load(Ordering::Acquire) {
+            if *completion.borrow_and_update() {
                 let failure = *record
                     .failure
                     .lock()
                     .unwrap_or_else(|poisoned| poisoned.into_inner());
                 return failure.map_or(Ok(()), |error| Err(error.into()));
             }
-            record.notify.notified().await;
+            completion
+                .changed()
+                .await
+                .expect("operation record owns its completion sender");
         }
     }
 
@@ -760,6 +773,11 @@ pub fn adapter_as_undo_port(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::{
+        sync::atomic::{AtomicBool, AtomicUsize, Ordering},
+        time::Duration,
+    };
+    use tokio::sync::Notify;
     use viewer_application::{
         LocalFileCommandPort, ProjectAccess,
         file_commands::{
@@ -840,6 +858,46 @@ mod tests {
         progress: Mutex<Vec<BatchProgress>>,
     }
 
+    #[derive(Default)]
+    struct AdmissionPort {
+        preflight_started: Notify,
+        release_preflight: Notify,
+        execute_calls: AtomicUsize,
+    }
+
+    #[async_trait]
+    impl LocalFileCommandPort for AdmissionPort {
+        async fn preflight(
+            &self,
+            _batch_id: BatchId,
+            command: &FileCommand,
+        ) -> Result<Vec<LocalFileCommandPreflightItem>, LocalFileCommandError> {
+            self.preflight_started.notify_one();
+            self.release_preflight.notified().await;
+            Ok(command
+                .items
+                .iter()
+                .enumerate()
+                .map(|(index, item)| LocalFileCommandPreflightItem {
+                    entity_id: item.entity_id,
+                    relative_path: RelativePath::parse(&format!("item-{index}.txt")).unwrap(),
+                    state: FileCommandPreflightState::Ready,
+                })
+                .collect())
+        }
+
+        async fn execute_item(
+            &self,
+            _request: FileCommandItemExecution,
+            _cancellation: FileCommandCancellation,
+        ) -> Result<LocalFileCommandOutcome, LocalFileCommandError> {
+            self.execute_calls.fetch_add(1, Ordering::AcqRel);
+            Ok(LocalFileCommandOutcome::completed(
+                BatchResultCode::MovedToTrash,
+            ))
+        }
+    }
+
     impl DesktopEventSink for CancelSessionOnAdmission {
         fn emit_scan(&self, _event: crate::dto::ScanEventDto) {}
 
@@ -914,6 +972,137 @@ mod tests {
             published.last().unwrap().lifecycle,
             BatchLifecycle::Completed
         );
+        let terminal_positions = published
+            .iter()
+            .enumerate()
+            .filter_map(|(index, progress)| {
+                (progress.lifecycle == BatchLifecycle::Completed).then_some(index)
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            terminal_positions.len(),
+            1,
+            "terminal progress is published once"
+        );
+        assert!(
+            published[terminal_positions[0]..]
+                .iter()
+                .all(|progress| progress.lifecycle == BatchLifecycle::Completed),
+            "no non-terminal progress may follow completion"
+        );
+    }
+
+    #[tokio::test]
+    async fn completion_latch_remembers_finish_for_late_and_multiple_waiters() {
+        let initial = BatchProgress {
+            batch_id: BatchId::new(),
+            lifecycle: BatchLifecycle::Queued,
+            requested: 1,
+            completed: 0,
+            failed: 0,
+            skipped: 0,
+            cancelled: 0,
+            active_entity_id: None,
+        };
+        let record = Arc::new(OperationRecord::new(initial));
+        let mut before = record.subscribe_completion();
+        record.store_result(Ok(BatchSummary::try_from_results(
+            BatchId::new(),
+            0,
+            Vec::new(),
+        )
+        .unwrap()));
+        record.mark_complete();
+
+        tokio::time::timeout(Duration::from_millis(100), before.changed())
+            .await
+            .expect("an already-registered waiter must be woken")
+            .expect("completion channel remains open");
+        assert!(*before.borrow_and_update());
+
+        let mut late = record.subscribe_completion();
+        assert!(
+            *late.borrow_and_update(),
+            "late waiter observes the latched value"
+        );
+        let waiters = (0..8)
+            .map(|_| {
+                let mut completion = record.subscribe_completion();
+                tokio::spawn(async move {
+                    if !*completion.borrow_and_update() {
+                        completion.changed().await.unwrap();
+                    }
+                    assert!(*completion.borrow_and_update());
+                })
+            })
+            .collect::<Vec<_>>();
+        for waiter in waiters {
+            tokio::time::timeout(Duration::from_millis(100), waiter)
+                .await
+                .expect("every completion waiter finishes")
+                .unwrap();
+        }
+    }
+
+    #[tokio::test]
+    async fn cancel_intent_is_visible_before_service_registration_and_first_item() {
+        let session_id = SessionId::new();
+        let coordinator = Arc::new(TaskCoordinator::default());
+        let generation = coordinator.begin_session(session_id);
+        let port = Arc::new(AdmissionPort::default());
+        let service = Arc::new(FileCommandService::new(
+            session_id,
+            ProjectAccess::ReadWrite,
+            coordinator,
+            port.clone(),
+        ));
+        let lane = service.write_lane();
+        let events = Arc::new(RecordingEvents::default());
+        let runtime = Arc::new(OperationRuntime::new(service, events));
+
+        let start_runtime = Arc::clone(&runtime);
+        let start = tokio::spawn(async move {
+            start_runtime
+                .start(
+                    session_id,
+                    generation,
+                    FileCommandKind::Trash,
+                    vec![command_item()],
+                    Vec::new(),
+                )
+                .await
+        });
+        port.preflight_started.notified().await;
+
+        // Queue a lane holder before preflight releases its temporary lane
+        // guard. The runtime will be admitted while service registration waits.
+        let lane_acquired = Arc::new(Notify::new());
+        let release_lane = Arc::new(Notify::new());
+        let holder_acquired = Arc::clone(&lane_acquired);
+        let holder_release = Arc::clone(&release_lane);
+        let holder = tokio::spawn(async move {
+            let _lane = lane.lock().await;
+            holder_acquired.notify_one();
+            holder_release.notified().await;
+        });
+        port.release_preflight.notify_one();
+        let started = start.await.unwrap().unwrap();
+        lane_acquired.notified().await;
+        assert!(runtime.cancel(started.batch_id).unwrap());
+        release_lane.notify_one();
+        holder.await.unwrap();
+
+        tokio::time::timeout(Duration::from_secs(1), runtime.wait(started.batch_id))
+            .await
+            .expect("cancelled admission must settle without polling")
+            .unwrap();
+        let results = runtime.results(started.batch_id, 0, 10).unwrap();
+        assert_eq!(results.items.len(), 1);
+        assert_eq!(
+            results.items[0].status,
+            viewer_domain::operation::BatchItemStatus::Cancelled
+        );
+        assert_eq!(port.execute_calls.load(Ordering::Acquire), 0);
     }
 
     #[tokio::test]
@@ -957,7 +1146,7 @@ mod tests {
             locked_tx.send(()).unwrap();
             let deadline = std::time::Instant::now() + Duration::from_millis(100);
             let completed_while_active = loop {
-                if holder_record.complete.load(Ordering::Acquire) {
+                if holder_record.is_complete() {
                     break true;
                 }
                 if std::time::Instant::now() >= deadline {

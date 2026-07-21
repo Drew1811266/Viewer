@@ -7,6 +7,7 @@ use crate::{
     finder_drag::{FinderDragError, PreparedFinderDrag},
     scan::{ScanError, ScanRequest, ScanSink},
     search::SearchError,
+    watcher::FileIdentity,
 };
 
 pub trait FinderDragPort {
@@ -107,9 +108,118 @@ pub trait FileMutationPort: Send + Sync {
         Ok(result)
     }
 
+    async fn copy_and_hash_cancellable_verified(
+        &self,
+        source: &Path,
+        temporary: &Path,
+        cancellation: &FileCommandCancellation,
+        expected_source: &FileSnapshot,
+        source_parent: FileIdentity,
+        temporary_parent: FileIdentity,
+    ) -> Result<(u64, [u8; 32]), FileOperationError> {
+        verify_directory_identity(
+            source.parent().ok_or(FileOperationError::OutsideProject)?,
+            source_parent,
+        )?;
+        verify_directory_identity(
+            temporary
+                .parent()
+                .ok_or(FileOperationError::OutsideProject)?,
+            temporary_parent,
+        )?;
+        if self.snapshot(source).await? != *expected_source {
+            return Err(FileOperationError::IdentityChanged);
+        }
+        self.copy_and_hash_cancellable(source, temporary, cancellation)
+            .await
+    }
+
     async fn rename(&self, source: &Path, destination: &Path) -> Result<(), FileOperationError>;
 
+    async fn rename_verified(
+        &self,
+        source: &Path,
+        destination: &Path,
+        expected: &FileSnapshot,
+        source_parent: FileIdentity,
+        destination_parent: FileIdentity,
+    ) -> Result<(), FileOperationError> {
+        verify_directory_identity(
+            source.parent().ok_or(FileOperationError::OutsideProject)?,
+            source_parent,
+        )?;
+        verify_directory_identity(
+            destination
+                .parent()
+                .ok_or(FileOperationError::OutsideProject)?,
+            destination_parent,
+        )?;
+        if !snapshot_matches_bound_move(expected, &self.snapshot(source).await?) {
+            return Err(FileOperationError::IdentityChanged);
+        }
+        self.rename(source, destination).await
+    }
+
+    async fn create_registered_temporary(
+        &self,
+        path: &Path,
+        expected_parent: FileIdentity,
+    ) -> Result<(), FileOperationError> {
+        use std::{fs::OpenOptions, io::Write};
+        verify_directory_identity(
+            path.parent().ok_or(FileOperationError::OutsideProject)?,
+            expected_parent,
+        )?;
+        let mut file = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(path)
+            .map_err(|error| FileOperationError::io("create registered temporary", path, &error))?;
+        file.flush()
+            .map_err(|error| FileOperationError::io("flush registered temporary", path, &error))?;
+        file.sync_all()
+            .map_err(|error| FileOperationError::io("sync registered temporary", path, &error))
+    }
+
     async fn remove_registered_temporary(&self, path: &Path) -> Result<(), FileOperationError>;
+
+    async fn remove_registered_temporary_verified(
+        &self,
+        path: &Path,
+        expected_parent: FileIdentity,
+    ) -> Result<(), FileOperationError> {
+        verify_directory_identity(
+            path.parent().ok_or(FileOperationError::OutsideProject)?,
+            expected_parent,
+        )?;
+        self.remove_registered_temporary(path).await
+    }
+}
+
+fn verify_directory_identity(
+    path: &Path,
+    expected: FileIdentity,
+) -> Result<(), FileOperationError> {
+    let metadata = std::fs::symlink_metadata(path)
+        .map_err(|error| FileOperationError::io("inspect bound directory", path, &error))?;
+    if metadata.file_type().is_symlink() || !metadata.is_dir() {
+        return Err(FileOperationError::OutsideProject);
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        if metadata.dev() != expected.volume || metadata.ino() != expected.file {
+            return Err(FileOperationError::IdentityChanged);
+        }
+    }
+    Ok(())
+}
+
+fn snapshot_matches_bound_move(expected: &FileSnapshot, actual: &FileSnapshot) -> bool {
+    expected.volume_id == actual.volume_id
+        && expected.len == actual.len
+        && expected.file_id == actual.file_id
+        && expected.modified_ns == actual.modified_ns
 }
 
 #[async_trait]

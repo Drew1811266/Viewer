@@ -5,20 +5,27 @@ use std::{
     sync::{Arc, Mutex},
     time::Duration,
 };
-use tokio::sync::Notify;
+use tokio::sync::{Mutex as AsyncMutex, Notify};
 use viewer_application::{
-    CommitStage, FileMutationPort, FileOperationError, FileSnapshot, OperationCommit,
-    OperationCommitError, OperationCommitPort, ProjectAccess, TrashPort, VolumePort,
+    BrowseIndexPort, CommitStage, FileMutationPort, FileOperationError, FileSnapshot,
+    OperationCommit, OperationCommitError, OperationCommitPort, ProjectAccess, TrashPort,
+    VolumePort,
     file_commands::{
         BatchResultCode, ConflictResolution, FileCommand, FileCommandAction,
         FileCommandCancellation, FileCommandItem, FileCommandKind, FileCommandPreflightState,
         FileCommandService,
     },
+    metadata::{
+        FileMoveProjection, MarkerChange, MarkerProjectionPort, MarkerTarget,
+        OperationProjectionPort,
+    },
     scheduler::TaskCoordinator,
+    undo::{UndoAction, UndoFilePort, UndoStack},
+    watcher::FileIdentity,
 };
 use viewer_domain::{
     EntityId, RelativePath, SessionId,
-    file::{FileKind, FileNode},
+    file::{FileKind, FileNode, Marker, ReviewState},
     operation::{ConflictPolicy, OperationState},
     search::Generation,
 };
@@ -30,7 +37,7 @@ use viewer_infrastructure::{
         service::LocalFileCommandAdapter,
     },
     scan::reconcile::ExpectedChangeLedger,
-    search::index::SessionIndex,
+    search::{index::SessionIndex, text::TextStatus},
 };
 use viewer_test_support::{
     FixedClock, operation_commits::InMemoryOperationCommitPort, project_fixture::ProjectFixture,
@@ -64,6 +71,71 @@ impl VolumePort for FakeVolume {
 struct FakeTrash {
     directory: tempfile::TempDir,
     trashed: Mutex<Vec<PathBuf>>,
+}
+
+#[derive(Default)]
+struct RekeyingCommitPort {
+    index: Mutex<Option<Arc<SessionIndex>>>,
+    root: Mutex<Option<PathBuf>>,
+}
+
+impl RekeyingCommitPort {
+    fn attach(&self, index: Arc<SessionIndex>, root: PathBuf) {
+        *self.index.lock().unwrap() = Some(index);
+        *self.root.lock().unwrap() = Some(root);
+    }
+}
+
+#[async_trait]
+impl OperationCommitPort for RekeyingCommitPort {
+    async fn commit_metadata(&self, _commit: &OperationCommit) -> Result<(), OperationCommitError> {
+        Ok(())
+    }
+
+    async fn sync_index(&self, commit: &OperationCommit) -> Result<(), OperationCommitError> {
+        let index =
+            self.index.lock().unwrap().clone().ok_or_else(|| {
+                OperationCommitError::new(CommitStage::Index, "index_unavailable")
+            })?;
+        let source = index
+            .node(commit.entity_id)
+            .map_err(|_| OperationCommitError::new(CommitStage::Index, "index_unavailable"))?
+            .ok_or_else(|| OperationCommitError::new(CommitStage::Index, "projection_stale"))?;
+        let destination_path = commit
+            .destination
+            .clone()
+            .ok_or_else(|| OperationCommitError::new(CommitStage::Index, "destination_missing"))?;
+        let root =
+            self.root.lock().unwrap().clone().ok_or_else(|| {
+                OperationCommitError::new(CommitStage::Index, "index_unavailable")
+            })?;
+        let metadata = fs::metadata(root.join(destination_path.as_str())).map_err(|_| {
+            OperationCommitError::new(CommitStage::Index, "destination_unavailable")
+        })?;
+        #[cfg(unix)]
+        let destination_id = {
+            use std::os::unix::fs::MetadataExt;
+            EntityId::from_u128((u128::from(metadata.dev()) << 64) | u128::from(metadata.ino()))
+        };
+        #[cfg(not(unix))]
+        let destination_id = EntityId::new();
+        let destination = FileNode {
+            entity_id: destination_id,
+            relative_path: destination_path,
+            kind: source.kind,
+            size: metadata.len(),
+            modified_ns: 1,
+        };
+        index
+            .apply_move(
+                &[FileMoveProjection {
+                    source,
+                    destination,
+                }],
+                true,
+            )
+            .map_err(|_| OperationCommitError::new(CommitStage::Index, "projection_stale"))
+    }
 }
 
 impl FakeTrash {
@@ -104,6 +176,7 @@ struct Fixture {
     session_id: SessionId,
     generation: Generation,
     service: Arc<FileCommandService>,
+    undo_stack: Arc<Mutex<UndoStack>>,
 }
 
 impl Fixture {
@@ -150,11 +223,14 @@ impl Fixture {
         let session_id = SessionId::new();
         let coordinator = Arc::new(TaskCoordinator::default());
         let generation = coordinator.begin_session(session_id);
-        let service = Arc::new(FileCommandService::new(
+        let undo_stack = Arc::new(Mutex::new(UndoStack::new(session_id)));
+        let service = Arc::new(FileCommandService::new_with_undo(
             session_id,
             ProjectAccess::ReadWrite,
             coordinator,
             adapter.clone(),
+            Arc::new(AsyncMutex::new(())),
+            Arc::clone(&undo_stack),
         ));
         Self {
             project,
@@ -167,6 +243,7 @@ impl Fixture {
             session_id,
             generation,
             service,
+            undo_stack,
         }
     }
 
@@ -402,6 +479,136 @@ async fn cross_volume_move_copies_verifies_then_trashes_source() {
     assert_eq!(fixture.trash.count(), 1);
     assert!(fixture.volume.queries.lock().unwrap().len() >= 2);
     assert_eq!(fixture.expected_changes.pending_count(), 2);
+}
+
+#[tokio::test]
+async fn cross_volume_move_undo_tracks_each_current_filesystem_entity_and_rekeys_projection_twice()
+{
+    let commits = Arc::new(RekeyingCommitPort::default());
+    let fixture = Fixture::with_ports(true, Arc::new(LocalFileMutation), commits.clone());
+    commits.attach(fixture.index.clone(), fixture.project.root().to_path_buf());
+    fixture.directory("source");
+    let destination_folder = fixture.directory("exports");
+    let original_entity = fixture.file("source/item.txt", b"searchable body");
+    let source_path = RelativePath::parse("source/item.txt").unwrap();
+    fixture
+        .index
+        .replace_text(
+            original_entity,
+            &source_path,
+            &TextStatus::Indexed("searchable body".into()),
+        )
+        .unwrap();
+    let source_node = fixture.index.node(original_entity).unwrap().unwrap();
+    fixture
+        .index
+        .sync_markers(&[MarkerChange {
+            target: MarkerTarget {
+                entity_id: original_entity,
+                relative_path: source_path.clone(),
+                kind: source_node.kind,
+                size: source_node.size,
+                modified_ns: source_node.modified_ns,
+            },
+            marker: Marker {
+                review_state: Some(ReviewState::Keep),
+                favorite: true,
+            },
+        }])
+        .unwrap();
+    let command = fixture.command(
+        FileCommandKind::Move,
+        vec![FileCommandItem {
+            entity_id: original_entity,
+            action: FileCommandAction::Move { destination_folder },
+        }],
+    );
+    let preflight = fixture.service.preflight(command).await.unwrap();
+
+    let summary = fixture.service.execute(preflight, &[], None).await.unwrap();
+
+    assert_eq!(summary.completed(), 1);
+    let moved = fixture
+        .index
+        .node_by_relative_path(&RelativePath::parse("exports/item.txt").unwrap())
+        .unwrap()
+        .expect("forward destination is projected");
+    assert_ne!(moved.entity_id, original_entity);
+    assert!(fixture.index.node(original_entity).unwrap().is_none());
+    let undo = fixture
+        .undo_stack
+        .lock()
+        .unwrap()
+        .last()
+        .expect("forward move records undo");
+    let UndoAction::File { entity_id, .. } = undo.actions[0] else {
+        panic!("move undo must contain a file action")
+    };
+    assert_eq!(
+        entity_id, moved.entity_id,
+        "undo targets the current destination entity"
+    );
+
+    fixture
+        .adapter
+        .reverse_batch(fixture.project.root(), &undo)
+        .await
+        .unwrap();
+
+    let restored = fixture
+        .index
+        .node_by_relative_path(&source_path)
+        .unwrap()
+        .expect("reverse destination is projected");
+    assert_ne!(restored.entity_id, moved.entity_id);
+    assert!(fixture.index.node(moved.entity_id).unwrap().is_none());
+    assert_eq!(
+        fs::read(fixture.project.root().join("source/item.txt")).unwrap(),
+        b"searchable body"
+    );
+    assert!(!fixture.project.root().join("exports/item.txt").exists());
+    let indexed = fixture
+        .index
+        .indexed_node(restored.entity_id)
+        .unwrap()
+        .expect("rekeyed node retains derived projection");
+    assert!(matches!(
+        indexed.text_status,
+        viewer_domain::file::TextIndexStatus::Ready
+    ));
+    assert_eq!(
+        indexed.marker,
+        Marker {
+            review_state: Some(ReviewState::Keep),
+            favorite: true,
+        },
+        "marker projection follows the twice-rekeyed file"
+    );
+    let connection =
+        rusqlite::Connection::open(fixture.project.root().join(".viewer/session.sqlite")).unwrap();
+    let fts_row = connection
+        .query_row(
+            "SELECT entity_id, relative_path, body FROM text_fts WHERE entity_id = ?1",
+            [restored.entity_id.to_string()],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                ))
+            },
+        )
+        .unwrap();
+    assert_eq!(
+        fts_row,
+        (
+            restored.entity_id.to_string(),
+            "source/item.txt".into(),
+            "searchable body".into(),
+        ),
+        "FTS identity and path follow the twice-rekeyed file"
+    );
+    assert!(fixture.journal.incomplete_items().unwrap().is_empty());
 }
 
 struct FailMetadataCommit;
@@ -926,25 +1133,45 @@ struct SwapSourceBeforeMutationSnapshot {
 #[async_trait]
 impl FileMutationPort for SwapSourceBeforeMutationSnapshot {
     async fn snapshot(&self, path: &Path) -> Result<FileSnapshot, FileOperationError> {
+        self.delegate.snapshot(path).await
+    }
+
+    async fn rename_verified(
+        &self,
+        source: &Path,
+        destination: &Path,
+        expected: &FileSnapshot,
+        source_parent: FileIdentity,
+        destination_parent: FileIdentity,
+    ) -> Result<(), FileOperationError> {
         let paths = {
             let mut swap = self.swap.lock().unwrap();
             if swap
                 .as_ref()
-                .is_some_and(|(source, _)| source.as_path() == path)
+                .is_some_and(|(candidate, _)| candidate.as_path() == source)
             {
                 swap.take()
             } else {
                 None
             }
         };
-        if let Some((source, parked_original)) = paths {
-            fs::rename(&source, &parked_original)
-                .map_err(|error| FileOperationError::io("park selected source", &source, &error))?;
-            fs::write(&source, b"replacement").map_err(|error| {
-                FileOperationError::io("install replacement source", &source, &error)
+        if let Some((swapped_source, parked_original)) = paths {
+            fs::rename(&swapped_source, &parked_original).map_err(|error| {
+                FileOperationError::io("park selected source", &swapped_source, &error)
+            })?;
+            fs::write(&swapped_source, b"replacement").map_err(|error| {
+                FileOperationError::io("install replacement source", &swapped_source, &error)
             })?;
         }
-        self.delegate.snapshot(path).await
+        self.delegate
+            .rename_verified(
+                source,
+                destination,
+                expected,
+                source_parent,
+                destination_parent,
+            )
+            .await
     }
 
     async fn copy_and_hash(
@@ -1002,6 +1229,324 @@ async fn rename_rejects_a_source_entity_swapped_after_dispatch_validation() {
     assert_eq!(fs::read(&source_path).unwrap(), b"replacement");
     assert_eq!(fs::read(&parked_original).unwrap(), b"selected");
     assert!(!fixture.project.root().join("products/renamed.png").exists());
+}
+
+#[tokio::test]
+async fn trash_rejects_a_source_replacement_before_safe_isolation() {
+    let mutation = Arc::new(SwapSourceBeforeMutationSnapshot {
+        delegate: LocalFileMutation,
+        swap: Mutex::new(None),
+    });
+    let fixture = Fixture::with_mutation(false, mutation.clone());
+    fixture.directory("products");
+    let source = fixture.file("products/source.png", b"selected");
+    let source_path = fixture.project.root().join("products/source.png");
+    let canonical_source = fs::canonicalize(&source_path).unwrap();
+    let parked_original = canonical_source
+        .parent()
+        .unwrap()
+        .join("original-selected.png");
+    *mutation.swap.lock().unwrap() = Some((canonical_source, parked_original.clone()));
+    let command = fixture.command(
+        FileCommandKind::Trash,
+        vec![FileCommandItem {
+            entity_id: source,
+            action: FileCommandAction::Trash,
+        }],
+    );
+    let preflight = fixture.service.preflight(command).await.unwrap();
+
+    let summary = fixture.service.execute(preflight, &[], None).await.unwrap();
+
+    assert_eq!(summary.failed(), 1);
+    assert_eq!(fs::read(&source_path).unwrap(), b"replacement");
+    assert_eq!(fs::read(&parked_original).unwrap(), b"selected");
+    assert_eq!(fixture.trash.count(), 0);
+}
+
+#[tokio::test]
+async fn rename_replace_rejects_a_source_replacement_before_isolation() {
+    let mutation = Arc::new(SwapSourceBeforeMutationSnapshot {
+        delegate: LocalFileMutation,
+        swap: Mutex::new(None),
+    });
+    let fixture = Fixture::with_mutation(false, mutation.clone());
+    fixture.directory("products");
+    let source = fixture.file("products/source.png", b"selected");
+    fixture.file("products/destination.png", b"destination");
+    let source_path = fixture.project.root().join("products/source.png");
+    let canonical_source = fs::canonicalize(&source_path).unwrap();
+    let parked_original = canonical_source
+        .parent()
+        .unwrap()
+        .join("original-selected.png");
+    *mutation.swap.lock().unwrap() = Some((canonical_source, parked_original.clone()));
+    let command = fixture.command(
+        FileCommandKind::Rename,
+        vec![FileCommandItem {
+            entity_id: source,
+            action: FileCommandAction::Rename {
+                proposed_name: "destination.png".into(),
+                edit_extension: true,
+            },
+        }],
+    );
+    let preflight = fixture.service.preflight(command).await.unwrap();
+
+    let summary = fixture
+        .service
+        .execute(
+            preflight,
+            &[ConflictResolution {
+                entity_id: source,
+                policy: ConflictPolicy::Replace,
+                apply_to_remaining: false,
+            }],
+            None,
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(summary.failed(), 1);
+    assert_eq!(fs::read(&source_path).unwrap(), b"replacement");
+    assert_eq!(fs::read(&parked_original).unwrap(), b"selected");
+    assert_eq!(
+        fs::read(fixture.project.root().join("products/destination.png")).unwrap(),
+        b"destination"
+    );
+    assert_eq!(fixture.trash.count(), 0);
+}
+
+struct ReplaceDestinationParentBeforeCreate {
+    delegate: LocalFileMutation,
+    swap: Mutex<Option<(PathBuf, PathBuf, Option<PathBuf>)>>,
+}
+
+struct ReplaceDestinationParentAfterCreate {
+    delegate: LocalFileMutation,
+    swap: Mutex<Option<(PathBuf, PathBuf, PathBuf)>>,
+    outside_temporary: Mutex<Option<PathBuf>>,
+}
+
+#[async_trait]
+impl FileMutationPort for ReplaceDestinationParentAfterCreate {
+    async fn snapshot(&self, path: &Path) -> Result<FileSnapshot, FileOperationError> {
+        self.delegate.snapshot(path).await
+    }
+
+    async fn create_registered_temporary(
+        &self,
+        path: &Path,
+        expected_parent: FileIdentity,
+    ) -> Result<(), FileOperationError> {
+        self.delegate
+            .create_registered_temporary(path, expected_parent)
+            .await?;
+        if let Some((parent, parked, outside)) = self.swap.lock().unwrap().take() {
+            fs::rename(&parent, &parked).map_err(|error| {
+                FileOperationError::io("park destination directory", &parent, &error)
+            })?;
+            #[cfg(unix)]
+            std::os::unix::fs::symlink(&outside, &parent).map_err(|error| {
+                FileOperationError::io("install destination symlink", &parent, &error)
+            })?;
+            let outside_temporary = outside.join(path.file_name().unwrap());
+            fs::write(&outside_temporary, b"outside sentinel").map_err(|error| {
+                FileOperationError::io("create outside sentinel", &outside_temporary, &error)
+            })?;
+            *self.outside_temporary.lock().unwrap() = Some(outside_temporary);
+        }
+        Ok(())
+    }
+
+    async fn copy_and_hash(
+        &self,
+        source: &Path,
+        temporary: &Path,
+    ) -> Result<(u64, [u8; 32]), FileOperationError> {
+        self.delegate.copy_and_hash(source, temporary).await
+    }
+
+    async fn rename(&self, source: &Path, destination: &Path) -> Result<(), FileOperationError> {
+        self.delegate.rename(source, destination).await
+    }
+
+    async fn remove_registered_temporary(&self, path: &Path) -> Result<(), FileOperationError> {
+        self.delegate.remove_registered_temporary(path).await
+    }
+}
+
+#[async_trait]
+impl FileMutationPort for ReplaceDestinationParentBeforeCreate {
+    async fn snapshot(&self, path: &Path) -> Result<FileSnapshot, FileOperationError> {
+        self.delegate.snapshot(path).await
+    }
+
+    async fn create_registered_temporary(
+        &self,
+        path: &Path,
+        expected_parent: FileIdentity,
+    ) -> Result<(), FileOperationError> {
+        if let Some((parent, parked, symlink_target)) = self.swap.lock().unwrap().take() {
+            fs::rename(&parent, &parked).map_err(|error| {
+                FileOperationError::io("park destination directory", &parent, &error)
+            })?;
+            if let Some(target) = symlink_target {
+                #[cfg(unix)]
+                std::os::unix::fs::symlink(&target, &parent).map_err(|error| {
+                    FileOperationError::io("install destination symlink", &parent, &error)
+                })?;
+            } else {
+                fs::create_dir(&parent).map_err(|error| {
+                    FileOperationError::io("install replacement directory", &parent, &error)
+                })?;
+            }
+        }
+        self.delegate
+            .create_registered_temporary(path, expected_parent)
+            .await
+    }
+
+    async fn copy_and_hash(
+        &self,
+        source: &Path,
+        temporary: &Path,
+    ) -> Result<(u64, [u8; 32]), FileOperationError> {
+        self.delegate.copy_and_hash(source, temporary).await
+    }
+
+    async fn rename(&self, source: &Path, destination: &Path) -> Result<(), FileOperationError> {
+        self.delegate.rename(source, destination).await
+    }
+
+    async fn remove_registered_temporary(&self, path: &Path) -> Result<(), FileOperationError> {
+        self.delegate.remove_registered_temporary(path).await
+    }
+}
+
+#[tokio::test]
+async fn copy_rejects_an_ordinary_destination_folder_replacement_before_create() {
+    let mutation = Arc::new(ReplaceDestinationParentBeforeCreate {
+        delegate: LocalFileMutation,
+        swap: Mutex::new(None),
+    });
+    let fixture = Fixture::with_mutation(false, mutation.clone());
+    fixture.directory("source");
+    let destination = fixture.directory("exports");
+    let source = fixture.file("source/item.png", b"source");
+    let parent = fixture.project.root().join("exports");
+    let parked = fixture.project.root().join("exports-original");
+    *mutation.swap.lock().unwrap() = Some((parent.clone(), parked.clone(), None));
+    let command = fixture.command(
+        FileCommandKind::Copy,
+        vec![FileCommandItem {
+            entity_id: source,
+            action: FileCommandAction::Copy {
+                destination_folder: destination,
+            },
+        }],
+    );
+    let preflight = fixture.service.preflight(command).await.unwrap();
+
+    let summary = fixture.service.execute(preflight, &[], None).await.unwrap();
+
+    assert_eq!(summary.failed(), 1);
+    assert!(!parent.join("item.png").exists());
+    assert!(!parked.join("item.png").exists());
+    assert_eq!(
+        fs::read(fixture.project.root().join("source/item.png")).unwrap(),
+        b"source"
+    );
+    assert_eq!(fixture.trash.count(), 0);
+}
+
+#[tokio::test]
+async fn copy_cleanup_cannot_follow_a_replaced_destination_parent_outside_the_project() {
+    let outside = tempfile::tempdir().unwrap();
+    let mutation = Arc::new(ReplaceDestinationParentAfterCreate {
+        delegate: LocalFileMutation,
+        swap: Mutex::new(None),
+        outside_temporary: Mutex::new(None),
+    });
+    let fixture = Fixture::with_mutation(false, mutation.clone());
+    fixture.directory("source");
+    let destination = fixture.directory("exports");
+    let source = fixture.file("source/item.png", b"source");
+    let parent = fixture.project.root().join("exports");
+    let parked = fixture.project.root().join("exports-original");
+    *mutation.swap.lock().unwrap() = Some((parent, parked, outside.path().to_path_buf()));
+    let command = fixture.command(
+        FileCommandKind::Copy,
+        vec![FileCommandItem {
+            entity_id: source,
+            action: FileCommandAction::Copy {
+                destination_folder: destination,
+            },
+        }],
+    );
+    let preflight = fixture.service.preflight(command).await.unwrap();
+
+    let summary = fixture.service.execute(preflight, &[], None).await.unwrap();
+
+    assert_eq!(summary.failed(), 1);
+    let outside_temporary = mutation
+        .outside_temporary
+        .lock()
+        .unwrap()
+        .clone()
+        .expect("race hook created an outside sentinel");
+    assert_eq!(
+        fs::read(outside_temporary).unwrap(),
+        b"outside sentinel",
+        "cleanup must remain bound to the validated destination directory"
+    );
+    assert_eq!(
+        fs::read(fixture.project.root().join("source/item.png")).unwrap(),
+        b"source"
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn cross_volume_move_rejects_a_destination_symlink_race_without_outside_write_or_source_delete()
+ {
+    let mutation = Arc::new(ReplaceDestinationParentBeforeCreate {
+        delegate: LocalFileMutation,
+        swap: Mutex::new(None),
+    });
+    let fixture = Fixture::with_mutation(true, mutation.clone());
+    fixture.directory("source");
+    let destination = fixture.directory("exports");
+    let source = fixture.file("source/item.png", b"source");
+    let outside = tempfile::tempdir().unwrap();
+    let parent = fixture.project.root().join("exports");
+    let parked = fixture.project.root().join("exports-original");
+    *mutation.swap.lock().unwrap() = Some((
+        parent.clone(),
+        parked.clone(),
+        Some(outside.path().to_path_buf()),
+    ));
+    let command = fixture.command(
+        FileCommandKind::Move,
+        vec![FileCommandItem {
+            entity_id: source,
+            action: FileCommandAction::Move {
+                destination_folder: destination,
+            },
+        }],
+    );
+    let preflight = fixture.service.preflight(command).await.unwrap();
+
+    let summary = fixture.service.execute(preflight, &[], None).await.unwrap();
+
+    assert_eq!(summary.failed(), 1);
+    assert!(!outside.path().join("item.png").exists());
+    assert!(!parked.join("item.png").exists());
+    assert_eq!(
+        fs::read(fixture.project.root().join("source/item.png")).unwrap(),
+        b"source"
+    );
+    assert_eq!(fixture.trash.count(), 0);
 }
 
 #[async_trait]
@@ -1274,7 +1819,11 @@ async fn rename_cancellation_stops_not_started_independent_components() {
             .exists(),
         "cancellation must be observed between independent rename components"
     );
-    assert_eq!(*mutation.rename_count.lock().unwrap(), 1);
+    assert_eq!(
+        *mutation.rename_count.lock().unwrap(),
+        2,
+        "only the first component's isolation and final-placement stages run"
+    );
 }
 
 #[async_trait]

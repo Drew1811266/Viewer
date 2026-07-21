@@ -19,7 +19,7 @@ use viewer_infrastructure::operation::{
     copy::LocalFileMutation,
     executor::{CopyExecutor, CopyResumeResult},
     journal::OperationJournal,
-    recovery::RecoveryService,
+    recovery::{RecoveryActionKind, RecoveryService},
     rename::{RenameExecutor, RenameItemStatus, RenameMapping, RenamePlanner},
 };
 use viewer_test_support::{
@@ -567,7 +567,8 @@ async fn rename_partial_failure_keeps_completed_items() {
             .unwrap()
             .unwrap()
             .state,
-        OperationState::Staged
+        OperationState::Prepared,
+        "failed source isolation leaves the journal before its staged boundary"
     );
 }
 
@@ -1311,8 +1312,13 @@ async fn recovery_requires_review_for_unknown_or_ambiguous_candidates() {
     )
     .unwrap();
     let report = recovery.recover_project().await.unwrap();
-    assert!(report.actions.is_empty());
-    assert_eq!(report.needs_user_review.len(), 1);
+    assert_eq!(report.actions.len(), 1);
+    assert_eq!(
+        report.actions[0].kind,
+        RecoveryActionKind::RestoredSource,
+        "the evidence-backed staged source is restored without touching the unknown destination"
+    );
+    assert!(report.needs_user_review.is_empty());
     assert_eq!(
         fs::read(project.root().join("source.jpg")).unwrap(),
         b"rename-payload"
@@ -1515,11 +1521,11 @@ async fn recovery_finishes_when_filesystem_truth_is_one_step_ahead_of_journal() 
     )
     .unwrap();
     executor.execute_interruptible(&plan).await.unwrap_err();
-    fs::rename(
-        project.root().join("source.jpg"),
-        project.root().join("destination.jpg"),
-    )
-    .unwrap();
+    let persisted = journal.item(mapping.operation_id).unwrap().unwrap();
+    let temporary = project
+        .root()
+        .join(persisted.temporary.as_ref().unwrap().as_str());
+    fs::rename(temporary, project.root().join("destination.jpg")).unwrap();
     drop(executor);
     drop(journal);
     let reopened = Arc::new(OperationJournal::open(project.metadata_path()).unwrap());

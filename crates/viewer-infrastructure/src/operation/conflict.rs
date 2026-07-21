@@ -5,6 +5,7 @@ use std::{
 use viewer_application::{
     ClockPort, FaultInjector, FileContentEvidence, FileMutationPort, FileOperationError,
     InjectedCrash, NoFaults, OperationCommit, OperationCommitError, OperationCommitPort, TrashPort,
+    watcher::FileIdentity,
 };
 use viewer_domain::{
     OperationId, RelativePath,
@@ -307,6 +308,38 @@ impl ReplaceExecutor {
         item: &OperationItemPlan,
         expected_destination: &FileContentEvidence,
     ) -> Result<(), ReplaceError> {
+        let source = self.resolve_existing(&item.source)?;
+        let source_snapshot = self.mutation.snapshot(&source).await?;
+        let source_parent =
+            directory_identity(source.parent().ok_or(FileOperationError::OutsideProject)?)?;
+        let destination = item
+            .destination
+            .as_ref()
+            .ok_or(FileOperationError::DestinationRequired)?;
+        let destination_path = self.resolve_existing(destination)?;
+        let destination_parent = directory_identity(
+            destination_path
+                .parent()
+                .ok_or(FileOperationError::OutsideProject)?,
+        )?;
+        self.execute_with_bound_evidence(
+            item,
+            expected_destination,
+            &source_snapshot,
+            source_parent,
+            destination_parent,
+        )
+        .await
+    }
+
+    pub async fn execute_with_bound_evidence(
+        &self,
+        item: &OperationItemPlan,
+        expected_destination: &FileContentEvidence,
+        expected_source: &viewer_application::FileSnapshot,
+        source_parent_identity: FileIdentity,
+        destination_parent_identity: FileIdentity,
+    ) -> Result<(), ReplaceError> {
         if !matches!(item.kind, OperationKind::Rename | OperationKind::Move)
             || item.conflict_policy != ConflictPolicy::Replace
         {
@@ -326,6 +359,9 @@ impl ReplaceExecutor {
         }
 
         let before = self.mutation.snapshot(&source).await?;
+        if before != *expected_source {
+            return Err(FileOperationError::IdentityChanged.into());
+        }
         let expected = hash_path(&source).await?;
         let after = self.mutation.snapshot(&source).await?;
         if before != after || before.len != expected.0 {
@@ -340,7 +376,15 @@ impl ReplaceExecutor {
         )?;
         self.after_persist(item.operation_id, OperationState::Prepared)?;
 
-        self.mutation.rename(&source, &temporary).await?;
+        self.mutation
+            .rename_verified(
+                &source,
+                &temporary,
+                expected_source,
+                source_parent_identity,
+                source_parent_identity,
+            )
+            .await?;
         sync_path(&temporary).await?;
         self.journal.advance(
             item.operation_id,
@@ -356,7 +400,16 @@ impl ReplaceExecutor {
             Err(_) => true,
         };
         if destination_changed {
-            self.mutation.rename(&temporary, &source).await?;
+            let staged = self.mutation.snapshot(&temporary).await?;
+            self.mutation
+                .rename_verified(
+                    &temporary,
+                    &source,
+                    &staged,
+                    source_parent_identity,
+                    source_parent_identity,
+                )
+                .await?;
             sync_path(&source).await?;
             self.journal.fail(
                 item.operation_id,
@@ -371,7 +424,18 @@ impl ReplaceExecutor {
         }
 
         self.trash.trash(&destination).await?;
-        if let Err(error) = self.mutation.rename(&temporary, &destination).await {
+        let staged = self.mutation.snapshot(&temporary).await?;
+        if let Err(error) = self
+            .mutation
+            .rename_verified(
+                &temporary,
+                &destination,
+                &staged,
+                source_parent_identity,
+                destination_parent_identity,
+            )
+            .await
+        {
             return Err(ReplaceError::PlacementAfterTrash(error));
         }
         sync_path(&destination).await?;
@@ -493,6 +557,26 @@ impl ReplaceExecutor {
         state: OperationState,
     ) -> Result<(), InjectedCrash> {
         self.faults.after_persist(operation_id, state)
+    }
+}
+
+fn directory_identity(path: &Path) -> Result<FileIdentity, FileOperationError> {
+    let metadata = std::fs::symlink_metadata(path)
+        .map_err(|error| FileOperationError::io("read replace directory identity", path, &error))?;
+    if metadata.file_type().is_symlink() || !metadata.is_dir() {
+        return Err(FileOperationError::OutsideProject);
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        Ok(FileIdentity {
+            volume: metadata.dev(),
+            file: metadata.ino(),
+        })
+    }
+    #[cfg(not(unix))]
+    {
+        Ok(FileIdentity { volume: 0, file: 0 })
     }
 }
 

@@ -6,15 +6,16 @@ use std::{
     sync::{Arc, Mutex},
 };
 use viewer_application::{
-    ClockPort, FileMutationPort, FileOperationError, FileSnapshot, ProjectAccess, TrashPort,
+    BrowseIndexPort, ClockPort, CommitStage, FileMutationPort, FileOperationError, FileSnapshot,
+    OperationCommit, OperationCommitError, OperationCommitPort, ProjectAccess, TrashPort,
     VolumePort,
     file_commands::{
         FileCommand, FileCommandAction, FileCommandItem, FileCommandKind, FileCommandService,
     },
     metadata::{
-        FavoritePatch, MarkerChange, MarkerPatch, MarkerProjectionError, MarkerProjectionPort,
-        MarkerRestore, MarkerService, MarkerTarget, PortableMarker, PortableMetadataPort,
-        ReviewPatch,
+        FavoritePatch, FileMoveProjection, MarkerChange, MarkerPatch, MarkerProjectionError,
+        MarkerProjectionPort, MarkerRestore, MarkerService, MarkerTarget, OperationProjectionPort,
+        PortableMarker, PortableMetadataPort, ReviewPatch,
     },
     scheduler::TaskCoordinator,
     undo::{UndoAction, UndoError, UndoFilePort, UndoService, UndoServiceError, UndoStack},
@@ -33,6 +34,47 @@ use viewer_infrastructure::{
 use viewer_test_support::{
     operation_commits::InMemoryOperationCommitPort, project_fixture::ProjectFixture,
 };
+
+struct SameVolumeProjectionCommit {
+    index: Arc<SessionIndex>,
+    root: PathBuf,
+}
+
+#[async_trait]
+impl OperationCommitPort for SameVolumeProjectionCommit {
+    async fn commit_metadata(&self, _commit: &OperationCommit) -> Result<(), OperationCommitError> {
+        Ok(())
+    }
+
+    async fn sync_index(&self, commit: &OperationCommit) -> Result<(), OperationCommitError> {
+        let source = self
+            .index
+            .node(commit.entity_id)
+            .map_err(|_| OperationCommitError::new(CommitStage::Index, "index_unavailable"))?
+            .ok_or_else(|| OperationCommitError::new(CommitStage::Index, "projection_stale"))?;
+        let relative_path = commit
+            .destination
+            .clone()
+            .ok_or_else(|| OperationCommitError::new(CommitStage::Index, "destination_missing"))?;
+        let metadata = fs::metadata(self.root.join(relative_path.as_str()))
+            .map_err(|_| OperationCommitError::new(CommitStage::Index, "destination_missing"))?;
+        self.index
+            .apply_move(
+                &[FileMoveProjection {
+                    destination: FileNode {
+                        entity_id: source.entity_id,
+                        relative_path,
+                        kind: source.kind,
+                        size: metadata.len(),
+                        modified_ns: source.modified_ns,
+                    },
+                    source,
+                }],
+                true,
+            )
+            .map_err(|_| OperationCommitError::new(CommitStage::Index, "projection_stale"))
+    }
+}
 
 #[derive(Default)]
 struct MemoryMarkers {
@@ -499,6 +541,10 @@ async fn a_partial_move_records_and_undoes_only_the_completed_item() {
     let archive = index_node(&index, &project, "archive", FileKind::Directory);
     let a = index_node(&index, &project, "products/a.png", FileKind::Png);
     let b = index_node(&index, &project, "products/b.png", FileKind::Png);
+    let commits = Arc::new(SameVolumeProjectionCommit {
+        index: Arc::clone(&index),
+        root: project.root().to_path_buf(),
+    });
     let adapter = Arc::new(
         LocalFileCommandAdapter::new(
             project.root(),
@@ -508,7 +554,7 @@ async fn a_partial_move_records_and_undoes_only_the_completed_item() {
             Arc::new(UnusedTrash),
             Arc::new(SameVolume),
             Arc::new(FixedClock),
-            Arc::new(InMemoryOperationCommitPort::default()),
+            commits,
         )
         .unwrap(),
     );

@@ -7,6 +7,7 @@ use viewer_application::{
     ClockPort, FaultInjector, FileMutationPort, FileOperationError, FileSnapshot, InjectedCrash,
     NoFaults, OperationCommit, OperationCommitPort, VolumePort,
     rename::{RenameErrorCode, RenamePreflight, RenameRuleSet, RenameTarget, preview_rename},
+    watcher::FileIdentity,
 };
 use viewer_domain::{EntityId, OperationId, RelativePath, operation::OperationState};
 
@@ -346,14 +347,11 @@ impl RenamePlanner {
             }
         }
 
-        let mut staged = cycle_members(&validated, &source_keys);
-        if !case_sensitive {
-            for (index, item) in validated.iter().enumerate() {
-                if item.source_key == item.destination_key && item.source != item.destination {
-                    staged.insert(index);
-                }
-            }
-        }
+        // Every source is first isolated at its durable, operation-ID-derived
+        // sibling. This keeps the source evidence check before any final
+        // placement and gives recovery one registered path for all renames,
+        // not only cycles and case-only changes.
+        let staged = (0..validated.len()).collect::<HashSet<_>>();
 
         let mut temporary_paths = HashMap::new();
         let mut stages = Vec::new();
@@ -435,6 +433,12 @@ pub struct RenameExecutor {
     faults: Arc<dyn FaultInjector>,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct RenameParentIdentities {
+    pub source: FileIdentity,
+    pub destination: FileIdentity,
+}
+
 impl RenameExecutor {
     pub fn new(
         project_root: impl AsRef<Path>,
@@ -488,7 +492,27 @@ impl RenameExecutor {
         expected: &HashMap<OperationId, FileSnapshot>,
     ) -> RenameBatchResult {
         match self
-            .execute_interruptible_with_expectations(plan, expected)
+            .execute_interruptible_with_expectations(plan, expected, &HashMap::new())
+            .await
+        {
+            Ok(result) => result,
+            Err(error) => RenameBatchResult {
+                items: vec![RenameItemResult {
+                    operation_id: error.0.operation_id,
+                    status: RenameItemStatus::Failed(error.to_string()),
+                }],
+            },
+        }
+    }
+
+    pub async fn execute_with_bound_expectations(
+        &self,
+        plan: &RenamePlan,
+        expected: &HashMap<OperationId, FileSnapshot>,
+        parents: &HashMap<OperationId, RenameParentIdentities>,
+    ) -> RenameBatchResult {
+        match self
+            .execute_interruptible_with_expectations(plan, expected, parents)
             .await
         {
             Ok(result) => result,
@@ -505,7 +529,7 @@ impl RenameExecutor {
         &self,
         plan: &RenamePlan,
     ) -> Result<RenameBatchResult, RenameExecutionError> {
-        self.execute_interruptible_with_expectations(plan, &HashMap::new())
+        self.execute_interruptible_with_expectations(plan, &HashMap::new(), &HashMap::new())
             .await
     }
 
@@ -513,6 +537,7 @@ impl RenameExecutor {
         &self,
         plan: &RenamePlan,
         expected: &HashMap<OperationId, FileSnapshot>,
+        parents: &HashMap<OperationId, RenameParentIdentities>,
     ) -> Result<RenameBatchResult, RenameExecutionError> {
         let mut snapshots = HashMap::new();
         let mut statuses = HashMap::new();
@@ -594,8 +619,16 @@ impl RenameExecutor {
                 RenameStage::ToTemporary {
                     source, temporary, ..
                 } => {
-                    self.execute_temporary_stage(operation_id, source, temporary)
-                        .await
+                    self.execute_temporary_stage(
+                        operation_id,
+                        source,
+                        temporary,
+                        snapshots
+                            .get(&operation_id)
+                            .expect("snapshot exists for an executable rename stage"),
+                        parents.get(&operation_id).copied(),
+                    )
+                    .await
                 }
                 RenameStage::ToFinal {
                     source,
@@ -605,8 +638,14 @@ impl RenameExecutor {
                     let expected = snapshots
                         .get(&operation_id)
                         .expect("snapshot exists for an executable rename stage");
-                    self.execute_final_stage(operation_id, source, destination, expected)
-                        .await
+                    self.execute_final_stage(
+                        operation_id,
+                        source,
+                        destination,
+                        expected,
+                        parents.get(&operation_id).copied(),
+                    )
+                    .await
                 }
             };
             if let Err(error) = result {
@@ -639,6 +678,8 @@ impl RenameExecutor {
         operation_id: OperationId,
         source: &Path,
         temporary: &Path,
+        expected: &RenameExpectedIdentity,
+        parents: Option<RenameParentIdentities>,
     ) -> Result<(), RenameStepError> {
         let temporary_relative = self
             .relative_path(temporary)
@@ -657,10 +698,32 @@ impl RenameExecutor {
                 "registered rename temporary changed after planning".into(),
             ));
         }
-        self.mutation
-            .rename(source, temporary)
+        if let Some(parents) = parents {
+            self.mutation
+                .rename_verified(
+                    source,
+                    temporary,
+                    &expected.snapshot,
+                    parents.source,
+                    parents.source,
+                )
+                .await
+                .map_err(|error| RenameStepError::Operational(error.to_string()))?;
+        } else {
+            self.mutation
+                .rename(source, temporary)
+                .await
+                .map_err(|error| RenameStepError::Operational(error.to_string()))?;
+        }
+        let staged = self
+            .capture_identity(temporary)
             .await
             .map_err(|error| RenameStepError::Operational(error.to_string()))?;
+        if !same_identity(expected, &staged.snapshot, staged.hash) {
+            return Err(RenameStepError::Operational(
+                FileOperationError::IdentityChanged.to_string(),
+            ));
+        }
         sync_path_parent(temporary)
             .await
             .map_err(|error| RenameStepError::Operational(error.to_string()))?;
@@ -682,6 +745,7 @@ impl RenameExecutor {
         source: &Path,
         destination: &Path,
         expected: &RenameExpectedIdentity,
+        parents: Option<RenameParentIdentities>,
     ) -> Result<(), RenameStepError> {
         let item = self
             .journal
@@ -712,10 +776,23 @@ impl RenameExecutor {
             }
         }
 
-        self.mutation
-            .rename(source, destination)
-            .await
-            .map_err(|error| RenameStepError::Operational(error.to_string()))?;
+        if let Some(parents) = parents {
+            self.mutation
+                .rename_verified(
+                    source,
+                    destination,
+                    &expected.snapshot,
+                    parents.source,
+                    parents.destination,
+                )
+                .await
+                .map_err(|error| RenameStepError::Operational(error.to_string()))?;
+        } else {
+            self.mutation
+                .rename(source, destination)
+                .await
+                .map_err(|error| RenameStepError::Operational(error.to_string()))?;
+        }
         sync_path_parent(destination)
             .await
             .map_err(|error| RenameStepError::Operational(error.to_string()))?;
@@ -883,31 +960,6 @@ struct ValidatedMapping {
     destination: PathBuf,
     source_key: String,
     destination_key: String,
-}
-
-fn cycle_members(
-    mappings: &[ValidatedMapping],
-    source_keys: &HashMap<String, usize>,
-) -> HashSet<usize> {
-    let mut cycles = HashSet::new();
-    for start in 0..mappings.len() {
-        let mut positions = HashMap::new();
-        let mut path = Vec::new();
-        let mut current = start;
-        loop {
-            if let Some(position) = positions.get(&current).copied() {
-                cycles.extend(path[position..].iter().copied());
-                break;
-            }
-            positions.insert(current, path.len());
-            path.push(current);
-            let Some(next) = source_keys.get(&mappings[current].destination_key).copied() else {
-                break;
-            };
-            current = next;
-        }
-    }
-    cycles
 }
 
 fn rename_groups(mappings: &[ValidatedMapping]) -> Vec<Vec<OperationId>> {

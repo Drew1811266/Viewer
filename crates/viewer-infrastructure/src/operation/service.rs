@@ -28,9 +28,12 @@ use viewer_domain::{
 
 use super::{
     conflict::{ReplaceExecutor, keep_both_destination},
-    copy::{create_temporary_sync, hash_file_sync, sync_parent},
+    copy::{hash_file_sync, sync_parent},
     journal::OperationJournal,
-    rename::{RenameExecutor, RenameItemStatus, RenameMapping, RenamePlan, RenamePlanner},
+    rename::{
+        RenameExecutor, RenameItemStatus, RenameMapping, RenameParentIdentities, RenamePlan,
+        RenamePlanner,
+    },
 };
 use crate::scan::reconcile::{ExpectedChange, ExpectedChangeLedger};
 
@@ -53,6 +56,8 @@ struct PreparedItem {
     route: PreparedRoute,
     source_evidence: Option<FileSnapshot>,
     destination_evidence: Option<FileContentEvidence>,
+    source_parent_identity: Option<FileIdentity>,
+    destination_parent_identity: Option<FileIdentity>,
 }
 
 struct PreparedBatch {
@@ -212,6 +217,9 @@ impl LocalFileCommandAdapter {
             .join(node.relative_path.as_str())
             .parent()
             .map(Path::to_path_buf);
+        let source_parent_identity = source_parent
+            .as_deref()
+            .and_then(|parent| directory_identity_sync(parent).ok());
         if matches!(kind, FileCommandKind::Move | FileCommandKind::Trash)
             && source_parent
                 .as_deref()
@@ -231,6 +239,8 @@ impl LocalFileCommandAdapter {
                 route: PreparedRoute::Trash,
                 source_evidence,
                 destination_evidence: None,
+                source_parent_identity,
+                destination_parent_identity: None,
             },
             FileCommandAction::Copy { destination_folder }
             | FileCommandAction::Move { destination_folder }
@@ -292,6 +302,8 @@ impl LocalFileCommandAdapter {
                     route,
                     source_evidence,
                     destination_evidence,
+                    source_parent_identity,
+                    destination_parent_identity: directory_identity_sync(&parent).ok(),
                 }
             }
             _ => blocked(plan, BatchResultCode::InvalidTarget, PreparedRoute::Trash),
@@ -430,6 +442,17 @@ impl LocalFileCommandAdapter {
                     },
                     source_evidence,
                     destination_evidence,
+                    source_parent_identity: self
+                        .project_root
+                        .join(row.source.as_str())
+                        .parent()
+                        .and_then(|parent| directory_identity_sync(parent).ok()),
+                    destination_parent_identity: row.destination.as_ref().and_then(|destination| {
+                        self.project_root
+                            .join(destination.as_str())
+                            .parent()
+                            .and_then(|parent| directory_identity_sync(parent).ok())
+                    }),
                 },
             );
         }
@@ -555,6 +578,13 @@ impl LocalFileCommandAdapter {
             if !directory_is_writable(&canonical) {
                 return Err(permission_error(&destination));
             }
+            if item.destination_parent_identity != directory_identity_sync(&canonical).ok() {
+                return Err(FileOperationError::IdentityChanged);
+            }
+        }
+        let source_parent = source.parent().ok_or(FileOperationError::OutsideProject)?;
+        if item.source_parent_identity != directory_identity_sync(source_parent).ok() {
+            return Err(FileOperationError::IdentityChanged);
         }
         Ok(())
     }
@@ -776,8 +806,20 @@ impl LocalFileCommandAdapter {
                         .map(|evidence| (item.plan.operation_id, evidence))
                 })
                 .collect::<HashMap<_, _>>();
+            let parents = component_items
+                .iter()
+                .filter_map(|item| {
+                    Some((
+                        item.plan.operation_id,
+                        RenameParentIdentities {
+                            source: item.source_parent_identity?,
+                            destination: item.destination_parent_identity?,
+                        },
+                    ))
+                })
+                .collect::<HashMap<_, _>>();
             let result = executor
-                .execute_with_expectations(&component, &expected)
+                .execute_with_bound_expectations(&component, &expected, &parents)
                 .await;
             for result in result.items {
                 let Some(entity) = entity_by_operation.get(&result.operation_id).copied() else {
@@ -879,7 +921,17 @@ impl LocalFileCommandAdapter {
                 Arc::clone(&self.commits),
             )?;
             executor
-                .execute_with_destination_evidence(&item.plan, expected_destination)
+                .execute_with_bound_evidence(
+                    &item.plan,
+                    expected_destination,
+                    item.source_evidence
+                        .as_ref()
+                        .ok_or(FileOperationError::IdentityChanged)?,
+                    item.source_parent_identity
+                        .ok_or(FileOperationError::IdentityChanged)?,
+                    item.destination_parent_identity
+                        .ok_or(FileOperationError::IdentityChanged)?,
+                )
                 .await
                 .map_err(replace_file_error)?;
         } else {
@@ -910,7 +962,22 @@ impl LocalFileCommandAdapter {
                 .clone()
                 .map(|evidence| HashMap::from([(item.plan.operation_id, evidence)]))
                 .unwrap_or_default();
-            let result = executor.execute_with_expectations(&plan, &expected).await;
+            let parents = item
+                .source_parent_identity
+                .zip(item.destination_parent_identity)
+                .map(|(source, destination)| {
+                    HashMap::from([(
+                        item.plan.operation_id,
+                        RenameParentIdentities {
+                            source,
+                            destination,
+                        },
+                    )])
+                })
+                .unwrap_or_default();
+            let result = executor
+                .execute_with_bound_expectations(&plan, &expected, &parents)
+                .await;
             if !matches!(
                 result.items.first().map(|item| &item.status),
                 Some(RenameItemStatus::Completed)
@@ -967,6 +1034,12 @@ impl LocalFileCommandAdapter {
         }
         let temporary = temporary_for(destination, item.plan.operation_id)?;
         let temporary_path = self.project_root.join(temporary.as_str());
+        let source_parent_identity = item
+            .source_parent_identity
+            .ok_or(FileOperationError::IdentityChanged)?;
+        let destination_parent_identity = item
+            .destination_parent_identity
+            .ok_or(FileOperationError::IdentityChanged)?;
         self.journal
             .register_temporary(
                 item.plan.operation_id,
@@ -975,12 +1048,9 @@ impl LocalFileCommandAdapter {
                 self.now(),
             )
             .map_err(journal_file_error)?;
-        let create_path = temporary_path.clone();
-        tokio::task::spawn_blocking(move || create_temporary_sync(&create_path))
-            .await
-            .map_err(|error| {
-                worker_file_error("create copy temporary", &temporary_path, error)
-            })??;
+        self.mutation
+            .create_registered_temporary(&temporary_path, destination_parent_identity)
+            .await?;
         self.journal
             .advance(
                 item.plan.operation_id,
@@ -990,45 +1060,37 @@ impl LocalFileCommandAdapter {
             )
             .map_err(journal_file_error)?;
 
-        let before = self.mutation.snapshot(&source_path).await?;
-        if item
+        let before = item
             .source_evidence
-            .as_ref()
-            .is_some_and(|expected| *expected != before)
-        {
-            self.mutation
-                .remove_registered_temporary(&temporary_path)
-                .await?;
-            return Err(FileOperationError::IdentityChanged);
-        }
+            .clone()
+            .ok_or(FileOperationError::IdentityChanged)?;
         let copied = match self
             .mutation
-            .copy_and_hash_cancellable(&source_path, &temporary_path, cancellation)
+            .copy_and_hash_cancellable_verified(
+                &source_path,
+                &temporary_path,
+                cancellation,
+                &before,
+                source_parent_identity,
+                destination_parent_identity,
+            )
             .await
         {
             Ok(copied) => copied,
             Err(error) => {
                 self.mutation
-                    .remove_registered_temporary(&temporary_path)
+                    .remove_registered_temporary_verified(
+                        &temporary_path,
+                        destination_parent_identity,
+                    )
                     .await?;
                 return Err(error);
             }
         };
-        let after = match stable_content_evidence_async(&source_path).await {
-            Ok(after) => after,
-            Err(error) => {
-                self.mutation
-                    .remove_registered_temporary(&temporary_path)
-                    .await?;
-                return Err(error);
-            }
+        let after = FileContentEvidence {
+            snapshot: before.clone(),
+            hash: copied.1,
         };
-        if before != after.snapshot || (after.snapshot.len, after.hash) != copied {
-            self.mutation
-                .remove_registered_temporary(&temporary_path)
-                .await?;
-            return Err(FileOperationError::IdentityChanged);
-        }
         self.journal
             .record_fs_applied(
                 item.plan.operation_id,
@@ -1038,13 +1100,6 @@ impl LocalFileCommandAdapter {
                 self.now(),
             )
             .map_err(journal_file_error)?;
-        let verify_path = temporary_path.clone();
-        let actual = tokio::task::spawn_blocking(move || hash_file_sync(&verify_path))
-            .await
-            .map_err(|error| worker_file_error("verify copy", &temporary_path, error))??;
-        if actual != copied {
-            return Err(FileOperationError::VerificationFailed);
-        }
         self.journal
             .advance(
                 item.plan.operation_id,
@@ -1091,8 +1146,15 @@ impl LocalFileCommandAdapter {
         if destination_path.exists() {
             return Err(FileOperationError::DestinationExists);
         }
+        let temporary_snapshot = self.mutation.snapshot(&temporary_path).await?;
         self.mutation
-            .rename(&temporary_path, &destination_path)
+            .rename_verified(
+                &temporary_path,
+                &destination_path,
+                &temporary_snapshot,
+                destination_parent_identity,
+                destination_parent_identity,
+            )
             .await?;
         sync_parent_async(&destination_path).await?;
 
@@ -1102,11 +1164,55 @@ impl LocalFileCommandAdapter {
                 let _ = self.trash.trash(&destination_path).await;
                 return Err(FileOperationError::IdentityChanged);
             }
-            if let Err(error) = self.trash.trash(&source_path).await {
+            let source_temporary = trash_temporary_for(&item.plan.source, item.plan.operation_id)?;
+            let source_temporary_path = self.project_root.join(source_temporary.as_str());
+            self.journal
+                .register_temporary(
+                    item.plan.operation_id,
+                    OperationState::Verified,
+                    &source_temporary,
+                    self.now(),
+                )
+                .map_err(journal_file_error)?;
+            if let Err(error) = self
+                .mutation
+                .rename_verified(
+                    &source_path,
+                    &source_temporary_path,
+                    &after.snapshot,
+                    source_parent_identity,
+                    source_parent_identity,
+                )
+                .await
+            {
                 let _ = self.trash.trash(&destination_path).await;
                 return Err(error);
             }
-            if source_path.exists() {
+            if !same_staged_content_evidence(
+                &after,
+                &stable_content_evidence_async(&source_temporary_path).await?,
+            ) {
+                if !source_path.exists() {
+                    let actual = self.mutation.snapshot(&source_temporary_path).await?;
+                    let _ = self
+                        .mutation
+                        .rename_verified(
+                            &source_temporary_path,
+                            &source_path,
+                            &actual,
+                            source_parent_identity,
+                            source_parent_identity,
+                        )
+                        .await;
+                }
+                let _ = self.trash.trash(&destination_path).await;
+                return Err(FileOperationError::IdentityChanged);
+            }
+            if let Err(error) = self.trash.trash(&source_temporary_path).await {
+                let _ = self.trash.trash(&destination_path).await;
+                return Err(error);
+            }
+            if source_path.exists() || source_temporary_path.exists() {
                 return Err(FileOperationError::VerificationFailed);
             }
         }
@@ -1127,16 +1233,26 @@ impl LocalFileCommandAdapter {
         let source = self.project_root.join(item.plan.source.as_str());
         self.validate_regular_source(&source)?;
         let evidence = stable_content_evidence_async(&source).await?;
+        if item
+            .source_evidence
+            .as_ref()
+            .is_none_or(|expected| *expected != evidence.snapshot)
+        {
+            return Err(FileOperationError::IdentityChanged);
+        }
+        let parent_identity = item
+            .source_parent_identity
+            .ok_or(FileOperationError::IdentityChanged)?;
+        let temporary = trash_temporary_for(&item.plan.source, item.plan.operation_id)?;
+        let temporary_path = self.project_root.join(temporary.as_str());
         let before = evidence.snapshot.clone();
         let hash = evidence.hash;
         self.journal
-            .record_prepared_evidence(item.plan.operation_id, None, before.len, hash, self.now())
-            .map_err(journal_file_error)?;
-        self.journal
-            .advance(
+            .record_prepared_evidence(
                 item.plan.operation_id,
-                OperationState::Prepared,
-                OperationState::Staged,
+                Some(&temporary),
+                before.len,
+                hash,
                 self.now(),
             )
             .map_err(journal_file_error)?;
@@ -1148,8 +1264,44 @@ impl LocalFileCommandAdapter {
             Some(&evidence.snapshot),
         )
         .await?;
-        self.trash.trash(&source).await?;
-        if source.exists() {
+        self.mutation
+            .rename_verified(
+                &source,
+                &temporary_path,
+                &before,
+                parent_identity,
+                parent_identity,
+            )
+            .await?;
+        if !same_staged_content_evidence(
+            &evidence,
+            &stable_content_evidence_async(&temporary_path).await?,
+        ) {
+            if !source.exists() {
+                let actual = self.mutation.snapshot(&temporary_path).await?;
+                let _ = self
+                    .mutation
+                    .rename_verified(
+                        &temporary_path,
+                        &source,
+                        &actual,
+                        parent_identity,
+                        parent_identity,
+                    )
+                    .await;
+            }
+            return Err(FileOperationError::IdentityChanged);
+        }
+        self.journal
+            .advance(
+                item.plan.operation_id,
+                OperationState::Prepared,
+                OperationState::Staged,
+                self.now(),
+            )
+            .map_err(journal_file_error)?;
+        self.trash.trash(&temporary_path).await?;
+        if temporary_path.exists() || source.exists() {
             return Err(FileOperationError::VerificationFailed);
         }
         self.journal
@@ -1596,8 +1748,14 @@ impl LocalFileCommandPort for LocalFileCommandAdapter {
                 .snapshot(&self.project_root.join(current.as_str()))
                 .await
                 .map_err(|_| LocalFileCommandError::Unavailable)?;
+            let current_entity_id = self
+                .index
+                .node_by_relative_path(&current)
+                .map_err(|_| LocalFileCommandError::Unavailable)?
+                .map(|node| node.entity_id)
+                .ok_or(LocalFileCommandError::Unavailable)?;
             actions.push(UndoAction::File {
-                entity_id: planned.entity_id,
+                entity_id: current_entity_id,
                 current,
                 restore: persisted.source,
                 expected,
@@ -1665,6 +1823,10 @@ impl UndoFilePort for LocalFileCommandAdapter {
                 route,
                 source_evidence: Some(expected.clone()),
                 destination_evidence: None,
+                source_parent_identity: source
+                    .parent()
+                    .and_then(|parent| directory_identity_sync(parent).ok()),
+                destination_parent_identity: Some(directory_identity_sync(&destination_parent)?),
             });
         }
         let plan = OperationPlan {
@@ -1731,8 +1893,20 @@ impl UndoFilePort for LocalFileCommandAdapter {
                         .map(|evidence| (item.plan.operation_id, evidence))
                 })
                 .collect::<HashMap<_, _>>();
+            let parents = atomic
+                .iter()
+                .filter_map(|item| {
+                    Some((
+                        item.plan.operation_id,
+                        RenameParentIdentities {
+                            source: item.source_parent_identity?,
+                            destination: item.destination_parent_identity?,
+                        },
+                    ))
+                })
+                .collect::<HashMap<_, _>>();
             let result = executor
-                .execute_with_expectations(&rename_plan, &expected)
+                .execute_with_bound_expectations(&rename_plan, &expected, &parents)
                 .await;
             if let Some(message) = result.items.iter().find_map(|item| match &item.status {
                 RenameItemStatus::Completed => None,
@@ -1801,6 +1975,26 @@ fn snapshot_sync(path: &Path) -> Result<FileSnapshot, FileOperationError> {
     }
 }
 
+fn directory_identity_sync(path: &Path) -> Result<FileIdentity, FileOperationError> {
+    let metadata = std::fs::symlink_metadata(path)
+        .map_err(|error| FileOperationError::io("read directory identity", path, &error))?;
+    if metadata.file_type().is_symlink() || !metadata.is_dir() {
+        return Err(FileOperationError::OutsideProject);
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        Ok(FileIdentity {
+            volume: metadata.dev(),
+            file: metadata.ino(),
+        })
+    }
+    #[cfg(not(unix))]
+    {
+        Ok(FileIdentity { volume: 0, file: 0 })
+    }
+}
+
 fn stable_content_evidence_sync(path: &Path) -> Result<FileContentEvidence, FileOperationError> {
     let before = snapshot_sync(path)?;
     let (len, hash) = hash_file_sync(path)?;
@@ -1812,6 +2006,17 @@ fn stable_content_evidence_sync(path: &Path) -> Result<FileContentEvidence, File
         snapshot: after,
         hash,
     })
+}
+
+fn same_staged_content_evidence(
+    expected: &FileContentEvidence,
+    actual: &FileContentEvidence,
+) -> bool {
+    expected.hash == actual.hash
+        && expected.snapshot.volume_id == actual.snapshot.volume_id
+        && expected.snapshot.len == actual.snapshot.len
+        && expected.snapshot.file_id == actual.snapshot.file_id
+        && expected.snapshot.modified_ns == actual.snapshot.modified_ns
 }
 
 async fn stable_content_evidence_async(
@@ -1874,6 +2079,8 @@ fn blocked(plan: OperationItemPlan, code: BatchResultCode, route: PreparedRoute)
         route,
         source_evidence: None,
         destination_evidence: None,
+        source_parent_identity: None,
+        destination_parent_identity: None,
     }
 }
 
@@ -1973,6 +2180,21 @@ fn temporary_for(
             .ok_or(FileOperationError::OutsideProject)?,
     )
     .map_err(|_| FileOperationError::ReservedPath)
+}
+
+pub(crate) fn trash_temporary_for(
+    source: &RelativePath,
+    operation_id: OperationId,
+) -> Result<RelativePath, FileOperationError> {
+    let source = Path::new(source.as_str());
+    let parent = source.parent().ok_or(FileOperationError::OutsideProject)?;
+    let temporary = parent.join(format!(".viewer-trash-{operation_id}.part"));
+    RelativePath::parse(
+        temporary
+            .to_str()
+            .ok_or(FileOperationError::OutsideProject)?,
+    )
+    .map_err(|_| FileOperationError::OutsideProject)
 }
 
 async fn sync_parent_async(path: &Path) -> Result<(), FileOperationError> {

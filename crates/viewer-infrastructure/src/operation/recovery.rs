@@ -18,6 +18,7 @@ use super::{
     copy::{hash_file_sync, sync_parent},
     executor::{CopyError, CopyExecutor, CopyResumeResult, temporary_relative_path},
     journal::{JournalError, JournalItem, OperationJournal},
+    service::trash_temporary_for,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -389,7 +390,9 @@ impl RecoveryService {
             return Ok(false);
         };
         Ok(item.temporary.as_ref()
-            == Some(&temporary_relative_path(destination, item.operation_id)?))
+            == Some(&temporary_relative_path(destination, item.operation_id)?)
+            || item.temporary.as_ref()
+                == Some(&trash_temporary_for(&item.source, item.operation_id)?))
     }
 
     async fn recover_cross_volume_move(

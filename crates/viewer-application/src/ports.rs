@@ -145,21 +145,33 @@ pub trait FileMutationPort: Send + Sync {
     ) -> Result<FileContentEvidence, FileOperationError> {
         self.create_registered_temporary(temporary, temporary_parent)
             .await?;
-        let (len, hash) = self
-            .copy_and_hash_cancellable_verified(
-                source,
-                temporary,
-                cancellation,
-                expected_source,
-                source_parent,
-                temporary_parent,
-            )
-            .await?;
-        let snapshot = self.snapshot(temporary).await?;
-        if snapshot.len != len {
-            return Err(FileOperationError::IdentityChanged);
+        let created = self.snapshot(temporary).await?;
+        let result = async {
+            let (len, hash) = self
+                .copy_and_hash_cancellable_verified(
+                    source,
+                    temporary,
+                    cancellation,
+                    expected_source,
+                    source_parent,
+                    temporary_parent,
+                )
+                .await?;
+            let snapshot = self.snapshot(temporary).await?;
+            if snapshot.len != len {
+                return Err(FileOperationError::IdentityChanged);
+            }
+            Ok(FileContentEvidence { snapshot, hash })
         }
-        Ok(FileContentEvidence { snapshot, hash })
+        .await;
+        match result {
+            Ok(evidence) => Ok(evidence),
+            Err(operation_error) => {
+                self.remove_registered_temporary_bound(temporary, temporary_parent, Some(&created))
+                    .await?;
+                Err(operation_error)
+            }
+        }
     }
 
     async fn rename(&self, source: &Path, destination: &Path) -> Result<(), FileOperationError>;
@@ -229,9 +241,15 @@ pub trait FileMutationPort: Send + Sync {
         expected_parent: FileIdentity,
         expected_leaf: Option<&FileSnapshot>,
     ) -> Result<(), FileOperationError> {
-        if let Some(expected) = expected_leaf
-            && !snapshot_matches_bound_move(expected, &self.snapshot(path).await?)
-        {
+        let actual = match self.snapshot(path).await {
+            Ok(actual) => actual,
+            Err(FileOperationError::SourceMissing) => return Ok(()),
+            Err(error) => return Err(error),
+        };
+        let Some(expected) = expected_leaf else {
+            return Err(FileOperationError::IdentityChanged);
+        };
+        if !snapshot_matches_identity(expected, &actual) {
             return Err(FileOperationError::IdentityChanged);
         }
         self.remove_registered_temporary_verified(path, expected_parent)
@@ -263,6 +281,12 @@ fn snapshot_matches_bound_move(expected: &FileSnapshot, actual: &FileSnapshot) -
         && expected.len == actual.len
         && expected.file_id == actual.file_id
         && expected.modified_ns == actual.modified_ns
+}
+
+fn snapshot_matches_identity(expected: &FileSnapshot, actual: &FileSnapshot) -> bool {
+    expected.file_id.is_some()
+        && expected.volume_id == actual.volume_id
+        && expected.file_id == actual.file_id
 }
 
 #[async_trait]

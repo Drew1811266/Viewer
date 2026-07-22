@@ -2122,7 +2122,7 @@ pub(crate) async fn rebuild_derived_nodes(
 fn is_stale_derived_write_error(error: &SessionIndexError) -> bool {
     matches!(
         error,
-        SessionIndexError::MissingTextNode { .. } | SessionIndexError::InvalidDerivedMetadata(_)
+        SessionIndexError::MissingTextNode { .. } | SessionIndexError::MissingNode(_)
     )
 }
 
@@ -2180,6 +2180,9 @@ mod derived_error_tests {
             }
         ));
         assert!(is_stale_derived_write_error(
+            &SessionIndexError::MissingNode(entity_id)
+        ));
+        assert!(!is_stale_derived_write_error(
             &SessionIndexError::InvalidDerivedMetadata(entity_id)
         ));
         assert!(!is_stale_derived_write_error(

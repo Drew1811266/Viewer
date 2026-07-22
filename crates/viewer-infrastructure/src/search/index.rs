@@ -211,7 +211,7 @@ impl SessionIndex {
             params![entity_id.to_string(), relative_path.as_str()],
         )?;
         if changed == 0 {
-            return Err(SessionIndexError::InvalidDerivedMetadata(entity_id));
+            return Err(SessionIndexError::MissingNode(entity_id));
         }
         Ok(())
     }
@@ -246,7 +246,7 @@ impl SessionIndex {
             ],
         )?;
         if changed == 0 {
-            return Err(SessionIndexError::InvalidDerivedMetadata(entity_id));
+            return Err(SessionIndexError::MissingNode(entity_id));
         }
         Ok(())
     }

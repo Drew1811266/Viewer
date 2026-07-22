@@ -134,6 +134,6 @@ describe('BatchRenameDialog', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '更新预览' }))
     const error = await screen.findByText('destination_occupied')
-    expect(error.closest('[data-invalid="true"]')).toHaveFocus()
+    await waitFor(() => expect(error.closest('[data-invalid="true"]')).toHaveFocus())
   })
 })

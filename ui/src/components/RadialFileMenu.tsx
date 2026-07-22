@@ -55,9 +55,10 @@ export default function RadialFileMenu({
   const [clickMode, setClickMode] = useState(pointerId === null)
   const expandTimer = useRef<number | null>(null)
   const closeTimer = useRef<number | null>(null)
-  const secondaryFocusRequested = useRef(false)
+  const secondaryFocusRequested = useRef<number | null>(null)
   const rootRef = useRef<HTMLDivElement>(null)
   const startPoint = useRef(origin)
+  const maximumTravelled = useRef(0)
   const previousFocus = useRef(document.activeElement as HTMLElement | null)
   const expandedItem = expandedIndex === null ? null : (model[expandedIndex] ?? null)
   const secondaryAnchor =
@@ -82,6 +83,10 @@ export default function RadialFileMenu({
     const move = (event: PointerEvent) => {
       if (event.pointerId !== pointerId) return
       const point = { x: event.clientX, y: event.clientY }
+      maximumTravelled.current = Math.max(
+        maximumTravelled.current,
+        Math.hypot(point.x - startPoint.current.x, point.y - startPoint.current.y),
+      )
       const child =
         expandedItem?.children === undefined
           ? null
@@ -105,11 +110,14 @@ export default function RadialFileMenu({
     }
     const up = (event: PointerEvent) => {
       if (event.pointerId !== pointerId) return
-      const travelled = Math.hypot(
-        event.clientX - startPoint.current.x,
-        event.clientY - startPoint.current.y,
+      maximumTravelled.current = Math.max(
+        maximumTravelled.current,
+        Math.hypot(
+          event.clientX - startPoint.current.x,
+          event.clientY - startPoint.current.y,
+        ),
       )
-      if (travelled < MOTION_THRESHOLD) {
+      if (maximumTravelled.current < MOTION_THRESHOLD) {
         setClickMode(true)
         return
       }
@@ -120,7 +128,11 @@ export default function RadialFileMenu({
         return
       }
       const primary = pointerPrimaryIndex === null ? undefined : model[pointerPrimaryIndex]
-      if (primary !== undefined && !primary.disabled && isLeaf(primary)) onAction(primary.id)
+      if (primary !== undefined && !primary.disabled && isLeaf(primary)) {
+        onAction(primary.id)
+        return
+      }
+      onClose()
     }
     window.addEventListener('pointermove', move)
     window.addEventListener('pointerup', up)
@@ -134,6 +146,7 @@ export default function RadialFileMenu({
     fittedOrigin,
     model,
     onAction,
+    onClose,
     pointerId,
     pointerPrimaryIndex,
     primaryIndex,
@@ -151,9 +164,10 @@ export default function RadialFileMenu({
   }, [clickMode, onClose])
 
   useEffect(() => {
-    if (!secondaryFocusRequested.current || expandedIndex === null) return
-    secondaryFocusRequested.current = false
-    focusItem('secondary', 0)
+    if (secondaryFocusRequested.current === null || expandedIndex === null) return
+    const index = secondaryFocusRequested.current
+    secondaryFocusRequested.current = null
+    focusItem('secondary', index)
   }, [expandedIndex])
 
   function scheduleExpansion(index: number) {
@@ -172,12 +186,14 @@ export default function RadialFileMenu({
   function expandImmediately(index: number) {
     const item = model[index]
     if (item?.disabled || item?.children === undefined) return
-    secondaryFocusRequested.current = true
+    const firstEnabledChild = item.children.findIndex((child) => !child.disabled)
+    if (firstEnabledChild === -1) return
+    secondaryFocusRequested.current = firstEnabledChild
     setExpandedIndex(index)
-    setSecondaryIndex(null)
+    setSecondaryIndex(firstEnabledChild)
     if (expandedIndex === index) {
-      secondaryFocusRequested.current = false
-      focusItem('secondary', 0)
+      secondaryFocusRequested.current = null
+      focusItem('secondary', firstEnabledChild)
     }
   }
 
@@ -297,32 +313,57 @@ export default function RadialFileMenu({
       {model.map((item, index) => (
         <RadialButton
           key={item.id}
+          id={primaryButtonId(item)}
           item={item}
           level="primary"
           index={index}
           point={polarPoint({ x: 0, y: 0 }, 78, primaryCenterAngle(index))}
-          onFocus={() => setPrimaryIndex(index)}
+          tabIndex={
+            !item.disabled && secondaryIndex === null && primaryIndex === index ? 0 : -1
+          }
+          controls={item.children === undefined ? undefined : secondaryMenuId(item)}
+          expanded={item.children === undefined ? undefined : expandedIndex === index}
+          onFocus={() => {
+            setPrimaryIndex(index)
+            setSecondaryIndex(null)
+          }}
           onClick={() => execute(item, index)}
         />
       ))}
-      {expandedItem?.children?.map((item, index) => {
-        const start = secondaryAnchor - (expandedItem.children!.length * 30) / 2
-        return (
-          <RadialButton
-            key={item.id}
-            item={item}
-            level="secondary"
-            index={index}
-            point={polarPoint({ x: 0, y: 0 }, 140, start + index * 30 + 15)}
-            onFocus={() => setSecondaryIndex(index)}
-            onClick={() => execute(item, index)}
-          />
-        )
-      })}
+      {expandedItem?.children !== undefined ? (
+        <div
+          id={secondaryMenuId(expandedItem)}
+          className="radial-secondary-menu"
+          role="menu"
+          aria-labelledby={primaryButtonId(expandedItem)}
+        >
+          {expandedItem.children.map((item, index) => {
+            const start = secondaryAnchor - (expandedItem.children!.length * 30) / 2
+            return (
+              <RadialButton
+                key={item.id}
+                item={item}
+                level="secondary"
+                index={index}
+                point={polarPoint({ x: 0, y: 0 }, 140, start + index * 30 + 15)}
+                tabIndex={!item.disabled && secondaryIndex === index ? 0 : -1}
+                onFocus={() => setSecondaryIndex(index)}
+                onClick={() => execute(item, index)}
+              />
+            )
+          })}
+        </div>
+      ) : null}
       <button
         type="button"
         className="radial-menu-center"
         onClick={onClose}
+        onKeyDown={(event) => {
+          if (event.key !== 'Enter' && event.key !== ' ') return
+          event.preventDefault()
+          event.stopPropagation()
+          onClose()
+        }}
         aria-label="关闭文件操作"
       >
         <strong>{selectionCount} 个文件</strong>
@@ -333,28 +374,40 @@ export default function RadialFileMenu({
 }
 
 function RadialButton({
+  id,
   item,
   level,
   index,
   point,
+  tabIndex,
+  controls,
+  expanded,
   onFocus,
   onClick,
 }: {
+  id?: string
   item: RadialMenuItem
   level: 'primary' | 'secondary'
   index: number
   point: Point
+  tabIndex: 0 | -1
+  controls?: string
+  expanded?: boolean
   onFocus: () => void
   onClick: () => void
 }) {
   const checkbox = item.checked !== undefined
   return (
     <button
+      id={id}
       type="button"
       role={checkbox ? 'menuitemcheckbox' : 'menuitem'}
+      tabIndex={tabIndex}
       aria-checked={checkbox ? item.checked : undefined}
       aria-disabled={item.disabled}
       aria-haspopup={item.children === undefined ? undefined : 'menu'}
+      aria-controls={controls}
+      aria-expanded={expanded}
       title={item.disabled ? item.disabledReason : item.label}
       className="radial-menu-button"
       data-level={level}
@@ -370,6 +423,14 @@ function RadialButton({
       <span>{item.label}</span>
     </button>
   )
+}
+
+function primaryButtonId(item: RadialMenuItem): string {
+  return `radial-primary-${item.id}`
+}
+
+function secondaryMenuId(item: RadialMenuItem): string {
+  return `radial-secondary-${item.id}`
 }
 
 function isLeaf(item: RadialMenuItem): item is RadialMenuItem & { id: RadialLeafAction } {

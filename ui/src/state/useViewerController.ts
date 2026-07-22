@@ -959,6 +959,10 @@ export function useViewerController(bridge: ViewerBridge) {
     dispatch({ type: 'compare_context_changed', entityIds })
   }, [])
 
+  const consumeContextRepair = useCallback(() => {
+    dispatch({ type: 'context_repair_consumed' })
+  }, [])
+
   const clearCloseBlocked = useCallback(() => {
     dispatch({ type: 'close_blocked_cleared' })
   }, [])
@@ -1073,6 +1077,7 @@ export function useViewerController(bridge: ViewerBridge) {
     undoLastOperation,
     setPreviewEntityId,
     setCompareEntityIds,
+    consumeContextRepair,
     clearCloseBlocked,
     openPermissionSettings,
   }

@@ -84,6 +84,7 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
     undoLastOperation,
     setPreviewEntityId,
     setCompareEntityIds,
+    consumeContextRepair,
     clearCloseBlocked,
     openPermissionSettings,
   } = useViewerController(bridge)
@@ -801,6 +802,7 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
                   onFinderDragStart={exportToFinder}
                   onOrganizationPointerInput={handleOrganizationPointerInput}
                   repairSelectionId={state.contextRepair?.suggestedEntityId ?? null}
+                  onRepairSelectionApplied={consumeContextRepair}
                 />
               </div>
               {compareOpen && (

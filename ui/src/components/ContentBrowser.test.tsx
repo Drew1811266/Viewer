@@ -123,6 +123,39 @@ describe('ContentBrowser', () => {
     expect(selectedLabels()).toEqual(['3.jpg', '4.jpg'])
   })
 
+  it('consumes an external repair once and never reselects it after later projection updates', () => {
+    const selection = vi.fn()
+    const rendered = render(
+      <ContentBrowser
+        workspace={workspace(4)}
+        repairSelectionId="image-3"
+        onSelectionChange={selection}
+      />,
+    )
+    expect(selectedLabels()).toEqual(['3.jpg'])
+    fireEvent.click(screen.getByRole('option', { name: '2.jpg' }))
+    expect(selectedLabels()).toEqual(['2.jpg'])
+    const updated = workspace(4)
+    updated.images[0] = {
+      ...updated.images[0],
+      marker: { reviewState: 'keep', favorite: true },
+    }
+
+    rendered.rerender(
+      <ContentBrowser
+        workspace={updated}
+        repairSelectionId="image-3"
+        onSelectionChange={selection}
+      />,
+    )
+
+    expect(selectedLabels()).toEqual(['2.jpg'])
+    expect(screen.getByRole('listbox', { name: '图片文件' })).toHaveAttribute(
+      'aria-activedescendant',
+      'file-image-2',
+    )
+  })
+
   it('supports click command-toggle shift-range arrows and Space preview', () => {
     const preview = vi.fn()
     render(<ContentBrowser workspace={workspace()} onPreview={preview} />)

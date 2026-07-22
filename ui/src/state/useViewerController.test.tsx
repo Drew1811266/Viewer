@@ -498,6 +498,8 @@ describe('useViewerController M2 coordination', () => {
     expect(result.current.state.selectedEntityIds).toEqual(['c'])
     expect(result.current.state.compareEntityIds).toEqual(['a', 'c'])
     expect(result.current.state.contextRepair?.suggestedEntityId).toBe('c')
+    act(() => result.current.consumeContextRepair())
+    expect(result.current.state.contextRepair?.suggestedEntityId).toBeNull()
     act(() => {
       receiveCloseBlocked?.({
         sessionId: 'session-1',

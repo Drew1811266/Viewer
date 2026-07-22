@@ -24,6 +24,7 @@ interface ContentBrowserProps {
   onFinderDragStart?: (entityIds: string[]) => void
   onOrganizationPointerInput?: (input: OrganizationPointerInput) => void
   repairSelectionId?: string | null
+  onRepairSelectionApplied?: () => void
 }
 
 interface ThumbnailWork {
@@ -49,11 +50,13 @@ export default function ContentBrowser({
   onFinderDragStart,
   onOrganizationPointerInput,
   repairSelectionId = null,
+  onRepairSelectionApplied,
 }: ContentBrowserProps) {
   const [gridSize, setGridSize] = useState<GridSize>('medium')
   const [selected, setSelected] = useState<Set<string>>(() => new Set())
   const [activeId, setActiveId] = useState<string | null>(null)
   const anchorId = useRef<string | null>(null)
+  const appliedRepairId = useRef<string | null>(null)
   const marqueeSelection = useRef<{
     baseline: Set<string>
     metaKey: boolean
@@ -87,13 +90,24 @@ export default function ContentBrowser({
   }, [allFiles])
 
   useEffect(() => {
-    if (repairSelectionId === null || !fileById.has(repairSelectionId)) return
+    if (repairSelectionId === null) {
+      appliedRepairId.current = null
+      return
+    }
+    if (
+      appliedRepairId.current === repairSelectionId ||
+      !fileById.has(repairSelectionId)
+    ) {
+      return
+    }
+    appliedRepairId.current = repairSelectionId
     const repaired = new Set([repairSelectionId])
     setSelected(repaired)
     setActiveId(repairSelectionId)
     anchorId.current = repairSelectionId
     onSelectionChange?.(allFiles.filter((file) => repaired.has(file.entityId)))
-  }, [allFiles, fileById, onSelectionChange, repairSelectionId])
+    onRepairSelectionApplied?.()
+  }, [allFiles, fileById, onRepairSelectionApplied, onSelectionChange, repairSelectionId])
 
   useEffect(() => {
     if (onThumbnailTaskChange === undefined || work.requested === 0) {

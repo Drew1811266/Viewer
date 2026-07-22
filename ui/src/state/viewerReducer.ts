@@ -228,6 +228,7 @@ export type ViewerAction =
       snippet: string | null
     }
   | { type: 'selection_changed'; entityIds: string[] }
+  | { type: 'context_repair_consumed' }
   | { type: 'preview_context_changed'; entityId: string | null }
   | { type: 'compare_context_changed'; entityIds: string[] }
   | {
@@ -456,6 +457,13 @@ export function viewerReducer(state: ViewerState, action: ViewerAction): ViewerS
         selectedEntityIds: unique(action.entityIds),
         selectionInfo: null,
       }
+    case 'context_repair_consumed':
+      return state.contextRepair?.suggestedEntityId
+        ? {
+            ...state,
+            contextRepair: { ...state.contextRepair, suggestedEntityId: null },
+          }
+        : state
     case 'preview_context_changed':
       return { ...state, previewEntityId: action.entityId }
     case 'compare_context_changed':

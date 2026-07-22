@@ -1,11 +1,11 @@
 # M3 Organization and Comparison Stage Review
 
-- Status: implementation, aggregate gate, package inspection and physical acceptance complete; final evidence review pending
+- Status: **Complete and integrated into `main`.**
 - Date: 2026-07-22
 - Base: `1642957` (paused M3 checkpoint)
 - Acceptance code head: `2fb612a85d38a8154b5311ad6a461a4f2090c9a9` (final safety corrections and enforced staged-copy policy)
 - Review method: exact M3 aggregate gate, Apple Silicon package inspection, release-app acceptance on writable/copied/read-only fixtures, real filesystem and Trash operations, portable-metadata validation, cache/network inspection and final complete-diff review
-- Decision: **All implementation and physical exit criteria pass. Local merge remains blocked only on a fresh whole-branch review of this final evidence update.**
+- Decision: **All implementation, review, physical acceptance and integration exit criteria pass. M3 is accepted.**
 
 ## Exit-criteria traceability
 
@@ -142,7 +142,8 @@ or application network behavior.
 - No Windows implementation or cloud behavior was introduced.
 - The app and DMG remain ad-hoc signed and are not notarized because Developer ID credentials are outside the internal-only 0.1 scope.
 - The synthetic fixture validates correctness but does not replace M4 acceptance with the user's supplied approximately 10 MiB production images.
-- All physical acceptance is complete. A final whole-branch evidence review remains mandatory before local merge.
+- All physical acceptance is complete. The final whole-branch evidence review
+  returned `Ready to commit and merge`; no M3 review work remains.
 
 ## Task 17 decision
 
@@ -150,5 +151,14 @@ The exact gate, package checks, real file/Trash operations,
 compare/read-only/lifecycle behavior, portable/privacy boundaries and seven
 physical drag checks all pass. The successive independent reviews and focused
 re-reviews found no remaining Critical, Important or Minor code finding after
-`2fb612a`. Task 17 is complete. Task 18 remains open only for the final
-whole-branch evidence review and local merge gate.
+`2fb612a`. Tasks 17 and 18 are complete.
+
+## Local integration result
+
+- Final evidence commit: `8433df74b048d7972bc6f89b9f771d51cb08283e`.
+- `codex/m3-organization-comparison` fast-forwarded local `main` from
+  `7b12cf23e70df7dad0c975552c7317d1e5cbcc76` to `8433df7` without conflict.
+- The exact low-concurrency `pnpm gate:m3` was rerun from merged `main` and
+  ended with `M3 organization and comparison gate passed`.
+- The merged checkout was clean after the gate; the owned M3 worktree was
+  removed and its local feature branch deleted.

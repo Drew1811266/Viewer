@@ -1,4 +1,7 @@
-use crate::state::{DesktopEventSink, rebuild_derived_nodes};
+use crate::{
+    error::CommandError,
+    state::{DesktopEventSink, rebuild_derived_nodes},
+};
 use std::{collections::VecDeque, path::PathBuf, sync::Arc, time::Duration};
 use tokio::{sync::watch, task::JoinHandle};
 use viewer_application::{
@@ -31,16 +34,15 @@ pub struct WatcherDerivedServices {
 }
 
 impl WatcherDerivedServices {
-    async fn rebuild(&self, roots: &[PathBuf]) {
+    async fn rebuild(&self, roots: &[PathBuf]) -> Result<(), CommandError> {
         if !self
             .coordinator
             .is_publishable(self.active.session_id, self.active.generation)
         {
-            return;
+            return Ok(());
         }
-        let Ok(nodes) = BrowseIndexPort::descendants(self.index.as_ref(), None) else {
-            return;
-        };
+        let nodes =
+            BrowseIndexPort::descendants(self.index.as_ref(), None).map_err(CommandError::from)?;
         let nodes = nodes
             .into_iter()
             .filter(|node| {
@@ -48,7 +50,7 @@ impl WatcherDerivedServices {
                 roots.iter().any(|root| absolute.starts_with(root))
             })
             .collect();
-        let _ = rebuild_derived_nodes(
+        rebuild_derived_nodes(
             self.active.clone(),
             Arc::clone(&self.coordinator),
             Arc::clone(&self.index),
@@ -56,7 +58,7 @@ impl WatcherDerivedServices {
             Arc::clone(&self.events),
             nodes,
         )
-        .await;
+        .await
     }
 }
 
@@ -140,7 +142,7 @@ impl WatcherRuntime {
                         if *stop_requested.borrow() {
                             return;
                         }
-                        let summary = match result {
+                        let mut summary = match result {
                             Ok(summary) => summary,
                             Err(ProjectReconcileError::StaleSession) => continue,
                             Err(_) => viewer_application::watcher::ReconcileSummary {
@@ -153,8 +155,10 @@ impl WatcherRuntime {
                                 failed: 1,
                             },
                         };
-                        if let Some(derived) = derived.as_ref() {
-                            derived.rebuild(&roots).await;
+                        if let Some(derived) = derived.as_ref()
+                            && derived.rebuild(&roots).await.is_err()
+                        {
+                            summary.failed = summary.failed.saturating_add(1);
                         }
                         if *stop_requested.borrow() {
                             return;

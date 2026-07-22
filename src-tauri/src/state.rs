@@ -58,7 +58,11 @@ use viewer_infrastructure::{
     portable::{PortableMarkerStore, PortableProjectMetadata},
     scan::walker::{ProjectWalker, is_macos_alias},
     scan::{reconcile::ExpectedChangeLedger, reconcile_service::ProjectReconciler},
-    search::{index::SessionIndex, query::SessionSearch, text::TextExtractor},
+    search::{
+        index::{SessionIndex, SessionIndexError},
+        query::SessionSearch,
+        text::TextExtractor,
+    },
     session_cache::{CachedImage, SessionCache},
     text::preview::TextPreviewReader,
 };
@@ -2029,7 +2033,7 @@ pub(crate) async fn rebuild_derived_nodes(
         let current = match index.indexed_node(node.entity_id) {
             Ok(Some(current)) if current.node == node => current,
             Ok(_) => continue,
-            Err(_) => continue,
+            Err(error) => return Err(CommandError::from(error)),
         };
         let pending = match node.kind {
             FileKind::Jpeg | FileKind::Png => current.image_status == ImageIndexStatus::Pending,
@@ -2058,7 +2062,14 @@ pub(crate) async fn rebuild_derived_nodes(
                     },
                     None => Err(ImageIndexStatus::Failed),
                 };
-                let _ = index.replace_image_metadata(node.entity_id, &node.relative_path, result);
+                if let Err(error) =
+                    index.replace_image_metadata(node.entity_id, &node.relative_path, result)
+                {
+                    if is_stale_derived_write_error(&error) {
+                        continue;
+                    }
+                    return Err(CommandError::from(error));
+                }
             }
             FileKind::Markdown | FileKind::Text => match source {
                 Some(source) => {
@@ -2066,16 +2077,35 @@ pub(crate) async fn rebuild_derived_nodes(
                         tokio::task::spawn_blocking(move || TextExtractor::extract(source)).await;
                     match extracted {
                         Ok(Ok(status)) => {
-                            let _ =
-                                index.replace_text(node.entity_id, &node.relative_path, &status);
+                            if let Err(error) =
+                                index.replace_text(node.entity_id, &node.relative_path, &status)
+                            {
+                                if is_stale_derived_write_error(&error) {
+                                    continue;
+                                }
+                                return Err(CommandError::from(error));
+                            }
                         }
                         Ok(Err(_)) | Err(_) => {
-                            let _ = index.mark_text_failed(node.entity_id, &node.relative_path);
+                            if let Err(error) =
+                                index.mark_text_failed(node.entity_id, &node.relative_path)
+                            {
+                                if is_stale_derived_write_error(&error) {
+                                    continue;
+                                }
+                                return Err(CommandError::from(error));
+                            }
                         }
                     }
                 }
                 None => {
-                    let _ = index.mark_text_failed(node.entity_id, &node.relative_path);
+                    if let Err(error) = index.mark_text_failed(node.entity_id, &node.relative_path)
+                    {
+                        if is_stale_derived_write_error(&error) {
+                            continue;
+                        }
+                        return Err(CommandError::from(error));
+                    }
                 }
             },
             FileKind::Directory => unreachable!("directories were filtered out"),
@@ -2087,6 +2117,13 @@ pub(crate) async fn rebuild_derived_nodes(
         }
     }
     emit_index_progress_if_current(&active, &coordinator, &index, events.as_ref())
+}
+
+fn is_stale_derived_write_error(error: &SessionIndexError) -> bool {
+    matches!(
+        error,
+        SessionIndexError::MissingTextNode { .. } | SessionIndexError::InvalidDerivedMetadata(_)
+    )
 }
 
 fn emit_index_progress_if_current(
@@ -2124,5 +2161,32 @@ fn merge_node_event(target: &mut ScanEvent, source: ScanEvent) {
             target.extend(source)
         }
         _ => unreachable!("scan event kinds were checked before merging"),
+    }
+}
+
+#[cfg(test)]
+mod derived_error_tests {
+    use super::is_stale_derived_write_error;
+    use viewer_domain::EntityId;
+    use viewer_infrastructure::search::index::SessionIndexError;
+
+    #[test]
+    fn derived_rebuild_ignores_only_explicit_stale_node_errors() {
+        let entity_id = EntityId::new();
+        assert!(is_stale_derived_write_error(
+            &SessionIndexError::MissingTextNode {
+                entity_id,
+                path: "gone.txt".into(),
+            }
+        ));
+        assert!(is_stale_derived_write_error(
+            &SessionIndexError::InvalidDerivedMetadata(entity_id)
+        ));
+        assert!(!is_stale_derived_write_error(
+            &SessionIndexError::InvalidPersistedValue {
+                field: "text_status",
+                value: "corrupt".into(),
+            }
+        ));
     }
 }

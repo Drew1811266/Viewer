@@ -34,6 +34,13 @@ pub enum FileOperationError {
     VerificationFailed,
     #[error("file operation was cancelled")]
     Cancelled,
+    #[error(
+        "registered temporary cleanup is still required after {primary}; cleanup failed: {cleanup}"
+    )]
+    RegisteredTemporaryCleanupRequired {
+        primary: Box<FileOperationError>,
+        cleanup: Box<FileOperationError>,
+    },
     #[error("{action} failed at {path}: {message}")]
     Io {
         action: &'static str,
@@ -48,6 +55,13 @@ impl FileOperationError {
             action,
             path: path.into(),
             message: error.to_string(),
+        }
+    }
+
+    pub fn primary(&self) -> &Self {
+        match self {
+            Self::RegisteredTemporaryCleanupRequired { primary, .. } => primary.primary(),
+            error => error,
         }
     }
 }

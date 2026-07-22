@@ -6,11 +6,12 @@ use std::{
     sync::{Arc, Mutex},
 };
 use viewer_application::{
-    BrowseIndexPort, ClockPort, CommitStage, FileMutationPort, FileOperationError, FileSnapshot,
-    OperationCommit, OperationCommitError, OperationCommitPort, ProjectAccess, TrashPort,
-    VolumePort,
+    BrowseIndexPort, ClockPort, CommitStage, FileContentEvidence, FileMutationPort,
+    FileOperationError, FileSnapshot, OperationCommit, OperationCommitError, OperationCommitPort,
+    ProjectAccess, TrashPort, VolumePort,
     file_commands::{
-        FileCommand, FileCommandAction, FileCommandItem, FileCommandKind, FileCommandService,
+        FileCommand, FileCommandAction, FileCommandCancellation, FileCommandItem, FileCommandKind,
+        FileCommandService,
     },
     metadata::{
         FavoritePatch, FileMoveProjection, MarkerChange, MarkerPatch, MarkerProjectionError,
@@ -19,6 +20,7 @@ use viewer_application::{
     },
     scheduler::TaskCoordinator,
     undo::{UndoAction, UndoError, UndoFilePort, UndoService, UndoServiceError, UndoStack},
+    watcher::FileIdentity,
 };
 use viewer_domain::{
     EntityId, OperationId, RelativePath, SessionId,
@@ -213,6 +215,18 @@ struct FsMutation;
 
 #[async_trait]
 impl FileMutationPort for FsMutation {
+    async fn create_and_copy_cancellable_verified(
+        &self,
+        _source: &Path,
+        _temporary: &Path,
+        _cancellation: &FileCommandCancellation,
+        _expected_source: &FileSnapshot,
+        _source_parent: FileIdentity,
+        _temporary_parent: FileIdentity,
+    ) -> Result<FileContentEvidence, FileOperationError> {
+        unreachable!("undo test mutation never copies")
+    }
+
     async fn snapshot(&self, path: &Path) -> Result<FileSnapshot, FileOperationError> {
         use std::os::unix::fs::MetadataExt;
         let metadata = fs::metadata(path)

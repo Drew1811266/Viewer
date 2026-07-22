@@ -46,6 +46,27 @@ use viewer_test_support::{
     FixedClock, operation_commits::InMemoryOperationCommitPort, project_fixture::ProjectFixture,
 };
 
+async fn delegate_registered_copy(
+    delegate: &LocalFileMutation,
+    source: &Path,
+    temporary: &Path,
+    cancellation: &FileCommandCancellation,
+    expected_source: &FileSnapshot,
+    source_parent: FileIdentity,
+    temporary_parent: FileIdentity,
+) -> Result<FileContentEvidence, FileOperationError> {
+    delegate
+        .create_and_copy_cancellable_verified(
+            source,
+            temporary,
+            cancellation,
+            expected_source,
+            source_parent,
+            temporary_parent,
+        )
+        .await
+}
+
 #[derive(Default)]
 struct FakeVolume {
     cross_volume: bool,
@@ -1184,6 +1205,7 @@ struct RewriteSourceAfterCopy {
 struct ReplaceTemporaryAfterBoundCopy {
     delegate: LocalFileMutation,
     outside_victim: PathBuf,
+    primary: FileOperationError,
 }
 
 #[async_trait]
@@ -1209,7 +1231,7 @@ impl FileMutationPort for ReplaceTemporaryAfterBoundCopy {
         source_parent: FileIdentity,
         temporary_parent: FileIdentity,
     ) -> Result<FileContentEvidence, FileOperationError> {
-        let evidence = self
+        let _evidence = self
             .delegate
             .create_and_copy_cancellable_verified(
                 source,
@@ -1226,7 +1248,10 @@ impl FileMutationPort for ReplaceTemporaryAfterBoundCopy {
         fs::hard_link(&self.outside_victim, temporary).map_err(|error| {
             FileOperationError::io("replace copied temporary in race hook", temporary, &error)
         })?;
-        Ok(evidence)
+        Err(FileOperationError::RegisteredTemporaryCleanupRequired {
+            primary: Box::new(self.primary.clone()),
+            cleanup: Box::new(FileOperationError::IdentityChanged),
+        })
     }
 
     async fn rename(&self, source: &Path, destination: &Path) -> Result<(), FileOperationError> {
@@ -1240,31 +1265,32 @@ impl FileMutationPort for ReplaceTemporaryAfterBoundCopy {
 
 #[cfg(unix)]
 #[tokio::test]
-async fn cross_volume_move_rejects_an_after_copy_leaf_replacement_without_touching_outside_or_source()
- {
+async fn copy_leaf_replacement_retains_a_terminal_idempotent_cleanup_obligation() {
     let outside = tempfile::tempdir().unwrap();
     let outside_victim = outside.path().join("victim.bin");
     fs::write(&outside_victim, b"outside sentinel").unwrap();
     let fixture = Fixture::with_mutation(
-        true,
+        false,
         Arc::new(ReplaceTemporaryAfterBoundCopy {
             delegate: LocalFileMutation,
             outside_victim: outside_victim.clone(),
+            primary: FileOperationError::IdentityChanged,
         }),
     );
     fixture.directory("source");
     let destination = fixture.directory("exports");
     let source = fixture.file("source/item.png", b"selected bytes");
     let command = fixture.command(
-        FileCommandKind::Move,
+        FileCommandKind::Copy,
         vec![FileCommandItem {
             entity_id: source,
-            action: FileCommandAction::Move {
+            action: FileCommandAction::Copy {
                 destination_folder: destination,
             },
         }],
     );
     let preflight = fixture.service.preflight(command).await.unwrap();
+    let batch_id = preflight.batch_id();
 
     let summary = fixture.service.execute(preflight, &[], None).await.unwrap();
 
@@ -1275,6 +1301,132 @@ async fn cross_volume_move_rejects_an_after_copy_leaf_replacement_without_touchi
     assert_eq!(blake3::hash(&source_bytes), blake3::hash(b"selected bytes"));
     assert!(!fixture.project.root().join("exports/item.png").exists());
     assert_eq!(fixture.trash.count(), 0);
+    let batch = fixture.journal.batch(batch_id).unwrap().unwrap();
+    assert_eq!(batch.state, BatchState::Completed);
+    assert_eq!((batch.completed_count, batch.failed_count), (0, 1));
+    let obligation = fixture
+        .journal
+        .incomplete_items()
+        .unwrap()
+        .into_iter()
+        .find(|candidate| candidate.batch_id == batch_id)
+        .expect("terminal copy failure retains its cleanup obligation");
+    assert_eq!(obligation.state, OperationState::Failed);
+    assert!(obligation.temporary.is_some());
+    assert_eq!(
+        obligation.result_code.as_deref(),
+        Some(BatchResultCode::VerificationFailed.as_str())
+    );
+    assert_eq!(
+        summary.result_page(0, 1).items[0].code,
+        BatchResultCode::VerificationFailed
+    );
+
+    for _ in 0..2 {
+        let reopened = Arc::new(OperationJournal::open(fixture.project.metadata_path()).unwrap());
+        let recovery = RecoveryService::new(
+            fixture.project.root(),
+            Arc::clone(&reopened),
+            Arc::new(LocalFileMutation),
+            fixture.trash.clone(),
+            Arc::new(FixedClock::new(20_000)),
+            Arc::new(InMemoryOperationCommitPort::default()),
+        )
+        .unwrap();
+        let report = recovery.recover_project().await.unwrap();
+        assert_eq!(report.actions, Vec::new());
+        assert_eq!(report.needs_user_review.len(), 1);
+        assert_eq!(fs::read(&outside_victim).unwrap(), b"outside sentinel");
+        assert_eq!(
+            reopened.batch(batch_id).unwrap().unwrap().state,
+            BatchState::Completed
+        );
+    }
+
+    fs::remove_file(
+        fixture
+            .project
+            .root()
+            .join(obligation.temporary.as_ref().unwrap().as_str()),
+    )
+    .unwrap();
+    let reopened = Arc::new(OperationJournal::open(fixture.project.metadata_path()).unwrap());
+    let recovery = RecoveryService::new(
+        fixture.project.root(),
+        Arc::clone(&reopened),
+        Arc::new(LocalFileMutation),
+        fixture.trash.clone(),
+        Arc::new(FixedClock::new(30_000)),
+        Arc::new(InMemoryOperationCommitPort::default()),
+    )
+    .unwrap();
+    let report = recovery.recover_project().await.unwrap();
+    assert_eq!(report.actions.len(), 1);
+    assert_eq!(report.needs_user_review, Vec::new());
+    assert!(reopened.incomplete_items().unwrap().is_empty());
+    let terminal = reopened.item(obligation.operation_id).unwrap().unwrap();
+    assert_eq!(terminal.state, OperationState::Failed);
+    assert_eq!(
+        terminal.result_code.as_deref(),
+        Some(BatchResultCode::VerificationFailed.as_str())
+    );
+    assert_eq!(terminal.temporary, None);
+    assert_eq!(reopened.batch(batch_id).unwrap().unwrap().failed_count, 1);
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn cancelled_copy_cleanup_obligation_preserves_cancelled_result_and_skipped_count() {
+    let outside = tempfile::tempdir().unwrap();
+    let outside_victim = outside.path().join("victim.bin");
+    fs::write(&outside_victim, b"outside sentinel").unwrap();
+    let fixture = Fixture::with_mutation(
+        false,
+        Arc::new(ReplaceTemporaryAfterBoundCopy {
+            delegate: LocalFileMutation,
+            outside_victim: outside_victim.clone(),
+            primary: FileOperationError::Cancelled,
+        }),
+    );
+    fixture.directory("source");
+    let destination = fixture.directory("exports");
+    let source = fixture.file("source/item.png", b"selected bytes");
+    let command = fixture.command(
+        FileCommandKind::Copy,
+        vec![FileCommandItem {
+            entity_id: source,
+            action: FileCommandAction::Copy {
+                destination_folder: destination,
+            },
+        }],
+    );
+    let preflight = fixture.service.preflight(command).await.unwrap();
+    let batch_id = preflight.batch_id();
+
+    let summary = fixture.service.execute(preflight, &[], None).await.unwrap();
+
+    assert_eq!((summary.failed(), summary.cancelled()), (0, 1));
+    assert_eq!(
+        summary.result_page(0, 1).items[0].code,
+        BatchResultCode::Cancelled
+    );
+    assert_eq!(fs::read(&outside_victim).unwrap(), b"outside sentinel");
+    let batch = fixture.journal.batch(batch_id).unwrap().unwrap();
+    assert_eq!(batch.state, BatchState::Completed);
+    assert_eq!((batch.failed_count, batch.skipped_count), (0, 1));
+    let obligation = fixture
+        .journal
+        .incomplete_items()
+        .unwrap()
+        .into_iter()
+        .find(|candidate| candidate.batch_id == batch_id)
+        .unwrap();
+    assert_eq!(obligation.state, OperationState::Completed);
+    assert_eq!(
+        obligation.result_code.as_deref(),
+        Some(BatchResultCode::Cancelled.as_str())
+    );
+    assert!(obligation.temporary.is_some());
 }
 
 struct SwapSourceBeforeMutationSnapshot {
@@ -1284,6 +1436,27 @@ struct SwapSourceBeforeMutationSnapshot {
 
 #[async_trait]
 impl FileMutationPort for SwapSourceBeforeMutationSnapshot {
+    async fn create_and_copy_cancellable_verified(
+        &self,
+        source: &Path,
+        temporary: &Path,
+        cancellation: &FileCommandCancellation,
+        expected_source: &FileSnapshot,
+        source_parent: FileIdentity,
+        temporary_parent: FileIdentity,
+    ) -> Result<FileContentEvidence, FileOperationError> {
+        delegate_registered_copy(
+            &self.delegate,
+            source,
+            temporary,
+            cancellation,
+            expected_source,
+            source_parent,
+            temporary_parent,
+        )
+        .await
+    }
+
     async fn snapshot(&self, path: &Path) -> Result<FileSnapshot, FileOperationError> {
         self.delegate.snapshot(path).await
     }
@@ -1653,6 +1826,43 @@ struct ReplaceDestinationParentAfterCreate {
 
 #[async_trait]
 impl FileMutationPort for ReplaceDestinationParentAfterCreate {
+    async fn create_and_copy_cancellable_verified(
+        &self,
+        source: &Path,
+        temporary: &Path,
+        cancellation: &FileCommandCancellation,
+        expected_source: &FileSnapshot,
+        source_parent: FileIdentity,
+        temporary_parent: FileIdentity,
+    ) -> Result<FileContentEvidence, FileOperationError> {
+        self.create_registered_temporary(temporary, temporary_parent)
+            .await?;
+        let copied = self
+            .delegate
+            .copy_and_hash_cancellable_verified(
+                source,
+                temporary,
+                cancellation,
+                expected_source,
+                source_parent,
+                temporary_parent,
+            )
+            .await;
+        match copied {
+            Ok((len, hash)) => {
+                let snapshot = self.delegate.snapshot(temporary).await?;
+                if snapshot.len != len {
+                    return Err(FileOperationError::IdentityChanged);
+                }
+                Ok(FileContentEvidence { snapshot, hash })
+            }
+            Err(primary) => Err(FileOperationError::RegisteredTemporaryCleanupRequired {
+                primary: Box::new(primary),
+                cleanup: Box::new(FileOperationError::IdentityChanged),
+            }),
+        }
+    }
+
     async fn snapshot(&self, path: &Path) -> Result<FileSnapshot, FileOperationError> {
         self.delegate.snapshot(path).await
     }
@@ -1701,6 +1911,42 @@ impl FileMutationPort for ReplaceDestinationParentAfterCreate {
 
 #[async_trait]
 impl FileMutationPort for ReplaceDestinationParentBeforeCreate {
+    async fn create_and_copy_cancellable_verified(
+        &self,
+        source: &Path,
+        temporary: &Path,
+        cancellation: &FileCommandCancellation,
+        expected_source: &FileSnapshot,
+        source_parent: FileIdentity,
+        temporary_parent: FileIdentity,
+    ) -> Result<FileContentEvidence, FileOperationError> {
+        if let Some((parent, parked, symlink_target)) = self.swap.lock().unwrap().take() {
+            fs::rename(&parent, &parked).map_err(|error| {
+                FileOperationError::io("park destination directory", &parent, &error)
+            })?;
+            if let Some(target) = symlink_target {
+                #[cfg(unix)]
+                std::os::unix::fs::symlink(&target, &parent).map_err(|error| {
+                    FileOperationError::io("install destination symlink", &parent, &error)
+                })?;
+            } else {
+                fs::create_dir(&parent).map_err(|error| {
+                    FileOperationError::io("install replacement directory", &parent, &error)
+                })?;
+            }
+        }
+        delegate_registered_copy(
+            &self.delegate,
+            source,
+            temporary,
+            cancellation,
+            expected_source,
+            source_parent,
+            temporary_parent,
+        )
+        .await
+    }
+
     async fn snapshot(&self, path: &Path) -> Result<FileSnapshot, FileOperationError> {
         self.delegate.snapshot(path).await
     }
@@ -1874,6 +2120,30 @@ async fn cross_volume_move_rejects_a_destination_symlink_race_without_outside_wr
 
 #[async_trait]
 impl FileMutationPort for RewriteSourceAfterCopy {
+    async fn create_and_copy_cancellable_verified(
+        &self,
+        source: &Path,
+        temporary: &Path,
+        cancellation: &FileCommandCancellation,
+        expected_source: &FileSnapshot,
+        source_parent: FileIdentity,
+        temporary_parent: FileIdentity,
+    ) -> Result<FileContentEvidence, FileOperationError> {
+        let evidence = delegate_registered_copy(
+            &self.delegate,
+            source,
+            temporary,
+            cancellation,
+            expected_source,
+            source_parent,
+            temporary_parent,
+        )
+        .await?;
+        fs::write(source, b"mutated!")
+            .map_err(|error| FileOperationError::io("rewrite copy source", source, &error))?;
+        Ok(evidence)
+    }
+
     async fn snapshot(&self, path: &Path) -> Result<FileSnapshot, FileOperationError> {
         self.delegate.snapshot(path).await
     }
@@ -1954,6 +2224,27 @@ struct RewriteDestinationAfterSourceStage {
 
 #[async_trait]
 impl FileMutationPort for RewriteDestinationAfterSourceStage {
+    async fn create_and_copy_cancellable_verified(
+        &self,
+        source: &Path,
+        temporary: &Path,
+        cancellation: &FileCommandCancellation,
+        expected_source: &FileSnapshot,
+        source_parent: FileIdentity,
+        temporary_parent: FileIdentity,
+    ) -> Result<FileContentEvidence, FileOperationError> {
+        delegate_registered_copy(
+            &self.delegate,
+            source,
+            temporary,
+            cancellation,
+            expected_source,
+            source_parent,
+            temporary_parent,
+        )
+        .await
+    }
+
     async fn snapshot(&self, path: &Path) -> Result<FileSnapshot, FileOperationError> {
         self.delegate.snapshot(path).await
     }
@@ -2054,6 +2345,27 @@ struct BlockingFirstRename {
 
 #[async_trait]
 impl FileMutationPort for BlockingFirstRename {
+    async fn create_and_copy_cancellable_verified(
+        &self,
+        source: &Path,
+        temporary: &Path,
+        cancellation: &FileCommandCancellation,
+        expected_source: &FileSnapshot,
+        source_parent: FileIdentity,
+        temporary_parent: FileIdentity,
+    ) -> Result<FileContentEvidence, FileOperationError> {
+        delegate_registered_copy(
+            &self.delegate,
+            source,
+            temporary,
+            cancellation,
+            expected_source,
+            source_parent,
+            temporary_parent,
+        )
+        .await
+    }
+
     async fn snapshot(&self, path: &Path) -> Result<FileSnapshot, FileOperationError> {
         self.delegate.snapshot(path).await
     }
@@ -2151,6 +2463,31 @@ async fn rename_cancellation_stops_not_started_independent_components() {
 
 #[async_trait]
 impl FileMutationPort for BlockingCopy {
+    async fn create_and_copy_cancellable_verified(
+        &self,
+        source: &Path,
+        temporary: &Path,
+        cancellation: &FileCommandCancellation,
+        expected_source: &FileSnapshot,
+        source_parent: FileIdentity,
+        temporary_parent: FileIdentity,
+    ) -> Result<FileContentEvidence, FileOperationError> {
+        self.started.notify_one();
+        while !cancellation.is_cancelled() {
+            tokio::time::sleep(Duration::from_millis(1)).await;
+        }
+        delegate_registered_copy(
+            &self.delegate,
+            source,
+            temporary,
+            cancellation,
+            expected_source,
+            source_parent,
+            temporary_parent,
+        )
+        .await
+    }
+
     async fn snapshot(&self, path: &Path) -> Result<FileSnapshot, FileOperationError> {
         self.delegate.snapshot(path).await
     }
@@ -2314,6 +2651,42 @@ struct FailOneCopy {
 
 #[async_trait]
 impl FileMutationPort for FailOneCopy {
+    async fn create_and_copy_cancellable_verified(
+        &self,
+        source: &Path,
+        temporary: &Path,
+        cancellation: &FileCommandCancellation,
+        expected_source: &FileSnapshot,
+        source_parent: FileIdentity,
+        temporary_parent: FileIdentity,
+    ) -> Result<FileContentEvidence, FileOperationError> {
+        let name = source.file_name().and_then(|name| name.to_str());
+        if name == Some("bad.png") {
+            return Err(FileOperationError::Io {
+                action: "injected disk failure",
+                path: temporary.to_path_buf(),
+                message: "disk full".into(),
+            });
+        }
+        if name == Some("denied.png") {
+            return Err(FileOperationError::Io {
+                action: "injected permission loss",
+                path: temporary.to_path_buf(),
+                message: "Permission denied".into(),
+            });
+        }
+        delegate_registered_copy(
+            &self.delegate,
+            source,
+            temporary,
+            cancellation,
+            expected_source,
+            source_parent,
+            temporary_parent,
+        )
+        .await
+    }
+
     async fn snapshot(&self, path: &Path) -> Result<FileSnapshot, FileOperationError> {
         self.delegate.snapshot(path).await
     }

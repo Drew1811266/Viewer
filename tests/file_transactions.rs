@@ -8,9 +8,11 @@ use std::{
     },
 };
 use viewer_application::{
-    FileMutationPort, FileOperationError, FileSnapshot, TrashPort,
+    FileContentEvidence, FileMutationPort, FileOperationError, FileSnapshot, TrashPort,
+    file_commands::FileCommandCancellation,
     metadata::MarkerTarget,
     undo::{UndoAction, UndoError, UndoStack},
+    watcher::FileIdentity,
 };
 use viewer_domain::{
     EntityId, OperationId, RelativePath,
@@ -32,6 +34,27 @@ use viewer_test_support::{
 
 fn operation_commits() -> Arc<InMemoryOperationCommitPort> {
     Arc::new(InMemoryOperationCommitPort::default())
+}
+
+async fn delegate_registered_copy(
+    delegate: &LocalFileMutation,
+    source: &Path,
+    temporary: &Path,
+    cancellation: &FileCommandCancellation,
+    expected_source: &FileSnapshot,
+    source_parent: FileIdentity,
+    temporary_parent: FileIdentity,
+) -> Result<FileContentEvidence, FileOperationError> {
+    delegate
+        .create_and_copy_cancellable_verified(
+            source,
+            temporary,
+            cancellation,
+            expected_source,
+            source_parent,
+            temporary_parent,
+        )
+        .await
 }
 
 fn copy_item(
@@ -117,6 +140,27 @@ struct BoundRenameOnlyPort {
 
 #[async_trait]
 impl FileMutationPort for BoundRenameOnlyPort {
+    async fn create_and_copy_cancellable_verified(
+        &self,
+        source: &Path,
+        temporary: &Path,
+        cancellation: &FileCommandCancellation,
+        expected_source: &FileSnapshot,
+        source_parent: FileIdentity,
+        temporary_parent: FileIdentity,
+    ) -> Result<FileContentEvidence, FileOperationError> {
+        delegate_registered_copy(
+            &self.delegate,
+            source,
+            temporary,
+            cancellation,
+            expected_source,
+            source_parent,
+            temporary_parent,
+        )
+        .await
+    }
+
     async fn snapshot(&self, path: &Path) -> Result<FileSnapshot, FileOperationError> {
         self.delegate.snapshot(path).await
     }
@@ -160,6 +204,18 @@ impl FileMutationPort for BoundRenameOnlyPort {
 
 #[async_trait]
 impl FileMutationPort for CancelledCopyPort {
+    async fn create_and_copy_cancellable_verified(
+        &self,
+        _source: &Path,
+        _temporary: &Path,
+        _cancellation: &FileCommandCancellation,
+        _expected_source: &FileSnapshot,
+        _source_parent: FileIdentity,
+        _temporary_parent: FileIdentity,
+    ) -> Result<FileContentEvidence, FileOperationError> {
+        Err(FileOperationError::Cancelled)
+    }
+
     async fn snapshot(&self, path: &Path) -> Result<FileSnapshot, FileOperationError> {
         self.delegate.snapshot(path).await
     }
@@ -183,6 +239,27 @@ impl FileMutationPort for CancelledCopyPort {
 
 #[async_trait]
 impl FileMutationPort for FailingRenamePort {
+    async fn create_and_copy_cancellable_verified(
+        &self,
+        source: &Path,
+        temporary: &Path,
+        cancellation: &FileCommandCancellation,
+        expected_source: &FileSnapshot,
+        source_parent: FileIdentity,
+        temporary_parent: FileIdentity,
+    ) -> Result<FileContentEvidence, FileOperationError> {
+        delegate_registered_copy(
+            &self.delegate,
+            source,
+            temporary,
+            cancellation,
+            expected_source,
+            source_parent,
+            temporary_parent,
+        )
+        .await
+    }
+
     async fn snapshot(&self, path: &Path) -> Result<FileSnapshot, FileOperationError> {
         self.delegate.snapshot(path).await
     }
@@ -451,12 +528,9 @@ async fn verified_copy_cancellation_removes_only_registered_temporary() {
     let persisted = journal.item(item.operation_id).unwrap().unwrap();
     assert_eq!(persisted.state, OperationState::Failed);
     assert_eq!(persisted.error_code.as_deref(), Some("cancelled"));
-    assert!(
-        !project
-            .root()
-            .join(persisted.temporary.unwrap().as_str())
-            .exists()
-    );
+    assert_eq!(persisted.temporary, None);
+    let temporary = format!("exports/.viewer-copy-{}.part", item.operation_id);
+    assert!(!project.root().join(temporary).exists());
     assert_eq!(
         fs::read(project.root().join(item.source.as_str())).unwrap(),
         contents
@@ -677,6 +751,27 @@ struct FailNamedRenamePort {
 
 #[async_trait]
 impl FileMutationPort for FailNamedRenamePort {
+    async fn create_and_copy_cancellable_verified(
+        &self,
+        source: &Path,
+        temporary: &Path,
+        cancellation: &FileCommandCancellation,
+        expected_source: &FileSnapshot,
+        source_parent: FileIdentity,
+        temporary_parent: FileIdentity,
+    ) -> Result<FileContentEvidence, FileOperationError> {
+        delegate_registered_copy(
+            &self.delegate,
+            source,
+            temporary,
+            cancellation,
+            expected_source,
+            source_parent,
+            temporary_parent,
+        )
+        .await
+    }
+
     async fn snapshot(&self, path: &Path) -> Result<FileSnapshot, FileOperationError> {
         self.delegate.snapshot(path).await
     }
@@ -794,6 +889,27 @@ struct FailingPlacementPort {
 
 #[async_trait]
 impl FileMutationPort for FailingPlacementPort {
+    async fn create_and_copy_cancellable_verified(
+        &self,
+        source: &Path,
+        temporary: &Path,
+        cancellation: &FileCommandCancellation,
+        expected_source: &FileSnapshot,
+        source_parent: FileIdentity,
+        temporary_parent: FileIdentity,
+    ) -> Result<FileContentEvidence, FileOperationError> {
+        delegate_registered_copy(
+            &self.delegate,
+            source,
+            temporary,
+            cancellation,
+            expected_source,
+            source_parent,
+            temporary_parent,
+        )
+        .await
+    }
+
     async fn snapshot(&self, path: &Path) -> Result<FileSnapshot, FileOperationError> {
         self.delegate.snapshot(path).await
     }
@@ -829,6 +945,27 @@ impl FileMutationPort for FailingPlacementPort {
 
 #[async_trait]
 impl FileMutationPort for RecordingMutationPort {
+    async fn create_and_copy_cancellable_verified(
+        &self,
+        source: &Path,
+        temporary: &Path,
+        cancellation: &FileCommandCancellation,
+        expected_source: &FileSnapshot,
+        source_parent: FileIdentity,
+        temporary_parent: FileIdentity,
+    ) -> Result<FileContentEvidence, FileOperationError> {
+        delegate_registered_copy(
+            &self.delegate,
+            source,
+            temporary,
+            cancellation,
+            expected_source,
+            source_parent,
+            temporary_parent,
+        )
+        .await
+    }
+
     async fn snapshot(&self, path: &Path) -> Result<FileSnapshot, FileOperationError> {
         self.delegate.snapshot(path).await
     }
@@ -1816,6 +1953,27 @@ struct FailFinalReplacementPort {
 
 #[async_trait]
 impl FileMutationPort for FailFinalReplacementPort {
+    async fn create_and_copy_cancellable_verified(
+        &self,
+        source: &Path,
+        temporary: &Path,
+        cancellation: &FileCommandCancellation,
+        expected_source: &FileSnapshot,
+        source_parent: FileIdentity,
+        temporary_parent: FileIdentity,
+    ) -> Result<FileContentEvidence, FileOperationError> {
+        delegate_registered_copy(
+            &self.delegate,
+            source,
+            temporary,
+            cancellation,
+            expected_source,
+            source_parent,
+            temporary_parent,
+        )
+        .await
+    }
+
     async fn snapshot(&self, path: &Path) -> Result<FileSnapshot, FileOperationError> {
         self.delegate.snapshot(path).await
     }

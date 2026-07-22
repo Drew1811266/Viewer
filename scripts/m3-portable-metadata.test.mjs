@@ -78,6 +78,20 @@ test('accepts canonical versionless UUID entity IDs derived from filesystem iden
   assert.equal(result.operationCount, 3)
 })
 
+test('accepts a terminal copy result with a registered cleanup obligation', async () => {
+  const root = await portableFixture()
+  mutate(
+    root,
+    `UPDATE operation_items
+     SET temporary_path = 'selected/.viewer-copy-obligation.part'
+     WHERE operation_id = '${OPERATION_IDS[1]}'`,
+  )
+
+  const result = await validateV3(root)
+
+  assert.equal(result.operationCount, 3)
+})
+
 test('rejects content disguised as an allowed SQLite sidecar', async (t) => {
   for (const [name, contents] of [
     ['metadata.sqlite-journal', Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 16])],

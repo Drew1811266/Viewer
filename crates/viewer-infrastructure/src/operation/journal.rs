@@ -328,6 +328,7 @@ impl OperationJournal {
             result_code,
             None,
             "completed_count",
+            false,
             updated_at_ms,
         )
     }
@@ -348,6 +349,28 @@ impl OperationJournal {
             error_code,
             Some(error_code),
             "failed_count",
+            false,
+            updated_at_ms,
+        )
+    }
+
+    pub fn fail_item_recovery_required(
+        &self,
+        operation_id: OperationId,
+        expected_current: OperationState,
+        error_code: &str,
+        updated_at_ms: i64,
+    ) -> Result<(), JournalError> {
+        let mut checked = expected_current;
+        checked.transition_to(OperationState::Failed)?;
+        self.finish_item(
+            operation_id,
+            expected_current,
+            OperationState::Failed,
+            error_code,
+            Some(error_code),
+            "failed_count",
+            true,
             updated_at_ms,
         )
     }
@@ -386,8 +409,70 @@ impl OperationJournal {
             result_code,
             None,
             "skipped_count",
+            false,
             updated_at_ms,
         )
+    }
+
+    pub fn skip_item_recovery_required(
+        &self,
+        operation_id: OperationId,
+        expected_current: OperationState,
+        result_code: &str,
+        updated_at_ms: i64,
+    ) -> Result<(), JournalError> {
+        if matches!(
+            expected_current,
+            OperationState::Completed | OperationState::Failed
+        ) {
+            return Err(OperationTransitionError::Invalid {
+                from: expected_current,
+                to: OperationState::Completed,
+            }
+            .into());
+        }
+        self.finish_item(
+            operation_id,
+            expected_current,
+            OperationState::Completed,
+            result_code,
+            None,
+            "skipped_count",
+            true,
+            updated_at_ms,
+        )
+    }
+
+    pub fn resolve_recovery_obligation(
+        &self,
+        operation_id: OperationId,
+        expected_terminal: OperationState,
+    ) -> Result<(), JournalError> {
+        if !matches!(
+            expected_terminal,
+            OperationState::Completed | OperationState::Failed
+        ) {
+            return Err(OperationTransitionError::Invalid {
+                from: expected_terminal,
+                to: expected_terminal,
+            }
+            .into());
+        }
+        self.with_connection(|connection| {
+            if connection.execute(
+                "UPDATE operation_items
+                 SET temporary_path = NULL, expected_size = NULL, expected_hash = NULL
+                 WHERE operation_id = ?1 AND state = ?2 AND temporary_path IS NOT NULL",
+                params![operation_id.to_string(), expected_terminal.as_str()],
+            )? != 1
+            {
+                return Err(JournalError::ConcurrentStateChange {
+                    operation_id,
+                    expected: expected_terminal,
+                });
+            }
+            Ok(())
+        })
     }
 
     pub fn register_temporary(
@@ -491,6 +576,7 @@ impl OperationJournal {
                         conflict_policy, error_code, updated_at_ms, result_code
                  FROM operation_items
                  WHERE state NOT IN ('completed', 'failed')
+                    OR temporary_path IS NOT NULL
                  ORDER BY updated_at_ms, operation_id",
             )?;
             let rows = statement.query_map([], read_journal_row)?;
@@ -607,6 +693,7 @@ impl OperationJournal {
         result_code: &str,
         error_code: Option<&str>,
         counter_column: &'static str,
+        retain_recovery_obligation: bool,
         updated_at_ms: i64,
     ) -> Result<(), JournalError> {
         if !is_valid_result_code(result_code) {
@@ -624,8 +711,13 @@ impl OperationJournal {
         let batch_id = transaction
             .query_row(
                 "SELECT batch_id FROM operation_items
-                 WHERE operation_id = ?1 AND state = ?2",
-                params![operation_id.to_string(), expected_current.as_str()],
+                 WHERE operation_id = ?1 AND state = ?2 AND result_code IS NULL
+                   AND (?3 = 0 OR temporary_path IS NOT NULL)",
+                params![
+                    operation_id.to_string(),
+                    expected_current.as_str(),
+                    retain_recovery_obligation,
+                ],
                 |row| row.get::<_, String>(0),
             )
             .optional()?;
@@ -637,8 +729,12 @@ impl OperationJournal {
         };
         let changed = transaction.execute(
             "UPDATE operation_items
-             SET state = ?3, result_code = ?4, error_code = ?5, updated_at_ms = ?6
-             WHERE operation_id = ?1 AND state = ?2",
+             SET state = ?3, result_code = ?4, error_code = ?5, updated_at_ms = ?6,
+                 temporary_path = CASE WHEN ?7 THEN temporary_path ELSE NULL END,
+                 expected_size = CASE WHEN ?7 THEN expected_size ELSE NULL END,
+                 expected_hash = CASE WHEN ?7 THEN expected_hash ELSE NULL END
+             WHERE operation_id = ?1 AND state = ?2 AND result_code IS NULL
+               AND (?7 = 0 OR temporary_path IS NOT NULL)",
             params![
                 operation_id.to_string(),
                 expected_current.as_str(),
@@ -646,6 +742,7 @@ impl OperationJournal {
                 result_code,
                 error_code,
                 updated_at_ms,
+                retain_recovery_obligation,
             ],
         )?;
         if changed != 1 {
@@ -950,5 +1047,100 @@ mod tests {
         assert_eq!(synchronous, 2);
         assert_eq!(foreign_keys, 1);
         assert_eq!(busy_timeout, 5_000);
+    }
+
+    #[test]
+    fn terminal_results_clear_temporary_evidence_unless_recovery_is_required() {
+        let directory = tempfile::tempdir().unwrap();
+        let journal = OperationJournal::open(directory.path().join("metadata.sqlite")).unwrap();
+        let batch_id = OperationId::new();
+        let item = copy_item(batch_id);
+        let temporary = RelativePath::parse("exports/.viewer-copy-test.part").unwrap();
+        journal
+            .begin_batch(batch_id, OperationKind::Copy, 1, 100)
+            .unwrap();
+        journal.record_item(&item, 101).unwrap();
+        journal
+            .register_temporary(item.operation_id, OperationState::Prepared, &temporary, 102)
+            .unwrap();
+
+        journal
+            .fail_item_recovery_required(
+                item.operation_id,
+                OperationState::Prepared,
+                "permission_denied",
+                103,
+            )
+            .unwrap();
+        assert!(matches!(
+            journal.fail_item_recovery_required(
+                item.operation_id,
+                OperationState::Prepared,
+                "permission_denied",
+                104,
+            ),
+            Err(JournalError::ConcurrentStateChange { .. })
+        ));
+        journal.finish_batch(batch_id, 105).unwrap();
+
+        let batch = journal.batch(batch_id).unwrap().unwrap();
+        assert_eq!(batch.failed_count, 1);
+        assert_eq!(batch.state, super::BatchState::Completed);
+        let incomplete = journal.incomplete_items().unwrap();
+        assert_eq!(incomplete.len(), 1);
+        assert_eq!(incomplete[0].state, OperationState::Failed);
+        assert_eq!(incomplete[0].temporary.as_ref(), Some(&temporary));
+        assert_eq!(
+            incomplete[0].result_code.as_deref(),
+            Some("permission_denied")
+        );
+        assert_eq!(
+            incomplete[0].error_code.as_deref(),
+            Some("permission_denied")
+        );
+        assert_eq!(journal.results_page(batch_id, 0, 10).unwrap().len(), 1);
+
+        journal
+            .resolve_recovery_obligation(item.operation_id, OperationState::Failed)
+            .unwrap();
+        assert!(journal.incomplete_items().unwrap().is_empty());
+        let resolved = journal.item(item.operation_id).unwrap().unwrap();
+        assert_eq!(resolved.state, OperationState::Failed);
+        assert_eq!(resolved.result_code.as_deref(), Some("permission_denied"));
+        assert_eq!(resolved.error_code.as_deref(), Some("permission_denied"));
+        assert_eq!(resolved.temporary, None);
+        assert_eq!(journal.batch(batch_id).unwrap().unwrap().failed_count, 1);
+    }
+
+    #[test]
+    fn ordinary_terminal_result_drops_registered_temporary_and_evidence() {
+        let directory = tempfile::tempdir().unwrap();
+        let journal = OperationJournal::open(directory.path().join("metadata.sqlite")).unwrap();
+        let batch_id = OperationId::new();
+        let item = copy_item(batch_id);
+        let temporary = RelativePath::parse("exports/.viewer-copy-test.part").unwrap();
+        journal
+            .begin_batch(batch_id, OperationKind::Copy, 1, 100)
+            .unwrap();
+        journal.record_item(&item, 101).unwrap();
+        journal
+            .record_prepared_evidence(item.operation_id, Some(&temporary), 12, [7; 32], 102)
+            .unwrap();
+
+        journal
+            .fail_item(
+                item.operation_id,
+                OperationState::Prepared,
+                "verification_failed",
+                103,
+            )
+            .unwrap();
+
+        let terminal = journal.item(item.operation_id).unwrap().unwrap();
+        assert_eq!(terminal.state, OperationState::Failed);
+        assert_eq!(terminal.temporary, None);
+        assert_eq!(terminal.expected_size, None);
+        assert_eq!(terminal.expected_hash, None);
+        assert!(journal.incomplete_items().unwrap().is_empty());
     }
 }

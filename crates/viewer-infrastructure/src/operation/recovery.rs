@@ -17,7 +17,7 @@ use super::{
     conflict::replace_temporary_path,
     copy::{hash_file_sync, sync_parent},
     executor::{CopyError, CopyExecutor, CopyResumeResult, temporary_relative_path},
-    journal::{JournalError, JournalItem, OperationJournal},
+    journal::{BatchState, JournalError, JournalItem, OperationJournal},
     service::trash_temporary_for,
 };
 
@@ -142,8 +142,9 @@ impl RecoveryService {
             let Some(batch) = self.journal.batch(batch_id)? else {
                 continue;
             };
-            if batch.completed_count + batch.failed_count + batch.skipped_count
-                == batch.requested_count
+            if batch.state == BatchState::Running
+                && batch.completed_count + batch.failed_count + batch.skipped_count
+                    == batch.requested_count
             {
                 self.journal.finish_batch(batch_id, self.now())?;
             }
@@ -268,9 +269,29 @@ impl RecoveryService {
                     CopyResumeResult::CleanedTemporary => RecoveryActionKind::CleanedTemporary,
                 }))
             }
-            OperationState::Completed | OperationState::Failed => Ok(RecoveryOutcome::Review(
-                "terminal operation unexpectedly appeared in recovery query".into(),
-            )),
+            OperationState::Completed | OperationState::Failed => {
+                match std::fs::symlink_metadata(&temporary) {
+                    Ok(_) => Ok(RecoveryOutcome::Review(
+                        "terminal copy cleanup obligation has no persisted leaf ownership evidence; its occupant was not removed"
+                            .into(),
+                    )),
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                        self.journal.resolve_recovery_obligation(
+                            item.operation_id,
+                            item.state,
+                        )?;
+                        Ok(RecoveryOutcome::Action(
+                            RecoveryActionKind::CleanedTemporary,
+                        ))
+                    }
+                    Err(error) => Err(FileOperationError::io(
+                        "inspect terminal copy cleanup obligation",
+                        &temporary,
+                        &error,
+                    )
+                    .into()),
+                }
+            }
         }
     }
 

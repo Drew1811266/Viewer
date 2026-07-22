@@ -128,7 +128,7 @@ impl FileMutationPort for LocalFileMutation {
                 &expected_source,
                 source_parent,
                 temporary_parent,
-                || {},
+                || Ok(()),
             )
         })
         .await
@@ -211,75 +211,6 @@ impl FileMutationPort for LocalFileMutation {
         })
         .await
         .map_err(|error| worker_error("bound temporary cleanup worker", &error_path, error))?
-    }
-
-    async fn remove_registered_temporary_bound(
-        &self,
-        path: &Path,
-        expected_parent: FileIdentity,
-        expected_leaf: Option<&FileSnapshot>,
-    ) -> Result<(), FileOperationError> {
-        let path = path.to_path_buf();
-        let error_path = path.clone();
-        let expected_leaf = expected_leaf.cloned();
-        tokio::task::spawn_blocking(move || {
-            remove_registered_temporary_bound_sync(&path, expected_parent, expected_leaf.as_ref())
-        })
-        .await
-        .map_err(|error| {
-            worker_error(
-                "identity-bound temporary cleanup worker",
-                &error_path,
-                error,
-            )
-        })?
-    }
-}
-
-#[cfg(target_os = "macos")]
-fn remove_registered_temporary_bound_sync(
-    path: &Path,
-    expected_parent: FileIdentity,
-    expected_leaf: Option<&FileSnapshot>,
-) -> Result<(), FileOperationError> {
-    let parent_path = path.parent().ok_or(FileOperationError::OutsideProject)?;
-    let _parent = open_bound_parent(parent_path, expected_parent)?;
-    let Some(expected) = expected_leaf else {
-        return if path.exists() {
-            Err(FileOperationError::IdentityChanged)
-        } else {
-            Ok(())
-        };
-    };
-    let reference = bind_file_reference(path, expected)?;
-    unlink_file_reference(&reference, path)
-}
-
-#[cfg(not(target_os = "macos"))]
-fn remove_registered_temporary_bound_sync(
-    path: &Path,
-    expected_parent: FileIdentity,
-    expected_leaf: Option<&FileSnapshot>,
-) -> Result<(), FileOperationError> {
-    verify_parent_identity(path, expected_parent)?;
-    let Some(expected) = expected_leaf else {
-        return if path.exists() {
-            Err(FileOperationError::IdentityChanged)
-        } else {
-            Ok(())
-        };
-    };
-    if !snapshot_matches_bound_move(expected, &snapshot_sync(path)?) {
-        return Err(FileOperationError::IdentityChanged);
-    }
-    match fs::remove_file(path) {
-        Ok(()) => Ok(()),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(error) => Err(FileOperationError::io(
-            "remove identity-bound registered temporary",
-            path,
-            &error,
-        )),
     }
 }
 
@@ -929,7 +860,7 @@ fn create_copy_and_hash_cancellable_verified_sync_with_hook<F>(
     after_create: F,
 ) -> Result<FileContentEvidence, FileOperationError>
 where
-    F: FnOnce(),
+    F: FnOnce() -> Result<(), FileOperationError>,
 {
     let source_parent = open_bound_parent(
         source.parent().ok_or(FileOperationError::OutsideProject)?,
@@ -965,19 +896,26 @@ where
             &error,
         )
     })?;
-    after_create();
-    let copied = copy_open_files_and_evidence(
-        source_file,
-        temporary_file,
-        source,
-        temporary,
-        cancellation,
-        expected_source,
-    );
-    if copied.is_err() {
-        unlink_file_reference(&temporary_reference, temporary)?;
+    let copied = after_create().and_then(|()| {
+        copy_open_files_and_evidence(
+            source_file,
+            temporary_file,
+            source,
+            temporary,
+            cancellation,
+            expected_source,
+        )
+    });
+    match copied {
+        Ok(evidence) => Ok(evidence),
+        Err(primary) => match unlink_file_reference(&temporary_reference, temporary) {
+            Ok(()) => Err(primary),
+            Err(cleanup) => Err(FileOperationError::RegisteredTemporaryCleanupRequired {
+                primary: Box::new(primary),
+                cleanup: Box::new(cleanup),
+            }),
+        },
     }
-    copied
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -991,7 +929,7 @@ fn create_copy_and_hash_cancellable_verified_sync_with_hook<F>(
     after_create: F,
 ) -> Result<FileContentEvidence, FileOperationError>
 where
-    F: FnOnce(),
+    F: FnOnce() -> Result<(), FileOperationError>,
 {
     verify_parent_identity(source, source_parent_identity)?;
     verify_parent_identity(temporary, temporary_parent_identity)?;
@@ -1009,15 +947,22 @@ where
             FileOperationError::io("create bound registered copy temporary", temporary, &error)
         })?;
     sync_parent(temporary)?;
-    after_create();
-    copy_open_files_and_evidence(
-        source_file,
-        temporary_file,
-        source,
-        temporary,
-        cancellation,
-        expected_source,
-    )
+    match after_create().and_then(|()| {
+        copy_open_files_and_evidence(
+            source_file,
+            temporary_file,
+            source,
+            temporary,
+            cancellation,
+            expected_source,
+        )
+    }) {
+        Ok(evidence) => Ok(evidence),
+        Err(primary) => Err(FileOperationError::RegisteredTemporaryCleanupRequired {
+            primary: Box::new(primary),
+            cleanup: Box::new(FileOperationError::IdentityChanged),
+        }),
+    }
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -1405,6 +1350,7 @@ mod tests {
             || {
                 fs::remove_file(&temporary).unwrap();
                 fs::hard_link(&victim, &temporary).unwrap();
+                Ok(())
             },
         )
         .unwrap();
@@ -1435,6 +1381,117 @@ mod tests {
 
         assert_eq!(fs::read(&temporary).unwrap(), b"replacement sentinel");
         assert!(!parked.exists());
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn registered_copy_error_removes_the_partially_written_created_identity() {
+        let directory = tempfile::tempdir().unwrap();
+        let root = fs::canonicalize(directory.path()).unwrap();
+        let source = root.join("source.bin");
+        let temporary = root.join(".viewer-copy-test.part");
+        fs::write(&source, b"selected bytes").unwrap();
+        let parent_metadata = fs::metadata(&root).unwrap();
+        let parent_identity = FileIdentity {
+            volume: parent_metadata.dev(),
+            file: parent_metadata.ino(),
+        };
+        let source_snapshot = snapshot_sync(&source).unwrap();
+
+        let result = create_copy_and_hash_cancellable_verified_sync_with_hook(
+            &source,
+            &temporary,
+            &FileCommandCancellation::default(),
+            &source_snapshot,
+            parent_identity,
+            parent_identity,
+            || {
+                fs::write(&temporary, b"partial bytes").unwrap();
+                Err(FileOperationError::Cancelled)
+            },
+        );
+
+        assert!(matches!(result, Err(FileOperationError::Cancelled)));
+        assert!(!temporary.exists());
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn registered_copy_error_never_removes_a_replacement_at_the_temporary_name() {
+        let directory = tempfile::tempdir().unwrap();
+        let root = fs::canonicalize(directory.path()).unwrap();
+        let source = root.join("source.bin");
+        let temporary = root.join(".viewer-copy-test.part");
+        let parked = root.join("parked-created-temp.part");
+        let replacement = root.join("replacement.bin");
+        fs::write(&source, b"selected bytes").unwrap();
+        fs::write(&replacement, b"replacement sentinel").unwrap();
+        let parent_metadata = fs::metadata(&root).unwrap();
+        let parent_identity = FileIdentity {
+            volume: parent_metadata.dev(),
+            file: parent_metadata.ino(),
+        };
+        let source_snapshot = snapshot_sync(&source).unwrap();
+
+        let result = create_copy_and_hash_cancellable_verified_sync_with_hook(
+            &source,
+            &temporary,
+            &FileCommandCancellation::default(),
+            &source_snapshot,
+            parent_identity,
+            parent_identity,
+            || {
+                fs::rename(&temporary, &parked).unwrap();
+                fs::rename(&replacement, &temporary).unwrap();
+                Err(FileOperationError::Cancelled)
+            },
+        );
+
+        assert!(matches!(result, Err(FileOperationError::Cancelled)));
+        assert_eq!(fs::read(&temporary).unwrap(), b"replacement sentinel");
+        assert!(!parked.exists());
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn registered_copy_cleanup_failure_preserves_primary_and_owned_temporary() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let directory = tempfile::tempdir().unwrap();
+        let root = fs::canonicalize(directory.path()).unwrap();
+        let source = root.join("source.bin");
+        let temporary = root.join(".viewer-copy-test.part");
+        fs::write(&source, b"selected bytes").unwrap();
+        let parent_metadata = fs::metadata(&root).unwrap();
+        let parent_identity = FileIdentity {
+            volume: parent_metadata.dev(),
+            file: parent_metadata.ino(),
+        };
+        let source_snapshot = snapshot_sync(&source).unwrap();
+
+        let result = create_copy_and_hash_cancellable_verified_sync_with_hook(
+            &source,
+            &temporary,
+            &FileCommandCancellation::default(),
+            &source_snapshot,
+            parent_identity,
+            parent_identity,
+            || {
+                fs::write(&temporary, b"partial bytes").unwrap();
+                fs::set_permissions(&root, fs::Permissions::from_mode(0o500)).unwrap();
+                Err(FileOperationError::Cancelled)
+            },
+        );
+        fs::set_permissions(&root, fs::Permissions::from_mode(0o700)).unwrap();
+
+        match result {
+            Err(FileOperationError::RegisteredTemporaryCleanupRequired { primary, cleanup }) => {
+                assert_eq!(*primary, FileOperationError::Cancelled);
+                assert_ne!(*cleanup, FileOperationError::Cancelled);
+            }
+            other => panic!("expected structured cleanup failure, got {other:?}"),
+        }
+        assert_eq!(fs::read(&temporary).unwrap(), b"partial bytes");
     }
 
     #[cfg(target_os = "macos")]

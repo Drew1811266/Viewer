@@ -1526,6 +1526,37 @@ impl LocalFileCommandAdapter {
         }
     }
 
+    fn settle_recovery_required(
+        &self,
+        operation_id: OperationId,
+        primary: &FileOperationError,
+    ) -> Result<LocalFileCommandOutcome, LocalFileCommandError> {
+        let code = classify_file_error(primary);
+        let item = self
+            .journal
+            .item(operation_id)
+            .map_err(|_| LocalFileCommandError::Unavailable)?
+            .ok_or(LocalFileCommandError::Unavailable)?;
+        if matches!(primary.primary(), FileOperationError::Cancelled) {
+            self.journal
+                .skip_item_recovery_required(
+                    operation_id,
+                    item.state,
+                    BatchResultCode::Cancelled.as_str(),
+                    self.now(),
+                )
+                .map_err(|_| LocalFileCommandError::Unavailable)?;
+            Ok(LocalFileCommandOutcome::cancelled(
+                BatchResultCode::Cancelled,
+            ))
+        } else {
+            self.journal
+                .fail_item_recovery_required(operation_id, item.state, code.as_str(), self.now())
+                .map_err(|_| LocalFileCommandError::Unavailable)?;
+            Ok(LocalFileCommandOutcome::failed(code))
+        }
+    }
+
     fn fail_outcome_for_entity(
         &self,
         batch_id: BatchId,
@@ -1706,6 +1737,9 @@ impl LocalFileCommandPort for LocalFileCommandAdapter {
                 .await
             {
                 Ok(outcome) => outcome,
+                Err(FileOperationError::RegisteredTemporaryCleanupRequired { primary, .. }) => {
+                    self.settle_recovery_required(item.plan.operation_id, &primary)?
+                }
                 Err(FileOperationError::Cancelled) => {
                     self.mark_cancelled(item.plan.operation_id);
                     LocalFileCommandOutcome::cancelled(BatchResultCode::Cancelled)
@@ -2166,6 +2200,9 @@ fn rename_error_code(errors: &[RenameErrorCode]) -> BatchResultCode {
 
 fn classify_file_error(error: &FileOperationError) -> BatchResultCode {
     match error {
+        FileOperationError::RegisteredTemporaryCleanupRequired { primary, .. } => {
+            classify_file_error(primary)
+        }
         FileOperationError::SourceMissing => BatchResultCode::SourceMissing,
         FileOperationError::DestinationExists => BatchResultCode::DestinationOccupied,
         FileOperationError::VerificationFailed | FileOperationError::IdentityChanged => {

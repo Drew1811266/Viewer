@@ -545,4 +545,64 @@ describe('ContentBrowser', () => {
       }),
     )
   })
+
+  it('opens the radial request on an unselected image and replaces selection first', () => {
+    const request = vi.fn()
+    render(<ContentBrowser workspace={workspace(3)} onRadialMenuRequest={request} />)
+    fireEvent.click(screen.getByRole('option', { name: '1.jpg' }))
+    fireEvent.pointerDown(screen.getByRole('option', { name: '2.jpg' }), {
+      pointerId: 70,
+      button: 2,
+      clientX: 210,
+      clientY: 160,
+    })
+    expect(selectedLabels()).toEqual(['2.jpg'])
+    expect(request).toHaveBeenCalledWith({
+      files: [expect.objectContaining({ entityId: 'image-2' })],
+      origin: { x: 210, y: 160 },
+      pointerId: 70,
+    })
+  })
+
+  it('preserves a multi-selection when right-clicking one of its files', () => {
+    const request = vi.fn()
+    render(<ContentBrowser workspace={workspace(3)} onRadialMenuRequest={request} />)
+    fireEvent.click(screen.getByRole('option', { name: '1.jpg' }))
+    fireEvent.click(screen.getByRole('option', { name: '2.jpg' }), { metaKey: true })
+    fireEvent.pointerDown(screen.getByRole('option', { name: '2.jpg' }), {
+      pointerId: 71,
+      button: 2,
+      clientX: 220,
+      clientY: 170,
+    })
+    expect(selectedLabels()).toEqual(['1.jpg', '2.jpg'])
+    expect(request.mock.calls[0]?.[0].files.map((file: BrowserFile) => file.entityId)).toEqual([
+      'image-1',
+      'image-2',
+    ])
+  })
+
+  it('suppresses the native context menu for image and text options', () => {
+    render(<ContentBrowser workspace={workspace(1)} onRadialMenuRequest={vi.fn()} />)
+    for (const name of ['1.jpg', 'prompt.md']) {
+      const event = createEvent.contextMenu(screen.getByRole('option', { name }))
+      fireEvent(screen.getByRole('option', { name }), event)
+      expect(event.defaultPrevented).toBe(true)
+    }
+  })
+
+  it('hides unmarked copy and keeps marked badges plus select-all in the view menu', () => {
+    const data = workspace(2)
+    data.images[1] = {
+      ...data.images[1]!,
+      marker: { reviewState: 'keep', favorite: true },
+    }
+    render(<ContentBrowser workspace={data} currentPath="项目根目录" />)
+    expect(screen.queryByText('未标记')).not.toBeInTheDocument()
+    expect(screen.getByText('保留 · 收藏')).toBeVisible()
+    expect(screen.getByText('项目根目录')).toBeVisible()
+    fireEvent.click(screen.getByText('视图'))
+    fireEvent.click(screen.getByRole('button', { name: '全选当前文件夹' }))
+    expect(selectedLabels()).toHaveLength(3)
+  })
 })

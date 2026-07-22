@@ -769,16 +769,71 @@ select {
   font-weight: 600;
 }
 
-.grid-toolbar {
+.content-toolbar {
   align-items: center;
   display: flex;
   justify-content: space-between;
   margin-bottom: 10px;
 }
 
-.grid-toolbar label {
+.content-toolbar > div {
+  align-items: baseline;
+  display: flex;
+  gap: 6px;
+}
+
+.content-toolbar > div > span {
+  color: #59616c;
+  font-size: 12px;
+}
+
+.content-view-menu {
+  position: relative;
+}
+
+.content-view-menu > summary {
+  background: #fff;
+  border: 1px solid #c8ced6;
+  border-radius: 6px;
+  cursor: default;
+  list-style: none;
+  min-height: 30px;
+  padding: 5px 9px;
+}
+
+.content-view-menu > summary::-webkit-details-marker {
+  display: none;
+}
+
+.content-view-menu > div {
+  background: #fff;
+  border: 1px solid #c8ced6;
+  border-radius: 8px;
+  box-shadow: 0 10px 28px rgb(34 42 53 / 18%);
+  display: grid;
+  gap: 10px;
+  min-width: 190px;
+  padding: 10px;
+  position: absolute;
+  right: 0;
+  top: 36px;
+  z-index: 3;
+}
+
+.content-view-menu label {
+  align-items: center;
   display: flex;
   gap: 8px;
+  justify-content: space-between;
+}
+
+.content-view-menu button,
+.content-view-menu select {
+  background: #fff;
+  border: 1px solid #c8ced6;
+  border-radius: 6px;
+  min-height: 30px;
+  padding: 4px 8px;
 }
 
 .virtual-grid {
@@ -925,7 +980,19 @@ select {
   height: 24px;
   justify-content: center;
   line-height: 1;
+  opacity: 0;
   padding: 0 5px;
+  pointer-events: none;
+  transition: opacity 120ms ease;
+}
+
+.image-cell:hover > .organization-drag-handle,
+.image-cell:focus-within > .organization-drag-handle,
+.text-file-row:hover > .organization-drag-handle,
+.text-file-row:focus-within > .organization-drag-handle,
+.viewer-shell[data-organization-drag-active="true"] .organization-drag-handle {
+  opacity: 1;
+  pointer-events: auto;
 }
 
 .organization-drag-handle:focus-visible {
@@ -935,7 +1002,7 @@ select {
 
 .organization-drag-handle:disabled {
   cursor: not-allowed;
-  opacity: 0.45;
+  pointer-events: none;
 }
 
 .viewer-shell[data-organization-drag-active="true"]

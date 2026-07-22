@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { DragEvent, KeyboardEvent, MouseEvent, PointerEvent } from 'react'
 import type { BrowserFile, FolderWorkspace } from '../api/types'
 import type { OrganizationPointerInput } from '../state/useOrganizationPointerDrag'
+import type { RadialMenuRequest } from './RadialFileMenu'
 import VirtualGrid from './VirtualGrid'
 import type { MarqueeSelectionChange } from './VirtualGrid'
 import type { TaskFeedback } from './TaskBar'
@@ -11,6 +12,7 @@ type GridSize = 'small' | 'medium' | 'large'
 
 interface ContentBrowserProps {
   workspace: ContentWorkspace
+  currentPath?: string
   viewportHeight?: number
   requestThumbnail?: (
     file: BrowserFile,
@@ -25,6 +27,7 @@ interface ContentBrowserProps {
   onOrganizationPointerInput?: (input: OrganizationPointerInput) => void
   repairSelectionId?: string | null
   onRepairSelectionApplied?: () => void
+  onRadialMenuRequest?: (request: RadialMenuRequest) => void
 }
 
 interface ThumbnailWork {
@@ -41,6 +44,7 @@ const GRID_PIXELS: Record<GridSize, number> = {
 
 export default function ContentBrowser({
   workspace,
+  currentPath,
   viewportHeight = 520,
   requestThumbnail,
   onPreview,
@@ -51,6 +55,7 @@ export default function ContentBrowser({
   onOrganizationPointerInput,
   repairSelectionId = null,
   onRepairSelectionApplied,
+  onRadialMenuRequest,
 }: ContentBrowserProps) {
   const [gridSize, setGridSize] = useState<GridSize>('medium')
   const [selected, setSelected] = useState<Set<string>>(() => new Set())
@@ -240,6 +245,23 @@ export default function ContentBrowser({
       .map((candidate) => candidate.entityId)
   }
 
+  function openRadialMenu(file: BrowserFile, event: PointerEvent<HTMLElement>) {
+    if (event.button !== 2 || onRadialMenuRequest === undefined) return
+    event.preventDefault()
+    event.stopPropagation()
+    const contextSelection = selected.has(file.entityId) ? selected : new Set([file.entityId])
+    if (!selected.has(file.entityId)) {
+      anchorId.current = file.entityId
+      setActiveId(file.entityId)
+      commitSelection(contextSelection)
+    }
+    onRadialMenuRequest({
+      files: allFiles.filter((candidate) => contextSelection.has(candidate.entityId)),
+      origin: { x: event.clientX, y: event.clientY },
+      pointerId: event.pointerId,
+    })
+  }
+
   function startFinderDrag(file: BrowserFile, event: DragEvent<HTMLElement>) {
     const entityIds = freezeDragSelection(file)
     event.preventDefault()
@@ -351,24 +373,33 @@ export default function ContentBrowser({
 
   return (
     <section className="content-browser" aria-label="文件内容">
-      <div className="grid-toolbar">
-        <label>
-          缩略图大小
-          <select value={gridSize} onChange={(event) => setGridSize(event.target.value as GridSize)}>
-            <option value="small">小</option>
-            <option value="medium">中</option>
-            <option value="large">大</option>
-          </select>
-        </label>
-        <span>{workspace.images.length} 张图片</span>
-        <button type="button" onClick={selectAllFiles} disabled={allFiles.length === 0}>
-          全选当前文件夹
-        </button>
+      <div className="content-toolbar">
+        <div>
+          <strong>{currentPath ?? '当前文件夹'}</strong>
+          <span>· {workspace.images.length} 张图片</span>
+          {workspace.textFiles.length > 0 && <span>· {workspace.textFiles.length} 个文本文件</span>}
+        </div>
+        <details className="content-view-menu">
+          <summary>视图</summary>
+          <div>
+            <label>
+              缩略图大小
+              <select value={gridSize} onChange={(event) => setGridSize(event.target.value as GridSize)}>
+                <option value="small">小</option>
+                <option value="medium">中</option>
+                <option value="large">大</option>
+              </select>
+            </label>
+            <button type="button" onClick={selectAllFiles} disabled={allFiles.length === 0}>
+              全选当前文件夹
+            </button>
+          </div>
+        </details>
       </div>
       <VirtualGrid
         items={workspace.images}
         cellWidth={cellPixels}
-        cellHeight={cellPixels + 54}
+        cellHeight={cellPixels + 42}
         viewportHeight={viewportHeight}
         getKey={(file) => file.entityId}
         ariaLabel="图片文件"
@@ -386,6 +417,7 @@ export default function ContentBrowser({
             loadThumbnail={loadThumbnail}
             onClick={selectFile}
             onPreview={(selectedFile) => onPreview?.(selectedFile)}
+            onRadialMenuPointerDown={openRadialMenu}
             organizationDragDisabled={organizationDragDisabled}
             onFinderDragStart={startFinderDrag}
             onPointerDown={startPointerOrganization}
@@ -412,6 +444,8 @@ export default function ContentBrowser({
             tabIndex={-1}
             key={file.entityId}
             className="text-file-row"
+            onPointerDown={(event) => openRadialMenu(file, event)}
+            onContextMenu={(event) => event.preventDefault()}
             onClick={(event) => selectFile(file, event)}
             onDoubleClick={() => onPreview?.(file)}
           >
@@ -423,7 +457,7 @@ export default function ContentBrowser({
             >
               <span className="text-file-name">{file.name}</span>
               <span className="text-file-path">{file.relativePath}</span>
-              <span className="file-marker">{markerLabel(file.marker)}</span>
+              {markerLabel(file.marker) && <span className="file-marker">{markerLabel(file.marker)}</span>}
             </div>
             <OrganizationDragHandle
               file={file}
@@ -449,6 +483,7 @@ function ImageCell({
   loadThumbnail,
   onClick,
   onPreview,
+  onRadialMenuPointerDown,
   organizationDragDisabled,
   onFinderDragStart,
   onPointerDown,
@@ -464,6 +499,7 @@ function ImageCell({
   loadThumbnail: (file: BrowserFile, maxPixels: number, scaleMilli: number) => Promise<string>
   onClick: (file: BrowserFile, event: MouseEvent) => void
   onPreview: (file: BrowserFile) => void
+  onRadialMenuPointerDown: (file: BrowserFile, event: PointerEvent<HTMLElement>) => void
   organizationDragDisabled: boolean
   onFinderDragStart: (file: BrowserFile, event: DragEvent<HTMLElement>) => void
   onPointerDown: (file: BrowserFile, event: PointerEvent<HTMLElement>) => void
@@ -498,6 +534,8 @@ function ImageCell({
       aria-selected={selected}
       data-active={active || undefined}
       className="image-cell"
+      onPointerDown={(event) => onRadialMenuPointerDown(file, event)}
+      onContextMenu={(event) => event.preventDefault()}
       onClick={(event) => onClick(file, event)}
       onDoubleClick={() => onPreview(file)}
     >
@@ -515,7 +553,7 @@ function ImageCell({
           )}
         </div>
         <span>{file.name}</span>
-        <span className="file-marker">{markerLabel(file.marker)}</span>
+        {markerLabel(file.marker) && <span className="file-marker">{markerLabel(file.marker)}</span>}
       </div>
       <OrganizationDragHandle
         file={file}
@@ -574,7 +612,7 @@ function OrganizationDragHandle({
   )
 }
 
-function markerLabel(marker: BrowserFile['marker']): string {
+function markerLabel(marker: BrowserFile['marker']): string | null {
   const review =
     marker.reviewState === 'keep'
       ? '保留'
@@ -582,6 +620,8 @@ function markerLabel(marker: BrowserFile['marker']): string {
         ? '待定'
         : marker.reviewState === 'reject'
           ? '淘汰'
-          : '未标记'
+          : null
+  if (review === null && !marker.favorite) return null
+  if (review === null) return '收藏'
   return marker.favorite ? `${review} · 收藏` : review
 }

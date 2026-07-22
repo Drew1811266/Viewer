@@ -665,11 +665,15 @@ Require arm64 only, macOS 13.0 minimum, valid `.app`/DMG, ad-hoc signing explici
 
 Using the packaged app, cover single/batch rename rules including cycle/case, copy/move to deep folders, all conflict policies, partial permission failure, active copy cancellation, corrupt-file operations, real Trash and system restoration. Hash source/destination evidence and verify no silent overwrite/data loss.
 
-- [ ] **Step 3: Exercise undo, drag and comparison**
+- [x] **Step 3: Exercise undo, drag and comparison**
 
 Cover marker/favorite/rename/move Command-Z and unsafe-undo refusal; internal move and Option-copy target feedback; physical copy-only drag into Finder; 2/3/4 compare layouts, sync/independent pan/zoom, inline markers, removal and one-pane fallback.
 
-Packaged undo and comparison behavior passed. Drag behavior passed the complete UI/Rust/AppKit contract suite, but Computer Use could not emit the WebView HTML5 `dragstart` event. The mandatory physical Finder gesture remains an open M3 human acceptance check and is not claimed or deferred.
+Packaged undo and comparison behavior passed. The exact packaged application
+also passed visible-marquee multi-image Finder export, multi-text export,
+cancelled export, organization-handle move, PointerDown-frozen Option copy,
+Finder-folder import and post-relaunch export; every resulting file matched its
+source SHA-256.
 
 - [x] **Step 4: Exercise external changes, read-only and lifecycle**
 
@@ -696,13 +700,16 @@ Run: `git status --short && pnpm gate:m3 && pnpm build:macos`
 
 Expected: clean start, exact gate pass and fresh valid arm64/macOS 13 artifacts.
 
-- [x] **Step 2: Review the complete branch diff**
+- [ ] **Step 2: Review the complete branch diff**
 
 Run: `git diff --check main...HEAD && git diff --stat main...HEAD && git log --oneline main..HEAD`
 
 Review architecture direction, data-loss safety, durable state truth, read-only enforcement, recovery, cancellation, Watcher generations, image budget, native unsafe code, path/security/privacy boundaries, accessibility baseline, test quality and scope exclusions. No unresolved Critical/Important finding may remain.
 
-Independent review of `ba5148e` reported Critical 0, Important 0 and Minor 0 after confirming the post-staging Replace evidence check and atomic Replace marker/journal barrier. Code review is READY; stage approval remains blocked only by Task 17's mandatory physical Finder drag.
+Successive whole-branch reviews and focused re-reviews through code head
+`b103070` closed all reported Critical/Important findings. The final review must
+now include the refreshed seven-check physical evidence commit and return an
+unconditional READY decision before Step 3.
 
 - [ ] **Step 3: Approve and commit the stage review**
 

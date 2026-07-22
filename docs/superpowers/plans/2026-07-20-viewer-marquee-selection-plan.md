@@ -685,7 +685,7 @@ pnpm --dir ui build
 
 Expected: all focused tests PASS; the complete UI suite passes; TypeScript and Vite production build pass without warnings or new dependencies.
 
-- [ ] **Step 6: Commit Task 3**
+- [x] **Step 6: Commit Task 3**
 
 ```bash
 git add ui/src/components/ContentBrowser.tsx ui/src/components/ContentBrowser.test.tsx ui/src/styles/app.css
@@ -702,7 +702,7 @@ git commit -m "feat: add image marquee selection"
 - Consumes: Tasks 1–3 and the existing M3 gate/package scripts.
 - Produces: a new packaged app in which marquee-created selection successfully exports two exact files to Finder, after which the original eight-item M3 physical checklist resumes.
 
-- [ ] **Step 1: Run the exact M3 automated gate**
+- [x] **Step 1: Run the exact M3 automated gate**
 
 ```bash
 pnpm gate:m3
@@ -710,7 +710,7 @@ pnpm gate:m3
 
 Expected final line: `M3 organization and comparison gate passed`.
 
-- [ ] **Step 2: Build the exact Apple Silicon package**
+- [x] **Step 2: Build the exact Apple Silicon package**
 
 ```bash
 pnpm build:macos
@@ -723,7 +723,7 @@ target/aarch64-apple-darwin/release/bundle/macos/Viewer.app
 target/aarch64-apple-darwin/release/bundle/dmg/Viewer_0.1.0_aarch64.dmg
 ```
 
-- [ ] **Step 3: Re-run the failed multi-image physical check**
+- [x] **Step 3: Re-run the failed multi-image physical check**
 
 Use a fresh empty destination. In the packaged app, begin on image-grid whitespace, draw the visible rectangle across the JPG and PNG, verify both cards become highlighted, then drag either selected card body to Finder. Pass only when both destination files exist and these source/destination SHA-256 pairs match:
 
@@ -732,7 +732,7 @@ acceptance-photo.jpg  ffb89121baa0aafd524f82eb0ed6d0338e596f9a5e2b20d0749348f9d2
 acceptance-alpha.png   f514f2a5563166aaa73d0549d3708a4fdf66a140d97ac57edefb050371699f77
 ```
 
-- [ ] **Step 4: Resume the remaining M3 physical checklist**
+- [x] **Step 4: Resume the remaining M3 physical checklist**
 
 Continue with Markdown/TXT export, cancelled Finder drag, organization-handle move, Option-frozen copy, Finder-folder import, packaged-app relaunch and post-relaunch export exactly as Task 3 of `2026-07-20-viewer-m3-drag-session-rearchitecture-plan.md` specifies. Do not record visual-only passes.
 

@@ -1,11 +1,11 @@
 # M3 Organization and Comparison Stage Review
 
-- Status: Task 18 independent code review READY; mandatory physical Finder drag pending
-- Date: 2026-07-19
+- Status: packaged-app and physical acceptance complete; final whole-branch review pending
+- Date: 2026-07-21
 - Base: `1642957` (paused M3 checkpoint)
-- Acceptance head: `ba5148e` (Task 18 final code corrections)
+- Acceptance code head: `b103070680ab8f69980f2572ec3ae0068771dcac` (final safety corrections)
 - Review method: exact M3 aggregate gate, Apple Silicon package inspection, release-app acceptance on writable/copied/read-only fixtures, real filesystem and Trash operations, portable-metadata validation, cache/network inspection and final complete-diff review
-- Decision: **Code review READY, but not yet approved or merged; physical Finder drag is the only open Important acceptance item**
+- Decision: **All implementation and physical exit criteria pass. Local merge remains blocked only on a fresh whole-branch review of the final evidence commit.**
 
 ## Exit-criteria traceability
 
@@ -13,7 +13,7 @@
 | --- | --- | --- |
 | `REQ-FLOW-ORGANIZE`, `REQ-FLOW-BATCH-RENAME` | M3 command, preflight, transaction and UI suites cover single/batch rename, cycles, case-only names, copy/move/Trash, all conflict policies, partial results and cancellation. The packaged app completed a four-file prefix rename and Command-Z, a case-only `a.jpg -> A.jpg -> a.jpg` cycle, deep copy/move, Skip/Keep Both/Replace and a permission-denied item without a destination or temporary residue. | Pass |
 | `REQ-FLOW-UNDO` | Rust/UI suites cover marker/favorite/rename/move LIFO undo, partial batches, drift and unsafe-refusal cases. Packaged Command-Z restored batch rename, case-only rename and a deep move; copy and Trash remained excluded. | Pass |
-| `REQ-FLOW-DRAG-DROP` | UI and Rust suites cover opaque multi-selection drag, move/Option-copy feedback, stale/read-only suppression, Finder boundary hand-off, entity revalidation and copy-only AppKit source masks. Computer Use could not synthesize a WebView HTML5 drag gesture, so no physical Finder drop is claimed. | Automated pass; physical gesture pending |
+| `REQ-FLOW-DRAG-DROP` | UI and Rust suites cover opaque multi-selection drag, move/Option-copy feedback, stale/read-only suppression, Finder boundary hand-off, entity revalidation and copy-only AppKit source masks. The exact packaged app physically passed visible-marquee multi-image export, multi-text export, cancelled export, default internal move, PointerDown-frozen Option copy, native Finder-folder import and post-relaunch export with matching source/destination SHA-256 values. | Pass |
 | `REQ-FLOW-COMPARE` | Model/component suites cover exactly 2–4 unique images, bounded proxy requests, layouts, transforms, sync/independent mode, inline markers and fallback. The packaged app showed two side-by-side, three asymmetric and four-grid layouts; zoom/rotation, sync toggle, inline Keep, removal and single-preview/grid fallback worked. | Pass |
 | `REQ-FLOW-EXTERNAL-CHANGES` | Watcher/reconciliation suites cover expected/unexpected changes, generations and selection/preview/compare repair. Packaged deep-copy/move/undo, a Finder Trash restoration and destination mutations refreshed the tree/grid counts without reopening. | Pass |
 | `REQ-FLOW-READONLY-ERRORS` | Rust/UI dual-layer capability matrices reject markers and every file mutation while retaining browse/search/preview/compare. The packaged read-only fixture displayed `只读项目`; marker, rename, copy, move and Trash controls were disabled while preview remained usable. | Pass |
@@ -35,7 +35,15 @@ The disposable writable fixture contained JPG/PNG files at arbitrary folder dept
 - Viewer moved `viewer-restore-proof.png` to the macOS Trash, Finder exposed `放回原处`, restoration returned it to its original folder, and Viewer reconciled the count;
 - the copied project retained project identity and its Keep marker; read-only operation controls were disabled; startup/close always returned to the empty surface.
 
-Computer Use attempted internal and Viewer-to-Finder drag gestures, but its instantaneous pointer primitive did not emit the WebView HTML5 `dragstart` event. The product's complete drag contract remains covered by `App`, `ContentBrowser`, `FolderTree` and `m3_drag_export` tests, including copy-only AppKit source masks and entity/path revalidation. The frozen M3 design nevertheless requires a human physical drag into Finder before approval; this review does not represent automated contract coverage as GUI evidence and does not defer the requirement to M4.
+The final clean disposable fixture was exercised through the exact packaged
+application with macOS Accessibility-authorized, smooth native pointer events.
+All seven required physical checks passed. Finder destinations contained the
+expected JPG, PNG, Markdown and TXT copies with exact source hashes; a cancelled
+drag left no destination; the JPG organization handle moved the file; the PNG
+Option-at-PointerDown handle copied it while retaining the source; a Finder
+folder drop reopened the project; and a full process quit/relaunch returned to
+the empty import surface before a successful reimport and export. The complete
+relative-path and SHA-256 record is in the linked M3 acceptance document.
 
 ## Defects found and corrected during acceptance
 
@@ -62,15 +70,27 @@ The follow-up review then found two deeper Important consistency windows, both c
 
 The final independent review of `ba5148e` reported Critical 0, Important 0 and Minor 0 and marked the code READY. Its focused verification passed `m3_file_commands` 21/21, `m3_desktop_runtime` 12/12, `file_transactions` 19/19 and `m3_operation_projections` 6/6.
 
-The physical Finder gesture remains the only open acceptance finding. It cannot be closed by unit/integration evidence alone. Before M3 approval, a human must verify both single- and multi-file drag from the packaged Viewer into Finder, confirm copies appear at the Finder destination, and confirm the Viewer project sources remain present.
+A later whole-branch safety review identified three additional code-level
+Important findings plus stale acceptance evidence. Commit `b103070` removed the
+path-only cleanup boundary and migrated the legacy executor to identity-bound
+copy/cleanup; retained and revalidated temporary identities through native
+Finder publication; added final file-reference, device/inode, alias and
+containment checks; made terminal file batches refresh browse/search exactly
+once; and guarded completion against replaced project epochs/sessions. Focused
+re-review of these corrections reported Critical 0, Important 0 and Minor 0.
+
+The refreshed physical acceptance against `b103070` then passed all seven
+required gestures and verified every resulting file by SHA-256. The only
+remaining pre-merge action is a fresh whole-branch review that includes this
+final evidence update.
 
 ## Package, integrity and privacy evidence
 
 ```text
 pnpm gate:m3                         PASS; exit 0
-  repository policy                 7/7
-  UI                                128 tests + production build
-  portable schema-v3 policy         45 Node tests + live source/copy validation
+  repository policy                 9/9
+  UI                                184 tests + production build
+  portable schema-v3 policy         54 Node tests + live source/copy validation
   cargo fmt / strict Clippy          PASS
   locked Rust workspace tests        PASS
   M3 command/undo/drag/compare/lifecycle suites PASS
@@ -87,17 +107,30 @@ portable metadata source             schema 3, 1 marker, 25 operations, no trans
 portable metadata copied fixture     same identity/marker; expected ambiguous interrupted operation surfaced
 session cache after close             empty
 lsof release process TCP/UDP          no sockets
+Viewer executable SHA-256             4b467e113802f56e13665a76fc334327cea59e2317adc533f17981da7418f2d2
+Viewer DMG SHA-256                    4fe8050abfc20e6c6daab65756e6911b91d79190f3865d648a2787eaac156852
 ```
 
-The exact gate and package build above were repeated from the clean committed `ba5148e` branch after the final Task 18 corrections. The first aggregate-gate attempt recorded one non-reproducible Finder-boundary UI test failure; the focused test, the full 128-test UI suite and both UI passes inside the fresh successful aggregate gate then passed without code changes. The `.viewer` validator accepts only the manifest, schema-v3 SQLite database, exact SQLite sidecars and approved prior-schema backup. It rejects originals, text bodies, thumbnails/proxies, absolute/cache paths, unknown tables/columns/enums/result codes/files and symlinks. Static policy and runtime socket inspection found no updater, analytics, crash upload or application network behavior.
+The exact low-concurrency gate and package build above were repeated from clean
+committed code head `b103070`. The `.viewer` validator accepts only the manifest,
+schema-v3 SQLite database, exact SQLite sidecars and approved prior-schema
+backup. It rejects originals, text bodies, thumbnails/proxies, absolute/cache
+paths, unknown tables/columns/enums/result codes/files and symlinks. Static
+policy and runtime socket inspection found no updater, analytics, crash upload
+or application network behavior.
 
 ## Scope and remaining review work
 
 - No Windows implementation or cloud behavior was introduced.
 - The app and DMG remain ad-hoc signed and are not notarized because Developer ID credentials are outside the internal-only 0.1 scope.
 - The synthetic fixture validates correctness but does not replace M4 acceptance with the user's supplied approximately 10 MiB production images.
-- Task 18 independent code review is complete and READY. Physical Finder-drag acceptance remains mandatory before approval.
+- All physical acceptance is complete. A final whole-branch evidence review remains mandatory before local merge.
 
 ## Task 17 decision
 
-The exact gate, package checks, real file/Trash operations, compare/read-only/lifecycle behavior and portable/privacy boundaries pass after five acceptance-found defects were corrected. Independent Task 18 reviews then found five code defects across two passes; all five now have failing-before/green-after regressions, pass the fresh exact gate/package checks and have an independent READY re-review. Task 17 remains open only for the mandatory physical Finder drag, which is explicitly disclosed rather than inferred from automation.
+The exact gate, package checks, real file/Trash operations,
+compare/read-only/lifecycle behavior, portable/privacy boundaries and seven
+physical drag checks all pass. The successive independent reviews and focused
+re-reviews found no remaining Critical or Important code finding after
+`b103070`. Task 17 is complete. Task 18 remains open only for the final
+whole-branch evidence review and local merge gate.

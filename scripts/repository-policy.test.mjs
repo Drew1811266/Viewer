@@ -233,7 +233,7 @@ test('Finder export starts a synthetic AppKit drag from the owning window conten
   assert.doesNotMatch(adapter, /filter\(\|event\| event\.r#type\(\) == NSEventType::LeftMouseDragged\)/)
 })
 
-test('registered copy cleanup has no pathname deletion contract', async () => {
+test('registered copy cleanup stays behind the identity-bound staged lease', async () => {
   const [ports, executor, localMutation] = await Promise.all([
     read('crates/viewer-application/src/ports.rs'),
     read('crates/viewer-infrastructure/src/operation/executor.rs'),
@@ -249,7 +249,11 @@ test('registered copy cleanup has no pathname deletion contract', async () => {
   assert.doesNotMatch(executor, /remove_registered_temporary/)
   assert.doesNotMatch(localMutationProduction, pathnameDelete)
   assert.doesNotMatch(executor, pathnameDelete)
-  assert.match(executor, /create_and_copy_cancellable_verified\(/)
+  assert.match(ports, /pub struct StagedCopy/)
+  assert.match(ports, /trait StagedCopyLeasePort/)
+  assert.match(executor, /create_staged_copy_cancellable_verified\(/)
+  assert.doesNotMatch(executor, /\.create_and_copy_cancellable_verified\(/)
+  assert.match(localMutationProduction, /impl StagedCopyLeasePort for MacStagedCopyLease/)
   assert.match(localMutationProduction, /FSUnlinkObject/)
 })
 

@@ -1,5 +1,5 @@
 use rusqlite::Connection;
-use std::fs;
+use std::{collections::BTreeMap, fs};
 use tempfile::TempDir;
 use viewer_application::{
     ProjectAccess,
@@ -107,27 +107,61 @@ fn read_only_schema_v2_uses_marker_adapter_without_migrating_portable_bytes() {
     let project = TempDir::new().unwrap();
     let writable =
         PortableProjectMetadata::open(project.path(), ProjectAccess::ReadWrite, 1).unwrap();
+    let project_id = writable.project_id();
     let database = writable.database_path().unwrap().to_path_buf();
-    let store = PortableMarkerStore::open(&database, true).unwrap();
     let target = marker_target("notes.txt", FileKind::Text);
-    store
-        .apply_batch(
-            std::slice::from_ref(&target),
-            MarkerPatch {
-                review: ReviewPatch::Set(ReviewState::Keep),
-                favorite: FavoritePatch::Set(true),
-            },
-            2,
+    drop(writable);
+
+    fs::remove_file(&database).unwrap();
+    for suffix in ["-wal", "-shm", "-journal"] {
+        let _ = fs::remove_file(format!("{}{}", database.display(), suffix));
+    }
+    let connection = Connection::open(&database).unwrap();
+    connection
+        .execute_batch(concat!(
+            include_str!("../crates/viewer-infrastructure/migrations/portable/0001_initial.sql"),
+            include_str!("../crates/viewer-infrastructure/migrations/portable/0002_markers.sql")
+        ))
+        .unwrap();
+    connection
+        .execute(
+            "INSERT INTO project_metadata(singleton, project_id, created_at_ms)
+             VALUES (1, ?1, 1)",
+            [project_id.to_string()],
         )
         .unwrap();
-    drop(store);
-    drop(writable);
-    Connection::open(&database)
-        .unwrap()
-        .execute("DELETE FROM schema_migrations WHERE version = 3", [])
+    connection
+        .execute(
+            "INSERT INTO markers(
+                marker_id, relative_path, kind, review_state, favorite,
+                evidence_size, evidence_modified_ns, content_hash, updated_at_ms
+             ) VALUES (?1, ?2, 4, 0, 1, ?3, ?4, NULL, 2)",
+            rusqlite::params![
+                EntityId::new().to_string(),
+                target.relative_path.as_str(),
+                i64::try_from(target.size).unwrap(),
+                target.modified_ns.to_string(),
+            ],
+        )
         .unwrap();
+    let batch_columns = connection
+        .prepare("PRAGMA table_info(operation_batches)")
+        .unwrap()
+        .query_map([], |row| row.get::<_, String>(1))
+        .unwrap()
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+    assert!(!batch_columns.iter().any(|column| column == "state"));
+    drop(connection);
     assert_eq!(schema_version(&database), 2);
-    let before = fs::read(&database).unwrap();
+    let viewer = project.path().join(".viewer");
+    let before = fs::read_dir(&viewer)
+        .unwrap()
+        .map(|entry| {
+            let entry = entry.unwrap();
+            (entry.file_name(), fs::read(entry.path()).unwrap())
+        })
+        .collect::<BTreeMap<_, _>>();
 
     let metadata =
         PortableProjectMetadata::open(project.path(), ProjectAccess::ReadOnly, 3).unwrap();
@@ -139,7 +173,19 @@ fn read_only_schema_v2_uses_marker_adapter_without_migrating_portable_bytes() {
     assert_eq!(markers.len(), 1);
     assert_eq!(markers[0].marker.review_state, Some(ReviewState::Keep));
     assert!(markers[0].marker.favorite);
-    assert_eq!(fs::read(&database).unwrap(), before);
+    drop(readonly);
+    drop(metadata);
+    let after = fs::read_dir(&viewer)
+        .unwrap()
+        .map(|entry| {
+            let entry = entry.unwrap();
+            (entry.file_name(), fs::read(entry.path()).unwrap())
+        })
+        .collect::<BTreeMap<_, _>>();
+    assert_eq!(after, before);
+    for suffix in ["-wal", "-shm", "-journal"] {
+        assert!(!std::path::PathBuf::from(format!("{}{}", database.display(), suffix)).exists());
+    }
     assert_eq!(schema_version(&database), 2);
 }
 

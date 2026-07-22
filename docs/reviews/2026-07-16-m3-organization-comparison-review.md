@@ -1,11 +1,11 @@
 # M3 Organization and Comparison Stage Review
 
-- Status: packaged-app and physical acceptance complete; final whole-branch review pending
-- Date: 2026-07-21
+- Status: implementation, aggregate gate, package inspection and physical acceptance complete; final evidence review pending
+- Date: 2026-07-22
 - Base: `1642957` (paused M3 checkpoint)
-- Acceptance code head: `b103070680ab8f69980f2572ec3ae0068771dcac` (final safety corrections)
+- Acceptance code head: `2fb612a85d38a8154b5311ad6a461a4f2090c9a9` (final safety corrections and enforced staged-copy policy)
 - Review method: exact M3 aggregate gate, Apple Silicon package inspection, release-app acceptance on writable/copied/read-only fixtures, real filesystem and Trash operations, portable-metadata validation, cache/network inspection and final complete-diff review
-- Decision: **All implementation and physical exit criteria pass. Local merge remains blocked only on a fresh whole-branch review of the final evidence commit.**
+- Decision: **All implementation and physical exit criteria pass. Local merge remains blocked only on a fresh whole-branch review of this final evidence update.**
 
 ## Exit-criteria traceability
 
@@ -17,7 +17,7 @@
 | `REQ-FLOW-COMPARE` | Model/component suites cover exactly 2–4 unique images, bounded proxy requests, layouts, transforms, sync/independent mode, inline markers and fallback. The packaged app showed two side-by-side, three asymmetric and four-grid layouts; zoom/rotation, sync toggle, inline Keep, removal and single-preview/grid fallback worked. | Pass |
 | `REQ-FLOW-EXTERNAL-CHANGES` | Watcher/reconciliation suites cover expected/unexpected changes, generations and selection/preview/compare repair. Packaged deep-copy/move/undo, a Finder Trash restoration and destination mutations refreshed the tree/grid counts without reopening. | Pass |
 | `REQ-FLOW-READONLY-ERRORS` | Rust/UI dual-layer capability matrices reject markers and every file mutation while retaining browse/search/preview/compare. The packaged read-only fixture displayed `只读项目`; marker, rename, copy, move and Trash controls were disabled while preview remained usable. | Pass |
-| `REQ-FLOW-LIFECYCLE` | Runtime/UI suites cover wait/cancel/stay, close blocking, stale-event rejection and teardown. Packaged close returned to the empty import surface, reopen did not restore a directory and `~/Library/Caches/com.viewer.desktop/sessions` was empty after close/quit. | Pass |
+| `REQ-FLOW-LIFECYCLE` | Runtime/UI suites cover wait/cancel/stay, close blocking, terminal cleanup warnings, stale-event rejection and teardown. The rebuilt package imported and scanned the fixture, created one known session cache, then received a real Cmd+Q; the process exited, that exact cache disappeared, the cache root was empty, and relaunch showed the empty import surface. | Pass |
 | `REQ-TECH-FILE-CONSISTENCY`, `REQ-TECH-PATH-SECURITY` | Journal, fault-matrix, recovery, identity, symlink, portable validator and security tests pass. Packaged copy/move/replace hashes matched their sources; no operation silently overwrote, and a recoverable ambiguous batch was surfaced for inspection instead of replayed destructively. | Pass |
 | `REQ-TECH-MEMORY`, `REQ-RELEASE-ACCEPTANCE` | Compare uses viewport proxies and never unconditionally decodes four originals. The exact M3 gate passes, and the app/DMG are arm64-only, macOS 13.0, strict-valid ad-hoc signed artifacts with no release-process socket. | Pass |
 
@@ -52,6 +52,9 @@ relative-path and SHA-256 record is in the linked M3 acceptance document.
 3. **Case-only rename undo false collision:** undo treated the same file's case-folded current path as a foreign occupant. Prevalidation now permits only that canonical same-file alias, with a real-filesystem regression test.
 4. **Finder automation Trash hang:** the default Trash route could launch Finder/AppleScript and block internal builds behind Automation consent. The adapter now selects `NSFileManager`; real Trash and Finder `放回原处` were both verified.
 5. **Portable entity-ID false rejection:** stable filesystem-derived UUID-shaped entity IDs are canonical but need not carry RFC version/variant bits. The validator now distinguishes entity IDs from project/operation IDs and retains strict shape, with positive and negative policy tests.
+6. **Native Quit retained the active session cache:** macOS can reach final `RunEvent::Exit` without a preventable `ExitRequested`. The runtime now performs synchronous final session teardown and a Viewer-owned cache sweep on final exit. Normal close reports a terminal cleanup warning without resurrecting a closed backend session, and UI/native window/application/close-command paths all converge on the same committed-close decision.
+7. **Path validation outlived the bound filesystem object:** Trash could follow a moved parent outside the project, and copy placement could lose its temporary identity after staging. Trash now owns the canonical project root and revalidates the bound parent plus file reference immediately before `NSFileManager`; copy now returns an identity-bound staged lease that owns safe cleanup through placement.
+8. **Post-rename error cleanup could delete the official destination:** when rename succeeded but directory sync or final validation failed, generic cleanup followed the staged reference and removed the recoverable destination. The lease now retains a destination only when parent path/identity, file-reference path and staged snapshot all match; escaped or replaced identities are still cleaned without touching replacements.
 
 Every correction followed a failing focused test, implementation, focused green verification and a fresh exact M3 aggregate gate.
 
@@ -90,12 +93,21 @@ asserted synchronously as soon as the row appeared. The assertion now waits for
 the focus effect. The focused file passed 20 consecutive runs, the complete
 184-test UI suite passed, and the fresh aggregate gate passed at `aaab801`.
 
+A final adversarial re-review then found the native-Quit cache fallback, Trash
+parent/leaf reparenting, staged-copy lease lifetime and post-rename recovery
+issues described above. Commit `47908bd` closes those boundaries and adds
+focused regressions; `2fb612a` updates repository policy so the production
+executor must use the staged lease. The independent re-review returned
+`Ready to commit`. The fresh aggregate gate passed at `2fb612a`, and the exact
+rebuilt package passed the active-session Cmd+Q cache-removal and empty-relaunch
+check on 2026-07-22.
+
 ## Package, integrity and privacy evidence
 
 ```text
 pnpm gate:m3                         PASS; exit 0
   repository policy                 9/9
-  UI                                184 tests + production build
+  UI                                185 tests + production build
   portable schema-v3 policy         54 Node tests + live source/copy validation
   cargo fmt / strict Clippy          PASS
   locked Rust workspace tests        PASS
@@ -113,12 +125,12 @@ portable metadata source             schema 3, 1 marker, 25 operations, no trans
 portable metadata copied fixture     same identity/marker; expected ambiguous interrupted operation surfaced
 session cache after close             empty
 lsof release process TCP/UDP          no sockets
-Viewer executable SHA-256             4b467e113802f56e13665a76fc334327cea59e2317adc533f17981da7418f2d2
-Viewer DMG SHA-256                    e350a3adf3af37526b2001500fc26ac2674fd4d1dd3b7ce4ce73fd100152235b
+Viewer executable SHA-256             d58863b9e1e772f8c3e7afb53a68667456f0834c52852932185c4400b491ecdb
+Viewer DMG SHA-256                    482e71878a8c53d7c1f2c6b4b68537bff97c28f50e6ca2f2a2fffe7fe687824d
 ```
 
 The exact low-concurrency gate and package build above were repeated from clean
-committed code head `b103070`. The `.viewer` validator accepts only the manifest,
+committed code head `2fb612a`. The `.viewer` validator accepts only the manifest,
 schema-v3 SQLite database, exact SQLite sidecars and approved prior-schema
 backup. It rejects originals, text bodies, thumbnails/proxies, absolute/cache
 paths, unknown tables/columns/enums/result codes/files and symlinks. Static
@@ -137,6 +149,6 @@ or application network behavior.
 The exact gate, package checks, real file/Trash operations,
 compare/read-only/lifecycle behavior, portable/privacy boundaries and seven
 physical drag checks all pass. The successive independent reviews and focused
-re-reviews found no remaining Critical or Important code finding after
-`b103070`. Task 17 is complete. Task 18 remains open only for the final
+re-reviews found no remaining Critical, Important or Minor code finding after
+`2fb612a`. Task 17 is complete. Task 18 remains open only for the final
 whole-branch evidence review and local merge gate.

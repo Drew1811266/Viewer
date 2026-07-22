@@ -2,25 +2,26 @@
 
 ## Verdict
 
-**PASS.** The seven required physical checks passed against tested code commit
-`b103070680ab8f69980f2572ec3ae0068771dcac`. This record covers the
+**PASS.** The seven required physical checks and the final active-session
+Cmd+Q cache teardown check passed against tested code commit
+`2fb612a85d38a8154b5311ad6a461a4f2090c9a9`. This record covers the
 Pointer Events replacement for Viewer-internal organization drag, the final
 identity-bound file-operation safety corrections, and preservation of native
 Finder export and Finder-folder import.
 
 ## Environment and automated verification
 
-- Tested code commit: `b103070680ab8f69980f2572ec3ae0068771dcac`
-- Final verification head: `aaab801` (acceptance evidence plus focus-test timing stabilization)
+- Tested code commit: `2fb612a85d38a8154b5311ad6a461a4f2090c9a9`
+- Final verification head: `2fb612a85d38a8154b5311ad6a461a4f2090c9a9`
 - Gate: `CARGO_BUILD_JOBS=2 RUST_TEST_THREADS=2 TOKIO_WORKER_THREADS=2 RAYON_NUM_THREADS=2 pnpm gate:m3` — PASS, exit 0, ending with
   `M3 organization and comparison gate passed`.
 - Package: `pnpm build:macos` — PASS; Apple Silicon macOS 13-compatible
   `Viewer.app` and `Viewer_0.1.0_aarch64.dmg` built with the internal ad-hoc
   signature. Notarization is not required for internal 0.1.
 - App executable SHA-256:
-  `4b467e113802f56e13665a76fc334327cea59e2317adc533f17981da7418f2d2`
+  `d58863b9e1e772f8c3e7afb53a68667456f0834c52852932185c4400b491ecdb`
 - DMG SHA-256:
-  `e350a3adf3af37526b2001500fc26ac2674fd4d1dd3b7ce4ce73fd100152235b`
+  `482e71878a8c53d7c1f2c6b4b68537bff97c28f50e6ca2f2a2fffe7fe687824d`
 
 ## Fixture-relative integrity map
 
@@ -44,7 +45,7 @@ separate `destinations/` directory.
 | 4 | Default internal move | Dragging the `acceptance-photo.jpg` `⋮⋮` handle without Option removed `source-images/acceptance-photo.jpg` and created `organization-move/acceptance-photo.jpg` with SHA-256 `ffb89121baa0aafd524f82eb0ed6d0338e596f9a5e2b20d0749348f9d22dc2c7`. **PASS**. |
 | 5 | PointerDown-frozen Option copy | Option was down at PointerDown on the `acceptance-alpha.png` `⋮⋮` handle and released before PointerUp. Both `source-images/acceptance-alpha.png` and `organization-copy/acceptance-alpha.png` remained present with SHA-256 `f514f2a5563166aaa73d0549d3708a4fdf66a140d97ac57edefb050371699f77`. **PASS**. |
 | 6 | Native Finder-folder import | After closing the project, dragging the project folder from Finder into empty packaged Viewer reopened it and indexed `source-images/`, `source-text/`, `organization-move/`, and `organization-copy/` (scan `9/9`). Native Finder-folder import passed. **PASS**. |
-| 7 | Quit, relaunch, reimport, export | The exact packaged process was fully quit and verified absent, then relaunched to the empty import surface rather than the previous project. After reimport, a fresh export of `source-images/acceptance-alpha.png` created exactly `destinations/post-relaunch-export/acceptance-alpha.png` with the matching alpha PNG hash. **PASS**. |
+| 7 | Quit, relaunch, reimport, export | The exact packaged process was fully quit and verified absent, then relaunched to the empty import surface rather than the previous project. After reimport, a fresh export of `source-images/acceptance-alpha.png` created exactly `destinations/post-relaunch-export/acceptance-alpha.png` with the matching alpha PNG hash. The rebuilt final package was then opened empty, imported the project to scan `9/9`, created one fresh session-cache directory, and received a real Cmd+Q. The process exited, that exact cache directory disappeared, the cache root remained empty, and the next launch again showed the empty import surface. **PASS**. |
 
 ## Portable operation-journal evidence
 
@@ -65,8 +66,8 @@ pipeline. The journal recorded only fixture-relative paths:
 | Pointer Task 2 | Complete at `db1cb5a`; review approved. |
 | Pointer Task 3 | Complete at `dc50091` and `453234a`; review clean after the Important lifecycle fix. |
 | Pointer Task 4 | This physical acceptance record: all seven checks PASS. |
-| Final safety hardening | Complete at `b103070`; identity-bound cleanup/export validation, terminal-batch refresh and session/epoch guards have focused review Critical 0 / Important 0 / Minor 0. |
-| Rust file-operation boundary | Existing preflight, revalidation, transaction, journal, recovery, and watcher-reconciliation pipeline was reused; no new mutation protocol was introduced. |
+| Final safety hardening | Complete through `47908bd`; active-session process-exit cleanup, project-root-bound Trash, staged-copy leases, post-rename recovery retention, and terminal native-close convergence have focused review Critical 0 / Important 0 / Minor 0. |
+| Rust file-operation boundary | Existing preflight, revalidation, transaction, journal, recovery, and watcher-reconciliation pipeline remains in place; the copy boundary now retains an identity-bound staged lease until placement or safe cleanup. Repository policy at `2fb612a` requires that production path. |
 
 Viewer-internal organization uses **Pointer Events** and no HTML5
 `DataTransfer` or custom MIME type. The native incoming Finder-folder handler

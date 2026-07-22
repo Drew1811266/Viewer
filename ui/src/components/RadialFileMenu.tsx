@@ -264,8 +264,6 @@ export default function RadialFileMenu({
     <div
       ref={rootRef}
       className="radial-file-menu"
-      role="menu"
-      aria-label="文件操作"
       style={
         {
           '--radial-origin-x': `${fittedOrigin.x}px`,
@@ -310,26 +308,30 @@ export default function RadialFileMenu({
           />
         ))}
       </svg>
-      {model.map((item, index) => (
-        <RadialButton
-          key={item.id}
-          id={primaryButtonId(item)}
-          item={item}
-          level="primary"
-          index={index}
-          point={polarPoint({ x: 0, y: 0 }, 78, primaryCenterAngle(index))}
-          tabIndex={
-            !item.disabled && secondaryIndex === null && primaryIndex === index ? 0 : -1
-          }
-          controls={item.children === undefined ? undefined : secondaryMenuId(item)}
-          expanded={item.children === undefined ? undefined : expandedIndex === index}
-          onFocus={() => {
-            setPrimaryIndex(index)
-            setSecondaryIndex(null)
-          }}
-          onClick={() => execute(item, index)}
-        />
-      ))}
+      <div className="radial-primary-menu" role="menu" aria-label="文件操作">
+        {model.map((item, index) => (
+          <RadialButton
+            key={item.id}
+            id={primaryButtonId(item)}
+            item={item}
+            level="primary"
+            index={index}
+            point={polarPoint({ x: 0, y: 0 }, 78, primaryCenterAngle(index))}
+            tabIndex={secondaryIndex === null && primaryIndex === index ? 0 : -1}
+            controls={
+              item.children !== undefined && expandedIndex === index
+                ? secondaryMenuId(item)
+                : undefined
+            }
+            expanded={item.children === undefined ? undefined : expandedIndex === index}
+            onFocus={() => {
+              setPrimaryIndex(index)
+              setSecondaryIndex(null)
+            }}
+            onClick={() => execute(item, index)}
+          />
+        ))}
+      </div>
       {expandedItem?.children !== undefined ? (
         <div
           id={secondaryMenuId(expandedItem)}
@@ -346,7 +348,7 @@ export default function RadialFileMenu({
                 level="secondary"
                 index={index}
                 point={polarPoint({ x: 0, y: 0 }, 140, start + index * 30 + 15)}
-                tabIndex={!item.disabled && secondaryIndex === index ? 0 : -1}
+                tabIndex={secondaryIndex === index ? 0 : -1}
                 onFocus={() => setSecondaryIndex(index)}
                 onClick={() => execute(item, index)}
               />
@@ -357,6 +359,7 @@ export default function RadialFileMenu({
       <button
         type="button"
         className="radial-menu-center"
+        tabIndex={-1}
         onClick={onClose}
         onKeyDown={(event) => {
           if (event.key !== 'Enter' && event.key !== ' ') return

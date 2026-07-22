@@ -1,7 +1,7 @@
 /// <reference types="node" />
 
 import { readFileSync } from 'node:fs'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import RadialFileMenu from './RadialFileMenu'
 import { buildRadialMenuModel } from './radialMenuModel'
@@ -17,6 +17,14 @@ const model = buildRadialMenuModel({
   commonReview: null,
   commonFavorite: false,
 })
+
+function sequentialTabStops(container: HTMLElement): HTMLElement[] {
+  return Array.from(
+    container.querySelectorAll<HTMLElement>(
+      'button, [href], input, select, textarea, [tabindex]',
+    ),
+  ).filter((element) => element.tabIndex >= 0)
+}
 
 describe('RadialFileMenu', () => {
   it('exposes six stable primary menuitems and a selection-count center', () => {
@@ -39,8 +47,8 @@ describe('RadialFileMenu', () => {
     )
   })
 
-  it('keeps one enabled primary item in the tab order', () => {
-    render(
+  it('keeps exactly one sequential tab stop across the whole component', () => {
+    const { container } = render(
       <RadialFileMenu
         origin={{ x: 320, y: 240 }}
         pointerId={null}
@@ -53,9 +61,12 @@ describe('RadialFileMenu', () => {
 
     const preview = screen.getByRole('menuitem', { name: '预览' })
     const primaryItems = screen.getAllByRole('menuitem')
+    const center = screen.getByRole('button', { name: '关闭文件操作' })
     expect(preview).toHaveFocus()
     expect(preview).toHaveAttribute('tabindex', '0')
     expect(primaryItems.filter((item) => item.tabIndex === 0)).toEqual([preview])
+    expect(center).toHaveAttribute('tabindex', '-1')
+    expect(sequentialTabStops(container)).toEqual([preview])
 
     fireEvent.keyDown(screen.getByRole('menu', { name: '文件操作' }), {
       key: 'ArrowRight',
@@ -63,9 +74,13 @@ describe('RadialFileMenu', () => {
     const mark = screen.getByRole('menuitem', { name: '标记' })
     expect(mark).toHaveAttribute('tabindex', '0')
     expect(preview).toHaveAttribute('tabindex', '-1')
+
+    fireEvent.click(mark)
+    const keep = screen.getByRole('menuitemcheckbox', { name: '保留' })
+    expect(sequentialTabStops(container)).toEqual([keep])
   })
 
-  it('links expanded branches to a secondary menu with its own current item', () => {
+  it('uses legal sibling menus and only emits resolvable aria-controls references', () => {
     render(
       <RadialFileMenu
         origin={{ x: 320, y: 240 }}
@@ -79,9 +94,15 @@ describe('RadialFileMenu', () => {
 
     const mark = screen.getByRole('menuitem', { name: '标记' })
     const organize = screen.getByRole('menuitem', { name: '整理' })
+    const primaryMenu = screen.getByRole('menu', { name: '文件操作' })
+    const center = screen.getByRole('button', { name: '关闭文件操作' })
     expect(mark).toHaveAttribute('aria-expanded', 'false')
     expect(organize).toHaveAttribute('aria-expanded', 'false')
-    expect(mark).toHaveAttribute('aria-controls')
+    expect(mark).not.toHaveAttribute('aria-controls')
+    expect(organize).not.toHaveAttribute('aria-controls')
+    expect(primaryMenu.parentElement).not.toHaveAttribute('role')
+    expect(center.parentElement).toBe(primaryMenu.parentElement)
+    expect(primaryMenu.querySelectorAll(':scope > [role^="menuitem"]')).toHaveLength(6)
 
     fireEvent.click(mark)
 
@@ -92,10 +113,87 @@ describe('RadialFileMenu', () => {
     expect(mark).toHaveAttribute('aria-expanded', 'true')
     expect(submenu).toHaveAttribute('role', 'menu')
     expect(submenu).toHaveAttribute('aria-labelledby', mark.id)
+    expect(submenu?.parentElement).toBe(primaryMenu.parentElement)
+    expect(primaryMenu.contains(submenu)).toBe(false)
+    expect(primaryMenu.contains(center)).toBe(false)
+    document.querySelectorAll<HTMLElement>('[aria-controls]').forEach((controller) => {
+      expect(document.getElementById(controller.getAttribute('aria-controls') ?? '')).not.toBeNull()
+    })
     expect(keep).toHaveFocus()
     expect(keep).toHaveAttribute('tabindex', '0')
     expect(secondaryItems.filter((item) => item.tabIndex === 0)).toEqual([keep])
     expect(screen.getAllByRole('menuitem').every((item) => item.tabIndex === -1)).toBe(true)
+  })
+
+  it('keeps a focused disabled primary item as the sole roving current item', () => {
+    const action = vi.fn()
+    const { container } = render(
+      <RadialFileMenu
+        origin={{ x: 320, y: 240 }}
+        pointerId={null}
+        selectionCount={1}
+        model={model}
+        onAction={action}
+        onClose={vi.fn()}
+      />,
+    )
+
+    const compare = screen.getByRole('menuitem', { name: '并排对比' })
+    act(() => compare.focus())
+
+    expect(compare).toHaveFocus()
+    expect(compare).toHaveAttribute('tabindex', '0')
+    expect(sequentialTabStops(container)).toEqual([compare])
+    fireEvent.click(compare)
+    expect(action).not.toHaveBeenCalled()
+
+    fireEvent.keyDown(screen.getByRole('menu', { name: '文件操作' }), {
+      key: 'ArrowRight',
+    })
+    const info = screen.getByRole('menuitem', { name: '信息' })
+    expect(info).toHaveFocus()
+    expect(sequentialTabStops(container)).toEqual([info])
+  })
+
+  it('keeps a focused disabled secondary item as the sole roving current item', () => {
+    const action = vi.fn()
+    const modelWithDisabledChild = model.map((item) =>
+      item.id === 'mark'
+        ? {
+            ...item,
+            children: item.children?.map((child) =>
+              child.id === 'mark.pending' ? { ...child, disabled: true } : child,
+            ),
+          }
+        : item,
+    )
+    const { container } = render(
+      <RadialFileMenu
+        origin={{ x: 320, y: 240 }}
+        pointerId={null}
+        selectionCount={1}
+        model={modelWithDisabledChild}
+        onAction={action}
+        onClose={vi.fn()}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('menuitem', { name: '标记' }))
+    const pending = screen.getByRole('menuitemcheckbox', { name: '待定' })
+    act(() => pending.focus())
+
+    expect(pending).toHaveFocus()
+    expect(pending).toHaveAttribute('tabindex', '0')
+    expect(sequentialTabStops(container)).toEqual([pending])
+    fireEvent.click(pending)
+    expect(action).not.toHaveBeenCalled()
+
+    fireEvent.keyDown(screen.getByRole('menu', { name: '标记' }), {
+      key: 'ArrowRight',
+    })
+    const reject = screen.getByRole('menuitemcheckbox', { name: '淘汰' })
+    expect(reject).toHaveFocus()
+    expect(sequentialTabStops(container)).toEqual([reject])
   })
 
   it('opens the local marker fan and executes a leaf', () => {

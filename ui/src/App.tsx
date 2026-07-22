@@ -8,13 +8,15 @@ import ContentBrowser from './components/ContentBrowser'
 import CompareWorkspace from './components/CompareWorkspace'
 import CloseOperationDialog from './components/CloseOperationDialog'
 import DestinationDialog from './components/DestinationDialog'
-import FileActionToolbar from './components/FileActionToolbar'
 import FolderOverview from './components/FolderOverview'
 import FolderTree from './components/FolderTree'
 import ImagePreview from './components/ImagePreview'
 import InfoOverlay from './components/InfoOverlay'
-import MarkerControls from './components/MarkerControls'
 import OperationResults from './components/OperationResults'
+import RadialFileMenu from './components/RadialFileMenu'
+import type { RadialMenuRequest } from './components/RadialFileMenu'
+import { buildRadialMenuModel } from './components/radialMenuModel'
+import type { RadialLeafAction } from './components/radialMenuModel'
 import RenameDialog from './components/RenameDialog'
 import ReadOnlyBanner from './components/ReadOnlyBanner'
 import SearchResults from './components/SearchResults'
@@ -26,6 +28,7 @@ import TrashConfirmation from './components/TrashConfirmation'
 import { organizationShortcutIsOwned } from './state/organizationShortcutOwnership'
 import { useOrganizationPointerDrag } from './state/useOrganizationPointerDrag'
 import type { OrganizationDragMode } from './state/useOrganizationPointerDrag'
+import useReviewShortcuts from './state/useReviewShortcuts'
 import { useViewerController } from './state/useViewerController'
 import type {
   BrowserFile,
@@ -101,6 +104,7 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
   const [operationSubmitting, setOperationSubmitting] = useState(false)
   const [resultsBatchId, setResultsBatchId] = useState<string | null>(null)
   const [infoOpen, setInfoOpen] = useState(false)
+  const [radialMenu, setRadialMenu] = useState<RadialMenuRequest | null>(null)
   const [dimensions, setDimensions] = useState<
     Record<string, { width: number; height: number } | undefined>
   >({})
@@ -116,6 +120,7 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
     setOperationSubmitting(false)
     setResultsBatchId(null)
     setInfoOpen(false)
+    setRadialMenu(null)
     setDimensions({})
   }, [state.project?.sessionId])
   const requestThumbnail = useCallback(
@@ -253,6 +258,20 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
     state.workspace?.workspace === 'content' &&
     !state.search.showResults &&
     !operationBusy
+  const radialModel = useMemo(() => {
+    const files = radialMenu?.files ?? []
+    const reviews = new Set(files.map((file) => file.marker.reviewState))
+    const favorites = new Set(files.map((file) => file.marker.favorite))
+    return buildRadialMenuModel({
+      selectedCount: files.length,
+      selectedImageCount: files.filter(matchesImage).length,
+      readOnly: state.project?.access === 'read_only',
+      busy: operationBusy,
+      compareContextAvailable: compareEntryAvailable,
+      commonReview: reviews.size === 1 ? files[0]?.marker.reviewState ?? null : 'mixed',
+      commonFavorite: favorites.size === 1 ? files[0]?.marker.favorite ?? false : 'mixed',
+    })
+  }, [compareEntryAvailable, operationBusy, radialMenu, state.project?.access])
 
   useEffect(() => {
     function toggleInfo(event: KeyboardEvent) {
@@ -335,14 +354,6 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
         : { kind: 'batch_rename', files: selectedFiles },
     )
   }, [canMutateSelection, selectedFiles])
-
-  const openDestinationDialog = useCallback(
-    (mode: 'copy' | 'move') => {
-      if (!canMutateSelection) return
-      setOperationDialog({ kind: 'destination', mode, files: selectedFiles })
-    },
-    [canMutateSelection, selectedFiles],
-  )
 
   const openTrashDialog = useCallback(() => {
     if (!canMutateSelection) return
@@ -440,6 +451,19 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
     state.project?.generation ?? 'no-generation',
     organizationWorkspaceIdentity,
   ].join(':')
+
+  useEffect(() => {
+    setRadialMenu(null)
+  }, [
+    activePreview,
+    compareOpen,
+    infoOpen,
+    operationDialog,
+    organizationWorkspaceIdentity,
+    resultsBatchId,
+    state.closeBlocked,
+    state.contextRepair,
+  ])
   const {
     dragView: organizationDragView,
     dropTarget: organizationDropTarget,
@@ -471,6 +495,35 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
     setActivePreview(null)
     setPreviewEntityId(null)
   }, [setPreviewEntityId])
+
+  const runRadialAction = useCallback(
+    (action: RadialLeafAction) => {
+      const files = radialMenu?.files ?? []
+      if (files.length === 0) return
+      setRadialMenu(null)
+      const ids = files.map((file) => file.entityId)
+      if (action === 'preview' && files.length === 1) openPreview(files[0]!)
+      else if (action === 'mark.keep') void setReviewState('keep', ids)
+      else if (action === 'mark.pending') void setReviewState('pending', ids)
+      else if (action === 'mark.reject') void setReviewState('reject', ids)
+      else if (action === 'mark.clear') void setReviewState(null, ids)
+      else if (action === 'mark.favorite') void toggleFavorite(ids)
+      else if (action === 'organize.rename') {
+        setOperationDialog(
+          files.length === 1
+            ? { kind: 'rename', file: files[0]! }
+            : { kind: 'batch_rename', files },
+        )
+      } else if (action === 'organize.copy') {
+        setOperationDialog({ kind: 'destination', mode: 'copy', files })
+      } else if (action === 'organize.move') {
+        setOperationDialog({ kind: 'destination', mode: 'move', files })
+      } else if (action === 'trash') setOperationDialog({ kind: 'trash', files })
+      else if (action === 'compare') setCompareEntityIds(ids)
+      else if (action === 'info') setInfoOpen(true)
+    },
+    [openPreview, radialMenu, setCompareEntityIds, setReviewState, toggleFavorite],
+  )
 
   const openComparison = useCallback(() => {
     if (!compareEntryAvailable) {
@@ -610,6 +663,22 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
     undoLastOperation,
   ])
 
+  useReviewShortcuts({
+    disabled:
+      state.project?.access === 'read_only' ||
+      state.selectedEntityIds.length === 0 ||
+      operationBusy ||
+      state.status !== 'active' ||
+      operationDialog !== null ||
+      activePreview !== null ||
+      compareOpen ||
+      infoOpen ||
+      resultsBatchId !== null ||
+      state.closeBlocked !== null,
+    onSetReview: (reviewState) => void setReviewState(reviewState),
+    onToggleFavorite: () => void toggleFavorite(),
+  })
+
   if (state.project === null) {
     return (
       <EmptyProject
@@ -677,36 +746,6 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
         onLayoutChange={setSearchLayout}
         onRemoveFilter={removeSearchFilter}
         onClearFilters={clearSearchFilters}
-      />
-      <MarkerControls
-        selectedCount={state.selectedEntityIds.length}
-        selectionInfo={state.selectionInfo}
-        readOnly={state.project.access === 'read_only'}
-        shortcutsDisabled={
-          operationBusy ||
-          state.status !== 'active' ||
-          operationDialog !== null ||
-          activePreview !== null ||
-          compareOpen ||
-          infoOpen ||
-          resultsBatchId !== null ||
-          state.closeBlocked !== null
-        }
-        onSetReview={(reviewState) => void setReviewState(reviewState)}
-        onToggleFavorite={() => void toggleFavorite()}
-      />
-      <FileActionToolbar
-        selectedCount={selectedFiles.length}
-        selectedImageCount={selectedFiles.filter(matchesImage).length}
-        readOnly={state.project.access === 'read_only'}
-        busy={operationBusy || compareOpen}
-        compareContextAvailable={compareEntryAvailable}
-        onRename={openRenameDialog}
-        onCopy={() => openDestinationDialog('copy')}
-        onMove={() => openDestinationDialog('move')}
-        onTrash={openTrashDialog}
-        onCompare={openComparison}
-        onInfo={() => setInfoOpen(true)}
       />
       <div className="viewer-columns">
         <aside
@@ -803,6 +842,7 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
                   onOrganizationPointerInput={handleOrganizationPointerInput}
                   repairSelectionId={state.contextRepair?.suggestedEntityId ?? null}
                   onRepairSelectionApplied={consumeContextRepair}
+                  onRadialMenuRequest={setRadialMenu}
                 />
               </div>
               {compareOpen && (
@@ -847,6 +887,16 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
         }
         onShowResults={(taskId) => setResultsBatchId(taskId)}
       />
+      {radialMenu && (
+        <RadialFileMenu
+          origin={radialMenu.origin}
+          pointerId={radialMenu.pointerId}
+          selectionCount={radialMenu.files.length}
+          model={radialModel}
+          onAction={runRadialAction}
+          onClose={() => setRadialMenu(null)}
+        />
+      )}
       {activePreview && matchesImage(activePreview) && state.workspace?.workspace === 'content' && (
         <ImagePreview
           file={

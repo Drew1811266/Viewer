@@ -1,6 +1,5 @@
-import { useEffect } from 'react'
 import type { ReviewState, SelectionAgreement, SelectionInfo } from '../api/types'
-import { organizationShortcutIsOwned } from '../state/organizationShortcutOwnership'
+import useReviewShortcuts from '../state/useReviewShortcuts'
 
 interface MarkerControlsProps {
   selectedCount: number
@@ -20,39 +19,7 @@ export default function MarkerControls({
   shortcutsDisabled = false,
 }: MarkerControlsProps) {
   const disabled = readOnly || selectedCount === 0 || shortcutsDisabled
-  useEffect(() => {
-    function shortcut(event: KeyboardEvent) {
-      if (
-        organizationShortcutIsOwned(event, disabled || shortcutsDisabled) ||
-        event.metaKey ||
-        event.ctrlKey ||
-        event.altKey ||
-        event.shiftKey
-      ) {
-        return
-      }
-      const key = event.key.toLowerCase()
-      const review =
-        key === '1'
-          ? 'keep'
-          : key === '2'
-            ? 'pending'
-            : key === '3'
-              ? 'reject'
-              : key === '0'
-                ? null
-                : undefined
-      if (review !== undefined) {
-        event.preventDefault()
-        onSetReview(review)
-      } else if (key === 'f') {
-        event.preventDefault()
-        onToggleFavorite()
-      }
-    }
-    window.addEventListener('keydown', shortcut)
-    return () => window.removeEventListener('keydown', shortcut)
-  }, [disabled, onSetReview, onToggleFavorite, shortcutsDisabled])
+  useReviewShortcuts({ disabled, onSetReview, onToggleFavorite })
 
   return (
     <section className="marker-controls" aria-label="批量标记">

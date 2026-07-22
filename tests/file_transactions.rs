@@ -2,7 +2,10 @@ use async_trait::async_trait;
 use std::{
     fs,
     path::Path,
-    sync::{Arc, Mutex},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
 };
 use viewer_application::{
     FileMutationPort, FileOperationError, FileSnapshot, TrashPort,
@@ -19,7 +22,7 @@ use viewer_infrastructure::operation::{
     copy::LocalFileMutation,
     executor::{CopyExecutor, CopyResumeResult},
     journal::OperationJournal,
-    recovery::{RecoveryActionKind, RecoveryService},
+    recovery::{RecoveryActionKind, RecoveryReport, RecoveryService},
     rename::{RenameExecutor, RenameItemStatus, RenameMapping, RenamePlanner},
 };
 use viewer_test_support::{
@@ -105,6 +108,54 @@ struct FailingRenamePort {
 
 struct CancelledCopyPort {
     delegate: LocalFileMutation,
+}
+
+struct BoundRenameOnlyPort {
+    delegate: LocalFileMutation,
+    called: AtomicBool,
+}
+
+#[async_trait]
+impl FileMutationPort for BoundRenameOnlyPort {
+    async fn snapshot(&self, path: &Path) -> Result<FileSnapshot, FileOperationError> {
+        self.delegate.snapshot(path).await
+    }
+
+    async fn copy_and_hash(
+        &self,
+        source: &Path,
+        temporary: &Path,
+    ) -> Result<(u64, [u8; 32]), FileOperationError> {
+        self.delegate.copy_and_hash(source, temporary).await
+    }
+
+    async fn rename(&self, _source: &Path, _destination: &Path) -> Result<(), FileOperationError> {
+        Err(FileOperationError::IdentityChanged)
+    }
+
+    async fn rename_verified(
+        &self,
+        source: &Path,
+        destination: &Path,
+        expected: &FileSnapshot,
+        source_parent: viewer_application::watcher::FileIdentity,
+        destination_parent: viewer_application::watcher::FileIdentity,
+    ) -> Result<(), FileOperationError> {
+        self.called.store(true, Ordering::Release);
+        self.delegate
+            .rename_verified(
+                source,
+                destination,
+                expected,
+                source_parent,
+                destination_parent,
+            )
+            .await
+    }
+
+    async fn remove_registered_temporary(&self, path: &Path) -> Result<(), FileOperationError> {
+        self.delegate.remove_registered_temporary(path).await
+    }
 }
 
 #[async_trait]
@@ -232,6 +283,146 @@ async fn verified_copy_retry_after_reopen_finishes_registered_temporary() {
     assert_eq!(
         reopened.item(item.operation_id).unwrap().unwrap().state,
         OperationState::Completed
+    );
+}
+
+#[tokio::test]
+async fn verified_copy_recovery_places_only_through_the_bound_rename_primitive() {
+    let project = ProjectFixture::new();
+    let (journal, item, contents) = prepared_copy(&project);
+    let executor = CopyExecutor::new(
+        project.root(),
+        Arc::clone(&journal),
+        Arc::new(FailingRenamePort {
+            delegate: LocalFileMutation,
+        }),
+        Arc::new(FixedClock::new(2_000)),
+        operation_commits(),
+    )
+    .unwrap();
+    assert!(executor.execute(&item).await.is_err());
+    drop(executor);
+
+    let mutation = Arc::new(BoundRenameOnlyPort {
+        delegate: LocalFileMutation,
+        called: AtomicBool::new(false),
+    });
+    let retry = CopyExecutor::new(
+        project.root(),
+        Arc::clone(&journal),
+        mutation.clone(),
+        Arc::new(FixedClock::new(3_000)),
+        operation_commits(),
+    )
+    .unwrap();
+
+    let outcome = retry.resume(item.operation_id).await.unwrap();
+
+    assert!(matches!(outcome, CopyResumeResult::Completed(_)));
+    assert!(mutation.called.load(Ordering::Acquire));
+    assert_eq!(
+        fs::read(
+            project
+                .root()
+                .join(item.destination.as_ref().unwrap().as_str())
+        )
+        .unwrap(),
+        contents
+    );
+}
+
+#[tokio::test]
+async fn recovery_does_not_delete_an_unknown_registered_copy_temporary_occupant() {
+    let project = ProjectFixture::new();
+    let (journal, item, _) = prepared_copy(&project);
+    let destination = Path::new(item.destination.as_ref().unwrap().as_str());
+    let temporary = RelativePath::parse(
+        destination
+            .parent()
+            .unwrap()
+            .join(format!(".viewer-copy-{}.part", item.operation_id))
+            .to_str()
+            .unwrap(),
+    )
+    .unwrap();
+    journal
+        .register_temporary(
+            item.operation_id,
+            OperationState::Prepared,
+            &temporary,
+            1_002,
+        )
+        .unwrap();
+    let unknown = project.root().join(temporary.as_str());
+    fs::write(&unknown, b"unknown occupant").unwrap();
+    let recovery = RecoveryService::new(
+        project.root(),
+        Arc::clone(&journal),
+        Arc::new(LocalFileMutation),
+        durable_trash(&project),
+        Arc::new(FixedClock::new(9_000)),
+        operation_commits(),
+    )
+    .unwrap();
+
+    let report = recovery.recover_project().await.unwrap();
+
+    assert!(report.actions.is_empty());
+    assert_eq!(report.needs_user_review.len(), 1);
+    assert_eq!(fs::read(&unknown).unwrap(), b"unknown occupant");
+    assert_eq!(
+        journal.item(item.operation_id).unwrap().unwrap().state,
+        OperationState::Prepared
+    );
+}
+
+#[tokio::test]
+async fn cross_volume_recovery_does_not_delete_an_unbound_temporary_occupant() {
+    let project = ProjectFixture::new();
+    let source = project.create_file("source.jpg", b"source identity");
+    let destination = RelativePath::parse("exports/moved.jpg").unwrap();
+    fs::create_dir_all(project.root().join("exports")).unwrap();
+    let batch_id = OperationId::new();
+    let operation_id = OperationId::new();
+    let item = OperationItemPlan {
+        batch_id,
+        operation_id,
+        entity_id: EntityId::new(),
+        kind: OperationKind::Move,
+        source,
+        destination: Some(destination),
+        conflict_policy: ConflictPolicy::Skip,
+    };
+    let temporary =
+        RelativePath::parse(&format!("exports/.viewer-copy-{operation_id}.part")).unwrap();
+    let journal = Arc::new(OperationJournal::open(project.metadata_path()).unwrap());
+    journal
+        .begin_batch(batch_id, OperationKind::Move, 1, 1_000)
+        .unwrap();
+    journal.record_item(&item, 1_001).unwrap();
+    journal
+        .register_temporary(operation_id, OperationState::Prepared, &temporary, 1_002)
+        .unwrap();
+    let unknown = project.root().join(temporary.as_str());
+    fs::write(&unknown, b"unknown occupant").unwrap();
+    let recovery = RecoveryService::new(
+        project.root(),
+        Arc::clone(&journal),
+        Arc::new(LocalFileMutation),
+        durable_trash(&project),
+        Arc::new(FixedClock::new(9_000)),
+        operation_commits(),
+    )
+    .unwrap();
+
+    let report = recovery.recover_project().await.unwrap();
+
+    assert!(report.actions.is_empty());
+    assert_eq!(report.needs_user_review.len(), 1);
+    assert_eq!(fs::read(&unknown).unwrap(), b"unknown occupant");
+    assert_eq!(
+        journal.item(operation_id).unwrap().unwrap().state,
+        OperationState::Prepared
     );
 }
 
@@ -1027,7 +1218,7 @@ async fn recover_twice(
     project: &ProjectFixture,
     journal: Arc<OperationJournal>,
     trash: Arc<dyn TrashPort>,
-) {
+) -> (RecoveryReport, RecoveryReport) {
     let recovery = RecoveryService::new(
         project.root(),
         journal,
@@ -1037,12 +1228,13 @@ async fn recover_twice(
         operation_commits(),
     )
     .unwrap();
-    recovery.recover_project().await.unwrap();
+    let first = recovery.recover_project().await.unwrap();
     let second = recovery.recover_project().await.unwrap();
     assert!(
         second.actions.is_empty(),
         "recovery must be idempotent on the second pass"
     );
+    (first, second)
 }
 
 async fn copy_recovery_case(fail_after: OperationState) {
@@ -1063,7 +1255,8 @@ async fn copy_recovery_case(fail_after: OperationState) {
     drop(journal);
 
     let reopened = Arc::new(OperationJournal::open(project.metadata_path()).unwrap());
-    recover_twice(&project, Arc::clone(&reopened), durable_trash(&project)).await;
+    let (first_recovery, second_recovery) =
+        recover_twice(&project, Arc::clone(&reopened), durable_trash(&project)).await;
 
     assert_eq!(
         fs::read(project.root().join(item.source.as_str())).unwrap(),
@@ -1076,6 +1269,23 @@ async fn copy_recovery_case(fail_after: OperationState) {
         assert_eq!(fs::read(destination).unwrap(), contents);
     }
     let persisted = reopened.item(item.operation_id).unwrap().unwrap();
+    if matches!(
+        fail_after,
+        OperationState::Prepared | OperationState::Staged
+    ) {
+        assert!(first_recovery.actions.is_empty());
+        assert_eq!(first_recovery.needs_user_review.len(), 1);
+        assert!(second_recovery.actions.is_empty());
+        assert_eq!(second_recovery.needs_user_review.len(), 1);
+        assert_eq!(persisted.state, fail_after);
+        assert!(
+            project
+                .root()
+                .join(persisted.temporary.unwrap().as_str())
+                .is_file()
+        );
+        return;
+    }
     if let Some(temporary) = persisted.temporary {
         assert!(!project.root().join(temporary.as_str()).exists());
     }

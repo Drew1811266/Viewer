@@ -13,6 +13,28 @@ const COPY_BUFFER_BYTES: usize = 1024 * 1024;
 #[cfg(target_os = "macos")]
 const RENAME_NOFOLLOW_ANY: u32 = 0x0000_0010;
 
+#[cfg(target_os = "macos")]
+#[repr(C)]
+struct BoundFileReference {
+    hidden: [u8; 80],
+}
+
+#[cfg(target_os = "macos")]
+#[link(name = "CoreServices", kind = "framework")]
+unsafe extern "C" {
+    fn FSPathMakeRef(
+        path: *const u8,
+        reference: *mut BoundFileReference,
+        is_directory: *mut u8,
+    ) -> i32;
+    fn FSRefMakePath(
+        reference: *const BoundFileReference,
+        path: *mut u8,
+        max_path_size: u32,
+    ) -> i32;
+    fn FSUnlinkObject(reference: *const BoundFileReference) -> i32;
+}
+
 #[derive(Clone, Copy, Debug, Default)]
 pub struct LocalFileMutation;
 
@@ -220,36 +242,17 @@ fn remove_registered_temporary_bound_sync(
     expected_parent: FileIdentity,
     expected_leaf: Option<&FileSnapshot>,
 ) -> Result<(), FileOperationError> {
-    use std::os::fd::AsRawFd;
     let parent_path = path.parent().ok_or(FileOperationError::OutsideProject)?;
-    let parent = open_bound_parent(parent_path, expected_parent)?;
-    let name = encoded_file_name(path, "encode identity-bound temporary cleanup")?;
-    if let Some(expected) = expected_leaf {
-        let leaf = openat_file(
-            &parent,
-            path,
-            libc::O_RDONLY | libc::O_CLOEXEC | libc::O_NOFOLLOW,
-            0,
-            "open identity-bound temporary cleanup leaf",
-        )?;
-        if !snapshot_matches_bound_move(expected, &file_snapshot(&leaf)?) {
-            return Err(FileOperationError::IdentityChanged);
-        }
-    }
-    let result = unsafe { libc::unlinkat(parent.as_raw_fd(), name.as_ptr(), 0) };
-    if result == 0 {
-        return Ok(());
-    }
-    let error = std::io::Error::last_os_error();
-    if error.kind() == std::io::ErrorKind::NotFound {
-        Ok(())
-    } else {
-        Err(FileOperationError::io(
-            "remove identity-bound registered temporary",
-            path,
-            &error,
-        ))
-    }
+    let _parent = open_bound_parent(parent_path, expected_parent)?;
+    let Some(expected) = expected_leaf else {
+        return if path.exists() {
+            Err(FileOperationError::IdentityChanged)
+        } else {
+            Ok(())
+        };
+    };
+    let reference = bind_file_reference(path, expected)?;
+    unlink_file_reference(&reference, path)
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -259,9 +262,14 @@ fn remove_registered_temporary_bound_sync(
     expected_leaf: Option<&FileSnapshot>,
 ) -> Result<(), FileOperationError> {
     verify_parent_identity(path, expected_parent)?;
-    if let Some(expected) = expected_leaf
-        && !snapshot_matches_bound_move(expected, &snapshot_sync(path)?)
-    {
+    let Some(expected) = expected_leaf else {
+        return if path.exists() {
+            Err(FileOperationError::IdentityChanged)
+        } else {
+            Ok(())
+        };
+    };
+    if !snapshot_matches_bound_move(expected, &snapshot_sync(path)?) {
         return Err(FileOperationError::IdentityChanged);
     }
     match fs::remove_file(path) {
@@ -272,6 +280,134 @@ fn remove_registered_temporary_bound_sync(
             path,
             &error,
         )),
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn bind_file_reference(
+    path: &Path,
+    expected: &FileSnapshot,
+) -> Result<BoundFileReference, FileOperationError> {
+    use std::{ffi::CString, mem::MaybeUninit, os::unix::ffi::OsStrExt};
+
+    let encoded =
+        CString::new(path.as_os_str().as_bytes()).map_err(|_| FileOperationError::Io {
+            action: "bind temporary file reference",
+            path: path.to_path_buf(),
+            message: "path contains a NUL byte".into(),
+        })?;
+    let mut reference = MaybeUninit::<BoundFileReference>::uninit();
+    // SAFETY: `encoded` is NUL terminated and `reference` points to writable
+    // storage of the exact opaque FSRef size declared by CoreServices.
+    let status = unsafe {
+        FSPathMakeRef(
+            encoded.as_ptr().cast(),
+            reference.as_mut_ptr(),
+            std::ptr::null_mut(),
+        )
+    };
+    if status != 0 {
+        return Err(file_reference_error(
+            "bind temporary file reference",
+            path,
+            status,
+        ));
+    }
+    // SAFETY: CoreServices initialized the reference after returning success.
+    let reference = unsafe { reference.assume_init() };
+    let resolved = resolve_file_reference(&reference, path)?;
+    let file = open_path_no_follow(&resolved, "verify temporary file reference")?;
+    if !snapshot_matches_bound_move(expected, &file_snapshot(&file)?) {
+        return Err(FileOperationError::IdentityChanged);
+    }
+    Ok(reference)
+}
+
+#[cfg(target_os = "macos")]
+fn resolve_file_reference(
+    reference: &BoundFileReference,
+    error_path: &Path,
+) -> Result<PathBuf, FileOperationError> {
+    use std::{ffi::CStr, os::unix::ffi::OsStrExt};
+
+    let mut buffer = vec![0_u8; libc::PATH_MAX as usize];
+    // SAFETY: `buffer` is writable for the supplied length and `reference`
+    // was initialized by CoreServices.
+    let status = unsafe {
+        FSRefMakePath(
+            reference,
+            buffer.as_mut_ptr(),
+            u32::try_from(buffer.len()).expect("PATH_MAX fits in u32"),
+        )
+    };
+    if status != 0 {
+        return Err(file_reference_error(
+            "resolve temporary file reference",
+            error_path,
+            status,
+        ));
+    }
+    let resolved = unsafe { CStr::from_ptr(buffer.as_ptr().cast()) };
+    Ok(PathBuf::from(std::ffi::OsStr::from_bytes(
+        resolved.to_bytes(),
+    )))
+}
+
+#[cfg(target_os = "macos")]
+fn open_path_no_follow(path: &Path, action: &'static str) -> Result<File, FileOperationError> {
+    use std::{ffi::CString, os::fd::FromRawFd, os::unix::ffi::OsStrExt};
+
+    let encoded =
+        CString::new(path.as_os_str().as_bytes()).map_err(|_| FileOperationError::Io {
+            action,
+            path: path.to_path_buf(),
+            message: "path contains a NUL byte".into(),
+        })?;
+    // SAFETY: The C string is NUL terminated. O_NOFOLLOW_ANY rejects links in
+    // every path component before the descriptor is accepted.
+    let fd = unsafe {
+        libc::open(
+            encoded.as_ptr(),
+            libc::O_RDONLY | libc::O_CLOEXEC | libc::O_NOFOLLOW_ANY,
+        )
+    };
+    if fd < 0 {
+        return Err(FileOperationError::io(
+            action,
+            path,
+            &std::io::Error::last_os_error(),
+        ));
+    }
+    // SAFETY: `open` returned a new owned descriptor.
+    Ok(unsafe { File::from_raw_fd(fd) })
+}
+
+#[cfg(target_os = "macos")]
+fn unlink_file_reference(
+    reference: &BoundFileReference,
+    error_path: &Path,
+) -> Result<(), FileOperationError> {
+    // SAFETY: `reference` was initialized by CoreServices and stays live for
+    // the duration of the call. FSUnlinkObject removes that identity, not the
+    // current occupant of a pathname.
+    let status = unsafe { FSUnlinkObject(reference) };
+    if status == 0 || status == -43 {
+        Ok(())
+    } else {
+        Err(file_reference_error(
+            "unlink temporary file reference",
+            error_path,
+            status,
+        ))
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn file_reference_error(action: &'static str, path: &Path, status: i32) -> FileOperationError {
+    FileOperationError::Io {
+        action,
+        path: path.to_path_buf(),
+        message: format!("CoreServices returned OSStatus {status}"),
     }
 }
 
@@ -820,6 +956,8 @@ where
         0o600,
         "create bound registered copy temporary",
     )?;
+    let temporary_snapshot = file_snapshot(&temporary_file)?;
+    let temporary_reference = bind_file_reference(temporary, &temporary_snapshot)?;
     temporary_parent.sync_all().map_err(|error| {
         FileOperationError::io(
             "sync bound registered copy directory",
@@ -828,14 +966,18 @@ where
         )
     })?;
     after_create();
-    copy_open_files_and_evidence(
+    let copied = copy_open_files_and_evidence(
         source_file,
         temporary_file,
         source,
         temporary,
         cancellation,
         expected_source,
-    )
+    );
+    if copied.is_err() {
+        unlink_file_reference(&temporary_reference, temporary)?;
+    }
+    copied
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -1272,6 +1414,27 @@ mod tests {
         assert_ne!(snapshot_sync(&temporary).unwrap(), evidence.snapshot);
         assert_eq!(evidence.snapshot.len, b"selected bytes".len() as u64);
         assert_eq!(evidence.hash, *blake3::hash(b"selected bytes").as_bytes());
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn identity_bound_cleanup_unlinks_the_created_leaf_after_its_name_is_swapped() {
+        let directory = tempfile::tempdir().unwrap();
+        let root = fs::canonicalize(directory.path()).unwrap();
+        let temporary = root.join(".viewer-copy-test.part");
+        let parked = root.join("parked-created-temp.part");
+        let replacement = root.join("replacement.bin");
+        fs::write(&temporary, b"created temporary").unwrap();
+        fs::write(&replacement, b"replacement sentinel").unwrap();
+        let expected = snapshot_sync(&temporary).unwrap();
+        let reference = bind_file_reference(&temporary, &expected).unwrap();
+
+        fs::rename(&temporary, &parked).unwrap();
+        fs::rename(&replacement, &temporary).unwrap();
+        unlink_file_reference(&reference, &temporary).unwrap();
+
+        assert_eq!(fs::read(&temporary).unwrap(), b"replacement sentinel");
+        assert!(!parked.exists());
     }
 
     #[cfg(target_os = "macos")]

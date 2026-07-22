@@ -29,7 +29,7 @@ objc2 = "0.6.4"
 objc2-app-kit = { version = "0.3.2", default-features = false, features = ["std", "NSApplication", "NSDragging", "NSDraggingItem", "NSDraggingSession", "NSEvent", "NSGraphicsContext", "NSImage", "NSPasteboard", "NSResponder", "NSView", "NSWindow", "NSWorkspace"] }
 objc2-core-foundation = { version = "0.3.2", default-features = false, features = ["std", "CFDictionary", "CFNumber", "CFString", "CFURL"] }
 objc2-core-graphics = { version = "0.3.2", default-features = false, features = ["std", "CGImage"] }
-objc2-foundation = { version = "0.3.2", default-features = false, features = ["std", "NSError", "NSObject", "NSString", "NSURL"] }
+objc2-foundation = { version = "0.3.2", default-features = false, features = ["std", "NSError", "NSFileManager", "NSObject", "NSString", "NSURL"] }
 objc2-image-io = { version = "0.3.2", default-features = false, features = ["std", "CGImageDestination", "CGImageProperties", "CGImageSource", "objc2-core-graphics"] }
 objc2-quick-look-thumbnailing = { version = "0.3.2", default-features = false, features = ["std", "QLThumbnailGenerationRequest", "QLThumbnailGenerator", "QLThumbnailRepresentation", "block2", "objc2-core-foundation", "objc2-core-graphics"] }
 pulldown-cmark = { version = "0.13", default-features = false, features = ["html"] }

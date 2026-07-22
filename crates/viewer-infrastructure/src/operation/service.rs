@@ -1065,17 +1065,7 @@ impl LocalFileCommandAdapter {
             .await
         {
             Ok(copied) => copied,
-            Err(error) => {
-                let temporary_evidence = self.mutation.snapshot(&temporary_path).await.ok();
-                self.mutation
-                    .remove_registered_temporary_bound(
-                        &temporary_path,
-                        destination_parent_identity,
-                        temporary_evidence.as_ref(),
-                    )
-                    .await?;
-                return Err(error);
-            }
+            Err(error) => return Err(error),
         };
         self.journal
             .advance(

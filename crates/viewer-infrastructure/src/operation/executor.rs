@@ -8,7 +8,7 @@ use std::{
 };
 use viewer_application::{
     ClockPort, FaultInjector, FileMutationPort, FileOperationError, InjectedCrash, NoFaults,
-    OperationCommit, OperationCommitError, OperationCommitPort,
+    OperationCommit, OperationCommitError, OperationCommitPort, watcher::FileIdentity,
 };
 use viewer_domain::{
     OperationId, RelativePath,
@@ -190,7 +190,7 @@ impl CopyExecutor {
         )?;
         self.after_persist(item.operation_id, OperationState::Verified)?;
 
-        self.place_verified(item.operation_id, &temporary, &destination)
+        self.place_verified(item.operation_id, &temporary, &destination, copied)
             .await?;
 
         Ok(CopyResult {
@@ -220,9 +220,18 @@ impl CopyExecutor {
 
         match item.state {
             OperationState::Prepared | OperationState::Staged => {
-                self.mutation
-                    .remove_registered_temporary(&temporary)
-                    .await?;
+                match std::fs::symlink_metadata(&temporary) {
+                    Ok(_) => return Err(CopyError::MissingEvidence(operation_id)),
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                    Err(error) => {
+                        return Err(FileOperationError::io(
+                            "inspect registered copy temporary",
+                            &temporary,
+                            &error,
+                        )
+                        .into());
+                    }
+                }
                 self.journal.fail(
                     operation_id,
                     item.state,
@@ -241,7 +250,7 @@ impl CopyExecutor {
                     self.now(),
                 )?;
                 self.after_persist(operation_id, OperationState::Verified)?;
-                self.place_verified(operation_id, &temporary, &destination)
+                self.place_verified(operation_id, &temporary, &destination, expected)
                     .await?;
                 Ok(CopyResumeResult::Completed(CopyResult {
                     len: expected.0,
@@ -252,7 +261,7 @@ impl CopyExecutor {
                 let expected = expected_copy_evidence(&item)?;
                 if temporary.exists() {
                     self.verify_expected(&temporary, expected).await?;
-                    self.place_verified(operation_id, &temporary, &destination)
+                    self.place_verified(operation_id, &temporary, &destination, expected)
                         .await?;
                 } else if destination.exists() {
                     self.verify_expected(&destination, expected).await?;
@@ -323,11 +332,36 @@ impl CopyExecutor {
         operation_id: OperationId,
         temporary: &Path,
         destination: &Path,
+        expected: (u64, [u8; 32]),
     ) -> Result<(), CopyError> {
         if destination.exists() {
             return Err(FileOperationError::DestinationExists.into());
         }
-        self.mutation.rename(temporary, destination).await?;
+        let before = self.mutation.snapshot(temporary).await?;
+        self.verify_expected(temporary, expected).await?;
+        let after = self.mutation.snapshot(temporary).await?;
+        if before != after || after.len != expected.0 {
+            return Err(FileOperationError::IdentityChanged.into());
+        }
+        let source_parent = directory_identity(
+            temporary
+                .parent()
+                .ok_or(FileOperationError::OutsideProject)?,
+        )?;
+        let destination_parent = directory_identity(
+            destination
+                .parent()
+                .ok_or(FileOperationError::OutsideProject)?,
+        )?;
+        self.mutation
+            .rename_verified(
+                temporary,
+                destination,
+                &after,
+                source_parent,
+                destination_parent,
+            )
+            .await?;
         let destination_for_sync = destination.to_path_buf();
         let error_path = destination_for_sync.clone();
         tokio::task::spawn_blocking(move || sync_parent(&destination_for_sync))
@@ -429,6 +463,27 @@ impl CopyExecutor {
         self.faults
             .after_persist(operation_id, state)
             .map_err(Into::into)
+    }
+}
+
+fn directory_identity(path: &Path) -> Result<FileIdentity, FileOperationError> {
+    let metadata = std::fs::symlink_metadata(path).map_err(|error| {
+        FileOperationError::io("inspect copy placement directory", path, &error)
+    })?;
+    if metadata.file_type().is_symlink() || !metadata.is_dir() {
+        return Err(FileOperationError::OutsideProject);
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        Ok(FileIdentity {
+            volume: metadata.dev(),
+            file: metadata.ino(),
+        })
+    }
+    #[cfg(not(unix))]
+    {
+        Ok(FileIdentity { volume: 0, file: 0 })
     }
 }
 

@@ -181,7 +181,23 @@ impl RecoveryService {
                         "copy source is missing, a symlink, or no longer a regular file".into(),
                     ));
                 }
-                self.remove_bound_temporary(&temporary).await?;
+                match std::fs::symlink_metadata(&temporary) {
+                    Ok(_) => {
+                        return Ok(RecoveryOutcome::Review(
+                            "copy temporary has no persisted leaf identity; its occupant was not removed"
+                                .into(),
+                        ));
+                    }
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                    Err(error) => {
+                        return Err(FileOperationError::io(
+                            "inspect registered copy temporary",
+                            &temporary,
+                            &error,
+                        )
+                        .into());
+                    }
+                }
                 self.journal.fail(
                     item.operation_id,
                     item.state,
@@ -476,11 +492,25 @@ impl RecoveryService {
                     "cross-volume move has no evidence and its source is not intact".into(),
                 ));
             }
-            self.remove_bound_temporary(&temporary).await?;
+            match std::fs::symlink_metadata(&temporary) {
+                Ok(_) => {
+                    return Ok(RecoveryOutcome::Review(
+                        "cross-volume temporary has no persisted leaf identity; its occupant was not removed"
+                            .into(),
+                    ));
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => {
+                    return Err(FileOperationError::io(
+                        "inspect registered cross-volume temporary",
+                        &temporary,
+                        &error,
+                    )
+                    .into());
+                }
+            }
             self.mark_failed(item, "recovered_before_verified_cross_volume_move")?;
-            return Ok(RecoveryOutcome::Action(
-                RecoveryActionKind::CleanedTemporary,
-            ));
+            return Ok(RecoveryOutcome::Action(RecoveryActionKind::MarkedFailed));
         };
         let source_status = candidate_status(&source, expected).await?;
         let destination_status = candidate_status(&destination, expected).await?;
@@ -500,11 +530,14 @@ impl RecoveryService {
                 ));
             }
             if destination_status == CandidateStatus::Missing {
-                self.remove_bound_temporary(&temporary).await?;
+                if temporary_status != CandidateStatus::Missing {
+                    return Ok(RecoveryOutcome::Review(
+                        "cross-volume temporary has no persisted leaf identity; its occupant was not removed"
+                            .into(),
+                    ));
+                }
                 self.mark_failed(item, "recovered_cross_volume_move_before_placement")?;
-                return Ok(RecoveryOutcome::Action(
-                    RecoveryActionKind::CleanedTemporary,
-                ));
+                return Ok(RecoveryOutcome::Action(RecoveryActionKind::MarkedFailed));
             }
         }
 
@@ -667,19 +700,6 @@ impl RecoveryService {
                 source_parent,
                 destination_parent,
             )
-            .await?;
-        Ok(())
-    }
-
-    async fn remove_bound_temporary(&self, path: &Path) -> Result<(), RecoveryError> {
-        let expected = match self.mutation.snapshot(path).await {
-            Ok(expected) => Some(expected),
-            Err(FileOperationError::SourceMissing) => None,
-            Err(error) => return Err(error.into()),
-        };
-        let parent = directory_identity(path.parent().ok_or(FileOperationError::OutsideProject)?)?;
-        self.mutation
-            .remove_registered_temporary_bound(path, parent, expected.as_ref())
             .await?;
         Ok(())
     }

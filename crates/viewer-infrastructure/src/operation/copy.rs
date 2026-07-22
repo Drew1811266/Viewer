@@ -862,6 +862,37 @@ fn create_copy_and_hash_cancellable_verified_sync_with_hook<F>(
 where
     F: FnOnce() -> Result<(), FileOperationError>,
 {
+    create_copy_and_hash_cancellable_verified_sync_with_hooks(
+        source,
+        temporary,
+        cancellation,
+        expected_source,
+        source_parent_identity,
+        temporary_parent_identity,
+        || Ok(()),
+        || Ok(()),
+        after_create,
+    )
+}
+
+#[cfg(target_os = "macos")]
+#[allow(clippy::too_many_arguments)]
+fn create_copy_and_hash_cancellable_verified_sync_with_hooks<F, G, H>(
+    source: &Path,
+    temporary: &Path,
+    cancellation: &FileCommandCancellation,
+    expected_source: &FileSnapshot,
+    source_parent_identity: FileIdentity,
+    temporary_parent_identity: FileIdentity,
+    after_os_create: F,
+    after_identity_bound: G,
+    after_bound_create: H,
+) -> Result<FileContentEvidence, FileOperationError>
+where
+    F: FnOnce() -> Result<(), FileOperationError>,
+    G: FnOnce() -> Result<(), FileOperationError>,
+    H: FnOnce() -> Result<(), FileOperationError>,
+{
     let source_parent = open_bound_parent(
         source.parent().ok_or(FileOperationError::OutsideProject)?,
         source_parent_identity,
@@ -887,16 +918,34 @@ where
         0o600,
         "create bound registered copy temporary",
     )?;
-    let temporary_snapshot = file_snapshot(&temporary_file)?;
-    let temporary_reference = bind_file_reference(temporary, &temporary_snapshot)?;
-    temporary_parent.sync_all().map_err(|error| {
-        FileOperationError::io(
-            "sync bound registered copy directory",
-            temporary_parent_path,
-            &error,
-        )
-    })?;
-    let copied = after_create().and_then(|()| {
+    if let Err(primary) = after_os_create() {
+        return Err(unbound_copy_cleanup_obligation(primary, temporary));
+    }
+    let temporary_snapshot = match file_snapshot(&temporary_file) {
+        Ok(snapshot) => snapshot,
+        Err(primary) => return Err(unbound_copy_cleanup_obligation(primary, temporary)),
+    };
+    let temporary_reference = match bind_file_reference(temporary, &temporary_snapshot) {
+        Ok(reference) => reference,
+        Err(primary) => return Err(unbound_copy_cleanup_obligation(primary, temporary)),
+    };
+    let sync_result = after_identity_bound().and_then(|()| {
+        temporary_parent.sync_all().map_err(|error| {
+            FileOperationError::io(
+                "sync bound registered copy directory",
+                temporary_parent_path,
+                &error,
+            )
+        })
+    });
+    if let Err(primary) = sync_result {
+        return Err(bound_copy_cleanup_error(
+            &temporary_reference,
+            temporary,
+            primary,
+        ));
+    }
+    let copied = after_bound_create().and_then(|()| {
         copy_open_files_and_evidence(
             source_file,
             temporary_file,
@@ -908,13 +957,40 @@ where
     });
     match copied {
         Ok(evidence) => Ok(evidence),
-        Err(primary) => match unlink_file_reference(&temporary_reference, temporary) {
-            Ok(()) => Err(primary),
-            Err(cleanup) => Err(FileOperationError::RegisteredTemporaryCleanupRequired {
-                primary: Box::new(primary),
-                cleanup: Box::new(cleanup),
-            }),
+        Err(primary) => Err(bound_copy_cleanup_error(
+            &temporary_reference,
+            temporary,
+            primary,
+        )),
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn bound_copy_cleanup_error(
+    temporary_reference: &BoundFileReference,
+    temporary: &Path,
+    primary: FileOperationError,
+) -> FileOperationError {
+    match unlink_file_reference(temporary_reference, temporary) {
+        Ok(()) => primary,
+        Err(cleanup) => FileOperationError::RegisteredTemporaryCleanupRequired {
+            primary: Box::new(primary),
+            cleanup: Box::new(cleanup),
         },
+    }
+}
+
+fn unbound_copy_cleanup_obligation(
+    primary: FileOperationError,
+    temporary: &Path,
+) -> FileOperationError {
+    FileOperationError::RegisteredTemporaryCleanupRequired {
+        primary: Box::new(primary),
+        cleanup: Box::new(FileOperationError::Io {
+            action: "bind registered temporary cleanup identity",
+            path: temporary.to_path_buf(),
+            message: "temporary creation succeeded before a cleanup identity was available".into(),
+        }),
     }
 }
 
@@ -946,7 +1022,9 @@ where
         .map_err(|error| {
             FileOperationError::io("create bound registered copy temporary", temporary, &error)
         })?;
-    sync_parent(temporary)?;
+    if let Err(primary) = sync_parent(temporary) {
+        return Err(unbound_copy_cleanup_obligation(primary, temporary));
+    }
     match after_create().and_then(|()| {
         copy_open_files_and_evidence(
             source_file,
@@ -958,10 +1036,7 @@ where
         )
     }) {
         Ok(evidence) => Ok(evidence),
-        Err(primary) => Err(FileOperationError::RegisteredTemporaryCleanupRequired {
-            primary: Box::new(primary),
-            cleanup: Box::new(FileOperationError::IdentityChanged),
-        }),
+        Err(primary) => Err(unbound_copy_cleanup_obligation(primary, temporary)),
     }
 }
 
@@ -1412,6 +1487,85 @@ mod tests {
         );
 
         assert!(matches!(result, Err(FileOperationError::Cancelled)));
+        assert!(!temporary.exists());
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn registered_copy_bind_failure_becomes_a_cleanup_obligation() {
+        let directory = tempfile::tempdir().unwrap();
+        let root = fs::canonicalize(directory.path()).unwrap();
+        let source = root.join("source.bin");
+        let temporary = root.join(".viewer-copy-test.part");
+        let parked = root.join("parked-created-temp.part");
+        fs::write(&source, b"selected bytes").unwrap();
+        let parent_metadata = fs::metadata(&root).unwrap();
+        let parent_identity = FileIdentity {
+            volume: parent_metadata.dev(),
+            file: parent_metadata.ino(),
+        };
+        let source_snapshot = snapshot_sync(&source).unwrap();
+
+        let result = create_copy_and_hash_cancellable_verified_sync_with_hooks(
+            &source,
+            &temporary,
+            &FileCommandCancellation::default(),
+            &source_snapshot,
+            parent_identity,
+            parent_identity,
+            || {
+                fs::rename(&temporary, &parked).unwrap();
+                fs::write(&temporary, b"replacement sentinel").unwrap();
+                Ok(())
+            },
+            || Ok(()),
+            || panic!("copy hook must not run after setup failure"),
+        );
+
+        match result {
+            Err(FileOperationError::RegisteredTemporaryCleanupRequired { primary, cleanup }) => {
+                assert_eq!(*primary, FileOperationError::IdentityChanged);
+                assert_ne!(*cleanup, FileOperationError::Cancelled);
+            }
+            other => panic!("expected structured setup obligation, got {other:?}"),
+        }
+        assert_eq!(fs::read(&temporary).unwrap(), b"replacement sentinel");
+        assert!(parked.is_file());
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn registered_copy_bound_setup_error_cleans_identity_and_preserves_primary() {
+        let directory = tempfile::tempdir().unwrap();
+        let root = fs::canonicalize(directory.path()).unwrap();
+        let source = root.join("source.bin");
+        let temporary = root.join(".viewer-copy-test.part");
+        fs::write(&source, b"selected bytes").unwrap();
+        let parent_metadata = fs::metadata(&root).unwrap();
+        let parent_identity = FileIdentity {
+            volume: parent_metadata.dev(),
+            file: parent_metadata.ino(),
+        };
+        let source_snapshot = snapshot_sync(&source).unwrap();
+        let setup_error = FileOperationError::Io {
+            action: "injected directory sync failure",
+            path: temporary.clone(),
+            message: "injected failure".into(),
+        };
+
+        let result = create_copy_and_hash_cancellable_verified_sync_with_hooks(
+            &source,
+            &temporary,
+            &FileCommandCancellation::default(),
+            &source_snapshot,
+            parent_identity,
+            parent_identity,
+            || Ok(()),
+            || Err(setup_error.clone()),
+            || panic!("copy hook must not run after bound setup failure"),
+        );
+
+        assert_eq!(result, Err(setup_error));
         assert!(!temporary.exists());
     }
 

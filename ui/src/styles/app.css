@@ -1440,3 +1440,113 @@ select {
   color: #737982;
   margin-top: 0;
 }
+
+.radial-file-menu {
+  height: 336px;
+  left: var(--radial-origin-x);
+  position: fixed;
+  top: var(--radial-origin-y);
+  transform: translate(-168px, -168px);
+  width: 336px;
+  z-index: 25;
+}
+
+.radial-file-menu-shapes {
+  filter: drop-shadow(0 18px 30px rgb(31 41 55 / 22%));
+  inset: 0;
+  overflow: visible;
+  position: absolute;
+}
+
+.radial-primary-shape,
+.radial-secondary-shape {
+  fill: rgb(253 254 255 / 98%);
+  stroke: #cbd3de;
+  stroke-width: 1.5;
+}
+
+.radial-primary-shape[data-active="true"],
+.radial-secondary-shape[data-active="true"] {
+  fill: #dceaff;
+  stroke: #4c8dde;
+  stroke-width: 2;
+}
+
+.radial-primary-shape[data-disabled="true"] {
+  fill: #f3f4f6;
+  opacity: 0.62;
+}
+
+.radial-secondary-shape {
+  fill: #e7f0ff;
+  stroke: #8db9ef;
+}
+
+.radial-menu-button {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  color: #3e4857;
+  display: flex;
+  flex-direction: column;
+  font-size: 10px;
+  font-weight: 650;
+  height: 46px;
+  justify-content: center;
+  left: calc(168px + var(--radial-x));
+  padding: 2px;
+  position: absolute;
+  top: calc(168px + var(--radial-y));
+  transform: translate(-50%, -50%);
+  width: 66px;
+}
+
+.radial-menu-button > span:first-child {
+  font-size: 18px;
+  line-height: 1;
+}
+
+.radial-menu-button[data-level="secondary"] {
+  color: #175fc4;
+  font-size: 9px;
+  width: 58px;
+}
+
+.radial-menu-button[data-tone="destructive"] {
+  color: #a12720;
+}
+
+.radial-menu-button[aria-disabled="true"] {
+  filter: grayscale(1);
+  opacity: 0.38;
+}
+
+.radial-menu-button:focus-visible,
+.radial-menu-center:focus-visible {
+  border-radius: 9px;
+  box-shadow: 0 0 0 3px rgb(36 119 212 / 42%);
+  outline: none;
+}
+
+.radial-menu-center {
+  align-items: center;
+  background: #fff;
+  border: 1px solid #d4dae3;
+  border-radius: 50%;
+  box-shadow: 0 4px 14px rgb(31 41 55 / 17%);
+  color: #727c89;
+  display: flex;
+  flex-direction: column;
+  font-size: 9px;
+  height: 78px;
+  justify-content: center;
+  left: 129px;
+  position: absolute;
+  top: 129px;
+  width: 78px;
+}
+
+.radial-menu-center strong {
+  color: #202733;
+  font-size: 12px;
+}

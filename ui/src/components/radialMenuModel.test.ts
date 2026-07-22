@@ -67,9 +67,7 @@ describe('buildRadialMenuModel', () => {
     expect(readOnly[3]).toMatchObject({ disabled: true, disabledReason: '只读项目不可删除' })
     expect(readOnly[5]).toMatchObject({ disabled: false })
 
-    const busy = buildRadialMenuModel(
-      context({ selectedCount: 3, selectedImageCount: 3, busy: true }),
-    )
+    const busy = buildRadialMenuModel(context({ busy: true }))
     expect(
       busy
         .filter((item) => ['mark', 'organize', 'trash', 'compare'].includes(item.id))
@@ -77,6 +75,20 @@ describe('buildRadialMenuModel', () => {
     ).toBe(true)
     expect(busy[0]).toMatchObject({ disabled: false })
     expect(busy[5]).toMatchObject({ disabled: false })
+  })
+
+  it('keeps preview limited to exactly one selection even while busy', () => {
+    const busySingle = buildRadialMenuModel(context({ busy: true }))
+    expect(busySingle[0]).toMatchObject({ id: 'preview', disabled: false })
+
+    const busyMultiple = buildRadialMenuModel(
+      context({ selectedCount: 3, selectedImageCount: 3, busy: true }),
+    )
+    expect(busyMultiple[0]).toMatchObject({
+      id: 'preview',
+      disabled: true,
+      disabledReason: '预览仅适用于单个文件',
+    })
   })
 
   it('reflects common marker state and batch rename copy', () => {

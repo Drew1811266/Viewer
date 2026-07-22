@@ -91,9 +91,9 @@ export function buildRadialMenuModel(context: RadialMenuContext): RadialMenuItem
       id: 'preview',
       label: '预览',
       symbol: '◉',
-      disabled: !context.busy && context.selectedCount !== 1,
+      disabled: context.selectedCount !== 1,
       disabledReason:
-        !context.busy && context.selectedCount !== 1 ? '预览仅适用于单个文件' : undefined,
+        context.selectedCount !== 1 ? '预览仅适用于单个文件' : undefined,
     },
     {
       id: 'mark',

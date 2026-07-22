@@ -405,24 +405,92 @@ describe('Viewer empty state', () => {
     expect(screen.getByRole('complementary', { name: '文件信息' })).toBeVisible()
   })
 
-  it('routes marker, organize, compare, and Trash leaves through existing safe owners', async () => {
+  it('routes keep, favorite, rename, copy, move, compare, and Trash through existing owners', async () => {
     const viewer = bridge()
-    vi.mocked(viewer.queryFolder).mockResolvedValue(contentWorkspace())
+    vi.mocked(viewer.folderTree).mockResolvedValue([
+      {
+        entityId: 'folder-b',
+        parentEntityId: null,
+        relativePath: 'selected',
+        name: 'selected',
+        marker: { reviewState: null, favorite: false },
+      },
+    ])
+    vi.mocked(viewer.queryFolder).mockResolvedValue(compareContentWorkspace())
+    vi.mocked(viewer.preflightFileCommand).mockImplementation(async (request) => ({
+      rows: request.items.map((item) => ({
+        entityId: item.entityId,
+        relativePath: `selected/${item.entityId}.jpg`,
+        state: 'ready' as const,
+      })),
+      executable: true,
+    }))
     render(<App bridge={viewer} />)
     fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
     const front = await screen.findByRole('option', { name: 'front.jpg' })
     openRadialMenu(front, 91)
     fireEvent.click(screen.getByRole('menuitem', { name: '标记' }))
     fireEvent.click(screen.getByRole('menuitemcheckbox', { name: '保留' }))
-    await waitFor(() => expect(viewer.setReviewState).toHaveBeenCalled())
+    await waitFor(() =>
+      expect(viewer.setReviewState).toHaveBeenCalledWith({
+        sessionId: 'session-1',
+        generation: 1,
+        entityIds: ['image-1'],
+        reviewState: 'keep',
+      }),
+    )
 
     openRadialMenu(front, 92)
+    fireEvent.click(screen.getByRole('menuitem', { name: '标记' }))
+    fireEvent.click(screen.getByRole('menuitemcheckbox', { name: '收藏' }))
+    await waitFor(() =>
+      expect(viewer.toggleFavorite).toHaveBeenCalledWith({
+        sessionId: 'session-1',
+        generation: 1,
+        entityIds: ['image-1'],
+      }),
+    )
+
+    openRadialMenu(front, 93)
     fireEvent.click(screen.getByRole('menuitem', { name: '整理' }))
     fireEvent.click(screen.getByRole('menuitem', { name: '重命名' }))
     expect(screen.getByRole('dialog', { name: '重命名文件' })).toBeVisible()
     fireEvent.click(screen.getByRole('button', { name: '取消' }))
 
-    openRadialMenu(front, 93)
+    for (const [mode, actionLabel, dialogName] of [
+      ['copy', '复制到', '选择复制目标'],
+      ['move', '移动到', '选择移动目标'],
+    ] as const) {
+      openRadialMenu(front, mode === 'copy' ? 94 : 95)
+      fireEvent.click(screen.getByRole('menuitem', { name: '整理' }))
+      fireEvent.click(screen.getByRole('menuitem', { name: actionLabel }))
+      const dialog = screen.getByRole('dialog', { name: dialogName })
+      fireEvent.click(within(dialog).getByRole('radio', { name: /selected/ }))
+      fireEvent.click(within(dialog).getByRole('button', { name: '检查冲突' }))
+      await waitFor(() =>
+        expect(viewer.preflightFileCommand).toHaveBeenCalledWith({
+          sessionId: 'session-1',
+          generation: 1,
+          kind: mode,
+          items: [
+            {
+              entityId: 'image-1',
+              action: { kind: mode, destinationFolderId: 'folder-b' },
+            },
+          ],
+        }),
+      )
+      fireEvent.click(within(dialog).getByRole('button', { name: '取消' }))
+    }
+
+    const back = screen.getByRole('option', { name: 'back.jpg' })
+    fireEvent.click(back, { metaKey: true })
+    openRadialMenu(back, 96)
+    fireEvent.click(screen.getByRole('menuitem', { name: '并排对比' }))
+    expect(await screen.findByRole('region', { name: '图片对比' })).toBeVisible()
+    fireEvent.click(screen.getByRole('button', { name: '关闭对比' }))
+
+    openRadialMenu(front, 97)
     fireEvent.click(screen.getByRole('menuitem', { name: '移到废纸篓' }))
     expect(screen.getByRole('dialog', { name: '将文件移到废纸篓？' })).toBeVisible()
   })
@@ -601,10 +669,10 @@ describe('Viewer empty state', () => {
     expect(viewer.undoLastOperation).not.toHaveBeenCalled()
   })
 
-  it('keeps write surfaces disabled while completed-operation cleanup is pending', async () => {
+  it('keeps writes blocked while busy without weakening single-selection preview', async () => {
     const viewer = bridge()
     const results = deferred<{ total: number; offset: number; items: [] }>()
-    vi.mocked(viewer.queryFolder).mockResolvedValue(contentWorkspace())
+    vi.mocked(viewer.queryFolder).mockResolvedValue(compareContentWorkspace())
     vi.mocked(viewer.operationResults).mockImplementation(() => results.promise)
     vi.mocked(viewer.operationStatus).mockResolvedValue({
       sessionId: 'session-1',
@@ -651,8 +719,17 @@ describe('Viewer empty state', () => {
       'aria-disabled',
       'false',
     )
-    fireEvent.keyDown(window, { key: 'Enter' })
-    expect(screen.queryByRole('dialog', { name: '重命名文件' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('menuitem', { name: '预览' }))
+    expect(screen.getByRole('dialog', { name: '图片预览' })).toBeVisible()
+    fireEvent.click(screen.getByRole('button', { name: '关闭预览' }))
+
+    const back = screen.getByRole('option', { name: 'back.jpg' })
+    fireEvent.click(back, { metaKey: true })
+    openRadialMenu(back, 95)
+    const multiPreview = screen.getByRole('menuitem', { name: '预览' })
+    expect(multiPreview).toHaveAttribute('aria-disabled', 'true')
+    fireEvent.click(multiPreview)
+    expect(screen.queryByRole('dialog', { name: '图片预览' })).not.toBeInTheDocument()
 
     await act(async () => {
       results.resolve({ total: 0, offset: 0, items: [] })

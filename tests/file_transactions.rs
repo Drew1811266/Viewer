@@ -8,7 +8,7 @@ use std::{
     },
 };
 use viewer_application::{
-    FileContentEvidence, FileMutationPort, FileOperationError, FileSnapshot, TrashPort,
+    FileContentEvidence, FileMutationPort, FileOperationError, FileSnapshot, StagedCopy, TrashPort,
     file_commands::FileCommandCancellation,
     metadata::MarkerTarget,
     undo::{UndoAction, UndoError, UndoStack},
@@ -145,6 +145,30 @@ struct SwapTemporaryAfterCombinedCopy {
 
 #[async_trait]
 impl FileMutationPort for SwapTemporaryAfterCombinedCopy {
+    async fn create_staged_copy_cancellable_verified(
+        self: Arc<Self>,
+        source: &Path,
+        temporary: &Path,
+        cancellation: &FileCommandCancellation,
+        expected_source: &FileSnapshot,
+        source_parent: FileIdentity,
+        temporary_parent: FileIdentity,
+    ) -> Result<StagedCopy, FileOperationError> {
+        let staged = Arc::new(self.delegate)
+            .create_staged_copy_cancellable_verified(
+                source,
+                temporary,
+                cancellation,
+                expected_source,
+                source_parent,
+                temporary_parent,
+            )
+            .await?;
+        fs::rename(temporary, &self.parked).unwrap();
+        fs::copy(&self.parked, temporary).unwrap();
+        Ok(staged)
+    }
+
     async fn create_and_copy_cancellable_verified(
         &self,
         source: &Path,
@@ -386,7 +410,7 @@ async fn legacy_copy_executor_never_places_an_equal_byte_temporary_replacement()
     ));
     assert!(!destination.exists());
     assert_eq!(fs::read(&temporary).unwrap(), contents);
-    assert_eq!(fs::read(&parked).unwrap(), contents);
+    assert!(!parked.exists());
     assert_eq!(
         journal.item(item.operation_id).unwrap().unwrap().state,
         OperationState::Failed
@@ -407,7 +431,7 @@ async fn legacy_copy_executor_never_places_an_equal_byte_temporary_replacement()
     assert_eq!(report.needs_user_review.len(), 1);
     assert!(!destination.exists());
     assert_eq!(fs::read(&temporary).unwrap(), contents);
-    assert_eq!(fs::read(&parked).unwrap(), contents);
+    assert!(!parked.exists());
 }
 
 #[tokio::test]

@@ -12,7 +12,7 @@ use tokio::sync::{Mutex as AsyncMutex, Notify};
 use viewer_application::{
     BrowseIndexPort, CommitStage, FileContentEvidence, FileMutationPort, FileOperationError,
     FileSnapshot, OperationCommit, OperationCommitError, OperationCommitPort, ProjectAccess,
-    TrashPort, VolumePort,
+    StagedCopy, TrashPort, VolumePort,
     file_commands::{
         BatchResultCode, ConflictResolution, FileCommand, FileCommandAction,
         FileCommandCancellation, FileCommandItem, FileCommandKind, FileCommandPreflightState,
@@ -1816,6 +1816,84 @@ struct ReplaceDestinationParentAfterCreate {
     outside_temporary: Mutex<Option<PathBuf>>,
 }
 
+struct ReparentDestinationAfterStagedCopy {
+    delegate: LocalFileMutation,
+    reparent: Mutex<Option<(PathBuf, PathBuf)>>,
+}
+
+#[async_trait]
+impl FileMutationPort for ReparentDestinationAfterStagedCopy {
+    async fn create_staged_copy_cancellable_verified(
+        self: Arc<Self>,
+        source: &Path,
+        temporary: &Path,
+        cancellation: &FileCommandCancellation,
+        expected_source: &FileSnapshot,
+        source_parent: FileIdentity,
+        temporary_parent: FileIdentity,
+    ) -> Result<StagedCopy, FileOperationError> {
+        let staged = Arc::new(self.delegate)
+            .create_staged_copy_cancellable_verified(
+                source,
+                temporary,
+                cancellation,
+                expected_source,
+                source_parent,
+                temporary_parent,
+            )
+            .await?;
+        if let Some((parent, moved_parent)) = self.reparent.lock().unwrap().take() {
+            fs::rename(&parent, &moved_parent).map_err(|error| {
+                FileOperationError::io("reparent destination after staged copy", &parent, &error)
+            })?;
+        }
+        Ok(staged)
+    }
+
+    async fn create_and_copy_cancellable_verified(
+        &self,
+        source: &Path,
+        temporary: &Path,
+        cancellation: &FileCommandCancellation,
+        expected_source: &FileSnapshot,
+        source_parent: FileIdentity,
+        temporary_parent: FileIdentity,
+    ) -> Result<FileContentEvidence, FileOperationError> {
+        let copied = delegate_registered_copy(
+            &self.delegate,
+            source,
+            temporary,
+            cancellation,
+            expected_source,
+            source_parent,
+            temporary_parent,
+        )
+        .await?;
+        if let Some((parent, moved_parent)) = self.reparent.lock().unwrap().take() {
+            fs::rename(&parent, &moved_parent).map_err(|error| {
+                FileOperationError::io("reparent destination after staged copy", &parent, &error)
+            })?;
+        }
+        Ok(copied)
+    }
+
+    async fn snapshot(&self, path: &Path) -> Result<FileSnapshot, FileOperationError> {
+        self.delegate.snapshot(path).await
+    }
+
+    async fn copy_and_hash(
+        &self,
+        source: &Path,
+        temporary: &Path,
+    ) -> Result<(u64, [u8; 32]), FileOperationError> {
+        self.delegate.copy_and_hash(source, temporary).await
+    }
+
+    async fn rename(&self, source: &Path, destination: &Path) -> Result<(), FileOperationError> {
+        self.delegate.rename(source, destination).await
+    }
+}
+
 #[async_trait]
 impl FileMutationPort for ReplaceDestinationParentAfterCreate {
     async fn create_and_copy_cancellable_verified(
@@ -2057,6 +2135,46 @@ async fn copy_cleanup_cannot_follow_a_replaced_destination_parent_outside_the_pr
         fs::read(fixture.project.root().join("source/item.png")).unwrap(),
         b"source"
     );
+}
+
+#[cfg(target_os = "macos")]
+#[tokio::test]
+async fn copy_cleans_the_bound_temporary_when_parent_leaves_after_staging_before_placement() {
+    let outside = tempfile::tempdir().unwrap();
+    let moved_parent = outside.path().join("moved-exports");
+    let mutation = Arc::new(ReparentDestinationAfterStagedCopy {
+        delegate: LocalFileMutation,
+        reparent: Mutex::new(None),
+    });
+    let fixture = Fixture::with_mutation(false, mutation.clone());
+    fixture.directory("source");
+    let destination = fixture.directory("exports");
+    let source = fixture.file("source/item.png", b"complete copied bytes");
+    let parent = fixture.project.root().join("exports");
+    *mutation.reparent.lock().unwrap() = Some((parent, moved_parent.clone()));
+    let command = fixture.command(
+        FileCommandKind::Copy,
+        vec![FileCommandItem {
+            entity_id: source,
+            action: FileCommandAction::Copy {
+                destination_folder: destination,
+            },
+        }],
+    );
+    let preflight = fixture.service.preflight(command).await.unwrap();
+
+    let summary = fixture.service.execute(preflight, &[], None).await.unwrap();
+
+    assert_eq!(summary.failed(), 1);
+    assert!(
+        fs::read_dir(&moved_parent).unwrap().next().is_none(),
+        "the FSRef-bound full temporary must be unlinked outside the project"
+    );
+    assert_eq!(
+        fs::read(fixture.project.root().join("source/item.png")).unwrap(),
+        b"complete copied bytes"
+    );
+    assert_eq!(fixture.trash.count(), 0);
 }
 
 #[cfg(unix)]

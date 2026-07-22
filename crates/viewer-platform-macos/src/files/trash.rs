@@ -1,14 +1,35 @@
 use async_trait::async_trait;
 use objc2_foundation::{NSFileManager, NSURL};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use trash::{
     TrashContext,
     macos::{DeleteMethod, TrashContextExtMacos},
 };
 use viewer_application::{FileOperationError, FileSnapshot, TrashPort, watcher::FileIdentity};
 
-#[derive(Clone, Copy, Debug, Default)]
-pub struct MacTrashPort;
+#[derive(Clone, Debug)]
+pub struct MacTrashPort {
+    canonical_project_root: PathBuf,
+}
+
+impl MacTrashPort {
+    pub fn new(project_root: impl AsRef<Path>) -> Result<Self, FileOperationError> {
+        let canonical_project_root =
+            std::fs::canonicalize(project_root.as_ref()).map_err(|error| {
+                FileOperationError::io(
+                    "canonicalize Trash project root",
+                    project_root.as_ref(),
+                    &error,
+                )
+            })?;
+        if !canonical_project_root.is_dir() {
+            return Err(FileOperationError::OutsideProject);
+        }
+        Ok(Self {
+            canonical_project_root,
+        })
+    }
+}
 
 fn mac_trash_context() -> TrashContext {
     let mut context = TrashContext::new();
@@ -46,9 +67,11 @@ impl TrashPort for MacTrashPort {
     ) -> Result<(), FileOperationError> {
         let path = path.to_path_buf();
         let expected = expected.clone();
+        let canonical_project_root = self.canonical_project_root.clone();
         let error_path = path.clone();
         tokio::task::spawn_blocking(move || {
             trash_verified_sync_with_sink(
+                &canonical_project_root,
                 &path,
                 &expected,
                 expected_parent,
@@ -74,6 +97,7 @@ impl TrashPort for MacTrashPort {
 }
 
 fn trash_verified_sync_with_sink<BeforeSink, Sink>(
+    canonical_project_root: &Path,
     path: &Path,
     expected: &FileSnapshot,
     expected_parent: FileIdentity,
@@ -84,10 +108,152 @@ where
     BeforeSink: FnOnce(),
     Sink: FnOnce(&NSURL) -> Result<(), FileOperationError>,
 {
-    let (_parent, leaf) = open_bound_trash_leaf(path, expected, expected_parent)?;
+    let (parent, leaf) = open_bound_trash_leaf(path, expected, expected_parent)?;
     let reference = bound_file_reference(path, &leaf)?;
     before_sink();
+    validate_bound_trash_parent_location(
+        &parent,
+        canonical_project_root,
+        expected_parent,
+        path.parent().ok_or(FileOperationError::OutsideProject)?,
+    )?;
+    validate_bound_trash_leaf_location(
+        &reference,
+        &leaf,
+        canonical_project_root,
+        path.parent().ok_or(FileOperationError::OutsideProject)?,
+        path,
+    )?;
     sink(&reference)
+}
+
+fn validate_bound_trash_parent_location(
+    parent: &std::fs::File,
+    canonical_project_root: &Path,
+    expected_parent: FileIdentity,
+    expected_parent_path: &Path,
+) -> Result<(), FileOperationError> {
+    use std::{
+        ffi::CStr,
+        os::{fd::AsRawFd, unix::ffi::OsStrExt, unix::fs::MetadataExt},
+    };
+
+    let current_root = std::fs::canonicalize(canonical_project_root).map_err(|error| {
+        FileOperationError::io(
+            "revalidate Trash project root",
+            canonical_project_root,
+            &error,
+        )
+    })?;
+    if current_root != canonical_project_root {
+        return Err(FileOperationError::OutsideProject);
+    }
+    if !expected_parent_path.starts_with(canonical_project_root) {
+        return Err(FileOperationError::OutsideProject);
+    }
+
+    let metadata = parent.metadata().map_err(|error| {
+        FileOperationError::io(
+            "revalidate identity-bound Trash parent",
+            expected_parent_path,
+            &error,
+        )
+    })?;
+    if metadata.dev() != expected_parent.volume || metadata.ino() != expected_parent.file {
+        return Err(FileOperationError::IdentityChanged);
+    }
+
+    let mut path = vec![0_i8; libc::PATH_MAX as usize];
+    let result = unsafe { libc::fcntl(parent.as_raw_fd(), libc::F_GETPATH, path.as_mut_ptr()) };
+    if result < 0 {
+        return Err(FileOperationError::io(
+            "resolve identity-bound Trash parent",
+            expected_parent_path,
+            &std::io::Error::last_os_error(),
+        ));
+    }
+    let current = unsafe { CStr::from_ptr(path.as_ptr()) };
+    let current_path = PathBuf::from(std::ffi::OsStr::from_bytes(current.to_bytes()));
+    let canonical_current = std::fs::canonicalize(&current_path).map_err(|error| {
+        FileOperationError::io(
+            "canonicalize identity-bound Trash parent",
+            &current_path,
+            &error,
+        )
+    })?;
+    if canonical_current != current_path
+        || canonical_current != expected_parent_path
+        || !canonical_current.starts_with(canonical_project_root)
+    {
+        return Err(FileOperationError::OutsideProject);
+    }
+    Ok(())
+}
+
+fn validate_bound_trash_leaf_location(
+    reference: &NSURL,
+    leaf: &std::fs::File,
+    canonical_project_root: &Path,
+    expected_parent_path: &Path,
+    expected_path: &Path,
+) -> Result<(), FileOperationError> {
+    use std::{
+        ffi::CStr,
+        os::{fd::FromRawFd, unix::ffi::OsStrExt, unix::fs::MetadataExt},
+    };
+
+    let resolved = reference
+        .filePathURL()
+        .ok_or(FileOperationError::IdentityChanged)?;
+    let resolved_path = unsafe { CStr::from_ptr(resolved.fileSystemRepresentation().as_ptr()) };
+    let current_path = PathBuf::from(std::ffi::OsStr::from_bytes(resolved_path.to_bytes()));
+    let current_parent = current_path
+        .parent()
+        .ok_or(FileOperationError::OutsideProject)?;
+    let canonical_parent = std::fs::canonicalize(current_parent).map_err(|error| {
+        FileOperationError::io(
+            "canonicalize identity-bound Trash leaf parent",
+            current_parent,
+            &error,
+        )
+    })?;
+    if canonical_parent != expected_parent_path
+        || !canonical_parent.starts_with(canonical_project_root)
+    {
+        return Err(FileOperationError::OutsideProject);
+    }
+
+    let resolved_fd = unsafe {
+        libc::open(
+            resolved_path.as_ptr(),
+            libc::O_RDONLY | libc::O_CLOEXEC | libc::O_NOFOLLOW_ANY,
+        )
+    };
+    if resolved_fd < 0 {
+        return Err(FileOperationError::io(
+            "reopen identity-bound Trash leaf",
+            expected_path,
+            &std::io::Error::last_os_error(),
+        ));
+    }
+    let resolved_file = unsafe { std::fs::File::from_raw_fd(resolved_fd) };
+    let expected_metadata = leaf.metadata().map_err(|error| {
+        FileOperationError::io("reinspect verified Trash leaf", expected_path, &error)
+    })?;
+    let resolved_metadata = resolved_file.metadata().map_err(|error| {
+        FileOperationError::io(
+            "reinspect identity-bound Trash reference",
+            expected_path,
+            &error,
+        )
+    })?;
+    if !resolved_metadata.is_file()
+        || expected_metadata.dev() != resolved_metadata.dev()
+        || expected_metadata.ino() != resolved_metadata.ino()
+    {
+        return Err(FileOperationError::IdentityChanged);
+    }
+    Ok(())
 }
 
 fn bound_file_reference(
@@ -281,6 +447,7 @@ mod tests {
         let expected = snapshot(&selected);
 
         trash_verified_sync_with_sink(
+            &root,
             &selected,
             &expected,
             parent_identity(&root),
@@ -298,7 +465,7 @@ mod tests {
     }
 
     #[test]
-    fn verified_trash_sink_keeps_the_bound_leaf_when_its_parent_is_reparented() {
+    fn verified_trash_sink_rejects_the_bound_leaf_when_its_parent_is_reparented_outside_project() {
         let directory = tempfile::tempdir().unwrap();
         let root = fs::canonicalize(directory.path()).unwrap();
         let outside = tempfile::tempdir().unwrap();
@@ -311,7 +478,8 @@ mod tests {
         fs::write(&selected, b"selected identity").unwrap();
         let expected = snapshot(&selected);
 
-        trash_verified_sync_with_sink(
+        let result = trash_verified_sync_with_sink(
+            &root,
             &selected,
             &expected,
             parent_identity(&parent),
@@ -321,12 +489,81 @@ mod tests {
                 fs::write(parent.join("selected.bin"), b"replacement identity").unwrap();
             },
             |reference| fake_trash_reference(reference, &trashed),
-        )
-        .unwrap();
+        );
 
+        assert_eq!(result, Err(FileOperationError::OutsideProject));
         assert_eq!(fs::read(&selected).unwrap(), b"replacement identity");
-        assert_eq!(fs::read(&trashed).unwrap(), b"selected identity");
-        assert!(!moved_parent.join("selected.bin").exists());
+        assert_eq!(
+            fs::read(moved_parent.join("selected.bin")).unwrap(),
+            b"selected identity"
+        );
+        assert!(!trashed.exists());
+    }
+
+    #[test]
+    fn verified_trash_sink_rejects_the_bound_leaf_when_its_parent_is_reparented_within_project() {
+        let directory = tempfile::tempdir().unwrap();
+        let root = fs::canonicalize(directory.path()).unwrap();
+        let parent = root.join("parent");
+        let moved_parent = root.join("moved-parent");
+        fs::create_dir(&parent).unwrap();
+        let selected = parent.join("selected.bin");
+        let trashed = root.join("trashed.bin");
+        fs::write(&selected, b"selected identity").unwrap();
+        let expected = snapshot(&selected);
+
+        let result = trash_verified_sync_with_sink(
+            &root,
+            &selected,
+            &expected,
+            parent_identity(&parent),
+            || {
+                fs::rename(&parent, &moved_parent).unwrap();
+                fs::create_dir(&parent).unwrap();
+                fs::write(parent.join("selected.bin"), b"replacement identity").unwrap();
+            },
+            |reference| fake_trash_reference(reference, &trashed),
+        );
+
+        assert_eq!(result, Err(FileOperationError::OutsideProject));
+        assert_eq!(fs::read(&selected).unwrap(), b"replacement identity");
+        assert_eq!(
+            fs::read(moved_parent.join("selected.bin")).unwrap(),
+            b"selected identity"
+        );
+        assert!(!trashed.exists());
+    }
+
+    #[test]
+    fn verified_trash_sink_rejects_a_bound_leaf_moved_outside_its_expected_parent() {
+        let directory = tempfile::tempdir().unwrap();
+        let root = fs::canonicalize(directory.path()).unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        let outside_root = fs::canonicalize(outside.path()).unwrap();
+        let selected = root.join("selected.bin");
+        let replacement = root.join("replacement.bin");
+        let moved = outside_root.join("moved-selected.bin");
+        let trashed = outside_root.join("trashed.bin");
+        fs::write(&selected, b"selected identity").unwrap();
+        fs::write(&replacement, b"replacement identity").unwrap();
+        let expected = snapshot(&selected);
+
+        let result = trash_verified_sync_with_sink(
+            &root,
+            &selected,
+            &expected,
+            parent_identity(&root),
+            || {
+                fs::rename(&selected, &moved).unwrap();
+                fs::rename(&replacement, &selected).unwrap();
+            },
+            |reference| fake_trash_reference(reference, &trashed),
+        );
+
+        assert_eq!(result, Err(FileOperationError::OutsideProject));
+        assert_eq!(fs::read(&selected).unwrap(), b"replacement identity");
+        assert_eq!(fs::read(&moved).unwrap(), b"selected identity");
+        assert!(!trashed.exists());
     }
 
     #[tokio::test]
@@ -337,7 +574,11 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("viewer-real-trash-smoke.txt");
         std::fs::write(&path, b"Viewer disposable Trash smoke test").unwrap();
-        MacTrashPort.trash(&path).await.unwrap();
+        MacTrashPort::new(directory.path())
+            .unwrap()
+            .trash(&path)
+            .await
+            .unwrap();
         assert!(!path.exists());
     }
 }

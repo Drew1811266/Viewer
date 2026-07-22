@@ -17,6 +17,28 @@ pub mod watcher_runtime;
 
 pub const APP_NAME: &str = "Viewer";
 const PROJECT_CLOSED_EVENT: &str = "viewer://project-closed";
+const TERMINAL_CLOSE_CACHE_CLEANUP_FAILURE: &str = "project_closed_cache_cleanup_failed";
+
+pub(crate) fn is_terminal_close_cleanup_failure(error: &error::CommandError) -> bool {
+    error.code == TERMINAL_CLOSE_CACHE_CLEANUP_FAILURE
+}
+
+fn close_completion_after_attempt(
+    attempt: &Result<state::CloseRequestOutcome, error::CommandError>,
+    target: state::CloseTarget,
+) -> Option<state::CloseCompletionAction> {
+    let outcome = match attempt {
+        Ok(outcome) => *outcome,
+        Err(error) if is_terminal_close_cleanup_failure(error) => {
+            state::CloseRequestOutcome::Closed
+        }
+        Err(_) => return None,
+    };
+    match outcome.completion_action(target) {
+        state::CloseCompletionAction::KeepOpen => None,
+        action => Some(action),
+    }
+}
 
 #[derive(Default)]
 pub struct ExitGate(AtomicBool);
@@ -223,10 +245,25 @@ pub fn run() {
                             let outcome = runtime
                                 .request_close_for(None, state::CloseTarget::Window)
                                 .await;
-                            if outcome.is_ok_and(|outcome| {
-                                outcome.completion_action(state::CloseTarget::Window)
-                                    == state::CloseCompletionAction::HideWindow
-                            }) {
+                            if let Err(error) = &outcome
+                                && is_terminal_close_cleanup_failure(error)
+                            {
+                                eprintln!(
+                                    "Viewer window-close cache cleanup failed: {}",
+                                    error.code
+                                );
+                                if let Err(retry_error) =
+                                    runtime.cleanup_session_caches_for_process_exit()
+                                {
+                                    eprintln!(
+                                        "Viewer window-close cache cleanup retry failed: {}",
+                                        retry_error.code
+                                    );
+                                }
+                            }
+                            if close_completion_after_attempt(&outcome, state::CloseTarget::Window)
+                                == Some(state::CloseCompletionAction::HideWindow)
+                            {
                                 let _ = app_handle.emit(PROJECT_CLOSED_EVENT, ());
                                 if let Some(window) = app_handle.get_webview_window("main") {
                                     let _ = window.hide();
@@ -252,10 +289,20 @@ pub fn run() {
             let outcome = tauri::async_runtime::block_on(
                 runtime.request_close_for(None, state::CloseTarget::Application),
             );
-            if outcome.is_ok_and(|outcome| {
-                outcome.completion_action(state::CloseTarget::Application)
-                    == state::CloseCompletionAction::ExitApplication
-            }) {
+            if let Err(error) = &outcome
+                && is_terminal_close_cleanup_failure(error)
+            {
+                let _ = app.emit(PROJECT_CLOSED_EVENT, ());
+                if let Err(retry_error) = runtime.cleanup_session_caches_for_process_exit() {
+                    eprintln!(
+                        "Viewer application-close cache cleanup retry failed: {}",
+                        retry_error.code
+                    );
+                }
+            }
+            if close_completion_after_attempt(&outcome, state::CloseTarget::Application)
+                == Some(state::CloseCompletionAction::ExitApplication)
+            {
                 exit_gate.allow_exit();
                 app.exit(0);
             }
@@ -267,18 +314,73 @@ pub fn run() {
                 let _ = window.set_focus();
             }
         }
+        tauri::RunEvent::Exit => {
+            // On macOS a native Quit can reach the final Exit event without a
+            // preventable ExitRequested event. Finish session teardown here
+            // and synchronously sweep Viewer-owned session directories before
+            // the operating system terminates the process.
+            let runtime = app.state::<Arc<state::DesktopRuntime>>();
+            if let Err(error) = tauri::async_runtime::block_on(runtime.finalize_process_exit()) {
+                eprintln!("Viewer process-exit cleanup failed: {}", error.code);
+            }
+        }
         _ => {}
     });
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::{
+        error::{CommandError, ErrorCategory},
+        state::{CloseCompletionAction, CloseRequestOutcome, CloseTarget},
+    };
+
     #[test]
     fn exit_gate_changes_only_after_a_committed_application_close() {
         let gate = super::ExitGate::default();
         assert!(!gate.exit_is_allowed());
         gate.allow_exit();
         assert!(gate.exit_is_allowed());
+    }
+
+    #[test]
+    fn native_close_treats_terminal_cache_cleanup_failure_as_committed() {
+        let error = CommandError::new(
+            "project_closed_cache_cleanup_failed",
+            ErrorCategory::Environment,
+            "cache cleanup failed",
+            true,
+        );
+
+        assert_eq!(
+            super::close_completion_after_attempt(&Err(error.clone()), CloseTarget::Window),
+            Some(CloseCompletionAction::HideWindow)
+        );
+        assert_eq!(
+            super::close_completion_after_attempt(&Err(error), CloseTarget::Application),
+            Some(CloseCompletionAction::ExitApplication)
+        );
+    }
+
+    #[test]
+    fn native_close_does_not_commit_stayed_or_unrelated_error_attempts() {
+        assert_eq!(
+            super::close_completion_after_attempt(
+                &Ok(CloseRequestOutcome::Stayed),
+                CloseTarget::Window
+            ),
+            None
+        );
+        let error = CommandError::new(
+            "internal_error",
+            ErrorCategory::Internal,
+            "unexpected",
+            false,
+        );
+        assert_eq!(
+            super::close_completion_after_attempt(&Err(error), CloseTarget::Application),
+            None
+        );
     }
 
     #[test]

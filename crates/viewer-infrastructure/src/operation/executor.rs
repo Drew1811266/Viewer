@@ -8,7 +8,7 @@ use std::{
 };
 use viewer_application::{
     ClockPort, FaultInjector, FileMutationPort, FileOperationError, FileSnapshot, InjectedCrash,
-    NoFaults, OperationCommit, OperationCommitError, OperationCommitPort,
+    NoFaults, OperationCommit, OperationCommitError, OperationCommitPort, StagedCopy,
     file_commands::FileCommandCancellation, watcher::FileIdentity,
 };
 use viewer_domain::{
@@ -140,9 +140,8 @@ impl CopyExecutor {
                 .ok_or(FileOperationError::OutsideProject)?,
         )?;
         let cancellation = FileCommandCancellation::default();
-        let copied = match self
-            .mutation
-            .create_and_copy_cancellable_verified(
+        let staged = match Arc::clone(&self.mutation)
+            .create_staged_copy_cancellable_verified(
                 &source,
                 &temporary,
                 &cancellation,
@@ -152,7 +151,7 @@ impl CopyExecutor {
             )
             .await
         {
-            Ok(copied) => copied,
+            Ok(staged) => staged,
             Err(FileOperationError::Cancelled) => {
                 self.journal.fail(
                     item.operation_id,
@@ -164,14 +163,20 @@ impl CopyExecutor {
             }
             Err(error) => return Err(error.into()),
         };
-        self.after_persist(item.operation_id, OperationState::Prepared)?;
+        let copied = staged.evidence().clone();
+        let staged = self.after_persist_before_placement(
+            item.operation_id,
+            OperationState::Prepared,
+            staged,
+        )?;
         self.journal.advance(
             item.operation_id,
             OperationState::Prepared,
             OperationState::Staged,
             self.now(),
         )?;
-        self.after_persist(item.operation_id, OperationState::Staged)?;
+        let staged =
+            self.after_persist_before_placement(item.operation_id, OperationState::Staged, staged)?;
 
         self.journal.record_fs_applied(
             item.operation_id,
@@ -180,26 +185,33 @@ impl CopyExecutor {
             copied.hash,
             self.now(),
         )?;
-        self.after_persist(item.operation_id, OperationState::FsApplied)?;
+        let staged = self.after_persist_before_placement(
+            item.operation_id,
+            OperationState::FsApplied,
+            staged,
+        )?;
 
         let copied_content = (copied.snapshot.len, copied.hash);
-        self.verify_expected(&temporary, copied_content).await?;
         self.journal.advance(
             item.operation_id,
             OperationState::FsApplied,
             OperationState::Verified,
             self.now(),
         )?;
-        self.after_persist(item.operation_id, OperationState::Verified)?;
-
-        self.place_verified(
+        let staged = self.after_persist_before_placement(
             item.operation_id,
-            &temporary,
-            &destination,
-            copied_content,
-            Some(&copied.snapshot),
-        )
-        .await?;
+            OperationState::Verified,
+            staged,
+        )?;
+
+        if let Err(error) = staged.place(&destination, temporary_parent).await {
+            if error.primary() == &FileOperationError::IdentityChanged {
+                self.retain_identity_change_for_review(item.operation_id)?;
+            }
+            return Err(error.into());
+        }
+        self.finish_journal(item.operation_id, OperationState::Verified)
+            .await?;
 
         Ok(CopyResult {
             len: copied_content.0,
@@ -495,6 +507,25 @@ impl CopyExecutor {
         self.faults
             .after_persist(operation_id, state)
             .map_err(Into::into)
+    }
+
+    fn after_persist_before_placement(
+        &self,
+        operation_id: OperationId,
+        state: OperationState,
+        staged: StagedCopy,
+    ) -> Result<StagedCopy, CopyError> {
+        match self.after_persist(operation_id, state) {
+            Ok(()) => Ok(staged),
+            Err(error @ CopyError::Injected(_)) => {
+                // The fault injector models abrupt process termination. A real crash would not
+                // run the armed lease's Drop implementation, so preserve the staged identity for
+                // journal recovery instead of making the simulation artificially cleaner.
+                std::mem::forget(staged);
+                Err(error)
+            }
+            Err(error) => Err(error),
+        }
     }
 }
 

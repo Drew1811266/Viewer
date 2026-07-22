@@ -182,7 +182,7 @@ async fn unreadable_root_fails_before_activation_without_leaking_details() {
 }
 
 #[tokio::test]
-async fn cache_cleanup_failure_still_commits_the_closed_terminal_state() {
+async fn cache_cleanup_failure_is_reported_after_committing_the_closed_terminal_state() {
     let cache = tempfile::tempdir().unwrap();
     let project = tempfile::tempdir().unwrap();
     let outside = tempfile::tempdir().unwrap();
@@ -202,10 +202,8 @@ async fn cache_cleanup_failure_still_commits_the_closed_terminal_state() {
     fs::remove_dir_all(&session_cache).unwrap();
     std::os::unix::fs::symlink(outside.path(), &session_cache).unwrap();
 
-    assert_eq!(
-        runtime.request_close(None).await.unwrap(),
-        CloseRequestOutcome::Closed
-    );
+    let error = runtime.request_close(None).await.unwrap_err();
+    assert_eq!(error.code, "project_closed_cache_cleanup_failed");
     assert!(runtime.snapshot().await.is_none());
     assert_eq!(
         fs::read(outside.path().join("sentinel")).unwrap(),
@@ -215,6 +213,26 @@ async fn cache_cleanup_failure_still_commits_the_closed_terminal_state() {
     let next_project = tempfile::tempdir().unwrap();
     runtime.open_project(next_project.path()).await.unwrap();
     runtime.close_project().await.unwrap();
+}
+
+#[tokio::test]
+async fn process_exit_fallback_closes_the_session_and_removes_its_cache() {
+    let cache = tempfile::tempdir().unwrap();
+    let project = tempfile::tempdir().unwrap();
+    fs::write(project.path().join("notes.txt"), b"exit cleanup").unwrap();
+    let runtime = DesktopRuntime::new(
+        cache.path().to_path_buf(),
+        Arc::new(FixedProbe(ProjectAccess::ReadOnly)),
+    );
+    runtime.open_project(project.path()).await.unwrap();
+    runtime.wait_for_scan().await.unwrap();
+
+    assert_eq!(fs::read_dir(cache.path()).unwrap().count(), 1);
+
+    runtime.finalize_process_exit().await.unwrap();
+
+    assert!(runtime.snapshot().await.is_none());
+    assert_eq!(fs::read_dir(cache.path()).unwrap().count(), 0);
 }
 
 #[tokio::test]

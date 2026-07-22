@@ -28,7 +28,7 @@ use viewer_domain::{
 
 use super::{
     conflict::{ReplaceExecutor, keep_both_destination},
-    copy::{hash_file_sync, sync_parent},
+    copy::hash_file_sync,
     journal::OperationJournal,
     rename::{
         RenameExecutor, RenameItemStatus, RenameMapping, RenameParentIdentities, RenamePlan,
@@ -1052,9 +1052,8 @@ impl LocalFileCommandAdapter {
             .source_evidence
             .clone()
             .ok_or(FileOperationError::IdentityChanged)?;
-        let copied = match self
-            .mutation
-            .create_and_copy_cancellable_verified(
+        let staged = match Arc::clone(&self.mutation)
+            .create_staged_copy_cancellable_verified(
                 &source_path,
                 &temporary_path,
                 cancellation,
@@ -1064,9 +1063,10 @@ impl LocalFileCommandAdapter {
             )
             .await
         {
-            Ok(copied) => copied,
+            Ok(staged) => staged,
             Err(error) => return Err(error),
         };
+        let copied = staged.evidence().clone();
         self.journal
             .advance(
                 item.plan.operation_id,
@@ -1097,14 +1097,12 @@ impl LocalFileCommandAdapter {
             )
             .map_err(journal_file_error)?;
 
-        self.register_expected_change(
+        self.register_expected_change_for_snapshot(
             item.plan.operation_id,
             &destination_path,
             &destination_path,
-            &temporary_path,
-            None,
-        )
-        .await?;
+            &copied.snapshot,
+        )?;
         if item.route == PreparedRoute::CrossVolumeMove {
             self.register_expected_change(
                 item.plan.operation_id,
@@ -1144,16 +1142,9 @@ impl LocalFileCommandAdapter {
         if destination_path.exists() {
             return Err(FileOperationError::DestinationExists);
         }
-        self.mutation
-            .rename_verified(
-                &temporary_path,
-                &destination_path,
-                &copied.snapshot,
-                destination_parent_identity,
-                destination_parent_identity,
-            )
+        staged
+            .place(&destination_path, destination_parent_identity)
             .await?;
-        sync_parent_async(&destination_path).await?;
 
         if item.route == PreparedRoute::CrossVolumeMove {
             let before_trash = stable_content_evidence_async(&source_path).await?;
@@ -1424,6 +1415,30 @@ impl LocalFileCommandAdapter {
         if expected_identity.is_some_and(|expected| *expected != snapshot) {
             return Err(FileOperationError::IdentityChanged);
         }
+        let file = snapshot
+            .file_id
+            .and_then(|file| u64::try_from(file).ok())
+            .ok_or(FileOperationError::IdentityChanged)?;
+        self.expected_changes.register(ExpectedChange {
+            operation_id,
+            old_canonical_path: old_path.to_path_buf(),
+            new_canonical_path: new_path.to_path_buf(),
+            expected_identity: FileIdentity {
+                volume: snapshot.volume_id,
+                file,
+            },
+            expires_at_ms: self.now_u64().saturating_add(EXPECTED_CHANGE_TTL_MS),
+        });
+        Ok(())
+    }
+
+    fn register_expected_change_for_snapshot(
+        &self,
+        operation_id: OperationId,
+        old_path: &Path,
+        new_path: &Path,
+        snapshot: &FileSnapshot,
+    ) -> Result<(), FileOperationError> {
         let file = snapshot
             .file_id
             .and_then(|file| u64::try_from(file).ok())
@@ -2274,14 +2289,6 @@ pub(crate) fn trash_temporary_for(
             .ok_or(FileOperationError::OutsideProject)?,
     )
     .map_err(|_| FileOperationError::OutsideProject)
-}
-
-async fn sync_parent_async(path: &Path) -> Result<(), FileOperationError> {
-    let path = path.to_path_buf();
-    let error_path = path.clone();
-    tokio::task::spawn_blocking(move || sync_parent(&path))
-        .await
-        .map_err(|error| worker_file_error("sync destination parent", &error_path, error))?
 }
 
 fn worker_file_error(

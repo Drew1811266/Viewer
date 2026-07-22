@@ -891,6 +891,30 @@ describe('useViewerController M2 coordination', () => {
     expect(result.current.state.project).toBeNull()
     expect(result.current.state.status).toBe('empty')
   })
+
+  it('clears the frontend session when cache cleanup fails after the backend already closed', async () => {
+    const viewer = bridge()
+    vi.mocked(viewer.closeProject).mockRejectedValueOnce({
+      code: 'project_closed_cache_cleanup_failed',
+      category: 'environment',
+      userMessage: '项目已关闭，但临时缓存未能清除；退出 Viewer 后将重试。',
+      retryable: true,
+      taskId: null,
+      itemId: null,
+    })
+    const { result } = renderHook(() => useViewerController(viewer))
+    await act(() => result.current.openProject('/fixture/project'))
+    act(() => result.current.setSelectedEntityIds(['image-1']))
+
+    await act(() => result.current.closeProject())
+
+    expect(result.current.state.project).toBeNull()
+    expect(result.current.state.status).toBe('empty')
+    expect(result.current.state.selectedEntityIds).toEqual([])
+    expect(result.current.state.errorMessage).toBe(
+      '项目已关闭，但临时缓存未能清除；退出 Viewer 后将重试。',
+    )
+  })
 })
 
 function operationProgress(

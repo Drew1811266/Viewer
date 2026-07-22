@@ -259,6 +259,11 @@ export function useViewerController(bridge: ViewerBridge) {
       dispatch({ type: 'project_closed', message: closedMessage })
       return outcome
     } catch (error) {
+      if (isTerminalCloseCleanupFailure(error)) {
+        resetSessionRequests()
+        dispatch({ type: 'project_closed', message: safeUserMessage(error) })
+        return 'closed'
+      }
       dispatch({ type: 'project_close_failed', message: safeUserMessage(error) })
       return undefined
     } finally {
@@ -1095,6 +1100,15 @@ export function useViewerController(bridge: ViewerBridge) {
     clearCloseBlocked,
     openPermissionSettings,
   }
+}
+
+function isTerminalCloseCleanupFailure(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    error.code === 'project_closed_cache_cleanup_failed'
+  )
 }
 
 function uniqueEntityIds(entityIds: readonly string[]): string[] {

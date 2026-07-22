@@ -30,7 +30,7 @@ pub use operation_commit::{
 pub use ports::{
     ClockPort, FileMutationPort, FinderDragPort, ImagePort, LocalFileCommandPort, ProjectAccess,
     ProjectProbeError, ProjectProbeOperation, ProjectProbePort, ScanPort, SearchPort,
-    SearchSnippetPort, TrashPort, VolumePort,
+    SearchSnippetPort, StagedCopy, StagedCopyLeasePort, TrashPort, VolumePort,
 };
 pub use project::{ActiveProject, PreparedProject, ProjectOpenError, ProjectSessionService};
 pub use session::{ProjectSession, SessionState, SessionTransitionError};

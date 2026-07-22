@@ -16,6 +16,7 @@ pub trait FinderDragPort {
 use async_trait::async_trait;
 use std::fmt;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use viewer_domain::{
     SessionId,
     image::ImageProbe,
@@ -82,8 +83,69 @@ pub trait ClockPort: Send + Sync {
     fn unix_millis(&self) -> i64;
 }
 
+pub struct StagedCopy {
+    evidence: FileContentEvidence,
+    lease: Box<dyn StagedCopyLeasePort>,
+}
+
+impl StagedCopy {
+    pub fn new(evidence: FileContentEvidence, lease: Box<dyn StagedCopyLeasePort>) -> Self {
+        Self { evidence, lease }
+    }
+
+    pub fn evidence(&self) -> &FileContentEvidence {
+        &self.evidence
+    }
+
+    pub async fn place(
+        self,
+        destination: &Path,
+        expected_parent: FileIdentity,
+    ) -> Result<(), FileOperationError> {
+        self.lease.place(destination, expected_parent).await
+    }
+}
+
 #[async_trait]
-pub trait FileMutationPort: Send + Sync {
+pub trait StagedCopyLeasePort: Send {
+    async fn place(
+        self: Box<Self>,
+        destination: &Path,
+        expected_parent: FileIdentity,
+    ) -> Result<(), FileOperationError>;
+}
+
+struct PathStagedCopyLease<T: FileMutationPort + ?Sized> {
+    mutation: Arc<T>,
+    temporary: PathBuf,
+    expected: FileSnapshot,
+    expected_parent: FileIdentity,
+}
+
+#[async_trait]
+impl<T> StagedCopyLeasePort for PathStagedCopyLease<T>
+where
+    T: FileMutationPort + ?Sized,
+{
+    async fn place(
+        self: Box<Self>,
+        destination: &Path,
+        expected_parent: FileIdentity,
+    ) -> Result<(), FileOperationError> {
+        self.mutation
+            .rename_verified(
+                &self.temporary,
+                destination,
+                &self.expected,
+                self.expected_parent,
+                expected_parent,
+            )
+            .await
+    }
+}
+
+#[async_trait]
+pub trait FileMutationPort: Send + Sync + 'static {
     async fn snapshot(&self, path: &Path) -> Result<FileSnapshot, FileOperationError>;
 
     async fn copy_and_hash(
@@ -143,6 +205,37 @@ pub trait FileMutationPort: Send + Sync {
         source_parent: FileIdentity,
         temporary_parent: FileIdentity,
     ) -> Result<FileContentEvidence, FileOperationError>;
+
+    async fn create_staged_copy_cancellable_verified(
+        self: Arc<Self>,
+        source: &Path,
+        temporary: &Path,
+        cancellation: &FileCommandCancellation,
+        expected_source: &FileSnapshot,
+        source_parent: FileIdentity,
+        temporary_parent: FileIdentity,
+    ) -> Result<StagedCopy, FileOperationError> {
+        let evidence = self
+            .create_and_copy_cancellable_verified(
+                source,
+                temporary,
+                cancellation,
+                expected_source,
+                source_parent,
+                temporary_parent,
+            )
+            .await?;
+        let expected = evidence.snapshot.clone();
+        Ok(StagedCopy::new(
+            evidence,
+            Box::new(PathStagedCopyLease {
+                mutation: self,
+                temporary: temporary.to_path_buf(),
+                expected,
+                expected_parent: temporary_parent,
+            }),
+        ))
+    }
 
     async fn rename(&self, source: &Path, destination: &Path) -> Result<(), FileOperationError>;
 

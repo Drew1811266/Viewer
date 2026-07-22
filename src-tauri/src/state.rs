@@ -431,11 +431,13 @@ impl DesktopRuntime {
             Arc::clone(&self.clock),
             Arc::clone(&journal),
         ));
+        let trash: Arc<dyn viewer_application::TrashPort> =
+            Arc::new(MacTrashPort::new(&active.root).map_err(|_| operation_backend_unavailable())?);
         let recovery = RecoveryService::new(
             &active.root,
             Arc::clone(&journal),
             Arc::new(LocalFileMutation),
-            Arc::new(MacTrashPort),
+            Arc::clone(&trash),
             Arc::clone(&self.clock),
             recovery_commits,
         )
@@ -449,7 +451,7 @@ impl DesktopRuntime {
                 browse_index,
                 journal,
                 Arc::new(LocalFileMutation),
-                Arc::new(MacTrashPort),
+                trash,
                 volume,
                 Arc::clone(&self.clock),
                 commits,
@@ -707,10 +709,37 @@ impl DesktopRuntime {
         drop(session.marker_projection);
         drop(session.portable_store.take());
         drop(session.index);
-        // A stale cache is safe to leave behind: startup cleanup owns retries,
-        // while `SessionCache::cleanup` still refuses unsafe symlink targets.
-        let _ = session.cache.cleanup();
+        // The session is already in its closed terminal state, but a normal
+        // close must still report a cache cleanup failure. Callers deciding
+        // whether an application exit may proceed must not treat retained
+        // previews and the temporary SQLite index as a successful shutdown.
+        session.cache.cleanup().map_err(|_| {
+            CommandError::new(
+                "project_closed_cache_cleanup_failed",
+                ErrorCategory::Environment,
+                "项目已关闭，但临时缓存未能清除；退出 Viewer 后将重试。",
+                true,
+            )
+        })?;
         Ok(())
+    }
+
+    /// Finalizes shutdown when the operating system has committed to ending
+    /// the process.
+    ///
+    /// macOS can begin terminating the application without first delivering a
+    /// preventable Tauri `ExitRequested` event. The final `RunEvent::Exit`
+    /// therefore closes any active session and then performs a last-chance
+    /// sweep of Viewer-owned session directories.
+    pub async fn finalize_process_exit(&self) -> Result<(), CommandError> {
+        let close_result = self.close_project().await;
+        let sweep_result = self.cleanup_session_caches_for_process_exit().map(|_| ());
+        close_result?;
+        sweep_result
+    }
+
+    pub fn cleanup_session_caches_for_process_exit(&self) -> Result<usize, CommandError> {
+        SessionCache::cleanup_stale(&self.cache_base, None).map_err(Into::into)
     }
 
     pub async fn request_close(

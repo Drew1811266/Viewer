@@ -182,36 +182,6 @@ impl FileMutationPort for LocalFileMutation {
         .await
         .map_err(|error| worker_error("bound temporary worker", &error_path, error))?
     }
-
-    async fn remove_registered_temporary(&self, path: &Path) -> Result<(), FileOperationError> {
-        let path = path.to_path_buf();
-        let error_path = path.clone();
-        tokio::task::spawn_blocking(move || match fs::remove_file(&path) {
-            Ok(()) => Ok(()),
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
-            Err(error) => Err(FileOperationError::io(
-                "remove registered temporary",
-                &path,
-                &error,
-            )),
-        })
-        .await
-        .map_err(|error| worker_error("temporary cleanup worker", &error_path, error))?
-    }
-
-    async fn remove_registered_temporary_verified(
-        &self,
-        path: &Path,
-        expected_parent: FileIdentity,
-    ) -> Result<(), FileOperationError> {
-        let path = path.to_path_buf();
-        let error_path = path.clone();
-        tokio::task::spawn_blocking(move || {
-            remove_registered_temporary_verified_sync(&path, expected_parent)
-        })
-        .await
-        .map_err(|error| worker_error("bound temporary cleanup worker", &error_path, error))?
-    }
 }
 
 #[cfg(target_os = "macos")]
@@ -376,60 +346,6 @@ fn open_bound_parent(path: &Path, expected: FileIdentity) -> Result<File, FileOp
         return Err(FileOperationError::IdentityChanged);
     }
     Ok(directory)
-}
-
-#[cfg(target_os = "macos")]
-fn remove_registered_temporary_verified_sync(
-    path: &Path,
-    expected_parent: FileIdentity,
-) -> Result<(), FileOperationError> {
-    use std::os::fd::AsRawFd;
-    let parent_path = path.parent().ok_or(FileOperationError::OutsideProject)?;
-    let parent = open_bound_parent(parent_path, expected_parent)?;
-    let name = encoded_file_name(path, "encode bound temporary cleanup")?;
-    let result = unsafe { libc::unlinkat(parent.as_raw_fd(), name.as_ptr(), 0) };
-    if result == 0 {
-        return Ok(());
-    }
-    let error = std::io::Error::last_os_error();
-    if error.kind() == std::io::ErrorKind::NotFound {
-        Ok(())
-    } else {
-        Err(FileOperationError::io(
-            "remove bound registered temporary",
-            path,
-            &error,
-        ))
-    }
-}
-
-#[cfg(not(target_os = "macos"))]
-fn remove_registered_temporary_verified_sync(
-    path: &Path,
-    expected_parent: FileIdentity,
-) -> Result<(), FileOperationError> {
-    let parent = path.parent().ok_or(FileOperationError::OutsideProject)?;
-    let metadata = fs::symlink_metadata(parent)
-        .map_err(|error| FileOperationError::io("inspect bound directory", parent, &error))?;
-    if metadata.file_type().is_symlink() || !metadata.is_dir() {
-        return Err(FileOperationError::OutsideProject);
-    }
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::MetadataExt;
-        if metadata.dev() != expected_parent.volume || metadata.ino() != expected_parent.file {
-            return Err(FileOperationError::IdentityChanged);
-        }
-    }
-    match fs::remove_file(path) {
-        Ok(()) => Ok(()),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(error) => Err(FileOperationError::io(
-            "remove bound registered temporary",
-            path,
-            &error,
-        )),
-    }
 }
 
 #[cfg(target_os = "macos")]
@@ -941,6 +857,8 @@ where
     if let Err(primary) = sync_result {
         return Err(bound_copy_cleanup_error(
             &temporary_reference,
+            &temporary_parent,
+            temporary_parent_path,
             temporary,
             primary,
         ));
@@ -959,6 +877,8 @@ where
         Ok(evidence) => Ok(evidence),
         Err(primary) => Err(bound_copy_cleanup_error(
             &temporary_reference,
+            &temporary_parent,
+            temporary_parent_path,
             temporary,
             primary,
         )),
@@ -968,15 +888,50 @@ where
 #[cfg(target_os = "macos")]
 fn bound_copy_cleanup_error(
     temporary_reference: &BoundFileReference,
+    temporary_parent: &File,
+    temporary_parent_path: &Path,
     temporary: &Path,
     primary: FileOperationError,
 ) -> FileOperationError {
-    match unlink_file_reference(temporary_reference, temporary) {
-        Ok(()) => primary,
-        Err(cleanup) => FileOperationError::RegisteredTemporaryCleanupRequired {
-            primary: Box::new(primary),
-            cleanup: Box::new(cleanup),
+    bound_copy_cleanup_error_with_sync(temporary_reference, temporary, primary, || {
+        temporary_parent.sync_all().map_err(|error| {
+            FileOperationError::io(
+                "sync registered temporary cleanup directory",
+                temporary_parent_path,
+                &error,
+            )
+        })
+    })
+}
+
+#[cfg(target_os = "macos")]
+fn bound_copy_cleanup_error_with_sync<F>(
+    temporary_reference: &BoundFileReference,
+    temporary: &Path,
+    primary: FileOperationError,
+    sync_parent: F,
+) -> FileOperationError
+where
+    F: FnOnce() -> Result<(), FileOperationError>,
+{
+    let cleanup = match unlink_file_reference(temporary_reference, temporary) {
+        Ok(()) => match sync_parent() {
+            Ok(()) => match fs::symlink_metadata(temporary) {
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => return primary,
+                Ok(_) => FileOperationError::IdentityChanged,
+                Err(error) => FileOperationError::io(
+                    "inspect registered temporary after identity cleanup",
+                    temporary,
+                    &error,
+                ),
+            },
+            Err(cleanup) => cleanup,
         },
+        Err(cleanup) => cleanup,
+    };
+    FileOperationError::RegisteredTemporaryCleanupRequired {
+        primary: Box::new(primary),
+        cleanup: Box::new(cleanup),
     }
 }
 
@@ -1150,6 +1105,7 @@ fn copy_and_hash_cancellable_verified_sync(
     copy_and_hash_cancellable_sync(source, temporary, cancellation)
 }
 
+#[cfg(not(target_os = "macos"))]
 pub(crate) fn create_temporary_sync(path: &Path) -> Result<(), FileOperationError> {
     OpenOptions::new()
         .write(true)
@@ -1601,9 +1557,47 @@ mod tests {
             },
         );
 
-        assert!(matches!(result, Err(FileOperationError::Cancelled)));
+        match result {
+            Err(FileOperationError::RegisteredTemporaryCleanupRequired { primary, cleanup }) => {
+                assert_eq!(*primary, FileOperationError::Cancelled);
+                assert_eq!(*cleanup, FileOperationError::IdentityChanged);
+            }
+            other => panic!("expected replacement cleanup obligation, got {other:?}"),
+        }
         assert_eq!(fs::read(&temporary).unwrap(), b"replacement sentinel");
         assert!(!parked.exists());
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn registered_copy_cleanup_sync_failure_retains_the_recovery_obligation() {
+        let directory = tempfile::tempdir().unwrap();
+        let root = fs::canonicalize(directory.path()).unwrap();
+        let temporary = root.join(".viewer-copy-test.part");
+        fs::write(&temporary, b"partial bytes").unwrap();
+        let temporary_snapshot = snapshot_sync(&temporary).unwrap();
+        let temporary_reference = bind_file_reference(&temporary, &temporary_snapshot).unwrap();
+        let sync_error = FileOperationError::Io {
+            action: "injected cleanup directory sync failure",
+            path: root,
+            message: "injected failure".into(),
+        };
+
+        let result = bound_copy_cleanup_error_with_sync(
+            &temporary_reference,
+            &temporary,
+            FileOperationError::Cancelled,
+            || Err(sync_error.clone()),
+        );
+
+        match result {
+            FileOperationError::RegisteredTemporaryCleanupRequired { primary, cleanup } => {
+                assert_eq!(*primary, FileOperationError::Cancelled);
+                assert_eq!(*cleanup, sync_error);
+            }
+            other => panic!("expected durable cleanup obligation, got {other:?}"),
+        }
+        assert!(!temporary.exists());
     }
 
     #[cfg(target_os = "macos")]

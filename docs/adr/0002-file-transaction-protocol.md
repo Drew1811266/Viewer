@@ -28,13 +28,13 @@ Prepared → Staged → FsApplied → Verified → MetaCommitted → IndexSynced
 - `Verified`: filesystem truth has been re-read and matches the evidence.
 - `MetaCommitted`: portable metadata is consistent with filesystem truth.
 - `IndexSynced`: rebuildable session indexes have been synchronized or scheduled.
-- `Completed` and `Failed`: terminal outcomes excluded from automatic recovery.
+- `Completed` and `Failed`: terminal outcomes excluded from automatic forward replay; a terminal item that retains a registered temporary is still inspected only to resolve a proven-absent cleanup obligation or request user review.
 
 The G2 prototype advances metadata/index states as explicit journal barriers; G3 and M2 connect those barriers to the concrete metadata and session-index stores.
 
 ### Filesystem protocols and atomicity
 
-- Copy creates a unique hidden sibling with `create_new`, registers that exact path, streams bytes through a 1 MiB buffer while computing BLAKE3, calls `sync_all`, verifies size/hash, and atomically places it with a no-replace rename. Creating an empty temporary before journal registration avoids ever claiming ownership of a pre-existing collision; a failed registration cleans up only the file just created.
+- Copy first journals its deterministic hidden sibling path, then one combined filesystem primitive binds the source and parent identities, creates the leaf with `create_new`, immediately binds the created leaf identity, streams bytes through a 1 MiB buffer while computing BLAKE3, calls `sync_all` and returns content evidence plus the created leaf snapshot. The executor carries that snapshot into a later identity-bound no-replace placement. A pre-existing collision is never deleted. Every failure after creation either removes only the bound created identity and synchronizes its bound parent, or retains the registered path as an explicit recovery obligation; no pathname cleanup API is exposed.
 - Same-volume rename and in-project move use Darwin `renamex_np(..., RENAME_EXCL)` so an existing destination is refused atomically. Rename cycles and case-only renames first move every affected source to operation-ID-derived temporary siblings.
 - A cross-volume rename is not treated as atomic by this protocol. The later command service must route it through verified copy plus an explicit source-to-Trash step; G2 does not claim cross-volume atomic rename support.
 - Parent directories are synchronized after temporary creation and final placement. No filesystem can make the whole multi-item batch atomic, so each item has an independent result and completed items are not rolled back when another item fails.
@@ -54,11 +54,11 @@ The G2 prototype advances metadata/index states as explicit journal barriers; G3
 
 ## Recovery decision table
 
-Recovery opens the durable journal, considers only non-terminal items, canonicalizes project-relative paths, validates every registered temporary against its operation-ID-derived name, and hashes regular-file candidates. “Match” means both stored size and BLAKE3 match.
+Recovery opens the durable journal, considers non-terminal items plus terminal items that retain a registered cleanup obligation, canonicalizes project-relative paths, validates every registered temporary against its operation-ID-derived name, and hashes regular-file candidates. “Match” means both stored size and BLAKE3 match.
 
 | Persisted state / observed filesystem truth | Automatic action | Stop with `NeedsUserReview` |
 | --- | --- | --- |
-| Copy `Prepared`/`Staged`; source is a regular file; exact registered temp is present or absent | Remove only the exact registered temp if present; mark item `Failed` | Source missing/symlinked, or registered temp is not the deterministic operation path |
+| Copy `Prepared`/`Staged`; source is a regular file; exact registered temp is absent | Mark item `Failed`; there is nothing to remove | Any occupant at the registered path because no persisted leaf identity proves ownership; source missing/symlinked; or registered temp is not the deterministic operation path |
 | Copy `FsApplied`; temp is the only match; final absent | Verify temp, advance to `Verified`, place final, synchronize, complete | Unknown content at temp/final, neither candidate matches, or both candidates match |
 | Copy `Verified`; exactly one of temp/final matches | If temp matches, place it; if final matches, treat filesystem as one step ahead; complete | Unknown occupant or evidence matches both paths |
 | Copy `MetaCommitted`/`IndexSynced`; only final matches | Finish remaining metadata/index barriers | Final missing/mismatched or an additional matching temp exists |
@@ -69,7 +69,7 @@ Recovery opens the durable journal, considers only non-terminal items, canonical
 | Replace `Prepared`/`Staged`; replacement temp matches and original source is absent | Restore replacement source and mark `Failed`; if final is absent, report that the previous destination is already in Trash | Source restoration target is occupied, evidence is missing, or several candidates match |
 | Rename/move/replace `FsApplied` through `IndexSynced`; only final matches | Complete remaining forward barriers | Final unknown/missing, source/temp also match, or evidence is ambiguous |
 
-Recovery never deletes an arbitrary journal path, never overwrites an occupied final path, and never selects between multiple matching candidates. A second recovery run after an automatic action is a no-op because the item is terminal.
+Recovery never deletes an arbitrary journal path, never overwrites an occupied final path, and never selects between multiple matching candidates. A second recovery run after a completed automatic action is a no-op; unresolved terminal cleanup obligations remain visible until absence is proven or the user resolves them.
 
 ## Evidence
 
@@ -77,7 +77,7 @@ The accepted gate runs on the standard Apple Silicon development device and crea
 
 | Acceptance | Automated evidence |
 | --- | --- |
-| Copy integrity | Source and destination bytes match; size/BLAKE3 evidence is durable; cancellation removes only the registered temp |
+| Copy integrity | Source and destination bytes match; size/BLAKE3 evidence is durable; cancellation removes and durably records only the bound created identity, or retains an explicit cleanup/recovery obligation |
 | Atomic/no-overwrite placement | Real filesystem tests cover destination refusal, symlink escapes and deterministic collision handling |
 | Rename/move | Cycle swap, case-only rename, stable file identity and per-item partial failure summary pass |
 | Conflict policies | Skip, KeepBoth and Trash-before-Replace order pass with fake ports |

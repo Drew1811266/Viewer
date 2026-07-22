@@ -1,5 +1,5 @@
 use super::{
-    copy::{create_temporary_sync, hash_file_sync, sync_parent},
+    copy::{hash_file_sync, sync_parent},
     journal::{JournalError, JournalItem, OperationJournal},
 };
 use std::{
@@ -7,12 +7,13 @@ use std::{
     sync::Arc,
 };
 use viewer_application::{
-    ClockPort, FaultInjector, FileMutationPort, FileOperationError, InjectedCrash, NoFaults,
-    OperationCommit, OperationCommitError, OperationCommitPort, watcher::FileIdentity,
+    ClockPort, FaultInjector, FileMutationPort, FileOperationError, FileSnapshot, InjectedCrash,
+    NoFaults, OperationCommit, OperationCommitError, OperationCommitPort,
+    file_commands::FileCommandCancellation, watcher::FileIdentity,
 };
 use viewer_domain::{
     OperationId, RelativePath,
-    operation::{OperationItemPlan, OperationKind, OperationState},
+    operation::{BatchResultCode, OperationItemPlan, OperationKind, OperationState},
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -123,25 +124,46 @@ impl CopyExecutor {
         let temporary_relative = temporary_relative_path(destination_relative, item.operation_id)?;
         let temporary = self.resolve_destination(&temporary_relative)?;
 
-        let temporary_for_create = temporary.clone();
-        tokio::task::spawn_blocking(move || create_temporary_sync(&temporary_for_create))
-            .await
-            .map_err(|error| FileOperationError::Io {
-                action: "temporary creation worker",
-                path: temporary.clone(),
-                message: error.to_string(),
-            })??;
-        if let Err(error) = self.journal.register_temporary(
+        self.journal.register_temporary(
             item.operation_id,
             OperationState::Prepared,
             &temporary_relative,
             self.now(),
-        ) {
-            self.mutation
-                .remove_registered_temporary(&temporary)
-                .await?;
-            return Err(error.into());
-        }
+        )?;
+
+        let source_before = self.mutation.snapshot(&source).await?;
+        let source_parent =
+            directory_identity(source.parent().ok_or(FileOperationError::OutsideProject)?)?;
+        let temporary_parent = directory_identity(
+            temporary
+                .parent()
+                .ok_or(FileOperationError::OutsideProject)?,
+        )?;
+        let cancellation = FileCommandCancellation::default();
+        let copied = match self
+            .mutation
+            .create_and_copy_cancellable_verified(
+                &source,
+                &temporary,
+                &cancellation,
+                &source_before,
+                source_parent,
+                temporary_parent,
+            )
+            .await
+        {
+            Ok(copied) => copied,
+            Err(FileOperationError::Cancelled) => {
+                self.journal.fail(
+                    item.operation_id,
+                    OperationState::Prepared,
+                    "cancelled",
+                    self.now(),
+                )?;
+                return Err(FileOperationError::Cancelled.into());
+            }
+            Err(error) => return Err(error.into()),
+        };
         self.after_persist(item.operation_id, OperationState::Prepared)?;
         self.journal.advance(
             item.operation_id,
@@ -151,37 +173,17 @@ impl CopyExecutor {
         )?;
         self.after_persist(item.operation_id, OperationState::Staged)?;
 
-        let source_before = self.mutation.snapshot(&source).await?;
-        let copied = match self.mutation.copy_and_hash(&source, &temporary).await {
-            Ok(copied) => copied,
-            Err(FileOperationError::Cancelled) => {
-                self.mutation
-                    .remove_registered_temporary(&temporary)
-                    .await?;
-                self.journal.fail(
-                    item.operation_id,
-                    OperationState::Staged,
-                    "cancelled",
-                    self.now(),
-                )?;
-                return Err(FileOperationError::Cancelled.into());
-            }
-            Err(error) => return Err(error.into()),
-        };
-        let source_after = self.mutation.snapshot(&source).await?;
-        if source_before != source_after || copied.0 != source_before.len {
-            return Err(FileOperationError::IdentityChanged.into());
-        }
         self.journal.record_fs_applied(
             item.operation_id,
             OperationState::Staged,
-            copied.0,
-            copied.1,
+            copied.snapshot.len,
+            copied.hash,
             self.now(),
         )?;
         self.after_persist(item.operation_id, OperationState::FsApplied)?;
 
-        self.verify_expected(&temporary, copied).await?;
+        let copied_content = (copied.snapshot.len, copied.hash);
+        self.verify_expected(&temporary, copied_content).await?;
         self.journal.advance(
             item.operation_id,
             OperationState::FsApplied,
@@ -190,12 +192,18 @@ impl CopyExecutor {
         )?;
         self.after_persist(item.operation_id, OperationState::Verified)?;
 
-        self.place_verified(item.operation_id, &temporary, &destination, copied)
-            .await?;
+        self.place_verified(
+            item.operation_id,
+            &temporary,
+            &destination,
+            copied_content,
+            Some(&copied.snapshot),
+        )
+        .await?;
 
         Ok(CopyResult {
-            len: copied.0,
-            hash: copied.1,
+            len: copied_content.0,
+            hash: copied_content.1,
         })
     }
 
@@ -250,7 +258,7 @@ impl CopyExecutor {
                     self.now(),
                 )?;
                 self.after_persist(operation_id, OperationState::Verified)?;
-                self.place_verified(operation_id, &temporary, &destination, expected)
+                self.place_verified(operation_id, &temporary, &destination, expected, None)
                     .await?;
                 Ok(CopyResumeResult::Completed(CopyResult {
                     len: expected.0,
@@ -261,7 +269,7 @@ impl CopyExecutor {
                 let expected = expected_copy_evidence(&item)?;
                 if temporary.exists() {
                     self.verify_expected(&temporary, expected).await?;
-                    self.place_verified(operation_id, &temporary, &destination, expected)
+                    self.place_verified(operation_id, &temporary, &destination, expected, None)
                         .await?;
                 } else if destination.exists() {
                     self.verify_expected(&destination, expected).await?;
@@ -333,15 +341,19 @@ impl CopyExecutor {
         temporary: &Path,
         destination: &Path,
         expected: (u64, [u8; 32]),
+        expected_identity: Option<&FileSnapshot>,
     ) -> Result<(), CopyError> {
         if destination.exists() {
             return Err(FileOperationError::DestinationExists.into());
         }
         let before = self.mutation.snapshot(temporary).await?;
+        if expected_identity.is_some_and(|expected_identity| &before != expected_identity) {
+            return self.retain_identity_change_for_review(operation_id);
+        }
         self.verify_expected(temporary, expected).await?;
         let after = self.mutation.snapshot(temporary).await?;
         if before != after || after.len != expected.0 {
-            return Err(FileOperationError::IdentityChanged.into());
+            return self.retain_identity_change_for_review(operation_id);
         }
         let source_parent = directory_identity(
             temporary
@@ -353,7 +365,8 @@ impl CopyExecutor {
                 .parent()
                 .ok_or(FileOperationError::OutsideProject)?,
         )?;
-        self.mutation
+        if let Err(error) = self
+            .mutation
             .rename_verified(
                 temporary,
                 destination,
@@ -361,7 +374,13 @@ impl CopyExecutor {
                 source_parent,
                 destination_parent,
             )
-            .await?;
+            .await
+        {
+            if error == FileOperationError::IdentityChanged {
+                return self.retain_identity_change_for_review(operation_id);
+            }
+            return Err(error.into());
+        }
         let destination_for_sync = destination.to_path_buf();
         let error_path = destination_for_sync.clone();
         tokio::task::spawn_blocking(move || sync_parent(&destination_for_sync))
@@ -374,6 +393,19 @@ impl CopyExecutor {
         self.finish_journal(operation_id, OperationState::Verified)
             .await?;
         Ok(())
+    }
+
+    fn retain_identity_change_for_review(
+        &self,
+        operation_id: OperationId,
+    ) -> Result<(), CopyError> {
+        self.journal.fail_item_recovery_required(
+            operation_id,
+            OperationState::Verified,
+            BatchResultCode::VerificationFailed.as_str(),
+            self.now(),
+        )?;
+        Err(FileOperationError::IdentityChanged.into())
     }
 
     async fn finish_journal(

@@ -716,6 +716,15 @@ export function useViewerController(bridge: ViewerBridge) {
       ) {
         return
       }
+      const projectEpoch = projectEpochRef.current
+      const projectIsCurrent = () => {
+        const latestProject = stateRef.current.project
+        return (
+          projectEpoch === projectEpochRef.current &&
+          latestProject?.sessionId === project.sessionId &&
+          latestProject.generation === project.generation
+        )
+      }
       completedBatchesRef.current.add(progress.batchId)
       const loadResults = bridge
         .operationResults({
@@ -726,6 +735,7 @@ export function useViewerController(bridge: ViewerBridge) {
           limit: 200,
         })
         .then((page) => {
+          if (!projectIsCurrent()) return
           dispatch({
             type: 'operation_results_loaded',
             sessionId: project.sessionId,
@@ -735,6 +745,7 @@ export function useViewerController(bridge: ViewerBridge) {
           })
         })
         .catch((error: unknown) => {
+          if (!projectIsCurrent()) return
           dispatch({
             type: 'operation_failed',
             sessionId: project.sessionId,
@@ -742,32 +753,35 @@ export function useViewerController(bridge: ViewerBridge) {
             message: safeUserMessage(error),
           })
         })
-      const refreshAfterMutation =
-        progress.completed > 0
-          ? (async () => {
-              const desired = desiredProjectionRef.current
-              await refreshProjection(
-                project,
-                desired.selectedFolderId,
-                desired.selectedFolderPath,
-                desired.showingAggregate,
-                true,
-              )
-              dispatch({ type: 'search_refresh_requested' })
-            })()
-          : Promise.resolve()
+      const refreshAfterTerminalBatch = (async () => {
+        const desired = desiredProjectionRef.current
+        await refreshProjection(
+          project,
+          desired.selectedFolderId,
+          desired.selectedFolderPath,
+          desired.showingAggregate,
+          true,
+        )
+        if (!projectIsCurrent()) return
+        dispatch({ type: 'search_refresh_requested' })
+      })()
       try {
-        await Promise.all([loadResults, refreshAfterMutation])
+        await Promise.all([loadResults, refreshAfterTerminalBatch])
       } finally {
-        if (activeBatchRef.current === progress.batchId) {
+        const latestProject = stateRef.current.project
+        if (
+          projectEpoch === projectEpochRef.current &&
+          latestProject?.sessionId === project.sessionId &&
+          activeBatchRef.current === progress.batchId
+        ) {
           activeBatchRef.current = null
+          dispatch({
+            type: 'operation_finish_settled',
+            sessionId: latestProject.sessionId,
+            generation: latestProject.generation,
+            batchId: progress.batchId,
+          })
         }
-        dispatch({
-          type: 'operation_finish_settled',
-          sessionId: project.sessionId,
-          generation: project.generation,
-          batchId: progress.batchId,
-        })
       }
     },
     [bridge, refreshProjection],

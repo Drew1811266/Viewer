@@ -190,20 +190,6 @@ pub trait FileMutationPort: Send + Sync {
         file.sync_all()
             .map_err(|error| FileOperationError::io("sync registered temporary", path, &error))
     }
-
-    async fn remove_registered_temporary(&self, path: &Path) -> Result<(), FileOperationError>;
-
-    async fn remove_registered_temporary_verified(
-        &self,
-        path: &Path,
-        expected_parent: FileIdentity,
-    ) -> Result<(), FileOperationError> {
-        verify_directory_identity(
-            path.parent().ok_or(FileOperationError::OutsideProject)?,
-            expected_parent,
-        )?;
-        self.remove_registered_temporary(path).await
-    }
 }
 
 fn verify_directory_identity(

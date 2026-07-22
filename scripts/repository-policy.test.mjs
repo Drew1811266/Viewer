@@ -223,7 +223,34 @@ test('Finder export starts a synthetic AppKit drag from the owning window conten
     /mouseEventWithType_location_modifierFlags_timestamp_windowNumber_context_eventNumber_clickCount_pressure/,
   )
   assert.match(adapter, /contentView\(\)/)
+  assert.match(adapter, /fileReferenceURL\(\)/)
+  assert.match(adapter, /verify_bound_drag_reference/)
+  assert.match(adapter, /O_NOFOLLOW_ANY/)
+  assert.match(adapter, /raw_os_error\(\) == Some\(libc::ENOATTR\)/)
+  assert.match(adapter, /NSImageNameMultipleDocuments/)
+  assert.doesNotMatch(adapter, /NSURL::fileURLWithPath/)
+  assert.doesNotMatch(adapter, /iconForFile/)
   assert.doesNotMatch(adapter, /filter\(\|event\| event\.r#type\(\) == NSEventType::LeftMouseDragged\)/)
+})
+
+test('registered copy cleanup has no pathname deletion contract', async () => {
+  const [ports, executor, localMutation] = await Promise.all([
+    read('crates/viewer-application/src/ports.rs'),
+    read('crates/viewer-infrastructure/src/operation/executor.rs'),
+    read('crates/viewer-infrastructure/src/operation/copy.rs'),
+  ])
+  const localMutationProduction = localMutation.split(
+    /\n#\[cfg\([^\n]*\btest\b[^\n]*\)\]\nmod tests\b/,
+  )[0]
+  const pathnameDelete = /\b(?:(?:std|tokio)::)?fs::remove_file\s*\(|\blibc::unlink(?:at)?\s*\(/
+
+  assert.doesNotMatch(ports, /remove_registered_temporary/)
+  assert.doesNotMatch(localMutationProduction, /remove_registered_temporary/)
+  assert.doesNotMatch(executor, /remove_registered_temporary/)
+  assert.doesNotMatch(localMutationProduction, pathnameDelete)
+  assert.doesNotMatch(executor, pathnameDelete)
+  assert.match(executor, /create_and_copy_cancellable_verified\(/)
+  assert.match(localMutationProduction, /FSUnlinkObject/)
 })
 
 test('the macOS release command is non-interactive and uses a valid bundle identifier', async () => {

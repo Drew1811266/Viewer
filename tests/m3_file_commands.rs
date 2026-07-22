@@ -1257,10 +1257,6 @@ impl FileMutationPort for ReplaceTemporaryAfterBoundCopy {
     async fn rename(&self, source: &Path, destination: &Path) -> Result<(), FileOperationError> {
         self.delegate.rename(source, destination).await
     }
-
-    async fn remove_registered_temporary(&self, path: &Path) -> Result<(), FileOperationError> {
-        self.delegate.remove_registered_temporary(path).await
-    }
 }
 
 #[cfg(unix)]
@@ -1509,10 +1505,6 @@ impl FileMutationPort for SwapSourceBeforeMutationSnapshot {
 
     async fn rename(&self, source: &Path, destination: &Path) -> Result<(), FileOperationError> {
         self.delegate.rename(source, destination).await
-    }
-
-    async fn remove_registered_temporary(&self, path: &Path) -> Result<(), FileOperationError> {
-        self.delegate.remove_registered_temporary(path).await
     }
 }
 
@@ -1903,10 +1895,6 @@ impl FileMutationPort for ReplaceDestinationParentAfterCreate {
     async fn rename(&self, source: &Path, destination: &Path) -> Result<(), FileOperationError> {
         self.delegate.rename(source, destination).await
     }
-
-    async fn remove_registered_temporary(&self, path: &Path) -> Result<(), FileOperationError> {
-        self.delegate.remove_registered_temporary(path).await
-    }
 }
 
 #[async_trait]
@@ -1986,10 +1974,6 @@ impl FileMutationPort for ReplaceDestinationParentBeforeCreate {
 
     async fn rename(&self, source: &Path, destination: &Path) -> Result<(), FileOperationError> {
         self.delegate.rename(source, destination).await
-    }
-
-    async fn remove_registered_temporary(&self, path: &Path) -> Result<(), FileOperationError> {
-        self.delegate.remove_registered_temporary(path).await
     }
 }
 
@@ -2174,10 +2158,6 @@ impl FileMutationPort for RewriteSourceAfterCopy {
     async fn rename(&self, source: &Path, destination: &Path) -> Result<(), FileOperationError> {
         self.delegate.rename(source, destination).await
     }
-
-    async fn remove_registered_temporary(&self, path: &Path) -> Result<(), FileOperationError> {
-        self.delegate.remove_registered_temporary(path).await
-    }
 }
 
 #[tokio::test]
@@ -2269,10 +2249,6 @@ impl FileMutationPort for RewriteDestinationAfterSourceStage {
             })?;
         }
         Ok(())
-    }
-
-    async fn remove_registered_temporary(&self, path: &Path) -> Result<(), FileOperationError> {
-        self.delegate.remove_registered_temporary(path).await
     }
 }
 
@@ -2389,10 +2365,6 @@ impl FileMutationPort for BlockingFirstRename {
             self.release.notified().await;
         }
         self.delegate.rename(source, destination).await
-    }
-
-    async fn remove_registered_temporary(&self, path: &Path) -> Result<(), FileOperationError> {
-        self.delegate.remove_registered_temporary(path).await
     }
 }
 
@@ -2515,10 +2487,6 @@ impl FileMutationPort for BlockingCopy {
 
     async fn rename(&self, source: &Path, destination: &Path) -> Result<(), FileOperationError> {
         self.delegate.rename(source, destination).await
-    }
-
-    async fn remove_registered_temporary(&self, path: &Path) -> Result<(), FileOperationError> {
-        self.delegate.remove_registered_temporary(path).await
     }
 }
 
@@ -2716,9 +2684,5 @@ impl FileMutationPort for FailOneCopy {
 
     async fn rename(&self, source: &Path, destination: &Path) -> Result<(), FileOperationError> {
         self.delegate.rename(source, destination).await
-    }
-
-    async fn remove_registered_temporary(&self, path: &Path) -> Result<(), FileOperationError> {
-        self.delegate.remove_registered_temporary(path).await
     }
 }

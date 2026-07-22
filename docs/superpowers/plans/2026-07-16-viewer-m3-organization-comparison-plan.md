@@ -396,7 +396,7 @@ Run: `pnpm --dir ui test -- src/state/viewerReducer.test.ts src/state/useViewerC
 
 - [x] **Step 2: Implement exact bridge and session-only state**
 
-Add no path-bearing API. Operation events apply only to the current session/generation/task. Successful results trigger one projection/search refresh; old responses cannot reopen dialogs or alter a new session. Project close clears tasks, conflicts, recovery and operation selections.
+Add no path-bearing API. Operation events apply only to the current session/generation/task and project epoch. Every admitted terminal file batch triggers exactly one projection/search refresh, including all-failed batches that may have mutated disk; old responses cannot reopen dialogs or alter a closed or reopened session. Project close clears tasks, conflicts, recovery and operation selections.
 
 - [x] **Step 3: Implement active-context repair**
 

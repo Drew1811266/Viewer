@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use std::{
     fs,
-    path::Path,
+    path::{Path, PathBuf},
     sync::{
         Arc, Mutex,
         atomic::{AtomicBool, Ordering},
@@ -22,7 +22,7 @@ use viewer_domain::{
 use viewer_infrastructure::operation::{
     conflict::{ConflictError, ConflictExecutor, ConflictResult, ReplaceExecutor},
     copy::LocalFileMutation,
-    executor::{CopyExecutor, CopyResumeResult},
+    executor::{CopyError, CopyExecutor, CopyResumeResult},
     journal::OperationJournal,
     recovery::{RecoveryActionKind, RecoveryReport, RecoveryService},
     rename::{RenameExecutor, RenameItemStatus, RenameMapping, RenamePlanner},
@@ -138,6 +138,54 @@ struct BoundRenameOnlyPort {
     called: AtomicBool,
 }
 
+struct SwapTemporaryAfterCombinedCopy {
+    delegate: LocalFileMutation,
+    parked: PathBuf,
+}
+
+#[async_trait]
+impl FileMutationPort for SwapTemporaryAfterCombinedCopy {
+    async fn create_and_copy_cancellable_verified(
+        &self,
+        source: &Path,
+        temporary: &Path,
+        cancellation: &FileCommandCancellation,
+        expected_source: &FileSnapshot,
+        source_parent: FileIdentity,
+        temporary_parent: FileIdentity,
+    ) -> Result<FileContentEvidence, FileOperationError> {
+        let copied = delegate_registered_copy(
+            &self.delegate,
+            source,
+            temporary,
+            cancellation,
+            expected_source,
+            source_parent,
+            temporary_parent,
+        )
+        .await?;
+        fs::rename(temporary, &self.parked).unwrap();
+        fs::copy(&self.parked, temporary).unwrap();
+        Ok(copied)
+    }
+
+    async fn snapshot(&self, path: &Path) -> Result<FileSnapshot, FileOperationError> {
+        self.delegate.snapshot(path).await
+    }
+
+    async fn copy_and_hash(
+        &self,
+        source: &Path,
+        temporary: &Path,
+    ) -> Result<(u64, [u8; 32]), FileOperationError> {
+        self.delegate.copy_and_hash(source, temporary).await
+    }
+
+    async fn rename(&self, source: &Path, destination: &Path) -> Result<(), FileOperationError> {
+        self.delegate.rename(source, destination).await
+    }
+}
+
 #[async_trait]
 impl FileMutationPort for BoundRenameOnlyPort {
     async fn create_and_copy_cancellable_verified(
@@ -196,10 +244,6 @@ impl FileMutationPort for BoundRenameOnlyPort {
             )
             .await
     }
-
-    async fn remove_registered_temporary(&self, path: &Path) -> Result<(), FileOperationError> {
-        self.delegate.remove_registered_temporary(path).await
-    }
 }
 
 #[async_trait]
@@ -230,10 +274,6 @@ impl FileMutationPort for CancelledCopyPort {
 
     async fn rename(&self, _source: &Path, _destination: &Path) -> Result<(), FileOperationError> {
         unreachable!("a cancelled copy must never reach final rename")
-    }
-
-    async fn remove_registered_temporary(&self, path: &Path) -> Result<(), FileOperationError> {
-        self.delegate.remove_registered_temporary(path).await
     }
 }
 
@@ -279,10 +319,6 @@ impl FileMutationPort for FailingRenamePort {
             message: "injected failure".into(),
         })
     }
-
-    async fn remove_registered_temporary(&self, path: &Path) -> Result<(), FileOperationError> {
-        self.delegate.remove_registered_temporary(path).await
-    }
 }
 
 #[tokio::test]
@@ -316,6 +352,62 @@ async fn verified_copy_failure_before_final_rename_leaves_only_registered_tempor
         fs::read(project.root().join(item.source.as_str())).unwrap(),
         contents
     );
+}
+
+#[tokio::test]
+async fn legacy_copy_executor_never_places_an_equal_byte_temporary_replacement() {
+    let project = ProjectFixture::new();
+    let (journal, item, contents) = prepared_copy(&project);
+    let destination = project
+        .root()
+        .join(item.destination.as_ref().unwrap().as_str());
+    let temporary = destination
+        .parent()
+        .unwrap()
+        .join(format!(".viewer-copy-{}.part", item.operation_id));
+    let parked = destination.parent().unwrap().join("parked-owned-copy.part");
+    let executor = CopyExecutor::new(
+        project.root(),
+        Arc::clone(&journal),
+        Arc::new(SwapTemporaryAfterCombinedCopy {
+            delegate: LocalFileMutation,
+            parked: parked.clone(),
+        }),
+        Arc::new(FixedClock::new(2_000)),
+        operation_commits(),
+    )
+    .unwrap();
+
+    let error = executor.execute(&item).await.unwrap_err();
+
+    assert!(matches!(
+        error,
+        CopyError::File(FileOperationError::IdentityChanged)
+    ));
+    assert!(!destination.exists());
+    assert_eq!(fs::read(&temporary).unwrap(), contents);
+    assert_eq!(fs::read(&parked).unwrap(), contents);
+    assert_eq!(
+        journal.item(item.operation_id).unwrap().unwrap().state,
+        OperationState::Failed
+    );
+    let recovery = RecoveryService::new(
+        project.root(),
+        Arc::clone(&journal),
+        Arc::new(LocalFileMutation),
+        durable_trash(&project),
+        Arc::new(FixedClock::new(9_000)),
+        operation_commits(),
+    )
+    .unwrap();
+
+    let report = recovery.recover_project().await.unwrap();
+
+    assert!(report.actions.is_empty());
+    assert_eq!(report.needs_user_review.len(), 1);
+    assert!(!destination.exists());
+    assert_eq!(fs::read(&temporary).unwrap(), contents);
+    assert_eq!(fs::read(&parked).unwrap(), contents);
 }
 
 #[tokio::test]
@@ -794,10 +886,6 @@ impl FileMutationPort for FailNamedRenamePort {
         }
         self.delegate.rename(source, destination).await
     }
-
-    async fn remove_registered_temporary(&self, path: &Path) -> Result<(), FileOperationError> {
-        self.delegate.remove_registered_temporary(path).await
-    }
 }
 
 #[tokio::test]
@@ -937,10 +1025,6 @@ impl FileMutationPort for FailingPlacementPort {
             message: "injected failure".into(),
         })
     }
-
-    async fn remove_registered_temporary(&self, path: &Path) -> Result<(), FileOperationError> {
-        self.delegate.remove_registered_temporary(path).await
-    }
 }
 
 #[async_trait]
@@ -988,10 +1072,6 @@ impl FileMutationPort for RecordingMutationPort {
                 destination.file_name().unwrap().to_string_lossy()
             ));
         self.delegate.rename(source, destination).await
-    }
-
-    async fn remove_registered_temporary(&self, path: &Path) -> Result<(), FileOperationError> {
-        self.delegate.remove_registered_temporary(path).await
     }
 }
 
@@ -1859,13 +1939,12 @@ async fn recovery_never_deletes_a_non_deterministic_registered_temporary_path() 
     )
     .unwrap();
     assert!(executor.execute(&item).await.is_err());
-    assert!(
-        journal
-            .item(item.operation_id)
-            .unwrap()
-            .unwrap()
-            .temporary
-            .is_none()
+    assert_eq!(
+        journal.item(item.operation_id).unwrap().unwrap().temporary,
+        Some(
+            RelativePath::parse(&format!("exports/.viewer-copy-{}.part", item.operation_id))
+                .unwrap()
+        )
     );
     let recovery = RecoveryService::new(
         project.root(),
@@ -1995,10 +2074,6 @@ impl FileMutationPort for FailFinalReplacementPort {
             });
         }
         self.delegate.rename(source, destination).await
-    }
-
-    async fn remove_registered_temporary(&self, path: &Path) -> Result<(), FileOperationError> {
-        self.delegate.remove_registered_temporary(path).await
     }
 }
 

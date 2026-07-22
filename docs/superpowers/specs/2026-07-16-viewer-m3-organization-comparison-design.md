@@ -105,7 +105,7 @@ Delete and the Delete key always call the macOS Trash adapter. Directories are n
 
 ### 5.4 Cancellation and results
 
-Cancel prevents not-yet-started items. An active stream copy checks cancellation between chunks, removes only its registered temporary and records `Failed(cancelled)`. Atomic rename/Trash steps already in progress finish and are reported. A completed item is never rolled back because another item failed.
+Cancel prevents not-yet-started items. An active stream copy checks cancellation between chunks, removes only the identity-bound created temporary and durably synchronizes that cleanup, or records a cleanup/recovery obligation when ownership or durability cannot be proven. Atomic rename/Trash steps already in progress finish and are reported. A completed item is never rolled back because another item failed.
 
 The result DTO contains batch/task ID, lifecycle, counts and bounded item rows with entity ID, relative path, status and stable safe code. OS messages and absolute paths never cross IPC. At most 200 detail rows are returned per page.
 

@@ -51,7 +51,7 @@ impl PreparedFinderDrag {
         &self.files
     }
 
-    pub fn revalidate_file(&self, index: usize) -> Result<&Path, FinderDragError> {
+    pub fn revalidate_file(&self, index: usize) -> Result<(&Path, EntityId), FinderDragError> {
         let file = self
             .files
             .get(index)
@@ -75,7 +75,7 @@ impl PreparedFinderDrag {
         if !canonical.starts_with(&canonical_root) {
             return Err(FinderDragError::OutsideProject);
         }
-        Ok(file)
+        Ok((file, expected))
     }
 }
 

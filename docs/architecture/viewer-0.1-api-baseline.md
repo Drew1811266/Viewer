@@ -38,7 +38,7 @@ Application APIs are stable ports and use-case state. Async traits remain runtim
 | `FileSnapshot`, `FileOperationError` + `io`, `InjectedCrash`, `FaultInjector::after_persist`, `NoFaults` | File transaction contract | Infrastructure executors, platform identity, fault fixtures | G2 fault/recovery gate |
 | `ProjectAccess`, `ProjectProbeOperation`, `ProjectProbeError` + `io`, `ProjectProbePort::probe` | Project-open port | Session service and platform access probe | Foundation session/probe tests |
 | `ClockPort::unix_millis` | Time port | Operation journal/recovery and deterministic tests | G2 recovery gate |
-| `FileMutationPort::{snapshot, copy_and_hash, rename, remove_registered_temporary}` | File mutation port | G2 executors and macOS/platform adapters | G2 filesystem tests |
+| `FileMutationPort::{snapshot, copy_and_hash, create_and_copy_cancellable_verified, rename, rename_verified}` | File mutation port | G2 executors and macOS/platform adapters; registered-copy failure cleanup is confined to the identity-bound combined primitive | G2 filesystem tests |
 | `TrashPort::trash` | Trash port | Conflict/delete commands and macOS Trash adapter | G2 fake/opt-in Trash contracts |
 | `VolumePort::{volume_id, is_case_sensitive}` | Volume port | Rename/move planner and macOS adapter | G2 case/volume tests |
 | `ImagePort::{probe, render, cancel_session}` | Image port | M1/M2 use cases and macOS image adapter | G1 native tests |

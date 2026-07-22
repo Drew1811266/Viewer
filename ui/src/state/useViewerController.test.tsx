@@ -8,6 +8,7 @@ import type {
   OperationProgressEvent,
   OperationStarted,
   ProjectChangedEvent,
+  ScanEvent,
   SearchPage,
 } from '../api/types'
 import { emptySearchFilters } from './viewerReducer'
@@ -415,6 +416,211 @@ describe('useViewerController M2 coordination', () => {
     expect(viewer.operationResults).toHaveBeenCalledOnce()
     expect(viewer.folderTree).toHaveBeenCalledTimes(2)
     expect(viewer.queryFolder).toHaveBeenCalledTimes(2)
+  })
+
+  it('refreshes grid and search after an all-failed file batch may have mutated disk', async () => {
+    const viewer = bridge()
+    let receiveOperation: ((event: OperationProgressEvent) => void) | undefined
+    vi.mocked(viewer.listenOperationProgress).mockImplementation(async (handler) => {
+      receiveOperation = handler
+      return () => undefined
+    })
+    vi.mocked(viewer.queryFolder)
+      .mockResolvedValueOnce(contentWorkspace(['destination-before-replace']))
+      .mockResolvedValueOnce(contentWorkspace(['source-after-failed-replace']))
+    vi.mocked(viewer.searchProject)
+      .mockResolvedValueOnce(page(1, 'destination-before-replace', 'filename'))
+      .mockResolvedValueOnce(page(2, 'source-after-failed-replace', 'filename'))
+    vi.mocked(viewer.operationResults).mockResolvedValue({
+      total: 1,
+      offset: 0,
+      items: [
+        {
+          entityId: 'source',
+          relativePath: 'source.jpg',
+          status: 'failed',
+          code: 'verification_failed',
+        },
+      ],
+    })
+    const { result } = renderHook(() => useViewerController(viewer))
+    await act(() => result.current.openProject('/fixture/project'))
+    act(() =>
+      result.current.setSearchFilters({
+        ...emptySearchFilters,
+        kinds: ['jpeg'],
+      }),
+    )
+    await act(() => vi.advanceTimersByTimeAsync(0))
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    expect(result.current.state.search.page?.hits[0]?.name).toBe(
+      'destination-before-replace',
+    )
+    await act(() =>
+      result.current.executeFileCommand('copy', [
+        {
+          entityId: 'source',
+          action: { kind: 'copy', destinationFolderId: 'folder-2' },
+        },
+      ]),
+    )
+
+    await act(async () => {
+      receiveOperation?.({
+        ...operationProgress('session-1', 1, 'batch-1'),
+        completed: 0,
+        failed: 1,
+      })
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    await act(() => vi.advanceTimersByTimeAsync(0))
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(viewer.folderTree).toHaveBeenCalledTimes(2)
+    expect(viewer.queryFolder).toHaveBeenCalledTimes(2)
+    expect(result.current.state.workspace).toEqual(
+      contentWorkspace(['source-after-failed-replace']),
+    )
+    expect(viewer.searchProject).toHaveBeenCalledTimes(2)
+    expect(result.current.state.search.page?.hits[0]?.name).toBe(
+      'source-after-failed-replace',
+    )
+  })
+
+  it('drops a terminal refresh that settles after closing and reopening the same backend identity', async () => {
+    const viewer = bridge()
+    const oldTerminalFolders = deferred<
+      Awaited<ReturnType<ViewerBridge['folderTree']>>
+    >()
+    let receiveOperation: ((event: OperationProgressEvent) => void) | undefined
+    vi.mocked(viewer.listenOperationProgress).mockImplementation(async (handler) => {
+      receiveOperation = handler
+      return () => undefined
+    })
+    vi.mocked(viewer.folderTree)
+      .mockResolvedValueOnce([])
+      .mockImplementationOnce(() => oldTerminalFolders.promise)
+      .mockResolvedValueOnce([])
+    const { result } = renderHook(() => useViewerController(viewer))
+    await act(() => result.current.openProject('/fixture/project'))
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    await act(() =>
+      result.current.executeFileCommand('trash', [
+        { entityId: 'image-1', action: { kind: 'trash' } },
+      ]),
+    )
+
+    act(() => receiveOperation?.(operationProgress('session-1', 1, 'batch-1')))
+    expect(viewer.folderTree).toHaveBeenCalledTimes(2)
+    await act(() => result.current.closeProject())
+    await act(() => result.current.openProject('/fixture/project'))
+    vi.mocked(viewer.searchProject).mockClear()
+    act(() =>
+      result.current.setSearchFilters({
+        ...emptySearchFilters,
+        kinds: ['jpeg'],
+      }),
+    )
+    await act(() => vi.advanceTimersByTimeAsync(0))
+    expect(viewer.searchProject).toHaveBeenCalledOnce()
+
+    await act(async () => {
+      oldTerminalFolders.resolve([])
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    await act(() => vi.advanceTimersByTimeAsync(0))
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(viewer.searchProject).toHaveBeenCalledOnce()
+  })
+
+  it('releases a terminal batch after the same project advances generation', async () => {
+    const viewer = bridge()
+    const oldTerminalFolders = deferred<
+      Awaited<ReturnType<ViewerBridge['folderTree']>>
+    >()
+    let receiveOperation: ((event: OperationProgressEvent) => void) | undefined
+    let receiveScan: ((event: ScanEvent) => void) | undefined
+    vi.mocked(viewer.listenOperationProgress).mockImplementation(async (handler) => {
+      receiveOperation = handler
+      return () => undefined
+    })
+    vi.mocked(viewer.listenScan).mockImplementation(async (handler) => {
+      receiveScan = handler
+      return () => undefined
+    })
+    vi.mocked(viewer.folderTree)
+      .mockResolvedValueOnce([])
+      .mockImplementationOnce(() => oldTerminalFolders.promise)
+      .mockResolvedValue([])
+    vi.mocked(viewer.projectSnapshot).mockResolvedValue({
+      projectId: 'project-1',
+      sessionId: 'session-1',
+      generation: 2,
+      displayName: 'Catalog',
+      access: 'read_write',
+    })
+    vi.mocked(viewer.executeFileCommand)
+      .mockResolvedValueOnce({ batchId: 'batch-1' })
+      .mockResolvedValueOnce({ batchId: 'batch-2' })
+    const { result } = renderHook(() => useViewerController(viewer))
+    await act(() => result.current.openProject('/fixture/project'))
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    await act(() =>
+      result.current.executeFileCommand('trash', [
+        { entityId: 'image-1', action: { kind: 'trash' } },
+      ]),
+    )
+
+    act(() => receiveOperation?.(operationProgress('session-1', 1, 'batch-1')))
+    await act(async () => {
+      receiveScan?.({
+        type: 'finished',
+        sessionId: 'session-1',
+        generation: 2,
+        taskId: 'scan-2',
+        totals: { folders: 0, files: 0, failed: 0 },
+      })
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    expect(result.current.state.project?.generation).toBe(2)
+    expect(result.current.state.operation.finishing).toBe(true)
+
+    await act(async () => {
+      oldTerminalFolders.resolve([])
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    await act(() =>
+      result.current.executeFileCommand('trash', [
+        { entityId: 'image-2', action: { kind: 'trash' } },
+      ]),
+    )
+
+    expect(result.current.state.operation.finishing).toBe(false)
+    expect(viewer.executeFileCommand).toHaveBeenCalledTimes(2)
   })
 
   it('keeps the newest operation result page when navigation responses arrive out of order', async () => {

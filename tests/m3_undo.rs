@@ -252,10 +252,6 @@ impl FileMutationPort for FsMutation {
         fs::rename(source, destination)
             .map_err(|error| FileOperationError::io("test reverse", destination, &error))
     }
-
-    async fn remove_registered_temporary(&self, _path: &Path) -> Result<(), FileOperationError> {
-        unreachable!()
-    }
 }
 
 #[derive(Default)]

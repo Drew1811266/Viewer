@@ -84,6 +84,12 @@ required gestures and verified every resulting file by SHA-256. The only
 remaining pre-merge action is a fresh whole-branch review that includes this
 final evidence update.
 
+The first final-evidence aggregate-gate run exposed an asynchronous test race:
+the batch-rename invalid row is focused in a React effect, while its test
+asserted synchronously as soon as the row appeared. The assertion now waits for
+the focus effect. The focused file passed 20 consecutive runs, the complete
+184-test UI suite passed, and the fresh aggregate gate passed at `aaab801`.
+
 ## Package, integrity and privacy evidence
 
 ```text
@@ -108,7 +114,7 @@ portable metadata copied fixture     same identity/marker; expected ambiguous in
 session cache after close             empty
 lsof release process TCP/UDP          no sockets
 Viewer executable SHA-256             4b467e113802f56e13665a76fc334327cea59e2317adc533f17981da7418f2d2
-Viewer DMG SHA-256                    4fe8050abfc20e6c6daab65756e6911b91d79190f3865d648a2787eaac156852
+Viewer DMG SHA-256                    e350a3adf3af37526b2001500fc26ac2674fd4d1dd3b7ce4ce73fd100152235b
 ```
 
 The exact low-concurrency gate and package build above were repeated from clean

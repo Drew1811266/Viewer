@@ -11,6 +11,7 @@ Finder export and Finder-folder import.
 ## Environment and automated verification
 
 - Tested code commit: `b103070680ab8f69980f2572ec3ae0068771dcac`
+- Final verification head: `aaab801` (acceptance evidence plus focus-test timing stabilization)
 - Gate: `CARGO_BUILD_JOBS=2 RUST_TEST_THREADS=2 TOKIO_WORKER_THREADS=2 RAYON_NUM_THREADS=2 pnpm gate:m3` — PASS, exit 0, ending with
   `M3 organization and comparison gate passed`.
 - Package: `pnpm build:macos` — PASS; Apple Silicon macOS 13-compatible
@@ -19,7 +20,7 @@ Finder export and Finder-folder import.
 - App executable SHA-256:
   `4b467e113802f56e13665a76fc334327cea59e2317adc533f17981da7418f2d2`
 - DMG SHA-256:
-  `4fe8050abfc20e6c6daab65756e6911b91d79190f3865d648a2787eaac156852`
+  `e350a3adf3af37526b2001500fc26ac2674fd4d1dd3b7ce4ce73fd100152235b`
 
 ## Fixture-relative integrity map
 

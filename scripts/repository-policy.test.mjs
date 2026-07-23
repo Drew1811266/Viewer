@@ -338,6 +338,26 @@ test('M1 IPC fixture validation rejects path disclosure and unsupported kinds', 
   }
 })
 
+test('active governance has no M4 owner or Viewer 0.1 delivery gate', async () => {
+  const active = await Promise.all([
+    read('docs/PRODUCT_SPEC.md'),
+    read('docs/TECHNICAL_FOUNDATIONS.md'),
+    read('docs/superpowers/plans/2026-07-16-viewer-0.1-roadmap.md'),
+    read('docs/milestones/viewer-0.1-scope-matrix.md'),
+    read('docs/architecture/viewer-0.1-api-baseline.md'),
+  ])
+  const text = active.join('\n')
+  for (const forbidden of [
+    /\bM4 Internal Release\b/i,
+    /M4 内部发布/,
+    /next executable action[^.]*\bM4\b/i,
+    /M4 final acceptance/i,
+    /Viewer 0\.1 for Mac/i,
+  ]) {
+    assert.doesNotMatch(text, forbidden)
+  }
+})
+
 function collectDirectDependencies({ workspace, manifests, packages }) {
   const dependencies = new Set()
   for (const manifest of [workspace, ...manifests]) {

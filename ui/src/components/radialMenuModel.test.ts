@@ -60,6 +60,22 @@ describe('buildRadialMenuModel', () => {
     expect(mixed[4]).toMatchObject({ id: 'compare', disabled: true })
   })
 
+  it('explains an unavailable compare context separately from an invalid selection shape', () => {
+    const unavailable = buildRadialMenuModel(
+      context({
+        selectedCount: 2,
+        selectedImageCount: 2,
+        compareContextAvailable: false,
+      }),
+    )
+
+    expect(unavailable[4]).toMatchObject({
+      id: 'compare',
+      disabled: true,
+      disabledReason: '请先返回文件夹内容，再选择图片进行对比',
+    })
+  })
+
   it('disables writes in read-only and all competing actions while busy', () => {
     const readOnly = buildRadialMenuModel(context({ readOnly: true }))
     expect(readOnly[1]).toMatchObject({ disabled: true, disabledReason: '只读项目不可标记' })

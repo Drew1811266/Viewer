@@ -582,6 +582,27 @@ describe('ContentBrowser', () => {
     ])
   })
 
+  it('snapshots a text-row right-click request after replacing an unrelated selection', () => {
+    const request = vi.fn()
+    render(<ContentBrowser workspace={workspace(3)} onRadialMenuRequest={request} />)
+    fireEvent.click(screen.getByRole('option', { name: '1.jpg' }))
+    fireEvent.click(screen.getByRole('option', { name: '2.jpg' }), { metaKey: true })
+
+    fireEvent.pointerDown(screen.getByRole('option', { name: 'prompt.md' }), {
+      pointerId: 72,
+      button: 2,
+      clientX: 230,
+      clientY: 180,
+    })
+
+    expect(selectedLabels()).toEqual(['prompt.md'])
+    expect(request).toHaveBeenCalledWith({
+      files: [expect.objectContaining({ entityId: 'text-1' })],
+      origin: { x: 230, y: 180 },
+      pointerId: 72,
+    })
+  })
+
   it('suppresses the native context menu for image and text options', () => {
     render(<ContentBrowser workspace={workspace(1)} onRadialMenuRequest={vi.fn()} />)
     for (const name of ['1.jpg', 'prompt.md']) {

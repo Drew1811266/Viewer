@@ -100,12 +100,16 @@ describe('Viewer empty state', () => {
 
   it('moves close-project into the compact project menu', async () => {
     const viewer = bridge()
+    vi.mocked(viewer.queryFolder).mockResolvedValue(contentWorkspace())
     render(<App bridge={viewer} />)
     fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
-    await screen.findByRole('heading', { name: 'Catalog' })
+    const file = await screen.findByRole('option', { name: 'front.jpg' })
     expect(screen.queryByRole('button', { name: '关闭项目' })).not.toBeInTheDocument()
+    openRadialMenu(file, 105)
+    expect(screen.getByRole('menu', { name: '文件操作' })).toBeVisible()
     closeProjectFromMenu()
     await waitFor(() => expect(viewer.closeProject).toHaveBeenCalled())
+    expect(screen.queryByRole('menu', { name: '文件操作' })).not.toBeInTheDocument()
   })
 
   it('exposes read-only status in the keyboard-operable project menu and keeps the banner', async () => {
@@ -393,14 +397,18 @@ describe('Viewer empty state', () => {
       receiveProjectClosed = handler
       return () => undefined
     })
+    vi.mocked(viewer.queryFolder).mockResolvedValue(contentWorkspace())
     render(<App bridge={viewer} />)
     await waitFor(() => expect(receiveProjectClosed).toBeDefined())
     fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
-    await screen.findByRole('heading', { name: 'Catalog' })
+    const file = await screen.findByRole('option', { name: 'front.jpg' })
+    openRadialMenu(file, 106)
+    expect(screen.getByRole('menu', { name: '文件操作' })).toBeVisible()
 
     act(() => receiveProjectClosed?.())
 
     expect(await screen.findByRole('heading', { name: 'Viewer' })).toBeVisible()
+    expect(screen.queryByRole('menu', { name: '文件操作' })).not.toBeInTheDocument()
     expect(viewer.closeProject).not.toHaveBeenCalled()
   })
 
@@ -462,11 +470,14 @@ describe('Viewer empty state', () => {
     render(<App bridge={viewer} />)
     fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
     const grid = await screen.findByRole('listbox', { name: '图片文件' })
-    fireEvent.click(screen.getByRole('option', { name: '1.jpg' }))
+    const file = screen.getByRole('option', { name: '1.jpg' })
+    fireEvent.click(file)
     grid.scrollTop = 200
     fireEvent.scroll(grid)
+    openRadialMenu(file, 107)
     fireEvent.keyDown(grid, { key: ' ' })
     await screen.findByRole('img', { name: '1.jpg' })
+    expect(screen.queryByRole('menu', { name: '文件操作' })).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: '关闭预览' }))
 
@@ -542,6 +553,7 @@ describe('Viewer empty state', () => {
     fireEvent.click(screen.getByRole('menuitem', { name: '整理' }))
     fireEvent.click(screen.getByRole('menuitem', { name: '重命名' }))
     expect(screen.getByRole('dialog', { name: '重命名文件' })).toBeVisible()
+    expect(screen.queryByRole('menu', { name: '文件操作' })).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: '取消' }))
 
     for (const [mode, actionLabel, dialogName] of [
@@ -573,8 +585,13 @@ describe('Viewer empty state', () => {
     const back = screen.getByRole('option', { name: 'back.jpg' })
     fireEvent.click(back, { metaKey: true })
     openRadialMenu(back, 96)
+    expect(screen.getByRole('menuitem', { name: '并排对比' })).toHaveAttribute(
+      'aria-disabled',
+      'false',
+    )
     fireEvent.click(screen.getByRole('menuitem', { name: '并排对比' }))
     expect(await screen.findByRole('region', { name: '图片对比' })).toBeVisible()
+    expect(screen.queryByRole('menu', { name: '文件操作' })).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: '关闭对比' }))
 
     openRadialMenu(front, 97)
@@ -584,6 +601,7 @@ describe('Viewer empty state', () => {
 
   it('replaces only the right workspace with search and returns to folder context', async () => {
     const viewer = bridge()
+    vi.mocked(viewer.queryFolder).mockResolvedValue(contentWorkspace())
     vi.mocked(viewer.searchProject).mockResolvedValue({
       revision: 1,
       total: 1,
@@ -617,16 +635,19 @@ describe('Viewer empty state', () => {
     render(<App bridge={viewer} />)
     fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
     const search = await screen.findByRole('searchbox', { name: '搜索项目' })
+    const file = screen.getByRole('option', { name: 'front.jpg' })
 
     fireEvent.keyDown(window, { key: 'f', metaKey: true })
     expect(search).toHaveFocus()
+    openRadialMenu(file, 108)
     fireEvent.change(search, { target: { value: 'shoe' } })
     await waitFor(() => expect(viewer.searchProject).toHaveBeenCalledOnce())
+    expect(screen.queryByRole('menu', { name: '文件操作' })).not.toBeInTheDocument()
     expect(await screen.findByRole('option', { name: /shoe.jpg/ })).toBeVisible()
     expect(screen.getByRole('tree', { name: '项目文件夹' })).toBeVisible()
 
     fireEvent.click(screen.getByRole('button', { name: '返回文件夹内容' }))
-    expect(await screen.findByText('此文件夹中没有支持的文件。')).toBeVisible()
+    expect(await screen.findByRole('option', { name: 'front.jpg' })).toBeVisible()
   })
 
   it('opens safe rename and Trash surfaces from keyboard without immediate deletion', async () => {
@@ -981,10 +1002,12 @@ describe('Viewer empty state', () => {
     render(<App bridge={viewer} />)
     fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
     const handle = await screen.findByRole('button', { name: '整理 front.jpg' })
+    const file = screen.getByRole('option', { name: 'front.jpg' })
     const destination = await screen.findByRole('treeitem', { name: 'selected' })
     organizationPointerMove(handle, destination, { pointerId: 34, altKey: false })
     expect(destination).toHaveAttribute('data-drop-mode', 'move')
 
+    openRadialMenu(file, 109)
     fireEvent.click(screen.getByRole('treeitem', { name: 'id' }))
     await waitFor(() =>
       expect(screen.getByRole('treeitem', { name: 'id' })).toHaveAttribute(
@@ -992,6 +1015,7 @@ describe('Viewer empty state', () => {
         'true',
       ),
     )
+    expect(screen.queryByRole('menu', { name: '文件操作' })).not.toBeInTheDocument()
     fireEvent.pointerUp(handle, { pointerId: 34, clientX: 20, clientY: 20 })
 
     expect(viewer.preflightFileCommand).not.toHaveBeenCalled()
@@ -1055,6 +1079,48 @@ describe('Viewer empty state', () => {
 
     expect(viewer.preflightFileCommand).not.toHaveBeenCalled()
     expect(viewer.executeFileCommand).not.toHaveBeenCalled()
+  })
+
+  it('closes the radial menu when external projection repair removes its file', async () => {
+    const viewer = bridge()
+    let receiveProjectChanged: Parameters<ViewerBridge['listenProjectChanged']>[0] | undefined
+    vi.mocked(viewer.listenProjectChanged).mockImplementation(async (handler) => {
+      receiveProjectChanged = handler
+      return () => undefined
+    })
+    const initial = compareContentWorkspace()
+    const surviving = {
+      ...initial,
+      images: [initial.images[1]!],
+    }
+    vi.mocked(viewer.queryFolder)
+      .mockResolvedValueOnce(initial)
+      .mockResolvedValueOnce(surviving)
+    render(<App bridge={viewer} />)
+    await waitFor(() => expect(receiveProjectChanged).toBeDefined())
+    fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
+    const front = await screen.findByRole('option', { name: 'front.jpg' })
+    openRadialMenu(front, 110)
+    expect(screen.getByRole('menu', { name: '文件操作' })).toBeVisible()
+
+    act(() => {
+      receiveProjectChanged?.({
+        sessionId: 'session-1',
+        generation: 1,
+        reason: 'external_change',
+        added: 0,
+        removed: 1,
+        modified: 0,
+        moved: 0,
+        markerPathsMoved: 0,
+        failed: 0,
+      })
+    })
+
+    expect(
+      await screen.findByText('部分正在查看的文件已在项目外发生变化。'),
+    ).toBeVisible()
+    expect(screen.queryByRole('menu', { name: '文件操作' })).not.toBeInTheDocument()
   })
 
   it('rejects a same-folder move target while allowing Option-copy', async () => {

@@ -360,6 +360,39 @@ describe('RadialFileMenu', () => {
     )
   })
 
+  it('rotates only the local fan at the right edge and keeps accessible labels unchanged', () => {
+    render(
+      <RadialFileMenu
+        origin={{ x: 1260, y: 400 }}
+        pointerId={null}
+        selectionCount={1}
+        viewport={{ width: 1280, height: 800 }}
+        model={model}
+        onAction={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    )
+    fireEvent.click(screen.getByRole('menuitem', { name: '标记' }))
+    expect(screen.getByRole('menuitemcheckbox', { name: '保留' })).toBeVisible()
+    expect(
+      screen.queryByRole('menuitemcheckbox', { name: '取消收藏' }),
+    ).not.toBeInTheDocument()
+    const menu = screen.getByRole('menu', { name: '文件操作' })
+    expect(menu.parentElement).toHaveStyle({ '--radial-origin-x': '1100px' })
+  })
+
+  it('provides dark appearance and reduced-motion rules for every new surface', () => {
+    expect(appCss).toMatch(
+      /@media \(prefers-color-scheme: dark\)[\s\S]*\.workspace-header,[\s\S]*\.radial-menu-center\s*\{[\s\S]*background:\s*#24282f;/,
+    )
+    expect(appCss).toMatch(
+      /@media \(prefers-color-scheme: dark\)[\s\S]*\.radial-primary-shape\s*\{[\s\S]*fill:\s*#2f343d;/,
+    )
+    expect(appCss).toMatch(
+      /@media \(prefers-reduced-motion: reduce\)[\s\S]*\.organization-drag-handle,[\s\S]*\.radial-secondary-shape\s*\{[\s\S]*transition:\s*none;/,
+    )
+  })
+
   it('hands Trash to the confirmation owner instead of mutating directly', () => {
     const action = vi.fn()
     render(

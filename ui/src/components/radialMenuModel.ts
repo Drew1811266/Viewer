@@ -124,7 +124,11 @@ export function buildRadialMenuModel(context: RadialMenuContext): RadialMenuItem
       label: '并排对比',
       symbol: '▣',
       disabled: compareDisabled,
-      disabledReason: context.busy ? '请等待当前文件操作完成' : '请选择 2–4 张图片',
+      disabledReason: context.busy
+        ? '请等待当前文件操作完成'
+        : !context.compareContextAvailable
+          ? '请先返回文件夹内容，再选择图片进行对比'
+          : '请选择 2–4 张图片',
     },
     {
       id: 'info',

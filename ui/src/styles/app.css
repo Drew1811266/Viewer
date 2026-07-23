@@ -1628,3 +1628,42 @@ select {
   color: #202733;
   font-size: 12px;
 }
+
+@media (prefers-color-scheme: dark) {
+  .workspace-header,
+  .search-field,
+  .search-options-popover,
+  .search-view-popover,
+  .project-menu > div,
+  .content-view-menu > div,
+  .radial-menu-center {
+    background: #24282f;
+    border-color: #4d5663;
+    color: #f3f5f7;
+  }
+
+  .radial-primary-shape {
+    fill: #2f343d;
+    stroke: #596474;
+  }
+
+  .radial-secondary-shape,
+  .radial-primary-shape[data-active="true"],
+  .radial-secondary-shape[data-active="true"] {
+    fill: #244d7d;
+    stroke: #5d9ee8;
+  }
+
+  .radial-menu-button,
+  .radial-menu-center strong {
+    color: #f3f5f7;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .organization-drag-handle,
+  .radial-primary-shape,
+  .radial-secondary-shape {
+    transition: none;
+  }
+}

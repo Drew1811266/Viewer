@@ -56,10 +56,11 @@ content workspace supplies the complete ordered image list for that row.
 
 Row results are cached by folder entity id for the lifetime of the current
 overview. Concurrent requests for the same folder share one promise. `App`
-provides an overview identity derived from project session, generation, and
-selected category id; changing that identity remounts `FolderOverview` and
-discards the row cache. This prevents files from a previous category or project
-session from leaking into the next view.
+provides an overview identity derived from project session, generation,
+selected category id, and a local sequence that advances for every new
+workspace projection. Changing that identity remounts `FolderOverview` and
+discards the row cache. This prevents files from a previous category, project
+session, or external-change refresh from leaking into the next view.
 
 Thumbnail bytes continue through the existing thumbnail request and cache path.
 Only visible thumbnail elements request image data.

@@ -103,6 +103,18 @@ it('routes secondary and Control-click input on the organization handle to the r
     clientX: 220,
     clientY: 170,
   })
+  fireEvent.pointerMove(handle, {
+    pointerId: 74,
+    buttons: 2,
+    clientX: 230,
+    clientY: 180,
+  })
+  fireEvent.pointerUp(handle, {
+    pointerId: 74,
+    button: 2,
+    clientX: 230,
+    clientY: 180,
+  })
   fireEvent.contextMenu(handle, {
     button: 2,
     clientX: 220,
@@ -327,6 +339,34 @@ function startPointerOrganization(file: BrowserFile, event: PointerEvent<HTMLEle
     captureNode: event.currentTarget,
   })
 }
+```
+
+Track the pointer that actually began organization dragging inside
+`OrganizationDragHandle`. Forward move, up, and cancel only for that pointer so
+secondary radial gestures continue bubbling to the menu's window listeners:
+
+```tsx
+const organizationPointerId = useRef<number | null>(null)
+
+onPointerDown={(event) => {
+  if (event.button === 0 && !event.ctrlKey) {
+    organizationPointerId.current = event.pointerId
+  }
+  onPointerDown(file, event)
+}}
+onPointerMove={(event) => {
+  if (organizationPointerId.current === event.pointerId) onPointerMove(event)
+}}
+onPointerUp={(event) => {
+  if (organizationPointerId.current !== event.pointerId) return
+  organizationPointerId.current = null
+  onPointerUp(event)
+}}
+onPointerCancel={(event) => {
+  if (organizationPointerId.current !== event.pointerId) return
+  organizationPointerId.current = null
+  onPointerCancel(event)
+}}
 ```
 
 - [ ] **Step 4: Run focused tests and verify GREEN**

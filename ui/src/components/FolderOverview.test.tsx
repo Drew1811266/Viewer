@@ -32,30 +32,40 @@ const card: ContentFolderCard = {
 }
 
 describe('FolderOverview', () => {
-  it('shows metadata before four representative thumbnails resolve', () => {
-    const requestImage = vi.fn(() => new Promise<string>(() => undefined))
+  it('renders one row per folder in source order with compact metadata', async () => {
+    const secondCard = {
+      ...card,
+      entityId: 'folder-2',
+      relativePath: 'catalog/shoes/B02',
+      name: 'B02',
+    }
     render(
       <FolderOverview
-        folders={[card]}
+        folders={[card, secondCard]}
         currentPath="catalog/shoes"
-        requestThumbnail={requestImage}
+        requestFolderImages={vi.fn().mockResolvedValue([])}
+        onPreview={vi.fn()}
         onSelect={vi.fn()}
         onShowAll={vi.fn()}
       />,
     )
 
-    expect(screen.getByText('4 张图片')).toBeVisible()
-    expect(screen.getByText('1 个文本')).toBeVisible()
-    expect(screen.getAllByLabelText('缩略图加载中')).toHaveLength(4)
+    const rows = screen.getAllByRole('article')
+    expect(rows).toHaveLength(2)
+    expect(rows[0]).toHaveTextContent('id-001')
+    expect(rows[1]).toHaveTextContent('B02')
+    expect(screen.queryByText(/保留 0 · 待定/)).not.toBeInTheDocument()
   })
 
-  it('offers an explicit aggregate view without changing the displayed category path', () => {
+  it('keeps aggregate and folder navigation actions unchanged', () => {
     const showAll = vi.fn()
     const select = vi.fn()
     render(
       <FolderOverview
         folders={[card]}
         currentPath="catalog/shoes"
+        requestFolderImages={vi.fn().mockResolvedValue([])}
+        onPreview={vi.fn()}
         onSelect={select}
         onShowAll={showAll}
       />,
@@ -69,30 +79,22 @@ describe('FolderOverview', () => {
     expect(select).toHaveBeenCalledWith('folder-1')
   })
 
-  it('shows the folder marker separately from descendant review progress and favorites', () => {
-    render(
-      <FolderOverview
-        folders={[
-          {
-            ...card,
-            marker: { reviewState: 'reject', favorite: true },
-            reviewProgress: {
-              total: 5,
-              keep: 2,
-              pending: 1,
-              reject: 1,
-              unmarked: 1,
-              favorite: 3,
-            },
-          },
-        ]}
-        currentPath="catalog"
-        onSelect={vi.fn()}
-        onShowAll={vi.fn()}
-      />,
-    )
-    expect(screen.getByText('文件夹：淘汰 · 收藏')).toBeVisible()
-    expect(screen.getByText('已审阅 4 / 5')).toBeVisible()
-    expect(screen.getByText('保留 2 · 待定 1 · 淘汰 1 · 未标记 1 · 收藏 3')).toBeVisible()
+  it('reuses a completed folder request while the overview remains mounted', async () => {
+    const requestFolderImages = vi.fn().mockResolvedValue(card.representativeImages)
+    const props = {
+      currentPath: 'catalog/shoes',
+      requestFolderImages,
+      onPreview: vi.fn(),
+      onSelect: vi.fn(),
+      onShowAll: vi.fn(),
+    }
+    const rendered = render(<FolderOverview {...props} folders={[card]} />)
+
+    await screen.findByRole('button', { name: '预览 1.jpg' })
+    rendered.rerender(<FolderOverview {...props} folders={[]} />)
+    rendered.rerender(<FolderOverview {...props} folders={[card]} />)
+    await screen.findByRole('button', { name: '预览 1.jpg' })
+
+    expect(requestFolderImages).toHaveBeenCalledOnce()
   })
 })

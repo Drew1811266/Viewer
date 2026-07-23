@@ -12,6 +12,7 @@
     "gate:m2": "./scripts/run-m2-review-gate.sh",
     "gate:m3": "./scripts/run-m3-organization-gate.sh",
     "tauri": "tauri",
+    "test:policy": "node --test scripts/repository-policy.test.mjs scripts/scope-coverage.test.mjs",
     "verify": "node --test scripts/repository-policy.test.mjs && pnpm --dir ui test && pnpm --dir ui build && cargo fmt --check && cargo clippy --locked --workspace --all-targets -- -D warnings && cargo test --locked --workspace"
   },
   "devDependencies": {

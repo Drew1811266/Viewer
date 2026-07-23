@@ -42,6 +42,23 @@ describe('TaskBar', () => {
     expect(cancel).toHaveBeenCalledWith('scan-1')
   })
 
+  it('keeps controls outside a separate concise polite live-status node', () => {
+    render(
+      <TaskBar
+        task={{ ...failedScanTask, status: 'running', failed: 0, cancellable: true }}
+        onCancel={vi.fn()}
+      />,
+    )
+
+    const capsule = screen.getByRole('complementary', { name: '后台任务' })
+    const liveStatus = screen.getByRole('status', { name: '后台任务状态' })
+    expect(capsule).not.toHaveAttribute('aria-live')
+    expect(liveStatus).toHaveAttribute('aria-live', 'polite')
+    expect(liveStatus).toHaveTextContent('1 个任务进行中')
+    expect(liveStatus.querySelector('button')).toBeNull()
+    expect(capsule.querySelectorAll('button').length).toBeGreaterThan(0)
+  })
+
   it('counts skipped/cancelled operation items and opens completed results', () => {
     const showResults = vi.fn()
     render(

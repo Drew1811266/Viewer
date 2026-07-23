@@ -8,7 +8,6 @@ import {
   SECONDARY_INNER_RADIUS,
   SECONDARY_OUTER_RADIUS,
   annularSectorPath,
-  chooseSecondaryAnchor,
   fitMenuOrigin,
   polarPoint,
   primaryCenterAngle,
@@ -28,6 +27,7 @@ interface RadialFileMenuProps {
   origin: Point
   pointerId: number | null
   selectionCount: number
+  readOnly?: boolean
   model: RadialMenuItem[]
   viewport?: Viewport
   onAction: (action: RadialLeafAction) => void
@@ -38,6 +38,7 @@ export default function RadialFileMenu({
   origin,
   pointerId,
   selectionCount,
+  readOnly = false,
   model,
   viewport = { width: window.innerWidth, height: window.innerHeight },
   onAction,
@@ -59,12 +60,11 @@ export default function RadialFileMenu({
   const rootRef = useRef<HTMLDivElement>(null)
   const startPoint = useRef(origin)
   const maximumTravelled = useRef(0)
+  const gestureCancelled = useRef(false)
   const previousFocus = useRef(document.activeElement as HTMLElement | null)
   const expandedItem = expandedIndex === null ? null : (model[expandedIndex] ?? null)
   const secondaryAnchor =
-    expandedIndex === null
-      ? 0
-      : chooseSecondaryAnchor(primaryCenterAngle(expandedIndex), origin, viewport)
+    expandedIndex === null ? 0 : primaryCenterAngle(expandedIndex)
   const displayedPrimaryIndex = clickMode ? primaryIndex : pointerPrimaryIndex
 
   useEffect(() => {
@@ -81,7 +81,7 @@ export default function RadialFileMenu({
   useEffect(() => {
     if (pointerId === null || clickMode) return
     const move = (event: PointerEvent) => {
-      if (event.pointerId !== pointerId) return
+      if (event.pointerId !== pointerId || gestureCancelled.current) return
       const point = { x: event.clientX, y: event.clientY }
       maximumTravelled.current = Math.max(
         maximumTravelled.current,
@@ -109,7 +109,7 @@ export default function RadialFileMenu({
       scheduleExpansion(nextPrimary)
     }
     const up = (event: PointerEvent) => {
-      if (event.pointerId !== pointerId) return
+      if (event.pointerId !== pointerId || gestureCancelled.current) return
       maximumTravelled.current = Math.max(
         maximumTravelled.current,
         Math.hypot(
@@ -134,11 +134,22 @@ export default function RadialFileMenu({
       }
       onClose()
     }
+    const cancel = (event: PointerEvent) => {
+      if (event.pointerId !== pointerId || gestureCancelled.current) return
+      gestureCancelled.current = true
+      if (expandTimer.current !== null) {
+        window.clearTimeout(expandTimer.current)
+        expandTimer.current = null
+      }
+      onClose()
+    }
     window.addEventListener('pointermove', move)
     window.addEventListener('pointerup', up)
+    window.addEventListener('pointercancel', cancel)
     return () => {
       window.removeEventListener('pointermove', move)
       window.removeEventListener('pointerup', up)
+      window.removeEventListener('pointercancel', cancel)
     }
   }, [
     clickMode,
@@ -178,6 +189,7 @@ export default function RadialFileMenu({
       return
     }
     expandTimer.current = window.setTimeout(() => {
+      expandTimer.current = null
       setExpandedIndex(index)
       setSecondaryIndex(null)
     }, 120)
@@ -330,6 +342,11 @@ export default function RadialFileMenu({
               setPrimaryIndex(index)
               setSecondaryIndex(null)
             }}
+            onPointerEnter={() => {
+              if (!clickMode) return
+              setPrimaryIndex(index)
+              scheduleExpansion(index)
+            }}
             onClick={() => execute(item, index)}
           />
         ))}
@@ -373,7 +390,8 @@ export default function RadialFileMenu({
         aria-label="关闭文件操作"
       >
         <strong>{selectionCount} 个文件</strong>
-        <span>回到中心取消</span>
+        {readOnly && <span className="radial-center-context">只读</span>}
+        <span>{readOnly ? '中心取消' : '回到中心取消'}</span>
       </button>
     </div>
   )
@@ -389,6 +407,7 @@ function RadialButton({
   controls,
   expanded,
   onFocus,
+  onPointerEnter,
   onClick,
 }: {
   id?: string
@@ -400,6 +419,7 @@ function RadialButton({
   controls?: string
   expanded?: boolean
   onFocus: () => void
+  onPointerEnter?: () => void
   onClick: () => void
 }) {
   const checkbox = item.checked !== undefined
@@ -424,10 +444,21 @@ function RadialButton({
         { '--radial-x': `${point.x}px`, '--radial-y': `${point.y}px` } as CSSProperties
       }
       onFocus={onFocus}
+      onPointerEnter={onPointerEnter}
       onClick={onClick}
     >
       <span aria-hidden="true">{item.symbol}</span>
       <span>{item.label}</span>
+      {item.checked === true && (
+        <span className="radial-state-cue" aria-hidden="true">
+          ✓
+        </span>
+      )}
+      {item.checked === 'mixed' && (
+        <span className="radial-state-cue" aria-hidden="true">
+          ±
+        </span>
+      )}
     </button>
   )
 }

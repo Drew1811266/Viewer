@@ -5,6 +5,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import RadialFileMenu from './RadialFileMenu'
 import { buildRadialMenuModel } from './radialMenuModel'
+import { fitMenuOrigin, polarPoint } from './radialMenuGeometry'
 
 const appCss = readFileSync('src/styles/app.css', 'utf8')
 
@@ -249,6 +250,63 @@ describe('RadialFileMenu', () => {
     expect(action).toHaveBeenCalledWith('mark.keep')
   })
 
+  it('shows read-only context in the center summary', () => {
+    const readOnlyModel = buildRadialMenuModel({
+      selectedCount: 1,
+      selectedImageCount: 1,
+      readOnly: true,
+      busy: false,
+      compareContextAvailable: true,
+      commonReview: null,
+      commonFavorite: false,
+    })
+    render(
+      <RadialFileMenu
+        origin={{ x: 320, y: 240 }}
+        pointerId={null}
+        selectionCount={1}
+        readOnly
+        model={readOnlyModel}
+        onAction={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText('只读')).toBeVisible()
+  })
+
+  it('renders visible non-color cues for checked and mixed marker states', () => {
+    const mixedModel = buildRadialMenuModel({
+      selectedCount: 2,
+      selectedImageCount: 2,
+      readOnly: false,
+      busy: false,
+      compareContextAvailable: true,
+      commonReview: 'keep',
+      commonFavorite: 'mixed',
+    })
+    render(
+      <RadialFileMenu
+        origin={{ x: 320, y: 240 }}
+        pointerId={null}
+        selectionCount={2}
+        model={mixedModel}
+        onAction={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    )
+    fireEvent.click(screen.getByRole('menuitem', { name: '标记' }))
+
+    expect(
+      screen.getByRole('menuitemcheckbox', { name: '保留' }).querySelector('.radial-state-cue'),
+    ).toHaveTextContent('✓')
+    expect(
+      screen
+        .getByRole('menuitemcheckbox', { name: '切换收藏' })
+        .querySelector('.radial-state-cue'),
+    ).toHaveTextContent('±')
+  })
+
   it.each([
     ['标记', { x: 398, y: 195 }, 5],
     ['整理', { x: 398, y: 285 }, 3],
@@ -314,6 +372,54 @@ describe('RadialFileMenu', () => {
     fireEvent.pointerUp(window, { pointerId: 7, clientX: 324, clientY: 243 })
     expect(action).not.toHaveBeenCalled()
     fireEvent.keyDown(screen.getByRole('menu'), { key: 'Escape' })
+    expect(close).toHaveBeenCalledOnce()
+  })
+
+  it('expands a primary fan after a short release switches to click-mode hover', () => {
+    vi.useFakeTimers()
+    try {
+      render(
+        <RadialFileMenu
+          origin={{ x: 320, y: 240 }}
+          pointerId={7}
+          selectionCount={1}
+          model={model}
+          onAction={vi.fn()}
+          onClose={vi.fn()}
+        />,
+      )
+      fireEvent.pointerUp(window, { pointerId: 7, clientX: 324, clientY: 243 })
+
+      fireEvent.pointerEnter(screen.getByRole('menuitem', { name: '标记' }))
+      act(() => vi.advanceTimersByTime(119))
+      expect(screen.queryByRole('menu', { name: '标记' })).not.toBeInTheDocument()
+      act(() => vi.advanceTimersByTime(1))
+
+      expect(screen.getByRole('menu', { name: '标记' })).toBeVisible()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('closes a held-pointer session on pointercancel without executing an action', () => {
+    const action = vi.fn()
+    const close = vi.fn()
+    render(
+      <RadialFileMenu
+        origin={{ x: 320, y: 240 }}
+        pointerId={7}
+        selectionCount={1}
+        model={model}
+        onAction={action}
+        onClose={close}
+      />,
+    )
+
+    fireEvent.pointerMove(window, { pointerId: 7, clientX: 320, clientY: 150 })
+    fireEvent.pointerCancel(window, { pointerId: 7 })
+    fireEvent.pointerUp(window, { pointerId: 7, clientX: 320, clientY: 150 })
+
+    expect(action).not.toHaveBeenCalled()
     expect(close).toHaveBeenCalledOnce()
   })
 
@@ -423,7 +529,7 @@ describe('RadialFileMenu', () => {
     )
   })
 
-  it('keeps the six-sector primary ring stable while only the right-edge local fan falls back', () => {
+  it('keeps the six-sector primary ring and preferred local fan direction stable at an edge', () => {
     const center = render(
       <RadialFileMenu
         origin={{ x: 640, y: 400 }}
@@ -466,12 +572,77 @@ describe('RadialFileMenu', () => {
     const edgeSecondaryPaths = Array.from(
       edge.container.querySelectorAll<SVGPathElement>('.radial-secondary-shape'),
     ).map((path) => path.getAttribute('d'))
-    expect(edgeFan).toHaveAttribute('data-anchor-degrees', '180')
-    expect(edgeSecondaryPaths).not.toEqual(centerSecondaryPaths)
+    expect(edgeFan).toHaveAttribute('data-anchor-degrees', '-30')
+    expect(edgeSecondaryPaths).toEqual(centerSecondaryPaths)
     expect(primaryPaths(edge.container)).toEqual(centerPrimaryPaths)
     expect(primaryOffsets(edge.container)).toEqual(centerPrimaryOffsets)
     expectVisibleLabelsUpright(edge.container)
   })
+
+  it.each([
+    ['left', { x: 4, y: 400 }],
+    ['top', { x: 640, y: 4 }],
+    ['bottom', { x: 640, y: 796 }],
+    ['right', { x: 1276, y: 400 }],
+  ])(
+    'keeps a held Mark stroke connected through the %s edge and executes its leaf',
+    (_edge, origin) => {
+      vi.useFakeTimers()
+      try {
+        const action = vi.fn()
+        const viewport = { width: 1280, height: 800 }
+        const fittedOrigin = fitMenuOrigin(origin, viewport)
+        const primaryPoint = polarPoint(fittedOrigin, 90, -30)
+        const leafPoint = polarPoint(fittedOrigin, 140, -30)
+        const { container } = render(
+          <RadialFileMenu
+            origin={origin}
+            pointerId={77}
+            selectionCount={1}
+            viewport={viewport}
+            model={model}
+            onAction={action}
+            onClose={vi.fn()}
+          />,
+        )
+
+        fireEvent.pointerMove(window, {
+          pointerId: 77,
+          clientX: primaryPoint.x,
+          clientY: primaryPoint.y,
+        })
+        act(() => vi.advanceTimersByTime(120))
+        expect(screen.getByRole('menu', { name: '标记' })).toHaveAttribute(
+          'data-anchor-degrees',
+          '-30',
+        )
+        fireEvent.pointerMove(window, {
+          pointerId: 77,
+          clientX: leafPoint.x,
+          clientY: leafPoint.y,
+        })
+        fireEvent.pointerUp(window, {
+          pointerId: 77,
+          clientX: leafPoint.x,
+          clientY: leafPoint.y,
+        })
+
+        expect(action).toHaveBeenCalledOnce()
+        expect(action).toHaveBeenCalledWith('mark.reject')
+        expect(primarySectors(container)).toEqual([
+          { start: '-120', end: '-60' },
+          { start: '-60', end: '0' },
+          { start: '0', end: '60' },
+          { start: '60', end: '120' },
+          { start: '120', end: '180' },
+          { start: '180', end: '240' },
+        ])
+        expectVisibleLabelsUpright(container)
+      } finally {
+        vi.useRealTimers()
+      }
+    },
+  )
 
   it.each([
     ['left', { x: 4, y: 400 }, { x: '180px', y: '400px' }],

@@ -79,22 +79,6 @@ export function fitMenuOrigin(point: Point, viewport: Viewport): Point {
   }
 }
 
-export function chooseSecondaryAnchor(
-  preferredDegrees: number,
-  origin: Point,
-  viewport: Viewport,
-): number {
-  const required = SECONDARY_OUTER_RADIUS + 12
-  if (directionalSpace(preferredDegrees, origin, viewport) >= required) {
-    return preferredDegrees
-  }
-  return [0, 90, 180, -90].reduce((best, candidate) =>
-    directionalSpace(candidate, origin, viewport) > directionalSpace(best, origin, viewport)
-      ? candidate
-      : best,
-  )
-}
-
 function angle(point: Point, origin: Point): number {
   return (Math.atan2(point.y - origin.y, point.x - origin.x) * 180) / Math.PI
 }
@@ -105,15 +89,6 @@ function distance(point: Point, origin: Point): number {
 
 function normalizeDegrees(value: number): number {
   return ((value % 360) + 360) % 360
-}
-
-function directionalSpace(degrees: number, origin: Point, viewport: Viewport): number {
-  const radians = (degrees * Math.PI) / 180
-  const dx = Math.cos(radians)
-  const dy = Math.sin(radians)
-  const horizontal = dx > 0 ? (viewport.width - origin.x) / dx : dx < 0 ? -origin.x / dx : Infinity
-  const vertical = dy > 0 ? (viewport.height - origin.y) / dy : dy < 0 ? -origin.y / dy : Infinity
-  return Math.min(horizontal, vertical)
 }
 
 function clamp(value: number, minimum: number, maximum: number): number {

@@ -125,4 +125,19 @@ describe('buildRadialMenuModel', () => {
     })
     expect(model[2]?.children?.[0]).toMatchObject({ label: '批量重命名' })
   })
+
+  it('labels a mixed favorite selection as a toggle without promising set-favorite', () => {
+    const favorite = buildRadialMenuModel(
+      context({
+        selectedCount: 2,
+        selectedImageCount: 2,
+        commonFavorite: 'mixed',
+      }),
+    )[1]?.children?.find((item) => item.id === 'mark.favorite')
+
+    expect(favorite).toMatchObject({
+      label: '切换收藏',
+      checked: 'mixed',
+    })
+  })
 })

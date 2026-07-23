@@ -107,7 +107,16 @@ export default function TaskBar({
   if (visibleTasks.length === 0) return null
 
   return (
-    <aside className="task-bar" aria-label="后台任务" aria-live="polite" role="status">
+    <aside className="task-bar" aria-label="后台任务">
+      <p
+        className="visually-hidden task-live-status"
+        role="status"
+        aria-label="后台任务状态"
+        aria-live="polite"
+        aria-atomic="true"
+      >
+        {liveTaskSummary(visibleTasks)}
+      </p>
       {visibleTasks.map((currentTask) => {
         const expanded = expandedTaskId === currentTask.id
         const finished = Math.min(
@@ -180,4 +189,14 @@ export default function TaskBar({
       })}
     </aside>
   )
+}
+
+function liveTaskSummary(tasks: TaskFeedback[]): string {
+  const running = tasks.filter((task) => task.status === 'running').length
+  if (running > 0) return `${running} 个任务进行中`
+  const failed = tasks.filter((task) => task.status === 'failed' || task.failed > 0).length
+  if (failed > 0) return `${failed} 个任务失败`
+  const cancelled = tasks.filter((task) => task.status === 'cancelled').length
+  if (cancelled > 0) return `${cancelled} 个任务已取消`
+  return `${tasks.length} 个任务已完成`
 }

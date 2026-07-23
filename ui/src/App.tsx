@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from 'react'
 import type { ViewerBridge } from './api/viewer'
 import { tauriViewerBridge } from './api/viewer'
@@ -57,6 +57,11 @@ type OperationDialog =
     }
   | { kind: 'trash'; files: BrowserFile[] }
 
+type RadialMenuSession = RadialMenuRequest & {
+  requestId: number
+  projectIdentity: string
+}
+
 export default function App({ bridge = tauriViewerBridge }: AppProps) {
   const {
     state,
@@ -91,6 +96,9 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
     clearCloseBlocked,
     openPermissionSettings,
   } = useViewerController(bridge)
+  const radialProjectIdentity = state.project
+    ? `${state.project.sessionId}:${state.project.generation}`
+    : 'no-project'
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [sidebarWidth, setSidebarWidth] = useState(260)
   const [projectMenuOpen, setProjectMenuOpen] = useState(false)
@@ -122,7 +130,17 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
   const [operationSubmitting, setOperationSubmitting] = useState(false)
   const [resultsBatchId, setResultsBatchId] = useState<string | null>(null)
   const [infoOpen, setInfoOpen] = useState(false)
-  const [radialMenu, setRadialMenu] = useState<RadialMenuRequest | null>(null)
+  const [radialMenu, setRadialMenu] = useState<RadialMenuSession | null>(null)
+  const radialRequestSequence = useRef(0)
+  const beginRadialSession = useCallback((request: RadialMenuRequest) => {
+    if (state.status !== 'active' || state.project === null) return
+    radialRequestSequence.current += 1
+    setRadialMenu({
+      ...request,
+      requestId: radialRequestSequence.current,
+      projectIdentity: radialProjectIdentity,
+    })
+  }, [radialProjectIdentity, state.project, state.status])
   const [dimensions, setDimensions] = useState<
     Record<string, { width: number; height: number } | undefined>
   >({})
@@ -277,8 +295,12 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
     state.workspace?.workspace === 'content' &&
     !state.search.showResults &&
     !operationBusy
+  const activeRadialMenu =
+    state.status === 'active' && radialMenu?.projectIdentity === radialProjectIdentity
+      ? radialMenu
+      : null
   const radialModel = useMemo(() => {
-    const files = radialMenu?.files ?? []
+    const files = activeRadialMenu?.files ?? []
     const reviews = new Set(files.map((file) => file.marker.reviewState))
     const favorites = new Set(files.map((file) => file.marker.favorite))
     return buildRadialMenuModel({
@@ -290,7 +312,7 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
       commonReview: reviews.size === 1 ? files[0]?.marker.reviewState ?? null : 'mixed',
       commonFavorite: favorites.size === 1 ? files[0]?.marker.favorite ?? false : 'mixed',
     })
-  }, [compareEntryAvailable, operationBusy, radialMenu, state.project?.access])
+  }, [activeRadialMenu, compareEntryAvailable, operationBusy, state.project?.access])
 
   useEffect(() => {
     function toggleInfo(event: KeyboardEvent) {
@@ -482,6 +504,8 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
     resultsBatchId,
     state.closeBlocked,
     state.contextRepair,
+    state.status,
+    radialProjectIdentity,
   ])
   const {
     dragView: organizationDragView,
@@ -515,10 +539,46 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
     setPreviewEntityId(null)
   }, [setPreviewEntityId])
 
+  const openComparison = useCallback((files: BrowserFile[] = selectedFiles) => {
+    if (!compareEntryAvailable) {
+      setCompareStatus(
+        operationBusy
+          ? '请等待当前文件操作完成后再开始对比。'
+          : '请先返回文件夹内容，再选择图片进行对比。',
+      )
+      return
+    }
+    if (
+      files.length < 2 ||
+      files.length > 4 ||
+      !files.every(matchesImage)
+    ) {
+      setCompareStatus('请选择 2–4 张 JPG 或 PNG 图片进行对比。')
+      return
+    }
+    setCompareStatus(null)
+    setActivePreview(null)
+    setPreviewEntityId(null)
+    setCompareEntityIds(files.map((file) => file.entityId))
+  }, [
+    compareEntryAvailable,
+    operationBusy,
+    selectedFiles,
+    setCompareEntityIds,
+    setPreviewEntityId,
+  ])
+
   const runRadialAction = useCallback(
     (action: RadialLeafAction) => {
-      const files = radialMenu?.files ?? []
-      if (files.length === 0) return
+      const files =
+        state.status === 'active' &&
+        radialMenu?.projectIdentity === radialProjectIdentity
+          ? radialMenu.files
+          : []
+      if (files.length === 0) {
+        setRadialMenu(null)
+        return
+      }
       setRadialMenu(null)
       const ids = files.map((file) => file.entityId)
       if (action === 'preview' && files.length === 1) openPreview(files[0]!)
@@ -538,40 +598,19 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
       } else if (action === 'organize.move') {
         setOperationDialog({ kind: 'destination', mode: 'move', files })
       } else if (action === 'trash') setOperationDialog({ kind: 'trash', files })
-      else if (action === 'compare') setCompareEntityIds(ids)
+      else if (action === 'compare') openComparison(files)
       else if (action === 'info') setInfoOpen(true)
     },
-    [openPreview, radialMenu, setCompareEntityIds, setReviewState, toggleFavorite],
+    [
+      openComparison,
+      openPreview,
+      radialMenu,
+      radialProjectIdentity,
+      setReviewState,
+      state.status,
+      toggleFavorite,
+    ],
   )
-
-  const openComparison = useCallback(() => {
-    if (!compareEntryAvailable) {
-      setCompareStatus(
-        operationBusy
-          ? '请等待当前文件操作完成后再开始对比。'
-          : '请先返回文件夹内容，再选择图片进行对比。',
-      )
-      return
-    }
-    if (
-      selectedFiles.length < 2 ||
-      selectedFiles.length > 4 ||
-      !selectedFiles.every(matchesImage)
-    ) {
-      setCompareStatus('请选择 2–4 张 JPG 或 PNG 图片进行对比。')
-      return
-    }
-    setCompareStatus(null)
-    setActivePreview(null)
-    setPreviewEntityId(null)
-    setCompareEntityIds(selectedFiles.map((file) => file.entityId))
-  }, [
-    compareEntryAvailable,
-    operationBusy,
-    selectedFiles,
-    setCompareEntityIds,
-    setPreviewEntityId,
-  ])
 
   const changeComparedEntities = useCallback(
     (entityIds: string[]) => {
@@ -892,7 +931,7 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
                   onOrganizationPointerInput={handleOrganizationPointerInput}
                   repairSelectionId={state.contextRepair?.suggestedEntityId ?? null}
                   onRepairSelectionApplied={consumeContextRepair}
-                  onRadialMenuRequest={setRadialMenu}
+                  onRadialMenuRequest={beginRadialSession}
                 />
               </div>
               {compareOpen && (
@@ -937,11 +976,13 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
         }
         onShowResults={(taskId) => setResultsBatchId(taskId)}
       />
-      {radialMenu && (
+      {activeRadialMenu && (
         <RadialFileMenu
-          origin={radialMenu.origin}
-          pointerId={radialMenu.pointerId}
-          selectionCount={radialMenu.files.length}
+          key={activeRadialMenu.requestId}
+          origin={activeRadialMenu.origin}
+          pointerId={activeRadialMenu.pointerId}
+          selectionCount={activeRadialMenu.files.length}
+          readOnly={state.project.access === 'read_only'}
           model={radialModel}
           onAction={runRadialAction}
           onClose={() => setRadialMenu(null)}

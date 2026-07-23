@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest'
 import {
   MOTION_THRESHOLD,
   annularSectorPath,
-  chooseSecondaryAnchor,
   fitMenuOrigin,
   primaryCenterAngle,
   primaryIndexAt,
@@ -41,11 +40,12 @@ describe('radial menu geometry', () => {
     })
   })
 
-  it('keeps the local direction when it fits and rotates toward free space at an edge', () => {
+  it('fits the whole origin far enough inward to preserve preferred fan directions', () => {
     const viewport = { width: 1280, height: 800 }
-    expect(chooseSecondaryAnchor(-30, { x: 640, y: 400 }, viewport)).toBe(-30)
-    expect(chooseSecondaryAnchor(-30, { x: 1210, y: 400 }, viewport)).toBe(180)
-    expect(chooseSecondaryAnchor(30, { x: 640, y: 760 }, viewport)).toBe(-90)
+    expect(fitMenuOrigin({ x: 4, y: 400 }, viewport)).toEqual({ x: 180, y: 400 })
+    expect(fitMenuOrigin({ x: 640, y: 4 }, viewport)).toEqual({ x: 640, y: 180 })
+    expect(fitMenuOrigin({ x: 640, y: 796 }, viewport)).toEqual({ x: 640, y: 620 })
+    expect(fitMenuOrigin({ x: 1276, y: 400 }, viewport)).toEqual({ x: 1100, y: 400 })
     expect(primaryCenterAngle(1)).toBe(-30)
     expect(MOTION_THRESHOLD).toBe(12)
   })

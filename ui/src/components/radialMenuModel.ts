@@ -68,7 +68,12 @@ export function buildRadialMenuModel(context: RadialMenuContext): RadialMenuItem
     markerItem('mark.clear', '清除', '○', context.commonReview === null, writesDisabled),
     {
       id: 'mark.favorite',
-      label: context.commonFavorite === true ? '取消收藏' : '收藏',
+      label:
+        context.commonFavorite === true
+          ? '取消收藏'
+          : context.commonFavorite === 'mixed'
+            ? '切换收藏'
+            : '收藏',
       symbol: '★',
       disabled: writesDisabled,
       checked: context.commonFavorite,

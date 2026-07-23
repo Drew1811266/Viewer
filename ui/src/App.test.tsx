@@ -238,6 +238,7 @@ describe('Viewer empty state', () => {
       'aria-disabled',
       'true',
     )
+    expect(screen.getByText('只读')).toBeVisible()
     fireEvent.click(screen.getByRole('button', { name: '关闭文件操作' }))
     expect(screen.getByRole('button', { name: '整理 front.jpg' })).toBeDisabled()
     fireEvent.pointerDown(screen.getByRole('button', { name: '整理 front.jpg' }), {
@@ -501,6 +502,133 @@ describe('Viewer empty state', () => {
     expect(screen.getByRole('menu', { name: '文件操作' })).toBeVisible()
     fireEvent.click(screen.getByRole('menuitem', { name: '信息' }))
     expect(screen.getByRole('complementary', { name: '文件信息' })).toBeVisible()
+  })
+
+  it('starts a fresh held gesture when a second right-click replaces click fallback', async () => {
+    const viewer = bridge()
+    vi.mocked(viewer.queryFolder).mockResolvedValue(compareContentWorkspace())
+    render(<App bridge={viewer} />)
+    fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
+    const front = await screen.findByRole('option', { name: 'front.jpg' })
+    const back = screen.getByRole('option', { name: 'back.jpg' })
+
+    openRadialMenu(front, 201)
+    fireEvent.pointerUp(window, { pointerId: 201, clientX: 423, clientY: 263 })
+    openRadialMenu(back, 202)
+    fireEvent.pointerMove(window, { pointerId: 202, clientX: 420, clientY: 170 })
+    fireEvent.pointerUp(window, { pointerId: 202, clientX: 420, clientY: 170 })
+
+    expect(screen.getByRole('dialog', { name: '图片预览' })).toHaveTextContent('back.jpg')
+  })
+
+  it('keeps mixed-favorite copy truthful while routing the frozen selection to toggle', async () => {
+    const viewer = bridge()
+    const workspace = compareContentWorkspace()
+    workspace.images[0] = {
+      ...workspace.images[0]!,
+      marker: { reviewState: null, favorite: true },
+    }
+    vi.mocked(viewer.queryFolder).mockResolvedValue(workspace)
+    render(<App bridge={viewer} />)
+    fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
+    const front = await screen.findByRole('option', { name: 'front.jpg' })
+    const back = screen.getByRole('option', { name: 'back.jpg' })
+    fireEvent.click(front)
+    fireEvent.click(back, { metaKey: true })
+
+    openRadialMenu(back, 203)
+    fireEvent.click(screen.getByRole('menuitem', { name: '标记' }))
+    const favorite = screen.getByRole('menuitemcheckbox', { name: '切换收藏' })
+    expect(favorite).toHaveAttribute('aria-checked', 'mixed')
+    fireEvent.click(favorite)
+
+    await waitFor(() =>
+      expect(viewer.toggleFavorite).toHaveBeenCalledWith({
+        sessionId: 'session-1',
+        generation: 1,
+        entityIds: ['image-1', 'image-2'],
+      }),
+    )
+  })
+
+  it('clears an earlier invalid keyboard compare status through the radial compare owner', async () => {
+    const viewer = bridge()
+    vi.mocked(viewer.queryFolder).mockResolvedValue(compareContentWorkspace())
+    render(<App bridge={viewer} />)
+    fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
+    const front = await screen.findByRole('option', { name: 'front.jpg' })
+    const back = screen.getByRole('option', { name: 'back.jpg' })
+    fireEvent.click(front)
+    fireEvent.keyDown(window, { key: 'c' })
+    expect(screen.getByText('请选择 2–4 张 JPG 或 PNG 图片进行对比。')).toBeVisible()
+
+    fireEvent.click(back, { metaKey: true })
+    openRadialMenu(back, 204)
+    fireEvent.click(screen.getByRole('menuitem', { name: '并排对比' }))
+
+    expect(await screen.findByRole('region', { name: '图片对比' })).toBeVisible()
+    expect(
+      screen.queryByText('请选择 2–4 张 JPG 或 PNG 图片进行对比。'),
+    ).not.toBeInTheDocument()
+  })
+
+  it('closes the radial snapshot as soon as a deferred project close starts', async () => {
+    const viewer = bridge()
+    const closing = deferred<'closed'>()
+    vi.mocked(viewer.closeProject).mockImplementation(() => closing.promise)
+    vi.mocked(viewer.queryFolder).mockResolvedValue(contentWorkspace())
+    render(<App bridge={viewer} />)
+    fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
+    const file = await screen.findByRole('option', { name: 'front.jpg' })
+    openRadialMenu(file, 205)
+    expect(screen.getByRole('menu', { name: '文件操作' })).toBeVisible()
+
+    closeProjectFromMenu()
+
+    expect(screen.queryByRole('menu', { name: '文件操作' })).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Catalog' })).toBeVisible()
+    await act(async () => {
+      closing.resolve('closed')
+      await closing.promise
+    })
+  })
+
+  it('invalidates a radial snapshot when the same session advances generation', async () => {
+    const viewer = bridge()
+    let receiveScan: Parameters<ViewerBridge['listenScan']>[0] | undefined
+    vi.mocked(viewer.listenScan).mockImplementation(async (handler) => {
+      receiveScan = handler
+      return () => undefined
+    })
+    vi.mocked(viewer.queryFolder).mockResolvedValue(contentWorkspace())
+    vi.mocked(viewer.projectSnapshot).mockResolvedValue({
+      projectId: 'project-1',
+      sessionId: 'session-1',
+      generation: 2,
+      displayName: 'Catalog',
+      access: 'read_write',
+    })
+    render(<App bridge={viewer} />)
+    await waitFor(() => expect(receiveScan).toBeDefined())
+    fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
+    const file = await screen.findByRole('option', { name: 'front.jpg' })
+    openRadialMenu(file, 206)
+    expect(screen.getByRole('menu', { name: '文件操作' })).toBeVisible()
+
+    act(() => {
+      receiveScan?.({
+        type: 'folders',
+        sessionId: 'session-1',
+        generation: 2,
+        taskId: 'task-2',
+        nodes: [],
+      })
+    })
+
+    await waitFor(() => expect(viewer.projectSnapshot).toHaveBeenCalledOnce())
+    await waitFor(() =>
+      expect(screen.queryByRole('menu', { name: '文件操作' })).not.toBeInTheDocument(),
+    )
   })
 
   it('routes keep, favorite, rename, copy, move, compare, and Trash through existing owners', async () => {

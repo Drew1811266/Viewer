@@ -380,3 +380,19 @@ function collectDirectDependencies({ workspace, manifests, packages }) {
   }
   return [...dependencies].sort()
 }
+
+test('repository exposes one onboarding path and recursive macOS hygiene', async () => {
+  const [readme, contributing, editorConfig, ignore] = await Promise.all([
+    read('README.md'),
+    read('CONTRIBUTING.md'),
+    read('.editorconfig'),
+    read('.gitignore'),
+  ])
+  assert.match(readme, /pnpm verify:clean/)
+  assert.match(readme, /Viewer 0\.1.*development-stage baseline/i)
+  assert.match(contributing, /Do not stage unrelated user changes/i)
+  assert.match(editorConfig, /root = true/)
+  assert.match(editorConfig, /charset = utf-8/)
+  assert.match(ignore, /(?:^|\n)\.DS_Store(?:\n|$)/)
+  assert.doesNotMatch(ignore, /(?:^|\n)(?:\*\*\/)?\.viewer\/?(?:\n|$)/)
+})

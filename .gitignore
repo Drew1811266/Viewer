@@ -4,6 +4,6 @@
 /ui/dist/
 /.superpowers/
 /.worktrees/
-/.DS_Store
+.DS_Store
 *.log
 src-tauri/gen/

@@ -184,6 +184,79 @@ describe('Viewer empty state', () => {
     expect(widthAfterCancelledMove).toBe('280px')
   })
 
+  it('previews a filmstrip image in row order while keeping the category overview', async () => {
+    const viewer = bridge()
+    vi.mocked(viewer.queryFolder)
+      .mockResolvedValueOnce(categoryWorkspace())
+      .mockResolvedValueOnce(compareContentWorkspace())
+    render(<App bridge={viewer} />)
+    fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
+
+    const front = await screen.findByRole('button', { name: '预览 front.jpg' })
+    front.focus()
+    fireEvent.click(front)
+
+    const preview = screen.getByRole('dialog', { name: '图片预览' })
+    expect(preview).toHaveTextContent('front.jpg')
+    expect(preview).toHaveTextContent('1 / 2')
+    expect(screen.getByRole('region', { name: 'B01 图片' })).toBeInTheDocument()
+
+    fireEvent.keyDown(preview, { key: 'ArrowRight' })
+    expect(preview).toHaveTextContent('back.jpg')
+    expect(preview).toHaveTextContent('2 / 2')
+
+    fireEvent.click(screen.getByRole('button', { name: '关闭预览' }))
+    expect(front).toHaveFocus()
+    expect(viewer.queryFolder).toHaveBeenNthCalledWith(2, 'folder-b01', false)
+  })
+
+  it('reloads visible filmstrip rows after an external category refresh', async () => {
+    const viewer = bridge()
+    let receiveProjectChanged: Parameters<ViewerBridge['listenProjectChanged']>[0] | undefined
+    vi.mocked(viewer.listenProjectChanged).mockImplementation(async (handler) => {
+      receiveProjectChanged = handler
+      return () => undefined
+    })
+    const refreshedImages = {
+      ...compareContentWorkspace(),
+      images: [
+        {
+          ...compareContentWorkspace().images[0]!,
+          entityId: 'image-updated',
+          name: 'updated.jpg',
+          relativePath: 'id/updated.jpg',
+        },
+      ],
+    }
+    vi.mocked(viewer.queryFolder)
+      .mockResolvedValueOnce(categoryWorkspace())
+      .mockResolvedValueOnce(compareContentWorkspace())
+      .mockResolvedValueOnce(categoryWorkspace())
+      .mockResolvedValueOnce(refreshedImages)
+    render(<App bridge={viewer} />)
+    await waitFor(() => expect(receiveProjectChanged).toBeDefined())
+    fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
+    await screen.findByRole('button', { name: '预览 front.jpg' })
+
+    act(() => {
+      receiveProjectChanged?.({
+        sessionId: 'session-1',
+        generation: 1,
+        reason: 'external_change',
+        added: 0,
+        removed: 0,
+        modified: 1,
+        moved: 0,
+        markerPathsMoved: 0,
+        failed: 0,
+      })
+    })
+
+    expect(await screen.findByRole('button', { name: '预览 updated.jpg' })).toBeVisible()
+    expect(viewer.queryFolder).toHaveBeenNthCalledWith(4, 'folder-b01', false)
+    expect(viewer.queryFolder).toHaveBeenCalledTimes(4)
+  })
+
   it('keeps read-only browsing and comparison available while disabling every write', async () => {
     const viewer = bridge('read_only')
     vi.mocked(viewer.queryFolder).mockResolvedValue(readOnlyContentWorkspace())
@@ -1589,6 +1662,31 @@ function contentWorkspace() {
       },
     ],
     textFiles: [],
+  }
+}
+
+function categoryWorkspace() {
+  return {
+    workspace: 'category' as const,
+    folders: [
+      {
+        entityId: 'folder-b01',
+        relativePath: '角色/B01',
+        name: 'B01',
+        marker: { reviewState: null, favorite: false },
+        imageCount: 2,
+        textCount: 0,
+        reviewProgress: {
+          total: 2,
+          keep: 0,
+          pending: 0,
+          reject: 0,
+          unmarked: 2,
+          favorite: 0,
+        },
+        representativeImages: [],
+      },
+    ],
   }
 }
 

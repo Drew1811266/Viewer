@@ -62,6 +62,11 @@ type RadialMenuSession = RadialMenuRequest & {
   projectIdentity: string
 }
 
+interface PreviewSession {
+  file: BrowserFile
+  files: BrowserFile[] | null
+}
+
 export default function App({ bridge = tauriViewerBridge }: AppProps) {
   const {
     state,
@@ -122,7 +127,7 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
   const [thumbnailTask, setThumbnailTask] = useState<TaskFeedback | null>(null)
   const [textTask, setTextTask] = useState<TaskFeedback | null>(null)
   const [dismissedTasks, setDismissedTasks] = useState<Set<string>>(() => new Set())
-  const [activePreview, setActivePreview] = useState<BrowserFile | null>(null)
+  const [activePreview, setActivePreview] = useState<PreviewSession | null>(null)
   const [selectedFiles, setSelectedFiles] = useState<BrowserFile[]>([])
   const [finderDragMessage, setFinderDragMessage] = useState<string | null>(null)
   const [compareStatus, setCompareStatus] = useState<string | null>(null)
@@ -182,6 +187,13 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
           representation: { kind: 'thumbnail', maxPixels: 320, scaleMilli: 1_000 },
         })
         .then((image) => image.url),
+    [bridge],
+  )
+  const requestFolderImages = useCallback(
+    async (entityId: string) => {
+      const workspace = await bridge.queryFolder(entityId, false)
+      return workspace.workspace === 'content' ? workspace.images : []
+    },
     [bridge],
   )
   const requestContentThumbnail = useCallback(
@@ -544,7 +556,23 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
 
   const openPreview = useCallback(
     (file: BrowserFile) => {
-      setActivePreview(file)
+      setActivePreview({ file, files: null })
+      setPreviewEntityId(file.entityId)
+    },
+    [setPreviewEntityId],
+  )
+
+  const openFilmstripPreview = useCallback(
+    (file: BrowserFile, files: BrowserFile[]) => {
+      setActivePreview({ file, files })
+      setPreviewEntityId(file.entityId)
+    },
+    [setPreviewEntityId],
+  )
+
+  const navigatePreview = useCallback(
+    (file: BrowserFile) => {
+      setActivePreview((current) => (current === null ? null : { ...current, file }))
       setPreviewEntityId(file.entityId)
     },
     [setPreviewEntityId],
@@ -671,7 +699,7 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
   useEffect(() => {
     if (
       activePreview &&
-      state.contextRepair?.removedEntityIds.includes(activePreview.entityId)
+      state.contextRepair?.removedEntityIds.includes(activePreview.file.entityId)
     ) {
       setActivePreview(null)
     }
@@ -754,6 +782,24 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
     onToggleFavorite: () => void toggleFavorite(),
   })
 
+  const [folderOverviewProjectionState, setFolderOverviewProjectionState] = useState(
+    () => ({ projection: state.workspace, sequence: 0 }),
+  )
+  let folderOverviewSequence = folderOverviewProjectionState.sequence
+  if (folderOverviewProjectionState.projection !== state.workspace) {
+    folderOverviewSequence += 1
+    setFolderOverviewProjectionState({
+      projection: state.workspace,
+      sequence: folderOverviewSequence,
+    })
+  }
+  const folderOverviewIdentity = [
+    state.project?.sessionId ?? 'no-session',
+    state.project?.generation ?? 0,
+    state.selectedFolderId ?? 'root',
+    folderOverviewSequence,
+  ].join(':')
+
   if (state.project === null) {
     return (
       <EmptyProject
@@ -764,6 +810,16 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
       />
     )
   }
+
+  const activePreviewFiles =
+    activePreview?.files ??
+    (state.workspace?.workspace === 'content' ? state.workspace.images : [])
+  const activePreviewFile =
+    activePreview === null
+      ? null
+      : activePreviewFiles.find(
+          (candidate) => candidate.entityId === activePreview.file.entityId,
+        ) ?? activePreview.file
 
   return (
     <main
@@ -923,9 +979,12 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
           )}
           {!state.search.showResults && state.workspace?.workspace === 'category' && (
             <FolderOverview
+              key={folderOverviewIdentity}
               folders={state.workspace.folders}
               currentPath={state.selectedFolderPath || state.project.displayName}
+              requestFolderImages={requestFolderImages}
               requestThumbnail={requestThumbnail}
+              onPreview={openFilmstripPreview}
               onSelect={selectFolderTarget}
               onShowAll={() => void showAllDescendants()}
             />
@@ -1006,23 +1065,19 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
           onClose={finishRadialSession}
         />
       )}
-      {activePreview && matchesImage(activePreview) && state.workspace?.workspace === 'content' && (
+      {activePreviewFile && matchesImage(activePreviewFile) && activePreviewFiles.length > 0 && (
         <ImagePreview
-          file={
-            state.workspace.images.find(
-              (file) => file.entityId === activePreview.entityId,
-            ) ?? activePreview
-          }
-          files={state.workspace.images}
+          file={activePreviewFile}
+          files={activePreviewFiles}
           requestImage={requestPreviewImage}
-          onNavigate={openPreview}
+          onNavigate={navigatePreview}
           onClose={closePreview}
           onDimensions={rememberDimensions}
         />
       )}
-      {activePreview && !matchesImage(activePreview) && (
+      {activePreviewFile && !matchesImage(activePreviewFile) && (
         <TextPreview
-          file={activePreview}
+          file={activePreviewFile}
           requestPreview={requestTextPreview}
           openExternalLink={bridge.openExternalLink}
           onClose={closePreview}

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 export interface TaskFeedback {
   id: string
@@ -20,6 +20,7 @@ interface TaskBarProps {
   onCancel?: (taskId: string) => void
   onDismiss?: (taskId: string) => void
   onShowResults?: (taskId: string) => void
+  successDismissMs?: number
 }
 
 export default function TaskBar({
@@ -28,9 +29,73 @@ export default function TaskBar({
   onCancel,
   onDismiss,
   onShowResults,
+  successDismissMs = 2000,
 }: TaskBarProps) {
-  const visibleTasks = tasks ?? (task ? [task] : [])
+  const candidates = tasks ?? (task ? [task] : [])
+  const [hiddenTaskIds, setHiddenTaskIds] = useState<Set<string>>(() => new Set())
+  const visibleTasks = candidates.filter((candidate) => !hiddenTaskIds.has(candidate.id))
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null)
+  const dismissTimers = useRef(new Map<string, { delay: number; timer: number }>())
+
+  useEffect(() => {
+    const mustReappear = new Set(
+      candidates
+        .filter(
+          (candidate) =>
+            candidate.status !== 'complete' ||
+            candidate.failed > 0 ||
+            Boolean(candidate.hasResults),
+        )
+        .map((candidate) => candidate.id),
+    )
+    setHiddenTaskIds((current) => {
+      const next = new Set([...current].filter((id) => !mustReappear.has(id)))
+      return next.size === current.size ? current : next
+    })
+    const cleanTaskIds = new Set(
+      candidates
+        .filter(
+          (candidate) =>
+            candidate.status === 'complete' &&
+            candidate.failed === 0 &&
+            !candidate.hasResults,
+        )
+        .map((candidate) => candidate.id),
+    )
+    dismissTimers.current.forEach(({ delay, timer }, id) => {
+      if (
+        !cleanTaskIds.has(id) ||
+        hiddenTaskIds.has(id) ||
+        delay !== successDismissMs
+      ) {
+        window.clearTimeout(timer)
+        dismissTimers.current.delete(id)
+      }
+    })
+    candidates
+      .filter(
+        (candidate) =>
+          cleanTaskIds.has(candidate.id) && !hiddenTaskIds.has(candidate.id),
+      )
+      .forEach((candidate) => {
+        if (dismissTimers.current.has(candidate.id)) return
+        const timer = window.setTimeout(() => {
+          dismissTimers.current.delete(candidate.id)
+          setHiddenTaskIds((current) =>
+            current.has(candidate.id) ? current : new Set([...current, candidate.id]),
+          )
+        }, successDismissMs)
+        dismissTimers.current.set(candidate.id, { delay: successDismissMs, timer })
+      })
+  }, [candidates, hiddenTaskIds, successDismissMs])
+
+  useEffect(
+    () => () => {
+      dismissTimers.current.forEach(({ timer }) => window.clearTimeout(timer))
+      dismissTimers.current.clear()
+    },
+    [],
+  )
 
   useEffect(() => {
     const expanded = visibleTasks.find((candidate) => candidate.id === expandedTaskId)
@@ -40,7 +105,7 @@ export default function TaskBar({
   if (visibleTasks.length === 0) return null
 
   return (
-    <aside className="task-bar" aria-label="后台任务">
+    <aside className="task-bar" aria-label="后台任务" aria-live="polite" role="status">
       {visibleTasks.map((currentTask) => {
         const expanded = expandedTaskId === currentTask.id
         const finished = Math.min(

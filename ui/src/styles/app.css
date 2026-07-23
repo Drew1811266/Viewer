@@ -1048,26 +1048,35 @@ select {
 
 .task-bar {
   align-items: center;
-  background: #eef0f3;
-  border-top: 1px solid #d8dce2;
+  background: rgb(35 42 51 / 94%);
+  border: 1px solid rgb(255 255 255 / 18%);
+  border-radius: 18px;
+  bottom: 12px;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 20%);
+  color: #fff;
   display: flex;
   gap: 10px;
+  left: 50%;
+  max-width: calc(100vw - 32px);
   min-height: 34px;
   padding: 4px 10px;
-  position: relative;
+  position: fixed;
+  transform: translateX(-50%);
+  z-index: 18;
 }
 
 .task-details {
-  background: white;
+  background: #fff;
   border: 1px solid #d8dce2;
-  bottom: 38px;
-  left: 8px;
+  border-radius: 9px;
+  bottom: 42px;
+  color: #1f2328;
+  left: 0;
   max-height: 240px;
   min-width: 360px;
   overflow: auto;
   padding: 8px;
   position: absolute;
-  z-index: 4;
 }
 
 .task-row {

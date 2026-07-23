@@ -65,6 +65,7 @@ type RadialMenuSession = RadialMenuRequest & {
 interface PreviewSession {
   file: BrowserFile
   files: BrowserFile[] | null
+  folderOverviewIdentity: string | null
 }
 
 export default function App({ bridge = tauriViewerBridge }: AppProps) {
@@ -550,13 +551,31 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
     onDrop: dropFiles,
   })
 
+  const [folderOverviewProjectionState, setFolderOverviewProjectionState] = useState(
+    () => ({ projection: state.workspace, sequence: 0 }),
+  )
+  let folderOverviewSequence = folderOverviewProjectionState.sequence
+  if (folderOverviewProjectionState.projection !== state.workspace) {
+    folderOverviewSequence += 1
+    setFolderOverviewProjectionState({
+      projection: state.workspace,
+      sequence: folderOverviewSequence,
+    })
+  }
+  const folderOverviewIdentity = [
+    state.project?.sessionId ?? 'no-session',
+    state.project?.generation ?? 0,
+    state.selectedFolderId ?? 'root',
+    folderOverviewSequence,
+  ].join(':')
+
   useEffect(() => {
     cancelOrganizationPointerDrag()
   }, [cancelOrganizationPointerDrag, state.workspace])
 
   const openPreview = useCallback(
     (file: BrowserFile) => {
-      setActivePreview({ file, files: null })
+      setActivePreview({ file, files: null, folderOverviewIdentity: null })
       setPreviewEntityId(file.entityId)
     },
     [setPreviewEntityId],
@@ -564,10 +583,10 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
 
   const openFilmstripPreview = useCallback(
     (file: BrowserFile, files: BrowserFile[]) => {
-      setActivePreview({ file, files })
+      setActivePreview({ file, files, folderOverviewIdentity })
       setPreviewEntityId(file.entityId)
     },
-    [setPreviewEntityId],
+    [folderOverviewIdentity, setPreviewEntityId],
   )
 
   const navigatePreview = useCallback(
@@ -706,6 +725,17 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
   }, [activePreview, state.contextRepair])
 
   useEffect(() => {
+    if (
+      activePreview !== null &&
+      activePreview.folderOverviewIdentity !== null &&
+      activePreview.folderOverviewIdentity !== folderOverviewIdentity
+    ) {
+      setActivePreview(null)
+      setPreviewEntityId(null)
+    }
+  }, [activePreview, folderOverviewIdentity, setPreviewEntityId])
+
+  useEffect(() => {
     function handleOrganizationShortcut(event: KeyboardEvent) {
       if (
         organizationShortcutIsOwned(
@@ -781,24 +811,6 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
     onSetReview: (reviewState) => void setReviewState(reviewState),
     onToggleFavorite: () => void toggleFavorite(),
   })
-
-  const [folderOverviewProjectionState, setFolderOverviewProjectionState] = useState(
-    () => ({ projection: state.workspace, sequence: 0 }),
-  )
-  let folderOverviewSequence = folderOverviewProjectionState.sequence
-  if (folderOverviewProjectionState.projection !== state.workspace) {
-    folderOverviewSequence += 1
-    setFolderOverviewProjectionState({
-      projection: state.workspace,
-      sequence: folderOverviewSequence,
-    })
-  }
-  const folderOverviewIdentity = [
-    state.project?.sessionId ?? 'no-session',
-    state.project?.generation ?? 0,
-    state.selectedFolderId ?? 'root',
-    folderOverviewSequence,
-  ].join(':')
 
   if (state.project === null) {
     return (

@@ -34,10 +34,14 @@ const images: BrowserFile[] = ['front', 'side'].map((name, index) => ({
 }))
 
 let intersectionCallback: IntersectionObserverCallback | null = null
+let intersectionOptions: IntersectionObserverInit | undefined
+let observedTargets = new Set<Element>()
 const originalIntersectionObserver = globalThis.IntersectionObserver
 
 afterEach(() => {
   intersectionCallback = null
+  intersectionOptions = undefined
+  observedTargets = new Set()
   globalThis.IntersectionObserver = originalIntersectionObserver
 })
 
@@ -47,24 +51,36 @@ function installIntersectionObserver() {
     readonly rootMargin = '240px 0px'
     readonly thresholds = [0]
 
-    constructor(callback: IntersectionObserverCallback) {
+    constructor(
+      callback: IntersectionObserverCallback,
+      options?: IntersectionObserverInit,
+    ) {
       intersectionCallback = callback
+      intersectionOptions = options
     }
 
-    disconnect() {}
-    observe() {}
+    disconnect() {
+      observedTargets.clear()
+    }
+    observe(target: Element) {
+      observedTargets.add(target)
+    }
     takeRecords(): IntersectionObserverEntry[] {
       return []
     }
-    unobserve() {}
+    unobserve(target: Element) {
+      observedTargets.delete(target)
+    }
   }
   globalThis.IntersectionObserver =
     TestIntersectionObserver as unknown as typeof IntersectionObserver
 }
 
 function revealRow() {
+  const target = observedTargets.values().next().value
+  if (target === undefined) throw new Error('No observed row is registered')
   intersectionCallback?.(
-    [{ isIntersecting: true } as IntersectionObserverEntry],
+    [{ isIntersecting: true, target } as IntersectionObserverEntry],
     {} as IntersectionObserver,
   )
 }
@@ -85,14 +101,17 @@ describe('FolderFilmstripRow', () => {
     )
 
     expect(loadImages).not.toHaveBeenCalled()
-    expect(screen.getByRole('region', { name: 'B01 图片' })).toHaveAttribute(
+    const filmstrip = screen.getByRole('region', { name: 'B01 图片' })
+    const row = filmstrip.closest('article')
+    expect(intersectionOptions).toEqual({ rootMargin: '240px 0px' })
+    expect(observedTargets).toEqual(new Set([row]))
+    expect(filmstrip).toHaveAttribute(
       'data-state',
       'idle',
     )
 
     act(revealRow)
 
-    const filmstrip = await screen.findByRole('region', { name: 'B01 图片' })
     await within(filmstrip).findByRole('button', { name: '预览 front.jpg' })
     const imageButtons = within(filmstrip).getAllByRole('button', { name: /^预览 / })
     expect(imageButtons.map((button) => button.getAttribute('aria-label'))).toEqual([
@@ -144,5 +163,66 @@ describe('FolderFilmstripRow', () => {
     await waitFor(() => expect(screen.getByText('无图片')).toBeVisible())
     expect(loadImages).toHaveBeenNthCalledWith(1, 'folder-b01', false)
     expect(loadImages).toHaveBeenNthCalledWith(2, 'folder-b01', true)
+  })
+
+  it('windows a high-cardinality row while preserving width, order, and preview context', async () => {
+    const manyImages: BrowserFile[] = Array.from({ length: 100 }, (_, index) => ({
+      ...images[0]!,
+      entityId: `image-${index + 1}`,
+      relativePath: `角色/B01/image-${index + 1}.jpg`,
+      name: `image-${index + 1}.jpg`,
+      modifiedNs: String(index + 1),
+    }))
+    const preview = vi.fn()
+    const requestThumbnail = vi.fn().mockResolvedValue('viewer-image://thumbnail')
+    render(
+      <FolderFilmstripRow
+        folder={{ ...folder, imageCount: manyImages.length }}
+        loadImages={vi.fn().mockResolvedValue(manyImages)}
+        requestThumbnail={requestThumbnail}
+        onSelect={vi.fn()}
+        onPreview={preview}
+      />,
+    )
+
+    const filmstrip = await screen.findByRole('region', { name: 'B01 图片' })
+    Object.defineProperty(filmstrip, 'clientWidth', {
+      configurable: true,
+      value: 420,
+    })
+    Object.defineProperty(filmstrip, 'scrollLeft', {
+      configurable: true,
+      value: 0,
+      writable: true,
+    })
+    fireEvent.scroll(filmstrip)
+
+    const track = filmstrip.querySelector<HTMLElement>('.folder-filmstrip-track')
+    expect(track).toHaveStyle({ width: '13992px' })
+    expect(
+      within(filmstrip).getAllByRole('button', { name: /^预览 / }),
+    ).toHaveLength(5)
+    expect(requestThumbnail).toHaveBeenCalledTimes(5)
+
+    filmstrip.scrollLeft = 7000
+    fireEvent.scroll(filmstrip)
+
+    await waitFor(() =>
+      expect(
+        within(filmstrip).getByRole('button', { name: '预览 image-51.jpg' }),
+      ).toBeVisible(),
+    )
+    const advancedButtons = within(filmstrip).getAllByRole('button', {
+      name: /^预览 /,
+    })
+    expect(advancedButtons).toHaveLength(8)
+    expect(
+      within(filmstrip).queryByRole('button', { name: '预览 image-1.jpg' }),
+    ).not.toBeInTheDocument()
+
+    fireEvent.click(
+      within(filmstrip).getByRole('button', { name: '预览 image-51.jpg' }),
+    )
+    expect(preview).toHaveBeenCalledWith(manyImages[50], manyImages)
   })
 })

@@ -140,6 +140,26 @@ describe('workspace style contracts', () => {
       height: '132px',
     })
   })
+
+  it('paints thumbnail keyboard focus above every thumbnail child state', () => {
+    const rules = parseRules(appCss)
+    const identityFocus = rules.find(
+      (rule) => rule.selector === '.folder-filmstrip-identity:focus-visible',
+    )
+    const thumbnailFocus = rules.find(
+      (rule) => rule.selector === '.folder-filmstrip-thumbnail:focus-visible',
+    )
+
+    expect(identityFocus?.declarations).toMatchObject({
+      'box-shadow': 'inset 0 0 0 2px #2477d4',
+      outline: 'none',
+    })
+    expect(thumbnailFocus?.declarations).toMatchObject({
+      outline: '3px solid #2477d4',
+      'outline-offset': '-3px',
+    })
+    expect(thumbnailFocus?.declarations['box-shadow']).toBeUndefined()
+  })
 })
 
 interface CssRule {

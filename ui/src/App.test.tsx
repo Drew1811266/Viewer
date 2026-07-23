@@ -257,6 +257,66 @@ describe('Viewer empty state', () => {
     expect(viewer.queryFolder).toHaveBeenCalledTimes(4)
   })
 
+  it('invalidates an open filmstrip preview when its category projection refreshes', async () => {
+    const viewer = bridge()
+    let receiveProjectChanged: Parameters<ViewerBridge['listenProjectChanged']>[0] | undefined
+    vi.mocked(viewer.listenProjectChanged).mockImplementation(async (handler) => {
+      receiveProjectChanged = handler
+      return () => undefined
+    })
+    const refreshedImages = {
+      ...compareContentWorkspace(),
+      images: [
+        {
+          ...compareContentWorkspace().images[0]!,
+          entityId: 'image-updated',
+          name: 'updated.jpg',
+          relativePath: 'id/updated.jpg',
+        },
+      ],
+    }
+    vi.mocked(viewer.queryFolder)
+      .mockResolvedValueOnce(categoryWorkspace())
+      .mockResolvedValueOnce(compareContentWorkspace())
+      .mockResolvedValueOnce(categoryWorkspace())
+      .mockResolvedValueOnce(refreshedImages)
+    render(<App bridge={viewer} />)
+    await waitFor(() => expect(receiveProjectChanged).toBeDefined())
+    fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
+    fireEvent.click(await screen.findByRole('button', { name: '预览 front.jpg' }))
+    expect(screen.getByRole('dialog', { name: '图片预览' })).toHaveTextContent(
+      '1 / 2',
+    )
+
+    act(() => {
+      receiveProjectChanged?.({
+        sessionId: 'session-1',
+        generation: 1,
+        reason: 'external_change',
+        added: 0,
+        removed: 1,
+        modified: 0,
+        moved: 0,
+        markerPathsMoved: 0,
+        failed: 0,
+      })
+    })
+
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('dialog', { name: '图片预览' }),
+      ).not.toBeInTheDocument(),
+    )
+    const updated = await screen.findByRole('button', { name: '预览 updated.jpg' })
+    fireEvent.keyDown(window, { key: 'ArrowRight' })
+    expect(screen.queryByText('back.jpg')).not.toBeInTheDocument()
+
+    fireEvent.click(updated)
+    expect(screen.getByRole('dialog', { name: '图片预览' })).toHaveTextContent(
+      '1 / 1',
+    )
+  })
+
   it('keeps read-only browsing and comparison available while disabling every write', async () => {
     const viewer = bridge('read_only')
     vi.mocked(viewer.queryFolder).mockResolvedValue(readOnlyContentWorkspace())

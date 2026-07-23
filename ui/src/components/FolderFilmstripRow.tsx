@@ -1,5 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { BrowserFile, ContentFolderCard } from '../api/types'
+
+const THUMBNAIL_SIZE = 132
+const THUMBNAIL_GAP = 8
+const FILMSTRIP_INLINE_PADDING = 12
+const THUMBNAIL_STRIDE = THUMBNAIL_SIZE + THUMBNAIL_GAP
+const OVERSCAN_CELLS = 2
 
 interface FolderFilmstripRowProps {
   folder: ContentFolderCard
@@ -22,9 +28,11 @@ export default function FolderFilmstripRow({
   requestThumbnail,
 }: FolderFilmstripRowProps) {
   const row = useRef<HTMLElement>(null)
+  const filmstrip = useRef<HTMLDivElement>(null)
   const requestSequence = useRef(0)
   const [visible, setVisible] = useState(() => typeof IntersectionObserver === 'undefined')
   const [state, setState] = useState<RowState>({ status: 'idle' })
+  const [viewport, setViewport] = useState({ scrollLeft: 0, width: 0 })
 
   useEffect(() => {
     if (typeof IntersectionObserver === 'undefined' || row.current === null) return
@@ -71,7 +79,38 @@ export default function FolderFilmstripRow({
     [],
   )
 
+  const updateViewport = useCallback(() => {
+    const element = filmstrip.current
+    if (element === null) return
+    const next = {
+      scrollLeft: element.scrollLeft,
+      width: element.clientWidth,
+    }
+    setViewport((current) =>
+      current.scrollLeft === next.scrollLeft && current.width === next.width
+        ? current
+        : next,
+    )
+  }, [])
+
+  useLayoutEffect(() => {
+    const element = filmstrip.current
+    if (element === null) return
+    updateViewport()
+    if (typeof ResizeObserver !== 'undefined') {
+      const observer = new ResizeObserver(() => updateViewport())
+      observer.observe(element)
+      return () => observer.disconnect()
+    }
+    window.addEventListener('resize', updateViewport)
+    return () => window.removeEventListener('resize', updateViewport)
+  }, [updateViewport])
+
   const reviewed = folder.reviewProgress.total - folder.reviewProgress.unmarked
+  const imageWindow =
+    state.status === 'ready'
+      ? getImageWindow(state.images.length, viewport.scrollLeft, viewport.width)
+      : null
 
   return (
     <article ref={row} className="folder-filmstrip-row">
@@ -90,10 +129,12 @@ export default function FolderFilmstripRow({
         <span>{`已审阅 ${reviewed} / ${folder.reviewProgress.total}`}</span>
       </button>
       <div
+        ref={filmstrip}
         className="folder-filmstrip"
         role="region"
         aria-label={`${folder.name} 图片`}
         data-state={state.status}
+        onScroll={updateViewport}
       >
         {state.status === 'idle' && (
           <span className="folder-filmstrip-deferred" aria-label="等待加载图片" />
@@ -119,19 +160,36 @@ export default function FolderFilmstripRow({
           </div>
         )}
         {state.status === 'ready' && state.images.length === 0 && <p>无图片</p>}
-        {state.status === 'ready' &&
-          state.images.map((file) => (
-            <button
-              type="button"
-              className="folder-filmstrip-thumbnail"
-              aria-label={`预览 ${file.name}`}
-              title={file.name}
-              key={file.entityId}
-              onClick={() => onPreview(file, state.images)}
-            >
-              <FolderThumbnail file={file} requestThumbnail={requestThumbnail} />
-            </button>
-          ))}
+        {state.status === 'ready' && imageWindow !== null && state.images.length > 0 && (
+          <div
+            className="folder-filmstrip-track"
+            style={{ width: `${imageWindow.totalWidth}px` }}
+          >
+            {state.images
+              .slice(imageWindow.start, imageWindow.end)
+              .map((file, offset) => {
+                const index = imageWindow.start + offset
+                return (
+                  <button
+                    type="button"
+                    className="folder-filmstrip-thumbnail"
+                    aria-label={`预览 ${file.name}`}
+                    aria-posinset={index + 1}
+                    aria-setsize={state.images.length}
+                    title={file.name}
+                    key={file.entityId}
+                    style={{ left: `${index * THUMBNAIL_STRIDE}px` }}
+                    onClick={() => onPreview(file, state.images)}
+                  >
+                    <FolderThumbnail
+                      file={file}
+                      requestThumbnail={requestThumbnail}
+                    />
+                  </button>
+                )
+              })}
+          </div>
+        )}
       </div>
     </article>
   )
@@ -156,25 +214,12 @@ function FolderThumbnail({
   file: BrowserFile
   requestThumbnail?: (file: BrowserFile) => Promise<string>
 }) {
-  const element = useRef<HTMLSpanElement>(null)
-  const [visible, setVisible] = useState(() => typeof IntersectionObserver === 'undefined')
   const [state, setState] = useState<{ status: 'loading' | 'ready' | 'failed'; url?: string }>(
     { status: 'loading' },
   )
 
   useEffect(() => {
-    if (typeof IntersectionObserver === 'undefined' || element.current === null) return
-    const observer = new IntersectionObserver((entries) => {
-      if (!entries.some((entry) => entry.isIntersecting)) return
-      setVisible(true)
-      observer.disconnect()
-    })
-    observer.observe(element.current)
-    return () => observer.disconnect()
-  }, [])
-
-  useEffect(() => {
-    if (!visible || requestThumbnail === undefined) return
+    if (requestThumbnail === undefined) return
     let current = true
     void requestThumbnail(file).then(
       (url) => {
@@ -187,13 +232,47 @@ function FolderThumbnail({
     return () => {
       current = false
     }
-  }, [file, requestThumbnail, visible])
+  }, [file, requestThumbnail])
 
   if (state.status === 'ready') return <img src={state.url} alt="" />
   return (
     <span
-      ref={element}
       aria-label={state.status === 'failed' ? '缩略图不可用' : '缩略图加载中'}
     />
   )
+}
+
+function getImageWindow(
+  imageCount: number,
+  scrollLeft: number,
+  viewportWidth: number,
+) {
+  const totalWidth =
+    imageCount === 0
+      ? 0
+      : imageCount * THUMBNAIL_SIZE + (imageCount - 1) * THUMBNAIL_GAP
+  const viewportStart = Math.max(0, scrollLeft - FILMSTRIP_INLINE_PADDING)
+  const viewportEnd = Math.max(
+    viewportStart,
+    scrollLeft + viewportWidth - FILMSTRIP_INLINE_PADDING,
+  )
+  let firstVisible = Math.min(
+    imageCount,
+    Math.floor(viewportStart / THUMBNAIL_STRIDE),
+  )
+  if (
+    firstVisible < imageCount &&
+    firstVisible * THUMBNAIL_STRIDE + THUMBNAIL_SIZE <= viewportStart
+  ) {
+    firstVisible += 1
+  }
+  const visibleEnd = Math.min(
+    imageCount,
+    Math.max(firstVisible + 1, Math.ceil(viewportEnd / THUMBNAIL_STRIDE)),
+  )
+  return {
+    start: Math.max(0, firstVisible - OVERSCAN_CELLS),
+    end: Math.min(imageCount, visibleEnd + OVERSCAN_CELLS),
+    totalWidth,
+  }
 }

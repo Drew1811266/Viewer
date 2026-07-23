@@ -752,10 +752,14 @@ select {
   background: #eef4fc;
 }
 
-.folder-filmstrip-identity:focus-visible,
-.folder-filmstrip-thumbnail:focus-visible {
+.folder-filmstrip-identity:focus-visible {
   box-shadow: inset 0 0 0 2px #2477d4;
   outline: none;
+}
+
+.folder-filmstrip-thumbnail:focus-visible {
+  outline: 3px solid #2477d4;
+  outline-offset: -3px;
 }
 
 .folder-filmstrip-identity strong {
@@ -791,6 +795,12 @@ select {
   margin: 0;
 }
 
+.folder-filmstrip-track {
+  flex: 0 0 auto;
+  height: 132px;
+  position: relative;
+}
+
 .folder-filmstrip-thumbnail,
 .folder-filmstrip-skeleton {
   flex: 0 0 132px;
@@ -803,6 +813,9 @@ select {
   border-radius: 6px;
   overflow: hidden;
   padding: 0;
+  position: absolute;
+  top: 0;
+  width: 132px;
 }
 
 .folder-filmstrip-thumbnail:hover {

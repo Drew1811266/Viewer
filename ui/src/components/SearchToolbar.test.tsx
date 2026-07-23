@@ -1,8 +1,11 @@
 import { fireEvent, render, screen } from '@testing-library/react'
+import { readFileSync } from 'node:fs'
 import { describe, expect, it, vi } from 'vitest'
 import type { SearchQueryModel } from '../api/types'
 import { initialSearchQuery } from '../state/viewerReducer'
 import SearchToolbar from './SearchToolbar'
+
+const appCss = readFileSync('src/styles/app.css', 'utf8')
 
 function query(overrides: Partial<SearchQueryModel> = {}): SearchQueryModel {
   return {
@@ -13,6 +16,11 @@ function query(overrides: Partial<SearchQueryModel> = {}): SearchQueryModel {
 }
 
 describe('SearchToolbar', () => {
+  it('keeps exactly one 100px minimum width in the search input governing rule', () => {
+    const searchInputRule = appCss.match(/\.search-field input\s*\{([^}]*)\}/)?.[1] ?? ''
+    expect(searchInputRule.match(/min-width:\s*100px/g) ?? []).toHaveLength(1)
+  })
+
   it('exposes named option and view menus with keyboard-controlled expanded state', () => {
     render(
       <SearchToolbar

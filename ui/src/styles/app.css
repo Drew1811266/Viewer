@@ -124,6 +124,7 @@ select {
 
 .search-field input {
   border: 0;
+  min-width: 100px;
   outline: 0;
   padding: 6px 0;
   width: 100%;

@@ -105,9 +105,11 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
     const stop = () => {
       window.removeEventListener('pointermove', move)
       window.removeEventListener('pointerup', stop)
+      window.removeEventListener('pointercancel', stop)
     }
     window.addEventListener('pointermove', move)
     window.addEventListener('pointerup', stop)
+    window.addEventListener('pointercancel', stop)
   }, [sidebarCollapsed, sidebarWidth])
   const [thumbnailTask, setThumbnailTask] = useState<TaskFeedback | null>(null)
   const [textTask, setTextTask] = useState<TaskFeedback | null>(null)

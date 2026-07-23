@@ -161,6 +161,25 @@ describe('Viewer empty state', () => {
     expect(separator).toHaveAttribute('aria-valuenow', '420')
   })
 
+  it('stops sidebar resize tracking when the pointer is cancelled', async () => {
+    const viewer = bridge()
+    render(<App bridge={viewer} />)
+    fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
+    await screen.findByRole('heading', { name: 'Catalog' })
+    const sidebar = screen.getByLabelText('文件夹栏')
+    const separator = screen.getByRole('separator', { name: '调整文件夹栏宽度' })
+
+    fireEvent.pointerDown(separator, { pointerId: 104, button: 0, clientX: 260 })
+    fireEvent.pointerMove(window, { pointerId: 104, clientX: 280 })
+    expect(sidebar).toHaveStyle({ width: '280px' })
+    fireEvent.pointerCancel(window, { pointerId: 104, clientX: 280 })
+    fireEvent.pointerMove(window, { pointerId: 104, clientX: 340 })
+    const widthAfterCancelledMove = sidebar.style.width
+    fireEvent.pointerUp(window, { pointerId: 104, clientX: 340 })
+
+    expect(widthAfterCancelledMove).toBe('280px')
+  })
+
   it('keeps read-only browsing and comparison available while disabling every write', async () => {
     const viewer = bridge('read_only')
     vi.mocked(viewer.queryFolder).mockResolvedValue(readOnlyContentWorkspace())

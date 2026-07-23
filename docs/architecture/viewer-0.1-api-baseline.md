@@ -6,7 +6,7 @@
 
 ## Change policy
 
-This document inventories the public Rust surface consumed by adapters, infrastructure, the Tauri composition root and current development tests. An incompatible change requires architecture review, an updated row here and the named focused gate.
+This document inventories the public Rust surface consumed by adapters, infrastructure, the Tauri composition root and current development tests. An incompatible change requires architecture review, an updated row here and the named focused gate. New product use cases may compose these contracts but must not move filesystem, SQLite, Tauri, or macOS types into Domain/Application.
 
 `ScanBatch` and the standalone atomic `GenerationGuard` were removed before this baseline: neither had a cross-crate caller, `ScanBatch` duplicated `ScanEvent`, and ADR 0003 selected the session-aware `TaskCoordinator` as the publication authority. `TaskId` remains deliberate even before its first production caller because the frozen IPC error/progress model requires stable task correlation.
 

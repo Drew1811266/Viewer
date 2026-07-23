@@ -66,6 +66,10 @@ export default function ContentBrowser({
     baseline: Set<string>
     metaKey: boolean
   } | null>(null)
+  const radialContextDeduplication = useRef<{
+    entityId: string
+    timeoutId: number
+  } | null>(null)
   const cache = useRef(new Map<string, string>())
   const pending = useRef(new Map<string, Promise<string>>())
   const [work, setWork] = useState<ThumbnailWork>({ requested: 0, completed: 0, failed: 0 })
@@ -93,6 +97,15 @@ export default function ContentBrowser({
   useEffect(() => {
     marqueeSelection.current = null
   }, [allFiles])
+
+  useEffect(
+    () => () => {
+      if (radialContextDeduplication.current !== null) {
+        window.clearTimeout(radialContextDeduplication.current.timeoutId)
+      }
+    },
+    [],
+  )
 
   useEffect(() => {
     if (repairSelectionId === null) {
@@ -245,13 +258,15 @@ export default function ContentBrowser({
       .map((candidate) => candidate.entityId)
   }
 
-  function openRadialMenu(file: BrowserFile, event: PointerEvent<HTMLElement>) {
-    if (event.button !== 2 || onRadialMenuRequest === undefined) return
-    event.preventDefault()
-    event.stopPropagation()
+  function requestRadialMenu(
+    file: BrowserFile,
+    eventTarget: HTMLElement,
+    origin: { x: number; y: number },
+    pointerId: number | null,
+  ) {
+    if (onRadialMenuRequest === undefined) return
     const returnFocusTarget =
-      event.currentTarget.closest<HTMLElement>('[role="listbox"]') ??
-      event.currentTarget
+      eventTarget.closest<HTMLElement>('[role="listbox"]') ?? eventTarget
     const contextSelection = selected.has(file.entityId) ? selected : new Set([file.entityId])
     if (!selected.has(file.entityId)) {
       anchorId.current = file.entityId
@@ -260,10 +275,51 @@ export default function ContentBrowser({
     }
     onRadialMenuRequest({
       files: allFiles.filter((candidate) => contextSelection.has(candidate.entityId)),
-      origin: { x: event.clientX, y: event.clientY },
-      pointerId: event.pointerId,
+      origin,
+      pointerId,
       returnFocusTarget,
     })
+  }
+
+  function clearRadialContextDeduplication() {
+    if (radialContextDeduplication.current === null) return
+    window.clearTimeout(radialContextDeduplication.current.timeoutId)
+    radialContextDeduplication.current = null
+  }
+
+  function openRadialMenuFromPointer(file: BrowserFile, event: PointerEvent<HTMLElement>) {
+    if (event.button !== 2 || onRadialMenuRequest === undefined) return
+    event.preventDefault()
+    event.stopPropagation()
+    clearRadialContextDeduplication()
+    const timeoutId = window.setTimeout(() => {
+      if (radialContextDeduplication.current?.timeoutId === timeoutId) {
+        radialContextDeduplication.current = null
+      }
+    }, 1_000)
+    radialContextDeduplication.current = { entityId: file.entityId, timeoutId }
+    requestRadialMenu(
+      file,
+      event.currentTarget,
+      { x: event.clientX, y: event.clientY },
+      event.pointerId,
+    )
+  }
+
+  function openRadialMenuFromContext(file: BrowserFile, event: MouseEvent<HTMLElement>) {
+    event.preventDefault()
+    event.stopPropagation()
+    if (onRadialMenuRequest === undefined) return
+    const alreadyHandled =
+      radialContextDeduplication.current?.entityId === file.entityId
+    clearRadialContextDeduplication()
+    if (alreadyHandled) return
+    requestRadialMenu(
+      file,
+      event.currentTarget,
+      { x: event.clientX, y: event.clientY },
+      null,
+    )
   }
 
   function startFinderDrag(file: BrowserFile, event: DragEvent<HTMLElement>) {
@@ -274,9 +330,10 @@ export default function ContentBrowser({
   }
 
   function startPointerOrganization(file: BrowserFile, event: PointerEvent<HTMLElement>) {
+    if (event.button !== 0 || event.ctrlKey) return
     event.preventDefault()
     event.stopPropagation()
-    if (organizationDragDisabled || event.button !== 0) return
+    if (organizationDragDisabled) return
     const entityIds = freezeDragSelection(file)
     if (entityIds.length === 0) return
     onOrganizationPointerInput?.({
@@ -421,7 +478,8 @@ export default function ContentBrowser({
             loadThumbnail={loadThumbnail}
             onClick={selectFile}
             onPreview={(selectedFile) => onPreview?.(selectedFile)}
-            onRadialMenuPointerDown={openRadialMenu}
+            onRadialMenuPointerDown={openRadialMenuFromPointer}
+            onRadialMenuContextMenu={openRadialMenuFromContext}
             organizationDragDisabled={organizationDragDisabled}
             onFinderDragStart={startFinderDrag}
             onPointerDown={startPointerOrganization}
@@ -448,8 +506,8 @@ export default function ContentBrowser({
             tabIndex={-1}
             key={file.entityId}
             className="text-file-row"
-            onPointerDown={(event) => openRadialMenu(file, event)}
-            onContextMenu={(event) => event.preventDefault()}
+            onPointerDown={(event) => openRadialMenuFromPointer(file, event)}
+            onContextMenu={(event) => openRadialMenuFromContext(file, event)}
             onClick={(event) => selectFile(file, event)}
             onDoubleClick={() => onPreview?.(file)}
           >
@@ -488,6 +546,7 @@ function ImageCell({
   onClick,
   onPreview,
   onRadialMenuPointerDown,
+  onRadialMenuContextMenu,
   organizationDragDisabled,
   onFinderDragStart,
   onPointerDown,
@@ -504,6 +563,7 @@ function ImageCell({
   onClick: (file: BrowserFile, event: MouseEvent) => void
   onPreview: (file: BrowserFile) => void
   onRadialMenuPointerDown: (file: BrowserFile, event: PointerEvent<HTMLElement>) => void
+  onRadialMenuContextMenu: (file: BrowserFile, event: MouseEvent<HTMLElement>) => void
   organizationDragDisabled: boolean
   onFinderDragStart: (file: BrowserFile, event: DragEvent<HTMLElement>) => void
   onPointerDown: (file: BrowserFile, event: PointerEvent<HTMLElement>) => void
@@ -539,7 +599,7 @@ function ImageCell({
       data-active={active || undefined}
       className="image-cell"
       onPointerDown={(event) => onRadialMenuPointerDown(file, event)}
-      onContextMenu={(event) => event.preventDefault()}
+      onContextMenu={(event) => onRadialMenuContextMenu(file, event)}
       onClick={(event) => onClick(file, event)}
       onDoubleClick={() => onPreview(file)}
     >
@@ -586,6 +646,8 @@ function OrganizationDragHandle({
   onPointerUp: (event: PointerEvent<HTMLElement>) => void
   onPointerCancel: (event: PointerEvent<HTMLElement>) => void
 }) {
+  const organizationPointerId = useRef<number | null>(null)
+
   return (
     <button
       type="button"
@@ -606,10 +668,25 @@ function OrganizationDragHandle({
         event.preventDefault()
         event.stopPropagation()
       }}
-      onPointerDown={(event) => onPointerDown(file, event)}
-      onPointerMove={onPointerMove}
-      onPointerUp={onPointerUp}
-      onPointerCancel={onPointerCancel}
+      onPointerDown={(event) => {
+        if (event.button === 0 && !event.ctrlKey) {
+          organizationPointerId.current = event.pointerId
+        }
+        onPointerDown(file, event)
+      }}
+      onPointerMove={(event) => {
+        if (organizationPointerId.current === event.pointerId) onPointerMove(event)
+      }}
+      onPointerUp={(event) => {
+        if (organizationPointerId.current !== event.pointerId) return
+        organizationPointerId.current = null
+        onPointerUp(event)
+      }}
+      onPointerCancel={(event) => {
+        if (organizationPointerId.current !== event.pointerId) return
+        organizationPointerId.current = null
+        onPointerCancel(event)
+      }}
     >
       ⋮⋮
     </button>

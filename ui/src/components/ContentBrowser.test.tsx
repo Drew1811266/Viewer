@@ -609,13 +609,109 @@ describe('ContentBrowser', () => {
     })
   })
 
-  it('suppresses the native context menu for image and text options', () => {
-    render(<ContentBrowser workspace={workspace(1)} onRadialMenuRequest={vi.fn()} />)
-    for (const name of ['1.jpg', 'prompt.md']) {
-      const event = createEvent.contextMenu(screen.getByRole('option', { name }))
-      fireEvent(screen.getByRole('option', { name }), event)
+  it('falls back to click-mode radial requests for image and text context-menu events', () => {
+    const request = vi.fn()
+    render(<ContentBrowser workspace={workspace(1)} onRadialMenuRequest={request} />)
+
+    for (const [name, entityId, listName] of [
+      ['1.jpg', 'image-1', '图片文件'],
+      ['prompt.md', 'text-1', '文本文件'],
+    ] as const) {
+      const option = screen.getByRole('option', { name })
+      const event = createEvent.contextMenu(option, {
+        button: 0,
+        ctrlKey: true,
+        clientX: 240,
+        clientY: 180,
+      })
+      fireEvent(option, event)
+
       expect(event.defaultPrevented).toBe(true)
+      expect(request).toHaveBeenLastCalledWith({
+        files: [expect.objectContaining({ entityId })],
+        origin: { x: 240, y: 180 },
+        pointerId: null,
+        returnFocusTarget: screen.getByRole('listbox', { name: listName }),
+      })
     }
+    expect(request).toHaveBeenCalledTimes(2)
+  })
+
+  it('deduplicates a secondary pointerdown followed by contextmenu', () => {
+    const request = vi.fn()
+    render(<ContentBrowser workspace={workspace(1)} onRadialMenuRequest={request} />)
+    const option = screen.getByRole('option', { name: '1.jpg' })
+
+    fireEvent.pointerDown(option, {
+      pointerId: 73,
+      button: 2,
+      clientX: 210,
+      clientY: 160,
+    })
+    fireEvent.contextMenu(option, {
+      button: 2,
+      clientX: 210,
+      clientY: 160,
+    })
+
+    expect(request).toHaveBeenCalledTimes(1)
+    expect(request.mock.calls[0]?.[0]).toEqual(
+      expect.objectContaining({ pointerId: 73 }),
+    )
+  })
+
+  it('routes secondary and Control-click input on the organization handle to the radial menu', () => {
+    const request = vi.fn()
+    const organize = vi.fn()
+    render(
+      <ContentBrowser
+        workspace={workspace(1)}
+        onRadialMenuRequest={request}
+        onOrganizationPointerInput={organize}
+      />,
+    )
+    const handle = screen.getByRole('button', { name: '整理 1.jpg' })
+
+    fireEvent.pointerDown(handle, {
+      pointerId: 74,
+      button: 2,
+      clientX: 220,
+      clientY: 170,
+    })
+    fireEvent.pointerMove(handle, {
+      pointerId: 74,
+      buttons: 2,
+      clientX: 230,
+      clientY: 180,
+    })
+    fireEvent.pointerUp(handle, {
+      pointerId: 74,
+      button: 2,
+      clientX: 230,
+      clientY: 180,
+    })
+    fireEvent.contextMenu(handle, {
+      button: 2,
+      clientX: 220,
+      clientY: 170,
+    })
+    fireEvent.pointerDown(handle, {
+      pointerId: 75,
+      button: 0,
+      ctrlKey: true,
+      clientX: 225,
+      clientY: 175,
+    })
+    fireEvent.contextMenu(handle, {
+      button: 0,
+      ctrlKey: true,
+      clientX: 225,
+      clientY: 175,
+    })
+
+    expect(request).toHaveBeenCalledTimes(2)
+    expect(request.mock.calls.map(([item]) => item.pointerId)).toEqual([74, null])
+    expect(organize).not.toHaveBeenCalled()
   })
 
   it('hides unmarked copy and keeps marked badges plus select-all in the view menu', () => {

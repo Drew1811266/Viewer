@@ -116,6 +116,30 @@ describe('workspace style contracts', () => {
       width: '8px',
     })
   })
+
+  it('keeps folder identity fixed beside an independently scrolling filmstrip', () => {
+    const rules = parseRules(appCss)
+    const row = rules.find((rule) => rule.selector === '.folder-filmstrip-row')
+    const filmstrip = rules.find((rule) => rule.selector === '.folder-filmstrip')
+    const thumbnail = rules.find(
+      (rule) => rule.selector === '.folder-filmstrip-thumbnail',
+    )
+
+    expect(row?.declarations).toMatchObject({
+      display: 'grid',
+      'grid-template-columns': '184px minmax(0, 1fr)',
+    })
+    expect(filmstrip?.declarations).toMatchObject({
+      'min-width': '0',
+      'overflow-x': 'auto',
+      'overflow-y': 'hidden',
+      'scrollbar-gutter': 'stable',
+    })
+    expect(thumbnail?.declarations).toMatchObject({
+      flex: '0 0 132px',
+      height: '132px',
+    })
+  })
 })
 
 interface CssRule {

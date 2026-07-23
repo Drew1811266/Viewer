@@ -171,8 +171,6 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
     setOperationSubmitting(false)
     setResultsBatchId(null)
     setInfoOpen(false)
-    radialReturnFocusTarget.current = null
-    setRadialMenu(null)
     setProjectMenuOpen(false)
     setDimensions({})
   }, [state.project?.sessionId])
@@ -510,7 +508,8 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
   ].join(':')
 
   useEffect(() => {
-    finishRadialSession()
+    if (radialMenu !== null) finishRadialSession()
+    // Deliberately exclude radialMenu: only a menu present when context changed is stale.
   }, [
     activePreview,
     compareOpen,

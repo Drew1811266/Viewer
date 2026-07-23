@@ -1,6 +1,6 @@
 # Viewer 技术框架与开源来源
 
-> 状态：G1～G4 已完成并通过整体验收；Viewer 0.1 技术基线已冻结
+> 状态：G1～G4 技术证据已完成；当前开发治理见 ADR 0005
 > 原则：采用通用框架，独立实现 Viewer，不复制其他完整应用
 
 完整模块、数据流、安全和测试设计见 `docs/superpowers/specs/2026-07-16-viewer-system-architecture-design.md`。
@@ -27,7 +27,7 @@
 | 数据库 | SQLite + rusqlite | 持久标记、会话索引和 FTS5 全文搜索 | 正式依赖 |
 | 图片后端 | Quick Look Thumbnailing + Image I/O + Core Graphics + ColorSync | Quick Look 主缩略图、Image I/O 回退与高清预览、ICC 和 EXIF | 已通过 G1，见 ADR 0001 |
 | 文件监听 | notify + notify-debouncer-full + Unix device/inode identity | FSEvents、事件归并、重命名/移动关联 | 已通过 G3，见 ADR 0003；未直接引入 `file-id` |
-| 网格虚拟化 | TanStack Virtual | 缩略图、目录卡片和搜索结果虚拟化 | 正式依赖候选 |
+| 网格虚拟化 | 自定义 `VirtualGrid` / `VirtualList` | 缩略图、目录卡片和搜索结果虚拟化 | 项目内实现；`ui/package.json` 未引入 TanStack Virtual |
 | 系统废纸篓 | trash-rs | 将文件移入 macOS 废纸篓 | 已通过 G2，封装于平台 Adapter |
 | 模糊匹配 | nucleo-matcher | Unicode/中文路径和文件名匹配 | 已通过 G3；发布时履行 MPL-2.0 notice/source 义务 |
 
@@ -35,7 +35,7 @@
 
 [ADR 0001](adr/0001-macos-image-pipeline.md) 已将 macOS 0.1 的策略确定为“Quick Look 主缩略图，Image I/O 失败回退；Fit/100% 预览使用 Image I/O”。项目原图不复制到 Viewer 缓存；缓存只保存可重建的会话表示，通过会话绑定的随机 token 交给 WebView。
 
-Apple M4 标准开发设备上的合成样本 gate 验证了 sRGB、Display P3、EXIF orientation 6、Alpha、损坏图片、100 次取消、4 路代理、受限协议和 700 MB 峰值预算。当前结果不能替代用户后续提供的约 10 MB 真实素材验收，因此最终性能结论仍在 M4 内部发布阶段复核。
+Apple M4 标准开发设备上的合成样本 gate 验证了 sRGB、Display P3、EXIF orientation 6、Alpha、损坏图片、100 次取消、4 路代理、受限协议和 700 MB 峰值预算。合成夹具数据只用于持续回归比较，不代表真实素材最终验收。真实素材体验检查可以按功能需要单独执行，但不阻塞阶段完成。
 
 ### 2.2 G2 文件事务结论
 
@@ -48,8 +48,6 @@ Apple M4 标准开发设备上的合成样本 gate 验证了 sRGB、Display P3�
 [ADR 0003](adr/0003-scan-search-and-generation.md) 已确定“文件夹优先的 128 节点渐进批次 + 可丢弃 WAL 会话索引 + FTS5 trigram/nucleo 分层搜索 + `(SessionId, Generation)` 双边界校验 + Watcher 只触发范围化重扫”的方案。
 
 Apple M4 标准开发设备上的 20 轮新会话基准覆盖 1,000 个图片占位文件、100 个中文/英文 Markdown/TXT 和 210 个三级目录。首个文件夹事件 p95 为 20.08 ms，基础扫描 p95 为 39.17 ms，80 次索引查询 p95 为 0.86 ms，峰值 RSS 为 6.67 MB；旧代次发布为零，便携 `.viewer` 元数据哨兵在全部会话索引删除/重建后哈希不变。
-
-这些数值验证扫描和索引架构，不代表约 10 MB 真实图片的联合体验。最终 M4 内部发布门禁仍需使用用户提供的测试文件夹复核扫描、缩略图、高清预览和滚动的组合行为。
 
 ### 2.4 G4 许可证与依赖冻结基线
 

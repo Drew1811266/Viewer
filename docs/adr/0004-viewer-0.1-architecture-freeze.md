@@ -1,6 +1,9 @@
 # ADR 0004: Viewer 0.1 architecture freeze
 
 - Status: Accepted
+
+> Governance note (2026-07-23): ADR 0005 supersedes the Viewer 0.1 freeze and M1–M4 delivery consequences. The accepted G1–G4 evidence and dependency/API facts remain historical evidence.
+
 - Date: 2026-07-16
 - Gate: G4 architecture freeze
 - Reproduce: `./scripts/check-locked-dependencies.sh`, `./scripts/run-architecture-gates.sh`, `pnpm build:macos`

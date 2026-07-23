@@ -249,6 +249,9 @@ export default function ContentBrowser({
     if (event.button !== 2 || onRadialMenuRequest === undefined) return
     event.preventDefault()
     event.stopPropagation()
+    const returnFocusTarget =
+      event.currentTarget.closest<HTMLElement>('[role="listbox"]') ??
+      event.currentTarget
     const contextSelection = selected.has(file.entityId) ? selected : new Set([file.entityId])
     if (!selected.has(file.entityId)) {
       anchorId.current = file.entityId
@@ -259,6 +262,7 @@ export default function ContentBrowser({
       files: allFiles.filter((candidate) => contextSelection.has(candidate.entityId)),
       origin: { x: event.clientX, y: event.clientY },
       pointerId: event.pointerId,
+      returnFocusTarget,
     })
   }
 

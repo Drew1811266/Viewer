@@ -549,8 +549,10 @@ describe('ContentBrowser', () => {
   it('opens the radial request on an unselected image and replaces selection first', () => {
     const request = vi.fn()
     render(<ContentBrowser workspace={workspace(3)} onRadialMenuRequest={request} />)
+    const grid = screen.getByRole('listbox', { name: '图片文件' })
     fireEvent.click(screen.getByRole('option', { name: '1.jpg' }))
-    fireEvent.pointerDown(screen.getByRole('option', { name: '2.jpg' }), {
+    const second = screen.getByRole('option', { name: '2.jpg' })
+    fireEvent.pointerDown(second, {
       pointerId: 70,
       button: 2,
       clientX: 210,
@@ -561,6 +563,7 @@ describe('ContentBrowser', () => {
       files: [expect.objectContaining({ entityId: 'image-2' })],
       origin: { x: 210, y: 160 },
       pointerId: 70,
+      returnFocusTarget: grid,
     })
   })
 
@@ -585,10 +588,12 @@ describe('ContentBrowser', () => {
   it('snapshots a text-row right-click request after replacing an unrelated selection', () => {
     const request = vi.fn()
     render(<ContentBrowser workspace={workspace(3)} onRadialMenuRequest={request} />)
+    const textList = screen.getByRole('listbox', { name: '文本文件' })
     fireEvent.click(screen.getByRole('option', { name: '1.jpg' }))
     fireEvent.click(screen.getByRole('option', { name: '2.jpg' }), { metaKey: true })
 
-    fireEvent.pointerDown(screen.getByRole('option', { name: 'prompt.md' }), {
+    const prompt = screen.getByRole('option', { name: 'prompt.md' })
+    fireEvent.pointerDown(prompt, {
       pointerId: 72,
       button: 2,
       clientX: 230,
@@ -600,6 +605,7 @@ describe('ContentBrowser', () => {
       files: [expect.objectContaining({ entityId: 'text-1' })],
       origin: { x: 230, y: 180 },
       pointerId: 72,
+      returnFocusTarget: textList,
     })
   })
 

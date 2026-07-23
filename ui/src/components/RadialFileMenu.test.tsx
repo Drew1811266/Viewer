@@ -216,8 +216,12 @@ describe('RadialFileMenu', () => {
 
     fireEvent.click(screen.getByRole('menuitem', { name: '标记' }))
     const pending = screen.getByRole('menuitemcheckbox', { name: '待定' })
+    const secondaryShapes = container.querySelectorAll<SVGPathElement>(
+      '.radial-secondary-shape',
+    )
     act(() => pending.focus())
 
+    expect(secondaryShapes[1]).toHaveAttribute('data-disabled', 'true')
     expect(pending).toHaveFocus()
     expect(pending).toHaveAttribute('tabindex', '0')
     expect(sequentialTabStops(container)).toEqual([pending])
@@ -487,26 +491,28 @@ describe('RadialFileMenu', () => {
     expect(close).toHaveBeenCalledOnce()
   })
 
-  it('restores focus to the previous control when the menu unmounts', () => {
+  it('reports the App-owned stable return target when final close is requested', () => {
     const opener = document.createElement('button')
     opener.textContent = '打开菜单'
     document.body.append(opener)
     opener.focus()
-    const { unmount } = render(
+    const close = vi.fn()
+    render(
       <RadialFileMenu
         origin={{ x: 320, y: 240 }}
         pointerId={null}
         selectionCount={1}
+        returnFocusTarget={opener}
         model={model}
         onAction={vi.fn()}
-        onClose={vi.fn()}
+        onClose={close}
       />,
     )
     expect(screen.getByRole('menuitem', { name: '预览' })).toHaveFocus()
 
-    unmount()
+    fireEvent.keyDown(screen.getByRole('menu', { name: '文件操作' }), { key: 'Escape' })
 
-    expect(opener).toHaveFocus()
+    expect(close).toHaveBeenCalledWith(opener)
     opener.remove()
   })
 

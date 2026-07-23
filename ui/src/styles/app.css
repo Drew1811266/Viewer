@@ -1540,7 +1540,8 @@ select {
   stroke-width: 2;
 }
 
-.radial-primary-shape[data-disabled="true"] {
+.radial-primary-shape[data-disabled="true"],
+.radial-secondary-shape[data-disabled="true"] {
   fill: #f3f4f6;
   opacity: 0.62;
 }
@@ -1707,6 +1708,25 @@ select {
 
   .radial-state-cue {
     background: #24282f;
+  }
+
+  .radial-primary-shape[data-disabled="true"],
+  .radial-secondary-shape[data-disabled="true"] {
+    fill: #3f4651;
+    opacity: 1;
+    stroke: #818d9c;
+  }
+
+  .radial-menu-button[aria-disabled="true"] {
+    color: #c1c9d4;
+    filter: none;
+    opacity: 1;
+  }
+
+  .search-field kbd,
+  .search-options-popover > label > span,
+  .project-access-status {
+    color: #c7ced8;
   }
 }
 

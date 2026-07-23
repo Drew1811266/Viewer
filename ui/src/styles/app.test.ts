@@ -32,6 +32,58 @@ describe('workspace style contracts', () => {
     expect(contrastRatio(destructiveColor, '#244d7d')).toBeGreaterThanOrEqual(4.5)
   })
 
+  it('resolves disabled radial sectors and labels to visible dark-mode treatment', () => {
+    const radialStart = appCss.indexOf('.radial-file-menu {')
+    const darkStart = appCss.indexOf('@media (prefers-color-scheme: dark)', radialStart)
+    const rules = [
+      ...parseRules(appCss.slice(radialStart, darkStart)),
+      ...parseRules(mediaBody(appCss, '(prefers-color-scheme: dark)')),
+    ]
+    const primaryDisabled = new Set([
+      '.radial-primary-shape',
+      '.radial-primary-shape[data-disabled="true"]',
+    ])
+    const secondaryDisabled = new Set([
+      '.radial-secondary-shape',
+      '.radial-secondary-shape[data-disabled="true"]',
+    ])
+    const disabledLabel = new Set([
+      '.radial-menu-button',
+      '.radial-menu-button[data-level="secondary"]',
+      '.radial-menu-button[aria-disabled="true"]',
+    ])
+
+    for (const selectors of [primaryDisabled, secondaryDisabled]) {
+      expect(winningDeclaration(rules, selectors, 'fill')).toBe('#3f4651')
+      expect(winningDeclaration(rules, selectors, 'stroke')).toBe('#818d9c')
+      expect(winningDeclaration(rules, selectors, 'opacity')).toBe('1')
+    }
+    const label = winningDeclaration(rules, disabledLabel, 'color')
+    expect(label).toBe('#c1c9d4')
+    expect(winningDeclaration(rules, disabledLabel, 'filter')).toBe('none')
+    expect(winningDeclaration(rules, disabledLabel, 'opacity')).toBe('1')
+    expect(contrastRatio(label, '#3f4651')).toBeGreaterThanOrEqual(4.5)
+  })
+
+  it('resolves explicit header and popover gray descendants to dark contrast colors', () => {
+    const darkStart = appCss.indexOf('@media (prefers-color-scheme: dark)')
+    const rules = [
+      ...parseRules(appCss.slice(0, darkStart)),
+      ...parseRules(mediaBody(appCss, '(prefers-color-scheme: dark)')),
+    ]
+    const mutedSelectors = [
+      '.search-field kbd',
+      '.search-options-popover > label > span',
+      '.project-access-status',
+    ]
+
+    for (const selector of mutedSelectors) {
+      const color = winningDeclaration(rules, new Set([selector]), 'color')
+      expect(color, selector).toBe('#c7ced8')
+      expect(contrastRatio(color, '#24282f'), selector).toBeGreaterThanOrEqual(4.5)
+    }
+  })
+
   it('anchors the filter popover within both edges of a 720px viewport', () => {
     const narrowRules = parseRules(mediaBody(appCss, '(max-width: 800px)'))
     const popover = narrowRules.find((rule) => rule.selector === '.search-options-popover')
@@ -105,10 +157,18 @@ function parseRules(css: string): CssRule[] {
 }
 
 function winningColor(rules: CssRule[], matchingSelectors: Set<string>): string {
+  return winningDeclaration(rules, matchingSelectors, 'color')
+}
+
+function winningDeclaration(
+  rules: CssRule[],
+  matchingSelectors: Set<string>,
+  property: string,
+): string {
   const candidates = rules
     .map((rule, cascadeOrder) => ({ ...rule, cascadeOrder }))
     .filter(
-      (rule) => matchingSelectors.has(rule.selector) && rule.declarations.color,
+      (rule) => matchingSelectors.has(rule.selector) && rule.declarations[property],
     )
   candidates.sort((left, right) => {
     const specificity = compareSpecificity(
@@ -117,7 +177,7 @@ function winningColor(rules: CssRule[], matchingSelectors: Set<string>): string 
     )
     return specificity === 0 ? left.cascadeOrder - right.cascadeOrder : specificity
   })
-  return candidates.at(-1)?.declarations.color ?? ''
+  return candidates.at(-1)?.declarations[property] ?? ''
 }
 
 function selectorSpecificity(selector: string): [number, number, number] {

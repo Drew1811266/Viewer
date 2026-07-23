@@ -131,16 +131,31 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
   const [resultsBatchId, setResultsBatchId] = useState<string | null>(null)
   const [infoOpen, setInfoOpen] = useState(false)
   const [radialMenu, setRadialMenu] = useState<RadialMenuSession | null>(null)
+  const radialReturnFocusTarget = useRef<HTMLElement | null>(null)
   const radialRequestSequence = useRef(0)
   const beginRadialSession = useCallback((request: RadialMenuRequest) => {
     if (state.status !== 'active' || state.project === null) return
+    const returnFocusTarget =
+      radialReturnFocusTarget.current ?? request.returnFocusTarget
+    radialReturnFocusTarget.current = returnFocusTarget
     radialRequestSequence.current += 1
     setRadialMenu({
       ...request,
       requestId: radialRequestSequence.current,
       projectIdentity: radialProjectIdentity,
+      returnFocusTarget,
     })
   }, [radialProjectIdentity, state.project, state.status])
+  const finishRadialSession = useCallback(
+    (reportedReturnTarget: HTMLElement | null = null) => {
+      setRadialMenu(null)
+      const returnFocusTarget =
+        radialReturnFocusTarget.current ?? reportedReturnTarget
+      radialReturnFocusTarget.current = null
+      if (returnFocusTarget?.isConnected) returnFocusTarget.focus()
+    },
+    [],
+  )
   const [dimensions, setDimensions] = useState<
     Record<string, { width: number; height: number } | undefined>
   >({})
@@ -156,6 +171,7 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
     setOperationSubmitting(false)
     setResultsBatchId(null)
     setInfoOpen(false)
+    radialReturnFocusTarget.current = null
     setRadialMenu(null)
     setProjectMenuOpen(false)
     setDimensions({})
@@ -494,10 +510,11 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
   ].join(':')
 
   useEffect(() => {
-    setRadialMenu(null)
+    finishRadialSession()
   }, [
     activePreview,
     compareOpen,
+    finishRadialSession,
     infoOpen,
     operationDialog,
     organizationWorkspaceIdentity,
@@ -576,10 +593,10 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
           ? radialMenu.files
           : []
       if (files.length === 0) {
-        setRadialMenu(null)
+        finishRadialSession()
         return
       }
-      setRadialMenu(null)
+      finishRadialSession()
       const ids = files.map((file) => file.entityId)
       if (action === 'preview' && files.length === 1) openPreview(files[0]!)
       else if (action === 'mark.keep') void setReviewState('keep', ids)
@@ -606,6 +623,7 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
       openPreview,
       radialMenu,
       radialProjectIdentity,
+      finishRadialSession,
       setReviewState,
       state.status,
       toggleFavorite,
@@ -983,9 +1001,10 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
           pointerId={activeRadialMenu.pointerId}
           selectionCount={activeRadialMenu.files.length}
           readOnly={state.project.access === 'read_only'}
+          returnFocusTarget={activeRadialMenu.returnFocusTarget}
           model={radialModel}
           onAction={runRadialAction}
-          onClose={() => setRadialMenu(null)}
+          onClose={finishRadialSession}
         />
       )}
       {activePreview && matchesImage(activePreview) && state.workspace?.workspace === 'content' && (

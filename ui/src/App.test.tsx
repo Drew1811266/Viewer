@@ -521,6 +521,27 @@ describe('Viewer empty state', () => {
     expect(screen.getByRole('dialog', { name: '图片预览' })).toHaveTextContent('back.jpg')
   })
 
+  it('restores the original content target after a click fallback is replaced', async () => {
+    const viewer = bridge()
+    vi.mocked(viewer.queryFolder).mockResolvedValue(compareContentWorkspace())
+    render(<App bridge={viewer} />)
+    fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
+    const grid = await screen.findByRole('listbox', { name: '图片文件' })
+    const front = screen.getByRole('option', { name: 'front.jpg' })
+    const back = screen.getByRole('option', { name: 'back.jpg' })
+
+    openRadialMenu(front, 211)
+    fireEvent.pointerUp(window, { pointerId: 211, clientX: 420, clientY: 260 })
+    expect(screen.getByRole('menuitem', { name: '预览' })).toHaveFocus()
+
+    openRadialMenu(back, 212)
+    expect(screen.getByRole('menuitem', { name: '预览' })).toHaveFocus()
+    fireEvent.keyDown(screen.getByRole('menu', { name: '文件操作' }), { key: 'Escape' })
+
+    expect(screen.queryByRole('menu', { name: '文件操作' })).not.toBeInTheDocument()
+    expect(grid).toHaveFocus()
+  })
+
   it('keeps mixed-favorite copy truthful while routing the frozen selection to toggle', async () => {
     const viewer = bridge()
     const workspace = compareContentWorkspace()

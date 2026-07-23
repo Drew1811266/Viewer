@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, KeyboardEvent } from 'react'
 import type { BrowserFile } from '../api/types'
 import {
@@ -21,6 +21,7 @@ export interface RadialMenuRequest {
   files: BrowserFile[]
   origin: Point
   pointerId: number | null
+  returnFocusTarget: HTMLElement
 }
 
 interface RadialFileMenuProps {
@@ -28,10 +29,11 @@ interface RadialFileMenuProps {
   pointerId: number | null
   selectionCount: number
   readOnly?: boolean
+  returnFocusTarget?: HTMLElement | null
   model: RadialMenuItem[]
   viewport?: Viewport
   onAction: (action: RadialLeafAction) => void
-  onClose: () => void
+  onClose: (returnFocusTarget: HTMLElement | null) => void
 }
 
 export default function RadialFileMenu({
@@ -39,6 +41,7 @@ export default function RadialFileMenu({
   pointerId,
   selectionCount,
   readOnly = false,
+  returnFocusTarget = null,
   model,
   viewport = { width: window.innerWidth, height: window.innerHeight },
   onAction,
@@ -61,11 +64,14 @@ export default function RadialFileMenu({
   const startPoint = useRef(origin)
   const maximumTravelled = useRef(0)
   const gestureCancelled = useRef(false)
-  const previousFocus = useRef(document.activeElement as HTMLElement | null)
   const expandedItem = expandedIndex === null ? null : (model[expandedIndex] ?? null)
   const secondaryAnchor =
     expandedIndex === null ? 0 : primaryCenterAngle(expandedIndex)
   const displayedPrimaryIndex = clickMode ? primaryIndex : pointerPrimaryIndex
+  const requestClose = useCallback(
+    () => onClose(returnFocusTarget),
+    [onClose, returnFocusTarget],
+  )
 
   useEffect(() => {
     rootRef.current
@@ -74,7 +80,6 @@ export default function RadialFileMenu({
     return () => {
       if (expandTimer.current !== null) window.clearTimeout(expandTimer.current)
       if (closeTimer.current !== null) window.clearTimeout(closeTimer.current)
-      previousFocus.current?.focus()
     }
   }, [])
 
@@ -132,7 +137,7 @@ export default function RadialFileMenu({
         onAction(primary.id)
         return
       }
-      onClose()
+      requestClose()
     }
     const cancel = (event: PointerEvent) => {
       if (event.pointerId !== pointerId || gestureCancelled.current) return
@@ -141,7 +146,7 @@ export default function RadialFileMenu({
         window.clearTimeout(expandTimer.current)
         expandTimer.current = null
       }
-      onClose()
+      requestClose()
     }
     window.addEventListener('pointermove', move)
     window.addEventListener('pointerup', up)
@@ -157,10 +162,10 @@ export default function RadialFileMenu({
     fittedOrigin,
     model,
     onAction,
-    onClose,
     pointerId,
     pointerPrimaryIndex,
     primaryIndex,
+    requestClose,
     secondaryAnchor,
     secondaryIndex,
   ])
@@ -168,11 +173,11 @@ export default function RadialFileMenu({
   useEffect(() => {
     if (!clickMode) return
     const outside = (event: PointerEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) onClose()
+      if (!rootRef.current?.contains(event.target as Node)) requestClose()
     }
     window.addEventListener('pointerdown', outside)
     return () => window.removeEventListener('pointerdown', outside)
-  }, [clickMode, onClose])
+  }, [clickMode, requestClose])
 
   useEffect(() => {
     if (secondaryFocusRequested.current === null || expandedIndex === null) return
@@ -221,7 +226,7 @@ export default function RadialFileMenu({
   function handleKeyDown(event: KeyboardEvent<HTMLDivElement>) {
     if (event.key === 'Escape') {
       event.preventDefault()
-      onClose()
+      requestClose()
       return
     }
     const level =
@@ -265,7 +270,7 @@ export default function RadialFileMenu({
 
   function scheduleClose() {
     if (!clickMode) return
-    closeTimer.current = window.setTimeout(onClose, 250)
+    closeTimer.current = window.setTimeout(requestClose, 250)
   }
 
   function cancelClose() {
@@ -294,6 +299,7 @@ export default function RadialFileMenu({
               key={item.id}
               className="radial-secondary-shape"
               data-active={secondaryIndex === index || undefined}
+              data-disabled={item.disabled || undefined}
               d={annularSectorPath(
                 { x: 168, y: 168 },
                 SECONDARY_INNER_RADIUS,
@@ -380,12 +386,12 @@ export default function RadialFileMenu({
         type="button"
         className="radial-menu-center"
         tabIndex={-1}
-        onClick={onClose}
+        onClick={requestClose}
         onKeyDown={(event) => {
           if (event.key !== 'Enter' && event.key !== ' ') return
           event.preventDefault()
           event.stopPropagation()
-          onClose()
+          requestClose()
         }}
         aria-label="关闭文件操作"
       >

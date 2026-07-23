@@ -26,6 +26,41 @@ function sequentialTabStops(container: HTMLElement): HTMLElement[] {
   ).filter((element) => element.tabIndex >= 0)
 }
 
+function primaryPaths(container: HTMLElement): string[] {
+  return Array.from(container.querySelectorAll<SVGPathElement>('.radial-primary-shape')).map(
+    (path) => path.getAttribute('d') ?? '',
+  )
+}
+
+function primaryOffsets(container: HTMLElement): string[] {
+  return Array.from(
+    container.querySelectorAll<HTMLButtonElement>('.radial-menu-button[data-level="primary"]'),
+  ).map((button) => button.getAttribute('style') ?? '')
+}
+
+function primarySectors(container: HTMLElement): Array<{ start: string | null; end: string | null }> {
+  return Array.from(container.querySelectorAll<SVGPathElement>('.radial-primary-shape')).map(
+    (path) => ({
+      start: path.getAttribute('data-sector-start'),
+      end: path.getAttribute('data-sector-end'),
+    }),
+  )
+}
+
+function expectVisibleLabelsUpright(container: HTMLElement) {
+  const buttons = Array.from(
+    container.querySelectorAll<HTMLButtonElement>('.radial-menu-button'),
+  )
+  expect(buttons.length).toBeGreaterThan(0)
+  buttons.forEach((button) => {
+    expect(button).toHaveAttribute('data-label-orientation', 'upright')
+    expect(button.getAttribute('style')).not.toMatch(/rotate/i)
+  })
+  expect(appCss).toMatch(
+    /\.radial-menu-button\s*\{(?=[^}]*transform:\s*translate\(-50%,\s*-50%\);)(?![^}]*rotate)[^}]*\}/s,
+  )
+}
+
 describe('RadialFileMenu', () => {
   it('exposes six stable primary menuitems and a selection-count center', () => {
     render(
@@ -214,6 +249,34 @@ describe('RadialFileMenu', () => {
     expect(action).toHaveBeenCalledWith('mark.keep')
   })
 
+  it.each([
+    ['标记', { x: 398, y: 195 }, 5],
+    ['整理', { x: 398, y: 285 }, 3],
+  ])('expands the %s fan after the pointer dwell', (label, point, expectedChildren) => {
+    vi.useFakeTimers()
+    try {
+      render(
+        <RadialFileMenu
+          origin={{ x: 320, y: 240 }}
+          pointerId={7}
+          selectionCount={1}
+          model={model}
+          onAction={vi.fn()}
+          onClose={vi.fn()}
+        />,
+      )
+
+      fireEvent.pointerMove(window, { pointerId: 7, clientX: point.x, clientY: point.y })
+      act(() => vi.advanceTimersByTime(120))
+
+      expect(screen.getByRole('menu', { name: label }).children).toHaveLength(
+        expectedChildren,
+      )
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('uses ArrowRight/ArrowLeft and ArrowUp/ArrowDown for radial keyboard navigation', () => {
     const action = vi.fn()
     render(
@@ -360,8 +423,32 @@ describe('RadialFileMenu', () => {
     )
   })
 
-  it('rotates only the local fan at the right edge and keeps accessible labels unchanged', () => {
-    render(
+  it('keeps the six-sector primary ring stable while only the right-edge local fan falls back', () => {
+    const center = render(
+      <RadialFileMenu
+        origin={{ x: 640, y: 400 }}
+        pointerId={null}
+        selectionCount={1}
+        viewport={{ width: 1280, height: 800 }}
+        model={model}
+        onAction={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    )
+    const centerPrimaryPaths = primaryPaths(center.container)
+    const centerPrimaryOffsets = primaryOffsets(center.container)
+    fireEvent.click(screen.getByRole('menuitem', { name: '标记' }))
+    const centerAnchor = screen.getByRole('menu', { name: '标记' })
+    const centerSecondaryPaths = Array.from(
+      center.container.querySelectorAll<SVGPathElement>('.radial-secondary-shape'),
+    ).map((path) => path.getAttribute('d'))
+    expect(centerAnchor).toHaveAttribute('data-anchor-degrees', '-30')
+    expect(primaryPaths(center.container)).toEqual(centerPrimaryPaths)
+    expect(primaryOffsets(center.container)).toEqual(centerPrimaryOffsets)
+    expectVisibleLabelsUpright(center.container)
+    center.unmount()
+
+    const edge = render(
       <RadialFileMenu
         origin={{ x: 1260, y: 400 }}
         pointerId={null}
@@ -372,24 +459,73 @@ describe('RadialFileMenu', () => {
         onClose={vi.fn()}
       />,
     )
+    expect(primaryPaths(edge.container)).toEqual(centerPrimaryPaths)
+    expect(primaryOffsets(edge.container)).toEqual(centerPrimaryOffsets)
     fireEvent.click(screen.getByRole('menuitem', { name: '标记' }))
-    expect(screen.getByRole('menuitemcheckbox', { name: '保留' })).toBeVisible()
-    expect(
-      screen.queryByRole('menuitemcheckbox', { name: '取消收藏' }),
-    ).not.toBeInTheDocument()
-    const menu = screen.getByRole('menu', { name: '文件操作' })
-    expect(menu.parentElement).toHaveStyle({ '--radial-origin-x': '1100px' })
+    const edgeFan = screen.getByRole('menu', { name: '标记' })
+    const edgeSecondaryPaths = Array.from(
+      edge.container.querySelectorAll<SVGPathElement>('.radial-secondary-shape'),
+    ).map((path) => path.getAttribute('d'))
+    expect(edgeFan).toHaveAttribute('data-anchor-degrees', '180')
+    expect(edgeSecondaryPaths).not.toEqual(centerSecondaryPaths)
+    expect(primaryPaths(edge.container)).toEqual(centerPrimaryPaths)
+    expect(primaryOffsets(edge.container)).toEqual(centerPrimaryOffsets)
+    expectVisibleLabelsUpright(edge.container)
   })
 
-  it('provides dark appearance and reduced-motion rules for every new surface', () => {
+  it.each([
+    ['left', { x: 4, y: 400 }, { x: '180px', y: '400px' }],
+    ['top', { x: 640, y: 4 }, { x: '640px', y: '180px' }],
+    ['bottom', { x: 640, y: 796 }, { x: '640px', y: '620px' }],
+    ['right', { x: 1276, y: 400 }, { x: '1100px', y: '400px' }],
+  ])(
+    'clamps the origin at the %s edge without rotating the primary ring or labels',
+    (_edge, origin, expected) => {
+      const { container } = render(
+        <RadialFileMenu
+          origin={origin}
+          pointerId={null}
+          selectionCount={1}
+          viewport={{ width: 1280, height: 800 }}
+          model={model}
+          onAction={vi.fn()}
+          onClose={vi.fn()}
+        />,
+      )
+
+      const root = screen.getByRole('menu', { name: '文件操作' }).parentElement
+      expect(root).toHaveStyle({
+        '--radial-origin-x': expected.x,
+        '--radial-origin-y': expected.y,
+      })
+      expect(primaryPaths(container)).toHaveLength(6)
+      expect(primarySectors(container)).toEqual([
+        { start: '-120', end: '-60' },
+        { start: '-60', end: '0' },
+        { start: '0', end: '60' },
+        { start: '60', end: '120' },
+        { start: '120', end: '180' },
+        { start: '180', end: '240' },
+      ])
+      expectVisibleLabelsUpright(container)
+    },
+  )
+
+  it('matches the complete dark and reduced-motion selector groups', () => {
     expect(appCss).toMatch(
-      /@media \(prefers-color-scheme: dark\)[\s\S]*\.workspace-header,[\s\S]*\.radial-menu-center\s*\{[\s\S]*background:\s*#24282f;/,
+      /@media \(prefers-color-scheme: dark\)\s*\{\s*\.workspace-header,\s*\.search-field,\s*\.search-options-popover,\s*\.search-view-popover,\s*\.project-menu > div,\s*\.content-view-menu > div,\s*\.radial-menu-center\s*\{\s*background:\s*#24282f;\s*border-color:\s*#4d5663;\s*color:\s*#f3f5f7;/s,
     )
     expect(appCss).toMatch(
-      /@media \(prefers-color-scheme: dark\)[\s\S]*\.radial-primary-shape\s*\{[\s\S]*fill:\s*#2f343d;/,
+      /@media \(prefers-color-scheme: dark\)[\s\S]*?\.radial-primary-shape\s*\{\s*fill:\s*#2f343d;\s*stroke:\s*#596474;\s*\}/,
     )
     expect(appCss).toMatch(
-      /@media \(prefers-reduced-motion: reduce\)[\s\S]*\.organization-drag-handle,[\s\S]*\.radial-secondary-shape\s*\{[\s\S]*transition:\s*none;/,
+      /@media \(prefers-color-scheme: dark\)[\s\S]*?\.radial-secondary-shape,\s*\.radial-primary-shape\[data-active="true"\],\s*\.radial-secondary-shape\[data-active="true"\]\s*\{\s*fill:\s*#244d7d;\s*stroke:\s*#5d9ee8;\s*\}/,
+    )
+    expect(appCss).toMatch(
+      /@media \(prefers-color-scheme: dark\)[\s\S]*?\.radial-menu-button,\s*\.radial-menu-center strong\s*\{\s*color:\s*#f3f5f7;\s*\}/,
+    )
+    expect(appCss).toMatch(
+      /@media \(prefers-reduced-motion: reduce\)\s*\{\s*\.organization-drag-handle,\s*\.radial-primary-shape,\s*\.radial-secondary-shape\s*\{\s*transition:\s*none;\s*\}\s*\}/,
     )
   })
 

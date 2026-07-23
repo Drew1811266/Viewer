@@ -64,7 +64,7 @@ export default function RadialFileMenu({
   const secondaryAnchor =
     expandedIndex === null
       ? 0
-      : chooseSecondaryAnchor(primaryCenterAngle(expandedIndex), fittedOrigin, viewport)
+      : chooseSecondaryAnchor(primaryCenterAngle(expandedIndex), origin, viewport)
   const displayedPrimaryIndex = clickMode ? primaryIndex : pointerPrimaryIndex
 
   useEffect(() => {
@@ -298,6 +298,8 @@ export default function RadialFileMenu({
             className="radial-primary-shape"
             data-active={displayedPrimaryIndex === index || undefined}
             data-disabled={item.disabled || undefined}
+            data-sector-start={-120 + index * 60}
+            data-sector-end={-60 + index * 60}
             d={annularSectorPath(
               { x: 168, y: 168 },
               PRIMARY_INNER_RADIUS,
@@ -338,6 +340,7 @@ export default function RadialFileMenu({
           className="radial-secondary-menu"
           role="menu"
           aria-labelledby={primaryButtonId(expandedItem)}
+          data-anchor-degrees={secondaryAnchor}
         >
           {expandedItem.children.map((item, index) => {
             const start = secondaryAnchor - (expandedItem.children!.length * 30) / 2
@@ -415,6 +418,7 @@ function RadialButton({
       className="radial-menu-button"
       data-level={level}
       data-index={index}
+      data-label-orientation="upright"
       data-tone={item.tone}
       style={
         { '--radial-x': `${point.x}px`, '--radial-y': `${point.y}px` } as CSSProperties

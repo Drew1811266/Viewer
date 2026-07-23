@@ -1015,7 +1015,9 @@ describe('Viewer empty state', () => {
         'true',
       ),
     )
-    expect(screen.queryByRole('menu', { name: '文件操作' })).not.toBeInTheDocument()
+    await waitFor(() =>
+      expect(screen.queryByRole('menu', { name: '文件操作' })).not.toBeInTheDocument(),
+    )
     fireEvent.pointerUp(handle, { pointerId: 34, clientX: 20, clientY: 20 })
 
     expect(viewer.preflightFileCommand).not.toHaveBeenCalled()
@@ -1120,7 +1122,9 @@ describe('Viewer empty state', () => {
     expect(
       await screen.findByText('部分正在查看的文件已在项目外发生变化。'),
     ).toBeVisible()
-    expect(screen.queryByRole('menu', { name: '文件操作' })).not.toBeInTheDocument()
+    await waitFor(() =>
+      expect(screen.queryByRole('menu', { name: '文件操作' })).not.toBeInTheDocument(),
+    )
   })
 
   it('rejects a same-folder move target while allowing Option-copy', async () => {

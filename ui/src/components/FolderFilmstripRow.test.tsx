@@ -199,6 +199,14 @@ describe('FolderFilmstripRow', () => {
 
     const track = filmstrip.querySelector<HTMLElement>('.folder-filmstrip-track')
     expect(track).toHaveStyle({ width: '13992px' })
+    const list = within(filmstrip).getByRole('list')
+    const initialItems = within(list).getAllByRole('listitem')
+    expect(initialItems).toHaveLength(5)
+    expect(initialItems[0]).toHaveAttribute('aria-posinset', '1')
+    expect(initialItems[0]).toHaveAttribute('aria-setsize', '100')
+    expect(
+      within(initialItems[0]!).getByRole('button', { name: '预览 image-1.jpg' }),
+    ).not.toHaveAttribute('aria-posinset')
     expect(
       within(filmstrip).getAllByRole('button', { name: /^预览 / }),
     ).toHaveLength(5)
@@ -224,5 +232,68 @@ describe('FolderFilmstripRow', () => {
       within(filmstrip).getByRole('button', { name: '预览 image-51.jpg' }),
     )
     expect(preview).toHaveBeenCalledWith(manyImages[50], manyImages)
+  })
+
+  it('retains only the focused out-of-window thumbnail until it blurs', async () => {
+    const manyImages: BrowserFile[] = Array.from({ length: 100 }, (_, index) => ({
+      ...images[0]!,
+      entityId: `image-${index + 1}`,
+      relativePath: `角色/B01/image-${index + 1}.jpg`,
+      name: `image-${index + 1}.jpg`,
+      modifiedNs: String(index + 1),
+    }))
+    render(
+      <FolderFilmstripRow
+        folder={{ ...folder, imageCount: manyImages.length }}
+        loadImages={vi.fn().mockResolvedValue(manyImages)}
+        requestThumbnail={vi.fn().mockResolvedValue('viewer-image://thumbnail')}
+        onSelect={vi.fn()}
+        onPreview={vi.fn()}
+      />,
+    )
+
+    const filmstrip = await screen.findByRole('region', { name: 'B01 图片' })
+    Object.defineProperty(filmstrip, 'clientWidth', {
+      configurable: true,
+      value: 420,
+    })
+    Object.defineProperty(filmstrip, 'scrollLeft', {
+      configurable: true,
+      value: 0,
+      writable: true,
+    })
+    fireEvent.scroll(filmstrip)
+    const focused = within(filmstrip).getByRole('button', {
+      name: '预览 image-3.jpg',
+    })
+    focused.focus()
+    expect(focused).toHaveFocus()
+
+    filmstrip.scrollLeft = 7000
+    fireEvent.scroll(filmstrip)
+
+    await within(filmstrip).findByRole('button', { name: '预览 image-51.jpg' })
+    expect(focused).toBeInTheDocument()
+    expect(focused).toHaveFocus()
+    expect(
+      within(filmstrip).getAllByRole('button', { name: /^预览 / }),
+    ).toHaveLength(9)
+    expect(
+      within(filmstrip).queryByRole('button', { name: '预览 image-20.jpg' }),
+    ).not.toBeInTheDocument()
+    const focusedItem = focused.closest('[role="listitem"]')
+    expect(focusedItem).toHaveAttribute('aria-posinset', '3')
+    expect(focusedItem).toHaveAttribute('aria-setsize', '100')
+
+    fireEvent.blur(focused)
+
+    await waitFor(() =>
+      expect(
+        within(filmstrip).queryByRole('button', { name: '预览 image-3.jpg' }),
+      ).not.toBeInTheDocument(),
+    )
+    expect(
+      within(filmstrip).getAllByRole('button', { name: /^预览 / }),
+    ).toHaveLength(8)
   })
 })

@@ -33,6 +33,7 @@ export default function FolderFilmstripRow({
   const [visible, setVisible] = useState(() => typeof IntersectionObserver === 'undefined')
   const [state, setState] = useState<RowState>({ status: 'idle' })
   const [viewport, setViewport] = useState({ scrollLeft: 0, width: 0 })
+  const [focusedImageIndex, setFocusedImageIndex] = useState<number | null>(null)
 
   useEffect(() => {
     if (typeof IntersectionObserver === 'undefined' || row.current === null) return
@@ -163,31 +164,43 @@ export default function FolderFilmstripRow({
         {state.status === 'ready' && imageWindow !== null && state.images.length > 0 && (
           <div
             className="folder-filmstrip-track"
+            role="list"
             style={{ width: `${imageWindow.totalWidth}px` }}
           >
-            {state.images
-              .slice(imageWindow.start, imageWindow.end)
-              .map((file, offset) => {
-                const index = imageWindow.start + offset
+            {getMountedImageIndexes(imageWindow, focusedImageIndex).map(
+              (index) => {
+                const file = state.images[index]!
                 return (
-                  <button
-                    type="button"
-                    className="folder-filmstrip-thumbnail"
-                    aria-label={`预览 ${file.name}`}
+                  <div
+                    className="folder-filmstrip-item"
+                    role="listitem"
                     aria-posinset={index + 1}
                     aria-setsize={state.images.length}
-                    title={file.name}
                     key={file.entityId}
                     style={{ left: `${index * THUMBNAIL_STRIDE}px` }}
-                    onClick={() => onPreview(file, state.images)}
                   >
-                    <FolderThumbnail
-                      file={file}
-                      requestThumbnail={requestThumbnail}
-                    />
-                  </button>
+                    <button
+                      type="button"
+                      className="folder-filmstrip-thumbnail"
+                      aria-label={`预览 ${file.name}`}
+                      title={file.name}
+                      onFocus={() => setFocusedImageIndex(index)}
+                      onBlur={() =>
+                        setFocusedImageIndex((current) =>
+                          current === index ? null : current,
+                        )
+                      }
+                      onClick={() => onPreview(file, state.images)}
+                    >
+                      <FolderThumbnail
+                        file={file}
+                        requestThumbnail={requestThumbnail}
+                      />
+                    </button>
+                  </div>
                 )
-              })}
+              },
+            )}
           </div>
         )}
       </div>
@@ -275,4 +288,24 @@ function getImageWindow(
     end: Math.min(imageCount, visibleEnd + OVERSCAN_CELLS),
     totalWidth,
   }
+}
+
+function getMountedImageIndexes(
+  imageWindow: ReturnType<typeof getImageWindow>,
+  focusedImageIndex: number | null,
+) {
+  const indexes = Array.from(
+    { length: imageWindow.end - imageWindow.start },
+    (_, offset) => imageWindow.start + offset,
+  )
+  if (
+    focusedImageIndex === null ||
+    (focusedImageIndex >= imageWindow.start &&
+      focusedImageIndex < imageWindow.end)
+  ) {
+    return indexes
+  }
+  if (focusedImageIndex < imageWindow.start) indexes.unshift(focusedImageIndex)
+  else indexes.push(focusedImageIndex)
+  return indexes
 }

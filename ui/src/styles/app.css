@@ -801,6 +801,13 @@ select {
   position: relative;
 }
 
+.folder-filmstrip-item {
+  height: 132px;
+  position: absolute;
+  top: 0;
+  width: 132px;
+}
+
 .folder-filmstrip-thumbnail,
 .folder-filmstrip-skeleton {
   flex: 0 0 132px;
@@ -811,11 +818,10 @@ select {
   background: #e5e8ed;
   border: 1px solid transparent;
   border-radius: 6px;
+  height: 100%;
   overflow: hidden;
   padding: 0;
-  position: absolute;
-  top: 0;
-  width: 132px;
+  width: 100%;
 }
 
 .folder-filmstrip-thumbnail:hover {
@@ -1826,6 +1832,10 @@ select {
   .folder-filmstrip-skeleton,
   .folder-filmstrip-deferred {
     background: #343a43;
+  }
+
+  .folder-filmstrip-thumbnail:focus-visible {
+    outline-color: #8ec8ff;
   }
 }
 

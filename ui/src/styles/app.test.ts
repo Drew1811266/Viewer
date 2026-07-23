@@ -159,6 +159,19 @@ describe('workspace style contracts', () => {
       'outline-offset': '-3px',
     })
     expect(thumbnailFocus?.declarations['box-shadow']).toBeUndefined()
+
+    const darkStart = appCss.indexOf('@media (prefers-color-scheme: dark)')
+    const darkRules = [
+      ...parseRules(appCss.slice(0, darkStart)),
+      ...parseRules(mediaBody(appCss, '(prefers-color-scheme: dark)')),
+    ]
+    const darkOutline = winningDeclaration(
+      darkRules,
+      new Set(['.folder-filmstrip-thumbnail:focus-visible']),
+      'outline-color',
+    )
+    expect(darkOutline).toBe('#8ec8ff')
+    expect(contrastRatio(darkOutline, '#343a43')).toBeGreaterThanOrEqual(3)
   })
 })
 

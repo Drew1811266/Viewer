@@ -20,6 +20,11 @@ function openRadialMenu(file: HTMLElement, pointerId = 90) {
   })
 }
 
+function closeProjectFromMenu() {
+  fireEvent.click(screen.getByRole('button', { name: '项目菜单' }))
+  fireEvent.click(screen.getByRole('button', { name: '关闭项目' }))
+}
+
 function bridge(access: 'read_write' | 'read_only' = 'read_write'): ViewerBridge {
   return {
     chooseProject: vi.fn().mockResolvedValue('/fixture/project'),
@@ -93,6 +98,30 @@ describe('Viewer empty state', () => {
     expect(screen.getByText('拖入或选择一个项目文件夹')).toBeVisible()
   })
 
+  it('moves close-project into the compact project menu', async () => {
+    const viewer = bridge()
+    render(<App bridge={viewer} />)
+    fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
+    await screen.findByRole('heading', { name: 'Catalog' })
+    expect(screen.queryByRole('button', { name: '关闭项目' })).not.toBeInTheDocument()
+    closeProjectFromMenu()
+    await waitFor(() => expect(viewer.closeProject).toHaveBeenCalled())
+  })
+
+  it('resizes the sidebar through pointer and keyboard separator input', async () => {
+    const viewer = bridge()
+    render(<App bridge={viewer} />)
+    fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
+    await screen.findByRole('heading', { name: 'Catalog' })
+    const separator = screen.getByRole('separator', { name: '调整文件夹栏宽度' })
+    fireEvent.pointerDown(separator, { pointerId: 101, button: 0, clientX: 260 })
+    fireEvent.pointerMove(window, { pointerId: 101, clientX: 300 })
+    fireEvent.pointerUp(window, { pointerId: 101, clientX: 300 })
+    expect(screen.getByLabelText('文件夹栏')).toHaveStyle({ width: '300px' })
+    fireEvent.keyDown(separator, { key: 'ArrowLeft' })
+    expect(screen.getByLabelText('文件夹栏')).toHaveStyle({ width: '284px' })
+  })
+
   it('keeps read-only browsing and comparison available while disabling every write', async () => {
     const viewer = bridge('read_only')
     vi.mocked(viewer.queryFolder).mockResolvedValue(readOnlyContentWorkspace())
@@ -109,14 +138,14 @@ describe('Viewer empty state', () => {
     fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
 
     expect(await screen.findByRole('status', { name: '只读模式' })).toBeVisible()
-    expect(screen.getByText('Catalog')).toBeVisible()
+    expect(screen.getByRole('heading', { name: 'Catalog' })).toBeVisible()
     expect(viewer.openPermissionSettings).not.toHaveBeenCalled()
 
     fireEvent.click(screen.getByRole('button', { name: '打开权限设置' }))
     expect(viewer.openPermissionSettings).toHaveBeenCalledOnce()
     expect(screen.getByRole('searchbox', { name: '搜索项目' })).toBeEnabled()
+    fireEvent.click(screen.getByText('筛选与排序'))
     expect(screen.getByRole('combobox', { name: '排序方式' })).toBeEnabled()
-    expect(screen.getByText('筛选')).toBeVisible()
 
     const front = await screen.findByRole('option', { name: 'front.jpg' })
     const back = screen.getByRole('option', { name: 'back.jpg' })
@@ -195,7 +224,7 @@ describe('Viewer empty state', () => {
     const viewer = bridge('read_only')
     render(<App bridge={viewer} />)
     fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
-    await screen.findByText('Catalog')
+    await screen.findByRole('heading', { name: 'Catalog' })
 
     fireEvent.click(screen.getByRole('button', { name: '重新选择目录' }))
 
@@ -217,7 +246,7 @@ describe('Viewer empty state', () => {
     render(<App bridge={viewer} />)
     await waitFor(() => expect(receiveCloseBlocked).toBeDefined())
     fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
-    await screen.findByText('Catalog')
+    await screen.findByRole('heading', { name: 'Catalog' })
 
     act(() => receiveCloseBlocked?.({
       sessionId: 'session-1',
@@ -227,7 +256,7 @@ describe('Viewer empty state', () => {
     }))
     fireEvent.click(screen.getByRole('button', { name: '保持打开' }))
     expect(screen.queryByRole('dialog', { name: '文件操作尚未完成' })).not.toBeInTheDocument()
-    expect(screen.getByText('Catalog')).toBeVisible()
+    expect(screen.getByRole('heading', { name: 'Catalog' })).toBeVisible()
     expect(viewer.closeProject).not.toHaveBeenCalled()
 
     act(() => receiveCloseBlocked?.({
@@ -241,7 +270,7 @@ describe('Viewer empty state', () => {
     expect(await screen.findByRole('heading', { name: 'Viewer' })).toBeVisible()
 
     fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
-    await screen.findByText('Catalog')
+    await screen.findByRole('heading', { name: 'Catalog' })
     act(() => receiveCloseBlocked?.({
       sessionId: 'session-1',
       generation: 1,
@@ -284,7 +313,7 @@ describe('Viewer empty state', () => {
     render(<App bridge={viewer} />)
     await waitFor(() => expect(receiveScan).toBeDefined())
     fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
-    await screen.findByText('Catalog')
+    await screen.findByRole('heading', { name: 'Catalog' })
 
     act(() => {
       receiveScan?.({
@@ -309,7 +338,7 @@ describe('Viewer empty state', () => {
     render(<App bridge={viewer} />)
     await waitFor(() => expect(receiveProjectClosed).toBeDefined())
     fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
-    await screen.findByText('Catalog')
+    await screen.findByRole('heading', { name: 'Catalog' })
 
     act(() => receiveProjectClosed?.())
 
@@ -332,7 +361,7 @@ describe('Viewer empty state', () => {
     await waitFor(() =>
       expect(viewer.openProject).toHaveBeenCalledWith('/fixture/dropped-project'),
     )
-    expect(await screen.findByText('Catalog')).toBeVisible()
+    expect(await screen.findByRole('heading', { name: 'Catalog' })).toBeVisible()
   })
 
   it('renders a safe fallback instead of raw thrown details', async () => {
@@ -641,7 +670,7 @@ describe('Viewer empty state', () => {
     fireEvent.keyDown(window, { key: 'Enter' })
     expect(screen.getByRole('dialog', { name: '重命名文件' })).toBeVisible()
 
-    fireEvent.click(screen.getByRole('button', { name: '关闭项目' }))
+    closeProjectFromMenu()
     expect(screen.queryByRole('dialog', { name: '重命名文件' })).not.toBeInTheDocument()
     expect(viewer.executeFileCommand).not.toHaveBeenCalled()
 

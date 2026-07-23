@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import type { CSSProperties } from 'react'
+import type { CSSProperties, PointerEvent as ReactPointerEvent } from 'react'
 import type { ViewerBridge } from './api/viewer'
 import { tauriViewerBridge } from './api/viewer'
 import EmptyProject from './components/EmptyProject'
@@ -93,6 +93,22 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
   } = useViewerController(bridge)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [sidebarWidth, setSidebarWidth] = useState(260)
+  const [projectMenuOpen, setProjectMenuOpen] = useState(false)
+  const startSidebarResize = useCallback((event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (sidebarCollapsed || event.button !== 0) return
+    event.preventDefault()
+    const startX = event.clientX
+    const startWidth = sidebarWidth
+    const move = (next: PointerEvent) => {
+      setSidebarWidth(Math.max(200, Math.min(420, startWidth + next.clientX - startX)))
+    }
+    const stop = () => {
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', stop)
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', stop)
+  }, [sidebarCollapsed, sidebarWidth])
   const [thumbnailTask, setThumbnailTask] = useState<TaskFeedback | null>(null)
   const [textTask, setTextTask] = useState<TaskFeedback | null>(null)
   const [dismissedTasks, setDismissedTasks] = useState<Set<string>>(() => new Set())
@@ -121,6 +137,7 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
     setResultsBatchId(null)
     setInfoOpen(false)
     setRadialMenu(null)
+    setProjectMenuOpen(false)
     setDimensions({})
   }, [state.project?.sessionId])
   const requestThumbnail = useCallback(
@@ -695,15 +712,41 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
       className="viewer-shell"
       data-organization-drag-active={organizationDragView ? true : undefined}
     >
-      <header>
+      <header className="workspace-header">
         <h1>{state.project.displayName}</h1>
-        <button
-          type="button"
-          disabled={state.status === 'closing'}
-          onClick={() => void closeProject()}
-        >
-          {state.status === 'closing' ? '正在关闭…' : '关闭项目'}
-        </button>
+        <SearchToolbar
+          query={state.search.query}
+          folders={state.folders}
+          focusRequest={state.search.focusRequest}
+          onTextChange={setSearchText}
+          onScopeChange={setSearchScope}
+          onFiltersChange={setSearchFilters}
+          onSortChange={setSearchSort}
+          onLayoutChange={setSearchLayout}
+          onRemoveFilter={removeSearchFilter}
+          onClearFilters={clearSearchFilters}
+        />
+        <details className="project-menu" open={projectMenuOpen}>
+          <summary
+            aria-label="项目菜单"
+            role="button"
+            onClick={(event) => {
+              event.preventDefault()
+              setProjectMenuOpen((open) => !open)
+            }}
+          >
+            •••
+          </summary>
+          <div hidden={!projectMenuOpen}>
+            <button
+              type="button"
+              disabled={state.status === 'closing'}
+              onClick={() => void closeProject()}
+            >
+              {state.status === 'closing' ? '正在关闭…' : '关闭项目'}
+            </button>
+          </div>
+        </details>
       </header>
       {state.project.access === 'read_only' && (
         <ReadOnlyBanner
@@ -735,18 +778,6 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
           {compareStatus}
         </p>
       )}
-      <SearchToolbar
-        query={state.search.query}
-        folders={state.folders}
-        focusRequest={state.search.focusRequest}
-        onTextChange={setSearchText}
-        onScopeChange={setSearchScope}
-        onFiltersChange={setSearchFilters}
-        onSortChange={setSearchSort}
-        onLayoutChange={setSearchLayout}
-        onRemoveFilter={removeSearchFilter}
-        onClearFilters={clearSearchFilters}
-      />
       <div className="viewer-columns">
         <aside
           className="folder-sidebar"
@@ -776,16 +807,23 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
                 onSelect={selectFolderTarget}
                 organizationDropTarget={organizationDropTarget}
               />
-              <label className="sidebar-resize">
-                文件夹栏宽度
-                <input
-                  type="range"
-                  min="200"
-                  max="420"
-                  value={sidebarWidth}
-                  onChange={(event) => setSidebarWidth(Number(event.currentTarget.value))}
-                />
-              </label>
+              <button
+                type="button"
+                className="sidebar-separator"
+                role="separator"
+                aria-label="调整文件夹栏宽度"
+                aria-orientation="vertical"
+                aria-valuemin={200}
+                aria-valuemax={420}
+                aria-valuenow={sidebarWidth}
+                onPointerDown={startSidebarResize}
+                onKeyDown={(event) => {
+                  if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
+                  event.preventDefault()
+                  const delta = event.key === 'ArrowLeft' ? -16 : 16
+                  setSidebarWidth((width) => Math.max(200, Math.min(420, width + delta)))
+                }}
+              />
             </>
           )}
         </aside>
@@ -831,6 +869,7 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
                 {state.showingAggregate && <p className="aggregate-label">全部后代文件</p>}
                 <ContentBrowser
                   workspace={state.workspace}
+                  currentPath={state.selectedFolderPath || state.project.displayName}
                   requestThumbnail={requestContentThumbnail}
                   onThumbnailTaskChange={setThumbnailTask}
                   onPreview={openPreview}

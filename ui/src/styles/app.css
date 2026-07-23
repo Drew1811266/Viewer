@@ -47,22 +47,33 @@ select {
   height: 100vh;
 }
 
-.viewer-shell > header,
 .workspace-heading {
   align-items: center;
   display: flex;
   justify-content: space-between;
 }
 
-.viewer-shell > header {
+.workspace-header {
+  align-items: center;
+  background: #fbfcfd;
   border-bottom: 1px solid #d8dce2;
-  min-height: 52px;
-  padding: 0 16px;
+  display: flex;
+  flex: 0 0 48px;
+  gap: 12px;
+  min-height: 48px;
+  padding: 0 12px;
+  position: relative;
+  z-index: 10;
 }
 
-.viewer-shell h1 {
-  font-size: 16px;
+.workspace-header h1 {
+  flex: 0 0 auto;
+  font-size: 14px;
   margin: 0;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .read-only-banner {
@@ -91,47 +102,98 @@ select {
 }
 
 .search-toolbar {
-  background: #fff;
-  border-bottom: 1px solid #d8dce2;
-  padding: 8px 12px;
+  align-items: center;
+  display: flex;
+  flex: 1 1 auto;
+  gap: 7px;
+  min-width: 0;
   position: relative;
-  z-index: 5;
 }
 
-.search-toolbar-main {
+.search-field {
+  align-items: center;
+  background: #fff;
+  border: 1px solid #c8ced6;
+  border-radius: 8px;
+  display: flex;
+  flex: 1 1 360px;
+  gap: 6px;
+  max-width: 640px;
+  padding: 0 8px;
+}
+
+.search-field input {
+  border: 0;
+  min-width: 100px;
+  outline: 0;
+  padding: 6px 0;
+  width: 100%;
+}
+
+.search-field kbd {
+  color: #737d8a;
+  font-size: 10px;
+}
+
+.search-options-panel,
+.search-view-panel,
+.project-menu,
+.content-view-menu {
+  position: relative;
+}
+
+.search-options-panel > summary,
+.search-view-panel > summary,
+.project-menu > summary,
+.content-view-menu > summary {
+  border-radius: 7px;
+  cursor: default;
+  list-style: none;
+  padding: 6px 8px;
+}
+
+.search-options-panel > summary::-webkit-details-marker,
+.search-view-panel > summary::-webkit-details-marker,
+.project-menu > summary::-webkit-details-marker,
+.content-view-menu > summary::-webkit-details-marker {
+  display: none;
+}
+
+.search-options-popover,
+.search-view-popover,
+.project-menu > div,
+.content-view-menu > div {
+  background: #fff;
+  border: 1px solid #c8ced6;
+  border-radius: 10px;
+  box-shadow: 0 12px 34px rgb(34 42 53 / 20%);
+  padding: 10px;
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 20;
+}
+
+.search-options-popover {
+  display: grid;
+  gap: 10px;
+  min-width: min(720px, calc(100vw - 24px));
+}
+
+.search-options-popover > label {
   align-items: center;
   display: flex;
   gap: 8px;
 }
 
-.search-toolbar-main > label {
-  align-items: center;
-  display: flex;
-  gap: 5px;
-  white-space: nowrap;
-}
-
-.search-toolbar-main > label > span {
+.search-options-popover > label > span {
   color: #59616c;
   font-size: 12px;
 }
 
-.search-field {
-  flex: 1 1 320px;
-  max-width: 640px;
-}
-
-.search-field input {
-  border: 1px solid #b9c0ca;
-  border-radius: 7px;
-  min-width: 180px;
-  padding: 6px 9px;
-  width: 100%;
-}
-
 .search-toolbar select,
 .search-toolbar button,
-.search-filter-panel > summary {
+.project-menu button {
   background: #fff;
   border: 1px solid #c8ced6;
   border-radius: 6px;
@@ -144,34 +206,10 @@ select {
   border-color: #2477d4;
 }
 
-.search-filter-panel {
-  position: relative;
-}
-
-.search-filter-panel > summary {
-  cursor: default;
-  display: flex;
-  list-style: none;
-  place-items: center;
-}
-
-.search-filter-panel > summary::-webkit-details-marker {
-  display: none;
-}
-
 .search-filter-grid {
-  background: #fff;
-  border: 1px solid #c8ced6;
-  border-radius: 9px;
-  box-shadow: 0 10px 28px rgb(34 42 53 / 18%);
   display: grid;
   gap: 10px;
   grid-template-columns: repeat(4, minmax(120px, 1fr));
-  left: 0;
-  min-width: 680px;
-  padding: 12px;
-  position: absolute;
-  top: 36px;
 }
 
 .search-filter-grid fieldset {
@@ -222,7 +260,7 @@ select {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  padding-top: 7px;
+  min-width: 0;
 }
 
 .search-filter-chips button {
@@ -232,19 +270,7 @@ select {
   padding: 2px 7px;
 }
 
-.marker-controls {
-  align-items: center;
-  background: #fafbfc;
-  border-bottom: 1px solid #d8dce2;
-  display: flex;
-  gap: 14px;
-  justify-content: space-between;
-  min-height: 42px;
-  padding: 5px 12px;
-}
-
-.marker-buttons,
-.marker-selection-summary {
+.marker-buttons {
   align-items: center;
   display: flex;
   gap: 7px;
@@ -280,19 +306,6 @@ select {
   padding: 2px 4px;
 }
 
-.marker-selection-summary {
-  color: #59616c;
-  flex-wrap: wrap;
-  font-size: 12px;
-  justify-content: flex-end;
-}
-
-.marker-selection-summary span + span::before {
-  color: #abb1b9;
-  content: "·";
-  margin-right: 7px;
-}
-
 .recovery-banner,
 .context-repair-banner {
   background: #eef6ff;
@@ -310,23 +323,6 @@ select {
   padding: 6px 16px;
 }
 
-.file-action-toolbar {
-  align-items: center;
-  background: #fafbfc;
-  border-bottom: 1px solid #d8dce2;
-  display: flex;
-  gap: 7px;
-  min-height: 38px;
-  padding: 4px 12px;
-}
-
-.file-action-toolbar > span {
-  color: #59616c;
-  font-size: 12px;
-  margin-right: auto;
-}
-
-.file-action-toolbar button,
 .modal-sheet button,
 .operation-results button {
   background: #fff;
@@ -336,7 +332,6 @@ select {
   padding: 4px 9px;
 }
 
-.file-action-toolbar button:disabled,
 .modal-sheet button:disabled {
   opacity: 0.48;
 }
@@ -461,6 +456,7 @@ select {
   min-width: 44px;
   overflow: hidden;
   padding: 8px;
+  position: relative;
 }
 
 .project-root-button,
@@ -528,11 +524,23 @@ select {
   font-size: 10px;
 }
 
-.sidebar-resize {
-  display: grid;
-  font-size: 11px;
-  gap: 4px;
-  margin-top: 8px;
+.sidebar-separator {
+  background: transparent;
+  border: 0;
+  cursor: col-resize;
+  height: 100%;
+  padding: 0;
+  position: absolute;
+  right: -4px;
+  top: 0;
+  width: 8px;
+  z-index: 3;
+}
+
+.sidebar-separator:focus-visible,
+.sidebar-separator:hover {
+  background: rgb(36 119 212 / 28%);
+  outline: none;
 }
 
 .workspace {
@@ -771,9 +779,11 @@ select {
 
 .content-toolbar {
   align-items: center;
+  border-bottom: 1px solid #edf0f3;
   display: flex;
+  height: 44px;
   justify-content: space-between;
-  margin-bottom: 10px;
+  margin-bottom: 12px;
 }
 
 .content-toolbar > div {
@@ -787,37 +797,10 @@ select {
   font-size: 12px;
 }
 
-.content-view-menu {
-  position: relative;
-}
-
-.content-view-menu > summary {
-  background: #fff;
-  border: 1px solid #c8ced6;
-  border-radius: 6px;
-  cursor: default;
-  list-style: none;
-  min-height: 30px;
-  padding: 5px 9px;
-}
-
-.content-view-menu > summary::-webkit-details-marker {
-  display: none;
-}
-
 .content-view-menu > div {
-  background: #fff;
-  border: 1px solid #c8ced6;
-  border-radius: 8px;
-  box-shadow: 0 10px 28px rgb(34 42 53 / 18%);
   display: grid;
   gap: 10px;
   min-width: 190px;
-  padding: 10px;
-  position: absolute;
-  right: 0;
-  top: 36px;
-  z-index: 3;
 }
 
 .content-view-menu label {

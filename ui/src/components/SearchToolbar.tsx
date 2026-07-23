@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type {
   FileKind,
   FolderTreeItem,
@@ -55,6 +55,8 @@ export default function SearchToolbar({
   onClearFilters,
 }: SearchToolbarProps) {
   const searchRef = useRef<HTMLInputElement>(null)
+  const [optionsOpen, setOptionsOpen] = useState(false)
+  const [viewOpen, setViewOpen] = useState(false)
   useEffect(() => {
     if (focusRequest > 0) searchRef.current?.focus()
   }, [focusRequest])
@@ -62,18 +64,32 @@ export default function SearchToolbar({
 
   return (
     <section className="search-toolbar" aria-label="搜索和筛选">
-      <div className="search-toolbar-main">
-        <label className="search-field">
-          <span className="visually-hidden">搜索项目</span>
-          <input
-            ref={searchRef}
-            type="search"
-            aria-label="搜索项目"
-            placeholder="搜索名称、路径或文本内容"
-            value={query.text}
-            onChange={(event) => onTextChange(event.currentTarget.value)}
-          />
-        </label>
+      <label className="search-field">
+        <span className="visually-hidden">搜索项目</span>
+        <span aria-hidden="true">⌕</span>
+        <input
+          ref={searchRef}
+          type="search"
+          aria-label="搜索项目"
+          placeholder="搜索名称、路径或文本"
+          value={query.text}
+          onChange={(event) => onTextChange(event.currentTarget.value)}
+        />
+        <kbd>⌘F</kbd>
+      </label>
+      <details
+        className="search-options-panel"
+        open={optionsOpen}
+      >
+        <summary
+          onClick={(event) => {
+            event.preventDefault()
+            setOptionsOpen((open) => !open)
+          }}
+        >
+          筛选与排序
+        </summary>
+        <div className="search-options-popover" hidden={!optionsOpen}>
         <label>
           <span>范围</span>
           <select
@@ -89,8 +105,7 @@ export default function SearchToolbar({
             ))}
           </select>
         </label>
-        <details className="search-filter-panel">
-          <summary>筛选</summary>
+        <div className="search-filter-section">
           <div className="search-filter-grid">
             <fieldset>
               <legend>文件类型</legend>
@@ -210,7 +225,7 @@ export default function SearchToolbar({
               />
             </fieldset>
           </div>
-        </details>
+        </div>
         <label>
           <span>排序</span>
           <select
@@ -244,7 +259,21 @@ export default function SearchToolbar({
         >
           {query.sort.direction === 'ascending' ? '↑' : '↓'}
         </button>
-        <div className="search-layout-toggle" aria-label="结果布局">
+        </div>
+      </details>
+      <details
+        className="search-view-panel"
+        open={viewOpen}
+      >
+        <summary
+          onClick={(event) => {
+            event.preventDefault()
+            setViewOpen((open) => !open)
+          }}
+        >
+          结果视图
+        </summary>
+        <div className="search-view-popover search-layout-toggle" hidden={!viewOpen}>
           <button
             type="button"
             aria-label="按文件夹分组"
@@ -262,7 +291,7 @@ export default function SearchToolbar({
             展平
           </button>
         </div>
-      </div>
+      </details>
       {chips.length > 0 && (
         <div className="search-filter-chips" aria-label="已启用筛选">
           {chips.map(({ chip, label }) => (

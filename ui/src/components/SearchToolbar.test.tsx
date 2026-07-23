@@ -53,6 +53,7 @@ describe('SearchToolbar', () => {
       />,
     )
     const search = screen.getByRole('searchbox', { name: '搜索项目' })
+    expect(search).toBeVisible()
     expect(search).toHaveFocus()
     fireEvent.change(search, { target: { value: '蓝色运动鞋' } })
     expect(onTextChange).toHaveBeenCalledWith('蓝色运动鞋')
@@ -79,6 +80,8 @@ describe('SearchToolbar', () => {
         onClearFilters={vi.fn()}
       />,
     )
+    expect(screen.queryByRole('combobox', { name: '搜索范围' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByText('筛选与排序'))
     fireEvent.change(screen.getByRole('combobox', { name: '搜索范围' }), {
       target: { value: 'folder-1' },
     })
@@ -112,7 +115,11 @@ describe('SearchToolbar', () => {
         onClearFilters={onClearFilters}
       />,
     )
-    fireEvent.click(screen.getByText('筛选'))
+    expect(screen.getByRole('button', { name: '移除 JPEG 筛选' })).toBeVisible()
+    expect(screen.queryByRole('combobox', { name: '排序方式' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByText('筛选与排序'))
+    expect(screen.getByRole('combobox', { name: '搜索范围' })).toBeVisible()
+    expect(screen.getByRole('combobox', { name: '排序方式' })).toBeVisible()
     for (const label of [
       'JPEG',
       'PNG',
@@ -161,6 +168,7 @@ describe('SearchToolbar', () => {
       key: 'natural_name',
       direction: 'descending',
     })
+    fireEvent.click(screen.getByText('结果视图'))
     fireEvent.click(screen.getByRole('button', { name: '展平结果' }))
     expect(onLayoutChange).toHaveBeenCalledWith('flat')
   })

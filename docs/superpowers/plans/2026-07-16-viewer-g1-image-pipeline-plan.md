@@ -1,5 +1,7 @@
 # Viewer G1 Image Pipeline Prototype Implementation Plan
 
+> **Historical governance note (2026-07-23):** References to M4 or Viewer 0.1 release acceptance below describe the plan at the time this evidence was recorded. ADR 0005 cancelled M4 and replaced release acceptance with continuous development governance. The measured evidence in this document is unchanged.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Prove that Viewer can generate grid thumbnails and color-correct high-resolution previews directly from project originals while meeting cancellation, security and memory constraints.

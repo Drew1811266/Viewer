@@ -1,5 +1,7 @@
 # M2 Review Efficiency Stage Review
 
+> **Historical governance note (2026-07-23):** References to M4 or Viewer 0.1 release acceptance below describe the plan at the time this evidence was recorded. ADR 0005 cancelled M4 and replaced release acceptance with continuous development governance. The measured evidence in this document is unchanged.
+
 - Status: Passed
 - Date: 2026-07-16
 - Base: `c738ed4` (accepted M1 on `main`)

@@ -1,5 +1,7 @@
 # G3 Scan and Search Stage Review
 
+> **Historical governance note (2026-07-23):** References to M4 or Viewer 0.1 release acceptance below describe the plan at the time this evidence was recorded. ADR 0005 cancelled M4 and replaced release acceptance with continuous development governance. The measured evidence in this document is unchanged.
+
 - Review date: 2026-07-16
 - Reviewed range: `main..feature/g3-scan-search`
 - Decision: **Approved for local merge to `main`**

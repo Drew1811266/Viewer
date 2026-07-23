@@ -1,5 +1,7 @@
 # Viewer G3 Scan and Search Prototype Implementation Plan
 
+> **Historical governance note (2026-07-23):** References to M4 or Viewer 0.1 release acceptance below describe the plan at the time this evidence was recorded. ADR 0005 cancelled M4 and replaced release acceptance with continuous development governance. The measured evidence in this document is unchanged.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Prove that Viewer can publish a usable folder tree quickly, build disposable indexes in the background, search Chinese names/text and reconcile external filesystem changes without stale UI publication.

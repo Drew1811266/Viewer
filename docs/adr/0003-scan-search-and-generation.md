@@ -1,5 +1,7 @@
 # ADR 0003: Progressive Scan, Disposable Search Index, and Generation Safety
 
+> **Historical governance note (2026-07-23):** References to M4 or Viewer 0.1 release acceptance below describe the plan at the time this evidence was recorded. ADR 0005 cancelled M4 and replaced release acceptance with continuous development governance. The measured evidence in this document is unchanged.
+
 - Status: Accepted
 - Date: 2026-07-16
 - Gate: `scripts/run-g3-scan-search-gate.sh`

@@ -1,5 +1,7 @@
 # Viewer M2 Review Efficiency Implementation Plan
 
+> **Historical governance note (2026-07-23):** References to M4 or Viewer 0.1 release acceptance below describe the plan at the time this evidence was recorded. ADR 0005 cancelled M4 and replaced release acceptance with continuous development governance. The measured evidence in this document is unchanged.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:executing-plans` to implement this plan task-by-task. This repository session does not delegate to subagents. Keep the checkboxes and review evidence current.
 
 **Goal:** Deliver the complete M2 review workflow: portable file/folder review states and favorites, project/subtree fuzzy and full-text search, complete filtering and sorting, batch marking shortcuts, folder progress, and multi-selection information without weakening M1 security or performance.

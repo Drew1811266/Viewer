@@ -1,5 +1,7 @@
 # Viewer 精简工作区与圆盘菜单设计
 
+> **Superseded target note (2026-07-23):** “M4 界面收敛” no longer names an active milestone. The approved interaction design remains valid; current governance follows ADR 0005.
+
 > 状态：已完成交互设计确认，等待书面规格审阅  
 > 日期：2026-07-22  
 > 目标版本：Viewer 0.1 / M4 界面收敛

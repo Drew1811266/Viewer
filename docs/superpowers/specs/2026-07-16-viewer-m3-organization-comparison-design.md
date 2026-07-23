@@ -1,5 +1,7 @@
 # Viewer M3 Organization and Comparison Design
 
+> **Historical governance note (2026-07-23):** References to M4 or Viewer 0.1 release acceptance below describe the plan at the time this evidence was recorded. ADR 0005 cancelled M4 and replaced release acceptance with continuous development governance. The measured evidence in this document is unchanged.
+
 - Status: Approved refinement of the accepted Product Spec and system architecture; drag architecture amended and approved 2026-07-20
 - Date: 2026-07-16 (drag architecture amendment: 2026-07-20)
 - Baseline: merged and verified M2 at `ff23c6e`

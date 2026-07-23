@@ -1,5 +1,7 @@
 # Viewer M1 Browsing Core Implementation Plan
 
+> **Historical governance note (2026-07-23):** References to M4 or Viewer 0.1 release acceptance below describe the plan at the time this evidence was recorded. ADR 0005 cancelled M4 and replaced release acceptance with continuous development governance. The measured evidence in this document is unchanged.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Deliver the complete M1 browsing core: one local project session, progressive folder-only navigation, folder overviews, virtualized image/text browsing, safe image and text preview, task feedback, and disposable session-cache lifecycle.

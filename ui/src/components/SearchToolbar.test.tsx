@@ -13,6 +13,41 @@ function query(overrides: Partial<SearchQueryModel> = {}): SearchQueryModel {
 }
 
 describe('SearchToolbar', () => {
+  it('exposes named option and view menus with keyboard-controlled expanded state', () => {
+    render(
+      <SearchToolbar
+        query={query()}
+        folders={[]}
+        focusRequest={0}
+        onTextChange={vi.fn()}
+        onScopeChange={vi.fn()}
+        onFiltersChange={vi.fn()}
+        onSortChange={vi.fn()}
+        onLayoutChange={vi.fn()}
+        onRemoveFilter={vi.fn()}
+        onClearFilters={vi.fn()}
+      />,
+    )
+    const optionsMenu = screen.getByRole('button', { name: '筛选与排序' })
+    const viewMenu = screen.getByRole('button', { name: '结果视图' })
+    expect(optionsMenu).toHaveAttribute('aria-expanded', 'false')
+    expect(viewMenu).toHaveAttribute('aria-expanded', 'false')
+
+    fireEvent.keyDown(optionsMenu, { key: 'Enter' })
+    expect(optionsMenu).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByRole('combobox', { name: '搜索范围' })).toBeVisible()
+    fireEvent.keyDown(optionsMenu, { key: ' ' })
+    expect(optionsMenu).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByRole('combobox', { name: '搜索范围' })).not.toBeInTheDocument()
+
+    fireEvent.keyDown(viewMenu, { key: ' ' })
+    expect(viewMenu).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByRole('button', { name: '展平结果' })).toBeVisible()
+    fireEvent.keyDown(viewMenu, { key: 'Enter' })
+    expect(viewMenu).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByRole('button', { name: '展平结果' })).not.toBeInTheDocument()
+  })
+
   it('focuses from Cmd-F intent and exposes fuzzy query plus project/subtree scope', () => {
     const onTextChange = vi.fn()
     const onScopeChange = vi.fn()

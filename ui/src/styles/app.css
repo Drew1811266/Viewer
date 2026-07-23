@@ -124,7 +124,6 @@ select {
 
 .search-field input {
   border: 0;
-  min-width: 100px;
   outline: 0;
   padding: 6px 0;
   width: 100%;
@@ -204,6 +203,13 @@ select {
 .search-toolbar button[aria-pressed="true"] {
   background: #d9e8ff;
   border-color: #2477d4;
+}
+
+.project-access-status {
+  color: #59616c;
+  font-size: 12px;
+  margin: 0 0 8px;
+  white-space: nowrap;
 }
 
 .search-filter-grid {

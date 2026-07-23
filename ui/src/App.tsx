@@ -730,7 +730,13 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
           <summary
             aria-label="项目菜单"
             role="button"
+            aria-expanded={projectMenuOpen}
             onClick={(event) => {
+              event.preventDefault()
+              setProjectMenuOpen((open) => !open)
+            }}
+            onKeyDown={(event) => {
+              if (event.key !== 'Enter' && event.key !== ' ' && event.key !== 'Spacebar') return
               event.preventDefault()
               setProjectMenuOpen((open) => !open)
             }}
@@ -738,6 +744,9 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
             •••
           </summary>
           <div hidden={!projectMenuOpen}>
+            {state.project.access === 'read_only' && (
+              <p className="project-access-status">访问权限：只读</p>
+            )}
             <button
               type="button"
               disabled={state.status === 'closing'}

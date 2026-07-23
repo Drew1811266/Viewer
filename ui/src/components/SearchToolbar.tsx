@@ -82,7 +82,14 @@ export default function SearchToolbar({
         open={optionsOpen}
       >
         <summary
+          role="button"
+          aria-expanded={optionsOpen}
           onClick={(event) => {
+            event.preventDefault()
+            setOptionsOpen((open) => !open)
+          }}
+          onKeyDown={(event) => {
+            if (event.key !== 'Enter' && event.key !== ' ' && event.key !== 'Spacebar') return
             event.preventDefault()
             setOptionsOpen((open) => !open)
           }}
@@ -266,7 +273,14 @@ export default function SearchToolbar({
         open={viewOpen}
       >
         <summary
+          role="button"
+          aria-expanded={viewOpen}
           onClick={(event) => {
+            event.preventDefault()
+            setViewOpen((open) => !open)
+          }}
+          onKeyDown={(event) => {
+            if (event.key !== 'Enter' && event.key !== ' ' && event.key !== 'Spacebar') return
             event.preventDefault()
             setViewOpen((open) => !open)
           }}

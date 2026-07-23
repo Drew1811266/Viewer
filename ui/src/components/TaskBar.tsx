@@ -44,6 +44,7 @@ export default function TaskBar({
           (candidate) =>
             candidate.status !== 'complete' ||
             candidate.failed > 0 ||
+            (candidate.cancelled ?? 0) > 0 ||
             Boolean(candidate.hasResults),
         )
         .map((candidate) => candidate.id),
@@ -58,6 +59,7 @@ export default function TaskBar({
           (candidate) =>
             candidate.status === 'complete' &&
             candidate.failed === 0 &&
+            (candidate.cancelled ?? 0) === 0 &&
             !candidate.hasResults,
         )
         .map((candidate) => candidate.id),

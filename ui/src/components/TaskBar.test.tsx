@@ -175,4 +175,46 @@ describe('TaskBar', () => {
     expect(screen.queryByText('扫描项目')).not.toBeInTheDocument()
     vi.useRealTimers()
   })
+
+  it('keeps a completed task with cancelled items visible after the success interval', () => {
+    vi.useFakeTimers()
+    render(
+      <TaskBar
+        task={{
+          ...failedScanTask,
+          status: 'complete',
+          completed: 11,
+          failed: 0,
+          cancelled: 1,
+          failures: [],
+        }}
+      />,
+    )
+    act(() => vi.advanceTimersByTime(2000))
+    expect(screen.getByText('扫描项目')).toBeVisible()
+    expect(screen.getByText('1 项取消')).toBeVisible()
+    vi.useRealTimers()
+  })
+
+  it('shows a hidden task again when the same id becomes partially cancelled', () => {
+    vi.useFakeTimers()
+    const complete = {
+      ...failedScanTask,
+      status: 'complete' as const,
+      completed: 12,
+      failed: 0,
+      failures: [],
+    }
+    const rendered = render(<TaskBar task={complete} successDismissMs={1} />)
+    act(() => vi.runAllTimers())
+    expect(screen.queryByText('扫描项目')).not.toBeInTheDocument()
+    rendered.rerender(
+      <TaskBar
+        task={{ ...complete, completed: 11, cancelled: 1 }}
+        successDismissMs={1}
+      />,
+    )
+    expect(screen.getByText('扫描项目')).toBeVisible()
+    vi.useRealTimers()
+  })
 })

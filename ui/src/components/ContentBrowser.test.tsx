@@ -137,7 +137,7 @@ describe('ContentBrowser', () => {
     expect(selectedLabels()).toEqual(['2.jpg'])
     const updated = workspace(4)
     updated.images[0] = {
-      ...updated.images[0],
+      ...updated.images[0]!,
       marker: { reviewState: 'keep', favorite: true },
     }
 

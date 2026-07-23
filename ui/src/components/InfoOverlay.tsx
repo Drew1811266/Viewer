@@ -39,7 +39,7 @@ export default function InfoOverlay({
         <p>请选择文件或文件夹以查看信息。</p>
       )}
       {files.length === 1 && (selectionInfo?.types.folders ?? 0) === 0 && (
-        <SingleFileInfo file={files[0]} dimensions={dimensions} />
+        <SingleFileInfo file={files[0]!} dimensions={dimensions} />
       )}
       {selectionInfo !== undefined &&
         selectionInfo !== null &&

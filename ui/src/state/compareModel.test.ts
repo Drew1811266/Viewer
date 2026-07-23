@@ -87,8 +87,8 @@ describe('compareModel', () => {
     let state = stateWithMetrics()
     state = reduceCompare(state, { type: 'actual_size', entityId: 'a' })
     expect(state.shared.scale).toBe(4)
-    expect(state.transforms.a.scale).toBe(4)
-    expect(state.transforms.b.scale).toBe(4)
+    expect(state.transforms.a!.scale).toBe(4)
+    expect(state.transforms.b!.scale).toBe(4)
 
     state = reduceCompare(state, { type: 'zoom', entityId: 'a', factor: 100 })
     expect(state.shared.scale).toBe(MAX_COMPARE_SCALE)
@@ -120,23 +120,23 @@ describe('compareModel', () => {
     state = reduceCompare(state, { type: 'zoom', entityId: 'a', factor: 2 })
     state = reduceCompare(state, { type: 'active_changed', entityId: 'b' })
     state = reduceCompare(state, { type: 'zoom', entityId: 'b', factor: 3 })
-    expect(state.transforms.a.scale).toBe(2)
-    expect(state.transforms.b.scale).toBe(3)
+    expect(state.transforms.a!.scale).toBe(2)
+    expect(state.transforms.b!.scale).toBe(3)
 
     state = reduceCompare(state, { type: 'mode_changed', mode: 'synchronized' })
     expect(state.shared.scale).toBe(3)
-    expect(state.transforms.a.scale).toBe(3)
-    expect(state.transforms.b.scale).toBe(3)
+    expect(state.transforms.a!.scale).toBe(3)
+    expect(state.transforms.b!.scale).toBe(3)
     state = reduceCompare(state, { type: 'mode_changed', mode: 'independent' })
-    expect(state.transforms.a.scale).toBe(3)
-    expect(state.transforms.b.scale).toBe(3)
+    expect(state.transforms.a!.scale).toBe(3)
+    expect(state.transforms.b!.scale).toBe(3)
   })
 
   it('keeps rotation pane-local even while pan and zoom are synchronized', () => {
     let state = stateWithMetrics()
     state = reduceCompare(state, { type: 'rotate_clockwise', entityId: 'a' })
-    expect(state.transforms.a.rotation).toBe(90)
-    expect(state.transforms.b.rotation).toBe(0)
+    expect(state.transforms.a!.rotation).toBe(90)
+    expect(state.transforms.b!.rotation).toBe(0)
     expect(state.shared).toEqual({ scale: 1, centerX: 0.5, centerY: 0.5 })
   })
 
@@ -150,7 +150,7 @@ describe('compareModel', () => {
     expect(three.kind).toBe('compare')
     if (three.kind !== 'compare') return
     expect(compareLayout(three.state)).toBe('three_asymmetric')
-    expect(three.state.transforms.b.scale).toBe(2)
+    expect(three.state.transforms.b!.scale).toBe(2)
 
     const one = reconcileComparePanes(three.state, ['b'])
     expect(one).toEqual({ kind: 'single_preview', entityId: 'b' })

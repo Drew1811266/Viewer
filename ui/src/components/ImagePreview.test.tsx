@@ -31,7 +31,7 @@ describe('ImagePreview', () => {
     )
     render(
       <ImagePreview
-        file={files[1]}
+        file={files[1]!}
         files={files}
         requestImage={request}
         onNavigate={vi.fn()}
@@ -49,7 +49,7 @@ describe('ImagePreview', () => {
     fireEvent.click(screen.getByRole('button', { name: '按 100% 显示' }))
     await waitFor(() =>
       expect(request).toHaveBeenCalledWith(
-        files[1],
+        files[1]!,
         expect.objectContaining({ kind: 'original100_percent' }),
       ),
     )
@@ -67,7 +67,7 @@ describe('ImagePreview', () => {
     }))
     render(
       <ImagePreview
-        file={files[1]}
+        file={files[1]!}
         files={files}
         requestImage={request}
         onNavigate={navigate}

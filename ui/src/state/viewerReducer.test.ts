@@ -8,6 +8,12 @@ import type {
   SearchPage,
 } from '../api/types'
 import { emptySearchFilters, initialViewerState, viewerReducer } from './viewerReducer'
+import {
+  freshViewerState,
+  initialOperationState,
+  initialSearchState,
+  initialViewerState as stateInitialViewerState,
+} from './viewerState'
 
 const project: ProjectSnapshot = {
   projectId: 'project-1',
@@ -347,6 +353,30 @@ describe('viewerReducer', () => {
     state = viewerReducer(state, { type: 'selection_changed', entityIds: ['hidden-b'] })
     state = viewerReducer(state, { type: 'search_page_changed', offset: 200 })
     expect(state.selectedEntityIds).toEqual([])
+  })
+
+  it('creates independent nested search and operation state after every project reset', () => {
+    const first = viewerReducer(initialViewerState, { type: 'project_open_requested' })
+    const second = viewerReducer(first, { type: 'project_closed' })
+    expect(second.search).not.toBe(first.search)
+    expect(second.operation).not.toBe(first.operation)
+    expect(second.selectedEntityIds).toEqual([])
+    expect(second.compareEntityIds).toEqual([])
+  })
+
+  it('provides independent state initializer contracts from viewerState', () => {
+    const firstSearch = initialSearchState()
+    const secondSearch = initialSearchState()
+    const firstOperation = initialOperationState()
+    const secondOperation = initialOperationState()
+    const active = freshViewerState('active')
+
+    expect(firstSearch).not.toBe(secondSearch)
+    expect(firstOperation).not.toBe(secondOperation)
+    expect(active.status).toBe('active')
+    expect(initialViewerState).toBe(stateInitialViewerState)
+    expect(active.search).not.toBe(stateInitialViewerState.search)
+    expect(active.operation).not.toBe(stateInitialViewerState.operation)
   })
 })
 

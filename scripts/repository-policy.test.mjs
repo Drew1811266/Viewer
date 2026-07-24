@@ -127,9 +127,6 @@ const directDependencies = [
   'vite',
   'vitest',
 ]
-const expectedVerify =
-  'node --test scripts/repository-policy.test.mjs && pnpm --dir ui test && pnpm --dir ui build && cargo fmt --check && cargo clippy --locked --workspace --all-targets -- -D warnings && cargo test --locked --workspace'
-
 test('repository verification inputs are exact and locked', async () => {
   const [workflow, toolchain, packageText] = await Promise.all([
     read('.github/workflows/ci.yml'),
@@ -141,7 +138,12 @@ test('repository verification inputs are exact and locked', async () => {
   assert.equal(normalizeNewlines(workflow), expectedWorkflow)
   assert.equal(normalizeNewlines(toolchain), expectedToolchain)
   assert.equal(packageJson.packageManager, expectedPackageManager)
-  assert.equal(packageJson.scripts.verify, expectedVerify)
+  assert.match(packageJson.scripts.quality, /pnpm --dir ui check/)
+  assert.match(packageJson.scripts.quality, /cargo clippy --locked --workspace --all-targets/)
+  assert.match(packageJson.scripts.security, /check-tauri-security\.sh/)
+  assert.match(packageJson.scripts.security, /cargo deny --offline --locked check/)
+  assert.equal(packageJson.scripts.verify, 'pnpm quality && pnpm security')
+  assert.equal(packageJson.scripts['verify:clean'], 'node scripts/verify-clean.mjs')
 })
 
 test('Apache-2.0 and the Viewer 0.1 direct dependency inventory are frozen', async () => {

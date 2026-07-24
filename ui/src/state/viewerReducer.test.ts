@@ -7,6 +7,10 @@ import type {
   ScanEvent,
   SearchPage,
 } from '../api/types'
+import { reduceOperationAction } from './reducers/operationReducer'
+import { reduceProjectAction } from './reducers/projectReducer'
+import { reduceSearchAction } from './reducers/searchReducer'
+import { reduceWorkspaceAction } from './reducers/workspaceReducer'
 import { emptySearchFilters, initialViewerState, viewerReducer } from './viewerReducer'
 import {
   freshViewerState,
@@ -34,6 +38,21 @@ function scan(generation: number): ScanEvent {
 }
 
 describe('viewerReducer', () => {
+  it('keeps domain ownership explicit for actions reducers do not own', () => {
+    expect(
+      reduceProjectAction(initialViewerState, { type: 'search_focus_requested' }),
+    ).toBeUndefined()
+    expect(
+      reduceWorkspaceAction(initialViewerState, { type: 'search_focus_requested' }),
+    ).toBeUndefined()
+    expect(
+      reduceSearchAction(initialViewerState, { type: 'project_open_requested' }),
+    ).toBeUndefined()
+    expect(
+      reduceOperationAction(initialViewerState, { type: 'search_focus_requested' }),
+    ).toBeUndefined()
+  })
+
   it('always starts empty and ignores stale or wrong-session scan events', () => {
     const active = viewerReducer(initialViewerState, { type: 'project_opened', project })
 
@@ -377,6 +396,17 @@ describe('viewerReducer', () => {
     expect(initialViewerState).toBe(stateInitialViewerState)
     expect(active.search).not.toBe(stateInitialViewerState.search)
     expect(active.operation).not.toBe(stateInitialViewerState.operation)
+  })
+
+  it('keeps project-change refresh and search state updates atomic', () => {
+    let active = viewerReducer(initialViewerState, { type: 'project_opened', project })
+    active = viewerReducer(active, { type: 'search_text_changed', text: 'query' })
+    const changed = viewerReducer(active, {
+      type: 'project_changed_received',
+      change: projectChange(project.sessionId, project.generation),
+    })
+    expect(changed.pendingProjectChange).not.toBeNull()
+    expect(changed.search.queryVersion).toBe(active.search.queryVersion + 1)
   })
 })
 

@@ -122,6 +122,20 @@ const validateDeterministicCIWorkflow = (workflow) => {
     const job = jobs.get(name)
     assert.ok(job, `${name} job must exist`)
     const steps = extractCIJobStepBlocks(job)
+    assert.doesNotMatch(
+      job,
+      /^        ["'?!&*]/m,
+      `${name} job must use ordinary unquoted step keys`,
+    )
+    const usesLines = job.match(/^        uses:\s+\S.*$/gm) ?? []
+    const actionReferences = [
+      ...job.matchAll(/^        uses:\s+([^@\s]+)@([^\s#]+)(?:\s+#.*)?$/gm),
+    ]
+    assert.ok(actionReferences.length > 0, `${name} job must use pinned actions`)
+    assert.equal(actionReferences.length, usesLines.length, `${name} uses entries must name an action SHA`)
+    for (const action of actionReferences) {
+      assert.match(action[2], /^[0-9a-f]{40}$/, `${action[1]} must be pinned to a commit`)
+    }
     for (const key of ['needs', 'permissions']) {
       assert.doesNotMatch(
         job,
@@ -233,6 +247,10 @@ test('CI deterministic job invariants reject policy bypass mutations', async () 
       workflow: workflow.replace('jobs:\n', 'jobs:\n  "release":\n    runs-on: macos-15\n'),
     },
     {
+      label: 'explicit unexpected job',
+      workflow: workflow.replace('jobs:\n', 'jobs:\n  ? release\n  :\n    runs-on: macos-15\n'),
+    },
+    {
       label: 'job-level write-all permissions',
       workflow: mutateJob(workflow, 'quality', '    steps:', '    permissions: write-all\n    steps:'),
     },
@@ -259,6 +277,15 @@ test('CI deterministic job invariants reject policy bypass mutations', async () 
       ),
     },
     {
+      label: 'job-level explicit permissions',
+      workflow: mutateJob(
+        workflow,
+        'quality',
+        '    steps:',
+        '    ? permissions\n    : write-all\n    steps:',
+      ),
+    },
+    {
       label: 'quality job dependency',
       workflow: mutateJob(workflow, 'quality', '    steps:', '    needs: security\n    steps:'),
     },
@@ -269,6 +296,15 @@ test('CI deterministic job invariants reject policy bypass mutations', async () 
     {
       label: 'job-level quoted dependency',
       workflow: mutateJob(workflow, 'quality', '    steps:', '    "needs": security\n    steps:'),
+    },
+    {
+      label: 'job-level explicit dependency',
+      workflow: mutateJob(
+        workflow,
+        'security',
+        '    steps:',
+        '    ? needs\n    : quality\n    steps:',
+      ),
     },
     {
       label: 'quality runner',
@@ -339,6 +375,24 @@ test('CI deterministic job invariants reject policy bypass mutations', async () 
         'security',
         '      - name: Activate pnpm 10.0.0 through Corepack',
         '      - name: Decoy setup-node\n        uses: actions/setup-node@bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\n\n      - name: Activate pnpm 10.0.0 through Corepack',
+      ),
+    },
+    {
+      label: 'quoted unpinned checkout action',
+      workflow: mutateJob(
+        workflow,
+        'quality',
+        '      - name: Assert Apple Silicon runner',
+        '      - name: Quoted unpinned checkout\n        "uses": actions/checkout@v4\n\n      - name: Assert Apple Silicon runner',
+      ),
+    },
+    {
+      label: 'explicit unpinned setup-node action',
+      workflow: mutateJob(
+        workflow,
+        'security',
+        '      - name: Activate pnpm 10.0.0 through Corepack',
+        '      - name: Explicit unpinned setup-node\n        ? uses\n        : actions/setup-node@v4\n\n      - name: Activate pnpm 10.0.0 through Corepack',
       ),
     },
     {

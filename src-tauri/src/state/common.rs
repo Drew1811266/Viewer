@@ -48,57 +48,6 @@ pub(crate) fn project_not_open() -> CommandError {
     )
 }
 
-pub(super) fn validated_marker_target(
-    active: &ActiveProject,
-    node: &viewer_domain::file::FileNode,
-) -> Option<MarkerTarget> {
-    let candidate = active.root.join(node.relative_path.as_str());
-    let metadata = std::fs::symlink_metadata(&candidate).ok()?;
-    if metadata.file_type().is_symlink() || is_macos_alias(&candidate) {
-        return None;
-    }
-    let kind_matches = match node.kind {
-        FileKind::Directory => metadata.is_dir(),
-        FileKind::Jpeg | FileKind::Png | FileKind::Markdown | FileKind::Text => metadata.is_file(),
-    };
-    if !kind_matches || entity_id_for_metadata(&metadata, &node.relative_path) != node.entity_id {
-        return None;
-    }
-    let canonical = std::fs::canonicalize(&candidate).ok()?;
-    if !canonical.starts_with(&active.root) {
-        return None;
-    }
-    Some(MarkerTarget {
-        entity_id: node.entity_id,
-        relative_path: node.relative_path.clone(),
-        kind: node.kind,
-        size: if node.kind == FileKind::Directory {
-            0
-        } else {
-            metadata.len()
-        },
-        modified_ns: modified_ns(&metadata),
-    })
-}
-
-pub(super) fn image_not_found() -> CommandError {
-    CommandError::new(
-        "image_not_found",
-        crate::error::ErrorCategory::Content,
-        "该图片已不可用，请刷新项目后重试。",
-        true,
-    )
-}
-
-pub(super) fn text_not_found() -> CommandError {
-    CommandError::new(
-        "text_not_found",
-        ErrorCategory::Content,
-        "该文本文件已不可用，请刷新项目后重试。",
-        true,
-    )
-}
-
 pub(crate) fn internal_command_error() -> CommandError {
     CommandError::new(
         "internal_error",
@@ -178,66 +127,8 @@ pub(super) fn operation_runtime_error(error: OperationRuntimeError) -> CommandEr
     }
 }
 
-pub(super) fn validated_indexed_source(
-    active: &ActiveProject,
-    node: &viewer_domain::file::FileNode,
-) -> Result<(PathBuf, u64, i128), ()> {
-    let candidate = active.root.join(node.relative_path.as_str());
-    let metadata = std::fs::symlink_metadata(&candidate).map_err(|_| ())?;
-    if metadata.file_type().is_symlink() || !metadata.is_file() || is_macos_alias(&candidate) {
-        return Err(());
-    }
-    if entity_id_for_metadata(&metadata, &node.relative_path) != node.entity_id {
-        return Err(());
-    }
-    let parent = candidate.parent().ok_or(())?;
-    let canonical_parent = std::fs::canonicalize(parent).map_err(|_| ())?;
-    let canonical_source = std::fs::canonicalize(&candidate).map_err(|_| ())?;
-    if !canonical_parent.starts_with(&active.root) || !canonical_source.starts_with(&active.root) {
-        return Err(());
-    }
-    Ok((canonical_source, metadata.len(), modified_ns(&metadata)))
-}
-
-pub(super) fn resolve_markdown_image_path(
-    markdown_path: &RelativePath,
-    destination: &str,
-) -> Option<RelativePath> {
-    if destination.is_empty()
-        || destination.starts_with('/')
-        || destination.contains("//")
-        || destination
-            .chars()
-            .any(|character| matches!(character, '\0' | '\\' | '%' | '?' | '#' | ':'))
-    {
-        return None;
-    }
-    let extension = destination.rsplit_once('.')?.1;
-    if !matches!(
-        extension.to_ascii_lowercase().as_str(),
-        "jpg" | "jpeg" | "png"
-    ) {
-        return None;
-    }
-
-    let mut segments = markdown_path.as_str().split('/').collect::<Vec<_>>();
-    segments.pop()?;
-    for segment in destination.split('/') {
-        match segment {
-            "" => return None,
-            "." => {}
-            ".." => {
-                segments.pop()?;
-            }
-            _ if segment.eq_ignore_ascii_case(".viewer") => return None,
-            _ => segments.push(segment),
-        }
-    }
-    RelativePath::parse(&segments.join("/")).ok()
-}
-
 #[cfg(unix)]
-fn entity_id_for_metadata(
+pub(super) fn entity_id_for_metadata(
     metadata: &std::fs::Metadata,
     _relative_path: &viewer_domain::RelativePath,
 ) -> EntityId {
@@ -246,7 +137,7 @@ fn entity_id_for_metadata(
 }
 
 #[cfg(not(unix))]
-fn entity_id_for_metadata(
+pub(super) fn entity_id_for_metadata(
     metadata: &std::fs::Metadata,
     relative_path: &viewer_domain::RelativePath,
 ) -> EntityId {
@@ -258,13 +149,13 @@ fn entity_id_for_metadata(
 }
 
 #[cfg(unix)]
-fn modified_ns(metadata: &std::fs::Metadata) -> i128 {
+pub(super) fn modified_ns(metadata: &std::fs::Metadata) -> i128 {
     use std::os::unix::fs::MetadataExt;
     i128::from(metadata.mtime()) * 1_000_000_000 + i128::from(metadata.mtime_nsec())
 }
 
 #[cfg(not(unix))]
-fn modified_ns(metadata: &std::fs::Metadata) -> i128 {
+pub(super) fn modified_ns(metadata: &std::fs::Metadata) -> i128 {
     metadata
         .modified()
         .ok()

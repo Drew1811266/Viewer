@@ -28,13 +28,23 @@ test('rename records keep the second path as one logical record', () => {
   assert.deepEqual(comparePorcelain(before, after), ['added: R  destination \\0 source'])
 })
 
-test('rename source fields do not collide with independent status paths', () => {
-  const before = Buffer.from('?? source\0')
-  const after = Buffer.from('R  destination\0source\0')
-  assert.deepEqual(comparePorcelain(before, after), [
-    'added: R  destination \\0 source',
-    'removed: ?? source',
+test('rename source fields do not collide with independent status records', () => {
+  const before = Buffer.from([
+    0x52, 0x20, 0x20, 0x64, 0x65, 0x73, 0x74, 0x69, 0x6e, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x00,
+    0x3f, 0x3f, 0x20, 0x73, 0x6f, 0x75, 0x72, 0x63, 0x65, 0x00,
+    0x3f, 0x3f, 0x20, 0x73, 0x6f, 0x75, 0x72, 0x63, 0x65, 0x00,
   ])
+  const after = Buffer.from([
+    0x52, 0x20, 0x20, 0x64, 0x65, 0x73, 0x74, 0x69, 0x6e, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x00,
+    0x3f, 0x3f, 0x20, 0x73, 0x6f, 0x75, 0x72, 0x63, 0x65, 0x00,
+  ])
+  assert.deepEqual(comparePorcelain(before, after), ['removed: ?? source'])
+})
+
+test('copy records keep the second path as one logical record', () => {
+  const before = Buffer.alloc(0)
+  const after = Buffer.from('C  destination\0source\0')
+  assert.deepEqual(comparePorcelain(before, after), ['added: C  destination \\0 source'])
 })
 
 test('control characters in paths are escaped in drift reports', () => {

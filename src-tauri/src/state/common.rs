@@ -237,7 +237,7 @@ pub(super) fn resolve_markdown_image_path(
 }
 
 #[cfg(unix)]
-pub(super) fn entity_id_for_metadata(
+fn entity_id_for_metadata(
     metadata: &std::fs::Metadata,
     _relative_path: &viewer_domain::RelativePath,
 ) -> EntityId {
@@ -246,7 +246,7 @@ pub(super) fn entity_id_for_metadata(
 }
 
 #[cfg(not(unix))]
-pub(super) fn entity_id_for_metadata(
+fn entity_id_for_metadata(
     metadata: &std::fs::Metadata,
     relative_path: &viewer_domain::RelativePath,
 ) -> EntityId {
@@ -258,13 +258,13 @@ pub(super) fn entity_id_for_metadata(
 }
 
 #[cfg(unix)]
-pub(super) fn modified_ns(metadata: &std::fs::Metadata) -> i128 {
+fn modified_ns(metadata: &std::fs::Metadata) -> i128 {
     use std::os::unix::fs::MetadataExt;
     i128::from(metadata.mtime()) * 1_000_000_000 + i128::from(metadata.mtime_nsec())
 }
 
 #[cfg(not(unix))]
-pub(super) fn modified_ns(metadata: &std::fs::Metadata) -> i128 {
+fn modified_ns(metadata: &std::fs::Metadata) -> i128 {
     metadata
         .modified()
         .ok()

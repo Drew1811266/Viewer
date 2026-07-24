@@ -7,26 +7,33 @@ mod staged;
 pub use local::LocalFileMutation;
 
 pub(crate) use evidence::hash_file_sync;
-#[cfg(not(target_os = "macos"))]
-pub(crate) use local::create_temporary_sync;
 pub(crate) use placement::sync_parent;
+#[cfg(not(target_os = "macos"))]
+pub(crate) use staged::create_temporary_sync;
 
+#[cfg(all(test, target_os = "macos"))]
+use evidence::COPY_BUFFER_BYTES;
+#[cfg(all(test, unix))]
+use evidence::snapshot_sync;
 #[cfg(all(test, target_os = "macos"))]
 use file_reference::{
     bind_file_reference, bind_open_file_reference_with_hook, file_snapshot, resolve_file_reference,
     unlink_file_reference,
 };
 #[cfg(all(test, target_os = "macos"))]
-use local::{
-    COPY_BUFFER_BYTES, MacStagedCopyLease, bound_copy_cleanup_error_with_sync,
-    build_staged_copy_cancellable_verified_sync_with_hooks,
-    create_copy_and_hash_cancellable_verified_sync_with_hooks,
-    create_staged_copy_cancellable_verified_sync_with_hooks,
+use placement::{
     place_bound_staged_copy_sync_with_hooks, rename_verified_sync_with_hook,
     rename_verified_sync_with_hooks,
 };
 #[cfg(all(test, unix))]
-use local::{create_copy_and_hash_cancellable_verified_sync_with_hook, snapshot_sync};
+use staged::create_copy_and_hash_cancellable_verified_sync_with_hook;
+#[cfg(all(test, target_os = "macos"))]
+use staged::{
+    MacStagedCopyLease, bound_copy_cleanup_error_with_sync,
+    build_staged_copy_cancellable_verified_sync_with_hooks,
+    create_copy_and_hash_cancellable_verified_sync_with_hooks,
+    create_staged_copy_cancellable_verified_sync_with_hooks,
+};
 #[cfg(all(test, unix))]
 use std::fs;
 #[cfg(all(test, target_os = "macos"))]

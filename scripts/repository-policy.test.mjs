@@ -1019,3 +1019,20 @@ test('desktop runtime responsibilities live in focused modules', async () => {
   ]
   await Promise.all(required.map((path) => stat(new URL(`../${path}`, import.meta.url))))
 })
+
+test('infrastructure adapters are backed by focused modules', async () => {
+  const required = [
+    'crates/viewer-infrastructure/src/operation/copy/mod.rs',
+    'crates/viewer-infrastructure/src/operation/copy/file_reference.rs',
+    'crates/viewer-infrastructure/src/operation/copy/staged.rs',
+    'crates/viewer-infrastructure/src/operation/copy/evidence.rs',
+    'crates/viewer-infrastructure/src/operation/service/mod.rs',
+    'crates/viewer-infrastructure/src/operation/service/preflight.rs',
+    'crates/viewer-infrastructure/src/operation/service/execution.rs',
+    'crates/viewer-infrastructure/src/search/index/mod.rs',
+    'crates/viewer-infrastructure/src/search/index/schema.rs',
+    'crates/viewer-infrastructure/src/search/index/writer.rs',
+    'crates/viewer-infrastructure/src/search/index/projection.rs',
+  ]
+  await Promise.all(required.map((path) => stat(new URL(`../${path}`, import.meta.url))))
+})

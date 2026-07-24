@@ -21,6 +21,12 @@ use viewer_infrastructure::search::{
 };
 
 #[test]
+fn session_index_keeps_its_public_path() {
+    fn index(_: Option<viewer_infrastructure::search::index::SessionIndex>) {}
+    index(None);
+}
+
+#[test]
 fn text_index_extracts_utf8_bom_empty_and_normalizes_newlines() {
     let directory = tempfile::tempdir().unwrap();
     let plain = directory.path().join("plain.txt");

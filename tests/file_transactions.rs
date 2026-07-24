@@ -32,6 +32,14 @@ use viewer_test_support::{
     project_fixture::ProjectFixture,
 };
 
+#[test]
+fn file_operation_facades_keep_their_public_paths() {
+    fn mutation(_: Option<viewer_infrastructure::operation::copy::LocalFileMutation>) {}
+    fn adapter(_: Option<viewer_infrastructure::operation::service::LocalFileCommandAdapter>) {}
+    mutation(None);
+    adapter(None);
+}
+
 fn operation_commits() -> Arc<InMemoryOperationCommitPort> {
     Arc::new(InMemoryOperationCommitPort::default())
 }

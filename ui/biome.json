@@ -14,7 +14,6 @@
       "recommended": true,
       "a11y": {
         "noNoninteractiveTabindex": "off",
-        "noRedundantRoles": "off",
         "noStaticElementInteractions": "off",
         "useAriaPropsSupportedByRole": "off",
         "useKeyWithClickEvents": "off",
@@ -25,6 +24,12 @@
       },
       "security": {
         "noDangerouslySetInnerHtml": "off"
+      },
+      "style": {
+        "noNonNullAssertion": "error"
+      },
+      "suspicious": {
+        "noFocusedTests": "error"
       }
     }
   },

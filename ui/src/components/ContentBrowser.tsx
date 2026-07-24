@@ -208,10 +208,7 @@ export default function ContentBrowser({
     commitSelection(new Set(allFiles.map((file) => file.entityId)))
   }
 
-  function selectFile(
-    file: BrowserFile,
-    event: MouseEvent<HTMLElement> | KeyboardEvent<HTMLElement>,
-  ) {
+  function selectFile(file: BrowserFile, event: MouseEvent) {
     event.currentTarget.closest<HTMLElement>('[role="listbox"]')?.focus()
     setActiveId(file.entityId)
     if (event.shiftKey && anchorId.current !== null) {
@@ -498,15 +495,9 @@ export default function ContentBrowser({
             onContextMenu={(event) => openRadialMenuFromContext(file, event)}
             onClick={(event) => selectFile(file, event)}
             onDoubleClick={() => onPreview?.(file)}
-            onKeyDown={(event) => {
-              if (event.key !== 'Enter' && event.key !== ' ') return
-              event.preventDefault()
-              selectFile(file, event)
-            }}
           >
             <div
               className="file-export-surface"
-              role="group"
               draggable
               title="拖到 Finder"
               onDragStart={(event) => startFinderDrag(file, event)}
@@ -556,7 +547,7 @@ function ImageCell({
   maxPixels: number
   scaleMilli: number
   loadThumbnail: (file: BrowserFile, maxPixels: number, scaleMilli: number) => Promise<string>
-  onClick: (file: BrowserFile, event: MouseEvent<HTMLElement> | KeyboardEvent<HTMLElement>) => void
+  onClick: (file: BrowserFile, event: MouseEvent) => void
   onPreview: (file: BrowserFile) => void
   onRadialMenuPointerDown: (file: BrowserFile, event: PointerEvent<HTMLElement>) => void
   onRadialMenuContextMenu: (file: BrowserFile, event: MouseEvent<HTMLElement>) => void
@@ -592,22 +583,16 @@ function ImageCell({
       id={`file-${file.entityId}`}
       aria-label={file.name}
       aria-selected={selected}
-      tabIndex={-1}
+      tabIndex={undefined}
       data-active={active || undefined}
       className="image-cell"
       onPointerDown={(event) => onRadialMenuPointerDown(file, event)}
       onContextMenu={(event) => onRadialMenuContextMenu(file, event)}
       onClick={(event) => onClick(file, event)}
       onDoubleClick={() => onPreview(file)}
-      onKeyDown={(event) => {
-        if (event.key !== 'Enter' && event.key !== ' ') return
-        event.preventDefault()
-        onClick(file, event)
-      }}
     >
       <div
         className="file-export-surface"
-        role="group"
         draggable
         title="拖到 Finder"
         onDragStart={(event) => onFinderDragStart(file, event)}
@@ -616,7 +601,7 @@ function ImageCell({
           {url ? (
             <img src={url} alt="" />
           ) : (
-            <span role="img" aria-label={failed ? '缩略图不可用' : '缩略图加载中'} />
+            <span aria-label={failed ? '缩略图不可用' : '缩略图加载中'} />
           )}
         </div>
         <span>{file.name}</span>

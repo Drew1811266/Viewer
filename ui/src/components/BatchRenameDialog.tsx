@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { RenamePreview, RenameRules } from '../api/types'
+import { defined } from '../defined'
 import ModalSheet from './ModalSheet'
 import VirtualList from './VirtualList'
 
@@ -123,7 +124,10 @@ export default function BatchRenameDialog({
                 value={rules.sequence.start}
                 onChange={(event) =>
                   patchRules({
-                    sequence: { ...rules.sequence!, start: Number(event.currentTarget.value) },
+                    sequence: {
+                      ...defined(rules.sequence, 'Sequence start control requires sequence rules'),
+                      start: Number(event.currentTarget.value),
+                    },
                   })
                 }
               />
@@ -137,7 +141,10 @@ export default function BatchRenameDialog({
                 value={rules.sequence.digits}
                 onChange={(event) =>
                   patchRules({
-                    sequence: { ...rules.sequence!, digits: Number(event.currentTarget.value) },
+                    sequence: {
+                      ...defined(rules.sequence, 'Sequence digit control requires sequence rules'),
+                      digits: Number(event.currentTarget.value),
+                    },
                   })
                 }
               />

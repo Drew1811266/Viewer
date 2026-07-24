@@ -78,11 +78,15 @@ export function createCompareState(candidates: readonly CompareCandidate[]): Com
   const transforms = Object.fromEntries(
     entityIds.map((entityId) => [entityId, paneTransform(DEFAULT_NORMALIZED, 0)]),
   )
+  const [activeEntityId] = entityIds
+  if (activeEntityId === undefined) {
+    throw new Error('Valid compare candidates must include an active entity')
+  }
   return {
     ok: true,
     state: {
       entityIds,
-      activeEntityId: entityIds[0]!,
+      activeEntityId,
       mode: 'synchronized',
       shared: { ...DEFAULT_NORMALIZED },
       transforms,
@@ -107,7 +111,7 @@ export function reduceCompare(state: CompareState, action: CompareAction): Compa
   if (action.type === 'metrics_changed') {
     if (!state.entityIds.includes(action.entityId) || !validMetrics(action.metrics)) return state
     const metrics = { ...state.metrics, [action.entityId]: action.metrics }
-    const current = state.transforms[action.entityId]!
+    const current = transformFor(state, action.entityId)
     const normalized = state.mode === 'synchronized' ? state.shared : current
     return {
       ...state,
@@ -128,7 +132,7 @@ export function reduceCompare(state: CompareState, action: CompareAction): Compa
         transforms: applySharedToEveryPane(state, state.shared),
       }
     }
-    const active = state.transforms[state.activeEntityId]!
+    const active = transformFor(state, state.activeEntityId)
     const shared = normalized(active)
     return {
       ...state,
@@ -140,7 +144,7 @@ export function reduceCompare(state: CompareState, action: CompareAction): Compa
 
   if (!state.entityIds.includes(action.entityId)) return state
   if (action.type === 'rotate_clockwise') {
-    const current = state.transforms[action.entityId]!
+    const current = transformFor(state, action.entityId)
     const rotation = ((current.rotation + 90) % 360) as QuarterRotation
     const source = state.mode === 'synchronized' ? state.shared : current
     return {
@@ -156,7 +160,8 @@ export function reduceCompare(state: CompareState, action: CompareAction): Compa
     }
   }
 
-  const current = state.mode === 'synchronized' ? state.shared : state.transforms[action.entityId]!
+  const current =
+    state.mode === 'synchronized' ? state.shared : transformFor(state, action.entityId)
   let next: NormalizedTransform
   switch (action.type) {
     case 'fit':
@@ -166,7 +171,7 @@ export function reduceCompare(state: CompareState, action: CompareAction): Compa
       next = {
         scale: actualSizeScale(
           state.metrics[action.entityId],
-          state.transforms[action.entityId]!.rotation,
+          transformFor(state, action.entityId).rotation,
         ),
         centerX: 0.5,
         centerY: 0.5,
@@ -197,7 +202,7 @@ export function reduceCompare(state: CompareState, action: CompareAction): Compa
       transforms: applySharedToEveryPane(state, next),
     }
   }
-  const currentPane = state.transforms[action.entityId]!
+  const currentPane = transformFor(state, action.entityId)
   return {
     ...state,
     activeEntityId: action.entityId,
@@ -218,9 +223,13 @@ export function reconcileComparePanes(
   const present = new Set(presentEntityIds)
   const entityIds = state.entityIds.filter((entityId) => present.has(entityId))
   if (entityIds.length === 0) return { kind: 'grid' }
-  if (entityIds.length === 1) return { kind: 'single_preview', entityId: entityIds[0]! }
+  const [firstEntityId] = entityIds
+  if (firstEntityId === undefined) {
+    throw new Error('Non-empty reconciled compare state must include an entity')
+  }
+  if (entityIds.length === 1) return { kind: 'single_preview', entityId: firstEntityId }
   const transforms = Object.fromEntries(
-    entityIds.map((entityId) => [entityId, state.transforms[entityId]!]),
+    entityIds.map((entityId) => [entityId, transformFor(state, entityId)]),
   )
   const metrics = Object.fromEntries(
     entityIds
@@ -234,7 +243,7 @@ export function reconcileComparePanes(
       entityIds,
       activeEntityId: entityIds.includes(state.activeEntityId)
         ? state.activeEntityId
-        : entityIds[0]!,
+        : firstEntityId,
       transforms,
       metrics,
     },
@@ -247,10 +256,18 @@ function applySharedToEveryPane(
 ): Record<string, PaneTransform> {
   return Object.fromEntries(
     state.entityIds.map((entityId) => {
-      const rotation = state.transforms[entityId]!.rotation
+      const rotation = transformFor(state, entityId).rotation
       return [entityId, clampPane(paneTransform(shared, rotation), state.metrics[entityId])]
     }),
   )
+}
+
+function transformFor(state: CompareState, entityId: string): PaneTransform {
+  const transform = state.transforms[entityId]
+  if (transform === undefined) {
+    throw new Error(`Missing compare transform for entity ${entityId}`)
+  }
+  return transform
 }
 
 function actualSizeScale(metrics: PaneMetrics | undefined, rotation: QuarterRotation): number {

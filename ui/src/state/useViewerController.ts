@@ -407,7 +407,9 @@ export function useViewerController(bridge: ViewerBridge) {
             dispatch({ type: 'input_rejected', message: '一次只能导入一个项目文件夹。' })
             return
           }
-          void openProject(paths[0]!)
+          const [path] = paths
+          if (path === undefined) throw new Error('Single project drop is missing its path')
+          void openProject(path)
         }),
       )
       .then((cleanup) => {

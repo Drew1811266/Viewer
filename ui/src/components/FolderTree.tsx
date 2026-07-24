@@ -68,7 +68,7 @@ export default function FolderTree({
             aria-level={depth + 1}
             aria-selected={folder.entityId === selectedId}
             aria-expanded={hasChildren ? expanded.has(folder.entityId) : undefined}
-            tabIndex={-1}
+            tabIndex={undefined}
             data-organization-folder-id={folder.entityId}
             data-drop-mode={
               organizationDropTarget?.entityId === folder.entityId && organizationDropTarget.valid
@@ -99,11 +99,7 @@ export default function FolderTree({
               <span className="folder-disclosure-placeholder" aria-hidden="true" />
             )}
             <span className="folder-name">{folder.name}</span>
-            <span
-              className="folder-marker-badge"
-              role="img"
-              aria-label={folderMarkerAriaLabel(folder)}
-            >
+            <span className="folder-marker-badge" aria-label={folderMarkerAriaLabel(folder)}>
               {folderMarkerLabel(folder)}
             </span>
             {folder.relativePath.includes('/') && (

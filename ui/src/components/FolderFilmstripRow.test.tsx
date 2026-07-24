@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { BrowserFile, ContentFolderCard } from '../api/types'
+import { defined } from '../defined'
 import FolderFilmstripRow from './FolderFilmstripRow'
 
 const folder: ContentFolderCard = {
@@ -112,7 +113,7 @@ describe('FolderFilmstripRow', () => {
       '预览 front.jpg',
       '预览 side.jpg',
     ])
-    fireEvent.click(imageButtons[1]!)
+    fireEvent.click(defined(imageButtons[1], 'Expected second filmstrip image button'))
 
     expect(loadImages).toHaveBeenCalledWith('folder-b01', false)
     expect(preview).toHaveBeenCalledWith(images[1], images)
@@ -161,7 +162,7 @@ describe('FolderFilmstripRow', () => {
 
   it('windows a high-cardinality row while preserving width, order, and preview context', async () => {
     const manyImages: BrowserFile[] = Array.from({ length: 100 }, (_, index) => ({
-      ...images[0]!,
+      ...defined(images[0], 'Expected first filmstrip image'),
       entityId: `image-${index + 1}`,
       relativePath: `角色/B01/image-${index + 1}.jpg`,
       name: `image-${index + 1}.jpg`,
@@ -199,7 +200,12 @@ describe('FolderFilmstripRow', () => {
     expect(initialItems[0]).toHaveAttribute('aria-posinset', '1')
     expect(initialItems[0]).toHaveAttribute('aria-setsize', '100')
     expect(
-      within(initialItems[0]!).getByRole('button', { name: '预览 image-1.jpg' }),
+      within(defined(initialItems[0], 'Expected first mounted filmstrip item')).getByRole(
+        'button',
+        {
+          name: '预览 image-1.jpg',
+        },
+      ),
     ).not.toHaveAttribute('aria-posinset')
     expect(within(filmstrip).getAllByRole('button', { name: /^预览 / })).toHaveLength(5)
     expect(requestThumbnail).toHaveBeenCalledTimes(5)
@@ -224,7 +230,7 @@ describe('FolderFilmstripRow', () => {
 
   it('retains only the focused out-of-window thumbnail until it blurs', async () => {
     const manyImages: BrowserFile[] = Array.from({ length: 100 }, (_, index) => ({
-      ...images[0]!,
+      ...defined(images[0], 'Expected first filmstrip image'),
       entityId: `image-${index + 1}`,
       relativePath: `角色/B01/image-${index + 1}.jpg`,
       name: `image-${index + 1}.jpg`,

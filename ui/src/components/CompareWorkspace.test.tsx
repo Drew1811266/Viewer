@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import type { BrowserFile, ImageRepresentation, ImageRepresentationRequest } from '../api/types'
+import { defined } from '../defined'
 import CompareWorkspace from './CompareWorkspace'
 
 const files = ['a', 'b', 'c', 'd'].map((id) => image(id, `${id}.jpg`))
@@ -12,7 +13,10 @@ describe('CompareWorkspace', () => {
     one.unmount()
 
     renderWorkspace({
-      files: [files[0]!, { ...files[1]!, kind: 'text' }],
+      files: [
+        defined(files[0], 'Expected first comparison fixture'),
+        { ...defined(files[1], 'Expected second comparison fixture'), kind: 'text' },
+      ],
     })
     expect(screen.getByRole('alert')).toHaveTextContent('请选择 2–4 张 JPG 或 PNG')
   })

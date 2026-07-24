@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import type { BrowserFile, ImageRepresentationRequest } from '../api/types'
+import { defined } from '../defined'
 import ImagePreview from './ImagePreview'
 
 function image(index: number): BrowserFile {
@@ -31,7 +32,7 @@ describe('ImagePreview', () => {
     )
     render(
       <ImagePreview
-        file={files[1]!}
+        file={defined(files[1], 'Expected second preview image')}
         files={files}
         requestImage={request}
         onNavigate={vi.fn()}
@@ -49,7 +50,7 @@ describe('ImagePreview', () => {
     fireEvent.click(screen.getByRole('button', { name: '按 100% 显示' }))
     await waitFor(() =>
       expect(request).toHaveBeenCalledWith(
-        files[1]!,
+        defined(files[1], 'Expected second preview image'),
         expect.objectContaining({ kind: 'original100_percent' }),
       ),
     )
@@ -67,7 +68,7 @@ describe('ImagePreview', () => {
     }))
     render(
       <ImagePreview
-        file={files[1]!}
+        file={defined(files[1], 'Expected second preview image')}
         files={files}
         requestImage={request}
         onNavigate={navigate}

@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { BrowserFile, ImageRepresentation } from '../api/types'
+import { defined } from '../defined'
 import type { PaneTransform } from '../state/compareModel'
 import ComparePane from './ComparePane'
 
@@ -82,10 +83,13 @@ describe('ComparePane', () => {
     act(() => resize(800, 600))
     await screen.findByRole('img', { name: 'front.jpg' })
 
-    const stage = document.querySelector('.compare-pane-stage')
+    const stage = defined(
+      document.querySelector('.compare-pane-stage'),
+      'Expected compare pane stage',
+    )
     expect(stage).not.toBeNull()
-    fireEvent.pointerDown(stage!, { button: 0, pointerId: 1, clientX: 200, clientY: 200 })
-    fireEvent.pointerMove(stage!, { pointerId: 1, clientX: 280, clientY: 260 })
+    fireEvent.pointerDown(stage, { button: 0, pointerId: 1, clientX: 200, clientY: 200 })
+    fireEvent.pointerMove(stage, { pointerId: 1, clientX: 280, clientY: 260 })
     expect(pan).toHaveBeenCalledWith('a', -0.1, -0.1)
 
     rendered.rerender(pane({ requestImage, useOriginal: true, onPan: pan }))
@@ -167,9 +171,12 @@ describe('ComparePane', () => {
       transform: 'translate(-90px, 120px) rotate(90deg) scale(2)',
     })
 
-    const stage = document.querySelector('.compare-pane-stage')
-    fireEvent.pointerDown(stage!, { button: 0, pointerId: 1, clientX: 200, clientY: 200 })
-    fireEvent.pointerMove(stage!, { pointerId: 1, clientX: 290, clientY: 320 })
+    const stage = defined(
+      document.querySelector('.compare-pane-stage'),
+      'Expected compare pane stage',
+    )
+    fireEvent.pointerDown(stage, { button: 0, pointerId: 1, clientX: 200, clientY: 200 })
+    fireEvent.pointerMove(stage, { pointerId: 1, clientX: 290, clientY: 320 })
     expect(pan).toHaveBeenCalledWith('a', -0.1, -0.1)
   })
 

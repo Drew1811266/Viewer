@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
+import { defined } from '../defined'
 
 const appCss = readFileSync('src/styles/app.css', 'utf8')
 
@@ -194,8 +195,8 @@ function parseRules(css: string): CssRule[] {
     const body = match[2] ?? ''
     const declarations = Object.fromEntries(
       [...body.matchAll(/([\w-]+)\s*:\s*([^;]+);/g)].map((declaration) => [
-        declaration[1]!,
-        declaration[2]!.trim(),
+        defined(declaration[1], 'Expected CSS declaration property'),
+        defined(declaration[2], 'Expected CSS declaration value').trim(),
       ]),
     )
     for (const selector of (match[1] ?? '').split(',')) {
@@ -241,7 +242,12 @@ function compareSpecificity(
   right: [number, number, number],
 ): number {
   for (let index = 0; index < left.length; index += 1) {
-    if (left[index] !== right[index]) return left[index]! - right[index]!
+    if (left[index] !== right[index]) {
+      return (
+        defined(left[index], `Expected left specificity component ${index}`) -
+        defined(right[index], `Expected right specificity component ${index}`)
+      )
+    }
   }
   return 0
 }
@@ -262,7 +268,11 @@ function relativeLuminance(color: string): number {
   const [red, green, blue] = channels.map((channel) =>
     channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4,
   )
-  return 0.2126 * red! + 0.7152 * green! + 0.0722 * blue!
+  return (
+    0.2126 * defined(red, 'Expected red luminance channel') +
+    0.7152 * defined(green, 'Expected green luminance channel') +
+    0.0722 * defined(blue, 'Expected blue luminance channel')
+  )
 }
 
 function pixels(value: string | undefined): number {

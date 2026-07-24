@@ -1,5 +1,6 @@
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
+import { defined } from '../defined'
 import type { TaskFeedback } from './TaskBar'
 import TaskBar from './TaskBar'
 
@@ -133,7 +134,9 @@ describe('TaskBar', () => {
     act(() => vi.runAllTimers())
     expect(screen.getByText('2 项失败')).toBeVisible()
     expect(screen.getAllByText('扫描项目')).toHaveLength(3)
-    fireEvent.click(screen.getAllByRole('button', { name: '关闭任务' })[0]!)
+    fireEvent.click(
+      defined(screen.getAllByRole('button', { name: '关闭任务' })[0], 'Expected close task button'),
+    )
     expect(dismiss).toHaveBeenCalled()
     vi.useRealTimers()
   })

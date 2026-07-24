@@ -1,6 +1,7 @@
 import { createEvent, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import type { BrowserFile, FolderWorkspace } from '../api/types'
+import { defined } from '../defined'
 import ContentBrowser from './ContentBrowser'
 
 function image(index: number): BrowserFile {
@@ -41,7 +42,9 @@ function selectedLabels(): string[] {
   return screen
     .getAllByRole('option')
     .filter((item) => item.getAttribute('aria-selected') === 'true')
-    .map((item) => item.getAttribute('aria-label')!)
+    .map((item) =>
+      defined(item.getAttribute('aria-label'), 'Selected option is missing its aria-label'),
+    )
 }
 
 function imageGrid(): HTMLElement {
@@ -137,7 +140,7 @@ describe('ContentBrowser', () => {
     expect(selectedLabels()).toEqual(['2.jpg'])
     const updated = workspace(4)
     updated.images[0] = {
-      ...updated.images[0]!,
+      ...defined(updated.images[0], 'Expected first refreshed image'),
       marker: { reviewState: 'keep', favorite: true },
     }
 
@@ -267,7 +270,10 @@ describe('ContentBrowser', () => {
     )
 
     const option = screen.getByRole('option', { name: '1.jpg' })
-    const exportSurface = option.querySelector<HTMLElement>('.file-export-surface')!
+    const exportSurface = defined(
+      option.querySelector<HTMLElement>('.file-export-surface'),
+      'Expected image export surface',
+    )
     const handle = screen.getByRole('button', { name: '整理 2.jpg' })
     expect(option).not.toHaveAttribute('draggable')
     expect(exportSurface).toHaveAttribute('draggable', 'true')
@@ -292,6 +298,7 @@ describe('ContentBrowser', () => {
 
     expect(screen.getByText('文本文件')).toBeVisible()
     expect(screen.getByRole('option', { name: 'prompt.md' })).toHaveAttribute('tabindex', '-1')
+    expect(screen.getByRole('option', { name: '1.jpg' })).not.toHaveAttribute('tabindex')
   })
 
   it('shows text marker labels and preserves selection when marker projections refresh', () => {
@@ -300,7 +307,7 @@ describe('ContentBrowser', () => {
     fireEvent.click(screen.getByRole('option', { name: '1.jpg' }))
     const updated = workspace(2)
     updated.images[0] = {
-      ...updated.images[0]!,
+      ...defined(updated.images[0], 'Expected first refreshed image'),
       marker: { reviewState: 'keep', favorite: true },
     }
     rendered.rerender(<ContentBrowser workspace={updated} onSelectionChange={changed} />)
@@ -332,7 +339,10 @@ describe('ContentBrowser', () => {
     const setData = vi.fn()
     render(<ContentBrowser workspace={workspace(4)} onFinderDragStart={exportFiles} />)
     const option = screen.getByRole('option', { name })
-    const exportSurface = option.querySelector<HTMLElement>('.file-export-surface')!
+    const exportSurface = defined(
+      option.querySelector<HTMLElement>('.file-export-surface'),
+      'Expected file export surface',
+    )
     const handle = screen.getByRole('button', { name: `整理 ${name}` })
 
     expect(option).not.toHaveAttribute('draggable')
@@ -496,7 +506,9 @@ describe('ContentBrowser', () => {
 
     expect(screen.getByRole('button', { name: '整理 1.jpg' })).toBeDisabled()
     const option = screen.getByRole('option', { name: '1.jpg' })
-    fireEvent.dragStart(option.querySelector('.file-export-surface')!)
+    fireEvent.dragStart(
+      defined(option.querySelector('.file-export-surface'), 'Expected file export surface'),
+    )
     expect(exportFiles).toHaveBeenCalledWith(['image-1'])
   })
 
@@ -700,7 +712,7 @@ describe('ContentBrowser', () => {
   it('hides unmarked copy and keeps marked badges plus select-all in the view menu', () => {
     const data = workspace(2)
     data.images[1] = {
-      ...data.images[1]!,
+      ...defined(data.images[1], 'Expected second image fixture'),
       marker: { reviewState: 'keep', favorite: true },
     }
     render(<ContentBrowser workspace={data} currentPath="项目根目录" />)

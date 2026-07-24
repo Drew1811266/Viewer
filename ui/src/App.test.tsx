@@ -10,6 +10,7 @@ import {
 import { describe, expect, it, vi } from 'vitest'
 import App from './App'
 import type { ViewerBridge } from './api/viewer'
+import { defined } from './defined'
 
 function deferred<T>() {
   let resolve!: (value: T) => void
@@ -229,7 +230,7 @@ describe('Viewer empty state', () => {
       ...compareContentWorkspace(),
       images: [
         {
-          ...compareContentWorkspace().images[0]!,
+          ...defined(compareContentWorkspace().images[0], 'Expected comparison workspace image'),
           entityId: 'image-updated',
           name: 'updated.jpg',
           relativePath: 'id/updated.jpg',
@@ -276,7 +277,7 @@ describe('Viewer empty state', () => {
       ...compareContentWorkspace(),
       images: [
         {
-          ...compareContentWorkspace().images[0]!,
+          ...defined(compareContentWorkspace().images[0], 'Expected comparison workspace image'),
           entityId: 'image-updated',
           name: 'updated.jpg',
           relativePath: 'id/updated.jpg',
@@ -384,9 +385,12 @@ describe('Viewer empty state', () => {
       clientY: 20,
     })
     expect(viewer.preflightFileCommand).not.toHaveBeenCalled()
-    fireEvent.dragStart(front.querySelector('.file-export-surface')!, {
-      dataTransfer: viewerDragTransfer(),
-    })
+    fireEvent.dragStart(
+      defined(front.querySelector('.file-export-surface'), 'Expected front image export surface'),
+      {
+        dataTransfer: viewerDragTransfer(),
+      },
+    )
     await waitFor(() =>
       expect(viewer.beginFinderDrag).toHaveBeenCalledWith({
         sessionId: 'session-1',
@@ -671,7 +675,7 @@ describe('Viewer empty state', () => {
     const viewer = bridge()
     const workspace = compareContentWorkspace()
     workspace.images[0] = {
-      ...workspace.images[0]!,
+      ...defined(workspace.images[0], 'Expected first workspace image'),
       marker: { reviewState: null, favorite: true },
     }
     vi.mocked(viewer.queryFolder).mockResolvedValue(workspace)
@@ -1195,7 +1199,10 @@ describe('Viewer empty state', () => {
     render(<App bridge={viewer} />)
     fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
     const file = await screen.findByRole('option', { name: 'front.jpg' })
-    const exportSurface = file.querySelector<HTMLElement>('.file-export-surface')!
+    const exportSurface = defined(
+      file.querySelector<HTMLElement>('.file-export-surface'),
+      'Expected file export surface',
+    )
 
     const event = createEvent.dragStart(exportSurface, { dataTransfer: viewerDragTransfer() })
     fireEvent(exportSurface, event)
@@ -1301,7 +1308,7 @@ describe('Viewer empty state', () => {
       ...contentWorkspace(),
       images: [
         {
-          ...contentWorkspace().images[0]!,
+          ...defined(contentWorkspace().images[0], 'Expected content workspace image'),
           modifiedNs: '2',
           marker: { reviewState: 'keep' as const, favorite: true },
         },
@@ -1350,7 +1357,7 @@ describe('Viewer empty state', () => {
     const initial = compareContentWorkspace()
     const surviving = {
       ...initial,
-      images: [initial.images[1]!],
+      images: [defined(initial.images[1], 'Expected surviving comparison image')],
     }
     vi.mocked(viewer.queryFolder).mockResolvedValueOnce(initial).mockResolvedValueOnce(surviving)
     render(<App bridge={viewer} />)
@@ -1413,9 +1420,12 @@ describe('Viewer empty state', () => {
     render(<App bridge={viewer} />)
     fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
     const file = await screen.findByRole('option', { name: 'front.jpg' })
-    fireEvent.dragStart(file.querySelector('.file-export-surface')!, {
-      dataTransfer: viewerDragTransfer(),
-    })
+    fireEvent.dragStart(
+      defined(file.querySelector('.file-export-surface'), 'Expected file export surface'),
+      {
+        dataTransfer: viewerDragTransfer(),
+      },
+    )
 
     expect(await screen.findByRole('alert')).toHaveTextContent('部分文件已发生变化，请刷新后重试。')
     expect(screen.queryByText(/Users\/private/)).not.toBeInTheDocument()
@@ -1430,9 +1440,12 @@ describe('Viewer empty state', () => {
     render(<App bridge={viewer} />)
     fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
     const file = await screen.findByRole('option', { name: 'front.jpg' })
-    fireEvent.dragStart(file.querySelector('.file-export-surface')!, {
-      dataTransfer: viewerDragTransfer(),
-    })
+    fireEvent.dragStart(
+      defined(file.querySelector('.file-export-surface'), 'Expected file export surface'),
+      {
+        dataTransfer: viewerDragTransfer(),
+      },
+    )
 
     expect(await screen.findByRole('alert')).toHaveTextContent('无法拖到 Finder，请重新拖动。')
     expect(screen.queryByText(/Users\/private/)).not.toBeInTheDocument()
@@ -1603,7 +1616,10 @@ function organizationPointerMove(
       }),
     },
   })
-  const surface = target.closest<HTMLElement>('[data-organization-drop-surface]')!
+  const surface = defined(
+    target.closest<HTMLElement>('[data-organization-drop-surface]'),
+    'Expected organization drop surface',
+  )
   vi.spyOn(surface, 'getBoundingClientRect').mockReturnValue({
     left: 0,
     top: 0,
@@ -1715,7 +1731,7 @@ function categoryWorkspace() {
 }
 
 function compareContentWorkspace() {
-  const first = contentWorkspace().images[0]!
+  const first = defined(contentWorkspace().images[0], 'Expected first content workspace image')
   return {
     workspace: 'content' as const,
     images: [

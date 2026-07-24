@@ -146,7 +146,7 @@ export default function CompareWorkspace({
     onEntityIdsChange(survivors)
   }
 
-  function fit() {
+  function fitView() {
     setOriginalEntityId(null)
     update({ type: 'fit', entityId: activeEntityId })
   }
@@ -168,7 +168,7 @@ export default function CompareWorkspace({
       update({ type: 'zoom', entityId: activeEntityId, factor: 0.8 })
     } else if (event.key === '0') {
       event.preventDefault()
-      fit()
+      fitView()
     }
   }
 
@@ -183,7 +183,7 @@ export default function CompareWorkspace({
     >
       <div className="compare-toolbar" aria-label="对比工具">
         <span>{model.entityIds.length} 张图片</span>
-        <button type="button" onClick={fit}>
+        <button type="button" onClick={fitView}>
           适应窗口
         </button>
         <button type="button" onClick={actualSize}>
@@ -231,11 +231,15 @@ export default function CompareWorkspace({
         {model.entityIds.map((entityId) => {
           const file = files.find((candidate) => candidate.entityId === entityId)
           if (file === undefined) return null
+          const transform = model.transforms[entityId]
+          if (transform === undefined) {
+            throw new Error(`Missing compare transform for entity ${entityId}`)
+          }
           return (
             <ComparePane
               key={entityId}
               file={file}
-              transform={model.transforms[entityId]!}
+              transform={transform}
               active={activeEntityId === entityId}
               useOriginal={originalEntityId === entityId}
               readOnly={readOnly}

@@ -415,11 +415,13 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
 
   const openRenameDialog = useCallback(() => {
     if (!canMutateSelection) return
-    setOperationDialog(
-      selectedFiles.length === 1
-        ? { kind: 'rename', file: selectedFiles[0]! }
-        : { kind: 'batch_rename', files: selectedFiles },
-    )
+    if (selectedFiles.length === 1) {
+      const [file] = selectedFiles
+      if (file === undefined) throw new Error('Single-file rename selection is missing its file')
+      setOperationDialog({ kind: 'rename', file })
+      return
+    }
+    setOperationDialog({ kind: 'batch_rename', files: selectedFiles })
   }, [canMutateSelection, selectedFiles])
 
   const openTrashDialog = useCallback(() => {
@@ -635,18 +637,27 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
       }
       finishRadialSession()
       const ids = files.map((file) => file.entityId)
-      if (action === 'preview' && files.length === 1) openPreview(files[0]!)
-      else if (action === 'mark.keep') void setReviewState('keep', ids)
+      if (action === 'preview') {
+        if (files.length === 1) {
+          const [file] = files
+          if (file === undefined)
+            throw new Error('Single-file radial selection is missing its file')
+          openPreview(file)
+        }
+      } else if (action === 'mark.keep') void setReviewState('keep', ids)
       else if (action === 'mark.pending') void setReviewState('pending', ids)
       else if (action === 'mark.reject') void setReviewState('reject', ids)
       else if (action === 'mark.clear') void setReviewState(null, ids)
       else if (action === 'mark.favorite') void toggleFavorite(ids)
       else if (action === 'organize.rename') {
-        setOperationDialog(
-          files.length === 1
-            ? { kind: 'rename', file: files[0]! }
-            : { kind: 'batch_rename', files },
-        )
+        if (files.length === 1) {
+          const [file] = files
+          if (file === undefined)
+            throw new Error('Single-file radial selection is missing its file')
+          setOperationDialog({ kind: 'rename', file })
+        } else {
+          setOperationDialog({ kind: 'batch_rename', files })
+        }
       } else if (action === 'organize.copy') {
         setOperationDialog({ kind: 'destination', mode: 'copy', files })
       } else if (action === 'organize.move') {

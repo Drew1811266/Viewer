@@ -44,8 +44,11 @@ export default function ModalSheet({
       dialogRef.current.focus()
       return
     }
-    const first = focusable[0]!
-    const last = focusable.at(-1)!
+    const [first] = focusable
+    const last = focusable.at(-1)
+    if (first === undefined || last === undefined) {
+      throw new Error('Non-empty modal focus list is missing a boundary element')
+    }
     if (event.shiftKey && document.activeElement === first) {
       event.preventDefault()
       last.focus()

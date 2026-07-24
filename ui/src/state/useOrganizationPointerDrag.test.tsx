@@ -1,5 +1,6 @@
 import { act, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { defined } from '../defined'
 import {
   type OrganizationPointerInput,
   useOrganizationPointerDrag,
@@ -328,7 +329,7 @@ describe('useOrganizationPointerDrag', () => {
     expect(capture.release).toHaveBeenCalledOnce()
     expect(onDrop).toHaveBeenCalledOnce()
     expect(capture.release.mock.invocationCallOrder[0]).toBeLessThan(
-      onDrop.mock.invocationCallOrder[0]!,
+      defined(onDrop.mock.invocationCallOrder[0], 'Expected drop callback invocation order'),
     )
     expect(onDrop).toHaveBeenCalledWith(['entity-2', 'entity-1'], 'folder-target', 'move')
   })

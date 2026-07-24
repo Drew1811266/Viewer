@@ -42,10 +42,9 @@ describe('FolderTree', () => {
     expect(screen.getByText('empty')).toBeVisible()
     expect(screen.queryByText('front.jpg')).not.toBeInTheDocument()
     expect(screen.queryByText('.viewer')).not.toBeInTheDocument()
-    expect(screen.getByRole('treeitem', { name: 'catalog/shoes/id-001' })).toHaveAttribute(
-      'aria-selected',
-      'true',
-    )
+    const selected = screen.getByRole('treeitem', { name: 'catalog/shoes/id-001' })
+    expect(selected).toHaveAttribute('aria-selected', 'true')
+    expect(selected).not.toHaveAttribute('tabindex')
   })
 
   it('collapses descendants and calls selection without losing the selected id', () => {

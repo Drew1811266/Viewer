@@ -20,6 +20,10 @@ export default function InfoOverlay({
   }, {})
   const hasSelection =
     selectionInfo !== undefined && selectionInfo !== null && selectionInfo.relativePaths.length > 0
+  const [onlyFile] = files
+  if (files.length === 1 && onlyFile === undefined) {
+    throw new Error('Single-file information selection is missing its file')
+  }
 
   return (
     <aside className="info-overlay" aria-label="文件信息">
@@ -30,9 +34,11 @@ export default function InfoOverlay({
         </button>
       </header>
       {files.length === 0 && !hasSelection && <p>请选择文件或文件夹以查看信息。</p>}
-      {files.length === 1 && (selectionInfo?.types.folders ?? 0) === 0 && (
-        <SingleFileInfo file={files[0]!} dimensions={dimensions} />
-      )}
+      {files.length === 1 &&
+        onlyFile !== undefined &&
+        (selectionInfo?.types.folders ?? 0) === 0 && (
+          <SingleFileInfo file={onlyFile} dimensions={dimensions} />
+        )}
       {selectionInfo !== undefined &&
         selectionInfo !== null &&
         (selectionInfo.relativePaths.length > 1 || selectionInfo.types.folders > 0) && (

@@ -162,7 +162,10 @@ export default function FolderFilmstripRow({
             style={{ width: `${imageWindow.totalWidth}px` }}
           >
             {getMountedImageIndexes(imageWindow, focusedImageIndex).map((index) => {
-              const file = state.images[index]!
+              const file = state.images[index]
+              if (file === undefined) {
+                throw new Error(`Missing filmstrip image at mounted index ${index}`)
+              }
               return (
                 <div
                   className="folder-filmstrip-item"
@@ -235,9 +238,7 @@ function FolderThumbnail({
   }, [file, requestThumbnail])
 
   if (state.status === 'ready') return <img src={state.url} alt="" />
-  return (
-    <span role="img" aria-label={state.status === 'failed' ? '缩略图不可用' : '缩略图加载中'} />
-  )
+  return <span aria-label={state.status === 'failed' ? '缩略图不可用' : '缩略图加载中'} />
 }
 
 function getImageWindow(imageCount: number, scrollLeft: number, viewportWidth: number) {

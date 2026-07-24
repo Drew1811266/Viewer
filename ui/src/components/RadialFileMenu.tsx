@@ -280,8 +280,8 @@ export default function RadialFileMenu({
       onPointerLeave={scheduleClose}
     >
       <svg className="radial-file-menu-shapes" viewBox="0 0 336 336" aria-hidden="true">
-        {expandedItem?.children?.map((item, index) => {
-          const start = secondaryAnchor - (expandedItem.children!.length * 30) / 2 + index * 30
+        {expandedItem?.children?.map((item, index, children) => {
+          const start = secondaryAnchor - (children.length * 30) / 2 + index * 30
           return (
             <path
               key={item.id}
@@ -353,8 +353,8 @@ export default function RadialFileMenu({
           aria-labelledby={primaryButtonId(expandedItem)}
           data-anchor-degrees={secondaryAnchor}
         >
-          {expandedItem.children.map((item, index) => {
-            const start = secondaryAnchor - (expandedItem.children!.length * 30) / 2
+          {expandedItem.children.map((item, index, children) => {
+            const start = secondaryAnchor - (children.length * 30) / 2
             return (
               <RadialButton
                 key={item.id}

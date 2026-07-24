@@ -143,7 +143,8 @@ export default function VirtualGrid<T>({
   useLayoutEffect(() => () => clearMarqueeSession(), [items])
 
   function contentPoint(clientX: number, clientY: number): MarqueePoint {
-    const node = container.current!
+    const node = container.current
+    if (node === null) throw new Error('Virtual grid pointer event requires a mounted container')
     const bounds = node.getBoundingClientRect()
     return {
       x: clientX - bounds.left + node.scrollLeft,
@@ -163,7 +164,13 @@ export default function VirtualGrid<T>({
       columnStride: layout.cellWidth + layout.gap,
       rowStride: layout.rowStride,
     })
-    session.keys = indexes.map((index) => layout.getKey(layout.items[index]!))
+    session.keys = indexes.map((index) => {
+      const item = layout.items[index]
+      if (item === undefined) {
+        throw new Error(`Virtual grid intersection returned missing item index ${index}`)
+      }
+      return layout.getKey(item)
+    })
     setMarqueeRect(rect)
     layout.onChange?.({ phase: 'change', keys: session.keys, metaKey: session.metaKey })
   }

@@ -360,17 +360,18 @@ test('active governance has no M4 owner or Viewer 0.1 delivery gate', async () =
 })
 
 test('the UI has one strict lint and format tool', async () => {
-  const [uiPackageText, configText, baselineExceptions] = await Promise.all([
+  const [rootPackageText, uiPackageText, configText, baselineExceptions] = await Promise.all([
+    read('package.json'),
     read('ui/package.json'),
     read('ui/biome.json'),
     read('ui/BIOME_BASELINE_EXCEPTIONS.md'),
   ])
+  const rootPackage = JSON.parse(rootPackageText)
   const uiPackage = JSON.parse(uiPackageText)
   const config = JSON.parse(configText)
   const allowedExceptions = {
     a11y: [
       'noNoninteractiveTabindex',
-      'noRedundantRoles',
       'noStaticElementInteractions',
       'useAriaPropsSupportedByRole',
       'useKeyWithClickEvents',
@@ -379,27 +380,127 @@ test('the UI has one strict lint and format tool', async () => {
     correctness: ['useExhaustiveDependencies'],
     security: ['noDangerouslySetInnerHtml'],
   }
-  assert.equal(uiPackage.scripts.typecheck, 'tsc -b')
-  assert.equal(uiPackage.scripts.lint, 'biome lint .')
-  assert.equal(uiPackage.scripts['format:check'], 'biome format .')
-  assert.equal(uiPackage.scripts.check, 'biome check . && tsc -b')
-  assert.equal(config.formatter.indentStyle, 'space')
+  const allowedExceptionTokens = Object.entries(allowedExceptions)
+    .flatMap(([domain, rules]) => rules.map((rule) => `${domain}/${rule}`))
+    .sort()
+  const documentedExceptionTokens = [...baselineExceptions.matchAll(/`([a-z0-9]+\/[A-Za-z]+)`/g)]
+    .map((match) => match[1])
+    .sort()
+  const configuredExceptionTokens = Object.entries(config.linter.rules)
+    .flatMap(([domain, rules]) =>
+      typeof rules === 'object' && rules !== null
+        ? Object.entries(rules)
+            .filter(([, value]) => value === 'off')
+            .map(([rule]) => `${domain}/${rule}`)
+        : [],
+    )
+    .sort()
+  assert.deepEqual(uiPackage.scripts, {
+    dev: 'vite',
+    build: 'tsc -b && vite build',
+    typecheck: 'tsc -b',
+    lint: 'biome lint .',
+    format: 'biome format --write .',
+    'format:check': 'biome format .',
+    check: 'biome check . && tsc -b',
+    test: 'vitest run',
+    preview: 'vite preview',
+  })
+  assert.equal(uiPackage.devDependencies['@biomejs/biome'], '2.5.5')
+  assert.deepEqual(config.files.includes, ['src/**/*.ts', 'src/**/*.tsx', 'vite.config.ts'])
+  assert.deepEqual(config.formatter, {
+    enabled: true,
+    indentStyle: 'space',
+    indentWidth: 2,
+    lineWidth: 100,
+  })
+  assert.deepEqual(config.javascript.formatter, {
+    quoteStyle: 'single',
+    semicolons: 'asNeeded',
+    trailingCommas: 'all',
+  })
   assert.equal(config.linter.enabled, true)
   assert.equal(config.linter.rules.recommended, true)
+  assert.equal(config.linter.rules.style.noNonNullAssertion, 'error')
+  assert.equal(config.linter.rules.suspicious.noFocusedTests, 'error')
   for (const [domain, rules] of Object.entries(allowedExceptions)) {
     assert.notEqual(config.linter.rules[domain], 'off')
     assert.deepEqual(Object.keys(config.linter.rules[domain] ?? {}).sort(), rules)
     for (const rule of rules) {
       assert.equal(config.linter.rules[domain][rule], 'off')
-      assert.match(baselineExceptions, new RegExp(`\\\`${domain}/${rule}\\\``))
     }
   }
   assert.deepEqual(
     Object.keys(config.linter.rules)
       .filter((name) => name !== 'recommended')
       .sort(),
-    Object.keys(allowedExceptions).sort(),
+    [...Object.keys(allowedExceptions), 'style', 'suspicious'].sort(),
   )
+  assert.deepEqual(configuredExceptionTokens, allowedExceptionTokens)
+  assert.deepEqual(documentedExceptionTokens, allowedExceptionTokens)
+  for (const packageJson of [rootPackage, uiPackage]) {
+    for (const group of ['dependencies', 'devDependencies']) {
+      for (const dependency of Object.keys(packageJson[group] ?? {})) {
+        assert.doesNotMatch(dependency, /(?:eslint|prettier)/i)
+      }
+    }
+  }
+  for (const path of [
+    '.eslintrc',
+    '.eslintrc.json',
+    '.eslintrc.js',
+    '.eslintrc.cjs',
+    '.eslintrc.yml',
+    '.eslintrc.yaml',
+    '.prettierrc',
+    '.prettierrc.json',
+    '.prettierrc.js',
+    '.prettierrc.cjs',
+    '.prettierrc.mjs',
+    '.prettierrc.yml',
+    '.prettierrc.yaml',
+    '.prettierrc.toml',
+    'eslint.config.js',
+    'eslint.config.cjs',
+    'eslint.config.mjs',
+    'eslint.config.ts',
+    'eslint.config.cts',
+    'eslint.config.mts',
+    'prettier.config.js',
+    'prettier.config.cjs',
+    'prettier.config.mjs',
+    'prettier.config.ts',
+    'prettier.config.cts',
+    'prettier.config.mts',
+    'ui/.eslintrc',
+    'ui/.eslintrc.json',
+    'ui/.eslintrc.js',
+    'ui/.eslintrc.cjs',
+    'ui/.eslintrc.yml',
+    'ui/.eslintrc.yaml',
+    'ui/.prettierrc',
+    'ui/.prettierrc.json',
+    'ui/.prettierrc.js',
+    'ui/.prettierrc.cjs',
+    'ui/.prettierrc.mjs',
+    'ui/.prettierrc.yml',
+    'ui/.prettierrc.yaml',
+    'ui/.prettierrc.toml',
+    'ui/eslint.config.js',
+    'ui/eslint.config.cjs',
+    'ui/eslint.config.mjs',
+    'ui/eslint.config.ts',
+    'ui/eslint.config.cts',
+    'ui/eslint.config.mts',
+    'ui/prettier.config.js',
+    'ui/prettier.config.cjs',
+    'ui/prettier.config.mjs',
+    'ui/prettier.config.ts',
+    'ui/prettier.config.cts',
+    'ui/prettier.config.mts',
+  ]) {
+    await assert.rejects(stat(new URL(`../${path}`, import.meta.url)))
+  }
 })
 
 function collectDirectDependencies({ workspace, manifests, packages }) {

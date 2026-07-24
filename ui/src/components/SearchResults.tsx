@@ -150,7 +150,7 @@ function ResultItem({ hit, snippet }: { hit: SearchHit; snippet: string | null |
   return (
     <div
       role="option"
-      tabIndex={-1}
+      tabIndex={undefined}
       aria-label={`${hit.name} ${hit.relativePath}`}
       aria-selected="false"
     >

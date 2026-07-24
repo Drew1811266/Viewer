@@ -78,6 +78,9 @@ describe('SearchResults', () => {
     expect(screen.getByText('结果仍在更新')).toBeVisible()
     expect(screen.getByRole('heading', { name: 'catalog/id-1' })).toBeVisible()
     expect(screen.getByText('shoe', { selector: 'mark' })).toBeVisible()
+    expect(
+      screen.getByRole('option', { name: 'shoe.jpg catalog/id-1/shoe.jpg' }),
+    ).not.toHaveAttribute('tabindex')
     expect(screen.getByTestId('search-snippet-2')).toHaveTextContent('片'.repeat(160))
     expect(screen.getByTestId('search-snippet-2')).not.toHaveTextContent('片'.repeat(161))
     expect(visible).toHaveBeenCalledWith(expect.arrayContaining(['1', '2']))

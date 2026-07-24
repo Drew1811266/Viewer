@@ -11,6 +11,7 @@ import type {
   SearchPage,
 } from '../api/types'
 import type { ViewerBridge } from '../api/viewer'
+import { defined } from '../defined'
 import { useViewerController } from './useViewerController'
 import { emptySearchFilters } from './viewerReducer'
 
@@ -125,8 +126,14 @@ describe('useViewerController M2 coordination', () => {
     vi.mocked(viewer.searchProject).mockResolvedValue({
       ...page(1, 'body', 'body'),
       hits: [
-        { ...page(1, 'body', 'body').hits[0]!, entityId: 'body-hit' },
-        { ...page(1, 'name', 'filename').hits[0]!, entityId: 'name-hit' },
+        {
+          ...defined(page(1, 'body', 'body').hits[0], 'Expected body search hit'),
+          entityId: 'body-hit',
+        },
+        {
+          ...defined(page(1, 'name', 'filename').hits[0], 'Expected filename search hit'),
+          entityId: 'name-hit',
+        },
       ],
     })
     const { result } = renderHook(() => useViewerController(viewer))

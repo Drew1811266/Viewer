@@ -697,27 +697,118 @@ test('Finder export starts a synthetic AppKit drag from the owning window conten
 })
 
 test('registered copy cleanup stays behind the identity-bound staged lease', async () => {
-  const [ports, executor, localMutation] = await Promise.all([
+  const [ports, executor, local, staged, fileReference, placement, evidence] = await Promise.all([
     read('crates/viewer-application/src/ports.rs'),
     read('crates/viewer-infrastructure/src/operation/executor.rs'),
-    read('crates/viewer-infrastructure/src/operation/copy.rs'),
+    read('crates/viewer-infrastructure/src/operation/copy/local.rs'),
+    read('crates/viewer-infrastructure/src/operation/copy/staged.rs'),
+    read('crates/viewer-infrastructure/src/operation/copy/file_reference.rs'),
+    read('crates/viewer-infrastructure/src/operation/copy/placement.rs'),
+    read('crates/viewer-infrastructure/src/operation/copy/evidence.rs'),
   ])
-  const localMutationProduction = localMutation.split(
-    /\n#\[cfg\([^\n]*\btest\b[^\n]*\)\]\nmod tests\b/,
-  )[0]
+  const copyProduction = [local, staged, fileReference, placement, evidence].join('\n')
   const pathnameDelete = /\b(?:(?:std|tokio)::)?fs::remove_file\s*\(|\blibc::unlink(?:at)?\s*\(/
 
-  assert.doesNotMatch(ports, /remove_registered_temporary/)
-  assert.doesNotMatch(localMutationProduction, /remove_registered_temporary/)
-  assert.doesNotMatch(executor, /remove_registered_temporary/)
-  assert.doesNotMatch(localMutationProduction, pathnameDelete)
-  assert.doesNotMatch(executor, pathnameDelete)
-  assert.match(ports, /pub struct StagedCopy/)
-  assert.match(ports, /trait StagedCopyLeasePort/)
-  assert.match(executor, /create_staged_copy_cancellable_verified\(/)
-  assert.doesNotMatch(executor, /\.create_and_copy_cancellable_verified\(/)
-  assert.match(localMutationProduction, /impl StagedCopyLeasePort for MacStagedCopyLease/)
-  assert.match(localMutationProduction, /FSUnlinkObject/)
+  const validateCleanupPolicy = (sources) => {
+    assert.doesNotMatch(sources.ports, /remove_registered_temporary/)
+    assert.doesNotMatch(sources.copyProduction, /remove_registered_temporary/)
+    assert.doesNotMatch(sources.executor, /remove_registered_temporary/)
+    assert.doesNotMatch(
+      sources.copyProduction,
+      pathnameDelete,
+      'copy production must not use pathname deletion',
+    )
+    assert.doesNotMatch(sources.executor, pathnameDelete)
+    assert.match(sources.ports, /pub struct StagedCopy/)
+    assert.match(sources.ports, /trait StagedCopyLeasePort/)
+    assert.match(sources.executor, /create_staged_copy_cancellable_verified\(/)
+    assert.doesNotMatch(sources.executor, /\.create_and_copy_cancellable_verified\(/)
+    assert.match(
+      sources.staged,
+      /impl StagedCopyLeasePort for MacStagedCopyLease/,
+      'staged.rs must own the staged-copy lease implementation',
+    )
+    assert.match(
+      sources.fileReference,
+      /\bfn FSUnlinkObject\(reference: \*const BoundFileReference\) -> i32;/,
+      'file_reference.rs must own the identity unlink primitive',
+    )
+    assert.match(
+      sources.fileReference,
+      /pub\(super\) fn unlink_file_reference\(\s*reference: &BoundFileReference,\s*error_path: &Path,\s*\) -> Result<\(\), FileOperationError> \{[\s\S]*?let status = unsafe \{ FSUnlinkObject\(reference\) \};/,
+      'file_reference.rs must implement identity-bound unlink through FSUnlinkObject',
+    )
+    assert.match(
+      sources.staged,
+      /impl Drop for MacStagedCopyLease \{\s*fn drop\(&mut self\) \{\s*if self\.armed \{\s*let _ = unlink_file_reference\(\s*&self\.temporary_reference,\s*&self\.temporary_path\s*\);\s*let _ = self\.temporary_parent\.sync_all\(\);\s*self\.armed = false;\s*\}\s*\}\s*\}/,
+      'staged-copy Drop must unlink the bound identity and sync its parent',
+    )
+  }
+
+  const sources = { ports, executor, copyProduction, staged, fileReference }
+  validateCleanupPolicy(sources)
+
+  const mutations = [
+    {
+      name: 'pathname deletion',
+      sources: {
+        ...sources,
+        copyProduction: `${copyProduction}\nstd::fs::remove_file(path)?;`,
+      },
+      message: /copy production must not use pathname deletion/,
+    },
+    {
+      name: 'missing staged lease implementation',
+      sources: {
+        ...sources,
+        staged: staged.replace(
+          'impl StagedCopyLeasePort for MacStagedCopyLease',
+          'impl MissingStagedCopyLeasePort for MacStagedCopyLease',
+        ),
+      },
+      message: /staged\.rs must own the staged-copy lease implementation/,
+    },
+    {
+      name: 'missing identity unlink primitive',
+      sources: {
+        ...sources,
+        fileReference: fileReference.replace(
+          'pub(super) fn unlink_file_reference(',
+          'pub(super) fn missing_unlink_file_reference(',
+        ),
+      },
+      message: /file_reference\.rs must implement identity-bound unlink through FSUnlinkObject/,
+    },
+    {
+      name: 'missing Drop identity cleanup',
+      sources: {
+        ...sources,
+        staged: staged.replace(
+          'let _ = unlink_file_reference(',
+          'let _ = missing_unlink_file_reference(',
+        ),
+      },
+      message: /staged-copy Drop must unlink the bound identity and sync its parent/,
+    },
+    {
+      name: 'missing Drop parent sync',
+      sources: {
+        ...sources,
+        staged: staged.replace(
+          'let _ = self.temporary_parent.sync_all();',
+          'let _ = Ok::<(), ()>(());',
+        ),
+      },
+      message: /staged-copy Drop must unlink the bound identity and sync its parent/,
+    },
+  ]
+  for (const mutation of mutations) {
+    assert.throws(
+      () => validateCleanupPolicy(mutation.sources),
+      mutation.message,
+      `${mutation.name} must fail the cleanup policy`,
+    )
+  }
 })
 
 test('the macOS release command is non-interactive and uses a valid bundle identifier', async () => {

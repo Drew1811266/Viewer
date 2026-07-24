@@ -73,6 +73,205 @@ const directDependencies = [
   'vite',
   'vitest',
 ]
+
+const extractCIJobBlocks = (workflow) => {
+  const lines = normalizeNewlines(workflow).split('\n')
+  const jobsStart = lines.indexOf('jobs:')
+  assert.notEqual(jobsStart, -1, 'CI workflow must define jobs')
+
+  const starts = []
+  for (let index = jobsStart + 1; index < lines.length; index += 1) {
+    if (/^\S/.test(lines[index])) break
+    const job = lines[index].match(/^  ([A-Za-z][A-Za-z0-9_-]*):\s*$/)
+    if (job) starts.push({ name: job[1], index })
+  }
+
+  return new Map(
+    starts.map((job, index) => [
+      job.name,
+      lines.slice(job.index, starts[index + 1]?.index).join('\n'),
+    ]),
+  )
+}
+
+const validateDeterministicCIWorkflow = (workflow) => {
+  const topLevelPermissions = normalizeNewlines(workflow).match(/^permissions:\n((?:  [^\n]*\n?)*)/m)
+  assert.ok(topLevelPermissions, 'CI workflow must define top-level permissions')
+  assert.equal(topLevelPermissions[1], '  contents: read\n', 'CI permissions must be contents: read')
+
+  const jobs = extractCIJobBlocks(workflow)
+  assert.deepEqual([...jobs.keys()].sort(), ['quality', 'security'], 'CI jobs must be exactly quality and security')
+
+  const validateJob = (name, rootCommand) => {
+    const job = jobs.get(name)
+    assert.ok(job, `${name} job must exist`)
+    assert.doesNotMatch(job, /^    needs:\s*(?:\S.*)?$/m, `${name} job must not depend on another job`)
+    assert.doesNotMatch(job, /^    permissions:\s*(?:\S.*)?$/m, `${name} job must not override permissions`)
+    assert.match(job, /^    runs-on: macos-15$/m, `${name} job must run on macos-15`)
+    assert.match(
+      job,
+      /^        run: test "\$\(uname -m\)" = "arm64"$/m,
+      `${name} job must assert Apple Silicon`,
+    )
+    assert.match(job, /^          node-version: "24\.18\.0"$/m, `${name} job must use Node 24.18.0`)
+    assert.match(
+      job,
+      /^          corepack prepare pnpm@10\.0\.0 --activate$/m,
+      `${name} job must activate pnpm 10.0.0`,
+    )
+    assert.match(
+      job,
+      /^          rustup toolchain install 1\.97\.0 --profile minimal --component clippy,rustfmt --target aarch64-apple-darwin$/m,
+      `${name} job must install the locked Rust toolchain`,
+    )
+    assert.match(
+      job,
+      /^        run: pnpm install --frozen-lockfile$/m,
+      `${name} job must install frozen JavaScript dependencies`,
+    )
+    assert.match(
+      job,
+      /^        run: test -z "\$\(git status --porcelain\)"$/m,
+      `${name} job must assert a clean worktree`,
+    )
+    assert.match(job, new RegExp(`^        run: pnpm ${rootCommand}$`, 'm'), `${name} job command`)
+    assert.doesNotMatch(
+      job,
+      new RegExp(`^        run: pnpm ${(rootCommand === 'quality' ? 'security' : 'quality')}$`, 'm'),
+      `${name} job must not run the other root gate`,
+    )
+  }
+
+  validateJob('quality', 'quality')
+  validateJob('security', 'security')
+  assert.match(
+    jobs.get('security'),
+    /^        run: cargo install cargo-deny --version 0\.20\.2 --locked$/m,
+    'security job must install locked cargo-deny 0.20.2',
+  )
+}
+
+const mutateJob = (workflow, name, from, to) => {
+  const jobStart = workflow.indexOf(`  ${name}:\n`)
+  assert.notEqual(jobStart, -1, `${name} job must exist before mutation`)
+  const remainder = workflow.slice(jobStart)
+  const nextJob = remainder.slice(name.length + 4).search(/^  [^\s][^:\n]*:\n/m)
+  const jobEnd = nextJob === -1 ? workflow.length : jobStart + name.length + 4 + nextJob
+  const job = workflow.slice(jobStart, jobEnd)
+  assert.notEqual(job.indexOf(from), -1, `${name} mutation target must exist`)
+  return `${workflow.slice(0, jobStart)}${job.replace(from, to)}${workflow.slice(jobEnd)}`
+}
+
+test('CI deterministic job invariants reject policy bypass mutations', async () => {
+  const workflow = await read('.github/workflows/ci.yml')
+  const mutations = [
+    {
+      label: 'unexpected job',
+      workflow: workflow.replace('jobs:\n', 'jobs:\n  release:\n    runs-on: macos-15\n'),
+    },
+    {
+      label: 'job-level write-all permissions',
+      workflow: mutateJob(workflow, 'quality', '    steps:', '    permissions: write-all\n    steps:'),
+    },
+    {
+      label: 'job-level contents write permissions',
+      workflow: mutateJob(
+        workflow,
+        'security',
+        '    steps:',
+        '    permissions:\n      contents: write\n    steps:',
+      ),
+    },
+    {
+      label: 'quality job dependency',
+      workflow: mutateJob(workflow, 'quality', '    steps:', '    needs: security\n    steps:'),
+    },
+    {
+      label: 'security job dependency',
+      workflow: mutateJob(workflow, 'security', '    steps:', '    needs: quality\n    steps:'),
+    },
+    {
+      label: 'quality runner',
+      workflow: mutateJob(workflow, 'quality', 'runs-on: macos-15', 'runs-on: ubuntu-latest'),
+    },
+    {
+      label: 'quality Apple Silicon assertion',
+      workflow: mutateJob(
+        workflow,
+        'quality',
+        'test "$(uname -m)" = "arm64"',
+        'test "$(uname -m)" = "x86_64"',
+      ),
+    },
+    {
+      label: 'quality Node version',
+      workflow: mutateJob(workflow, 'quality', 'node-version: "24.18.0"', 'node-version: "24"'),
+    },
+    {
+      label: 'quality pnpm bootstrap',
+      workflow: mutateJob(
+        workflow,
+        'quality',
+        'corepack prepare pnpm@10.0.0 --activate',
+        'corepack prepare pnpm@latest --activate',
+      ),
+    },
+    {
+      label: 'quality Rust bootstrap',
+      workflow: mutateJob(
+        workflow,
+        'quality',
+        'rustup toolchain install 1.97.0 --profile minimal --component clippy,rustfmt --target aarch64-apple-darwin',
+        'rustup toolchain install stable',
+      ),
+    },
+    {
+      label: 'quality frozen install',
+      workflow: mutateJob(
+        workflow,
+        'quality',
+        'pnpm install --frozen-lockfile',
+        'pnpm install',
+      ),
+    },
+    {
+      label: 'quality clean status assertion',
+      workflow: mutateJob(
+        workflow,
+        'quality',
+        'test -z "$(git status --porcelain)"',
+        'git status --porcelain',
+      ),
+    },
+    {
+      label: 'quality root command',
+      workflow: mutateJob(workflow, 'quality', 'run: pnpm quality', 'run: pnpm verify'),
+    },
+    {
+      label: 'security root command',
+      workflow: mutateJob(workflow, 'security', 'run: pnpm security', 'run: pnpm verify'),
+    },
+    {
+      label: 'security locked cargo-deny install',
+      workflow: mutateJob(
+        workflow,
+        'security',
+        'cargo install cargo-deny --version 0.20.2 --locked',
+        'cargo install cargo-deny --version 0.20.2',
+      ),
+    },
+  ]
+
+  assert.doesNotThrow(() => validateDeterministicCIWorkflow(workflow))
+  for (const mutation of mutations) {
+    assert.throws(
+      () => validateDeterministicCIWorkflow(mutation.workflow),
+      undefined,
+      mutation.label,
+    )
+  }
+})
+
 test('CI defines independent deterministic quality and security gates', async () => {
   const [workflow, toolchain, packageText] = await Promise.all([
     read('.github/workflows/ci.yml'),
@@ -90,25 +289,8 @@ test('CI defines independent deterministic quality and security gates', async ()
   assert.match(workflow, /run: pnpm quality/)
   assert.match(workflow, /run: pnpm security/)
   assert.doesNotMatch(workflow, /run: pnpm audit/)
-
-  const job = (name) => {
-    const start = workflow.indexOf(`  ${name}:\n`)
-    assert.notEqual(start, -1, `${name} job must exist`)
-    const remainder = workflow.slice(start + name.length + 4)
-    const nextJob = remainder.search(/^  [^\s][^:\n]*:\n/m)
-    return nextJob === -1 ? remainder : remainder.slice(0, nextJob)
-  }
-  const quality = job('quality')
-  const security = job('security')
-  assert.match(quality, /runs-on: macos-15/)
-  assert.match(quality, /run: pnpm quality/)
-  assert.match(security, /runs-on: macos-15/)
-  assert.match(security, /run: pnpm security/)
-  assert.match(security, /cargo install cargo-deny --version 0\.20\.2 --locked/)
-  assert.doesNotMatch(quality, /^\s+needs:/m)
-  assert.doesNotMatch(security, /^\s+needs:/m)
-  assert.match(quality, /test -z "\$\(git status --porcelain\)"/)
-  assert.match(security, /test -z "\$\(git status --porcelain\)"/)
+  validateDeterministicCIWorkflow(workflow)
+  assert.deepEqual([...extractCIJobBlocks(workflow).keys()].sort(), ['quality', 'security'])
 
   const actions = [...workflow.matchAll(/uses:\s+([^@\s]+)@([^\s#]+)/g)]
   assert.ok(actions.length > 0, 'workflow must use pinned actions')

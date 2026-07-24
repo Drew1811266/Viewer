@@ -167,7 +167,7 @@ impl LocalFileCommandAdapter {
     }
 }
 
-pub(super) fn classify_file_error(error: &FileOperationError) -> BatchResultCode {
+fn classify_file_error(error: &FileOperationError) -> BatchResultCode {
     match error {
         FileOperationError::RegisteredTemporaryCleanupRequired { primary, .. } => {
             classify_file_error(primary)

@@ -94,6 +94,20 @@ const extractCIJobBlocks = (workflow) => {
   )
 }
 
+const extractCIJobStepBlocks = (job) => {
+  const lines = job.split('\n')
+  const starts = []
+  for (let index = 0; index < lines.length; index += 1) {
+    const step = lines[index].match(/^      - name: (.+)$/)
+    if (step) starts.push({ name: step[1], index })
+  }
+
+  return starts.map((step, index) => ({
+    name: step.name,
+    block: lines.slice(step.index, starts[index + 1]?.index).join('\n'),
+  }))
+}
+
 const validateDeterministicCIWorkflow = (workflow) => {
   const topLevelPermissions = normalizeNewlines(workflow).match(/^permissions:\n((?:  [^\n]*\n?)*)/m)
   assert.ok(topLevelPermissions, 'CI workflow must define top-level permissions')
@@ -105,15 +119,30 @@ const validateDeterministicCIWorkflow = (workflow) => {
   const validateJob = (name, rootCommand) => {
     const job = jobs.get(name)
     assert.ok(job, `${name} job must exist`)
+    const steps = extractCIJobStepBlocks(job)
     assert.doesNotMatch(job, /^    needs:\s*(?:\S.*)?$/m, `${name} job must not depend on another job`)
     assert.doesNotMatch(job, /^    permissions:\s*(?:\S.*)?$/m, `${name} job must not override permissions`)
     assert.match(job, /^    runs-on: macos-15$/m, `${name} job must run on macos-15`)
+    const checkoutAction =
+      /^        uses: actions\/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0(?:\s+#.*)?$/m
+    const checkoutSteps = steps.filter(({ block }) => checkoutAction.test(block))
+    assert.equal(checkoutSteps.length, 1, `${name} job must have exactly one pinned checkout action`)
+    assert.equal(checkoutSteps[0].name, 'Check out repository', `${name} checkout step name`)
+    const setupNodeAction =
+      /^        uses: actions\/setup-node@820762786026740c76f36085b0efc47a31fe5020(?:\s+#.*)?$/m
+    const setupNodeSteps = steps.filter(({ block }) => setupNodeAction.test(block))
+    assert.equal(setupNodeSteps.length, 1, `${name} job must have exactly one pinned setup-node action`)
+    assert.equal(setupNodeSteps[0].name, 'Set up Node.js 24.18.0', `${name} setup-node step name`)
+    assert.match(
+      setupNodeSteps[0].block,
+      /^        uses: actions\/setup-node@820762786026740c76f36085b0efc47a31fe5020(?:\s+#.*)?\n        with:\n          node-version: "24\.18\.0"$/m,
+      `${name} setup-node action must have the locked node-version in its with block`,
+    )
     assert.match(
       job,
       /^        run: test "\$\(uname -m\)" = "arm64"$/m,
       `${name} job must assert Apple Silicon`,
     )
-    assert.match(job, /^          node-version: "24\.18\.0"$/m, `${name} job must use Node 24.18.0`)
     assert.match(
       job,
       /^          corepack prepare pnpm@10\.0\.0 --activate$/m,
@@ -206,6 +235,42 @@ test('CI deterministic job invariants reject policy bypass mutations', async () 
     {
       label: 'quality Node version',
       workflow: mutateJob(workflow, 'quality', 'node-version: "24.18.0"', 'node-version: "24"'),
+    },
+    {
+      label: 'quality setup-node action identity',
+      workflow: mutateJob(
+        workflow,
+        'quality',
+        'actions/setup-node@820762786026740c76f36085b0efc47a31fe5020',
+        'actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0',
+      ),
+    },
+    {
+      label: 'security setup-node action identity',
+      workflow: mutateJob(
+        workflow,
+        'security',
+        'actions/setup-node@820762786026740c76f36085b0efc47a31fe5020',
+        'actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0',
+      ),
+    },
+    {
+      label: 'quality checkout action identity',
+      workflow: mutateJob(
+        workflow,
+        'quality',
+        'actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0',
+        'actions/setup-node@820762786026740c76f36085b0efc47a31fe5020',
+      ),
+    },
+    {
+      label: 'security checkout action identity',
+      workflow: mutateJob(
+        workflow,
+        'security',
+        'actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0',
+        'actions/setup-node@820762786026740c76f36085b0efc47a31fe5020',
+      ),
     },
     {
       label: 'quality pnpm bootstrap',

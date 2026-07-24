@@ -11,10 +11,10 @@ import type {
 } from './api/types'
 import type { ViewerBridge } from './api/viewer'
 import { tauriViewerBridge } from './api/viewer'
-import { useAppShellState } from './app/useAppShellState'
+import { getAppShellStateInternals, useAppShellState } from './app/useAppShellState'
 import { useOperationDialogs } from './app/useOperationDialogs'
-import { usePreviewSession } from './app/usePreviewSession'
-import { useRadialMenuSession } from './app/useRadialMenuSession'
+import { getPreviewSessionInternals, usePreviewSession } from './app/usePreviewSession'
+import { useRadialMenuContextToken, useRadialMenuSession } from './app/useRadialMenuSession'
 import BatchRenameDialog from './components/BatchRenameDialog'
 import CloseOperationDialog from './components/CloseOperationDialog'
 import CompareWorkspace from './components/CompareWorkspace'
@@ -91,6 +91,7 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
     state.showingAggregate ? 'aggregate' : 'folder',
     state.search.showResults ? 'search' : 'browser',
   ].join(':')
+  const shellState = useAppShellState(projectSessionId)
   const {
     sidebarCollapsed,
     sidebarWidth,
@@ -98,14 +99,17 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
     setProjectMenuOpen,
     toggleSidebar,
     startSidebarResize,
-  } = useAppShellState(projectSessionId)
+  } = shellState
+  const { resizeSidebarFromKeyboard } = getAppShellStateInternals(shellState)
+  const previewSession = usePreviewSession(projectSessionId)
   const {
     activePreview,
     dimensions,
     openPreview: openPreviewSession,
     closePreview: closePreviewSession,
     recordDimensions,
-  } = usePreviewSession(projectSessionId)
+  } = previewSession
+  const { navigatePreview: navigatePreviewSession } = getPreviewSessionInternals(previewSession)
   const { operationDialog, operationSubmitting, setOperationDialog, setOperationSubmitting } =
     useOperationDialogs({
       projectSessionId,
@@ -268,40 +272,16 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
   const compareOpen = state.compareEntityIds.length >= 2 && compareFiles.length >= 2
   const compareEntryAvailable =
     state.workspace?.workspace === 'content' && !state.search.showResults && !operationBusy
-  const previewContextKey =
-    activePreview === null
-      ? 'no-preview'
-      : [
-          activePreview.file.entityId,
-          activePreview.files?.map((file) => file.entityId).join(',') ?? 'workspace-files',
-          activePreview.folderOverviewIdentity ?? 'no-folder-overview',
-        ].join(':')
-  const operationDialogContextKey =
-    operationDialog === null
-      ? 'no-dialog'
-      : operationDialog.kind === 'rename'
-        ? `rename:${operationDialog.file.entityId}`
-        : `${operationDialog.kind}:${operationDialog.files.map((file) => file.entityId).join(',')}`
-  const contextRepairKey =
-    state.contextRepair === null
-      ? 'no-context-repair'
-      : [
-          state.contextRepair.removedEntityIds.join(','),
-          state.contextRepair.suggestedEntityId ?? 'no-suggestion',
-          state.contextRepair.message,
-        ].join(':')
-  const radialContextKey = [
+  const radialContextKey = useRadialMenuContextToken({
+    activePreview,
+    compareOpen,
+    infoOpen,
+    operationDialog,
     organizationWorkspaceIdentity,
-    previewContextKey,
-    compareOpen ? 'compare' : 'no-compare',
-    infoOpen ? 'info' : 'no-info',
-    operationDialogContextKey,
-    resultsBatchId ?? 'no-results',
-    state.closeBlocked === null
-      ? 'no-close-blocked'
-      : `${state.closeBlocked.batchId}:${state.closeBlocked.target}`,
-    contextRepairKey,
-  ].join(':')
+    resultsBatchId,
+    closeBlocked: state.closeBlocked,
+    contextRepair: state.contextRepair,
+  })
   const { radialMenu, activeRadialMenu, beginRadialSession, finishRadialSession } =
     useRadialMenuSession({
       projectIdentity: radialProjectIdentity,
@@ -542,10 +522,10 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
 
   const navigatePreview = useCallback(
     (file: BrowserFile) => {
-      if (activePreview !== null) openPreviewSession({ ...activePreview, file })
+      navigatePreviewSession(file)
       setPreviewEntityId(file.entityId)
     },
-    [activePreview, openPreviewSession, setPreviewEntityId],
+    [navigatePreviewSession, setPreviewEntityId],
   )
 
   const closePreview = useCallback(() => {
@@ -905,6 +885,7 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
                 aria-valuemax={420}
                 aria-valuenow={sidebarWidth}
                 onPointerDown={startSidebarResize}
+                onKeyDown={resizeSidebarFromKeyboard}
               />
             </>
           )}

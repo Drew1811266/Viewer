@@ -120,6 +120,10 @@ describe('App-local session coordinator contracts', () => {
     expectTypeOf(usePreviewSession).parameter(0).toEqualTypeOf<string>()
     expectTypeOf<ReturnType<typeof useAppShellState>>().toMatchTypeOf<AppShellState>()
     expectTypeOf<ReturnType<typeof usePreviewSession>>().toMatchTypeOf<PreviewSessionState>()
+    expectTypeOf<keyof ReturnType<typeof useAppShellState>>().toEqualTypeOf<keyof AppShellState>()
+    expectTypeOf<keyof ReturnType<typeof usePreviewSession>>().toEqualTypeOf<
+      keyof PreviewSessionState
+    >()
   })
 
   it('exposes dialog validity and radial context reset inputs', () => {

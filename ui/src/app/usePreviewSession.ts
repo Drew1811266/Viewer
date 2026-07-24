@@ -15,6 +15,19 @@ export interface PreviewSessionState {
   recordDimensions(entityId: string, width: number, height: number): void
 }
 
+interface PreviewSessionInternals {
+  navigatePreview(file: BrowserFile): void
+}
+
+const internalsByPreviewState = new WeakMap<PreviewSessionState, PreviewSessionInternals>()
+
+/** @internal Connects preview-owned functional navigation to App's controller transition. */
+export function getPreviewSessionInternals(state: PreviewSessionState): PreviewSessionInternals {
+  const internals = internalsByPreviewState.get(state)
+  if (internals === undefined) throw new Error('Preview session internals are unavailable')
+  return internals
+}
+
 export function usePreviewSession(projectSessionId: string): PreviewSessionState {
   const [activePreview, setActivePreview] = useState<PreviewSession | null>(null)
   const [dimensions, setDimensions] = useState<
@@ -29,6 +42,10 @@ export function usePreviewSession(projectSessionId: string): PreviewSessionState
     setActivePreview(null)
   }, [])
 
+  const navigatePreview = useCallback((file: BrowserFile) => {
+    setActivePreview((current) => (current === null ? null : { ...current, file }))
+  }, [])
+
   const recordDimensions = useCallback((entityId: string, width: number, height: number) => {
     setDimensions((current) => ({ ...current, [entityId]: { width, height } }))
   }, [])
@@ -38,11 +55,13 @@ export function usePreviewSession(projectSessionId: string): PreviewSessionState
     setDimensions({})
   }, [projectSessionId])
 
-  return {
+  const state: PreviewSessionState = {
     activePreview,
     dimensions,
     openPreview,
     closePreview,
     recordDimensions,
   }
+  internalsByPreviewState.set(state, { navigatePreview })
+  return state
 }

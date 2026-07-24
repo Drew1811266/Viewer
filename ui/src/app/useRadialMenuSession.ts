@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { RadialMenuRequest } from '../components/RadialFileMenu'
 import type { ViewerStatus } from '../state/viewerState'
 
@@ -7,10 +7,23 @@ export type RadialMenuSession = RadialMenuRequest & {
   projectIdentity: string
 }
 
+export type RadialMenuContextToken = object
+
+interface RadialMenuContextDependencies {
+  activePreview: object | null
+  compareOpen: boolean
+  infoOpen: boolean
+  operationDialog: object | null
+  organizationWorkspaceIdentity: string
+  resultsBatchId: string | null
+  closeBlocked: object | null
+  contextRepair: object | null
+}
+
 export interface UseRadialMenuSessionOptions {
   projectIdentity: string
   projectStatus: ViewerStatus
-  contextKey: string
+  contextKey: RadialMenuContextToken
 }
 
 export interface RadialMenuSessionState {
@@ -18,6 +31,32 @@ export interface RadialMenuSessionState {
   activeRadialMenu: RadialMenuSession | null
   beginRadialSession(request: RadialMenuRequest): void
   finishRadialSession(reportedReturnTarget?: HTMLElement | null): void
+}
+
+/** @internal Preserves App's exact radial invalidation dependency identity. */
+export function useRadialMenuContextToken({
+  activePreview,
+  compareOpen,
+  infoOpen,
+  operationDialog,
+  organizationWorkspaceIdentity,
+  resultsBatchId,
+  closeBlocked,
+  contextRepair,
+}: RadialMenuContextDependencies): RadialMenuContextToken {
+  return useMemo(
+    () => ({}),
+    [
+      activePreview,
+      compareOpen,
+      infoOpen,
+      operationDialog,
+      organizationWorkspaceIdentity,
+      resultsBatchId,
+      closeBlocked,
+      contextRepair,
+    ],
+  )
 }
 
 export function useRadialMenuSession({

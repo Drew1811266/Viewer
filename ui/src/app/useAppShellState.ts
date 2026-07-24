@@ -1,4 +1,4 @@
-import type { PointerEvent as ReactPointerEvent } from 'react'
+import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from 'react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 export interface AppShellState {
@@ -8,6 +8,19 @@ export interface AppShellState {
   setProjectMenuOpen(open: boolean): void
   toggleSidebar(): void
   startSidebarResize(event: ReactPointerEvent<HTMLButtonElement>): void
+}
+
+interface AppShellStateInternals {
+  resizeSidebarFromKeyboard(event: ReactKeyboardEvent<HTMLButtonElement>): void
+}
+
+const internalsByShellState = new WeakMap<AppShellState, AppShellStateInternals>()
+
+/** @internal Connects shell-owned keyboard resizing to App's separator element. */
+export function getAppShellStateInternals(state: AppShellState): AppShellStateInternals {
+  const internals = internalsByShellState.get(state)
+  if (internals === undefined) throw new Error('App shell state internals are unavailable')
+  return internals
 }
 
 export function useAppShellState(projectSessionId: string): AppShellState {
@@ -49,25 +62,14 @@ export function useAppShellState(projectSessionId: string): AppShellState {
     return () => stopSidebarResize.current?.()
   }, [projectSessionId])
 
-  useEffect(() => {
-    function resizeSidebarFromKeyboard(event: KeyboardEvent) {
-      const target = event.target
-      if (
-        !(target instanceof HTMLButtonElement) ||
-        !target.classList.contains('sidebar-separator') ||
-        (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight')
-      ) {
-        return
-      }
-      event.preventDefault()
-      const delta = event.key === 'ArrowLeft' ? -16 : 16
-      setSidebarWidth((width) => Math.max(200, Math.min(420, width + delta)))
-    }
-    window.addEventListener('keydown', resizeSidebarFromKeyboard)
-    return () => window.removeEventListener('keydown', resizeSidebarFromKeyboard)
+  const resizeSidebarFromKeyboard = useCallback((event: ReactKeyboardEvent<HTMLButtonElement>) => {
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
+    event.preventDefault()
+    const delta = event.key === 'ArrowLeft' ? -16 : 16
+    setSidebarWidth((width) => Math.max(200, Math.min(420, width + delta)))
   }, [])
 
-  return {
+  const state: AppShellState = {
     sidebarCollapsed,
     sidebarWidth,
     projectMenuOpen,
@@ -75,4 +77,7 @@ export function useAppShellState(projectSessionId: string): AppShellState {
     toggleSidebar,
     startSidebarResize,
   }
+  internalsByShellState.set(state, { resizeSidebarFromKeyboard })
+
+  return state
 }

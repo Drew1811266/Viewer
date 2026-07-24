@@ -22,6 +22,11 @@ import type {
 import type { ViewerBridge } from '../api/viewer'
 import { defined } from '../defined'
 import type { ControllerCore, RefreshProjection } from './controllers/types'
+import { useLifecycleSubscriptions } from './controllers/useLifecycleSubscriptions'
+import type {
+  OperationController,
+  useOperationController,
+} from './controllers/useOperationController'
 import {
   type ProjectSessionController,
   useProjectSessionController,
@@ -32,7 +37,7 @@ import type {
   SelectionMarkerControllerCore,
   useSelectionMarkerController,
 } from './controllers/useSelectionMarkerController'
-import { useViewerController } from './useViewerController'
+import { useViewerController, type ViewerController } from './useViewerController'
 import type { SearchFilterChip } from './viewerReducer'
 import { emptySearchFilters, initialViewerState } from './viewerReducer'
 import type { ViewerAction, ViewerState } from './viewerState'
@@ -160,6 +165,21 @@ type ExpectedSelectionMarkerController = {
   consumeContextRepair(): void
 }
 
+type ExpectedOperationController = {
+  previewRename: ViewerController['previewRename']
+  preflightFileCommand: ViewerController['preflightFileCommand']
+  executeFileCommand: ViewerController['executeFileCommand']
+  cancelOperation: ViewerController['cancelOperation']
+  loadOperationResults: ViewerController['loadOperationResults']
+  undoLastOperation: ViewerController['undoLastOperation']
+  receiveOperationProgress(progress: OperationProgressEvent): void
+}
+
+type ExpectedLifecycleHandlers = {
+  receiveOperationProgress(progress: OperationProgressEvent): void
+  refreshProjection: RefreshProjection
+}
+
 interface ExpectedSelectionMarkerControllerCore extends ControllerCore {
   refreshProjection: RefreshProjection
   operationRequestPendingRef: MutableRefObject<boolean>
@@ -184,6 +204,104 @@ describe('useViewerController M2 coordination', () => {
     expectTypeOf<typeof useSelectionMarkerController>().toEqualTypeOf<
       (core: SelectionMarkerControllerCore, sessionEpoch: number) => SelectionMarkerController
     >()
+  })
+
+  it('defines the operation and lifecycle controller contracts', () => {
+    expectTypeOf<OperationController>().toEqualTypeOf<ExpectedOperationController>()
+    expectTypeOf<typeof useOperationController>().toEqualTypeOf<
+      (
+        core: ControllerCore,
+        sessionEpoch: number,
+        refreshProjection: RefreshProjection,
+      ) => OperationController
+    >()
+    expectTypeOf<typeof useLifecycleSubscriptions>().toEqualTypeOf<
+      (core: ControllerCore, handlers: ExpectedLifecycleHandlers) => void
+    >()
+  })
+
+  it('registers and cleans up each lifecycle listener once through the lifecycle hook', async () => {
+    const viewer = bridge()
+    const cleanupOrder: string[] = []
+    vi.mocked(viewer.listenOperationProgress).mockResolvedValue(() => {
+      cleanupOrder.push('operation-progress')
+    })
+    vi.mocked(viewer.listenProjectChanged).mockResolvedValue(() => {
+      cleanupOrder.push('project-change')
+    })
+    vi.mocked(viewer.listenCloseBlocked).mockResolvedValue(() => {
+      cleanupOrder.push('close-blocked')
+    })
+    const core: ControllerCore = {
+      bridge: viewer,
+      state: initialViewerState,
+      stateRef: { current: initialViewerState },
+      sessionEpochRef: { current: 0 },
+      dispatch: vi.fn(),
+    }
+    const { unmount } = renderHook(() =>
+      useLifecycleSubscriptions(core, {
+        receiveOperationProgress: vi.fn(),
+        refreshProjection: vi.fn().mockResolvedValue(undefined),
+      }),
+    )
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(viewer.listenOperationProgress).toHaveBeenCalledOnce()
+    expect(viewer.listenProjectChanged).toHaveBeenCalledOnce()
+    expect(viewer.listenCloseBlocked).toHaveBeenCalledOnce()
+
+    unmount()
+    expect(cleanupOrder).toEqual(['operation-progress', 'project-change', 'close-blocked'])
+  })
+
+  it('keeps lifecycle registration single-owned when composed by the Viewer facade', async () => {
+    const viewer = bridge()
+    const { result } = renderHook(() => useViewerController(viewer))
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(viewer.listenOperationProgress).toHaveBeenCalledOnce()
+    expect(viewer.listenProjectChanged).toHaveBeenCalledOnce()
+    expect(viewer.listenCloseBlocked).toHaveBeenCalledOnce()
+    expect(Object.keys(result.current)).toEqual([
+      'state',
+      'openProject',
+      'closeProject',
+      'reselectProject',
+      'selectFolder',
+      'showAllDescendants',
+      'cancelTask',
+      'setSearchText',
+      'setSearchScope',
+      'setSearchFilters',
+      'setSearchSort',
+      'setSearchLayout',
+      'removeSearchFilter',
+      'clearSearchFilters',
+      'setVisibleSearchHits',
+      'setSearchPage',
+      'returnToFolderContext',
+      'setSelectedEntityIds',
+      'setReviewState',
+      'toggleFavorite',
+      'previewRename',
+      'preflightFileCommand',
+      'executeFileCommand',
+      'cancelOperation',
+      'loadOperationResults',
+      'undoLastOperation',
+      'setPreviewEntityId',
+      'setCompareEntityIds',
+      'consumeContextRepair',
+      'clearCloseBlocked',
+      'openPermissionSettings',
+    ])
   })
 
   it('keeps the close-blocked subscription outside the project session controller', async () => {

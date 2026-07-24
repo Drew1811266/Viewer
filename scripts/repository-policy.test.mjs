@@ -1003,3 +1003,19 @@ test('repository exposes one onboarding path and recursive macOS hygiene', async
   assert.match(ignore, /(?:^|\n)\.DS_Store(?:\n|$)/)
   assert.doesNotMatch(ignore, /(?:^|\n)(?:\*\*\/)?\.viewer\/?(?:\n|$)/)
 })
+
+test('desktop runtime responsibilities live in focused modules', async () => {
+  const required = [
+    'src-tauri/src/dto/mod.rs',
+    'src-tauri/src/state/mod.rs',
+    'src-tauri/src/state/session.rs',
+    'src-tauri/src/state/scan_index.rs',
+    'src-tauri/src/state/preview.rs',
+    'src-tauri/src/state/markers.rs',
+    'src-tauri/src/state/organization.rs',
+    'src-tauri/src/operation_runtime/mod.rs',
+    'src-tauri/src/operation_runtime/runtime.rs',
+    'src-tauri/src/operation_runtime/commit.rs',
+  ]
+  await Promise.all(required.map((path) => stat(new URL(`../${path}`, import.meta.url))))
+})

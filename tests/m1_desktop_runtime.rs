@@ -331,3 +331,14 @@ async fn markdown_preview_strips_active_remote_and_escaping_resources() {
     assert!(html.contains("viewer-image://localhost/"));
     runtime.close_project().await.unwrap();
 }
+
+#[test]
+fn desktop_facades_remain_available_at_the_frozen_paths() {
+    fn assert_runtime(_: Option<&viewer_desktop::state::DesktopRuntime>) {}
+    fn assert_operation(_: Option<&viewer_desktop::operation_runtime::OperationRuntime>) {}
+    fn assert_snapshot(_: Option<viewer_desktop::dto::ProjectSnapshot>) {}
+
+    assert_runtime(None);
+    assert_operation(None);
+    assert_snapshot(None);
+}

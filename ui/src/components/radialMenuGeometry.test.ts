@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
-  MOTION_THRESHOLD,
   annularSectorPath,
   fitMenuOrigin,
+  MOTION_THRESHOLD,
   primaryCenterAngle,
   primaryIndexAt,
   secondaryIndexAt,

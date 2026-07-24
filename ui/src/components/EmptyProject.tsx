@@ -1,5 +1,5 @@
-import { useState } from 'react'
 import type { DragEvent } from 'react'
+import { useState } from 'react'
 import type { ViewerBridge } from '../api/viewer'
 import { safeUserMessage } from '../api/viewer'
 

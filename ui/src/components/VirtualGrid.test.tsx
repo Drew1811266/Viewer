@@ -23,8 +23,15 @@ function renderGrid(changed: (change: MarqueeSelectionChange) => void) {
 
 function installPointerSurface(grid: HTMLElement) {
   vi.spyOn(grid, 'getBoundingClientRect').mockReturnValue({
-    left: 10, top: 20, right: 410, bottom: 220,
-    width: 400, height: 200, x: 10, y: 20, toJSON: () => undefined,
+    left: 10,
+    top: 20,
+    right: 410,
+    bottom: 220,
+    width: 400,
+    height: 200,
+    x: 10,
+    y: 20,
+    toJSON: () => undefined,
   })
   Object.defineProperty(grid, 'setPointerCapture', { value: vi.fn(), configurable: true })
   Object.defineProperty(grid, 'releasePointerCapture', { value: vi.fn(), configurable: true })
@@ -40,11 +47,19 @@ describe('VirtualGrid marquee selection', () => {
     expect(grid.setPointerCapture).toHaveBeenCalledWith(7)
     fireEvent.pointerMove(grid, { pointerId: 7, clientX: 12, clientY: 22 })
     expect(changed).toHaveBeenNthCalledWith(1, { phase: 'start', keys: [], metaKey: false })
-    expect(changed).toHaveBeenLastCalledWith({ phase: 'change', keys: ['item-0', 'item-1'], metaKey: false })
+    expect(changed).toHaveBeenLastCalledWith({
+      phase: 'change',
+      keys: ['item-0', 'item-1'],
+      metaKey: false,
+    })
     expect(screen.getByTestId('marquee-selection')).toBeVisible()
     fireEvent.pointerUp(grid, { pointerId: 7, clientX: 12, clientY: 22 })
     expect(grid.releasePointerCapture).toHaveBeenCalledWith(7)
-    expect(changed).toHaveBeenLastCalledWith({ phase: 'end', keys: ['item-0', 'item-1'], metaKey: false })
+    expect(changed).toHaveBeenLastCalledWith({
+      phase: 'end',
+      keys: ['item-0', 'item-1'],
+      metaKey: false,
+    })
     expect(screen.queryByTestId('marquee-selection')).not.toBeInTheDocument()
   })
 
@@ -52,7 +67,10 @@ describe('VirtualGrid marquee selection', () => {
     const changed = vi.fn()
     renderGrid(changed)
     fireEvent.pointerDown(screen.getByText('item-0'), { pointerId: 1, button: 0 })
-    fireEvent.pointerDown(screen.getByRole('listbox', { name: 'files' }), { pointerId: 2, button: 2 })
+    fireEvent.pointerDown(screen.getByRole('listbox', { name: 'files' }), {
+      pointerId: 2,
+      button: 2,
+    })
     expect(changed).not.toHaveBeenCalled()
   })
 
@@ -61,7 +79,13 @@ describe('VirtualGrid marquee selection', () => {
     renderGrid(changed)
     const grid = screen.getByRole('listbox', { name: 'files' })
     installPointerSurface(grid)
-    fireEvent.pointerDown(grid, { pointerId: 3, button: 0, metaKey: true, clientX: 200, clientY: 100 })
+    fireEvent.pointerDown(grid, {
+      pointerId: 3,
+      button: 0,
+      metaKey: true,
+      clientX: 200,
+      clientY: 100,
+    })
     fireEvent.pointerUp(grid, { pointerId: 3, metaKey: false, clientX: 200, clientY: 100 })
     expect(changed).toHaveBeenLastCalledWith({ phase: 'end', keys: [], metaKey: true })
   })
@@ -172,7 +196,11 @@ describe('VirtualGrid marquee selection', () => {
     act(() => resize(300))
     runFrame(frame, 0)
 
-    expect(changed).toHaveBeenLastCalledWith({ phase: 'change', keys: ['item-4', 'item-5'], metaKey: false })
+    expect(changed).toHaveBeenLastCalledWith({
+      phase: 'change',
+      keys: ['item-4', 'item-5'],
+      metaKey: false,
+    })
   })
 
   it('silently clears a queued session when items are replaced before its frame runs', () => {
@@ -294,9 +322,7 @@ describe('VirtualGrid marquee selection', () => {
 
     expect(screen.queryByTestId('marquee-selection')).not.toBeInTheDocument()
     expect(grid).not.toHaveAttribute('data-marquee-active')
-    expect(changed).toHaveBeenLastCalledWith(
-      expect.objectContaining({ phase: 'end' }),
-    )
+    expect(changed).toHaveBeenLastCalledWith(expect.objectContaining({ phase: 'end' }))
   })
 })
 
@@ -312,10 +338,7 @@ function installResizeObserver() {
   }
   vi.stubGlobal('ResizeObserver', Observer)
   return (width: number, height = 200) => {
-    callback?.(
-      [{ contentRect: { width, height } } as ResizeObserverEntry],
-      {} as ResizeObserver,
-    )
+    callback?.([{ contentRect: { width, height } } as ResizeObserverEntry], {} as ResizeObserver)
   }
 }
 

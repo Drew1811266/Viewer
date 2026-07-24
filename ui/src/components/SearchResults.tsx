@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
 import type { UIEvent } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { MatchRange, SearchHit, SearchPage, SearchQueryModel } from '../api/types'
 
 interface SearchResultsProps {
@@ -55,8 +55,8 @@ export default function SearchResults({
         <h2>没有找到结果</h2>
         <p>
           关键词“{query.text || '（空）'}”，范围：
-          {query.scopeFolderId === null ? '整个项目' : '当前目录及其后代'}，
-          {filterCount} 个筛选条件。
+          {query.scopeFolderId === null ? '整个项目' : '当前目录及其后代'}，{filterCount}{' '}
+          个筛选条件。
         </p>
         <div>
           {filterCount > 0 && (
@@ -93,9 +93,7 @@ export default function SearchResults({
         aria-label="搜索结果"
         className="search-result-list"
         style={{ height: VIEWPORT_HEIGHT, overflowY: 'auto', position: 'relative' }}
-        onScroll={(event: UIEvent<HTMLDivElement>) =>
-          setScrollTop(event.currentTarget.scrollTop)
-        }
+        onScroll={(event: UIEvent<HTMLDivElement>) => setScrollTop(event.currentTarget.scrollTop)}
       >
         <div style={{ height: rows.length * ROW_HEIGHT, position: 'relative' }}>
           {visibleRows.map((row, visibleIndex) => {
@@ -147,12 +145,15 @@ export default function SearchResults({
 
 function ResultItem({ hit, snippet }: { hit: SearchHit; snippet: string | null | undefined }) {
   const nameRanges =
-    hit.matchedField === 'filename' || hit.matchedField === 'exact_filename'
-      ? hit.matchRanges
-      : []
+    hit.matchedField === 'filename' || hit.matchedField === 'exact_filename' ? hit.matchRanges : []
   const pathRanges = hit.matchedField === 'path' ? hit.matchRanges : []
   return (
-    <div role="option" aria-label={`${hit.name} ${hit.relativePath}`} aria-selected="false">
+    <div
+      role="option"
+      tabIndex={-1}
+      aria-label={`${hit.name} ${hit.relativePath}`}
+      aria-selected="false"
+    >
       <div className="search-result-title">
         <HighlightedText value={hit.name} ranges={nameRanges} />
         <span>{markerLabel(hit)}</span>
@@ -181,7 +182,11 @@ function HighlightedText({ value, ranges }: { value: string; ranges: MatchRange[
   let cursor = 0
   for (const range of safeRanges) {
     if (range.start > cursor) segments.push(characters.slice(cursor, range.start).join(''))
-    segments.push(<mark key={`${range.start}:${range.end}`}>{characters.slice(range.start, range.end).join('')}</mark>)
+    segments.push(
+      <mark key={`${range.start}:${range.end}`}>
+        {characters.slice(range.start, range.end).join('')}
+      </mark>,
+    )
     cursor = Math.max(cursor, range.end)
   }
   if (cursor < characters.length) segments.push(characters.slice(cursor).join(''))

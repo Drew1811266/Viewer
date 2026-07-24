@@ -1,4 +1,6 @@
 import type {
+  CloseBlockedEvent,
+  FileCommandKind,
   FileKind,
   FolderTreeItem,
   FolderWorkspace,
@@ -8,10 +10,8 @@ import type {
   MarkerChange,
   OperationProgressEvent,
   OperationResultPage,
-  FileCommandKind,
-  CloseBlockedEvent,
-  ProjectSnapshot,
   ProjectChangedEvent,
+  ProjectSnapshot,
   RecoveryReport,
   ReviewState,
   ScanEvent,
@@ -160,11 +160,7 @@ export type SearchFilterChip =
   | { kind: 'unmarked' }
   | {
       kind: 'range'
-      field:
-        | 'width'
-        | 'height'
-        | 'size'
-        | 'modified_ns'
+      field: 'width' | 'height' | 'size' | 'modified_ns'
     }
 
 export type ViewerAction =
@@ -342,23 +338,11 @@ export function viewerReducer(state: ViewerState, action: ViewerAction): ViewerS
         'immediate',
       )
     case 'search_filters_changed':
-      return queryChanged(
-        state,
-        { ...state.search.query, filters: action.filters },
-        'immediate',
-      )
+      return queryChanged(state, { ...state.search.query, filters: action.filters }, 'immediate')
     case 'search_sort_changed':
-      return queryChanged(
-        state,
-        { ...state.search.query, sort: action.sort },
-        'immediate',
-      )
+      return queryChanged(state, { ...state.search.query, sort: action.sort }, 'immediate')
     case 'search_layout_changed':
-      return queryChanged(
-        state,
-        { ...state.search.query, layout: action.layout },
-        'immediate',
-      )
+      return queryChanged(state, { ...state.search.query, layout: action.layout }, 'immediate')
     case 'search_filter_chip_removed':
       return queryChanged(
         state,
@@ -494,11 +478,7 @@ export function viewerReducer(state: ViewerState, action: ViewerAction): ViewerS
       }
     case 'operation_progress_received':
       if (
-        !isCurrentProjection(
-          state,
-          action.progress.sessionId,
-          action.progress.generation,
-        ) ||
+        !isCurrentProjection(state, action.progress.sessionId, action.progress.generation) ||
         state.operation.active?.batchId !== action.progress.batchId
       ) {
         return state
@@ -608,10 +588,7 @@ function freshState(status: ViewerStatus): ViewerState {
   }
 }
 
-function repairContextAfterProjection(
-  previous: ViewerState,
-  next: ViewerState,
-): ViewerState {
+function repairContextAfterProjection(previous: ViewerState, next: ViewerState): ViewerState {
   if (previous.pendingProjectChange === null) return next
   const previousOrder = orderedWorkspaceEntityIds(previous.workspace)
   const nextOrder = orderedWorkspaceEntityIds(next.workspace)
@@ -619,10 +596,7 @@ function repairContextAfterProjection(
     ...previous.folders.map((folder) => folder.entityId),
     ...previousOrder,
   ])
-  const currentlyLive = new Set([
-    ...next.folders.map((folder) => folder.entityId),
-    ...nextOrder,
-  ])
+  const currentlyLive = new Set([...next.folders.map((folder) => folder.entityId), ...nextOrder])
   const active = unique([
     ...previous.selectedEntityIds,
     ...(previous.previewEntityId ? [previous.previewEntityId] : []),
@@ -786,11 +760,7 @@ function isCurrentEvent(state: ViewerState, event: ScanEvent): boolean {
   )
 }
 
-function isCurrentProjection(
-  state: ViewerState,
-  sessionId: string,
-  generation: number,
-): boolean {
+function isCurrentProjection(state: ViewerState, sessionId: string, generation: number): boolean {
   return state.project?.sessionId === sessionId && state.project.generation === generation
 }
 

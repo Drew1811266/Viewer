@@ -16,16 +16,10 @@ export function verticalEdgeScrollDelta(
   const maximum = 18
 
   if (pointerY < viewportTop + edge) {
-    return -Math.min(
-      maximum,
-      Math.max(0, ((viewportTop + edge - pointerY) / edge) * maximum),
-    )
+    return -Math.min(maximum, Math.max(0, ((viewportTop + edge - pointerY) / edge) * maximum))
   }
   if (pointerY > viewportBottom - edge) {
-    return Math.min(
-      maximum,
-      Math.max(0, ((pointerY - (viewportBottom - edge)) / edge) * maximum),
-    )
+    return Math.min(maximum, Math.max(0, ((pointerY - (viewportBottom - edge)) / edge) * maximum))
   }
   return 0
 }

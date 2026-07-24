@@ -27,12 +27,16 @@ describe('ComparePane', () => {
     act(() => resize(800, 600))
 
     await waitFor(() =>
-      expect(requestImage).toHaveBeenCalledWith(file, {
-        kind: 'fit_preview',
-        maxWidth: 800,
-        maxHeight: 600,
-        scaleMilli: 2_000,
-      }, expect.any(AbortSignal)),
+      expect(requestImage).toHaveBeenCalledWith(
+        file,
+        {
+          kind: 'fit_preview',
+          maxWidth: 800,
+          maxHeight: 600,
+          scaleMilli: 2_000,
+        },
+        expect.any(AbortSignal),
+      ),
     )
     expect(await screen.findByRole('img', { name: 'front.jpg' })).toHaveAttribute(
       'src',
@@ -86,9 +90,13 @@ describe('ComparePane', () => {
 
     rendered.rerender(pane({ requestImage, useOriginal: true, onPan: pan }))
     await waitFor(() =>
-      expect(requestImage).toHaveBeenLastCalledWith(file, {
-        kind: 'original100_percent',
-      }, expect.any(AbortSignal)),
+      expect(requestImage).toHaveBeenLastCalledWith(
+        file,
+        {
+          kind: 'original100_percent',
+        },
+        expect.any(AbortSignal),
+      ),
     )
     expect(await screen.findByRole('img', { name: 'front.jpg' })).toHaveAttribute(
       'src',
@@ -180,28 +188,34 @@ describe('ComparePane', () => {
     act(() => resize(1_000, 200))
 
     const image = await screen.findByRole('img', { name: 'front.jpg' })
-    expect(requestImage).toHaveBeenLastCalledWith(vertical, {
-      kind: 'fit_preview',
-      maxWidth: 200,
-      maxHeight: 1_000,
-      scaleMilli: 1_000,
-    }, expect.any(AbortSignal))
+    expect(requestImage).toHaveBeenLastCalledWith(
+      vertical,
+      {
+        kind: 'fit_preview',
+        maxWidth: 200,
+        maxHeight: 1_000,
+        scaleMilli: 1_000,
+      },
+      expect.any(AbortSignal),
+    )
     expect(image).toHaveStyle({
       width: '200px',
       height: '800px',
       transform: 'translate(0px, 0px) rotate(90deg) scale(1)',
     })
 
-    rendered.rerender(
-      pane({ file: vertical, requestImage, transform }),
-    )
+    rendered.rerender(pane({ file: vertical, requestImage, transform }))
     await waitFor(() =>
-      expect(requestImage).toHaveBeenLastCalledWith(vertical, {
-        kind: 'fit_preview',
-        maxWidth: 1_000,
-        maxHeight: 200,
-        scaleMilli: 1_000,
-      }, expect.any(AbortSignal)),
+      expect(requestImage).toHaveBeenLastCalledWith(
+        vertical,
+        {
+          kind: 'fit_preview',
+          maxWidth: 1_000,
+          maxHeight: 200,
+          scaleMilli: 1_000,
+        },
+        expect.any(AbortSignal),
+      ),
     )
   })
 
@@ -243,9 +257,7 @@ describe('ComparePane', () => {
     act(() => resize(640, 480))
     await waitFor(() => expect(requestImage).toHaveBeenCalledTimes(1))
 
-    rendered.rerender(
-      pane({ requestImage, file: image('b', 'back.jpg', null, false) }),
-    )
+    rendered.rerender(pane({ requestImage, file: image('b', 'back.jpg', null, false) }))
     await waitFor(() => expect(requestImage).toHaveBeenCalledTimes(2))
     await act(async () => first.resolve(representation('stale-a', 640, 480)))
     expect(screen.queryByRole('img')).not.toBeInTheDocument()
@@ -351,10 +363,7 @@ function installResizeObserver() {
   }
   vi.stubGlobal('ResizeObserver', Observer)
   return (width: number, height: number) => {
-    callback?.(
-      [{ contentRect: { width, height } } as ResizeObserverEntry],
-      {} as ResizeObserver,
-    )
+    callback?.([{ contentRect: { width, height } } as ResizeObserverEntry], {} as ResizeObserver)
   }
 }
 

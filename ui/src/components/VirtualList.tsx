@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode, UIEvent } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 interface VirtualListProps<T> {
   items: readonly T[]

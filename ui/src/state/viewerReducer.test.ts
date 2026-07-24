@@ -7,11 +7,7 @@ import type {
   ScanEvent,
   SearchPage,
 } from '../api/types'
-import {
-  emptySearchFilters,
-  initialViewerState,
-  viewerReducer,
-} from './viewerReducer'
+import { emptySearchFilters, initialViewerState, viewerReducer } from './viewerReducer'
 
 const project: ProjectSnapshot = {
   projectId: 'project-1',

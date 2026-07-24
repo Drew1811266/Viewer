@@ -1,8 +1,8 @@
 import { act, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
-  useOrganizationPointerDrag,
   type OrganizationPointerInput,
+  useOrganizationPointerDrag,
 } from './useOrganizationPointerDrag'
 
 interface FrameHarness {
@@ -46,9 +46,7 @@ function frames(): FrameHarness {
   return {
     cancel,
     flushNext: () => {
-      const entry = callbacks.entries().next().value as
-        | [number, FrameRequestCallback]
-        | undefined
+      const entry = callbacks.entries().next().value as [number, FrameRequestCallback] | undefined
       if (!entry) throw new Error('No animation frame is pending')
       callbacks.delete(entry[0])
       entry[1](performance.now())
@@ -131,11 +129,7 @@ describe('useOrganizationPointerDrag', () => {
   it('keeps a move shorter than 4 px armed and does not submit on pointer up', () => {
     const onDrop = vi.fn()
     const isDropTargetValid = vi.fn(
-      (
-        _entityIds: readonly string[],
-        _destinationId: string,
-        _mode: 'move' | 'copy',
-      ) => true,
+      (_entityIds: readonly string[], _destinationId: string, _mode: 'move' | 'copy') => true,
     )
     const capture = captureNode()
     const { result } = renderHook(() =>
@@ -188,9 +182,7 @@ describe('useOrganizationPointerDrag', () => {
     })
 
     act(() => {
-      result.current.handlePointerInput(
-        start(failedCapture, { entityIds: ['stale-entity'] }),
-      )
+      result.current.handlePointerInput(start(failedCapture, { entityIds: ['stale-entity'] }))
       result.current.handlePointerInput({
         type: 'move',
         pointerId: 7,
@@ -230,11 +222,7 @@ describe('useOrganizationPointerDrag', () => {
 
     expect(validCapture.set).toHaveBeenCalledWith(8)
     expect(onDrop).toHaveBeenCalledOnce()
-    expect(onDrop).toHaveBeenCalledWith(
-      ['fresh-entity'],
-      'folder-target',
-      'move',
-    )
+    expect(onDrop).toHaveBeenCalledWith(['fresh-entity'], 'folder-target', 'move')
   })
 
   it('activates at exactly 4 px and resolves the closest controlled folder row', () => {
@@ -274,11 +262,7 @@ describe('useOrganizationPointerDrag', () => {
   it('validates with the ordered entity and mode snapshot from pointer down', () => {
     const ids = ['second', 'first']
     const isDropTargetValid = vi.fn(
-      (
-        _entityIds: readonly string[],
-        _destinationId: string,
-        _mode: 'move' | 'copy',
-      ) => true,
+      (_entityIds: readonly string[], _destinationId: string, _mode: 'move' | 'copy') => true,
     )
     const capture = captureNode()
     const { result } = renderHook(() =>
@@ -302,11 +286,7 @@ describe('useOrganizationPointerDrag', () => {
       }),
     )
 
-    expect(isDropTargetValid).toHaveBeenCalledWith(
-      ['second', 'first'],
-      'folder-target',
-      'copy',
-    )
+    expect(isDropTargetValid).toHaveBeenCalledWith(['second', 'first'], 'folder-target', 'copy')
     expect(isDropTargetValid.mock.calls[0]?.[0]).not.toBe(ids)
   })
 
@@ -350,11 +330,7 @@ describe('useOrganizationPointerDrag', () => {
     expect(capture.release.mock.invocationCallOrder[0]).toBeLessThan(
       onDrop.mock.invocationCallOrder[0]!,
     )
-    expect(onDrop).toHaveBeenCalledWith(
-      ['entity-2', 'entity-1'],
-      'folder-target',
-      'move',
-    )
+    expect(onDrop).toHaveBeenCalledWith(['entity-2', 'entity-1'], 'folder-target', 'move')
   })
 
   it('never submits invalid or absent targets', () => {
@@ -538,7 +514,7 @@ describe('useOrganizationPointerDrag', () => {
     })
     expect(frameHarness.pending()).toBe(1)
     act(() => frameHarness.flushNext())
-    const firstDelta = (scrollBy.mock.calls[0]?.[0] as ScrollToOptions).top ?? 0
+    const firstDelta = (scrollBy.mock.calls[0]?.[0] as ScrollToOptions | undefined)?.top ?? 0
     expect(firstDelta).toBeLessThan(0)
     expect(Math.abs(firstDelta)).toBeLessThanOrEqual(18)
     expect(result.current.dropTarget?.entityId).toBe('folder-after-scroll')
@@ -613,10 +589,7 @@ describe('useOrganizationPointerDrag', () => {
     const newValidation = vi.fn(() => true)
     const capture = captureNode()
     const hook = renderHook(
-      (props: {
-        isDropTargetValid: () => boolean
-        onDrop: () => void
-      }) =>
+      (props: { isDropTargetValid: () => boolean; onDrop: () => void }) =>
         useOrganizationPointerDrag({
           disabled: false,
           resetKey: 'generation-1',
@@ -675,9 +648,7 @@ describe('useOrganizationPointerDrag', () => {
     const concurrentCapture = captureNode()
     act(() => {
       result.current.handlePointerInput(start(emptyCapture, { entityIds: [] }))
-      result.current.handlePointerInput(
-        start(duplicateCapture, { entityIds: ['same', 'same'] }),
-      )
+      result.current.handlePointerInput(start(duplicateCapture, { entityIds: ['same', 'same'] }))
       result.current.handlePointerInput(start(activeCapture))
       result.current.handlePointerInput(start(concurrentCapture))
     })

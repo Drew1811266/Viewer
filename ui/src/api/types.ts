@@ -140,13 +140,7 @@ export interface TextPreview {
 
 export interface ViewerCommandError {
   code: string
-  category:
-    | 'validation'
-    | 'conflict'
-    | 'environment'
-    | 'content'
-    | 'consistency'
-    | 'internal'
+  category: 'validation' | 'conflict' | 'environment' | 'content' | 'consistency' | 'internal'
   userMessage: string
   retryable: boolean
   taskId: string | null

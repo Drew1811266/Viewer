@@ -40,10 +40,7 @@ export default function FolderTree({
     }
   }, [childIds])
 
-  const visible = useMemo(
-    () => flattenFolders(safeFolders, expanded),
-    [expanded, safeFolders],
-  )
+  const visible = useMemo(() => flattenFolders(safeFolders, expanded), [expanded, safeFolders])
 
   function toggle(entityId: string) {
     setExpanded((current) => {
@@ -71,16 +68,15 @@ export default function FolderTree({
             aria-level={depth + 1}
             aria-selected={folder.entityId === selectedId}
             aria-expanded={hasChildren ? expanded.has(folder.entityId) : undefined}
+            tabIndex={-1}
             data-organization-folder-id={folder.entityId}
             data-drop-mode={
-              organizationDropTarget?.entityId === folder.entityId &&
-              organizationDropTarget.valid
+              organizationDropTarget?.entityId === folder.entityId && organizationDropTarget.valid
                 ? organizationDropTarget.mode
                 : undefined
             }
             data-drop-invalid={
-              organizationDropTarget?.entityId === folder.entityId &&
-              !organizationDropTarget.valid
+              organizationDropTarget?.entityId === folder.entityId && !organizationDropTarget.valid
                 ? true
                 : undefined
             }
@@ -105,6 +101,7 @@ export default function FolderTree({
             <span className="folder-name">{folder.name}</span>
             <span
               className="folder-marker-badge"
+              role="img"
               aria-label={folderMarkerAriaLabel(folder)}
             >
               {folderMarkerLabel(folder)}
@@ -123,21 +120,15 @@ function parentIds(folders: FolderTreeItem[]): string[] {
   const parents = new Set(
     folders.flatMap((folder) => (folder.parentEntityId ? [folder.parentEntityId] : [])),
   )
-  return folders
-    .filter((folder) => parents.has(folder.entityId))
-    .map((folder) => folder.entityId)
+  return folders.filter((folder) => parents.has(folder.entityId)).map((folder) => folder.entityId)
 }
 
-function flattenFolders(
-  folders: FolderTreeItem[],
-  expanded: Set<string>,
-): VisibleFolder[] {
+function flattenFolders(folders: FolderTreeItem[], expanded: Set<string>): VisibleFolder[] {
   const ids = new Set(folders.map((folder) => folder.entityId))
   const children = new Map<string | null, FolderTreeItem[]>()
   for (const folder of folders) {
-    const parent = folder.parentEntityId && ids.has(folder.parentEntityId)
-      ? folder.parentEntityId
-      : null
+    const parent =
+      folder.parentEntityId && ids.has(folder.parentEntityId) ? folder.parentEntityId : null
     const siblings = children.get(parent) ?? []
     siblings.push(folder)
     children.set(parent, siblings)

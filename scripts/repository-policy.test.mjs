@@ -80,6 +80,7 @@ const cargoManifests = [
   'src-tauri/Cargo.toml',
 ]
 const directDependencies = [
+  '@biomejs/biome',
   'ammonia',
   'async-trait',
   'blake3',
@@ -356,6 +357,49 @@ test('active governance has no M4 owner or Viewer 0.1 delivery gate', async () =
   ]) {
     assert.doesNotMatch(text, forbidden)
   }
+})
+
+test('the UI has one strict lint and format tool', async () => {
+  const [uiPackageText, configText, baselineExceptions] = await Promise.all([
+    read('ui/package.json'),
+    read('ui/biome.json'),
+    read('ui/BIOME_BASELINE_EXCEPTIONS.md'),
+  ])
+  const uiPackage = JSON.parse(uiPackageText)
+  const config = JSON.parse(configText)
+  const allowedExceptions = {
+    a11y: [
+      'noNoninteractiveTabindex',
+      'noRedundantRoles',
+      'noStaticElementInteractions',
+      'useAriaPropsSupportedByRole',
+      'useKeyWithClickEvents',
+      'useSemanticElements',
+    ],
+    correctness: ['useExhaustiveDependencies'],
+    security: ['noDangerouslySetInnerHtml'],
+  }
+  assert.equal(uiPackage.scripts.typecheck, 'tsc -b')
+  assert.equal(uiPackage.scripts.lint, 'biome lint .')
+  assert.equal(uiPackage.scripts['format:check'], 'biome format .')
+  assert.equal(uiPackage.scripts.check, 'biome check . && tsc -b')
+  assert.equal(config.formatter.indentStyle, 'space')
+  assert.equal(config.linter.enabled, true)
+  assert.equal(config.linter.rules.recommended, true)
+  for (const [domain, rules] of Object.entries(allowedExceptions)) {
+    assert.notEqual(config.linter.rules[domain], 'off')
+    assert.deepEqual(Object.keys(config.linter.rules[domain] ?? {}).sort(), rules)
+    for (const rule of rules) {
+      assert.equal(config.linter.rules[domain][rule], 'off')
+      assert.match(baselineExceptions, new RegExp(`\\\`${domain}/${rule}\\\``))
+    }
+  }
+  assert.deepEqual(
+    Object.keys(config.linter.rules)
+      .filter((name) => name !== 'recommended')
+      .sort(),
+    Object.keys(allowedExceptions).sort(),
+  )
 })
 
 function collectDirectDependencies({ workspace, manifests, packages }) {

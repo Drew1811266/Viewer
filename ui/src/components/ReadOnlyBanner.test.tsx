@@ -7,11 +7,7 @@ describe('ReadOnlyBanner', () => {
     const openSettings = vi.fn()
     const reselect = vi.fn()
     const rendered = render(
-      <ReadOnlyBanner
-        busy={false}
-        onOpenSettings={openSettings}
-        onReselect={reselect}
-      />,
+      <ReadOnlyBanner busy={false} onOpenSettings={openSettings} onReselect={reselect} />,
     )
 
     expect(screen.getByRole('status', { name: '只读模式' })).toHaveTextContent(
@@ -24,9 +20,7 @@ describe('ReadOnlyBanner', () => {
     expect(openSettings).toHaveBeenCalledOnce()
     expect(reselect).toHaveBeenCalledOnce()
 
-    rendered.rerender(
-      <ReadOnlyBanner busy onOpenSettings={openSettings} onReselect={reselect} />,
-    )
+    rendered.rerender(<ReadOnlyBanner busy onOpenSettings={openSettings} onReselect={reselect} />)
     expect(screen.getByRole('button', { name: '打开权限设置' })).toBeDisabled()
     expect(screen.getByRole('button', { name: '重新选择目录' })).toBeDisabled()
   })

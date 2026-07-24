@@ -71,11 +71,7 @@ export default function RenameDialog({
   )
 }
 
-function validateName(
-  value: string,
-  currentName: string,
-  editExtension: boolean,
-): string | null {
+function validateName(value: string, currentName: string, editExtension: boolean): string | null {
   if (value.length === 0) return '文件名不能为空。'
   if (value === '.' || value === '..') return '该文件名不可使用。'
   if (value.includes('/') || value.includes('\0')) return '文件名不能包含斜杠或空字符。'

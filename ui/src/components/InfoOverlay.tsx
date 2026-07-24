@@ -1,9 +1,4 @@
-import type {
-  BrowserFile,
-  ReviewState,
-  SelectionAgreement,
-  SelectionInfo,
-} from '../api/types'
+import type { BrowserFile, ReviewState, SelectionAgreement, SelectionInfo } from '../api/types'
 
 interface InfoOverlayProps {
   files: BrowserFile[]
@@ -23,9 +18,8 @@ export default function InfoOverlay({
     result[file.kind] = (result[file.kind] ?? 0) + 1
     return result
   }, {})
-  const hasSelection = selectionInfo !== undefined &&
-    selectionInfo !== null &&
-    selectionInfo.relativePaths.length > 0
+  const hasSelection =
+    selectionInfo !== undefined && selectionInfo !== null && selectionInfo.relativePaths.length > 0
 
   return (
     <aside className="info-overlay" aria-label="文件信息">
@@ -35,9 +29,7 @@ export default function InfoOverlay({
           ×
         </button>
       </header>
-      {files.length === 0 && !hasSelection && (
-        <p>请选择文件或文件夹以查看信息。</p>
-      )}
+      {files.length === 0 && !hasSelection && <p>请选择文件或文件夹以查看信息。</p>}
       {files.length === 1 && (selectionInfo?.types.folders ?? 0) === 0 && (
         <SingleFileInfo file={files[0]!} dimensions={dimensions} />
       )}
@@ -119,10 +111,7 @@ function AggregateSelectionInfo({ info }: { info: SelectionInfo }) {
   )
 }
 
-function agreementLabel<T>(
-  agreement: SelectionAgreement<T>,
-  label: (value: T) => string,
-): string {
+function agreementLabel<T>(agreement: SelectionAgreement<T>, label: (value: T) => string): string {
   if (agreement.state === 'common') return label(agreement.value)
   if (agreement.state === 'mixed') return '混合'
   return '未选择'

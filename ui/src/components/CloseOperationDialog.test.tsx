@@ -26,12 +26,7 @@ describe('CloseOperationDialog', () => {
     expect(stay).toHaveBeenCalledOnce()
 
     rendered.rerender(
-      <CloseOperationDialog
-        busy
-        onWait={wait}
-        onCancelPending={cancelPending}
-        onStay={stay}
-      />,
+      <CloseOperationDialog busy onWait={wait} onCancelPending={cancelPending} onStay={stay} />,
     )
     for (const button of screen.getAllByRole('button')) expect(button).toBeDisabled()
     expect(screen.getByRole('status')).toHaveTextContent('正在安全结束文件操作')

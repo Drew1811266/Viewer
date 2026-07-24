@@ -1,10 +1,6 @@
-import { useEffect, useRef, useState } from 'react'
 import type { KeyboardEvent, PointerEvent } from 'react'
-import type {
-  BrowserFile,
-  ImageRepresentation,
-  ImageRepresentationRequest,
-} from '../api/types'
+import { useEffect, useRef, useState } from 'react'
+import type { BrowserFile, ImageRepresentation, ImageRepresentationRequest } from '../api/types'
 
 interface ImagePreviewProps {
   file: BrowserFile
@@ -32,9 +28,7 @@ export default function ImagePreview({
   const dialog = useRef<HTMLElement>(null)
   const pendingFit = useRef(new Map<string, Promise<ImageRepresentation>>())
   const allowedWindow = useRef(new Set<string>())
-  const dragStart = useRef<{ x: number; y: number; offsetX: number; offsetY: number } | null>(
-    null,
-  )
+  const dragStart = useRef<{ x: number; y: number; offsetX: number; offsetY: number } | null>(null)
   const [, refresh] = useState(0)
   const [original, setOriginal] = useState<ImageRepresentation | null>(null)
   const [mode, setMode] = useState<PreviewMode>('fit')
@@ -69,10 +63,7 @@ export default function ImagePreview({
       if (!allowed.has(entityId)) fitCache.current.delete(entityId)
     }
     for (const candidate of windowFiles) {
-      if (
-        fitCache.current.has(candidate.entityId) ||
-        pendingFit.current.has(candidate.entityId)
-      ) {
+      if (fitCache.current.has(candidate.entityId) || pendingFit.current.has(candidate.entityId)) {
         continue
       }
       const request = requestImage(candidate, {
@@ -87,11 +78,7 @@ export default function ImagePreview({
           pendingFit.current.delete(candidate.entityId)
           if (!allowedWindow.current.has(candidate.entityId)) return
           fitCache.current.set(candidate.entityId, representation)
-          onDimensions?.(
-            candidate.entityId,
-            representation.width,
-            representation.height,
-          )
+          onDimensions?.(candidate.entityId, representation.width, representation.height)
           refresh((value) => value + 1)
         },
         () => {
@@ -129,7 +116,8 @@ export default function ImagePreview({
 
   const representation = mode === 'original' ? original : fitCache.current.get(file.entityId)
   const scale = mode === 'free' ? zoom : 1
-  const translated = offset.x === 0 && offset.y === 0 ? '' : `translate(${offset.x}px, ${offset.y}px) `
+  const translated =
+    offset.x === 0 && offset.y === 0 ? '' : `translate(${offset.x}px, ${offset.y}px) `
 
   function navigate(delta: number) {
     const next = files[currentIndex + delta]
@@ -157,13 +145,7 @@ export default function ImagePreview({
   }
 
   function pointerDown(event: PointerEvent<HTMLDivElement>) {
-    const bounds = panBounds(
-      representation,
-      event.currentTarget,
-      mode,
-      zoom,
-      rotation,
-    )
+    const bounds = panBounds(representation, event.currentTarget, mode, zoom, rotation)
     if (bounds.x === 0 && bounds.y === 0) return
     dragStart.current = {
       x: event.clientX,
@@ -177,13 +159,7 @@ export default function ImagePreview({
   function pointerMove(event: PointerEvent<HTMLDivElement>) {
     const start = dragStart.current
     if (start === null) return
-    const bounds = panBounds(
-      representation,
-      event.currentTarget,
-      mode,
-      zoom,
-      rotation,
-    )
+    const bounds = panBounds(representation, event.currentTarget, mode, zoom, rotation)
     setOffset({
       x: clamp(start.offsetX + event.clientX - start.x, -bounds.x, bounds.x),
       y: clamp(start.offsetY + event.clientY - start.y, -bounds.y, bounds.y),

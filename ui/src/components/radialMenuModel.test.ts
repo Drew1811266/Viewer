@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { buildRadialMenuModel } from './radialMenuModel'
 import type { RadialMenuContext } from './radialMenuModel'
+import { buildRadialMenuModel } from './radialMenuModel'
 
 function context(overrides: Partial<RadialMenuContext> = {}): RadialMenuContext {
   return {
@@ -48,15 +48,11 @@ describe('buildRadialMenuModel', () => {
     expect(single[0]).toMatchObject({ id: 'preview', disabled: false })
     expect(single[4]).toMatchObject({ id: 'compare', disabled: true })
 
-    const threeImages = buildRadialMenuModel(
-      context({ selectedCount: 3, selectedImageCount: 3 }),
-    )
+    const threeImages = buildRadialMenuModel(context({ selectedCount: 3, selectedImageCount: 3 }))
     expect(threeImages[0]).toMatchObject({ id: 'preview', disabled: true })
     expect(threeImages[4]).toMatchObject({ id: 'compare', disabled: false })
 
-    const mixed = buildRadialMenuModel(
-      context({ selectedCount: 3, selectedImageCount: 2 }),
-    )
+    const mixed = buildRadialMenuModel(context({ selectedCount: 3, selectedImageCount: 2 }))
     expect(mixed[4]).toMatchObject({ id: 'compare', disabled: true })
   })
 

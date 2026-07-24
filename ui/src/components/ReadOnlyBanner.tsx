@@ -4,11 +4,7 @@ interface ReadOnlyBannerProps {
   onReselect: () => void
 }
 
-export default function ReadOnlyBanner({
-  busy,
-  onOpenSettings,
-  onReselect,
-}: ReadOnlyBannerProps) {
+export default function ReadOnlyBanner({ busy, onOpenSettings, onReselect }: ReadOnlyBannerProps) {
   return (
     <section className="read-only-banner" role="status" aria-label="只读模式">
       <div>

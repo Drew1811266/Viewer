@@ -11,10 +11,7 @@ const INTERACTIVE_SELECTOR = [
   '[contenteditable]:not([contenteditable="false"])',
 ].join(', ')
 
-export function organizationShortcutIsOwned(
-  event: KeyboardEvent,
-  disabled = false,
-): boolean {
+export function organizationShortcutIsOwned(event: KeyboardEvent, disabled = false): boolean {
   if (disabled || event.defaultPrevented) return true
   if (document.querySelector('[aria-modal="true"], [role="dialog"]') !== null) return true
   if (hasTextSelection()) return true

@@ -1,18 +1,18 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
 import type { KeyboardEvent } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type {
   BrowserFile,
   ImageRepresentation,
   ImageRepresentationRequest,
   ReviewState,
 } from '../api/types'
+import type { CompareAction, CompareState, PaneMetrics } from '../state/compareModel'
 import {
   compareLayout,
   createCompareState,
   reconcileComparePanes,
   reduceCompare,
 } from '../state/compareModel'
-import type { CompareAction, CompareState, PaneMetrics } from '../state/compareModel'
 import ComparePane from './ComparePane'
 
 interface CompareWorkspaceProps {
@@ -53,7 +53,7 @@ export default function CompareWorkspace({
 }: CompareWorkspaceProps) {
   const [model, setModel] = useState<CompareState | null>(() => initialModel(files))
   const [originalEntityId, setOriginalEntityId] = useState<string | null>(null)
-  const workspaceRef = useRef<HTMLElement>(null)
+  const workspaceRef = useRef<HTMLDivElement>(null)
   const originalLane = useRef<OriginalRequestLane>({
     running: null,
     queued: null,
@@ -62,11 +62,7 @@ export default function CompareWorkspace({
   const presentKey = files.map((file) => file.entityId).join('\u0000')
 
   const requestComparedImage = useCallback(
-    (
-      file: BrowserFile,
-      representation: ImageRepresentationRequest,
-      signal?: AbortSignal,
-    ) => {
+    (file: BrowserFile, representation: ImageRepresentationRequest, signal?: AbortSignal) => {
       if (representation.kind !== 'original100_percent') {
         return requestImage(file, representation)
       }
@@ -187,8 +183,12 @@ export default function CompareWorkspace({
     >
       <div className="compare-toolbar" aria-label="对比工具">
         <span>{model.entityIds.length} 张图片</span>
-        <button type="button" onClick={fit}>适应窗口</button>
-        <button type="button" onClick={actualSize}>100%</button>
+        <button type="button" onClick={fit}>
+          适应窗口
+        </button>
+        <button type="button" onClick={actualSize}>
+          100%
+        </button>
         <button
           type="button"
           aria-label="缩小当前对比"
@@ -308,20 +308,23 @@ function pumpOriginalLane(lane: OriginalRequestLane): void {
   const job = lane.queued
   lane.queued = null
   lane.running = job
-  void job.run().then(
-    (image) => {
-      if (job.signal?.aborted) job.reject(cancelledImageRequest())
-      else job.resolve(image)
-    },
-    (reason: unknown) => {
-      if (job.signal?.aborted) job.reject(cancelledImageRequest())
-      else job.reject(reason)
-    },
-  ).finally(() => {
-    job.removeAbortListener()
-    if (lane.running === job) lane.running = null
-    pumpOriginalLane(lane)
-  })
+  void job
+    .run()
+    .then(
+      (image) => {
+        if (job.signal?.aborted) job.reject(cancelledImageRequest())
+        else job.resolve(image)
+      },
+      (reason: unknown) => {
+        if (job.signal?.aborted) job.reject(cancelledImageRequest())
+        else job.reject(reason)
+      },
+    )
+    .finally(() => {
+      job.removeAbortListener()
+      if (lane.running === job) lane.running = null
+      pumpOriginalLane(lane)
+    })
 }
 
 function cancelQueuedOriginal(job: OriginalRequestJob): void {

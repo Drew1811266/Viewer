@@ -64,9 +64,7 @@ const DEFAULT_NORMALIZED: NormalizedTransform = {
   centerY: 0.5,
 }
 
-export function createCompareState(
-  candidates: readonly CompareCandidate[],
-): CompareCreationResult {
+export function createCompareState(candidates: readonly CompareCandidate[]): CompareCreationResult {
   if (candidates.length < 2 || candidates.length > 4) {
     return { ok: false, reason: 'invalid_cardinality' }
   }
@@ -116,10 +114,7 @@ export function reduceCompare(state: CompareState, action: CompareAction): Compa
       metrics,
       transforms: {
         ...state.transforms,
-        [action.entityId]: clampPane(
-          paneTransform(normalized, current.rotation),
-          action.metrics,
-        ),
+        [action.entityId]: clampPane(paneTransform(normalized, current.rotation), action.metrics),
       },
     }
   }
@@ -258,25 +253,15 @@ function applySharedToEveryPane(
   )
 }
 
-function actualSizeScale(
-  metrics: PaneMetrics | undefined,
-  rotation: QuarterRotation,
-): number {
+function actualSizeScale(metrics: PaneMetrics | undefined, rotation: QuarterRotation): number {
   if (metrics === undefined) return 1
   const [width, height] = rotatedDimensions(metrics, rotation)
-  const fitScale = Math.min(
-    1,
-    metrics.viewportWidth / width,
-    metrics.viewportHeight / height,
-  )
+  const fitScale = Math.min(1, metrics.viewportWidth / width, metrics.viewportHeight / height)
   if (!Number.isFinite(fitScale) || fitScale <= 0) return 1
   return clamp(1 / fitScale, MIN_COMPARE_SCALE, MAX_COMPARE_SCALE)
 }
 
-function clampPane(
-  transform: PaneTransform,
-  metrics: PaneMetrics | undefined,
-): PaneTransform {
+function clampPane(transform: PaneTransform, metrics: PaneMetrics | undefined): PaneTransform {
   const scale = clamp(transform.scale, MIN_COMPARE_SCALE, MAX_COMPARE_SCALE)
   if (metrics === undefined || !validMetrics(metrics)) {
     return {
@@ -287,11 +272,7 @@ function clampPane(
     }
   }
   const [width, height] = rotatedDimensions(metrics, transform.rotation)
-  const fitScale = Math.min(
-    1,
-    metrics.viewportWidth / width,
-    metrics.viewportHeight / height,
-  )
+  const fitScale = Math.min(1, metrics.viewportWidth / width, metrics.viewportHeight / height)
   const displayedWidth = width * fitScale * scale
   const displayedHeight = height * fitScale * scale
   const halfVisibleX = Math.min(0.5, metrics.viewportWidth / (2 * displayedWidth))
@@ -304,10 +285,7 @@ function clampPane(
   }
 }
 
-function rotatedDimensions(
-  metrics: PaneMetrics,
-  rotation: QuarterRotation,
-): [number, number] {
+function rotatedDimensions(metrics: PaneMetrics, rotation: QuarterRotation): [number, number] {
   return rotation === 90 || rotation === 270
     ? [metrics.imageHeight, metrics.imageWidth]
     : [metrics.imageWidth, metrics.imageHeight]
@@ -334,10 +312,7 @@ function normalized(transform: PaneTransform): NormalizedTransform {
   }
 }
 
-function paneTransform(
-  transform: NormalizedTransform,
-  rotation: QuarterRotation,
-): PaneTransform {
+function paneTransform(transform: NormalizedTransform, rotation: QuarterRotation): PaneTransform {
   return { ...transform, rotation }
 }
 

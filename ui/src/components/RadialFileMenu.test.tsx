@@ -4,8 +4,8 @@ import { readFileSync } from 'node:fs'
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import RadialFileMenu from './RadialFileMenu'
-import { buildRadialMenuModel } from './radialMenuModel'
 import { fitMenuOrigin, polarPoint } from './radialMenuGeometry'
+import { buildRadialMenuModel } from './radialMenuModel'
 
 const appCss = readFileSync('src/styles/app.css', 'utf8')
 
@@ -21,9 +21,7 @@ const model = buildRadialMenuModel({
 
 function sequentialTabStops(container: HTMLElement): HTMLElement[] {
   return Array.from(
-    container.querySelectorAll<HTMLElement>(
-      'button, [href], input, select, textarea, [tabindex]',
-    ),
+    container.querySelectorAll<HTMLElement>('button, [href], input, select, textarea, [tabindex]'),
   ).filter((element) => element.tabIndex >= 0)
 }
 
@@ -39,7 +37,9 @@ function primaryOffsets(container: HTMLElement): string[] {
   ).map((button) => button.getAttribute('style') ?? '')
 }
 
-function primarySectors(container: HTMLElement): Array<{ start: string | null; end: string | null }> {
+function primarySectors(
+  container: HTMLElement,
+): Array<{ start: string | null; end: string | null }> {
   return Array.from(container.querySelectorAll<SVGPathElement>('.radial-primary-shape')).map(
     (path) => ({
       start: path.getAttribute('data-sector-start'),
@@ -49,9 +49,7 @@ function primarySectors(container: HTMLElement): Array<{ start: string | null; e
 }
 
 function expectVisibleLabelsUpright(container: HTMLElement) {
-  const buttons = Array.from(
-    container.querySelectorAll<HTMLButtonElement>('.radial-menu-button'),
-  )
+  const buttons = Array.from(container.querySelectorAll<HTMLButtonElement>('.radial-menu-button'))
   expect(buttons.length).toBeGreaterThan(0)
   buttons.forEach((button) => {
     expect(button).toHaveAttribute('data-label-orientation', 'upright')
@@ -216,9 +214,7 @@ describe('RadialFileMenu', () => {
 
     fireEvent.click(screen.getByRole('menuitem', { name: '标记' }))
     const pending = screen.getByRole('menuitemcheckbox', { name: '待定' })
-    const secondaryShapes = container.querySelectorAll<SVGPathElement>(
-      '.radial-secondary-shape',
-    )
+    const secondaryShapes = container.querySelectorAll<SVGPathElement>('.radial-secondary-shape')
     act(() => pending.focus())
 
     expect(secondaryShapes[1]).toHaveAttribute('data-disabled', 'true')
@@ -305,9 +301,7 @@ describe('RadialFileMenu', () => {
       screen.getByRole('menuitemcheckbox', { name: '保留' }).querySelector('.radial-state-cue'),
     ).toHaveTextContent('✓')
     expect(
-      screen
-        .getByRole('menuitemcheckbox', { name: '切换收藏' })
-        .querySelector('.radial-state-cue'),
+      screen.getByRole('menuitemcheckbox', { name: '切换收藏' }).querySelector('.radial-state-cue'),
     ).toHaveTextContent('±')
   })
 
@@ -331,9 +325,7 @@ describe('RadialFileMenu', () => {
       fireEvent.pointerMove(window, { pointerId: 7, clientX: point.x, clientY: point.y })
       act(() => vi.advanceTimersByTime(120))
 
-      expect(screen.getByRole('menu', { name: label }).children).toHaveLength(
-        expectedChildren,
-      )
+      expect(screen.getByRole('menu', { name: label }).children).toHaveLength(expectedChildren)
     } finally {
       vi.useRealTimers()
     }

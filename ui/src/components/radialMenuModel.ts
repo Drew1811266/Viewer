@@ -14,13 +14,7 @@ export type RadialLeafAction =
   | 'compare'
   | 'info'
 
-export type RadialPrimaryId =
-  | 'preview'
-  | 'mark'
-  | 'organize'
-  | 'trash'
-  | 'compare'
-  | 'info'
+export type RadialPrimaryId = 'preview' | 'mark' | 'organize' | 'trash' | 'compare' | 'info'
 
 export interface RadialMenuContext {
   selectedCount: number
@@ -97,8 +91,7 @@ export function buildRadialMenuModel(context: RadialMenuContext): RadialMenuItem
       label: '预览',
       symbol: '◉',
       disabled: context.selectedCount !== 1,
-      disabledReason:
-        context.selectedCount !== 1 ? '预览仅适用于单个文件' : undefined,
+      disabledReason: context.selectedCount !== 1 ? '预览仅适用于单个文件' : undefined,
     },
     {
       id: 'mark',

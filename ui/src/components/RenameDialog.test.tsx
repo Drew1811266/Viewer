@@ -6,12 +6,7 @@ describe('RenameDialog', () => {
   it('blocks invalid and unchanged names, then submits an explicit safe name', () => {
     const confirm = vi.fn()
     render(
-      <RenameDialog
-        currentName="front.jpg"
-        busy={false}
-        onConfirm={confirm}
-        onCancel={vi.fn()}
-      />,
+      <RenameDialog currentName="front.jpg" busy={false} onConfirm={confirm} onCancel={vi.fn()} />,
     )
     const input = screen.getByRole('textbox', { name: '新文件名' })
     expect(input).toHaveFocus()
@@ -32,12 +27,7 @@ describe('RenameDialog', () => {
     document.body.append(trigger)
     trigger.focus()
     const rendered = render(
-      <RenameDialog
-        currentName="front.jpg"
-        busy={false}
-        onConfirm={vi.fn()}
-        onCancel={cancel}
-      />,
+      <RenameDialog currentName="front.jpg" busy={false} onConfirm={vi.fn()} onCancel={cancel} />,
     )
     expect(screen.getByRole('textbox', { name: '新文件名' })).toHaveValue('front.jpg')
     fireEvent.change(screen.getByRole('textbox', { name: '新文件名' }), {

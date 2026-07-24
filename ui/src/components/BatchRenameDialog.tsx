@@ -63,7 +63,11 @@ export default function BatchRenameDialog({
   }
 
   return (
-    <ModalSheet title={`批量重命名 ${entityIds.length} 项`} onCancel={onCancel} initialFocusRef={findRef}>
+    <ModalSheet
+      title={`批量重命名 ${entityIds.length} 项`}
+      onCancel={onCancel}
+      initialFocusRef={findRef}
+    >
       <div className="rename-rule-grid">
         <label className="form-field">
           <span>查找</span>

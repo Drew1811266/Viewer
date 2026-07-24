@@ -1,11 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
 import type { MouseEvent } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import type { BrowserFile, TextEncoding, TextPreview as TextPreviewDto } from '../api/types'
 import { safeUserMessage } from '../api/viewer'
-import type {
-  BrowserFile,
-  TextEncoding,
-  TextPreview as TextPreviewDto,
-} from '../api/types'
 import type { TaskFeedback } from './TaskBar'
 
 interface TextPreviewProps {

@@ -1,6 +1,5 @@
 import { act, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { ViewerBridge } from '../api/viewer'
 import type {
   CloseBlockedEvent,
   FileCommandPreflight,
@@ -11,8 +10,9 @@ import type {
   ScanEvent,
   SearchPage,
 } from '../api/types'
-import { emptySearchFilters } from './viewerReducer'
+import type { ViewerBridge } from '../api/viewer'
 import { useViewerController } from './useViewerController'
+import { emptySearchFilters } from './viewerReducer'
 
 function deferred<T>() {
   let resolve!: (value: T) => void
@@ -201,13 +201,8 @@ describe('useViewerController M2 coordination', () => {
     await act(() => writableHook.result.current.openProject('/fixture/project'))
     act(() => writableHook.result.current.setSelectedEntityIds(['image-1', 'image-2']))
     await act(() => writableHook.result.current.setReviewState('keep'))
-    expect(writableHook.result.current.state.selectedEntityIds).toEqual([
-      'image-1',
-      'image-2',
-    ])
-    await act(() =>
-      writableHook.result.current.setReviewState('reject', ['image-2', 'image-2']),
-    )
+    expect(writableHook.result.current.state.selectedEntityIds).toEqual(['image-1', 'image-2'])
+    await act(() => writableHook.result.current.setReviewState('reject', ['image-2', 'image-2']))
     expect(writable.setReviewState).toHaveBeenLastCalledWith({
       sessionId: 'session-1',
       generation: 1,
@@ -220,10 +215,7 @@ describe('useViewerController M2 coordination', () => {
       generation: 1,
       entityIds: ['image-1'],
     })
-    expect(writableHook.result.current.state.selectedEntityIds).toEqual([
-      'image-1',
-      'image-2',
-    ])
+    expect(writableHook.result.current.state.selectedEntityIds).toEqual(['image-1', 'image-2'])
 
     const readOnly = bridge('read_only')
     const readOnlyHook = renderHook(() => useViewerController(readOnly))
@@ -402,9 +394,11 @@ describe('useViewerController M2 coordination', () => {
       await Promise.resolve()
       await Promise.resolve()
     })
-    await act(() => result.current.executeFileCommand('trash', [
-      { entityId: 'image-1', action: { kind: 'trash' } },
-    ]))
+    await act(() =>
+      result.current.executeFileCommand('trash', [
+        { entityId: 'image-1', action: { kind: 'trash' } },
+      ]),
+    )
 
     await act(async () => {
       receiveOperation?.(operationProgress('session-1', 1, 'batch-1'))
@@ -456,9 +450,7 @@ describe('useViewerController M2 coordination', () => {
       await Promise.resolve()
       await Promise.resolve()
     })
-    expect(result.current.state.search.page?.hits[0]?.name).toBe(
-      'destination-before-replace',
-    )
+    expect(result.current.state.search.page?.hits[0]?.name).toBe('destination-before-replace')
     await act(() =>
       result.current.executeFileCommand('copy', [
         {
@@ -490,16 +482,12 @@ describe('useViewerController M2 coordination', () => {
       contentWorkspace(['source-after-failed-replace']),
     )
     expect(viewer.searchProject).toHaveBeenCalledTimes(2)
-    expect(result.current.state.search.page?.hits[0]?.name).toBe(
-      'source-after-failed-replace',
-    )
+    expect(result.current.state.search.page?.hits[0]?.name).toBe('source-after-failed-replace')
   })
 
   it('drops a terminal refresh that settles after closing and reopening the same backend identity', async () => {
     const viewer = bridge()
-    const oldTerminalFolders = deferred<
-      Awaited<ReturnType<ViewerBridge['folderTree']>>
-    >()
+    const oldTerminalFolders = deferred<Awaited<ReturnType<ViewerBridge['folderTree']>>>()
     let receiveOperation: ((event: OperationProgressEvent) => void) | undefined
     vi.mocked(viewer.listenOperationProgress).mockImplementation(async (handler) => {
       receiveOperation = handler
@@ -552,9 +540,7 @@ describe('useViewerController M2 coordination', () => {
 
   it('releases a terminal batch after the same project advances generation', async () => {
     const viewer = bridge()
-    const oldTerminalFolders = deferred<
-      Awaited<ReturnType<ViewerBridge['folderTree']>>
-    >()
+    const oldTerminalFolders = deferred<Awaited<ReturnType<ViewerBridge['folderTree']>>>()
     let receiveOperation: ((event: OperationProgressEvent) => void) | undefined
     let receiveScan: ((event: ScanEvent) => void) | undefined
     vi.mocked(viewer.listenOperationProgress).mockImplementation(async (handler) => {
@@ -637,9 +623,11 @@ describe('useViewerController M2 coordination', () => {
       await Promise.resolve()
       await Promise.resolve()
     })
-    await act(() => result.current.executeFileCommand('trash', [
-      { entityId: 'image-1', action: { kind: 'trash' } },
-    ]))
+    await act(() =>
+      result.current.executeFileCommand('trash', [
+        { entityId: 'image-1', action: { kind: 'trash' } },
+      ]),
+    )
     await act(async () => {
       receiveOperation?.(operationProgress('session-1', 1, 'batch-1'))
       await Promise.resolve()
@@ -786,19 +774,25 @@ describe('useViewerController M2 coordination', () => {
       close = result.current.closeProject()
     })
     expect(result.current.state.status).toBe('closing')
-    await act(() => result.current.previewRename(['image-1'], {
-      find: '',
-      replacement: '',
-      prefix: 'x-',
-      suffix: '',
-      sequence: null,
-    }))
-    await act(() => result.current.preflightFileCommand('trash', [
-      { entityId: 'image-1', action: { kind: 'trash' } },
-    ]))
-    await act(() => result.current.executeFileCommand('trash', [
-      { entityId: 'image-1', action: { kind: 'trash' } },
-    ]))
+    await act(() =>
+      result.current.previewRename(['image-1'], {
+        find: '',
+        replacement: '',
+        prefix: 'x-',
+        suffix: '',
+        sequence: null,
+      }),
+    )
+    await act(() =>
+      result.current.preflightFileCommand('trash', [
+        { entityId: 'image-1', action: { kind: 'trash' } },
+      ]),
+    )
+    await act(() =>
+      result.current.executeFileCommand('trash', [
+        { entityId: 'image-1', action: { kind: 'trash' } },
+      ]),
+    )
     await act(() => result.current.undoLastOperation())
 
     expect(viewer.previewRename).not.toHaveBeenCalled()
@@ -833,7 +827,7 @@ describe('useViewerController M2 coordination', () => {
         executable: true,
       },
     ],
-  ] satisfies [string, FileCommandPreflight][]) (
+  ] satisfies [string, FileCommandPreflight][])(
     'drops a late %s preflight after closing and reopening the same backend identity',
     async (_label, response) => {
       const viewer = bridge()
@@ -871,9 +865,7 @@ describe('useViewerController M2 coordination', () => {
 
   it('retains the complete session when close stays and clears it only after a chosen close', async () => {
     const viewer = bridge()
-    vi.mocked(viewer.closeProject)
-      .mockResolvedValueOnce('stayed')
-      .mockResolvedValueOnce('closed')
+    vi.mocked(viewer.closeProject).mockResolvedValueOnce('stayed').mockResolvedValueOnce('closed')
     const { result } = renderHook(() => useViewerController(viewer))
     await act(() => result.current.openProject('/fixture/project'))
     act(() => result.current.setSelectedEntityIds(['image-1']))
@@ -968,11 +960,7 @@ function contentWorkspace(ids: string[]) {
   }
 }
 
-function page(
-  revision: number,
-  name: string,
-  matchedField: 'filename' | 'body',
-): SearchPage {
+function page(revision: number, name: string, matchedField: 'filename' | 'body'): SearchPage {
   return {
     revision,
     total: 1,

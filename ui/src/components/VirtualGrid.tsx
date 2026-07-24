@@ -1,12 +1,12 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { KeyboardEventHandler, PointerEventHandler, ReactNode, UIEvent } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import {
   intersectingGridIndexes,
+  type MarqueePoint,
+  type MarqueeRect,
   marqueeDistance,
   normalizeMarquee,
   verticalAutoScrollDelta,
-  type MarqueePoint,
-  type MarqueeRect,
 } from './marqueeSelection'
 
 export type MarqueePhase = 'start' | 'change' | 'end' | 'cancel'
@@ -209,7 +209,8 @@ export default function VirtualGrid<T>({
       event.button !== 0 ||
       onMarqueeSelectionChange === undefined ||
       (target instanceof Element && target.closest('[data-virtual-grid-item]') !== null)
-    ) return
+    )
+      return
 
     const node = container.current
     if (node === null) return
@@ -245,7 +246,10 @@ export default function VirtualGrid<T>({
     session.activated = true
     updateMarquee(session)
     const bounds = container.current?.getBoundingClientRect()
-    if (bounds === undefined || verticalAutoScrollDelta(event.clientY, bounds.top, bounds.bottom) === 0) {
+    if (
+      bounds === undefined ||
+      verticalAutoScrollDelta(event.clientY, bounds.top, bounds.bottom) === 0
+    ) {
       cancelAutoScroll()
     } else {
       queueAutoScroll()

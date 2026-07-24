@@ -1,8 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import {
-  pointDistance,
-  verticalEdgeScrollDelta,
-} from '../components/pointerGeometry'
+import { pointDistance, verticalEdgeScrollDelta } from '../components/pointerGeometry'
 
 export type OrganizationDragMode = 'move' | 'copy'
 
@@ -40,11 +37,7 @@ export interface UseOrganizationPointerDragOptions {
     destinationId: string,
     mode: OrganizationDragMode,
   ) => boolean
-  onDrop: (
-    entityIds: string[],
-    destinationId: string,
-    mode: OrganizationDragMode,
-  ) => void
+  onDrop: (entityIds: string[], destinationId: string, mode: OrganizationDragMode) => void
 }
 
 export interface OrganizationPointerDragResult {
@@ -107,34 +100,22 @@ export function useOrganizationPointerDrag({
     }
   }, [])
 
-  const resolveDropTarget = useCallback(
-    (session: DragSession): OrganizationDropTarget | null => {
-      const hit = document.elementFromPoint(session.clientX, session.clientY)
-      const row =
-        hit?.closest<HTMLElement>(`[${ORGANIZATION_FOLDER_ATTRIBUTE}]`) ?? null
-      const surface =
-        row?.closest<HTMLElement>(`[${ORGANIZATION_DROP_SURFACE_ATTRIBUTE}]`) ??
-        null
-      const destinationId = surface
-        ? (row?.dataset.organizationFolderId ?? null)
-        : null
-      const nextTarget = destinationId
-        ? {
-            entityId: destinationId,
-            mode: session.mode,
-            valid: validationRef.current(
-              session.entityIds,
-              destinationId,
-              session.mode,
-            ),
-          }
-        : null
-      session.dropTarget = nextTarget
-      setDropTarget(nextTarget)
-      return nextTarget
-    },
-    [],
-  )
+  const resolveDropTarget = useCallback((session: DragSession): OrganizationDropTarget | null => {
+    const hit = document.elementFromPoint(session.clientX, session.clientY)
+    const row = hit?.closest<HTMLElement>(`[${ORGANIZATION_FOLDER_ATTRIBUTE}]`) ?? null
+    const surface = row?.closest<HTMLElement>(`[${ORGANIZATION_DROP_SURFACE_ATTRIBUTE}]`) ?? null
+    const destinationId = surface ? (row?.dataset.organizationFolderId ?? null) : null
+    const nextTarget = destinationId
+      ? {
+          entityId: destinationId,
+          mode: session.mode,
+          valid: validationRef.current(session.entityIds, destinationId, session.mode),
+        }
+      : null
+    session.dropTarget = nextTarget
+    setDropTarget(nextTarget)
+    return nextTarget
+  }, [])
 
   const scheduleEdgeScroll = useCallback(
     (session: DragSession) => {
@@ -151,9 +132,7 @@ export function useOrganizationPointerDrag({
         return
       }
       const bounds = surface.getBoundingClientRect()
-      if (
-        verticalEdgeScrollDelta(session.clientY, bounds.top, bounds.bottom) === 0
-      ) {
+      if (verticalEdgeScrollDelta(session.clientY, bounds.top, bounds.bottom) === 0) {
         stopFrame()
         return
       }
@@ -237,11 +216,7 @@ export function useOrganizationPointerDrag({
             : null
         cancel()
         if (submission) {
-          dropRef.current(
-            submission.entityIds,
-            submission.destinationId,
-            submission.mode,
-          )
+          dropRef.current(submission.entityIds, submission.destinationId, submission.mode)
         }
         return
       }

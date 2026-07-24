@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
-  MAX_COMPARE_SCALE,
-  MIN_COMPARE_SCALE,
   compareLayout,
   createCompareState,
+  MAX_COMPARE_SCALE,
+  MIN_COMPARE_SCALE,
   reconcileComparePanes,
   reduceCompare,
 } from './compareModel'
@@ -52,12 +52,10 @@ describe('compareModel', () => {
       ok: false,
       reason: 'duplicate_entity',
     })
-    expect(
-      createCompareState([
-        images[0]!,
-        { entityId: 'note', kind: 'markdown' },
-      ]),
-    ).toEqual({ ok: false, reason: 'unsupported_type' })
+    expect(createCompareState([images[0]!, { entityId: 'note', kind: 'markdown' }])).toEqual({
+      ok: false,
+      reason: 'unsupported_type',
+    })
 
     const created = createCompareState(images)
     expect(created.ok).toBe(true)

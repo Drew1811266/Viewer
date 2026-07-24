@@ -28,12 +28,7 @@ export default function TrashConfirmation({
         <button ref={cancelRef} type="button" onClick={onCancel}>
           取消
         </button>
-        <button
-          type="button"
-          className="destructive-button"
-          disabled={busy}
-          onClick={onConfirm}
-        >
+        <button type="button" className="destructive-button" disabled={busy} onClick={onConfirm}>
           {busy ? '正在处理…' : '移入废纸篓'}
         </button>
       </div>

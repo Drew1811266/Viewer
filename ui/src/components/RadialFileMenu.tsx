@@ -1,20 +1,20 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, KeyboardEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { BrowserFile } from '../api/types'
+import type { Point, Viewport } from './radialMenuGeometry'
 import {
+  annularSectorPath,
+  fitMenuOrigin,
   MOTION_THRESHOLD,
   PRIMARY_INNER_RADIUS,
   PRIMARY_OUTER_RADIUS,
-  SECONDARY_INNER_RADIUS,
-  SECONDARY_OUTER_RADIUS,
-  annularSectorPath,
-  fitMenuOrigin,
   polarPoint,
   primaryCenterAngle,
   primaryIndexAt,
+  SECONDARY_INNER_RADIUS,
+  SECONDARY_OUTER_RADIUS,
   secondaryIndexAt,
 } from './radialMenuGeometry'
-import type { Point, Viewport } from './radialMenuGeometry'
 import type { RadialLeafAction, RadialMenuItem } from './radialMenuModel'
 
 export interface RadialMenuRequest {
@@ -65,13 +65,9 @@ export default function RadialFileMenu({
   const maximumTravelled = useRef(0)
   const gestureCancelled = useRef(false)
   const expandedItem = expandedIndex === null ? null : (model[expandedIndex] ?? null)
-  const secondaryAnchor =
-    expandedIndex === null ? 0 : primaryCenterAngle(expandedIndex)
+  const secondaryAnchor = expandedIndex === null ? 0 : primaryCenterAngle(expandedIndex)
   const displayedPrimaryIndex = clickMode ? primaryIndex : pointerPrimaryIndex
-  const requestClose = useCallback(
-    () => onClose(returnFocusTarget),
-    [onClose, returnFocusTarget],
-  )
+  const requestClose = useCallback(() => onClose(returnFocusTarget), [onClose, returnFocusTarget])
 
   useEffect(() => {
     rootRef.current
@@ -95,12 +91,7 @@ export default function RadialFileMenu({
       const child =
         expandedItem?.children === undefined
           ? null
-          : secondaryIndexAt(
-              point,
-              fittedOrigin,
-              secondaryAnchor,
-              expandedItem.children.length,
-            )
+          : secondaryIndexAt(point, fittedOrigin, secondaryAnchor, expandedItem.children.length)
       if (child !== null) {
         setPointerPrimaryIndex(expandedIndex)
         setSecondaryIndex(child)
@@ -117,10 +108,7 @@ export default function RadialFileMenu({
       if (event.pointerId !== pointerId || gestureCancelled.current) return
       maximumTravelled.current = Math.max(
         maximumTravelled.current,
-        Math.hypot(
-          event.clientX - startPoint.current.x,
-          event.clientY - startPoint.current.y,
-        ),
+        Math.hypot(event.clientX - startPoint.current.x, event.clientY - startPoint.current.y),
       )
       if (maximumTravelled.current < MOTION_THRESHOLD) {
         setClickMode(true)
@@ -446,9 +434,7 @@ function RadialButton({
       data-index={index}
       data-label-orientation="upright"
       data-tone={item.tone}
-      style={
-        { '--radial-x': `${point.x}px`, '--radial-y': `${point.y}px` } as CSSProperties
-      }
+      style={{ '--radial-x': `${point.x}px`, '--radial-y': `${point.y}px` } as CSSProperties}
       onFocus={onFocus}
       onPointerEnter={onPointerEnter}
       onClick={onClick}

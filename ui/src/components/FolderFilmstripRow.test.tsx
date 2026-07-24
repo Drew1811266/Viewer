@@ -51,10 +51,7 @@ function installIntersectionObserver() {
     readonly rootMargin = '240px 0px'
     readonly thresholds = [0]
 
-    constructor(
-      callback: IntersectionObserverCallback,
-      options?: IntersectionObserverInit,
-    ) {
+    constructor(callback: IntersectionObserverCallback, options?: IntersectionObserverInit) {
       intersectionCallback = callback
       intersectionOptions = options
     }
@@ -105,10 +102,7 @@ describe('FolderFilmstripRow', () => {
     const row = filmstrip.closest('article')
     expect(intersectionOptions).toEqual({ rootMargin: '240px 0px' })
     expect(observedTargets).toEqual(new Set([row]))
-    expect(filmstrip).toHaveAttribute(
-      'data-state',
-      'idle',
-    )
+    expect(filmstrip).toHaveAttribute('data-state', 'idle')
 
     act(revealRow)
 
@@ -207,18 +201,14 @@ describe('FolderFilmstripRow', () => {
     expect(
       within(initialItems[0]!).getByRole('button', { name: '预览 image-1.jpg' }),
     ).not.toHaveAttribute('aria-posinset')
-    expect(
-      within(filmstrip).getAllByRole('button', { name: /^预览 / }),
-    ).toHaveLength(5)
+    expect(within(filmstrip).getAllByRole('button', { name: /^预览 / })).toHaveLength(5)
     expect(requestThumbnail).toHaveBeenCalledTimes(5)
 
     filmstrip.scrollLeft = 7000
     fireEvent.scroll(filmstrip)
 
     await waitFor(() =>
-      expect(
-        within(filmstrip).getByRole('button', { name: '预览 image-51.jpg' }),
-      ).toBeVisible(),
+      expect(within(filmstrip).getByRole('button', { name: '预览 image-51.jpg' })).toBeVisible(),
     )
     const advancedButtons = within(filmstrip).getAllByRole('button', {
       name: /^预览 /,
@@ -228,9 +218,7 @@ describe('FolderFilmstripRow', () => {
       within(filmstrip).queryByRole('button', { name: '预览 image-1.jpg' }),
     ).not.toBeInTheDocument()
 
-    fireEvent.click(
-      within(filmstrip).getByRole('button', { name: '预览 image-51.jpg' }),
-    )
+    fireEvent.click(within(filmstrip).getByRole('button', { name: '预览 image-51.jpg' }))
     expect(preview).toHaveBeenCalledWith(manyImages[50], manyImages)
   })
 
@@ -275,9 +263,7 @@ describe('FolderFilmstripRow', () => {
     await within(filmstrip).findByRole('button', { name: '预览 image-51.jpg' })
     expect(focused).toBeInTheDocument()
     expect(focused).toHaveFocus()
-    expect(
-      within(filmstrip).getAllByRole('button', { name: /^预览 / }),
-    ).toHaveLength(9)
+    expect(within(filmstrip).getAllByRole('button', { name: /^预览 / })).toHaveLength(9)
     expect(
       within(filmstrip).queryByRole('button', { name: '预览 image-20.jpg' }),
     ).not.toBeInTheDocument()
@@ -292,8 +278,6 @@ describe('FolderFilmstripRow', () => {
         within(filmstrip).queryByRole('button', { name: '预览 image-3.jpg' }),
       ).not.toBeInTheDocument(),
     )
-    expect(
-      within(filmstrip).getAllByRole('button', { name: /^预览 / }),
-    ).toHaveLength(8)
+    expect(within(filmstrip).getAllByRole('button', { name: /^预览 / })).toHaveLength(8)
   })
 })

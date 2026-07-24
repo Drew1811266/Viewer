@@ -88,9 +88,7 @@ export default function FolderFilmstripRow({
       width: element.clientWidth,
     }
     setViewport((current) =>
-      current.scrollLeft === next.scrollLeft && current.width === next.width
-        ? current
-        : next,
+      current.scrollLeft === next.scrollLeft && current.width === next.width ? current : next,
     )
   }, [])
 
@@ -141,12 +139,8 @@ export default function FolderFilmstripRow({
           <span className="folder-filmstrip-deferred" aria-label="等待加载图片" />
         )}
         {state.status === 'loading' &&
-          Array.from({ length: 4 }, (_, index) => (
-            <span
-              className="folder-filmstrip-skeleton"
-              aria-label="图片加载中"
-              key={index}
-            />
+          ['first', 'second', 'third', 'fourth'].map((key) => (
+            <span className="folder-filmstrip-skeleton" aria-label="图片加载中" key={key} />
           ))}
         {state.status === 'failed' && (
           <div className="folder-filmstrip-error" role="alert">
@@ -167,40 +161,33 @@ export default function FolderFilmstripRow({
             role="list"
             style={{ width: `${imageWindow.totalWidth}px` }}
           >
-            {getMountedImageIndexes(imageWindow, focusedImageIndex).map(
-              (index) => {
-                const file = state.images[index]!
-                return (
-                  <div
-                    className="folder-filmstrip-item"
-                    role="listitem"
-                    aria-posinset={index + 1}
-                    aria-setsize={state.images.length}
-                    key={file.entityId}
-                    style={{ left: `${index * THUMBNAIL_STRIDE}px` }}
+            {getMountedImageIndexes(imageWindow, focusedImageIndex).map((index) => {
+              const file = state.images[index]!
+              return (
+                <div
+                  className="folder-filmstrip-item"
+                  role="listitem"
+                  aria-posinset={index + 1}
+                  aria-setsize={state.images.length}
+                  key={file.entityId}
+                  style={{ left: `${index * THUMBNAIL_STRIDE}px` }}
+                >
+                  <button
+                    type="button"
+                    className="folder-filmstrip-thumbnail"
+                    aria-label={`预览 ${file.name}`}
+                    title={file.name}
+                    onFocus={() => setFocusedImageIndex(index)}
+                    onBlur={() =>
+                      setFocusedImageIndex((current) => (current === index ? null : current))
+                    }
+                    onClick={() => onPreview(file, state.images)}
                   >
-                    <button
-                      type="button"
-                      className="folder-filmstrip-thumbnail"
-                      aria-label={`预览 ${file.name}`}
-                      title={file.name}
-                      onFocus={() => setFocusedImageIndex(index)}
-                      onBlur={() =>
-                        setFocusedImageIndex((current) =>
-                          current === index ? null : current,
-                        )
-                      }
-                      onClick={() => onPreview(file, state.images)}
-                    >
-                      <FolderThumbnail
-                        file={file}
-                        requestThumbnail={requestThumbnail}
-                      />
-                    </button>
-                  </div>
-                )
-              },
-            )}
+                    <FolderThumbnail file={file} requestThumbnail={requestThumbnail} />
+                  </button>
+                </div>
+              )
+            })}
           </div>
         )}
       </div>
@@ -227,9 +214,9 @@ function FolderThumbnail({
   file: BrowserFile
   requestThumbnail?: (file: BrowserFile) => Promise<string>
 }) {
-  const [state, setState] = useState<{ status: 'loading' | 'ready' | 'failed'; url?: string }>(
-    { status: 'loading' },
-  )
+  const [state, setState] = useState<{ status: 'loading' | 'ready' | 'failed'; url?: string }>({
+    status: 'loading',
+  })
 
   useEffect(() => {
     if (requestThumbnail === undefined) return
@@ -249,30 +236,16 @@ function FolderThumbnail({
 
   if (state.status === 'ready') return <img src={state.url} alt="" />
   return (
-    <span
-      aria-label={state.status === 'failed' ? '缩略图不可用' : '缩略图加载中'}
-    />
+    <span role="img" aria-label={state.status === 'failed' ? '缩略图不可用' : '缩略图加载中'} />
   )
 }
 
-function getImageWindow(
-  imageCount: number,
-  scrollLeft: number,
-  viewportWidth: number,
-) {
+function getImageWindow(imageCount: number, scrollLeft: number, viewportWidth: number) {
   const totalWidth =
-    imageCount === 0
-      ? 0
-      : imageCount * THUMBNAIL_SIZE + (imageCount - 1) * THUMBNAIL_GAP
+    imageCount === 0 ? 0 : imageCount * THUMBNAIL_SIZE + (imageCount - 1) * THUMBNAIL_GAP
   const viewportStart = Math.max(0, scrollLeft - FILMSTRIP_INLINE_PADDING)
-  const viewportEnd = Math.max(
-    viewportStart,
-    scrollLeft + viewportWidth - FILMSTRIP_INLINE_PADDING,
-  )
-  let firstVisible = Math.min(
-    imageCount,
-    Math.floor(viewportStart / THUMBNAIL_STRIDE),
-  )
+  const viewportEnd = Math.max(viewportStart, scrollLeft + viewportWidth - FILMSTRIP_INLINE_PADDING)
+  let firstVisible = Math.min(imageCount, Math.floor(viewportStart / THUMBNAIL_STRIDE))
   if (
     firstVisible < imageCount &&
     firstVisible * THUMBNAIL_STRIDE + THUMBNAIL_SIZE <= viewportStart
@@ -300,8 +273,7 @@ function getMountedImageIndexes(
   )
   if (
     focusedImageIndex === null ||
-    (focusedImageIndex >= imageWindow.start &&
-      focusedImageIndex < imageWindow.end)
+    (focusedImageIndex >= imageWindow.start && focusedImageIndex < imageWindow.end)
   ) {
     return indexes
   }

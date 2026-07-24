@@ -18,7 +18,12 @@ const geometry = {
 describe('marqueeSelection', () => {
   it('normalizes forward and reverse pointer movement', () => {
     expect(normalizeMarquee({ x: 220, y: 180 }, { x: 10, y: 20 })).toEqual({
-      left: 10, top: 20, right: 220, bottom: 180, width: 210, height: 160,
+      left: 10,
+      top: 20,
+      right: 220,
+      bottom: 180,
+      width: 210,
+      height: 160,
     })
   })
 
@@ -27,15 +32,18 @@ describe('marqueeSelection', () => {
   })
 
   it('hits touching cells in stable item order and excludes gaps', () => {
-    expect(intersectingGridIndexes(normalizeMarquee({ x: 100, y: 0 }, { x: 112, y: 80 }), geometry))
-      .toEqual([0, 1])
-    expect(intersectingGridIndexes(normalizeMarquee({ x: 105, y: 5 }, { x: 107, y: 70 }), geometry))
-      .toEqual([])
+    expect(
+      intersectingGridIndexes(normalizeMarquee({ x: 100, y: 0 }, { x: 112, y: 80 }), geometry),
+    ).toEqual([0, 1])
+    expect(
+      intersectingGridIndexes(normalizeMarquee({ x: 105, y: 5 }, { x: 107, y: 70 }), geometry),
+    ).toEqual([])
   })
 
   it('hits virtual items outside the mounted viewport', () => {
-    expect(intersectingGridIndexes(normalizeMarquee({ x: 0, y: 368 }, { x: 212, y: 448 }), geometry))
-      .toEqual([16, 17])
+    expect(
+      intersectingGridIndexes(normalizeMarquee({ x: 0, y: 368 }, { x: 212, y: 448 }), geometry),
+    ).toEqual([16, 17])
   })
 
   it('clamps edge scrolling to the specified 18 pixel maximum', () => {

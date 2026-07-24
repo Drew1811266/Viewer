@@ -65,20 +65,13 @@ export default function TaskBar({
         .map((candidate) => candidate.id),
     )
     dismissTimers.current.forEach(({ delay, timer }, id) => {
-      if (
-        !cleanTaskIds.has(id) ||
-        hiddenTaskIds.has(id) ||
-        delay !== successDismissMs
-      ) {
+      if (!cleanTaskIds.has(id) || hiddenTaskIds.has(id) || delay !== successDismissMs) {
         window.clearTimeout(timer)
         dismissTimers.current.delete(id)
       }
     })
     candidates
-      .filter(
-        (candidate) =>
-          cleanTaskIds.has(candidate.id) && !hiddenTaskIds.has(candidate.id),
-      )
+      .filter((candidate) => cleanTaskIds.has(candidate.id) && !hiddenTaskIds.has(candidate.id))
       .forEach((candidate) => {
         if (dismissTimers.current.has(candidate.id)) return
         const timer = window.setTimeout(() => {
@@ -93,7 +86,9 @@ export default function TaskBar({
 
   useEffect(
     () => () => {
-      dismissTimers.current.forEach(({ timer }) => window.clearTimeout(timer))
+      dismissTimers.current.forEach(({ timer }) => {
+        window.clearTimeout(timer)
+      })
       dismissTimers.current.clear()
     },
     [],
@@ -147,9 +142,7 @@ export default function TaskBar({
             </span>
             {currentTask.failed > 0 && <span>{currentTask.failed} 项失败</span>}
             {(currentTask.skipped ?? 0) > 0 && <span>{currentTask.skipped} 项跳过</span>}
-            {(currentTask.cancelled ?? 0) > 0 && (
-              <span>{currentTask.cancelled} 项取消</span>
-            )}
+            {(currentTask.cancelled ?? 0) > 0 && <span>{currentTask.cancelled} 项取消</span>}
             {currentTask.cancellable && currentTask.status === 'running' && onCancel && (
               <button type="button" onClick={() => onCancel(currentTask.id)}>
                 取消任务
@@ -175,8 +168,8 @@ export default function TaskBar({
                   <p>没有失败项目。</p>
                 ) : (
                   <ul>
-                    {currentTask.failures.map((failure, index) => (
-                      <li key={`${failure.item}:${failure.code}:${index}`}>
+                    {currentTask.failures.map((failure) => (
+                      <li key={`${failure.item}:${failure.code}`}>
                         <span>{failure.item}</span> <span>{failure.code}</span>
                       </li>
                     ))}

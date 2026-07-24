@@ -33,12 +33,8 @@ export default function DestinationDialog({
   onConfirm,
   onCancel,
 }: DestinationDialogProps) {
-  const [destinationId, setDestinationId] = useState<string | null>(
-    initialDestinationId ?? null,
-  )
-  const [preflight, setPreflight] = useState<FileCommandPreflight | null>(
-    initialPreflight ?? null,
-  )
+  const [destinationId, setDestinationId] = useState<string | null>(initialDestinationId ?? null)
+  const [preflight, setPreflight] = useState<FileCommandPreflight | null>(initialPreflight ?? null)
   const [decisions, setDecisions] = useState<DecisionMap>({})
   const [applyRemainingId, setApplyRemainingId] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
@@ -61,7 +57,11 @@ export default function DestinationDialog({
   )
   const conflictRows = preflight?.rows.filter((row) => row.state === 'conflict') ?? []
   const blockedRows = preflight?.rows.filter((row) => row.state === 'blocked') ?? []
-  const decisionsComplete = conflictsAreResolved(conflictRows.map((row) => row.entityId), decisions, applyRemainingId)
+  const decisionsComplete = conflictsAreResolved(
+    conflictRows.map((row) => row.entityId),
+    decisions,
+    applyRemainingId,
+  )
   const canExecute =
     preflight?.executable === true && blockedRows.length === 0 && decisionsComplete && !busy
 
@@ -116,7 +116,10 @@ export default function DestinationDialog({
       <fieldset className="destination-list">
         <legend>项目内文件夹</legend>
         {folders.map((folder, index) => (
-          <label key={folder.entityId} style={{ paddingLeft: `${folderDepth(folder, folders) * 14}px` }}>
+          <label
+            key={folder.entityId}
+            style={{ paddingLeft: `${folderDepth(folder, folders) * 14}px` }}
+          >
             <input
               ref={index === 0 ? firstFolderRef : undefined}
               type="radio"
@@ -139,13 +142,13 @@ export default function DestinationDialog({
       {message && <p role="alert">{message}</p>}
       {preflight && (
         <section className="conflict-list" aria-label="目标检查结果">
-          <span id={`${controlLabelId}-policy`} className="visually-hidden">冲突处理</span>
+          <span id={`${controlLabelId}-policy`} className="visually-hidden">
+            冲突处理
+          </span>
           <span id={`${controlLabelId}-remaining`} className="visually-hidden">
             应用到剩余冲突
           </span>
-          {conflictRows.length > 0 && (
-            <p>选择“替换”时，现有目标文件会移到 macOS 废纸篓。</p>
-          )}
+          {conflictRows.length > 0 && <p>选择“替换”时，现有目标文件会移到 macOS 废纸篓。</p>}
           {preflight.rows.map((row, index) => {
             const pathLabelId = `${controlLabelId}-path-${index}`
             return (

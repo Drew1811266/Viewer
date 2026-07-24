@@ -78,13 +78,12 @@ describe('FolderTree', () => {
       <FolderTree folders={folders} selectedId={null} onSelect={vi.fn()} />,
     )
 
+    expect(container.querySelector('[data-organization-drop-surface]')).toHaveAttribute(
+      'data-organization-drop-surface',
+      '',
+    )
     expect(
-      container.querySelector('[data-organization-drop-surface]'),
-    ).toHaveAttribute('data-organization-drop-surface', '')
-    expect(
-      screen
-        .getAllByRole('treeitem')
-        .map((row) => row.getAttribute('data-organization-folder-id')),
+      screen.getAllByRole('treeitem').map((row) => row.getAttribute('data-organization-folder-id')),
     ).toEqual(['1', '2', '3', '4'])
   })
 
@@ -99,9 +98,7 @@ describe('FolderTree', () => {
     )
     const target = screen.getByRole('treeitem', { name: 'empty' })
     expect(target).toHaveAttribute('data-drop-mode', 'copy')
-    expect(screen.getByRole('treeitem', { name: 'catalog' })).not.toHaveAttribute(
-      'data-drop-mode',
-    )
+    expect(screen.getByRole('treeitem', { name: 'catalog' })).not.toHaveAttribute('data-drop-mode')
   })
 
   it('renders only the matching controlled invalid drop target and clears declaratively', () => {

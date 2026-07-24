@@ -1,5 +1,5 @@
-import { useEffect, useId, useRef } from 'react'
 import type { ReactNode, RefObject } from 'react'
+import { useEffect, useId, useRef } from 'react'
 
 interface ModalSheetProps {
   title: string
@@ -24,7 +24,8 @@ export default function ModalSheet({
 
   useEffect(() => {
     const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null
-    const target = initialFocusRef?.current ?? dialogRef.current?.querySelector<HTMLElement>(FOCUSABLE)
+    const target =
+      initialFocusRef?.current ?? dialogRef.current?.querySelector<HTMLElement>(FOCUSABLE)
     target?.focus()
     return () => previous?.focus()
   }, [initialFocusRef])

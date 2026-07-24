@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type {
   BrowserFile,
   ImageRepresentation,
@@ -138,14 +138,7 @@ export default function ComparePane({
       controller.abort()
       if (proxyRevision.current === revision) proxyRevision.current += 1
     }
-  }, [
-    file.entityId,
-    file.modifiedNs,
-    file.size,
-    proxyQuarterTurn,
-    requestImage,
-    viewport,
-  ])
+  }, [file.entityId, file.modifiedNs, file.size, proxyQuarterTurn, requestImage, viewport])
 
   useEffect(() => {
     if (!useOriginal) {
@@ -159,11 +152,7 @@ export default function ComparePane({
     const entityId = file.entityId
     const sourceRevision = fileSourceRevision(file)
     setOriginalError(null)
-    void requestImage(
-      fileRef.current,
-      { kind: 'original100_percent' },
-      controller.signal,
-    ).then(
+    void requestImage(fileRef.current, { kind: 'original100_percent' }, controller.signal).then(
       (image) => {
         if (originalRevision.current !== revision) return
         setOriginal({ entityId, sourceRevision, image })
@@ -244,16 +233,17 @@ export default function ComparePane({
     proxyQuarterTurn,
   )
   const geometry = displayGeometry(file, representation, viewport, transform)
-  const imageStyle: CSSProperties = geometry === null
-    ? {}
-    : {
-        width: geometry.baseWidth,
-        height: geometry.baseHeight,
-        maxWidth: 'none',
-        maxHeight: 'none',
-        transform: `translate(${cssNumber((0.5 - transform.centerX) * geometry.displayedWidth)}px, ${cssNumber((0.5 - transform.centerY) * geometry.displayedHeight)}px) rotate(${transform.rotation}deg) scale(${transform.scale})`,
-      }
-  const error = useOriginal ? originalError ?? proxyError : proxyError
+  const imageStyle: CSSProperties =
+    geometry === null
+      ? {}
+      : {
+          width: geometry.baseWidth,
+          height: geometry.baseHeight,
+          maxWidth: 'none',
+          maxHeight: 'none',
+          transform: `translate(${cssNumber((0.5 - transform.centerX) * geometry.displayedWidth)}px, ${cssNumber((0.5 - transform.centerY) * geometry.displayedHeight)}px) rotate(${transform.rotation}deg) scale(${transform.scale})`,
+        }
+  const error = useOriginal ? (originalError ?? proxyError) : proxyError
 
   return (
     <article
@@ -285,12 +275,7 @@ export default function ComparePane({
         onPointerCancel={endPan}
       >
         {representation && (
-          <img
-            src={representation.url}
-            alt={file.name}
-            draggable={false}
-            style={imageStyle}
-          />
+          <img src={representation.url} alt={file.name} draggable={false} style={imageStyle} />
         )}
         {representation === null && error === null && <span role="status">正在载入…</span>}
       </div>
@@ -363,11 +348,7 @@ function displayGeometry(
   const rotated = transform.rotation === 90 || transform.rotation === 270
   const rotatedWidth = rotated ? height : width
   const rotatedHeight = rotated ? width : height
-  const fitScale = Math.min(
-    1,
-    viewport.width / rotatedWidth,
-    viewport.height / rotatedHeight,
-  )
+  const fitScale = Math.min(1, viewport.width / rotatedWidth, viewport.height / rotatedHeight)
   if (!Number.isFinite(fitScale) || fitScale <= 0) return null
   return {
     baseWidth: width * fitScale,

@@ -12,17 +12,11 @@ describe('workspace style contracts', () => {
 
     const secondaryColor = winningColor(
       [...baseRules, ...darkRules],
-      new Set([
-        '.radial-menu-button',
-        '.radial-menu-button[data-level="secondary"]',
-      ]),
+      new Set(['.radial-menu-button', '.radial-menu-button[data-level="secondary"]']),
     )
     const destructiveColor = winningColor(
       [...baseRules, ...darkRules],
-      new Set([
-        '.radial-menu-button',
-        '.radial-menu-button[data-tone="destructive"]',
-      ]),
+      new Set(['.radial-menu-button', '.radial-menu-button[data-tone="destructive"]']),
     )
 
     expect(secondaryColor).toBe('#f3f5f7')
@@ -121,9 +115,7 @@ describe('workspace style contracts', () => {
     const rules = parseRules(appCss)
     const row = rules.find((rule) => rule.selector === '.folder-filmstrip-row')
     const filmstrip = rules.find((rule) => rule.selector === '.folder-filmstrip')
-    const thumbnail = rules.find(
-      (rule) => rule.selector === '.folder-filmstrip-thumbnail',
-    )
+    const thumbnail = rules.find((rule) => rule.selector === '.folder-filmstrip-thumbnail')
 
     expect(row?.declarations).toMatchObject({
       display: 'grid',
@@ -224,9 +216,7 @@ function winningDeclaration(
 ): string {
   const candidates = rules
     .map((rule, cascadeOrder) => ({ ...rule, cascadeOrder }))
-    .filter(
-      (rule) => matchingSelectors.has(rule.selector) && rule.declarations[property],
-    )
+    .filter((rule) => matchingSelectors.has(rule.selector) && rule.declarations[property])
   candidates.sort((left, right) => {
     const specificity = compareSpecificity(
       selectorSpecificity(left.selector),
@@ -239,12 +229,10 @@ function winningDeclaration(
 
 function selectorSpecificity(selector: string): [number, number, number] {
   const ids = selector.match(/#[\w-]+/g)?.length ?? 0
-  const classesAndAttributes =
-    selector.match(/\.[\w-]+|\[[^\]]+\]|:(?!:)[\w-]+/g)?.length ?? 0
+  const classesAndAttributes = selector.match(/\.[\w-]+|\[[^\]]+\]|:(?!:)[\w-]+/g)?.length ?? 0
   const elements =
-    selector
-      .replace(/#[\w-]+|\.[\w-]+|\[[^\]]+\]|:{1,2}[\w-]+/g, ' ')
-      .match(/[a-z][\w-]*/gi)?.length ?? 0
+    selector.replace(/#[\w-]+|\.[\w-]+|\[[^\]]+\]|:{1,2}[\w-]+/g, ' ').match(/[a-z][\w-]*/gi)
+      ?.length ?? 0
   return [ids, classesAndAttributes, elements]
 }
 
@@ -268,7 +256,9 @@ function contrastRatio(foreground: string, background: string): number {
 }
 
 function relativeLuminance(color: string): number {
-  const channels = [1, 3, 5].map((index) => Number.parseInt(color.slice(index, index + 2), 16) / 255)
+  const channels = [1, 3, 5].map(
+    (index) => Number.parseInt(color.slice(index, index + 2), 16) / 255,
+  )
   const [red, green, blue] = channels.map((channel) =>
     channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4,
   )

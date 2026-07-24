@@ -51,6 +51,7 @@ This inventory records the direct third-party dependencies in the Viewer 0.1 loc
 | --- | --- | --- | --- | --- | --- |
 | `tauri-build` | 2.6.3 | Apache-2.0 OR MIT | Generate Tauri build metadata and resources | [tauri-apps/tauri](https://github.com/tauri-apps/tauri) | No, build only |
 | `@tauri-apps/cli` | 2.11.4 | Apache-2.0 OR MIT | Development and macOS packaging CLI | [tauri-apps/tauri](https://github.com/tauri-apps/tauri) | No, build only |
+| `@biomejs/biome` | 2.5.5 | MIT | Strict frontend linting and deterministic formatting | [biomejs/biome](https://github.com/biomejs/biome) | No, build only |
 | `@types/node` | 24.13.3 | MIT | Node.js type declarations | [DefinitelyTyped/DefinitelyTyped](https://github.com/DefinitelyTyped/DefinitelyTyped) | No, types only |
 | `@types/react` | 19.2.17 | MIT | React type declarations | [DefinitelyTyped/DefinitelyTyped](https://github.com/DefinitelyTyped/DefinitelyTyped) | No, types only |
 | `@types/react-dom` | 19.2.3 | MIT | React DOM type declarations | [DefinitelyTyped/DefinitelyTyped](https://github.com/DefinitelyTyped/DefinitelyTyped) | No, types only |

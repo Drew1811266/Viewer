@@ -197,9 +197,7 @@ describe('ContentBrowser', () => {
     fireEvent.keyDown(grid, { key: 'a', metaKey: true })
 
     expect(
-      screen
-        .getAllByRole('option')
-        .filter((item) => item.getAttribute('aria-selected') === 'true'),
+      screen.getAllByRole('option').filter((item) => item.getAttribute('aria-selected') === 'true'),
     ).toHaveLength(4)
   })
 
@@ -209,9 +207,7 @@ describe('ContentBrowser', () => {
     fireEvent.click(screen.getByRole('button', { name: '全选当前文件夹' }))
 
     expect(
-      screen
-        .getAllByRole('option')
-        .filter((item) => item.getAttribute('aria-selected') === 'true'),
+      screen.getAllByRole('option').filter((item) => item.getAttribute('aria-selected') === 'true'),
     ).toHaveLength(4)
   })
 
@@ -300,22 +296,15 @@ describe('ContentBrowser', () => {
 
   it('shows text marker labels and preserves selection when marker projections refresh', () => {
     const changed = vi.fn()
-    const rendered = render(
-      <ContentBrowser workspace={workspace(2)} onSelectionChange={changed} />,
-    )
+    const rendered = render(<ContentBrowser workspace={workspace(2)} onSelectionChange={changed} />)
     fireEvent.click(screen.getByRole('option', { name: '1.jpg' }))
     const updated = workspace(2)
     updated.images[0] = {
       ...updated.images[0]!,
       marker: { reviewState: 'keep', favorite: true },
     }
-    rendered.rerender(
-      <ContentBrowser workspace={updated} onSelectionChange={changed} />,
-    )
-    expect(screen.getByRole('option', { name: '1.jpg' })).toHaveAttribute(
-      'aria-selected',
-      'true',
-    )
+    rendered.rerender(<ContentBrowser workspace={updated} onSelectionChange={changed} />)
+    expect(screen.getByRole('option', { name: '1.jpg' })).toHaveAttribute('aria-selected', 'true')
     expect(screen.getByText('保留 · 收藏')).toBeVisible()
   })
 
@@ -356,9 +345,7 @@ describe('ContentBrowser', () => {
     fireEvent(exportSurface, event)
 
     expect(event.defaultPrevented).toBe(true)
-    expect(exportFiles).toHaveBeenCalledWith([
-      name === 'prompt.md' ? 'text-1' : 'image-2',
-    ])
+    expect(exportFiles).toHaveBeenCalledWith([name === 'prompt.md' ? 'text-1' : 'image-2'])
     expect(setData).not.toHaveBeenCalled()
 
     const handleDrag = createEvent.dragStart(handle)
@@ -522,9 +509,7 @@ describe('ContentBrowser', () => {
     fireEvent.click(screen.getByRole('option', { name: '2.jpg' }), { metaKey: true })
     const refreshed = workspace(3)
     refreshed.images = refreshed.images.filter((file) => file.entityId !== 'image-1')
-    rendered.rerender(
-      <ContentBrowser workspace={refreshed} onOrganizationPointerInput={start} />,
-    )
+    rendered.rerender(<ContentBrowser workspace={refreshed} onOrganizationPointerInput={start} />)
 
     const handle = screen.getByRole('button', { name: '整理 2.jpg' })
     fireEvent.pointerDown(handle, {
@@ -655,9 +640,7 @@ describe('ContentBrowser', () => {
     })
 
     expect(request).toHaveBeenCalledTimes(1)
-    expect(request.mock.calls[0]?.[0]).toEqual(
-      expect.objectContaining({ pointerId: 73 }),
-    )
+    expect(request.mock.calls[0]?.[0]).toEqual(expect.objectContaining({ pointerId: 73 }))
   })
 
   it('routes secondary and Control-click input on the organization handle to the radial menu', () => {

@@ -1,6 +1,4 @@
 import { useCallback, useEffect, useReducer, useRef } from 'react'
-import type { ViewerBridge } from '../api/viewer'
-import { safeUserMessage } from '../api/viewer'
 import type {
   CloseChoice,
   CloseRequestOutcome,
@@ -18,6 +16,8 @@ import type {
   SearchQueryModel,
   SearchSort,
 } from '../api/types'
+import type { ViewerBridge } from '../api/viewer'
+import { safeUserMessage } from '../api/viewer'
 import type { SearchFilterChip } from './viewerReducer'
 import { initialViewerState, viewerReducer } from './viewerReducer'
 
@@ -78,20 +78,13 @@ export function useViewerController(bridge: ViewerBridge) {
 
   useEffect(() => {
     const project = state.project
-    if (
-      project === null ||
-      state.status !== 'active' ||
-      state.search.queryVersion === 0
-    ) {
+    if (project === null || state.status !== 'active' || state.search.queryVersion === 0) {
       return
     }
     const delay = state.search.schedule === 'debounced' ? 120 : 0
     const query = state.search.query
     const offset = state.search.offset
-    const timer = window.setTimeout(
-      () => void executeSearch(project, query, offset),
-      delay,
-    )
+    const timer = window.setTimeout(() => void executeSearch(project, query, offset), delay)
     return () => window.clearTimeout(timer)
   }, [
     executeSearch,
@@ -237,39 +230,43 @@ export function useViewerController(bridge: ViewerBridge) {
     }
   }, [])
 
-  const requestProjectClose = useCallback(async (
-    choice?: CloseChoice,
-    closedMessage?: string,
-    target: CloseTarget = 'project',
-  ): Promise<CloseRequestOutcome | undefined> => {
-    if (
-      stateRef.current.project === null ||
-      stateRef.current.status === 'closing' ||
-      closeRequestPendingRef.current
-    ) return
-    closeRequestPendingRef.current = true
-    dispatch({ type: 'project_close_requested' })
-    try {
-      const outcome = await bridge.closeProject(choice, target)
-      if (outcome === 'stayed') {
-        dispatch({ type: 'project_close_stayed' })
-        return outcome
-      }
-      resetSessionRequests()
-      dispatch({ type: 'project_closed', message: closedMessage })
-      return outcome
-    } catch (error) {
-      if (isTerminalCloseCleanupFailure(error)) {
+  const requestProjectClose = useCallback(
+    async (
+      choice?: CloseChoice,
+      closedMessage?: string,
+      target: CloseTarget = 'project',
+    ): Promise<CloseRequestOutcome | undefined> => {
+      if (
+        stateRef.current.project === null ||
+        stateRef.current.status === 'closing' ||
+        closeRequestPendingRef.current
+      )
+        return
+      closeRequestPendingRef.current = true
+      dispatch({ type: 'project_close_requested' })
+      try {
+        const outcome = await bridge.closeProject(choice, target)
+        if (outcome === 'stayed') {
+          dispatch({ type: 'project_close_stayed' })
+          return outcome
+        }
         resetSessionRequests()
-        dispatch({ type: 'project_closed', message: safeUserMessage(error) })
-        return 'closed'
+        dispatch({ type: 'project_closed', message: closedMessage })
+        return outcome
+      } catch (error) {
+        if (isTerminalCloseCleanupFailure(error)) {
+          resetSessionRequests()
+          dispatch({ type: 'project_closed', message: safeUserMessage(error) })
+          return 'closed'
+        }
+        dispatch({ type: 'project_close_failed', message: safeUserMessage(error) })
+        return undefined
+      } finally {
+        closeRequestPendingRef.current = false
       }
-      dispatch({ type: 'project_close_failed', message: safeUserMessage(error) })
-      return undefined
-    } finally {
-      closeRequestPendingRef.current = false
-    }
-  }, [bridge, resetSessionRequests])
+    },
+    [bridge, resetSessionRequests],
+  )
 
   const closeProject = useCallback(
     (choice?: CloseChoice, target: CloseTarget = 'project') =>
@@ -540,9 +537,7 @@ export function useViewerController(bridge: ViewerBridge) {
   const setReviewState = useCallback(
     async (reviewState: ReviewState | null, entityIdsOverride?: string[]) => {
       const current = stateRef.current
-      const requestedEntityIds = uniqueEntityIds(
-        entityIdsOverride ?? current.selectedEntityIds,
-      )
+      const requestedEntityIds = uniqueEntityIds(entityIdsOverride ?? current.selectedEntityIds)
       const targetEntityIds = current.search.showResults
         ? requestedEntityIds.filter((entityId) =>
             current.search.visibleEntityIds.includes(entityId),
@@ -589,53 +584,54 @@ export function useViewerController(bridge: ViewerBridge) {
     [bridge, refreshProjection, refreshSelectionInfo],
   )
 
-  const toggleFavorite = useCallback(async (entityIdsOverride?: string[]) => {
-    const current = stateRef.current
-    const requestedEntityIds = uniqueEntityIds(
-      entityIdsOverride ?? current.selectedEntityIds,
-    )
-    const targetEntityIds = current.search.showResults
-      ? requestedEntityIds.filter((entityId) =>
-          current.search.visibleEntityIds.includes(entityId),
-        )
-      : requestedEntityIds
-    if (
-      current.status !== 'active' ||
-      current.project === null ||
-      current.project.access === 'read_only' ||
-      operationRequestPendingRef.current ||
-      undoRequestPendingRef.current ||
-      activeBatchRef.current !== null ||
-      targetEntityIds.length === 0
-    ) {
-      return
-    }
-    try {
-      const result = await bridge.toggleFavorite({
-        sessionId: current.project.sessionId,
-        generation: current.project.generation,
-        entityIds: targetEntityIds,
-      })
-      dispatch({
-        type: 'marker_changes_applied',
-        sessionId: current.project.sessionId,
-        generation: current.project.generation,
-        changes: result.changes,
-      })
-      const desired = desiredProjectionRef.current
-      await Promise.all([
-        refreshSelectionInfo(current.project, current.selectedEntityIds),
-        refreshProjection(
-          current.project,
-          desired.selectedFolderId,
-          desired.selectedFolderPath,
-          desired.showingAggregate,
-        ),
-      ])
-    } catch (error) {
-      dispatch({ type: 'input_rejected', message: safeUserMessage(error) })
-    }
-  }, [bridge, refreshProjection, refreshSelectionInfo])
+  const toggleFavorite = useCallback(
+    async (entityIdsOverride?: string[]) => {
+      const current = stateRef.current
+      const requestedEntityIds = uniqueEntityIds(entityIdsOverride ?? current.selectedEntityIds)
+      const targetEntityIds = current.search.showResults
+        ? requestedEntityIds.filter((entityId) =>
+            current.search.visibleEntityIds.includes(entityId),
+          )
+        : requestedEntityIds
+      if (
+        current.status !== 'active' ||
+        current.project === null ||
+        current.project.access === 'read_only' ||
+        operationRequestPendingRef.current ||
+        undoRequestPendingRef.current ||
+        activeBatchRef.current !== null ||
+        targetEntityIds.length === 0
+      ) {
+        return
+      }
+      try {
+        const result = await bridge.toggleFavorite({
+          sessionId: current.project.sessionId,
+          generation: current.project.generation,
+          entityIds: targetEntityIds,
+        })
+        dispatch({
+          type: 'marker_changes_applied',
+          sessionId: current.project.sessionId,
+          generation: current.project.generation,
+          changes: result.changes,
+        })
+        const desired = desiredProjectionRef.current
+        await Promise.all([
+          refreshSelectionInfo(current.project, current.selectedEntityIds),
+          refreshProjection(
+            current.project,
+            desired.selectedFolderId,
+            desired.selectedFolderPath,
+            desired.showingAggregate,
+          ),
+        ])
+      } catch (error) {
+        dispatch({ type: 'input_rejected', message: safeUserMessage(error) })
+      }
+    },
+    [bridge, refreshProjection, refreshSelectionInfo],
+  )
 
   const previewRename = useCallback(
     async (entityIds: string[], rules: RenameRules) => {
@@ -644,7 +640,8 @@ export function useViewerController(bridge: ViewerBridge) {
         current.status !== 'active' ||
         current.project === null ||
         current.project.access === 'read_only'
-      ) return null
+      )
+        return null
       const project = current.project
       const projectEpoch = projectEpochRef.current
       try {
@@ -680,7 +677,8 @@ export function useViewerController(bridge: ViewerBridge) {
         current.status !== 'active' ||
         current.project === null ||
         current.project.access === 'read_only'
-      ) return null
+      )
+        return null
       const project = current.project
       const projectEpoch = projectEpochRef.current
       try {
@@ -909,7 +907,8 @@ export function useViewerController(bridge: ViewerBridge) {
           stateRef.current.project?.sessionId !== project.sessionId ||
           stateRef.current.project.generation !== project.generation ||
           stateRef.current.operation.active?.batchId !== batchId
-        ) return null
+        )
+          return null
         dispatch({
           type: 'operation_results_loaded',
           sessionId: project.sessionId,
@@ -941,7 +940,8 @@ export function useViewerController(bridge: ViewerBridge) {
       operationRequestPendingRef.current ||
       undoRequestPendingRef.current ||
       activeBatchRef.current !== null
-    ) return null
+    )
+      return null
     undoRequestPendingRef.current = true
     dispatch({ type: 'operation_request_pending', pending: true })
     try {

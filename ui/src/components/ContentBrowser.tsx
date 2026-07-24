@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { DragEvent, KeyboardEvent, MouseEvent, PointerEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { BrowserFile, FolderWorkspace } from '../api/types'
 import type { OrganizationPointerInput } from '../state/useOrganizationPointerDrag'
 import type { RadialMenuRequest } from './RadialFileMenu'
-import VirtualGrid from './VirtualGrid'
-import type { MarqueeSelectionChange } from './VirtualGrid'
 import type { TaskFeedback } from './TaskBar'
+import type { MarqueeSelectionChange } from './VirtualGrid'
+import VirtualGrid from './VirtualGrid'
 
 type ContentWorkspace = Extract<FolderWorkspace, { workspace: 'content' }>
 type GridSize = 'small' | 'medium' | 'large'
@@ -14,11 +14,7 @@ interface ContentBrowserProps {
   workspace: ContentWorkspace
   currentPath?: string
   viewportHeight?: number
-  requestThumbnail?: (
-    file: BrowserFile,
-    maxPixels: number,
-    scaleMilli: number,
-  ) => Promise<string>
+  requestThumbnail?: (file: BrowserFile, maxPixels: number, scaleMilli: number) => Promise<string>
   onPreview?: (file: BrowserFile) => void
   onSelectionChange?: (files: BrowserFile[]) => void
   onThumbnailTaskChange?: (task: TaskFeedback | null) => void
@@ -77,10 +73,7 @@ export default function ContentBrowser({
     () => [...workspace.images, ...workspace.textFiles],
     [workspace.images, workspace.textFiles],
   )
-  const fileById = useMemo(
-    () => new Map(allFiles.map((file) => [file.entityId, file])),
-    [allFiles],
-  )
+  const fileById = useMemo(() => new Map(allFiles.map((file) => [file.entityId, file])), [allFiles])
 
   useEffect(() => {
     const ids = new Set(allFiles.map((file) => file.entityId))
@@ -112,10 +105,7 @@ export default function ContentBrowser({
       appliedRepairId.current = null
       return
     }
-    if (
-      appliedRepairId.current === repairSelectionId ||
-      !fileById.has(repairSelectionId)
-    ) {
+    if (appliedRepairId.current === repairSelectionId || !fileById.has(repairSelectionId)) {
       return
     }
     appliedRepairId.current = repairSelectionId
@@ -136,8 +126,7 @@ export default function ContentBrowser({
     onThumbnailTaskChange({
       id: 'visible-thumbnails',
       label: '加载可见缩略图',
-      status:
-        settled < work.requested ? 'running' : work.failed > 0 ? 'failed' : 'complete',
+      status: settled < work.requested ? 'running' : work.failed > 0 ? 'failed' : 'complete',
       requested: work.requested,
       completed: work.completed,
       failed: work.failed,
@@ -176,9 +165,7 @@ export default function ContentBrowser({
 
   function commitSelection(next: Set<string>) {
     setSelected(next)
-    onSelectionChange?.(
-      allFiles.filter((file) => next.has(file.entityId)),
-    )
+    onSelectionChange?.(allFiles.filter((file) => next.has(file.entityId)))
   }
 
   function updateMarqueeSelection(change: MarqueeSelectionChange) {
@@ -221,7 +208,10 @@ export default function ContentBrowser({
     commitSelection(new Set(allFiles.map((file) => file.entityId)))
   }
 
-  function selectFile(file: BrowserFile, event: MouseEvent) {
+  function selectFile(
+    file: BrowserFile,
+    event: MouseEvent<HTMLElement> | KeyboardEvent<HTMLElement>,
+  ) {
     event.currentTarget.closest<HTMLElement>('[role="listbox"]')?.focus()
     setActiveId(file.entityId)
     if (event.shiftKey && anchorId.current !== null) {
@@ -229,7 +219,10 @@ export default function ContentBrowser({
       const target = allFiles.findIndex((candidate) => candidate.entityId === file.entityId)
       if (anchor >= 0 && target >= 0) {
         const next = new Set(selected)
-        for (const candidate of allFiles.slice(Math.min(anchor, target), Math.max(anchor, target) + 1)) {
+        for (const candidate of allFiles.slice(
+          Math.min(anchor, target),
+          Math.max(anchor, target) + 1,
+        )) {
           next.add(candidate.entityId)
         }
         commitSelection(next)
@@ -265,8 +258,7 @@ export default function ContentBrowser({
     pointerId: number | null,
   ) {
     if (onRadialMenuRequest === undefined) return
-    const returnFocusTarget =
-      eventTarget.closest<HTMLElement>('[role="listbox"]') ?? eventTarget
+    const returnFocusTarget = eventTarget.closest<HTMLElement>('[role="listbox"]') ?? eventTarget
     const contextSelection = selected.has(file.entityId) ? selected : new Set([file.entityId])
     if (!selected.has(file.entityId)) {
       anchorId.current = file.entityId
@@ -310,16 +302,10 @@ export default function ContentBrowser({
     event.preventDefault()
     event.stopPropagation()
     if (onRadialMenuRequest === undefined) return
-    const alreadyHandled =
-      radialContextDeduplication.current?.entityId === file.entityId
+    const alreadyHandled = radialContextDeduplication.current?.entityId === file.entityId
     clearRadialContextDeduplication()
     if (alreadyHandled) return
-    requestRadialMenu(
-      file,
-      event.currentTarget,
-      { x: event.clientX, y: event.clientY },
-      null,
-    )
+    requestRadialMenu(file, event.currentTarget, { x: event.clientX, y: event.clientY }, null)
   }
 
   function startFinderDrag(file: BrowserFile, event: DragEvent<HTMLElement>) {
@@ -404,14 +390,13 @@ export default function ContentBrowser({
       if (file) {
         setActiveId(file.entityId)
         if (event.shiftKey && anchorId.current !== null) {
-          const anchor = allFiles.findIndex(
-            (candidate) => candidate.entityId === anchorId.current,
-          )
-          const target = allFiles.findIndex(
-            (candidate) => candidate.entityId === file.entityId,
-          )
+          const anchor = allFiles.findIndex((candidate) => candidate.entityId === anchorId.current)
+          const target = allFiles.findIndex((candidate) => candidate.entityId === file.entityId)
           const next = new Set(selected)
-          for (const candidate of allFiles.slice(Math.min(anchor, target), Math.max(anchor, target) + 1)) {
+          for (const candidate of allFiles.slice(
+            Math.min(anchor, target),
+            Math.max(anchor, target) + 1,
+          )) {
             next.add(candidate.entityId)
           }
           commitSelection(next)
@@ -445,7 +430,10 @@ export default function ContentBrowser({
           <div>
             <label>
               缩略图大小
-              <select value={gridSize} onChange={(event) => setGridSize(event.target.value as GridSize)}>
+              <select
+                value={gridSize}
+                onChange={(event) => setGridSize(event.target.value as GridSize)}
+              >
                 <option value="small">小</option>
                 <option value="medium">中</option>
                 <option value="large">大</option>
@@ -510,16 +498,24 @@ export default function ContentBrowser({
             onContextMenu={(event) => openRadialMenuFromContext(file, event)}
             onClick={(event) => selectFile(file, event)}
             onDoubleClick={() => onPreview?.(file)}
+            onKeyDown={(event) => {
+              if (event.key !== 'Enter' && event.key !== ' ') return
+              event.preventDefault()
+              selectFile(file, event)
+            }}
           >
             <div
               className="file-export-surface"
+              role="group"
               draggable
               title="拖到 Finder"
               onDragStart={(event) => startFinderDrag(file, event)}
             >
               <span className="text-file-name">{file.name}</span>
               <span className="text-file-path">{file.relativePath}</span>
-              {markerLabel(file.marker) && <span className="file-marker">{markerLabel(file.marker)}</span>}
+              {markerLabel(file.marker) && (
+                <span className="file-marker">{markerLabel(file.marker)}</span>
+              )}
             </div>
             <OrganizationDragHandle
               file={file}
@@ -560,7 +556,7 @@ function ImageCell({
   maxPixels: number
   scaleMilli: number
   loadThumbnail: (file: BrowserFile, maxPixels: number, scaleMilli: number) => Promise<string>
-  onClick: (file: BrowserFile, event: MouseEvent) => void
+  onClick: (file: BrowserFile, event: MouseEvent<HTMLElement> | KeyboardEvent<HTMLElement>) => void
   onPreview: (file: BrowserFile) => void
   onRadialMenuPointerDown: (file: BrowserFile, event: PointerEvent<HTMLElement>) => void
   onRadialMenuContextMenu: (file: BrowserFile, event: MouseEvent<HTMLElement>) => void
@@ -596,15 +592,22 @@ function ImageCell({
       id={`file-${file.entityId}`}
       aria-label={file.name}
       aria-selected={selected}
+      tabIndex={-1}
       data-active={active || undefined}
       className="image-cell"
       onPointerDown={(event) => onRadialMenuPointerDown(file, event)}
       onContextMenu={(event) => onRadialMenuContextMenu(file, event)}
       onClick={(event) => onClick(file, event)}
       onDoubleClick={() => onPreview(file)}
+      onKeyDown={(event) => {
+        if (event.key !== 'Enter' && event.key !== ' ') return
+        event.preventDefault()
+        onClick(file, event)
+      }}
     >
       <div
         className="file-export-surface"
+        role="group"
         draggable
         title="拖到 Finder"
         onDragStart={(event) => onFinderDragStart(file, event)}
@@ -613,11 +616,13 @@ function ImageCell({
           {url ? (
             <img src={url} alt="" />
           ) : (
-            <span aria-label={failed ? '缩略图不可用' : '缩略图加载中'} />
+            <span role="img" aria-label={failed ? '缩略图不可用' : '缩略图加载中'} />
           )}
         </div>
         <span>{file.name}</span>
-        {markerLabel(file.marker) && <span className="file-marker">{markerLabel(file.marker)}</span>}
+        {markerLabel(file.marker) && (
+          <span className="file-marker">{markerLabel(file.marker)}</span>
+        )}
       </div>
       <OrganizationDragHandle
         file={file}

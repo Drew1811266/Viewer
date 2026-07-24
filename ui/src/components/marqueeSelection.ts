@@ -1,8 +1,4 @@
-import {
-  pointDistance,
-  verticalEdgeScrollDelta,
-  type PointerPoint,
-} from './pointerGeometry'
+import { type PointerPoint, pointDistance, verticalEdgeScrollDelta } from './pointerGeometry'
 
 export type MarqueePoint = PointerPoint
 export const marqueeDistance = pointDistance

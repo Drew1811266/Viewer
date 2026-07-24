@@ -46,7 +46,8 @@ export default function OperationResults({
       </ul>
       <footer>
         <span>
-          {page.total === 0 ? 0 : page.offset + 1}–{Math.min(page.total, displayedEnd)} / {page.total}
+          {page.total === 0 ? 0 : page.offset + 1}–{Math.min(page.total, displayedEnd)} /{' '}
+          {page.total}
         </span>
         <button
           type="button"

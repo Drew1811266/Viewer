@@ -1,35 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from 'react'
-import type { ViewerBridge } from './api/viewer'
-import { tauriViewerBridge } from './api/viewer'
-import EmptyProject from './components/EmptyProject'
-import BatchRenameDialog from './components/BatchRenameDialog'
-import ContentBrowser from './components/ContentBrowser'
-import CompareWorkspace from './components/CompareWorkspace'
-import CloseOperationDialog from './components/CloseOperationDialog'
-import DestinationDialog from './components/DestinationDialog'
-import FolderOverview from './components/FolderOverview'
-import FolderTree from './components/FolderTree'
-import ImagePreview from './components/ImagePreview'
-import InfoOverlay from './components/InfoOverlay'
-import OperationResults from './components/OperationResults'
-import RadialFileMenu from './components/RadialFileMenu'
-import type { RadialMenuRequest } from './components/RadialFileMenu'
-import { buildRadialMenuModel } from './components/radialMenuModel'
-import type { RadialLeafAction } from './components/radialMenuModel'
-import RenameDialog from './components/RenameDialog'
-import ReadOnlyBanner from './components/ReadOnlyBanner'
-import SearchResults from './components/SearchResults'
-import SearchToolbar from './components/SearchToolbar'
-import TaskBar from './components/TaskBar'
-import type { TaskFeedback } from './components/TaskBar'
-import TextPreview from './components/TextPreview'
-import TrashConfirmation from './components/TrashConfirmation'
-import { organizationShortcutIsOwned } from './state/organizationShortcutOwnership'
-import { useOrganizationPointerDrag } from './state/useOrganizationPointerDrag'
-import type { OrganizationDragMode } from './state/useOrganizationPointerDrag'
-import useReviewShortcuts from './state/useReviewShortcuts'
-import { useViewerController } from './state/useViewerController'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type {
   BrowserFile,
   ConflictResolution,
@@ -40,6 +10,36 @@ import type {
   RenameRules,
   TextEncoding,
 } from './api/types'
+import type { ViewerBridge } from './api/viewer'
+import { tauriViewerBridge } from './api/viewer'
+import BatchRenameDialog from './components/BatchRenameDialog'
+import CloseOperationDialog from './components/CloseOperationDialog'
+import CompareWorkspace from './components/CompareWorkspace'
+import ContentBrowser from './components/ContentBrowser'
+import DestinationDialog from './components/DestinationDialog'
+import EmptyProject from './components/EmptyProject'
+import FolderOverview from './components/FolderOverview'
+import FolderTree from './components/FolderTree'
+import ImagePreview from './components/ImagePreview'
+import InfoOverlay from './components/InfoOverlay'
+import OperationResults from './components/OperationResults'
+import type { RadialMenuRequest } from './components/RadialFileMenu'
+import RadialFileMenu from './components/RadialFileMenu'
+import ReadOnlyBanner from './components/ReadOnlyBanner'
+import RenameDialog from './components/RenameDialog'
+import type { RadialLeafAction } from './components/radialMenuModel'
+import { buildRadialMenuModel } from './components/radialMenuModel'
+import SearchResults from './components/SearchResults'
+import SearchToolbar from './components/SearchToolbar'
+import type { TaskFeedback } from './components/TaskBar'
+import TaskBar from './components/TaskBar'
+import TextPreview from './components/TextPreview'
+import TrashConfirmation from './components/TrashConfirmation'
+import { organizationShortcutIsOwned } from './state/organizationShortcutOwnership'
+import type { OrganizationDragMode } from './state/useOrganizationPointerDrag'
+import { useOrganizationPointerDrag } from './state/useOrganizationPointerDrag'
+import useReviewShortcuts from './state/useReviewShortcuts'
+import { useViewerController } from './state/useViewerController'
 
 interface AppProps {
   bridge?: ViewerBridge
@@ -108,23 +108,26 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [sidebarWidth, setSidebarWidth] = useState(260)
   const [projectMenuOpen, setProjectMenuOpen] = useState(false)
-  const startSidebarResize = useCallback((event: ReactPointerEvent<HTMLButtonElement>) => {
-    if (sidebarCollapsed || event.button !== 0) return
-    event.preventDefault()
-    const startX = event.clientX
-    const startWidth = sidebarWidth
-    const move = (next: PointerEvent) => {
-      setSidebarWidth(Math.max(200, Math.min(420, startWidth + next.clientX - startX)))
-    }
-    const stop = () => {
-      window.removeEventListener('pointermove', move)
-      window.removeEventListener('pointerup', stop)
-      window.removeEventListener('pointercancel', stop)
-    }
-    window.addEventListener('pointermove', move)
-    window.addEventListener('pointerup', stop)
-    window.addEventListener('pointercancel', stop)
-  }, [sidebarCollapsed, sidebarWidth])
+  const startSidebarResize = useCallback(
+    (event: ReactPointerEvent<HTMLButtonElement>) => {
+      if (sidebarCollapsed || event.button !== 0) return
+      event.preventDefault()
+      const startX = event.clientX
+      const startWidth = sidebarWidth
+      const move = (next: PointerEvent) => {
+        setSidebarWidth(Math.max(200, Math.min(420, startWidth + next.clientX - startX)))
+      }
+      const stop = () => {
+        window.removeEventListener('pointermove', move)
+        window.removeEventListener('pointerup', stop)
+        window.removeEventListener('pointercancel', stop)
+      }
+      window.addEventListener('pointermove', move)
+      window.addEventListener('pointerup', stop)
+      window.addEventListener('pointercancel', stop)
+    },
+    [sidebarCollapsed, sidebarWidth],
+  )
   const [thumbnailTask, setThumbnailTask] = useState<TaskFeedback | null>(null)
   const [textTask, setTextTask] = useState<TaskFeedback | null>(null)
   const [dismissedTasks, setDismissedTasks] = useState<Set<string>>(() => new Set())
@@ -139,29 +142,27 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
   const [radialMenu, setRadialMenu] = useState<RadialMenuSession | null>(null)
   const radialReturnFocusTarget = useRef<HTMLElement | null>(null)
   const radialRequestSequence = useRef(0)
-  const beginRadialSession = useCallback((request: RadialMenuRequest) => {
-    if (state.status !== 'active' || state.project === null) return
-    const returnFocusTarget =
-      radialReturnFocusTarget.current ?? request.returnFocusTarget
-    radialReturnFocusTarget.current = returnFocusTarget
-    radialRequestSequence.current += 1
-    setRadialMenu({
-      ...request,
-      requestId: radialRequestSequence.current,
-      projectIdentity: radialProjectIdentity,
-      returnFocusTarget,
-    })
-  }, [radialProjectIdentity, state.project, state.status])
-  const finishRadialSession = useCallback(
-    (reportedReturnTarget: HTMLElement | null = null) => {
-      setRadialMenu(null)
-      const returnFocusTarget =
-        radialReturnFocusTarget.current ?? reportedReturnTarget
-      radialReturnFocusTarget.current = null
-      if (returnFocusTarget?.isConnected) returnFocusTarget.focus()
+  const beginRadialSession = useCallback(
+    (request: RadialMenuRequest) => {
+      if (state.status !== 'active' || state.project === null) return
+      const returnFocusTarget = radialReturnFocusTarget.current ?? request.returnFocusTarget
+      radialReturnFocusTarget.current = returnFocusTarget
+      radialRequestSequence.current += 1
+      setRadialMenu({
+        ...request,
+        requestId: radialRequestSequence.current,
+        projectIdentity: radialProjectIdentity,
+        returnFocusTarget,
+      })
     },
-    [],
+    [radialProjectIdentity, state.project, state.status],
   )
+  const finishRadialSession = useCallback((reportedReturnTarget: HTMLElement | null = null) => {
+    setRadialMenu(null)
+    const returnFocusTarget = radialReturnFocusTarget.current ?? reportedReturnTarget
+    radialReturnFocusTarget.current = null
+    if (returnFocusTarget?.isConnected) returnFocusTarget.focus()
+  }, [])
   const [dimensions, setDimensions] = useState<
     Record<string, { width: number; height: number } | undefined>
   >({})
@@ -319,9 +320,7 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
   }, [state.compareEntityIds, state.workspace])
   const compareOpen = state.compareEntityIds.length >= 2 && compareFiles.length >= 2
   const compareEntryAvailable =
-    state.workspace?.workspace === 'content' &&
-    !state.search.showResults &&
-    !operationBusy
+    state.workspace?.workspace === 'content' && !state.search.showResults && !operationBusy
   const activeRadialMenu =
     state.status === 'active' && radialMenu?.projectIdentity === radialProjectIdentity
       ? radialMenu
@@ -336,8 +335,8 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
       readOnly: state.project?.access === 'read_only',
       busy: operationBusy,
       compareContextAvailable: compareEntryAvailable,
-      commonReview: reviews.size === 1 ? files[0]?.marker.reviewState ?? null : 'mixed',
-      commonFavorite: favorites.size === 1 ? files[0]?.marker.favorite ?? false : 'mixed',
+      commonReview: reviews.size === 1 ? (files[0]?.marker.reviewState ?? null) : 'mixed',
+      commonFavorite: favorites.size === 1 ? (files[0]?.marker.favorite ?? false) : 'mixed',
     })
   }, [activeRadialMenu, compareEntryAvailable, operationBusy, state.project?.access])
 
@@ -480,15 +479,17 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
         initialPreflight: preflight,
       })
     },
-    [operationBusy, preflightFileCommand, state.project?.access, state.workspace, submitFileCommand],
+    [
+      operationBusy,
+      preflightFileCommand,
+      state.project?.access,
+      state.workspace,
+      submitFileCommand,
+    ],
   )
 
   const isOrganizationDropTargetValid = useCallback(
-    (
-      entityIds: readonly string[],
-      destinationId: string,
-      mode: OrganizationDragMode,
-    ) => {
+    (entityIds: readonly string[], destinationId: string, mode: OrganizationDragMode) => {
       if (state.workspace?.workspace !== 'content') return false
       const destination = state.folders.find((folder) => folder.entityId === destinationId)
       if (!destination) return false
@@ -542,18 +543,16 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
     handlePointerInput: handleOrganizationPointerInput,
     cancel: cancelOrganizationPointerDrag,
   } = useOrganizationPointerDrag({
-    disabled:
-      state.project?.access !== 'read_write' ||
-      operationBusy ||
-      compareOpen,
+    disabled: state.project?.access !== 'read_write' || operationBusy || compareOpen,
     resetKey: organizationDragResetKey,
     isDropTargetValid: isOrganizationDropTargetValid,
     onDrop: dropFiles,
   })
 
-  const [folderOverviewProjectionState, setFolderOverviewProjectionState] = useState(
-    () => ({ projection: state.workspace, sequence: 0 }),
-  )
+  const [folderOverviewProjectionState, setFolderOverviewProjectionState] = useState(() => ({
+    projection: state.workspace,
+    sequence: 0,
+  }))
   let folderOverviewSequence = folderOverviewProjectionState.sequence
   if (folderOverviewProjectionState.projection !== state.workspace) {
     folderOverviewSequence += 1
@@ -602,40 +601,32 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
     setPreviewEntityId(null)
   }, [setPreviewEntityId])
 
-  const openComparison = useCallback((files: BrowserFile[] = selectedFiles) => {
-    if (!compareEntryAvailable) {
-      setCompareStatus(
-        operationBusy
-          ? '请等待当前文件操作完成后再开始对比。'
-          : '请先返回文件夹内容，再选择图片进行对比。',
-      )
-      return
-    }
-    if (
-      files.length < 2 ||
-      files.length > 4 ||
-      !files.every(matchesImage)
-    ) {
-      setCompareStatus('请选择 2–4 张 JPG 或 PNG 图片进行对比。')
-      return
-    }
-    setCompareStatus(null)
-    setActivePreview(null)
-    setPreviewEntityId(null)
-    setCompareEntityIds(files.map((file) => file.entityId))
-  }, [
-    compareEntryAvailable,
-    operationBusy,
-    selectedFiles,
-    setCompareEntityIds,
-    setPreviewEntityId,
-  ])
+  const openComparison = useCallback(
+    (files: BrowserFile[] = selectedFiles) => {
+      if (!compareEntryAvailable) {
+        setCompareStatus(
+          operationBusy
+            ? '请等待当前文件操作完成后再开始对比。'
+            : '请先返回文件夹内容，再选择图片进行对比。',
+        )
+        return
+      }
+      if (files.length < 2 || files.length > 4 || !files.every(matchesImage)) {
+        setCompareStatus('请选择 2–4 张 JPG 或 PNG 图片进行对比。')
+        return
+      }
+      setCompareStatus(null)
+      setActivePreview(null)
+      setPreviewEntityId(null)
+      setCompareEntityIds(files.map((file) => file.entityId))
+    },
+    [compareEntryAvailable, operationBusy, selectedFiles, setCompareEntityIds, setPreviewEntityId],
+  )
 
   const runRadialAction = useCallback(
     (action: RadialLeafAction) => {
       const files =
-        state.status === 'active' &&
-        radialMenu?.projectIdentity === radialProjectIdentity
+        state.status === 'active' && radialMenu?.projectIdentity === radialProjectIdentity
           ? radialMenu.files
           : []
       if (files.length === 0) {
@@ -685,9 +676,7 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
       }
       setCompareEntityIds([])
       if (entityIds.length !== 1 || state.workspace?.workspace !== 'content') return
-      const survivor = state.workspace.images.find(
-        (file) => file.entityId === entityIds[0],
-      )
+      const survivor = state.workspace.images.find((file) => file.entityId === entityIds[0])
       if (survivor !== undefined) openPreview(survivor)
     },
     [openPreview, setCompareEntityIds, state.workspace],
@@ -696,10 +685,7 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
   useEffect(() => {
     if (state.compareEntityIds.length === 0) return
     const liveIds = compareFiles.map((file) => file.entityId)
-    if (
-      liveIds.length !== state.compareEntityIds.length ||
-      liveIds.length < 2
-    ) {
+    if (liveIds.length !== state.compareEntityIds.length || liveIds.length < 2) {
       changeComparedEntities(liveIds)
     }
   }, [changeComparedEntities, compareFiles, state.compareEntityIds])
@@ -824,14 +810,13 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
   }
 
   const activePreviewFiles =
-    activePreview?.files ??
-    (state.workspace?.workspace === 'content' ? state.workspace.images : [])
+    activePreview?.files ?? (state.workspace?.workspace === 'content' ? state.workspace.images : [])
   const activePreviewFile =
     activePreview === null
       ? null
-      : activePreviewFiles.find(
+      : (activePreviewFiles.find(
           (candidate) => candidate.entityId === activePreview.file.entityId,
-        ) ?? activePreview.file
+        ) ?? activePreview.file)
 
   return (
     <main
@@ -965,9 +950,7 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
         <section className="workspace" aria-label="项目内容">
           {state.search.showResults &&
             state.search.page === null &&
-            state.search.status === 'searching' && (
-            <p role="status">正在搜索…</p>
-          )}
+            state.search.status === 'searching' && <p role="status">正在搜索…</p>}
           {state.search.showResults &&
             state.search.page === null &&
             state.search.status === 'error' && <p>搜索未完成，请调整条件或重试。</p>}
@@ -1049,8 +1032,8 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
             } as CSSProperties
           }
         >
-          {organizationDragView.mode === 'copy' ? '复制' : '移动'}{' '}
-          {organizationDragView.itemCount} 项
+          {organizationDragView.mode === 'copy' ? '复制' : '移动'} {organizationDragView.itemCount}{' '}
+          项
         </div>
       )}
       <TaskBar
@@ -1059,9 +1042,7 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
           if (taskId === state.operation.active?.batchId) void cancelOperation()
           else void cancelTask(taskId)
         }}
-        onDismiss={(taskId) =>
-          setDismissedTasks((current) => new Set([...current, taskId]))
-        }
+        onDismiss={(taskId) => setDismissedTasks((current) => new Set([...current, taskId]))}
         onShowResults={(taskId) => setResultsBatchId(taskId)}
       />
       {activeRadialMenu && (

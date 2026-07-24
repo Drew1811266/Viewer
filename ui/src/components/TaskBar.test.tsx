@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
-import TaskBar from './TaskBar'
 import type { TaskFeedback } from './TaskBar'
+import TaskBar from './TaskBar'
 
 const failedScanTask: TaskFeedback = {
   id: 'scan-1',
@@ -226,10 +226,7 @@ describe('TaskBar', () => {
     act(() => vi.runAllTimers())
     expect(screen.queryByText('扫描项目')).not.toBeInTheDocument()
     rendered.rerender(
-      <TaskBar
-        task={{ ...complete, completed: 11, cancelled: 1 }}
-        successDismissMs={1}
-      />,
+      <TaskBar task={{ ...complete, completed: 11, cancelled: 1 }} successDismissMs={1} />,
     )
     expect(screen.getByText('扫描项目')).toBeVisible()
     vi.useRealTimers()

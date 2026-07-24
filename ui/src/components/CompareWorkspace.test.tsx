@@ -1,10 +1,6 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
-import type {
-  BrowserFile,
-  ImageRepresentation,
-  ImageRepresentationRequest,
-} from '../api/types'
+import type { BrowserFile, ImageRepresentation, ImageRepresentationRequest } from '../api/types'
 import CompareWorkspace from './CompareWorkspace'
 
 const files = ['a', 'b', 'c', 'd'].map((id) => image(id, `${id}.jpg`))
@@ -108,17 +104,16 @@ describe('CompareWorkspace', () => {
   })
 
   it('recomputes actual pixels when 100% is requested before dimensions arrive', async () => {
-    const requestImage = vi.fn(
-      (_file: BrowserFile, request: ImageRepresentationRequest) =>
-        request.kind === 'original100_percent'
-          ? Promise.resolve({
-              cacheKey: 'original-a',
-              url: 'viewer-image://localhost/original-a',
-              width: 4_000,
-              height: 3_000,
-              backend: 'image_io' as const,
-            })
-          : new Promise<ImageRepresentation>(() => undefined),
+    const requestImage = vi.fn((_file: BrowserFile, request: ImageRepresentationRequest) =>
+      request.kind === 'original100_percent'
+        ? Promise.resolve({
+            cacheKey: 'original-a',
+            url: 'viewer-image://localhost/original-a',
+            width: 4_000,
+            height: 3_000,
+            backend: 'image_io' as const,
+          })
+        : new Promise<ImageRepresentation>(() => undefined),
     )
     renderWorkspace({ requestImage })
     fireEvent.click(screen.getByRole('button', { name: '100%' }))
@@ -128,47 +123,42 @@ describe('CompareWorkspace', () => {
 
   it('returns the transform to fit when an original exceeds the budget', async () => {
     const status = vi.fn()
-    const requestImage = vi.fn(
-      (_file: BrowserFile, request: ImageRepresentationRequest) =>
-        request.kind === 'original100_percent'
-          ? Promise.reject({ code: 'image_budget_exceeded' })
-          : Promise.resolve({
-              cacheKey: 'proxy',
-              url: 'viewer-image://localhost/proxy',
-              width: 800,
-              height: 600,
-              backend: 'image_io' as const,
-            }),
+    const requestImage = vi.fn((_file: BrowserFile, request: ImageRepresentationRequest) =>
+      request.kind === 'original100_percent'
+        ? Promise.reject({ code: 'image_budget_exceeded' })
+        : Promise.resolve({
+            cacheKey: 'proxy',
+            url: 'viewer-image://localhost/proxy',
+            width: 800,
+            height: 600,
+            backend: 'image_io' as const,
+          }),
     )
     renderWorkspace({ requestImage, onStatus: status })
     await screen.findByRole('img', { name: 'a.jpg' })
     fireEvent.click(screen.getByRole('button', { name: '100%' }))
 
     await waitFor(() => expect(pane('a')).toHaveAttribute('data-scale', '1'))
-    expect(status).toHaveBeenCalledWith(
-      '原图超出安全预览限制，已继续使用适窗代理。',
-    )
+    expect(status).toHaveBeenCalledWith('原图超出安全预览限制，已继续使用适窗代理。')
   })
 
   it('serializes rapid original switches and keeps every pane proxy resident', async () => {
     const firstOriginal = deferred<ImageRepresentation>()
     const secondOriginal = deferred<ImageRepresentation>()
     let originalCalls = 0
-    const requestImage = vi.fn(
-      (file: BrowserFile, request: ImageRepresentationRequest) => {
-        if (request.kind === 'original100_percent') {
-          originalCalls += 1
-          return originalCalls === 1 ? firstOriginal.promise : secondOriginal.promise
-        }
-        return Promise.resolve({
-          cacheKey: `proxy-${file.entityId}`,
-          url: `viewer-image://localhost/proxy-${file.entityId}`,
-          width: 800,
-          height: 600,
-          backend: 'image_io' as const,
-        })
-      },
-    )
+    const requestImage = vi.fn((file: BrowserFile, request: ImageRepresentationRequest) => {
+      if (request.kind === 'original100_percent') {
+        originalCalls += 1
+        return originalCalls === 1 ? firstOriginal.promise : secondOriginal.promise
+      }
+      return Promise.resolve({
+        cacheKey: `proxy-${file.entityId}`,
+        url: `viewer-image://localhost/proxy-${file.entityId}`,
+        width: 800,
+        height: 600,
+        backend: 'image_io' as const,
+      })
+    })
     renderWorkspace({ requestImage })
     await screen.findByRole('img', { name: 'a.jpg' })
     await screen.findByRole('img', { name: 'b.jpg' })
@@ -196,21 +186,19 @@ describe('CompareWorkspace', () => {
     const running = deferred<ImageRepresentation>()
     const latest = deferred<ImageRepresentation>()
     const originalEntityIds: string[] = []
-    const requestImage = vi.fn(
-      (file: BrowserFile, request: ImageRepresentationRequest) => {
-        if (request.kind === 'original100_percent') {
-          originalEntityIds.push(file.entityId)
-          return originalEntityIds.length === 1 ? running.promise : latest.promise
-        }
-        return Promise.resolve({
-          cacheKey: `proxy-${file.entityId}`,
-          url: `viewer-image://localhost/proxy-${file.entityId}`,
-          width: 800,
-          height: 600,
-          backend: 'image_io' as const,
-        })
-      },
-    )
+    const requestImage = vi.fn((file: BrowserFile, request: ImageRepresentationRequest) => {
+      if (request.kind === 'original100_percent') {
+        originalEntityIds.push(file.entityId)
+        return originalEntityIds.length === 1 ? running.promise : latest.promise
+      }
+      return Promise.resolve({
+        cacheKey: `proxy-${file.entityId}`,
+        url: `viewer-image://localhost/proxy-${file.entityId}`,
+        width: 800,
+        height: 600,
+        backend: 'image_io' as const,
+      })
+    })
     renderWorkspace({ requestImage })
     await screen.findByRole('img', { name: 'a.jpg' })
     fireEvent.click(screen.getByRole('button', { name: '100%' }))
@@ -237,9 +225,7 @@ describe('CompareWorkspace', () => {
     fireEvent.focus(pane('b'))
     fireEvent.click(screen.getByRole('button', { name: '放大当前对比' }))
 
-    rendered.rerender(
-      workspace({ files: files.slice(0, 2), onEntityIdsChange: changed }),
-    )
+    rendered.rerender(workspace({ files: files.slice(0, 2), onEntityIdsChange: changed }))
     await waitFor(() =>
       expect(screen.getByRole('region', { name: '图片对比' })).toHaveAttribute(
         'data-layout',

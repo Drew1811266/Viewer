@@ -4,10 +4,10 @@ import { listen } from '@tauri-apps/api/event'
 import { getCurrentWebview } from '@tauri-apps/api/webview'
 import { open } from '@tauri-apps/plugin-dialog'
 import type {
-  CancelOperationRequest,
   BeginFinderDragRequest,
-  CloseChoice,
+  CancelOperationRequest,
   CloseBlockedEvent,
+  CloseChoice,
   CloseRequestOutcome,
   CloseTarget,
   ExecuteFileCommandRequest,
@@ -24,10 +24,10 @@ import type {
   OperationResultsRequest,
   OperationStarted,
   OperationStatusRequest,
-  PreviewRenameRequest,
   PreflightFileCommandRequest,
-  ProjectSnapshot,
+  PreviewRenameRequest,
   ProjectChangedEvent,
+  ProjectSnapshot,
   RenamePreview,
   ScanEvent,
   SearchPage,
@@ -168,9 +168,7 @@ export const tauriViewerBridge: ViewerBridge = {
     return listen<ScanEvent>('viewer://scan-progress', ({ payload }) => handler(payload))
   },
   listenIndexProgress(handler) {
-    return listen<IndexProgressEvent>('viewer://index-progress', ({ payload }) =>
-      handler(payload),
-    )
+    return listen<IndexProgressEvent>('viewer://index-progress', ({ payload }) => handler(payload))
   },
   listenOperationProgress(handler) {
     return listen<OperationProgressEvent>('viewer://operation-progress', ({ payload }) =>
@@ -183,9 +181,7 @@ export const tauriViewerBridge: ViewerBridge = {
     )
   },
   listenCloseBlocked(handler) {
-    return listen<CloseBlockedEvent>('viewer://close-blocked', ({ payload }) =>
-      handler(payload),
-    )
+    return listen<CloseBlockedEvent>('viewer://close-blocked', ({ payload }) => handler(payload))
   },
   listenProjectClosed(handler) {
     return listen<void>('viewer://project-closed', handler)

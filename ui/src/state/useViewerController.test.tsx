@@ -1,7 +1,10 @@
 import { act, renderHook } from '@testing-library/react'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, expectTypeOf, it, vi } from 'vitest'
 import type {
   CloseBlockedEvent,
+  CloseChoice,
+  CloseRequestOutcome,
+  CloseTarget,
   FileCommandPreflight,
   IndexProgressEvent,
   OperationProgressEvent,
@@ -12,6 +15,8 @@ import type {
 } from '../api/types'
 import type { ViewerBridge } from '../api/viewer'
 import { defined } from '../defined'
+import type { ControllerCore, RefreshProjection } from './controllers/types'
+import type { ProjectSessionController } from './controllers/useProjectSessionController'
 import { useViewerController } from './useViewerController'
 import { emptySearchFilters } from './viewerReducer'
 
@@ -89,7 +94,23 @@ function bridge(access: 'read_write' | 'read_only' = 'read_write'): ViewerBridge
 beforeEach(() => vi.useFakeTimers())
 afterEach(() => vi.useRealTimers())
 
+type ExpectedProjectSessionController = {
+  sessionEpoch: number
+  refreshProjection: RefreshProjection
+  openProject(path: string): Promise<void>
+  closeProject(choice?: CloseChoice, target?: CloseTarget): Promise<CloseRequestOutcome | undefined>
+  reselectProject(): Promise<CloseRequestOutcome | undefined>
+  selectFolder(entityId: string | null): Promise<void>
+  showAllDescendants(): Promise<void>
+  cancelTask(taskId: string): Promise<void>
+}
+
 describe('useViewerController M2 coordination', () => {
+  it('defines the shared project session controller contract', () => {
+    expectTypeOf<ControllerCore>().toHaveProperty('sessionEpochRef')
+    expectTypeOf<ProjectSessionController>().toEqualTypeOf<ExpectedProjectSessionController>()
+  })
+
   it('debounces text by 120 ms and ignores a late older response', async () => {
     const viewer = bridge()
     const first = deferred<SearchPage>()

@@ -1,8 +1,5 @@
 import { useCallback, useEffect, useReducer, useRef } from 'react'
 import type {
-  CloseChoice,
-  CloseRequestOutcome,
-  CloseTarget,
   ConflictResolution,
   FileCommandItem,
   FileCommandKind,
@@ -10,7 +7,6 @@ import type {
   ProjectSnapshot,
   RenameRules,
   ReviewState,
-  ScanEvent,
   SearchFilters,
   SearchLayout,
   SearchQueryModel,
@@ -18,30 +14,49 @@ import type {
 } from '../api/types'
 import type { ViewerBridge } from '../api/viewer'
 import { safeUserMessage } from '../api/viewer'
+import type { ControllerCore } from './controllers/types'
+import {
+  refreshDesiredProjection,
+  useProjectSessionController,
+} from './controllers/useProjectSessionController'
 import type { SearchFilterChip } from './viewerReducer'
 import { initialViewerState, viewerReducer } from './viewerReducer'
+import type { ViewerAction } from './viewerState'
 
 export function useViewerController(bridge: ViewerBridge) {
   const [state, dispatch] = useReducer(viewerReducer, initialViewerState)
   const stateRef = useRef(state)
-  const projectionRequestRef = useRef(0)
-  const projectEpochRef = useRef(0)
+  const sessionEpochRef = useRef(0)
   const searchRevisionRef = useRef(0)
   const selectionRequestRef = useRef(0)
   const requestedSnippetsRef = useRef(new Set<string>())
-  const reconcilingGenerationRef = useRef<number | null>(null)
   const activeBatchRef = useRef<string | null>(null)
   const operationRequestPendingRef = useRef(false)
   const undoRequestPendingRef = useRef(false)
   const operationResultsRequestRef = useRef(0)
   const completedBatchesRef = useRef(new Set<string>())
-  const closeRequestPendingRef = useRef(false)
-  const desiredProjectionRef = useRef({
-    selectedFolderId: null as string | null,
-    selectedFolderPath: '',
-    showingAggregate: false,
-  })
   stateRef.current = state
+
+  const resetLaterSessionRequests = useCallback(() => {
+    searchRevisionRef.current += 1
+    selectionRequestRef.current += 1
+    requestedSnippetsRef.current.clear()
+    activeBatchRef.current = null
+    operationRequestPendingRef.current = false
+    undoRequestPendingRef.current = false
+    operationResultsRequestRef.current += 1
+    completedBatchesRef.current.clear()
+  }, [])
+
+  const dispatchControllerAction = useCallback(
+    (action: ViewerAction) => {
+      if (action.type === 'project_closed') {
+        resetLaterSessionRequests()
+      }
+      dispatch(action)
+    },
+    [resetLaterSessionRequests],
+  )
 
   const executeSearch = useCallback(
     async (project: ProjectSnapshot, query: SearchQueryModel, offset: number) => {
@@ -133,235 +148,23 @@ export function useViewerController(bridge: ViewerBridge) {
     state.search.visibleEntityIds,
   ])
 
-  const refreshProjection = useCallback(
-    async (
-      project: ProjectSnapshot,
-      selectedFolderId: string | null,
-      selectedFolderPath: string,
-      showingAggregate: boolean,
-      repairMissingFolder = false,
-    ) => {
-      desiredProjectionRef.current = {
-        selectedFolderId,
-        selectedFolderPath,
-        showingAggregate,
-      }
-      const requestId = ++projectionRequestRef.current
-      try {
-        const foldersPromise = bridge.folderTree()
-        const workspacePromise = repairMissingFolder
-          ? null
-          : bridge.queryFolder(selectedFolderId, showingAggregate)
-        const folders = await foldersPromise
-        const repairedFolderId =
-          repairMissingFolder &&
-          selectedFolderId !== null &&
-          !folders.some((folder) => folder.entityId === selectedFolderId)
-            ? null
-            : selectedFolderId
-        const repairedFolderPath = repairedFolderId === null ? '' : selectedFolderPath
-        const repairedAggregate = repairedFolderId === null ? false : showingAggregate
-        const workspace =
-          workspacePromise === null
-            ? await bridge.queryFolder(repairedFolderId, repairedAggregate)
-            : await workspacePromise
-        if (requestId !== projectionRequestRef.current) return
-        desiredProjectionRef.current = {
-          selectedFolderId: repairedFolderId,
-          selectedFolderPath: repairedFolderPath,
-          showingAggregate: repairedAggregate,
-        }
-        dispatch({
-          type: 'projection_loaded',
-          sessionId: project.sessionId,
-          generation: project.generation,
-          folders,
-          workspace,
-          selectedFolderId: repairedFolderId,
-          selectedFolderPath: repairedFolderPath,
-          showingAggregate: repairedAggregate,
-        })
-      } catch (error) {
-        if (requestId !== projectionRequestRef.current) return
-        dispatch({
-          type: 'projection_failed',
-          sessionId: project.sessionId,
-          generation: project.generation,
-          message: safeUserMessage(error),
-        })
-      }
-    },
-    [bridge],
-  )
-
-  const openProject = useCallback(
-    async (path: string) => {
-      if (!path || !['empty', 'error'].includes(stateRef.current.status)) return
-      const projectEpoch = ++projectEpochRef.current
-      dispatch({ type: 'project_open_requested' })
-      try {
-        const project = await bridge.openProject(path)
-        if (projectEpoch !== projectEpochRef.current) return
-        dispatch({ type: 'project_opened', project })
-        await refreshProjection(project, null, '', false)
-      } catch (error) {
-        if (projectEpoch !== projectEpochRef.current) return
-        dispatch({ type: 'project_open_failed', message: safeUserMessage(error) })
-      }
-    },
-    [bridge, refreshProjection],
-  )
-
-  const resetSessionRequests = useCallback(() => {
-    projectEpochRef.current += 1
-    projectionRequestRef.current += 1
-    searchRevisionRef.current += 1
-    selectionRequestRef.current += 1
-    requestedSnippetsRef.current.clear()
-    activeBatchRef.current = null
-    operationRequestPendingRef.current = false
-    undoRequestPendingRef.current = false
-    operationResultsRequestRef.current += 1
-    completedBatchesRef.current.clear()
-    desiredProjectionRef.current = {
-      selectedFolderId: null,
-      selectedFolderPath: '',
-      showingAggregate: false,
-    }
-  }, [])
-
-  const requestProjectClose = useCallback(
-    async (
-      choice?: CloseChoice,
-      closedMessage?: string,
-      target: CloseTarget = 'project',
-    ): Promise<CloseRequestOutcome | undefined> => {
-      if (
-        stateRef.current.project === null ||
-        stateRef.current.status === 'closing' ||
-        closeRequestPendingRef.current
-      )
-        return
-      closeRequestPendingRef.current = true
-      dispatch({ type: 'project_close_requested' })
-      try {
-        const outcome = await bridge.closeProject(choice, target)
-        if (outcome === 'stayed') {
-          dispatch({ type: 'project_close_stayed' })
-          return outcome
-        }
-        resetSessionRequests()
-        dispatch({ type: 'project_closed', message: closedMessage })
-        return outcome
-      } catch (error) {
-        if (isTerminalCloseCleanupFailure(error)) {
-          resetSessionRequests()
-          dispatch({ type: 'project_closed', message: safeUserMessage(error) })
-          return 'closed'
-        }
-        dispatch({ type: 'project_close_failed', message: safeUserMessage(error) })
-        return undefined
-      } finally {
-        closeRequestPendingRef.current = false
-      }
-    },
-    [bridge, resetSessionRequests],
-  )
-
-  const closeProject = useCallback(
-    (choice?: CloseChoice, target: CloseTarget = 'project') =>
-      requestProjectClose(choice, undefined, target),
-    [requestProjectClose],
-  )
-
-  const reselectProject = useCallback(
-    () => requestProjectClose(undefined, '已关闭只读项目，请选择已授权的目录。', 'project'),
-    [requestProjectClose],
-  )
-
-  const receiveScan = useCallback(
-    (event: ScanEvent) => {
-      const project = stateRef.current.project
-      if (project === null || event.sessionId !== project.sessionId) return
-      if (event.generation < project.generation) return
-      if (event.generation === project.generation) {
-        const desired = desiredProjectionRef.current
-        dispatch({ type: 'scan_received', event })
-        void refreshProjection(
-          project,
-          desired.selectedFolderId,
-          desired.selectedFolderPath,
-          desired.showingAggregate,
-        )
-        return
-      }
-      if (reconcilingGenerationRef.current === event.generation) return
-      reconcilingGenerationRef.current = event.generation
-      void bridge
-        .projectSnapshot()
-        .then((snapshot) => {
-          if (
-            snapshot === null ||
-            snapshot.sessionId !== event.sessionId ||
-            snapshot.generation !== event.generation
-          ) {
-            return
-          }
-          dispatch({ type: 'project_reconciled', project: snapshot })
-          dispatch({ type: 'scan_received', event })
-          const desired = desiredProjectionRef.current
-          void refreshProjection(
-            snapshot,
-            desired.selectedFolderId,
-            desired.selectedFolderPath,
-            desired.showingAggregate,
-          )
-        })
-        .catch(() => undefined)
-        .finally(() => {
-          if (reconcilingGenerationRef.current === event.generation) {
-            reconcilingGenerationRef.current = null
-          }
-        })
-    },
-    [bridge, refreshProjection],
-  )
-
-  useEffect(() => {
-    let disposed = false
-    let unlisten: (() => void) | undefined
-    void Promise.resolve()
-      .then(() => bridge.listenScan(receiveScan))
-      .then((cleanup) => {
-        if (disposed) cleanup()
-        else unlisten = cleanup
-      })
-      .catch(() => undefined)
-    return () => {
-      disposed = true
-      unlisten?.()
-    }
-  }, [bridge, receiveScan])
-
-  useEffect(() => {
-    let disposed = false
-    let unlisten: (() => void) | undefined
-    void Promise.resolve()
-      .then(() =>
-        bridge.listenIndexProgress((progress) => {
-          dispatch({ type: 'index_progress_received', progress })
-        }),
-      )
-      .then((cleanup) => {
-        if (disposed) cleanup()
-        else unlisten = cleanup
-      })
-      .catch(() => undefined)
-    return () => {
-      disposed = true
-      unlisten?.()
-    }
-  }, [bridge])
+  const core: ControllerCore = {
+    bridge,
+    state,
+    stateRef,
+    sessionEpochRef,
+    dispatch: dispatchControllerAction,
+  }
+  const projectSession = useProjectSessionController(core)
+  const refreshProjection = projectSession.refreshProjection
+  const projectSessionCommands = {
+    openProject: projectSession.openProject,
+    closeProject: projectSession.closeProject,
+    reselectProject: projectSession.reselectProject,
+    selectFolder: projectSession.selectFolder,
+    showAllDescendants: projectSession.showAllDescendants,
+    cancelTask: projectSession.cancelTask,
+  }
 
   useEffect(() => {
     function requestSearchFocus(event: KeyboardEvent) {
@@ -373,92 +176,6 @@ export function useViewerController(bridge: ViewerBridge) {
     window.addEventListener('keydown', requestSearchFocus)
     return () => window.removeEventListener('keydown', requestSearchFocus)
   }, [])
-
-  useEffect(() => {
-    let disposed = false
-    let unlisten: (() => void) | undefined
-    void Promise.resolve()
-      .then(() =>
-        bridge.listenProjectClosed(() => {
-          resetSessionRequests()
-          reconcilingGenerationRef.current = null
-          dispatch({ type: 'project_closed' })
-        }),
-      )
-      .then((cleanup) => {
-        if (disposed) cleanup()
-        else unlisten = cleanup
-      })
-      .catch(() => undefined)
-    return () => {
-      disposed = true
-      unlisten?.()
-    }
-  }, [bridge, resetSessionRequests])
-
-  useEffect(() => {
-    let disposed = false
-    let unlisten: (() => void) | undefined
-    void Promise.resolve()
-      .then(() =>
-        bridge.listenProjectDrops((paths) => {
-          if (!['empty', 'error'].includes(stateRef.current.status)) return
-          if (paths.length !== 1) {
-            dispatch({ type: 'input_rejected', message: '一次只能导入一个项目文件夹。' })
-            return
-          }
-          const [path] = paths
-          if (path === undefined) throw new Error('Single project drop is missing its path')
-          void openProject(path)
-        }),
-      )
-      .then((cleanup) => {
-        if (disposed) cleanup()
-        else unlisten = cleanup
-      })
-      .catch(() => undefined)
-    return () => {
-      disposed = true
-      unlisten?.()
-    }
-  }, [bridge, openProject])
-
-  const selectFolder = useCallback(
-    async (entityId: string | null) => {
-      const project = stateRef.current.project
-      if (project === null || stateRef.current.status !== 'active') return
-      const selected = entityId
-        ? stateRef.current.folders.find((folder) => folder.entityId === entityId)
-        : undefined
-      await refreshProjection(project, entityId, selected?.relativePath ?? '', false)
-    },
-    [refreshProjection],
-  )
-
-  const showAllDescendants = useCallback(async () => {
-    const current = stateRef.current
-    if (current.project === null || current.status !== 'active') return
-    const desired = desiredProjectionRef.current
-    await refreshProjection(
-      current.project,
-      desired.selectedFolderId,
-      desired.selectedFolderPath,
-      true,
-    )
-  }, [refreshProjection])
-
-  const cancelTask = useCallback(
-    async (taskId: string) => {
-      try {
-        if (await bridge.cancelTask(taskId)) {
-          dispatch({ type: 'scan_cancelled', taskId })
-        }
-      } catch (error) {
-        dispatch({ type: 'input_rejected', message: safeUserMessage(error) })
-      }
-    },
-    [bridge],
-  )
 
   const setSearchText = useCallback((text: string) => {
     dispatch({ type: 'search_text_changed', text })
@@ -569,15 +286,9 @@ export function useViewerController(bridge: ViewerBridge) {
           generation: current.project.generation,
           changes: result.changes,
         })
-        const desired = desiredProjectionRef.current
         await Promise.all([
           refreshSelectionInfo(current.project, current.selectedEntityIds),
-          refreshProjection(
-            current.project,
-            desired.selectedFolderId,
-            desired.selectedFolderPath,
-            desired.showingAggregate,
-          ),
+          refreshDesiredProjection(refreshProjection, current.project),
         ])
       } catch (error) {
         dispatch({ type: 'input_rejected', message: safeUserMessage(error) })
@@ -618,15 +329,9 @@ export function useViewerController(bridge: ViewerBridge) {
           generation: current.project.generation,
           changes: result.changes,
         })
-        const desired = desiredProjectionRef.current
         await Promise.all([
           refreshSelectionInfo(current.project, current.selectedEntityIds),
-          refreshProjection(
-            current.project,
-            desired.selectedFolderId,
-            desired.selectedFolderPath,
-            desired.showingAggregate,
-          ),
+          refreshDesiredProjection(refreshProjection, current.project),
         ])
       } catch (error) {
         dispatch({ type: 'input_rejected', message: safeUserMessage(error) })
@@ -645,7 +350,7 @@ export function useViewerController(bridge: ViewerBridge) {
       )
         return null
       const project = current.project
-      const projectEpoch = projectEpochRef.current
+      const sessionEpoch = sessionEpochRef.current
       try {
         const preview = await bridge.previewRename({
           sessionId: project.sessionId,
@@ -655,7 +360,7 @@ export function useViewerController(bridge: ViewerBridge) {
         })
         const latest = stateRef.current
         if (
-          projectEpoch !== projectEpochRef.current ||
+          sessionEpoch !== sessionEpochRef.current ||
           latest.status !== 'active' ||
           latest.project?.sessionId !== project.sessionId ||
           latest.project.generation !== project.generation
@@ -664,7 +369,7 @@ export function useViewerController(bridge: ViewerBridge) {
         }
         return preview
       } catch (error) {
-        if (projectEpoch !== projectEpochRef.current) return null
+        if (sessionEpoch !== sessionEpochRef.current) return null
         dispatch({ type: 'input_rejected', message: safeUserMessage(error) })
         return null
       }
@@ -682,7 +387,7 @@ export function useViewerController(bridge: ViewerBridge) {
       )
         return null
       const project = current.project
-      const projectEpoch = projectEpochRef.current
+      const sessionEpoch = sessionEpochRef.current
       try {
         const preflight = await bridge.preflightFileCommand({
           sessionId: project.sessionId,
@@ -692,7 +397,7 @@ export function useViewerController(bridge: ViewerBridge) {
         })
         const latest = stateRef.current
         if (
-          projectEpoch !== projectEpochRef.current ||
+          sessionEpoch !== sessionEpochRef.current ||
           latest.status !== 'active' ||
           latest.project?.sessionId !== project.sessionId ||
           latest.project.generation !== project.generation
@@ -701,7 +406,7 @@ export function useViewerController(bridge: ViewerBridge) {
         }
         return preflight
       } catch (error) {
-        if (projectEpoch !== projectEpochRef.current) return null
+        if (sessionEpoch !== sessionEpochRef.current) return null
         dispatch({ type: 'input_rejected', message: safeUserMessage(error) })
         return null
       }
@@ -721,11 +426,11 @@ export function useViewerController(bridge: ViewerBridge) {
       ) {
         return
       }
-      const projectEpoch = projectEpochRef.current
+      const sessionEpoch = sessionEpochRef.current
       const projectIsCurrent = () => {
         const latestProject = stateRef.current.project
         return (
-          projectEpoch === projectEpochRef.current &&
+          sessionEpoch === sessionEpochRef.current &&
           latestProject?.sessionId === project.sessionId &&
           latestProject.generation === project.generation
         )
@@ -759,14 +464,7 @@ export function useViewerController(bridge: ViewerBridge) {
           })
         })
       const refreshAfterTerminalBatch = (async () => {
-        const desired = desiredProjectionRef.current
-        await refreshProjection(
-          project,
-          desired.selectedFolderId,
-          desired.selectedFolderPath,
-          desired.showingAggregate,
-          true,
-        )
+        await refreshDesiredProjection(refreshProjection, project, true)
         if (!projectIsCurrent()) return
         dispatch({ type: 'search_refresh_requested' })
       })()
@@ -775,7 +473,7 @@ export function useViewerController(bridge: ViewerBridge) {
       } finally {
         const latestProject = stateRef.current.project
         if (
-          projectEpoch === projectEpochRef.current &&
+          sessionEpoch === sessionEpochRef.current &&
           latestProject?.sessionId === project.sessionId &&
           activeBatchRef.current === progress.batchId
         ) {
@@ -952,14 +650,7 @@ export function useViewerController(bridge: ViewerBridge) {
         generation: current.project.generation,
       })
       if (receipt) {
-        const desired = desiredProjectionRef.current
-        await refreshProjection(
-          current.project,
-          desired.selectedFolderId,
-          desired.selectedFolderPath,
-          desired.showingAggregate,
-          true,
-        )
+        await refreshDesiredProjection(refreshProjection, current.project, true)
         dispatch({ type: 'search_refresh_requested' })
       }
       return receipt
@@ -1028,14 +719,7 @@ export function useViewerController(bridge: ViewerBridge) {
           }
           if (change.reason === 'expected_viewer_change') return
           dispatch({ type: 'project_changed_received', change })
-          const desired = desiredProjectionRef.current
-          void refreshProjection(
-            project,
-            desired.selectedFolderId,
-            desired.selectedFolderPath,
-            desired.showingAggregate,
-            true,
-          )
+          void refreshDesiredProjection(refreshProjection, project, true)
         }),
       )
       .then((cleanup) => {
@@ -1049,34 +733,9 @@ export function useViewerController(bridge: ViewerBridge) {
     }
   }, [bridge, refreshProjection])
 
-  useEffect(() => {
-    let disposed = false
-    let unlisten: (() => void) | undefined
-    void Promise.resolve()
-      .then(() =>
-        bridge.listenCloseBlocked((event) => {
-          dispatch({ type: 'close_blocked_received', event })
-        }),
-      )
-      .then((cleanup) => {
-        if (disposed) cleanup()
-        else unlisten = cleanup
-      })
-      .catch(() => undefined)
-    return () => {
-      disposed = true
-      unlisten?.()
-    }
-  }, [bridge])
-
   return {
     state,
-    openProject,
-    closeProject,
-    reselectProject,
-    selectFolder,
-    showAllDescendants,
-    cancelTask,
+    ...projectSessionCommands,
     setSearchText,
     setSearchScope,
     setSearchFilters,
@@ -1105,15 +764,6 @@ export function useViewerController(bridge: ViewerBridge) {
 }
 
 export type ViewerController = ReturnType<typeof useViewerController>
-
-function isTerminalCloseCleanupFailure(error: unknown): boolean {
-  return (
-    typeof error === 'object' &&
-    error !== null &&
-    'code' in error &&
-    error.code === 'project_closed_cache_cleanup_failed'
-  )
-}
 
 function uniqueEntityIds(entityIds: readonly string[]): string[] {
   return [...new Set(entityIds)]

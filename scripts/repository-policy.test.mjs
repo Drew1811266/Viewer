@@ -114,9 +114,34 @@ const validateDeterministicCIWorkflow = (workflow) => {
   const topLevelPermissions = normalizeNewlines(workflow).match(/^permissions:\n((?:  [^\n]*\n?)*)/m)
   assert.ok(topLevelPermissions, 'CI workflow must define top-level permissions')
   assert.equal(topLevelPermissions[1], '  contents: read\n', 'CI permissions must be contents: read')
+  assert.doesNotMatch(workflow, /\bpnpm[ \t]+audit\b/, 'CI workflow must not run pnpm audit')
+  assert.doesNotMatch(workflow, /\brelease\b/i, 'CI workflow must not include release-oriented content')
 
   const jobs = extractCIJobBlocks(workflow)
   assert.deepEqual([...jobs.keys()].sort(), ['quality', 'security'], 'CI jobs must be exactly quality and security')
+  const expectedStepNames = {
+    quality: [
+      'Check out repository',
+      'Assert Apple Silicon runner',
+      'Set up Node.js 24.18.0',
+      'Activate pnpm 10.0.0 through Corepack',
+      'Install Rust 1.97.0 for Apple Silicon',
+      'Install JavaScript dependencies',
+      'Run quality gate',
+      'Assert verification left no artifacts',
+    ],
+    security: [
+      'Check out repository',
+      'Assert Apple Silicon runner',
+      'Set up Node.js 24.18.0',
+      'Activate pnpm 10.0.0 through Corepack',
+      'Install Rust 1.97.0 for Apple Silicon',
+      'Install JavaScript dependencies',
+      'Install cargo-deny 0.20.2',
+      'Run security gate',
+      'Assert verification left no artifacts',
+    ],
+  }
 
   const validateJob = (name, rootCommand) => {
     const job = jobs.get(name)
@@ -127,6 +152,11 @@ const validateDeterministicCIWorkflow = (workflow) => {
       assert.match(stepEntry, /^      - name: .+$/, `${name} step must start with - name:`)
     }
     const steps = extractCIJobStepBlocks(job)
+    assert.deepEqual(
+      steps.map(({ name: stepName }) => stepName),
+      expectedStepNames[name],
+      `${name} job must use the planned step sequence`,
+    )
     assert.doesNotMatch(
       job,
       /^        ["'?!&*]/m,
@@ -434,6 +464,37 @@ test('CI deterministic job invariants reject policy bypass mutations', async () 
         'security',
         '      - name: Activate pnpm 10.0.0 through Corepack',
         '      - name: Tab-key unpinned setup-node\n        uses\t: actions/setup-node@v4\n\n      - name: Activate pnpm 10.0.0 through Corepack',
+      ),
+    },
+    {
+      label: 'extra Release artifact step',
+      workflow: mutateJob(
+        workflow,
+        'quality',
+        '      - name: Assert verification left no artifacts',
+        '      - name: Release artifact\n        run: ./scripts/release\n\n      - name: Assert verification left no artifacts',
+      ),
+    },
+    {
+      label: 'extra named block step',
+      workflow: mutateJob(
+        workflow,
+        'security',
+        '      - name: Assert verification left no artifacts',
+        '      - name: Collect diagnostics\n        run: git status --short\n\n      - name: Assert verification left no artifacts',
+      ),
+    },
+    {
+      label: 'direct scalar pnpm audit command with extra whitespace',
+      workflow: mutateJob(workflow, 'security', 'run: pnpm security', 'run: pnpm   audit'),
+    },
+    {
+      label: 'block-scalar pnpm audit command with extra whitespace',
+      workflow: mutateJob(
+        workflow,
+        'quality',
+        '          pnpm --version',
+        '          pnpm --version\n          pnpm \t audit',
       ),
     },
     {

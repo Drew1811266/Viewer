@@ -205,6 +205,23 @@ describe('ContentBrowser', () => {
     expect(selectedLabels()).toEqual(['1.jpg', '2.jpg', '4.jpg'])
   })
 
+  it('repairs a removed range anchor after a Shift-click fallback', async () => {
+    const rendered = render(<ContentBrowser workspace={workspace(5)} />)
+    fireEvent.click(screen.getByRole('option', { name: '3.jpg' }))
+    fireEvent.click(screen.getByRole('option', { name: '1.jpg' }), { metaKey: true })
+
+    const refreshed = workspace(5)
+    refreshed.images = refreshed.images.slice(1)
+    rendered.rerender(<ContentBrowser workspace={refreshed} />)
+    await waitFor(() => expect(selectedLabels()).toEqual(['3.jpg']))
+
+    fireEvent.click(screen.getByRole('option', { name: '2.jpg' }), { shiftKey: true })
+    expect(selectedLabels()).toEqual(['2.jpg', '3.jpg'])
+
+    fireEvent.click(screen.getByRole('option', { name: '5.jpg' }), { shiftKey: true })
+    expect(selectedLabels()).toEqual(['2.jpg', '3.jpg', '4.jpg', '5.jpg'])
+  })
+
   it('selects every file in the current folder with Command-A', () => {
     render(<ContentBrowser workspace={workspace(3)} />)
 

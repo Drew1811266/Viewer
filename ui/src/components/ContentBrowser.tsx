@@ -215,12 +215,11 @@ export default function ContentBrowser({
     event.currentTarget.closest<HTMLElement>('[role="listbox"]')?.focus()
     setActiveId(file.entityId)
     if (event.shiftKey && anchorId.current !== null) {
-      const range = rangeSelection(
-        allFiles.map((candidate) => candidate.entityId),
-        anchorId.current,
-        file.entityId,
-      )
+      const orderedEntityIds = allFiles.map((candidate) => candidate.entityId)
+      const anchorExists = orderedEntityIds.includes(anchorId.current)
+      const range = rangeSelection(orderedEntityIds, anchorId.current, file.entityId)
       commitSelection(new Set([...selected, ...range]))
+      if (!anchorExists) anchorId.current = file.entityId
       return
     }
     anchorId.current = file.entityId

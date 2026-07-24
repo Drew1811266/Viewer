@@ -8,60 +8,6 @@ import { validateFinderDragAppKitWiring } from './validate-finder-drag-appkit-wi
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8')
 const normalizeNewlines = (text) => text.replace(/\r\n?/g, '\n')
 
-const expectedWorkflow = `name: CI
-
-on:
-  push:
-  pull_request:
-
-permissions:
-  contents: read
-
-jobs:
-  verify:
-    name: Foundation verification
-    runs-on: macos-15
-    timeout-minutes: 30
-
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
-
-      - name: Assert Apple Silicon runner
-        shell: bash
-        run: test "$(uname -m)" = "arm64"
-
-      - name: Set up Node.js 24.18.0
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
-        with:
-          node-version: "24.18.0"
-
-      - name: Activate pnpm 10.0.0 through Corepack
-        shell: bash
-        run: |
-          corepack enable
-          corepack prepare pnpm@10.0.0 --activate
-          pnpm --version
-
-      - name: Install Rust 1.97.0 for Apple Silicon
-        shell: bash
-        run: |
-          rustup toolchain install 1.97.0 --profile minimal --component clippy,rustfmt --target aarch64-apple-darwin
-          rustc --version --verbose
-
-      - name: Install JavaScript dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Run foundation verification
-        run: pnpm verify
-
-      - name: Install cargo-deny 0.20.2
-        run: cargo install cargo-deny --version 0.20.2 --locked
-
-      - name: Enforce dependency policy
-        run: cargo deny --locked check
-`
-
 const expectedToolchain = `[toolchain]
 channel = "1.97.0"
 components = ["clippy", "rustfmt"]
@@ -127,7 +73,7 @@ const directDependencies = [
   'vite',
   'vitest',
 ]
-test('repository verification inputs are exact and locked', async () => {
+test('CI defines independent deterministic quality and security gates', async () => {
   const [workflow, toolchain, packageText] = await Promise.all([
     read('.github/workflows/ci.yml'),
     read('rust-toolchain.toml'),
@@ -135,7 +81,41 @@ test('repository verification inputs are exact and locked', async () => {
   ])
   const packageJson = JSON.parse(packageText)
 
-  assert.equal(normalizeNewlines(workflow), expectedWorkflow)
+  assert.match(workflow, /^name: CI/m)
+  assert.match(workflow, /^\s*push:\s*$/m)
+  assert.match(workflow, /^\s*pull_request:\s*$/m)
+  assert.match(workflow, /permissions:\n\s+contents: read/)
+  assert.match(workflow, /runs-on: macos-15/g)
+  assert.match(workflow, /pnpm install --frozen-lockfile/g)
+  assert.match(workflow, /run: pnpm quality/)
+  assert.match(workflow, /run: pnpm security/)
+  assert.doesNotMatch(workflow, /run: pnpm audit/)
+
+  const job = (name) => {
+    const start = workflow.indexOf(`  ${name}:\n`)
+    assert.notEqual(start, -1, `${name} job must exist`)
+    const remainder = workflow.slice(start + name.length + 4)
+    const nextJob = remainder.search(/^  [^\s][^:\n]*:\n/m)
+    return nextJob === -1 ? remainder : remainder.slice(0, nextJob)
+  }
+  const quality = job('quality')
+  const security = job('security')
+  assert.match(quality, /runs-on: macos-15/)
+  assert.match(quality, /run: pnpm quality/)
+  assert.match(security, /runs-on: macos-15/)
+  assert.match(security, /run: pnpm security/)
+  assert.match(security, /cargo install cargo-deny --version 0\.20\.2 --locked/)
+  assert.doesNotMatch(quality, /^\s+needs:/m)
+  assert.doesNotMatch(security, /^\s+needs:/m)
+  assert.match(quality, /test -z "\$\(git status --porcelain\)"/)
+  assert.match(security, /test -z "\$\(git status --porcelain\)"/)
+
+  const actions = [...workflow.matchAll(/uses:\s+([^@\s]+)@([^\s#]+)/g)]
+  assert.ok(actions.length > 0, 'workflow must use pinned actions')
+  for (const action of actions) {
+    assert.match(action[2], /^[0-9a-f]{40}$/, `${action[1]} must be pinned to a commit`)
+  }
+
   assert.equal(normalizeNewlines(toolchain), expectedToolchain)
   assert.equal(packageJson.packageManager, expectedPackageManager)
   assert.match(packageJson.scripts.quality, /scripts\/repository-policy\.test\.mjs/)

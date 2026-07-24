@@ -7,9 +7,21 @@ import {
   waitFor,
   within,
 } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, expectTypeOf, it, vi } from 'vitest'
 import App from './App'
 import type { ViewerBridge } from './api/viewer'
+import { type AppShellState, useAppShellState } from './app/useAppShellState'
+import {
+  type OperationDialogsState,
+  type UseOperationDialogsOptions,
+  useOperationDialogs,
+} from './app/useOperationDialogs'
+import { type PreviewSessionState, usePreviewSession } from './app/usePreviewSession'
+import {
+  type RadialMenuSessionState,
+  type UseRadialMenuSessionOptions,
+  useRadialMenuSession,
+} from './app/useRadialMenuSession'
 import { defined } from './defined'
 
 function deferred<T>() {
@@ -99,6 +111,26 @@ function bridge(access: 'read_write' | 'read_only' = 'read_write'): ViewerBridge
     listenProjectDrops: vi.fn().mockResolvedValue(() => undefined),
   }
 }
+
+describe('App-local session coordinator contracts', () => {
+  it('exposes the shell and preview state shapes keyed by backend session', () => {
+    expect(useAppShellState).toBeTypeOf('function')
+    expect(usePreviewSession).toBeTypeOf('function')
+    expectTypeOf(useAppShellState).parameter(0).toEqualTypeOf<string>()
+    expectTypeOf(usePreviewSession).parameter(0).toEqualTypeOf<string>()
+    expectTypeOf<ReturnType<typeof useAppShellState>>().toMatchTypeOf<AppShellState>()
+    expectTypeOf<ReturnType<typeof usePreviewSession>>().toMatchTypeOf<PreviewSessionState>()
+  })
+
+  it('exposes dialog validity and radial context reset inputs', () => {
+    expect(useOperationDialogs).toBeTypeOf('function')
+    expect(useRadialMenuSession).toBeTypeOf('function')
+    expectTypeOf(useOperationDialogs).parameter(0).toEqualTypeOf<UseOperationDialogsOptions>()
+    expectTypeOf(useRadialMenuSession).parameter(0).toEqualTypeOf<UseRadialMenuSessionOptions>()
+    expectTypeOf<ReturnType<typeof useOperationDialogs>>().toMatchTypeOf<OperationDialogsState>()
+    expectTypeOf<ReturnType<typeof useRadialMenuSession>>().toMatchTypeOf<RadialMenuSessionState>()
+  })
+})
 
 describe('Viewer empty state', () => {
   it('asks the user to import one project folder', () => {

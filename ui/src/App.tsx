@@ -1,10 +1,9 @@
-import type { CSSProperties, PointerEvent as ReactPointerEvent } from 'react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { CSSProperties } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import type {
   BrowserFile,
   ConflictResolution,
   FileCommandItem,
-  FileCommandPreflight,
   ImageRepresentationRequest,
   RenamePreview,
   RenameRules,
@@ -12,6 +11,10 @@ import type {
 } from './api/types'
 import type { ViewerBridge } from './api/viewer'
 import { tauriViewerBridge } from './api/viewer'
+import { useAppShellState } from './app/useAppShellState'
+import { useOperationDialogs } from './app/useOperationDialogs'
+import { usePreviewSession } from './app/usePreviewSession'
+import { useRadialMenuSession } from './app/useRadialMenuSession'
 import BatchRenameDialog from './components/BatchRenameDialog'
 import CloseOperationDialog from './components/CloseOperationDialog'
 import CompareWorkspace from './components/CompareWorkspace'
@@ -23,7 +26,6 @@ import FolderTree from './components/FolderTree'
 import ImagePreview from './components/ImagePreview'
 import InfoOverlay from './components/InfoOverlay'
 import OperationResults from './components/OperationResults'
-import type { RadialMenuRequest } from './components/RadialFileMenu'
 import RadialFileMenu from './components/RadialFileMenu'
 import ReadOnlyBanner from './components/ReadOnlyBanner'
 import RenameDialog from './components/RenameDialog'
@@ -43,29 +45,6 @@ import { useViewerController } from './state/useViewerController'
 
 interface AppProps {
   bridge?: ViewerBridge
-}
-
-type OperationDialog =
-  | { kind: 'rename'; file: BrowserFile }
-  | { kind: 'batch_rename'; files: BrowserFile[] }
-  | {
-      kind: 'destination'
-      mode: 'copy' | 'move'
-      files: BrowserFile[]
-      initialDestinationId?: string
-      initialPreflight?: FileCommandPreflight
-    }
-  | { kind: 'trash'; files: BrowserFile[] }
-
-type RadialMenuSession = RadialMenuRequest & {
-  requestId: number
-  projectIdentity: string
-}
-
-interface PreviewSession {
-  file: BrowserFile
-  files: BrowserFile[] | null
-  folderOverviewIdentity: string | null
 }
 
 export default function App({ bridge = tauriViewerBridge }: AppProps) {
@@ -102,85 +81,56 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
     clearCloseBlocked,
     openPermissionSettings,
   } = useViewerController(bridge)
+  const projectSessionId = state.project?.sessionId ?? 'no-session'
   const radialProjectIdentity = state.project
     ? `${state.project.sessionId}:${state.project.generation}`
     : 'no-project'
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
-  const [sidebarWidth, setSidebarWidth] = useState(260)
-  const [projectMenuOpen, setProjectMenuOpen] = useState(false)
-  const startSidebarResize = useCallback(
-    (event: ReactPointerEvent<HTMLButtonElement>) => {
-      if (sidebarCollapsed || event.button !== 0) return
-      event.preventDefault()
-      const startX = event.clientX
-      const startWidth = sidebarWidth
-      const move = (next: PointerEvent) => {
-        setSidebarWidth(Math.max(200, Math.min(420, startWidth + next.clientX - startX)))
-      }
-      const stop = () => {
-        window.removeEventListener('pointermove', move)
-        window.removeEventListener('pointerup', stop)
-        window.removeEventListener('pointercancel', stop)
-      }
-      window.addEventListener('pointermove', move)
-      window.addEventListener('pointerup', stop)
-      window.addEventListener('pointercancel', stop)
-    },
-    [sidebarCollapsed, sidebarWidth],
-  )
+  const organizationWorkspaceIdentity = [
+    state.workspace?.workspace ?? 'none',
+    state.selectedFolderId ?? 'root',
+    state.showingAggregate ? 'aggregate' : 'folder',
+    state.search.showResults ? 'search' : 'browser',
+  ].join(':')
+  const {
+    sidebarCollapsed,
+    sidebarWidth,
+    projectMenuOpen,
+    setProjectMenuOpen,
+    toggleSidebar,
+    startSidebarResize,
+  } = useAppShellState(projectSessionId)
+  const {
+    activePreview,
+    dimensions,
+    openPreview: openPreviewSession,
+    closePreview: closePreviewSession,
+    recordDimensions,
+  } = usePreviewSession(projectSessionId)
+  const { operationDialog, operationSubmitting, setOperationDialog, setOperationSubmitting } =
+    useOperationDialogs({
+      projectSessionId,
+      projectStatus: state.status,
+      projectAccess: state.project?.access ?? null,
+      activeOperationLifecycle: state.operation.active?.lifecycle ?? null,
+    })
   const [thumbnailTask, setThumbnailTask] = useState<TaskFeedback | null>(null)
   const [textTask, setTextTask] = useState<TaskFeedback | null>(null)
   const [dismissedTasks, setDismissedTasks] = useState<Set<string>>(() => new Set())
-  const [activePreview, setActivePreview] = useState<PreviewSession | null>(null)
   const [selectedFiles, setSelectedFiles] = useState<BrowserFile[]>([])
   const [finderDragMessage, setFinderDragMessage] = useState<string | null>(null)
   const [compareStatus, setCompareStatus] = useState<string | null>(null)
-  const [operationDialog, setOperationDialog] = useState<OperationDialog | null>(null)
-  const [operationSubmitting, setOperationSubmitting] = useState(false)
   const [resultsBatchId, setResultsBatchId] = useState<string | null>(null)
   const [infoOpen, setInfoOpen] = useState(false)
-  const [radialMenu, setRadialMenu] = useState<RadialMenuSession | null>(null)
-  const radialReturnFocusTarget = useRef<HTMLElement | null>(null)
-  const radialRequestSequence = useRef(0)
-  const beginRadialSession = useCallback(
-    (request: RadialMenuRequest) => {
-      if (state.status !== 'active' || state.project === null) return
-      const returnFocusTarget = radialReturnFocusTarget.current ?? request.returnFocusTarget
-      radialReturnFocusTarget.current = returnFocusTarget
-      radialRequestSequence.current += 1
-      setRadialMenu({
-        ...request,
-        requestId: radialRequestSequence.current,
-        projectIdentity: radialProjectIdentity,
-        returnFocusTarget,
-      })
-    },
-    [radialProjectIdentity, state.project, state.status],
-  )
-  const finishRadialSession = useCallback((reportedReturnTarget: HTMLElement | null = null) => {
-    setRadialMenu(null)
-    const returnFocusTarget = radialReturnFocusTarget.current ?? reportedReturnTarget
-    radialReturnFocusTarget.current = null
-    if (returnFocusTarget?.isConnected) returnFocusTarget.focus()
-  }, [])
-  const [dimensions, setDimensions] = useState<
-    Record<string, { width: number; height: number } | undefined>
-  >({})
   useEffect(() => {
     setThumbnailTask(null)
     setTextTask(null)
     setDismissedTasks(new Set())
-    setActivePreview(null)
     setSelectedFiles([])
     setFinderDragMessage(null)
     setCompareStatus(null)
-    setOperationDialog(null)
-    setOperationSubmitting(false)
     setResultsBatchId(null)
     setInfoOpen(false)
-    setProjectMenuOpen(false)
-    setDimensions({})
-  }, [state.project?.sessionId])
+  }, [projectSessionId])
   const requestThumbnail = useCallback(
     (file: BrowserFile) =>
       bridge
@@ -218,9 +168,6 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
       bridge.previewText({ entityId: file.entityId, encoding }),
     [bridge],
   )
-  const rememberDimensions = useCallback((entityId: string, width: number, height: number) => {
-    setDimensions((current) => ({ ...current, [entityId]: { width, height } }))
-  }, [])
   const scanTask = useMemo<TaskFeedback | null>(() => {
     if (state.scan === null) return null
     const published = state.scan.publishedFolders + state.scan.publishedFiles
@@ -321,10 +268,46 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
   const compareOpen = state.compareEntityIds.length >= 2 && compareFiles.length >= 2
   const compareEntryAvailable =
     state.workspace?.workspace === 'content' && !state.search.showResults && !operationBusy
-  const activeRadialMenu =
-    state.status === 'active' && radialMenu?.projectIdentity === radialProjectIdentity
-      ? radialMenu
-      : null
+  const previewContextKey =
+    activePreview === null
+      ? 'no-preview'
+      : [
+          activePreview.file.entityId,
+          activePreview.files?.map((file) => file.entityId).join(',') ?? 'workspace-files',
+          activePreview.folderOverviewIdentity ?? 'no-folder-overview',
+        ].join(':')
+  const operationDialogContextKey =
+    operationDialog === null
+      ? 'no-dialog'
+      : operationDialog.kind === 'rename'
+        ? `rename:${operationDialog.file.entityId}`
+        : `${operationDialog.kind}:${operationDialog.files.map((file) => file.entityId).join(',')}`
+  const contextRepairKey =
+    state.contextRepair === null
+      ? 'no-context-repair'
+      : [
+          state.contextRepair.removedEntityIds.join(','),
+          state.contextRepair.suggestedEntityId ?? 'no-suggestion',
+          state.contextRepair.message,
+        ].join(':')
+  const radialContextKey = [
+    organizationWorkspaceIdentity,
+    previewContextKey,
+    compareOpen ? 'compare' : 'no-compare',
+    infoOpen ? 'info' : 'no-info',
+    operationDialogContextKey,
+    resultsBatchId ?? 'no-results',
+    state.closeBlocked === null
+      ? 'no-close-blocked'
+      : `${state.closeBlocked.batchId}:${state.closeBlocked.target}`,
+    contextRepairKey,
+  ].join(':')
+  const { radialMenu, activeRadialMenu, beginRadialSession, finishRadialSession } =
+    useRadialMenuSession({
+      projectIdentity: radialProjectIdentity,
+      projectStatus: state.status,
+      contextKey: radialContextKey,
+    })
   const radialModel = useMemo(() => {
     const files = activeRadialMenu?.files ?? []
     const reviews = new Set(files.map((file) => file.marker.reviewState))
@@ -401,17 +384,6 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
     },
     [bridge, state.project, state.status],
   )
-
-  useEffect(() => {
-    if (
-      operationDialog !== null &&
-      (state.status !== 'active' ||
-        state.project?.access !== 'read_write' ||
-        (state.operation.active !== null && state.operation.active.lifecycle !== 'completed'))
-    ) {
-      setOperationDialog(null)
-    }
-  }, [operationDialog, state.operation.active, state.project?.access, state.status])
 
   const openRenameDialog = useCallback(() => {
     if (!canMutateSelection) return
@@ -511,34 +483,12 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
     [state.folders, state.workspace],
   )
 
-  const organizationWorkspaceIdentity = [
-    state.workspace?.workspace ?? 'none',
-    state.selectedFolderId ?? 'root',
-    state.showingAggregate ? 'aggregate' : 'folder',
-    state.search.showResults ? 'search' : 'browser',
-  ].join(':')
   const organizationDragResetKey = [
     state.project?.sessionId ?? 'no-session',
     state.project?.generation ?? 'no-generation',
     organizationWorkspaceIdentity,
   ].join(':')
 
-  useEffect(() => {
-    if (radialMenu !== null) finishRadialSession()
-    // Deliberately exclude radialMenu: only a menu present when context changed is stale.
-  }, [
-    activePreview,
-    compareOpen,
-    finishRadialSession,
-    infoOpen,
-    operationDialog,
-    organizationWorkspaceIdentity,
-    resultsBatchId,
-    state.closeBlocked,
-    state.contextRepair,
-    state.status,
-    radialProjectIdentity,
-  ])
   const {
     dragView: organizationDragView,
     dropTarget: organizationDropTarget,
@@ -576,32 +526,32 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
 
   const openPreview = useCallback(
     (file: BrowserFile) => {
-      setActivePreview({ file, files: null, folderOverviewIdentity: null })
+      openPreviewSession({ file, files: null, folderOverviewIdentity: null })
       setPreviewEntityId(file.entityId)
     },
-    [setPreviewEntityId],
+    [openPreviewSession, setPreviewEntityId],
   )
 
   const openFilmstripPreview = useCallback(
     (file: BrowserFile, files: BrowserFile[]) => {
-      setActivePreview({ file, files, folderOverviewIdentity })
+      openPreviewSession({ file, files, folderOverviewIdentity })
       setPreviewEntityId(file.entityId)
     },
-    [folderOverviewIdentity, setPreviewEntityId],
+    [folderOverviewIdentity, openPreviewSession, setPreviewEntityId],
   )
 
   const navigatePreview = useCallback(
     (file: BrowserFile) => {
-      setActivePreview((current) => (current === null ? null : { ...current, file }))
+      if (activePreview !== null) openPreviewSession({ ...activePreview, file })
       setPreviewEntityId(file.entityId)
     },
-    [setPreviewEntityId],
+    [activePreview, openPreviewSession, setPreviewEntityId],
   )
 
   const closePreview = useCallback(() => {
-    setActivePreview(null)
+    closePreviewSession()
     setPreviewEntityId(null)
-  }, [setPreviewEntityId])
+  }, [closePreviewSession, setPreviewEntityId])
 
   const openComparison = useCallback(
     (files: BrowserFile[] = selectedFiles) => {
@@ -618,11 +568,18 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
         return
       }
       setCompareStatus(null)
-      setActivePreview(null)
+      closePreviewSession()
       setPreviewEntityId(null)
       setCompareEntityIds(files.map((file) => file.entityId))
     },
-    [compareEntryAvailable, operationBusy, selectedFiles, setCompareEntityIds, setPreviewEntityId],
+    [
+      closePreviewSession,
+      compareEntryAvailable,
+      operationBusy,
+      selectedFiles,
+      setCompareEntityIds,
+      setPreviewEntityId,
+    ],
   )
 
   const runRadialAction = useCallback(
@@ -717,9 +674,9 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
       activePreview &&
       state.contextRepair?.removedEntityIds.includes(activePreview.file.entityId)
     ) {
-      setActivePreview(null)
+      closePreviewSession()
     }
-  }, [activePreview, state.contextRepair])
+  }, [activePreview, closePreviewSession, state.contextRepair])
 
   useEffect(() => {
     if (
@@ -727,10 +684,10 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
       activePreview.folderOverviewIdentity !== null &&
       activePreview.folderOverviewIdentity !== folderOverviewIdentity
     ) {
-      setActivePreview(null)
+      closePreviewSession()
       setPreviewEntityId(null)
     }
-  }, [activePreview, folderOverviewIdentity, setPreviewEntityId])
+  }, [activePreview, closePreviewSession, folderOverviewIdentity, setPreviewEntityId])
 
   useEffect(() => {
     function handleOrganizationShortcut(event: KeyboardEvent) {
@@ -855,12 +812,12 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
             aria-expanded={projectMenuOpen}
             onClick={(event) => {
               event.preventDefault()
-              setProjectMenuOpen((open) => !open)
+              setProjectMenuOpen(!projectMenuOpen)
             }}
             onKeyDown={(event) => {
               if (event.key !== 'Enter' && event.key !== ' ' && event.key !== 'Spacebar') return
               event.preventDefault()
-              setProjectMenuOpen((open) => !open)
+              setProjectMenuOpen(!projectMenuOpen)
             }}
           >
             •••
@@ -918,7 +875,7 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
           <button
             type="button"
             aria-label={sidebarCollapsed ? '展开文件夹栏' : '折叠文件夹栏'}
-            onClick={() => setSidebarCollapsed((collapsed) => !collapsed)}
+            onClick={toggleSidebar}
           >
             {sidebarCollapsed ? '›' : '‹'}
           </button>
@@ -948,12 +905,6 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
                 aria-valuemax={420}
                 aria-valuenow={sidebarWidth}
                 onPointerDown={startSidebarResize}
-                onKeyDown={(event) => {
-                  if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
-                  event.preventDefault()
-                  const delta = event.key === 'ArrowLeft' ? -16 : 16
-                  setSidebarWidth((width) => Math.max(200, Math.min(420, width + delta)))
-                }}
               />
             </>
           )}
@@ -1076,7 +1027,7 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
           requestImage={requestPreviewImage}
           onNavigate={navigatePreview}
           onClose={closePreview}
-          onDimensions={rememberDimensions}
+          onDimensions={recordDimensions}
         />
       )}
       {activePreviewFile && !matchesImage(activePreviewFile) && (

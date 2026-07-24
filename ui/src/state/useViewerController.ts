@@ -1104,6 +1104,8 @@ export function useViewerController(bridge: ViewerBridge) {
   }
 }
 
+export type ViewerController = ReturnType<typeof useViewerController>
+
 function isTerminalCloseCleanupFailure(error: unknown): boolean {
   return (
     typeof error === 'object' &&

@@ -1,4 +1,3 @@
-use async_trait::async_trait;
 use std::{
     collections::{HashMap, HashSet},
     path::{Path, PathBuf},
@@ -10,12 +9,11 @@ use viewer_application::{
         BatchId, BatchResultCode, FileCommandCancellation, FileCommandItemExecution,
         FileCommandPreflightState, LocalFileCommandError, LocalFileCommandOutcome,
     },
-    undo::{UndoAction, UndoBatch, UndoError, UndoFilePort},
     watcher::FileIdentity,
 };
 use viewer_domain::{
     EntityId, OperationId, RelativePath,
-    operation::{ConflictPolicy, OperationItemPlan, OperationKind, OperationPlan, OperationState},
+    operation::{ConflictPolicy, OperationItemPlan, OperationKind, OperationState},
 };
 
 use super::super::{
@@ -25,8 +23,9 @@ use super::super::{
     },
 };
 use super::{
-    preflight::{directory_identity_sync, stable_content_evidence_sync},
-    types::{LocalFileCommandAdapter, PreparedBatch, PreparedItem, PreparedRoute},
+    preflight::stable_content_evidence_sync,
+    results::classify_message,
+    types::{LocalFileCommandAdapter, PreparedItem, PreparedRoute},
 };
 use crate::scan::reconcile::ExpectedChange;
 
@@ -361,7 +360,7 @@ impl LocalFileCommandAdapter {
         }))
     }
 
-    async fn execute_copy_route(
+    pub(super) async fn execute_copy_route(
         &self,
         mut item: PreparedItem,
         policy: Option<ConflictPolicy>,
@@ -761,7 +760,7 @@ impl LocalFileCommandAdapter {
             .map_err(journal_file_error)
     }
 
-    async fn register_expected_change(
+    pub(super) async fn register_expected_change(
         &self,
         operation_id: OperationId,
         old_path: &Path,
@@ -843,160 +842,6 @@ impl LocalFileCommandAdapter {
         RelativePath::parse(relative).map_err(|_| FileOperationError::ReservedPath)
     }
 
-    fn mark_failed(&self, operation_id: OperationId, code: BatchResultCode) {
-        let Ok(Some(item)) = self.journal.item(operation_id) else {
-            return;
-        };
-        let safe_to_terminalize = match item.state {
-            OperationState::Prepared => {
-                let source_exists = self.project_root.join(item.source.as_str()).is_file();
-                let temporary_exists = item
-                    .temporary
-                    .as_ref()
-                    .is_some_and(|path| self.project_root.join(path.as_str()).exists());
-                source_exists && !temporary_exists
-            }
-            OperationState::Staged => {
-                let source_exists = self.project_root.join(item.source.as_str()).is_file();
-                let destination_exists = item
-                    .destination
-                    .as_ref()
-                    .is_some_and(|path| self.project_root.join(path.as_str()).exists());
-                let temporary_exists = item
-                    .temporary
-                    .as_ref()
-                    .is_some_and(|path| self.project_root.join(path.as_str()).exists());
-                source_exists && !destination_exists && !temporary_exists
-            }
-            OperationState::FsApplied
-            | OperationState::Verified
-            | OperationState::MetaCommitted
-            | OperationState::IndexSynced
-            | OperationState::Completed
-            | OperationState::Failed => false,
-        };
-        if safe_to_terminalize {
-            let _ = self
-                .journal
-                .fail_item(operation_id, item.state, code.as_str(), self.now());
-        }
-    }
-
-    fn mark_cancelled(&self, operation_id: OperationId) {
-        let Ok(Some(item)) = self.journal.item(operation_id) else {
-            return;
-        };
-        if !matches!(
-            item.state,
-            OperationState::Completed | OperationState::Failed
-        ) {
-            let _ = self.journal.skip_item(
-                operation_id,
-                item.state,
-                BatchResultCode::Cancelled.as_str(),
-                self.now(),
-            );
-        }
-    }
-
-    fn settle_recovery_required(
-        &self,
-        operation_id: OperationId,
-        primary: &FileOperationError,
-    ) -> Result<LocalFileCommandOutcome, LocalFileCommandError> {
-        let code = classify_file_error(primary);
-        let item = self
-            .journal
-            .item(operation_id)
-            .map_err(|_| LocalFileCommandError::Unavailable)?
-            .ok_or(LocalFileCommandError::Unavailable)?;
-        if matches!(primary.primary(), FileOperationError::Cancelled) {
-            self.journal
-                .skip_item_recovery_required(
-                    operation_id,
-                    item.state,
-                    BatchResultCode::Cancelled.as_str(),
-                    self.now(),
-                )
-                .map_err(|_| LocalFileCommandError::Unavailable)?;
-            Ok(LocalFileCommandOutcome::cancelled(
-                BatchResultCode::Cancelled,
-            ))
-        } else {
-            self.journal
-                .fail_item_recovery_required(operation_id, item.state, code.as_str(), self.now())
-                .map_err(|_| LocalFileCommandError::Unavailable)?;
-            Ok(LocalFileCommandOutcome::failed(code))
-        }
-    }
-
-    fn fail_outcome_for_entity(
-        &self,
-        batch_id: BatchId,
-        entity_id: EntityId,
-        error: &FileOperationError,
-    ) -> LocalFileCommandOutcome {
-        let code = classify_file_error(error);
-        if let Some(item) = self
-            .lock_batches()
-            .get(&batch_id)
-            .and_then(|batch| batch.items.get(&entity_id))
-        {
-            self.mark_failed(item.plan.operation_id, code);
-        }
-        LocalFileCommandOutcome::failed(code)
-    }
-
-    fn maybe_finish_batch(&self, batch_id: BatchId) {
-        let should_finish = self
-            .journal
-            .batch(batch_id)
-            .ok()
-            .flatten()
-            .is_some_and(|batch| {
-                batch.completed_count + batch.failed_count + batch.skipped_count
-                    == batch.requested_count
-            });
-        if !should_finish {
-            return;
-        }
-        let mut batches = self.lock_batches();
-        let Some(batch) = batches.get_mut(&batch_id) else {
-            return;
-        };
-        if !batch.journal_finished && self.journal.finish_batch(batch_id, self.now()).is_ok() {
-            batch.journal_finished = true;
-        }
-    }
-
-    fn mark_delivered(&self, batch_id: BatchId, entity_id: EntityId) {
-        let mut batches = self.lock_batches();
-        let should_remove = batches.get_mut(&batch_id).is_some_and(|batch| {
-            batch.delivered.insert(entity_id);
-            batch.journal_finished
-                && batch.delivered.len() == batch.plan.items.len()
-                && !matches!(batch.plan.kind, OperationKind::Rename | OperationKind::Move)
-        });
-        if should_remove {
-            batches.remove(&batch_id);
-        }
-    }
-
-    fn now(&self) -> i64 {
-        self.clock.unix_millis()
-    }
-
-    fn now_u64(&self) -> u64 {
-        u64::try_from(self.now()).unwrap_or_default()
-    }
-
-    pub(super) fn lock_batches(
-        &self,
-    ) -> std::sync::MutexGuard<'_, HashMap<BatchId, PreparedBatch>> {
-        self.batches
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-    }
     pub(super) async fn execute_prepared_item(
         &self,
         request: FileCommandItemExecution,
@@ -1115,228 +960,6 @@ impl LocalFileCommandAdapter {
         self.mark_delivered(request.batch_id, request.item.entity_id);
         Ok(outcome)
     }
-
-    pub(super) async fn take_prepared_undo_actions(
-        &self,
-        batch_id: BatchId,
-    ) -> Result<Vec<UndoAction>, LocalFileCommandError> {
-        let batch = {
-            let mut batches = self.lock_batches();
-            if !batches
-                .get(&batch_id)
-                .is_some_and(|batch| batch.journal_finished)
-            {
-                return Ok(Vec::new());
-            }
-            batches
-                .remove(&batch_id)
-                .ok_or(LocalFileCommandError::Unavailable)?
-        };
-        if !matches!(batch.plan.kind, OperationKind::Rename | OperationKind::Move) {
-            return Ok(Vec::new());
-        }
-        let mut actions = Vec::new();
-        for planned in &batch.plan.items {
-            let persisted = self
-                .journal
-                .item(planned.operation_id)
-                .map_err(|_| LocalFileCommandError::Unavailable)?;
-            let Some(persisted) = persisted.filter(|item| item.state == OperationState::Completed)
-            else {
-                continue;
-            };
-            let Some(current) = persisted.destination else {
-                continue;
-            };
-            let expected = self
-                .mutation
-                .snapshot(&self.project_root.join(current.as_str()))
-                .await
-                .map_err(|_| LocalFileCommandError::Unavailable)?;
-            let current_entity_id = self
-                .index
-                .node_by_relative_path(&current)
-                .map_err(|_| LocalFileCommandError::Unavailable)?
-                .map(|node| node.entity_id)
-                .ok_or(LocalFileCommandError::Unavailable)?;
-            actions.push(UndoAction::File {
-                entity_id: current_entity_id,
-                current,
-                restore: persisted.source,
-                expected,
-            });
-        }
-        Ok(actions)
-    }
-}
-
-#[async_trait]
-impl UndoFilePort for LocalFileCommandAdapter {
-    async fn reverse_batch(&self, project_root: &Path, batch: &UndoBatch) -> Result<(), UndoError> {
-        let root = std::fs::canonicalize(project_root).map_err(|error| {
-            FileOperationError::io("canonicalize inverse operation root", project_root, &error)
-        })?;
-        if root != self.project_root
-            || !matches!(batch.kind, OperationKind::Rename | OperationKind::Move)
-        {
-            return Err(UndoError::OutsideProject);
-        }
-        let inverse_batch_id = OperationId::new();
-        let mut prepared = Vec::with_capacity(batch.actions.len());
-        for action in &batch.actions {
-            let UndoAction::File {
-                entity_id,
-                current,
-                restore,
-                expected,
-            } = action
-            else {
-                return Err(UndoError::OutsideProject);
-            };
-            let source = root.join(current.as_str());
-            if self.mutation.snapshot(&source).await? != *expected {
-                return Err(UndoError::IdentityChanged);
-            }
-            let destination = root.join(restore.as_str());
-            let destination_parent = destination
-                .parent()
-                .and_then(|parent| std::fs::canonicalize(parent).ok())
-                .ok_or(UndoError::OutsideProject)?;
-            if !destination_parent.starts_with(&root) {
-                return Err(UndoError::OutsideProject);
-            }
-            let route = if batch.kind == OperationKind::Rename {
-                PreparedRoute::RenameGroup
-            } else if self.volume.volume_id(&source)?
-                == self.volume.volume_id(&destination_parent)?
-            {
-                PreparedRoute::AtomicMove
-            } else {
-                PreparedRoute::CrossVolumeMove
-            };
-            prepared.push(PreparedItem {
-                plan: OperationItemPlan {
-                    batch_id: inverse_batch_id,
-                    operation_id: OperationId::new(),
-                    entity_id: *entity_id,
-                    kind: batch.kind,
-                    source: current.clone(),
-                    destination: Some(restore.clone()),
-                    conflict_policy: ConflictPolicy::Skip,
-                },
-                state: FileCommandPreflightState::Ready,
-                route,
-                source_evidence: Some(expected.clone()),
-                destination_evidence: None,
-                source_parent_identity: source
-                    .parent()
-                    .and_then(|parent| directory_identity_sync(parent).ok()),
-                destination_parent_identity: Some(directory_identity_sync(&destination_parent)?),
-            });
-        }
-        let plan = OperationPlan {
-            batch_id: inverse_batch_id,
-            kind: batch.kind,
-            items: prepared.iter().map(|item| item.plan.clone()).collect(),
-        };
-        self.journal
-            .begin_plan(&plan, self.now())
-            .map_err(journal_file_error)?;
-
-        let atomic = prepared
-            .iter()
-            .filter(|item| item.route != PreparedRoute::CrossVolumeMove)
-            .collect::<Vec<_>>();
-        if !atomic.is_empty() {
-            let mappings = atomic
-                .iter()
-                .map(|item| RenameMapping {
-                    operation_id: item.plan.operation_id,
-                    entity_id: item.plan.entity_id,
-                    source: PathBuf::from(item.plan.source.as_str()),
-                    destination: PathBuf::from(
-                        item.plan
-                            .destination
-                            .as_ref()
-                            .expect("inverse file action has a destination")
-                            .as_str(),
-                    ),
-                })
-                .collect::<Vec<_>>();
-            let rename_plan = RenamePlanner::plan(&root, self.case_sensitive_root(), &mappings)
-                .map_err(|_| UndoError::DestinationOccupied)?;
-            for item in &atomic {
-                let source = root.join(item.plan.source.as_str());
-                let destination = root.join(
-                    item.plan
-                        .destination
-                        .as_ref()
-                        .expect("inverse destination")
-                        .as_str(),
-                );
-                self.register_expected_change(
-                    item.plan.operation_id,
-                    &source,
-                    &destination,
-                    &source,
-                    item.source_evidence.as_ref(),
-                )
-                .await?;
-            }
-            let executor = RenameExecutor::new(
-                &root,
-                Arc::clone(&self.journal),
-                Arc::clone(&self.mutation),
-                Arc::clone(&self.clock),
-                Arc::clone(&self.commits),
-            )?;
-            let expected = atomic
-                .iter()
-                .filter_map(|item| {
-                    item.source_evidence
-                        .clone()
-                        .map(|evidence| (item.plan.operation_id, evidence))
-                })
-                .collect::<HashMap<_, _>>();
-            let parents = atomic
-                .iter()
-                .filter_map(|item| {
-                    Some((
-                        item.plan.operation_id,
-                        RenameParentIdentities {
-                            source: item.source_parent_identity?,
-                            destination: item.destination_parent_identity?,
-                        },
-                    ))
-                })
-                .collect::<HashMap<_, _>>();
-            let result = executor
-                .execute_with_bound_expectations(&rename_plan, &expected, &parents)
-                .await;
-            if let Some(message) = result.items.iter().find_map(|item| match &item.status {
-                RenameItemStatus::Completed => None,
-                RenameItemStatus::Failed(message) => Some(message.clone()),
-            }) {
-                return Err(FileOperationError::Io {
-                    action: "execute inverse rename",
-                    path: root,
-                    message,
-                }
-                .into());
-            }
-        }
-        for item in prepared
-            .iter()
-            .filter(|item| item.route == PreparedRoute::CrossVolumeMove)
-        {
-            self.execute_copy_route(item.clone(), None, &FileCommandCancellation::default())
-                .await?;
-        }
-        self.journal
-            .finish_batch(inverse_batch_id, self.now())
-            .map_err(journal_file_error)?;
-        Ok(())
-    }
 }
 
 fn same_staged_content_evidence(
@@ -1358,51 +981,6 @@ async fn stable_content_evidence_async(
     tokio::task::spawn_blocking(move || stable_content_evidence_sync(&path))
         .await
         .map_err(|error| worker_file_error("fingerprint stable file", &error_path, error))?
-}
-
-fn classify_file_error(error: &FileOperationError) -> BatchResultCode {
-    match error {
-        FileOperationError::RegisteredTemporaryCleanupRequired { primary, .. } => {
-            classify_file_error(primary)
-        }
-        FileOperationError::SourceMissing => BatchResultCode::SourceMissing,
-        FileOperationError::DestinationExists => BatchResultCode::DestinationOccupied,
-        FileOperationError::VerificationFailed | FileOperationError::IdentityChanged => {
-            BatchResultCode::VerificationFailed
-        }
-        FileOperationError::Cancelled => BatchResultCode::Cancelled,
-        FileOperationError::OutsideProject
-        | FileOperationError::ReservedPath
-        | FileOperationError::DestinationRequired => BatchResultCode::InvalidTarget,
-        FileOperationError::Io { message, .. }
-            if message.to_ascii_lowercase().contains("permission denied")
-                || message
-                    .to_ascii_lowercase()
-                    .contains("operation not permitted") =>
-        {
-            BatchResultCode::PermissionDenied
-        }
-        FileOperationError::Io { .. } => BatchResultCode::BackendUnavailable,
-    }
-}
-
-fn classify_message(message: &str) -> BatchResultCode {
-    let lowercase = message.to_ascii_lowercase();
-    if lowercase.contains("source does not exist") || lowercase.contains("source is missing") {
-        BatchResultCode::SourceMissing
-    } else if lowercase.contains("destination already exists")
-        || lowercase.contains("destination is occupied")
-    {
-        BatchResultCode::DestinationOccupied
-    } else if lowercase.contains("permission denied")
-        || lowercase.contains("operation not permitted")
-    {
-        BatchResultCode::PermissionDenied
-    } else if lowercase.contains("identity changed") || lowercase.contains("did not match") {
-        BatchResultCode::VerificationFailed
-    } else {
-        BatchResultCode::BackendUnavailable
-    }
 }
 
 fn temporary_for(
@@ -1450,7 +1028,7 @@ fn worker_file_error(
     }
 }
 
-fn journal_file_error(error: super::journal::JournalError) -> FileOperationError {
+pub(super) fn journal_file_error(error: super::journal::JournalError) -> FileOperationError {
     FileOperationError::Io {
         action: "persist operation journal",
         path: PathBuf::new(),

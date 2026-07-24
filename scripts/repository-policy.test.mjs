@@ -127,9 +127,9 @@ const validateDeterministicCIWorkflow = (workflow) => {
       /^        ["'?!&*]/m,
       `${name} job must use ordinary unquoted step keys`,
     )
-    const usesLines = job.match(/^        uses:\s+\S.*$/gm) ?? []
+    const usesLines = job.match(/^        uses[ \t]*:[ \t]*.*$/gm) ?? []
     const actionReferences = [
-      ...job.matchAll(/^        uses:\s+([^@\s]+)@([^\s#]+)(?:\s+#.*)?$/gm),
+      ...job.matchAll(/^        uses[ \t]*:[ \t]+([^@\s]+)@([^\s#]+)(?:[ \t]+#.*)?$/gm),
     ]
     assert.ok(actionReferences.length > 0, `${name} job must use pinned actions`)
     assert.equal(actionReferences.length, usesLines.length, `${name} uses entries must name an action SHA`)
@@ -150,9 +150,9 @@ const validateDeterministicCIWorkflow = (workflow) => {
     }
     assert.match(job, /^    runs-on: macos-15$/m, `${name} job must run on macos-15`)
     const checkoutAction =
-      /^        uses: actions\/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0(?:\s+#.*)?$/m
+      /^        uses[ \t]*:[ \t]+actions\/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0(?:[ \t]+#.*)?$/m
     const checkoutReferences = [
-      ...job.matchAll(/^        uses: actions\/checkout@([^\s#]+)(?:\s+#.*)?$/gm),
+      ...job.matchAll(/^        uses[ \t]*:[ \t]+actions\/checkout@([^\s#]+)(?:[ \t]+#.*)?$/gm),
     ]
     assert.equal(checkoutReferences.length, 1, `${name} job must have exactly one checkout action`)
     assert.equal(
@@ -164,9 +164,9 @@ const validateDeterministicCIWorkflow = (workflow) => {
     assert.equal(checkoutSteps.length, 1, `${name} job must have exactly one pinned checkout action`)
     assert.equal(checkoutSteps[0].name, 'Check out repository', `${name} checkout step name`)
     const setupNodeAction =
-      /^        uses: actions\/setup-node@820762786026740c76f36085b0efc47a31fe5020(?:\s+#.*)?$/m
+      /^        uses[ \t]*:[ \t]+actions\/setup-node@820762786026740c76f36085b0efc47a31fe5020(?:[ \t]+#.*)?$/m
     const setupNodeReferences = [
-      ...job.matchAll(/^        uses: actions\/setup-node@([^\s#]+)(?:\s+#.*)?$/gm),
+      ...job.matchAll(/^        uses[ \t]*:[ \t]+actions\/setup-node@([^\s#]+)(?:[ \t]+#.*)?$/gm),
     ]
     assert.equal(setupNodeReferences.length, 1, `${name} job must have exactly one setup-node action`)
     assert.equal(
@@ -179,7 +179,7 @@ const validateDeterministicCIWorkflow = (workflow) => {
     assert.equal(setupNodeSteps[0].name, 'Set up Node.js 24.18.0', `${name} setup-node step name`)
     assert.match(
       setupNodeSteps[0].block,
-      /^        uses: actions\/setup-node@820762786026740c76f36085b0efc47a31fe5020(?:\s+#.*)?\n        with:\n          node-version: "24\.18\.0"$/m,
+      /^        uses[ \t]*:[ \t]+actions\/setup-node@820762786026740c76f36085b0efc47a31fe5020(?:[ \t]+#.*)?\n        with:\n          node-version: "24\.18\.0"$/m,
       `${name} setup-node action must have the locked node-version in its with block`,
     )
     assert.match(
@@ -396,6 +396,24 @@ test('CI deterministic job invariants reject policy bypass mutations', async () 
       ),
     },
     {
+      label: 'space-before-colon unpinned checkout action',
+      workflow: mutateJob(
+        workflow,
+        'quality',
+        '      - name: Assert Apple Silicon runner',
+        '      - name: Space-key unpinned checkout\n        uses : actions/checkout@v4\n\n      - name: Assert Apple Silicon runner',
+      ),
+    },
+    {
+      label: 'tab-before-colon unpinned setup-node action',
+      workflow: mutateJob(
+        workflow,
+        'security',
+        '      - name: Activate pnpm 10.0.0 through Corepack',
+        '      - name: Tab-key unpinned setup-node\n        uses\t: actions/setup-node@v4\n\n      - name: Activate pnpm 10.0.0 through Corepack',
+      ),
+    },
+    {
       label: 'quality pnpm bootstrap',
       workflow: mutateJob(
         workflow,
@@ -480,7 +498,7 @@ test('CI defines independent deterministic quality and security gates', async ()
   validateDeterministicCIWorkflow(workflow)
   assert.deepEqual([...extractCIJobBlocks(workflow).keys()].sort(), ['quality', 'security'])
 
-  const actions = [...workflow.matchAll(/uses:\s+([^@\s]+)@([^\s#]+)/g)]
+  const actions = [...workflow.matchAll(/uses[ \t]*:[ \t]+([^@\s]+)@([^\s#]+)/g)]
   assert.ok(actions.length > 0, 'workflow must use pinned actions')
   for (const action of actions) {
     assert.match(action[2], /^[0-9a-f]{40}$/, `${action[1]} must be pinned to a commit`)

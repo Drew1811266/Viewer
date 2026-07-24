@@ -201,6 +201,24 @@ describe('viewerReducer', () => {
     expect(state.selectedEntityIds).toEqual(['folder-1', 'image-1'])
   })
 
+  it('ignores marker changes from a stale generation', () => {
+    const active = viewerReducer(initialViewerState, { type: 'project_opened', project })
+    const changed = viewerReducer(active, {
+      type: 'marker_changes_applied',
+      sessionId: project.sessionId,
+      generation: project.generation - 1,
+      changes: [
+        {
+          entityId: 'folder-1',
+          relativePath: 'id-1',
+          kind: 'directory',
+          marker: { reviewState: 'keep', favorite: true },
+        },
+      ],
+    })
+    expect(changed).toEqual(active)
+  })
+
   it('keeps operation recovery and close state scoped to the current session', () => {
     let state = viewerReducer(initialViewerState, {
       type: 'project_opened',

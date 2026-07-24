@@ -4,13 +4,7 @@ import type {
   FileCommandItem,
   FileCommandKind,
   OperationProgressEvent,
-  ProjectSnapshot,
   RenameRules,
-  ReviewState,
-  SearchFilters,
-  SearchLayout,
-  SearchQueryModel,
-  SearchSort,
 } from '../api/types'
 import type { ViewerBridge } from '../api/viewer'
 import { safeUserMessage } from '../api/viewer'
@@ -19,7 +13,8 @@ import {
   refreshDesiredProjection,
   useProjectSessionController,
 } from './controllers/useProjectSessionController'
-import type { SearchFilterChip } from './viewerReducer'
+import { useSearchController } from './controllers/useSearchController'
+import { useSelectionMarkerController } from './controllers/useSelectionMarkerController'
 import { initialViewerState, viewerReducer } from './viewerReducer'
 import type { ViewerAction } from './viewerState'
 
@@ -27,9 +22,6 @@ export function useViewerController(bridge: ViewerBridge) {
   const [state, dispatch] = useReducer(viewerReducer, initialViewerState)
   const stateRef = useRef(state)
   const sessionEpochRef = useRef(0)
-  const searchRevisionRef = useRef(0)
-  const selectionRequestRef = useRef(0)
-  const requestedSnippetsRef = useRef(new Set<string>())
   const activeBatchRef = useRef<string | null>(null)
   const operationRequestPendingRef = useRef(false)
   const undoRequestPendingRef = useRef(false)
@@ -38,9 +30,6 @@ export function useViewerController(bridge: ViewerBridge) {
   stateRef.current = state
 
   const resetLaterSessionRequests = useCallback(() => {
-    searchRevisionRef.current += 1
-    selectionRequestRef.current += 1
-    requestedSnippetsRef.current.clear()
     activeBatchRef.current = null
     operationRequestPendingRef.current = false
     undoRequestPendingRef.current = false
@@ -57,96 +46,6 @@ export function useViewerController(bridge: ViewerBridge) {
     },
     [resetLaterSessionRequests],
   )
-
-  const executeSearch = useCallback(
-    async (project: ProjectSnapshot, query: SearchQueryModel, offset: number) => {
-      const revision = ++searchRevisionRef.current
-      requestedSnippetsRef.current.clear()
-      dispatch({ type: 'search_requested', revision })
-      try {
-        const page = await bridge.searchProject({
-          sessionId: project.sessionId,
-          generation: project.generation,
-          revision,
-          ...query,
-          offset,
-          limit: 200,
-        })
-        dispatch({
-          type: 'search_loaded',
-          sessionId: project.sessionId,
-          generation: project.generation,
-          page,
-        })
-      } catch (error) {
-        dispatch({
-          type: 'search_failed',
-          sessionId: project.sessionId,
-          generation: project.generation,
-          revision,
-          message: safeUserMessage(error),
-        })
-      }
-    },
-    [bridge],
-  )
-
-  useEffect(() => {
-    const project = state.project
-    if (project === null || state.status !== 'active' || state.search.queryVersion === 0) {
-      return
-    }
-    const delay = state.search.schedule === 'debounced' ? 120 : 0
-    const query = state.search.query
-    const offset = state.search.offset
-    const timer = window.setTimeout(() => void executeSearch(project, query, offset), delay)
-    return () => window.clearTimeout(timer)
-  }, [
-    executeSearch,
-    state.project,
-    state.search.query,
-    state.search.queryVersion,
-    state.search.schedule,
-    state.search.offset,
-    state.status,
-  ])
-
-  useEffect(() => {
-    const project = state.project
-    const page = state.search.page
-    if (project === null || page === null || page.revision !== state.search.revision) return
-    const visible = new Set(state.search.visibleEntityIds)
-    for (const hit of page.hits) {
-      if (hit.matchedField !== 'body' || !visible.has(hit.entityId)) continue
-      const key = `${page.revision}:${hit.entityId}`
-      if (requestedSnippetsRef.current.has(key)) continue
-      requestedSnippetsRef.current.add(key)
-      void bridge
-        .searchTextSnippet({
-          sessionId: project.sessionId,
-          generation: project.generation,
-          revision: page.revision,
-          entityId: hit.entityId,
-          query: state.search.query.text,
-        })
-        .then((result) => {
-          dispatch({
-            type: 'search_snippet_loaded',
-            revision: result.revision,
-            entityId: result.entityId,
-            snippet: result.snippet,
-          })
-        })
-        .catch(() => undefined)
-    }
-  }, [
-    bridge,
-    state.project,
-    state.search.page,
-    state.search.query.text,
-    state.search.revision,
-    state.search.visibleEntityIds,
-  ])
 
   const core: ControllerCore = {
     bridge,
@@ -165,179 +64,34 @@ export function useViewerController(bridge: ViewerBridge) {
     showAllDescendants: projectSession.showAllDescendants,
     cancelTask: projectSession.cancelTask,
   }
-
-  useEffect(() => {
-    function requestSearchFocus(event: KeyboardEvent) {
-      if (!(event.metaKey && event.key.toLowerCase() === 'f')) return
-      if (stateRef.current.project === null) return
-      event.preventDefault()
-      dispatch({ type: 'search_focus_requested' })
-    }
-    window.addEventListener('keydown', requestSearchFocus)
-    return () => window.removeEventListener('keydown', requestSearchFocus)
-  }, [])
-
-  const setSearchText = useCallback((text: string) => {
-    dispatch({ type: 'search_text_changed', text })
-  }, [])
-
-  const setSearchScope = useCallback((folderId: string | null) => {
-    dispatch({ type: 'search_scope_changed', folderId })
-  }, [])
-
-  const setSearchFilters = useCallback((filters: SearchFilters) => {
-    dispatch({ type: 'search_filters_changed', filters })
-  }, [])
-
-  const setSearchSort = useCallback((sort: SearchSort) => {
-    dispatch({ type: 'search_sort_changed', sort })
-  }, [])
-
-  const setSearchLayout = useCallback((layout: SearchLayout) => {
-    dispatch({ type: 'search_layout_changed', layout })
-  }, [])
-
-  const removeSearchFilter = useCallback((chip: SearchFilterChip) => {
-    dispatch({ type: 'search_filter_chip_removed', chip })
-  }, [])
-
-  const clearSearchFilters = useCallback(() => {
-    dispatch({ type: 'search_filters_cleared' })
-  }, [])
-
-  const setVisibleSearchHits = useCallback((entityIds: string[]) => {
-    dispatch({ type: 'visible_search_hits_changed', entityIds })
-  }, [])
-
-  const setSearchPage = useCallback((offset: number) => {
-    dispatch({ type: 'search_page_changed', offset })
-  }, [])
-
-  const returnToFolderContext = useCallback(() => {
-    searchRevisionRef.current += 1
-    requestedSnippetsRef.current.clear()
-    dispatch({ type: 'search_context_closed' })
-  }, [])
-
-  const refreshSelectionInfo = useCallback(
-    async (project: ProjectSnapshot, entityIds: string[]) => {
-      const request = ++selectionRequestRef.current
-      try {
-        const info = await bridge.selectionInfo({
-          sessionId: project.sessionId,
-          generation: project.generation,
-          entityIds,
-        })
-        if (request !== selectionRequestRef.current) return
-        dispatch({
-          type: 'selection_info_loaded',
-          sessionId: project.sessionId,
-          generation: project.generation,
-          entityIds,
-          info,
-        })
-      } catch {
-        // Selection summaries are supplemental; the selection itself remains usable.
-      }
+  const {
+    setSearchText,
+    setSearchScope,
+    setSearchFilters,
+    setSearchSort,
+    setSearchLayout,
+    removeSearchFilter,
+    clearSearchFilters,
+    setVisibleSearchHits,
+    setSearchPage,
+    returnToFolderContext,
+  } = useSearchController(core, projectSession.sessionEpoch)
+  const {
+    setSelectedEntityIds,
+    setReviewState,
+    toggleFavorite,
+    setPreviewEntityId,
+    setCompareEntityIds,
+    consumeContextRepair,
+  } = useSelectionMarkerController(
+    {
+      ...core,
+      refreshProjection,
+      operationRequestPendingRef,
+      undoRequestPendingRef,
+      activeBatchRef,
     },
-    [bridge],
-  )
-
-  const setSelectedEntityIds = useCallback(
-    (entityIds: string[]) => {
-      dispatch({ type: 'selection_changed', entityIds })
-      const project = stateRef.current.project
-      if (project === null) return
-      void refreshSelectionInfo(project, entityIds)
-    },
-    [refreshSelectionInfo],
-  )
-
-  const setReviewState = useCallback(
-    async (reviewState: ReviewState | null, entityIdsOverride?: string[]) => {
-      const current = stateRef.current
-      const requestedEntityIds = uniqueEntityIds(entityIdsOverride ?? current.selectedEntityIds)
-      const targetEntityIds = current.search.showResults
-        ? requestedEntityIds.filter((entityId) =>
-            current.search.visibleEntityIds.includes(entityId),
-          )
-        : requestedEntityIds
-      if (
-        current.status !== 'active' ||
-        current.project === null ||
-        current.project.access === 'read_only' ||
-        operationRequestPendingRef.current ||
-        undoRequestPendingRef.current ||
-        activeBatchRef.current !== null ||
-        targetEntityIds.length === 0
-      ) {
-        return
-      }
-      try {
-        const result = await bridge.setReviewState({
-          sessionId: current.project.sessionId,
-          generation: current.project.generation,
-          entityIds: targetEntityIds,
-          reviewState,
-        })
-        dispatch({
-          type: 'marker_changes_applied',
-          sessionId: current.project.sessionId,
-          generation: current.project.generation,
-          changes: result.changes,
-        })
-        await Promise.all([
-          refreshSelectionInfo(current.project, current.selectedEntityIds),
-          refreshDesiredProjection(refreshProjection, current.project),
-        ])
-      } catch (error) {
-        dispatch({ type: 'input_rejected', message: safeUserMessage(error) })
-      }
-    },
-    [bridge, refreshProjection, refreshSelectionInfo],
-  )
-
-  const toggleFavorite = useCallback(
-    async (entityIdsOverride?: string[]) => {
-      const current = stateRef.current
-      const requestedEntityIds = uniqueEntityIds(entityIdsOverride ?? current.selectedEntityIds)
-      const targetEntityIds = current.search.showResults
-        ? requestedEntityIds.filter((entityId) =>
-            current.search.visibleEntityIds.includes(entityId),
-          )
-        : requestedEntityIds
-      if (
-        current.status !== 'active' ||
-        current.project === null ||
-        current.project.access === 'read_only' ||
-        operationRequestPendingRef.current ||
-        undoRequestPendingRef.current ||
-        activeBatchRef.current !== null ||
-        targetEntityIds.length === 0
-      ) {
-        return
-      }
-      try {
-        const result = await bridge.toggleFavorite({
-          sessionId: current.project.sessionId,
-          generation: current.project.generation,
-          entityIds: targetEntityIds,
-        })
-        dispatch({
-          type: 'marker_changes_applied',
-          sessionId: current.project.sessionId,
-          generation: current.project.generation,
-          changes: result.changes,
-        })
-        await Promise.all([
-          refreshSelectionInfo(current.project, current.selectedEntityIds),
-          refreshDesiredProjection(refreshProjection, current.project),
-        ])
-      } catch (error) {
-        dispatch({ type: 'input_rejected', message: safeUserMessage(error) })
-      }
-    },
-    [bridge, refreshProjection, refreshSelectionInfo],
+    projectSession.sessionEpoch,
   )
 
   const previewRename = useCallback(
@@ -663,18 +417,6 @@ export function useViewerController(bridge: ViewerBridge) {
     }
   }, [bridge, refreshProjection])
 
-  const setPreviewEntityId = useCallback((entityId: string | null) => {
-    dispatch({ type: 'preview_context_changed', entityId })
-  }, [])
-
-  const setCompareEntityIds = useCallback((entityIds: string[]) => {
-    dispatch({ type: 'compare_context_changed', entityIds })
-  }, [])
-
-  const consumeContextRepair = useCallback(() => {
-    dispatch({ type: 'context_repair_consumed' })
-  }, [])
-
   const clearCloseBlocked = useCallback(() => {
     dispatch({ type: 'close_blocked_cleared' })
   }, [])
@@ -784,7 +526,3 @@ export function useViewerController(bridge: ViewerBridge) {
 }
 
 export type ViewerController = ReturnType<typeof useViewerController>
-
-function uniqueEntityIds(entityIds: readonly string[]): string[] {
-  return [...new Set(entityIds)]
-}

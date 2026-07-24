@@ -12,8 +12,12 @@ import type {
   OperationStarted,
   ProjectChangedEvent,
   ProjectSnapshot,
+  ReviewState,
   ScanEvent,
+  SearchFilters,
+  SearchLayout,
   SearchPage,
+  SearchSort,
 } from '../api/types'
 import type { ViewerBridge } from '../api/viewer'
 import { defined } from '../defined'
@@ -22,7 +26,14 @@ import {
   type ProjectSessionController,
   useProjectSessionController,
 } from './controllers/useProjectSessionController'
+import type { SearchController, useSearchController } from './controllers/useSearchController'
+import type {
+  SelectionMarkerController,
+  SelectionMarkerControllerCore,
+  useSelectionMarkerController,
+} from './controllers/useSelectionMarkerController'
 import { useViewerController } from './useViewerController'
+import type { SearchFilterChip } from './viewerReducer'
 import { emptySearchFilters, initialViewerState } from './viewerReducer'
 import type { ViewerAction, ViewerState } from './viewerState'
 
@@ -127,11 +138,52 @@ type ExpectedProjectSessionController = {
   cancelTask(taskId: string): Promise<void>
 }
 
+type ExpectedSearchController = {
+  setSearchText(text: string): void
+  setSearchScope(folderId: string | null): void
+  setSearchFilters(filters: SearchFilters): void
+  setSearchSort(sort: SearchSort): void
+  setSearchLayout(layout: SearchLayout): void
+  removeSearchFilter(chip: SearchFilterChip): void
+  clearSearchFilters(): void
+  setVisibleSearchHits(entityIds: string[]): void
+  setSearchPage(offset: number): void
+  returnToFolderContext(): void
+}
+
+type ExpectedSelectionMarkerController = {
+  setSelectedEntityIds(entityIds: string[]): void
+  setReviewState(reviewState: ReviewState | null, entityIdsOverride?: string[]): Promise<void>
+  toggleFavorite(entityIdsOverride?: string[]): Promise<void>
+  setPreviewEntityId(entityId: string | null): void
+  setCompareEntityIds(entityIds: string[]): void
+  consumeContextRepair(): void
+}
+
+interface ExpectedSelectionMarkerControllerCore extends ControllerCore {
+  refreshProjection: RefreshProjection
+  operationRequestPendingRef: MutableRefObject<boolean>
+  undoRequestPendingRef: MutableRefObject<boolean>
+  activeBatchRef: MutableRefObject<string | null>
+}
+
 describe('useViewerController M2 coordination', () => {
   it('defines the shared project session controller contract', () => {
     expectTypeOf<ControllerCore>().toEqualTypeOf<ExpectedControllerCore>()
     expectTypeOf<RefreshProjection>().toEqualTypeOf<ExpectedRefreshProjection>()
     expectTypeOf<ProjectSessionController>().toEqualTypeOf<ExpectedProjectSessionController>()
+  })
+
+  it('defines the search and selection marker controller contracts', () => {
+    expectTypeOf<SearchController>().toEqualTypeOf<ExpectedSearchController>()
+    expectTypeOf<SelectionMarkerController>().toEqualTypeOf<ExpectedSelectionMarkerController>()
+    expectTypeOf<SelectionMarkerControllerCore>().toEqualTypeOf<ExpectedSelectionMarkerControllerCore>()
+    expectTypeOf<typeof useSearchController>().toEqualTypeOf<
+      (core: ControllerCore, sessionEpoch: number) => SearchController
+    >()
+    expectTypeOf<typeof useSelectionMarkerController>().toEqualTypeOf<
+      (core: SelectionMarkerControllerCore, sessionEpoch: number) => SelectionMarkerController
+    >()
   })
 
   it('keeps the close-blocked subscription outside the project session controller', async () => {

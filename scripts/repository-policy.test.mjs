@@ -121,6 +121,11 @@ const validateDeterministicCIWorkflow = (workflow) => {
   const validateJob = (name, rootCommand) => {
     const job = jobs.get(name)
     assert.ok(job, `${name} job must exist`)
+    const stepEntries = job.match(/^      -.*$/gm) ?? []
+    assert.ok(stepEntries.length > 0, `${name} job must define block-style steps`)
+    for (const stepEntry of stepEntries) {
+      assert.match(stepEntry, /^      - name: .+$/, `${name} step must start with - name:`)
+    }
     const steps = extractCIJobStepBlocks(job)
     assert.doesNotMatch(
       job,
@@ -375,6 +380,24 @@ test('CI deterministic job invariants reject policy bypass mutations', async () 
         'security',
         '      - name: Activate pnpm 10.0.0 through Corepack',
         '      - name: Decoy setup-node\n        uses: actions/setup-node@bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\n\n      - name: Activate pnpm 10.0.0 through Corepack',
+      ),
+    },
+    {
+      label: 'nameless duplicate pinned checkout step',
+      workflow: mutateJob(
+        workflow,
+        'quality',
+        '      - name: Assert Apple Silicon runner',
+        '      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0\n\n      - name: Assert Apple Silicon runner',
+      ),
+    },
+    {
+      label: 'quoted unpinned flow-mapping checkout step',
+      workflow: mutateJob(
+        workflow,
+        'security',
+        '      - name: Activate pnpm 10.0.0 through Corepack',
+        '      - { name: Flow-mapping checkout, "uses": actions/checkout@v4 }\n\n      - name: Activate pnpm 10.0.0 through Corepack',
       ),
     },
     {

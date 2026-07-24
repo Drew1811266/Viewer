@@ -82,8 +82,10 @@ const extractCIJobBlocks = (workflow) => {
   const starts = []
   for (let index = jobsStart + 1; index < lines.length; index += 1) {
     if (/^\S/.test(lines[index])) break
-    const job = lines[index].match(/^  ([A-Za-z][A-Za-z0-9_-]*):\s*$/)
-    if (job) starts.push({ name: job[1], index })
+    if (!/^  \S/.test(lines[index]) || /^\s*#/.test(lines[index])) continue
+    const job = lines[index].match(/^  ([A-Za-z][A-Za-z0-9_-]*):\s*(?:#.*)?$/)
+    assert.ok(job, `CI job key must be an unquoted two-space identifier: ${lines[index]}`)
+    starts.push({ name: job[1], index })
   }
 
   return new Map(
@@ -120,16 +122,44 @@ const validateDeterministicCIWorkflow = (workflow) => {
     const job = jobs.get(name)
     assert.ok(job, `${name} job must exist`)
     const steps = extractCIJobStepBlocks(job)
-    assert.doesNotMatch(job, /^    needs:\s*(?:\S.*)?$/m, `${name} job must not depend on another job`)
-    assert.doesNotMatch(job, /^    permissions:\s*(?:\S.*)?$/m, `${name} job must not override permissions`)
+    for (const key of ['needs', 'permissions']) {
+      assert.doesNotMatch(
+        job,
+        new RegExp(`^    (?:${key}|"${key}"|'${key}')\\s*:(?:\\s|$)`, 'm'),
+        `${name} job must not override ${key}`,
+      )
+      assert.doesNotMatch(
+        job,
+        new RegExp(`^    \\?\\s+(?:${key}|"${key}"|'${key}')\\s*$`, 'm'),
+        `${name} job must not use an explicit ${key} key`,
+      )
+    }
     assert.match(job, /^    runs-on: macos-15$/m, `${name} job must run on macos-15`)
     const checkoutAction =
       /^        uses: actions\/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0(?:\s+#.*)?$/m
+    const checkoutReferences = [
+      ...job.matchAll(/^        uses: actions\/checkout@([^\s#]+)(?:\s+#.*)?$/gm),
+    ]
+    assert.equal(checkoutReferences.length, 1, `${name} job must have exactly one checkout action`)
+    assert.equal(
+      checkoutReferences[0][1],
+      '9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0',
+      `${name} checkout action must use the locked SHA`,
+    )
     const checkoutSteps = steps.filter(({ block }) => checkoutAction.test(block))
     assert.equal(checkoutSteps.length, 1, `${name} job must have exactly one pinned checkout action`)
     assert.equal(checkoutSteps[0].name, 'Check out repository', `${name} checkout step name`)
     const setupNodeAction =
       /^        uses: actions\/setup-node@820762786026740c76f36085b0efc47a31fe5020(?:\s+#.*)?$/m
+    const setupNodeReferences = [
+      ...job.matchAll(/^        uses: actions\/setup-node@([^\s#]+)(?:\s+#.*)?$/gm),
+    ]
+    assert.equal(setupNodeReferences.length, 1, `${name} job must have exactly one setup-node action`)
+    assert.equal(
+      setupNodeReferences[0][1],
+      '820762786026740c76f36085b0efc47a31fe5020',
+      `${name} setup-node action must use the locked SHA`,
+    )
     const setupNodeSteps = steps.filter(({ block }) => setupNodeAction.test(block))
     assert.equal(setupNodeSteps.length, 1, `${name} job must have exactly one pinned setup-node action`)
     assert.equal(setupNodeSteps[0].name, 'Set up Node.js 24.18.0', `${name} setup-node step name`)
@@ -199,6 +229,10 @@ test('CI deterministic job invariants reject policy bypass mutations', async () 
       workflow: workflow.replace('jobs:\n', 'jobs:\n  release:\n    runs-on: macos-15\n'),
     },
     {
+      label: 'quoted unexpected job',
+      workflow: workflow.replace('jobs:\n', 'jobs:\n  "release":\n    runs-on: macos-15\n'),
+    },
+    {
       label: 'job-level write-all permissions',
       workflow: mutateJob(workflow, 'quality', '    steps:', '    permissions: write-all\n    steps:'),
     },
@@ -212,12 +246,29 @@ test('CI deterministic job invariants reject policy bypass mutations', async () 
       ),
     },
     {
+      label: 'job-level quoted scalar permissions',
+      workflow: mutateJob(workflow, 'quality', '    steps:', '    "permissions": write-all\n    steps:'),
+    },
+    {
+      label: 'job-level quoted mapping permissions',
+      workflow: mutateJob(
+        workflow,
+        'security',
+        '    steps:',
+        '    "permissions":\n      contents: write\n    steps:',
+      ),
+    },
+    {
       label: 'quality job dependency',
       workflow: mutateJob(workflow, 'quality', '    steps:', '    needs: security\n    steps:'),
     },
     {
       label: 'security job dependency',
       workflow: mutateJob(workflow, 'security', '    steps:', '    needs: quality\n    steps:'),
+    },
+    {
+      label: 'job-level quoted dependency',
+      workflow: mutateJob(workflow, 'quality', '    steps:', '    "needs": security\n    steps:'),
     },
     {
       label: 'quality runner',
@@ -270,6 +321,24 @@ test('CI deterministic job invariants reject policy bypass mutations', async () 
         'security',
         'actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0',
         'actions/setup-node@820762786026740c76f36085b0efc47a31fe5020',
+      ),
+    },
+    {
+      label: 'duplicate checkout action family',
+      workflow: mutateJob(
+        workflow,
+        'quality',
+        '      - name: Assert Apple Silicon runner',
+        '      - name: Decoy checkout\n        uses: actions/checkout@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n\n      - name: Assert Apple Silicon runner',
+      ),
+    },
+    {
+      label: 'duplicate setup-node action family',
+      workflow: mutateJob(
+        workflow,
+        'security',
+        '      - name: Activate pnpm 10.0.0 through Corepack',
+        '      - name: Decoy setup-node\n        uses: actions/setup-node@bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\n\n      - name: Activate pnpm 10.0.0 through Corepack',
       ),
     },
     {

@@ -2,6 +2,9 @@ import type { DragEvent, KeyboardEvent, MouseEvent, PointerEvent } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { BrowserFile, FolderWorkspace } from '../api/types'
 import type { OrganizationPointerInput } from '../state/useOrganizationPointerDrag'
+import { rangeSelection, toggleSelection } from './contentBrowser/contentSelection'
+import { ImageCell } from './contentBrowser/ImageCell'
+import { OrganizationDragHandle } from './contentBrowser/OrganizationDragHandle'
 import type { RadialMenuRequest } from './RadialFileMenu'
 import type { TaskFeedback } from './TaskBar'
 import type { MarqueeSelectionChange } from './VirtualGrid'
@@ -212,26 +215,17 @@ export default function ContentBrowser({
     event.currentTarget.closest<HTMLElement>('[role="listbox"]')?.focus()
     setActiveId(file.entityId)
     if (event.shiftKey && anchorId.current !== null) {
-      const anchor = allFiles.findIndex((candidate) => candidate.entityId === anchorId.current)
-      const target = allFiles.findIndex((candidate) => candidate.entityId === file.entityId)
-      if (anchor >= 0 && target >= 0) {
-        const next = new Set(selected)
-        for (const candidate of allFiles.slice(
-          Math.min(anchor, target),
-          Math.max(anchor, target) + 1,
-        )) {
-          next.add(candidate.entityId)
-        }
-        commitSelection(next)
-        return
-      }
+      const range = rangeSelection(
+        allFiles.map((candidate) => candidate.entityId),
+        anchorId.current,
+        file.entityId,
+      )
+      commitSelection(new Set([...selected, ...range]))
+      return
     }
     anchorId.current = file.entityId
     if (event.metaKey) {
-      const next = new Set(selected)
-      if (next.has(file.entityId)) next.delete(file.entityId)
-      else next.add(file.entityId)
-      commitSelection(next)
+      commitSelection(new Set(toggleSelection([...selected], file.entityId)))
     } else {
       commitSelection(new Set([file.entityId]))
     }
@@ -387,16 +381,12 @@ export default function ContentBrowser({
       if (file) {
         setActiveId(file.entityId)
         if (event.shiftKey && anchorId.current !== null) {
-          const anchor = allFiles.findIndex((candidate) => candidate.entityId === anchorId.current)
-          const target = allFiles.findIndex((candidate) => candidate.entityId === file.entityId)
-          const next = new Set(selected)
-          for (const candidate of allFiles.slice(
-            Math.min(anchor, target),
-            Math.max(anchor, target) + 1,
-          )) {
-            next.add(candidate.entityId)
-          }
-          commitSelection(next)
+          const range = rangeSelection(
+            allFiles.map((candidate) => candidate.entityId),
+            anchorId.current,
+            file.entityId,
+          )
+          commitSelection(new Set([...selected, ...range]))
         } else {
           anchorId.current = file.entityId
           commitSelection(new Set([file.entityId]))
@@ -461,6 +451,7 @@ export default function ContentBrowser({
             maxPixels={cellPixels}
             scaleMilli={scaleMilli}
             loadThumbnail={loadThumbnail}
+            markerLabel={markerLabel(file.marker)}
             onClick={selectFile}
             onPreview={(selectedFile) => onPreview?.(selectedFile)}
             onRadialMenuPointerDown={openRadialMenuFromPointer}
@@ -520,166 +511,6 @@ export default function ContentBrowser({
         ))}
       </div>
     </section>
-  )
-}
-
-function ImageCell({
-  file,
-  selected,
-  active,
-  maxPixels,
-  scaleMilli,
-  loadThumbnail,
-  onClick,
-  onPreview,
-  onRadialMenuPointerDown,
-  onRadialMenuContextMenu,
-  organizationDragDisabled,
-  onFinderDragStart,
-  onPointerDown,
-  onPointerMove,
-  onPointerUp,
-  onPointerCancel,
-}: {
-  file: BrowserFile
-  selected: boolean
-  active: boolean
-  maxPixels: number
-  scaleMilli: number
-  loadThumbnail: (file: BrowserFile, maxPixels: number, scaleMilli: number) => Promise<string>
-  onClick: (file: BrowserFile, event: MouseEvent) => void
-  onPreview: (file: BrowserFile) => void
-  onRadialMenuPointerDown: (file: BrowserFile, event: PointerEvent<HTMLElement>) => void
-  onRadialMenuContextMenu: (file: BrowserFile, event: MouseEvent<HTMLElement>) => void
-  organizationDragDisabled: boolean
-  onFinderDragStart: (file: BrowserFile, event: DragEvent<HTMLElement>) => void
-  onPointerDown: (file: BrowserFile, event: PointerEvent<HTMLElement>) => void
-  onPointerMove: (event: PointerEvent<HTMLElement>) => void
-  onPointerUp: (event: PointerEvent<HTMLElement>) => void
-  onPointerCancel: (event: PointerEvent<HTMLElement>) => void
-}) {
-  const [url, setUrl] = useState<string | null>(file.imageUrl)
-  const [failed, setFailed] = useState(false)
-
-  useEffect(() => {
-    let current = true
-    setFailed(false)
-    void loadThumbnail(file, maxPixels, scaleMilli).then(
-      (nextUrl) => {
-        if (current) setUrl(nextUrl)
-      },
-      () => {
-        if (current) setFailed(true)
-      },
-    )
-    return () => {
-      current = false
-    }
-  }, [file, loadThumbnail, maxPixels, scaleMilli])
-
-  return (
-    <div
-      role="option"
-      id={`file-${file.entityId}`}
-      aria-label={file.name}
-      aria-selected={selected}
-      tabIndex={undefined}
-      data-active={active || undefined}
-      className="image-cell"
-      onPointerDown={(event) => onRadialMenuPointerDown(file, event)}
-      onContextMenu={(event) => onRadialMenuContextMenu(file, event)}
-      onClick={(event) => onClick(file, event)}
-      onDoubleClick={() => onPreview(file)}
-    >
-      <div
-        className="file-export-surface"
-        draggable
-        title="拖到 Finder"
-        onDragStart={(event) => onFinderDragStart(file, event)}
-      >
-        <div className="image-cell-preview">
-          {url ? (
-            <img src={url} alt="" />
-          ) : (
-            <span aria-label={failed ? '缩略图不可用' : '缩略图加载中'} />
-          )}
-        </div>
-        <span>{file.name}</span>
-        {markerLabel(file.marker) && (
-          <span className="file-marker">{markerLabel(file.marker)}</span>
-        )}
-      </div>
-      <OrganizationDragHandle
-        file={file}
-        disabled={organizationDragDisabled}
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
-        onPointerCancel={onPointerCancel}
-      />
-    </div>
-  )
-}
-
-function OrganizationDragHandle({
-  file,
-  disabled,
-  onPointerDown,
-  onPointerMove,
-  onPointerUp,
-  onPointerCancel,
-}: {
-  file: BrowserFile
-  disabled: boolean
-  onPointerDown: (file: BrowserFile, event: PointerEvent<HTMLElement>) => void
-  onPointerMove: (event: PointerEvent<HTMLElement>) => void
-  onPointerUp: (event: PointerEvent<HTMLElement>) => void
-  onPointerCancel: (event: PointerEvent<HTMLElement>) => void
-}) {
-  const organizationPointerId = useRef<number | null>(null)
-
-  return (
-    <button
-      type="button"
-      className="organization-drag-handle"
-      aria-label={`整理 ${file.name}`}
-      title="拖到左侧文件夹，按住 Option 复制"
-      disabled={disabled}
-      draggable={false}
-      onClick={(event) => {
-        event.preventDefault()
-        event.stopPropagation()
-      }}
-      onDoubleClick={(event) => {
-        event.preventDefault()
-        event.stopPropagation()
-      }}
-      onDragStart={(event) => {
-        event.preventDefault()
-        event.stopPropagation()
-      }}
-      onPointerDown={(event) => {
-        if (event.button === 0 && !event.ctrlKey) {
-          organizationPointerId.current = event.pointerId
-        }
-        onPointerDown(file, event)
-      }}
-      onPointerMove={(event) => {
-        if (organizationPointerId.current === event.pointerId) onPointerMove(event)
-      }}
-      onPointerUp={(event) => {
-        if (organizationPointerId.current !== event.pointerId) return
-        organizationPointerId.current = null
-        onPointerUp(event)
-      }}
-      onPointerCancel={(event) => {
-        if (organizationPointerId.current !== event.pointerId) return
-        organizationPointerId.current = null
-        onPointerCancel(event)
-      }}
-    >
-      ⋮⋮
-    </button>
   )
 }
 

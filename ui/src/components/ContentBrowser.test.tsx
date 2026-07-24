@@ -193,6 +193,18 @@ describe('ContentBrowser', () => {
     expect(selected).toEqual(['1.jpg', '2.jpg', '3.jpg'])
   })
 
+  it('keeps reverse Shift ranges additive in display order and Command-click isolated', () => {
+    render(<ContentBrowser workspace={workspace(5)} />)
+
+    fireEvent.click(screen.getByRole('option', { name: '1.jpg' }))
+    fireEvent.click(screen.getByRole('option', { name: '4.jpg' }), { metaKey: true })
+    fireEvent.click(screen.getByRole('option', { name: '2.jpg' }), { shiftKey: true })
+    expect(selectedLabels()).toEqual(['1.jpg', '2.jpg', '3.jpg', '4.jpg'])
+
+    fireEvent.click(screen.getByRole('option', { name: '3.jpg' }), { metaKey: true })
+    expect(selectedLabels()).toEqual(['1.jpg', '2.jpg', '4.jpg'])
+  })
+
   it('selects every file in the current folder with Command-A', () => {
     render(<ContentBrowser workspace={workspace(3)} />)
 

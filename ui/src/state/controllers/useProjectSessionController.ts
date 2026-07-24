@@ -342,26 +342,6 @@ export function useProjectSessionController(core: ControllerCore): ProjectSessio
     }
   }, [bridge, dispatch, openProject, stateRef])
 
-  useEffect(() => {
-    let disposed = false
-    let unlisten: (() => void) | undefined
-    void Promise.resolve()
-      .then(() =>
-        bridge.listenCloseBlocked((event) => {
-          dispatch({ type: 'close_blocked_received', event })
-        }),
-      )
-      .then((cleanup) => {
-        if (disposed) cleanup()
-        else unlisten = cleanup
-      })
-      .catch(() => undefined)
-    return () => {
-      disposed = true
-      unlisten?.()
-    }
-  }, [bridge, dispatch])
-
   const selectFolder = useCallback(
     async (entityId: string | null) => {
       const project = stateRef.current.project

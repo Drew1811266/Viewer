@@ -1,4 +1,5 @@
 import { act, renderHook } from '@testing-library/react'
+import type { Dispatch, MutableRefObject } from 'react'
 import { afterEach, beforeEach, describe, expect, expectTypeOf, it, vi } from 'vitest'
 import type {
   CloseBlockedEvent,
@@ -10,15 +11,20 @@ import type {
   OperationProgressEvent,
   OperationStarted,
   ProjectChangedEvent,
+  ProjectSnapshot,
   ScanEvent,
   SearchPage,
 } from '../api/types'
 import type { ViewerBridge } from '../api/viewer'
 import { defined } from '../defined'
 import type { ControllerCore, RefreshProjection } from './controllers/types'
-import type { ProjectSessionController } from './controllers/useProjectSessionController'
+import {
+  type ProjectSessionController,
+  useProjectSessionController,
+} from './controllers/useProjectSessionController'
 import { useViewerController } from './useViewerController'
-import { emptySearchFilters } from './viewerReducer'
+import { emptySearchFilters, initialViewerState } from './viewerReducer'
+import type { ViewerAction, ViewerState } from './viewerState'
 
 function deferred<T>() {
   let resolve!: (value: T) => void
@@ -94,9 +100,25 @@ function bridge(access: 'read_write' | 'read_only' = 'read_write'): ViewerBridge
 beforeEach(() => vi.useFakeTimers())
 afterEach(() => vi.useRealTimers())
 
+type ExpectedControllerCore = {
+  bridge: ViewerBridge
+  state: ViewerState
+  stateRef: MutableRefObject<ViewerState>
+  sessionEpochRef: MutableRefObject<number>
+  dispatch: Dispatch<ViewerAction>
+}
+
+type ExpectedRefreshProjection = (
+  project: ProjectSnapshot,
+  selectedFolderId: string | null,
+  selectedFolderPath: string,
+  showingAggregate: boolean,
+  repairMissingFolder?: boolean,
+) => Promise<void>
+
 type ExpectedProjectSessionController = {
   sessionEpoch: number
-  refreshProjection: RefreshProjection
+  refreshProjection: ExpectedRefreshProjection
   openProject(path: string): Promise<void>
   closeProject(choice?: CloseChoice, target?: CloseTarget): Promise<CloseRequestOutcome | undefined>
   reselectProject(): Promise<CloseRequestOutcome | undefined>
@@ -107,8 +129,27 @@ type ExpectedProjectSessionController = {
 
 describe('useViewerController M2 coordination', () => {
   it('defines the shared project session controller contract', () => {
-    expectTypeOf<ControllerCore>().toHaveProperty('sessionEpochRef')
+    expectTypeOf<ControllerCore>().toEqualTypeOf<ExpectedControllerCore>()
+    expectTypeOf<RefreshProjection>().toEqualTypeOf<ExpectedRefreshProjection>()
     expectTypeOf<ProjectSessionController>().toEqualTypeOf<ExpectedProjectSessionController>()
+  })
+
+  it('keeps the close-blocked subscription outside the project session controller', async () => {
+    const viewer = bridge()
+    renderHook(() =>
+      useProjectSessionController({
+        bridge: viewer,
+        state: initialViewerState,
+        stateRef: { current: initialViewerState },
+        sessionEpochRef: { current: 0 },
+        dispatch: vi.fn(),
+      }),
+    )
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    expect(viewer.listenCloseBlocked).not.toHaveBeenCalled()
   })
 
   it('debounces text by 120 ms and ignores a late older response', async () => {

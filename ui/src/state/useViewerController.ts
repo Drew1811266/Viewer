@@ -733,6 +733,26 @@ export function useViewerController(bridge: ViewerBridge) {
     }
   }, [bridge, refreshProjection])
 
+  useEffect(() => {
+    let disposed = false
+    let unlisten: (() => void) | undefined
+    void Promise.resolve()
+      .then(() =>
+        bridge.listenCloseBlocked((event) => {
+          dispatch({ type: 'close_blocked_received', event })
+        }),
+      )
+      .then((cleanup) => {
+        if (disposed) cleanup()
+        else unlisten = cleanup
+      })
+      .catch(() => undefined)
+    return () => {
+      disposed = true
+      unlisten?.()
+    }
+  }, [bridge])
+
   return {
     state,
     ...projectSessionCommands,

@@ -263,6 +263,30 @@ describe('AspectVirtualGrid', () => {
     expect(screen.getByRole('button', { name: 'item-6' })).toBeInTheDocument()
   })
 
+  it('synchronizes the first visible entity after width expansion clamps a near-bottom anchor', async () => {
+    const resize = installResizeObserver()
+    renderGrid({
+      items: squareItems(60),
+      imageHeight: 10,
+      captionHeight: 0,
+      viewportHeight: 25,
+      gap: 0,
+      overscanRows: 0,
+    })
+    resize(30)
+    const grid = screen.getByRole('listbox', { name: 'images' })
+    installClampedScrollTop(grid, 25)
+    grid.scrollTop = 165
+    fireEvent.scroll(grid)
+
+    expect(screen.queryByRole('button', { name: 'item-30' })).not.toBeInTheDocument()
+    resize(100)
+
+    await waitFor(() => expect(grid.scrollTop).toBe(35))
+    expect(itemWrapper('item-30')).toHaveStyle({ top: '30px' })
+    expect(screen.queryByRole('button', { name: 'item-20' })).not.toBeInTheDocument()
+  })
+
   it('uses geometry for directional navigation and leaves selection state with the caller', () => {
     const resize = installResizeObserver()
     const navigate = vi.fn()

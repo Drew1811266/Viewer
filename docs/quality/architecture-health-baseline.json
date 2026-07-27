@@ -1,0 +1,418 @@
+{
+  "schemaVersion": 1,
+  "productionLines": 38323,
+  "testLines": 12960,
+  "testToProductionRatio": 0.33817811757952143,
+  "filesOver1000Lines": [
+    {
+      "path": "crates/viewer-infrastructure/src/operation/rename.rs",
+      "lines": 1065
+    },
+    {
+      "path": "crates/viewer-infrastructure/src/operation/service/execution.rs",
+      "lines": 1056
+    },
+    {
+      "path": "ui/src/App.tsx",
+      "lines": 1138
+    }
+  ],
+  "functionsOver200Lines": [
+    {
+      "path": "crates/viewer-infrastructure/src/operation/service/execution.rs",
+      "name": "execute_copy_route",
+      "startLine": 363,
+      "lines": 247,
+      "decisionScore": 20
+    },
+    {
+      "path": "ui/src/App.tsx",
+      "name": "App",
+      "startLine": 50,
+      "lines": 257,
+      "decisionScore": 25
+    },
+    {
+      "path": "ui/src/App.tsx",
+      "name": "toggleInfo",
+      "startLine": 307,
+      "lines": 366,
+      "decisionScore": 79
+    },
+    {
+      "path": "ui/src/App.tsx",
+      "name": "handleOrganizationShortcut",
+      "startLine": 673,
+      "lines": 450,
+      "decisionScore": 92
+    },
+    {
+      "path": "ui/src/components/SearchToolbar.tsx",
+      "name": "SearchToolbar",
+      "startLine": 45,
+      "lines": 262,
+      "decisionScore": 10
+    },
+    {
+      "path": "ui/src/state/controllers/useOperationController.ts",
+      "name": "useOperationController",
+      "startLine": 54,
+      "lines": 391,
+      "decisionScore": 74
+    },
+    {
+      "path": "ui/src/state/controllers/useProjectSessionController.ts",
+      "name": "useProjectSessionController",
+      "startLine": 54,
+      "lines": 340,
+      "decisionScore": 40
+    },
+    {
+      "path": "ui/src/state/controllers/useSelectionMarkerController.ts",
+      "name": "useSelectionMarkerController",
+      "startLine": 24,
+      "lines": 206,
+      "decisionScore": 25
+    }
+  ],
+  "functionsOverDecisionScore15": [
+    {
+      "path": "crates/viewer-application/src/undo.rs",
+      "name": "validate_file_batch",
+      "startLine": 366,
+      "lines": 82,
+      "decisionScore": 16
+    },
+    {
+      "path": "crates/viewer-infrastructure/src/operation/recovery.rs",
+      "name": "recover_copy",
+      "startLine": 155,
+      "lines": 143,
+      "decisionScore": 21
+    },
+    {
+      "path": "crates/viewer-infrastructure/src/operation/recovery.rs",
+      "name": "recover_trash",
+      "startLine": 298,
+      "lines": 65,
+      "decisionScore": 16
+    },
+    {
+      "path": "crates/viewer-infrastructure/src/operation/recovery.rs",
+      "name": "recover_rename",
+      "startLine": 363,
+      "lines": 123,
+      "decisionScore": 25
+    },
+    {
+      "path": "crates/viewer-infrastructure/src/operation/recovery.rs",
+      "name": "recover_replace",
+      "startLine": 578,
+      "lines": 100,
+      "decisionScore": 20
+    },
+    {
+      "path": "crates/viewer-infrastructure/src/operation/rename.rs",
+      "name": "preflight_preview",
+      "startLine": 165,
+      "lines": 135,
+      "decisionScore": 21
+    },
+    {
+      "path": "crates/viewer-infrastructure/src/operation/rename.rs",
+      "name": "execute_interruptible_with_expectations",
+      "startLine": 536,
+      "lines": 140,
+      "decisionScore": 16
+    },
+    {
+      "path": "crates/viewer-infrastructure/src/operation/service/execution.rs",
+      "name": "execute_copy_route",
+      "startLine": 363,
+      "lines": 247,
+      "decisionScore": 20
+    },
+    {
+      "path": "crates/viewer-infrastructure/src/operation/service/preflight.rs",
+      "name": "prepare_simple",
+      "startLine": 82,
+      "lines": 130,
+      "decisionScore": 18
+    },
+    {
+      "path": "crates/viewer-infrastructure/src/scan/walker.rs",
+      "name": "snapshot_subtrees",
+      "startLine": 125,
+      "lines": 86,
+      "decisionScore": 16
+    },
+    {
+      "path": "crates/viewer-infrastructure/src/search/index/projection.rs",
+      "name": "apply_move",
+      "startLine": 134,
+      "lines": 152,
+      "decisionScore": 20
+    },
+    {
+      "path": "crates/viewer-infrastructure/src/search/index/projection.rs",
+      "name": "validate_move_projections",
+      "startLine": 417,
+      "lines": 56,
+      "decisionScore": 16
+    },
+    {
+      "path": "src-tauri/src/lib.rs",
+      "name": "run",
+      "startLine": 171,
+      "lines": 168,
+      "decisionScore": 16
+    },
+    {
+      "path": "src-tauri/src/state/scan_index.rs",
+      "name": "rebuild_derived_nodes",
+      "startLine": 268,
+      "lines": 109,
+      "decisionScore": 23
+    },
+    {
+      "path": "src-tauri/src/watcher_runtime.rs",
+      "name": "start",
+      "startLine": 67,
+      "lines": 111,
+      "decisionScore": 17
+    },
+    {
+      "path": "ui/src/App.tsx",
+      "name": "App",
+      "startLine": 50,
+      "lines": 257,
+      "decisionScore": 25
+    },
+    {
+      "path": "ui/src/App.tsx",
+      "name": "toggleInfo",
+      "startLine": 307,
+      "lines": 366,
+      "decisionScore": 79
+    },
+    {
+      "path": "ui/src/App.tsx",
+      "name": "handleOrganizationShortcut",
+      "startLine": 673,
+      "lines": 450,
+      "decisionScore": 92
+    },
+    {
+      "path": "ui/src/components/ComparePane.tsx",
+      "name": "ComparePane",
+      "startLine": 54,
+      "lines": 150,
+      "decisionScore": 19
+    },
+    {
+      "path": "ui/src/components/ContentBrowser.tsx",
+      "name": "handleKeyboard",
+      "startLine": 354,
+      "lines": 162,
+      "decisionScore": 20
+    },
+    {
+      "path": "ui/src/components/FolderFilmstripRow.tsx",
+      "name": "FolderFilmstripRow",
+      "startLine": 23,
+      "lines": 178,
+      "decisionScore": 24
+    },
+    {
+      "path": "ui/src/components/ImagePreview.tsx",
+      "name": "ImagePreview",
+      "startLine": 19,
+      "lines": 103,
+      "decisionScore": 18
+    },
+    {
+      "path": "ui/src/components/InfoOverlay.tsx",
+      "name": "InfoOverlay",
+      "startLine": 10,
+      "lines": 55,
+      "decisionScore": 16
+    },
+    {
+      "path": "ui/src/components/RadialFileMenu.tsx",
+      "name": "RadialFileMenu",
+      "startLine": 39,
+      "lines": 138,
+      "decisionScore": 31
+    },
+    {
+      "path": "ui/src/components/RadialFileMenu.tsx",
+      "name": "handleKeyDown",
+      "startLine": 214,
+      "lines": 39,
+      "decisionScore": 16
+    },
+    {
+      "path": "ui/src/components/RadialFileMenu.tsx",
+      "name": "cancelClose",
+      "startLine": 264,
+      "lines": 130,
+      "decisionScore": 17
+    },
+    {
+      "path": "ui/src/components/TaskBar.tsx",
+      "name": "TaskBar",
+      "startLine": 26,
+      "lines": 161,
+      "decisionScore": 32
+    },
+    {
+      "path": "ui/src/components/VirtualGrid.tsx",
+      "name": "queueAutoScroll",
+      "startLine": 178,
+      "lines": 112,
+      "decisionScore": 29
+    },
+    {
+      "path": "ui/src/state/compareModel.ts",
+      "name": "reduceCompare",
+      "startLine": 104,
+      "lines": 115,
+      "decisionScore": 23
+    },
+    {
+      "path": "ui/src/state/controllers/useOperationController.ts",
+      "name": "useOperationController",
+      "startLine": 54,
+      "lines": 391,
+      "decisionScore": 74
+    },
+    {
+      "path": "ui/src/state/controllers/useProjectSessionController.ts",
+      "name": "useProjectSessionController",
+      "startLine": 54,
+      "lines": 340,
+      "decisionScore": 40
+    },
+    {
+      "path": "ui/src/state/controllers/useSearchController.ts",
+      "name": "useSearchController",
+      "startLine": 26,
+      "lines": 121,
+      "decisionScore": 17
+    },
+    {
+      "path": "ui/src/state/controllers/useSelectionMarkerController.ts",
+      "name": "useSelectionMarkerController",
+      "startLine": 24,
+      "lines": 206,
+      "decisionScore": 25
+    },
+    {
+      "path": "ui/src/state/reducers/operationReducer.ts",
+      "name": "reduceOperationAction",
+      "startLine": 4,
+      "lines": 88,
+      "decisionScore": 19
+    },
+    {
+      "path": "ui/src/state/reducers/projectReducer.ts",
+      "name": "reduceProjectAction",
+      "startLine": 4,
+      "lines": 43,
+      "decisionScore": 18
+    },
+    {
+      "path": "ui/src/state/reducers/searchReducer.ts",
+      "name": "reduceSearchAction",
+      "startLine": 11,
+      "lines": 128,
+      "decisionScore": 23
+    },
+    {
+      "path": "ui/src/state/reducers/workspaceReducer.ts",
+      "name": "reduceWorkspaceAction",
+      "startLine": 5,
+      "lines": 78,
+      "decisionScore": 24
+    },
+    {
+      "path": "ui/src/state/useOrganizationPointerDrag.ts",
+      "name": "useOrganizationPointerDrag",
+      "startLine": 68,
+      "lines": 200,
+      "decisionScore": 33
+    }
+  ],
+  "workspaceDependencyEdges": [
+    {
+      "from": "viewer-application",
+      "to": "viewer-domain",
+      "kind": "normal"
+    },
+    {
+      "from": "viewer-desktop",
+      "to": "viewer-application",
+      "kind": "normal"
+    },
+    {
+      "from": "viewer-desktop",
+      "to": "viewer-domain",
+      "kind": "normal"
+    },
+    {
+      "from": "viewer-desktop",
+      "to": "viewer-infrastructure",
+      "kind": "normal"
+    },
+    {
+      "from": "viewer-desktop",
+      "to": "viewer-platform-macos",
+      "kind": "normal"
+    },
+    {
+      "from": "viewer-infrastructure",
+      "to": "viewer-application",
+      "kind": "normal"
+    },
+    {
+      "from": "viewer-infrastructure",
+      "to": "viewer-domain",
+      "kind": "normal"
+    },
+    {
+      "from": "viewer-infrastructure",
+      "to": "viewer-test-support",
+      "kind": "dev"
+    },
+    {
+      "from": "viewer-platform-macos",
+      "to": "viewer-application",
+      "kind": "normal"
+    },
+    {
+      "from": "viewer-platform-macos",
+      "to": "viewer-domain",
+      "kind": "normal"
+    },
+    {
+      "from": "viewer-platform-macos",
+      "to": "viewer-infrastructure",
+      "kind": "dev"
+    },
+    {
+      "from": "viewer-platform-macos",
+      "to": "viewer-test-support",
+      "kind": "dev"
+    },
+    {
+      "from": "viewer-test-support",
+      "to": "viewer-application",
+      "kind": "normal"
+    },
+    {
+      "from": "viewer-test-support",
+      "to": "viewer-domain",
+      "kind": "normal"
+    }
+  ]
+}

@@ -1,0 +1,468 @@
+#!/usr/bin/env node
+
+import { execFileSync } from 'node:child_process'
+import {
+  existsSync,
+  readFileSync,
+  readdirSync,
+  writeFileSync,
+} from 'node:fs'
+import {
+  dirname,
+  extname,
+  join,
+  relative,
+  resolve,
+} from 'node:path'
+import { pathToFileURL } from 'node:url'
+
+const SCHEMA_VERSION = 1
+const normalizePath = (path) => path.replaceAll('\\', '/')
+const countLines = (source) => source.split(/\r?\n/).length - 1
+
+const isWholeTestFile = (path) => {
+  const normalized = normalizePath(path)
+  return /\.test\.tsx?$/.test(normalized) || /(?:^|\/)tests\//.test(normalized)
+}
+
+const maskNonCode = (source, language) => {
+  const output = [...source]
+  const blank = (start, end) => {
+    for (let index = start; index < end; index += 1) {
+      if (output[index] !== '\n' && output[index] !== '\r') output[index] = ' '
+    }
+  }
+  const consumeQuoted = (start, quote) => {
+    let index = start + 1
+    while (index < source.length) {
+      if (source[index] === '\\') {
+        index += 2
+        continue
+      }
+      index += 1
+      if (source[index - 1] === quote) break
+    }
+    blank(start, index)
+    return index
+  }
+
+  let index = 0
+  while (index < source.length) {
+    if (source.startsWith('//', index)) {
+      const end = source.indexOf('\n', index + 2)
+      const next = end === -1 ? source.length : end
+      blank(index, next)
+      index = next
+      continue
+    }
+    if (source.startsWith('/*', index)) {
+      const end = source.indexOf('*/', index + 2)
+      const next = end === -1 ? source.length : end + 2
+      blank(index, next)
+      index = next
+      continue
+    }
+    if (language === 'rust') {
+      const raw = source.slice(index).match(/^(?:br|r)(#{0,16})"/)
+      if (raw) {
+        const delimiter = `"${raw[1]}`
+        const end = source.indexOf(delimiter, index + raw[0].length)
+        const next = end === -1 ? source.length : end + delimiter.length
+        blank(index, next)
+        index = next
+        continue
+      }
+    }
+    if (source[index] === '"' || (
+      language === 'typescript' && (source[index] === "'" || source[index] === '`')
+    )) {
+      index = consumeQuoted(index, source[index])
+      continue
+    }
+    if (
+      language === 'rust'
+      && source[index] === "'"
+      && /^'(?:\\.|[^\\'\r\n])'/.test(source.slice(index))
+    ) {
+      index = consumeQuoted(index, "'")
+      continue
+    }
+    index += 1
+  }
+
+  return output.join('')
+}
+
+const rustTestLines = (source) => {
+  const totalLines = countLines(source)
+  const lines = maskNonCode(source, 'rust').split(/\r?\n/).slice(0, totalLines)
+  const testLines = new Set()
+
+  for (let index = 0; index < lines.length; index += 1) {
+    if (!/^\s*#\s*\[\s*cfg\s*\(\s*test\s*\)\s*\]\s*$/.test(lines[index])) continue
+
+    let moduleLine = index + 1
+    while (moduleLine < lines.length && lines[moduleLine].trim() === '') moduleLine += 1
+    if (!/^\s*(?:pub(?:\([^)]*\))?\s+)?mod\s+[A-Za-z_]\w*\s*(?:\{|;)/.test(
+      lines[moduleLine] ?? '',
+    )) continue
+
+    let endLine = moduleLine
+    let depth = 0
+    let opened = false
+    for (; endLine < lines.length; endLine += 1) {
+      for (const character of lines[endLine]) {
+        if (character === '{') {
+          depth += 1
+          opened = true
+        } else if (character === '}') {
+          depth -= 1
+        }
+      }
+      if (!opened || depth <= 0) break
+    }
+    const lastLine = Math.min(endLine, lines.length - 1)
+    for (let testLine = index; testLine <= lastLine; testLine += 1) {
+      testLines.add(testLine)
+    }
+    index = lastLine
+  }
+
+  return testLines
+}
+
+const testLineIndexes = (path, source) => {
+  const totalLines = countLines(source)
+  if (isWholeTestFile(path)) {
+    return new Set(Array.from({ length: totalLines }, (_, index) => index))
+  }
+  return normalizePath(path).endsWith('.rs') ? rustTestLines(source) : new Set()
+}
+
+export function measureSourceFiles(files) {
+  const measured = [...files]
+    .map(([path, source]) => {
+      const normalized = normalizePath(path)
+      const lines = countLines(source)
+      const testLines = testLineIndexes(normalized, source).size
+      return {
+        path: normalized,
+        lines: lines - testLines,
+        testLines,
+      }
+    })
+    .sort((left, right) => left.path.localeCompare(right.path))
+
+  const productionLines = measured.reduce((sum, file) => sum + file.lines, 0)
+  const testLines = measured.reduce((sum, file) => sum + file.testLines, 0)
+  return {
+    productionLines,
+    testLines,
+    testToProductionRatio: productionLines === 0 ? 0 : testLines / productionLines,
+    filesOver1000Lines: measured
+      .filter((file) => file.lines > 1000)
+      .map(({ path, lines }) => ({ path, lines })),
+  }
+}
+
+const declarationFromLine = (path, line) => {
+  if (path.endsWith('.rs')) {
+    const declaration = line.match(
+      /^\s*(?:pub(?:\([^)]*\))?\s+)?(?:const\s+)?(?:async\s+)?(?:unsafe\s+)?(?:extern\s+"[^"]+"\s+)?fn\s+([A-Za-z_]\w*)\b/,
+    )
+    return declaration?.[1]
+  }
+  if (!/\.tsx?$/.test(path)) return undefined
+
+  const functionDeclaration = line.match(
+    /^\s*(?:export\s+(?:default\s+)?)?(?:async\s+)?function\s+([A-Za-z_$][\w$]*)\b/,
+  )
+  if (functionDeclaration) return functionDeclaration[1]
+  return line.match(
+    /^\s*(?:export\s+)?const\s+(use[A-Z0-9_$][\w$]*)\s*=\s*(?:async\s*)?\(/,
+  )?.[1]
+}
+
+const decisionScore = (source, language) => {
+  const masked = maskNonCode(source, language)
+  const keywordCount = [...masked.matchAll(/\b(?:if|for|while|match|case)\b/g)].length
+  const logicalCount = [...masked.matchAll(/&&|\|\|/g)].length
+  let ternaryCount = 0
+
+  if (language === 'typescript') {
+    for (let index = 0; index < masked.length; index += 1) {
+      if (masked[index] !== '?') continue
+      const previous = masked[index - 1] ?? ''
+      let nextIndex = index + 1
+      while (/\s/.test(masked[nextIndex] ?? '')) nextIndex += 1
+      const next = masked[nextIndex] ?? ''
+      if (previous === '?' || next === '?' || next === '.' || next === ':') continue
+      ternaryCount += 1
+    }
+  }
+
+  return 1 + keywordCount + logicalCount + ternaryCount
+}
+
+const compareFunctions = (left, right) =>
+  left.path.localeCompare(right.path)
+  || left.startLine - right.startLine
+  || left.name.localeCompare(right.name)
+
+export function measureFunctions(files) {
+  const functions = []
+
+  for (const [rawPath, source] of [...files].sort(([left], [right]) =>
+    normalizePath(left).localeCompare(normalizePath(right))
+  )) {
+    const path = normalizePath(rawPath)
+    if (!/\.(?:rs|tsx?)$/.test(path)) continue
+
+    const totalLines = countLines(source)
+    const language = path.endsWith('.rs') ? 'rust' : 'typescript'
+    const lines = maskNonCode(source, language).split(/\r?\n/).slice(0, totalLines)
+    const testLines = testLineIndexes(path, source)
+    const declarations = []
+
+    for (let index = 0; index < lines.length; index += 1) {
+      const name = declarationFromLine(path, lines[index])
+      if (name) declarations.push({ name, index })
+    }
+
+    for (let index = 0; index < declarations.length; index += 1) {
+      const declaration = declarations[index]
+      if (testLines.has(declaration.index)) continue
+      const endIndex = (declarations[index + 1]?.index ?? totalLines) - 1
+      const span = lines.slice(declaration.index, endIndex + 1).join('\n')
+      functions.push({
+        path,
+        name: declaration.name,
+        startLine: declaration.index + 1,
+        lines: endIndex - declaration.index + 1,
+        decisionScore: decisionScore(span, language),
+      })
+    }
+  }
+
+  return {
+    functionsOver200Lines: functions
+      .filter((entry) => entry.lines > 200)
+      .sort(compareFunctions),
+    functionsOverDecisionScore15: functions
+      .filter((entry) => entry.decisionScore > 15)
+      .sort(compareFunctions),
+  }
+}
+
+const walkSourceDirectory = (root, directory, files) => {
+  if (!existsSync(directory)) return
+  for (const entry of readdirSync(directory, { withFileTypes: true })
+    .sort((left, right) => left.name.localeCompare(right.name))) {
+    if (entry.name === 'target') continue
+    const path = join(directory, entry.name)
+    if (entry.isDirectory()) {
+      walkSourceDirectory(root, path, files)
+      continue
+    }
+    if (!entry.isFile() || !['.rs', '.ts', '.tsx'].includes(extname(entry.name))) continue
+    files.set(normalizePath(relative(root, path)), readFileSync(path, 'utf8'))
+  }
+}
+
+export function collectSourceFiles(root) {
+  const absoluteRoot = resolve(root)
+  const sourceRoots = []
+  const cratesDirectory = join(absoluteRoot, 'crates')
+  if (existsSync(cratesDirectory)) {
+    for (const crate of readdirSync(cratesDirectory, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .sort((left, right) => left.name.localeCompare(right.name))) {
+      sourceRoots.push(join(cratesDirectory, crate.name, 'src'))
+    }
+  }
+  sourceRoots.push(join(absoluteRoot, 'src-tauri', 'src'))
+  sourceRoots.push(join(absoluteRoot, 'ui', 'src'))
+
+  const files = new Map()
+  for (const sourceRoot of sourceRoots) walkSourceDirectory(absoluteRoot, sourceRoot, files)
+  return new Map([...files].sort(([left], [right]) => left.localeCompare(right)))
+}
+
+export function readCargoMetadata(root, execFile = execFileSync) {
+  return JSON.parse(execFile(
+    'cargo',
+    ['metadata', '--locked', '--no-deps', '--format-version', '1'],
+    {
+      cwd: root,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    },
+  ))
+}
+
+const compareEdges = (left, right) =>
+  left.from.localeCompare(right.from)
+  || left.to.localeCompare(right.to)
+  || left.kind.localeCompare(right.kind)
+
+export function collectWorkspaceDependencyEdges(metadata) {
+  const memberIds = new Set(metadata.workspace_members ?? [])
+  const members = (metadata.packages ?? []).filter(
+    (pkg) => memberIds.has(pkg.id) && pkg.name.startsWith('viewer-'),
+  )
+  const memberPaths = new Map(members.map((pkg) => [
+    pkg.name,
+    resolve(dirname(pkg.manifest_path)),
+  ]))
+  const edges = []
+
+  for (const pkg of members) {
+    for (const dependency of pkg.dependencies ?? []) {
+      const memberPath = memberPaths.get(dependency.name)
+      if (
+        !memberPath
+        || dependency.source !== null
+        || !dependency.path
+        || resolve(dependency.path) !== memberPath
+      ) continue
+      edges.push({
+        from: pkg.name,
+        to: dependency.name,
+        kind: dependency.kind ?? 'normal',
+      })
+    }
+  }
+
+  return edges.sort(compareEdges)
+}
+
+const allowedDependencyTargets = (packageName) => {
+  if (packageName === 'viewer-domain') return new Set()
+  if (packageName === 'viewer-application') return new Set(['viewer-domain'])
+  if (
+    packageName === 'viewer-infrastructure'
+    || packageName.startsWith('viewer-platform-')
+  ) {
+    return new Set(['viewer-application', 'viewer-domain'])
+  }
+  if (packageName === 'viewer-desktop' || packageName === 'viewer-test-support') return undefined
+  return new Set()
+}
+
+export function findForbiddenWorkspaceEdges(edges) {
+  return edges.filter((edge) => {
+    if (edge.kind === 'dev') return false
+    const allowed = allowedDependencyTargets(edge.from)
+    return allowed !== undefined && !allowed.has(edge.to)
+  })
+}
+
+export function collectArchitectureHealth(root) {
+  const files = collectSourceFiles(root)
+  return {
+    schemaVersion: SCHEMA_VERSION,
+    ...measureSourceFiles(files),
+    ...measureFunctions(files),
+    workspaceDependencyEdges: collectWorkspaceDependencyEdges(readCargoMetadata(root)),
+  }
+}
+
+const outlierKey = (entry) => `${entry.path}\0${entry.name ?? ''}`
+
+export function compareArchitectureHealth(current, baseline) {
+  const warnings = []
+  const baselineFiles = new Set(baseline.filesOver1000Lines.map(({ path }) => path))
+  const baselineLongFunctions = new Set(baseline.functionsOver200Lines.map(outlierKey))
+  const baselineComplexFunctions = new Set(
+    baseline.functionsOverDecisionScore15.map(outlierKey),
+  )
+
+  for (const file of [...current.filesOver1000Lines]
+    .sort((left, right) => left.path.localeCompare(right.path))) {
+    if (!baselineFiles.has(file.path)) {
+      warnings.push(`new production file over 1000 lines: ${file.path} (${file.lines})`)
+    }
+  }
+  for (const fn of [...current.functionsOver200Lines].sort(compareFunctions)) {
+    if (!baselineLongFunctions.has(outlierKey(fn))) {
+      warnings.push(
+        `new function over 200 lines: ${fn.path}:${fn.name} at line ${fn.startLine} (${fn.lines})`,
+      )
+    }
+  }
+  for (const fn of [...current.functionsOverDecisionScore15].sort(compareFunctions)) {
+    if (!baselineComplexFunctions.has(outlierKey(fn))) {
+      warnings.push(
+        `new function over decision score 15: ${fn.path}:${fn.name} at line ${fn.startLine} (${fn.decisionScore})`,
+      )
+    }
+  }
+  if (current.testToProductionRatio < baseline.testToProductionRatio - 0.02) {
+    warnings.push(
+      `test-to-production ratio dropped from ${baseline.testToProductionRatio} `
+      + `to ${current.testToProductionRatio}`,
+    )
+  }
+  return warnings
+}
+
+const validateBaseline = (baseline) => {
+  if (baseline?.schemaVersion !== SCHEMA_VERSION) {
+    throw new Error(
+      `architecture health baseline schema must be version ${SCHEMA_VERSION}`,
+    )
+  }
+}
+
+export function runArchitectureHealthCli(
+  argv,
+  {
+    root = process.cwd(),
+    collect = collectArchitectureHealth,
+    stdout = process.stdout,
+    stderr = process.stderr,
+  } = {},
+) {
+  const [mode, baselineArgument] = argv
+  if (!['--update', '--check'].includes(mode) || !baselineArgument || argv.length !== 2) {
+    throw new Error(
+      'usage: architecture-health.mjs --update|--check baseline',
+    )
+  }
+
+  const current = collect(root)
+  const forbiddenEdges = findForbiddenWorkspaceEdges(current.workspaceDependencyEdges)
+  if (forbiddenEdges.length > 0) {
+    for (const edge of forbiddenEdges) {
+      stderr.write(
+        `ERROR: forbidden workspace dependency: ${edge.from} -> ${edge.to} (${edge.kind})\n`,
+      )
+    }
+    return 1
+  }
+
+  const baselinePath = resolve(root, baselineArgument)
+  if (mode === '--update') {
+    writeFileSync(baselinePath, `${JSON.stringify(current, null, 2)}\n`)
+    stdout.write(`Updated architecture health baseline: ${baselineArgument}\n`)
+    return 0
+  }
+
+  const baseline = JSON.parse(readFileSync(baselinePath, 'utf8'))
+  validateBaseline(baseline)
+  const warnings = compareArchitectureHealth(current, baseline)
+  for (const warning of warnings) stderr.write(`WARNING: ${warning}\n`)
+  stdout.write(
+    warnings.length === 0
+      ? 'Architecture health check passed.\n'
+      : `Architecture health check completed with ${warnings.length} warning(s).\n`,
+  )
+  return 0
+}
+
+if (
+  process.argv[1]
+  && import.meta.url === pathToFileURL(resolve(process.argv[1])).href
+) {
+  process.exitCode = runArchitectureHealthCli(process.argv.slice(2))
+}

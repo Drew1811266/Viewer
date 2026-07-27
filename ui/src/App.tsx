@@ -957,6 +957,7 @@ function ViewerWorkspace({ bridge }: { bridge: ViewerBridge }) {
                 {state.showingAggregate && <p className="aggregate-label">全部后代文件</p>}
                 <ContentBrowser
                   workspace={state.workspace}
+                  density={thumbnailDensity}
                   currentPath={state.selectedFolderPath || state.project.displayName}
                   requestThumbnail={requestContentThumbnail}
                   onThumbnailTaskChange={setThumbnailTask}

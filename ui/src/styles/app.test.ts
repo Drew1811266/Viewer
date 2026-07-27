@@ -189,6 +189,29 @@ describe('workspace style contracts', () => {
     expect(darkOutline).toBe('#8ec8ff')
     expect(contrastRatio(darkOutline, '#343a43')).toBeGreaterThanOrEqual(3)
   })
+
+  it('reserves content-grid gray for loading placeholders instead of successful images', () => {
+    const rules = parseRules(appCss)
+    const cell = rules.find((rule) => rule.selector === '.image-cell')
+    const selected = rules.find((rule) => rule.selector === '.image-cell[aria-selected="true"]')
+    const preview = rules.find((rule) => rule.selector === '.image-cell-preview')
+    const image = rules.find((rule) => rule.selector === '.aspect-thumbnail > img')
+    const placeholder = rules.find((rule) => rule.selector === '.aspect-thumbnail-placeholder')
+
+    expect(cell?.declarations).toMatchObject({
+      border: '0',
+      overflow: 'visible',
+      padding: '0',
+    })
+    expect(selected?.declarations['box-shadow']).toBe('inset 0 0 0 2px #2477d4')
+    expect(preview?.declarations.background).toBe('transparent')
+    expect(preview?.declarations.height).toBeUndefined()
+    expect(image?.declarations).toMatchObject({
+      background: 'transparent',
+      'object-fit': 'contain',
+    })
+    expect(placeholder?.declarations.background).toBe('#e5e8ed')
+  })
 })
 
 interface CssRule {

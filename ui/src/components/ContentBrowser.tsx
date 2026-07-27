@@ -1,20 +1,22 @@
 import type { DragEvent, KeyboardEvent, MouseEvent, PointerEvent } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { BrowserFile, FolderWorkspace } from '../api/types'
+import type { BrowserFile, FolderWorkspace, ThumbnailDensity } from '../api/types'
+import { type AspectRect, type ImageDimensions, validDimensions } from '../layout/aspectLayout'
+import { THUMBNAIL_HEIGHT } from '../settings/thumbnailDensity'
 import type { OrganizationPointerInput } from '../state/useOrganizationPointerDrag'
+import AspectVirtualGrid from './AspectVirtualGrid'
 import { rangeSelection, toggleSelection } from './contentBrowser/contentSelection'
 import { ImageCell } from './contentBrowser/ImageCell'
 import { OrganizationDragHandle } from './contentBrowser/OrganizationDragHandle'
+import type { MarqueeSelectionChange } from './marqueeSelection'
 import type { RadialMenuRequest } from './RadialFileMenu'
 import type { TaskFeedback } from './TaskBar'
-import type { MarqueeSelectionChange } from './VirtualGrid'
-import VirtualGrid from './VirtualGrid'
 
 type ContentWorkspace = Extract<FolderWorkspace, { workspace: 'content' }>
-type GridSize = 'small' | 'medium' | 'large'
 
 interface ContentBrowserProps {
   workspace: ContentWorkspace
+  density: ThumbnailDensity
   currentPath?: string
   viewportHeight?: number
   requestThumbnail?: (file: BrowserFile, maxPixels: number, scaleMilli: number) => Promise<string>
@@ -35,14 +37,9 @@ interface ThumbnailWork {
   failed: number
 }
 
-const GRID_PIXELS: Record<GridSize, number> = {
-  small: 132,
-  medium: 180,
-  large: 240,
-}
-
 export default function ContentBrowser({
   workspace,
+  density,
   currentPath,
   viewportHeight = 520,
   requestThumbnail,
@@ -56,9 +53,11 @@ export default function ContentBrowser({
   onRepairSelectionApplied,
   onRadialMenuRequest,
 }: ContentBrowserProps) {
-  const [gridSize, setGridSize] = useState<GridSize>('medium')
   const [selected, setSelected] = useState<Set<string>>(() => new Set())
   const [activeId, setActiveId] = useState<string | null>(null)
+  const [recoveredDimensions, setRecoveredDimensions] = useState(
+    () => new Map<string, ImageDimensions>(),
+  )
   const anchorId = useRef<string | null>(null)
   const appliedRepairId = useRef<string | null>(null)
   const marqueeSelection = useRef<{
@@ -165,6 +164,26 @@ export default function ContentBrowser({
     },
     [requestThumbnail],
   )
+  const dimensionsForImage = useCallback(
+    (file: BrowserFile) => dimensionsFor(file, recoveredDimensions),
+    [recoveredDimensions],
+  )
+  const rememberNaturalDimensions = useCallback(
+    (identity: { entityId: string; modifiedNs: string }, dimensions: ImageDimensions) => {
+      if (!validDimensions(dimensions)) return
+      const key = `${identity.entityId}:${identity.modifiedNs}`
+      setRecoveredDimensions((current) => {
+        const existing = current.get(key)
+        if (existing?.width === dimensions.width && existing.height === dimensions.height) {
+          return current
+        }
+        const next = new Map(current)
+        next.set(key, dimensions)
+        return next
+      })
+    },
+    [],
+  )
 
   function commitSelection(next: Set<string>) {
     setSelected(next)
@@ -209,6 +228,23 @@ export default function ContentBrowser({
       anchorId.current = first.entityId
     }
     commitSelection(new Set(allFiles.map((file) => file.entityId)))
+  }
+
+  function navigateToIndex(nextIndex: number, extendSelection: boolean) {
+    const file = workspace.images[nextIndex]
+    if (file === undefined) return
+    setActiveId(file.entityId)
+    if (extendSelection && anchorId.current !== null) {
+      const range = rangeSelection(
+        workspace.images.map((candidate) => candidate.entityId),
+        anchorId.current,
+        file.entityId,
+      )
+      commitSelection(new Set([...selected, ...range]))
+      return
+    }
+    anchorId.current = file.entityId
+    commitSelection(new Set([file.entityId]))
   }
 
   function selectFile(file: BrowserFile, event: MouseEvent) {
@@ -365,43 +401,12 @@ export default function ContentBrowser({
       selectAllFiles()
       return
     }
-    const activeIndex = Math.max(
-      0,
-      allFiles.findIndex((file) => file.entityId === activeId),
-    )
-    let nextIndex: number | null = null
-    if (event.key === 'ArrowRight') nextIndex = activeIndex + 1
-    if (event.key === 'ArrowLeft') nextIndex = activeIndex - 1
-    if (event.key === 'ArrowDown') nextIndex = activeIndex + 4
-    if (event.key === 'ArrowUp') nextIndex = activeIndex - 4
-    if (nextIndex !== null) {
-      event.preventDefault()
-      const file = allFiles[Math.max(0, Math.min(allFiles.length - 1, nextIndex))]
-      if (file) {
-        setActiveId(file.entityId)
-        if (event.shiftKey && anchorId.current !== null) {
-          const range = rangeSelection(
-            allFiles.map((candidate) => candidate.entityId),
-            anchorId.current,
-            file.entityId,
-          )
-          commitSelection(new Set([...selected, ...range]))
-        } else {
-          anchorId.current = file.entityId
-          commitSelection(new Set([file.entityId]))
-        }
-      }
-      return
-    }
     if ((event.key === ' ' || event.key === 'Spacebar') && activeId) {
       event.preventDefault()
       const file = fileById.get(activeId)
       if (file) onPreview?.(file)
     }
   }
-
-  const cellPixels = GRID_PIXELS[gridSize]
-  const scaleMilli = Math.max(1_000, Math.round(window.devicePixelRatio * 1_000))
 
   return (
     <section className="content-browser" aria-label="文件内容">
@@ -414,42 +419,34 @@ export default function ContentBrowser({
         <details className="content-view-menu">
           <summary>视图</summary>
           <div>
-            <label>
-              缩略图大小
-              <select
-                value={gridSize}
-                onChange={(event) => setGridSize(event.target.value as GridSize)}
-              >
-                <option value="small">小</option>
-                <option value="medium">中</option>
-                <option value="large">大</option>
-              </select>
-            </label>
             <button type="button" onClick={selectAllFiles} disabled={allFiles.length === 0}>
               全选当前文件夹
             </button>
           </div>
         </details>
       </div>
-      <VirtualGrid
+      <AspectVirtualGrid
         items={workspace.images}
-        cellWidth={cellPixels}
-        cellHeight={cellPixels + 42}
+        imageHeight={THUMBNAIL_HEIGHT[density]}
         viewportHeight={viewportHeight}
-        getKey={(file) => file.entityId}
+        getKey={imageEntityId}
+        getDimensions={dimensionsForImage}
         ariaLabel="图片文件"
+        activeKey={activeId ?? undefined}
         activeDescendant={activeId ? `file-${activeId}` : undefined}
+        onNavigate={navigateToIndex}
         onKeyDown={handleKeyboard}
         ariaMultiselectable
         onMarqueeSelectionChange={updateMarqueeSelection}
-        renderItem={(file) => (
+        renderItem={(file, _index, rect: AspectRect) => (
           <ImageCell
             file={file}
+            rect={rect}
+            dimensionsKnown={validDimensions(dimensionsForImage(file))}
             selected={selected.has(file.entityId)}
             active={activeId === file.entityId}
-            maxPixels={cellPixels}
-            scaleMilli={scaleMilli}
             loadThumbnail={loadThumbnail}
+            onNaturalDimensions={rememberNaturalDimensions}
             markerLabel={markerLabel(file.marker)}
             onClick={selectFile}
             onPreview={(selectedFile) => onPreview?.(selectedFile)}
@@ -525,4 +522,21 @@ function markerLabel(marker: BrowserFile['marker']): string | null {
   if (review === null && !marker.favorite) return null
   if (review === null) return '收藏'
   return marker.favorite ? `${review} · 收藏` : review
+}
+
+function imageIdentity(file: BrowserFile): string {
+  return `${file.entityId}:${file.modifiedNs}`
+}
+
+function imageEntityId(file: BrowserFile): string {
+  return file.entityId
+}
+
+function dimensionsFor(
+  file: BrowserFile,
+  recoveredDimensions: ReadonlyMap<string, ImageDimensions>,
+): ImageDimensions | null {
+  const recovered = recoveredDimensions.get(imageIdentity(file))
+  if (recovered !== undefined && validDimensions(recovered)) return recovered
+  return validDimensions(file.imageMetadata) ? file.imageMetadata : null
 }

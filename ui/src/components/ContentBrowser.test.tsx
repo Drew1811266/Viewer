@@ -1,10 +1,62 @@
-import { createEvent, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
-import type { BrowserFile, FolderWorkspace } from '../api/types'
+import {
+  act,
+  createEvent,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react'
+import type { ComponentProps } from 'react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { BrowserFile, FolderWorkspace, ImageMetadata, ThumbnailDensity } from '../api/types'
 import { defined } from '../defined'
-import ContentBrowser from './ContentBrowser'
+import ContentBrowserComponent from './ContentBrowser'
 
-function image(index: number): BrowserFile {
+type ContentBrowserTestProps = Omit<ComponentProps<typeof ContentBrowserComponent>, 'density'> & {
+  density?: ThumbnailDensity
+}
+
+function ContentBrowser({ density = 'standard', ...props }: ContentBrowserTestProps) {
+  return <ContentBrowserComponent {...props} density={density} />
+}
+
+let resizeGrid: (width: number, height?: number) => void
+const originalDevicePixelRatio = window.devicePixelRatio
+
+beforeEach(() => {
+  let callback: ResizeObserverCallback | undefined
+  class Observer {
+    constructor(next: ResizeObserverCallback) {
+      callback = next
+    }
+
+    observe() {
+      callback?.(
+        [{ contentRect: { width: 900, height: 520 } } as ResizeObserverEntry],
+        {} as ResizeObserver,
+      )
+    }
+
+    disconnect() {}
+  }
+  vi.stubGlobal('ResizeObserver', Observer)
+  resizeGrid = (width: number, height = 520) => {
+    act(() => {
+      callback?.([{ contentRect: { width, height } } as ResizeObserverEntry], {} as ResizeObserver)
+    })
+  }
+})
+
+afterEach(() => {
+  vi.unstubAllGlobals()
+  Object.defineProperty(window, 'devicePixelRatio', {
+    configurable: true,
+    value: originalDevicePixelRatio,
+  })
+})
+
+function image(index: number, imageMetadata: ImageMetadata | null = null): BrowserFile {
   return {
     entityId: `image-${index}`,
     relativePath: `id-001/${index}.jpg`,
@@ -13,8 +65,18 @@ function image(index: number): BrowserFile {
     size: index * 10,
     modifiedNs: String(index),
     marker: { reviewState: null, favorite: false },
-    imageMetadata: null,
+    imageMetadata,
     imageUrl: null,
+  }
+}
+
+function ratioWorkspace(
+  dimensions: (ImageMetadata | null)[],
+): Extract<FolderWorkspace, { workspace: 'content' }> {
+  return {
+    workspace: 'content',
+    images: dimensions.map((metadata, index) => image(index + 1, metadata)),
+    textFiles: [],
   }
 }
 
@@ -99,6 +161,254 @@ function finishMarquee(end: [number, number]) {
 }
 
 describe('ContentBrowser', () => {
+  it.each([
+    ['compact', 96],
+    ['standard', 132],
+    ['large', 168],
+  ] satisfies [ThumbnailDensity, number][])(
+    'uses the %s global density height with proportional source-order rows',
+    (density, expectedHeight) => {
+      render(
+        <ContentBrowser
+          workspace={ratioWorkspace([
+            { width: 2, height: 3 },
+            { width: 1, height: 1 },
+            { width: 3, height: 2 },
+            { width: 1, height: 1 },
+          ])}
+          density={density}
+        />,
+      )
+      resizeGrid(320)
+
+      const options = within(screen.getByRole('listbox', { name: '图片文件' })).getAllByRole(
+        'option',
+      )
+      expect(options.map((option) => option.getAttribute('aria-label'))).toEqual([
+        '1.jpg',
+        '2.jpg',
+        '3.jpg',
+        '4.jpg',
+      ])
+      expect(thumbnailSurface('1.jpg')).toHaveStyle({
+        width: `${(expectedHeight * 2) / 3}px`,
+        height: `${expectedHeight}px`,
+      })
+      expect(thumbnailSurface('2.jpg')).toHaveStyle({
+        width: `${expectedHeight}px`,
+        height: `${expectedHeight}px`,
+      })
+      expect(thumbnailSurface('3.jpg')).toHaveStyle({
+        width: `${expectedHeight * 1.5}px`,
+        height: `${expectedHeight}px`,
+      })
+      expect(itemWrapper('image-1')).toHaveStyle({ left: '0px', top: '0px' })
+      expect(itemWrapper('image-3')).toHaveStyle({
+        left: '0px',
+        top: `${expectedHeight + 60}px`,
+      })
+    },
+  )
+
+  it('keeps select-all in the view menu without a local thumbnail-size control', () => {
+    render(<ContentBrowser workspace={workspace(2)} density="standard" />)
+
+    fireEvent.click(screen.getByText('视图'))
+
+    expect(screen.getByRole('button', { name: '全选当前文件夹' })).toBeVisible()
+    expect(screen.queryByText('缩略图大小')).not.toBeInTheDocument()
+    expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
+  })
+
+  it('requests each rendered long edge at DPR and leaves successful images ratio-sized', async () => {
+    Object.defineProperty(window, 'devicePixelRatio', {
+      configurable: true,
+      value: 2.5,
+    })
+    const requestThumbnail = vi.fn().mockImplementation(async (file: BrowserFile) => {
+      return `viewer-image://thumbnail/${file.entityId}`
+    })
+    render(
+      <ContentBrowser
+        workspace={ratioWorkspace([
+          { width: 2, height: 3 },
+          { width: 3, height: 2 },
+        ])}
+        density="standard"
+        requestThumbnail={requestThumbnail}
+      />,
+    )
+    resizeGrid(500)
+
+    await waitFor(() =>
+      expect(document.querySelectorAll('.aspect-thumbnail > img')).toHaveLength(2),
+    )
+    expect(requestThumbnail).toHaveBeenCalledWith(
+      expect.objectContaining({ entityId: 'image-1' }),
+      330,
+      2_500,
+    )
+    expect(requestThumbnail).toHaveBeenCalledWith(
+      expect.objectContaining({ entityId: 'image-2' }),
+      495,
+      2_500,
+    )
+    for (const name of ['1.jpg', '2.jpg']) {
+      const surface = thumbnailSurface(name)
+      const thumbnail = defined(
+        screen.getByRole('option', { name }).querySelector<HTMLImageElement>('img'),
+        `Expected successful thumbnail for ${name}`,
+      )
+      expect(thumbnail).toHaveStyle({
+        width: surface.style.width,
+        height: surface.style.height,
+        visibility: 'visible',
+      })
+      expect(
+        screen.getByRole('option', { name }).querySelector('.aspect-thumbnail-placeholder'),
+      ).toBeNull()
+    }
+  })
+
+  it('uses source order horizontally and closest adjacent-row centers vertically', () => {
+    const selection = vi.fn()
+    render(
+      <ContentBrowser
+        workspace={ratioWorkspace([
+          { width: 3, height: 2 },
+          { width: 1, height: 2 },
+          { width: 1, height: 1 },
+          { width: 3, height: 2 },
+          { width: 1, height: 1 },
+          { width: 1, height: 1 },
+        ])}
+        density="compact"
+        onSelectionChange={selection}
+      />,
+    )
+    resizeGrid(260)
+    const grid = screen.getByRole('listbox', { name: '图片文件' })
+
+    fireEvent.click(screen.getByRole('option', { name: '2.jpg' }))
+    fireEvent.keyDown(grid, { key: 'ArrowRight' })
+    expect(selectedLabels()).toEqual(['3.jpg'])
+    fireEvent.keyDown(grid, { key: 'ArrowLeft' })
+    expect(selectedLabels()).toEqual(['2.jpg'])
+    fireEvent.keyDown(grid, { key: 'ArrowDown' })
+    expect(selectedLabels()).toEqual(['4.jpg'])
+
+    fireEvent.click(screen.getByRole('option', { name: '3.jpg' }))
+    fireEvent.keyDown(grid, { key: 'ArrowUp' })
+    expect(selectedLabels()).toEqual(['1.jpg'])
+    expect(selection).toHaveBeenLastCalledWith([expect.objectContaining({ entityId: 'image-1' })])
+  })
+
+  it('preserves selection, active ID, and preview entity across density changes', () => {
+    const preview = vi.fn()
+    const data = ratioWorkspace([
+      { width: 2, height: 3 },
+      { width: 3, height: 2 },
+    ])
+    const rendered = render(
+      <ContentBrowser workspace={data} density="standard" onPreview={preview} />,
+    )
+    const second = screen.getByRole('option', { name: '2.jpg' })
+    fireEvent.click(second)
+    fireEvent.doubleClick(second)
+
+    rendered.rerender(<ContentBrowser workspace={data} density="compact" onPreview={preview} />)
+
+    expect(screen.getByRole('option', { name: '2.jpg' })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('listbox', { name: '图片文件' })).toHaveAttribute(
+      'aria-activedescendant',
+      'file-image-2',
+    )
+    expect(thumbnailSurface('2.jpg')).toHaveStyle({ width: '144px', height: '96px' })
+    fireEvent.keyDown(screen.getByRole('listbox', { name: '图片文件' }), { key: ' ' })
+    expect(preview).toHaveBeenNthCalledWith(1, expect.objectContaining({ entityId: 'image-2' }))
+    expect(preview).toHaveBeenNthCalledWith(2, expect.objectContaining({ entityId: 'image-2' }))
+  })
+
+  it('recovers missing metadata by entity and modification identity before revealing the ratio', async () => {
+    const requestThumbnail = vi.fn().mockResolvedValue('viewer-image://thumbnail')
+    const data = ratioWorkspace([null, { width: 1, height: 1 }])
+    const rendered = render(
+      <ContentBrowser workspace={data} density="standard" requestThumbnail={requestThumbnail} />,
+    )
+    resizeGrid(300)
+
+    const firstImage = await thumbnailImage('1.jpg')
+    expect(thumbnailSurface('1.jpg')).toHaveStyle({ width: '132px', height: '132px' })
+    expect(firstImage).toHaveStyle({ visibility: 'hidden' })
+    expect(itemWrapper('image-2')).toHaveStyle({ top: '0px' })
+    Object.defineProperties(firstImage, {
+      naturalWidth: { configurable: true, value: 3_000 },
+      naturalHeight: { configurable: true, value: 1_000 },
+    })
+    fireEvent.load(firstImage)
+
+    await waitFor(() =>
+      expect(thumbnailSurface('1.jpg')).toHaveStyle({ width: '396px', height: '132px' }),
+    )
+    expect(
+      defined(
+        screen.getByRole('option', { name: '1.jpg' }).querySelector('img'),
+        'Expected recovered image',
+      ),
+    ).toHaveStyle({
+      visibility: 'visible',
+    })
+    expect(itemWrapper('image-2')).toHaveStyle({ top: '192px' })
+
+    rendered.rerender(
+      <ContentBrowser
+        workspace={{
+          ...data,
+          images: [
+            { ...defined(data.images[0], 'Expected unknown image'), modifiedNs: 'replacement' },
+            defined(data.images[1], 'Expected known image'),
+          ],
+        }}
+        density="standard"
+        requestThumbnail={requestThumbnail}
+      />,
+    )
+
+    await waitFor(() =>
+      expect(thumbnailSurface('1.jpg')).toHaveStyle({ width: '132px', height: '132px' }),
+    )
+    expect(
+      defined(
+        screen.getByRole('option', { name: '1.jpg' }).querySelector('img'),
+        'Expected replacement image',
+      ),
+    ).toHaveStyle({
+      visibility: 'hidden',
+    })
+    expect(itemWrapper('image-2')).toHaveStyle({ top: '0px' })
+  })
+
+  it('keeps an over-wide panorama horizontally reachable and uncropped', async () => {
+    render(
+      <ContentBrowser
+        workspace={ratioWorkspace([{ width: 10, height: 1 }])}
+        density="standard"
+        requestThumbnail={vi.fn().mockResolvedValue('viewer-image://panorama')}
+      />,
+    )
+    resizeGrid(300)
+
+    const grid = screen.getByRole('listbox', { name: '图片文件' })
+    expect(grid).toHaveStyle({ overflow: 'auto' })
+    expect(screen.getByTestId('aspect-virtual-grid-track')).toHaveStyle({ width: '1320px' })
+    expect(itemWrapper('image-1')).toHaveStyle({ width: '1320px', left: '0px' })
+    expect(await thumbnailImage('1.jpg')).toHaveStyle({
+      width: '1320px',
+      height: '132px',
+      objectFit: 'contain',
+    })
+  })
+
   it('applies an external repair target to selection, active item, and range anchor', () => {
     const selection = vi.fn()
     const rendered = render(
@@ -255,7 +565,7 @@ describe('ContentBrowser', () => {
   it('replaces image selection live with a visible background marquee', () => {
     render(<ContentBrowser workspace={workspace(4)} />)
     fireEvent.click(screen.getByRole('option', { name: '4.jpg' }))
-    marqueeImages({ start: [378, 100], end: [0, 0] })
+    marqueeImages({ start: [280, 100], end: [0, 0] })
     expect(selectedLabels()).toEqual(['1.jpg', '2.jpg'])
     expect(screen.getByTestId('marquee-selection')).toBeVisible()
     finishMarquee([0, 0])
@@ -266,7 +576,7 @@ describe('ContentBrowser', () => {
     render(<ContentBrowser workspace={workspace(4)} />)
     fireEvent.click(screen.getByRole('option', { name: '1.jpg' }))
     fireEvent.click(screen.getByRole('option', { name: '3.jpg' }), { metaKey: true })
-    marqueeImages({ start: [378, 100], end: [0, 0], metaKey: true })
+    marqueeImages({ start: [280, 100], end: [0, 0], metaKey: true })
     finishMarquee([0, 0])
     expect(selectedLabels()).toEqual(['2.jpg', '3.jpg'])
   })
@@ -280,7 +590,7 @@ describe('ContentBrowser', () => {
     expect(selectedLabels()).toEqual([])
 
     fireEvent.click(screen.getByRole('option', { name: '1.jpg' }))
-    marqueeImages({ start: [378, 100], end: [0, 0] })
+    marqueeImages({ start: [280, 100], end: [0, 0] })
     expect(selectedLabels()).toEqual(['1.jpg', '2.jpg'])
     fireEvent.keyDown(screen.getByRole('listbox', { name: '图片文件' }), { key: 'Escape' })
     expect(selectedLabels()).toEqual(['1.jpg'])
@@ -753,3 +1063,27 @@ describe('ContentBrowser', () => {
     expect(selectedLabels()).toHaveLength(3)
   })
 })
+
+function itemWrapper(entityId: string): HTMLElement {
+  const wrapper = document.querySelector<HTMLElement>(`[data-key="${entityId}"]`)
+  if (wrapper === null) throw new Error(`Expected mounted image wrapper for ${entityId}`)
+  return wrapper
+}
+
+function thumbnailSurface(name: string): HTMLElement {
+  const surface = screen
+    .getByRole('option', { name })
+    .querySelector<HTMLElement>('.aspect-thumbnail')
+  if (surface === null) throw new Error(`Expected aspect thumbnail surface for ${name}`)
+  return surface
+}
+
+async function thumbnailImage(name: string): Promise<HTMLImageElement> {
+  let image: HTMLImageElement | null = null
+  await waitFor(() => {
+    image = screen.getByRole('option', { name }).querySelector('img')
+    expect(image).not.toBeNull()
+  })
+  if (image === null) throw new Error(`Expected thumbnail image for ${name}`)
+  return image
+}

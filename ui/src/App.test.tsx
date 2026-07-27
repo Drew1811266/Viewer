@@ -355,6 +355,59 @@ describe('Viewer empty state', () => {
     })
   })
 
+  it('applies global density to the normal content grid without replacing selection', async () => {
+    const viewer = bridge()
+    const baseContent = contentWorkspace()
+    const content = {
+      ...baseContent,
+      images: [
+        {
+          ...defined(baseContent.images[0], 'Expected content image'),
+          imageMetadata: { width: 3, height: 2 },
+        },
+      ],
+    }
+    vi.mocked(viewer.queryFolder).mockResolvedValue(content)
+    render(<App bridge={viewer} />)
+    fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
+
+    const file = await screen.findByRole('option', { name: 'front.jpg' })
+    fireEvent.click(file)
+    expect(
+      defined(file.querySelector('.aspect-thumbnail'), 'Expected content aspect thumbnail'),
+    ).toHaveStyle({
+      width: '198px',
+      height: '132px',
+    })
+    await waitFor(() =>
+      expect(viewer.requestImage).toHaveBeenCalledWith({
+        entityId: 'image-1',
+        representation: { kind: 'thumbnail', maxPixels: 198, scaleMilli: 1_000 },
+      }),
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: '软件设置' }))
+    fireEvent.click(screen.getByRole('radio', { name: '紧凑' }))
+
+    await waitFor(() =>
+      expect(
+        defined(file.querySelector('.aspect-thumbnail'), 'Expected resized content thumbnail'),
+      ).toHaveStyle({
+        width: '144px',
+        height: '96px',
+      }),
+    )
+    expect(file).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('listbox', { name: '图片文件' })).toHaveAttribute(
+      'aria-activedescendant',
+      'file-image-1',
+    )
+    expect(viewer.requestImage).toHaveBeenCalledWith({
+      entityId: 'image-1',
+      representation: { kind: 'thumbnail', maxPixels: 144, scaleMilli: 1_000 },
+    })
+  })
+
   it('reloads visible filmstrip rows after an external category refresh', async () => {
     const viewer = bridge()
     let receiveProjectChanged: Parameters<ViewerBridge['listenProjectChanged']>[0] | undefined

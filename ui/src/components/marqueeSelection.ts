@@ -21,7 +21,7 @@ export interface MarqueeSelectionChange {
   metaKey: boolean
 }
 
-export interface VirtualGridGeometry {
+export interface UniformGridGeometry {
   itemCount: number
   columns: number
   cellWidth: number
@@ -53,7 +53,7 @@ export function marqueeContentPoint(
 
 export function intersectingGridIndexes(
   rect: MarqueeRect,
-  geometry: VirtualGridGeometry,
+  geometry: UniformGridGeometry,
 ): number[] {
   if (geometry.itemCount === 0) return []
 

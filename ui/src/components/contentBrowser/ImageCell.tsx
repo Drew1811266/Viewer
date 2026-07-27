@@ -1,15 +1,17 @@
 import type { DragEvent, MouseEvent, PointerEvent } from 'react'
-import { useEffect, useState } from 'react'
 import type { BrowserFile } from '../../api/types'
+import type { AspectRect, ImageDimensions } from '../../layout/aspectLayout'
+import AspectThumbnail from '../AspectThumbnail'
 import { OrganizationDragHandle } from './OrganizationDragHandle'
 
 export function ImageCell({
   file,
+  rect,
+  dimensionsKnown,
   selected,
   active,
-  maxPixels,
-  scaleMilli,
   loadThumbnail,
+  onNaturalDimensions,
   markerLabel,
   onClick,
   onPreview,
@@ -23,11 +25,15 @@ export function ImageCell({
   onPointerCancel,
 }: {
   file: BrowserFile
+  rect: AspectRect
+  dimensionsKnown: boolean
   selected: boolean
   active: boolean
-  maxPixels: number
-  scaleMilli: number
   loadThumbnail: (file: BrowserFile, maxPixels: number, scaleMilli: number) => Promise<string>
+  onNaturalDimensions: (
+    identity: { entityId: string; modifiedNs: string },
+    dimensions: ImageDimensions,
+  ) => void
   markerLabel: string | null
   onClick: (file: BrowserFile, event: MouseEvent) => void
   onPreview: (file: BrowserFile) => void
@@ -40,25 +46,6 @@ export function ImageCell({
   onPointerUp: (event: PointerEvent<HTMLElement>) => void
   onPointerCancel: (event: PointerEvent<HTMLElement>) => void
 }) {
-  const [url, setUrl] = useState<string | null>(file.imageUrl)
-  const [failed, setFailed] = useState(false)
-
-  useEffect(() => {
-    let current = true
-    setFailed(false)
-    void loadThumbnail(file, maxPixels, scaleMilli).then(
-      (nextUrl) => {
-        if (current) setUrl(nextUrl)
-      },
-      () => {
-        if (current) setFailed(true)
-      },
-    )
-    return () => {
-      current = false
-    }
-  }, [file, loadThumbnail, maxPixels, scaleMilli])
-
   return (
     <div
       role="option"
@@ -80,11 +67,14 @@ export function ImageCell({
         onDragStart={(event) => onFinderDragStart(file, event)}
       >
         <div className="image-cell-preview">
-          {url ? (
-            <img src={url} alt="" />
-          ) : (
-            <span aria-label={failed ? '缩略图不可用' : '缩略图加载中'} />
-          )}
+          <AspectThumbnail
+            file={file}
+            width={rect.imageWidth}
+            height={rect.imageHeight}
+            dimensionsKnown={dimensionsKnown}
+            loadThumbnail={loadThumbnail}
+            onNaturalDimensions={onNaturalDimensions}
+          />
         </div>
         <span>{file.name}</span>
         {markerLabel && <span className="file-marker">{markerLabel}</span>}

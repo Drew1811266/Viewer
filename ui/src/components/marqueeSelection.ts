@@ -38,6 +38,19 @@ export function normalizeMarquee(start: MarqueePoint, current: MarqueePoint): Ma
   return { left, top, right, bottom, width: right - left, height: bottom - top }
 }
 
+export function marqueeContentPoint(
+  clientX: number,
+  clientY: number,
+  bounds: Pick<DOMRect, 'left' | 'top'>,
+  scrollLeft: number,
+  scrollTop: number,
+): MarqueePoint {
+  return {
+    x: clientX - bounds.left + scrollLeft,
+    y: clientY - bounds.top + scrollTop,
+  }
+}
+
 export function intersectingGridIndexes(
   rect: MarqueeRect,
   geometry: VirtualGridGeometry,

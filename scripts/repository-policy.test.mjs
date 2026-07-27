@@ -7,6 +7,24 @@ import { validateFinderDragAppKitWiring } from './validate-finder-drag-appkit-wi
 
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8')
 const normalizeNewlines = (text) => text.replace(/\r\n?/g, '\n')
+const findDocumentationRows = (index, path) =>
+  index
+    .split('\n')
+    .filter((line) => line.match(/^\| \[[^\]]+\]\(([^)]+)\) \|/)?.[1] === path)
+
+test('documentation row parsing ignores replacement-target links', () => {
+  const path = 'superpowers/specs/current-design.md'
+  const ownRow = `| [current-design.md](${path}) | Active | — |`
+  const index = [
+    '| Document | Status | Replaced by |',
+    '| --- | --- | --- |',
+    ownRow,
+    `| [superseded-design.md](superpowers/specs/superseded-design.md) | Superseded | [current-design.md](${path}) |`,
+  ].join('\n')
+
+  assert.equal(findDocumentationRows(index, path).length, 1)
+  assert.deepEqual(findDocumentationRows(index.replace(`${ownRow}\n`, ''), path), [])
+})
 
 test('documentation index declares one status for every listed source', async () => {
   const index = await read('docs/README.md')
@@ -20,9 +38,7 @@ test('documentation index declares one status for every listed source', async ()
   })
   for (const spec of specs.filter((entry) => entry.isFile() && entry.name.endsWith('.md'))) {
     const path = `superpowers/specs/${spec.name}`
-    const rows = index
-      .split('\n')
-      .filter((line) => line.includes(`](${path}) |`))
+    const rows = findDocumentationRows(index, path)
     assert.equal(rows.length, 1, `${path} must have exactly one index row`)
     assert.match(
       rows[0],

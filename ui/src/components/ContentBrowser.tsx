@@ -408,6 +408,46 @@ export default function ContentBrowser({
     }
   }
 
+  function handleTextListKeyboard(event: KeyboardEvent<HTMLElement>) {
+    const target = event.target as HTMLElement
+    if (
+      target instanceof HTMLInputElement ||
+      target instanceof HTMLTextAreaElement ||
+      target.isContentEditable
+    ) {
+      return
+    }
+    const activeIndex = Math.max(
+      0,
+      allFiles.findIndex((file) => file.entityId === activeId),
+    )
+    let nextIndex: number | null = null
+    if (event.key === 'ArrowRight') nextIndex = activeIndex + 1
+    if (event.key === 'ArrowLeft') nextIndex = activeIndex - 1
+    if (event.key === 'ArrowDown') nextIndex = activeIndex + 4
+    if (event.key === 'ArrowUp') nextIndex = activeIndex - 4
+    if (nextIndex !== null) {
+      event.preventDefault()
+      const file = allFiles[Math.max(0, Math.min(allFiles.length - 1, nextIndex))]
+      if (file) {
+        setActiveId(file.entityId)
+        if (event.shiftKey && anchorId.current !== null) {
+          const range = rangeSelection(
+            allFiles.map((candidate) => candidate.entityId),
+            anchorId.current,
+            file.entityId,
+          )
+          commitSelection(new Set([...selected, ...range]))
+        } else {
+          anchorId.current = file.entityId
+          commitSelection(new Set([file.entityId]))
+        }
+      }
+      return
+    }
+    handleKeyboard(event)
+  }
+
   return (
     <section className="content-browser" aria-label="文件内容">
       <div className="content-toolbar">
@@ -467,7 +507,7 @@ export default function ContentBrowser({
         role="listbox"
         aria-label="文本文件"
         tabIndex={0}
-        onKeyDown={handleKeyboard}
+        onKeyDown={handleTextListKeyboard}
       >
         {workspace.textFiles.map((file) => (
           <div
@@ -536,7 +576,8 @@ function dimensionsFor(
   file: BrowserFile,
   recoveredDimensions: ReadonlyMap<string, ImageDimensions>,
 ): ImageDimensions | null {
+  if (validDimensions(file.imageMetadata)) return file.imageMetadata
   const recovered = recoveredDimensions.get(imageIdentity(file))
   if (recovered !== undefined && validDimensions(recovered)) return recovered
-  return validDimensions(file.imageMetadata) ? file.imageMetadata : null
+  return null
 }

@@ -100,6 +100,27 @@ function workspace(count = 10): Extract<FolderWorkspace, { workspace: 'content' 
   }
 }
 
+function workspaceWithTextFiles(
+  imageCount = 2,
+  textCount = 6,
+): Extract<FolderWorkspace, { workspace: 'content' }> {
+  return {
+    workspace: 'content',
+    images: Array.from({ length: imageCount }, (_, index) => image(index + 1)),
+    textFiles: Array.from({ length: textCount }, (_, index) => ({
+      entityId: `text-${index + 1}`,
+      relativePath: `id-001/note-${index + 1}.txt`,
+      name: `note-${index + 1}.txt`,
+      kind: 'text' as const,
+      size: (index + 1) * 10,
+      modifiedNs: String(100 + index),
+      marker: { reviewState: null, favorite: false },
+      imageMetadata: null,
+      imageUrl: null,
+    })),
+  }
+}
+
 function selectedLabels(): string[] {
   return screen
     .getAllByRole('option')
@@ -388,6 +409,51 @@ describe('ContentBrowser', () => {
     expect(itemWrapper('image-2')).toHaveStyle({ top: '0px' })
   })
 
+  it('prefers later valid metadata over a recovered ratio for the same image identity', async () => {
+    const requestThumbnail = vi.fn().mockResolvedValue('viewer-image://thumbnail')
+    const data = ratioWorkspace([null])
+    const rendered = render(
+      <ContentBrowser workspace={data} density="standard" requestThumbnail={requestThumbnail} />,
+    )
+    resizeGrid(1_000)
+
+    const firstImage = await thumbnailImage('1.jpg')
+    Object.defineProperties(firstImage, {
+      naturalWidth: { configurable: true, value: 3_000 },
+      naturalHeight: { configurable: true, value: 1_000 },
+    })
+    fireEvent.load(firstImage)
+    await waitFor(() =>
+      expect(thumbnailSurface('1.jpg')).toHaveStyle({ width: '396px', height: '132px' }),
+    )
+
+    rendered.rerender(
+      <ContentBrowser
+        workspace={{
+          ...data,
+          images: [
+            {
+              ...defined(data.images[0], 'Expected recovered image fixture'),
+              imageMetadata: { width: 1, height: 2 },
+            },
+          ],
+        }}
+        density="standard"
+        requestThumbnail={requestThumbnail}
+      />,
+    )
+
+    await waitFor(() =>
+      expect(thumbnailSurface('1.jpg')).toHaveStyle({ width: '66px', height: '132px' }),
+    )
+    expect(
+      defined(
+        screen.getByRole('option', { name: '1.jpg' }).querySelector('img'),
+        'Expected metadata-sized image',
+      ),
+    ).toHaveStyle({ visibility: 'visible' })
+  })
+
   it('keeps an over-wide panorama horizontally reachable and uncropped', async () => {
     render(
       <ContentBrowser
@@ -501,6 +567,48 @@ describe('ContentBrowser', () => {
       .filter((item) => item.getAttribute('aria-selected') === 'true')
       .map((item) => item.getAttribute('aria-label'))
     expect(selected).toEqual(['1.jpg', '2.jpg', '3.jpg'])
+  })
+
+  it('restores text-list arrows, active ID, and Space preview with legacy all-file offsets', () => {
+    const preview = vi.fn()
+    render(<ContentBrowser workspace={workspaceWithTextFiles()} onPreview={preview} />)
+    const textList = screen.getByRole('listbox', { name: '文本文件' })
+
+    fireEvent.click(screen.getByRole('option', { name: 'note-2.txt' }))
+    fireEvent.keyDown(textList, { key: 'ArrowRight' })
+    expect(selectedLabels()).toEqual(['note-3.txt'])
+    expect(screen.getByRole('listbox', { name: '图片文件' })).toHaveAttribute(
+      'aria-activedescendant',
+      'file-text-3',
+    )
+    fireEvent.keyDown(textList, { key: ' ' })
+    expect(preview).toHaveBeenCalledWith(expect.objectContaining({ entityId: 'text-3' }))
+
+    fireEvent.keyDown(textList, { key: 'ArrowLeft' })
+    expect(selectedLabels()).toEqual(['note-2.txt'])
+    fireEvent.keyDown(textList, { key: 'ArrowDown' })
+    expect(selectedLabels()).toEqual(['note-6.txt'])
+    fireEvent.keyDown(textList, { key: 'ArrowUp' })
+    expect(selectedLabels()).toEqual(['note-2.txt'])
+  })
+
+  it('extends text-list Shift arrows from the source anchor with legacy all-file offsets', () => {
+    render(<ContentBrowser workspace={workspaceWithTextFiles()} />)
+    const textList = screen.getByRole('listbox', { name: '文本文件' })
+
+    fireEvent.click(screen.getByRole('option', { name: 'note-1.txt' }))
+    fireEvent.keyDown(textList, { key: 'ArrowRight', shiftKey: true })
+    expect(selectedLabels()).toEqual(['note-1.txt', 'note-2.txt'])
+
+    fireEvent.keyDown(textList, { key: 'ArrowDown', shiftKey: true })
+    expect(selectedLabels()).toEqual([
+      'note-1.txt',
+      'note-2.txt',
+      'note-3.txt',
+      'note-4.txt',
+      'note-5.txt',
+      'note-6.txt',
+    ])
   })
 
   it('keeps reverse Shift ranges additive in display order and Command-click isolated', () => {

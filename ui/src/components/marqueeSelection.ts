@@ -13,6 +13,14 @@ export interface MarqueeRect {
   height: number
 }
 
+export type MarqueePhase = 'start' | 'change' | 'end' | 'cancel'
+
+export interface MarqueeSelectionChange {
+  phase: MarqueePhase
+  keys: string[]
+  metaKey: boolean
+}
+
 export interface VirtualGridGeometry {
   itemCount: number
   columns: number

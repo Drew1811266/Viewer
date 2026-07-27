@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   intersectingGridIndexes,
+  type MarqueeSelectionChange,
   marqueeDistance,
   normalizeMarquee,
   verticalAutoScrollDelta,
@@ -52,5 +53,10 @@ describe('marqueeSelection', () => {
     expect(verticalAutoScrollDelta(284, 100, 300)).toBe(9)
     expect(verticalAutoScrollDelta(300, 100, 300)).toBe(18)
     expect(verticalAutoScrollDelta(200, 100, 300)).toBe(0)
+  })
+
+  it('exports shared marquee event types without depending on a grid component', () => {
+    const change: MarqueeSelectionChange = { phase: 'change', keys: ['image-1'], metaKey: true }
+    expect(change).toEqual({ phase: 'change', keys: ['image-1'], metaKey: true })
   })
 })

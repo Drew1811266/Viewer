@@ -4,18 +4,13 @@ import {
   intersectingGridIndexes,
   type MarqueePoint,
   type MarqueeRect,
+  type MarqueeSelectionChange,
   marqueeDistance,
   normalizeMarquee,
   verticalAutoScrollDelta,
 } from './marqueeSelection'
 
-export type MarqueePhase = 'start' | 'change' | 'end' | 'cancel'
-
-export interface MarqueeSelectionChange {
-  phase: MarqueePhase
-  keys: string[]
-  metaKey: boolean
-}
+export type { MarqueePhase, MarqueeSelectionChange } from './marqueeSelection'
 
 interface MarqueeSession {
   pointerId: number

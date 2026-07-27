@@ -8,6 +8,7 @@ import test from 'node:test'
 import {
   CRITICAL_UI_FILES,
   compareCoverage,
+  compareCoverageReport,
   normalizeVitestReport,
   normalizeVitestSummary,
   readCoverageSummary,
@@ -26,6 +27,12 @@ const fileSummary = (value) => ({
   branches: { pct: value },
   functions: { pct: value },
   statements: { pct: value },
+})
+const metrics = (value) => ({
+  lines: value,
+  branches: value,
+  functions: value,
+  statements: value,
 })
 
 test('normalizes Vitest total percentages', () => {
@@ -84,6 +91,27 @@ test('allows a regression exactly at the tolerance boundary', () => {
     ),
     [],
   )
+})
+
+test('reports a path-prefixed critical-file regression', () => {
+  const regressedPath = CRITICAL_UI_FILES[4]
+  const baseline = {
+    global: metrics(80),
+    critical: Object.fromEntries(CRITICAL_UI_FILES.map((path) => [path, metrics(80)])),
+  }
+  const current = {
+    global: metrics(80),
+    critical: Object.fromEntries(
+      CRITICAL_UI_FILES.map((path) => [
+        path,
+        path === regressedPath ? { ...metrics(80), branches: 78 } : metrics(80),
+      ]),
+    ),
+  }
+
+  assert.deepEqual(compareCoverageReport(current, baseline, 1), [
+    `${regressedPath}: branches dropped from 80 to 78`,
+  ])
 })
 
 test('rejects a Vitest report with a missing critical file', () => {

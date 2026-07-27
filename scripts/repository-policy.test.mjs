@@ -970,6 +970,38 @@ test('the macOS release command is non-interactive and uses a valid bundle ident
   assert.equal(tauri.bundle.macOS.signingIdentity, '-')
 })
 
+test('the Viewer product version has one Cargo source and matches the Tauri bundle', async () => {
+  const memberManifests = [
+    'src-tauri/Cargo.toml',
+    'crates/viewer-domain/Cargo.toml',
+    'crates/viewer-application/Cargo.toml',
+    'crates/viewer-infrastructure/Cargo.toml',
+    'crates/viewer-platform-macos/Cargo.toml',
+    'crates/viewer-test-support/Cargo.toml',
+  ]
+  const [workspaceManifest, tauriText, ...members] = await Promise.all([
+    read('Cargo.toml'),
+    read('src-tauri/tauri.conf.json'),
+    ...memberManifests.map((manifest) => read(manifest)),
+  ])
+  const workspacePackage = workspaceManifest.match(
+    /\[workspace\.package\]([\s\S]*?)(?=\n\[|$)/,
+  )?.[1]
+  const workspaceVersion = workspacePackage?.match(
+    /^version\s*=\s*"([^"]+)"$/m,
+  )?.[1]
+
+  assert.match(workspaceVersion ?? '', /^\d+\.\d+\.\d+$/)
+  assert.equal(JSON.parse(tauriText).version, workspaceVersion)
+  for (const [index, member] of members.entries()) {
+    assert.match(
+      member,
+      /^version\.workspace\s*=\s*true$/m,
+      `${memberManifests[index]} must inherit the Viewer workspace version`,
+    )
+  }
+})
+
 test('the npm dependency graph rejects unreviewed license expressions', async () => {
   const { validateLicenseInventory } = await import('./check-npm-licenses.mjs')
   const reviewed = {

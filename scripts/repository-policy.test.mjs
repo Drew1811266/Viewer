@@ -1129,3 +1129,12 @@ test('infrastructure adapters are backed by focused modules', async () => {
   ]
   await Promise.all(required.map((path) => stat(new URL(`../${path}`, import.meta.url))))
 })
+
+test('network dependency audit is scheduled and never a pull-request gate', async () => {
+  const workflow = await read('.github/workflows/dependency-audit.yml')
+  assert.match(workflow, /schedule:/)
+  assert.match(workflow, /workflow_dispatch:/)
+  assert.doesNotMatch(workflow, /pull_request:/)
+  assert.match(workflow, /pnpm audit --audit-level high/)
+  assert.match(workflow, /cargo deny --locked check advisories/)
+})

@@ -62,6 +62,7 @@ completion.
 | [`superpowers/plans/2026-07-23-viewer-infrastructure-decomposition-plan.md`](superpowers/plans/2026-07-23-viewer-infrastructure-decomposition-plan.md) | Historical | — |
 | [`superpowers/plans/2026-07-23-viewer-react-decomposition-plan.md`](superpowers/plans/2026-07-23-viewer-react-decomposition-plan.md) | Historical | — |
 | [`superpowers/plans/2026-07-23-viewer-tauri-runtime-decomposition-plan.md`](superpowers/plans/2026-07-23-viewer-tauri-runtime-decomposition-plan.md) | Historical | — |
+| [`superpowers/plans/2026-07-27-viewer-aspect-aware-thumbnail-density.md`](superpowers/plans/2026-07-27-viewer-aspect-aware-thumbnail-density.md) | Historical | — |
 
 ## Historical review evidence
 

@@ -1,5 +1,12 @@
 export type ProjectAccess = 'read_write' | 'read_only'
 
+export type ThumbnailDensity = 'compact' | 'standard' | 'large'
+
+export interface ViewerSettings {
+  schemaVersion: 1
+  thumbnailDensity: ThumbnailDensity
+}
+
 export interface ProjectSnapshot {
   projectId: string
   sessionId: string

@@ -4,6 +4,7 @@ mod operations;
 mod preview;
 mod project;
 mod search;
+mod settings;
 
 pub use browse::*;
 pub use markers::*;
@@ -11,6 +12,7 @@ pub use operations::*;
 pub use preview::*;
 pub use project::*;
 pub use search::*;
+pub use settings::*;
 
 #[cfg(test)]
 mod tests {

@@ -39,9 +39,11 @@ import type {
   TextPreview,
   TextPreviewRequest,
   TextSnippet,
+  ThumbnailDensity,
   ToggleFavoriteRequest,
   UndoLastOperationRequest,
   UndoReceipt,
+  ViewerSettings,
 } from './types'
 
 export interface ViewerBridge {
@@ -49,6 +51,8 @@ export interface ViewerBridge {
   openProject(path: string): Promise<ProjectSnapshot>
   closeProject(choice?: CloseChoice, target?: CloseTarget): Promise<CloseRequestOutcome>
   projectSnapshot(): Promise<ProjectSnapshot | null>
+  getViewerSettings(): Promise<ViewerSettings>
+  updateThumbnailDensity(density: ThumbnailDensity): Promise<ViewerSettings>
   folderTree(): Promise<FolderTreeItem[]>
   queryFolder(entityId: string | null, aggregate?: boolean): Promise<FolderWorkspace>
   requestImage(request: ImageRequest): Promise<ImageRepresentation>
@@ -100,6 +104,12 @@ export const tauriViewerBridge: ViewerBridge = {
   },
   projectSnapshot() {
     return invoke<ProjectSnapshot | null>('project_snapshot')
+  },
+  getViewerSettings() {
+    return invoke<ViewerSettings>('get_viewer_settings')
+  },
+  updateThumbnailDensity(density) {
+    return invoke<ViewerSettings>('update_thumbnail_density', { density })
   },
   folderTree() {
     return invoke<FolderTreeItem[]>('folder_tree')

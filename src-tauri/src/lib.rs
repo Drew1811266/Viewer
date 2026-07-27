@@ -4,7 +4,10 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
 };
 use tauri::{Emitter, Manager};
-use viewer_infrastructure::image_cache::ImageArtifactRegistry;
+use viewer_application::ViewerSettingsService;
+use viewer_infrastructure::{
+    image_cache::ImageArtifactRegistry, settings::JsonViewerSettingsStore,
+};
 
 pub mod commands;
 pub mod dto;
@@ -211,9 +214,15 @@ pub fn run() {
             commands::operations::cancel_operation,
             commands::operations::undo_last_operation,
             commands::operations::open_permission_settings,
-            commands::finder_drag::begin_finder_drag
+            commands::finder_drag::begin_finder_drag,
+            commands::settings::get_viewer_settings,
+            commands::settings::update_thumbnail_density
         ])
         .setup(move |app| {
+            let settings_directory = app.path().app_config_dir()?;
+            let settings_service = Arc::new(ViewerSettingsService::new(Arc::new(
+                JsonViewerSettingsStore::new(settings_directory),
+            )));
             let cache_base = app.path().app_cache_dir()?.join("sessions");
             let _ = viewer_infrastructure::session_cache::SessionCache::cleanup_stale(
                 &cache_base,
@@ -232,6 +241,7 @@ pub fn run() {
                 runtime_active_image_session.clone(),
             ));
             app.manage(runtime);
+            app.manage(settings_service);
             app.manage(ExitGate::default());
 
             if let Some(window) = app.get_webview_window("main") {

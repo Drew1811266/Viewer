@@ -1,7 +1,7 @@
 use serde::Serialize;
 use viewer_application::{
     BrowseError, BrowseIndexError, FinderDragError, ImageError, ProjectOpenError,
-    ProjectProbeError, TextPreviewError,
+    ProjectProbeError, TextPreviewError, ViewerSettingsError,
     metadata::{MarkerServiceError, MarkerStoreError},
     search::SearchError,
     undo::{UndoError, UndoServiceError},
@@ -377,6 +377,17 @@ impl From<TextPreviewError> for CommandError {
     }
 }
 
+impl From<ViewerSettingsError> for CommandError {
+    fn from(_error: ViewerSettingsError) -> Self {
+        Self::new(
+            "settings_write_failed",
+            ErrorCategory::Environment,
+            "设置未能保存",
+            true,
+        )
+    }
+}
+
 fn invalid_project_root() -> CommandError {
     CommandError::new(
         "invalid_project_root",
@@ -393,4 +404,23 @@ fn internal_error() -> CommandError {
         "Viewer 遇到内部错误，请重试。",
         true,
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{CommandError, ErrorCategory};
+    use viewer_application::ViewerSettingsError;
+
+    #[test]
+    fn settings_write_failure_is_retryable_environment_error() {
+        assert_eq!(
+            CommandError::from(ViewerSettingsError::Unavailable),
+            CommandError::new(
+                "settings_write_failed",
+                ErrorCategory::Environment,
+                "设置未能保存",
+                true,
+            )
+        );
+    }
 }

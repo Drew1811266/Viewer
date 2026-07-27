@@ -119,6 +119,20 @@ allow = ["RUSTSEC-UNRELATED"]
   ))
 })
 
+test('does not count commented advisory IDs as active deny ignores', () => {
+  assert.throws(
+    () => validateDenyRegistrations(
+      [{ ...validException }],
+      `[advisories]
+ignore = [
+  # { id = "RUSTSEC-1", reason = "disabled # exception" },
+]
+`,
+    ),
+    /RUSTSEC-1.*not present/i,
+  )
+})
+
 test('reads dependency files and rejects an unregistered deny ignore', async (t) => {
   const directory = await mkdtemp(join(tmpdir(), 'viewer-dependency-exceptions-'))
   t.after(() => rm(directory, { recursive: true, force: true }))

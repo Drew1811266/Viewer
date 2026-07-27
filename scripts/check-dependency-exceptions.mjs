@@ -68,9 +68,48 @@ function denyAdvisoryIds(denyToml) {
   const advisories = nextSection === -1
     ? remainder
     : remainder.slice(0, nextSection)
-  const ignore = advisories.match(/(?:^|\n)\s*ignore\s*=\s*\[([\s\S]*?)\]/)?.[1] ?? ''
+  const uncommented = stripTomlComments(advisories)
+  const ignore = uncommented.match(/(?:^|\n)\s*ignore\s*=\s*\[([\s\S]*?)\]/)?.[1] ?? ''
   return [...ignore.matchAll(/\bid\s*=\s*"(RUSTSEC-[^"]+)"/g)]
     .map((match) => match[1])
+}
+
+function stripTomlComments(text) {
+  let result = ''
+  let quote = null
+  let escaped = false
+
+  for (let index = 0; index < text.length; index += 1) {
+    const character = text[index]
+    if (quote !== null) {
+      result += character
+      if (quote === '"' && escaped) {
+        escaped = false
+      } else if (quote === '"' && character === '\\') {
+        escaped = true
+      } else if (character === quote) {
+        quote = null
+      }
+      continue
+    }
+
+    if (character === '"' || character === "'") {
+      quote = character
+      result += character
+      continue
+    }
+
+    if (character === '#') {
+      while (index + 1 < text.length && text[index + 1] !== '\n') {
+        index += 1
+      }
+      continue
+    }
+
+    result += character
+  }
+
+  return result
 }
 
 export function validateDenyRegistrations(exceptions, denyToml) {

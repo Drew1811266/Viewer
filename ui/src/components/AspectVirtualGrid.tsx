@@ -57,6 +57,11 @@ interface MarqueeLayout<T> {
   onChange?: (change: MarqueeSelectionChange) => void
 }
 
+interface VerticalAnchor {
+  key: string
+  visualOffset: number
+}
+
 const DIRECTIONS = {
   ArrowLeft: 'left',
   ArrowRight: 'right',
@@ -84,12 +89,14 @@ export default function AspectVirtualGrid<T>({
 }: AspectVirtualGridProps<T>) {
   const container = useRef<HTMLDivElement>(null)
   const previousGeometry = useRef<AspectGeometry | null>(null)
+  const verticalAnchor = useRef<VerticalAnchor | null>(null)
   const marqueeSession = useRef<MarqueeSession | null>(null)
   const captureOwner = useRef<HTMLDivElement | null>(null)
   const animationFrame = useRef<number | null>(null)
   const marqueeLayout = useRef<MarqueeLayout<T> | null>(null)
   const [width, setWidth] = useState(0)
   const [scrollTop, setScrollTop] = useState(0)
+  const [focusedKey, setFocusedKey] = useState<string>()
   const [marqueeRect, setMarqueeRect] = useState<MarqueeRect | null>(null)
 
   useEffect(() => {
@@ -120,38 +127,41 @@ export default function AspectVirtualGrid<T>({
   useLayoutEffect(() => {
     const node = container.current
     const previous = previousGeometry.current
-    if (
-      node !== null &&
-      previous !== null &&
-      previous !== geometry &&
-      previous.items.length > 0 &&
-      geometry.items.length > 0
-    ) {
-      const visibleRows = verticalVisibleRows(previous, node.scrollTop, viewportHeight, 0)
-      const anchorRow = previous.rows[visibleRows.start]
-      const anchor = anchorRow === undefined ? undefined : previous.items[anchorRow.start]
-      if (anchor !== undefined) {
-        const nextScrollTop = anchoredScrollOffset(
+    if (node !== null) {
+      const anchor = verticalAnchor.current
+      if (
+        previous !== null &&
+        previous !== geometry &&
+        anchor !== null &&
+        previous.items.length > 0 &&
+        geometry.items.length > 0
+      ) {
+        const previousIndex = previous.indexByKey.get(anchor.key)
+        const previousItem = previousIndex === undefined ? undefined : previous.items[previousIndex]
+        const previousScrollTop =
+          previousItem === undefined ? node.scrollTop : previousItem.top - anchor.visualOffset
+        node.scrollTop = anchoredScrollOffset(
           previous,
           geometry,
           anchor.key,
-          node.scrollTop,
+          previousScrollTop,
           'vertical',
         )
-        node.scrollTop = nextScrollTop
-        setScrollTop(nextScrollTop)
       }
+      const actualScrollTop = node.scrollTop
+      if (actualScrollTop !== scrollTop) setScrollTop(actualScrollTop)
+      verticalAnchor.current = captureVerticalAnchor(geometry, actualScrollTop)
     }
     previousGeometry.current = geometry
-  }, [geometry, viewportHeight])
+  }, [geometry, scrollTop, viewportHeight])
 
   const visibleRows = useMemo(
     () => verticalVisibleRows(geometry, scrollTop, viewportHeight, overscanRows),
     [geometry, overscanRows, scrollTop, viewportHeight],
   )
   const mountedIndexes = useMemo(
-    () => indexesForRows(geometry, visibleRows, activeKey),
-    [activeKey, geometry, visibleRows],
+    () => indexesForRows(geometry, visibleRows, activeKey, focusedKey),
+    [activeKey, focusedKey, geometry, visibleRows],
   )
 
   function cancelAutoScroll() {
@@ -243,7 +253,10 @@ export default function AspectVirtualGrid<T>({
       const didScroll = nextScrollTop !== activeNode.scrollTop
       if (didScroll) {
         activeNode.scrollTop = nextScrollTop
-        setScrollTop(nextScrollTop)
+        const actualScrollTop = activeNode.scrollTop
+        const activeGeometry = marqueeLayout.current?.geometry ?? geometry
+        verticalAnchor.current = captureVerticalAnchor(activeGeometry, actualScrollTop)
+        setScrollTop(actualScrollTop)
         activeSession.current = contentPoint(activeSession.lastClientX, activeSession.lastClientY)
         updateMarquee(activeSession)
       }
@@ -337,7 +350,9 @@ export default function AspectVirtualGrid<T>({
   }
 
   function scrolled(event: UIEvent<HTMLDivElement>) {
-    setScrollTop(event.currentTarget.scrollTop)
+    const actualScrollTop = event.currentTarget.scrollTop
+    verticalAnchor.current = captureVerticalAnchor(geometry, actualScrollTop)
+    setScrollTop(actualScrollTop)
   }
 
   return (
@@ -377,6 +392,12 @@ export default function AspectVirtualGrid<T>({
               key={rect.key}
               data-key={rect.key}
               data-virtual-grid-item
+              onFocusCapture={() => setFocusedKey(rect.key)}
+              onBlurCapture={(event) => {
+                const nextTarget = event.relatedTarget
+                if (nextTarget instanceof Node && event.currentTarget.contains(nextTarget)) return
+                setFocusedKey((current) => (current === rect.key ? undefined : current))
+              }}
               style={{
                 height: rect.height,
                 left: rect.left,
@@ -411,16 +432,44 @@ function indexesForRows(
   geometry: AspectGeometry,
   visibleRows: { start: number; end: number },
   activeKey: string | undefined,
+  focusedKey: string | undefined,
 ): number[] {
   const firstRow = geometry.rows[visibleRows.start]
   const lastRow = geometry.rows[visibleRows.end - 1]
   const start = firstRow?.start ?? 0
   const end = lastRow?.end ?? 0
   const indexes = Array.from({ length: Math.max(0, end - start) }, (_, offset) => start + offset)
-  const activeIndex = activeKey === undefined ? undefined : geometry.indexByKey.get(activeKey)
-  if (activeIndex !== undefined && (activeIndex < start || activeIndex >= end)) {
-    indexes.push(activeIndex)
-    indexes.sort((left, right) => left - right)
+  for (const retainedKey of [activeKey, focusedKey]) {
+    const retainedIndex =
+      retainedKey === undefined ? undefined : geometry.indexByKey.get(retainedKey)
+    if (
+      retainedIndex !== undefined &&
+      !indexes.includes(retainedIndex) &&
+      (retainedIndex < start || retainedIndex >= end)
+    ) {
+      indexes.push(retainedIndex)
+    }
   }
+  indexes.sort((left, right) => left - right)
   return indexes
+}
+
+function captureVerticalAnchor(geometry: AspectGeometry, scrollTop: number): VerticalAnchor | null {
+  const safeScrollTop = Number.isFinite(scrollTop) && scrollTop > 0 ? scrollTop : 0
+  let low = 0
+  let high = geometry.rows.length
+  while (low < high) {
+    const middle = Math.floor((low + high) / 2)
+    const row = geometry.rows[middle]
+    if (row !== undefined && row.top + row.height > safeScrollTop) high = middle
+    else low = middle + 1
+  }
+  const row = geometry.rows[low]
+  const item = row === undefined ? undefined : geometry.items[row.start]
+  return item === undefined
+    ? null
+    : {
+        key: item.key,
+        visualOffset: item.top - safeScrollTop,
+      }
 }

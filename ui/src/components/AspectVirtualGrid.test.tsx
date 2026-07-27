@@ -89,7 +89,32 @@ describe('AspectVirtualGrid', () => {
     expect(screen.queryByRole('button', { name: 'item-100' })).not.toBeInTheDocument()
   })
 
-  it('keeps the active focused item mounted outside the visibility window', async () => {
+  it('applies layout defaults and forwards active-descendant and multiselectable ARIA', () => {
+    const resize = installResizeObserver()
+    render(
+      <AspectVirtualGrid
+        items={squareItems(1_000)}
+        imageHeight={20}
+        getKey={getKey}
+        getDimensions={getDimensions}
+        renderItem={renderItem}
+        ariaLabel="default images"
+        activeDescendant="image-active"
+        ariaMultiselectable
+      />,
+    )
+    resize(100)
+    const grid = screen.getByRole('listbox', { name: 'default images' })
+
+    expect(grid).toHaveStyle({ height: '520px' })
+    expect(grid).toHaveAttribute('aria-activedescendant', 'image-active')
+    expect(grid).toHaveAttribute('aria-multiselectable', 'true')
+    expect(itemWrapper('item-1')).toHaveStyle({ left: '32px', height: '68px' })
+    expect(itemWrapper('item-3')).toHaveStyle({ left: '0px', top: '80px' })
+    expect(grid.querySelectorAll('[data-virtual-grid-item]')).toHaveLength(27)
+  })
+
+  it('retains actual descendant focus independently of activeKey until focus moves', async () => {
     const resize = installResizeObserver()
     const items = squareItems(1_000)
     renderGrid({
@@ -98,7 +123,7 @@ describe('AspectVirtualGrid', () => {
       captionHeight: 0,
       viewportHeight: 40,
       gap: 0,
-      activeKey: 'item-0',
+      activeKey: 'item-1',
     })
     resize(100)
     const grid = screen.getByRole('listbox', { name: 'images' })
@@ -111,8 +136,15 @@ describe('AspectVirtualGrid', () => {
     await screen.findByRole('button', { name: 'item-500' })
     expect(focused).toBeInTheDocument()
     expect(focused).toHaveFocus()
+    expect(screen.getByRole('button', { name: 'item-1' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'item-100' })).not.toBeInTheDocument()
-    expect(grid.querySelectorAll('[data-virtual-grid-item]').length).toBeLessThanOrEqual(41)
+    expect(grid.querySelectorAll('[data-virtual-grid-item]').length).toBeLessThanOrEqual(42)
+
+    screen.getByRole('button', { name: 'item-500' }).focus()
+
+    await waitFor(() => expect(focused).not.toBeInTheDocument())
+    expect(screen.getByRole('button', { name: 'item-500' })).toHaveFocus()
+    expect(screen.getByRole('button', { name: 'item-1' })).toBeInTheDocument()
   })
 
   it('marquee hit tests complete geometry with horizontal and vertical scroll offsets', () => {
@@ -176,6 +208,59 @@ describe('AspectVirtualGrid', () => {
     resize(60)
     await waitFor(() => expect(grid.scrollTop).toBe(62))
     expect(itemWrapper('item-10')).toHaveStyle({ top: '60px' })
+  })
+
+  it('anchors the next row at an exact half-open row boundary', async () => {
+    const resize = installResizeObserver()
+    const items = squareItems(30)
+    const props = {
+      items,
+      captionHeight: 0,
+      viewportHeight: 20,
+      gap: 0,
+      getKey,
+      getDimensions,
+      renderItem,
+      ariaLabel: 'images',
+    }
+    const rendered = render(<AspectVirtualGrid {...props} imageHeight={10} />)
+    resize(100)
+    const grid = screen.getByRole('listbox', { name: 'images' })
+    grid.scrollTop = 10
+    fireEvent.scroll(grid)
+
+    rendered.rerender(<AspectVirtualGrid {...props} imageHeight={20} />)
+
+    await waitFor(() => expect(grid.scrollTop).toBe(40))
+    expect(itemWrapper('item-10')).toHaveStyle({ top: '40px' })
+  })
+
+  it('synchronizes virtualization to browser-clamped scroll after shrinking near the bottom', async () => {
+    const resize = installResizeObserver()
+    const items = squareItems(30)
+    const props = {
+      items,
+      captionHeight: 0,
+      viewportHeight: 40,
+      gap: 0,
+      overscanRows: 0,
+      getKey,
+      getDimensions,
+      renderItem,
+      ariaLabel: 'images',
+    }
+    const rendered = render(<AspectVirtualGrid {...props} imageHeight={20} />)
+    resize(60)
+    const grid = screen.getByRole('listbox', { name: 'images' })
+    installClampedScrollTop(grid, 40)
+    grid.scrollTop = 160
+    fireEvent.scroll(grid)
+
+    expect(screen.queryByRole('button', { name: 'item-6' })).not.toBeInTheDocument()
+    rendered.rerender(<AspectVirtualGrid {...props} imageHeight={10} />)
+
+    await waitFor(() => expect(grid.scrollTop).toBe(10))
+    expect(screen.getByRole('button', { name: 'item-6' })).toBeInTheDocument()
   })
 
   it('uses geometry for directional navigation and leaves selection state with the caller', () => {
@@ -359,6 +444,20 @@ function installPointerSurface(
   })
   Object.defineProperty(grid, 'setPointerCapture', { value: vi.fn(), configurable: true })
   Object.defineProperty(grid, 'releasePointerCapture', { value: vi.fn(), configurable: true })
+}
+
+function installClampedScrollTop(grid: HTMLElement, clientHeight: number) {
+  let scrollTop = grid.scrollTop
+  Object.defineProperty(grid, 'clientHeight', { configurable: true, value: clientHeight })
+  Object.defineProperty(grid, 'scrollTop', {
+    configurable: true,
+    get: () => scrollTop,
+    set: (next: number) => {
+      const track = within(grid).getByTestId('aspect-virtual-grid-track')
+      const maximum = Math.max(0, Number.parseFloat(track.style.height) - clientHeight)
+      scrollTop = Math.max(0, Math.min(maximum, next))
+    },
+  })
 }
 
 function runFrame(frame: FrameRequestCallback | null, timestamp: number) {

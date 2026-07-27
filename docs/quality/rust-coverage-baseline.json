@@ -1,0 +1,24 @@
+{
+  "global": {
+    "lines": 81.39255702280911,
+    "functions": 73.15860822413013,
+    "regions": 80.43920292801953
+  },
+  "critical": {
+    "infrastructure-operation": {
+      "lines": 82.61624799572421,
+      "functions": 76.4885496183206,
+      "regions": 80.20725388601036
+    },
+    "desktop-security-boundaries": {
+      "lines": 43.022222222222226,
+      "functions": 31.547619047619047,
+      "regions": 50.56022408963585
+    },
+    "application-project-lifecycle": {
+      "lines": 96.53979238754326,
+      "functions": 91.42857142857143,
+      "regions": 94.70468431771894
+    }
+  }
+}

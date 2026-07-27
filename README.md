@@ -24,6 +24,12 @@ corepack prepare pnpm@10.0.0 --activate
 pnpm install --frozen-lockfile
 ```
 
+Install the pinned Rust coverage developer tool separately from the product dependency graph:
+
+```bash
+cargo install cargo-llvm-cov --version 0.8.7 --locked
+```
+
 ## Develop
 
 Run the desktop development workflow from the repository root:
@@ -41,6 +47,12 @@ pnpm verify:clean
 ```
 
 The command snapshots the pre-existing porcelain entry set and fails if verification adds or removes an entry.
+
+Rust coverage is opt-in trend evidence, not a release threshold, and ordinary verification remains independent of it. Generate the ignored raw report and compare it with the checked numeric baseline:
+
+```bash
+pnpm coverage:rust
+```
 
 ## Repository map
 

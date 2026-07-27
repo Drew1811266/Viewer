@@ -43,6 +43,7 @@ describe('FolderOverview', () => {
       <FolderOverview
         folders={[card, secondCard]}
         currentPath="catalog/shoes"
+        density="standard"
         requestFolderImages={vi.fn().mockResolvedValue([])}
         onPreview={vi.fn()}
         onSelect={vi.fn()}
@@ -64,6 +65,7 @@ describe('FolderOverview', () => {
       <FolderOverview
         folders={[card]}
         currentPath="catalog/shoes"
+        density="standard"
         requestFolderImages={vi.fn().mockResolvedValue([])}
         onPreview={vi.fn()}
         onSelect={select}
@@ -83,6 +85,7 @@ describe('FolderOverview', () => {
     const requestFolderImages = vi.fn().mockResolvedValue(card.representativeImages)
     const props = {
       currentPath: 'catalog/shoes',
+      density: 'standard' as const,
       requestFolderImages,
       onPreview: vi.fn(),
       onSelect: vi.fn(),
@@ -96,5 +99,38 @@ describe('FolderOverview', () => {
     await screen.findByRole('button', { name: '预览 1.jpg' })
 
     expect(requestFolderImages).toHaveBeenCalledOnce()
+  })
+
+  it('passes the selected density through every folder row', async () => {
+    const secondCard = {
+      ...card,
+      entityId: 'folder-2',
+      relativePath: 'catalog/shoes/B02',
+      name: 'B02',
+    }
+    const square = {
+      ...card.representativeImages[0],
+      imageMetadata: { width: 1, height: 1 },
+    }
+    render(
+      <FolderOverview
+        folders={[card, secondCard]}
+        currentPath="catalog/shoes"
+        density="compact"
+        requestFolderImages={vi.fn().mockResolvedValue([square])}
+        requestThumbnail={vi.fn().mockResolvedValue('viewer-image://thumbnail')}
+        onPreview={vi.fn()}
+        onSelect={vi.fn()}
+        onShowAll={vi.fn()}
+      />,
+    )
+
+    await screen.findAllByRole('button', { name: '预览 1.jpg' })
+    const tracks = document.querySelectorAll<HTMLElement>('.folder-filmstrip-track')
+    const items = document.querySelectorAll<HTMLElement>('.folder-filmstrip-item')
+    expect(tracks).toHaveLength(2)
+    expect(items).toHaveLength(2)
+    for (const track of tracks) expect(track).toHaveStyle({ height: '96px' })
+    for (const item of items) expect(item).toHaveStyle({ width: '96px', height: '96px' })
   })
 })

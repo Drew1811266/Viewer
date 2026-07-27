@@ -150,11 +150,11 @@ function ViewerWorkspace({ bridge }: { bridge: ViewerBridge }) {
     setSettingsOpen(false)
   }, [projectSessionId])
   const requestThumbnail = useCallback(
-    (file: BrowserFile) =>
+    (file: BrowserFile, maxPixels: number, scaleMilli: number) =>
       bridge
         .requestImage({
           entityId: file.entityId,
-          representation: { kind: 'thumbnail', maxPixels: 320, scaleMilli: 1_000 },
+          representation: { kind: 'thumbnail', maxPixels, scaleMilli },
         })
         .then((image) => image.url),
     [bridge],
@@ -943,6 +943,7 @@ function ViewerWorkspace({ bridge }: { bridge: ViewerBridge }) {
               key={folderOverviewIdentity}
               folders={state.workspace.folders}
               currentPath={state.selectedFolderPath || state.project.displayName}
+              density={thumbnailDensity}
               requestFolderImages={requestFolderImages}
               requestThumbnail={requestThumbnail}
               onPreview={openFilmstripPreview}

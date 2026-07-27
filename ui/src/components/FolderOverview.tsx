@@ -1,20 +1,22 @@
 import { useCallback, useRef } from 'react'
-import type { BrowserFile, ContentFolderCard } from '../api/types'
+import type { BrowserFile, ContentFolderCard, ThumbnailDensity } from '../api/types'
 import FolderFilmstripRow from './FolderFilmstripRow'
 
 interface FolderOverviewProps {
   folders: ContentFolderCard[]
   currentPath: string
+  density: ThumbnailDensity
   onSelect: (entityId: string) => void
   onShowAll: () => void
   onPreview: (file: BrowserFile, files: BrowserFile[]) => void
   requestFolderImages: (entityId: string) => Promise<BrowserFile[]>
-  requestThumbnail?: (file: BrowserFile) => Promise<string>
+  requestThumbnail?: (file: BrowserFile, maxPixels: number, scaleMilli: number) => Promise<string>
 }
 
 export default function FolderOverview({
   folders,
   currentPath,
+  density,
   onSelect,
   onShowAll,
   onPreview,
@@ -46,6 +48,7 @@ export default function FolderOverview({
         {folders.map((folder) => (
           <FolderFilmstripRow
             folder={folder}
+            density={density}
             key={folder.entityId}
             loadImages={loadImages}
             requestThumbnail={requestThumbnail}

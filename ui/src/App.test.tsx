@@ -313,6 +313,48 @@ describe('Viewer empty state', () => {
     expect(viewer.queryFolder).toHaveBeenNthCalledWith(2, 'folder-b01', false)
   })
 
+  it('applies global density and proportional request sizing to folder filmstrips', async () => {
+    const viewer = bridge()
+    const returned = compareContentWorkspace()
+    vi.mocked(viewer.queryFolder)
+      .mockResolvedValueOnce(categoryWorkspace())
+      .mockResolvedValueOnce({
+        ...returned,
+        images: returned.images.map((file, index) => ({
+          ...file,
+          imageMetadata: index === 0 ? { width: 3, height: 2 } : { width: 2, height: 3 },
+        })),
+      })
+    render(<App bridge={viewer} />)
+    fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
+
+    const front = await screen.findByRole('button', { name: '预览 front.jpg' })
+    await waitFor(() =>
+      expect(viewer.requestImage).toHaveBeenCalledWith({
+        entityId: 'image-1',
+        representation: { kind: 'thumbnail', maxPixels: 198, scaleMilli: 1_000 },
+      }),
+    )
+    expect(front.closest('[role="listitem"]')).toHaveStyle({
+      width: '198px',
+      height: '132px',
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: '软件设置' }))
+    fireEvent.click(screen.getByRole('radio', { name: '紧凑' }))
+
+    await waitFor(() =>
+      expect(front.closest('[role="listitem"]')).toHaveStyle({
+        width: '144px',
+        height: '96px',
+      }),
+    )
+    expect(viewer.requestImage).toHaveBeenCalledWith({
+      entityId: 'image-1',
+      representation: { kind: 'thumbnail', maxPixels: 144, scaleMilli: 1_000 },
+    })
+  })
+
   it('reloads visible filmstrip rows after an external category refresh', async () => {
     const viewer = bridge()
     let receiveProjectChanged: Parameters<ViewerBridge['listenProjectChanged']>[0] | undefined

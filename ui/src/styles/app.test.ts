@@ -116,7 +116,14 @@ describe('workspace style contracts', () => {
     const rules = parseRules(appCss)
     const row = rules.find((rule) => rule.selector === '.folder-filmstrip-row')
     const filmstrip = rules.find((rule) => rule.selector === '.folder-filmstrip')
+    const track = rules.find((rule) => rule.selector === '.folder-filmstrip-track')
+    const item = rules.find((rule) => rule.selector === '.folder-filmstrip-item')
     const thumbnail = rules.find((rule) => rule.selector === '.folder-filmstrip-thumbnail')
+    const thumbnailHover = rules.find(
+      (rule) => rule.selector === '.folder-filmstrip-thumbnail:hover',
+    )
+    const image = rules.find((rule) => rule.selector === '.aspect-thumbnail > img')
+    const placeholder = rules.find((rule) => rule.selector === '.aspect-thumbnail-placeholder')
 
     expect(row?.declarations).toMatchObject({
       display: 'grid',
@@ -128,10 +135,26 @@ describe('workspace style contracts', () => {
       'overflow-y': 'hidden',
       'scrollbar-gutter': 'stable',
     })
-    expect(thumbnail?.declarations).toMatchObject({
-      flex: '0 0 132px',
-      height: '132px',
+    expect(track?.declarations).toMatchObject({
+      position: 'relative',
     })
+    expect(track?.declarations.height).toBeUndefined()
+    expect(item?.declarations).toMatchObject({
+      position: 'absolute',
+      top: '0',
+    })
+    expect(item?.declarations.width).toBeUndefined()
+    expect(item?.declarations.height).toBeUndefined()
+    expect(thumbnail?.declarations).toMatchObject({
+      background: 'transparent',
+      border: '0',
+      overflow: 'visible',
+      padding: '0',
+    })
+    expect(thumbnailHover?.declarations['box-shadow']).toBe('inset 0 0 0 1px #8cb8ea')
+    expect(image?.declarations['object-fit']).toBe('contain')
+    expect(image?.declarations.background).not.toBe('#e5e8ed')
+    expect(placeholder?.declarations.background).toBe('#e5e8ed')
   })
 
   it('paints thumbnail keyboard focus above every thumbnail child state', () => {

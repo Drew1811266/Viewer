@@ -792,7 +792,7 @@ select {
   min-width: 0;
   overflow-x: auto;
   overflow-y: hidden;
-  padding: 12px;
+  padding: 12px 0;
   scrollbar-gutter: stable;
 }
 
@@ -803,44 +803,47 @@ select {
 
 .folder-filmstrip-track {
   flex: 0 0 auto;
-  height: 132px;
   position: relative;
 }
 
 .folder-filmstrip-item {
-  height: 132px;
   position: absolute;
   top: 0;
-  width: 132px;
 }
 
-.folder-filmstrip-thumbnail,
 .folder-filmstrip-skeleton {
-  flex: 0 0 132px;
-  height: 132px;
+  flex: 0 0 auto;
 }
 
 .folder-filmstrip-thumbnail {
-  background: #e5e8ed;
-  border: 1px solid transparent;
+  background: transparent;
+  border: 0;
   border-radius: 6px;
   height: 100%;
-  overflow: hidden;
+  overflow: visible;
   padding: 0;
   width: 100%;
 }
 
 .folder-filmstrip-thumbnail:hover {
-  border-color: #8cb8ea;
+  box-shadow: inset 0 0 0 1px #8cb8ea;
 }
 
-.folder-filmstrip-thumbnail > img,
-.folder-filmstrip-thumbnail > span {
+.aspect-thumbnail {
+  display: block;
+  position: relative;
+}
+
+.aspect-thumbnail > img {
+  background: transparent;
+  object-fit: contain;
+}
+
+.aspect-thumbnail-placeholder {
   background: #e5e8ed;
   display: block;
-  height: 100%;
-  object-fit: contain;
-  width: 100%;
+  inset: 0;
+  position: absolute;
 }
 
 .folder-filmstrip-deferred {
@@ -1870,8 +1873,7 @@ select {
     border-color: #4d5663;
   }
 
-  .folder-filmstrip-thumbnail,
-  .folder-filmstrip-thumbnail > span,
+  .aspect-thumbnail-placeholder,
   .folder-filmstrip-skeleton,
   .folder-filmstrip-deferred {
     background: #343a43;

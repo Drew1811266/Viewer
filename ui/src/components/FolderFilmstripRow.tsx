@@ -1,18 +1,28 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import type { BrowserFile, ContentFolderCard } from '../api/types'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import type { BrowserFile, ContentFolderCard, ThumbnailDensity } from '../api/types'
+import {
+  type AspectGeometry,
+  anchoredScrollOffset,
+  buildFilmstripGeometry,
+  horizontalVisibleIndexes,
+  type ImageDimensions,
+  validDimensions,
+} from '../layout/aspectLayout'
+import { THUMBNAIL_HEIGHT } from '../settings/thumbnailDensity'
+import AspectThumbnail from './AspectThumbnail'
 
-const THUMBNAIL_SIZE = 132
 const THUMBNAIL_GAP = 8
 const FILMSTRIP_INLINE_PADDING = 12
-const THUMBNAIL_STRIDE = THUMBNAIL_SIZE + THUMBNAIL_GAP
 const OVERSCAN_CELLS = 2
+const OVERSCAN_PIXELS = 256
 
 interface FolderFilmstripRowProps {
   folder: ContentFolderCard
+  density: ThumbnailDensity
   loadImages: (entityId: string, retry?: boolean) => Promise<BrowserFile[]>
   onSelect: (entityId: string) => void
   onPreview: (file: BrowserFile, files: BrowserFile[]) => void
-  requestThumbnail?: (file: BrowserFile) => Promise<string>
+  requestThumbnail?: (file: BrowserFile, maxPixels: number, scaleMilli: number) => Promise<string>
 }
 
 type RowState =
@@ -22,6 +32,7 @@ type RowState =
 
 export default function FolderFilmstripRow({
   folder,
+  density,
   loadImages,
   onSelect,
   onPreview,
@@ -29,11 +40,15 @@ export default function FolderFilmstripRow({
 }: FolderFilmstripRowProps) {
   const row = useRef<HTMLElement>(null)
   const filmstrip = useRef<HTMLDivElement>(null)
+  const previousGeometry = useRef<AspectGeometry | null>(null)
   const requestSequence = useRef(0)
   const [visible, setVisible] = useState(() => typeof IntersectionObserver === 'undefined')
   const [state, setState] = useState<RowState>({ status: 'idle' })
   const [viewport, setViewport] = useState({ scrollLeft: 0, width: 0 })
   const [focusedImageIndex, setFocusedImageIndex] = useState<number | null>(null)
+  const [recoveredDimensions, setRecoveredDimensions] = useState(
+    () => new Map<string, ImageDimensions>(),
+  )
 
   useEffect(() => {
     if (typeof IntersectionObserver === 'undefined' || row.current === null) return
@@ -105,14 +120,86 @@ export default function FolderFilmstripRow({
     return () => window.removeEventListener('resize', updateViewport)
   }, [updateViewport])
 
-  const reviewed = folder.reviewProgress.total - folder.reviewProgress.unmarked
+  const imageHeight = THUMBNAIL_HEIGHT[density]
+  const images = state.status === 'ready' ? state.images : []
+  const geometry = useMemo(
+    () =>
+      buildFilmstripGeometry(
+        images.map((file) => ({
+          key: imageIdentity(file),
+          dimensions: dimensionsFor(file, recoveredDimensions),
+        })),
+        imageHeight,
+        THUMBNAIL_GAP,
+        FILMSTRIP_INLINE_PADDING,
+      ),
+    [imageHeight, images, recoveredDimensions],
+  )
+
+  useLayoutEffect(() => {
+    const element = filmstrip.current
+    const previous = previousGeometry.current
+    if (
+      element !== null &&
+      previous !== null &&
+      previous !== geometry &&
+      previous.items.length > 0 &&
+      geometry.items.length > 0
+    ) {
+      const firstVisible = horizontalVisibleIndexes(
+        previous,
+        element.scrollLeft,
+        element.clientWidth,
+        0,
+      ).start
+      const anchor = previous.items[firstVisible]
+      if (anchor !== undefined) {
+        element.scrollLeft = anchoredScrollOffset(
+          previous,
+          geometry,
+          anchor.key,
+          element.scrollLeft,
+          'horizontal',
+        )
+      }
+    }
+    previousGeometry.current = geometry
+    updateViewport()
+  }, [geometry, updateViewport])
+
   const imageWindow =
     state.status === 'ready'
-      ? getImageWindow(state.images.length, viewport.scrollLeft, viewport.width)
+      ? expandImageWindow(
+          horizontalVisibleIndexes(geometry, viewport.scrollLeft, viewport.width, OVERSCAN_PIXELS),
+          geometry.items.length,
+        )
       : null
 
+  const rememberNaturalDimensions = useCallback(
+    (identity: { entityId: string; modifiedNs: string }, dimensions: ImageDimensions) => {
+      if (!validDimensions(dimensions)) return
+      const key = `${identity.entityId}:${identity.modifiedNs}`
+      setRecoveredDimensions((current) => {
+        const existing = current.get(key)
+        if (existing?.width === dimensions.width && existing.height === dimensions.height) {
+          return current
+        }
+        const next = new Map(current)
+        next.set(key, dimensions)
+        return next
+      })
+    },
+    [],
+  )
+
+  const reviewed = folder.reviewProgress.total - folder.reviewProgress.unmarked
+
   return (
-    <article ref={row} className="folder-filmstrip-row">
+    <article
+      ref={row}
+      className="folder-filmstrip-row"
+      style={{ minHeight: `${imageHeight + 24}px` }}
+    >
       <button
         type="button"
         className="folder-filmstrip-identity"
@@ -136,11 +223,20 @@ export default function FolderFilmstripRow({
         onScroll={updateViewport}
       >
         {state.status === 'idle' && (
-          <span className="folder-filmstrip-deferred" aria-label="等待加载图片" />
+          <span
+            className="folder-filmstrip-deferred"
+            aria-label="等待加载图片"
+            style={{ height: `${imageHeight}px` }}
+          />
         )}
         {state.status === 'loading' &&
           ['first', 'second', 'third', 'fourth'].map((key) => (
-            <span className="folder-filmstrip-skeleton" aria-label="图片加载中" key={key} />
+            <span
+              className="folder-filmstrip-skeleton"
+              aria-label="图片加载中"
+              key={key}
+              style={{ width: `${imageHeight}px`, height: `${imageHeight}px` }}
+            />
           ))}
         {state.status === 'failed' && (
           <div className="folder-filmstrip-error" role="alert">
@@ -159,21 +255,27 @@ export default function FolderFilmstripRow({
           <div
             className="folder-filmstrip-track"
             role="list"
-            style={{ width: `${imageWindow.totalWidth}px` }}
+            style={{ width: `${geometry.totalWidth}px`, height: `${imageHeight}px` }}
           >
             {getMountedImageIndexes(imageWindow, focusedImageIndex).map((index) => {
               const file = state.images[index]
-              if (file === undefined) {
+              const item = geometry.items[index]
+              if (file === undefined || item === undefined) {
                 throw new Error(`Missing filmstrip image at mounted index ${index}`)
               }
+              const dimensions = dimensionsFor(file, recoveredDimensions)
               return (
                 <div
                   className="folder-filmstrip-item"
                   role="listitem"
                   aria-posinset={index + 1}
                   aria-setsize={state.images.length}
-                  key={file.entityId}
-                  style={{ left: `${index * THUMBNAIL_STRIDE}px` }}
+                  key={item.key}
+                  style={{
+                    left: `${item.left}px`,
+                    width: `${item.imageWidth}px`,
+                    height: `${item.imageHeight}px`,
+                  }}
                 >
                   <button
                     type="button"
@@ -186,7 +288,14 @@ export default function FolderFilmstripRow({
                     }
                     onClick={() => onPreview(file, state.images)}
                   >
-                    <FolderThumbnail file={file} requestThumbnail={requestThumbnail} />
+                    <AspectThumbnail
+                      file={file}
+                      width={item.imageWidth}
+                      height={item.imageHeight}
+                      dimensionsKnown={validDimensions(dimensions)}
+                      loadThumbnail={requestThumbnail}
+                      onNaturalDimensions={rememberNaturalDimensions}
+                    />
                   </button>
                 </div>
               )
@@ -198,74 +307,31 @@ export default function FolderFilmstripRow({
   )
 }
 
-function markerLabel(marker: ContentFolderCard['marker']): string {
-  const review =
-    marker.reviewState === 'keep'
-      ? '保留'
-      : marker.reviewState === 'pending'
-        ? '待定'
-        : marker.reviewState === 'reject'
-          ? '淘汰'
-          : '未标记'
-  return marker.favorite ? `${review} · 收藏` : review
+function imageIdentity(file: BrowserFile): string {
+  return `${file.entityId}:${file.modifiedNs}`
 }
 
-function FolderThumbnail({
-  file,
-  requestThumbnail,
-}: {
-  file: BrowserFile
-  requestThumbnail?: (file: BrowserFile) => Promise<string>
-}) {
-  const [state, setState] = useState<{ status: 'loading' | 'ready' | 'failed'; url?: string }>({
-    status: 'loading',
-  })
-
-  useEffect(() => {
-    if (requestThumbnail === undefined) return
-    let current = true
-    void requestThumbnail(file).then(
-      (url) => {
-        if (current) setState({ status: 'ready', url })
-      },
-      () => {
-        if (current) setState({ status: 'failed' })
-      },
-    )
-    return () => {
-      current = false
-    }
-  }, [file, requestThumbnail])
-
-  if (state.status === 'ready') return <img src={state.url} alt="" />
-  return <span aria-label={state.status === 'failed' ? '缩略图不可用' : '缩略图加载中'} />
+function dimensionsFor(
+  file: BrowserFile,
+  recoveredDimensions: ReadonlyMap<string, ImageDimensions>,
+): ImageDimensions | null {
+  const recovered = recoveredDimensions.get(imageIdentity(file))
+  if (recovered !== undefined && validDimensions(recovered)) return recovered
+  return validDimensions(file.imageMetadata) ? file.imageMetadata : null
 }
 
-function getImageWindow(imageCount: number, scrollLeft: number, viewportWidth: number) {
-  const totalWidth =
-    imageCount === 0 ? 0 : imageCount * THUMBNAIL_SIZE + (imageCount - 1) * THUMBNAIL_GAP
-  const viewportStart = Math.max(0, scrollLeft - FILMSTRIP_INLINE_PADDING)
-  const viewportEnd = Math.max(viewportStart, scrollLeft + viewportWidth - FILMSTRIP_INLINE_PADDING)
-  let firstVisible = Math.min(imageCount, Math.floor(viewportStart / THUMBNAIL_STRIDE))
-  if (
-    firstVisible < imageCount &&
-    firstVisible * THUMBNAIL_STRIDE + THUMBNAIL_SIZE <= viewportStart
-  ) {
-    firstVisible += 1
-  }
-  const visibleEnd = Math.min(
-    imageCount,
-    Math.max(firstVisible + 1, Math.ceil(viewportEnd / THUMBNAIL_STRIDE)),
-  )
+function expandImageWindow(
+  visible: { start: number; end: number },
+  imageCount: number,
+): { start: number; end: number } {
   return {
-    start: Math.max(0, firstVisible - OVERSCAN_CELLS),
-    end: Math.min(imageCount, visibleEnd + OVERSCAN_CELLS),
-    totalWidth,
+    start: Math.max(0, visible.start - OVERSCAN_CELLS),
+    end: Math.min(imageCount, visible.end + OVERSCAN_CELLS),
   }
 }
 
 function getMountedImageIndexes(
-  imageWindow: ReturnType<typeof getImageWindow>,
+  imageWindow: { start: number; end: number },
   focusedImageIndex: number | null,
 ) {
   const indexes = Array.from(
@@ -281,4 +347,16 @@ function getMountedImageIndexes(
   if (focusedImageIndex < imageWindow.start) indexes.unshift(focusedImageIndex)
   else indexes.push(focusedImageIndex)
   return indexes
+}
+
+function markerLabel(marker: ContentFolderCard['marker']): string {
+  const review =
+    marker.reviewState === 'keep'
+      ? '保留'
+      : marker.reviewState === 'pending'
+        ? '待定'
+        : marker.reviewState === 'reject'
+          ? '淘汰'
+          : '未标记'
+  return marker.favorite ? `${review} · 收藏` : review
 }

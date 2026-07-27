@@ -193,12 +193,18 @@ select {
 
 .search-toolbar select,
 .search-toolbar button,
+.settings-trigger,
 .project-menu button {
   background: #fff;
   border: 1px solid #c8ced6;
   border-radius: 6px;
   min-height: 30px;
   padding: 4px 8px;
+}
+
+.settings-trigger {
+  flex: 0 0 auto;
+  min-width: 30px;
 }
 
 .search-toolbar button[aria-pressed="true"] {
@@ -1202,6 +1208,43 @@ select {
 .modal-sheet > h2 {
   font-size: 18px;
   margin: 0 0 16px;
+}
+
+.modal-sheet:has(.settings-dialog-content) {
+  max-width: 520px;
+}
+
+.settings-dialog-content h3 {
+  font-size: 14px;
+  margin: 0 0 12px;
+}
+
+.density-options {
+  border: 1px solid #d8dce2;
+  border-radius: 8px;
+  display: flex;
+  gap: 18px;
+  margin: 0;
+  padding: 14px;
+}
+
+.density-options legend {
+  color: #59616c;
+  font-size: 12px;
+  font-weight: 650;
+  padding: 0 4px;
+}
+
+.density-options label {
+  align-items: center;
+  display: flex;
+  gap: 6px;
+}
+
+.settings-error {
+  color: #a12720;
+  font-size: 12px;
+  margin: 12px 0 0;
 }
 
 .form-field {

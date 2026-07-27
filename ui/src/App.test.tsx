@@ -26,10 +26,12 @@ import { defined } from './defined'
 
 function deferred<T>() {
   let resolve!: (value: T) => void
-  const promise = new Promise<T>((next) => {
+  let reject!: (reason?: unknown) => void
+  const promise = new Promise<T>((next, fail) => {
     resolve = next
+    reject = fail
   })
-  return { promise, resolve }
+  return { promise, resolve, reject }
 }
 
 function openRadialMenu(file: HTMLElement, pointerId = 90) {
@@ -149,6 +151,54 @@ describe('Viewer empty state', () => {
     render(<App />)
     expect(screen.getByRole('heading', { name: 'Viewer' })).toBeVisible()
     expect(screen.getByText('拖入或选择一个项目文件夹')).toBeVisible()
+    expect(screen.queryByRole('button', { name: '软件设置' })).not.toBeInTheDocument()
+  })
+
+  it('places one settings trigger immediately before the project menu after opening', async () => {
+    const viewer = bridge()
+    render(<App bridge={viewer} />)
+    fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
+    await screen.findByRole('heading', { name: 'Catalog' })
+
+    const settingsTrigger = screen.getByRole('button', { name: '软件设置' })
+    const projectMenu = screen.getByRole('button', { name: '项目菜单' }).closest('.project-menu')
+    expect(screen.getAllByRole('button', { name: '软件设置' })).toHaveLength(1)
+    expect(settingsTrigger.nextElementSibling).toBe(projectMenu)
+  })
+
+  it('updates density optimistically and restores trigger focus when the dialog closes', async () => {
+    const viewer = bridge()
+    const save = deferred<Awaited<ReturnType<ViewerBridge['updateThumbnailDensity']>>>()
+    vi.mocked(viewer.updateThumbnailDensity).mockReturnValue(save.promise)
+    render(<App bridge={viewer} />)
+    fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
+    const trigger = await screen.findByRole('button', { name: '软件设置' })
+    trigger.focus()
+    fireEvent.click(trigger)
+
+    const large = screen.getByRole('radio', { name: '大图' })
+    fireEvent.click(large)
+    expect(large).toBeChecked()
+    fireEvent.click(screen.getByRole('button', { name: '关闭' }))
+
+    expect(screen.queryByRole('dialog', { name: '软件设置' })).not.toBeInTheDocument()
+    expect(trigger).toHaveFocus()
+  })
+
+  it('shows the latest settings save failure and rolls back the selected radio', async () => {
+    const viewer = bridge()
+    const save = deferred<Awaited<ReturnType<ViewerBridge['updateThumbnailDensity']>>>()
+    vi.mocked(viewer.updateThumbnailDensity).mockReturnValue(save.promise)
+    render(<App bridge={viewer} />)
+    fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
+    fireEvent.click(await screen.findByRole('button', { name: '软件设置' }))
+    fireEvent.click(screen.getByRole('radio', { name: '大图' }))
+    await waitFor(() => expect(viewer.updateThumbnailDensity).toHaveBeenCalledWith('large'))
+
+    save.reject({ userMessage: '设置未能保存' })
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('设置未能保存')
+    expect(screen.getByRole('radio', { name: '标准' })).toBeChecked()
   })
 
   it('moves close-project into the compact project menu', async () => {

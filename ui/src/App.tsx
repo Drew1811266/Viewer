@@ -1,5 +1,5 @@
 import type { CSSProperties } from 'react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type {
   BrowserFile,
   ConflictResolution,
@@ -33,10 +33,12 @@ import type { RadialLeafAction } from './components/radialMenuModel'
 import { buildRadialMenuModel } from './components/radialMenuModel'
 import SearchResults from './components/SearchResults'
 import SearchToolbar from './components/SearchToolbar'
+import SettingsDialog from './components/SettingsDialog'
 import type { TaskFeedback } from './components/TaskBar'
 import TaskBar from './components/TaskBar'
 import TextPreview from './components/TextPreview'
 import TrashConfirmation from './components/TrashConfirmation'
+import { useViewerSettings, ViewerSettingsProvider } from './settings/ViewerSettingsProvider'
 import { organizationShortcutIsOwned } from './state/organizationShortcutOwnership'
 import type { OrganizationDragMode } from './state/useOrganizationPointerDrag'
 import { useOrganizationPointerDrag } from './state/useOrganizationPointerDrag'
@@ -48,6 +50,15 @@ interface AppProps {
 }
 
 export default function App({ bridge = tauriViewerBridge }: AppProps) {
+  return (
+    <ViewerSettingsProvider bridge={bridge}>
+      <ViewerWorkspace bridge={bridge} />
+    </ViewerSettingsProvider>
+  )
+}
+
+function ViewerWorkspace({ bridge }: { bridge: ViewerBridge }) {
+  const { thumbnailDensity, settingsError, setThumbnailDensity } = useViewerSettings()
   const {
     state,
     openProject,
@@ -125,6 +136,8 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
   const [compareStatus, setCompareStatus] = useState<string | null>(null)
   const [resultsBatchId, setResultsBatchId] = useState<string | null>(null)
   const [infoOpen, setInfoOpen] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const settingsButtonRef = useRef<HTMLButtonElement>(null)
   useEffect(() => {
     setThumbnailTask(null)
     setTextTask(null)
@@ -134,6 +147,7 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
     setCompareStatus(null)
     setResultsBatchId(null)
     setInfoOpen(false)
+    setSettingsOpen(false)
   }, [projectSessionId])
   const requestThumbnail = useCallback(
     (file: BrowserFile) =>
@@ -785,6 +799,15 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
           onRemoveFilter={removeSearchFilter}
           onClearFilters={clearSearchFilters}
         />
+        <button
+          ref={settingsButtonRef}
+          type="button"
+          className="settings-trigger"
+          aria-label="软件设置"
+          onClick={() => setSettingsOpen(true)}
+        >
+          ⚙
+        </button>
         <details className="project-menu" open={projectMenuOpen}>
           <summary
             aria-label="项目菜单"
@@ -999,6 +1022,14 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
           model={radialModel}
           onAction={runRadialAction}
           onClose={finishRadialSession}
+        />
+      )}
+      {settingsOpen && (
+        <SettingsDialog
+          density={thumbnailDensity}
+          error={settingsError}
+          onDensityChange={setThumbnailDensity}
+          onClose={() => setSettingsOpen(false)}
         />
       )}
       {activePreviewFile && matchesImage(activePreviewFile) && activePreviewFiles.length > 0 && (

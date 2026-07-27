@@ -1,5 +1,7 @@
 # ADR 0004: Viewer 0.1 architecture freeze
 
+> Status: Superseded by `0005-continuous-development-governance.md`
+
 - Status: Accepted
 
 > Governance note (2026-07-23): ADR 0005 supersedes the Viewer 0.1 freeze and M1–M4 delivery consequences. The accepted G1–G4 evidence and dependency/API facts remain historical evidence.

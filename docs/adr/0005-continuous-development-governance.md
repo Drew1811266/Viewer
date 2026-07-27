@@ -1,5 +1,7 @@
 # ADR 0005: Replace M4 release acceptance with continuous engineering governance
 
+> Status: Active
+
 > Status: Accepted
 >
 > Date: 2026-07-23

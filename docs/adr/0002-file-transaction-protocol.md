@@ -1,5 +1,7 @@
 # ADR 0002: recoverable local file transaction protocol
 
+> Status: Active
+
 - Status: Accepted
 - Date: 2026-07-16
 - Gate: G2 file transaction prototype

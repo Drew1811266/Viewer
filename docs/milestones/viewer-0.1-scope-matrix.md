@@ -1,5 +1,7 @@
 # Viewer 0.1 requirement-to-milestone scope matrix
 
+> Status: Active
+
 - Source of truth: [Product specification](../PRODUCT_SPEC.md)
 - Architecture baseline: [Viewer 0.1 API baseline](../architecture/viewer-0.1-api-baseline.md)
 - Coverage check: `node scripts/check-scope-coverage.mjs`

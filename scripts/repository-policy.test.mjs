@@ -8,6 +8,14 @@ import { validateFinderDragAppKitWiring } from './validate-finder-drag-appkit-wi
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8')
 const normalizeNewlines = (text) => text.replace(/\r\n?/g, '\n')
 
+test('documentation index declares one status for every listed source', async () => {
+  const index = await read('docs/README.md')
+  assert.match(index, /\| Document \| Status \| Replaced by \|/)
+  assert.match(index, /0005-continuous-development-governance\.md.*Active/)
+  assert.match(index, /0004-viewer-0\.1-architecture-freeze\.md.*Superseded/)
+  assert.doesNotMatch(index, /\bTBD\b|\bTODO\b/)
+})
+
 const expectedToolchain = `[toolchain]
 channel = "1.97.0"
 components = ["clippy", "rustfmt"]

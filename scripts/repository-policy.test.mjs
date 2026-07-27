@@ -1180,10 +1180,20 @@ test('network dependency audit is scheduled and never a pull-request gate', asyn
 })
 
 test('quality reports are continuous trends and not a release gate', async () => {
-  const packageJson = JSON.parse(await read('package.json'))
+  const [packageSource, readme] = await Promise.all([read('package.json'), read('README.md')])
+  const packageJson = JSON.parse(packageSource)
+  const documentation = normalizeNewlines(readme).replace(/\s+/g, ' ')
   assert.equal(
     packageJson.scripts['quality:report'],
     'pnpm coverage:ui && pnpm coverage:rust && pnpm architecture:health',
   )
   assert.doesNotMatch(packageJson.scripts.verify, /coverage|quality:report|release|M4/)
+  assert.match(
+    documentation,
+    /`cargo-llvm-cov` is required for Rust coverage generation both directly through `pnpm coverage:rust` and transitively through `pnpm quality:report`\./,
+  )
+  assert.match(
+    documentation,
+    /It is not required for ordinary `pnpm verify` or `pnpm verify:clean`\./,
+  )
 })

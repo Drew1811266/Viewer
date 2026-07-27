@@ -54,9 +54,10 @@ Continuous quality reports are opt-in trend evidence, not a release threshold. R
 pnpm quality:report
 ```
 
-The separately installed `cargo-llvm-cov` tool is required only for
-`pnpm quality:report`; ordinary `pnpm verify` remains deterministic and does
-not require coverage tooling.
+The separately installed `cargo-llvm-cov` is required for Rust coverage
+generation both directly through `pnpm coverage:rust` and transitively through
+`pnpm quality:report`. It is not required for ordinary `pnpm verify` or
+`pnpm verify:clean`.
 
 ## Repository map
 

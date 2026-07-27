@@ -59,15 +59,25 @@ export function buildFilmstripGeometry(
   gap: number,
   inlinePadding: number,
 ): AspectGeometry {
-  const safeImageHeight = positiveLength(imageHeight)
-  const safeGap = nonnegativeLength(gap)
-  const safePadding = nonnegativeLength(inlinePadding)
+  const lengthLimit = geometryLengthLimit(sources.length)
+  const safeImageHeight = positiveLength(imageHeight, lengthLimit)
+  const safeGap = nonnegativeLength(gap, lengthLimit)
+  const safePadding = nonnegativeLength(inlinePadding, lengthLimit)
   const items: AspectRect[] = []
   const indexByKey = new Map<string, number>()
   let left = safePadding
+  let occupiedRight = safePadding
 
   for (const [index, source] of sources.entries()) {
-    const width = safeProportionalWidth(safeImageHeight, source.dimensions)
+    const remaining = sources.length - index - 1
+    const tail = filmstripTail(remaining, safeImageHeight, safeGap, safePadding)
+    const width = fittingWidth(
+      safeProportionalWidth(safeImageHeight, source.dimensions),
+      safeImageHeight,
+      left,
+      tail,
+    )
+    occupiedRight = finiteAdd(left, width) ?? left
     items.push({
       key: source.key,
       index,
@@ -80,10 +90,13 @@ export function buildFilmstripGeometry(
       imageHeight: safeImageHeight,
     })
     indexByKey.set(source.key, index)
-    left += width + safeGap
+    if (remaining > 0) left = finiteAdd(occupiedRight, safeGap) ?? occupiedRight
   }
 
-  const totalWidth = items.length === 0 ? safePadding * 2 : left - safeGap + safePadding
+  const totalWidth =
+    items.length === 0
+      ? (finiteAdd(safePadding, safePadding) ?? safePadding)
+      : (finiteAdd(occupiedRight, safePadding) ?? occupiedRight)
   return {
     items,
     rows:
@@ -103,10 +116,12 @@ export function buildFlowGeometry(
   captionHeight: number,
   gap: number,
 ): AspectGeometry {
+  const lengthLimit = geometryLengthLimit(sources.length)
   const safeAvailableWidth = nonnegativeLength(availableWidth)
-  const safeImageHeight = positiveLength(imageHeight)
-  const rowHeight = safeImageHeight + nonnegativeLength(captionHeight)
-  const safeGap = nonnegativeLength(gap)
+  const safeImageHeight = positiveLength(imageHeight, lengthLimit)
+  const safeCaptionHeight = nonnegativeLength(captionHeight, lengthLimit)
+  const rowHeight = finiteAdd(safeImageHeight, safeCaptionHeight) ?? safeImageHeight
+  const safeGap = nonnegativeLength(gap, lengthLimit)
   const items: AspectRect[] = []
   const rows: AspectRow[] = []
   const indexByKey = new Map<string, number>()
@@ -117,17 +132,21 @@ export function buildFlowGeometry(
   let widestRight = 0
 
   for (const [index, source] of sources.entries()) {
-    const width = safeProportionalWidth(safeImageHeight, source.dimensions)
-    const needsNewRow = left > 0 && left + safeGap + width > safeAvailableWidth
+    const proportional = safeProportionalWidth(safeImageHeight, source.dimensions)
+    const candidateLeft = left === 0 ? 0 : finiteAdd(left, safeGap)
+    const candidateRight = candidateLeft === null ? null : finiteAdd(candidateLeft, proportional)
+    const needsNewRow = left > 0 && (candidateRight === null || candidateRight > safeAvailableWidth)
     if (needsNewRow) {
       rows.push({ index: row, start: rowStart, end: index, top, height: rowHeight })
       row += 1
       rowStart = index
       left = 0
-      top += rowHeight + safeGap
+      top = finiteAdd(top, rowHeight, safeGap) ?? top
     }
 
-    const itemLeft = left === 0 ? 0 : left + safeGap
+    const itemLeft = left === 0 ? 0 : (finiteAdd(left, safeGap) ?? 0)
+    const width = fittingWidth(proportional, safeImageHeight, itemLeft, 0)
+    const itemRight = finiteAdd(itemLeft, width) ?? itemLeft
     items.push({
       key: source.key,
       index,
@@ -140,8 +159,8 @@ export function buildFlowGeometry(
       imageHeight: safeImageHeight,
     })
     indexByKey.set(source.key, index)
-    left = itemLeft + width
-    widestRight = Math.max(widestRight, left)
+    left = itemRight
+    widestRight = Math.max(widestRight, itemRight)
   }
 
   if (items.length > 0) {
@@ -153,7 +172,7 @@ export function buildFlowGeometry(
     rows,
     indexByKey,
     totalWidth: Math.max(safeAvailableWidth, widestRight),
-    totalHeight: items.length === 0 ? 0 : top + rowHeight,
+    totalHeight: items.length === 0 ? 0 : (finiteAdd(top, rowHeight) ?? top),
   }
 }
 
@@ -257,12 +276,48 @@ function safeProportionalWidth(imageHeight: number, dimensions: ImageDimensions 
   return Number.isFinite(width) && width > 0 ? width : imageHeight
 }
 
-function positiveLength(value: number): number {
-  return Number.isFinite(value) && value > 0 ? value : 1
+function geometryLengthLimit(sourceCount: number): number {
+  return Number.MAX_VALUE / (4 * Math.max(1, sourceCount) + 4)
 }
 
-function nonnegativeLength(value: number): number {
-  return Number.isFinite(value) && value > 0 ? value : 0
+function positiveLength(value: number, limit = Number.MAX_VALUE): number {
+  return Number.isFinite(value) && value > 0 ? Math.min(value, limit) : 1
+}
+
+function nonnegativeLength(value: number, limit = Number.MAX_VALUE): number {
+  return Number.isFinite(value) && value > 0 ? Math.min(value, limit) : 0
+}
+
+function filmstripTail(
+  remaining: number,
+  imageHeight: number,
+  gap: number,
+  padding: number,
+): number {
+  return finiteAdd(remaining * imageHeight, remaining * gap, padding) ?? padding
+}
+
+function fittingWidth(
+  candidate: number,
+  squareFallback: number,
+  left: number,
+  tail: number,
+): number {
+  if (finiteAdd(left, candidate, tail) !== null) return candidate
+  if (finiteAdd(left, squareFallback, tail) !== null) return squareFallback
+  const available = Number.MAX_VALUE - left - tail
+  return Number.isFinite(available) && available > 0
+    ? Math.min(squareFallback, available)
+    : Number.MIN_VALUE
+}
+
+function finiteAdd(...values: number[]): number | null {
+  let total = 0
+  for (const value of values) {
+    total += value
+    if (!Number.isFinite(total)) return null
+  }
+  return total
 }
 
 function firstIndex<T>(values: readonly T[], includes: (value: T) => boolean): number {

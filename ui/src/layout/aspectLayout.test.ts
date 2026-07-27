@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  type AspectGeometry,
   anchoredScrollOffset,
   buildFilmstripGeometry,
   buildFlowGeometry,
@@ -18,6 +19,44 @@ const sources = [
   { key: 'panorama', dimensions: { width: 10, height: 1 } },
   { key: 'extreme-portrait', dimensions: { width: 1, height: 10 } },
 ] as const
+
+function expectFiniteGeometry(geometry: AspectGeometry) {
+  expect(Number.isFinite(geometry.totalWidth)).toBe(true)
+  expect(Number.isFinite(geometry.totalHeight)).toBe(true)
+
+  for (const item of geometry.items) {
+    for (const value of [
+      item.index,
+      item.row,
+      item.left,
+      item.top,
+      item.width,
+      item.height,
+      item.imageWidth,
+      item.imageHeight,
+      item.left + item.width,
+      item.top + item.height,
+    ]) {
+      expect(Number.isFinite(value)).toBe(true)
+    }
+    expect(item.left + item.width).toBeLessThanOrEqual(geometry.totalWidth)
+    expect(item.top + item.height).toBeLessThanOrEqual(geometry.totalHeight)
+  }
+
+  for (const row of geometry.rows) {
+    for (const value of [
+      row.index,
+      row.start,
+      row.end,
+      row.top,
+      row.height,
+      row.top + row.height,
+    ]) {
+      expect(Number.isFinite(value)).toBe(true)
+    }
+    expect(row.top + row.height).toBeLessThanOrEqual(geometry.totalHeight)
+  }
+}
 
 describe('aspect layout geometry', () => {
   it('keeps proportional widths for every supported orientation', () => {
@@ -74,6 +113,20 @@ describe('aspect layout geometry', () => {
     )
     expect(fractional.items.map((item) => item.left)).toEqual([0, 14.2])
     expect(fractional.totalWidth).toBeCloseTo(27.4)
+  })
+
+  it('keeps cumulative filmstrip geometry finite when valid widths would overflow offsets', () => {
+    const geometry = buildFilmstripGeometry(
+      [
+        { key: 'first', dimensions: { width: 1, height: 1 } },
+        { key: 'second', dimensions: { width: 1, height: 1 } },
+      ],
+      Number.MAX_VALUE,
+      Number.MAX_VALUE,
+      Number.MAX_VALUE,
+    )
+
+    expectFiniteGeometry(geometry)
   })
 
   it('finds filmstrip windows with intersection-aware binary-search boundaries', () => {
@@ -139,6 +192,21 @@ describe('aspect layout geometry', () => {
     expect(geometry.items[0]?.width).toBe(200)
     expect(geometry.items[1]?.width).toBeCloseTo(40 / 3)
     expect(geometry.totalWidth).toBe(200)
+  })
+
+  it('keeps derived flow row heights, offsets, and extents finite', () => {
+    const geometry = buildFlowGeometry(
+      [
+        { key: 'first', dimensions: { width: 1, height: 1 } },
+        { key: 'second', dimensions: { width: 1, height: 1 } },
+      ],
+      Number.MAX_VALUE,
+      Number.MAX_VALUE,
+      Number.MAX_VALUE,
+      Number.MAX_VALUE,
+    )
+
+    expectFiniteGeometry(geometry)
   })
 
   it('returns vertical row windows with row overscan', () => {
@@ -222,14 +290,9 @@ describe('aspect layout geometry', () => {
       expect(item.height).toBeGreaterThan(0)
       expect(item.imageWidth).toBeGreaterThan(0)
       expect(item.imageHeight).toBeGreaterThan(0)
-      expect(Number.isFinite(item.left)).toBe(true)
-      expect(Number.isFinite(item.top)).toBe(true)
-      expect(Number.isFinite(item.width)).toBe(true)
-      expect(Number.isFinite(item.height)).toBe(true)
-      expect(item.left + item.width).toBeLessThanOrEqual(geometry.totalWidth)
-      expect(item.top + item.height).toBeLessThanOrEqual(geometry.totalHeight)
       const previousItem = index === 0 ? undefined : geometry.items[index - 1]
       if (previousItem !== undefined) expect(item.top).toBeGreaterThanOrEqual(previousItem.top)
     }
+    expectFiniteGeometry(geometry)
   })
 })

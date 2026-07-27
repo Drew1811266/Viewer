@@ -9,6 +9,7 @@
     "coverage:ui": "pnpm --dir ui test:coverage && node scripts/coverage-baseline.mjs --check target/coverage/ui/coverage-summary.json docs/quality/ui-coverage-baseline.json",
     "coverage:rust": "./scripts/run-rust-coverage.sh && node scripts/rust-coverage-baseline.mjs --check target/coverage/rust.json docs/quality/rust-coverage-baseline.json",
     "architecture:health": "node scripts/architecture-health.mjs --check docs/quality/architecture-health-baseline.json",
+    "dependencies:exceptions": "node scripts/check-dependency-exceptions.mjs",
     "build:ui": "pnpm --dir ui build",
     "build:macos": "CI=true tauri build --target aarch64-apple-darwin",
     "gate:m1": "./scripts/run-m1-browsing-gate.sh",

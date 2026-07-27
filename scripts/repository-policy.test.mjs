@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
-import { readFile, stat } from 'node:fs/promises'
+import { readFile, readdir, stat } from 'node:fs/promises'
 import test from 'node:test'
 
 import { validateFinderDragAppKitWiring } from './validate-finder-drag-appkit-wiring.mjs'
@@ -14,6 +14,22 @@ test('documentation index declares one status for every listed source', async ()
   assert.match(index, /0005-continuous-development-governance\.md.*Active/)
   assert.match(index, /0004-viewer-0\.1-architecture-freeze\.md.*Superseded/)
   assert.doesNotMatch(index, /\bTBD\b|\bTODO\b/)
+
+  const specs = await readdir(new URL('../docs/superpowers/specs/', import.meta.url), {
+    withFileTypes: true,
+  })
+  for (const spec of specs.filter((entry) => entry.isFile() && entry.name.endsWith('.md'))) {
+    const path = `superpowers/specs/${spec.name}`
+    const rows = index
+      .split('\n')
+      .filter((line) => line.includes(`](${path}) |`))
+    assert.equal(rows.length, 1, `${path} must have exactly one index row`)
+    assert.match(
+      rows[0],
+      /^\| .+ \| (?:Active|Superseded|Historical) \| (?:—|\[.+\]\(.+\)) \|$/,
+      `${path} must declare an allowed status and replacement field`,
+    )
+  }
 })
 
 const expectedToolchain = `[toolchain]

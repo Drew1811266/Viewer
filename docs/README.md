@@ -16,7 +16,15 @@ completion.
 | [`adr/0002-file-transaction-protocol.md`](adr/0002-file-transaction-protocol.md) | Active | — |
 | [`adr/0003-scan-search-and-generation.md`](adr/0003-scan-search-and-generation.md) | Active | — |
 | [`adr/0005-continuous-development-governance.md`](adr/0005-continuous-development-governance.md) | Active | — |
+| [`superpowers/specs/2026-07-16-viewer-foundation-hardening-design.md`](superpowers/specs/2026-07-16-viewer-foundation-hardening-design.md) | Active | — |
+| [`superpowers/specs/2026-07-16-viewer-m3-organization-comparison-design.md`](superpowers/specs/2026-07-16-viewer-m3-organization-comparison-design.md) | Active | — |
+| [`superpowers/specs/2026-07-16-viewer-system-architecture-design.md`](superpowers/specs/2026-07-16-viewer-system-architecture-design.md) | Active | — |
+| [`superpowers/specs/2026-07-20-viewer-internal-pointer-drag-design.md`](superpowers/specs/2026-07-20-viewer-internal-pointer-drag-design.md) | Active | — |
+| [`superpowers/specs/2026-07-20-viewer-marquee-selection-design.md`](superpowers/specs/2026-07-20-viewer-marquee-selection-design.md) | Active | — |
+| [`superpowers/specs/2026-07-22-viewer-radial-menu-contextmenu-fallback-design.md`](superpowers/specs/2026-07-22-viewer-radial-menu-contextmenu-fallback-design.md) | Active | — |
+| [`superpowers/specs/2026-07-22-viewer-simplified-workspace-radial-menu-design.md`](superpowers/specs/2026-07-22-viewer-simplified-workspace-radial-menu-design.md) | Active | — |
 | [`superpowers/specs/2026-07-23-viewer-engineering-optimization-governance-design.md`](superpowers/specs/2026-07-23-viewer-engineering-optimization-governance-design.md) | Active | — |
+| [`superpowers/specs/2026-07-23-viewer-folder-filmstrip-rows-design.md`](superpowers/specs/2026-07-23-viewer-folder-filmstrip-rows-design.md) | Active | — |
 
 ## Superseded decisions
 

@@ -8,7 +8,7 @@ This inventory records the direct third-party dependencies in the Viewer 0.1 loc
 
 | Package | Version | License | Viewer purpose | Upstream | Distributed |
 | --- | --- | --- | --- | --- | --- |
-| `ammonia` | 4.1.3 | MIT OR Apache-2.0 | Sanitize rendered Markdown HTML at the Tauri boundary | [rust-ammonia/ammonia](https://github.com/rust-ammonia/ammonia) | Yes |
+| `ammonia` | 4.1.4 | MIT OR Apache-2.0 | Sanitize rendered Markdown HTML at the Tauri boundary | [rust-ammonia/ammonia](https://github.com/rust-ammonia/ammonia) | Yes |
 | `async-trait` | 0.1.89 | MIT OR Apache-2.0 | Async Application port traits and adapters | [dtolnay/async-trait](https://github.com/dtolnay/async-trait) | Yes, as expanded code |
 | `blake3` | 1.8.5 | CC0-1.0 OR Apache-2.0 OR Apache-2.0 WITH LLVM-exception | File-operation evidence and recovery fingerprints | [BLAKE3-team/BLAKE3](https://github.com/BLAKE3-team/BLAKE3) | Yes |
 | `block2` | 0.6.2 | MIT | Objective-C completion blocks for Quick Look | [madsmtm/objc2](https://github.com/madsmtm/objc2) | Yes |

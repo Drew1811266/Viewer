@@ -10,6 +10,8 @@ completion.
 | --- | --- | --- |
 | [`PRODUCT_SPEC.md`](PRODUCT_SPEC.md) | Active | — |
 | [`TECHNICAL_FOUNDATIONS.md`](TECHNICAL_FOUNDATIONS.md) | Active | — |
+| [`OPEN_SOURCE_RESEARCH.md`](OPEN_SOURCE_RESEARCH.md) | Active | — |
+| [`quality/DEPENDENCY_HEALTH.md`](quality/DEPENDENCY_HEALTH.md) | Active | — |
 | [`architecture/viewer-0.1-api-baseline.md`](architecture/viewer-0.1-api-baseline.md) | Active | — |
 | [`milestones/viewer-0.1-scope-matrix.md`](milestones/viewer-0.1-scope-matrix.md) | Active | — |
 | [`adr/0001-macos-image-pipeline.md`](adr/0001-macos-image-pipeline.md) | Active | — |

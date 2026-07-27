@@ -1,5 +1,7 @@
 # Dependency Health
 
+> Status: Active
+
 This register classifies the duplicate-version warnings emitted by
 `cargo deny --offline --locked check`. Duplicate versions remain informational:
 they are reviewed here, not suppressed with patches or version overrides.

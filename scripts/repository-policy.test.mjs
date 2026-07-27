@@ -48,6 +48,57 @@ test('documentation index declares one status for every listed source', async ()
   }
 })
 
+test('active governance documents agree with the index and root navigation', async () => {
+  const [index, rootReadme, openSourceResearch, dependencyHealth] = await Promise.all([
+    read('docs/README.md'),
+    read('README.md'),
+    read('docs/OPEN_SOURCE_RESEARCH.md'),
+    read('docs/quality/DEPENDENCY_HEALTH.md'),
+  ])
+  const activeSources = [
+    ['OPEN_SOURCE_RESEARCH.md', openSourceResearch],
+    ['quality/DEPENDENCY_HEALTH.md', dependencyHealth],
+  ]
+  for (const [path, source] of activeSources) {
+    const rows = findDocumentationRows(index, path)
+    assert.equal(rows.length, 1, `${path} must have exactly one index row`)
+    assert.match(rows[0], /^\| .+ \| Active \| — \|$/, `${path} must be indexed as Active`)
+    assert.match(source, /^> Status: Active$/m, `${path} must declare active metadata`)
+  }
+
+  const historicalRoadmap =
+    'superpowers/plans/2026-07-23-viewer-engineering-optimization-roadmap.md'
+  const roadmapRows = findDocumentationRows(index, historicalRoadmap)
+  assert.equal(roadmapRows.length, 1, `${historicalRoadmap} must have exactly one index row`)
+  assert.match(
+    roadmapRows[0],
+    /^\| .+ \| Historical \| — \|$/,
+    `${historicalRoadmap} must remain Historical`,
+  )
+
+  for (const activePath of [
+    'docs/README.md',
+    'docs/adr/0005-continuous-development-governance.md',
+    'docs/superpowers/specs/2026-07-23-viewer-engineering-optimization-governance-design.md',
+  ]) {
+    assert.ok(rootReadme.includes(`](${activePath})`), `README must link active source ${activePath}`)
+  }
+
+  const roadmapTarget = `docs/${historicalRoadmap}`
+  const roadmapParagraphs = normalizeNewlines(rootReadme)
+    .split(/\n{2,}/)
+    .filter((paragraph) => paragraph.includes(`](${roadmapTarget})`))
+  assert.ok(roadmapParagraphs.length > 0, 'README must preserve the roadmap as historical evidence')
+  for (const paragraph of roadmapParagraphs) {
+    assert.match(paragraph, /\bhistorical\b/i, 'roadmap references must identify historical status')
+    assert.doesNotMatch(
+      paragraph,
+      /\bactive\b|\bgovern(?:ed|ing)\b|\bsources? of truth\b/i,
+      'historical roadmap must not be described as active governance',
+    )
+  }
+})
+
 const expectedToolchain = `[toolchain]
 channel = "1.97.0"
 components = ["clippy", "rustfmt"]
@@ -681,6 +732,27 @@ test('Apache-2.0 and the Viewer 0.1 direct dependency inventory are frozen', asy
 
   const lockCheck = await stat(new URL('../scripts/check-locked-dependencies.sh', import.meta.url))
   assert.ok((lockCheck.mode & 0o111) !== 0, 'locked dependency check must be executable')
+})
+
+test('third-party notices record the locked ammonia version', async () => {
+  const [lockfile, notices] = await Promise.all([
+    read('Cargo.lock'),
+    read('THIRD_PARTY_NOTICES.md'),
+  ])
+  const ammoniaPackage = normalizeNewlines(lockfile)
+    .split('\n[[package]]\n')
+    .find((block) => /^name = "ammonia"$/m.test(block))
+  assert.ok(ammoniaPackage, 'Cargo.lock must contain ammonia')
+  const lockedVersion = ammoniaPackage.match(/^version = "([^"]+)"$/m)?.[1]
+  assert.ok(lockedVersion, 'Cargo.lock ammonia entry must contain a version')
+  const noticedVersion = normalizeNewlines(notices)
+    .match(/^\| `ammonia` \| ([^|]+?) \|/m)?.[1]
+    .trim()
+  assert.equal(
+    noticedVersion,
+    lockedVersion,
+    'THIRD_PARTY_NOTICES.md ammonia version must match Cargo.lock',
+  )
 })
 
 test('M3 adds no broad desktop capability or network/update dependency', async () => {

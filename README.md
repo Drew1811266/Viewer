@@ -8,7 +8,7 @@ Viewer supports local review of JPG, JPEG, PNG, Markdown, and TXT files. It does
 
 ## Architecture
 
-The active architecture is governed by [ADR 0005](docs/adr/0005-continuous-development-governance.md), the [product specification](docs/PRODUCT_SPEC.md), and the [engineering optimization roadmap](docs/superpowers/plans/2026-07-23-viewer-engineering-optimization-roadmap.md). The implementation separates [Domain](crates/viewer-domain), [Application](crates/viewer-application), [Infrastructure](crates/viewer-infrastructure), [Platform/macOS](crates/viewer-platform-macos), [Tauri/Desktop](src-tauri), and [UI](ui) concerns.
+The current documentation entry point is the [documentation index](docs/README.md). Architecture governance comes from [ADR 0005](docs/adr/0005-continuous-development-governance.md) and the [engineering optimization governance design](docs/superpowers/specs/2026-07-23-viewer-engineering-optimization-governance-design.md), while product behavior and scope come from the [product specification](docs/PRODUCT_SPEC.md). The implementation separates [Domain](crates/viewer-domain), [Application](crates/viewer-application), [Infrastructure](crates/viewer-infrastructure), [Platform/macOS](crates/viewer-platform-macos), [Tauri/Desktop](src-tauri), and [UI](ui) concerns.
 
 ## Requirements
 
@@ -64,11 +64,13 @@ generation both directly through `pnpm coverage:rust` and transitively through
 - [Domain](crates/viewer-domain), [Application](crates/viewer-application), [Infrastructure](crates/viewer-infrastructure), and [Platform/macOS](crates/viewer-platform-macos) contain the Rust layers.
 - [Tauri/Desktop](src-tauri) contains the desktop bridge, and [UI](ui) contains the React interface.
 - [Integration tests](tests) exercise repository-level behavior.
-- [Architecture decision records](docs/adr), the [product specification](docs/PRODUCT_SPEC.md), and the [engineering optimization roadmap](docs/superpowers/plans/2026-07-23-viewer-engineering-optimization-roadmap.md) are the repository's active documentation sources.
+- The [documentation index](docs/README.md) identifies the current architecture decisions, product specification, engineering governance design, and dependency-governance sources.
 
 ## Active documentation
 
-Start with [ADR 0005](docs/adr/0005-continuous-development-governance.md) for the active development-stage governance model. Use the [product specification](docs/PRODUCT_SPEC.md) and [engineering optimization roadmap](docs/superpowers/plans/2026-07-23-viewer-engineering-optimization-roadmap.md) as the active scope and planning sources; historical evidence remains documented separately.
+Start with the [documentation index](docs/README.md), [ADR 0005](docs/adr/0005-continuous-development-governance.md), and the [engineering optimization governance design](docs/superpowers/specs/2026-07-23-viewer-engineering-optimization-governance-design.md) for the active development-stage governance model. Use the [product specification](docs/PRODUCT_SPEC.md) for current product behavior and scope.
+
+The [engineering optimization roadmap](docs/superpowers/plans/2026-07-23-viewer-engineering-optimization-roadmap.md) is a historical implementation record, not a current source of governance or product scope.
 
 ## License
 

@@ -4,6 +4,7 @@ import test from 'node:test'
 
 import {
   compareRustCoverage,
+  compareRustCoverageReport,
   normalizeLlvmReport,
   normalizeLlvmCoverage,
 } from './rust-coverage-baseline.mjs'
@@ -44,6 +45,31 @@ test('reports Rust metrics that regress beyond one percentage point', () => {
       1,
     ),
     ['lines dropped from 81 to 79'],
+  )
+})
+
+test('prefixes a critical Rust group regression with its group name', () => {
+  const stable = { lines: 80, functions: 70, regions: 75 }
+  const baseline = {
+    global: { ...stable },
+    critical: {
+      'infrastructure-operation': { ...stable },
+      'desktop-security-boundaries': { ...stable },
+      'application-project-lifecycle': { ...stable },
+    },
+  }
+  const current = {
+    global: { ...stable },
+    critical: {
+      'infrastructure-operation': { ...stable },
+      'desktop-security-boundaries': { ...stable, functions: 68 },
+      'application-project-lifecycle': { ...stable },
+    },
+  }
+
+  assert.deepEqual(
+    compareRustCoverageReport(current, baseline, 1),
+    ['desktop-security-boundaries: functions dropped from 70 to 68'],
   )
 })
 

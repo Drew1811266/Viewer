@@ -85,6 +85,9 @@ jobs:
       - name: Install cargo-deny 0.20.2
         run: cargo install cargo-deny --version 0.20.2 --locked
 
+      - name: Fetch locked Rust dependency graph
+        run: cargo fetch --locked
+
       - name: Run security gate
         run: pnpm security
 

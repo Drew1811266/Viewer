@@ -230,6 +230,7 @@ const validateDeterministicCIWorkflow = (workflow) => {
       'Install Rust 1.97.0 for Apple Silicon',
       'Install JavaScript dependencies',
       'Install cargo-deny 0.20.2',
+      'Fetch locked Rust dependency graph',
       'Run security gate',
       'Assert verification left no artifacts',
     ],
@@ -348,6 +349,11 @@ const validateDeterministicCIWorkflow = (workflow) => {
     jobs.get('security'),
     /^        run: cargo install cargo-deny --version 0\.20\.2 --locked$/m,
     'security job must install locked cargo-deny 0.20.2',
+  )
+  assert.match(
+    jobs.get('security'),
+    /^        run: cargo fetch --locked$/m,
+    'security job must fetch the locked workspace graph before its offline policy gate',
   )
 }
 
@@ -682,8 +688,11 @@ test('CI defines independent deterministic quality and security gates', async ()
 
   assert.equal(normalizeNewlines(toolchain), expectedToolchain)
   assert.equal(packageJson.packageManager, expectedPackageManager)
-  assert.match(packageJson.scripts.quality, /scripts\/repository-policy\.test\.mjs/)
-  assert.match(packageJson.scripts.quality, /scripts\/scope-coverage\.test\.mjs/)
+  assert.equal(
+    packageJson.scripts['test:policy'],
+    'node --test scripts/repository-policy.test.mjs scripts/scope-coverage.test.mjs && node scripts/check-scope-coverage.mjs',
+  )
+  assert.match(packageJson.scripts.quality, /^pnpm test:policy &&/)
   assert.match(packageJson.scripts.quality, /scripts\/verify-clean\.test\.mjs/)
   assert.match(packageJson.scripts.quality, /pnpm --dir ui check/)
   assert.match(packageJson.scripts.quality, /pnpm --dir ui test/)
@@ -692,10 +701,28 @@ test('CI defines independent deterministic quality and security gates', async ()
   assert.match(packageJson.scripts.quality, /cargo clippy --locked --workspace --all-targets/)
   assert.match(packageJson.scripts.quality, /cargo test --locked --workspace/)
   assert.match(packageJson.scripts.security, /check-tauri-security\.sh/)
-  assert.match(packageJson.scripts.security, /cargo deny --offline --locked check/)
+  assert.match(
+    packageJson.scripts.security,
+    /cargo deny --offline --locked check bans licenses sources/,
+  )
+  assert.doesNotMatch(packageJson.scripts.security, /check(?:\s+advisories|\s*&&)/)
   assert.match(packageJson.scripts.security, /node scripts\/check-npm-licenses\.mjs/)
   assert.equal(packageJson.scripts.verify, 'pnpm quality && pnpm security')
   assert.equal(packageJson.scripts['verify:clean'], 'node scripts/verify-clean.mjs')
+})
+
+test('ordinary package policy evaluates active scope without a network advisory gate', async () => {
+  const packageJson = JSON.parse(await read('package.json'))
+
+  assert.equal(
+    packageJson.scripts['test:policy'],
+    'node --test scripts/repository-policy.test.mjs scripts/scope-coverage.test.mjs && node scripts/check-scope-coverage.mjs',
+  )
+  assert.match(packageJson.scripts.quality, /^pnpm test:policy &&/)
+  assert.equal(
+    packageJson.scripts.security,
+    './scripts/check-tauri-security.sh && cargo deny --offline --locked check bans licenses sources && node scripts/check-npm-licenses.mjs',
+  )
 })
 
 test('Apache-2.0 and the Viewer 0.1 direct dependency inventory are frozen', async () => {

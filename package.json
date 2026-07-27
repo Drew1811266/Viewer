@@ -17,9 +17,9 @@
     "gate:m2": "./scripts/run-m2-review-gate.sh",
     "gate:m3": "./scripts/run-m3-organization-gate.sh",
     "tauri": "tauri",
-    "test:policy": "node --test scripts/repository-policy.test.mjs scripts/scope-coverage.test.mjs",
-    "quality": "node --test scripts/repository-policy.test.mjs scripts/scope-coverage.test.mjs scripts/verify-clean.test.mjs && pnpm --dir ui check && pnpm --dir ui test && pnpm --dir ui build && cargo fmt --check && cargo clippy --locked --workspace --all-targets -- -D warnings && cargo test --locked --workspace",
-    "security": "./scripts/check-tauri-security.sh && cargo deny --offline --locked check && node scripts/check-npm-licenses.mjs",
+    "test:policy": "node --test scripts/repository-policy.test.mjs scripts/scope-coverage.test.mjs && node scripts/check-scope-coverage.mjs",
+    "quality": "pnpm test:policy && node --test scripts/verify-clean.test.mjs && pnpm --dir ui check && pnpm --dir ui test && pnpm --dir ui build && cargo fmt --check && cargo clippy --locked --workspace --all-targets -- -D warnings && cargo test --locked --workspace",
+    "security": "./scripts/check-tauri-security.sh && cargo deny --offline --locked check bans licenses sources && node scripts/check-npm-licenses.mjs",
     "verify": "pnpm quality && pnpm security",
     "verify:clean": "node scripts/verify-clean.mjs"
   },

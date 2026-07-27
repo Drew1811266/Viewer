@@ -58,3 +58,16 @@ test('M4 ownership is rejected', () => {
     /invalid stage token M4 in REQ-ONE/,
   )
 })
+
+test('generic M4 table stages are rejected from active scope', () => {
+  assert.throws(
+    () =>
+      validateScopeCoverage(
+        spec,
+        `${matrix('M1', 'Continuous')}
+| M4 |
+`,
+      ),
+    /invalid stage token M4 in active scope matrix/,
+  )
+})

@@ -56,6 +56,10 @@ export function validateScopeCoverage(productSpec, matrix) {
     }
   }
 
+  if (/\|\s*M4\s*\|/i.test(matrix)) {
+    throw new Error('invalid stage token M4 in active scope matrix')
+  }
+
   const actualM3Ids = matrixRows
     .filter(([, , , stage]) => stage.split('/').includes('M3'))
     .map(([id]) => id)

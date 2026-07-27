@@ -314,6 +314,7 @@ const blockBoundaryAfterParameters = (source, start, kind) => {
   let angles = 0
   let braces = 0
   let hasTypeToken = false
+  let penultimateToken = ''
   let previousToken = ''
 
   for (; index < source.length; index += 1) {
@@ -325,9 +326,15 @@ const blockBoundaryAfterParameters = (source, start, kind) => {
 
     if (atTopLevel && character === ';') return index
     if (atTopLevel && character === '{') {
-      if (!hasTypeToken || ['|', '&', '?', ':'].includes(previousToken)) {
+      const followsCallableArrow = penultimateToken === '=' && previousToken === '>'
+      if (
+        !hasTypeToken
+        || ['|', '&', '?', ':'].includes(previousToken)
+        || followsCallableArrow
+      ) {
         braces = 1
         hasTypeToken = true
+        penultimateToken = previousToken
         previousToken = character
         continue
       }
@@ -345,6 +352,7 @@ const blockBoundaryAfterParameters = (source, start, kind) => {
 
     if (!/\s/.test(character)) {
       hasTypeToken = true
+      penultimateToken = previousToken
       previousToken = character
     }
   }

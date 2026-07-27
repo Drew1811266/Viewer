@@ -351,6 +351,28 @@ test('terminates same-line and expression-bodied declarations at their lexical b
   }
 })
 
+test('skips callable return type objects when finding a TypeScript function body', () => {
+  const source = [
+    'function factory(): () => { value: number }',
+    '{',
+    ...Array.from({ length: 15 }, () => '  if (ready) return build()'),
+    '}',
+    '',
+  ].join('\n')
+
+  assert.deepEqual(
+    measureFunctions(new Map([['src/factory.ts', source]]))
+      .functionsOverDecisionScore15,
+    [{
+      path: 'src/factory.ts',
+      name: 'factory',
+      startLine: 1,
+      lines: 18,
+      decisionScore: 16,
+    }],
+  )
+})
+
 test('does not report declarations from test files or Rust cfg(test) modules', () => {
   const decisions = '    if (value) value += 1\n'.repeat(15)
   const result = measureFunctions(new Map([

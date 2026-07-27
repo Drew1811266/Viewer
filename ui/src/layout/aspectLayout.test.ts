@@ -85,6 +85,27 @@ describe('aspect layout geometry', () => {
     }
   })
 
+  it('keeps an exact 1:100 portrait proportional and finite', () => {
+    expect(proportionalWidth(132, { width: 1, height: 100 })).toBe(1.32)
+
+    const strip = buildFilmstripGeometry(
+      [{ key: 'one-to-one-hundred', dimensions: { width: 1, height: 100 } }],
+      132,
+      8,
+      12,
+    )
+
+    expect(strip.items[0]).toMatchObject({
+      key: 'one-to-one-hundred',
+      left: 12,
+      width: 1.32,
+      imageWidth: 1.32,
+      imageHeight: 132,
+    })
+    expect(strip.totalWidth).toBe(25.32)
+    expectFiniteGeometry(strip)
+  })
+
   it('builds a fractional filmstrip without rounding cumulative offsets', () => {
     const strip = buildFilmstripGeometry(
       [

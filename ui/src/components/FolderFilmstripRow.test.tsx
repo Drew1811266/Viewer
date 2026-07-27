@@ -279,6 +279,33 @@ describe('FolderFilmstripRow', () => {
     expect(landscape).toHaveStyle({ left: '308px', width: '252px', height: '168px' })
   })
 
+  it('keeps the near-edge anchor when large-to-compact reflow clamps horizontal scroll', async () => {
+    const files = Array.from({ length: 10 }, (_, index) => image(index))
+    const props = {
+      folder: { ...folder, imageCount: files.length },
+      loadImages: vi.fn().mockResolvedValue(files),
+      requestThumbnail: vi.fn().mockResolvedValue('viewer-image://thumbnail'),
+      onSelect: vi.fn(),
+      onPreview: vi.fn(),
+    }
+    const rendered = render(<FolderFilmstripRow {...props} density="large" />)
+    const filmstrip = await sizeViewport(200)
+    installClampedScrollLeft(filmstrip, 200)
+    filmstrip.scrollLeft = 1_500
+    fireEvent.scroll(filmstrip)
+
+    rendered.rerender(<FolderFilmstripRow {...props} density="compact" />)
+
+    // Large geometry anchors image-9 at 1420 - 1500 = -80px. Compact
+    // geometry would place it at 844px, so 924px clamps to the 856px maximum.
+    await waitFor(() => expect(filmstrip.scrollLeft).toBe(856))
+    expect(
+      within(filmstrip)
+        .getByRole('button', { name: '预览 image-9.jpg' })
+        .closest<HTMLElement>('[role="listitem"]'),
+    ).toHaveStyle({ left: '844px', width: '96px', height: '96px' })
+  })
+
   it('recovers missing metadata before reveal and isolates another thumbnail failure', async () => {
     const unknown = image(0, null)
     const failed = image(1, { width: 1, height: 1 })
@@ -315,6 +342,44 @@ describe('FolderFilmstripRow', () => {
     expect(within(filmstrip).getByLabelText('缩略图不可用')).toBeVisible()
   })
 
+  it('prefers valid source metadata over recovered dimensions for the same identity', async () => {
+    const initiallyUnknown = image(0, null)
+    const props = {
+      folder: { ...folder, imageCount: 1 },
+      loadImages: vi.fn().mockResolvedValue([initiallyUnknown]),
+      requestThumbnail: vi.fn().mockResolvedValue('viewer-image://thumbnail'),
+      onSelect: vi.fn(),
+      onPreview: vi.fn(),
+    }
+    const rendered = render(<FolderFilmstripRow {...props} density="standard" />)
+    const filmstrip = await sizeViewport(1_000)
+    const thumbnail = await waitFor(() => {
+      const candidate = filmstrip.querySelector('img')
+      expect(candidate).not.toBeNull()
+      return candidate as HTMLImageElement
+    })
+    Object.defineProperties(thumbnail, {
+      naturalWidth: { configurable: true, value: 4_000 },
+      naturalHeight: { configurable: true, value: 1_000 },
+    })
+    fireEvent.load(thumbnail)
+    await waitFor(() =>
+      expect(filmstrip.querySelector('.folder-filmstrip-track')).toHaveStyle({ width: '552px' }),
+    )
+
+    initiallyUnknown.imageMetadata = { width: 1, height: 1 }
+    rendered.rerender(<FolderFilmstripRow {...props} density="compact" />)
+
+    await waitFor(() =>
+      expect(filmstrip.querySelector('.folder-filmstrip-track')).toHaveStyle({ width: '120px' }),
+    )
+    expect(within(filmstrip).getByRole('listitem')).toHaveStyle({
+      left: '12px',
+      width: '96px',
+      height: '96px',
+    })
+  })
+
   it('keeps an extreme panorama unrestricted and reachable by horizontal scrolling', async () => {
     const files = [
       ...Array.from({ length: 20 }, (_, index) => image(index)),
@@ -341,3 +406,19 @@ describe('FolderFilmstripRow', () => {
     })
   })
 })
+
+function installClampedScrollLeft(filmstrip: HTMLElement, clientWidth: number) {
+  let scrollLeft = filmstrip.scrollLeft
+  Object.defineProperty(filmstrip, 'clientWidth', { configurable: true, value: clientWidth })
+  Object.defineProperty(filmstrip, 'scrollLeft', {
+    configurable: true,
+    get: () => {
+      const track = filmstrip.querySelector<HTMLElement>('.folder-filmstrip-track')
+      const maximum = Math.max(0, Number.parseFloat(track?.style.width ?? '0') - clientWidth)
+      return Math.max(0, Math.min(maximum, scrollLeft))
+    },
+    set: (next: number) => {
+      scrollLeft = next
+    },
+  })
+}

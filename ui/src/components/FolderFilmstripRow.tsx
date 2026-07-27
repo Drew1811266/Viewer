@@ -30,6 +30,11 @@ type RowState =
   | { status: 'ready'; images: BrowserFile[] }
   | { status: 'failed' }
 
+interface HorizontalAnchor {
+  key: string
+  visualOffset: number
+}
+
 export default function FolderFilmstripRow({
   folder,
   density,
@@ -41,6 +46,7 @@ export default function FolderFilmstripRow({
   const row = useRef<HTMLElement>(null)
   const filmstrip = useRef<HTMLDivElement>(null)
   const previousGeometry = useRef<AspectGeometry | null>(null)
+  const horizontalAnchor = useRef<HorizontalAnchor | null>(null)
   const requestSequence = useRef(0)
   const [visible, setVisible] = useState(() => typeof IntersectionObserver === 'undefined')
   const [state, setState] = useState<RowState>({ status: 'idle' })
@@ -102,6 +108,10 @@ export default function FolderFilmstripRow({
       scrollLeft: element.scrollLeft,
       width: element.clientWidth,
     }
+    const currentGeometry = previousGeometry.current
+    if (currentGeometry !== null) {
+      horizontalAnchor.current = captureHorizontalAnchor(currentGeometry, next.scrollLeft)
+    }
     setViewport((current) =>
       current.scrollLeft === next.scrollLeft && current.width === next.width ? current : next,
     )
@@ -143,22 +153,20 @@ export default function FolderFilmstripRow({
       element !== null &&
       previous !== null &&
       previous !== geometry &&
+      horizontalAnchor.current !== null &&
       previous.items.length > 0 &&
       geometry.items.length > 0
     ) {
-      const firstVisible = horizontalVisibleIndexes(
-        previous,
-        element.scrollLeft,
-        element.clientWidth,
-        0,
-      ).start
-      const anchor = previous.items[firstVisible]
-      if (anchor !== undefined) {
+      const anchor = horizontalAnchor.current
+      const previousIndex = previous.indexByKey.get(anchor.key)
+      const previousItem = previousIndex === undefined ? undefined : previous.items[previousIndex]
+      if (previousItem !== undefined) {
+        const previousScrollLeft = previousItem.left - anchor.visualOffset
         element.scrollLeft = anchoredScrollOffset(
           previous,
           geometry,
           anchor.key,
-          element.scrollLeft,
+          previousScrollLeft,
           'horizontal',
         )
       }
@@ -315,9 +323,32 @@ function dimensionsFor(
   file: BrowserFile,
   recoveredDimensions: ReadonlyMap<string, ImageDimensions>,
 ): ImageDimensions | null {
+  if (validDimensions(file.imageMetadata)) return file.imageMetadata
   const recovered = recoveredDimensions.get(imageIdentity(file))
   if (recovered !== undefined && validDimensions(recovered)) return recovered
-  return validDimensions(file.imageMetadata) ? file.imageMetadata : null
+  return null
+}
+
+function captureHorizontalAnchor(
+  geometry: AspectGeometry,
+  scrollLeft: number,
+): HorizontalAnchor | null {
+  const safeScrollLeft = Number.isFinite(scrollLeft) && scrollLeft > 0 ? scrollLeft : 0
+  let low = 0
+  let high = geometry.items.length
+  while (low < high) {
+    const middle = Math.floor((low + high) / 2)
+    const item = geometry.items[middle]
+    if (item !== undefined && item.left + item.width > safeScrollLeft) high = middle
+    else low = middle + 1
+  }
+  const item = geometry.items[low]
+  return item === undefined
+    ? null
+    : {
+        key: item.key,
+        visualOffset: item.left - safeScrollLeft,
+      }
 }
 
 function expandImageWindow(

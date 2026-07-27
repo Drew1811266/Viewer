@@ -169,6 +169,61 @@ describe('AspectThumbnail', () => {
 
     await waitFor(() => expect(loadThumbnail).toHaveBeenCalledWith(file, 4_096, 4_000))
   })
+
+  it('ignores an obsolete thumbnail completion after the file identity changes', async () => {
+    const firstRequest = deferred<string>()
+    const secondRequest = deferred<string>()
+    const changedFile = {
+      ...file,
+      entityId: 'image-2',
+      relativePath: 'catalog/image-2.jpg',
+      name: 'image-2.jpg',
+      modifiedNs: '43',
+    }
+    const loadThumbnail = vi
+      .fn<(candidate: BrowserFile) => Promise<string>>()
+      .mockReturnValueOnce(firstRequest.promise)
+      .mockReturnValueOnce(secondRequest.promise)
+    const rendered = render(
+      <AspectThumbnail
+        file={file}
+        width={198}
+        height={132}
+        dimensionsKnown
+        loadThumbnail={loadThumbnail}
+        onNaturalDimensions={vi.fn()}
+      />,
+    )
+
+    rendered.rerender(
+      <AspectThumbnail
+        file={changedFile}
+        width={198}
+        height={132}
+        dimensionsKnown
+        loadThumbnail={loadThumbnail}
+        onNaturalDimensions={vi.fn()}
+      />,
+    )
+    firstRequest.resolve('viewer-image://obsolete')
+
+    await waitFor(() => expect(loadThumbnail).toHaveBeenCalledTimes(2))
+    expect(rendered.container.querySelector('img')).not.toBeInTheDocument()
+    expect(screen.getByLabelText('缩略图加载中')).toBeVisible()
+
+    secondRequest.resolve('viewer-image://current')
+
+    await waitFor(() =>
+      expect(rendered.container.querySelector('img')).toHaveAttribute(
+        'src',
+        'viewer-image://current',
+      ),
+    )
+    expect(rendered.container.querySelector('img')).not.toHaveAttribute(
+      'src',
+      'viewer-image://obsolete',
+    )
+  })
 })
 
 async function findImage(container: HTMLElement): Promise<HTMLImageElement> {
@@ -179,4 +234,12 @@ async function findImage(container: HTMLElement): Promise<HTMLImageElement> {
   })
   if (image === null) throw new Error('Expected thumbnail image')
   return image
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>((next) => {
+    resolve = next
+  })
+  return { promise, resolve }
 }

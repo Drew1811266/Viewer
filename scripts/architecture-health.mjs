@@ -11,6 +11,7 @@ import {
   dirname,
   extname,
   join,
+  posix,
   relative,
   resolve,
 } from 'node:path'
@@ -93,60 +94,147 @@ const maskNonCode = (source, language) => {
   return output.join('')
 }
 
-const rustTestLines = (source) => {
-  const totalLines = countLines(source)
-  const lines = maskNonCode(source, 'rust').split(/\r?\n/).slice(0, totalLines)
-  const testLines = new Set()
-
-  for (let index = 0; index < lines.length; index += 1) {
-    if (!/^\s*#\s*\[\s*cfg\s*\(\s*test\s*\)\s*\]\s*$/.test(lines[index])) continue
-
-    let moduleLine = index + 1
-    while (moduleLine < lines.length && lines[moduleLine].trim() === '') moduleLine += 1
-    if (!/^\s*(?:pub(?:\([^)]*\))?\s+)?mod\s+[A-Za-z_]\w*\s*(?:\{|;)/.test(
-      lines[moduleLine] ?? '',
-    )) continue
-
-    let endLine = moduleLine
-    let depth = 0
-    let opened = false
-    for (; endLine < lines.length; endLine += 1) {
-      for (const character of lines[endLine]) {
-        if (character === '{') {
-          depth += 1
-          opened = true
-        } else if (character === '}') {
-          depth -= 1
-        }
-      }
-      if (!opened || depth <= 0) break
-    }
-    const lastLine = Math.min(endLine, lines.length - 1)
-    for (let testLine = index; testLine <= lastLine; testLine += 1) {
-      testLines.add(testLine)
-    }
-    index = lastLine
+const lineIndexAtOffset = (source, offset) => {
+  let line = 0
+  for (let index = 0; index < offset; index += 1) {
+    if (source[index] === '\n') line += 1
   }
-
-  return testLines
+  return line
 }
 
-const testLineIndexes = (path, source) => {
-  const totalLines = countLines(source)
-  if (isWholeTestFile(path)) {
-    return new Set(Array.from({ length: totalLines }, (_, index) => index))
+const skipWhitespace = (source, start) => {
+  let index = start
+  while (/\s/.test(source[index] ?? '')) index += 1
+  return index
+}
+
+const skipAttribute = (source, start) => {
+  let index = start
+  if (source[index] !== '#') return undefined
+  index += 1
+  if (source[index] === '!') index += 1
+  index = skipWhitespace(source, index)
+  if (source[index] !== '[') return undefined
+
+  let depth = 0
+  for (; index < source.length; index += 1) {
+    if (source[index] === '[') depth += 1
+    if (source[index] === ']') {
+      depth -= 1
+      if (depth === 0) return index + 1
+    }
   }
-  return normalizePath(path).endsWith('.rs') ? rustTestLines(source) : new Set()
+  return undefined
+}
+
+const rustTestModules = (source) => {
+  const totalLines = countLines(source)
+  const masked = maskNonCode(source, 'rust')
+  const modules = []
+  const cfgTest = /#\s*\[\s*cfg\s*\(\s*test\s*\)\s*\]/g
+
+  for (const attribute of masked.matchAll(cfgTest)) {
+    let index = attribute.index + attribute[0].length
+    while (true) {
+      index = skipWhitespace(masked, index)
+      const afterAttribute = skipAttribute(masked, index)
+      if (afterAttribute === undefined) break
+      index = afterAttribute
+    }
+    index = skipWhitespace(masked, index)
+
+    const module = masked.slice(index).match(
+      /^(?:pub(?:\s*\([^)]*\))?\s+)?mod\s+([A-Za-z_]\w*)\b/,
+    )
+    if (!module) continue
+    index += module[0].length
+    index = skipWhitespace(masked, index)
+
+    const startLine = lineIndexAtOffset(masked, attribute.index)
+    if (masked[index] === ';') {
+      modules.push({
+        name: module[1],
+        startLine,
+        endLine: lineIndexAtOffset(masked, index),
+        external: true,
+      })
+      continue
+    }
+    if (masked[index] !== '{') continue
+
+    let depth = 0
+    let close = -1
+    for (let brace = index; brace < masked.length; brace += 1) {
+      if (masked[brace] === '{') depth += 1
+      if (masked[brace] === '}') {
+        depth -= 1
+        if (depth === 0) {
+          close = brace
+          break
+        }
+      }
+    }
+    if (close === -1) continue
+    modules.push({
+      name: module[1],
+      startLine,
+      endLine: Math.min(lineIndexAtOffset(masked, close), totalLines - 1),
+      external: false,
+    })
+  }
+
+  return modules
+}
+
+const allLineIndexes = (source) =>
+  new Set(Array.from({ length: countLines(source) }, (_, index) => index))
+
+const classifyTestLines = (files) => {
+  const sources = new Map([...files]
+    .map(([path, source]) => [normalizePath(path), source])
+    .sort(([left], [right]) => left.localeCompare(right)))
+  const classified = new Map([...sources].map(([path]) => [path, new Set()]))
+  const externalModules = []
+
+  for (const [path, source] of sources) {
+    if (isWholeTestFile(path)) {
+      classified.set(path, allLineIndexes(source))
+      continue
+    }
+    if (!path.endsWith('.rs')) continue
+
+    for (const module of rustTestModules(source)) {
+      const lines = classified.get(path)
+      for (let index = module.startLine; index <= module.endLine; index += 1) {
+        lines.add(index)
+      }
+      if (module.external) externalModules.push({ path, name: module.name })
+    }
+  }
+
+  for (const module of externalModules) {
+    const directory = posix.dirname(module.path)
+    const candidates = [
+      posix.join(directory, `${module.name}.rs`),
+      posix.join(directory, module.name, 'mod.rs'),
+    ]
+    for (const candidate of candidates) {
+      const source = sources.get(candidate)
+      if (source !== undefined) classified.set(candidate, allLineIndexes(source))
+    }
+  }
+
+  return { sources, classified }
 }
 
 export function measureSourceFiles(files) {
-  const measured = [...files]
+  const { sources, classified } = classifyTestLines(files)
+  const measured = [...sources]
     .map(([path, source]) => {
-      const normalized = normalizePath(path)
       const lines = countLines(source)
-      const testLines = testLineIndexes(normalized, source).size
+      const testLines = classified.get(path).size
       return {
-        path: normalized,
+        path,
         lines: lines - testLines,
         testLines,
       }
@@ -211,17 +299,15 @@ const compareFunctions = (left, right) =>
 
 export function measureFunctions(files) {
   const functions = []
+  const { sources, classified } = classifyTestLines(files)
 
-  for (const [rawPath, source] of [...files].sort(([left], [right]) =>
-    normalizePath(left).localeCompare(normalizePath(right))
-  )) {
-    const path = normalizePath(rawPath)
+  for (const [path, source] of sources) {
     if (!/\.(?:rs|tsx?)$/.test(path)) continue
 
     const totalLines = countLines(source)
     const language = path.endsWith('.rs') ? 'rust' : 'typescript'
     const lines = maskNonCode(source, language).split(/\r?\n/).slice(0, totalLines)
-    const testLines = testLineIndexes(path, source)
+    const testLines = classified.get(path)
     const declarations = []
 
     for (let index = 0; index < lines.length; index += 1) {

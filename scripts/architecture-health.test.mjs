@@ -71,6 +71,108 @@ test('counts inline Rust cfg(test) modules as tests without matching string cont
   assert.equal(result.testLines, 5)
 })
 
+test('classifies valid inline cfg(test) module layouts without consuming production neighbors', () => {
+  const layouts = [
+    {
+      label: 'same-line attribute and module',
+      source: [
+        'pub fn before() {}',
+        '#[cfg(test)] mod tests {',
+        '    fn hidden() {}',
+        '}',
+        'pub fn after() {}',
+        '',
+      ].join('\n'),
+      testLines: 3,
+    },
+    {
+      label: 'intervening module attribute',
+      source: [
+        'pub fn before() {}',
+        '#[cfg(test)]',
+        '#[allow(dead_code)]',
+        'mod tests {',
+        '    fn hidden() {}',
+        '}',
+        'pub fn after() {}',
+        '',
+      ].join('\n'),
+      testLines: 5,
+    },
+    {
+      label: 'opening brace on the following line',
+      source: [
+        'pub fn before() {}',
+        '#[cfg(test)]',
+        'mod tests',
+        '{',
+        '    fn hidden() {}',
+        '}',
+        'pub fn after() {}',
+        '',
+      ].join('\n'),
+      testLines: 5,
+    },
+  ]
+
+  for (const { label, source, testLines } of layouts) {
+    const result = measureSourceFiles(new Map([['src/lib.rs', source]]))
+    assert.equal(result.productionLines, 2, `${label}: production lines`)
+    assert.equal(result.testLines, testLines, `${label}: test lines`)
+  }
+})
+
+test('does not classify a neighboring non-test Rust module as test content', () => {
+  const source = [
+    '#[cfg(not(test))]',
+    'mod production {',
+    '    fn production_neighbor() {}',
+    '}',
+    '#[cfg(test)] mod tests {',
+    '    fn hidden() {}',
+    '}',
+    'pub fn after() {}',
+    '',
+  ].join('\n')
+
+  const result = measureSourceFiles(new Map([['src/lib.rs', source]]))
+  assert.equal(result.productionLines, 5)
+  assert.equal(result.testLines, 3)
+})
+
+test('classifies external cfg(test) module files and leaves similarly named neighbors in production', () => {
+  const decisions = '    if (value) value += 1\n'.repeat(15)
+  const externalSource = `fn hidden(mut value: usize) {\n${decisions}}\n`
+  const parentSource = [
+    'pub fn before() {}',
+    '#[cfg(test)]',
+    '#[allow(dead_code)]',
+    'mod quality_tests;',
+    'pub fn after() {}',
+    '',
+  ].join('\n')
+
+  for (const externalPath of [
+    'crates/viewer-domain/src/quality_tests.rs',
+    'crates/viewer-domain/src/quality_tests/mod.rs',
+  ]) {
+    const files = new Map([
+      ['crates/viewer-domain/src/lib.rs', parentSource],
+      [externalPath, externalSource],
+      ['crates/viewer-domain/src/quality_tests_helper.rs', 'pub fn production_neighbor() {}\n'],
+    ])
+
+    const measured = measureSourceFiles(files)
+    assert.equal(measured.productionLines, 3, `${externalPath}: production lines`)
+    assert.equal(measured.testLines, 20, `${externalPath}: test lines`)
+    assert.deepEqual(
+      measureFunctions(files).functionsOverDecisionScore15,
+      [],
+      `${externalPath}: external test function outliers`,
+    )
+  }
+})
+
 test('recognizes Rust, TypeScript, and hook declarations and sorts decision outliers', () => {
   const decisions = '  if (value) value += 1\n'.repeat(15)
   const result = measureFunctions(new Map([

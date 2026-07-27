@@ -67,6 +67,7 @@ This inventory records the direct third-party dependencies in the Viewer 0.1 loc
 | `tempfile` | 3.27.0 | MIT OR Apache-2.0 | Isolated filesystem and crash-recovery tests | [Stebalien/tempfile](https://github.com/Stebalien/tempfile) | No, test only |
 | `@testing-library/jest-dom` | 6.9.1 | MIT | DOM assertions | [testing-library/jest-dom](https://github.com/testing-library/jest-dom) | No, test only |
 | `@testing-library/react` | 16.3.2 | MIT | React component tests | [testing-library/react-testing-library](https://github.com/testing-library/react-testing-library) | No, test only |
+| `@vitest/coverage-v8` | 4.1.10 | MIT | Frontend V8 coverage collection and reporting | [vitest-dev/vitest](https://github.com/vitest-dev/vitest) | No, test only |
 | `jsdom` | 29.1.1 | MIT | Test DOM runtime | [jsdom/jsdom](https://github.com/jsdom/jsdom) | No, test only |
 | `vitest` | 4.1.10 | MIT | Frontend test runner | [vitest-dev/vitest](https://github.com/vitest-dev/vitest) | No, test only |
 

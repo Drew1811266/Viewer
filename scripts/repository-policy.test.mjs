@@ -27,6 +27,7 @@ const cargoManifests = [
 ]
 const directDependencies = [
   '@biomejs/biome',
+  '@vitest/coverage-v8',
   'ammonia',
   'async-trait',
   'blake3',
@@ -957,6 +958,7 @@ test('the UI has one strict lint and format tool', async () => {
     'format:check': 'biome format .',
     check: 'biome check . && tsc -b',
     test: 'vitest run',
+    'test:coverage': 'vitest run --coverage',
     preview: 'vite preview',
   })
   assert.equal(uiPackage.devDependencies['@biomejs/biome'], '2.5.5')

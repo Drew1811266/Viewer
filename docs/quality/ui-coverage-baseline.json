@@ -1,0 +1,46 @@
+{
+  "global": {
+    "lines": 88.7,
+    "branches": 78.68,
+    "functions": 84.84,
+    "statements": 84.27
+  },
+  "critical": {
+    "src/state/reducers/projectReducer.ts": {
+      "lines": 93.75,
+      "branches": 75,
+      "functions": 100,
+      "statements": 88.23
+    },
+    "src/state/reducers/workspaceReducer.ts": {
+      "lines": 83.58,
+      "branches": 72.28,
+      "functions": 81.81,
+      "statements": 81.7
+    },
+    "src/state/reducers/searchReducer.ts": {
+      "lines": 64.86,
+      "branches": 58.53,
+      "functions": 66.66,
+      "statements": 60.46
+    },
+    "src/state/reducers/operationReducer.ts": {
+      "lines": 88.88,
+      "branches": 87.09,
+      "functions": 100,
+      "statements": 80
+    },
+    "src/state/controllers/useProjectSessionController.ts": {
+      "lines": 85.97,
+      "branches": 64.04,
+      "functions": 90.47,
+      "statements": 78.88
+    },
+    "src/state/controllers/useOperationController.ts": {
+      "lines": 79.87,
+      "branches": 67.74,
+      "functions": 94.44,
+      "statements": 73.59
+    }
+  }
+}

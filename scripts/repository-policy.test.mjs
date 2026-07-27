@@ -1178,3 +1178,12 @@ test('network dependency audit is scheduled and never a pull-request gate', asyn
   assert.match(workflow, /pnpm audit --audit-level high/)
   assert.match(workflow, /cargo deny --locked check advisories/)
 })
+
+test('quality reports are continuous trends and not a release gate', async () => {
+  const packageJson = JSON.parse(await read('package.json'))
+  assert.equal(
+    packageJson.scripts['quality:report'],
+    'pnpm coverage:ui && pnpm coverage:rust && pnpm architecture:health',
+  )
+  assert.doesNotMatch(packageJson.scripts.verify, /coverage|quality:report|release|M4/)
+})

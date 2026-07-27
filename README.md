@@ -48,11 +48,15 @@ pnpm verify:clean
 
 The command snapshots the pre-existing porcelain entry set and fails if verification adds or removes an entry.
 
-Rust coverage is opt-in trend evidence, not a release threshold, and ordinary verification remains independent of it. Generate the ignored raw report and compare it with the checked numeric baseline:
+Continuous quality reports are opt-in trend evidence, not a release threshold. Run the UI and Rust coverage reports followed by the architecture health report:
 
 ```bash
-pnpm coverage:rust
+pnpm quality:report
 ```
+
+The separately installed `cargo-llvm-cov` tool is required only for
+`pnpm quality:report`; ordinary `pnpm verify` remains deterministic and does
+not require coverage tooling.
 
 ## Repository map
 

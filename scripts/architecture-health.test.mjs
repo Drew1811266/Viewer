@@ -233,6 +233,124 @@ test('uses strict function thresholds and ignores decision tokens in comments an
   )
 })
 
+test('measures parent functions through their matching brace and does not absorb later siblings', () => {
+  const insideParent = Array.from(
+    { length: 199 },
+    (_, index) => `  const inside${index} = ${index}`,
+  )
+  const afterSibling = Array.from(
+    { length: 200 },
+    (_, index) => `const outside${index} = ${index}`,
+  )
+  const source = [
+    'function parent() {',
+    '  function nested() {}',
+    ...insideParent,
+    '}',
+    'function laterSibling() {}',
+    ...afterSibling,
+    '',
+  ].join('\n')
+
+  assert.deepEqual(
+    measureFunctions(new Map([['src/nested.ts', source]])).functionsOver200Lines,
+    [{
+      path: 'src/nested.ts',
+      name: 'parent',
+      startLine: 1,
+      lines: 202,
+      decisionScore: 1,
+    }],
+  )
+})
+
+test('attributes nested decision points only to the function that contains them', () => {
+  const decisions = Array.from({ length: 15 }, () => '    if (value) value += 1')
+  const source = [
+    'fn parent(mut value: usize) {',
+    '    if value > 0 { value += 1; }',
+    '    fn nested(mut value: usize) {',
+    ...decisions,
+    '    }',
+    '    if value > 1 { value += 1; }',
+    '}',
+    'fn later_sibling(mut value: usize) {',
+    ...decisions,
+    '}',
+    '',
+  ].join('\n')
+
+  assert.deepEqual(
+    measureFunctions(new Map([['src/nested.rs', source]]))
+      .functionsOverDecisionScore15,
+    [
+      {
+        path: 'src/nested.rs',
+        name: 'nested',
+        startLine: 3,
+        lines: 17,
+        decisionScore: 16,
+      },
+      {
+        path: 'src/nested.rs',
+        name: 'later_sibling',
+        startLine: 22,
+        lines: 17,
+        decisionScore: 16,
+      },
+    ],
+  )
+})
+
+test('keeps CRLF line offsets aligned when excluding nested function decisions', () => {
+  const source = [
+    'function parent(value) {',
+    ...Array.from({ length: 15 }, () => '  if(value){}'),
+    '  function nested() {}',
+    '}',
+    '',
+  ].join('\r\n')
+
+  assert.deepEqual(
+    measureFunctions(new Map([['src/crlf.ts', source]])).functionsOverDecisionScore15,
+    [{
+      path: 'src/crlf.ts',
+      name: 'parent',
+      startLine: 1,
+      lines: 18,
+      decisionScore: 16,
+    }],
+  )
+})
+
+test('terminates same-line and expression-bodied declarations at their lexical boundary', () => {
+  const afterDeclarations = Array.from(
+    { length: 201 },
+    (_, index) => `const outside${index} = ${index}`,
+  )
+  const ternaries = Array.from({ length: 15 }, () => 'value ? 1 : 0').join(' + ')
+  const sourceLines = [
+    'function sameLine() {}',
+    `export const useExpression = (value: boolean) => ${ternaries};`,
+    ...afterDeclarations,
+    '',
+  ]
+
+  for (const lineEnding of ['\n', '\r\n']) {
+    const measured = measureFunctions(new Map([
+      ['src/boundaries.ts', sourceLines.join(lineEnding)],
+    ]))
+    assert.deepEqual(measured.functionsOver200Lines, [])
+    assert.deepEqual(measured.functionsOverDecisionScore15, [{
+      path: 'src/boundaries.ts',
+      name: 'useExpression',
+      startLine: 2,
+      lines: 1,
+      decisionScore: 16,
+    }])
+  }
+})
+
 test('does not report declarations from test files or Rust cfg(test) modules', () => {
   const decisions = '    if (value) value += 1\n'.repeat(15)
   const result = measureFunctions(new Map([

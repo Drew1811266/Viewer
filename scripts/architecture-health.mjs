@@ -258,17 +258,151 @@ const declarationFromLine = (path, line) => {
     const declaration = line.match(
       /^\s*(?:pub(?:\([^)]*\))?\s+)?(?:const\s+)?(?:async\s+)?(?:unsafe\s+)?(?:extern\s+"[^"]+"\s+)?fn\s+([A-Za-z_]\w*)\b/,
     )
-    return declaration?.[1]
+    if (!declaration) return undefined
+    return {
+      name: declaration[1],
+      kind: 'rust',
+      headEndColumn: declaration[0].length,
+    }
   }
   if (!/\.tsx?$/.test(path)) return undefined
 
   const functionDeclaration = line.match(
     /^\s*(?:export\s+(?:default\s+)?)?(?:async\s+)?function\s+([A-Za-z_$][\w$]*)\b/,
   )
-  if (functionDeclaration) return functionDeclaration[1]
-  return line.match(
+  if (functionDeclaration) {
+    return {
+      name: functionDeclaration[1],
+      kind: 'typescript-function',
+      headEndColumn: functionDeclaration[0].length,
+    }
+  }
+  const hookDeclaration = line.match(
     /^\s*(?:export\s+)?const\s+(use[A-Z0-9_$][\w$]*)\s*=\s*(?:async\s*)?\(/,
-  )?.[1]
+  )
+  if (!hookDeclaration) return undefined
+  return {
+    name: hookDeclaration[1],
+    kind: 'typescript-arrow',
+    parameterOpenColumn: hookDeclaration[0].lastIndexOf('('),
+  }
+}
+
+const matchingDelimiterOffset = (source, start, open, close) => {
+  let depth = 0
+  for (let index = start; index < source.length; index += 1) {
+    if (source[index] === open) depth += 1
+    if (source[index] !== close) continue
+    depth -= 1
+    if (depth === 0) return index
+  }
+  return undefined
+}
+
+const blockBoundaryAfterParameters = (source, start, kind) => {
+  let index = skipWhitespace(source, start)
+  if (kind !== 'typescript-function' || source[index] !== ':') {
+    for (; index < source.length; index += 1) {
+      if (source[index] === '{' || source[index] === ';') return index
+    }
+    return undefined
+  }
+
+  index += 1
+  let parentheses = 0
+  let brackets = 0
+  let angles = 0
+  let braces = 0
+  let hasTypeToken = false
+  let previousToken = ''
+
+  for (; index < source.length; index += 1) {
+    const character = source[index]
+    const atTopLevel = parentheses === 0
+      && brackets === 0
+      && angles === 0
+      && braces === 0
+
+    if (atTopLevel && character === ';') return index
+    if (atTopLevel && character === '{') {
+      if (!hasTypeToken || ['|', '&', '?', ':'].includes(previousToken)) {
+        braces = 1
+        hasTypeToken = true
+        previousToken = character
+        continue
+      }
+      return index
+    }
+
+    if (character === '(') parentheses += 1
+    if (character === ')') parentheses = Math.max(0, parentheses - 1)
+    if (character === '[') brackets += 1
+    if (character === ']') brackets = Math.max(0, brackets - 1)
+    if (character === '<') angles += 1
+    if (character === '>') angles = Math.max(0, angles - 1)
+    if (character === '{') braces += 1
+    if (character === '}') braces = Math.max(0, braces - 1)
+
+    if (!/\s/.test(character)) {
+      hasTypeToken = true
+      previousToken = character
+    }
+  }
+  return undefined
+}
+
+const expressionBoundaryOffset = (source, start, limit) => {
+  let parentheses = 0
+  let brackets = 0
+  let braces = 0
+  let previousCodeOffset = start
+
+  for (let index = start; index < limit; index += 1) {
+    const character = source[index]
+    const atTopLevel = parentheses === 0 && brackets === 0 && braces === 0
+    if (atTopLevel && character === ';') return index
+    if (atTopLevel && (character === '\n' || character === '\r')) {
+      return previousCodeOffset
+    }
+
+    if (character === '(') parentheses += 1
+    if (character === ')') parentheses = Math.max(0, parentheses - 1)
+    if (character === '[') brackets += 1
+    if (character === ']') brackets = Math.max(0, brackets - 1)
+    if (character === '{') braces += 1
+    if (character === '}') braces = Math.max(0, braces - 1)
+    if (!/\s/.test(character)) previousCodeOffset = index
+  }
+  return previousCodeOffset
+}
+
+const declarationBoundaryOffset = (source, declaration, limit) => {
+  const parameterOpen = declaration.parameterOpenOffset
+    ?? source.indexOf('(', declaration.headEndOffset)
+  if (parameterOpen === -1 || parameterOpen >= limit) return limit - 1
+
+  const parameterClose = matchingDelimiterOffset(source, parameterOpen, '(', ')')
+  if (parameterClose === undefined || parameterClose >= limit) return limit - 1
+
+  if (declaration.kind === 'typescript-arrow') {
+    const arrow = source.indexOf('=>', parameterClose + 1)
+    if (arrow === -1 || arrow >= limit) return limit - 1
+    const expressionStart = skipWhitespace(source, arrow + 2)
+    if (source[expressionStart] !== '{') {
+      return expressionBoundaryOffset(source, expressionStart, limit)
+    }
+    return matchingDelimiterOffset(source, expressionStart, '{', '}') ?? limit - 1
+  }
+
+  const bodyStart = blockBoundaryAfterParameters(
+    source,
+    parameterClose + 1,
+    declaration.kind,
+  )
+  if (bodyStart === undefined || bodyStart >= limit || source[bodyStart] === ';') {
+    return Math.min(bodyStart ?? limit - 1, limit - 1)
+  }
+  return matchingDelimiterOffset(source, bodyStart, '{', '}') ?? limit - 1
 }
 
 const decisionScore = (source, language) => {
@@ -306,26 +440,63 @@ export function measureFunctions(files) {
 
     const totalLines = countLines(source)
     const language = path.endsWith('.rs') ? 'rust' : 'typescript'
-    const lines = maskNonCode(source, language).split(/\r?\n/).slice(0, totalLines)
+    const masked = maskNonCode(source, language)
+    const lines = masked.split(/\r?\n/).slice(0, totalLines)
+    const lineStartOffsets = [
+      0,
+      ...[...masked.matchAll(/\n/g)].map((lineBreak) => lineBreak.index + 1),
+    ]
     const testLines = classified.get(path)
     const declarations = []
 
     for (let index = 0; index < lines.length; index += 1) {
-      const name = declarationFromLine(path, lines[index])
-      if (name) declarations.push({ name, index })
+      const lineStartOffset = lineStartOffsets[index]
+      const declaration = declarationFromLine(path, lines[index])
+      if (declaration) {
+        declarations.push({
+          ...declaration,
+          index,
+          lineStartOffset,
+          declarationOffset: lineStartOffset + lines[index].search(/\S/),
+          headEndOffset: lineStartOffset + (declaration.headEndColumn ?? 0),
+          parameterOpenOffset: declaration.parameterOpenColumn === undefined
+            ? undefined
+            : lineStartOffset + declaration.parameterOpenColumn,
+        })
+      }
     }
 
     for (let index = 0; index < declarations.length; index += 1) {
       const declaration = declarations[index]
+      const nextDeclarationOffset = declarations[index + 1]?.lineStartOffset ?? masked.length
+      declaration.endOffset = declarationBoundaryOffset(
+        masked,
+        declaration,
+        nextDeclarationOffset,
+      )
+    }
+
+    for (const declaration of declarations) {
       if (testLines.has(declaration.index)) continue
-      const endIndex = (declarations[index + 1]?.index ?? totalLines) - 1
-      const span = lines.slice(declaration.index, endIndex + 1).join('\n')
+      const endIndex = lineIndexAtOffset(masked, declaration.endOffset)
+      const span = [...masked.slice(declaration.lineStartOffset, declaration.endOffset + 1)]
+      for (const nested of declarations) {
+        if (
+          nested.declarationOffset <= declaration.declarationOffset
+          || nested.endOffset > declaration.endOffset
+        ) continue
+        const nestedStart = nested.declarationOffset - declaration.lineStartOffset
+        const nestedEnd = nested.endOffset - declaration.lineStartOffset
+        for (let offset = nestedStart; offset <= nestedEnd; offset += 1) {
+          if (span[offset] !== '\n' && span[offset] !== '\r') span[offset] = ' '
+        }
+      }
       functions.push({
         path,
         name: declaration.name,
         startLine: declaration.index + 1,
         lines: endIndex - declaration.index + 1,
-        decisionScore: decisionScore(span, language),
+        decisionScore: decisionScore(span.join(''), language),
       })
     }
   }

@@ -22,36 +22,64 @@
       "path": "crates/viewer-infrastructure/src/operation/service/execution.rs",
       "name": "execute_copy_route",
       "startLine": 363,
-      "lines": 247,
+      "lines": 246,
       "decisionScore": 20
     },
     {
       "path": "ui/src/App.tsx",
       "name": "App",
       "startLine": 50,
-      "lines": 257,
+      "lines": 1072,
+      "decisionScore": 158
+    },
+    {
+      "path": "ui/src/components/ComparePane.tsx",
+      "name": "ComparePane",
+      "startLine": 54,
+      "lines": 243,
       "decisionScore": 25
     },
     {
-      "path": "ui/src/App.tsx",
-      "name": "toggleInfo",
-      "startLine": 307,
-      "lines": 366,
-      "decisionScore": 79
+      "path": "ui/src/components/CompareWorkspace.tsx",
+      "name": "CompareWorkspace",
+      "startLine": 45,
+      "lines": 226,
+      "decisionScore": 11
     },
     {
-      "path": "ui/src/App.tsx",
-      "name": "handleOrganizationShortcut",
-      "startLine": 673,
-      "lines": 450,
-      "decisionScore": 92
+      "path": "ui/src/components/ContentBrowser.tsx",
+      "name": "ContentBrowser",
+      "startLine": 44,
+      "lines": 471,
+      "decisionScore": 17
+    },
+    {
+      "path": "ui/src/components/ImagePreview.tsx",
+      "name": "ImagePreview",
+      "startLine": 19,
+      "lines": 223,
+      "decisionScore": 21
+    },
+    {
+      "path": "ui/src/components/RadialFileMenu.tsx",
+      "name": "RadialFileMenu",
+      "startLine": 39,
+      "lines": 354,
+      "decisionScore": 46
     },
     {
       "path": "ui/src/components/SearchToolbar.tsx",
       "name": "SearchToolbar",
       "startLine": 45,
-      "lines": 262,
+      "lines": 261,
       "decisionScore": 10
+    },
+    {
+      "path": "ui/src/components/VirtualGrid.tsx",
+      "name": "VirtualGrid",
+      "startLine": 58,
+      "lines": 292,
+      "decisionScore": 24
     },
     {
       "path": "ui/src/state/controllers/useOperationController.ts",
@@ -64,14 +92,21 @@
       "path": "ui/src/state/controllers/useProjectSessionController.ts",
       "name": "useProjectSessionController",
       "startLine": 54,
-      "lines": 340,
+      "lines": 339,
       "decisionScore": 40
+    },
+    {
+      "path": "ui/src/state/controllers/useSearchController.ts",
+      "name": "useSearchController",
+      "startLine": 26,
+      "lines": 210,
+      "decisionScore": 17
     },
     {
       "path": "ui/src/state/controllers/useSelectionMarkerController.ts",
       "name": "useSelectionMarkerController",
       "startLine": 24,
-      "lines": 206,
+      "lines": 205,
       "decisionScore": 25
     }
   ],
@@ -87,196 +122,196 @@
       "path": "crates/viewer-infrastructure/src/operation/recovery.rs",
       "name": "recover_copy",
       "startLine": 155,
-      "lines": 143,
+      "lines": 142,
       "decisionScore": 21
     },
     {
       "path": "crates/viewer-infrastructure/src/operation/recovery.rs",
       "name": "recover_trash",
       "startLine": 298,
-      "lines": 65,
+      "lines": 64,
       "decisionScore": 16
     },
     {
       "path": "crates/viewer-infrastructure/src/operation/recovery.rs",
       "name": "recover_rename",
       "startLine": 363,
-      "lines": 123,
+      "lines": 122,
       "decisionScore": 25
     },
     {
       "path": "crates/viewer-infrastructure/src/operation/recovery.rs",
       "name": "recover_replace",
       "startLine": 578,
-      "lines": 100,
+      "lines": 99,
       "decisionScore": 20
     },
     {
       "path": "crates/viewer-infrastructure/src/operation/rename.rs",
       "name": "preflight_preview",
       "startLine": 165,
-      "lines": 135,
+      "lines": 134,
       "decisionScore": 21
     },
     {
       "path": "crates/viewer-infrastructure/src/operation/rename.rs",
       "name": "execute_interruptible_with_expectations",
       "startLine": 536,
-      "lines": 140,
+      "lines": 139,
       "decisionScore": 16
     },
     {
       "path": "crates/viewer-infrastructure/src/operation/service/execution.rs",
       "name": "execute_copy_route",
       "startLine": 363,
-      "lines": 247,
+      "lines": 246,
       "decisionScore": 20
     },
     {
       "path": "crates/viewer-infrastructure/src/operation/service/preflight.rs",
       "name": "prepare_simple",
       "startLine": 82,
-      "lines": 130,
+      "lines": 129,
       "decisionScore": 18
     },
     {
       "path": "crates/viewer-infrastructure/src/scan/walker.rs",
       "name": "snapshot_subtrees",
       "startLine": 125,
-      "lines": 86,
+      "lines": 85,
       "decisionScore": 16
     },
     {
       "path": "crates/viewer-infrastructure/src/search/index/projection.rs",
       "name": "apply_move",
       "startLine": 134,
-      "lines": 152,
+      "lines": 151,
       "decisionScore": 20
     },
     {
       "path": "crates/viewer-infrastructure/src/search/index/projection.rs",
       "name": "validate_move_projections",
       "startLine": 417,
-      "lines": 56,
+      "lines": 55,
       "decisionScore": 16
     },
     {
       "path": "src-tauri/src/lib.rs",
       "name": "run",
       "startLine": 171,
-      "lines": 168,
+      "lines": 159,
       "decisionScore": 16
     },
     {
       "path": "src-tauri/src/state/scan_index.rs",
       "name": "rebuild_derived_nodes",
       "startLine": 268,
-      "lines": 109,
+      "lines": 108,
       "decisionScore": 23
     },
     {
       "path": "src-tauri/src/watcher_runtime.rs",
       "name": "start",
       "startLine": 67,
-      "lines": 111,
+      "lines": 110,
       "decisionScore": 17
     },
     {
       "path": "ui/src/App.tsx",
       "name": "App",
       "startLine": 50,
-      "lines": 257,
-      "decisionScore": 25
-    },
-    {
-      "path": "ui/src/App.tsx",
-      "name": "toggleInfo",
-      "startLine": 307,
-      "lines": 366,
-      "decisionScore": 79
+      "lines": 1072,
+      "decisionScore": 158
     },
     {
       "path": "ui/src/App.tsx",
       "name": "handleOrganizationShortcut",
       "startLine": 673,
-      "lines": 450,
-      "decisionScore": 92
+      "lines": 42,
+      "decisionScore": 26
     },
     {
       "path": "ui/src/components/ComparePane.tsx",
       "name": "ComparePane",
       "startLine": 54,
-      "lines": 150,
-      "decisionScore": 19
+      "lines": 243,
+      "decisionScore": 25
+    },
+    {
+      "path": "ui/src/components/ContentBrowser.tsx",
+      "name": "ContentBrowser",
+      "startLine": 44,
+      "lines": 471,
+      "decisionScore": 17
     },
     {
       "path": "ui/src/components/ContentBrowser.tsx",
       "name": "handleKeyboard",
       "startLine": 354,
-      "lines": 162,
-      "decisionScore": 20
+      "lines": 48,
+      "decisionScore": 18
+    },
+    {
+      "path": "ui/src/components/DestinationDialog.tsx",
+      "name": "DestinationDialog",
+      "startLine": 25,
+      "lines": 181,
+      "decisionScore": 16
     },
     {
       "path": "ui/src/components/FolderFilmstripRow.tsx",
       "name": "FolderFilmstripRow",
       "startLine": 23,
-      "lines": 178,
+      "lines": 177,
       "decisionScore": 24
     },
     {
       "path": "ui/src/components/ImagePreview.tsx",
       "name": "ImagePreview",
       "startLine": 19,
-      "lines": 103,
-      "decisionScore": 18
+      "lines": 223,
+      "decisionScore": 21
     },
     {
       "path": "ui/src/components/InfoOverlay.tsx",
       "name": "InfoOverlay",
       "startLine": 10,
-      "lines": 55,
+      "lines": 54,
       "decisionScore": 16
     },
     {
       "path": "ui/src/components/RadialFileMenu.tsx",
       "name": "RadialFileMenu",
       "startLine": 39,
-      "lines": 138,
-      "decisionScore": 31
+      "lines": 354,
+      "decisionScore": 46
     },
     {
       "path": "ui/src/components/RadialFileMenu.tsx",
       "name": "handleKeyDown",
       "startLine": 214,
-      "lines": 39,
+      "lines": 38,
       "decisionScore": 16
-    },
-    {
-      "path": "ui/src/components/RadialFileMenu.tsx",
-      "name": "cancelClose",
-      "startLine": 264,
-      "lines": 130,
-      "decisionScore": 17
     },
     {
       "path": "ui/src/components/TaskBar.tsx",
       "name": "TaskBar",
       "startLine": 26,
-      "lines": 161,
+      "lines": 160,
       "decisionScore": 32
     },
     {
       "path": "ui/src/components/VirtualGrid.tsx",
-      "name": "queueAutoScroll",
-      "startLine": 178,
-      "lines": 112,
-      "decisionScore": 29
+      "name": "VirtualGrid",
+      "startLine": 58,
+      "lines": 292,
+      "decisionScore": 24
     },
     {
       "path": "ui/src/state/compareModel.ts",
       "name": "reduceCompare",
       "startLine": 104,
-      "lines": 115,
+      "lines": 114,
       "decisionScore": 23
     },
     {
@@ -290,21 +325,21 @@
       "path": "ui/src/state/controllers/useProjectSessionController.ts",
       "name": "useProjectSessionController",
       "startLine": 54,
-      "lines": 340,
+      "lines": 339,
       "decisionScore": 40
     },
     {
       "path": "ui/src/state/controllers/useSearchController.ts",
       "name": "useSearchController",
       "startLine": 26,
-      "lines": 121,
+      "lines": 210,
       "decisionScore": 17
     },
     {
       "path": "ui/src/state/controllers/useSelectionMarkerController.ts",
       "name": "useSelectionMarkerController",
       "startLine": 24,
-      "lines": 206,
+      "lines": 205,
       "decisionScore": 25
     },
     {
@@ -325,14 +360,14 @@
       "path": "ui/src/state/reducers/searchReducer.ts",
       "name": "reduceSearchAction",
       "startLine": 11,
-      "lines": 128,
+      "lines": 127,
       "decisionScore": 23
     },
     {
       "path": "ui/src/state/reducers/workspaceReducer.ts",
       "name": "reduceWorkspaceAction",
       "startLine": 5,
-      "lines": 78,
+      "lines": 77,
       "decisionScore": 24
     },
     {

@@ -253,6 +253,44 @@ describe('CompareVirtualViewport', () => {
       expect(axis === 'horizontal' ? viewport.scrollLeft : viewport.scrollTop).toBe(expectedOffset)
     },
   )
+
+  it('anchors from the captured offset when a shrinking track clamps the DOM before layout effects', () => {
+    const previous = respacePlan(planWithTwentyItems('horizontal'), 160)
+    const next = respacePlan(planWithTwentyItems('horizontal'), 80)
+    const props = {
+      activeEntityId: 'image-15',
+      renderItem: (entityId: string) => <article tabIndex={0}>{entityId}</article>,
+      onActivate: vi.fn(),
+    }
+    const rendered = render(<CompareVirtualViewport {...props} plan={previous} />)
+    const viewport = screen.getByRole('list', { name: '滚动图片对比' })
+    installTrackClampedScrollLeft(viewport, 100)
+    viewport.scrollLeft = 2_300
+    fireEvent.scroll(viewport)
+
+    rendered.rerender(<CompareVirtualViewport {...props} plan={next} />)
+
+    expect(viewport.scrollLeft).toBe(1_100)
+  })
+
+  it('preserves the active visual delta when the DOM resets during a horizontal-to-vertical transition', () => {
+    const previous = planWithTwentyItems('horizontal')
+    const next = planWithTwentyItems('vertical', 2)
+    const props = {
+      activeEntityId: 'image-5',
+      renderItem: (entityId: string) => <article tabIndex={0}>{entityId}</article>,
+      onActivate: vi.fn(),
+    }
+    const rendered = render(<CompareVirtualViewport {...props} plan={previous} />)
+    const viewport = screen.getByRole('list', { name: '滚动图片对比' })
+    installAxisResetScrollOffsets(viewport)
+    viewport.scrollLeft = 550
+    fireEvent.scroll(viewport)
+
+    rendered.rerender(<CompareVirtualViewport {...props} plan={next} />)
+
+    expect(viewport.scrollTop).toBe(190)
+  })
 })
 
 function planWithTwentyItems(
@@ -343,6 +381,42 @@ function installHorizontalScrollMetrics(
 ) {
   Object.defineProperty(viewport, 'clientWidth', { configurable: true, value: clientWidth })
   Object.defineProperty(viewport, 'scrollWidth', { configurable: true, value: scrollWidth })
+}
+
+function installTrackClampedScrollLeft(viewport: HTMLElement, clientWidth: number) {
+  let scrollLeft = viewport.scrollLeft
+  Object.defineProperty(viewport, 'clientWidth', { configurable: true, value: clientWidth })
+  Object.defineProperty(viewport, 'scrollLeft', {
+    configurable: true,
+    get: () => {
+      const track = viewport.querySelector<HTMLElement>('.compare-scroll-track')
+      if (track === null) throw new Error('Expected compare scroll track')
+      const maximum = Math.max(0, Number.parseFloat(track.style.width) - clientWidth)
+      return Math.max(0, Math.min(maximum, scrollLeft))
+    },
+    set: (next: number) => {
+      scrollLeft = next
+    },
+  })
+}
+
+function installAxisResetScrollOffsets(viewport: HTMLElement) {
+  let scrollLeft = viewport.scrollLeft
+  let scrollTop = viewport.scrollTop
+  Object.defineProperty(viewport, 'scrollLeft', {
+    configurable: true,
+    get: () => (viewport.dataset.axis === 'horizontal' ? scrollLeft : 0),
+    set: (next: number) => {
+      scrollLeft = next
+    },
+  })
+  Object.defineProperty(viewport, 'scrollTop', {
+    configurable: true,
+    get: () => (viewport.dataset.axis === 'vertical' ? scrollTop : 0),
+    set: (next: number) => {
+      scrollTop = next
+    },
+  })
 }
 
 function wheel(viewport: HTMLElement, init: WheelEventInit) {

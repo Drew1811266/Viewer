@@ -22,6 +22,7 @@ export default function CompareVirtualViewport({
   const viewportRef = useRef<HTMLDivElement>(null)
   const pendingFocusEntityId = useRef<string | null>(null)
   const previousPlan = useRef(plan)
+  const scrollOffsets = useRef({ left: 0, top: 0 })
   const [scrollLeft, setScrollLeft] = useState(0)
   const [scrollTop, setScrollTop] = useState(0)
   const mountedIndexes = useMemo(
@@ -44,12 +45,18 @@ export default function CompareVirtualViewport({
     const node = viewportRef.current
     const previous = previousPlan.current
     if (node !== null && previous !== plan) {
-      const previousOffset = previous.scrollAxis === 'horizontal' ? node.scrollLeft : node.scrollTop
+      const previousOffset =
+        previous.scrollAxis === 'horizontal'
+          ? scrollOffsets.current.left
+          : scrollOffsets.current.top
       const nextOffset = anchoredCompareScrollOffset(previous, plan, activeEntityId, previousOffset)
       if (plan.scrollAxis === 'horizontal') node.scrollLeft = nextOffset
       else node.scrollTop = nextOffset
-      setScrollLeft(node.scrollLeft)
-      setScrollTop(node.scrollTop)
+      const actualScrollLeft = node.scrollLeft
+      const actualScrollTop = node.scrollTop
+      scrollOffsets.current = { left: actualScrollLeft, top: actualScrollTop }
+      setScrollLeft(actualScrollLeft)
+      setScrollTop(actualScrollTop)
     }
     previousPlan.current = plan
   }, [activeEntityId, plan])
@@ -63,7 +70,10 @@ export default function CompareVirtualViewport({
         event.deltaX,
         event.deltaY,
         () => event.preventDefault(),
-        setScrollLeft,
+        (nextScrollLeft) => {
+          scrollOffsets.current.left = nextScrollLeft
+          setScrollLeft(nextScrollLeft)
+        },
       )
     }
     node.addEventListener('wheel', nativeWheel, { passive: false })
@@ -71,8 +81,11 @@ export default function CompareVirtualViewport({
   }, [plan.scrollAxis])
 
   function scrolled(event: UIEvent<HTMLDivElement>) {
-    setScrollLeft(event.currentTarget.scrollLeft)
-    setScrollTop(event.currentTarget.scrollTop)
+    const actualScrollLeft = event.currentTarget.scrollLeft
+    const actualScrollTop = event.currentTarget.scrollTop
+    scrollOffsets.current = { left: actualScrollLeft, top: actualScrollTop }
+    setScrollLeft(actualScrollLeft)
+    setScrollTop(actualScrollTop)
   }
 
   const wheel: WheelEventHandler<HTMLDivElement> = (event) => {
@@ -82,7 +95,10 @@ export default function CompareVirtualViewport({
       event.deltaX,
       event.deltaY,
       () => event.preventDefault(),
-      setScrollLeft,
+      (nextScrollLeft) => {
+        scrollOffsets.current.left = nextScrollLeft
+        setScrollLeft(nextScrollLeft)
+      },
     )
   }
 

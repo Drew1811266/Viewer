@@ -1,5 +1,11 @@
+import { execFile, spawn as spawnChild } from 'node:child_process'
+import { constants as fsConstants } from 'node:fs'
+import { access, mkdir, open, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
+import { promisify } from 'node:util'
 import { fileURLToPath } from 'node:url'
+
+const execFileAsync = promisify(execFile)
 
 /**
  * @typedef {{
@@ -146,4 +152,266 @@ export function selectStopTargets(processes, repoRoot, currentPid = process.pid)
  */
 export function isExactDevelopmentViewerRunning(processes, executablePath) {
   return processes.some((item) => commandExecutable(item.command) === executablePath)
+}
+
+/**
+ * @typedef {{
+ *   version: 1,
+ *   pid: number,
+ *   pgid: number,
+ *   repoRoot: string,
+ *   startedAt: string,
+ * }} SessionState
+ *
+ * @typedef {{
+ *   listProcesses(): Promise<ProcessInfo[]>,
+ *   readSession(): Promise<SessionState | undefined>,
+ *   writeSession(state: SessionState): Promise<void>,
+ *   clearSession(): Promise<void>,
+ *   stop(target: StopTarget): Promise<void>,
+ *   spawn(): Promise<{pid: number, pgid: number}>,
+ *   isAlive(pid: number): boolean,
+ *   sleep(ms: number): Promise<void>,
+ *   tailLog(lines: number): Promise<string>,
+ * }} LauncherRuntime
+ */
+
+/**
+ * @param {number} pid
+ * @returns {boolean}
+ */
+function isProcessAlive(pid) {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch (error) {
+    if (error?.code === 'ESRCH') return false
+    if (error?.code === 'EPERM') return true
+    throw error
+  }
+}
+
+/**
+ * @param {StopTarget} target
+ * @returns {boolean}
+ */
+function isTargetAlive(target) {
+  const pid = target.kind === 'group' ? -target.id : target.id
+  return isProcessAlive(pid)
+}
+
+/**
+ * @param {number} ms
+ * @returns {Promise<void>}
+ */
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+/**
+ * @param {LauncherPaths} paths
+ * @param {{env?: NodeJS.ProcessEnv}} [options]
+ * @returns {LauncherRuntime}
+ */
+export function createSystemRuntime(paths, { env = process.env } = {}) {
+  return {
+    async listProcesses() {
+      const { stdout } = await execFileAsync(
+        'ps',
+        ['-axo', 'pid=,ppid=,pgid=,command='],
+        { maxBuffer: 4 * 1024 * 1024 },
+      )
+      return parseProcessTable(stdout)
+    },
+
+    async readSession() {
+      try {
+        const value = JSON.parse(await readFile(paths.statePath, 'utf8'))
+        return value && typeof value === 'object' ? value : undefined
+      } catch (error) {
+        if (error?.code === 'ENOENT' || error instanceof SyntaxError) return undefined
+        throw error
+      }
+    },
+
+    async writeSession(state) {
+      await mkdir(paths.stateDir, { recursive: true })
+      const temporaryPath = `${paths.statePath}.${process.pid}.tmp`
+      await writeFile(temporaryPath, `${JSON.stringify(state, null, 2)}\n`)
+      await rename(temporaryPath, paths.statePath)
+    },
+
+    async clearSession() {
+      await rm(paths.statePath, { force: true })
+    },
+
+    async stop(target) {
+      const pid = target.kind === 'group' ? -target.id : target.id
+      try {
+        process.kill(pid, 'SIGTERM')
+      } catch (error) {
+        if (error?.code === 'ESRCH') return
+        throw error
+      }
+
+      const deadline = Date.now() + 5_000
+      while (Date.now() <= deadline) {
+        if (!isTargetAlive(target)) return
+        await delay(50)
+      }
+
+      throw new Error(
+        `Viewer ${target.kind} ${target.id} did not stop after SIGTERM`,
+      )
+    },
+
+    async spawn() {
+      const packagePath = path.join(paths.repoRoot, 'package.json')
+      const tauriPath = path.join(paths.repoRoot, 'src-tauri')
+      try {
+        await access(packagePath, fsConstants.F_OK)
+        const tauriMetadata = await stat(tauriPath)
+        if (!tauriMetadata.isDirectory()) {
+          throw new Error(`${tauriPath} is not a directory`)
+        }
+      } catch (error) {
+        throw new Error(`Viewer repository is incomplete: ${error.message}`, {
+          cause: error,
+        })
+      }
+
+      await mkdir(paths.stateDir, { recursive: true })
+      const logFile = await open(paths.logPath, 'w')
+
+      return new Promise((resolve, reject) => {
+        const child = spawnChild('pnpm', ['tauri', 'dev'], {
+          cwd: paths.repoRoot,
+          detached: true,
+          env,
+          stdio: ['ignore', logFile.fd, logFile.fd],
+        })
+
+        child.once('error', async (error) => {
+          await logFile.close()
+          reject(new Error(`Unable to start pnpm tauri dev: ${error.message}`, {
+            cause: error,
+          }))
+        })
+        child.once('spawn', async () => {
+          await logFile.close()
+          child.unref()
+          resolve({ pid: child.pid, pgid: child.pid })
+        })
+      })
+    },
+
+    isAlive(pid) {
+      return isProcessAlive(pid)
+    },
+
+    sleep(ms) {
+      return delay(ms)
+    },
+
+    async tailLog(lines) {
+      try {
+        const contents = await readFile(paths.logPath, 'utf8')
+        return contents.split(/\r?\n/).slice(-lines).join('\n')
+      } catch (error) {
+        if (error?.code === 'ENOENT') return ''
+        throw error
+      }
+    },
+  }
+}
+
+/**
+ * @param {SessionState | undefined} session
+ * @param {ProcessInfo | undefined} liveProcess
+ * @param {string} repoRoot
+ * @returns {boolean}
+ */
+export function sessionMatchesProcess(session, liveProcess, repoRoot) {
+  return (
+    session?.version === 1 &&
+    session.repoRoot === repoRoot &&
+    liveProcess?.pid === session.pid &&
+    liveProcess.pgid === session.pgid &&
+    /(?:pnpm\s+tauri\s+["']?dev["']?|tauri\.js\s+["']?dev["']?)(?:\s|$)/.test(
+      liveProcess.command,
+    )
+  )
+}
+
+/**
+ * @param {{
+ *   paths: LauncherPaths,
+ *   runtime: LauncherRuntime,
+ *   timeoutMs?: number,
+ *   pollMs?: number,
+ * }} options
+ * @returns {Promise<{pid: number, executablePath: string, logPath: string}>}
+ */
+export async function restartDevelopmentViewer({
+  paths,
+  runtime,
+  timeoutMs = 120_000,
+  pollMs = 250,
+}) {
+  const initial = await runtime.listProcesses()
+  const stored = await runtime.readSession()
+  const storedProcess = stored
+    ? initial.find((item) => item.pid === stored.pid)
+    : undefined
+
+  if (stored && sessionMatchesProcess(stored, storedProcess, paths.repoRoot)) {
+    await runtime.stop({ kind: 'group', id: stored.pgid, viewerPid: stored.pid })
+  } else if (stored) {
+    await runtime.clearSession()
+  }
+
+  for (const target of selectStopTargets(initial, paths.repoRoot)) {
+    const alreadyStoppedStoredGroup =
+      stored?.pgid === target.id && target.kind === 'group'
+    if (!alreadyStoppedStoredGroup) {
+      await runtime.stop(target)
+    }
+  }
+
+  const remaining = await runtime.listProcesses()
+  if (remaining.some((item) => isViewerExecutable(item.command, paths.repoRoot))) {
+    throw new Error('Existing Viewer process did not stop')
+  }
+
+  const child = await runtime.spawn()
+  await runtime.writeSession({
+    version: 1,
+    pid: child.pid,
+    pgid: child.pgid,
+    repoRoot: paths.repoRoot,
+    startedAt: new Date().toISOString(),
+  })
+
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() <= deadline) {
+    const processes = await runtime.listProcesses()
+    if (isExactDevelopmentViewerRunning(processes, paths.executablePath)) {
+      return {
+        pid: child.pid,
+        executablePath: paths.executablePath,
+        logPath: paths.logPath,
+      }
+    }
+    if (!runtime.isAlive(child.pid)) {
+      const tail = await runtime.tailLog(40)
+      await runtime.clearSession()
+      throw new Error(`Viewer development launcher exited early.\n${tail}`)
+    }
+    await runtime.sleep(pollMs)
+  }
+
+  await runtime.stop({ kind: 'group', id: child.pgid, viewerPid: child.pid })
+  await runtime.clearSession()
+  const tail = await runtime.tailLog(40)
+  throw new Error(`Viewer development startup timed out.\n${tail}`)
 }

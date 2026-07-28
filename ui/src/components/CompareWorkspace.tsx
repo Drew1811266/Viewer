@@ -13,6 +13,7 @@ import {
   reconcileComparePanes,
   reduceCompare,
 } from '../state/compareModel'
+import { compareValidationMessage } from '../state/comparePolicy'
 import ComparePane from './ComparePane'
 
 interface CompareWorkspaceProps {
@@ -108,7 +109,7 @@ export default function CompareWorkspace({
   if (model === null) {
     return (
       <section className="compare-workspace compare-invalid" aria-label="图片对比">
-        <p role="alert">请选择 2–4 张 JPG 或 PNG 图片进行对比。</p>
+        <p role="alert">{compareValidationMessage('invalid_cardinality')}</p>
         <button type="button" onClick={() => onEntityIdsChange([])}>
           返回文件网格
         </button>

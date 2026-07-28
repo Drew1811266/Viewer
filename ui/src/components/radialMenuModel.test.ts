@@ -56,6 +56,20 @@ describe('buildRadialMenuModel', () => {
     expect(mixed[4]).toMatchObject({ id: 'compare', disabled: true })
   })
 
+  it('enables compare at 20 and disables it above 20 with exact copy', () => {
+    const twenty = buildRadialMenuModel(context({ selectedCount: 20, selectedImageCount: 20 }))[4]
+    expect(twenty).toMatchObject({ id: 'compare', disabled: false })
+
+    const twentyOne = buildRadialMenuModel(
+      context({ selectedCount: 21, selectedImageCount: 21 }),
+    )[4]
+    expect(twentyOne).toMatchObject({
+      id: 'compare',
+      disabled: true,
+      disabledReason: '最多同时对比 20 张图片',
+    })
+  })
+
   it('explains an unavailable compare context separately from an invalid selection shape', () => {
     const unavailable = buildRadialMenuModel(
       context({

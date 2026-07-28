@@ -899,14 +899,14 @@ describe('Viewer empty state', () => {
     const back = screen.getByRole('option', { name: 'back.jpg' })
     fireEvent.click(front)
     fireEvent.keyDown(window, { key: 'c' })
-    expect(screen.getByText('请选择 2–4 张 JPG 或 PNG 图片进行对比。')).toBeVisible()
+    expect(screen.getByText('请选择 2–20 张 JPG 或 PNG 图片进行对比。')).toBeVisible()
 
     fireEvent.click(back, { metaKey: true })
     openRadialMenu(back, 204)
     fireEvent.click(screen.getByRole('menuitem', { name: '并排对比' }))
 
     expect(await screen.findByRole('region', { name: '图片对比' })).toBeVisible()
-    expect(screen.queryByText('请选择 2–4 张 JPG 或 PNG 图片进行对比。')).not.toBeInTheDocument()
+    expect(screen.queryByText('请选择 2–20 张 JPG 或 PNG 图片进行对比。')).not.toBeInTheDocument()
   })
 
   it('closes the radial snapshot as soon as a deferred project close starts', async () => {
@@ -1662,6 +1662,37 @@ describe('Viewer empty state', () => {
     expect(back).toHaveAttribute('aria-selected', 'true')
   })
 
+  it('opens comparison with C after selecting 20 images', async () => {
+    const viewer = bridge()
+    vi.mocked(viewer.queryFolder).mockResolvedValue(compareContentWorkspaceWithCount(20))
+    render(<App bridge={viewer} />)
+    fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
+    const grid = await screen.findByRole('listbox', { name: '图片文件' })
+
+    fireEvent.keyDown(grid, { key: 'a', metaKey: true })
+    fireEvent.keyDown(window, { key: 'c' })
+
+    expect(await screen.findByRole('region', { name: '图片对比' })).toBeVisible()
+  })
+
+  it('keeps compare disabled for a 21-image selection', async () => {
+    const viewer = bridge()
+    vi.mocked(viewer.queryFolder).mockResolvedValue(compareContentWorkspaceWithCount(21))
+    render(<App bridge={viewer} />)
+    fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
+    const grid = await screen.findByRole('listbox', { name: '图片文件' })
+
+    fireEvent.keyDown(grid, { key: 'a', metaKey: true })
+    const image = screen.getByRole('option', { name: 'image-1.jpg' })
+    openRadialMenu(image, 221)
+    const compare = screen.getByRole('menuitem', { name: '并排对比' })
+    expect(compare).toHaveAttribute('aria-disabled', 'true')
+    expect(compare).toHaveAttribute('title', '最多同时对比 20 张图片')
+    fireEvent.click(compare)
+
+    expect(screen.queryByRole('region', { name: '图片对比' })).not.toBeInTheDocument()
+  })
+
   it('applies an inline pane marker without replacing the underlying grid selection', async () => {
     const viewer = bridge()
     vi.mocked(viewer.queryFolder).mockResolvedValue(compareContentWorkspace())
@@ -1933,6 +1964,21 @@ function compareContentWorkspace() {
         modifiedNs: '2',
       },
     ],
+    textFiles: [],
+  }
+}
+
+function compareContentWorkspaceWithCount(count: number) {
+  const source = defined(contentWorkspace().images[0], 'Expected source image')
+  return {
+    workspace: 'content' as const,
+    images: Array.from({ length: count }, (_, index) => ({
+      ...source,
+      entityId: `image-${index + 1}`,
+      relativePath: `id/image-${index + 1}.jpg`,
+      name: `image-${index + 1}.jpg`,
+      modifiedNs: String(index + 1),
+    })),
     textFiles: [],
   }
 }

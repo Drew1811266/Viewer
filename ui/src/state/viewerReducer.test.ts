@@ -38,6 +38,21 @@ function scan(generation: number): ScanEvent {
 }
 
 describe('viewerReducer', () => {
+  it('keeps up to 20 compare IDs and refuses 21 without truncating', () => {
+    const twenty = Array.from({ length: 20 }, (_, index) => `image-${index}`)
+    const accepted = viewerReducer(initialViewerState, {
+      type: 'compare_context_changed',
+      entityIds: twenty,
+    })
+    expect(accepted.compareEntityIds).toEqual(twenty)
+
+    const rejected = viewerReducer(accepted, {
+      type: 'compare_context_changed',
+      entityIds: [...twenty, 'image-20'],
+    })
+    expect(rejected.compareEntityIds).toEqual(twenty)
+  })
+
   it('keeps domain ownership explicit for actions reducers do not own', () => {
     expect(
       reduceProjectAction(initialViewerState, { type: 'search_focus_requested' }),

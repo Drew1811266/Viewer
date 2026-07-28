@@ -9,7 +9,7 @@ const files = ['a', 'b', 'c', 'd'].map((id) => image(id, `${id}.jpg`))
 describe('CompareWorkspace', () => {
   it('rejects invalid cardinality and non-image candidates with safe feedback', () => {
     const one = renderWorkspace({ files: files.slice(0, 1) })
-    expect(screen.getByRole('alert')).toHaveTextContent('请选择 2–4 张 JPG 或 PNG')
+    expect(screen.getByRole('alert')).toHaveTextContent('请选择 2–20 张 JPG 或 PNG')
     one.unmount()
 
     renderWorkspace({
@@ -18,7 +18,7 @@ describe('CompareWorkspace', () => {
         { ...defined(files[1], 'Expected second comparison fixture'), kind: 'text' },
       ],
     })
-    expect(screen.getByRole('alert')).toHaveTextContent('请选择 2–4 张 JPG 或 PNG')
+    expect(screen.getByRole('alert')).toHaveTextContent('请选择 2–20 张 JPG 或 PNG')
   })
 
   it('uses two-column, asymmetric-three and four-grid layouts', () => {

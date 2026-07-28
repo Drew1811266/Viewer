@@ -1,4 +1,5 @@
 import type { ReviewState } from '../api/types'
+import { MAX_COMPARE_IMAGES, MIN_COMPARE_IMAGES } from '../state/comparePolicy'
 
 export type RadialLeafAction =
   | 'preview'
@@ -43,8 +44,8 @@ export function buildRadialMenuModel(context: RadialMenuContext): RadialMenuItem
   const compareDisabled =
     context.busy ||
     !context.compareContextAvailable ||
-    context.selectedCount < 2 ||
-    context.selectedCount > 4 ||
+    context.selectedCount < MIN_COMPARE_IMAGES ||
+    context.selectedCount > MAX_COMPARE_IMAGES ||
     context.selectedImageCount !== context.selectedCount
   const writeReason = (action: '标记' | '整理' | '删除') =>
     noSelection
@@ -126,7 +127,13 @@ export function buildRadialMenuModel(context: RadialMenuContext): RadialMenuItem
         ? '请等待当前文件操作完成'
         : !context.compareContextAvailable
           ? '请先返回文件夹内容，再选择图片进行对比'
-          : '请选择 2–4 张图片',
+          : context.selectedCount > MAX_COMPARE_IMAGES
+            ? '最多同时对比 20 张图片'
+            : context.selectedCount < MIN_COMPARE_IMAGES
+              ? '请选择 2–20 张图片'
+              : context.selectedImageCount !== context.selectedCount
+                ? '仅支持 JPG 或 PNG 图片'
+                : undefined,
     },
     {
       id: 'info',

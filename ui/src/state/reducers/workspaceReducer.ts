@@ -1,4 +1,5 @@
 import type { FolderWorkspace, Marker, MarkerChange, ScanEvent } from '../../api/types'
+import { MAX_COMPARE_IMAGES } from '../comparePolicy'
 import type { ScanState, ViewerAction, ViewerState } from '../viewerState'
 import { isCurrentEvent, isCurrentProjection, sameStrings, unique } from './shared'
 
@@ -47,8 +48,11 @@ export function reduceWorkspaceAction(
         : state
     case 'preview_context_changed':
       return { ...state, previewEntityId: action.entityId }
-    case 'compare_context_changed':
-      return { ...state, compareEntityIds: unique(action.entityIds).slice(0, 4) }
+    case 'compare_context_changed': {
+      const entityIds = unique(action.entityIds)
+      if (entityIds.length > MAX_COMPARE_IMAGES) return state
+      return { ...state, compareEntityIds: entityIds }
+    }
     case 'project_changed_received':
       if (!isCurrentProjection(state, action.change.sessionId, action.change.generation)) {
         return state

@@ -1,3 +1,5 @@
+import { type CompareValidationResult, validateCompareCandidates } from './comparePolicy'
+
 export const MIN_COMPARE_SCALE = 0.1
 export const MAX_COMPARE_SCALE = 8
 
@@ -38,10 +40,7 @@ export interface CompareState {
 
 export type CompareCreationResult =
   | { ok: true; state: CompareState }
-  | {
-      ok: false
-      reason: 'invalid_cardinality' | 'duplicate_entity' | 'unsupported_type'
-    }
+  | Extract<CompareValidationResult, { ok: false }>
 
 export type CompareTransition =
   | { kind: 'compare'; state: CompareState }
@@ -65,16 +64,9 @@ const DEFAULT_NORMALIZED: NormalizedTransform = {
 }
 
 export function createCompareState(candidates: readonly CompareCandidate[]): CompareCreationResult {
-  if (candidates.length < 2 || candidates.length > 4) {
-    return { ok: false, reason: 'invalid_cardinality' }
-  }
+  const validation = validateCompareCandidates(candidates)
+  if (!validation.ok) return validation
   const entityIds = candidates.map((candidate) => candidate.entityId)
-  if (new Set(entityIds).size !== entityIds.length) {
-    return { ok: false, reason: 'duplicate_entity' }
-  }
-  if (candidates.some((candidate) => candidate.kind !== 'jpeg' && candidate.kind !== 'png')) {
-    return { ok: false, reason: 'unsupported_type' }
-  }
   const transforms = Object.fromEntries(
     entityIds.map((entityId) => [entityId, paneTransform(DEFAULT_NORMALIZED, 0)]),
   )

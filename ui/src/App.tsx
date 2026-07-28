@@ -39,6 +39,7 @@ import TaskBar from './components/TaskBar'
 import TextPreview from './components/TextPreview'
 import TrashConfirmation from './components/TrashConfirmation'
 import { useViewerSettings, ViewerSettingsProvider } from './settings/ViewerSettingsProvider'
+import { compareValidationMessage, validateCompareCandidates } from './state/comparePolicy'
 import { organizationShortcutIsOwned } from './state/organizationShortcutOwnership'
 import type { OrganizationDragMode } from './state/useOrganizationPointerDrag'
 import { useOrganizationPointerDrag } from './state/useOrganizationPointerDrag'
@@ -557,8 +558,9 @@ function ViewerWorkspace({ bridge }: { bridge: ViewerBridge }) {
         )
         return
       }
-      if (files.length < 2 || files.length > 4 || !files.every(matchesImage)) {
-        setCompareStatus('请选择 2–4 张 JPG 或 PNG 图片进行对比。')
+      const validation = validateCompareCandidates(files)
+      if (!validation.ok) {
+        setCompareStatus(compareValidationMessage(validation.reason))
         return
       }
       setCompareStatus(null)

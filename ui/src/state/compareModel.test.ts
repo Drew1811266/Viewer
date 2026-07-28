@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { defined } from '../defined'
 import {
-  compareLayout,
   createCompareState,
   MAX_COMPARE_SCALE,
   MIN_COMPARE_SCALE,
@@ -15,6 +14,11 @@ const images = [
   { entityId: 'c', kind: 'jpeg' as const },
   { entityId: 'd', kind: 'png' as const },
 ]
+
+const twentyImages = Array.from({ length: 20 }, (_, index) => ({
+  entityId: `image-${index}`,
+  kind: 'jpeg' as const,
+}))
 
 const wide = {
   imageWidth: 4_000,
@@ -40,12 +44,12 @@ function stateWithMetrics() {
 }
 
 describe('compareModel', () => {
-  it('accepts exactly two to four unique JPG/PNG entities', () => {
+  it('accepts exactly two to twenty unique JPG/PNG entities', () => {
     expect(createCompareState(images.slice(0, 1))).toEqual({
       ok: false,
       reason: 'invalid_cardinality',
     })
-    expect(createCompareState([...images, { entityId: 'e', kind: 'jpeg' }])).toEqual({
+    expect(createCompareState([...twentyImages, { entityId: 'image-20', kind: 'jpeg' }])).toEqual({
       ok: false,
       reason: 'invalid_cardinality',
     })
@@ -59,28 +63,16 @@ describe('compareModel', () => {
       reason: 'unsupported_type',
     })
 
-    const created = createCompareState(images)
+    const created = createCompareState(twentyImages)
     expect(created.ok).toBe(true)
     if (!created.ok) return
     expect(created.state.mode).toBe('synchronized')
-    expect(created.state.transforms.a).toEqual({
+    expect(created.state.transforms['image-0']).toEqual({
       scale: 1,
       centerX: 0.5,
       centerY: 0.5,
       rotation: 0,
     })
-  })
-
-  it('selects deterministic layouts for two, three and four panes', () => {
-    for (const [count, layout] of [
-      [2, 'two_columns'],
-      [3, 'three_asymmetric'],
-      [4, 'four_grid'],
-    ] as const) {
-      const created = createCompareState(images.slice(0, count))
-      if (!created.ok) throw new Error('fixture must be valid')
-      expect(compareLayout(created.state)).toBe(layout)
-    }
   })
 
   it('supports fit, 100 percent and bounded zoom', () => {
@@ -140,7 +132,7 @@ describe('compareModel', () => {
     expect(state.shared).toEqual({ scale: 1, centerX: 0.5, centerY: 0.5 })
   })
 
-  it('preserves surviving transforms, reflows, and exits to preview or grid', () => {
+  it('preserves surviving transforms and exits to preview or grid', () => {
     const created = createCompareState(images)
     if (!created.ok) throw new Error('fixture must be valid')
     let state = reduceCompare(created.state, { type: 'mode_changed', mode: 'independent' })
@@ -149,7 +141,6 @@ describe('compareModel', () => {
     const three = reconcileComparePanes(state, ['a', 'b', 'c'])
     expect(three.kind).toBe('compare')
     if (three.kind !== 'compare') return
-    expect(compareLayout(three.state)).toBe('three_asymmetric')
     expect(defined(three.state.transforms.b, 'Expected retained transform for image b').scale).toBe(
       2,
     )

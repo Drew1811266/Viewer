@@ -189,6 +189,39 @@ describe('RadialFileMenu', () => {
     expect(sequentialTabStops(container)).toEqual([info])
   })
 
+  it('does not execute a disabled 21-image compare item', () => {
+    const action = vi.fn()
+    const overCapacityModel = buildRadialMenuModel({
+      selectedCount: 21,
+      selectedImageCount: 21,
+      readOnly: false,
+      busy: false,
+      compareContextAvailable: true,
+      commonReview: null,
+      commonFavorite: false,
+    })
+    render(
+      <RadialFileMenu
+        origin={{ x: 320, y: 240 }}
+        pointerId={null}
+        selectionCount={21}
+        model={overCapacityModel}
+        onAction={action}
+        onClose={vi.fn()}
+      />,
+    )
+
+    const compare = screen.getByRole('menuitem', { name: '并排对比' })
+    expect(compare).toHaveAttribute('aria-disabled', 'true')
+    expect(compare).toHaveAttribute('title', '最多同时对比 20 张图片')
+    fireEvent.click(compare)
+    const info = screen.getByRole('menuitem', { name: '信息' })
+    info.focus()
+    expect(info).toHaveFocus()
+    fireEvent.keyDown(screen.getByRole('menu', { name: '文件操作' }), { key: 'Enter' })
+    expect(action).not.toHaveBeenCalledWith('compare')
+  })
+
   it('keeps a focused disabled secondary item as the sole roving current item', () => {
     const action = vi.fn()
     const modelWithDisabledChild = model.map((item) =>

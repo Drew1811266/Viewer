@@ -338,9 +338,7 @@ describe('workspace style contracts', () => {
     expect(declaration('.preview-overlay', 'background')).toBe('var(--preview-surface)')
     expect(declaration('.preview-overlay', 'color')).toBe('var(--preview-text)')
     expect(declaration('.preview-toolbar', 'background')).toBe('var(--preview-chrome)')
-    expect(declaration('.preview-toolbar', 'border-bottom')).toBe(
-      '1px solid var(--preview-border)',
-    )
+    expect(declaration('.preview-toolbar', 'border-bottom')).toBe('1px solid var(--preview-border)')
     expect(declaration('.preview-toolbar', 'color')).toBe('var(--preview-text)')
     expect(declaration('.image-preview-stage', 'background')).toBe('var(--preview-stage)')
     expect(declaration('.image-preview-stage img', 'border')).toBe(
@@ -349,25 +347,17 @@ describe('workspace style contracts', () => {
     expect(declaration('.image-preview-stage img', 'box-shadow')).toBe(
       'var(--preview-image-shadow)',
     )
-    expect(declaration('.image-preview > footer', 'background')).toBe(
-      'var(--preview-chrome)',
-    )
+    expect(declaration('.image-preview > footer', 'background')).toBe('var(--preview-chrome)')
     expect(declaration('.image-preview > footer', 'border-top')).toBe(
       '1px solid var(--preview-border)',
     )
     expect(declaration('.image-preview > footer', 'color')).toBe('var(--preview-text)')
-    expect(declaration('.preview-overlay [role="alert"]', 'color')).toBe(
-      'var(--preview-danger)',
-    )
-    expect(declaration('.text-preview', 'background')).toBe(
-      'var(--preview-document-surface)',
-    )
+    expect(declaration('.preview-overlay [role="alert"]', 'color')).toBe('var(--preview-danger)')
+    expect(declaration('.text-preview', 'background')).toBe('var(--preview-document-surface)')
     expect(declaration('.text-preview', 'color')).toBe('var(--preview-text)')
     expect(declaration('.text-preview .preview-toolbar', 'position')).toBe('sticky')
     expect(declaration('.text-preview .preview-toolbar', 'top')).toBe('0')
-    expect(declaration('.text-preview .preview-toolbar', 'color')).toBe(
-      'var(--preview-text)',
-    )
+    expect(declaration('.text-preview .preview-toolbar', 'color')).toBe('var(--preview-text)')
 
     for (const selector of [
       '.preview-toolbar button',
@@ -375,9 +365,7 @@ describe('workspace style contracts', () => {
       '.image-preview > footer button',
     ]) {
       expect(declaration(selector, 'background')).toBe('var(--preview-control-surface)')
-      expect(declaration(selector, 'border')).toBe(
-        '1px solid var(--preview-control-border)',
-      )
+      expect(declaration(selector, 'border')).toBe('1px solid var(--preview-control-border)')
       expect(declaration(selector, 'border-radius')).toBe('6px')
       expect(declaration(selector, 'color')).toBe('var(--preview-text)')
       expect(declaration(selector, 'min-height')).toBe('30px')
@@ -388,12 +376,8 @@ describe('workspace style contracts', () => {
       '.preview-toolbar select:hover',
       '.image-preview > footer button:hover:not(:disabled)',
     ]) {
-      expect(declaration(selector, 'background')).toBe(
-        'var(--preview-control-hover-surface)',
-      )
-      expect(declaration(selector, 'border-color')).toBe(
-        'var(--preview-control-hover-border)',
-      )
+      expect(declaration(selector, 'background')).toBe('var(--preview-control-hover-surface)')
+      expect(declaration(selector, 'border-color')).toBe('var(--preview-control-hover-border)')
     }
 
     for (const selector of [
@@ -410,6 +394,127 @@ describe('workspace style contracts', () => {
     expect(contrastRatio('#8a94a3', '#ffffff')).toBeGreaterThanOrEqual(3)
     expect(contrastRatio('#747f8e', '#f3f5f7')).toBeGreaterThanOrEqual(3)
     expect(contrastRatio('#9d1c13', '#fff3f0')).toBeGreaterThanOrEqual(4.5)
+  })
+
+  it('renders image comparison from the shared light preview theme', () => {
+    const rules = parseRules(appCss)
+    const declaration = (selector: string, property: string) =>
+      winningDeclaration(rules, new Set([selector]), property)
+
+    expect(declaration('.compare-workspace', 'background')).toBe('var(--preview-surface)')
+    expect(declaration('.compare-workspace', 'border-radius')).toBe('10px')
+    expect(declaration('.compare-workspace', 'border')).toBe('')
+    expect(declaration('.compare-workspace', 'color')).toBe('var(--preview-text)')
+    expect(declaration('.compare-toolbar', 'background')).toBe('var(--preview-chrome)')
+    expect(declaration('.compare-toolbar', 'border-bottom')).toBe('1px solid var(--preview-border)')
+    expect(declaration('.compare-toolbar > span', 'color')).toBe('var(--preview-muted)')
+    expect(declaration('.compare-pane-grid', 'background')).toBe('var(--preview-surface)')
+
+    expect(declaration('.compare-pane', 'background')).toBe('var(--preview-panel-surface)')
+    expect(declaration('.compare-pane', 'border')).toBe('2px solid var(--preview-border)')
+    expect(declaration('.compare-pane.is-active', 'border-color')).toBe('var(--preview-accent)')
+    expect(declaration('.compare-pane-header', 'background')).toBe('var(--preview-chrome)')
+    expect(declaration('.compare-pane-header', 'border-bottom')).toBe(
+      '1px solid var(--preview-border)',
+    )
+    expect(declaration('.compare-pane-stage', 'background')).toBe('var(--preview-stage)')
+    expect(declaration('.compare-pane-stage img', 'outline')).toBe(
+      '1px solid var(--preview-border)',
+    )
+    expect(declaration('.compare-pane-stage img', 'box-shadow')).toBe('var(--preview-image-shadow)')
+    expect(declaration('.compare-pane > footer', 'background')).toBe('var(--preview-chrome)')
+    expect(declaration('.compare-pane > footer', 'border-top')).toBe(
+      '1px solid var(--preview-border)',
+    )
+
+    for (const selector of [
+      '.compare-toolbar button',
+      '.compare-pane button',
+      '.compare-invalid > button',
+    ]) {
+      expect(declaration(selector, 'background')).toBe('var(--preview-control-surface)')
+      expect(declaration(selector, 'border')).toBe('1px solid var(--preview-control-border)')
+      expect(declaration(selector, 'border-radius')).toBe('5px')
+      expect(declaration(selector, 'color')).toBe('var(--preview-text)')
+      expect(declaration(selector, 'min-height')).toBe('28px')
+    }
+
+    expect(declaration('.compare-pane-header button', 'min-height')).toBe('24px')
+    expect(declaration('.compare-pane-header button', 'min-width')).toBe('26px')
+    expect(declaration('.compare-pane-header button', 'padding')).toBe('0')
+    expect(declaration('.compare-pane > footer .marker-buttons button', 'min-height')).toBe('24px')
+    expect(declaration('.compare-pane > footer .marker-buttons button', 'padding')).toBe('2px 5px')
+
+    for (const selector of [
+      '.compare-toolbar button:hover:not(:disabled):not([aria-pressed="true"])',
+      '.compare-pane button:hover:not(:disabled):not([aria-pressed="true"])',
+      '.compare-invalid > button:hover:not(:disabled)',
+    ]) {
+      expect(declaration(selector, 'background')).toBe('var(--preview-control-hover-surface)')
+      expect(declaration(selector, 'border-color')).toBe('var(--preview-control-hover-border)')
+    }
+
+    for (const selector of [
+      '.compare-toolbar button:focus-visible',
+      '.compare-pane button:focus-visible',
+      '.compare-invalid > button:focus-visible',
+    ]) {
+      expect(declaration(selector, 'outline')).toBe('2px solid var(--preview-accent)')
+      expect(declaration(selector, 'outline-offset')).toBe('2px')
+    }
+
+    expect(
+      winningDeclaration(
+        rules,
+        new Set([
+          '.compare-toolbar button[aria-pressed="true"]',
+          '.compare-pane .marker-buttons button[aria-pressed="true"]',
+        ]),
+        'background',
+      ),
+    ).toBe('var(--preview-accent-surface)')
+    expect(declaration('.compare-toolbar button[aria-pressed="true"]', 'color')).toBe(
+      'var(--preview-accent-text)',
+    )
+    expect(declaration('.compare-pane .marker-buttons button[aria-pressed="true"]', 'color')).toBe(
+      'var(--preview-accent-text)',
+    )
+
+    for (const selector of [
+      '.compare-pane > p[role="alert"]',
+      '.compare-invalid > p[role="alert"]',
+    ]) {
+      expect(declaration(selector, 'background')).toBe('var(--preview-danger-surface)')
+      expect(declaration(selector, 'color')).toBe('var(--preview-danger)')
+    }
+    expect(declaration('.compare-invalid > p[role="alert"]', 'font-size')).toBe('')
+    expect(declaration('.compare-invalid > p[role="alert"]', 'margin')).toBe('')
+    expect(declaration('.compare-invalid > p[role="alert"]', 'padding')).toBe('')
+
+    const legacyColors = [
+      '#171a1f',
+      '#24282f',
+      '#0e1013',
+      '#20242a',
+      '#303640',
+      '#4d5663',
+      '#275e9d',
+      '#4e8ed8',
+      '#4e94df',
+      '#4b2c22',
+      '#ffd5c7',
+      '#b8c0ca',
+    ]
+    for (const rule of rules.filter((candidate) => candidate.selector.startsWith('.compare'))) {
+      for (const value of Object.values(rule.declarations)) {
+        for (const legacyColor of legacyColors) {
+          expect(value, `${rule.selector} ${legacyColor}`).not.toContain(legacyColor)
+        }
+      }
+    }
+
+    expect(contrastRatio('#174f8f', '#d9e8ff')).toBeGreaterThanOrEqual(4.5)
+    expect(contrastRatio('#2477d4', '#ffffff')).toBeGreaterThanOrEqual(3)
   })
 })
 

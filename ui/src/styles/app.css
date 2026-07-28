@@ -1,4 +1,22 @@
 :root {
+  --preview-surface: #f5f6f8;
+  --preview-chrome: #fbfcfd;
+  --preview-stage: #edf0f3;
+  --preview-document-surface: #f7f7f8;
+  --preview-panel-surface: #fff;
+  --preview-text: #1f2328;
+  --preview-muted: #68717d;
+  --preview-border: #d8dce2;
+  --preview-control-border: #8a94a3;
+  --preview-control-hover-border: #747f8e;
+  --preview-control-surface: #fff;
+  --preview-control-hover-surface: #f3f5f7;
+  --preview-accent: #2477d4;
+  --preview-accent-surface: #d9e8ff;
+  --preview-accent-text: #174f8f;
+  --preview-danger: #9d1c13;
+  --preview-danger-surface: #fff3f0;
+  --preview-image-shadow: 0 8px 28px rgb(34 42 53 / 14%);
   color: #1f2328;
   background: #f5f6f8;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -1513,9 +1531,9 @@ select {
 }
 
 .preview-overlay {
-  background: #f5f6f8;
+  background: var(--preview-surface);
   bottom: 0;
-  color: #1f2328;
+  color: var(--preview-text);
   display: flex;
   flex-direction: column;
   left: 0;
@@ -1527,9 +1545,9 @@ select {
 
 .preview-toolbar {
   align-items: center;
-  background: #fbfcfd;
-  border-bottom: 1px solid #d8dce2;
-  color: #1f2328;
+  background: var(--preview-chrome);
+  border-bottom: 1px solid var(--preview-border);
+  color: var(--preview-text);
   display: flex;
   gap: 10px;
   min-height: 48px;
@@ -1545,33 +1563,33 @@ select {
 .image-preview > footer button {
   min-height: 30px;
   padding: 4px 8px;
-  border: 1px solid #8a94a3;
+  border: 1px solid var(--preview-control-border);
   border-radius: 6px;
-  background: #fff;
-  color: #1f2328;
+  background: var(--preview-control-surface);
+  color: var(--preview-text);
 }
 
 .preview-toolbar button:hover:not(:disabled),
 .preview-toolbar select:hover,
 .image-preview > footer button:hover:not(:disabled) {
-  border-color: #747f8e;
-  background: #f3f5f7;
+  border-color: var(--preview-control-hover-border);
+  background: var(--preview-control-hover-surface);
 }
 
 .preview-toolbar button:focus-visible,
 .preview-toolbar select:focus-visible,
 .image-preview > footer button:focus-visible {
-  outline: 2px solid #2477d4;
+  outline: 2px solid var(--preview-accent);
   outline-offset: 2px;
 }
 
 .preview-overlay [role="alert"] {
-  color: #9d1c13;
+  color: var(--preview-danger);
 }
 
 .image-preview-stage {
   align-items: center;
-  background: #edf0f3;
+  background: var(--preview-stage);
   display: flex;
   flex: 1;
   justify-content: center;
@@ -1580,8 +1598,8 @@ select {
 }
 
 .image-preview-stage img {
-  border: 1px solid #d8dce2;
-  box-shadow: 0 8px 28px rgb(34 42 53 / 14%);
+  border: 1px solid var(--preview-border);
+  box-shadow: var(--preview-image-shadow);
   transform-origin: center;
   user-select: none;
 }
@@ -1600,9 +1618,9 @@ select {
 
 .image-preview > footer {
   align-items: center;
-  background: #fbfcfd;
-  border-top: 1px solid #d8dce2;
-  color: #1f2328;
+  background: var(--preview-chrome);
+  border-top: 1px solid var(--preview-border);
+  color: var(--preview-text);
   display: flex;
   gap: 14px;
   justify-content: center;
@@ -1610,13 +1628,13 @@ select {
 }
 
 .text-preview {
-  background: #f7f7f8;
-  color: #1f2328;
+  background: var(--preview-document-surface);
+  color: var(--preview-text);
   overflow: auto;
 }
 
 .text-preview .preview-toolbar {
-  color: #1f2328;
+  color: var(--preview-text);
   position: sticky;
   top: 0;
   z-index: 1;

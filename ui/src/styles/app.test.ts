@@ -308,68 +308,108 @@ describe('workspace style contracts', () => {
     }
   })
 
-  it('renders image and text previews as shared light surfaces', () => {
+  it('uses one light theme for image and text previews', () => {
     const rules = parseRules(appCss)
+    const root = rules.find((rule) => rule.selector === ':root')
     const declaration = (selector: string, property: string) =>
       winningDeclaration(rules, new Set([selector]), property)
 
-    expect(declaration('.preview-overlay', 'background')).toBe('#f5f6f8')
-    expect(declaration('.preview-overlay', 'color')).toBe('#1f2328')
+    expect(root?.declarations).toMatchObject({
+      '--preview-surface': '#f5f6f8',
+      '--preview-chrome': '#fbfcfd',
+      '--preview-stage': '#edf0f3',
+      '--preview-document-surface': '#f7f7f8',
+      '--preview-panel-surface': '#fff',
+      '--preview-text': '#1f2328',
+      '--preview-muted': '#68717d',
+      '--preview-border': '#d8dce2',
+      '--preview-control-border': '#8a94a3',
+      '--preview-control-hover-border': '#747f8e',
+      '--preview-control-surface': '#fff',
+      '--preview-control-hover-surface': '#f3f5f7',
+      '--preview-accent': '#2477d4',
+      '--preview-accent-surface': '#d9e8ff',
+      '--preview-accent-text': '#174f8f',
+      '--preview-danger': '#9d1c13',
+      '--preview-danger-surface': '#fff3f0',
+      '--preview-image-shadow': '0 8px 28px rgb(34 42 53 / 14%)',
+    })
 
-    expect(declaration('.preview-toolbar', 'background')).toBe('#fbfcfd')
-    expect(declaration('.preview-toolbar', 'border-bottom')).toBe('1px solid #d8dce2')
-    expect(declaration('.preview-toolbar', 'color')).toBe('#1f2328')
-
-    expect(declaration('.image-preview-stage', 'background')).toBe('#edf0f3')
-    expect(declaration('.image-preview-stage img', 'border')).toBe('1px solid #d8dce2')
-    expect(declaration('.image-preview-stage img', 'box-shadow')).toBe(
-      '0 8px 28px rgb(34 42 53 / 14%)',
+    expect(declaration('.preview-overlay', 'background')).toBe('var(--preview-surface)')
+    expect(declaration('.preview-overlay', 'color')).toBe('var(--preview-text)')
+    expect(declaration('.preview-toolbar', 'background')).toBe('var(--preview-chrome)')
+    expect(declaration('.preview-toolbar', 'border-bottom')).toBe(
+      '1px solid var(--preview-border)',
     )
-
-    expect(declaration('.image-preview > footer', 'background')).toBe('#fbfcfd')
-    expect(declaration('.image-preview > footer', 'border-top')).toBe('1px solid #d8dce2')
-    expect(declaration('.image-preview > footer', 'color')).toBe('#1f2328')
-    expect(declaration('.preview-overlay [role="alert"]', 'color')).toBe('#9d1c13')
-
-    expect(declaration('.text-preview', 'background')).toBe('#f7f7f8')
-    expect(declaration('.text-preview', 'color')).toBe('#1f2328')
+    expect(declaration('.preview-toolbar', 'color')).toBe('var(--preview-text)')
+    expect(declaration('.image-preview-stage', 'background')).toBe('var(--preview-stage)')
+    expect(declaration('.image-preview-stage img', 'border')).toBe(
+      '1px solid var(--preview-border)',
+    )
+    expect(declaration('.image-preview-stage img', 'box-shadow')).toBe(
+      'var(--preview-image-shadow)',
+    )
+    expect(declaration('.image-preview > footer', 'background')).toBe(
+      'var(--preview-chrome)',
+    )
+    expect(declaration('.image-preview > footer', 'border-top')).toBe(
+      '1px solid var(--preview-border)',
+    )
+    expect(declaration('.image-preview > footer', 'color')).toBe('var(--preview-text)')
+    expect(declaration('.preview-overlay [role="alert"]', 'color')).toBe(
+      'var(--preview-danger)',
+    )
+    expect(declaration('.text-preview', 'background')).toBe(
+      'var(--preview-document-surface)',
+    )
+    expect(declaration('.text-preview', 'color')).toBe('var(--preview-text)')
     expect(declaration('.text-preview .preview-toolbar', 'position')).toBe('sticky')
     expect(declaration('.text-preview .preview-toolbar', 'top')).toBe('0')
-    expect(declaration('.text-preview .preview-toolbar', 'color')).toBe('#1f2328')
+    expect(declaration('.text-preview .preview-toolbar', 'color')).toBe(
+      'var(--preview-text)',
+    )
 
     for (const selector of [
       '.preview-toolbar button',
       '.preview-toolbar select',
       '.image-preview > footer button',
     ]) {
-      expect(declaration(selector, 'background')).toBe('#fff')
-      expect(declaration(selector, 'border')).toBe('1px solid #8a94a3')
+      expect(declaration(selector, 'background')).toBe('var(--preview-control-surface)')
+      expect(declaration(selector, 'border')).toBe(
+        '1px solid var(--preview-control-border)',
+      )
       expect(declaration(selector, 'border-radius')).toBe('6px')
-      expect(declaration(selector, 'color')).toBe('#1f2328')
+      expect(declaration(selector, 'color')).toBe('var(--preview-text)')
       expect(declaration(selector, 'min-height')).toBe('30px')
     }
-
-    expect(contrastRatio('#8a94a3', '#ffffff')).toBeGreaterThanOrEqual(3)
 
     for (const selector of [
       '.preview-toolbar button:hover:not(:disabled)',
       '.preview-toolbar select:hover',
       '.image-preview > footer button:hover:not(:disabled)',
     ]) {
-      expect(declaration(selector, 'background')).toBe('#f3f5f7')
-      expect(declaration(selector, 'border-color')).toBe('#747f8e')
+      expect(declaration(selector, 'background')).toBe(
+        'var(--preview-control-hover-surface)',
+      )
+      expect(declaration(selector, 'border-color')).toBe(
+        'var(--preview-control-hover-border)',
+      )
     }
-
-    expect(contrastRatio('#747f8e', '#f3f5f7')).toBeGreaterThanOrEqual(3)
 
     for (const selector of [
       '.preview-toolbar button:focus-visible',
       '.preview-toolbar select:focus-visible',
       '.image-preview > footer button:focus-visible',
     ]) {
-      expect(declaration(selector, 'outline')).toBe('2px solid #2477d4')
+      expect(declaration(selector, 'outline')).toBe('2px solid var(--preview-accent)')
       expect(declaration(selector, 'outline-offset')).toBe('2px')
     }
+
+    expect(contrastRatio('#1f2328', '#f5f6f8')).toBeGreaterThanOrEqual(4.5)
+    expect(contrastRatio('#68717d', '#fbfcfd')).toBeGreaterThanOrEqual(4.5)
+    expect(contrastRatio('#8a94a3', '#ffffff')).toBeGreaterThanOrEqual(3)
+    expect(contrastRatio('#747f8e', '#f3f5f7')).toBeGreaterThanOrEqual(3)
+    expect(contrastRatio('#9d1c13', '#fff3f0')).toBeGreaterThanOrEqual(4.5)
   })
 })
 

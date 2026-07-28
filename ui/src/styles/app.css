@@ -1513,9 +1513,9 @@ select {
 }
 
 .preview-overlay {
-  background: rgba(18, 20, 24, 0.97);
+  background: #f5f6f8;
   bottom: 0;
-  color: white;
+  color: #1f2328;
   display: flex;
   flex-direction: column;
   left: 0;
@@ -1527,7 +1527,9 @@ select {
 
 .preview-toolbar {
   align-items: center;
-  background: #20242a;
+  background: #fbfcfd;
+  border-bottom: 1px solid #d8dce2;
+  color: #1f2328;
   display: flex;
   gap: 10px;
   min-height: 48px;
@@ -1538,8 +1540,38 @@ select {
   margin-right: auto;
 }
 
+.preview-toolbar button,
+.preview-toolbar select,
+.image-preview > footer button {
+  min-height: 30px;
+  padding: 4px 8px;
+  border: 1px solid #8a94a3;
+  border-radius: 6px;
+  background: #fff;
+  color: #1f2328;
+}
+
+.preview-toolbar button:hover:not(:disabled),
+.preview-toolbar select:hover,
+.image-preview > footer button:hover:not(:disabled) {
+  border-color: #747f8e;
+  background: #f3f5f7;
+}
+
+.preview-toolbar button:focus-visible,
+.preview-toolbar select:focus-visible,
+.image-preview > footer button:focus-visible {
+  outline: 2px solid #2477d4;
+  outline-offset: 2px;
+}
+
+.preview-overlay [role="alert"] {
+  color: #9d1c13;
+}
+
 .image-preview-stage {
   align-items: center;
+  background: #edf0f3;
   display: flex;
   flex: 1;
   justify-content: center;
@@ -1548,6 +1580,8 @@ select {
 }
 
 .image-preview-stage img {
+  border: 1px solid #d8dce2;
+  box-shadow: 0 8px 28px rgb(34 42 53 / 14%);
   transform-origin: center;
   user-select: none;
 }
@@ -1566,6 +1600,9 @@ select {
 
 .image-preview > footer {
   align-items: center;
+  background: #fbfcfd;
+  border-top: 1px solid #d8dce2;
+  color: #1f2328;
   display: flex;
   gap: 14px;
   justify-content: center;
@@ -1579,7 +1616,7 @@ select {
 }
 
 .text-preview .preview-toolbar {
-  color: white;
+  color: #1f2328;
   position: sticky;
   top: 0;
   z-index: 1;

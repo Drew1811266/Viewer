@@ -598,9 +598,12 @@ const normalizedAreas = displays.map(
 const minimumNormalizedArea = Math.min(...normalizedAreas)
 const meanNormalizedArea =
   normalizedAreas.reduce((sum, value) => sum + value, 0) / normalizedAreas.length
+const viewportArea = Math.max(
+  1,
+  (width - 2 * padding) * (height - 2 * padding),
+)
 const fill =
-  displays.reduce((sum, display) => sum + display.area, 0) /
-  displays.reduce((sum, display) => sum + display.stageArea, 0)
+  displays.reduce((sum, display) => sum + display.area, 0) / viewportArea
 const continuity = previous?.key === candidate.key ? 1 : 0
 const score =
   0.45 * minimumNormalizedArea +
@@ -612,7 +615,11 @@ const score =
 A candidate is eligible only when every display has area at least
 `MIN_READABLE_AREA` and long edge at least `MIN_READABLE_LONG_EDGE`.
 
-Choose the highest eligible score. Retain the previous no-scroll candidate key
+The fill denominator is candidate-independent viewport area, so the score
+measures image-area viewport utilization without rewarding narrower candidate
+cells. Choose the highest eligible score using strict `>` comparison in
+generation order, leaving the earlier generated candidate selected on an exact
+tie. Retain the previous no-scroll candidate key
 only when it remains eligible and the new score is less than
 `previous.score * (1 + LAYOUT_SWITCH_GAIN)`. Geometry for the retained key must
 still be rebuilt at the new width/height. A valid no-scroll candidate always

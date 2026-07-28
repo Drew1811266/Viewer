@@ -112,6 +112,8 @@ export function useCompareLayout({
   const containerRef = useRef<HTMLDivElement | null>(null)
   const sizeRef = useRef<WorkspaceSize | null>(null)
   const frameRef = useRef<number | null>(null)
+  const observedNodeRef = useRef<HTMLDivElement | null>(null)
+  const observerRef = useRef<ResizeObserver | null>(null)
   const sources = useMemo(
     () =>
       files.map((file) => ({
@@ -162,6 +164,10 @@ export function useCompareLayout({
 
   useEffect(() => {
     const node = containerRef.current
+    if (node === observedNodeRef.current) return
+    observerRef.current?.disconnect()
+    observerRef.current = null
+    observedNodeRef.current = node
     if (node === null) return
     if (typeof ResizeObserver === 'undefined') {
       const bounds = node.getBoundingClientRect()
@@ -172,18 +178,21 @@ export function useCompareLayout({
       const bounds = entries[0]?.contentRect
       if (bounds !== undefined) measure(bounds.width, bounds.height)
     })
+    observerRef.current = observer
     observer.observe(node)
-    return () => observer.disconnect()
-  }, [measure, containerRef.current])
+  })
 
   useEffect(() => {
     if (signatureRef.current === signature) return
     signatureRef.current = signature
-    if (sizeRef.current !== null) scheduleSolve()
+    scheduleSolve()
   }, [scheduleSolve, signature])
 
   useEffect(
     () => () => {
+      observerRef.current?.disconnect()
+      observerRef.current = null
+      observedNodeRef.current = null
       if (frameRef.current !== null && typeof cancelAnimationFrame !== 'undefined') {
         cancelAnimationFrame(frameRef.current)
       }

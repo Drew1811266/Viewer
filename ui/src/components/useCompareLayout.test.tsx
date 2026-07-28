@@ -1,4 +1,4 @@
-import { act, renderHook } from '@testing-library/react'
+import { act, render, renderHook, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { BrowserFile } from '../api/types'
 import {
@@ -190,7 +190,70 @@ describe('useCompareLayout', () => {
     hook.rerender({ recoveredDimensions: recoveredFor(first, 400, 800) })
     expect(frames.pending()).toBe(0)
   })
+
+  it('observes an outer region attached after the hook first renders', () => {
+    const resize = installNodeResizeObserver()
+    const rendered = render(<CompareLayoutHarness attached={false} files={[image('a', null)]} />)
+
+    rendered.rerender(<CompareLayoutHarness attached files={[image('a', null)]} />)
+
+    expect(resize.observed(screen.getByTestId('compare-region'))).toBe(true)
+  })
+
+  it('disconnects the replaced outer region and observes its replacement', () => {
+    const frames = installAnimationFrameQueue()
+    const resize = installNodeResizeObserver()
+    const rendered = render(
+      <CompareLayoutHarness attached nodeKey="first" files={[image('a', null)]} />,
+    )
+    const first = screen.getByTestId('compare-region')
+
+    act(() => {
+      resize.trigger(first, 800, 600)
+      frames.flush()
+    })
+
+    rendered.rerender(<CompareLayoutHarness attached nodeKey="second" files={[image('a', null)]} />)
+    const second = screen.getByTestId('compare-region')
+
+    expect(resize.disconnected(first)).toBe(1)
+    expect(resize.observed(second)).toBe(true)
+  })
+
+  it('replaces a zero-size safe plan when the source order changes', () => {
+    const frames = installAnimationFrameQueue()
+    const rendered = render(<CompareLayoutHarness attached={false} files={[image('a', null)]} />)
+
+    expect(screen.getByTestId('planned-entity')).toHaveTextContent('a')
+    rendered.rerender(<CompareLayoutHarness attached={false} files={[image('b', null)]} />)
+
+    expect(frames.pending()).toBe(1)
+    act(() => frames.flush())
+    expect(screen.getByTestId('planned-entity')).toHaveTextContent('b')
+  })
 })
+
+function CompareLayoutHarness({
+  attached,
+  files,
+  nodeKey = 'region',
+}: {
+  attached: boolean
+  files: readonly BrowserFile[]
+  nodeKey?: string
+}) {
+  const { containerRef, plan } = useCompareLayout({
+    files,
+    rotations: {},
+    recoveredDimensions: {},
+  })
+  return (
+    <>
+      <output data-testid="planned-entity">{plan.rects[0]?.entityId}</output>
+      {attached ? <div data-testid="compare-region" key={nodeKey} ref={containerRef} /> : null}
+    </>
+  )
+}
 
 function image(entityId: string, imageMetadata: BrowserFile['imageMetadata']): BrowserFile {
   return {
@@ -241,6 +304,42 @@ function installResizeObserver() {
   vi.stubGlobal('ResizeObserver', Observer)
   return (width: number, height: number) => {
     callback?.([{ contentRect: { width, height } } as ResizeObserverEntry], {} as ResizeObserver)
+  }
+}
+
+function installNodeResizeObserver() {
+  const callbacks = new Map<HTMLElement, ResizeObserverCallback>()
+  const disconnects = new Map<HTMLElement, number>()
+  class Observer {
+    private node: HTMLElement | null = null
+    private readonly callback: ResizeObserverCallback
+
+    constructor(callback: ResizeObserverCallback) {
+      this.callback = callback
+    }
+
+    observe(node: HTMLElement) {
+      this.node = node
+      callbacks.set(node, this.callback)
+    }
+
+    disconnect() {
+      if (this.node === null) return
+      callbacks.delete(this.node)
+      disconnects.set(this.node, (disconnects.get(this.node) ?? 0) + 1)
+      this.node = null
+    }
+  }
+  vi.stubGlobal('ResizeObserver', Observer)
+  return {
+    observed: (node: HTMLElement) => callbacks.has(node),
+    disconnected: (node: HTMLElement) => disconnects.get(node) ?? 0,
+    trigger: (node: HTMLElement, width: number, height: number) => {
+      callbacks.get(node)?.(
+        [{ contentRect: { width, height } } as ResizeObserverEntry],
+        {} as ResizeObserver,
+      )
+    },
   }
 }
 

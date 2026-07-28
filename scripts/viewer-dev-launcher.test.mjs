@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { copyFile, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, it } from 'node:test'
@@ -148,6 +148,19 @@ describe('runCli', () => {
       'Source: main @ abc1234 (dirty)',
       `Log: ${repoRoot}/target/dev-launcher/tauri-dev.log`,
     ])
+  })
+})
+
+describe('package command', () => {
+  it('exposes the canonical Viewer development launcher', async () => {
+    const packageJson = JSON.parse(
+      await readFile(new URL('../package.json', import.meta.url), 'utf8'),
+    )
+
+    assert.equal(
+      packageJson.scripts['start:viewer'],
+      'node scripts/start-viewer-dev.mjs',
+    )
   })
 })
 

@@ -62,11 +62,15 @@ pnpm install --frozen-lockfile
 
 ### 启动开发版
 
-从仓库根目录启动 Tauri 桌面应用：
+使用项目启动器打开当前本地源码，包括尚未提交的修改：
 
 ```bash
-pnpm tauri dev
+pnpm start:viewer
 ```
+
+启动器会关闭已有 Viewer 开发进程，再从当前仓库执行 Tauri 开发启动。
+日志保存在 `target/dev-launcher/tauri-dev.log`。它不会拉取远端代码、
+切换分支或启动已打包的 `Viewer.app`。
 
 ## 技术栈
 

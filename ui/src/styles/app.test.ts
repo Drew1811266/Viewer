@@ -212,6 +212,89 @@ describe('workspace style contracts', () => {
     })
     expect(placeholder?.declarations.background).toBe('#e5e8ed')
   })
+
+  it('renders workspace menu summaries as stateful toolbar buttons', () => {
+    const rules = parseRules(appCss)
+    const baseSelectors = [
+      '.search-options-panel > summary',
+      '.search-view-panel > summary',
+      '.project-menu > summary',
+    ]
+
+    for (const selector of baseSelectors) {
+      expect(winningDeclaration(rules, new Set([selector]), 'background'), selector).toBe('#fff')
+      expect(winningDeclaration(rules, new Set([selector]), 'border'), selector).toBe(
+        '1px solid #c8ced6',
+      )
+      expect(winningDeclaration(rules, new Set([selector]), 'border-radius'), selector).toBe('6px')
+      expect(winningDeclaration(rules, new Set([selector]), 'cursor'), selector).toBe('pointer')
+      expect(winningDeclaration(rules, new Set([selector]), 'min-height'), selector).toBe('30px')
+    }
+
+    const hoverSelectors = [
+      '.search-options-panel > summary:hover',
+      '.search-view-panel > summary:hover',
+      '.project-menu > summary:hover',
+    ]
+    for (const selector of hoverSelectors) {
+      expect(winningDeclaration(rules, new Set([selector]), 'background'), selector).toBe('#f3f5f7')
+      expect(winningDeclaration(rules, new Set([selector]), 'border-color'), selector).toBe(
+        '#aeb6c1',
+      )
+    }
+
+    const openSelectors = [
+      '.search-options-panel[open] > summary',
+      '.search-view-panel[open] > summary',
+      '.project-menu[open] > summary',
+    ]
+    for (const selector of openSelectors) {
+      expect(winningDeclaration(rules, new Set([selector]), 'background'), selector).toBe('#d9e8ff')
+      expect(winningDeclaration(rules, new Set([selector]), 'border-color'), selector).toBe(
+        '#2477d4',
+      )
+    }
+
+    const focusSelectors = [
+      '.search-options-panel > summary:focus-visible',
+      '.search-view-panel > summary:focus-visible',
+      '.project-menu > summary:focus-visible',
+    ]
+    for (const selector of focusSelectors) {
+      expect(winningDeclaration(rules, new Set([selector]), 'outline'), selector).toBe(
+        '2px solid #2477d4',
+      )
+      expect(winningDeclaration(rules, new Set([selector]), 'outline-offset'), selector).toBe('2px')
+    }
+
+    expect(winningDeclaration(rules, new Set(['.project-menu > summary']), 'min-width')).toBe(
+      '30px',
+    )
+
+    const darkRules = [...rules, ...parseRules(mediaBody(appCss, '(prefers-color-scheme: dark)'))]
+    for (const selector of baseSelectors) {
+      expect(winningDeclaration(darkRules, new Set([selector]), 'background'), selector).toBe(
+        '#24282f',
+      )
+      expect(winningDeclaration(darkRules, new Set([selector]), 'border-color'), selector).toBe(
+        '#4d5663',
+      )
+      expect(winningDeclaration(darkRules, new Set([selector]), 'color'), selector).toBe('#f3f5f7')
+    }
+    for (const selector of openSelectors) {
+      expect(winningDeclaration(darkRules, new Set([selector]), 'background'), selector).toBe(
+        '#244d7d',
+      )
+      expect(winningDeclaration(darkRules, new Set([selector]), 'border-color'), selector).toBe(
+        '#5d9ee8',
+      )
+    }
+    for (const selector of focusSelectors) {
+      expect(winningDeclaration(darkRules, new Set([selector]), 'outline-color'), selector).toBe(
+        '#8ec8ff',
+      )
+    }
+  })
 })
 
 interface CssRule {
@@ -236,19 +319,38 @@ function mediaBody(css: string, query: string): string {
 
 function parseRules(css: string): CssRule[] {
   const rules: CssRule[] = []
-  const pattern = /([^{}]+)\{([^{}]*)\}/g
-  for (const match of css.matchAll(pattern)) {
-    const body = match[2] ?? ''
-    const declarations = Object.fromEntries(
-      [...body.matchAll(/([\w-]+)\s*:\s*([^;]+);/g)].map((declaration) => [
-        defined(declaration[1], 'Expected CSS declaration property'),
-        defined(declaration[2], 'Expected CSS declaration value').trim(),
-      ]),
-    )
-    for (const selector of (match[1] ?? '').split(',')) {
-      rules.push({ selector: selector.trim(), declarations, order: rules.length })
+  let depth = 0
+  let selectorStart = 0
+  let bodyStart = -1
+
+  for (let index = 0; index < css.length; index += 1) {
+    if (css[index] === '{') {
+      depth += 1
+      if (depth === 1) bodyStart = index + 1
+      continue
     }
+    if (css[index] !== '}') continue
+
+    if (depth === 1 && bodyStart !== -1) {
+      const selectorText = css.slice(selectorStart, bodyStart - 1).trim()
+      const body = css.slice(bodyStart, index)
+      if (!selectorText.startsWith('@')) {
+        const declarations = Object.fromEntries(
+          [...body.matchAll(/([\w-]+)\s*:\s*([^;]+);/g)].map((declaration) => [
+            defined(declaration[1], 'Expected CSS declaration property'),
+            defined(declaration[2], 'Expected CSS declaration value').trim(),
+          ]),
+        )
+        for (const selector of selectorText.split(',')) {
+          rules.push({ selector: selector.trim(), declarations, order: rules.length })
+        }
+      }
+      selectorStart = index + 1
+      bodyStart = -1
+    }
+    depth -= 1
   }
+
   return rules
 }
 

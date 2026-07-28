@@ -159,6 +159,46 @@ select {
   display: none;
 }
 
+.search-options-panel > summary,
+.search-view-panel > summary,
+.project-menu > summary {
+  align-items: center;
+  background: #fff;
+  border: 1px solid #c8ced6;
+  border-radius: 6px;
+  box-sizing: border-box;
+  cursor: pointer;
+  display: flex;
+  justify-content: center;
+  min-height: 30px;
+  padding: 4px 8px;
+}
+
+.project-menu > summary {
+  min-width: 30px;
+}
+
+.search-options-panel > summary:hover,
+.search-view-panel > summary:hover,
+.project-menu > summary:hover {
+  background: #f3f5f7;
+  border-color: #aeb6c1;
+}
+
+.search-options-panel[open] > summary,
+.search-view-panel[open] > summary,
+.project-menu[open] > summary {
+  background: #d9e8ff;
+  border-color: #2477d4;
+}
+
+.search-options-panel > summary:focus-visible,
+.search-view-panel > summary:focus-visible,
+.project-menu > summary:focus-visible {
+  outline: 2px solid #2477d4;
+  outline-offset: 2px;
+}
+
 .search-options-popover,
 .search-view-popover,
 .project-menu > div,
@@ -1786,6 +1826,34 @@ select {
     background: #24282f;
     border-color: #4d5663;
     color: #f3f5f7;
+  }
+
+  .search-options-panel > summary,
+  .search-view-panel > summary,
+  .project-menu > summary {
+    background: #24282f;
+    border-color: #4d5663;
+    color: #f3f5f7;
+  }
+
+  .search-options-panel > summary:hover,
+  .search-view-panel > summary:hover,
+  .project-menu > summary:hover {
+    background: #2f343d;
+    border-color: #6c7888;
+  }
+
+  .search-options-panel[open] > summary,
+  .search-view-panel[open] > summary,
+  .project-menu[open] > summary {
+    background: #244d7d;
+    border-color: #5d9ee8;
+  }
+
+  .search-options-panel > summary:focus-visible,
+  .search-view-panel > summary:focus-visible,
+  .project-menu > summary:focus-visible {
+    outline-color: #8ec8ff;
   }
 
   .radial-primary-shape {

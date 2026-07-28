@@ -224,8 +224,9 @@ describe('workspace style contracts', () => {
     for (const selector of baseSelectors) {
       expect(winningDeclaration(rules, new Set([selector]), 'background'), selector).toBe('#fff')
       expect(winningDeclaration(rules, new Set([selector]), 'border'), selector).toBe(
-        '1px solid #c8ced6',
+        '1px solid #8a94a3',
       )
+      expect(contrastRatio('#8a94a3', '#ffffff'), selector).toBeGreaterThanOrEqual(3)
       expect(winningDeclaration(rules, new Set([selector]), 'border-radius'), selector).toBe('6px')
       expect(winningDeclaration(rules, new Set([selector]), 'cursor'), selector).toBe('pointer')
       expect(winningDeclaration(rules, new Set([selector]), 'min-height'), selector).toBe('30px')
@@ -239,8 +240,9 @@ describe('workspace style contracts', () => {
     for (const selector of hoverSelectors) {
       expect(winningDeclaration(rules, new Set([selector]), 'background'), selector).toBe('#f3f5f7')
       expect(winningDeclaration(rules, new Set([selector]), 'border-color'), selector).toBe(
-        '#aeb6c1',
+        '#747f8e',
       )
+      expect(contrastRatio('#747f8e', '#f3f5f7'), selector).toBeGreaterThanOrEqual(3)
     }
 
     const openSelectors = [
@@ -277,9 +279,19 @@ describe('workspace style contracts', () => {
         '#24282f',
       )
       expect(winningDeclaration(darkRules, new Set([selector]), 'border-color'), selector).toBe(
-        '#4d5663',
+        '#788596',
       )
       expect(winningDeclaration(darkRules, new Set([selector]), 'color'), selector).toBe('#f3f5f7')
+      expect(contrastRatio('#788596', '#24282f'), selector).toBeGreaterThanOrEqual(3)
+    }
+    for (const selector of hoverSelectors) {
+      expect(winningDeclaration(darkRules, new Set([selector]), 'background'), selector).toBe(
+        '#2f343d',
+      )
+      expect(winningDeclaration(darkRules, new Set([selector]), 'border-color'), selector).toBe(
+        '#8896a8',
+      )
+      expect(contrastRatio('#8896a8', '#2f343d'), selector).toBeGreaterThanOrEqual(3)
     }
     for (const selector of openSelectors) {
       expect(winningDeclaration(darkRules, new Set([selector]), 'background'), selector).toBe(

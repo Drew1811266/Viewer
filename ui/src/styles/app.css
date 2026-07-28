@@ -164,7 +164,7 @@ select {
 .project-menu > summary {
   align-items: center;
   background: #fff;
-  border: 1px solid #c8ced6;
+  border: 1px solid #8a94a3;
   border-radius: 6px;
   box-sizing: border-box;
   cursor: pointer;
@@ -182,7 +182,7 @@ select {
 .search-view-panel > summary:hover,
 .project-menu > summary:hover {
   background: #f3f5f7;
-  border-color: #aeb6c1;
+  border-color: #747f8e;
 }
 
 .search-options-panel[open] > summary,
@@ -1832,7 +1832,7 @@ select {
   .search-view-panel > summary,
   .project-menu > summary {
     background: #24282f;
-    border-color: #4d5663;
+    border-color: #788596;
     color: #f3f5f7;
   }
 
@@ -1840,7 +1840,7 @@ select {
   .search-view-panel > summary:hover,
   .project-menu > summary:hover {
     background: #2f343d;
-    border-color: #6c7888;
+    border-color: #8896a8;
   }
 
   .search-options-panel[open] > summary,

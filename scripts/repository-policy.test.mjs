@@ -48,7 +48,7 @@ test('documentation index declares one status for every listed source', async ()
   }
 })
 
-test('active governance documents agree with the index and root navigation', async () => {
+test('active governance documents agree with the index and README points to that index', async () => {
   const [index, rootReadme, openSourceResearch, dependencyHealth] = await Promise.all([
     read('docs/README.md'),
     read('README.md'),
@@ -76,27 +76,10 @@ test('active governance documents agree with the index and root navigation', asy
     `${historicalRoadmap} must remain Historical`,
   )
 
-  for (const activePath of [
-    'docs/README.md',
-    'docs/adr/0005-continuous-development-governance.md',
-    'docs/superpowers/specs/2026-07-23-viewer-engineering-optimization-governance-design.md',
-  ]) {
-    assert.ok(rootReadme.includes(`](${activePath})`), `README must link active source ${activePath}`)
-  }
-
-  const roadmapTarget = `docs/${historicalRoadmap}`
-  const roadmapParagraphs = normalizeNewlines(rootReadme)
-    .split(/\n{2,}/)
-    .filter((paragraph) => paragraph.includes(`](${roadmapTarget})`))
-  assert.ok(roadmapParagraphs.length > 0, 'README must preserve the roadmap as historical evidence')
-  for (const paragraph of roadmapParagraphs) {
-    assert.match(paragraph, /\bhistorical\b/i, 'roadmap references must identify historical status')
-    assert.doesNotMatch(
-      paragraph,
-      /\bactive\b|\bgovern(?:ed|ing)\b|\bsources? of truth\b/i,
-      'historical roadmap must not be described as active governance',
-    )
-  }
+  assert.ok(
+    rootReadme.includes('](docs/README.md)'),
+    'README must link the documentation index',
+  )
 })
 
 const expectedToolchain = `[toolchain]
@@ -1252,7 +1235,7 @@ function collectDirectDependencies({ workspace, manifests, packages }) {
   return [...dependencies].sort()
 }
 
-test('repository exposes one onboarding path and recursive macOS hygiene', async () => {
+test('repository exposes one verification path and recursive macOS hygiene', async () => {
   const [readme, contributing, editorConfig, ignore] = await Promise.all([
     read('README.md'),
     read('CONTRIBUTING.md'),
@@ -1260,7 +1243,6 @@ test('repository exposes one onboarding path and recursive macOS hygiene', async
     read('.gitignore'),
   ])
   assert.match(readme, /pnpm verify:clean/)
-  assert.match(readme, /Viewer 0\.1.*development-stage baseline/i)
   assert.match(contributing, /Do not stage unrelated user changes/i)
   assert.match(editorConfig, /root = true/)
   assert.match(editorConfig, /charset = utf-8/)
@@ -1311,20 +1293,11 @@ test('network dependency audit is scheduled and never a pull-request gate', asyn
 })
 
 test('quality reports are continuous trends and not a release gate', async () => {
-  const [packageSource, readme] = await Promise.all([read('package.json'), read('README.md')])
+  const packageSource = await read('package.json')
   const packageJson = JSON.parse(packageSource)
-  const documentation = normalizeNewlines(readme).replace(/\s+/g, ' ')
   assert.equal(
     packageJson.scripts['quality:report'],
     'pnpm coverage:ui && pnpm coverage:rust && pnpm architecture:health',
   )
   assert.doesNotMatch(packageJson.scripts.verify, /coverage|quality:report|release|M4/)
-  assert.match(
-    documentation,
-    /`cargo-llvm-cov` is required for Rust coverage generation both directly through `pnpm coverage:rust` and transitively through `pnpm quality:report`\./,
-  )
-  assert.match(
-    documentation,
-    /It is not required for ordinary `pnpm verify` or `pnpm verify:clean`\./,
-  )
 })

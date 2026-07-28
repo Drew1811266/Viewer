@@ -207,6 +207,24 @@ describe('solveCompareLayout', () => {
     expect(plan.rects[1]?.left).toBe(625.5)
   })
 
+  it('keeps finite monotonic horizontal offsets when finite operands overflow', () => {
+    const plan = solveCompareLayout(
+      input(items(6, 0.75), {
+        width: Number.MAX_VALUE,
+        gap: Number.MAX_VALUE,
+      }),
+    )
+    const offsets = plan.rects.map(({ left }) => left)
+
+    expect(plan.kind).toBe('horizontal-strip')
+    expect(offsets.every(Number.isFinite)).toBe(true)
+    expect(
+      offsets.every((offset, index) => index === 0 || offset >= (offsets[index - 1] ?? 0)),
+    ).toBe(true)
+    expect(Number.isFinite(plan.totalWidth)).toBe(true)
+    expect(plan.totalWidth).toBeGreaterThan(0)
+  })
+
   it('uses a single-column vertical flow below 900 CSS pixels', () => {
     const plan = solveCompareLayout(
       input(items(20, 1.5), {

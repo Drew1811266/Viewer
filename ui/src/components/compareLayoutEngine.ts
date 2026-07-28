@@ -82,6 +82,16 @@ const finiteNonnegative = (value: number) => (Number.isFinite(value) ? Math.max(
 
 const positiveDimension = (value: number) => Math.max(1, finiteNonnegative(value))
 
+const finiteSaturatingSum = (...values: readonly number[]) => {
+  let sum = 0
+  for (const rawValue of values) {
+    const value = finiteNonnegative(rawValue)
+    if (sum > Number.MAX_VALUE - value) return Number.MAX_VALUE
+    sum += value
+  }
+  return sum
+}
+
 const workspaceIsValid = ({ width, height, gap, padding, paneChromeHeight }: CompareLayoutInput) =>
   Number.isFinite(width) &&
   width > 0 &&
@@ -224,13 +234,13 @@ const buildHorizontalStrip = (
       stageWidth: cardWidth,
       stageHeight,
     }
-    left += cardWidth + gap
+    left = finiteSaturatingSum(left, cardWidth, gap)
     return rect
   })
-  const contentWidth =
-    rects.length === 0
-      ? 0
-      : rects.reduce((sum, rect) => sum + rect.width, 0) + (rects.length - 1) * gap
+  const finalRect = rects.at(-1)
+  const totalWidth = finalRect
+    ? finiteSaturatingSum(finalRect.left, finalRect.width, padding)
+    : finiteSaturatingSum(padding, padding)
 
   return {
     key: 'horizontal-strip',
@@ -243,7 +253,7 @@ const buildHorizontalStrip = (
     rects,
     viewportWidth: width,
     viewportHeight: height,
-    totalWidth: finiteNonnegative(2 * padding + contentWidth),
+    totalWidth,
     totalHeight: height,
     candidateCount,
     retainedPrevious: false,

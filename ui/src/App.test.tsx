@@ -1654,7 +1654,6 @@ describe('Viewer empty state', () => {
     fireEvent.keyDown(window, { key: 'c' })
     const compare = await screen.findByRole('region', { name: '图片对比' })
     expect(organizeHandle).toBeDisabled()
-    expect(compare).toHaveAttribute('data-layout', 'two_columns')
     expect(compare).toHaveFocus()
     fireEvent.click(screen.getByRole('button', { name: '关闭对比' }))
 

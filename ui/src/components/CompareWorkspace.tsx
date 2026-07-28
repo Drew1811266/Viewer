@@ -1,5 +1,5 @@
 import type { KeyboardEvent } from 'react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type {
   BrowserFile,
   ImageRepresentation,
@@ -7,14 +7,15 @@ import type {
   ReviewState,
 } from '../api/types'
 import type { CompareAction, CompareState, PaneMetrics } from '../state/compareModel'
-import {
-  compareLayout,
-  createCompareState,
-  reconcileComparePanes,
-  reduceCompare,
-} from '../state/compareModel'
+import { createCompareState, reconcileComparePanes, reduceCompare } from '../state/compareModel'
 import { compareValidationMessage } from '../state/comparePolicy'
 import ComparePane from './ComparePane'
+import CompareVirtualViewport from './CompareVirtualViewport'
+import {
+  compareSourceRevision,
+  type RecoveredCompareDimensions,
+  useCompareLayout,
+} from './useCompareLayout'
 
 interface CompareWorkspaceProps {
   files: BrowserFile[]
@@ -54,6 +55,9 @@ export default function CompareWorkspace({
 }: CompareWorkspaceProps) {
   const [model, setModel] = useState<CompareState | null>(() => initialModel(files))
   const [originalEntityId, setOriginalEntityId] = useState<string | null>(null)
+  const [recoveredDimensions, setRecoveredDimensions] = useState<
+    Record<string, RecoveredCompareDimensions | undefined>
+  >({})
   const workspaceRef = useRef<HTMLDivElement>(null)
   const originalLane = useRef<OriginalRequestLane>({
     running: null,
@@ -61,6 +65,32 @@ export default function CompareWorkspace({
     disposed: false,
   })
   const presentKey = files.map((file) => file.entityId).join('\u0000')
+  const filesById = useMemo(() => new Map(files.map((file) => [file.entityId, file])), [files])
+  const rotations = useMemo(
+    () =>
+      Object.fromEntries(
+        (model?.entityIds ?? []).map((entityId) => [
+          entityId,
+          model?.transforms[entityId]?.rotation ?? 0,
+        ]),
+      ),
+    [model],
+  )
+  const comparedFiles = useMemo(
+    () =>
+      model === null
+        ? files
+        : model.entityIds.flatMap((entityId) => {
+            const file = filesById.get(entityId)
+            return file === undefined ? [] : [file]
+          }),
+    [files, filesById, model],
+  )
+  const { containerRef, plan } = useCompareLayout({
+    files: comparedFiles,
+    rotations,
+    recoveredDimensions,
+  })
 
   const requestComparedImage = useCallback(
     (file: BrowserFile, representation: ImageRepresentationRequest, signal?: AbortSignal) => {
@@ -96,6 +126,15 @@ export default function CompareWorkspace({
     if (model === null) return
     const presentIds = files.map((file) => file.entityId)
     const liveIds = model.entityIds.filter((entityId) => presentIds.includes(entityId))
+    const liveSourceRevisions = new Set(files.map(compareSourceRevision))
+    setRecoveredDimensions((current) => {
+      const retained = Object.entries(current).filter(([sourceRevision]) =>
+        liveSourceRevisions.has(sourceRevision),
+      )
+      return retained.length === Object.keys(current).length
+        ? current
+        : Object.fromEntries(retained)
+    })
     if (sameIds(liveIds, model.entityIds)) return
     const transition = reconcileComparePanes(model, liveIds)
     if (transition.kind === 'compare') {
@@ -117,14 +156,36 @@ export default function CompareWorkspace({
     )
   }
 
-  const layout = compareLayout(model)
-  const activeEntityId = model.activeEntityId
+  const compareModel = model
+  const activeEntityId = compareModel.activeEntityId
 
   function update(action: CompareAction) {
     setModel((current) => (current === null ? current : reduceCompare(current, action)))
   }
 
   function updateMetrics(entityId: string, metrics: PaneMetrics) {
+    const file = filesById.get(entityId)
+    if (file !== undefined && metrics.imageWidth > 0 && metrics.imageHeight > 0) {
+      const sourceRevision = compareSourceRevision(file)
+      setRecoveredDimensions((current) => {
+        const previous = current[sourceRevision]
+        if (
+          previous?.sourceRevision === sourceRevision &&
+          previous.width === metrics.imageWidth &&
+          previous.height === metrics.imageHeight
+        ) {
+          return current
+        }
+        return {
+          ...current,
+          [sourceRevision]: {
+            sourceRevision,
+            width: metrics.imageWidth,
+            height: metrics.imageHeight,
+          },
+        }
+      })
+    }
     setModel((current) => {
       if (current === null) return current
       const measured = reduceCompare(current, {
@@ -173,12 +234,51 @@ export default function CompareWorkspace({
     }
   }
 
+  function renderPane(entityId: string) {
+    const file = filesById.get(entityId)
+    if (file === undefined) return null
+    const transform = compareModel.transforms[entityId]
+    if (transform === undefined) {
+      if (compareModel.entityIds.includes(entityId)) {
+        throw new Error(`Missing compare transform for entity ${entityId}`)
+      }
+      return null
+    }
+    return (
+      <ComparePane
+        file={file}
+        transform={transform}
+        active={activeEntityId === entityId}
+        useOriginal={originalEntityId === entityId}
+        readOnly={readOnly}
+        requestImage={requestComparedImage}
+        onActivate={() => update({ type: 'active_changed', entityId })}
+        onMetrics={updateMetrics}
+        onPan={(targetId, deltaX, deltaY) =>
+          update({ type: 'pan', entityId: targetId, deltaX, deltaY })
+        }
+        onRemove={remove}
+        onSetReview={onSetReview}
+        onToggleFavorite={onToggleFavorite}
+        onOriginalUnavailable={(targetId, reason) => {
+          if (originalEntityId === targetId) setOriginalEntityId(null)
+          update({ type: 'fit', entityId: targetId })
+          onStatus(
+            reason === 'budget'
+              ? '原图超出安全预览限制，已继续使用适窗代理。'
+              : '无法加载原图，已继续使用适窗代理。',
+          )
+        }}
+      />
+    )
+  }
+
   return (
     <section
       ref={workspaceRef}
-      className={`compare-workspace compare-layout-${layout}`}
+      className="compare-workspace"
       aria-label="图片对比"
-      data-layout={layout}
+      data-layout={plan.kind}
       tabIndex={0}
       onKeyDown={keyboard}
     >
@@ -228,43 +328,41 @@ export default function CompareWorkspace({
           完成
         </button>
       </div>
-      <div className="compare-pane-grid">
-        {model.entityIds.map((entityId) => {
-          const file = files.find((candidate) => candidate.entityId === entityId)
-          if (file === undefined) return null
-          const transform = model.transforms[entityId]
-          if (transform === undefined) {
-            throw new Error(`Missing compare transform for entity ${entityId}`)
-          }
-          return (
-            <ComparePane
-              key={entityId}
-              file={file}
-              transform={transform}
-              active={activeEntityId === entityId}
-              useOriginal={originalEntityId === entityId}
-              readOnly={readOnly}
-              requestImage={requestComparedImage}
-              onActivate={() => update({ type: 'active_changed', entityId })}
-              onMetrics={updateMetrics}
-              onPan={(targetId, deltaX, deltaY) =>
-                update({ type: 'pan', entityId: targetId, deltaX, deltaY })
-              }
-              onRemove={remove}
-              onSetReview={onSetReview}
-              onToggleFavorite={onToggleFavorite}
-              onOriginalUnavailable={(targetId, reason) => {
-                if (originalEntityId === targetId) setOriginalEntityId(null)
-                update({ type: 'fit', entityId: targetId })
-                onStatus(
-                  reason === 'budget'
-                    ? '原图超出安全预览限制，已继续使用适窗代理。'
-                    : '无法加载原图，已继续使用适窗代理。',
-                )
-              }}
-            />
-          )
-        })}
+      <div ref={containerRef} className="compare-layout-region">
+        {plan.scrollAxis === 'none' ? (
+          <div
+            role="list"
+            aria-label="全部图片对比"
+            className="compare-fit-layout"
+            data-testid="compare-fit-layout"
+          >
+            {plan.rects.map((rect, index) => (
+              <div
+                key={rect.entityId}
+                role="listitem"
+                aria-posinset={index + 1}
+                aria-setsize={plan.rects.length}
+                data-compare-entity-id={rect.entityId}
+                className="compare-layout-item"
+                style={{
+                  left: rect.left,
+                  top: rect.top,
+                  width: rect.width,
+                  height: rect.height,
+                }}
+              >
+                {renderPane(rect.entityId)}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <CompareVirtualViewport
+            plan={plan}
+            activeEntityId={activeEntityId}
+            onActivate={(entityId) => update({ type: 'active_changed', entityId })}
+            renderItem={(entityId) => renderPane(entityId)}
+          />
+        )}
       </div>
     </section>
   )

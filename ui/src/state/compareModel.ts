@@ -3,7 +3,6 @@ import { type CompareValidationResult, validateCompareCandidates } from './compa
 export const MIN_COMPARE_SCALE = 0.1
 export const MAX_COMPARE_SCALE = 8
 
-export type CompareLayout = 'two_columns' | 'three_asymmetric' | 'four_grid'
 export type CompareMode = 'synchronized' | 'independent'
 export type QuarterRotation = 0 | 90 | 180 | 270
 
@@ -85,12 +84,6 @@ export function createCompareState(candidates: readonly CompareCandidate[]): Com
       metrics: {},
     },
   }
-}
-
-export function compareLayout(state: CompareState): CompareLayout {
-  if (state.entityIds.length === 2) return 'two_columns'
-  if (state.entityIds.length === 3) return 'three_asymmetric'
-  return 'four_grid'
 }
 
 export function reduceCompare(state: CompareState, action: CompareAction): CompareState {
@@ -220,6 +213,9 @@ export function reconcileComparePanes(
     throw new Error('Non-empty reconciled compare state must include an entity')
   }
   if (entityIds.length === 1) return { kind: 'single_preview', entityId: firstEntityId }
+  const activeEntityId = entityIds.includes(state.activeEntityId)
+    ? state.activeEntityId
+    : nearestSurvivingEntityId(state, present, firstEntityId)
   const transforms = Object.fromEntries(
     entityIds.map((entityId) => [entityId, transformFor(state, entityId)]),
   )
@@ -233,13 +229,27 @@ export function reconcileComparePanes(
     state: {
       ...state,
       entityIds,
-      activeEntityId: entityIds.includes(state.activeEntityId)
-        ? state.activeEntityId
-        : firstEntityId,
+      activeEntityId,
       transforms,
       metrics,
     },
   }
+}
+
+function nearestSurvivingEntityId(
+  state: CompareState,
+  present: ReadonlySet<string>,
+  fallback: string,
+): string {
+  const removedIndex = state.entityIds.indexOf(state.activeEntityId)
+  if (removedIndex < 0) return fallback
+  for (let distance = 1; distance < state.entityIds.length; distance += 1) {
+    const following = state.entityIds[removedIndex + distance]
+    if (following !== undefined && present.has(following)) return following
+    const preceding = state.entityIds[removedIndex - distance]
+    if (preceding !== undefined && present.has(preceding)) return preceding
+  }
+  return fallback
 }
 
 function applySharedToEveryPane(

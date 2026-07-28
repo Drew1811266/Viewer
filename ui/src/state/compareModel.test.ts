@@ -133,20 +133,48 @@ describe('compareModel', () => {
   })
 
   it('preserves surviving transforms and exits to preview or grid', () => {
-    const created = createCompareState(images)
+    const created = createCompareState(twentyImages)
     if (!created.ok) throw new Error('fixture must be valid')
     let state = reduceCompare(created.state, { type: 'mode_changed', mode: 'independent' })
-    state = reduceCompare(state, { type: 'zoom', entityId: 'b', factor: 2 })
+    state = reduceCompare(state, { type: 'zoom', entityId: 'image-10', factor: 2 })
 
-    const three = reconcileComparePanes(state, ['a', 'b', 'c'])
-    expect(three.kind).toBe('compare')
-    if (three.kind !== 'compare') return
-    expect(defined(three.state.transforms.b, 'Expected retained transform for image b').scale).toBe(
-      2,
-    )
+    const survivors = twentyImages
+      .map(({ entityId }) => entityId)
+      .filter((entityId) => !['image-0', 'image-5', 'image-15'].includes(entityId))
+    const remaining = reconcileComparePanes(state, survivors)
+    expect(remaining.kind).toBe('compare')
+    if (remaining.kind !== 'compare') return
+    expect(remaining.state.entityIds).toEqual(survivors)
+    expect(
+      defined(remaining.state.transforms['image-10'], 'Expected retained transform for image 10')
+        .scale,
+    ).toBe(2)
 
-    const one = reconcileComparePanes(three.state, ['b'])
-    expect(one).toEqual({ kind: 'single_preview', entityId: 'b' })
-    expect(reconcileComparePanes(three.state, [])).toEqual({ kind: 'grid' })
+    const one = reconcileComparePanes(remaining.state, ['image-10'])
+    expect(one).toEqual({ kind: 'single_preview', entityId: 'image-10' })
+    expect(reconcileComparePanes(remaining.state, [])).toEqual({ kind: 'grid' })
+  })
+
+  it('chooses the nearest surviving active pane with next before previous on a tie', () => {
+    const created = createCompareState(twentyImages.slice(0, 5))
+    if (!created.ok) throw new Error('fixture must be valid')
+    const centered = reduceCompare(created.state, {
+      type: 'active_changed',
+      entityId: 'image-2',
+    })
+
+    const tied = reconcileComparePanes(centered, ['image-0', 'image-1', 'image-3', 'image-4'])
+    expect(tied.kind).toBe('compare')
+    if (tied.kind !== 'compare') return
+    expect(tied.state.activeEntityId).toBe('image-3')
+
+    const nearEnd = reduceCompare(created.state, {
+      type: 'active_changed',
+      entityId: 'image-4',
+    })
+    const preceding = reconcileComparePanes(nearEnd, ['image-0', 'image-1'])
+    expect(preceding.kind).toBe('compare')
+    if (preceding.kind !== 'compare') return
+    expect(preceding.state.activeEntityId).toBe('image-1')
   })
 })

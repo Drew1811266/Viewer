@@ -408,7 +408,23 @@ describe('workspace style contracts', () => {
     expect(declaration('.compare-toolbar', 'background')).toBe('var(--preview-chrome)')
     expect(declaration('.compare-toolbar', 'border-bottom')).toBe('1px solid var(--preview-border)')
     expect(declaration('.compare-toolbar > span', 'color')).toBe('var(--preview-muted)')
-    expect(declaration('.compare-pane-grid', 'background')).toBe('var(--preview-surface)')
+    expect(declaration('.compare-layout-region', 'background')).toBe('var(--preview-surface)')
+    expect(declaration('.compare-layout-region', 'overflow')).toBe('hidden')
+    expect(declaration('.compare-layout-region', 'position')).toBe('relative')
+    expect(declaration('.compare-fit-layout', 'height')).toBe('100%')
+    expect(declaration('.compare-fit-layout', 'overflow')).toBe('hidden')
+    expect(declaration('.compare-scroll-viewport[data-axis="horizontal"]', 'overflow-x')).toBe(
+      'auto',
+    )
+    expect(declaration('.compare-scroll-viewport[data-axis="horizontal"]', 'overflow-y')).toBe(
+      'hidden',
+    )
+    expect(declaration('.compare-scroll-viewport[data-axis="vertical"]', 'overflow-x')).toBe(
+      'hidden',
+    )
+    expect(declaration('.compare-scroll-viewport[data-axis="vertical"]', 'overflow-y')).toBe('auto')
+    expect(declaration('.compare-layout-item', 'contain')).toBe('layout paint')
+    expect(declaration('.compare-layout-item', 'position')).toBe('absolute')
 
     expect(declaration('.compare-pane', 'background')).toBe('var(--preview-panel-surface)')
     expect(declaration('.compare-pane', 'border')).toBe('2px solid var(--preview-border)')
@@ -418,6 +434,8 @@ describe('workspace style contracts', () => {
       '1px solid var(--preview-border)',
     )
     expect(declaration('.compare-pane-stage', 'background')).toBe('var(--preview-stage)')
+    expect(declaration('.compare-pane-stage', 'overflow')).toBe('hidden')
+    expect(declaration('.compare-pane-stage img', 'object-fit')).toBe('contain')
     expect(declaration('.compare-pane-stage img', 'outline')).toBe(
       '1px solid var(--preview-border)',
     )
@@ -490,6 +508,24 @@ describe('workspace style contracts', () => {
     expect(declaration('.compare-invalid > p[role="alert"]', 'font-size')).toBe('')
     expect(declaration('.compare-invalid > p[role="alert"]', 'margin')).toBe('')
     expect(declaration('.compare-invalid > p[role="alert"]', 'padding')).toBe('')
+
+    const radialStart = appCss.indexOf('.radial-file-menu {')
+    const darkStart = appCss.indexOf('@media (prefers-color-scheme: dark)', radialStart)
+    const lightRules = parseRules(appCss.slice(radialStart, darkStart))
+    expect(
+      winningDeclaration(
+        lightRules,
+        new Set(['.radial-menu-button[aria-disabled="true"]']),
+        'filter',
+      ),
+    ).toBe('grayscale(1)')
+    expect(
+      winningDeclaration(
+        lightRules,
+        new Set(['.radial-menu-button[aria-disabled="true"]']),
+        'opacity',
+      ),
+    ).toBe('0.38')
 
     const legacyColors = [
       '#171a1f',

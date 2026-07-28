@@ -129,8 +129,9 @@ export default function ComparePane({
         if (proxyRevision.current !== revision) return
         setProxy({ entityId, sourceRevision, image, quarterTurn: proxyQuarterTurn })
       },
-      () => {
+      (caught: unknown) => {
         if (proxyRevision.current !== revision) return
+        if (requestWasAborted(caught, controller.signal)) return
         setProxyError('无法预览该图片。')
       },
     )
@@ -159,6 +160,7 @@ export default function ComparePane({
       },
       (caught: unknown) => {
         if (originalRevision.current !== revision) return
+        if (requestWasAborted(caught, controller.signal)) return
         const budgetExceeded = commandCode(caught) === 'image_budget_exceeded'
         setOriginalError(
           budgetExceeded
@@ -307,6 +309,10 @@ function positiveDimension(value: number, fallback: number): number {
 function commandCode(caught: unknown): string | null {
   if (typeof caught !== 'object' || caught === null || !('code' in caught)) return null
   return typeof caught.code === 'string' ? caught.code : null
+}
+
+function requestWasAborted(caught: unknown, signal: AbortSignal): boolean {
+  return signal.aborted || (caught instanceof DOMException && caught.name === 'AbortError')
 }
 
 function visibleRepresentation(

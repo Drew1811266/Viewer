@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { BrowserFile, ImageRepresentation } from '../api/types'
+import type { BrowserFile, ImageRepresentation, ImageRepresentationRequest } from '../api/types'
 import { defined } from '../defined'
 import type { PaneTransform } from '../state/compareModel'
 import ComparePane from './ComparePane'
@@ -273,6 +273,63 @@ describe('ComparePane', () => {
       'src',
       'viewer-image://localhost/proxy-b',
     )
+  })
+
+  it('does not surface AbortError rejections for proxy or original requests', async () => {
+    const resize = installResizeObserver()
+    const originalUnavailable = vi.fn()
+    const requestImage = vi.fn(() =>
+      Promise.reject(new DOMException('request cancelled', 'AbortError')),
+    )
+    renderPane({
+      requestImage,
+      useOriginal: true,
+      onOriginalUnavailable: originalUnavailable,
+    })
+    act(() => resize(640, 480))
+
+    await waitFor(() => expect(requestImage).toHaveBeenCalledTimes(2))
+    await act(async () => Promise.resolve())
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(originalUnavailable).not.toHaveBeenCalled()
+  })
+
+  it('aborts pending proxy and original requests without reporting cleanup as a load failure', async () => {
+    const resize = installResizeObserver()
+    const originalUnavailable = vi.fn()
+    const signals = new Map<string, AbortSignal>()
+    const requestImage = vi.fn(
+      (
+        _file: BrowserFile,
+        request: ImageRepresentationRequest,
+        signal?: AbortSignal,
+      ): Promise<ImageRepresentation> => {
+        if (signal === undefined) throw new Error('Expected an abort signal')
+        signals.set(request.kind, signal)
+        return new Promise<ImageRepresentation>((_resolve, reject) => {
+          signal.addEventListener(
+            'abort',
+            () => reject(new DOMException('request cancelled', 'AbortError')),
+            { once: true },
+          )
+        })
+      },
+    )
+    const rendered = renderPane({
+      requestImage,
+      useOriginal: true,
+      onOriginalUnavailable: originalUnavailable,
+    })
+    act(() => resize(640, 480))
+    await waitFor(() => expect(requestImage).toHaveBeenCalledTimes(2))
+
+    rendered.unmount()
+    await act(async () => Promise.resolve())
+
+    expect(signals.get('fit_preview')?.aborted).toBe(true)
+    expect(signals.get('original100_percent')?.aborted).toBe(true)
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(originalUnavailable).not.toHaveBeenCalled()
   })
 
   it('targets pane-local markers without changing selection and disables writes in read-only mode', () => {

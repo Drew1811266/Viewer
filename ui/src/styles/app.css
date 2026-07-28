@@ -687,27 +687,53 @@ select {
   color: var(--preview-accent-text);
 }
 
-.compare-pane-grid {
+.compare-layout-region {
   background: var(--preview-surface);
-  display: grid;
   flex: 1;
-  gap: 6px;
   min-height: 0;
-  padding: 6px;
+  overflow: hidden;
+  position: relative;
 }
 
-.compare-layout-two_columns .compare-pane-grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+.compare-fit-layout,
+.compare-scroll-viewport {
+  height: 100%;
+  position: relative;
+  width: 100%;
 }
 
-.compare-layout-three_asymmetric .compare-pane-grid,
-.compare-layout-four_grid .compare-pane-grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  grid-template-rows: repeat(2, minmax(0, 1fr));
+.compare-fit-layout {
+  overflow: hidden;
 }
 
-.compare-layout-three_asymmetric .compare-pane:first-child {
-  grid-row: 1 / 3;
+.compare-scroll-viewport {
+  overscroll-behavior: contain;
+}
+
+.compare-scroll-viewport[data-axis="horizontal"] {
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.compare-scroll-viewport[data-axis="vertical"] {
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.compare-scroll-track {
+  min-height: 100%;
+  min-width: 100%;
+  position: relative;
+}
+
+.compare-layout-item {
+  contain: layout paint;
+  position: absolute;
+}
+
+.compare-layout-item > .compare-pane {
+  height: 100%;
+  width: 100%;
 }
 
 .compare-pane {

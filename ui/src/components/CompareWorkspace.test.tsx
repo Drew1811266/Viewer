@@ -1,10 +1,16 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { BrowserFile, ImageRepresentation, ImageRepresentationRequest } from '../api/types'
 import { defined } from '../defined'
 import CompareWorkspace from './CompareWorkspace'
 
 const files = ['a', 'b', 'c', 'd'].map((id) => image(id, `${id}.jpg`))
+let activeResizeHarness: CompareResizeHarness | null = null
+
+afterEach(() => {
+  activeResizeHarness = null
+  vi.unstubAllGlobals()
+})
 
 describe('CompareWorkspace', () => {
   it('rejects invalid cardinality and non-image candidates with safe feedback', () => {
@@ -21,19 +27,38 @@ describe('CompareWorkspace', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('请选择 2–20 张 JPG 或 PNG')
   })
 
-  it('uses two-column, asymmetric-three and four-grid layouts', () => {
-    for (const [count, layout] of [
-      [2, 'two_columns'],
-      [3, 'three_asymmetric'],
-      [4, 'four_grid'],
-    ] as const) {
-      const rendered = renderWorkspace({ files: files.slice(0, count) })
-      expect(screen.getByRole('region', { name: '图片对比' })).toHaveAttribute(
-        'data-layout',
-        layout,
-      )
-      rendered.unmount()
-    }
+  it('uses one row for four portraits in a wide workspace', () => {
+    const resize = installCompareResizeObserver()
+    renderWorkspace({ files: portraitFiles(4) })
+    act(() => resize.workspace(1_700, 900))
+    expect(screen.getByRole('region', { name: '图片对比' })).toHaveAttribute(
+      'data-layout',
+      'fit-row',
+    )
+  })
+
+  it('uses a grid for four landscapes', () => {
+    const resize = installCompareResizeObserver()
+    renderWorkspace({ files: landscapeFiles(4) })
+    act(() => resize.workspace(1_700, 900))
+    expect(screen.getByRole('region', { name: '图片对比' })).toHaveAttribute(
+      'data-layout',
+      'fit-grid',
+    )
+  })
+
+  it('virtualizes a scrolling portrait set', () => {
+    const resize = installCompareResizeObserver()
+    const requestImage = vi.fn(() => new Promise<ImageRepresentation>(() => undefined))
+    renderWorkspace({ files: portraitFiles(20), requestImage })
+    act(() => resize.workspace(1_700, 900))
+    expect(screen.getByRole('list', { name: '滚动图片对比' })).toHaveAttribute(
+      'data-axis',
+      'horizontal',
+    )
+    act(() => resize.stages(600, 800))
+    expect(requestImage.mock.calls.length).toBeGreaterThan(0)
+    expect(requestImage.mock.calls.length).toBeLessThan(20)
   })
 
   it('synchronizes by default, retains independent transforms and keeps rotation pane-local', () => {
@@ -59,12 +84,9 @@ describe('CompareWorkspace', () => {
     fireEvent.focus(pane('b'))
     fireEvent.click(screen.getByRole('button', { name: '放大当前对比' }))
     fireEvent.click(screen.getByRole('button', { name: '移除 d.jpg' }))
+    act(() => activeResizeHarness?.flush())
     expect(changed).toHaveBeenLastCalledWith(['a', 'b', 'c'])
     expect(pane('b')).toHaveAttribute('data-scale', '1.25')
-    expect(screen.getByRole('region', { name: '图片对比' })).toHaveAttribute(
-      'data-layout',
-      'three_asymmetric',
-    )
     rendered.unmount()
 
     renderWorkspace({ onEntityIdsChange: changed })
@@ -230,16 +252,87 @@ describe('CompareWorkspace', () => {
     fireEvent.click(screen.getByRole('button', { name: '放大当前对比' }))
 
     rendered.rerender(workspace({ files: files.slice(0, 2), onEntityIdsChange: changed }))
+    act(() => activeResizeHarness?.flush())
     await waitFor(() =>
       expect(screen.getByRole('region', { name: '图片对比' })).toHaveAttribute(
         'data-layout',
-        'two_columns',
+        'fit-row',
       ),
     )
     expect(pane('b')).toHaveAttribute('data-scale', '1.25')
 
     rendered.rerender(workspace({ files: files.slice(0, 1), onEntityIdsChange: changed }))
     await waitFor(() => expect(changed).toHaveBeenLastCalledWith(['a']))
+  })
+
+  it('keeps a failed pane and its neighbors in their planned rectangles', async () => {
+    const resize = installCompareResizeObserver()
+    const requestImage = vi.fn((file: BrowserFile) =>
+      file.entityId === 'landscape-1'
+        ? Promise.reject(new Error('corrupt image'))
+        : Promise.resolve(imageRepresentation(`proxy-${file.entityId}`)),
+    )
+    renderWorkspace({ files: landscapeFiles(4), requestImage })
+    act(() => resize.workspace(1_700, 900))
+
+    const failedItem = defined(
+      pane('landscape-1').parentElement,
+      'Expected planned item for landscape-1',
+    )
+    const neighboringItem = defined(
+      pane('landscape-2').parentElement,
+      'Expected planned item for landscape-2',
+    )
+    const failedRectangle = failedItem.getAttribute('style')
+    const neighboringRectangle = neighboringItem.getAttribute('style')
+    act(() => resize.stages(800, 400))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('无法预览该图片')
+    expect(failedItem).toHaveAttribute('style', failedRectangle)
+    expect(neighboringItem).toHaveAttribute('style', neighboringRectangle)
+  })
+
+  it('recovers missing natural dimensions for one controlled layout correction', async () => {
+    const resize = installCompareResizeObserver()
+    const missingMetadata = landscapeFiles(4).map((file) => ({
+      ...file,
+      imageMetadata: null,
+    }))
+    const requestImage = vi.fn((file: BrowserFile) =>
+      Promise.resolve({
+        ...imageRepresentation(`proxy-${file.entityId}`),
+        width: 1_200,
+        height: 800,
+      }),
+    )
+    renderWorkspace({ files: missingMetadata, requestImage })
+    act(() => resize.workspace(1_700, 900))
+    expect(screen.getByRole('region', { name: '图片对比' })).toHaveAttribute(
+      'data-layout',
+      'fit-row',
+    )
+
+    act(() => resize.stages(800, 400))
+    await waitFor(() => expect(requestImage).toHaveBeenCalledTimes(4))
+    await act(async () => Promise.resolve())
+    act(() => resize.flush())
+    await waitFor(() =>
+      expect(screen.getByRole('region', { name: '图片对比' })).toHaveAttribute(
+        'data-layout',
+        'fit-grid',
+      ),
+    )
+    const correctedRectangles = screen
+      .getAllByRole('listitem')
+      .map((item) => item.getAttribute('style'))
+
+    act(() => resize.stages(800, 400))
+    await waitFor(() => expect(requestImage).toHaveBeenCalledTimes(8))
+    await act(async () => Promise.resolve())
+    expect(resize.pendingFrames()).toBe(0)
+    expect(screen.getAllByRole('listitem').map((item) => item.getAttribute('style'))).toEqual(
+      correctedRectangles,
+    )
   })
 })
 
@@ -248,7 +341,14 @@ function pane(id: string) {
 }
 
 function renderWorkspace(overrides: Partial<React.ComponentProps<typeof CompareWorkspace>> = {}) {
-  return render(workspace(overrides))
+  const installDefaultSize = activeResizeHarness === null
+  const resize = activeResizeHarness ?? installCompareResizeObserver()
+  const rendered = render(workspace(overrides))
+  if (installDefaultSize) {
+    act(() => resize.workspace(1_700, 900))
+    act(() => resize.stages(640, 480))
+  }
+  return rendered
 }
 
 function workspace(overrides: Partial<React.ComponentProps<typeof CompareWorkspace>> = {}) {
@@ -288,6 +388,96 @@ function imageRepresentation(token: string): ImageRepresentation {
     height: 3_000,
     backend: 'image_io',
   }
+}
+
+function portraitFiles(count: number): BrowserFile[] {
+  return Array.from({ length: count }, (_, index) => ({
+    ...image(`portrait-${index}`, `portrait-${index}.jpg`),
+    imageMetadata: { width: 600, height: 800 },
+  }))
+}
+
+function landscapeFiles(count: number): BrowserFile[] {
+  return Array.from({ length: count }, (_, index) => ({
+    ...image(`landscape-${index}`, `landscape-${index}.jpg`),
+    imageMetadata: { width: 1_200, height: 800 },
+  }))
+}
+
+interface CompareResizeHarness {
+  workspace: (width: number, height: number) => void
+  stages: (width: number, height: number) => void
+  flush: () => void
+  pendingFrames: () => number
+}
+
+function installCompareResizeObserver(): CompareResizeHarness {
+  const callbacks = new Map<Element, ResizeObserverCallback>()
+  const frames = new Map<number, FrameRequestCallback>()
+  let nextFrameId = 1
+  class Observer {
+    private readonly callback: ResizeObserverCallback
+    private readonly observed = new Set<Element>()
+
+    constructor(callback: ResizeObserverCallback) {
+      this.callback = callback
+    }
+
+    observe(node: Element) {
+      this.observed.add(node)
+      callbacks.set(node, this.callback)
+    }
+
+    unobserve(node: Element) {
+      this.observed.delete(node)
+      callbacks.delete(node)
+    }
+
+    disconnect() {
+      for (const node of this.observed) callbacks.delete(node)
+      this.observed.clear()
+    }
+  }
+  vi.stubGlobal('ResizeObserver', Observer)
+  vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+    const frameId = nextFrameId
+    nextFrameId += 1
+    frames.set(frameId, callback)
+    return frameId
+  })
+  vi.stubGlobal('cancelAnimationFrame', (frameId: number) => {
+    frames.delete(frameId)
+  })
+
+  const trigger = (node: Element, width: number, height: number) => {
+    callbacks.get(node)?.(
+      [{ target: node, contentRect: { width, height } } as ResizeObserverEntry],
+      {} as ResizeObserver,
+    )
+  }
+  const flush = () => {
+    while (frames.size > 0) {
+      const pending = [...frames.values()]
+      frames.clear()
+      for (const callback of pending) callback(0)
+    }
+  }
+  const harness = {
+    workspace(width: number, height: number) {
+      const node = document.querySelector('.compare-layout-region')
+      if (node !== null) trigger(node, width, height)
+      flush()
+    },
+    stages(width: number, height: number) {
+      for (const node of document.querySelectorAll('.compare-pane-stage')) {
+        trigger(node, width, height)
+      }
+    },
+    flush,
+    pendingFrames: () => frames.size,
+  }
+  activeResizeHarness = harness
+  return harness
 }
 
 function deferred<T>() {

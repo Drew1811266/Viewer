@@ -28,7 +28,11 @@ completion.
 | [`superpowers/specs/2026-07-23-viewer-engineering-optimization-governance-design.md`](superpowers/specs/2026-07-23-viewer-engineering-optimization-governance-design.md) | Active | — |
 | [`superpowers/specs/2026-07-23-viewer-folder-filmstrip-rows-design.md`](superpowers/specs/2026-07-23-viewer-folder-filmstrip-rows-design.md) | Active | — |
 | [`superpowers/specs/2026-07-27-viewer-aspect-aware-thumbnail-density-design.md`](superpowers/specs/2026-07-27-viewer-aspect-aware-thumbnail-density-design.md) | Active | — |
+| [`superpowers/specs/2026-07-27-viewer-light-preview-design.md`](superpowers/specs/2026-07-27-viewer-light-preview-design.md) | Active | — |
 | [`superpowers/specs/2026-07-27-viewer-readme-design.md`](superpowers/specs/2026-07-27-viewer-readme-design.md) | Active | — |
+| [`superpowers/specs/2026-07-27-viewer-toolbar-menu-buttons-design.md`](superpowers/specs/2026-07-27-viewer-toolbar-menu-buttons-design.md) | Active | — |
+| [`superpowers/specs/2026-07-27-viewer-unified-preview-theme-design.md`](superpowers/specs/2026-07-27-viewer-unified-preview-theme-design.md) | Active | — |
+| [`superpowers/specs/2026-07-28-viewer-development-launcher-design.md`](superpowers/specs/2026-07-28-viewer-development-launcher-design.md) | Active | — |
 
 ## Superseded decisions
 

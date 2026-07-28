@@ -33,6 +33,7 @@ completion.
 | [`superpowers/specs/2026-07-27-viewer-toolbar-menu-buttons-design.md`](superpowers/specs/2026-07-27-viewer-toolbar-menu-buttons-design.md) | Active | — |
 | [`superpowers/specs/2026-07-27-viewer-unified-preview-theme-design.md`](superpowers/specs/2026-07-27-viewer-unified-preview-theme-design.md) | Active | — |
 | [`superpowers/specs/2026-07-28-viewer-development-launcher-design.md`](superpowers/specs/2026-07-28-viewer-development-launcher-design.md) | Active | — |
+| [`superpowers/specs/2026-07-28-viewer-intelligent-compare-layout-design.md`](superpowers/specs/2026-07-28-viewer-intelligent-compare-layout-design.md) | Active | — |
 
 ## Superseded decisions
 

@@ -239,7 +239,15 @@ describe('Viewer empty state', () => {
         marker: { reviewState: null, favorite: false },
       },
     ])
-    vi.mocked(viewer.queryFolder).mockResolvedValue(mixedContentWorkspace())
+    vi.mocked(viewer.queryFolder).mockImplementation(async (entityId) =>
+      entityId === 'folder-b'
+        ? mixedContentWorkspace({
+            entityId: 'text-folder-b',
+            relativePath: 'folder-b/folder-notes.txt',
+            name: 'folder-notes.txt',
+          })
+        : mixedContentWorkspace(),
+    )
     render(<App bridge={viewer} />)
 
     fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
@@ -249,6 +257,8 @@ describe('Viewer empty state', () => {
     expect(disclosure).toHaveAttribute('aria-expanded', 'true')
 
     fireEvent.click(await screen.findByRole('treeitem', { name: 'folder-b' }))
+    await waitFor(() => expect(viewer.queryFolder).toHaveBeenCalledWith('folder-b', false))
+    expect(await screen.findByText('folder-b/folder-notes.txt')).toBeVisible()
     await waitFor(() =>
       expect(screen.getByRole('button', { name: /文本文件 · 1/ })).toHaveAttribute(
         'aria-expanded',
@@ -2011,14 +2021,22 @@ function contentWorkspace() {
   }
 }
 
-function mixedContentWorkspace() {
+function mixedContentWorkspace({
+  entityId = 'text-root',
+  relativePath = 'root/root-notes.txt',
+  name = 'root-notes.txt',
+}: {
+  entityId?: string
+  relativePath?: string
+  name?: string
+} = {}) {
   return {
     ...contentWorkspace(),
     textFiles: [
       {
-        entityId: 'text-1',
-        relativePath: 'id/notes.txt',
-        name: 'notes.txt',
+        entityId,
+        relativePath,
+        name,
         kind: 'text' as const,
         size: 20,
         modifiedNs: '2',

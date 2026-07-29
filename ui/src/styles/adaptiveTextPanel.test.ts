@@ -98,7 +98,7 @@ describe('adaptive text panel layout contracts', () => {
     })
   })
 
-  it('renders the disclosure as a light Viewer button with visible keyboard focus', () => {
+  it('renders the disclosure as a light Viewer button with focus inside the clipped shelf', () => {
     const rules = parseRules(adaptiveTextPanelCss)
 
     expect(declarationsFor(rules, '.text-file-disclosure')).toMatchObject({
@@ -110,7 +110,7 @@ describe('adaptive text panel layout contracts', () => {
     })
     expect(declarationsFor(rules, '.text-file-disclosure:focus-visible')).toMatchObject({
       outline: '2px solid #2477d4',
-      'outline-offset': '2px',
+      'outline-offset': '-2px',
     })
   })
 })

@@ -181,6 +181,16 @@ function selectedLabels(): string[] {
     )
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  let reject!: (reason?: unknown) => void
+  const promise = new Promise<T>((next, fail) => {
+    resolve = next
+    reject = fail
+  })
+  return { promise, resolve, reject }
+}
+
 function triggerResize(node: Element, width: number, height: number) {
   resizeCallbacks.get(node)?.(
     [{ target: node, contentRect: { width, height } } as ResizeObserverEntry],
@@ -377,18 +387,54 @@ describe('ContentBrowser', () => {
     expect(grid.scrollTop).toBe(180)
   })
 
-  it('does not request cached or pending thumbnail keys again after a shelf toggle', async () => {
-    const requestThumbnail = vi.fn(() => new Promise<string>(() => undefined))
-    render(
-      <ControlledContentBrowser workspace={workspace(3)} requestThumbnail={requestThumbnail} />,
+  it('does not request resolved-cache or pending thumbnail keys again after a shelf toggle', async () => {
+    const resolved = deferred<string>()
+    const pending = deferred<string>()
+    const requestThumbnail = vi.fn((file: BrowserFile) =>
+      file.entityId === 'image-1' ? resolved.promise : pending.promise,
     )
-    await waitFor(() => expect(requestThumbnail).toHaveBeenCalled())
-    const requestCount = requestThumbnail.mock.calls.length
+    const data = workspace(2)
+    data.images = data.images.map((file) => ({
+      ...file,
+      imageMetadata: { width: 1, height: 1 },
+    }))
+    const rendered = render(
+      <ControlledContentBrowser workspace={data} requestThumbnail={requestThumbnail} />,
+    )
+    await waitFor(() => expect(requestThumbnail).toHaveBeenCalledTimes(2))
+    await act(async () => {
+      resolved.resolve('viewer-image://thumbnail/resolved-image-1')
+      await resolved.promise
+    })
+    const resolvedImage = await thumbnailImage('1.jpg')
+    fireEvent.load(resolvedImage)
+    expect(resolvedImage).toHaveAttribute('src', 'viewer-image://thumbnail/resolved-image-1')
+    expect(resolvedImage).toHaveStyle({ visibility: 'visible' })
+    expect(
+      screen.getByRole('option', { name: '2.jpg' }).querySelector('[aria-label="缩略图加载中"]'),
+    ).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: '文本文件 · 1' }))
     fireEvent.click(screen.getByRole('button', { name: '文本文件 · 1' }))
+    rendered.rerender(
+      <ControlledContentBrowser
+        workspace={{
+          ...data,
+          images: data.images.map((file) => ({ ...file })),
+          textFiles: data.textFiles.map((file) => ({ ...file })),
+        }}
+        requestThumbnail={requestThumbnail}
+      />,
+    )
 
-    await waitFor(() => expect(requestThumbnail).toHaveBeenCalledTimes(requestCount))
+    await waitFor(() => {
+      expect(
+        requestThumbnail.mock.calls.filter(([file]) => file.entityId === 'image-1'),
+      ).toHaveLength(1)
+      expect(
+        requestThumbnail.mock.calls.filter(([file]) => file.entityId === 'image-2'),
+      ).toHaveLength(1)
+    })
   })
 
   it('measures a newly mounted image slot after a text-only workspace rerenders to image-only', () => {

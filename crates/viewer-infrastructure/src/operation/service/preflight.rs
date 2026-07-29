@@ -663,10 +663,7 @@ impl LocalFileCommandAdapter {
 }
 
 fn supported_regular_kind(kind: FileKind) -> bool {
-    matches!(
-        kind,
-        FileKind::Jpeg | FileKind::Png | FileKind::Markdown | FileKind::Text
-    )
+    kind != FileKind::Directory
 }
 
 fn snapshot_sync(path: &Path) -> Result<FileSnapshot, FileOperationError> {

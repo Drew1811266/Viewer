@@ -52,6 +52,8 @@ pub(super) fn encode_kind(kind: FileKind) -> i64 {
         FileKind::Png => 2,
         FileKind::Markdown => 3,
         FileKind::Text => 4,
+        FileKind::UnsupportedImage => 5,
+        FileKind::Other => 6,
     }
 }
 
@@ -99,6 +101,8 @@ fn decode_kind(value: i64) -> rusqlite::Result<FileKind> {
         2 => Ok(FileKind::Png),
         3 => Ok(FileKind::Markdown),
         4 => Ok(FileKind::Text),
+        5 => Ok(FileKind::UnsupportedImage),
+        6 => Ok(FileKind::Other),
         _ => Err(persisted_error("kind", value)),
     }
 }

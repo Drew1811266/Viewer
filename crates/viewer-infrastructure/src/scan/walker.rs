@@ -17,6 +17,8 @@ use viewer_domain::{
 };
 use walkdir::{DirEntry, WalkDir};
 
+use super::file_classifier::{classify_regular_file, is_ignored_entry_name};
+
 #[derive(Debug, thiserror::Error)]
 pub enum SubtreeSnapshotError {
     #[error("reconcile root is invalid")]
@@ -311,8 +313,7 @@ fn is_visible_entry(entry: &DirEntry) -> bool {
     if entry.depth() == 0 {
         return true;
     }
-    let name = entry.file_name().to_string_lossy();
-    !name.starts_with('.') && !name.eq_ignore_ascii_case(".viewer")
+    !is_ignored_entry_name(entry.file_name())
 }
 
 fn node_from_entry(
@@ -348,18 +349,10 @@ fn node_from_entry(
     let kind = if metadata.is_dir() {
         FileKind::Directory
     } else if metadata.is_file() {
-        match path
-            .extension()
-            .and_then(|extension| extension.to_str())
-            .map(str::to_ascii_lowercase)
-            .as_deref()
-        {
-            Some("jpg" | "jpeg") => FileKind::Jpeg,
-            Some("png") => FileKind::Png,
-            Some("md" | "markdown") => FileKind::Markdown,
-            Some("txt") => FileKind::Text,
-            _ => return Ok(None),
-        }
+        let Some(kind) = classify_regular_file(path) else {
+            return Ok(None);
+        };
+        kind
     } else {
         return Ok(None);
     };

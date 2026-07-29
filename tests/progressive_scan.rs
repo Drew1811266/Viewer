@@ -22,6 +22,12 @@ async fn progressive_scan_publishes_folders_first_and_excludes_unsafe_entries() 
     project.create_file("products/id-1/prompt.md", b"prompt");
     project.create_file("notes.txt", b"notes");
     project.create_file("ignored.pdf", b"pdf");
+    project.create_file("poster.WEBP", b"unsupported image");
+    project.create_file("archive.zip", b"archive");
+    project.create_file("README", b"extensionless");
+    project.create_file("ignored.MOV", b"video");
+    project.create_file("Thumbs.db", b"system");
+    project.create_file("desktop.ini", b"system");
     fs::create_dir_all(project.root().join(".hidden/nested")).unwrap();
     fs::write(project.root().join(".hidden/nested/front.jpg"), b"hidden").unwrap();
     fs::write(
@@ -60,7 +66,7 @@ async fn run_and_assert_scan(root: &std::path::Path) {
     ProjectWalker.scan(request, sink).await.unwrap();
 
     let mut folder_paths = Vec::new();
-    let mut file_paths = Vec::new();
+    let mut files = Vec::new();
     let mut saw_files = false;
     let mut finished = None;
     let mut failed_items = Vec::new();
@@ -82,10 +88,10 @@ async fn run_and_assert_scan(root: &std::path::Path) {
                 saw_files = true;
                 assert!(nodes.len() <= 128);
                 assert!(nodes.iter().all(|node| node.kind != FileKind::Directory));
-                file_paths.extend(
+                files.extend(
                     nodes
                         .into_iter()
-                        .map(|node| node.relative_path.as_str().to_owned()),
+                        .map(|node| (node.relative_path.as_str().to_owned(), node.kind)),
                 );
             }
             ScanEvent::Finished { generation, totals } => {
@@ -104,7 +110,11 @@ async fn run_and_assert_scan(root: &std::path::Path) {
     }
 
     folder_paths.sort();
-    file_paths.sort();
+    files.sort_by(|left, right| left.0.cmp(&right.0));
+    let file_paths = files
+        .iter()
+        .map(|(path, _)| path.as_str())
+        .collect::<Vec<_>>();
     assert_eq!(
         folder_paths,
         ["products", "products/id-1", "products/id-1/details"]
@@ -112,15 +122,25 @@ async fn run_and_assert_scan(root: &std::path::Path) {
     assert_eq!(
         file_paths,
         [
+            "README",
+            "archive.zip",
+            "ignored.pdf",
             "notes.txt",
+            "poster.WEBP",
             "products/id-1/back.PNG",
             "products/id-1/front.jpg",
             "products/id-1/prompt.md",
         ]
     );
+    assert!(files.contains(&("poster.WEBP".into(), FileKind::UnsupportedImage)));
+    assert!(files.contains(&("archive.zip".into(), FileKind::Other)));
+    assert!(files.contains(&("README".into(), FileKind::Other)));
+    assert!(!files.iter().any(|(path, _)| path == "ignored.MOV"));
+    assert!(!files.iter().any(|(path, _)| path == "Thumbs.db"));
+    assert!(!files.iter().any(|(path, _)| path == "desktop.ini"));
     let totals = finished.expect("finished event");
     assert_eq!(totals.folders, 3);
-    assert_eq!(totals.files, 4);
+    assert_eq!(totals.files, 8);
     assert_eq!(totals.failed, 0);
     assert!(failed_items.is_empty());
 }
@@ -229,9 +249,17 @@ async fn progressive_scan_rejects_a_symlinked_project_root() {
 fn session_index_commits_a_batch_and_reopens_with_the_same_hierarchy() {
     let directory = tempfile::tempdir().unwrap();
     let database = directory.path().join("session.sqlite");
+    let assets_id = EntityId::new();
     let products_id = EntityId::new();
     let item_id = EntityId::new();
     let nodes = vec![
+        indexed_node(assets_id, "assets", FileKind::Directory),
+        indexed_node(
+            EntityId::new(),
+            "assets/source.psd",
+            FileKind::UnsupportedImage,
+        ),
+        indexed_node(EntityId::new(), "assets/license.pdf", FileKind::Other),
         indexed_node(products_id, "products", FileKind::Directory),
         indexed_node(item_id, "products/id-1", FileKind::Directory),
         indexed_node(EntityId::new(), "products/id-1/front.jpg", FileKind::Jpeg),
@@ -244,7 +272,18 @@ fn session_index_commits_a_batch_and_reopens_with_the_same_hierarchy() {
 
     let index = SessionIndex::open(&database).unwrap();
     let root_children = index.directory_children(None).unwrap();
-    assert_eq!(paths(&root_children), ["notes.txt", "products"]);
+    assert_eq!(paths(&root_children), ["assets", "notes.txt", "products"]);
+    let asset_children = index.directory_children(Some(assets_id)).unwrap();
+    assert_eq!(
+        asset_children
+            .iter()
+            .map(|node| (node.relative_path.as_str(), node.kind))
+            .collect::<Vec<_>>(),
+        [
+            ("assets/license.pdf", FileKind::Other),
+            ("assets/source.psd", FileKind::UnsupportedImage),
+        ]
+    );
     let product_children = index.directory_children(Some(products_id)).unwrap();
     assert_eq!(paths(&product_children), ["products/id-1"]);
     let item_children = index.directory_children(Some(item_id)).unwrap();
@@ -252,7 +291,7 @@ fn session_index_commits_a_batch_and_reopens_with_the_same_hierarchy() {
     assert_eq!(index.remove_subtree(products_id).unwrap(), 3);
     assert_eq!(
         paths(&index.directory_children(None).unwrap()),
-        ["notes.txt"]
+        ["assets", "notes.txt"]
     );
     assert!(index.directory_children(Some(item_id)).unwrap().is_empty());
 }

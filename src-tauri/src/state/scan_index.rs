@@ -276,12 +276,10 @@ pub(crate) async fn rebuild_derived_nodes(
     emit_index_progress_if_current(&active, &coordinator, &index, events.as_ref())?;
     let mut last_progress = Instant::now();
 
-    for node in nodes.into_iter().filter(|node| {
-        matches!(
-            node.kind,
-            FileKind::Jpeg | FileKind::Png | FileKind::Markdown | FileKind::Text
-        )
-    }) {
+    for node in nodes
+        .into_iter()
+        .filter(|node| node.kind.is_previewable_image() || node.kind.is_previewable_text())
+    {
         if !coordinator.is_publishable(active.session_id, active.generation) {
             return Ok(());
         }
@@ -290,10 +288,10 @@ pub(crate) async fn rebuild_derived_nodes(
             Ok(_) => continue,
             Err(error) => return Err(CommandError::from(error)),
         };
-        let pending = match node.kind {
-            FileKind::Jpeg | FileKind::Png => current.image_status == ImageIndexStatus::Pending,
-            FileKind::Markdown | FileKind::Text => current.text_status == TextIndexStatus::Pending,
-            FileKind::Directory => false,
+        let pending = if node.kind.is_previewable_image() {
+            current.image_status == ImageIndexStatus::Pending
+        } else {
+            current.text_status == TextIndexStatus::Pending
         };
         if !pending {
             continue;
@@ -363,7 +361,9 @@ pub(crate) async fn rebuild_derived_nodes(
                     }
                 }
             },
-            FileKind::Directory => unreachable!("directories were filtered out"),
+            FileKind::Directory | FileKind::UnsupportedImage | FileKind::Other => {
+                unreachable!("non-derived kinds were filtered out")
+            }
         }
 
         if last_progress.elapsed() >= Duration::from_millis(50) {
@@ -409,5 +409,110 @@ fn merge_node_event(target: &mut ScanEvent, source: ScanEvent) {
             target.extend(source)
         }
         _ => unreachable!("scan event kinds were checked before merging"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::{
+        fs,
+        sync::{
+            Arc,
+            atomic::{AtomicUsize, Ordering},
+        },
+    };
+    use viewer_application::{ImageArtifact, ProjectAccess};
+    use viewer_domain::{ProjectId, image::ImageProbe};
+
+    #[derive(Default)]
+    struct CountingImage {
+        probes: AtomicUsize,
+    }
+
+    #[async_trait::async_trait]
+    impl ImagePort for CountingImage {
+        async fn probe(&self, _source: &Path) -> Result<ImageProbe, ImageError> {
+            self.probes.fetch_add(1, Ordering::Relaxed);
+            Err(ImageError::Unsupported)
+        }
+
+        async fn render(&self, _request: ImageRequest) -> Result<ImageArtifact, ImageError> {
+            Err(ImageError::Unsupported)
+        }
+
+        async fn cancel_session(&self, _session_id: SessionId) {}
+    }
+
+    struct NoopEvents;
+
+    impl DesktopEventSink for NoopEvents {
+        fn emit_scan(&self, _event: ScanEventDto) {}
+    }
+
+    #[tokio::test]
+    async fn non_previewable_kinds_skip_image_and_text_extraction() {
+        let project = tempfile::tempdir().unwrap();
+        fs::write(project.path().join("source.psd"), b"image source").unwrap();
+        fs::write(project.path().join("license.pdf"), b"text source").unwrap();
+        let index = Arc::new(SessionIndex::open(project.path().join("session.sqlite")).unwrap());
+        let unsupported = FileNode {
+            entity_id: EntityId::new(),
+            relative_path: RelativePath::parse("source.psd").unwrap(),
+            kind: FileKind::UnsupportedImage,
+            size: 12,
+            modified_ns: 1,
+        };
+        let other = FileNode {
+            entity_id: EntityId::new(),
+            relative_path: RelativePath::parse("license.pdf").unwrap(),
+            kind: FileKind::Other,
+            size: 11,
+            modified_ns: 1,
+        };
+        index
+            .upsert_batch(&[unsupported.clone(), other.clone()])
+            .unwrap();
+        let coordinator = Arc::new(TaskCoordinator::default());
+        let session_id = SessionId::new();
+        let generation = coordinator.begin_session(session_id);
+        let active = ActiveProject {
+            project_id: ProjectId::new(),
+            session_id,
+            generation,
+            root: project.path().canonicalize().unwrap(),
+            display_name: "fixture".into(),
+            access: ProjectAccess::ReadWrite,
+        };
+        let image = Arc::new(CountingImage::default());
+
+        rebuild_derived_nodes(
+            active,
+            coordinator,
+            Arc::clone(&index),
+            image.clone(),
+            Arc::new(NoopEvents),
+            vec![unsupported.clone(), other.clone()],
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(image.probes.load(Ordering::Relaxed), 0);
+        assert_eq!(
+            index
+                .indexed_node(unsupported.entity_id)
+                .unwrap()
+                .unwrap()
+                .image_status,
+            ImageIndexStatus::Pending
+        );
+        assert_eq!(
+            index
+                .indexed_node(other.entity_id)
+                .unwrap()
+                .unwrap()
+                .text_status,
+            TextIndexStatus::Pending
+        );
     }
 }

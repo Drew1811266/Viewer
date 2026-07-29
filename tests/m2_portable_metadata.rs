@@ -396,6 +396,38 @@ fn markers_keep_review_and_favorite_independent_for_files_and_folders() {
 }
 
 #[test]
+fn markers_round_trip_unsupported_images_and_other_files() {
+    let project = TempDir::new().unwrap();
+    let store = writable_marker_store(&project);
+    let targets = [
+        marker_target("assets/source.psd", FileKind::UnsupportedImage),
+        marker_target("assets/license.pdf", FileKind::Other),
+    ];
+    let patch = MarkerPatch {
+        review: ReviewPatch::Unchanged,
+        favorite: FavoritePatch::Set(true),
+    };
+
+    store.apply_batch(&targets, patch, 42).unwrap();
+    let restored = store
+        .markers_for_paths(
+            &targets
+                .iter()
+                .map(|target| target.relative_path.clone())
+                .collect::<Vec<_>>(),
+        )
+        .unwrap();
+
+    assert_eq!(
+        restored
+            .iter()
+            .map(|marker| marker.kind)
+            .collect::<Vec<_>>(),
+        [FileKind::Other, FileKind::UnsupportedImage]
+    );
+}
+
+#[test]
 fn clearing_both_marker_dimensions_removes_the_portable_row() {
     let project = TempDir::new().unwrap();
     let store = writable_marker_store(&project);

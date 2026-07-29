@@ -320,7 +320,8 @@ async fn directory_move_preserves_entities_derived_data_and_relocates_markers_by
 }
 
 #[tokio::test]
-async fn same_path_identity_replacement_does_not_inherit_the_old_session_marker() {
+async fn same_path_identity_replacement_keeps_the_moved_other_file_and_does_not_inherit_its_marker()
+{
     let fixture = Fixture::new();
     fixture.directory("work");
     let old = fixture.file("work/item.png", b"old", FileKind::Png);
@@ -362,8 +363,14 @@ async fn same_path_identity_replacement_does_not_inherit_the_old_session_marker(
     assert_ne!(old, replacement.entity_id);
 
     let summary = fixture.reconcile(&["work"]).await;
-    assert_eq!((summary.added, summary.removed, summary.moved), (1, 1, 0));
-    assert_eq!(fixture.index.indexed_node(old).unwrap(), None);
+    assert_eq!((summary.added, summary.removed, summary.moved), (1, 0, 1));
+    let moved = fixture.index.indexed_node(old).unwrap().unwrap();
+    assert_eq!(
+        moved.node.relative_path,
+        RelativePath::parse("work/replaced.bin").unwrap()
+    );
+    assert_eq!(moved.node.kind, FileKind::Other);
+    assert!(moved.marker.favorite);
     let replacement = fixture
         .index
         .indexed_node(replacement.entity_id)
@@ -383,6 +390,12 @@ async fn subtree_snapshot_excludes_hidden_reserved_unsupported_and_symlink_entri
     )
     .unwrap();
     fs::write(fixture.project.root().join("work/ignored.pdf"), b"pdf").unwrap();
+    fs::write(
+        fixture.project.root().join("work/poster.webp"),
+        b"unsupported image",
+    )
+    .unwrap();
+    fs::write(fixture.project.root().join("work/clip.mov"), b"video").unwrap();
     fs::create_dir(fixture.project.root().join("work/.hidden")).unwrap();
     fs::write(
         fixture.project.root().join("work/.hidden/private.png"),
@@ -398,7 +411,7 @@ async fn subtree_snapshot_excludes_hidden_reserved_unsupported_and_symlink_entri
     .unwrap();
 
     let summary = fixture.reconcile(&["work"]).await;
-    assert_eq!((summary.added, summary.failed), (1, 0));
+    assert_eq!((summary.added, summary.failed), (3, 0));
     let children = fixture
         .index
         .directory_children(Some(
@@ -410,8 +423,72 @@ async fn subtree_snapshot_excludes_hidden_reserved_unsupported_and_symlink_entri
             .iter()
             .map(|node| node.relative_path.as_str())
             .collect::<Vec<_>>(),
-        ["work/visible.png"]
+        ["work/ignored.pdf", "work/poster.webp", "work/visible.png"]
     );
+    let ignored =
+        filesystem_node(fixture.project.root(), "work/ignored.pdf", FileKind::Other).entity_id;
+    assert_eq!(
+        fixture
+            .index
+            .indexed_node(ignored)
+            .unwrap()
+            .unwrap()
+            .node
+            .kind,
+        FileKind::Other
+    );
+    let poster = filesystem_node(
+        fixture.project.root(),
+        "work/poster.webp",
+        FileKind::UnsupportedImage,
+    )
+    .entity_id;
+    assert_eq!(
+        fixture
+            .index
+            .indexed_node(poster)
+            .unwrap()
+            .unwrap()
+            .node
+            .kind,
+        FileKind::UnsupportedImage
+    );
+    let video = filesystem_node(fixture.project.root(), "work/clip.mov", FileKind::Other).entity_id;
+    assert_eq!(fixture.index.indexed_node(video).unwrap(), None);
+
+    fs::rename(
+        fixture.project.root().join("work/ignored.pdf"),
+        fixture.project.root().join("work/ignored.webp"),
+    )
+    .unwrap();
+    fixture.reconcile(&["work"]).await;
+    assert_eq!(
+        filesystem_node(
+            fixture.project.root(),
+            "work/ignored.webp",
+            FileKind::UnsupportedImage,
+        )
+        .entity_id,
+        ignored
+    );
+    assert_eq!(
+        fixture
+            .index
+            .indexed_node(ignored)
+            .unwrap()
+            .unwrap()
+            .node
+            .kind,
+        FileKind::UnsupportedImage
+    );
+
+    fs::rename(
+        fixture.project.root().join("work/ignored.webp"),
+        fixture.project.root().join("work/ignored.mov"),
+    )
+    .unwrap();
+    fixture.reconcile(&["work"]).await;
+    assert_eq!(fixture.index.indexed_node(ignored).unwrap(), None);
     let outside_scope = filesystem_node(fixture.project.root(), "outside-scope.png", FileKind::Png);
     assert_eq!(
         fixture.index.indexed_node(outside_scope.entity_id).unwrap(),

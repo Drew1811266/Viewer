@@ -9,6 +9,44 @@ pub enum FileKind {
     Png,
     Markdown,
     Text,
+    UnsupportedImage,
+    Other,
+}
+
+impl FileKind {
+    pub const fn is_image(self) -> bool {
+        matches!(self, Self::Jpeg | Self::Png | Self::UnsupportedImage)
+    }
+
+    pub const fn is_previewable_image(self) -> bool {
+        matches!(self, Self::Jpeg | Self::Png)
+    }
+
+    pub const fn is_other_file(self) -> bool {
+        matches!(self, Self::Markdown | Self::Text | Self::Other)
+    }
+
+    pub const fn is_previewable_text(self) -> bool {
+        matches!(self, Self::Markdown | Self::Text)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::FileKind;
+
+    #[test]
+    fn file_kinds_expose_behavior_without_extension_logic() {
+        assert!(FileKind::Jpeg.is_image());
+        assert!(FileKind::Png.is_previewable_image());
+        assert!(FileKind::UnsupportedImage.is_image());
+        assert!(!FileKind::UnsupportedImage.is_previewable_image());
+        assert!(FileKind::Markdown.is_other_file());
+        assert!(FileKind::Text.is_previewable_text());
+        assert!(FileKind::Other.is_other_file());
+        assert!(!FileKind::Other.is_previewable_text());
+        assert!(!FileKind::Directory.is_other_file());
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]

@@ -1,5 +1,6 @@
 use encoding_rs::GB18030;
 use std::fs;
+use viewer_domain::file::FileKind;
 use viewer_infrastructure::search::text::{TextExtractor, TextStatus};
 
 #[test]
@@ -42,4 +43,12 @@ fn text_index_keeps_invalid_and_oversized_files_isolated() {
         TextExtractor::extract(&oversized).unwrap(),
         TextStatus::TooLarge
     );
+}
+
+#[test]
+fn unsupported_images_and_other_files_are_not_eligible_for_derived_work() {
+    for kind in [FileKind::UnsupportedImage, FileKind::Other] {
+        assert!(!kind.is_previewable_image());
+        assert!(!kind.is_previewable_text());
+    }
 }

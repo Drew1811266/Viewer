@@ -1021,7 +1021,10 @@ async fn destination_permission_loss_after_preflight_fails_before_mutation() {
 async fn trash_records_intent_and_only_accepts_supported_regular_files() {
     let fixture = Fixture::new(false);
     fixture.directory("source");
-    let source = fixture.file("source/note.txt", b"note");
+    fixture
+        .project
+        .create_file("source/license.pdf", b"license");
+    let source = fixture.index_node("source/license.pdf", FileKind::Other);
     let command = fixture.command(
         FileCommandKind::Trash,
         vec![FileCommandItem {
@@ -1038,7 +1041,7 @@ async fn trash_records_intent_and_only_accepts_supported_regular_files() {
         summary.result_page(0, 1).items[0].code,
         BatchResultCode::MovedToTrash
     );
-    assert!(!fixture.project.root().join("source/note.txt").exists());
+    assert!(!fixture.project.root().join("source/license.pdf").exists());
     assert_eq!(fixture.trash.count(), 1);
     assert_eq!(
         fixture

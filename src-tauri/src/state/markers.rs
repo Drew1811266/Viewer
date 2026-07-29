@@ -142,7 +142,12 @@ fn validated_marker_target(
     }
     let kind_matches = match node.kind {
         FileKind::Directory => metadata.is_dir(),
-        FileKind::Jpeg | FileKind::Png | FileKind::Markdown | FileKind::Text => metadata.is_file(),
+        FileKind::Jpeg
+        | FileKind::Png
+        | FileKind::Markdown
+        | FileKind::Text
+        | FileKind::UnsupportedImage
+        | FileKind::Other => metadata.is_file(),
     };
     if !kind_matches || entity_id_for_metadata(&metadata, &node.relative_path) != node.entity_id {
         return None;

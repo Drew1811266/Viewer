@@ -372,10 +372,10 @@ impl<'a> BrowseService<'a> {
                 .ok_or(BrowseError::SelectionSizeOverflow)?;
             match indexed.node.kind {
                 FileKind::Directory => types.folders = types.folders.saturating_add(1),
-                FileKind::Jpeg | FileKind::Png => {
+                FileKind::Jpeg | FileKind::Png | FileKind::UnsupportedImage => {
                     types.images = types.images.saturating_add(1);
                 }
-                FileKind::Markdown | FileKind::Text => {
+                FileKind::Markdown | FileKind::Text | FileKind::Other => {
                     types.text_files = types.text_files.saturating_add(1);
                 }
             }
@@ -428,8 +428,12 @@ fn split_files(nodes: Vec<IndexedNode>, sort: SearchSort) -> (Vec<BrowserFile>, 
     let mut text_files = Vec::new();
     for indexed in nodes {
         match indexed.node.kind {
-            FileKind::Jpeg | FileKind::Png => images.push(indexed.into()),
-            FileKind::Markdown | FileKind::Text => text_files.push(indexed.into()),
+            FileKind::Jpeg | FileKind::Png | FileKind::UnsupportedImage => {
+                images.push(indexed.into())
+            }
+            FileKind::Markdown | FileKind::Text | FileKind::Other => {
+                text_files.push(indexed.into())
+            }
             FileKind::Directory => {}
         }
     }

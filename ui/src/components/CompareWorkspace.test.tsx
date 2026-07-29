@@ -61,6 +61,38 @@ describe('CompareWorkspace', () => {
     expect(requestImage.mock.calls.length).toBeLessThan(20)
   })
 
+  it('aborts a proxy request at the image boundary when virtualization unmounts its pane', async () => {
+    const resize = installCompareResizeObserver()
+    const proxySignals = new Map<string, AbortSignal | undefined>()
+    const requestImage = vi.fn(
+      (
+        file: BrowserFile,
+        request: ImageRepresentationRequest,
+        signal?: AbortSignal,
+      ): Promise<ImageRepresentation> => {
+        if (request.kind === 'fit_preview') proxySignals.set(file.entityId, signal)
+        return new Promise((_resolve, reject) => {
+          signal?.addEventListener(
+            'abort',
+            () => reject(new DOMException('request cancelled', 'AbortError')),
+            { once: true },
+          )
+        })
+      },
+    )
+    renderWorkspace({ files: portraitFiles(20), requestImage })
+    act(() => resize.workspace(1_700, 900))
+    act(() => resize.stages(600, 800))
+    await waitFor(() => expect(proxySignals.has('portrait-1')).toBe(true))
+
+    const viewport = screen.getByRole('list', { name: '滚动图片对比' })
+    viewport.scrollLeft = 10_000
+    fireEvent.scroll(viewport)
+
+    await waitFor(() => expect(proxySignals.get('portrait-1')?.aborted).toBe(true))
+    expect(screen.queryByRole('article', { name: '对比 portrait-1.jpg' })).not.toBeInTheDocument()
+  })
+
   it('synchronizes by default, retains independent transforms and keeps rotation pane-local', () => {
     renderWorkspace()
     fireEvent.click(screen.getByRole('button', { name: '放大当前对比' }))
@@ -115,9 +147,13 @@ describe('CompareWorkspace', () => {
     fireEvent.focus(pane('b'))
     fireEvent.click(screen.getByRole('button', { name: '100%' }))
     await waitFor(() =>
-      expect(requestImage).toHaveBeenCalledWith(files[1], {
-        kind: 'original100_percent',
-      }),
+      expect(requestImage).toHaveBeenCalledWith(
+        files[1],
+        {
+          kind: 'original100_percent',
+        },
+        expect.any(AbortSignal),
+      ),
     )
     expect(
       requestImage.mock.calls.filter(([, request]) => request.kind === 'original100_percent'),
@@ -206,6 +242,68 @@ describe('CompareWorkspace', () => {
       'src',
       'viewer-image://localhost/original-b',
     )
+  })
+
+  it('lets a cancelled running original settle before starting the next serialized job', async () => {
+    const originalEntityIds: string[] = []
+    const originalSignals = new Map<string, AbortSignal | undefined>()
+    const requestImage = vi.fn(
+      (
+        file: BrowserFile,
+        request: ImageRepresentationRequest,
+        signal?: AbortSignal,
+      ): Promise<ImageRepresentation> => {
+        if (request.kind !== 'original100_percent') {
+          return Promise.resolve(imageRepresentation(`proxy-${file.entityId}`))
+        }
+        originalEntityIds.push(file.entityId)
+        originalSignals.set(file.entityId, signal)
+        return new Promise((_resolve, reject) => {
+          signal?.addEventListener(
+            'abort',
+            () => reject(new DOMException('request cancelled', 'AbortError')),
+            { once: true },
+          )
+        })
+      },
+    )
+    renderWorkspace({ requestImage })
+    await screen.findByRole('img', { name: 'a.jpg' })
+    await screen.findByRole('img', { name: 'b.jpg' })
+
+    fireEvent.click(screen.getByRole('button', { name: '100%' }))
+    await waitFor(() => expect(originalEntityIds).toEqual(['a']))
+    fireEvent.focus(pane('b'))
+    fireEvent.click(screen.getByRole('button', { name: '100%' }))
+
+    await waitFor(() => expect(originalSignals.get('a')?.aborted).toBe(true))
+    await waitFor(() => expect(originalEntityIds).toEqual(['a', 'b']))
+    expect(originalSignals.get('b')).toBeInstanceOf(AbortSignal)
+  })
+
+  it('never starts an original job after its queued caller is aborted', async () => {
+    const running = deferred<ImageRepresentation>()
+    const originalEntityIds: string[] = []
+    const requestImage = vi.fn((file: BrowserFile, request: ImageRepresentationRequest) => {
+      if (request.kind !== 'original100_percent') {
+        return Promise.resolve(imageRepresentation(`proxy-${file.entityId}`))
+      }
+      originalEntityIds.push(file.entityId)
+      return running.promise
+    })
+    renderWorkspace({ requestImage })
+    await screen.findByRole('img', { name: 'a.jpg' })
+    await screen.findByRole('img', { name: 'b.jpg' })
+
+    fireEvent.click(screen.getByRole('button', { name: '100%' }))
+    await waitFor(() => expect(originalEntityIds).toEqual(['a']))
+    fireEvent.focus(pane('b'))
+    fireEvent.click(screen.getByRole('button', { name: '100%' }))
+    await waitFor(() => expect(pane('b')).toHaveAttribute('data-scale', '6.25'))
+    fireEvent.click(screen.getByRole('button', { name: '适应窗口' }))
+    await act(async () => running.resolve(imageRepresentation('original-a')))
+
+    expect(originalEntityIds).toEqual(['a'])
   })
 
   it('drops a stale queued original before it reaches the native image lane', async () => {

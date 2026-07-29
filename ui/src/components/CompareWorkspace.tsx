@@ -23,6 +23,7 @@ interface CompareWorkspaceProps {
   requestImage: (
     file: BrowserFile,
     representation: ImageRepresentationRequest,
+    signal?: AbortSignal,
   ) => Promise<ImageRepresentation>
   onEntityIdsChange: (entityIds: string[]) => void
   onSetReview: (entityId: string, review: ReviewState | null) => void
@@ -95,11 +96,11 @@ export default function CompareWorkspace({
   const requestComparedImage = useCallback(
     (file: BrowserFile, representation: ImageRepresentationRequest, signal?: AbortSignal) => {
       if (representation.kind !== 'original100_percent') {
-        return requestImage(file, representation)
+        return requestImage(file, representation, signal)
       }
       return enqueueOriginalRequest(
         originalLane.current,
-        () => requestImage(file, representation),
+        () => requestImage(file, representation, signal),
         signal,
       )
     },

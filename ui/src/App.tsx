@@ -1059,7 +1059,7 @@ function ViewerWorkspace({ bridge }: { bridge: ViewerBridge }) {
       )}
       {activePreviewFile && isPreviewableText(activePreviewFile) && (
         <TextPreview
-          file={activePreviewFile}
+          files={[activePreviewFile]}
           requestPreview={requestTextPreview}
           openExternalLink={bridge.openExternalLink}
           onClose={closePreview}

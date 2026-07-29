@@ -34,7 +34,7 @@ function visit(value, source, keys) {
   if (typeof value !== 'object' || value === null) return
   for (const [key, child] of Object.entries(value)) {
     if (key === 'kind' && typeof child === 'string') {
-      const allowed = ['directory', 'jpeg', 'png', 'markdown', 'text']
+      const allowed = ['directory', 'jpeg', 'png', 'markdown', 'text', 'unsupported_image', 'other']
       if (!allowed.includes(child)) fail(source, [...keys, key], `unsupported kind ${child}`)
     }
     visit(child, source, [...keys, key])

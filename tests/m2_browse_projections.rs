@@ -65,6 +65,7 @@ fn fixture() -> IndexedProject {
         ("catalog/id2/image2.jpg", FileKind::Jpeg, 20),
         ("catalog/id2/nested", FileKind::Directory, 0),
         ("catalog/id2/nested/note.txt", FileKind::Text, 7),
+        ("catalog/id2/nested/license.pdf", FileKind::Other, 29),
         ("empty", FileKind::Directory, 0),
     ]);
     project.mark("catalog", Some(ReviewState::Reject), true);
@@ -146,11 +147,11 @@ fn tree_files_and_cards_use_one_natural_order_and_expose_independent_markers() {
         .find(|folder| folder.relative_path.as_str() == "catalog/id2")
         .unwrap();
     assert_eq!(id2.marker.review_state, Some(ReviewState::Keep));
-    assert_eq!(id2.review_progress.total, 3);
+    assert_eq!(id2.review_progress.total, 4);
     assert_eq!(id2.review_progress.keep, 1);
     assert_eq!(id2.review_progress.pending, 1);
     assert_eq!(id2.review_progress.reject, 1);
-    assert_eq!(id2.review_progress.unmarked, 0);
+    assert_eq!(id2.review_progress.unmarked, 1);
     assert_eq!(id2.review_progress.favorite, 2);
 }
 
@@ -240,15 +241,16 @@ fn selection_info_aggregates_relative_paths_size_types_and_marker_agreement() {
             project.id("catalog/id2/image10.jpg"),
             project.id("catalog/id2/image2.jpg"),
             project.id("catalog/id2/nested/note.txt"),
+            project.id("catalog/id2/nested/license.pdf"),
         ])
         .unwrap();
-    assert_eq!(selection.total_size, 127);
+    assert_eq!(selection.total_size, 156);
     assert_eq!(
         selection.types,
         SelectionTypeCounts {
             folders: 0,
             images: 2,
-            text_files: 1,
+            other_files: 2,
         }
     );
     assert_eq!(
@@ -260,6 +262,7 @@ fn selection_info_aggregates_relative_paths_size_types_and_marker_agreement() {
         [
             "catalog/id2/image2.jpg",
             "catalog/id2/image10.jpg",
+            "catalog/id2/nested/license.pdf",
             "catalog/id2/nested/note.txt",
         ]
     );

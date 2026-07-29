@@ -361,13 +361,20 @@ async fn folder_query_and_image_representation_revalidate_and_reuse_cache() {
     runtime.open_project(project.path()).await.unwrap();
     runtime.wait_for_scan().await.unwrap();
 
-    let FolderWorkspaceDto::Content { images, text_files } =
-        runtime.query_folder(None).await.unwrap()
+    let workspace = runtime.query_folder(None).await.unwrap();
+    let serialized = serde_json::to_value(&workspace).unwrap();
+    assert_eq!(serialized["workspace"], json!("content"));
+    assert_eq!(serialized["otherFiles"][0]["kind"], json!("text"));
+    assert!(serialized.get("textFiles").is_none());
+    let FolderWorkspaceDto::Content {
+        images,
+        other_files,
+    } = workspace
     else {
         panic!("root should be a content folder")
     };
     assert_eq!(images.len(), 1);
-    assert_eq!(text_files.len(), 1);
+    assert_eq!(other_files.len(), 1);
     let entity_id = images[0].entity_id.parse::<EntityId>().unwrap();
     let kind = ImageRepresentationKind::Thumbnail {
         max_pixels: 320,
@@ -675,11 +682,11 @@ async fn markdown_preview_strips_active_remote_and_escaping_resources() {
     );
     runtime.open_project(project.path()).await.unwrap();
     runtime.wait_for_scan().await.unwrap();
-    let FolderWorkspaceDto::Content { text_files, .. } = runtime.query_folder(None).await.unwrap()
+    let FolderWorkspaceDto::Content { other_files, .. } = runtime.query_folder(None).await.unwrap()
     else {
         panic!("root should contain Markdown")
     };
-    let markdown_id = text_files
+    let markdown_id = other_files
         .iter()
         .find(|file| file.name == "prompt.md")
         .unwrap()

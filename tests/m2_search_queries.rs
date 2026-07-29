@@ -23,6 +23,7 @@ struct Fixture {
     portrait: EntityId,
     square: EntityId,
     note: EntityId,
+    other: EntityId,
 }
 
 impl Fixture {
@@ -37,6 +38,7 @@ impl Fixture {
         let image2 = EntityId::new();
         let image10 = EntityId::new();
         let note = EntityId::new();
+        let other = EntityId::new();
         index
             .upsert_batch(&[
                 node(root, "catalog", FileKind::Directory, 0, 1),
@@ -53,6 +55,7 @@ impl Fixture {
                 node(image2, "catalog/id10/image2.jpg", FileKind::Jpeg, 200, 20),
                 node(image10, "catalog/id10/image10.jpg", FileKind::Jpeg, 100, 10),
                 node(note, "catalog/id2/prompt.md", FileKind::Markdown, 500, 50),
+                node(other, "catalog/id2/guide.pdf", FileKind::Other, 600, 60),
             ])
             .unwrap();
         index
@@ -93,6 +96,13 @@ impl Fixture {
             )
             .unwrap();
         index
+            .replace_text(
+                other,
+                &RelativePath::parse("catalog/id2/guide.pdf").unwrap(),
+                &TextStatus::Indexed("other file body must not be searchable".into()),
+            )
+            .unwrap();
+        index
             .set_review_metadata(front, Some(ReviewState::Keep), true)
             .unwrap();
         index
@@ -107,12 +117,43 @@ impl Fixture {
             portrait,
             square: image2,
             note,
+            other,
         }
     }
 
     fn search(&self) -> SessionSearch {
         SessionSearch::new(self.session, Arc::clone(&self.index))
     }
+}
+
+#[tokio::test]
+async fn generic_other_files_match_filename_and_path_but_not_body() {
+    let fixture = Fixture::new();
+    let search = fixture.search();
+
+    let filename = search
+        .search(fixture.session, Generation::new(1), query("guide"))
+        .await
+        .unwrap();
+    assert_eq!(filename.hits[0].node.entity_id, fixture.other);
+    assert_eq!(filename.hits[0].matched_field, MatchedField::Filename);
+
+    let path = search
+        .search(fixture.session, Generation::new(1), query("id2guide"))
+        .await
+        .unwrap();
+    assert_eq!(path.hits[0].node.entity_id, fixture.other);
+    assert_eq!(path.hits[0].matched_field, MatchedField::Path);
+
+    let body = search
+        .search(
+            fixture.session,
+            Generation::new(1),
+            query("mustnotbesearchable"),
+        )
+        .await
+        .unwrap();
+    assert!(body.hits.is_empty());
 }
 
 fn node(entity_id: EntityId, path: &str, kind: FileKind, size: u64, modified_ns: i128) -> FileNode {

@@ -283,7 +283,10 @@ async fn indexed_fixture(
         .into_iter()
         .find(|folder| folder.relative_path == "id2")
         .unwrap();
-    let FolderWorkspaceDto::Content { images, text_files } = runtime
+    let FolderWorkspaceDto::Content {
+        images,
+        other_files,
+    } = runtime
         .query_folder(Some(parse_id(&folder.entity_id)))
         .await
         .unwrap()
@@ -294,7 +297,7 @@ async fn indexed_fixture(
         snapshot,
         parse_id(&folder.entity_id),
         parse_id(&images[0].entity_id),
-        parse_id(&text_files[0].entity_id),
+        parse_id(&other_files[0].entity_id),
     )
 }
 
@@ -315,6 +318,10 @@ async fn marker_commands_support_mixed_targets_and_survive_project_copy_with_sta
     create_review_project(project.path());
     let runtime = review_runtime(cache.path(), ProjectAccess::ReadWrite);
     let (snapshot, folder, image, text) = indexed_fixture(&runtime, project.path()).await;
+    let root_workspace = runtime.query_folder(None).await.unwrap();
+    let root_json = serde_json::to_value(&root_workspace).unwrap();
+    assert_eq!(root_json["workspace"], "category");
+    assert_eq!(root_json["folders"][0]["otherFileCount"], 1);
     let session: SessionId = snapshot.session_id.parse().unwrap();
     let generation = Generation::new(snapshot.generation);
 
@@ -339,6 +346,8 @@ async fn marker_commands_support_mixed_targets_and_survive_project_copy_with_sta
         .unwrap();
     assert_eq!(selection.common_review.state_name(), "common");
     assert_eq!(selection.common_favorite.state_name(), "mixed");
+    let selection_json = serde_json::to_value(&selection).unwrap();
+    assert_eq!(selection_json["types"]["otherFiles"], 1);
     let serialized = serde_json::to_string(&selection).unwrap();
     assert!(!serialized.contains(project.path().to_str().unwrap()));
     assert!(!serialized.contains("metadata.sqlite"));
@@ -359,7 +368,10 @@ async fn marker_commands_support_mixed_targets_and_survive_project_copy_with_sta
         .unwrap();
     assert_eq!(copied_folder.marker.review_state, Some(ReviewState::Keep));
     assert!(copied_folder.marker.favorite);
-    let FolderWorkspaceDto::Content { images, text_files } = runtime
+    let FolderWorkspaceDto::Content {
+        images,
+        other_files,
+    } = runtime
         .query_folder(Some(parse_id(&copied_folder.entity_id)))
         .await
         .unwrap()
@@ -368,7 +380,7 @@ async fn marker_commands_support_mixed_targets_and_survive_project_copy_with_sta
     };
     assert_eq!(images[0].marker.review_state, Some(ReviewState::Keep));
     assert!(images[0].marker.favorite);
-    assert_eq!(text_files[0].marker.review_state, Some(ReviewState::Keep));
+    assert_eq!(other_files[0].marker.review_state, Some(ReviewState::Keep));
     runtime.close_project().await.unwrap();
 }
 

@@ -81,43 +81,45 @@ fn category_query_returns_descendant_content_folders_at_arbitrary_depth() {
     };
     assert_eq!(folders.len(), 1);
     assert_eq!(folders[0].relative_path.as_str(), "catalog/shoes/id-001");
-    assert_eq!((folders[0].image_count, folders[0].text_count), (1, 1));
+    assert_eq!(
+        (folders[0].image_count, folders[0].other_file_count),
+        (1, 1)
+    );
 }
 
 #[test]
-fn content_query_splits_images_and_text_and_selects_four_stable_representatives() {
+fn content_query_splits_images_and_other_files() {
     let project = IndexedProject::new(&[
         ("id-001", FileKind::Directory),
         ("id-001/01.jpg", FileKind::Jpeg),
         ("id-001/02.png", FileKind::Png),
-        ("id-001/03.jpg", FileKind::Jpeg),
-        ("id-001/04.jpg", FileKind::Jpeg),
-        ("id-001/05.jpg", FileKind::Jpeg),
+        ("id-001/source.webp", FileKind::UnsupportedImage),
         ("id-001/notes.txt", FileKind::Text),
-        ("id-001/prompt.markdown", FileKind::Markdown),
+        ("id-001/license.pdf", FileKind::Other),
     ]);
     let service = BrowseService::new(&project.index);
 
     let workspace = service
         .folder_workspace(Some(project.id("id-001")))
         .unwrap();
-    let FolderWorkspace::Content { images, text_files } = workspace else {
+    let FolderWorkspace::Content {
+        images,
+        other_files,
+    } = workspace
+    else {
         panic!("id-001 should be a content workspace")
     };
-    assert_eq!(
-        names(&images),
-        ["01.jpg", "02.png", "03.jpg", "04.jpg", "05.jpg"]
-    );
-    assert_eq!(names(&text_files), ["notes.txt", "prompt.markdown"]);
+    assert_eq!(names(&images), ["01.jpg", "02.png", "source.webp"]);
+    assert_eq!(names(&other_files), ["license.pdf", "notes.txt"]);
 
     let root = service.folder_workspace(None).unwrap();
     let FolderWorkspace::Category { folders } = root else {
         panic!("root should summarize its content folder")
     };
-    assert_eq!(folders[0].image_count, 5);
+    assert_eq!(folders[0].image_count, 3);
     assert_eq!(
         names(&folders[0].representative_images),
-        ["01.jpg", "02.png", "03.jpg", "04.jpg"]
+        ["01.jpg", "02.png", "source.webp"]
     );
 }
 
@@ -130,12 +132,15 @@ fn project_root_can_be_a_content_workspace_and_empty_folders_remain_visible() {
     ]);
     let service = BrowseService::new(&project.index);
 
-    let FolderWorkspace::Content { images, text_files } = service.folder_workspace(None).unwrap()
+    let FolderWorkspace::Content {
+        images,
+        other_files,
+    } = service.folder_workspace(None).unwrap()
     else {
         panic!("root should show its direct content")
     };
     assert_eq!(names(&images), ["front.jpg"]);
-    assert_eq!(names(&text_files), ["README.txt"]);
+    assert_eq!(names(&other_files), ["README.txt"]);
     assert!(
         service
             .folder_tree()
@@ -188,7 +193,10 @@ fn aggregate_workspace_is_explicit_and_collects_descendant_files_only() {
     ]);
     let service = BrowseService::new(&project.index);
 
-    let FolderWorkspace::Content { images, text_files } = service
+    let FolderWorkspace::Content {
+        images,
+        other_files,
+    } = service
         .aggregate_workspace(Some(project.id("catalog")))
         .unwrap()
     else {
@@ -196,7 +204,7 @@ fn aggregate_workspace_is_explicit_and_collects_descendant_files_only() {
     };
 
     assert_eq!(names(&images), ["front.jpg"]);
-    assert_eq!(names(&text_files), ["prompt.txt"]);
+    assert_eq!(names(&other_files), ["prompt.txt"]);
 }
 
 fn names(files: &[viewer_application::browse::BrowserFile]) -> Vec<&str> {

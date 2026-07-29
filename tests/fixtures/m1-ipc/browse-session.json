@@ -42,25 +42,43 @@
         "size": 2048,
         "modifiedNs": "1000001",
         "imageUrl": null
-      }
-    ],
-    "textFiles": [
+      },
       {
         "entityId": "018f0000-0000-7000-8000-000000000022",
+        "relativePath": "catalog/id-001/source.webp",
+        "name": "source.webp",
+        "kind": "unsupported_image",
+        "size": 4096,
+        "modifiedNs": "1000002",
+        "imageUrl": null
+      }
+    ],
+    "otherFiles": [
+      {
+        "entityId": "018f0000-0000-7000-8000-000000000023",
         "relativePath": "catalog/id-001/prompt.md",
         "name": "prompt.md",
         "kind": "markdown",
         "size": 256,
-        "modifiedNs": "1000002",
+        "modifiedNs": "1000003",
         "imageUrl": null
       },
       {
-        "entityId": "018f0000-0000-7000-8000-000000000023",
+        "entityId": "018f0000-0000-7000-8000-000000000024",
         "relativePath": "catalog/id-001/notes.txt",
         "name": "notes.txt",
         "kind": "text",
         "size": 128,
-        "modifiedNs": "1000003",
+        "modifiedNs": "1000004",
+        "imageUrl": null
+      },
+      {
+        "entityId": "018f0000-0000-7000-8000-000000000025",
+        "relativePath": "catalog/id-001/license.pdf",
+        "name": "license.pdf",
+        "kind": "other",
+        "size": 1024,
+        "modifiedNs": "1000005",
         "imageUrl": null
       }
     ]

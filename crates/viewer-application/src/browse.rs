@@ -81,7 +81,7 @@ pub struct ContentFolderCard {
     pub name: String,
     pub marker: Marker,
     pub image_count: u64,
-    pub text_count: u64,
+    pub other_file_count: u64,
     pub review_progress: FolderReviewProgress,
     pub representative_images: Vec<BrowserFile>,
 }
@@ -93,7 +93,7 @@ pub enum FolderWorkspace {
     },
     Content {
         images: Vec<BrowserFile>,
-        text_files: Vec<BrowserFile>,
+        other_files: Vec<BrowserFile>,
     },
     Empty,
 }
@@ -109,7 +109,7 @@ pub enum SelectionAgreement<T> {
 pub struct SelectionTypeCounts {
     pub folders: u64,
     pub images: u64,
-    pub text_files: u64,
+    pub other_files: u64,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -219,9 +219,12 @@ impl<'a> BrowseService<'a> {
             .filter(|indexed| is_direct_child(&indexed.node.relative_path, folder_path.as_ref()))
             .cloned()
             .collect::<Vec<_>>();
-        let (images, text_files) = split_files(direct, sort);
-        if !images.is_empty() || !text_files.is_empty() {
-            return Ok(FolderWorkspace::Content { images, text_files });
+        let (images, other_files) = split_files(direct, sort);
+        if !images.is_empty() || !other_files.is_empty() {
+            return Ok(FolderWorkspace::Content {
+                images,
+                other_files,
+            });
         }
 
         let descendants = all
@@ -258,8 +261,8 @@ impl<'a> BrowseService<'a> {
             .into_iter()
             .filter_map(|(path, folder)| {
                 let files = direct_files_by_parent.remove(&path)?;
-                let (images, text_files) = split_files(files, SearchSort::default());
-                if images.is_empty() && text_files.is_empty() {
+                let (images, other_files) = split_files(files, SearchSort::default());
+                if images.is_empty() && other_files.is_empty() {
                     return None;
                 }
                 let mut review_progress = FolderReviewProgress::default();
@@ -275,7 +278,7 @@ impl<'a> BrowseService<'a> {
                     relative_path: folder.node.relative_path,
                     marker: folder.marker,
                     image_count: images.len() as u64,
-                    text_count: text_files.len() as u64,
+                    other_file_count: other_files.len() as u64,
                     review_progress,
                     representative_images: images.into_iter().take(4).collect(),
                 })
@@ -311,11 +314,14 @@ impl<'a> BrowseService<'a> {
             .into_iter()
             .filter(|indexed| is_in_scope(&indexed.node.relative_path, folder_path.as_ref()))
             .collect::<Vec<_>>();
-        let (images, text_files) = split_files(descendants, SearchSort::default());
-        if images.is_empty() && text_files.is_empty() {
+        let (images, other_files) = split_files(descendants, SearchSort::default());
+        if images.is_empty() && other_files.is_empty() {
             Ok(FolderWorkspace::Empty)
         } else {
-            Ok(FolderWorkspace::Content { images, text_files })
+            Ok(FolderWorkspace::Content {
+                images,
+                other_files,
+            })
         }
     }
 
@@ -370,14 +376,12 @@ impl<'a> BrowseService<'a> {
             total_size = total_size
                 .checked_add(indexed.node.size)
                 .ok_or(BrowseError::SelectionSizeOverflow)?;
-            match indexed.node.kind {
-                FileKind::Directory => types.folders = types.folders.saturating_add(1),
-                FileKind::Jpeg | FileKind::Png | FileKind::UnsupportedImage => {
-                    types.images = types.images.saturating_add(1);
-                }
-                FileKind::Markdown | FileKind::Text | FileKind::Other => {
-                    types.text_files = types.text_files.saturating_add(1);
-                }
+            if indexed.node.kind == FileKind::Directory {
+                types.folders = types.folders.saturating_add(1);
+            } else if indexed.node.kind.is_image() {
+                types.images = types.images.saturating_add(1);
+            } else if indexed.node.kind.is_other_file() {
+                types.other_files = types.other_files.saturating_add(1);
             }
         }
         Ok(SelectionInfo {
@@ -425,21 +429,17 @@ fn agreement<T: Copy + Eq>(mut values: impl Iterator<Item = T>) -> SelectionAgre
 
 fn split_files(nodes: Vec<IndexedNode>, sort: SearchSort) -> (Vec<BrowserFile>, Vec<BrowserFile>) {
     let mut images = Vec::new();
-    let mut text_files = Vec::new();
+    let mut other_files = Vec::new();
     for indexed in nodes {
-        match indexed.node.kind {
-            FileKind::Jpeg | FileKind::Png | FileKind::UnsupportedImage => {
-                images.push(indexed.into())
-            }
-            FileKind::Markdown | FileKind::Text | FileKind::Other => {
-                text_files.push(indexed.into())
-            }
-            FileKind::Directory => {}
+        if indexed.node.kind.is_image() {
+            images.push(indexed.into());
+        } else if indexed.node.kind.is_other_file() {
+            other_files.push(indexed.into());
         }
     }
     images.sort_by(|left, right| compare_files(left, right, sort));
-    text_files.sort_by(|left, right| compare_files(left, right, sort));
-    (images, text_files)
+    other_files.sort_by(|left, right| compare_files(left, right, sort));
+    (images, other_files)
 }
 
 fn compare_files(left: &BrowserFile, right: &BrowserFile, sort: SearchSort) -> Ordering {
@@ -475,7 +475,7 @@ fn review_rank(file: &BrowserFile) -> u8 {
 }
 
 fn is_supported_file(kind: FileKind) -> bool {
-    kind != FileKind::Directory
+    kind.is_image() || kind.is_other_file()
 }
 
 fn is_direct_child(path: &RelativePath, folder: Option<&RelativePath>) -> bool {

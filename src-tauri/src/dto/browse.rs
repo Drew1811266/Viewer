@@ -254,7 +254,7 @@ pub struct ContentFolderCardDto {
     pub name: String,
     pub marker: MarkerDto,
     pub image_count: u64,
-    pub text_count: u64,
+    pub other_file_count: u64,
     pub review_progress: FolderReviewProgressDto,
     pub representative_images: Vec<BrowserFileDto>,
 }
@@ -267,7 +267,7 @@ impl From<ContentFolderCard> for ContentFolderCardDto {
             name: folder.name,
             marker: folder.marker.into(),
             image_count: folder.image_count,
-            text_count: folder.text_count,
+            other_file_count: folder.other_file_count,
             review_progress: folder.review_progress.into(),
             representative_images: folder
                 .representative_images
@@ -323,7 +323,7 @@ impl SelectionAgreementDto<Option<ReviewState>> {
 pub struct SelectionTypeCountsDto {
     pub folders: u64,
     pub images: u64,
-    pub text_files: u64,
+    pub other_files: u64,
 }
 
 impl From<SelectionTypeCounts> for SelectionTypeCountsDto {
@@ -331,7 +331,7 @@ impl From<SelectionTypeCounts> for SelectionTypeCountsDto {
         Self {
             folders: types.folders,
             images: types.images,
-            text_files: types.text_files,
+            other_files: types.other_files,
         }
     }
 }
@@ -367,15 +367,18 @@ impl From<SelectionInfo> for SelectionInfoDto {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
-#[serde(tag = "workspace", rename_all = "snake_case")]
+#[serde(
+    tag = "workspace",
+    rename_all = "snake_case",
+    rename_all_fields = "camelCase"
+)]
 pub enum FolderWorkspaceDto {
     Category {
         folders: Vec<ContentFolderCardDto>,
     },
     Content {
         images: Vec<BrowserFileDto>,
-        #[serde(rename = "textFiles")]
-        text_files: Vec<BrowserFileDto>,
+        other_files: Vec<BrowserFileDto>,
     },
     Empty,
 }
@@ -389,9 +392,12 @@ impl From<FolderWorkspace> for FolderWorkspaceDto {
                     .map(ContentFolderCardDto::from)
                     .collect(),
             },
-            FolderWorkspace::Content { images, text_files } => Self::Content {
+            FolderWorkspace::Content {
+                images,
+                other_files,
+            } => Self::Content {
                 images: images.into_iter().map(BrowserFileDto::from).collect(),
-                text_files: text_files.into_iter().map(BrowserFileDto::from).collect(),
+                other_files: other_files.into_iter().map(BrowserFileDto::from).collect(),
             },
             FolderWorkspace::Empty => Self::Empty,
         }

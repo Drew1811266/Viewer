@@ -114,23 +114,35 @@ describe('adaptive text panel layout contracts', () => {
     })
   })
 
-  it('anchors a compact light select-all menu beside its source control', () => {
+  it('keeps the compact menu inside the minimum workspace beside a maximum sidebar', () => {
     const rules = parseRules(adaptiveTextPanelCss)
 
     expect(declarationsFor(rules, '.select-all-control')).toEqual({
       position: 'relative',
     })
-    expect(declarationsFor(rules, '.select-all-choice-panel')).toMatchObject({
+    const panel = declarationsFor(rules, '.select-all-choice-panel')
+    expect(panel).toMatchObject({
       background: '#fff',
       border: '1px solid #c8ced6',
       'border-radius': '8px',
       'box-shadow': '0 10px 28px rgb(34 42 53 / 18%)',
       'min-width': '148px',
       position: 'absolute',
-      right: 'calc(100% + 8px)',
-      top: '0',
+      right: '0',
+      top: 'calc(100% + 8px)',
       'z-index': '24',
     })
+    expect(panel).not.toHaveProperty('left')
+
+    const minimumWorkspaceContentWidth = 720 - 420 - 2 * 16
+    const viewPopoverBorderBoxWidth = 190
+    const viewPopoverContentWidth = viewPopoverBorderBoxWidth - 2 * 10
+    const panelWorstCaseOuterWidth =
+      pixels(panel?.['min-width']) + 2 * pixels(panel?.padding) + 2 * pixels(panel?.border)
+    expect(minimumWorkspaceContentWidth).toBe(268)
+    expect(viewPopoverBorderBoxWidth).toBeLessThanOrEqual(minimumWorkspaceContentWidth)
+    expect(panelWorstCaseOuterWidth).toBeLessThanOrEqual(viewPopoverContentWidth)
+
     expect(declarationsFor(rules, '.select-all-choice-panel > button')).toMatchObject({
       'text-align': 'left',
       'white-space': 'nowrap',
@@ -169,4 +181,8 @@ function parseRules(css: string): CssRule[] {
 
 function declarationsFor(rules: CssRule[], selector: string): Record<string, string> | undefined {
   return rules.find((rule) => rule.selector === selector)?.declarations
+}
+
+function pixels(value: string | undefined): number {
+  return Number.parseInt(value ?? '', 10)
 }

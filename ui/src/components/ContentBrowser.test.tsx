@@ -992,18 +992,67 @@ describe('ContentBrowser', () => {
     )
   })
 
-  it('opens the same mixed-folder choices with Command-A and focuses images first', () => {
-    render(<ContentBrowser workspace={workspace(3)} />)
+  it.each([
+    'image list',
+    'expanded text list',
+    'collapsed text disclosure',
+    'view summary',
+    'select-all source',
+  ] as const)('routes Command-A from the %s through the mixed-folder policy', (focusOwner) => {
+    render(
+      <ContentBrowser
+        workspace={workspace(3)}
+        textPanelExpanded={focusOwner === 'expanded text list'}
+      />,
+    )
+    const target =
+      focusOwner === 'image list'
+        ? screen.getByRole('listbox', { name: '图片文件' })
+        : focusOwner === 'expanded text list'
+          ? screen.getByRole('listbox', { name: '文本文件' })
+          : focusOwner === 'collapsed text disclosure'
+            ? screen.getByRole('button', { name: '文本文件 · 1' })
+            : focusOwner === 'view summary'
+              ? screen.getByText('视图')
+              : screen.getByRole('button', { name: '全选当前文件夹' })
+    target.focus()
+    const command = createEvent.keyDown(target, { key: 'a', metaKey: true })
 
-    fireEvent.keyDown(screen.getByRole('listbox', { name: '图片文件' }), {
-      key: 'a',
-      metaKey: true,
-    })
+    fireEvent(target, command)
 
+    expect(command.defaultPrevented).toBe(true)
     expect(screen.getByRole('menu', { name: '选择全选范围' })).toBeVisible()
     expect(screen.getByRole('menuitem', { name: '全选图片' })).toHaveFocus()
     expect(selectedLabels()).toEqual([])
   })
+
+  it.each(['input', 'textarea', 'select', 'contenteditable'] as const)(
+    'leaves Command-A native inside a %s',
+    (editableKind) => {
+      render(<ContentBrowser workspace={workspace(2)} />)
+      const region = screen.getByRole('region', { name: '文件内容' })
+      const target =
+        editableKind === 'contenteditable'
+          ? document.createElement('div')
+          : document.createElement(editableKind)
+      if (editableKind === 'contenteditable') {
+        target.contentEditable = 'true'
+        Object.defineProperty(target, 'isContentEditable', {
+          configurable: true,
+          value: true,
+        })
+      }
+      region.append(target)
+      target.focus()
+      const command = createEvent.keyDown(target, { key: 'a', metaKey: true })
+
+      fireEvent(target, command)
+
+      expect(command.defaultPrevented).toBe(false)
+      expect(screen.queryByRole('menu', { name: '选择全选范围' })).not.toBeInTheDocument()
+      target.remove()
+    },
+  )
 
   it.each([
     ['全选图片', ['1.jpg', '2.jpg'], 'file-image-1'],
@@ -1133,7 +1182,10 @@ describe('ContentBrowser', () => {
       } else if (cancellation === 'source') {
         fireEvent.click(screen.getByRole('button', { name: '全选当前文件夹' }))
       } else {
-        fireEvent.pointerDown(screen.getByRole('button', { name: '文本文件 · 1' }))
+        const outside = screen.getByRole('button', { name: '文本文件 · 1' })
+        fireEvent.pointerDown(outside)
+        outside.focus()
+        flushAnimationFrames()
       }
 
       expect(screen.queryByRole('menu', { name: '选择全选范围' })).not.toBeInTheDocument()
@@ -1145,7 +1197,9 @@ describe('ContentBrowser', () => {
   it('closes a stale choice when content identity changes without restoring source focus', () => {
     const data = workspace(2)
     const rendered = render(<ContentBrowser workspace={data} currentPath="folder-a" />)
+    fireEvent.click(screen.getByRole('option', { name: '2.jpg' }))
     fireEvent.click(screen.getByRole('button', { name: '全选当前文件夹' }))
+    const staleChoice = screen.getByRole('menuitem', { name: '全部选择' })
     expect(screen.getByRole('menuitem', { name: '全选图片' })).toHaveFocus()
 
     rendered.rerender(
@@ -1161,35 +1215,51 @@ describe('ContentBrowser', () => {
     )
     expect(screen.queryByRole('menu', { name: '选择全选范围' })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: '全选当前文件夹' })).not.toHaveFocus()
+    fireEvent.click(staleChoice)
+    expect(selectedLabels()).toEqual(['2.jpg'])
   })
 
   it('closes a stale choice when only the folder path changes', () => {
     const data = workspace(2)
     const rendered = render(<ContentBrowser workspace={data} currentPath="folder-a" />)
+    fireEvent.click(screen.getByRole('option', { name: '2.jpg' }))
     fireEvent.click(screen.getByRole('button', { name: '全选当前文件夹' }))
+    const staleChoice = screen.getByRole('menuitem', { name: '全部选择' })
 
     rendered.rerender(<ContentBrowser workspace={data} currentPath="folder-b" />)
 
     expect(screen.queryByRole('menu', { name: '选择全选范围' })).not.toBeInTheDocument()
+    fireEvent.click(staleChoice)
+    expect(selectedLabels()).toEqual(['2.jpg'])
   })
 
   it('closes the choice before invoking preview', () => {
-    const preview = vi.fn()
+    const preview = vi.fn(() => {
+      expect(screen.queryByRole('menu', { name: '选择全选范围' })).not.toBeInTheDocument()
+    })
     render(<ContentBrowser workspace={workspace(2)} onPreview={preview} />)
+    fireEvent.click(screen.getByRole('option', { name: '2.jpg' }))
     fireEvent.click(screen.getByRole('button', { name: '全选当前文件夹' }))
+    const staleChoice = screen.getByRole('menuitem', { name: '全部选择' })
 
-    fireEvent.doubleClick(screen.getByRole('option', { name: '1.jpg' }))
+    fireEvent.doubleClick(screen.getByRole('option', { name: '2.jpg' }))
 
     expect(preview).toHaveBeenCalledOnce()
     expect(screen.queryByRole('menu', { name: '选择全选范围' })).not.toBeInTheDocument()
+    fireEvent.click(staleChoice)
+    expect(selectedLabels()).toEqual(['2.jpg'])
   })
 
   it('closes the choice before invoking a radial request', () => {
-    const radial = vi.fn()
+    const radial = vi.fn(() => {
+      expect(screen.queryByRole('menu', { name: '选择全选范围' })).not.toBeInTheDocument()
+    })
     render(<ContentBrowser workspace={workspace(2)} onRadialMenuRequest={radial} />)
+    fireEvent.click(screen.getByRole('option', { name: '2.jpg' }))
     fireEvent.click(screen.getByRole('button', { name: '全选当前文件夹' }))
+    const staleChoice = screen.getByRole('menuitem', { name: '全部选择' })
 
-    fireEvent.contextMenu(screen.getByRole('option', { name: '1.jpg' }), {
+    fireEvent.contextMenu(screen.getByRole('option', { name: '2.jpg' }), {
       ctrlKey: true,
       clientX: 100,
       clientY: 120,
@@ -1197,6 +1267,8 @@ describe('ContentBrowser', () => {
 
     expect(radial).toHaveBeenCalledOnce()
     expect(screen.queryByRole('menu', { name: '选择全选范围' })).not.toBeInTheDocument()
+    fireEvent.click(staleChoice)
+    expect(selectedLabels()).toEqual(['2.jpg'])
   })
 
   it('closes the mounted choice when comparison disables organization drag', () => {
@@ -1204,10 +1276,12 @@ describe('ContentBrowser', () => {
     const rendered = render(<ContentBrowser workspace={data} />)
     fireEvent.click(screen.getByRole('option', { name: '2.jpg' }))
     fireEvent.click(screen.getByRole('button', { name: '全选当前文件夹' }))
+    const staleChoice = screen.getByRole('menuitem', { name: '全部选择' })
 
     rendered.rerender(<ContentBrowser workspace={data} organizationDragDisabled />)
 
     expect(screen.queryByRole('menu', { name: '选择全选范围' })).not.toBeInTheDocument()
+    fireEvent.click(staleChoice)
     expect(selectedLabels()).toEqual(['2.jpg'])
   })
 

@@ -1,8 +1,13 @@
-import { createEvent, fireEvent, render, screen } from '@testing-library/react'
-import { useRef, useState } from 'react'
-import { describe, expect, it, vi } from 'vitest'
+import { act, createEvent, fireEvent, render, screen } from '@testing-library/react'
+import { StrictMode, useRef, useState } from 'react'
+import { flushSync } from 'react-dom'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { SelectAllScope } from './adaptiveTextPanelModel'
 import SelectAllChoicePanel from './SelectAllChoicePanel'
+
+afterEach(() => {
+  vi.unstubAllGlobals()
+})
 
 interface ChoiceHarnessProps {
   open?: boolean
@@ -47,6 +52,31 @@ function ChoiceHarness({
           onCancel={cancel}
         />
       </div>
+      <button type="button">外部目标</button>
+    </>
+  )
+}
+
+function SynchronousUnmountHarness({ onCancel }: { onCancel: () => void }) {
+  const [panelMounted, setPanelMounted] = useState(true)
+  const anchorRef = useRef<HTMLButtonElement | null>(null)
+
+  return (
+    <>
+      <button ref={anchorRef} type="button">
+        全选当前文件夹
+      </button>
+      {panelMounted && (
+        <SelectAllChoicePanel
+          open
+          anchorRef={anchorRef}
+          onChoose={() => undefined}
+          onCancel={() => {
+            onCancel()
+            flushSync(() => setPanelMounted(false))
+          }}
+        />
+      )}
       <button type="button">外部目标</button>
     </>
   )
@@ -131,15 +161,124 @@ describe('SelectAllChoicePanel', () => {
     expect(screen.getByRole('button', { name: '全选当前文件夹' })).toHaveFocus()
   })
 
-  it('cancels on an outside pointer and restores source focus', () => {
+  it('restores source focus after the outside target receives its default pointer focus', () => {
+    const frames = installAnimationFrameQueue()
     const choose = vi.fn()
     const cancel = vi.fn()
     render(<ChoiceHarness open onChoose={choose} onCancel={cancel} />)
+    const outside = screen.getByRole('button', { name: '外部目标' })
 
-    fireEvent.pointerDown(screen.getByRole('button', { name: '外部目标' }))
+    fireEvent.pointerDown(outside)
+    outside.focus()
 
     expect(cancel).toHaveBeenCalledOnce()
     expect(choose).not.toHaveBeenCalled()
+    expect(outside).toHaveFocus()
+    expect(frames.pending()).toBe(1)
+
+    frames.flush()
+
     expect(screen.getByRole('button', { name: '全选当前文件夹' })).toHaveFocus()
   })
+
+  it('does not treat an anchor pointerdown as an outside cancellation', () => {
+    const cancel = vi.fn()
+    render(<ChoiceHarness open onCancel={cancel} />)
+
+    fireEvent.pointerDown(screen.getByRole('button', { name: '全选当前文件夹' }))
+
+    expect(cancel).not.toHaveBeenCalled()
+    expect(screen.getByRole('menu', { name: '选择全选范围' })).toBeVisible()
+  })
+
+  it('does not treat a panel pointerdown as an outside cancellation', () => {
+    const cancel = vi.fn()
+    render(<ChoiceHarness open onCancel={cancel} />)
+
+    fireEvent.pointerDown(screen.getByRole('menuitem', { name: '全选文本文件' }))
+
+    expect(cancel).not.toHaveBeenCalled()
+    expect(screen.getByRole('menu', { name: '选择全选范围' })).toBeVisible()
+  })
+
+  it('keeps one effective listener in StrictMode and removes it on unmount', () => {
+    const frames = installAnimationFrameQueue()
+    const cancel = vi.fn()
+    const persistentOutside = document.createElement('button')
+    document.body.append(persistentOutside)
+    const rendered = render(
+      <StrictMode>
+        <ChoiceHarness open onCancel={cancel} />
+      </StrictMode>,
+    )
+    const outside = screen.getByRole('button', { name: '外部目标' })
+
+    fireEvent.pointerDown(outside)
+    outside.focus()
+
+    expect(cancel).toHaveBeenCalledOnce()
+    expect(frames.pending()).toBe(1)
+
+    rendered.unmount()
+
+    expect(frames.pending()).toBe(0)
+    fireEvent.pointerDown(persistentOutside)
+    expect(cancel).toHaveBeenCalledOnce()
+    persistentOutside.remove()
+  })
+
+  it('does not focus an anchor that detached before deferred restoration', () => {
+    const frames = installAnimationFrameQueue()
+    render(<ChoiceHarness open />)
+    const anchor = screen.getByRole('button', { name: '全选当前文件夹' })
+    const outside = screen.getByRole('button', { name: '外部目标' })
+
+    fireEvent.pointerDown(outside)
+    outside.focus()
+    expect(frames.pending()).toBe(1)
+    anchor.remove()
+
+    frames.flush()
+
+    expect(outside).toHaveFocus()
+  })
+
+  it('does not leak a restoration frame when cancellation synchronously unmounts the panel', () => {
+    const frames = installAnimationFrameQueue()
+    const cancel = vi.fn()
+    render(<SynchronousUnmountHarness onCancel={cancel} />)
+    const outside = screen.getByRole('button', { name: '外部目标' })
+
+    fireEvent.pointerDown(outside)
+    outside.focus()
+
+    expect(cancel).toHaveBeenCalledOnce()
+    expect(frames.pending()).toBe(0)
+    frames.flush()
+    expect(outside).toHaveFocus()
+  })
 })
+
+function installAnimationFrameQueue() {
+  let nextId = 1
+  const callbacks = new Map<number, FrameRequestCallback>()
+  vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+    const id = nextId++
+    callbacks.set(id, callback)
+    return id
+  })
+  vi.stubGlobal('cancelAnimationFrame', (id: number) => callbacks.delete(id))
+
+  return {
+    pending: () => callbacks.size,
+    flush: () => {
+      act(() => {
+        const queued = [...callbacks.values()]
+        callbacks.clear()
+        queued.forEach((callback) => {
+          callback(0)
+        })
+      })
+    },
+  }
+}

@@ -17,6 +17,7 @@ export default function SelectAllChoicePanel({
 }: SelectAllChoicePanelProps) {
   const panelRef = useRef<HTMLDivElement>(null)
   const itemRefs = useRef<Array<HTMLButtonElement | null>>([])
+  const restoreFocusFrame = useRef<number | null>(null)
 
   useLayoutEffect(() => {
     if (open) itemRefs.current[0]?.focus()
@@ -29,12 +30,29 @@ export default function SelectAllChoicePanel({
       const target = event.target
       if (!(target instanceof Node)) return
       if (panelRef.current?.contains(target) || anchorRef.current?.contains(target)) return
-      cancelAndRestoreFocus(anchorRef, onCancel)
+      const anchor = anchorRef.current
+      if (anchor !== null) {
+        restoreFocusFrame.current = requestAnimationFrame(() => {
+          restoreFocusFrame.current = null
+          if (anchor.isConnected) anchor.focus()
+        })
+      }
+      onCancel()
     }
 
     document.addEventListener('pointerdown', handlePointerDown, true)
     return () => document.removeEventListener('pointerdown', handlePointerDown, true)
   }, [anchorRef, onCancel, open])
+
+  useEffect(
+    () => () => {
+      if (restoreFocusFrame.current !== null) {
+        cancelAnimationFrame(restoreFocusFrame.current)
+        restoreFocusFrame.current = null
+      }
+    },
+    [],
+  )
 
   if (!open) return null
 

@@ -1,5 +1,6 @@
 import type { DragEvent, KeyboardEvent, MouseEvent, PointerEvent } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { flushSync } from 'react-dom'
 import type { BrowserFile, FolderWorkspace, ThumbnailDensity } from '../api/types'
 import { type AspectRect, type ImageDimensions, validDimensions } from '../layout/aspectLayout'
 import { THUMBNAIL_HEIGHT } from '../settings/thumbnailDensity'
@@ -290,8 +291,13 @@ export default function ContentBrowser({
   }
 
   function previewFile(file: BrowserFile) {
-    setSelectAllChoiceOpen(false)
+    closeSelectAllChoiceBeforeCallback()
     onPreview?.(file)
+  }
+
+  function closeSelectAllChoiceBeforeCallback() {
+    if (!selectAllChoiceOpen) return
+    flushSync(() => setSelectAllChoiceOpen(false))
   }
 
   function navigateToIndex(nextIndex: number, extendSelection: boolean) {
@@ -348,7 +354,7 @@ export default function ContentBrowser({
     pointerId: number | null,
   ) {
     if (onRadialMenuRequest === undefined) return
-    setSelectAllChoiceOpen(false)
+    closeSelectAllChoiceBeforeCallback()
     const returnFocusTarget = eventTarget.closest<HTMLElement>('[role="listbox"]') ?? eventTarget
     const contextSelection = selected.has(file.entityId) ? selected : new Set([file.entityId])
     if (!selected.has(file.entityId)) {
@@ -454,22 +460,20 @@ export default function ContentBrowser({
 
   function handleKeyboard(event: KeyboardEvent<HTMLElement>) {
     const target = event.target as HTMLElement
-    if (
-      target instanceof HTMLInputElement ||
-      target instanceof HTMLTextAreaElement ||
-      target.isContentEditable
-    ) {
-      return
-    }
-    if (event.metaKey && event.key.toLowerCase() === 'a') {
-      event.preventDefault()
-      requestSelectAll()
-      return
-    }
+    if (isEditableKeyboardTarget(target)) return
     if ((event.key === ' ' || event.key === 'Spacebar') && activeId) {
       event.preventDefault()
       const file = fileById.get(activeId)
       if (file) previewFile(file)
+    }
+  }
+
+  function handleContentBrowserKeyboard(event: KeyboardEvent<HTMLElement>) {
+    const target = event.target as HTMLElement
+    if (isEditableKeyboardTarget(target)) return
+    if (event.metaKey && event.key.toLowerCase() === 'a') {
+      event.preventDefault()
+      requestSelectAll()
     }
   }
 
@@ -514,7 +518,12 @@ export default function ContentBrowser({
   }
 
   return (
-    <section className="content-browser" data-content-mode={mode} aria-label="文件内容">
+    <section
+      className="content-browser"
+      data-content-mode={mode}
+      aria-label="文件内容"
+      onKeyDownCapture={handleContentBrowserKeyboard}
+    >
       <div className="content-toolbar">
         <div>
           <strong>{currentPath ?? '当前文件夹'}</strong>
@@ -625,6 +634,15 @@ export default function ContentBrowser({
         )}
       </div>
     </section>
+  )
+}
+
+function isEditableKeyboardTarget(target: HTMLElement): boolean {
+  return (
+    target instanceof HTMLInputElement ||
+    target instanceof HTMLTextAreaElement ||
+    target instanceof HTMLSelectElement ||
+    target.isContentEditable
   )
 }
 

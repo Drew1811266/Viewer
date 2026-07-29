@@ -1,7 +1,7 @@
 # Viewer Adaptive Text Panel Design
 
 Date: 2026-07-28
-Status: User-approved design; written review pending
+Status: Approved
 
 ## Problem
 

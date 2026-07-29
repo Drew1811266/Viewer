@@ -7,8 +7,10 @@ use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
-use viewer_application::{ImageBackend, ImageError, ImagePort, ImageRequest};
-use viewer_domain::{EntityId, SessionId, image::ImageRepresentationKind};
+use viewer_application::{
+    ImageBackend, ImageError, ImagePort, ImageRequest, ImageRequestCancellation,
+};
+use viewer_domain::{EntityId, ImageRequestId, SessionId, image::ImageRepresentationKind};
 use viewer_platform_macos::image::{
     ImageIoBackend, MacImagePort, QuickLookBackend, quick_look::QuickLookThumbnailBackend,
 };
@@ -412,6 +414,8 @@ fn image_request(
     kind: ImageRepresentationKind,
 ) -> ImageRequest {
     ImageRequest {
+        request_id: ImageRequestId::new(),
+        cancellation: ImageRequestCancellation::new(),
         session_id,
         entity_id: EntityId::new(),
         source,

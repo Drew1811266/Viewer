@@ -342,7 +342,7 @@ impl From<ImageError> for CommandError {
                 false,
             ),
             ImageError::Cancelled => Self::new(
-                "image_cancelled",
+                "image_request_cancelled",
                 ErrorCategory::Conflict,
                 "图片预览已取消。",
                 true,

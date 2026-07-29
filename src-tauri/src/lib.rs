@@ -199,6 +199,7 @@ pub fn run() {
             commands::browse::folder_tree,
             commands::browse::query_folder,
             commands::browse::request_image_representation,
+            commands::browse::cancel_image_request,
             commands::preview::preview_text,
             commands::preview::open_external_link,
             commands::search::search_project,

@@ -38,15 +38,65 @@ impl DesktopRuntime {
         entity_id: EntityId,
         kind: ImageRepresentationKind,
     ) -> Result<ImageRepresentationDto, CommandError> {
-        self.request_image_for_session(None, entity_id, kind).await
+        self.request_image_with_id(ImageRequestId::new(), entity_id, kind)
+            .await
+    }
+
+    pub async fn request_image_with_id(
+        &self,
+        request_id: ImageRequestId,
+        entity_id: EntityId,
+        kind: ImageRepresentationKind,
+    ) -> Result<ImageRepresentationDto, CommandError> {
+        self.request_image_for_session(None, request_id, entity_id, kind)
+            .await
+    }
+
+    pub async fn cancel_image_request(&self, request_id: ImageRequestId) -> bool {
+        let cancellation = self.image_requests.lock().await.get(&request_id).cloned();
+        if let Some(cancellation) = cancellation {
+            cancellation.cancel();
+            true
+        } else {
+            false
+        }
     }
 
     async fn request_image_for_session(
         &self,
         expected_session: Option<SessionId>,
+        request_id: ImageRequestId,
         entity_id: EntityId,
         kind: ImageRepresentationKind,
     ) -> Result<ImageRepresentationDto, CommandError> {
+        let cancellation = ImageRequestCancellation::new();
+        {
+            let mut requests = self.image_requests.lock().await;
+            match requests.entry(request_id) {
+                std::collections::hash_map::Entry::Vacant(entry) => {
+                    entry.insert(cancellation.clone());
+                }
+                std::collections::hash_map::Entry::Occupied(_) => {
+                    return Err(duplicate_image_request());
+                }
+            }
+        }
+        let result = self
+            .render_image_for_session(expected_session, request_id, cancellation, entity_id, kind)
+            .await;
+        self.image_requests.lock().await.remove(&request_id);
+        result
+    }
+
+    async fn render_image_for_session(
+        &self,
+        expected_session: Option<SessionId>,
+        request_id: ImageRequestId,
+        cancellation: ImageRequestCancellation,
+        entity_id: EntityId,
+        kind: ImageRepresentationKind,
+    ) -> Result<ImageRepresentationDto, CommandError> {
+        ensure_image_request_active(&cancellation)?;
         let (active, index, cache, image) = {
             let session = self.session.lock().await;
             let session = session.as_ref().ok_or_else(project_not_open)?;
@@ -79,8 +129,11 @@ impl DesktopRuntime {
         let cached = match cache.lookup_image(cache_key) {
             Some(cached) => cached,
             None => {
+                ensure_image_request_active(&cancellation)?;
                 let artifact = image
                     .render(ImageRequest {
+                        request_id,
+                        cancellation: cancellation.clone(),
                         session_id: active.session_id,
                         entity_id,
                         source,
@@ -88,6 +141,10 @@ impl DesktopRuntime {
                     })
                     .await
                     .map_err(CommandError::from)?;
+                if cancellation.is_cancelled() {
+                    let _ = std::fs::remove_file(&artifact.cache_path);
+                    return Err(CommandError::from(ImageError::Cancelled));
+                }
                 let cached = CachedImage {
                     path: artifact.cache_path,
                     mime: artifact.mime.to_owned(),
@@ -101,6 +158,7 @@ impl DesktopRuntime {
                 cached
             }
         };
+        ensure_image_request_active(&cancellation)?;
         let token = self
             .register_if_session_active(&active, entity_id, &cached)
             .await?;
@@ -175,6 +233,7 @@ impl DesktopRuntime {
             let representation = self
                 .request_image_for_session(
                     Some(active.session_id),
+                    ImageRequestId::new(),
                     image_node.entity_id,
                     ImageRepresentationKind::FitPreview {
                         max_width: 1_600,
@@ -221,6 +280,25 @@ impl DesktopRuntime {
                 )
             })
     }
+}
+
+fn ensure_image_request_active(
+    cancellation: &ImageRequestCancellation,
+) -> Result<(), CommandError> {
+    if cancellation.is_cancelled() {
+        Err(CommandError::from(ImageError::Cancelled))
+    } else {
+        Ok(())
+    }
+}
+
+fn duplicate_image_request() -> CommandError {
+    CommandError::new(
+        "duplicate_image_request",
+        ErrorCategory::Conflict,
+        "图片预览请求重复，请重试。",
+        true,
+    )
 }
 
 fn image_not_found() -> CommandError {

@@ -51,6 +51,7 @@ macro_rules! id_type {
 id_type!(ProjectId);
 id_type!(SessionId);
 id_type!(EntityId);
+id_type!(ImageRequestId);
 id_type!(TaskId);
 id_type!(OperationId);
 

@@ -8,7 +8,7 @@ use crate::{
 };
 use std::{str::FromStr, sync::Arc};
 use tauri::State;
-use viewer_domain::EntityId;
+use viewer_domain::{EntityId, ImageRequestId};
 
 #[tauri::command]
 pub async fn folder_tree(
@@ -32,12 +32,27 @@ pub async fn query_folder(
 #[tauri::command]
 pub async fn request_image_representation(
     runtime: State<'_, Arc<DesktopRuntime>>,
+    request_id: String,
     entity_id: String,
     representation: ImageRepresentationRequestDto,
 ) -> Result<ImageRepresentationDto, CommandError> {
     runtime
-        .request_image(parse_entity_id(&entity_id)?, representation.into())
+        .request_image_with_id(
+            parse_image_request_id(&request_id)?,
+            parse_entity_id(&entity_id)?,
+            representation.into(),
+        )
         .await
+}
+
+#[tauri::command]
+pub async fn cancel_image_request(
+    runtime: State<'_, Arc<DesktopRuntime>>,
+    request_id: String,
+) -> Result<bool, CommandError> {
+    Ok(runtime
+        .cancel_image_request(parse_image_request_id(&request_id)?)
+        .await)
 }
 
 pub(crate) fn parse_entity_id(value: &str) -> Result<EntityId, CommandError> {
@@ -46,6 +61,17 @@ pub(crate) fn parse_entity_id(value: &str) -> Result<EntityId, CommandError> {
             "invalid_entity_id",
             ErrorCategory::Validation,
             "文件标识无效，请刷新项目后重试。",
+            false,
+        )
+    })
+}
+
+fn parse_image_request_id(value: &str) -> Result<ImageRequestId, CommandError> {
+    ImageRequestId::from_str(value).map_err(|_| {
+        CommandError::new(
+            "invalid_image_request_id",
+            ErrorCategory::Validation,
+            "图片预览请求标识无效，请重试。",
             false,
         )
     })

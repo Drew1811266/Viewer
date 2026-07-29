@@ -21,11 +21,12 @@ use std::{
     thread,
     time::Duration,
 };
-use tokio::sync::{RwLock, oneshot};
+use tokio::sync::{RwLock, Semaphore, oneshot};
 use viewer_application::{ImageArtifact, ImageBackend, ImageError, ImagePort, ImageRequest};
 use viewer_domain::{SessionId, image::ImageProbe};
 
 const QUICK_LOOK_TIMEOUT: Duration = Duration::from_secs(10);
+const MAX_CONCURRENT_RENDERS: usize = 4;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct RenderedDimensions {
@@ -87,6 +88,7 @@ pub struct MacImagePort<Q = QuickLookBackend, I = ImageIoBackend> {
     image_io: I,
     cache_root: PathBuf,
     cancelled_sessions: RwLock<HashSet<SessionId>>,
+    render_limit: Semaphore,
 }
 
 impl MacImagePort<QuickLookBackend, ImageIoBackend> {
@@ -106,6 +108,7 @@ impl<Q, I> MacImagePort<Q, I> {
             image_io,
             cache_root: cache_root.into(),
             cancelled_sessions: RwLock::new(HashSet::new()),
+            render_limit: Semaphore::new(MAX_CONCURRENT_RENDERS),
         }
     }
 
@@ -148,7 +151,17 @@ where
     }
 
     async fn render(&self, request: ImageRequest) -> Result<ImageArtifact, ImageError> {
-        if self.is_cancelled(request.session_id).await {
+        if request.cancellation.is_cancelled() || self.is_cancelled(request.session_id).await {
+            return Err(ImageError::Cancelled);
+        }
+        let _permit = tokio::select! {
+            biased;
+            _ = request.cancellation.cancelled() => return Err(ImageError::Cancelled),
+            permit = self.render_limit.acquire() => {
+                permit.map_err(|_| ImageError::Io("image render scheduler is unavailable".into()))?
+            }
+        };
+        if request.cancellation.is_cancelled() || self.is_cancelled(request.session_id).await {
             return Err(ImageError::Cancelled);
         }
 
@@ -189,7 +202,7 @@ where
             (image_io_destination, dimensions, ImageBackend::ImageIo)
         };
 
-        if self.is_cancelled(request.session_id).await {
+        if request.cancellation.is_cancelled() || self.is_cancelled(request.session_id).await {
             let _ = fs::remove_file(&destination);
             return Err(ImageError::Cancelled);
         }
@@ -266,6 +279,9 @@ impl QuickLookThumbnailBackend for QuickLookBackend {
         request: &ImageRequest,
         destination: &Path,
     ) -> Result<RenderedDimensions, ImageError> {
+        if request.cancellation.is_cancelled() {
+            return Err(ImageError::Cancelled);
+        }
         let (physical_max_pixels, scale_milli) = match request.kind {
             viewer_domain::image::ImageRepresentationKind::Thumbnail {
                 max_pixels,
@@ -316,18 +332,26 @@ impl QuickLookThumbnailBackend for QuickLookBackend {
             return Err(ImageError::Io("Quick Look worker is unavailable".into()));
         }
 
-        let result = match tokio::time::timeout(self.timeout, response).await {
-            Ok(Ok(result)) => result,
-            Ok(Err(_)) => Err(ImageError::Io(
-                "Quick Look worker ended before responding".into(),
-            )),
-            Err(_) => {
+        let result = tokio::select! {
+            biased;
+            _ = request.cancellation.cancelled() => {
                 cancelled.store(true, Ordering::Release);
-                let _ = self
-                    .commands
-                    .send(QuickLookCommand::CancelRequest { request_id });
-                Err(ImageError::Io("Quick Look request timed out".into()))
+                let _ = self.commands.send(QuickLookCommand::CancelRequest { request_id });
+                Err(ImageError::Cancelled)
             }
+            result = tokio::time::timeout(self.timeout, response) => match result {
+                Ok(Ok(result)) => result,
+                Ok(Err(_)) => Err(ImageError::Io(
+                    "Quick Look worker ended before responding".into(),
+                )),
+                Err(_) => {
+                    cancelled.store(true, Ordering::Release);
+                    let _ = self
+                        .commands
+                        .send(QuickLookCommand::CancelRequest { request_id });
+                    Err(ImageError::Io("Quick Look request timed out".into()))
+                }
+            },
         };
         self.pending
             .lock()
@@ -605,10 +629,18 @@ mod tests {
         RenderedDimensions,
     };
     use async_trait::async_trait;
-    use std::{fs, path::Path, sync::Arc};
-    use tokio::sync::Notify;
-    use viewer_application::{ImageError, ImagePort, ImageRequest};
-    use viewer_domain::{EntityId, SessionId, image::ImageRepresentationKind};
+    use std::{
+        fs,
+        path::Path,
+        sync::{
+            Arc,
+            atomic::{AtomicUsize, Ordering},
+        },
+        time::Duration,
+    };
+    use tokio::sync::{Notify, Semaphore};
+    use viewer_application::{ImageError, ImagePort, ImageRequest, ImageRequestCancellation};
+    use viewer_domain::{EntityId, ImageRequestId, SessionId, image::ImageRepresentationKind};
     use viewer_test_support::image_fixtures::{image_fixture, png_dimensions};
 
     struct FailingQuickLook;
@@ -656,6 +688,52 @@ mod tests {
         release: Arc<Notify>,
     }
 
+    #[derive(Clone)]
+    struct BlockingImageIo {
+        entered_total: Arc<AtomicUsize>,
+        in_flight: Arc<AtomicUsize>,
+        peak: Arc<AtomicUsize>,
+        release: Arc<Semaphore>,
+    }
+
+    impl Default for BlockingImageIo {
+        fn default() -> Self {
+            Self {
+                entered_total: Arc::new(AtomicUsize::new(0)),
+                in_flight: Arc::new(AtomicUsize::new(0)),
+                peak: Arc::new(AtomicUsize::new(0)),
+                release: Arc::new(Semaphore::new(0)),
+            }
+        }
+    }
+
+    #[async_trait]
+    impl ImageIoRenderBackend for BlockingImageIo {
+        async fn probe(
+            &self,
+            _source: &Path,
+        ) -> Result<viewer_domain::image::ImageProbe, ImageError> {
+            unreachable!("probe is not used by this coordinator test")
+        }
+
+        async fn render(
+            &self,
+            _request: &ImageRequest,
+            destination: &Path,
+        ) -> Result<RenderedDimensions, ImageError> {
+            self.entered_total.fetch_add(1, Ordering::SeqCst);
+            let current = self.in_flight.fetch_add(1, Ordering::SeqCst) + 1;
+            self.peak.fetch_max(current, Ordering::SeqCst);
+            self.release.acquire().await.unwrap().forget();
+            self.in_flight.fetch_sub(1, Ordering::SeqCst);
+            fs::write(destination, b"mock PNG").unwrap();
+            Ok(RenderedDimensions {
+                width: 160,
+                height: 120,
+            })
+        }
+    }
+
     #[async_trait]
     impl QuickLookThumbnailBackend for BlockingQuickLook {
         async fn thumbnail(
@@ -679,6 +757,8 @@ mod tests {
 
     fn thumbnail_request() -> ImageRequest {
         ImageRequest {
+            request_id: ImageRequestId::new(),
+            cancellation: ImageRequestCancellation::new(),
             session_id: SessionId::new(),
             entity_id: EntityId::new(),
             source: Path::new("tests/fixtures/images/srgb.jpg").to_path_buf(),
@@ -687,6 +767,22 @@ mod tests {
                 scale_milli: 1_000,
             },
         }
+    }
+
+    fn original_request() -> ImageRequest {
+        let mut request = thumbnail_request();
+        request.kind = ImageRepresentationKind::Original100Percent;
+        request
+    }
+
+    async fn wait_for_entries(backend: &BlockingImageIo, count: usize) {
+        tokio::time::timeout(Duration::from_secs(1), async {
+            while backend.entered_total.load(Ordering::SeqCst) < count {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("expected renders to enter the backend");
     }
 
     #[tokio::test]
@@ -745,5 +841,87 @@ mod tests {
             png_dimensions(&destination).unwrap(),
             (dimensions.width, dimensions.height)
         );
+    }
+
+    #[tokio::test]
+    async fn real_quick_look_rejects_an_already_cancelled_request() {
+        let output_directory = tempfile::tempdir().unwrap();
+        let destination = output_directory.path().join("cancelled-quick-look.png");
+        let mut request = thumbnail_request();
+        request.source = image_fixture("srgb.jpg");
+        request.cancellation.cancel();
+
+        let result = QuickLookBackend::new()
+            .unwrap()
+            .thumbnail(&request, &destination)
+            .await;
+
+        assert!(matches!(result, Err(ImageError::Cancelled)));
+        assert!(!destination.exists());
+    }
+
+    #[tokio::test]
+    async fn render_concurrency_never_exceeds_four_native_backends() {
+        let cache = tempfile::tempdir().unwrap();
+        let image_io = BlockingImageIo::default();
+        let port = Arc::new(MacImagePort::with_backends(
+            cache.path(),
+            FailingQuickLook,
+            image_io.clone(),
+        ));
+        let renders = (0..8)
+            .map(|_| {
+                let port = Arc::clone(&port);
+                tokio::spawn(async move { port.render(original_request()).await })
+            })
+            .collect::<Vec<_>>();
+
+        wait_for_entries(&image_io, 4).await;
+        tokio::time::sleep(Duration::from_millis(25)).await;
+        assert_eq!(image_io.peak.load(Ordering::SeqCst), 4);
+
+        image_io.release.add_permits(8);
+        for render in renders {
+            render.await.unwrap().unwrap();
+        }
+    }
+
+    #[tokio::test]
+    async fn cancelling_a_request_waiting_for_a_render_permit_skips_the_backend() {
+        let cache = tempfile::tempdir().unwrap();
+        let image_io = BlockingImageIo::default();
+        let port = Arc::new(MacImagePort::with_backends(
+            cache.path(),
+            FailingQuickLook,
+            image_io.clone(),
+        ));
+        let blockers = (0..4)
+            .map(|_| {
+                let port = Arc::clone(&port);
+                tokio::spawn(async move { port.render(original_request()).await })
+            })
+            .collect::<Vec<_>>();
+        wait_for_entries(&image_io, 4).await;
+        let cancelled_request = original_request();
+        let cancellation = cancelled_request.cancellation.clone();
+        let waiting = {
+            let port = Arc::clone(&port);
+            tokio::spawn(async move { port.render(cancelled_request).await })
+        };
+        tokio::task::yield_now().await;
+
+        cancellation.cancel();
+
+        let result = tokio::time::timeout(Duration::from_millis(100), waiting)
+            .await
+            .expect("cancelled permit waiter should finish")
+            .unwrap();
+        assert!(matches!(result, Err(ImageError::Cancelled)));
+        assert_eq!(image_io.entered_total.load(Ordering::SeqCst), 4);
+
+        image_io.release.add_permits(4);
+        for blocker in blockers {
+            blocker.await.unwrap().unwrap();
+        }
     }
 }

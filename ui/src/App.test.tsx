@@ -1665,6 +1665,29 @@ describe('Viewer empty state', () => {
     expect(back).toHaveAttribute('aria-selected', 'true')
   })
 
+  it('forwards compare pane cancellation signals through the production bridge boundary', async () => {
+    const viewer = bridge()
+    vi.mocked(viewer.queryFolder).mockResolvedValue(compareContentWorkspace())
+    render(<App bridge={viewer} />)
+    fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
+    const front = await screen.findByRole('option', { name: 'front.jpg' })
+    const back = screen.getByRole('option', { name: 'back.jpg' })
+    fireEvent.click(front)
+    fireEvent.click(back, { metaKey: true })
+
+    fireEvent.keyDown(window, { key: 'c' })
+    await screen.findByRole('region', { name: '图片对比' })
+
+    await waitFor(() => {
+      expect(viewer.requestImage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          representation: expect.objectContaining({ kind: 'fit_preview' }),
+        }),
+        expect.any(AbortSignal),
+      )
+    })
+  })
+
   it('opens comparison with C after selecting 20 images', async () => {
     const viewer = bridge()
     vi.mocked(viewer.queryFolder).mockResolvedValue(compareContentWorkspaceWithCount(20))

@@ -21,7 +21,7 @@ pub use browse::{BrowseError, BrowseIndexError, BrowseIndexPort, BrowseService};
 pub use finder_drag::{
     FinderDragError, FinderDragReceipt, PreparedFinderDrag, begin_finder_drag, prepare_finder_drag,
 };
-pub use image::{ImageArtifact, ImageBackend, ImageError, ImageRequest};
+pub use image::{ImageArtifact, ImageBackend, ImageError, ImageRequest, ImageRequestCancellation};
 pub use operation::{
     FaultInjector, FileContentEvidence, FileOperationError, FileSnapshot, InjectedCrash, NoFaults,
 };

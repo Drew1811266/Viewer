@@ -178,8 +178,8 @@ function ViewerWorkspace({ bridge }: { bridge: ViewerBridge }) {
     [bridge],
   )
   const requestPreviewImage = useCallback(
-    (file: BrowserFile, representation: ImageRepresentationRequest) =>
-      bridge.requestImage({ entityId: file.entityId, representation }),
+    (file: BrowserFile, representation: ImageRepresentationRequest, signal?: AbortSignal) =>
+      bridge.requestImage({ entityId: file.entityId, representation }, signal),
     [bridge],
   )
   const requestTextPreview = useCallback(

@@ -44,9 +44,9 @@ use std::{
 use tokio::{sync::Mutex, task::JoinHandle, time::Instant};
 use viewer_application::{
     ActiveProject, BrowseIndexPort, BrowseService, ClockPort, ImageError, ImagePort, ImageRequest,
-    PreparedFinderDrag, ProjectAccess, ProjectOpenError, ProjectProbeError, ProjectProbePort,
-    ProjectSessionService, ScanPort, SearchPort, SearchSnippetPort, TextEncoding, TextPreviewPort,
-    VolumePort,
+    ImageRequestCancellation, PreparedFinderDrag, ProjectAccess, ProjectOpenError,
+    ProjectProbeError, ProjectProbePort, ProjectSessionService, ScanPort, SearchPort,
+    SearchSnippetPort, TextEncoding, TextPreviewPort, VolumePort,
     file_commands::{
         BatchId, BatchProgress, BatchResultPage, ConflictResolution, FileCommand, FileCommandItem,
         FileCommandKind, FileCommandPreflight, FileCommandService,
@@ -60,7 +60,7 @@ use viewer_application::{
     undo::{UndoFilePort, UndoReceipt, UndoService, UndoStack},
 };
 use viewer_domain::{
-    EntityId, RelativePath, SessionId, TaskId,
+    EntityId, ImageRequestId, RelativePath, SessionId, TaskId,
     file::{FileKind, FileNode, ImageIndexStatus, ImageMetadata, ReviewState, TextIndexStatus},
     image::ImageRepresentationKind,
     operation::{RenamePreflight, RenameRuleSet, RenameTarget},
@@ -262,6 +262,7 @@ pub struct DesktopRuntime {
     text_reader: Arc<dyn TextPreviewPort>,
     clock: Arc<dyn ClockPort>,
     marker_projection_factory: Arc<dyn DesktopMarkerProjectionFactory>,
+    image_requests: Mutex<HashMap<ImageRequestId, ImageRequestCancellation>>,
     session: Mutex<Option<DesktopSession>>,
 }
 
@@ -382,6 +383,7 @@ impl DesktopRuntime {
             text_reader: Arc::new(TextPreviewReader),
             clock,
             marker_projection_factory,
+            image_requests: Mutex::new(HashMap::new()),
             session: Mutex::new(None),
         }
     }

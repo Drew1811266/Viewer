@@ -55,7 +55,7 @@ export interface ViewerBridge {
   updateThumbnailDensity(density: ThumbnailDensity): Promise<ViewerSettings>
   folderTree(): Promise<FolderTreeItem[]>
   queryFolder(entityId: string | null, aggregate?: boolean): Promise<FolderWorkspace>
-  requestImage(request: ImageRequest): Promise<ImageRepresentation>
+  requestImage(request: ImageRequest, signal?: AbortSignal): Promise<ImageRepresentation>
   previewText(request: TextPreviewRequest): Promise<TextPreview>
   openExternalLink(url: string): Promise<void>
   cancelTask(taskId: string): Promise<boolean>
@@ -117,10 +117,39 @@ export const tauriViewerBridge: ViewerBridge = {
   queryFolder(entityId, aggregate = false) {
     return invoke<FolderWorkspace>('query_folder', { folderId: entityId, aggregate })
   },
-  requestImage({ entityId, representation }) {
-    return invoke<ImageRepresentation>('request_image_representation', {
+  requestImage({ entityId, representation }, signal) {
+    if (signal?.aborted) return Promise.reject(abortedImageRequest())
+    const requestId = crypto.randomUUID()
+    const nativeRequest = invoke<ImageRepresentation>('request_image_representation', {
       entityId,
       representation,
+      requestId,
+    })
+    if (signal === undefined) return nativeRequest
+
+    return new Promise<ImageRepresentation>((resolve, reject) => {
+      let settled = false
+      const finish = (complete: () => void) => {
+        if (settled) return
+        settled = true
+        signal.removeEventListener('abort', abort)
+        complete()
+      }
+      const abort = () => {
+        finish(() => {
+          void invoke<boolean>('cancel_image_request', { requestId }).catch(() => undefined)
+          reject(abortedImageRequest())
+        })
+      }
+      signal.addEventListener('abort', abort, { once: true })
+      if (signal.aborted) {
+        abort()
+        return
+      }
+      void nativeRequest.then(
+        (image) => finish(() => resolve(image)),
+        (error: unknown) => finish(() => reject(error)),
+      )
     })
   },
   previewText({ entityId, encoding }) {
@@ -203,6 +232,10 @@ export const tauriViewerBridge: ViewerBridge = {
       }
     })
   },
+}
+
+function abortedImageRequest() {
+  return new DOMException('Image request aborted', 'AbortError')
 }
 
 export function safeUserMessage(error: unknown): string {

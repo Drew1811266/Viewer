@@ -30,10 +30,7 @@ export function resolveAdaptiveContentMode(
   return preferredExpanded ? 'mixed_expanded' : 'mixed_collapsed'
 }
 
-export function resolveSelectAllRequest(
-  imageCount: number,
-  textCount: number,
-): SelectAllRequest {
+export function resolveSelectAllRequest(imageCount: number, textCount: number): SelectAllRequest {
   if (imageCount <= 0 && textCount <= 0) return { kind: 'none' }
   if (textCount <= 0) return { kind: 'direct', scope: 'images' }
   if (imageCount <= 0) return { kind: 'direct', scope: 'text' }

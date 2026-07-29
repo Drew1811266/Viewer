@@ -29,9 +29,7 @@ describe('adaptiveTextPanelModel', () => {
   ] as const)(
     'resolves %i images, %i texts and preferred=%s as %s',
     (imageCount, textCount, preferredExpanded, expected) => {
-      expect(
-        resolveAdaptiveContentMode(imageCount, textCount, preferredExpanded),
-      ).toBe(expected)
+      expect(resolveAdaptiveContentMode(imageCount, textCount, preferredExpanded)).toBe(expected)
     },
   )
 

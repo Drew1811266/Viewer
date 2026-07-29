@@ -668,6 +668,18 @@ describe('Viewer empty state', () => {
     expect(viewer.previewText).not.toHaveBeenCalled()
   })
 
+  it('does not route unsupported images through the generic-other preview', async () => {
+    const viewer = bridge()
+    vi.mocked(viewer.queryFolder).mockResolvedValue(unsupportedImageContentWorkspace())
+    render(<App bridge={viewer} />)
+
+    fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
+    fireEvent.doubleClick(await screen.findByRole('option', { name: 'poster.webp' }))
+
+    expect(screen.queryByRole('dialog', { name: 'poster.webp' })).not.toBeInTheDocument()
+    expect(viewer.previewText).not.toHaveBeenCalled()
+  })
+
   it('reselects from a read-only project through normal close and forgets the old path', async () => {
     const viewer = bridge('read_only')
     render(<App bridge={viewer} />)
@@ -2077,6 +2089,23 @@ function genericOtherContentWorkspace() {
         imageUrl: null,
       },
     ],
+  }
+}
+
+function unsupportedImageContentWorkspace() {
+  const source = contentWorkspace().images[0]
+  if (source === undefined) throw new Error('Expected supported image fixture')
+  return {
+    workspace: 'content' as const,
+    images: [
+      {
+        ...source,
+        name: 'poster.webp',
+        relativePath: 'id/poster.webp',
+        kind: 'unsupported_image' as const,
+      },
+    ],
+    otherFiles: [],
   }
 }
 

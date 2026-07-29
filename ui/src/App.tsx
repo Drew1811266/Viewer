@@ -1068,11 +1068,9 @@ function ViewerWorkspace({ bridge }: { bridge: ViewerBridge }) {
           onTaskChange={setTextTask}
         />
       )}
-      {activePreviewFile &&
-        !isPreviewableImage(activePreviewFile) &&
-        !isPreviewableText(activePreviewFile) && (
-          <UnsupportedFilePreview file={activePreviewFile} onClose={closePreview} />
-        )}
+      {activePreviewFile?.kind === 'other' && (
+        <UnsupportedFilePreview file={activePreviewFile} onClose={closePreview} />
+      )}
       {infoOpen && (
         <InfoOverlay
           files={selectedFiles}

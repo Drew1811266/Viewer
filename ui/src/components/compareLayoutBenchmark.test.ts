@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { solveCompareLayout } from './compareLayoutEngine'
+import { type CompareLayoutPlan, solveCompareLayout } from './compareLayoutEngine'
 
 const twenty = (ratio: number) =>
   Array.from({ length: 20 }, (_, index) => ({
@@ -18,6 +18,31 @@ const solve = (items: ReadonlyArray<{ entityId: string; aspectRatio: number }>) 
     previous: null,
   })
 
+const checksum = (plan: CompareLayoutPlan) => {
+  if (plan.rects.length !== 20) return Number.NaN
+  return plan.rects.reduce((sum, rect, index) => {
+    const dimensions = [
+      rect.left,
+      rect.top,
+      rect.width,
+      rect.height,
+      rect.stageWidth,
+      rect.stageHeight,
+    ]
+    const valid =
+      rect.index === index &&
+      rect.entityId === `image-${index}` &&
+      dimensions.every(Number.isFinite) &&
+      rect.left >= 0 &&
+      rect.top >= 0 &&
+      rect.width > 0 &&
+      rect.height > 0 &&
+      rect.stageWidth > 0 &&
+      rect.stageHeight > 0
+    return valid ? sum + index + 1 : Number.NaN
+  }, plan.rects.length)
+}
+
 describe('compare layout performance', () => {
   it.each([0.75, 1, 1.5])('keeps candidate work bounded for ratio %s', (ratio) => {
     const plan = solve(twenty(ratio))
@@ -33,10 +58,14 @@ describe('compare layout performance', () => {
         aspectRatio: index % 2 === 0 ? 0.75 : 1.5,
       }))
       for (let index = 0; index < 100; index += 1) solve(mixed)
+      let accumulatedChecksum = 0
       const start = performance.now()
-      for (let index = 0; index < 1_000; index += 1) solve(mixed)
+      for (let index = 0; index < 1_000; index += 1) {
+        accumulatedChecksum += checksum(solve(mixed))
+      }
       const average = (performance.now() - start) / 1_000
       console.info(`compare layout average: ${average.toFixed(4)} ms`)
+      expect(accumulatedChecksum).toBe(230_000)
       expect(average).toBeLessThan(2)
     },
   )

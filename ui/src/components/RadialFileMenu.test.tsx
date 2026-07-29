@@ -223,12 +223,11 @@ describe('RadialFileMenu', () => {
     expect(appCss).toMatch(
       /\.radial-menu-button\[aria-disabled="true"\]\s*\{(?=[^}]*filter:\s*grayscale\(1\);)(?=[^}]*opacity:\s*0\.38;)[^}]*\}/s,
     )
-    fireEvent.click(compare)
-    const info = screen.getByRole('menuitem', { name: '信息' })
-    info.focus()
-    expect(info).toHaveFocus()
+    act(() => compare.focus())
+    expect(compare).toHaveFocus()
     fireEvent.keyDown(screen.getByRole('menu', { name: '文件操作' }), { key: 'Enter' })
-    expect(action).not.toHaveBeenCalledWith('compare')
+    fireEvent.keyDown(screen.getByRole('menu', { name: '文件操作' }), { key: ' ' })
+    expect(action).not.toHaveBeenCalled()
   })
 
   it('keeps a focused disabled secondary item as the sole roving current item', () => {

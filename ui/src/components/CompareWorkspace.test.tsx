@@ -86,7 +86,7 @@ describe('CompareWorkspace', () => {
     ])
   })
 
-  it('aborts a proxy request at the image boundary when virtualization unmounts its pane', async () => {
+  it('unmounts every old non-active pane and aborts each pending request at scroll end', async () => {
     const resize = installCompareResizeObserver()
     const proxySignals = new Map<string, AbortSignal | undefined>()
     const requestImage = vi.fn(
@@ -108,14 +108,42 @@ describe('CompareWorkspace', () => {
     renderWorkspace({ files: portraitFiles(20), requestImage })
     act(() => resize.workspace(1_700, 900))
     act(() => resize.stages(600, 800))
-    await waitFor(() => expect(proxySignals.has('portrait-1')).toBe(true))
+    const initiallyMountedIds = screen
+      .getAllByRole('listitem')
+      .map((item) => defined(item.dataset.compareEntityId, 'Expected mounted compare entity'))
+    expect(initiallyMountedIds).toEqual([
+      'portrait-0',
+      'portrait-1',
+      'portrait-2',
+      'portrait-3',
+      'portrait-4',
+      'portrait-5',
+    ])
+    await waitFor(() =>
+      expect(initiallyMountedIds.every((entityId) => proxySignals.has(entityId))).toBe(true),
+    )
+    const initialSignals = new Map(
+      initiallyMountedIds.map((entityId) => [
+        entityId,
+        defined(proxySignals.get(entityId), `Expected signal for ${entityId}`),
+      ]),
+    )
 
     const viewport = screen.getByRole('list', { name: '滚动图片对比' })
     viewport.scrollLeft = 10_000
     fireEvent.scroll(viewport)
 
-    await waitFor(() => expect(proxySignals.get('portrait-1')?.aborted).toBe(true))
-    expect(screen.queryByRole('article', { name: '对比 portrait-1.jpg' })).not.toBeInTheDocument()
+    const oldNonActiveIds = initiallyMountedIds.filter((entityId) => entityId !== 'portrait-0')
+    await waitFor(() => {
+      for (const entityId of oldNonActiveIds) {
+        expect(
+          screen.queryByRole('article', { name: `对比 ${entityId}.jpg` }),
+        ).not.toBeInTheDocument()
+        expect(initialSignals.get(entityId)?.aborted).toBe(true)
+      }
+    })
+    expect(screen.getByRole('article', { name: '对比 portrait-0.jpg' })).toBeInTheDocument()
+    expect(initialSignals.get('portrait-0')?.aborted).toBe(false)
   })
 
   it('synchronizes by default, retains independent transforms and keeps rotation pane-local', () => {

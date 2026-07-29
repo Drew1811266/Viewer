@@ -399,7 +399,7 @@ export const solveCompareLayout = (input: CompareLayoutInput): CompareLayoutPlan
     )
   }
 
-  const candidateCount = Math.min(MAX_LAYOUT_CANDIDATES, candidates.length + 1)
+  const candidateCount = candidates.length + 1
   const classes = items.map(({ aspectRatio }) => classifyRatio(aspectRatio))
   const allPortrait = classes.every((value) => value === 'portrait')
   const allNonPortrait = classes.every((value) => value !== 'portrait')

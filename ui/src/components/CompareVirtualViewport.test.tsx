@@ -46,6 +46,33 @@ describe('CompareVirtualViewport', () => {
     expect(screen.getAllByRole('listitem').length).toBeLessThanOrEqual(visibleCount + 1)
   })
 
+  it.each([
+    ['horizontal', 1, 'scrollLeft', ['5', '6', '7', '20']],
+    ['vertical', 2, 'scrollTop', ['9', '10', '11', '12', '13', '14', '20']],
+  ] as const)(
+    'mounts the exact visible, one-viewport overscan, and active indexes at mid-%s scroll',
+    (axis, columns, scrollProperty, expectedPositions) => {
+      render(
+        <CompareVirtualViewport
+          plan={planWithTwentyItems(axis, columns)}
+          activeEntityId="image-19"
+          renderItem={(entityId) => <article tabIndex={0}>{entityId}</article>}
+          onActivate={vi.fn()}
+        />,
+      )
+      const viewport = screen.getByRole('list', { name: '滚动图片对比' })
+
+      viewport[scrollProperty] = 600
+      fireEvent.scroll(viewport)
+
+      expect(
+        screen
+          .getAllByRole('listitem')
+          .map((item) => [item.getAttribute('aria-posinset'), item.getAttribute('aria-setsize')]),
+      ).toEqual(expectedPositions.map((position) => [position, '20']))
+    },
+  )
+
   it('mounts only the vertical visible window, overscan, and active item', () => {
     const plan = planWithTwentyItems('vertical')
     const renderItem = vi.fn((entityId: string) => <article tabIndex={0}>{entityId}</article>)

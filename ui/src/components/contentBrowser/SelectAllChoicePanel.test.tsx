@@ -2,7 +2,7 @@ import { act, createEvent, fireEvent, render, screen } from '@testing-library/re
 import { StrictMode, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { SelectAllScope } from './adaptiveTextPanelModel'
+import type { SelectAllScope } from './adaptiveOtherFilePanelModel'
 import SelectAllChoicePanel from './SelectAllChoicePanel'
 
 afterEach(() => {
@@ -88,9 +88,9 @@ describe('SelectAllChoicePanel', () => {
     render(<ChoiceHarness open onChoose={choose} />)
 
     expect(screen.getByRole('menuitem', { name: '全选图片' })).toHaveFocus()
-    fireEvent.click(screen.getByRole('menuitem', { name: '全选文本文件' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: '全选其它文件' }))
 
-    expect(choose).toHaveBeenCalledWith('text')
+    expect(choose).toHaveBeenCalledWith('other')
   })
 
   it('cycles menu focus with arrow keys and activates with Enter', () => {
@@ -99,11 +99,11 @@ describe('SelectAllChoicePanel', () => {
     const menu = screen.getByRole('menu', { name: '选择全选范围' })
 
     fireEvent.keyDown(menu, { key: 'ArrowDown' })
-    expect(screen.getByRole('menuitem', { name: '全选文本文件' })).toHaveFocus()
+    expect(screen.getByRole('menuitem', { name: '全选其它文件' })).toHaveFocus()
     fireEvent.keyDown(menu, { key: 'ArrowUp' })
     expect(screen.getByRole('menuitem', { name: '全选图片' })).toHaveFocus()
     fireEvent.keyDown(menu, { key: 'ArrowUp' })
-    expect(screen.getByRole('menuitem', { name: '全部选择' })).toHaveFocus()
+    expect(screen.getByRole('menuitem', { name: '全部都选' })).toHaveFocus()
     fireEvent.keyDown(menu, { key: 'Enter' })
 
     expect(choose).toHaveBeenCalledWith('all')
@@ -115,7 +115,7 @@ describe('SelectAllChoicePanel', () => {
     const menu = screen.getByRole('menu', { name: '选择全选范围' })
 
     fireEvent.keyDown(menu, { key: 'End' })
-    expect(screen.getByRole('menuitem', { name: '全部选择' })).toHaveFocus()
+    expect(screen.getByRole('menuitem', { name: '全部都选' })).toHaveFocus()
     fireEvent.keyDown(menu, { key: 'Home' })
     expect(screen.getByRole('menuitem', { name: '全选图片' })).toHaveFocus()
     fireEvent.keyDown(menu, { key: ' ' })
@@ -195,7 +195,7 @@ describe('SelectAllChoicePanel', () => {
     const cancel = vi.fn()
     render(<ChoiceHarness open onCancel={cancel} />)
 
-    fireEvent.pointerDown(screen.getByRole('menuitem', { name: '全选文本文件' }))
+    fireEvent.pointerDown(screen.getByRole('menuitem', { name: '全选其它文件' }))
 
     expect(cancel).not.toHaveBeenCalled()
     expect(screen.getByRole('menu', { name: '选择全选范围' })).toBeVisible()

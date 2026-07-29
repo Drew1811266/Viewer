@@ -39,6 +39,8 @@ import type { TaskFeedback } from './components/TaskBar'
 import TaskBar from './components/TaskBar'
 import TextPreview from './components/TextPreview'
 import TrashConfirmation from './components/TrashConfirmation'
+import UnsupportedFilePreview from './components/UnsupportedFilePreview'
+import { isImageFile, isPreviewableImage, isPreviewableText } from './fileKinds'
 import { useViewerSettings, ViewerSettingsProvider } from './settings/ViewerSettingsProvider'
 import { compareValidationMessage, validateCompareCandidates } from './state/comparePolicy'
 import { organizationShortcutIsOwned } from './state/organizationShortcutOwnership'
@@ -311,7 +313,7 @@ function ViewerWorkspace({ bridge }: { bridge: ViewerBridge }) {
     const favorites = new Set(files.map((file) => file.marker.favorite))
     return buildRadialMenuModel({
       selectedCount: files.length,
-      selectedImageCount: files.filter(matchesImage).length,
+      selectedImageCount: files.filter(isImageFile).length,
       readOnly: state.project?.access === 'read_only',
       busy: operationBusy,
       compareContextAvailable: compareEntryAvailable,
@@ -425,7 +427,7 @@ function ViewerWorkspace({ bridge }: { bridge: ViewerBridge }) {
       ) {
         return
       }
-      const currentFiles = [...state.workspace.images, ...state.workspace.textFiles]
+      const currentFiles = [...state.workspace.images, ...state.workspace.otherFiles]
       const byId = new Map(currentFiles.map((file) => [file.entityId, file]))
       const files = entityIds.map((entityId) => byId.get(entityId))
       if (files.some((file) => file === undefined)) return
@@ -464,7 +466,7 @@ function ViewerWorkspace({ bridge }: { bridge: ViewerBridge }) {
       if (state.workspace?.workspace !== 'content') return false
       const destination = state.folders.find((folder) => folder.entityId === destinationId)
       if (!destination) return false
-      const currentFiles = [...state.workspace.images, ...state.workspace.textFiles]
+      const currentFiles = [...state.workspace.images, ...state.workspace.otherFiles]
       const byId = new Map(currentFiles.map((file) => [file.entityId, file]))
       const files = entityIds.map((entityId) => byId.get(entityId))
       if (files.some((file) => file === undefined)) return false
@@ -1045,17 +1047,19 @@ function ViewerWorkspace({ bridge }: { bridge: ViewerBridge }) {
           onClose={() => setSettingsOpen(false)}
         />
       )}
-      {activePreviewFile && matchesImage(activePreviewFile) && activePreviewFiles.length > 0 && (
-        <ImagePreview
-          file={activePreviewFile}
-          files={activePreviewFiles}
-          requestImage={requestPreviewImage}
-          onNavigate={navigatePreview}
-          onClose={closePreview}
-          onDimensions={recordDimensions}
-        />
-      )}
-      {activePreviewFile && !matchesImage(activePreviewFile) && (
+      {activePreviewFile &&
+        isPreviewableImage(activePreviewFile) &&
+        activePreviewFiles.length > 0 && (
+          <ImagePreview
+            file={activePreviewFile}
+            files={activePreviewFiles}
+            requestImage={requestPreviewImage}
+            onNavigate={navigatePreview}
+            onClose={closePreview}
+            onDimensions={recordDimensions}
+          />
+        )}
+      {activePreviewFile && isPreviewableText(activePreviewFile) && (
         <TextPreview
           file={activePreviewFile}
           requestPreview={requestTextPreview}
@@ -1064,6 +1068,11 @@ function ViewerWorkspace({ bridge }: { bridge: ViewerBridge }) {
           onTaskChange={setTextTask}
         />
       )}
+      {activePreviewFile &&
+        !isPreviewableImage(activePreviewFile) &&
+        !isPreviewableText(activePreviewFile) && (
+          <UnsupportedFilePreview file={activePreviewFile} onClose={closePreview} />
+        )}
       {infoOpen && (
         <InfoOverlay
           files={selectedFiles}
@@ -1162,10 +1171,6 @@ function ViewerWorkspace({ bridge }: { bridge: ViewerBridge }) {
       )}
     </main>
   )
-}
-
-function matchesImage(file: BrowserFile): boolean {
-  return file.kind === 'jpeg' || file.kind === 'png'
 }
 
 function parentRelativePath(relativePath: string): string {

@@ -11,11 +11,11 @@ import {
   resolveAdaptiveContentMode,
   resolveSelectAllRequest,
   type SelectAllScope,
-} from './contentBrowser/adaptiveTextPanelModel'
+} from './contentBrowser/adaptiveOtherFilePanelModel'
 import { rangeSelection, toggleSelection } from './contentBrowser/contentSelection'
 import { ImageCell } from './contentBrowser/ImageCell'
+import OtherFilePanel from './contentBrowser/OtherFilePanel'
 import SelectAllChoicePanel from './contentBrowser/SelectAllChoicePanel'
-import TextFilePanel from './contentBrowser/TextFilePanel'
 import { useMeasuredElementHeight } from './contentBrowser/useMeasuredElementHeight'
 import type { MarqueeSelectionChange } from './marqueeSelection'
 import type { RadialMenuRequest } from './RadialFileMenu'
@@ -88,34 +88,34 @@ export default function ContentBrowser({
   const pending = useRef(new Map<string, Promise<string>>())
   const [work, setWork] = useState<ThumbnailWork>({ requested: 0, completed: 0, failed: 0 })
   const allFiles = useMemo(
-    () => [...workspace.images, ...workspace.textFiles],
-    [workspace.images, workspace.textFiles],
+    () => [...workspace.images, ...workspace.otherFiles],
+    [workspace.images, workspace.otherFiles],
   )
   const mode = resolveAdaptiveContentMode(
     workspace.images.length,
-    workspace.textFiles.length,
+    workspace.otherFiles.length,
     textPanelExpanded,
   )
   const selectAllRequest = resolveSelectAllRequest(
     workspace.images.length,
-    workspace.textFiles.length,
+    workspace.otherFiles.length,
   )
   const contentIdentity = useMemo(
     () =>
       JSON.stringify(
-        [...workspace.images, ...workspace.textFiles].map(({ entityId, modifiedNs }) => [
+        [...workspace.images, ...workspace.otherFiles].map(({ entityId, modifiedNs }) => [
           entityId,
           modifiedNs,
         ]),
       ),
-    [workspace.images, workspace.textFiles],
+    [workspace.images, workspace.otherFiles],
   )
   const imageSlot = useMeasuredElementHeight(viewportHeight)
   const fileById = useMemo(() => new Map(allFiles.map((file) => [file.entityId, file])), [allFiles])
   const activeImageId = workspace.images.some(({ entityId }) => entityId === activeId)
     ? activeId
     : null
-  const activeTextId = workspace.textFiles.some(({ entityId }) => entityId === activeId)
+  const activeOtherId = workspace.otherFiles.some(({ entityId }) => entityId === activeId)
     ? activeId
     : null
 
@@ -477,7 +477,7 @@ export default function ContentBrowser({
     }
   }
 
-  function handleTextListKeyboard(event: KeyboardEvent<HTMLElement>) {
+  function handleOtherListKeyboard(event: KeyboardEvent<HTMLElement>) {
     const target = event.target as HTMLElement
     if (
       target instanceof HTMLInputElement ||
@@ -528,7 +528,9 @@ export default function ContentBrowser({
         <div>
           <strong>{currentPath ?? '当前文件夹'}</strong>
           <span>· {workspace.images.length} 张图片</span>
-          {workspace.textFiles.length > 0 && <span>· {workspace.textFiles.length} 个文本文件</span>}
+          {workspace.otherFiles.length > 0 && (
+            <span>· {workspace.otherFiles.length} 个其它文件</span>
+          )}
         </div>
         <details
           ref={viewMenuRef}
@@ -613,14 +615,14 @@ export default function ContentBrowser({
           </div>
         )}
         {mode !== 'image_only' && mode !== 'empty' && (
-          <TextFilePanel
+          <OtherFilePanel
             mode={mode}
-            files={workspace.textFiles}
+            files={workspace.otherFiles}
             selectedIds={selected}
-            activeId={activeTextId}
+            activeId={activeOtherId}
             organizationDragDisabled={organizationDragDisabled}
             onExpandedChange={onTextPanelExpandedChange}
-            onListKeyDown={handleTextListKeyboard}
+            onListKeyDown={handleOtherListKeyboard}
             onSelect={selectFile}
             onPreview={previewFile}
             onRadialMenuPointerDown={(file, event) => openRadialMenuFromPointer(file, event)}

@@ -87,7 +87,7 @@ function bridge(access: 'read_write' | 'read_only' = 'read_write'): ViewerBridge
     selectionInfo: vi.fn().mockResolvedValue({
       relativePaths: [],
       totalSize: 0,
-      types: { folders: 0, images: 0, textFiles: 0 },
+      types: { folders: 0, images: 0, otherFiles: 0 },
       commonReview: { state: 'none_selected' },
       commonFavorite: { state: 'none_selected' },
     }),
@@ -1203,7 +1203,7 @@ function contentWorkspace(ids: string[]) {
       imageMetadata: null,
       imageUrl: null,
     })),
-    textFiles: [],
+    otherFiles: [],
   }
 }
 

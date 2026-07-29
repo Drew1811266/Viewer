@@ -481,7 +481,7 @@ function contentWorkspace(ids: string[]) {
   return {
     workspace: 'content' as const,
     images: ids.map(file),
-    textFiles: [],
+    otherFiles: [],
   }
 }
 

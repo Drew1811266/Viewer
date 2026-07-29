@@ -166,8 +166,10 @@ describe('SearchToolbar', () => {
     for (const label of [
       'JPEG',
       'PNG',
+      '其它图片',
       'Markdown',
       'TXT',
+      '其它文件',
       '文件夹',
       '保留',
       '待定',

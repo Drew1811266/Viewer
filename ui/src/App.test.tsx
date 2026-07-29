@@ -92,7 +92,7 @@ function bridge(access: 'read_write' | 'read_only' = 'read_write'): ViewerBridge
     selectionInfo: vi.fn().mockResolvedValue({
       relativePaths: [],
       totalSize: 0,
-      types: { folders: 0, images: 0, textFiles: 0 },
+      types: { folders: 0, images: 0, otherFiles: 0 },
       commonReview: { state: 'none_selected' },
       commonFavorite: { state: 'none_selected' },
     }),
@@ -251,7 +251,7 @@ describe('Viewer empty state', () => {
     render(<App bridge={viewer} />)
 
     fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
-    const disclosure = await screen.findByRole('button', { name: /文本文件 · 1/ })
+    const disclosure = await screen.findByRole('button', { name: /其它文件 · 1/ })
     expect(disclosure).toHaveAttribute('aria-expanded', 'false')
     fireEvent.click(disclosure)
     expect(disclosure).toHaveAttribute('aria-expanded', 'true')
@@ -260,7 +260,7 @@ describe('Viewer empty state', () => {
     await waitFor(() => expect(viewer.queryFolder).toHaveBeenCalledWith('folder-b', false))
     expect(await screen.findByText('folder-b/folder-notes.txt')).toBeVisible()
     await waitFor(() =>
-      expect(screen.getByRole('button', { name: /文本文件 · 1/ })).toHaveAttribute(
+      expect(screen.getByRole('button', { name: /其它文件 · 1/ })).toHaveAttribute(
         'aria-expanded',
         'true',
       ),
@@ -650,9 +650,22 @@ describe('Viewer empty state', () => {
     expect(screen.getByRole('region', { name: '图片对比' })).toBeVisible()
     expect(screen.getByRole('status', { name: '只读模式' })).toBeVisible()
     fireEvent.click(screen.getByRole('button', { name: '关闭对比' }))
-    fireEvent.click(screen.getByRole('button', { name: '文本文件 · 1' }))
+    fireEvent.click(screen.getByRole('button', { name: '其它文件 · 1' }))
     fireEvent.doubleClick(screen.getByRole('option', { name: 'notes.txt' }))
     expect(await screen.findByText('readonly product notes')).toBeVisible()
+  })
+
+  it('opens a generic unsupported-file preview without requesting text', async () => {
+    const viewer = bridge()
+    vi.mocked(viewer.queryFolder).mockResolvedValue(genericOtherContentWorkspace())
+    render(<App bridge={viewer} />)
+
+    fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
+    fireEvent.click(await screen.findByRole('button', { name: '其它文件 · 1' }))
+    fireEvent.doubleClick(screen.getByRole('option', { name: 'license.other' }))
+
+    expect(screen.getByRole('dialog', { name: 'license.other' })).toHaveTextContent('暂不支持预览')
+    expect(viewer.previewText).not.toHaveBeenCalled()
   })
 
   it('reselects from a read-only project through normal close and forgets the old path', async () => {
@@ -833,7 +846,7 @@ describe('Viewer empty state', () => {
         imageMetadata: null,
         imageUrl: null,
       })),
-      textFiles: [],
+      otherFiles: [],
     })
     vi.mocked(viewer.requestImage).mockImplementation(async ({ entityId }) => ({
       cacheKey: entityId,
@@ -2017,7 +2030,7 @@ function contentWorkspace() {
         imageUrl: null,
       },
     ],
-    textFiles: [],
+    otherFiles: [],
   }
 }
 
@@ -2032,7 +2045,7 @@ function mixedContentWorkspace({
 } = {}) {
   return {
     ...contentWorkspace(),
-    textFiles: [
+    otherFiles: [
       {
         entityId,
         relativePath,
@@ -2040,6 +2053,25 @@ function mixedContentWorkspace({
         kind: 'text' as const,
         size: 20,
         modifiedNs: '2',
+        marker: { reviewState: null, favorite: false },
+        imageMetadata: null,
+        imageUrl: null,
+      },
+    ],
+  }
+}
+
+function genericOtherContentWorkspace() {
+  return {
+    ...contentWorkspace(),
+    otherFiles: [
+      {
+        entityId: 'other-license',
+        relativePath: 'id/license.other',
+        name: 'license.other',
+        kind: 'other' as const,
+        size: 20,
+        modifiedNs: '3',
         marker: { reviewState: null, favorite: false },
         imageMetadata: null,
         imageUrl: null,
@@ -2058,7 +2090,7 @@ function categoryWorkspace() {
         name: 'B01',
         marker: { reviewState: null, favorite: false },
         imageCount: 2,
-        textCount: 0,
+        otherFileCount: 0,
         reviewProgress: {
           total: 2,
           keep: 0,
@@ -2087,7 +2119,7 @@ function compareContentWorkspace() {
         modifiedNs: '2',
       },
     ],
-    textFiles: [],
+    otherFiles: [],
   }
 }
 
@@ -2102,7 +2134,7 @@ function compareContentWorkspaceWithCount(count: number) {
       name: `image-${index + 1}.jpg`,
       modifiedNs: String(index + 1),
     })),
-    textFiles: [],
+    otherFiles: [],
   }
 }
 
@@ -2162,7 +2194,7 @@ function installCompareResizeObserver() {
 function readOnlyContentWorkspace() {
   return {
     ...compareContentWorkspace(),
-    textFiles: [
+    otherFiles: [
       {
         entityId: 'text-1',
         relativePath: 'id/notes.txt',

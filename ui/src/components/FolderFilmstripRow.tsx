@@ -217,7 +217,8 @@ export default function FolderFilmstripRow({
         <strong>{folder.name}</strong>
         <span>{folder.relativePath}</span>
         <span className="folder-filmstrip-counts">
-          <span>{`${folder.imageCount} 张图片`}</span> · <span>{`${folder.textCount} 个文本`}</span>
+          <span>{`${folder.imageCount} 张图片`}</span> ·{' '}
+          <span>{`${folder.otherFileCount} 个其它文件`}</span>
         </span>
         <span className="folder-filmstrip-marker">{`文件夹：${markerLabel(folder.marker)}`}</span>
         <span>{`已审阅 ${reviewed} / ${folder.reviewProgress.total}`}</span>

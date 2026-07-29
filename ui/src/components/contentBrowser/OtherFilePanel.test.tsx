@@ -2,9 +2,9 @@ import { fireEvent, render, screen } from '@testing-library/react'
 import type { ComponentProps } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 import type { BrowserFile } from '../../api/types'
-import TextFilePanel from './TextFilePanel'
+import OtherFilePanel from './OtherFilePanel'
 
-const textFiles: readonly BrowserFile[] = [
+const otherFiles: readonly BrowserFile[] = [
   {
     entityId: 'text-1',
     relativePath: 'notes/first.md',
@@ -17,10 +17,10 @@ const textFiles: readonly BrowserFile[] = [
     imageUrl: null,
   },
   {
-    entityId: 'text-2',
-    relativePath: 'notes/second.txt',
-    name: 'second.txt',
-    kind: 'text',
+    entityId: 'other-2',
+    relativePath: 'notes/license',
+    name: 'license',
+    kind: 'other',
     size: 20,
     modifiedNs: '2',
     marker: { reviewState: null, favorite: false },
@@ -30,11 +30,11 @@ const textFiles: readonly BrowserFile[] = [
 ]
 
 function panelProps(
-  overrides: Partial<ComponentProps<typeof TextFilePanel>> = {},
-): ComponentProps<typeof TextFilePanel> {
+  overrides: Partial<ComponentProps<typeof OtherFilePanel>> = {},
+): ComponentProps<typeof OtherFilePanel> {
   return {
     mode: 'mixed_collapsed',
-    files: textFiles,
+    files: otherFiles,
     selectedIds: new Set(),
     activeId: null,
     organizationDragDisabled: false,
@@ -53,34 +53,35 @@ function panelProps(
   }
 }
 
-function renderPanel(overrides: Partial<ComponentProps<typeof TextFilePanel>> = {}) {
-  return render(<TextFilePanel {...panelProps(overrides)} />)
+function renderPanel(overrides: Partial<ComponentProps<typeof OtherFilePanel>> = {}) {
+  return render(<OtherFilePanel {...panelProps(overrides)} />)
 }
 
-function renderPanelElement(overrides: Partial<ComponentProps<typeof TextFilePanel>> = {}) {
-  return <TextFilePanel {...panelProps(overrides)} />
+function renderPanelElement(overrides: Partial<ComponentProps<typeof OtherFilePanel>> = {}) {
+  return <OtherFilePanel {...panelProps(overrides)} />
 }
 
-describe('TextFilePanel', () => {
+describe('OtherFilePanel', () => {
   it('renders one complete collapsed disclosure with selected hidden count', () => {
     renderPanel({
       mode: 'mixed_collapsed',
-      selectedIds: new Set(['text-2']),
+      selectedIds: new Set(['other-2']),
     })
 
     const disclosure = screen.getByRole('button', {
-      name: '文本文件 · 2 · 已选 1',
+      name: '其它文件 · 2 · 已选 1',
     })
     expect(disclosure).toHaveAttribute('aria-expanded', 'false')
-    expect(disclosure).toHaveAttribute('aria-controls', 'content-text-file-list')
-    expect(screen.queryByRole('listbox', { name: '文本文件' })).not.toBeInTheDocument()
+    expect(disclosure).toHaveAttribute('aria-controls', 'content-other-file-list')
+    expect(screen.queryByRole('listbox', { name: '其它文件' })).not.toBeInTheDocument()
+    expect(screen.queryByText('文本文件')).not.toBeInTheDocument()
   })
 
   it('uses a native disclosure button and reports the controlled next state', () => {
     const onExpandedChange = vi.fn()
     renderPanel({ mode: 'mixed_collapsed', onExpandedChange })
 
-    const disclosure = screen.getByRole('button', { name: '文本文件 · 2' })
+    const disclosure = screen.getByRole('button', { name: '其它文件 · 2' })
     expect(disclosure.tagName).toBe('BUTTON')
     fireEvent.click(disclosure)
 
@@ -91,22 +92,22 @@ describe('TextFilePanel', () => {
   it('collapses an expanded mixed shelf on Escape and restores disclosure focus', () => {
     const onExpandedChange = vi.fn()
     const rendered = renderPanel({ mode: 'mixed_expanded', onExpandedChange })
-    const list = screen.getByRole('listbox', { name: '文本文件' })
+    const list = screen.getByRole('listbox', { name: '其它文件' })
     list.focus()
 
     fireEvent.keyDown(list, { key: 'Escape' })
 
     expect(onExpandedChange).toHaveBeenCalledWith(false)
     rendered.rerender(renderPanelElement({ mode: 'mixed_collapsed', onExpandedChange }))
-    expect(screen.getByRole('button', { name: '文本文件 · 2' })).toHaveFocus()
+    expect(screen.getByRole('button', { name: '其它文件 · 2' })).toHaveFocus()
   })
 
-  it('renders text-only content as a non-collapsible labelled primary list', () => {
-    renderPanel({ mode: 'text_only' })
+  it('renders other-only content as a non-collapsible labelled primary list', () => {
+    renderPanel({ mode: 'other_only' })
 
-    expect(screen.getByRole('heading', { name: '文本文件 · 2' })).toBeVisible()
-    expect(screen.queryByRole('button', { name: /文本文件/ })).not.toBeInTheDocument()
-    expect(screen.getByRole('listbox', { name: '文本文件' })).toBeVisible()
+    expect(screen.getByRole('heading', { name: '其它文件 · 2' })).toBeVisible()
+    expect(screen.queryByRole('button', { name: /其它文件/ })).not.toBeInTheDocument()
+    expect(screen.getByRole('listbox', { name: '其它文件' })).toBeVisible()
   })
 
   it('forwards every existing text-row interaction with the original file', () => {
@@ -120,7 +121,7 @@ describe('TextFilePanel', () => {
     const onOrganizationPointerUp = vi.fn()
     const onOrganizationPointerCancel = vi.fn()
     renderPanel({
-      mode: 'text_only',
+      mode: 'other_only',
       onSelect,
       onPreview,
       onRadialMenuPointerDown,
@@ -147,7 +148,7 @@ describe('TextFilePanel', () => {
     fireEvent.pointerDown(handle, { pointerId: 13, button: 0 })
     fireEvent.pointerCancel(handle, { pointerId: 13 })
 
-    const first = textFiles[0]
+    const first = otherFiles[0]
     expect(onSelect).toHaveBeenCalledWith(first, expect.anything())
     expect(onPreview).toHaveBeenCalledWith(first)
     expect(onRadialMenuPointerDown).toHaveBeenCalledWith(first, expect.anything())
@@ -159,10 +160,10 @@ describe('TextFilePanel', () => {
     expect(onOrganizationPointerCancel).toHaveBeenCalledWith(expect.anything())
   })
 
-  it('owns only text active-descendant state and preserves marker labels', () => {
-    renderPanel({ mode: 'text_only', activeId: 'text-1' })
+  it('owns only other-file active-descendant state and preserves marker labels', () => {
+    renderPanel({ mode: 'other_only', activeId: 'text-1' })
 
-    expect(screen.getByRole('listbox', { name: '文本文件' })).toHaveAttribute(
+    expect(screen.getByRole('listbox', { name: '其它文件' })).toHaveAttribute(
       'aria-activedescendant',
       'file-text-1',
     )

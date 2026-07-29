@@ -27,8 +27,10 @@ interface SearchToolbarProps {
 const FILE_KINDS: Array<[FileKind, string]> = [
   ['jpeg', 'JPEG'],
   ['png', 'PNG'],
+  ['unsupported_image', '其它图片'],
   ['markdown', 'Markdown'],
   ['text', 'TXT'],
+  ['other', '其它文件'],
   ['directory', '文件夹'],
 ]
 const REVIEW_STATES: Array<[ReviewState, string]> = [

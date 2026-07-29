@@ -51,7 +51,7 @@ describe('InfoOverlay', () => {
         selectionInfo={{
           relativePaths: ['catalog/id-1', 'catalog/id-1/front.jpg'],
           totalSize: 3_072,
-          types: { folders: 1, images: 1, textFiles: 0 },
+          types: { folders: 1, images: 1, otherFiles: 0 },
           commonReview: { state: 'common', value: 'keep' },
           commonFavorite: { state: 'mixed' },
         }}
@@ -60,7 +60,7 @@ describe('InfoOverlay', () => {
       />,
     )
     expect(screen.getByText('2 个项目')).toBeVisible()
-    expect(screen.getByText('文件夹 1 · 图片 1 · 文本 0')).toBeVisible()
+    expect(screen.getByText('文件夹 1 · 图片 1 · 其它文件 0')).toBeVisible()
     expect(screen.getByText('保留')).toBeVisible()
     expect(screen.getByText('混合')).toBeVisible()
     expect(screen.queryByText(/\/Users\//)).not.toBeInTheDocument()

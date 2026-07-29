@@ -127,7 +127,7 @@ function ratioWorkspace(
   return {
     workspace: 'content',
     images: dimensions.map((metadata, index) => image(index + 1, metadata)),
-    textFiles: [],
+    otherFiles: [],
   }
 }
 
@@ -135,7 +135,7 @@ function workspace(count = 10): Extract<FolderWorkspace, { workspace: 'content' 
   return {
     workspace: 'content',
     images: Array.from({ length: count }, (_, index) => image(index + 1)),
-    textFiles: [
+    otherFiles: [
       {
         entityId: 'text-1',
         relativePath: 'id-001/prompt.md',
@@ -153,12 +153,12 @@ function workspace(count = 10): Extract<FolderWorkspace, { workspace: 'content' 
 
 function workspaceWithTextFiles(
   imageCount = 2,
-  textCount = 6,
+  otherCount = 6,
 ): Extract<FolderWorkspace, { workspace: 'content' }> {
   return {
     workspace: 'content',
     images: Array.from({ length: imageCount }, (_, index) => image(index + 1)),
-    textFiles: Array.from({ length: textCount }, (_, index) => ({
+    otherFiles: Array.from({ length: otherCount }, (_, index) => ({
       entityId: `text-${index + 1}`,
       relativePath: `id-001/note-${index + 1}.txt`,
       name: `note-${index + 1}.txt`,
@@ -271,16 +271,16 @@ describe('ContentBrowser', () => {
   it('defaults mixed content to a collapsed controlled shelf and preserves hidden selection', () => {
     const changed = vi.fn()
     render(<ControlledContentBrowser workspace={workspace(2)} onSelectionChange={changed} />)
-    const disclosure = screen.getByRole('button', { name: '文本文件 · 1' })
+    const disclosure = screen.getByRole('button', { name: '其它文件 · 1' })
     expect(disclosure).toHaveAttribute('aria-expanded', 'false')
-    expect(screen.queryByRole('listbox', { name: '文本文件' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('listbox', { name: '其它文件' })).not.toBeInTheDocument()
 
     fireEvent.click(disclosure)
     fireEvent.click(screen.getByRole('option', { name: 'prompt.md' }))
     fireEvent.click(disclosure)
 
-    expect(screen.queryByRole('listbox', { name: '文本文件' })).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '文本文件 · 1 · 已选 1' })).toHaveAttribute(
+    expect(screen.queryByRole('listbox', { name: '其它文件' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '其它文件 · 1 · 已选 1' })).toHaveAttribute(
       'aria-expanded',
       'false',
     )
@@ -289,20 +289,20 @@ describe('ContentBrowser', () => {
 
   it('restores one controlled mixed preference across image-only content', () => {
     const rendered = render(<ControlledContentBrowser workspace={workspace(1)} />)
-    fireEvent.click(screen.getByRole('button', { name: '文本文件 · 1' }))
-    expect(screen.getByRole('listbox', { name: '文本文件' })).toBeVisible()
+    fireEvent.click(screen.getByRole('button', { name: '其它文件 · 1' }))
+    expect(screen.getByRole('listbox', { name: '其它文件' })).toBeVisible()
 
     rendered.rerender(
       <ControlledContentBrowser workspace={ratioWorkspace([{ width: 1, height: 1 }])} />,
     )
-    expect(screen.queryByText(/文本文件/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/其它文件/)).not.toBeInTheDocument()
 
     rendered.rerender(<ControlledContentBrowser workspace={workspace(1)} />)
-    expect(screen.getByRole('button', { name: '文本文件 · 1' })).toHaveAttribute(
+    expect(screen.getByRole('button', { name: '其它文件 · 1' })).toHaveAttribute(
       'aria-expanded',
       'true',
     )
-    expect(screen.getByRole('listbox', { name: '文本文件' })).toBeVisible()
+    expect(screen.getByRole('listbox', { name: '其它文件' })).toBeVisible()
   })
 
   it('forces text-only content open without changing the mixed preference', () => {
@@ -314,7 +314,7 @@ describe('ContentBrowser', () => {
         onPreferenceChange={preferenceChanged}
       />,
     )
-    expect(screen.getByRole('button', { name: '文本文件 · 1' })).toHaveAttribute(
+    expect(screen.getByRole('button', { name: '其它文件 · 1' })).toHaveAttribute(
       'aria-expanded',
       'true',
     )
@@ -326,9 +326,9 @@ describe('ContentBrowser', () => {
         onPreferenceChange={preferenceChanged}
       />,
     )
-    expect(screen.getByRole('heading', { name: '文本文件 · 2' })).toBeVisible()
-    expect(screen.queryByRole('button', { name: /文本文件/ })).not.toBeInTheDocument()
-    expect(screen.getByRole('listbox', { name: '文本文件' })).toBeVisible()
+    expect(screen.getByRole('heading', { name: '其它文件 · 2' })).toBeVisible()
+    expect(screen.queryByRole('button', { name: /其它文件/ })).not.toBeInTheDocument()
+    expect(screen.getByRole('listbox', { name: '其它文件' })).toBeVisible()
     expect(preferenceChanged).not.toHaveBeenCalled()
 
     rendered.rerender(
@@ -338,7 +338,7 @@ describe('ContentBrowser', () => {
         onPreferenceChange={preferenceChanged}
       />,
     )
-    expect(screen.getByRole('button', { name: '文本文件 · 1' })).toHaveAttribute(
+    expect(screen.getByRole('button', { name: '其它文件 · 1' })).toHaveAttribute(
       'aria-expanded',
       'true',
     )
@@ -346,22 +346,22 @@ describe('ContentBrowser', () => {
 
   it('switches cleanly when the last file of either content type is removed', () => {
     const rendered = render(<ContentBrowser workspace={workspace(1)} />)
-    expect(screen.getByRole('button', { name: '文本文件 · 1' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '其它文件 · 1' })).toBeInTheDocument()
 
     rendered.rerender(<ContentBrowser workspace={ratioWorkspace([{ width: 1, height: 1 }])} />)
-    expect(screen.queryByText(/文本文件/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/其它文件/)).not.toBeInTheDocument()
 
     rendered.rerender(<ContentBrowser workspace={workspace(1)} />)
     rendered.rerender(<ContentBrowser workspace={workspaceWithTextFiles(0, 1)} />)
     expect(screen.queryByRole('listbox', { name: '图片文件' })).not.toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: '文本文件 · 1' })).toBeVisible()
-    expect(screen.getByRole('listbox', { name: '文本文件' })).toBeVisible()
+    expect(screen.getByRole('heading', { name: '其它文件 · 1' })).toBeVisible()
+    expect(screen.getByRole('listbox', { name: '其它文件' })).toBeVisible()
   })
 
   it('removes hidden text active-descendant ownership when the shelf collapses', () => {
     render(<ControlledContentBrowser workspace={workspace(2)} initiallyExpanded />)
     fireEvent.click(screen.getByRole('option', { name: 'prompt.md' }))
-    expect(screen.getByRole('listbox', { name: '文本文件' })).toHaveAttribute(
+    expect(screen.getByRole('listbox', { name: '其它文件' })).toHaveAttribute(
       'aria-activedescendant',
       'file-text-1',
     )
@@ -369,7 +369,7 @@ describe('ContentBrowser', () => {
       'aria-activedescendant',
     )
 
-    fireEvent.click(screen.getByRole('button', { name: /文本文件 · 1/ }))
+    fireEvent.click(screen.getByRole('button', { name: /其它文件 · 1/ }))
 
     expect(document.querySelectorAll('[aria-activedescendant]')).toHaveLength(0)
   })
@@ -380,8 +380,8 @@ describe('ContentBrowser', () => {
     grid.scrollTop = 180
     fireEvent.scroll(grid)
 
-    fireEvent.click(screen.getByRole('button', { name: '文本文件 · 1' }))
-    fireEvent.click(screen.getByRole('button', { name: '文本文件 · 1' }))
+    fireEvent.click(screen.getByRole('button', { name: '其它文件 · 1' }))
+    fireEvent.click(screen.getByRole('button', { name: '其它文件 · 1' }))
 
     expect(screen.getByRole('listbox', { name: '图片文件' })).toBe(grid)
     expect(grid.scrollTop).toBe(180)
@@ -414,14 +414,14 @@ describe('ContentBrowser', () => {
       screen.getByRole('option', { name: '2.jpg' }).querySelector('[aria-label="缩略图加载中"]'),
     ).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: '文本文件 · 1' }))
-    fireEvent.click(screen.getByRole('button', { name: '文本文件 · 1' }))
+    fireEvent.click(screen.getByRole('button', { name: '其它文件 · 1' }))
+    fireEvent.click(screen.getByRole('button', { name: '其它文件 · 1' }))
     rendered.rerender(
       <ControlledContentBrowser
         workspace={{
           ...data,
           images: data.images.map((file) => ({ ...file })),
-          textFiles: data.textFiles.map((file) => ({ ...file })),
+          otherFiles: data.otherFiles.map((file) => ({ ...file })),
         }}
         requestThumbnail={requestThumbnail}
       />,
@@ -476,8 +476,8 @@ describe('ContentBrowser', () => {
 
   it('removes the entire text surface and measures all available image height in image-only mode', () => {
     render(<ContentBrowser workspace={ratioWorkspace([{ width: 1, height: 1 }])} />)
-    expect(screen.queryByText('文本文件')).not.toBeInTheDocument()
-    expect(screen.queryByRole('listbox', { name: '文本文件' })).not.toBeInTheDocument()
+    expect(screen.queryByText('其它文件')).not.toBeInTheDocument()
+    expect(screen.queryByRole('listbox', { name: '其它文件' })).not.toBeInTheDocument()
 
     const slot = screen.getByTestId('content-image-slot')
     triggerResize(slot, 900, 688)
@@ -895,38 +895,38 @@ describe('ContentBrowser', () => {
     render(
       <ContentBrowser workspace={workspaceWithTextFiles()} textPanelExpanded onPreview={preview} />,
     )
-    const textList = screen.getByRole('listbox', { name: '文本文件' })
+    const otherList = screen.getByRole('listbox', { name: '其它文件' })
 
     fireEvent.click(screen.getByRole('option', { name: 'note-2.txt' }))
-    fireEvent.keyDown(textList, { key: 'ArrowRight' })
+    fireEvent.keyDown(otherList, { key: 'ArrowRight' })
     expect(selectedLabels()).toEqual(['note-3.txt'])
-    expect(screen.getByRole('listbox', { name: '文本文件' })).toHaveAttribute(
+    expect(screen.getByRole('listbox', { name: '其它文件' })).toHaveAttribute(
       'aria-activedescendant',
       'file-text-3',
     )
     expect(screen.getByRole('listbox', { name: '图片文件' })).not.toHaveAttribute(
       'aria-activedescendant',
     )
-    fireEvent.keyDown(textList, { key: ' ' })
+    fireEvent.keyDown(otherList, { key: ' ' })
     expect(preview).toHaveBeenCalledWith(expect.objectContaining({ entityId: 'text-3' }))
 
-    fireEvent.keyDown(textList, { key: 'ArrowLeft' })
+    fireEvent.keyDown(otherList, { key: 'ArrowLeft' })
     expect(selectedLabels()).toEqual(['note-2.txt'])
-    fireEvent.keyDown(textList, { key: 'ArrowDown' })
+    fireEvent.keyDown(otherList, { key: 'ArrowDown' })
     expect(selectedLabels()).toEqual(['note-6.txt'])
-    fireEvent.keyDown(textList, { key: 'ArrowUp' })
+    fireEvent.keyDown(otherList, { key: 'ArrowUp' })
     expect(selectedLabels()).toEqual(['note-2.txt'])
   })
 
   it('extends text-list Shift arrows from the source anchor with legacy all-file offsets', () => {
     render(<ContentBrowser workspace={workspaceWithTextFiles()} textPanelExpanded />)
-    const textList = screen.getByRole('listbox', { name: '文本文件' })
+    const otherList = screen.getByRole('listbox', { name: '其它文件' })
 
     fireEvent.click(screen.getByRole('option', { name: 'note-1.txt' }))
-    fireEvent.keyDown(textList, { key: 'ArrowRight', shiftKey: true })
+    fireEvent.keyDown(otherList, { key: 'ArrowRight', shiftKey: true })
     expect(selectedLabels()).toEqual(['note-1.txt', 'note-2.txt'])
 
-    fireEvent.keyDown(textList, { key: 'ArrowDown', shiftKey: true })
+    fireEvent.keyDown(otherList, { key: 'ArrowDown', shiftKey: true })
     expect(selectedLabels()).toEqual([
       'note-1.txt',
       'note-2.txt',
@@ -974,8 +974,8 @@ describe('ContentBrowser', () => {
 
     expect(screen.getAllByRole('menuitem').map((item) => item.textContent)).toEqual([
       '全选图片',
-      '全选文本文件',
-      '全部选择',
+      '全选其它文件',
+      '全部都选',
     ])
     expect(screen.getByRole('button', { name: '全选当前文件夹' })).toHaveAttribute(
       'aria-haspopup',
@@ -986,7 +986,7 @@ describe('ContentBrowser', () => {
       'true',
     )
     expect(selectedLabels()).toEqual(['2.jpg'])
-    expect(screen.getByRole('button', { name: '文本文件 · 1' })).toHaveAttribute(
+    expect(screen.getByRole('button', { name: '其它文件 · 1' })).toHaveAttribute(
       'aria-expanded',
       'false',
     )
@@ -1009,9 +1009,9 @@ describe('ContentBrowser', () => {
       focusOwner === 'image list'
         ? screen.getByRole('listbox', { name: '图片文件' })
         : focusOwner === 'expanded text list'
-          ? screen.getByRole('listbox', { name: '文本文件' })
+          ? screen.getByRole('listbox', { name: '其它文件' })
           : focusOwner === 'collapsed text disclosure'
-            ? screen.getByRole('button', { name: '文本文件 · 1' })
+            ? screen.getByRole('button', { name: '其它文件 · 1' })
             : focusOwner === 'view summary'
               ? screen.getByText('视图')
               : screen.getByRole('button', { name: '全选当前文件夹' })
@@ -1056,8 +1056,8 @@ describe('ContentBrowser', () => {
 
   it.each([
     ['全选图片', ['1.jpg', '2.jpg'], 'file-image-1'],
-    ['全选文本文件', ['note-1.txt', 'note-2.txt'], 'file-text-1'],
-    ['全部选择', ['1.jpg', '2.jpg', 'note-1.txt', 'note-2.txt'], 'file-image-1'],
+    ['全选其它文件', ['note-1.txt', 'note-2.txt'], 'file-text-1'],
+    ['全部都选', ['1.jpg', '2.jpg', 'note-1.txt', 'note-2.txt'], 'file-image-1'],
   ] as const)(
     'replaces selection with the %s scope and anchors it at the first scoped file',
     (choice, expectedLabels, activeDescendant) => {
@@ -1070,8 +1070,8 @@ describe('ContentBrowser', () => {
       expect(selectedLabels()).toEqual(expectedLabels)
       expect(screen.queryByRole('menu', { name: '选择全选范围' })).not.toBeInTheDocument()
       const owner =
-        choice === '全选文本文件'
-          ? screen.getByRole('listbox', { name: '文本文件' })
+        choice === '全选其它文件'
+          ? screen.getByRole('listbox', { name: '其它文件' })
           : screen.getByRole('listbox', { name: '图片文件' })
       expect(owner).toHaveAttribute('aria-activedescendant', activeDescendant)
     },
@@ -1082,10 +1082,10 @@ describe('ContentBrowser', () => {
     render(<ContentBrowser workspace={workspaceWithTextFiles(2, 2)} onSelectionChange={changed} />)
 
     fireEvent.click(screen.getByRole('button', { name: '全选当前文件夹' }))
-    fireEvent.click(screen.getByRole('menuitem', { name: '全选文本文件' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: '全选其它文件' }))
 
-    expect(screen.queryByRole('listbox', { name: '文本文件' })).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '文本文件 · 2 · 已选 2' })).toHaveAttribute(
+    expect(screen.queryByRole('listbox', { name: '其它文件' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '其它文件 · 2 · 已选 2' })).toHaveAttribute(
       'aria-expanded',
       'false',
     )
@@ -1099,7 +1099,7 @@ describe('ContentBrowser', () => {
     render(<ContentBrowser workspace={workspaceWithTextFiles(2, 2)} textPanelExpanded />)
     fireEvent.click(screen.getByRole('option', { name: '1.jpg' }))
     fireEvent.click(screen.getByRole('button', { name: '全选当前文件夹' }))
-    fireEvent.click(screen.getByRole('menuitem', { name: '全选文本文件' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: '全选其它文件' }))
 
     fireEvent.click(screen.getByRole('option', { name: '2.jpg' }), { shiftKey: true })
 
@@ -1145,7 +1145,7 @@ describe('ContentBrowser', () => {
       if (path === 'button') {
         fireEvent.click(screen.getByRole('button', { name: '全选当前文件夹' }))
       } else {
-        fireEvent.keyDown(screen.getByRole('listbox', { name: '文本文件' }), {
+        fireEvent.keyDown(screen.getByRole('listbox', { name: '其它文件' }), {
           key: 'a',
           metaKey: true,
         })
@@ -1182,7 +1182,7 @@ describe('ContentBrowser', () => {
       } else if (cancellation === 'source') {
         fireEvent.click(screen.getByRole('button', { name: '全选当前文件夹' }))
       } else {
-        const outside = screen.getByRole('button', { name: '文本文件 · 1' })
+        const outside = screen.getByRole('button', { name: '其它文件 · 1' })
         fireEvent.pointerDown(outside)
         outside.focus()
         flushAnimationFrames()
@@ -1199,7 +1199,7 @@ describe('ContentBrowser', () => {
     const rendered = render(<ContentBrowser workspace={data} currentPath="folder-a" />)
     fireEvent.click(screen.getByRole('option', { name: '2.jpg' }))
     fireEvent.click(screen.getByRole('button', { name: '全选当前文件夹' }))
-    const staleChoice = screen.getByRole('menuitem', { name: '全部选择' })
+    const staleChoice = screen.getByRole('menuitem', { name: '全部都选' })
     expect(screen.getByRole('menuitem', { name: '全选图片' })).toHaveFocus()
 
     rendered.rerender(
@@ -1224,7 +1224,7 @@ describe('ContentBrowser', () => {
     const rendered = render(<ContentBrowser workspace={data} currentPath="folder-a" />)
     fireEvent.click(screen.getByRole('option', { name: '2.jpg' }))
     fireEvent.click(screen.getByRole('button', { name: '全选当前文件夹' }))
-    const staleChoice = screen.getByRole('menuitem', { name: '全部选择' })
+    const staleChoice = screen.getByRole('menuitem', { name: '全部都选' })
 
     rendered.rerender(<ContentBrowser workspace={data} currentPath="folder-b" />)
 
@@ -1240,7 +1240,7 @@ describe('ContentBrowser', () => {
     render(<ContentBrowser workspace={workspace(2)} onPreview={preview} />)
     fireEvent.click(screen.getByRole('option', { name: '2.jpg' }))
     fireEvent.click(screen.getByRole('button', { name: '全选当前文件夹' }))
-    const staleChoice = screen.getByRole('menuitem', { name: '全部选择' })
+    const staleChoice = screen.getByRole('menuitem', { name: '全部都选' })
 
     fireEvent.doubleClick(screen.getByRole('option', { name: '2.jpg' }))
 
@@ -1257,7 +1257,7 @@ describe('ContentBrowser', () => {
     render(<ContentBrowser workspace={workspace(2)} onRadialMenuRequest={radial} />)
     fireEvent.click(screen.getByRole('option', { name: '2.jpg' }))
     fireEvent.click(screen.getByRole('button', { name: '全选当前文件夹' }))
-    const staleChoice = screen.getByRole('menuitem', { name: '全部选择' })
+    const staleChoice = screen.getByRole('menuitem', { name: '全部都选' })
 
     fireEvent.contextMenu(screen.getByRole('option', { name: '2.jpg' }), {
       ctrlKey: true,
@@ -1276,7 +1276,7 @@ describe('ContentBrowser', () => {
     const rendered = render(<ContentBrowser workspace={data} />)
     fireEvent.click(screen.getByRole('option', { name: '2.jpg' }))
     fireEvent.click(screen.getByRole('button', { name: '全选当前文件夹' }))
-    const staleChoice = screen.getByRole('menuitem', { name: '全部选择' })
+    const staleChoice = screen.getByRole('menuitem', { name: '全部都选' })
 
     rendered.rerender(<ContentBrowser workspace={data} organizationDragDisabled />)
 
@@ -1367,7 +1367,7 @@ describe('ContentBrowser', () => {
   it('keeps Markdown and TXT in an independent labelled list', () => {
     render(<ContentBrowser workspace={workspace()} textPanelExpanded />)
 
-    expect(screen.getByRole('button', { name: '文本文件 · 1' })).toBeVisible()
+    expect(screen.getByRole('button', { name: '其它文件 · 1' })).toBeVisible()
     expect(screen.getByRole('option', { name: 'prompt.md' })).toHaveAttribute('tabindex', '-1')
     expect(screen.getByRole('option', { name: '1.jpg' })).not.toHaveAttribute('tabindex')
   })
@@ -1661,7 +1661,7 @@ describe('ContentBrowser', () => {
     render(
       <ContentBrowser workspace={workspace(3)} textPanelExpanded onRadialMenuRequest={request} />,
     )
-    const textList = screen.getByRole('listbox', { name: '文本文件' })
+    const otherList = screen.getByRole('listbox', { name: '其它文件' })
     fireEvent.click(screen.getByRole('option', { name: '1.jpg' }))
     fireEvent.click(screen.getByRole('option', { name: '2.jpg' }), { metaKey: true })
 
@@ -1678,7 +1678,7 @@ describe('ContentBrowser', () => {
       files: [expect.objectContaining({ entityId: 'text-1' })],
       origin: { x: 230, y: 180 },
       pointerId: 72,
-      returnFocusTarget: textList,
+      returnFocusTarget: otherList,
     })
   })
 
@@ -1690,7 +1690,7 @@ describe('ContentBrowser', () => {
 
     for (const [name, entityId, listName] of [
       ['1.jpg', 'image-1', '图片文件'],
-      ['prompt.md', 'text-1', '文本文件'],
+      ['prompt.md', 'text-1', '其它文件'],
     ] as const) {
       const option = screen.getByRole('option', { name })
       const event = createEvent.contextMenu(option, {
@@ -1799,7 +1799,7 @@ describe('ContentBrowser', () => {
     expect(screen.getByText('项目根目录')).toBeVisible()
     fireEvent.click(screen.getByText('视图'))
     fireEvent.click(screen.getByRole('button', { name: '全选当前文件夹' }))
-    fireEvent.click(screen.getByRole('menuitem', { name: '全部选择' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: '全部都选' }))
     expect(selectedLabels()).toHaveLength(3)
   })
 })

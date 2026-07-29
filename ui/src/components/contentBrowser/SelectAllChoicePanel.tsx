@@ -1,6 +1,6 @@
 import type { KeyboardEvent, RefObject } from 'react'
 import { useEffect, useLayoutEffect, useRef } from 'react'
-import type { SelectAllScope } from './adaptiveTextPanelModel'
+import type { SelectAllScope } from './adaptiveOtherFilePanelModel'
 
 export interface SelectAllChoicePanelProps {
   open: boolean
@@ -106,9 +106,9 @@ export default function SelectAllChoicePanel({
         }}
         type="button"
         role="menuitem"
-        onClick={() => onChoose('text')}
+        onClick={() => onChoose('other')}
       >
-        全选文本文件
+        全选其它文件
       </button>
       <button
         ref={(node) => {
@@ -118,7 +118,7 @@ export default function SelectAllChoicePanel({
         role="menuitem"
         onClick={() => onChoose('all')}
       >
-        全部选择
+        全部都选
       </button>
     </div>
   )

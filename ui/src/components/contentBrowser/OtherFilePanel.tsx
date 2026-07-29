@@ -7,13 +7,15 @@ import {
   useRef,
 } from 'react'
 import type { BrowserFile } from '../../api/types'
+import VirtualList from '../VirtualList'
 import { OrganizationDragHandle } from './OrganizationDragHandle'
 
-const TEXT_LIST_ID = 'content-text-file-list'
-const TEXT_LIST_LABEL_ID = 'content-text-file-list-label'
+const OTHER_LIST_ID = 'content-other-file-list'
+const OTHER_LIST_LABEL_ID = 'content-other-file-list-label'
+export const OTHER_FILE_ROW_HEIGHT = 56
 
-export interface TextFilePanelProps {
-  mode: 'mixed_collapsed' | 'mixed_expanded' | 'text_only'
+export interface OtherFilePanelProps {
+  mode: 'mixed_collapsed' | 'mixed_expanded' | 'other_only'
   files: readonly BrowserFile[]
   selectedIds: ReadonlySet<string>
   activeId: string | null
@@ -31,7 +33,7 @@ export interface TextFilePanelProps {
   onOrganizationPointerCancel(event: PointerEvent<HTMLElement>): void
 }
 
-export default function TextFilePanel({
+export default function OtherFilePanel({
   mode,
   files,
   selectedIds,
@@ -48,14 +50,17 @@ export default function TextFilePanel({
   onOrganizationPointerMove,
   onOrganizationPointerUp,
   onOrganizationPointerCancel,
-}: TextFilePanelProps) {
+}: OtherFilePanelProps) {
   const disclosureRef = useRef<HTMLButtonElement>(null)
   const restoreDisclosureFocus = useRef(false)
   const selectedCount = files.filter((file) => selectedIds.has(file.entityId)).length
+  const activeIndex =
+    activeId === null ? -1 : files.findIndex(({ entityId }) => entityId === activeId)
+  const activeOtherId = activeIndex >= 0 ? activeId : null
   const disclosureLabel =
     selectedCount > 0
-      ? `文本文件 · ${files.length} · 已选 ${selectedCount}`
-      : `文本文件 · ${files.length}`
+      ? `其它文件 · ${files.length} · 已选 ${selectedCount}`
+      : `其它文件 · ${files.length}`
 
   useLayoutEffect(() => {
     if (mode !== 'mixed_collapsed' || !restoreDisclosureFocus.current) return
@@ -74,18 +79,18 @@ export default function TextFilePanel({
   }
 
   return (
-    <section className={`text-file-panel text-file-panel--${mode}`}>
-      {mode === 'text_only' ? (
-        <h2 id="content-text-file-heading">
-          <span id={TEXT_LIST_LABEL_ID}>文本文件</span> · {files.length}
+    <section className={`other-file-panel other-file-panel--${mode}`}>
+      {mode === 'other_only' ? (
+        <h2 id="content-other-file-heading">
+          <span id={OTHER_LIST_LABEL_ID}>其它文件</span> · {files.length}
         </h2>
       ) : (
         <button
           ref={disclosureRef}
           type="button"
-          className="text-file-disclosure"
+          className="other-file-disclosure"
           aria-expanded={mode === 'mixed_expanded'}
-          aria-controls={TEXT_LIST_ID}
+          aria-controls={OTHER_LIST_ID}
           onClick={() => onExpandedChange(mode !== 'mixed_expanded')}
         >
           <span aria-hidden="true">{mode === 'mixed_expanded' ? '⌄' : '›'}</span>
@@ -94,55 +99,60 @@ export default function TextFilePanel({
       )}
       {mode !== 'mixed_collapsed' && (
         <div
-          id={TEXT_LIST_ID}
+          id={OTHER_LIST_ID}
           role="listbox"
-          aria-label={mode === 'text_only' ? undefined : '文本文件'}
-          aria-labelledby={mode === 'text_only' ? TEXT_LIST_LABEL_ID : undefined}
-          aria-activedescendant={
-            activeId !== null && files.some(({ entityId }) => entityId === activeId)
-              ? `file-${activeId}`
-              : undefined
-          }
+          aria-label={mode === 'other_only' ? undefined : '其它文件'}
+          aria-labelledby={mode === 'other_only' ? OTHER_LIST_LABEL_ID : undefined}
+          aria-activedescendant={activeOtherId ? `file-${activeOtherId}` : undefined}
           tabIndex={0}
-          className="text-file-list"
+          className="other-file-listbox"
+          style={
+            mode === 'mixed_expanded' ? { height: files.length * OTHER_FILE_ROW_HEIGHT } : undefined
+          }
           onKeyDown={handleListKeyDown}
         >
-          {files.map((file) => (
-            <div
-              role="option"
-              id={`file-${file.entityId}`}
-              aria-label={file.name}
-              aria-selected={selectedIds.has(file.entityId)}
-              tabIndex={-1}
-              key={file.entityId}
-              className="text-file-row"
-              onPointerDown={(event) => onRadialMenuPointerDown(file, event)}
-              onContextMenu={(event) => onRadialMenuContextMenu(file, event)}
-              onClick={(event) => onSelect(file, event)}
-              onDoubleClick={() => onPreview(file)}
-            >
+          <VirtualList
+            items={files}
+            rowHeight={OTHER_FILE_ROW_HEIGHT}
+            getKey={(file) => file.entityId}
+            scrollToIndex={activeIndex >= 0 ? activeIndex : undefined}
+            className="other-file-virtual-list"
+            renderItem={(file) => (
               <div
-                className="file-export-surface"
-                draggable
-                title="拖到 Finder"
-                onDragStart={(event) => onFinderDragStart(file, event)}
+                role="option"
+                id={`file-${file.entityId}`}
+                aria-label={file.name}
+                aria-selected={selectedIds.has(file.entityId)}
+                tabIndex={-1}
+                className="text-file-row other-file-row"
+                onPointerDown={(event) => onRadialMenuPointerDown(file, event)}
+                onContextMenu={(event) => onRadialMenuContextMenu(file, event)}
+                onClick={(event) => onSelect(file, event)}
+                onDoubleClick={() => onPreview(file)}
               >
-                <span className="text-file-name">{file.name}</span>
-                <span className="text-file-path">{file.relativePath}</span>
-                {markerLabel(file.marker) && (
-                  <span className="file-marker">{markerLabel(file.marker)}</span>
-                )}
+                <div
+                  className="file-export-surface"
+                  draggable
+                  title="拖到 Finder"
+                  onDragStart={(event) => onFinderDragStart(file, event)}
+                >
+                  <span className="text-file-name">{file.name}</span>
+                  <span className="text-file-path">{file.relativePath}</span>
+                  {markerLabel(file.marker) && (
+                    <span className="file-marker">{markerLabel(file.marker)}</span>
+                  )}
+                </div>
+                <OrganizationDragHandle
+                  file={file}
+                  disabled={organizationDragDisabled}
+                  onPointerDown={onOrganizationPointerDown}
+                  onPointerMove={onOrganizationPointerMove}
+                  onPointerUp={onOrganizationPointerUp}
+                  onPointerCancel={onOrganizationPointerCancel}
+                />
               </div>
-              <OrganizationDragHandle
-                file={file}
-                disabled={organizationDragDisabled}
-                onPointerDown={onOrganizationPointerDown}
-                onPointerMove={onOrganizationPointerMove}
-                onPointerUp={onOrganizationPointerUp}
-                onPointerCancel={onOrganizationPointerCancel}
-              />
-            </div>
-          ))}
+            )}
+          />
         </div>
       )}
     </section>

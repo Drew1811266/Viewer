@@ -107,7 +107,7 @@ function AggregateSelectionInfo({ info }: { info: SelectionInfo }) {
       <dd>{formatBytes(info.totalSize)}</dd>
       <dt>类型</dt>
       <dd>
-        文件夹 {info.types.folders} · 图片 {info.types.images} · 文本 {info.types.textFiles}
+        文件夹 {info.types.folders} · 图片 {info.types.images} · 其它文件 {info.types.otherFiles}
       </dd>
       <dt>审阅状态</dt>
       <dd>{agreementLabel(info.commonReview, reviewLabel)}</dd>

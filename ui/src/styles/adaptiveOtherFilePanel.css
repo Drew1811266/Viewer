@@ -50,7 +50,7 @@
   overflow: hidden;
 }
 
-.text-file-panel {
+.other-file-panel {
   box-sizing: border-box;
   display: flex;
   flex: 0 0 auto;
@@ -59,23 +59,23 @@
   overflow: hidden;
 }
 
-.text-file-panel--mixed-collapsed,
-.text-file-panel--mixed-expanded {
+.other-file-panel--mixed-collapsed,
+.other-file-panel--mixed-expanded {
   border-top: 1px solid #edf0f3;
   padding-top: 8px;
 }
 
-.text-file-panel--mixed-expanded {
+.other-file-panel--mixed-expanded {
   flex: 0 1 auto;
   max-height: 20%;
 }
 
-.text-file-panel--text_only {
+.other-file-panel--other_only {
   flex: 1 1 auto;
   max-height: none;
 }
 
-.text-file-disclosure {
+.other-file-disclosure {
   align-items: center;
   background: #fff;
   border: 1px solid #c8ced6;
@@ -90,35 +90,39 @@
   width: 100%;
 }
 
-.text-file-disclosure:hover {
+.other-file-disclosure:hover {
   background: #eef4fc;
 }
 
-.text-file-disclosure[aria-expanded="true"] {
+.other-file-disclosure[aria-expanded="true"] {
   background: #f6f8fa;
   border-color: #2477d4;
 }
 
-.text-file-disclosure:focus-visible {
+.other-file-disclosure:focus-visible {
   outline: 2px solid #2477d4;
   outline-offset: -2px;
 }
 
-.text-file-panel > h2 {
+.other-file-panel > h2 {
   border: 0;
   flex: 0 0 auto;
   margin: 0;
   padding: 8px 0;
 }
 
-.text-file-panel > .text-file-list {
+.other-file-listbox {
   flex: 1 1 auto;
   min-height: 0;
-  overflow: auto;
+  overflow: hidden;
+}
+
+.other-file-virtual-list {
+  min-height: 0;
   overscroll-behavior: contain;
 }
 
-.text-file-panel--mixed-expanded > .text-file-list {
+.other-file-panel--mixed-expanded > .other-file-listbox {
   margin-top: 6px;
 }
 

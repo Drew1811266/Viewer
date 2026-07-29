@@ -5,9 +5,9 @@ export type AdaptiveContentMode =
   | 'image_only'
   | 'mixed_collapsed'
   | 'mixed_expanded'
-  | 'text_only'
+  | 'other_only'
 
-export type SelectAllScope = 'images' | 'text' | 'all'
+export type SelectAllScope = 'images' | 'other' | 'all'
 
 export type SelectAllRequest =
   | { kind: 'none' }
@@ -16,24 +16,27 @@ export type SelectAllRequest =
 
 export interface SelectableContent {
   images: readonly BrowserFile[]
-  textFiles: readonly BrowserFile[]
+  otherFiles: readonly BrowserFile[]
 }
 
 export function resolveAdaptiveContentMode(
   imageCount: number,
-  textCount: number,
+  otherFileCount: number,
   preferredExpanded: boolean,
 ): AdaptiveContentMode {
-  if (imageCount <= 0 && textCount <= 0) return 'empty'
-  if (imageCount <= 0) return 'text_only'
-  if (textCount <= 0) return 'image_only'
+  if (imageCount <= 0 && otherFileCount <= 0) return 'empty'
+  if (imageCount <= 0) return 'other_only'
+  if (otherFileCount <= 0) return 'image_only'
   return preferredExpanded ? 'mixed_expanded' : 'mixed_collapsed'
 }
 
-export function resolveSelectAllRequest(imageCount: number, textCount: number): SelectAllRequest {
-  if (imageCount <= 0 && textCount <= 0) return { kind: 'none' }
-  if (textCount <= 0) return { kind: 'direct', scope: 'images' }
-  if (imageCount <= 0) return { kind: 'direct', scope: 'text' }
+export function resolveSelectAllRequest(
+  imageCount: number,
+  otherFileCount: number,
+): SelectAllRequest {
+  if (imageCount <= 0 && otherFileCount <= 0) return { kind: 'none' }
+  if (otherFileCount <= 0) return { kind: 'direct', scope: 'images' }
+  if (imageCount <= 0) return { kind: 'direct', scope: 'other' }
   return { kind: 'choice' }
 }
 
@@ -42,6 +45,6 @@ export function filesForSelectAllScope(
   scope: SelectAllScope,
 ): readonly BrowserFile[] {
   if (scope === 'images') return content.images
-  if (scope === 'text') return content.textFiles
-  return [...content.images, ...content.textFiles]
+  if (scope === 'other') return content.otherFiles
+  return [...content.images, ...content.otherFiles]
 }

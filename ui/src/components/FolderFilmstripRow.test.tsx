@@ -10,7 +10,7 @@ const folder: ContentFolderCard = {
   name: 'B01',
   marker: { reviewState: null, favorite: false },
   imageCount: 3,
-  textCount: 1,
+  otherFileCount: 1,
   reviewProgress: {
     total: 4,
     keep: 1,
@@ -158,7 +158,7 @@ describe('FolderFilmstripRow', () => {
     expect(observedTargets).toEqual(new Set([filmstrip.closest('article')]))
     expect(filmstrip).toHaveAttribute('data-state', 'idle')
     expect(screen.getByText('3 张图片')).toBeVisible()
-    expect(screen.getByText('1 个文本')).toBeVisible()
+    expect(screen.getByText('1 个其它文件')).toBeVisible()
     expect(screen.getByText('文件夹：未标记')).toBeVisible()
     expect(screen.getByText('已审阅 1 / 4')).toBeVisible()
 

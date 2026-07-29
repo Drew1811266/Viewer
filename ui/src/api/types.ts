@@ -21,7 +21,14 @@ export interface RecoveryReport {
   needsUserReview: number
 }
 
-export type FileKind = 'directory' | 'jpeg' | 'png' | 'markdown' | 'text'
+export type FileKind =
+  | 'directory'
+  | 'jpeg'
+  | 'png'
+  | 'markdown'
+  | 'text'
+  | 'unsupported_image'
+  | 'other'
 export type ReviewState = 'keep' | 'pending' | 'reject'
 
 export interface Marker {
@@ -96,14 +103,14 @@ export interface ContentFolderCard {
   name: string
   marker: Marker
   imageCount: number
-  textCount: number
+  otherFileCount: number
   reviewProgress: FolderReviewProgress
   representativeImages: BrowserFile[]
 }
 
 export type FolderWorkspace =
   | { workspace: 'category'; folders: ContentFolderCard[] }
-  | { workspace: 'content'; images: BrowserFile[]; textFiles: BrowserFile[] }
+  | { workspace: 'content'; images: BrowserFile[]; otherFiles: BrowserFile[] }
   | { workspace: 'empty' }
 
 export type ImageRepresentationRequest =
@@ -287,7 +294,7 @@ export type SelectionAgreement<T> =
 export interface SelectionInfo {
   relativePaths: string[]
   totalSize: number
-  types: { folders: number; images: number; textFiles: number }
+  types: { folders: number; images: number; otherFiles: number }
   commonReview: SelectionAgreement<ReviewState | null>
   commonFavorite: SelectionAgreement<boolean>
 }

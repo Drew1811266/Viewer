@@ -306,6 +306,12 @@ where
             }
             Err(_) => {
                 let _ = fs::remove_file(quick_look_destination);
+                if request.cancellation.is_cancelled()
+                    || MacImagePort::<Q, I>::is_cancelled(&cancelled_sessions, request.session_id)
+                        .await
+                {
+                    return Err(ImageError::Cancelled);
+                }
                 let image_io_destination = MacImagePort::<Q, I>::artifact_destination(
                     &cache_root,
                     &request,
@@ -511,14 +517,16 @@ impl QuickLookThumbnailBackend for QuickLookBackend {
             return Err(ImageError::Io("Quick Look worker is unavailable".into()));
         }
 
+        tokio::pin!(response);
         let result = tokio::select! {
             biased;
             _ = request.cancellation.cancelled() => {
                 cancelled.store(true, Ordering::Release);
                 let _ = self.commands.send(QuickLookCommand::CancelRequest { request_id });
+                let _ = response.as_mut().await;
                 Err(ImageError::Cancelled)
             }
-            result = tokio::time::timeout(self.timeout, response) => match result {
+            result = tokio::time::timeout(self.timeout, response.as_mut()) => match result {
                 Ok(Ok(result)) => result,
                 Ok(Err(_)) => Err(ImageError::Io(
                     "Quick Look worker ended before responding".into(),
@@ -528,6 +536,7 @@ impl QuickLookThumbnailBackend for QuickLookBackend {
                     let _ = self
                         .commands
                         .send(QuickLookCommand::CancelRequest { request_id });
+                    let _ = response.as_mut().await;
                     Err(ImageError::Io("Quick Look request timed out".into()))
                 }
             },
@@ -805,7 +814,7 @@ fn finish_quick_look_request(
 mod tests {
     use super::{
         ImageIoRenderBackend, MAX_CONCURRENT_RENDERS, MacImagePort, QuickLookBackend,
-        QuickLookThumbnailBackend, RenderedDimensions,
+        QuickLookCommand, QuickLookThumbnailBackend, QuickLookWorkerLifetime, RenderedDimensions,
     };
     use async_trait::async_trait;
     use std::{
@@ -815,7 +824,8 @@ mod tests {
         path::Path,
         sync::{
             Arc, Mutex,
-            atomic::{AtomicUsize, Ordering},
+            atomic::{AtomicU64, AtomicUsize, Ordering},
+            mpsc,
         },
         task::Poll,
         time::Duration,
@@ -868,6 +878,17 @@ mod tests {
     struct BlockingQuickLook {
         started: Arc<Notify>,
         release: Arc<Notify>,
+    }
+
+    #[derive(Clone, Default)]
+    struct FailingAfterSessionCancellationQuickLook {
+        started: Arc<Notify>,
+        release: Arc<Notify>,
+    }
+
+    #[derive(Clone, Default)]
+    struct CountingImageIo {
+        renders: Arc<AtomicUsize>,
     }
 
     #[derive(Clone)]
@@ -973,6 +994,29 @@ mod tests {
     }
 
     #[async_trait]
+    impl ImageIoRenderBackend for CountingImageIo {
+        async fn probe(
+            &self,
+            _source: &Path,
+        ) -> Result<viewer_domain::image::ImageProbe, ImageError> {
+            unreachable!("probe is not used by this coordinator test")
+        }
+
+        async fn render(
+            &self,
+            _request: &ImageRequest,
+            destination: &Path,
+        ) -> Result<RenderedDimensions, ImageError> {
+            self.renders.fetch_add(1, Ordering::SeqCst);
+            fs::write(destination, b"unexpected fallback PNG").unwrap();
+            Ok(RenderedDimensions {
+                width: 160,
+                height: 120,
+            })
+        }
+    }
+
+    #[async_trait]
     impl QuickLookThumbnailBackend for BlockingQuickLook {
         async fn thumbnail(
             &self,
@@ -993,6 +1037,23 @@ mod tests {
         }
     }
 
+    #[async_trait]
+    impl QuickLookThumbnailBackend for FailingAfterSessionCancellationQuickLook {
+        async fn thumbnail(
+            &self,
+            _request: &ImageRequest,
+            _destination: &Path,
+        ) -> Result<RenderedDimensions, ImageError> {
+            self.started.notify_one();
+            self.release.notified().await;
+            Err(ImageError::Io(
+                "Quick Look callback failed after cancellation".into(),
+            ))
+        }
+
+        async fn cancel_session(&self, _session_id: SessionId) {}
+    }
+
     fn thumbnail_request() -> ImageRequest {
         ImageRequest {
             request_id: ImageRequestId::new(),
@@ -1011,6 +1072,22 @@ mod tests {
         let mut request = thumbnail_request();
         request.kind = ImageRepresentationKind::Original100Percent;
         request
+    }
+
+    fn controlled_quick_look_backend(
+        timeout: Duration,
+    ) -> (QuickLookBackend, mpsc::Receiver<QuickLookCommand>) {
+        let (commands, receiver) = mpsc::channel();
+        (
+            QuickLookBackend {
+                commands: commands.clone(),
+                next_request_id: Arc::new(AtomicU64::new(1)),
+                pending: Arc::new(Mutex::new(HashMap::new())),
+                _worker_lifetime: Arc::new(QuickLookWorkerLifetime { commands }),
+                timeout,
+            },
+            receiver,
+        )
     }
 
     async fn wait_for_entries(backend: &BlockingImageIo, count: usize) {
@@ -1058,6 +1135,43 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn cancelled_session_never_falls_back_to_image_io_or_recreates_its_cache() {
+        let cache = tempfile::tempdir().unwrap();
+        let quick_look = FailingAfterSessionCancellationQuickLook::default();
+        let image_io = CountingImageIo::default();
+        let port = Arc::new(MacImagePort::with_backends(
+            cache.path(),
+            quick_look.clone(),
+            image_io.clone(),
+        ));
+        let request = thumbnail_request();
+        let session_id = request.session_id;
+        let rendering = {
+            let port = Arc::clone(&port);
+            tokio::spawn(async move { port.render(request).await })
+        };
+        quick_look.started.notified().await;
+
+        port.cancel_session(session_id).await;
+        fs::remove_dir_all(cache.path()).unwrap();
+        quick_look.release.notify_one();
+        assert!(matches!(
+            rendering.await.unwrap(),
+            Err(ImageError::Cancelled)
+        ));
+
+        assert_eq!(
+            image_io.renders.load(Ordering::SeqCst),
+            0,
+            "a cancelled Quick Look failure must not enter the Image I/O fallback"
+        );
+        assert!(
+            !cache.path().exists(),
+            "cancelled fallback must not recreate the cleaned session cache"
+        );
+    }
+
+    #[tokio::test]
     async fn real_quick_look_thumbnail_respects_requested_physical_pixels() {
         let output_directory = tempfile::tempdir().unwrap();
         let destination = output_directory.path().join("quick-look.png");
@@ -1096,6 +1210,103 @@ mod tests {
 
         assert!(matches!(result, Err(ImageError::Cancelled)));
         assert!(!destination.exists());
+    }
+
+    #[tokio::test]
+    async fn quick_look_request_cancellation_waits_for_worker_completion() {
+        let output_directory = tempfile::tempdir().unwrap();
+        let destination = output_directory.path().join("cancelled-quick-look.png");
+        let (backend, commands) = controlled_quick_look_backend(Duration::from_secs(60));
+        let request = thumbnail_request();
+        let cancellation = request.cancellation.clone();
+        let rendering = backend.thumbnail(&request, &destination);
+        tokio::pin!(rendering);
+
+        let first_poll =
+            std::future::poll_fn(|context| Poll::Ready(rendering.as_mut().poll(context))).await;
+        assert!(first_poll.is_pending());
+        let (request_id, responder) = match commands.recv().unwrap() {
+            QuickLookCommand::Generate {
+                request_id,
+                responder,
+                ..
+            } => (request_id, responder),
+            _ => panic!("first command should generate the thumbnail"),
+        };
+
+        cancellation.cancel();
+        let cancellation_poll =
+            std::future::poll_fn(|context| Poll::Ready(rendering.as_mut().poll(context))).await;
+        assert!(
+            cancellation_poll.is_pending(),
+            "cancellation must keep waiting for the native completion callback"
+        );
+        assert!(matches!(
+            commands.recv().unwrap(),
+            QuickLookCommand::CancelRequest {
+                request_id: cancelled_id
+            } if cancelled_id == request_id
+        ));
+
+        responder.send(Err(ImageError::Cancelled)).unwrap();
+        let completed =
+            std::future::poll_fn(|context| Poll::Ready(rendering.as_mut().poll(context))).await;
+        assert!(matches!(completed, Poll::Ready(Err(ImageError::Cancelled))));
+    }
+
+    #[tokio::test]
+    async fn quick_look_timeout_waits_for_worker_completion() {
+        let output_directory = tempfile::tempdir().unwrap();
+        let destination = output_directory.path().join("timed-out-quick-look.png");
+        let (backend, commands) = controlled_quick_look_backend(Duration::ZERO);
+        let request = thumbnail_request();
+        let rendering = backend.thumbnail(&request, &destination);
+        tokio::pin!(rendering);
+
+        let first_poll =
+            std::future::poll_fn(|context| Poll::Ready(rendering.as_mut().poll(context))).await;
+        assert!(first_poll.is_pending());
+        let (request_id, responder) = match commands.recv().unwrap() {
+            QuickLookCommand::Generate {
+                request_id,
+                responder,
+                ..
+            } => (request_id, responder),
+            _ => panic!("first command should generate the thumbnail"),
+        };
+        tokio::time::timeout(Duration::from_secs(1), async {
+            loop {
+                let timeout_poll =
+                    std::future::poll_fn(|context| Poll::Ready(rendering.as_mut().poll(context)))
+                        .await;
+                assert!(
+                    timeout_poll.is_pending(),
+                    "timeout must keep waiting for the native completion callback"
+                );
+                match commands.try_recv() {
+                    Ok(QuickLookCommand::CancelRequest {
+                        request_id: cancelled_id,
+                    }) => {
+                        assert_eq!(cancelled_id, request_id);
+                        break;
+                    }
+                    Ok(_) => panic!("timeout should only send request cancellation"),
+                    Err(mpsc::TryRecvError::Empty) => tokio::task::yield_now().await,
+                    Err(mpsc::TryRecvError::Disconnected) => {
+                        panic!("controlled Quick Look executor disconnected")
+                    }
+                }
+            }
+        })
+        .await
+        .expect("timeout should request native cancellation");
+
+        responder.send(Err(ImageError::Cancelled)).unwrap();
+        let completed =
+            std::future::poll_fn(|context| Poll::Ready(rendering.as_mut().poll(context))).await;
+        assert!(
+            matches!(completed, Poll::Ready(Err(ImageError::Io(message))) if message.contains("timed out"))
+        );
     }
 
     #[tokio::test]

@@ -398,6 +398,29 @@ mod tests {
         assert_eq!(fs::read(&outside).unwrap(), b"must survive");
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn discard_rejects_an_artifact_symlink_without_deleting_it_or_its_target() {
+        let base = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        let cache = SessionCache::create_in(base.path(), fixed_session(12)).unwrap();
+        let target = outside.path().join("external.png");
+        fs::write(&target, b"external target").unwrap();
+        let artifact = cache.image_root().join("linked.png");
+        std::os::unix::fs::symlink(&target, &artifact).unwrap();
+
+        let result = cache.discard_owned_image_artifact(&artifact);
+
+        assert!(matches!(result, Err(SessionCacheError::ArtifactNotFile)));
+        assert!(
+            fs::symlink_metadata(&artifact)
+                .unwrap()
+                .file_type()
+                .is_symlink()
+        );
+        assert_eq!(fs::read(&target).unwrap(), b"external target");
+    }
+
     #[test]
     fn insert_accepts_a_native_renderer_session_subdirectory() {
         let base = tempfile::tempdir().unwrap();

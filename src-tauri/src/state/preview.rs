@@ -1,4 +1,150 @@
 use super::*;
+use std::collections::{VecDeque, hash_map::Entry};
+
+pub(super) const IMAGE_REQUEST_TERMINAL_LIMIT: usize = 1_024;
+
+#[derive(Debug)]
+enum ImageRequestLifecycleState {
+    PreCancelled,
+    Active(ImageRequestCancellation),
+    Completed,
+}
+
+#[derive(Debug, Default)]
+pub(super) struct ImageRequestLifecycles {
+    entries: HashMap<ImageRequestId, ImageRequestLifecycleState>,
+    terminal_order: VecDeque<ImageRequestId>,
+}
+
+impl ImageRequestLifecycles {
+    fn cancel(&mut self, request_id: ImageRequestId) -> bool {
+        match self.entries.entry(request_id) {
+            Entry::Vacant(entry) => {
+                entry.insert(ImageRequestLifecycleState::PreCancelled);
+                self.record_terminal(request_id);
+                true
+            }
+            Entry::Occupied(entry) => match entry.get() {
+                ImageRequestLifecycleState::PreCancelled => true,
+                ImageRequestLifecycleState::Active(cancellation) => {
+                    cancellation.cancel();
+                    true
+                }
+                ImageRequestLifecycleState::Completed => false,
+            },
+        }
+    }
+
+    fn complete_active(&mut self, request_id: ImageRequestId) {
+        let Some(state) = self.entries.get_mut(&request_id) else {
+            return;
+        };
+        if matches!(state, ImageRequestLifecycleState::Active(_)) {
+            *state = ImageRequestLifecycleState::Completed;
+            self.record_terminal(request_id);
+        }
+    }
+
+    fn record_terminal(&mut self, request_id: ImageRequestId) {
+        self.terminal_order.push_back(request_id);
+        while self.terminal_order.len() > IMAGE_REQUEST_TERMINAL_LIMIT {
+            let Some(expired) = self.terminal_order.pop_front() else {
+                break;
+            };
+            if self.entries.get(&expired).is_some_and(|state| {
+                matches!(
+                    state,
+                    ImageRequestLifecycleState::PreCancelled
+                        | ImageRequestLifecycleState::Completed
+                )
+            }) {
+                self.entries.remove(&expired);
+            }
+        }
+    }
+}
+
+#[derive(Debug)]
+struct ImageRequestLease {
+    requests: Arc<StdMutex<ImageRequestLifecycles>>,
+    request_id: ImageRequestId,
+    cancellation: ImageRequestCancellation,
+    completed: bool,
+}
+
+impl ImageRequestLease {
+    fn start(
+        requests: Arc<StdMutex<ImageRequestLifecycles>>,
+        request_id: ImageRequestId,
+    ) -> Result<Self, CommandError> {
+        let cancellation = ImageRequestCancellation::new();
+        {
+            let mut requests_guard = requests
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            match requests_guard.entries.entry(request_id) {
+                Entry::Vacant(entry) => {
+                    entry.insert(ImageRequestLifecycleState::Active(cancellation.clone()));
+                }
+                Entry::Occupied(mut entry) => match entry.get() {
+                    ImageRequestLifecycleState::PreCancelled => {
+                        entry.insert(ImageRequestLifecycleState::Completed);
+                        return Err(CommandError::from(ImageError::Cancelled));
+                    }
+                    ImageRequestLifecycleState::Active(_)
+                    | ImageRequestLifecycleState::Completed => {
+                        return Err(duplicate_image_request());
+                    }
+                },
+            }
+        }
+        Ok(Self {
+            requests,
+            request_id,
+            cancellation,
+            completed: false,
+        })
+    }
+
+    fn cancellation(&self) -> &ImageRequestCancellation {
+        &self.cancellation
+    }
+
+    fn publish<T>(
+        &mut self,
+        publication: impl FnOnce() -> Result<T, CommandError>,
+    ) -> Result<T, CommandError> {
+        let mut requests = self
+            .requests
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let active = matches!(
+            requests.entries.get(&self.request_id),
+            Some(ImageRequestLifecycleState::Active(cancellation))
+                if !cancellation.is_cancelled()
+        );
+        if !active {
+            return Err(CommandError::from(ImageError::Cancelled));
+        }
+        let published = publication()?;
+        requests.complete_active(self.request_id);
+        self.completed = true;
+        Ok(published)
+    }
+}
+
+impl Drop for ImageRequestLease {
+    fn drop(&mut self) {
+        if self.completed {
+            return;
+        }
+        self.cancellation.cancel();
+        self.requests
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .complete_active(self.request_id);
+    }
+}
 
 impl DesktopRuntime {
     pub async fn folder_tree(&self) -> Result<Vec<FolderTreeItemDto>, CommandError> {
@@ -53,13 +199,10 @@ impl DesktopRuntime {
     }
 
     pub async fn cancel_image_request(&self, request_id: ImageRequestId) -> bool {
-        let cancellation = self.image_requests.lock().await.get(&request_id).cloned();
-        if let Some(cancellation) = cancellation {
-            cancellation.cancel();
-            true
-        } else {
-            false
-        }
+        self.image_requests
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .cancel(request_id)
     }
 
     async fn request_image_for_session(
@@ -69,34 +212,20 @@ impl DesktopRuntime {
         entity_id: EntityId,
         kind: ImageRepresentationKind,
     ) -> Result<ImageRepresentationDto, CommandError> {
-        let cancellation = ImageRequestCancellation::new();
-        {
-            let mut requests = self.image_requests.lock().await;
-            match requests.entry(request_id) {
-                std::collections::hash_map::Entry::Vacant(entry) => {
-                    entry.insert(cancellation.clone());
-                }
-                std::collections::hash_map::Entry::Occupied(_) => {
-                    return Err(duplicate_image_request());
-                }
-            }
-        }
-        let result = self
-            .render_image_for_session(expected_session, request_id, cancellation, entity_id, kind)
-            .await;
-        self.image_requests.lock().await.remove(&request_id);
-        result
+        let mut lease = ImageRequestLease::start(Arc::clone(&self.image_requests), request_id)?;
+        self.render_image_for_session(expected_session, request_id, &mut lease, entity_id, kind)
+            .await
     }
 
     async fn render_image_for_session(
         &self,
         expected_session: Option<SessionId>,
         request_id: ImageRequestId,
-        cancellation: ImageRequestCancellation,
+        lease: &mut ImageRequestLease,
         entity_id: EntityId,
         kind: ImageRepresentationKind,
     ) -> Result<ImageRepresentationDto, CommandError> {
-        ensure_image_request_active(&cancellation)?;
+        ensure_image_request_active(lease.cancellation())?;
         let (active, index, cache, image) = {
             let session = self.session.lock().await;
             let session = session.as_ref().ok_or_else(project_not_open)?;
@@ -126,14 +255,14 @@ impl DesktopRuntime {
             kind,
             renderer_version: 1,
         });
-        let cached = match cache.lookup_image(cache_key) {
-            Some(cached) => cached,
+        let (cached, rendered) = match cache.lookup_image(cache_key) {
+            Some(cached) => (cached, false),
             None => {
-                ensure_image_request_active(&cancellation)?;
+                ensure_image_request_active(lease.cancellation())?;
                 let artifact = image
                     .render(ImageRequest {
                         request_id,
-                        cancellation: cancellation.clone(),
+                        cancellation: lease.cancellation().clone(),
                         session_id: active.session_id,
                         entity_id,
                         source,
@@ -141,8 +270,8 @@ impl DesktopRuntime {
                     })
                     .await
                     .map_err(CommandError::from)?;
-                if cancellation.is_cancelled() {
-                    let _ = std::fs::remove_file(&artifact.cache_path);
+                if lease.cancellation().is_cancelled() {
+                    let _ = cache.discard_owned_image_artifact(&artifact.cache_path);
                     return Err(CommandError::from(ImageError::Cancelled));
                 }
                 let cached = CachedImage {
@@ -152,26 +281,65 @@ impl DesktopRuntime {
                     height: artifact.height,
                     backend: artifact.backend,
                 };
+                (cached, true)
+            }
+        };
+        let publication = self
+            .publish_image_request(
+                &active, entity_id, cache_key, &cache, &cached, rendered, lease,
+            )
+            .await;
+        if publication.is_err() && rendered {
+            let _ = cache.discard_owned_image_artifact(&cached.path);
+        }
+        publication
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn publish_image_request(
+        &self,
+        active: &ActiveProject,
+        entity_id: EntityId,
+        cache_key: ImageCacheKey,
+        cache: &SessionCache,
+        cached: &CachedImage,
+        rendered: bool,
+        lease: &mut ImageRequestLease,
+    ) -> Result<ImageRepresentationDto, CommandError> {
+        let session = self.session.lock().await;
+        if session
+            .as_ref()
+            .is_none_or(|session| session.active.session_id != active.session_id)
+            || self.active_image_session.get() != Some(active.session_id)
+        {
+            return Err(CommandError::from(ImageError::Cancelled));
+        }
+        lease.publish(|| {
+            if rendered {
                 cache
                     .insert_image(cache_key, cached.clone())
                     .map_err(CommandError::from)?;
-                cached
             }
-        };
-        ensure_image_request_active(&cancellation)?;
-        let token = self
-            .register_if_session_active(&active, entity_id, &cached)
-            .await?;
-        Ok(ImageRepresentationDto {
-            cache_key: cache_key.to_hex(),
-            url: format!(
-                "viewer-image://localhost/{}/{}",
-                active.session_id,
-                token.as_str()
-            ),
-            width: cached.width,
-            height: cached.height,
-            backend: cached.backend.into(),
+            let token = self
+                .image_registry
+                .insert(
+                    active.session_id,
+                    entity_id,
+                    &cached.path,
+                    cached.mime.clone(),
+                )
+                .map_err(CommandError::from)?;
+            Ok(ImageRepresentationDto {
+                cache_key: cache_key.to_hex(),
+                url: format!(
+                    "viewer-image://localhost/{}/{}",
+                    active.session_id,
+                    token.as_str()
+                ),
+                width: cached.width,
+                height: cached.height,
+                backend: cached.backend.into(),
+            })
         })
     }
 
@@ -375,4 +543,82 @@ fn resolve_markdown_image_path(
         }
     }
     RelativePath::parse(&segments.join("/")).ok()
+}
+
+#[cfg(test)]
+mod image_request_lifecycle_tests {
+    use super::{IMAGE_REQUEST_TERMINAL_LIMIT, ImageRequestLease, ImageRequestLifecycles};
+    use std::sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+        mpsc,
+    };
+    use viewer_domain::ImageRequestId;
+
+    #[test]
+    fn publication_and_cancellation_have_one_linearized_winner() {
+        let requests = Arc::new(Mutex::new(ImageRequestLifecycles::default()));
+        let request_id = ImageRequestId::new();
+        let mut lease = ImageRequestLease::start(Arc::clone(&requests), request_id).unwrap();
+        let published = Arc::new(AtomicBool::new(false));
+        let (publication_started, observe_publication) = mpsc::channel();
+        let (release_publication, continue_publication) = mpsc::channel();
+        let published_in_thread = Arc::clone(&published);
+        let publication = std::thread::spawn(move || {
+            lease.publish(|| {
+                publication_started.send(()).unwrap();
+                continue_publication.recv().unwrap();
+                published_in_thread.store(true, Ordering::SeqCst);
+                Ok(())
+            })
+        });
+        observe_publication.recv().unwrap();
+        let requests_for_cancel = Arc::clone(&requests);
+        let (cancel_started, observe_cancel) = mpsc::channel();
+        let cancellation = std::thread::spawn(move || {
+            cancel_started.send(()).unwrap();
+            requests_for_cancel.lock().unwrap().cancel(request_id)
+        });
+        observe_cancel.recv().unwrap();
+
+        release_publication.send(()).unwrap();
+
+        publication.join().unwrap().unwrap();
+        assert!(published.load(Ordering::SeqCst));
+        assert!(!cancellation.join().unwrap());
+
+        let request_id = ImageRequestId::new();
+        let mut lease = ImageRequestLease::start(Arc::clone(&requests), request_id).unwrap();
+        assert!(requests.lock().unwrap().cancel(request_id));
+        let published = AtomicBool::new(false);
+        let result = lease.publish(|| {
+            published.store(true, Ordering::SeqCst);
+            Ok(())
+        });
+        assert_eq!(result.unwrap_err().code, "image_request_cancelled");
+        assert!(!published.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn terminal_request_history_is_bounded_and_evicts_the_oldest_tombstone() {
+        let requests = Arc::new(Mutex::new(ImageRequestLifecycles::default()));
+        let ids = (0..=IMAGE_REQUEST_TERMINAL_LIMIT)
+            .map(|_| ImageRequestId::new())
+            .collect::<Vec<_>>();
+        for request_id in &ids {
+            assert!(requests.lock().unwrap().cancel(*request_id));
+        }
+
+        let oldest = ImageRequestLease::start(Arc::clone(&requests), ids[0]);
+        assert!(
+            oldest.is_ok(),
+            "oldest terminal tombstone should be evicted"
+        );
+        let newest = ImageRequestLease::start(
+            Arc::clone(&requests),
+            *ids.last().expect("at least one request id"),
+        )
+        .unwrap_err();
+        assert_eq!(newest.code, "image_request_cancelled");
+    }
 }

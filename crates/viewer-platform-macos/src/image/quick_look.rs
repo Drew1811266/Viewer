@@ -14,7 +14,7 @@ use std::{
     fs,
     path::{Path, PathBuf},
     sync::{
-        Arc, Mutex,
+        Arc, Mutex, OnceLock,
         atomic::{AtomicBool, AtomicU64, Ordering},
         mpsc,
     },
@@ -22,11 +22,17 @@ use std::{
     time::Duration,
 };
 use tokio::sync::{RwLock, Semaphore, oneshot};
+use viewer_application::ImageRequestCancellation;
 use viewer_application::{ImageArtifact, ImageBackend, ImageError, ImagePort, ImageRequest};
 use viewer_domain::{SessionId, image::ImageProbe};
 
 const QUICK_LOOK_TIMEOUT: Duration = Duration::from_secs(10);
 const MAX_CONCURRENT_RENDERS: usize = 4;
+static GLOBAL_RENDER_LIMIT: OnceLock<Arc<Semaphore>> = OnceLock::new();
+
+fn global_render_limit() -> Arc<Semaphore> {
+    Arc::clone(GLOBAL_RENDER_LIMIT.get_or_init(|| Arc::new(Semaphore::new(MAX_CONCURRENT_RENDERS))))
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct RenderedDimensions {
@@ -84,40 +90,55 @@ impl ImageIoRenderBackend for ImageIoBackend {
 }
 
 pub struct MacImagePort<Q = QuickLookBackend, I = ImageIoBackend> {
-    quick_look: Q,
-    image_io: I,
+    quick_look: Arc<Q>,
+    image_io: Arc<I>,
     cache_root: PathBuf,
-    cancelled_sessions: RwLock<HashSet<SessionId>>,
-    render_limit: Semaphore,
+    cancelled_sessions: Arc<RwLock<HashSet<SessionId>>>,
+    render_limit: Arc<Semaphore>,
 }
 
 impl MacImagePort<QuickLookBackend, ImageIoBackend> {
     pub fn new(cache_root: impl Into<PathBuf>) -> Result<Self, ImageError> {
-        Ok(Self::with_backends(
+        Ok(Self::with_backends_and_render_limit(
             cache_root,
             QuickLookBackend::new()?,
             ImageIoBackend::default(),
+            global_render_limit(),
         ))
     }
 }
 
 impl<Q, I> MacImagePort<Q, I> {
     pub fn with_backends(cache_root: impl Into<PathBuf>, quick_look: Q, image_io: I) -> Self {
-        Self {
+        Self::with_backends_and_render_limit(
+            cache_root,
             quick_look,
             image_io,
+            Arc::new(Semaphore::new(MAX_CONCURRENT_RENDERS)),
+        )
+    }
+
+    fn with_backends_and_render_limit(
+        cache_root: impl Into<PathBuf>,
+        quick_look: Q,
+        image_io: I,
+        render_limit: Arc<Semaphore>,
+    ) -> Self {
+        Self {
+            quick_look: Arc::new(quick_look),
+            image_io: Arc::new(image_io),
             cache_root: cache_root.into(),
-            cancelled_sessions: RwLock::new(HashSet::new()),
-            render_limit: Semaphore::new(MAX_CONCURRENT_RENDERS),
+            cancelled_sessions: Arc::new(RwLock::new(HashSet::new())),
+            render_limit,
         }
     }
 
     fn artifact_destination(
-        &self,
+        cache_root: &Path,
         request: &ImageRequest,
         backend: ImageBackend,
     ) -> Result<PathBuf, ImageError> {
-        let session_directory = self.cache_root.join(request.session_id.to_string());
+        let session_directory = cache_root.join(request.session_id.to_string());
         fs::create_dir_all(&session_directory).map_err(|error| {
             ImageError::Io(format!(
                 "create image session cache {}: {error}",
@@ -135,9 +156,201 @@ impl<Q, I> MacImagePort<Q, I> {
         )))
     }
 
-    async fn is_cancelled(&self, session_id: SessionId) -> bool {
-        self.cancelled_sessions.read().await.contains(&session_id)
+    async fn is_cancelled(
+        cancelled_sessions: &RwLock<HashSet<SessionId>>,
+        session_id: SessionId,
+    ) -> bool {
+        cancelled_sessions.read().await.contains(&session_id)
     }
+}
+
+struct CancelRequestOnDrop {
+    cancellation: ImageRequestCancellation,
+    delivery: Arc<RenderDelivery>,
+    armed: bool,
+}
+
+impl CancelRequestOnDrop {
+    fn new(cancellation: ImageRequestCancellation, delivery: Arc<RenderDelivery>) -> Self {
+        Self {
+            cancellation,
+            delivery,
+            armed: true,
+        }
+    }
+
+    fn disarm(&mut self) {
+        self.armed = false;
+    }
+}
+
+impl Drop for CancelRequestOnDrop {
+    fn drop(&mut self) {
+        if self.armed {
+            self.cancellation.cancel();
+            self.delivery.cancel();
+        }
+    }
+}
+
+enum RenderDeliveryState {
+    Active,
+    Completed(Option<PathBuf>),
+    Delivered,
+    Cancelled,
+}
+
+struct RenderDelivery {
+    state: Mutex<RenderDeliveryState>,
+}
+
+impl RenderDelivery {
+    fn new() -> Self {
+        Self {
+            state: Mutex::new(RenderDeliveryState::Active),
+        }
+    }
+
+    fn finish(
+        &self,
+        result: Result<ImageArtifact, ImageError>,
+    ) -> Result<ImageArtifact, ImageError> {
+        let artifact_path = result
+            .as_ref()
+            .ok()
+            .map(|artifact| artifact.cache_path.clone());
+        let mut state = self.state.lock().unwrap();
+        match &*state {
+            RenderDeliveryState::Active => {
+                *state = RenderDeliveryState::Completed(artifact_path);
+                result
+            }
+            RenderDeliveryState::Cancelled => {
+                if let Some(path) = artifact_path {
+                    let _ = fs::remove_file(path);
+                }
+                Err(ImageError::Cancelled)
+            }
+            RenderDeliveryState::Completed(_) | RenderDeliveryState::Delivered => Err(
+                ImageError::Io("image render delivery completed more than once".into()),
+            ),
+        }
+    }
+
+    fn deliver(&self) -> bool {
+        let mut state = self.state.lock().unwrap();
+        if matches!(&*state, RenderDeliveryState::Completed(_)) {
+            *state = RenderDeliveryState::Delivered;
+            true
+        } else {
+            false
+        }
+    }
+
+    fn cancel(&self) {
+        let mut state = self.state.lock().unwrap();
+        let previous = std::mem::replace(&mut *state, RenderDeliveryState::Cancelled);
+        if let RenderDeliveryState::Completed(Some(path)) = previous {
+            let _ = fs::remove_file(path);
+        }
+    }
+}
+
+async fn render_owned<Q, I>(
+    quick_look: Arc<Q>,
+    image_io: Arc<I>,
+    cache_root: PathBuf,
+    cancelled_sessions: Arc<RwLock<HashSet<SessionId>>>,
+    render_limit: Arc<Semaphore>,
+    request: ImageRequest,
+) -> Result<ImageArtifact, ImageError>
+where
+    Q: QuickLookThumbnailBackend + 'static,
+    I: ImageIoRenderBackend + 'static,
+{
+    if request.cancellation.is_cancelled()
+        || MacImagePort::<Q, I>::is_cancelled(&cancelled_sessions, request.session_id).await
+    {
+        return Err(ImageError::Cancelled);
+    }
+    let _permit = tokio::select! {
+        biased;
+        _ = request.cancellation.cancelled() => return Err(ImageError::Cancelled),
+        permit = render_limit.acquire_owned() => {
+            permit.map_err(|_| ImageError::Io("image render scheduler is unavailable".into()))?
+        }
+    };
+    if request.cancellation.is_cancelled()
+        || MacImagePort::<Q, I>::is_cancelled(&cancelled_sessions, request.session_id).await
+    {
+        return Err(ImageError::Cancelled);
+    }
+
+    let (destination, dimensions, backend) = if matches!(
+        request.kind,
+        viewer_domain::image::ImageRepresentationKind::Thumbnail { .. }
+    ) {
+        let quick_look_destination = MacImagePort::<Q, I>::artifact_destination(
+            &cache_root,
+            &request,
+            ImageBackend::QuickLook,
+        )?;
+        match quick_look
+            .thumbnail(&request, &quick_look_destination)
+            .await
+        {
+            Ok(dimensions) => (quick_look_destination, dimensions, ImageBackend::QuickLook),
+            Err(ImageError::Cancelled) => {
+                let _ = fs::remove_file(quick_look_destination);
+                return Err(ImageError::Cancelled);
+            }
+            Err(_) => {
+                let _ = fs::remove_file(quick_look_destination);
+                let image_io_destination = MacImagePort::<Q, I>::artifact_destination(
+                    &cache_root,
+                    &request,
+                    ImageBackend::ImageIo,
+                )?;
+                let dimensions = match image_io.render(&request, &image_io_destination).await {
+                    Ok(dimensions) => dimensions,
+                    Err(error) => {
+                        let _ = fs::remove_file(image_io_destination);
+                        return Err(error);
+                    }
+                };
+                (image_io_destination, dimensions, ImageBackend::ImageIo)
+            }
+        }
+    } else {
+        let image_io_destination = MacImagePort::<Q, I>::artifact_destination(
+            &cache_root,
+            &request,
+            ImageBackend::ImageIo,
+        )?;
+        let dimensions = match image_io.render(&request, &image_io_destination).await {
+            Ok(dimensions) => dimensions,
+            Err(error) => {
+                let _ = fs::remove_file(image_io_destination);
+                return Err(error);
+            }
+        };
+        (image_io_destination, dimensions, ImageBackend::ImageIo)
+    };
+
+    if request.cancellation.is_cancelled()
+        || MacImagePort::<Q, I>::is_cancelled(&cancelled_sessions, request.session_id).await
+    {
+        let _ = fs::remove_file(&destination);
+        return Err(ImageError::Cancelled);
+    }
+
+    Ok(ImageArtifact {
+        cache_path: destination,
+        mime: "image/png",
+        width: dimensions.width,
+        height: dimensions.height,
+        backend,
+    })
 }
 
 #[async_trait]
@@ -151,69 +364,35 @@ where
     }
 
     async fn render(&self, request: ImageRequest) -> Result<ImageArtifact, ImageError> {
-        if request.cancellation.is_cancelled() || self.is_cancelled(request.session_id).await {
+        let delivery = Arc::new(RenderDelivery::new());
+        let mut cancel_on_drop =
+            CancelRequestOnDrop::new(request.cancellation.clone(), Arc::clone(&delivery));
+        let inner_delivery = Arc::clone(&delivery);
+        let quick_look = Arc::clone(&self.quick_look);
+        let image_io = Arc::clone(&self.image_io);
+        let cache_root = self.cache_root.clone();
+        let cancelled_sessions = Arc::clone(&self.cancelled_sessions);
+        let render_limit = Arc::clone(&self.render_limit);
+        let rendering = tokio::spawn(async move {
+            let result = render_owned(
+                quick_look,
+                image_io,
+                cache_root,
+                cancelled_sessions,
+                render_limit,
+                request,
+            )
+            .await;
+            inner_delivery.finish(result)
+        });
+        let result = rendering
+            .await
+            .map_err(|error| ImageError::Io(format!("image render coordinator failed: {error}")))?;
+        if !delivery.deliver() {
             return Err(ImageError::Cancelled);
         }
-        let _permit = tokio::select! {
-            biased;
-            _ = request.cancellation.cancelled() => return Err(ImageError::Cancelled),
-            permit = self.render_limit.acquire() => {
-                permit.map_err(|_| ImageError::Io("image render scheduler is unavailable".into()))?
-            }
-        };
-        if request.cancellation.is_cancelled() || self.is_cancelled(request.session_id).await {
-            return Err(ImageError::Cancelled);
-        }
-
-        let (destination, dimensions, backend) = if matches!(
-            request.kind,
-            viewer_domain::image::ImageRepresentationKind::Thumbnail { .. }
-        ) {
-            let quick_look_destination =
-                self.artifact_destination(&request, ImageBackend::QuickLook)?;
-            match self
-                .quick_look
-                .thumbnail(&request, &quick_look_destination)
-                .await
-            {
-                Ok(dimensions) => (quick_look_destination, dimensions, ImageBackend::QuickLook),
-                Err(ImageError::Cancelled) => {
-                    let _ = fs::remove_file(quick_look_destination);
-                    return Err(ImageError::Cancelled);
-                }
-                Err(_) => {
-                    let _ = fs::remove_file(quick_look_destination);
-                    let image_io_destination =
-                        self.artifact_destination(&request, ImageBackend::ImageIo)?;
-                    let dimensions = self
-                        .image_io
-                        .render(&request, &image_io_destination)
-                        .await?;
-                    (image_io_destination, dimensions, ImageBackend::ImageIo)
-                }
-            }
-        } else {
-            let image_io_destination =
-                self.artifact_destination(&request, ImageBackend::ImageIo)?;
-            let dimensions = self
-                .image_io
-                .render(&request, &image_io_destination)
-                .await?;
-            (image_io_destination, dimensions, ImageBackend::ImageIo)
-        };
-
-        if request.cancellation.is_cancelled() || self.is_cancelled(request.session_id).await {
-            let _ = fs::remove_file(&destination);
-            return Err(ImageError::Cancelled);
-        }
-
-        Ok(ImageArtifact {
-            cache_path: destination,
-            mime: "image/png",
-            width: dimensions.width,
-            height: dimensions.height,
-            backend,
-        })
+        cancel_on_drop.disarm();
+        result
     }
 
     async fn cancel_session(&self, session_id: SessionId) {
@@ -625,17 +804,20 @@ fn finish_quick_look_request(
 #[cfg(test)]
 mod tests {
     use super::{
-        ImageIoRenderBackend, MacImagePort, QuickLookBackend, QuickLookThumbnailBackend,
-        RenderedDimensions,
+        ImageIoRenderBackend, MAX_CONCURRENT_RENDERS, MacImagePort, QuickLookBackend,
+        QuickLookThumbnailBackend, RenderedDimensions,
     };
     use async_trait::async_trait;
     use std::{
+        collections::HashMap,
         fs,
+        future::Future,
         path::Path,
         sync::{
-            Arc,
+            Arc, Mutex,
             atomic::{AtomicUsize, Ordering},
         },
+        task::Poll,
         time::Duration,
     };
     use tokio::sync::{Notify, Semaphore};
@@ -694,6 +876,62 @@ mod tests {
         in_flight: Arc<AtomicUsize>,
         peak: Arc<AtomicUsize>,
         release: Arc<Semaphore>,
+    }
+
+    #[derive(Default)]
+    struct ControlledImageIo {
+        requests: Mutex<HashMap<ImageRequestId, Arc<ControlledImageIoRequest>>>,
+    }
+
+    #[derive(Default)]
+    struct ControlledImageIoRequest {
+        started: Notify,
+        release: Notify,
+        destination: Mutex<Option<std::path::PathBuf>>,
+    }
+
+    impl ControlledImageIo {
+        fn request(&self) -> (ImageRequest, Arc<ControlledImageIoRequest>) {
+            let request = original_request();
+            let control = Arc::new(ControlledImageIoRequest::default());
+            self.requests
+                .lock()
+                .unwrap()
+                .insert(request.request_id, Arc::clone(&control));
+            (request, control)
+        }
+    }
+
+    #[async_trait]
+    impl ImageIoRenderBackend for Arc<ControlledImageIo> {
+        async fn probe(
+            &self,
+            _source: &Path,
+        ) -> Result<viewer_domain::image::ImageProbe, ImageError> {
+            unreachable!("probe is not used by this coordinator test")
+        }
+
+        async fn render(
+            &self,
+            request: &ImageRequest,
+            destination: &Path,
+        ) -> Result<RenderedDimensions, ImageError> {
+            let control = Arc::clone(
+                self.requests
+                    .lock()
+                    .unwrap()
+                    .get(&request.request_id)
+                    .unwrap(),
+            );
+            *control.destination.lock().unwrap() = Some(destination.to_path_buf());
+            control.started.notify_one();
+            control.release.notified().await;
+            fs::write(destination, b"mock PNG").unwrap();
+            Ok(RenderedDimensions {
+                width: 160,
+                height: 120,
+            })
+        }
     }
 
     impl Default for BlockingImageIo {
@@ -887,6 +1125,59 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn two_ports_share_one_render_limit_across_all_native_jobs() {
+        let first_cache = tempfile::tempdir().unwrap();
+        let second_cache = tempfile::tempdir().unwrap();
+        let image_io = BlockingImageIo::default();
+        let shared_limit = Arc::new(Semaphore::new(4));
+        let first_port = Arc::new(MacImagePort::with_backends_and_render_limit(
+            first_cache.path(),
+            FailingQuickLook,
+            image_io.clone(),
+            Arc::clone(&shared_limit),
+        ));
+        let second_port = Arc::new(MacImagePort::with_backends_and_render_limit(
+            second_cache.path(),
+            FailingQuickLook,
+            image_io.clone(),
+            Arc::clone(&shared_limit),
+        ));
+        let renders = (0..8)
+            .map(|index| {
+                let port = if index % 2 == 0 {
+                    Arc::clone(&first_port)
+                } else {
+                    Arc::clone(&second_port)
+                };
+                tokio::spawn(async move { port.render(original_request()).await })
+            })
+            .collect::<Vec<_>>();
+
+        wait_for_entries(&image_io, 4).await;
+        assert_eq!(image_io.peak.load(Ordering::SeqCst), 4);
+        assert_eq!(shared_limit.available_permits(), 0);
+
+        image_io.release.add_permits(8);
+        for render in renders {
+            render.await.unwrap().unwrap();
+        }
+        assert_eq!(image_io.peak.load(Ordering::SeqCst), 4);
+    }
+
+    #[test]
+    fn production_ports_use_the_process_global_render_limit() {
+        let first_cache = tempfile::tempdir().unwrap();
+        let second_cache = tempfile::tempdir().unwrap();
+        let first_port = MacImagePort::new(first_cache.path()).unwrap();
+        let second_port = MacImagePort::new(second_cache.path()).unwrap();
+
+        assert!(Arc::ptr_eq(
+            &first_port.render_limit,
+            &second_port.render_limit
+        ));
+    }
+
+    #[tokio::test]
     async fn cancelling_a_request_waiting_for_a_render_permit_skips_the_backend() {
         let cache = tempfile::tempdir().unwrap();
         let image_io = BlockingImageIo::default();
@@ -923,5 +1214,90 @@ mod tests {
         for blocker in blockers {
             blocker.await.unwrap().unwrap();
         }
+    }
+
+    #[tokio::test]
+    async fn dropping_an_outer_render_keeps_its_native_permit_until_backend_cleanup() {
+        let cache = tempfile::tempdir().unwrap();
+        let image_io = Arc::new(ControlledImageIo::default());
+        let port = Arc::new(MacImagePort::with_backends(
+            cache.path(),
+            FailingQuickLook,
+            Arc::clone(&image_io),
+        ));
+        let requests = (0..5).map(|_| image_io.request()).collect::<Vec<_>>();
+        let mut renders = requests
+            .iter()
+            .take(4)
+            .map(|(request, _)| {
+                let port = Arc::clone(&port);
+                let request = request.clone();
+                tokio::spawn(async move { port.render(request).await })
+            })
+            .collect::<Vec<_>>();
+        for (_, control) in requests.iter().take(4) {
+            control.started.notified().await;
+        }
+        assert_eq!(port.render_limit.available_permits(), 0);
+
+        let cancelled = renders.remove(0);
+        cancelled.abort();
+        assert!(cancelled.await.unwrap_err().is_cancelled());
+
+        assert_eq!(
+            port.render_limit.available_permits(),
+            0,
+            "outer future cancellation must not release a live native job permit"
+        );
+        let fifth = {
+            let port = Arc::clone(&port);
+            let request = requests[4].0.clone();
+            tokio::spawn(async move { port.render(request).await })
+        };
+        requests[0].1.release.notify_one();
+        requests[4].1.started.notified().await;
+        let cancelled_destination = requests[0].1.destination.lock().unwrap().clone().unwrap();
+        assert!(!cancelled_destination.exists());
+
+        for (_, control) in requests.iter().skip(1) {
+            control.release.notify_one();
+        }
+        for render in renders {
+            render.await.unwrap().unwrap();
+        }
+        fifth.await.unwrap().unwrap();
+    }
+
+    #[tokio::test]
+    async fn dropping_a_completed_but_undelivered_render_removes_its_artifact() {
+        let cache = tempfile::tempdir().unwrap();
+        let image_io = Arc::new(ControlledImageIo::default());
+        let port =
+            MacImagePort::with_backends(cache.path(), FailingQuickLook, Arc::clone(&image_io));
+        let (request, control) = image_io.request();
+        let destination;
+        {
+            let rendering = port.render(request);
+            tokio::pin!(rendering);
+            let first_poll =
+                std::future::poll_fn(|context| Poll::Ready(rendering.as_mut().poll(context))).await;
+            assert!(first_poll.is_pending());
+            control.started.notified().await;
+            destination = control.destination.lock().unwrap().clone().unwrap();
+            control.release.notify_one();
+            tokio::time::timeout(Duration::from_secs(1), async {
+                while port.render_limit.available_permits() != MAX_CONCURRENT_RENDERS {
+                    tokio::task::yield_now().await;
+                }
+            })
+            .await
+            .expect("owned render should complete without polling its outer future");
+            assert!(destination.exists());
+        }
+
+        assert!(
+            !destination.exists(),
+            "dropping the undelivered outer future must remove its generated artifact"
+        );
     }
 }

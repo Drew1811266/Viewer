@@ -262,7 +262,7 @@ pub struct DesktopRuntime {
     text_reader: Arc<dyn TextPreviewPort>,
     clock: Arc<dyn ClockPort>,
     marker_projection_factory: Arc<dyn DesktopMarkerProjectionFactory>,
-    image_requests: Mutex<HashMap<ImageRequestId, ImageRequestCancellation>>,
+    image_requests: Arc<StdMutex<preview::ImageRequestLifecycles>>,
     session: Mutex<Option<DesktopSession>>,
 }
 
@@ -383,7 +383,7 @@ impl DesktopRuntime {
             text_reader: Arc::new(TextPreviewReader),
             clock,
             marker_projection_factory,
-            image_requests: Mutex::new(HashMap::new()),
+            image_requests: Arc::new(StdMutex::new(preview::ImageRequestLifecycles::default())),
             session: Mutex::new(None),
         }
     }

@@ -511,30 +511,6 @@ impl DesktopRuntime {
         }
     }
 
-    pub(super) async fn register_if_session_active(
-        &self,
-        active: &ActiveProject,
-        entity_id: EntityId,
-        cached: &CachedImage,
-    ) -> Result<viewer_infrastructure::image_cache::ImageArtifactToken, CommandError> {
-        let session = self.session.lock().await;
-        if session
-            .as_ref()
-            .is_none_or(|session| session.active.session_id != active.session_id)
-            || self.active_image_session.get() != Some(active.session_id)
-        {
-            return Err(CommandError::from(ImageError::Cancelled));
-        }
-        self.image_registry
-            .insert(
-                active.session_id,
-                entity_id,
-                &cached.path,
-                cached.mime.clone(),
-            )
-            .map_err(CommandError::from)
-    }
-
     pub async fn resources_ready(&self) -> bool {
         let session = self.session.lock().await;
         let Some(session) = session.as_ref() else {

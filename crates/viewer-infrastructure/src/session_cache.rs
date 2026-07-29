@@ -166,6 +166,24 @@ impl SessionCache {
         Ok(())
     }
 
+    pub fn discard_owned_image_artifact(&self, artifact: &Path) -> Result<bool, SessionCacheError> {
+        let image_root = fs::canonicalize(self.image_root())?;
+        let metadata = match fs::symlink_metadata(artifact) {
+            Ok(metadata) => metadata,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+            Err(error) => return Err(error.into()),
+        };
+        if metadata.file_type().is_symlink() || !metadata.is_file() {
+            return Err(SessionCacheError::ArtifactNotFile);
+        }
+        let canonical = fs::canonicalize(artifact)?;
+        if canonical == image_root || !canonical.starts_with(&image_root) {
+            return Err(SessionCacheError::ArtifactOutsideCache);
+        }
+        fs::remove_file(canonical)?;
+        Ok(true)
+    }
+
     pub fn cleanup(&self) -> Result<(), SessionCacheError> {
         if !self.root.exists() {
             return Ok(());
@@ -352,6 +370,32 @@ mod tests {
             result,
             Err(SessionCacheError::ArtifactOutsideCache)
         ));
+    }
+
+    #[test]
+    fn discard_removes_an_owned_unregistered_image_artifact() {
+        let base = tempfile::tempdir().unwrap();
+        let cache = SessionCache::create_in(base.path(), fixed_session(10)).unwrap();
+        let image = write_image(&cache, "cancelled.png", 4);
+
+        assert!(cache.discard_owned_image_artifact(&image.path).unwrap());
+        assert!(!image.path.exists());
+    }
+
+    #[test]
+    fn discard_rejects_an_external_artifact_without_deleting_it() {
+        let base = tempfile::tempdir().unwrap();
+        let cache = SessionCache::create_in(base.path(), fixed_session(11)).unwrap();
+        let outside = base.path().join("external.png");
+        fs::write(&outside, b"must survive").unwrap();
+
+        let result = cache.discard_owned_image_artifact(&outside);
+
+        assert!(matches!(
+            result,
+            Err(SessionCacheError::ArtifactOutsideCache)
+        ));
+        assert_eq!(fs::read(&outside).unwrap(), b"must survive");
     }
 
     #[test]

@@ -88,6 +88,53 @@ struct CancellableImagePort {
     renders: Arc<AtomicUsize>,
 }
 
+struct ExternalArtifactFactory {
+    started: Arc<tokio::sync::Notify>,
+    artifact: std::path::PathBuf,
+}
+
+impl DesktopImageFactory for ExternalArtifactFactory {
+    fn create(&self, _cache_root: &Path) -> Result<Arc<dyn ImagePort>, ImageError> {
+        Ok(Arc::new(ExternalArtifactPort {
+            started: Arc::clone(&self.started),
+            artifact: self.artifact.clone(),
+        }))
+    }
+}
+
+struct ExternalArtifactPort {
+    started: Arc<tokio::sync::Notify>,
+    artifact: std::path::PathBuf,
+}
+
+#[async_trait::async_trait]
+impl ImagePort for ExternalArtifactPort {
+    async fn probe(&self, _source: &Path) -> Result<ImageProbe, ImageError> {
+        Ok(ImageProbe {
+            format: ImageFormat::Jpeg,
+            width: 640,
+            height: 480,
+            orientation: 1,
+            has_alpha: false,
+            icc_profile_name: None,
+        })
+    }
+
+    async fn render(&self, request: ImageRequest) -> Result<ImageArtifact, ImageError> {
+        self.started.notify_one();
+        request.cancellation.cancelled().await;
+        Ok(ImageArtifact {
+            cache_path: self.artifact.clone(),
+            mime: "image/png",
+            width: 320,
+            height: 240,
+            backend: ImageBackend::ImageIo,
+        })
+    }
+
+    async fn cancel_session(&self, _session_id: SessionId) {}
+}
+
 #[async_trait::async_trait]
 impl ImagePort for CancellableImagePort {
     async fn probe(&self, _source: &Path) -> Result<ImageProbe, ImageError> {
@@ -397,6 +444,56 @@ async fn cancelling_an_inflight_image_request_prevents_cache_and_token_publicati
 }
 
 #[tokio::test]
+async fn cancelling_an_external_image_artifact_never_deletes_the_external_file() {
+    let cache_base = tempfile::tempdir().unwrap();
+    let project = tempfile::tempdir().unwrap();
+    let outside = tempfile::tempdir().unwrap();
+    let artifact = outside.path().join("must-survive.png");
+    fs::write(&artifact, b"external bytes").unwrap();
+    fs::write(project.path().join("front.jpg"), b"jpeg source").unwrap();
+    let started = Arc::new(tokio::sync::Notify::new());
+    let runtime = Arc::new(DesktopRuntime::new_with_image_factory(
+        cache_base.path().to_path_buf(),
+        Arc::new(FixedProbe(ProjectAccess::ReadWrite)),
+        Arc::new(ProjectWalker),
+        Arc::new(RecordingEvents::default()),
+        Arc::new(ExternalArtifactFactory {
+            started: Arc::clone(&started),
+            artifact: artifact.clone(),
+        }),
+        Arc::new(ImageArtifactRegistry::default()),
+    ));
+    runtime.open_project(project.path()).await.unwrap();
+    runtime.wait_for_scan().await.unwrap();
+    let FolderWorkspaceDto::Content { images, .. } = runtime.query_folder(None).await.unwrap()
+    else {
+        panic!("root should contain the image")
+    };
+    let entity_id = images[0].entity_id.parse::<EntityId>().unwrap();
+    let request_id = ImageRequestId::new();
+    let request = {
+        let runtime = Arc::clone(&runtime);
+        tokio::spawn(async move {
+            runtime
+                .request_image_with_id(
+                    request_id,
+                    entity_id,
+                    ImageRepresentationKind::Original100Percent,
+                )
+                .await
+        })
+    };
+    started.notified().await;
+
+    assert!(runtime.cancel_image_request(request_id).await);
+    let error = request.await.unwrap().unwrap_err();
+
+    assert_eq!(error.code, "image_request_cancelled");
+    assert_eq!(fs::read(&artifact).unwrap(), b"external bytes");
+    runtime.close_project().await.unwrap();
+}
+
+#[tokio::test]
 async fn duplicate_image_request_id_is_rejected_without_replacing_the_live_cancellation() {
     let cache_base = tempfile::tempdir().unwrap();
     let project = tempfile::tempdir().unwrap();
@@ -445,6 +542,106 @@ async fn duplicate_image_request_id_is_rejected_without_replacing_the_live_cance
         .unwrap()
         .unwrap_err();
     assert_eq!(live_result.code, "image_request_cancelled");
+    runtime.close_project().await.unwrap();
+}
+
+#[tokio::test]
+async fn cancellation_before_request_registration_prevents_rendering() {
+    let cache_base = tempfile::tempdir().unwrap();
+    let project = tempfile::tempdir().unwrap();
+    fs::write(project.path().join("front.jpg"), b"jpeg source").unwrap();
+    let renders = Arc::new(AtomicUsize::new(0));
+    let runtime = DesktopRuntime::new_with_image_factory(
+        cache_base.path().to_path_buf(),
+        Arc::new(FixedProbe(ProjectAccess::ReadWrite)),
+        Arc::new(ProjectWalker),
+        Arc::new(RecordingEvents::default()),
+        Arc::new(CountingImageFactory {
+            renders: Arc::clone(&renders),
+        }),
+        Arc::new(ImageArtifactRegistry::default()),
+    );
+    runtime.open_project(project.path()).await.unwrap();
+    runtime.wait_for_scan().await.unwrap();
+    let FolderWorkspaceDto::Content { images, .. } = runtime.query_folder(None).await.unwrap()
+    else {
+        panic!("root should contain the image")
+    };
+    let entity_id = images[0].entity_id.parse::<EntityId>().unwrap();
+    let request_id = ImageRequestId::new();
+
+    assert!(runtime.cancel_image_request(request_id).await);
+    let error = runtime
+        .request_image_with_id(
+            request_id,
+            entity_id,
+            ImageRepresentationKind::Original100Percent,
+        )
+        .await
+        .unwrap_err();
+
+    assert_eq!(error.code, "image_request_cancelled");
+    assert_eq!(renders.load(Ordering::SeqCst), 0);
+    assert!(!runtime.cancel_image_request(request_id).await);
+    runtime.close_project().await.unwrap();
+}
+
+#[tokio::test]
+async fn aborting_the_request_future_cleans_its_active_lifecycle_entry() {
+    let cache_base = tempfile::tempdir().unwrap();
+    let project = tempfile::tempdir().unwrap();
+    fs::write(project.path().join("front.jpg"), b"jpeg source").unwrap();
+    let started = Arc::new(tokio::sync::Notify::new());
+    let runtime = Arc::new(DesktopRuntime::new_with_image_factory(
+        cache_base.path().to_path_buf(),
+        Arc::new(FixedProbe(ProjectAccess::ReadWrite)),
+        Arc::new(ProjectWalker),
+        Arc::new(RecordingEvents::default()),
+        Arc::new(CancellableImageFactory {
+            started: Arc::clone(&started),
+            cancellation_observed: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            renders: Arc::new(AtomicUsize::new(0)),
+        }),
+        Arc::new(ImageArtifactRegistry::default()),
+    ));
+    runtime.open_project(project.path()).await.unwrap();
+    runtime.wait_for_scan().await.unwrap();
+    let FolderWorkspaceDto::Content { images, .. } = runtime.query_folder(None).await.unwrap()
+    else {
+        panic!("root should contain the image")
+    };
+    let entity_id = images[0].entity_id.parse::<EntityId>().unwrap();
+    let request_id = ImageRequestId::new();
+    let request = {
+        let runtime = Arc::clone(&runtime);
+        tokio::spawn(async move {
+            runtime
+                .request_image_with_id(
+                    request_id,
+                    entity_id,
+                    ImageRepresentationKind::Original100Percent,
+                )
+                .await
+        })
+    };
+    started.notified().await;
+
+    request.abort();
+    assert!(request.await.unwrap_err().is_cancelled());
+
+    assert!(
+        !runtime.cancel_image_request(request_id).await,
+        "dropped future must not leave an active request"
+    );
+    let retry = runtime
+        .request_image_with_id(
+            request_id,
+            entity_id,
+            ImageRepresentationKind::Original100Percent,
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(retry.code, "duplicate_image_request");
     runtime.close_project().await.unwrap();
 }
 

@@ -19,6 +19,25 @@ afterEach(() => {
 })
 
 describe('ComparePane', () => {
+  it('renders an unsupported image placeholder without issuing image requests', () => {
+    const resize = installResizeObserver()
+    const requestImage = vi.fn(() => new Promise<never>(() => undefined))
+    const unsupported = {
+      ...file,
+      relativePath: 'id/front.cr2',
+      name: 'front.cr2',
+      kind: 'unsupported_image' as const,
+    }
+
+    renderPane({ file: unsupported, requestImage })
+    act(() => resize(800, 600))
+
+    expect(screen.getByLabelText('front.cr2 .CR2 暂不支持预览')).toBeVisible()
+    expect(screen.getByRole('article', { name: '对比 front.cr2' })).toBeVisible()
+    expect(screen.getByRole('button', { name: '移除 front.cr2' })).toBeEnabled()
+    expect(requestImage).not.toHaveBeenCalled()
+  })
+
   it('requests a display-scale proxy from the measured viewport', async () => {
     const resize = installResizeObserver()
     Object.defineProperty(window, 'devicePixelRatio', { value: 2, configurable: true })

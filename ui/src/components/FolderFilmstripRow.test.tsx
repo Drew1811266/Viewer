@@ -217,6 +217,29 @@ describe('FolderFilmstripRow', () => {
     ])
   })
 
+  it('renders unsupported representatives without requesting their thumbnails', async () => {
+    const unsupported = {
+      ...image(1, { width: 1, height: 1 }),
+      entityId: 'raw',
+      relativePath: '角色/B01/raw.cr2',
+      name: 'raw.cr2',
+      kind: 'unsupported_image' as const,
+    }
+    const requestThumbnail = vi.fn().mockResolvedValue('viewer-image://thumbnail')
+    const supported = image(0, { width: 1, height: 1 })
+    const { onPreview } = renderRow({
+      files: [supported, unsupported],
+      requestThumbnail,
+    })
+    const filmstrip = await sizeViewport(1_000)
+
+    await waitFor(() => expect(requestThumbnail).toHaveBeenCalled())
+    expect(requestThumbnail.mock.calls.map(([file]) => file.entityId)).toEqual([supported.entityId])
+    expect(within(filmstrip).getByLabelText('raw.cr2 .CR2 暂不支持预览')).toBeVisible()
+    fireEvent.click(within(filmstrip).getByRole('button', { name: '预览 raw.cr2' }))
+    expect(onPreview).toHaveBeenCalledWith(unsupported, [supported, unsupported])
+  })
+
   it('keeps a bounded binary-search window for 1,000 mixed ratios and unions focused content', async () => {
     const files = Array.from({ length: 1_000 }, (_, index) =>
       image(

@@ -1,0 +1,64 @@
+.unsupported-file-state {
+  align-items: center;
+  background: #fff;
+  border: 1px solid #c8ced6;
+  border-radius: 8px;
+  box-sizing: border-box;
+  color: #1f2328;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  height: 70%;
+  justify-content: center;
+  max-height: 280px;
+  max-width: 420px;
+  min-height: 0;
+  min-width: 0;
+  padding: 20px;
+  text-align: center;
+  width: 80%;
+}
+
+.unsupported-file-state > strong {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.unsupported-file-state > span {
+  color: #59616c;
+}
+
+.unsupported-file-state > span:last-child {
+  color: #737982;
+}
+
+.unsupported-file-state--compact {
+  border-radius: 6px;
+  font-size: 10px;
+  gap: 2px;
+  height: 100%;
+  max-height: none;
+  max-width: none;
+  overflow: hidden;
+  padding: 6px;
+  width: 100%;
+}
+
+.unsupported-file-state--compact > strong,
+.unsupported-file-state--compact > span {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.unsupported-file-preview > .unsupported-file-state {
+  flex: 1;
+  height: auto;
+  margin: 32px;
+  max-height: none;
+  max-width: none;
+  width: auto;
+}

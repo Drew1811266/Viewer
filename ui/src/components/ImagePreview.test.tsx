@@ -19,6 +19,35 @@ function image(index: number): BrowserFile {
 }
 
 describe('ImagePreview', () => {
+  it('renders an unsupported current image without issuing image requests', () => {
+    const unsupported = {
+      ...image(1),
+      entityId: 'raw',
+      relativePath: 'id-1/raw.cr2',
+      name: 'raw.cr2',
+      kind: 'unsupported_image' as const,
+    }
+    const request = vi.fn(() => new Promise<never>(() => undefined))
+
+    render(
+      <ImagePreview
+        file={unsupported}
+        files={[unsupported]}
+        requestImage={request}
+        onNavigate={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByLabelText('raw.cr2 .CR2 暂不支持预览')).toBeVisible()
+    expect(screen.getByRole('button', { name: '适应窗口' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: '按 100% 显示' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: '缩小' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: '放大' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: '顺时针旋转' })).toBeDisabled()
+    expect(request).not.toHaveBeenCalled()
+  })
+
   it('starts fitted, rotates for display, and requests original only for explicit 100%', async () => {
     const files = [image(1), image(2), image(3)]
     const request = vi.fn(
@@ -81,5 +110,48 @@ describe('ImagePreview', () => {
 
     expect(navigate).toHaveBeenCalledWith(files[2])
     expect(request).toHaveBeenCalledTimes(3)
+  })
+
+  it('hides a watcher-removed current image without new requests and preserves navigation', async () => {
+    const files = [image(1), image(2), image(3)]
+    const navigate = vi.fn()
+    const request = vi.fn(async (file: BrowserFile) => ({
+      cacheKey: file.entityId,
+      url: `viewer-image://localhost/session/${file.entityId}`,
+      width: 800,
+      height: 600,
+      backend: 'quick_look' as const,
+    }))
+    const rendered = render(
+      <ImagePreview
+        file={defined(files[1], 'Expected second preview image')}
+        files={files}
+        requestImage={request}
+        onNavigate={navigate}
+        onClose={vi.fn()}
+      />,
+    )
+    await screen.findByRole('img', { name: '2.jpg' })
+    const requestsBeforeRemoval = request.mock.calls.length
+
+    rendered.rerender(
+      <ImagePreview
+        file={defined(files[1], 'Expected second preview image')}
+        files={files}
+        unavailableEntityIds={new Set(['image-2'])}
+        requestImage={request}
+        onNavigate={navigate}
+        onClose={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByLabelText('2.jpg .JPG 文件已不可用')).toBeVisible()
+    expect(screen.queryByRole('img', { name: '2.jpg' })).not.toBeInTheDocument()
+    expect(request).toHaveBeenCalledTimes(requestsBeforeRemoval)
+    expect(screen.getByRole('button', { name: '上一张' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: '下一张' })).toBeEnabled()
+    fireEvent.click(screen.getByRole('button', { name: '上一张' }))
+    fireEvent.click(screen.getByRole('button', { name: '下一张' }))
+    expect(navigate.mock.calls.map(([file]) => file.entityId)).toEqual(['image-1', 'image-3'])
   })
 })

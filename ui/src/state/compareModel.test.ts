@@ -44,7 +44,7 @@ function stateWithMetrics() {
 }
 
 describe('compareModel', () => {
-  it('accepts exactly two to twenty unique JPG/PNG entities', () => {
+  it('accepts exactly two to twenty unique image entities', () => {
     expect(createCompareState(images.slice(0, 1))).toEqual({
       ok: false,
       reason: 'invalid_cardinality',
@@ -73,6 +73,14 @@ describe('compareModel', () => {
       centerY: 0.5,
       rotation: 0,
     })
+
+    const withUnsupported = createCompareState([
+      defined(images[0], 'Expected first comparison image'),
+      { entityId: 'raw', kind: 'unsupported_image' },
+    ])
+    expect(withUnsupported.ok).toBe(true)
+    if (!withUnsupported.ok) return
+    expect(withUnsupported.state.entityIds).toEqual(['a', 'raw'])
   })
 
   it('supports fit, 100 percent and bounded zoom', () => {

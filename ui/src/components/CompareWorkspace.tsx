@@ -6,6 +6,7 @@ import type {
   ImageRepresentationRequest,
   ReviewState,
 } from '../api/types'
+import { isPreviewableImage } from '../fileKinds'
 import type { CompareAction, CompareState, PaneMetrics } from '../state/compareModel'
 import { createCompareState, reconcileComparePanes, reduceCompare } from '../state/compareModel'
 import { compareValidationMessage } from '../state/comparePolicy'
@@ -159,6 +160,8 @@ export default function CompareWorkspace({
 
   const compareModel = model
   const activeEntityId = compareModel.activeEntityId
+  const activeFile = filesById.get(activeEntityId)
+  const transformsDisabled = activeFile === undefined || !isPreviewableImage(activeFile)
 
   function update(action: CompareAction) {
     setModel((current) => (current === null ? current : reduceCompare(current, action)))
@@ -210,11 +213,13 @@ export default function CompareWorkspace({
   }
 
   function fitView() {
+    if (transformsDisabled) return
     setOriginalEntityId(null)
     update({ type: 'fit', entityId: activeEntityId })
   }
 
   function actualSize() {
+    if (transformsDisabled) return
     setOriginalEntityId(activeEntityId)
     update({ type: 'actual_size', entityId: activeEntityId })
   }
@@ -223,13 +228,13 @@ export default function CompareWorkspace({
     if (event.key === 'Escape') {
       event.preventDefault()
       onEntityIdsChange([])
-    } else if (event.key === '+' || event.key === '=') {
+    } else if (!transformsDisabled && (event.key === '+' || event.key === '=')) {
       event.preventDefault()
       update({ type: 'zoom', entityId: activeEntityId, factor: 1.25 })
-    } else if (event.key === '-') {
+    } else if (!transformsDisabled && event.key === '-') {
       event.preventDefault()
       update({ type: 'zoom', entityId: activeEntityId, factor: 0.8 })
-    } else if (event.key === '0') {
+    } else if (!transformsDisabled && event.key === '0') {
       event.preventDefault()
       fitView()
     }
@@ -285,15 +290,16 @@ export default function CompareWorkspace({
     >
       <div className="compare-toolbar" aria-label="对比工具">
         <span>{model.entityIds.length} 张图片</span>
-        <button type="button" onClick={fitView}>
+        <button type="button" disabled={transformsDisabled} onClick={fitView}>
           适应窗口
         </button>
-        <button type="button" onClick={actualSize}>
+        <button type="button" disabled={transformsDisabled} onClick={actualSize}>
           100%
         </button>
         <button
           type="button"
           aria-label="缩小当前对比"
+          disabled={transformsDisabled}
           onClick={() => update({ type: 'zoom', entityId: activeEntityId, factor: 0.8 })}
         >
           −
@@ -301,6 +307,7 @@ export default function CompareWorkspace({
         <button
           type="button"
           aria-label="放大当前对比"
+          disabled={transformsDisabled}
           onClick={() => update({ type: 'zoom', entityId: activeEntityId, factor: 1.25 })}
         >
           +
@@ -308,6 +315,7 @@ export default function CompareWorkspace({
         <button
           type="button"
           aria-label="顺时针旋转当前图片"
+          disabled={transformsDisabled}
           onClick={() => update({ type: 'rotate_clockwise', entityId: activeEntityId })}
         >
           ↻

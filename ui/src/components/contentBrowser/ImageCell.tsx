@@ -1,7 +1,9 @@
 import type { DragEvent, MouseEvent, PointerEvent } from 'react'
 import type { BrowserFile } from '../../api/types'
+import { isPreviewableImage } from '../../fileKinds'
 import type { AspectRect, ImageDimensions } from '../../layout/aspectLayout'
 import AspectThumbnail from '../AspectThumbnail'
+import UnsupportedFileState from '../UnsupportedFileState'
 import { OrganizationDragHandle } from './OrganizationDragHandle'
 
 export function ImageCell({
@@ -66,15 +68,22 @@ export function ImageCell({
         title="拖到 Finder"
         onDragStart={(event) => onFinderDragStart(file, event)}
       >
-        <div className="image-cell-preview">
-          <AspectThumbnail
-            file={file}
-            width={rect.imageWidth}
-            height={rect.imageHeight}
-            dimensionsKnown={dimensionsKnown}
-            loadThumbnail={loadThumbnail}
-            onNaturalDimensions={onNaturalDimensions}
-          />
+        <div
+          className="image-cell-preview"
+          style={{ width: rect.imageWidth, height: rect.imageHeight }}
+        >
+          {isPreviewableImage(file) ? (
+            <AspectThumbnail
+              file={file}
+              width={rect.imageWidth}
+              height={rect.imageHeight}
+              dimensionsKnown={dimensionsKnown}
+              loadThumbnail={loadThumbnail}
+              onNaturalDimensions={onNaturalDimensions}
+            />
+          ) : (
+            <UnsupportedFileState file={file} compact />
+          )}
         </div>
         <span>{file.name}</span>
         {markerLabel && <span className="file-marker">{markerLabel}</span>}

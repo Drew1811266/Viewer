@@ -1,10 +1,13 @@
 import type { KeyboardEvent, PointerEvent } from 'react'
 import { useEffect, useRef, useState } from 'react'
 import type { BrowserFile, ImageRepresentation, ImageRepresentationRequest } from '../api/types'
+import { isPreviewableImage } from '../fileKinds'
+import UnsupportedFileState from './UnsupportedFileState'
 
 interface ImagePreviewProps {
   file: BrowserFile
   files: BrowserFile[]
+  unavailableEntityIds?: ReadonlySet<string>
   requestImage: (
     file: BrowserFile,
     representation: ImageRepresentationRequest,
@@ -15,10 +18,12 @@ interface ImagePreviewProps {
 }
 
 type PreviewMode = 'fit' | 'original' | 'free'
+const EMPTY_ENTITY_IDS: ReadonlySet<string> = new Set()
 
 export default function ImagePreview({
   file,
   files,
+  unavailableEntityIds = EMPTY_ENTITY_IDS,
   requestImage,
   onNavigate,
   onClose,
@@ -37,6 +42,8 @@ export default function ImagePreview({
   const [offset, setOffset] = useState({ x: 0, y: 0 })
   const [error, setError] = useState<string | null>(null)
   const currentIndex = files.findIndex((candidate) => candidate.entityId === file.entityId)
+  const unavailable = unavailableEntityIds.has(file.entityId)
+  const transformsDisabled = unavailable || !isPreviewableImage(file)
 
   useEffect(() => {
     const previous = document.activeElement
@@ -57,13 +64,25 @@ export default function ImagePreview({
 
   useEffect(() => {
     const windowFiles = files.slice(Math.max(0, currentIndex - 1), currentIndex + 2)
-    const allowed = new Set(windowFiles.map((candidate) => candidate.entityId))
+    const allowed = new Set(
+      windowFiles
+        .filter(
+          (candidate) =>
+            isPreviewableImage(candidate) && !unavailableEntityIds.has(candidate.entityId),
+        )
+        .map((candidate) => candidate.entityId),
+    )
     allowedWindow.current = allowed
     for (const entityId of fitCache.current.keys()) {
       if (!allowed.has(entityId)) fitCache.current.delete(entityId)
     }
     for (const candidate of windowFiles) {
-      if (fitCache.current.has(candidate.entityId) || pendingFit.current.has(candidate.entityId)) {
+      if (
+        !isPreviewableImage(candidate) ||
+        unavailableEntityIds.has(candidate.entityId) ||
+        fitCache.current.has(candidate.entityId) ||
+        pendingFit.current.has(candidate.entityId)
+      ) {
         continue
       }
       const request = requestImage(candidate, {
@@ -87,10 +106,17 @@ export default function ImagePreview({
         },
       )
     }
-  }, [currentIndex, file.entityId, files, onDimensions, requestImage])
+  }, [currentIndex, file.entityId, files, onDimensions, requestImage, unavailableEntityIds])
 
   useEffect(() => {
-    if (mode !== 'original' || original !== null) return
+    if (
+      unavailableEntityIds.has(file.entityId) ||
+      !isPreviewableImage(file) ||
+      mode !== 'original' ||
+      original !== null
+    ) {
+      return
+    }
     let current = true
     void requestImage(file, { kind: 'original100_percent' }).then(
       (representation) => {
@@ -112,9 +138,13 @@ export default function ImagePreview({
     return () => {
       current = false
     }
-  }, [file, mode, onDimensions, original, requestImage])
+  }, [file, mode, onDimensions, original, requestImage, unavailableEntityIds])
 
-  const representation = mode === 'original' ? original : fitCache.current.get(file.entityId)
+  const representation = transformsDisabled
+    ? undefined
+    : mode === 'original'
+      ? original
+      : fitCache.current.get(file.entityId)
   const scale = mode === 'free' ? zoom : 1
   const translated =
     offset.x === 0 && offset.y === 0 ? '' : `translate(${offset.x}px, ${offset.y}px) `
@@ -177,22 +207,38 @@ export default function ImagePreview({
     >
       <header className="preview-toolbar">
         <strong>{file.name}</strong>
-        <button type="button" onClick={() => setMode('fit')}>
+        <button type="button" disabled={transformsDisabled} onClick={() => setMode('fit')}>
           适应窗口
         </button>
-        <button type="button" aria-label="按 100% 显示" onClick={() => setMode('original')}>
+        <button
+          type="button"
+          aria-label="按 100% 显示"
+          disabled={transformsDisabled}
+          onClick={() => setMode('original')}
+        >
           100%
         </button>
-        <button type="button" aria-label="缩小" onClick={() => zoomBy(0.8)}>
+        <button
+          type="button"
+          aria-label="缩小"
+          disabled={transformsDisabled}
+          onClick={() => zoomBy(0.8)}
+        >
           −
         </button>
         <span>{Math.round(scale * 100)}%</span>
-        <button type="button" aria-label="放大" onClick={() => zoomBy(1.25)}>
+        <button
+          type="button"
+          aria-label="放大"
+          disabled={transformsDisabled}
+          onClick={() => zoomBy(1.25)}
+        >
           +
         </button>
         <button
           type="button"
           aria-label="顺时针旋转"
+          disabled={transformsDisabled}
           onClick={() => setRotation((value) => (value + 90) % 360)}
         >
           ↻
@@ -210,7 +256,11 @@ export default function ImagePreview({
           dragStart.current = null
         }}
       >
-        {representation ? (
+        {unavailable ? (
+          <UnsupportedFileState file={file} unavailable />
+        ) : !isPreviewableImage(file) ? (
+          <UnsupportedFileState file={file} />
+        ) : representation ? (
           <img
             src={representation.url}
             alt={file.name}

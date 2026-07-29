@@ -14,7 +14,7 @@ export type CompareValidationReason =
 export type CompareValidationResult = { ok: true } | { ok: false; reason: CompareValidationReason }
 
 export function isSupportedCompareKind(kind: string): boolean {
-  return kind === 'jpeg' || kind === 'png'
+  return kind === 'jpeg' || kind === 'png' || kind === 'unsupported_image'
 }
 
 export function validateCompareCandidates(
@@ -33,5 +33,5 @@ export function validateCompareCandidates(
 }
 
 export function compareValidationMessage(_reason: CompareValidationReason): string {
-  return '请选择 2–20 张 JPG 或 PNG 图片进行对比。'
+  return '请选择 2–20 张图片进行对比。'
 }

@@ -612,6 +612,38 @@ describe('ContentBrowser', () => {
     }
   })
 
+  it('renders unsupported images without requesting their thumbnails', async () => {
+    const supported = {
+      ...image(1, { width: 1, height: 1 }),
+      entityId: 'supported',
+      name: 'supported.jpg',
+    }
+    const unsupported = {
+      ...image(2, { width: 1, height: 1 }),
+      entityId: 'raw',
+      relativePath: 'id-001/raw.cr2',
+      name: 'raw.cr2',
+      kind: 'unsupported_image' as const,
+    }
+    const requestThumbnail = vi.fn().mockResolvedValue('viewer-image://thumbnail')
+
+    render(
+      <ContentBrowser
+        workspace={{
+          workspace: 'content',
+          images: [supported, unsupported],
+          otherFiles: [],
+        }}
+        requestThumbnail={requestThumbnail}
+      />,
+    )
+    resizeGrid(500)
+
+    await waitFor(() => expect(requestThumbnail).toHaveBeenCalled())
+    expect(requestThumbnail.mock.calls.map(([file]) => file.entityId)).toEqual(['supported'])
+    expect(screen.getByLabelText('raw.cr2 .CR2 暂不支持预览')).toBeVisible()
+  })
+
   it('uses source order horizontally and closest adjacent-row centers vertically', () => {
     const selection = vi.fn()
     render(

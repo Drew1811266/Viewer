@@ -668,7 +668,7 @@ describe('Viewer empty state', () => {
     expect(viewer.previewText).not.toHaveBeenCalled()
   })
 
-  it('does not route unsupported images through the generic-other preview', async () => {
+  it('opens unsupported images in the request-free image preview', async () => {
     const viewer = bridge()
     vi.mocked(viewer.queryFolder).mockResolvedValue(unsupportedImageContentWorkspace())
     render(<App bridge={viewer} />)
@@ -676,7 +676,11 @@ describe('Viewer empty state', () => {
     fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
     fireEvent.doubleClick(await screen.findByRole('option', { name: 'poster.webp' }))
 
+    const dialog = screen.getByRole('dialog', { name: '图片预览' })
+    expect(dialog).toBeVisible()
+    expect(within(dialog).getByLabelText('poster.webp .WEBP 暂不支持预览')).toBeVisible()
     expect(screen.queryByRole('dialog', { name: 'poster.webp' })).not.toBeInTheDocument()
+    expect(viewer.requestImage).not.toHaveBeenCalled()
     expect(viewer.previewText).not.toHaveBeenCalled()
   })
 
@@ -977,7 +981,7 @@ describe('Viewer empty state', () => {
     const back = screen.getByRole('option', { name: 'back.jpg' })
     fireEvent.click(front)
     fireEvent.keyDown(window, { key: 'c' })
-    expect(screen.getByText('请选择 2–20 张 JPG 或 PNG 图片进行对比。')).toBeVisible()
+    expect(screen.getByText('请选择 2–20 张图片进行对比。')).toBeVisible()
 
     fireEvent.click(back, { metaKey: true })
     openRadialMenu(back, 204)

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { BrowserFile, ContentFolderCard, ThumbnailDensity } from '../api/types'
+import { isPreviewableImage } from '../fileKinds'
 import {
   type AspectGeometry,
   anchoredScrollOffset,
@@ -10,6 +11,7 @@ import {
 } from '../layout/aspectLayout'
 import { THUMBNAIL_HEIGHT } from '../settings/thumbnailDensity'
 import AspectThumbnail from './AspectThumbnail'
+import UnsupportedFileState from './UnsupportedFileState'
 
 const THUMBNAIL_GAP = 8
 const FILMSTRIP_INLINE_PADDING = 12
@@ -297,14 +299,18 @@ export default function FolderFilmstripRow({
                     }
                     onClick={() => onPreview(file, state.images)}
                   >
-                    <AspectThumbnail
-                      file={file}
-                      width={item.imageWidth}
-                      height={item.imageHeight}
-                      dimensionsKnown={validDimensions(dimensions)}
-                      loadThumbnail={requestThumbnail}
-                      onNaturalDimensions={rememberNaturalDimensions}
-                    />
+                    {isPreviewableImage(file) ? (
+                      <AspectThumbnail
+                        file={file}
+                        width={item.imageWidth}
+                        height={item.imageHeight}
+                        dimensionsKnown={validDimensions(dimensions)}
+                        loadThumbnail={requestThumbnail}
+                        onNaturalDimensions={rememberNaturalDimensions}
+                      />
+                    ) : (
+                      <UnsupportedFileState file={file} compact />
+                    )}
                   </button>
                 </div>
               )

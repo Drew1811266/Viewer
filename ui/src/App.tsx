@@ -40,7 +40,7 @@ import TaskBar from './components/TaskBar'
 import TextPreview from './components/TextPreview'
 import TrashConfirmation from './components/TrashConfirmation'
 import UnsupportedFilePreview from './components/UnsupportedFilePreview'
-import { isImageFile, isPreviewableImage, isPreviewableText } from './fileKinds'
+import { isImageFile, isPreviewableText } from './fileKinds'
 import { useViewerSettings, ViewerSettingsProvider } from './settings/ViewerSettingsProvider'
 import { compareValidationMessage, validateCompareCandidates } from './state/comparePolicy'
 import { organizationShortcutIsOwned } from './state/organizationShortcutOwnership'
@@ -1047,18 +1047,16 @@ function ViewerWorkspace({ bridge }: { bridge: ViewerBridge }) {
           onClose={() => setSettingsOpen(false)}
         />
       )}
-      {activePreviewFile &&
-        isPreviewableImage(activePreviewFile) &&
-        activePreviewFiles.length > 0 && (
-          <ImagePreview
-            file={activePreviewFile}
-            files={activePreviewFiles}
-            requestImage={requestPreviewImage}
-            onNavigate={navigatePreview}
-            onClose={closePreview}
-            onDimensions={recordDimensions}
-          />
-        )}
+      {activePreviewFile && isImageFile(activePreviewFile) && activePreviewFiles.length > 0 && (
+        <ImagePreview
+          file={activePreviewFile}
+          files={activePreviewFiles}
+          requestImage={requestPreviewImage}
+          onNavigate={navigatePreview}
+          onClose={closePreview}
+          onDimensions={recordDimensions}
+        />
+      )}
       {activePreviewFile && isPreviewableText(activePreviewFile) && (
         <TextPreview
           file={activePreviewFile}

@@ -15,7 +15,7 @@ afterEach(() => {
 describe('CompareWorkspace', () => {
   it('rejects invalid cardinality and non-image candidates with safe feedback', () => {
     const one = renderWorkspace({ files: files.slice(0, 1) })
-    expect(screen.getByRole('alert')).toHaveTextContent('请选择 2–20 张 JPG 或 PNG')
+    expect(screen.getByRole('alert')).toHaveTextContent('请选择 2–20 张图片进行对比')
     one.unmount()
 
     renderWorkspace({
@@ -24,7 +24,29 @@ describe('CompareWorkspace', () => {
         { ...defined(files[1], 'Expected second comparison fixture'), kind: 'text' },
       ],
     })
-    expect(screen.getByRole('alert')).toHaveTextContent('请选择 2–20 张 JPG 或 PNG')
+    expect(screen.getByRole('alert')).toHaveTextContent('请选择 2–20 张图片进行对比')
+  })
+
+  it('keeps unsupported panes request-free and disables active transforms', async () => {
+    const unsupported = {
+      ...image('raw', 'raw.cr2'),
+      kind: 'unsupported_image' as const,
+    }
+    const supported = image('supported', 'supported.jpg')
+    const requestImage = vi.fn((_file: BrowserFile) => {
+      return new Promise<ImageRepresentation>(() => undefined)
+    })
+
+    renderWorkspace({ files: [unsupported, supported], requestImage })
+
+    expect(screen.getByLabelText('raw.cr2 .CR2 暂不支持预览')).toBeVisible()
+    await waitFor(() => expect(requestImage).toHaveBeenCalled())
+    expect(requestImage.mock.calls.map(([file]) => file.entityId)).toEqual(['supported'])
+    expect(screen.getByRole('button', { name: '适应窗口' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: '100%' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: '缩小当前对比' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: '放大当前对比' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: '顺时针旋转当前图片' })).toBeDisabled()
   })
 
   it('uses one row for four portraits in a wide workspace', () => {

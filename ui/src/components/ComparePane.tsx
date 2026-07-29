@@ -6,8 +6,10 @@ import type {
   ImageRepresentationRequest,
   ReviewState,
 } from '../api/types'
+import { isPreviewableImage } from '../fileKinds'
 import type { PaneMetrics, PaneTransform } from '../state/compareModel'
 import { MarkerButtons } from './MarkerControls'
+import UnsupportedFileState from './UnsupportedFileState'
 
 interface ComparePaneProps {
   file: BrowserFile
@@ -81,13 +83,14 @@ export default function ComparePane({
   const [original, setOriginal] = useState<LoadedRepresentation | null>(null)
   const [proxyError, setProxyError] = useState<string | null>(null)
   const [originalError, setOriginalError] = useState<string | null>(null)
+  const previewable = isPreviewableImage(file)
 
   useEffect(() => {
     setProxy(null)
     setOriginal(null)
     setProxyError(null)
     setOriginalError(null)
-  }, [file.entityId, file.modifiedNs, file.size])
+  }, [file.entityId, file.kind, file.modifiedNs, file.size])
 
   const proxyQuarterTurn = transform.rotation === 90 || transform.rotation === 270
 
@@ -112,7 +115,7 @@ export default function ComparePane({
   }, [])
 
   useEffect(() => {
-    if (viewport === null) return
+    if (!previewable || viewport === null) return
     const revision = ++proxyRevision.current
     const controller = new AbortController()
     setProxyError(null)
@@ -139,10 +142,19 @@ export default function ComparePane({
       controller.abort()
       if (proxyRevision.current === revision) proxyRevision.current += 1
     }
-  }, [file.entityId, file.modifiedNs, file.size, proxyQuarterTurn, requestImage, viewport])
+  }, [
+    file.entityId,
+    file.kind,
+    file.modifiedNs,
+    file.size,
+    previewable,
+    proxyQuarterTurn,
+    requestImage,
+    viewport,
+  ])
 
   useEffect(() => {
-    if (!useOriginal) {
+    if (!previewable || !useOriginal) {
       originalRevision.current += 1
       setOriginal(null)
       setOriginalError(null)
@@ -174,9 +186,10 @@ export default function ComparePane({
       controller.abort()
       if (originalRevision.current === revision) originalRevision.current += 1
     }
-  }, [file.entityId, file.modifiedNs, file.size, requestImage, useOriginal])
+  }, [file.entityId, file.kind, file.modifiedNs, file.size, previewable, requestImage, useOriginal])
 
   useEffect(() => {
+    if (!previewable) return
     const representation = visibleRepresentation(
       proxy,
       original,
@@ -198,6 +211,7 @@ export default function ComparePane({
     file.imageMetadata?.width,
     original,
     proxy,
+    previewable,
     proxyQuarterTurn,
     useOriginal,
     viewport,
@@ -226,15 +240,17 @@ export default function ComparePane({
     }
   }
 
-  const representation = visibleRepresentation(
-    proxy,
-    original,
-    file.entityId,
-    fileSourceRevision(file),
-    useOriginal,
-    proxyQuarterTurn,
-  )
-  const geometry = displayGeometry(file, representation, viewport, transform)
+  const representation = previewable
+    ? visibleRepresentation(
+        proxy,
+        original,
+        file.entityId,
+        fileSourceRevision(file),
+        useOriginal,
+        proxyQuarterTurn,
+      )
+    : null
+  const geometry = previewable ? displayGeometry(file, representation, viewport, transform) : null
   const imageStyle: CSSProperties =
     geometry === null
       ? {}
@@ -245,7 +261,7 @@ export default function ComparePane({
           maxHeight: 'none',
           transform: `translate(${cssNumber((0.5 - transform.centerX) * geometry.displayedWidth)}px, ${cssNumber((0.5 - transform.centerY) * geometry.displayedHeight)}px) rotate(${transform.rotation}deg) scale(${transform.scale})`,
         }
-  const error = useOriginal ? (originalError ?? proxyError) : proxyError
+  const error = previewable ? (useOriginal ? (originalError ?? proxyError) : proxyError) : null
 
   return (
     <article
@@ -276,10 +292,16 @@ export default function ComparePane({
         onPointerUp={endPan}
         onPointerCancel={endPan}
       >
-        {representation && (
-          <img src={representation.url} alt={file.name} draggable={false} style={imageStyle} />
+        {previewable ? (
+          <>
+            {representation && (
+              <img src={representation.url} alt={file.name} draggable={false} style={imageStyle} />
+            )}
+            {representation === null && error === null && <span role="status">正在载入…</span>}
+          </>
+        ) : (
+          <UnsupportedFileState file={file} />
         )}
-        {representation === null && error === null && <span role="status">正在载入…</span>}
       </div>
       {error && <p role="alert">{error}</p>}
       <footer>

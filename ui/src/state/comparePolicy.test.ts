@@ -16,6 +16,12 @@ describe('comparePolicy', () => {
     expect(
       validateCompareCandidates(Array.from({ length: 20 }, (_, index) => image(index))),
     ).toEqual({ ok: true })
+    expect(
+      validateCompareCandidates([
+        { entityId: 'jpg', kind: 'jpeg' },
+        { entityId: 'raw', kind: 'unsupported_image' },
+      ]),
+    ).toEqual({ ok: true })
   })
 
   it('rejects invalid cardinality without truncating', () => {
@@ -26,9 +32,7 @@ describe('comparePolicy', () => {
     expect(
       validateCompareCandidates(Array.from({ length: 21 }, (_, index) => image(index))),
     ).toEqual({ ok: false, reason: 'invalid_cardinality' })
-    expect(compareValidationMessage('invalid_cardinality')).toBe(
-      '请选择 2–20 张 JPG 或 PNG 图片进行对比。',
-    )
+    expect(compareValidationMessage('invalid_cardinality')).toBe('请选择 2–20 张图片进行对比。')
   })
 
   it('rejects duplicates and unsupported kinds', () => {

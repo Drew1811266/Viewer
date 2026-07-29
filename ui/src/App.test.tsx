@@ -22,6 +22,7 @@ import {
   type UseRadialMenuSessionOptions,
   useRadialMenuSession,
 } from './app/useRadialMenuSession'
+import { type TextPanelPreferenceState, useTextPanelPreference } from './app/useTextPanelPreference'
 import { defined } from './defined'
 
 afterEach(() => {
@@ -130,13 +131,19 @@ describe('App-local session coordinator contracts', () => {
   it('exposes the shell and preview state shapes keyed by backend session', () => {
     expect(useAppShellState).toBeTypeOf('function')
     expect(usePreviewSession).toBeTypeOf('function')
+    expect(useTextPanelPreference).toBeTypeOf('function')
     expectTypeOf(useAppShellState).parameter(0).toEqualTypeOf<string>()
     expectTypeOf(usePreviewSession).parameter(0).toEqualTypeOf<string>()
+    expectTypeOf(useTextPanelPreference).parameter(0).toEqualTypeOf<string>()
     expectTypeOf<ReturnType<typeof useAppShellState>>().toMatchTypeOf<AppShellState>()
     expectTypeOf<ReturnType<typeof usePreviewSession>>().toMatchTypeOf<PreviewSessionState>()
+    expectTypeOf<ReturnType<typeof useTextPanelPreference>>().toMatchTypeOf<TextPanelPreferenceState>()
     expectTypeOf<keyof ReturnType<typeof useAppShellState>>().toEqualTypeOf<keyof AppShellState>()
     expectTypeOf<keyof ReturnType<typeof usePreviewSession>>().toEqualTypeOf<
       keyof PreviewSessionState
+    >()
+    expectTypeOf<keyof ReturnType<typeof useTextPanelPreference>>().toEqualTypeOf<
+      keyof TextPanelPreferenceState
     >()
   })
 

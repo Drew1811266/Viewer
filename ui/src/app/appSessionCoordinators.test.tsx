@@ -9,6 +9,7 @@ import {
   usePreviewSession,
 } from './usePreviewSession'
 import { useRadialMenuContextToken, useRadialMenuSession } from './useRadialMenuSession'
+import { useTextPanelPreference } from './useTextPanelPreference'
 
 const strictWrapper = ({ children }: { children: ReactNode }) => <StrictMode>{children}</StrictMode>
 
@@ -242,5 +243,34 @@ describe('Radial menu context identity', () => {
 
     expect(hook.result.current.activeRadialMenu).toBeNull()
     expect(document.activeElement).toBe(returnTarget)
+  })
+})
+
+describe('Text panel project-session preference', () => {
+  it('starts collapsed, persists within one session, and resets synchronously for another', () => {
+    const hook = renderHook(({ sessionId }) => useTextPanelPreference(sessionId), {
+      initialProps: { sessionId: 'session-1' },
+      wrapper: strictWrapper,
+    })
+
+    expect(hook.result.current.expanded).toBe(false)
+    act(() => hook.result.current.setExpanded(true))
+    expect(hook.result.current.expanded).toBe(true)
+
+    hook.rerender({ sessionId: 'session-2' })
+    expect(hook.result.current.expanded).toBe(false)
+  })
+
+  it('ignores a stale setter captured by an earlier project session', () => {
+    const hook = renderHook(({ sessionId }) => useTextPanelPreference(sessionId), {
+      initialProps: { sessionId: 'session-1' },
+      wrapper: strictWrapper,
+    })
+    const staleSetExpanded = hook.result.current.setExpanded
+
+    hook.rerender({ sessionId: 'session-2' })
+    act(() => staleSetExpanded(true))
+
+    expect(hook.result.current.expanded).toBe(false)
   })
 })

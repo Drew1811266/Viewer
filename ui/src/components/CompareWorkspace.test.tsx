@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { BrowserFile, ImageRepresentation, ImageRepresentationRequest } from '../api/types'
 import { defined } from '../defined'
@@ -31,10 +31,20 @@ describe('CompareWorkspace', () => {
     const resize = installCompareResizeObserver()
     renderWorkspace({ files: portraitFiles(4) })
     act(() => resize.workspace(1_700, 900))
-    expect(screen.getByRole('region', { name: '图片对比' })).toHaveAttribute(
-      'data-layout',
-      'fit-row',
-    )
+    const workspace = screen.getByRole('region', { name: '图片对比' })
+    expect(workspace).toHaveAttribute('data-layout', 'fit-row')
+    const fit = screen.getByRole('list', { name: '全部图片对比' })
+    expect(within(fit).getAllByRole('listitem')).toHaveLength(4)
+    expect(
+      within(fit)
+        .getAllByRole('listitem')
+        .map((item) => [item.getAttribute('aria-posinset'), item.getAttribute('aria-setsize')]),
+    ).toEqual([
+      ['1', '4'],
+      ['2', '4'],
+      ['3', '4'],
+      ['4', '4'],
+    ])
   })
 
   it('uses a grid for four landscapes', () => {
@@ -57,8 +67,23 @@ describe('CompareWorkspace', () => {
       'horizontal',
     )
     act(() => resize.stages(600, 800))
-    expect(requestImage.mock.calls.length).toBeGreaterThan(0)
-    expect(requestImage.mock.calls.length).toBeLessThan(20)
+    const mountedItems = screen.getAllByRole('listitem')
+    expect(mountedItems.length).toBeGreaterThan(0)
+    expect(mountedItems.length).toBeLessThan(20)
+    expect(requestImage).toHaveBeenCalledTimes(mountedItems.length)
+    expect(
+      mountedItems.map((item) => [
+        item.getAttribute('aria-posinset'),
+        item.getAttribute('aria-setsize'),
+      ]),
+    ).toEqual([
+      ['1', '20'],
+      ['2', '20'],
+      ['3', '20'],
+      ['4', '20'],
+      ['5', '20'],
+      ['6', '20'],
+    ])
   })
 
   it('aborts a proxy request at the image boundary when virtualization unmounts its pane', async () => {
@@ -126,6 +151,18 @@ describe('CompareWorkspace', () => {
     expect(changed).toHaveBeenLastCalledWith(['b'])
     fireEvent.click(screen.getByRole('button', { name: '关闭对比' }))
     expect(changed).toHaveBeenLastCalledWith([])
+  })
+
+  it('moves activity to the nearest following source-order neighbor when removing the active pane', () => {
+    const changed = vi.fn()
+    renderWorkspace({ files, onEntityIdsChange: changed })
+    fireEvent.focus(pane('c'))
+
+    fireEvent.click(screen.getByRole('button', { name: '移除 c.jpg' }))
+
+    expect(changed).toHaveBeenLastCalledWith(['a', 'b', 'd'])
+    expect(pane('d')).toHaveClass('is-active')
+    expect(pane('b')).not.toHaveClass('is-active')
   })
 
   it('supports focused keyboard exit and never disables compare in read-only mode', () => {

@@ -212,8 +212,17 @@ describe('RadialFileMenu', () => {
     )
 
     const compare = screen.getByRole('menuitem', { name: '并排对比' })
+    const compareIndex = overCapacityModel.findIndex((item) => item.id === 'compare')
+    const compareSector = document.querySelectorAll('.radial-primary-shape')[compareIndex]
     expect(compare).toHaveAttribute('aria-disabled', 'true')
     expect(compare).toHaveAttribute('title', '最多同时对比 20 张图片')
+    expect(compareSector).toHaveAttribute('data-disabled', 'true')
+    expect(appCss).toMatch(
+      /\.radial-primary-shape\[data-disabled="true"\],[\s\S]*?fill:\s*#f3f4f6;[\s\S]*?opacity:\s*0\.62;/,
+    )
+    expect(appCss).toMatch(
+      /\.radial-menu-button\[aria-disabled="true"\]\s*\{(?=[^}]*filter:\s*grayscale\(1\);)(?=[^}]*opacity:\s*0\.38;)[^}]*\}/s,
+    )
     fireEvent.click(compare)
     const info = screen.getByRole('menuitem', { name: '信息' })
     info.focus()

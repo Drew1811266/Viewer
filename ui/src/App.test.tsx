@@ -7,7 +7,7 @@ import {
   waitFor,
   within,
 } from '@testing-library/react'
-import { describe, expect, expectTypeOf, it, vi } from 'vitest'
+import { afterEach, describe, expect, expectTypeOf, it, vi } from 'vitest'
 import App from './App'
 import type { ViewerBridge } from './api/viewer'
 import { type AppShellState, useAppShellState } from './app/useAppShellState'
@@ -23,6 +23,10 @@ import {
   useRadialMenuSession,
 } from './app/useRadialMenuSession'
 import { defined } from './defined'
+
+afterEach(() => {
+  vi.unstubAllGlobals()
+})
 
 function deferred<T>() {
   let resolve!: (value: T) => void
@@ -1672,6 +1676,27 @@ describe('Viewer empty state', () => {
     fireEvent.keyDown(window, { key: 'c' })
 
     expect(await screen.findByRole('region', { name: '图片对比' })).toBeVisible()
+    fireEvent.click(screen.getByRole('button', { name: '关闭对比' }))
+    const mountedOptions = screen.getAllByRole('option')
+    expect(mountedOptions.every((item) => item.ariaSelected === 'true')).toBe(true)
+    openRadialMenu(defined(mountedOptions[0], 'Expected a mounted selected image'), 222)
+    expect(screen.getByText('20 个文件')).toBeVisible()
+  })
+
+  it('uses one fit row for four portrait files in a wide comparison workspace', async () => {
+    const resize = installCompareResizeObserver()
+    const viewer = bridge()
+    vi.mocked(viewer.queryFolder).mockResolvedValue(comparePortraitWorkspace(4))
+    render(<App bridge={viewer} />)
+    fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
+    const grid = await screen.findByRole('listbox', { name: '图片文件' })
+
+    fireEvent.keyDown(grid, { key: 'a', metaKey: true })
+    fireEvent.keyDown(window, { key: 'c' })
+
+    const compare = await screen.findByRole('region', { name: '图片对比' })
+    act(() => resize.flush())
+    expect(compare).toHaveAttribute('data-layout', 'fit-row')
   })
 
   it('keeps compare disabled for a 21-image selection', async () => {
@@ -1979,6 +2004,59 @@ function compareContentWorkspaceWithCount(count: number) {
       modifiedNs: String(index + 1),
     })),
     textFiles: [],
+  }
+}
+
+function comparePortraitWorkspace(count: number) {
+  return {
+    ...compareContentWorkspaceWithCount(count),
+    images: compareContentWorkspaceWithCount(count).images.map((file) => ({
+      ...file,
+      imageMetadata: { width: 600, height: 800 },
+    })),
+  }
+}
+
+function installCompareResizeObserver() {
+  const frames = new Map<number, FrameRequestCallback>()
+  let nextFrameId = 1
+  class Observer {
+    private readonly callback: ResizeObserverCallback
+
+    constructor(callback: ResizeObserverCallback) {
+      this.callback = callback
+    }
+
+    observe(node: Element) {
+      const bounds = node.classList.contains('compare-layout-region')
+        ? { width: 1_700, height: 900 }
+        : { width: 600, height: 800 }
+      this.callback(
+        [{ target: node, contentRect: bounds } as ResizeObserverEntry],
+        this as unknown as ResizeObserver,
+      )
+    }
+
+    disconnect() {}
+  }
+  vi.stubGlobal('ResizeObserver', Observer)
+  vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+    const id = nextFrameId
+    nextFrameId += 1
+    frames.set(id, callback)
+    return id
+  })
+  vi.stubGlobal('cancelAnimationFrame', (id: number) => {
+    frames.delete(id)
+  })
+  return {
+    flush() {
+      while (frames.size > 0) {
+        const callbacks = [...frames.values()]
+        frames.clear()
+        for (const callback of callbacks) callback(0)
+      }
+    },
   }
 }
 

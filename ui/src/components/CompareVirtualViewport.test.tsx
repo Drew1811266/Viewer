@@ -19,10 +19,31 @@ describe('CompareVirtualViewport', () => {
     )
 
     expect(renderItem.mock.calls.length).toBeLessThan(20)
-    expect(screen.getByRole('listitem', { name: 'image-19' })).toHaveAttribute('aria-setsize', '20')
     expect(
-      screen.getAllByRole('listitem').map((item) => item.getAttribute('aria-posinset')),
-    ).toEqual(['1', '2', '20'])
+      screen
+        .getAllByRole('listitem')
+        .map((item) => [item.getAttribute('aria-posinset'), item.getAttribute('aria-setsize')]),
+    ).toEqual([
+      ['1', '20'],
+      ['2', '20'],
+      ['20', '20'],
+    ])
+  })
+
+  it('retains an offscreen active pane as at most one item beyond the visible window', () => {
+    const plan = planWithTwentyItems('horizontal')
+    const props = {
+      plan,
+      renderItem: (entityId: string) => <article tabIndex={0}>{entityId}</article>,
+      onActivate: vi.fn(),
+    }
+    const rendered = render(<CompareVirtualViewport {...props} activeEntityId="missing" />)
+    const visibleCount = screen.getAllByRole('listitem').length
+
+    rendered.rerender(<CompareVirtualViewport {...props} activeEntityId="image-19" />)
+
+    expect(screen.getByRole('listitem', { name: 'image-19' })).toBeInTheDocument()
+    expect(screen.getAllByRole('listitem').length).toBeLessThanOrEqual(visibleCount + 1)
   })
 
   it('mounts only the vertical visible window, overscan, and active item', () => {

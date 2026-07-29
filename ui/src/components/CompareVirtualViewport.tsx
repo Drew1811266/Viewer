@@ -21,7 +21,7 @@ export default function CompareVirtualViewport({
 }: CompareVirtualViewportProps) {
   const viewportRef = useRef<HTMLDivElement>(null)
   const pendingFocusEntityId = useRef<string | null>(null)
-  const previousPlan = useRef(plan)
+  const previousPlan = useRef<CompareLayoutPlan | null>(null)
   const scrollOffsets = useRef({ left: 0, top: 0 })
   const [scrollLeft, setScrollLeft] = useState(0)
   const [scrollTop, setScrollTop] = useState(0)
@@ -45,11 +45,17 @@ export default function CompareVirtualViewport({
     const node = viewportRef.current
     const previous = previousPlan.current
     if (node !== null && previous !== plan) {
-      const previousOffset =
-        previous.scrollAxis === 'horizontal'
-          ? scrollOffsets.current.left
-          : scrollOffsets.current.top
-      const nextOffset = anchoredCompareScrollOffset(previous, plan, activeEntityId, previousOffset)
+      const nextOffset =
+        previous === null
+          ? scrollOffsetIncludingActive(plan, activeEntityId, 0)
+          : anchoredCompareScrollOffset(
+              previous,
+              plan,
+              activeEntityId,
+              previous.scrollAxis === 'horizontal'
+                ? scrollOffsets.current.left
+                : scrollOffsets.current.top,
+            )
       if (plan.scrollAxis === 'horizontal') node.scrollLeft = nextOffset
       else node.scrollTop = nextOffset
       const actualScrollLeft = node.scrollLeft
@@ -167,6 +173,28 @@ export default function CompareVirtualViewport({
       </div>
     </div>
   )
+}
+
+function scrollOffsetIncludingActive(
+  plan: CompareLayoutPlan,
+  activeEntityId: string,
+  currentOffset: number,
+) {
+  const active = plan.rects.find(({ entityId }) => entityId === activeEntityId)
+  if (active === undefined || plan.scrollAxis === 'none') return currentOffset
+  const viewportExtent = plan.scrollAxis === 'horizontal' ? plan.viewportWidth : plan.viewportHeight
+  const totalExtent = plan.scrollAxis === 'horizontal' ? plan.totalWidth : plan.totalHeight
+  const activeStart = plan.scrollAxis === 'horizontal' ? active.left : active.top
+  const activeExtent = plan.scrollAxis === 'horizontal' ? active.width : active.height
+  const activeEnd = activeStart + activeExtent
+  const maximumOffset = Math.max(0, totalExtent - viewportExtent)
+  const desired =
+    activeStart < currentOffset
+      ? activeStart
+      : activeEnd > currentOffset + viewportExtent
+        ? activeEnd - viewportExtent
+        : currentOffset
+  return Math.max(0, Math.min(maximumOffset, desired))
 }
 
 function translateHorizontalWheel(

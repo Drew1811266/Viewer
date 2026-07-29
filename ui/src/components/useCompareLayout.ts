@@ -63,10 +63,19 @@ export function effectiveCompareRatio(
 }
 
 const planIsEqual = (left: CompareLayoutPlan, right: CompareLayoutPlan) =>
+  left.key === right.key &&
   left.kind === right.kind &&
   left.score === right.score &&
+  left.eligible === right.eligible &&
+  left.scrollAxis === right.scrollAxis &&
+  left.columns === right.columns &&
+  left.rows === right.rows &&
+  left.viewportWidth === right.viewportWidth &&
+  left.viewportHeight === right.viewportHeight &&
   left.totalWidth === right.totalWidth &&
   left.totalHeight === right.totalHeight &&
+  left.candidateCount === right.candidateCount &&
+  left.retainedPrevious === right.retainedPrevious &&
   left.rects.length === right.rects.length &&
   left.rects.every((rect, index) => {
     const other = right.rects[index]

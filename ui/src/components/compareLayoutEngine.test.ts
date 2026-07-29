@@ -225,6 +225,24 @@ describe('solveCompareLayout', () => {
     expect(plan.totalWidth).toBeGreaterThan(0)
   })
 
+  it('keeps finite monotonic vertical offsets when finite operands overflow', () => {
+    const plan = solveCompareLayout(
+      input(items(8, 1.5), {
+        width: Number.MAX_VALUE,
+        gap: Number.MAX_VALUE,
+      }),
+    )
+    const offsets = plan.rects.map(({ top }) => top)
+
+    expect(plan.kind).toBe('vertical-flow')
+    expect(offsets.every(Number.isFinite)).toBe(true)
+    expect(
+      offsets.every((offset, index) => index === 0 || offset >= (offsets[index - 1] ?? 0)),
+    ).toBe(true)
+    expect(Number.isFinite(plan.totalHeight)).toBe(true)
+    expect(plan.totalHeight).toBeGreaterThan(0)
+  })
+
   it('uses a single-column vertical flow below 900 CSS pixels', () => {
     const plan = solveCompareLayout(
       input(items(20, 1.5), {
@@ -277,6 +295,24 @@ describe('solveCompareLayout', () => {
       }
     },
   )
+
+  it('keeps finite monotonic safe-column offsets when finite operands overflow', () => {
+    const plan = solveCompareLayout(
+      input(items(8, 1), {
+        width: Number.NaN,
+        gap: Number.MAX_VALUE,
+      }),
+    )
+    const offsets = plan.rects.map(({ top }) => top)
+
+    expect(plan.kind).toBe('safe-column')
+    expect(offsets.every(Number.isFinite)).toBe(true)
+    expect(
+      offsets.every((offset, index) => index === 0 || offset >= (offsets[index - 1] ?? 0)),
+    ).toBe(true)
+    expect(Number.isFinite(plan.totalHeight)).toBe(true)
+    expect(plan.totalHeight).toBeGreaterThan(0)
+  })
 
   it.each([Number.NaN, Number.POSITIVE_INFINITY, 0, -1])(
     'normalizes invalid aspect ratio %s to finite square geometry',

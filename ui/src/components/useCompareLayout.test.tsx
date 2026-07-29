@@ -1,6 +1,7 @@
 import { act, render, renderHook, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { BrowserFile } from '../api/types'
+import { visibleCompareIndexes } from './compareLayoutEngine'
 import {
   compareSourceRevision,
   type RecoveredCompareDimensions,
@@ -52,6 +53,33 @@ describe('useCompareLayout', () => {
     expect(frames.pending()).toBe(1)
     act(() => frames.flush())
     expect(hook.result.current.plan.totalWidth).toBe(1_700)
+  })
+
+  it('commits a narrower viewport when clamped strip rectangles stay unchanged', () => {
+    const frames = installAnimationFrameQueue()
+    const resize = installResizeObserver()
+    const hook = renderHook(() =>
+      useCompareLayout({ files: portraitFiles(4), rotations: {}, recoveredDimensions: {} }),
+    )
+    attachRef(hook.result.current.containerRef)
+    hook.rerender()
+
+    act(() => {
+      resize(426, 900)
+      frames.flush()
+    })
+    const widerPlan = hook.result.current.plan
+    expect(widerPlan.viewportWidth).toBe(426)
+    expect(visibleCompareIndexes(widerPlan, 0, 0)).toEqual([0, 1, 2])
+
+    act(() => {
+      resize(320, 900)
+      frames.flush()
+    })
+
+    expect(hook.result.current.plan).not.toBe(widerPlan)
+    expect(hook.result.current.plan.viewportWidth).toBe(320)
+    expect(visibleCompareIndexes(hook.result.current.plan, 0, 0)).toEqual([0, 1])
   })
 
   it('uses a square fallback when metadata and recovered dimensions are unavailable', () => {

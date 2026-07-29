@@ -24,8 +24,7 @@ describe('CompareVirtualViewport', () => {
         .getAllByRole('listitem')
         .map((item) => [item.getAttribute('aria-posinset'), item.getAttribute('aria-setsize')]),
     ).toEqual([
-      ['1', '20'],
-      ['2', '20'],
+      ['19', '20'],
       ['20', '20'],
     ])
   })
@@ -102,7 +101,7 @@ describe('CompareVirtualViewport', () => {
     render(
       <CompareVirtualViewport
         plan={plan}
-        activeEntityId="image-19"
+        activeEntityId="missing"
         renderItem={(entityId) => <article tabIndex={0}>{entityId}</article>}
         onActivate={vi.fn()}
       />,

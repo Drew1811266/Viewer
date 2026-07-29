@@ -57,6 +57,25 @@ describe('CompareWorkspace', () => {
     )
   })
 
+  it('scrolls a retained active pane into view when a fit row becomes a scrolling strip', () => {
+    const resize = installCompareResizeObserver()
+    renderWorkspace({ files: portraitFiles(4) })
+    act(() => resize.workspace(1_700, 900))
+    fireEvent.focus(pane('portrait-3'))
+
+    act(() => resize.workspace(426, 900))
+
+    const viewport = screen.getByRole('list', { name: '滚动图片对比' })
+    const activeItem = defined(
+      pane('portrait-3').closest<HTMLElement>('[role="listitem"]'),
+      'Expected active pane layout item',
+    )
+    const activeLeft = Number.parseFloat(activeItem.style.left)
+    const activeRight = activeLeft + Number.parseFloat(activeItem.style.width)
+    expect(activeLeft).toBeLessThan(viewport.scrollLeft + 426)
+    expect(activeRight).toBeGreaterThan(viewport.scrollLeft)
+  })
+
   it('virtualizes a scrolling portrait set', () => {
     const resize = installCompareResizeObserver()
     const requestImage = vi.fn(() => new Promise<ImageRepresentation>(() => undefined))

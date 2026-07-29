@@ -298,7 +298,7 @@ const buildVerticalFlow = (
         stageHeight: rowStageHeight,
       })
     })
-    top += rowStageHeight + paneChromeHeight + (row < rows - 1 ? gap : 0)
+    top = finiteSaturatingSum(top, rowStageHeight, paneChromeHeight, row < rows - 1 ? gap : 0)
   }
 
   return {
@@ -313,7 +313,7 @@ const buildVerticalFlow = (
     viewportWidth: width,
     viewportHeight: height,
     totalWidth: width,
-    totalHeight: finiteNonnegative(top + padding),
+    totalHeight: finiteSaturatingSum(top, padding),
     candidateCount,
     retainedPrevious: false,
   }
@@ -328,20 +328,22 @@ const buildSafeColumn = (input: CompareLayoutInput): CompareLayoutPlan => {
   const stageWidth = positiveDimension(width - 2 * padding)
   const stageHeight = 1
   const rectHeight = positiveDimension(stageHeight + paneChromeHeight)
-  const rects = input.items.map(({ entityId }, index) => ({
-    entityId,
-    index,
-    left: padding,
-    top: finiteNonnegative(padding + index * (rectHeight + gap)),
-    width: stageWidth,
-    height: rectHeight,
-    stageWidth,
-    stageHeight,
-  }))
-  const totalHeight =
-    rects.length === 0
-      ? 2 * padding
-      : 2 * padding + rects.length * rectHeight + (rects.length - 1) * gap
+  let top = padding
+  const rects = input.items.map(({ entityId }, index) => {
+    const rect = {
+      entityId,
+      index,
+      left: padding,
+      top,
+      width: stageWidth,
+      height: rectHeight,
+      stageWidth,
+      stageHeight,
+    }
+    top = finiteSaturatingSum(top, rectHeight, index < input.items.length - 1 ? gap : 0)
+    return rect
+  })
+  const totalHeight = finiteSaturatingSum(top, padding)
 
   return {
     key: 'safe-column',

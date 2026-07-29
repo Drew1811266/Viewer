@@ -113,6 +113,37 @@ describe('adaptive text panel layout contracts', () => {
       'outline-offset': '-2px',
     })
   })
+
+  it('anchors a compact light select-all menu beside its source control', () => {
+    const rules = parseRules(adaptiveTextPanelCss)
+
+    expect(declarationsFor(rules, '.select-all-control')).toEqual({
+      position: 'relative',
+    })
+    expect(declarationsFor(rules, '.select-all-choice-panel')).toMatchObject({
+      background: '#fff',
+      border: '1px solid #c8ced6',
+      'border-radius': '8px',
+      'box-shadow': '0 10px 28px rgb(34 42 53 / 18%)',
+      'min-width': '148px',
+      position: 'absolute',
+      right: 'calc(100% + 8px)',
+      top: '0',
+      'z-index': '24',
+    })
+    expect(declarationsFor(rules, '.select-all-choice-panel > button')).toMatchObject({
+      'text-align': 'left',
+      'white-space': 'nowrap',
+    })
+    expect(declarationsFor(rules, '.select-all-choice-panel > button:focus-visible')).toMatchObject(
+      {
+        outline: '2px solid #2477d4',
+      },
+    )
+    expect(declarationsFor(rules, '.select-all-choice-panel > button:hover')).toMatchObject({
+      background: '#eef4fc',
+    })
+  })
 })
 
 interface CssRule {

@@ -966,25 +966,249 @@ describe('ContentBrowser', () => {
     expect(selectedLabels()).toEqual(['2.jpg', '3.jpg', '4.jpg', '5.jpg'])
   })
 
-  it('selects every file in the current folder with Command-A', () => {
-    render(<ContentBrowser workspace={workspace(3)} textPanelExpanded />)
-
-    const grid = screen.getByRole('listbox', { name: '图片文件' })
-    fireEvent.keyDown(grid, { key: 'a', metaKey: true })
-
-    expect(
-      screen.getAllByRole('option').filter((item) => item.getAttribute('aria-selected') === 'true'),
-    ).toHaveLength(4)
-  })
-
-  it('offers an explicit select-all action for mouse and assistive users', () => {
-    render(<ContentBrowser workspace={workspace(3)} textPanelExpanded />)
+  it('opens three ordered choices for a mixed-folder button without changing selection', () => {
+    render(<ContentBrowser workspace={workspace(3)} />)
+    fireEvent.click(screen.getByRole('option', { name: '2.jpg' }))
 
     fireEvent.click(screen.getByRole('button', { name: '全选当前文件夹' }))
 
-    expect(
-      screen.getAllByRole('option').filter((item) => item.getAttribute('aria-selected') === 'true'),
-    ).toHaveLength(4)
+    expect(screen.getAllByRole('menuitem').map((item) => item.textContent)).toEqual([
+      '全选图片',
+      '全选文本文件',
+      '全部选择',
+    ])
+    expect(screen.getByRole('button', { name: '全选当前文件夹' })).toHaveAttribute(
+      'aria-haspopup',
+      'menu',
+    )
+    expect(screen.getByRole('button', { name: '全选当前文件夹' })).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    )
+    expect(selectedLabels()).toEqual(['2.jpg'])
+    expect(screen.getByRole('button', { name: '文本文件 · 1' })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    )
+  })
+
+  it('opens the same mixed-folder choices with Command-A and focuses images first', () => {
+    render(<ContentBrowser workspace={workspace(3)} />)
+
+    fireEvent.keyDown(screen.getByRole('listbox', { name: '图片文件' }), {
+      key: 'a',
+      metaKey: true,
+    })
+
+    expect(screen.getByRole('menu', { name: '选择全选范围' })).toBeVisible()
+    expect(screen.getByRole('menuitem', { name: '全选图片' })).toHaveFocus()
+    expect(selectedLabels()).toEqual([])
+  })
+
+  it.each([
+    ['全选图片', ['1.jpg', '2.jpg'], 'file-image-1'],
+    ['全选文本文件', ['note-1.txt', 'note-2.txt'], 'file-text-1'],
+    ['全部选择', ['1.jpg', '2.jpg', 'note-1.txt', 'note-2.txt'], 'file-image-1'],
+  ] as const)(
+    'replaces selection with the %s scope and anchors it at the first scoped file',
+    (choice, expectedLabels, activeDescendant) => {
+      render(<ContentBrowser workspace={workspaceWithTextFiles(2, 2)} textPanelExpanded />)
+      fireEvent.click(screen.getByRole('option', { name: '2.jpg' }))
+      fireEvent.click(screen.getByRole('button', { name: '全选当前文件夹' }))
+
+      fireEvent.click(screen.getByRole('menuitem', { name: choice }))
+
+      expect(selectedLabels()).toEqual(expectedLabels)
+      expect(screen.queryByRole('menu', { name: '选择全选范围' })).not.toBeInTheDocument()
+      const owner =
+        choice === '全选文本文件'
+          ? screen.getByRole('listbox', { name: '文本文件' })
+          : screen.getByRole('listbox', { name: '图片文件' })
+      expect(owner).toHaveAttribute('aria-activedescendant', activeDescendant)
+    },
+  )
+
+  it('selects hidden text while keeping the mixed shelf collapsed and reports its count', () => {
+    const changed = vi.fn()
+    render(<ContentBrowser workspace={workspaceWithTextFiles(2, 2)} onSelectionChange={changed} />)
+
+    fireEvent.click(screen.getByRole('button', { name: '全选当前文件夹' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: '全选文本文件' }))
+
+    expect(screen.queryByRole('listbox', { name: '文本文件' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '文本文件 · 2 · 已选 2' })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    )
+    expect(changed.mock.calls.at(-1)?.[0].map((file: BrowserFile) => file.entityId)).toEqual([
+      'text-1',
+      'text-2',
+    ])
+  })
+
+  it('uses the first scoped file as the range anchor after a choice commit', () => {
+    render(<ContentBrowser workspace={workspaceWithTextFiles(2, 2)} textPanelExpanded />)
+    fireEvent.click(screen.getByRole('option', { name: '1.jpg' }))
+    fireEvent.click(screen.getByRole('button', { name: '全选当前文件夹' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: '全选文本文件' }))
+
+    fireEvent.click(screen.getByRole('option', { name: '2.jpg' }), { shiftKey: true })
+
+    expect(selectedLabels()).toEqual(['2.jpg', 'note-1.txt', 'note-2.txt'])
+  })
+
+  it.each([
+    [
+      'button',
+      ratioWorkspace([
+        { width: 1, height: 1 },
+        { width: 1, height: 1 },
+      ]),
+    ],
+    [
+      'command',
+      ratioWorkspace([
+        { width: 1, height: 1 },
+        { width: 1, height: 1 },
+      ]),
+    ],
+  ] as const)('selects all images directly with the %s path and no menu', (path, data) => {
+    render(<ContentBrowser workspace={data} />)
+
+    if (path === 'button') {
+      fireEvent.click(screen.getByRole('button', { name: '全选当前文件夹' }))
+    } else {
+      fireEvent.keyDown(screen.getByRole('listbox', { name: '图片文件' }), {
+        key: 'a',
+        metaKey: true,
+      })
+    }
+
+    expect(selectedLabels()).toEqual(['1.jpg', '2.jpg'])
+    expect(screen.queryByRole('menu', { name: '选择全选范围' })).not.toBeInTheDocument()
+  })
+
+  it.each(['button', 'command'] as const)(
+    'selects all text directly with the %s path and no menu',
+    (path) => {
+      render(<ContentBrowser workspace={workspaceWithTextFiles(0, 2)} />)
+
+      if (path === 'button') {
+        fireEvent.click(screen.getByRole('button', { name: '全选当前文件夹' }))
+      } else {
+        fireEvent.keyDown(screen.getByRole('listbox', { name: '文本文件' }), {
+          key: 'a',
+          metaKey: true,
+        })
+      }
+
+      expect(selectedLabels()).toEqual(['note-1.txt', 'note-2.txt'])
+      expect(screen.queryByRole('menu', { name: '选择全选范围' })).not.toBeInTheDocument()
+    },
+  )
+
+  it('does nothing when the folder has no selectable files', () => {
+    const changed = vi.fn()
+    render(<ContentBrowser workspace={workspaceWithTextFiles(0, 0)} onSelectionChange={changed} />)
+    const source = screen.getByRole('button', { name: '全选当前文件夹' })
+
+    expect(source).toBeDisabled()
+    fireEvent.click(source)
+
+    expect(changed).not.toHaveBeenCalled()
+    expect(screen.queryByRole('menu', { name: '选择全选范围' })).not.toBeInTheDocument()
+  })
+
+  it.each(['Escape', 'source', 'outside'] as const)(
+    'cancels a mixed-folder choice through %s without changing the previous selection',
+    (cancellation) => {
+      render(<ContentBrowser workspace={workspace(3)} />)
+      fireEvent.click(screen.getByRole('option', { name: '2.jpg' }))
+      fireEvent.click(screen.getByRole('button', { name: '全选当前文件夹' }))
+
+      if (cancellation === 'Escape') {
+        fireEvent.keyDown(screen.getByRole('menu', { name: '选择全选范围' }), {
+          key: 'Escape',
+        })
+      } else if (cancellation === 'source') {
+        fireEvent.click(screen.getByRole('button', { name: '全选当前文件夹' }))
+      } else {
+        fireEvent.pointerDown(screen.getByRole('button', { name: '文本文件 · 1' }))
+      }
+
+      expect(screen.queryByRole('menu', { name: '选择全选范围' })).not.toBeInTheDocument()
+      expect(selectedLabels()).toEqual(['2.jpg'])
+      expect(screen.getByRole('button', { name: '全选当前文件夹' })).toHaveFocus()
+    },
+  )
+
+  it('closes a stale choice when content identity changes without restoring source focus', () => {
+    const data = workspace(2)
+    const rendered = render(<ContentBrowser workspace={data} currentPath="folder-a" />)
+    fireEvent.click(screen.getByRole('button', { name: '全选当前文件夹' }))
+    expect(screen.getByRole('menuitem', { name: '全选图片' })).toHaveFocus()
+
+    rendered.rerender(
+      <ContentBrowser
+        workspace={{
+          ...data,
+          images: data.images.map((file, index) =>
+            index === 0 ? { ...file, modifiedNs: 'changed' } : file,
+          ),
+        }}
+        currentPath="folder-a"
+      />,
+    )
+    expect(screen.queryByRole('menu', { name: '选择全选范围' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '全选当前文件夹' })).not.toHaveFocus()
+  })
+
+  it('closes a stale choice when only the folder path changes', () => {
+    const data = workspace(2)
+    const rendered = render(<ContentBrowser workspace={data} currentPath="folder-a" />)
+    fireEvent.click(screen.getByRole('button', { name: '全选当前文件夹' }))
+
+    rendered.rerender(<ContentBrowser workspace={data} currentPath="folder-b" />)
+
+    expect(screen.queryByRole('menu', { name: '选择全选范围' })).not.toBeInTheDocument()
+  })
+
+  it('closes the choice before invoking preview', () => {
+    const preview = vi.fn()
+    render(<ContentBrowser workspace={workspace(2)} onPreview={preview} />)
+    fireEvent.click(screen.getByRole('button', { name: '全选当前文件夹' }))
+
+    fireEvent.doubleClick(screen.getByRole('option', { name: '1.jpg' }))
+
+    expect(preview).toHaveBeenCalledOnce()
+    expect(screen.queryByRole('menu', { name: '选择全选范围' })).not.toBeInTheDocument()
+  })
+
+  it('closes the choice before invoking a radial request', () => {
+    const radial = vi.fn()
+    render(<ContentBrowser workspace={workspace(2)} onRadialMenuRequest={radial} />)
+    fireEvent.click(screen.getByRole('button', { name: '全选当前文件夹' }))
+
+    fireEvent.contextMenu(screen.getByRole('option', { name: '1.jpg' }), {
+      ctrlKey: true,
+      clientX: 100,
+      clientY: 120,
+    })
+
+    expect(radial).toHaveBeenCalledOnce()
+    expect(screen.queryByRole('menu', { name: '选择全选范围' })).not.toBeInTheDocument()
+  })
+
+  it('closes the mounted choice when comparison disables organization drag', () => {
+    const data = workspace(2)
+    const rendered = render(<ContentBrowser workspace={data} />)
+    fireEvent.click(screen.getByRole('option', { name: '2.jpg' }))
+    fireEvent.click(screen.getByRole('button', { name: '全选当前文件夹' }))
+
+    rendered.rerender(<ContentBrowser workspace={data} organizationDragDisabled />)
+
+    expect(screen.queryByRole('menu', { name: '选择全选范围' })).not.toBeInTheDocument()
+    expect(selectedLabels()).toEqual(['2.jpg'])
   })
 
   it('moves keyboard focus to the owning listbox when a file is clicked', () => {
@@ -1501,6 +1725,7 @@ describe('ContentBrowser', () => {
     expect(screen.getByText('项目根目录')).toBeVisible()
     fireEvent.click(screen.getByText('视图'))
     fireEvent.click(screen.getByRole('button', { name: '全选当前文件夹' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: '全部选择' }))
     expect(selectedLabels()).toHaveLength(3)
   })
 })

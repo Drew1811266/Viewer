@@ -5,9 +5,15 @@ import { type AspectRect, type ImageDimensions, validDimensions } from '../layou
 import { THUMBNAIL_HEIGHT } from '../settings/thumbnailDensity'
 import type { OrganizationPointerInput } from '../state/useOrganizationPointerDrag'
 import AspectVirtualGrid from './AspectVirtualGrid'
-import { resolveAdaptiveContentMode } from './contentBrowser/adaptiveTextPanelModel'
+import {
+  filesForSelectAllScope,
+  resolveAdaptiveContentMode,
+  resolveSelectAllRequest,
+  type SelectAllScope,
+} from './contentBrowser/adaptiveTextPanelModel'
 import { rangeSelection, toggleSelection } from './contentBrowser/contentSelection'
 import { ImageCell } from './contentBrowser/ImageCell'
+import SelectAllChoicePanel from './contentBrowser/SelectAllChoicePanel'
 import TextFilePanel from './contentBrowser/TextFilePanel'
 import { useMeasuredElementHeight } from './contentBrowser/useMeasuredElementHeight'
 import type { MarqueeSelectionChange } from './marqueeSelection'
@@ -64,8 +70,11 @@ export default function ContentBrowser({
   const [recoveredDimensions, setRecoveredDimensions] = useState(
     () => new Map<string, ImageDimensions>(),
   )
+  const [selectAllChoiceOpen, setSelectAllChoiceOpen] = useState(false)
   const anchorId = useRef<string | null>(null)
   const appliedRepairId = useRef<string | null>(null)
+  const viewMenuRef = useRef<HTMLDetailsElement>(null)
+  const selectAllButtonRef = useRef<HTMLButtonElement>(null)
   const marqueeSelection = useRef<{
     baseline: Set<string>
     metaKey: boolean
@@ -85,6 +94,20 @@ export default function ContentBrowser({
     workspace.images.length,
     workspace.textFiles.length,
     textPanelExpanded,
+  )
+  const selectAllRequest = resolveSelectAllRequest(
+    workspace.images.length,
+    workspace.textFiles.length,
+  )
+  const contentIdentity = useMemo(
+    () =>
+      JSON.stringify(
+        [...workspace.images, ...workspace.textFiles].map(({ entityId, modifiedNs }) => [
+          entityId,
+          modifiedNs,
+        ]),
+      ),
+    [workspace.images, workspace.textFiles],
   )
   const imageSlot = useMeasuredElementHeight(viewportHeight)
   const fileById = useMemo(() => new Map(allFiles.map((file) => [file.entityId, file])), [allFiles])
@@ -110,6 +133,14 @@ export default function ContentBrowser({
   useEffect(() => {
     marqueeSelection.current = null
   }, [allFiles])
+
+  useEffect(() => {
+    setSelectAllChoiceOpen(false)
+  }, [contentIdentity, currentPath])
+
+  useEffect(() => {
+    if (organizationDragDisabled) setSelectAllChoiceOpen(false)
+  }, [organizationDragDisabled])
 
   useEffect(
     () => () => {
@@ -239,13 +270,28 @@ export default function ContentBrowser({
     }
   }
 
-  function selectAllFiles() {
-    const first = allFiles[0]
-    if (first && activeId === null) {
-      setActiveId(first.entityId)
-      anchorId.current = first.entityId
+  function commitSelectAll(scope: SelectAllScope) {
+    setSelectAllChoiceOpen(false)
+    const files = filesForSelectAllScope(workspace, scope)
+    const first = files[0] ?? null
+    setActiveId(first?.entityId ?? null)
+    anchorId.current = first?.entityId ?? null
+    commitSelection(new Set(files.map(({ entityId }) => entityId)))
+  }
+
+  function requestSelectAll() {
+    if (selectAllRequest.kind === 'none') return
+    if (selectAllRequest.kind === 'direct') {
+      commitSelectAll(selectAllRequest.scope)
+      return
     }
-    commitSelection(new Set(allFiles.map((file) => file.entityId)))
+    if (viewMenuRef.current !== null) viewMenuRef.current.open = true
+    setSelectAllChoiceOpen(true)
+  }
+
+  function previewFile(file: BrowserFile) {
+    setSelectAllChoiceOpen(false)
+    onPreview?.(file)
   }
 
   function navigateToIndex(nextIndex: number, extendSelection: boolean) {
@@ -302,6 +348,7 @@ export default function ContentBrowser({
     pointerId: number | null,
   ) {
     if (onRadialMenuRequest === undefined) return
+    setSelectAllChoiceOpen(false)
     const returnFocusTarget = eventTarget.closest<HTMLElement>('[role="listbox"]') ?? eventTarget
     const contextSelection = selected.has(file.entityId) ? selected : new Set([file.entityId])
     if (!selected.has(file.entityId)) {
@@ -416,13 +463,13 @@ export default function ContentBrowser({
     }
     if (event.metaKey && event.key.toLowerCase() === 'a') {
       event.preventDefault()
-      selectAllFiles()
+      requestSelectAll()
       return
     }
     if ((event.key === ' ' || event.key === 'Spacebar') && activeId) {
       event.preventDefault()
       const file = fileById.get(activeId)
-      if (file) onPreview?.(file)
+      if (file) previewFile(file)
     }
   }
 
@@ -474,12 +521,40 @@ export default function ContentBrowser({
           <span>· {workspace.images.length} 张图片</span>
           {workspace.textFiles.length > 0 && <span>· {workspace.textFiles.length} 个文本文件</span>}
         </div>
-        <details className="content-view-menu">
+        <details
+          ref={viewMenuRef}
+          className="content-view-menu"
+          onToggle={(event) => {
+            if (!event.currentTarget.open) setSelectAllChoiceOpen(false)
+          }}
+        >
           <summary>视图</summary>
           <div>
-            <button type="button" onClick={selectAllFiles} disabled={allFiles.length === 0}>
-              全选当前文件夹
-            </button>
+            <div className="select-all-control">
+              <button
+                ref={selectAllButtonRef}
+                type="button"
+                aria-haspopup={selectAllRequest.kind === 'choice' ? 'menu' : undefined}
+                aria-expanded={selectAllChoiceOpen || undefined}
+                onClick={() => {
+                  if (selectAllChoiceOpen) {
+                    setSelectAllChoiceOpen(false)
+                    selectAllButtonRef.current?.focus()
+                  } else {
+                    requestSelectAll()
+                  }
+                }}
+                disabled={selectAllRequest.kind === 'none'}
+              >
+                全选当前文件夹
+              </button>
+              <SelectAllChoicePanel
+                open={selectAllChoiceOpen}
+                anchorRef={selectAllButtonRef}
+                onChoose={commitSelectAll}
+                onCancel={() => setSelectAllChoiceOpen(false)}
+              />
+            </div>
           </div>
         </details>
       </div>
@@ -514,7 +589,7 @@ export default function ContentBrowser({
                   onNaturalDimensions={rememberNaturalDimensions}
                   markerLabel={markerLabel(file.marker)}
                   onClick={selectFile}
-                  onPreview={(selectedFile) => onPreview?.(selectedFile)}
+                  onPreview={previewFile}
                   onRadialMenuPointerDown={openRadialMenuFromPointer}
                   onRadialMenuContextMenu={openRadialMenuFromContext}
                   organizationDragDisabled={organizationDragDisabled}
@@ -538,7 +613,7 @@ export default function ContentBrowser({
             onExpandedChange={onTextPanelExpandedChange}
             onListKeyDown={handleTextListKeyboard}
             onSelect={selectFile}
-            onPreview={(file) => onPreview?.(file)}
+            onPreview={previewFile}
             onRadialMenuPointerDown={(file, event) => openRadialMenuFromPointer(file, event)}
             onRadialMenuContextMenu={(file, event) => openRadialMenuFromContext(file, event)}
             onFinderDragStart={startFinderDrag}

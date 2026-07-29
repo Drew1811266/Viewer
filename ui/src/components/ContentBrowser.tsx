@@ -5,9 +5,11 @@ import { type AspectRect, type ImageDimensions, validDimensions } from '../layou
 import { THUMBNAIL_HEIGHT } from '../settings/thumbnailDensity'
 import type { OrganizationPointerInput } from '../state/useOrganizationPointerDrag'
 import AspectVirtualGrid from './AspectVirtualGrid'
+import { resolveAdaptiveContentMode } from './contentBrowser/adaptiveTextPanelModel'
 import { rangeSelection, toggleSelection } from './contentBrowser/contentSelection'
 import { ImageCell } from './contentBrowser/ImageCell'
 import { OrganizationDragHandle } from './contentBrowser/OrganizationDragHandle'
+import { useMeasuredElementHeight } from './contentBrowser/useMeasuredElementHeight'
 import type { MarqueeSelectionChange } from './marqueeSelection'
 import type { RadialMenuRequest } from './RadialFileMenu'
 import type { TaskFeedback } from './TaskBar'
@@ -75,6 +77,12 @@ export default function ContentBrowser({
     () => [...workspace.images, ...workspace.textFiles],
     [workspace.images, workspace.textFiles],
   )
+  const mode = resolveAdaptiveContentMode(
+    workspace.images.length,
+    workspace.textFiles.length,
+    false,
+  )
+  const imageSlot = useMeasuredElementHeight(viewportHeight)
   const fileById = useMemo(() => new Map(allFiles.map((file) => [file.entityId, file])), [allFiles])
 
   useEffect(() => {
@@ -449,7 +457,7 @@ export default function ContentBrowser({
   }
 
   return (
-    <section className="content-browser" aria-label="文件内容">
+    <section className="content-browser" data-content-mode={mode} aria-label="文件内容">
       <div className="content-toolbar">
         <div>
           <strong>{currentPath ?? '当前文件夹'}</strong>
@@ -465,86 +473,100 @@ export default function ContentBrowser({
           </div>
         </details>
       </div>
-      <AspectVirtualGrid
-        items={workspace.images}
-        imageHeight={THUMBNAIL_HEIGHT[density]}
-        viewportHeight={viewportHeight}
-        getKey={imageEntityId}
-        getDimensions={dimensionsForImage}
-        ariaLabel="图片文件"
-        activeKey={activeId ?? undefined}
-        activeDescendant={activeId ? `file-${activeId}` : undefined}
-        onNavigate={navigateToIndex}
-        onKeyDown={handleKeyboard}
-        ariaMultiselectable
-        onMarqueeSelectionChange={updateMarqueeSelection}
-        renderItem={(file, _index, rect: AspectRect) => (
-          <ImageCell
-            file={file}
-            rect={rect}
-            dimensionsKnown={validDimensions(dimensionsForImage(file))}
-            selected={selected.has(file.entityId)}
-            active={activeId === file.entityId}
-            loadThumbnail={loadThumbnail}
-            onNaturalDimensions={rememberNaturalDimensions}
-            markerLabel={markerLabel(file.marker)}
-            onClick={selectFile}
-            onPreview={(selectedFile) => onPreview?.(selectedFile)}
-            onRadialMenuPointerDown={openRadialMenuFromPointer}
-            onRadialMenuContextMenu={openRadialMenuFromContext}
-            organizationDragDisabled={organizationDragDisabled}
-            onFinderDragStart={startFinderDrag}
-            onPointerDown={startPointerOrganization}
-            onPointerMove={movePointerOrganization}
-            onPointerUp={endPointerOrganization}
-            onPointerCancel={cancelPointerOrganization}
-          />
-        )}
-      />
-      <h2>文本文件</h2>
-      <div
-        className="text-file-list"
-        role="listbox"
-        aria-label="文本文件"
-        tabIndex={0}
-        onKeyDown={handleTextListKeyboard}
-      >
-        {workspace.textFiles.map((file) => (
+      <div className="content-browser-body">
+        {workspace.images.length > 0 && (
           <div
-            role="option"
-            id={`file-${file.entityId}`}
-            aria-label={file.name}
-            aria-selected={selected.has(file.entityId)}
-            tabIndex={-1}
-            key={file.entityId}
-            className="text-file-row"
-            onPointerDown={(event) => openRadialMenuFromPointer(file, event)}
-            onContextMenu={(event) => openRadialMenuFromContext(file, event)}
-            onClick={(event) => selectFile(file, event)}
-            onDoubleClick={() => onPreview?.(file)}
+            ref={imageSlot.ref}
+            className="content-browser-image-slot"
+            data-testid="content-image-slot"
           >
-            <div
-              className="file-export-surface"
-              draggable
-              title="拖到 Finder"
-              onDragStart={(event) => startFinderDrag(file, event)}
-            >
-              <span className="text-file-name">{file.name}</span>
-              <span className="text-file-path">{file.relativePath}</span>
-              {markerLabel(file.marker) && (
-                <span className="file-marker">{markerLabel(file.marker)}</span>
+            <AspectVirtualGrid
+              items={workspace.images}
+              imageHeight={THUMBNAIL_HEIGHT[density]}
+              viewportHeight={imageSlot.height}
+              getKey={imageEntityId}
+              getDimensions={dimensionsForImage}
+              ariaLabel="图片文件"
+              activeKey={activeId ?? undefined}
+              activeDescendant={activeId ? `file-${activeId}` : undefined}
+              onNavigate={navigateToIndex}
+              onKeyDown={handleKeyboard}
+              ariaMultiselectable
+              onMarqueeSelectionChange={updateMarqueeSelection}
+              renderItem={(file, _index, rect: AspectRect) => (
+                <ImageCell
+                  file={file}
+                  rect={rect}
+                  dimensionsKnown={validDimensions(dimensionsForImage(file))}
+                  selected={selected.has(file.entityId)}
+                  active={activeId === file.entityId}
+                  loadThumbnail={loadThumbnail}
+                  onNaturalDimensions={rememberNaturalDimensions}
+                  markerLabel={markerLabel(file.marker)}
+                  onClick={selectFile}
+                  onPreview={(selectedFile) => onPreview?.(selectedFile)}
+                  onRadialMenuPointerDown={openRadialMenuFromPointer}
+                  onRadialMenuContextMenu={openRadialMenuFromContext}
+                  organizationDragDisabled={organizationDragDisabled}
+                  onFinderDragStart={startFinderDrag}
+                  onPointerDown={startPointerOrganization}
+                  onPointerMove={movePointerOrganization}
+                  onPointerUp={endPointerOrganization}
+                  onPointerCancel={cancelPointerOrganization}
+                />
               )}
-            </div>
-            <OrganizationDragHandle
-              file={file}
-              disabled={organizationDragDisabled}
-              onPointerDown={startPointerOrganization}
-              onPointerMove={movePointerOrganization}
-              onPointerUp={endPointerOrganization}
-              onPointerCancel={cancelPointerOrganization}
             />
           </div>
-        ))}
+        )}
+        {workspace.textFiles.length > 0 && (
+          <>
+            <h2>文本文件</h2>
+            <div
+              className="text-file-list"
+              role="listbox"
+              aria-label="文本文件"
+              tabIndex={0}
+              onKeyDown={handleTextListKeyboard}
+            >
+              {workspace.textFiles.map((file) => (
+                <div
+                  role="option"
+                  id={`file-${file.entityId}`}
+                  aria-label={file.name}
+                  aria-selected={selected.has(file.entityId)}
+                  tabIndex={-1}
+                  key={file.entityId}
+                  className="text-file-row"
+                  onPointerDown={(event) => openRadialMenuFromPointer(file, event)}
+                  onContextMenu={(event) => openRadialMenuFromContext(file, event)}
+                  onClick={(event) => selectFile(file, event)}
+                  onDoubleClick={() => onPreview?.(file)}
+                >
+                  <div
+                    className="file-export-surface"
+                    draggable
+                    title="拖到 Finder"
+                    onDragStart={(event) => startFinderDrag(file, event)}
+                  >
+                    <span className="text-file-name">{file.name}</span>
+                    <span className="text-file-path">{file.relativePath}</span>
+                    {markerLabel(file.marker) && (
+                      <span className="file-marker">{markerLabel(file.marker)}</span>
+                    )}
+                  </div>
+                  <OrganizationDragHandle
+                    file={file}
+                    disabled={organizationDragDisabled}
+                    onPointerDown={startPointerOrganization}
+                    onPointerMove={movePointerOrganization}
+                    onPointerUp={endPointerOrganization}
+                    onPointerCancel={cancelPointerOrganization}
+                  />
+                </div>
+              ))}
+            </div>
+          </>
+        )}
       </div>
     </section>
   )

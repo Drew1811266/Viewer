@@ -781,6 +781,8 @@ function ViewerWorkspace({ bridge }: { bridge: ViewerBridge }) {
       : (activePreviewFiles.find(
           (candidate) => candidate.entityId === activePreview.file.entityId,
         ) ?? activePreview.file)
+  const contentWorkspaceActive =
+    !state.search.showResults && state.workspace?.workspace === 'content'
 
   return (
     <main
@@ -915,7 +917,10 @@ function ViewerWorkspace({ bridge }: { bridge: ViewerBridge }) {
             </>
           )}
         </aside>
-        <section className="workspace" aria-label="项目内容">
+        <section
+          className={contentWorkspaceActive ? 'workspace workspace--content' : 'workspace'}
+          aria-label="项目内容"
+        >
           {state.search.showResults &&
             state.search.page === null &&
             state.search.status === 'searching' && <p role="status">正在搜索…</p>}

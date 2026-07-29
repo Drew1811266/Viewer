@@ -1,0 +1,51 @@
+.workspace.workspace--content {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.workspace--content > .content-workspace-surface,
+.workspace--content > .compare-workspace {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.workspace--content > .compare-workspace {
+  height: auto;
+}
+
+.content-workspace-surface {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.content-workspace-surface[hidden] {
+  display: none;
+}
+
+.content-browser {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.content-browser > .content-toolbar {
+  flex: 0 0 auto;
+}
+
+.content-browser-body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.content-browser-image-slot {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}

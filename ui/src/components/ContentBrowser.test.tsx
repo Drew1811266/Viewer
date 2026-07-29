@@ -21,31 +21,44 @@ function ContentBrowser({ density = 'standard', ...props }: ContentBrowserTestPr
   return <ContentBrowserComponent {...props} density={density} />
 }
 
-let resizeGrid: (width: number, height?: number) => void
+const resizeCallbacks = new Map<Element, ResizeObserverCallback>()
+const frameCallbacks = new Map<number, FrameRequestCallback>()
+let nextFrameId = 1
 const originalDevicePixelRatio = window.devicePixelRatio
 
 beforeEach(() => {
-  let callback: ResizeObserverCallback | undefined
+  resizeCallbacks.clear()
+  frameCallbacks.clear()
+  nextFrameId = 1
   class Observer {
+    private readonly callback: ResizeObserverCallback
+    private node: Element | null = null
+
     constructor(next: ResizeObserverCallback) {
-      callback = next
+      this.callback = next
     }
 
-    observe() {
-      callback?.(
-        [{ contentRect: { width: 900, height: 520 } } as ResizeObserverEntry],
-        {} as ResizeObserver,
+    observe(node: Element) {
+      this.node = node
+      resizeCallbacks.set(node, this.callback)
+      this.callback(
+        [{ target: node, contentRect: { width: 900, height: 520 } } as ResizeObserverEntry],
+        this as unknown as ResizeObserver,
       )
     }
 
-    disconnect() {}
+    disconnect() {
+      if (this.node !== null) resizeCallbacks.delete(this.node)
+      this.node = null
+    }
   }
   vi.stubGlobal('ResizeObserver', Observer)
-  resizeGrid = (width: number, height = 520) => {
-    act(() => {
-      callback?.([{ contentRect: { width, height } } as ResizeObserverEntry], {} as ResizeObserver)
-    })
-  }
+  vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+    const id = nextFrameId++
+    frameCallbacks.set(id, callback)
+    return id
+  })
+  vi.stubGlobal('cancelAnimationFrame', (id: number) => frameCallbacks.delete(id))
 })
 
 afterEach(() => {
@@ -130,6 +143,31 @@ function selectedLabels(): string[] {
     )
 }
 
+function triggerResize(node: Element, width: number, height: number) {
+  resizeCallbacks.get(node)?.(
+    [{ target: node, contentRect: { width, height } } as ResizeObserverEntry],
+    {} as ResizeObserver,
+  )
+}
+
+function resizeGrid(width: number, height = 520) {
+  act(() => {
+    triggerResize(screen.getByRole('listbox', { name: '图片文件' }), width, height)
+  })
+}
+
+function flushAnimationFrames() {
+  act(() => {
+    while (frameCallbacks.size > 0) {
+      const queued = [...frameCallbacks.values()]
+      frameCallbacks.clear()
+      queued.forEach((callback) => {
+        callback(0)
+      })
+    }
+  })
+}
+
 function imageGrid(): HTMLElement {
   const grid = screen.getByRole('listbox', { name: '图片文件' })
   vi.spyOn(grid, 'getBoundingClientRect').mockReturnValue({
@@ -182,6 +220,35 @@ function finishMarquee(end: [number, number]) {
 }
 
 describe('ContentBrowser', () => {
+  it('removes the entire text surface and measures all available image height in image-only mode', () => {
+    render(<ContentBrowser workspace={ratioWorkspace([{ width: 1, height: 1 }])} />)
+    expect(screen.queryByText('文本文件')).not.toBeInTheDocument()
+    expect(screen.queryByRole('listbox', { name: '文本文件' })).not.toBeInTheDocument()
+
+    const slot = screen.getByTestId('content-image-slot')
+    triggerResize(slot, 900, 688)
+    flushAnimationFrames()
+    expect(screen.getByRole('listbox', { name: '图片文件' })).toHaveStyle({
+      height: '688px',
+    })
+  })
+
+  it('keeps the same image grid node and scroll offset when its measured height changes', () => {
+    render(<ContentBrowser workspace={ratioWorkspace(Array(40).fill({ width: 1, height: 1 }))} />)
+    const slot = screen.getByTestId('content-image-slot')
+    const grid = screen.getByRole('listbox', { name: '图片文件' })
+    grid.scrollTop = 180
+    fireEvent.scroll(grid)
+
+    triggerResize(slot, 900, 420)
+    flushAnimationFrames()
+    triggerResize(slot, 900, 650)
+    flushAnimationFrames()
+
+    expect(screen.getByRole('listbox', { name: '图片文件' })).toBe(grid)
+    expect(grid.scrollTop).toBe(180)
+  })
+
   it.each([
     ['compact', 96],
     ['standard', 132],

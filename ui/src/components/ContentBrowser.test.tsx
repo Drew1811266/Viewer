@@ -220,6 +220,43 @@ function finishMarquee(end: [number, number]) {
 }
 
 describe('ContentBrowser', () => {
+  it('measures a newly mounted image slot after a text-only workspace rerenders to image-only', () => {
+    const rendered = render(<ContentBrowser workspace={workspaceWithTextFiles(0, 1)} />)
+    expect(screen.queryByTestId('content-image-slot')).not.toBeInTheDocument()
+
+    rendered.rerender(<ContentBrowser workspace={ratioWorkspace([{ width: 1, height: 1 }])} />)
+    const slot = screen.getByTestId('content-image-slot')
+    triggerResize(slot, 900, 610)
+    flushAnimationFrames()
+
+    expect(screen.getByRole('listbox', { name: '图片文件' })).toHaveStyle({
+      height: '610px',
+    })
+  })
+
+  it('measures a replacement image slot after an image-only to text-only round trip', () => {
+    const rendered = render(
+      <ContentBrowser workspace={ratioWorkspace([{ width: 1, height: 1 }])} />,
+    )
+    const firstSlot = screen.getByTestId('content-image-slot')
+    triggerResize(firstSlot, 900, 480)
+    expect(frameCallbacks.size).toBe(1)
+
+    rendered.rerender(<ContentBrowser workspace={workspaceWithTextFiles(0, 1)} />)
+    expect(screen.queryByTestId('content-image-slot')).not.toBeInTheDocument()
+    expect(frameCallbacks.size).toBe(0)
+
+    rendered.rerender(<ContentBrowser workspace={ratioWorkspace([{ width: 1, height: 1 }])} />)
+    const secondSlot = screen.getByTestId('content-image-slot')
+    expect(secondSlot).not.toBe(firstSlot)
+    triggerResize(secondSlot, 900, 640)
+    flushAnimationFrames()
+
+    expect(screen.getByRole('listbox', { name: '图片文件' })).toHaveStyle({
+      height: '640px',
+    })
+  })
+
   it('removes the entire text surface and measures all available image height in image-only mode', () => {
     render(<ContentBrowser workspace={ratioWorkspace([{ width: 1, height: 1 }])} />)
     expect(screen.queryByText('文本文件')).not.toBeInTheDocument()

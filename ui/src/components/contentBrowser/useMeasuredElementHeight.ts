@@ -1,4 +1,4 @@
-import { type RefObject, useCallback, useEffect, useRef, useState } from 'react'
+import { type RefObject, useCallback, useLayoutEffect, useRef, useState } from 'react'
 
 export interface UseMeasuredElementHeightResult {
   ref: RefObject<HTMLDivElement | null>
@@ -10,6 +10,8 @@ const validHeight = (height: number): number | null =>
 
 export function useMeasuredElementHeight(fallbackHeight = 520): UseMeasuredElementHeightResult {
   const ref = useRef<HTMLDivElement | null>(null)
+  const observedNode = useRef<HTMLDivElement | null>(null)
+  const observer = useRef<ResizeObserver | null>(null)
   const latest = useRef(validHeight(fallbackHeight) ?? 520)
   const queued = useRef<number | null>(null)
   const pending = useRef<number | null>(null)
@@ -36,9 +38,23 @@ export function useMeasuredElementHeight(fallbackHeight = 520): UseMeasuredEleme
     }
   }, [])
 
-  useEffect(() => {
+  const detach = useCallback(() => {
+    observer.current?.disconnect()
+    observer.current = null
+    observedNode.current = null
+    if (queued.current !== null && typeof cancelAnimationFrame !== 'undefined') {
+      cancelAnimationFrame(queued.current)
+    }
+    queued.current = null
+    pending.current = null
+  }, [])
+
+  useLayoutEffect(() => {
     const node = ref.current
+    if (node === observedNode.current) return
+    detach()
     if (node === null) return
+    observedNode.current = node
     if (typeof ResizeObserver === 'undefined') {
       const bounds = node.getBoundingClientRect()
       const next = validHeight(bounds.height)
@@ -48,22 +64,14 @@ export function useMeasuredElementHeight(fallbackHeight = 520): UseMeasuredEleme
       }
       return
     }
-    const observer = new ResizeObserver((entries) => {
+    observer.current = new ResizeObserver((entries) => {
       const bounds = entries[0]?.contentRect
       if (bounds !== undefined) publish(bounds.height)
     })
-    observer.observe(node)
-    return () => observer.disconnect()
-  }, [publish])
+    observer.current.observe(node)
+  })
 
-  useEffect(
-    () => () => {
-      if (queued.current !== null && typeof cancelAnimationFrame !== 'undefined') {
-        cancelAnimationFrame(queued.current)
-      }
-    },
-    [],
-  )
+  useLayoutEffect(() => detach, [detach])
 
   return { ref, height }
 }

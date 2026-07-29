@@ -313,22 +313,26 @@ file.
 
 ### Radial-menu preview
 
-The preview action is enabled only when the radial selection contains:
+The existing single-file preview rule remains available for every indexed
+non-directory file:
 
-- exactly one previewable text file; or
-- exactly two previewable text files.
+- one supported image opens image preview;
+- one unsupported image opens its image placeholder preview;
+- one previewable text file opens text preview;
+- one generic other file opens its unsupported placeholder preview.
 
-One file opens the current single-file preview. Two files open split preview.
+Exactly two selected files can use the same radial preview action only when
+both are previewable text files. That case opens split preview.
 
 The action is disabled when:
 
 - more than two files are selected;
-- any selected file is not previewable text;
-- the selection mixes a previewable text file with an unsupported other file
-  or image.
+- exactly two selected files include an image or generic other file;
+- exactly two selected files mix previewable text with an unsupported file.
 
-The disabled action exposes the user-facing reason
-`文本预览最多支持 2 个可预览文件`.
+The disabled state explains that preview supports either one file or two
+previewable text files. A selection containing too many text files also
+exposes the approved limit `文本预览最多支持 2 个可预览文件`.
 
 This restriction affects preview only. Users may still select any number of
 other files for select-all and management actions.
@@ -498,12 +502,14 @@ The change is complete when:
    and clearly report `暂不支持预览`.
 4. Unknown and extensionless files appear in `其它文件`.
 5. Markdown and TXT retain their current single-file preview.
-6. Exactly two selected previewable text files can be opened from the radial
+6. Every indexed non-directory file retains its single-file radial preview
+   entry, using a content preview or unsupported placeholder as appropriate.
+7. Exactly two selected previewable text files can be opened from the radial
    menu in an independent left/right split.
-7. More than two selected files or a mixed unsupported selection cannot enter
-   text preview and explains why.
-8. Select-all uses `图片`, `其它文件`, and `全部都选` scopes correctly.
-9. Large collections use bounded rendering and classification does not read
+8. More than two selected files or a mixed two-file selection cannot enter
+   split preview and explains why.
+9. Select-all uses `图片`, `其它文件`, and `全部都选` scopes correctly.
+10. Large collections use bounded rendering and classification does not read
    file contents.
-10. All project quality gates pass without modifying installed or packaged
+11. All project quality gates pass without modifying installed or packaged
     Viewer applications.

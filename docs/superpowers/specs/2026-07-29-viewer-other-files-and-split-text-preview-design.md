@@ -1,7 +1,7 @@
 # Viewer Other Files And Split Text Preview Design
 
 Date: 2026-07-29
-Status: Approved design; written-spec review pending
+Status: Approved
 
 ## Problem
 

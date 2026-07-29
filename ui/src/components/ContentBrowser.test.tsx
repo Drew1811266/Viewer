@@ -7,18 +7,56 @@ import {
   waitFor,
   within,
 } from '@testing-library/react'
-import type { ComponentProps } from 'react'
+import { type ComponentProps, useState } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { BrowserFile, FolderWorkspace, ImageMetadata, ThumbnailDensity } from '../api/types'
 import { defined } from '../defined'
 import ContentBrowserComponent from './ContentBrowser'
 
-type ContentBrowserTestProps = Omit<ComponentProps<typeof ContentBrowserComponent>, 'density'> & {
+type ContentBrowserTestProps = Omit<
+  ComponentProps<typeof ContentBrowserComponent>,
+  'density' | 'textPanelExpanded' | 'onTextPanelExpandedChange'
+> & {
   density?: ThumbnailDensity
+  textPanelExpanded?: boolean
+  onTextPanelExpandedChange?: (expanded: boolean) => void
 }
 
-function ContentBrowser({ density = 'standard', ...props }: ContentBrowserTestProps) {
-  return <ContentBrowserComponent {...props} density={density} />
+function ContentBrowser({
+  density = 'standard',
+  textPanelExpanded = false,
+  onTextPanelExpandedChange = () => undefined,
+  ...props
+}: ContentBrowserTestProps) {
+  return (
+    <ContentBrowserComponent
+      {...props}
+      density={density}
+      textPanelExpanded={textPanelExpanded}
+      onTextPanelExpandedChange={onTextPanelExpandedChange}
+    />
+  )
+}
+
+function ControlledContentBrowser({
+  initiallyExpanded = false,
+  onPreferenceChange = () => undefined,
+  ...props
+}: ContentBrowserTestProps & {
+  initiallyExpanded?: boolean
+  onPreferenceChange?: (expanded: boolean) => void
+}) {
+  const [expanded, setExpanded] = useState(initiallyExpanded)
+  return (
+    <ContentBrowser
+      {...props}
+      textPanelExpanded={expanded}
+      onTextPanelExpandedChange={(next) => {
+        onPreferenceChange(next)
+        setExpanded(next)
+      }}
+    />
+  )
 }
 
 const resizeCallbacks = new Map<Element, ResizeObserverCallback>()
@@ -220,6 +258,139 @@ function finishMarquee(end: [number, number]) {
 }
 
 describe('ContentBrowser', () => {
+  it('defaults mixed content to a collapsed controlled shelf and preserves hidden selection', () => {
+    const changed = vi.fn()
+    render(<ControlledContentBrowser workspace={workspace(2)} onSelectionChange={changed} />)
+    const disclosure = screen.getByRole('button', { name: '文本文件 · 1' })
+    expect(disclosure).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByRole('listbox', { name: '文本文件' })).not.toBeInTheDocument()
+
+    fireEvent.click(disclosure)
+    fireEvent.click(screen.getByRole('option', { name: 'prompt.md' }))
+    fireEvent.click(disclosure)
+
+    expect(screen.queryByRole('listbox', { name: '文本文件' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '文本文件 · 1 · 已选 1' })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    )
+    expect(changed).toHaveBeenLastCalledWith([expect.objectContaining({ entityId: 'text-1' })])
+  })
+
+  it('restores one controlled mixed preference across image-only content', () => {
+    const rendered = render(<ControlledContentBrowser workspace={workspace(1)} />)
+    fireEvent.click(screen.getByRole('button', { name: '文本文件 · 1' }))
+    expect(screen.getByRole('listbox', { name: '文本文件' })).toBeVisible()
+
+    rendered.rerender(
+      <ControlledContentBrowser workspace={ratioWorkspace([{ width: 1, height: 1 }])} />,
+    )
+    expect(screen.queryByText(/文本文件/)).not.toBeInTheDocument()
+
+    rendered.rerender(<ControlledContentBrowser workspace={workspace(1)} />)
+    expect(screen.getByRole('button', { name: '文本文件 · 1' })).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    )
+    expect(screen.getByRole('listbox', { name: '文本文件' })).toBeVisible()
+  })
+
+  it('forces text-only content open without changing the mixed preference', () => {
+    const preferenceChanged = vi.fn()
+    const rendered = render(
+      <ControlledContentBrowser
+        workspace={workspace(1)}
+        initiallyExpanded
+        onPreferenceChange={preferenceChanged}
+      />,
+    )
+    expect(screen.getByRole('button', { name: '文本文件 · 1' })).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    )
+
+    rendered.rerender(
+      <ControlledContentBrowser
+        workspace={workspaceWithTextFiles(0, 2)}
+        initiallyExpanded
+        onPreferenceChange={preferenceChanged}
+      />,
+    )
+    expect(screen.getByRole('heading', { name: '文本文件 · 2' })).toBeVisible()
+    expect(screen.queryByRole('button', { name: /文本文件/ })).not.toBeInTheDocument()
+    expect(screen.getByRole('listbox', { name: '文本文件' })).toBeVisible()
+    expect(preferenceChanged).not.toHaveBeenCalled()
+
+    rendered.rerender(
+      <ControlledContentBrowser
+        workspace={workspace(1)}
+        initiallyExpanded
+        onPreferenceChange={preferenceChanged}
+      />,
+    )
+    expect(screen.getByRole('button', { name: '文本文件 · 1' })).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    )
+  })
+
+  it('switches cleanly when the last file of either content type is removed', () => {
+    const rendered = render(<ContentBrowser workspace={workspace(1)} />)
+    expect(screen.getByRole('button', { name: '文本文件 · 1' })).toBeInTheDocument()
+
+    rendered.rerender(<ContentBrowser workspace={ratioWorkspace([{ width: 1, height: 1 }])} />)
+    expect(screen.queryByText(/文本文件/)).not.toBeInTheDocument()
+
+    rendered.rerender(<ContentBrowser workspace={workspace(1)} />)
+    rendered.rerender(<ContentBrowser workspace={workspaceWithTextFiles(0, 1)} />)
+    expect(screen.queryByRole('listbox', { name: '图片文件' })).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: '文本文件 · 1' })).toBeVisible()
+    expect(screen.getByRole('listbox', { name: '文本文件' })).toBeVisible()
+  })
+
+  it('removes hidden text active-descendant ownership when the shelf collapses', () => {
+    render(<ControlledContentBrowser workspace={workspace(2)} initiallyExpanded />)
+    fireEvent.click(screen.getByRole('option', { name: 'prompt.md' }))
+    expect(screen.getByRole('listbox', { name: '文本文件' })).toHaveAttribute(
+      'aria-activedescendant',
+      'file-text-1',
+    )
+    expect(screen.getByRole('listbox', { name: '图片文件' })).not.toHaveAttribute(
+      'aria-activedescendant',
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /文本文件 · 1/ }))
+
+    expect(document.querySelectorAll('[aria-activedescendant]')).toHaveLength(0)
+  })
+
+  it('keeps the image grid node and scroll offset across shelf toggles', () => {
+    render(<ControlledContentBrowser workspace={workspace(40)} />)
+    const grid = screen.getByRole('listbox', { name: '图片文件' })
+    grid.scrollTop = 180
+    fireEvent.scroll(grid)
+
+    fireEvent.click(screen.getByRole('button', { name: '文本文件 · 1' }))
+    fireEvent.click(screen.getByRole('button', { name: '文本文件 · 1' }))
+
+    expect(screen.getByRole('listbox', { name: '图片文件' })).toBe(grid)
+    expect(grid.scrollTop).toBe(180)
+  })
+
+  it('does not request cached or pending thumbnail keys again after a shelf toggle', async () => {
+    const requestThumbnail = vi.fn(() => new Promise<string>(() => undefined))
+    render(
+      <ControlledContentBrowser workspace={workspace(3)} requestThumbnail={requestThumbnail} />,
+    )
+    await waitFor(() => expect(requestThumbnail).toHaveBeenCalled())
+    const requestCount = requestThumbnail.mock.calls.length
+
+    fireEvent.click(screen.getByRole('button', { name: '文本文件 · 1' }))
+    fireEvent.click(screen.getByRole('button', { name: '文本文件 · 1' }))
+
+    await waitFor(() => expect(requestThumbnail).toHaveBeenCalledTimes(requestCount))
+  })
+
   it('measures a newly mounted image slot after a text-only workspace rerenders to image-only', () => {
     const rendered = render(<ContentBrowser workspace={workspaceWithTextFiles(0, 1)} />)
     expect(screen.queryByTestId('content-image-slot')).not.toBeInTheDocument()
@@ -675,15 +846,20 @@ describe('ContentBrowser', () => {
 
   it('restores text-list arrows, active ID, and Space preview with legacy all-file offsets', () => {
     const preview = vi.fn()
-    render(<ContentBrowser workspace={workspaceWithTextFiles()} onPreview={preview} />)
+    render(
+      <ContentBrowser workspace={workspaceWithTextFiles()} textPanelExpanded onPreview={preview} />,
+    )
     const textList = screen.getByRole('listbox', { name: '文本文件' })
 
     fireEvent.click(screen.getByRole('option', { name: 'note-2.txt' }))
     fireEvent.keyDown(textList, { key: 'ArrowRight' })
     expect(selectedLabels()).toEqual(['note-3.txt'])
-    expect(screen.getByRole('listbox', { name: '图片文件' })).toHaveAttribute(
+    expect(screen.getByRole('listbox', { name: '文本文件' })).toHaveAttribute(
       'aria-activedescendant',
       'file-text-3',
+    )
+    expect(screen.getByRole('listbox', { name: '图片文件' })).not.toHaveAttribute(
+      'aria-activedescendant',
     )
     fireEvent.keyDown(textList, { key: ' ' })
     expect(preview).toHaveBeenCalledWith(expect.objectContaining({ entityId: 'text-3' }))
@@ -697,7 +873,7 @@ describe('ContentBrowser', () => {
   })
 
   it('extends text-list Shift arrows from the source anchor with legacy all-file offsets', () => {
-    render(<ContentBrowser workspace={workspaceWithTextFiles()} />)
+    render(<ContentBrowser workspace={workspaceWithTextFiles()} textPanelExpanded />)
     const textList = screen.getByRole('listbox', { name: '文本文件' })
 
     fireEvent.click(screen.getByRole('option', { name: 'note-1.txt' }))
@@ -745,7 +921,7 @@ describe('ContentBrowser', () => {
   })
 
   it('selects every file in the current folder with Command-A', () => {
-    render(<ContentBrowser workspace={workspace(3)} />)
+    render(<ContentBrowser workspace={workspace(3)} textPanelExpanded />)
 
     const grid = screen.getByRole('listbox', { name: '图片文件' })
     fireEvent.keyDown(grid, { key: 'a', metaKey: true })
@@ -756,7 +932,7 @@ describe('ContentBrowser', () => {
   })
 
   it('offers an explicit select-all action for mouse and assistive users', () => {
-    render(<ContentBrowser workspace={workspace(3)} />)
+    render(<ContentBrowser workspace={workspace(3)} textPanelExpanded />)
 
     fireEvent.click(screen.getByRole('button', { name: '全选当前文件夹' }))
 
@@ -845,9 +1021,9 @@ describe('ContentBrowser', () => {
   })
 
   it('keeps Markdown and TXT in an independent labelled list', () => {
-    render(<ContentBrowser workspace={workspace()} />)
+    render(<ContentBrowser workspace={workspace()} textPanelExpanded />)
 
-    expect(screen.getByText('文本文件')).toBeVisible()
+    expect(screen.getByRole('button', { name: '文本文件 · 1' })).toBeVisible()
     expect(screen.getByRole('option', { name: 'prompt.md' })).toHaveAttribute('tabindex', '-1')
     expect(screen.getByRole('option', { name: '1.jpg' })).not.toHaveAttribute('tabindex')
   })
@@ -888,7 +1064,9 @@ describe('ContentBrowser', () => {
   ])('splits the %s body export surface from its pointer handle', (_kind, name) => {
     const exportFiles = vi.fn()
     const setData = vi.fn()
-    render(<ContentBrowser workspace={workspace(4)} onFinderDragStart={exportFiles} />)
+    render(
+      <ContentBrowser workspace={workspace(4)} textPanelExpanded onFinderDragStart={exportFiles} />,
+    )
     const option = screen.getByRole('option', { name })
     const exportSurface = defined(
       option.querySelector<HTMLElement>('.file-export-surface'),
@@ -924,6 +1102,7 @@ describe('ContentBrowser', () => {
     render(
       <ContentBrowser
         workspace={workspace(2)}
+        textPanelExpanded
         onFinderDragStart={exportFiles}
         onOrganizationPointerInput={inputs}
       />,
@@ -1135,7 +1314,9 @@ describe('ContentBrowser', () => {
 
   it('snapshots a text-row right-click request after replacing an unrelated selection', () => {
     const request = vi.fn()
-    render(<ContentBrowser workspace={workspace(3)} onRadialMenuRequest={request} />)
+    render(
+      <ContentBrowser workspace={workspace(3)} textPanelExpanded onRadialMenuRequest={request} />,
+    )
     const textList = screen.getByRole('listbox', { name: '文本文件' })
     fireEvent.click(screen.getByRole('option', { name: '1.jpg' }))
     fireEvent.click(screen.getByRole('option', { name: '2.jpg' }), { metaKey: true })
@@ -1159,7 +1340,9 @@ describe('ContentBrowser', () => {
 
   it('falls back to click-mode radial requests for image and text context-menu events', () => {
     const request = vi.fn()
-    render(<ContentBrowser workspace={workspace(1)} onRadialMenuRequest={request} />)
+    render(
+      <ContentBrowser workspace={workspace(1)} textPanelExpanded onRadialMenuRequest={request} />,
+    )
 
     for (const [name, entityId, listName] of [
       ['1.jpg', 'image-1', '图片文件'],
@@ -1266,7 +1449,7 @@ describe('ContentBrowser', () => {
       ...defined(data.images[1], 'Expected second image fixture'),
       marker: { reviewState: 'keep', favorite: true },
     }
-    render(<ContentBrowser workspace={data} currentPath="项目根目录" />)
+    render(<ContentBrowser workspace={data} textPanelExpanded currentPath="项目根目录" />)
     expect(screen.queryByText('未标记')).not.toBeInTheDocument()
     expect(screen.getByText('保留 · 收藏')).toBeVisible()
     expect(screen.getByText('项目根目录')).toBeVisible()

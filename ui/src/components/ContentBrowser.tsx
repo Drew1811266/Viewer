@@ -8,7 +8,7 @@ import AspectVirtualGrid from './AspectVirtualGrid'
 import { resolveAdaptiveContentMode } from './contentBrowser/adaptiveTextPanelModel'
 import { rangeSelection, toggleSelection } from './contentBrowser/contentSelection'
 import { ImageCell } from './contentBrowser/ImageCell'
-import { OrganizationDragHandle } from './contentBrowser/OrganizationDragHandle'
+import TextFilePanel from './contentBrowser/TextFilePanel'
 import { useMeasuredElementHeight } from './contentBrowser/useMeasuredElementHeight'
 import type { MarqueeSelectionChange } from './marqueeSelection'
 import type { RadialMenuRequest } from './RadialFileMenu'
@@ -31,6 +31,8 @@ interface ContentBrowserProps {
   repairSelectionId?: string | null
   onRepairSelectionApplied?: () => void
   onRadialMenuRequest?: (request: RadialMenuRequest) => void
+  textPanelExpanded: boolean
+  onTextPanelExpandedChange(expanded: boolean): void
 }
 
 interface ThumbnailWork {
@@ -54,6 +56,8 @@ export default function ContentBrowser({
   repairSelectionId = null,
   onRepairSelectionApplied,
   onRadialMenuRequest,
+  textPanelExpanded,
+  onTextPanelExpandedChange,
 }: ContentBrowserProps) {
   const [selected, setSelected] = useState<Set<string>>(() => new Set())
   const [activeId, setActiveId] = useState<string | null>(null)
@@ -80,10 +84,16 @@ export default function ContentBrowser({
   const mode = resolveAdaptiveContentMode(
     workspace.images.length,
     workspace.textFiles.length,
-    false,
+    textPanelExpanded,
   )
   const imageSlot = useMeasuredElementHeight(viewportHeight)
   const fileById = useMemo(() => new Map(allFiles.map((file) => [file.entityId, file])), [allFiles])
+  const activeImageId = workspace.images.some(({ entityId }) => entityId === activeId)
+    ? activeId
+    : null
+  const activeTextId = workspace.textFiles.some(({ entityId }) => entityId === activeId)
+    ? activeId
+    : null
 
   useEffect(() => {
     const ids = new Set(allFiles.map((file) => file.entityId))
@@ -487,8 +497,8 @@ export default function ContentBrowser({
               getKey={imageEntityId}
               getDimensions={dimensionsForImage}
               ariaLabel="图片文件"
-              activeKey={activeId ?? undefined}
-              activeDescendant={activeId ? `file-${activeId}` : undefined}
+              activeKey={activeImageId ?? undefined}
+              activeDescendant={activeImageId ? `file-${activeImageId}` : undefined}
               onNavigate={navigateToIndex}
               onKeyDown={handleKeyboard}
               ariaMultiselectable
@@ -518,54 +528,25 @@ export default function ContentBrowser({
             />
           </div>
         )}
-        {workspace.textFiles.length > 0 && (
-          <>
-            <h2>文本文件</h2>
-            <div
-              className="text-file-list"
-              role="listbox"
-              aria-label="文本文件"
-              tabIndex={0}
-              onKeyDown={handleTextListKeyboard}
-            >
-              {workspace.textFiles.map((file) => (
-                <div
-                  role="option"
-                  id={`file-${file.entityId}`}
-                  aria-label={file.name}
-                  aria-selected={selected.has(file.entityId)}
-                  tabIndex={-1}
-                  key={file.entityId}
-                  className="text-file-row"
-                  onPointerDown={(event) => openRadialMenuFromPointer(file, event)}
-                  onContextMenu={(event) => openRadialMenuFromContext(file, event)}
-                  onClick={(event) => selectFile(file, event)}
-                  onDoubleClick={() => onPreview?.(file)}
-                >
-                  <div
-                    className="file-export-surface"
-                    draggable
-                    title="拖到 Finder"
-                    onDragStart={(event) => startFinderDrag(file, event)}
-                  >
-                    <span className="text-file-name">{file.name}</span>
-                    <span className="text-file-path">{file.relativePath}</span>
-                    {markerLabel(file.marker) && (
-                      <span className="file-marker">{markerLabel(file.marker)}</span>
-                    )}
-                  </div>
-                  <OrganizationDragHandle
-                    file={file}
-                    disabled={organizationDragDisabled}
-                    onPointerDown={startPointerOrganization}
-                    onPointerMove={movePointerOrganization}
-                    onPointerUp={endPointerOrganization}
-                    onPointerCancel={cancelPointerOrganization}
-                  />
-                </div>
-              ))}
-            </div>
-          </>
+        {mode !== 'image_only' && mode !== 'empty' && (
+          <TextFilePanel
+            mode={mode}
+            files={workspace.textFiles}
+            selectedIds={selected}
+            activeId={activeTextId}
+            organizationDragDisabled={organizationDragDisabled}
+            onExpandedChange={onTextPanelExpandedChange}
+            onListKeyDown={handleTextListKeyboard}
+            onSelect={selectFile}
+            onPreview={(file) => onPreview?.(file)}
+            onRadialMenuPointerDown={(file, event) => openRadialMenuFromPointer(file, event)}
+            onRadialMenuContextMenu={(file, event) => openRadialMenuFromContext(file, event)}
+            onFinderDragStart={startFinderDrag}
+            onOrganizationPointerDown={startPointerOrganization}
+            onOrganizationPointerMove={movePointerOrganization}
+            onOrganizationPointerUp={endPointerOrganization}
+            onOrganizationPointerCancel={cancelPointerOrganization}
+          />
         )}
       </div>
     </section>

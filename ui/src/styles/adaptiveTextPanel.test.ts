@@ -60,6 +60,59 @@ describe('adaptive text panel layout contracts', () => {
       overflow: 'hidden',
     })
   })
+
+  it('strictly caps the expanded mixed shelf and lets text-only fill the body', () => {
+    const rules = parseRules(adaptiveTextPanelCss)
+
+    expect(declarationsFor(rules, '.text-file-panel')).toMatchObject({
+      'box-sizing': 'border-box',
+      overflow: 'hidden',
+    })
+    expect(
+      declarationsFor(
+        rules,
+        '.text-file-panel--mixed-collapsed,\n.text-file-panel--mixed-expanded',
+      ),
+    ).toEqual({
+      'border-top': '1px solid #edf0f3',
+      'padding-top': '8px',
+    })
+    expect(declarationsFor(rules, '.text-file-panel--mixed-expanded')).toEqual({
+      flex: '0 1 auto',
+      'max-height': '20%',
+    })
+    expect(declarationsFor(rules, '.text-file-panel--text_only')).toEqual({
+      flex: '1 1 auto',
+      'max-height': 'none',
+    })
+  })
+
+  it('keeps overflow inside the mounted text list', () => {
+    const rules = parseRules(adaptiveTextPanelCss)
+
+    expect(declarationsFor(rules, '.text-file-panel > .text-file-list')).toEqual({
+      flex: '1 1 auto',
+      'min-height': '0',
+      overflow: 'auto',
+      'overscroll-behavior': 'contain',
+    })
+  })
+
+  it('renders the disclosure as a light Viewer button with visible keyboard focus', () => {
+    const rules = parseRules(adaptiveTextPanelCss)
+
+    expect(declarationsFor(rules, '.text-file-disclosure')).toMatchObject({
+      background: '#fff',
+      border: '1px solid #c8ced6',
+      'border-radius': '6px',
+      'min-height': '34px',
+      width: '100%',
+    })
+    expect(declarationsFor(rules, '.text-file-disclosure:focus-visible')).toMatchObject({
+      outline: '2px solid #2477d4',
+      'outline-offset': '2px',
+    })
+  })
 })
 
 interface CssRule {

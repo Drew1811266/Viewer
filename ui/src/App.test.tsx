@@ -137,7 +137,9 @@ describe('App-local session coordinator contracts', () => {
     expectTypeOf(useTextPanelPreference).parameter(0).toEqualTypeOf<string>()
     expectTypeOf<ReturnType<typeof useAppShellState>>().toMatchTypeOf<AppShellState>()
     expectTypeOf<ReturnType<typeof usePreviewSession>>().toMatchTypeOf<PreviewSessionState>()
-    expectTypeOf<ReturnType<typeof useTextPanelPreference>>().toMatchTypeOf<TextPanelPreferenceState>()
+    expectTypeOf<
+      ReturnType<typeof useTextPanelPreference>
+    >().toMatchTypeOf<TextPanelPreferenceState>()
     expectTypeOf<keyof ReturnType<typeof useAppShellState>>().toEqualTypeOf<keyof AppShellState>()
     expectTypeOf<keyof ReturnType<typeof usePreviewSession>>().toEqualTypeOf<
       keyof PreviewSessionState
@@ -224,6 +226,35 @@ describe('Viewer empty state', () => {
     closeProjectFromMenu()
     await waitFor(() => expect(viewer.closeProject).toHaveBeenCalled())
     expect(screen.queryByRole('menu', { name: '文件操作' })).not.toBeInTheDocument()
+  })
+
+  it('keeps the mixed text shelf preference while navigating inside one project session', async () => {
+    const viewer = bridge()
+    vi.mocked(viewer.folderTree).mockResolvedValue([
+      {
+        entityId: 'folder-b',
+        parentEntityId: null,
+        relativePath: 'folder-b',
+        name: 'folder-b',
+        marker: { reviewState: null, favorite: false },
+      },
+    ])
+    vi.mocked(viewer.queryFolder).mockResolvedValue(mixedContentWorkspace())
+    render(<App bridge={viewer} />)
+
+    fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
+    const disclosure = await screen.findByRole('button', { name: /文本文件 · 1/ })
+    expect(disclosure).toHaveAttribute('aria-expanded', 'false')
+    fireEvent.click(disclosure)
+    expect(disclosure).toHaveAttribute('aria-expanded', 'true')
+
+    fireEvent.click(await screen.findByRole('treeitem', { name: 'folder-b' }))
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /文本文件 · 1/ })).toHaveAttribute(
+        'aria-expanded',
+        'true',
+      ),
+    )
   })
 
   it('exposes read-only status in the keyboard-operable project menu and keeps the banner', async () => {
@@ -609,6 +640,7 @@ describe('Viewer empty state', () => {
     expect(screen.getByRole('region', { name: '图片对比' })).toBeVisible()
     expect(screen.getByRole('status', { name: '只读模式' })).toBeVisible()
     fireEvent.click(screen.getByRole('button', { name: '关闭对比' }))
+    fireEvent.click(screen.getByRole('button', { name: '文本文件 · 1' }))
     fireEvent.doubleClick(screen.getByRole('option', { name: 'notes.txt' }))
     expect(await screen.findByText('readonly product notes')).toBeVisible()
   })
@@ -1976,6 +2008,25 @@ function contentWorkspace() {
       },
     ],
     textFiles: [],
+  }
+}
+
+function mixedContentWorkspace() {
+  return {
+    ...contentWorkspace(),
+    textFiles: [
+      {
+        entityId: 'text-1',
+        relativePath: 'id/notes.txt',
+        name: 'notes.txt',
+        kind: 'text' as const,
+        size: 20,
+        modifiedNs: '2',
+        marker: { reviewState: null, favorite: false },
+        imageMetadata: null,
+        imageUrl: null,
+      },
+    ],
   }
 }
 

@@ -12,6 +12,26 @@ This document inventories the public Rust surface consumed by adapters, infrastr
 
 `ScanBatch` and the standalone atomic `GenerationGuard` were removed before this baseline: neither had a cross-crate caller, `ScanBatch` duplicated `ScanEvent`, and ADR 0003 selected the session-aware `TaskCoordinator` as the publication authority. `TaskId` remains deliberate even before its first production caller because the frozen IPC error/progress model requires stable task correlation.
 
+## Folder workspace IPC and visible format policy
+
+The content-workspace IPC contract keeps previewable images separate from every other visible regular file:
+
+```json
+{
+  "workspace": "content",
+  "images": [
+    { "kind": "jpeg" },
+    { "kind": "unsupported_image" }
+  ],
+  "otherFiles": [
+    { "kind": "markdown" },
+    { "kind": "other" }
+  ]
+}
+```
+
+JPEG/JPG and PNG files have image preview. TXT, Markdown, and MD files have bounded text preview. Formats in the approved unsupported-image registry appear in the image collection with placeholders. Formats in the approved video registry are ignored. All other visible regular files appear under `其它文件`.
+
 ## `viewer-domain`
 
 All entries below are stable for Viewer 0.1 and contain no I/O or platform implementation. Public fields on data records and enum variants are part of the same contract as the named type.

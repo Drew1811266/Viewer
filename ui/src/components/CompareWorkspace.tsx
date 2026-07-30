@@ -1,4 +1,4 @@
-import type { KeyboardEvent } from 'react'
+import type { KeyboardEvent, ReactNode } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type {
   BrowserFile,
@@ -279,6 +279,60 @@ export default function CompareWorkspace({
     )
   }
 
+  const toolbarLeading: ReactNode = <span>{model.entityIds.length} 张图片</span>
+  const toolbarTransforms: ReactNode = (
+    <>
+      <button type="button" disabled={transformsDisabled} onClick={fitView}>
+        适应窗口
+      </button>
+      <button type="button" disabled={transformsDisabled} onClick={actualSize}>
+        100%
+      </button>
+      <button
+        type="button"
+        aria-label="缩小当前对比"
+        disabled={transformsDisabled}
+        onClick={() => update({ type: 'zoom', entityId: activeEntityId, factor: 0.8 })}
+      >
+        −
+      </button>
+      <button
+        type="button"
+        aria-label="放大当前对比"
+        disabled={transformsDisabled}
+        onClick={() => update({ type: 'zoom', entityId: activeEntityId, factor: 1.25 })}
+      >
+        +
+      </button>
+      <button
+        type="button"
+        aria-label="顺时针旋转当前图片"
+        disabled={transformsDisabled}
+        onClick={() => update({ type: 'rotate_clockwise', entityId: activeEntityId })}
+      >
+        ↻
+      </button>
+      <button
+        type="button"
+        aria-label={model.mode === 'synchronized' ? '切换为独立变换' : '切换为同步变换'}
+        aria-pressed={model.mode === 'synchronized'}
+        onClick={() =>
+          update({
+            type: 'mode_changed',
+            mode: model.mode === 'synchronized' ? 'independent' : 'synchronized',
+          })
+        }
+      >
+        {model.mode === 'synchronized' ? '同步' : '独立'}
+      </button>
+    </>
+  )
+  const toolbarActions: ReactNode = (
+    <button type="button" aria-label="完成对比" onClick={() => onEntityIdsChange([])}>
+      完成
+    </button>
+  )
+
   return (
     <section
       ref={workspaceRef}
@@ -288,54 +342,10 @@ export default function CompareWorkspace({
       tabIndex={0}
       onKeyDown={keyboard}
     >
-      <div className="compare-toolbar" aria-label="对比工具">
-        <span>{model.entityIds.length} 张图片</span>
-        <button type="button" disabled={transformsDisabled} onClick={fitView}>
-          适应窗口
-        </button>
-        <button type="button" disabled={transformsDisabled} onClick={actualSize}>
-          100%
-        </button>
-        <button
-          type="button"
-          aria-label="缩小当前对比"
-          disabled={transformsDisabled}
-          onClick={() => update({ type: 'zoom', entityId: activeEntityId, factor: 0.8 })}
-        >
-          −
-        </button>
-        <button
-          type="button"
-          aria-label="放大当前对比"
-          disabled={transformsDisabled}
-          onClick={() => update({ type: 'zoom', entityId: activeEntityId, factor: 1.25 })}
-        >
-          +
-        </button>
-        <button
-          type="button"
-          aria-label="顺时针旋转当前图片"
-          disabled={transformsDisabled}
-          onClick={() => update({ type: 'rotate_clockwise', entityId: activeEntityId })}
-        >
-          ↻
-        </button>
-        <button
-          type="button"
-          aria-label={model.mode === 'synchronized' ? '切换为独立变换' : '切换为同步变换'}
-          aria-pressed={model.mode === 'synchronized'}
-          onClick={() =>
-            update({
-              type: 'mode_changed',
-              mode: model.mode === 'synchronized' ? 'independent' : 'synchronized',
-            })
-          }
-        >
-          {model.mode === 'synchronized' ? '同步' : '独立'}
-        </button>
-        <button type="button" aria-label="关闭对比" onClick={() => onEntityIdsChange([])}>
-          完成
-        </button>
+      <div className="compare-toolbar" role="toolbar" aria-label="对比工具">
+        <div className="compare-toolbar-leading">{toolbarLeading}</div>
+        <div className="compare-toolbar-transform">{toolbarTransforms}</div>
+        <div className="compare-toolbar-actions">{toolbarActions}</div>
       </div>
       <div ref={containerRef} className="compare-layout-region">
         {plan.scrollAxis === 'none' ? (

@@ -266,8 +266,10 @@ export default function ComparePane({
   return (
     <article
       className={`compare-pane${active ? ' is-active' : ''}`}
+      role="group"
       aria-label={`对比 ${file.name}`}
       tabIndex={0}
+      data-active={active}
       data-scale={transform.scale}
       data-rotation={transform.rotation}
       onFocus={onActivate}

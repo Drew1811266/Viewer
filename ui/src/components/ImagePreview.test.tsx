@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import type { BrowserFile, ImageRepresentationRequest } from '../api/types'
 import { defined } from '../defined'
@@ -19,6 +19,31 @@ function image(index: number): BrowserFile {
 }
 
 describe('ImagePreview', () => {
+  it('groups image controls in the toolbar and floats navigation over the stage', () => {
+    const front = {
+      ...image(1),
+      relativePath: 'id-1/front.jpg',
+      name: 'front.jpg',
+    }
+
+    render(
+      <ImagePreview
+        file={front}
+        files={[front]}
+        requestImage={vi.fn(() => new Promise<never>(() => undefined))}
+        onNavigate={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    )
+
+    const dialog = screen.getByRole('dialog', { name: /front\.jpg/ })
+    expect(within(dialog).getByRole('toolbar', { name: '图片显示控制' })).toBeVisible()
+    expect(within(dialog).getByRole('navigation', { name: '图片导航' })).toHaveClass(
+      'preview-navigation-float',
+    )
+    expect(within(dialog).queryByText('front.jpg')?.closest('footer')).toBeNull()
+  })
+
   it('renders an unsupported current image without issuing image requests', () => {
     const unsupported = {
       ...image(1),

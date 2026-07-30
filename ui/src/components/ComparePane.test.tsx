@@ -33,7 +33,7 @@ describe('ComparePane', () => {
     act(() => resize(800, 600))
 
     expect(screen.getByLabelText('front.cr2 .CR2 暂不支持预览')).toBeVisible()
-    expect(screen.getByRole('article', { name: '对比 front.cr2' })).toBeVisible()
+    expect(screen.getByRole('group', { name: '对比 front.cr2' })).toBeVisible()
     expect(screen.getByRole('button', { name: '移除 front.cr2' })).toBeEnabled()
     expect(requestImage).not.toHaveBeenCalled()
   })

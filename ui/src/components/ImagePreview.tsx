@@ -1,4 +1,4 @@
-import type { KeyboardEvent, PointerEvent } from 'react'
+import type { KeyboardEvent, PointerEvent, ReactNode } from 'react'
 import { useEffect, useRef, useState } from 'react'
 import type { BrowserFile, ImageRepresentation, ImageRepresentationRequest } from '../api/types'
 import { isPreviewableImage } from '../fileKinds'
@@ -196,96 +196,118 @@ export default function ImagePreview({
     })
   }
 
+  const previewIdentity: ReactNode = <strong>{file.name}</strong>
+  const displayControls: ReactNode = (
+    <>
+      <button type="button" disabled={transformsDisabled} onClick={() => setMode('fit')}>
+        适应窗口
+      </button>
+      <button
+        type="button"
+        aria-label="按 100% 显示"
+        disabled={transformsDisabled}
+        onClick={() => setMode('original')}
+      >
+        100%
+      </button>
+      <button
+        type="button"
+        aria-label="缩小"
+        disabled={transformsDisabled}
+        onClick={() => zoomBy(0.8)}
+      >
+        −
+      </button>
+      <span>{Math.round(scale * 100)}%</span>
+      <button
+        type="button"
+        aria-label="放大"
+        disabled={transformsDisabled}
+        onClick={() => zoomBy(1.25)}
+      >
+        +
+      </button>
+    </>
+  )
+  const previewActions: ReactNode = (
+    <>
+      <button
+        type="button"
+        aria-label="顺时针旋转"
+        disabled={transformsDisabled}
+        onClick={() => setRotation((value) => (value + 90) % 360)}
+      >
+        ↻
+      </button>
+      <button type="button" aria-label="关闭预览" onClick={onClose}>
+        ×
+      </button>
+    </>
+  )
+  const previewStage: ReactNode = (
+    <div
+      className="image-preview-stage"
+      onPointerDown={pointerDown}
+      onPointerMove={pointerMove}
+      onPointerUp={() => {
+        dragStart.current = null
+      }}
+    >
+      {unavailable ? (
+        <UnsupportedFileState file={file} unavailable />
+      ) : !isPreviewableImage(file) ? (
+        <UnsupportedFileState file={file} />
+      ) : representation ? (
+        <img
+          src={representation.url}
+          alt={file.name}
+          data-mode={mode}
+          style={{ transform: `${translated}rotate(${rotation}deg) scale(${scale})` }}
+        />
+      ) : (
+        <p>正在加载图片…</p>
+      )}
+    </div>
+  )
+  const previewNavigation: ReactNode = (
+    <>
+      <button type="button" disabled={currentIndex <= 0} onClick={() => navigate(-1)}>
+        上一张
+      </button>
+      <span>
+        {currentIndex + 1} / {files.length}
+      </span>
+      <button
+        type="button"
+        disabled={currentIndex < 0 || currentIndex >= files.length - 1}
+        onClick={() => navigate(1)}
+      >
+        下一张
+      </button>
+    </>
+  )
+
   return (
     <section
       ref={dialog}
       className="preview-overlay image-preview"
       role="dialog"
-      aria-label="图片预览"
+      aria-label={`图片预览 ${file.name}`}
       tabIndex={-1}
       onKeyDown={keyboard}
     >
       <header className="preview-toolbar">
-        <strong>{file.name}</strong>
-        <button type="button" disabled={transformsDisabled} onClick={() => setMode('fit')}>
-          适应窗口
-        </button>
-        <button
-          type="button"
-          aria-label="按 100% 显示"
-          disabled={transformsDisabled}
-          onClick={() => setMode('original')}
-        >
-          100%
-        </button>
-        <button
-          type="button"
-          aria-label="缩小"
-          disabled={transformsDisabled}
-          onClick={() => zoomBy(0.8)}
-        >
-          −
-        </button>
-        <span>{Math.round(scale * 100)}%</span>
-        <button
-          type="button"
-          aria-label="放大"
-          disabled={transformsDisabled}
-          onClick={() => zoomBy(1.25)}
-        >
-          +
-        </button>
-        <button
-          type="button"
-          aria-label="顺时针旋转"
-          disabled={transformsDisabled}
-          onClick={() => setRotation((value) => (value + 90) % 360)}
-        >
-          ↻
-        </button>
-        <button type="button" aria-label="关闭预览" onClick={onClose}>
-          ×
-        </button>
+        <div className="preview-toolbar-leading">{previewIdentity}</div>
+        <div className="preview-toolbar-transform" role="toolbar" aria-label="图片显示控制">
+          {displayControls}
+        </div>
+        <div className="preview-toolbar-actions">{previewActions}</div>
       </header>
       {error && <p role="alert">{error}</p>}
-      <div
-        className="image-preview-stage"
-        onPointerDown={pointerDown}
-        onPointerMove={pointerMove}
-        onPointerUp={() => {
-          dragStart.current = null
-        }}
-      >
-        {unavailable ? (
-          <UnsupportedFileState file={file} unavailable />
-        ) : !isPreviewableImage(file) ? (
-          <UnsupportedFileState file={file} />
-        ) : representation ? (
-          <img
-            src={representation.url}
-            alt={file.name}
-            data-mode={mode}
-            style={{ transform: `${translated}rotate(${rotation}deg) scale(${scale})` }}
-          />
-        ) : (
-          <p>正在加载图片…</p>
-        )}
-      </div>
-      <footer>
-        <button type="button" disabled={currentIndex <= 0} onClick={() => navigate(-1)}>
-          上一张
-        </button>
-        <span>
-          {currentIndex + 1} / {files.length}
-        </span>
-        <button
-          type="button"
-          disabled={currentIndex < 0 || currentIndex >= files.length - 1}
-          onClick={() => navigate(1)}
-        >
-          下一张
-        </button>
-      </footer>
+      {previewStage}
+      <nav className="preview-navigation-float" aria-label="图片导航">
+        {previewNavigation}
+      </nav>
     </section>
   )
 }

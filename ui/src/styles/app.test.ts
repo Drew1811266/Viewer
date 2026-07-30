@@ -190,11 +190,11 @@ describe('workspace style contracts', () => {
     const declaration = (selector: string, property: string) =>
       winningDeclaration(rules, new Set([selector]), property)
 
-    expect(declaration('.preview-overlay', 'background')).toBe('var(--preview-surface)')
-    expect(declaration('.preview-overlay', 'color')).toBe('var(--preview-text)')
-    expect(declaration('.preview-toolbar', 'background')).toBe('var(--preview-chrome)')
-    expect(declaration('.preview-toolbar', 'border-bottom')).toBe('1px solid var(--preview-border)')
-    expect(declaration('.preview-toolbar', 'color')).toBe('var(--preview-text)')
+    expect(declaration('.preview-overlay', 'background')).toBe('#f0f1ef')
+    expect(declaration('.preview-overlay', 'color')).toBe('var(--viewer-text)')
+    expect(declaration('.preview-toolbar', 'background')).toBe('var(--viewer-surface)')
+    expect(declaration('.preview-toolbar', 'border-bottom')).toBe('1px solid var(--viewer-border)')
+    expect(declaration('.preview-toolbar', 'color')).toBe('var(--viewer-text)')
     expect(declaration('.image-preview-stage', 'background')).toBe('var(--preview-stage)')
     expect(declaration('.image-preview-stage img', 'border')).toBe(
       '1px solid var(--preview-border)',
@@ -202,11 +202,11 @@ describe('workspace style contracts', () => {
     expect(declaration('.image-preview-stage img', 'box-shadow')).toBe(
       'var(--preview-image-shadow)',
     )
-    expect(declaration('.image-preview > footer', 'background')).toBe('var(--preview-chrome)')
-    expect(declaration('.image-preview > footer', 'border-top')).toBe(
-      '1px solid var(--preview-border)',
+    expect(declaration('.preview-navigation-float', 'background')).toBe('var(--viewer-surface)')
+    expect(declaration('.preview-navigation-float', 'border')).toBe(
+      '1px solid var(--viewer-border)',
     )
-    expect(declaration('.image-preview > footer', 'color')).toBe('var(--preview-text)')
+    expect(declaration('.preview-navigation-float', 'color')).toBe('var(--viewer-text)')
     expect(declaration('.preview-overlay [role="alert"]', 'color')).toBe('var(--preview-danger)')
     expect(declaration('.text-preview', 'background')).toBe('var(--preview-document-surface)')
     expect(declaration('.text-preview', 'color')).toBe('var(--preview-text)')
@@ -217,7 +217,7 @@ describe('workspace style contracts', () => {
     for (const selector of [
       '.preview-toolbar button',
       '.preview-toolbar select',
-      '.image-preview > footer button',
+      '.preview-navigation-float button',
     ]) {
       expect(declaration(selector, 'background')).toBe('var(--preview-control-surface)')
       expect(declaration(selector, 'border')).toBe('1px solid var(--preview-control-border)')
@@ -229,7 +229,7 @@ describe('workspace style contracts', () => {
     for (const selector of [
       '.preview-toolbar button:hover:not(:disabled)',
       '.preview-toolbar select:hover',
-      '.image-preview > footer button:hover:not(:disabled)',
+      '.preview-navigation-float button:hover:not(:disabled)',
     ]) {
       expect(declaration(selector, 'background')).toBe('var(--preview-control-hover-surface)')
       expect(declaration(selector, 'border-color')).toBe('var(--preview-control-hover-border)')
@@ -238,7 +238,7 @@ describe('workspace style contracts', () => {
     for (const selector of [
       '.preview-toolbar button:focus-visible',
       '.preview-toolbar select:focus-visible',
-      '.image-preview > footer button:focus-visible',
+      '.preview-navigation-float button:focus-visible',
     ]) {
       expect(declaration(selector, 'outline')).toBe('2px solid var(--preview-accent)')
       expect(declaration(selector, 'outline-offset')).toBe('2px')
@@ -256,13 +256,15 @@ describe('workspace style contracts', () => {
     const declaration = (selector: string, property: string) =>
       winningDeclaration(rules, new Set([selector]), property)
 
-    expect(declaration('.compare-workspace', 'background')).toBe('var(--preview-surface)')
+    expect(declaration('.compare-workspace', 'background')).toBe('#f0f1ef')
     expect(declaration('.compare-workspace', 'border-radius')).toBe('10px')
     expect(declaration('.compare-workspace', 'border')).toBe('')
-    expect(declaration('.compare-workspace', 'color')).toBe('var(--preview-text)')
-    expect(declaration('.compare-toolbar', 'background')).toBe('var(--preview-chrome)')
-    expect(declaration('.compare-toolbar', 'border-bottom')).toBe('1px solid var(--preview-border)')
-    expect(declaration('.compare-toolbar > span', 'color')).toBe('var(--preview-muted)')
+    expect(declaration('.compare-workspace', 'color')).toBe('var(--viewer-text)')
+    expect(declaration('.compare-toolbar', 'background')).toBe('var(--viewer-surface)')
+    expect(declaration('.compare-toolbar', 'border-bottom')).toBe('1px solid var(--viewer-border)')
+    expect(declaration('.compare-toolbar-leading > span', 'color')).toBe(
+      'var(--viewer-text-secondary)',
+    )
     expect(declaration('.compare-layout-region', 'background')).toBe('var(--preview-surface)')
     expect(declaration('.compare-layout-region', 'overflow')).toBe('hidden')
     expect(declaration('.compare-layout-region', 'position')).toBe('relative')
@@ -281,9 +283,11 @@ describe('workspace style contracts', () => {
     expect(declaration('.compare-layout-item', 'contain')).toBe('layout paint')
     expect(declaration('.compare-layout-item', 'position')).toBe('absolute')
 
-    expect(declaration('.compare-pane', 'background')).toBe('var(--preview-panel-surface)')
-    expect(declaration('.compare-pane', 'border')).toBe('2px solid var(--preview-border)')
-    expect(declaration('.compare-pane.is-active', 'border-color')).toBe('var(--preview-accent)')
+    expect(declaration('.compare-pane', 'background')).toBe('var(--viewer-surface)')
+    expect(declaration('.compare-pane', 'border')).toBe('1px solid var(--viewer-border)')
+    expect(declaration('.compare-pane[data-active="true"]', 'border-color')).toBe(
+      'var(--viewer-accent)',
+    )
     expect(declaration('.compare-pane-header', 'background')).toBe('var(--preview-chrome)')
     expect(declaration('.compare-pane-header', 'border-bottom')).toBe(
       '1px solid var(--preview-border)',

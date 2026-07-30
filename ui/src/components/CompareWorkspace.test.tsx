@@ -13,6 +13,23 @@ afterEach(() => {
 })
 
 describe('CompareWorkspace', () => {
+  it('groups comparison controls and exposes the active image pane', () => {
+    const picturedFiles = files.slice(0, 2).map((file, index) => ({
+      ...file,
+      name: `图片 ${index + 1}.jpg`,
+    }))
+
+    renderWorkspace({ files: picturedFiles })
+
+    const workspace = screen.getByRole('region', { name: '图片对比' })
+    expect(within(workspace).getByRole('toolbar', { name: '对比工具' })).toBeVisible()
+    expect(within(workspace).getByRole('button', { name: '完成对比' })).toBeVisible()
+    expect(within(workspace).getAllByRole('group', { name: /图片/ })[0]).toHaveAttribute(
+      'data-active',
+      'true',
+    )
+  })
+
   it('rejects invalid cardinality and non-image candidates with safe feedback', () => {
     const one = renderWorkspace({ files: files.slice(0, 1) })
     expect(screen.getByRole('alert')).toHaveTextContent('请选择 2–20 张图片进行对比')
@@ -178,12 +195,12 @@ describe('CompareWorkspace', () => {
     await waitFor(() => {
       for (const entityId of oldNonActiveIds) {
         expect(
-          screen.queryByRole('article', { name: `对比 ${entityId}.jpg` }),
+          screen.queryByRole('group', { name: `对比 ${entityId}.jpg` }),
         ).not.toBeInTheDocument()
         expect(initialSignals.get(entityId)?.aborted).toBe(true)
       }
     })
-    expect(screen.getByRole('article', { name: '对比 portrait-0.jpg' })).toBeInTheDocument()
+    expect(screen.getByRole('group', { name: '对比 portrait-0.jpg' })).toBeInTheDocument()
     expect(initialSignals.get('portrait-0')?.aborted).toBe(false)
   })
 
@@ -218,7 +235,7 @@ describe('CompareWorkspace', () => {
     renderWorkspace({ onEntityIdsChange: changed })
     fireEvent.click(screen.getByRole('button', { name: '移除 a.jpg' }))
     expect(changed).toHaveBeenLastCalledWith(['b'])
-    fireEvent.click(screen.getByRole('button', { name: '关闭对比' }))
+    fireEvent.click(screen.getByRole('button', { name: '完成对比' }))
     expect(changed).toHaveBeenLastCalledWith([])
   })
 
@@ -541,7 +558,7 @@ describe('CompareWorkspace', () => {
 })
 
 function pane(id: string) {
-  return screen.getByRole('article', { name: `对比 ${id}.jpg` })
+  return screen.getByRole('group', { name: `对比 ${id}.jpg` })
 }
 
 function renderWorkspace(overrides: Partial<React.ComponentProps<typeof CompareWorkspace>> = {}) {

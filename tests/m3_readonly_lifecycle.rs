@@ -111,12 +111,12 @@ async fn read_only_projects_browse_and_preview_without_creating_or_mutating_meta
         let folders = runtime.folder_tree().await.unwrap();
         let source_id = folder_id(&folders, "source");
         let destination_id = folder_id(&folders, "destination");
-        let FolderWorkspaceDto::Content { text_files, .. } =
+        let FolderWorkspaceDto::Content { other_files, .. } =
             runtime.query_folder(Some(source_id)).await.unwrap()
         else {
             panic!("read-only source should remain browsable");
         };
-        let text_id = EntityId::from_str(&text_files[0].entity_id).unwrap();
+        let text_id = EntityId::from_str(&other_files[0].entity_id).unwrap();
         let preview = runtime.preview_text(text_id, None).await.unwrap();
         assert_eq!(preview.plain_text.as_deref(), Some("readonly notes"));
 
@@ -336,12 +336,12 @@ impl ActiveCopyFixture {
         let folders = runtime.folder_tree().await.unwrap();
         let source_id = folder_id(&folders, "source");
         let destination_id = folder_id(&folders, "destination");
-        let FolderWorkspaceDto::Content { text_files, .. } =
+        let FolderWorkspaceDto::Content { other_files, .. } =
             runtime.query_folder(Some(source_id)).await.unwrap()
         else {
             panic!("copy source should be content");
         };
-        let items = text_files
+        let items = other_files
             .iter()
             .map(|file| FileCommandItem {
                 entity_id: EntityId::from_str(&file.entity_id).unwrap(),

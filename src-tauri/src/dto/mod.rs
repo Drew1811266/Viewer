@@ -39,7 +39,7 @@ mod tests {
             types: SelectionTypeCounts {
                 folders: 0,
                 images: 1,
-                text_files: 0,
+                other_files: 0,
             },
             common_review: SelectionAgreement::Common(None),
             common_favorite: SelectionAgreement::Mixed,

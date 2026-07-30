@@ -314,12 +314,18 @@ async fn desktop_cycle_rename_keeps_index_and_portable_markers_with_file_identit
     );
     let opened = runtime.open_project(project.path()).await.unwrap();
     runtime.wait_for_scan().await.unwrap();
-    let FolderWorkspaceDto::Content { text_files, .. } = runtime.query_folder(None).await.unwrap()
+    let FolderWorkspaceDto::Content { other_files, .. } = runtime.query_folder(None).await.unwrap()
     else {
         panic!("root should contain text files")
     };
-    let a = text_files.iter().find(|file| file.name == "a.txt").unwrap();
-    let b = text_files.iter().find(|file| file.name == "b.txt").unwrap();
+    let a = other_files
+        .iter()
+        .find(|file| file.name == "a.txt")
+        .unwrap();
+    let b = other_files
+        .iter()
+        .find(|file| file.name == "b.txt")
+        .unwrap();
     let a_id = EntityId::from_str(&a.entity_id).unwrap();
     let b_id = EntityId::from_str(&b.entity_id).unwrap();
     let session_id = SessionId::from_str(&opened.session_id).unwrap();
@@ -375,11 +381,11 @@ async fn desktop_cycle_rename_keeps_index_and_portable_markers_with_file_identit
         fs::read(project.path().join("b.txt")).unwrap(),
         b"content-a"
     );
-    let FolderWorkspaceDto::Content { text_files, .. } = runtime.query_folder(None).await.unwrap()
+    let FolderWorkspaceDto::Content { other_files, .. } = runtime.query_folder(None).await.unwrap()
     else {
         panic!("root should remain a content folder")
     };
-    let moved_a = text_files
+    let moved_a = other_files
         .iter()
         .find(|file| file.entity_id == a_id.to_string())
         .unwrap();
@@ -410,11 +416,11 @@ async fn read_only_and_stale_sessions_reject_every_write_entry_point() {
     );
     let opened = runtime.open_project(project.path()).await.unwrap();
     runtime.wait_for_scan().await.unwrap();
-    let FolderWorkspaceDto::Content { text_files, .. } = runtime.query_folder(None).await.unwrap()
+    let FolderWorkspaceDto::Content { other_files, .. } = runtime.query_folder(None).await.unwrap()
     else {
         panic!("root should be a content folder")
     };
-    let entity_id = EntityId::from_str(&text_files[0].entity_id).unwrap();
+    let entity_id = EntityId::from_str(&other_files[0].entity_id).unwrap();
     let session_id = SessionId::from_str(&opened.session_id).unwrap();
     let generation = Generation::new(opened.generation);
 
@@ -479,8 +485,8 @@ async fn external_changes_reconcile_after_scan_and_watcher_stops_before_close_re
         tokio::time::sleep(Duration::from_millis(100)).await;
         let projection_published = matches!(
             runtime.query_folder(None).await.unwrap(),
-            FolderWorkspaceDto::Content { text_files, .. }
-                if text_files.iter().any(|file| file.name == "external.txt")
+            FolderWorkspaceDto::Content { other_files, .. }
+                if other_files.iter().any(|file| file.name == "external.txt")
         );
         let change_emitted = !events.project_changes.lock().unwrap().is_empty();
         if projection_published && change_emitted {
@@ -572,12 +578,12 @@ async fn reopen_recovery_clears_a_replaced_destination_marker_with_an_empty_sess
     );
     let opened = runtime.open_project(project.path()).await.unwrap();
     runtime.wait_for_scan().await.unwrap();
-    let FolderWorkspaceDto::Content { text_files, .. } = runtime.query_folder(None).await.unwrap()
+    let FolderWorkspaceDto::Content { other_files, .. } = runtime.query_folder(None).await.unwrap()
     else {
         panic!("root should contain text files")
     };
     let source_id = EntityId::from_str(
-        &text_files
+        &other_files
             .iter()
             .find(|file| file.name == "source.txt")
             .unwrap()
@@ -585,7 +591,7 @@ async fn reopen_recovery_clears_a_replaced_destination_marker_with_an_empty_sess
     )
     .unwrap();
     let destination_id = EntityId::from_str(
-        &text_files
+        &other_files
             .iter()
             .find(|file| file.name == "destination.txt")
             .unwrap()
@@ -623,11 +629,11 @@ async fn reopen_recovery_clears_a_replaced_destination_marker_with_an_empty_sess
 
     runtime.open_project(project.path()).await.unwrap();
     runtime.wait_for_scan().await.unwrap();
-    let FolderWorkspaceDto::Content { text_files, .. } = runtime.query_folder(None).await.unwrap()
+    let FolderWorkspaceDto::Content { other_files, .. } = runtime.query_folder(None).await.unwrap()
     else {
         panic!("root should contain recovered text files")
     };
-    let destination = text_files
+    let destination = other_files
         .iter()
         .find(|file| file.name == "destination.txt")
         .unwrap();
@@ -648,12 +654,12 @@ async fn reopen_recovery_replaces_the_old_marker_before_moving_the_source_marker
     );
     let opened = runtime.open_project(project.path()).await.unwrap();
     runtime.wait_for_scan().await.unwrap();
-    let FolderWorkspaceDto::Content { text_files, .. } = runtime.query_folder(None).await.unwrap()
+    let FolderWorkspaceDto::Content { other_files, .. } = runtime.query_folder(None).await.unwrap()
     else {
         panic!("root should contain text files")
     };
     let source_id = EntityId::from_str(
-        &text_files
+        &other_files
             .iter()
             .find(|file| file.name == "source.txt")
             .unwrap()
@@ -661,7 +667,7 @@ async fn reopen_recovery_replaces_the_old_marker_before_moving_the_source_marker
     )
     .unwrap();
     let destination_id = EntityId::from_str(
-        &text_files
+        &other_files
             .iter()
             .find(|file| file.name == "destination.txt")
             .unwrap()
@@ -715,13 +721,13 @@ async fn reopen_recovery_replaces_the_old_marker_before_moving_the_source_marker
 
     runtime.open_project(project.path()).await.unwrap();
     runtime.wait_for_scan().await.unwrap();
-    let FolderWorkspaceDto::Content { text_files, .. } = runtime.query_folder(None).await.unwrap()
+    let FolderWorkspaceDto::Content { other_files, .. } = runtime.query_folder(None).await.unwrap()
     else {
         panic!("root should contain the recovered rename")
     };
-    assert_eq!(text_files.len(), 1);
-    assert_eq!(text_files[0].name, "destination.txt");
-    assert_eq!(text_files[0].marker.review_state, Some(ReviewState::Keep));
+    assert_eq!(other_files.len(), 1);
+    assert_eq!(other_files[0].name, "destination.txt");
+    assert_eq!(other_files[0].marker.review_state, Some(ReviewState::Keep));
     runtime.close_project().await.unwrap();
 }
 
@@ -737,12 +743,12 @@ async fn reopen_recovery_preserves_replace_marker_after_atomic_metadata_commit()
     );
     let opened = runtime.open_project(project.path()).await.unwrap();
     runtime.wait_for_scan().await.unwrap();
-    let FolderWorkspaceDto::Content { text_files, .. } = runtime.query_folder(None).await.unwrap()
+    let FolderWorkspaceDto::Content { other_files, .. } = runtime.query_folder(None).await.unwrap()
     else {
         panic!("root should contain text files")
     };
     let source_id = EntityId::from_str(
-        &text_files
+        &other_files
             .iter()
             .find(|file| file.name == "source.txt")
             .unwrap()
@@ -750,7 +756,7 @@ async fn reopen_recovery_preserves_replace_marker_after_atomic_metadata_commit()
     )
     .unwrap();
     let destination_id = EntityId::from_str(
-        &text_files
+        &other_files
             .iter()
             .find(|file| file.name == "destination.txt")
             .unwrap()
@@ -845,13 +851,13 @@ async fn reopen_recovery_preserves_replace_marker_after_atomic_metadata_commit()
 
     runtime.open_project(project.path()).await.unwrap();
     runtime.wait_for_scan().await.unwrap();
-    let FolderWorkspaceDto::Content { text_files, .. } = runtime.query_folder(None).await.unwrap()
+    let FolderWorkspaceDto::Content { other_files, .. } = runtime.query_folder(None).await.unwrap()
     else {
         panic!("root should contain the recovered rename")
     };
-    assert_eq!(text_files.len(), 1);
-    assert_eq!(text_files[0].name, "destination.txt");
-    assert_eq!(text_files[0].marker.review_state, Some(ReviewState::Keep));
+    assert_eq!(other_files.len(), 1);
+    assert_eq!(other_files[0].name, "destination.txt");
+    assert_eq!(other_files[0].marker.review_state, Some(ReviewState::Keep));
     runtime.close_project().await.unwrap();
 }
 
@@ -866,11 +872,11 @@ async fn operation_runtime_rejects_invalid_target_sets_actions_and_destination_i
     );
     let opened = runtime.open_project(project.path()).await.unwrap();
     runtime.wait_for_scan().await.unwrap();
-    let FolderWorkspaceDto::Content { text_files, .. } = runtime.query_folder(None).await.unwrap()
+    let FolderWorkspaceDto::Content { other_files, .. } = runtime.query_folder(None).await.unwrap()
     else {
         panic!("root should contain text")
     };
-    let entity_id = EntityId::from_str(&text_files[0].entity_id).unwrap();
+    let entity_id = EntityId::from_str(&other_files[0].entity_id).unwrap();
     let session_id = SessionId::from_str(&opened.session_id).unwrap();
     let generation = Generation::new(opened.generation);
 
@@ -978,12 +984,12 @@ async fn one_batch_is_active_results_are_bounded_and_close_requires_a_choice() {
             .entity_id,
     )
     .unwrap();
-    let FolderWorkspaceDto::Content { text_files, .. } =
+    let FolderWorkspaceDto::Content { other_files, .. } =
         runtime.query_folder(Some(source_id)).await.unwrap()
     else {
         panic!("source should be a content folder")
     };
-    let items = text_files
+    let items = other_files
         .iter()
         .map(|file| FileCommandItem {
             entity_id: EntityId::from_str(&file.entity_id).unwrap(),
@@ -1046,7 +1052,7 @@ async fn one_batch_is_active_results_are_bounded_and_close_requires_a_choice() {
     assert_eq!(results.total, 400);
     assert_eq!(results.items.len(), 200);
     for (result, requested) in results.items.iter().take(10).zip(&items) {
-        let requested_path = text_files
+        let requested_path = other_files
             .iter()
             .find(|file| file.entity_id == requested.entity_id.to_string())
             .unwrap()

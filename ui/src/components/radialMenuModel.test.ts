@@ -6,6 +6,8 @@ function context(overrides: Partial<RadialMenuContext> = {}): RadialMenuContext 
   return {
     selectedCount: 1,
     selectedImageCount: 1,
+    previewEnabled: true,
+    previewDisabledReason: undefined,
     readOnly: false,
     busy: false,
     compareContextAvailable: true,
@@ -43,13 +45,24 @@ describe('buildRadialMenuModel', () => {
     ])
   })
 
-  it('gates preview and compare by selection shape without moving them', () => {
+  it('uses the supplied preview validation without moving preview or compare', () => {
     const single = buildRadialMenuModel(context())
     expect(single[0]).toMatchObject({ id: 'preview', disabled: false })
     expect(single[4]).toMatchObject({ id: 'compare', disabled: true })
 
-    const threeImages = buildRadialMenuModel(context({ selectedCount: 3, selectedImageCount: 3 }))
-    expect(threeImages[0]).toMatchObject({ id: 'preview', disabled: true })
+    const threeImages = buildRadialMenuModel(
+      context({
+        selectedCount: 3,
+        selectedImageCount: 3,
+        previewEnabled: false,
+        previewDisabledReason: '仅支持单文件预览，或同时预览 2 个文本文件',
+      }),
+    )
+    expect(threeImages[0]).toMatchObject({
+      id: 'preview',
+      disabled: true,
+      disabledReason: '仅支持单文件预览，或同时预览 2 个文本文件',
+    })
     expect(threeImages[4]).toMatchObject({ id: 'compare', disabled: false })
 
     const mixed = buildRadialMenuModel(context({ selectedCount: 3, selectedImageCount: 2 }))
@@ -103,17 +116,21 @@ describe('buildRadialMenuModel', () => {
     expect(busy[5]).toMatchObject({ disabled: false })
   })
 
-  it('keeps preview limited to exactly one selection even while busy', () => {
+  it('keeps supplied preview availability independent of operation busy state', () => {
     const busySingle = buildRadialMenuModel(context({ busy: true }))
     expect(busySingle[0]).toMatchObject({ id: 'preview', disabled: false })
 
     const busyMultiple = buildRadialMenuModel(
-      context({ selectedCount: 3, selectedImageCount: 3, busy: true }),
+      context({
+        selectedCount: 2,
+        selectedImageCount: 0,
+        previewEnabled: true,
+        busy: true,
+      }),
     )
     expect(busyMultiple[0]).toMatchObject({
       id: 'preview',
-      disabled: true,
-      disabledReason: '预览仅适用于单个文件',
+      disabled: false,
     })
   })
 

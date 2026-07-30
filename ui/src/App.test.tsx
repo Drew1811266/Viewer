@@ -668,6 +668,84 @@ describe('Viewer empty state', () => {
     expect(viewer.previewText).not.toHaveBeenCalled()
   })
 
+  it('routes two selected text files through radial preview while keeping double-click single-file', async () => {
+    const viewer = bridge()
+    let receiveProjectChanged: Parameters<ViewerBridge['listenProjectChanged']>[0] | undefined
+    vi.mocked(viewer.listenProjectChanged).mockImplementation(async (handler) => {
+      receiveProjectChanged = handler
+      return () => undefined
+    })
+    const initial = splitTextContentWorkspace()
+    const surviving = {
+      ...initial,
+      otherFiles: [defined(initial.otherFiles[0], 'Expected surviving left text preview fixture')],
+    }
+    vi.mocked(viewer.queryFolder).mockResolvedValueOnce(initial).mockResolvedValueOnce(surviving)
+    vi.mocked(viewer.previewText).mockImplementation(async ({ entityId }) => ({
+      entityId,
+      format: 'plain_text',
+      plainText: entityId === 'text-left' ? 'left body' : 'right body',
+      markdownHtml: null,
+      encoding: 'utf8',
+      truncated: false,
+    }))
+    render(<App bridge={viewer} />)
+    await waitFor(() => expect(receiveProjectChanged).toBeDefined())
+    fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
+    const left = await screen.findByRole('option', { name: 'left.txt' })
+    const right = screen.getByRole('option', { name: 'right.md' })
+
+    fireEvent.click(left)
+    fireEvent.click(right, { metaKey: true })
+    openRadialMenu(right, 230)
+    fireEvent.click(screen.getByRole('menuitem', { name: '预览' }))
+
+    const splitDialog = screen.getByRole('dialog', { name: 'left.txt、right.md' })
+    expect(splitDialog).toHaveTextContent('left.txt')
+    expect(splitDialog).toHaveTextContent('right.md')
+    await waitFor(() => expect(viewer.previewText).toHaveBeenCalledWith({ entityId: 'text-left' }))
+    expect(viewer.previewText).toHaveBeenCalledWith({ entityId: 'text-right' })
+
+    fireEvent.click(within(splitDialog).getByRole('button', { name: '关闭预览' }))
+    vi.mocked(viewer.previewText).mockClear()
+    fireEvent.doubleClick(left)
+    await waitFor(() => expect(viewer.previewText).toHaveBeenCalledWith({ entityId: 'text-left' }))
+    expect(viewer.previewText).not.toHaveBeenCalledWith({ entityId: 'text-right' })
+    fireEvent.click(screen.getByRole('button', { name: '关闭预览' }))
+
+    vi.mocked(viewer.previewText).mockClear()
+    fireEvent.doubleClick(right)
+    await waitFor(() => expect(viewer.previewText).toHaveBeenCalledWith({ entityId: 'text-right' }))
+    expect(viewer.previewText).not.toHaveBeenCalledWith({ entityId: 'text-left' })
+    fireEvent.click(screen.getByRole('button', { name: '关闭预览' }))
+
+    fireEvent.click(left)
+    fireEvent.click(right, { metaKey: true })
+    openRadialMenu(right, 231)
+    fireEvent.click(screen.getByRole('menuitem', { name: '预览' }))
+    expect(screen.getByRole('dialog', { name: 'left.txt、right.md' })).toBeVisible()
+
+    act(() => {
+      receiveProjectChanged?.({
+        sessionId: 'session-1',
+        generation: 1,
+        reason: 'external_change',
+        added: 0,
+        removed: 1,
+        modified: 0,
+        moved: 0,
+        markerPathsMoved: 0,
+        failed: 0,
+      })
+    })
+
+    expect(await screen.findByText('部分正在查看的文件已在项目外发生变化。')).toBeVisible()
+    const repairedDialog = screen.getByRole('dialog', { name: 'left.txt、right.md' })
+    expect(repairedDialog).toBeVisible()
+    expect(within(repairedDialog).getAllByText('文件已不可用')).toHaveLength(1)
+    expect(within(repairedDialog).getByText('left body')).toBeVisible()
+  })
+
   it('opens unsupported images in the request-free image preview', async () => {
     const viewer = bridge()
     vi.mocked(viewer.queryFolder).mockResolvedValue(unsupportedImageContentWorkspace())
@@ -2088,6 +2166,37 @@ function genericOtherContentWorkspace() {
         kind: 'other' as const,
         size: 20,
         modifiedNs: '3',
+        marker: { reviewState: null, favorite: false },
+        imageMetadata: null,
+        imageUrl: null,
+      },
+    ],
+  }
+}
+
+function splitTextContentWorkspace() {
+  return {
+    workspace: 'content' as const,
+    images: [],
+    otherFiles: [
+      {
+        entityId: 'text-left',
+        relativePath: 'id/left.txt',
+        name: 'left.txt',
+        kind: 'text' as const,
+        size: 20,
+        modifiedNs: '3',
+        marker: { reviewState: null, favorite: false },
+        imageMetadata: null,
+        imageUrl: null,
+      },
+      {
+        entityId: 'text-right',
+        relativePath: 'id/right.md',
+        name: 'right.md',
+        kind: 'markdown' as const,
+        size: 20,
+        modifiedNs: '4',
         marker: { reviewState: null, favorite: false },
         imageMetadata: null,
         imageUrl: null,

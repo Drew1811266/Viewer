@@ -37,13 +37,15 @@ import SearchToolbar from './components/SearchToolbar'
 import SettingsDialog from './components/SettingsDialog'
 import type { TaskFeedback } from './components/TaskBar'
 import TaskBar from './components/TaskBar'
-import TextPreview from './components/TextPreview'
+import TextPreview, { type TextPreviewFiles } from './components/TextPreview'
 import TrashConfirmation from './components/TrashConfirmation'
 import UnsupportedFilePreview from './components/UnsupportedFilePreview'
+import { defined } from './defined'
 import { isImageFile, isPreviewableText } from './fileKinds'
 import { useViewerSettings, ViewerSettingsProvider } from './settings/ViewerSettingsProvider'
 import { compareValidationMessage, validateCompareCandidates } from './state/comparePolicy'
 import { organizationShortcutIsOwned } from './state/organizationShortcutOwnership'
+import { validatePreviewSelection } from './state/previewPolicy'
 import type { OrganizationDragMode } from './state/useOrganizationPointerDrag'
 import { useOrganizationPointerDrag } from './state/useOrganizationPointerDrag'
 import useReviewShortcuts from './state/useReviewShortcuts'
@@ -311,9 +313,12 @@ function ViewerWorkspace({ bridge }: { bridge: ViewerBridge }) {
     const files = activeRadialMenu?.files ?? []
     const reviews = new Set(files.map((file) => file.marker.reviewState))
     const favorites = new Set(files.map((file) => file.marker.favorite))
+    const previewValidation = validatePreviewSelection(files)
     return buildRadialMenuModel({
       selectedCount: files.length,
       selectedImageCount: files.filter(isImageFile).length,
+      previewEnabled: previewValidation.ok,
+      previewDisabledReason: previewValidation.ok ? undefined : previewValidation.reason,
       readOnly: state.project?.access === 'read_only',
       busy: operationBusy,
       compareContextAvailable: compareEntryAvailable,
@@ -595,11 +600,19 @@ function ViewerWorkspace({ bridge }: { bridge: ViewerBridge }) {
       finishRadialSession()
       const ids = files.map((file) => file.entityId)
       if (action === 'preview') {
-        if (files.length === 1) {
-          const [file] = files
-          if (file === undefined)
-            throw new Error('Single-file radial selection is missing its file')
-          openPreview(file)
+        const validation = validatePreviewSelection(files)
+        if (!validation.ok) return
+        if (validation.mode === 'single') {
+          openPreview(defined(files[0], 'Single preview requires one file'))
+        } else {
+          const first = defined(files[0], 'Split text preview requires a left file')
+          const second = defined(files[1], 'Split text preview requires a right file')
+          openPreviewSession({
+            file: first,
+            files: [first, second],
+            folderOverviewIdentity: null,
+          })
+          setPreviewEntityId(first.entityId)
         }
       } else if (action === 'mark.keep') void setReviewState('keep', ids)
       else if (action === 'mark.pending') void setReviewState('pending', ids)
@@ -626,9 +639,11 @@ function ViewerWorkspace({ bridge }: { bridge: ViewerBridge }) {
     [
       openComparison,
       openPreview,
+      openPreviewSession,
       radialMenu,
       radialProjectIdentity,
       finishRadialSession,
+      setPreviewEntityId,
       setReviewState,
       state.status,
       toggleFavorite,
@@ -669,14 +684,10 @@ function ViewerWorkspace({ bridge }: { bridge: ViewerBridge }) {
     }
   }, [state.operation.active, state.operation.results])
 
-  useEffect(() => {
-    if (
-      activePreview &&
-      state.contextRepair?.removedEntityIds.includes(activePreview.file.entityId)
-    ) {
-      closePreviewSession()
-    }
-  }, [activePreview, closePreviewSession, state.contextRepair])
+  const unavailablePreviewEntityIds = useMemo(
+    () => new Set(state.contextRepair?.removedEntityIds ?? []),
+    [state.contextRepair?.removedEntityIds],
+  )
 
   useEffect(() => {
     if (
@@ -777,6 +788,18 @@ function ViewerWorkspace({ bridge }: { bridge: ViewerBridge }) {
     )
   }
 
+  const sessionPreviewFiles =
+    activePreview === null ? [] : (activePreview.files ?? [activePreview.file])
+  const activeTextPreviewFiles: TextPreviewFiles | null =
+    sessionPreviewFiles.length === 1 &&
+    isPreviewableText(defined(sessionPreviewFiles[0], 'Missing single preview file'))
+      ? [defined(sessionPreviewFiles[0], 'Missing single preview file')]
+      : sessionPreviewFiles.length === 2 && sessionPreviewFiles.every(isPreviewableText)
+        ? [
+            defined(sessionPreviewFiles[0], 'Missing left text preview file'),
+            defined(sessionPreviewFiles[1], 'Missing right text preview file'),
+          ]
+        : null
   const activePreviewFiles =
     activePreview?.files ?? (state.workspace?.workspace === 'content' ? state.workspace.images : [])
   const activePreviewFile =
@@ -1055,11 +1078,13 @@ function ViewerWorkspace({ bridge }: { bridge: ViewerBridge }) {
           onNavigate={navigatePreview}
           onClose={closePreview}
           onDimensions={recordDimensions}
+          unavailableEntityIds={unavailablePreviewEntityIds}
         />
       )}
-      {activePreviewFile && isPreviewableText(activePreviewFile) && (
+      {activeTextPreviewFiles !== null && (
         <TextPreview
-          files={[activePreviewFile]}
+          files={activeTextPreviewFiles}
+          unavailableEntityIds={unavailablePreviewEntityIds}
           requestPreview={requestTextPreview}
           openExternalLink={bridge.openExternalLink}
           onClose={closePreview}
@@ -1067,7 +1092,11 @@ function ViewerWorkspace({ bridge }: { bridge: ViewerBridge }) {
         />
       )}
       {activePreviewFile?.kind === 'other' && (
-        <UnsupportedFilePreview file={activePreviewFile} onClose={closePreview} />
+        <UnsupportedFilePreview
+          file={activePreviewFile}
+          unavailable={unavailablePreviewEntityIds.has(activePreviewFile.entityId)}
+          onClose={closePreview}
+        />
       )}
       {infoOpen && (
         <InfoOverlay

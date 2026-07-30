@@ -2,6 +2,7 @@ import type { KeyboardEvent } from 'react'
 import { useRef, useState } from 'react'
 import type { SearchLayout } from '../api/types'
 import type { SelectAllRequest, SelectAllScope } from './contentBrowser/adaptiveOtherFilePanelModel'
+import useViewportPopoverMaxWidth from './useViewportPopoverMaxWidth'
 
 export type WorkspaceViewContext =
   | { kind: 'search'; layout: SearchLayout; onLayoutChange(layout: SearchLayout): void }
@@ -19,6 +20,7 @@ export type WorkspaceViewContext =
 export default function WorkspaceViewMenu({ context }: { context: WorkspaceViewContext }) {
   const [open, setOpen] = useState(false)
   const summaryRef = useRef<HTMLElement>(null)
+  const popoverMaxWidth = useViewportPopoverMaxWidth()
 
   function toggle() {
     setOpen((current) => !current)
@@ -57,7 +59,7 @@ export default function WorkspaceViewMenu({ context }: { context: WorkspaceViewC
       >
         视图
       </summary>
-      <div className="workspace-menu-popover" hidden={!open}>
+      <div className="workspace-menu-popover" hidden={!open} style={{ maxWidth: popoverMaxWidth }}>
         {context.kind === 'search' && (
           <>
             <button

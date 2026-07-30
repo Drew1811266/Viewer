@@ -1,6 +1,7 @@
 import type { KeyboardEvent } from 'react'
 import { forwardRef, useImperativeHandle, useRef, useState } from 'react'
 import type { ProjectAccess } from '../api/types'
+import useViewportPopoverMaxWidth from './useViewportPopoverMaxWidth'
 
 export interface WorkspaceMoreMenuProps {
   access: ProjectAccess
@@ -25,6 +26,7 @@ const WorkspaceMoreMenu = forwardRef<HTMLElement, WorkspaceMoreMenuProps>(
   ) {
     const [open, setOpen] = useState(false)
     const summaryRef = useRef<HTMLElement>(null)
+    const popoverMaxWidth = useViewportPopoverMaxWidth()
     useImperativeHandle(ref, () => summaryRef.current as HTMLElement)
 
     function toggle() {
@@ -64,7 +66,11 @@ const WorkspaceMoreMenu = forwardRef<HTMLElement, WorkspaceMoreMenuProps>(
         >
           更多
         </summary>
-        <div className="workspace-menu-popover" hidden={!open}>
+        <div
+          className="workspace-menu-popover"
+          hidden={!open}
+          style={{ maxWidth: popoverMaxWidth }}
+        >
           <button type="button" onClick={() => run(onOpenSettings)}>
             软件设置
           </button>

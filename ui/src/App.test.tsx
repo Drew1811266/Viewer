@@ -244,19 +244,37 @@ describe('Viewer empty state', () => {
     expect(more).toHaveFocus()
   })
 
-  it('keeps the compact toolbar reachable in a narrow window', async () => {
+  it('keeps compact toolbar popovers reachable and viewport-contained at the supported narrow width', async () => {
     vi.stubGlobal('innerWidth', 500)
     const viewer = bridge()
+    vi.mocked(viewer.queryFolder).mockResolvedValue(contentWorkspace())
     render(<App bridge={viewer} />)
     fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
 
     const sidebar = await screen.findByRole('complementary', { name: '文件夹栏' })
     expect(sidebar).toHaveStyle({ width: '44px' })
     expect(screen.getByRole('button', { name: '窄窗口中已折叠文件夹栏' })).toBeDisabled()
+    await screen.findByRole('option', { name: 'front.jpg' })
 
     const toolbar = screen.getByRole('toolbar', { name: 'Viewer 工具栏' })
-    expect(within(toolbar).getByRole('button', { name: '视图' })).toBeVisible()
-    expect(within(toolbar).getByRole('button', { name: '更多' })).toBeVisible()
+    const view = within(toolbar).getByRole('button', { name: '视图' })
+    fireEvent.click(view)
+    const viewPopover = view
+      .closest('details')
+      ?.querySelector<HTMLElement>('.workspace-menu-popover')
+    expect(viewPopover).toBeVisible()
+    expect(viewPopover).toHaveStyle({ maxWidth: '484px' })
+    expect(within(toolbar).getByRole('button', { name: '全选图片' })).toBeVisible()
+    fireEvent.click(view)
+
+    const more = within(toolbar).getByRole('button', { name: '更多' })
+    fireEvent.click(more)
+    const morePopover = more
+      .closest('details')
+      ?.querySelector<HTMLElement>('.workspace-menu-popover')
+    expect(morePopover).toBeVisible()
+    expect(morePopover).toHaveStyle({ maxWidth: '484px' })
+    expect(within(toolbar).getByRole('button', { name: '软件设置' })).toBeVisible()
   })
 
   it('shows the latest settings save failure and rolls back the selected radio', async () => {

@@ -1034,6 +1034,7 @@ function ViewerWorkspace({ bridge }: { bridge: ViewerBridge }) {
               onClearFilters={clearSearchFilters}
               onSearchProject={() => setSearchScope(null)}
               onReturnToFolder={returnToFolderContext}
+              searching={state.search.status === 'searching'}
             />
           )}
           {!state.search.showResults && state.workspace === null && <p>正在读取项目…</p>}

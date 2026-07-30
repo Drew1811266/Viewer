@@ -13,13 +13,15 @@ interface SearchResultsProps {
   onClearFilters: () => void
   onSearchProject: () => void
   onReturnToFolder: () => void
+  searching: boolean
 }
 
 type ResultRow =
-  | { type: 'group'; key: string; path: string }
-  | { type: 'hit'; key: string; hit: SearchHit }
+  | { type: 'group'; key: string; path: string; count: number; height: number }
+  | { type: 'hit'; key: string; hit: SearchHit; height: number }
 
-const ROW_HEIGHT = 76
+const RESULT_ROW_HEIGHT = 48
+const GROUP_ROW_HEIGHT = 28
 const VIEWPORT_HEIGHT = 520
 const OVERSCAN = 5
 
@@ -34,13 +36,24 @@ export default function SearchResults({
   onClearFilters,
   onSearchProject,
   onReturnToFolder,
+  searching,
 }: SearchResultsProps) {
   const [scrollTop, setScrollTop] = useState(0)
   const rows = useMemo(() => resultRows(page.hits, query.layout), [page.hits, query.layout])
-  const firstVisible = Math.floor(scrollTop / ROW_HEIGHT)
-  const visibleCount = Math.ceil(VIEWPORT_HEIGHT / ROW_HEIGHT)
-  const start = Math.max(0, firstVisible - OVERSCAN)
-  const end = Math.min(rows.length, firstVisible + visibleCount + OVERSCAN)
+  const rowOffsets = useMemo(() => rowOffsetsFor(rows), [rows])
+  const totalRowsHeight = rows.reduce((height, row) => height + row.height, 0)
+  const firstVisible =
+    rows.length === 0
+      ? -1
+      : rowOffsets.findIndex((offset, index) => {
+          const row = rows[index]
+          return row !== undefined && offset + row.height > scrollTop
+        })
+  const firstVisibleIndex = firstVisible === -1 ? Math.max(0, rows.length - 1) : firstVisible
+  const lastVisible = rowOffsets.findIndex((offset) => offset >= scrollTop + VIEWPORT_HEIGHT)
+  const lastVisibleIndex = lastVisible === -1 ? rows.length : lastVisible
+  const start = Math.max(0, firstVisibleIndex - OVERSCAN)
+  const end = Math.min(rows.length, lastVisibleIndex + OVERSCAN)
   const visibleRows = useMemo(() => rows.slice(start, end), [end, rows, start])
   const visibleIds = useMemo(
     () => visibleRows.flatMap((row) => (row.type === 'hit' ? [row.hit.entityId] : [])),
@@ -79,10 +92,10 @@ export default function SearchResults({
 
   return (
     <section className="search-results" aria-label="搜索结果区域">
-      <header className="search-results-heading">
+      <header className="search-results-summary">
         <div>
           <strong>{page.total} 个结果</strong>
-          {!page.progress.complete && <span role="status">结果仍在更新</span>}
+          {searching && <span role="status">结果仍在更新</span>}
         </div>
         <button type="button" onClick={onReturnToFolder}>
           返回文件夹内容
@@ -95,7 +108,7 @@ export default function SearchResults({
         style={{ height: VIEWPORT_HEIGHT, overflowY: 'auto', position: 'relative' }}
         onScroll={(event: UIEvent<HTMLDivElement>) => setScrollTop(event.currentTarget.scrollTop)}
       >
-        <div style={{ height: rows.length * ROW_HEIGHT, position: 'relative' }}>
+        <div style={{ height: totalRowsHeight, position: 'relative' }}>
           {visibleRows.map((row, visibleIndex) => {
             const index = start + visibleIndex
             return (
@@ -103,15 +116,18 @@ export default function SearchResults({
                 key={row.key}
                 className={`search-result-row search-result-${row.type}`}
                 style={{
-                  height: ROW_HEIGHT,
+                  height: row.height,
                   left: 0,
                   position: 'absolute',
                   right: 0,
-                  top: index * ROW_HEIGHT,
+                  top: rowOffsets[index],
                 }}
               >
                 {row.type === 'group' ? (
-                  <h3>{row.path}</h3>
+                  <div className="search-result-group" role="group" aria-label={row.path}>
+                    <strong>{row.path}</strong>
+                    <span>{row.count} 项</span>
+                  </div>
                 ) : (
                   <ResultItem hit={row.hit} snippet={snippets[row.hit.entityId]} />
                 )}
@@ -155,14 +171,24 @@ function ResultItem({ hit, snippet }: { hit: SearchHit; snippet: string | null |
       aria-selected="false"
     >
       <div className="search-result-title">
-        <HighlightedText value={hit.name} ranges={nameRanges} />
+        <span className="search-result-file-kind" aria-hidden="true">
+          {fileKindLabel(hit.kind)}
+        </span>
+        <strong>
+          <HighlightedText value={hit.name} ranges={nameRanges} />
+        </strong>
         <span>{markerLabel(hit)}</span>
       </div>
-      <div className="search-result-path">
-        <HighlightedText value={hit.relativePath} ranges={pathRanges} />
+      <div className="search-result-context">
+        <span className="search-result-context">{matchContextLabel(hit)}</span>
+        <span className="search-result-path">
+          <HighlightedText value={hit.relativePath} ranges={pathRanges} />
+        </span>
       </div>
       {hit.matchedField === 'body' && snippet !== undefined && snippet !== null && (
-        <p data-testid={`search-snippet-${hit.entityId}`}>{boundedSnippet(snippet)}</p>
+        <p className="search-result-context" data-testid={`search-snippet-${hit.entityId}`}>
+          {boundedSnippet(snippet)}
+        </p>
       )}
     </div>
   )
@@ -196,15 +222,28 @@ function HighlightedText({ value, ranges }: { value: string; ranges: MatchRange[
 function resultRows(hits: SearchHit[], layout: SearchQueryModel['layout']): ResultRow[] {
   const rows: ResultRow[] = []
   let currentGroup: string | null | undefined
-  for (const hit of hits) {
+  for (let index = 0; index < hits.length; index += 1) {
+    const hit = hits[index]
+    if (hit === undefined) continue
     if (layout === 'grouped' && hit.groupRelativePath !== currentGroup) {
       currentGroup = hit.groupRelativePath
       const path = currentGroup ?? '项目根目录'
-      rows.push({ type: 'group', key: `group:${path}`, path })
+      let count = 1
+      while (hits[index + count]?.groupRelativePath === currentGroup) count += 1
+      rows.push({ type: 'group', key: `group:${path}`, path, count, height: GROUP_ROW_HEIGHT })
     }
-    rows.push({ type: 'hit', key: `hit:${hit.entityId}`, hit })
+    rows.push({ type: 'hit', key: `hit:${hit.entityId}`, hit, height: RESULT_ROW_HEIGHT })
   }
   return rows
+}
+
+function rowOffsetsFor(rows: ResultRow[]): number[] {
+  let offset = 0
+  return rows.map((row) => {
+    const current = offset
+    offset += row.height
+    return current
+  })
 }
 
 function markerLabel(hit: SearchHit): string {
@@ -221,6 +260,25 @@ function markerLabel(hit: SearchHit): string {
 
 function boundedSnippet(value: string): string {
   return Array.from(value).slice(0, 160).join('')
+}
+
+function matchContextLabel(hit: SearchHit): string {
+  if (hit.matchedField === 'body') return '文件内容匹配'
+  if (hit.matchedField === 'path') return '路径匹配'
+  return '文件名与路径匹配'
+}
+
+function fileKindLabel(kind: SearchHit['kind']): string {
+  const labels: Record<SearchHit['kind'], string> = {
+    jpeg: 'JPG',
+    png: 'PNG',
+    unsupported_image: 'IMG',
+    markdown: 'MD',
+    text: 'TXT',
+    other: '文件',
+    directory: '文件夹',
+  }
+  return labels[kind]
 }
 
 function activeFilterCount(query: SearchQueryModel): number {

@@ -46,6 +46,30 @@ describe('SearchToolbar', () => {
     expect(screen.queryByRole('combobox', { name: '搜索范围' })).not.toBeInTheDocument()
   })
 
+  it('keeps common filters visible and reveals advanced conditions on demand', () => {
+    render(
+      <SearchToolbar
+        query={query()}
+        folders={[]}
+        focusRequest={0}
+        onTextChange={vi.fn()}
+        onScopeChange={vi.fn()}
+        onFiltersChange={vi.fn()}
+        onSortChange={vi.fn()}
+        onRemoveFilter={vi.fn()}
+        onClearFilters={vi.fn()}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /筛选/ }))
+    expect(screen.getByRole('group', { name: '文件类型' })).toBeVisible()
+    expect(screen.getByRole('group', { name: '审阅状态' })).toBeVisible()
+    expect(screen.getByLabelText('最小宽度')).not.toBeVisible()
+    fireEvent.click(screen.getByRole('button', { name: '高级条件' }))
+    expect(screen.getByLabelText('最小宽度')).toBeVisible()
+    expect(screen.getByLabelText('最晚修改时间')).toBeVisible()
+  })
+
   it('focuses from Cmd-F intent and exposes fuzzy query plus project/subtree scope', () => {
     const onTextChange = vi.fn()
     const onScopeChange = vi.fn()
@@ -143,11 +167,12 @@ describe('SearchToolbar', () => {
         onClearFilters={onClearFilters}
       />,
     )
-    expect(screen.getByRole('button', { name: '移除 JPEG 筛选' })).toBeVisible()
+    expect(screen.queryByRole('button', { name: '移除 JPEG 筛选' })).not.toBeInTheDocument()
     expect(screen.queryByRole('combobox', { name: '排序方式' })).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: '筛选，3 项已启用' }))
     expect(screen.getByRole('combobox', { name: '搜索范围' })).toBeVisible()
     expect(screen.getByRole('combobox', { name: '排序方式' })).toBeVisible()
+    expect(screen.getByRole('button', { name: '移除 JPEG 筛选' })).toBeVisible()
     for (const label of [
       'JPEG',
       'PNG',
@@ -161,17 +186,6 @@ describe('SearchToolbar', () => {
       '淘汰',
       '收藏',
       '未标记',
-      '横向',
-      '纵向',
-      '方形',
-      '最小宽度',
-      '最大宽度',
-      '最小高度',
-      '最大高度',
-      '最小文件大小',
-      '最大文件大小',
-      '最早修改时间',
-      '最晚修改时间',
     ]) {
       expect(screen.getByLabelText(label)).toBeInTheDocument()
     }
@@ -179,6 +193,7 @@ describe('SearchToolbar', () => {
     expect(onFiltersChange).toHaveBeenCalledWith(
       expect.objectContaining({ kinds: ['jpeg', 'png'] }),
     )
+    fireEvent.click(screen.getByRole('button', { name: '高级条件' }))
     fireEvent.change(screen.getByLabelText('最小宽度'), { target: { value: '1200' } })
     expect(onFiltersChange).toHaveBeenCalledWith(expect.objectContaining({ widthMin: 1200 }))
 

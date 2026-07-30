@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import type { SearchPage, SearchQueryModel } from '../api/types'
 import { initialSearchQuery } from '../state/viewerReducer'
@@ -14,7 +14,7 @@ const query: SearchQueryModel = {
 function page(): SearchPage {
   return {
     revision: 1,
-    total: 240,
+    total: 128,
     progress: {
       imagesTotal: 10,
       imagesReady: 8,
@@ -28,7 +28,7 @@ function page(): SearchPage {
     hits: [
       {
         entityId: '1',
-        relativePath: 'catalog/id-1/shoe.jpg',
+        relativePath: '衣服 / A01 / shoe.jpg',
         name: 'shoe.jpg',
         kind: 'jpeg',
         size: 10,
@@ -37,12 +37,12 @@ function page(): SearchPage {
         imageMetadata: { width: 1200, height: 800 },
         matchedField: 'filename',
         score: 10,
-        groupRelativePath: 'catalog/id-1',
+        groupRelativePath: '衣服 / A01',
         matchRanges: [{ start: 0, end: 4 }],
       },
       {
         entityId: '2',
-        relativePath: 'catalog/id-1/prompt.txt',
+        relativePath: '衣服 / A01 / prompt.txt',
         name: 'prompt.txt',
         kind: 'text',
         size: 20,
@@ -51,7 +51,7 @@ function page(): SearchPage {
         imageMetadata: null,
         matchedField: 'body',
         score: 5,
-        groupRelativePath: 'catalog/id-1',
+        groupRelativePath: '衣服 / A01',
         matchRanges: [],
       },
     ],
@@ -73,13 +73,18 @@ describe('SearchResults', () => {
         onClearFilters={vi.fn()}
         onSearchProject={vi.fn()}
         onReturnToFolder={vi.fn()}
+        searching
       />,
     )
+    const region = screen.getByRole('region', { name: '搜索结果区域' })
+    expect(within(region).getByText(/128 个结果/)).toBeVisible()
+    expect(within(region).getByRole('group', { name: '衣服 / A01' })).toBeVisible()
+    expect(within(region).getByRole('navigation', { name: '搜索结果分页' })).toBeVisible()
+    expect(within(region).getByText('文件名与路径匹配')).toHaveClass('search-result-context')
     expect(screen.getByText('结果仍在更新')).toBeVisible()
-    expect(screen.getByRole('heading', { name: 'catalog/id-1' })).toBeVisible()
     expect(screen.getByText('shoe', { selector: 'mark' })).toBeVisible()
     expect(
-      screen.getByRole('option', { name: 'shoe.jpg catalog/id-1/shoe.jpg' }),
+      screen.getByRole('option', { name: 'shoe.jpg 衣服 / A01 / shoe.jpg' }),
     ).not.toHaveAttribute('tabindex')
     expect(screen.getByTestId('search-snippet-2')).toHaveTextContent('片'.repeat(160))
     expect(screen.getByTestId('search-snippet-2')).not.toHaveTextContent('片'.repeat(161))
@@ -101,6 +106,7 @@ describe('SearchResults', () => {
         onClearFilters={vi.fn()}
         onSearchProject={vi.fn()}
         onReturnToFolder={returnToFolder}
+        searching={false}
       />,
     )
     fireEvent.click(screen.getByRole('button', { name: '下一页' }))
@@ -124,6 +130,7 @@ describe('SearchResults', () => {
         onClearFilters={clear}
         onSearchProject={expand}
         onReturnToFolder={vi.fn()}
+        searching={false}
       />,
     )
     expect(screen.getByText(/shoe/)).toBeVisible()

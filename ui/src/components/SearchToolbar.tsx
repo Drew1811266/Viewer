@@ -132,6 +132,126 @@ export default function SearchToolbar({
       />
     </>
   )
+  const scopeAndSortControls = (
+    <div className="filter-scope-sort">
+      <label>
+        <span>范围</span>
+        <select
+          aria-label="搜索范围"
+          value={query.scopeFolderId ?? ''}
+          onChange={(event) => onScopeChange(event.currentTarget.value || null)}
+        >
+          <option value="">整个项目</option>
+          {folders.map((folder) => (
+            <option key={folder.entityId} value={folder.entityId}>
+              {folder.relativePath}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
+        <span>排序</span>
+        <select
+          aria-label="排序方式"
+          value={query.sort.key}
+          onChange={(event) =>
+            onSortChange({
+              key: event.currentTarget.value as SearchSort['key'],
+              direction: query.sort.direction,
+            })
+          }
+        >
+          <option value="relevance">相关度</option>
+          <option value="natural_name">文件名</option>
+          <option value="modified_time">修改时间</option>
+          <option value="size">文件大小</option>
+          <option value="pixel_dimensions">像素尺寸</option>
+          <option value="review_state">审阅状态</option>
+        </select>
+      </label>
+      <button
+        type="button"
+        aria-label={query.sort.direction === 'ascending' ? '切换为降序' : '切换为升序'}
+        onClick={() =>
+          onSortChange({
+            ...query.sort,
+            direction: query.sort.direction === 'ascending' ? 'descending' : 'ascending',
+          })
+        }
+      >
+        {query.sort.direction === 'ascending' ? '↑' : '↓'}
+      </button>
+    </div>
+  )
+  const fileKindAndReviewControls = (
+    <>
+      <fieldset>
+        <legend>文件类型</legend>
+        {FILE_KINDS.map(([value, label]) => (
+          <CheckFilter
+            key={value}
+            label={label}
+            checked={query.filters.kinds.includes(value)}
+            onChange={(checked) =>
+              onFiltersChange({
+                ...query.filters,
+                kinds: toggleValue(query.filters.kinds, value, checked),
+              })
+            }
+          />
+        ))}
+      </fieldset>
+      <fieldset>
+        <legend>审阅状态</legend>
+        {REVIEW_STATES.map(([value, label]) => (
+          <CheckFilter
+            key={value}
+            label={label}
+            checked={query.filters.reviewStates.includes(value)}
+            onChange={(checked) =>
+              onFiltersChange({
+                ...query.filters,
+                reviewStates: toggleValue(query.filters.reviewStates, value, checked),
+              })
+            }
+          />
+        ))}
+        <CheckFilter
+          label="收藏"
+          checked={query.filters.favoriteOnly}
+          onChange={(favoriteOnly) => onFiltersChange({ ...query.filters, favoriteOnly })}
+        />
+        <CheckFilter
+          label="未标记"
+          checked={query.filters.unmarkedOnly}
+          onChange={(unmarkedOnly) => onFiltersChange({ ...query.filters, unmarkedOnly })}
+        />
+      </fieldset>
+    </>
+  )
+  const activeFilterChipsAndClearAction = (
+    <>
+      {chips.length > 0 ? (
+        <div className="search-filter-chips" aria-label="已启用筛选">
+          {chips.map(({ chip, label }) => (
+            <button
+              type="button"
+              key={chipKey(chip)}
+              aria-label={`移除 ${label} 筛选`}
+              onClick={() => onRemoveFilter(chip)}
+            >
+              {label} ×
+            </button>
+          ))}
+          <button type="button" aria-label="清除全部筛选" onClick={onClearFilters}>
+            清除全部
+          </button>
+        </div>
+      ) : (
+        <span>未启用筛选条件</span>
+      )}
+    </>
+  )
 
   return (
     <section className="search-toolbar" aria-label="搜索和筛选">
@@ -167,103 +287,16 @@ export default function SearchToolbar({
           {chips.length > 0 && <span className="filter-count">{chips.length}</span>}
         </summary>
         <div className="search-options-popover" hidden={!optionsOpen}>
-          <div className="search-options-row">
-            <label>
-              <span>范围</span>
-              <select
-                aria-label="搜索范围"
-                value={query.scopeFolderId ?? ''}
-                onChange={(event) => onScopeChange(event.currentTarget.value || null)}
-              >
-                <option value="">整个项目</option>
-                {folders.map((folder) => (
-                  <option key={folder.entityId} value={folder.entityId}>
-                    {folder.relativePath}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              <span>排序</span>
-              <select
-                aria-label="排序方式"
-                value={query.sort.key}
-                onChange={(event) =>
-                  onSortChange({
-                    key: event.currentTarget.value as SearchSort['key'],
-                    direction: query.sort.direction,
-                  })
-                }
-              >
-                <option value="relevance">相关度</option>
-                <option value="natural_name">文件名</option>
-                <option value="modified_time">修改时间</option>
-                <option value="size">文件大小</option>
-                <option value="pixel_dimensions">像素尺寸</option>
-                <option value="review_state">审阅状态</option>
-              </select>
-            </label>
-            <button
-              type="button"
-              aria-label={query.sort.direction === 'ascending' ? '切换为降序' : '切换为升序'}
-              onClick={() =>
-                onSortChange({
-                  ...query.sort,
-                  direction: query.sort.direction === 'ascending' ? 'descending' : 'ascending',
-                })
-              }
-            >
-              {query.sort.direction === 'ascending' ? '↑' : '↓'}
+          <header className="filter-popover-header">
+            <h2>筛选</h2>
+            <button type="button" aria-label="关闭筛选" onClick={() => setOptionsOpen(false)}>
+              关闭
             </button>
-          </div>
-          <div className="search-filter-section">
-            <div className="search-filter-grid">
-              <fieldset>
-                <legend>文件类型</legend>
-                {FILE_KINDS.map(([value, label]) => (
-                  <CheckFilter
-                    key={value}
-                    label={label}
-                    checked={query.filters.kinds.includes(value)}
-                    onChange={(checked) =>
-                      onFiltersChange({
-                        ...query.filters,
-                        kinds: toggleValue(query.filters.kinds, value, checked),
-                      })
-                    }
-                  />
-                ))}
-              </fieldset>
-              <fieldset>
-                <legend>审阅状态</legend>
-                {REVIEW_STATES.map(([value, label]) => (
-                  <CheckFilter
-                    key={value}
-                    label={label}
-                    checked={query.filters.reviewStates.includes(value)}
-                    onChange={(checked) =>
-                      onFiltersChange({
-                        ...query.filters,
-                        reviewStates: toggleValue(query.filters.reviewStates, value, checked),
-                      })
-                    }
-                  />
-                ))}
-                <CheckFilter
-                  label="收藏"
-                  checked={query.filters.favoriteOnly}
-                  onChange={(favoriteOnly) => onFiltersChange({ ...query.filters, favoriteOnly })}
-                />
-                <CheckFilter
-                  label="未标记"
-                  checked={query.filters.unmarkedOnly}
-                  onChange={(unmarkedOnly) => onFiltersChange({ ...query.filters, unmarkedOnly })}
-                />
-              </fieldset>
-            </div>
-          </div>
+          </header>
+          {scopeAndSortControls}
+          <div className="common-filter-grid">{fileKindAndReviewControls}</div>
           <details className="advanced-filter-group">
-            <summary>高级条件</summary>
+            <summary role="button">高级条件</summary>
             <div className="advanced-filter-grid">
               <fieldset aria-label="方向">{orientationControls}</fieldset>
               <fieldset aria-label="像素尺寸">{dimensionControls}</fieldset>
@@ -271,25 +304,9 @@ export default function SearchToolbar({
               <fieldset aria-label="修改时间">{modifiedTimeControls}</fieldset>
             </div>
           </details>
+          <footer className="active-filter-summary">{activeFilterChipsAndClearAction}</footer>
         </div>
       </details>
-      {chips.length > 0 && (
-        <div className="search-filter-chips" aria-label="已启用筛选">
-          {chips.map(({ chip, label }) => (
-            <button
-              type="button"
-              key={chipKey(chip)}
-              aria-label={`移除 ${label} 筛选`}
-              onClick={() => onRemoveFilter(chip)}
-            >
-              {label} ×
-            </button>
-          ))}
-          <button type="button" aria-label="清除全部筛选" onClick={onClearFilters}>
-            清除全部
-          </button>
-        </div>
-      )}
     </section>
   )
 }

@@ -119,7 +119,7 @@ export default function TextPreviewPane({
       )}
       {!unavailable && preview?.format === 'markdown' && (
         <div
-          className="markdown-preview"
+          className="markdown-preview markdown-reading-surface"
           onClick={markdownClicked}
           dangerouslySetInnerHTML={{ __html: preview.markdownHtml ?? '' }}
         />

@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 import type { BrowserFile, TextEncoding, TextPreview as TextPreviewDto } from '../api/types'
@@ -82,10 +82,12 @@ describe('TextPreview', () => {
       />,
     )
 
-    expect(screen.getByRole('dialog', { name: /plain\.txt.*notes\.md/ })).toHaveAttribute(
-      'aria-modal',
-      'true',
-    )
+    const dialog = screen.getByRole('dialog', { name: /plain\.txt.*notes\.md/ })
+    expect(dialog).toHaveAttribute('aria-modal', 'true')
+    expect(within(dialog).getByRole('toolbar', { name: '文本预览控制' })).toBeVisible()
+    expect(within(dialog).getByRole('button', { name: '关闭预览' })).toHaveTextContent('完成')
+    expect(within(dialog).getAllByRole('region')).toHaveLength(2)
+    expect(within(dialog).queryByText(/差异|合并/)).not.toBeInTheDocument()
     expect(screen.getByRole('combobox', { name: 'plain.txt 文本编码' })).toBeVisible()
     expect(screen.getByRole('combobox', { name: 'notes.md 文本编码' })).toBeVisible()
     expect(screen.getByRole('region', { name: 'plain.txt' })).toBeVisible()

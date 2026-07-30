@@ -37,12 +37,18 @@ export default function UnsupportedFilePreview({
       }}
     >
       <header className="preview-toolbar">
-        <strong>{file.name}</strong>
-        <button type="button" aria-label="关闭预览" onClick={onClose}>
-          ×
-        </button>
+        <div className="preview-toolbar-leading">
+          <strong>{file.name}</strong>
+        </div>
+        <div className="preview-toolbar-actions" role="toolbar" aria-label="文件预览控制">
+          <button type="button" aria-label="关闭预览" onClick={onClose}>
+            完成
+          </button>
+        </div>
       </header>
-      <UnsupportedFileState file={file} unavailable={unavailable} />
+      <div className="preview-stage">
+        <UnsupportedFileState file={file} unavailable={unavailable} />
+      </div>
     </section>
   )
 }

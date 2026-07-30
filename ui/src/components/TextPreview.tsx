@@ -40,6 +40,17 @@ export default function TextPreview({
     )
   }, [])
 
+  const paneNodes = files.map((file) => (
+    <TextPreviewPane
+      key={`${file.entityId}:${file.modifiedNs}`}
+      file={file}
+      unavailable={unavailableEntityIds.has(file.entityId)}
+      requestPreview={requestPreview}
+      openExternalLink={openExternalLink}
+      onStatusChange={recordStatus}
+    />
+  ))
+
   useEffect(() => {
     const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null
     dialogRef.current?.querySelector<HTMLElement>(FOCUSABLE)?.focus()
@@ -101,24 +112,26 @@ export default function TextPreview({
       tabIndex={-1}
       onKeyDown={containFocus}
     >
-      <header className="preview-toolbar">
-        <strong>{files.map((file) => file.name).join(' · ')}</strong>
-        <button type="button" aria-label="关闭预览" onClick={onClose}>
-          ×
-        </button>
+      <header className="preview-toolbar text-preview-toolbar">
+        <div className="preview-toolbar-leading">
+          <strong>{files.map((file) => file.name).join(' · ')}</strong>
+          <span>{files.map((file) => textFormatLabel(file.kind)).join(' · ')}</span>
+        </div>
+        <div className="preview-toolbar-actions" role="toolbar" aria-label="文本预览控制">
+          <button type="button" aria-label="关闭预览" onClick={onClose}>
+            完成
+          </button>
+        </div>
       </header>
-      <div className="text-preview-panes" data-pane-count={files.length}>
-        {files.map((file) => (
-          <TextPreviewPane
-            key={`${file.entityId}:${file.modifiedNs}`}
-            file={file}
-            unavailable={unavailableEntityIds.has(file.entityId)}
-            requestPreview={requestPreview}
-            openExternalLink={openExternalLink}
-            onStatusChange={recordStatus}
-          />
-        ))}
+      <div className="text-preview-stage">
+        <div className="text-preview-panes" data-pane-count={files.length}>
+          {paneNodes}
+        </div>
       </div>
     </section>
   )
+}
+
+function textFormatLabel(kind: BrowserFile['kind']): string {
+  return kind === 'markdown' ? 'Markdown' : '纯文本'
 }

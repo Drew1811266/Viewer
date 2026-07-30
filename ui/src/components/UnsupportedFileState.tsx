@@ -23,7 +23,7 @@ export default function UnsupportedFileState({
     >
       <strong>{file.name}</strong>
       <span>{format}</span>
-      <span>{status}</span>
+      <span className="unsupported-file-message">{status}</span>
     </div>
   )
 }

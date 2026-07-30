@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import type { BrowserFile, ReviewState, SelectionAgreement, SelectionInfo } from '../api/types'
 
 interface InfoOverlayProps {
@@ -45,18 +46,7 @@ export default function InfoOverlay({
           <AggregateSelectionInfo info={selectionInfo} />
         )}
       {files.length > 1 && selectionInfo === undefined && (
-        <dl>
-          <dt>所选项目</dt>
-          <dd>{files.length} 个文件</dd>
-          <dt>总大小</dt>
-          <dd>{formatBytes(totalSize)}</dd>
-          <dt>类型</dt>
-          <dd>
-            {Object.entries(counts)
-              .map(([kind, count]) => `${kindLabel(kind)} ${count}`)
-              .join(' · ')}
-          </dd>
-        </dl>
+        <FallbackMultiFileInfo files={files.length} totalSize={totalSize} counts={counts} />
       )}
     </aside>
   )
@@ -71,49 +61,127 @@ function SingleFileInfo({
 }) {
   const size = dimensions[file.entityId]
   return (
-    <dl>
-      <dt>名称</dt>
-      <dd>{file.name}</dd>
-      <dt>路径</dt>
-      <dd>{file.relativePath}</dd>
-      <dt>类型</dt>
-      <dd>{kindLabel(file.kind)}</dd>
-      <dt>审阅状态</dt>
-      <dd>{reviewLabel(file.marker.reviewState)}</dd>
-      <dt>收藏</dt>
-      <dd>{file.marker.favorite ? '是' : '否'}</dd>
-      {size && (
-        <>
-          <dt>尺寸</dt>
-          <dd>
-            {size.width} × {size.height}
-          </dd>
-        </>
-      )}
-      <dt>大小</dt>
-      <dd>{formatBytes(file.size)}</dd>
-      <dt>修改时间</dt>
-      <dd>{formatModifiedNs(file.modifiedNs)}</dd>
-    </dl>
+    <>
+      <InfoSection heading="身份与位置" headingId="info-identity">
+        <dl>
+          <dt>名称</dt>
+          <dd>{file.name}</dd>
+          <dt>路径</dt>
+          <dd>{file.relativePath}</dd>
+          <dt>类型</dt>
+          <dd>{kindLabel(file.kind)}</dd>
+        </dl>
+      </InfoSection>
+      <InfoSection heading="审阅信息" headingId="info-review">
+        <dl>
+          <dt>审阅状态</dt>
+          <dd>{reviewLabel(file.marker.reviewState)}</dd>
+          <dt>收藏</dt>
+          <dd>{file.marker.favorite ? '是' : '否'}</dd>
+        </dl>
+      </InfoSection>
+      <InfoSection heading="技术信息" headingId="info-technical">
+        <dl>
+          {size && (
+            <>
+              <dt>尺寸</dt>
+              <dd>
+                {size.width} × {size.height}
+              </dd>
+            </>
+          )}
+          <dt>大小</dt>
+          <dd>{formatBytes(file.size)}</dd>
+          <dt>修改时间</dt>
+          <dd>{formatModifiedNs(file.modifiedNs)}</dd>
+        </dl>
+      </InfoSection>
+    </>
   )
 }
 
 function AggregateSelectionInfo({ info }: { info: SelectionInfo }) {
   return (
-    <dl>
-      <dt>所选项目</dt>
-      <dd>{info.relativePaths.length} 个项目</dd>
-      <dt>总大小</dt>
-      <dd>{formatBytes(info.totalSize)}</dd>
-      <dt>类型</dt>
-      <dd>
-        文件夹 {info.types.folders} · 图片 {info.types.images} · 其它文件 {info.types.otherFiles}
-      </dd>
-      <dt>审阅状态</dt>
-      <dd>{agreementLabel(info.commonReview, reviewLabel)}</dd>
-      <dt>收藏</dt>
-      <dd>{agreementLabel(info.commonFavorite, (value) => (value ? '是' : '否'))}</dd>
-    </dl>
+    <>
+      <InfoSection heading="身份与位置" headingId="info-identity">
+        <dl>
+          <dt>所选项目</dt>
+          <dd>{info.relativePaths.length} 个项目</dd>
+          <dt>类型</dt>
+          <dd>
+            文件夹 {info.types.folders} · 图片 {info.types.images} · 其它文件{' '}
+            {info.types.otherFiles}
+          </dd>
+        </dl>
+      </InfoSection>
+      <InfoSection heading="审阅信息" headingId="info-review">
+        <dl>
+          <dt>审阅状态</dt>
+          <dd>{agreementLabel(info.commonReview, reviewLabel)}</dd>
+          <dt>收藏</dt>
+          <dd>{agreementLabel(info.commonFavorite, (value) => (value ? '是' : '否'))}</dd>
+        </dl>
+      </InfoSection>
+      <InfoSection heading="技术信息" headingId="info-technical">
+        <dl>
+          <dt>总大小</dt>
+          <dd>{formatBytes(info.totalSize)}</dd>
+        </dl>
+      </InfoSection>
+    </>
+  )
+}
+
+function FallbackMultiFileInfo({
+  files,
+  totalSize,
+  counts,
+}: {
+  files: number
+  totalSize: number
+  counts: Record<string, number>
+}) {
+  return (
+    <>
+      <InfoSection heading="身份与位置" headingId="info-identity">
+        <dl>
+          <dt>所选项目</dt>
+          <dd>{files} 个文件</dd>
+          <dt>类型</dt>
+          <dd>
+            {Object.entries(counts)
+              .map(([kind, count]) => `${kindLabel(kind)} ${count}`)
+              .join(' · ')}
+          </dd>
+        </dl>
+      </InfoSection>
+      <InfoSection heading="审阅信息" headingId="info-review">
+        <p className="aggregate-label">尚未载入共同审阅信息。</p>
+      </InfoSection>
+      <InfoSection heading="技术信息" headingId="info-technical">
+        <dl>
+          <dt>总大小</dt>
+          <dd>{formatBytes(totalSize)}</dd>
+        </dl>
+      </InfoSection>
+    </>
+  )
+}
+
+function InfoSection({
+  heading,
+  headingId,
+  children,
+}: {
+  heading: string
+  headingId: string
+  children: ReactNode
+}) {
+  return (
+    <section className="info-section" role="group" aria-labelledby={headingId}>
+      <h3 id={headingId}>{heading}</h3>
+      {children}
+    </section>
   )
 }
 

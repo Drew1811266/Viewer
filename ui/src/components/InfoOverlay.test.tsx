@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import type { BrowserFile } from '../api/types'
 import InfoOverlay from './InfoOverlay'
@@ -25,9 +25,15 @@ describe('InfoOverlay', () => {
       />,
     )
 
-    expect(screen.getByText('catalog/id-1/front.jpg')).toBeVisible()
-    expect(screen.getByText('1200 × 800')).toBeVisible()
-    expect(screen.getByText('1 KiB')).toBeVisible()
+    const inspector = screen.getByRole('complementary', { name: '文件信息' })
+    expect(inspector).toHaveClass('info-overlay')
+    expect(within(inspector).getByRole('group', { name: '身份与位置' })).toBeVisible()
+    expect(within(inspector).getByRole('group', { name: '审阅信息' })).toBeVisible()
+    expect(within(inspector).getByRole('group', { name: '技术信息' })).toBeVisible()
+    expect(inspector).not.toHaveAttribute('aria-modal')
+    expect(within(inspector).getByText('catalog/id-1/front.jpg')).toBeVisible()
+    expect(within(inspector).getByText('1200 × 800')).toBeVisible()
+    expect(within(inspector).getByText('1 KiB')).toBeVisible()
   })
 
   it('summarizes count total size and kind distribution for multiple files', () => {

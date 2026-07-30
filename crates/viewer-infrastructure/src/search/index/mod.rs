@@ -94,7 +94,7 @@ fn decode_text_status(value: i64) -> rusqlite::Result<TextIndexStatus> {
     }
 }
 
-fn decode_kind(value: i64) -> rusqlite::Result<FileKind> {
+pub(super) fn decode_kind(value: i64) -> rusqlite::Result<FileKind> {
     match value {
         0 => Ok(FileKind::Directory),
         1 => Ok(FileKind::Jpeg),

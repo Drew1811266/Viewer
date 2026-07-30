@@ -13,9 +13,9 @@ import type { ViewerBridge } from './api/viewer'
 import { tauriViewerBridge } from './api/viewer'
 import { getAppShellStateInternals, useAppShellState } from './app/useAppShellState'
 import { useOperationDialogs } from './app/useOperationDialogs'
+import { useOtherFilePanelPreference } from './app/useOtherFilePanelPreference'
 import { getPreviewSessionInternals, usePreviewSession } from './app/usePreviewSession'
 import { useRadialMenuContextToken, useRadialMenuSession } from './app/useRadialMenuSession'
-import { useTextPanelPreference } from './app/useTextPanelPreference'
 import BatchRenameDialog from './components/BatchRenameDialog'
 import CloseOperationDialog from './components/CloseOperationDialog'
 import CompareWorkspace from './components/CompareWorkspace'
@@ -119,7 +119,7 @@ function ViewerWorkspace({ bridge }: { bridge: ViewerBridge }) {
     state.search.showResults ? 'search' : 'browser',
   ].join(':')
   const shellState = useAppShellState(projectSessionId)
-  const textPanelPreference = useTextPanelPreference(projectSessionId)
+  const otherFilePanelPreference = useOtherFilePanelPreference(projectSessionId)
   const {
     sidebarCollapsed,
     sidebarWidth,
@@ -1053,8 +1053,8 @@ function ViewerWorkspace({ bridge }: { bridge: ViewerBridge }) {
                   repairSelectionId={state.contextRepair?.suggestedEntityId ?? null}
                   onRepairSelectionApplied={consumeContextRepair}
                   onRadialMenuRequest={beginRadialSession}
-                  textPanelExpanded={textPanelPreference.expanded}
-                  onTextPanelExpandedChange={textPanelPreference.setExpanded}
+                  otherFilePanelExpanded={otherFilePanelPreference.expanded}
+                  onOtherFilePanelExpandedChange={otherFilePanelPreference.setExpanded}
                 />
               </div>
               {compareOpen && (

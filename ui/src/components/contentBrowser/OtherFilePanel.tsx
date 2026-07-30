@@ -9,6 +9,7 @@ import {
 import type { BrowserFile } from '../../api/types'
 import VirtualList from '../VirtualList'
 import { OrganizationDragHandle } from './OrganizationDragHandle'
+import { useMeasuredElementHeight } from './useMeasuredElementHeight'
 
 const OTHER_LIST_ID = 'content-other-file-list'
 const OTHER_LIST_LABEL_ID = 'content-other-file-list-label'
@@ -53,6 +54,9 @@ export default function OtherFilePanel({
 }: OtherFilePanelProps) {
   const disclosureRef = useRef<HTMLButtonElement>(null)
   const restoreDisclosureFocus = useRef(false)
+  const listboxHeight = useMeasuredElementHeight(
+    mode === 'mixed_expanded' ? files.length * OTHER_FILE_ROW_HEIGHT : 520,
+  )
   const selectedCount = files.filter((file) => selectedIds.has(file.entityId)).length
   const activeIndex =
     activeId === null ? -1 : files.findIndex(({ entityId }) => entityId === activeId)
@@ -99,6 +103,7 @@ export default function OtherFilePanel({
       )}
       {mode !== 'mixed_collapsed' && (
         <div
+          ref={listboxHeight.ref}
           id={OTHER_LIST_ID}
           role="listbox"
           aria-label={mode === 'other_only' ? undefined : '其它文件'}
@@ -114,6 +119,7 @@ export default function OtherFilePanel({
           <VirtualList
             items={files}
             rowHeight={OTHER_FILE_ROW_HEIGHT}
+            height={listboxHeight.height}
             getKey={(file) => file.entityId}
             scrollToIndex={activeIndex >= 0 ? activeIndex : undefined}
             className="other-file-virtual-list"

@@ -20,7 +20,7 @@ export type RadialPrimaryId = 'preview' | 'mark' | 'organize' | 'trash' | 'compa
 export interface RadialMenuContext {
   selectedCount: number
   selectedImageCount: number
-  previewEnabled?: boolean
+  previewEnabled: boolean
   previewDisabledReason?: string
   readOnly: boolean
   busy: boolean
@@ -93,13 +93,8 @@ export function buildRadialMenuModel(context: RadialMenuContext): RadialMenuItem
       id: 'preview',
       label: '预览',
       symbol: '◉',
-      disabled: !(context.previewEnabled ?? context.selectedCount === 1),
-      disabledReason:
-        context.previewEnabled === undefined
-          ? context.selectedCount !== 1
-            ? '预览仅适用于单个文件'
-            : undefined
-          : context.previewDisabledReason,
+      disabled: !context.previewEnabled,
+      disabledReason: context.previewDisabledReason,
     },
     {
       id: 'mark',
@@ -139,7 +134,7 @@ export function buildRadialMenuModel(context: RadialMenuContext): RadialMenuItem
             : context.selectedCount < MIN_COMPARE_IMAGES
               ? '请选择 2–20 张图片'
               : context.selectedImageCount !== context.selectedCount
-                ? '仅支持 JPG 或 PNG 图片'
+                ? '仅支持图片'
                 : undefined,
     },
     {

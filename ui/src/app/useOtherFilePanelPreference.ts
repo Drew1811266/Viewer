@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from 'react'
 
-export interface TextPanelPreferenceState {
+export interface OtherFilePanelPreferenceState {
   expanded: boolean
   setExpanded(expanded: boolean): void
 }
@@ -10,7 +10,9 @@ interface StoredPreference {
   expanded: boolean
 }
 
-export function useTextPanelPreference(projectSessionId: string): TextPanelPreferenceState {
+export function useOtherFilePanelPreference(
+  projectSessionId: string,
+): OtherFilePanelPreferenceState {
   const latestSessionId = useRef(projectSessionId)
   latestSessionId.current = projectSessionId
   const [stored, setStored] = useState<StoredPreference>(() => ({

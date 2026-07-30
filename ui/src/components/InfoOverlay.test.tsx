@@ -44,6 +44,36 @@ describe('InfoOverlay', () => {
     expect(screen.getByText('JPEG 1 · PNG 1')).toBeVisible()
   })
 
+  it.each([
+    ['unsupported_image', '其它图片'],
+    ['other', '其它文件'],
+  ] as const)('uses a Chinese single-file label for %s', (kind, label) => {
+    render(
+      <InfoOverlay
+        files={[{ ...image, entityId: kind, kind }]}
+        dimensions={{}}
+        onClose={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText(label)).toBeVisible()
+  })
+
+  it('uses Chinese labels for appended kinds in the multi-file fallback summary', () => {
+    render(
+      <InfoOverlay
+        files={[
+          { ...image, entityId: 'unsupported', kind: 'unsupported_image' },
+          { ...image, entityId: 'other', kind: 'other' },
+        ]}
+        dimensions={{}}
+        onClose={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText('其它图片 1 · 其它文件 1')).toBeVisible()
+  })
+
   it('uses aggregate selection information for folders/files and common markers', () => {
     render(
       <InfoOverlay

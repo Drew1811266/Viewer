@@ -38,8 +38,8 @@ interface ContentBrowserProps {
   repairSelectionId?: string | null
   onRepairSelectionApplied?: () => void
   onRadialMenuRequest?: (request: RadialMenuRequest) => void
-  textPanelExpanded: boolean
-  onTextPanelExpandedChange(expanded: boolean): void
+  otherFilePanelExpanded: boolean
+  onOtherFilePanelExpandedChange(expanded: boolean): void
 }
 
 interface ThumbnailWork {
@@ -63,8 +63,8 @@ export default function ContentBrowser({
   repairSelectionId = null,
   onRepairSelectionApplied,
   onRadialMenuRequest,
-  textPanelExpanded,
-  onTextPanelExpandedChange,
+  otherFilePanelExpanded,
+  onOtherFilePanelExpandedChange,
 }: ContentBrowserProps) {
   const [selected, setSelected] = useState<Set<string>>(() => new Set())
   const [activeId, setActiveId] = useState<string | null>(null)
@@ -94,7 +94,7 @@ export default function ContentBrowser({
   const mode = resolveAdaptiveContentMode(
     workspace.images.length,
     workspace.otherFiles.length,
-    textPanelExpanded,
+    otherFilePanelExpanded,
   )
   const selectAllRequest = resolveSelectAllRequest(
     workspace.images.length,
@@ -621,7 +621,7 @@ export default function ContentBrowser({
             selectedIds={selected}
             activeId={activeOtherId}
             organizationDragDisabled={organizationDragDisabled}
-            onExpandedChange={onTextPanelExpandedChange}
+            onExpandedChange={onOtherFilePanelExpandedChange}
             onListKeyDown={handleOtherListKeyboard}
             onSelect={selectFile}
             onPreview={previewFile}

@@ -609,6 +609,195 @@ fn session_copy_is_fresh_unmarked_pending_and_conflict_batches_roll_back() {
 }
 
 #[test]
+fn appended_kinds_do_not_stale_unrelated_copy_move_or_rename_projections() {
+    let directory = TempDir::new().unwrap();
+    let index = SessionIndex::open(directory.path().join("session.sqlite")).unwrap();
+    let archive = node(EntityId::new(), "archive", FileKind::Directory);
+    let source = node(EntityId::new(), "source.png", FileKind::Png);
+    let unsupported = node(
+        EntityId::new(),
+        "registered.webp",
+        FileKind::UnsupportedImage,
+    );
+    let other = node(EntityId::new(), "notes.data", FileKind::Other);
+    index
+        .upsert_batch(&[archive, source.clone(), unsupported.clone(), other.clone()])
+        .unwrap();
+
+    let copied = FileNode {
+        entity_id: EntityId::new(),
+        relative_path: path("source copy.png"),
+        ..source.clone()
+    };
+    index
+        .apply_copy(
+            &[FileCopyProjection {
+                source: source.clone(),
+                destination: copied.clone(),
+            }],
+            true,
+        )
+        .unwrap();
+
+    let moved = FileNode {
+        relative_path: path("archive/source.png"),
+        ..source.clone()
+    };
+    index
+        .apply_move(
+            &[FileMoveProjection {
+                source,
+                destination: moved.clone(),
+            }],
+            true,
+        )
+        .unwrap();
+
+    let renamed = FileNode {
+        relative_path: path("renamed copy.png"),
+        ..copied.clone()
+    };
+    index
+        .apply_move(
+            &[FileMoveProjection {
+                source: copied,
+                destination: renamed.clone(),
+            }],
+            true,
+        )
+        .unwrap();
+
+    assert_eq!(
+        index.indexed_node(moved.entity_id).unwrap().unwrap().node,
+        moved
+    );
+    assert_eq!(
+        index.indexed_node(renamed.entity_id).unwrap().unwrap().node,
+        renamed
+    );
+    assert_eq!(
+        index
+            .indexed_node(unsupported.entity_id)
+            .unwrap()
+            .unwrap()
+            .node,
+        unsupported
+    );
+    assert_eq!(
+        index.indexed_node(other.entity_id).unwrap().unwrap().node,
+        other
+    );
+}
+
+#[test]
+fn appended_kinds_participate_in_copy_move_and_rename_projections() {
+    let directory = TempDir::new().unwrap();
+    let index = SessionIndex::open(directory.path().join("session.sqlite")).unwrap();
+    let archive = node(EntityId::new(), "archive", FileKind::Directory);
+    let unsupported = node(
+        EntityId::new(),
+        "registered.webp",
+        FileKind::UnsupportedImage,
+    );
+    let other = node(EntityId::new(), "notes.data", FileKind::Other);
+    index
+        .upsert_batch(&[archive, unsupported.clone(), other.clone()])
+        .unwrap();
+
+    let unsupported_copy = FileNode {
+        entity_id: EntityId::new(),
+        relative_path: path("registered copy.webp"),
+        ..unsupported.clone()
+    };
+    index
+        .apply_copy(
+            &[FileCopyProjection {
+                source: unsupported.clone(),
+                destination: unsupported_copy.clone(),
+            }],
+            true,
+        )
+        .unwrap();
+
+    let moved_other = FileNode {
+        relative_path: path("archive/notes.data"),
+        ..other.clone()
+    };
+    index
+        .apply_move(
+            &[FileMoveProjection {
+                source: other,
+                destination: moved_other.clone(),
+            }],
+            true,
+        )
+        .unwrap();
+
+    let renamed_unsupported = FileNode {
+        relative_path: path("renamed.webp"),
+        ..unsupported.clone()
+    };
+    index
+        .apply_move(
+            &[FileMoveProjection {
+                source: unsupported,
+                destination: renamed_unsupported.clone(),
+            }],
+            true,
+        )
+        .unwrap();
+
+    for expected in [unsupported_copy, moved_other, renamed_unsupported] {
+        assert_eq!(
+            index
+                .indexed_node(expected.entity_id)
+                .unwrap()
+                .unwrap()
+                .node,
+            expected
+        );
+    }
+}
+
+#[test]
+fn unknown_persisted_kinds_still_reject_operation_projections() {
+    for invalid_kind in [-1_i64, 7] {
+        let directory = TempDir::new().unwrap();
+        let database = directory.path().join("session.sqlite");
+        let index = SessionIndex::open(&database).unwrap();
+        let source = node(EntityId::new(), "source.png", FileKind::Png);
+        let corrupted = node(EntityId::new(), "corrupted.data", FileKind::Other);
+        index
+            .upsert_batch(&[source.clone(), corrupted.clone()])
+            .unwrap();
+        Connection::open(&database)
+            .unwrap()
+            .execute(
+                "UPDATE nodes SET kind = ?2 WHERE entity_id = ?1",
+                params![corrupted.entity_id.to_string(), invalid_kind],
+            )
+            .unwrap();
+        let destination = FileNode {
+            entity_id: EntityId::new(),
+            relative_path: path("source copy.png"),
+            ..source.clone()
+        };
+
+        assert_eq!(
+            index.apply_copy(
+                &[FileCopyProjection {
+                    source,
+                    destination,
+                }],
+                true,
+            ),
+            Err(OperationProjectionError::Stale),
+            "persisted kind {invalid_kind} must remain invalid"
+        );
+    }
+}
+
+#[test]
 fn trash_removes_session_subtree_and_fts_but_keeps_dormant_portable_marker() {
     let project = TempDir::new().unwrap();
     let (store, _portable_database) = portable_store(&project);

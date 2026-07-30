@@ -137,6 +137,8 @@ function kindLabel(kind: string): string {
       png: 'PNG',
       markdown: 'Markdown',
       text: 'TXT',
+      unsupported_image: '其它图片',
+      other: '其它文件',
     }[kind] ?? kind
   )
 }

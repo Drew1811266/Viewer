@@ -15,25 +15,25 @@ import ContentBrowserComponent from './ContentBrowser'
 
 type ContentBrowserTestProps = Omit<
   ComponentProps<typeof ContentBrowserComponent>,
-  'density' | 'textPanelExpanded' | 'onTextPanelExpandedChange'
+  'density' | 'otherFilePanelExpanded' | 'onOtherFilePanelExpandedChange'
 > & {
   density?: ThumbnailDensity
-  textPanelExpanded?: boolean
-  onTextPanelExpandedChange?: (expanded: boolean) => void
+  otherFilePanelExpanded?: boolean
+  onOtherFilePanelExpandedChange?: (expanded: boolean) => void
 }
 
 function ContentBrowser({
   density = 'standard',
-  textPanelExpanded = false,
-  onTextPanelExpandedChange = () => undefined,
+  otherFilePanelExpanded = false,
+  onOtherFilePanelExpandedChange = () => undefined,
   ...props
 }: ContentBrowserTestProps) {
   return (
     <ContentBrowserComponent
       {...props}
       density={density}
-      textPanelExpanded={textPanelExpanded}
-      onTextPanelExpandedChange={onTextPanelExpandedChange}
+      otherFilePanelExpanded={otherFilePanelExpanded}
+      onOtherFilePanelExpandedChange={onOtherFilePanelExpandedChange}
     />
   )
 }
@@ -50,8 +50,8 @@ function ControlledContentBrowser({
   return (
     <ContentBrowser
       {...props}
-      textPanelExpanded={expanded}
-      onTextPanelExpandedChange={(next) => {
+      otherFilePanelExpanded={expanded}
+      onOtherFilePanelExpandedChange={(next) => {
         onPreferenceChange(next)
         setExpanded(next)
       }}
@@ -285,6 +285,12 @@ describe('ContentBrowser', () => {
       'false',
     )
     expect(changed).toHaveBeenLastCalledWith([expect.objectContaining({ entityId: 'text-1' })])
+
+    fireEvent.click(screen.getByRole('button', { name: '其它文件 · 1 · 已选 1' }))
+    expect(screen.getByRole('option', { name: 'prompt.md' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    )
   })
 
   it('restores one controlled mixed preference across image-only content', () => {
@@ -925,7 +931,11 @@ describe('ContentBrowser', () => {
   it('restores text-list arrows, active ID, and Space preview with legacy all-file offsets', () => {
     const preview = vi.fn()
     render(
-      <ContentBrowser workspace={workspaceWithTextFiles()} textPanelExpanded onPreview={preview} />,
+      <ContentBrowser
+        workspace={workspaceWithTextFiles()}
+        otherFilePanelExpanded
+        onPreview={preview}
+      />,
     )
     const otherList = screen.getByRole('listbox', { name: '其它文件' })
 
@@ -951,7 +961,7 @@ describe('ContentBrowser', () => {
   })
 
   it('extends text-list Shift arrows from the source anchor with legacy all-file offsets', () => {
-    render(<ContentBrowser workspace={workspaceWithTextFiles()} textPanelExpanded />)
+    render(<ContentBrowser workspace={workspaceWithTextFiles()} otherFilePanelExpanded />)
     const otherList = screen.getByRole('listbox', { name: '其它文件' })
 
     fireEvent.click(screen.getByRole('option', { name: 'note-1.txt' }))
@@ -1034,7 +1044,7 @@ describe('ContentBrowser', () => {
     render(
       <ContentBrowser
         workspace={workspace(3)}
-        textPanelExpanded={focusOwner === 'expanded text list'}
+        otherFilePanelExpanded={focusOwner === 'expanded text list'}
       />,
     )
     const target =
@@ -1093,7 +1103,7 @@ describe('ContentBrowser', () => {
   ] as const)(
     'replaces selection with the %s scope and anchors it at the first scoped file',
     (choice, expectedLabels, activeDescendant) => {
-      render(<ContentBrowser workspace={workspaceWithTextFiles(2, 2)} textPanelExpanded />)
+      render(<ContentBrowser workspace={workspaceWithTextFiles(2, 2)} otherFilePanelExpanded />)
       fireEvent.click(screen.getByRole('option', { name: '2.jpg' }))
       fireEvent.click(screen.getByRole('button', { name: '全选当前文件夹' }))
 
@@ -1128,7 +1138,7 @@ describe('ContentBrowser', () => {
   })
 
   it('uses the first scoped file as the range anchor after a choice commit', () => {
-    render(<ContentBrowser workspace={workspaceWithTextFiles(2, 2)} textPanelExpanded />)
+    render(<ContentBrowser workspace={workspaceWithTextFiles(2, 2)} otherFilePanelExpanded />)
     fireEvent.click(screen.getByRole('option', { name: '1.jpg' }))
     fireEvent.click(screen.getByRole('button', { name: '全选当前文件夹' }))
     fireEvent.click(screen.getByRole('menuitem', { name: '全选其它文件' }))
@@ -1397,7 +1407,7 @@ describe('ContentBrowser', () => {
   })
 
   it('keeps Markdown and TXT in an independent labelled list', () => {
-    render(<ContentBrowser workspace={workspace()} textPanelExpanded />)
+    render(<ContentBrowser workspace={workspace()} otherFilePanelExpanded />)
 
     expect(screen.getByRole('button', { name: '其它文件 · 1' })).toBeVisible()
     expect(screen.getByRole('option', { name: 'prompt.md' })).toHaveAttribute('tabindex', '-1')
@@ -1441,7 +1451,11 @@ describe('ContentBrowser', () => {
     const exportFiles = vi.fn()
     const setData = vi.fn()
     render(
-      <ContentBrowser workspace={workspace(4)} textPanelExpanded onFinderDragStart={exportFiles} />,
+      <ContentBrowser
+        workspace={workspace(4)}
+        otherFilePanelExpanded
+        onFinderDragStart={exportFiles}
+      />,
     )
     const option = screen.getByRole('option', { name })
     const exportSurface = defined(
@@ -1478,7 +1492,7 @@ describe('ContentBrowser', () => {
     render(
       <ContentBrowser
         workspace={workspace(2)}
-        textPanelExpanded
+        otherFilePanelExpanded
         onFinderDragStart={exportFiles}
         onOrganizationPointerInput={inputs}
       />,
@@ -1691,7 +1705,11 @@ describe('ContentBrowser', () => {
   it('snapshots a text-row right-click request after replacing an unrelated selection', () => {
     const request = vi.fn()
     render(
-      <ContentBrowser workspace={workspace(3)} textPanelExpanded onRadialMenuRequest={request} />,
+      <ContentBrowser
+        workspace={workspace(3)}
+        otherFilePanelExpanded
+        onRadialMenuRequest={request}
+      />,
     )
     const otherList = screen.getByRole('listbox', { name: '其它文件' })
     fireEvent.click(screen.getByRole('option', { name: '1.jpg' }))
@@ -1717,7 +1735,11 @@ describe('ContentBrowser', () => {
   it('falls back to click-mode radial requests for image and text context-menu events', () => {
     const request = vi.fn()
     render(
-      <ContentBrowser workspace={workspace(1)} textPanelExpanded onRadialMenuRequest={request} />,
+      <ContentBrowser
+        workspace={workspace(1)}
+        otherFilePanelExpanded
+        onRadialMenuRequest={request}
+      />,
     )
 
     for (const [name, entityId, listName] of [
@@ -1825,7 +1847,7 @@ describe('ContentBrowser', () => {
       ...defined(data.images[1], 'Expected second image fixture'),
       marker: { reviewState: 'keep', favorite: true },
     }
-    render(<ContentBrowser workspace={data} textPanelExpanded currentPath="项目根目录" />)
+    render(<ContentBrowser workspace={data} otherFilePanelExpanded currentPath="项目根目录" />)
     expect(screen.queryByText('未标记')).not.toBeInTheDocument()
     expect(screen.getByText('保留 · 收藏')).toBeVisible()
     expect(screen.getByText('项目根目录')).toBeVisible()

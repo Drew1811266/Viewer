@@ -1,8 +1,8 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen } from '@testing-library/react'
 import type { ComponentProps } from 'react'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { BrowserFile } from '../../api/types'
-import OtherFilePanel from './OtherFilePanel'
+import OtherFilePanel, { OTHER_FILE_ROW_HEIGHT } from './OtherFilePanel'
 
 const otherFiles: readonly BrowserFile[] = [
   {
@@ -28,6 +28,10 @@ const otherFiles: readonly BrowserFile[] = [
     imageUrl: null,
   },
 ]
+
+afterEach(() => {
+  vi.unstubAllGlobals()
+})
 
 function panelProps(
   overrides: Partial<ComponentProps<typeof OtherFilePanel>> = {},
@@ -169,4 +173,119 @@ describe('OtherFilePanel', () => {
     )
     expect(screen.getByText('保留 · 收藏')).toBeVisible()
   })
+
+  it('passes the measured mixed-shelf listbox height to the committed virtual list', () => {
+    const resize = installResizeObserver()
+    const frames = installAnimationFrameQueue()
+    renderPanel({ mode: 'mixed_expanded' })
+    const listbox = screen.getByRole('listbox', { name: '其它文件' })
+
+    resize.trigger(listbox, otherFiles.length * OTHER_FILE_ROW_HEIGHT)
+    act(() => frames.flush())
+
+    expect(virtualList(listbox)).toHaveStyle({
+      height: `${otherFiles.length * OTHER_FILE_ROW_HEIGHT}px`,
+    })
+    expect(screen.getAllByRole('option')).toHaveLength(otherFiles.length)
+  })
+
+  it.each([
+    ['mixed_expanded', 96],
+    ['other_only', 280],
+  ] as const)(
+    'scrolls a long %s list through its measured viewport to the final row',
+    (mode, height) => {
+      const resize = installResizeObserver()
+      const frames = installAnimationFrameQueue()
+      const files = manyOtherFiles(30)
+      renderPanel({ mode, files })
+      const listbox = screen.getByRole('listbox', { name: '其它文件' })
+      const viewport = virtualList(listbox)
+
+      resize.trigger(listbox, height)
+      act(() => frames.flush())
+      expect(viewport).toHaveStyle({ height: `${height}px` })
+
+      Object.defineProperty(viewport, 'clientHeight', { configurable: true, value: height })
+      Object.defineProperty(viewport, 'scrollHeight', {
+        configurable: true,
+        value: files.length * OTHER_FILE_ROW_HEIGHT,
+      })
+      viewport.scrollTop = viewport.scrollHeight - viewport.clientHeight
+      fireEvent.scroll(viewport)
+
+      expect(screen.getByRole('option', { name: 'file-30.data' })).toBeVisible()
+    },
+  )
 })
+
+function manyOtherFiles(count: number): BrowserFile[] {
+  return Array.from({ length: count }, (_, index) => ({
+    entityId: `other-${index + 1}`,
+    relativePath: `data/file-${index + 1}.data`,
+    name: `file-${index + 1}.data`,
+    kind: 'other' as const,
+    size: index + 1,
+    modifiedNs: String(index + 1),
+    marker: { reviewState: null, favorite: false },
+    imageMetadata: null,
+    imageUrl: null,
+  }))
+}
+
+function virtualList(listbox: HTMLElement): HTMLElement {
+  const viewport = listbox.querySelector<HTMLElement>('.other-file-virtual-list')
+  if (viewport === null) throw new Error('Expected other-file virtual-list viewport')
+  return viewport
+}
+
+function installResizeObserver() {
+  const callbacks = new Map<Element, ResizeObserverCallback>()
+  class Observer {
+    private node: Element | null = null
+    private readonly callback: ResizeObserverCallback
+
+    constructor(callback: ResizeObserverCallback) {
+      this.callback = callback
+    }
+
+    observe(node: Element) {
+      this.node = node
+      callbacks.set(node, this.callback)
+    }
+
+    disconnect() {
+      if (this.node !== null) callbacks.delete(this.node)
+      this.node = null
+    }
+  }
+  vi.stubGlobal('ResizeObserver', Observer)
+  return {
+    trigger: (node: Element, height: number) => {
+      act(() => {
+        callbacks.get(node)?.(
+          [{ target: node, contentRect: { width: 900, height } } as ResizeObserverEntry],
+          {} as ResizeObserver,
+        )
+      })
+    },
+  }
+}
+
+function installAnimationFrameQueue() {
+  let nextId = 1
+  const callbacks = new Map<number, FrameRequestCallback>()
+  vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+    const id = nextId++
+    callbacks.set(id, callback)
+    return id
+  })
+  vi.stubGlobal('cancelAnimationFrame', (id: number) => callbacks.delete(id))
+  return {
+    flush: () => {
+      const queued = [...callbacks.values()]
+      callbacks.clear()
+      for (const callback of queued) callback(0)
+    },
+  }
+}

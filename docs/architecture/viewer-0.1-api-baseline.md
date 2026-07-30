@@ -14,7 +14,7 @@ This document inventories the public Rust surface consumed by adapters, infrastr
 
 ## Folder workspace IPC and visible format policy
 
-The content-workspace IPC contract keeps previewable images separate from every other visible regular file:
+The content-workspace IPC contract keeps the recognized image collection separate from every other visible regular file:
 
 ```json
 {

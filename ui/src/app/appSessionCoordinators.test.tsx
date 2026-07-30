@@ -3,13 +3,13 @@ import { type ReactNode, StrictMode } from 'react'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { BrowserFile } from '../api/types'
 import { getAppShellStateInternals, useAppShellState } from './useAppShellState'
+import { useOtherFilePanelPreference } from './useOtherFilePanelPreference'
 import {
   getPreviewSessionInternals,
   type PreviewSession,
   usePreviewSession,
 } from './usePreviewSession'
 import { useRadialMenuContextToken, useRadialMenuSession } from './useRadialMenuSession'
-import { useTextPanelPreference } from './useTextPanelPreference'
 
 const strictWrapper = ({ children }: { children: ReactNode }) => <StrictMode>{children}</StrictMode>
 
@@ -246,9 +246,9 @@ describe('Radial menu context identity', () => {
   })
 })
 
-describe('Text panel project-session preference', () => {
+describe('Other file panel project-session preference', () => {
   it('starts collapsed, persists within one session, and resets synchronously for another', () => {
-    const hook = renderHook(({ sessionId }) => useTextPanelPreference(sessionId), {
+    const hook = renderHook(({ sessionId }) => useOtherFilePanelPreference(sessionId), {
       initialProps: { sessionId: 'session-1' },
       wrapper: strictWrapper,
     })
@@ -262,7 +262,7 @@ describe('Text panel project-session preference', () => {
   })
 
   it('ignores a stale setter captured by an earlier project session', () => {
-    const hook = renderHook(({ sessionId }) => useTextPanelPreference(sessionId), {
+    const hook = renderHook(({ sessionId }) => useOtherFilePanelPreference(sessionId), {
       initialProps: { sessionId: 'session-1' },
       wrapper: strictWrapper,
     })

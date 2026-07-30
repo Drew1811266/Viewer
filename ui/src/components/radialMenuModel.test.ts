@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, expectTypeOf, it } from 'vitest'
 import type { RadialMenuContext } from './radialMenuModel'
 import { buildRadialMenuModel } from './radialMenuModel'
 
@@ -18,6 +18,10 @@ function context(overrides: Partial<RadialMenuContext> = {}): RadialMenuContext 
 }
 
 describe('buildRadialMenuModel', () => {
+  it('requires callers to supply preview availability', () => {
+    expectTypeOf<RadialMenuContext['previewEnabled']>().toEqualTypeOf<boolean>()
+  })
+
   it('keeps the six primary positions stable', () => {
     expect(buildRadialMenuModel(context()).map((item) => item.id)).toEqual([
       'preview',
@@ -66,7 +70,11 @@ describe('buildRadialMenuModel', () => {
     expect(threeImages[4]).toMatchObject({ id: 'compare', disabled: false })
 
     const mixed = buildRadialMenuModel(context({ selectedCount: 3, selectedImageCount: 2 }))
-    expect(mixed[4]).toMatchObject({ id: 'compare', disabled: true })
+    expect(mixed[4]).toMatchObject({
+      id: 'compare',
+      disabled: true,
+      disabledReason: '仅支持图片',
+    })
   })
 
   it('enables compare at 20 and disables it above 20 with exact copy', () => {

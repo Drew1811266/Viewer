@@ -12,6 +12,7 @@ const appCss = readFileSync('src/styles/app.css', 'utf8')
 const model = buildRadialMenuModel({
   selectedCount: 1,
   selectedImageCount: 1,
+  previewEnabled: true,
   readOnly: false,
   busy: false,
   compareContextAvailable: true,
@@ -194,6 +195,7 @@ describe('RadialFileMenu', () => {
     const overCapacityModel = buildRadialMenuModel({
       selectedCount: 21,
       selectedImageCount: 21,
+      previewEnabled: false,
       readOnly: false,
       busy: false,
       compareContextAvailable: true,
@@ -295,6 +297,7 @@ describe('RadialFileMenu', () => {
     const readOnlyModel = buildRadialMenuModel({
       selectedCount: 1,
       selectedImageCount: 1,
+      previewEnabled: true,
       readOnly: true,
       busy: false,
       compareContextAvailable: true,
@@ -320,6 +323,7 @@ describe('RadialFileMenu', () => {
     const mixedModel = buildRadialMenuModel({
       selectedCount: 2,
       selectedImageCount: 2,
+      previewEnabled: false,
       readOnly: false,
       busy: false,
       compareContextAvailable: true,

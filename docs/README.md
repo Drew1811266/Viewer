@@ -36,7 +36,6 @@ completion.
 | [`superpowers/specs/2026-07-28-viewer-development-launcher-design.md`](superpowers/specs/2026-07-28-viewer-development-launcher-design.md) | Active | — |
 | [`superpowers/specs/2026-07-28-viewer-intelligent-compare-layout-design.md`](superpowers/specs/2026-07-28-viewer-intelligent-compare-layout-design.md) | Active | — |
 | [`superpowers/specs/2026-07-29-viewer-other-files-and-split-text-preview-design.md`](superpowers/specs/2026-07-29-viewer-other-files-and-split-text-preview-design.md) | Active | — |
-| [`superpowers/plans/2026-07-28-viewer-adaptive-text-panel.md`](superpowers/plans/2026-07-28-viewer-adaptive-text-panel.md) | Active | — |
 
 ## Superseded decisions
 
@@ -73,6 +72,8 @@ completion.
 | [`superpowers/plans/2026-07-23-viewer-tauri-runtime-decomposition-plan.md`](superpowers/plans/2026-07-23-viewer-tauri-runtime-decomposition-plan.md) | Historical | — |
 | [`superpowers/plans/2026-07-27-viewer-aspect-aware-thumbnail-density.md`](superpowers/plans/2026-07-27-viewer-aspect-aware-thumbnail-density.md) | Historical | — |
 | [`superpowers/plans/2026-07-27-viewer-readme.md`](superpowers/plans/2026-07-27-viewer-readme.md) | Historical | — |
+| [`superpowers/plans/2026-07-28-viewer-adaptive-text-panel.md`](superpowers/plans/2026-07-28-viewer-adaptive-text-panel.md) | Historical | — |
+| [`superpowers/plans/2026-07-29-viewer-other-files-and-split-text-preview.md`](superpowers/plans/2026-07-29-viewer-other-files-and-split-text-preview.md) | Historical | — |
 
 ## Historical review evidence
 

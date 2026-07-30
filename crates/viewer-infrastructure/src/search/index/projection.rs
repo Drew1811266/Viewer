@@ -12,7 +12,7 @@ use viewer_domain::{
     file::{FileKind, FileNode},
 };
 
-use super::{SessionIndex, encode_kind, encode_review_state};
+use super::{SessionIndex, decode_kind, encode_kind, encode_review_state};
 
 impl MarkerProjectionPort for SessionIndex {
     fn sync_markers(&self, changes: &[MarkerChange]) -> Result<(), MarkerProjectionError> {
@@ -356,7 +356,7 @@ fn projection_nodes(
     if rows.iter().any(|row| {
         EntityId::from_str(&row.entity_id).is_err()
             || RelativePath::parse(&row.path).is_err()
-            || !(0..=4).contains(&row.kind)
+            || decode_kind(row.kind).is_err()
     }) {
         return Err(OperationProjectionError::Stale);
     }

@@ -24,7 +24,7 @@ use viewer_infrastructure::{
 };
 
 const EXPECTED_FOLDERS: u64 = 210;
-const EXPECTED_FILES: u64 = 1_100;
+const EXPECTED_FILES: u64 = 1_102;
 const FOLDER_P95_LIMIT: Duration = Duration::from_millis(1_500);
 const SCAN_P95_LIMIT: Duration = Duration::from_secs(3);
 const SEARCH_P95_LIMIT: Duration = Duration::from_millis(100);

@@ -445,7 +445,7 @@ describe('Viewer empty state', () => {
     front.focus()
     fireEvent.click(front)
 
-    const preview = screen.getByRole('dialog', { name: '图片预览' })
+    const preview = screen.getByRole('dialog', { name: /^图片预览 / })
     expect(preview).toHaveTextContent('front.jpg')
     expect(preview).toHaveTextContent('1 / 2')
     expect(screen.getByRole('region', { name: 'B01 图片' })).toBeInTheDocument()
@@ -628,7 +628,7 @@ describe('Viewer empty state', () => {
     await waitFor(() => expect(receiveProjectChanged).toBeDefined())
     fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
     fireEvent.click(await screen.findByRole('button', { name: '预览 front.jpg' }))
-    expect(screen.getByRole('dialog', { name: '图片预览' })).toHaveTextContent('1 / 2')
+    expect(screen.getByRole('dialog', { name: /^图片预览 / })).toHaveTextContent('1 / 2')
 
     act(() => {
       receiveProjectChanged?.({
@@ -645,14 +645,14 @@ describe('Viewer empty state', () => {
     })
 
     await waitFor(() =>
-      expect(screen.queryByRole('dialog', { name: '图片预览' })).not.toBeInTheDocument(),
+      expect(screen.queryByRole('dialog', { name: /^图片预览 / })).not.toBeInTheDocument(),
     )
     const updated = await screen.findByRole('button', { name: '预览 updated.jpg' })
     fireEvent.keyDown(window, { key: 'ArrowRight' })
     expect(screen.queryByText('back.jpg')).not.toBeInTheDocument()
 
     fireEvent.click(updated)
-    expect(screen.getByRole('dialog', { name: '图片预览' })).toHaveTextContent('1 / 1')
+    expect(screen.getByRole('dialog', { name: /^图片预览 / })).toHaveTextContent('1 / 1')
   })
 
   it('keeps read-only browsing and comparison available while disabling every write', async () => {
@@ -683,7 +683,7 @@ describe('Viewer empty state', () => {
     const front = await screen.findByRole('option', { name: 'front.jpg' })
     const back = screen.getByRole('option', { name: 'back.jpg' })
     fireEvent.doubleClick(front)
-    expect(screen.getByRole('dialog', { name: '图片预览' })).toBeVisible()
+    expect(screen.getByRole('dialog', { name: /^图片预览 / })).toBeVisible()
     fireEvent.click(screen.getByRole('button', { name: '关闭预览' }))
     fireEvent.click(front)
     fireEvent.click(back, { metaKey: true })
@@ -743,7 +743,7 @@ describe('Viewer empty state', () => {
     fireEvent.click(screen.getByRole('menuitem', { name: '并排对比' }))
     expect(screen.getByRole('region', { name: '图片对比' })).toBeVisible()
     expect(screen.getByRole('status', { name: '只读模式' })).toBeVisible()
-    fireEvent.click(screen.getByRole('button', { name: '关闭对比' }))
+    fireEvent.click(screen.getByRole('button', { name: '完成对比' }))
     fireEvent.click(screen.getByRole('button', { name: '其它文件 · 1' }))
     fireEvent.doubleClick(screen.getByRole('option', { name: 'notes.txt' }))
     expect(await screen.findByText('readonly product notes')).toBeVisible()
@@ -891,7 +891,7 @@ describe('Viewer empty state', () => {
     fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
     fireEvent.doubleClick(await screen.findByRole('option', { name: 'poster.webp' }))
 
-    const dialog = screen.getByRole('dialog', { name: '图片预览' })
+    const dialog = screen.getByRole('dialog', { name: /^图片预览 / })
     expect(dialog).toBeVisible()
     expect(within(dialog).getByLabelText('poster.webp .WEBP 暂不支持预览')).toBeVisible()
     expect(screen.queryByRole('dialog', { name: 'poster.webp' })).not.toBeInTheDocument()
@@ -1135,7 +1135,7 @@ describe('Viewer empty state', () => {
     fireEvent.pointerMove(window, { pointerId: 202, clientX: 420, clientY: 170 })
     fireEvent.pointerUp(window, { pointerId: 202, clientX: 420, clientY: 170 })
 
-    expect(screen.getByRole('dialog', { name: '图片预览' })).toHaveTextContent('back.jpg')
+    expect(screen.getByRole('dialog', { name: /^图片预览 / })).toHaveTextContent('back.jpg')
   })
 
   it('restores the original content target after a click fallback is replaced', async () => {
@@ -1356,7 +1356,7 @@ describe('Viewer empty state', () => {
     fireEvent.click(screen.getByRole('menuitem', { name: '并排对比' }))
     expect(await screen.findByRole('region', { name: '图片对比' })).toBeVisible()
     expect(screen.queryByRole('menu', { name: '文件操作' })).not.toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: '关闭对比' }))
+    fireEvent.click(screen.getByRole('button', { name: '完成对比' }))
 
     openRadialMenu(front, 97)
     fireEvent.click(screen.getByRole('menuitem', { name: '移到废纸篓' }))
@@ -1492,7 +1492,7 @@ describe('Viewer empty state', () => {
     expect(screen.queryByRole('dialog', { name: '将文件移到废纸篓？' })).not.toBeInTheDocument()
 
     fireEvent.doubleClick(file)
-    expect(screen.getByRole('dialog', { name: '图片预览' })).toBeVisible()
+    expect(screen.getByRole('dialog', { name: /^图片预览 / })).toBeVisible()
     fireEvent.keyDown(window, { key: 'Delete' })
     expect(screen.queryByRole('dialog', { name: '将文件移到废纸篓？' })).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: '关闭预览' }))
@@ -1580,7 +1580,7 @@ describe('Viewer empty state', () => {
     expect(screen.getByRole('menuitem', { name: '预览' })).toHaveAttribute('aria-disabled', 'false')
     expect(screen.getByRole('menuitem', { name: '信息' })).toHaveAttribute('aria-disabled', 'false')
     fireEvent.click(screen.getByRole('menuitem', { name: '预览' }))
-    expect(screen.getByRole('dialog', { name: '图片预览' })).toBeVisible()
+    expect(screen.getByRole('dialog', { name: /^图片预览 / })).toBeVisible()
     fireEvent.click(screen.getByRole('button', { name: '关闭预览' }))
 
     const back = screen.getByRole('option', { name: 'back.jpg' })
@@ -1589,7 +1589,7 @@ describe('Viewer empty state', () => {
     const multiPreview = screen.getByRole('menuitem', { name: '预览' })
     expect(multiPreview).toHaveAttribute('aria-disabled', 'true')
     fireEvent.click(multiPreview)
-    expect(screen.queryByRole('dialog', { name: '图片预览' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('dialog', { name: /^图片预览 / })).not.toBeInTheDocument()
 
     await act(async () => {
       results.resolve({ total: 0, offset: 0, items: [] })
@@ -1954,7 +1954,7 @@ describe('Viewer empty state', () => {
     const compare = await screen.findByRole('region', { name: '图片对比' })
     expect(organizeHandle).toBeDisabled()
     expect(compare).toHaveFocus()
-    fireEvent.click(screen.getByRole('button', { name: '关闭对比' }))
+    fireEvent.click(screen.getByRole('button', { name: '完成对比' }))
 
     expect(front).toHaveAttribute('aria-selected', 'true')
     expect(back).toHaveAttribute('aria-selected', 'true')
@@ -1994,7 +1994,7 @@ describe('Viewer empty state', () => {
     fireEvent.keyDown(window, { key: 'c' })
 
     expect(await screen.findByRole('region', { name: '图片对比' })).toBeVisible()
-    fireEvent.click(screen.getByRole('button', { name: '关闭对比' }))
+    fireEvent.click(screen.getByRole('button', { name: '完成对比' }))
     const mountedOptions = screen.getAllByRole('option')
     expect(mountedOptions.every((item) => item.ariaSelected === 'true')).toBe(true)
     openRadialMenu(defined(mountedOptions[0], 'Expected a mounted selected image'), 222)
@@ -2056,7 +2056,7 @@ describe('Viewer empty state', () => {
         reviewState: 'keep',
       }),
     )
-    fireEvent.click(screen.getByRole('button', { name: '关闭对比' }))
+    fireEvent.click(screen.getByRole('button', { name: '完成对比' }))
     expect(front).toHaveAttribute('aria-selected', 'true')
     expect(back).toHaveAttribute('aria-selected', 'true')
   })
@@ -2073,7 +2073,7 @@ describe('Viewer empty state', () => {
     fireEvent.keyDown(window, { key: 'c' })
 
     fireEvent.click(await screen.findByRole('button', { name: '移除 front.jpg' }))
-    expect(await screen.findByRole('dialog', { name: '图片预览' })).toHaveTextContent('back.jpg')
+    expect(await screen.findByRole('dialog', { name: /^图片预览 / })).toHaveTextContent('back.jpg')
     expect(screen.queryByRole('region', { name: '图片对比' })).not.toBeInTheDocument()
   })
 

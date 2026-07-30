@@ -30,6 +30,24 @@ describe('WorkspaceViewMenu', () => {
     expect(onSelectAll).toHaveBeenCalledWith('all')
   })
 
+  it('opens when a content keyboard command requests the global menu', () => {
+    render(
+      <WorkspaceViewMenu
+        openRequest={1}
+        context={{
+          kind: 'content',
+          showingAggregate: false,
+          selectAllRequest: { kind: 'choice' },
+          onSelectAll: vi.fn(),
+          onShowAllDescendants: vi.fn(),
+          onReturnToFolder: vi.fn(),
+        }}
+      />,
+    )
+
+    expect(screen.getByRole('button', { name: '全选图片' })).toBeVisible()
+  })
+
   it('closes on Escape and restores focus to its trigger', () => {
     render(<WorkspaceViewMenu context={{ kind: 'none' }} />)
     const trigger = screen.getByRole('button', { name: '视图' })

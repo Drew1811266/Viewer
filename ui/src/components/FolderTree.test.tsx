@@ -132,6 +132,7 @@ describe('FolderTree', () => {
     )
     const target = screen.getByRole('treeitem', { name: 'empty' })
     expect(target).toHaveAttribute('data-drop-mode', 'copy')
+    expect(target).toHaveAttribute('data-organization-drop-target', 'true')
     expect(screen.getByRole('treeitem', { name: 'catalog' })).not.toHaveAttribute('data-drop-mode')
   })
 

@@ -80,6 +80,11 @@ export default function FolderTree({
                 ? true
                 : undefined
             }
+            data-organization-drop-target={
+              organizationDropTarget?.entityId === folder.entityId && organizationDropTarget.valid
+                ? true
+                : undefined
+            }
             style={{ paddingInlineStart: depth * 16 }}
             onClick={() => onSelect(folder.entityId)}
           >

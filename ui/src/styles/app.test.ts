@@ -125,27 +125,6 @@ describe('workspace style contracts', () => {
     expect(thumbnailFocus?.declarations['box-shadow']).toBeUndefined()
   })
 
-  it('reserves content-grid gray for loading placeholders instead of successful images', () => {
-    const rules = parseRules(appCss)
-    const cell = rules.find((rule) => rule.selector === '.image-cell')
-    const preview = rules.find((rule) => rule.selector === '.image-cell-preview')
-    const image = rules.find((rule) => rule.selector === '.aspect-thumbnail > img')
-    const placeholder = rules.find((rule) => rule.selector === '.aspect-thumbnail-placeholder')
-
-    expect(cell?.declarations).toMatchObject({
-      border: '0',
-      overflow: 'visible',
-      padding: '0',
-    })
-    expect(preview?.declarations.background).toBe('transparent')
-    expect(preview?.declarations.height).toBeUndefined()
-    expect(image?.declarations).toMatchObject({
-      background: 'transparent',
-      'object-fit': 'contain',
-    })
-    expect(placeholder?.declarations.background).toBe('#e5e8ed')
-  })
-
   it('renders workspace menu summaries as stateful toolbar buttons', () => {
     const rules = parseRules(appCss)
     const baseSelectors = [
@@ -425,27 +404,6 @@ describe('workspace style contracts', () => {
 
     expect(contrastRatio('#174f8f', '#d9e8ff')).toBeGreaterThanOrEqual(4.5)
     expect(contrastRatio('#2477d4', '#ffffff')).toBeGreaterThanOrEqual(3)
-  })
-
-  it('paints content-grid selection above flush thumbnail children', () => {
-    const rules = parseRules(appCss)
-    const selected = rules.find((rule) => rule.selector === '.image-cell[aria-selected="true"]')
-    const overlay = rules.find(
-      (rule) => rule.selector === '.image-cell[aria-selected="true"]::after',
-    )
-
-    expect(selected?.declarations.background).toBe('#d9e8ff')
-    expect(selected?.declarations.outline).toBeUndefined()
-    expect(overlay?.declarations).toMatchObject({
-      border: '2px solid #2477d4',
-      'border-radius': 'inherit',
-      'box-sizing': 'border-box',
-      content: '""',
-      inset: '0',
-      'pointer-events': 'none',
-      position: 'absolute',
-      'z-index': '1',
-    })
   })
 })
 

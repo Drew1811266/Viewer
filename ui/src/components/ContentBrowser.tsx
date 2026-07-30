@@ -1,6 +1,5 @@
 import type { DragEvent, KeyboardEvent, MouseEvent, PointerEvent } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { flushSync } from 'react-dom'
 import type { BrowserFile, FolderWorkspace, ThumbnailDensity } from '../api/types'
 import { type AspectRect, type ImageDimensions, validDimensions } from '../layout/aspectLayout'
 import { THUMBNAIL_HEIGHT } from '../settings/thumbnailDensity'
@@ -10,12 +9,12 @@ import {
   filesForSelectAllScope,
   resolveAdaptiveContentMode,
   resolveSelectAllRequest,
+  type SelectAllRequest,
   type SelectAllScope,
 } from './contentBrowser/adaptiveOtherFilePanelModel'
 import { rangeSelection, toggleSelection } from './contentBrowser/contentSelection'
 import { ImageCell } from './contentBrowser/ImageCell'
 import OtherFilePanel from './contentBrowser/OtherFilePanel'
-import SelectAllChoicePanel from './contentBrowser/SelectAllChoicePanel'
 import { useMeasuredElementHeight } from './contentBrowser/useMeasuredElementHeight'
 import type { MarqueeSelectionChange } from './marqueeSelection'
 import type { RadialMenuRequest } from './RadialFileMenu'
@@ -23,10 +22,14 @@ import type { TaskFeedback } from './TaskBar'
 
 type ContentWorkspace = Extract<FolderWorkspace, { workspace: 'content' }>
 
+export interface ContentViewCommand {
+  requestId: number
+  scope: SelectAllScope
+}
+
 interface ContentBrowserProps {
   workspace: ContentWorkspace
   density: ThumbnailDensity
-  currentPath?: string
   viewportHeight?: number
   requestThumbnail?: (file: BrowserFile, maxPixels: number, scaleMilli: number) => Promise<string>
   onPreview?: (file: BrowserFile) => void
@@ -40,7 +43,9 @@ interface ContentBrowserProps {
   onRadialMenuRequest?: (request: RadialMenuRequest) => void
   otherFilePanelExpanded: boolean
   onOtherFilePanelExpandedChange(expanded: boolean): void
-  selectAllCommand?: { sequence: number; scope: SelectAllScope } | null
+  viewCommand?: ContentViewCommand | null
+  onViewStateChange?(request: SelectAllRequest): void
+  onRequestViewMenu?(): void
 }
 
 interface ThumbnailWork {
@@ -52,7 +57,6 @@ interface ThumbnailWork {
 export default function ContentBrowser({
   workspace,
   density,
-  currentPath,
   viewportHeight = 520,
   requestThumbnail,
   onPreview,
@@ -66,19 +70,18 @@ export default function ContentBrowser({
   onRadialMenuRequest,
   otherFilePanelExpanded,
   onOtherFilePanelExpandedChange,
-  selectAllCommand = null,
+  viewCommand = null,
+  onViewStateChange,
+  onRequestViewMenu,
 }: ContentBrowserProps) {
   const [selected, setSelected] = useState<Set<string>>(() => new Set())
   const [activeId, setActiveId] = useState<string | null>(null)
   const [recoveredDimensions, setRecoveredDimensions] = useState(
     () => new Map<string, ImageDimensions>(),
   )
-  const [selectAllChoiceOpen, setSelectAllChoiceOpen] = useState(false)
   const anchorId = useRef<string | null>(null)
   const appliedRepairId = useRef<string | null>(null)
-  const viewMenuRef = useRef<HTMLDetailsElement>(null)
-  const selectAllButtonRef = useRef<HTMLButtonElement>(null)
-  const lastSelectAllCommand = useRef(0)
+  const consumedViewCommand = useRef(0)
   const marqueeSelection = useRef<{
     baseline: Set<string>
     metaKey: boolean
@@ -99,19 +102,9 @@ export default function ContentBrowser({
     workspace.otherFiles.length,
     otherFilePanelExpanded,
   )
-  const selectAllRequest = resolveSelectAllRequest(
-    workspace.images.length,
-    workspace.otherFiles.length,
-  )
-  const contentIdentity = useMemo(
-    () =>
-      JSON.stringify(
-        [...workspace.images, ...workspace.otherFiles].map(({ entityId, modifiedNs }) => [
-          entityId,
-          modifiedNs,
-        ]),
-      ),
-    [workspace.images, workspace.otherFiles],
+  const selectAllRequest = useMemo(
+    () => resolveSelectAllRequest(workspace.images.length, workspace.otherFiles.length),
+    [workspace.images.length, workspace.otherFiles.length],
   )
   const imageSlot = useMeasuredElementHeight(viewportHeight)
   const fileById = useMemo(() => new Map(allFiles.map((file) => [file.entityId, file])), [allFiles])
@@ -137,14 +130,6 @@ export default function ContentBrowser({
   useEffect(() => {
     marqueeSelection.current = null
   }, [allFiles])
-
-  useEffect(() => {
-    setSelectAllChoiceOpen(false)
-  }, [contentIdentity, currentPath])
-
-  useEffect(() => {
-    if (organizationDragDisabled) setSelectAllChoiceOpen(false)
-  }, [organizationDragDisabled])
 
   useEffect(
     () => () => {
@@ -238,10 +223,13 @@ export default function ContentBrowser({
     [],
   )
 
-  function commitSelection(next: Set<string>) {
-    setSelected(next)
-    onSelectionChange?.(allFiles.filter((file) => next.has(file.entityId)))
-  }
+  const commitSelection = useCallback(
+    (next: Set<string>) => {
+      setSelected(next)
+      onSelectionChange?.(allFiles.filter((file) => next.has(file.entityId)))
+    },
+    [allFiles, onSelectionChange],
+  )
 
   function updateMarqueeSelection(change: MarqueeSelectionChange) {
     if (change.phase === 'start') {
@@ -274,41 +262,29 @@ export default function ContentBrowser({
     }
   }
 
-  function commitSelectAll(scope: SelectAllScope) {
-    setSelectAllChoiceOpen(false)
-    const files = filesForSelectAllScope(workspace, scope)
-    const first = files[0] ?? null
-    setActiveId(first?.entityId ?? null)
-    anchorId.current = first?.entityId ?? null
-    commitSelection(new Set(files.map(({ entityId }) => entityId)))
-  }
+  const commitSelectAll = useCallback(
+    (scope: SelectAllScope) => {
+      const files = filesForSelectAllScope(workspace, scope)
+      const first = files[0] ?? null
+      setActiveId(first?.entityId ?? null)
+      anchorId.current = first?.entityId ?? null
+      commitSelection(new Set(files.map(({ entityId }) => entityId)))
+    },
+    [commitSelection, workspace],
+  )
 
   useEffect(() => {
-    if (selectAllCommand === null || selectAllCommand.sequence === lastSelectAllCommand.current) {
-      return
-    }
-    lastSelectAllCommand.current = selectAllCommand.sequence
-    commitSelectAll(selectAllCommand.scope)
-  }, [selectAllCommand, workspace])
+    onViewStateChange?.(selectAllRequest)
+  }, [onViewStateChange, selectAllRequest])
 
-  function requestSelectAll() {
-    if (selectAllRequest.kind === 'none') return
-    if (selectAllRequest.kind === 'direct') {
-      commitSelectAll(selectAllRequest.scope)
-      return
-    }
-    if (viewMenuRef.current !== null) viewMenuRef.current.open = true
-    setSelectAllChoiceOpen(true)
-  }
+  useEffect(() => {
+    if (viewCommand === null || viewCommand.requestId <= consumedViewCommand.current) return
+    consumedViewCommand.current = viewCommand.requestId
+    commitSelectAll(viewCommand.scope)
+  }, [commitSelectAll, viewCommand])
 
   function previewFile(file: BrowserFile) {
-    closeSelectAllChoiceBeforeCallback()
     onPreview?.(file)
-  }
-
-  function closeSelectAllChoiceBeforeCallback() {
-    if (!selectAllChoiceOpen) return
-    flushSync(() => setSelectAllChoiceOpen(false))
   }
 
   function navigateToIndex(nextIndex: number, extendSelection: boolean) {
@@ -365,7 +341,6 @@ export default function ContentBrowser({
     pointerId: number | null,
   ) {
     if (onRadialMenuRequest === undefined) return
-    closeSelectAllChoiceBeforeCallback()
     const returnFocusTarget = eventTarget.closest<HTMLElement>('[role="listbox"]') ?? eventTarget
     const contextSelection = selected.has(file.entityId) ? selected : new Set([file.entityId])
     if (!selected.has(file.entityId)) {
@@ -484,7 +459,8 @@ export default function ContentBrowser({
     if (isEditableKeyboardTarget(target)) return
     if (event.metaKey && event.key.toLowerCase() === 'a') {
       event.preventDefault()
-      requestSelectAll()
+      if (selectAllRequest.kind === 'choice') onRequestViewMenu?.()
+      else if (selectAllRequest.kind === 'direct') commitSelectAll(selectAllRequest.scope)
     }
   }
 
@@ -535,50 +511,6 @@ export default function ContentBrowser({
       aria-label="文件内容"
       onKeyDownCapture={handleContentBrowserKeyboard}
     >
-      <div className="content-toolbar">
-        <div>
-          <span>{workspace.images.length} 张图片</span>
-          {workspace.otherFiles.length > 0 && (
-            <span>· {workspace.otherFiles.length} 个其它文件</span>
-          )}
-        </div>
-        <details
-          ref={viewMenuRef}
-          className="content-view-menu"
-          onToggle={(event) => {
-            if (!event.currentTarget.open) setSelectAllChoiceOpen(false)
-          }}
-        >
-          <summary>视图</summary>
-          <div>
-            <div className="select-all-control">
-              <button
-                ref={selectAllButtonRef}
-                type="button"
-                aria-haspopup={selectAllRequest.kind === 'choice' ? 'menu' : undefined}
-                aria-expanded={selectAllChoiceOpen || undefined}
-                onClick={() => {
-                  if (selectAllChoiceOpen) {
-                    setSelectAllChoiceOpen(false)
-                    selectAllButtonRef.current?.focus()
-                  } else {
-                    requestSelectAll()
-                  }
-                }}
-                disabled={selectAllRequest.kind === 'none'}
-              >
-                全选当前文件夹
-              </button>
-              <SelectAllChoicePanel
-                open={selectAllChoiceOpen}
-                anchorRef={selectAllButtonRef}
-                onChoose={commitSelectAll}
-                onCancel={() => setSelectAllChoiceOpen(false)}
-              />
-            </div>
-          </div>
-        </details>
-      </div>
       <div className="content-browser-body">
         {workspace.images.length > 0 && (
           <div
@@ -645,6 +577,12 @@ export default function ContentBrowser({
           />
         )}
       </div>
+      {selected.size > 0 && (
+        <div className="selection-action-bar" role="status" aria-label="选择摘要">
+          <strong>已选择 {selected.size} 项</strong>
+          <span>右键或使用快捷键进行操作</span>
+        </div>
+      )}
     </section>
   )
 }

@@ -1,5 +1,5 @@
 import type { KeyboardEvent } from 'react'
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { SearchLayout } from '../api/types'
 import type { SelectAllRequest, SelectAllScope } from './contentBrowser/adaptiveOtherFilePanelModel'
 import useViewportPopoverMaxWidth from './useViewportPopoverMaxWidth'
@@ -17,10 +17,20 @@ export type WorkspaceViewContext =
   | { kind: 'category'; onShowAllDescendants(): void }
   | { kind: 'none' }
 
-export default function WorkspaceViewMenu({ context }: { context: WorkspaceViewContext }) {
+export default function WorkspaceViewMenu({
+  context,
+  openRequest = 0,
+}: {
+  context: WorkspaceViewContext
+  openRequest?: number
+}) {
   const [open, setOpen] = useState(false)
   const summaryRef = useRef<HTMLElement>(null)
   const popoverMaxWidth = useViewportPopoverMaxWidth()
+
+  useEffect(() => {
+    if (openRequest > 0) setOpen(true)
+  }, [openRequest])
 
   function toggle() {
     setOpen((current) => !current)

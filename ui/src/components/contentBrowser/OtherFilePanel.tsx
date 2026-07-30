@@ -13,7 +13,7 @@ import { useMeasuredElementHeight } from './useMeasuredElementHeight'
 
 const OTHER_LIST_ID = 'content-other-file-list'
 const OTHER_LIST_LABEL_ID = 'content-other-file-list-label'
-export const OTHER_FILE_ROW_HEIGHT = 56
+export const OTHER_FILE_ROW_HEIGHT = 34
 
 export interface OtherFilePanelProps {
   mode: 'mixed_collapsed' | 'mixed_expanded' | 'other_only'

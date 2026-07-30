@@ -19,11 +19,8 @@ import { useRadialMenuContextToken, useRadialMenuSession } from './app/useRadial
 import BatchRenameDialog from './components/BatchRenameDialog'
 import CloseOperationDialog from './components/CloseOperationDialog'
 import CompareWorkspace from './components/CompareWorkspace'
-import ContentBrowser from './components/ContentBrowser'
-import {
-  resolveSelectAllRequest,
-  type SelectAllScope,
-} from './components/contentBrowser/adaptiveOtherFilePanelModel'
+import ContentBrowser, { type ContentViewCommand } from './components/ContentBrowser'
+import type { SelectAllRequest } from './components/contentBrowser/adaptiveOtherFilePanelModel'
 import DestinationDialog from './components/DestinationDialog'
 import EmptyProject from './components/EmptyProject'
 import FolderOverview from './components/FolderOverview'
@@ -156,10 +153,12 @@ function ViewerWorkspace({ bridge }: { bridge: ViewerBridge }) {
   const [infoOpen, setInfoOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [previewRepair, setPreviewRepair] = useState<PreviewRepairMemory>(EMPTY_PREVIEW_REPAIR)
-  const [selectAllCommand, setSelectAllCommand] = useState<{
-    sequence: number
-    scope: SelectAllScope
-  } | null>(null)
+  const [contentSelectAllRequest, setContentSelectAllRequest] = useState<SelectAllRequest>({
+    kind: 'none',
+  })
+  const [contentViewCommand, setContentViewCommand] = useState<ContentViewCommand | null>(null)
+  const [viewMenuOpenRequest, setViewMenuOpenRequest] = useState(0)
+  const contentViewCommandRequestId = useRef(0)
   const moreMenuTriggerRef = useRef<HTMLElement>(null)
   useEffect(() => {
     const updateViewport = () => setNarrowViewport(window.innerWidth <= 760)
@@ -178,6 +177,9 @@ function ViewerWorkspace({ bridge }: { bridge: ViewerBridge }) {
     setSettingsOpen(false)
     setPreviewRepair(EMPTY_PREVIEW_REPAIR)
   }, [projectSessionId])
+  useEffect(() => {
+    if (contentViewCommand !== null) setContentViewCommand(null)
+  }, [contentViewCommand])
   const requestThumbnail = useCallback(
     (file: BrowserFile, maxPixels: number, scaleMilli: number) =>
       bridge
@@ -880,12 +882,12 @@ function ViewerWorkspace({ bridge }: { bridge: ViewerBridge }) {
         ? {
             kind: 'content',
             showingAggregate: state.showingAggregate,
-            selectAllRequest: resolveSelectAllRequest(
-              state.workspace.images.length,
-              state.workspace.otherFiles.length,
-            ),
+            selectAllRequest: contentSelectAllRequest,
             onSelectAll: (scope) =>
-              setSelectAllCommand((current) => ({ sequence: (current?.sequence ?? 0) + 1, scope })),
+              setContentViewCommand({
+                requestId: ++contentViewCommandRequestId.current,
+                scope,
+              }),
             onShowAllDescendants: () => void showAllDescendants(),
             onReturnToFolder: returnToFolderContext,
           }
@@ -917,7 +919,7 @@ function ViewerWorkspace({ bridge }: { bridge: ViewerBridge }) {
             onRemoveFilter={removeSearchFilter}
             onClearFilters={clearSearchFilters}
           />
-          <WorkspaceViewMenu context={viewContext} />
+          <WorkspaceViewMenu context={viewContext} openRequest={viewMenuOpenRequest} />
           <WorkspaceMoreMenu
             ref={moreMenuTriggerRef}
             access={state.project.access}
@@ -1056,8 +1058,9 @@ function ViewerWorkspace({ bridge }: { bridge: ViewerBridge }) {
                 <ContentBrowser
                   workspace={state.workspace}
                   density={thumbnailDensity}
-                  currentPath={state.selectedFolderPath || state.project.displayName}
-                  selectAllCommand={selectAllCommand}
+                  viewCommand={contentViewCommand}
+                  onViewStateChange={setContentSelectAllRequest}
+                  onRequestViewMenu={() => setViewMenuOpenRequest((current) => current + 1)}
                   requestThumbnail={requestContentThumbnail}
                   onThumbnailTaskChange={setThumbnailTask}
                   onPreview={openPreview}

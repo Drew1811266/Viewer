@@ -31,10 +31,8 @@
   flex-direction: column;
   height: 100%;
   min-height: 0;
-}
-
-.content-browser > .content-toolbar {
-  flex: 0 0 auto;
+  position: relative;
+  background: var(--viewer-surface);
 }
 
 .content-browser-body {
@@ -42,6 +40,7 @@
   flex: 1 1 auto;
   flex-direction: column;
   min-height: 0;
+  padding: 12px;
 }
 
 .content-browser-image-slot {
@@ -51,7 +50,10 @@
 }
 
 .other-file-panel {
+  border-top: 1px solid var(--viewer-border);
+  background: var(--viewer-surface);
   box-sizing: border-box;
+  box-shadow: none;
   display: flex;
   flex: 0 0 auto;
   flex-direction: column;
@@ -61,8 +63,7 @@
 
 .other-file-panel--mixed-collapsed,
 .other-file-panel--mixed-expanded {
-  border-top: 1px solid #edf0f3;
-  padding-top: 8px;
+  padding-top: 0;
 }
 
 .other-file-panel--mixed-expanded {
@@ -77,30 +78,29 @@
 
 .other-file-disclosure {
   align-items: center;
-  background: #fff;
-  border: 1px solid #c8ced6;
-  border-radius: 6px;
-  color: #1f2328;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  color: var(--viewer-text-secondary);
   display: flex;
   flex: 0 0 auto;
   gap: 6px;
-  min-height: 34px;
-  padding: 6px 10px;
+  min-height: 38px;
+  padding: 0 12px;
   text-align: left;
   width: 100%;
 }
 
 .other-file-disclosure:hover {
-  background: #eef4fc;
+  background: var(--viewer-soft-surface);
 }
 
 .other-file-disclosure[aria-expanded="true"] {
-  background: #f6f8fa;
-  border-color: #2477d4;
+  background: var(--viewer-soft-surface);
 }
 
 .other-file-disclosure:focus-visible {
-  outline: 2px solid #2477d4;
+  outline: 2px solid var(--viewer-accent);
   outline-offset: -2px;
 }
 
@@ -123,45 +123,14 @@
 }
 
 .other-file-panel--mixed-expanded > .other-file-listbox {
-  margin-top: 6px;
+  margin-top: 0;
 }
 
-.select-all-control {
-  position: relative;
-}
-
-.select-all-choice-panel {
-  background: #fff;
-  border: 1px solid #c8ced6;
-  border-radius: 8px;
-  box-shadow: 0 10px 28px rgb(34 42 53 / 18%);
-  display: grid;
-  gap: 4px;
-  min-width: 148px;
-  padding: 6px;
-  position: absolute;
-  right: 0;
-  top: calc(100% + 8px);
-  z-index: 24;
-}
-
-.select-all-choice-panel > button {
-  background: transparent;
+.other-file-row {
+  background: var(--viewer-surface);
   border: 0;
-  border-radius: 5px;
-  color: #1f2328;
-  cursor: pointer;
-  font: inherit;
-  padding: 7px 10px;
-  text-align: left;
-  white-space: nowrap;
-}
-
-.select-all-choice-panel > button:hover {
-  background: #eef4fc;
-}
-
-.select-all-choice-panel > button:focus-visible {
-  outline: 2px solid #2477d4;
-  outline-offset: -2px;
+  min-height: 34px;
+  border-bottom: 1px solid #ededeb;
+  border-radius: 0;
+  padding: 4px 10px;
 }

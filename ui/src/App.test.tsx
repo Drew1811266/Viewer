@@ -210,6 +210,20 @@ describe('Viewer empty state', () => {
     )
   })
 
+  it('opens the shared View menu for Command-A in a mixed folder', async () => {
+    const viewer = bridge()
+    vi.mocked(viewer.queryFolder).mockResolvedValue(mixedContentWorkspace())
+    render(<App bridge={viewer} />)
+    fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
+
+    const grid = await screen.findByRole('listbox', { name: '图片文件' })
+    fireEvent.keyDown(grid, { key: 'a', metaKey: true })
+
+    expect(screen.getByRole('button', { name: '全选图片' })).toBeVisible()
+    expect(screen.getByRole('button', { name: '全选其它文件' })).toBeVisible()
+    expect(screen.getByRole('button', { name: '全选全部文件' })).toBeVisible()
+  })
+
   it('updates density optimistically and restores trigger focus when the dialog closes', async () => {
     const viewer = bridge()
     const save = deferred<Awaited<ReturnType<ViewerBridge['updateThumbnailDensity']>>>()

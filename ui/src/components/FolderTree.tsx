@@ -21,7 +21,7 @@ export default function FolderTree({
   folders,
   selectedId,
   onSelect,
-  height = 420,
+  height,
   organizationDropTarget = null,
 }: FolderTreeProps) {
   const safeFolders = useMemo(

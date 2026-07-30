@@ -1,5 +1,5 @@
-import { fireEvent, render, screen } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { act, fireEvent, render, screen } from '@testing-library/react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { FolderTreeItem } from '../api/types'
 import FolderTree from './FolderTree'
 
@@ -33,6 +33,8 @@ const folders: FolderTreeItem[] = [
     marker: { reviewState: 'keep', favorite: true },
   },
 ]
+
+afterEach(() => vi.unstubAllGlobals())
 
 describe('FolderTree', () => {
   it('renders only folders at arbitrary depth with full relative-path labels', () => {
@@ -70,6 +72,39 @@ describe('FolderTree', () => {
     render(<FolderTree folders={many} selectedId={null} onSelect={vi.fn()} height={280} />)
 
     expect(screen.getAllByRole('treeitem').length).toBeLessThanOrEqual(20)
+  })
+
+  it('fills the available height and expands the virtual window when the sidebar grows', () => {
+    let resize: ((height: number) => void) | undefined
+    class TestResizeObserver {
+      constructor(callback: ResizeObserverCallback) {
+        resize = (height) =>
+          callback(
+            [{ contentRect: { height } } as ResizeObserverEntry],
+            this as unknown as ResizeObserver,
+          )
+      }
+      observe() {}
+      disconnect() {}
+      unobserve() {}
+    }
+    vi.stubGlobal('ResizeObserver', TestResizeObserver)
+    const many = Array.from({ length: 100 }, (_, index) => ({
+      entityId: String(index),
+      parentEntityId: null,
+      relativePath: `folder-${String(index).padStart(3, '0')}`,
+      name: `folder-${index}`,
+      marker: { reviewState: null, favorite: false },
+    }))
+
+    const { container } = render(<FolderTree folders={many} selectedId={null} onSelect={vi.fn()} />)
+    const viewport = container.querySelector<HTMLElement>('[data-organization-drop-surface]')
+
+    expect(viewport).not.toBeNull()
+    expect(viewport).toHaveStyle({ height: '100%' })
+    expect(resize).toBeDefined()
+    act(() => resize?.(700))
+    expect(screen.getAllByRole('treeitem')).toHaveLength(31)
   })
 
   it('marks the scrolling viewport and visible rows with opaque organization ids', () => {

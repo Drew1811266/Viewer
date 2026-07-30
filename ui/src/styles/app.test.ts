@@ -112,6 +112,28 @@ describe('workspace style contracts', () => {
     })
   })
 
+  it('gives the folder tree all remaining sidebar height', () => {
+    const rules = parseRules(appCss)
+    const sidebar = rules.find((rule) => rule.selector === '.folder-sidebar')
+    const tree = rules.find((rule) => rule.selector === '.folder-tree')
+
+    expect(sidebar?.declarations).toMatchObject({
+      display: 'flex',
+      'flex-direction': 'column',
+    })
+    expect(tree?.declarations).toMatchObject({
+      flex: '1',
+      'min-height': '0',
+    })
+  })
+
+  it('keeps the sidebar collapse control compact in the flex column', () => {
+    const rules = parseRules(appCss)
+    const collapse = rules.find((rule) => rule.selector === '.folder-sidebar > button:first-child')
+
+    expect(collapse?.declarations['align-self']).toBe('flex-start')
+  })
+
   it('keeps folder identity fixed beside an independently scrolling filmstrip', () => {
     const rules = parseRules(appCss)
     const row = rules.find((rule) => rule.selector === '.folder-filmstrip-row')
@@ -193,7 +215,6 @@ describe('workspace style contracts', () => {
   it('reserves content-grid gray for loading placeholders instead of successful images', () => {
     const rules = parseRules(appCss)
     const cell = rules.find((rule) => rule.selector === '.image-cell')
-    const selected = rules.find((rule) => rule.selector === '.image-cell[aria-selected="true"]')
     const preview = rules.find((rule) => rule.selector === '.image-cell-preview')
     const image = rules.find((rule) => rule.selector === '.aspect-thumbnail > img')
     const placeholder = rules.find((rule) => rule.selector === '.aspect-thumbnail-placeholder')
@@ -203,7 +224,6 @@ describe('workspace style contracts', () => {
       overflow: 'visible',
       padding: '0',
     })
-    expect(selected?.declarations['box-shadow']).toBe('inset 0 0 0 2px #2477d4')
     expect(preview?.declarations.background).toBe('transparent')
     expect(preview?.declarations.height).toBeUndefined()
     expect(image?.declarations).toMatchObject({
@@ -551,6 +571,27 @@ describe('workspace style contracts', () => {
 
     expect(contrastRatio('#174f8f', '#d9e8ff')).toBeGreaterThanOrEqual(4.5)
     expect(contrastRatio('#2477d4', '#ffffff')).toBeGreaterThanOrEqual(3)
+  })
+
+  it('paints content-grid selection above flush thumbnail children', () => {
+    const rules = parseRules(appCss)
+    const selected = rules.find((rule) => rule.selector === '.image-cell[aria-selected="true"]')
+    const overlay = rules.find(
+      (rule) => rule.selector === '.image-cell[aria-selected="true"]::after',
+    )
+
+    expect(selected?.declarations.background).toBe('#d9e8ff')
+    expect(selected?.declarations.outline).toBeUndefined()
+    expect(overlay?.declarations).toMatchObject({
+      border: '2px solid #2477d4',
+      'border-radius': 'inherit',
+      'box-sizing': 'border-box',
+      content: '""',
+      inset: '0',
+      'pointer-events': 'none',
+      position: 'absolute',
+      'z-index': '1',
+    })
   })
 })
 

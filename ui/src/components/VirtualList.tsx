@@ -18,7 +18,7 @@ interface VirtualListProps<T> {
 export default function VirtualList<T>({
   items,
   rowHeight,
-  height = 420,
+  height,
   overscan = 6,
   getKey,
   renderItem,
@@ -28,7 +28,28 @@ export default function VirtualList<T>({
 }: VirtualListProps<T>) {
   const initialScrollTop = scrollOffset(scrollToIndex, items.length, rowHeight)
   const [scrollTop, setScrollTop] = useState(initialScrollTop)
+  const [measuredHeight, setMeasuredHeight] = useState(height ?? 0)
   const viewportRef = useRef<HTMLDivElement>(null)
+  const viewportHeight = height ?? measuredHeight
+
+  useEffect(() => {
+    if (height !== undefined) return
+    const node = viewportRef.current
+    if (node === null || typeof ResizeObserver === 'undefined') return
+
+    const updateHeight = (nextHeight: number) => {
+      if (Number.isFinite(nextHeight) && nextHeight > 0) {
+        setMeasuredHeight(Math.floor(nextHeight))
+      }
+    }
+    updateHeight(node.getBoundingClientRect().height)
+    const observer = new ResizeObserver((entries) => {
+      const nextHeight = entries[0]?.contentRect.height
+      if (nextHeight !== undefined) updateHeight(nextHeight)
+    })
+    observer.observe(node)
+    return () => observer.disconnect()
+  }, [height])
 
   useEffect(() => {
     if (scrollToIndex === undefined) return
@@ -38,11 +59,11 @@ export default function VirtualList<T>({
   }, [items.length, rowHeight, scrollToIndex])
   const window = useMemo(() => {
     const firstVisible = Math.floor(scrollTop / rowHeight)
-    const visibleCount = Math.ceil(height / rowHeight)
+    const visibleCount = Math.ceil(viewportHeight / rowHeight)
     const start = Math.max(0, firstVisible - overscan)
     const end = Math.min(items.length, firstVisible + visibleCount + overscan)
     return { start, end }
-  }, [height, items.length, overscan, rowHeight, scrollTop])
+  }, [items.length, overscan, rowHeight, scrollTop, viewportHeight])
 
   function scrolled(event: UIEvent<HTMLDivElement>) {
     setScrollTop(event.currentTarget.scrollTop)
@@ -53,7 +74,7 @@ export default function VirtualList<T>({
       {...viewportProps}
       ref={viewportRef}
       className={className}
-      style={{ height, overflowY: 'auto', position: 'relative' }}
+      style={{ height: height ?? '100%', overflowY: 'auto', position: 'relative' }}
       onScroll={scrolled}
     >
       <div style={{ height: items.length * rowHeight, position: 'relative' }}>

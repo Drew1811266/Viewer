@@ -5,80 +5,6 @@ import { defined } from '../defined'
 const appCss = readFileSync('src/styles/app.css', 'utf8')
 
 describe('workspace style contracts', () => {
-  it('resolves specialized radial labels to high-contrast dark-mode colors', () => {
-    const radialStart = appCss.indexOf('.radial-file-menu {')
-    const darkStart = appCss.indexOf('@media (prefers-color-scheme: dark)', radialStart)
-    const baseRules = parseRules(appCss.slice(radialStart, darkStart))
-    const darkRules = parseRules(mediaBody(appCss, '(prefers-color-scheme: dark)'))
-
-    const secondaryColor = winningColor(
-      [...baseRules, ...darkRules],
-      new Set(['.radial-menu-button', '.radial-menu-button[data-level="secondary"]']),
-    )
-    const destructiveColor = winningColor(
-      [...baseRules, ...darkRules],
-      new Set(['.radial-menu-button', '.radial-menu-button[data-tone="destructive"]']),
-    )
-
-    expect(secondaryColor).toBe('#f3f5f7')
-    expect(contrastRatio(secondaryColor, '#244d7d')).toBeGreaterThanOrEqual(4.5)
-    expect(destructiveColor).toBe('#ffb4ab')
-    expect(contrastRatio(destructiveColor, '#2f343d')).toBeGreaterThanOrEqual(4.5)
-    expect(contrastRatio(destructiveColor, '#244d7d')).toBeGreaterThanOrEqual(4.5)
-  })
-
-  it('resolves disabled radial sectors and labels to visible dark-mode treatment', () => {
-    const radialStart = appCss.indexOf('.radial-file-menu {')
-    const darkStart = appCss.indexOf('@media (prefers-color-scheme: dark)', radialStart)
-    const rules = [
-      ...parseRules(appCss.slice(radialStart, darkStart)),
-      ...parseRules(mediaBody(appCss, '(prefers-color-scheme: dark)')),
-    ]
-    const primaryDisabled = new Set([
-      '.radial-primary-shape',
-      '.radial-primary-shape[data-disabled="true"]',
-    ])
-    const secondaryDisabled = new Set([
-      '.radial-secondary-shape',
-      '.radial-secondary-shape[data-disabled="true"]',
-    ])
-    const disabledLabel = new Set([
-      '.radial-menu-button',
-      '.radial-menu-button[data-level="secondary"]',
-      '.radial-menu-button[aria-disabled="true"]',
-    ])
-
-    for (const selectors of [primaryDisabled, secondaryDisabled]) {
-      expect(winningDeclaration(rules, selectors, 'fill')).toBe('#3f4651')
-      expect(winningDeclaration(rules, selectors, 'stroke')).toBe('#818d9c')
-      expect(winningDeclaration(rules, selectors, 'opacity')).toBe('1')
-    }
-    const label = winningDeclaration(rules, disabledLabel, 'color')
-    expect(label).toBe('#c1c9d4')
-    expect(winningDeclaration(rules, disabledLabel, 'filter')).toBe('none')
-    expect(winningDeclaration(rules, disabledLabel, 'opacity')).toBe('1')
-    expect(contrastRatio(label, '#3f4651')).toBeGreaterThanOrEqual(4.5)
-  })
-
-  it('resolves explicit header and popover gray descendants to dark contrast colors', () => {
-    const darkStart = appCss.indexOf('@media (prefers-color-scheme: dark)')
-    const rules = [
-      ...parseRules(appCss.slice(0, darkStart)),
-      ...parseRules(mediaBody(appCss, '(prefers-color-scheme: dark)')),
-    ]
-    const mutedSelectors = [
-      '.search-field kbd',
-      '.search-options-popover > label > span',
-      '.project-access-status',
-    ]
-
-    for (const selector of mutedSelectors) {
-      const color = winningDeclaration(rules, new Set([selector]), 'color')
-      expect(color, selector).toBe('#c7ced8')
-      expect(contrastRatio(color, '#24282f'), selector).toBeGreaterThanOrEqual(4.5)
-    }
-  })
-
   it('anchors the filter popover within both edges of a 720px viewport', () => {
     const narrowRules = parseRules(mediaBody(appCss, '(max-width: 800px)'))
     const popover = narrowRules.find((rule) => rule.selector === '.search-options-popover')
@@ -197,19 +123,6 @@ describe('workspace style contracts', () => {
       'outline-offset': '-3px',
     })
     expect(thumbnailFocus?.declarations['box-shadow']).toBeUndefined()
-
-    const darkStart = appCss.indexOf('@media (prefers-color-scheme: dark)')
-    const darkRules = [
-      ...parseRules(appCss.slice(0, darkStart)),
-      ...parseRules(mediaBody(appCss, '(prefers-color-scheme: dark)')),
-    ]
-    const darkOutline = winningDeclaration(
-      darkRules,
-      new Set(['.folder-filmstrip-thumbnail:focus-visible']),
-      'outline-color',
-    )
-    expect(darkOutline).toBe('#8ec8ff')
-    expect(contrastRatio(darkOutline, '#343a43')).toBeGreaterThanOrEqual(3)
   })
 
   it('reserves content-grid gray for loading placeholders instead of successful images', () => {
@@ -292,68 +205,12 @@ describe('workspace style contracts', () => {
     expect(winningDeclaration(rules, new Set(['.project-menu > summary']), 'min-width')).toBe(
       '30px',
     )
-
-    const darkRules = [...rules, ...parseRules(mediaBody(appCss, '(prefers-color-scheme: dark)'))]
-    for (const selector of baseSelectors) {
-      expect(winningDeclaration(darkRules, new Set([selector]), 'background'), selector).toBe(
-        '#24282f',
-      )
-      expect(winningDeclaration(darkRules, new Set([selector]), 'border-color'), selector).toBe(
-        '#788596',
-      )
-      expect(winningDeclaration(darkRules, new Set([selector]), 'color'), selector).toBe('#f3f5f7')
-      expect(contrastRatio('#788596', '#24282f'), selector).toBeGreaterThanOrEqual(3)
-    }
-    for (const selector of hoverSelectors) {
-      expect(winningDeclaration(darkRules, new Set([selector]), 'background'), selector).toBe(
-        '#2f343d',
-      )
-      expect(winningDeclaration(darkRules, new Set([selector]), 'border-color'), selector).toBe(
-        '#8896a8',
-      )
-      expect(contrastRatio('#8896a8', '#2f343d'), selector).toBeGreaterThanOrEqual(3)
-    }
-    for (const selector of openSelectors) {
-      expect(winningDeclaration(darkRules, new Set([selector]), 'background'), selector).toBe(
-        '#244d7d',
-      )
-      expect(winningDeclaration(darkRules, new Set([selector]), 'border-color'), selector).toBe(
-        '#5d9ee8',
-      )
-    }
-    for (const selector of focusSelectors) {
-      expect(winningDeclaration(darkRules, new Set([selector]), 'outline-color'), selector).toBe(
-        '#8ec8ff',
-      )
-    }
   })
 
   it('uses one light theme for image and text previews', () => {
     const rules = parseRules(appCss)
-    const root = rules.find((rule) => rule.selector === ':root')
     const declaration = (selector: string, property: string) =>
       winningDeclaration(rules, new Set([selector]), property)
-
-    expect(root?.declarations).toMatchObject({
-      '--preview-surface': '#f5f6f8',
-      '--preview-chrome': '#fbfcfd',
-      '--preview-stage': '#edf0f3',
-      '--preview-document-surface': '#f7f7f8',
-      '--preview-panel-surface': '#fff',
-      '--preview-text': '#1f2328',
-      '--preview-muted': '#68717d',
-      '--preview-border': '#d8dce2',
-      '--preview-control-border': '#8a94a3',
-      '--preview-control-hover-border': '#747f8e',
-      '--preview-control-surface': '#fff',
-      '--preview-control-hover-surface': '#f3f5f7',
-      '--preview-accent': '#2477d4',
-      '--preview-accent-surface': '#d9e8ff',
-      '--preview-accent-text': '#174f8f',
-      '--preview-danger': '#9d1c13',
-      '--preview-danger-surface': '#fff3f0',
-      '--preview-image-shadow': '0 8px 28px rgb(34 42 53 / 14%)',
-    })
 
     expect(declaration('.preview-overlay', 'background')).toBe('var(--preview-surface)')
     expect(declaration('.preview-overlay', 'color')).toBe('var(--preview-text)')
@@ -529,9 +386,7 @@ describe('workspace style contracts', () => {
     expect(declaration('.compare-invalid > p[role="alert"]', 'margin')).toBe('')
     expect(declaration('.compare-invalid > p[role="alert"]', 'padding')).toBe('')
 
-    const radialStart = appCss.indexOf('.radial-file-menu {')
-    const darkStart = appCss.indexOf('@media (prefers-color-scheme: dark)', radialStart)
-    const lightRules = parseRules(appCss.slice(radialStart, darkStart))
+    const lightRules = parseRules(appCss)
     expect(
       winningDeclaration(
         lightRules,
@@ -650,10 +505,6 @@ function parseRules(css: string): CssRule[] {
   }
 
   return rules
-}
-
-function winningColor(rules: CssRule[], matchingSelectors: Set<string>): string {
-  return winningDeclaration(rules, matchingSelectors, 'color')
 }
 
 function winningDeclaration(

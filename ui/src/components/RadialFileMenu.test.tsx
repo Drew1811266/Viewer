@@ -725,24 +725,6 @@ describe('RadialFileMenu', () => {
     },
   )
 
-  it('matches the complete dark and reduced-motion selector groups', () => {
-    expect(appCss).toMatch(
-      /@media \(prefers-color-scheme: dark\)\s*\{\s*\.workspace-header,\s*\.search-field,\s*\.search-options-popover,\s*\.search-view-popover,\s*\.project-menu > div,\s*\.content-view-menu > div,\s*\.radial-menu-center\s*\{\s*background:\s*#24282f;\s*border-color:\s*#4d5663;\s*color:\s*#f3f5f7;/s,
-    )
-    expect(appCss).toMatch(
-      /@media \(prefers-color-scheme: dark\)[\s\S]*?\.radial-primary-shape\s*\{\s*fill:\s*#2f343d;\s*stroke:\s*#596474;\s*\}/,
-    )
-    expect(appCss).toMatch(
-      /@media \(prefers-color-scheme: dark\)[\s\S]*?\.radial-secondary-shape,\s*\.radial-primary-shape\[data-active="true"\],\s*\.radial-secondary-shape\[data-active="true"\]\s*\{\s*fill:\s*#244d7d;\s*stroke:\s*#5d9ee8;\s*\}/,
-    )
-    expect(appCss).toMatch(
-      /@media \(prefers-color-scheme: dark\)[\s\S]*?\.radial-menu-button,\s*\.radial-menu-center strong\s*\{\s*color:\s*#f3f5f7;\s*\}/,
-    )
-    expect(appCss).toMatch(
-      /@media \(prefers-reduced-motion: reduce\)\s*\{\s*\.organization-drag-handle,\s*\.radial-primary-shape,\s*\.radial-secondary-shape\s*\{\s*transition:\s*none;\s*\}\s*\}/,
-    )
-  })
-
   it('hands Trash to the confirmation owner instead of mutating directly', () => {
     const action = vi.fn()
     render(

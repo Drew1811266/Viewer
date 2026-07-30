@@ -1,25 +1,13 @@
 :root {
-  --preview-surface: #f5f6f8;
-  --preview-chrome: #fbfcfd;
-  --preview-stage: #edf0f3;
-  --preview-document-surface: #f7f7f8;
-  --preview-panel-surface: #fff;
-  --preview-text: #1f2328;
-  --preview-muted: #68717d;
-  --preview-border: #d8dce2;
-  --preview-control-border: #8a94a3;
-  --preview-control-hover-border: #747f8e;
-  --preview-control-surface: #fff;
-  --preview-control-hover-surface: #f3f5f7;
-  --preview-accent: #2477d4;
-  --preview-accent-surface: #d9e8ff;
-  --preview-accent-text: #174f8f;
-  --preview-danger: #9d1c13;
-  --preview-danger-surface: #fff3f0;
-  --preview-image-shadow: 0 8px 28px rgb(34 42 53 / 14%);
-  color: #1f2328;
-  background: #f5f6f8;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: var(--viewer-text);
+  background: var(--viewer-application);
+  font-family:
+    Inter,
+    "SF Pro Text",
+    "Segoe UI Variable Text",
+    "PingFang SC",
+    "Microsoft YaHei UI",
+    sans-serif;
   font-synthesis: none;
 }
 
@@ -35,8 +23,48 @@ body {
 
 button,
 input,
-select {
+select,
+summary,
+[role="menuitem"],
+[role="menuitemcheckbox"] {
   font: inherit;
+  transition:
+    color var(--viewer-motion-fast) var(--viewer-easing),
+    border-color var(--viewer-motion-fast) var(--viewer-easing),
+    background-color var(--viewer-motion-fast) var(--viewer-easing);
+}
+
+.search-options-popover,
+.workspace-menu-popover,
+.file-context-menu {
+  animation: viewer-popover-in var(--viewer-motion-standard) var(--viewer-easing);
+}
+
+.modal-sheet,
+.preview-overlay {
+  animation: viewer-fade-in var(--viewer-motion-slow) var(--viewer-easing);
+}
+
+@keyframes viewer-popover-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes viewer-fade-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
 }
 
 .visually-hidden {
@@ -1241,14 +1269,6 @@ select {
   z-index: 30;
 }
 
-@media (prefers-color-scheme: dark) {
-  .organization-drag-preview {
-    background: rgb(245 246 248 / 94%);
-    border-color: rgb(31 35 40 / 32%);
-    color: #1f2328;
-  }
-}
-
 .task-bar {
   align-items: center;
   background: rgb(35 42 51 / 94%);
@@ -1945,132 +1965,22 @@ select {
   }
 }
 
-@media (prefers-color-scheme: dark) {
-  .workspace-header,
-  .search-field,
-  .search-options-popover,
-  .search-view-popover,
-  .project-menu > div,
-  .content-view-menu > div,
-  .radial-menu-center {
-    background: #24282f;
-    border-color: #4d5663;
-    color: #f3f5f7;
-  }
-
-  .search-options-panel > summary,
-  .search-view-panel > summary,
-  .project-menu > summary {
-    background: #24282f;
-    border-color: #788596;
-    color: #f3f5f7;
-  }
-
-  .search-options-panel > summary:hover,
-  .search-view-panel > summary:hover,
-  .project-menu > summary:hover {
-    background: #2f343d;
-    border-color: #8896a8;
-  }
-
-  .search-options-panel[open] > summary,
-  .search-view-panel[open] > summary,
-  .project-menu[open] > summary {
-    background: #244d7d;
-    border-color: #5d9ee8;
-  }
-
-  .search-options-panel > summary:focus-visible,
-  .search-view-panel > summary:focus-visible,
-  .project-menu > summary:focus-visible {
-    outline-color: #8ec8ff;
-  }
-
-  .radial-primary-shape {
-    fill: #2f343d;
-    stroke: #596474;
-  }
-
-  .radial-secondary-shape,
-  .radial-primary-shape[data-active="true"],
-  .radial-secondary-shape[data-active="true"] {
-    fill: #244d7d;
-    stroke: #5d9ee8;
-  }
-
-  .radial-menu-button,
-  .radial-menu-center strong {
-    color: #f3f5f7;
-  }
-
-  .radial-menu-button[data-level="secondary"] {
-    color: #f3f5f7;
-  }
-
-  .radial-menu-button[data-tone="destructive"] {
-    color: #ffb4ab;
-  }
-
-  .radial-state-cue {
-    background: #24282f;
-  }
-
-  .radial-primary-shape[data-disabled="true"],
-  .radial-secondary-shape[data-disabled="true"] {
-    fill: #3f4651;
-    opacity: 1;
-    stroke: #818d9c;
-  }
-
-  .radial-menu-button[aria-disabled="true"] {
-    color: #c1c9d4;
-    filter: none;
-    opacity: 1;
-  }
-
-  .search-field kbd,
-  .search-options-popover > label > span,
-  .project-access-status {
-    color: #c7ced8;
-  }
-
-  .folder-filmstrip-identity {
-    background: #24282f;
-    border-color: #4d5663;
-  }
-
-  .folder-filmstrip-identity:hover {
-    background: #2d3845;
-  }
-
-  .folder-filmstrip-identity > span {
-    color: #c7ced8;
-  }
-
-  .folder-filmstrip-identity .folder-filmstrip-marker {
-    color: #ffd27a;
-  }
-
-  .folder-filmstrip-list,
-  .folder-filmstrip-row {
-    border-color: #4d5663;
-  }
-
-  .aspect-thumbnail-placeholder,
-  .folder-filmstrip-skeleton,
-  .folder-filmstrip-deferred {
-    background: #343a43;
-  }
-
-  .folder-filmstrip-thumbnail:focus-visible {
-    outline-color: #8ec8ff;
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
+  button,
+  input,
+  select,
+  summary,
+  [role="menuitem"],
+  [role="menuitemcheckbox"],
+  .search-options-popover,
+  .workspace-menu-popover,
+  .file-context-menu,
+  .modal-sheet,
+  .preview-overlay,
   .organization-drag-handle,
   .radial-primary-shape,
   .radial-secondary-shape {
     transition: none;
+    animation: none;
   }
 }

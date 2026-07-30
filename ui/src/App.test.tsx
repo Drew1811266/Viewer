@@ -52,8 +52,13 @@ function openRadialMenu(file: HTMLElement, pointerId = 90) {
 }
 
 function closeProjectFromMenu() {
-  fireEvent.click(screen.getByRole('button', { name: '项目菜单' }))
+  fireEvent.click(screen.getByRole('button', { name: '更多' }))
   fireEvent.click(screen.getByRole('button', { name: '关闭项目' }))
+}
+
+function openSettingsFromMenu() {
+  fireEvent.click(screen.getByRole('button', { name: '更多' }))
+  fireEvent.click(screen.getByRole('button', { name: '软件设置' }))
 }
 
 function bridge(access: 'read_write' | 'read_only' = 'read_write'): ViewerBridge {
@@ -170,16 +175,39 @@ describe('Viewer empty state', () => {
     expect(screen.queryByRole('button', { name: '软件设置' })).not.toBeInTheDocument()
   })
 
-  it('places one settings trigger immediately before the project menu after opening', async () => {
+  it('consolidates project actions in the Viewer toolbar after opening', async () => {
     const viewer = bridge()
     render(<App bridge={viewer} />)
     fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
     await screen.findByRole('heading', { name: 'Catalog' })
 
-    const settingsTrigger = screen.getByRole('button', { name: '软件设置' })
-    const projectMenu = screen.getByRole('button', { name: '项目菜单' }).closest('.project-menu')
-    expect(screen.getAllByRole('button', { name: '软件设置' })).toHaveLength(1)
-    expect(settingsTrigger.nextElementSibling).toBe(projectMenu)
+    const toolbar = screen.getByRole('toolbar', { name: 'Viewer 工具栏' })
+    expect(within(toolbar).getByRole('button', { name: /^筛选/ })).toBeVisible()
+    expect(within(toolbar).getByRole('button', { name: '视图' })).toBeVisible()
+    expect(within(toolbar).getByRole('button', { name: '更多' })).toBeVisible()
+    expect(within(toolbar).queryByRole('button', { name: '软件设置' })).not.toBeInTheDocument()
+    expect(within(toolbar).queryByRole('button', { name: '项目菜单' })).not.toBeInTheDocument()
+  })
+
+  it('routes contextual content selection through the shared View menu', async () => {
+    const viewer = bridge()
+    vi.mocked(viewer.queryFolder).mockResolvedValue(mixedContentWorkspace())
+    render(<App bridge={viewer} />)
+    fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
+
+    const toolbar = await screen.findByRole('toolbar', { name: 'Viewer 工具栏' })
+    fireEvent.click(within(toolbar).getByRole('button', { name: '视图' }))
+    fireEvent.click(within(toolbar).getByRole('button', { name: '全选全部文件' }))
+
+    expect(screen.getByRole('option', { name: 'front.jpg' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    )
+    fireEvent.click(screen.getByRole('button', { name: /其它文件 · 1 · 已选 1/ }))
+    expect(screen.getByRole('option', { name: 'root-notes.txt' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    )
   })
 
   it('updates density optimistically and restores trigger focus when the dialog closes', async () => {
@@ -188,9 +216,9 @@ describe('Viewer empty state', () => {
     vi.mocked(viewer.updateThumbnailDensity).mockReturnValue(save.promise)
     render(<App bridge={viewer} />)
     fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
-    const trigger = await screen.findByRole('button', { name: '软件设置' })
+    const trigger = await screen.findByRole('button', { name: '更多' })
     trigger.focus()
-    fireEvent.click(trigger)
+    openSettingsFromMenu()
 
     const large = screen.getByRole('radio', { name: '大图' })
     fireEvent.click(large)
@@ -207,7 +235,8 @@ describe('Viewer empty state', () => {
     vi.mocked(viewer.updateThumbnailDensity).mockReturnValue(save.promise)
     render(<App bridge={viewer} />)
     fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
-    fireEvent.click(await screen.findByRole('button', { name: '软件设置' }))
+    await screen.findByRole('button', { name: '更多' })
+    openSettingsFromMenu()
     fireEvent.click(screen.getByRole('radio', { name: '大图' }))
     await waitFor(() => expect(viewer.updateThumbnailDensity).toHaveBeenCalledWith('large'))
 
@@ -275,7 +304,7 @@ describe('Viewer empty state', () => {
     render(<App bridge={viewer} />)
     fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
     expect(await screen.findByRole('status', { name: '只读模式' })).toBeVisible()
-    const projectMenu = screen.getByRole('button', { name: '项目菜单' })
+    const projectMenu = screen.getByRole('button', { name: '更多' })
     expect(projectMenu).toHaveAttribute('aria-expanded', 'false')
 
     fireEvent.keyDown(projectMenu, { key: 'Enter' })
@@ -395,7 +424,7 @@ describe('Viewer empty state', () => {
       height: '132px',
     })
 
-    fireEvent.click(screen.getByRole('button', { name: '软件设置' }))
+    openSettingsFromMenu()
     fireEvent.click(screen.getByRole('radio', { name: '紧凑' }))
 
     await waitFor(() =>
@@ -441,7 +470,7 @@ describe('Viewer empty state', () => {
       }),
     )
 
-    fireEvent.click(screen.getByRole('button', { name: '软件设置' }))
+    openSettingsFromMenu()
     fireEvent.click(screen.getByRole('radio', { name: '紧凑' }))
 
     await waitFor(() =>
@@ -586,7 +615,7 @@ describe('Viewer empty state', () => {
     fireEvent.click(screen.getByRole('button', { name: '打开权限设置' }))
     expect(viewer.openPermissionSettings).toHaveBeenCalledOnce()
     expect(screen.getByRole('searchbox', { name: '搜索项目' })).toBeEnabled()
-    fireEvent.click(screen.getByText('筛选与排序'))
+    fireEvent.click(screen.getByRole('button', { name: '筛选' }))
     expect(screen.getByRole('combobox', { name: '排序方式' })).toBeEnabled()
 
     const front = await screen.findByRole('option', { name: 'front.jpg' })
@@ -814,7 +843,9 @@ describe('Viewer empty state', () => {
     fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
     await screen.findByRole('heading', { name: 'Catalog' })
 
-    fireEvent.click(screen.getByRole('button', { name: '重新选择目录' }))
+    const toolbar = screen.getByRole('toolbar', { name: 'Viewer 工具栏' })
+    fireEvent.click(within(toolbar).getByRole('button', { name: '更多' }))
+    fireEvent.click(within(toolbar).getByRole('button', { name: '重新选择目录' }))
 
     await waitFor(() => expect(viewer.closeProject).toHaveBeenCalledWith(undefined, 'project'))
     expect(await screen.findByRole('heading', { name: 'Viewer' })).toBeVisible()

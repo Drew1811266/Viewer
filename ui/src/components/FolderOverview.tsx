@@ -4,10 +4,8 @@ import FolderFilmstripRow from './FolderFilmstripRow'
 
 interface FolderOverviewProps {
   folders: ContentFolderCard[]
-  currentPath: string
   density: ThumbnailDensity
   onSelect: (entityId: string) => void
-  onShowAll: () => void
   onPreview: (file: BrowserFile, files: BrowserFile[]) => void
   requestFolderImages: (entityId: string) => Promise<BrowserFile[]>
   requestThumbnail?: (file: BrowserFile, maxPixels: number, scaleMilli: number) => Promise<string>
@@ -15,10 +13,8 @@ interface FolderOverviewProps {
 
 export default function FolderOverview({
   folders,
-  currentPath,
   density,
   onSelect,
-  onShowAll,
   onPreview,
   requestFolderImages,
   requestThumbnail,
@@ -38,12 +34,6 @@ export default function FolderOverview({
 
   return (
     <section className="folder-overview" aria-label="内容文件夹概览">
-      <header className="workspace-heading">
-        <p>{currentPath || '项目根目录'}</p>
-        <button type="button" onClick={onShowAll}>
-          显示全部后代文件
-        </button>
-      </header>
       <div className="folder-filmstrip-list">
         {folders.map((folder) => (
           <FolderFilmstripRow

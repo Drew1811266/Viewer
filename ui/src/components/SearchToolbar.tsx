@@ -5,7 +5,6 @@ import type {
   ImageOrientation,
   ReviewState,
   SearchFilters,
-  SearchLayout,
   SearchQueryModel,
   SearchSort,
 } from '../api/types'
@@ -19,7 +18,6 @@ interface SearchToolbarProps {
   onScopeChange: (folderId: string | null) => void
   onFiltersChange: (filters: SearchFilters) => void
   onSortChange: (sort: SearchSort) => void
-  onLayoutChange: (layout: SearchLayout) => void
   onRemoveFilter: (chip: SearchFilterChip) => void
   onClearFilters: () => void
 }
@@ -52,17 +50,88 @@ export default function SearchToolbar({
   onScopeChange,
   onFiltersChange,
   onSortChange,
-  onLayoutChange,
   onRemoveFilter,
   onClearFilters,
 }: SearchToolbarProps) {
   const searchRef = useRef<HTMLInputElement>(null)
   const [optionsOpen, setOptionsOpen] = useState(false)
-  const [viewOpen, setViewOpen] = useState(false)
   useEffect(() => {
     if (focusRequest > 0) searchRef.current?.focus()
   }, [focusRequest])
   const chips = useMemo(() => filterChips(query.filters), [query.filters])
+  const orientationControls = (
+    <>
+      <legend>方向</legend>
+      {ORIENTATIONS.map(([value, label]) => (
+        <CheckFilter
+          key={value}
+          label={label}
+          checked={query.filters.orientations.includes(value)}
+          onChange={(checked) =>
+            onFiltersChange({
+              ...query.filters,
+              orientations: toggleValue(query.filters.orientations, value, checked),
+            })
+          }
+        />
+      ))}
+    </>
+  )
+  const dimensionControls = (
+    <>
+      <legend>像素尺寸</legend>
+      <NumberFilter
+        label="最小宽度"
+        value={query.filters.widthMin}
+        onChange={(widthMin) => onFiltersChange({ ...query.filters, widthMin })}
+      />
+      <NumberFilter
+        label="最大宽度"
+        value={query.filters.widthMax}
+        onChange={(widthMax) => onFiltersChange({ ...query.filters, widthMax })}
+      />
+      <NumberFilter
+        label="最小高度"
+        value={query.filters.heightMin}
+        onChange={(heightMin) => onFiltersChange({ ...query.filters, heightMin })}
+      />
+      <NumberFilter
+        label="最大高度"
+        value={query.filters.heightMax}
+        onChange={(heightMax) => onFiltersChange({ ...query.filters, heightMax })}
+      />
+    </>
+  )
+  const fileSizeControls = (
+    <>
+      <legend>文件大小</legend>
+      <NumberFilter
+        label="最小文件大小"
+        value={query.filters.sizeMin}
+        onChange={(sizeMin) => onFiltersChange({ ...query.filters, sizeMin })}
+      />
+      <NumberFilter
+        label="最大文件大小"
+        value={query.filters.sizeMax}
+        onChange={(sizeMax) => onFiltersChange({ ...query.filters, sizeMax })}
+      />
+    </>
+  )
+  const modifiedTimeControls = (
+    <>
+      <legend>修改时间</legend>
+      <DateFilter
+        label="最早修改时间"
+        value={query.filters.modifiedNsMin}
+        onChange={(modifiedNsMin) => onFiltersChange({ ...query.filters, modifiedNsMin })}
+      />
+      <DateFilter
+        label="最晚修改时间"
+        value={query.filters.modifiedNsMax}
+        onChange={(modifiedNsMax) => onFiltersChange({ ...query.filters, modifiedNsMax })}
+      />
+    </>
+  )
 
   return (
     <section className="search-toolbar" aria-label="搜索和筛选">
@@ -92,25 +161,61 @@ export default function SearchToolbar({
             event.preventDefault()
             setOptionsOpen((open) => !open)
           }}
+          aria-label={chips.length > 0 ? `筛选，${chips.length} 项已启用` : '筛选'}
         >
-          筛选与排序
+          <span>筛选</span>
+          {chips.length > 0 && <span className="filter-count">{chips.length}</span>}
         </summary>
         <div className="search-options-popover" hidden={!optionsOpen}>
-          <label>
-            <span>范围</span>
-            <select
-              aria-label="搜索范围"
-              value={query.scopeFolderId ?? ''}
-              onChange={(event) => onScopeChange(event.currentTarget.value || null)}
+          <div className="search-options-row">
+            <label>
+              <span>范围</span>
+              <select
+                aria-label="搜索范围"
+                value={query.scopeFolderId ?? ''}
+                onChange={(event) => onScopeChange(event.currentTarget.value || null)}
+              >
+                <option value="">整个项目</option>
+                {folders.map((folder) => (
+                  <option key={folder.entityId} value={folder.entityId}>
+                    {folder.relativePath}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span>排序</span>
+              <select
+                aria-label="排序方式"
+                value={query.sort.key}
+                onChange={(event) =>
+                  onSortChange({
+                    key: event.currentTarget.value as SearchSort['key'],
+                    direction: query.sort.direction,
+                  })
+                }
+              >
+                <option value="relevance">相关度</option>
+                <option value="natural_name">文件名</option>
+                <option value="modified_time">修改时间</option>
+                <option value="size">文件大小</option>
+                <option value="pixel_dimensions">像素尺寸</option>
+                <option value="review_state">审阅状态</option>
+              </select>
+            </label>
+            <button
+              type="button"
+              aria-label={query.sort.direction === 'ascending' ? '切换为降序' : '切换为升序'}
+              onClick={() =>
+                onSortChange({
+                  ...query.sort,
+                  direction: query.sort.direction === 'ascending' ? 'descending' : 'ascending',
+                })
+              }
             >
-              <option value="">整个项目</option>
-              {folders.map((folder) => (
-                <option key={folder.entityId} value={folder.entityId}>
-                  {folder.relativePath}
-                </option>
-              ))}
-            </select>
-          </label>
+              {query.sort.direction === 'ascending' ? '↑' : '↓'}
+            </button>
+          </div>
           <div className="search-filter-section">
             <div className="search-filter-grid">
               <fieldset>
@@ -155,134 +260,17 @@ export default function SearchToolbar({
                   onChange={(unmarkedOnly) => onFiltersChange({ ...query.filters, unmarkedOnly })}
                 />
               </fieldset>
-              <fieldset>
-                <legend>图片方向</legend>
-                {ORIENTATIONS.map(([value, label]) => (
-                  <CheckFilter
-                    key={value}
-                    label={label}
-                    checked={query.filters.orientations.includes(value)}
-                    onChange={(checked) =>
-                      onFiltersChange({
-                        ...query.filters,
-                        orientations: toggleValue(query.filters.orientations, value, checked),
-                      })
-                    }
-                  />
-                ))}
-              </fieldset>
-              <fieldset className="numeric-filters">
-                <legend>尺寸与时间</legend>
-                <NumberFilter
-                  label="最小宽度"
-                  value={query.filters.widthMin}
-                  onChange={(widthMin) => onFiltersChange({ ...query.filters, widthMin })}
-                />
-                <NumberFilter
-                  label="最大宽度"
-                  value={query.filters.widthMax}
-                  onChange={(widthMax) => onFiltersChange({ ...query.filters, widthMax })}
-                />
-                <NumberFilter
-                  label="最小高度"
-                  value={query.filters.heightMin}
-                  onChange={(heightMin) => onFiltersChange({ ...query.filters, heightMin })}
-                />
-                <NumberFilter
-                  label="最大高度"
-                  value={query.filters.heightMax}
-                  onChange={(heightMax) => onFiltersChange({ ...query.filters, heightMax })}
-                />
-                <NumberFilter
-                  label="最小文件大小"
-                  value={query.filters.sizeMin}
-                  onChange={(sizeMin) => onFiltersChange({ ...query.filters, sizeMin })}
-                />
-                <NumberFilter
-                  label="最大文件大小"
-                  value={query.filters.sizeMax}
-                  onChange={(sizeMax) => onFiltersChange({ ...query.filters, sizeMax })}
-                />
-                <DateFilter
-                  label="最早修改时间"
-                  value={query.filters.modifiedNsMin}
-                  onChange={(modifiedNsMin) => onFiltersChange({ ...query.filters, modifiedNsMin })}
-                />
-                <DateFilter
-                  label="最晚修改时间"
-                  value={query.filters.modifiedNsMax}
-                  onChange={(modifiedNsMax) => onFiltersChange({ ...query.filters, modifiedNsMax })}
-                />
-              </fieldset>
             </div>
           </div>
-          <label>
-            <span>排序</span>
-            <select
-              aria-label="排序方式"
-              value={query.sort.key}
-              onChange={(event) =>
-                onSortChange({
-                  key: event.currentTarget.value as SearchSort['key'],
-                  direction: query.sort.direction,
-                })
-              }
-            >
-              <option value="relevance">相关度</option>
-              <option value="natural_name">文件名</option>
-              <option value="modified_time">修改时间</option>
-              <option value="size">文件大小</option>
-              <option value="pixel_dimensions">像素尺寸</option>
-              <option value="review_state">审阅状态</option>
-            </select>
-          </label>
-          <button
-            type="button"
-            aria-label={query.sort.direction === 'ascending' ? '切换为降序' : '切换为升序'}
-            onClick={() =>
-              onSortChange({
-                ...query.sort,
-                direction: query.sort.direction === 'ascending' ? 'descending' : 'ascending',
-              })
-            }
-          >
-            {query.sort.direction === 'ascending' ? '↑' : '↓'}
-          </button>
-        </div>
-      </details>
-      <details className="search-view-panel" open={viewOpen}>
-        <summary
-          role="button"
-          aria-expanded={viewOpen}
-          onClick={(event) => {
-            event.preventDefault()
-            setViewOpen((open) => !open)
-          }}
-          onKeyDown={(event) => {
-            if (event.key !== 'Enter' && event.key !== ' ' && event.key !== 'Spacebar') return
-            event.preventDefault()
-            setViewOpen((open) => !open)
-          }}
-        >
-          结果视图
-        </summary>
-        <div className="search-view-popover search-layout-toggle" hidden={!viewOpen}>
-          <button
-            type="button"
-            aria-label="按文件夹分组"
-            aria-pressed={query.layout === 'grouped'}
-            onClick={() => onLayoutChange('grouped')}
-          >
-            分组
-          </button>
-          <button
-            type="button"
-            aria-label="展平结果"
-            aria-pressed={query.layout === 'flat'}
-            onClick={() => onLayoutChange('flat')}
-          >
-            展平
-          </button>
+          <details className="advanced-filter-group">
+            <summary>高级条件</summary>
+            <div className="advanced-filter-grid">
+              <fieldset aria-label="方向">{orientationControls}</fieldset>
+              <fieldset aria-label="像素尺寸">{dimensionControls}</fieldset>
+              <fieldset aria-label="文件大小">{fileSizeControls}</fieldset>
+              <fieldset aria-label="修改时间">{modifiedTimeControls}</fieldset>
+            </div>
+          </details>
         </div>
       </details>
       {chips.length > 0 && (

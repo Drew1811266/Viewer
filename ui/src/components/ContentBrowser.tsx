@@ -40,6 +40,7 @@ interface ContentBrowserProps {
   onRadialMenuRequest?: (request: RadialMenuRequest) => void
   otherFilePanelExpanded: boolean
   onOtherFilePanelExpandedChange(expanded: boolean): void
+  selectAllCommand?: { sequence: number; scope: SelectAllScope } | null
 }
 
 interface ThumbnailWork {
@@ -65,6 +66,7 @@ export default function ContentBrowser({
   onRadialMenuRequest,
   otherFilePanelExpanded,
   onOtherFilePanelExpandedChange,
+  selectAllCommand = null,
 }: ContentBrowserProps) {
   const [selected, setSelected] = useState<Set<string>>(() => new Set())
   const [activeId, setActiveId] = useState<string | null>(null)
@@ -76,6 +78,7 @@ export default function ContentBrowser({
   const appliedRepairId = useRef<string | null>(null)
   const viewMenuRef = useRef<HTMLDetailsElement>(null)
   const selectAllButtonRef = useRef<HTMLButtonElement>(null)
+  const lastSelectAllCommand = useRef(0)
   const marqueeSelection = useRef<{
     baseline: Set<string>
     metaKey: boolean
@@ -279,6 +282,14 @@ export default function ContentBrowser({
     anchorId.current = first?.entityId ?? null
     commitSelection(new Set(files.map(({ entityId }) => entityId)))
   }
+
+  useEffect(() => {
+    if (selectAllCommand === null || selectAllCommand.sequence === lastSelectAllCommand.current) {
+      return
+    }
+    lastSelectAllCommand.current = selectAllCommand.sequence
+    commitSelectAll(selectAllCommand.scope)
+  }, [selectAllCommand, workspace])
 
   function requestSelectAll() {
     if (selectAllRequest.kind === 'none') return
@@ -526,8 +537,7 @@ export default function ContentBrowser({
     >
       <div className="content-toolbar">
         <div>
-          <strong>{currentPath ?? '当前文件夹'}</strong>
-          <span>· {workspace.images.length} 张图片</span>
+          <span>{workspace.images.length} 张图片</span>
           {workspace.otherFiles.length > 0 && (
             <span>· {workspace.otherFiles.length} 个其它文件</span>
           )}

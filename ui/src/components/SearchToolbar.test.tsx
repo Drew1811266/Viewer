@@ -21,7 +21,7 @@ describe('SearchToolbar', () => {
     expect(searchInputRule.match(/min-width:\s*100px/g) ?? []).toHaveLength(1)
   })
 
-  it('exposes named option and view menus with keyboard-controlled expanded state', () => {
+  it('exposes a named filter menu with keyboard-controlled expanded state', () => {
     render(
       <SearchToolbar
         query={query()}
@@ -31,15 +31,12 @@ describe('SearchToolbar', () => {
         onScopeChange={vi.fn()}
         onFiltersChange={vi.fn()}
         onSortChange={vi.fn()}
-        onLayoutChange={vi.fn()}
         onRemoveFilter={vi.fn()}
         onClearFilters={vi.fn()}
       />,
     )
-    const optionsMenu = screen.getByRole('button', { name: '筛选与排序' })
-    const viewMenu = screen.getByRole('button', { name: '结果视图' })
+    const optionsMenu = screen.getByRole('button', { name: '筛选' })
     expect(optionsMenu).toHaveAttribute('aria-expanded', 'false')
-    expect(viewMenu).toHaveAttribute('aria-expanded', 'false')
 
     fireEvent.keyDown(optionsMenu, { key: 'Enter' })
     expect(optionsMenu).toHaveAttribute('aria-expanded', 'true')
@@ -47,13 +44,6 @@ describe('SearchToolbar', () => {
     fireEvent.keyDown(optionsMenu, { key: ' ' })
     expect(optionsMenu).toHaveAttribute('aria-expanded', 'false')
     expect(screen.queryByRole('combobox', { name: '搜索范围' })).not.toBeInTheDocument()
-
-    fireEvent.keyDown(viewMenu, { key: ' ' })
-    expect(viewMenu).toHaveAttribute('aria-expanded', 'true')
-    expect(screen.getByRole('button', { name: '展平结果' })).toBeVisible()
-    fireEvent.keyDown(viewMenu, { key: 'Enter' })
-    expect(viewMenu).toHaveAttribute('aria-expanded', 'false')
-    expect(screen.queryByRole('button', { name: '展平结果' })).not.toBeInTheDocument()
   })
 
   it('focuses from Cmd-F intent and exposes fuzzy query plus project/subtree scope', () => {
@@ -76,7 +66,6 @@ describe('SearchToolbar', () => {
         onScopeChange={onScopeChange}
         onFiltersChange={vi.fn()}
         onSortChange={vi.fn()}
-        onLayoutChange={vi.fn()}
         onRemoveFilter={vi.fn()}
         onClearFilters={vi.fn()}
       />,
@@ -90,7 +79,6 @@ describe('SearchToolbar', () => {
         onScopeChange={onScopeChange}
         onFiltersChange={vi.fn()}
         onSortChange={vi.fn()}
-        onLayoutChange={vi.fn()}
         onRemoveFilter={vi.fn()}
         onClearFilters={vi.fn()}
       />,
@@ -118,23 +106,21 @@ describe('SearchToolbar', () => {
         onScopeChange={onScopeChange}
         onFiltersChange={vi.fn()}
         onSortChange={vi.fn()}
-        onLayoutChange={vi.fn()}
         onRemoveFilter={vi.fn()}
         onClearFilters={vi.fn()}
       />,
     )
     expect(screen.queryByRole('combobox', { name: '搜索范围' })).not.toBeInTheDocument()
-    fireEvent.click(screen.getByText('筛选与排序'))
+    fireEvent.click(screen.getByRole('button', { name: '筛选' }))
     fireEvent.change(screen.getByRole('combobox', { name: '搜索范围' }), {
       target: { value: 'folder-1' },
     })
     expect(onScopeChange).toHaveBeenCalledWith('folder-1')
   })
 
-  it('offers every frozen filter, removable chips, clear all, sorting, and layout', () => {
+  it('offers every frozen filter, removable chips, clear all, and sorting', () => {
     const onFiltersChange = vi.fn()
     const onSortChange = vi.fn()
-    const onLayoutChange = vi.fn()
     const onRemoveFilter = vi.fn()
     const onClearFilters = vi.fn()
     render(
@@ -153,14 +139,13 @@ describe('SearchToolbar', () => {
         onScopeChange={vi.fn()}
         onFiltersChange={onFiltersChange}
         onSortChange={onSortChange}
-        onLayoutChange={onLayoutChange}
         onRemoveFilter={onRemoveFilter}
         onClearFilters={onClearFilters}
       />,
     )
     expect(screen.getByRole('button', { name: '移除 JPEG 筛选' })).toBeVisible()
     expect(screen.queryByRole('combobox', { name: '排序方式' })).not.toBeInTheDocument()
-    fireEvent.click(screen.getByText('筛选与排序'))
+    fireEvent.click(screen.getByRole('button', { name: '筛选，3 项已启用' }))
     expect(screen.getByRole('combobox', { name: '搜索范围' })).toBeVisible()
     expect(screen.getByRole('combobox', { name: '排序方式' })).toBeVisible()
     for (const label of [
@@ -211,8 +196,5 @@ describe('SearchToolbar', () => {
       key: 'natural_name',
       direction: 'descending',
     })
-    fireEvent.click(screen.getByText('结果视图'))
-    fireEvent.click(screen.getByRole('button', { name: '展平结果' }))
-    expect(onLayoutChange).toHaveBeenCalledWith('flat')
   })
 })

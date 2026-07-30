@@ -1,5 +1,5 @@
 import type { CSSProperties } from 'react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import type {
   BrowserFile,
   ConflictResolution,
@@ -20,6 +20,10 @@ import BatchRenameDialog from './components/BatchRenameDialog'
 import CloseOperationDialog from './components/CloseOperationDialog'
 import CompareWorkspace from './components/CompareWorkspace'
 import ContentBrowser from './components/ContentBrowser'
+import {
+  resolveSelectAllRequest,
+  type SelectAllScope,
+} from './components/contentBrowser/adaptiveOtherFilePanelModel'
 import DestinationDialog from './components/DestinationDialog'
 import EmptyProject from './components/EmptyProject'
 import FolderOverview from './components/FolderOverview'
@@ -40,6 +44,8 @@ import TaskBar from './components/TaskBar'
 import TextPreview, { type TextPreviewFiles } from './components/TextPreview'
 import TrashConfirmation from './components/TrashConfirmation'
 import UnsupportedFilePreview from './components/UnsupportedFilePreview'
+import WorkspaceMoreMenu from './components/WorkspaceMoreMenu'
+import WorkspaceViewMenu, { type WorkspaceViewContext } from './components/WorkspaceViewMenu'
 import { defined } from './defined'
 import { isImageFile, isPreviewableText } from './fileKinds'
 import { useViewerSettings, ViewerSettingsProvider } from './settings/ViewerSettingsProvider'
@@ -120,14 +126,7 @@ function ViewerWorkspace({ bridge }: { bridge: ViewerBridge }) {
   ].join(':')
   const shellState = useAppShellState(projectSessionId)
   const otherFilePanelPreference = useOtherFilePanelPreference(projectSessionId)
-  const {
-    sidebarCollapsed,
-    sidebarWidth,
-    projectMenuOpen,
-    setProjectMenuOpen,
-    toggleSidebar,
-    startSidebarResize,
-  } = shellState
+  const { sidebarCollapsed, sidebarWidth, toggleSidebar, startSidebarResize } = shellState
   const { resizeSidebarFromKeyboard } = getAppShellStateInternals(shellState)
   const previewSession = usePreviewSession(projectSessionId)
   const {
@@ -155,7 +154,10 @@ function ViewerWorkspace({ bridge }: { bridge: ViewerBridge }) {
   const [infoOpen, setInfoOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [previewRepair, setPreviewRepair] = useState<PreviewRepairMemory>(EMPTY_PREVIEW_REPAIR)
-  const settingsButtonRef = useRef<HTMLButtonElement>(null)
+  const [selectAllCommand, setSelectAllCommand] = useState<{
+    sequence: number
+    scope: SelectAllScope
+  } | null>(null)
   useEffect(() => {
     setThumbnailTask(null)
     setTextTask(null)
@@ -858,65 +860,63 @@ function ViewerWorkspace({ bridge }: { bridge: ViewerBridge }) {
     !state.search.showResults && state.workspace?.workspace === 'content'
   const contextRepairMessage =
     state.contextRepair?.message ?? (activePreview === null ? null : previewRepair.message)
+  const viewContext: WorkspaceViewContext = state.search.showResults
+    ? {
+        kind: 'search',
+        layout: state.search.query.layout,
+        onLayoutChange: setSearchLayout,
+      }
+    : state.workspace?.workspace === 'category'
+      ? { kind: 'category', onShowAllDescendants: () => void showAllDescendants() }
+      : state.workspace?.workspace === 'content'
+        ? {
+            kind: 'content',
+            showingAggregate: state.showingAggregate,
+            selectAllRequest: resolveSelectAllRequest(
+              state.workspace.images.length,
+              state.workspace.otherFiles.length,
+            ),
+            onSelectAll: (scope) =>
+              setSelectAllCommand((current) => ({ sequence: (current?.sequence ?? 0) + 1, scope })),
+            onShowAllDescendants: () => void showAllDescendants(),
+            onReturnToFolder: returnToFolderContext,
+          }
+        : { kind: 'none' }
 
   return (
     <main
       className="viewer-shell"
       data-organization-drag-active={organizationDragView ? true : undefined}
+      style={
+        { '--viewer-sidebar-width': `${sidebarCollapsed ? 44 : sidebarWidth}px` } as CSSProperties
+      }
     >
       <header className="workspace-header">
-        <h1>{state.project.displayName}</h1>
-        <SearchToolbar
-          query={state.search.query}
-          folders={state.folders}
-          focusRequest={state.search.focusRequest}
-          onTextChange={setSearchText}
-          onScopeChange={setSearchScope}
-          onFiltersChange={setSearchFilters}
-          onSortChange={setSearchSort}
-          onLayoutChange={setSearchLayout}
-          onRemoveFilter={removeSearchFilter}
-          onClearFilters={clearSearchFilters}
-        />
-        <button
-          ref={settingsButtonRef}
-          type="button"
-          className="settings-trigger"
-          aria-label="软件设置"
-          onClick={() => setSettingsOpen(true)}
-        >
-          ⚙
-        </button>
-        <details className="project-menu" open={projectMenuOpen}>
-          <summary
-            aria-label="项目菜单"
-            role="button"
-            aria-expanded={projectMenuOpen}
-            onClick={(event) => {
-              event.preventDefault()
-              setProjectMenuOpen(!projectMenuOpen)
-            }}
-            onKeyDown={(event) => {
-              if (event.key !== 'Enter' && event.key !== ' ' && event.key !== 'Spacebar') return
-              event.preventDefault()
-              setProjectMenuOpen(!projectMenuOpen)
-            }}
-          >
-            •••
-          </summary>
-          <div hidden={!projectMenuOpen}>
-            {state.project.access === 'read_only' && (
-              <p className="project-access-status">访问权限：只读</p>
-            )}
-            <button
-              type="button"
-              disabled={state.status === 'closing'}
-              onClick={() => void closeProject()}
-            >
-              {state.status === 'closing' ? '正在关闭…' : '关闭项目'}
-            </button>
-          </div>
-        </details>
+        <div className="project-identity">
+          <h1>{state.project.displayName}</h1>
+        </div>
+        <div className="workspace-header-main" role="toolbar" aria-label="Viewer 工具栏">
+          <SearchToolbar
+            query={state.search.query}
+            folders={state.folders}
+            focusRequest={state.search.focusRequest}
+            onTextChange={setSearchText}
+            onScopeChange={setSearchScope}
+            onFiltersChange={setSearchFilters}
+            onSortChange={setSearchSort}
+            onRemoveFilter={removeSearchFilter}
+            onClearFilters={clearSearchFilters}
+          />
+          <WorkspaceViewMenu context={viewContext} />
+          <WorkspaceMoreMenu
+            access={state.project.access}
+            closing={state.status === 'closing'}
+            onOpenSettings={() => setSettingsOpen(true)}
+            onOpenPermissionSettings={() => void openPermissionSettings()}
+            onReselectProject={() => void reselectProject()}
+            onCloseProject={() => void closeProject()}
+          />
+        </div>
       </header>
       {state.project.access === 'read_only' && (
         <ReadOnlyBanner
@@ -1024,13 +1024,11 @@ function ViewerWorkspace({ bridge }: { bridge: ViewerBridge }) {
             <FolderOverview
               key={folderOverviewIdentity}
               folders={state.workspace.folders}
-              currentPath={state.selectedFolderPath || state.project.displayName}
               density={thumbnailDensity}
               requestFolderImages={requestFolderImages}
               requestThumbnail={requestThumbnail}
               onPreview={openFilmstripPreview}
               onSelect={selectFolderTarget}
-              onShowAll={() => void showAllDescendants()}
             />
           )}
           {!state.search.showResults && state.workspace?.workspace === 'content' && (
@@ -1041,6 +1039,7 @@ function ViewerWorkspace({ bridge }: { bridge: ViewerBridge }) {
                   workspace={state.workspace}
                   density={thumbnailDensity}
                   currentPath={state.selectedFolderPath || state.project.displayName}
+                  selectAllCommand={selectAllCommand}
                   requestThumbnail={requestContentThumbnail}
                   onThumbnailTaskChange={setThumbnailTask}
                   onPreview={openPreview}

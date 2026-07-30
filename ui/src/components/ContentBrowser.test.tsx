@@ -1850,7 +1850,6 @@ describe('ContentBrowser', () => {
     render(<ContentBrowser workspace={data} otherFilePanelExpanded currentPath="项目根目录" />)
     expect(screen.queryByText('未标记')).not.toBeInTheDocument()
     expect(screen.getByText('保留 · 收藏')).toBeVisible()
-    expect(screen.getByText('项目根目录')).toBeVisible()
     fireEvent.click(screen.getByText('视图'))
     fireEvent.click(screen.getByRole('button', { name: '全选当前文件夹' }))
     fireEvent.click(screen.getByRole('menuitem', { name: '全部都选' }))

@@ -150,8 +150,8 @@ describe('workspace style contracts', () => {
     const rules = parseRules(appCss)
     const baseSelectors = [
       '.search-options-panel > summary',
-      '.search-view-panel > summary',
-      '.project-menu > summary',
+      '.workspace-view-menu > summary',
+      '.workspace-more-menu > summary',
     ]
 
     for (const selector of baseSelectors) {
@@ -167,44 +167,43 @@ describe('workspace style contracts', () => {
 
     const hoverSelectors = [
       '.search-options-panel > summary:hover',
-      '.search-view-panel > summary:hover',
-      '.project-menu > summary:hover',
+      '.workspace-view-menu > summary:hover',
+      '.workspace-more-menu > summary:hover',
     ]
     for (const selector of hoverSelectors) {
-      expect(winningDeclaration(rules, new Set([selector]), 'background'), selector).toBe('#f3f5f7')
-      expect(winningDeclaration(rules, new Set([selector]), 'border-color'), selector).toBe(
-        '#747f8e',
+      expect(winningDeclaration(rules, new Set([selector]), 'background'), selector).toBe(
+        'var(--viewer-soft-surface)',
       )
-      expect(contrastRatio('#747f8e', '#f3f5f7'), selector).toBeGreaterThanOrEqual(3)
+      expect(winningDeclaration(rules, new Set([selector]), 'border-color'), selector).toBe(
+        'var(--viewer-border)',
+      )
     }
 
     const openSelectors = [
       '.search-options-panel[open] > summary',
-      '.search-view-panel[open] > summary',
-      '.project-menu[open] > summary',
+      '.workspace-view-menu[open] > summary',
+      '.workspace-more-menu[open] > summary',
     ]
     for (const selector of openSelectors) {
-      expect(winningDeclaration(rules, new Set([selector]), 'background'), selector).toBe('#d9e8ff')
+      expect(winningDeclaration(rules, new Set([selector]), 'background'), selector).toBe(
+        'var(--viewer-accent-soft)',
+      )
       expect(winningDeclaration(rules, new Set([selector]), 'border-color'), selector).toBe(
-        '#2477d4',
+        'var(--viewer-accent)',
       )
     }
 
     const focusSelectors = [
       '.search-options-panel > summary:focus-visible',
-      '.search-view-panel > summary:focus-visible',
-      '.project-menu > summary:focus-visible',
+      '.workspace-view-menu > summary:focus-visible',
+      '.workspace-more-menu > summary:focus-visible',
     ]
     for (const selector of focusSelectors) {
       expect(winningDeclaration(rules, new Set([selector]), 'outline'), selector).toBe(
-        '2px solid #2477d4',
+        'var(--viewer-focus-ring)',
       )
       expect(winningDeclaration(rules, new Set([selector]), 'outline-offset'), selector).toBe('2px')
     }
-
-    expect(winningDeclaration(rules, new Set(['.project-menu > summary']), 'min-width')).toBe(
-      '30px',
-    )
   })
 
   it('uses one light theme for image and text previews', () => {

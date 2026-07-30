@@ -42,12 +42,10 @@ describe('FolderOverview', () => {
     render(
       <FolderOverview
         folders={[card, secondCard]}
-        currentPath="catalog/shoes"
         density="standard"
         requestFolderImages={vi.fn().mockResolvedValue([])}
         onPreview={vi.fn()}
         onSelect={vi.fn()}
-        onShowAll={vi.fn()}
       />,
     )
 
@@ -58,24 +56,17 @@ describe('FolderOverview', () => {
     expect(screen.queryByText(/保留 0 · 待定/)).not.toBeInTheDocument()
   })
 
-  it('keeps aggregate and folder navigation actions unchanged', () => {
-    const showAll = vi.fn()
+  it('keeps folder navigation actions unchanged', () => {
     const select = vi.fn()
     render(
       <FolderOverview
         folders={[card]}
-        currentPath="catalog/shoes"
         density="standard"
         requestFolderImages={vi.fn().mockResolvedValue([])}
         onPreview={vi.fn()}
         onSelect={select}
-        onShowAll={showAll}
       />,
     )
-
-    fireEvent.click(screen.getByRole('button', { name: '显示全部后代文件' }))
-    expect(showAll).toHaveBeenCalledOnce()
-    expect(screen.getByText('catalog/shoes')).toBeVisible()
 
     fireEvent.click(screen.getByRole('button', { name: '打开 id-001' }))
     expect(select).toHaveBeenCalledWith('folder-1')
@@ -84,12 +75,10 @@ describe('FolderOverview', () => {
   it('reuses a completed folder request while the overview remains mounted', async () => {
     const requestFolderImages = vi.fn().mockResolvedValue(card.representativeImages)
     const props = {
-      currentPath: 'catalog/shoes',
       density: 'standard' as const,
       requestFolderImages,
       onPreview: vi.fn(),
       onSelect: vi.fn(),
-      onShowAll: vi.fn(),
     }
     const rendered = render(<FolderOverview {...props} folders={[card]} />)
 
@@ -115,13 +104,11 @@ describe('FolderOverview', () => {
     render(
       <FolderOverview
         folders={[card, secondCard]}
-        currentPath="catalog/shoes"
         density="compact"
         requestFolderImages={vi.fn().mockResolvedValue([square])}
         requestThumbnail={vi.fn().mockResolvedValue('viewer-image://thumbnail')}
         onPreview={vi.fn()}
         onSelect={vi.fn()}
-        onShowAll={vi.fn()}
       />,
     )
 

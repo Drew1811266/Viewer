@@ -2,6 +2,7 @@ import { fireEvent, render, screen, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import type { BrowserFile } from '../api/types'
 import { fileExtensionLabel } from '../fileKinds'
+import '../styles/app.css'
 import UnsupportedFilePreview from './UnsupportedFilePreview'
 
 const file = (name: string): BrowserFile => ({
@@ -22,7 +23,11 @@ describe('UnsupportedFilePreview', () => {
     render(<UnsupportedFilePreview file={file('archive.zip')} onClose={onClose} />)
 
     const dialog = screen.getByRole('dialog', { name: 'archive.zip' })
-    expect(within(dialog).getByRole('toolbar', { name: '文件预览控制' })).toBeVisible()
+    const actions = within(dialog).getByRole('toolbar', { name: '文件预览控制' })
+    expect(actions).toBeVisible()
+    expect(actions).toHaveClass('preview-toolbar-actions')
+    expect(getComputedStyle(actions).gridColumn).toBe('3')
+    expect(getComputedStyle(actions).justifySelf).toBe('end')
     expect(within(dialog).getByText('暂不支持预览')).toHaveClass('unsupported-file-message')
     expect(screen.getByText('.ZIP')).toBeInTheDocument()
     expect(within(dialog).queryByRole('button', { name: /外部|其它应用/ })).not.toBeInTheDocument()

@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import { useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 import type { BrowserFile, TextEncoding, TextPreview as TextPreviewDto } from '../api/types'
+import '../styles/app.css'
 import type { TaskFeedback } from './TaskBar'
 import TextPreview, { type TextPreviewFiles } from './TextPreview'
 
@@ -84,7 +85,11 @@ describe('TextPreview', () => {
 
     const dialog = screen.getByRole('dialog', { name: /plain\.txt.*notes\.md/ })
     expect(dialog).toHaveAttribute('aria-modal', 'true')
-    expect(within(dialog).getByRole('toolbar', { name: '文本预览控制' })).toBeVisible()
+    const actions = within(dialog).getByRole('toolbar', { name: '文本预览控制' })
+    expect(actions).toBeVisible()
+    expect(actions).toHaveClass('preview-toolbar-actions')
+    expect(getComputedStyle(actions).gridColumn).toBe('3')
+    expect(getComputedStyle(actions).justifySelf).toBe('end')
     expect(within(dialog).getByRole('button', { name: '关闭预览' })).toHaveTextContent('完成')
     expect(within(dialog).getAllByRole('region')).toHaveLength(2)
     expect(within(dialog).queryByText(/差异|合并/)).not.toBeInTheDocument()

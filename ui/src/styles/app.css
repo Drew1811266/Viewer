@@ -837,6 +837,7 @@ summary,
 
 .preview-toolbar-actions,
 .compare-toolbar-actions {
+  grid-column: 3;
   justify-self: end;
 }
 

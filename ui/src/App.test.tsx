@@ -229,6 +229,36 @@ describe('Viewer empty state', () => {
     expect(trigger).toHaveFocus()
   })
 
+  it('restores focus to More after opening settings from its focused command', async () => {
+    const viewer = bridge()
+    render(<App bridge={viewer} />)
+    fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
+
+    const more = await screen.findByRole('button', { name: '更多' })
+    fireEvent.click(more)
+    const settings = screen.getByRole('button', { name: '软件设置' })
+    settings.focus()
+    fireEvent.click(settings)
+    fireEvent.click(screen.getByRole('button', { name: '关闭' }))
+
+    expect(more).toHaveFocus()
+  })
+
+  it('keeps the compact toolbar reachable in a narrow window', async () => {
+    vi.stubGlobal('innerWidth', 500)
+    const viewer = bridge()
+    render(<App bridge={viewer} />)
+    fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
+
+    const sidebar = await screen.findByRole('complementary', { name: '文件夹栏' })
+    expect(sidebar).toHaveStyle({ width: '44px' })
+    expect(screen.getByRole('button', { name: '窄窗口中已折叠文件夹栏' })).toBeDisabled()
+
+    const toolbar = screen.getByRole('toolbar', { name: 'Viewer 工具栏' })
+    expect(within(toolbar).getByRole('button', { name: '视图' })).toBeVisible()
+    expect(within(toolbar).getByRole('button', { name: '更多' })).toBeVisible()
+  })
+
   it('shows the latest settings save failure and rolls back the selected radio', async () => {
     const viewer = bridge()
     const save = deferred<Awaited<ReturnType<ViewerBridge['updateThumbnailDensity']>>>()

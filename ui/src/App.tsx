@@ -1,5 +1,5 @@
 import type { CSSProperties } from 'react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type {
   BrowserFile,
   ConflictResolution,
@@ -127,6 +127,8 @@ function ViewerWorkspace({ bridge }: { bridge: ViewerBridge }) {
   const shellState = useAppShellState(projectSessionId)
   const otherFilePanelPreference = useOtherFilePanelPreference(projectSessionId)
   const { sidebarCollapsed, sidebarWidth, toggleSidebar, startSidebarResize } = shellState
+  const [narrowViewport, setNarrowViewport] = useState(() => window.innerWidth <= 760)
+  const effectiveSidebarCollapsed = narrowViewport || sidebarCollapsed
   const { resizeSidebarFromKeyboard } = getAppShellStateInternals(shellState)
   const previewSession = usePreviewSession(projectSessionId)
   const {
@@ -158,6 +160,12 @@ function ViewerWorkspace({ bridge }: { bridge: ViewerBridge }) {
     sequence: number
     scope: SelectAllScope
   } | null>(null)
+  const moreMenuTriggerRef = useRef<HTMLElement>(null)
+  useEffect(() => {
+    const updateViewport = () => setNarrowViewport(window.innerWidth <= 760)
+    window.addEventListener('resize', updateViewport)
+    return () => window.removeEventListener('resize', updateViewport)
+  }, [])
   useEffect(() => {
     setThumbnailTask(null)
     setTextTask(null)
@@ -888,7 +896,9 @@ function ViewerWorkspace({ bridge }: { bridge: ViewerBridge }) {
       className="viewer-shell"
       data-organization-drag-active={organizationDragView ? true : undefined}
       style={
-        { '--viewer-sidebar-width': `${sidebarCollapsed ? 44 : sidebarWidth}px` } as CSSProperties
+        {
+          '--viewer-sidebar-width': `${effectiveSidebarCollapsed ? 44 : sidebarWidth}px`,
+        } as CSSProperties
       }
     >
       <header className="workspace-header">
@@ -909,6 +919,7 @@ function ViewerWorkspace({ bridge }: { bridge: ViewerBridge }) {
           />
           <WorkspaceViewMenu context={viewContext} />
           <WorkspaceMoreMenu
+            ref={moreMenuTriggerRef}
             access={state.project.access}
             closing={state.status === 'closing'}
             onOpenSettings={() => setSettingsOpen(true)}
@@ -952,16 +963,23 @@ function ViewerWorkspace({ bridge }: { bridge: ViewerBridge }) {
         <aside
           className="folder-sidebar"
           aria-label="文件夹栏"
-          style={{ width: sidebarCollapsed ? 44 : sidebarWidth }}
+          style={{ width: effectiveSidebarCollapsed ? 44 : sidebarWidth }}
         >
           <button
             type="button"
-            aria-label={sidebarCollapsed ? '展开文件夹栏' : '折叠文件夹栏'}
+            aria-label={
+              narrowViewport
+                ? '窄窗口中已折叠文件夹栏'
+                : sidebarCollapsed
+                  ? '展开文件夹栏'
+                  : '折叠文件夹栏'
+            }
             onClick={toggleSidebar}
+            disabled={narrowViewport}
           >
-            {sidebarCollapsed ? '›' : '‹'}
+            {effectiveSidebarCollapsed ? '›' : '‹'}
           </button>
-          {!sidebarCollapsed && (
+          {!effectiveSidebarCollapsed && (
             <>
               <button
                 type="button"
@@ -1115,6 +1133,7 @@ function ViewerWorkspace({ bridge }: { bridge: ViewerBridge }) {
           error={settingsError}
           onDensityChange={setThumbnailDensity}
           onClose={() => setSettingsOpen(false)}
+          returnFocusRef={moreMenuTriggerRef}
         />
       )}
       {activePreviewFile && isImageFile(activePreviewFile) && activePreviewFiles.length > 0 && (

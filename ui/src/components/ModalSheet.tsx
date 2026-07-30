@@ -6,6 +6,7 @@ interface ModalSheetProps {
   children: ReactNode
   onCancel: () => void
   initialFocusRef?: RefObject<HTMLElement | null>
+  returnFocusRef?: RefObject<HTMLElement | null>
   destructive?: boolean
 }
 
@@ -17,6 +18,7 @@ export default function ModalSheet({
   children,
   onCancel,
   initialFocusRef,
+  returnFocusRef,
   destructive = false,
 }: ModalSheetProps) {
   const titleId = useId()
@@ -27,8 +29,8 @@ export default function ModalSheet({
     const target =
       initialFocusRef?.current ?? dialogRef.current?.querySelector<HTMLElement>(FOCUSABLE)
     target?.focus()
-    return () => previous?.focus()
-  }, [initialFocusRef])
+    return () => (returnFocusRef?.current ?? previous)?.focus()
+  }, [initialFocusRef, returnFocusRef])
 
   function containFocus(event: React.KeyboardEvent<HTMLDivElement>) {
     if (event.key === 'Escape') {

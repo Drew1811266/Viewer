@@ -1,3 +1,4 @@
+import type { RefObject } from 'react'
 import type { ThumbnailDensity } from '../api/types'
 import ModalSheet from './ModalSheet'
 
@@ -6,6 +7,7 @@ interface SettingsDialogProps {
   error: string | null
   onDensityChange: (density: ThumbnailDensity) => void
   onClose: () => void
+  returnFocusRef?: RefObject<HTMLElement | null>
 }
 
 const DENSITY_OPTIONS: { value: ThumbnailDensity; label: string }[] = [
@@ -19,9 +21,10 @@ export default function SettingsDialog({
   error,
   onDensityChange,
   onClose,
+  returnFocusRef,
 }: SettingsDialogProps) {
   return (
-    <ModalSheet title="软件设置" onCancel={onClose}>
+    <ModalSheet title="软件设置" onCancel={onClose} returnFocusRef={returnFocusRef}>
       <section className="settings-dialog-content">
         <h3>显示</h3>
         <fieldset className="density-options">

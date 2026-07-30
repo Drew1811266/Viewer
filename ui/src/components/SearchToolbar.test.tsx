@@ -70,6 +70,30 @@ describe('SearchToolbar', () => {
     expect(screen.getByLabelText('最晚修改时间')).toBeVisible()
   })
 
+  it('returns focus to the filter trigger after closing the popover', () => {
+    render(
+      <SearchToolbar
+        query={query()}
+        folders={[]}
+        focusRequest={0}
+        onTextChange={vi.fn()}
+        onScopeChange={vi.fn()}
+        onFiltersChange={vi.fn()}
+        onSortChange={vi.fn()}
+        onRemoveFilter={vi.fn()}
+        onClearFilters={vi.fn()}
+      />,
+    )
+
+    const trigger = screen.getByRole('button', { name: '筛选' })
+    fireEvent.click(trigger)
+    const close = screen.getByRole('button', { name: '关闭筛选' })
+    close.focus()
+    expect(close).toHaveFocus()
+    fireEvent.click(close)
+    expect(document.activeElement).toBe(trigger)
+  })
+
   it('focuses from Cmd-F intent and exposes fuzzy query plus project/subtree scope', () => {
     const onTextChange = vi.fn()
     const onScopeChange = vi.fn()

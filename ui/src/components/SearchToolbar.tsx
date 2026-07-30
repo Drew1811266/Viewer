@@ -54,10 +54,22 @@ export default function SearchToolbar({
   onClearFilters,
 }: SearchToolbarProps) {
   const searchRef = useRef<HTMLInputElement>(null)
+  const filterTriggerRef = useRef<HTMLElement>(null)
+  const restoreFilterFocusRef = useRef(false)
   const [optionsOpen, setOptionsOpen] = useState(false)
   useEffect(() => {
     if (focusRequest > 0) searchRef.current?.focus()
   }, [focusRequest])
+  useEffect(() => {
+    if (!optionsOpen && restoreFilterFocusRef.current) {
+      filterTriggerRef.current?.focus()
+      restoreFilterFocusRef.current = false
+    }
+  }, [optionsOpen])
+  const closeOptions = () => {
+    restoreFilterFocusRef.current = true
+    setOptionsOpen(false)
+  }
   const chips = useMemo(() => filterChips(query.filters), [query.filters])
   const orientationControls = (
     <>
@@ -270,6 +282,7 @@ export default function SearchToolbar({
       </label>
       <details className="search-options-panel" open={optionsOpen}>
         <summary
+          ref={filterTriggerRef}
           role="button"
           aria-expanded={optionsOpen}
           onClick={(event) => {
@@ -289,7 +302,7 @@ export default function SearchToolbar({
         <div className="search-options-popover" hidden={!optionsOpen}>
           <header className="filter-popover-header">
             <h2>筛选</h2>
-            <button type="button" aria-label="关闭筛选" onClick={() => setOptionsOpen(false)}>
+            <button type="button" aria-label="关闭筛选" onClick={closeOptions}>
               关闭
             </button>
           </header>

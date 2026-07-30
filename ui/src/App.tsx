@@ -55,6 +55,16 @@ interface AppProps {
   bridge?: ViewerBridge
 }
 
+interface PreviewRepairMemory {
+  unavailableEntityIds: ReadonlySet<string>
+  message: string | null
+}
+
+const EMPTY_PREVIEW_REPAIR: PreviewRepairMemory = {
+  unavailableEntityIds: new Set(),
+  message: null,
+}
+
 export default function App({ bridge = tauriViewerBridge }: AppProps) {
   return (
     <ViewerSettingsProvider bridge={bridge}>
@@ -144,6 +154,7 @@ function ViewerWorkspace({ bridge }: { bridge: ViewerBridge }) {
   const [resultsBatchId, setResultsBatchId] = useState<string | null>(null)
   const [infoOpen, setInfoOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [previewRepair, setPreviewRepair] = useState<PreviewRepairMemory>(EMPTY_PREVIEW_REPAIR)
   const settingsButtonRef = useRef<HTMLButtonElement>(null)
   useEffect(() => {
     setThumbnailTask(null)
@@ -155,6 +166,7 @@ function ViewerWorkspace({ bridge }: { bridge: ViewerBridge }) {
     setResultsBatchId(null)
     setInfoOpen(false)
     setSettingsOpen(false)
+    setPreviewRepair(EMPTY_PREVIEW_REPAIR)
   }, [projectSessionId])
   const requestThumbnail = useCallback(
     (file: BrowserFile, maxPixels: number, scaleMilli: number) =>
@@ -530,6 +542,7 @@ function ViewerWorkspace({ bridge }: { bridge: ViewerBridge }) {
 
   const openPreview = useCallback(
     (file: BrowserFile) => {
+      setPreviewRepair(EMPTY_PREVIEW_REPAIR)
       openPreviewSession({ file, files: null, folderOverviewIdentity: null })
       setPreviewEntityId(file.entityId)
     },
@@ -538,6 +551,7 @@ function ViewerWorkspace({ bridge }: { bridge: ViewerBridge }) {
 
   const openFilmstripPreview = useCallback(
     (file: BrowserFile, files: BrowserFile[]) => {
+      setPreviewRepair(EMPTY_PREVIEW_REPAIR)
       openPreviewSession({ file, files, folderOverviewIdentity })
       setPreviewEntityId(file.entityId)
     },
@@ -553,6 +567,7 @@ function ViewerWorkspace({ bridge }: { bridge: ViewerBridge }) {
   )
 
   const closePreview = useCallback(() => {
+    setPreviewRepair(EMPTY_PREVIEW_REPAIR)
     closePreviewSession()
     setPreviewEntityId(null)
   }, [closePreviewSession, setPreviewEntityId])
@@ -573,6 +588,7 @@ function ViewerWorkspace({ bridge }: { bridge: ViewerBridge }) {
         return
       }
       setCompareStatus(null)
+      setPreviewRepair(EMPTY_PREVIEW_REPAIR)
       closePreviewSession()
       setPreviewEntityId(null)
       setCompareEntityIds(files.map((file) => file.entityId))
@@ -607,6 +623,7 @@ function ViewerWorkspace({ bridge }: { bridge: ViewerBridge }) {
         } else {
           const first = defined(files[0], 'Split text preview requires a left file')
           const second = defined(files[1], 'Split text preview requires a right file')
+          setPreviewRepair(EMPTY_PREVIEW_REPAIR)
           openPreviewSession({
             file: first,
             files: [first, second],
@@ -684,9 +701,37 @@ function ViewerWorkspace({ bridge }: { bridge: ViewerBridge }) {
     }
   }, [state.operation.active, state.operation.results])
 
+  useEffect(() => {
+    if (activePreview === null || state.contextRepair === null) return
+    const sessionEntityIds = new Set(
+      (activePreview.files ?? [activePreview.file]).map((file) => file.entityId),
+    )
+    const removedSessionEntityIds = state.contextRepair.removedEntityIds.filter((entityId) =>
+      sessionEntityIds.has(entityId),
+    )
+    if (removedSessionEntityIds.length === 0) return
+    setPreviewRepair((current) => {
+      const unavailableEntityIds = new Set(current.unavailableEntityIds)
+      let changed = current.message !== state.contextRepair?.message
+      for (const entityId of removedSessionEntityIds) {
+        if (!unavailableEntityIds.has(entityId)) {
+          unavailableEntityIds.add(entityId)
+          changed = true
+        }
+      }
+      return changed
+        ? { unavailableEntityIds, message: state.contextRepair?.message ?? null }
+        : current
+    })
+  }, [activePreview, state.contextRepair])
+
   const unavailablePreviewEntityIds = useMemo(
-    () => new Set(state.contextRepair?.removedEntityIds ?? []),
-    [state.contextRepair?.removedEntityIds],
+    () =>
+      new Set([
+        ...previewRepair.unavailableEntityIds,
+        ...(state.contextRepair?.removedEntityIds ?? []),
+      ]),
+    [previewRepair.unavailableEntityIds, state.contextRepair?.removedEntityIds],
   )
 
   useEffect(() => {
@@ -695,6 +740,7 @@ function ViewerWorkspace({ bridge }: { bridge: ViewerBridge }) {
       activePreview.folderOverviewIdentity !== null &&
       activePreview.folderOverviewIdentity !== folderOverviewIdentity
     ) {
+      setPreviewRepair(EMPTY_PREVIEW_REPAIR)
       closePreviewSession()
       setPreviewEntityId(null)
     }
@@ -810,6 +856,8 @@ function ViewerWorkspace({ bridge }: { bridge: ViewerBridge }) {
         ) ?? activePreview.file)
   const contentWorkspaceActive =
     !state.search.showResults && state.workspace?.workspace === 'content'
+  const contextRepairMessage =
+    state.contextRepair?.message ?? (activePreview === null ? null : previewRepair.message)
 
   return (
     <main
@@ -884,9 +932,9 @@ function ViewerWorkspace({ bridge }: { bridge: ViewerBridge }) {
             {state.recoveryReport.needsUserReview} 项需要检查。
           </p>
         )}
-      {state.contextRepair && (
+      {contextRepairMessage && (
         <p className="context-repair-banner" role="status">
-          {state.contextRepair.message}
+          {contextRepairMessage}
         </p>
       )}
       {state.errorMessage && <p role="alert">{state.errorMessage}</p>}

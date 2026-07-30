@@ -680,7 +680,27 @@ describe('Viewer empty state', () => {
       ...initial,
       otherFiles: [defined(initial.otherFiles[0], 'Expected surviving left text preview fixture')],
     }
-    vi.mocked(viewer.queryFolder).mockResolvedValueOnce(initial).mockResolvedValueOnce(surviving)
+    const unrelatedRefresh = {
+      ...surviving,
+      otherFiles: [
+        ...surviving.otherFiles,
+        {
+          entityId: 'other-added',
+          relativePath: 'id/added.other',
+          name: 'added.other',
+          kind: 'other' as const,
+          size: 10,
+          modifiedNs: '5',
+          marker: { reviewState: null, favorite: false },
+          imageMetadata: null,
+          imageUrl: null,
+        },
+      ],
+    }
+    vi.mocked(viewer.queryFolder)
+      .mockResolvedValueOnce(initial)
+      .mockResolvedValueOnce(surviving)
+      .mockResolvedValueOnce(unrelatedRefresh)
     vi.mocked(viewer.previewText).mockImplementation(async ({ entityId }) => ({
       entityId,
       format: 'plain_text',
@@ -744,6 +764,29 @@ describe('Viewer empty state', () => {
     expect(repairedDialog).toBeVisible()
     expect(within(repairedDialog).getAllByText('文件已不可用')).toHaveLength(1)
     expect(within(repairedDialog).getByText('left body')).toBeVisible()
+
+    vi.mocked(viewer.previewText).mockClear()
+    act(() => {
+      receiveProjectChanged?.({
+        sessionId: 'session-1',
+        generation: 1,
+        reason: 'external_change',
+        added: 1,
+        removed: 0,
+        modified: 0,
+        moved: 0,
+        markerPathsMoved: 0,
+        failed: 0,
+      })
+    })
+
+    expect(await screen.findByRole('option', { name: 'added.other' })).toBeVisible()
+    expect(screen.getByText('部分正在查看的文件已在项目外发生变化。')).toBeVisible()
+    const refreshedDialog = screen.getByRole('dialog', { name: 'left.txt、right.md' })
+    expect(refreshedDialog).toBeVisible()
+    expect(within(refreshedDialog).getAllByText('文件已不可用')).toHaveLength(1)
+    expect(within(refreshedDialog).getByText('left body')).toBeVisible()
+    expect(viewer.previewText).not.toHaveBeenCalledWith({ entityId: 'text-right' })
   })
 
   it('opens unsupported images in the request-free image preview', async () => {

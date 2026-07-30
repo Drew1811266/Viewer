@@ -21,6 +21,20 @@
 - Keep the application runnable after every task and stage only the files listed for that task.
 - Use TDD: verify each new focused test fails for the expected reason before implementation, then run the focused and neighboring regression suites before committing.
 
+### Approved implementation resolutions
+
+- The approved Viewer design specification takes precedence over generic asset-generation guidance
+  where they conflict. Preserve the existing radial menu's segmented SVG ring geometry and its
+  existing radial symbols; do not redraw, replace, or introduce a new icon library.
+- Do not add new CSS source-text or selector-presence change-detector tests. Prefer observable
+  component behavior, accessibility state, and computed-style assertions where the test runtime
+  supports them. Existing source-contract tests may be minimally updated or removed when
+  superseded by behavioral coverage.
+- Loading placeholders must use a calm solid-surface opacity animation. Do not introduce gradients
+  or shimmer effects.
+- Verify the Viewer-owned light appearance manually while macOS uses a dark system appearance; no
+  runtime theme switch is part of this iteration.
+
 ---
 
 ## File Map
@@ -28,7 +42,7 @@
 ### New files
 
 - `ui/src/styles/tokens.css` — application-wide semantic colors, typography, spacing, radius, shadow, focus, and motion tokens.
-- `ui/src/styles/tokens.test.ts` — exact token values, light-only color-scheme, and no-dark-theme contract.
+- `ui/src/styles/tokens.test.ts` — rendered token cascade and light-only computed-style contract.
 - `ui/src/components/WorkspaceViewMenu.tsx` — contextual `视图` menu for search layout, descendant aggregation, and select-all scope.
 - `ui/src/components/WorkspaceViewMenu.test.tsx` — contextual view-menu behavior and accessible state.
 - `ui/src/components/WorkspaceMoreMenu.tsx` — `更多` menu for settings, project access, permission, reselection, and close.
@@ -93,47 +107,36 @@
 
 - [ ] **Step 1: Write the failing token contract**
 
-Create `ui/src/styles/tokens.test.ts`:
+Create `ui/src/styles/tokens.test.ts` as a DOM/computed-style contract:
 
 ```ts
-import { readFileSync } from 'node:fs'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
+import './tokens.css'
+import './app.css'
 
-const tokens = readFileSync('src/styles/tokens.css', 'utf8')
-const appCss = readFileSync('src/styles/app.css', 'utf8')
-
-function value(name: string): string {
-  const match = tokens.match(new RegExp(`${name}:\\s*([^;]+);`))
-  if (match?.[1] === undefined) throw new Error(`Missing token ${name}`)
-  return match[1].trim()
-}
+afterEach(() => {
+  document.body.replaceChildren()
+})
 
 describe('Viewer visual tokens', () => {
-  it('defines the approved light palette and geometry', () => {
-    expect(value('--viewer-canvas')).toBe('#f3f3f1')
-    expect(value('--viewer-application')).toBe('#fafaf8')
-    expect(value('--viewer-surface')).toBe('#ffffff')
-    expect(value('--viewer-sidebar')).toBe('#eff0ef')
-    expect(value('--viewer-soft-surface')).toBe('#f5f5f3')
-    expect(value('--viewer-border')).toBe('#dedfdd')
-    expect(value('--viewer-text')).toBe('#23262c')
-    expect(value('--viewer-text-secondary')).toBe('#6b7077')
-    expect(value('--viewer-text-tertiary')).toBe('#8a8e94')
-    expect(value('--viewer-accent')).toBe('#5869cf')
-    expect(value('--viewer-accent-soft')).toBe('#eceeff')
-    expect(value('--viewer-radius-control')).toBe('8px')
-    expect(value('--viewer-radius-popover')).toBe('12px')
-    expect(value('--viewer-radius-dialog')).toBe('14px')
-    expect(value('--viewer-motion-fast')).toBe('120ms')
-    expect(value('--viewer-motion-standard')).toBe('160ms')
-    expect(value('--viewer-motion-slow')).toBe('200ms')
-  })
-
-  it('keeps Viewer-owned surfaces light without a dark-theme override', () => {
-    expect(tokens).toContain('color-scheme: light')
-    expect(tokens).not.toContain('prefers-color-scheme: dark')
-    expect(appCss).not.toContain('@media (prefers-color-scheme: dark)')
-    expect(appCss).toContain('@media (prefers-reduced-motion: reduce)')
+  it('applies the approved palette and geometry through the rendered cascade', () => {
+    const root = getComputedStyle(document.documentElement)
+    expect(root.getPropertyValue('--viewer-canvas').trim()).toBe('#f3f3f1')
+    expect(root.getPropertyValue('--viewer-application').trim()).toBe('#fafaf8')
+    expect(root.getPropertyValue('--viewer-surface').trim()).toBe('#ffffff')
+    expect(root.getPropertyValue('--viewer-sidebar').trim()).toBe('#eff0ef')
+    expect(root.getPropertyValue('--viewer-soft-surface').trim()).toBe('#f5f5f3')
+    expect(root.getPropertyValue('--viewer-border').trim()).toBe('#dedfdd')
+    expect(root.getPropertyValue('--viewer-text').trim()).toBe('#23262c')
+    expect(root.getPropertyValue('--viewer-text-secondary').trim()).toBe('#6b7077')
+    expect(root.getPropertyValue('--viewer-accent').trim()).toBe('#5869cf')
+    expect(root.getPropertyValue('--viewer-radius-control').trim()).toBe('8px')
+    expect(root.getPropertyValue('--viewer-radius-popover').trim()).toBe('12px')
+    expect(root.getPropertyValue('--viewer-radius-dialog').trim()).toBe('14px')
+    expect(root.getPropertyValue('--viewer-motion-fast').trim()).toBe('120ms')
+    expect(root.getPropertyValue('--viewer-motion-standard').trim()).toBe('160ms')
+    expect(root.getPropertyValue('--viewer-motion-slow').trim()).toBe('200ms')
+    expect(root.colorScheme).toBe('light')
   })
 })
 ```
@@ -239,7 +242,9 @@ In `ui/src/styles/app.css`, keep the font and document-level declarations but re
 }
 ```
 
-Delete both `@media (prefers-color-scheme: dark)` blocks. Replace the four dark-mode-specific tests in `app.test.ts` with light-token cascade assertions using `winningDeclaration`.
+Delete both `@media (prefers-color-scheme: dark)` blocks. Remove the obsolete dark-mode-specific
+source-contract cases from `app.test.ts`; the rendered token test above and Task 10's dark-system
+appearance check cover the approved behavior. Do not replace them with new CSS source-text tests.
 
 Add motion only to state changes and floating-surface entrances:
 
@@ -2227,15 +2232,12 @@ Keep `AspectThumbnail` width and height on its root and placeholder in every sta
 .aspect-thumbnail-placeholder,
 .workspace-loading-thumbnail,
 .folder-tree-skeleton-row {
-  background:
-    linear-gradient(90deg, transparent, rgb(255 255 255 / 58%), transparent),
-    var(--viewer-soft-surface);
-  background-size: 200% 100%;
-  animation: viewer-skeleton 1.4s linear infinite;
+  background: var(--viewer-soft-surface);
+  animation: viewer-skeleton-opacity 1.4s ease-in-out infinite alternate;
 }
-@keyframes viewer-skeleton {
-  from { background-position: 200% 0; }
-  to { background-position: -200% 0; }
+@keyframes viewer-skeleton-opacity {
+  from { opacity: .62; }
+  to { opacity: .92; }
 }
 @media (prefers-reduced-motion: reduce) {
   .aspect-thumbnail-placeholder,
@@ -2389,7 +2391,8 @@ version in this iteration.
 
 Inspect at both 1440×900 and 1024×720:
 
-1. no-project resting, valid folder drag, invalid drop, and opening;
+1. no-project resting, valid folder drag, invalid drop, opening, and Viewer-owned light appearance
+   while macOS uses a dark system appearance;
 2. shell alignment with expanded, resized, and collapsed sidebar;
 3. category bands, content grid, mixed select-all, selection summary, other-file panel, and drag
    target;

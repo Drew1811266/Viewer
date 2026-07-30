@@ -953,6 +953,14 @@ test('the macOS release command is non-interactive and uses a valid bundle ident
   assert.equal(tauri.bundle.macOS.signingIdentity, '-')
 })
 
+test('the Tauri host enforces the Viewer compact-layout minimum width', async () => {
+  const tauri = JSON.parse(await read('src-tauri/tauri.conf.json'))
+  const [mainWindow] = tauri.app.windows
+
+  assert.equal(mainWindow.minWidth, 500)
+  assert.ok(mainWindow.width >= mainWindow.minWidth)
+})
+
 test('the Viewer product version has one Cargo source and matches the Tauri bundle', async () => {
   const memberManifests = [
     'src-tauri/Cargo.toml',

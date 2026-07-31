@@ -2,68 +2,56 @@
 
 - Specification: `docs/superpowers/specs/2026-07-30-viewer-complete-ui-visual-upgrade-design.md`
 - Platform: macOS development build
-- Implementation commit: `c4b6fc7`
-- Verification status: Passed
+- Implementation commit: `1a21283`
 
 ## Automated verification
 
-| Command | Result |
-| --- | --- |
-| `pnpm --dir ui check` | Passed; one existing Biome deprecation information notice only. |
-| `pnpm --dir ui test` | Passed; 60 files, 558 tests passed, 1 skipped. |
-| `pnpm --dir ui build` | Passed. |
-| `pnpm verify` | Passed: policy, clean-worktree contract, UI checks/tests/build, Rust format, Clippy, Rust unit/integration tests and security verification. |
-| `pnpm tauri build --debug --bundles app` | Passed; ad-hoc signed local `Viewer.app` created only for native QA, not installed or deployed. |
+| Command | Exit | Final result |
+| --- | ---: | --- |
+| `pnpm --dir ui check` | 0 | Biome and TypeScript passed (one existing deprecation notice). |
+| `pnpm --dir ui test` | 0 | 60 files; 559 passed, 1 skipped. |
+| `pnpm --dir ui build` | 0 | TypeScript and Vite production build passed. |
+| `pnpm verify` | 0 | Policy, UI, Rust and security verification passed. |
+| `pnpm tauri build --debug --bundles app` | 0 | Local, uninstalled macOS QA bundle built. |
+| `pnpm verify:clean` | 0 | Full verification passed with a clean worktree. |
 
-The Task 10 obsolete-selector scan has no matches for
-`prefers-color-scheme: dark`, `content-toolbar`, `content-view-menu`,
-`settings-trigger`, `project-menu`, `SelectAllChoicePanel`, `#f3f4f6`,
-`#2563eb`, or `#1d4ed8`. The shadow review found only tokenized floating,
-preview, focus, selected and inspector uses plus explicit reset declarations.
+## State matrix
 
-## Visual and interaction evidence
+| Step 4 state group | Result | Viewport/evidence |
+| --- | --- | --- |
+| 1. No project, drag/drop, opening, light appearance | Pass | Same-viewport IAB no-project 1280×720; source boards 1440×900 and 1024×720; lifecycle/light tests. |
+| 2. Shell and sidebar | Pass | Native 1229×768 display; native compact 1024×720 webview evidence. |
+| 3. Content grid, selection, other files, drag target | Pass | Native 1229×768 fixture and compact 1024×720 webview; component tests. |
+| 4. Filter, results, progress, pagination | Pass | Native 1229×768 and `native-compact-filter-only-1024x720-webview.jpeg`; mutual-exclusion regression test. |
+| 5. Image preview and unavailable image | Pass | Native 1229×768 `native-image-preview.png`; preview tests. |
+| 6. Comparison and read-only controls | Pass | 2/4/20 and read-only component/App tests; extended ignored QA fixture supplies 20 candidates. |
+| 7. Text, errors, unsupported and inspector | Pass | Native 1229×768 unsupported/info; Markdown/TXT/encoding/truncation tests and extended QA fixture. |
+| 8. Radial and conventional fallback | Pass with environment exception | Native click-mode primary ring and expanded 标记 secondary ring observed; WebKit menu precedes secondary-click DOM path, then Escape exposes Viewer ring; radial/context tests cover held pointer and fallback. |
+| 9. Operation dialogs and settings | Pass | Native 1229×768 settings; dialog tests cover rename, batch, destination, trash and close states. |
+| 10. Tasks, recovery, errors, read-only | Pass | Native 1229×768 task/error; App/component tests cover results, notices, row error and read-only strip. |
 
-Approved source captures for all 11 boards exist at 1440 × 900 and 1024 × 720
-under `target/visual-qa/reference-*.png`. The locally bundled Viewer was
-opened on `tests/fixtures/images` and captured in default, filter, search,
-info, image-preview, unsupported-file, radial-menu and settings-dialog states.
-The inspection inputs include the normalized no-project pair plus the four
-main/search/info/preview contact sheets in `target/visual-qa/contact-*.png`.
+## Accessibility
 
-The source documentation canvas and mock-window chrome were excluded before
-judging the actual app regions. The same-state no-project pair is normalized to
-1280 × 720. Native Computer Use supplied a 1229 × 768 Viewer window and cannot
-programmatically resize it; compact layout behavior at 1024 × 720 is covered
-by automated UI tests. This environment limitation was not treated as a
-product defect.
+Native checks covered Meta+F, Meta+I, Escape/focus restoration, preview controls and compact popover containment. UI coverage verifies Tab/focus-visible, named roles, non-color marker cues, arrow navigation in radial/context menus, Meta+A routing, reduced motion and read-only write disabling. The 1024×720 native compact captures keep filter/task/content critical actions visible.
 
-The required fidelity surfaces were reviewed: typography, spacing/layout,
-light color tokens, actual image/asset treatment, and Chinese product copy.
-No P0/P1/P2 difference remains. Detailed evidence, state notes and iteration
-history are in `design-qa.md`.
+## Visual comparison
 
-## Accessibility and state matrix
+| Approved board family | Reference viewport(s) | Implementation evidence | Visible mismatch / resolution |
+| --- | --- | --- | --- |
+| visual-density | 1440×900, 1024×720 | native default/compact | None. |
+| content-browser | 1440×900, 1024×720 | native default/compact | None. |
+| search-tasks | 1440×900, 1024×720 | native search/filter | Peer-popover overlap fixed in `1a21283`. |
+| preview-compare | 1440×900, 1024×720 | native preview; compare tests | None. |
+| text-info | 1440×900, 1024×720 | native info/unsupported; text tests | None. |
+| radial-reference | 1440×900, 1024×720 | native primary/secondary ring | None; secondary-click exception below. |
+| menus-dialogs | 1440×900, 1024×720 | native settings; dialog tests | None. |
+| states-dialogs | 1440×900, 1024×720 | native task/error; state tests | None. |
+| launch-loading | 1440×900, 1024×720 | IAB no-project; lifecycle tests | None. |
+| empty-project | 1440×900, 1024×720 | normalized 1280×720 IAB pair | Default primary action fixed in `6836bb3`. |
+| visual-system-motion | 1440×900, 1024×720 | native light surface; motion tests | None. |
 
-Native QA exercised Meta+F, Meta+I, Escape/focus restoration for filter/view/
-more controls, task failure treatment, expanded other-file panel, image
-preview, inspector, unsupported JSON recovery, search results/pagination,
-radial action ring and settings dialog. An ignored extended QA project adds
-Markdown, TXT and 20 comparison candidates without changing the tracked
-fixture. The UI suite additionally covers text and Markdown previews, read-only behavior, comparison, loading/recovery,
-keyboard menu navigation, focus visibility and reduced-motion semantics.
+The authoritative captures are `target/visual-qa/reference-*-1440x900.png` and `reference-*-1024x720.png`. Same-viewport IAB/browser comparison is available for the no-project pair at 1280×720. Native display captures are 1229×768; native compact webview captures are 1024×720.
 
-Computer Use's secondary-click injection opens a WebKit text menu before the
-DOM event can be observed. The Viewer radial action ring is visible after that
-overlay is dismissed; target-level capture-phase default prevention is covered
-by a regression test for both image and text rows. This is recorded as an
-automation limitation rather than an unresolved product defect.
+## Remaining differences
 
-## Fixes verified during final QA
-
-- `6836bb3`: replaced the no-project browser-default action with the approved
-  semantic primary-action treatment.
-- `fad7a98`: added controlled filter Escape close/focus restoration.
-- `c4b6fc7`: prevents native context-menu default during capture for image and
-  text file targets, with a regression test.
-
-No installation, deployment, or user project content modification occurred.
+Approved verification-environment exceptions only: Computer Use cannot hold a native secondary pointer through the full gesture and macOS WebKit displays its own menu before the secondary-click DOM path. Escape exposes the Viewer click-mode primary ring, and the 标记 secondary ring with five children was observed through native accessibility. Computer Use also cannot provide a native 1440×900 display capture. These limitations do not represent an unresolved Viewer visual difference; the specified paths are covered by native click-mode/secondary-ring evidence and automated held-pointer/fallback tests.

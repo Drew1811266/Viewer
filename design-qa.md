@@ -10,8 +10,12 @@
   menus/dialogs, loading/recovery, launch, and empty project.
 - Rendered implementation: the locally bundled, non-installed macOS debug app
   at `target/debug/bundle/macos/Viewer.app`, built from `c4b6fc7`.
-- Native captures: `target/visual-qa/native-*.png`; the source/implementation
-  comparison inputs are `target/visual-qa/contact-*.png`.
+- Native display captures: `target/visual-qa/native-*.png` at 1229 × 768;
+  compact native webview evidence is
+  `native-compact-content-default-1024x720-webview.jpeg` and
+  `native-compact-filter-only-1024x720-webview.jpeg`. Only the no-project
+  IAB/browser pair is same-viewport; contact sheets with 1440 × 900 source
+  boards are normalized review inputs, not a native 1440 × 900 claim.
 
 The source boards include a documentation canvas and a mock window, while the
 implementation captures contain only the real Viewer window. Comparisons
@@ -20,10 +24,11 @@ region against the Viewer content region. The one pixel-normalized no-project
 pair uses a 1172 × 648 source crop, resized to 1280 × 720 implementation
 pixels; its source and implementation are both browser-rendered at the same
 effective 1280 × 720 CSS viewport (DPR 2). The native Computer Use surface
-provided a 1229 × 768 Viewer window and did not expose programmatic resizing;
-the desktop compact-layout tests cover the approved 1024 × 720 containment
-case. This window-control constraint is recorded rather than treated as a
-visual difference.
+provided a 1229 × 768 Viewer display capture. The later compact native window
+provided the configured 1024 × 720 webview target. Computer Use cannot provide
+a native 1440 × 900 display capture; this and held-secondary-pointer injection
+are explicit verification-environment exceptions, not unrecorded fidelity
+claims.
 
 ## Evidence and state coverage
 

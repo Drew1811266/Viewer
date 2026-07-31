@@ -1,5 +1,5 @@
 import type { KeyboardEvent } from 'react'
-import { forwardRef, useImperativeHandle, useRef, useState } from 'react'
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react'
 import type { ProjectAccess } from '../api/types'
 import useViewportPopoverMaxWidth from './useViewportPopoverMaxWidth'
 
@@ -29,8 +29,21 @@ const WorkspaceMoreMenu = forwardRef<HTMLElement, WorkspaceMoreMenuProps>(
     const popoverMaxWidth = useViewportPopoverMaxWidth()
     useImperativeHandle(ref, () => summaryRef.current as HTMLElement)
 
+    useEffect(() => {
+      const closeForPeer = (event: Event) => {
+        if ((event as CustomEvent<string>).detail !== 'more') setOpen(false)
+      }
+      window.addEventListener('viewer-toolbar-popover', closeForPeer)
+      return () => window.removeEventListener('viewer-toolbar-popover', closeForPeer)
+    }, [])
+
     function toggle() {
-      setOpen((current) => !current)
+      setOpen((current) => {
+        const next = !current
+        if (next)
+          window.dispatchEvent(new CustomEvent('viewer-toolbar-popover', { detail: 'more' }))
+        return next
+      })
     }
 
     function handleSummaryKeyDown(event: KeyboardEvent<HTMLElement>) {

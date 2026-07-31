@@ -58,6 +58,13 @@ export default function SearchToolbar({
   const restoreFilterFocusRef = useRef(false)
   const [optionsOpen, setOptionsOpen] = useState(false)
   useEffect(() => {
+    const closeForPeer = (event: Event) => {
+      if ((event as CustomEvent<string>).detail !== 'filter') setOptionsOpen(false)
+    }
+    window.addEventListener('viewer-toolbar-popover', closeForPeer)
+    return () => window.removeEventListener('viewer-toolbar-popover', closeForPeer)
+  }, [])
+  useEffect(() => {
     if (focusRequest > 0) searchRef.current?.focus()
   }, [focusRequest])
   useEffect(() => {
@@ -69,6 +76,14 @@ export default function SearchToolbar({
   const closeOptions = () => {
     restoreFilterFocusRef.current = true
     setOptionsOpen(false)
+  }
+  const toggleOptions = () => {
+    setOptionsOpen((open) => {
+      const next = !open
+      if (next)
+        window.dispatchEvent(new CustomEvent('viewer-toolbar-popover', { detail: 'filter' }))
+      return next
+    })
   }
   const chips = useMemo(() => filterChips(query.filters), [query.filters])
   const orientationControls = (
@@ -295,12 +310,12 @@ export default function SearchToolbar({
           aria-expanded={optionsOpen}
           onClick={(event) => {
             event.preventDefault()
-            setOptionsOpen((open) => !open)
+            toggleOptions()
           }}
           onKeyDown={(event) => {
             if (event.key !== 'Enter' && event.key !== ' ' && event.key !== 'Spacebar') return
             event.preventDefault()
-            setOptionsOpen((open) => !open)
+            toggleOptions()
           }}
           aria-label={chips.length > 0 ? `筛选，${chips.length} 项已启用` : '筛选'}
         >

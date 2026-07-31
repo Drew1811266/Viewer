@@ -292,6 +292,27 @@ describe('Viewer empty state', () => {
     expect(within(toolbar).getByRole('button', { name: '软件设置' })).toBeVisible()
   })
 
+  it('keeps filter, View, and More popovers mutually exclusive', async () => {
+    const viewer = bridge()
+    vi.mocked(viewer.queryFolder).mockResolvedValue(contentWorkspace())
+    render(<App bridge={viewer} />)
+    fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
+
+    const toolbar = await screen.findByRole('toolbar', { name: 'Viewer 工具栏' })
+    const view = within(toolbar).getByRole('button', { name: '视图' })
+    const filter = within(toolbar).getByRole('button', { name: '筛选' })
+    const more = within(toolbar).getByRole('button', { name: '更多' })
+
+    fireEvent.click(view)
+    expect(view).toHaveAttribute('aria-expanded', 'true')
+    fireEvent.click(filter)
+    expect(view).toHaveAttribute('aria-expanded', 'false')
+    expect(filter).toHaveAttribute('aria-expanded', 'true')
+    fireEvent.click(more)
+    expect(filter).toHaveAttribute('aria-expanded', 'false')
+    expect(more).toHaveAttribute('aria-expanded', 'true')
+  })
+
   it('shows the latest settings save failure and rolls back the selected radio', async () => {
     const viewer = bridge()
     const save = deferred<Awaited<ReturnType<ViewerBridge['updateThumbnailDensity']>>>()

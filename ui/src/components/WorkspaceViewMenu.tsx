@@ -29,11 +29,26 @@ export default function WorkspaceViewMenu({
   const popoverMaxWidth = useViewportPopoverMaxWidth()
 
   useEffect(() => {
-    if (openRequest > 0) setOpen(true)
+    if (openRequest > 0) {
+      window.dispatchEvent(new CustomEvent('viewer-toolbar-popover', { detail: 'view' }))
+      setOpen(true)
+    }
   }, [openRequest])
 
+  useEffect(() => {
+    const closeForPeer = (event: Event) => {
+      if ((event as CustomEvent<string>).detail !== 'view') setOpen(false)
+    }
+    window.addEventListener('viewer-toolbar-popover', closeForPeer)
+    return () => window.removeEventListener('viewer-toolbar-popover', closeForPeer)
+  }, [])
+
   function toggle() {
-    setOpen((current) => !current)
+    setOpen((current) => {
+      const next = !current
+      if (next) window.dispatchEvent(new CustomEvent('viewer-toolbar-popover', { detail: 'view' }))
+      return next
+    })
   }
 
   function handleSummaryKeyDown(event: KeyboardEvent<HTMLElement>) {

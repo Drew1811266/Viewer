@@ -1552,6 +1552,28 @@ describe('ContentBrowser', () => {
     expect(request).toHaveBeenCalledTimes(2)
   })
 
+  it('prevents the native context menu during capture for image and text file targets', () => {
+    render(
+      <ContentBrowser
+        workspace={workspace(1)}
+        otherFilePanelExpanded
+        onRadialMenuRequest={vi.fn()}
+      />,
+    )
+
+    for (const name of ['1.jpg', 'prompt.md']) {
+      const option = screen.getByRole('option', { name })
+      const nativeDefaultState = vi.fn()
+      option.addEventListener('contextmenu', (event) => {
+        nativeDefaultState(event.defaultPrevented)
+      })
+
+      fireEvent.contextMenu(option, { button: 2, clientX: 240, clientY: 180 })
+
+      expect(nativeDefaultState).toHaveBeenCalledWith(true)
+    }
+  })
+
   it('deduplicates a secondary pointerdown followed by contextmenu', () => {
     const request = vi.fn()
     render(<ContentBrowser workspace={workspace(1)} onRadialMenuRequest={request} />)

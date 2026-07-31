@@ -132,6 +132,7 @@ export default function OtherFilePanel({
                 tabIndex={-1}
                 className="text-file-row other-file-row"
                 onPointerDown={(event) => onRadialMenuPointerDown(file, event)}
+                onContextMenuCapture={(event) => event.preventDefault()}
                 onContextMenu={(event) => onRadialMenuContextMenu(file, event)}
                 onClick={(event) => onSelect(file, event)}
                 onDoubleClick={() => onPreview(file)}

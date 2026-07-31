@@ -58,6 +58,7 @@ export function ImageCell({
       data-active={active || undefined}
       className="image-cell"
       onPointerDown={(event) => onRadialMenuPointerDown(file, event)}
+      onContextMenuCapture={(event) => event.preventDefault()}
       onContextMenu={(event) => onRadialMenuContextMenu(file, event)}
       onClick={(event) => onClick(file, event)}
       onDoubleClick={() => onPreview(file)}

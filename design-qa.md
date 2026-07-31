@@ -8,8 +8,10 @@
   `target/visual-qa/reference-*-1024x720.png`. They cover shell/density,
   content, search/tasks, preview/compare, text/info, radial actions,
   menus/dialogs, loading/recovery, launch, and empty project.
-- Rendered implementation: the locally bundled, non-installed macOS debug app
-  at `target/debug/bundle/macos/Viewer.app`, built from `1a21283`.
+- Historical rendered implementation: the locally bundled, non-installed macOS
+  debug app at `target/debug/bundle/macos/Viewer.app`, built from `1a21283`.
+  The current implementation at `660818e` has not been rebuilt or recaptured
+  natively.
 - Native display captures: `target/visual-qa/native-*.png` at 1229 × 768;
   compact native webview evidence is
   `native-compact-content-default-1024x720-webview.jpeg` and
@@ -28,9 +30,9 @@ pixels; its source and implementation are both browser-rendered at the same
 effective 1280 × 720 CSS viewport (DPR 2). The native Computer Use surface
 provided a 1229 × 768 Viewer display capture. The later compact native window
 provided the configured 1024 × 720 webview target. Computer Use cannot provide
-a native 1440 × 900 display capture; this and held-secondary-pointer injection
-are explicit verification-environment exceptions, not unrecorded fidelity
-claims.
+a native 1440 × 900 display capture or complete held-secondary-pointer
+injection. These are recorded verification gaps; they have no exception status
+without explicit product-owner approval.
 
 ## Evidence and state coverage
 
@@ -60,9 +62,12 @@ Focused native evidence inspected:
 
 ## Fidelity review
 
-**Findings**
+**Historical findings and current automated status**
 
-No actionable P0, P1, or P2 visual differences remain.
+No actionable P0, P1, or P2 visual differences were identified in the recorded
+historical subset. Because `660818e` has not received the required native
+1440 × 900 and full manual state inspection, this document cannot make a final
+visual-pass claim for the current implementation.
 
 - Typography: the inspected shell, menu, dialog, filter, result, preview and
   inspector all use the approved compact system sans hierarchy: strong page
@@ -85,14 +90,14 @@ No actionable P0, P1, or P2 visual differences remain.
   disabled guidance, preview controls, error/task labels, and read-only-aware
   action wording remain coherent and fit their controls.
 
-**Residual test gaps**
+**Residual verification gaps**
 
 - macOS Computer Use's secondary-click injector opens WebKit's text context
   menu before the DOM can be observed. The Viewer menu is visible after that
-  native menu is dismissed, and the regression test now verifies that the
-  target-level native listener sees `contextmenu.defaultPrevented` during
-  capture for both image and text rows. This is an automation limitation, not
-  an actionable Viewer visual or interaction finding.
+  native menu is dismissed. Current automated tests verify the ordinary
+  pointer-down/up/contextmenu path, Control-click fallback, held-pointer
+  promotion, and default prevention. The native held gesture remains
+  unverified manually.
 - The ignored QA project at `target/visual-qa/fixture-project/` adds Markdown,
   plain-text, unsupported JSON and 20 comparison candidates without changing
   the tracked fixture. Markdown/text, read-only, loading/recovery, comparison,
@@ -102,17 +107,20 @@ No actionable P0, P1, or P2 visual differences remain.
 
 ## Interaction and accessibility checks
 
-- Native: Meta+F focuses search; Meta+I opens the inspector; filter, view and
+- Historical native (`1a21283`): Meta+F focuses search; Meta+I opens the
+  inspector; filter, view and
   more controls open and Escape closes/restores trigger focus; search results,
   other-file expansion, image preview navigation controls, radial menu,
   unsupported-file recovery, task failure card and settings dialog were
   exercised.
-- Automated: 60 UI test files passed (559 tests, 1 skipped), including roles,
+- Current automated (`660818e`): 60 UI test files passed (568 tests, 1
+  skipped), including roles,
   keyboard/focus restoration, radial/context menu keyboard paths, compact
   containment, read-only write disabling, preview/compare, loading/recovery
   and reduced-motion semantics.
-- Console/build: production UI build completed without errors; native bundle
-  built locally and was not installed or deployed.
+- Console/build: the current production UI build completed without errors. No
+  native bundle was rebuilt after `660818e`; the historical native bundle was
+  not installed or deployed.
 
 ## Comparison history
 
@@ -135,13 +143,23 @@ No actionable P0, P1, or P2 visual differences remain.
    popover coordination; the rebuilt native app recheck confirms 筛选 expanded
    while 视图 and 更多 are collapsed in
    `target/visual-qa/native-latest-mutually-exclusive-popovers.jpeg`.
+5. `660818e` — final review findings were repaired with failing tests first:
+   ordinary secondary click now opens the compact menu while held gestures open
+   the radial menu; compact submenus remain viewport-contained; focus and
+   palette tokens are valid and legacy values are absent; preview/compare
+   toolbars follow the required structure. Static checks, 568 UI tests, build,
+   and clean-tree repository verification pass. These automated results do not
+   supply the missing manual evidence.
 
 ## Implementation checklist
 
-- [x] Validate every approved visual-state family against the native Viewer and
-  the 11 supplied source boards.
+- [ ] Validate the current implementation against every visual-state family in
+  the native Viewer at all required viewports.
 - [x] Normalize board chrome and record viewport/density constraints.
 - [x] Fix and re-check every P0/P1/P2 finding.
-- [x] Run final UI, repository and native-bundle verification.
+- [ ] Run final native-bundle verification and complete the manual state matrix
+  on the current implementation.
 
-final result: passed
+final result: blocked
+
+Blocker: native 1440×900 and missing manual state coverage await explicit product-owner exception or new evidence.

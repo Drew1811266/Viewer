@@ -1,57 +1,79 @@
 # Viewer UI Visual Upgrade Verification
 
 - Specification: `docs/superpowers/specs/2026-07-30-viewer-complete-ui-visual-upgrade-design.md`
-- Platform: macOS development build
-- Implementation commit: `1a21283`
+- Current implementation commit: `660818e`
+- Platform: macOS development environment
+- Evidence rule:
+  - **Manual verified** means the implemented state was directly inspected at the recorded viewport.
+  - **Automated only** means tests or static checks passed, but the required same-state manual inspection is absent.
+  - **Unverified** means neither complete manual coverage nor a sufficient automated substitute exists. Automated evidence never substitutes for the required manual matrix.
 
 ## Automated verification
 
 | Command | Exit | Final result |
 | --- | ---: | --- |
 | `pnpm --dir ui check` | 0 | Biome and TypeScript passed (one existing deprecation notice). |
-| `pnpm --dir ui test` | 0 | 60 files; 559 passed, 1 skipped. |
+| `pnpm --dir ui test` | 0 | 60 files; 568 passed, 1 skipped. |
 | `pnpm --dir ui build` | 0 | TypeScript and Vite production build passed. |
-| `pnpm verify` | 0 | Policy, UI, Rust and security verification passed. |
-| `pnpm tauri build --debug --bundles app` | 0 | Local, uninstalled macOS QA bundle rebuilt after `1a21283`; native compact recheck passed. |
-| `pnpm verify:clean` | 0 | Full verification passed with a clean worktree. |
+| `pnpm verify:clean` | 0 | Policy, UI, Rust, security, and license gates passed on clean commit `660818e`. |
+
+The historical native bundle and captures were built from `1a21283`; no native bundle or visual capture was rebuilt after `660818e`.
 
 ## State matrix
 
-| Step 4 state group | Result | Viewport/evidence |
-| --- | --- | --- |
-| 1. No project, drag/drop, opening, light appearance | Pass | Same-viewport IAB no-project 1280×720; source boards 1440×900 and 1024×720; lifecycle/light tests. |
-| 2. Shell and sidebar | Pass | Native 1229×768 display; native compact 1024×720 webview evidence. |
-| 3. Content grid, selection, other files, drag target | Pass | Native 1229×768 fixture and compact 1024×720 webview; component tests. |
-| 4. Filter, results, progress, pagination | Pass | Native 1229×768, `native-compact-filter-only-1024x720-webview.jpeg`, and final `native-latest-mutually-exclusive-popovers.jpeg`; mutual-exclusion regression test. |
-| 5. Image preview and unavailable image | Pass | Native 1229×768 `native-image-preview.png`; preview tests. |
-| 6. Comparison and read-only controls | Pass | 2/4/20 and read-only component/App tests; extended ignored QA fixture supplies 20 candidates. |
-| 7. Text, errors, unsupported and inspector | Pass | Native 1229×768 unsupported/info; Markdown/TXT/encoding/truncation tests and extended QA fixture. |
-| 8. Radial and conventional fallback | Pass with environment exception | Native click-mode primary ring and expanded 标记 secondary ring observed; WebKit menu precedes secondary-click DOM path, then Escape exposes Viewer ring; radial/context tests cover held pointer and fallback. |
-| 9. Operation dialogs and settings | Pass | Native 1229×768 settings; dialog tests cover rename, batch, destination, trash and close states. |
-| 10. Tasks, recovery, errors, read-only | Pass | Native 1229×768 task/error; App/component tests cover results, notices, row error and read-only strip. |
+| Required state | Evidence class | Recorded evidence | Native 1440×900 |
+| --- | --- | --- | --- |
+| No-project resting/light appearance | Manual verified | Historical 1280×720 same-viewport IAB comparison; lifecycle/light tests on `660818e`. | Unverified |
+| Valid drag, invalid drag, and opening states | Automated only | Lifecycle and drop-state tests on `660818e`. | Unverified |
+| Shell and sidebar | Manual verified | Historical native 1229×768 display and 1024×720 compact webview captures from `1a21283`. | Unverified |
+| Category/content grid | Manual verified | Historical native 1229×768 fixture and 1024×720 compact webview captures from `1a21283`. | Unverified |
+| Select-all, selection summary, other-file expansion | Automated only | Component and App tests on `660818e`. | Unverified |
+| Organization and Finder drag target | Automated only | Component tests on `660818e`. | Unverified |
+| Filter and result list | Manual verified | Historical native 1229×768 and compact 1024×720 subset captures from `1a21283`; tests on `660818e`. | Unverified |
+| Progress and pagination | Automated only | Component and App tests on `660818e`. | Unverified |
+| Image preview fit/navigation | Manual verified | Historical native 1229×768 preview capture from `1a21283`; tests on `660818e`. | Unverified |
+| Image preview 100%, zoom, rotate, loading, and error | Automated only | Preview component and App tests on `660818e`. | Unverified |
+| Two-, four-, and twenty-file comparison | Automated only | Component and App tests on `660818e`; ignored fixture supplies candidates. | Unverified |
+| Compare transforms, synchronization, and read-only controls | Automated only | Compare component and App tests on `660818e`. | Unverified |
+| Unsupported preview and info inspector | Manual verified | Historical native 1229×768 captures from `1a21283`; tests on `660818e`. | Unverified |
+| Markdown, plain text, encoding, truncation, and two-file info | Automated only | Component and App tests on `660818e`. | Unverified |
+| Unavailable image and multi-file info | Automated only | Component and App tests on `660818e`. | Unverified |
+| Ordinary secondary click and Control-click fallback | Automated only | Real pointer-down/up/contextmenu and Control-click tests on `660818e`. | Unverified |
+| Held secondary radial gesture | Automated only | Dwell/movement and keyboard radial-menu tests on `660818e`. | Unverified |
+| Settings dialog | Manual verified | Historical native 1229×768 capture from `1a21283`; dialog tests on `660818e`. | Unverified |
+| Rename, batch, destination, trash, and close dialogs | Automated only | Dialog component and App tests on `660818e`. | Unverified |
+| Task stack and error card | Manual verified | Historical native 1229×768 capture from `1a21283`; tests on `660818e`. | Unverified |
+| Results, notices, and row-error states | Automated only | Component and App tests on `660818e`. | Unverified |
+| Recovery and read-only strip | Automated only | Component and App tests on `660818e`. | Unverified |
+| Scanning, indexing, loading, and recovery transitions | Automated only | Lifecycle component and App tests on `660818e`. | Unverified |
+
+No required state has current native 1440×900 evidence for `660818e`.
 
 ## Accessibility
 
-Native checks covered Meta+F, Meta+I, Escape/focus restoration, preview controls and compact popover containment. After the final native rebuild/relaunch, opening 筛选 closed an already-open 视图; the final recheck is `target/visual-qa/native-latest-mutually-exclusive-popovers.jpeg`. UI coverage verifies Tab/focus-visible, named roles, non-color marker cues, arrow navigation in radial/context menus, Meta+A routing, reduced motion and read-only write disabling. The 1024×720 native compact captures keep filter/task/content critical actions visible.
+Historical manual checks on `1a21283` covered Meta+F, Meta+I, Escape/focus restoration, preview controls, and compact popover containment. Current `660818e` accessibility evidence is automated only: named roles, focus-visible semantics, arrow navigation, Meta+A routing, reduced motion, read-only disabling, and compact containment tests pass. A complete manual accessibility pass on the current implementation has not been recorded.
 
 ## Visual comparison
 
-| Approved board family | Reference viewport(s) | Implementation evidence | Visible mismatch / resolution |
+| Board family | Reference viewport(s) | Evidence class | Current status |
 | --- | --- | --- | --- |
-| visual-density | 1440×900, 1024×720 | native default/compact | None. |
-| content-browser | 1440×900, 1024×720 | native default/compact | None. |
-| search-tasks | 1440×900, 1024×720 | native search/filter | Peer-popover overlap fixed in `1a21283`. |
-| preview-compare | 1440×900, 1024×720 | native preview; compare tests | None. |
-| text-info | 1440×900, 1024×720 | native info/unsupported; text tests | None. |
-| radial-reference | 1440×900, 1024×720 | native primary/secondary ring | None; secondary-click exception below. |
-| menus-dialogs | 1440×900, 1024×720 | native settings; dialog tests | None. |
-| states-dialogs | 1440×900, 1024×720 | native task/error; state tests | None. |
-| launch-loading | 1440×900, 1024×720 | IAB no-project; lifecycle tests | None. |
-| empty-project | 1440×900, 1024×720 | normalized 1280×720 IAB pair | Default primary action fixed in `6836bb3`. |
-| visual-system-motion | 1440×900, 1024×720 | native light surface; motion tests | None. |
+| visual-density | 1440×900, 1024×720 | Historical manual subset | Current native 1440×900 comparison pending. |
+| content-browser | 1440×900, 1024×720 | Historical manual subset plus current automated tests | Current selection, palette, and secondary-gesture changes require recapture. |
+| search-tasks | 1440×900, 1024×720 | Historical manual subset plus current automated tests | Current native 1440×900 comparison pending. |
+| preview-compare | 1440×900, 1024×720 | Historical manual preview plus current automated tests | Toolbar changes in `660818e` require recapture; comparison states remain automated only. |
+| text-info | 1440×900, 1024×720 | Historical manual subset plus current automated tests | Missing current full-state manual coverage. |
+| radial-reference | 1440×900, 1024×720 | Historical manual click-mode subset plus current automated tests | Held-pointer state remains unverified manually. |
+| menus-dialogs | 1440×900, 1024×720 | Historical manual settings subset plus current automated tests | Compact-menu placement changes in `660818e` require recapture. |
+| states-dialogs | 1440×900, 1024×720 | Historical manual task/error subset plus current automated tests | Missing current full-state manual coverage. |
+| launch-loading | 1440×900, 1024×720 | Historical manual no-project subset plus current automated tests | Native 1440×900 and remaining lifecycle states pending. |
+| empty-project | 1440×900, 1024×720 | Historical manual 1280×720 normalized pair | Current native required-viewports comparison pending. |
+| visual-system-motion | 1440×900, 1024×720 | Historical manual light-surface subset plus current automated tests | Focus/palette changes in `660818e` require recapture. |
 
-The authoritative captures are `target/visual-qa/reference-*-1440x900.png` and `reference-*-1024x720.png`. Same-viewport IAB/browser comparison is available for the no-project pair at 1280×720. Native display captures are 1229×768; native compact webview captures are 1024×720.
+The reference captures remain `target/visual-qa/reference-*-1440x900.png` and `reference-*-1024x720.png`. Same-viewport historical IAB comparison exists only for the no-project pair at 1280×720. Historical native display captures are 1229×768, and historical compact webview captures are 1024×720.
 
 ## Remaining differences
 
-Approved verification-environment exceptions only: Computer Use cannot hold a native secondary pointer through the full gesture and macOS WebKit displays its own menu before the secondary-click DOM path. Escape exposes the Viewer click-mode primary ring, and the 标记 secondary ring with five children was observed through native accessibility. Computer Use also cannot provide a native 1440×900 display capture. These limitations do not represent an unresolved Viewer visual difference; the specified paths are covered by native click-mode/secondary-ring evidence and automated held-pointer/fallback tests.
+- No current native 1440×900 capture exists.
+- The automation environment cannot inject and inspect the complete native held-secondary gesture.
+- Several required state families have automated coverage but no current manual same-state inspection.
+- These are pending verification gaps, not product-owner-authorized exceptions. Native 1440×900 and missing manual state coverage await explicit product-owner exception or new evidence.

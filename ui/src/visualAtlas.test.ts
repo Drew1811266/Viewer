@@ -35,6 +35,42 @@ function clickState(document: Document, sceneState: string) {
   button?.click()
 }
 
+function clickToolbarControl(document: Document, label: string) {
+  const button = [...document.querySelectorAll<HTMLButtonElement>('.viewer-toolbar button')].find(
+    (candidate) => candidate.textContent?.trim().startsWith(label),
+  )
+  expect(button).not.toBeNull()
+  button?.click()
+}
+
+function keydown(window: Window, target: Element, key: string) {
+  target.dispatchEvent(new window.KeyboardEvent('keydown', { bubbles: true, key }))
+}
+
+function relativeLuminance([red, green, blue]: [number, number, number]) {
+  const [r, g, b] = [red, green, blue].map((channel) => {
+    const normalized = channel / 255
+    return normalized <= 0.03928
+      ? normalized / 12.92
+      : ((normalized + 0.055) / 1.055) ** 2.4
+  })
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b
+}
+
+function rgb(color: string): [number, number, number] {
+  const channels = color.match(/\d+/g)?.slice(0, 3).map(Number)
+  expect(channels).toHaveLength(3)
+  return channels as [number, number, number]
+}
+
+function contrastRatio(foreground: string, background: string) {
+  const foregroundLuminance = relativeLuminance(rgb(foreground))
+  const backgroundLuminance = relativeLuminance(rgb(background))
+  const lighter = Math.max(foregroundLuminance, backgroundLuminance)
+  const darker = Math.min(foregroundLuminance, backgroundLuminance)
+  return (lighter + 0.05) / (darker + 0.05)
+}
+
 describe('complete Viewer visual atlas', () => {
   it('publishes every approved state group and no external asset paths', () => {
     const dom = renderAtlas()
@@ -268,5 +304,128 @@ describe('complete Viewer visual atlas', () => {
           ?.getAttribute('data-accessibility-state'),
       ).toBe(accessibilityState.replace('accessibility-', ''))
     }
+  })
+
+  it('opens filters in place and derives one consistent condition count', () => {
+    const dom = renderAtlas()
+    const document = dom.window.document
+
+    clickScreen(document, 'filters')
+    clickState(document, 'filters-advanced')
+    const screenBefore = document.querySelector('[data-filter-state]')
+    clickToolbarControl(document, '筛选')
+
+    expect(document.querySelector('[data-filter-popover]')).not.toBeNull()
+    expect(document.querySelector('[data-filter-state]')).toBe(screenBefore)
+    expect(document.querySelector('[data-filter-trigger-count]')?.textContent).toBe(
+      document.querySelector('[data-filter-panel-count]')?.textContent,
+    )
+    expect(document.querySelectorAll('[data-active-filter-condition="true"]')).toHaveLength(6)
+  })
+
+  it('renders a compact accessible collapsed sidebar header and visually disabled menu rows', () => {
+    const dom = renderAtlas()
+    const document = dom.window.document
+
+    clickScreen(document, 'sidebar')
+    clickState(document, 'sidebar-collapsed')
+    const header = document.querySelector('[data-project-head="collapsed"]')
+    expect(header?.querySelector('[aria-label="展开项目目录"]')).not.toBeNull()
+    expect(header?.querySelector('strong')).toBeNull()
+    expect(header?.textContent?.trim()).toBe('展开')
+
+    clickScreen(document, 'menus')
+    clickState(document, 'menu-readonly')
+    const disabledRows = document.querySelectorAll(
+      '[role="menu"] .menu-row[aria-disabled="true"].is-disabled',
+    )
+    expect(disabledRows.length).toBeGreaterThan(0)
+  })
+
+  it('renders distinct real radial geometry for every visual state', () => {
+    const dom = renderAtlas()
+    const document = dom.window.document
+
+    clickScreen(document, 'radial')
+    for (const value of ['click', 'gesture', 'mark', 'organize', 'disabled', 'readonly', 'keyboard']) {
+      clickState(document, `radial-${value}`)
+      expect(document.querySelector(`[data-radial-visual-state="${value}"]`)).not.toBeNull()
+      expect(document.querySelector('.radial-demo-menu [data-level="primary"]')).not.toBeNull()
+      expect(document.querySelectorAll('.radial-demo-menu [data-radial-sector]').length).toBe(6)
+    }
+
+    clickState(document, 'radial-mark')
+    expect(document.querySelector('[data-secondary-kind="mark"]')).not.toBeNull()
+    clickState(document, 'radial-organize')
+    expect(document.querySelector('[data-secondary-kind="organize"]')).not.toBeNull()
+    clickState(document, 'radial-readonly')
+    expect(document.querySelector('.radial-demo-center')?.textContent).toContain('只读')
+    clickState(document, 'radial-keyboard')
+    expect(document.querySelector('[data-keyboard-active="true"]')).not.toBeNull()
+  })
+
+  it('supports keyboard selection and exposes progress and dialog semantics', () => {
+    const dom = renderAtlas()
+    const document = dom.window.document
+
+    clickScreen(document, 'browser')
+    const card = document.querySelector<HTMLElement>('.image-card:not(.selected)')
+    expect(card?.getAttribute('aria-selected')).toBe('false')
+    keydown(dom.window, card as Element, 'Enter')
+    expect(card?.getAttribute('aria-selected')).toBe('true')
+
+    clickScreen(document, 'launch')
+    clickState(document, 'launch-scanning')
+    expect(document.querySelector('[role="progressbar"][aria-valuenow]')).not.toBeNull()
+    expect(document.querySelector('[role="status"][aria-live="polite"]')).not.toBeNull()
+
+    clickScreen(document, 'dialogs')
+    expect(document.querySelector('.viewer-window > .scrim')).not.toBeNull()
+    expect(document.querySelector('[role="dialog"][aria-modal="true"]')).not.toBeNull()
+  })
+
+  it('associates field labels and exposes real accessibility shell states', () => {
+    const dom = renderAtlas()
+    const document = dom.window.document
+
+    clickScreen(document, 'filters')
+    clickState(document, 'filters-advanced')
+    const labels = document.querySelectorAll<HTMLLabelElement>('.field > label')
+    expect(labels.length).toBeGreaterThan(0)
+    for (const label of labels) {
+      expect(label.htmlFor).not.toBe('')
+      expect(document.getElementById(label.htmlFor)).not.toBeNull()
+    }
+
+    clickScreen(document, 'accessibility')
+    for (const value of ['keyboard', 'restore', 'reduced', 'forced', 'zoom']) {
+      clickState(document, `accessibility-${value}`)
+      expect(document.querySelector(`[data-accessible-viewer-state="${value}"]`)).not.toBeNull()
+      expect(document.querySelector('[data-accessible-viewer-state] .viewer-shell')).not.toBeNull()
+    }
+  })
+
+  it('meets approved target size, inspector width, and small-text contrast', () => {
+    const dom = renderAtlas()
+    const document = dom.window.document
+
+    clickScreen(document, 'system')
+    const button = document.querySelector<HTMLElement>('.viewer-button')
+    expect(Number.parseFloat(dom.window.getComputedStyle(button as Element).height)).toBeGreaterThanOrEqual(
+      32,
+    )
+
+    clickScreen(document, 'information')
+    const informationLayout = document.querySelector<HTMLElement>('.information-layout')
+    expect(dom.window.getComputedStyle(informationLayout as Element).gridTemplateColumns).toContain(
+      '334px',
+    )
+
+    clickScreen(document, 'sidebar')
+    const tertiary = document.querySelector<HTMLElement>('.tree-row span:last-child')
+    const sidebar = document.querySelector<HTMLElement>('[data-viewer-sidebar]')
+    const tertiaryColor = dom.window.getComputedStyle(tertiary as Element).color
+    const sidebarBackground = dom.window.getComputedStyle(sidebar as Element).backgroundColor
+    expect(contrastRatio(tertiaryColor, sidebarBackground)).toBeGreaterThanOrEqual(4.5)
   })
 })

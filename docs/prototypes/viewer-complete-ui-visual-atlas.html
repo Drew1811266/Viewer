@@ -15,8 +15,8 @@
       --soft: #f5f5f3;
       --border: #dedfdd;
       --text: #23262c;
-      --secondary: #6b7077;
-      --tertiary: #8a8e94;
+      --secondary: #555b62;
+      --tertiary: #60656c;
       --accent: #5869cf;
       --accent-soft: #eceeff;
       --success: #397158;
@@ -49,6 +49,7 @@
     body.embed .atlas-main { grid-template-rows: minmax(0, 1fr); }
     body.embed .stage { padding: 0; }
     body.embed .prototype-state-switcher,
+    body.embed .prototype-state-dock,
     body.embed .scene-state-bar { display: none; }
     body.embed .stage-inner {
       align-items: center;
@@ -57,6 +58,7 @@
       padding: 0;
     }
     body.embed .screen-mount { transform: none !important; }
+    body.embed .prototype-frame { grid-template-rows: minmax(0, 1fr); }
 
     .atlas-sidebar {
       background: #f7f7f5;
@@ -224,22 +226,34 @@
     }
     .coverage { color: #4d5fba; font-weight: 700; }
 
+    .prototype-frame {
+      display: grid;
+      grid-template-rows: 46px minmax(0, 1fr);
+      height: 100%;
+      width: 100%;
+    }
+    .prototype-frame:not(.has-states) { grid-template-rows: minmax(0, 1fr); }
+    .prototype-state-dock {
+      align-items: center;
+      display: flex;
+      justify-content: center;
+      min-width: 0;
+      padding: 4px 10px 6px;
+    }
+    .prototype-surface { min-height: 0; min-width: 0; }
+    .prototype-surface > .viewer-window,
+    .prototype-surface > [data-accessible-viewer-state] { height: 100%; }
     .scene-state-bar {
       align-items: center;
       background: rgb(250 250 248 / 96%);
       border: 1px solid var(--border);
       border-radius: 10px;
-      box-shadow: 0 7px 20px rgb(31 35 42 / 9%);
       display: flex;
       flex-wrap: wrap;
       gap: 5px;
-      left: 50%;
-      max-width: calc(100% - 32px);
+      justify-content: center;
+      max-width: 100%;
       padding: 5px;
-      position: absolute;
-      top: 12px;
-      transform: translateX(-50%);
-      z-index: 40;
     }
     .scene-state-bar .state-label {
       color: var(--tertiary);
@@ -300,8 +314,11 @@
       border: 0;
       color: var(--secondary);
       font-size: 10px;
+      min-height: 32px;
       padding: 6px;
     }
+    .project-head.collapsed { justify-content: center; padding: 0 4px; }
+    .project-head.collapsed button { padding: 0 4px; white-space: nowrap; }
 
     .viewer-toolbar {
       align-items: center;
@@ -343,7 +360,7 @@
       border: 1px solid #d2d4d1;
       border-radius: 8px;
       font-size: 11px;
-      height: 30px;
+      min-height: 32px;
       padding: 0 11px;
     }
     .viewer-button:hover, .viewer-button:focus-visible { background: var(--soft); outline: 0; }
@@ -438,6 +455,15 @@
     .menu-row:hover, .menu-row:focus-visible { background: var(--soft); outline: 0; }
     .menu-row.selected { background: var(--accent-soft); color: #4355b5; }
     .menu-row.danger:hover { color: var(--danger); }
+    .menu-row[aria-disabled="true"],
+    .menu-row.is-disabled {
+      background: #f3f3f1;
+      color: #777c82;
+      cursor: not-allowed;
+      opacity: .72;
+    }
+    .menu-row[aria-disabled="true"]:hover,
+    .menu-row.is-disabled:hover { background: #f3f3f1; color: #777c82; }
     .menu-divider { background: var(--border); height: 1px; margin: 6px 3px; }
 
     /* Overview and browsing */
@@ -695,11 +721,13 @@
       width: 500px;
       z-index: 20;
     }
+    .filter-panel[data-filter-popover] { top: 37px; }
     .panel-title { align-items: center; display: flex; justify-content: space-between; margin-bottom: 13px; }
     .panel-title strong { font-size: 14px; }
     .panel-title button { background: transparent; border: 0; color: var(--secondary); }
     .filter-grid { display: grid; gap: 11px; grid-template-columns: repeat(2, 1fr); }
-    .field label { color: var(--secondary); display: block; font-size: 9px; margin-bottom: 5px; }
+    .field label,
+    .field-label { color: var(--secondary); display: block; font-size: 9px; margin-bottom: 5px; }
     .field select, .field input {
       background: var(--surface);
       border: 1px solid #d4d6d3;
@@ -750,7 +778,7 @@
       border: 0;
       border-radius: 7px;
       font-size: 10px;
-      height: 28px;
+      min-height: 32px;
       min-width: 34px;
       padding: 0 9px;
     }
@@ -1157,49 +1185,173 @@
     }
     .reference-caption strong { display: block; font-size: 10px; margin-bottom: 4px; }
     .reference-caption span { color: var(--secondary); font-size: 9px; line-height: 1.5; }
-    .radial-layout {
-      background: #f1f1ef;
-      display: grid;
-      gap: 14px;
-      grid-template-columns: minmax(0, 1.35fr) minmax(280px, .65fr);
+    .radial-demo-stage {
+      background: #f7f7f5;
       height: 100%;
-      padding: 58px 18px 18px;
+      overflow: hidden;
+      position: relative;
     }
-    .radial-reference {
+    .radial-demo-background {
+      display: grid;
+      gap: 12px;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      opacity: .6;
+      padding: 18px;
+    }
+    .radial-demo-scrim {
+      background: rgb(246 247 246 / 64%);
+      inset: 0;
+      position: absolute;
+    }
+    .radial-demo-menu {
+      height: 336px;
+      left: 50%;
+      position: absolute;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      width: 336px;
+    }
+    .radial-demo-shapes {
+      filter: drop-shadow(0 18px 30px rgb(31 35 42 / 16%));
+      height: 100%;
+      inset: 0;
+      overflow: visible;
+      position: absolute;
+      width: 100%;
+    }
+    .radial-demo-sector {
+      fill: var(--surface);
+      stroke: var(--border);
+      stroke-width: 1;
+    }
+    .radial-demo-sector[data-active="true"] {
+      fill: var(--accent-soft);
+      stroke: var(--accent);
+      stroke-width: 1.5;
+    }
+    .radial-demo-sector[aria-disabled="true"] {
+      fill: #f0f0ee;
+      opacity: .62;
+      stroke-dasharray: 4 3;
+    }
+    .radial-demo-button {
+      align-items: center;
+      background: transparent;
+      border: 0;
+      color: var(--text);
+      display: flex;
+      flex-direction: column;
+      font-size: 10px;
+      font-weight: 700;
+      height: 46px;
+      justify-content: center;
+      left: calc(168px + var(--radial-x));
+      line-height: 1.2;
+      padding: 2px;
+      position: absolute;
+      text-align: center;
+      top: calc(168px + var(--radial-y));
+      transform: translate(-50%, -50%);
+      width: 68px;
+    }
+    .radial-demo-button small {
+      color: var(--secondary);
+      display: block;
+      font-size: 8px;
+      font-weight: 600;
+      margin-top: 3px;
+    }
+    .radial-demo-button[aria-disabled="true"] {
+      color: #72777d;
+      opacity: .62;
+    }
+    .radial-demo-button[aria-disabled="true"]::after {
+      content: "不可用";
+      font-size: 8px;
+      font-weight: 650;
+      margin-top: 3px;
+    }
+    .radial-demo-button.danger { color: var(--danger); }
+    .radial-demo-button[data-keyboard-active="true"] {
+      border-radius: 9px;
+      box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--accent);
+    }
+    .radial-demo-button[data-level="secondary"] { font-size: 9px; width: 58px; }
+    .radial-demo-center {
       align-items: center;
       background: var(--surface);
       border: 1px solid var(--border);
-      border-radius: 12px;
+      border-radius: 50%;
+      box-shadow: 0 8px 22px rgb(31 35 42 / 12%);
+      color: var(--secondary);
       display: flex;
+      flex-direction: column;
+      font-size: 9px;
+      height: 78px;
       justify-content: center;
-      min-height: 0;
-      overflow: hidden;
-      padding: 12px;
+      left: 129px;
+      position: absolute;
+      text-align: center;
+      top: 129px;
+      width: 78px;
     }
-    .radial-reference img { height: 100%; object-fit: contain; width: 100%; }
-    .radial-state-panel {
-      background: var(--surface);
+    .radial-demo-center strong { color: var(--text); font-size: 12px; }
+    .radial-demo-center em {
+      color: var(--warning);
+      font-size: 9px;
+      font-style: normal;
+      font-weight: 750;
+      margin-top: 2px;
+    }
+    .radial-gesture-trace {
+      border: 2px solid var(--accent);
+      border-bottom: 0;
+      border-left: 0;
+      height: 58px;
+      left: 180px;
+      opacity: .72;
+      position: absolute;
+      top: 76px;
+      transform: rotate(-24deg);
+      width: 42px;
+    }
+    .radial-gesture-trace::after {
+      background: var(--accent);
+      border-radius: 50%;
+      content: "";
+      height: 8px;
+      position: absolute;
+      right: -5px;
+      top: -5px;
+      width: 8px;
+    }
+    .radial-demo-note {
+      background: rgb(255 255 255 / 96%);
       border: 1px solid var(--border);
       border-radius: 12px;
-      min-height: 0;
-      overflow: auto;
-      padding: 16px;
+      bottom: 16px;
+      box-shadow: 0 10px 26px rgb(31 35 42 / 12%);
+      max-width: 300px;
+      padding: 12px;
+      position: absolute;
+      right: 16px;
     }
-    .radial-state-panel h2 { font-size: 15px; margin: 0; }
-    .radial-state-panel > p { color: var(--secondary); font-size: 10px; line-height: 1.55; margin: 7px 0 14px; }
-    .radial-state-panel .menu-row[aria-disabled="true"] { color: #a0a3a8; cursor: default; }
-    .radial-guidance {
-      border-top: 1px solid var(--border);
-      color: var(--secondary);
-      font-size: 9px;
-      line-height: 1.55;
-      margin-top: 12px;
-      padding-top: 12px;
+    .radial-demo-note h2 { font-size: 13px; margin: 0; }
+    .radial-demo-note p { color: var(--secondary); font-size: 9px; line-height: 1.5; margin: 5px 0 0; }
+    .radial-reference-thumb {
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      height: 42px;
+      object-fit: cover;
+      position: absolute;
+      right: 12px;
+      top: 12px;
+      width: 76px;
     }
     .information-layout {
       background: #f4f4f2;
       display: grid;
-      grid-template-columns: minmax(0, 1fr) 360px;
+      grid-template-columns: minmax(0, 1fr) 334px;
       height: 100%;
       padding-top: 52px;
     }
@@ -1231,6 +1383,51 @@
       .stage { padding: 12px; }
       .token-grid { grid-template-columns: repeat(4, 1fr); }
       .component-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+
+    .accessible-viewer {
+      height: 100%;
+      overflow: auto;
+      position: relative;
+    }
+    .accessible-viewer > .viewer-window { min-height: 100%; }
+    .accessible-viewer[data-accessible-viewer-state="reduced"] * {
+      animation-duration: 0s !important;
+      scroll-behavior: auto !important;
+      transition-duration: 0s !important;
+    }
+    .accessible-viewer[data-accessible-viewer-state="forced"] {
+      --accent: Highlight;
+      --accent-soft: Canvas;
+      --application: Canvas;
+      --border: CanvasText;
+      --sidebar: Canvas;
+      --soft: Canvas;
+      --surface: Canvas;
+      --text: CanvasText;
+    }
+    .accessible-viewer[data-accessible-viewer-state="forced"] .image-card.selected .image-stage::after {
+      border: 3px solid Highlight;
+    }
+    .accessible-viewer[data-accessible-viewer-state="zoom"] > .viewer-window {
+      height: 50%;
+      min-height: 360px;
+      min-width: 512px;
+      width: 50%;
+      zoom: 2;
+    }
+    .accessible-state-note {
+      background: rgb(255 255 255 / 96%);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      bottom: 12px;
+      box-shadow: 0 9px 22px rgb(31 35 42 / 12%);
+      font-size: 9px;
+      max-width: 300px;
+      padding: 10px 12px;
+      position: absolute;
+      right: 12px;
+      z-index: 18;
     }
   </style>
 </head>
@@ -1350,6 +1547,7 @@
       fit: true,
       openMenu: null,
       dialog: "destination",
+      dialogOpen: true,
       launch: "no-project",
       sidebar: "expanded",
       structure: "root",
@@ -1419,7 +1617,47 @@
       return `<aside class="viewer-sidebar" data-viewer-sidebar data-mode="${mode}"><p class="tree-label">项目目录</p>${rows.map(([label, count, child]) => `<div class="tree-row${child ? " child" : ""}${label === selected ? " selected" : ""}"${mode === "drop" && label === "A03" ? ' data-drop-target="valid"' : ""}><span>${label}</span><span>${count}</span></div>`).join("")}</aside>`;
     }
 
+    function filterConditionModel() {
+      const activeTypes = state.filters === "zero"
+        ? []
+        : state.filters === "one"
+          ? ["图片"]
+          : ["图片", "Markdown"];
+      const activeReviews = state.filters === "multiple" || state.filters === "advanced"
+        ? ["保留", "待定"]
+        : [];
+      const advancedRules = state.filters === "advanced"
+        ? ["文件大小 大于 2 MB", "修改日期 在最近 30 天"]
+        : [];
+      return {
+        activeTypes,
+        activeReviews,
+        advancedRules,
+        count: activeTypes.length + activeReviews.length + advancedRules.length,
+      };
+    }
+
+    function filterPanelMarkup({ popover = false } = {}) {
+      const model = filterConditionModel();
+      const prefix = popover ? "toolbar-filter" : "scene-filter";
+      const conditionLabel = model.count === 0 ? "无条件" : `${model.count} 个条件`;
+      return `<section class="filter-panel" data-filter-state="${state.filters}"${popover ? " data-filter-popover" : ""}>
+        <div class="panel-title"><strong>筛选</strong><span class="status-tag ${model.count === 0 ? "pending" : "keep"}"><span data-filter-panel-count>${model.count}</span>${model.count === 0 ? " · 无条件" : " 个条件"}</span></div>
+        <div class="filter-grid">
+          <div class="field"><label for="${prefix}-scope">搜索范围</label><select id="${prefix}-scope"><option>整个项目</option></select></div>
+          <div class="field"><label for="${prefix}-sort">排序</label><select id="${prefix}-sort"><option>文件名 · 升序</option></select></div>
+          <div class="field" style="grid-column:1/-1"><span class="field-label">文件类型</span><div class="filter-options">${["图片", "Markdown", "文本", "其它"].map((label) => `<button class="chip${model.activeTypes.includes(label) ? " active" : ""}"${model.activeTypes.includes(label) ? ' data-active-filter-condition="true"' : ""} type="button">${label}</button>`).join("")}</div></div>
+          <div class="field" style="grid-column:1/-1"><span class="field-label">审阅状态</span><div class="filter-options">${["保留", "待定", "淘汰", "未标记"].map((label) => `<button class="chip${model.activeReviews.includes(label) ? " active" : ""}"${model.activeReviews.includes(label) ? ' data-active-filter-condition="true"' : ""} type="button">${label}</button>`).join("")}</div></div>
+          ${model.advancedRules.length ? `<div class="field" style="grid-column:1/-1"><span class="field-label">高级条件</span>${model.advancedRules.map((rule) => `<div class="conflict-row" data-active-filter-condition="true"><span>${rule}</span><button class="viewer-button" type="button">移除</button></div>`).join("")}<button class="menu-row" type="button"><span>添加条件</span><span></span></button></div>` : ""}
+        </div>
+        <div class="filter-footer"><button class="menu-row" style="width:auto" type="button">清除全部</button><button class="viewer-button primary" type="button">应用筛选</button></div>
+      </section>`;
+    }
+
     function menuMarkup(type) {
+      if (type === "filter") {
+        return filterPanelMarkup({ popover: true });
+      }
       if (type === "view") {
         return `<div class="popover" data-popover-panel>
           <button class="menu-row selected" type="button"><span>按文件夹分组</span><span>当前</span></button>
@@ -1445,12 +1683,16 @@
       const toolbar = options.toolbar !== false;
       const sidebarMode = options.sidebarMode ?? "expanded";
       const sidebarWidth = sidebarMode === "collapsed" ? 52 : sidebarMode === "resized" ? 300 : 220;
+      const filterCount = filterConditionModel().count;
+      const projectHeader = sidebarMode === "collapsed"
+        ? '<header class="project-head collapsed" data-project-head="collapsed"><button type="button" aria-label="展开项目目录">展开</button></header>'
+        : `<header class="project-head" data-project-head="${sidebarMode}"><strong>${options.project ?? "测试图"}</strong><button type="button">收起</button></header>`;
       return `<div class="viewer-window">
         <div class="viewer-shell" style="grid-template-columns:${sidebarWidth}px minmax(0,1fr)">
-          <header class="project-head"><strong>${sidebarMode === "collapsed" ? "测" : options.project ?? "测试图"}</strong><button type="button">${sidebarMode === "collapsed" ? "展开" : "收起"}</button></header>
+          ${projectHeader}
           <header class="viewer-toolbar">
             ${toolbar ? `<label class="search-field"><input aria-label="搜索" placeholder="${options.search ?? "搜索名称、路径或文本"}"><kbd>⌘F</kbd></label>
-              <button class="viewer-button${options.filterActive ? " active" : ""}" type="button" data-open="filter">筛选${options.filterActive ? " · 3" : ""}</button>
+              <button class="viewer-button${filterCount > 0 || state.openMenu === "filter" ? " active" : ""}" type="button" data-open="filter">筛选${filterCount > 0 ? ` · <span data-filter-trigger-count>${filterCount}</span>` : ""}</button>
               <button class="viewer-button${state.openMenu === "view" ? " active" : ""}" type="button" data-open="view">视图</button>
               <button class="viewer-button${state.openMenu === "more" ? " active" : ""}" type="button" data-open="more">更多</button>
               ${menuMarkup(state.openMenu)}` : ""}
@@ -1458,6 +1700,7 @@
           ${sidebar(selected, options.loading, sidebarMode)}
           <section class="viewer-content">${content}</section>
         </div>
+        ${options.overlay ?? ""}
       </div>`;
     }
 
@@ -1497,7 +1740,7 @@
             <div class="component-sample"><h3>菜单行</h3><div style="border:1px solid var(--border);border-radius:10px;padding:6px"><button class="menu-row selected"><span>按文件夹分组</span><span>当前</span></button><button class="menu-row"><span>显示全部后代文件</span><span></span></button><div class="menu-divider"></div><button class="menu-row danger"><span>关闭项目</span><span></span></button></div></div>
             <div class="component-sample"><h3>缩略图选中</h3><article class="image-card selected" style="max-width:180px"><div class="image-stage" style="height:90px">${image(2, "选中缩略图")}</div><div class="image-meta"><strong>2C2A7494.JPG</strong></div></article></div>
             <div class="component-sample type-scale"><h3>字体层级</h3><div class="type-large">主要视图标题</div><div class="type-section">分区标题</div><div class="type-body">正文与主行内容</div><div class="type-caption">说明、元数据与次要控件</div></div>
-            <div class="component-sample"><h3>任务表面</h3><div class="task-surface" style="position:relative;bottom:auto;right:auto;width:100%"><div class="task-head"><strong>正在生成缩略图</strong><span>68 / 100</span></div><div class="progress-track"><div class="progress-fill"></div></div></div></div>
+            <div class="component-sample"><h3>任务表面</h3><div class="task-surface" style="position:relative;bottom:auto;right:auto;width:100%" role="status" aria-live="polite"><div class="task-head"><strong>正在生成缩略图</strong><span>68 / 100</span></div><div class="progress-track" role="progressbar" aria-label="缩略图生成进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="68"><div class="progress-fill"></div></div></div></div>
             <div class="component-sample"><h3>通知与局部错误</h3><div class="notice" style="position:relative;width:100%;box-shadow:none"><div><strong>项目状态已恢复</strong><span>8 项已恢复，1 项需要检查</span></div><button class="viewer-button">查看</button></div><div class="local-error" style="margin:8px 0 0">缩略图不可用 · 重试</div></div>
             <div class="component-sample"><h3>对话框动作</h3><p style="color:var(--secondary);font-size:10px">取消始终在安全主操作或危险操作之前；危险色只落在最终动作。</p><div class="dialog-actions"><button class="viewer-button">取消</button><button class="viewer-button primary">确认</button></div></div>
           </div>
@@ -1511,7 +1754,7 @@
         key: "sidebar",
         items: [["expanded", "展开"], ["resized", "加宽"], ["collapsed", "折叠"], ["drop", "拖放目标"]],
       }]);
-      return shell(`${states}<div class="grid-wrap" style="padding-top:58px"><div class="image-grid" data-density="standard">${imageCards(1)}</div></div>`, {
+      return shell(`${states}<div class="grid-wrap"><div class="image-grid" data-density="standard">${imageCards(1)}</div></div>`, {
         sidebarMode: state.sidebar,
         selected: state.sidebar === "drop" ? "A03" : "A01",
       });
@@ -1539,7 +1782,7 @@
       } else {
         content = `${state.structure === "root" ? '<div class="structure-heading"><strong>测试图</strong><span>2 个分类 · 17 个文件夹 · 247 张图片</span></div>' : ""}${bands}`;
       }
-      return shell(`${states}<div data-structure-state="${state.structure}" style="padding-top:52px">${content}</div>`, { selected: state.structure === "root" ? "测试图" : state.structure === "category" || state.structure === "aggregate" ? "衣服" : "A01" });
+      return shell(`${states}<div data-structure-state="${state.structure}">${content}</div>`, { selected: state.structure === "root" ? "测试图" : state.structure === "category" || state.structure === "aggregate" ? "衣服" : "A01" });
     }
 
     function browserScreen() {
@@ -1549,7 +1792,7 @@
       ]);
       const selectedCount = state.selection === "none" ? 0 : state.selection === "multiple" ? 3 : 1;
       const focusIndex = state.selection === "focus" ? 0 : undefined;
-      return shell(`${states}<div class="grid-wrap" style="padding-top:58px"><div class="image-grid" data-thumbnail-grid data-density="${state.density}">${imageCards(selectedCount, { focusIndex })}</div><div class="other-files">其它文件 · 3 · 折叠</div>${selectedCount ? `<div class="selection-summary"><strong>已选择 ${selectedCount} 项</strong><span>右键打开圆盘菜单 · Esc 取消选择</span></div>` : ""}</div>`);
+      return shell(`${states}<div class="grid-wrap"><div class="image-grid" data-thumbnail-grid data-density="${state.density}">${imageCards(selectedCount, { focusIndex })}</div><div class="other-files">其它文件 · 3 · 折叠</div>${selectedCount ? `<div class="selection-summary"><strong>已选择 ${selectedCount} 项</strong><span>右键打开圆盘菜单 · Esc 取消选择</span></div>` : ""}</div>`);
     }
 
     function otherFilesScreen() {
@@ -1561,7 +1804,7 @@
       const expanded = state.other !== "collapsed";
       const panel = `<section class="other-files-panel" data-other-files data-mode="${expanded ? "expanded" : "collapsed"}"><header class="other-files-head"><strong>其它文件 · 3</strong><span>${expanded ? "收起" : "展开"}</span></header>${expanded ? '<div class="other-file-row"><strong>产品说明.md</strong><span>18 KB</span><span>Markdown</span></div><div class="other-file-row"><strong>色卡.txt</strong><span>4 KB</span><span>文本</span></div><div class="other-file-row"><strong>交付清单.xlsx</strong><span>26 KB</span><span>不支持预览</span></div>' : ""}</section>`;
       const drag = state.other === "drag" ? '<div class="organization-drag-preview" data-drag-preview>移动 3 个文件到 A03</div>' : "";
-      return shell(`${states}<div class="grid-wrap" style="padding-top:58px"><div class="image-grid" data-density="compact">${imageCards(3)}</div>${panel}</div>${drag}`, {
+      return shell(`${states}<div class="grid-wrap"><div class="image-grid" data-density="compact">${imageCards(3)}</div>${panel}</div>${drag}`, {
         selected: state.other === "drag" ? "A03" : "A01",
         sidebarMode: state.other === "drag" ? "drop" : "expanded",
       });
@@ -1583,7 +1826,7 @@
         const paging = state.search === "paging" ? '<div class="paging-row"><span>第 2 页 · 21–40 / 42</span><span><button class="viewer-button">上一页</button> <button class="viewer-button">下一页</button></span></div>' : "";
         body = `${indexing}${grouped}${results}${paging}`;
       }
-      return shell(`${states}<div data-search-state="${state.search}" style="padding-top:52px"><div class="search-summary"><strong>“连体衣” · ${state.search === "empty" ? 0 : 42} 个结果</strong><span>${state.search === "indexing" ? "索引进行中" : "索引已完成"}</span></div>${body}</div>`, { search: "连体衣" });
+      return shell(`${states}<div data-search-state="${state.search}"><div class="search-summary"><strong>“连体衣” · ${state.search === "empty" ? 0 : 42} 个结果</strong><span>${state.search === "indexing" ? "索引进行中" : "索引已完成"}</span></div>${body}</div>`, { search: "连体衣" });
     }
 
     function filtersScreen() {
@@ -1592,10 +1835,7 @@
         key: "filters",
         items: [["zero", "无条件"], ["one", "单条件"], ["multiple", "多条件"], ["advanced", "高级"]],
       }]);
-      const activeTypes = state.filters === "zero" ? [] : state.filters === "one" ? ["图片"] : ["图片", "Markdown"];
-      const activeReviews = state.filters === "multiple" || state.filters === "advanced" ? ["保留", "待定"] : [];
-      const panel = `<section class="filter-panel" data-filter-state="${state.filters}" style="top:58px"><div class="panel-title"><strong>筛选</strong><span class="status-tag ${state.filters === "zero" ? "pending" : "keep"}">${state.filters === "zero" ? "无条件" : `${activeTypes.length + activeReviews.length} 个条件`}</span></div><div class="filter-grid"><div class="field"><label>搜索范围</label><select><option>整个项目</option></select></div><div class="field"><label>排序</label><select><option>文件名 · 升序</option></select></div><div class="field" style="grid-column:1/-1"><label>文件类型</label><div class="filter-options">${["图片", "Markdown", "文本", "其它"].map((label) => `<button class="chip${activeTypes.includes(label) ? " active" : ""}">${label}</button>`).join("")}</div></div><div class="field" style="grid-column:1/-1"><label>审阅状态</label><div class="filter-options">${["保留", "待定", "淘汰", "未标记"].map((label) => `<button class="chip${activeReviews.includes(label) ? " active" : ""}">${label}</button>`).join("")}</div></div>${state.filters === "advanced" ? '<div class="field" style="grid-column:1/-1"><label>高级条件</label><div class="conflict-row"><span>文件大小 大于 2 MB</span><button class="viewer-button">移除</button></div><div class="conflict-row"><span>修改日期 在最近 30 天</span><button class="viewer-button">移除</button></div><button class="menu-row"><span>添加条件</span><span></span></button></div>' : ""}</div><div class="filter-footer"><button class="menu-row" style="width:auto">清除全部</button><button class="viewer-button primary">应用筛选</button></div></section>`;
-      return shell(`${states}<div class="grid-wrap" style="padding-top:58px"><div class="image-grid" data-density="compact">${imageCards(0)}</div></div>${panel}`, { filterActive: state.filters !== "zero" });
+      return shell(`${states}<div class="grid-wrap"><div class="image-grid" data-density="compact">${imageCards(0)}</div></div>${filterPanelMarkup()}`);
     }
 
     function menusScreen() {
@@ -1608,9 +1848,9 @@
       const readonly = state.menu === "readonly";
       const rows = view
         ? '<button class="menu-row selected" role="menuitem"><span>按文件夹分组</span><span>当前</span></button><button class="menu-row" role="menuitem"><span>显示全部后代文件</span><span></span></button><div class="menu-divider"></div><button class="menu-row" role="menuitem"><span>紧凑缩略图</span><span></span></button><button class="menu-row selected" role="menuitem"><span>标准缩略图</span><span>当前</span></button><button class="menu-row" role="menuitem"><span>大缩略图</span><span></span></button>'
-        : `<button class="menu-row" role="menuitem"${readonly ? ' aria-disabled="true"' : ""}><span>重新扫描项目</span><span></span></button><button class="menu-row" role="menuitem"><span>在文件管理器中显示</span><span></span></button><button class="menu-row" role="menuitem"><span>设置</span><span></span></button><div class="menu-divider"></div><button class="menu-row danger" role="menuitem"${readonly ? ' aria-disabled="true"' : ""}><span>关闭项目</span><span></span></button>`;
+        : `<button class="menu-row${readonly ? " is-disabled" : ""}" role="menuitem"${readonly ? ' aria-disabled="true" disabled' : ""}><span>重新扫描项目</span><span>${readonly ? "只读" : ""}</span></button><button class="menu-row" role="menuitem"><span>在文件管理器中显示</span><span></span></button><button class="menu-row" role="menuitem"><span>设置</span><span></span></button><div class="menu-divider"></div><button class="menu-row danger${readonly ? " is-disabled" : ""}" role="menuitem"${readonly ? ' aria-disabled="true" disabled' : ""}><span>关闭项目</span><span>${readonly ? "只读" : ""}</span></button>`;
       const menuKind = view ? "view" : state.menu === "more" ? "more" : "readonly";
-      return shell(`${states}${readonly ? '<div class="readonly-banner" style="margin-top:52px"><span><strong>只读模式</strong> · 修改命令已停用。</span><span>重新选择目录</span></div>' : ""}<div class="grid-wrap" style="padding-top:${readonly ? 14 : 58}px"><div class="image-grid" data-density="compact">${imageCards(0)}</div></div><div class="popover" role="menu" data-menu-kind="${menuKind}" style="top:58px">${rows}</div>`);
+      return shell(`${states}${readonly ? '<div class="readonly-banner"><span><strong>只读模式</strong> · 修改命令已停用。</span><span>重新选择目录</span></div>' : ""}<div class="grid-wrap"><div class="image-grid" data-density="compact">${imageCards(0)}</div></div><div class="popover" role="menu" data-menu-kind="${menuKind}" style="top:12px">${rows}</div>`);
     }
 
     function previewScreen() {
@@ -1668,32 +1908,97 @@
       return `<div class="viewer-window">${states}<div class="preview-shell" data-document-state="${state.document}"><header class="preview-toolbar"><div class="preview-identity"><strong>${identity[0]}</strong><span>${identity[1]}</span></div><div class="segmented"><button class="${state.document === "markdown" ? "active" : ""}">阅读</button><button class="${state.document === "plain" ? "active" : ""}">纯文本</button></div><div class="preview-actions"><button class="viewer-button">编码 ${state.document === "encoding" ? "GB 18030" : "UTF-8"}</button><button class="viewer-button primary">完成</button></div></header>${isUnavailable ? content : `<section class="text-stage"><div class="document-wrap">${content}</div>${informationInspector("single")}</section>`}</div></div>`;
     }
 
+    function radialPolarPoint(radius, degrees) {
+      const radians = (degrees * Math.PI) / 180;
+      return { x: radius * Math.cos(radians), y: radius * Math.sin(radians) };
+    }
+
+    function radialSectorPath(innerRadius, outerRadius, startDegrees, endDegrees) {
+      const point = (radius, degrees) => {
+        const radians = (degrees * Math.PI) / 180;
+        return {
+          x: Number((168 + radius * Math.cos(radians)).toFixed(2)),
+          y: Number((168 + radius * Math.sin(radians)).toFixed(2)),
+        };
+      };
+      const outerStart = point(outerRadius, startDegrees);
+      const outerEnd = point(outerRadius, endDegrees);
+      const innerEnd = point(innerRadius, endDegrees);
+      const innerStart = point(innerRadius, startDegrees);
+      return `M ${outerStart.x} ${outerStart.y} A ${outerRadius} ${outerRadius} 0 0 1 ${outerEnd.x} ${outerEnd.y} L ${innerEnd.x} ${innerEnd.y} A ${innerRadius} ${innerRadius} 0 0 0 ${innerStart.x} ${innerStart.y} Z`;
+    }
+
+    function radialDemoMarkup(radialState) {
+      const descriptions = {
+        click: ["点击模式", "右键打开后，预览扇区处于当前选择，松开不会误执行。"],
+        gesture: ["手势模式", "按住并划向整理扇区；轨迹、目标和确认方向同时可见。"],
+        mark: ["标记二级", "标记扇区保持原位，局部二级圆环显示保留、待定、淘汰、清除和收藏。"],
+        organize: ["整理二级", "整理扇区展开重命名、复制到和移动到三个二级命令。"],
+        disabled: ["部分不可用", "整理、删除与对比保留固定位置，并通过虚线、文字和降低强调共同表示不可用。"],
+        readonly: ["只读模式", "预览、并排对比和信息继续可用；标记、整理和删除保持原位但禁用。"],
+        keyboard: ["键盘模式", "外侧焦点环与扇区激活分离，方向键移动，Enter 执行，Escape 返回触发文件。"],
+      };
+      const [title, description] = descriptions[radialState];
+      const primary = [
+        { id: "preview", label: "预览" },
+        { id: "mark", label: "标记", secondary: true },
+        { id: "organize", label: "整理", secondary: true },
+        { id: "trash", label: "移到废纸篓", danger: true },
+        { id: "compare", label: "并排对比" },
+        { id: "info", label: "信息" },
+      ];
+      const disabledIndexes = radialState === "readonly"
+        ? [1, 2, 3]
+        : radialState === "disabled"
+          ? [2, 3, 4]
+          : [];
+      const activeIndex = radialState === "gesture"
+        ? 2
+        : radialState === "mark"
+          ? 1
+          : radialState === "organize"
+            ? 2
+            : 0;
+      const secondaryKind = radialState === "mark" ? "mark" : radialState === "organize" ? "organize" : null;
+      const secondaryItems = secondaryKind === "mark"
+        ? ["保留", "待定", "淘汰", "清除", "收藏"]
+        : secondaryKind === "organize"
+          ? ["重命名", "复制到", "移动到"]
+          : [];
+      const secondaryAnchor = secondaryKind === "mark" ? -30 : 30;
+      const secondaryStart = secondaryAnchor - (secondaryItems.length * 30) / 2;
+      const primaryShapes = primary.map((item, index) => {
+        const disabled = disabledIndexes.includes(index);
+        return `<path class="radial-demo-sector" data-radial-sector data-active="${activeIndex === index}"${disabled ? ' aria-disabled="true"' : ""} d="${radialSectorPath(42, 108, -120 + index * 60, -60 + index * 60)}"></path>`;
+      }).join("");
+      const secondaryShapes = secondaryItems.map((item, index) => `<path class="radial-demo-sector" data-radial-secondary-sector data-active="${index === 0}" d="${radialSectorPath(112, 168, secondaryStart + index * 30, secondaryStart + (index + 1) * 30)}"></path>`).join("");
+      const primaryButtons = primary.map((item, index) => {
+        const point = radialPolarPoint(78, -90 + index * 60);
+        const disabled = disabledIndexes.includes(index);
+        const hasSecondary = item.secondary && !disabled;
+        return `<button class="radial-demo-button${item.danger ? " danger" : ""}" type="button" role="menuitem" data-level="primary" data-index="${index}" style="--radial-x:${point.x}px;--radial-y:${point.y}px"${disabled ? ' aria-disabled="true"' : ""}${hasSecondary ? ' aria-haspopup="menu"' : ""}${radialState === "keyboard" && index === 0 ? ' data-keyboard-active="true"' : ""}><span>${item.label}</span>${hasSecondary ? "<small>二级</small>" : ""}</button>`;
+      }).join("");
+      const secondaryButtons = secondaryItems.map((item, index) => {
+        const point = radialPolarPoint(140, secondaryStart + index * 30 + 15);
+        return `<button class="radial-demo-button${item === "淘汰" ? " danger" : ""}" type="button" role="menuitem" data-level="secondary" data-index="${index}" style="--radial-x:${point.x}px;--radial-y:${point.y}px"><span>${item}</span></button>`;
+      }).join("");
+      return `<div class="radial-demo-menu" data-radial-visual-state="${radialState}" role="menu" aria-label="文件操作圆盘">
+        <svg class="radial-demo-shapes" viewBox="0 0 336 336" aria-hidden="true">${secondaryKind ? `<g data-secondary-kind="${secondaryKind}">${secondaryShapes}</g>` : ""}${primaryShapes}</svg>
+        ${primaryButtons}
+        ${secondaryKind ? `<div data-secondary-kind="${secondaryKind}" role="menu" aria-label="${secondaryKind === "mark" ? "标记" : "整理"}二级命令">${secondaryButtons}</div>` : ""}
+        <button type="button" class="radial-demo-center" aria-label="关闭文件操作"><strong>3 个文件</strong>${radialState === "readonly" ? "<em>只读</em>" : ""}<span>回到中心取消</span></button>
+        ${radialState === "gesture" ? '<span class="radial-gesture-trace" aria-hidden="true"></span>' : ""}
+      </div><img class="radial-reference-thumb" src="${references.radial}" alt="已批准圆盘参考缩略图"><aside class="radial-demo-note"><h2>${title}</h2><p>${description}</p></aside>`;
+    }
+
     function radialScreen() {
       const states = stateBar([{
         label: "圆盘",
         key: "radial",
         items: [["click", "点击"], ["gesture", "手势"], ["mark", "标记二级"], ["organize", "整理二级"], ["disabled", "禁用"], ["readonly", "只读"], ["keyboard", "键盘"]],
       }]);
-      const descriptions = {
-        click: ["点击打开", "右键或 Control-click 打开；松开不会立即执行。"],
-        gesture: ["手势模式", "按住并划向扇区；跨过确认半径后松开执行。"],
-        mark: ["标记二级", "停留在“标记”扇区后展开保留、待定、淘汰和清除。"],
-        organize: ["整理二级", "停留在“整理”扇区后展开移动、复制和新建文件夹。"],
-        disabled: ["部分不可用", "不满足条件的命令保留位置并显示禁用原因。"],
-        readonly: ["只读模式", "预览、并排对比和信息可用；标记、整理与删除停用。"],
-        keyboard: ["键盘模式", "方向键选择扇区，Enter 确认，Escape 关闭并恢复焦点。"],
-      };
-      const [title, description] = descriptions[state.radial];
-      const locked = ["disabled", "readonly"].includes(state.radial);
-      const items = [
-        ["预览", false], ["标记", locked], ["整理", locked], ["移到废纸篓", locked], ["并排对比", false], ["信息", false],
-      ];
-      const secondary = state.radial === "mark"
-        ? '<div class="menu-divider"></div><button class="menu-row selected" role="menuitem"><span>保留</span><span>二级</span></button><button class="menu-row" role="menuitem"><span>待定</span><span></span></button><button class="menu-row danger" role="menuitem"><span>淘汰</span><span></span></button>'
-        : state.radial === "organize"
-          ? '<div class="menu-divider"></div><button class="menu-row selected" role="menuitem"><span>移动到文件夹</span><span>二级</span></button><button class="menu-row" role="menuitem"><span>复制到文件夹</span><span></span></button><button class="menu-row" role="menuitem"><span>新建文件夹</span><span></span></button>'
-          : "";
-      return `<div class="viewer-window">${states}<div class="radial-layout" data-radial-state="${state.radial}"><div class="radial-reference"><img src="${references.radial}" alt="批准的六扇区圆盘菜单参考"></div><aside class="radial-state-panel"><h2>${title}</h2><p>${description}</p><div role="menu" aria-label="圆盘菜单的语义命令">${items.map(([label, disabled], index) => `<button class="menu-row${state.radial === "keyboard" && index === 0 ? " selected" : ""}${label === "移到废纸篓" ? " danger" : ""}" role="menuitem"${disabled ? ' aria-disabled="true"' : ""}><span>${label}</span><span>${disabled ? "不可用" : index === 1 || index === 2 ? "二级" : ""}</span></button>`).join("")}${secondary}</div><div class="radial-guidance">固定几何：一级 42–108 px，六个 60° 扇区；二级 112–168 px。此页保留已批准参考图作为视觉真值，右侧仅说明交互状态，不另行重绘圆盘。</div></aside></div></div>`;
+      const content = `<div class="radial-demo-stage" data-radial-state="${state.radial}"><div class="radial-demo-background">${imageCards(3)}</div><div class="radial-demo-scrim"></div>${radialDemoMarkup(state.radial)}</div>`;
+      return shell(`${states}${content}`);
     }
 
     function informationInspector(mode = "single") {
@@ -1719,11 +2024,11 @@
       }]);
       let body = "";
       if (state.dialog === "settings") {
-        body = '<div class="dialog wide"><h2>设置</h2><p>Viewer 自有界面在 macOS 与 Windows 共享相同视觉与工作流。</p><div class="dialog-grid"><section class="dialog-panel"><h3>设置分类</h3><div class="panel-body"><div class="tree-row selected">外观</div><div class="tree-row">浏览</div><div class="tree-row">文件操作</div><div class="tree-row">快捷键</div></div></section><section class="dialog-panel"><h3>外观</h3><div class="panel-body"><div class="conflict-row"><span>界面密度</span><select><option>紧凑高效</option></select></div><div class="conflict-row"><span>缩略图默认大小</span><select><option>标准</option></select></div><div class="conflict-row"><span>减少界面动效</span><button class="viewer-button">跟随系统</button></div></div></section></div><div class="dialog-actions"><button class="viewer-button">取消</button><button class="viewer-button primary">完成</button></div></div>';
+        body = '<div class="dialog wide"><h2>设置</h2><p>Viewer 自有界面在 macOS 与 Windows 共享相同视觉与工作流。</p><div class="dialog-grid"><section class="dialog-panel"><h3>设置分类</h3><div class="panel-body"><div class="tree-row selected">外观</div><div class="tree-row">浏览</div><div class="tree-row">文件操作</div><div class="tree-row">快捷键</div></div></section><section class="dialog-panel"><h3>外观</h3><div class="panel-body"><div class="conflict-row"><label for="settings-density">界面密度</label><select id="settings-density"><option>紧凑高效</option></select></div><div class="conflict-row"><label for="settings-thumbnail-size">缩略图默认大小</label><select id="settings-thumbnail-size"><option>标准</option></select></div><div class="conflict-row"><span>减少界面动效</span><button class="viewer-button">跟随系统</button></div></div></section></div><div class="dialog-actions"><button class="viewer-button">取消</button><button class="viewer-button primary">完成</button></div></div>';
       } else if (state.dialog === "single-rename") {
-        body = '<div class="dialog"><h2>重命名文件</h2><p>文件扩展名保持不变。</p><div class="field"><label>新名称</label><input value="A01-正面-01"></div><div class="dialog-actions"><button class="viewer-button">取消</button><button class="viewer-button primary">重命名</button></div></div>';
+        body = '<div class="dialog"><h2>重命名文件</h2><p>文件扩展名保持不变。</p><div class="field"><label for="single-rename-name">新名称</label><input id="single-rename-name" value="A01-正面-01"></div><div class="dialog-actions"><button class="viewer-button">取消</button><button class="viewer-button primary">重命名</button></div></div>';
       } else if (state.dialog === "batch-rename") {
-        body = `<div class="dialog wide"><h2>批量重命名</h2><p>预览全部文件的新名称；无效或冲突项目不会执行。</p><div class="filter-grid"><div class="field"><label>查找</label><input value="2C2A"></div><div class="field"><label>替换为</label><input value="LOOK-"></div><div class="field"><label>前缀</label><input placeholder="可选"></div><div class="field"><label>起始序号</label><input value="001"></div></div><section class="dialog-panel" style="margin-top:14px"><h3>预览 · 28 项可执行 · 2 项无效</h3><div class="panel-body"><div class="conflict-row"><span>2C2A7469.JPG</span><span>LOOK-001.JPG</span></div><div class="conflict-row"><span>2C2A7536.JPG</span><span>LOOK-002.JPG</span></div><div class="conflict-row" style="color:var(--danger)"><span>2C2A7494.JPG</span><span>名称冲突</span></div></div></section><div class="dialog-actions"><button class="viewer-button">取消</button><button class="viewer-button primary">重命名 28 个文件</button></div></div>`;
+        body = `<div class="dialog wide"><h2>批量重命名</h2><p>预览全部文件的新名称；无效或冲突项目不会执行。</p><div class="filter-grid"><div class="field"><label for="batch-find">查找</label><input id="batch-find" value="2C2A"></div><div class="field"><label for="batch-replace">替换为</label><input id="batch-replace" value="LOOK-"></div><div class="field"><label for="batch-prefix">前缀</label><input id="batch-prefix" placeholder="可选"></div><div class="field"><label for="batch-start">起始序号</label><input id="batch-start" value="001"></div></div><section class="dialog-panel" style="margin-top:14px"><h3>预览 · 28 项可执行 · 2 项无效</h3><div class="panel-body"><div class="conflict-row"><span>2C2A7469.JPG</span><span>LOOK-001.JPG</span></div><div class="conflict-row"><span>2C2A7536.JPG</span><span>LOOK-002.JPG</span></div><div class="conflict-row" style="color:var(--danger)"><span>2C2A7494.JPG</span><span>名称冲突</span></div></div></section><div class="dialog-actions"><button class="viewer-button">取消</button><button class="viewer-button primary">重命名 28 个文件</button></div></div>`;
       } else if (state.dialog === "destination") {
         body = '<div class="dialog wide"><h2>选择目标文件夹</h2><p>移动前先选择目标；此步骤不会修改文件。</p><div class="dialog-grid"><section class="dialog-panel"><h3>项目目录</h3><div class="panel-body"><div class="tree-row">角色</div><div class="tree-row child">B01</div><div class="tree-row">衣服</div><div class="tree-row child selected">A02</div><div class="tree-row child">A03</div></div></section><section class="dialog-panel"><h3>目标摘要</h3><div class="panel-body"><div class="info-row"><span>目标</span><span>衣服 / A02</span></div><div class="info-row"><span>文件</span><span>3 个</span></div><div class="info-row"><span>预计冲突</span><span>正在预检…</span></div></div></section></div><div class="dialog-actions"><button class="viewer-button">取消</button><button class="viewer-button primary">继续</button></div></div>';
       } else if (state.dialog === "conflict") {
@@ -1733,7 +2038,14 @@
       } else {
         body = '<div class="dialog"><h2>文件操作仍在进行</h2><p>已完成的工作不会撤销，当前原子步骤会安全完成。请选择关闭方式。</p><div style="display:grid;gap:8px"><button class="menu-row selected"><span>等待完成后关闭</span><span>推荐</span></button><button class="menu-row"><span>保持打开</span><span></span></button><button class="menu-row danger"><span>取消待处理项目并关闭</span><span></span></button></div></div>';
       }
-      return shell(`<div class="grid-wrap"><div class="image-grid">${imageCards(2)}</div></div><div class="scrim" data-dialog-state="${state.dialog}">${body}</div>${states}`);
+      const dialogTitleId = `atlas-dialog-title-${state.dialog}`;
+      const semanticBody = body
+        .replace('<div class="dialog', `<div role="dialog" aria-modal="true" aria-labelledby="${dialogTitleId}" class="dialog`)
+        .replace("<h2>", `<h2 id="${dialogTitleId}">`);
+      const overlay = state.dialogOpen
+        ? `<div class="scrim" data-dialog-state="${state.dialog}">${semanticBody}</div>`
+        : "";
+      return shell(`${states}<div class="grid-wrap"><div class="image-grid">${imageCards(2)}</div></div>`, { overlay });
     }
 
     function feedbackScreen() {
@@ -1750,7 +2062,7 @@
         result: ['批量重命名完成', '28 成功 · 2 跳过', '<div style="display:flex;justify-content:flex-end;margin-top:8px"><button class="viewer-button">查看结果</button></div>'],
       };
       const [title, meta, detail] = tasks[state.task];
-      return shell(`${states}<div class="grid-wrap" style="padding-top:58px"><div class="image-grid">${imageCards(0)}</div></div><article class="task-surface" data-task-state="${state.task}"><div class="task-head"><strong>${title}</strong><span>${meta}</span></div>${detail}</article>`, { filterActive: false });
+      return shell(`${states}<div class="grid-wrap"><div class="image-grid">${imageCards(0)}</div></div><article class="task-surface" data-task-state="${state.task}" role="status" aria-live="polite"><div class="task-head"><strong>${title}</strong><span>${meta}</span></div>${detail}</article>`);
     }
 
     function launchScreen() {
@@ -1762,13 +2074,13 @@
       if (state.launch === "scanning" || state.launch === "thumbnails") {
         const taskTitle = state.launch === "scanning" ? "正在扫描项目" : "正在生成缩略图";
         const taskMeta = state.launch === "scanning" ? "已发现 1,284 个文件" : "68 / 100";
-        return `${shell(`${states}<div data-launch-state="${state.launch}"><div class="skeleton-grid" style="padding-top:58px">${Array.from({ length: 8 }, () => '<div class="skeleton skeleton-card"></div>').join("")}</div><article class="task-surface"><div class="task-head"><strong>${taskTitle}</strong><span>${taskMeta}</span></div><div class="progress-track"><div class="progress-fill" style="width:45%"></div></div></article></div>`, { loading: true })}`;
+        return `${shell(`${states}<div data-launch-state="${state.launch}"><div class="skeleton-grid">${Array.from({ length: 8 }, () => '<div class="skeleton skeleton-card"></div>').join("")}</div><article class="task-surface" role="status" aria-live="polite"><div class="task-head"><strong>${taskTitle}</strong><span>${taskMeta}</span></div><div class="progress-track" role="progressbar" aria-label="${taskTitle}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="45"><div class="progress-fill" style="width:45%"></div></div></article></div>`, { loading: true })}`;
       }
       if (state.launch === "empty" || state.launch === "recovery") {
         const panel = state.launch === "empty"
           ? '<div class="empty-project-state"><strong>这个项目中还没有可显示的文件</strong><p>Viewer 会显示支持的图片、Markdown 与文本文件。</p><button class="viewer-button">在文件管理器中显示</button></div>'
           : '<div class="recovery-state"><strong>项目状态已恢复</strong><p>8 项审阅状态已经恢复，1 项需要重新确认源文件。</p><button class="viewer-button primary">查看需要确认的项目</button></div>';
-        return shell(`${states}<div data-launch-state="${state.launch}" class="empty-window" style="padding-top:52px">${panel}</div>`, { loading: false });
+        return shell(`${states}<div data-launch-state="${state.launch}" class="empty-window">${panel}</div>`, { loading: false });
       }
       const drag = state.launch === "drag" ? '<div class="drop-target"><span>松开以打开项目</span></div>' : state.launch === "invalid" ? '<div class="drop-target invalid"><span>请选择一个文件夹</span></div>' : "";
       let content = '<div class="empty-content" data-no-project><h1>Viewer</h1><p>选择或拖入一个项目文件夹</p><button class="viewer-button primary">选择项目文件夹</button></div>';
@@ -1808,7 +2120,11 @@
         zoom: ["200% 界面缩放", "控制保持可见，工作区允许滚动，不隐藏主要操作或依赖悬停。"],
       };
       const [title, description] = descriptions[state.accessibility];
-      return `<div class="viewer-window">${states}<div class="accessibility-board" data-accessibility-state="${state.accessibility}"><section class="accessibility-preview"><h2>${title}</h2><p style="font-size:10px;color:var(--secondary);line-height:1.6">${description}</p><span class="focus-demo">${state.accessibility === "restore" ? "焦点已返回：2C2A7469.JPG" : "可见键盘焦点"}</span><div class="accessibility-row"><strong>搜索项目</strong><kbd>⌘/Ctrl + F</kbd></div><div class="accessibility-row"><strong>打开圆盘菜单</strong><kbd>Menu / Shift + F10</kbd></div><div class="accessibility-row"><strong>取消当前层级</strong><kbd>Escape</kbd></div></section><aside class="accessibility-notes"><h2>验收要点</h2><div class="accessibility-row"><span>仅键盘完成主流程</span><span class="status-tag keep">通过</span></div><div class="accessibility-row"><span>焦点环不被裁切</span><span class="status-tag keep">通过</span></div><div class="accessibility-row"><span>不以颜色作为唯一信息</span><span class="status-tag keep">通过</span></div><div class="accessibility-row"><span>系统边界文案跨平台</span><span class="status-tag keep">通过</span></div></aside></div></div>`;
+      const focusIndex = ["keyboard", "restore", "forced"].includes(state.accessibility) ? 0 : undefined;
+      const selectedCount = ["keyboard", "restore", "forced"].includes(state.accessibility) ? 1 : 0;
+      const note = `<aside class="accessible-state-note"><strong>${title}</strong><div style="color:var(--secondary);line-height:1.5;margin-top:4px">${description}</div>${state.accessibility === "restore" ? '<div style="color:var(--accent);font-weight:700;margin-top:5px">焦点已返回：2C2A7469.JPG</div>' : ""}</aside>`;
+      const content = `${states}<div class="grid-wrap"><div class="image-grid" data-density="${state.accessibility === "zoom" ? "compact" : "standard"}">${imageCards(selectedCount, { focusIndex })}</div>${selectedCount ? '<div class="selection-summary"><strong>已选择 1 项</strong><span>焦点与选择使用独立视觉层</span></div>' : ""}</div>${note}`;
+      return `<div class="accessible-viewer" data-accessibility-state="${state.accessibility}" data-accessible-viewer-state="${state.accessibility}">${shell(content, { sidebarMode: state.accessibility === "zoom" ? "collapsed" : "expanded" })}</div>`;
     }
 
     const renderers = {
@@ -1836,6 +2152,7 @@
     const mount = document.getElementById("screen-mount");
     const scaleBox = document.getElementById("scale-box");
     const stage = document.getElementById("stage");
+    let lastDialogTrigger = null;
 
     function updateScale() {
       const availableWidth = Math.max(320, stage.clientWidth - 36);
@@ -1849,8 +2166,14 @@
     }
 
     function render() {
-      state.openMenu = ["folder", "browser", "feedback"].includes(state.screen) ? state.openMenu : null;
-      mount.innerHTML = renderers[state.screen]();
+      const shellScreens = ["sidebar", "folder", "browser", "otherFiles", "search", "filters", "menus", "dialogs", "feedback", "results"];
+      if (!shellScreens.includes(state.screen)) state.openMenu = null;
+      const template = document.createElement("template");
+      template.innerHTML = renderers[state.screen]();
+      const sceneStateBar = template.content.querySelector(".scene-state-bar");
+      const stateBarMarkup = sceneStateBar?.outerHTML ?? "";
+      sceneStateBar?.remove();
+      mount.innerHTML = `<div class="prototype-frame${stateBarMarkup ? " has-states" : ""}">${stateBarMarkup ? `<div class="prototype-state-dock">${stateBarMarkup}</div>` : ""}<div class="prototype-surface">${template.innerHTML}</div></div>`;
       document.getElementById("scene-name").textContent = screenMeta[state.screen][0];
       document.getElementById("scene-description").textContent = screenMeta[state.screen][1];
       document.querySelectorAll(".nav-item").forEach((item) => item.setAttribute("aria-current", item.dataset.screen === state.screen ? "page" : "false"));
@@ -1864,6 +2187,10 @@
       if (nav) {
         state.screen = nav.dataset.screen;
         state.openMenu = null;
+        if (state.screen === "dialogs") {
+          state.dialogOpen = true;
+          lastDialogTrigger = nav;
+        }
         render();
         return;
       }
@@ -1881,18 +2208,15 @@
       const menu = event.target.closest("[data-open]");
       if (menu) {
         const type = menu.dataset.open;
-        if (type === "filter") {
-          state.screen = "search";
-          state.openMenu = null;
-        } else {
-          state.openMenu = state.openMenu === type ? null : type;
-        }
+        state.openMenu = state.openMenu === type ? null : type;
         render();
         return;
       }
       const dialog = event.target.closest("[data-dialog]");
       if (dialog) {
         state.dialog = dialog.dataset.dialog;
+        state.dialogOpen = true;
+        lastDialogTrigger = dialog;
         render();
         return;
       }
@@ -1905,6 +2229,7 @@
       const sceneState = event.target.closest("[data-state]");
       if (sceneState) {
         state[sceneState.dataset.stateGroup] = sceneState.dataset.stateValue;
+        if (sceneState.dataset.stateGroup === "dialog") state.dialogOpen = true;
         render();
         return;
       }
@@ -1929,9 +2254,29 @@
     });
 
     document.addEventListener("keydown", (event) => {
-      if (event.key === "Escape" && state.openMenu) {
-        state.openMenu = null;
-        render();
+      const card = event.target.closest?.(".image-card");
+      if (card && (event.key === "Enter" || event.key === " ")) {
+        event.preventDefault();
+        card.classList.toggle("selected");
+        card.setAttribute("aria-selected", String(card.classList.contains("selected")));
+        const summary = mount.querySelector(".selection-summary strong");
+        if (summary) {
+          const count = mount.querySelectorAll(".image-card.selected").length;
+          summary.textContent = `已选择 ${count} 项`;
+        }
+        return;
+      }
+      if (event.key === "Escape") {
+        if (state.dialogOpen && state.screen === "dialogs") {
+          state.dialogOpen = false;
+          render();
+          lastDialogTrigger?.focus();
+          return;
+        }
+        if (state.openMenu) {
+          state.openMenu = null;
+          render();
+        }
       }
     });
 

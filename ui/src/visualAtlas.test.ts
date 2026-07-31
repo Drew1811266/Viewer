@@ -43,21 +43,30 @@ function clickToolbarControl(document: Document, label: string) {
   button?.click()
 }
 
-function keydown(window: Window, target: Element, key: string) {
-  target.dispatchEvent(new window.KeyboardEvent('keydown', { bubbles: true, key }))
+function keydown(target: Element, key: string) {
+  const KeyboardEventConstructor = target.ownerDocument.defaultView?.KeyboardEvent
+  expect(KeyboardEventConstructor).toBeDefined()
+  target.dispatchEvent(
+    new (KeyboardEventConstructor as typeof KeyboardEvent)('keydown', { bubbles: true, key }),
+  )
 }
 
 function relativeLuminance([red, green, blue]: [number, number, number]) {
   const [r, g, b] = [red, green, blue].map((channel) => {
     const normalized = channel / 255
-    return normalized <= 0.03928
-      ? normalized / 12.92
-      : ((normalized + 0.055) / 1.055) ** 2.4
-  })
+    return normalized <= 0.03928 ? normalized / 12.92 : ((normalized + 0.055) / 1.055) ** 2.4
+  }) as [number, number, number]
   return 0.2126 * r + 0.7152 * g + 0.0722 * b
 }
 
 function rgb(color: string): [number, number, number] {
+  if (/^#[\da-f]{6}$/i.test(color)) {
+    return [
+      Number.parseInt(color.slice(1, 3), 16),
+      Number.parseInt(color.slice(3, 5), 16),
+      Number.parseInt(color.slice(5, 7), 16),
+    ]
+  }
   const channels = color.match(/\d+/g)?.slice(0, 3).map(Number)
   expect(channels).toHaveLength(3)
   return channels as [number, number, number]
@@ -312,11 +321,13 @@ describe('complete Viewer visual atlas', () => {
 
     clickScreen(document, 'filters')
     clickState(document, 'filters-advanced')
-    const screenBefore = document.querySelector('[data-filter-state]')
+    clickScreen(document, 'browser')
     clickToolbarControl(document, '筛选')
 
     expect(document.querySelector('[data-filter-popover]')).not.toBeNull()
-    expect(document.querySelector('[data-filter-state]')).toBe(screenBefore)
+    expect(document.querySelector('[data-screen="browser"]')?.getAttribute('aria-current')).toBe(
+      'page',
+    )
     expect(document.querySelector('[data-filter-trigger-count]')?.textContent).toBe(
       document.querySelector('[data-filter-panel-count]')?.textContent,
     )
@@ -347,7 +358,15 @@ describe('complete Viewer visual atlas', () => {
     const document = dom.window.document
 
     clickScreen(document, 'radial')
-    for (const value of ['click', 'gesture', 'mark', 'organize', 'disabled', 'readonly', 'keyboard']) {
+    for (const value of [
+      'click',
+      'gesture',
+      'mark',
+      'organize',
+      'disabled',
+      'readonly',
+      'keyboard',
+    ]) {
       clickState(document, `radial-${value}`)
       expect(document.querySelector(`[data-radial-visual-state="${value}"]`)).not.toBeNull()
       expect(document.querySelector('.radial-demo-menu [data-level="primary"]')).not.toBeNull()
@@ -371,7 +390,7 @@ describe('complete Viewer visual atlas', () => {
     clickScreen(document, 'browser')
     const card = document.querySelector<HTMLElement>('.image-card:not(.selected)')
     expect(card?.getAttribute('aria-selected')).toBe('false')
-    keydown(dom.window, card as Element, 'Enter')
+    keydown(card as Element, 'Enter')
     expect(card?.getAttribute('aria-selected')).toBe('true')
 
     clickScreen(document, 'launch')
@@ -411,9 +430,12 @@ describe('complete Viewer visual atlas', () => {
 
     clickScreen(document, 'system')
     const button = document.querySelector<HTMLElement>('.viewer-button')
-    expect(Number.parseFloat(dom.window.getComputedStyle(button as Element).height)).toBeGreaterThanOrEqual(
-      32,
-    )
+    const buttonStyle = dom.window.getComputedStyle(button as Element)
+    const renderedHeight = Number.parseFloat(buttonStyle.height)
+    const effectiveHeight = Number.isNaN(renderedHeight)
+      ? Number.parseFloat(buttonStyle.minHeight)
+      : renderedHeight
+    expect(effectiveHeight).toBeGreaterThanOrEqual(32)
 
     clickScreen(document, 'information')
     const informationLayout = document.querySelector<HTMLElement>('.information-layout')
@@ -422,10 +444,9 @@ describe('complete Viewer visual atlas', () => {
     )
 
     clickScreen(document, 'sidebar')
-    const tertiary = document.querySelector<HTMLElement>('.tree-row span:last-child')
-    const sidebar = document.querySelector<HTMLElement>('[data-viewer-sidebar]')
-    const tertiaryColor = dom.window.getComputedStyle(tertiary as Element).color
-    const sidebarBackground = dom.window.getComputedStyle(sidebar as Element).backgroundColor
+    const rootStyle = dom.window.getComputedStyle(document.documentElement)
+    const tertiaryColor = rootStyle.getPropertyValue('--tertiary').trim()
+    const sidebarBackground = rootStyle.getPropertyValue('--sidebar').trim()
     expect(contrastRatio(tertiaryColor, sidebarBackground)).toBeGreaterThanOrEqual(4.5)
   })
 })

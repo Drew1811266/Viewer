@@ -94,6 +94,31 @@ describe('SearchToolbar', () => {
     expect(document.activeElement).toBe(trigger)
   })
 
+  it('closes the filter popover with Escape and restores the trigger focus', () => {
+    render(
+      <SearchToolbar
+        query={query()}
+        folders={[]}
+        focusRequest={0}
+        onTextChange={vi.fn()}
+        onScopeChange={vi.fn()}
+        onFiltersChange={vi.fn()}
+        onSortChange={vi.fn()}
+        onRemoveFilter={vi.fn()}
+        onClearFilters={vi.fn()}
+      />,
+    )
+
+    const trigger = screen.getByRole('button', { name: '筛选' })
+    fireEvent.click(trigger)
+    const close = screen.getByRole('button', { name: '关闭筛选' })
+    close.focus()
+    fireEvent.keyDown(close, { key: 'Escape' })
+
+    expect(screen.queryByRole('button', { name: '关闭筛选' })).not.toBeInTheDocument()
+    expect(document.activeElement).toBe(trigger)
+  })
+
   it('focuses from Cmd-F intent and exposes fuzzy query plus project/subtree scope', () => {
     const onTextChange = vi.fn()
     const onScopeChange = vi.fn()

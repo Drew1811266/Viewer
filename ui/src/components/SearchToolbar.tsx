@@ -280,7 +280,15 @@ export default function SearchToolbar({
         />
         <kbd>⌘F</kbd>
       </label>
-      <details className="search-options-panel" open={optionsOpen}>
+      <details
+        className="search-options-panel"
+        open={optionsOpen}
+        onKeyDown={(event) => {
+          if (event.key !== 'Escape') return
+          event.preventDefault()
+          closeOptions()
+        }}
+      >
         <summary
           ref={filterTriggerRef}
           role="button"

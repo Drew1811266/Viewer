@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { defined } from '../defined'
 import type { TaskFeedback } from './TaskBar'
@@ -24,6 +24,12 @@ describe('TaskBar', () => {
 
     expect(screen.getByText('扫描项目')).toBeVisible()
     expect(screen.getByText('2 项失败')).toBeVisible()
+    const stack = screen.getByRole('complementary', { name: '后台任务' })
+    expect(stack).toHaveClass('task-bar')
+    expect(within(stack).getByRole('progressbar', { name: '扫描项目进度' })).toHaveAttribute(
+      'value',
+      '12',
+    )
     fireEvent.click(screen.getByRole('button', { name: '展开任务详情' }))
     expect(screen.getByText('catalog/a.jpg')).toBeVisible()
   })

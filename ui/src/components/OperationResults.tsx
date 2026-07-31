@@ -45,26 +45,28 @@ export default function OperationResults({
         ))}
       </ul>
       <footer>
-        <span>
-          {page.total === 0 ? 0 : page.offset + 1}–{Math.min(page.total, displayedEnd)} /{' '}
-          {page.total}
-        </span>
-        <button
-          type="button"
-          aria-label="上一页结果"
-          disabled={page.offset === 0}
-          onClick={() => onPageChange(Math.max(0, page.offset - PAGE_SIZE))}
-        >
-          上一页
-        </button>
-        <button
-          type="button"
-          aria-label="下一页结果"
-          disabled={nextOffset >= page.total}
-          onClick={() => onPageChange(nextOffset)}
-        >
-          下一页
-        </button>
+        <nav className="operation-results-pagination" aria-label="文件操作结果分页">
+          <span>
+            {page.total === 0 ? 0 : page.offset + 1}–{Math.min(page.total, displayedEnd)} /{' '}
+            {page.total}
+          </span>
+          <button
+            type="button"
+            aria-label="上一页结果"
+            disabled={page.offset === 0}
+            onClick={() => onPageChange(Math.max(0, page.offset - PAGE_SIZE))}
+          >
+            上一页
+          </button>
+          <button
+            type="button"
+            aria-label="下一页结果"
+            disabled={nextOffset >= page.total}
+            onClick={() => onPageChange(nextOffset)}
+          >
+            下一页
+          </button>
+        </nav>
       </footer>
     </aside>
   )

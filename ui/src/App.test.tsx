@@ -674,7 +674,7 @@ describe('Viewer empty state', () => {
     expect(screen.getByRole('heading', { name: 'Catalog' })).toBeVisible()
     expect(viewer.openPermissionSettings).not.toHaveBeenCalled()
 
-    fireEvent.click(screen.getByRole('button', { name: '打开权限设置' }))
+    fireEvent.click(screen.getByRole('button', { name: '权限设置' }))
     expect(viewer.openPermissionSettings).toHaveBeenCalledOnce()
     expect(screen.getByRole('searchbox', { name: '搜索项目' })).toBeEnabled()
     fireEvent.click(screen.getByRole('button', { name: '筛选' }))
@@ -853,7 +853,11 @@ describe('Viewer empty state', () => {
       })
     })
 
-    expect(await screen.findByText('部分正在查看的文件已在项目外发生变化。')).toBeVisible()
+    const workspace = screen.getByRole('region', { name: '项目内容' })
+    expect(
+      await within(workspace).findByText('部分正在查看的文件已在项目外发生变化。'),
+    ).toBeVisible()
+    expect(screen.queryByRole('region', { name: '全局通知' })).not.toBeInTheDocument()
     const repairedDialog = screen.getByRole('dialog', { name: 'left.txt、right.md' })
     expect(repairedDialog).toBeVisible()
     expect(within(repairedDialog).getAllByText('文件已不可用')).toHaveLength(1)
@@ -1932,7 +1936,10 @@ describe('Viewer empty state', () => {
       },
     )
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('部分文件已发生变化，请刷新后重试。')
+    const notices = await screen.findByRole('region', { name: '全局通知' })
+    expect(within(notices).getByRole('alert')).toHaveTextContent(
+      '部分文件已发生变化，请刷新后重试。',
+    )
     expect(screen.queryByText(/Users\/private/)).not.toBeInTheDocument()
   })
 
@@ -1952,7 +1959,8 @@ describe('Viewer empty state', () => {
       },
     )
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('无法拖到 Finder，请重新拖动。')
+    const notices = await screen.findByRole('region', { name: '全局通知' })
+    expect(within(notices).getByRole('alert')).toHaveTextContent('无法拖到 Finder，请重新拖动。')
     expect(screen.queryByText(/Users\/private/)).not.toBeInTheDocument()
   })
 

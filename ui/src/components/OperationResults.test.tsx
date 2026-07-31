@@ -39,6 +39,10 @@ describe('OperationResults', () => {
     expect(screen.getByText('247 项完成')).toBeVisible()
     expect(screen.getByText('2 项失败')).toBeVisible()
     expect(screen.getByText('id/one.jpg')).toBeVisible()
+    expect(screen.getByRole('complementary', { name: '文件操作结果' })).toHaveClass(
+      'operation-results',
+    )
+    expect(screen.getByRole('navigation', { name: '文件操作结果分页' })).toBeVisible()
     expect(screen.queryByText(/Users\//)).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: '下一页结果' }))
     expect(page).toHaveBeenCalledWith(200)

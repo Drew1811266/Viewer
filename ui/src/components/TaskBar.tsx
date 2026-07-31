@@ -136,32 +136,47 @@ export default function TaskBar({
             >
               {expanded ? '▾' : '▸'}
             </button>
-            <strong>{currentTask.label}</strong>
-            <span>
-              {finished}/{currentTask.requested}
-            </span>
-            {currentTask.failed > 0 && <span>{currentTask.failed} 项失败</span>}
-            {(currentTask.skipped ?? 0) > 0 && <span>{currentTask.skipped} 项跳过</span>}
-            {(currentTask.cancelled ?? 0) > 0 && <span>{currentTask.cancelled} 项取消</span>}
-            {currentTask.cancellable && currentTask.status === 'running' && onCancel && (
-              <button type="button" onClick={() => onCancel(currentTask.id)}>
-                取消任务
-              </button>
+            <div className="task-row-summary">
+              <strong>{currentTask.label}</strong>
+              <span>
+                {finished}/{currentTask.requested}
+              </span>
+            </div>
+            <div className="task-row-actions">
+              {currentTask.cancellable && currentTask.status === 'running' && onCancel && (
+                <button type="button" onClick={() => onCancel(currentTask.id)}>
+                  取消任务
+                </button>
+              )}
+              {currentTask.status !== 'running' && onDismiss && (
+                <button type="button" onClick={() => onDismiss(currentTask.id)}>
+                  关闭任务
+                </button>
+              )}
+              {currentTask.hasResults && onShowResults && (
+                <button
+                  type="button"
+                  aria-label={`查看${currentTask.label}结果`}
+                  onClick={() => onShowResults(currentTask.id)}
+                >
+                  查看结果
+                </button>
+              )}
+            </div>
+            {(currentTask.failed > 0 ||
+              (currentTask.skipped ?? 0) > 0 ||
+              (currentTask.cancelled ?? 0) > 0) && (
+              <p className="task-row-outcome">
+                {currentTask.failed > 0 && <span>{currentTask.failed} 项失败</span>}
+                {(currentTask.skipped ?? 0) > 0 && <span>{currentTask.skipped} 项跳过</span>}
+                {(currentTask.cancelled ?? 0) > 0 && <span>{currentTask.cancelled} 项取消</span>}
+              </p>
             )}
-            {currentTask.status !== 'running' && onDismiss && (
-              <button type="button" onClick={() => onDismiss(currentTask.id)}>
-                关闭任务
-              </button>
-            )}
-            {currentTask.hasResults && onShowResults && (
-              <button
-                type="button"
-                aria-label={`查看${currentTask.label}结果`}
-                onClick={() => onShowResults(currentTask.id)}
-              >
-                查看结果
-              </button>
-            )}
+            <progress
+              aria-label={`${currentTask.label}进度`}
+              max={Math.max(1, currentTask.requested)}
+              value={finished}
+            />
             {expanded && (
               <div className="task-details">
                 {currentTask.failures.length === 0 ? (

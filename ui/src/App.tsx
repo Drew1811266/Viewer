@@ -26,6 +26,7 @@ import EmptyProject from './components/EmptyProject'
 import FileContextMenu from './components/FileContextMenu'
 import FolderOverview from './components/FolderOverview'
 import FolderTree from './components/FolderTree'
+import GlobalNoticeStack, { type GlobalNotice } from './components/GlobalNoticeStack'
 import ImagePreview from './components/ImagePreview'
 import InfoOverlay from './components/InfoOverlay'
 import OperationResults from './components/OperationResults'
@@ -871,6 +872,40 @@ function ViewerWorkspace({ bridge }: { bridge: ViewerBridge }) {
     !state.search.showResults && state.workspace?.workspace === 'content'
   const contextRepairMessage =
     state.contextRepair?.message ?? (activePreview === null ? null : previewRepair.message)
+  const globalNotices: GlobalNotice[] = []
+  if (
+    state.recoveryReport &&
+    (state.recoveryReport.recovered > 0 || state.recoveryReport.needsUserReview > 0)
+  ) {
+    const activeBatchId =
+      state.operation.results === null ? null : (state.operation.active?.batchId ?? null)
+    globalNotices.push({
+      id: `recovery:${projectSessionId}`,
+      title: '项目恢复完成',
+      message: `已恢复 ${state.recoveryReport.recovered} 项操作；${state.recoveryReport.needsUserReview} 项需要检查。`,
+      tone: state.recoveryReport.needsUserReview > 0 ? 'warning' : 'info',
+      action:
+        activeBatchId === null
+          ? undefined
+          : { label: '查看结果', onAction: () => setResultsBatchId(activeBatchId) },
+    })
+  }
+  if (state.errorMessage) {
+    globalNotices.push({
+      id: `application:${state.errorMessage}`,
+      title: 'Viewer 出现问题',
+      message: state.errorMessage,
+      tone: 'danger',
+    })
+  }
+  if (finderDragMessage) {
+    globalNotices.push({
+      id: `finder-drag:${finderDragMessage}`,
+      title: '无法拖出文件',
+      message: finderDragMessage,
+      tone: 'danger',
+    })
+  }
   const viewContext: WorkspaceViewContext = state.search.showResults
     ? {
         kind: 'search',
@@ -939,29 +974,6 @@ function ViewerWorkspace({ bridge }: { bridge: ViewerBridge }) {
           onReselect={() => void reselectProject()}
         />
       )}
-      {state.recoveryReport &&
-        (state.recoveryReport.recovered > 0 || state.recoveryReport.needsUserReview > 0) && (
-          <p className="recovery-banner" role="status">
-            已恢复 {state.recoveryReport.recovered} 项操作；
-            {state.recoveryReport.needsUserReview} 项需要检查。
-          </p>
-        )}
-      {contextRepairMessage && (
-        <p className="context-repair-banner" role="status">
-          {contextRepairMessage}
-        </p>
-      )}
-      {state.errorMessage && <p role="alert">{state.errorMessage}</p>}
-      {finderDragMessage && (
-        <p className="finder-drag-error" role="alert">
-          {finderDragMessage}
-        </p>
-      )}
-      {compareStatus && (
-        <p className="compare-status" role="status">
-          {compareStatus}
-        </p>
-      )}
       <div className="viewer-columns">
         <aside
           className="folder-sidebar"
@@ -1017,6 +1029,11 @@ function ViewerWorkspace({ bridge }: { bridge: ViewerBridge }) {
           className={contentWorkspaceActive ? 'workspace workspace--content' : 'workspace'}
           aria-label="项目内容"
         >
+          {contextRepairMessage && (
+            <p className="context-repair-banner local-error" role="status">
+              {contextRepairMessage}
+            </p>
+          )}
           {state.search.showResults &&
             state.search.page === null &&
             state.search.status === 'searching' && <p role="status">正在搜索…</p>}
@@ -1079,23 +1096,36 @@ function ViewerWorkspace({ bridge }: { bridge: ViewerBridge }) {
                   onOtherFilePanelExpandedChange={otherFilePanelPreference.setExpanded}
                 />
               </div>
+              {!compareOpen && compareStatus && (
+                <p className="compare-status" role="status">
+                  {compareStatus}
+                </p>
+              )}
               {compareOpen && (
-                <CompareWorkspace
-                  files={compareFiles}
-                  readOnly={state.project.access === 'read_only'}
-                  requestImage={requestPreviewImage}
-                  onEntityIdsChange={changeComparedEntities}
-                  onSetReview={(entityId, reviewState) =>
-                    void setReviewState(reviewState, [entityId])
-                  }
-                  onToggleFavorite={(entityId) => void toggleFavorite([entityId])}
-                  onStatus={setCompareStatus}
-                />
+                <>
+                  <CompareWorkspace
+                    files={compareFiles}
+                    readOnly={state.project.access === 'read_only'}
+                    requestImage={requestPreviewImage}
+                    onEntityIdsChange={changeComparedEntities}
+                    onSetReview={(entityId, reviewState) =>
+                      void setReviewState(reviewState, [entityId])
+                    }
+                    onToggleFavorite={(entityId) => void toggleFavorite([entityId])}
+                    onStatus={setCompareStatus}
+                  />
+                  {compareStatus && (
+                    <p className="compare-status" role="status">
+                      {compareStatus}
+                    </p>
+                  )}
+                </>
               )}
             </>
           )}
         </section>
       </div>
+      <GlobalNoticeStack notices={globalNotices} />
       {organizationDragView && (
         <div
           className="organization-drag-preview"

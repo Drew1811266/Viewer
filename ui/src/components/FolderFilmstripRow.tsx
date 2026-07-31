@@ -250,7 +250,7 @@ export default function FolderFilmstripRow({
             />
           ))}
         {state.status === 'failed' && (
-          <div className="folder-filmstrip-error" role="alert">
+          <div className="folder-filmstrip-error local-error" role="alert">
             <span>无法加载图片</span>
             <button
               type="button"

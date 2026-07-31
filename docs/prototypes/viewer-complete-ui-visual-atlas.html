@@ -48,7 +48,8 @@
     body.embed .atlas-footer { display: none; }
     body.embed .atlas-main { grid-template-rows: minmax(0, 1fr); }
     body.embed .stage { padding: 0; }
-    body.embed .prototype-state-switcher { display: none; }
+    body.embed .prototype-state-switcher,
+    body.embed .scene-state-bar { display: none; }
     body.embed .stage-inner {
       align-items: center;
       border: 0;
@@ -223,6 +224,48 @@
     }
     .coverage { color: #4d5fba; font-weight: 700; }
 
+    .scene-state-bar {
+      align-items: center;
+      background: rgb(250 250 248 / 96%);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      box-shadow: 0 7px 20px rgb(31 35 42 / 9%);
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+      left: 50%;
+      max-width: calc(100% - 32px);
+      padding: 5px;
+      position: absolute;
+      top: 12px;
+      transform: translateX(-50%);
+      z-index: 24;
+    }
+    .scene-state-bar .state-label {
+      color: var(--tertiary);
+      font-size: 8px;
+      font-weight: 750;
+      letter-spacing: .06em;
+      padding: 0 5px;
+      text-transform: uppercase;
+    }
+    .scene-state-bar button {
+      background: transparent;
+      border: 0;
+      border-radius: 7px;
+      color: var(--secondary);
+      font-size: 9px;
+      height: 26px;
+      padding: 0 8px;
+    }
+    .scene-state-bar button.active {
+      background: var(--surface);
+      box-shadow: 0 1px 4px rgb(31 35 42 / 12%);
+      color: #4052b4;
+      font-weight: 700;
+    }
+    .scene-state-bar .state-divider { background: var(--border); height: 18px; width: 1px; }
+
     /* Viewer shell */
     .viewer-window {
       background: var(--application);
@@ -316,6 +359,23 @@
       overflow: auto;
       padding: 12px 9px;
     }
+    .viewer-sidebar[data-mode="drop"] {
+      box-shadow: inset 0 0 0 2px var(--accent);
+    }
+    .viewer-sidebar[data-mode="collapsed"] {
+      overflow: hidden;
+      padding-left: 5px;
+      padding-right: 5px;
+    }
+    .viewer-sidebar[data-mode="collapsed"] .tree-label,
+    .viewer-sidebar[data-mode="collapsed"] .tree-row span:last-child { display: none; }
+    .viewer-sidebar[data-mode="collapsed"] .tree-row {
+      justify-content: center;
+      overflow: hidden;
+      padding: 0;
+      white-space: nowrap;
+    }
+    .viewer-sidebar[data-mode="collapsed"] .tree-row.child { font-size: 9px; }
     .tree-label {
       color: var(--tertiary);
       font-size: 10px;
@@ -425,6 +485,17 @@
       gap: 12px;
       grid-template-columns: repeat(4, minmax(0, 1fr));
     }
+    .image-grid[data-density="compact"] {
+      gap: 8px;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+    }
+    .image-grid[data-density="compact"] .image-stage { height: 96px; }
+    .image-grid[data-density="compact"] .image-meta { min-height: 28px; padding: 4px 6px; }
+    .image-grid[data-density="large"] {
+      gap: 16px;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+    .image-grid[data-density="large"] .image-stage { height: 228px; }
     .image-card {
       background: #fbfbfa;
       border: 1px solid #ececea;
@@ -435,6 +506,9 @@
       position: relative;
     }
     .image-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+    .image-card[data-keyboard-focus="true"] {
+      box-shadow: 0 0 0 3px var(--surface), 0 0 0 5px var(--accent);
+    }
     .image-stage {
       background: #f7f7f5;
       height: 154px;
@@ -493,6 +567,84 @@
       font-size: 10px;
       margin-top: 14px;
       padding: 11px 3px 3px;
+    }
+    .other-files-panel {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      margin-top: 12px;
+      overflow: hidden;
+    }
+    .other-files-head {
+      align-items: center;
+      background: #fafaf8;
+      display: flex;
+      font-size: 10px;
+      height: 34px;
+      justify-content: space-between;
+      padding: 0 11px;
+    }
+    .other-file-row {
+      align-items: center;
+      border-top: 1px solid #ececea;
+      display: grid;
+      font-size: 10px;
+      gap: 10px;
+      grid-template-columns: minmax(0, 1fr) auto auto;
+      min-height: 34px;
+      padding: 0 11px;
+    }
+    .other-file-row span:nth-child(2) { color: var(--secondary); }
+    .organization-drag-preview {
+      background: rgb(255 255 255 / 97%);
+      border: 1px solid var(--accent);
+      border-radius: 9px;
+      box-shadow: var(--shadow-popover);
+      font-size: 10px;
+      left: 46%;
+      padding: 9px 11px;
+      position: absolute;
+      top: 42%;
+      z-index: 19;
+    }
+    .tree-row[data-drop-target="valid"] {
+      background: var(--accent-soft);
+      box-shadow: inset 0 0 0 1px var(--accent);
+      color: #4052b4;
+    }
+    .structure-heading {
+      align-items: center;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      height: 42px;
+      justify-content: space-between;
+      padding: 0 16px;
+    }
+    .structure-heading strong { font-size: 13px; }
+    .structure-heading span { color: var(--secondary); font-size: 9px; }
+    .search-empty {
+      align-items: center;
+      color: var(--secondary);
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+      height: calc(100% - 40px);
+      justify-content: center;
+    }
+    .search-empty strong { color: var(--text); font-size: 14px; }
+    .paging-row {
+      align-items: center;
+      border-top: 1px solid var(--border);
+      display: flex;
+      font-size: 9px;
+      justify-content: space-between;
+      padding: 10px 16px;
+    }
+    .indexing-banner {
+      background: var(--accent-soft);
+      border-bottom: 1px solid #d9ddfb;
+      color: #4052b4;
+      font-size: 9px;
+      padding: 9px 16px;
     }
 
     /* Search */
@@ -981,6 +1133,14 @@
       openMenu: null,
       dialog: "destination",
       launch: "empty",
+      sidebar: "expanded",
+      structure: "root",
+      density: "standard",
+      selection: "none",
+      other: "collapsed",
+      search: "grouped",
+      filters: "zero",
+      menu: "view",
     };
 
     const embedParams = new URLSearchParams(location.hash.slice(1));
@@ -999,15 +1159,23 @@
       if (embedScreen === "dialogs" && ["destination", "rename", "trash", "close"].includes(embedState)) {
         state.dialog = embedState;
       }
+      const statePrefix = embedState?.split("-")[0];
+      if (statePrefix && Object.hasOwn(state, statePrefix)) {
+        state[statePrefix] = embedState.slice(statePrefix.length + 1);
+      }
     }
 
     function image(index, alt, className = "") {
       return `<img src="${images[index % images.length]}" alt="${alt}" class="${className}">`;
     }
 
-    function sidebar(selected = "A01", loading = false) {
+    function stateBar(groups) {
+      return `<div class="scene-state-bar" aria-label="样机状态">${groups.map(({ label, key, items }) => `<span class="state-label">${label}</span>${items.map(([value, text, id]) => `<button type="button" class="${state[key] === value ? "active" : ""}" data-state="${id ?? `${key}-${value}`}" data-state-group="${key}" data-state-value="${value}" aria-pressed="${state[key] === value}">${text}</button>`).join("")}`).join('<span class="state-divider"></span>')}</div>`;
+    }
+
+    function sidebar(selected = "A01", loading = false, mode = "expanded") {
       if (loading) {
-        return `<aside class="viewer-sidebar"><p class="tree-label">项目目录</p>${Array.from({ length: 10 }, () => '<div class="skeleton skeleton-row"></div>').join("")}</aside>`;
+        return `<aside class="viewer-sidebar" data-viewer-sidebar data-mode="${mode}"><p class="tree-label">项目目录</p>${Array.from({ length: 10 }, () => '<div class="skeleton skeleton-row"></div>').join("")}</aside>`;
       }
       const rows = [
         ["测试图", "42"],
@@ -1022,7 +1190,7 @@
         ["A04", "20", true],
         ["详情素材", "3"],
       ];
-      return `<aside class="viewer-sidebar"><p class="tree-label">项目目录</p>${rows.map(([label, count, child]) => `<div class="tree-row${child ? " child" : ""}${label === selected ? " selected" : ""}"><span>${label}</span><span>${count}</span></div>`).join("")}</aside>`;
+      return `<aside class="viewer-sidebar" data-viewer-sidebar data-mode="${mode}"><p class="tree-label">项目目录</p>${rows.map(([label, count, child]) => `<div class="tree-row${child ? " child" : ""}${label === selected ? " selected" : ""}"${mode === "drop" && label === "A03" ? ' data-drop-target="valid"' : ""}><span>${label}</span><span>${count}</span></div>`).join("")}</aside>`;
     }
 
     function menuMarkup(type) {
@@ -1049,9 +1217,11 @@
     function shell(content, options = {}) {
       const selected = options.selected ?? "A01";
       const toolbar = options.toolbar !== false;
+      const sidebarMode = options.sidebarMode ?? "expanded";
+      const sidebarWidth = sidebarMode === "collapsed" ? 52 : sidebarMode === "resized" ? 300 : 220;
       return `<div class="viewer-window">
-        <div class="viewer-shell">
-          <header class="project-head"><strong>${options.project ?? "测试图"}</strong><button type="button">收起</button></header>
+        <div class="viewer-shell" style="grid-template-columns:${sidebarWidth}px minmax(0,1fr)">
+          <header class="project-head"><strong>${sidebarMode === "collapsed" ? "测" : options.project ?? "测试图"}</strong><button type="button">${sidebarMode === "collapsed" ? "展开" : "收起"}</button></header>
           <header class="viewer-toolbar">
             ${toolbar ? `<label class="search-field"><input aria-label="搜索" placeholder="${options.search ?? "搜索名称、路径或文本"}"><kbd>⌘F</kbd></label>
               <button class="viewer-button${options.filterActive ? " active" : ""}" type="button" data-open="filter">筛选${options.filterActive ? " · 3" : ""}</button>
@@ -1059,16 +1229,16 @@
               <button class="viewer-button${state.openMenu === "more" ? " active" : ""}" type="button" data-open="more">更多</button>
               ${menuMarkup(state.openMenu)}` : ""}
           </header>
-          ${sidebar(selected, options.loading)}
+          ${sidebar(selected, options.loading, sidebarMode)}
           <section class="viewer-content">${content}</section>
         </div>
       </div>`;
     }
 
-    function imageCards(selectedCount = 1) {
+    function imageCards(selectedCount = 1, options = {}) {
       const labels = ["2C2A7469.JPG", "2C2A7536.JPG", "2C2A7494.JPG", "2C2A8388.JPG", "2C2A8406.JPG", "4-1205749.jpg", "4-1605917.jpg", "4I8A5307.jpg"];
       const states = ["待定", "保留", "", "", "", "淘汰", "", ""];
-      return labels.map((label, index) => `<article class="image-card${index < selectedCount ? " selected" : ""}" tabindex="0" aria-selected="${index < selectedCount}">
+      return labels.map((label, index) => `<article class="image-card${index < selectedCount ? " selected" : ""}" tabindex="0" aria-selected="${index < selectedCount}"${options.focusIndex === index ? ' data-keyboard-focus="true"' : ""}>
         <div class="image-stage">${image(index, label)}</div>
         <div class="image-meta"><strong>${label}</strong>${states[index] ? `<span class="status-tag ${states[index] === "保留" ? "keep" : states[index] === "淘汰" ? "reject" : "pending"}">${states[index]}</span>` : ""}</div>
       </article>`).join("");
@@ -1109,6 +1279,18 @@
       </div>`;
     }
 
+    function sidebarScreen() {
+      const states = stateBar([{
+        label: "侧栏",
+        key: "sidebar",
+        items: [["expanded", "展开"], ["resized", "加宽"], ["collapsed", "折叠"], ["drop", "拖放目标"]],
+      }]);
+      return shell(`${states}<div class="grid-wrap" style="padding-top:58px"><div class="image-grid" data-density="standard">${imageCards(1)}</div></div>`, {
+        sidebarMode: state.sidebar,
+        selected: state.sidebar === "drop" ? "A03" : "A01",
+      });
+    }
+
     function folderScreen() {
       const rows = [
         ["A01", "衣服/A01", "30 张图片 · 0 个其它文件", [0, 1, 2, 3]],
@@ -1116,17 +1298,93 @@
         ["A03", "衣服/A03", "9 张图片 · 0 个其它文件", [1, 3, 5, 7]],
       ];
       const bands = rows.map(([id, path, count, indexes]) => `<section class="folder-band"><div class="folder-identity"><strong>${id}</strong><span>${path}</span><span>${count}</span><span class="folder-state">文件夹：未标记</span></div><div class="filmstrip">${indexes.map((index) => `<figure>${image(index, `${id} 图片`)}</figure>`).join("")}</div></section>`).join("");
-      return shell(bands, { selected: "测试图" });
+      const states = stateBar([{
+        label: "结构",
+        key: "structure",
+        items: [["root", "项目根"], ["category", "分类"], ["content", "内容文件夹"], ["aggregate", "后代聚合"], ["bands", "连续文件夹带"]],
+      }]);
+      let content = "";
+      if (state.structure === "category") {
+        content = `<div class="structure-heading"><strong>衣服</strong><span>5 个内容文件夹 · 89 张图片</span></div>${bands.slice(0, bands.lastIndexOf('<section'))}`;
+      } else if (state.structure === "content") {
+        content = `<div class="structure-heading"><strong>A01</strong><span>衣服/A01 · 30 张图片</span></div><div class="grid-wrap"><div class="image-grid" data-density="standard">${imageCards(0)}</div></div>`;
+      } else if (state.structure === "aggregate") {
+        content = `<div class="structure-heading"><strong>衣服 · 全部后代文件</strong><span>89 张图片 · 来自 5 个文件夹</span></div><div class="grid-wrap"><div class="image-grid" data-density="compact">${imageCards(0)}</div></div>`;
+      } else {
+        content = `${state.structure === "root" ? '<div class="structure-heading"><strong>测试图</strong><span>2 个分类 · 17 个文件夹 · 247 张图片</span></div>' : ""}${bands}`;
+      }
+      return shell(`${states}<div data-structure-state="${state.structure}" style="padding-top:52px">${content}</div>`, { selected: state.structure === "root" ? "测试图" : state.structure === "category" || state.structure === "aggregate" ? "衣服" : "A01" });
     }
 
     function browserScreen() {
-      return shell(`<div class="grid-wrap"><div class="image-grid">${imageCards(1)}</div><div class="other-files">其它文件 · 3 · 展开</div><div class="selection-summary"><strong>已选择 1 项</strong><span>右键打开圆盘菜单 · Esc 取消选择</span></div></div>`);
+      const states = stateBar([
+        { label: "密度", key: "density", items: [["compact", "紧凑"], ["standard", "标准"], ["large", "大图"]] },
+        { label: "选择", key: "selection", items: [["none", "无"], ["single", "单选"], ["multiple", "多选"], ["focus", "键盘焦点"]] },
+      ]);
+      const selectedCount = state.selection === "none" ? 0 : state.selection === "multiple" ? 3 : 1;
+      const focusIndex = state.selection === "focus" ? 0 : undefined;
+      return shell(`${states}<div class="grid-wrap" style="padding-top:58px"><div class="image-grid" data-thumbnail-grid data-density="${state.density}">${imageCards(selectedCount, { focusIndex })}</div><div class="other-files">其它文件 · 3 · 折叠</div>${selectedCount ? `<div class="selection-summary"><strong>已选择 ${selectedCount} 项</strong><span>右键打开圆盘菜单 · Esc 取消选择</span></div>` : ""}</div>`);
+    }
+
+    function otherFilesScreen() {
+      const states = stateBar([{
+        label: "其它文件",
+        key: "other",
+        items: [["collapsed", "折叠"], ["expanded", "展开"], ["drag", "整理拖拽", "organization-drag"]],
+      }]);
+      const expanded = state.other !== "collapsed";
+      const panel = `<section class="other-files-panel" data-other-files data-mode="${expanded ? "expanded" : "collapsed"}"><header class="other-files-head"><strong>其它文件 · 3</strong><span>${expanded ? "收起" : "展开"}</span></header>${expanded ? '<div class="other-file-row"><strong>产品说明.md</strong><span>18 KB</span><span>Markdown</span></div><div class="other-file-row"><strong>色卡.txt</strong><span>4 KB</span><span>文本</span></div><div class="other-file-row"><strong>交付清单.xlsx</strong><span>26 KB</span><span>不支持预览</span></div>' : ""}</section>`;
+      const drag = state.other === "drag" ? '<div class="organization-drag-preview" data-drag-preview>移动 3 个文件到 A03</div>' : "";
+      return shell(`${states}<div class="grid-wrap" style="padding-top:58px"><div class="image-grid" data-density="compact">${imageCards(3)}</div>${panel}</div>${drag}`, {
+        selected: state.other === "drag" ? "A03" : "A01",
+        sidebarMode: state.other === "drag" ? "drop" : "expanded",
+      });
     }
 
     function searchScreen() {
-      const results = Array.from({ length: 7 }, (_, index) => `<div class="result-row${index === 0 ? " selected" : ""}"><span class="result-thumb">${image(index, "搜索结果缩略图")}</span><div class="result-copy"><strong>2C2A${7469 + index * 11}.JPG</strong><span>衣服/A0${(index % 3) + 1}/2C2A${7469 + index * 11}.JPG</span></div><div class="result-snippet">文件名与路径匹配“<mark>连体衣</mark>”</div>${index < 2 ? '<span class="status-tag pending">待定</span>' : "<span></span>"}</div>`).join("");
-      const panel = `<section class="filter-panel"><div class="panel-title"><strong>筛选</strong><button type="button">关闭</button></div><div class="filter-grid"><div class="field"><label>搜索范围</label><select><option>整个项目</option></select></div><div class="field"><label>排序</label><select><option>文件名 · 升序</option></select></div><div class="field" style="grid-column:1/-1"><label>文件类型</label><div class="filter-options"><button class="chip active">图片</button><button class="chip">Markdown</button><button class="chip">文本</button><button class="chip">其它</button></div></div><div class="field" style="grid-column:1/-1"><label>审阅状态</label><div class="filter-options"><button class="chip active">保留</button><button class="chip active">待定</button><button class="chip">淘汰</button><button class="chip">未标记</button></div></div><button class="menu-row" style="grid-column:1/-1"><span>高级条件</span><span>展开</span></button></div><div class="filter-footer"><button class="menu-row" style="width:auto">清除全部</button><button class="viewer-button primary">应用筛选</button></div></section>`;
-      return shell(`<div class="search-summary"><strong>“连体衣” · 42 个结果</strong><span>索引已完成</span></div><div class="result-group"><span>衣服 / A01</span><span>18</span></div>${results}${panel}`, { search: "连体衣", filterActive: true });
+      const states = stateBar([{
+        label: "结果",
+        key: "search",
+        items: [["grouped", "分组"], ["flat", "展平"], ["indexing", "索引中"], ["paging", "分页"], ["empty", "空结果"]],
+      }]);
+      const results = Array.from({ length: state.search === "paging" ? 5 : 7 }, (_, index) => `<div class="result-row${index === 0 ? " selected" : ""}"><span class="result-thumb">${image(index, "搜索结果缩略图")}</span><div class="result-copy"><strong>2C2A${7469 + index * 11}.JPG</strong><span>衣服/A0${(index % 3) + 1}/2C2A${7469 + index * 11}.JPG</span></div><div class="result-snippet">文件名与路径匹配“<mark>连体衣</mark>”</div>${index < 2 ? '<span class="status-tag pending">待定</span>' : "<span></span>"}</div>`).join("");
+      let body = "";
+      if (state.search === "empty") {
+        body = '<div class="search-empty"><strong>没有找到结果</strong><span>尝试更短的关键词，或清除筛选条件。</span><button class="viewer-button">清除筛选</button></div>';
+      } else {
+        const indexing = state.search === "indexing" ? '<div class="indexing-banner">正在建立内容索引 · 已完成 68% · 当前结果可能不完整</div>' : "";
+        const grouped = state.search === "grouped" || state.search === "indexing" ? '<div class="result-group"><span>衣服 / A01</span><span>18</span></div>' : "";
+        const paging = state.search === "paging" ? '<div class="paging-row"><span>第 2 页 · 21–40 / 42</span><span><button class="viewer-button">上一页</button> <button class="viewer-button">下一页</button></span></div>' : "";
+        body = `${indexing}${grouped}${results}${paging}`;
+      }
+      return shell(`${states}<div data-search-state="${state.search}" style="padding-top:52px"><div class="search-summary"><strong>“连体衣” · ${state.search === "empty" ? 0 : 42} 个结果</strong><span>${state.search === "indexing" ? "索引进行中" : "索引已完成"}</span></div>${body}</div>`, { search: "连体衣" });
+    }
+
+    function filtersScreen() {
+      const states = stateBar([{
+        label: "筛选",
+        key: "filters",
+        items: [["zero", "无条件"], ["one", "单条件"], ["multiple", "多条件"], ["advanced", "高级"]],
+      }]);
+      const activeTypes = state.filters === "zero" ? [] : state.filters === "one" ? ["图片"] : ["图片", "Markdown"];
+      const activeReviews = state.filters === "multiple" || state.filters === "advanced" ? ["保留", "待定"] : [];
+      const panel = `<section class="filter-panel" data-filter-state="${state.filters}" style="top:58px"><div class="panel-title"><strong>筛选</strong><span class="status-tag ${state.filters === "zero" ? "pending" : "keep"}">${state.filters === "zero" ? "无条件" : `${activeTypes.length + activeReviews.length} 个条件`}</span></div><div class="filter-grid"><div class="field"><label>搜索范围</label><select><option>整个项目</option></select></div><div class="field"><label>排序</label><select><option>文件名 · 升序</option></select></div><div class="field" style="grid-column:1/-1"><label>文件类型</label><div class="filter-options">${["图片", "Markdown", "文本", "其它"].map((label) => `<button class="chip${activeTypes.includes(label) ? " active" : ""}">${label}</button>`).join("")}</div></div><div class="field" style="grid-column:1/-1"><label>审阅状态</label><div class="filter-options">${["保留", "待定", "淘汰", "未标记"].map((label) => `<button class="chip${activeReviews.includes(label) ? " active" : ""}">${label}</button>`).join("")}</div></div>${state.filters === "advanced" ? '<div class="field" style="grid-column:1/-1"><label>高级条件</label><div class="conflict-row"><span>文件大小 大于 2 MB</span><button class="viewer-button">移除</button></div><div class="conflict-row"><span>修改日期 在最近 30 天</span><button class="viewer-button">移除</button></div><button class="menu-row"><span>添加条件</span><span></span></button></div>' : ""}</div><div class="filter-footer"><button class="menu-row" style="width:auto">清除全部</button><button class="viewer-button primary">应用筛选</button></div></section>`;
+      return shell(`${states}<div class="grid-wrap" style="padding-top:58px"><div class="image-grid" data-density="compact">${imageCards(0)}</div></div>${panel}`, { filterActive: state.filters !== "zero" });
+    }
+
+    function menusScreen() {
+      const states = stateBar([{
+        label: "菜单",
+        key: "menu",
+        items: [["view", "视图"], ["more", "更多"], ["readonly", "只读"]],
+      }]);
+      const view = state.menu === "view";
+      const readonly = state.menu === "readonly";
+      const rows = view
+        ? '<button class="menu-row selected" role="menuitem"><span>按文件夹分组</span><span>当前</span></button><button class="menu-row" role="menuitem"><span>显示全部后代文件</span><span></span></button><div class="menu-divider"></div><button class="menu-row" role="menuitem"><span>紧凑缩略图</span><span></span></button><button class="menu-row selected" role="menuitem"><span>标准缩略图</span><span>当前</span></button><button class="menu-row" role="menuitem"><span>大缩略图</span><span></span></button>'
+        : `<button class="menu-row" role="menuitem"${readonly ? ' aria-disabled="true"' : ""}><span>重新扫描项目</span><span></span></button><button class="menu-row" role="menuitem"><span>在文件管理器中显示</span><span></span></button><button class="menu-row" role="menuitem"><span>设置</span><span></span></button><div class="menu-divider"></div><button class="menu-row danger" role="menuitem"${readonly ? ' aria-disabled="true"' : ""}><span>关闭项目</span><span></span></button>`;
+      const menuKind = view ? "view" : state.menu === "more" ? "more" : "readonly";
+      return shell(`${states}${readonly ? '<div class="readonly-banner" style="margin-top:52px"><span><strong>只读模式</strong> · 修改命令已停用。</span><span>重新选择目录</span></div>' : ""}<div class="grid-wrap" style="padding-top:${readonly ? 14 : 58}px"><div class="image-grid" data-density="compact">${imageCards(0)}</div></div><div class="popover" role="menu" data-menu-kind="${menuKind}" style="top:58px">${rows}</div>`);
     }
 
     function previewScreen() {
@@ -1183,13 +1441,13 @@
     const renderers = {
       overview: overviewScreen,
       system: systemScreen,
-      sidebar: coveragePlaceholderScreen,
+      sidebar: sidebarScreen,
       folder: folderScreen,
       browser: browserScreen,
-      otherFiles: coveragePlaceholderScreen,
+      otherFiles: otherFilesScreen,
       search: searchScreen,
-      filters: coveragePlaceholderScreen,
-      menus: coveragePlaceholderScreen,
+      filters: filtersScreen,
+      menus: menusScreen,
       preview: previewScreen,
       compare: compareScreen,
       text: textScreen,
@@ -1268,6 +1526,12 @@
       const launch = event.target.closest("[data-launch]");
       if (launch) {
         state.launch = launch.dataset.launch;
+        render();
+        return;
+      }
+      const sceneState = event.target.closest("[data-state]");
+      if (sceneState) {
+        state[sceneState.dataset.stateGroup] = sceneState.dataset.stateValue;
         render();
         return;
       }

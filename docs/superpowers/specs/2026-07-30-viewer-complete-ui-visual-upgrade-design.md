@@ -1,179 +1,124 @@
 # Viewer Complete UI Visual Upgrade Design
 
-Date: 2026-07-30  
-Status: Approved
+> 状态：合并草案，等待产品负责人书面审阅
+>
+> 草案日期：2026-07-31
+>
+> 适用平台：macOS 当前版本、Windows 后续版本
+>
+> 变更性质：仅升级 Viewer 自有界面的视觉与呈现结构，不改变既定业务逻辑
 
-## Summary
+## 1. 文档目的
 
-Viewer will receive a complete presentation-layer redesign that makes the
-desktop application feel quiet, precise, compact, and intentionally designed
-without materially changing its established interaction model.
+本文件把 Viewer UI 视觉升级多轮讨论、已确认视觉方向、早期圆盘菜单设计和后续视觉修正合并为一份可实施、可验收的规范。
 
-The approved direction is a light, predominantly white interface with
-slightly warm neutral grays, restrained indigo accents, compact information
-density, and very limited use of shadow. The same internal visual system will
-be used by the current macOS application and the future Windows application.
-Only operating-system-owned chrome and workflows retain platform-specific
-appearance.
+本文件通过书面审阅后，将成为 Viewer 自有界面的唯一视觉规范。与它冲突的旧视觉描述、修正附录、实施示例和当前代码都不再具有视觉决策权。
 
-This design was approved through ten visual coverage sections:
+本文件不取代以下内容：
 
-1. application shell, workspace density, grouping, and toolbar;
-2. content browsing, selection, drag feedback, and other-file access;
-3. search, filtering, result presentation, and pagination;
-4. single-image preview and multi-image comparison;
-5. text and Markdown preview, file information, and unsupported files;
-6. radial menus, secondary actions, and conventional context-menu fallback;
-7. simple and complex dialogs, including conflicts and batch rename;
-8. background tasks, operation results, notices, errors, and read-only feedback;
-9. empty and boundary states;
-10. project opening, scanning, indexing, thumbnail loading, and recovery.
+- 文件操作安全协议；
+- 搜索、筛选、排序和分页语义；
+- 图片解码、缓存、内存预算和虚拟化规则；
+- 项目只读、权限、恢复和事务行为；
+- 预览、对比、标记、重命名、复制、移动和废纸篓操作的业务规则；
+- macOS 与 Windows 的系统自有窗口、文件选择器、权限界面和文件系统术语。
 
-The final coverage audit found no unplanned presentation module in the current
-application. Two review findings were incorporated after the first complete
-pass: the radial menu retains its established segmented-ring character, and
-the no-project screen was reduced to the minimum information required to
-begin.
+如果旧功能规范与本文件发生冲突：
 
-## Relationship to Earlier Designs
+1. 业务行为由对应功能规范决定；
+2. Viewer 自有界面的视觉、布局、文案呈现和控件组合由本文件决定；
+3. 无法明确区分时停止实施并请产品负责人确认，不得自行选择。
 
-This design preserves the functional behavior defined by earlier Viewer
-designs, including proportional thumbnails, folder filmstrips, preview modes,
-comparison layouts, selection, search, file operations, radial menus, settings,
-and read-only behavior.
+## 2. 决策追踪
 
-Where an earlier specification defines a conflicting color, border, radius,
-shadow, control arrangement, toolbar label, or other presentation detail, this
-document supersedes that visual detail. It does not supersede the earlier
-functional requirements, data flow, safety behavior, or accessibility
-semantics.
-
-Viewer remains intentionally light in this redesign even when the operating
-system uses a dark appearance. A separate dark theme requires its own future
-design and is not inferred by inverting these tokens.
-
-## Problem
-
-Viewer's current interface was assembled incrementally while its core
-features and workflows were being established. The result is functionally
-capable but visually uneven:
-
-- project identity, search, settings, view controls, and project actions compete
-  in one toolbar without a clear hierarchy;
-- some screens repeat the current path or title even though the folder sidebar
-  already communicates location;
-- large panels and numerous bordered controls make the interface feel heavier
-  than its content;
-- folder rows, preview modes, comparison panes, dialogs, and feedback states
-  do not yet share one complete visual system;
-- shadows, borders, grays, active colors, and spacing are not governed by one
-  set of application-wide tokens;
-- macOS-specific styling would risk creating a visibly different future
-  Windows version.
-
-The redesign must improve perceived quality without disrupting users who
-already understand Viewer.
-
-## Goals
-
-- Make the interface feel deliberate, minimal, and premium while keeping it
-  efficient for large image projects.
-- Use one visual system across browsing, search, preview, comparison, settings,
-  dialogs, and feedback states.
-- Keep the main application white and neutral, with content as the strongest
-  visual element.
-- Preserve current workflows, keyboard behavior, selection, preview,
-  comparison, file operations, and state recovery.
-- Reduce persistent toolbar controls to the fewest useful groups.
-- Keep compact information density without sacrificing focus visibility or
-  click targets.
-- Establish concrete reusable tokens for implementation and future Windows
-  work.
-- Make local errors and low-frequency states visually calm and recoverable.
-
-## Non-goals
-
-- Redesigning Viewer workflows, navigation structure, or project data model.
-- Changing search semantics, filter capability, sort behavior, result paging,
-  selection rules, or comparison limits.
-- Changing proportional thumbnail geometry, virtualization, image loading,
-  image safety budgets, or file-operation semantics.
-- Adding a user-selectable theme or a dark theme.
-- Replacing native window controls, file pickers, permission settings, macOS
-  Trash, or Windows Recycle Bin interactions.
-- Making macOS and Windows window chrome look identical.
-- Adding decorative illustrations, gradients, glass effects, or a new icon
-  style solely for visual novelty.
-- Building the future Windows application in this iteration.
-
-## Design Principles
-
-### Content is visually dominant
-
-Large neutral surfaces stay quiet. Product images, filenames, selection, and
-review state carry the meaning. Chrome does not compete through dark fills,
-heavy borders, or repeated headings.
-
-### Compact does not mean cramped
-
-Toolbar controls use compact visual heights, information rows remain dense,
-and whitespace is spent at structural boundaries rather than around every
-item. Interactive targets and keyboard focus remain comfortably operable.
-
-### Depth is earned
-
-Background changes and one-pixel separators establish most hierarchy.
-Shadows are reserved for interfaces that physically float above another
-surface: popovers, menus, dialogs, and the image navigation control.
-
-### Indigo is a state color
-
-The approved accent `#5869CF` is used for selection, keyboard focus, active
-controls, and low-frequency brand recognition. Review outcomes, warnings,
-successes, and destructive actions retain their own semantic colors.
-
-### Cross-platform consistency stops at system ownership
-
-Viewer-owned surfaces, spacing, type scale, controls, and feedback are shared
-between macOS and Windows. Window buttons, system dialogs, filesystem
-terminology, permission UI, and platform shortcuts follow each operating
-system.
-
-## Visual Foundation
-
-### Global color tokens
-
-The implementation will introduce application-wide semantic variables and
-derive preview-specific variables from them instead of maintaining a separate
-preview palette.
-
-| Token role | Value | Use |
+| 聊天中的明确确认 | 最终设计规则 | 主要验收证据 |
 | --- | --- | --- |
-| Canvas | `#F3F3F1` | Outer preview canvases and neutral framing |
-| Application | `#FAFAF8` | Main application background |
-| Surface | `#FFFFFF` | Toolbars, content surfaces, menus, dialogs |
-| Sidebar | `#EFF0EF` | Folder navigation and identity column |
-| Soft surface | `#F5F5F3` | Search field, quiet controls, chips |
-| Border | `#DEDFDD` | One-pixel separators and ordinary control borders |
-| Primary text | `#23262C` | Titles and primary content |
-| Secondary text | `#6B7077` | Descriptions and metadata |
-| Tertiary text | `#8A8E94` | Placeholders and low-priority labels |
-| Accent | `#5869CF` | Selection, focus, active state |
-| Accent soft | `#ECEEFF` | Selected navigation and active controls |
-| Success | `#397158` | Completed or successful states |
-| Success soft | `#EFF7F2` | Success background |
-| Warning | `#76591D` | Read-only and warning text |
-| Warning soft | `#FAF6EB` | Read-only and warning background |
-| Danger | `#B7463F` | Destructive action and error emphasis |
-| Danger soft | `#FFF7F6` | Error background |
+| “macOS 和 Windows 双版本……不会觉得风格有很大的割裂感” | Viewer 自有界面共用一套白色、克制、跨平台视觉系统；仅系统自有界面保留平台差异 | macOS 当前构建与未来 Windows 构建使用同一语义 token |
+| “软件整体以白色为主，整个界面简约高级” | 主界面、菜单、预览、对比、对话框和反馈表面均以白色与暖灰为主；靛蓝只表达状态和低频品牌识别 | 全部参考画面和同状态实现截图 |
+| 视觉密度选择 `A / 紧凑高效` | 主工作区使用 40 px 顶栏；目录文字行盒为 18 px、完整目录行高 24 px；空间优先留给内容 | `visual-density-05-all-revised` 与原生同状态截图 |
+| 红框中的重复标题与空白区域“可以去掉，有点多余” | 删除内容区重复项目标题、当前路径标题和空白标题带；位置上下文由侧栏承担 | 项目总览与内容文件夹截图 |
+| “界面上方的一排按钮需要规划一下，有些按钮需要去掉。尽量保持简洁” | 搜索框后只常驻 `筛选`、`视图`、`更多`；设置、结果布局和项目操作进入对应菜单 | 1024×720 与 1440×900 顶栏截图 |
+| “圆盘菜单的设计要参考之前的那种感觉” | 圆盘是唯一可见的文件操作菜单；普通右键、Control-click、长按/滑动和键盘菜单键都打开同一圆盘 | 圆盘点击、手势、二级扇区、键盘状态截图 |
+| 图片选中描边不能框住文件名 | 选中框只画在缩略图内部，文件名、拖拽手柄和卡片外框不获得选中描边或阴影 | 单选、多选、键盘焦点截图 |
+| 顶部弹出菜单应保持简洁 | `视图` 与 `更多` 使用无静态边框、左对齐的整行命令；弹层本身只有一个边框与一个阴影 | View/More 打开状态截图 |
+| “（未打开项目）这个初始界面可以设计的再简洁一些” | 未打开项目的静止状态只有 `Viewer`、一句引导和一个主按钮；不存在品牌卡、格式清单、最近项目或永久拖放框 | 未打开项目截图 |
+| 各模块参考预览经连续 `A / B / 批准` 确认 | 第 19 节列出的参考族共同定义完整视觉覆盖；后续明确修正优先于较早参考图 | 每个参考族与同状态原生截图联合对照 |
+| 不大幅改变已有交互逻辑 | 视觉升级不得改变选择、快捷键、文件操作、预览、对比、权限、恢复和安全确认的业务语义 | 自动化回归与人工交互矩阵 |
 
-Review-state colors remain semantically distinct from the indigo accent.
-Unmarked, keep, pending, reject, and favorite states must not be flattened into
-one generic selected color.
+后续任何视觉决定必须追加到本表，或在本文件对应章节中给出可追溯的替代说明。不能只在聊天、截图批注、代码或测试里保存最终决定。
 
-### Typography
+## 3. 目标与非目标
 
-The interface font stack is:
+### 3.1 目标
+
+- 让 Viewer 看起来简洁、安静、精确且具有完整设计感。
+- 让图片和文件内容成为界面中最强的视觉元素。
+- 在高信息密度与舒适操作之间取得平衡。
+- 让 macOS 用户和未来 Windows 用户感受到同一产品，而不是两套拼接风格。
+- 让每个视觉模块都有精确规则、状态覆盖和验收方式。
+- 保留现有用户已经掌握的交互逻辑、快捷键和安全边界。
+
+### 3.2 非目标
+
+- 不开发 Windows 版本。
+- 不新增暗色主题、主题编辑器或皮肤系统。
+- 本轮不跟随系统深色外观自动反转 Viewer 自有界面；独立暗色方案必须重新设计和审阅。
+- 不更改导航结构、数据模型、搜索语义、文件操作协议或比较数量限制。
+- 不添加装饰插画、渐变、玻璃效果、夸张动效或仅为新奇而引入的新图标风格。
+- 不把原生窗口按钮、系统文件选择器或权限设置伪装成跨平台自绘界面。
+- 不为了视觉升级引入新的组件库、主题框架或运行时依赖。
+
+## 4. 视觉原则
+
+### 4.1 内容优先
+
+界面结构使用白色、暖灰和细分隔线。产品图片、文件名、选中状态和审阅状态承载主要信息。工具栏和菜单不能通过深色填充、重边框或重复标题与内容竞争。
+
+### 4.2 紧凑但不拥挤
+
+持续显示的控件保持少量、稳定和易扫读。空间优先用于结构层级，而不是给每个元素包裹独立卡片。除已批准的 24 px 连续目录行外，可点击目标不得因视觉紧凑而低于 32 px。
+
+### 4.3 深度必须有原因
+
+- 普通内容、侧栏行、文件夹带和缩略图卡片不使用浮动阴影。
+- 只有真正覆盖在其他内容之上的菜单、弹层、对话框、任务表面、检查器和浮动导航使用阴影。
+- 层级优先通过背景差异和 1 px 分隔线表达。
+
+### 4.4 靛蓝只表达状态
+
+`#5869CF` 用于选中、键盘焦点、激活控件和低频品牌识别。成功、警告、错误、危险和审阅结果使用各自的语义颜色，不得全部染成靛蓝。
+
+### 4.5 平台一致性止于系统边界
+
+Viewer 自有的布局、字号、间距、控件和反馈保持一致。macOS 使用 `⌘`、废纸篓和系统权限术语；Windows 使用 `Ctrl`、回收站和对应权限术语。系统窗口装饰保持原生。
+
+## 5. 视觉基础
+
+### 5.1 色彩 token
+
+| 角色 | 值 | 用途 |
+| --- | --- | --- |
+| Canvas | `#F3F3F1` | 外层画布与中性框架 |
+| Application | `#FAFAF8` | 主应用背景 |
+| Surface | `#FFFFFF` | 工具栏、内容、菜单与对话框 |
+| Sidebar | `#EFF0EF` | 文件夹导航与项目标识列 |
+| Soft surface | `#F5F5F3` | 搜索框、安静控件、悬停表面 |
+| Border | `#DEDFDD` | 普通 1 px 分隔线 |
+| Primary text | `#23262C` | 标题与主内容 |
+| Secondary text | `#6B7077` | 描述与元数据 |
+| Tertiary text | `#8A8E94` | 占位符与低优先级文字 |
+| Accent | `#5869CF` | 选中、焦点与激活 |
+| Accent soft | `#ECEEFF` | 选中导航和激活背景 |
+| Success | `#397158` | 成功状态 |
+| Success soft | `#EFF7F2` | 成功背景 |
+| Warning | `#76591D` | 只读与警告 |
+| Warning soft | `#FAF6EB` | 只读与警告背景 |
+| Danger | `#B7463F` | 破坏性操作与错误 |
+| Danger soft | `#FFF7F6` | 错误背景 |
+
+审阅状态、收藏、未标记、保留、待定和淘汰保持彼此独立，不得用通用选中色替代。
+
+### 5.2 字体
 
 ```css
 font-family:
@@ -185,758 +130,570 @@ font-family:
   sans-serif;
 ```
 
-Inter provides consistent Latin letters and numeric metrics. Chinese text uses
-the high-quality platform font so glyph rendering remains native and clear.
-Viewer must not depend on the macOS-only San Francisco font for geometry.
-
-The approved type scale is:
-
-| Role | Size | Weight |
+| 角色 | 字号 | 字重 |
 | --- | ---: | ---: |
-| Page or major view title | 20 px | 700 |
-| Section title | 14 px | 650 |
-| Body and primary row content | 13 px | 400–500 |
-| Caption, metadata, and secondary control text | 11 px | 500 |
+| 页面或主要视图标题 | 20 px | 700 |
+| 分区标题 | 14 px | 650 |
+| 正文与主行内容 | 13 px | 400–500 |
+| 说明、元数据和次要控件 | 11 px | 500 |
 
-Large folder identifiers may use a stronger weight but stay within the same
-family. Letter spacing remains neutral except for small uppercase system labels.
+中文优先使用平台字体。任何布局都不能只依赖 macOS San Francisco 的字宽。
 
-### Spacing, radii, and sizing
+### 5.3 间距、圆角和控件尺寸
 
-All new spacing uses a 4 px base grid:
+- 基础间距：`4 / 8 / 12 / 16 / 24 / 32 px`。
+- 小标签和紧凑行圆角：6 px。
+- 按钮、输入框和紧凑控件圆角：8 px。
+- 弹层圆角：12 px。
+- 对话框圆角：14 px。
+- 只有语义标签、计数和浮动选择摘要使用全圆角。
+- 主工作区顶栏：40 px。
+- 预览、对比和文本预览工具栏：52 px。
+- 目录文字行盒：18 px；包含垂直留白后的完整目录行：24 px。
+- 普通工具栏控件视觉高度：28–32 px。
+- 主操作按钮：34–36 px。
+- 最小有效点击目标：32 px；连续侧栏目录行按已批准的 24 px 密度执行。
 
-```text
-4, 8, 12, 16, 24, 32
-```
+### 5.4 边框和阴影
 
-Approved radii are:
+- 普通结构使用 1 px `Border`。
+- 弹层阴影约为 `0 18px 48px rgb(31 35 42 / 17%)`。
+- 对话框阴影约为 `0 22px 60px rgb(31 35 42 / 19%)`。
+- 预览图片允许使用克制的图片专属阴影，使白色图片边缘与画布分离。
+- 选中图片不使用整个卡片的阴影。
 
-- 6 px for rows and small labels;
-- 8 px for buttons, inputs, and compact controls;
-- 12 px for popovers and floating panels;
-- 14 px for dialogs;
-- full pill radius only for compact semantic tags or counts.
+## 6. 应用框架
 
-Compact toolbar controls render at 28–32 px visual height. The effective pointer
-target is at least 32 px. Larger primary actions may use 34–36 px height.
+### 6.1 两列对齐
 
-### Borders and shadows
+顶栏与主体共享相同的两列：
 
-- Ordinary structure uses a 1 px neutral border or separator.
-- Selected content uses a one-pixel indigo border plus, where necessary, a soft
-  two-pixel outer ring.
-- Folder rows, image bands, sidebar rows, and ordinary content cards do not use
-  shadows.
-- Popovers use one restrained shadow approximately equivalent to
-  `0 18px 48px rgb(31 35 42 / 17%)`.
-- Dialogs may use a slightly deeper shadow approximately equivalent to
-  `0 22px 60px rgb(31 35 42 / 19%)`.
-- Preview images may use a restrained image-only shadow to separate white
-  source pixels from the canvas.
+- 左列显示项目名称并与侧栏宽度同步；
+- 右列从内容区边界开始显示搜索和工作区操作。
 
-## Application Shell
+侧栏调整宽度或折叠时，顶栏左列同步变化。项目名称只出现一次。
 
-### Column-aligned header
+### 6.2 侧栏
 
-The top header is divided according to the same two columns as the body:
+- 背景使用 `Sidebar`，右侧只有一条 1 px 分隔线。
+- 普通行高 24 px；文字行盒为 18 px。
+- 选中行使用 `Accent soft`、靛蓝文字和 2 px 内嵌左侧指示线。
+- 分组标签使用第三层文字，不增加额外卡片或强边框。
+- 保留折叠、宽度调整、键盘导航、拖放目标、标记和选择行为。
 
-- the project name anchors the folder-sidebar column;
-- search and global workspace actions begin at the content-column boundary.
+### 6.3 删除重复标题带
 
-When the user resizes the existing sidebar between its current supported
-limits, the project identity column follows that width. When the sidebar is
-collapsed, the header follows the collapsed width. This alignment is visual;
-sidebar resize, collapse, selection, and project behavior do not change.
+内容区不再显示：
 
-The project name is shown once. It is not repeated as a large workspace title.
+- 第二个项目标题；
+- 重复的当前路径标题；
+- 仅为放置 `显示全部后代文件` 而存在的空白横条。
 
-### Sidebar
+当前上下文由侧栏表达。`显示全部后代文件` 移入 `视图`，仅在适用状态出现。聚合状态可以显示一枚小型状态标签，但不能重新形成全宽标题带。
 
-The sidebar uses `#EFF0EF`, one right separator, and compact 24–28 px rows.
-Selected navigation uses `#ECEEFF`, indigo text, and a two-pixel inset leading
-indicator. Group labels use tertiary text rather than stronger borders.
+### 6.4 文件夹总览
 
-Folder hierarchy, drag targets, resizing, collapse, keyboard navigation,
-markers, and selection semantics remain unchanged.
+- 每个文件夹占据一条连续横向安静带。
+- 左侧标识与元数据使用浅中性表面。
+- 图片内容从标识区域右侧直接开始。
+- 行之间使用细分隔线。
+- 文件夹行不表现为悬浮卡片，不使用独立阴影。
+- 保留比例缩略图和横向滚动。
 
-### Removed duplicate workspace heading
+## 7. 顶部工具栏
 
-The independent content heading and blank band previously shown above folder
-overview rows are removed. The sidebar is the source of current-location
-context.
+### 7.1 常驻控件
 
-The existing `显示全部后代文件` capability is not removed. It moves into the
-contextual `视图` menu and appears only where descendant aggregation is
-available. When aggregation is active, a small in-content state label may
-remain; it must not recreate the removed full-width heading band.
+打开项目后，右列始终按以下顺序显示：
 
-### Folder overview rows
+1. 可扩展搜索框；
+2. `筛选`；
+3. `视图`；
+4. `更多`。
 
-Folder overview uses the approved “quiet bands” treatment:
+不得常驻显示独立设置、项目菜单、结果视图、全选、后代文件、标记或文件操作按钮。
 
-- each folder occupies one contiguous horizontal band;
-- the identity and metadata area uses a pale neutral surface;
-- image content flows directly beside it;
-- rows are divided by hairline separators;
-- rows do not float as cards and do not use individual shadows;
-- proportional image geometry and current horizontal scrolling remain
-  unchanged.
+### 7.2 搜索框
 
-This treatment preserves high scanning density while clearly separating folder
-identity from image content.
+- 占据其余可用宽度。
+- 使用 `Soft surface`、10 px 圆角和透明静止边框。
+- 占位文字使用第三层文字。
+- `⌘F` 或 `Ctrl+F` 提示安静显示。
+- 获得焦点时使用统一 2 px 焦点环，不改变控件尺寸。
 
-## Content Browsing and Selection
+### 7.3 筛选
 
-### Content-folder layout
+- 标签固定为 `筛选`。
+- 激活条件数量显示为小型靛蓝计数，不包含排序和作用域。
+- 弹层保持锚定，不变成侧栏或新页面。
+- 正常桌面宽度约 560–590 px，并受可用视口约束。
+- 顺序为：标题与关闭、范围与排序、常用筛选、折叠高级条件、已启用条件与清除。
+- 文件类型与审阅状态始终可见。
+- 方向、像素、文件大小和修改时间位于 `高级条件`。
+- 已启用条件在弹层底部重复为可移除的紧凑标签；顶栏只显示数量。
+- 搜索结果分组或展平只属于 `视图`，不能在筛选弹层中再放一份。
+- 筛选弹层中的命令行使用与 `视图 / 更多` 相同的无静态边框规则；输入框、选择器和条件字段保留必要边框。
 
-A selected content folder begins directly with its image grid. It does not
-repeat the current path in a second content toolbar. Location remains visible
-in the sidebar, and view-scoped commands remain in the global `视图` menu.
+### 7.4 视图与更多菜单
 
-Proportional image geometry, virtualization, thumbnail density, keyboard
-navigation, and scrolling remain unchanged. The redesign changes the surface,
-spacing, selected state, and supporting chrome only.
+弹层本身：
 
-### Selection
+- 一个白色表面；
+- 一个 1 px 边框；
+- 一个克制阴影；
+- 12 px 圆角；
+- 6 px 内边距。
 
-Selected images use a thin indigo boundary and the shared focus treatment.
-Selection does not add a heavy opaque tint over the image. When one or more
-items are selected, a compact floating selection summary appears at the bottom
-of the content workspace. It reports the selection count and provides only the
-existing selection-scoped commands appropriate to the current context.
+命令行：
 
-Select-all scope remains explicit. Folder-only and descendant selection
-choices are exposed from the contextual `视图` command rather than occupying a
-permanent content toolbar.
+- 全宽左对齐；
+- 静止状态无边框、无阴影；
+- 最小高度 32 px；
+- 悬停与键盘焦点使用 `Soft surface`；
+- 激活选择使用 `Accent soft` 和非颜色状态标记；
+- 相关组之间使用 1 px 分隔线和 6 px 垂直留白；
+- 文案保持一行，弹层宽度必须容纳中文标签。
 
-### Drag feedback
+`视图`只显示当前上下文需要的显示命令，例如：
 
-Internal organization drag retains its existing behavior. During the drag:
+- 搜索结果分组或展平；
+- 显示全部后代文件或返回当前文件夹；
+- 混合内容的显式全选范围。
 
-- a compact floating label reports the number of files being moved;
-- valid sidebar destinations receive the standard indigo drop-target state;
-- invalid and read-only destinations remain visibly unavailable;
-- the grid and folder hierarchy do not reflow.
+`更多`包含：
 
-Dragging files from Viewer to Finder or Explorer continues to use the
-operating system's native drag representation. Viewer does not replace a
-system-owned drag image with custom decoration.
+- 软件设置；
+- 只读时才出现的访问状态、权限设置和重新选择目录；
+- 分隔线；
+- 关闭项目。
 
-### Other files
+关闭项目不是主按钮。静止时使用普通菜单文字；只有悬停、键盘焦点或即将确认危险动作时使用危险色。Escape 关闭菜单并把焦点还给触发按钮。三个顶栏弹层互斥。
 
-Non-image files remain available from the bottom of the content workspace in
-an expandable panel. The panel is visually subordinate to images, separated by
-one hairline border, and does not become a permanent right sidebar. Its
-collapsed summary reports the number of other files. Expanded rows use the
-same compact type, hover, selection, focus, and error rules as the rest of the
-application.
+## 8. 内容浏览与选择
 
-## Top Toolbar
+### 8.1 内容文件夹
 
-### Persistent controls
+选择内容文件夹后直接显示图片网格，不增加本地内容工具栏或重复路径。比例布局、虚拟化、密度、键盘导航和滚动行为保持不变。
 
-After the search field, only three controls remain persistently visible:
+### 8.2 缩略图结构
 
-1. `筛选`
-2. `视图`
-3. `更多`
+每项默认只突出：
 
-The separate settings button is removed from the persistent header and its
-content moves into `更多`. The separate `结果视图` control is folded into
-`视图`. The project menu and project-scoped actions also live under `更多`.
+- 缩略图；
+- 文件名；
+- 已存在的非默认审阅或收藏状态。
 
-The menu destinations preserve their existing functions:
+“未标记”不作为每项永久文字。整理手柄仅在悬停、键盘焦点或实际整理拖拽时出现。
 
-- `筛选` owns filter and sort configuration;
-- `视图` owns grouped/flat search results, contextual descendant aggregation,
-  and other context-specific display choices;
-- `更多` owns software settings, including thumbnail density, plus project
-  access information, permission actions, directory reselection where
-  applicable, and closing the project.
+普通卡片不使用阴影。图片舞台可以使用极浅中性背景帮助透明或白色图片分离。
 
-The exact grouping must avoid duplicating the same command in two menus.
+### 8.3 选中与焦点
 
-### Search field
+选中框必须满足：
 
-The search field expands to consume available toolbar width. It uses the soft
-surface, an eight-to-ten-pixel radius, no strong resting border, and tertiary
-placeholder text. Keyboard shortcut feedback remains visible but quiet.
+- 只位于缩略图区域；
+- `2 px solid var(--viewer-accent)`；
+- 从缩略图边缘内缩 6 px；
+- 圆角 8 px；
+- 使用绝对定位覆盖层，不参与尺寸计算；
+- 不给图片加不透明色罩；
+- 不包围文件名、拖拽手柄或完整卡片；
+- 不给完整卡片增加选中阴影。
 
-Focused search receives the standard focus ring. Existing text, path, and
-content search behavior remains unchanged.
+键盘焦点与选中分离：
 
-### Filter button state
+- 焦点使用项目外侧统一 `:focus-visible` 轮廓；
+- 焦点不能修改 `aria-selected`；
+- 同时获得焦点和选中的项可同时显示外侧焦点环与缩略图内侧选中框。
 
-The filter label is shortened from `筛选与排序` to `筛选`. When filters are
-active, a compact indigo count badge appears inside the control. The badge
-reports the number of active filters, not sort or scope.
+### 8.4 多选摘要
 
-## Search and Filtering
+- 至少选择一项时，在内容底部中央显示一枚紧凑浮动胶囊。
+- 主文案：`已选择 N 项`。
+- 辅助文案：`右键打开圆盘菜单 · Esc 取消选择`。
+- 胶囊不提供第二套文件操作按钮。
+- 内容底部必须预留空间，不能遮挡最后一行或“其它文件”入口。
 
-The filter interaction remains an anchored popover. It does not become a
-sidebar, full-width inspector, or new page.
+### 8.5 其它文件与拖拽
 
-The approved popover is approximately 560–590 px wide on a normal desktop
-window, constrained to the available viewport. Its information hierarchy is:
+- 其它文件位于内容底部的可展开面板。
+- 面板只有顶部细分隔线，不成为永久右侧栏或独立重卡片。
+- 展开行使用相同的紧凑行、选中、焦点与错误规则。
+- 项目内整理拖拽显示紧凑数量标签，合法侧栏目标使用标准靛蓝目标状态。
+- 拖出至 Finder 或 Explorer 使用系统原生拖拽图像。
 
-1. title and close action;
-2. search scope and sort;
-3. common filters;
-4. collapsed advanced conditions;
-5. active-filter summary and clear-all action.
+## 9. 文件圆盘菜单
 
-File type and review state are always visible because they are common.
-Orientation, pixel dimensions, file size, and modification time move into the
-collapsed `高级条件` group. The group remains one action away and retains all
-existing filter capability.
+### 9.1 唯一菜单原则
 
-Active conditions are repeated as removable compact chips at the bottom of the
-popover. The top toolbar shows only the count.
+下列输入全部打开同一个 `RadialFileMenu`：
 
-Search result grouping and flat mode belong to `视图`, not the filter popover.
-The filter popover must not cover the full workspace at ordinary window sizes.
+- 普通右键；
+- macOS Control-click；
+- 右键按下并释放；
+- 右键按住或移动形成的手势；
+- Context Menu 键；
+- `Shift+F10`。
 
-### Search results
+不得渲染传统矩形 `FileContextMenu`。辅助功能通过圆盘自身的键盘语义、可访问名称、禁用原因和焦点管理提供，不能通过第二套可见菜单解决。
 
-Search results use a compact, vertically scannable list rather than trying to
-reuse the image grid for every match type. The result hierarchy is:
+在已经选中的文件上触发时，圆盘作用于当前选择；在未选文件上触发时，先把该文件设为唯一选择，再打开圆盘。圆盘打开后切换文件夹、搜索视图、项目、预览、对比、信息检查器或操作对话框时立即关闭，但关闭圆盘本身不清除选择。
 
-1. total count and live-search progress;
-2. folder grouping when grouped mode is active;
-3. thumbnail or file-kind preview;
-4. filename and relative path;
-5. relevant metadata or matched-text context;
-6. review state;
-7. existing pagination controls.
+### 9.2 几何与顺序
 
-Grouped and flat modes use the same row structure. The result list does not
-introduce new search semantics, ranking, actions, or paging behavior.
+一级圆盘：
 
-## Single-image Preview
+- 六个独立 60° 环形扇区；
+- 内半径 42 px；
+- 外半径 108 px；
+- 顺时针固定为：预览、标记、整理、移到废纸篓、并排对比、信息。
 
-Single-image preview remains a modal, application-covering view. It does not
-become an embedded content pane.
+二级圆盘：
 
-The preview uses:
+- `标记`和`整理`从对应方向向外生长；
+- 内半径 112 px；
+- 外半径 168 px；
+- 每项 30°；
+- 与一级圆盘共用圆心；
+- 标签保持正向。
+- `标记`固定包含：保留、待定、淘汰、清除审阅状态、收藏/取消收藏；
+- `整理`固定包含：重命名/批量重命名、复制到、移动到；
+- 二级项是连续环形扇区，不得替换成矩形按钮条或普通弹出菜单。
 
-- a white 52 px toolbar;
-- a light neutral stage based on `#F0F1EF`;
-- the filename and image metadata at the leading edge;
-- display controls grouped in the center;
-- rotation and `完成` grouped at the trailing edge;
-- a bottom-centered floating navigation control containing previous, count,
-  and next.
+圆心：
 
-Fit, 100%, zoom out, zoom percentage, zoom in, rotate, navigation, keyboard
-shortcuts, pan, image budgets, repair behavior, and closing semantics remain
-unchanged.
+- 独立圆形；
+- 显示选中文件数量；
+- 显示简短 `中心取消` 提示；
+- 回到圆心、点击圆心或 Escape 取消。
 
-The full-width navigation footer is removed visually. Navigation remains in
-the same logical order and uses the same accessible names.
+### 9.3 点击和手势
 
-## Multi-image Comparison
+- 普通右键在指针位置以点击模式打开，并保持到执行、取消或点击外部。
+- 按住 180 ms 或移动至少 8 px 后，同一会话升级为手势模式。
+- 手势模式根据指针位置高亮扇区，在释放时执行有效叶子命令。
+- 未达到阈值的释放保留同一圆盘并切换为点击模式，不替换成矩形菜单。
+- 指针停留在可展开一级项约 120 ms 后打开二级；主扇区与二级之间保持连续命中走廊。
+- 指针轻微离开完整圆盘时提供约 250 ms 返回宽限；点击模式点击外部仍立即关闭。
+- 完整圆盘必须在视口 8 px 安全区内。
+- Viewer 自有文件项必须阻止原生 WebView 文本菜单。
 
-Comparison continues to replace the file grid inside the content workspace.
-It does not become an overlay and is not merged with single-image preview.
+### 9.4 视觉与辅助功能
 
-The comparison toolbar uses the same white chrome and neutral stage as the
-single-image preview:
+- 静止扇区为暖白表面和 1 px 中性分隔线。
+- 悬停、手势和键盘激活使用 `Accent soft` 填充与靛蓝边界。
+- 只有废纸篓使用危险色主标签。
+- 禁用项仍可读并暴露禁用原因，不能看起来像已选。
+- 只读或文件操作繁忙时，写操作保持原位置但禁用；预览和信息在业务规则允许时继续可用。
+- 使用 `role="menu"` 和合适的 `menuitem` / `menuitemcheckbox`。
+- 左右方向键循环一级项，上方向键进入二级，下方向键返回一级。
+- Enter 或 Space 展开或执行；Escape 关闭并恢复触发文件焦点。
+- 安静的全屏遮罩用于分离命令层，但不能隐藏当前文件上下文。
 
-- image count and current focus appear at the leading edge;
-- fit, 100%, zoom, and rotation controls form the central transform group;
-- synchronized/independent mode and `完成` appear at the trailing edge.
+## 10. 搜索与结果
 
-Comparison panes:
+- 搜索能力、匹配、排序、筛选、进度和分页不改变。
+- 搜索结果使用紧凑纵向列表，不强行复用图片网格。
+- 每行依次表达缩略图或文件类型、文件名、相对路径、匹配上下文、元数据和审阅状态。
+- 普通结果行高 42–48 px；分组标题 28 px；结果摘要和分页区域各 40 px。
+- 分组与展平使用相同的行结构。
+- 结果总数、实时索引进度和分页保持可见但不抢占内容。
+- 空搜索状态只显示原因和当前已有恢复操作，不添加插画或新页面。
 
-- use a 10–12 px gutter;
-- use one-pixel neutral borders and a light canvas;
-- show one thin indigo border and soft ring only on the active pane;
-- retain filename and remove action in the pane header;
-- retain review and favorite controls in the pane footer;
-- do not use heavy card shadows.
+## 11. 图片预览与对比
 
-The existing intelligent two-to-twenty-image layout, virtualization,
-synchronized and independent transforms, active-pane selection, original-image
-loading, marker editing, pane removal, read-only behavior, and escape behavior
-remain unchanged.
+### 11.1 单图预览
 
-## Text, Markdown, and File Information
+单图预览继续覆盖应用内容，不改为嵌入式面板。
 
-### Shared text-preview shell
+顶部 52 px 工具栏分为三部分：
 
-Markdown, plain text, two-file text preview, and unsupported-file feedback use
-one application-covering preview shell:
+1. 左侧：文件名与图片元数据；
+2. 中间：适应、100%、缩小、百分比、放大；
+3. 右侧：旋转与可见文字 `完成`。
 
-- a white 52 px toolbar;
-- filename and format at the leading edge;
-- `完成` at the trailing edge;
-- a light neutral stage below.
+中间相关变换控件共享一个分段控件表面，不表现为一排互不相关的边框按钮。旋转使用安静图标按钮处理。底部导航为居中浮动胶囊，包含上一张、计数、下一张。
 
-Markdown is rendered on a centered white reading surface approximately
-760–820 px wide, with restrained typography, code treatment, and indigo links.
-It does not use a decorative document card or a large shadow.
+### 11.2 多图对比
 
-Plain text retains its encoding control. Text uses a readable monospace stack
-and existing loading, decoding, truncation, and error behavior.
+- 对比继续替换内容网格，不成为模态覆盖层。
+- 工具栏使用相同的三段结构与白色表面。
+- 左侧显示图片数量与当前焦点。
+- 中间显示适应、100%、缩放和旋转。
+- 右侧显示同步/独立状态与 `完成`。
+- 面板间距 10–12 px。
+- 普通面板只有 1 px 中性边框，无重阴影。
+- 只有激活面板显示薄靛蓝边框与软环。
+- 保留 2–20 张图片智能布局、虚拟化、文件名、移除、审阅、收藏、同步/独立变换、原图加载和只读行为。
 
-### Two-file text preview
+## 12. 文本、Markdown、文件信息与不支持状态
 
-Two text files are presented as equal reading panes with a single one-pixel
-divider. Each pane keeps its own filename and encoding selector in a compact
-sub-toolbar.
+- Markdown、文本、双文本、不支持文件和不可用文件共享与图片预览一致的 52 px 白色工具栏、浅色舞台和 `完成`。
+- Markdown 阅读区域宽约 760–820 px，无装饰卡片和大阴影。
+- 正文使用可读的等宽字体栈；文本保留编码选择、截断、加载和错误行为。
+- 双文本为相等阅读面板与一条分隔线，不暗示自动 diff 或合并。
+- 文件信息使用 320–340 px 右侧非模态检查器，只有一条前导分隔线和一个克制阴影。
+- 信息按身份与位置、审阅与收藏、技术信息分组。
+- 多选信息复用相同结构并显示聚合或混合值。
+- 不支持或不可用文件使用短标题、类型、说明和现有恢复路径，不使用大警告卡片。
 
-This mode is side-by-side reading, not automatic diffing. The visual design
-must not imply added difference detection, line matching, or merge behavior.
+## 13. 对话框
 
-### File information inspector
+所有 Viewer 对话框共享：
 
-File information opens as a 320–340 px non-modal inspector at the trailing edge
-of the workspace. It uses one leading separator and a restrained shadow.
-Metadata is grouped into:
+- 白色表面；
+- 14 px 圆角；
+- 1 px 中性边框；
+- 一个对话框阴影；
+- 18–20 px 内边距；
+- 直接说明动作的标题；
+- 仅保留决策所需说明；
+- 尾部对齐操作。
 
-1. file identity and location;
-2. review and favorite state;
-3. technical information.
+危险色只用于最终危险动作，不能把整个对话框染红。取消位于主操作或危险操作之前，并保留逻辑键盘顺序、焦点陷阱、Escape 和焦点恢复。
 
-Multi-selection uses the same definition-list structure and displays aggregate
-or mixed values. The workspace remains visible and usable while the inspector
-is open.
+目标与冲突、批量重命名、关闭进行中操作的复杂内容保留现有业务语义。宽对话框可以内部滚动，但关键操作在 1024×720 下必须始终可达。
 
-### Unsupported and unavailable files
+目标与冲突：
 
-Unsupported files use the shared preview shell with a short centered state:
-filename, recognized type, concise explanation, and existing file metadata.
-The state is not wrapped in a large warning card. No external-open command is
-added because the current interaction model does not provide one.
+- 宽对话框左侧为目标文件夹树，主区域为预检结果；
+- 每个冲突行显示相对路径、当前状态、解决选择和 `应用到剩余冲突`；
+- 就绪与阻塞行必须同时通过文字和结构区分；
+- 预检未满足时执行按钮保持禁用。
 
-An unavailable file uses the same geometry but communicates unavailability
-and the existing recovery path instead of appearing as an unexplained blank
-preview.
+批量重命名：
 
-## Radial and Context Menus
+- 查找、替换、前缀、后缀和序号规则位于紧凑规则区；
+- 源路径和拟议路径使用稳定列；
+- 完整预览保持虚拟化；
+- 无效行使用局部错误软色，并显示可执行与无效数量；
+- 只有当前预览有效且可执行时才启用最终操作。
 
-### Radial menu character
+关闭进行中操作：
 
-The radial menu must retain the established interaction character rather than
-becoming a ring of ordinary floating buttons:
+- 保留 `保持打开`、`等待完成后关闭`、`取消待处理项目并关闭` 三个选择；
+- 明确说明已完成工作不会撤销，当前原子步骤会安全完成；
+- 安全等待是主操作，取消待处理项目是克制的危险操作。
 
-- six independent 60-degree annular sectors;
-- the existing clockwise action order;
-- a distinct circular center showing selection count and serving as the
-  return-to-center cancel region;
-- outward-growing 30-degree secondary annular sectors for `标记` and `整理`;
-- pointer gesture, click mode, keyboard behavior, focus restoration, disabled
-  reasons, and viewport fitting unchanged.
+## 14. 任务、结果、通知与只读
 
-The visual upgrade is deliberately limited to warm white surfaces, neutral
-one-pixel sector borders, restrained shadow, indigo active sectors, and a
-quiet danger treatment for Trash or Recycle Bin. Existing symbols and labels
-remain aligned with their sectors.
+### 14.1 任务
 
-### Conventional context-menu fallback
+- 没有任务时不渲染任务表面。
+- 多个运行任务位于一个右下角紧凑表面，不拆成多张悬浮卡片。
+- 折叠状态显示最相关任务、聚合数量和一条细进度线。
+- 展开后显示任务行、取消、失败与结果入口。
+- 无错误的成功反馈最多显示 2 秒，然后自动消失。
+- 成功短暂状态不显示永久 `关闭任务`。
+- 失败、取消和包含结果的任务持续到用户处理或关闭。
 
-The existing secondary-click and Control-click fallback presents the same
-action model in a conventional compact menu. Primary grouping, secondary
-commands, checked states, disabled reasons, and destructive placement match
-the radial menu. It is an accessibility and input fallback, not a second
-command taxonomy.
+### 14.2 操作结果
 
-## Dialogs
+完整结果打开为 320–340 px 右侧非模态检查器。显示成功、失败、跳过总数、紧凑结果行和分页。用户可以继续浏览。
 
-Existing modal focus management and keyboard behavior remain the contract.
-Dialogs receive a consistent visual shell:
+### 14.3 通知范围
 
-- white surface;
-- 14 px radius;
-- one neutral border;
-- one restrained modal shadow;
-- 18–20 px internal padding;
-- direct action-oriented title;
-- explanatory copy limited to the information needed for the decision;
-- actions aligned to the trailing edge.
+- 应用恢复和全局错误显示于右上通知栈。
+- 预览、对比、搜索和选择反馈留在受影响工作区。
+- 行与项目错误留在局部。
+- 只有必须立即决策的情况使用模态对话框。
 
-Destructive color appears only on the final destructive action. The entire
-dialog must not become red. Cancel remains neutral and appears before the
-primary or destructive action in logical keyboard order.
+### 14.4 只读
 
-Long-form dialogs such as destination selection and batch rename may be wider
-and scroll internally, but use the same title, field, error, separator, and
-action treatment.
+只读提示为紧凑的 38 px 警告软色条。预览、信息和允许的对比保持可用；写操作禁用并提供原因。权限恢复操作只在相关上下文出现。
 
-### Destination and conflict resolution
+## 15. 未打开项目、加载、空状态与恢复
 
-Destination selection and preflight results share one wide dialog. The folder
-tree occupies the leading column and target results occupy the main column.
-This preserves the existing sequence—choose a destination, check it, resolve
-conflicts, execute—while making the relationship visible without stacking
-multiple bordered sections vertically.
+### 15.1 未打开项目
 
-Every conflict row shows the relative path, current state, resolution selector,
-and `应用到剩余冲突` behavior. Ready and blocked rows remain distinguishable.
-The replacement warning uses the platform term appropriate to macOS Trash or
-Windows Recycle Bin. Execution remains disabled until the existing preflight
-contract is satisfied.
+静止状态严格只有：
 
-### Batch rename
+1. `Viewer`；
+2. `选择或拖入一个项目文件夹`；
+3. `选择项目文件夹`。
 
-Batch rename keeps find, replacement, prefix, suffix, and sequence rules in a
-compact rule region above the complete virtualized preview. Source and proposed
-paths occupy stable columns, and invalid rows use a soft local error state.
-The dialog reports executable and invalid totals.
+不得出现：
 
-The final action remains disabled until the preview is current and executable.
-No rename rule, validation code, virtualization behavior, or execution
-semantics change.
+- 品牌图块；
+- 格式清单；
+- 目录记忆说明；
+- 最近项目；
+- 永久拖放卡片；
+- 装饰插画；
+- 第二个次要入口。
 
-### Closing during an operation
+整个窗口接受文件夹拖入。只有实际拖入文件夹时才显示内嵌靛蓝目标框和 `松开以打开项目`。
 
-The close-operation dialog is compact. It explains completed, active, and
-pending work and keeps all three existing choices:
+### 15.2 打开与加载
 
-- `保持打开` as the neutral escape;
-- `等待完成后关闭` as the primary safe path;
-- `取消待处理项目并关闭` as a restrained destructive alternative.
+- 选择目录后，入口内容就地切换为项目名称、`正在验证项目…` 和未知时长细进度线。
+- 打开项目后立即显示最终框架、项目名称、侧栏和工具栏。
+- 文件夹数据未到达时显示稳定侧栏骨架。
+- 内容数据未到达时显示最终文件夹带几何的安静骨架。
+- 已到达的真实内容立即替换对应骨架，不等待整个扫描结束。
+- 缩略图占位保持最终长宽比。
+- 占位使用纯色透明度动画，不使用渐变或 shimmer。
 
-The dialog makes clear that completed work is not undone and the active atomic
-step finishes safely.
+### 15.3 空状态、错误与恢复
 
-## Background Tasks, Results, and Notices
+- 空文件夹、空搜索和无结果状态使用一个短标题、一句原因、一个主恢复操作；只有存在不同恢复路径时才允许一个次操作。
+- 空搜索存在筛选时，`清除筛选`是主操作，扩展到整个项目是次操作。
+- 局部失败使用 `Danger soft`、危险文字、1 px 语义边框和局部恢复操作；失败行保持原布局高度。
+- 局部失败不得扩大成全屏错误，未受影响内容继续可用。
+- 恢复通知显示恢复数量和需要检查的数量。
+- 不添加业务层不存在的进度百分比、最近项目或外部打开功能。
 
-### Background tasks
+## 16. 交互、动效与可访问性
 
-Background activity does not occupy a permanent full-width task bar. Active
-tasks are grouped as compact floating cards at the bottom-right of the
-workspace. Each card shows the existing label, count, progress, cancellation,
-failure, and result behavior.
+### 16.1 动效
 
-Clean successful tasks dismiss automatically after their established delay.
-Failed, cancelled, or result-bearing tasks remain until the user reviews or
-dismisses them.
-
-### Operation results
-
-Full operation results open in a trailing non-modal panel rather than expanding
-inside a small task card. The panel presents completed, failed, and skipped
-totals, compact result rows, existing result codes, and pagination. The user
-may continue browsing while the panel is open.
-
-### Notices by scope
-
-Feedback placement follows its scope:
-
-- application recovery and global errors form a top-right notice stack;
-- preview, comparison, search, or selection feedback stays inside the affected
-  workspace;
-- row and item failures stay local;
-- blocking modal feedback is reserved for decisions that truly require it.
-
-## Empty, Error, and Read-only States
-
-### No-project initial screen
-
-The no-project screen is intentionally more minimal than other empty states.
-Its resting state contains exactly:
-
-1. `Viewer`;
-2. `选择或拖入一个项目文件夹`;
-3. `选择项目文件夹`.
-
-There is no permanent brand tile, format list, directory-memory explanation,
-drop-zone card, decorative illustration, or recent-project list. Viewer
-continues not to remember the directory after closing because that behavior is
-unchanged.
-
-The entire window accepts the existing folder drop. A visible inset drop target
-and `松开以打开项目` appear only while a folder is being dragged over the
-window. Invalid drops and permission failures appear near the entry point only
-after they occur.
-
-### Empty states
-
-Empty states do not use large illustrations. They contain:
-
-- a short title;
-- one concise explanation of why content is absent;
-- one primary recovery action;
-- at most one secondary action when it represents a meaningfully different
-  recovery path.
-
-For an empty search result, clearing filters is primary when filters are
-active. Expanding scope to the whole project is secondary.
-
-### Local errors
-
-Failures that affect one row, preview pane, or operation remain at the point of
-failure. A local error uses the danger-soft surface, danger text, a one-pixel
-semantic border, and a local retry or recovery action.
-
-A failed folder row retains its layout height so surrounding content does not
-jump. Other rows remain usable. Local failures must not be promoted to a
-blocking application dialog.
-
-Global failures that prevent the application from continuing may use a centered
-state, but follow the same concise language and recovery structure.
-
-### Read-only mode
-
-The current large read-only banner becomes a 38 px information strip directly
-below the workspace toolbar. It uses the warning-soft surface and includes:
-
-- `只读模式`;
-- a concise statement that browse, search, and preview remain available while
-  modification and marking are disabled;
-- `权限设置`;
-- `重新选择目录`.
-
-Read-only restrictions, disabled controls, native permission opening, and
-directory reselection behavior remain unchanged.
-
-## Opening, Loading, and Recovery
-
-### Opening a project
-
-After the user chooses or drops a folder, the no-project content is replaced
-in place by the project name, a concise validation message, and one thin
-indeterminate progress indicator. The disabled entry button does not remain on
-screen. Unknown-duration work does not display a fabricated percentage.
-
-### Scanning and indexing
-
-As soon as project identity is available, Viewer reveals the final application
-shell. Sidebar rows and folder filmstrips use calm skeleton geometry in their
-final positions while scanning publishes content. A bottom-right task card
-reports the existing scan task and count.
-
-The application does not cover the shell with a spinner, show skeletons that
-change the eventual layout, or block already available folders unnecessarily.
-
-### Thumbnail loading
-
-Image placeholders respect known or estimated aspect geometry instead of using
-one universal square. Their neutral shimmer is subtle, and reduced-motion mode
-uses a static placeholder. Images replace placeholders without changing item
-position.
-
-Thumbnail generation progress appears in the approved background-task stack.
-Failed thumbnails keep their item geometry and use the existing unavailable
-state.
-
-### Recovery
-
-Recovered operation state appears in the top-right global notice stack after
-the workspace is usable. The notice reports recovered and review-required
-counts and links to the existing result detail. It does not add a blocking
-startup step.
-
-## Interaction and Motion
-
-Motion explains state change and never becomes decoration.
-
-| Interaction | Duration | Treatment |
+| 交互 | 时间 | 方式 |
 | --- | ---: | --- |
-| Hover and press | 120 ms | Color, border, and surface only |
-| Popover and menu | 160 ms | Opacity plus up to 4 px translation |
-| Dialog and preview | 200 ms | Opacity, with stable content geometry |
-| Shared easing | — | `cubic-bezier(.2, 0, 0, 1)` |
+| 悬停与按下 | 120 ms | 颜色、边框、表面 |
+| 弹层与菜单 | 160 ms | 透明度与最多 4 px 位移 |
+| 对话框与预览 | 200 ms | 透明度，内容几何稳定 |
 
-Menus and dialogs do not bounce, spring, or scale. Image grids, proportional
-rows, large comparison layouts, scrolling, zooming, and panning do not receive
-decorative layout animation.
+缓动统一为 `cubic-bezier(.2, 0, 0, 1)`。菜单、对话框和预览不弹跳、不使用弹簧和缩放。`prefers-reduced-motion: reduce` 移除非必要动效。
 
-`prefers-reduced-motion: reduce` removes nonessential transitions. Functional
-progress indication may remain, but continuous shimmer is not required.
+### 16.2 可访问性
 
-## Accessibility
+- 普通文字对比度目标至少 4.5:1。
+- 非文字边界和控件状态至少 3:1。
+- 所有键盘交互控件使用清晰的 2 px 靛蓝 `:focus-visible` 环，并与组件边缘分离。
+- 选中、焦点、活动面板、筛选、错误和审阅状态不能只依赖颜色。
+- 紧凑控件有效目标至少 32 px；连续侧栏目录行是 24 px 的已批准桌面密度例外。
+- 保留角色、可访问名称、焦点陷阱、焦点恢复、Escape、快捷键和逻辑 Tab 顺序。
+- 强制颜色和增强对比模式下仍保留边框、焦点和选中状态。
 
-- Text contrast targets at least 4.5:1 for ordinary text.
-- Non-text control and active boundaries target at least 3:1.
-- Every keyboard-interactive element uses a visible two-pixel indigo
-  `:focus-visible` ring with separation from the component edge.
-- Color is not the only indicator for active panes, selected navigation,
-  filters, errors, or review state; borders, labels, counts, or structure also
-  communicate state.
-- Compact controls retain at least a 32 px effective target.
-- Existing roles, accessible names, focus restoration, focus traps, Escape
-  handling, keyboard shortcuts, and logical tab order remain intact.
-- Platform shortcut labels may differ (`⌘` on macOS and `Ctrl` on Windows), but
-  control geometry remains stable.
-- Forced-colors and increased-contrast modes must retain visible borders,
-  focus, and selected state.
+## 17. 响应式与视口规则
 
-## Implementation Architecture
+必须至少支持：
 
-The redesign is primarily a CSS and presentation-structure change.
+- 1024×720；
+- 1440×900；
+- 当前 Tauri 配置允许的最小窗口；
+- macOS 系统显示缩放；
+- 未来 Windows 常用显示缩放；该项在 Windows 开发开始后才成为当前版本阻塞项。
 
-### Token layer
+1024×720 下：
 
-Global Viewer tokens will live in the root application stylesheet or a
-dedicated token stylesheet imported before component styles. Existing
-preview-only variables will either be replaced by global semantic variables or
-mapped to them temporarily during migration.
+- 顶栏不换成多行；
+- 搜索框可以缩短，但 `筛选 / 视图 / 更多`保持可达；
+- 弹层、圆盘、任务表面、检查器和对话框不能超出视口；
+- 关键确认、取消和关闭操作不能被遮挡；
+- 图片网格根据可用宽度自然减少列数，不裁切卡片。
 
-Component styles consume semantic roles rather than copying color literals.
-For example, folder selection, filter selection, preview focus, and keyboard
-focus all consume the accent tokens, while danger and warning remain separate.
+1440×900 下：
 
-### Component boundaries
+- 保持紧凑信息密度；
+- 不通过扩大边距和卡片制造空洞；
+- 顶栏、侧栏和内容列继续精确对齐。
 
-Existing React state and controller boundaries remain. Markup may change where
-required to support the approved alignment and grouping:
+## 18. 组件边界
 
-- `App` aligns project identity with the sidebar and moves persistent settings
-  into `更多`;
-- `SearchToolbar` exposes `筛选`, `视图`, and `更多` groupings without changing
-  search state;
-- `FolderOverview` removes the repeated heading band and routes descendant
-  aggregation through `视图`;
-- preview and comparison components regroup existing controls;
-- `ModalSheet`, feedback states, and `ReadOnlyBanner` consume shared visual
-  primitives;
-- `ContentBrowser`, `OtherFilePanel`, selection summaries, drag feedback, and
-  search results consume the same row, focus, and surface tokens;
-- `TextPreview`, `TextPreviewPane`, `UnsupportedFilePreview`, and `InfoOverlay`
-  share the approved preview and inspector primitives;
-- `RadialFileMenu` keeps its current geometry and interaction code while its
-  sector and label styles consume global tokens;
-- `TaskBar` becomes the approved floating task stack and `OperationResults`
-  becomes the approved trailing inspector without changing task state;
-- `EmptyProject` implements the approved three-element resting state and
-  action-only drag/opening feedback;
-- scan, filmstrip, and thumbnail placeholders use stable shared skeleton
-  primitives.
+- `tokens.css`：唯一语义色彩、间距、圆角、阴影、焦点和动效来源。
+- `App`：框架、互斥弹层、预览/对比/结果/通知组合，不承担文件操作业务。
+- `SearchToolbar`：搜索与筛选触发。
+- `WorkspaceViewMenu`：上下文显示命令。
+- `WorkspaceMoreMenu`：设置、访问恢复与关闭项目。
+- `FolderOverview` / `FolderFilmstripRow`：连续安静文件夹带。
+- `ContentBrowser` / `ImageCell`：内容布局、选择和圆盘请求。
+- `RadialFileMenu`：唯一文件操作菜单的几何、指针和键盘交互。
+- `ImagePreview` / `CompareWorkspace`：共享三段工具栏语言。
+- `TextPreview` / `UnsupportedFilePreview` / `InfoOverlay`：共享预览与检查器语言。
+- `ModalSheet`：统一对话框壳。
+- `TaskBar`：单一紧凑任务表面。
+- `OperationResults` / `GlobalNoticeStack` / `ReadOnlyBanner`：按范围放置反馈。
+- `EmptyProject` / `WorkspaceLoadingState` / `AspectThumbnail`：初始、加载和缩略图稳定几何。
 
-No backend commands, persisted project state, filesystem permissions, image
-requests, or controller transitions change as a result of visual regrouping.
+视觉组件不得复制业务状态模型，也不得绕过现有控制器、Tauri 命令或文件安全流程。
 
-### Migration order
+## 19. 视觉参考清单
 
-Implementation should proceed in dependency order:
+以下已确认参考族用于同状态对照：
 
-1. introduce tokens, typography, focus, motion, and primitive control rules;
-2. align the application shell and simplify the top toolbar;
-3. restyle sidebar, folder bands, content selection, drag feedback, other-file
-   access, search, and result presentation;
-4. restyle image preview, comparison, text preview, unsupported states, and the
-   information inspector;
-5. restyle radial/context menus, simple dialogs, conflict resolution, batch
-   rename, and close-operation decisions;
-6. replace the permanent task bar with the floating task stack and restyle
-   results, notices, local errors, and read-only feedback;
-7. implement the minimal no-project screen and stable opening, scan, indexing,
-   thumbnail, and recovery states;
-8. remove superseded literals and conflicting dark-scheme rules;
-9. perform complete visual and interaction regression verification.
+- `visual-density-05-all-revised`
+- `integrated-content-browser-17`
+- `integrated-search-filter-13`
+- `integrated-search-tasks-18`
+- `integrated-preview-compare-14`
+- `integrated-text-info-19`
+- `integrated-radial-reference-21`
+- `integrated-menus-dialogs-20`
+- `integrated-states-dialogs-15`
+- `integrated-launch-loading-22`
+- `integrated-empty-project-minimal-23`
+- `visual-system-motion-16`
 
-Each step should keep the application runnable and should not temporarily
-delete a command before its new menu destination works.
+若参考画面与本文件发生冲突：
 
-## Testing and Visual Verification
+- 圆盘菜单、缩略图选中、无边框菜单行、单一任务表面、可见 `完成` 和最简未打开项目状态以本文件的精确规则为准；
+- 其它视觉差异必须请产品负责人确认，不能由实施者自行解释。
 
-### Contract and component tests
+参考图与实现截图必须在同一个对照输入中检查，不能用分开观看的印象代替。
 
-Tests should verify:
+## 20. 验收矩阵
 
-- approved global token values and semantic mappings;
-- persistent toolbar labels and absence of the removed standalone controls;
-- active filter count and retained filter behavior;
-- contextual availability of descendant aggregation;
-- removal of the repeated folder-overview heading band;
-- keyboard focus selectors and reduced-motion handling;
-- preview and comparison control functionality after regrouping;
-- dialog focus trapping, Escape, initial focus, and focus restoration;
-- local error, empty state, and read-only content and actions;
-- content selection, select-all scope, other-file expansion, and drag-target
-  behavior;
-- text and Markdown preview, encoding selection, two-pane reading, unsupported
-  files, and information inspection;
-- radial gesture, click mode, keyboard navigation, secondary-sector expansion,
-  conventional context-menu fallback, and focus restoration;
-- destination preflight, conflict propagation, batch-rename preview validity,
-  and close-operation decisions;
-- task auto-dismiss, failure persistence, operation-result inspection, and
-  global notice behavior;
-- minimal no-project content, folder drop feedback, opening transition,
-  skeleton stability, reduced-motion placeholders, and recovery notice;
-- no interaction regression in existing component tests.
+### 20.1 原生审查前提
 
-### Visual verification matrix
+- 只允许通过 `pnpm start:viewer` 启动审查版本。
+- 启动器必须停止当前仓库旧的开发进程和已安装 `Viewer.app` 进程。
+- 审查时只能有一个 Viewer 可执行进程，其路径必须指向当前工作树的 `target/debug/viewer-desktop`。
+- 每组证据必须记录工作树、分支、提交和 dirty 状态。
+- `target/debug/bundle/macos/Viewer.app`、浏览器模拟页面和旧安装版本不能作为原生验收对象。
 
-Manual verification must cover at least:
+### 20.2 状态覆盖
 
-- macOS at the minimum supported window width and a large desktop width;
-- compact, standard, and large thumbnail density;
-- expanded, resized, and collapsed sidebar;
-- project root, category overview, content folder, descendant aggregate, and
-  search results;
-- empty, single, and multi-selection; internal organization drag; native
-  external drag; collapsed and expanded other-file panel;
-- filter popover with zero, one, and many active filters;
-- grouped and flat results;
-- single-image preview at fit, 100%, zoomed, rotated, loading, and error states;
-- two-, three-, four-, and large multi-image comparison;
-- Markdown, plain text in multiple encodings, two-file text preview,
-  unsupported files, unavailable files, single-file information, and
-  multi-selection information;
-- radial default, mark expansion, organize expansion, disabled/read-only radial
-  states, keyboard operation, and conventional context menu;
-- rename, settings, destination, batch rename, destructive confirmation, and
-  close-operation dialogs;
-- active, completed, failed, cancelled, and result-bearing background tasks;
-  operation-result panel; stacked global notices;
-- empty project, empty folder, empty search, row error, global error, and
-  read-only mode;
-- folder drag-over, project opening, scanning, indexing, thumbnail loading,
-  thumbnail failure, and restored-operation state;
-- keyboard-only navigation;
-- reduced motion;
-- future Windows verification using the same internal tokens when that build
-  begins.
+每个适用状态都需要 1024×720 与 1440×900 的参考/实现联合对照：
 
-Screenshots must be compared at the same viewport and state. Visual review
-checks alignment, clipped content, inconsistent padding, unexpected shadow,
-wrong border radius, unreadable contrast, and platform-specific font geometry.
+1. 未打开项目静止、拖入、无效拖入和打开中；
+2. 展开、调整宽度和折叠侧栏；
+3. 项目根、分类总览、内容文件夹、后代聚合与连续文件夹带；
+4. 紧凑、标准、大缩略图密度下的内容网格无选择、单选、多选和键盘焦点；
+5. 其它文件折叠/展开与项目内整理拖拽；
+6. 搜索、分组/展平、进度、分页和空结果；
+7. 筛选无条件、单条件、多条件和高级条件；
+8. `视图`与`更多`菜单；
+9. 圆盘点击模式、手势模式、标记二级、整理二级、禁用、只读和键盘模式；
+10. 单图预览适应、100%、缩放、旋转、加载、错误和导航；
+11. 2、3、4 与大数量图片对比；
+12. Markdown、文本、编码、截断、双文本、不支持和不可用文件；
+13. 单选与多选信息检查器；
+14. 设置、重命名、批量重命名、目标、冲突、废纸篓和关闭任务对话框；
+15. 运行、成功、失败、取消和包含结果的任务；
+16. 操作结果、全局通知、局部错误、只读和恢复状态；
+17. 键盘导航、焦点恢复、减少动效、强制颜色和高缩放。
 
-## Acceptance Criteria
+### 20.3 等级与阻塞
 
-- Viewer presents one coherent light visual system across every approved
-  workspace, preview, comparison, dialog, and feedback state.
-- The header is column-aligned: project identity matches the sidebar and
-  search/actions match the content workspace.
-- Search is followed only by `筛选`, `视图`, and `更多`.
-- Settings, result layout, descendant aggregation, and project actions remain
-  available in their approved menu destinations.
-- The repeated folder-overview heading and blank band are gone.
-- Folder overview rows read as continuous quiet bands rather than floating
-  cards.
-- Content folders begin directly with images; selection, select-all scope,
-  drag feedback, and other-file access follow the approved hierarchy.
-- The filter popover retains all existing capabilities without dominating the
-  workspace.
-- Search results use the approved compact grouped/flat row system with existing
-  progress and pagination.
-- Single preview and multi-image comparison share the approved white toolbar,
-  light stage, grouped controls, and restrained active state.
-- Text, Markdown, two-file preview, file information, and unsupported-file
-  states use the approved shared preview and inspector language.
-- The radial menu retains its six segmented primary sectors, center cancel
-  region, and outward secondary sectors; context fallback exposes the same
-  command model.
-- Conflict resolution, batch rename, and close-operation dialogs expose impact
-  before execution without changing validation or safety behavior.
-- Background tasks float at the bottom-right, complete results open in a
-  trailing panel, and notices follow their scope.
-- The resting no-project screen contains only Viewer, one entry prompt, and one
-  primary button; drag and opening feedback appear only when active.
-- Scan, indexing, thumbnail, and recovery states reveal stable final geometry
-  without a blocking full-window spinner.
-- Dialogs, empty states, local errors, and read-only feedback follow the
-  approved hierarchy and recovery rules.
-- Approved color, type, spacing, radius, border, focus, and motion tokens are
-  used consistently.
-- macOS-owned appearance remains native while Viewer-owned appearance is ready
-  to be shared with Windows.
-- Existing workflows, keyboard behavior, data flow, file safety, and project
-  behavior remain unchanged.
-- Static checks, component tests, production build, accessibility checks, and
-  the complete visual verification matrix pass before the redesign is declared
-  complete.
+验收等级：
+
+- P0：无法完成核心任务、数据安全或关键交互错误；
+- P1：违反明确批准的结构或交互，例如错误菜单、错误选择边界、缺失操作；
+- P2：明显视觉不一致，例如错误边框、错位、换行、间距、圆角或阴影；
+- P3：不影响结构与识别的微小润色差异。
+
+P0、P1、P2 必须修复、重新截图并再次联合对照。P3 可以记录但不得伪装成已修复。
+
+如果规定的原生视口或交互无法验证，状态为 `blocked`。只有产品负责人明确批准的例外才能解除阻塞，不能用浏览器截图、自动化测试或较小物理屏幕自行替代。
+
+## 21. 最终验收条件
+
+- 只有一套 Viewer 自有视觉系统。
+- 搜索后只常驻 `筛选 / 视图 / 更多`。
+- 主工作区保持已批准的 40 px 紧凑顶栏和 24 px 目录行，不退回 48/52/56 px 的较松密度方案。
+- 重复项目标题、路径标题和空白标题带已删除。
+- 文件夹总览是连续安静带。
+- 内容文件夹直接进入图片网格。
+- 图片选中框只位于缩略图内部，焦点与选中分离。
+- 所有文件操作输入都打开同一个六扇区圆盘菜单。
+- `视图`与`更多`使用无静态边框的菜单行。
+- 预览与对比共享三段工具栏并显示 `完成`。
+- 任务使用一个紧凑表面，成功任务短暂显示后消失。
+- 未打开项目静止状态严格只有三个元素。
+- 预览、文本、信息、对话框、任务、通知、只读、加载和恢复使用同一视觉语言。
+- macOS 自有界面保持原生，Viewer 自有界面可直接复用于未来 Windows。
+- 自动化回归、构建、可访问性检查和完整视觉矩阵全部通过。
+- 验收记录对应当前唯一开发进程和当前代码提交。
+
+在本文件完成产品负责人书面审阅前，不得据此开始新一轮代码修改，也不得把它标记为正式生效。

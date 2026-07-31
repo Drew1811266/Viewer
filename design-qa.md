@@ -1,153 +1,81 @@
-# Design QA — Viewer complete UI visual atlas
+# Viewer Final UI Visual Acceptance
 
-## Comparison target
+Date: 2026-07-31
 
-- Source visual truth:
-  - `docs/superpowers/specs/2026-07-30-viewer-complete-ui-visual-upgrade-design.md`
-  - `target/visual-qa/reference-integrated-content-browser-17-1024x720.png`
-  - `target/visual-qa/reference-integrated-radial-reference-21-1024x720.png`
-  - `target/visual-qa/reference-integrated-empty-project-minimal-23-1024x720.png`
-- Implementation:
-  - `docs/prototypes/viewer-complete-ui-visual-atlas.html`
-  - Browser overview: `target/visual-qa/atlas-complete-browser-overview-1280x720.jpg`
-  - Exact content-browser surface:
-    `target/visual-qa/atlas-complete-implementation-browser-1024x720.jpg`
-- Combined source/implementation inputs inspected:
-  - `target/visual-qa/atlas-complete-comparison-content-browser-1024x720.png`
-  - `target/visual-qa/atlas-complete-comparison-content-browser-focus-1024x360.png`
-  - `target/visual-qa/atlas-complete-comparison-radial-1024x720.png`
-  - `target/visual-qa/atlas-complete-comparison-no-project-1024x720.png`
+Prototype: `docs/prototypes/viewer-complete-ui-visual-atlas.html`
 
-## Viewport and normalization
+Result: **Accepted for Figma audit-board handoff**
 
-| Artifact | CSS size | Capture pixels | Density |
-| --- | ---: | ---: | ---: |
-| Approved content-browser board | 1024 × 720 | 1024 × 720 | 1× |
-| Atlas content-browser app surface | 1024 × 720 | 1024 × 720 | 1× |
-| Approved radial board | 1024 × 720 | 1024 × 720 | 1× |
-| Atlas radial app surface | 1024 × 720 | 1024 × 720 | 1× |
-| Approved no-project board | 1024 × 720 | 1024 × 720 | 1× |
-| Atlas no-project app surface | 1024 × 720 | 1024 × 720 | 1× |
-| Browser atlas shell | 1280 × 720 | 1280 × 720 | 1× |
+## Acceptance scope
 
-The atlas embed review mode removes atlas-only navigation and renders the
-Viewer surface at its requested 1024 × 720 CSS size. The in-app browser capture
-was center-cropped from its 1280 × 720 browser viewport to that exact app
-surface; no resampling or density conversion was used. The focused comparison
-uses the same 1024 × 360 top region from source and implementation.
+This pass verifies the highest-priority visual-atlas corrections against the
+approved Viewer visual-upgrade specification. The accepted screenshots were
+captured after the corrections and are stored in:
 
-## State and coverage
+`target/final-design-acceptance-2026-07-31/`
 
-The final atlas contains two visual-foundation pages plus all 17 approved
-coverage groups. Those groups expose 89 switchable states, including:
+The compact captures use a 1024×720 Viewer viewport. The wide captures use the
+atlas's 1440×900 Viewer viewport, fitted inside a 1280×720 outer browser
+capture.
 
-- no-project, valid/invalid drag, opening, scanning, thumbnail generation,
-  empty project, error, and recovery;
-- expanded, resized, collapsed, and drop-target sidebars;
-- project root, category, content folder, descendant aggregate, and folder
-  bands;
-- compact, standard, and large thumbnails with none, single, multiple, and
-  keyboard-focus selection;
-- collapsed/expanded other files and internal organization drag;
-- grouped, flat, indexing, paging, and empty search;
-- zero, one, multiple, and advanced filters;
-- View, More, and read-only menus;
-- seven radial invocation/secondary/disabled/keyboard states;
-- seven image-preview states, four compare counts, seven document states, and
-  single/multiple information inspectors;
-- seven dialogs, five task outcomes, five result/notice states, and five
-  accessibility review states.
+## Corrected findings
 
-## Full-view comparison evidence
+| Step | Surface | Evidence | Health | Acceptance note |
+| --- | --- | --- | --- | --- |
+| 01 | Collapsed sidebar | `01-collapsed-sidebar-1024x720.jpg` | Pass | The 52 px rail now exposes one centered, accessible expand control; project text no longer collides with it. |
+| 02 | Advanced filter | `02-advanced-filter-1024x720.jpg` | Pass | Trigger and panel both derive `6` from the same active-condition model; the panel opens in place. |
+| 03 | Read-only menu | `03-readonly-menu-1024x720.jpg` | Pass | Unavailable actions are visibly muted, carry a read-only label, and use disabled semantics. |
+| 04 | Radial click | `04-radial-click-1024x720.jpg` | Pass | The primary radial menu is visible in the Viewer shell instead of a rectangular substitute. |
+| 05 | Radial mark | `05-radial-mark-1024x720.jpg` | Pass | The mark secondary fan uses the approved radial geometry and remains attached to its primary sector. |
+| 06 | Radial organize | `06-radial-organize-1024x720.jpg` | Pass | The organize secondary fan is visually distinct and preserves the same center and sector rhythm. |
+| 07 | Radial disabled | `07-radial-disabled-1024x720.jpg` | Pass | Dashed boundaries, reduced emphasis, and the unavailable label make the state unambiguous. |
+| 08 | Radial read-only | `08-radial-readonly-1024x720.jpg` | Pass | The center and affected actions clearly communicate read-only mode. |
+| 09 | Radial keyboard | `09-radial-keyboard-1024x720.jpg` | Pass | Keyboard focus is visible on a sector without being confused with selection. |
+| 10 | Keyboard selection | `10-keyboard-selection-1024x720.jpg` | Pass | Enter/Space selection is visible on the image card and reflected by `aria-selected`. |
+| 11 | Scanning progress | `11-scanning-progress-1024x720.jpg` | Pass | Status and progress are visible and expose live-region/progressbar semantics. |
+| 12 | Batch dialog | `12-batch-dialog-1024x720.jpg` | Pass | The modal scrim covers the entire Viewer shell, including toolbar and sidebar; dialog labelling is explicit. |
+| 13 | Forced-colors | `13-forced-colors-1024x720.jpg` | Pass | System color tokens and explicit boundaries preserve hierarchy without relying on shadows. |
+| 14 | 200% reflow | `14-zoom-200-1024x720.jpg` | Pass | The real Viewer shell reflows at 200%; the primary action remains reachable. |
+| 15 | Wide main atlas | `wide-00-main-atlas-1280x720.jpg` | Pass | The atlas state switcher occupies reserved space and no longer overlays product controls. |
+| 16 | Wide browser | `wide-01-browser-1280x720.jpg` | Pass | Main navigation, content rail, and image grid remain aligned at the 1440×900 Viewer viewport. |
+| 17 | Wide filter | `wide-02-advanced-filter-1280x720.jpg` | Pass | The filter popover stays anchored and unclipped in the wide shell. |
+| 18 | Wide radial mark | `wide-03-radial-mark-1280x720.jpg` | Pass | Primary and secondary radial geometry stays centered and legible at the wide viewport. |
+| 19 | Wide preview | `wide-04-preview-zoom-1280x720.jpg` | Pass | Preview content, chrome, and zoom controls retain clear separation. |
+| 20 | Wide dialog | `wide-05-batch-dialog-1280x720.jpg` | Pass | Modal scale, focus hierarchy, and full-shell scrim remain correct at the wide viewport. |
+| 21 | Wide results | `wide-06-results-1280x720.jpg` | Pass | Result density and hierarchy remain stable without overlap or clipping. |
+| 22 | Wide 200% reflow | `wide-07-zoom-200-1280x720.jpg` | Pass | The accessibility demonstration remains a real reflowed shell rather than an explanatory card. |
 
-The three 2072 × 720 combined inputs place the approved visual board and exact
-1024 × 720 implementation surface in one image. They were inspected at original
-resolution. The no-project state preserves the exact three-element resting
-content. The radial page retains the approved six-sector raster as visual truth
-and adds a semantic state panel without redrawing the radial geometry. The
-content browser preserves the two-column shell, top-level action order, quiet
-white/warm-gray surfaces, and thumbnail-only selection outline.
+## Automated verification
 
-## Focused region comparison evidence
+- `pnpm --dir ui check` — pass.
+- `pnpm --dir ui exec vitest run src/visualAtlas.test.ts` — 10/10 pass.
+- `pnpm --dir ui test` — 60 files pass; 587 tests pass; 1 existing test skipped.
+- `pnpm --dir ui build` — production build pass.
+- `git diff --check` — pass.
+- In-app browser console after the acceptance run — no errors or warnings.
 
-`target/visual-qa/atlas-complete-comparison-content-browser-focus-1024x360.png`
-compares the same top 1024 × 360 region. It verifies toolbar/side-column
-alignment, 24 px directory rows, file-name separation, real product imagery,
-semantic tags, and the 6 px-inset selection outline. This crop was required
-because these details are too small to judge reliably in the full-view board.
+## Visual acceptance conclusion
 
-## Required fidelity surfaces
+No blocking overlap, clipping, state ambiguity, or atlas-control obstruction
+was found in the accepted compact and wide evidence sets. Filter, radial-menu,
+read-only, keyboard, progress, dialog, target-size, inspector-width, and
+contrast-risk contracts now have both visual and automated evidence.
 
-- Fonts and typography: the cross-platform stack uses Inter/SF Pro/Segoe UI
-  Variable/PingFang/Microsoft YaHei fallbacks. Small UI copy remains legible at
-  both internal sizes; weights, line heights, truncation, and hierarchy do not
-  drift between states.
-- Spacing and layout rhythm: the workspace toolbar remains 40 px, preview
-  toolbar 52 px, and directory rows 24 px. Top and body columns stay aligned at
-  1024 × 720 and 1440 × 900. Menus, dialogs, task surfaces, and inspectors use
-  elevation only where the specification permits it.
-- Colors and visual tokens: white and warm-gray application surfaces,
-  restrained indigo action/focus/selection, and separate success, warning, and
-  danger semantics match the approved token system.
-- Image quality and asset fidelity: eleven approved fixture/reference rasters
-  are embedded as local data URIs. Product imagery and radial art were not
-  replaced by emoji, CSS drawings, custom SVG, gradients, or placeholder art.
-- Copy and content: toolbar labels, `完成`, cross-platform Trash/Recycle Bin
-  language, selection guidance, disabled reasons, recovery copy, and
-  no-project content match the consolidated specification.
-- Icons and controls: the atlas avoids invented icon art; text-only controls
-  are used where the approved design does not require a sourced icon. Menus
-  remain borderless rows, danger appears only in relevant states, and focus is
-  structurally visible.
-- Accessibility and behavior: real buttons, menus, menuitems, labels, alt text,
-  visible focus, reduced-motion behavior, forced-color review, focus
-  restoration guidance, and 200% zoom states are represented. Core state
-  controls and navigation were exercised in the browser.
+This acceptance does not claim full WCAG conformance. Native macOS/Windows
+screen-reader output, OS high-contrast rendering, platform font rasterization,
+and physical input-device behavior still require later testing in packaged
+application builds.
 
-## Finding and repair history
+## Figma audit board
 
-1. **P2 — the previous atlas was representative rather than complete.**
-   It exposed twelve coarse pages, omitted multiple approved state families,
-   and depended on `/files/` runtime image paths. The atlas now publishes all 17
-   coverage groups, 89 switchable states, and eleven embedded data-URI assets.
-   Post-fix evidence: all four Vitest contract tests pass, and all nineteen
-   atlas navigation entries render one complete scene in the browser.
-2. **P2 — operation results were shown as a centered heavy panel.**
-   The specification requires a 320–340 px right-side non-modal inspector so
-   browsing can continue. The operation result state now uses a 334 px right
-   inspector with the image workspace still visible, compact outcome rows, and
-   a result action.
-3. **P2 — the Other Files area was initially treated as a bordered card.**
-   The specification calls for a bottom panel introduced by a quiet top
-   divider. The enclosing border and radius were removed while the compact
-   expanded rows and drag state were retained.
-4. **P2 — exact browser evidence initially included the atlas navigation.**
-   The implementation was reloaded in embed mode and captured as an exact
-   1024 × 720 Viewer app surface. A focused, same-region comparison was also
-   generated for the dense toolbar/sidebar/thumbnail details.
-
-No actionable P0, P1, or P2 findings remain.
-
-## Primary interactions and checks
-
-- clicked all nineteen atlas navigation entries and verified every scene
-  rendered;
-- exercised the 89-state controls through the JSDOM interaction contract;
-- switched thumbnail density, selection, focus, search, filter, menu, radial,
-  preview, compare, document, dialog, task, result, launch, and accessibility
-  states;
-- verified the selection outline remains inside the image stage and does not
-  surround the file name;
-- verified 1024 × 720 and 1440 × 900 internal preview sizes;
-- loaded the canonical HTML through a local browser server with no console
-  errors or warnings;
-- verified the canonical HTML contains no external or root-relative image
-  source and therefore remains self-contained when opened directly.
-
-## Follow-up polish
-
-- P3: the approved radial geometry remains a raster reference in this visual
-  atlas. Live sector hit-testing and motion belong to the later product
-  implementation pass, not this visual-only HTML approval artifact.
-
-final result: passed
+- File:
+  [Viewer Final UI Visual Acceptance — 2026-07-31](https://www.figma.com/design/oCtWdesfu5wPx2m9QW1g6Y)
+- Section: `Viewer Final UI Visual Acceptance — 2026-07-31`
+- Structure: 22 accepted screenshot cards, each with step number, health, name,
+  and finding-specific acceptance note.
+- Layout verification: 15 cards in row one, 7 cards in row two, 200 px
+  horizontal gaps, and a 600 px row gap.
+- Visual verification:
+  `target/final-design-acceptance-2026-07-31/figma-audit-board.png`
+- Structural verification: all 22 cards contain exactly one accepted
+  screenshot; the audit section is the only top-level canvas node.

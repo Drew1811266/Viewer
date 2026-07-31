@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import type { FileCommandPreflight } from '../api/types'
+import '../styles/app.css'
 import DestinationDialog from './DestinationDialog'
 
 function deferred<T>() {
@@ -29,6 +30,25 @@ const folders = [
 ]
 
 describe('DestinationDialog', () => {
+  it('stacks destination and conflict regions at the supported compact width', () => {
+    vi.stubGlobal('innerWidth', 500)
+    render(
+      <DestinationDialog
+        mode="copy"
+        entityIds={['one']}
+        folders={folders}
+        busy={false}
+        requestPreflight={vi.fn()}
+        onConfirm={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    )
+
+    const layout = document.querySelector<HTMLElement>('.destination-dialog-layout')
+    expect(layout).not.toBeNull()
+    expect(getComputedStyle(layout as HTMLElement).gridTemplateColumns).toBe('1fr')
+  })
+
   it('preflights an in-project destination and collects per-item/apply-rest choices', async () => {
     const result: FileCommandPreflight = {
       executable: true,

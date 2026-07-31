@@ -1674,7 +1674,7 @@ summary,
 .destination-dialog-layout {
   display: grid;
   gap: 20px;
-  grid-template-columns: minmax(220px, 34%) minmax(360px, 1fr);
+  grid-template-columns: 1fr;
 }
 
 .destination-dialog-sidebar,
@@ -2231,6 +2231,12 @@ summary,
 
 .radial-center-context {
   font-weight: 700;
+}
+
+@media (min-width: 720px) {
+  .destination-dialog-layout {
+    grid-template-columns: minmax(220px, 34%) minmax(360px, 1fr);
+  }
 }
 
 @media (max-width: 800px) {

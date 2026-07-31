@@ -10,7 +10,7 @@
   menus/dialogs, loading/recovery, launch, and empty project.
 - Historical rendered implementation: the locally bundled, non-installed macOS
   debug app at `target/debug/bundle/macos/Viewer.app`, built from `1a21283`.
-  The current implementation at `660818e` has not been rebuilt or recaptured
+  The current implementation at `08de91f` has not been rebuilt or recaptured
   natively.
 - Native display captures: `target/visual-qa/native-*.png` at 1229 × 768;
   compact native webview evidence is
@@ -65,7 +65,7 @@ Focused native evidence inspected:
 **Historical findings and current automated status**
 
 No actionable P0, P1, or P2 visual differences were identified in the recorded
-historical subset. Because `660818e` has not received the required native
+historical subset. Because `08de91f` has not received the required native
 1440 × 900 and full manual state inspection, this document cannot make a final
 visual-pass claim for the current implementation.
 
@@ -77,10 +77,11 @@ visual-pass claim for the current implementation.
   card/grid gaps, task stack, popover containment, inspector and dialog all
   preserve the board's white-space-first rhythm. The compact test coverage
   confirms persistent controls remain reachable at 1024 × 720.
-- Colors and tokens: white/soft-gray surfaces, hairline dividers, semantic
-  indigo selection/focus/primary states, destructive red, and restrained
-  shadows match the approved light visual system. The app stays light; no
-  dark-system media override or legacy blue/gray token is present.
+- Colors and tokens: automated source contracts confirm that component
+  declarations consume semantic roles from `tokens.css` and contain no raw
+  hex/rgb/hsl or named structural palette literals. Warning, danger, review,
+  information, selection, control and shadow roles remain distinct. This is
+  automated evidence, not a current manual visual confirmation.
 - Image quality and assets: Viewer renders the fixture's actual images,
   transparent alpha artwork, Quick Look fallback, and unsupported JSON state;
   none were replaced by generated or handcrafted stand-ins. The radial symbols
@@ -95,8 +96,9 @@ visual-pass claim for the current implementation.
 - macOS Computer Use's secondary-click injector opens WebKit's text context
   menu before the DOM can be observed. The Viewer menu is visible after that
   native menu is dismissed. Current automated tests verify the ordinary
-  pointer-down/up/contextmenu path, Control-click fallback, held-pointer
-  promotion, and default prevention. The native held gesture remains
+  contextmenu-before-pointerup and pointerup-before-contextmenu paths,
+  Control-click fallback, dwell/movement promotion, deduplication, selection,
+  focus restoration, and default prevention. The native held gesture remains
   unverified manually.
 - The ignored QA project at `target/visual-qa/fixture-project/` adds Markdown,
   plain-text, unsupported JSON and 20 comparison candidates without changing
@@ -113,13 +115,13 @@ visual-pass claim for the current implementation.
   other-file expansion, image preview navigation controls, radial menu,
   unsupported-file recovery, task failure card and settings dialog were
   exercised.
-- Current automated (`660818e`): 60 UI test files passed (568 tests, 1
+- Current automated (`08de91f`): 60 UI test files passed (575 tests, 1
   skipped), including roles,
   keyboard/focus restoration, radial/context menu keyboard paths, compact
   containment, read-only write disabling, preview/compare, loading/recovery
   and reduced-motion semantics.
 - Console/build: the current production UI build completed without errors. No
-  native bundle was rebuilt after `660818e`; the historical native bundle was
+  native bundle was rebuilt after `08de91f`; the historical native bundle was
   not installed or deployed.
 
 ## Comparison history
@@ -150,6 +152,15 @@ visual-pass claim for the current implementation.
    toolbars follow the required structure. Static checks, 568 UI tests, build,
    and clean-tree repository verification pass. These automated results do not
    supply the missing manual evidence.
+6. `08de91f` — the two remaining Important findings were repaired with failing
+   tests first. Secondary gestures now preserve an early `contextmenu` signal
+   until release, dwell, or meaningful movement decides compact versus
+   pointer-radial behavior; both allowed event orders, Control-click, focus,
+   selection, and deduplication are covered. Component stylesheet colors and
+   shadows now consume semantic roles defined in `tokens.css`, with a
+   declaration-level contract preventing raw component palette literals.
+   Static checks, 575 UI tests, build, and clean-tree repository verification
+   pass. No native or manual evidence was added.
 
 ## Implementation checklist
 

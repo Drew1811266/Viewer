@@ -60,7 +60,12 @@ interface PendingSecondaryGesture {
   startX: number
   startY: number
   timeoutId: number
+  contextMenu: {
+    eventTarget: HTMLElement
+    origin: { x: number; y: number }
+  } | null
   activate(): void
+  activateCompact(eventTarget: HTMLElement, origin: { x: number; y: number }): void
 }
 
 const SECONDARY_GESTURE_DWELL_MS = 180
@@ -157,17 +162,19 @@ export default function ContentBrowser({
       }
     }
     const pointerReleased = (event: globalThis.PointerEvent) => {
-      if (pendingSecondaryGesture.current?.pointerId === event.pointerId) {
+      releasePendingSecondaryGesture(event.pointerId)
+    }
+    const pointerCancelled = (event: globalThis.PointerEvent) => {
+      if (pendingSecondaryGesture.current?.pointerId === event.pointerId)
         clearPendingSecondaryGesture()
-      }
     }
     window.addEventListener('pointermove', pointerMoved)
     window.addEventListener('pointerup', pointerReleased)
-    window.addEventListener('pointercancel', pointerReleased)
+    window.addEventListener('pointercancel', pointerCancelled)
     return () => {
       window.removeEventListener('pointermove', pointerMoved)
       window.removeEventListener('pointerup', pointerReleased)
-      window.removeEventListener('pointercancel', pointerReleased)
+      window.removeEventListener('pointercancel', pointerCancelled)
       clearPendingSecondaryGesture()
       if (radialContextDeduplication.current !== null) {
         window.clearTimeout(radialContextDeduplication.current.timeoutId)
@@ -403,7 +410,7 @@ export default function ContentBrowser({
     pendingSecondaryGesture.current = null
   }
 
-  function rememberPromotedSecondaryGesture(entityId: string) {
+  function rememberHandledSecondaryGesture(entityId: string) {
     clearRadialContextDeduplication()
     const timeoutId = window.setTimeout(() => {
       if (radialContextDeduplication.current?.timeoutId === timeoutId) {
@@ -418,8 +425,21 @@ export default function ContentBrowser({
     if (pendingGesture === null || pendingGesture.pointerId !== pointerId) return
     window.clearTimeout(pendingGesture.timeoutId)
     pendingSecondaryGesture.current = null
-    rememberPromotedSecondaryGesture(pendingGesture.entityId)
+    rememberHandledSecondaryGesture(pendingGesture.entityId)
     pendingGesture.activate()
+  }
+
+  function releasePendingSecondaryGesture(pointerId: number) {
+    const pendingGesture = pendingSecondaryGesture.current
+    if (pendingGesture === null || pendingGesture.pointerId !== pointerId) return
+    window.clearTimeout(pendingGesture.timeoutId)
+    pendingSecondaryGesture.current = null
+    if (pendingGesture.contextMenu === null) return
+    rememberHandledSecondaryGesture(pendingGesture.entityId)
+    pendingGesture.activateCompact(
+      pendingGesture.contextMenu.eventTarget,
+      pendingGesture.contextMenu.origin,
+    )
   }
 
   function openRadialMenuFromPointer(file: BrowserFile, event: PointerEvent<HTMLElement>) {
@@ -440,7 +460,10 @@ export default function ContentBrowser({
       startX: event.clientX,
       startY: event.clientY,
       timeoutId,
+      contextMenu: null,
       activate: () => requestRadialMenu(file, eventTarget, origin, pointerId),
+      activateCompact: (compactTarget, compactOrigin) =>
+        requestRadialMenu(file, compactTarget, compactOrigin, null),
     }
   }
 
@@ -448,7 +471,14 @@ export default function ContentBrowser({
     event.preventDefault()
     event.stopPropagation()
     if (onRadialMenuRequest === undefined) return
-    clearPendingSecondaryGesture()
+    const pendingGesture = pendingSecondaryGesture.current
+    if (pendingGesture?.entityId === file.entityId) {
+      pendingGesture.contextMenu = {
+        eventTarget: event.currentTarget,
+        origin: { x: event.clientX, y: event.clientY },
+      }
+      return
+    }
     const alreadyHandled = radialContextDeduplication.current?.entityId === file.entityId
     clearRadialContextDeduplication()
     if (alreadyHandled) return

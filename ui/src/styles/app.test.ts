@@ -3,8 +3,8 @@ import { describe, expect, it } from 'vitest'
 import { defined } from '../defined'
 
 const appCss = readFileSync('src/styles/app.css', 'utf8')
-const viewerStyleSources = readdirSync('src/styles')
-  .filter((file) => file.endsWith('.css'))
+const viewerStyleFiles = readdirSync('src/styles').filter((file) => file.endsWith('.css'))
+const viewerStyleSources = viewerStyleFiles
   .map((file) => readFileSync(`src/styles/${file}`, 'utf8'))
   .join('\n')
 
@@ -103,7 +103,9 @@ describe('workspace style contracts', () => {
       overflow: 'visible',
       padding: '0',
     })
-    expect(thumbnailHover?.declarations['box-shadow']).toBe('inset 0 0 0 1px #8cb8ea')
+    expect(thumbnailHover?.declarations['box-shadow']).toBe(
+      'inset 0 0 0 1px var(--viewer-thumbnail-hover-ring)',
+    )
     expect(image?.declarations['object-fit']).toBe('contain')
     expect(image?.declarations.background).not.toBe('#e5e8ed')
     expect(placeholder?.declarations.background).toBe('var(--viewer-soft-surface)')
@@ -137,9 +139,11 @@ describe('workspace style contracts', () => {
     ]
 
     for (const selector of baseSelectors) {
-      expect(winningDeclaration(rules, new Set([selector]), 'background'), selector).toBe('#fff')
+      expect(winningDeclaration(rules, new Set([selector]), 'background'), selector).toBe(
+        'var(--viewer-surface)',
+      )
       expect(winningDeclaration(rules, new Set([selector]), 'border'), selector).toBe(
-        '1px solid #8a94a3',
+        '1px solid var(--viewer-border-strong)',
       )
       expect(contrastRatio('#8a94a3', '#ffffff'), selector).toBeGreaterThanOrEqual(3)
       expect(winningDeclaration(rules, new Set([selector]), 'border-radius'), selector).toBe('6px')
@@ -226,6 +230,27 @@ describe('workspace style contracts', () => {
     }
   })
 
+  it('requires component styles to consume semantic color roles', () => {
+    const rawColorPattern =
+      /#[0-9a-f]{3,8}\b|(?:rgb|hsl)a?\([^)]*\)|\b(?:white|black|red|blue|gr[ae]y|green|yellow|orange|purple|pink|brown|navy|teal|cyan|magenta|indigo|violet|gold|silver)\b/giu
+    const violations = viewerStyleFiles
+      .filter((file) => file !== 'tokens.css')
+      .flatMap((file) => {
+        const source = readFileSync(`src/styles/${file}`, 'utf8').replace(
+          /\/\*[\s\S]*?\*\//g,
+          (comment) => comment.replace(/[^\n]/g, ' '),
+        )
+        return [...source.matchAll(/([\w-]+)\s*:\s*([^;{}]+);/g)].flatMap((declaration) => {
+          const matches = declaration[2]?.match(rawColorPattern) ?? []
+          const line = source.slice(0, declaration.index).split('\n').length
+          return matches.map((literal) => `${file}:${line} ${declaration[1]}: ${literal}`)
+        })
+      })
+
+    // Transparent and currentColor are channel behavior, not palette literals.
+    expect(violations).toEqual([])
+  })
+
   it('marks selected sidebar rows with the approved leading accent indicator and text', () => {
     const rules = parseRules(appCss)
     for (const selector of [
@@ -246,7 +271,7 @@ describe('workspace style contracts', () => {
     const declaration = (selector: string, property: string) =>
       winningDeclaration(rules, new Set([selector]), property)
 
-    expect(declaration('.preview-overlay', 'background')).toBe('#f0f1ef')
+    expect(declaration('.preview-overlay', 'background')).toBe('var(--preview-stage)')
     expect(declaration('.preview-overlay', 'color')).toBe('var(--viewer-text)')
     expect(declaration('.preview-toolbar', 'background')).toBe('var(--viewer-surface)')
     expect(declaration('.preview-toolbar', 'border-bottom')).toBe('1px solid var(--viewer-border)')
@@ -312,7 +337,7 @@ describe('workspace style contracts', () => {
     const declaration = (selector: string, property: string) =>
       winningDeclaration(rules, new Set([selector]), property)
 
-    expect(declaration('.compare-workspace', 'background')).toBe('#f0f1ef')
+    expect(declaration('.compare-workspace', 'background')).toBe('var(--preview-stage)')
     expect(declaration('.compare-workspace', 'border-radius')).toBe('10px')
     expect(declaration('.compare-workspace', 'border')).toBe('')
     expect(declaration('.compare-workspace', 'color')).toBe('var(--viewer-text)')

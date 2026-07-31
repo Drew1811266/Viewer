@@ -1191,6 +1191,89 @@ describe('Viewer empty state', () => {
     expect(document.querySelector('.radial-file-menu')).not.toBeNull()
   })
 
+  it('waits for release before an early context-menu event opens the compact file menu', async () => {
+    const viewer = bridge()
+    vi.mocked(viewer.queryFolder).mockResolvedValue(contentWorkspace())
+    render(<App bridge={viewer} />)
+    fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
+    const file = await screen.findByRole('option', { name: 'front.jpg' })
+
+    fireEvent.pointerDown(file, {
+      pointerId: 404,
+      button: 2,
+      clientX: 420,
+      clientY: 260,
+    })
+    fireEvent.contextMenu(file, { button: 2, clientX: 420, clientY: 260 })
+
+    expect(document.querySelector('.file-context-menu')).toBeNull()
+    expect(document.querySelector('.radial-file-menu')).toBeNull()
+
+    fireEvent.pointerUp(window, {
+      pointerId: 404,
+      button: 2,
+      clientX: 420,
+      clientY: 260,
+    })
+
+    expect(
+      screen.getByRole('menu', { name: '文件操作' }).closest('.file-context-menu'),
+    ).not.toBeNull()
+    expect(file).toHaveAttribute('aria-selected', 'true')
+    fireEvent.keyDown(screen.getByRole('menu', { name: '文件操作' }), { key: 'Escape' })
+    expect(screen.getByRole('listbox', { name: '图片文件' })).toHaveFocus()
+  })
+
+  it('lets dwell promote an early context-menu event to the pointer radial menu', async () => {
+    const viewer = bridge()
+    vi.mocked(viewer.queryFolder).mockResolvedValue(contentWorkspace())
+    render(<App bridge={viewer} />)
+    fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
+    const file = await screen.findByRole('option', { name: 'front.jpg' })
+    vi.useFakeTimers()
+
+    fireEvent.pointerDown(file, {
+      pointerId: 405,
+      button: 2,
+      clientX: 420,
+      clientY: 260,
+    })
+    fireEvent.contextMenu(file, { button: 2, clientX: 420, clientY: 260 })
+    expect(document.querySelector('.file-context-menu')).toBeNull()
+
+    act(() => vi.advanceTimersByTime(180))
+
+    expect(document.querySelector('.radial-file-menu')).not.toBeNull()
+    expect(document.querySelector('.file-context-menu')).toBeNull()
+  })
+
+  it('lets meaningful movement promote an early context-menu event to the pointer radial menu', async () => {
+    const viewer = bridge()
+    vi.mocked(viewer.queryFolder).mockResolvedValue(contentWorkspace())
+    render(<App bridge={viewer} />)
+    fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
+    const file = await screen.findByRole('option', { name: 'front.jpg' })
+
+    fireEvent.pointerDown(file, {
+      pointerId: 406,
+      button: 2,
+      clientX: 420,
+      clientY: 260,
+    })
+    fireEvent.contextMenu(file, { button: 2, clientX: 420, clientY: 260 })
+    expect(document.querySelector('.file-context-menu')).toBeNull()
+
+    fireEvent.pointerMove(window, {
+      pointerId: 406,
+      buttons: 2,
+      clientX: 428,
+      clientY: 260,
+    })
+
+    expect(document.querySelector('.radial-file-menu')).not.toBeNull()
+    expect(document.querySelector('.file-context-menu')).toBeNull()
+  })
+
   it('keeps Control-click on the conventional compact-menu path', async () => {
     const viewer = bridge()
     vi.mocked(viewer.queryFolder).mockResolvedValue(contentWorkspace())

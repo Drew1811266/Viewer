@@ -1624,6 +1624,47 @@ describe('ContentBrowser', () => {
     )
   })
 
+  it('defers an early context-menu event until a short secondary pointer is released', () => {
+    const request = vi.fn()
+    render(<ContentBrowser workspace={workspace(1)} onRadialMenuRequest={request} />)
+    const option = screen.getByRole('option', { name: '1.jpg' })
+    const contextMenu = createEvent.contextMenu(option, {
+      button: 2,
+      clientX: 210,
+      clientY: 160,
+    })
+
+    fireEvent.pointerDown(option, {
+      pointerId: 74,
+      button: 2,
+      clientX: 210,
+      clientY: 160,
+    })
+    fireEvent(option, contextMenu)
+
+    expect(contextMenu.defaultPrevented).toBe(true)
+    expect(request).not.toHaveBeenCalled()
+
+    fireEvent.pointerUp(window, {
+      pointerId: 74,
+      button: 2,
+      clientX: 210,
+      clientY: 160,
+    })
+    fireEvent.contextMenu(option, {
+      button: 2,
+      clientX: 210,
+      clientY: 160,
+    })
+
+    expect(request).toHaveBeenCalledTimes(1)
+    expect(request.mock.calls[0]?.[0]).toEqual(expect.objectContaining({ pointerId: null }))
+    expect(selectedLabels()).toEqual(['1.jpg'])
+    expect(request.mock.calls[0]?.[0].returnFocusTarget).toBe(
+      screen.getByRole('listbox', { name: '图片文件' }),
+    )
+  })
+
   it('promotes a held secondary pointer to a radial request after the dwell threshold', () => {
     vi.useFakeTimers()
     const request = vi.fn()
@@ -1646,6 +1687,84 @@ describe('ContentBrowser', () => {
       pointerId: 76,
       button: 2,
       clientX: 210,
+      clientY: 160,
+    })
+    fireEvent.contextMenu(option, {
+      button: 2,
+      clientX: 210,
+      clientY: 160,
+    })
+    expect(request).toHaveBeenCalledOnce()
+  })
+
+  it('keeps an early context-menu event pending while dwell promotes the secondary gesture', () => {
+    vi.useFakeTimers()
+    const request = vi.fn()
+    render(<ContentBrowser workspace={workspace(1)} onRadialMenuRequest={request} />)
+    const option = screen.getByRole('option', { name: '1.jpg' })
+
+    fireEvent.pointerDown(option, {
+      pointerId: 77,
+      button: 2,
+      clientX: 210,
+      clientY: 160,
+    })
+    fireEvent.contextMenu(option, {
+      button: 2,
+      clientX: 210,
+      clientY: 160,
+    })
+    expect(request).not.toHaveBeenCalled()
+
+    act(() => vi.advanceTimersByTime(180))
+
+    expect(request).toHaveBeenCalledOnce()
+    expect(request.mock.calls[0]?.[0]).toEqual(expect.objectContaining({ pointerId: 77 }))
+    fireEvent.pointerUp(window, {
+      pointerId: 77,
+      button: 2,
+      clientX: 210,
+      clientY: 160,
+    })
+    fireEvent.contextMenu(option, {
+      button: 2,
+      clientX: 210,
+      clientY: 160,
+    })
+    expect(request).toHaveBeenCalledOnce()
+  })
+
+  it('keeps an early context-menu event pending while movement promotes the secondary gesture', () => {
+    const request = vi.fn()
+    render(<ContentBrowser workspace={workspace(1)} onRadialMenuRequest={request} />)
+    const option = screen.getByRole('option', { name: '1.jpg' })
+
+    fireEvent.pointerDown(option, {
+      pointerId: 78,
+      button: 2,
+      clientX: 210,
+      clientY: 160,
+    })
+    fireEvent.contextMenu(option, {
+      button: 2,
+      clientX: 210,
+      clientY: 160,
+    })
+    expect(request).not.toHaveBeenCalled()
+
+    fireEvent.pointerMove(window, {
+      pointerId: 78,
+      buttons: 2,
+      clientX: 218,
+      clientY: 160,
+    })
+
+    expect(request).toHaveBeenCalledOnce()
+    expect(request.mock.calls[0]?.[0]).toEqual(expect.objectContaining({ pointerId: 78 }))
+    fireEvent.pointerUp(window, {
+      pointerId: 78,
+      button: 2,
+      clientX: 218,
       clientY: 160,
     })
     fireEvent.contextMenu(option, {

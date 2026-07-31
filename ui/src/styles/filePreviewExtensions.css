@@ -60,7 +60,7 @@
 
 .text-preview-stage,
 .unsupported-file-preview .preview-stage {
-  background: #f0f1ef;
+  background: var(--preview-stage);
   height: calc(100% - 52px);
   min-height: 0;
   overflow: auto;

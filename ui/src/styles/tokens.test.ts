@@ -29,6 +29,11 @@ describe('Viewer visual tokens', () => {
     expect(root.getPropertyValue('--viewer-text-secondary').trim()).toBe('#6b7077')
     expect(root.getPropertyValue('--viewer-accent').trim()).toBe('#5869cf')
     expect(root.getPropertyValue('--viewer-accent-text').trim()).toBe('#4152b4')
+    const stateColorRoles = ['--viewer-warning', '--viewer-danger', '--viewer-review'].map(
+      (property) => root.getPropertyValue(property).trim(),
+    )
+    expect(stateColorRoles.every(Boolean)).toBe(true)
+    expect(new Set(stateColorRoles).size).toBe(3)
     expect(root.getPropertyValue('--viewer-focus-outline').trim()).toBe(
       '2px solid var(--viewer-accent)',
     )

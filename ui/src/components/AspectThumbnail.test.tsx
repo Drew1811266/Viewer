@@ -25,6 +25,26 @@ afterEach(() => {
 })
 
 describe('AspectThumbnail', () => {
+  it('keeps known thumbnail loading geometry before the image request resolves', () => {
+    const loading = deferred<string>()
+    const { container } = render(
+      <AspectThumbnail
+        file={file}
+        width={198}
+        height={132}
+        dimensionsKnown
+        loadThumbnail={() => loading.promise}
+        onNaturalDimensions={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByLabelText('缩略图加载中')).toHaveStyle({ width: '198px', height: '132px' })
+    expect(container.querySelector('.aspect-thumbnail')).toHaveStyle({
+      width: '198px',
+      height: '132px',
+    })
+  })
+
   it('renders the complete known-ratio image at the supplied proportional size', async () => {
     const loadThumbnail = vi.fn().mockResolvedValue('viewer-image://thumbnail')
     const { container } = render(
@@ -135,7 +155,7 @@ describe('AspectThumbnail', () => {
   })
 
   it('displays a per-thumbnail failure state', async () => {
-    render(
+    const { container } = render(
       <AspectThumbnail
         file={file}
         width={198}
@@ -146,7 +166,12 @@ describe('AspectThumbnail', () => {
       />,
     )
 
-    expect(await screen.findByLabelText('缩略图不可用')).toBeVisible()
+    const failed = await screen.findByLabelText('缩略图不可用')
+    expect(failed).toHaveStyle({ width: '198px', height: '132px' })
+    expect(container.querySelector('.aspect-thumbnail')).toHaveStyle({
+      width: '198px',
+      height: '132px',
+    })
     expect(screen.queryByRole('img')).not.toBeInTheDocument()
   })
 

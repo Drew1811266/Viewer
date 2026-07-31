@@ -102,7 +102,7 @@ describe('workspace style contracts', () => {
     expect(thumbnailHover?.declarations['box-shadow']).toBe('inset 0 0 0 1px #8cb8ea')
     expect(image?.declarations['object-fit']).toBe('contain')
     expect(image?.declarations.background).not.toBe('#e5e8ed')
-    expect(placeholder?.declarations.background).toBe('#e5e8ed')
+    expect(placeholder?.declarations.background).toBe('var(--viewer-soft-surface)')
   })
 
   it('paints thumbnail keyboard focus above every thumbnail child state', () => {

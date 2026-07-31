@@ -43,6 +43,7 @@ import TaskBar from './components/TaskBar'
 import TextPreview, { type TextPreviewFiles } from './components/TextPreview'
 import TrashConfirmation from './components/TrashConfirmation'
 import UnsupportedFilePreview from './components/UnsupportedFilePreview'
+import WorkspaceLoadingState from './components/WorkspaceLoadingState'
 import WorkspaceMoreMenu from './components/WorkspaceMoreMenu'
 import WorkspaceViewMenu, { type WorkspaceViewContext } from './components/WorkspaceViewMenu'
 import { defined } from './defined'
@@ -1006,6 +1007,7 @@ function ViewerWorkspace({ bridge }: { bridge: ViewerBridge }) {
               </button>
               <FolderTree
                 folders={state.folders}
+                loading={state.workspace === null}
                 selectedId={state.selectedFolderId}
                 onSelect={selectFolderTarget}
                 organizationDropTarget={organizationDropTarget}
@@ -1055,7 +1057,7 @@ function ViewerWorkspace({ bridge }: { bridge: ViewerBridge }) {
               searching={state.search.status === 'searching'}
             />
           )}
-          {!state.search.showResults && state.workspace === null && <p>正在读取项目…</p>}
+          {!state.search.showResults && state.workspace === null && <WorkspaceLoadingState />}
           {!state.search.showResults && state.workspace?.workspace === 'empty' && (
             <p>此文件夹中没有支持的文件。</p>
           )}

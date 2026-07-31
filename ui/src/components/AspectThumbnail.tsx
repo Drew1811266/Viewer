@@ -65,6 +65,7 @@ export default function AspectThumbnail({
         <span
           className="aspect-thumbnail-placeholder"
           aria-label={currentState.status === 'failed' ? '缩略图不可用' : '缩略图加载中'}
+          style={size}
         />
       )}
       {currentState.status === 'ready' && (

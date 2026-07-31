@@ -77,13 +77,115 @@ summary,
   width: 1px;
 }
 
-.empty-project {
+.empty-project,
+.project-opening-state {
+  background: var(--viewer-application);
+  display: grid;
+  gap: 12px;
+  justify-items: center;
+  min-height: 100vh;
+  padding: 32px;
+  place-content: center;
+}
+
+.empty-project h1,
+.project-opening-state h1 {
+  font-size: 20px;
+  margin: 0;
+}
+
+.empty-project p,
+.project-opening-state p {
+  margin: 0;
+}
+
+.project-drop-feedback {
+  background: rgb(236 238 255 / 82%);
+  border: 2px solid var(--viewer-accent);
+  border-radius: 14px;
+  color: #4152b4;
+  display: grid;
+  inset: 12px;
+  place-items: center;
+  pointer-events: none;
+  position: fixed;
+  z-index: 1;
+}
+
+.empty-project-error {
+  color: var(--viewer-danger);
+}
+
+.project-opening-progress {
+  background: var(--viewer-border);
+  height: 2px;
+  overflow: hidden;
+  width: min(280px, 60vw);
+}
+
+.workspace-loading {
+  min-width: 0;
+}
+
+.workspace-loading-band {
+  border-bottom: 1px solid var(--viewer-border);
+  display: grid;
+  grid-template-columns: 228px minmax(0, 1fr);
+  min-height: 170px;
+}
+
+.workspace-loading-identity {
+  background: var(--viewer-soft-surface);
+  border-right: 1px solid var(--viewer-border);
+}
+
+.workspace-loading-track {
   align-items: center;
   display: flex;
-  flex-direction: column;
-  justify-content: center;
+  gap: 12px;
+  min-width: 0;
+  overflow: hidden;
+  padding: 12px;
+}
+
+.workspace-loading-thumbnail {
+  border-radius: var(--viewer-radius-control);
+  flex: 0 0 132px;
+  height: 132px;
+}
+
+.folder-tree-skeleton-list {
+  display: grid;
+  gap: 8px;
+  padding: 8px 0;
+}
+
+.folder-tree-skeleton-row {
+  border-radius: var(--viewer-radius-row);
+  height: 20px;
+  margin: 0 8px;
+}
+
+.aspect-thumbnail-placeholder,
+.workspace-loading-thumbnail,
+.folder-tree-skeleton-row,
+.folder-filmstrip-skeleton {
+  animation: viewer-skeleton-opacity 1.4s ease-in-out infinite alternate;
+  background: var(--viewer-soft-surface);
+}
+
+@keyframes viewer-skeleton-opacity {
+  from {
+    opacity: 0.62;
+  }
+
+  to {
+    opacity: 0.92;
+  }
+}
+
+.empty-project {
   min-height: 100vh;
-  padding: 40px;
   text-align: center;
 }
 
@@ -1187,7 +1289,6 @@ summary,
 }
 
 .aspect-thumbnail-placeholder {
-  background: #e5e8ed;
   display: block;
   inset: 0;
   position: absolute;
@@ -1201,7 +1302,6 @@ summary,
 }
 
 .folder-filmstrip-skeleton {
-  background: #e5e8ed;
   border-radius: 6px;
 }
 
@@ -2361,10 +2461,21 @@ summary,
   .file-context-menu,
   .modal-sheet,
   .preview-overlay,
+  .aspect-thumbnail-placeholder,
+  .workspace-loading-thumbnail,
+  .folder-tree-skeleton-row,
+  .folder-filmstrip-skeleton,
   .organization-drag-handle,
   .radial-primary-shape,
   .radial-secondary-shape {
     transition: none;
     animation: none;
+  }
+
+  .aspect-thumbnail-placeholder,
+  .workspace-loading-thumbnail,
+  .folder-tree-skeleton-row,
+  .folder-filmstrip-skeleton {
+    background: var(--viewer-soft-surface);
   }
 }

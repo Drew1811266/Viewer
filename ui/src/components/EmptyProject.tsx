@@ -1,5 +1,5 @@
 import type { DragEvent } from 'react'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import type { ViewerBridge } from '../api/viewer'
 import { safeUserMessage } from '../api/viewer'
 
@@ -18,10 +18,14 @@ export default function EmptyProject({
 }: EmptyProjectProps) {
   const [localError, setLocalError] = useState<string | null>(null)
   const [working, setWorking] = useState(false)
+  const [dragActive, setDragActive] = useState(false)
+  const [openingName, setOpeningName] = useState('Viewer 项目')
+  const dragDepth = useRef(0)
   const disabled = busy || working
 
   async function openPath(path: string) {
     setLocalError(null)
+    setOpeningName(path.split(/[\\/]/).filter(Boolean).at(-1) ?? 'Viewer 项目')
     setWorking(true)
     try {
       await (onOpenProject ? onOpenProject(path) : bridge.openProject(path))
@@ -30,6 +34,18 @@ export default function EmptyProject({
     } finally {
       setWorking(false)
     }
+  }
+
+  function enterProjectDrag(event: DragEvent<HTMLElement>) {
+    if (!hasDirectory(event)) return
+    dragDepth.current += 1
+    setDragActive(true)
+  }
+
+  function leaveProjectDrag() {
+    if (!dragActive) return
+    dragDepth.current = Math.max(0, dragDepth.current - 1)
+    if (dragDepth.current === 0) setDragActive(false)
   }
 
   async function chooseProject() {
@@ -44,6 +60,8 @@ export default function EmptyProject({
 
   function dropProject(event: DragEvent<HTMLElement>) {
     event.preventDefault()
+    dragDepth.current = 0
+    setDragActive(false)
     if (disabled) return
     const items = Array.from(event.dataTransfer.items ?? [])
     const entries = items.map((item) => item.webkitGetAsEntry?.()).filter(Boolean)
@@ -59,20 +77,43 @@ export default function EmptyProject({
     void openPath(file.path)
   }
 
+  if (working) {
+    return (
+      <main className="project-opening-state" aria-busy="true">
+        <h1>{openingName}</h1>
+        <p>正在验证项目…</p>
+        <div className="project-opening-progress" role="progressbar" aria-label="正在打开项目" />
+      </main>
+    )
+  }
+
   return (
     <main
       className="empty-project"
+      data-drag-active={dragActive || undefined}
       data-testid="project-drop-zone"
+      onDragEnter={enterProjectDrag}
       onDragOver={(event) => event.preventDefault()}
+      onDragLeave={leaveProjectDrag}
       onDrop={dropProject}
     >
       <h1>Viewer</h1>
-      <p>拖入或选择一个项目文件夹</p>
-      <p>支持 JPG、PNG、Markdown 和 TXT，本次关闭后不会记住目录。</p>
+      <p>选择或拖入一个项目文件夹</p>
       <button type="button" disabled={disabled} onClick={() => void chooseProject()}>
-        {disabled ? '正在打开…' : '选择项目文件夹'}
+        选择项目文件夹
       </button>
-      {(localError ?? errorMessage) && <p role="alert">{localError ?? errorMessage}</p>}
+      {dragActive && <div className="project-drop-feedback">松开以打开项目</div>}
+      {(localError ?? errorMessage) && (
+        <p className="empty-project-error" role="alert">
+          {localError ?? errorMessage}
+        </p>
+      )}
     </main>
+  )
+}
+
+function hasDirectory(event: DragEvent<HTMLElement>): boolean {
+  return Array.from(event.dataTransfer?.items ?? []).some(
+    (item) => item.webkitGetAsEntry?.()?.isDirectory,
   )
 }

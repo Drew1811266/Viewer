@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import type { ViewerBridge } from '../api/viewer'
 import EmptyProject from './EmptyProject'
@@ -54,6 +54,43 @@ function bridge(): ViewerBridge {
 }
 
 describe('EmptyProject', () => {
+  it('keeps the resting entry state to the approved three elements', () => {
+    render(<EmptyProject bridge={bridge()} />)
+
+    const entry = screen.getByTestId('project-drop-zone')
+    expect(within(entry).getByRole('heading', { name: 'Viewer' })).toBeVisible()
+    expect(within(entry).getByText('选择或拖入一个项目文件夹')).toBeVisible()
+    expect(within(entry).getByRole('button', { name: '选择项目文件夹' })).toBeVisible()
+    expect(within(entry).queryByText(/支持 JPG|不会记住|最近/)).not.toBeInTheDocument()
+  })
+
+  it('shows folder-drop feedback only while a directory is dragged over the window', () => {
+    render(<EmptyProject bridge={bridge()} />)
+    const entry = screen.getByTestId('project-drop-zone')
+
+    fireEvent.dragEnter(entry, {
+      dataTransfer: { items: [{ webkitGetAsEntry: () => ({ isDirectory: true }) }] },
+    })
+    expect(screen.getByText('松开以打开项目')).toBeVisible()
+
+    fireEvent.dragLeave(entry)
+    expect(screen.queryByText('松开以打开项目')).not.toBeInTheDocument()
+  })
+
+  it('replaces entry controls with an indeterminate opening state', async () => {
+    const opening = new Promise<void>(() => undefined)
+    render(<EmptyProject bridge={bridge()} onOpenProject={() => opening} />)
+
+    fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
+
+    expect(await screen.findByRole('heading', { name: 'project' })).toBeVisible()
+    expect(screen.getByText('正在验证项目…')).toBeVisible()
+    expect(screen.getByRole('progressbar', { name: '正在打开项目' })).not.toHaveAttribute(
+      'aria-valuenow',
+    )
+    expect(screen.queryByRole('button', { name: '选择项目文件夹' })).not.toBeInTheDocument()
+  })
+
   it('opens the directory selected by the native chooser', async () => {
     const viewer = bridge()
     render(<EmptyProject bridge={viewer} />)

@@ -8,6 +8,7 @@ interface FolderTreeProps {
   selectedId: string | null
   onSelect: (entityId: string) => void
   height?: number
+  loading?: boolean
   organizationDropTarget?: OrganizationDropTarget | null
 }
 
@@ -22,6 +23,7 @@ export default function FolderTree({
   selectedId,
   onSelect,
   height,
+  loading = false,
   organizationDropTarget = null,
 }: FolderTreeProps) {
   const safeFolders = useMemo(
@@ -53,66 +55,81 @@ export default function FolderTree({
 
   return (
     <div className="folder-tree" role="tree" aria-label="项目文件夹">
-      <VirtualList
-        items={visible}
-        rowHeight={28}
-        height={height}
-        overscan={6}
-        viewportProps={{ 'data-organization-drop-surface': '' }}
-        getKey={(item) => item.folder.entityId}
-        renderItem={({ folder, depth, hasChildren }) => (
-          <div
-            className="folder-tree-row"
-            role="treeitem"
-            aria-label={folder.relativePath}
-            aria-level={depth + 1}
-            aria-selected={folder.entityId === selectedId}
-            aria-expanded={hasChildren ? expanded.has(folder.entityId) : undefined}
-            tabIndex={undefined}
-            data-organization-folder-id={folder.entityId}
-            data-drop-mode={
-              organizationDropTarget?.entityId === folder.entityId && organizationDropTarget.valid
-                ? organizationDropTarget.mode
-                : undefined
-            }
-            data-drop-invalid={
-              organizationDropTarget?.entityId === folder.entityId && !organizationDropTarget.valid
-                ? true
-                : undefined
-            }
-            data-organization-drop-target={
-              organizationDropTarget?.entityId === folder.entityId && organizationDropTarget.valid
-                ? true
-                : undefined
-            }
-            style={{ paddingInlineStart: depth * 16 }}
-            onClick={() => onSelect(folder.entityId)}
-          >
-            {hasChildren ? (
-              <button
-                type="button"
-                className="folder-disclosure"
-                aria-label={`${expanded.has(folder.entityId) ? '折叠' : '展开'} ${folder.relativePath}`}
-                onClick={(event) => {
-                  event.stopPropagation()
-                  toggle(folder.entityId)
-                }}
-              >
-                {expanded.has(folder.entityId) ? '▾' : '▸'}
-              </button>
-            ) : (
-              <span className="folder-disclosure-placeholder" aria-hidden="true" />
-            )}
-            <span className="folder-name">{folder.name}</span>
-            <span className="folder-marker-badge" aria-label={folderMarkerAriaLabel(folder)}>
-              {folderMarkerLabel(folder)}
-            </span>
-            {folder.relativePath.includes('/') && (
-              <span className="folder-path">{folder.relativePath}</span>
-            )}
-          </div>
-        )}
-      />
+      {loading && visible.length === 0 ? (
+        <div className="folder-tree-skeleton-list" aria-hidden="true">
+          {[
+            'folder-skeleton-1',
+            'folder-skeleton-2',
+            'folder-skeleton-3',
+            'folder-skeleton-4',
+            'folder-skeleton-5',
+          ].map((id) => (
+            <div className="folder-tree-skeleton-row" key={id} />
+          ))}
+        </div>
+      ) : (
+        <VirtualList
+          items={visible}
+          rowHeight={28}
+          height={height}
+          overscan={6}
+          viewportProps={{ 'data-organization-drop-surface': '' }}
+          getKey={(item) => item.folder.entityId}
+          renderItem={({ folder, depth, hasChildren }) => (
+            <div
+              className="folder-tree-row"
+              role="treeitem"
+              aria-label={folder.relativePath}
+              aria-level={depth + 1}
+              aria-selected={folder.entityId === selectedId}
+              aria-expanded={hasChildren ? expanded.has(folder.entityId) : undefined}
+              tabIndex={undefined}
+              data-organization-folder-id={folder.entityId}
+              data-drop-mode={
+                organizationDropTarget?.entityId === folder.entityId && organizationDropTarget.valid
+                  ? organizationDropTarget.mode
+                  : undefined
+              }
+              data-drop-invalid={
+                organizationDropTarget?.entityId === folder.entityId &&
+                !organizationDropTarget.valid
+                  ? true
+                  : undefined
+              }
+              data-organization-drop-target={
+                organizationDropTarget?.entityId === folder.entityId && organizationDropTarget.valid
+                  ? true
+                  : undefined
+              }
+              style={{ paddingInlineStart: depth * 16 }}
+              onClick={() => onSelect(folder.entityId)}
+            >
+              {hasChildren ? (
+                <button
+                  type="button"
+                  className="folder-disclosure"
+                  aria-label={`${expanded.has(folder.entityId) ? '折叠' : '展开'} ${folder.relativePath}`}
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    toggle(folder.entityId)
+                  }}
+                >
+                  {expanded.has(folder.entityId) ? '▾' : '▸'}
+                </button>
+              ) : (
+                <span className="folder-disclosure-placeholder" aria-hidden="true" />
+              )}
+              <span className="folder-name">{folder.name}</span>
+              <span className="folder-marker-badge" aria-label={folderMarkerAriaLabel(folder)}>
+                {folderMarkerLabel(folder)}
+              </span>
+              {folder.relativePath.includes('/') && (
+                <span className="folder-path">{folder.relativePath}</span>
+              )}
+            </div>
+          )}
+        />
+      )}
     </div>
   )
 }

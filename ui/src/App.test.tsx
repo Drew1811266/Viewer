@@ -172,7 +172,7 @@ describe('Viewer empty state', () => {
   it('asks the user to import one project folder', () => {
     render(<App />)
     expect(screen.getByRole('heading', { name: 'Viewer' })).toBeVisible()
-    expect(screen.getByText('拖入或选择一个项目文件夹')).toBeVisible()
+    expect(screen.getByText('选择或拖入一个项目文件夹')).toBeVisible()
     expect(screen.queryByRole('button', { name: '软件设置' })).not.toBeInTheDocument()
   })
 

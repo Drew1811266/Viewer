@@ -239,7 +239,7 @@
       position: absolute;
       top: 12px;
       transform: translateX(-50%);
-      z-index: 24;
+      z-index: 40;
     }
     .scene-state-bar .state-label {
       color: var(--tertiary);
@@ -1006,6 +1006,8 @@
     .opening-line { background: #e4e4e1; border-radius: 99px; height: 3px; margin: 15px auto 0; overflow: hidden; width: 180px; }
     .opening-line span { background: var(--accent); display: block; height: 100%; width: 44%; }
     .drop-target { border: 2px solid var(--accent); border-radius: 14px; inset: 22px; position: absolute; }
+    .drop-target.invalid { border-color: var(--danger); }
+    .drop-target.invalid span { background: var(--danger); }
     .drop-target span {
       background: var(--accent);
       border-radius: 999px;
@@ -1016,6 +1018,94 @@
       position: absolute;
       top: 48px;
       transform: translateX(-50%);
+    }
+    .empty-project-state,
+    .recovery-state {
+      align-items: center;
+      color: var(--secondary);
+      display: flex;
+      flex-direction: column;
+      gap: 9px;
+      justify-content: center;
+      text-align: center;
+    }
+    .empty-project-state strong,
+    .recovery-state strong { color: var(--text); font-size: 15px; }
+    .empty-project-state p,
+    .recovery-state p { font-size: 10px; line-height: 1.55; margin: 0; max-width: 380px; }
+    .result-layout {
+      background: #f4f4f2;
+      height: 100%;
+      overflow: auto;
+      padding: 58px 18px 18px;
+    }
+    .result-panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      margin: 0 auto;
+      max-width: 760px;
+      overflow: hidden;
+    }
+    .result-panel > header {
+      align-items: center;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      padding: 15px;
+    }
+    .result-panel > header strong { font-size: 14px; }
+    .result-list { padding: 7px 14px 14px; }
+    .result-row-compact {
+      align-items: center;
+      border-bottom: 1px solid #ececea;
+      display: grid;
+      font-size: 10px;
+      gap: 12px;
+      grid-template-columns: minmax(0, 1fr) auto;
+      min-height: 38px;
+    }
+    .result-row-compact:last-child { border-bottom: 0; }
+    .result-row-compact span:last-child { color: var(--secondary); }
+    .accessibility-board {
+      background: #f4f4f2;
+      display: grid;
+      gap: 14px;
+      grid-template-columns: minmax(0, 1fr) 340px;
+      height: 100%;
+      padding: 58px 18px 18px;
+    }
+    .accessibility-preview,
+    .accessibility-notes {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: auto;
+      padding: 16px;
+    }
+    .accessibility-preview[data-accessibility-state="zoom"] { font-size: 200%; }
+    .accessibility-preview[data-accessibility-state="forced"] {
+      background: #fff;
+      color: #000;
+      filter: contrast(1.4);
+    }
+    .accessibility-preview h2,
+    .accessibility-notes h2 { font-size: 14px; margin: 0 0 12px; }
+    .accessibility-row {
+      align-items: center;
+      border-top: 1px solid var(--border);
+      display: flex;
+      font-size: 10px;
+      justify-content: space-between;
+      min-height: 36px;
+    }
+    .focus-demo {
+      border: 2px solid var(--accent);
+      border-radius: 8px;
+      box-shadow: 0 0 0 3px var(--surface);
+      display: inline-flex;
+      margin: 12px 0;
+      padding: 7px 9px;
     }
 
     .skeleton { animation: breathe 1.6s ease-in-out infinite; background: #ececea; border-radius: 6px; }
@@ -1238,7 +1328,7 @@
       fit: true,
       openMenu: null,
       dialog: "destination",
-      launch: "empty",
+      launch: "no-project",
       sidebar: "expanded",
       structure: "root",
       density: "standard",
@@ -1252,6 +1342,9 @@
       compare: "4",
       document: "markdown",
       info: "single",
+      task: "running",
+      results: "operation",
+      accessibility: "keyboard",
     };
 
     const embedParams = new URLSearchParams(location.hash.slice(1));
@@ -1597,37 +1690,103 @@
     }
 
     function dialogsScreen() {
-      const tabs = `<div class="segmented prototype-state-switcher" style="margin-bottom:14px"><button class="${state.dialog === "destination" ? "active" : ""}" data-dialog="destination">目标与冲突</button><button class="${state.dialog === "rename" ? "active" : ""}" data-dialog="rename">批量重命名</button><button class="${state.dialog === "trash" ? "active" : ""}" data-dialog="trash">废纸篓确认</button><button class="${state.dialog === "close" ? "active" : ""}" data-dialog="close">关闭任务</button></div>`;
+      const states = stateBar([{
+        label: "对话框",
+        key: "dialog",
+        items: [["settings", "设置"], ["single-rename", "单个重命名"], ["batch-rename", "批量重命名"], ["destination", "选择目标"], ["conflict", "冲突"], ["trash", "废纸篓"], ["close", "关闭任务"]],
+      }]);
       let body = "";
-      if (state.dialog === "destination") {
-        body = `<div class="dialog wide"><h2>移动到文件夹</h2><p>选择目标并检查冲突。预检完成前不会执行任何文件操作。</p>${tabs}<div class="dialog-grid"><section class="dialog-panel"><h3>项目目录</h3><div class="panel-body"><div class="tree-row">角色</div><div class="tree-row child">B01</div><div class="tree-row">衣服</div><div class="tree-row child selected">A02</div><div class="tree-row child">A03</div></div></section><section class="dialog-panel"><h3>预检结果 · 3 项冲突</h3><div class="panel-body"><div class="conflict-row"><span>2C2A7469.JPG · 已存在</span><select><option>替换</option></select></div><div class="conflict-row"><span>2C2A7536.JPG · 已存在</span><select><option>保留两者</option></select></div><div class="conflict-row"><span>2C2A7494.JPG · 可移动</span><span class="status-tag keep">就绪</span></div></div></section></div><div class="dialog-actions"><button class="viewer-button">取消</button><button class="viewer-button primary">移动 3 个文件</button></div></div>`;
-      } else if (state.dialog === "rename") {
-        body = `<div class="dialog wide"><h2>批量重命名</h2><p>预览全部文件的新名称；无效或冲突项目不会执行。</p>${tabs}<div class="filter-grid"><div class="field"><label>查找</label><input value="2C2A"></div><div class="field"><label>替换为</label><input value="LOOK-"></div><div class="field"><label>前缀</label><input placeholder="可选"></div><div class="field"><label>起始序号</label><input value="001"></div></div><section class="dialog-panel" style="margin-top:14px"><h3>预览 · 28 项可执行 · 2 项无效</h3><div class="panel-body"><div class="conflict-row"><span>2C2A7469.JPG</span><span>LOOK-001.JPG</span></div><div class="conflict-row"><span>2C2A7536.JPG</span><span>LOOK-002.JPG</span></div><div class="conflict-row" style="color:var(--danger)"><span>2C2A7494.JPG</span><span>名称冲突</span></div></div></section><div class="dialog-actions"><button class="viewer-button">取消</button><button class="viewer-button primary">重命名 28 个文件</button></div></div>`;
+      if (state.dialog === "settings") {
+        body = '<div class="dialog wide"><h2>设置</h2><p>Viewer 自有界面在 macOS 与 Windows 共享相同视觉与工作流。</p><div class="dialog-grid"><section class="dialog-panel"><h3>设置分类</h3><div class="panel-body"><div class="tree-row selected">外观</div><div class="tree-row">浏览</div><div class="tree-row">文件操作</div><div class="tree-row">快捷键</div></div></section><section class="dialog-panel"><h3>外观</h3><div class="panel-body"><div class="conflict-row"><span>界面密度</span><select><option>紧凑高效</option></select></div><div class="conflict-row"><span>缩略图默认大小</span><select><option>标准</option></select></div><div class="conflict-row"><span>减少界面动效</span><button class="viewer-button">跟随系统</button></div></div></section></div><div class="dialog-actions"><button class="viewer-button">取消</button><button class="viewer-button primary">完成</button></div></div>';
+      } else if (state.dialog === "single-rename") {
+        body = '<div class="dialog"><h2>重命名文件</h2><p>文件扩展名保持不变。</p><div class="field"><label>新名称</label><input value="A01-正面-01"></div><div class="dialog-actions"><button class="viewer-button">取消</button><button class="viewer-button primary">重命名</button></div></div>';
+      } else if (state.dialog === "batch-rename") {
+        body = `<div class="dialog wide"><h2>批量重命名</h2><p>预览全部文件的新名称；无效或冲突项目不会执行。</p><div class="filter-grid"><div class="field"><label>查找</label><input value="2C2A"></div><div class="field"><label>替换为</label><input value="LOOK-"></div><div class="field"><label>前缀</label><input placeholder="可选"></div><div class="field"><label>起始序号</label><input value="001"></div></div><section class="dialog-panel" style="margin-top:14px"><h3>预览 · 28 项可执行 · 2 项无效</h3><div class="panel-body"><div class="conflict-row"><span>2C2A7469.JPG</span><span>LOOK-001.JPG</span></div><div class="conflict-row"><span>2C2A7536.JPG</span><span>LOOK-002.JPG</span></div><div class="conflict-row" style="color:var(--danger)"><span>2C2A7494.JPG</span><span>名称冲突</span></div></div></section><div class="dialog-actions"><button class="viewer-button">取消</button><button class="viewer-button primary">重命名 28 个文件</button></div></div>`;
+      } else if (state.dialog === "destination") {
+        body = '<div class="dialog wide"><h2>选择目标文件夹</h2><p>移动前先选择目标；此步骤不会修改文件。</p><div class="dialog-grid"><section class="dialog-panel"><h3>项目目录</h3><div class="panel-body"><div class="tree-row">角色</div><div class="tree-row child">B01</div><div class="tree-row">衣服</div><div class="tree-row child selected">A02</div><div class="tree-row child">A03</div></div></section><section class="dialog-panel"><h3>目标摘要</h3><div class="panel-body"><div class="info-row"><span>目标</span><span>衣服 / A02</span></div><div class="info-row"><span>文件</span><span>3 个</span></div><div class="info-row"><span>预计冲突</span><span>正在预检…</span></div></div></section></div><div class="dialog-actions"><button class="viewer-button">取消</button><button class="viewer-button primary">继续</button></div></div>';
+      } else if (state.dialog === "conflict") {
+        body = '<div class="dialog wide"><h2>解决 2 项名称冲突</h2><p>逐项选择处理方式。没有解决的项目不会移动。</p><section class="dialog-panel"><h3>预检结果</h3><div class="panel-body"><div class="conflict-row"><span>2C2A7469.JPG · 已存在</span><select><option>替换</option></select></div><div class="conflict-row"><span>2C2A7536.JPG · 已存在</span><select><option>保留两者</option></select></div><div class="conflict-row"><span>2C2A7494.JPG · 可移动</span><span class="status-tag keep">就绪</span></div></div></section><div class="dialog-actions"><button class="viewer-button">返回</button><button class="viewer-button primary">移动 3 个文件</button></div></div>';
       } else if (state.dialog === "trash") {
-        body = `<div class="dialog"><h2>将 3 个文件移到废纸篓？</h2><p>这些文件将进入 macOS 废纸篓。操作完成后可以通过系统废纸篓恢复。</p>${tabs}<div class="dialog-actions"><button class="viewer-button">取消</button><button class="viewer-button danger">移到废纸篓</button></div></div>`;
+        body = '<div class="dialog"><h2>将 3 个文件移到废纸篓？</h2><p>文件将进入当前系统的废纸篓或回收站，可从系统中恢复。</p><div class="dialog-actions"><button class="viewer-button">取消</button><button class="viewer-button danger">移到废纸篓</button></div></div>';
       } else {
-        body = `<div class="dialog"><h2>文件操作仍在进行</h2><p>已完成的工作不会撤销，当前原子步骤会安全完成。请选择关闭方式。</p>${tabs}<div style="display:grid;gap:8px"><button class="menu-row selected"><span>等待完成后关闭</span><span>推荐</span></button><button class="menu-row"><span>保持打开</span><span></span></button><button class="menu-row danger"><span>取消待处理项目并关闭</span><span></span></button></div></div>`;
+        body = '<div class="dialog"><h2>文件操作仍在进行</h2><p>已完成的工作不会撤销，当前原子步骤会安全完成。请选择关闭方式。</p><div style="display:grid;gap:8px"><button class="menu-row selected"><span>等待完成后关闭</span><span>推荐</span></button><button class="menu-row"><span>保持打开</span><span></span></button><button class="menu-row danger"><span>取消待处理项目并关闭</span><span></span></button></div></div>';
       }
-      return shell(`<div class="grid-wrap"><div class="image-grid">${imageCards(2)}</div></div><div class="scrim">${body}</div>`);
+      return shell(`<div class="grid-wrap"><div class="image-grid">${imageCards(2)}</div></div><div class="scrim" data-dialog-state="${state.dialog}">${body}</div>${states}`);
     }
 
     function feedbackScreen() {
-      return shell(`<div class="readonly-banner"><span><strong>只读模式</strong> · 浏览、搜索和预览仍可用；标记与整理已停用。</span><span>权限设置　重新选择目录</span></div><div class="grid-wrap"><div class="image-grid">${imageCards(0)}</div></div><div class="local-error">A03 中的一个缩略图无法生成。其它文件仍可继续浏览。　重试</div><div class="notice-stack"><article class="notice"><div><strong>项目状态已恢复</strong><span>8 项已恢复，1 项需要检查</span></div><button class="viewer-button">查看</button></article></div><article class="task-surface"><div class="task-head"><strong>正在生成缩略图</strong><span>68 / 100 · 2 项任务</span></div><div class="progress-track"><div class="progress-fill"></div></div></article>`, { filterActive: false });
+      const states = stateBar([{
+        label: "任务",
+        key: "task",
+        items: [["running", "运行中"], ["success", "成功"], ["failure", "失败"], ["cancelled", "已取消"], ["result", "含结果"]],
+      }]);
+      const tasks = {
+        running: ['正在生成缩略图', '68 / 100 · 2 项任务', '<div class="progress-track"><div class="progress-fill"></div></div>'],
+        success: ['缩略图生成完成', '100 项 · 刚刚', '<div class="progress-track"><div class="progress-fill" style="width:100%;background:var(--success)"></div></div>'],
+        failure: ['移动文件未完成', '2 项失败', '<div class="local-error" style="margin:9px 0 0">目标文件夹不可写 · 查看详情</div>'],
+        cancelled: ['任务已取消', '完成 18 / 30', '<div style="color:var(--secondary);font-size:9px;margin-top:8px">已完成项目保留，未开始项目未修改。</div>'],
+        result: ['批量重命名完成', '28 成功 · 2 跳过', '<div style="display:flex;justify-content:flex-end;margin-top:8px"><button class="viewer-button">查看结果</button></div>'],
+      };
+      const [title, meta, detail] = tasks[state.task];
+      return shell(`${states}<div class="grid-wrap" style="padding-top:58px"><div class="image-grid">${imageCards(0)}</div></div><article class="task-surface" data-task-state="${state.task}"><div class="task-head"><strong>${title}</strong><span>${meta}</span></div>${detail}</article>`, { filterActive: false });
     }
 
     function launchScreen() {
-      const tabs = `<div class="segmented prototype-state-switcher" style="position:absolute;top:16px;left:50%;transform:translateX(-50%);z-index:4"><button class="${state.launch === "empty" ? "active" : ""}" data-launch="empty">未打开项目</button><button class="${state.launch === "drag" ? "active" : ""}" data-launch="drag">拖入状态</button><button class="${state.launch === "opening" ? "active" : ""}" data-launch="opening">验证中</button><button class="${state.launch === "scan" ? "active" : ""}" data-launch="scan">扫描中</button></div>`;
-      if (state.launch === "scan") {
-        return `${shell(`<div class="skeleton-grid">${Array.from({ length: 8 }, () => '<div class="skeleton skeleton-card"></div>').join("")}</div><article class="task-surface"><div class="task-head"><strong>正在扫描项目</strong><span>已发现 1,284 个文件</span></div><div class="progress-track"><div class="progress-fill" style="width:45%"></div></div></article>`, { loading: true })}${tabs}`;
+      const states = stateBar([{
+        label: "打开与恢复",
+        key: "launch",
+        items: [["no-project", "未打开"], ["drag", "拖入"], ["invalid", "无效拖入"], ["opening", "验证"], ["scanning", "扫描"], ["thumbnails", "缩略图"], ["empty", "空项目"], ["error", "错误"], ["recovery", "恢复"]],
+      }]);
+      if (state.launch === "scanning" || state.launch === "thumbnails") {
+        const taskTitle = state.launch === "scanning" ? "正在扫描项目" : "正在生成缩略图";
+        const taskMeta = state.launch === "scanning" ? "已发现 1,284 个文件" : "68 / 100";
+        return `${shell(`${states}<div data-launch-state="${state.launch}"><div class="skeleton-grid" style="padding-top:58px">${Array.from({ length: 8 }, () => '<div class="skeleton skeleton-card"></div>').join("")}</div><article class="task-surface"><div class="task-head"><strong>${taskTitle}</strong><span>${taskMeta}</span></div><div class="progress-track"><div class="progress-fill" style="width:45%"></div></div></article></div>`, { loading: true })}`;
       }
-      const drag = state.launch === "drag" ? '<div class="drop-target"><span>松开以打开项目</span></div>' : "";
-      const content = state.launch === "opening" ? `<div class="empty-content"><h1>测试图</h1><p>正在验证项目…</p><div class="opening-line"><span></span></div></div>` : `<div class="empty-content"><h1>Viewer</h1><p>选择或拖入一个项目文件夹</p><button class="viewer-button primary">选择项目文件夹</button></div>`;
-      return `<div class="viewer-window"><div class="empty-window">${tabs}${content}${drag}</div></div>`;
+      if (state.launch === "empty" || state.launch === "recovery") {
+        const panel = state.launch === "empty"
+          ? '<div class="empty-project-state"><strong>这个项目中还没有可显示的文件</strong><p>Viewer 会显示支持的图片、Markdown 与文本文件。</p><button class="viewer-button">在文件管理器中显示</button></div>'
+          : '<div class="recovery-state"><strong>项目状态已恢复</strong><p>8 项审阅状态已经恢复，1 项需要重新确认源文件。</p><button class="viewer-button primary">查看需要确认的项目</button></div>';
+        return shell(`${states}<div data-launch-state="${state.launch}" class="empty-window" style="padding-top:52px">${panel}</div>`, { loading: false });
+      }
+      const drag = state.launch === "drag" ? '<div class="drop-target"><span>松开以打开项目</span></div>' : state.launch === "invalid" ? '<div class="drop-target invalid"><span>请选择一个文件夹</span></div>' : "";
+      let content = '<div class="empty-content" data-no-project><h1>Viewer</h1><p>选择或拖入一个项目文件夹</p><button class="viewer-button primary">选择项目文件夹</button></div>';
+      if (state.launch === "opening") {
+        content = '<div class="empty-content"><h1>测试图</h1><p>正在验证项目…</p><div class="opening-line"><span></span></div></div>';
+      } else if (state.launch === "error") {
+        content = '<div class="empty-content"><h1>无法打开项目</h1><p>所选文件夹不可读取，请检查权限或重新选择。</p><button class="viewer-button primary">重新选择</button></div>';
+      }
+      return `<div class="viewer-window">${states}<div class="empty-window" data-launch-state="${state.launch}">${content}${drag}</div></div>`;
     }
 
-    function coveragePlaceholderScreen() {
-      const [title, description] = screenMeta[state.screen];
-      return shell(`<div class="empty-window"><div class="empty-content"><h1>${title}</h1><p>${description}</p><span class="status-tag pending">状态样式正在补齐</span></div></div>`);
+    function resultsScreen() {
+      const states = stateBar([{
+        label: "结果与通知",
+        key: "results",
+        items: [["operation", "操作结果"], ["notice", "全局通知"], ["local-error", "局部错误"], ["readonly", "只读"], ["recovery", "恢复"]],
+      }]);
+      let surface = '<section class="result-panel"><header><strong>移动结果</strong><span class="status-tag pending">2 项需要处理</span></header><div class="result-list"><div class="result-row-compact"><strong>28 个文件已移动到衣服 / A02</strong><span>成功</span></div><div class="result-row-compact"><strong>2C2A7469.JPG</strong><span>名称冲突 · 已跳过</span></div><div class="result-row-compact"><strong>2C2A7536.JPG</strong><span>源文件不可用 · 已跳过</span></div></div></section>';
+      if (state.results === "notice") surface = '<div class="notice-stack" style="position:relative;right:auto;top:auto;justify-items:end"><article class="notice"><div><strong>索引已更新</strong><span>新发现 12 个文件</span></div><button class="viewer-button">查看</button></article><article class="notice"><div><strong>项目已重新连接</strong><span>只读限制已解除</span></div><button class="viewer-button">完成</button></article></div>';
+      if (state.results === "local-error") surface = `<div class="grid-wrap"><div class="image-grid" data-density="compact">${imageCards(0)}</div></div><div class="local-error">A03 中的一个缩略图无法生成。其它文件仍可继续浏览。　<button class="viewer-button">重试</button></div>`;
+      if (state.results === "readonly") surface = `<div class="readonly-banner"><span><strong>只读模式</strong> · 浏览、搜索和预览仍可用；标记与整理已停用。</span><span>权限设置　重新选择目录</span></div><div class="grid-wrap"><div class="image-grid" data-density="compact">${imageCards(0)}</div></div>`;
+      if (state.results === "recovery") surface = '<section class="result-panel"><header><strong>恢复摘要</strong><span class="status-tag keep">已恢复</span></header><div class="result-list"><div class="result-row-compact"><strong>审阅状态</strong><span>8 项恢复</span></div><div class="result-row-compact"><strong>收藏</strong><span>3 项恢复</span></div><div class="result-row-compact"><strong>源文件链接</strong><span>1 项需要检查</span></div></div></section>';
+      return shell(`${states}<div class="result-layout" data-feedback-state="${state.results}">${surface}</div>`);
+    }
+
+    function accessibilityScreen() {
+      const states = stateBar([{
+        label: "可访问性",
+        key: "accessibility",
+        items: [["keyboard", "键盘"], ["restore", "焦点恢复"], ["reduced", "减少动效"], ["forced", "强制颜色"], ["zoom", "200% 缩放"]],
+      }]);
+      const descriptions = {
+        keyboard: ["完整键盘路径", "Tab 进入工具栏和内容，方向键移动缩略图焦点，Enter 预览，菜单键打开圆盘。"],
+        restore: ["焦点返回原位", "关闭预览、圆盘或对话框后，焦点回到触发操作的缩略图或按钮。"],
+        reduced: ["减少动效", "关闭呼吸骨架与位移动画，保留即时状态变化和进度数值。"],
+        forced: ["强制颜色", "焦点、选中与危险动作在系统强制颜色下仍以边框、文字和结构区分。"],
+        zoom: ["200% 界面缩放", "控制保持可见，工作区允许滚动，不隐藏主要操作或依赖悬停。"],
+      };
+      const [title, description] = descriptions[state.accessibility];
+      return `<div class="viewer-window">${states}<div class="accessibility-board" data-accessibility-state="${state.accessibility}"><section class="accessibility-preview"><h2>${title}</h2><p style="font-size:10px;color:var(--secondary);line-height:1.6">${description}</p><span class="focus-demo">${state.accessibility === "restore" ? "焦点已返回：2C2A7469.JPG" : "可见键盘焦点"}</span><div class="accessibility-row"><strong>搜索项目</strong><kbd>⌘/Ctrl + F</kbd></div><div class="accessibility-row"><strong>打开圆盘菜单</strong><kbd>Menu / Shift + F10</kbd></div><div class="accessibility-row"><strong>取消当前层级</strong><kbd>Escape</kbd></div></section><aside class="accessibility-notes"><h2>验收要点</h2><div class="accessibility-row"><span>仅键盘完成主流程</span><span class="status-tag keep">通过</span></div><div class="accessibility-row"><span>焦点环不被裁切</span><span class="status-tag keep">通过</span></div><div class="accessibility-row"><span>不以颜色作为唯一信息</span><span class="status-tag keep">通过</span></div><div class="accessibility-row"><span>系统边界文案跨平台</span><span class="status-tag keep">通过</span></div></aside></div></div>`;
     }
 
     const renderers = {
@@ -1647,8 +1806,8 @@
       radial: radialScreen,
       dialogs: dialogsScreen,
       feedback: feedbackScreen,
-      results: coveragePlaceholderScreen,
-      accessibility: coveragePlaceholderScreen,
+      results: resultsScreen,
+      accessibility: accessibilityScreen,
       launch: launchScreen,
     };
 

@@ -185,4 +185,88 @@ describe('complete Viewer visual atlas', () => {
       'multiple',
     )
   })
+
+  it('exposes dialogs feedback and recovery states', () => {
+    const dom = renderAtlas()
+    const document = dom.window.document
+
+    clickScreen(document, 'dialogs')
+    for (const dialogState of [
+      'dialog-settings',
+      'dialog-single-rename',
+      'dialog-batch-rename',
+      'dialog-destination',
+      'dialog-conflict',
+      'dialog-trash',
+      'dialog-close',
+    ]) {
+      clickState(document, dialogState)
+      expect(document.querySelector('[data-dialog-state]')?.getAttribute('data-dialog-state')).toBe(
+        dialogState.replace('dialog-', ''),
+      )
+    }
+
+    clickScreen(document, 'feedback')
+    for (const taskState of [
+      'task-running',
+      'task-success',
+      'task-failure',
+      'task-cancelled',
+      'task-result',
+    ]) {
+      clickState(document, taskState)
+      expect(document.querySelector('[data-task-state]')?.getAttribute('data-task-state')).toBe(
+        taskState.replace('task-', ''),
+      )
+    }
+
+    clickScreen(document, 'results')
+    for (const feedbackState of [
+      'results-operation',
+      'results-notice',
+      'results-local-error',
+      'results-readonly',
+      'results-recovery',
+    ]) {
+      clickState(document, feedbackState)
+      expect(document.querySelector('[data-feedback-state]')?.getAttribute('data-feedback-state')).toBe(
+        feedbackState.replace('results-', ''),
+      )
+    }
+
+    clickScreen(document, 'launch')
+    clickState(document, 'launch-no-project')
+    expect(document.querySelectorAll('[data-no-project] > *')).toHaveLength(3)
+    for (const launchState of [
+      'launch-drag',
+      'launch-invalid',
+      'launch-opening',
+      'launch-scanning',
+      'launch-thumbnails',
+      'launch-empty',
+      'launch-error',
+      'launch-recovery',
+    ]) {
+      clickState(document, launchState)
+      expect(document.querySelector('[data-launch-state]')?.getAttribute('data-launch-state')).toBe(
+        launchState.replace('launch-', ''),
+      )
+    }
+
+    clickScreen(document, 'accessibility')
+    for (const accessibilityState of [
+      'accessibility-keyboard',
+      'accessibility-restore',
+      'accessibility-reduced',
+      'accessibility-forced',
+      'accessibility-zoom',
+    ]) {
+      clickState(document, accessibilityState)
+      expect(
+        document
+          .querySelector('[data-accessibility-state]')
+          ?.getAttribute('data-accessibility-state'),
+      ).toBe(accessibilityState.replace('accessibility-', ''))
+    }
+  })
 })

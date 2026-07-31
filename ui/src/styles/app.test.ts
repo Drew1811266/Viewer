@@ -98,6 +98,32 @@ describe('workspace style contracts', () => {
     })
   })
 
+  it('groups preview transforms and keeps completion visibly labeled', () => {
+    const rules = parseRules(appCss)
+    const segmented = rules.find((rule) => rule.selector === '.preview-segmented-controls')
+    const segmentedButtons = rules.find(
+      (rule) => rule.selector === '.preview-segmented-controls > button',
+    )
+    const complete = rules.find((rule) => rule.selector === '.preview-complete-action')
+
+    expect(segmented?.declarations).toMatchObject({
+      background: 'var(--preview-control-surface)',
+      border: '1px solid var(--preview-control-border)',
+      'border-radius': '8px',
+      gap: '0',
+      overflow: 'hidden',
+    })
+    expect(segmentedButtons?.declarations).toMatchObject({
+      border: '0',
+      'border-right': '1px solid var(--preview-control-border)',
+      'border-radius': '0',
+    })
+    expect(complete?.declarations).toMatchObject({
+      'font-weight': '650',
+      'min-width': '52px',
+    })
+  })
+
   it('anchors the filter popover within both edges of a 720px viewport', () => {
     const narrowRules = parseRules(mediaBody(appCss, '(max-width: 800px)'))
     const popover = narrowRules.find((rule) => rule.selector === '.search-options-popover')

@@ -41,7 +41,12 @@ export default function UnsupportedFilePreview({
           <strong>{file.name}</strong>
         </div>
         <div className="preview-toolbar-actions" role="toolbar" aria-label="文件预览控制">
-          <button type="button" aria-label="关闭预览" onClick={onClose}>
+          <button
+            type="button"
+            className="preview-complete-action"
+            aria-label="关闭预览"
+            onClick={onClose}
+          >
             完成
           </button>
         </div>

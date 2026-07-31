@@ -334,7 +334,12 @@ export default function CompareWorkspace({
       >
         {model.mode === 'synchronized' ? '同步' : '独立'}
       </button>
-      <button type="button" aria-label="完成对比" onClick={() => onEntityIdsChange([])}>
+      <button
+        type="button"
+        className="preview-complete-action"
+        aria-label="完成对比"
+        onClick={() => onEntityIdsChange([])}
+      >
         完成
       </button>
     </>
@@ -351,7 +356,9 @@ export default function CompareWorkspace({
     >
       <div className="compare-toolbar" role="toolbar" aria-label="对比工具">
         <div className="compare-toolbar-leading">{toolbarLeading}</div>
-        <div className="compare-toolbar-transform">{toolbarTransforms}</div>
+        <div className="compare-toolbar-transform preview-segmented-controls">
+          {toolbarTransforms}
+        </div>
         <div className="compare-toolbar-actions">{toolbarActions}</div>
       </div>
       <div ref={containerRef} className="compare-layout-region">

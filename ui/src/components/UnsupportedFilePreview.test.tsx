@@ -31,6 +31,9 @@ describe('UnsupportedFilePreview', () => {
     expect(within(dialog).getByText('暂不支持预览')).toHaveClass('unsupported-file-message')
     expect(screen.getByText('.ZIP')).toBeInTheDocument()
     expect(within(dialog).queryByRole('button', { name: /外部|其它应用/ })).not.toBeInTheDocument()
+    const complete = within(dialog).getByRole('button', { name: '关闭预览' })
+    expect(complete).toHaveClass('preview-complete-action')
+    expect(complete).toHaveTextContent('完成')
 
     fireEvent.click(screen.getByRole('button', { name: '关闭预览' }))
     expect(onClose).toHaveBeenCalledOnce()

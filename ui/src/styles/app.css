@@ -2183,6 +2183,29 @@ summary,
   outline-offset: var(--viewer-focus-offset);
 }
 
+.preview-segmented-controls {
+  background: var(--preview-control-surface);
+  border: 1px solid var(--preview-control-border);
+  border-radius: 8px;
+  gap: 0;
+  overflow: hidden;
+}
+
+.preview-segmented-controls > button {
+  border: 0;
+  border-radius: 0;
+  border-right: 1px solid var(--preview-control-border);
+}
+
+.preview-segmented-controls > button:last-child {
+  border-right: 0;
+}
+
+.preview-complete-action {
+  font-weight: 650;
+  min-width: 52px;
+}
+
 .preview-overlay [role="alert"] {
   color: var(--preview-danger);
 }

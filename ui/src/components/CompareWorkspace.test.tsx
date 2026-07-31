@@ -26,6 +26,7 @@ describe('CompareWorkspace', () => {
     const leading = toolbar.querySelector('.compare-toolbar-leading')
     const transforms = toolbar.querySelector('.compare-toolbar-transform')
     const actions = toolbar.querySelector('.compare-toolbar-actions')
+    expect(transforms).toHaveClass('preview-segmented-controls')
     expect(leading).toHaveTextContent('2 张图片')
     expect(leading).toHaveTextContent('图片 1.jpg')
     expect(
@@ -41,9 +42,9 @@ describe('CompareWorkspace', () => {
     expect(
       within(actions as HTMLElement).getByRole('button', { name: '切换为独立变换' }),
     ).toHaveTextContent('同步')
-    expect(
-      within(actions as HTMLElement).getByRole('button', { name: '完成对比' }),
-    ).toHaveTextContent('完成')
+    const complete = within(actions as HTMLElement).getByRole('button', { name: '完成对比' })
+    expect(complete).toHaveClass('preview-complete-action')
+    expect(complete).toHaveTextContent('完成')
     const panes = within(workspace).getAllByRole('group', { name: /图片/ })
     expect(panes[0]).toHaveAttribute('data-active', 'true')
     fireEvent.focus(defined(panes[1], 'Expected second comparison pane'))

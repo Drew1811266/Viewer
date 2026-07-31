@@ -118,7 +118,12 @@ export default function TextPreview({
           <span>{files.map((file) => textFormatLabel(file.kind)).join(' · ')}</span>
         </div>
         <div className="preview-toolbar-actions" role="toolbar" aria-label="文本预览控制">
-          <button type="button" aria-label="关闭预览" onClick={onClose}>
+          <button
+            type="button"
+            className="preview-complete-action"
+            aria-label="关闭预览"
+            onClick={onClose}
+          >
             完成
           </button>
         </div>

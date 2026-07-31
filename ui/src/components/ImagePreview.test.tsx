@@ -42,11 +42,13 @@ describe('ImagePreview', () => {
     const actions = dialog.querySelector('.preview-toolbar-actions')
     expect(leading).toHaveTextContent('front.jpg')
     expect(leading).toHaveTextContent('4000 × 3000 px')
-    expect(within(dialog).getByRole('toolbar', { name: '图片显示控制' })).toBeVisible()
+    expect(within(dialog).getByRole('toolbar', { name: '图片显示控制' })).toHaveClass(
+      'preview-segmented-controls',
+    )
     expect(within(actions as HTMLElement).getByRole('button', { name: '顺时针旋转' })).toBeVisible()
-    expect(
-      within(actions as HTMLElement).getByRole('button', { name: '关闭预览' }),
-    ).toHaveTextContent('完成')
+    const complete = within(actions as HTMLElement).getByRole('button', { name: '关闭预览' })
+    expect(complete).toHaveClass('preview-complete-action')
+    expect(complete).toHaveTextContent('完成')
     expect(within(dialog).getByRole('navigation', { name: '图片导航' })).toHaveClass(
       'preview-navigation-float',
     )

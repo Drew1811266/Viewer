@@ -106,7 +106,7 @@ const WorkspaceMoreMenu = forwardRef<HTMLElement, WorkspaceMoreMenuProps>(
               重新选择目录
             </button>
           )}
-          <hr className="workspace-menu-separator" aria-hidden="true" />
+          <hr className="workspace-menu-separator" />
           <button
             type="button"
             className="workspace-menu-item"

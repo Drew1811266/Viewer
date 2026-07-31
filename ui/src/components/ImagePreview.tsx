@@ -249,7 +249,12 @@ export default function ImagePreview({
       >
         ↻
       </button>
-      <button type="button" aria-label="关闭预览" onClick={onClose}>
+      <button
+        type="button"
+        className="preview-complete-action"
+        aria-label="关闭预览"
+        onClick={onClose}
+      >
         完成
       </button>
     </>
@@ -308,7 +313,11 @@ export default function ImagePreview({
     >
       <header className="preview-toolbar">
         <div className="preview-toolbar-leading">{previewIdentity}</div>
-        <div className="preview-toolbar-transform" role="toolbar" aria-label="图片显示控制">
+        <div
+          className="preview-toolbar-transform preview-segmented-controls"
+          role="toolbar"
+          aria-label="图片显示控制"
+        >
           {displayControls}
         </div>
         <div className="preview-toolbar-actions">{previewActions}</div>

@@ -37,6 +37,7 @@ completion.
 | [`superpowers/specs/2026-07-28-viewer-intelligent-compare-layout-design.md`](superpowers/specs/2026-07-28-viewer-intelligent-compare-layout-design.md) | Active | — |
 | [`superpowers/specs/2026-07-29-viewer-other-files-and-split-text-preview-design.md`](superpowers/specs/2026-07-29-viewer-other-files-and-split-text-preview-design.md) | Active | — |
 | [`superpowers/specs/2026-07-30-viewer-complete-ui-visual-upgrade-design.md`](superpowers/specs/2026-07-30-viewer-complete-ui-visual-upgrade-design.md) | Active | — |
+| [`superpowers/specs/2026-07-30-viewer-visual-fidelity-correction-design.md`](superpowers/specs/2026-07-30-viewer-visual-fidelity-correction-design.md) | Active | — |
 
 ## Superseded decisions
 

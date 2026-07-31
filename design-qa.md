@@ -1,136 +1,124 @@
-# Design QA — Viewer visual fidelity correction
+# Design QA — Viewer complete UI visual atlas
 
-## Visual truth and implementation
+## Comparison target
 
-- Approved source boards:
-  - `target/visual-qa/reference-integrated-empty-project-minimal-23-{1440x900,1024x720}.png`
-  - `target/visual-qa/reference-integrated-content-browser-17-{1440x900,1024x720}.png`
-  - `target/visual-qa/reference-integrated-search-filter-13-{1440x900,1024x720}.png`
-  - `target/visual-qa/reference-integrated-preview-compare-14-{1440x900,1024x720}.png`
-  - `target/visual-qa/reference-integrated-radial-reference-21-{1440x900,1024x720}.png`
-  - `target/visual-qa/reference-integrated-menus-dialogs-20-{1440x900,1024x720}.png`
-- Verified implementation: `codex/viewer-ui-visual-upgrade` at `7d04987`.
-- Current implementation captures:
-  - `target/visual-qa/implementation-current-empty-1440x900.png`
-  - `target/visual-qa/implementation-current-empty-1024x720.png`
-  - `target/visual-qa/implementation-current-selected-1024x720.png`
-  - `target/visual-qa/implementation-current-filter-1024x720.png`
-  - `target/visual-qa/implementation-current-preview-1024x720.png`
-  - `target/visual-qa/implementation-current-radial-1024x720.png`
-- Combined reference/implementation inputs inspected:
-  - `target/visual-qa/comparison-empty-1440x900.png`
-  - `target/visual-qa/comparison-content-selected-1024x720.png`
-  - `target/visual-qa/comparison-preview-1024x720.png`
-  - `target/visual-qa/comparison-radial-1024x720.png`
+- Source visual truth:
+  - `docs/superpowers/specs/2026-07-30-viewer-complete-ui-visual-upgrade-design.md`
+  - `target/visual-qa/reference-integrated-content-browser-17-1024x720.png`
+  - `target/visual-qa/reference-integrated-radial-reference-21-1024x720.png`
+  - `target/visual-qa/reference-integrated-empty-project-minimal-23-1024x720.png`
+- Implementation:
+  - `docs/prototypes/viewer-complete-ui-visual-atlas.html`
+  - Browser-rendered evidence: `target/visual-qa/atlas-browser-overview-1280x720.png`
+  - Exact app-surface evidence: `target/visual-qa/atlas-implementation-content-browser-1024x720.png`
+- Combined source/implementation input inspected:
+  - `target/visual-qa/atlas-comparison-content-browser-1024x720.png`
 
-The source files are design boards with explanatory canvas around a framed app.
-The combined inputs retain that context but compare the actual app surface,
-layout, hierarchy, controls, and states. Test fixture thumbnails are deliberately
-simple generated images; Viewer still renders the user's real local assets in
-production and the thumbnail pipeline was not replaced.
+## Viewport and normalization
 
-## Viewports and density
+| Artifact | CSS size | Capture pixels | Density |
+| --- | ---: | ---: | ---: |
+| Source content-browser board | 1024 × 720 | 1024 × 720 | 1× |
+| Atlas content-browser app surface | 1024 × 720 | 1024 × 720 | 1× |
+| Atlas shell browser evidence | 1280 × 720 | 1280 × 720 | 1× |
 
-| Surface | CSS viewport | Capture pixels | Effective density | Result |
-| --- | ---: | ---: | ---: | --- |
-| Browser, no project | 1440 × 900 | 1440 × 900 | 1× | passed |
-| Browser, no project | 1024 × 720 | 1024 × 720 | 1× | passed |
-| Native Viewer, project states | 1024 × 720 | 1024 × 720 | normalized 1× | passed |
-| Native Viewer, resilience check | host maximum | 1318 × 768 | normalized 1× | passed |
+The atlas has an internal `#embed=<screen>&viewport=1024` review mode so the
+Viewer app surface can be captured at exactly 1024 × 720 without the atlas
+navigation or a scaled browser canvas. No density resampling was used for the
+main comparison.
 
-The current Mac display cannot expose a native 1440 × 900 window, so the exact
-large viewport was checked in the local browser and the native build was
-stretched to the host maximum as an additional resilience check. This is a P3
-coverage limitation rather than a visual defect; the exact compact native
-target and both exact browser targets are covered.
+## State
 
-## State and interaction coverage
+The main same-state comparison covers the compact content browser with:
 
-The following current-build states were exercised:
+- 40 px workspace toolbar;
+- compact project directory;
+- visible image grid with real fixture assets;
+- one selected thumbnail;
+- selection summary;
+- Filter/View/More top-level actions.
 
-- No project: only the product name, short description, primary open action,
-  and secondary recent-project affordance remain.
-- Project content: sidebar, compact toolbar, responsive three-column grid at
-  1024 × 720, selected image, task completion summary, and automatic clean-task
-  dismissal.
-- Selection: the 2 px indigo selection ring is inset 6 px inside the image
-  thumbnail only; the filename/card is not outlined. `Esc` clears selection and
-  keyboard focus remains a separate state.
-- File actions: ordinary right-click, Control-click, menu-key invocation, and
-  held/moved secondary gestures all resolve to the same six-sector radial menu.
-  There is no conventional rectangular file-action menu.
-- Toolbar: `筛选`, `视图`, and `更多` are the only top-level actions. View and
-  More use quiet, borderless, left-aligned command rows and mutually exclusive
-  popovers.
-- Preview: fit/100%/zoom controls form one segmented group, rotate is separate,
-  and the right-side close action is visibly labelled `完成`.
-- Filter, radial menu, View, More, preview, outside dismissal, and focus
-  restoration were exercised in the native app. Browser console errors for the
-  no-project surface were empty.
+Additional browser-rendered states inspected:
 
-## Fidelity verdict
+- project overview and content browser;
+- View and More popovers, including mutual exclusion and `Escape` dismissal;
+- search and anchored filter surface;
+- preview and compare with visible `完成`;
+- text preview and information inspector;
+- approved six-sector radial menu;
+- destination/conflict, batch rename, trash, and close-task dialogs;
+- read-only, local error, notice, and single task surface;
+- no-project, drag, validating, and scanning states;
+- 1024 × 720 and 1440 × 900 internal preview sizes.
 
-- Typography: the approved cross-platform system stack and compact hierarchy
-  are preserved. Titles, commands, metadata, warnings, and shortcuts remain
-  distinct without accidental wrapping or clipping.
-- Spacing and layout: the 52 px top bar, 260 px sidebar, quiet dividers, card
-  spacing, popover containment, and 1024 × 720 responsive grid are stable. No
-  horizontal overflow or unreachable persistent control was observed.
-- Colors and tokens: the white/neutral surface system, indigo selection/action
-  accent, semantic red destructive state, focus roles, and shadows use shared
-  semantic tokens.
-- Images and icons: native thumbnails remain sharp and use the real file
-  pipeline. The radial menu retains the approved segmented ring geometry and
-  icon ordering.
-- Copy: visible labels are concise and consistent. Selection guidance reads
-  `右键打开圆盘菜单 · Esc 取消选择`; preview closes with `完成`.
-- Accessibility and behavior: actionable controls expose roles, focus is
-  restored after dismissals, `Esc` works, keyboard/context-menu invocation is
-  covered, and reduced-motion contracts remain in the automated suite.
+## Full-view comparison evidence
+
+`target/visual-qa/atlas-comparison-content-browser-1024x720.png` places the
+approved source and exact-size implementation in one image. It was inspected at
+original resolution. The toolbar, sidebar, selection outline, filenames,
+status tags, and asset treatment remain readable at 1×, so a separate focused
+crop was not required.
+
+## Fidelity review
+
+- Fonts and typography: the cross-platform system stack uses Inter/SF Pro/
+  Segoe UI/PingFang/Microsoft YaHei fallbacks. Weight, size, line height, and
+  compact hierarchy remain consistent across macOS and Windows conventions;
+  no important label wraps or truncates in the inspected states.
+- Spacing and layout rhythm: the 40 px toolbar, 24 px directory row, 220 px
+  project sidebar, quiet dividers, 8–12 px control spacing, and compact image
+  grid preserve the approved A density. No persistent control clips at either
+  internal viewport.
+- Colors and visual tokens: white and warm-gray surfaces, restrained indigo
+  action/selection color, semantic green/yellow/red states, and elevation only
+  for menus, dialogs, notices, and task surfaces match the approved system.
+- Image quality and asset fidelity: the prototype reuses the approved Viewer
+  fixture imagery and reference boards. No product imagery or radial-menu art
+  was replaced by emoji, CSS drawings, placeholder blobs, or custom SVG art.
+- Copy and content: toolbar labels, selection guidance, `完成`, destructive
+  confirmations, loading copy, and the three-element no-project state match the
+  consolidated specification.
+- Icons and controls: icon treatment remains quiet and single-family; normal
+  menu rows are borderless, destructive rows are semantic, and keyboard focus
+  uses the same indigo token as other focus states.
+- Accessibility and behavior: semantic buttons and form controls are
+  keyboard-addressable, focus is visible, `Escape` closes open popovers, and
+  reduced motion disables the skeleton animation.
 
 ## Finding and repair history
 
-1. **P1 — wrong file-action surface.** A rectangular contextual command list
-   had replaced the approved radial interaction. `3b4fc87` made the radial menu
-   the single file-action surface and added the ordinary/gesture/keyboard event
-   paths. Post-fix evidence:
-   `comparison-radial-1024x720.png`.
-2. **P1 — full-card selection outline.** Selection incorrectly enclosed the
-   image and filename. `852222a` moved the ring inside the thumbnail and
-   separated selection from keyboard focus. Post-fix evidence:
-   `comparison-content-selected-1024x720.png`.
-3. **P2 — toolbar command rows remained boxed.** A higher-specificity popover
-   selector overrode the intended borderless rows. `7d04987` corrected selector
-   specificity and widened the compact View popover to prevent wrapping. Native
-   View/More inspection after hot reload confirmed the repair.
-4. **P2 — redundant toolbar and menu density.** `c5b4254` reduced the toolbar
-   to Filter/View/More and simplified the two popovers.
-5. **P2 — scattered task surfaces.** `58ee2b9` consolidated task feedback into
-   one compact surface and made clean success transient.
-6. **P2 — preview/compare chrome drift.** `81eb4de` regrouped the viewing
-   controls and restored an explicit `完成` action. Post-fix evidence:
-   `comparison-preview-1024x720.png`.
-7. **Environment mismatch — stale installed-style bundle.** Native inspection
-   initially opened an older bundle instead of the working-tree binary. The
-   launch audit isolated that process, verified the current source through the
-   development URL, and the canonical launcher now removes stale Viewer
-   processes before starting one current-worktree development instance.
+1. **P2 — drag-state label collided with the atlas state switcher.**
+   The initial drag capture placed the drop-target label too close to the top
+   review control. The label was moved from 16 px to 48 px below the drop
+   boundary, and embed review mode now removes all atlas-only controls.
+   Post-fix evidence:
+   `target/visual-qa/atlas-implementation-drag-window-1024x720.jpg`.
+2. **P2 — atlas navigation inherited the browser's orange focus ring.**
+   A dedicated 2 px indigo `:focus-visible` rule now maps navigation focus to
+   the Viewer accent token.
+3. **P2 — exact visual evidence initially included the atlas shell.**
+   An embed review mode was added and the implementation was recaptured as an
+   exact 1024 × 720 app surface. Post-fix evidence:
+   `target/visual-qa/atlas-implementation-content-browser-1024x720.png`.
 
-## Verification
+No actionable P0, P1, or P2 findings remain.
 
-- UI static check: passed.
-- UI tests: 577 passed, 1 skipped.
-- UI production build: passed.
-- Launcher tests: 14 passed.
-- Rust formatting: passed.
-- Rust Clippy with warnings denied: passed.
-- Rust workspace tests: passed.
-- Current visual comparisons: no remaining actionable P0, P1, or P2
-  differences.
+## Primary interactions tested
 
-Optional P3 follow-up: repeat the native 1440 × 900 capture on a larger physical
-display. It is not required to ship this correction because the exact large
-browser viewport, compact native viewport, and native maximum-width resilience
-state all pass.
+- switch among all 12 visual sections;
+- select a second thumbnail and observe the summary update from 1 to 2;
+- right-click a thumbnail and open the single radial-menu reference;
+- open View, switch to More, and verify only one popover remains;
+- press `Escape` and verify the open popover closes;
+- switch all dialog and launch/loading states;
+- switch internal preview size between 1024 × 720 and 1440 × 900.
+
+Browser console errors and warnings checked: none.
+
+## Follow-up polish
+
+- P3: a future implementation pass may add live sector hover/secondary-state
+  animation to the radial reference. The approved static geometry and visual
+  hierarchy are already represented in this atlas.
 
 final result: passed

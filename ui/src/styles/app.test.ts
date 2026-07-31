@@ -79,6 +79,25 @@ describe('workspace style contracts', () => {
     expect(destructive?.declarations.color).toBe('var(--viewer-danger)')
   })
 
+  it('consolidates task feedback into one compact surface', () => {
+    const rules = parseRules(appCss)
+    const surface = rules.find((rule) => rule.selector === '.task-surface')
+    const list = rules.find((rule) => rule.selector === '.task-list')
+
+    expect(surface?.declarations).toMatchObject({
+      background: 'var(--viewer-surface)',
+      border: '1px solid var(--viewer-border)',
+      'border-radius': 'var(--viewer-radius-popover)',
+      'box-shadow': 'var(--viewer-shadow-popover)',
+      overflow: 'hidden',
+      'pointer-events': 'auto',
+    })
+    expect(list?.declarations).toMatchObject({
+      display: 'grid',
+      gap: '0',
+    })
+  })
+
   it('anchors the filter popover within both edges of a 720px viewport', () => {
     const narrowRules = parseRules(mediaBody(appCss, '(max-width: 800px)'))
     const popover = narrowRules.find((rule) => rule.selector === '.search-options-popover')

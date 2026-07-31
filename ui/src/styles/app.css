@@ -1654,13 +1654,35 @@ summary,
 
 .task-bar {
   bottom: 16px;
-  display: grid;
-  gap: 10px;
   pointer-events: none;
   position: fixed;
   right: 16px;
   width: min(340px, calc(100vw - 32px));
   z-index: 35;
+}
+
+.task-surface {
+  background: var(--viewer-surface);
+  border: 1px solid var(--viewer-border);
+  border-radius: var(--viewer-radius-popover);
+  box-shadow: var(--viewer-shadow-popover);
+  overflow: hidden;
+  pointer-events: auto;
+}
+
+.task-surface-summary,
+.task-row {
+  align-items: center;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  padding: 10px 12px;
+}
+
+.task-list {
+  border-top: 1px solid var(--viewer-border);
+  display: grid;
+  gap: 0;
 }
 
 .task-details {
@@ -1674,16 +1696,12 @@ summary,
 }
 
 .task-row {
-  align-items: center;
-  background: var(--viewer-surface);
-  border: 1px solid var(--viewer-border);
-  border-radius: var(--viewer-radius-popover);
-  box-shadow: var(--viewer-shadow-popover);
-  display: grid;
-  gap: 8px;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  padding: 10px 12px;
-  pointer-events: auto;
+  border-bottom: 1px solid var(--viewer-divider-subtle);
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.task-row:last-child {
+  border-bottom: 0;
 }
 
 .task-row-summary,
@@ -1710,7 +1728,7 @@ summary,
 }
 
 .task-row-actions button,
-.task-row > button {
+.task-summary-toggle {
   background: var(--viewer-surface);
   border: 1px solid var(--viewer-border);
   border-radius: var(--viewer-radius-control);
@@ -1721,11 +1739,12 @@ summary,
 .task-row-outcome {
   color: var(--viewer-text-secondary);
   font-size: 12px;
-  grid-column: 2 / -1;
+  grid-column: 1 / -1;
   margin: 0;
 }
 
-.task-row progress {
+.task-surface-summary > progress,
+.task-row > progress {
   accent-color: var(--viewer-accent);
   grid-column: 1 / -1;
   height: 3px;

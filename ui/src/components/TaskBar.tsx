@@ -34,7 +34,7 @@ export default function TaskBar({
   const candidates = tasks ?? (task ? [task] : [])
   const [hiddenTaskIds, setHiddenTaskIds] = useState<Set<string>>(() => new Set())
   const visibleTasks = candidates.filter((candidate) => !hiddenTaskIds.has(candidate.id))
-  const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null)
+  const [surfaceExpanded, setSurfaceExpanded] = useState(false)
   const dismissTimers = useRef(new Map<string, { delay: number; timer: number }>())
 
   useEffect(() => {
@@ -94,12 +94,28 @@ export default function TaskBar({
     [],
   )
 
-  useEffect(() => {
-    const expanded = visibleTasks.find((candidate) => candidate.id === expandedTaskId)
-    if (expanded?.status === 'complete' && expanded.failed === 0) setExpandedTaskId(null)
-  }, [expandedTaskId, visibleTasks])
-
   if (visibleTasks.length === 0) return null
+
+  const primaryTask =
+    visibleTasks.find((candidate) => candidate.status === 'failed' || candidate.failed > 0) ??
+    visibleTasks.find((candidate) => candidate.status === 'running') ??
+    visibleTasks.find((candidate) => candidate.hasResults) ??
+    visibleTasks[0]
+  if (primaryTask === undefined) return null
+  const aggregateRequested = visibleTasks.reduce((total, current) => total + current.requested, 0)
+  const aggregateFinished = visibleTasks.reduce(
+    (total, current) => total + finishedCount(current),
+    0,
+  )
+  const summaryLabel = visibleTasks.length === 1 ? primaryTask.label : liveTaskSummary(visibleTasks)
+  const summaryToggleLabel =
+    visibleTasks.length === 1
+      ? surfaceExpanded
+        ? '收起任务详情'
+        : '展开任务详情'
+      : surfaceExpanded
+        ? '收起后台任务'
+        : '展开后台任务'
 
   return (
     <aside className="task-bar" aria-label="后台任务">
@@ -112,90 +128,146 @@ export default function TaskBar({
       >
         {liveTaskSummary(visibleTasks)}
       </p>
-      {visibleTasks.map((currentTask) => {
-        const expanded = expandedTaskId === currentTask.id
-        const finished = Math.min(
-          currentTask.requested,
-          currentTask.completed +
-            currentTask.failed +
-            (currentTask.skipped ?? 0) +
-            (currentTask.cancelled ?? 0),
-        )
-        const detailLabel =
-          visibleTasks.length === 1
-            ? expanded
-              ? '收起任务详情'
-              : '展开任务详情'
-            : `${expanded ? '收起' : '展开'}${currentTask.label}详情`
-        return (
-          <div className="task-row" key={currentTask.id}>
-            <button
-              type="button"
-              aria-label={detailLabel}
-              onClick={() => setExpandedTaskId(expanded ? null : currentTask.id)}
-            >
-              {expanded ? '▾' : '▸'}
-            </button>
-            <div className="task-row-summary">
-              <strong>{currentTask.label}</strong>
-              <span>
-                {finished}/{currentTask.requested}
-              </span>
-            </div>
-            <div className="task-row-actions">
-              {currentTask.cancellable && currentTask.status === 'running' && onCancel && (
-                <button type="button" onClick={() => onCancel(currentTask.id)}>
-                  取消任务
-                </button>
-              )}
-              {currentTask.status !== 'running' && onDismiss && (
-                <button type="button" onClick={() => onDismiss(currentTask.id)}>
-                  关闭任务
-                </button>
-              )}
-              {currentTask.hasResults && onShowResults && (
-                <button
-                  type="button"
-                  aria-label={`查看${currentTask.label}结果`}
-                  onClick={() => onShowResults(currentTask.id)}
-                >
-                  查看结果
-                </button>
-              )}
-            </div>
-            {(currentTask.failed > 0 ||
-              (currentTask.skipped ?? 0) > 0 ||
-              (currentTask.cancelled ?? 0) > 0) && (
-              <p className="task-row-outcome">
-                {currentTask.failed > 0 && <span>{currentTask.failed} 项失败</span>}
-                {(currentTask.skipped ?? 0) > 0 && <span>{currentTask.skipped} 项跳过</span>}
-                {(currentTask.cancelled ?? 0) > 0 && <span>{currentTask.cancelled} 项取消</span>}
-              </p>
-            )}
-            <progress
-              aria-label={`${currentTask.label}进度`}
-              max={Math.max(1, currentTask.requested)}
-              value={finished}
-            />
-            {expanded && (
-              <div className="task-details">
-                {currentTask.failures.length === 0 ? (
-                  <p>没有失败项目。</p>
-                ) : (
-                  <ul>
-                    {currentTask.failures.map((failure) => (
-                      <li key={`${failure.item}:${failure.code}`}>
-                        <span>{failure.item}</span> <span>{failure.code}</span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            )}
+      <div className="task-surface">
+        <div className="task-surface-summary">
+          <button
+            type="button"
+            className="task-summary-toggle"
+            aria-label={summaryToggleLabel}
+            aria-expanded={surfaceExpanded}
+            onClick={() => setSurfaceExpanded((current) => !current)}
+          >
+            {surfaceExpanded ? '▾' : '▸'}
+          </button>
+          <div className="task-row-summary">
+            <strong>{summaryLabel}</strong>
+            <span>
+              {visibleTasks.length === 1
+                ? `${finishedCount(primaryTask)}/${primaryTask.requested}`
+                : `${visibleTasks.length} 项`}
+            </span>
           </div>
-        )
-      })}
+          {visibleTasks.length === 1 && (
+            <TaskActions
+              task={primaryTask}
+              onCancel={onCancel}
+              onDismiss={onDismiss}
+              onShowResults={onShowResults}
+            />
+          )}
+          <TaskOutcome task={primaryTask} />
+          <progress
+            aria-label={visibleTasks.length === 1 ? `${primaryTask.label}进度` : '后台任务总进度'}
+            max={Math.max(1, aggregateRequested)}
+            value={aggregateFinished}
+          />
+        </div>
+        {surfaceExpanded && (
+          <div className="task-list">
+            {visibleTasks.map((currentTask) => (
+              <div className="task-row" key={currentTask.id}>
+                <div className="task-row-summary">
+                  <strong>{currentTask.label}</strong>
+                  <span>
+                    {finishedCount(currentTask)}/{currentTask.requested}
+                  </span>
+                </div>
+                <TaskActions
+                  task={currentTask}
+                  onCancel={onCancel}
+                  onDismiss={onDismiss}
+                  onShowResults={onShowResults}
+                />
+                <TaskOutcome task={currentTask} />
+                <progress
+                  aria-label={`${currentTask.label}进度`}
+                  max={Math.max(1, currentTask.requested)}
+                  value={finishedCount(currentTask)}
+                />
+                <div className="task-details">
+                  {currentTask.failures.length === 0 ? (
+                    <p>没有失败项目。</p>
+                  ) : (
+                    <ul>
+                      {currentTask.failures.map((failure) => (
+                        <li key={`${failure.item}:${failure.code}`}>
+                          <span>{failure.item}</span> <span>{failure.code}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </aside>
+  )
+}
+
+function TaskActions({
+  task,
+  onCancel,
+  onDismiss,
+  onShowResults,
+}: {
+  task: TaskFeedback
+  onCancel?: (taskId: string) => void
+  onDismiss?: (taskId: string) => void
+  onShowResults?: (taskId: string) => void
+}) {
+  return (
+    <div className="task-row-actions">
+      {task.cancellable && task.status === 'running' && onCancel && (
+        <button type="button" onClick={() => onCancel(task.id)}>
+          取消任务
+        </button>
+      )}
+      {task.status !== 'running' && !isCleanSuccess(task) && onDismiss && (
+        <button type="button" onClick={() => onDismiss(task.id)}>
+          关闭任务
+        </button>
+      )}
+      {task.hasResults && onShowResults && (
+        <button
+          type="button"
+          aria-label={`查看${task.label}结果`}
+          onClick={() => onShowResults(task.id)}
+        >
+          查看结果
+        </button>
+      )}
+    </div>
+  )
+}
+
+function TaskOutcome({ task }: { task: TaskFeedback }) {
+  if (task.failed === 0 && (task.skipped ?? 0) === 0 && (task.cancelled ?? 0) === 0) {
+    return null
+  }
+  return (
+    <p className="task-row-outcome">
+      {task.failed > 0 && <span>{task.failed} 项失败</span>}
+      {(task.skipped ?? 0) > 0 && <span>{task.skipped} 项跳过</span>}
+      {(task.cancelled ?? 0) > 0 && <span>{task.cancelled} 项取消</span>}
+    </p>
+  )
+}
+
+function finishedCount(task: TaskFeedback): number {
+  return Math.min(
+    task.requested,
+    task.completed + task.failed + (task.skipped ?? 0) + (task.cancelled ?? 0),
+  )
+}
+
+function isCleanSuccess(task: TaskFeedback): boolean {
+  return (
+    task.status === 'complete' &&
+    task.failed === 0 &&
+    (task.cancelled ?? 0) === 0 &&
+    !task.hasResults
   )
 }
 

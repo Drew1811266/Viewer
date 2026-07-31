@@ -19,6 +19,43 @@ const failedScanTask: TaskFeedback = {
 }
 
 describe('TaskBar', () => {
+  it('collapses multiple tasks into one summary surface', () => {
+    render(
+      <TaskBar
+        tasks={[
+          {
+            ...failedScanTask,
+            id: 'scan-running',
+            status: 'running',
+            completed: 6,
+            failed: 0,
+            failures: [],
+            cancellable: true,
+          },
+          {
+            ...failedScanTask,
+            id: 'thumbs-running',
+            label: '加载可见缩略图',
+            status: 'running',
+            completed: 8,
+            failed: 0,
+            failures: [],
+          },
+        ]}
+        onCancel={vi.fn()}
+      />,
+    )
+
+    const bar = screen.getByRole('complementary', { name: '后台任务' })
+    const surface = bar.querySelector<HTMLElement>('.task-surface')
+    expect(bar.querySelectorAll('.task-surface')).toHaveLength(1)
+    expect(screen.getByRole('button', { name: '展开后台任务' })).toBeVisible()
+    expect(
+      within(defined(surface, 'Expected one task surface')).getByText('2 个任务进行中'),
+    ).toBeVisible()
+    expect(screen.queryByRole('button', { name: '关闭任务' })).not.toBeInTheDocument()
+  })
+
   it('shows progress compactly and retains expandable safe failure details', () => {
     render(<TaskBar task={failedScanTask} />)
 
@@ -108,6 +145,7 @@ describe('TaskBar', () => {
       />,
     )
     expect(screen.getByText('扫描项目')).toBeVisible()
+    expect(screen.queryByRole('button', { name: '关闭任务' })).not.toBeInTheDocument()
     act(() => vi.advanceTimersByTime(1999))
     expect(screen.getByText('扫描项目')).toBeVisible()
     act(() => vi.advanceTimersByTime(1))
@@ -139,6 +177,7 @@ describe('TaskBar', () => {
     )
     act(() => vi.runAllTimers())
     expect(screen.getByText('2 项失败')).toBeVisible()
+    fireEvent.click(screen.getByRole('button', { name: '展开后台任务' }))
     expect(screen.getAllByText('扫描项目')).toHaveLength(3)
     fireEvent.click(
       defined(screen.getAllByRole('button', { name: '关闭任务' })[0], 'Expected close task button'),

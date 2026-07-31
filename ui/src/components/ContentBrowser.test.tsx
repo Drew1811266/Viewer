@@ -100,6 +100,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  vi.useRealTimers()
   vi.unstubAllGlobals()
   Object.defineProperty(window, 'devicePixelRatio', {
     configurable: true,
@@ -1461,6 +1462,12 @@ describe('ContentBrowser', () => {
       clientX: 210,
       clientY: 160,
     })
+    fireEvent.pointerMove(window, {
+      pointerId: 70,
+      buttons: 2,
+      clientX: 219,
+      clientY: 160,
+    })
     expect(selectedLabels()).toEqual(['2.jpg'])
     expect(request).toHaveBeenCalledWith({
       files: [expect.objectContaining({ entityId: 'image-2' })],
@@ -1479,6 +1486,12 @@ describe('ContentBrowser', () => {
       pointerId: 71,
       button: 2,
       clientX: 220,
+      clientY: 170,
+    })
+    fireEvent.pointerMove(window, {
+      pointerId: 71,
+      buttons: 2,
+      clientX: 229,
       clientY: 170,
     })
     expect(selectedLabels()).toEqual(['1.jpg', '2.jpg'])
@@ -1506,6 +1519,12 @@ describe('ContentBrowser', () => {
       pointerId: 72,
       button: 2,
       clientX: 230,
+      clientY: 180,
+    })
+    fireEvent.pointerMove(window, {
+      pointerId: 72,
+      buttons: 2,
+      clientX: 239,
       clientY: 180,
     })
 
@@ -1574,12 +1593,18 @@ describe('ContentBrowser', () => {
     }
   })
 
-  it('deduplicates a secondary pointerdown followed by contextmenu', () => {
+  it('routes the real secondary-click sequence to a compact request', () => {
     const request = vi.fn()
     render(<ContentBrowser workspace={workspace(1)} onRadialMenuRequest={request} />)
     const option = screen.getByRole('option', { name: '1.jpg' })
 
     fireEvent.pointerDown(option, {
+      pointerId: 73,
+      button: 2,
+      clientX: 210,
+      clientY: 160,
+    })
+    fireEvent.pointerUp(window, {
       pointerId: 73,
       button: 2,
       clientX: 210,
@@ -1592,7 +1617,43 @@ describe('ContentBrowser', () => {
     })
 
     expect(request).toHaveBeenCalledTimes(1)
-    expect(request.mock.calls[0]?.[0]).toEqual(expect.objectContaining({ pointerId: 73 }))
+    expect(request.mock.calls[0]?.[0]).toEqual(expect.objectContaining({ pointerId: null }))
+    expect(selectedLabels()).toEqual(['1.jpg'])
+    expect(request.mock.calls[0]?.[0].returnFocusTarget).toBe(
+      screen.getByRole('listbox', { name: '图片文件' }),
+    )
+  })
+
+  it('promotes a held secondary pointer to a radial request after the dwell threshold', () => {
+    vi.useFakeTimers()
+    const request = vi.fn()
+    render(<ContentBrowser workspace={workspace(1)} onRadialMenuRequest={request} />)
+    const option = screen.getByRole('option', { name: '1.jpg' })
+
+    fireEvent.pointerDown(option, {
+      pointerId: 76,
+      button: 2,
+      clientX: 210,
+      clientY: 160,
+    })
+    expect(request).not.toHaveBeenCalled()
+
+    act(() => vi.advanceTimersByTime(180))
+
+    expect(request).toHaveBeenCalledOnce()
+    expect(request.mock.calls[0]?.[0]).toEqual(expect.objectContaining({ pointerId: 76 }))
+    fireEvent.pointerUp(window, {
+      pointerId: 76,
+      button: 2,
+      clientX: 210,
+      clientY: 160,
+    })
+    fireEvent.contextMenu(option, {
+      button: 2,
+      clientX: 210,
+      clientY: 160,
+    })
+    expect(request).toHaveBeenCalledOnce()
   })
 
   it('routes secondary and Control-click input on the organization handle to the radial menu', () => {

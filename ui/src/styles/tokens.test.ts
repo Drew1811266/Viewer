@@ -28,6 +28,15 @@ describe('Viewer visual tokens', () => {
     expect(root.getPropertyValue('--viewer-text').trim()).toBe('#23262c')
     expect(root.getPropertyValue('--viewer-text-secondary').trim()).toBe('#6b7077')
     expect(root.getPropertyValue('--viewer-accent').trim()).toBe('#5869cf')
+    expect(root.getPropertyValue('--viewer-accent-text').trim()).toBe('#4152b4')
+    expect(root.getPropertyValue('--viewer-focus-outline').trim()).toBe(
+      '2px solid var(--viewer-accent)',
+    )
+    expect(root.getPropertyValue('--viewer-focus-shadow').trim()).toBe(
+      '0 0 0 2px var(--viewer-accent)',
+    )
+    expect(root.getPropertyValue('--viewer-focus-offset').trim()).toBe('2px')
+    expect(root.getPropertyValue('--viewer-focus-ring').trim()).toBe('')
     expect(root.getPropertyValue('--viewer-radius-control').trim()).toBe('8px')
     expect(root.getPropertyValue('--viewer-radius-popover').trim()).toBe('12px')
     expect(root.getPropertyValue('--viewer-radius-dialog').trim()).toBe('14px')

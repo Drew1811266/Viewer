@@ -279,7 +279,12 @@ export default function CompareWorkspace({
     )
   }
 
-  const toolbarLeading: ReactNode = <span>{model.entityIds.length} 张图片</span>
+  const toolbarLeading: ReactNode = (
+    <>
+      <span>{model.entityIds.length} 张图片</span>
+      <strong title={activeFile?.name}>{activeFile?.name ?? '当前图片不可用'}</strong>
+    </>
+  )
   const toolbarTransforms: ReactNode = (
     <>
       <button type="button" disabled={transformsDisabled} onClick={fitView}>
@@ -312,6 +317,10 @@ export default function CompareWorkspace({
       >
         ↻
       </button>
+    </>
+  )
+  const toolbarActions: ReactNode = (
+    <>
       <button
         type="button"
         aria-label={model.mode === 'synchronized' ? '切换为独立变换' : '切换为同步变换'}
@@ -325,12 +334,10 @@ export default function CompareWorkspace({
       >
         {model.mode === 'synchronized' ? '同步' : '独立'}
       </button>
+      <button type="button" aria-label="完成对比" onClick={() => onEntityIdsChange([])}>
+        完成
+      </button>
     </>
-  )
-  const toolbarActions: ReactNode = (
-    <button type="button" aria-label="完成对比" onClick={() => onEntityIdsChange([])}>
-      完成
-    </button>
   )
 
   return (

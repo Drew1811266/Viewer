@@ -24,6 +24,7 @@ describe('ImagePreview', () => {
       ...image(1),
       relativePath: 'id-1/front.jpg',
       name: 'front.jpg',
+      imageMetadata: { width: 4_000, height: 3_000 },
     }
 
     render(
@@ -37,7 +38,15 @@ describe('ImagePreview', () => {
     )
 
     const dialog = screen.getByRole('dialog', { name: /front\.jpg/ })
+    const leading = dialog.querySelector('.preview-toolbar-leading')
+    const actions = dialog.querySelector('.preview-toolbar-actions')
+    expect(leading).toHaveTextContent('front.jpg')
+    expect(leading).toHaveTextContent('4000 × 3000 px')
     expect(within(dialog).getByRole('toolbar', { name: '图片显示控制' })).toBeVisible()
+    expect(within(actions as HTMLElement).getByRole('button', { name: '顺时针旋转' })).toBeVisible()
+    expect(
+      within(actions as HTMLElement).getByRole('button', { name: '关闭预览' }),
+    ).toHaveTextContent('完成')
     expect(within(dialog).getByRole('navigation', { name: '图片导航' })).toHaveClass(
       'preview-navigation-float',
     )
@@ -95,6 +104,7 @@ describe('ImagePreview', () => {
     )
 
     const preview = await screen.findByRole('img', { name: '2.jpg' })
+    expect(screen.getByText('1600 × 1200 px')).toBeVisible()
     expect(preview).toHaveAttribute('data-mode', 'fit')
     expect(request.mock.calls.every((call) => call[1].kind === 'fit_preview')).toBe(true)
 

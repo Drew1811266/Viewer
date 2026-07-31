@@ -76,4 +76,41 @@ describe('FileContextMenu', () => {
     fireEvent.keyDown(screen.getByRole('menu', { name: '标记' }), { key: 'ArrowLeft' })
     expect(screen.getByRole('menuitem', { name: '标记' })).toHaveFocus()
   })
+
+  it.each([
+    ['top left', { x: 0, y: 0 }, 'right'],
+    ['top right', { x: 1_023, y: 0 }, 'left'],
+    ['bottom left', { x: 0, y: 719 }, 'right'],
+    ['bottom right', { x: 1_023, y: 719 }, 'left'],
+  ] as const)(
+    'keeps child commands reachable at the %s edge of a 1024×720 viewport',
+    (_edge, origin, expectedSide) => {
+      const action = vi.fn()
+      render(
+        <FileContextMenu
+          origin={origin}
+          selectionCount={2}
+          viewport={{ width: 1_024, height: 720 }}
+          model={model}
+          onAction={action}
+          onClose={vi.fn()}
+        />,
+      )
+
+      const root = screen.getByRole('menu', { name: '文件操作' }).closest('.file-context-menu')
+      expect(root).toHaveAttribute('data-submenu-side', expectedSide)
+      fireEvent.click(screen.getByRole('menuitem', { name: '标记' }))
+      const submenu = screen.getByRole('menu', { name: '标记' })
+      expect(submenu).toHaveAttribute('data-side', expectedSide)
+
+      const rootTop = Number.parseFloat((root as HTMLElement).style.top)
+      const submenuTop = rootTop + 6
+      const submenuMaxHeight = Number.parseFloat(submenu.style.maxHeight)
+      expect(submenuTop).toBeGreaterThanOrEqual(8)
+      expect(submenuTop + submenuMaxHeight).toBeLessThanOrEqual(712)
+
+      fireEvent.click(within(submenu).getByRole('menuitemcheckbox', { name: '保留' }))
+      expect(action).toHaveBeenCalledWith('mark.keep')
+    },
+  )
 })

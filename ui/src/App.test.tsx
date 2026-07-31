@@ -30,6 +30,7 @@ import { defined } from './defined'
 import './styles/app.css'
 
 afterEach(() => {
+  vi.useRealTimers()
   vi.unstubAllGlobals()
 })
 
@@ -48,6 +49,12 @@ function openRadialMenu(file: HTMLElement, pointerId = 90) {
     pointerId,
     button: 2,
     clientX: 420,
+    clientY: 260,
+  })
+  fireEvent.pointerMove(window, {
+    pointerId,
+    buttons: 2,
+    clientX: 429,
     clientY: 260,
   })
 }
@@ -1154,14 +1161,68 @@ describe('Viewer empty state', () => {
     fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
     const file = await screen.findByRole('option', { name: 'front.jpg' })
 
+    fireEvent.pointerDown(file, {
+      pointerId: 401,
+      button: 2,
+      clientX: 420,
+      clientY: 260,
+    })
+    fireEvent.pointerUp(window, {
+      pointerId: 401,
+      button: 2,
+      clientX: 420,
+      clientY: 260,
+    })
     fireEvent.contextMenu(file, { button: 2, clientX: 420, clientY: 260 })
     expect(
       screen.getByRole('menu', { name: '文件操作' }).closest('.file-context-menu'),
     ).not.toBeNull()
     fireEvent.keyDown(screen.getByRole('menu', { name: '文件操作' }), { key: 'Escape' })
 
-    openRadialMenu(file, 402)
+    vi.useFakeTimers()
+    fireEvent.pointerDown(file, {
+      pointerId: 402,
+      button: 2,
+      clientX: 420,
+      clientY: 260,
+    })
+    expect(document.querySelector('.radial-file-menu')).toBeNull()
+    act(() => vi.advanceTimersByTime(180))
     expect(document.querySelector('.radial-file-menu')).not.toBeNull()
+  })
+
+  it('keeps Control-click on the conventional compact-menu path', async () => {
+    const viewer = bridge()
+    vi.mocked(viewer.queryFolder).mockResolvedValue(contentWorkspace())
+    render(<App bridge={viewer} />)
+    fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
+    const file = await screen.findByRole('option', { name: 'front.jpg' })
+
+    fireEvent.pointerDown(file, {
+      pointerId: 403,
+      button: 0,
+      ctrlKey: true,
+      clientX: 420,
+      clientY: 260,
+    })
+    fireEvent.pointerUp(window, {
+      pointerId: 403,
+      button: 0,
+      ctrlKey: true,
+      clientX: 420,
+      clientY: 260,
+    })
+    fireEvent.contextMenu(file, {
+      button: 0,
+      ctrlKey: true,
+      clientX: 420,
+      clientY: 260,
+    })
+
+    expect(
+      screen.getByRole('menu', { name: '文件操作' }).closest('.file-context-menu'),
+    ).not.toBeNull()
+    expect(document.querySelector('.radial-file-menu')).toBeNull()
   })
 
   it('starts a fresh held gesture when a second right-click replaces click fallback', async () => {

@@ -196,7 +196,17 @@ export default function ImagePreview({
     })
   }
 
-  const previewIdentity: ReactNode = <strong>{file.name}</strong>
+  const previewDimensions = file.imageMetadata ?? representation
+  const previewIdentity: ReactNode = (
+    <>
+      <strong>{file.name}</strong>
+      {previewDimensions && (
+        <span>
+          {previewDimensions.width} × {previewDimensions.height} px
+        </span>
+      )}
+    </>
+  )
   const displayControls: ReactNode = (
     <>
       <button type="button" disabled={transformsDisabled} onClick={() => setMode('fit')}>
@@ -240,7 +250,7 @@ export default function ImagePreview({
         ↻
       </button>
       <button type="button" aria-label="关闭预览" onClick={onClose}>
-        ×
+        完成
       </button>
     </>
   )

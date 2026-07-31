@@ -3,6 +3,12 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Point, Viewport } from './radialMenuGeometry'
 import type { RadialLeafAction, RadialMenuItem } from './radialMenuModel'
 
+const VIEWPORT_INSET = 8
+const ROOT_MENU_WIDTH = 260
+const ROOT_MENU_MAX_HEIGHT = 360
+const SUBMENU_WIDTH = 202
+const SUBMENU_GAP = 6
+
 export interface FileContextMenuProps {
   origin: Point
   selectionCount: number
@@ -30,8 +36,19 @@ export default function FileContextMenu({
   const [expandedIndex, setExpandedIndex] = useState<number | null>(null)
   const [secondaryIndex, setSecondaryIndex] = useState(0)
   const expandedItem = expandedIndex === null ? null : (model[expandedIndex] ?? null)
-  const left = Math.min(Math.max(8, origin.x), Math.max(8, viewport.width - 260))
-  const top = Math.min(Math.max(8, origin.y), Math.max(8, viewport.height - 360))
+  const left = Math.min(
+    Math.max(VIEWPORT_INSET, origin.x),
+    Math.max(VIEWPORT_INSET, viewport.width - ROOT_MENU_WIDTH),
+  )
+  const top = Math.min(
+    Math.max(VIEWPORT_INSET, origin.y),
+    Math.max(VIEWPORT_INSET, viewport.height - ROOT_MENU_MAX_HEIGHT),
+  )
+  const submenuSide =
+    left + ROOT_MENU_WIDTH + SUBMENU_GAP + SUBMENU_WIDTH <= viewport.width - VIEWPORT_INSET
+      ? 'right'
+      : 'left'
+  const submenuMaxHeight = Math.max(80, viewport.height - VIEWPORT_INSET - top - SUBMENU_GAP)
 
   const primaryItems = useMemo(() => model, [model])
   const secondaryItems = expandedItem?.children ?? []
@@ -176,6 +193,7 @@ export default function FileContextMenu({
     <div
       ref={rootRef}
       className="file-context-menu"
+      data-submenu-side={submenuSide}
       style={{ left, top }}
       onKeyDown={handleMenuKeyDown}
     >
@@ -183,7 +201,13 @@ export default function FileContextMenu({
         {primaryItems.map((item, index) => renderItem(item, index, 'primary'))}
       </div>
       {expandedItem?.children && (
-        <div className="file-context-submenu" role="menu" aria-label={expandedItem.label}>
+        <div
+          className="file-context-submenu"
+          role="menu"
+          aria-label={expandedItem.label}
+          data-side={submenuSide}
+          style={{ maxHeight: submenuMaxHeight }}
+        >
           {expandedItem.children.map((item, index) => renderItem(item, index, 'secondary'))}
         </div>
       )}

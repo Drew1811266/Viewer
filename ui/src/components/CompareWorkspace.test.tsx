@@ -22,12 +22,32 @@ describe('CompareWorkspace', () => {
     renderWorkspace({ files: picturedFiles })
 
     const workspace = screen.getByRole('region', { name: '图片对比' })
-    expect(within(workspace).getByRole('toolbar', { name: '对比工具' })).toBeVisible()
-    expect(within(workspace).getByRole('button', { name: '完成对比' })).toBeVisible()
-    expect(within(workspace).getAllByRole('group', { name: /图片/ })[0]).toHaveAttribute(
-      'data-active',
-      'true',
-    )
+    const toolbar = within(workspace).getByRole('toolbar', { name: '对比工具' })
+    const leading = toolbar.querySelector('.compare-toolbar-leading')
+    const transforms = toolbar.querySelector('.compare-toolbar-transform')
+    const actions = toolbar.querySelector('.compare-toolbar-actions')
+    expect(leading).toHaveTextContent('2 张图片')
+    expect(leading).toHaveTextContent('图片 1.jpg')
+    expect(
+      within(transforms as HTMLElement).getByRole('button', { name: '适应窗口' }),
+    ).toBeVisible()
+    expect(within(transforms as HTMLElement).getByRole('button', { name: '100%' })).toBeVisible()
+    expect(
+      within(transforms as HTMLElement).getByRole('button', { name: '顺时针旋转当前图片' }),
+    ).toBeVisible()
+    expect(
+      within(transforms as HTMLElement).queryByRole('button', { name: /切换为.*变换/ }),
+    ).not.toBeInTheDocument()
+    expect(
+      within(actions as HTMLElement).getByRole('button', { name: '切换为独立变换' }),
+    ).toHaveTextContent('同步')
+    expect(
+      within(actions as HTMLElement).getByRole('button', { name: '完成对比' }),
+    ).toHaveTextContent('完成')
+    const panes = within(workspace).getAllByRole('group', { name: /图片/ })
+    expect(panes[0]).toHaveAttribute('data-active', 'true')
+    fireEvent.focus(defined(panes[1], 'Expected second comparison pane'))
+    expect(leading).toHaveTextContent('图片 2.jpg')
   })
 
   it('rejects invalid cardinality and non-image candidates with safe feedback', () => {

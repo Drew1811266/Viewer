@@ -10,6 +10,7 @@
   --viewer-text-secondary: #6b7077;
   --viewer-text-tertiary: #8a8e94;
   --viewer-accent: #5869cf;
+  --viewer-accent-text: #4152b4;
   --viewer-accent-soft: #eceeff;
   --viewer-success: #397158;
   --viewer-success-soft: #eff7f2;
@@ -30,7 +31,9 @@
   --viewer-shadow-popover: 0 18px 48px rgb(31 35 42 / 17%);
   --viewer-shadow-dialog: 0 22px 60px rgb(31 35 42 / 19%);
   --viewer-shadow-image: 0 8px 28px rgb(34 42 53 / 14%);
-  --viewer-focus-ring: 0 0 0 2px var(--viewer-accent);
+  --viewer-focus-outline: 2px solid var(--viewer-accent);
+  --viewer-focus-shadow: 0 0 0 2px var(--viewer-accent);
+  --viewer-focus-offset: 2px;
   --viewer-motion-fast: 120ms;
   --viewer-motion-standard: 160ms;
   --viewer-motion-slow: 200ms;
@@ -49,7 +52,7 @@
   --preview-control-hover-surface: var(--viewer-soft-surface);
   --preview-accent: var(--viewer-accent);
   --preview-accent-surface: var(--viewer-accent-soft);
-  --preview-accent-text: #4152b4;
+  --preview-accent-text: var(--viewer-accent-text);
   --preview-danger: var(--viewer-danger);
   --preview-danger-surface: var(--viewer-danger-soft);
   --preview-image-shadow: var(--viewer-shadow-image);

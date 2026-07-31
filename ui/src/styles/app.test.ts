@@ -1,8 +1,12 @@
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { defined } from '../defined'
 
 const appCss = readFileSync('src/styles/app.css', 'utf8')
+const viewerStyleSources = readdirSync('src/styles')
+  .filter((file) => file.endsWith('.css'))
+  .map((file) => readFileSync(`src/styles/${file}`, 'utf8'))
+  .join('\n')
 
 describe('workspace style contracts', () => {
   it('anchors the filter popover within both edges of a 720px viewport', () => {
@@ -115,14 +119,13 @@ describe('workspace style contracts', () => {
     )
 
     expect(identityFocus?.declarations).toMatchObject({
-      'box-shadow': 'inset 0 0 0 2px #2477d4',
-      outline: 'none',
+      outline: 'var(--viewer-focus-outline)',
+      'outline-offset': 'var(--viewer-focus-offset)',
     })
     expect(thumbnailFocus?.declarations).toMatchObject({
-      outline: '3px solid #2477d4',
-      'outline-offset': '-3px',
+      outline: 'var(--viewer-focus-outline)',
+      'outline-offset': 'var(--viewer-focus-offset)',
     })
-    expect(thumbnailFocus?.declarations['box-shadow']).toBeUndefined()
   })
 
   it('renders workspace menu summaries as stateful toolbar buttons', () => {
@@ -179,9 +182,62 @@ describe('workspace style contracts', () => {
     ]
     for (const selector of focusSelectors) {
       expect(winningDeclaration(rules, new Set([selector]), 'outline'), selector).toBe(
-        'var(--viewer-focus-ring)',
+        'var(--viewer-focus-outline)',
       )
-      expect(winningDeclaration(rules, new Set([selector]), 'outline-offset'), selector).toBe('2px')
+      expect(winningDeclaration(rules, new Set([selector]), 'outline-offset'), selector).toBe(
+        'var(--viewer-focus-offset)',
+      )
+    }
+  })
+
+  it('uses one valid focus contract for search, menus, and result controls', () => {
+    const rules = parseRules(appCss)
+    const searchFocus = rules.find((rule) => rule.selector === '.search-field:focus-within')
+    expect(searchFocus?.declarations).toMatchObject({
+      outline: 'var(--viewer-focus-outline)',
+      'outline-offset': 'var(--viewer-focus-offset)',
+    })
+
+    for (const selector of [
+      'button:focus-visible',
+      'input:focus-visible',
+      'select:focus-visible',
+      'summary:focus-visible',
+      '[tabindex]:focus-visible',
+      '[role="menuitem"]:focus-visible',
+      '[role="menuitemcheckbox"]:focus-visible',
+      '[role="option"]:focus-visible',
+    ]) {
+      const focusRule = rules.find((rule) => rule.selector === selector)
+      expect(focusRule?.declarations, selector).toMatchObject({
+        outline: 'var(--viewer-focus-outline)',
+        'outline-offset': 'var(--viewer-focus-offset)',
+      })
+    }
+
+    expect(appCss).not.toContain('outline: var(--viewer-focus-shadow)')
+    expect(appCss).not.toContain('outline: var(--viewer-focus-ring)')
+  })
+
+  it('uses semantic tokens instead of the retired cool palette', () => {
+    const retiredHexValues = ['2477d4', 'd9e8ff', 'eef0f3', 'd8dce2', '59616c', '737982']
+    for (const hexValue of retiredHexValues) {
+      expect(viewerStyleSources.toLowerCase(), hexValue).not.toContain(`#${hexValue}`)
+    }
+  })
+
+  it('marks selected sidebar rows with the approved leading accent indicator and text', () => {
+    const rules = parseRules(appCss)
+    for (const selector of [
+      '.project-root-button[aria-pressed="true"]',
+      '.folder-tree-row[aria-selected="true"]',
+    ]) {
+      const selectedRule = rules.find((rule) => rule.selector === selector)
+      expect(selectedRule?.declarations, selector).toMatchObject({
+        background: 'var(--viewer-accent-soft)',
+        'box-shadow': 'inset 2px 0 var(--viewer-accent)',
+        color: 'var(--viewer-accent-text)',
+      })
     }
   })
 
@@ -240,8 +296,8 @@ describe('workspace style contracts', () => {
       '.preview-toolbar select:focus-visible',
       '.preview-navigation-float button:focus-visible',
     ]) {
-      expect(declaration(selector, 'outline')).toBe('2px solid var(--preview-accent)')
-      expect(declaration(selector, 'outline-offset')).toBe('2px')
+      expect(declaration(selector, 'outline')).toBe('var(--viewer-focus-outline)')
+      expect(declaration(selector, 'outline-offset')).toBe('var(--viewer-focus-offset)')
     }
 
     expect(contrastRatio('#1f2328', '#f5f6f8')).toBeGreaterThanOrEqual(4.5)
@@ -336,8 +392,8 @@ describe('workspace style contracts', () => {
       '.compare-pane button:focus-visible',
       '.compare-invalid > button:focus-visible',
     ]) {
-      expect(declaration(selector, 'outline')).toBe('2px solid var(--preview-accent)')
-      expect(declaration(selector, 'outline-offset')).toBe('2px')
+      expect(declaration(selector, 'outline')).toBe('var(--viewer-focus-outline)')
+      expect(declaration(selector, 'outline-offset')).toBe('var(--viewer-focus-offset)')
     }
 
     expect(
@@ -406,8 +462,8 @@ describe('workspace style contracts', () => {
       }
     }
 
-    expect(contrastRatio('#174f8f', '#d9e8ff')).toBeGreaterThanOrEqual(4.5)
-    expect(contrastRatio('#2477d4', '#ffffff')).toBeGreaterThanOrEqual(3)
+    expect(contrastRatio('#4152b4', '#eceeff')).toBeGreaterThanOrEqual(4.5)
+    expect(contrastRatio('#5869cf', '#ffffff')).toBeGreaterThanOrEqual(3)
   })
 })
 

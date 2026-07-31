@@ -1125,7 +1125,10 @@ function ViewerWorkspace({ bridge }: { bridge: ViewerBridge }) {
           )}
         </section>
       </div>
-      <GlobalNoticeStack notices={globalNotices} />
+      <GlobalNoticeStack
+        notices={globalNotices}
+        belowReadOnly={state.project.access === 'read_only'}
+      />
       {organizationDragView && (
         <div
           className="organization-drag-preview"

@@ -27,6 +27,7 @@ import {
   useRadialMenuSession,
 } from './app/useRadialMenuSession'
 import { defined } from './defined'
+import './styles/app.css'
 
 afterEach(() => {
   vi.unstubAllGlobals()
@@ -1940,7 +1941,28 @@ describe('Viewer empty state', () => {
     expect(within(notices).getByRole('alert')).toHaveTextContent(
       '部分文件已发生变化，请刷新后重试。',
     )
+    expect(getComputedStyle(notices).top).toBe('68px')
     expect(screen.queryByText(/Users\/private/)).not.toBeInTheDocument()
+  })
+
+  it('keeps global Finder-drag feedback below the read-only recovery strip', async () => {
+    const viewer = bridge('read_only')
+    vi.mocked(viewer.queryFolder).mockResolvedValue(readOnlyContentWorkspace())
+    vi.mocked(viewer.beginFinderDrag).mockRejectedValue({ code: 'finder_drag_selection_stale' })
+    render(<App bridge={viewer} />)
+
+    fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
+    const file = await screen.findByRole('option', { name: 'front.jpg' })
+    fireEvent.dragStart(
+      defined(file.querySelector('.file-export-surface'), 'Expected file export surface'),
+      { dataTransfer: viewerDragTransfer() },
+    )
+
+    const notices = await screen.findByRole('region', { name: '全局通知' })
+    expect(notices).toHaveClass('global-notice-stack--below-read-only')
+    expect(getComputedStyle(notices).top).toBe('106px')
+    fireEvent.click(screen.getByRole('button', { name: '权限设置' }))
+    expect(viewer.openPermissionSettings).toHaveBeenCalledOnce()
   })
 
   it('shows a generic retry message without exposing a native Finder error path', async () => {

@@ -15,9 +15,13 @@ export interface GlobalNotice {
 
 export interface GlobalNoticeStackProps {
   notices: GlobalNotice[]
+  belowReadOnly?: boolean
 }
 
-export default function GlobalNoticeStack({ notices }: GlobalNoticeStackProps) {
+export default function GlobalNoticeStack({
+  notices,
+  belowReadOnly = false,
+}: GlobalNoticeStackProps) {
   const [dismissed, setDismissed] = useState<Set<string>>(() => new Set())
 
   useEffect(() => {
@@ -32,7 +36,14 @@ export default function GlobalNoticeStack({ notices }: GlobalNoticeStackProps) {
   if (visible.length === 0) return null
 
   return (
-    <section className="global-notice-stack" aria-label="全局通知">
+    <section
+      className={
+        belowReadOnly
+          ? 'global-notice-stack global-notice-stack--below-read-only'
+          : 'global-notice-stack'
+      }
+      aria-label="全局通知"
+    >
       {visible.map((notice) => (
         <article
           className="global-notice"

@@ -512,6 +512,10 @@ summary,
   z-index: 34;
 }
 
+.global-notice-stack--below-read-only {
+  top: 106px;
+}
+
 .global-notice {
   align-items: start;
   background: var(--viewer-surface);

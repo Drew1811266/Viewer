@@ -27,6 +27,35 @@ describe('workspace style contracts', () => {
     })
   })
 
+  it('paints selection inside the thumbnail and keyboard focus outside the active card', () => {
+    const rules = parseRules(appCss)
+    const selectedCard = rules.find((rule) => rule.selector === '.image-cell[aria-selected="true"]')
+    const thumbnailFrame = rules.find((rule) => rule.selector === '.image-cell-thumbnail-frame')
+    const selectionOverlay = rules.find(
+      (rule) =>
+        rule.selector === '.image-cell[aria-selected="true"] .image-cell-thumbnail-frame::after',
+    )
+    const activeFocus = rules.find(
+      (rule) =>
+        rule.selector === '.aspect-virtual-grid:focus-visible .image-cell[data-active="true"]',
+    )
+
+    expect(selectedCard?.declarations.border).toBeUndefined()
+    expect(selectedCard?.declarations['box-shadow']).toBeUndefined()
+    expect(thumbnailFrame?.declarations.position).toBe('relative')
+    expect(selectionOverlay?.declarations).toMatchObject({
+      border: '2px solid var(--viewer-accent)',
+      inset: '6px',
+      'border-radius': '8px',
+      'pointer-events': 'none',
+      position: 'absolute',
+    })
+    expect(activeFocus?.declarations).toMatchObject({
+      outline: 'var(--viewer-focus-outline)',
+      'outline-offset': 'var(--viewer-focus-offset)',
+    })
+  })
+
   it('anchors the filter popover within both edges of a 720px viewport', () => {
     const narrowRules = parseRules(mediaBody(appCss, '(max-width: 800px)'))
     const popover = narrowRules.find((rule) => rule.selector === '.search-options-popover')

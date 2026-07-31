@@ -541,6 +541,12 @@ export default function ContentBrowser({
   function handleKeyboard(event: KeyboardEvent<HTMLElement>) {
     const target = event.target as HTMLElement
     if (isEditableKeyboardTarget(target)) return
+    if (event.key === 'Escape' && !event.defaultPrevented && selected.size > 0) {
+      event.preventDefault()
+      anchorId.current = null
+      commitSelection(new Set())
+      return
+    }
     if ((event.key === ' ' || event.key === 'Spacebar') && activeId) {
       event.preventDefault()
       const file = fileById.get(activeId)
@@ -695,7 +701,7 @@ export default function ContentBrowser({
       {selected.size > 0 && (
         <div className="selection-action-bar" role="status" aria-label="选择摘要">
           <strong>已选择 {selected.size} 项</strong>
-          <span>右键或使用快捷键进行操作</span>
+          <span>右键打开圆盘菜单 · Esc 取消选择</span>
         </div>
       )}
     </section>

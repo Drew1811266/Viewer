@@ -591,6 +591,24 @@ describe('ContentBrowser', () => {
     expect(screen.getByRole('status', { name: '选择摘要' })).toHaveTextContent('已选择 3 项')
   })
 
+  it('keeps the selected boundary inside the thumbnail and explains the radial action', () => {
+    render(<ContentBrowser workspace={workspace(1)} />)
+    const option = screen.getByRole('option', { name: '1.jpg' })
+
+    fireEvent.click(option)
+
+    expect(option).toHaveAttribute('aria-selected', 'true')
+    expect(option.querySelector('.image-cell-thumbnail-frame')).not.toBeNull()
+    expect(screen.getByRole('status', { name: '选择摘要' })).toHaveTextContent(
+      '右键打开圆盘菜单 · Esc 取消选择',
+    )
+
+    fireEvent.keyDown(screen.getByRole('listbox', { name: '图片文件' }), { key: 'Escape' })
+
+    expect(option).toHaveAttribute('aria-selected', 'false')
+    expect(screen.queryByRole('status', { name: '选择摘要' })).not.toBeInTheDocument()
+  })
+
   it('requests each rendered long edge at DPR and leaves successful images ratio-sized', async () => {
     Object.defineProperty(window, 'devicePixelRatio', {
       configurable: true,

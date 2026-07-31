@@ -335,6 +335,7 @@ export default function AspectVirtualGrid<T>({
 
   const keyDown: KeyboardEventHandler<HTMLDivElement> = (event) => {
     if (event.key === 'Escape' && marqueeSession.current !== null) {
+      event.preventDefault()
       const session = marqueeSession.current
       onMarqueeSelectionChange?.({ phase: 'cancel', keys: [], metaKey: session.metaKey })
       clearMarqueeSession()

@@ -69,22 +69,24 @@ export function ImageCell({
         title="拖到 Finder"
         onDragStart={(event) => onFinderDragStart(file, event)}
       >
-        <div
-          className="image-cell-preview"
-          style={{ width: rect.imageWidth, height: rect.imageHeight }}
-        >
-          {isPreviewableImage(file) ? (
-            <AspectThumbnail
-              file={file}
-              width={rect.imageWidth}
-              height={rect.imageHeight}
-              dimensionsKnown={dimensionsKnown}
-              loadThumbnail={loadThumbnail}
-              onNaturalDimensions={onNaturalDimensions}
-            />
-          ) : (
-            <UnsupportedFileState file={file} compact />
-          )}
+        <div className="image-cell-thumbnail-frame">
+          <div
+            className="image-cell-preview"
+            style={{ width: rect.imageWidth, height: rect.imageHeight }}
+          >
+            {isPreviewableImage(file) ? (
+              <AspectThumbnail
+                file={file}
+                width={rect.imageWidth}
+                height={rect.imageHeight}
+                dimensionsKnown={dimensionsKnown}
+                loadThumbnail={loadThumbnail}
+                onNaturalDimensions={onNaturalDimensions}
+              />
+            ) : (
+              <UnsupportedFileState file={file} compact />
+            )}
+          </div>
         </div>
         <span>{file.name}</span>
         {markerLabel && <span className="file-marker">{markerLabel}</span>}

@@ -117,4 +117,72 @@ describe('complete Viewer visual atlas', () => {
     clickState(document, 'menu-readonly')
     expect(document.querySelector('[role="menu"] [aria-disabled="true"]')).not.toBeNull()
   })
+
+  it('exposes viewing and radial states', () => {
+    const dom = renderAtlas()
+    const document = dom.window.document
+
+    clickScreen(document, 'radial')
+    for (const radialState of [
+      'radial-click',
+      'radial-gesture',
+      'radial-mark',
+      'radial-organize',
+      'radial-disabled',
+      'radial-readonly',
+      'radial-keyboard',
+    ]) {
+      clickState(document, radialState)
+      expect(document.querySelector('[data-radial-state]')?.getAttribute('data-radial-state')).toBe(
+        radialState.replace('radial-', ''),
+      )
+      expect(document.querySelector('[role="menu"] [role="menuitem"]')).not.toBeNull()
+    }
+
+    clickScreen(document, 'preview')
+    for (const previewState of [
+      'preview-fit',
+      'preview-100',
+      'preview-zoom',
+      'preview-rotate',
+      'preview-loading',
+      'preview-error',
+      'preview-navigation',
+    ]) {
+      clickState(document, previewState)
+      expect(
+        document.querySelector('[data-preview-state]')?.getAttribute('data-preview-state'),
+      ).toBe(previewState.replace('preview-', ''))
+    }
+
+    clickScreen(document, 'compare')
+    for (const compareState of ['compare-2', 'compare-3', 'compare-4', 'compare-many']) {
+      clickState(document, compareState)
+      expect(document.querySelector('[data-compare-state]')?.getAttribute('data-compare-state')).toBe(
+        compareState.replace('compare-', ''),
+      )
+    }
+
+    clickScreen(document, 'text')
+    for (const documentState of [
+      'document-markdown',
+      'document-plain',
+      'document-encoding',
+      'document-truncated',
+      'document-dual',
+      'document-unsupported',
+      'document-unavailable',
+    ]) {
+      clickState(document, documentState)
+      expect(
+        document.querySelector('[data-document-state]')?.getAttribute('data-document-state'),
+      ).toBe(documentState.replace('document-', ''))
+    }
+
+    clickScreen(document, 'information')
+    clickState(document, 'info-multiple')
+    expect(document.querySelector('[data-information-state]')?.getAttribute('data-information-state')).toBe(
+      'multiple',
+    )
+  })
 })

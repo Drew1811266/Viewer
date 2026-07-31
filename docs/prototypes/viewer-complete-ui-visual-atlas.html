@@ -770,6 +770,21 @@
       max-height: 94%;
       max-width: 84%;
     }
+    .preview-stage[data-preview-state="100"] img { height: auto; max-height: none; max-width: none; width: 760px; }
+    .preview-stage[data-preview-state="zoom"] img { max-height: 110%; max-width: 96%; transform: scale(1.18); }
+    .preview-stage[data-preview-state="rotate"] img { max-height: 76%; max-width: 66%; transform: rotate(90deg); }
+    .preview-loading,
+    .preview-error {
+      align-items: center;
+      color: var(--secondary);
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      justify-content: center;
+      text-align: center;
+    }
+    .preview-error strong { color: var(--text); font-size: 14px; }
+    .preview-loading .skeleton { height: 56%; width: 40%; }
     .preview-nav {
       align-items: center;
       background: rgb(255 255 255 / 96%);
@@ -825,6 +840,50 @@
     .document h2 { font-size: 15px; margin: 25px 0 8px; }
     .document p, .document li { color: #4f545b; font-size: 11px; line-height: 1.75; }
     .document code { background: var(--soft); border-radius: 5px; color: #4152b4; padding: 2px 5px; }
+    .plain-document {
+      color: #4f545b;
+      font: 11px/1.75 ui-monospace, "SFMono-Regular", Consolas, monospace;
+      margin: 0;
+      white-space: pre-wrap;
+    }
+    .encoding-banner,
+    .truncated-banner {
+      background: var(--warning-soft);
+      border: 1px solid #e5dcc5;
+      border-radius: 8px;
+      color: var(--warning);
+      font-size: 9px;
+      margin-bottom: 14px;
+      padding: 9px 10px;
+    }
+    .dual-document { display: grid; gap: 12px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .unsupported-stage {
+      align-items: center;
+      background: #f4f4f2;
+      display: flex;
+      justify-content: center;
+      min-height: 0;
+    }
+    .unsupported-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      max-width: 420px;
+      padding: 24px;
+      text-align: center;
+    }
+    .file-badge {
+      background: var(--soft);
+      border-radius: 9px;
+      color: var(--secondary);
+      display: inline-flex;
+      font-size: 10px;
+      font-weight: 750;
+      margin-bottom: 14px;
+      padding: 11px 13px;
+    }
+    .unsupported-card h2 { font-size: 15px; margin: 0; }
+    .unsupported-card p { color: var(--secondary); font-size: 10px; line-height: 1.55; margin: 8px 0 16px; }
     .inspector {
       background: var(--surface);
       border-left: 1px solid var(--border);
@@ -986,6 +1045,53 @@
     }
     .reference-caption strong { display: block; font-size: 10px; margin-bottom: 4px; }
     .reference-caption span { color: var(--secondary); font-size: 9px; line-height: 1.5; }
+    .radial-layout {
+      background: #f1f1ef;
+      display: grid;
+      gap: 14px;
+      grid-template-columns: minmax(0, 1.35fr) minmax(280px, .65fr);
+      height: 100%;
+      padding: 58px 18px 18px;
+    }
+    .radial-reference {
+      align-items: center;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      display: flex;
+      justify-content: center;
+      min-height: 0;
+      overflow: hidden;
+      padding: 12px;
+    }
+    .radial-reference img { height: 100%; object-fit: contain; width: 100%; }
+    .radial-state-panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      min-height: 0;
+      overflow: auto;
+      padding: 16px;
+    }
+    .radial-state-panel h2 { font-size: 15px; margin: 0; }
+    .radial-state-panel > p { color: var(--secondary); font-size: 10px; line-height: 1.55; margin: 7px 0 14px; }
+    .radial-state-panel .menu-row[aria-disabled="true"] { color: #a0a3a8; cursor: default; }
+    .radial-guidance {
+      border-top: 1px solid var(--border);
+      color: var(--secondary);
+      font-size: 9px;
+      line-height: 1.55;
+      margin-top: 12px;
+      padding-top: 12px;
+    }
+    .information-layout {
+      background: #f4f4f2;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 360px;
+      height: 100%;
+      padding-top: 52px;
+    }
+    .information-selection { overflow: auto; padding: 18px; }
 
     .system-sheet { background: #f6f6f4; height: 100%; overflow: auto; padding: 24px; }
     .sheet-header h1 { font-size: 22px; letter-spacing: -.035em; margin: 0; }
@@ -1141,6 +1247,11 @@
       search: "grouped",
       filters: "zero",
       menu: "view",
+      radial: "click",
+      preview: "fit",
+      compare: "4",
+      document: "markdown",
+      info: "single",
     };
 
     const embedParams = new URLSearchParams(location.hash.slice(1));
@@ -1388,20 +1499,101 @@
     }
 
     function previewScreen() {
-      return `<div class="viewer-window"><div class="preview-shell"><header class="preview-toolbar"><div class="preview-identity"><strong>2C2A7469.JPG</strong><span>2400 × 3200 · 3.8 MB</span></div><div class="segmented"><button class="active">适应</button><button>100%</button><button>缩小</button><button>74%</button><button>放大</button></div><div class="preview-actions"><button class="viewer-button">旋转</button><button class="viewer-button primary">完成</button></div></header><section class="preview-stage">${image(0, "图片预览")}<div class="preview-nav"><button>上一张</button><span>1 / 30</span><button>下一张</button></div></section></div></div>`;
+      const states = stateBar([{
+        label: "图片预览",
+        key: "preview",
+        items: [["fit", "适应"], ["100", "100%"], ["zoom", "缩放"], ["rotate", "旋转"], ["loading", "加载"], ["error", "错误"], ["navigation", "导航"]],
+      }]);
+      let stage = image(0, "图片预览");
+      if (state.preview === "loading") {
+        stage = '<div class="preview-loading"><div class="skeleton"></div><span>正在载入高分辨率图片…</span></div>';
+      } else if (state.preview === "error") {
+        stage = '<div class="preview-error"><strong>无法显示这张图片</strong><span>源文件可能已移动或暂时不可读取。</span><button class="viewer-button">重试</button></div>';
+      }
+      const scaleLabel = state.preview === "100" ? "100%" : state.preview === "zoom" ? "132%" : "74%";
+      const navigation = state.preview === "navigation" ? '<div class="preview-nav"><button>上一张</button><span>1 / 30</span><button>下一张</button></div>' : "";
+      return `<div class="viewer-window">${states}<div class="preview-shell"><header class="preview-toolbar"><div class="preview-identity"><strong>2C2A7469.JPG</strong><span>2400 × 3200 · 3.8 MB</span></div><div class="segmented"><button class="${state.preview === "fit" ? "active" : ""}">适应</button><button class="${state.preview === "100" ? "active" : ""}">100%</button><button>缩小</button><button class="${state.preview === "zoom" ? "active" : ""}">${scaleLabel}</button><button>放大</button></div><div class="preview-actions"><button class="viewer-button${state.preview === "rotate" ? " active" : ""}">旋转</button><button class="viewer-button primary">完成</button></div></header><section class="preview-stage" data-preview-state="${state.preview}">${stage}${navigation}</section></div></div>`;
     }
 
     function compareScreen() {
-      const panes = [0, 1, 2, 3].map((index) => `<article class="compare-pane${index === 0 ? " active" : ""}"><header class="compare-head"><strong>2C2A${7469 + index * 27}.JPG</strong><button class="menu-row" style="width:auto;min-height:24px;padding:2px 5px">移除</button></header><div class="compare-stage">${image(index, "对比图片")}</div><footer class="compare-foot"><span>${index === 0 ? "活动面板" : "未标记"}</span><span>收藏</span></footer></article>`).join("");
-      return `<div class="viewer-window"><div class="preview-shell"><header class="preview-toolbar"><div class="preview-identity"><strong>4 张图片</strong><span>当前：2C2A7469.JPG</span></div><div class="segmented"><button class="active">适应</button><button>100%</button><button>缩小</button><button>放大</button><button>旋转</button></div><div class="preview-actions"><button class="viewer-button active">同步变换</button><button class="viewer-button primary">完成</button></div></header><section class="compare-grid">${panes}</section></div></div>`;
+      const states = stateBar([{
+        label: "对比数量",
+        key: "compare",
+        items: [["2", "2 张"], ["3", "3 张"], ["4", "4 张"], ["many", "大数量"]],
+      }]);
+      const count = state.compare === "many" ? 6 : Number(state.compare);
+      const panes = Array.from({ length: count }, (_, index) => `<article class="compare-pane${index === 0 ? " active" : ""}"><header class="compare-head"><strong>2C2A${7469 + index * 27}.JPG</strong><button class="menu-row" style="width:auto;min-height:24px;padding:2px 5px">移除</button></header><div class="compare-stage">${image(index, "对比图片")}</div><footer class="compare-foot"><span>${index === 0 ? "活动面板" : "未标记"}</span><span>收藏</span></footer></article>`).join("");
+      const columns = count === 2 ? 2 : count === 3 ? 3 : count === 6 ? 3 : 2;
+      return `<div class="viewer-window">${states}<div class="preview-shell"><header class="preview-toolbar"><div class="preview-identity"><strong>${count} 张图片</strong><span>当前：2C2A7469.JPG</span></div><div class="segmented"><button class="active">适应</button><button>100%</button><button>缩小</button><button>放大</button><button>旋转</button></div><div class="preview-actions"><button class="viewer-button active">同步变换</button><button class="viewer-button primary">完成</button></div></header><section class="compare-grid" data-compare-state="${state.compare}" style="grid-template-columns:repeat(${columns},minmax(0,1fr))">${panes}</section></div></div>`;
     }
 
     function textScreen() {
-      return `<div class="viewer-window"><div class="preview-shell"><header class="preview-toolbar"><div class="preview-identity"><strong>产品说明.md</strong><span>Markdown · UTF-8</span></div><div class="segmented"><button class="active">阅读</button><button>纯文本</button></div><div class="preview-actions"><button class="viewer-button">编码 UTF-8</button><button class="viewer-button primary">完成</button></div></header><section class="text-stage"><div class="document-wrap"><article class="document"><h1>春夏儿童服装拍摄说明</h1><p>本项目用于整理商品图片、审阅状态与最终交付素材。Viewer 保持原始文件比例，并允许在一个工作区内完成筛选、比较和整理。</p><h2>文件组织</h2><p>图片按品类和款号放入对应目录。使用 <code>保留</code>、<code>待定</code> 与 <code>淘汰</code> 标记完成第一轮筛选。</p><h2>交付检查</h2><ul><li>确认正面、背面与细节图完整。</li><li>检查画面裁切、颜色与文件命名。</li><li>通过并排对比确认同款图片一致性。</li></ul></article></div><aside class="inspector"><h2>文件信息</h2><section class="info-group"><h3>身份与位置</h3><div class="info-row"><span>文件名</span><span>产品说明.md</span></div><div class="info-row"><span>位置</span><span>项目根目录</span></div><div class="info-row"><span>大小</span><span>18 KB</span></div></section><section class="info-group"><h3>审阅与收藏</h3><div class="info-row"><span>审阅状态</span><span>未标记</span></div><div class="info-row"><span>收藏</span><span>否</span></div></section><section class="info-group"><h3>技术信息</h3><div class="info-row"><span>格式</span><span>Markdown</span></div><div class="info-row"><span>编码</span><span>UTF-8</span></div><div class="info-row"><span>修改时间</span><span>今天 14:32</span></div></section></aside></section></div></div>`;
+      const states = stateBar([{
+        label: "文档",
+        key: "document",
+        items: [["markdown", "Markdown"], ["plain", "纯文本"], ["encoding", "编码"], ["truncated", "截断"], ["dual", "双文本"], ["unsupported", "不支持"], ["unavailable", "不可用"]],
+      }]);
+      const markdown = '<article class="document"><h1>春夏儿童服装拍摄说明</h1><p>本项目用于整理商品图片、审阅状态与最终交付素材。Viewer 保持原始文件比例，并允许在一个工作区内完成筛选、比较和整理。</p><h2>文件组织</h2><p>图片按品类和款号放入对应目录。使用 <code>保留</code>、<code>待定</code> 与 <code>淘汰</code> 标记完成第一轮筛选。</p><h2>交付检查</h2><ul><li>确认正面、背面与细节图完整。</li><li>检查画面裁切、颜色与文件命名。</li><li>通过并排对比确认同款图片一致性。</li></ul></article>';
+      const plain = '<article class="document"><pre class="plain-document">春夏儿童服装拍摄说明\\n\\n项目：测试图\\n范围：衣服 / A01–A05\\n\\n01  确认正面、背面与细节图完整\\n02  检查画面裁切、颜色与文件命名\\n03  使用并排对比确认同款图片一致性</pre></article>';
+      let content = markdown;
+      let identity = ["产品说明.md", "Markdown · UTF-8"];
+      if (state.document === "plain") content = plain;
+      if (state.document === "encoding") content = `<article class="document"><div class="encoding-banner">检测到编码可能不是 UTF-8。当前按 GB 18030 显示。</div><pre class="plain-document">产品颜色：浅蓝 / 粉色 / 薄荷绿\\n拍摄要求：保持背景纯白，保留自然阴影。</pre></article>`;
+      if (state.document === "truncated") content = `<article class="document"><div class="truncated-banner">文件较大，仅显示前 2 MB。可在外部编辑器中打开完整文件。</div>${markdown.replace('<article class="document">', "").replace("</article>", "")}</article>`;
+      if (state.document === "dual") content = `<div class="dual-document">${markdown}${plain}</div>`;
+      if (state.document === "unsupported") {
+        identity = ["交付清单.xlsx", "Excel 工作簿 · 26 KB"];
+        content = '<div class="unsupported-stage"><div class="unsupported-card"><span class="file-badge">XLSX</span><h2>Viewer 暂不支持预览此文件</h2><p>文件仍保留在项目中，可以在系统默认应用中打开。</p><button class="viewer-button primary">在默认应用中打开</button></div></div>';
+      }
+      if (state.document === "unavailable") {
+        identity = ["材质说明.pdf", "文件不可用"];
+        content = '<div class="unsupported-stage"><div class="unsupported-card"><span class="file-badge">PDF</span><h2>找不到源文件</h2><p>文件可能已移动、重命名，或所在磁盘暂时未连接。</p><button class="viewer-button">在文件管理器中定位</button></div></div>';
+      }
+      const isUnavailable = ["unsupported", "unavailable"].includes(state.document);
+      return `<div class="viewer-window">${states}<div class="preview-shell" data-document-state="${state.document}"><header class="preview-toolbar"><div class="preview-identity"><strong>${identity[0]}</strong><span>${identity[1]}</span></div><div class="segmented"><button class="${state.document === "markdown" ? "active" : ""}">阅读</button><button class="${state.document === "plain" ? "active" : ""}">纯文本</button></div><div class="preview-actions"><button class="viewer-button">编码 ${state.document === "encoding" ? "GB 18030" : "UTF-8"}</button><button class="viewer-button primary">完成</button></div></header>${isUnavailable ? content : `<section class="text-stage"><div class="document-wrap">${content}</div>${informationInspector("single")}</section>`}</div></div>`;
     }
 
     function radialScreen() {
-      return `<div class="reference-scene"><img src="${references.radial}" alt="批准的六扇区圆盘菜单参考"><div class="reference-caption"><div><strong>唯一菜单</strong><span>普通右键、Control-click、手势和键盘菜单键全部打开同一个圆盘。</span></div><div><strong>固定几何</strong><span>一级 42–108 px、六个 60° 扇区；标记与整理使用 112–168 px 外扩二级扇区。</span></div><div><strong>选择边界</strong><span>圆盘作用于当前选择；缩略图选中框始终内缩 6 px，绝不包围文件名。</span></div></div></div>`;
+      const states = stateBar([{
+        label: "圆盘",
+        key: "radial",
+        items: [["click", "点击"], ["gesture", "手势"], ["mark", "标记二级"], ["organize", "整理二级"], ["disabled", "禁用"], ["readonly", "只读"], ["keyboard", "键盘"]],
+      }]);
+      const descriptions = {
+        click: ["点击打开", "右键或 Control-click 打开；松开不会立即执行。"],
+        gesture: ["手势模式", "按住并划向扇区；跨过确认半径后松开执行。"],
+        mark: ["标记二级", "停留在“标记”扇区后展开保留、待定、淘汰和清除。"],
+        organize: ["整理二级", "停留在“整理”扇区后展开移动、复制和新建文件夹。"],
+        disabled: ["部分不可用", "不满足条件的命令保留位置并显示禁用原因。"],
+        readonly: ["只读模式", "预览、并排对比和信息可用；标记、整理与删除停用。"],
+        keyboard: ["键盘模式", "方向键选择扇区，Enter 确认，Escape 关闭并恢复焦点。"],
+      };
+      const [title, description] = descriptions[state.radial];
+      const locked = ["disabled", "readonly"].includes(state.radial);
+      const items = [
+        ["预览", false], ["标记", locked], ["整理", locked], ["移到废纸篓", locked], ["并排对比", false], ["信息", false],
+      ];
+      const secondary = state.radial === "mark"
+        ? '<div class="menu-divider"></div><button class="menu-row selected" role="menuitem"><span>保留</span><span>二级</span></button><button class="menu-row" role="menuitem"><span>待定</span><span></span></button><button class="menu-row danger" role="menuitem"><span>淘汰</span><span></span></button>'
+        : state.radial === "organize"
+          ? '<div class="menu-divider"></div><button class="menu-row selected" role="menuitem"><span>移动到文件夹</span><span>二级</span></button><button class="menu-row" role="menuitem"><span>复制到文件夹</span><span></span></button><button class="menu-row" role="menuitem"><span>新建文件夹</span><span></span></button>'
+          : "";
+      return `<div class="viewer-window">${states}<div class="radial-layout" data-radial-state="${state.radial}"><div class="radial-reference"><img src="${references.radial}" alt="批准的六扇区圆盘菜单参考"></div><aside class="radial-state-panel"><h2>${title}</h2><p>${description}</p><div role="menu" aria-label="圆盘菜单的语义命令">${items.map(([label, disabled], index) => `<button class="menu-row${state.radial === "keyboard" && index === 0 ? " selected" : ""}${label === "移到废纸篓" ? " danger" : ""}" role="menuitem"${disabled ? ' aria-disabled="true"' : ""}><span>${label}</span><span>${disabled ? "不可用" : index === 1 || index === 2 ? "二级" : ""}</span></button>`).join("")}${secondary}</div><div class="radial-guidance">固定几何：一级 42–108 px，六个 60° 扇区；二级 112–168 px。此页保留已批准参考图作为视觉真值，右侧仅说明交互状态，不另行重绘圆盘。</div></aside></div></div>`;
+    }
+
+    function informationInspector(mode = "single") {
+      const multiple = mode === "multiple";
+      return `<aside class="inspector" data-information-state="${mode}"><h2>${multiple ? "3 个文件" : "文件信息"}</h2><section class="info-group"><h3>身份与位置</h3><div class="info-row"><span>文件名</span><span>${multiple ? "多个值" : "2C2A7469.JPG"}</span></div><div class="info-row"><span>位置</span><span>${multiple ? "衣服 / A01" : "衣服/A01/2C2A7469.JPG"}</span></div><div class="info-row"><span>大小</span><span>${multiple ? "合计 10.8 MB" : "3.8 MB"}</span></div></section><section class="info-group"><h3>审阅与收藏</h3><div class="info-row"><span>审阅状态</span><span>${multiple ? "混合" : "待定"}</span></div><div class="info-row"><span>收藏</span><span>${multiple ? "2 是 · 1 否" : "是"}</span></div></section><section class="info-group"><h3>技术信息</h3><div class="info-row"><span>格式</span><span>${multiple ? "JPEG" : "JPEG · RGB"}</span></div><div class="info-row"><span>尺寸</span><span>${multiple ? "多个值" : "2400 × 3200"}</span></div><div class="info-row"><span>修改时间</span><span>${multiple ? "多个值" : "今天 14:32"}</span></div></section></aside>`;
+    }
+
+    function informationScreen() {
+      const states = stateBar([{
+        label: "信息",
+        key: "info",
+        items: [["single", "单个文件"], ["multiple", "多个文件"]],
+      }]);
+      const selectedCount = state.info === "multiple" ? 3 : 1;
+      return `<div class="viewer-window">${states}<div class="information-layout"><section class="information-selection"><div class="image-grid" data-density="standard">${imageCards(selectedCount)}</div></section>${informationInspector(state.info)}</div></div>`;
     }
 
     function dialogsScreen() {
@@ -1451,7 +1643,7 @@
       preview: previewScreen,
       compare: compareScreen,
       text: textScreen,
-      information: coveragePlaceholderScreen,
+      information: informationScreen,
       radial: radialScreen,
       dialogs: dialogsScreen,
       feedback: feedbackScreen,

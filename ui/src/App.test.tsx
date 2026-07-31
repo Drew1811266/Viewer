@@ -1154,7 +1154,7 @@ describe('Viewer empty state', () => {
     expect(screen.getByRole('complementary', { name: '文件信息' })).toBeVisible()
   })
 
-  it('uses the compact menu for a secondary click and the radial menu for a held right button', async () => {
+  it('uses the radial menu for both a secondary click and a held right button', async () => {
     const viewer = bridge()
     vi.mocked(viewer.queryFolder).mockResolvedValue(contentWorkspace())
     render(<App bridge={viewer} />)
@@ -1175,8 +1175,9 @@ describe('Viewer empty state', () => {
     })
     fireEvent.contextMenu(file, { button: 2, clientX: 420, clientY: 260 })
     expect(
-      screen.getByRole('menu', { name: '文件操作' }).closest('.file-context-menu'),
+      screen.getByRole('menu', { name: '文件操作' }).closest('.radial-file-menu'),
     ).not.toBeNull()
+    expect(document.querySelector('.file-context-menu')).toBeNull()
     fireEvent.keyDown(screen.getByRole('menu', { name: '文件操作' }), { key: 'Escape' })
 
     vi.useFakeTimers()
@@ -1191,7 +1192,7 @@ describe('Viewer empty state', () => {
     expect(document.querySelector('.radial-file-menu')).not.toBeNull()
   })
 
-  it('waits for release before an early context-menu event opens the compact file menu', async () => {
+  it('waits for release before an early context-menu event opens radial click mode', async () => {
     const viewer = bridge()
     vi.mocked(viewer.queryFolder).mockResolvedValue(contentWorkspace())
     render(<App bridge={viewer} />)
@@ -1217,8 +1218,9 @@ describe('Viewer empty state', () => {
     })
 
     expect(
-      screen.getByRole('menu', { name: '文件操作' }).closest('.file-context-menu'),
+      screen.getByRole('menu', { name: '文件操作' }).closest('.radial-file-menu'),
     ).not.toBeNull()
+    expect(document.querySelector('.file-context-menu')).toBeNull()
     expect(file).toHaveAttribute('aria-selected', 'true')
     fireEvent.keyDown(screen.getByRole('menu', { name: '文件操作' }), { key: 'Escape' })
     expect(screen.getByRole('listbox', { name: '图片文件' })).toHaveFocus()
@@ -1274,7 +1276,7 @@ describe('Viewer empty state', () => {
     expect(document.querySelector('.file-context-menu')).toBeNull()
   })
 
-  it('keeps Control-click on the conventional compact-menu path', async () => {
+  it('keeps Control-click on the unified radial click-mode path', async () => {
     const viewer = bridge()
     vi.mocked(viewer.queryFolder).mockResolvedValue(contentWorkspace())
     render(<App bridge={viewer} />)
@@ -1303,9 +1305,9 @@ describe('Viewer empty state', () => {
     })
 
     expect(
-      screen.getByRole('menu', { name: '文件操作' }).closest('.file-context-menu'),
+      screen.getByRole('menu', { name: '文件操作' }).closest('.radial-file-menu'),
     ).not.toBeNull()
-    expect(document.querySelector('.radial-file-menu')).toBeNull()
+    expect(document.querySelector('.file-context-menu')).toBeNull()
   })
 
   it('starts a fresh held gesture when a second right-click replaces click fallback', async () => {

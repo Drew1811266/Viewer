@@ -57,7 +57,7 @@ function expectVisibleLabelsUpright(container: HTMLElement) {
 
 describe('RadialFileMenu', () => {
   it('exposes six stable primary menuitems and a selection-count center', () => {
-    render(
+    const { container } = render(
       <RadialFileMenu
         origin={{ x: 320, y: 240 }}
         pointerId={null}
@@ -74,6 +74,10 @@ describe('RadialFileMenu', () => {
     expect(screen.getByRole('menuitem', { name: '并排对比' })).toHaveAttribute(
       'aria-disabled',
       'true',
+    )
+    expect(container.querySelector('.radial-menu-layer')).not.toBeNull()
+    expect(screen.getByRole('button', { name: '关闭文件操作背景' })).toHaveClass(
+      'radial-menu-scrim',
     )
   })
 

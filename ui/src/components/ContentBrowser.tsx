@@ -551,6 +551,27 @@ export default function ContentBrowser({
   function handleContentBrowserKeyboard(event: KeyboardEvent<HTMLElement>) {
     const target = event.target as HTMLElement
     if (isEditableKeyboardTarget(target)) return
+    if (
+      activeId !== null &&
+      (event.key === 'ContextMenu' || (event.key === 'F10' && event.shiftKey))
+    ) {
+      const file = fileById.get(activeId)
+      const fileElement = document.getElementById(`file-${activeId}`)
+      if (file !== undefined && fileElement !== null) {
+        event.preventDefault()
+        const bounds = fileElement.getBoundingClientRect()
+        requestRadialMenu(
+          file,
+          fileElement,
+          {
+            x: bounds.left + bounds.width / 2,
+            y: bounds.top + bounds.height / 2,
+          },
+          null,
+        )
+      }
+      return
+    }
     if (event.metaKey && event.key.toLowerCase() === 'a') {
       event.preventDefault()
       if (selectAllRequest.kind === 'choice') onRequestViewMenu?.()

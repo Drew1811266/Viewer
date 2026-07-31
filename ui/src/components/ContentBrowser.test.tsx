@@ -1593,7 +1593,7 @@ describe('ContentBrowser', () => {
     }
   })
 
-  it('routes the real secondary-click sequence to a compact request', () => {
+  it('routes the real secondary-click sequence to radial click mode', () => {
     const request = vi.fn()
     render(<ContentBrowser workspace={workspace(1)} onRadialMenuRequest={request} />)
     const option = screen.getByRole('option', { name: '1.jpg' })
@@ -1622,6 +1622,37 @@ describe('ContentBrowser', () => {
     expect(request.mock.calls[0]?.[0].returnFocusTarget).toBe(
       screen.getByRole('listbox', { name: '图片文件' }),
     )
+  })
+
+  it.each([
+    ['Context Menu key', { key: 'ContextMenu' }],
+    ['Shift+F10', { key: 'F10', shiftKey: true }],
+  ])('opens radial click mode from the active image with %s', (_label, keyboard) => {
+    const request = vi.fn()
+    render(<ContentBrowser workspace={workspace(1)} onRadialMenuRequest={request} />)
+    const option = screen.getByRole('option', { name: '1.jpg' })
+    const grid = screen.getByRole('listbox', { name: '图片文件' })
+    vi.spyOn(option, 'getBoundingClientRect').mockReturnValue({
+      x: 180,
+      y: 120,
+      width: 200,
+      height: 160,
+      top: 120,
+      right: 380,
+      bottom: 280,
+      left: 180,
+      toJSON: () => ({}),
+    })
+    fireEvent.click(option)
+
+    fireEvent.keyDown(grid, keyboard)
+
+    expect(request).toHaveBeenCalledWith({
+      files: [expect.objectContaining({ entityId: 'image-1' })],
+      origin: { x: 280, y: 200 },
+      pointerId: null,
+      returnFocusTarget: grid,
+    })
   })
 
   it('defers an early context-menu event until a short secondary pointer is released', () => {

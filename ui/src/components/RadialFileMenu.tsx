@@ -266,127 +266,136 @@ export default function RadialFileMenu({
   }
 
   return (
-    <div
-      ref={rootRef}
-      className="radial-file-menu"
-      style={
-        {
-          '--radial-origin-x': `${fittedOrigin.x}px`,
-          '--radial-origin-y': `${fittedOrigin.y}px`,
-        } as CSSProperties
-      }
-      onKeyDown={handleKeyDown}
-      onPointerEnter={cancelClose}
-      onPointerLeave={scheduleClose}
-    >
-      <svg className="radial-file-menu-shapes" viewBox="0 0 336 336" aria-hidden="true">
-        {expandedItem?.children?.map((item, index, children) => {
-          const start = secondaryAnchor - (children.length * 30) / 2 + index * 30
-          return (
-            <path
-              key={item.id}
-              className="radial-secondary-shape"
-              data-active={secondaryIndex === index || undefined}
-              data-disabled={item.disabled || undefined}
-              d={annularSectorPath(
-                { x: 168, y: 168 },
-                SECONDARY_INNER_RADIUS,
-                SECONDARY_OUTER_RADIUS,
-                start,
-                start + 30,
-              )}
-            />
-          )
-        })}
-        {model.map((item, index) => (
-          <path
-            key={item.id}
-            className="radial-primary-shape"
-            data-active={displayedPrimaryIndex === index || undefined}
-            data-disabled={item.disabled || undefined}
-            data-sector-start={-120 + index * 60}
-            data-sector-end={-60 + index * 60}
-            d={annularSectorPath(
-              { x: 168, y: 168 },
-              PRIMARY_INNER_RADIUS,
-              PRIMARY_OUTER_RADIUS,
-              -120 + index * 60,
-              -60 + index * 60,
-            )}
-          />
-        ))}
-      </svg>
-      <div className="radial-primary-menu" role="menu" aria-label="文件操作">
-        {model.map((item, index) => (
-          <RadialButton
-            key={item.id}
-            id={primaryButtonId(item)}
-            item={item}
-            level="primary"
-            index={index}
-            point={polarPoint({ x: 0, y: 0 }, 78, primaryCenterAngle(index))}
-            tabIndex={secondaryIndex === null && primaryIndex === index ? 0 : -1}
-            controls={
-              item.children !== undefined && expandedIndex === index
-                ? secondaryMenuId(item)
-                : undefined
-            }
-            expanded={item.children === undefined ? undefined : expandedIndex === index}
-            onFocus={() => {
-              setPrimaryIndex(index)
-              setSecondaryIndex(null)
-            }}
-            onPointerEnter={() => {
-              if (!clickMode) return
-              setPrimaryIndex(index)
-              scheduleExpansion(index)
-            }}
-            onClick={() => execute(item, index)}
-          />
-        ))}
-      </div>
-      {expandedItem?.children !== undefined ? (
-        <div
-          id={secondaryMenuId(expandedItem)}
-          className="radial-secondary-menu"
-          role="menu"
-          aria-labelledby={primaryButtonId(expandedItem)}
-          data-anchor-degrees={secondaryAnchor}
-        >
-          {expandedItem.children.map((item, index, children) => {
-            const start = secondaryAnchor - (children.length * 30) / 2
+    <div className="radial-menu-layer">
+      <button
+        type="button"
+        className="radial-menu-scrim"
+        aria-label="关闭文件操作背景"
+        tabIndex={-1}
+        onClick={requestClose}
+      />
+      <div
+        ref={rootRef}
+        className="radial-file-menu"
+        style={
+          {
+            '--radial-origin-x': `${fittedOrigin.x}px`,
+            '--radial-origin-y': `${fittedOrigin.y}px`,
+          } as CSSProperties
+        }
+        onKeyDown={handleKeyDown}
+        onPointerEnter={cancelClose}
+        onPointerLeave={scheduleClose}
+      >
+        <svg className="radial-file-menu-shapes" viewBox="0 0 336 336" aria-hidden="true">
+          {expandedItem?.children?.map((item, index, children) => {
+            const start = secondaryAnchor - (children.length * 30) / 2 + index * 30
             return (
-              <RadialButton
+              <path
                 key={item.id}
-                item={item}
-                level="secondary"
-                index={index}
-                point={polarPoint({ x: 0, y: 0 }, 140, start + index * 30 + 15)}
-                tabIndex={secondaryIndex === index ? 0 : -1}
-                onFocus={() => setSecondaryIndex(index)}
-                onClick={() => execute(item, index)}
+                className="radial-secondary-shape"
+                data-active={secondaryIndex === index || undefined}
+                data-disabled={item.disabled || undefined}
+                d={annularSectorPath(
+                  { x: 168, y: 168 },
+                  SECONDARY_INNER_RADIUS,
+                  SECONDARY_OUTER_RADIUS,
+                  start,
+                  start + 30,
+                )}
               />
             )
           })}
+          {model.map((item, index) => (
+            <path
+              key={item.id}
+              className="radial-primary-shape"
+              data-active={displayedPrimaryIndex === index || undefined}
+              data-disabled={item.disabled || undefined}
+              data-sector-start={-120 + index * 60}
+              data-sector-end={-60 + index * 60}
+              d={annularSectorPath(
+                { x: 168, y: 168 },
+                PRIMARY_INNER_RADIUS,
+                PRIMARY_OUTER_RADIUS,
+                -120 + index * 60,
+                -60 + index * 60,
+              )}
+            />
+          ))}
+        </svg>
+        <div className="radial-primary-menu" role="menu" aria-label="文件操作">
+          {model.map((item, index) => (
+            <RadialButton
+              key={item.id}
+              id={primaryButtonId(item)}
+              item={item}
+              level="primary"
+              index={index}
+              point={polarPoint({ x: 0, y: 0 }, 78, primaryCenterAngle(index))}
+              tabIndex={secondaryIndex === null && primaryIndex === index ? 0 : -1}
+              controls={
+                item.children !== undefined && expandedIndex === index
+                  ? secondaryMenuId(item)
+                  : undefined
+              }
+              expanded={item.children === undefined ? undefined : expandedIndex === index}
+              onFocus={() => {
+                setPrimaryIndex(index)
+                setSecondaryIndex(null)
+              }}
+              onPointerEnter={() => {
+                if (!clickMode) return
+                setPrimaryIndex(index)
+                scheduleExpansion(index)
+              }}
+              onClick={() => execute(item, index)}
+            />
+          ))}
         </div>
-      ) : null}
-      <button
-        type="button"
-        className="radial-menu-center"
-        tabIndex={-1}
-        onClick={requestClose}
-        onKeyDown={(event) => {
-          if (event.key !== 'Enter' && event.key !== ' ') return
-          event.preventDefault()
-          event.stopPropagation()
-          requestClose()
-        }}
-        aria-label="关闭文件操作"
-      >
-        <strong>{selectionCount} 个文件</strong>
-        {readOnly && <span className="radial-center-context">只读</span>}
-        <span>{readOnly ? '中心取消' : '回到中心取消'}</span>
-      </button>
+        {expandedItem?.children !== undefined ? (
+          <div
+            id={secondaryMenuId(expandedItem)}
+            className="radial-secondary-menu"
+            role="menu"
+            aria-labelledby={primaryButtonId(expandedItem)}
+            data-anchor-degrees={secondaryAnchor}
+          >
+            {expandedItem.children.map((item, index, children) => {
+              const start = secondaryAnchor - (children.length * 30) / 2
+              return (
+                <RadialButton
+                  key={item.id}
+                  item={item}
+                  level="secondary"
+                  index={index}
+                  point={polarPoint({ x: 0, y: 0 }, 140, start + index * 30 + 15)}
+                  tabIndex={secondaryIndex === index ? 0 : -1}
+                  onFocus={() => setSecondaryIndex(index)}
+                  onClick={() => execute(item, index)}
+                />
+              )
+            })}
+          </div>
+        ) : null}
+        <button
+          type="button"
+          className="radial-menu-center"
+          tabIndex={-1}
+          onClick={requestClose}
+          onKeyDown={(event) => {
+            if (event.key !== 'Enter' && event.key !== ' ') return
+            event.preventDefault()
+            event.stopPropagation()
+            requestClose()
+          }}
+          aria-label="关闭文件操作"
+        >
+          <strong>{selectionCount} 个文件</strong>
+          {readOnly && <span className="radial-center-context">只读</span>}
+          <span>{readOnly ? '中心取消' : '回到中心取消'}</span>
+        </button>
+      </div>
     </div>
   )
 }

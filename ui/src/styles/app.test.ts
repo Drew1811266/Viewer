@@ -9,6 +9,24 @@ const viewerStyleSources = viewerStyleFiles
   .join('\n')
 
 describe('workspace style contracts', () => {
+  it('separates the radial command layer from the workspace with a subtle scrim', () => {
+    const rules = parseRules(appCss)
+    const layer = rules.find((rule) => rule.selector === '.radial-menu-layer')
+    const scrim = rules.find((rule) => rule.selector === '.radial-menu-scrim')
+
+    expect(layer?.declarations).toMatchObject({
+      position: 'fixed',
+      inset: '0',
+      'z-index': '25',
+    })
+    expect(scrim?.declarations).toMatchObject({
+      position: 'absolute',
+      inset: '0',
+      background: 'var(--viewer-backdrop-subtle)',
+      border: '0',
+    })
+  })
+
   it('anchors the filter popover within both edges of a 720px viewport', () => {
     const narrowRules = parseRules(mediaBody(appCss, '(max-width: 800px)'))
     const popover = narrowRules.find((rule) => rule.selector === '.search-options-popover')

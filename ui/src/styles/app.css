@@ -445,10 +445,10 @@ summary,
   display: grid;
   gap: 6px;
   max-width: calc(100vw - 24px);
-  min-width: 156px;
+  min-width: 180px;
 }
 
-.workspace-menu-item {
+.workspace-menu-popover .workspace-menu-item {
   align-items: center;
   background: transparent;
   border: 0;

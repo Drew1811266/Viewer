@@ -58,12 +58,19 @@ describe('workspace style contracts', () => {
 
   it('renders workspace popover commands as quiet menu rows with a real separator', () => {
     const rules = parseRules(appCss)
-    const item = rules.find((rule) => rule.selector === '.workspace-menu-item')
+    const popover = rules.find(
+      (rule) =>
+        rule.selector === '.workspace-menu-popover' && rule.declarations['min-width'] !== undefined,
+    )
+    const item = rules.find(
+      (rule) => rule.selector === '.workspace-menu-popover .workspace-menu-item',
+    )
     const separator = rules.find((rule) => rule.selector === '.workspace-menu-separator')
     const destructive = rules.find(
       (rule) => rule.selector === '.workspace-menu-item[data-tone="destructive"]',
     )
 
+    expect(popover?.declarations['min-width']).toBe('180px')
     expect(item?.declarations).toMatchObject({
       border: '0',
       'justify-content': 'flex-start',

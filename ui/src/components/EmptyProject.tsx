@@ -99,7 +99,12 @@ export default function EmptyProject({
     >
       <h1>Viewer</h1>
       <p>选择或拖入一个项目文件夹</p>
-      <button type="button" disabled={disabled} onClick={() => void chooseProject()}>
+      <button
+        className="empty-project-primary-action"
+        type="button"
+        disabled={disabled}
+        onClick={() => void chooseProject()}
+      >
         选择项目文件夹
       </button>
       {dragActive && <div className="project-drop-feedback">松开以打开项目</div>}

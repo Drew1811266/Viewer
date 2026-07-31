@@ -60,7 +60,9 @@ describe('EmptyProject', () => {
     const entry = screen.getByTestId('project-drop-zone')
     expect(within(entry).getByRole('heading', { name: 'Viewer' })).toBeVisible()
     expect(within(entry).getByText('选择或拖入一个项目文件夹')).toBeVisible()
-    expect(within(entry).getByRole('button', { name: '选择项目文件夹' })).toBeVisible()
+    expect(within(entry).getByRole('button', { name: '选择项目文件夹' })).toHaveClass(
+      'empty-project-primary-action',
+    )
     expect(within(entry).queryByText(/支持 JPG|不会记住|最近/)).not.toBeInTheDocument()
   })
 

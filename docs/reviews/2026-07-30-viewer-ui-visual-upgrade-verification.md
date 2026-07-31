@@ -12,7 +12,7 @@
 | `pnpm --dir ui test` | 0 | 60 files; 559 passed, 1 skipped. |
 | `pnpm --dir ui build` | 0 | TypeScript and Vite production build passed. |
 | `pnpm verify` | 0 | Policy, UI, Rust and security verification passed. |
-| `pnpm tauri build --debug --bundles app` | 0 | Local, uninstalled macOS QA bundle built. |
+| `pnpm tauri build --debug --bundles app` | 0 | Local, uninstalled macOS QA bundle rebuilt after `1a21283`; native compact recheck passed. |
 | `pnpm verify:clean` | 0 | Full verification passed with a clean worktree. |
 
 ## State matrix
@@ -22,7 +22,7 @@
 | 1. No project, drag/drop, opening, light appearance | Pass | Same-viewport IAB no-project 1280×720; source boards 1440×900 and 1024×720; lifecycle/light tests. |
 | 2. Shell and sidebar | Pass | Native 1229×768 display; native compact 1024×720 webview evidence. |
 | 3. Content grid, selection, other files, drag target | Pass | Native 1229×768 fixture and compact 1024×720 webview; component tests. |
-| 4. Filter, results, progress, pagination | Pass | Native 1229×768 and `native-compact-filter-only-1024x720-webview.jpeg`; mutual-exclusion regression test. |
+| 4. Filter, results, progress, pagination | Pass | Native 1229×768, `native-compact-filter-only-1024x720-webview.jpeg`, and final `native-latest-mutually-exclusive-popovers.jpeg`; mutual-exclusion regression test. |
 | 5. Image preview and unavailable image | Pass | Native 1229×768 `native-image-preview.png`; preview tests. |
 | 6. Comparison and read-only controls | Pass | 2/4/20 and read-only component/App tests; extended ignored QA fixture supplies 20 candidates. |
 | 7. Text, errors, unsupported and inspector | Pass | Native 1229×768 unsupported/info; Markdown/TXT/encoding/truncation tests and extended QA fixture. |
@@ -32,7 +32,7 @@
 
 ## Accessibility
 
-Native checks covered Meta+F, Meta+I, Escape/focus restoration, preview controls and compact popover containment. UI coverage verifies Tab/focus-visible, named roles, non-color marker cues, arrow navigation in radial/context menus, Meta+A routing, reduced motion and read-only write disabling. The 1024×720 native compact captures keep filter/task/content critical actions visible.
+Native checks covered Meta+F, Meta+I, Escape/focus restoration, preview controls and compact popover containment. After the final native rebuild/relaunch, opening 筛选 closed an already-open 视图; the final recheck is `target/visual-qa/native-latest-mutually-exclusive-popovers.jpeg`. UI coverage verifies Tab/focus-visible, named roles, non-color marker cues, arrow navigation in radial/context menus, Meta+A routing, reduced motion and read-only write disabling. The 1024×720 native compact captures keep filter/task/content critical actions visible.
 
 ## Visual comparison
 

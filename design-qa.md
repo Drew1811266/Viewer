@@ -9,11 +9,13 @@
   content, search/tasks, preview/compare, text/info, radial actions,
   menus/dialogs, loading/recovery, launch, and empty project.
 - Rendered implementation: the locally bundled, non-installed macOS debug app
-  at `target/debug/bundle/macos/Viewer.app`, built from `c4b6fc7`.
+  at `target/debug/bundle/macos/Viewer.app`, built from `1a21283`.
 - Native display captures: `target/visual-qa/native-*.png` at 1229 × 768;
   compact native webview evidence is
   `native-compact-content-default-1024x720-webview.jpeg` and
-  `native-compact-filter-only-1024x720-webview.jpeg`. Only the no-project
+  `native-compact-filter-only-1024x720-webview.jpeg`, plus the final native
+  mutual-exclusivity recheck at
+  `native-latest-mutually-exclusive-popovers.jpeg`. Only the no-project
   IAB/browser pair is same-viewport; contact sheets with 1440 × 900 source
   boards are normalized review inputs, not a native 1440 × 900 claim.
 
@@ -105,7 +107,7 @@ No actionable P0, P1, or P2 visual differences remain.
   other-file expansion, image preview navigation controls, radial menu,
   unsupported-file recovery, task failure card and settings dialog were
   exercised.
-- Automated: 60 UI test files passed (558 tests, 1 skipped), including roles,
+- Automated: 60 UI test files passed (559 tests, 1 skipped), including roles,
   keyboard/focus restoration, radial/context menu keyboard paths, compact
   containment, read-only write disabling, preview/compare, loading/recovery
   and reduced-motion semantics.
@@ -128,6 +130,11 @@ No actionable P0, P1, or P2 visual differences remain.
    added, then image and text file targets gained capture-phase prevention.
    The focused test and full UI suite pass; native CUA's WebKit overlay is
    documented above as a tool limitation.
+4. `1a21283` — P1: opening 筛选 while 视图 was open could leave overlapping
+   peer popovers. A failing App-level regression test drove the shared toolbar
+   popover coordination; the rebuilt native app recheck confirms 筛选 expanded
+   while 视图 and 更多 are collapsed in
+   `target/visual-qa/native-latest-mutually-exclusive-popovers.jpeg`.
 
 ## Implementation checklist
 

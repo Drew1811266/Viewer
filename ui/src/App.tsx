@@ -23,6 +23,7 @@ import ContentBrowser, { type ContentViewCommand } from './components/ContentBro
 import type { SelectAllRequest } from './components/contentBrowser/adaptiveOtherFilePanelModel'
 import DestinationDialog from './components/DestinationDialog'
 import EmptyProject from './components/EmptyProject'
+import FileContextMenu from './components/FileContextMenu'
 import FolderOverview from './components/FolderOverview'
 import FolderTree from './components/FolderTree'
 import ImagePreview from './components/ImagePreview'
@@ -1118,7 +1119,19 @@ function ViewerWorkspace({ bridge }: { bridge: ViewerBridge }) {
         onDismiss={(taskId) => setDismissedTasks((current) => new Set([...current, taskId]))}
         onShowResults={(taskId) => setResultsBatchId(taskId)}
       />
-      {activeRadialMenu && (
+      {activeRadialMenu?.pointerId === null && (
+        <FileContextMenu
+          key={activeRadialMenu.requestId}
+          origin={activeRadialMenu.origin}
+          selectionCount={activeRadialMenu.files.length}
+          readOnly={state.project.access === 'read_only'}
+          returnFocusTarget={activeRadialMenu.returnFocusTarget}
+          model={radialModel}
+          onAction={runRadialAction}
+          onClose={finishRadialSession}
+        />
+      )}
+      {activeRadialMenu !== null && activeRadialMenu.pointerId !== null && (
         <RadialFileMenu
           key={activeRadialMenu.requestId}
           origin={activeRadialMenu.origin}

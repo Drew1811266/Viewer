@@ -69,96 +69,108 @@ export default function BatchRenameDialog({
       onCancel={onCancel}
       initialFocusRef={findRef}
     >
-      <div className="rename-rule-grid">
-        <label className="form-field">
-          <span>查找</span>
-          <input
-            ref={findRef}
-            value={rules.find}
-            onChange={(event) => patchRules({ find: event.currentTarget.value })}
-          />
-        </label>
-        <label className="form-field">
-          <span>替换为</span>
-          <input
-            value={rules.replacement}
-            onChange={(event) => patchRules({ replacement: event.currentTarget.value })}
-          />
-        </label>
-        <label className="form-field">
-          <span>前缀</span>
-          <input
-            value={rules.prefix}
-            onChange={(event) => patchRules({ prefix: event.currentTarget.value })}
-          />
-        </label>
-        <label className="form-field">
-          <span>后缀</span>
-          <input
-            value={rules.suffix}
-            onChange={(event) => patchRules({ suffix: event.currentTarget.value })}
-          />
-        </label>
-      </div>
-      <div className="sequence-controls">
-        <label className="checkbox-field">
-          <input
-            type="checkbox"
-            checked={rules.sequence !== null}
-            onChange={(event) =>
-              patchRules({
-                sequence: event.currentTarget.checked ? { start: 1, digits: 2 } : null,
-              })
-            }
-          />
-          添加序号
-        </label>
-        {rules.sequence && (
-          <>
-            <label>
-              起始值
-              <input
-                type="number"
-                min={0}
-                max={999999}
-                value={rules.sequence.start}
-                onChange={(event) =>
-                  patchRules({
-                    sequence: {
-                      ...defined(rules.sequence, 'Sequence start control requires sequence rules'),
-                      start: Number(event.currentTarget.value),
-                    },
-                  })
-                }
-              />
-            </label>
-            <label>
-              位数
-              <input
-                type="number"
-                min={1}
-                max={6}
-                value={rules.sequence.digits}
-                onChange={(event) =>
-                  patchRules({
-                    sequence: {
-                      ...defined(rules.sequence, 'Sequence digit control requires sequence rules'),
-                      digits: Number(event.currentTarget.value),
-                    },
-                  })
-                }
-              />
-            </label>
-          </>
-        )}
-        <button type="button" disabled={loading || busy} onClick={() => void updatePreview()}>
-          {loading ? '正在生成…' : '更新预览'}
-        </button>
-      </div>
+      <section className="batch-rename-rule-region">
+        <div className="rename-rule-grid">
+          <label className="form-field">
+            <span>查找</span>
+            <input
+              ref={findRef}
+              value={rules.find}
+              onChange={(event) => patchRules({ find: event.currentTarget.value })}
+            />
+          </label>
+          <label className="form-field">
+            <span>替换为</span>
+            <input
+              value={rules.replacement}
+              onChange={(event) => patchRules({ replacement: event.currentTarget.value })}
+            />
+          </label>
+          <label className="form-field">
+            <span>前缀</span>
+            <input
+              value={rules.prefix}
+              onChange={(event) => patchRules({ prefix: event.currentTarget.value })}
+            />
+          </label>
+          <label className="form-field">
+            <span>后缀</span>
+            <input
+              value={rules.suffix}
+              onChange={(event) => patchRules({ suffix: event.currentTarget.value })}
+            />
+          </label>
+        </div>
+        <div className="sequence-controls">
+          <label className="checkbox-field">
+            <input
+              type="checkbox"
+              checked={rules.sequence !== null}
+              onChange={(event) =>
+                patchRules({
+                  sequence: event.currentTarget.checked ? { start: 1, digits: 2 } : null,
+                })
+              }
+            />
+            添加序号
+          </label>
+          {rules.sequence && (
+            <>
+              <label>
+                起始值
+                <input
+                  type="number"
+                  min={0}
+                  max={999999}
+                  value={rules.sequence.start}
+                  onChange={(event) =>
+                    patchRules({
+                      sequence: {
+                        ...defined(
+                          rules.sequence,
+                          'Sequence start control requires sequence rules',
+                        ),
+                        start: Number(event.currentTarget.value),
+                      },
+                    })
+                  }
+                />
+              </label>
+              <label>
+                位数
+                <input
+                  type="number"
+                  min={1}
+                  max={6}
+                  value={rules.sequence.digits}
+                  onChange={(event) =>
+                    patchRules({
+                      sequence: {
+                        ...defined(
+                          rules.sequence,
+                          'Sequence digit control requires sequence rules',
+                        ),
+                        digits: Number(event.currentTarget.value),
+                      },
+                    })
+                  }
+                />
+              </label>
+            </>
+          )}
+          <button type="button" disabled={loading || busy} onClick={() => void updatePreview()}>
+            {loading ? '正在生成…' : '更新预览'}
+          </button>
+        </div>
+      </section>
       {message && <p role="alert">{message}</p>}
       {preview && (
         <section className="rename-preview" aria-label="批量重命名完整预览">
           <h3>完整预览：{preview.rows.length} 项</h3>
+          <div className="rename-preview-summary">
+            <strong>{preview.rows.length} 项</strong>
+            <span>{preview.rows.filter((row) => row.errors.length > 0).length} 项无效</span>
+          </div>
           <VirtualList
             items={preview.rows}
             rowHeight={52}

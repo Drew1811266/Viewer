@@ -18,6 +18,12 @@ describe('CloseOperationDialog', () => {
 
     const dialog = screen.getByRole('dialog', { name: '文件操作尚未完成' })
     expect(dialog).toHaveTextContent('已经完成的项目不会撤销')
+    expect(screen.getAllByRole('button').map((button) => button.textContent)).toEqual([
+      '保持打开',
+      '等待完成后关闭',
+      '取消待处理项目并关闭',
+    ])
+    expect(screen.getByRole('button', { name: '等待完成后关闭' })).toHaveClass('primary-button')
     fireEvent.click(screen.getByRole('button', { name: '等待完成后关闭' }))
     fireEvent.click(screen.getByRole('button', { name: '取消待处理项目并关闭' }))
     fireEvent.click(screen.getByRole('button', { name: '保持打开' }))

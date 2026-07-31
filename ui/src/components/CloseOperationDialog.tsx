@@ -30,7 +30,7 @@ export default function CloseOperationDialog({
         <button ref={stayRef} type="button" disabled={busy} onClick={onStay}>
           保持打开
         </button>
-        <button type="button" disabled={busy} onClick={onWait}>
+        <button type="button" className="primary-button" disabled={busy} onClick={onWait}>
           等待完成后关闭
         </button>
         <button

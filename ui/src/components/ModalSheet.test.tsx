@@ -16,6 +16,9 @@ describe('ModalSheet', () => {
     )
     const first = screen.getByRole('button', { name: '第一个' })
     const last = screen.getByRole('button', { name: '最后一个' })
+    const dialog = screen.getByRole('dialog', { name: '安全操作' })
+    expect(dialog.querySelector('.modal-sheet-header')).not.toBeNull()
+    expect(dialog.querySelector('.modal-sheet-body')).not.toBeNull()
     expect(first).toHaveFocus()
 
     last.focus()

@@ -113,85 +113,91 @@ export default function DestinationDialog({
       onCancel={onCancel}
       initialFocusRef={firstFolderRef}
     >
-      <fieldset className="destination-list">
-        <legend>项目内文件夹</legend>
-        {folders.map((folder, index) => (
-          <label
-            key={folder.entityId}
-            style={{ paddingLeft: `${folderDepth(folder, folders) * 14}px` }}
+      <div className="destination-dialog-layout">
+        <aside className="destination-dialog-sidebar">
+          <fieldset className="destination-list">
+            <legend>项目内文件夹</legend>
+            {folders.map((folder, index) => (
+              <label
+                key={folder.entityId}
+                style={{ paddingLeft: `${folderDepth(folder, folders) * 14}px` }}
+              >
+                <input
+                  ref={index === 0 ? firstFolderRef : undefined}
+                  type="radio"
+                  name="destination"
+                  checked={destinationId === folder.entityId}
+                  onChange={() => chooseDestination(folder.entityId)}
+                />
+                <span>{folder.name}</span>
+                <small>{folder.relativePath}</small>
+              </label>
+            ))}
+          </fieldset>
+        </aside>
+        <section className="destination-dialog-main">
+          <button
+            type="button"
+            disabled={destinationId === null || loading || busy}
+            onClick={() => void checkConflicts()}
           >
-            <input
-              ref={index === 0 ? firstFolderRef : undefined}
-              type="radio"
-              name="destination"
-              checked={destinationId === folder.entityId}
-              onChange={() => chooseDestination(folder.entityId)}
-            />
-            <span>{folder.name}</span>
-            <small>{folder.relativePath}</small>
-          </label>
-        ))}
-      </fieldset>
-      <button
-        type="button"
-        disabled={destinationId === null || loading || busy}
-        onClick={() => void checkConflicts()}
-      >
-        {loading ? '正在检查…' : '检查冲突'}
-      </button>
-      {message && <p role="alert">{message}</p>}
-      {preflight && (
-        <section className="conflict-list" aria-label="目标检查结果">
-          <span id={`${controlLabelId}-policy`} className="visually-hidden">
-            冲突处理
-          </span>
-          <span id={`${controlLabelId}-remaining`} className="visually-hidden">
-            应用到剩余冲突
-          </span>
-          {conflictRows.length > 0 && <p>选择“替换”时，现有目标文件会移到 macOS 废纸篓。</p>}
-          {preflight.rows.map((row, index) => {
-            const pathLabelId = `${controlLabelId}-path-${index}`
-            return (
-              <div key={row.entityId} className="conflict-row" data-state={row.state}>
-                <span id={pathLabelId}>{row.relativePath}</span>
-                {row.state === 'ready' && <span>可执行</span>}
-                {row.state === 'blocked' && <code>{row.code ?? 'invalid_target'}</code>}
-                {row.state === 'conflict' && (
-                  <>
-                    <select
-                      aria-labelledby={`${controlLabelId}-policy ${pathLabelId}`}
-                      value={decisions[row.entityId] ?? ''}
-                      onChange={(event) => {
-                        const policy = event.currentTarget.value as ConflictPolicy
-                        setDecisions((current) => ({
-                          ...current,
-                          [row.entityId]: policy,
-                        }))
-                      }}
-                    >
-                      <option value="">请选择</option>
-                      <option value="skip">跳过</option>
-                      <option value="keep_both">两者都保留</option>
-                      <option value="replace">替换现有文件</option>
-                    </select>
-                    <label>
-                      <input
-                        type="checkbox"
-                        aria-labelledby={`${controlLabelId}-remaining ${pathLabelId}`}
-                        checked={applyRemainingId === row.entityId}
-                        onChange={(event) =>
-                          setApplyRemainingId(event.currentTarget.checked ? row.entityId : null)
-                        }
-                      />
-                      应用到剩余冲突
-                    </label>
-                  </>
-                )}
-              </div>
-            )
-          })}
+            {loading ? '正在检查…' : '检查冲突'}
+          </button>
+          {message && <p role="alert">{message}</p>}
+          {preflight && (
+            <section className="conflict-list" aria-label="目标检查结果">
+              <span id={`${controlLabelId}-policy`} className="visually-hidden">
+                冲突处理
+              </span>
+              <span id={`${controlLabelId}-remaining`} className="visually-hidden">
+                应用到剩余冲突
+              </span>
+              {conflictRows.length > 0 && <p>选择“替换”时，现有目标文件会移到 macOS 废纸篓。</p>}
+              {preflight.rows.map((row, index) => {
+                const pathLabelId = `${controlLabelId}-path-${index}`
+                return (
+                  <div key={row.entityId} className="conflict-row" data-state={row.state}>
+                    <span id={pathLabelId}>{row.relativePath}</span>
+                    {row.state === 'ready' && <span>可执行</span>}
+                    {row.state === 'blocked' && <code>{row.code ?? 'invalid_target'}</code>}
+                    {row.state === 'conflict' && (
+                      <>
+                        <select
+                          aria-labelledby={`${controlLabelId}-policy ${pathLabelId}`}
+                          value={decisions[row.entityId] ?? ''}
+                          onChange={(event) => {
+                            const policy = event.currentTarget.value as ConflictPolicy
+                            setDecisions((current) => ({
+                              ...current,
+                              [row.entityId]: policy,
+                            }))
+                          }}
+                        >
+                          <option value="">请选择</option>
+                          <option value="skip">跳过</option>
+                          <option value="keep_both">两者都保留</option>
+                          <option value="replace">替换现有文件</option>
+                        </select>
+                        <label>
+                          <input
+                            type="checkbox"
+                            aria-labelledby={`${controlLabelId}-remaining ${pathLabelId}`}
+                            checked={applyRemainingId === row.entityId}
+                            onChange={(event) =>
+                              setApplyRemainingId(event.currentTarget.checked ? row.entityId : null)
+                            }
+                          />
+                          应用到剩余冲突
+                        </label>
+                      </>
+                    )}
+                  </div>
+                )
+              })}
+            </section>
+          )}
         </section>
-      )}
+      </div>
       <div className="modal-actions">
         <button type="button" onClick={onCancel}>
           取消

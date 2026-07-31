@@ -51,6 +51,8 @@ describe('DestinationDialog', () => {
       />,
     )
     fireEvent.click(screen.getByRole('radio', { name: /B/ }))
+    expect(document.querySelector('.destination-dialog-layout')).not.toBeNull()
+    expect(document.querySelector('.destination-dialog-main')).not.toBeNull()
     fireEvent.click(screen.getByRole('button', { name: '检查冲突' }))
     await waitFor(() => expect(preflight).toHaveBeenCalledOnce())
     const firstPolicy = screen.getByRole('combobox', { name: '冲突处理 one.jpg' })

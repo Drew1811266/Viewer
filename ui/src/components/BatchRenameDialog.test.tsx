@@ -41,6 +41,8 @@ describe('BatchRenameDialog', () => {
     })
     fireEvent.click(screen.getByRole('button', { name: '更新预览' }))
     await waitFor(() => expect(requestPreview).toHaveBeenCalledOnce())
+    expect(document.querySelector('.batch-rename-rule-region')).not.toBeNull()
+    expect(document.querySelector('.rename-preview-summary')).toHaveTextContent('100 项')
     expect(screen.getByText('完整预览：100 项')).toBeVisible()
     expect(screen.getByText('destination_occupied')).toBeVisible()
     expect(screen.getByRole('button', { name: '执行批量重命名' })).toBeDisabled()

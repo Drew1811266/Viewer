@@ -71,8 +71,10 @@ export default function ModalSheet({
         tabIndex={-1}
         onKeyDown={containFocus}
       >
-        <h2 id={titleId}>{title}</h2>
-        {children}
+        <header className="modal-sheet-header">
+          <h2 id={titleId}>{title}</h2>
+        </header>
+        <div className="modal-sheet-body">{children}</div>
       </div>
     </div>
   )

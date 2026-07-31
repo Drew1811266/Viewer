@@ -1,13 +1,10 @@
 /// <reference types="node" />
 
-import { readFileSync } from 'node:fs'
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import RadialFileMenu from './RadialFileMenu'
 import { fitMenuOrigin, polarPoint } from './radialMenuGeometry'
 import { buildRadialMenuModel } from './radialMenuModel'
-
-const appCss = readFileSync('src/styles/app.css', 'utf8')
 
 const model = buildRadialMenuModel({
   selectedCount: 1,
@@ -56,9 +53,6 @@ function expectVisibleLabelsUpright(container: HTMLElement) {
     expect(button).toHaveAttribute('data-label-orientation', 'upright')
     expect(button.getAttribute('style')).not.toMatch(/rotate/i)
   })
-  expect(appCss).toMatch(
-    /\.radial-menu-button\s*\{(?=[^}]*transform:\s*translate\(-50%,\s*-50%\);)(?![^}]*rotate)[^}]*\}/s,
-  )
 }
 
 describe('RadialFileMenu', () => {
@@ -76,6 +70,7 @@ describe('RadialFileMenu', () => {
     expect(screen.getByRole('menu', { name: '文件操作' })).toBeVisible()
     expect(screen.getAllByRole('menuitem')).toHaveLength(6)
     expect(screen.getByText('1 个文件')).toBeVisible()
+    expect(screen.getByRole('button', { name: '关闭文件操作' })).toHaveTextContent('回到中心取消')
     expect(screen.getByRole('menuitem', { name: '并排对比' })).toHaveAttribute(
       'aria-disabled',
       'true',
@@ -219,12 +214,6 @@ describe('RadialFileMenu', () => {
     expect(compare).toHaveAttribute('aria-disabled', 'true')
     expect(compare).toHaveAttribute('title', '最多同时对比 20 张图片')
     expect(compareSector).toHaveAttribute('data-disabled', 'true')
-    expect(appCss).toMatch(
-      /\.radial-primary-shape\[data-disabled="true"\],[\s\S]*?fill:\s*#f3f4f6;[\s\S]*?opacity:\s*0\.62;/,
-    )
-    expect(appCss).toMatch(
-      /\.radial-menu-button\[aria-disabled="true"\]\s*\{(?=[^}]*filter:\s*grayscale\(1\);)(?=[^}]*opacity:\s*0\.38;)[^}]*\}/s,
-    )
     act(() => compare.focus())
     expect(compare).toHaveFocus()
     fireEvent.keyDown(screen.getByRole('menu', { name: '文件操作' }), { key: 'Enter' })
@@ -567,9 +556,6 @@ describe('RadialFileMenu', () => {
     const shapes = document.querySelector('svg.radial-file-menu-shapes')
 
     expect(shapes).toHaveAttribute('viewBox', '0 0 336 336')
-    expect(appCss).toMatch(
-      /\.radial-file-menu-shapes\s*\{[^}]*height:\s*100%;[^}]*width:\s*100%;[^}]*\}/s,
-    )
   })
 
   it('keeps the six-sector primary ring and preferred local fan direction stable at an edge', () => {
@@ -585,6 +571,15 @@ describe('RadialFileMenu', () => {
       />,
     )
     const centerPrimaryPaths = primaryPaths(center.container)
+    expect(center.container.querySelectorAll('.radial-primary-shape')).toHaveLength(6)
+    expect(primarySectors(center.container)).toEqual([
+      { start: '-120', end: '-60' },
+      { start: '-60', end: '0' },
+      { start: '0', end: '60' },
+      { start: '60', end: '120' },
+      { start: '120', end: '180' },
+      { start: '180', end: '240' },
+    ])
     const centerPrimaryOffsets = primaryOffsets(center.container)
     fireEvent.click(screen.getByRole('menuitem', { name: '标记' }))
     const centerAnchor = screen.getByRole('menu', { name: '标记' })

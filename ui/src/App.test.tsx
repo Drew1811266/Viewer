@@ -1121,6 +1121,23 @@ describe('Viewer empty state', () => {
     expect(screen.getByRole('complementary', { name: '文件信息' })).toBeVisible()
   })
 
+  it('uses the compact menu for a secondary click and the radial menu for a held right button', async () => {
+    const viewer = bridge()
+    vi.mocked(viewer.queryFolder).mockResolvedValue(contentWorkspace())
+    render(<App bridge={viewer} />)
+    fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
+    const file = await screen.findByRole('option', { name: 'front.jpg' })
+
+    fireEvent.contextMenu(file, { button: 2, clientX: 420, clientY: 260 })
+    expect(
+      screen.getByRole('menu', { name: '文件操作' }).closest('.file-context-menu'),
+    ).not.toBeNull()
+    fireEvent.keyDown(screen.getByRole('menu', { name: '文件操作' }), { key: 'Escape' })
+
+    openRadialMenu(file, 402)
+    expect(document.querySelector('.radial-file-menu')).not.toBeNull()
+  })
+
   it('starts a fresh held gesture when a second right-click replaces click fallback', async () => {
     const viewer = bridge()
     vi.mocked(viewer.queryFolder).mockResolvedValue(compareContentWorkspace())

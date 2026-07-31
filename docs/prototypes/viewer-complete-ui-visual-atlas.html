@@ -569,14 +569,13 @@
       padding: 11px 3px 3px;
     }
     .other-files-panel {
-      border: 1px solid var(--border);
-      border-radius: 10px;
+      border-top: 1px solid var(--border);
       margin-top: 12px;
       overflow: hidden;
     }
     .other-files-head {
       align-items: center;
-      background: #fafaf8;
+      background: var(--surface);
       display: flex;
       font-size: 10px;
       height: 34px;
@@ -1036,8 +1035,21 @@
     .result-layout {
       background: #f4f4f2;
       height: 100%;
+      overflow: hidden;
+      padding-top: 52px;
+      position: relative;
+    }
+    .result-inspector-layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 334px;
+      height: 100%;
+      min-height: 0;
+    }
+    .result-workspace {
+      background: var(--surface);
+      min-width: 0;
       overflow: auto;
-      padding: 58px 18px 18px;
+      padding: 14px;
     }
     .result-panel {
       background: var(--surface);
@@ -1046,6 +1058,16 @@
       margin: 0 auto;
       max-width: 760px;
       overflow: hidden;
+    }
+    .result-panel.operation-inspector {
+      border-bottom: 0;
+      border-radius: 0;
+      border-right: 0;
+      border-top: 0;
+      box-shadow: -12px 0 30px rgb(31 35 42 / 7%);
+      height: 100%;
+      margin: 0;
+      max-width: none;
     }
     .result-panel > header {
       align-items: center;
@@ -1764,11 +1786,11 @@
         key: "results",
         items: [["operation", "操作结果"], ["notice", "全局通知"], ["local-error", "局部错误"], ["readonly", "只读"], ["recovery", "恢复"]],
       }]);
-      let surface = '<section class="result-panel"><header><strong>移动结果</strong><span class="status-tag pending">2 项需要处理</span></header><div class="result-list"><div class="result-row-compact"><strong>28 个文件已移动到衣服 / A02</strong><span>成功</span></div><div class="result-row-compact"><strong>2C2A7469.JPG</strong><span>名称冲突 · 已跳过</span></div><div class="result-row-compact"><strong>2C2A7536.JPG</strong><span>源文件不可用 · 已跳过</span></div></div></section>';
-      if (state.results === "notice") surface = '<div class="notice-stack" style="position:relative;right:auto;top:auto;justify-items:end"><article class="notice"><div><strong>索引已更新</strong><span>新发现 12 个文件</span></div><button class="viewer-button">查看</button></article><article class="notice"><div><strong>项目已重新连接</strong><span>只读限制已解除</span></div><button class="viewer-button">完成</button></article></div>';
+      let surface = `<div class="result-inspector-layout"><div class="result-workspace"><div class="image-grid" data-density="compact">${imageCards(0)}</div></div><aside class="result-panel operation-inspector" data-operation-results-inspector><header><strong>移动结果</strong><span class="status-tag pending">2 项需要处理</span></header><div class="result-list"><div class="result-row-compact"><strong>28 个文件已移动到衣服 / A02</strong><span>成功</span></div><div class="result-row-compact"><strong>2C2A7469.JPG</strong><span>名称冲突 · 已跳过</span></div><div class="result-row-compact"><strong>2C2A7536.JPG</strong><span>源文件不可用 · 已跳过</span></div><div class="paging-row"><span>1–3 / 3</span><button class="viewer-button">导出结果</button></div></div></aside></div>`;
+      if (state.results === "notice") surface = '<div style="padding:18px"><div class="notice-stack" style="position:relative;right:auto;top:auto;justify-items:end"><article class="notice"><div><strong>索引已更新</strong><span>新发现 12 个文件</span></div><button class="viewer-button">查看</button></article><article class="notice"><div><strong>项目已重新连接</strong><span>只读限制已解除</span></div><button class="viewer-button">完成</button></article></div></div>';
       if (state.results === "local-error") surface = `<div class="grid-wrap"><div class="image-grid" data-density="compact">${imageCards(0)}</div></div><div class="local-error">A03 中的一个缩略图无法生成。其它文件仍可继续浏览。　<button class="viewer-button">重试</button></div>`;
       if (state.results === "readonly") surface = `<div class="readonly-banner"><span><strong>只读模式</strong> · 浏览、搜索和预览仍可用；标记与整理已停用。</span><span>权限设置　重新选择目录</span></div><div class="grid-wrap"><div class="image-grid" data-density="compact">${imageCards(0)}</div></div>`;
-      if (state.results === "recovery") surface = '<section class="result-panel"><header><strong>恢复摘要</strong><span class="status-tag keep">已恢复</span></header><div class="result-list"><div class="result-row-compact"><strong>审阅状态</strong><span>8 项恢复</span></div><div class="result-row-compact"><strong>收藏</strong><span>3 项恢复</span></div><div class="result-row-compact"><strong>源文件链接</strong><span>1 项需要检查</span></div></div></section>';
+      if (state.results === "recovery") surface = '<div style="padding:18px"><section class="result-panel"><header><strong>恢复摘要</strong><span class="status-tag keep">已恢复</span></header><div class="result-list"><div class="result-row-compact"><strong>审阅状态</strong><span>8 项恢复</span></div><div class="result-row-compact"><strong>收藏</strong><span>3 项恢复</span></div><div class="result-row-compact"><strong>源文件链接</strong><span>1 项需要检查</span></div></div></section></div>';
       return shell(`${states}<div class="result-layout" data-feedback-state="${state.results}">${surface}</div>`);
     }
 

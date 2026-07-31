@@ -55,15 +55,15 @@ describe('complete Viewer visual atlas', () => {
 
     clickScreen(document, 'sidebar')
     clickState(document, 'sidebar-collapsed')
-    expect(
-      document.querySelector('[data-viewer-sidebar]')?.getAttribute('data-mode'),
-    ).toBe('collapsed')
+    expect(document.querySelector('[data-viewer-sidebar]')?.getAttribute('data-mode')).toBe(
+      'collapsed',
+    )
 
     clickScreen(document, 'folder')
     clickState(document, 'structure-aggregate')
-    expect(document.querySelector('[data-structure-state]')?.getAttribute('data-structure-state')).toBe(
-      'aggregate',
-    )
+    expect(
+      document.querySelector('[data-structure-state]')?.getAttribute('data-structure-state'),
+    ).toBe('aggregate')
 
     clickScreen(document, 'browser')
     clickState(document, 'density-compact')
@@ -77,9 +77,7 @@ describe('complete Viewer visual atlas', () => {
 
     clickScreen(document, 'otherFiles')
     clickState(document, 'other-expanded')
-    expect(document.querySelector('[data-other-files]')?.getAttribute('data-mode')).toBe(
-      'expanded',
-    )
+    expect(document.querySelector('[data-other-files]')?.getAttribute('data-mode')).toBe('expanded')
     clickState(document, 'organization-drag')
     expect(document.querySelector('[data-drag-preview]')).not.toBeNull()
     expect(document.querySelector('[data-drop-target="valid"]')).not.toBeNull()
@@ -158,9 +156,9 @@ describe('complete Viewer visual atlas', () => {
     clickScreen(document, 'compare')
     for (const compareState of ['compare-2', 'compare-3', 'compare-4', 'compare-many']) {
       clickState(document, compareState)
-      expect(document.querySelector('[data-compare-state]')?.getAttribute('data-compare-state')).toBe(
-        compareState.replace('compare-', ''),
-      )
+      expect(
+        document.querySelector('[data-compare-state]')?.getAttribute('data-compare-state'),
+      ).toBe(compareState.replace('compare-', ''))
     }
 
     clickScreen(document, 'text')
@@ -181,9 +179,9 @@ describe('complete Viewer visual atlas', () => {
 
     clickScreen(document, 'information')
     clickState(document, 'info-multiple')
-    expect(document.querySelector('[data-information-state]')?.getAttribute('data-information-state')).toBe(
-      'multiple',
-    )
+    expect(
+      document.querySelector('[data-information-state]')?.getAttribute('data-information-state'),
+    ).toBe('multiple')
   })
 
   it('exposes dialogs feedback and recovery states', () => {
@@ -229,10 +227,12 @@ describe('complete Viewer visual atlas', () => {
       'results-recovery',
     ]) {
       clickState(document, feedbackState)
-      expect(document.querySelector('[data-feedback-state]')?.getAttribute('data-feedback-state')).toBe(
-        feedbackState.replace('results-', ''),
-      )
+      expect(
+        document.querySelector('[data-feedback-state]')?.getAttribute('data-feedback-state'),
+      ).toBe(feedbackState.replace('results-', ''))
     }
+    clickState(document, 'results-operation')
+    expect(document.querySelector('[data-operation-results-inspector]')).not.toBeNull()
 
     clickScreen(document, 'launch')
     clickState(document, 'launch-no-project')

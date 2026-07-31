@@ -56,6 +56,29 @@ describe('workspace style contracts', () => {
     })
   })
 
+  it('renders workspace popover commands as quiet menu rows with a real separator', () => {
+    const rules = parseRules(appCss)
+    const item = rules.find((rule) => rule.selector === '.workspace-menu-item')
+    const separator = rules.find((rule) => rule.selector === '.workspace-menu-separator')
+    const destructive = rules.find(
+      (rule) => rule.selector === '.workspace-menu-item[data-tone="destructive"]',
+    )
+
+    expect(item?.declarations).toMatchObject({
+      border: '0',
+      'justify-content': 'flex-start',
+      'min-height': '32px',
+      'text-align': 'left',
+      width: '100%',
+    })
+    expect(separator?.declarations).toMatchObject({
+      border: '0',
+      'border-top': '1px solid var(--viewer-divider-subtle)',
+      margin: '6px 0',
+    })
+    expect(destructive?.declarations.color).toBe('var(--viewer-danger)')
+  })
+
   it('anchors the filter popover within both edges of a 720px viewport', () => {
     const narrowRules = parseRules(mediaBody(appCss, '(max-width: 800px)'))
     const popover = narrowRules.find((rule) => rule.selector === '.search-options-popover')

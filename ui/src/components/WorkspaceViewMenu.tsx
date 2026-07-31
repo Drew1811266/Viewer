@@ -89,6 +89,7 @@ export default function WorkspaceViewMenu({
           <>
             <button
               type="button"
+              className="workspace-menu-item"
               aria-pressed={context.layout === 'grouped'}
               onClick={() => run(() => context.onLayoutChange('grouped'))}
             >
@@ -96,6 +97,7 @@ export default function WorkspaceViewMenu({
             </button>
             <button
               type="button"
+              className="workspace-menu-item"
               aria-pressed={context.layout === 'flat'}
               onClick={() => run(() => context.onLayoutChange('flat'))}
             >
@@ -104,18 +106,30 @@ export default function WorkspaceViewMenu({
           </>
         )}
         {context.kind === 'category' && (
-          <button type="button" onClick={() => run(context.onShowAllDescendants)}>
+          <button
+            type="button"
+            className="workspace-menu-item"
+            onClick={() => run(context.onShowAllDescendants)}
+          >
             显示全部后代文件
           </button>
         )}
         {context.kind === 'content' && (
           <>
             {context.showingAggregate ? (
-              <button type="button" onClick={() => run(context.onReturnToFolder)}>
+              <button
+                type="button"
+                className="workspace-menu-item"
+                onClick={() => run(context.onReturnToFolder)}
+              >
                 返回当前文件夹
               </button>
             ) : (
-              <button type="button" onClick={() => run(context.onShowAllDescendants)}>
+              <button
+                type="button"
+                className="workspace-menu-item"
+                onClick={() => run(context.onShowAllDescendants)}
+              >
                 显示全部后代文件
               </button>
             )}
@@ -135,20 +149,36 @@ function selectAllButtons(
   if (request.kind === 'none') return null
   if (request.kind === 'direct') {
     return (
-      <button type="button" onClick={() => run(() => onSelectAll(request.scope))}>
+      <button
+        type="button"
+        className="workspace-menu-item"
+        onClick={() => run(() => onSelectAll(request.scope))}
+      >
         {request.scope === 'images' ? '全选图片' : '全选其它文件'}
       </button>
     )
   }
   return (
     <>
-      <button type="button" onClick={() => run(() => onSelectAll('images'))}>
+      <button
+        type="button"
+        className="workspace-menu-item"
+        onClick={() => run(() => onSelectAll('images'))}
+      >
         全选图片
       </button>
-      <button type="button" onClick={() => run(() => onSelectAll('other'))}>
+      <button
+        type="button"
+        className="workspace-menu-item"
+        onClick={() => run(() => onSelectAll('other'))}
+      >
         全选其它文件
       </button>
-      <button type="button" onClick={() => run(() => onSelectAll('all'))}>
+      <button
+        type="button"
+        className="workspace-menu-item"
+        onClick={() => run(() => onSelectAll('all'))}
+      >
         全选全部文件
       </button>
     </>

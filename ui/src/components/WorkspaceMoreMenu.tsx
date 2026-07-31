@@ -84,22 +84,36 @@ const WorkspaceMoreMenu = forwardRef<HTMLElement, WorkspaceMoreMenuProps>(
           hidden={!open}
           style={{ maxWidth: popoverMaxWidth }}
         >
-          <button type="button" onClick={() => run(onOpenSettings)}>
+          <button type="button" className="workspace-menu-item" onClick={() => run(onOpenSettings)}>
             软件设置
           </button>
           {access === 'read_only' && <p className="project-access-status">访问权限：只读</p>}
           {access === 'read_only' && (
-            <button type="button" onClick={() => run(onOpenPermissionSettings)}>
+            <button
+              type="button"
+              className="workspace-menu-item"
+              onClick={() => run(onOpenPermissionSettings)}
+            >
               权限设置
             </button>
           )}
           {access === 'read_only' && (
-            <button type="button" onClick={() => run(onReselectProject)}>
+            <button
+              type="button"
+              className="workspace-menu-item"
+              onClick={() => run(onReselectProject)}
+            >
               重新选择目录
             </button>
           )}
-          <hr />
-          <button type="button" disabled={closing} onClick={() => run(onCloseProject)}>
+          <hr className="workspace-menu-separator" aria-hidden="true" />
+          <button
+            type="button"
+            className="workspace-menu-item"
+            data-tone="destructive"
+            disabled={closing}
+            onClick={() => run(onCloseProject)}
+          >
             {closing ? '正在关闭…' : '关闭项目'}
           </button>
         </div>

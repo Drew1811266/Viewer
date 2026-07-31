@@ -26,6 +26,9 @@ describe('WorkspaceViewMenu', () => {
       />,
     )
     fireEvent.click(screen.getByRole('button', { name: '视图' }))
+    expect(screen.getByRole('button', { name: '显示全部后代文件' })).toHaveClass(
+      'workspace-menu-item',
+    )
     fireEvent.click(screen.getByRole('button', { name: '全选全部文件' }))
     expect(onSelectAll).toHaveBeenCalledWith('all')
   })

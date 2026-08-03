@@ -1,6 +1,9 @@
 import type { UIEvent } from 'react'
 import { useEffect, useMemo, useState } from 'react'
 import type { MatchRange, SearchHit, SearchPage, SearchQueryModel } from '../api/types'
+import ViewerButton from './ui/ViewerButton'
+import ViewerEmptyState from './ui/ViewerEmptyState'
+import ViewerStatusTag, { type ViewerStatusTagTone } from './ui/ViewerStatusTag'
 
 interface SearchResultsProps {
   page: SearchPage
@@ -20,7 +23,7 @@ type ResultRow =
   | { type: 'group'; key: string; path: string; count: number; height: number }
   | { type: 'hit'; key: string; hit: SearchHit; height: number }
 
-const RESULT_ROW_HEIGHT = 48
+const RESULT_ROW_HEIGHT = 64
 const GROUP_ROW_HEIGHT = 28
 const VIEWPORT_HEIGHT = 520
 const OVERSCAN = 5
@@ -65,27 +68,29 @@ export default function SearchResults({
     const filterCount = activeFilterCount(query)
     return (
       <section className="search-empty" aria-label="无搜索结果">
-        <h2>没有找到结果</h2>
-        <p>
-          关键词“{query.text || '（空）'}”，范围：
-          {query.scopeFolderId === null ? '整个项目' : '当前目录及其后代'}，{filterCount}{' '}
-          个筛选条件。
-        </p>
-        <div>
-          {filterCount > 0 && (
-            <button type="button" onClick={onClearFilters}>
-              清除筛选
-            </button>
-          )}
-          {query.scopeFolderId !== null && (
-            <button type="button" onClick={onSearchProject}>
-              搜索整个项目
-            </button>
-          )}
-          <button type="button" onClick={onReturnToFolder}>
-            返回文件夹内容
-          </button>
-        </div>
+        <ViewerEmptyState
+          title="没有找到结果"
+          description={`关键词“${query.text || '（空）'}”，范围：${
+            query.scopeFolderId === null ? '整个项目' : '当前目录及其后代'
+          }，${filterCount} 个筛选条件。`}
+          action={
+            <>
+              {filterCount > 0 && (
+                <ViewerButton tone="primary" onClick={onClearFilters}>
+                  清除筛选
+                </ViewerButton>
+              )}
+              {query.scopeFolderId !== null && (
+                <ViewerButton tone="secondary" onClick={onSearchProject}>
+                  搜索整个项目
+                </ViewerButton>
+              )}
+              <ViewerButton tone="quiet" onClick={onReturnToFolder}>
+                返回文件夹内容
+              </ViewerButton>
+            </>
+          }
+        />
       </section>
     )
   }
@@ -95,11 +100,16 @@ export default function SearchResults({
       <header className="search-results-summary">
         <div>
           <strong>{page.total} 个结果</strong>
-          {searching && <span role="status">结果仍在更新</span>}
+          {searching && (
+            <ViewerStatusTag tone="warning" role="status">
+              结果仍在更新 · 图片 {page.progress.imagesReady}/{page.progress.imagesTotal} · 文本{' '}
+              {page.progress.textReady}/{page.progress.textTotal}
+            </ViewerStatusTag>
+          )}
         </div>
-        <button type="button" onClick={onReturnToFolder}>
+        <ViewerButton tone="quiet" onClick={onReturnToFolder}>
           返回文件夹内容
-        </button>
+        </ViewerButton>
       </header>
       <div
         role="listbox"
@@ -137,23 +147,23 @@ export default function SearchResults({
         </div>
       </div>
       <nav className="search-pagination" aria-label="搜索结果分页">
-        <button
-          type="button"
+        <ViewerButton
+          tone="quiet"
           disabled={offset === 0}
           onClick={() => onPageChange(Math.max(0, offset - limit))}
         >
           上一页
-        </button>
+        </ViewerButton>
         <span>
           {offset + 1}–{Math.min(offset + page.hits.length, page.total)} / {page.total}
         </span>
-        <button
-          type="button"
+        <ViewerButton
+          tone="quiet"
           disabled={offset + page.hits.length >= page.total}
           onClick={() => onPageChange(offset + limit)}
         >
           下一页
-        </button>
+        </ViewerButton>
       </nav>
     </section>
   )
@@ -165,31 +175,37 @@ function ResultItem({ hit, snippet }: { hit: SearchHit; snippet: string | null |
   const pathRanges = hit.matchedField === 'path' ? hit.matchRanges : []
   return (
     <div
+      className="search-result-item"
       role="option"
       tabIndex={undefined}
       aria-label={`${hit.name} ${hit.relativePath}`}
       aria-selected="false"
     >
-      <div className="search-result-title">
-        <span className="search-result-file-kind" aria-hidden="true">
-          {fileKindLabel(hit.kind)}
-        </span>
-        <strong>
-          <HighlightedText value={hit.name} ranges={nameRanges} />
-        </strong>
-        <span>{markerLabel(hit)}</span>
+      <div className="search-result-type" aria-hidden="true">
+        <ViewerStatusTag tone="neutral">{fileKindLabel(hit.kind)}</ViewerStatusTag>
       </div>
-      <div className="search-result-context">
-        <span className="search-result-context">{matchContextLabel(hit)}</span>
-        <span className="search-result-path">
-          <HighlightedText value={hit.relativePath} ranges={pathRanges} />
-        </span>
+      <div className="search-result-content">
+        <div className="search-result-title">
+          <strong>
+            <HighlightedText value={hit.name} ranges={nameRanges} />
+          </strong>
+          <span className="search-result-path">
+            <HighlightedText value={hit.relativePath} ranges={pathRanges} />
+          </span>
+        </div>
+        <div className="search-result-details">
+          <span className="search-result-context">{matchContextLabel(hit)}</span>
+          <span className="search-result-metadata">{metadataLabel(hit)}</span>
+        </div>
+        {hit.matchedField === 'body' && snippet !== undefined && snippet !== null && (
+          <p className="search-result-context" data-testid={`search-snippet-${hit.entityId}`}>
+            {boundedSnippet(snippet)}
+          </p>
+        )}
       </div>
-      {hit.matchedField === 'body' && snippet !== undefined && snippet !== null && (
-        <p className="search-result-context" data-testid={`search-snippet-${hit.entityId}`}>
-          {boundedSnippet(snippet)}
-        </p>
-      )}
+      <div className="search-result-state">
+        <ViewerStatusTag tone={markerTone(hit)}>{markerLabel(hit)}</ViewerStatusTag>
+      </div>
     </div>
   )
 }
@@ -256,6 +272,30 @@ function markerLabel(hit: SearchHit): string {
           ? '淘汰'
           : '未标记'
   return hit.marker.favorite ? `${review} · 收藏` : review
+}
+
+function markerTone(hit: SearchHit): ViewerStatusTagTone {
+  if (hit.marker.reviewState === 'keep') return 'success'
+  if (hit.marker.reviewState === 'pending') return 'warning'
+  if (hit.marker.reviewState === 'reject') return 'danger'
+  return 'neutral'
+}
+
+function metadataLabel(hit: SearchHit): string {
+  const dimensions =
+    hit.imageMetadata === null ? null : `${hit.imageMetadata.width} × ${hit.imageMetadata.height}`
+  return [dimensions, formatBytes(hit.size)].filter((value) => value !== null).join(' · ')
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1_024) return `${bytes} B`
+  if (bytes < 1_024 ** 2) return `${formatUnit(bytes / 1_024)} KiB`
+  if (bytes < 1_024 ** 3) return `${formatUnit(bytes / 1_024 ** 2)} MiB`
+  return `${formatUnit(bytes / 1_024 ** 3)} GiB`
+}
+
+function formatUnit(value: number): string {
+  return value >= 10 ? value.toFixed(0) : value.toFixed(1).replace(/\.0$/, '')
 }
 
 function boundedSnippet(value: string): string {

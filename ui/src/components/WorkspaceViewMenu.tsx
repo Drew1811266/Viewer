@@ -112,6 +112,9 @@ export default function WorkspaceViewMenu({
                 显示全部后代文件
               </ViewerMenuRow>
             )}
+            {context.selectAllRequest.kind !== 'none' && (
+              <hr className="workspace-menu-separator" />
+            )}
             {selectAllButtons(context.selectAllRequest, context.onSelectAll, run)}
           </>
         )}

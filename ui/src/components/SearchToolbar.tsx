@@ -9,6 +9,9 @@ import type {
   SearchSort,
 } from '../api/types'
 import type { SearchFilterChip } from '../state/viewerReducer'
+import ViewerButton, { ViewerIconButton } from './ui/ViewerButton'
+import ViewerChoiceChip from './ui/ViewerChoiceChip'
+import ViewerField from './ui/ViewerField'
 import ViewerIcon from './ui/ViewerIcon'
 import ViewerPopover from './ui/ViewerPopover'
 
@@ -145,8 +148,7 @@ export default function SearchToolbar({
   )
   const scopeAndSortControls = (
     <div className="filter-scope-sort">
-      <label>
-        <span>范围</span>
+      <ViewerField label="范围" className="filter-scope-field">
         <select
           aria-label="搜索范围"
           value={query.scopeFolderId ?? ''}
@@ -159,9 +161,8 @@ export default function SearchToolbar({
             </option>
           ))}
         </select>
-      </label>
-      <label>
-        <span>排序</span>
+      </ViewerField>
+      <ViewerField label="排序" className="filter-sort-field">
         <select
           aria-label="排序方式"
           value={query.sort.key}
@@ -179,19 +180,18 @@ export default function SearchToolbar({
           <option value="pixel_dimensions">像素尺寸</option>
           <option value="review_state">审阅状态</option>
         </select>
-      </label>
-      <button
-        type="button"
-        aria-label={query.sort.direction === 'ascending' ? '切换为降序' : '切换为升序'}
+      </ViewerField>
+      <ViewerIconButton
+        icon={query.sort.direction === 'ascending' ? 'arrow-up' : 'arrow-down'}
+        label={query.sort.direction === 'ascending' ? '切换为降序' : '切换为升序'}
+        tone="quiet"
         onClick={() =>
           onSortChange({
             ...query.sort,
             direction: query.sort.direction === 'ascending' ? 'descending' : 'ascending',
           })
         }
-      >
-        <ViewerIcon name={query.sort.direction === 'ascending' ? 'arrow-up' : 'arrow-down'} />
-      </button>
+      />
     </div>
   )
   const fileKindAndReviewControls = (
@@ -245,19 +245,17 @@ export default function SearchToolbar({
       {chips.length > 0 ? (
         <div className="search-filter-chips" aria-label="已启用筛选">
           {chips.map(({ chip, label }) => (
-            <button
-              type="button"
+            <ViewerButton
               key={chipKey(chip)}
               aria-label={`移除 ${label} 筛选`}
+              className="search-filter-chip"
+              leadingIcon="x"
+              tone="quiet"
               onClick={() => onRemoveFilter(chip)}
             >
-              <span>{label}</span>
-              <ViewerIcon name="x" size={12} />
-            </button>
+              {label}
+            </ViewerButton>
           ))}
-          <button type="button" aria-label="清除全部筛选" onClick={onClearFilters}>
-            清除全部
-          </button>
         </div>
       ) : (
         <span>未启用筛选条件</span>
@@ -308,14 +306,15 @@ export default function SearchToolbar({
         >
           <header className="filter-popover-header">
             <h2>筛选</h2>
-            <button type="button" aria-label="关闭筛选" onClick={closeOptions}>
-              关闭
-            </button>
+            <ViewerIconButton icon="x" label="关闭筛选" tone="quiet" onClick={closeOptions} />
           </header>
           {scopeAndSortControls}
           <div className="common-filter-grid">{fileKindAndReviewControls}</div>
           <details className="advanced-filter-group">
-            <summary role="button">高级条件</summary>
+            <summary role="button">
+              <span>高级条件</span>
+              <ViewerIcon name="chevron-down" size={14} />
+            </summary>
             <div className="advanced-filter-grid">
               <fieldset aria-label="方向">{orientationControls}</fieldset>
               <fieldset aria-label="像素尺寸">{dimensionControls}</fieldset>
@@ -323,7 +322,15 @@ export default function SearchToolbar({
               <fieldset aria-label="修改时间">{modifiedTimeControls}</fieldset>
             </div>
           </details>
-          <footer className="active-filter-summary">{activeFilterChipsAndClearAction}</footer>
+          <div className="active-filter-summary">{activeFilterChipsAndClearAction}</div>
+          <footer className="viewer-filter-footer">
+            <ViewerButton tone="quiet" disabled={chips.length === 0} onClick={onClearFilters}>
+              清除全部
+            </ViewerButton>
+            <ViewerButton tone="primary" onClick={() => onFilterOpenChange(false)}>
+              完成
+            </ViewerButton>
+          </footer>
         </ViewerPopover>
       </details>
     </section>
@@ -340,14 +347,9 @@ function CheckFilter({
   onChange: (checked: boolean) => void
 }) {
   return (
-    <label>
-      <input
-        type="checkbox"
-        checked={checked}
-        onChange={(event) => onChange(event.currentTarget.checked)}
-      />
+    <ViewerChoiceChip checked={checked} onCheckedChange={onChange}>
       {label}
-    </label>
+    </ViewerChoiceChip>
   )
 }
 
@@ -361,8 +363,7 @@ function NumberFilter({
   onChange: (value: number | null) => void
 }) {
   return (
-    <label>
-      {label}
+    <ViewerField label={label} className="advanced-filter-field">
       <input
         type="number"
         min="0"
@@ -372,7 +373,7 @@ function NumberFilter({
           onChange(event.currentTarget.value === '' ? null : Number(event.currentTarget.value))
         }
       />
-    </label>
+    </ViewerField>
   )
 }
 
@@ -386,15 +387,14 @@ function DateFilter({
   onChange: (value: string | null) => void
 }) {
   return (
-    <label>
-      {label}
+    <ViewerField label={label} className="advanced-filter-field">
       <input
         type="datetime-local"
         aria-label={label}
         value={nanosecondsToLocal(value)}
         onChange={(event) => onChange(localToNanoseconds(event.currentTarget.value))}
       />
-    </label>
+    </ViewerField>
   )
 }
 

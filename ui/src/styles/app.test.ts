@@ -78,8 +78,10 @@ describe('workspace style contracts', () => {
       (rule) => rule.selector === '.workspace-menu-popover .workspace-menu-item',
     )
     const separator = rules.find((rule) => rule.selector === '.workspace-menu-separator')
-    const destructive = rules.find(
-      (rule) => rule.selector === '.workspace-menu-item[data-tone="destructive"]',
+    const dangerInteraction = rules.find(
+      (rule) =>
+        rule.selector ===
+        ".workspace-menu-item[data-danger-reveal='interaction']:hover:not(:disabled)",
     )
 
     expect(popover?.declarations['min-width']).toBe('180px')
@@ -95,7 +97,10 @@ describe('workspace style contracts', () => {
       'border-top': '1px solid var(--viewer-divider-subtle)',
       margin: '6px 0',
     })
-    expect(destructive?.declarations.color).toBe('var(--viewer-danger)')
+    expect(dangerInteraction?.declarations).toMatchObject({
+      background: 'var(--viewer-danger-emphasis-soft)',
+      color: 'var(--viewer-danger-strong)',
+    })
   })
 
   it('consolidates task feedback into one compact surface', () => {

@@ -76,6 +76,76 @@ describe('SearchToolbar', () => {
     expect(screen.getByLabelText('最晚修改时间')).toBeVisible()
   })
 
+  it('uses formal controls and keeps filter changes immediate while Done only closes', () => {
+    const onFilterOpenChange = vi.fn()
+    const onFiltersChange = vi.fn()
+    render(
+      <SearchToolbarView
+        filterOpen
+        onFilterOpenChange={onFilterOpenChange}
+        query={query()}
+        folders={[]}
+        focusRequest={0}
+        onTextChange={vi.fn()}
+        onScopeChange={vi.fn()}
+        onFiltersChange={onFiltersChange}
+        onSortChange={vi.fn()}
+        onRemoveFilter={vi.fn()}
+        onClearFilters={vi.fn()}
+      />,
+    )
+
+    const close = screen.getByRole('button', { name: '关闭筛选' })
+    expect(close).toHaveClass('viewer-icon-button')
+    expect(close.querySelector('img')).toHaveAttribute('aria-hidden', 'true')
+    expect(screen.getByLabelText('JPEG').closest('label')).toHaveClass('viewer-choice-chip')
+    expect(
+      screen.getByRole('combobox', { name: '搜索范围' }).closest('.viewer-field'),
+    ).not.toBeNull()
+    expect(
+      screen.getByRole('combobox', { name: '排序方式' }).closest('.viewer-field'),
+    ).not.toBeNull()
+    expect(screen.getByRole('button', { name: '清除全部' })).toHaveClass('viewer-button')
+    expect(screen.getByRole('button', { name: '完成' })).toHaveAttribute('data-tone', 'primary')
+    expect(screen.queryByRole('button', { name: '应用筛选' })).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByLabelText('JPEG'))
+    expect(onFiltersChange).toHaveBeenCalledOnce()
+    expect(onFiltersChange).toHaveBeenCalledWith(expect.objectContaining({ kinds: ['jpeg'] }))
+    fireEvent.click(screen.getByRole('button', { name: '完成' }))
+    expect(onFilterOpenChange).toHaveBeenCalledWith(false)
+    expect(onFiltersChange).toHaveBeenCalledOnce()
+  })
+
+  it('does not count scope or sort as active filter conditions', () => {
+    render(
+      <SearchToolbar
+        query={query({
+          scopeFolderId: 'folder-1',
+          sort: { key: 'size', direction: 'descending' },
+        })}
+        folders={[
+          {
+            entityId: 'folder-1',
+            parentEntityId: null,
+            relativePath: 'catalog/id-1',
+            name: 'id-1',
+            marker: { reviewState: null, favorite: false },
+          },
+        ]}
+        focusRequest={0}
+        onTextChange={vi.fn()}
+        onScopeChange={vi.fn()}
+        onFiltersChange={vi.fn()}
+        onSortChange={vi.fn()}
+        onRemoveFilter={vi.fn()}
+        onClearFilters={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByRole('button', { name: '筛选' })).toBeVisible()
+  })
+
   it('returns focus to the filter trigger after closing the popover', () => {
     render(
       <SearchToolbar
@@ -254,7 +324,7 @@ describe('SearchToolbar', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '移除 JPEG 筛选' }))
     expect(onRemoveFilter).toHaveBeenCalledWith({ kind: 'file_kind', value: 'jpeg' })
-    fireEvent.click(screen.getByRole('button', { name: '清除全部筛选' }))
+    fireEvent.click(screen.getByRole('button', { name: '清除全部' }))
     expect(onClearFilters).toHaveBeenCalledOnce()
 
     fireEvent.change(screen.getByRole('combobox', { name: '排序方式' }), {

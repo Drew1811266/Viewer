@@ -45,18 +45,18 @@ Native recipes use one disposable real project outside the source tree at `targe
 | OTH-01 | Wave 1 | `other-collapsed` | `OtherFilePanel` | Open the `其它` folder with its other-file panel collapsed. | `OtherFilePanel.test.tsx`; `ContentBrowser.test.tsx` | not-recorded | not-recorded | pending |
 | OTH-02 | Wave 1 | `other-expanded` | `OtherFilePanel` | Open the `其它` folder and expand its other-file panel. | `OtherFilePanel.test.tsx`; `ContentBrowser.test.tsx` | not-recorded | not-recorded | pending |
 | OTH-03 | Wave 1 | `organization-drag` | `OrganizationDragHandle` and sidebar target | Select two items, drag from the organization handle and hold over `目标/Destination` while pressing and releasing Option to show copy/move. | `ContentBrowser.test.tsx`; `useOrganizationPointerDrag.test.tsx`; `FolderTree.test.tsx` | not-recorded | not-recorded | pending |
-| SEA-01 | Wave 1 | `search-grouped` | `SearchResults` | Search `jpg` across `ViewerAcceptance`, then in `视图` choose grouped results. | not-recorded | not-recorded | not-recorded | pending |
-| SEA-02 | Wave 1 | `search-flat` | `SearchResults` | Search `jpg`, then in `视图` choose flat results. | not-recorded | not-recorded | not-recorded | pending |
-| SEA-03 | Wave 1 | `search-indexing` | search indexing feedback | Open a freshly scanned fixture and enter a text search before indexing completes. | not-recorded | not-recorded | not-recorded | pending |
-| SEA-04 | Wave 1 | `search-paging` | `SearchResults` pagination | Search a term matching more than one page of the 30-image fixture, then navigate to page two. | not-recorded | not-recorded | not-recorded | pending |
-| SEA-05 | Wave 1 | `search-empty` | `SearchResults` empty state | Search the unique string `viewer-no-match-20260802`. | not-recorded | not-recorded | not-recorded | pending |
-| FIL-01 | Wave 1 | `filters-zero` | `SearchToolbar` | Open `筛选` with all filter conditions cleared. | not-recorded | not-recorded | not-recorded | pending |
-| FIL-02 | Wave 1 | `filters-one` | `SearchToolbar` | Open `筛选` and enable only `JPEG`. | not-recorded | not-recorded | not-recorded | pending |
-| FIL-03 | Wave 1 | `filters-multiple` | `SearchToolbar` | Enable `JPEG`, `PNG`, `保留` and `收藏`, then leave the popover open. | not-recorded | not-recorded | not-recorded | pending |
-| FIL-04 | Wave 1 | `filters-advanced` | `SearchToolbar` | Open `高级条件` and enter a real minimum width and modification-time boundary. | not-recorded | not-recorded | not-recorded | pending |
-| MEN-01 | Wave 1 | `menu-view` | `WorkspaceViewMenu` | Open `视图` while grouped search results are active. | not-recorded | not-recorded | not-recorded | pending |
-| MEN-02 | Wave 1 | `menu-more` | `WorkspaceMoreMenu` | Open `更多` on a writable active project without hovering the close command. | not-recorded | not-recorded | not-recorded | pending |
-| MEN-03 | Wave 1 | `menu-readonly` | `ReadOnlyBanner` and `WorkspaceMoreMenu` | Open the read-only fixture copy, then open `更多`. | not-recorded | not-recorded | not-recorded | pending |
+| SEA-01 | Wave 1 | `search-grouped` | `SearchResults` | Search `jpg` across `ViewerAcceptance`, then in `视图` choose grouped results. | `SearchResults.test.tsx`; `WorkspaceViewMenu.test.tsx` | not-recorded | not-recorded | pending |
+| SEA-02 | Wave 1 | `search-flat` | `SearchResults` | Search `jpg`, then in `视图` choose flat results. | `SearchResults.test.tsx`; `WorkspaceViewMenu.test.tsx` | not-recorded | not-recorded | pending |
+| SEA-03 | Wave 1 | `search-indexing` | search indexing feedback | Open a freshly scanned fixture and enter a text search before indexing completes. | `SearchResults.test.tsx` | not-recorded | not-recorded | pending |
+| SEA-04 | Wave 1 | `search-paging` | `SearchResults` pagination | Search a term matching more than one page of the 30-image fixture, then navigate to page two. | `SearchResults.test.tsx` | not-recorded | not-recorded | pending |
+| SEA-05 | Wave 1 | `search-empty` | `SearchResults` empty state | Search the unique string `viewer-no-match-20260802`. | `SearchResults.test.tsx` | not-recorded | not-recorded | pending |
+| FIL-01 | Wave 1 | `filters-zero` | `SearchToolbar` | Open `筛选` with all filter conditions cleared. | `SearchToolbar.test.tsx` | not-recorded | not-recorded | pending |
+| FIL-02 | Wave 1 | `filters-one` | `SearchToolbar` | Open `筛选` and enable only `JPEG`. | `SearchToolbar.test.tsx` | not-recorded | not-recorded | pending |
+| FIL-03 | Wave 1 | `filters-multiple` | `SearchToolbar` | Enable `JPEG`, `PNG`, `保留` and `收藏`, then leave the popover open. | `SearchToolbar.test.tsx` | not-recorded | not-recorded | pending |
+| FIL-04 | Wave 1 | `filters-advanced` | `SearchToolbar` | Open `高级条件` and enter a real minimum width and modification-time boundary. | `SearchToolbar.test.tsx` | not-recorded | not-recorded | pending |
+| MEN-01 | Wave 1 | `menu-view` | `WorkspaceViewMenu` | Open `视图` while grouped search results are active. | `WorkspaceViewMenu.test.tsx`; `App.test.tsx` | not-recorded | not-recorded | pending |
+| MEN-02 | Wave 1 | `menu-more` | `WorkspaceMoreMenu` | Open `更多` on a writable active project without hovering the close command. | `WorkspaceMoreMenu.test.tsx`; `styles/app.test.ts` | not-recorded | not-recorded | pending |
+| MEN-03 | Wave 1 | `menu-readonly` | `ReadOnlyBanner` and `WorkspaceMoreMenu` | Open the read-only fixture copy, then open `更多`. | `WorkspaceMoreMenu.test.tsx`; `App.test.tsx` | not-recorded | not-recorded | pending |
 | RAD-01 | Wave 2 | `radial-click` | `RadialFileMenu` | Select one image and secondary-click it without moving the pointer. | not-recorded | not-recorded | not-recorded | pending |
 | RAD-02 | Wave 2 | `radial-gesture` | radial pointer session | Select one image, hold secondary click, move more than 8 px into a primary sector and keep the button held. | not-recorded | not-recorded | not-recorded | pending |
 | RAD-03 | Wave 2 | `radial-mark` | mark secondary ring | Open the radial menu and dwell or navigate to `标记` until the secondary ring opens. | not-recorded | not-recorded | not-recorded | pending |

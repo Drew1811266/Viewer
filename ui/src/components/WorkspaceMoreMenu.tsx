@@ -3,6 +3,7 @@ import { forwardRef, useImperativeHandle, useRef } from 'react'
 import type { ProjectAccess } from '../api/types'
 import ViewerMenuRow from './ui/ViewerMenuRow'
 import ViewerPopover from './ui/ViewerPopover'
+import ViewerStatusTag from './ui/ViewerStatusTag'
 import useViewportPopoverMaxWidth from './useViewportPopoverMaxWidth'
 
 export interface WorkspaceMoreMenuProps {
@@ -75,7 +76,15 @@ const WorkspaceMoreMenu = forwardRef<HTMLElement, WorkspaceMoreMenuProps>(
           <ViewerMenuRow className="workspace-menu-item" onSelect={() => run(onOpenSettings)}>
             软件设置
           </ViewerMenuRow>
-          {access === 'read_only' && <p className="project-access-status">访问权限：只读</p>}
+          {access === 'read_only' && (
+            <ViewerMenuRow
+              className="workspace-menu-item project-access-status"
+              disabledReason="修改命令已停用"
+            >
+              <span>访问权限</span>
+              <ViewerStatusTag tone="warning">只读</ViewerStatusTag>
+            </ViewerMenuRow>
+          )}
           {access === 'read_only' && (
             <ViewerMenuRow
               className="workspace-menu-item"
@@ -92,8 +101,7 @@ const WorkspaceMoreMenu = forwardRef<HTMLElement, WorkspaceMoreMenuProps>(
           <hr className="workspace-menu-separator" />
           <ViewerMenuRow
             className="workspace-menu-item"
-            data-tone="destructive"
-            tone="danger"
+            data-danger-reveal="interaction"
             disabled={closing}
             onSelect={() => run(onCloseProject)}
           >

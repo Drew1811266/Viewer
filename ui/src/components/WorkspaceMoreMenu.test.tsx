@@ -28,12 +28,33 @@ describe('WorkspaceMoreMenu', () => {
     expect(document.querySelector('.workspace-menu-separator')).not.toBeNull()
     const close = screen.getByRole('button', { name: '关闭项目' })
     expect(close).toHaveClass('workspace-menu-item')
-    expect(close).toHaveAttribute('data-tone', 'danger')
+    expect(close).toHaveAttribute('data-tone', 'neutral')
+    expect(close).toHaveAttribute('data-danger-reveal', 'interaction')
     fireEvent.click(settings)
     expect(openSettings).toHaveBeenCalledOnce()
     fireEvent.click(screen.getByRole('button', { name: '更多' }))
     fireEvent.click(screen.getByRole('button', { name: '关闭项目' }))
     expect(closeProject).toHaveBeenCalledOnce()
+  })
+
+  it('shows read-only access as a formal status row with a visible disabled reason', () => {
+    render(
+      <WorkspaceMoreMenu
+        access="read_only"
+        closing={false}
+        onOpenSettings={vi.fn()}
+        onOpenPermissionSettings={vi.fn()}
+        onReselectProject={vi.fn()}
+        onCloseProject={vi.fn()}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: '更多' }))
+    const access = screen.getByRole('button', { name: /访问权限/ })
+    expect(access).toBeDisabled()
+    expect(access).toHaveTextContent('只读')
+    expect(access).toHaveTextContent('修改命令已停用')
+    expect(access.querySelector('.viewer-status-tag')).toHaveAttribute('data-tone', 'warning')
   })
 
   it('closes on Escape and restores focus to its trigger', () => {

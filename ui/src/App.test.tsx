@@ -490,10 +490,13 @@ describe('Viewer empty state', () => {
 
     fireEvent.keyDown(projectMenu, { key: 'Enter' })
     expect(projectMenu).toHaveAttribute('aria-expanded', 'true')
-    expect(screen.getByText('访问权限：只读')).toBeVisible()
+    const accessStatus = screen.getByRole('button', { name: /访问权限/ })
+    expect(accessStatus).toBeDisabled()
+    expect(accessStatus).toHaveTextContent('只读')
+    expect(accessStatus).toHaveTextContent('修改命令已停用')
     fireEvent.keyDown(projectMenu, { key: ' ' })
     expect(projectMenu).toHaveAttribute('aria-expanded', 'false')
-    expect(screen.queryByText('访问权限：只读')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /访问权限/ })).not.toBeInTheDocument()
     expect(screen.getByRole('status', { name: '只读模式' })).toBeVisible()
   })
 

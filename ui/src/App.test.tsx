@@ -962,7 +962,7 @@ describe('Viewer empty state', () => {
     fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
     fireEvent.doubleClick(await screen.findByRole('option', { name: 'poster.webp' }))
 
-    const dialog = screen.getByRole('dialog', { name: /^图片预览 / })
+    const dialog = await screen.findByRole('dialog', { name: /^图片预览 / })
     expect(dialog).toBeVisible()
     expect(within(dialog).getByLabelText('poster.webp .WEBP 暂不支持预览')).toBeVisible()
     expect(screen.queryByRole('dialog', { name: 'poster.webp' })).not.toBeInTheDocument()
@@ -1212,11 +1212,10 @@ describe('Viewer empty state', () => {
       clientY: 260,
     })
     fireEvent.contextMenu(file, { button: 2, clientX: 420, clientY: 260 })
-    expect(
-      screen.getByRole('menu', { name: '文件操作' }).closest('.radial-file-menu'),
-    ).not.toBeNull()
+    const radialMenu = await screen.findByRole('menu', { name: '文件操作' })
+    expect(radialMenu.closest('.radial-file-menu')).not.toBeNull()
     expect(document.querySelector('.file-context-menu')).toBeNull()
-    fireEvent.keyDown(screen.getByRole('menu', { name: '文件操作' }), { key: 'Escape' })
+    fireEvent.keyDown(radialMenu, { key: 'Escape' })
 
     vi.useFakeTimers()
     fireEvent.pointerDown(file, {
@@ -1255,12 +1254,11 @@ describe('Viewer empty state', () => {
       clientY: 260,
     })
 
-    expect(
-      screen.getByRole('menu', { name: '文件操作' }).closest('.radial-file-menu'),
-    ).not.toBeNull()
+    const radialMenu = await screen.findByRole('menu', { name: '文件操作' })
+    expect(radialMenu.closest('.radial-file-menu')).not.toBeNull()
     expect(document.querySelector('.file-context-menu')).toBeNull()
     expect(file).toHaveAttribute('aria-selected', 'true')
-    fireEvent.keyDown(screen.getByRole('menu', { name: '文件操作' }), { key: 'Escape' })
+    fireEvent.keyDown(radialMenu, { key: 'Escape' })
     expect(screen.getByRole('listbox', { name: '图片文件' })).toHaveFocus()
   })
 

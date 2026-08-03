@@ -23,8 +23,10 @@
 
 - Modify `scripts/viewer-dev-launcher.mjs`: derive the legacy-wrapper path, remove it through the runtime boundary, inspect exact and eligible Viewer counts, enforce readiness, and return `viewerPid`.
 - Modify `scripts/start-viewer-dev.mjs`: print the verified Viewer PID while retaining current source and log reporting.
-- Modify `scripts/viewer-dev-launcher.test.mjs`: own all launcher regression tests, real temporary-directory cleanup checks, duplicate readiness cases, CLI output, and README contract checks.
+- Modify `scripts/viewer-dev-launcher.test.mjs`: own all launcher regression tests, real temporary-directory cleanup checks, cross-worktree process scope, duplicate readiness cases, and CLI output.
 - Modify `README.md`: document the single-instance development contract and prohibit secondary bundle activation.
+- Modify `docs/README.md`: index the approved single-instance launcher design as Active.
+- Modify `docs/superpowers/specs/2026-08-02-viewer-single-instance-development-launcher-design.md`: mark the user-reviewed design Approved and active.
 
 ---
 
@@ -231,6 +233,11 @@ it('separates the exact development Viewer from every eligible Viewer', () => {
   assert.deepEqual(observation.eligible.map(({ pid }) => pid), [122, 212, 220, 320])
 })
 ```
+
+Also launch classification from a synthetic `.worktrees/theme` root and assert
+that Viewer and Tauri processes in the main checkout and a sibling worktree
+remain eligible stop targets. This prevents two development sessions from being
+split across checkout boundaries.
 
 Keep the existing `isExactDevelopmentViewerRunning` test until all call sites no longer depend on it; removing that exported compatibility helper is not required by this plan.
 
@@ -448,42 +455,53 @@ git add scripts/viewer-dev-launcher.mjs scripts/start-viewer-dev.mjs scripts/vie
 git commit -m "fix: enforce one Viewer development instance"
 ```
 
+- [ ] **Step 10: Keep linked worktrees in one process scope**
+
+Normalize a `.worktrees/<name>` repository root to its main checkout before
+classifying eligible Viewer executables and Tauri ancestors. Run the focused and
+complete Node suites, then commit the cross-worktree regression separately:
+
+```bash
+git add scripts/viewer-dev-launcher.mjs scripts/viewer-dev-launcher.test.mjs
+git commit -m "fix: keep Viewer worktrees in one launch scope"
+```
+
 ---
 
 ### Task 3: Document and verify the canonical single-instance workflow
 
 **Files:**
-- Modify: `scripts/viewer-dev-launcher.test.mjs:154-165`
 - Modify: `README.md:63-73`
+- Modify: `docs/README.md:9-42`
+- Modify: `docs/superpowers/specs/2026-08-02-viewer-single-instance-development-launcher-design.md:1-5`
 
 **Interfaces:**
 - Consumes: canonical `package.json` command and launch result from Tasks 1–2.
-- Produces: executable README contract and live macOS acceptance evidence.
+- Produces: documented operator contract and live macOS acceptance evidence.
 
-- [ ] **Step 1: Write the failing README contract test**
+- [ ] **Step 1: Keep approved documentation governance consistent**
 
-Extend the `package command` describe block:
+Add the approved design to the Active table in `docs/README.md`:
 
-```js
-it('documents the single-instance launcher without a secondary app open', async () => {
-  const readme = await readFile(new URL('../README.md', import.meta.url), 'utf8')
-
-  assert.match(readme, /只保留一个当前仓库的 Viewer 开发实例/)
-  assert.match(readme, /不得再通过 bundle identifier 或临时 Viewer\.app 二次打开/)
-})
+```markdown
+| [`superpowers/specs/2026-08-02-viewer-single-instance-development-launcher-design.md`](superpowers/specs/2026-08-02-viewer-single-instance-development-launcher-design.md) | Active | — |
 ```
 
-- [ ] **Step 2: Run the focused test and verify red**
+Change the design metadata to:
+
+```markdown
+**Status:** Approved and active
+```
 
 Run:
 
 ```bash
-node --test scripts/viewer-dev-launcher.test.mjs
+node --test scripts/repository-policy.test.mjs
 ```
 
-Expected: FAIL because README does not yet contain the single-instance contract.
+Expected: documentation index and governance tests PASS.
 
-- [ ] **Step 3: Update README with exact operator guidance**
+- [ ] **Step 2: Update README with exact operator guidance**
 
 Replace the paragraph following `pnpm start:viewer` with:
 
@@ -497,17 +515,21 @@ Replace the paragraph following `pnpm start:viewer` with:
 二次打开 Viewer；验证应使用启动器输出的 Viewer PID 和进程表。
 ```
 
-- [ ] **Step 4: Run documentation and launcher tests**
+Human-facing README prose is not guarded by a source-text assertion. The
+behavioral launcher tests and repository documentation policy remain the
+executable contracts.
+
+- [ ] **Step 3: Run documentation and launcher tests**
 
 Run:
 
 ```bash
-node --test scripts/viewer-dev-launcher.test.mjs
+node --test scripts/repository-policy.test.mjs scripts/viewer-dev-launcher.test.mjs
 ```
 
-Expected: all launcher and README contract tests PASS.
+Expected: all documentation governance and launcher behavior tests PASS.
 
-- [ ] **Step 5: Run the full repository verification**
+- [ ] **Step 4: Run the full repository verification**
 
 Run:
 
@@ -517,47 +539,67 @@ pnpm verify:clean
 
 Expected: exit code 0; UI tests, Rust formatting, Clippy, Rust tests, security checks, Cargo policy, and npm license policy all pass. Existing informational dependency-duplication and Biome deprecation notices do not constitute failures.
 
-- [ ] **Step 6: Perform two real macOS launches and prove replacement**
+- [ ] **Step 5: Perform two real macOS launches and prove replacement**
 
 Run:
 
 ```bash
+inspect_viewer_pid() {
+  ps -axo pid=,ppid=,pgid=,command= | node --input-type=module -e '
+    import {
+      inspectDevelopmentViewers,
+      parseProcessTable,
+    } from "./scripts/viewer-dev-launcher.mjs"
+
+    let input = ""
+    for await (const chunk of process.stdin) input += chunk
+    const executablePath = `${process.cwd()}/target/debug/viewer-desktop`
+    const observation = inspectDevelopmentViewers(
+      parseProcessTable(input),
+      process.cwd(),
+      executablePath,
+    )
+
+    if (observation.exact.length !== 1 || observation.eligible.length !== 1) {
+      process.exit(1)
+    }
+    process.stdout.write(String(observation.exact[0].pid))
+  '
+}
+
 pnpm start:viewer
-viewer_exact_path="$PWD/target/debug/viewer-desktop"
-first_viewer_pid=$(ps -axo pid=,command= | awk -v exact="$viewer_exact_path" '$2 == exact && NF == 2 {print $1}')
+first_viewer_pid=$(inspect_viewer_pid)
 test -n "$first_viewer_pid"
-test "$(printf '%s\n' "$first_viewer_pid" | awk 'NF {count += 1} END {print count + 0}')" -eq 1
 test ! -e "$PWD/target/dev-launcher/current-dev-wrapper"
 pnpm start:viewer
-second_viewer_pid=$(ps -axo pid=,command= | awk -v exact="$viewer_exact_path" '$2 == exact && NF == 2 {print $1}')
+second_viewer_pid=$(inspect_viewer_pid)
 test -n "$second_viewer_pid"
-test "$(printf '%s\n' "$second_viewer_pid" | awk 'NF {count += 1} END {print count + 0}')" -eq 1
 test "$first_viewer_pid" != "$second_viewer_pid"
 if kill -0 "$first_viewer_pid" 2>/dev/null; then exit 1; fi
 kill -0 "$second_viewer_pid"
-test -z "$(ps -axo command= | awk '/\/\.worktrees\/.*\/viewer-desktop$/ {print}')"
 git diff --check
 git status --short --branch
 ```
 
-Expected: the first PID is gone, the second PID is alive, exactly one current-repository Viewer remains, no worktree Viewer exists, and Git contains only the intended implementation changes.
+Expected: the first PID is gone, the second PID is alive, exactly one current-worktree Viewer remains across the main repository and every sibling worktree, and Git contains only the intended implementation changes.
 
-- [ ] **Step 7: Commit documentation after live acceptance**
+- [ ] **Step 6: Commit documentation after live acceptance**
 
 ```bash
-git add README.md scripts/viewer-dev-launcher.test.mjs
+git add README.md docs/README.md \
+  docs/superpowers/specs/2026-08-02-viewer-single-instance-development-launcher-design.md \
+  docs/superpowers/plans/2026-08-02-viewer-single-instance-development-launcher.md
 git commit -m "docs: define single-instance Viewer development launch"
 ```
 
-- [ ] **Step 8: Record final evidence**
+- [ ] **Step 7: Record final evidence**
 
 Run:
 
 ```bash
 git status --short --branch
 git log -3 --oneline
-viewer_exact_path="$PWD/target/debug/viewer-desktop"
-ps -axo pid=,ppid=,pgid=,command= | awk -v exact="$viewer_exact_path" '$4 == exact {print}'
+inspect_viewer_pid
 ```
 
-Expected: clean working tree, the three task commits at HEAD, and one Viewer desktop process from the current repository left running for review.
+Expected: clean working tree, the four implementation commits at HEAD, and one Viewer desktop process from the current checkout left running for review.

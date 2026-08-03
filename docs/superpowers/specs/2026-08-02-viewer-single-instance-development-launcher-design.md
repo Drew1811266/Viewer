@@ -1,7 +1,7 @@
 # Viewer Single-Instance Development Launcher Design
 
 **Date:** 2026-08-02  
-**Status:** Approved design; awaiting written-spec review
+**Status:** Approved and active
 
 ## Goal
 
@@ -94,6 +94,11 @@ The launcher keeps the current safety rules:
 4. verify no eligible Viewer process remains;
 5. spawn one detached `pnpm tauri dev` session from the current repository.
 
+When the command runs from a linked `.worktrees/<name>` checkout, process
+classification is anchored at the main repository root. This keeps the main
+checkout and every sibling worktree in one single-instance scope while the
+exact readiness target remains the checkout that invoked the launcher.
+
 The cleanup order ensures a legacy wrapper process is stopped even when its
 command resolves to `target/debug/viewer-desktop`.
 
@@ -149,6 +154,8 @@ to rediscover or reopen the application.
 - define the single-instance behavior before production changes;
 - cover the runtime-only wrapper cleanup boundary;
 - cover duplicate and foreign eligible process rejection;
+- cover main-repository and sibling-worktree process discovery when launched
+  from a linked worktree;
 - cover the verified Viewer PID in the launch result and CLI output;
 - retain all stale-session and process-selection safety tests.
 
@@ -205,7 +212,8 @@ pnpm verify:clean
 4. run `pnpm start:viewer` again;
 5. verify the first PID is gone and one new exact process remains;
 6. verify the wrapper directory is absent;
-7. verify no Viewer process references another worktree;
+7. verify no additional eligible Viewer references the main checkout or a
+   sibling worktree;
 8. leave the latest single development instance running for visual review.
 
 The live check will use process evidence only. It will not activate Viewer by
@@ -216,7 +224,7 @@ bundle identifier because doing so was the original second launch path.
 - every successful `pnpm start:viewer` leaves exactly one eligible Viewer
   process;
 - a repeated launch replaces the previous process instead of adding another;
-- the running executable belongs to the current repository;
+- the running executable belongs to the checkout that invoked the launcher;
 - the legacy temporary wrapper is absent after launch;
 - duplicate detection fails safely and leaves no newly spawned session running;
 - launcher output identifies the verified Viewer PID, source revision, executable,

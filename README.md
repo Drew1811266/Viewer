@@ -68,9 +68,13 @@ pnpm install --frozen-lockfile
 pnpm start:viewer
 ```
 
-启动器会关闭已有 Viewer 开发进程，再从当前仓库执行 Tauri 开发启动。
-日志保存在 `target/dev-launcher/tauri-dev.log`。它不会拉取远端代码、
-切换分支或启动已打包的 `Viewer.app`。
+启动器会关闭已有 Viewer 开发进程，清理废弃的运行时包装器，再从当前仓库
+执行 Tauri 开发启动；成功后只保留一个当前仓库的 Viewer 开发实例。日志保存
+在 `target/dev-launcher/tauri-dev.log`。它不会拉取远端代码、切换分支、安装或
+启动已打包的 `Viewer.app`。
+
+开发自动化在命令成功后不得再通过 bundle identifier 或临时 `Viewer.app`
+二次打开 Viewer；验证应使用启动器输出的 Viewer PID 和进程表。
 
 ## 技术栈
 

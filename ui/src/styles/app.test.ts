@@ -611,6 +611,15 @@ describe('workspace style contracts', () => {
     expect(contrastRatio('#4152b4', '#eceeff')).toBeGreaterThanOrEqual(4.5)
     expect(contrastRatio('#5869cf', '#ffffff')).toBeGreaterThanOrEqual(3)
   })
+
+  it('keeps image metadata visible at the required 1024 px acceptance viewport', () => {
+    expect(appCss).toMatch(
+      /@media \(max-width: 760px\)[\s\S]*?\.image-preview \.viewer-toolbar__leading > span,[\s\S]*?display: none;/,
+    )
+    expect(appCss).not.toMatch(
+      /@media \(max-width: 1100px\)[\s\S]*?\.image-preview \.viewer-toolbar__leading > span,[\s\S]*?display: none;/,
+    )
+  })
 })
 
 interface CssRule {

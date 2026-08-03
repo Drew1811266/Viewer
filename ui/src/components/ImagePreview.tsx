@@ -201,14 +201,16 @@ export default function ImagePreview({
   }
 
   const previewDimensions = file.imageMetadata ?? representation
+  const previewMetadata = [
+    previewDimensions ? `${previewDimensions.width} × ${previewDimensions.height} px` : null,
+    formatBytes(file.size),
+  ]
+    .filter((value): value is string => value !== null)
+    .join(' · ')
   const previewIdentity: ReactNode = (
     <>
       <strong>{file.name}</strong>
-      {previewDimensions && (
-        <span>
-          {previewDimensions.width} × {previewDimensions.height} px
-        </span>
-      )}
+      <span>{previewMetadata}</span>
     </>
   )
   const displayControls: ReactNode = (
@@ -389,4 +391,15 @@ function panBounds(
 
 function clamp(value: number, minimum: number, maximum: number): number {
   return Math.max(minimum, Math.min(maximum, value))
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1_024) return `${bytes} B`
+  if (bytes < 1_024 ** 2) return `${formatUnit(bytes / 1_024)} KiB`
+  if (bytes < 1_024 ** 3) return `${formatUnit(bytes / 1_024 ** 2)} MiB`
+  return `${formatUnit(bytes / 1_024 ** 3)} GiB`
+}
+
+function formatUnit(value: number): string {
+  return value >= 10 ? value.toFixed(0) : value.toFixed(1).replace(/\.0$/, '')
 }

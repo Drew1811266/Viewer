@@ -2186,7 +2186,7 @@ summary,
   width: 30px;
 }
 
-@media (max-width: 1100px) {
+@media (max-width: 760px) {
   .image-preview .viewer-toolbar,
   .compare-workspace .viewer-toolbar {
     gap: var(--viewer-space-2);

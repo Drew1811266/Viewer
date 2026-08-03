@@ -65,7 +65,7 @@ describe('ImagePreview', () => {
     const actions = toolbar.querySelector('.viewer-toolbar__actions')
     expect(toolbar).toHaveClass('viewer-toolbar')
     expect(leading).toHaveTextContent('front.jpg')
-    expect(leading).toHaveTextContent('4000 × 3000 px')
+    expect(leading).toHaveTextContent('4000 × 3000 px · 100 B')
     expect(within(dialog).getByRole('toolbar', { name: '图片显示控制' })).toHaveClass(
       'viewer-segmented-control',
     )
@@ -174,7 +174,7 @@ describe('ImagePreview', () => {
     )
 
     const preview = await screen.findByRole('img', { name: '2.jpg' })
-    expect(screen.getByText('1600 × 1200 px')).toBeVisible()
+    expect(screen.getByText('1600 × 1200 px · 200 B')).toBeVisible()
     expect(preview).toHaveAttribute('data-mode', 'fit')
     expect(request.mock.calls.every((call) => call[1].kind === 'fit_preview')).toBe(true)
 

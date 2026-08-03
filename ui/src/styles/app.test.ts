@@ -45,8 +45,7 @@ describe('workspace style contracts', () => {
     const selectedCard = rules.find((rule) => rule.selector === '.image-cell[aria-selected="true"]')
     const thumbnailFrame = rules.find((rule) => rule.selector === '.image-cell-thumbnail-frame')
     const selectionOverlay = rules.find(
-      (rule) =>
-        rule.selector === '.image-cell[aria-selected="true"] .image-cell-thumbnail-frame::after',
+      (rule) => rule.selector === ".image-cell-thumbnail-frame[data-selected='true']::after",
     )
     const activeFocus = rules.find(
       (rule) =>

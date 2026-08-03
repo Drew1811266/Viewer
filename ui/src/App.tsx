@@ -43,7 +43,9 @@ import TaskBar from './components/TaskBar'
 import TextPreview, { type TextPreviewFiles } from './components/TextPreview'
 import TrashConfirmation from './components/TrashConfirmation'
 import UnsupportedFilePreview from './components/UnsupportedFilePreview'
+import { ViewerIconButton } from './components/ui/ViewerButton'
 import ViewerEmptyState from './components/ui/ViewerEmptyState'
+import ViewerStatusTag from './components/ui/ViewerStatusTag'
 import WorkspaceLoadingState from './components/WorkspaceLoadingState'
 import WorkspaceMoreMenu from './components/WorkspaceMoreMenu'
 import WorkspaceViewMenu, { type WorkspaceViewContext } from './components/WorkspaceViewMenu'
@@ -944,20 +946,22 @@ function ViewerWorkspace({ bridge }: { bridge: ViewerBridge }) {
       <header className="workspace-header">
         <div className="project-identity" data-collapsed={effectiveSidebarCollapsed}>
           {effectiveSidebarCollapsed ? (
-            <button
-              type="button"
-              aria-label={narrowViewport ? '窄窗口中已折叠文件夹栏' : '展开文件夹栏'}
+            <ViewerIconButton
+              icon="chevron-right"
+              label={narrowViewport ? '窄窗口中已折叠文件夹栏' : '展开文件夹栏'}
+              tone="quiet"
               onClick={toggleSidebar}
               disabled={narrowViewport}
-            >
-              展开
-            </button>
+            />
           ) : (
             <>
               <h1>{state.project.displayName}</h1>
-              <button type="button" aria-label="折叠文件夹栏" onClick={toggleSidebar}>
-                收起
-              </button>
+              <ViewerIconButton
+                icon="chevron-left"
+                label="折叠文件夹栏"
+                tone="quiet"
+                onClick={toggleSidebar}
+              />
             </>
           )}
         </div>
@@ -1086,7 +1090,11 @@ function ViewerWorkspace({ bridge }: { bridge: ViewerBridge }) {
           {!state.search.showResults && state.workspace?.workspace === 'content' && (
             <>
               <div className="content-workspace-surface" hidden={compareOpen}>
-                {state.showingAggregate && <p className="aggregate-label">全部后代文件</p>}
+                {state.showingAggregate && (
+                  <ViewerStatusTag className="aggregate-label" tone="info">
+                    全部后代文件
+                  </ViewerStatusTag>
+                )}
                 <ContentBrowser
                   workspace={state.workspace}
                   density={thumbnailDensity}

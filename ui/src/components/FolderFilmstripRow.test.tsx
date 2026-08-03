@@ -187,7 +187,7 @@ describe('FolderFilmstripRow', () => {
 
     const rowError = await screen.findByRole('alert')
     expect(rowError).toHaveTextContent('无法加载图片')
-    expect(rowError).toHaveClass('local-error')
+    expect(rowError).toHaveClass('viewer-local-feedback')
     fireEvent.click(screen.getByRole('button', { name: '重试 B01' }))
 
     await waitFor(() => expect(screen.getByText('无图片')).toBeVisible())

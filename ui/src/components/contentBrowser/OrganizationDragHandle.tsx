@@ -1,6 +1,7 @@
 import type { PointerEvent } from 'react'
 import { useRef } from 'react'
 import type { BrowserFile } from '../../api/types'
+import ViewerIcon from '../ui/ViewerIcon'
 
 export function OrganizationDragHandle({
   file,
@@ -59,7 +60,7 @@ export function OrganizationDragHandle({
         onPointerCancel(event)
       }}
     >
-      ⋮⋮
+      <ViewerIcon name="grip-vertical" size={14} />
     </button>
   )
 }

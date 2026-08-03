@@ -79,14 +79,12 @@
 .other-file-disclosure {
   align-items: center;
   background: transparent;
-  border: 0;
-  border-radius: 0;
   color: var(--viewer-text-secondary);
   display: flex;
   flex: 0 0 auto;
-  gap: 6px;
+  gap: 4px;
   min-height: 38px;
-  padding: 0 12px;
+  padding: 0 8px;
   text-align: left;
   width: 100%;
 }
@@ -95,13 +93,19 @@
   background: var(--viewer-soft-surface);
 }
 
-.other-file-disclosure[aria-expanded="true"] {
+.other-file-disclosure[data-expanded="true"] {
   background: var(--viewer-soft-surface);
 }
 
-.other-file-disclosure:focus-visible {
-  outline: var(--viewer-focus-outline);
-  outline-offset: var(--viewer-focus-offset);
+.other-file-disclosure-button {
+  flex: 0 0 32px;
+}
+
+.other-file-disclosure-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .other-file-panel > h2 {

@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { FolderTreeItem } from '../api/types'
 import FolderTree from './FolderTree'
@@ -68,7 +68,10 @@ describe('FolderTree', () => {
     const onSelect = vi.fn()
     render(<FolderTree folders={folders} selectedId="3" onSelect={onSelect} />)
 
-    fireEvent.click(screen.getByRole('button', { name: '折叠 catalog' }))
+    const disclosure = screen.getByRole('button', { name: '折叠 catalog' })
+    expect(disclosure.querySelector('img')).toHaveAttribute('aria-hidden', 'true')
+    expect(disclosure).not.toHaveTextContent(/▾|▸/)
+    fireEvent.click(disclosure)
     expect(screen.queryByText('catalog/shoes/id-001')).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('treeitem', { name: 'empty' }))
@@ -146,8 +149,10 @@ describe('FolderTree', () => {
       />,
     )
     const target = screen.getByRole('treeitem', { name: 'empty' })
+    expect(target).toHaveAttribute('data-drop-valid', 'true')
     expect(target).toHaveAttribute('data-drop-mode', 'copy')
     expect(target).toHaveAttribute('data-organization-drop-target', 'true')
+    expect(within(target).getByText('复制到 empty')).toBeVisible()
     expect(screen.getByRole('treeitem', { name: 'catalog' })).not.toHaveAttribute('data-drop-mode')
   })
 
@@ -161,7 +166,9 @@ describe('FolderTree', () => {
       />,
     )
     const target = screen.getByRole('treeitem', { name: 'empty' })
+    expect(target).toHaveAttribute('data-drop-valid', 'false')
     expect(target).toHaveAttribute('data-drop-invalid', 'true')
+    expect(within(target).getByText('无法放到当前文件夹')).toBeVisible()
     expect(screen.getByRole('treeitem', { name: 'catalog' })).not.toHaveAttribute(
       'data-drop-invalid',
     )
@@ -175,6 +182,7 @@ describe('FolderTree', () => {
       />,
     )
     expect(target).not.toHaveAttribute('data-drop-mode')
+    expect(target).not.toHaveAttribute('data-drop-valid')
     expect(target).not.toHaveAttribute('data-drop-invalid')
   })
 })

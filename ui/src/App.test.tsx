@@ -228,6 +228,34 @@ describe('Viewer empty state', () => {
     )
   })
 
+  it('shows aggregate browsing as a formal status tag after enabling descendants', async () => {
+    const viewer = bridge()
+    vi.mocked(viewer.folderTree).mockResolvedValue([
+      {
+        entityId: 'folder-a',
+        parentEntityId: null,
+        relativePath: 'id',
+        name: 'id',
+        marker: { reviewState: null, favorite: false },
+      },
+    ])
+    vi.mocked(viewer.queryFolder).mockResolvedValue(contentWorkspace())
+    render(<App bridge={viewer} />)
+    fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
+
+    fireEvent.click(await screen.findByRole('treeitem', { name: 'id' }))
+    await waitFor(() => expect(viewer.queryFolder).toHaveBeenCalledWith('folder-a', false))
+
+    const toolbar = await screen.findByRole('toolbar', { name: 'Viewer 工具栏' })
+    fireEvent.click(within(toolbar).getByRole('button', { name: '视图' }))
+    fireEvent.click(within(toolbar).getByRole('button', { name: '显示全部后代文件' }))
+
+    const aggregate = await screen.findByText('全部后代文件')
+    expect(aggregate).toHaveClass('viewer-status-tag')
+    expect(aggregate).toHaveAttribute('data-tone', 'info')
+    expect(viewer.queryFolder).toHaveBeenLastCalledWith('folder-a', true)
+  })
+
   it('opens the shared View menu for Command-A in a mixed folder', async () => {
     const viewer = bridge()
     vi.mocked(viewer.queryFolder).mockResolvedValue(mixedContentWorkspace())
@@ -287,6 +315,8 @@ describe('Viewer empty state', () => {
     const collapse = within(projectIdentity as HTMLElement).getByRole('button', {
       name: '折叠文件夹栏',
     })
+    expect(collapse.querySelector('img')).toHaveAttribute('aria-hidden', 'true')
+    expect(collapse).not.toHaveTextContent('收起')
     const sidebar = screen.getByRole('complementary', { name: '文件夹栏' })
 
     expect(within(sidebar).getByText('项目目录')).toBeVisible()
@@ -303,9 +333,12 @@ describe('Viewer empty state', () => {
     expect(within(sidebar).getByText('项目目录')).toBeVisible()
     expect(within(sidebar).getByRole('button', { name: 'Catalog' })).toBeVisible()
     expect(projectIdentity).not.toHaveTextContent('Catalog')
-    expect(
-      within(projectIdentity as HTMLElement).getByRole('button', { name: '展开文件夹栏' }),
-    ).toBeVisible()
+    const expand = within(projectIdentity as HTMLElement).getByRole('button', {
+      name: '展开文件夹栏',
+    })
+    expect(expand).toBeVisible()
+    expect(expand.querySelector('img')).toHaveAttribute('aria-hidden', 'true')
+    expect(expand).not.toHaveTextContent('展开')
   })
 
   it('keeps compact toolbar popovers reachable and viewport-contained at the supported narrow width', async () => {

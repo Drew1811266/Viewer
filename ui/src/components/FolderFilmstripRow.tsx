@@ -12,6 +12,8 @@ import {
 import { THUMBNAIL_HEIGHT } from '../settings/thumbnailDensity'
 import AspectThumbnail from './AspectThumbnail'
 import UnsupportedFileState from './UnsupportedFileState'
+import ViewerButton from './ui/ViewerButton'
+import ViewerLocalFeedback from './ui/ViewerLocalFeedback'
 
 const THUMBNAIL_GAP = 8
 const FILMSTRIP_INLINE_PADDING = 12
@@ -250,15 +252,21 @@ export default function FolderFilmstripRow({
             />
           ))}
         {state.status === 'failed' && (
-          <div className="folder-filmstrip-error local-error" role="alert">
-            <span>无法加载图片</span>
-            <button
-              type="button"
-              aria-label={`重试 ${folder.name}`}
-              onClick={() => requestImages(true)}
+          <div className="folder-filmstrip-error">
+            <ViewerLocalFeedback
+              tone="danger"
+              title="无法加载图片"
+              action={
+                <ViewerButton
+                  aria-label={`重试 ${folder.name}`}
+                  onClick={() => requestImages(true)}
+                >
+                  重试
+                </ViewerButton>
+              }
             >
-              重试
-            </button>
+              此文件夹的缩略图暂时不可用。
+            </ViewerLocalFeedback>
           </div>
         )}
         {state.status === 'ready' && state.images.length === 0 && <p>无图片</p>}

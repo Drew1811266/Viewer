@@ -7,6 +7,7 @@ import {
   useRef,
 } from 'react'
 import type { BrowserFile } from '../../api/types'
+import { ViewerIconButton } from '../ui/ViewerButton'
 import VirtualList from '../VirtualList'
 import { OrganizationDragHandle } from './OrganizationDragHandle'
 import { useMeasuredElementHeight } from './useMeasuredElementHeight'
@@ -89,17 +90,22 @@ export default function OtherFilePanel({
           <span id={OTHER_LIST_LABEL_ID}>其它文件</span> · {files.length}
         </h2>
       ) : (
-        <button
-          ref={disclosureRef}
-          type="button"
+        <div
           className="other-file-disclosure"
-          aria-expanded={mode === 'mixed_expanded'}
-          aria-controls={OTHER_LIST_ID}
-          onClick={() => onExpandedChange(mode !== 'mixed_expanded')}
+          data-expanded={mode === 'mixed_expanded' || undefined}
         >
-          <span aria-hidden="true">{mode === 'mixed_expanded' ? '⌄' : '›'}</span>
-          {disclosureLabel}
-        </button>
+          <ViewerIconButton
+            ref={disclosureRef}
+            className="other-file-disclosure-button"
+            icon={mode === 'mixed_expanded' ? 'chevron-up' : 'chevron-down'}
+            label={disclosureLabel}
+            tone="quiet"
+            aria-expanded={mode === 'mixed_expanded'}
+            aria-controls={OTHER_LIST_ID}
+            onClick={() => onExpandedChange(mode !== 'mixed_expanded')}
+          />
+          <span className="other-file-disclosure-label">{disclosureLabel}</span>
+        </div>
       )}
       {mode !== 'mixed_collapsed' && (
         <div

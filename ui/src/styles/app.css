@@ -994,7 +994,7 @@ summary,
 
 .folder-tree [data-organization-drop-target="true"] {
   background: var(--viewer-accent-soft);
-  box-shadow: inset 2px 0 var(--viewer-accent);
+  box-shadow: inset 0 0 0 1px var(--viewer-accent);
   color: var(--viewer-accent-text);
 }
 
@@ -1013,13 +1013,36 @@ summary,
 .folder-disclosure {
   background: transparent;
   border: 0;
+  display: grid;
+  place-items: center;
   padding: 0;
 }
 
 .folder-marker-badge {
+  align-items: center;
   color: var(--viewer-warning-strong);
+  display: inline-flex;
   flex: 0 0 auto;
   font-size: 10px;
+  gap: 2px;
+}
+
+.folder-drop-state {
+  max-width: 132px;
+  margin-left: auto;
+  padding: 2px 5px;
+  border-radius: var(--viewer-radius-row);
+  background: var(--viewer-accent-soft);
+  color: var(--viewer-accent-text);
+  flex: 0 1 auto;
+  font-size: 10px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.folder-drop-state[data-valid='false'] {
+  background: var(--viewer-danger-soft);
+  color: var(--viewer-danger-strong);
 }
 
 .sidebar-separator {
@@ -1496,7 +1519,7 @@ summary,
   width: fit-content;
 }
 
-.image-cell[aria-selected="true"] .image-cell-thumbnail-frame::after {
+.image-cell-thumbnail-frame[data-selected='true']::after {
   border: 2px solid var(--viewer-accent);
   border-radius: 8px;
   content: "";
@@ -1632,7 +1655,6 @@ summary,
   color: var(--viewer-organization-text);
   cursor: grab;
   display: inline-flex;
-  font-size: 14px;
   height: 24px;
   justify-content: center;
   line-height: 1;
@@ -1919,7 +1941,6 @@ summary,
 }
 
 .local-error,
-.folder-filmstrip-error,
 .form-error {
   background: var(--viewer-danger-soft);
   border: 1px solid color-mix(in srgb, var(--viewer-danger) 28%, transparent);
@@ -2401,8 +2422,7 @@ summary,
 }
 
 .aggregate-label {
-  color: var(--viewer-text-tertiary);
-  margin-top: 0;
+  margin: 0 0 var(--viewer-space-2);
 }
 
 .radial-menu-layer {

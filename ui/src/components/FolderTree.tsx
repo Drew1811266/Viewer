@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { FolderTreeItem } from '../api/types'
 import type { OrganizationDropTarget } from '../state/useOrganizationPointerDrag'
+import ViewerIcon from './ui/ViewerIcon'
 import VirtualList from './VirtualList'
 
 interface FolderTreeProps {
@@ -75,56 +76,61 @@ export default function FolderTree({
           overscan={6}
           viewportProps={{ 'data-organization-drop-surface': '' }}
           getKey={(item) => item.folder.entityId}
-          renderItem={({ folder, depth, hasChildren }) => (
-            <div
-              className="folder-tree-row"
-              role="treeitem"
-              aria-label={folder.relativePath}
-              aria-level={depth + 1}
-              aria-selected={folder.entityId === selectedId}
-              aria-expanded={hasChildren ? expanded.has(folder.entityId) : undefined}
-              tabIndex={undefined}
-              data-organization-folder-id={folder.entityId}
-              data-drop-mode={
-                organizationDropTarget?.entityId === folder.entityId && organizationDropTarget.valid
-                  ? organizationDropTarget.mode
-                  : undefined
-              }
-              data-drop-invalid={
-                organizationDropTarget?.entityId === folder.entityId &&
-                !organizationDropTarget.valid
-                  ? true
-                  : undefined
-              }
-              data-organization-drop-target={
-                organizationDropTarget?.entityId === folder.entityId && organizationDropTarget.valid
-                  ? true
-                  : undefined
-              }
-              style={{ paddingInlineStart: depth * 16 }}
-              onClick={() => onSelect(folder.entityId)}
-            >
-              {hasChildren ? (
-                <button
-                  type="button"
-                  className="folder-disclosure"
-                  aria-label={`${expanded.has(folder.entityId) ? '折叠' : '展开'} ${folder.relativePath}`}
-                  onClick={(event) => {
-                    event.stopPropagation()
-                    toggle(folder.entityId)
-                  }}
-                >
-                  {expanded.has(folder.entityId) ? '▾' : '▸'}
-                </button>
-              ) : (
-                <span className="folder-disclosure-placeholder" aria-hidden="true" />
-              )}
-              <span className="folder-name">{folder.name}</span>
-              <span className="folder-marker-badge" aria-label={folderMarkerAriaLabel(folder)}>
-                {folderMarkerLabel(folder)}
-              </span>
-            </div>
-          )}
+          renderItem={({ folder, depth, hasChildren }) => {
+            const isDropTarget = organizationDropTarget?.entityId === folder.entityId
+            const dropValid = isDropTarget ? organizationDropTarget.valid : undefined
+            return (
+              <div
+                className="folder-tree-row"
+                role="treeitem"
+                aria-label={folder.relativePath}
+                aria-level={depth + 1}
+                aria-selected={folder.entityId === selectedId}
+                aria-expanded={hasChildren ? expanded.has(folder.entityId) : undefined}
+                tabIndex={undefined}
+                data-organization-folder-id={folder.entityId}
+                data-drop-valid={dropValid}
+                data-drop-mode={dropValid ? organizationDropTarget?.mode : undefined}
+                data-drop-invalid={isDropTarget && !organizationDropTarget.valid ? true : undefined}
+                data-organization-drop-target={
+                  isDropTarget && organizationDropTarget.valid ? true : undefined
+                }
+                style={{ paddingInlineStart: depth * 16 }}
+                onClick={() => onSelect(folder.entityId)}
+              >
+                {hasChildren ? (
+                  <button
+                    type="button"
+                    className="folder-disclosure"
+                    aria-label={`${expanded.has(folder.entityId) ? '折叠' : '展开'} ${folder.relativePath}`}
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      toggle(folder.entityId)
+                    }}
+                  >
+                    <ViewerIcon
+                      name={expanded.has(folder.entityId) ? 'chevron-down' : 'chevron-right'}
+                      size={14}
+                    />
+                  </button>
+                ) : (
+                  <span className="folder-disclosure-placeholder" aria-hidden="true" />
+                )}
+                <span className="folder-name">{folder.name}</span>
+                <span className="folder-marker-badge" aria-label={folderMarkerAriaLabel(folder)}>
+                  {folderMarkerLabel(folder)}
+                  {folder.marker.favorite && <ViewerIcon name="star" size={11} />}
+                </span>
+                {isDropTarget && (
+                  <span className="folder-drop-state" data-valid={organizationDropTarget.valid}>
+                    {organizationDropTarget.valid
+                      ? `${organizationDropTarget.mode === 'copy' ? '复制到' : '移动到'} ${folder.name}`
+                      : '无法放到当前文件夹'}
+                  </span>
+                )}
+              </div>
+            )
+          }}
         />
       )}
     </div>
@@ -172,7 +178,6 @@ function isReserved(path: string): boolean {
 
 function folderMarkerLabel(folder: FolderTreeItem): string {
   const review = reviewLabel(folder.marker.reviewState)
-  if (folder.marker.favorite) return `${review} ★`
   return folder.marker.reviewState === null ? '' : review
 }
 

@@ -598,7 +598,9 @@ describe('ContentBrowser', () => {
     fireEvent.click(option)
 
     expect(option).toHaveAttribute('aria-selected', 'true')
-    expect(option.querySelector('.image-cell-thumbnail-frame')).not.toBeNull()
+    const thumbnailFrame = option.querySelector('.image-cell-thumbnail-frame')
+    expect(thumbnailFrame).toHaveAttribute('data-selected', 'true')
+    expect(option).not.toHaveAttribute('data-selected')
     expect(screen.getByRole('status', { name: '选择摘要' })).toHaveTextContent(
       '右键打开圆盘菜单 · Esc 取消选择',
     )
@@ -1193,6 +1195,8 @@ describe('ContentBrowser', () => {
       'Expected image export surface',
     )
     const handle = screen.getByRole('button', { name: '整理 2.jpg' })
+    expect(handle.querySelector('img')).toHaveAttribute('aria-hidden', 'true')
+    expect(handle).not.toHaveTextContent('⋮⋮')
     expect(option).not.toHaveAttribute('draggable')
     expect(exportSurface).toHaveAttribute('draggable', 'true')
     expect(handle).toHaveAttribute('draggable', 'false')
@@ -1907,7 +1911,7 @@ function thumbnailSurface(name: string): HTMLElement {
 async function thumbnailImage(name: string): Promise<HTMLImageElement> {
   let image: HTMLImageElement | null = null
   await waitFor(() => {
-    image = screen.getByRole('option', { name }).querySelector('img')
+    image = screen.getByRole('option', { name }).querySelector('.aspect-thumbnail > img')
     expect(image).not.toBeNull()
   })
   if (image === null) throw new Error(`Expected thumbnail image for ${name}`)

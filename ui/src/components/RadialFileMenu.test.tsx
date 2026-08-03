@@ -79,6 +79,10 @@ describe('RadialFileMenu', () => {
     expect(screen.getByRole('button', { name: '关闭文件操作背景' })).toHaveClass(
       'radial-menu-scrim',
     )
+    for (const item of screen.getAllByRole('menuitem')) {
+      expect(item.querySelector('.viewer-icon')).toHaveAttribute('aria-hidden', 'true')
+    }
+    expect(container).not.toHaveTextContent(/◉|★|⇄|⌫|▣|ⓘ/)
   })
 
   it('keeps exactly one sequential tab stop across the whole component', () => {
@@ -337,10 +341,56 @@ describe('RadialFileMenu', () => {
 
     expect(
       screen.getByRole('menuitemcheckbox', { name: '保留' }).querySelector('.radial-state-cue'),
-    ).toHaveTextContent('✓')
+    ).toContainElement(
+      screen
+        .getByRole('menuitemcheckbox', { name: '保留' })
+        .querySelector('.radial-state-cue .viewer-icon'),
+    )
     expect(
       screen.getByRole('menuitemcheckbox', { name: '切换收藏' }).querySelector('.radial-state-cue'),
-    ).toHaveTextContent('±')
+    ).toHaveTextContent('混合')
+    expect(screen.getByRole('menuitemcheckbox', { name: '切换收藏' })).not.toHaveTextContent('±')
+  })
+
+  it('shows the focused disabled reason on the circular surface as well as in the title', () => {
+    render(
+      <RadialFileMenu
+        origin={{ x: 320, y: 240 }}
+        pointerId={null}
+        selectionCount={1}
+        model={model}
+        onAction={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    )
+
+    const compare = screen.getByRole('menuitem', { name: '并排对比' })
+    fireEvent.focus(compare)
+    expect(compare).toHaveAttribute('title', '请选择 2–20 张图片')
+    expect(screen.getByRole('status')).toHaveTextContent('请选择 2–20 张图片')
+  })
+
+  it('promotes a held secondary-click session after 180 ms without executing at center', () => {
+    vi.useFakeTimers()
+    try {
+      const close = vi.fn()
+      render(
+        <RadialFileMenu
+          origin={{ x: 320, y: 240 }}
+          pointerId={7}
+          selectionCount={1}
+          model={model}
+          onAction={vi.fn()}
+          onClose={close}
+        />,
+      )
+
+      act(() => vi.advanceTimersByTime(180))
+      fireEvent.pointerUp(window, { pointerId: 7, clientX: 324, clientY: 243 })
+      expect(close).toHaveBeenCalledOnce()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it.each([

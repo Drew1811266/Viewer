@@ -2527,9 +2527,13 @@ summary,
   width: 66px;
 }
 
-.radial-menu-button > span:first-child {
-  font-size: 18px;
+.radial-menu-icon {
+  align-items: center;
+  display: inline-flex;
+  height: 20px;
+  justify-content: center;
   line-height: 1;
+  width: 20px;
 }
 
 .radial-state-cue {
@@ -2549,6 +2553,16 @@ summary,
   width: 15px;
 }
 
+.radial-state-cue[data-state="mixed"] {
+  border-radius: 999px;
+  font-size: 8px;
+  height: 16px;
+  min-width: 28px;
+  padding: 0 5px;
+  right: -6px;
+  width: auto;
+}
+
 .radial-menu-button[data-level="secondary"] {
   color: var(--viewer-text);
   font-size: 9px;
@@ -2565,7 +2579,8 @@ summary,
   pointer-events: auto;
 }
 
-.radial-menu-button[data-tone="destructive"] {
+.radial-menu-button[data-tone="destructive"]:hover,
+.radial-menu-button[data-tone="destructive"]:focus-visible {
   color: var(--viewer-danger);
 }
 
@@ -2603,6 +2618,24 @@ summary,
 .radial-menu-center strong {
   color: var(--viewer-text);
   font-size: 12px;
+}
+
+.radial-menu-center[data-has-reason="true"] {
+  justify-content: flex-start;
+  padding-top: 18px;
+}
+
+.radial-menu-reason {
+  color: var(--viewer-text-tertiary);
+  font-size: 8px;
+  font-weight: 600;
+  left: 139px;
+  line-height: 1.2;
+  pointer-events: none;
+  position: absolute;
+  text-align: center;
+  top: 169px;
+  width: 58px;
 }
 
 .radial-center-context {

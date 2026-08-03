@@ -47,6 +47,6 @@ describe('radial menu geometry', () => {
     expect(fitMenuOrigin({ x: 640, y: 796 }, viewport)).toEqual({ x: 640, y: 620 })
     expect(fitMenuOrigin({ x: 1276, y: 400 }, viewport)).toEqual({ x: 1100, y: 400 })
     expect(primaryCenterAngle(1)).toBe(-30)
-    expect(MOTION_THRESHOLD).toBe(12)
+    expect(MOTION_THRESHOLD).toBe(8)
   })
 })

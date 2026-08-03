@@ -16,6 +16,9 @@ import {
   secondaryIndexAt,
 } from './radialMenuGeometry'
 import type { RadialLeafAction, RadialMenuItem } from './radialMenuModel'
+import ViewerIcon from './ui/ViewerIcon'
+
+const GESTURE_HOLD_DELAY = 180
 
 export interface RadialMenuRequest {
   files: BrowserFile[]
@@ -59,25 +62,44 @@ export default function RadialFileMenu({
   const [clickMode, setClickMode] = useState(pointerId === null)
   const expandTimer = useRef<number | null>(null)
   const closeTimer = useRef<number | null>(null)
+  const gesturePromotionTimer = useRef<number | null>(null)
   const secondaryFocusRequested = useRef<number | null>(null)
   const rootRef = useRef<HTMLDivElement>(null)
   const startPoint = useRef(origin)
   const maximumTravelled = useRef(0)
+  const gesturePromoted = useRef(pointerId === null)
   const gestureCancelled = useRef(false)
   const expandedItem = expandedIndex === null ? null : (model[expandedIndex] ?? null)
   const secondaryAnchor = expandedIndex === null ? 0 : primaryCenterAngle(expandedIndex)
   const displayedPrimaryIndex = clickMode ? primaryIndex : pointerPrimaryIndex
+  const displayedItem =
+    secondaryIndex === null
+      ? displayedPrimaryIndex === null
+        ? null
+        : (model[displayedPrimaryIndex] ?? null)
+      : (expandedItem?.children?.[secondaryIndex] ?? null)
+  const displayedDisabledReason =
+    displayedItem?.disabled === true ? displayedItem.disabledReason : undefined
   const requestClose = useCallback(() => onClose(returnFocusTarget), [onClose, returnFocusTarget])
 
   useEffect(() => {
+    if (pointerId !== null) {
+      gesturePromotionTimer.current = window.setTimeout(() => {
+        gesturePromotionTimer.current = null
+        gesturePromoted.current = true
+      }, GESTURE_HOLD_DELAY)
+    }
     rootRef.current
       ?.querySelector<HTMLButtonElement>('[data-level="primary"]:not([aria-disabled="true"])')
       ?.focus()
     return () => {
       if (expandTimer.current !== null) window.clearTimeout(expandTimer.current)
       if (closeTimer.current !== null) window.clearTimeout(closeTimer.current)
+      if (gesturePromotionTimer.current !== null) {
+        window.clearTimeout(gesturePromotionTimer.current)
+      }
     }
-  }, [])
+  }, [pointerId])
 
   useEffect(() => {
     if (pointerId === null || clickMode) return
@@ -88,6 +110,7 @@ export default function RadialFileMenu({
         maximumTravelled.current,
         Math.hypot(point.x - startPoint.current.x, point.y - startPoint.current.y),
       )
+      if (maximumTravelled.current >= MOTION_THRESHOLD) promoteGesture()
       const child =
         expandedItem?.children === undefined
           ? null
@@ -110,7 +133,9 @@ export default function RadialFileMenu({
         maximumTravelled.current,
         Math.hypot(event.clientX - startPoint.current.x, event.clientY - startPoint.current.y),
       )
-      if (maximumTravelled.current < MOTION_THRESHOLD) {
+      if (maximumTravelled.current >= MOTION_THRESHOLD) promoteGesture()
+      if (!gesturePromoted.current) {
+        clearGesturePromotionTimer()
         setClickMode(true)
         return
       }
@@ -130,6 +155,7 @@ export default function RadialFileMenu({
     const cancel = (event: PointerEvent) => {
       if (event.pointerId !== pointerId || gestureCancelled.current) return
       gestureCancelled.current = true
+      clearGesturePromotionTimer()
       if (expandTimer.current !== null) {
         window.clearTimeout(expandTimer.current)
         expandTimer.current = null
@@ -186,6 +212,17 @@ export default function RadialFileMenu({
       setExpandedIndex(index)
       setSecondaryIndex(null)
     }, 120)
+  }
+
+  function clearGesturePromotionTimer() {
+    if (gesturePromotionTimer.current === null) return
+    window.clearTimeout(gesturePromotionTimer.current)
+    gesturePromotionTimer.current = null
+  }
+
+  function promoteGesture() {
+    gesturePromoted.current = true
+    clearGesturePromotionTimer()
   }
 
   function expandImmediately(index: number) {
@@ -390,11 +427,19 @@ export default function RadialFileMenu({
             requestClose()
           }}
           aria-label="关闭文件操作"
+          data-has-reason={displayedDisabledReason === undefined ? undefined : true}
         >
           <strong>{selectionCount} 个文件</strong>
           {readOnly && <span className="radial-center-context">只读</span>}
-          <span>{readOnly ? '中心取消' : '回到中心取消'}</span>
+          {displayedDisabledReason === undefined && (
+            <span>{readOnly ? '中心取消' : '回到中心取消'}</span>
+          )}
         </button>
+        {displayedDisabledReason !== undefined && (
+          <div className="radial-menu-reason" role="status">
+            {displayedDisabledReason}
+          </div>
+        )}
       </div>
     </div>
   )
@@ -448,16 +493,18 @@ function RadialButton({
       onPointerEnter={onPointerEnter}
       onClick={onClick}
     >
-      <span aria-hidden="true">{item.symbol}</span>
+      <span className="radial-menu-icon" aria-hidden="true">
+        <ViewerIcon name={item.icon} size={level === 'primary' ? 18 : 16} />
+      </span>
       <span>{item.label}</span>
       {item.checked === true && (
         <span className="radial-state-cue" aria-hidden="true">
-          ✓
+          <ViewerIcon name="check" size={10} />
         </span>
       )}
       {item.checked === 'mixed' && (
-        <span className="radial-state-cue" aria-hidden="true">
-          ±
+        <span className="radial-state-cue" data-state="mixed" aria-hidden="true">
+          混合
         </span>
       )}
     </button>

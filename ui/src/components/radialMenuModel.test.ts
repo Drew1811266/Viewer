@@ -23,13 +23,22 @@ describe('buildRadialMenuModel', () => {
   })
 
   it('keeps the six primary positions stable', () => {
-    expect(buildRadialMenuModel(context()).map((item) => item.id)).toEqual([
+    const model = buildRadialMenuModel(context())
+    expect(model.map((item) => item.id)).toEqual([
       'preview',
       'mark',
       'organize',
       'trash',
       'compare',
       'info',
+    ])
+    expect(model.map((item) => [item.id, item.icon])).toEqual([
+      ['preview', 'eye'],
+      ['mark', 'star'],
+      ['organize', 'folder-input'],
+      ['trash', 'trash-2'],
+      ['compare', 'columns-2'],
+      ['info', 'info'],
     ])
   })
 
@@ -46,6 +55,18 @@ describe('buildRadialMenuModel', () => {
       'organize.rename',
       'organize.copy',
       'organize.move',
+    ])
+    expect(model[1]?.children?.map((item) => item.icon)).toEqual([
+      'check',
+      'circle-dot',
+      'x',
+      'circle',
+      'star',
+    ])
+    expect(model[2]?.children?.map((item) => item.icon)).toEqual([
+      'pencil',
+      'copy',
+      'folder-output',
     ])
   })
 

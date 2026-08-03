@@ -1,5 +1,6 @@
 import type { ReviewState } from '../api/types'
 import { MAX_COMPARE_IMAGES, MIN_COMPARE_IMAGES } from '../state/comparePolicy'
+import type { ViewerIconName } from './ui/ViewerIcon'
 
 export type RadialLeafAction =
   | 'preview'
@@ -32,7 +33,7 @@ export interface RadialMenuContext {
 export interface RadialMenuItem {
   id: RadialPrimaryId | RadialLeafAction
   label: string
-  symbol: string
+  icon: ViewerIconName
   disabled: boolean
   disabledReason?: string
   tone?: 'normal' | 'destructive'
@@ -59,10 +60,16 @@ export function buildRadialMenuModel(context: RadialMenuContext): RadialMenuItem
           : undefined
 
   const markChildren: RadialMenuItem[] = [
-    markerItem('mark.keep', '保留', '✓', context.commonReview === 'keep', writesDisabled),
-    markerItem('mark.pending', '待定', '•', context.commonReview === 'pending', writesDisabled),
-    markerItem('mark.reject', '淘汰', '×', context.commonReview === 'reject', writesDisabled),
-    markerItem('mark.clear', '清除', '○', context.commonReview === null, writesDisabled),
+    markerItem('mark.keep', '保留', 'check', context.commonReview === 'keep', writesDisabled),
+    markerItem(
+      'mark.pending',
+      '待定',
+      'circle-dot',
+      context.commonReview === 'pending',
+      writesDisabled,
+    ),
+    markerItem('mark.reject', '淘汰', 'x', context.commonReview === 'reject', writesDisabled),
+    markerItem('mark.clear', '清除', 'circle', context.commonReview === null, writesDisabled),
     {
       id: 'mark.favorite',
       label:
@@ -71,7 +78,7 @@ export function buildRadialMenuModel(context: RadialMenuContext): RadialMenuItem
           : context.commonFavorite === 'mixed'
             ? '切换收藏'
             : '收藏',
-      symbol: '★',
+      icon: 'star',
       disabled: writesDisabled,
       checked: context.commonFavorite,
     },
@@ -81,25 +88,25 @@ export function buildRadialMenuModel(context: RadialMenuContext): RadialMenuItem
     {
       id: 'organize.rename',
       label: context.selectedCount > 1 ? '批量重命名' : '重命名',
-      symbol: '✎',
+      icon: 'pencil',
       disabled: writesDisabled,
     },
-    { id: 'organize.copy', label: '复制到', symbol: '⧉', disabled: writesDisabled },
-    { id: 'organize.move', label: '移动到', symbol: '→', disabled: writesDisabled },
+    { id: 'organize.copy', label: '复制到', icon: 'copy', disabled: writesDisabled },
+    { id: 'organize.move', label: '移动到', icon: 'folder-output', disabled: writesDisabled },
   ]
 
   return [
     {
       id: 'preview',
       label: '预览',
-      symbol: '◉',
+      icon: 'eye',
       disabled: !context.previewEnabled,
       disabledReason: context.previewDisabledReason,
     },
     {
       id: 'mark',
       label: '标记',
-      symbol: '★',
+      icon: 'star',
       disabled: writesDisabled,
       disabledReason: writeReason('标记'),
       children: markChildren,
@@ -107,7 +114,7 @@ export function buildRadialMenuModel(context: RadialMenuContext): RadialMenuItem
     {
       id: 'organize',
       label: '整理',
-      symbol: '⇄',
+      icon: 'folder-input',
       disabled: writesDisabled,
       disabledReason: writeReason('整理'),
       children: organizeChildren,
@@ -115,7 +122,7 @@ export function buildRadialMenuModel(context: RadialMenuContext): RadialMenuItem
     {
       id: 'trash',
       label: '移到废纸篓',
-      symbol: '⌫',
+      icon: 'trash-2',
       disabled: writesDisabled,
       disabledReason: writeReason('删除'),
       tone: 'destructive',
@@ -123,7 +130,7 @@ export function buildRadialMenuModel(context: RadialMenuContext): RadialMenuItem
     {
       id: 'compare',
       label: '并排对比',
-      symbol: '▣',
+      icon: 'columns-2',
       disabled: compareDisabled,
       disabledReason: context.busy
         ? '请等待当前文件操作完成'
@@ -140,7 +147,7 @@ export function buildRadialMenuModel(context: RadialMenuContext): RadialMenuItem
     {
       id: 'info',
       label: '信息',
-      symbol: 'ⓘ',
+      icon: 'info',
       disabled: noSelection,
       disabledReason: noSelection ? '未选择文件' : undefined,
     },
@@ -150,9 +157,9 @@ export function buildRadialMenuModel(context: RadialMenuContext): RadialMenuItem
 function markerItem(
   id: RadialLeafAction,
   label: string,
-  symbol: string,
+  icon: ViewerIconName,
   checked: boolean,
   disabled: boolean,
 ): RadialMenuItem {
-  return { id, label, symbol, checked, disabled }
+  return { id, label, icon, checked, disabled }
 }

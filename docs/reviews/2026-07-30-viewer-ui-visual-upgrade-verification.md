@@ -1,95 +1,71 @@
 # Viewer UI Visual Upgrade Verification
 
-- Specification: `docs/superpowers/specs/2026-07-30-viewer-complete-ui-visual-upgrade-design.md`
-- Current implementation commits: `b097976` (visual alignment) and `8e957af` (overlay-test synchronization)
-- Platform: macOS development environment
-- Evidence rule:
-  - **Manual verified** means the implemented state was directly inspected at the recorded viewport.
-  - **Automated only** means tests or static checks passed, but the required same-state manual inspection is absent.
-  - **Unverified** means neither complete manual coverage nor a sufficient automated substitute exists. Automated evidence never substitutes for the required manual matrix.
+## Current evidence authority
 
-## Automated verification
+- Visual specification: `docs/superpowers/specs/2026-07-30-viewer-complete-ui-visual-upgrade-design.md`
+- Migration design: `docs/superpowers/specs/2026-08-02-viewer-atlas-to-product-complete-migration-design.md`
+- Non-omission audit: `docs/reviews/2026-08-02-viewer-atlas-product-component-gap-audit.md`
+- Migration ledger: `docs/reviews/2026-08-02-viewer-atlas-product-migration-ledger.md`
+- Current product commit: `676290fe200e353c3074da3209ce61d99ed5a565`
+- Branch: `codex/viewer-atlas-product-migration`
+- Platform: macOS `26.5.2` (`25F84`), built-in `2560 × 1664` Retina display
 
-| Command | Exit | Final result |
+Historical screenshots remain useful for diagnosis, but only evidence indexed for the current product commit can close the Task 15 visual gate.
+
+## Automated gate
+
+The complete gate was run on the current product commit after the final preview and dialog corrections.
+
+| Command | Exit | Evidence |
 | --- | ---: | --- |
-| `pnpm --dir ui check` | 0 | Biome and TypeScript passed (one existing deprecation notice). |
-| `pnpm --dir ui test` | 0 | 60 files; 590 passed, 1 skipped. |
+| `pnpm --dir ui check` | 0 | Biome and TypeScript passed across 168 files; one existing Biome configuration deprecation notice remains informational. |
+| `pnpm --dir ui test` | 0 | 67 test files; 648 passed and 1 skipped. |
 | `pnpm --dir ui build` | 0 | TypeScript and Vite production build passed. |
-| `pnpm test:policy` | 0 | 28 repository-policy tests passed; 47 scope requirements mapped exactly once. |
-| `pnpm verify:clean` | 0 | Policy, UI, Rust, security, and license gates passed on clean commit `8e957af`. |
+| `pnpm test:policy` | 0 | 28 policy tests passed; 47 scope requirements mapped exactly once. |
+| `pnpm security` | 0 | 8 security-boundary tests passed; Cargo bans/licenses/sources and npm license policy passed. Duplicate-crate output is warning-only. |
 
-The current native development build was inspected after the `b097976` product changes; `8e957af`
-changes only asynchronous test assertions and does not alter production output.
+## Current native acceptance
 
-## State matrix
+The current 1024×720 bundle is running as the only Viewer process from this worktree. Each accepted screenshot below was paired with its exact atlas state in one combined image before judgment.
 
-| Required state | Evidence class | Recorded evidence | Native 1440×900 |
-| --- | --- | --- | --- |
-| No-project resting/light appearance | Manual verified | Historical 1280×720 same-viewport IAB comparison; lifecycle/light tests on `8e957af`. | Unverified |
-| Valid drag, invalid drag, and opening states | Automated only | Lifecycle and drop-state tests on `8e957af`. | Unverified |
-| Shell and sidebar | Manual verified | Current native 1229×768 expanded and collapsed captures from `b097976`, each inspected in a combined reference/native comparison. | Unverified |
-| Category/content grid | Manual verified | Current native 1229×768 content grid, selection outline, and selection summary from `b097976`. | Unverified |
-| Select-all, selection summary, other-file expansion | Automated only | Component and App tests on `8e957af`. | Unverified |
-| Organization and Finder drag target | Automated only | Component tests on `8e957af`. | Unverified |
-| Filter and result list | Manual verified | Historical native 1229×768 and compact 1024×720 subset captures from `1a21283`; tests on `8e957af`. | Unverified |
-| Progress and pagination | Automated only | Component and App tests on `8e957af`. | Unverified |
-| Image preview fit/navigation | Manual verified | Historical native 1229×768 preview capture from `1a21283`; tests on `8e957af`. | Unverified |
-| Image preview 100%, zoom, rotate, loading, and error | Automated only | Preview component and App tests on `8e957af`. | Unverified |
-| Two-, four-, and twenty-file comparison | Automated only | Component and App tests on `8e957af`; ignored fixture supplies candidates. | Unverified |
-| Compare transforms, synchronization, and read-only controls | Automated only | Compare component and App tests on `8e957af`. | Unverified |
-| Unsupported preview and info inspector | Manual verified | Historical native 1229×768 captures from `1a21283`; tests on `8e957af`. | Unverified |
-| Markdown, plain text, encoding, truncation, and two-file info | Automated only | Component and App tests on `8e957af`. | Unverified |
-| Unavailable image and multi-file info | Automated only | Component and App tests on `8e957af`. | Unverified |
-| Ordinary secondary click and Control-click fallback | Manual subset plus automated | Current native radial-menu capture for ordinary secondary click; both pointerup/contextmenu orders, compact deduplication, selection/focus restoration, and Control-click tests on `8e957af`. | Unverified |
-| Held secondary radial gesture | Automated only | Both contextmenu orders with dwell/movement promotion and keyboard radial-menu tests on `8e957af`. | Unverified |
-| Settings dialog | Manual verified | Historical native 1229×768 capture from `1a21283`; dialog tests on `8e957af`. | Unverified |
-| Rename, batch, destination, trash, and close dialogs | Automated only | Dialog component and App tests on `8e957af`. | Unverified |
-| Task stack and error card | Manual verified | Historical native 1229×768 capture from `1a21283`; tests on `8e957af`. | Unverified |
-| Results, notices, and row-error states | Automated only | Component and App tests on `8e957af`. | Unverified |
-| Recovery and read-only strip | Automated only | Component and App tests on `8e957af`. | Unverified |
-| Scanning, indexing, loading, and recovery transitions | Automated only | Lifecycle component and App tests on `8e957af`. | Unverified |
+| State | Current combined comparison | Verdict |
+| --- | --- | --- |
+| `PRE-01` — image preview, fit | `target/atlas-product-migration-acceptance/676290fe200e353c3074da3209ce61d99ed5a565/1024x720/PRE-01/combined.png` | 1024 pass. The 52 px three-part toolbar, visible filename/dimensions/file size, segmented transform controls, large fitted image stage, light surface, shadow, and floating navigation align with the atlas. Real fixture metadata and source dimensions intentionally differ from the atlas fixture. |
+| `DIA-02` — single rename | `target/atlas-product-migration-acceptance/676290fe200e353c3074da3209ce61d99ed5a565/1024x720/DIA-02/combined.png` | 1024 pass. The ordinary dialog now uses the atlas 430 px width, 14 px radius, restrained shadow, field hierarchy, cancel-first footer, and primary rename action. The real extension-edit option is retained because it is an existing product capability. |
 
-No required state has current native 1440×900 evidence for `8e957af`.
+The same audit run also exposed and corrected three real product mismatches before these captures:
 
-## Accessibility
+1. Ordinary rename and close dialogs inherited the 760 px complex-flow shell.
+2. Image metadata was hidden at 1024 px by a breakpoint intended for genuinely narrow layouts.
+3. `适应窗口` did not upscale a smaller safe preview representation to use the available stage.
 
-Historical manual checks on `1a21283` covered Meta+F, Meta+I, Escape/focus restoration, preview controls, and compact popover containment. Current `8e957af` accessibility evidence combines automated named-role, focus-visible, arrow-navigation, Meta+A, reduced-motion, read-only, and compact-containment tests with current native inspection of the named collapse/expand controls and radial command surface. A complete manual accessibility pass on the current implementation has not been recorded.
+Focused red/green coverage was added for all three corrections before the complete automated gate was rerun.
 
-## Current targeted native acceptance
+## Native evidence blockers
 
-The highest-priority shell corrections were inspected in the running macOS development build with
-the same interaction state placed beside the approved atlas reference:
+### Exact 1440×900 capture
 
-| State | Native evidence | Combined comparison | Result |
-| --- | --- | --- | --- |
-| Expanded sidebar, one selected image | `target/final-design-acceptance-2026-08-02/native-fresh-expanded-selected-1229x768.jpg` | `target/final-design-acceptance-2026-08-02/reference-native-expanded-comparison.png` | Fresh restart confirms the 40 px header, 220 px default sidebar, project header action, 24 px directory geometry, thumbnail-only selection outline, and floating selection summary. |
-| Collapsed navigation rail | `target/final-design-acceptance-2026-08-02/native-collapsed-selected-1229x768.jpg` | `target/final-design-acceptance-2026-08-02/reference-native-collapsed-comparison.png` | 52 px rail, non-wrapping expand action, compact root/folder navigation, and four-column natural grid at the available width conform. |
-| One-file radial command surface | `target/final-design-acceptance-2026-08-02/native-radial-menu.png` | Direct native inspection against the atlas radial family and Figma card 01 | Six sectors, center cancel target, disabled compare state, destructive command treatment, dimmed backdrop, and selected-thumbnail outline conform. |
+The required 1440×900 native window cannot be produced on the current built-in display. A 1440×900 Tauri bundle was built and launched, but macOS clamped the captured application window to 1291×768. The unscaled constraint capture is:
 
-The combined comparisons use the same shell and selection state, but the atlas and native build use
-different fixture images. They are visual-structure acceptance evidence rather than pixel-diff tests.
+`target/atlas-product-migration-acceptance/7b39607b995330601cbc0904acb1df441de1a441/actual-1291x768/LAU-01/native.jpg`
 
-## Visual comparison
+Resizing or stretching that image would fabricate evidence, so every ledger row still requiring native 1440×900 remains `pending` or `blocked`.
 
-| Board family | Reference viewport(s) | Evidence class | Current status |
-| --- | --- | --- | --- |
-| visual-density | 1440×900, 1024×720 | Current native 1229×768 targeted pair plus historical subset | Expanded and collapsed density corrected; current native 1440×900 comparison pending. |
-| content-browser | 1440×900, 1024×720 | Current native 1229×768 targeted pair plus current automated tests | Selection outline and summary recaptured; complete required-viewport matrix remains pending. |
-| search-tasks | 1440×900, 1024×720 | Historical manual subset plus current automated tests | Current native 1440×900 comparison pending. |
-| preview-compare | 1440×900, 1024×720 | Historical manual preview plus current automated tests | Current toolbar state requires recapture; comparison states remain automated only. |
-| text-info | 1440×900, 1024×720 | Historical manual subset plus current automated tests | Missing current full-state manual coverage. |
-| radial-reference | 1440×900, 1024×720 | Current native click-mode capture plus current automated tests | Held-pointer state remains unverified manually. |
-| menus-dialogs | 1440×900, 1024×720 | Historical manual settings subset plus current automated tests | Current compact-menu state requires recapture. |
-| states-dialogs | 1440×900, 1024×720 | Historical manual task/error subset plus current automated tests | Missing current full-state manual coverage. |
-| launch-loading | 1440×900, 1024×720 | Historical manual no-project subset plus current automated tests | Native 1440×900 and remaining lifecycle states pending. |
-| empty-project | 1440×900, 1024×720 | Historical manual 1280×720 normalized pair | Current native required-viewports comparison pending. |
-| visual-system-motion | 1440×900, 1024×720 | Historical manual light-surface subset plus current automated tests | Focus/palette changes through `8e957af` require recapture. |
+### Native radial-menu screenshot
 
-The reference captures remain `target/visual-qa/reference-*-1440x900.png` and `reference-*-1024x720.png`. Same-viewport historical IAB comparison exists only for the no-project pair at 1280×720. Historical native display captures are 1229×768, and historical compact webview captures are 1024×720.
+The native accessibility tree confirms the visible radial commands and states, including Preview, Mark, Organize, Trash, disabled Compare with its reason, and Info. However, the current Computer Use capture surface returns a null screenshot while the native menu accessibility role is open. Existing diagnostic evidence is retained at:
 
-## Remaining differences
+- `target/atlas-product-migration-acceptance/7b39607b995330601cbc0904acb1df441de1a441/1024x720/RAD-01/native-accessibility-tree.txt`
+- `target/atlas-product-migration-acceptance/7b39607b995330601cbc0904acb1df441de1a441/1024x720/RAD-04/native-accessibility-tree.txt`
 
-- No current native 1440×900 capture exists; current targeted native evidence is 1229×768.
-- The automation environment cannot inject and inspect the complete native held-secondary gesture.
-- Several required state families have automated coverage but no current manual same-state inspection.
-- These are pending verification gaps, not product-owner-authorized exceptions. Native 1440×900 and missing manual state coverage await explicit product-owner exception or new evidence.
+Accessibility text is not a substitute for the required visual comparison, so the radial visual rows are not marked pass.
+
+## Completion status
+
+- Formal product code now covers the 17 audited groups and the 89-state ledger remains one-to-one guarded by tests.
+- The complete automated gate passes on the current product commit.
+- Two high-risk states have current exact 1024×720 joint visual evidence after the latest fixes.
+- The final Task 15 gate is **not complete**: the full 89-state current-commit native matrix and every exact 1440×900 comparison are still required.
+- No row is promoted to final pass from historical, browser-only, stretched, or accessibility-tree-only evidence.
+
+The correct next acceptance environment is an external or virtual display that can expose a true 1440×900 application viewport, plus a native capture path that preserves the open radial-menu surface.

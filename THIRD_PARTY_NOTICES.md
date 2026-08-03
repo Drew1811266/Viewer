@@ -77,6 +77,7 @@ This inventory records the direct third-party dependencies in the Viewer 0.1 loc
 
 | Component | Source/license status | Viewer use | Distribution status |
 | --- | --- | --- | --- |
+| Lucide Icons 1.27.0 | Static SVG subset from [lucide-icons/lucide](https://github.com/lucide-icons/lucide/tree/1.27.0), licensed under ISC with MIT notices retained for Feather-derived icons; full text is bundled at `ui/src/assets/icons/lucide/LICENSE.txt` | Cross-platform Viewer action and state icons | Copied into the frontend bundle |
 | SQLite | [SQLite is in the public domain](https://www.sqlite.org/copyright.html); bundled through `rusqlite`/`libsqlite3-sys` | Metadata, operation journal, session index and FTS5 | Compiled into the native binary |
 | Quick Look Thumbnailing, Image I/O, Core Graphics, Core Foundation, Foundation and ColorSync | Apple macOS system frameworks governed by the macOS SDK and operating-system terms | Thumbnailing, decode, color, metadata and native types | Dynamically supplied by macOS; not copied into Viewer |
 | WKWebView | Apple macOS system framework | Tauri frontend host | Dynamically supplied by macOS; not copied into Viewer |

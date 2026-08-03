@@ -9,6 +9,7 @@ interface ModalSheetProps {
   initialFocusRef?: RefObject<HTMLElement | null>
   returnFocusRef?: RefObject<HTMLElement | null>
   destructive?: boolean
+  size?: 'small' | 'medium' | 'large'
 }
 
 export default function ModalSheet({
@@ -19,6 +20,7 @@ export default function ModalSheet({
   initialFocusRef,
   returnFocusRef,
   destructive = false,
+  size = destructive ? 'small' : 'medium',
 }: ModalSheetProps) {
   return (
     <ViewerDialog
@@ -27,7 +29,7 @@ export default function ModalSheet({
       initialFocusRef={initialFocusRef}
       returnFocusRef={returnFocusRef}
       destructive={destructive}
-      size={destructive ? 'small' : 'large'}
+      size={size}
       footer={footer}
     >
       {children}

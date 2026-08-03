@@ -29,6 +29,7 @@ export default function SettingsDialog({
   return (
     <ModalSheet
       title="软件设置"
+      size="large"
       onCancel={onClose}
       initialFocusRef={firstDensityRef}
       returnFocusRef={returnFocusRef}

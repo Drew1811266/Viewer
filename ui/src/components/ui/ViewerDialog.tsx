@@ -25,7 +25,7 @@ export default function ViewerDialog({
   initialFocusRef,
   returnFocusRef,
   destructive = false,
-  size = destructive ? 'small' : 'large',
+  size = destructive ? 'small' : 'medium',
 }: ViewerDialogProps) {
   const titleId = useId()
   const descriptionId = useId()

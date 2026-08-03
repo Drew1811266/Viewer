@@ -71,6 +71,7 @@ export default function BatchRenameDialog({
   return (
     <ModalSheet
       title={`批量重命名 ${entityIds.length} 项`}
+      size="large"
       onCancel={onCancel}
       initialFocusRef={findRef}
       footer={

@@ -115,6 +115,7 @@ export default function DestinationDialog({
   return (
     <ModalSheet
       title={mode === 'copy' ? '选择复制目标' : '选择移动目标'}
+      size="large"
       onCancel={onCancel}
       initialFocusRef={firstFolderRef}
       footer={

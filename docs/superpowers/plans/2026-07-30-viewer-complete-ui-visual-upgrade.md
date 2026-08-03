@@ -11,6 +11,10 @@
 ## Global Constraints
 
 - Treat `docs/superpowers/specs/2026-07-30-viewer-complete-ui-visual-upgrade-design.md` as the authoritative visual specification.
+- Treat `docs/prototypes/viewer-complete-ui-visual-atlas.html` and the Figma section
+  `Viewer Final UI Visual Acceptance — 2026-07-31` as the approved same-state visual baseline.
+  When an older implementation example conflicts with those references, update the example rather
+  than preserving the older presentation.
 - Work from an isolated git worktree created with `superpowers:using-git-worktrees`; the main workspace contains unrelated `tests/fixtures/images/.viewer/` files that must not be staged.
 - Do not modify Rust crates, Tauri commands, bridge signatures, persisted project state, filesystem semantics, image safety budgets, search semantics, comparison limits, or file-operation safety behavior.
 - Do not add a component library, icon dependency, theme framework, or runtime dependency.
@@ -49,8 +53,6 @@
 - `ui/src/components/WorkspaceMoreMenu.test.tsx` — command routing, read-only content, closing state, and focus behavior.
 - `ui/src/components/GlobalNoticeStack.tsx` — non-modal top-right global recovery and error notices.
 - `ui/src/components/GlobalNoticeStack.test.tsx` — notice ordering, roles, actions, and dismissal.
-- `ui/src/components/FileContextMenu.tsx` — conventional secondary-click/Control-click fallback that consumes the radial action model.
-- `ui/src/components/FileContextMenu.test.tsx` — fallback grouping, checked states, disabled reasons, destructive placement, Escape, and focus restoration.
 - `ui/src/components/WorkspaceLoadingState.tsx` — stable sidebar, folder-band, and content skeletons used while project data is unavailable.
 - `ui/src/components/WorkspaceLoadingState.test.tsx` — skeleton semantics, final-layout geometry hooks, and reduced-motion contract.
 - `docs/reviews/2026-07-30-viewer-ui-visual-upgrade-verification.md` — final state matrix, viewport checks, visual comparisons, and command evidence.
@@ -262,7 +264,7 @@ summary,
 }
 .search-options-popover,
 .workspace-menu-popover,
-.file-context-menu {
+.radial-file-menu {
   animation: viewer-popover-in var(--viewer-motion-standard) var(--viewer-easing);
 }
 .modal-sheet,
@@ -286,7 +288,7 @@ summary,
   [role="menuitemcheckbox"],
   .search-options-popover,
   .workspace-menu-popover,
-  .file-context-menu,
+  .radial-file-menu,
   .modal-sheet,
   .preview-overlay {
     transition: none;
@@ -550,7 +552,7 @@ Use the following structural declarations in `app.css`:
 .workspace-header {
   display: grid;
   grid-template-columns: var(--viewer-sidebar-width) minmax(0, 1fr);
-  min-height: 52px;
+  min-height: 40px;
   padding: 0;
   background: var(--viewer-surface);
   border-bottom: 1px solid var(--viewer-border);
@@ -750,7 +752,7 @@ Render after `content-browser-body`:
 {selected.size > 0 && (
   <div className="selection-action-bar" role="status" aria-label="选择摘要">
     <strong>已选择 {selected.size} 项</strong>
-    <span>右键或使用快捷键进行操作</span>
+    <span>右键打开圆盘菜单 · Esc 取消选择</span>
   </div>
 )}
 ```
@@ -776,9 +778,19 @@ Use these exact structural rules:
   border-radius: 8px;
   background: #f8f8f6;
 }
-.image-cell[aria-selected="true"] {
-  border-color: var(--viewer-accent);
-  box-shadow: 0 0 0 2px rgb(88 105 207 / 14%);
+.image-cell-thumbnail-frame {
+  position: relative;
+  width: fit-content;
+  max-width: 100%;
+}
+.image-cell[aria-selected="true"] .image-cell-thumbnail-frame::after {
+  position: absolute;
+  z-index: 2;
+  inset: 6px;
+  border: 2px solid var(--viewer-accent);
+  border-radius: 8px;
+  content: "";
+  pointer-events: none;
 }
 .selection-action-bar {
   position: absolute;
@@ -1432,13 +1444,13 @@ git commit -m "feat: unify text preview and file information"
 
 ---
 
-### Task 7: Preserve the radial menu, add its conventional fallback, and standardize dialogs
+### Task 7: Make the radial menu the single file-action surface and standardize dialogs
 
 **Files:**
-- Create: `ui/src/components/FileContextMenu.tsx`
-- Create: `ui/src/components/FileContextMenu.test.tsx`
 - Modify: `ui/src/App.tsx:318-340,1100-1114`
 - Modify: `ui/src/App.test.tsx`
+- Modify: `ui/src/components/ContentBrowser.tsx`
+- Modify: `ui/src/components/ContentBrowser.test.tsx`
 - Modify: `ui/src/components/RadialFileMenu.tsx:1-455`
 - Modify: `ui/src/components/RadialFileMenu.test.tsx`
 - Modify: `ui/src/components/radialMenuGeometry.test.ts`
@@ -1462,53 +1474,18 @@ git commit -m "feat: unify text preview and file information"
 **Interfaces:**
 - Consumes: `RadialMenuItem[]`, `RadialLeafAction`, `Point`, the active radial-menu session,
   `ModalSheet` focus behavior, all current dialog callbacks, and current conflict/rename models.
-- Produces:
-
-```ts
-export interface FileContextMenuProps {
-  origin: Point
-  selectionCount: number
-  readOnly?: boolean
-  returnFocusTarget?: HTMLElement | null
-  model: RadialMenuItem[]
-  viewport?: Viewport
-  onAction(action: RadialLeafAction): void
-  onClose(returnFocusTarget: HTMLElement | null): void
-}
-```
+- Produces one `RadialFileMenu` render path for ordinary secondary click, macOS Control-click,
+  held-pointer gestures, Context Menu key, and `Shift+F10`.
+- Does not create or render a conventional rectangular file context menu.
 
 - Keeps exact radial geometry: primary inner radius 42, primary outer radius 108, six 60-degree
   sectors; secondary inner radius 112, secondary outer radius 168, 30-degree sectors.
 
-- [ ] **Step 1: Write failing fallback, radial-token, and dialog-structure tests**
+- [ ] **Step 1: Write failing single-menu, radial-token, and dialog-structure tests**
 
-Create `FileContextMenu.test.tsx` with:
-
-```tsx
-it('presents the radial action model as one conventional menu', () => {
-  const action = vi.fn()
-  render(
-    <FileContextMenu
-      origin={{ x: 320, y: 240 }}
-      selectionCount={2}
-      model={model}
-      onAction={action}
-      onClose={vi.fn()}
-    />,
-  )
-  const menu = screen.getByRole('menu', { name: '文件操作' })
-  expect(within(menu).getAllByRole('menuitem')).toHaveLength(6)
-  fireEvent.click(within(menu).getByRole('menuitem', { name: '标记' }))
-  expect(screen.getByRole('menuitemcheckbox', { name: '保留' })).toBeVisible()
-  expect(screen.getByRole('menuitem', { name: '移到废纸篓' })).toHaveAttribute(
-    'data-tone',
-    'destructive',
-  )
-})
-```
-
-Add to `App.test.tsx`: secondary-click produces a compact menu and a held right-button gesture
-produces `.radial-file-menu`.
+Add App and ContentBrowser tests proving that ordinary right click, Control-click, Context Menu key,
+`Shift+F10`, and a held secondary-button gesture all create the same radial-menu request and render
+`.radial-file-menu`. Assert that no `.file-context-menu` and no second visible file-action menu exist.
 
 Update `RadialFileMenu.test.tsx` to assert:
 
@@ -1542,7 +1519,6 @@ Run:
 
 ```bash
 pnpm --dir ui exec vitest run \
-  src/components/FileContextMenu.test.tsx \
   src/components/RadialFileMenu.test.tsx \
   src/components/radialMenuGeometry.test.ts \
   src/components/ModalSheet.test.tsx \
@@ -1552,54 +1528,19 @@ pnpm --dir ui exec vitest run \
   src/App.test.tsx -t "context menu|right-button|dialog"
 ```
 
-Expected: FAIL because the conventional component and common dialog slots do not exist.
+Expected: FAIL because ordinary click/keyboard requests do not yet share the radial render path and
+the common dialog slots do not exist.
 
-- [ ] **Step 3: Implement the conventional context-menu fallback**
+- [ ] **Step 3: Route every file-action request to the same radial menu**
 
-`FileContextMenu` uses the same model without rebuilding or relabeling it. Its root positioning is:
+`ContentBrowser` must normalize `contextmenu`, Control-click, Context Menu key, and `Shift+F10` into
+the current `RadialMenuRequest` without changing the selection snapshot or return-focus target.
+Use `pointerId: null` for click/keyboard mode and a numeric pointer id for the held gesture mode.
 
-```tsx
-const left = Math.min(Math.max(8, origin.x), Math.max(8, viewport.width - 260))
-const top = Math.min(Math.max(8, origin.y), Math.max(8, viewport.height - 360))
-
-<div
-  ref={rootRef}
-  className="file-context-menu"
-  style={{ left, top }}
-  onKeyDown={handleMenuKeyDown}
->
-  <div role="menu" aria-label="文件操作">
-    {model.map((item, index) => renderMenuItem(item, index))}
-  </div>
-  <p className="file-context-summary">{selectionCount} 个文件{readOnly ? ' · 只读' : ''}</p>
-</div>
-```
-
-`renderMenuItem` must use `menuitemcheckbox` when `checked` is defined, expose `aria-checked`,
-`aria-disabled`, `aria-haspopup`, `aria-expanded`, `title={disabledReason}`, and `data-tone`.
-Primary items with children open one nested sibling `role="menu"`; leaf items call `onAction`.
-Implement roving focus for ArrowUp/ArrowDown, ArrowRight to open a child group, ArrowLeft to return,
-Enter/Space to activate, Escape/outside pointer to close, and restore `returnFocusTarget`. Show the
-disabled reason in a `<small>` with its own id, and connect it with `aria-describedby` so the
-visible reason does not replace the item's accessible name.
-
-In `App`, route only session requests with `pointerId === null` to `FileContextMenu`. Route non-null
-requests to `RadialFileMenu`:
+In `App`, render one component for both modes:
 
 ```tsx
-{activeRadialMenu?.pointerId === null && (
-  <FileContextMenu
-    key={activeRadialMenu.requestId}
-    origin={activeRadialMenu.origin}
-    selectionCount={activeRadialMenu.files.length}
-    readOnly={state.project.access === 'read_only'}
-    returnFocusTarget={activeRadialMenu.returnFocusTarget}
-    model={radialModel}
-    onAction={runRadialAction}
-    onClose={finishRadialSession}
-  />
-)}
-{activeRadialMenu?.pointerId !== null && activeRadialMenu !== null && (
+{activeRadialMenu !== null && (
   <RadialFileMenu
     key={activeRadialMenu.requestId}
     origin={activeRadialMenu.origin}
@@ -1613,6 +1554,9 @@ requests to `RadialFileMenu`:
   />
 )}
 ```
+
+`RadialFileMenu` treats `pointerId: null` as persistent click/keyboard mode. Arrow keys, Enter,
+Space, Escape, disabled reasons, and focus restoration remain part of this single visible menu.
 
 - [ ] **Step 4: Restyle the radial sectors without changing interaction geometry**
 
@@ -1705,7 +1649,6 @@ Run:
 
 ```bash
 pnpm --dir ui exec vitest run \
-  src/components/FileContextMenu.test.tsx \
   src/components/RadialFileMenu.test.tsx \
   src/components/radialMenuGeometry.test.ts \
   src/components/radialMenuModel.test.ts \
@@ -1726,7 +1669,7 @@ Expected: PASS.
 - [ ] **Step 8: Commit menus and dialogs**
 
 ```bash
-git add ui/src/App.tsx ui/src/App.test.tsx ui/src/components/FileContextMenu.tsx ui/src/components/FileContextMenu.test.tsx ui/src/components/RadialFileMenu.tsx ui/src/components/RadialFileMenu.test.tsx ui/src/components/radialMenuGeometry.test.ts ui/src/components/ModalSheet.tsx ui/src/components/ModalSheet.test.tsx ui/src/components/DestinationDialog.tsx ui/src/components/DestinationDialog.test.tsx ui/src/components/BatchRenameDialog.tsx ui/src/components/BatchRenameDialog.test.tsx ui/src/components/CloseOperationDialog.tsx ui/src/components/CloseOperationDialog.test.tsx ui/src/components/RenameDialog.tsx ui/src/components/RenameDialog.test.tsx ui/src/components/TrashConfirmation.tsx ui/src/components/TrashConfirmation.test.tsx ui/src/components/SettingsDialog.tsx ui/src/components/SettingsDialog.test.tsx ui/src/styles/app.css ui/src/styles/app.test.ts
+git add ui/src/App.tsx ui/src/App.test.tsx ui/src/components/ContentBrowser.tsx ui/src/components/ContentBrowser.test.tsx ui/src/components/RadialFileMenu.tsx ui/src/components/RadialFileMenu.test.tsx ui/src/components/radialMenuGeometry.test.ts ui/src/components/ModalSheet.tsx ui/src/components/ModalSheet.test.tsx ui/src/components/DestinationDialog.tsx ui/src/components/DestinationDialog.test.tsx ui/src/components/BatchRenameDialog.tsx ui/src/components/BatchRenameDialog.test.tsx ui/src/components/CloseOperationDialog.tsx ui/src/components/CloseOperationDialog.test.tsx ui/src/components/RenameDialog.tsx ui/src/components/RenameDialog.test.tsx ui/src/components/TrashConfirmation.tsx ui/src/components/TrashConfirmation.test.tsx ui/src/components/SettingsDialog.tsx ui/src/components/SettingsDialog.test.tsx ui/src/styles/app.css ui/src/styles/app.test.ts
 git commit -m "feat: refine menus and operation dialogs"
 ```
 
@@ -1937,7 +1880,7 @@ Move `contextRepairMessage` into the `.workspace` section before its affected co
 status inside the search region and selection status in the selection summary. Keep folder-row and
 text-pane errors local.
 
-- [ ] **Step 5: Turn TaskBar into floating progress cards**
+- [ ] **Step 5: Turn TaskBar into one compact floating task surface**
 
 After computing `finished`, add:
 
@@ -1963,18 +1906,32 @@ cancellation, result access, and explicit dismissal unchanged. Apply:
   gap: 8px;
   pointer-events: none;
 }
-.task-row {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  gap: 8px;
-  padding: 10px 12px;
+.task-surface {
+  overflow: hidden;
   border: 1px solid var(--viewer-border);
   border-radius: var(--viewer-radius-popover);
   background: var(--viewer-surface);
   box-shadow: var(--viewer-shadow-popover);
   pointer-events: auto;
 }
-.task-row progress {
+.task-surface-summary,
+.task-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 8px;
+  padding: 10px 12px;
+}
+.task-list {
+  border-top: 1px solid var(--viewer-border);
+}
+.task-row {
+  border-bottom: 1px solid var(--viewer-border);
+  border-radius: 0;
+  background: var(--viewer-surface);
+  box-shadow: none;
+}
+.task-surface-summary > progress,
+.task-row > progress {
   grid-column: 1 / -1;
   width: 100%;
   height: 3px;
@@ -2402,15 +2359,16 @@ Inspect at both 1440×900 and 1024×720:
    read-only controls;
 7. Markdown, plain text, two-text side-by-side, encoding error, truncation, unsupported file, and
    information inspector;
-8. held-pointer radial primary/secondary sectors plus secondary-click conventional fallback;
+8. ordinary secondary click, Control-click, keyboard invocation, and held-pointer gestures using
+   the same radial primary/secondary sectors;
 9. rename, batch rename with invalid preview, destination ready/conflict/blocked, Trash, settings,
    and close-operation dialogs;
 10. scan/thumbnail/file-operation tasks, operation results, global recovery/error notices, local row
     error, and read-only strip.
 
-For keyboard coverage, verify Tab order, `:focus-visible`, Escape, arrow navigation in both file
-menus, Meta+F, Meta+A, Meta+I, preview navigation, and focus restoration. At 1024×720 verify that
-filter popovers, context menus, dialogs, task cards, and inspectors remain inside the viewport
+For keyboard coverage, verify Tab order, `:focus-visible`, Escape, arrow navigation in the radial
+file menu, Meta+F, Meta+A, Meta+I, preview navigation, and focus restoration. At 1024×720 verify that
+filter popovers, the radial menu, dialogs, the task surface, and inspectors remain inside the viewport
 without covering their own critical actions.
 
 - [ ] **Step 5: Compare implementation and references in one visual input**
@@ -2528,7 +2486,8 @@ Expected: `pnpm verify:clean` exits 0 and `git status --short` prints nothing.
 - [ ] Every new presentation component has a focused failing test before implementation.
 - [ ] All bridge, controller, filesystem, search, selection, comparison, and operation safety
   semantics remain unchanged.
-- [ ] The conventional context menu and radial menu consume the same `RadialMenuItem[]` model.
+- [ ] Every file-action invocation renders the same `RadialFileMenu`; no conventional rectangular
+  file context menu remains.
 - [ ] No dark-theme override, component library, icon dependency, runtime dependency, decorative
   illustration, new workflow, or Windows implementation was introduced.
 - [ ] The no-project resting state contains exactly the three approved elements.

@@ -20,7 +20,7 @@ export default function ModalSheet({
   initialFocusRef,
   returnFocusRef,
   destructive = false,
-  size = destructive ? 'small' : 'medium',
+  size = 'small',
 }: ModalSheetProps) {
   return (
     <ViewerDialog

@@ -4,14 +4,14 @@ import ModalSheet from './ModalSheet'
 import ViewerButton from './ui/ViewerButton'
 
 describe('ModalSheet', () => {
-  it('uses a compact medium shell by default and reserves the large shell for complex flows', () => {
+  it('uses the atlas 430 px shell by default and reserves the large shell for complex flows', () => {
     const rendered = render(
       <ModalSheet title="单项操作" onCancel={vi.fn()}>
         <input aria-label="单项字段" />
       </ModalSheet>,
     )
 
-    expect(screen.getByRole('dialog', { name: '单项操作' })).toHaveAttribute('data-size', 'medium')
+    expect(screen.getByRole('dialog', { name: '单项操作' })).toHaveAttribute('data-size', 'small')
 
     rendered.rerender(
       <ModalSheet title="复杂操作" size="large" onCancel={vi.fn()}>

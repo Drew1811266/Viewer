@@ -435,7 +435,7 @@ describe('Viewer empty state', () => {
     const file = await screen.findByRole('option', { name: 'front.jpg' })
     expect(screen.queryByRole('button', { name: '关闭项目' })).not.toBeInTheDocument()
     openRadialMenu(file, 105)
-    expect(screen.getByRole('menu', { name: '文件操作' })).toBeVisible()
+    expect(await screen.findByRole('menu', { name: '文件操作' })).toBeVisible()
     closeProjectFromMenu()
     await waitFor(() => expect(viewer.closeProject).toHaveBeenCalled())
     expect(screen.queryByRole('menu', { name: '文件操作' })).not.toBeInTheDocument()

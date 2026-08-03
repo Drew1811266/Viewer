@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { BrowserFile, ImageRepresentation, ImageRepresentationRequest } from '../api/types'
 import { defined } from '../defined'
@@ -19,6 +19,19 @@ afterEach(() => {
 })
 
 describe('ComparePane', () => {
+  it('uses a named remove icon and keeps local loading feedback inside the stable stage', () => {
+    installResizeObserver()
+    const rendered = renderPane({
+      requestImage: vi.fn(() => new Promise<ImageRepresentation>(() => undefined)),
+    })
+
+    const remove = screen.getByRole('button', { name: '移除 front.jpg' })
+    expect(remove).toHaveClass('viewer-icon-button')
+    expect(remove.querySelector('.viewer-icon')).toHaveAttribute('aria-hidden', 'true')
+    const stage = rendered.container.querySelector<HTMLElement>('.compare-pane-stage')
+    expect(withinStage(stage).getByRole('status')).toHaveClass('viewer-local-feedback')
+  })
+
   it('renders an unsupported image placeholder without issuing image requests', () => {
     const resize = installResizeObserver()
     const requestImage = vi.fn(() => new Promise<never>(() => undefined))
@@ -84,6 +97,8 @@ describe('ComparePane', () => {
     )
 
     expect(await screen.findByRole('alert')).toHaveTextContent('原图超出安全预览限制')
+    expect(screen.getByRole('alert')).toHaveClass('viewer-local-feedback')
+    expect(screen.getByRole('alert').closest('.compare-pane-stage')).not.toBeNull()
     expect(screen.getByRole('img', { name: 'front.jpg' })).toHaveAttribute(
       'src',
       'viewer-image://localhost/proxy-a',
@@ -382,6 +397,10 @@ describe('ComparePane', () => {
 
 function renderPane(overrides: Partial<React.ComponentProps<typeof ComparePane>>) {
   return render(pane(overrides))
+}
+
+function withinStage(stage: HTMLElement | null) {
+  return within(defined(stage, 'Expected stable compare stage'))
 }
 
 function pane(overrides: Partial<React.ComponentProps<typeof ComparePane>>) {

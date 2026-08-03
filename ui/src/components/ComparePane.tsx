@@ -10,6 +10,8 @@ import { isPreviewableImage } from '../fileKinds'
 import type { PaneMetrics, PaneTransform } from '../state/compareModel'
 import { MarkerButtons } from './MarkerControls'
 import UnsupportedFileState from './UnsupportedFileState'
+import { ViewerIconButton } from './ui/ViewerButton'
+import ViewerLocalFeedback from './ui/ViewerLocalFeedback'
 
 interface ComparePaneProps {
   file: BrowserFile
@@ -277,14 +279,13 @@ export default function ComparePane({
     >
       <header className="compare-pane-header">
         <strong title={file.name}>{file.name}</strong>
-        <button
-          type="button"
-          aria-label={`移除 ${file.name}`}
+        <ViewerIconButton
+          icon="x"
+          label={`移除 ${file.name}`}
+          tone="quiet"
           title={`从对比中移除 ${file.name}`}
           onClick={() => onRemove(file.entityId)}
-        >
-          ×
-        </button>
+        />
       </header>
       <div
         ref={stageRef}
@@ -299,13 +300,21 @@ export default function ComparePane({
             {representation && (
               <img src={representation.url} alt={file.name} draggable={false} style={imageStyle} />
             )}
-            {representation === null && error === null && <span role="status">正在载入…</span>}
+            {representation === null && error === null && (
+              <ViewerLocalFeedback tone="info" title="正在载入图片">
+                正在准备 {file.name} 的预览…
+              </ViewerLocalFeedback>
+            )}
+            {error !== null && (
+              <ViewerLocalFeedback tone="danger" title="无法显示这张图片">
+                {error}
+              </ViewerLocalFeedback>
+            )}
           </>
         ) : (
           <UnsupportedFileState file={file} />
         )}
       </div>
-      {error && <p role="alert">{error}</p>}
       <footer>
         <MarkerButtons
           reviewState={file.marker.reviewState}

@@ -12,6 +12,10 @@ import { createCompareState, reconcileComparePanes, reduceCompare } from '../sta
 import { compareValidationMessage } from '../state/comparePolicy'
 import ComparePane from './ComparePane'
 import CompareVirtualViewport from './CompareVirtualViewport'
+import ViewerButton, { ViewerIconButton } from './ui/ViewerButton'
+import ViewerLocalFeedback from './ui/ViewerLocalFeedback'
+import ViewerSegmentedControl from './ui/ViewerSegmentedControl'
+import ViewerToolbar from './ui/ViewerToolbar'
 import {
   compareSourceRevision,
   type RecoveredCompareDimensions,
@@ -150,10 +154,17 @@ export default function CompareWorkspace({
   if (model === null) {
     return (
       <section className="compare-workspace compare-invalid" aria-label="图片对比">
-        <p role="alert">{compareValidationMessage('invalid_cardinality')}</p>
-        <button type="button" onClick={() => onEntityIdsChange([])}>
-          返回文件网格
-        </button>
+        <ViewerLocalFeedback
+          tone="danger"
+          title="无法开始图片对比"
+          action={
+            <ViewerButton tone="secondary" onClick={() => onEntityIdsChange([])}>
+              返回文件网格
+            </ViewerButton>
+          }
+        >
+          {compareValidationMessage('invalid_cardinality')}
+        </ViewerLocalFeedback>
       </section>
     )
   }
@@ -286,45 +297,39 @@ export default function CompareWorkspace({
     </>
   )
   const toolbarTransforms: ReactNode = (
-    <>
-      <button type="button" disabled={transformsDisabled} onClick={fitView}>
+    <ViewerSegmentedControl label="对比显示控制">
+      <ViewerButton disabled={transformsDisabled} onClick={fitView}>
         适应窗口
-      </button>
-      <button type="button" disabled={transformsDisabled} onClick={actualSize}>
+      </ViewerButton>
+      <ViewerButton disabled={transformsDisabled} onClick={actualSize}>
         100%
-      </button>
-      <button
-        type="button"
-        aria-label="缩小当前对比"
+      </ViewerButton>
+      <ViewerIconButton
+        icon="minus"
+        label="缩小当前对比"
         disabled={transformsDisabled}
         onClick={() => update({ type: 'zoom', entityId: activeEntityId, factor: 0.8 })}
-      >
-        −
-      </button>
-      <button
-        type="button"
-        aria-label="放大当前对比"
+      />
+      <ViewerIconButton
+        icon="plus"
+        label="放大当前对比"
         disabled={transformsDisabled}
         onClick={() => update({ type: 'zoom', entityId: activeEntityId, factor: 1.25 })}
-      >
-        +
-      </button>
-      <button
-        type="button"
-        aria-label="顺时针旋转当前图片"
+      />
+      <ViewerIconButton
+        icon="rotate-cw"
+        label="顺时针旋转当前图片"
         disabled={transformsDisabled}
         onClick={() => update({ type: 'rotate_clockwise', entityId: activeEntityId })}
-      >
-        ↻
-      </button>
-    </>
+      />
+    </ViewerSegmentedControl>
   )
   const toolbarActions: ReactNode = (
     <>
-      <button
-        type="button"
+      <ViewerButton
+        tone="quiet"
+        active={model.mode === 'synchronized'}
         aria-label={model.mode === 'synchronized' ? '切换为独立变换' : '切换为同步变换'}
-        aria-pressed={model.mode === 'synchronized'}
         onClick={() =>
           update({
             type: 'mode_changed',
@@ -333,15 +338,15 @@ export default function CompareWorkspace({
         }
       >
         {model.mode === 'synchronized' ? '同步' : '独立'}
-      </button>
-      <button
-        type="button"
+      </ViewerButton>
+      <ViewerButton
+        tone="quiet"
         className="preview-complete-action"
         aria-label="完成对比"
         onClick={() => onEntityIdsChange([])}
       >
         完成
-      </button>
+      </ViewerButton>
     </>
   )
 
@@ -354,13 +359,12 @@ export default function CompareWorkspace({
       tabIndex={0}
       onKeyDown={keyboard}
     >
-      <div className="compare-toolbar" role="toolbar" aria-label="对比工具">
-        <div className="compare-toolbar-leading">{toolbarLeading}</div>
-        <div className="compare-toolbar-transform preview-segmented-controls">
-          {toolbarTransforms}
-        </div>
-        <div className="compare-toolbar-actions">{toolbarActions}</div>
-      </div>
+      <ViewerToolbar
+        label="对比工具"
+        leading={toolbarLeading}
+        center={toolbarTransforms}
+        actions={toolbarActions}
+      />
       <div ref={containerRef} className="compare-layout-region">
         {plan.scrollAxis === 'none' ? (
           <div

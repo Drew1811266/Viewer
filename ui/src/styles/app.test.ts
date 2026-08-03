@@ -410,15 +410,15 @@ describe('workspace style contracts', () => {
   })
 
   it('uses one light theme for image and text previews', () => {
-    const rules = parseRules(appCss)
+    const rules = parseRules(viewerStyleSources)
     const declaration = (selector: string, property: string) =>
       winningDeclaration(rules, new Set([selector]), property)
 
     expect(declaration('.preview-overlay', 'background')).toBe('var(--preview-stage)')
     expect(declaration('.preview-overlay', 'color')).toBe('var(--viewer-text)')
-    expect(declaration('.preview-toolbar', 'background')).toBe('var(--viewer-surface)')
-    expect(declaration('.preview-toolbar', 'border-bottom')).toBe('1px solid var(--viewer-border)')
-    expect(declaration('.preview-toolbar', 'color')).toBe('var(--viewer-text)')
+    expect(declaration('.viewer-toolbar', 'background')).toBe('var(--viewer-surface)')
+    expect(declaration('.viewer-toolbar', 'border-bottom')).toBe('1px solid var(--viewer-border)')
+    expect(declaration('.viewer-toolbar', 'height')).toBe('52px')
     expect(declaration('.image-preview-stage', 'background')).toBe('var(--preview-stage)')
     expect(declaration('.image-preview-stage img', 'border')).toBe(
       '1px solid var(--preview-border)',
@@ -438,11 +438,7 @@ describe('workspace style contracts', () => {
     expect(declaration('.text-preview .preview-toolbar', 'top')).toBe('0')
     expect(declaration('.text-preview .preview-toolbar', 'color')).toBe('var(--preview-text)')
 
-    for (const selector of [
-      '.preview-toolbar button',
-      '.preview-toolbar select',
-      '.preview-navigation-float button',
-    ]) {
+    for (const selector of ['.preview-toolbar button', '.preview-toolbar select']) {
       expect(declaration(selector, 'background')).toBe('var(--preview-control-surface)')
       expect(declaration(selector, 'border')).toBe('1px solid var(--preview-control-border)')
       expect(declaration(selector, 'border-radius')).toBe('6px')
@@ -453,7 +449,6 @@ describe('workspace style contracts', () => {
     for (const selector of [
       '.preview-toolbar button:hover:not(:disabled)',
       '.preview-toolbar select:hover',
-      '.preview-navigation-float button:hover:not(:disabled)',
     ]) {
       expect(declaration(selector, 'background')).toBe('var(--preview-control-hover-surface)')
       expect(declaration(selector, 'border-color')).toBe('var(--preview-control-hover-border)')
@@ -462,11 +457,13 @@ describe('workspace style contracts', () => {
     for (const selector of [
       '.preview-toolbar button:focus-visible',
       '.preview-toolbar select:focus-visible',
-      '.preview-navigation-float button:focus-visible',
     ]) {
       expect(declaration(selector, 'outline')).toBe('var(--viewer-focus-outline)')
       expect(declaration(selector, 'outline-offset')).toBe('var(--viewer-focus-offset)')
     }
+
+    expect(declaration('.preview-navigation-float .viewer-icon-button', 'min-height')).toBe('30px')
+    expect(declaration('.preview-navigation-float .viewer-icon-button', 'width')).toBe('30px')
 
     expect(contrastRatio('#1f2328', '#f5f6f8')).toBeGreaterThanOrEqual(4.5)
     expect(contrastRatio('#68717d', '#fbfcfd')).toBeGreaterThanOrEqual(4.5)
@@ -476,7 +473,7 @@ describe('workspace style contracts', () => {
   })
 
   it('renders image comparison from the shared light preview theme', () => {
-    const rules = parseRules(appCss)
+    const rules = parseRules(viewerStyleSources)
     const declaration = (selector: string, property: string) =>
       winningDeclaration(rules, new Set([selector]), property)
 
@@ -484,9 +481,9 @@ describe('workspace style contracts', () => {
     expect(declaration('.compare-workspace', 'border-radius')).toBe('10px')
     expect(declaration('.compare-workspace', 'border')).toBe('')
     expect(declaration('.compare-workspace', 'color')).toBe('var(--viewer-text)')
-    expect(declaration('.compare-toolbar', 'background')).toBe('var(--viewer-surface)')
-    expect(declaration('.compare-toolbar', 'border-bottom')).toBe('1px solid var(--viewer-border)')
-    expect(declaration('.compare-toolbar-leading > span', 'color')).toBe(
+    expect(declaration('.viewer-toolbar', 'background')).toBe('var(--viewer-surface)')
+    expect(declaration('.viewer-toolbar', 'border-bottom')).toBe('1px solid var(--viewer-border)')
+    expect(declaration('.compare-workspace .viewer-toolbar__leading > span', 'color')).toBe(
       'var(--viewer-text-secondary)',
     )
     expect(declaration('.compare-layout-region', 'background')).toBe('var(--preview-surface)')
@@ -528,17 +525,14 @@ describe('workspace style contracts', () => {
       '1px solid var(--preview-border)',
     )
 
-    for (const selector of [
-      '.compare-toolbar button',
-      '.compare-pane button',
-      '.compare-invalid > button',
-    ]) {
-      expect(declaration(selector, 'background')).toBe('var(--preview-control-surface)')
-      expect(declaration(selector, 'border')).toBe('1px solid var(--preview-control-border)')
-      expect(declaration(selector, 'border-radius')).toBe('5px')
-      expect(declaration(selector, 'color')).toBe('var(--preview-text)')
-      expect(declaration(selector, 'min-height')).toBe('28px')
-    }
+    expect(declaration('.compare-pane .marker-buttons button', 'background')).toBe(
+      'var(--preview-control-surface)',
+    )
+    expect(declaration('.compare-pane .marker-buttons button', 'border')).toBe(
+      '1px solid var(--preview-control-border)',
+    )
+    expect(declaration('.viewer-button', 'border-radius')).toBe('var(--viewer-radius-control)')
+    expect(declaration('.viewer-button', 'min-height')).toBe('32px')
 
     expect(declaration('.compare-pane-header button', 'min-height')).toBe('24px')
     expect(declaration('.compare-pane-header button', 'min-width')).toBe('26px')
@@ -546,51 +540,35 @@ describe('workspace style contracts', () => {
     expect(declaration('.compare-pane > footer .marker-buttons button', 'min-height')).toBe('24px')
     expect(declaration('.compare-pane > footer .marker-buttons button', 'padding')).toBe('2px 5px')
 
-    for (const selector of [
-      '.compare-toolbar button:hover:not(:disabled):not([aria-pressed="true"])',
-      '.compare-pane button:hover:not(:disabled):not([aria-pressed="true"])',
-      '.compare-invalid > button:hover:not(:disabled)',
-    ]) {
-      expect(declaration(selector, 'background')).toBe('var(--preview-control-hover-surface)')
-      expect(declaration(selector, 'border-color')).toBe('var(--preview-control-hover-border)')
-    }
+    expect(
+      declaration(
+        '.compare-pane .marker-buttons button:hover:not(:disabled):not([aria-pressed="true"])',
+        'background',
+      ),
+    ).toBe('var(--preview-control-hover-surface)')
 
-    for (const selector of [
-      '.compare-toolbar button:focus-visible',
-      '.compare-pane button:focus-visible',
-      '.compare-invalid > button:focus-visible',
-    ]) {
-      expect(declaration(selector, 'outline')).toBe('var(--viewer-focus-outline)')
-      expect(declaration(selector, 'outline-offset')).toBe('var(--viewer-focus-offset)')
-    }
+    expect(declaration('.compare-pane .marker-buttons button:focus-visible', 'outline')).toBe(
+      'var(--viewer-focus-outline)',
+    )
 
     expect(
       winningDeclaration(
         rules,
-        new Set([
-          '.compare-toolbar button[aria-pressed="true"]',
-          '.compare-pane .marker-buttons button[aria-pressed="true"]',
-        ]),
+        new Set(['.compare-pane .marker-buttons button[aria-pressed="true"]']),
         'background',
       ),
     ).toBe('var(--preview-accent-surface)')
-    expect(declaration('.compare-toolbar button[aria-pressed="true"]', 'color')).toBe(
-      'var(--preview-accent-text)',
+    expect(declaration(".viewer-button[data-active='true']", 'background')).toBe(
+      'var(--viewer-accent-soft)',
     )
     expect(declaration('.compare-pane .marker-buttons button[aria-pressed="true"]', 'color')).toBe(
       'var(--preview-accent-text)',
     )
 
-    for (const selector of [
-      '.compare-pane > p[role="alert"]',
-      '.compare-invalid > p[role="alert"]',
-    ]) {
-      expect(declaration(selector, 'background')).toBe('var(--preview-danger-surface)')
-      expect(declaration(selector, 'color')).toBe('var(--preview-danger)')
-    }
-    expect(declaration('.compare-invalid > p[role="alert"]', 'font-size')).toBe('')
-    expect(declaration('.compare-invalid > p[role="alert"]', 'margin')).toBe('')
-    expect(declaration('.compare-invalid > p[role="alert"]', 'padding')).toBe('')
+    expect(declaration(".viewer-local-feedback[data-tone='danger']", 'background')).toBe(
+      'var(--viewer-danger-soft)',
+    )
+    expect(declaration('.compare-pane-stage > .viewer-local-feedback', 'position')).toBe('absolute')
 
     const lightRules = parseRules(appCss)
     expect(

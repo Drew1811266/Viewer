@@ -3,6 +3,10 @@ import { useEffect, useRef, useState } from 'react'
 import type { BrowserFile, ImageRepresentation, ImageRepresentationRequest } from '../api/types'
 import { isPreviewableImage } from '../fileKinds'
 import UnsupportedFileState from './UnsupportedFileState'
+import ViewerButton, { ViewerIconButton } from './ui/ViewerButton'
+import ViewerLocalFeedback from './ui/ViewerLocalFeedback'
+import ViewerSegmentedControl from './ui/ViewerSegmentedControl'
+import ViewerToolbar from './ui/ViewerToolbar'
 
 interface ImagePreviewProps {
   file: BrowserFile
@@ -208,55 +212,56 @@ export default function ImagePreview({
     </>
   )
   const displayControls: ReactNode = (
-    <>
-      <button type="button" disabled={transformsDisabled} onClick={() => setMode('fit')}>
+    <ViewerSegmentedControl label="图片显示控制">
+      <ViewerButton
+        active={mode === 'fit'}
+        disabled={transformsDisabled}
+        onClick={() => setMode('fit')}
+      >
         适应窗口
-      </button>
-      <button
-        type="button"
+      </ViewerButton>
+      <ViewerButton
         aria-label="按 100% 显示"
+        active={mode === 'original'}
         disabled={transformsDisabled}
         onClick={() => setMode('original')}
       >
         100%
-      </button>
-      <button
-        type="button"
-        aria-label="缩小"
+      </ViewerButton>
+      <ViewerIconButton
+        icon="minus"
+        label="缩小"
         disabled={transformsDisabled}
         onClick={() => zoomBy(0.8)}
-      >
-        −
-      </button>
-      <span>{Math.round(scale * 100)}%</span>
-      <button
-        type="button"
-        aria-label="放大"
+      />
+      <span className="preview-scale-label" aria-live="polite">
+        {Math.round(scale * 100)}%
+      </span>
+      <ViewerIconButton
+        icon="plus"
+        label="放大"
         disabled={transformsDisabled}
         onClick={() => zoomBy(1.25)}
-      >
-        +
-      </button>
-    </>
+      />
+    </ViewerSegmentedControl>
   )
   const previewActions: ReactNode = (
     <>
-      <button
-        type="button"
-        aria-label="顺时针旋转"
+      <ViewerIconButton
+        icon="rotate-cw"
+        label="顺时针旋转"
+        tone="quiet"
         disabled={transformsDisabled}
         onClick={() => setRotation((value) => (value + 90) % 360)}
-      >
-        ↻
-      </button>
-      <button
-        type="button"
+      />
+      <ViewerButton
+        tone="quiet"
         className="preview-complete-action"
         aria-label="关闭预览"
         onClick={onClose}
       >
         完成
-      </button>
+      </ViewerButton>
     </>
   )
   const previewStage: ReactNode = (
@@ -279,26 +284,41 @@ export default function ImagePreview({
           data-mode={mode}
           style={{ transform: `${translated}rotate(${rotation}deg) scale(${scale})` }}
         />
-      ) : (
-        <p>正在加载图片…</p>
+      ) : null}
+      {!unavailable &&
+        isPreviewableImage(file) &&
+        (representation === undefined || representation === null) &&
+        error === null && (
+          <ViewerLocalFeedback tone="info" title="正在载入图片">
+            正在准备高分辨率预览…
+          </ViewerLocalFeedback>
+        )}
+      {error !== null && (
+        <ViewerLocalFeedback tone="danger" title="无法显示这张图片">
+          {error}
+        </ViewerLocalFeedback>
       )}
     </div>
   )
   const previewNavigation: ReactNode = (
     <>
-      <button type="button" disabled={currentIndex <= 0} onClick={() => navigate(-1)}>
-        上一张
-      </button>
+      <ViewerIconButton
+        icon="chevron-left"
+        label="上一张"
+        tone="quiet"
+        disabled={currentIndex <= 0}
+        onClick={() => navigate(-1)}
+      />
       <span>
         {currentIndex + 1} / {files.length}
       </span>
-      <button
-        type="button"
+      <ViewerIconButton
+        icon="chevron-right"
+        label="下一张"
+        tone="quiet"
         disabled={currentIndex < 0 || currentIndex >= files.length - 1}
         onClick={() => navigate(1)}
-      >
-        下一张
-      </button>
+      />
     </>
   )
 
@@ -311,18 +331,12 @@ export default function ImagePreview({
       tabIndex={-1}
       onKeyDown={keyboard}
     >
-      <header className="preview-toolbar">
-        <div className="preview-toolbar-leading">{previewIdentity}</div>
-        <div
-          className="preview-toolbar-transform preview-segmented-controls"
-          role="toolbar"
-          aria-label="图片显示控制"
-        >
-          {displayControls}
-        </div>
-        <div className="preview-toolbar-actions">{previewActions}</div>
-      </header>
-      {error && <p role="alert">{error}</p>}
+      <ViewerToolbar
+        label="图片预览工具"
+        leading={previewIdentity}
+        center={displayControls}
+        actions={previewActions}
+      />
       {previewStage}
       <nav className="preview-navigation-float" aria-label="图片导航">
         {previewNavigation}

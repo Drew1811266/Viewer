@@ -521,10 +521,10 @@ describe('workspace style contracts', () => {
       '1px solid var(--preview-border)',
     )
 
-    expect(declaration('.compare-pane .marker-buttons button', 'background')).toBe(
+    expect(declaration('.compare-pane .marker-buttons .viewer-button', 'background')).toBe(
       'var(--preview-control-surface)',
     )
-    expect(declaration('.compare-pane .marker-buttons button', 'border')).toBe(
+    expect(declaration('.compare-pane .marker-buttons .viewer-button', 'border')).toBe(
       '1px solid var(--preview-control-border)',
     )
     expect(declaration('.viewer-button', 'border-radius')).toBe('var(--viewer-radius-control)')
@@ -533,33 +533,37 @@ describe('workspace style contracts', () => {
     expect(declaration('.compare-pane-header button', 'min-height')).toBe('24px')
     expect(declaration('.compare-pane-header button', 'min-width')).toBe('26px')
     expect(declaration('.compare-pane-header button', 'padding')).toBe('0')
-    expect(declaration('.compare-pane > footer .marker-buttons button', 'min-height')).toBe('24px')
-    expect(declaration('.compare-pane > footer .marker-buttons button', 'padding')).toBe('2px 5px')
+    expect(declaration('.compare-pane > footer .marker-buttons .viewer-button', 'min-height')).toBe(
+      '24px',
+    )
+    expect(declaration('.compare-pane > footer .marker-buttons .viewer-button', 'padding')).toBe(
+      '2px 5px',
+    )
 
     expect(
       declaration(
-        '.compare-pane .marker-buttons button:hover:not(:disabled):not([aria-pressed="true"])',
+        '.compare-pane .marker-buttons .viewer-button:hover:not(:disabled):not([aria-pressed="true"])',
         'background',
       ),
     ).toBe('var(--preview-control-hover-surface)')
 
-    expect(declaration('.compare-pane .marker-buttons button:focus-visible', 'outline')).toBe(
-      'var(--viewer-focus-outline)',
-    )
+    expect(
+      declaration('.compare-pane .marker-buttons .viewer-button:focus-visible', 'outline'),
+    ).toBe('var(--viewer-focus-outline)')
 
     expect(
       winningDeclaration(
         rules,
-        new Set(['.compare-pane .marker-buttons button[aria-pressed="true"]']),
+        new Set(['.compare-pane .marker-buttons .viewer-button[aria-pressed="true"]']),
         'background',
       ),
     ).toBe('var(--preview-accent-surface)')
     expect(declaration(".viewer-button[data-active='true']", 'background')).toBe(
       'var(--viewer-accent-soft)',
     )
-    expect(declaration('.compare-pane .marker-buttons button[aria-pressed="true"]', 'color')).toBe(
-      'var(--preview-accent-text)',
-    )
+    expect(
+      declaration('.compare-pane .marker-buttons .viewer-button[aria-pressed="true"]', 'color'),
+    ).toBe('var(--preview-accent-text)')
 
     expect(declaration(".viewer-local-feedback[data-tone='danger']", 'background')).toBe(
       'var(--viewer-danger-soft)',

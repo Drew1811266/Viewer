@@ -4,10 +4,19 @@ import { describe, expect, it } from 'vitest'
 
 const statePattern =
   /^\| ((?:LAU|SID|STR|THU|OTH|SEA|FIL|MEN|RAD|PRE|COM|DOC|INF|DIA|TAS|RES|A11Y)-\d+) \|/gm
+const rowPattern =
+  /^\| (?:LAU|SID|STR|THU|OTH|SEA|FIL|MEN|RAD|PRE|COM|DOC|INF|DIA|TAS|RES|A11Y)-\d+ \|/
 
 function ids(path: string): string[] {
   const source = readFileSync(resolve(import.meta.dirname, path), 'utf8')
   return [...source.matchAll(statePattern)].map((match) => match[1] as string)
+}
+
+function rows(path: string): string[][] {
+  return readFileSync(resolve(import.meta.dirname, path), 'utf8')
+    .split('\n')
+    .filter((line) => rowPattern.test(line))
+    .map((line) => line.split('|').map((cell) => cell.trim()))
 }
 
 describe('atlas-to-product migration coverage', () => {
@@ -19,5 +28,13 @@ describe('atlas-to-product migration coverage', () => {
     expect(ledger).toHaveLength(89)
     expect(new Set(ledger).size).toBe(89)
     expect([...ledger].sort()).toEqual([...audit].sort())
+  })
+
+  it('records automated evidence for every state before native acceptance', () => {
+    const ledgerRows = rows(
+      '../../docs/reviews/2026-08-02-viewer-atlas-product-migration-ledger.md',
+    )
+    expect(ledgerRows).toHaveLength(89)
+    for (const row of ledgerRows) expect(row[6]).not.toBe('not-recorded')
   })
 })

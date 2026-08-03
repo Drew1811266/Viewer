@@ -51,6 +51,25 @@ describe('Viewer control primitives', () => {
     expect(change).toHaveBeenCalledWith(true)
   })
 
+  it('publishes structural danger and disabled-choice hooks beyond color', () => {
+    render(
+      <>
+        <ViewerButton tone="danger">移到废纸篓</ViewerButton>
+        <ViewerChoiceChip checked={false} disabled>
+          只读选项
+        </ViewerChoiceChip>
+      </>,
+    )
+    expect(screen.getByRole('button', { name: '移到废纸篓' })).toHaveAttribute(
+      'data-tone',
+      'danger',
+    )
+    expect(screen.getByRole('checkbox', { name: '只读选项' }).closest('label')).toHaveAttribute(
+      'data-disabled',
+      'true',
+    )
+  })
+
   it('labels native fields and gives errors an alert role', () => {
     render(
       <ViewerField label="文件名" hint="保留扩展名" error="名称不能为空">

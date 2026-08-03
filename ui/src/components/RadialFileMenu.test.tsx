@@ -56,6 +56,26 @@ function expectVisibleLabelsUpright(container: HTMLElement) {
 }
 
 describe('RadialFileMenu', () => {
+  it.each([
+    [1024, 720],
+    [720, 450],
+  ])('keeps all six radial commands mounted at %d×%d CSS pixels', (width, height) => {
+    vi.stubGlobal('innerWidth', width)
+    vi.stubGlobal('innerHeight', height)
+    render(
+      <RadialFileMenu
+        origin={{ x: width / 2, y: height / 2 }}
+        pointerId={null}
+        selectionCount={1}
+        model={model}
+        onAction={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    )
+    expect(screen.getAllByRole('menuitem')).toHaveLength(6)
+    expect(screen.getByRole('button', { name: '关闭文件操作' })).toBeVisible()
+  })
+
   it('exposes six stable primary menuitems and a selection-count center', () => {
     const { container } = render(
       <RadialFileMenu

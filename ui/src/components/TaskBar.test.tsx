@@ -19,6 +19,30 @@ const failedScanTask: TaskFeedback = {
 }
 
 describe('TaskBar', () => {
+  it.each([
+    [1024, 720],
+    [720, 450],
+  ])('keeps task progress and its real action mounted at %d×%d CSS pixels', (width, height) => {
+    vi.stubGlobal('innerWidth', width)
+    vi.stubGlobal('innerHeight', height)
+    render(
+      <TaskBar
+        task={{
+          ...failedScanTask,
+          status: 'running',
+          completed: 6,
+          failed: 0,
+          failures: [],
+          cancellable: true,
+        }}
+        onCancel={vi.fn()}
+      />,
+    )
+    expect(screen.getByRole('progressbar', { name: '扫描项目进度' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '展开任务详情' })).toBeVisible()
+    expect(screen.getByRole('button', { name: '取消任务' })).toBeVisible()
+  })
+
   it('collapses multiple tasks into one summary surface', () => {
     render(
       <TaskBar

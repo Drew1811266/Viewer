@@ -3,6 +3,30 @@ import { describe, expect, it, vi } from 'vitest'
 import SettingsDialog from './SettingsDialog'
 
 describe('SettingsDialog', () => {
+  it.each([
+    [1024, 720],
+    [720, 450],
+  ])(
+    'keeps the real settings category and footer reachable at %d×%d CSS pixels',
+    (width, height) => {
+      vi.stubGlobal('innerWidth', width)
+      vi.stubGlobal('innerHeight', height)
+      render(
+        <SettingsDialog
+          density="standard"
+          error={null}
+          onDensityChange={vi.fn()}
+          onClose={vi.fn()}
+        />,
+      )
+      expect(screen.getByRole('navigation', { name: '设置分类' })).toBeVisible()
+      expect(screen.getByRole('radio', { name: '紧凑' })).toBeVisible()
+      expect(screen.getByRole('radio', { name: '标准' })).toBeVisible()
+      expect(screen.getByRole('radio', { name: '大图' })).toBeVisible()
+      expect(screen.getByRole('button', { name: '关闭' })).toBeVisible()
+    },
+  )
+
   it('shows one density radio group and reports a choice immediately', () => {
     const onDensityChange = vi.fn()
     render(

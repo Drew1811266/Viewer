@@ -52,6 +52,11 @@ describe('ViewerPopover', () => {
   it('exposes a labelled popover surface and alignment hook', () => {
     render(<Harness />)
     expect(screen.getByRole('region', { name: '筛选条件' })).toHaveAttribute('data-align', 'start')
+    expect(screen.getAllByRole('button').map((button) => button.textContent)).toEqual([
+      '筛选',
+      '筛选内容',
+      '外部',
+    ])
   })
 
   it('keeps current and disabled menu states readable without color-only meaning', () => {

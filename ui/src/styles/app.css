@@ -39,7 +39,7 @@ summary,
   animation: viewer-popover-in var(--viewer-motion-standard) var(--viewer-easing);
 }
 
-.modal-sheet,
+.viewer-dialog,
 .preview-overlay {
   animation: viewer-fade-in var(--viewer-motion-slow) var(--viewer-easing);
 }
@@ -696,24 +696,10 @@ summary,
   gap: 7px;
 }
 
-.marker-buttons button {
-  align-items: center;
-  background: var(--viewer-surface);
-  border: 1px solid var(--viewer-control-border);
-  border-radius: 6px;
-  display: inline-flex;
+.marker-buttons .viewer-button {
   gap: 7px;
   min-height: 30px;
-  padding: 4px 8px;
-}
-
-.marker-buttons button[aria-pressed="true"] {
-  background: var(--viewer-accent-soft);
-  border-color: var(--viewer-accent);
-}
-
-.marker-buttons button:disabled {
-  opacity: 0.5;
+  padding: 0 8px;
 }
 
 .marker-buttons kbd {
@@ -1136,7 +1122,7 @@ summary,
   font-size: 12px;
 }
 
-.compare-pane .marker-buttons button {
+.compare-pane .marker-buttons .viewer-button {
   background: var(--preview-control-surface);
   border: 1px solid var(--preview-control-border);
   border-radius: 5px;
@@ -1144,17 +1130,17 @@ summary,
   min-height: 28px;
 }
 
-.compare-pane .marker-buttons button:hover:not(:disabled):not([aria-pressed="true"]) {
+.compare-pane .marker-buttons .viewer-button:hover:not(:disabled):not([aria-pressed="true"]) {
   background: var(--preview-control-hover-surface);
   border-color: var(--preview-control-hover-border);
 }
 
-.compare-pane .marker-buttons button:focus-visible {
+.compare-pane .marker-buttons .viewer-button:focus-visible {
   outline: var(--viewer-focus-outline);
   outline-offset: var(--viewer-focus-offset);
 }
 
-.compare-pane .marker-buttons button[aria-pressed="true"] {
+.compare-pane .marker-buttons .viewer-button[aria-pressed="true"] {
   background: var(--preview-accent-surface);
   border-color: var(--preview-accent);
   color: var(--preview-accent-text);
@@ -1301,7 +1287,7 @@ summary,
   min-width: max-content;
 }
 
-.compare-pane > footer .marker-buttons button {
+.compare-pane > footer .marker-buttons .viewer-button {
   border-color: var(--preview-control-border);
   font-size: 10px;
   min-height: 24px;
@@ -1578,12 +1564,6 @@ summary,
   padding-top: 14px;
 }
 
-.text-file-list {
-  display: grid;
-  gap: 4px;
-  outline: none;
-}
-
 .text-file-row {
   align-items: center;
   background: var(--viewer-surface);
@@ -1796,21 +1776,7 @@ summary,
   grid-column: 1 / -1;
 }
 
-.modal-backdrop {
-  align-items: center;
-  background: var(--viewer-backdrop);
-  bottom: 0;
-  display: flex;
-  justify-content: center;
-  left: 0;
-  padding: 32px;
-  position: fixed;
-  right: 0;
-  top: 0;
-  z-index: 30;
-}
-
-.modal-sheet:has(.settings-dialog-shell) {
+.viewer-dialog:has(.settings-dialog-shell) {
   width: min(680px, calc(100vw - 48px));
 }
 
@@ -2542,7 +2508,7 @@ summary,
   [role="menuitemcheckbox"],
   .search-options-popover,
   .workspace-menu-popover,
-  .modal-sheet,
+  .viewer-dialog,
   .preview-overlay,
   .aspect-thumbnail-placeholder,
   .workspace-loading-thumbnail,
@@ -2560,6 +2526,37 @@ summary,
   .folder-tree-skeleton-row,
   .folder-filmstrip-skeleton {
     background: var(--viewer-soft-surface);
+  }
+}
+
+@media (forced-colors: active) {
+  .image-cell-thumbnail-frame[data-selected='true']::after {
+    border-color: Highlight;
+    border-width: 2px;
+  }
+
+  .aspect-virtual-grid:focus-visible .image-cell[data-active='true'],
+  .radial-menu-button:focus-visible,
+  .radial-menu-center:focus-visible {
+    outline: 2px solid Highlight;
+    outline-offset: 2px;
+  }
+
+  .radial-primary-shape,
+  .radial-secondary-shape {
+    fill: Canvas;
+    stroke: CanvasText;
+  }
+
+  .radial-primary-shape[data-active="true"],
+  .radial-secondary-shape[data-active="true"] {
+    fill: Highlight;
+    stroke: HighlightText;
+  }
+
+  .radial-menu-button[aria-disabled="true"] {
+    color: GrayText;
+    opacity: 1;
   }
 }
 

@@ -15,7 +15,9 @@ describe('Viewer surface primitives', () => {
       </ViewerInspector>,
     )
     expect(screen.getByRole('complementary', { name: '文件信息' })).toHaveClass('viewer-inspector')
-    expect(screen.getByRole('button', { name: '关闭信息' })).toBeVisible()
+    const close = screen.getByRole('button', { name: '关闭信息' })
+    expect(close).toBeVisible()
+    expect(close.querySelector('img')).toHaveAttribute('src', expect.stringContaining('/x.svg'))
     expect(screen.getByText('只读')).toBeVisible()
   })
 

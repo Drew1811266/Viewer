@@ -16,6 +16,20 @@ const image: BrowserFile = {
 }
 
 describe('InfoOverlay', () => {
+  it.each([
+    [1024, 720],
+    [720, 450],
+  ])(
+    'keeps the inspector identity and close action mounted at %d×%d CSS pixels',
+    (width, height) => {
+      vi.stubGlobal('innerWidth', width)
+      vi.stubGlobal('innerHeight', height)
+      render(<InfoOverlay files={[image]} dimensions={{}} onClose={vi.fn()} />)
+      expect(screen.getByRole('complementary', { name: '文件信息' })).toBeVisible()
+      expect(screen.getByRole('button', { name: '关闭信息' })).toBeVisible()
+    },
+  )
+
   it('shows on-demand single-file metadata including known dimensions', () => {
     render(
       <InfoOverlay

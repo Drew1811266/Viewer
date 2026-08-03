@@ -174,3 +174,13 @@
   color: var(--viewer-text-secondary);
   font-size: 11px;
 }
+
+@media (forced-colors: active) {
+  .unsupported-file-state--compact,
+  .text-preview-panes,
+  .text-preview-pane-toolbar {
+    background: Canvas;
+    border-color: CanvasText;
+    color: CanvasText;
+  }
+}

@@ -22,6 +22,34 @@ function query(overrides: Partial<SearchQueryModel> = {}): SearchQueryModel {
 }
 
 describe('SearchToolbar', () => {
+  it.each([
+    [1024, 720],
+    [720, 450],
+  ])('keeps every filter control reachable at %d×%d CSS pixels', (width, height) => {
+    vi.stubGlobal('innerWidth', width)
+    vi.stubGlobal('innerHeight', height)
+    render(
+      <SearchToolbarView
+        filterOpen
+        onFilterOpenChange={vi.fn()}
+        query={query()}
+        folders={[]}
+        focusRequest={0}
+        onTextChange={vi.fn()}
+        onScopeChange={vi.fn()}
+        onFiltersChange={vi.fn()}
+        onSortChange={vi.fn()}
+        onRemoveFilter={vi.fn()}
+        onClearFilters={vi.fn()}
+      />,
+    )
+    expect(screen.getByRole('searchbox', { name: '搜索项目' })).toBeVisible()
+    expect(screen.getByRole('button', { name: '关闭筛选' })).toBeVisible()
+    expect(screen.getByRole('combobox', { name: '搜索范围' })).toBeVisible()
+    expect(screen.getByRole('combobox', { name: '排序方式' })).toBeVisible()
+    expect(screen.getByRole('button', { name: '完成' })).toBeVisible()
+  })
+
   it('keeps exactly one 100px minimum width in the search input governing rule', () => {
     const searchInputRule = appCss.match(/\.search-field input\s*\{([^}]*)\}/)?.[1] ?? ''
     expect(searchInputRule.match(/min-width:\s*100px/g) ?? []).toHaveLength(1)

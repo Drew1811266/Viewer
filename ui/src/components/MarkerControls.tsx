@@ -1,5 +1,7 @@
 import type { ReviewState, SelectionAgreement, SelectionInfo } from '../api/types'
 import useReviewShortcuts from '../state/useReviewShortcuts'
+import ViewerButton from './ui/ViewerButton'
+import type { ViewerIconName } from './ui/ViewerIcon'
 
 interface MarkerControlsProps {
   selectedCount: number
@@ -65,7 +67,8 @@ export function MarkerButtons({
     <div className="marker-buttons">
       <MarkerButton
         label={`${labelPrefix}标记为保留`}
-        text="✓ 保留"
+        text="保留"
+        icon="check"
         shortcut={showShortcuts ? '1' : undefined}
         pressed={reviewState === 'keep'}
         disabled={disabled}
@@ -73,7 +76,8 @@ export function MarkerButtons({
       />
       <MarkerButton
         label={`${labelPrefix}标记为待定`}
-        text="• 待定"
+        text="待定"
+        icon="circle-dot"
         shortcut={showShortcuts ? '2' : undefined}
         pressed={reviewState === 'pending'}
         disabled={disabled}
@@ -81,7 +85,8 @@ export function MarkerButtons({
       />
       <MarkerButton
         label={`${labelPrefix}标记为淘汰`}
-        text="× 淘汰"
+        text="淘汰"
+        icon="x"
         shortcut={showShortcuts ? '3' : undefined}
         pressed={reviewState === 'reject'}
         disabled={disabled}
@@ -89,7 +94,8 @@ export function MarkerButtons({
       />
       <MarkerButton
         label={`${labelPrefix}清除审阅状态`}
-        text="○ 清除"
+        text="清除"
+        icon="circle"
         shortcut={showShortcuts ? '0' : undefined}
         pressed={reviewState === null}
         disabled={disabled}
@@ -97,7 +103,8 @@ export function MarkerButtons({
       />
       <MarkerButton
         label={`${labelPrefix}切换收藏`}
-        text="★ 收藏"
+        text="收藏"
+        icon="star"
         shortcut={showShortcuts ? 'F' : undefined}
         pressed={favorite === true}
         disabled={disabled}
@@ -110,6 +117,7 @@ export function MarkerButtons({
 function MarkerButton({
   label,
   text,
+  icon,
   shortcut,
   pressed,
   disabled,
@@ -117,23 +125,25 @@ function MarkerButton({
 }: {
   label: string
   text: string
+  icon: ViewerIconName
   shortcut?: string
   pressed: boolean
   disabled: boolean
   onClick: () => void
 }) {
   return (
-    <button
-      type="button"
+    <ViewerButton
+      tone="secondary"
+      leadingIcon={icon}
       aria-label={label}
-      aria-pressed={pressed}
+      active={pressed}
       disabled={disabled}
       title={shortcut ? `${label}（${shortcut}）` : label}
       onClick={onClick}
     >
       {text}
       {shortcut && <kbd>{shortcut}</kbd>}
-    </button>
+    </ViewerButton>
   )
 }
 

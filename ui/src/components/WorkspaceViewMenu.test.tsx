@@ -9,6 +9,23 @@ function WorkspaceViewMenu({ context }: { context: WorkspaceViewContext }) {
 }
 
 describe('WorkspaceViewMenu', () => {
+  it.each([
+    [1024, 720],
+    [720, 450],
+  ])('keeps the controlled menu commands mounted at %d×%d CSS pixels', (width, height) => {
+    vi.stubGlobal('innerWidth', width)
+    vi.stubGlobal('innerHeight', height)
+    render(
+      <WorkspaceViewMenuView
+        open
+        onOpenChange={vi.fn()}
+        context={{ kind: 'search', layout: 'grouped', onLayoutChange: vi.fn() }}
+      />,
+    )
+    expect(screen.getByRole('button', { name: /按文件夹分组/ })).toBeVisible()
+    expect(screen.getByRole('button', { name: '展平结果' })).toBeVisible()
+  })
+
   it('shows search layouts in the contextual view menu', () => {
     const onLayoutChange = vi.fn()
     render(<WorkspaceViewMenu context={{ kind: 'search', layout: 'grouped', onLayoutChange }} />)

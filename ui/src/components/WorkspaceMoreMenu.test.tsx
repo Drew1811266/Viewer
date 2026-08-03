@@ -9,6 +9,29 @@ function WorkspaceMoreMenu(props: Omit<WorkspaceMoreMenuProps, 'open' | 'onOpenC
 }
 
 describe('WorkspaceMoreMenu', () => {
+  it.each([
+    [1024, 720],
+    [720, 450],
+  ])('keeps every real project command named at %d×%d CSS pixels', (width, height) => {
+    vi.stubGlobal('innerWidth', width)
+    vi.stubGlobal('innerHeight', height)
+    render(
+      <WorkspaceMoreMenuView
+        open
+        onOpenChange={vi.fn()}
+        access="read_only"
+        closing={false}
+        onOpenSettings={vi.fn()}
+        onOpenPermissionSettings={vi.fn()}
+        onReselectProject={vi.fn()}
+        onCloseProject={vi.fn()}
+      />,
+    )
+    for (const name of ['软件设置', '权限设置', '重新选择目录', '关闭项目']) {
+      expect(screen.getByRole('button', { name })).toBeVisible()
+    }
+  })
+
   it('contains settings and project commands in one named menu', () => {
     const openSettings = vi.fn()
     const closeProject = vi.fn()

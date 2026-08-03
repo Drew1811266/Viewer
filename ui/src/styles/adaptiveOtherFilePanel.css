@@ -138,3 +138,15 @@
   border-radius: 0;
   padding: 4px 10px;
 }
+
+@media (forced-colors: active) {
+  .other-file-disclosure[data-expanded="true"],
+  .other-file-row[aria-selected="true"] {
+    background: Highlight;
+    color: HighlightText;
+  }
+
+  .other-file-row[aria-selected="true"] {
+    border-left: 3px solid HighlightText;
+  }
+}

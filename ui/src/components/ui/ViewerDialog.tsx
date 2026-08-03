@@ -66,13 +66,10 @@ export default function ViewerDialog({
   }
 
   return (
-    <div
-      className="modal-backdrop viewer-dialog-backdrop"
-      data-destructive={destructive || undefined}
-    >
+    <div className="viewer-dialog-backdrop" data-destructive={destructive || undefined}>
       <div
         ref={dialogRef}
-        className="modal-sheet viewer-dialog"
+        className="viewer-dialog"
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
@@ -83,11 +80,11 @@ export default function ViewerDialog({
         onKeyDown={containFocus}
         style={{ '--viewer-dialog-footer': footer === undefined ? '0' : '1' } as CSSProperties}
       >
-        <header className="modal-sheet-header viewer-dialog__header">
+        <header className="viewer-dialog__header">
           <h2 id={titleId}>{title}</h2>
           {description === undefined ? null : <p id={descriptionId}>{description}</p>}
         </header>
-        <div className="modal-sheet-body viewer-dialog__body">{children}</div>
+        <div className="viewer-dialog__body">{children}</div>
         {footer === undefined ? null : <footer className="viewer-dialog__footer">{footer}</footer>}
       </div>
     </div>

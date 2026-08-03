@@ -356,11 +356,18 @@
   margin-left: auto;
 }
 
-.modal-backdrop.viewer-dialog-backdrop {
+.viewer-dialog-backdrop {
+  align-items: center;
+  background: var(--viewer-backdrop);
+  display: flex;
+  inset: 0;
+  justify-content: center;
   padding: var(--viewer-space-6);
+  position: fixed;
+  z-index: 30;
 }
 
-.modal-sheet.viewer-dialog {
+.viewer-dialog {
   width: min(560px, calc(100vw - 48px));
   min-width: min(420px, calc(100vw - 48px));
   max-width: none;
@@ -375,15 +382,15 @@
   overflow: hidden;
 }
 
-.modal-sheet.viewer-dialog[data-size='small'] {
+.viewer-dialog[data-size='small'] {
   width: min(430px, calc(100vw - 48px));
 }
 
-.modal-sheet.viewer-dialog[data-size='medium'] {
+.viewer-dialog[data-size='medium'] {
   width: min(560px, calc(100vw - 48px));
 }
 
-.modal-sheet.viewer-dialog[data-size='large'] {
+.viewer-dialog[data-size='large'] {
   width: min(760px, calc(100vw - 48px));
 }
 
@@ -658,8 +665,58 @@
   .viewer-choice-chip,
   .viewer-field__control :is(input, select, textarea),
   .viewer-status-tag,
-  .viewer-segmented-control {
-    border-color: ButtonText;
+  .viewer-segmented-control,
+  .viewer-popover,
+  .viewer-dialog,
+  .viewer-inspector,
+  .viewer-local-feedback,
+  .viewer-task-surface {
+    background: Canvas;
+    border-color: CanvasText;
+    color: CanvasText;
     forced-color-adjust: auto;
+  }
+
+  .viewer-button[data-tone='primary'],
+  .viewer-button[data-active='true'],
+  .viewer-choice-chip[data-checked='true'],
+  .viewer-menu-row[data-current='true'] {
+    background: Highlight;
+    border-color: Highlight;
+    color: HighlightText;
+  }
+
+  .viewer-menu-row[data-current='true'] {
+    border-left: 3px solid HighlightText;
+  }
+
+  .viewer-button[data-tone='danger'] {
+    border-color: CanvasText;
+    border-width: 2px;
+    color: CanvasText;
+  }
+
+  .viewer-button:disabled,
+  .viewer-choice-chip[data-disabled='true'],
+  .viewer-menu-row:disabled {
+    border-color: GrayText;
+    color: GrayText;
+    opacity: 1;
+  }
+
+  .viewer-button:focus-visible,
+  .viewer-choice-chip:has(input:focus-visible),
+  .viewer-field__control :is(input, select, textarea):focus-visible,
+  .viewer-menu-row:focus-visible {
+    outline: 2px solid Highlight;
+    outline-offset: 2px;
+  }
+
+  .viewer-task-surface__track {
+    background: CanvasText;
+  }
+
+  .viewer-task-surface__fill {
+    background: Highlight;
   }
 }

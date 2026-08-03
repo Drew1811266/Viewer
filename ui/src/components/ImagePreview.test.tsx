@@ -19,6 +19,28 @@ function image(index: number): BrowserFile {
 }
 
 describe('ImagePreview', () => {
+  it.each([
+    [1024, 720],
+    [720, 450],
+  ])('keeps all primary preview controls mounted at %d×%d CSS pixels', (width, height) => {
+    vi.stubGlobal('innerWidth', width)
+    vi.stubGlobal('innerHeight', height)
+    const target = image(1)
+    render(
+      <ImagePreview
+        file={target}
+        files={[target]}
+        requestImage={vi.fn(() => new Promise<never>(() => undefined))}
+        onNavigate={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    )
+    expect(screen.getByRole('toolbar', { name: '图片预览工具' })).toBeVisible()
+    expect(screen.getByRole('button', { name: '适应窗口' })).toBeVisible()
+    expect(screen.getByRole('button', { name: '按 100% 显示' })).toBeVisible()
+    expect(screen.getByRole('button', { name: '关闭预览' })).toBeVisible()
+  })
+
   it('groups image controls in the toolbar and floats navigation over the stage', () => {
     const front = {
       ...image(1),

@@ -9,6 +9,15 @@ const viewerStyleSources = viewerStyleFiles
   .join('\n')
 
 describe('workspace style contracts', () => {
+  it('keeps the resting entry copy on the approved title and body scale', () => {
+    const rules = parseRules(appCss)
+    const title = rules.find((rule) => rule.selector === '.empty-project h1')
+    const copy = rules.find((rule) => rule.selector === '.empty-project p')
+
+    expect(title?.declarations['font-size']).toBe('20px')
+    expect(copy?.declarations['font-size']).toBe('13px')
+  })
+
   it('keeps the main workspace header at the approved compact density', () => {
     const rules = parseRules(appCss)
     const header = rules.find((rule) => rule.selector === '.workspace-header')

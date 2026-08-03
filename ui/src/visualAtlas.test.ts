@@ -282,6 +282,14 @@ describe('complete Viewer visual atlas', () => {
     clickScreen(document, 'launch')
     clickState(document, 'launch-no-project')
     expect(document.querySelectorAll('[data-no-project] > *')).toHaveLength(3)
+    const noProject = document.querySelector<HTMLElement>('[data-no-project]')
+    const noProjectTitle = noProject?.querySelector('h1')
+    const noProjectCopy = noProject?.querySelector('p')
+    const noProjectAction = noProject?.querySelector('button')
+    expect(window.getComputedStyle(noProjectTitle as Element).fontSize).toBe('20px')
+    expect(window.getComputedStyle(noProjectCopy as Element).fontSize).toBe('13px')
+    expect(window.getComputedStyle(noProjectAction as Element).fontSize).toBe('13px')
+    expect(window.getComputedStyle(noProjectAction as Element).minHeight).toBe('36px')
     for (const launchState of [
       'launch-drag',
       'launch-invalid',

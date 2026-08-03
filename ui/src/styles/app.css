@@ -95,6 +95,7 @@ summary,
 
 .empty-project p,
 .project-opening-state p {
+  font-size: 13px;
   margin: 0;
 }
 

@@ -228,8 +228,8 @@ import path from 'node:path'
 import process from 'node:process'
 
 const version = '1.27.0'
-const names = [
-  'alert-triangle', 'arrow-down', 'arrow-up', 'check', 'chevron-down',
+const sources = [
+  ['alert-triangle', 'triangle-alert'], 'arrow-down', 'arrow-up', 'check', 'chevron-down',
   'chevron-left', 'chevron-right', 'chevron-up', 'circle', 'circle-dot',
   'columns-2', 'copy', 'ellipsis', 'eye', 'folder-input', 'folder-output',
   'grip-vertical', 'info', 'layout-grid', 'lock', 'minus', 'move', 'panel-right',
@@ -237,11 +237,13 @@ const names = [
   'sliders-horizontal', 'star', 'trash-2', 'x',
 ]
 const target = path.resolve(process.cwd(), 'ui/src/assets/icons/lucide')
-const base = `https://raw.githubusercontent.com/lucide-icons/lucide/refs/tags/${version}/icons`
+const repository = 'https://raw.githubusercontent.com/lucide-icons/lucide'
+const base = `${repository}/refs/tags/${version}`
 
 await mkdir(target, { recursive: true })
-for (const name of names) {
-  const response = await fetch(`${base}/${name}.svg`)
+for (const entry of sources) {
+  const [name, sourceName] = Array.isArray(entry) ? entry : [entry, entry]
+  const response = await fetch(`${base}/icons/${sourceName}.svg`)
   if (!response.ok) throw new Error(`Lucide ${name}: HTTP ${response.status}`)
   const source = await response.text()
   if (!source.startsWith('<svg') || !source.includes('viewBox="0 0 24 24"')) {
@@ -249,6 +251,14 @@ for (const name of names) {
   }
   await writeFile(path.join(target, `${name}.svg`), source)
 }
+
+const licenseResponse = await fetch(`${base}/LICENSE`)
+if (!licenseResponse.ok) throw new Error(`Lucide license: HTTP ${licenseResponse.status}`)
+const license = await licenseResponse.text()
+if (!license.includes('ISC License') || !license.includes('The MIT License')) {
+  throw new Error('Lucide license: expected ISC and Feather MIT notices')
+}
+await writeFile(path.join(target, 'LICENSE.txt'), license)
 ```
 
 Run `node scripts/vendor-viewer-icons.mjs`, then copy the complete official Lucide 1.27.0 `LICENSE` file to `ui/src/assets/icons/lucide/LICENSE.txt` and add a `Bundled visual assets` row to `THIRD_PARTY_NOTICES.md` with version `1.27.0`, license `ISC and MIT for Feather-derived icons`, upstream `https://github.com/lucide-icons/lucide` and distributed `Yes`.
@@ -259,13 +269,16 @@ Run `node scripts/vendor-viewer-icons.mjs`, then copy the complete official Luci
 
 ```ts
 export interface ViewerIconProps
-  extends Omit<ImgHTMLAttributes<HTMLImageElement>, 'src' | 'alt' | 'width' | 'height'> {
+  extends Omit<
+    ImgHTMLAttributes<HTMLImageElement>,
+    'src' | 'alt' | 'width' | 'height' | 'aria-hidden'
+  > {
   name: ViewerIconName
   size?: number
 }
 ```
 
-Resolve assets through `import.meta.glob<string>('../../assets/icons/lucide/*.svg', { eager: true, query: '?url', import: 'default' })`, throw on a missing mapped asset and render an empty-alt `<img aria-hidden="true">`. It must not use `dangerouslySetInnerHTML`, `<svg>`, a Unicode fallback or a network URL.
+Resolve assets through `import.meta.glob<string>('../../assets/icons/lucide/*.svg', { eager: true, query: '?url&no-inline', import: 'default' })`, throw on a missing mapped asset and render an empty-alt `<img aria-hidden="true">`. It must not use `dangerouslySetInnerHTML`, `<svg>`, a Unicode fallback or a network URL. The semantic Viewer name remains `alert-triangle`; only its upstream Lucide 1.27.0 canonical filename is `triangle-alert`.
 
 - [ ] **Step 5: Verify the icon boundary and dependency graph**
 
@@ -1248,11 +1261,11 @@ Repeat Step 3 at 1440×900 and record the exact combined path in `Native 1440`. 
 
 - [ ] **Step 5: Perform manual accessibility and platform checks**
 
-Verify keyboard-only navigation, Escape and focus return for filter/view/more, preview, radial menu, all dialogs and both inspectors. Verify reduced motion, forced colors structure, macOS dark system appearance with Viewer-owned light surfaces, 200% zoom and minimum window reachability. Record pass/fail against `A11Y-01`–`A11Y-05`.
+Verify keyboard-only navigation, Escape and focus return for filter/view/more, preview, radial menu, all dialogs and both inspectors. Verify reduced motion, macOS Increase Contrast and Reduce Transparency, macOS dark system appearance with Viewer-owned light surfaces, 200% zoom and minimum window reachability. For `A11Y-04`, pair both macOS native high-contrast captures with the automated `forced-colors` CSS contract; true Windows forced-colors native evidence remains deferred to the future Windows phase. Record pass/fail against `A11Y-01`–`A11Y-05`.
 
 - [ ] **Step 6: Close the ledger only when every gate is satisfied**
 
-For each row set `Result` to `pass` only when automated evidence and both native columns are recorded and P0/P1/P2 are zero. Keep any unresolved row as `pending` or `blocked` with a concrete reason. Update the verification document so historical screenshots are explicitly non-current and the new commit is the only completion evidence.
+For each row set `Result` to `pass` only when automated evidence and both native columns are recorded and P0/P1/P2 are zero. `A11Y-04` uses the documented current-platform pair of automated forced-colors coverage and macOS native high-contrast captures; this does not claim Windows-native validation. Keep any unresolved row as `pending` or `blocked` with a concrete reason. Update the verification document so historical screenshots are explicitly non-current and the new commit is the only completion evidence.
 
 - [ ] **Step 7: Commit the final evidence index**
 

@@ -447,6 +447,14 @@ describe('workspace style contracts', () => {
     expect(declaration('.image-preview-stage img', 'box-shadow')).toBe(
       'var(--preview-image-shadow)',
     )
+    for (const selector of [
+      '.image-preview-stage img[data-mode="fit"]',
+      '.image-preview-stage img[data-mode="free"]',
+    ]) {
+      expect(declaration(selector, 'height')).toBe('90%')
+      expect(declaration(selector, 'width')).toBe('auto')
+      expect(declaration(selector, 'max-width')).toBe('90%')
+    }
     expect(declaration('.preview-navigation-float', 'background')).toBe('var(--viewer-surface)')
     expect(declaration('.preview-navigation-float', 'border')).toBe(
       '1px solid var(--viewer-border)',

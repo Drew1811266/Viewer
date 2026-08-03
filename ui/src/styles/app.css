@@ -2152,6 +2152,8 @@ summary,
 
 .image-preview-stage img[data-mode="fit"],
 .image-preview-stage img[data-mode="free"] {
+  height: 90%;
+  width: auto;
   max-height: 90%;
   max-width: 90%;
   object-fit: contain;

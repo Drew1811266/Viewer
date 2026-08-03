@@ -76,14 +76,26 @@ function commandExecutable(command) {
 }
 
 /**
+ * @param {string} repoRoot
+ * @returns {string}
+ */
+function viewerProcessScopeRoot(repoRoot) {
+  const worktreeMarker = `${path.sep}.worktrees${path.sep}`
+  const markerIndex = repoRoot.indexOf(worktreeMarker)
+
+  return markerIndex === -1 ? repoRoot : repoRoot.slice(0, markerIndex)
+}
+
+/**
  * @param {string} command
  * @param {string} repoRoot
  * @returns {boolean}
  */
 export function isViewerExecutable(command, repoRoot) {
   const executable = commandExecutable(command)
+  const scopeRoot = viewerProcessScopeRoot(repoRoot)
   const repositoryViewer =
-    executable.startsWith(`${repoRoot}${path.sep}`) &&
+    executable.startsWith(`${scopeRoot}${path.sep}`) &&
     executable.endsWith(`${path.sep}viewer-desktop`)
   const packagedViewer = executable.endsWith(
     `${path.sep}Viewer.app${path.sep}Contents${path.sep}MacOS${path.sep}viewer-desktop`,
@@ -98,8 +110,10 @@ export function isViewerExecutable(command, repoRoot) {
  * @returns {boolean}
  */
 export function isTauriDevProcess(command, repoRoot) {
+  const scopeRoot = viewerProcessScopeRoot(repoRoot)
+
   return (
-    command.includes(`${repoRoot}${path.sep}`) &&
+    command.includes(`${scopeRoot}${path.sep}`) &&
     command.includes(`${path.sep}node_modules${path.sep}`) &&
     /(?:tauri\.js|tauri)\s+["']?dev["']?(?:\s|$)/.test(command)
   )

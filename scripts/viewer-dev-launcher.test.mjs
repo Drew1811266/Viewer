@@ -248,6 +248,35 @@ describe('process selection', () => {
     assert.equal(isTauriDevProcess('vite --port 5173', repoRoot), false)
   })
 
+  it('keeps the main repository and sibling worktrees in scope from a worktree', () => {
+    const worktreeRoot = `${repoRoot}/.worktrees/theme`
+
+    assert.equal(
+      isViewerExecutable(`${repoRoot}/target/debug/viewer-desktop`, worktreeRoot),
+      true,
+    )
+    assert.equal(
+      isViewerExecutable(
+        `${repoRoot}/.worktrees/other/target/debug/viewer-desktop`,
+        worktreeRoot,
+      ),
+      true,
+    )
+    assert.equal(
+      isTauriDevProcess(
+        `node ${repoRoot}/node_modules/@tauri-apps/cli/tauri.js dev`,
+        worktreeRoot,
+      ),
+      true,
+    )
+    assert.deepEqual(selectStopTargets(parseProcessTable(table), worktreeRoot, 999), [
+      { kind: 'group', id: 120, viewerPid: 122 },
+      { kind: 'group', id: 210, viewerPid: 212 },
+      { kind: 'process', id: 220, viewerPid: 220 },
+      { kind: 'process', id: 320, viewerPid: 320 },
+    ])
+  })
+
   it('uses development process groups and exact standalone processes', () => {
     assert.deepEqual(selectStopTargets(parseProcessTable(table), repoRoot, 999), [
       { kind: 'group', id: 120, viewerPid: 122 },

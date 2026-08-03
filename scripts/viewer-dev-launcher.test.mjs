@@ -1,5 +1,13 @@
 import assert from 'node:assert/strict'
-import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import {
+  access,
+  copyFile,
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  writeFile,
+} from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, it } from 'node:test'
@@ -30,6 +38,10 @@ describe('buildLauncherPaths', () => {
     assert.equal(paths.statePath, `${repoRoot}/target/dev-launcher/session.json`)
     assert.equal(paths.logPath, `${repoRoot}/target/dev-launcher/tauri-dev.log`)
     assert.equal(paths.executablePath, `${repoRoot}/target/debug/viewer-desktop`)
+    assert.equal(
+      paths.legacyWrapperPath,
+      `${repoRoot}/target/dev-launcher/current-dev-wrapper`,
+    )
   })
 })
 
@@ -39,12 +51,15 @@ describe('createSystemRuntime', () => {
     const fakeBin = path.join(temporaryRoot, 'fake-bin')
     const stateDir = path.join(temporaryRoot, 'target', 'dev-launcher')
     const executablePath = path.join(temporaryRoot, 'target', 'debug', 'viewer-desktop')
+    const legacyWrapperPath = path.join(stateDir, 'current-dev-wrapper')
+    const preservedPath = path.join(stateDir, 'preserved.txt')
     const paths = {
       repoRoot: temporaryRoot,
       stateDir,
       statePath: path.join(stateDir, 'session.json'),
       logPath: path.join(stateDir, 'tauri-dev.log'),
       executablePath,
+      legacyWrapperPath,
     }
     let child
 
@@ -52,7 +67,10 @@ describe('createSystemRuntime', () => {
       await mkdir(path.join(temporaryRoot, 'src-tauri'), { recursive: true })
       await mkdir(path.dirname(executablePath), { recursive: true })
       await mkdir(fakeBin, { recursive: true })
+      await mkdir(path.join(legacyWrapperPath, 'Viewer.app'), { recursive: true })
       await writeFile(path.join(temporaryRoot, 'package.json'), '{}\n')
+      await writeFile(path.join(legacyWrapperPath, 'Viewer.app', 'sentinel'), 'legacy\n')
+      await writeFile(preservedPath, 'keep\n')
       await copyFile('/bin/sleep', executablePath)
       await writeFile(
         path.join(fakeBin, 'pnpm'),
@@ -66,6 +84,9 @@ describe('createSystemRuntime', () => {
           PATH: `${fakeBin}:${process.env.PATH}`,
         },
       })
+      await runtime.removeLegacyWrapper()
+      await assert.rejects(access(legacyWrapperPath), { code: 'ENOENT' })
+      assert.equal(await readFile(preservedPath, 'utf8'), 'keep\n')
       child = await runtime.spawn()
       const session = {
         version: 1,
@@ -323,6 +344,7 @@ describe('restartDevelopmentViewer', () => {
     statePath: `${repoRoot}/target/dev-launcher/session.json`,
     logPath: `${repoRoot}/target/dev-launcher/tauri-dev.log`,
     executablePath: `${repoRoot}/target/debug/viewer-desktop`,
+    legacyWrapperPath: `${repoRoot}/target/dev-launcher/current-dev-wrapper`,
   }
 
   it('stops an existing Viewer before spawning and waits for the exact executable', async () => {
@@ -353,6 +375,9 @@ describe('restartDevelopmentViewer', () => {
       ],
     ]
     const runtime = {
+      async removeLegacyWrapper() {
+        events.push('remove-wrapper')
+      },
       async listProcesses() {
         events.push('list')
         return snapshots.shift() ?? []
@@ -390,6 +415,7 @@ describe('restartDevelopmentViewer', () => {
     })
 
     assert.deepEqual(events, [
+      'remove-wrapper',
       'list',
       'stop:group:120',
       'list',
@@ -419,6 +445,7 @@ describe('restartDevelopmentViewer', () => {
       ],
     ]
     const runtime = {
+      async removeLegacyWrapper() {},
       async listProcesses() {
         return snapshots.shift() ?? []
       },
@@ -459,6 +486,7 @@ describe('restartDevelopmentViewer', () => {
     const events = []
     let spawned = false
     const runtime = {
+      async removeLegacyWrapper() {},
       async listProcesses() {
         return []
       },
@@ -495,5 +523,25 @@ describe('restartDevelopmentViewer', () => {
       /compile failed/,
     )
     assert.deepEqual(events, ['clear'])
+  })
+
+  it('does not inspect or spawn when legacy wrapper cleanup fails', async () => {
+    const events = []
+    const runtime = {
+      async removeLegacyWrapper() {
+        events.push('remove-wrapper')
+        throw new Error('wrapper cleanup denied')
+      },
+      async listProcesses() {
+        events.push('list')
+        return []
+      },
+    }
+
+    await assert.rejects(
+      restartDevelopmentViewer({ paths, runtime, timeoutMs: 100, pollMs: 1 }),
+      /wrapper cleanup denied/,
+    )
+    assert.deepEqual(events, ['remove-wrapper'])
   })
 })

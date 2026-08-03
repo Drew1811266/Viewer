@@ -14,6 +14,7 @@ const execFileAsync = promisify(execFile)
  *   statePath: string,
  *   logPath: string,
  *   executablePath: string,
+ *   legacyWrapperPath: string,
  * }} LauncherPaths
  *
  * @typedef {{
@@ -45,6 +46,7 @@ export function buildLauncherPaths(moduleUrl) {
     statePath: path.join(stateDir, 'session.json'),
     logPath: path.join(stateDir, 'tauri-dev.log'),
     executablePath: path.join(repoRoot, 'target', 'debug', 'viewer-desktop'),
+    legacyWrapperPath: path.join(stateDir, 'current-dev-wrapper'),
   }
 }
 
@@ -164,6 +166,7 @@ export function isExactDevelopmentViewerRunning(processes, executablePath) {
  * }} SessionState
  *
  * @typedef {{
+ *   removeLegacyWrapper(): Promise<void>,
  *   listProcesses(): Promise<ProcessInfo[]>,
  *   readSession(): Promise<SessionState | undefined>,
  *   writeSession(state: SessionState): Promise<void>,
@@ -215,6 +218,10 @@ function delay(ms) {
  */
 export function createSystemRuntime(paths, { env = process.env } = {}) {
   return {
+    async removeLegacyWrapper() {
+      await rm(paths.legacyWrapperPath, { recursive: true, force: true })
+    },
+
     async listProcesses() {
       const { stdout } = await execFileAsync(
         'ps',
@@ -358,6 +365,7 @@ export async function restartDevelopmentViewer({
   timeoutMs = 120_000,
   pollMs = 250,
 }) {
+  await runtime.removeLegacyWrapper()
   const initial = await runtime.listProcesses()
   const stored = await runtime.readSession()
   const storedProcess = stored

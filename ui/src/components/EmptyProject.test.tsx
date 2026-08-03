@@ -73,6 +73,7 @@ describe('EmptyProject', () => {
     fireEvent.dragEnter(entry, {
       dataTransfer: { items: [{ webkitGetAsEntry: () => ({ isDirectory: true }) }] },
     })
+    expect(entry).toHaveAttribute('data-drop-state', 'valid')
     expect(screen.getByText('松开以打开项目')).toBeVisible()
 
     fireEvent.dragLeave(entry)
@@ -87,6 +88,7 @@ describe('EmptyProject', () => {
 
     expect(await screen.findByRole('heading', { name: 'project' })).toBeVisible()
     expect(screen.getByText('正在验证项目…')).toBeVisible()
+    expect(screen.getByRole('status', { name: '正在打开项目' })).toHaveClass('viewer-task-surface')
     expect(screen.getByRole('progressbar', { name: '正在打开项目' })).not.toHaveAttribute(
       'aria-valuenow',
     )
@@ -113,7 +115,9 @@ describe('EmptyProject', () => {
       dataTransfer: { items: [item], files: [{ name: 'not-a-directory.jpg' }] },
     })
 
+    expect(screen.getByTestId('project-drop-zone')).toHaveAttribute('data-drop-state', 'invalid')
     expect(await screen.findByRole('alert')).toHaveTextContent('请选择项目文件夹')
+    expect(screen.getByRole('alert')).toHaveClass('viewer-local-feedback')
     expect(viewer.openProject).not.toHaveBeenCalled()
   })
 })

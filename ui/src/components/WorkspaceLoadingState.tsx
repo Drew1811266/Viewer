@@ -1,3 +1,5 @@
+import ViewerTaskSurface from './ui/ViewerTaskSurface'
+
 export interface WorkspaceLoadingStateProps {
   bandCount?: number
 }
@@ -14,6 +16,11 @@ export default function WorkspaceLoadingState({ bandCount = 3 }: WorkspaceLoadin
       aria-busy="true"
     >
       <span className="visually-hidden">正在读取项目…</span>
+      <div className="workspace-loading-task">
+        <ViewerTaskSurface label="正在读取项目" current={0} total={0} indeterminate>
+          正在扫描项目
+        </ViewerTaskSurface>
+      </div>
       {bands.map((bandId) => (
         <div className="workspace-loading-band" aria-hidden="true" key={bandId}>
           <div className="workspace-loading-identity" />

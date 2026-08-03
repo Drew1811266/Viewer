@@ -60,7 +60,7 @@ export default function AspectThumbnail({
   const size = { width: `${width}px`, height: `${height}px` }
 
   return (
-    <span className="aspect-thumbnail" style={size}>
+    <span className="aspect-thumbnail" data-thumbnail-state={currentState.status} style={size}>
       {showPlaceholder && (
         <span
           className="aspect-thumbnail-placeholder"

@@ -27,9 +27,13 @@ describe('GlobalNoticeStack', () => {
 
     expect(screen.getByRole('region', { name: '全局通知' })).toBeVisible()
     expect(screen.getByRole('alert')).toHaveTextContent('Viewer 无法继续')
-    fireEvent.click(screen.getByRole('button', { name: '查看结果' }))
+    const resultAction = screen.getByRole('button', { name: '查看结果' })
+    expect(resultAction).toHaveClass('viewer-button')
+    fireEvent.click(resultAction)
     expect(showResults).toHaveBeenCalledOnce()
-    fireEvent.click(screen.getByRole('button', { name: '关闭 Viewer 无法继续' }))
+    const dismiss = screen.getByRole('button', { name: '关闭 Viewer 无法继续' })
+    expect(dismiss).toHaveClass('viewer-icon-button')
+    fireEvent.click(dismiss)
     expect(screen.queryByText('项目状态不可用。')).not.toBeInTheDocument()
   })
 

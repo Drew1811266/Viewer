@@ -43,6 +43,10 @@ describe('AspectThumbnail', () => {
       width: '198px',
       height: '132px',
     })
+    expect(container.querySelector('.aspect-thumbnail')).toHaveAttribute(
+      'data-thumbnail-state',
+      'loading',
+    )
   })
 
   it('renders the complete known-ratio image at the supplied proportional size', async () => {
@@ -172,6 +176,10 @@ describe('AspectThumbnail', () => {
       width: '198px',
       height: '132px',
     })
+    expect(container.querySelector('.aspect-thumbnail')).toHaveAttribute(
+      'data-thumbnail-state',
+      'failed',
+    )
     expect(screen.queryByRole('img')).not.toBeInTheDocument()
   })
 

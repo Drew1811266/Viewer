@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import ViewerButton, { ViewerIconButton } from './ui/ViewerButton'
 
 export type GlobalNoticeTone = 'info' | 'warning' | 'danger'
 
@@ -56,17 +57,14 @@ export default function GlobalNoticeStack({
             <p>{notice.message}</p>
           </div>
           {notice.action && (
-            <button type="button" onClick={notice.action.onAction}>
-              {notice.action.label}
-            </button>
+            <ViewerButton onClick={notice.action.onAction}>{notice.action.label}</ViewerButton>
           )}
-          <button
-            type="button"
-            aria-label={`关闭 ${notice.title}`}
+          <ViewerIconButton
+            icon="x"
+            label={`关闭 ${notice.title}`}
+            tone="quiet"
             onClick={() => setDismissed((current) => new Set([...current, notice.id]))}
-          >
-            关闭
-          </button>
+          />
         </article>
       ))}
     </section>

@@ -197,6 +197,16 @@ describe('Viewer empty state', () => {
     expect(within(toolbar).queryByRole('button', { name: '项目菜单' })).not.toBeInTheDocument()
   })
 
+  it('renders a formal empty state when the selected folder has no supported files', async () => {
+    const viewer = bridge()
+    render(<App bridge={viewer} />)
+    fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
+
+    expect(await screen.findByRole('heading', { name: '此文件夹为空' })).toBeVisible()
+    expect(screen.getByText('这里还没有可查看的文件。')).toBeVisible()
+    expect(screen.queryByText('此文件夹中没有支持的文件。')).not.toBeInTheDocument()
+  })
+
   it('routes contextual content selection through the shared View menu', async () => {
     const viewer = bridge()
     vi.mocked(viewer.queryFolder).mockResolvedValue(mixedContentWorkspace())

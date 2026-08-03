@@ -98,56 +98,44 @@ summary,
   margin: 0;
 }
 
-.empty-project-primary-action {
-  background: var(--viewer-accent);
-  border: 1px solid var(--viewer-accent);
-  border-radius: var(--viewer-radius-control);
-  color: var(--viewer-on-accent);
-  min-height: 34px;
-  padding: 6px 12px;
-}
-
-.empty-project-primary-action:hover:not(:disabled) {
-  background: var(--viewer-accent-hover);
-  border-color: var(--viewer-accent-hover);
-}
-
-.empty-project-primary-action:focus-visible {
-  outline: var(--viewer-focus-outline);
-  outline-offset: var(--viewer-focus-offset);
-}
-
-.empty-project-primary-action:disabled {
-  cursor: not-allowed;
-  opacity: 0.58;
-}
-
 .project-drop-feedback {
-  background: var(--viewer-accent-overlay);
+  background: var(--viewer-accent-soft);
   border: 2px solid var(--viewer-accent);
   border-radius: 14px;
   color: var(--viewer-accent-text);
   display: grid;
-  inset: 12px;
+  inset: 22px;
+  padding: var(--viewer-space-6);
   place-items: center;
   pointer-events: none;
   position: fixed;
   z-index: 1;
 }
 
-.empty-project-error {
-  color: var(--viewer-danger);
+.project-drop-feedback[data-drop-state='invalid'] {
+  background: var(--viewer-danger-soft);
+  border-color: var(--viewer-danger);
 }
 
-.project-opening-progress {
-  background: var(--viewer-border);
-  height: 2px;
-  overflow: hidden;
-  width: min(280px, 60vw);
+.project-drop-feedback > .viewer-local-feedback {
+  pointer-events: auto;
+}
+
+.empty-project-feedback {
+  width: min(520px, calc(100vw - 64px));
+  margin-top: var(--viewer-space-2);
 }
 
 .workspace-loading {
   min-width: 0;
+  position: relative;
+}
+
+.workspace-loading-task {
+  position: absolute;
+  right: 14px;
+  bottom: 14px;
+  z-index: 4;
 }
 
 .workspace-loading-band {
@@ -741,14 +729,6 @@ summary,
   margin: 4px 0 0;
 }
 
-.global-notice button {
-  background: var(--viewer-surface);
-  border: 1px solid var(--viewer-border);
-  border-radius: var(--viewer-radius-control);
-  min-height: 30px;
-  padding: 4px 8px;
-}
-
 .modal-sheet button,
 .operation-results button {
   background: var(--viewer-surface);
@@ -1068,6 +1048,10 @@ summary,
   min-width: 0;
   overflow: auto;
   padding: 16px;
+}
+
+.workspace > .viewer-empty-state {
+  margin: max(48px, 12vh) auto 0;
 }
 
 .compare-status {

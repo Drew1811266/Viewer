@@ -43,6 +43,7 @@ import TaskBar from './components/TaskBar'
 import TextPreview, { type TextPreviewFiles } from './components/TextPreview'
 import TrashConfirmation from './components/TrashConfirmation'
 import UnsupportedFilePreview from './components/UnsupportedFilePreview'
+import ViewerEmptyState from './components/ui/ViewerEmptyState'
 import WorkspaceLoadingState from './components/WorkspaceLoadingState'
 import WorkspaceMoreMenu from './components/WorkspaceMoreMenu'
 import WorkspaceViewMenu, { type WorkspaceViewContext } from './components/WorkspaceViewMenu'
@@ -1069,7 +1070,7 @@ function ViewerWorkspace({ bridge }: { bridge: ViewerBridge }) {
           )}
           {!state.search.showResults && state.workspace === null && <WorkspaceLoadingState />}
           {!state.search.showResults && state.workspace?.workspace === 'empty' && (
-            <p>此文件夹中没有支持的文件。</p>
+            <ViewerEmptyState title="此文件夹为空" description="这里还没有可查看的文件。" />
           )}
           {!state.search.showResults && state.workspace?.workspace === 'category' && (
             <FolderOverview

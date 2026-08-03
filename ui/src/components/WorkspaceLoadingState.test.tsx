@@ -8,6 +8,7 @@ describe('WorkspaceLoadingState', () => {
 
     const status = screen.getByRole('status', { name: '项目内容加载中' })
     expect(status).toHaveAttribute('aria-busy', 'true')
+    expect(screen.getByRole('status', { name: '正在读取项目' })).toHaveClass('viewer-task-surface')
     expect(status.querySelectorAll('.workspace-loading-band')).toHaveLength(3)
     expect(status.querySelectorAll('.workspace-loading-thumbnail').length).toBeGreaterThan(3)
   })

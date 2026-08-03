@@ -30,9 +30,7 @@ export default function ViewerTaskSurface({
     >
       <div className="viewer-task-surface__header">
         <strong>{children}</strong>
-        <span>
-          {safeCurrent} / {safeTotal}
-        </span>
+        <span>{indeterminate ? '处理中' : `${safeCurrent} / ${safeTotal}`}</span>
       </div>
       <div className="viewer-task-surface__track" aria-hidden="true">
         <div className="viewer-task-surface__fill" />

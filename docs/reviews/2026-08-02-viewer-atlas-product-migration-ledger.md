@@ -3,14 +3,15 @@
 ## Current Task 15 acceptance run
 
 - Branch: `codex/viewer-atlas-product-migration`
-- Product commit: `676290fe200e353c3074da3209ce61d99ed5a565`
-- Worktree at launch: clean
-- Unique native process: PID `18210`, launched from this worktree's `target/debug/bundle/macos/Viewer.app`
+- Product commit: `eec782fcb8b6f123395d4c834f1acd4da53afba3`
+- Worktree at capture: the launcher source matched this commit; the evidence directory is keyed to the committed product source.
+- Unique native process: PID `24687`, launched from this worktree's `target/debug/viewer-desktop` by the canonical `pnpm start:viewer` command.
 - Platform: macOS `26.5.2` (`25F84`)
-- Display: built-in Liquid Retina, `2560 × 1664` Retina
-- Exact native acceptance viewport available: `1024 × 720`
-- Required `1440 × 900` native viewport: blocked on the built-in display; the window manager clamps the requested bundle to `1291 × 768`. Constraint evidence: `target/atlas-product-migration-acceptance/7b39607b995330601cbc0904acb1df441de1a441/actual-1291x768/LAU-01/native.jpg`.
-- Automated gate on the product commit: `check`, 67 UI files / 648 passed / 1 skipped, production build, 28 policy tests plus 47-row scope coverage, 8 security-boundary tests, Cargo deny, and npm license policy all exited `0`.
+- Display at capture: built-in Liquid Retina in `1710 × 1112` logical mode; temporary Dock auto-hide enabled only for capture, then both display mode and Dock preference restored to the user's original `1470 × 956` / Dock-visible settings.
+- Exact native acceptance viewports available: `1024 × 720` and `1440 × 900`. The canonical launcher accepts a temporary Tauri config through `VIEWER_TAURI_CONFIG` while still enforcing the one-process and exact-worktree executable rules.
+- Previous `1291 × 768` and `1024 × 720` constraint reports were produced by selecting the registered bundle app instead of the bare development process. They remain historical evidence only and are not current blockers.
+- Automated gate on the product commit: UI check, 67 UI files / 648 passed / 1 skipped, production build, 20 launcher tests, 28 policy tests plus 47-row scope coverage, 8 security-boundary tests, Cargo fmt/clippy/workspace tests, Cargo deny, and npm license policy all exited `0`.
+- Current exact 1440 evidence: `target/atlas-product-migration-acceptance/eec782fcb8b6f123395d4c834f1acd4da53afba3/1440x900/LAU-01/combined.png`; its local `README.md` records the launch, capture, normalization and visual verdict.
 
 A row remains `pending` or `blocked` until its automated evidence and both required native comparisons are recorded. Historical and superseded captures may explain progress, but they do not close a row for the current product commit.
 
@@ -29,7 +30,7 @@ Native recipes use one disposable real project outside the source tree at `targe
 
 | ID | Wave | Reference state | Product owner | Native entry recipe | Automated evidence | Native 1024 | Native 1440 | Result |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| LAU-01 | Wave 1 | `launch-no-project` | `EmptyProject` | Launch Viewer with no session, or choose `关闭项目` and wait for the empty entry screen. | `EmptyProject` (`EmptyProject.test.tsx`) | not-recorded | not-recorded | pending |
+| LAU-01 | Wave 1 | `launch-no-project` | `EmptyProject` | Launch Viewer with no session, or choose `关闭项目` and wait for the empty entry screen. | `EmptyProject` (`EmptyProject.test.tsx`) | not-recorded | `target/atlas-product-migration-acceptance/eec782fcb8b6f123395d4c834f1acd4da53afba3/1440x900/LAU-01/combined.png` — pass | pending — exact 1024 comparison still required |
 | LAU-02 | Wave 1 | `launch-drag` | `EmptyProject` drop layer | From Finder drag the `ViewerAcceptance` directory over the empty Viewer window without releasing. | `EmptyProject` (`EmptyProject.test.tsx`) | not-recorded | not-recorded | pending |
 | LAU-03 | Wave 1 | `launch-invalid` | `EmptyProject` local feedback | From Finder drop `tests/fixtures/images/srgb.jpg` onto the empty Viewer window. | `EmptyProject` (`EmptyProject.test.tsx`) | not-recorded | not-recorded | pending |
 | LAU-04 | Wave 1 | `launch-opening` | `EmptyProject` opening state | Click `选择项目文件夹`, choose `ViewerAcceptance`, and capture while project validation is active. | `EmptyProject` (`EmptyProject.test.tsx`) | not-recorded | not-recorded | pending |
@@ -76,7 +77,7 @@ Native recipes use one disposable real project outside the source tree at `targe
 | RAD-05 | Wave 2 | `radial-disabled` | `RadialMenuModel` | Select one non-image or only one image so compare is disabled, then open the radial menu and focus the disabled command. | `RadialFileMenu.test.tsx`; `radialMenuModel.test.ts` visible and title disabled-reason assertions | not-recorded | not-recorded | pending |
 | RAD-06 | Wave 2 | `radial-readonly` | read-only radial model | In the read-only fixture select one image and open the radial menu. | `RadialFileMenu.test.tsx`; `radialMenuModel.test.ts` read-only center and disabled-action assertions | not-recorded | not-recorded | pending |
 | RAD-07 | Wave 2 | `radial-keyboard` | radial keyboard model | Focus a selected image, invoke the keyboard context menu, navigate with arrows and open a secondary ring without executing. | `RadialFileMenu.test.tsx`; `appSessionCoordinators.test.tsx` keyboard navigation and focus restoration assertions | not-recorded | not-recorded | pending |
-| PRE-01 | Wave 2 | `preview-fit` | `ImagePreview` | Open one image from `衣服/A01` and leave `适应窗口` active. | `ImagePreview.test.tsx`; `previewPolicy.test.ts` fit-mode and formal-toolbar assertions | `target/atlas-product-migration-acceptance/676290fe200e353c3074da3209ce61d99ed5a565/1024x720/PRE-01/combined.png` — pass | blocked — requested `1440 × 900` clamps to `1291 × 768` on the built-in display | blocked — exact native 1440 evidence required |
+| PRE-01 | Wave 2 | `preview-fit` | `ImagePreview` | Open one image from `衣服/A01` and leave `适应窗口` active. | `ImagePreview.test.tsx`; `previewPolicy.test.ts` fit-mode and formal-toolbar assertions | not-recorded — ancestor comparison retained outside the current gate | not-recorded | pending |
 | PRE-02 | Wave 2 | `preview-100` | `ImagePreview` | In image preview choose `100%`. | `ImagePreview.test.tsx`; `previewPolicy.test.ts` explicit original-request and safety assertions | not-recorded | not-recorded | pending |
 | PRE-03 | Wave 2 | `preview-zoom` | `ImagePreview` | In image preview press zoom-in twice so the percentage differs from fit and 100%. | `ImagePreview.test.tsx` named zoom controls and transform assertions | not-recorded | not-recorded | pending |
 | PRE-04 | Wave 2 | `preview-rotate` | `ImagePreview` | In image preview activate clockwise rotation once. | `ImagePreview.test.tsx` named rotate icon and transform assertion | not-recorded | not-recorded | pending |
@@ -97,7 +98,7 @@ Native recipes use one disposable real project outside the source tree at `targe
 | INF-01 | Wave 2 | `info-single` | `InfoOverlay` | Select one image and invoke `信息` from the radial menu or Command-I. | `InfoOverlay.test.tsx` shared inspector, real close icon and single-file metadata assertions | not-recorded | not-recorded | pending |
 | INF-02 | Wave 2 | `info-multiple` | `InfoOverlay` aggregate | Select an image, text file and folder, then invoke `信息`. | `InfoOverlay.test.tsx` selection-count title, aggregate metadata and status-tag assertions | not-recorded | not-recorded | pending |
 | DIA-01 | Wave 3 | `dialog-settings` | `SettingsDialog` | Open `更多`, choose `软件设置`, and keep `显示与外观` selected. | `SettingsDialog.test.tsx`; `ModalSheet.test.tsx` one-item settings navigation, density selection, formal footer, focus trap and restoration assertions | not-recorded | not-recorded | pending |
-| DIA-02 | Wave 3 | `dialog-single-rename` | `RenameDialog` | Select one disposable file, open radial `整理`, and choose `重命名`. | `RenameDialog.test.tsx`; `ModalSheet.test.tsx` field validation, extension editing, cancel-first formal footer and primary-action assertions | `target/atlas-product-migration-acceptance/676290fe200e353c3074da3209ce61d99ed5a565/1024x720/DIA-02/combined.png` — pass | blocked — requested `1440 × 900` clamps to `1291 × 768` on the built-in display | blocked — exact native 1440 evidence required |
+| DIA-02 | Wave 3 | `dialog-single-rename` | `RenameDialog` | Select one disposable file, open radial `整理`, and choose `重命名`. | `RenameDialog.test.tsx`; `ModalSheet.test.tsx` field validation, extension editing, cancel-first formal footer and primary-action assertions | not-recorded — ancestor comparison retained outside the current gate | not-recorded | pending |
 | DIA-03 | Wave 3 | `dialog-batch-rename` | `BatchRenameDialog` | Select three disposable files, choose radial `整理`, then `批量重命名` and enter a valid prefix. | `BatchRenameDialog.test.tsx` formal rule fields, sequence chip, async preview revision, invalid status and primary footer assertions | not-recorded | not-recorded | pending |
 | DIA-04 | Wave 3 | `dialog-destination` | `DestinationDialog` | Select one file, choose radial `整理` then `复制到`, and select `目标/Destination`. | `DestinationDialog.test.tsx` compact stacking, destination selection, preflight and cancel-first primary footer assertions | not-recorded | not-recorded | pending |
 | DIA-05 | Wave 3 | `dialog-conflict` | `DestinationDialog` conflict stage | Copy the same-named fixture file from `目标/Source` to `目标/Destination` and keep the real conflict decisions open. | `DestinationDialog.test.tsx` ready/blocked/conflict status, per-item policy, apply-remaining and stale-preflight assertions | not-recorded | not-recorded | pending |

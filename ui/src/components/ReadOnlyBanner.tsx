@@ -1,3 +1,6 @@
+import ViewerButton from './ui/ViewerButton'
+import ViewerIcon from './ui/ViewerIcon'
+
 interface ReadOnlyBannerProps {
   busy: boolean
   onOpenSettings: () => void
@@ -8,16 +11,17 @@ export default function ReadOnlyBanner({ busy, onOpenSettings, onReselect }: Rea
   return (
     <section className="read-only-banner" role="status" aria-label="只读模式">
       <div>
+        <ViewerIcon name="lock" size={16} />
         <strong>只读模式</strong>
         <span>可以浏览、搜索和预览，但不能修改文件或标记。</span>
       </div>
       <div className="read-only-actions">
-        <button type="button" disabled={busy} onClick={onOpenSettings}>
+        <ViewerButton tone="quiet" disabled={busy} onClick={onOpenSettings}>
           权限设置
-        </button>
-        <button type="button" disabled={busy} onClick={onReselect}>
+        </ViewerButton>
+        <ViewerButton tone="secondary" disabled={busy} onClick={onReselect}>
           重新选择目录
-        </button>
+        </ViewerButton>
       </div>
     </section>
   )

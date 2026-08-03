@@ -49,7 +49,13 @@ describe('TaskBar', () => {
     const bar = screen.getByRole('complementary', { name: '后台任务' })
     const surface = bar.querySelector<HTMLElement>('.task-surface')
     expect(bar.querySelectorAll('.task-surface')).toHaveLength(1)
-    expect(screen.getByRole('button', { name: '展开后台任务' })).toBeVisible()
+    expect(bar.querySelectorAll('.viewer-task-surface')).toHaveLength(1)
+    const toggle = screen.getByRole('button', { name: '展开后台任务' })
+    expect(toggle).toBeVisible()
+    expect(toggle.querySelector('img')).toHaveAttribute(
+      'src',
+      expect.stringContaining('chevron-right'),
+    )
     expect(
       within(defined(surface, 'Expected one task surface')).getByText('2 个任务进行中'),
     ).toBeVisible()
@@ -61,13 +67,18 @@ describe('TaskBar', () => {
 
     expect(screen.getByText('扫描项目')).toBeVisible()
     expect(screen.getByText('2 项失败')).toBeVisible()
+    expect(screen.getByText('2 项失败')).toHaveClass('viewer-status-tag')
     const stack = screen.getByRole('complementary', { name: '后台任务' })
     expect(stack).toHaveClass('task-bar')
-    expect(within(stack).getByRole('progressbar', { name: '扫描项目进度' })).toHaveAttribute(
-      'value',
-      '12',
-    )
-    fireEvent.click(screen.getByRole('button', { name: '展开任务详情' }))
+    const semanticProgress = within(stack).getByRole('progressbar', { name: '扫描项目进度' })
+    expect(semanticProgress).toHaveAttribute('value', '12')
+    expect(semanticProgress).toHaveClass('visually-hidden')
+    expect(stack.querySelector('.viewer-task-surface__track')).not.toBeNull()
+    const toggle = screen.getByRole('button', { name: '展开任务详情' })
+    fireEvent.click(toggle)
+    expect(
+      screen.getByRole('button', { name: '收起任务详情' }).querySelector('img'),
+    ).toHaveAttribute('src', expect.stringContaining('chevron-down'))
     expect(screen.getByText('catalog/a.jpg')).toBeVisible()
   })
 
@@ -123,7 +134,7 @@ describe('TaskBar', () => {
         onShowResults={showResults}
       />,
     )
-    expect(screen.getByText('10/10')).toBeVisible()
+    expect(screen.getByText('10 / 10')).toBeVisible()
     expect(screen.getByText('2 项跳过')).toBeVisible()
     expect(screen.getByText('1 项取消')).toBeVisible()
     fireEvent.click(screen.getByRole('button', { name: '查看移动文件结果' }))

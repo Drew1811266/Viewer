@@ -13,6 +13,12 @@ describe('ReadOnlyBanner', () => {
     expect(screen.getByRole('status', { name: '只读模式' })).toHaveTextContent(
       '可以浏览、搜索和预览，但不能修改文件或标记',
     )
+    expect(screen.getByRole('status', { name: '只读模式' }).querySelector('img')).toHaveAttribute(
+      'src',
+      expect.stringContaining('/lock.svg'),
+    )
+    expect(screen.getByRole('button', { name: '权限设置' })).toHaveClass('viewer-button')
+    expect(screen.getByRole('button', { name: '重新选择目录' })).toHaveClass('viewer-button')
     expect(openSettings).not.toHaveBeenCalled()
     expect(reselect).not.toHaveBeenCalled()
     fireEvent.click(screen.getByRole('button', { name: '权限设置' }))

@@ -1735,6 +1735,9 @@ describe('Viewer empty state', () => {
       ),
     )
     await waitFor(() => expect(viewer.operationResults).toHaveBeenCalledOnce())
+    expect(screen.getByRole('complementary', { name: '文件操作结果' })).toHaveClass(
+      'viewer-inspector',
+    )
 
     fireEvent.keyDown(window, { key: 'Delete' })
     expect(screen.getByRole('dialog', { name: '将文件移到废纸篓？' })).toBeVisible()

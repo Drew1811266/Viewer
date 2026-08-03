@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import ViewerButton, { ViewerIconButton } from './ui/ViewerButton'
+import ViewerLocalFeedback from './ui/ViewerLocalFeedback'
 
 export type GlobalNoticeTone = 'info' | 'warning' | 'danger'
 
@@ -46,26 +47,28 @@ export default function GlobalNoticeStack({
       aria-label="全局通知"
     >
       {visible.map((notice) => (
-        <article
-          className="global-notice"
-          data-tone={notice.tone}
+        <ViewerLocalFeedback
           key={notice.id}
-          role={notice.tone === 'danger' ? 'alert' : 'status'}
+          tone={notice.tone}
+          title={notice.title}
+          action={
+            <div className="global-notice-actions">
+              {notice.action && (
+                <ViewerButton tone="secondary" onClick={notice.action.onAction}>
+                  {notice.action.label}
+                </ViewerButton>
+              )}
+              <ViewerIconButton
+                icon="x"
+                label={`关闭 ${notice.title}`}
+                tone="quiet"
+                onClick={() => setDismissed((current) => new Set([...current, notice.id]))}
+              />
+            </div>
+          }
         >
-          <div>
-            <strong>{notice.title}</strong>
-            <p>{notice.message}</p>
-          </div>
-          {notice.action && (
-            <ViewerButton onClick={notice.action.onAction}>{notice.action.label}</ViewerButton>
-          )}
-          <ViewerIconButton
-            icon="x"
-            label={`关闭 ${notice.title}`}
-            tone="quiet"
-            onClick={() => setDismissed((current) => new Set([...current, notice.id]))}
-          />
-        </article>
+          {notice.message}
+        </ViewerLocalFeedback>
       ))}
     </section>
   )

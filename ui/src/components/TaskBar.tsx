@@ -1,4 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
+import ViewerButton, { ViewerIconButton } from './ui/ViewerButton'
+import ViewerStatusTag from './ui/ViewerStatusTag'
+import ViewerTaskSurface from './ui/ViewerTaskSurface'
 
 export interface TaskFeedback {
   id: string
@@ -130,23 +133,22 @@ export default function TaskBar({
       </p>
       <div className="task-surface">
         <div className="task-surface-summary">
-          <button
-            type="button"
+          <ViewerIconButton
+            icon={surfaceExpanded ? 'chevron-down' : 'chevron-right'}
             className="task-summary-toggle"
-            aria-label={summaryToggleLabel}
+            label={summaryToggleLabel}
+            tone="quiet"
             aria-expanded={surfaceExpanded}
             onClick={() => setSurfaceExpanded((current) => !current)}
+          />
+          <ViewerTaskSurface
+            label={visibleTasks.length === 1 ? `${primaryTask.label}进度` : '后台任务总进度'}
+            current={aggregateFinished}
+            total={aggregateRequested}
+            indeterminate={aggregateRequested === 0 && primaryTask.status === 'running'}
           >
-            {surfaceExpanded ? '▾' : '▸'}
-          </button>
-          <div className="task-row-summary">
-            <strong>{summaryLabel}</strong>
-            <span>
-              {visibleTasks.length === 1
-                ? `${finishedCount(primaryTask)}/${primaryTask.requested}`
-                : `${visibleTasks.length} 项`}
-            </span>
-          </div>
+            {summaryLabel}
+          </ViewerTaskSurface>
           {visibleTasks.length === 1 && (
             <TaskActions
               task={primaryTask}
@@ -156,22 +158,19 @@ export default function TaskBar({
             />
           )}
           <TaskOutcome task={primaryTask} />
-          <progress
-            aria-label={visibleTasks.length === 1 ? `${primaryTask.label}进度` : '后台任务总进度'}
-            max={Math.max(1, aggregateRequested)}
-            value={aggregateFinished}
-          />
         </div>
         {surfaceExpanded && (
           <div className="task-list">
             {visibleTasks.map((currentTask) => (
               <div className="task-row" key={currentTask.id}>
-                <div className="task-row-summary">
-                  <strong>{currentTask.label}</strong>
-                  <span>
-                    {finishedCount(currentTask)}/{currentTask.requested}
-                  </span>
-                </div>
+                <ViewerTaskSurface
+                  label={`${currentTask.label}进度`}
+                  current={finishedCount(currentTask)}
+                  total={currentTask.requested}
+                  indeterminate={currentTask.requested === 0 && currentTask.status === 'running'}
+                >
+                  {currentTask.label}
+                </ViewerTaskSurface>
                 <TaskActions
                   task={currentTask}
                   onCancel={onCancel}
@@ -179,11 +178,6 @@ export default function TaskBar({
                   onShowResults={onShowResults}
                 />
                 <TaskOutcome task={currentTask} />
-                <progress
-                  aria-label={`${currentTask.label}进度`}
-                  max={Math.max(1, currentTask.requested)}
-                  value={finishedCount(currentTask)}
-                />
                 <div className="task-details">
                   {currentTask.failures.length === 0 ? (
                     <p>没有失败项目。</p>
@@ -220,23 +214,23 @@ function TaskActions({
   return (
     <div className="task-row-actions">
       {task.cancellable && task.status === 'running' && onCancel && (
-        <button type="button" onClick={() => onCancel(task.id)}>
+        <ViewerButton tone="quiet" onClick={() => onCancel(task.id)}>
           取消任务
-        </button>
+        </ViewerButton>
       )}
       {task.status !== 'running' && !isCleanSuccess(task) && onDismiss && (
-        <button type="button" onClick={() => onDismiss(task.id)}>
+        <ViewerButton tone="quiet" onClick={() => onDismiss(task.id)}>
           关闭任务
-        </button>
+        </ViewerButton>
       )}
       {task.hasResults && onShowResults && (
-        <button
-          type="button"
+        <ViewerButton
+          tone="secondary"
           aria-label={`查看${task.label}结果`}
           onClick={() => onShowResults(task.id)}
         >
           查看结果
-        </button>
+        </ViewerButton>
       )}
     </div>
   )
@@ -248,9 +242,13 @@ function TaskOutcome({ task }: { task: TaskFeedback }) {
   }
   return (
     <p className="task-row-outcome">
-      {task.failed > 0 && <span>{task.failed} 项失败</span>}
-      {(task.skipped ?? 0) > 0 && <span>{task.skipped} 项跳过</span>}
-      {(task.cancelled ?? 0) > 0 && <span>{task.cancelled} 项取消</span>}
+      {task.failed > 0 && <ViewerStatusTag tone="danger">{task.failed} 项失败</ViewerStatusTag>}
+      {(task.skipped ?? 0) > 0 && (
+        <ViewerStatusTag tone="warning">{task.skipped} 项跳过</ViewerStatusTag>
+      )}
+      {(task.cancelled ?? 0) > 0 && (
+        <ViewerStatusTag tone="neutral">{task.cancelled} 项取消</ViewerStatusTag>
+      )}
     </p>
   )
 }

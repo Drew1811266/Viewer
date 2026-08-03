@@ -116,6 +116,15 @@ describe('workspace style contracts', () => {
     expect(rules.some((rule) => rule.selector === '.info-overlay')).toBe(false)
   })
 
+  it('routes operation results through the same formal inspector rail', () => {
+    const rules = parseRules(viewerStyleSources)
+    const inspector = rules.find((rule) => rule.selector === '.viewer-inspector')
+
+    expect(inspector?.declarations.top).toBe('40px')
+    expect(rules.some((rule) => rule.selector === '.operation-results')).toBe(false)
+    expect(rules.some((rule) => rule.selector === '.operation-results-list')).toBe(true)
+  })
+
   it('consolidates task feedback into one compact surface', () => {
     const rules = parseRules(appCss)
     const surface = rules.find((rule) => rule.selector === '.task-surface')

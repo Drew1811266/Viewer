@@ -3,6 +3,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { BrowserFile, TextEncoding, TextPreview as TextPreviewDto } from '../api/types'
 import type { TaskFeedback } from './TaskBar'
 import TextPreviewPane, { type TextPaneStatus } from './TextPreviewPane'
+import ViewerButton from './ui/ViewerButton'
+import ViewerToolbar from './ui/ViewerToolbar'
 
 export type TextPreviewFiles = readonly [BrowserFile] | readonly [BrowserFile, BrowserFile]
 
@@ -112,22 +114,25 @@ export default function TextPreview({
       tabIndex={-1}
       onKeyDown={containFocus}
     >
-      <header className="preview-toolbar text-preview-toolbar">
-        <div className="preview-toolbar-leading">
-          <strong>{files.map((file) => file.name).join(' · ')}</strong>
-          <span>{files.map((file) => textFormatLabel(file.kind)).join(' · ')}</span>
-        </div>
-        <div className="preview-toolbar-actions" role="toolbar" aria-label="文本预览控制">
-          <button
-            type="button"
+      <ViewerToolbar
+        label="文本预览工具"
+        leading={
+          <div className="text-preview-identity">
+            <strong>{files.map((file) => file.name).join(' · ')}</strong>
+            <span>{files.map((file) => textFormatLabel(file.kind)).join(' · ')}</span>
+          </div>
+        }
+        actions={
+          <ViewerButton
+            tone="quiet"
             className="preview-complete-action"
             aria-label="关闭预览"
             onClick={onClose}
           >
             完成
-          </button>
-        </div>
-      </header>
+          </ViewerButton>
+        }
+      />
       <div className="text-preview-stage">
         <div className="text-preview-panes" data-pane-count={files.length}>
           {paneNodes}

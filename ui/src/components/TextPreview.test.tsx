@@ -85,18 +85,19 @@ describe('TextPreview', () => {
 
     const dialog = screen.getByRole('dialog', { name: /plain\.txt.*notes\.md/ })
     expect(dialog).toHaveAttribute('aria-modal', 'true')
-    const actions = within(dialog).getByRole('toolbar', { name: '文本预览控制' })
-    expect(actions).toBeVisible()
-    expect(actions).toHaveClass('preview-toolbar-actions')
-    expect(getComputedStyle(actions).gridColumn).toBe('3')
-    expect(getComputedStyle(actions).justifySelf).toBe('end')
+    const toolbar = within(dialog).getByRole('toolbar', { name: '文本预览工具' })
+    expect(toolbar).toHaveClass('viewer-toolbar')
+    expect(toolbar.querySelector('.viewer-toolbar__actions')).toBeVisible()
     const complete = within(dialog).getByRole('button', { name: '关闭预览' })
-    expect(complete).toHaveClass('preview-complete-action')
+    expect(complete).toHaveClass('viewer-button', 'preview-complete-action')
     expect(complete).toHaveTextContent('完成')
     expect(within(dialog).getAllByRole('region')).toHaveLength(2)
     expect(within(dialog).queryByText(/差异|合并/)).not.toBeInTheDocument()
     expect(screen.getByRole('combobox', { name: 'plain.txt 文本编码' })).toBeVisible()
     expect(screen.getByRole('combobox', { name: 'notes.md 文本编码' })).toBeVisible()
+    expect(
+      screen.getByRole('combobox', { name: 'plain.txt 文本编码' }).closest('.viewer-field'),
+    ).not.toBeNull()
     expect(screen.getByRole('region', { name: 'plain.txt' })).toBeVisible()
     expect(screen.getByRole('region', { name: 'notes.md' })).toBeVisible()
 
@@ -148,7 +149,9 @@ describe('TextPreview', () => {
     )
 
     expect(await screen.findByText('plain remains')).toBeVisible()
-    expect(await screen.findByRole('alert')).toHaveTextContent('请选择文本编码')
+    const encodingFeedback = await screen.findByRole('alert')
+    expect(encodingFeedback).toHaveClass('viewer-local-feedback')
+    expect(encodingFeedback).toHaveTextContent('请选择文本编码')
     await waitFor(() =>
       expect(onTaskChange).toHaveBeenLastCalledWith(
         expect.objectContaining({
@@ -382,6 +385,8 @@ describe('TextPreview', () => {
     )
 
     expect(await screen.findByText('product notes')).toBeVisible()
-    expect(screen.getByText('仅显示前 10 MiB')).toBeVisible()
+    const truncation = screen.getByRole('status')
+    expect(truncation).toHaveClass('viewer-local-feedback')
+    expect(truncation).toHaveTextContent('仅显示前 10 MiB')
   })
 })

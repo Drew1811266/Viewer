@@ -26,7 +26,11 @@ describe('InfoOverlay', () => {
     )
 
     const inspector = screen.getByRole('complementary', { name: '文件信息' })
-    expect(inspector).toHaveClass('info-overlay')
+    expect(inspector).toHaveClass('viewer-inspector')
+    expect(within(inspector).getByRole('heading', { name: '信息' })).toBeVisible()
+    const close = within(inspector).getByRole('button', { name: '关闭信息' })
+    expect(close).toHaveClass('viewer-icon-button')
+    expect(close.querySelector('.viewer-icon')).toHaveAttribute('aria-hidden', 'true')
     expect(within(inspector).getByRole('group', { name: '身份与位置' })).toBeVisible()
     expect(within(inspector).getByRole('group', { name: '审阅信息' })).toBeVisible()
     expect(within(inspector).getByRole('group', { name: '技术信息' })).toBeVisible()
@@ -45,6 +49,7 @@ describe('InfoOverlay', () => {
       />,
     )
 
+    expect(screen.getByRole('heading', { name: '信息 · 2 项' })).toBeVisible()
     expect(screen.getByText('2 个文件')).toBeVisible()
     expect(screen.getByText('3 KiB')).toBeVisible()
     expect(screen.getByText('JPEG 1 · PNG 1')).toBeVisible()
@@ -99,6 +104,8 @@ describe('InfoOverlay', () => {
     expect(screen.getByText('文件夹 1 · 图片 1 · 其它文件 0')).toBeVisible()
     expect(screen.getByText('保留')).toBeVisible()
     expect(screen.getByText('混合')).toBeVisible()
+    expect(screen.getByText('保留')).toHaveClass('viewer-status-tag')
+    expect(screen.getByText('混合')).toHaveClass('viewer-status-tag')
     expect(screen.queryByText(/\/Users\//)).not.toBeInTheDocument()
   })
 })

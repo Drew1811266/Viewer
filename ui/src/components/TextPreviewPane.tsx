@@ -2,6 +2,8 @@ import type { MouseEvent } from 'react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { BrowserFile, TextEncoding, TextPreview as TextPreviewDto } from '../api/types'
 import { safeUserMessage } from '../api/viewer'
+import ViewerField from './ui/ViewerField'
+import ViewerLocalFeedback from './ui/ViewerLocalFeedback'
 
 export type TextPaneStatus = 'running' | 'complete' | 'failed'
 
@@ -88,8 +90,7 @@ export default function TextPreviewPane({
     >
       <header className="text-preview-pane-toolbar">
         <h2 id={headingId}>{file.name}</h2>
-        <label>
-          文本编码
+        <ViewerField label="文本编码" inline className="text-encoding-field">
           <select
             aria-label={`${file.name} 文本编码`}
             value={selectedEncoding || preview?.encoding || ''}
@@ -108,12 +109,27 @@ export default function TextPreviewPane({
             <option value="utf16_be">UTF-16 BE</option>
             <option value="gb18030">GB18030</option>
           </select>
-        </label>
+        </ViewerField>
       </header>
-      {unavailable && <p role="alert">文件已不可用</p>}
-      {!unavailable && preview === null && error === null && <p>正在读取文本…</p>}
-      {!unavailable && error && <p role="alert">{error}</p>}
-      {!unavailable && encodingRequired && <p>请选择适合当前文件的文本编码。</p>}
+      {unavailable && (
+        <ViewerLocalFeedback tone="danger" title="文件已不可用">
+          {file.name} 已移动、删除或暂时无法访问。
+        </ViewerLocalFeedback>
+      )}
+      {!unavailable && preview === null && error === null && (
+        <ViewerLocalFeedback tone="info" title="正在读取文本">
+          正在识别内容与文本编码…
+        </ViewerLocalFeedback>
+      )}
+      {!unavailable && error && (
+        <ViewerLocalFeedback
+          tone="danger"
+          title={encodingRequired ? '需要选择文本编码' : '无法读取文本'}
+        >
+          {error}
+          {encodingRequired ? ' 请选择适合当前文件的文本编码。' : ''}
+        </ViewerLocalFeedback>
+      )}
       {!unavailable && preview?.format === 'plain_text' && (
         <pre className="plain-text-preview">{preview.plainText}</pre>
       )}
@@ -124,7 +140,11 @@ export default function TextPreviewPane({
           dangerouslySetInnerHTML={{ __html: preview.markdownHtml ?? '' }}
         />
       )}
-      {!unavailable && preview?.truncated && <p className="truncation-note">仅显示前 10 MiB</p>}
+      {!unavailable && preview?.truncated && (
+        <ViewerLocalFeedback tone="warning" title="内容已截断">
+          仅显示前 10 MiB
+        </ViewerLocalFeedback>
+      )}
     </section>
   )
 }

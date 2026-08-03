@@ -1,5 +1,7 @@
 import type { ReactNode } from 'react'
 import type { BrowserFile, ReviewState, SelectionAgreement, SelectionInfo } from '../api/types'
+import ViewerInspector from './ui/ViewerInspector'
+import ViewerStatusTag from './ui/ViewerStatusTag'
 
 interface InfoOverlayProps {
   files: BrowserFile[]
@@ -25,15 +27,14 @@ export default function InfoOverlay({
   if (files.length === 1 && onlyFile === undefined) {
     throw new Error('Single-file information selection is missing its file')
   }
+  const selectionCount = selectionInfo?.relativePaths.length ?? files.length
 
   return (
-    <aside className="info-overlay" aria-label="文件信息">
-      <header>
-        <h2>信息</h2>
-        <button type="button" aria-label="关闭信息" onClick={onClose}>
-          ×
-        </button>
-      </header>
+    <ViewerInspector
+      label="文件信息"
+      title={selectionCount > 1 ? `信息 · ${selectionCount} 项` : '信息'}
+      onClose={onClose}
+    >
       {files.length === 0 && !hasSelection && <p>请选择文件或文件夹以查看信息。</p>}
       {files.length === 1 &&
         onlyFile !== undefined &&
@@ -48,7 +49,7 @@ export default function InfoOverlay({
       {files.length > 1 && selectionInfo === undefined && (
         <FallbackMultiFileInfo files={files.length} totalSize={totalSize} counts={counts} />
       )}
-    </aside>
+    </ViewerInspector>
   )
 }
 
@@ -75,9 +76,17 @@ function SingleFileInfo({
       <InfoSection heading="审阅信息" headingId="info-review">
         <dl>
           <dt>审阅状态</dt>
-          <dd>{reviewLabel(file.marker.reviewState)}</dd>
+          <dd>
+            <ViewerStatusTag tone={reviewTone(file.marker.reviewState)}>
+              {reviewLabel(file.marker.reviewState)}
+            </ViewerStatusTag>
+          </dd>
           <dt>收藏</dt>
-          <dd>{file.marker.favorite ? '是' : '否'}</dd>
+          <dd>
+            <ViewerStatusTag tone={file.marker.favorite ? 'warning' : 'neutral'}>
+              {file.marker.favorite ? '是' : '否'}
+            </ViewerStatusTag>
+          </dd>
         </dl>
       </InfoSection>
       <InfoSection heading="技术信息" headingId="info-technical">
@@ -117,9 +126,15 @@ function AggregateSelectionInfo({ info }: { info: SelectionInfo }) {
       <InfoSection heading="审阅信息" headingId="info-review">
         <dl>
           <dt>审阅状态</dt>
-          <dd>{agreementLabel(info.commonReview, reviewLabel)}</dd>
+          <dd>
+            <ViewerStatusTag>{agreementLabel(info.commonReview, reviewLabel)}</ViewerStatusTag>
+          </dd>
           <dt>收藏</dt>
-          <dd>{agreementLabel(info.commonFavorite, (value) => (value ? '是' : '否'))}</dd>
+          <dd>
+            <ViewerStatusTag>
+              {agreementLabel(info.commonFavorite, (value) => (value ? '是' : '否'))}
+            </ViewerStatusTag>
+          </dd>
         </dl>
       </InfoSection>
       <InfoSection heading="技术信息" headingId="info-technical">
@@ -196,6 +211,13 @@ function reviewLabel(value: ReviewState | null): string {
   if (value === 'pending') return '待定'
   if (value === 'reject') return '淘汰'
   return '未标记'
+}
+
+function reviewTone(value: ReviewState | null): 'neutral' | 'success' | 'warning' | 'danger' {
+  if (value === 'keep') return 'success'
+  if (value === 'pending') return 'warning'
+  if (value === 'reject') return 'danger'
+  return 'neutral'
 }
 
 function kindLabel(kind: string): string {

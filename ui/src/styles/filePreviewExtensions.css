@@ -61,7 +61,7 @@
 .text-preview-stage,
 .unsupported-file-preview .preview-stage {
   background: var(--preview-stage);
-  height: calc(100% - 52px);
+  flex: 1;
   min-height: 0;
   overflow: auto;
   padding: 16px;
@@ -116,25 +116,18 @@
   white-space: nowrap;
 }
 
-.text-preview-pane-toolbar label {
-  align-items: center;
-  display: flex;
-  gap: 6px;
+.text-encoding-field {
+  flex: 0 0 auto;
 }
 
-.text-preview-pane-toolbar select {
-  background: var(--preview-control-surface);
-  border: 1px solid var(--preview-control-border);
-  border-radius: 6px;
-  color: var(--preview-text);
-  min-height: 30px;
-  padding: 4px 8px;
+.text-encoding-field .viewer-field__control {
+  width: 132px;
 }
 
 .text-preview-pane > .plain-text-preview,
 .text-preview-pane > p {
   margin: 0 auto;
-  max-width: 920px;
+  max-width: 820px;
   padding: 24px 32px;
   width: 100%;
 }
@@ -155,14 +148,29 @@
   width: min(100%, 800px);
 }
 
+.text-preview-pane > .viewer-local-feedback {
+  margin: 16px auto;
+  width: min(640px, calc(100% - 32px));
+}
+
 .markdown-preview img {
   height: auto;
   max-width: 100%;
 }
 
-.text-preview-toolbar .preview-toolbar-leading > span {
+.text-preview-identity {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.text-preview-identity > strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.text-preview-identity > span {
   color: var(--viewer-text-secondary);
-  display: block;
-  font-size: 12px;
-  margin-top: 2px;
+  font-size: 11px;
 }

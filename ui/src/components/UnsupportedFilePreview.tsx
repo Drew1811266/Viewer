@@ -1,6 +1,8 @@
 import { useEffect, useRef } from 'react'
 import type { BrowserFile } from '../api/types'
 import UnsupportedFileState from './UnsupportedFileState'
+import ViewerButton from './ui/ViewerButton'
+import ViewerToolbar from './ui/ViewerToolbar'
 
 interface UnsupportedFilePreviewProps {
   file: BrowserFile
@@ -36,21 +38,20 @@ export default function UnsupportedFilePreview({
         onClose()
       }}
     >
-      <header className="preview-toolbar">
-        <div className="preview-toolbar-leading">
-          <strong>{file.name}</strong>
-        </div>
-        <div className="preview-toolbar-actions" role="toolbar" aria-label="文件预览控制">
-          <button
-            type="button"
+      <ViewerToolbar
+        label="文件预览工具"
+        leading={<strong>{file.name}</strong>}
+        actions={
+          <ViewerButton
+            tone="quiet"
             className="preview-complete-action"
             aria-label="关闭预览"
             onClick={onClose}
           >
             完成
-          </button>
-        </div>
-      </header>
+          </ViewerButton>
+        }
+      />
       <div className="preview-stage">
         <UnsupportedFileState file={file} unavailable={unavailable} />
       </div>

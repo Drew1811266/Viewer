@@ -103,6 +103,19 @@ describe('workspace style contracts', () => {
     })
   })
 
+  it('anchors the formal information inspector below the 40px workspace header', () => {
+    const rules = parseRules(viewerStyleSources)
+    const inspector = rules.find((rule) => rule.selector === '.viewer-inspector')
+
+    expect(inspector?.declarations).toMatchObject({
+      position: 'fixed',
+      top: '40px',
+      right: '0',
+      bottom: '0',
+    })
+    expect(rules.some((rule) => rule.selector === '.info-overlay')).toBe(false)
+  })
+
   it('consolidates task feedback into one compact surface', () => {
     const rules = parseRules(appCss)
     const surface = rules.find((rule) => rule.selector === '.task-surface')
@@ -123,24 +136,23 @@ describe('workspace style contracts', () => {
   })
 
   it('groups preview transforms and keeps completion visibly labeled', () => {
-    const rules = parseRules(appCss)
-    const segmented = rules.find((rule) => rule.selector === '.preview-segmented-controls')
+    const rules = parseRules(viewerStyleSources)
+    const segmented = rules.find((rule) => rule.selector === '.viewer-segmented-control')
     const segmentedButtons = rules.find(
-      (rule) => rule.selector === '.preview-segmented-controls > button',
+      (rule) => rule.selector === '.viewer-segmented-control > .viewer-button',
     )
     const complete = rules.find((rule) => rule.selector === '.preview-complete-action')
 
     expect(segmented?.declarations).toMatchObject({
-      background: 'var(--preview-control-surface)',
-      border: '1px solid var(--preview-control-border)',
-      'border-radius': '8px',
-      gap: '0',
+      background: 'var(--viewer-surface)',
+      border: '1px solid var(--viewer-control-border)',
+      'border-radius': 'var(--viewer-radius-control)',
       overflow: 'hidden',
     })
     expect(segmentedButtons?.declarations).toMatchObject({
       border: '0',
-      'border-right': '1px solid var(--preview-control-border)',
       'border-radius': '0',
+      'min-height': '30px',
     })
     expect(complete?.declarations).toMatchObject({
       'font-weight': '650',
@@ -434,33 +446,8 @@ describe('workspace style contracts', () => {
     expect(declaration('.preview-overlay [role="alert"]', 'color')).toBe('var(--preview-danger)')
     expect(declaration('.text-preview', 'background')).toBe('var(--preview-document-surface)')
     expect(declaration('.text-preview', 'color')).toBe('var(--preview-text)')
-    expect(declaration('.text-preview .preview-toolbar', 'position')).toBe('sticky')
-    expect(declaration('.text-preview .preview-toolbar', 'top')).toBe('0')
-    expect(declaration('.text-preview .preview-toolbar', 'color')).toBe('var(--preview-text)')
-
-    for (const selector of ['.preview-toolbar button', '.preview-toolbar select']) {
-      expect(declaration(selector, 'background')).toBe('var(--preview-control-surface)')
-      expect(declaration(selector, 'border')).toBe('1px solid var(--preview-control-border)')
-      expect(declaration(selector, 'border-radius')).toBe('6px')
-      expect(declaration(selector, 'color')).toBe('var(--preview-text)')
-      expect(declaration(selector, 'min-height')).toBe('30px')
-    }
-
-    for (const selector of [
-      '.preview-toolbar button:hover:not(:disabled)',
-      '.preview-toolbar select:hover',
-    ]) {
-      expect(declaration(selector, 'background')).toBe('var(--preview-control-hover-surface)')
-      expect(declaration(selector, 'border-color')).toBe('var(--preview-control-hover-border)')
-    }
-
-    for (const selector of [
-      '.preview-toolbar button:focus-visible',
-      '.preview-toolbar select:focus-visible',
-    ]) {
-      expect(declaration(selector, 'outline')).toBe('var(--viewer-focus-outline)')
-      expect(declaration(selector, 'outline-offset')).toBe('var(--viewer-focus-offset)')
-    }
+    expect(declaration('.preview-overlay > .viewer-toolbar', 'flex')).toBe('0 0 auto')
+    expect(declaration('.text-encoding-field .viewer-field__control', 'width')).toBe('132px')
 
     expect(declaration('.preview-navigation-float .viewer-icon-button', 'min-height')).toBe('30px')
     expect(declaration('.preview-navigation-float .viewer-icon-button', 'width')).toBe('30px')

@@ -7,6 +7,11 @@ import type {
   FolderTreeItem,
 } from '../api/types'
 import ModalSheet from './ModalSheet'
+import ViewerButton from './ui/ViewerButton'
+import ViewerChoiceChip from './ui/ViewerChoiceChip'
+import ViewerField from './ui/ViewerField'
+import ViewerLocalFeedback from './ui/ViewerLocalFeedback'
+import ViewerStatusTag from './ui/ViewerStatusTag'
 
 interface DestinationDialogProps {
   mode: 'copy' | 'move'
@@ -112,6 +117,22 @@ export default function DestinationDialog({
       title={mode === 'copy' ? '选择复制目标' : '选择移动目标'}
       onCancel={onCancel}
       initialFocusRef={firstFolderRef}
+      footer={
+        <>
+          <ViewerButton tone="secondary" disabled={busy} onClick={onCancel}>
+            取消
+          </ViewerButton>
+          <ViewerButton
+            tone="primary"
+            loading={busy}
+            disabled={!canExecute}
+            title={canExecute ? undefined : '请完成目标检查并处理所有冲突'}
+            onClick={submit}
+          >
+            {mode === 'copy' ? '开始复制' : '开始移动'}
+          </ViewerButton>
+        </>
+      }
     >
       <div className="destination-dialog-layout">
         <aside className="destination-dialog-sidebar">
@@ -136,14 +157,19 @@ export default function DestinationDialog({
           </fieldset>
         </aside>
         <section className="destination-dialog-main">
-          <button
-            type="button"
-            disabled={destinationId === null || loading || busy}
+          <ViewerButton
+            tone="secondary"
+            loading={loading}
+            disabled={destinationId === null || busy}
             onClick={() => void checkConflicts()}
           >
-            {loading ? '正在检查…' : '检查冲突'}
-          </button>
-          {message && <p role="alert">{message}</p>}
+            检查冲突
+          </ViewerButton>
+          {message && (
+            <ViewerLocalFeedback tone="danger" title="无法检查目标文件夹">
+              {message}
+            </ViewerLocalFeedback>
+          )}
           {preflight && (
             <section className="conflict-list" aria-label="目标检查结果">
               <span id={`${controlLabelId}-policy`} className="visually-hidden">
@@ -158,37 +184,45 @@ export default function DestinationDialog({
                 return (
                   <div key={row.entityId} className="conflict-row" data-state={row.state}>
                     <span id={pathLabelId}>{row.relativePath}</span>
-                    {row.state === 'ready' && <span>可执行</span>}
-                    {row.state === 'blocked' && <code>{row.code ?? 'invalid_target'}</code>}
+                    {row.state === 'ready' && (
+                      <ViewerStatusTag tone="success">可执行</ViewerStatusTag>
+                    )}
+                    {row.state === 'blocked' && (
+                      <>
+                        <ViewerStatusTag tone="danger">已阻止</ViewerStatusTag>
+                        <code>{row.code ?? 'invalid_target'}</code>
+                      </>
+                    )}
                     {row.state === 'conflict' && (
                       <>
-                        <select
-                          aria-labelledby={`${controlLabelId}-policy ${pathLabelId}`}
-                          value={decisions[row.entityId] ?? ''}
-                          onChange={(event) => {
-                            const policy = event.currentTarget.value as ConflictPolicy
-                            setDecisions((current) => ({
-                              ...current,
-                              [row.entityId]: policy,
-                            }))
-                          }}
+                        <ViewerStatusTag tone="warning">需要处理</ViewerStatusTag>
+                        <ViewerField label="冲突处理" className="conflict-policy-field">
+                          <select
+                            aria-labelledby={`${controlLabelId}-policy ${pathLabelId}`}
+                            value={decisions[row.entityId] ?? ''}
+                            onChange={(event) => {
+                              const policy = event.currentTarget.value as ConflictPolicy
+                              setDecisions((current) => ({
+                                ...current,
+                                [row.entityId]: policy,
+                              }))
+                            }}
+                          >
+                            <option value="">请选择</option>
+                            <option value="skip">跳过</option>
+                            <option value="keep_both">两者都保留</option>
+                            <option value="replace">替换现有文件</option>
+                          </select>
+                        </ViewerField>
+                        <ViewerChoiceChip
+                          aria-labelledby={`${controlLabelId}-remaining ${pathLabelId}`}
+                          checked={applyRemainingId === row.entityId}
+                          onCheckedChange={(checked) =>
+                            setApplyRemainingId(checked ? row.entityId : null)
+                          }
                         >
-                          <option value="">请选择</option>
-                          <option value="skip">跳过</option>
-                          <option value="keep_both">两者都保留</option>
-                          <option value="replace">替换现有文件</option>
-                        </select>
-                        <label>
-                          <input
-                            type="checkbox"
-                            aria-labelledby={`${controlLabelId}-remaining ${pathLabelId}`}
-                            checked={applyRemainingId === row.entityId}
-                            onChange={(event) =>
-                              setApplyRemainingId(event.currentTarget.checked ? row.entityId : null)
-                            }
-                          />
                           应用到剩余冲突
-                        </label>
+                        </ViewerChoiceChip>
                       </>
                     )}
                   </div>
@@ -197,14 +231,6 @@ export default function DestinationDialog({
             </section>
           )}
         </section>
-      </div>
-      <div className="modal-actions">
-        <button type="button" onClick={onCancel}>
-          取消
-        </button>
-        <button type="button" disabled={!canExecute} onClick={submit}>
-          {mode === 'copy' ? '开始复制' : '开始移动'}
-        </button>
       </div>
     </ModalSheet>
   )

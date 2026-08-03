@@ -1061,7 +1061,7 @@ describe('Viewer empty state', () => {
         target: 'project',
       }),
     )
-    fireEvent.click(screen.getByRole('button', { name: '保持打开' }))
+    fireEvent.click(screen.getByRole('button', { name: '停留在当前项目' }))
     expect(screen.queryByRole('dialog', { name: '文件操作尚未完成' })).not.toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Catalog' })).toBeVisible()
     expect(viewer.closeProject).not.toHaveBeenCalled()
@@ -1739,7 +1739,7 @@ describe('Viewer empty state', () => {
     fireEvent.keyDown(window, { key: 'Delete' })
     expect(screen.getByRole('dialog', { name: '将文件移到废纸篓？' })).toBeVisible()
     expect(viewer.executeFileCommand).toHaveBeenCalledTimes(1)
-    fireEvent.click(screen.getByRole('button', { name: '移入废纸篓' }))
+    fireEvent.click(screen.getByRole('button', { name: '移到废纸篓' }))
     await waitFor(() => expect(viewer.executeFileCommand).toHaveBeenCalledTimes(2))
   })
 

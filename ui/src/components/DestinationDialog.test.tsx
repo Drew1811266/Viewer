@@ -81,7 +81,14 @@ describe('DestinationDialog', () => {
       target: { value: 'keep_both' },
     })
     fireEvent.click(screen.getByRole('checkbox', { name: '应用到剩余冲突 one.jpg' }))
-    fireEvent.click(screen.getByRole('button', { name: '开始复制' }))
+    const executeButton = screen.getByRole('button', { name: '开始复制' })
+    expect(executeButton.closest('.viewer-dialog__footer')).not.toBeNull()
+    expect(executeButton).toHaveAttribute('data-tone', 'primary')
+    expect(screen.getAllByText('需要处理')).toHaveLength(2)
+    for (const status of screen.getAllByText('需要处理')) {
+      expect(status).toHaveClass('viewer-status-tag')
+    }
+    fireEvent.click(executeButton)
     expect(execute).toHaveBeenCalledWith(
       expect.arrayContaining([
         expect.objectContaining({

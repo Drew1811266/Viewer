@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import ModalSheet from './ModalSheet'
+import ViewerButton from './ui/ViewerButton'
 
 describe('ModalSheet', () => {
   it('traps Tab, handles Escape and restores the invoking focus', () => {
@@ -9,9 +10,12 @@ describe('ModalSheet', () => {
     trigger.focus()
     const cancel = vi.fn()
     const rendered = render(
-      <ModalSheet title="安全操作" onCancel={cancel}>
+      <ModalSheet
+        title="安全操作"
+        onCancel={cancel}
+        footer={<ViewerButton tone="primary">最后一个</ViewerButton>}
+      >
         <button type="button">第一个</button>
-        <button type="button">最后一个</button>
       </ModalSheet>,
     )
     const first = screen.getByRole('button', { name: '第一个' })
@@ -19,6 +23,7 @@ describe('ModalSheet', () => {
     const dialog = screen.getByRole('dialog', { name: '安全操作' })
     expect(dialog.querySelector('.modal-sheet-header')).not.toBeNull()
     expect(dialog.querySelector('.modal-sheet-body')).not.toBeNull()
+    expect(dialog.querySelector('.viewer-dialog__footer')).not.toBeNull()
     expect(first).toHaveFocus()
 
     last.focus()

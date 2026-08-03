@@ -4,6 +4,7 @@ import ViewerDialog from './ui/ViewerDialog'
 interface ModalSheetProps {
   title: string
   children: ReactNode
+  footer?: ReactNode
   onCancel: () => void
   initialFocusRef?: RefObject<HTMLElement | null>
   returnFocusRef?: RefObject<HTMLElement | null>
@@ -13,6 +14,7 @@ interface ModalSheetProps {
 export default function ModalSheet({
   title,
   children,
+  footer,
   onCancel,
   initialFocusRef,
   returnFocusRef,
@@ -26,6 +28,7 @@ export default function ModalSheet({
       returnFocusRef={returnFocusRef}
       destructive={destructive}
       size={destructive ? 'small' : 'large'}
+      footer={footer}
     >
       {children}
     </ViewerDialog>

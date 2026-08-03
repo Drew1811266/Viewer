@@ -1,5 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import ModalSheet from './ModalSheet'
+import ViewerButton from './ui/ViewerButton'
+import ViewerChoiceChip from './ui/ViewerChoiceChip'
+import ViewerField from './ui/ViewerField'
+import ViewerLocalFeedback from './ui/ViewerLocalFeedback'
 
 interface RenameDialogProps {
   currentName: string
@@ -27,16 +31,37 @@ export default function RenameDialog({
   }, [currentName])
 
   return (
-    <ModalSheet title="重命名文件" onCancel={onCancel} initialFocusRef={inputRef}>
+    <ModalSheet
+      title="重命名文件"
+      onCancel={onCancel}
+      initialFocusRef={inputRef}
+      footer={
+        <>
+          <ViewerButton tone="secondary" disabled={busy} onClick={onCancel}>
+            取消
+          </ViewerButton>
+          <ViewerButton
+            form="rename-file-form"
+            type="submit"
+            tone="primary"
+            loading={busy}
+            disabled={validation !== null}
+            title={validation ?? (busy ? '正在提交重命名' : '重命名文件')}
+          >
+            重命名
+          </ViewerButton>
+        </>
+      }
+    >
       <form
+        id="rename-file-form"
         onSubmit={(event) => {
           event.preventDefault()
           if (validation !== null || busy) return
           onConfirm(editExtension ? name : stemOf(name), editExtension)
         }}
       >
-        <label className="form-field">
-          <span>新文件名</span>
+        <ViewerField label="新文件名">
           <input
             ref={inputRef}
             value={name}
@@ -44,28 +69,22 @@ export default function RenameDialog({
             aria-describedby={validation ? 'rename-error' : undefined}
             onChange={(event) => setName(event.currentTarget.value)}
           />
-        </label>
+        </ViewerField>
         {validation && (
-          <p id="rename-error" className="form-error" role="alert">
-            {validation}
-          </p>
+          <div id="rename-error">
+            <ViewerLocalFeedback tone="danger" title="无法使用这个文件名">
+              {validation}
+            </ViewerLocalFeedback>
+          </div>
         )}
-        <label className="checkbox-field">
-          <input
-            type="checkbox"
-            checked={editExtension}
-            onChange={(event) => setEditExtension(event.currentTarget.checked)}
-          />
+        <ViewerChoiceChip checked={editExtension} onCheckedChange={setEditExtension}>
           允许修改扩展名
-        </label>
-        <div className="modal-actions">
-          <button type="button" onClick={onCancel}>
-            取消
-          </button>
-          <button type="submit" disabled={validation !== null || busy}>
-            {busy ? '正在提交…' : '重命名'}
-          </button>
-        </div>
+        </ViewerChoiceChip>
+        {busy && (
+          <ViewerLocalFeedback tone="info" title="正在提交重命名">
+            请等待当前文件操作完成。
+          </ViewerLocalFeedback>
+        )}
       </form>
     </ModalSheet>
   )

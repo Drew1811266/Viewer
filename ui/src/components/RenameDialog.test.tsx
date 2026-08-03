@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import RenameDialog from './RenameDialog'
 
@@ -17,6 +17,14 @@ describe('RenameDialog', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('不能包含')
     expect(screen.getByRole('button', { name: '重命名' })).toBeDisabled()
     fireEvent.change(input, { target: { value: 'hero.jpg' } })
+    const footer = document.querySelector<HTMLElement>('.viewer-dialog__footer')
+    expect(footer).not.toBeNull()
+    expect(
+      within(footer as HTMLElement)
+        .getAllByRole('button')
+        .map((button) => button.textContent),
+    ).toEqual(['取消', '重命名'])
+    expect(screen.getByRole('button', { name: '重命名' })).toHaveAttribute('data-tone', 'primary')
     fireEvent.click(screen.getByRole('button', { name: '重命名' }))
     expect(confirm).toHaveBeenCalledWith('hero', false)
   })

@@ -1,5 +1,6 @@
 import { useRef } from 'react'
 import ModalSheet from './ModalSheet'
+import ViewerButton from './ui/ViewerButton'
 
 interface TrashConfirmationProps {
   count: number
@@ -21,17 +22,19 @@ export default function TrashConfirmation({
       onCancel={onCancel}
       initialFocusRef={cancelRef}
       destructive
+      footer={
+        <>
+          <ViewerButton ref={cancelRef} tone="secondary" disabled={busy} onClick={onCancel}>
+            取消
+          </ViewerButton>
+          <ViewerButton tone="danger" loading={busy} onClick={onConfirm}>
+            移到废纸篓
+          </ViewerButton>
+        </>
+      }
     >
       <p>将 {count} 项移入 macOS 废纸篓。之后可通过系统废纸篓恢复。</p>
       <p>此操作不支持 Viewer 内撤销。</p>
-      <div className="modal-actions">
-        <button ref={cancelRef} type="button" onClick={onCancel}>
-          取消
-        </button>
-        <button type="button" className="destructive-button" disabled={busy} onClick={onConfirm}>
-          {busy ? '正在处理…' : '移入废纸篓'}
-        </button>
-      </div>
     </ModalSheet>
   )
 }

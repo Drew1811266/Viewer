@@ -15,7 +15,13 @@ describe('SettingsDialog', () => {
     )
 
     const dialog = screen.getByRole('dialog', { name: '软件设置' })
-    expect(within(dialog).getByRole('heading', { name: '显示' })).toBeVisible()
+    expect(within(dialog).getByRole('heading', { name: '显示与外观' })).toBeVisible()
+    const navigation = within(dialog).getByRole('navigation', { name: '设置分类' })
+    expect(within(navigation).getAllByRole('button')).toHaveLength(1)
+    expect(within(navigation).getByRole('button', { name: '显示与外观' })).toBeVisible()
+    for (const absent of ['浏览', '文件操作', '快捷键']) {
+      expect(within(navigation).queryByRole('button', { name: absent })).not.toBeInTheDocument()
+    }
     const group = within(dialog).getByRole('group', { name: '缩略图密度' })
     expect(within(group).getByRole('radio', { name: '紧凑' })).not.toBeChecked()
     expect(within(group).getByRole('radio', { name: '标准' })).toBeChecked()
@@ -25,6 +31,11 @@ describe('SettingsDialog', () => {
     fireEvent.click(large)
 
     expect(onDensityChange).toHaveBeenCalledWith('large')
+    expect(dialog.querySelector('.viewer-dialog__footer')).not.toBeNull()
+    expect(within(dialog).getByRole('button', { name: '关闭' })).toHaveAttribute(
+      'data-tone',
+      'secondary',
+    )
   })
 
   it('shows the latest save error', () => {
@@ -54,13 +65,14 @@ describe('SettingsDialog', () => {
       />,
     )
     const first = screen.getByRole('radio', { name: '紧凑' })
+    const navigationItem = screen.getByRole('button', { name: '显示与外观' })
     const close = screen.getByRole('button', { name: '关闭' })
     expect(first).toHaveFocus()
 
     close.focus()
     fireEvent.keyDown(close, { key: 'Tab' })
-    expect(first).toHaveFocus()
-    fireEvent.keyDown(first, { key: 'Tab', shiftKey: true })
+    expect(navigationItem).toHaveFocus()
+    fireEvent.keyDown(navigationItem, { key: 'Tab', shiftKey: true })
     expect(close).toHaveFocus()
     fireEvent.keyDown(close, { key: 'Escape' })
     expect(onClose).toHaveBeenCalledOnce()

@@ -74,7 +74,13 @@ describe('BatchRenameDialog', () => {
     fireEvent.click(screen.getByRole('checkbox', { name: '添加序号' }))
     fireEvent.click(screen.getByRole('button', { name: '更新预览' }))
     await screen.findByText('完整预览：1 项')
-    fireEvent.click(screen.getByRole('button', { name: '执行批量重命名' }))
+    const execute = screen.getByRole('button', { name: '执行批量重命名' })
+    expect(execute.closest('.viewer-dialog__footer')).not.toBeNull()
+    expect(execute).toHaveAttribute('data-tone', 'primary')
+    expect(screen.getByRole('button', { name: '取消' }).compareDocumentPosition(execute)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    )
+    fireEvent.click(execute)
     expect(onConfirm).toHaveBeenCalledWith(
       expect.objectContaining({ sequence: { start: 1, digits: 2 } }),
       preview,

@@ -2,6 +2,11 @@ import { useEffect, useRef, useState } from 'react'
 import type { RenamePreview, RenameRules } from '../api/types'
 import { defined } from '../defined'
 import ModalSheet from './ModalSheet'
+import ViewerButton from './ui/ViewerButton'
+import ViewerChoiceChip from './ui/ViewerChoiceChip'
+import ViewerField from './ui/ViewerField'
+import ViewerLocalFeedback from './ui/ViewerLocalFeedback'
+import ViewerStatusTag from './ui/ViewerStatusTag'
 import VirtualList from './VirtualList'
 
 interface BatchRenameDialogProps {
@@ -68,56 +73,65 @@ export default function BatchRenameDialog({
       title={`批量重命名 ${entityIds.length} 项`}
       onCancel={onCancel}
       initialFocusRef={findRef}
+      footer={
+        <>
+          <ViewerButton tone="secondary" disabled={busy} onClick={onCancel}>
+            取消
+          </ViewerButton>
+          <ViewerButton
+            tone="primary"
+            loading={busy}
+            disabled={loading || preview?.executable !== true}
+            title={
+              preview?.executable === true ? '执行批量重命名' : '请先生成一份可执行的重命名预览'
+            }
+            onClick={() => preview && onConfirm(rules, preview)}
+          >
+            执行批量重命名
+          </ViewerButton>
+        </>
+      }
     >
       <section className="batch-rename-rule-region">
         <div className="rename-rule-grid">
-          <label className="form-field">
-            <span>查找</span>
+          <ViewerField label="查找">
             <input
               ref={findRef}
               value={rules.find}
               onChange={(event) => patchRules({ find: event.currentTarget.value })}
             />
-          </label>
-          <label className="form-field">
-            <span>替换为</span>
+          </ViewerField>
+          <ViewerField label="替换为">
             <input
               value={rules.replacement}
               onChange={(event) => patchRules({ replacement: event.currentTarget.value })}
             />
-          </label>
-          <label className="form-field">
-            <span>前缀</span>
+          </ViewerField>
+          <ViewerField label="前缀">
             <input
               value={rules.prefix}
               onChange={(event) => patchRules({ prefix: event.currentTarget.value })}
             />
-          </label>
-          <label className="form-field">
-            <span>后缀</span>
+          </ViewerField>
+          <ViewerField label="后缀">
             <input
               value={rules.suffix}
               onChange={(event) => patchRules({ suffix: event.currentTarget.value })}
             />
-          </label>
+          </ViewerField>
         </div>
         <div className="sequence-controls">
-          <label className="checkbox-field">
-            <input
-              type="checkbox"
-              checked={rules.sequence !== null}
-              onChange={(event) =>
-                patchRules({
-                  sequence: event.currentTarget.checked ? { start: 1, digits: 2 } : null,
-                })
-              }
-            />
+          <ViewerChoiceChip
+            checked={rules.sequence !== null}
+            onCheckedChange={(checked) =>
+              patchRules({ sequence: checked ? { start: 1, digits: 2 } : null })
+            }
+          >
             添加序号
-          </label>
+          </ViewerChoiceChip>
           {rules.sequence && (
             <>
-              <label>
-                起始值
+              <ViewerField label="起始值" className="sequence-number-field">
                 <input
                   type="number"
                   min={0}
@@ -135,9 +149,8 @@ export default function BatchRenameDialog({
                     })
                   }
                 />
-              </label>
-              <label>
-                位数
+              </ViewerField>
+              <ViewerField label="位数" className="sequence-number-field">
                 <input
                   type="number"
                   min={1}
@@ -155,21 +168,34 @@ export default function BatchRenameDialog({
                     })
                   }
                 />
-              </label>
+              </ViewerField>
             </>
           )}
-          <button type="button" disabled={loading || busy} onClick={() => void updatePreview()}>
-            {loading ? '正在生成…' : '更新预览'}
-          </button>
+          <ViewerButton
+            tone="secondary"
+            loading={loading}
+            disabled={busy}
+            onClick={() => void updatePreview()}
+          >
+            更新预览
+          </ViewerButton>
         </div>
       </section>
-      {message && <p role="alert">{message}</p>}
+      {message && (
+        <ViewerLocalFeedback tone="danger" title="无法生成重命名预览">
+          {message}
+        </ViewerLocalFeedback>
+      )}
       {preview && (
         <section className="rename-preview" aria-label="批量重命名完整预览">
           <h3>完整预览：{preview.rows.length} 项</h3>
           <div className="rename-preview-summary">
             <strong>{preview.rows.length} 项</strong>
-            <span>{preview.rows.filter((row) => row.errors.length > 0).length} 项无效</span>
+            <ViewerStatusTag
+              tone={preview.rows.some((row) => row.errors.length > 0) ? 'danger' : 'success'}
+            >
+              {preview.rows.filter((row) => row.errors.length > 0).length} 项无效
+            </ViewerStatusTag>
           </div>
           <VirtualList
             items={preview.rows}
@@ -194,18 +220,6 @@ export default function BatchRenameDialog({
           />
         </section>
       )}
-      <div className="modal-actions">
-        <button type="button" onClick={onCancel}>
-          取消
-        </button>
-        <button
-          type="button"
-          disabled={busy || loading || preview?.executable !== true}
-          onClick={() => preview && onConfirm(rules, preview)}
-        >
-          执行批量重命名
-        </button>
-      </div>
     </ModalSheet>
   )
 }

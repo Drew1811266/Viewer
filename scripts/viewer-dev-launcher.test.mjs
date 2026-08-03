@@ -47,6 +47,68 @@ describe('buildLauncherPaths', () => {
 })
 
 describe('createSystemRuntime', () => {
+  it('passes an acceptance viewport config through the canonical dev launcher', async () => {
+    const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), 'viewer-launcher-config-'))
+    const fakeBin = path.join(temporaryRoot, 'fake-bin')
+    const argsPath = path.join(temporaryRoot, 'spawn-args.txt')
+    const configPath = path.join(temporaryRoot, 'target', 'acceptance-1440.json')
+    const stateDir = path.join(temporaryRoot, 'target', 'dev-launcher')
+    const paths = {
+      repoRoot: temporaryRoot,
+      stateDir,
+      statePath: path.join(stateDir, 'session.json'),
+      logPath: path.join(stateDir, 'tauri-dev.log'),
+      executablePath: path.join(temporaryRoot, 'target', 'debug', 'viewer-desktop'),
+      legacyWrapperPath: path.join(stateDir, 'current-dev-wrapper'),
+    }
+    let child
+
+    try {
+      await mkdir(path.join(temporaryRoot, 'src-tauri'), { recursive: true })
+      await mkdir(path.dirname(configPath), { recursive: true })
+      await mkdir(fakeBin, { recursive: true })
+      await writeFile(path.join(temporaryRoot, 'package.json'), '{}\n')
+      await writeFile(configPath, '{}\n')
+      await writeFile(
+        path.join(fakeBin, 'pnpm'),
+        '#!/bin/sh\nprintf \'%s\\n\' "$@" > "$VIEWER_TEST_ARGS_PATH"\nexec /bin/sleep 30\n',
+        { mode: 0o755 },
+      )
+
+      const runtime = createSystemRuntime(paths, {
+        env: {
+          ...process.env,
+          PATH: `${fakeBin}:${process.env.PATH}`,
+          VIEWER_TAURI_CONFIG: configPath,
+          VIEWER_TEST_ARGS_PATH: argsPath,
+        },
+      })
+      child = await runtime.spawn()
+
+      let args
+      for (let attempt = 0; attempt < 40; attempt += 1) {
+        try {
+          args = await readFile(argsPath, 'utf8')
+          break
+        } catch (error) {
+          if (error?.code !== 'ENOENT') throw error
+          await runtime.sleep(25)
+        }
+      }
+
+      assert.equal(args, `tauri\ndev\n--config\n${configPath}\n`)
+    } finally {
+      if (child) {
+        await createSystemRuntime(paths).stop({
+          kind: 'group',
+          id: child.pgid,
+          viewerPid: child.pid,
+        })
+      }
+      await rm(temporaryRoot, { recursive: true, force: true })
+    }
+  })
+
   it('launches, records, observes, logs, and stops a detached process group', async () => {
     const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), 'viewer-launcher-'))
     const fakeBin = path.join(temporaryRoot, 'fake-bin')

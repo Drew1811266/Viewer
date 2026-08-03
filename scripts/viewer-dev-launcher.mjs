@@ -318,9 +318,12 @@ export function createSystemRuntime(paths, { env = process.env } = {}) {
 
       await mkdir(paths.stateDir, { recursive: true })
       const logFile = await open(paths.logPath, 'w')
+      const args = ['tauri', 'dev']
+      const tauriConfig = env.VIEWER_TAURI_CONFIG?.trim()
+      if (tauriConfig) args.push('--config', tauriConfig)
 
       return new Promise((resolve, reject) => {
-        const child = spawnChild('pnpm', ['tauri', 'dev'], {
+        const child = spawnChild('pnpm', args, {
           cwd: paths.repoRoot,
           detached: true,
           env,

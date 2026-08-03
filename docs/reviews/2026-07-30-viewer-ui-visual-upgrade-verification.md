@@ -6,7 +6,7 @@
 - Migration design: `docs/superpowers/specs/2026-08-02-viewer-atlas-to-product-complete-migration-design.md`
 - Non-omission audit: `docs/reviews/2026-08-02-viewer-atlas-product-component-gap-audit.md`
 - Migration ledger: `docs/reviews/2026-08-02-viewer-atlas-product-migration-ledger.md`
-- Current product commit: `eec782fcb8b6f123395d4c834f1acd4da53afba3`
+- Current product commit: `6f2d7b9bdc8f67d06566e249be1a54be0c2969e3`
 - Branch: `codex/viewer-atlas-product-migration`
 - Platform: macOS `26.5.2` (`25F84`), built-in Retina display
 
@@ -19,7 +19,7 @@ The complete gate was run on the current product commit after adding a canonical
 | Command | Exit | Evidence |
 | --- | ---: | --- |
 | `pnpm --dir ui check` | 0 | Biome and TypeScript passed across 168 files; one existing Biome configuration deprecation notice remains informational. |
-| `pnpm --dir ui test` | 0 | 67 test files; 648 passed and 1 skipped. |
+| `pnpm --dir ui test` | 0 | 67 test files; 649 passed and 1 skipped. |
 | `pnpm --dir ui build` | 0 | TypeScript and Vite production build passed. |
 | `node --test scripts/viewer-dev-launcher.test.mjs` | 0 | 20 launcher tests passed, including exact acceptance-config forwarding and one-process safeguards. |
 | `pnpm test:policy` | 0 | 28 policy tests passed; 47 scope requirements mapped exactly once. |
@@ -32,7 +32,7 @@ The current native target is the bare development executable launched only throu
 
 | State | Current combined comparison | Verdict |
 | --- | --- | --- |
-| `LAU-01` — no project | `target/atlas-product-migration-acceptance/eec782fcb8b6f123395d4c834f1acd4da53afba3/1440x900/LAU-01/combined.png` | 1440 pass. The three-element entry hierarchy, optical centering, application background, copy and primary action align. The native macOS title strip is an allowed platform boundary. Exact 1024 evidence is still required before the ledger row can close. |
+| `LAU-01` — no project | current joint comparison pending | The first exact 1024 joint image found that the product body copy inherited `16 px` and the atlas retained old `22 / 12 / 32 px` entry rules. Product and atlas now share the approved `20 / 13 / 36 px` title/body/primary-action scale under focused tests; both exact viewport joint images must be recaptured before pass. |
 
 The prior `PRE-01` and `DIA-02` 1024 comparisons remain useful ancestor-commit diagnostics, but they are not current-commit closure evidence.
 
@@ -64,7 +64,7 @@ The radial rows therefore remain pending until a supported state-seeding or UI-c
 
 - Formal product code now covers the 17 audited groups and the 89-state ledger remains one-to-one guarded by tests.
 - The complete automated gate passes on the current product commit.
-- One state has current exact 1440×900 joint visual evidence; its exact 1024 comparison remains open.
+- No state is currently closed: the only current exact joint candidate correctly failed the comparison and triggered the entry typography correction.
 - The final Task 15 gate is **not complete**: every row still needs current-commit 1024×720 and 1440×900 native evidence before closure.
 - No row is promoted to final pass from historical, browser-only, stretched, or accessibility-tree-only evidence.
 

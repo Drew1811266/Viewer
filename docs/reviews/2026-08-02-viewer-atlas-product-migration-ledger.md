@@ -3,15 +3,15 @@
 ## Current Task 15 acceptance run
 
 - Branch: `codex/viewer-atlas-product-migration`
-- Product commit: `eec782fcb8b6f123395d4c834f1acd4da53afba3`
-- Worktree at capture: the launcher source matched this commit; the evidence directory is keyed to the committed product source.
-- Unique native process: PID `24687`, launched from this worktree's `target/debug/viewer-desktop` by the canonical `pnpm start:viewer` command.
+- Product commit: `6f2d7b9bdc8f67d06566e249be1a54be0c2969e3`
+- Worktree at capture: clean after the entry typography correction.
+- Unique native process: PID `28183`, launched from this worktree's `target/debug/viewer-desktop` by the canonical `pnpm start:viewer` command.
 - Platform: macOS `26.5.2` (`25F84`)
 - Display at capture: built-in Liquid Retina in `1710 × 1112` logical mode; temporary Dock auto-hide enabled only for capture, then both display mode and Dock preference restored to the user's original `1470 × 956` / Dock-visible settings.
 - Exact native acceptance viewports available: `1024 × 720` and `1440 × 900`. The canonical launcher accepts a temporary Tauri config through `VIEWER_TAURI_CONFIG` while still enforcing the one-process and exact-worktree executable rules.
 - Previous `1291 × 768` and `1024 × 720` constraint reports were produced by selecting the registered bundle app instead of the bare development process. They remain historical evidence only and are not current blockers.
-- Automated gate on the product commit: UI check, 67 UI files / 648 passed / 1 skipped, production build, 20 launcher tests, 28 policy tests plus 47-row scope coverage, 8 security-boundary tests, Cargo fmt/clippy/workspace tests, Cargo deny, and npm license policy all exited `0`.
-- Current exact 1440 evidence: `target/atlas-product-migration-acceptance/eec782fcb8b6f123395d4c834f1acd4da53afba3/1440x900/LAU-01/combined.png`; its local `README.md` records the launch, capture, normalization and visual verdict.
+- Automated gate on the product commit: UI check, 67 UI files / 649 passed / 1 skipped, production build and 28 policy tests plus 47-row scope coverage exited `0`. The immediately preceding launcher/Rust/security gate remains green and those sources are unchanged by this typography-only commit.
+- The first exact 1024 comparison exposed a real entry mismatch: product body copy inherited `16 px`, while the approved body scale is `13 px`; the atlas also retained superseded `22 / 12 / 32 px` entry rules. Commit `6f2d7b9` corrects both product and atlas to `20 / 13 / 36 px`. Earlier `LAU-01` joint images are diagnostic inputs only and cannot close the row.
 
 A row remains `pending` or `blocked` until its automated evidence and both required native comparisons are recorded. Historical and superseded captures may explain progress, but they do not close a row for the current product commit.
 
@@ -30,7 +30,7 @@ Native recipes use one disposable real project outside the source tree at `targe
 
 | ID | Wave | Reference state | Product owner | Native entry recipe | Automated evidence | Native 1024 | Native 1440 | Result |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| LAU-01 | Wave 1 | `launch-no-project` | `EmptyProject` | Launch Viewer with no session, or choose `关闭项目` and wait for the empty entry screen. | `EmptyProject` (`EmptyProject.test.tsx`) | not-recorded | `target/atlas-product-migration-acceptance/eec782fcb8b6f123395d4c834f1acd4da53afba3/1440x900/LAU-01/combined.png` — pass | pending — exact 1024 comparison still required |
+| LAU-01 | Wave 1 | `launch-no-project` | `EmptyProject` | Launch Viewer with no session, or choose `关闭项目` and wait for the empty entry screen. | `EmptyProject` (`EmptyProject.test.tsx`); approved `20 / 13 / 36 px` typography contract in `styles/app.test.ts` and `visualAtlas.test.ts` | not-recorded — native recaptured after fix; current atlas joint image required | not-recorded — previous joint image superseded by typography fix | pending |
 | LAU-02 | Wave 1 | `launch-drag` | `EmptyProject` drop layer | From Finder drag the `ViewerAcceptance` directory over the empty Viewer window without releasing. | `EmptyProject` (`EmptyProject.test.tsx`) | not-recorded | not-recorded | pending |
 | LAU-03 | Wave 1 | `launch-invalid` | `EmptyProject` local feedback | From Finder drop `tests/fixtures/images/srgb.jpg` onto the empty Viewer window. | `EmptyProject` (`EmptyProject.test.tsx`) | not-recorded | not-recorded | pending |
 | LAU-04 | Wave 1 | `launch-opening` | `EmptyProject` opening state | Click `选择项目文件夹`, choose `ViewerAcceptance`, and capture while project validation is active. | `EmptyProject` (`EmptyProject.test.tsx`) | not-recorded | not-recorded | pending |

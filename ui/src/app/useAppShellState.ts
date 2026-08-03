@@ -25,7 +25,7 @@ export function getAppShellStateInternals(state: AppShellState): AppShellStateIn
 
 export function useAppShellState(projectSessionId: string): AppShellState {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
-  const [sidebarWidth, setSidebarWidth] = useState(260)
+  const [sidebarWidth, setSidebarWidth] = useState(220)
   const [projectMenuOpen, setProjectMenuOpen] = useState(false)
   const stopSidebarResize = useRef<(() => void) | null>(null)
 

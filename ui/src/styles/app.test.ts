@@ -9,6 +9,19 @@ const viewerStyleSources = viewerStyleFiles
   .join('\n')
 
 describe('workspace style contracts', () => {
+  it('keeps the main workspace header at the approved compact density', () => {
+    const rules = parseRules(appCss)
+    const header = rules.find((rule) => rule.selector === '.workspace-header')
+
+    expect(header?.declarations['min-height']).toBe('40px')
+  })
+
+  it('keeps folder rows at the approved compact density', () => {
+    const rules = parseRules(appCss)
+
+    expect(winningDeclaration(rules, new Set(['.folder-tree-row']), 'height')).toBe('24px')
+  })
+
   it('separates the radial command layer from the workspace with a subtle scrim', () => {
     const rules = parseRules(appCss)
     const layer = rules.find((rule) => rule.selector === '.radial-menu-layer')
@@ -179,11 +192,15 @@ describe('workspace style contracts', () => {
     })
   })
 
-  it('keeps the sidebar collapse control compact in the flex column', () => {
+  it('keeps the collapsed header action and navigation rail compact', () => {
     const rules = parseRules(appCss)
-    const collapse = rules.find((rule) => rule.selector === '.folder-sidebar > button:first-child')
+    const headerAction = rules.find(
+      (rule) => rule.selector === '.project-identity[data-collapsed="true"] > button',
+    )
+    const rail = rules.find((rule) => rule.selector === '.folder-sidebar[data-collapsed="true"]')
 
-    expect(collapse?.declarations['align-self']).toBe('flex-start')
+    expect(headerAction?.declarations['white-space']).toBe('nowrap')
+    expect(rail?.declarations.padding).toBe('8px 4px')
   })
 
   it('keeps folder identity fixed beside an independently scrolling filmstrip', () => {

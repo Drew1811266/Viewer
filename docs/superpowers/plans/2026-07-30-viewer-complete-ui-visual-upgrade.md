@@ -511,10 +511,19 @@ Use the existing `sidebarWidth` and collapse state as a CSS variable:
 ```tsx
 <main
   className="viewer-shell"
-  style={{ '--viewer-sidebar-width': `${sidebarCollapsed ? 44 : sidebarWidth}px` } as CSSProperties}
+  style={{ '--viewer-sidebar-width': `${sidebarCollapsed ? 52 : sidebarWidth}px` } as CSSProperties}
 >
   <header className="workspace-header">
-    <div className="project-identity"><h1>{state.project.displayName}</h1></div>
+    <div className="project-identity" data-collapsed={sidebarCollapsed}>
+      {sidebarCollapsed ? (
+        <button type="button" aria-label="展开文件夹栏" onClick={toggleSidebar}>展开</button>
+      ) : (
+        <>
+          <h1>{state.project.displayName}</h1>
+          <button type="button" aria-label="折叠文件夹栏" onClick={toggleSidebar}>收起</button>
+        </>
+      )}
+    </div>
     <div className="workspace-header-main" role="toolbar" aria-label="Viewer 工具栏">
       <SearchToolbar
         query={state.search.query}
@@ -542,7 +551,11 @@ Use the existing `sidebarWidth` and collapse state as a CSS variable:
 
 Delete the standalone settings trigger and old project menu. Remove the `currentPath` heading from
 `ContentBrowser`, remove the repeated heading from `FolderOverview`, and keep an aggregate state
-label only inside the content surface when active.
+label only inside the content surface when active. Initialize the expanded sidebar at `220`; render
+the collapsed rail at `52`. In the expanded sidebar, render the `项目目录` group label and use
+`state.project.displayName` for the root row instead of a generic `项目根目录` label. Keep the root
+and folder labels available in the 52 px rail, but hide disclosure and marker decoration there; the
+collapsed header action must use `white-space: nowrap`.
 
 - [ ] **Step 6: Apply exact shell geometry**
 
@@ -561,9 +574,15 @@ Use the following structural declarations in `app.css`:
   display: flex;
   align-items: center;
   min-width: 0;
-  padding: 0 16px;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 14px;
   background: var(--viewer-sidebar);
   border-right: 1px solid var(--viewer-border);
+}
+.project-identity[data-collapsed="true"] {
+  justify-content: center;
+  padding: 0 4px;
 }
 .workspace-header-main {
   display: flex;
@@ -587,6 +606,10 @@ Use the following structural declarations in `app.css`:
   color: #fff;
 }
 ```
+
+Set both the folder-row CSS height and `FolderTree` virtual `rowHeight` to `24`. Keep the complete
+relative path in each tree item's accessible name, but remove the repeated visible path suffix so
+the row contains only the current folder name and its applicable marker.
 
 Menus use 12 px radius, `var(--viewer-shadow-popover)`, and no width larger than the available viewport. Controls use 28–32 px visual height and the shared focus ring.
 

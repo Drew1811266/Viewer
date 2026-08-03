@@ -266,6 +266,38 @@ describe('Viewer empty state', () => {
     expect(more).toHaveFocus()
   })
 
+  it('keeps the sidebar collapse control in the aligned project header and uses a 52px rail', async () => {
+    const viewer = bridge()
+    render(<App bridge={viewer} />)
+    fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
+
+    const projectHeading = await screen.findByRole('heading', { name: 'Catalog' })
+    const projectIdentity = projectHeading.parentElement
+    expect(projectIdentity).not.toBeNull()
+    const collapse = within(projectIdentity as HTMLElement).getByRole('button', {
+      name: '折叠文件夹栏',
+    })
+    const sidebar = screen.getByRole('complementary', { name: '文件夹栏' })
+
+    expect(within(sidebar).getByText('项目目录')).toBeVisible()
+    expect(within(sidebar).getByRole('button', { name: 'Catalog' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+    expect(within(sidebar).queryByRole('button', { name: '项目根目录' })).not.toBeInTheDocument()
+
+    fireEvent.click(collapse)
+
+    expect(sidebar).toHaveStyle({ width: '52px' })
+    expect(sidebar).toHaveAttribute('data-collapsed', 'true')
+    expect(within(sidebar).getByText('项目目录')).toBeVisible()
+    expect(within(sidebar).getByRole('button', { name: 'Catalog' })).toBeVisible()
+    expect(projectIdentity).not.toHaveTextContent('Catalog')
+    expect(
+      within(projectIdentity as HTMLElement).getByRole('button', { name: '展开文件夹栏' }),
+    ).toBeVisible()
+  })
+
   it('keeps compact toolbar popovers reachable and viewport-contained at the supported narrow width', async () => {
     vi.stubGlobal('innerWidth', 500)
     const viewer = bridge()
@@ -274,8 +306,14 @@ describe('Viewer empty state', () => {
     fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
 
     const sidebar = await screen.findByRole('complementary', { name: '文件夹栏' })
-    expect(sidebar).toHaveStyle({ width: '44px' })
-    expect(screen.getByRole('button', { name: '窄窗口中已折叠文件夹栏' })).toBeDisabled()
+    expect(sidebar).toHaveStyle({ width: '52px' })
+    const projectIdentity = document.querySelector<HTMLElement>('.project-identity')
+    expect(projectIdentity).not.toBeNull()
+    expect(
+      within(projectIdentity as HTMLElement).getByRole('button', {
+        name: '窄窗口中已折叠文件夹栏',
+      }),
+    ).toBeDisabled()
     await screen.findByRole('option', { name: 'front.jpg' })
 
     const toolbar = screen.getByRole('toolbar', { name: 'Viewer 工具栏' })
@@ -415,8 +453,8 @@ describe('Viewer empty state', () => {
     const separator = screen.getByRole('separator', { name: '调整文件夹栏宽度' })
     expect(separator).toHaveAttribute('aria-valuemin', '200')
     expect(separator).toHaveAttribute('aria-valuemax', '420')
-    expect(separator).toHaveAttribute('aria-valuenow', '260')
-    fireEvent.pointerDown(separator, { pointerId: 101, button: 0, clientX: 260 })
+    expect(separator).toHaveAttribute('aria-valuenow', '220')
+    fireEvent.pointerDown(separator, { pointerId: 101, button: 0, clientX: 220 })
     fireEvent.pointerMove(window, { pointerId: 101, clientX: 300 })
     fireEvent.pointerUp(window, { pointerId: 101, clientX: 300 })
     expect(screen.getByLabelText('文件夹栏')).toHaveStyle({ width: '300px' })
@@ -451,15 +489,15 @@ describe('Viewer empty state', () => {
     const sidebar = screen.getByLabelText('文件夹栏')
     const separator = screen.getByRole('separator', { name: '调整文件夹栏宽度' })
 
-    fireEvent.pointerDown(separator, { pointerId: 104, button: 0, clientX: 260 })
-    fireEvent.pointerMove(window, { pointerId: 104, clientX: 280 })
-    expect(sidebar).toHaveStyle({ width: '280px' })
-    fireEvent.pointerCancel(window, { pointerId: 104, clientX: 280 })
+    fireEvent.pointerDown(separator, { pointerId: 104, button: 0, clientX: 220 })
+    fireEvent.pointerMove(window, { pointerId: 104, clientX: 240 })
+    expect(sidebar).toHaveStyle({ width: '240px' })
+    fireEvent.pointerCancel(window, { pointerId: 104, clientX: 240 })
     fireEvent.pointerMove(window, { pointerId: 104, clientX: 340 })
     const widthAfterCancelledMove = sidebar.style.width
     fireEvent.pointerUp(window, { pointerId: 104, clientX: 340 })
 
-    expect(widthAfterCancelledMove).toBe('280px')
+    expect(widthAfterCancelledMove).toBe('240px')
   })
 
   it('previews a filmstrip image in row order while keeping the category overview', async () => {

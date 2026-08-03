@@ -224,7 +224,7 @@ summary,
   display: grid;
   flex: 0 0 auto;
   grid-template-columns: var(--viewer-sidebar-width) minmax(0, 1fr);
-  min-height: 52px;
+  min-height: 40px;
   padding: 0;
   position: relative;
   z-index: 10;
@@ -235,8 +235,10 @@ summary,
   background: var(--viewer-sidebar);
   border-right: 1px solid var(--viewer-border);
   display: flex;
+  gap: 8px;
+  justify-content: space-between;
   min-width: 0;
-  padding: 0 16px;
+  padding: 0 14px;
 }
 
 .project-identity h1 {
@@ -245,6 +247,34 @@ summary,
   max-width: 180px;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-identity > button {
+  background: transparent;
+  border: 0;
+  color: var(--viewer-text-secondary);
+  min-height: 32px;
+  padding: 4px 6px;
+}
+
+.project-identity > button:hover:not(:disabled) {
+  background: var(--viewer-soft-surface);
+}
+
+.project-identity > button:focus-visible {
+  outline: var(--viewer-focus-outline);
+  outline-offset: var(--viewer-focus-offset);
+}
+
+.project-identity[data-collapsed="true"] {
+  justify-content: center;
+  padding: 0 4px;
+}
+
+.project-identity[data-collapsed="true"] > button {
+  font-size: 10px;
+  padding: 0 4px;
   white-space: nowrap;
 }
 
@@ -896,10 +926,14 @@ summary,
   display: flex;
   flex: 0 0 auto;
   flex-direction: column;
-  min-width: 44px;
+  min-width: 52px;
   overflow: hidden;
   padding: 8px;
   position: relative;
+}
+
+.folder-sidebar[data-collapsed="true"] {
+  padding: 8px 4px;
 }
 
 .folder-tree {
@@ -907,12 +941,25 @@ summary,
   min-height: 0;
 }
 
-.folder-sidebar > button:first-child {
-  align-self: flex-start;
+.folder-tree-label {
+  color: var(--viewer-text-tertiary);
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: 0.07em;
+  margin: 2px 8px 6px;
+}
+
+.folder-sidebar[data-collapsed="true"] .folder-tree-label {
+  font-size: 9px;
+  letter-spacing: 0;
+  margin-inline: 0;
+  text-align: center;
+  white-space: nowrap;
 }
 
 .project-root-button,
 .folder-tree-row {
+  font-size: 13px;
   overflow: hidden;
   text-align: left;
   text-overflow: ellipsis;
@@ -920,12 +967,41 @@ summary,
   width: 100%;
 }
 
+.project-root-button {
+  background: transparent;
+  border: 0;
+  color: var(--viewer-text);
+  height: 24px;
+  padding: 0 8px;
+}
+
+.folder-sidebar[data-collapsed="true"] .project-root-button,
+.folder-sidebar[data-collapsed="true"] .folder-tree-row {
+  font-size: 10px;
+  gap: 0;
+  padding-inline: 4px !important;
+  text-align: center;
+}
+
+.folder-sidebar[data-collapsed="true"] .folder-disclosure,
+.folder-sidebar[data-collapsed="true"] .folder-disclosure-placeholder,
+.folder-sidebar[data-collapsed="true"] .folder-marker-badge {
+  display: none;
+}
+
+.folder-sidebar[data-collapsed="true"] .folder-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .folder-tree-row {
   align-items: center;
   cursor: default;
   display: flex;
   gap: 4px;
-  height: 28px;
+  height: 24px;
 }
 
 .project-root-button[aria-pressed="true"],
@@ -958,13 +1034,6 @@ summary,
   background: transparent;
   border: 0;
   padding: 0;
-}
-
-.folder-path {
-  color: var(--viewer-text-tertiary);
-  font-size: 11px;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .folder-marker-badge {

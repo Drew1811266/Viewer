@@ -935,13 +935,29 @@ function ViewerWorkspace({ bridge }: { bridge: ViewerBridge }) {
       data-organization-drag-active={organizationDragView ? true : undefined}
       style={
         {
-          '--viewer-sidebar-width': `${effectiveSidebarCollapsed ? 44 : sidebarWidth}px`,
+          '--viewer-sidebar-width': `${effectiveSidebarCollapsed ? 52 : sidebarWidth}px`,
         } as CSSProperties
       }
     >
       <header className="workspace-header">
-        <div className="project-identity">
-          <h1>{state.project.displayName}</h1>
+        <div className="project-identity" data-collapsed={effectiveSidebarCollapsed}>
+          {effectiveSidebarCollapsed ? (
+            <button
+              type="button"
+              aria-label={narrowViewport ? '窄窗口中已折叠文件夹栏' : '展开文件夹栏'}
+              onClick={toggleSidebar}
+              disabled={narrowViewport}
+            >
+              展开
+            </button>
+          ) : (
+            <>
+              <h1>{state.project.displayName}</h1>
+              <button type="button" aria-label="折叠文件夹栏" onClick={toggleSidebar}>
+                收起
+              </button>
+            </>
+          )}
         </div>
         <div className="workspace-header-main" role="toolbar" aria-label="Viewer 工具栏">
           <SearchToolbar
@@ -978,52 +994,38 @@ function ViewerWorkspace({ bridge }: { bridge: ViewerBridge }) {
         <aside
           className="folder-sidebar"
           aria-label="文件夹栏"
-          style={{ width: effectiveSidebarCollapsed ? 44 : sidebarWidth }}
+          data-collapsed={effectiveSidebarCollapsed}
+          style={{ width: effectiveSidebarCollapsed ? 52 : sidebarWidth }}
         >
+          <p className="folder-tree-label">项目目录</p>
           <button
             type="button"
-            aria-label={
-              narrowViewport
-                ? '窄窗口中已折叠文件夹栏'
-                : sidebarCollapsed
-                  ? '展开文件夹栏'
-                  : '折叠文件夹栏'
-            }
-            onClick={toggleSidebar}
-            disabled={narrowViewport}
+            className="project-root-button"
+            aria-pressed={state.selectedFolderId === null}
+            onClick={() => selectFolderTarget(null)}
           >
-            {effectiveSidebarCollapsed ? '›' : '‹'}
+            {state.project.displayName}
           </button>
+          <FolderTree
+            folders={state.folders}
+            loading={state.workspace === null}
+            selectedId={state.selectedFolderId}
+            onSelect={selectFolderTarget}
+            organizationDropTarget={organizationDropTarget}
+          />
           {!effectiveSidebarCollapsed && (
-            <>
-              <button
-                type="button"
-                className="project-root-button"
-                aria-pressed={state.selectedFolderId === null}
-                onClick={() => selectFolderTarget(null)}
-              >
-                项目根目录
-              </button>
-              <FolderTree
-                folders={state.folders}
-                loading={state.workspace === null}
-                selectedId={state.selectedFolderId}
-                onSelect={selectFolderTarget}
-                organizationDropTarget={organizationDropTarget}
-              />
-              <button
-                type="button"
-                className="sidebar-separator"
-                role="separator"
-                aria-label="调整文件夹栏宽度"
-                aria-orientation="vertical"
-                aria-valuemin={200}
-                aria-valuemax={420}
-                aria-valuenow={sidebarWidth}
-                onPointerDown={startSidebarResize}
-                onKeyDown={resizeSidebarFromKeyboard}
-              />
-            </>
+            <button
+              type="button"
+              className="sidebar-separator"
+              role="separator"
+              aria-label="调整文件夹栏宽度"
+              aria-orientation="vertical"
+              aria-valuemin={200}
+              aria-valuemax={420}
+              aria-valuenow={sidebarWidth}
+              onPointerDown={startSidebarResize}
+              onKeyDown={resizeSidebarFromKeyboard}
+            />
           )}
         </aside>
         <section

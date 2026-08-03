@@ -50,16 +50,18 @@ describe('FolderTree', () => {
     expect(screen.getByRole('treeitem', { name: 'catalog' })).toBeVisible()
   })
 
-  it('renders only folders at arbitrary depth with full relative-path labels', () => {
-    render(<FolderTree folders={folders} selectedId="3" onSelect={vi.fn()} />)
+  it('keeps full relative paths accessible without repeating them visually', () => {
+    const { container } = render(<FolderTree folders={folders} selectedId="3" onSelect={vi.fn()} />)
 
-    expect(screen.getByText('catalog/shoes/id-001')).toBeVisible()
+    expect(container.querySelector('.folder-path')).not.toBeInTheDocument()
+    expect(screen.getByText('id-001')).toBeVisible()
     expect(screen.getByText('empty')).toBeVisible()
     expect(screen.queryByText('front.jpg')).not.toBeInTheDocument()
     expect(screen.queryByText('.viewer')).not.toBeInTheDocument()
     const selected = screen.getByRole('treeitem', { name: 'catalog/shoes/id-001' })
     expect(selected).toHaveAttribute('aria-selected', 'true')
     expect(selected).not.toHaveAttribute('tabindex')
+    expect(selected.parentElement).toHaveStyle({ height: '24px', top: '48px' })
   })
 
   it('collapses descendants and calls selection without losing the selected id', () => {
@@ -117,7 +119,7 @@ describe('FolderTree', () => {
     expect(viewport).toHaveStyle({ height: '100%' })
     expect(resize).toBeDefined()
     act(() => resize?.(700))
-    expect(screen.getAllByRole('treeitem')).toHaveLength(31)
+    expect(screen.getAllByRole('treeitem')).toHaveLength(36)
   })
 
   it('marks the scrolling viewport and visible rows with opaque organization ids', () => {

@@ -1,7 +1,9 @@
 import type { KeyboardEvent } from 'react'
-import { useEffect, useRef, useState } from 'react'
+import { useRef } from 'react'
 import type { SearchLayout } from '../api/types'
 import type { SelectAllRequest, SelectAllScope } from './contentBrowser/adaptiveOtherFilePanelModel'
+import ViewerMenuRow from './ui/ViewerMenuRow'
+import ViewerPopover from './ui/ViewerPopover'
 import useViewportPopoverMaxWidth from './useViewportPopoverMaxWidth'
 
 export type WorkspaceViewContext =
@@ -19,36 +21,18 @@ export type WorkspaceViewContext =
 
 export default function WorkspaceViewMenu({
   context,
-  openRequest = 0,
+  open,
+  onOpenChange,
 }: {
   context: WorkspaceViewContext
-  openRequest?: number
+  open: boolean
+  onOpenChange(open: boolean): void
 }) {
-  const [open, setOpen] = useState(false)
   const summaryRef = useRef<HTMLElement>(null)
   const popoverMaxWidth = useViewportPopoverMaxWidth()
 
-  useEffect(() => {
-    if (openRequest > 0) {
-      window.dispatchEvent(new CustomEvent('viewer-toolbar-popover', { detail: 'view' }))
-      setOpen(true)
-    }
-  }, [openRequest])
-
-  useEffect(() => {
-    const closeForPeer = (event: Event) => {
-      if ((event as CustomEvent<string>).detail !== 'view') setOpen(false)
-    }
-    window.addEventListener('viewer-toolbar-popover', closeForPeer)
-    return () => window.removeEventListener('viewer-toolbar-popover', closeForPeer)
-  }, [])
-
   function toggle() {
-    setOpen((current) => {
-      const next = !current
-      if (next) window.dispatchEvent(new CustomEvent('viewer-toolbar-popover', { detail: 'view' }))
-      return next
-    })
+    onOpenChange(!open)
   }
 
   function handleSummaryKeyDown(event: KeyboardEvent<HTMLElement>) {
@@ -57,20 +41,13 @@ export default function WorkspaceViewMenu({
     toggle()
   }
 
-  function closeFromEscape(event: KeyboardEvent<HTMLDetailsElement>) {
-    if (event.key !== 'Escape') return
-    event.preventDefault()
-    setOpen(false)
-    summaryRef.current?.focus()
-  }
-
   function run(action: () => void) {
-    setOpen(false)
+    onOpenChange(false)
     action()
   }
 
   return (
-    <details className="workspace-view-menu" open={open} onKeyDown={closeFromEscape}>
+    <details className="workspace-view-menu" open={open}>
       <summary
         ref={summaryRef}
         role="button"
@@ -84,59 +61,61 @@ export default function WorkspaceViewMenu({
       >
         视图
       </summary>
-      <div className="workspace-menu-popover" hidden={!open} style={{ maxWidth: popoverMaxWidth }}>
+      <ViewerPopover
+        className="workspace-menu-popover"
+        open={open}
+        label="视图选项"
+        triggerRef={summaryRef}
+        onOpenChange={onOpenChange}
+        style={{ maxWidth: popoverMaxWidth }}
+      >
         {context.kind === 'search' && (
           <>
-            <button
-              type="button"
+            <ViewerMenuRow
               className="workspace-menu-item"
-              aria-pressed={context.layout === 'grouped'}
-              onClick={() => run(() => context.onLayoutChange('grouped'))}
+              current={context.layout === 'grouped'}
+              onSelect={() => run(() => context.onLayoutChange('grouped'))}
             >
               按文件夹分组
-            </button>
-            <button
-              type="button"
+            </ViewerMenuRow>
+            <ViewerMenuRow
               className="workspace-menu-item"
-              aria-pressed={context.layout === 'flat'}
-              onClick={() => run(() => context.onLayoutChange('flat'))}
+              current={context.layout === 'flat'}
+              onSelect={() => run(() => context.onLayoutChange('flat'))}
             >
               展平结果
-            </button>
+            </ViewerMenuRow>
           </>
         )}
         {context.kind === 'category' && (
-          <button
-            type="button"
+          <ViewerMenuRow
             className="workspace-menu-item"
-            onClick={() => run(context.onShowAllDescendants)}
+            onSelect={() => run(context.onShowAllDescendants)}
           >
             显示全部后代文件
-          </button>
+          </ViewerMenuRow>
         )}
         {context.kind === 'content' && (
           <>
             {context.showingAggregate ? (
-              <button
-                type="button"
+              <ViewerMenuRow
                 className="workspace-menu-item"
-                onClick={() => run(context.onReturnToFolder)}
+                onSelect={() => run(context.onReturnToFolder)}
               >
                 返回当前文件夹
-              </button>
+              </ViewerMenuRow>
             ) : (
-              <button
-                type="button"
+              <ViewerMenuRow
                 className="workspace-menu-item"
-                onClick={() => run(context.onShowAllDescendants)}
+                onSelect={() => run(context.onShowAllDescendants)}
               >
                 显示全部后代文件
-              </button>
+              </ViewerMenuRow>
             )}
             {selectAllButtons(context.selectAllRequest, context.onSelectAll, run)}
           </>
         )}
-      </div>
+      </ViewerPopover>
     </details>
   )
 }
@@ -149,38 +128,31 @@ function selectAllButtons(
   if (request.kind === 'none') return null
   if (request.kind === 'direct') {
     return (
-      <button
-        type="button"
+      <ViewerMenuRow
         className="workspace-menu-item"
-        onClick={() => run(() => onSelectAll(request.scope))}
+        onSelect={() => run(() => onSelectAll(request.scope))}
       >
         {request.scope === 'images' ? '全选图片' : '全选其它文件'}
-      </button>
+      </ViewerMenuRow>
     )
   }
   return (
     <>
-      <button
-        type="button"
+      <ViewerMenuRow
         className="workspace-menu-item"
-        onClick={() => run(() => onSelectAll('images'))}
+        onSelect={() => run(() => onSelectAll('images'))}
       >
         全选图片
-      </button>
-      <button
-        type="button"
+      </ViewerMenuRow>
+      <ViewerMenuRow
         className="workspace-menu-item"
-        onClick={() => run(() => onSelectAll('other'))}
+        onSelect={() => run(() => onSelectAll('other'))}
       >
         全选其它文件
-      </button>
-      <button
-        type="button"
-        className="workspace-menu-item"
-        onClick={() => run(() => onSelectAll('all'))}
-      >
+      </ViewerMenuRow>
+      <ViewerMenuRow className="workspace-menu-item" onSelect={() => run(() => onSelectAll('all'))}>
         全选全部文件
-      </button>
+      </ViewerMenuRow>
     </>
   )
 }

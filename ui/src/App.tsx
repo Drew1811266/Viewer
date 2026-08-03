@@ -16,6 +16,7 @@ import { useOperationDialogs } from './app/useOperationDialogs'
 import { useOtherFilePanelPreference } from './app/useOtherFilePanelPreference'
 import { getPreviewSessionInternals, usePreviewSession } from './app/usePreviewSession'
 import { useRadialMenuContextToken, useRadialMenuSession } from './app/useRadialMenuSession'
+import { useToolbarPopover } from './app/useToolbarPopover'
 import BatchRenameDialog from './components/BatchRenameDialog'
 import CloseOperationDialog from './components/CloseOperationDialog'
 import CompareWorkspace from './components/CompareWorkspace'
@@ -159,7 +160,7 @@ function ViewerWorkspace({ bridge }: { bridge: ViewerBridge }) {
     kind: 'none',
   })
   const [contentViewCommand, setContentViewCommand] = useState<ContentViewCommand | null>(null)
-  const [viewMenuOpenRequest, setViewMenuOpenRequest] = useState(0)
+  const toolbarPopover = useToolbarPopover()
   const contentViewCommandRequestId = useRef(0)
   const moreMenuTriggerRef = useRef<HTMLElement>(null)
   useEffect(() => {
@@ -961,6 +962,8 @@ function ViewerWorkspace({ bridge }: { bridge: ViewerBridge }) {
         </div>
         <div className="workspace-header-main" role="toolbar" aria-label="Viewer 工具栏">
           <SearchToolbar
+            filterOpen={toolbarPopover.openPopover === 'filter'}
+            onFilterOpenChange={(open) => toolbarPopover.setPopoverOpen('filter', open)}
             query={state.search.query}
             folders={state.folders}
             focusRequest={state.search.focusRequest}
@@ -971,9 +974,15 @@ function ViewerWorkspace({ bridge }: { bridge: ViewerBridge }) {
             onRemoveFilter={removeSearchFilter}
             onClearFilters={clearSearchFilters}
           />
-          <WorkspaceViewMenu context={viewContext} openRequest={viewMenuOpenRequest} />
+          <WorkspaceViewMenu
+            context={viewContext}
+            open={toolbarPopover.openPopover === 'view'}
+            onOpenChange={(open) => toolbarPopover.setPopoverOpen('view', open)}
+          />
           <WorkspaceMoreMenu
             ref={moreMenuTriggerRef}
+            open={toolbarPopover.openPopover === 'more'}
+            onOpenChange={(open) => toolbarPopover.setPopoverOpen('more', open)}
             access={state.project.access}
             closing={state.status === 'closing'}
             onOpenSettings={() => setSettingsOpen(true)}
@@ -1082,7 +1091,7 @@ function ViewerWorkspace({ bridge }: { bridge: ViewerBridge }) {
                   density={thumbnailDensity}
                   viewCommand={contentViewCommand}
                   onViewStateChange={setContentSelectAllRequest}
-                  onRequestViewMenu={() => setViewMenuOpenRequest((current) => current + 1)}
+                  onRequestViewMenu={() => toolbarPopover.setPopoverOpen('view', true)}
                   requestThumbnail={requestContentThumbnail}
                   onThumbnailTaskChange={setThumbnailTask}
                   onPreview={openPreview}

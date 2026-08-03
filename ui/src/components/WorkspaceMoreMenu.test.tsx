@@ -1,6 +1,12 @@
 import { fireEvent, render, screen } from '@testing-library/react'
+import { useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
-import WorkspaceMoreMenu from './WorkspaceMoreMenu'
+import WorkspaceMoreMenuView, { type WorkspaceMoreMenuProps } from './WorkspaceMoreMenu'
+
+function WorkspaceMoreMenu(props: Omit<WorkspaceMoreMenuProps, 'open' | 'onOpenChange'>) {
+  const [open, setOpen] = useState(false)
+  return <WorkspaceMoreMenuView {...props} open={open} onOpenChange={setOpen} />
+}
 
 describe('WorkspaceMoreMenu', () => {
   it('contains settings and project commands in one named menu', () => {
@@ -22,7 +28,7 @@ describe('WorkspaceMoreMenu', () => {
     expect(document.querySelector('.workspace-menu-separator')).not.toBeNull()
     const close = screen.getByRole('button', { name: '关闭项目' })
     expect(close).toHaveClass('workspace-menu-item')
-    expect(close).toHaveAttribute('data-tone', 'destructive')
+    expect(close).toHaveAttribute('data-tone', 'danger')
     fireEvent.click(settings)
     expect(openSettings).toHaveBeenCalledOnce()
     fireEvent.click(screen.getByRole('button', { name: '更多' }))

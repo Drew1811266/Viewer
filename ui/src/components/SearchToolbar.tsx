@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import type {
   FileKind,
   FolderTreeItem,
@@ -9,8 +9,12 @@ import type {
   SearchSort,
 } from '../api/types'
 import type { SearchFilterChip } from '../state/viewerReducer'
+import ViewerIcon from './ui/ViewerIcon'
+import ViewerPopover from './ui/ViewerPopover'
 
-interface SearchToolbarProps {
+export interface SearchToolbarProps {
+  filterOpen: boolean
+  onFilterOpenChange(open: boolean): void
   query: SearchQueryModel
   folders: FolderTreeItem[]
   focusRequest: number
@@ -43,6 +47,8 @@ const ORIENTATIONS: Array<[ImageOrientation, string]> = [
 ]
 
 export default function SearchToolbar({
+  filterOpen,
+  onFilterOpenChange,
   query,
   folders,
   focusRequest,
@@ -55,36 +61,14 @@ export default function SearchToolbar({
 }: SearchToolbarProps) {
   const searchRef = useRef<HTMLInputElement>(null)
   const filterTriggerRef = useRef<HTMLElement>(null)
-  const restoreFilterFocusRef = useRef(false)
-  const [optionsOpen, setOptionsOpen] = useState(false)
-  useEffect(() => {
-    const closeForPeer = (event: Event) => {
-      if ((event as CustomEvent<string>).detail !== 'filter') setOptionsOpen(false)
-    }
-    window.addEventListener('viewer-toolbar-popover', closeForPeer)
-    return () => window.removeEventListener('viewer-toolbar-popover', closeForPeer)
-  }, [])
   useEffect(() => {
     if (focusRequest > 0) searchRef.current?.focus()
   }, [focusRequest])
-  useEffect(() => {
-    if (!optionsOpen && restoreFilterFocusRef.current) {
-      filterTriggerRef.current?.focus()
-      restoreFilterFocusRef.current = false
-    }
-  }, [optionsOpen])
   const closeOptions = () => {
-    restoreFilterFocusRef.current = true
-    setOptionsOpen(false)
+    onFilterOpenChange(false)
+    filterTriggerRef.current?.focus()
   }
-  const toggleOptions = () => {
-    setOptionsOpen((open) => {
-      const next = !open
-      if (next)
-        window.dispatchEvent(new CustomEvent('viewer-toolbar-popover', { detail: 'filter' }))
-      return next
-    })
-  }
+  const toggleOptions = () => onFilterOpenChange(!filterOpen)
   const chips = useMemo(() => filterChips(query.filters), [query.filters])
   const orientationControls = (
     <>
@@ -206,7 +190,7 @@ export default function SearchToolbar({
           })
         }
       >
-        {query.sort.direction === 'ascending' ? '↑' : '↓'}
+        <ViewerIcon name={query.sort.direction === 'ascending' ? 'arrow-up' : 'arrow-down'} />
       </button>
     </div>
   )
@@ -267,7 +251,8 @@ export default function SearchToolbar({
               aria-label={`移除 ${label} 筛选`}
               onClick={() => onRemoveFilter(chip)}
             >
-              {label} ×
+              <span>{label}</span>
+              <ViewerIcon name="x" size={12} />
             </button>
           ))}
           <button type="button" aria-label="清除全部筛选" onClick={onClearFilters}>
@@ -284,7 +269,7 @@ export default function SearchToolbar({
     <section className="search-toolbar" aria-label="搜索和筛选">
       <label className="search-field">
         <span className="visually-hidden">搜索项目</span>
-        <span aria-hidden="true">⌕</span>
+        <ViewerIcon name="search" />
         <input
           ref={searchRef}
           type="search"
@@ -295,19 +280,11 @@ export default function SearchToolbar({
         />
         <kbd>⌘F</kbd>
       </label>
-      <details
-        className="search-options-panel"
-        open={optionsOpen}
-        onKeyDown={(event) => {
-          if (event.key !== 'Escape') return
-          event.preventDefault()
-          closeOptions()
-        }}
-      >
+      <details className="search-options-panel" open={filterOpen}>
         <summary
           ref={filterTriggerRef}
           role="button"
-          aria-expanded={optionsOpen}
+          aria-expanded={filterOpen}
           onClick={(event) => {
             event.preventDefault()
             toggleOptions()
@@ -322,7 +299,13 @@ export default function SearchToolbar({
           <span>筛选</span>
           {chips.length > 0 && <span className="filter-count">{chips.length}</span>}
         </summary>
-        <div className="search-options-popover" hidden={!optionsOpen}>
+        <ViewerPopover
+          className="search-options-popover"
+          open={filterOpen}
+          label="筛选条件"
+          triggerRef={filterTriggerRef}
+          onOpenChange={onFilterOpenChange}
+        >
           <header className="filter-popover-header">
             <h2>筛选</h2>
             <button type="button" aria-label="关闭筛选" onClick={closeOptions}>
@@ -341,7 +324,7 @@ export default function SearchToolbar({
             </div>
           </details>
           <footer className="active-filter-summary">{activeFilterChipsAndClearAction}</footer>
-        </div>
+        </ViewerPopover>
       </details>
     </section>
   )

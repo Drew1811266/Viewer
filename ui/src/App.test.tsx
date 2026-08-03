@@ -338,6 +338,7 @@ describe('Viewer empty state', () => {
   })
 
   it('keeps filter, View, and More popovers mutually exclusive', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined)
     const viewer = bridge()
     vi.mocked(viewer.queryFolder).mockResolvedValue(contentWorkspace())
     render(<App bridge={viewer} />)
@@ -356,6 +357,14 @@ describe('Viewer empty state', () => {
     fireEvent.click(more)
     expect(filter).toHaveAttribute('aria-expanded', 'false')
     expect(more).toHaveAttribute('aria-expanded', 'true')
+    expect(
+      consoleError.mock.calls.some((call) =>
+        call.some((value) =>
+          String(value).includes('Cannot update a component while rendering a different component'),
+        ),
+      ),
+    ).toBe(false)
+    consoleError.mockRestore()
   })
 
   it('shows the latest settings save failure and rolls back the selected radio', async () => {
@@ -441,7 +450,7 @@ describe('Viewer empty state', () => {
     expect(screen.getByText('访问权限：只读')).toBeVisible()
     fireEvent.keyDown(projectMenu, { key: ' ' })
     expect(projectMenu).toHaveAttribute('aria-expanded', 'false')
-    expect(screen.getByText('访问权限：只读')).not.toBeVisible()
+    expect(screen.queryByText('访问权限：只读')).not.toBeInTheDocument()
     expect(screen.getByRole('status', { name: '只读模式' })).toBeVisible()
   })
 

@@ -1,6 +1,12 @@
 import { fireEvent, render, screen } from '@testing-library/react'
+import { useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
-import WorkspaceViewMenu from './WorkspaceViewMenu'
+import WorkspaceViewMenuView, { type WorkspaceViewContext } from './WorkspaceViewMenu'
+
+function WorkspaceViewMenu({ context }: { context: WorkspaceViewContext }) {
+  const [open, setOpen] = useState(false)
+  return <WorkspaceViewMenuView context={context} open={open} onOpenChange={setOpen} />
+}
 
 describe('WorkspaceViewMenu', () => {
   it('shows search layouts in the contextual view menu', () => {
@@ -33,10 +39,11 @@ describe('WorkspaceViewMenu', () => {
     expect(onSelectAll).toHaveBeenCalledWith('all')
   })
 
-  it('opens when a content keyboard command requests the global menu', () => {
+  it('opens when its controlled owner requests the menu', () => {
     render(
-      <WorkspaceViewMenu
-        openRequest={1}
+      <WorkspaceViewMenuView
+        open
+        onOpenChange={vi.fn()}
         context={{
           kind: 'content',
           showingAggregate: false,

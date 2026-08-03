@@ -1,11 +1,17 @@
 import { readFileSync } from 'node:fs'
 import { fireEvent, render, screen } from '@testing-library/react'
+import { useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 import type { SearchQueryModel } from '../api/types'
 import { initialSearchQuery } from '../state/viewerReducer'
-import SearchToolbar from './SearchToolbar'
+import SearchToolbarView, { type SearchToolbarProps } from './SearchToolbar'
 
 const appCss = readFileSync('src/styles/app.css', 'utf8')
+
+function SearchToolbar(props: Omit<SearchToolbarProps, 'filterOpen' | 'onFilterOpenChange'>) {
+  const [filterOpen, setFilterOpen] = useState(false)
+  return <SearchToolbarView {...props} filterOpen={filterOpen} onFilterOpenChange={setFilterOpen} />
+}
 
 function query(overrides: Partial<SearchQueryModel> = {}): SearchQueryModel {
   return {

@@ -1,9 +1,13 @@
 import type { KeyboardEvent } from 'react'
-import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react'
+import { forwardRef, useImperativeHandle, useRef } from 'react'
 import type { ProjectAccess } from '../api/types'
+import ViewerMenuRow from './ui/ViewerMenuRow'
+import ViewerPopover from './ui/ViewerPopover'
 import useViewportPopoverMaxWidth from './useViewportPopoverMaxWidth'
 
 export interface WorkspaceMoreMenuProps {
+  open: boolean
+  onOpenChange(open: boolean): void
   access: ProjectAccess
   closing: boolean
   onOpenSettings(): void
@@ -15,6 +19,8 @@ export interface WorkspaceMoreMenuProps {
 const WorkspaceMoreMenu = forwardRef<HTMLElement, WorkspaceMoreMenuProps>(
   function WorkspaceMoreMenu(
     {
+      open,
+      onOpenChange,
       access,
       closing,
       onOpenSettings,
@@ -24,26 +30,12 @@ const WorkspaceMoreMenu = forwardRef<HTMLElement, WorkspaceMoreMenuProps>(
     },
     ref,
   ) {
-    const [open, setOpen] = useState(false)
     const summaryRef = useRef<HTMLElement>(null)
     const popoverMaxWidth = useViewportPopoverMaxWidth()
     useImperativeHandle(ref, () => summaryRef.current as HTMLElement)
 
-    useEffect(() => {
-      const closeForPeer = (event: Event) => {
-        if ((event as CustomEvent<string>).detail !== 'more') setOpen(false)
-      }
-      window.addEventListener('viewer-toolbar-popover', closeForPeer)
-      return () => window.removeEventListener('viewer-toolbar-popover', closeForPeer)
-    }, [])
-
     function toggle() {
-      setOpen((current) => {
-        const next = !current
-        if (next)
-          window.dispatchEvent(new CustomEvent('viewer-toolbar-popover', { detail: 'more' }))
-        return next
-      })
+      onOpenChange(!open)
     }
 
     function handleSummaryKeyDown(event: KeyboardEvent<HTMLElement>) {
@@ -52,20 +44,13 @@ const WorkspaceMoreMenu = forwardRef<HTMLElement, WorkspaceMoreMenuProps>(
       toggle()
     }
 
-    function closeFromEscape(event: KeyboardEvent<HTMLDetailsElement>) {
-      if (event.key !== 'Escape') return
-      event.preventDefault()
-      setOpen(false)
-      summaryRef.current?.focus()
-    }
-
     function run(action: () => void) {
-      setOpen(false)
+      onOpenChange(false)
       action()
     }
 
     return (
-      <details className="workspace-more-menu" open={open} onKeyDown={closeFromEscape}>
+      <details className="workspace-more-menu" open={open}>
         <summary
           ref={summaryRef}
           role="button"
@@ -79,44 +64,42 @@ const WorkspaceMoreMenu = forwardRef<HTMLElement, WorkspaceMoreMenuProps>(
         >
           更多
         </summary>
-        <div
+        <ViewerPopover
           className="workspace-menu-popover"
-          hidden={!open}
+          open={open}
+          label="更多操作"
+          triggerRef={summaryRef}
+          onOpenChange={onOpenChange}
           style={{ maxWidth: popoverMaxWidth }}
         >
-          <button type="button" className="workspace-menu-item" onClick={() => run(onOpenSettings)}>
+          <ViewerMenuRow className="workspace-menu-item" onSelect={() => run(onOpenSettings)}>
             软件设置
-          </button>
+          </ViewerMenuRow>
           {access === 'read_only' && <p className="project-access-status">访问权限：只读</p>}
           {access === 'read_only' && (
-            <button
-              type="button"
+            <ViewerMenuRow
               className="workspace-menu-item"
-              onClick={() => run(onOpenPermissionSettings)}
+              onSelect={() => run(onOpenPermissionSettings)}
             >
               权限设置
-            </button>
+            </ViewerMenuRow>
           )}
           {access === 'read_only' && (
-            <button
-              type="button"
-              className="workspace-menu-item"
-              onClick={() => run(onReselectProject)}
-            >
+            <ViewerMenuRow className="workspace-menu-item" onSelect={() => run(onReselectProject)}>
               重新选择目录
-            </button>
+            </ViewerMenuRow>
           )}
           <hr className="workspace-menu-separator" />
-          <button
-            type="button"
+          <ViewerMenuRow
             className="workspace-menu-item"
             data-tone="destructive"
+            tone="danger"
             disabled={closing}
-            onClick={() => run(onCloseProject)}
+            onSelect={() => run(onCloseProject)}
           >
             {closing ? '正在关闭…' : '关闭项目'}
-          </button>
-        </div>
+          </ViewerMenuRow>
+        </ViewerPopover>
       </details>
     )
   },

@@ -46,6 +46,7 @@ export async function runCli({
   )
 
   log(`Viewer development version is running: ${result.executablePath}`)
+  log(`Viewer process: ${result.viewerPid}`)
   log(`Source: ${branch.trim()} @ ${commit.trim()}${dirty ? ' (dirty)' : ''}`)
   log(`Log: ${result.logPath}`)
 

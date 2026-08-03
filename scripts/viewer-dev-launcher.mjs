@@ -157,6 +157,21 @@ export function isExactDevelopmentViewerRunning(processes, executablePath) {
 }
 
 /**
+ * @param {ProcessInfo[]} processes
+ * @param {string} repoRoot
+ * @param {string} executablePath
+ * @returns {{exact: ProcessInfo[], eligible: ProcessInfo[]}}
+ */
+export function inspectDevelopmentViewers(processes, repoRoot, executablePath) {
+  return {
+    exact: processes.filter(
+      (item) => commandExecutable(item.command) === executablePath,
+    ),
+    eligible: processes.filter((item) => isViewerExecutable(item.command, repoRoot)),
+  }
+}
+
+/**
  * @typedef {{
  *   version: 1,
  *   pid: number,
@@ -357,7 +372,12 @@ export function sessionMatchesProcess(session, liveProcess, repoRoot) {
  *   timeoutMs?: number,
  *   pollMs?: number,
  * }} options
- * @returns {Promise<{pid: number, executablePath: string, logPath: string}>}
+ * @returns {Promise<{
+ *   pid: number,
+ *   viewerPid: number,
+ *   executablePath: string,
+ *   logPath: string,
+ * }>}
  */
 export async function restartDevelopmentViewer({
   paths,
@@ -403,12 +423,33 @@ export async function restartDevelopmentViewer({
   const deadline = Date.now() + timeoutMs
   while (Date.now() <= deadline) {
     const processes = await runtime.listProcesses()
-    if (isExactDevelopmentViewerRunning(processes, paths.executablePath)) {
+    const observation = inspectDevelopmentViewers(
+      processes,
+      paths.repoRoot,
+      paths.executablePath,
+    )
+
+    if (observation.exact.length === 1 && observation.eligible.length === 1) {
       return {
         pid: child.pid,
+        viewerPid: observation.exact[0].pid,
         executablePath: paths.executablePath,
         logPath: paths.logPath,
       }
+    }
+
+    const hasDuplicate =
+      observation.exact.length > 1 ||
+      observation.eligible.length > 1 ||
+      (observation.exact.length === 0 && observation.eligible.length > 0)
+
+    if (hasDuplicate) {
+      await runtime.stop({ kind: 'group', id: child.pgid, viewerPid: child.pid })
+      await runtime.clearSession()
+      throw new Error(
+        `Viewer development startup violated the single-instance invariant: ` +
+          `exact=${observation.exact.length}, eligible=${observation.eligible.length}`,
+      )
     }
     if (!runtime.isAlive(child.pid)) {
       const tail = await runtime.tailLog(40)

@@ -16,6 +16,7 @@ import { runCli } from './start-viewer-dev.mjs'
 import {
   buildLauncherPaths,
   createSystemRuntime,
+  inspectDevelopmentViewers,
   isExactDevelopmentViewerRunning,
   isTauriDevProcess,
   isViewerExecutable,
@@ -146,6 +147,7 @@ describe('runCli', () => {
         assert.equal(options.runtime, runtime)
         return {
           pid: 900,
+          viewerPid: 901,
           executablePath: `${repoRoot}/target/debug/viewer-desktop`,
           logPath: `${repoRoot}/target/dev-launcher/tauri-dev.log`,
         }
@@ -166,6 +168,7 @@ describe('runCli', () => {
     assert.equal(result.pid, 900)
     assert.deepEqual(output, [
       `Viewer development version is running: ${repoRoot}/target/debug/viewer-desktop`,
+      'Viewer process: 901',
       'Source: main @ abc1234 (dirty)',
       `Log: ${repoRoot}/target/dev-launcher/tauri-dev.log`,
     ])
@@ -287,6 +290,17 @@ describe('process selection', () => {
       ),
       false,
     )
+  })
+
+  it('separates the exact development Viewer from every eligible Viewer', () => {
+    const observation = inspectDevelopmentViewers(
+      parseProcessTable(table),
+      repoRoot,
+      `${repoRoot}/target/debug/viewer-desktop`,
+    )
+
+    assert.deepEqual(observation.exact.map(({ pid }) => pid), [122])
+    assert.deepEqual(observation.eligible.map(({ pid }) => pid), [122, 212, 220, 320])
   })
 })
 
@@ -425,6 +439,7 @@ describe('restartDevelopmentViewer', () => {
     ])
     assert.deepEqual(result, {
       pid: 899,
+      viewerPid: 900,
       executablePath: `${repoRoot}/target/debug/viewer-desktop`,
       logPath: `${repoRoot}/target/dev-launcher/tauri-dev.log`,
     })
@@ -543,5 +558,122 @@ describe('restartDevelopmentViewer', () => {
       /wrapper cleanup denied/,
     )
     assert.deepEqual(events, ['remove-wrapper'])
+  })
+
+  it('stops the spawned group and clears state when two Viewers appear', async () => {
+    const events = []
+    const exactCommand = `${repoRoot}/target/debug/viewer-desktop`
+    const snapshots = [
+      [],
+      [],
+      [
+        { pid: 910, ppid: 909, pgid: 909, command: exactCommand },
+        { pid: 911, ppid: 1, pgid: 911, command: exactCommand },
+      ],
+    ]
+    const runtime = {
+      async removeLegacyWrapper() {
+        events.push('remove-wrapper')
+      },
+      async listProcesses() {
+        return snapshots.shift() ?? []
+      },
+      async readSession() {
+        return undefined
+      },
+      async writeSession(state) {
+        events.push(`write:${state.pid}`)
+      },
+      async clearSession() {
+        events.push('clear')
+      },
+      async stop(target) {
+        events.push(`stop:${target.kind}:${target.id}`)
+      },
+      async spawn() {
+        return { pid: 909, pgid: 909 }
+      },
+      isAlive() {
+        return true
+      },
+      async sleep() {},
+      async tailLog() {
+        return ''
+      },
+    }
+
+    await assert.rejects(
+      restartDevelopmentViewer({ paths, runtime, timeoutMs: 100, pollMs: 1 }),
+      /exact=2, eligible=2/,
+    )
+    assert.deepEqual(events, [
+      'remove-wrapper',
+      'write:909',
+      'stop:group:909',
+      'clear',
+    ])
+  })
+
+  it('stops the spawned group when another eligible Viewer appears', async () => {
+    const events = []
+    const snapshots = [
+      [],
+      [],
+      [
+        {
+          pid: 920,
+          ppid: 919,
+          pgid: 919,
+          command: `${repoRoot}/target/debug/viewer-desktop`,
+        },
+        {
+          pid: 921,
+          ppid: 1,
+          pgid: 921,
+          command: '/Applications/Viewer.app/Contents/MacOS/viewer-desktop',
+        },
+      ],
+    ]
+    const runtime = {
+      async removeLegacyWrapper() {
+        events.push('remove-wrapper')
+      },
+      async listProcesses() {
+        return snapshots.shift() ?? []
+      },
+      async readSession() {
+        return undefined
+      },
+      async writeSession(state) {
+        events.push(`write:${state.pid}`)
+      },
+      async clearSession() {
+        events.push('clear')
+      },
+      async stop(target) {
+        events.push(`stop:${target.kind}:${target.id}`)
+      },
+      async spawn() {
+        return { pid: 919, pgid: 919 }
+      },
+      isAlive() {
+        return true
+      },
+      async sleep() {},
+      async tailLog() {
+        return ''
+      },
+    }
+
+    await assert.rejects(
+      restartDevelopmentViewer({ paths, runtime, timeoutMs: 100, pollMs: 1 }),
+      /exact=1, eligible=2/,
+    )
+    assert.deepEqual(events, [
+      'remove-wrapper',
+      'write:919',
+      'stop:group:919',
+      'clear',
+    ])
   })
 })

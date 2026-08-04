@@ -252,7 +252,7 @@ export function buildStateEntryPlan(id) {
       { kind: 'waitMissing', target: { name: '2 个任务已完成' } },
       { kind: 'waitMissing', target: { name: '加载可见缩略图' } },
       { kind: 'click', target: { name: '商品-01.jpg' } },
-      { kind: 'assert', target: { name: '已选择 1 项' } },
+      { kind: 'assert', target: { role: 'AXGroup', name: '选择摘要' } },
     ],
     'FIL-01': [
       openProject,

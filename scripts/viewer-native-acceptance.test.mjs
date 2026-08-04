@@ -156,6 +156,15 @@ describe('state entry plans', () => {
     ])
   })
 
+  it('asserts thumbnail selection through the stable accessibility label', () => {
+    const plan = buildStateEntryPlan('THU-05')
+
+    assert.deepEqual(plan.at(-1), {
+      kind: 'assert',
+      target: { role: 'AXGroup', name: '选择摘要' },
+    })
+  })
+
   it('rejects a state until it has a real executable entry plan', () => {
     assert.throws(() => buildStateEntryPlan('RAD-07'), {
       code: 'STATE_RECIPE_EXECUTOR',

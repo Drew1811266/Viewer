@@ -43,7 +43,7 @@ import TaskBar from './components/TaskBar'
 import TextPreview, { type TextPreviewFiles } from './components/TextPreview'
 import TrashConfirmation from './components/TrashConfirmation'
 import UnsupportedFilePreview from './components/UnsupportedFilePreview'
-import { ViewerIconButton } from './components/ui/ViewerButton'
+import ViewerButton, { ViewerIconButton } from './components/ui/ViewerButton'
 import ViewerEmptyState from './components/ui/ViewerEmptyState'
 import ViewerStatusTag from './components/ui/ViewerStatusTag'
 import WorkspaceLoadingState from './components/WorkspaceLoadingState'
@@ -154,6 +154,10 @@ function ViewerWorkspace({ bridge }: { bridge: ViewerBridge }) {
   const [dismissedTasks, setDismissedTasks] = useState<Set<string>>(() => new Set())
   const [selectedFiles, setSelectedFiles] = useState<BrowserFile[]>([])
   const [finderDragMessage, setFinderDragMessage] = useState<string | null>(null)
+  const [workspaceActionError, setWorkspaceActionError] = useState<string | null>(null)
+  const [recoveryAcknowledgedSessionId, setRecoveryAcknowledgedSessionId] = useState<string | null>(
+    null,
+  )
   const [compareStatus, setCompareStatus] = useState<string | null>(null)
   const [resultsBatchId, setResultsBatchId] = useState<string | null>(null)
   const [infoOpen, setInfoOpen] = useState(false)
@@ -877,24 +881,13 @@ function ViewerWorkspace({ bridge }: { bridge: ViewerBridge }) {
     !state.search.showResults && state.workspace?.workspace === 'content'
   const contextRepairMessage =
     state.contextRepair?.message ?? (activePreview === null ? null : previewRepair.message)
+  const pendingRecoveryReport =
+    state.recoveryReport !== null &&
+    (state.recoveryReport.recovered > 0 || state.recoveryReport.needsUserReview > 0) &&
+    recoveryAcknowledgedSessionId !== projectSessionId
+      ? state.recoveryReport
+      : null
   const globalNotices: GlobalNotice[] = []
-  if (
-    state.recoveryReport &&
-    (state.recoveryReport.recovered > 0 || state.recoveryReport.needsUserReview > 0)
-  ) {
-    const activeBatchId =
-      state.operation.results === null ? null : (state.operation.active?.batchId ?? null)
-    globalNotices.push({
-      id: `recovery:${projectSessionId}`,
-      title: '项目恢复完成',
-      message: `已恢复 ${state.recoveryReport.recovered} 项操作；${state.recoveryReport.needsUserReview} 项需要检查。`,
-      tone: state.recoveryReport.needsUserReview > 0 ? 'warning' : 'info',
-      action:
-        activeBatchId === null
-          ? undefined
-          : { label: '查看结果', onAction: () => setResultsBatchId(activeBatchId) },
-    })
-  }
   if (state.errorMessage) {
     globalNotices.push({
       id: `application:${state.errorMessage}`,
@@ -908,6 +901,14 @@ function ViewerWorkspace({ bridge }: { bridge: ViewerBridge }) {
       id: `finder-drag:${finderDragMessage}`,
       title: '无法拖出文件',
       message: finderDragMessage,
+      tone: 'danger',
+    })
+  }
+  if (workspaceActionError) {
+    globalNotices.push({
+      id: `workspace:${workspaceActionError}`,
+      title: '无法在文件管理器中显示项目',
+      message: workspaceActionError,
       tone: 'danger',
     })
   }
@@ -1049,101 +1050,143 @@ function ViewerWorkspace({ bridge }: { bridge: ViewerBridge }) {
           className={contentWorkspaceActive ? 'workspace workspace--content' : 'workspace'}
           aria-label="项目内容"
         >
-          {contextRepairMessage && (
-            <p className="context-repair-banner local-error" role="status">
-              {contextRepairMessage}
-            </p>
-          )}
-          {state.search.showResults &&
-            state.search.page === null &&
-            state.search.status === 'searching' && <p role="status">正在搜索…</p>}
-          {state.search.showResults &&
-            state.search.page === null &&
-            state.search.status === 'error' && <p>搜索未完成，请调整条件或重试。</p>}
-          {state.search.showResults && state.search.page !== null && (
-            <SearchResults
-              page={state.search.page}
-              query={state.search.query}
-              snippets={state.search.snippets}
-              offset={state.search.offset}
-              limit={200}
-              onPageChange={setSearchPage}
-              onVisibleHits={setVisibleSearchHits}
-              onClearFilters={clearSearchFilters}
-              onSearchProject={() => setSearchScope(null)}
-              onReturnToFolder={returnToFolderContext}
-              searching={
-                state.search.status === 'searching' || !state.search.page.progress.complete
+          {pendingRecoveryReport !== null ? (
+            <ViewerEmptyState
+              appearance="plain"
+              title="项目状态已恢复"
+              description={`${pendingRecoveryReport.recovered} 项操作已经恢复，${pendingRecoveryReport.needsUserReview} 项需要检查。`}
+              action={
+                <ViewerButton
+                  tone="primary"
+                  onClick={() => setRecoveryAcknowledgedSessionId(projectSessionId)}
+                >
+                  继续浏览项目
+                </ViewerButton>
               }
             />
-          )}
-          {!state.search.showResults && state.workspace === null && <WorkspaceLoadingState />}
-          {!state.search.showResults && state.workspace?.workspace === 'empty' && (
-            <ViewerEmptyState title="此文件夹为空" description="这里还没有可查看的文件。" />
-          )}
-          {!state.search.showResults && state.workspace?.workspace === 'category' && (
-            <FolderOverview
-              key={folderOverviewIdentity}
-              folders={state.workspace.folders}
-              density={thumbnailDensity}
-              requestFolderImages={requestFolderImages}
-              requestThumbnail={requestThumbnail}
-              onPreview={openFilmstripPreview}
-              onSelect={selectFolderTarget}
-            />
-          )}
-          {!state.search.showResults && state.workspace?.workspace === 'content' && (
+          ) : (
             <>
-              <div className="content-workspace-surface" hidden={compareOpen}>
-                {state.showingAggregate && (
-                  <ViewerStatusTag className="aggregate-label" tone="info">
-                    全部后代文件
-                  </ViewerStatusTag>
-                )}
-                <ContentBrowser
-                  workspace={state.workspace}
-                  density={thumbnailDensity}
-                  viewCommand={contentViewCommand}
-                  onViewStateChange={setContentSelectAllRequest}
-                  onRequestViewMenu={() => toolbarPopover.setPopoverOpen('view', true)}
-                  requestThumbnail={requestContentThumbnail}
-                  onThumbnailTaskChange={setThumbnailTask}
-                  onPreview={openPreview}
-                  onSelectionChange={selectFiles}
-                  organizationDragDisabled={
-                    state.project.access !== 'read_write' || operationBusy || compareOpen
-                  }
-                  onFinderDragStart={exportToFinder}
-                  onOrganizationPointerInput={handleOrganizationPointerInput}
-                  repairSelectionId={state.contextRepair?.suggestedEntityId ?? null}
-                  onRepairSelectionApplied={consumeContextRepair}
-                  onRadialMenuRequest={beginRadialSession}
-                  otherFilePanelExpanded={otherFilePanelPreference.expanded}
-                  onOtherFilePanelExpandedChange={otherFilePanelPreference.setExpanded}
-                />
-              </div>
-              {!compareOpen && compareStatus && (
-                <p className="compare-status" role="status">
-                  {compareStatus}
+              {contextRepairMessage && (
+                <p className="context-repair-banner local-error" role="status">
+                  {contextRepairMessage}
                 </p>
               )}
-              {compareOpen && (
+              {state.search.showResults &&
+                state.search.page === null &&
+                state.search.status === 'searching' && <p role="status">正在搜索…</p>}
+              {state.search.showResults &&
+                state.search.page === null &&
+                state.search.status === 'error' && <p>搜索未完成，请调整条件或重试。</p>}
+              {state.search.showResults && state.search.page !== null && (
+                <SearchResults
+                  page={state.search.page}
+                  query={state.search.query}
+                  snippets={state.search.snippets}
+                  offset={state.search.offset}
+                  limit={200}
+                  onPageChange={setSearchPage}
+                  onVisibleHits={setVisibleSearchHits}
+                  onClearFilters={clearSearchFilters}
+                  onSearchProject={() => setSearchScope(null)}
+                  onReturnToFolder={returnToFolderContext}
+                  searching={
+                    state.search.status === 'searching' || !state.search.page.progress.complete
+                  }
+                />
+              )}
+              {!state.search.showResults && state.workspace === null && <WorkspaceLoadingState />}
+              {!state.search.showResults && state.workspace?.workspace === 'empty' && (
+                <ViewerEmptyState
+                  appearance="plain"
+                  title="这个项目中还没有可显示的文件"
+                  description="Viewer 会显示支持的图片、Markdown 与文本文件。"
+                  action={
+                    <ViewerButton
+                      onClick={() => {
+                        setWorkspaceActionError(null)
+                        void bridge
+                          .revealProjectInFileManager()
+                          .catch(() =>
+                            setWorkspaceActionError('请在 Finder 中手动打开当前项目文件夹。'),
+                          )
+                      }}
+                    >
+                      在文件管理器中显示
+                    </ViewerButton>
+                  }
+                />
+              )}
+              {!state.search.showResults && state.workspace?.workspace === 'category' && (
+                <FolderOverview
+                  key={folderOverviewIdentity}
+                  folders={state.workspace.folders}
+                  density={thumbnailDensity}
+                  requestFolderImages={requestFolderImages}
+                  requestThumbnail={requestThumbnail}
+                  onPreview={openFilmstripPreview}
+                  onSelect={selectFolderTarget}
+                />
+              )}
+              {!state.search.showResults && state.workspace?.workspace === 'content' && (
                 <>
-                  <CompareWorkspace
-                    files={compareFiles}
-                    readOnly={state.project.access === 'read_only'}
-                    requestImage={requestPreviewImage}
-                    onEntityIdsChange={changeComparedEntities}
-                    onSetReview={(entityId, reviewState) =>
-                      void setReviewState(reviewState, [entityId])
-                    }
-                    onToggleFavorite={(entityId) => void toggleFavorite([entityId])}
-                    onStatus={setCompareStatus}
-                  />
-                  {compareStatus && (
+                  <div
+                    className="content-workspace-surface"
+                    data-testid="content-workspace-surface"
+                    data-thumbnail-loading={thumbnailTask?.status === 'running' || undefined}
+                    hidden={compareOpen}
+                  >
+                    {thumbnailTask?.status === 'running' && <WorkspaceLoadingState />}
+                    {state.showingAggregate && (
+                      <ViewerStatusTag className="aggregate-label" tone="info">
+                        全部后代文件
+                      </ViewerStatusTag>
+                    )}
+                    <ContentBrowser
+                      workspace={state.workspace}
+                      density={thumbnailDensity}
+                      viewCommand={contentViewCommand}
+                      onViewStateChange={setContentSelectAllRequest}
+                      onRequestViewMenu={() => toolbarPopover.setPopoverOpen('view', true)}
+                      requestThumbnail={requestContentThumbnail}
+                      onThumbnailTaskChange={setThumbnailTask}
+                      onPreview={openPreview}
+                      onSelectionChange={selectFiles}
+                      organizationDragDisabled={
+                        state.project.access !== 'read_write' || operationBusy || compareOpen
+                      }
+                      onFinderDragStart={exportToFinder}
+                      onOrganizationPointerInput={handleOrganizationPointerInput}
+                      repairSelectionId={state.contextRepair?.suggestedEntityId ?? null}
+                      onRepairSelectionApplied={consumeContextRepair}
+                      onRadialMenuRequest={beginRadialSession}
+                      otherFilePanelExpanded={otherFilePanelPreference.expanded}
+                      onOtherFilePanelExpandedChange={otherFilePanelPreference.setExpanded}
+                    />
+                  </div>
+                  {!compareOpen && compareStatus && (
                     <p className="compare-status" role="status">
                       {compareStatus}
                     </p>
+                  )}
+                  {compareOpen && (
+                    <>
+                      <CompareWorkspace
+                        files={compareFiles}
+                        readOnly={state.project.access === 'read_only'}
+                        requestImage={requestPreviewImage}
+                        onEntityIdsChange={changeComparedEntities}
+                        onSetReview={(entityId, reviewState) =>
+                          void setReviewState(reviewState, [entityId])
+                        }
+                        onToggleFavorite={(entityId) => void toggleFavorite([entityId])}
+                        onStatus={setCompareStatus}
+                      />
+                      {compareStatus && (
+                        <p className="compare-status" role="status">
+                          {compareStatus}
+                        </p>
+                      )}
+                    </>
                   )}
                 </>
               )}

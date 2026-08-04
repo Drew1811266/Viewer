@@ -481,6 +481,27 @@ impl DesktopRuntime {
             .map(|session| session.snapshot.clone())
     }
 
+    pub async fn reveal_project_in_file_manager(&self) -> Result<(), CommandError> {
+        let root = self
+            .session
+            .lock()
+            .await
+            .as_ref()
+            .map(|session| session.active.root.clone())
+            .ok_or_else(project_not_open)?;
+        tokio::task::spawn_blocking(move || viewer_platform_macos::reveal_in_file_manager(&root))
+            .await
+            .map_err(|_| internal_command_error())?
+            .map_err(|_| {
+                CommandError::new(
+                    "file_manager_unavailable",
+                    ErrorCategory::Environment,
+                    "无法在文件管理器中显示当前项目。",
+                    true,
+                )
+            })
+    }
+
     pub(super) async fn ensure_project_current(
         &self,
         expected_session: SessionId,

@@ -195,6 +195,7 @@ pub fn run() {
             commands::project::open_project,
             commands::project::close_project,
             commands::project::project_snapshot,
+            commands::project::reveal_project_in_file_manager,
             commands::project::cancel_task,
             commands::browse::folder_tree,
             commands::browse::query_folder,

@@ -28,6 +28,7 @@ function bridge(): ViewerBridge {
     requestImage: vi.fn(),
     previewText: vi.fn(),
     openExternalLink: vi.fn(),
+    revealProjectInFileManager: vi.fn(),
     cancelTask: vi.fn().mockResolvedValue(false),
     searchProject: vi.fn(),
     searchTextSnippet: vi.fn(),

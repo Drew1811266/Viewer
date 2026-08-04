@@ -77,6 +77,17 @@ pub fn open_external_url(url: &str) -> std::io::Result<()> {
     })
 }
 
+pub fn reveal_in_file_manager(path: &Path) -> std::io::Result<()> {
+    let status = std::process::Command::new("/usr/bin/open")
+        .arg("-R")
+        .arg("--")
+        .arg(path)
+        .status()?;
+    status.success().then_some(()).ok_or_else(|| {
+        std::io::Error::other(format!("system file manager exited with status {status}"))
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::MacProjectProbe;

@@ -88,6 +88,13 @@ pub async fn project_snapshot(
 }
 
 #[tauri::command]
+pub async fn reveal_project_in_file_manager(
+    runtime: State<'_, Arc<DesktopRuntime>>,
+) -> Result<(), CommandError> {
+    runtime.reveal_project_in_file_manager().await
+}
+
+#[tauri::command]
 pub async fn cancel_task(
     runtime: State<'_, Arc<DesktopRuntime>>,
     task_id: String,

@@ -291,7 +291,8 @@ export function buildStateEntryPlan(id) {
     'LAU-09': [
       { kind: 'prepareFixture', operation: 'seedRecoveryJournal' },
       openProject,
-      { kind: 'assert', target: { role: 'AXStaticText', name: '项目恢复完成' } },
+      ...workspaceReady,
+      { kind: 'assert', target: { role: 'AXHeading', name: '项目状态已恢复' } },
     ],
     'SID-01': [
       ...openWorkspace(),
@@ -559,7 +560,10 @@ export function buildStateEntryPlan(id) {
     'LAU-07': [
       ...openFolder('空目录/Empty'),
       { kind: 'movePointerToTitlebar' },
-      { kind: 'assert', target: { role: 'AXHeading', name: '此文件夹为空' } },
+      {
+        kind: 'assert',
+        target: { role: 'AXHeading', name: '这个项目中还没有可显示的文件' },
+      },
     ],
   }
   const plan = plans[id]

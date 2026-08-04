@@ -539,6 +539,12 @@
   text-align: center;
 }
 
+.viewer-empty-state[data-appearance='plain'] {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+}
+
 .viewer-empty-state h2 {
   margin: 0;
   font-size: 16px;

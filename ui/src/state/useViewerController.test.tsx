@@ -75,6 +75,7 @@ function bridge(access: 'read_write' | 'read_only' = 'read_write'): ViewerBridge
     requestImage: vi.fn(),
     previewText: vi.fn(),
     openExternalLink: vi.fn(),
+    revealProjectInFileManager: vi.fn(),
     cancelTask: vi.fn().mockResolvedValue(false),
     searchProject: vi.fn().mockResolvedValue(page(1, 'default', 'filename')),
     searchTextSnippet: vi.fn().mockResolvedValue({

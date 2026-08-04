@@ -429,7 +429,14 @@ describe('state entry plans', () => {
     assert.deepEqual(buildStateEntryPlan('LAU-09'), [
       { kind: 'prepareFixture', operation: 'seedRecoveryJournal' },
       { kind: 'openProject' },
-      { kind: 'assert', target: { role: 'AXStaticText', name: '项目恢复完成' } },
+      { kind: 'waitMissing', target: { name: '扫描项目' } },
+      { kind: 'waitMissing', target: { name: '加载可见缩略图' } },
+      {
+        kind: 'waitMissing',
+        target: { name: '2 个任务已完成' },
+        stableMs: 1_000,
+      },
+      { kind: 'assert', target: { role: 'AXHeading', name: '项目状态已恢复' } },
     ])
   })
 

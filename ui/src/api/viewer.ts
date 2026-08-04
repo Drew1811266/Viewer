@@ -64,6 +64,7 @@ export interface ViewerBridge {
   requestImage(request: ImageRequest, signal?: AbortSignal): Promise<ImageRepresentation>
   previewText(request: TextPreviewRequest): Promise<TextPreview>
   openExternalLink(url: string): Promise<void>
+  revealProjectInFileManager(): Promise<void>
   cancelTask(taskId: string): Promise<boolean>
   searchProject(request: SearchProjectRequest): Promise<SearchPage>
   searchTextSnippet(request: SearchTextSnippetRequest): Promise<TextSnippet>
@@ -164,6 +165,9 @@ export const tauriViewerBridge: ViewerBridge = {
   },
   openExternalLink(url) {
     return invoke<void>('open_external_link', { url })
+  },
+  revealProjectInFileManager() {
+    return invoke<void>('reveal_project_in_file_manager')
   },
   cancelTask(taskId) {
     return invoke<boolean>('cancel_task', { taskId })

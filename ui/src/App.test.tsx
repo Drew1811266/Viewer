@@ -100,6 +100,7 @@ function bridge(access: 'read_write' | 'read_only' = 'read_write'): ViewerBridge
     }),
     previewText: vi.fn(),
     openExternalLink: vi.fn(),
+    revealProjectInFileManager: vi.fn().mockResolvedValue(undefined),
     cancelTask: vi.fn().mockResolvedValue(false),
     searchProject: vi.fn(),
     searchTextSnippet: vi.fn(),
@@ -203,9 +204,37 @@ describe('Viewer empty state', () => {
     render(<App bridge={viewer} />)
     fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
 
-    expect(await screen.findByRole('heading', { name: '此文件夹为空' })).toBeVisible()
-    expect(screen.getByText('这里还没有可查看的文件。')).toBeVisible()
+    expect(
+      await screen.findByRole('heading', { name: '这个项目中还没有可显示的文件' }),
+    ).toBeVisible()
+    expect(screen.getByText('Viewer 会显示支持的图片、Markdown 与文本文件。')).toBeVisible()
+    fireEvent.click(screen.getByRole('button', { name: '在文件管理器中显示' }))
+    expect(viewer.revealProjectInFileManager).toHaveBeenCalledOnce()
     expect(screen.queryByText('此文件夹中没有支持的文件。')).not.toBeInTheDocument()
+  })
+
+  it('keeps the approved recovery summary in the workspace until the user continues', async () => {
+    const viewer = bridge()
+    vi.mocked(viewer.openProject).mockResolvedValue({
+      projectId: 'project-1',
+      sessionId: 'session-1',
+      generation: 1,
+      displayName: 'Catalog',
+      access: 'read_write',
+      recoveryReport: { recovered: 8, needsUserReview: 1 },
+    })
+    vi.mocked(viewer.queryFolder).mockResolvedValue(contentWorkspace())
+    render(<App bridge={viewer} />)
+
+    fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
+
+    expect(await screen.findByRole('heading', { name: '项目状态已恢复' })).toBeVisible()
+    expect(screen.getByText('8 项操作已经恢复，1 项需要检查。')).toBeVisible()
+    expect(screen.queryByRole('option', { name: 'front.jpg' })).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: '继续浏览项目' }))
+    await waitFor(() => expect(screen.getByRole('option', { name: 'front.jpg' })).toBeVisible())
+    expect(screen.queryByRole('heading', { name: '项目状态已恢复' })).not.toBeInTheDocument()
   })
 
   it('keeps the project-root row out of the approved launch loading skeleton', async () => {
@@ -226,6 +255,39 @@ describe('Viewer empty state', () => {
       await Promise.resolve()
     })
     expect(within(sidebar).getByRole('button', { name: 'Catalog' })).toBeVisible()
+  })
+
+  it('keeps the approved project skeleton visible while initial thumbnails are pending', async () => {
+    const viewer = bridge()
+    const image = deferred<Awaited<ReturnType<ViewerBridge['requestImage']>>>()
+    vi.mocked(viewer.queryFolder).mockResolvedValue(contentWorkspace())
+    vi.mocked(viewer.requestImage).mockReturnValue(image.promise)
+    render(<App bridge={viewer} />)
+
+    fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
+
+    await waitFor(() => expect(viewer.requestImage).toHaveBeenCalled())
+    const loading = await screen.findByRole('status', { name: '项目内容加载中' })
+    expect(loading.querySelectorAll('.workspace-loading-card')).toHaveLength(8)
+    expect(screen.getByTestId('content-workspace-surface')).toHaveAttribute(
+      'data-thumbnail-loading',
+      'true',
+    )
+
+    await act(async () => {
+      image.resolve({
+        cacheKey: 'test-image',
+        url: 'viewer-image://localhost/session/test-image',
+        width: 800,
+        height: 600,
+        backend: 'quick_look',
+      })
+      await image.promise
+    })
+
+    await waitFor(() =>
+      expect(screen.queryByRole('status', { name: '项目内容加载中' })).not.toBeInTheDocument(),
+    )
   })
 
   it('routes contextual content selection through the shared View menu', async () => {
@@ -1742,7 +1804,7 @@ describe('Viewer empty state', () => {
     expect(screen.getByRole('tree', { name: '项目文件夹' })).toBeVisible()
 
     fireEvent.click(screen.getByRole('button', { name: '返回文件夹内容' }))
-    expect(await screen.findByRole('option', { name: 'front.jpg' })).toBeVisible()
+    await waitFor(() => expect(screen.getByRole('option', { name: 'front.jpg' })).toBeVisible())
   })
 
   it('opens safe rename and Trash surfaces from keyboard without immediate deletion', async () => {

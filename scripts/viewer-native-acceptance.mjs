@@ -210,6 +210,7 @@ export function buildStateEntryPlan(id) {
       { kind: 'click', target: folder('衣服/A01') },
       { kind: 'waitMissing', target: { name: '扫描项目' } },
       { kind: 'waitMissing', target: { name: '2 个任务已完成' } },
+      { kind: 'waitMissing', target: { name: '加载可见缩略图' } },
       { kind: 'assert', target: folder('衣服/A01') },
     ],
     'STR-01': [
@@ -217,6 +218,7 @@ export function buildStateEntryPlan(id) {
       { kind: 'press', target: projectRoot },
       { kind: 'waitMissing', target: { name: '扫描项目' } },
       { kind: 'waitMissing', target: { name: '2 个任务已完成' } },
+      { kind: 'waitMissing', target: { name: '加载可见缩略图' } },
       { kind: 'assert', target: projectRoot },
     ],
     'STR-02': [
@@ -224,6 +226,7 @@ export function buildStateEntryPlan(id) {
       { kind: 'click', target: folder('衣服') },
       { kind: 'waitMissing', target: { name: '扫描项目' } },
       { kind: 'waitMissing', target: { name: '2 个任务已完成' } },
+      { kind: 'waitMissing', target: { name: '加载可见缩略图' } },
       { kind: 'assert', target: folder('衣服') },
     ],
     'STR-03': [
@@ -231,6 +234,7 @@ export function buildStateEntryPlan(id) {
       { kind: 'click', target: folder('衣服/A01') },
       { kind: 'waitMissing', target: { name: '扫描项目' } },
       { kind: 'waitMissing', target: { name: '2 个任务已完成' } },
+      { kind: 'waitMissing', target: { name: '加载可见缩略图' } },
       { kind: 'assert', target: folder('衣服/A01') },
     ],
     'THU-04': [
@@ -238,6 +242,7 @@ export function buildStateEntryPlan(id) {
       { kind: 'click', target: folder('衣服/A01') },
       { kind: 'waitMissing', target: { name: '扫描项目' } },
       { kind: 'waitMissing', target: { name: '2 个任务已完成' } },
+      { kind: 'waitMissing', target: { name: '加载可见缩略图' } },
       { kind: 'assert', target: folder('衣服/A01') },
     ],
     'THU-05': [
@@ -245,6 +250,7 @@ export function buildStateEntryPlan(id) {
       { kind: 'click', target: folder('衣服/A01') },
       { kind: 'waitMissing', target: { name: '扫描项目' } },
       { kind: 'waitMissing', target: { name: '2 个任务已完成' } },
+      { kind: 'waitMissing', target: { name: '加载可见缩略图' } },
       { kind: 'click', target: { name: '商品-01.jpg' } },
       { kind: 'assert', target: { name: '已选择 1 项' } },
     ],
@@ -253,6 +259,7 @@ export function buildStateEntryPlan(id) {
       { kind: 'click', target: folder('衣服/A01') },
       { kind: 'waitMissing', target: { name: '扫描项目' } },
       { kind: 'waitMissing', target: { name: '2 个任务已完成' } },
+      { kind: 'waitMissing', target: { name: '加载可见缩略图' } },
       { kind: 'press', target: { role: 'AXButton', name: '筛选' } },
       { kind: 'assert', target: { role: 'AXHeading', name: '筛选' } },
     ],
@@ -261,6 +268,7 @@ export function buildStateEntryPlan(id) {
       { kind: 'click', target: folder('衣服/A01') },
       { kind: 'waitMissing', target: { name: '扫描项目' } },
       { kind: 'waitMissing', target: { name: '2 个任务已完成' } },
+      { kind: 'waitMissing', target: { name: '加载可见缩略图' } },
       { kind: 'press', target: { role: 'AXButton', name: '更多' } },
       { kind: 'assert', target: { name: '软件设置' } },
     ],

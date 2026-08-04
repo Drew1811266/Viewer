@@ -1657,7 +1657,7 @@ describe('Viewer empty state', () => {
         textReady: 0,
         textSkipped: 0,
         textFailed: 0,
-        complete: true,
+        complete: false,
       },
       hits: [
         {
@@ -1688,6 +1688,9 @@ describe('Viewer empty state', () => {
     await waitFor(() => expect(viewer.searchProject).toHaveBeenCalledOnce())
     expect(screen.queryByRole('menu', { name: '文件操作' })).not.toBeInTheDocument()
     expect(await screen.findByRole('option', { name: /shoe.jpg/ })).toBeVisible()
+    expect(
+      within(screen.getByRole('region', { name: '搜索结果区域' })).getByRole('status'),
+    ).toHaveTextContent('结果仍在更新 · 图片 1/1 · 文本 0/0')
     expect(screen.getByRole('tree', { name: '项目文件夹' })).toBeVisible()
 
     fireEvent.click(screen.getByRole('button', { name: '返回文件夹内容' }))

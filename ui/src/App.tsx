@@ -1069,7 +1069,9 @@ function ViewerWorkspace({ bridge }: { bridge: ViewerBridge }) {
               onClearFilters={clearSearchFilters}
               onSearchProject={() => setSearchScope(null)}
               onReturnToFolder={returnToFolderContext}
-              searching={state.search.status === 'searching'}
+              searching={
+                state.search.status === 'searching' || !state.search.page.progress.complete
+              }
             />
           )}
           {!state.search.showResults && state.workspace === null && <WorkspaceLoadingState />}

@@ -125,6 +125,7 @@ export default function ContentBrowser({
     [workspace.images.length, workspace.otherFiles.length],
   )
   const imageSlot = useMeasuredElementHeight(viewportHeight)
+  const mixedContent = mode === 'mixed_collapsed' || mode === 'mixed_expanded'
   const fileById = useMemo(() => new Map(allFiles.map((file) => [file.entityId, file])), [allFiles])
   const activeImageId = workspace.images.some(({ entityId }) => entityId === activeId)
     ? activeId
@@ -629,6 +630,7 @@ export default function ContentBrowser({
     <section
       className="content-browser"
       data-content-mode={mode}
+      data-has-selection={selected.size > 0 || undefined}
       aria-label="文件内容"
       onKeyDownCapture={handleContentBrowserKeyboard}
     >
@@ -643,6 +645,7 @@ export default function ContentBrowser({
               items={workspace.images}
               imageHeight={THUMBNAIL_HEIGHT[density]}
               viewportHeight={imageSlot.height}
+              fitContentHeight={mixedContent}
               getKey={imageEntityId}
               getDimensions={dimensionsForImage}
               ariaLabel="图片文件"

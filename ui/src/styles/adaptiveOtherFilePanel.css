@@ -44,10 +44,18 @@
   padding: 12px;
 }
 
+.content-browser[data-has-selection="true"] .content-browser-body {
+  padding-bottom: 58px;
+}
+
 .content-browser-image-slot {
   flex: 1 1 auto;
   min-height: 0;
   overflow: hidden;
+}
+
+.content-browser[data-content-mode^="mixed_"] .content-browser-image-slot {
+  flex: 0 1 auto;
 }
 
 .other-file-panel {

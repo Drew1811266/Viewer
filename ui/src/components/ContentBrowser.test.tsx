@@ -294,6 +294,20 @@ describe('ContentBrowser', () => {
     )
   })
 
+  it('sizes a mixed image slot to its laid-out rows and reserves the selection summary layer', async () => {
+    render(<ControlledContentBrowser workspace={workspace(3)} density="compact" />)
+
+    screen.getByTestId('content-image-slot')
+    await waitFor(() =>
+      expect(screen.getByRole('listbox', { name: '图片文件' })).toHaveStyle({ height: '144px' }),
+    )
+
+    const browser = screen.getByRole('region', { name: '文件内容' })
+    expect(browser).not.toHaveAttribute('data-has-selection')
+    fireEvent.click(screen.getByRole('option', { name: '1.jpg' }))
+    expect(browser).toHaveAttribute('data-has-selection', 'true')
+  })
+
   it('restores one controlled mixed preference across image-only content', () => {
     const rendered = render(<ControlledContentBrowser workspace={workspace(1)} />)
     fireEvent.click(screen.getByRole('button', { name: '其它文件 · 1' }))

@@ -847,6 +847,7 @@ function ViewerWorkspace({ bridge }: { bridge: ViewerBridge }) {
         bridge={bridge}
         busy={state.status === 'opening'}
         errorMessage={state.errorMessage}
+        fatalError={state.status === 'error'}
         onOpenProject={openProject}
       />
     )

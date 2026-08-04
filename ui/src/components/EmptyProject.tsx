@@ -9,6 +9,7 @@ interface EmptyProjectProps {
   bridge: ViewerBridge
   busy?: boolean
   errorMessage?: string | null
+  fatalError?: boolean
   onOpenProject?: (path: string) => Promise<unknown>
 }
 
@@ -16,6 +17,7 @@ export default function EmptyProject({
   bridge,
   busy = false,
   errorMessage = null,
+  fatalError = false,
   onOpenProject,
 }: EmptyProjectProps) {
   const [localError, setLocalError] = useState<string | null>(null)
@@ -90,6 +92,18 @@ export default function EmptyProject({
         <div className="project-opening-progress" role="progressbar" aria-label="正在打开项目">
           <span />
         </div>
+      </main>
+    )
+  }
+
+  if (fatalError && errorMessage) {
+    return (
+      <main className="project-error-state">
+        <h1>无法打开项目</h1>
+        <p>{errorMessage}</p>
+        <ViewerButton tone="primary" disabled={disabled} onClick={() => void chooseProject()}>
+          重新选择
+        </ViewerButton>
       </main>
     )
   }

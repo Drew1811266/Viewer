@@ -77,7 +77,8 @@ summary,
 }
 
 .empty-project,
-.project-opening-state {
+.project-opening-state,
+.project-error-state {
   background: var(--viewer-application);
   display: grid;
   gap: 12px;
@@ -88,13 +89,15 @@ summary,
 }
 
 .empty-project h1,
-.project-opening-state h1 {
+.project-opening-state h1,
+.project-error-state h1 {
   font-size: 20px;
   margin: 0;
 }
 
 .empty-project p,
-.project-opening-state p {
+.project-opening-state p,
+.project-error-state p {
   font-size: 13px;
   margin: 0;
 }

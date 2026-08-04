@@ -370,7 +370,7 @@ describe('state entry plans', () => {
     assert.deepEqual(buildStateEntryPlan('LAU-08'), [
       { kind: 'prepareFixture', operation: 'corruptViewerMetadata' },
       { kind: 'beginOpenProject' },
-      { kind: 'assert', target: { role: 'AXStaticText', name: '无法打开此项目' } },
+      { kind: 'assert', target: { role: 'AXHeading', name: '无法打开项目' } },
     ])
     assert.deepEqual(buildStateEntryPlan('LAU-09'), [
       { kind: 'prepareFixture', operation: 'seedRecoveryJournal' },

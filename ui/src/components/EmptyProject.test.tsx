@@ -123,4 +123,18 @@ describe('EmptyProject', () => {
     expect(screen.getByRole('alert')).toHaveClass('viewer-local-feedback')
     expect(viewer.openProject).not.toHaveBeenCalled()
   })
+
+  it('replaces the idle entry with the concise project-open recovery state', async () => {
+    const viewer = bridge()
+    render(<EmptyProject bridge={viewer} errorMessage="项目审阅数据库不可用。" fatalError />)
+
+    expect(screen.getByRole('heading', { name: '无法打开项目' })).toBeVisible()
+    expect(screen.getByText('项目审阅数据库不可用。')).toBeVisible()
+    expect(screen.getByRole('button', { name: '重新选择' })).toBeVisible()
+    expect(screen.queryByRole('heading', { name: 'Viewer' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '选择项目文件夹' })).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: '重新选择' }))
+    await waitFor(() => expect(viewer.chooseProject).toHaveBeenCalledOnce())
+  })
 })

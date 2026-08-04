@@ -1186,7 +1186,9 @@ describe('Viewer empty state', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('操作未完成，请重试。')
+    expect(await screen.findByRole('heading', { name: '无法打开项目' })).toBeVisible()
+    expect(screen.getByText('操作未完成，请重试。')).toBeVisible()
+    expect(screen.getByRole('button', { name: '重新选择' })).toBeVisible()
     expect(screen.queryByText(/Users\/private/)).not.toBeInTheDocument()
   })
 

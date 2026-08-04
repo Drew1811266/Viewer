@@ -282,7 +282,7 @@ describe('state entry plans', () => {
         { kind: 'click', target: { name: '商品-02.jpg' }, modifiers: ['command'] },
         {
           kind: 'holdOrganizationDrag',
-          source: { role: 'AXButton', name: '整理 商品-01.jpg' },
+          source: { role: 'AXButton', name: '整理 商品-02.jpg' },
           destination: { role: 'AXGroup', name: '目标/Destination' },
           modifiers,
         },

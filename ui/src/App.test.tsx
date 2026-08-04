@@ -208,6 +208,26 @@ describe('Viewer empty state', () => {
     expect(screen.queryByText('此文件夹中没有支持的文件。')).not.toBeInTheDocument()
   })
 
+  it('keeps the project-root row out of the approved launch loading skeleton', async () => {
+    const viewer = bridge()
+    const workspace = deferred<Awaited<ReturnType<ViewerBridge['queryFolder']>>>()
+    vi.mocked(viewer.queryFolder).mockImplementation(() => workspace.promise)
+    render(<App bridge={viewer} />)
+
+    fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
+    await screen.findByRole('heading', { name: 'Catalog' })
+
+    const sidebar = screen.getByRole('complementary', { name: '文件夹栏' })
+    expect(within(sidebar).queryByRole('button', { name: 'Catalog' })).not.toBeInTheDocument()
+    expect(sidebar.querySelectorAll('.folder-tree-skeleton-row')).toHaveLength(10)
+
+    await act(async () => {
+      workspace.resolve({ workspace: 'empty' })
+      await Promise.resolve()
+    })
+    expect(within(sidebar).getByRole('button', { name: 'Catalog' })).toBeVisible()
+  })
+
   it('routes contextual content selection through the shared View menu', async () => {
     const viewer = bridge()
     vi.mocked(viewer.queryFolder).mockResolvedValue(mixedContentWorkspace())

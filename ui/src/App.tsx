@@ -1013,14 +1013,16 @@ function ViewerWorkspace({ bridge }: { bridge: ViewerBridge }) {
           style={{ width: effectiveSidebarCollapsed ? 52 : sidebarWidth }}
         >
           <p className="folder-tree-label">项目目录</p>
-          <button
-            type="button"
-            className="project-root-button"
-            aria-pressed={state.selectedFolderId === null}
-            onClick={() => selectFolderTarget(null)}
-          >
-            {state.project.displayName}
-          </button>
+          {state.workspace !== null && (
+            <button
+              type="button"
+              className="project-root-button"
+              aria-pressed={state.selectedFolderId === null}
+              onClick={() => selectFolderTarget(null)}
+            >
+              {state.project.displayName}
+            </button>
+          )}
           <FolderTree
             folders={state.folders}
             loading={state.workspace === null}

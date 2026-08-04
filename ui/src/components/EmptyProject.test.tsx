@@ -106,6 +106,28 @@ describe('EmptyProject', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('请选择一个文件夹')
   })
 
+  it('clears stale invalid-drop details when a valid native folder enters again', async () => {
+    const viewer = bridge()
+    let receiveNativeDrop: ((event: ProjectDropEvent) => void) | undefined
+    vi.mocked(viewer.listenProjectDropEvents).mockImplementation(async (handler) => {
+      receiveNativeDrop = handler
+      return () => undefined
+    })
+    const openProject = vi.fn().mockResolvedValue('invalid-root')
+    render(<EmptyProject bridge={viewer} onOpenProject={openProject} />)
+    await waitFor(() => expect(receiveNativeDrop).toBeDefined())
+
+    act(() => receiveNativeDrop?.({ type: 'drop', paths: ['/fixture/not-a-directory.jpg'] }))
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('请选择一个文件夹'))
+
+    act(() => receiveNativeDrop?.({ type: 'enter', paths: ['/fixture/project'] }))
+
+    expect(screen.getByTestId('project-drop-zone')).toHaveAttribute('data-drop-state', 'valid')
+    expect(screen.getByText('松开以打开项目')).toBeVisible()
+    expect(screen.queryByText('无法打开此项目')).not.toBeInTheDocument()
+    expect(screen.queryByText('请选择项目文件夹，不能导入单个文件。')).not.toBeInTheDocument()
+  })
+
   it('replaces entry controls with an indeterminate opening state', async () => {
     const opening = new Promise<void>(() => undefined)
     render(<EmptyProject bridge={bridge()} onOpenProject={() => opening} />)

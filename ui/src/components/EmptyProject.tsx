@@ -56,8 +56,11 @@ export default function EmptyProject({
       .then(() =>
         bridge.listenProjectDropEvents((event) => {
           if (event.type === 'enter') {
-            setDropState(event.paths.length === 1 ? 'valid' : 'invalid')
-            if (event.paths.length !== 1) {
+            const valid = event.paths.length === 1
+            setDropState(valid ? 'valid' : 'invalid')
+            if (valid) {
+              setLocalError(null)
+            } else {
               setLocalError('一次只能导入一个项目文件夹。')
             }
           } else if (event.type === 'leave') {
@@ -89,6 +92,7 @@ export default function EmptyProject({
   function enterProjectDrag(event: DragEvent<HTMLElement>) {
     if (!hasDirectory(event)) return
     dragDepth.current += 1
+    setLocalError(null)
     setDropState('valid')
   }
 

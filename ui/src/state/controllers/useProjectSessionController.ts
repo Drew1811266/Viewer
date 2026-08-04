@@ -68,6 +68,7 @@ export function useProjectSessionController(core: ControllerCore): ProjectSessio
   const projectionRequestRef = useRef(0)
   const reconcilingGenerationRef = useRef<number | null>(null)
   const closeRequestPendingRef = useRef(false)
+  const initialProjectionHoldRef = useRef(false)
   const desiredProjectionRef = useRef<DesiredProjection>({
     selectedFolderId: null,
     selectedFolderPath: '',
@@ -151,8 +152,10 @@ export function useProjectSessionController(core: ControllerCore): ProjectSessio
       try {
         const project = await bridge.openProject(path)
         if (requestEpoch !== sessionEpochRef.current) return 'failed' as const
+        initialProjectionHoldRef.current = true
         dispatch({ type: 'project_opened', project })
         await holdNativeInitialProjectionForVisualStability()
+        initialProjectionHoldRef.current = false
         if (requestEpoch !== sessionEpochRef.current) return 'failed' as const
         await refreshProjection(project, null, '', false)
         return 'opened' as const
@@ -175,6 +178,7 @@ export function useProjectSessionController(core: ControllerCore): ProjectSessio
   )
 
   const resetProjectSessionRequests = useCallback(() => {
+    initialProjectionHoldRef.current = false
     advanceSessionEpoch()
     projectionRequestRef.current += 1
     desiredProjectionRef.current = {
@@ -241,6 +245,7 @@ export function useProjectSessionController(core: ControllerCore): ProjectSessio
       if (event.generation === project.generation) {
         const desired = desiredProjectionRef.current
         dispatch({ type: 'scan_received', event })
+        if (initialProjectionHoldRef.current) return
         void refreshProjection(
           project,
           desired.selectedFolderId,

@@ -337,8 +337,19 @@ describe('useViewerController M2 coordination', () => {
   it('keeps the native launch loading surface visible before publishing the first projection', async () => {
     vi.stubGlobal('__VIEWER_TEST_NATIVE_LOADING_HOLD__', true)
     const viewer = bridge()
+    let receiveScan: ((event: ScanEvent) => void) | undefined
+    vi.mocked(viewer.listenScan).mockImplementation(async (handler) => {
+      receiveScan = handler
+      return () => undefined
+    })
     const { result } = renderHook(() => useViewerController(viewer))
     let opening!: Promise<'opened' | 'invalid-root' | 'failed'>
+
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    expect(receiveScan).toBeDefined()
 
     act(() => {
       opening = result.current.openProject('/fixture/project')
@@ -350,6 +361,17 @@ describe('useViewerController M2 coordination', () => {
 
     expect(result.current.state.project?.displayName).toBe('Catalog')
     expect(result.current.state.workspace).toBeNull()
+    expect(viewer.queryFolder).not.toHaveBeenCalled()
+
+    act(() => {
+      receiveScan?.({
+        type: 'files',
+        sessionId: 'session-1',
+        generation: 1,
+        taskId: 'scan-1',
+        nodes: [],
+      })
+    })
     expect(viewer.queryFolder).not.toHaveBeenCalled()
 
     await act(() => vi.advanceTimersByTimeAsync(599))

@@ -345,8 +345,11 @@ private func validateRequestPayload(_ request: RequestEnvelope) throws {
             let fields = Set(payload.keys)
             let modifiers = payload["modifiers"] as? [String] ?? []
             guard fields == ["kind", "point"] || fields == ["kind", "point", "modifiers"],
-                  ["click", "doubleClick", "rightClick", "move"].contains(kind),
-                  kind != "move" || modifiers.isEmpty,
+                  [
+                      "click", "doubleClick", "rightClick", "move",
+                      "leftDown", "leftDrag", "leftUp",
+                  ].contains(kind),
+                  !["move", "leftUp"].contains(kind) || modifiers.isEmpty,
                   Set(modifiers).count == modifiers.count,
                   Set(modifiers).isSubset(of: allowedModifiers)
             else {
@@ -1174,6 +1177,37 @@ private final class LiveMacSystem: MacSystem {
                     message: "Unable to create scroll event"
                 )
             }
+            event.post(tap: .cghidEventTap)
+            return
+        }
+        if ["leftDown", "leftDrag", "leftUp"].contains(kind) {
+            let eventType: CGEventType = switch kind {
+            case "leftDown": .leftMouseDown
+            case "leftDrag": .leftMouseDragged
+            default: .leftMouseUp
+            }
+            var flags: CGEventFlags = []
+            for modifier in payload["modifiers"] as? [String] ?? [] {
+                switch modifier {
+                case "shift": flags.insert(.maskShift)
+                case "control": flags.insert(.maskControl)
+                case "option": flags.insert(.maskAlternate)
+                case "command": flags.insert(.maskCommand)
+                default: break
+                }
+            }
+            guard let event = CGEvent(
+                mouseEventSource: nil,
+                mouseType: eventType,
+                mouseCursorPosition: point,
+                mouseButton: .left
+            ) else {
+                throw AcceptanceFailure(
+                    code: "STATE_ACTION_FAILED",
+                    message: "Unable to create held pointer event"
+                )
+            }
+            event.flags = flags
             event.post(tap: .cghidEventTap)
             return
         }

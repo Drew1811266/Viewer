@@ -268,6 +268,30 @@ describe('state entry plans', () => {
     ])
   })
 
+  it('holds the native organization pointer over the approved sidebar destination', () => {
+    for (const [id, modifiers, label] of [
+      ['SID-04', [], '移动 2 项'],
+      ['OTH-03', ['option'], '复制 2 项'],
+    ]) {
+      const plan = buildStateEntryPlan(id)
+      const holdIndex = plan.findIndex((step) => step.kind === 'holdOrganizationDrag')
+
+      assert.notEqual(holdIndex, -1, id)
+      assert.deepEqual(plan.slice(holdIndex - 2), [
+        { kind: 'click', target: { name: '商品-01.jpg' } },
+        { kind: 'click', target: { name: '商品-02.jpg' }, modifiers: ['command'] },
+        {
+          kind: 'holdOrganizationDrag',
+          source: { role: 'AXButton', name: '整理 商品-01.jpg' },
+          destination: { role: 'AXGroup', name: '目标/Destination' },
+          modifiers,
+        },
+        { kind: 'assert', target: { role: 'AXStaticText', name: label } },
+      ])
+      assert.equal(plan.some((step) => step.kind === 'sleep'), false, id)
+    }
+  })
+
   it('normalizes persistent workspace chrome before entering every stable Wave 1 state', () => {
     const standardDensityIds = [
       'SID-01',
@@ -477,6 +501,113 @@ describe('state entry plans', () => {
     }
     assert.ok(commands.filter(({ command }) => command === 'pointer').length >= 5)
     assert.ok(actions.length >= 12)
+  })
+  it('keeps an organization drag held through capture and releases it exactly once', async () => {
+    const commands = []
+    const client = {
+      async request(command, payload) {
+        commands.push({ command, payload })
+        if (command === 'query') {
+          if (
+            ['扫描项目', '2 个任务已完成', '加载可见缩略图'].includes(payload.target.name)
+          ) {
+            throw new AcceptanceError('STATE_TARGET_NOT_FOUND', 'not found')
+          }
+          return {
+            elements: [
+              {
+                role: payload.target.role ?? 'AXGroup',
+                name: payload.target.name,
+                frame: payload.target.name === '目标/Destination'
+                  ? { x: 180, y: 450, width: 120, height: 28 }
+                  : { x: 520, y: 250, width: 80, height: 24 },
+              },
+            ],
+          }
+        }
+        return { performed: true, command }
+      },
+    }
+
+    const result = await executeStateEntryPlan({
+      id: 'OTH-03',
+      client,
+      actions: [],
+      projectPath: '/Users/example/ViewerAcceptanceRuns/run/测试图',
+      window: { x: 100, y: 70, width: 1024, height: 720 },
+      openProject: async () => {},
+    })
+
+    assert.deepEqual(
+      commands
+        .filter(({ command, payload }) =>
+          command === 'pointer' && ['leftDown', 'leftDrag', 'leftUp'].includes(payload.kind),
+        )
+        .map(({ payload }) => payload),
+      [
+        { kind: 'leftDown', point: { x: 460, y: 192 }, modifiers: ['option'] },
+        { kind: 'leftDrag', point: { x: 140, y: 394 }, modifiers: ['option'] },
+      ],
+    )
+
+    await result.releasePointer()
+    await result.releasePointer()
+
+    assert.deepEqual(
+      commands
+        .filter(({ command, payload }) => command === 'pointer' && payload.kind === 'leftUp')
+        .map(({ payload }) => payload),
+      [{ kind: 'leftUp', point: { x: 140, y: 394 } }],
+    )
+  })
+
+  it('releases a held organization pointer when the visible-state assertion fails', async () => {
+    const commands = []
+    const client = {
+      async request(command, payload) {
+        commands.push({ command, payload })
+        if (command === 'query') {
+          if (
+            ['扫描项目', '2 个任务已完成', '加载可见缩略图'].includes(payload.target.name)
+          ) {
+            throw new AcceptanceError('STATE_TARGET_NOT_FOUND', 'not found')
+          }
+          if (payload.target.name === '移动 2 项') {
+            throw new AcceptanceError('BROKEN_ASSERTION', 'drag preview missing')
+          }
+          return {
+            elements: [
+              {
+                role: payload.target.role ?? 'AXGroup',
+                name: payload.target.name,
+                frame: payload.target.name === '目标/Destination'
+                  ? { x: 180, y: 450, width: 120, height: 28 }
+                  : { x: 520, y: 250, width: 80, height: 24 },
+              },
+            ],
+          }
+        }
+        return { performed: true, command }
+      },
+    }
+
+    await assert.rejects(
+      executeStateEntryPlan({
+        id: 'SID-04',
+        client,
+        actions: [],
+        projectPath: '/Users/example/ViewerAcceptanceRuns/run/测试图',
+        window: { x: 100, y: 70, width: 1024, height: 720 },
+        openProject: async () => {},
+      }),
+      { code: 'BROKEN_ASSERTION' },
+    )
+
+    assert.equal(
+      commands.filter(({ command, payload }) => command === 'pointer' && payload.kind === 'leftUp')
+        .length,
+      1,
+    )
   })
 })
 
@@ -1840,6 +1971,17 @@ describe('protocol schema', () => {
         point: { x: 200, y: 300 },
         modifiers: ['command'],
       },
+      {
+        kind: 'leftDown',
+        point: { x: 200, y: 300 },
+        modifiers: ['option'],
+      },
+      {
+        kind: 'leftDrag',
+        point: { x: 300, y: 400 },
+        modifiers: ['option'],
+      },
+      { kind: 'leftUp', point: { x: 300, y: 400 } },
     ]) {
       assert.deepEqual(
         validateCommand({ ...pointerRequest, payload }, { window }).payload,
@@ -1861,6 +2003,16 @@ describe('protocol schema', () => {
       -12,
     )
     assert.deepEqual(validateCommand(dragRequest, { window }), dragRequest)
+
+    for (const payload of [
+      { kind: 'leftUp', point: { x: 300, y: 400 }, modifiers: ['option'] },
+      { kind: 'leftDrag', point: { x: 300, y: 400 }, modifiers: ['option', 'option'] },
+    ]) {
+      assert.throws(
+        () => validateCommand({ ...pointerRequest, payload }, { window }),
+        { code: 'SAFETY_COMMAND' },
+      )
+    }
 
     assert.throws(
       () =>

@@ -299,6 +299,18 @@ export function buildStateEntryPlan(id) {
       { kind: 'movePointerToTitlebar' },
       { kind: 'assert', target: { role: 'AXButton', name: '更多' } },
     ],
+    'SID-04': [
+      ...openContent(),
+      { kind: 'click', target: { name: '商品-01.jpg' } },
+      { kind: 'click', target: { name: '商品-02.jpg' }, modifiers: ['command'] },
+      {
+        kind: 'holdOrganizationDrag',
+        source: { role: 'AXButton', name: '整理 商品-01.jpg' },
+        destination: { role: 'AXGroup', name: '目标/Destination' },
+        modifiers: [],
+      },
+      { kind: 'assert', target: { role: 'AXStaticText', name: '移动 2 项' } },
+    ],
     'STR-01': [
       ...openWorkspace(),
       { kind: 'press', target: projectRoot },
@@ -375,6 +387,18 @@ export function buildStateEntryPlan(id) {
       { kind: 'click', target: { role: 'AXButton', name: '其它文件 · 1' } },
       { kind: 'movePointerToTitlebar' },
       { kind: 'assert', target: { name: 'unsupported.bin' } },
+    ],
+    'OTH-03': [
+      ...openContent(),
+      { kind: 'click', target: { name: '商品-01.jpg' } },
+      { kind: 'click', target: { name: '商品-02.jpg' }, modifiers: ['command'] },
+      {
+        kind: 'holdOrganizationDrag',
+        source: { role: 'AXButton', name: '整理 商品-01.jpg' },
+        destination: { role: 'AXGroup', name: '目标/Destination' },
+        modifiers: ['option'],
+      },
+      { kind: 'assert', target: { role: 'AXStaticText', name: '复制 2 项' } },
     ],
     'SEA-01': [
       ...openWorkspace(),
@@ -531,6 +555,8 @@ export function buildStateEntryPlan(id) {
   return plan.map((step) => ({
     ...step,
     ...(step.target ? { target: { ...step.target } } : {}),
+    ...(step.source ? { source: { ...step.source } } : {}),
+    ...(step.destination ? { destination: { ...step.destination } } : {}),
   }))
 }
 
@@ -1665,14 +1691,25 @@ function validatePayload(command, payload, window) {
         const modifiers = withModifiers ? payload.modifiers : []
         if (
           !Array.isArray(modifiers) ||
-          (payload.kind === 'move' && modifiers.length > 0) ||
+          (['move', 'leftUp'].includes(payload.kind) && modifiers.length > 0) ||
           new Set(modifiers).size !== modifiers.length ||
           modifiers.some((modifier) => !ALLOWED_MODIFIERS.has(modifier))
         ) {
           throw commandError('Unsupported or duplicate pointer modifier')
         }
       }
-      if (!['click', 'doubleClick', 'rightClick', 'move', 'scroll'].includes(payload.kind)) {
+      if (
+        ![
+          'click',
+          'doubleClick',
+          'rightClick',
+          'move',
+          'scroll',
+          'leftDown',
+          'leftDrag',
+          'leftUp',
+        ].includes(payload.kind)
+      ) {
         throw commandError('Unsupported pointer action')
       }
       try {
@@ -2488,113 +2525,150 @@ export async function executeStateEntryPlan({
 }) {
   const plan = buildStateEntryPlan(id)
   let visible = null
-  for (const step of plan) {
-    if (step.kind === 'ensureNoProject') {
-      visible = await ensureNoProject(client, actions)
-    } else if (step.kind === 'prepareFixture') {
-      const startedAt = new Date().toISOString()
-      const result = await prepareFixtureForState(projectPath, step.operation)
-      actions.push({
-        sequence: actions.length + 1,
-        command: 'fixture',
-        payload: { operation: step.operation },
-        startedAt,
-        completedAt: new Date().toISOString(),
-        ok: true,
-        result,
-      })
-    } else if (step.kind === 'openProject') {
-      await openProject({ client, actions, projectPath, window })
-    } else if (step.kind === 'beginOpenProject') {
-      await openProject({
-        client,
-        actions,
-        projectPath,
-        window,
-        waitForWorkspace: false,
-      })
-    } else if (step.kind === 'normalizeWorkspace') {
-      visible = await normalizeWorkspaceState({
-        client,
-        actions,
-        window,
-        density: step.density,
-        sidebarWidth: step.sidebarWidth,
-      })
-    } else if (step.kind === 'press') {
-      visible = await requestWithActionLog(client, actions, 'activate', {
-        target: step.target,
-      })
-    } else if (step.kind === 'click') {
-      const element = await queryVisibleElement(client, actions, step.target)
-      await clickElement(client, actions, element, window, step.modifiers)
-      visible = element
-    } else if (step.kind === 'clickPoint') {
-      visible = await requestWithActionLog(client, actions, 'pointer', {
-        kind: 'click',
-        point: step.point,
-      })
-    } else if (step.kind === 'focus') {
-      visible = await requestWithActionLog(client, actions, 'focus', {
-        target: step.target,
-      })
-    } else if (step.kind === 'key') {
-      visible = await requestWithActionLog(client, actions, 'key', {
-        key: step.key,
-        modifiers: step.modifiers,
-      })
-    } else if (step.kind === 'setValue') {
-      await requestWithActionLog(client, actions, 'focus', {
-        target: step.target,
-      })
-      visible = await requestWithActionLog(client, actions, 'setValue', {
-        target: step.target,
-        text: step.text,
-      })
-    } else if (step.kind === 'dragBy') {
-      const element = await queryVisibleElement(client, actions, step.target)
-      const from = {
-        x: element.frame.x - window.x + element.frame.width / 2,
-        y: element.frame.y - window.y + element.frame.height / 2,
-      }
-      visible = await requestWithActionLog(client, actions, 'drag', {
-        from,
-        to: {
-          x: Math.max(0, Math.min(window.width - 1, from.x + step.delta.x)),
-          y: Math.max(0, Math.min(window.height - 1, from.y + step.delta.y)),
-        },
-        durationMs: step.durationMs,
-      })
-    } else if (step.kind === 'dragPoint') {
-      visible = await requestWithActionLog(client, actions, 'drag', {
-        from: step.from,
-        to: step.to,
-        durationMs: step.durationMs,
-      })
-    } else if (step.kind === 'waitMissing') {
-      await waitForMissingElement(
-        client,
-        actions,
-        step.target,
-        10_000,
-        step.stableMs ?? 0,
-      )
-    } else if (step.kind === 'movePointerToTitlebar') {
-      await requestWithActionLog(client, actions, 'pointer', {
-        kind: 'move',
-        point: { x: window.width / 2, y: 12 },
-      })
-    } else if (step.kind === 'assert') {
-      visible = await queryVisibleElement(client, actions, step.target, 10_000)
-    } else {
-      throw new AcceptanceError(
-        'STATE_RECIPE_EXECUTOR',
-        'State entry plan contains an unsupported action',
-        { id, kind: step.kind },
-      )
-    }
+  let heldPointerPoint = null
+  const releasePointer = async () => {
+    if (heldPointerPoint === null) return
+    const point = heldPointerPoint
+    heldPointerPoint = null
+    await requestWithActionLog(client, actions, 'pointer', {
+      kind: 'leftUp',
+      point,
+    })
   }
-  return { passed: visible !== null, visible }
+  try {
+    for (const step of plan) {
+      if (step.kind === 'ensureNoProject') {
+        visible = await ensureNoProject(client, actions)
+      } else if (step.kind === 'prepareFixture') {
+        const startedAt = new Date().toISOString()
+        const result = await prepareFixtureForState(projectPath, step.operation)
+        actions.push({
+          sequence: actions.length + 1,
+          command: 'fixture',
+          payload: { operation: step.operation },
+          startedAt,
+          completedAt: new Date().toISOString(),
+          ok: true,
+          result,
+        })
+      } else if (step.kind === 'openProject') {
+        await openProject({ client, actions, projectPath, window })
+      } else if (step.kind === 'beginOpenProject') {
+        await openProject({
+          client,
+          actions,
+          projectPath,
+          window,
+          waitForWorkspace: false,
+        })
+      } else if (step.kind === 'normalizeWorkspace') {
+        visible = await normalizeWorkspaceState({
+          client,
+          actions,
+          window,
+          density: step.density,
+          sidebarWidth: step.sidebarWidth,
+        })
+      } else if (step.kind === 'press') {
+        visible = await requestWithActionLog(client, actions, 'activate', {
+          target: step.target,
+        })
+      } else if (step.kind === 'click') {
+        const element = await queryVisibleElement(client, actions, step.target)
+        await clickElement(client, actions, element, window, step.modifiers)
+        visible = element
+      } else if (step.kind === 'clickPoint') {
+        visible = await requestWithActionLog(client, actions, 'pointer', {
+          kind: 'click',
+          point: step.point,
+        })
+      } else if (step.kind === 'focus') {
+        visible = await requestWithActionLog(client, actions, 'focus', {
+          target: step.target,
+        })
+      } else if (step.kind === 'key') {
+        visible = await requestWithActionLog(client, actions, 'key', {
+          key: step.key,
+          modifiers: step.modifiers,
+        })
+      } else if (step.kind === 'setValue') {
+        await requestWithActionLog(client, actions, 'focus', {
+          target: step.target,
+        })
+        visible = await requestWithActionLog(client, actions, 'setValue', {
+          target: step.target,
+          text: step.text,
+        })
+      } else if (step.kind === 'dragBy') {
+        const element = await queryVisibleElement(client, actions, step.target)
+        const from = {
+          x: element.frame.x - window.x + element.frame.width / 2,
+          y: element.frame.y - window.y + element.frame.height / 2,
+        }
+        visible = await requestWithActionLog(client, actions, 'drag', {
+          from,
+          to: {
+            x: Math.max(0, Math.min(window.width - 1, from.x + step.delta.x)),
+            y: Math.max(0, Math.min(window.height - 1, from.y + step.delta.y)),
+          },
+          durationMs: step.durationMs,
+        })
+      } else if (step.kind === 'dragPoint') {
+        visible = await requestWithActionLog(client, actions, 'drag', {
+          from: step.from,
+          to: step.to,
+          durationMs: step.durationMs,
+        })
+      } else if (step.kind === 'holdOrganizationDrag') {
+        const source = await queryVisibleElement(client, actions, step.source)
+        const destination = await queryVisibleElement(client, actions, step.destination)
+        const from = {
+          x: source.frame.x - window.x + source.frame.width / 2,
+          y: source.frame.y - window.y + source.frame.height / 2,
+        }
+        const to = {
+          x: destination.frame.x - window.x + destination.frame.width / 2,
+          y: destination.frame.y - window.y + destination.frame.height / 2,
+        }
+        await requestWithActionLog(client, actions, 'pointer', {
+          kind: 'leftDown',
+          point: from,
+          modifiers: step.modifiers,
+        })
+        heldPointerPoint = to
+        visible = await requestWithActionLog(client, actions, 'pointer', {
+          kind: 'leftDrag',
+          point: to,
+          modifiers: step.modifiers,
+        })
+      } else if (step.kind === 'waitMissing') {
+        await waitForMissingElement(
+          client,
+          actions,
+          step.target,
+          10_000,
+          step.stableMs ?? 0,
+        )
+      } else if (step.kind === 'movePointerToTitlebar') {
+        await requestWithActionLog(client, actions, 'pointer', {
+          kind: 'move',
+          point: { x: window.width / 2, y: 12 },
+        })
+      } else if (step.kind === 'assert') {
+        visible = await queryVisibleElement(client, actions, step.target, 10_000)
+      } else {
+        throw new AcceptanceError(
+          'STATE_RECIPE_EXECUTOR',
+          'State entry plan contains an unsupported action',
+          { id, kind: step.kind },
+        )
+      }
+    }
+  } catch (error) {
+    await releasePointer().catch(() => {})
+    throw error
+  }
+  return { passed: visible !== null, visible, releasePointer }
 }
 
 export async function openProjectViaPanel({
@@ -2972,7 +3046,11 @@ async function captureStateRecipe({ repoRoot, options, preflight, id }) {
       projectPath: variantPath,
       window: preflight.window,
     })
-    await requestWithActionLog(client, actions, 'capture', { path: rawPath })
+    try {
+      await requestWithActionLog(client, actions, 'capture', { path: rawPath })
+    } finally {
+      await entry.releasePointer()
+    }
     const images = await normalizeEvidenceImages({
       repoRoot,
       viewport: options.viewport,

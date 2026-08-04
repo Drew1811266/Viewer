@@ -388,7 +388,9 @@ export function buildStateEntryPlan(id) {
       { kind: 'assert', target: { name: 'unsupported.bin' } },
     ],
     'OTH-03': [
+      { kind: 'prepareFixture', operation: 'prepareOrganizationDrag' },
       ...openContent('紧凑'),
+      { kind: 'click', target: { role: 'AXButton', name: '其它文件 · 3' } },
       { kind: 'click', target: { name: '商品-01.jpg' } },
       { kind: 'click', target: { name: '商品-02.jpg' }, modifiers: ['command'] },
       { kind: 'click', target: { name: '商品-03.jpg' }, modifiers: ['command'] },
@@ -2493,6 +2495,28 @@ export async function prepareFixtureForState(projectPath, operation) {
         errorOnExist: true,
         force: false,
       })
+    }
+    await rm(path.join(root, '.viewer'), { recursive: true, force: true })
+  } else if (operation === 'prepareOrganizationDrag') {
+    const imageFolder = path.join(root, '衣服', 'A01')
+    const imageNames = (await readdir(imageFolder))
+      .filter((name) => /\.(?:jpe?g|png)$/i.test(name))
+      .sort()
+    if (imageNames.length < 8) {
+      throw new AcceptanceError(
+        'STATE_RECIPE_EXECUTOR',
+        'Organization-drag fixture has fewer than eight images',
+      )
+    }
+    for (const name of imageNames.slice(8)) {
+      await rm(path.join(imageFolder, name))
+    }
+    for (const [name, contents] of [
+      ['产品说明.md', '# Viewer acceptance fixture\n'],
+      ['色卡.txt', 'Viewer acceptance color notes\n'],
+      ['交付清单.xlsx', 'Viewer acceptance unsupported workbook\n'],
+    ]) {
+      await writeFile(path.join(imageFolder, name), contents, { flag: 'wx' })
     }
     await rm(path.join(root, '.viewer'), { recursive: true, force: true })
   } else if (operation === 'makeProjectReadOnly') {

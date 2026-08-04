@@ -291,13 +291,18 @@ describe('state entry plans', () => {
     const plan = buildStateEntryPlan('OTH-03')
     const holdIndex = plan.findIndex((step) => step.kind === 'holdOrganizationDrag')
 
-    assert.deepEqual(plan[1], {
+    assert.deepEqual(plan.slice(0, 3), [
+      { kind: 'prepareFixture', operation: 'prepareOrganizationDrag' },
+      { kind: 'openProject' },
+      {
       kind: 'normalizeWorkspace',
       density: '紧凑',
       sidebar: 'expanded',
       sidebarWidth: 220,
-    })
-    assert.deepEqual(plan.slice(holdIndex - 3), [
+      },
+    ])
+    assert.deepEqual(plan.slice(holdIndex - 4), [
+      { kind: 'click', target: { role: 'AXButton', name: '其它文件 · 3' } },
       { kind: 'click', target: { name: '商品-01.jpg' } },
       { kind: 'click', target: { name: '商品-02.jpg' }, modifiers: ['command'] },
       { kind: 'click', target: { name: '商品-03.jpg' }, modifiers: ['command'] },
@@ -551,7 +556,7 @@ describe('state entry plans', () => {
     }
 
     const result = await executeStateEntryPlan({
-      id: 'OTH-03',
+      id: 'SID-04',
       client,
       actions: [],
       projectPath: '/Users/example/ViewerAcceptanceRuns/run/测试图',
@@ -727,6 +732,36 @@ describe('fixture run', () => {
     } finally {
       await rm(expectedRunRoot, { recursive: true, force: true })
       await rm(temporaryRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('prepares a bounded compact organization-drag fixture without mutating the baseline', async () => {
+    const baseline = path.join(
+      actualRepoRoot,
+      'target/atlas-product-migration-fixture/ViewerAcceptance',
+    )
+    const baselineFiles = await readdir(path.join(baseline, '衣服/A01'))
+    const runId = `acceptance-organization-${process.pid}-${Date.now()}`
+    const expectedRunRoot = path.join(os.homedir(), 'ViewerAcceptanceRuns', runId)
+    try {
+      const run = await createFixtureRun({ repoRoot: actualRepoRoot, runId })
+      const projectPath = await resetFixtureVariant(run, 'other-files')
+
+      await prepareFixtureForState(projectPath, 'prepareOrganizationDrag')
+
+      const files = await readdir(path.join(projectPath, '衣服/A01'))
+      assert.deepEqual(
+        files.filter((name) => /\.(?:jpe?g|png)$/i.test(name)).sort(),
+        Array.from({ length: 8 }, (_, index) => `商品-${String(index + 1).padStart(2, '0')}.jpg`),
+      )
+      assert.deepEqual(
+        files.filter((name) => !/\.(?:jpe?g|png)$/i.test(name)).sort(),
+        ['产品说明.md', '交付清单.xlsx', '色卡.txt'].sort(),
+      )
+      await assert.rejects(stat(path.join(projectPath, '.viewer')), { code: 'ENOENT' })
+      assert.deepEqual(await readdir(path.join(baseline, '衣服/A01')), baselineFiles)
+    } finally {
+      await rm(expectedRunRoot, { recursive: true, force: true })
     }
   })
 

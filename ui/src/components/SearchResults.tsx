@@ -23,7 +23,7 @@ type ResultRow =
   | { type: 'group'; key: string; path: string; count: number; height: number }
   | { type: 'hit'; key: string; hit: SearchHit; height: number }
 
-const RESULT_ROW_HEIGHT = 64
+const RESULT_ROW_HEIGHT = 48
 const GROUP_ROW_HEIGHT = 28
 const VIEWPORT_HEIGHT = 520
 const OVERSCAN = 5
@@ -99,22 +99,24 @@ export default function SearchResults({
     <section className="search-results" aria-label="搜索结果区域">
       <header className="search-results-summary">
         <div>
-          <strong>{page.total} 个结果</strong>
-          {searching && (
-            <ViewerStatusTag tone="warning" role="status">
-              结果仍在更新 · 图片 {page.progress.imagesReady}/{page.progress.imagesTotal} · 文本{' '}
-              {page.progress.textReady}/{page.progress.textTotal}
-            </ViewerStatusTag>
-          )}
+          <strong>
+            “{query.text}” · {page.total} 个结果
+          </strong>
         </div>
         <ViewerButton tone="quiet" onClick={onReturnToFolder}>
           返回文件夹内容
         </ViewerButton>
       </header>
+      {searching && (
+        <div className="search-indexing-banner" role="status">
+          结果仍在更新 · 图片 {page.progress.imagesReady}/{page.progress.imagesTotal} · 文本{' '}
+          {page.progress.textReady}/{page.progress.textTotal}
+        </div>
+      )}
       <div
         role="listbox"
         aria-label="搜索结果"
-        className="search-result-list"
+        className="search-result-list search-result-list-flat"
         style={{ height: VIEWPORT_HEIGHT, overflowY: 'auto', position: 'relative' }}
         onScroll={(event: UIEvent<HTMLDivElement>) => setScrollTop(event.currentTarget.scrollTop)}
       >
@@ -193,15 +195,16 @@ function ResultItem({ hit, snippet }: { hit: SearchHit; snippet: string | null |
             <HighlightedText value={hit.relativePath} ranges={pathRanges} />
           </span>
         </div>
-        <div className="search-result-details">
-          <span className="search-result-context">{matchContextLabel(hit)}</span>
-          <span className="search-result-metadata">{metadataLabel(hit)}</span>
-        </div>
-        {hit.matchedField === 'body' && snippet !== undefined && snippet !== null && (
+      </div>
+      <div className="search-result-details">
+        {hit.matchedField === 'body' && snippet !== undefined && snippet !== null ? (
           <p className="search-result-context" data-testid={`search-snippet-${hit.entityId}`}>
             {boundedSnippet(snippet)}
           </p>
+        ) : (
+          <span className="search-result-context">{matchContextLabel(hit)}</span>
         )}
+        <span className="search-result-metadata">{metadataLabel(hit)}</span>
       </div>
       <div className="search-result-state">
         <ViewerStatusTag tone={markerTone(hit)}>{markerLabel(hit)}</ViewerStatusTag>

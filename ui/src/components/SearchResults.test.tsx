@@ -77,13 +77,19 @@ describe('SearchResults', () => {
       />,
     )
     const region = screen.getByRole('region', { name: '搜索结果区域' })
-    expect(within(region).getByText(/128 个结果/)).toBeVisible()
+    expect(within(region).getByText('“shoe” · 128 个结果')).toBeVisible()
     expect(within(region).getByRole('group', { name: '衣服 / A01' })).toBeVisible()
     expect(within(region).getByRole('navigation', { name: '搜索结果分页' })).toBeVisible()
     expect(within(region).getByText('文件名与路径匹配')).toHaveClass('search-result-context')
-    expect(screen.getByText(/结果仍在更新/)).toHaveTextContent('图片 8/10 · 文本 1/2')
+    const indexing = screen.getByRole('status')
+    expect(indexing).toHaveClass('search-indexing-banner')
+    expect(indexing).toHaveTextContent('图片 8/10 · 文本 1/2')
     expect(screen.getByText('shoe', { selector: 'mark' })).toBeVisible()
     const result = screen.getByRole('option', { name: 'shoe.jpg 衣服 / A01 / shoe.jpg' })
+    expect(result.closest('.search-result-row')).toHaveStyle({ height: '48px' })
+    expect(
+      screen.getByRole('group', { name: '衣服 / A01' }).closest('.search-result-row'),
+    ).toHaveStyle({ height: '28px' })
     expect(result).not.toHaveAttribute('tabindex')
     expect(result).toHaveClass('search-result-item')
     expect(within(result).getByText('JPG')).toHaveClass('viewer-status-tag')
@@ -92,6 +98,29 @@ describe('SearchResults', () => {
     expect(screen.getByTestId('search-snippet-2')).toHaveTextContent('片'.repeat(160))
     expect(screen.getByTestId('search-snippet-2')).not.toHaveTextContent('片'.repeat(161))
     expect(visible).toHaveBeenCalledWith(expect.arrayContaining(['1', '2']))
+  })
+
+  it('uses a flat list surface instead of wrapping search results in a card', () => {
+    render(
+      <SearchResults
+        page={page()}
+        query={{ ...query, layout: 'flat' }}
+        snippets={{}}
+        offset={0}
+        limit={200}
+        onPageChange={vi.fn()}
+        onVisibleHits={vi.fn()}
+        onClearFilters={vi.fn()}
+        onSearchProject={vi.fn()}
+        onReturnToFolder={vi.fn()}
+        searching={false}
+      />,
+    )
+
+    expect(screen.getByRole('listbox', { name: '搜索结果' })).toHaveClass(
+      'search-result-list',
+      'search-result-list-flat',
+    )
   })
 
   it('keeps the same formal result row structure in flat layout', () => {

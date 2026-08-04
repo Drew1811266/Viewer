@@ -42,7 +42,7 @@ describe('FolderTree', () => {
       <FolderTree folders={[]} loading selectedId={null} onSelect={vi.fn()} />,
     )
 
-    expect(rendered.container.querySelectorAll('.folder-tree-skeleton-row')).toHaveLength(5)
+    expect(rendered.container.querySelectorAll('.folder-tree-skeleton-row')).toHaveLength(10)
     expect(screen.queryByRole('treeitem')).not.toBeInTheDocument()
 
     rendered.rerender(<FolderTree folders={folders} loading selectedId={null} onSelect={vi.fn()} />)

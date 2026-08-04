@@ -1,12 +1,14 @@
-import ViewerTaskSurface from './ui/ViewerTaskSurface'
-
-export interface WorkspaceLoadingStateProps {
-  bandCount?: number
-}
-
-export default function WorkspaceLoadingState({ bandCount = 3 }: WorkspaceLoadingStateProps) {
-  const bands = ['loading-band-1', 'loading-band-2', 'loading-band-3'].slice(0, bandCount)
-  const thumbnails = ['loading-image-1', 'loading-image-2', 'loading-image-3', 'loading-image-4']
+export default function WorkspaceLoadingState() {
+  const cards = [
+    'loading-card-1',
+    'loading-card-2',
+    'loading-card-3',
+    'loading-card-4',
+    'loading-card-5',
+    'loading-card-6',
+    'loading-card-7',
+    'loading-card-8',
+  ]
 
   return (
     <section
@@ -16,20 +18,8 @@ export default function WorkspaceLoadingState({ bandCount = 3 }: WorkspaceLoadin
       aria-busy="true"
     >
       <span className="visually-hidden">正在读取项目…</span>
-      <div className="workspace-loading-task">
-        <ViewerTaskSurface label="正在读取项目" current={0} total={0} indeterminate>
-          正在扫描项目
-        </ViewerTaskSurface>
-      </div>
-      {bands.map((bandId) => (
-        <div className="workspace-loading-band" aria-hidden="true" key={bandId}>
-          <div className="workspace-loading-identity" />
-          <div className="workspace-loading-track">
-            {thumbnails.map((thumbnailId) => (
-              <div className="workspace-loading-thumbnail" key={`${bandId}:${thumbnailId}`} />
-            ))}
-          </div>
-        </div>
+      {cards.map((cardId) => (
+        <div className="workspace-loading-card" aria-hidden="true" key={cardId} />
       ))}
     </section>
   )

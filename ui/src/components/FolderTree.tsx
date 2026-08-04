@@ -64,6 +64,11 @@ export default function FolderTree({
             'folder-skeleton-3',
             'folder-skeleton-4',
             'folder-skeleton-5',
+            'folder-skeleton-6',
+            'folder-skeleton-7',
+            'folder-skeleton-8',
+            'folder-skeleton-9',
+            'folder-skeleton-10',
           ].map((id) => (
             <div className="folder-tree-skeleton-row" key={id} />
           ))}

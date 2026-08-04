@@ -271,7 +271,7 @@ export function buildStateEntryPlan(id) {
     'LAU-05': [
       { kind: 'prepareFixture', operation: 'populateSearchIndexing' },
       { kind: 'beginOpenProject' },
-      { kind: 'assert', target: { role: 'AXStaticText', name: '扫描项目' } },
+      { kind: 'assert', target: { name: '项目内容加载中' } },
     ],
     'LAU-06': [
       { kind: 'prepareFixture', operation: 'populateSearchIndexing' },

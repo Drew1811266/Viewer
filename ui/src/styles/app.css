@@ -156,42 +156,16 @@ summary,
 }
 
 .workspace-loading {
-  min-width: 0;
-  position: relative;
-}
-
-.workspace-loading-task {
-  position: absolute;
-  right: 14px;
-  bottom: 14px;
-  z-index: 4;
-}
-
-.workspace-loading-band {
-  border-bottom: 1px solid var(--viewer-border);
   display: grid;
-  grid-template-columns: 228px minmax(0, 1fr);
-  min-height: 170px;
-}
-
-.workspace-loading-identity {
-  background: var(--viewer-soft-surface);
-  border-right: 1px solid var(--viewer-border);
-}
-
-.workspace-loading-track {
-  align-items: center;
-  display: flex;
   gap: 12px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   min-width: 0;
-  overflow: hidden;
-  padding: 12px;
+  padding: 14px;
 }
 
-.workspace-loading-thumbnail {
+.workspace-loading-card {
   border-radius: var(--viewer-radius-control);
-  flex: 0 0 132px;
-  height: 132px;
+  height: 190px;
 }
 
 .folder-tree-skeleton-list {
@@ -207,7 +181,7 @@ summary,
 }
 
 .aspect-thumbnail-placeholder,
-.workspace-loading-thumbnail,
+.workspace-loading-card,
 .folder-tree-skeleton-row,
 .folder-filmstrip-skeleton {
   animation: viewer-skeleton-opacity 1.4s ease-in-out infinite alternate;
@@ -2590,7 +2564,7 @@ summary,
   .viewer-dialog,
   .preview-overlay,
   .aspect-thumbnail-placeholder,
-  .workspace-loading-thumbnail,
+  .workspace-loading-card,
   .folder-tree-skeleton-row,
   .folder-filmstrip-skeleton,
   .organization-drag-handle,
@@ -2602,7 +2576,7 @@ summary,
   }
 
   .aspect-thumbnail-placeholder,
-  .workspace-loading-thumbnail,
+  .workspace-loading-card,
   .folder-tree-skeleton-row,
   .folder-filmstrip-skeleton {
     background: var(--viewer-soft-surface);

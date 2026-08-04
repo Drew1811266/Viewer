@@ -283,7 +283,6 @@ describe('state entry plans', () => {
         {
           kind: 'holdOrganizationDrag',
           source: { name: '商品-02.jpg' },
-          handle: { role: 'AXButton', name: '整理 商品-02.jpg' },
           destination: { role: 'AXGroup', name: '目标/Destination' },
           modifiers,
         },
@@ -546,7 +545,7 @@ describe('state entry plans', () => {
         )
         .map(({ payload }) => payload),
       [
-        { kind: 'leftDown', point: { x: 460, y: 192 }, modifiers: ['option'] },
+        { kind: 'leftDown', point: { x: 480, y: 200 }, modifiers: ['option'] },
         { kind: 'leftDrag', point: { x: 140, y: 394 }, modifiers: ['option'] },
       ],
     )

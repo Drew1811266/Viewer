@@ -220,7 +220,7 @@ export function buildStateEntryPlan(id) {
     sidebarWidth: 220,
   })
   const openWorkspace = (density = '标准') => [openProject, normalizeWorkspace(density)]
-  const projectRoot = { role: 'AXCheckBox', name: '测试图' }
+  const projectRoot = { role: 'AXButton', name: '测试图' }
   const folder = (name) => ({ role: 'AXGroup', name })
   const workspaceReady = [
     { kind: 'waitMissing', target: { name: '扫描项目' } },

@@ -256,9 +256,9 @@ export function buildStateEntryPlan(id) {
     ],
     'SID-03': [
       ...openContent(),
-      { kind: 'click', target: { name: '折叠文件夹栏' } },
+      { kind: 'clickPoint', point: { x: 204, y: 52 } },
       { kind: 'movePointerToTitlebar' },
-      { kind: 'assert', target: { role: 'AXButton', name: '展开文件夹栏' } },
+      { kind: 'assert', target: { role: 'AXButton', name: '更多' } },
     ],
     'STR-01': [
       openProject,
@@ -419,7 +419,7 @@ export function buildStateEntryPlan(id) {
       },
       {
         kind: 'setValue',
-        target: { name: '最早修改时间' },
+        target: { name: '最早修改时间', position: 'rightmost' },
         text: '2026-01-01',
       },
       { kind: 'movePointerToTitlebar' },
@@ -433,7 +433,7 @@ export function buildStateEntryPlan(id) {
       { kind: 'assert', target: { name: '搜索结果区域' } },
       clickToolbar('视图'),
       { kind: 'movePointerToTitlebar' },
-      { kind: 'assert', target: { name: '按文件夹分组' } },
+      { kind: 'assert', target: { name: '展平结果' } },
     ],
     'MEN-02': [
       openProject,
@@ -448,12 +448,12 @@ export function buildStateEntryPlan(id) {
       ...openFolder('衣服/A01'),
       clickToolbar('更多'),
       { kind: 'movePointerToTitlebar' },
-      { kind: 'assert', target: { name: '访问权限' } },
+      { kind: 'assert', target: { name: '权限设置', position: 'rightmost' } },
     ],
     'LAU-07': [
       ...openFolder('空目录/Empty'),
       { kind: 'movePointerToTitlebar' },
-      { kind: 'assert', target: { name: '此文件夹为空' } },
+      { kind: 'assert', target: { role: 'AXHeading', name: '此文件夹为空' } },
     ],
   }
   const plan = plans[id]
@@ -2296,6 +2296,11 @@ export async function executeStateEntryPlan({
         ...(step.modifiers ? { modifiers: step.modifiers } : {}),
       })
       visible = element
+    } else if (step.kind === 'clickPoint') {
+      visible = await requestWithActionLog(client, actions, 'pointer', {
+        kind: 'click',
+        point: step.point,
+      })
     } else if (step.kind === 'focus') {
       visible = await requestWithActionLog(client, actions, 'focus', {
         target: step.target,

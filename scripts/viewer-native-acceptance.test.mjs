@@ -16,23 +16,377 @@ import { describe, it } from 'node:test'
 import { promisify } from 'node:util'
 
 import {
+  AUDIT_IDS,
   ALLOWED_COMMANDS,
+  AcceptanceError,
   NativeAcceptanceClient,
   PROTOCOL_VERSION,
+  STATE_RECIPES,
+  buildEvidenceManifest,
   buildNativeHelper,
+  createFixtureRun,
+  discoverNativeWindows,
+  parseNativeAcceptanceCli,
   parseProcessTable,
   selectExactViewer,
   selectExactWindow,
+  resetFixtureVariant,
+  validateCapturePreflight,
   validateCommand,
   validateEvidencePath,
   validateFixturePath,
   validateWindow,
   validateWindowPoint,
+  waitFor,
 } from './viewer-native-acceptance.mjs'
 
 const repoRoot = '/Users/example/Project/Viewer/.worktrees/atlas'
 const executablePath = `${repoRoot}/target/debug/viewer-desktop`
 const execFileAsync = promisify(execFile)
+const actualRepoRoot = path.resolve(new URL('..', import.meta.url).pathname)
+
+function parseTableIds(markdown) {
+  return [
+    ...markdown.matchAll(
+      /^\| ((?:LAU|SID|STR|THU|OTH|SEA|FIL|MEN|RAD|PRE|COM|DOC|INF|DIA|TAS|RES|A11Y)-\d{2}) \|/gm,
+    ),
+  ].map((match) => match[1])
+}
+
+describe('recipe registry', () => {
+  it('is exactly set-equal to both authoritative 89-state documents', async () => {
+    const audit = await readFile(
+      path.join(
+        actualRepoRoot,
+        'docs/reviews/2026-08-02-viewer-atlas-product-component-gap-audit.md',
+      ),
+      'utf8',
+    )
+    const ledger = await readFile(
+      path.join(
+        actualRepoRoot,
+        'docs/reviews/2026-08-02-viewer-atlas-product-migration-ledger.md',
+      ),
+      'utf8',
+    )
+    const auditIds = parseTableIds(audit)
+    const ledgerIds = parseTableIds(ledger)
+    const recipeIds = [...STATE_RECIPES.keys()]
+
+    for (const ids of [auditIds, ledgerIds, AUDIT_IDS, recipeIds]) {
+      assert.equal(ids.length, 89)
+      assert.equal(new Set(ids).size, 89)
+    }
+    assert.deepEqual(new Set(AUDIT_IDS), new Set(auditIds))
+    assert.deepEqual(new Set(AUDIT_IDS), new Set(ledgerIds))
+    assert.deepEqual(new Set(AUDIT_IDS), new Set(recipeIds))
+  })
+
+  it('materializes a complete, deterministic recipe for every state', () => {
+    for (const id of AUDIT_IDS) {
+      const recipe = STATE_RECIPES.get(id)
+      assert.equal(recipe.id, id)
+      assert.match(recipe.fixtureVariant, /^[a-z][a-z0-9-]+$/)
+      assert.ok([1, 2, 3, 4].includes(recipe.wave))
+      assert.ok(Array.isArray(recipe.steps) && recipe.steps.length > 0)
+      assert.ok(
+        recipe.steps.every(
+          (step) =>
+            typeof step.kind === 'string' &&
+            step.kind !== 'sleep' &&
+            !Object.hasOwn(step, 'viewport'),
+        ),
+      )
+      assert.equal(typeof recipe.visibleAssertion, 'string')
+      assert.ok(recipe.visibleAssertion.trim().length > 0)
+      assert.ok(Object.isFrozen(recipe))
+      assert.ok(Object.isFrozen(recipe.steps))
+    }
+  })
+})
+
+async function createFixtureBaseline(repoDirectory) {
+  const baseline = path.join(
+    repoDirectory,
+    'target/atlas-product-migration-fixture/ViewerAcceptance',
+  )
+  await mkdir(path.join(baseline, '衣服/A01'), { recursive: true })
+  await mkdir(path.join(baseline, '文档'), { recursive: true })
+  await mkdir(path.join(baseline, '空目录/Empty'), { recursive: true })
+  await mkdir(path.join(baseline, '目标/Source'), { recursive: true })
+  await mkdir(path.join(baseline, '目标/Destination'), { recursive: true })
+  await writeFile(path.join(baseline, '衣服/A01/image.jpg'), 'jpeg-data')
+  await writeFile(path.join(baseline, '文档/sample.md'), '# fixture')
+  await writeFile(path.join(baseline, 'corrupt.jpg'), 'not-a-jpeg')
+  await writeFile(path.join(baseline, '目标/Source/same.txt'), 'source')
+  await writeFile(path.join(baseline, '目标/Destination/same.txt'), 'destination')
+  return baseline
+}
+
+describe('fixture run', () => {
+  it('copies a manifest-bound baseline without mutating the source', async () => {
+    const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), 'viewer-fixture-run-'))
+    try {
+      const baseline = await createFixtureBaseline(temporaryRoot)
+      const baselineBefore = await readFile(path.join(baseline, '文档/sample.md'))
+      const run = await createFixtureRun({
+        repoRoot: temporaryRoot,
+        runId: 'acceptance-001',
+      })
+      const manifest = JSON.parse(await readFile(run.manifestPath, 'utf8'))
+
+      assert.equal(run.runRoot, path.join(temporaryRoot, 'target/atlas-product-migration-fixture/runs/acceptance-001'))
+      assert.equal(manifest.schemaVersion, 1)
+      assert.equal(manifest.runId, 'acceptance-001')
+      assert.ok(manifest.files.some((file) => file.path === '文档/sample.md'))
+      assert.ok(
+        manifest.files.every(
+          (file) =>
+            Number.isInteger(file.size) && /^[a-f0-9]{64}$/.test(file.sha256),
+        ),
+      )
+      assert.deepEqual(await readFile(path.join(baseline, '文档/sample.md')), baselineBefore)
+      await assert.rejects(
+        createFixtureRun({ repoRoot: temporaryRoot, runId: 'acceptance-001' }),
+        { code: 'FIXTURE_RUN_EXISTS' },
+      )
+    } finally {
+      await rm(temporaryRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('restores a named variant deterministically from its private snapshot', async () => {
+    const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), 'viewer-fixture-reset-'))
+    try {
+      await createFixtureBaseline(temporaryRoot)
+      const run = await createFixtureRun({
+        repoRoot: temporaryRoot,
+        runId: 'acceptance-002',
+      })
+      const first = await resetFixtureVariant(run, 'search-results')
+      await rm(path.join(first, '衣服/A01/image.jpg'))
+      await writeFile(path.join(first, '文档/sample.md'), 'mutated')
+
+      const restored = await resetFixtureVariant(run, 'search-results')
+      assert.equal(restored, first)
+      assert.equal(await readFile(path.join(restored, '衣服/A01/image.jpg'), 'utf8'), 'jpeg-data')
+      assert.equal(await readFile(path.join(restored, '文档/sample.md'), 'utf8'), '# fixture')
+    } finally {
+      await rm(temporaryRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('rejects a symbolic link anywhere in the source baseline', async () => {
+    const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), 'viewer-fixture-link-'))
+    try {
+      const baseline = await createFixtureBaseline(temporaryRoot)
+      await symlink('/tmp', path.join(baseline, 'escape'))
+      await assert.rejects(
+        createFixtureRun({ repoRoot: temporaryRoot, runId: 'acceptance-003' }),
+        { code: 'FIXTURE_SYMLINK' },
+      )
+      await assert.rejects(
+        stat(
+          path.join(
+            temporaryRoot,
+            'target/atlas-product-migration-fixture/runs/acceptance-003',
+          ),
+        ),
+        { code: 'ENOENT' },
+      )
+    } finally {
+      await rm(temporaryRoot, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('evidence manifest', () => {
+  it('records every provenance, action and joint-comparison field', () => {
+    const manifest = buildEvidenceManifest({
+      id: 'FIL-03',
+      wave: 1,
+      commit: 'a'.repeat(40),
+      branch: 'codex/viewer-atlas-product-migration',
+      dirty: false,
+      pid: 4859,
+      executablePath: `${actualRepoRoot}/target/debug/viewer-desktop`,
+      window: { windowId: 194, x: 223, y: 69, width: 1024, height: 720 },
+      viewport: '1024x720',
+      fixture: {
+        runId: 'run-001',
+        variant: 'filter-controls',
+        path: `${actualRepoRoot}/target/atlas-product-migration-fixture/runs/run-001/variants/filter-controls`,
+      },
+      actions: [
+        { sequence: 1, command: 'activate', target: '筛选', ok: true },
+        { sequence: 2, command: 'activate', target: 'JPEG', ok: true },
+      ],
+      assertion: {
+        description: 'Four selected filter chips are visible in the formal popover.',
+        passed: true,
+      },
+      evidence: {
+        raw: { path: '/evidence/raw.png', sha256: '1'.repeat(64) },
+        reference: { path: '/evidence/reference.png', sha256: '2'.repeat(64) },
+        combined: { path: '/evidence/combined.png', sha256: '3'.repeat(64) },
+      },
+      timestamp: '2026-08-03T10:00:00.000Z',
+      verdict: 'pass',
+    })
+
+    assert.deepEqual(Object.keys(manifest), [
+      'schemaVersion',
+      'id',
+      'wave',
+      'commit',
+      'branch',
+      'dirty',
+      'process',
+      'window',
+      'viewport',
+      'fixture',
+      'actions',
+      'assertion',
+      'evidence',
+      'timestamp',
+      'verdict',
+    ])
+    assert.deepEqual(manifest.process, {
+      pid: 4859,
+      executablePath: `${actualRepoRoot}/target/debug/viewer-desktop`,
+    })
+    assert.deepEqual(manifest.evidence, {
+      raw: { path: '/evidence/raw.png', sha256: '1'.repeat(64) },
+      reference: { path: '/evidence/reference.png', sha256: '2'.repeat(64) },
+      combined: { path: '/evidence/combined.png', sha256: '3'.repeat(64) },
+    })
+    assert.ok(Object.isFrozen(manifest))
+  })
+
+  it('rejects incomplete, dirty or unproved evidence', () => {
+    assert.throws(
+      () => buildEvidenceManifest({ id: 'FIL-03' }),
+      { code: 'EVIDENCE_MANIFEST_INVALID' },
+    )
+  })
+})
+
+describe('native acceptance CLI', () => {
+  it('parses every supported selector without performing work', () => {
+    assert.deepEqual(parseNativeAcceptanceCli(['--list'], { repoRoot: actualRepoRoot }), {
+      mode: 'list',
+      selector: null,
+      viewport: null,
+      outputRoot: path.join(actualRepoRoot, 'target/atlas-product-migration-acceptance'),
+      destructive: false,
+    })
+    assert.deepEqual(
+      parseNativeAcceptanceCli(['--preflight', '--viewport', '1024x720'], {
+        repoRoot: actualRepoRoot,
+      }),
+      {
+        mode: 'preflight',
+        selector: null,
+        viewport: '1024x720',
+        outputRoot: path.join(actualRepoRoot, 'target/atlas-product-migration-acceptance'),
+        destructive: false,
+      },
+    )
+    assert.equal(
+      parseNativeAcceptanceCli(['--id', 'FIL-03', '--viewport', '1440x900'], {
+        repoRoot: actualRepoRoot,
+      }).selector,
+      'FIL-03',
+    )
+    assert.equal(
+      parseNativeAcceptanceCli(['--wave', '2', '--viewport', '1024x720'], {
+        repoRoot: actualRepoRoot,
+      }).selector,
+      2,
+    )
+    assert.equal(
+      parseNativeAcceptanceCli(['--all', '--viewport', '1024x720'], {
+        repoRoot: actualRepoRoot,
+      }).mode,
+      'all',
+    )
+  })
+
+  it('rejects unknown, conflicting, incomplete and unsafe arguments', () => {
+    for (const argv of [
+      ['--unknown'],
+      ['--id', 'NOPE-01', '--viewport', '1024x720'],
+      ['--id', 'FIL-01', '--wave', '1', '--viewport', '1024x720'],
+      ['--id', 'FIL-01'],
+      ['--wave', '5', '--viewport', '1024x720'],
+      ['--all', '--viewport', '800x600'],
+      ['--all', '--viewport', '1024x720', '--output-root', '/tmp/evidence'],
+    ]) {
+      assert.throws(
+        () => parseNativeAcceptanceCli(argv, { repoRoot: actualRepoRoot }),
+        AcceptanceError,
+      )
+    }
+  })
+
+  it('blocks dirty or mismatched capture but keeps list and preflight non-destructive', () => {
+    const capture = parseNativeAcceptanceCli(
+      ['--id', 'FIL-01', '--viewport', '1024x720'],
+      { repoRoot: actualRepoRoot },
+    )
+    const list = parseNativeAcceptanceCli(['--list'], { repoRoot: actualRepoRoot })
+    const preflight = parseNativeAcceptanceCli(
+      ['--preflight', '--viewport', '1024x720'],
+      { repoRoot: actualRepoRoot },
+    )
+    assert.equal(list.destructive, false)
+    assert.equal(preflight.destructive, false)
+    assert.throws(
+      () =>
+        validateCapturePreflight({
+          options: capture,
+          dirty: true,
+          processes: [],
+          windows: [],
+          executablePath,
+          controllerPid: 999,
+        }),
+      { code: 'PRECONDITION_DIRTY_WORKTREE' },
+    )
+    assert.throws(
+      () =>
+        validateCapturePreflight({
+          options: capture,
+          dirty: false,
+          processes: parseProcessTable(`101 1 101 /Applications/Viewer.app/Contents/MacOS/viewer-desktop`),
+          windows: [{ pid: 101, windowId: 4, width: 1024, height: 720 }],
+          executablePath,
+          controllerPid: 999,
+        }),
+      { code: 'PRECONDITION_VIEWER_PATH' },
+    )
+  })
+
+  it('polls conditions without arbitrary recipe sleeps and caps at ten seconds', async () => {
+    let checks = 0
+    const result = await waitFor(
+      () => {
+        checks += 1
+        return checks === 3 ? 'ready' : false
+      },
+      { timeoutMs: 100, intervalMs: 1 },
+    )
+    assert.equal(result, 'ready')
+    await assert.rejects(
+      waitFor(() => false, { timeoutMs: 2, intervalMs: 1 }),
+      { code: 'PRECONDITION_WAIT_TIMEOUT' },
+    )
+    assert.throws(
+      () => waitFor(() => true, { timeoutMs: 10_001, intervalMs: 1 }),
+      { code: 'PRECONDITION_WAIT_LIMIT' },
+    )
+  })
+})
 
 async function runJsonLines(executable, args, requests) {
   const child = spawn(executable, args, { stdio: ['pipe', 'pipe', 'pipe'] })
@@ -1293,6 +1647,42 @@ describe('MacAdapter command dispatch', () => {
         performed: true,
         command: 'pointer',
       })
+    } finally {
+      await rm(temporaryRoot, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('native window discovery', () => {
+  it('returns structured owned layer-zero windows before protocol binding', async () => {
+    const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), 'viewer-window-discovery-'))
+    const helperPath = path.join(temporaryRoot, 'viewer-native-acceptance-helper')
+    try {
+      await execFileAsync('xcrun', [
+        'swiftc',
+        '-warnings-as-errors',
+        new URL('./viewer-native-acceptance.swift', import.meta.url).pathname,
+        '-o',
+        helperPath,
+      ])
+      assert.deepEqual(
+        await discoverNativeWindows({
+          helperPath,
+          pid: 101,
+          protocolTest: true,
+        }),
+        [
+          {
+            pid: 101,
+            windowId: 44,
+            title: 'Viewer Discovery Fixture',
+            x: 20,
+            y: 30,
+            width: 1024,
+            height: 720,
+          },
+        ],
+      )
     } finally {
       await rm(temporaryRoot, { recursive: true, force: true })
     }

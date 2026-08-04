@@ -1228,6 +1228,93 @@ private func handleLine(_ line: String, adapter: any NativeAdapter) -> [String: 
     }
 }
 
+private func discoverWindows(pid: Int, protocolTest: Bool) throws -> [[String: Any]] {
+    if protocolTest {
+        return [[
+            "pid": pid,
+            "windowId": 44,
+            "title": "Viewer Discovery Fixture",
+            "x": 20,
+            "y": 30,
+            "width": 1024,
+            "height": 720,
+        ]]
+    }
+    errno = 0
+    if kill(pid_t(pid), 0) == -1, errno == ESRCH {
+        throw AcceptanceFailure(
+            code: "PRECONDITION_VIEWER_PID",
+            message: "Viewer PID is not running"
+        )
+    }
+    guard
+        let rawWindows = CGWindowListCopyWindowInfo(
+            [.optionOnScreenOnly, .excludeDesktopElements],
+            kCGNullWindowID
+        ) as? [[String: Any]]
+    else {
+        throw AcceptanceFailure(
+            code: "PRECONDITION_WINDOW_COUNT",
+            message: "Unable to discover Viewer windows"
+        )
+    }
+    return rawWindows.compactMap { item in
+        guard
+            item[kCGWindowOwnerPID as String] as? Int == pid,
+            item[kCGWindowLayer as String] as? Int == 0,
+            let windowID = item[kCGWindowNumber as String] as? Int,
+            let bounds = item[kCGWindowBounds as String] as? [String: Any],
+            let frame = CGRect(dictionaryRepresentation: bounds as CFDictionary),
+            frame.width > 0,
+            frame.height > 0
+        else {
+            return nil
+        }
+        return [
+            "pid": pid,
+            "windowId": windowID,
+            "title": item[kCGWindowName as String] as? String ?? "Viewer",
+            "x": Int(frame.origin.x.rounded()),
+            "y": Int(frame.origin.y.rounded()),
+            "width": Int(frame.width.rounded()),
+            "height": Int(frame.height.rounded()),
+        ]
+    }
+}
+
+if let discoveryIndex = CommandLine.arguments.firstIndex(of: "--discover-windows") {
+    do {
+        let pidIndex = CommandLine.arguments.index(after: discoveryIndex)
+        guard
+            pidIndex < CommandLine.arguments.endIndex,
+            let pid = Int(CommandLine.arguments[pidIndex]),
+            pid > 0
+        else {
+            throw AcceptanceFailure(
+                code: "SAFETY_PROTOCOL",
+                message: "Window discovery requires a positive PID"
+            )
+        }
+        let windows = try discoverWindows(
+            pid: pid,
+            protocolTest: CommandLine.arguments.contains("--protocol-test-window-discovery")
+        )
+        writeResponse(["windows": windows])
+        exit(EXIT_SUCCESS)
+    } catch let failure as AcceptanceFailure {
+        writeResponse(["error": ["code": failure.code, "message": failure.message]])
+        exit(EXIT_FAILURE)
+    } catch {
+        writeResponse([
+            "error": [
+                "code": "PRECONDITION_WINDOW_COUNT",
+                "message": "Window discovery failed",
+            ],
+        ])
+        exit(EXIT_FAILURE)
+    }
+}
+
 private let adapter: any NativeAdapter = if CommandLine.arguments.contains("--protocol-test-fixture") {
     FixtureAdapter()
 } else if CommandLine.arguments.contains("--protocol-test-mac-fixture") {

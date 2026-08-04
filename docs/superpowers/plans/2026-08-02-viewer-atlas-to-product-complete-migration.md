@@ -1218,13 +1218,28 @@ git commit -m "feat: complete Viewer UI accessibility migration"
 ### Task 15: Execute the 89-state native visual gate and close the migration
 
 **Files:**
+- Consume: `scripts/viewer-native-acceptance.mjs`
+- Consume: `scripts/viewer-native-acceptance.swift`
+- Consume: `scripts/viewer-native-acceptance.test.mjs`
+- Consume: `docs/superpowers/plans/2026-08-03-viewer-native-acceptance-controller-plan.md`
 - Modify: `docs/reviews/2026-08-02-viewer-atlas-product-migration-ledger.md`
 - Modify: `docs/reviews/2026-07-30-viewer-ui-visual-upgrade-verification.md`
 - Generated but not staged: `target/atlas-product-migration-acceptance/<commit>/**`
 
 **Interfaces:**
-- Consumes: the unique current native Viewer process launched by `pnpm start:viewer`, the atlas reference and every ledger row.
+- Consumes: the unique current native Viewer process launched by `pnpm start:viewer`, the PID-bound non-shipping acceptance controller, the atlas reference and every ledger row.
 - Produces: exact native 1024×720 and 1440×900 evidence paths plus P0/P1/P2 conclusion for all 89 states.
+
+- [ ] **Step 0: Prove the native controller prerequisite**
+
+Run before any Task 15 capture:
+
+```bash
+node --test scripts/viewer-native-acceptance.test.mjs
+node scripts/viewer-native-acceptance.mjs --preflight --viewport 1024x720
+```
+
+Expected: both commands exit `0`, bind the exact clean current-worktree bare Viewer process and exact viewport, and leave no helper process behind. A passing controller is only the safe state-entry and evidence mechanism; it never replaces the required same-state joint reference/product visual review.
 
 - [ ] **Step 1: Establish a clean, uniquely identified acceptance build**
 

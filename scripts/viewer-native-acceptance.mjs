@@ -1,8 +1,21 @@
 import path from 'node:path'
 import { execFile, spawn } from 'node:child_process'
 import { createHash, randomUUID } from 'node:crypto'
-import { access, lstat, mkdir, readFile, realpath, rename, rm } from 'node:fs/promises'
+import { readFileSync } from 'node:fs'
+import {
+  access,
+  cp,
+  lstat,
+  mkdir,
+  readFile,
+  readdir,
+  realpath,
+  rename,
+  rm,
+  writeFile,
+} from 'node:fs/promises'
 import readline from 'node:readline'
+import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 
 const execFileAsync = promisify(execFile)
@@ -40,6 +53,119 @@ const ALLOWED_KEYS = new Set([
 ])
 const ALLOWED_MODIFIERS = new Set(['shift', 'control', 'option', 'command'])
 
+function numberedIds(prefix, count) {
+  return Array.from(
+    { length: count },
+    (_, index) => `${prefix}-${String(index + 1).padStart(2, '0')}`,
+  )
+}
+
+export const AUDIT_IDS = Object.freeze([
+  ...numberedIds('LAU', 9),
+  ...numberedIds('SID', 4),
+  ...numberedIds('STR', 5),
+  ...numberedIds('THU', 7),
+  ...numberedIds('OTH', 3),
+  ...numberedIds('SEA', 5),
+  ...numberedIds('FIL', 4),
+  ...numberedIds('MEN', 3),
+  ...numberedIds('RAD', 7),
+  ...numberedIds('PRE', 7),
+  ...numberedIds('COM', 4),
+  ...numberedIds('DOC', 7),
+  ...numberedIds('INF', 2),
+  ...numberedIds('DIA', 7),
+  ...numberedIds('TAS', 5),
+  ...numberedIds('RES', 5),
+  ...numberedIds('A11Y', 5),
+])
+
+const FIXTURE_VARIANT_BY_PREFIX = Object.freeze({
+  LAU: 'entry-and-loading',
+  SID: 'sidebar-and-drag',
+  STR: 'project-structure',
+  THU: 'thumbnail-selection',
+  OTH: 'other-files',
+  SEA: 'search-results',
+  FIL: 'filter-controls',
+  MEN: 'workspace-menus',
+  RAD: 'radial-menu',
+  PRE: 'image-preview',
+  COM: 'image-comparison',
+  DOC: 'document-preview',
+  INF: 'information-inspector',
+  DIA: 'dialogs',
+  TAS: 'task-surface',
+  RES: 'results-and-recovery',
+  A11Y: 'accessibility',
+})
+
+function parseLedgerRecipeRows() {
+  const ledgerPath = new URL(
+    '../docs/reviews/2026-08-02-viewer-atlas-product-migration-ledger.md',
+    import.meta.url,
+  )
+  const markdown = readFileSync(ledgerPath, 'utf8')
+  const rows = new Map()
+
+  for (const line of markdown.split('\n')) {
+    if (!/^\| [A-Z0-9]+-\d{2} \|/.test(line)) continue
+    const cells = line
+      .slice(1, -1)
+      .split(' | ')
+      .map((cell) => cell.trim())
+    if (cells.length !== 9) {
+      throw new Error(`Malformed native acceptance ledger row: ${line}`)
+    }
+    const [id, waveCell, referenceCell, , instruction] = cells
+    const waveMatch = waveCell.match(/^Wave ([1-4])$/)
+    const referenceMatch = referenceCell.match(/^`([^`]+)`$/)
+    if (!waveMatch || !referenceMatch || instruction.length === 0) {
+      throw new Error(`Incomplete native acceptance ledger recipe: ${id}`)
+    }
+    rows.set(id, {
+      wave: Number(waveMatch[1]),
+      referenceState: referenceMatch[1],
+      instruction,
+    })
+  }
+
+  return rows
+}
+
+function createStateRecipe(id, ledgerRecipe) {
+  const prefix = id.split('-', 1)[0]
+  const fixtureVariant = FIXTURE_VARIANT_BY_PREFIX[prefix]
+  if (!fixtureVariant || !ledgerRecipe) {
+    throw new Error(`Missing native acceptance recipe metadata for ${id}`)
+  }
+  const steps = Object.freeze([
+    Object.freeze({ kind: 'resetFixture', variant: fixtureVariant }),
+    Object.freeze({
+      kind: 'nativeUserSequence',
+      instruction: ledgerRecipe.instruction,
+    }),
+    Object.freeze({
+      kind: 'waitForVisibleState',
+      referenceState: ledgerRecipe.referenceState,
+      timeoutMs: 10_000,
+    }),
+  ])
+  return Object.freeze({
+    id,
+    wave: ledgerRecipe.wave,
+    fixtureVariant,
+    referenceState: ledgerRecipe.referenceState,
+    steps,
+    visibleAssertion: `Viewer visibly presents the approved ${ledgerRecipe.referenceState} state after the documented native user sequence.`,
+  })
+}
+
+const LEDGER_RECIPES = parseLedgerRecipeRows()
+export const STATE_RECIPES = new Map(
+  AUDIT_IDS.map((id) => [id, createStateRecipe(id, LEDGER_RECIPES.get(id))]),
+)
+
 export class AcceptanceError extends Error {
   constructor(code, message, details = {}) {
     super(message)
@@ -47,6 +173,509 @@ export class AcceptanceError extends Error {
     this.code = code
     this.details = details
   }
+}
+
+const RUN_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/
+const VARIANT_PATTERN = /^[a-z][a-z0-9-]{0,63}$/
+
+async function scanFixtureTree(root, relative = '') {
+  const directory = path.join(root, relative)
+  const entries = await readdir(directory, { withFileTypes: true })
+  const files = []
+  for (const entry of entries.sort((left, right) =>
+    left.name.localeCompare(right.name, 'en'),
+  )) {
+    const entryRelative = path.join(relative, entry.name)
+    const entryPath = path.join(root, entryRelative)
+    const metadata = await lstat(entryPath)
+    if (metadata.isSymbolicLink()) {
+      throw new AcceptanceError(
+        'FIXTURE_SYMLINK',
+        'Fixture baselines cannot contain symbolic links',
+        { path: entryPath },
+      )
+    }
+    if (metadata.isDirectory()) {
+      files.push(...(await scanFixtureTree(root, entryRelative)))
+      continue
+    }
+    if (!metadata.isFile()) {
+      throw new AcceptanceError(
+        'FIXTURE_FILE_TYPE',
+        'Fixture baselines may contain only directories and regular files',
+        { path: entryPath },
+      )
+    }
+    const contents = await readFile(entryPath)
+    files.push({
+      path: entryRelative.split(path.sep).join('/'),
+      size: metadata.size,
+      sha256: createHash('sha256').update(contents).digest('hex'),
+    })
+  }
+  return files
+}
+
+export async function createFixtureRun({ repoRoot, runId }) {
+  if (!RUN_ID_PATTERN.test(runId)) {
+    throw new AcceptanceError('SAFETY_FIXTURE_PATH', 'Invalid fixture run ID', {
+      runId,
+    })
+  }
+  const fixtureRoot = path.join(
+    repoRoot,
+    'target',
+    'atlas-product-migration-fixture',
+  )
+  const sourceRoot = path.join(fixtureRoot, 'ViewerAcceptance')
+  const sourceMetadata = await lstat(sourceRoot)
+  if (!sourceMetadata.isDirectory() || sourceMetadata.isSymbolicLink()) {
+    throw new AcceptanceError(
+      'FIXTURE_BASELINE',
+      'ViewerAcceptance fixture baseline must be a real directory',
+      { sourceRoot },
+    )
+  }
+  const sourceFiles = await scanFixtureTree(sourceRoot)
+  const runsRoot = path.join(fixtureRoot, 'runs')
+  const runRoot = path.join(runsRoot, runId)
+  const baselineRoot = path.join(runRoot, 'baseline')
+  const variantsRoot = path.join(runRoot, 'variants')
+  const manifestPath = path.join(runRoot, 'fixture-manifest.json')
+  await mkdir(runsRoot, { recursive: true })
+  try {
+    await mkdir(runRoot)
+  } catch (error) {
+    if (error?.code === 'EEXIST') {
+      throw new AcceptanceError(
+        'FIXTURE_RUN_EXISTS',
+        'Fixture run ID already exists',
+        { runId, runRoot },
+      )
+    }
+    throw error
+  }
+
+  try {
+    await cp(sourceRoot, baselineRoot, {
+      recursive: true,
+      dereference: false,
+      errorOnExist: true,
+      force: false,
+    })
+    const copiedFiles = await scanFixtureTree(baselineRoot)
+    if (JSON.stringify(copiedFiles) !== JSON.stringify(sourceFiles)) {
+      throw new AcceptanceError(
+        'FIXTURE_COPY_MISMATCH',
+        'Private fixture snapshot does not match the source baseline',
+      )
+    }
+    await mkdir(variantsRoot)
+    const manifest = {
+      schemaVersion: 1,
+      runId,
+      sourceRoot,
+      baselineRoot,
+      files: copiedFiles,
+    }
+    await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, {
+      flag: 'wx',
+    })
+    return Object.freeze({
+      repoRoot,
+      runId,
+      sourceRoot,
+      runRoot,
+      baselineRoot,
+      variantsRoot,
+      manifestPath,
+      manifest: Object.freeze(manifest),
+    })
+  } catch (error) {
+    await rm(runRoot, { recursive: true, force: true })
+    throw error
+  }
+}
+
+export async function resetFixtureVariant(run, variant) {
+  if (!run || !RUN_ID_PATTERN.test(run.runId) || !VARIANT_PATTERN.test(variant)) {
+    throw new AcceptanceError(
+      'SAFETY_FIXTURE_PATH',
+      'Invalid fixture run or variant',
+      { runId: run?.runId, variant },
+    )
+  }
+  const expectedRunRoot = path.join(
+    run.repoRoot,
+    'target',
+    'atlas-product-migration-fixture',
+    'runs',
+    run.runId,
+  )
+  const expectedBaselineRoot = path.join(expectedRunRoot, 'baseline')
+  const expectedVariantsRoot = path.join(expectedRunRoot, 'variants')
+  if (
+    path.normalize(run.runRoot) !== path.normalize(expectedRunRoot) ||
+    path.normalize(run.baselineRoot) !== path.normalize(expectedBaselineRoot) ||
+    path.normalize(run.variantsRoot) !== path.normalize(expectedVariantsRoot)
+  ) {
+    throw new AcceptanceError(
+      'SAFETY_FIXTURE_PATH',
+      'Fixture run root does not match its repository and run ID',
+      {
+        actual: {
+          runRoot: run.runRoot,
+          baselineRoot: run.baselineRoot,
+          variantsRoot: run.variantsRoot,
+        },
+        expected: {
+          runRoot: expectedRunRoot,
+          baselineRoot: expectedBaselineRoot,
+          variantsRoot: expectedVariantsRoot,
+        },
+      },
+    )
+  }
+  await scanFixtureTree(run.baselineRoot)
+  const target = path.join(run.variantsRoot, variant)
+  const temporary = path.join(
+    run.variantsRoot,
+    `.${variant}.new-${process.pid}-${randomUUID()}`,
+  )
+  const previous = path.join(
+    run.variantsRoot,
+    `.${variant}.old-${process.pid}-${randomUUID()}`,
+  )
+  await Promise.all([
+    validateFixturePath(temporary, run),
+    validateFixturePath(previous, run),
+    validateFixturePath(target, run),
+  ])
+  try {
+    await cp(run.baselineRoot, temporary, {
+      recursive: true,
+      dereference: false,
+      errorOnExist: true,
+      force: false,
+    })
+    let hadPrevious = false
+    try {
+      await rename(target, previous)
+      hadPrevious = true
+    } catch (error) {
+      if (error?.code !== 'ENOENT') throw error
+    }
+    try {
+      await rename(temporary, target)
+    } catch (error) {
+      if (hadPrevious) await rename(previous, target)
+      throw error
+    }
+    if (hadPrevious) await rm(previous, { recursive: true })
+    return target
+  } catch (error) {
+    await rm(temporary, { recursive: true, force: true })
+    throw error
+  }
+}
+
+function deepFreeze(value) {
+  if (!value || typeof value !== 'object' || Object.isFrozen(value)) return value
+  for (const child of Object.values(value)) deepFreeze(child)
+  return Object.freeze(value)
+}
+
+function validEvidenceArtifact(artifact) {
+  return (
+    artifact &&
+    typeof artifact.path === 'string' &&
+    path.isAbsolute(artifact.path) &&
+    /^[a-f0-9]{64}$/.test(artifact.sha256)
+  )
+}
+
+export function buildEvidenceManifest(context) {
+  const recipe = STATE_RECIPES.get(context?.id)
+  const viewport = context?.viewport
+  const window = context?.window
+  const fixture = context?.fixture
+  const assertion = context?.assertion
+  const evidence = context?.evidence
+  const valid =
+    recipe &&
+    context.wave === recipe.wave &&
+    /^[a-f0-9]{40}$/.test(context.commit ?? '') &&
+    typeof context.branch === 'string' &&
+    context.branch.length > 0 &&
+    typeof context.dirty === 'boolean' &&
+    Number.isInteger(context.pid) &&
+    context.pid > 0 &&
+    typeof context.executablePath === 'string' &&
+    path.isAbsolute(context.executablePath) &&
+    ['1024x720', '1440x900'].includes(viewport) &&
+    window &&
+    Number.isInteger(window.windowId) &&
+    window.windowId > 0 &&
+    Number.isFinite(window.x) &&
+    Number.isFinite(window.y) &&
+    `${window.width}x${window.height}` === viewport &&
+    fixture &&
+    RUN_ID_PATTERN.test(fixture.runId) &&
+    VARIANT_PATTERN.test(fixture.variant) &&
+    fixture.variant === recipe.fixtureVariant &&
+    typeof fixture.path === 'string' &&
+    path.isAbsolute(fixture.path) &&
+    Array.isArray(context.actions) &&
+    context.actions.length > 0 &&
+    context.actions.every((action) => action && typeof action === 'object') &&
+    assertion &&
+    typeof assertion.description === 'string' &&
+    assertion.description.length > 0 &&
+    typeof assertion.passed === 'boolean' &&
+    evidence &&
+    validEvidenceArtifact(evidence.raw) &&
+    validEvidenceArtifact(evidence.reference) &&
+    validEvidenceArtifact(evidence.combined) &&
+    !Number.isNaN(Date.parse(context.timestamp)) &&
+    ['pass', 'fail'].includes(context.verdict)
+
+  if (!valid) {
+    throw new AcceptanceError(
+      'EVIDENCE_MANIFEST_INVALID',
+      'Evidence manifest is incomplete or inconsistent with its recipe',
+      { id: context?.id },
+    )
+  }
+
+  return deepFreeze({
+    schemaVersion: 1,
+    id: context.id,
+    wave: context.wave,
+    commit: context.commit,
+    branch: context.branch,
+    dirty: context.dirty,
+    process: {
+      pid: context.pid,
+      executablePath: context.executablePath,
+    },
+    window: { ...window },
+    viewport,
+    fixture: { ...fixture },
+    actions: context.actions.map((action) => ({ ...action })),
+    assertion: { ...assertion },
+    evidence: {
+      raw: { ...evidence.raw },
+      reference: { ...evidence.reference },
+      combined: { ...evidence.combined },
+    },
+    timestamp: context.timestamp,
+    verdict: context.verdict,
+  })
+}
+
+function cliError(message, details = {}) {
+  return new AcceptanceError('CLI_ARGUMENT', message, details)
+}
+
+export function parseNativeAcceptanceCli(argv, { repoRoot }) {
+  const selectors = []
+  let viewport = null
+  let outputRoot = path.join(
+    repoRoot,
+    'target',
+    'atlas-product-migration-acceptance',
+  )
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const argument = argv[index]
+    if (argument === '--list') selectors.push({ mode: 'list', value: null })
+    else if (argument === '--preflight') {
+      selectors.push({ mode: 'preflight', value: null })
+    } else if (argument === '--all') selectors.push({ mode: 'all', value: null })
+    else if (argument === '--id') {
+      const id = argv[++index]
+      if (!STATE_RECIPES.has(id)) throw cliError('Unknown acceptance ID', { id })
+      selectors.push({ mode: 'id', value: id })
+    } else if (argument === '--wave') {
+      const wave = Number(argv[++index])
+      if (![1, 2, 3, 4].includes(wave)) {
+        throw cliError('Wave must be one of 1, 2, 3 or 4', { wave })
+      }
+      selectors.push({ mode: 'wave', value: wave })
+    } else if (argument === '--viewport') {
+      viewport = argv[++index]
+      if (!['1024x720', '1440x900'].includes(viewport)) {
+        throw cliError('Viewport must be 1024x720 or 1440x900', { viewport })
+      }
+    } else if (argument === '--output-root') {
+      outputRoot = argv[++index]
+      if (!outputRoot) throw cliError('Missing output root')
+    } else {
+      throw cliError('Unknown native acceptance argument', { argument })
+    }
+  }
+
+  if (selectors.length !== 1) {
+    throw cliError('Choose exactly one acceptance selector')
+  }
+  const [{ mode, value: selector }] = selectors
+  if (mode !== 'list' && viewport === null) {
+    throw cliError('Viewport is required for preflight and capture')
+  }
+  const approvedOutputRoot = path.join(
+    repoRoot,
+    'target',
+    'atlas-product-migration-acceptance',
+  )
+  const normalizedOutput = validateLiteralAbsolutePath(outputRoot, 'CLI_ARGUMENT')
+  if (!isContainedPath(approvedOutputRoot, normalizedOutput)) {
+    throw cliError('Output root escapes the acceptance evidence directory', {
+      outputRoot: normalizedOutput,
+    })
+  }
+
+  return {
+    mode,
+    selector,
+    viewport,
+    outputRoot: normalizedOutput,
+    destructive: ['id', 'wave', 'all'].includes(mode),
+  }
+}
+
+export function validateCapturePreflight({
+  options,
+  dirty,
+  processes,
+  windows,
+  executablePath,
+  controllerPid,
+  helperPid,
+}) {
+  if (options?.destructive && dirty) {
+    throw new AcceptanceError(
+      'PRECONDITION_DIRTY_WORKTREE',
+      'Native evidence capture requires a clean worktree',
+    )
+  }
+  const viewportMatch = options?.viewport?.match(/^(\d+)x(\d+)$/)
+  if (!viewportMatch) {
+    throw new AcceptanceError(
+      'PRECONDITION_VIEWPORT',
+      'Capture preflight requires an exact viewport',
+    )
+  }
+  const viewer = selectExactViewer(processes, {
+    executablePath,
+    controllerPid,
+    helperPid,
+  })
+  const window = selectExactWindow(windows, {
+    pid: viewer.pid,
+    viewport: {
+      width: Number(viewportMatch[1]),
+      height: Number(viewportMatch[2]),
+    },
+  })
+  return { viewer, window }
+}
+
+export function waitFor(predicate, { timeoutMs, intervalMs }) {
+  if (
+    !Number.isFinite(timeoutMs) ||
+    timeoutMs <= 0 ||
+    timeoutMs > 10_000 ||
+    !Number.isFinite(intervalMs) ||
+    intervalMs <= 0
+  ) {
+    throw new AcceptanceError(
+      'PRECONDITION_WAIT_LIMIT',
+      'Condition waits must be positive and capped at ten seconds',
+      { timeoutMs, intervalMs },
+    )
+  }
+  return (async () => {
+    const deadline = Date.now() + timeoutMs
+    while (true) {
+      const result = await predicate()
+      if (result) return result
+      if (Date.now() >= deadline) {
+        throw new AcceptanceError(
+          'PRECONDITION_WAIT_TIMEOUT',
+          'Visible state did not become ready before the condition timeout',
+          { timeoutMs },
+        )
+      }
+      await new Promise((resolve) =>
+        setTimeout(resolve, Math.min(intervalMs, Math.max(1, deadline - Date.now()))),
+      )
+    }
+  })()
+}
+
+export async function discoverNativeWindows({ helperPath, pid, protocolTest = false }) {
+  if (!Number.isInteger(pid) || pid <= 0) {
+    throw new AcceptanceError(
+      'PRECONDITION_VIEWER_PID',
+      'Window discovery requires a positive Viewer PID',
+      { pid },
+    )
+  }
+  const argumentsList = ['--discover-windows', String(pid)]
+  if (protocolTest) argumentsList.push('--protocol-test-window-discovery')
+  let stdout
+  try {
+    ;({ stdout } = await execFileAsync(helperPath, argumentsList, {
+      encoding: 'utf8',
+      maxBuffer: 1024 * 1024,
+    }))
+  } catch (error) {
+    throw new AcceptanceError(
+      'PRECONDITION_WINDOW_COUNT',
+      'Native helper could not discover Viewer windows',
+      { stderr: error?.stderr ?? '', stdout: error?.stdout ?? '' },
+    )
+  }
+  let envelope
+  try {
+    envelope = JSON.parse(stdout.trim())
+  } catch {
+    throw new AcceptanceError(
+      'SAFETY_PROTOCOL',
+      'Native window discovery returned malformed JSON',
+    )
+  }
+  if (
+    !envelope ||
+    Object.keys(envelope).length !== 1 ||
+    !Array.isArray(envelope.windows)
+  ) {
+    throw new AcceptanceError(
+      'SAFETY_PROTOCOL',
+      'Native window discovery returned an invalid envelope',
+    )
+  }
+  return envelope.windows.map((window) => {
+    const keys = Object.keys(window).sort()
+    if (
+      JSON.stringify(keys) !==
+        JSON.stringify(['height', 'pid', 'title', 'width', 'windowId', 'x', 'y']) ||
+      window.pid !== pid ||
+      !Number.isInteger(window.windowId) ||
+      window.windowId <= 0 ||
+      typeof window.title !== 'string' ||
+      !['x', 'y', 'width', 'height'].every((key) => Number.isInteger(window[key])) ||
+      window.width <= 0 ||
+      window.height <= 0
+    ) {
+      throw new AcceptanceError(
+        'SAFETY_PROTOCOL',
+        'Native window discovery returned an invalid window',
+        { window },
+      )
+    }
+    return window
+  })
 }
 
 function commandExecutable(command) {
@@ -298,7 +927,7 @@ export async function validateEvidencePath(
   if (
     !/^[0-9a-f]{6,64}$/.test(commit) ||
     !['1024x720', '1440x900'].includes(viewport) ||
-    !/^[A-Z]+-\d{2}$/.test(id)
+    !/^(?:LAU|SID|STR|THU|OTH|SEA|FIL|MEN|RAD|PRE|COM|DOC|INF|DIA|TAS|RES|A11Y)-\d{2}$/.test(id)
   ) {
     throw new AcceptanceError(
       'SAFETY_EVIDENCE_PATH',
@@ -735,4 +1364,117 @@ export async function buildNativeHelper({ repoRoot, sourcePath }) {
   }
 
   return { sourceHash, executablePath }
+}
+
+export async function collectNativePreflight({ repoRoot, options }) {
+  const executablePath = await realpath(
+    path.join(repoRoot, 'target', 'debug', 'viewer-desktop'),
+  )
+  const [{ stdout: processOutput }, { stdout: branchOutput }, { stdout: commitOutput }, { stdout: statusOutput }] =
+    await Promise.all([
+      execFileAsync('ps', ['-axo', 'pid=,ppid=,pgid=,command='], {
+        encoding: 'utf8',
+        maxBuffer: 4 * 1024 * 1024,
+      }),
+      execFileAsync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], {
+        cwd: repoRoot,
+        encoding: 'utf8',
+      }),
+      execFileAsync('git', ['rev-parse', 'HEAD'], {
+        cwd: repoRoot,
+        encoding: 'utf8',
+      }),
+      execFileAsync('git', ['status', '--porcelain=v1', '--untracked-files=normal'], {
+        cwd: repoRoot,
+        encoding: 'utf8',
+        maxBuffer: 4 * 1024 * 1024,
+      }),
+    ])
+  const processes = parseProcessTable(processOutput)
+  const viewer = selectExactViewer(processes, {
+    executablePath,
+    controllerPid: process.pid,
+  })
+  const sourcePath = fileURLToPath(
+    new URL('./viewer-native-acceptance.swift', import.meta.url),
+  )
+  const helper = await buildNativeHelper({ repoRoot, sourcePath })
+  const windows = await discoverNativeWindows({
+    helperPath: helper.executablePath,
+    pid: viewer.pid,
+  })
+  const preflight = validateCapturePreflight({
+    options,
+    dirty: statusOutput.trim().length > 0,
+    processes,
+    windows,
+    executablePath,
+    controllerPid: process.pid,
+  })
+  const client = new NativeAcceptanceClient({
+    executablePath: helper.executablePath,
+    pid: viewer.pid,
+    window: preflight.window,
+  })
+  let inspect
+  try {
+    inspect = await client.start()
+  } catch (error) {
+    await client.terminate()
+    throw error
+  }
+  await client.close()
+  return {
+    branch: branchOutput.trim(),
+    commit: commitOutput.trim(),
+    dirty: statusOutput.trim().length > 0,
+    process: {
+      pid: viewer.pid,
+      executablePath,
+    },
+    window: preflight.window,
+    inspect,
+    helper: {
+      sourceHash: helper.sourceHash,
+      executablePath: helper.executablePath,
+    },
+  }
+}
+
+export async function runNativeAcceptanceCli(
+  argv,
+  { repoRoot = path.resolve(fileURLToPath(new URL('..', import.meta.url))) } = {},
+) {
+  const options = parseNativeAcceptanceCli(argv, { repoRoot })
+  if (options.mode === 'list') {
+    return {
+      mode: 'list',
+      count: AUDIT_IDS.length,
+      recipes: AUDIT_IDS.map((id) => STATE_RECIPES.get(id)),
+    }
+  }
+  const preflight = await collectNativePreflight({ repoRoot, options })
+  if (options.mode === 'preflight') {
+    return { mode: 'preflight', viewport: options.viewport, ...preflight }
+  }
+  throw new AcceptanceError(
+    'STATE_RECIPE_EXECUTOR',
+    'State capture requires the recipe executor implemented by the next plan task',
+    { mode: options.mode, selector: options.selector },
+  )
+}
+
+const invokedPath = process.argv[1] ? path.resolve(process.argv[1]) : ''
+if (invokedPath === fileURLToPath(import.meta.url)) {
+  try {
+    const result = await runNativeAcceptanceCli(process.argv.slice(2))
+    process.stdout.write(`${JSON.stringify(result, null, 2)}\n`)
+  } catch (error) {
+    const failure =
+      error instanceof AcceptanceError
+        ? { code: error.code, message: error.message, details: error.details }
+        : { code: 'UNEXPECTED', message: error?.message ?? String(error) }
+    process.stderr.write(`${JSON.stringify(failure, null, 2)}\n`)
+    process.exitCode = 1
+  }
 }

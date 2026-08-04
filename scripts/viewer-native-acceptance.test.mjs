@@ -238,7 +238,6 @@ describe('state entry plans', () => {
       'THU-07',
       'SEA-01',
       'SEA-02',
-      'SEA-03',
       'SEA-04',
       'SEA-05',
       'MEN-01',
@@ -285,6 +284,16 @@ describe('state entry plans', () => {
     const plan = buildStateEntryPlan('SEA-03')
     const setValueIndex = plan.findIndex((step) => step.kind === 'setValue')
 
+    assert.deepEqual(plan.slice(0, 3), [
+      { kind: 'prepareFixture', operation: 'populateSearchPaging' },
+      { kind: 'openProject' },
+      {
+        kind: 'normalizeWorkspace',
+        density: null,
+        sidebar: 'expanded',
+        sidebarWidth: 220,
+      },
+    ])
     assert.deepEqual(plan[setValueIndex - 1], {
       kind: 'assert',
       target: { role: 'AXTextField', name: '搜索项目' },

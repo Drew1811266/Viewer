@@ -370,8 +370,8 @@ export function buildStateEntryPlan(id) {
       { kind: 'assert', target: { name: '搜索结果区域' } },
     ],
     'SEA-03': [
-      { kind: 'prepareFixture', operation: 'removeViewerMetadata' },
-      ...openWorkspace(),
+      { kind: 'prepareFixture', operation: 'populateSearchPaging' },
+      ...openWorkspace(null),
       {
         kind: 'assert',
         target: { role: 'AXTextField', name: '搜索项目' },
@@ -2235,6 +2235,8 @@ async function normalizeWorkspaceState({
       durationMs: 300,
     })
   }
+
+  if (density === null) return collapse
 
   const more = await queryVisibleElement(client, actions, {
     role: 'AXButton',

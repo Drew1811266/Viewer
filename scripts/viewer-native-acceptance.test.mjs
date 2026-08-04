@@ -122,6 +122,12 @@ describe('state entry plans', () => {
   it('uses concrete native actions for the first stable workspace states', () => {
     assert.deepEqual(buildStateEntryPlan('SID-01'), [
       { kind: 'openProject' },
+      {
+        kind: 'normalizeWorkspace',
+        density: '标准',
+        sidebar: 'expanded',
+        sidebarWidth: 220,
+      },
       { kind: 'click', target: { role: 'AXGroup', name: '衣服/A01' } },
       { kind: 'waitMissing', target: { name: '扫描项目' } },
       { kind: 'waitMissing', target: { name: '加载可见缩略图' } },
@@ -134,6 +140,12 @@ describe('state entry plans', () => {
     ])
     assert.deepEqual(buildStateEntryPlan('STR-03'), [
       { kind: 'openProject' },
+      {
+        kind: 'normalizeWorkspace',
+        density: '标准',
+        sidebar: 'expanded',
+        sidebarWidth: 220,
+      },
       { kind: 'click', target: { role: 'AXGroup', name: '衣服/A01' } },
       { kind: 'waitMissing', target: { name: '扫描项目' } },
       { kind: 'waitMissing', target: { name: '加载可见缩略图' } },
@@ -146,6 +158,12 @@ describe('state entry plans', () => {
     ])
     assert.deepEqual(buildStateEntryPlan('FIL-01'), [
       { kind: 'openProject' },
+      {
+        kind: 'normalizeWorkspace',
+        density: '紧凑',
+        sidebar: 'expanded',
+        sidebarWidth: 220,
+      },
       { kind: 'click', target: { role: 'AXGroup', name: '衣服/A01' } },
       { kind: 'waitMissing', target: { name: '扫描项目' } },
       { kind: 'waitMissing', target: { name: '加载可见缩略图' } },
@@ -160,6 +178,12 @@ describe('state entry plans', () => {
     ])
     assert.deepEqual(buildStateEntryPlan('MEN-02'), [
       { kind: 'openProject' },
+      {
+        kind: 'normalizeWorkspace',
+        density: '紧凑',
+        sidebar: 'expanded',
+        sidebarWidth: 220,
+      },
       { kind: 'click', target: { role: 'AXGroup', name: '衣服/A01' } },
       { kind: 'waitMissing', target: { name: '扫描项目' } },
       { kind: 'waitMissing', target: { name: '加载可见缩略图' } },
@@ -187,7 +211,7 @@ describe('state entry plans', () => {
   it('waits for the completion task to stay absent before capture', () => {
     const plan = buildStateEntryPlan('SID-01')
 
-    assert.deepEqual(plan.slice(2, 5), [
+    assert.deepEqual(plan.slice(3, 6), [
       { kind: 'waitMissing', target: { name: '扫描项目' } },
       { kind: 'waitMissing', target: { name: '加载可见缩略图' } },
       {
@@ -196,6 +220,65 @@ describe('state entry plans', () => {
         stableMs: 1_000,
       },
     ])
+  })
+
+  it('normalizes persistent workspace chrome before entering every stable Wave 1 state', () => {
+    const standardDensityIds = [
+      'SID-01',
+      'SID-02',
+      'SID-03',
+      'STR-01',
+      'STR-02',
+      'STR-03',
+      'STR-05',
+      'THU-02',
+      'THU-04',
+      'THU-05',
+      'THU-06',
+      'THU-07',
+      'SEA-01',
+      'SEA-02',
+      'SEA-03',
+      'SEA-04',
+      'SEA-05',
+      'MEN-01',
+      'LAU-07',
+    ]
+    const compactDensityIds = [
+      'STR-04',
+      'THU-01',
+      'OTH-01',
+      'OTH-02',
+      'FIL-01',
+      'FIL-02',
+      'FIL-03',
+      'FIL-04',
+      'MEN-02',
+      'MEN-03',
+    ]
+    const largeDensityIds = ['THU-03']
+
+    for (const [density, ids] of [
+      ['标准', standardDensityIds],
+      ['紧凑', compactDensityIds],
+      ['大图', largeDensityIds],
+    ]) {
+      for (const id of ids) {
+        const plan = buildStateEntryPlan(id)
+        const openIndex = plan.findIndex((step) => step.kind === 'openProject')
+        assert.notEqual(openIndex, -1, id)
+        assert.deepEqual(
+          plan[openIndex + 1],
+          {
+            kind: 'normalizeWorkspace',
+            density,
+            sidebar: 'expanded',
+            sidebarWidth: 220,
+          },
+          id,
+        )
+      }
+    }
   })
 
   it('rejects a state until it has a real executable entry plan', () => {
@@ -278,14 +361,24 @@ describe('state entry plans', () => {
 
     assert.equal(opened, true)
     assert.equal(result.passed, true)
+    assert.deepEqual(commands[0], {
+      command: 'query',
+      payload: { target: { role: 'AXButton', name: '折叠文件夹栏' } },
+    })
     assert.deepEqual(
-      commands.slice(0, 4).map(({ command }) => command),
-      ['query', 'pointer', 'query', 'query'],
+      commands.find(({ command }) => command === 'drag')?.payload.to,
+      { x: 220, y: 32 },
     )
-    assert.ok(commands.slice(4).every(({ command }) => command === 'query'))
-    assert.ok(commands.length >= 6)
-    assert.deepEqual(commands[1].payload.point, { x: 60, y: 32 })
-    assert.equal(actions.length, 6)
+    for (const name of ['更多', '软件设置', '标准', '关闭', '衣服/A01']) {
+      assert.ok(
+        commands.some(
+          ({ command, payload }) => command === 'query' && payload.target.name === name,
+        ),
+        name,
+      )
+    }
+    assert.ok(commands.filter(({ command }) => command === 'pointer').length >= 5)
+    assert.ok(actions.length >= 12)
   })
 })
 

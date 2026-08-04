@@ -212,6 +212,13 @@ export class AcceptanceError extends Error {
 
 export function buildStateEntryPlan(id) {
   const openProject = { kind: 'openProject' }
+  const normalizeWorkspace = (density = '标准') => ({
+    kind: 'normalizeWorkspace',
+    density,
+    sidebar: 'expanded',
+    sidebarWidth: 220,
+  })
+  const openWorkspace = (density = '标准') => [openProject, normalizeWorkspace(density)]
   const projectRoot = { role: 'AXCheckBox', name: '测试图' }
   const folder = (name) => ({ role: 'AXGroup', name })
   const workspaceReady = [
@@ -223,23 +230,19 @@ export function buildStateEntryPlan(id) {
       stableMs: 1_000,
     },
   ]
-  const openFolder = (name) => [
-    openProject,
+  const openFolder = (name, density = '标准') => [
+    ...openWorkspace(density),
     { kind: 'click', target: folder(name) },
     ...workspaceReady,
   ]
-  const openContent = () => openFolder('衣服/A01')
+  const openContent = (density = '标准') => openFolder('衣服/A01', density)
   const clickToolbar = (name) => ({
     kind: 'click',
     target: { role: 'AXButton', name },
   })
-  const openFilter = () => [...openContent(), clickToolbar('筛选')]
+  const openFilter = () => [...openContent('紧凑'), clickToolbar('筛选')]
   const openSettingsAtDensity = (name) => [
-    openProject,
-    clickToolbar('更多'),
-    { kind: 'click', target: { name: '软件设置' } },
-    { kind: 'click', target: { role: 'AXRadioButton', name } },
-    { kind: 'click', target: { role: 'AXButton', name: '关闭' } },
+    ...openWorkspace(name),
     { kind: 'click', target: folder('衣服/A01') },
     ...workspaceReady,
     { kind: 'movePointerToTitlebar' },
@@ -248,7 +251,7 @@ export function buildStateEntryPlan(id) {
   const plans = {
     'LAU-01': [{ kind: 'ensureNoProject' }],
     'SID-01': [
-      openProject,
+      ...openWorkspace(),
       { kind: 'click', target: folder('衣服/A01') },
       ...workspaceReady,
       { kind: 'assert', target: folder('衣服/A01') },
@@ -271,25 +274,25 @@ export function buildStateEntryPlan(id) {
       { kind: 'assert', target: { role: 'AXButton', name: '更多' } },
     ],
     'STR-01': [
-      openProject,
+      ...openWorkspace(),
       { kind: 'press', target: projectRoot },
       ...workspaceReady,
       { kind: 'assert', target: projectRoot },
     ],
     'STR-02': [
-      openProject,
+      ...openWorkspace(),
       { kind: 'click', target: folder('衣服') },
       ...workspaceReady,
       { kind: 'assert', target: folder('衣服') },
     ],
     'STR-03': [
-      openProject,
+      ...openWorkspace(),
       { kind: 'click', target: folder('衣服/A01') },
       ...workspaceReady,
       { kind: 'assert', target: folder('衣服/A01') },
     ],
     'STR-04': [
-      ...openContent(),
+      ...openContent('紧凑'),
       clickToolbar('视图'),
       { kind: 'click', target: { name: '显示全部后代文件' } },
       ...workspaceReady,
@@ -306,13 +309,13 @@ export function buildStateEntryPlan(id) {
     'THU-02': openSettingsAtDensity('标准'),
     'THU-03': openSettingsAtDensity('大图'),
     'THU-04': [
-      openProject,
+      ...openWorkspace(),
       { kind: 'click', target: folder('衣服/A01') },
       ...workspaceReady,
       { kind: 'assert', target: folder('衣服/A01') },
     ],
     'THU-05': [
-      openProject,
+      ...openWorkspace(),
       { kind: 'click', target: folder('衣服/A01') },
       ...workspaceReady,
       { kind: 'click', target: { name: '商品-01.jpg' } },
@@ -337,18 +340,18 @@ export function buildStateEntryPlan(id) {
       { kind: 'assert', target: { role: 'AXGroup', name: '选择摘要' } },
     ],
     'OTH-01': [
-      ...openFolder('其它'),
+      ...openFolder('其它', '紧凑'),
       { kind: 'movePointerToTitlebar' },
       { kind: 'assert', target: { role: 'AXButton', name: '其它文件 · 1' } },
     ],
     'OTH-02': [
-      ...openFolder('其它'),
+      ...openFolder('其它', '紧凑'),
       { kind: 'click', target: { role: 'AXButton', name: '其它文件 · 1' } },
       { kind: 'movePointerToTitlebar' },
       { kind: 'assert', target: { name: 'unsupported.bin' } },
     ],
     'SEA-01': [
-      openProject,
+      ...openWorkspace(),
       ...workspaceReady,
       { kind: 'setValue', target: { role: 'AXTextField', name: '搜索项目' }, text: 'jp' },
       { kind: 'key', key: 'g', modifiers: [] },
@@ -356,7 +359,7 @@ export function buildStateEntryPlan(id) {
       { kind: 'assert', target: { name: '搜索结果区域' } },
     ],
     'SEA-02': [
-      openProject,
+      ...openWorkspace(),
       ...workspaceReady,
       { kind: 'setValue', target: { role: 'AXTextField', name: '搜索项目' }, text: 'jp' },
       { kind: 'key', key: 'g', modifiers: [] },
@@ -368,7 +371,7 @@ export function buildStateEntryPlan(id) {
     ],
     'SEA-03': [
       { kind: 'prepareFixture', operation: 'removeViewerMetadata' },
-      openProject,
+      ...openWorkspace(),
       { kind: 'setValue', target: { role: 'AXTextField', name: '搜索项目' }, text: 'jp' },
       { kind: 'key', key: 'g', modifiers: [] },
       { kind: 'movePointerToTitlebar' },
@@ -376,7 +379,7 @@ export function buildStateEntryPlan(id) {
     ],
     'SEA-04': [
       { kind: 'prepareFixture', operation: 'populateSearchPaging' },
-      openProject,
+      ...openWorkspace(),
       ...workspaceReady,
       { kind: 'setValue', target: { role: 'AXTextField', name: '搜索项目' }, text: 'jp' },
       { kind: 'key', key: 'g', modifiers: [] },
@@ -385,7 +388,7 @@ export function buildStateEntryPlan(id) {
       { kind: 'assert', target: { role: 'AXButton', name: '上一页' } },
     ],
     'SEA-05': [
-      openProject,
+      ...openWorkspace(),
       ...workspaceReady,
       {
         kind: 'setValue',
@@ -397,7 +400,7 @@ export function buildStateEntryPlan(id) {
       { kind: 'assert', target: { role: 'AXHeading', name: '没有找到结果' } },
     ],
     'FIL-01': [
-      openProject,
+      ...openWorkspace('紧凑'),
       { kind: 'click', target: folder('衣服/A01') },
       ...workspaceReady,
       { kind: 'click', target: { role: 'AXButton', name: '筛选' } },
@@ -442,7 +445,7 @@ export function buildStateEntryPlan(id) {
       { kind: 'assert', target: { role: 'AXHeading', name: '筛选' } },
     ],
     'MEN-01': [
-      openProject,
+      ...openWorkspace(),
       ...workspaceReady,
       { kind: 'setValue', target: { role: 'AXTextField', name: '搜索项目' }, text: 'jp' },
       { kind: 'key', key: 'g', modifiers: [] },
@@ -452,7 +455,7 @@ export function buildStateEntryPlan(id) {
       { kind: 'assert', target: { name: '展平结果' } },
     ],
     'MEN-02': [
-      openProject,
+      ...openWorkspace('紧凑'),
       { kind: 'click', target: folder('衣服/A01') },
       ...workspaceReady,
       { kind: 'click', target: { role: 'AXButton', name: '更多' } },
@@ -461,7 +464,7 @@ export function buildStateEntryPlan(id) {
     ],
     'MEN-03': [
       { kind: 'prepareFixture', operation: 'makeProjectReadOnly' },
-      ...openFolder('衣服/A01'),
+      ...openFolder('衣服/A01', '紧凑'),
       clickToolbar('更多'),
       { kind: 'movePointerToTitlebar' },
       { kind: 'assert', target: { name: '权限设置', position: 'rightmost' } },
@@ -2147,6 +2150,108 @@ async function queryVisibleElement(client, actions, target, timeoutMs = 3000) {
   return result.elements[0]
 }
 
+async function queryOptionalElement(client, actions, target) {
+  const startedAt = new Date().toISOString()
+  try {
+    const result = await client.request('query', { target })
+    actions.push({
+      sequence: actions.length + 1,
+      command: 'query',
+      payload: { target, optional: true },
+      startedAt,
+      completedAt: new Date().toISOString(),
+      ok: true,
+      result,
+    })
+    return result.elements[0] ?? null
+  } catch (error) {
+    if (error?.code !== 'STATE_TARGET_NOT_FOUND') throw error
+    actions.push({
+      sequence: actions.length + 1,
+      command: 'query',
+      payload: { target, optional: true },
+      startedAt,
+      completedAt: new Date().toISOString(),
+      ok: true,
+      result: { missing: true },
+    })
+    return null
+  }
+}
+
+async function clickElement(client, actions, element, window, modifiers) {
+  return requestWithActionLog(client, actions, 'pointer', {
+    kind: 'click',
+    point: {
+      x: element.frame.x - window.x + element.frame.width / 2,
+      y: element.frame.y - window.y + element.frame.height / 2,
+    },
+    ...(modifiers ? { modifiers } : {}),
+  })
+}
+
+async function normalizeWorkspaceState({
+  client,
+  actions,
+  window,
+  density,
+  sidebarWidth,
+}) {
+  let collapse = await queryOptionalElement(client, actions, {
+    role: 'AXButton',
+    name: '折叠文件夹栏',
+  })
+  if (collapse === null) {
+    const expand = await queryVisibleElement(client, actions, {
+      role: 'AXButton',
+      name: '展开文件夹栏',
+    })
+    await clickElement(client, actions, expand, window)
+    collapse = await queryVisibleElement(client, actions, {
+      role: 'AXButton',
+      name: '折叠文件夹栏',
+    })
+  }
+
+  const separator = await queryVisibleElement(client, actions, {
+    role: 'AXSplitter',
+    name: '调整文件夹栏宽度',
+  })
+  const separatorX = separator.frame.x - window.x + separator.frame.width / 2
+  if (Math.abs(separatorX - sidebarWidth) > 1) {
+    await requestWithActionLog(client, actions, 'drag', {
+      from: {
+        x: separatorX,
+        y: separator.frame.y - window.y + separator.frame.height / 2,
+      },
+      to: {
+        x: sidebarWidth,
+        y: separator.frame.y - window.y + separator.frame.height / 2,
+      },
+      durationMs: 300,
+    })
+  }
+
+  const more = await queryVisibleElement(client, actions, {
+    role: 'AXButton',
+    name: '更多',
+  })
+  await clickElement(client, actions, more, window)
+  const settings = await queryVisibleElement(client, actions, { name: '软件设置' })
+  await clickElement(client, actions, settings, window)
+  const densityOption = await queryVisibleElement(client, actions, {
+    role: 'AXRadioButton',
+    name: density,
+  })
+  await clickElement(client, actions, densityOption, window)
+  const close = await queryVisibleElement(client, actions, {
+    role: 'AXButton',
+    name: '关闭',
+  })
+  await clickElement(client, actions, close, window)
+  return collapse
+}
+
 async function waitForMissingElement(
   client,
   actions,
@@ -2297,20 +2402,21 @@ export async function executeStateEntryPlan({
       })
     } else if (step.kind === 'openProject') {
       await openProject({ client, actions, projectPath, window })
+    } else if (step.kind === 'normalizeWorkspace') {
+      visible = await normalizeWorkspaceState({
+        client,
+        actions,
+        window,
+        density: step.density,
+        sidebarWidth: step.sidebarWidth,
+      })
     } else if (step.kind === 'press') {
       visible = await requestWithActionLog(client, actions, 'activate', {
         target: step.target,
       })
     } else if (step.kind === 'click') {
       const element = await queryVisibleElement(client, actions, step.target)
-      await requestWithActionLog(client, actions, 'pointer', {
-        kind: 'click',
-        point: {
-          x: element.frame.x - window.x + element.frame.width / 2,
-          y: element.frame.y - window.y + element.frame.height / 2,
-        },
-        ...(step.modifiers ? { modifiers: step.modifiers } : {}),
-      })
+      await clickElement(client, actions, element, window, step.modifiers)
       visible = element
     } else if (step.kind === 'clickPoint') {
       visible = await requestWithActionLog(client, actions, 'pointer', {

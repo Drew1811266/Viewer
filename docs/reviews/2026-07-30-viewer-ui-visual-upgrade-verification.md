@@ -6,6 +6,8 @@
 - Migration design: `docs/superpowers/specs/2026-08-02-viewer-atlas-to-product-complete-migration-design.md`
 - Non-omission audit: `docs/reviews/2026-08-02-viewer-atlas-product-component-gap-audit.md`
 - Migration ledger: `docs/reviews/2026-08-02-viewer-atlas-product-migration-ledger.md`
+- Native controller design: `docs/superpowers/specs/2026-08-03-viewer-native-acceptance-controller-design.md`
+- Native controller plan: `docs/superpowers/plans/2026-08-03-viewer-native-acceptance-controller-plan.md`
 - Current product commit: `e69a85a7713da97871164aff997657ecb183e33b`
 - Branch: `codex/viewer-atlas-product-migration`
 - Platform: macOS `26.5.2` (`25F84`), built-in Retina display
@@ -22,6 +24,7 @@ The complete gate was run on the current product commit after adding a canonical
 | `pnpm --dir ui test` | 0 | 67 test files; 649 passed and 1 skipped. |
 | `pnpm --dir ui build` | 0 | TypeScript and Vite production build passed. |
 | `node --test scripts/viewer-dev-launcher.test.mjs` | 0 | 20 launcher tests passed, including exact acceptance-config forwarding and one-process safeguards. |
+| `pnpm test:native-acceptance` | 0 | 52 PID/process/window/path/protocol/fixture/manifest/PNG/non-shipping controller tests passed. |
 | `pnpm test:policy` | 0 | 28 policy tests passed; 47 scope requirements mapped exactly once. |
 | `pnpm security` | 0 | 8 security-boundary tests passed; Cargo bans/licenses/sources and npm license policy passed. Duplicate-crate output is warning-only. |
 | `cargo fmt --check` / `cargo clippy --locked --workspace --all-targets -- -D warnings` / `cargo test --locked --workspace` | 0 | Rust formatting, warning-free linting, complete workspace unit/integration coverage and doc tests passed. |
@@ -33,6 +36,7 @@ The current native target is the bare development executable launched only throu
 | State | Current combined comparison | Verdict |
 | --- | --- | --- |
 | `LAU-01` — no project | `target/atlas-product-migration-acceptance/e69a85a7713da97871164aff997657ecb183e33b/1024x720/LAU-01/combined.png`; `target/atlas-product-migration-acceptance/e69a85a7713da97871164aff997657ecb183e33b/1440x900/LAU-01/combined.png` | **Pass.** Product and atlas share the approved `20 / 13 / 36 px` title/body/primary-action scale and 12 px vertical rhythm. At both exact viewports, the only remaining visible difference is the allowed macOS system title bar and its corresponding content-area centering offset; P0/P1/P2 are zero. |
+| `LAU-01` — PID-controller smoke | `target/atlas-product-migration-acceptance/da1c9f833477a45cdd93bb11cdc22c89f54b84de/1024x720/LAU-01/combined.png` | **Pass.** Exact bare PID `4859`, window `194`, `1024 × 720`, clean controller commit and file hashes are recorded in `manifest.json`; the same-state combined review has P0/P1/P2 zero. This smoke proves the controller path and does not substitute for a missing second viewport on another row. |
 
 The prior `PRE-01` and `DIA-02` 1024 comparisons remain useful ancestor-commit diagnostics, but they are not current-commit closure evidence.
 
@@ -56,9 +60,7 @@ This removes the environment-wide 1440 blocker; it does not automatically pass a
 
 ### Native radial-menu screenshot
 
-The current Computer Use application selector resolves the registered `com.viewer.desktop` bundle, not the canonical bare `viewer-desktop` development process. Consequently, prior radial accessibility trees and null screenshots are not valid current-product visual evidence. Shell window capture can capture the correct bare process, but it cannot open the interaction state.
-
-The radial rows therefore remain pending until a supported state-seeding or UI-control route can open the menu in the exact bare process; static component tests and atlas states do not substitute for that native comparison.
+Resolved as a tooling precondition, not yet as row evidence. The approved non-shipping controller binds the exact bare PID and owned window, drives real Accessibility/CoreGraphics input, and captures that window with ScreenCaptureKit. Its 1024 LAU-01 smoke proves the identity, action, capture and hash chain. `RAD-01`–`RAD-07` remain pending until their declared real radial interactions and both joint comparisons are actually recorded; static component tests still do not substitute for native comparison.
 
 ## Completion status
 
@@ -68,4 +70,4 @@ The radial rows therefore remain pending until a supported state-seeding or UI-c
 - The final Task 15 gate is **not complete**: the remaining 88 rows still need current-commit 1024×720 and 1440×900 native evidence before closure.
 - No row is promoted to final pass from historical, browser-only, stretched, or accessibility-tree-only evidence.
 
-The next acceptance work is a supported state-seeding/control route for the project-open and radial-menu states in the canonical bare development process; static component or browser-only states will not be promoted as native evidence.
+The next acceptance work is executing the declared state recipes through the verified PID-bound controller at both exact viewports, beginning with Wave 1 and stopping for product fixes whenever a combined review exposes a P0/P1/P2 difference. Static component or browser-only states will not be promoted as native evidence.

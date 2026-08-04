@@ -1420,6 +1420,90 @@ describe('native acceptance CLI', () => {
       1,
     )
   })
+
+  it('confirms the selected project with a direct pointer click for transient launch states', async () => {
+    const requests = []
+    const projectPath = path.join(
+      os.homedir(),
+      'ViewerAcceptanceRuns',
+      'run-123',
+      '测试图',
+    )
+    const client = {
+      async request(command, payload) {
+        requests.push({ command, payload })
+        if (command !== 'query') return { performed: true, command }
+        if (payload.target?.name === '选择项目文件夹') {
+          return {
+            elements: [
+              {
+                role: 'AXButton',
+                name: '选择项目文件夹',
+                frame: { x: 400, y: 300, width: 120, height: 36 },
+              },
+            ],
+          }
+        }
+        if (payload.target?.role === 'AXStaticText') {
+          return {
+            elements: [
+              {
+                role: 'AXStaticText',
+                name: path.basename(os.homedir()),
+                frame: { x: 100, y: 100, width: 80, height: 18 },
+              },
+            ],
+          }
+        }
+        if (payload.target?.role === 'AXTextField') {
+          return {
+            elements: [
+              {
+                role: 'AXTextField',
+                name: payload.target.name,
+                frame: { x: 200, y: 200, width: 100, height: 18 },
+              },
+            ],
+          }
+        }
+        if (payload.target?.role === 'AXButton' && payload.target?.name === 'Open') {
+          return {
+            elements: [
+              {
+                role: 'AXButton',
+                name: 'Open',
+                frame: { x: 800, y: 600, width: 80, height: 32 },
+              },
+            ],
+          }
+        }
+        throw new AcceptanceError('STATE_TARGET_NOT_FOUND', 'unexpected query', {
+          command,
+          payload,
+        })
+      },
+    }
+
+    await openProjectViaPanel({
+      client,
+      actions: [],
+      projectPath,
+      window: { x: 0, y: 0, width: 1024, height: 720 },
+      waitForWorkspace: false,
+    })
+
+    assert.equal(
+      requests.some(
+        (request) =>
+          request.command === 'activate' && request.payload?.target?.name === 'Open',
+      ),
+      false,
+    )
+    assert.deepEqual(requests.at(-1), {
+      command: 'pointer',
+      payload: { kind: 'click', point: { x: 840, y: 616 } },
+    })
+  })
 })
 
 async function sourceFiles(root) {

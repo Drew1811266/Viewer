@@ -2930,11 +2930,13 @@ export async function openProjectViaPanel({
         point,
       })
     }
-    await requestWithActionLog(client, actions, 'activate', {
-      target: { role: 'AXButton', name: 'Open' },
+    const open = await queryVisibleElement(client, actions, {
+      role: 'AXButton',
+      name: 'Open',
     })
+    await clickElement(client, actions, open, window)
     panelOpen = false
-    if (!waitForWorkspace) return { performed: true, command: 'activate' }
+    if (!waitForWorkspace) return { performed: true, command: 'pointer' }
     const projectVisible = await queryVisibleElement(
       client,
       actions,

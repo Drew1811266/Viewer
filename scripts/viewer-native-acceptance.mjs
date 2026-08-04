@@ -1980,21 +1980,69 @@ async function createEvidenceDirectory({ repoRoot, commit, viewport, id }) {
   return directory
 }
 
+export async function resolveAtlasReferencePath({ repoRoot, viewport, id }) {
+  if (!['1024x720', '1440x900'].includes(viewport) || !STATE_RECIPES.has(id)) {
+    throw new AcceptanceError(
+      'CAPTURE_REFERENCE_PATH',
+      'Atlas reference requires an approved viewport and acceptance state',
+      { viewport, id },
+    )
+  }
+  const atlasPath = path.join(
+    repoRoot,
+    'docs',
+    'prototypes',
+    'viewer-complete-ui-visual-atlas.html',
+  )
+  const atlasHash = createHash('sha256')
+    .update(await readFile(atlasPath))
+    .digest('hex')
+  const referencePath = path.join(
+    repoRoot,
+    'target',
+    'atlas-product-migration-reference',
+    atlasHash,
+    viewport,
+    id,
+    'reference.png',
+  )
+  try {
+    await access(referencePath)
+  } catch (error) {
+    if (error?.code !== 'ENOENT') throw error
+    throw new AcceptanceError(
+      'CAPTURE_REFERENCE_MISSING',
+      'The current atlas hash has no exported reference for this state',
+      { atlasHash, viewport, id, referencePath },
+    )
+  }
+  const image = await readRgbaPng(referencePath)
+  const [width, height] = viewport.split('x').map(Number)
+  if (image.width !== width || image.height !== height) {
+    throw new AcceptanceError(
+      'CAPTURE_REFERENCE_DIMENSIONS',
+      'Atlas reference dimensions do not match the acceptance viewport',
+      {
+        viewport,
+        id,
+        referencePath,
+        actual: { width: image.width, height: image.height },
+      },
+    )
+  }
+  return referencePath
+}
+
 async function normalizeEvidenceImages({ repoRoot, viewport, id, directory, rawPath }) {
   const [width, height] = viewport.split('x').map(Number)
   const nativePath = path.join(directory, 'native.png')
   const referencePath = path.join(directory, 'reference.png')
   const combinedPath = path.join(directory, 'combined.png')
-  const approvedReference = path.join(
+  const approvedReference = await resolveAtlasReferencePath({
     repoRoot,
-    'target',
-    'atlas-product-migration-acceptance',
-    'e69a85a7713da97871164aff997657ecb183e33b',
     viewport,
     id,
-    'reference.png',
-  )
-  await access(approvedReference)
+  })
   await Promise.all([
     execFileAsync('/usr/bin/sips', [
       '-z',

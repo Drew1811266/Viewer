@@ -17,6 +17,7 @@
 - Every UI state must be reached through real keyboard, pointer, context-menu, drag, file dialog, or system actions and must have an observable state assertion.
 - The only accepted viewports are exact `1024 × 720` and `1440 × 900` Viewer windows.
 - Generated evidence stays ignored under `target/atlas-product-migration-acceptance/<commit>/`; only the ledger and verification index are committed.
+- Exported atlas references stay ignored under `target/atlas-product-migration-reference/<atlas-sha256>/<viewport>/<ID>/reference.png`; the controller rejects a missing hash-bound image or dimensions that differ from the requested viewport.
 - A passing automated test never substitutes for the atlas/reference plus native-product joint visual comparison.
 - Use test-driven development: write one failing test, observe the expected failure, implement the minimum behavior, and rerun the focused test before broad gates.
 - Do not add third-party runtime dependencies or include the controller/helper in Tauri builds or `Viewer.app`.

@@ -34,6 +34,7 @@ import {
   selectExactViewer,
   selectExactWindow,
   resetFixtureVariant,
+  resolveAtlasReferencePath,
   validateCapturePreflight,
   validateCommand,
   validateEvidencePath,
@@ -349,6 +350,84 @@ describe('joint PNG evidence', () => {
           0, 0, 255, 255,
           0, 0, 255, 255,
         ]),
+      )
+    } finally {
+      await rm(temporaryRoot, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('atlas reference evidence', () => {
+  it('binds a reference image to the exact atlas hash, viewport and state', async () => {
+    const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), 'viewer-atlas-reference-'))
+    try {
+      const atlasPath = path.join(
+        temporaryRoot,
+        'docs/prototypes/viewer-complete-ui-visual-atlas.html',
+      )
+      await mkdir(path.dirname(atlasPath), { recursive: true })
+      await writeFile(atlasPath, '<!doctype html><title>approved atlas</title>')
+      const atlasHash = '93e7ef93dfcf1e508fa5c55836cfd351da463b1f25cc9e153103352364974e67'
+      const referencePath = path.join(
+        temporaryRoot,
+        'target/atlas-product-migration-reference',
+        atlasHash,
+        '1024x720',
+        'FIL-01',
+        'reference.png',
+      )
+      await mkdir(path.dirname(referencePath), { recursive: true })
+      await writeRgbaPng(referencePath, {
+        width: 1024,
+        height: 720,
+        data: Buffer.alloc(1024 * 720 * 4, 255),
+      })
+
+      assert.equal(
+        await resolveAtlasReferencePath({
+          repoRoot: temporaryRoot,
+          viewport: '1024x720',
+          id: 'FIL-01',
+        }),
+        referencePath,
+      )
+    } finally {
+      await rm(temporaryRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('rejects a reference image whose dimensions do not match its viewport', async () => {
+    const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), 'viewer-atlas-reference-'))
+    try {
+      const atlasPath = path.join(
+        temporaryRoot,
+        'docs/prototypes/viewer-complete-ui-visual-atlas.html',
+      )
+      await mkdir(path.dirname(atlasPath), { recursive: true })
+      await writeFile(atlasPath, '<!doctype html><title>approved atlas</title>')
+      const atlasHash = '93e7ef93dfcf1e508fa5c55836cfd351da463b1f25cc9e153103352364974e67'
+      const referencePath = path.join(
+        temporaryRoot,
+        'target/atlas-product-migration-reference',
+        atlasHash,
+        '1440x900',
+        'FIL-01',
+        'reference.png',
+      )
+      await mkdir(path.dirname(referencePath), { recursive: true })
+      await writeRgbaPng(referencePath, {
+        width: 1024,
+        height: 720,
+        data: Buffer.alloc(1024 * 720 * 4, 255),
+      })
+
+      await assert.rejects(
+        resolveAtlasReferencePath({
+          repoRoot: temporaryRoot,
+          viewport: '1440x900',
+          id: 'FIL-01',
+        }),
+        { code: 'CAPTURE_REFERENCE_DIMENSIONS' },
       )
     } finally {
       await rm(temporaryRoot, { recursive: true, force: true })

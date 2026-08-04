@@ -64,6 +64,7 @@ docs/superpowers/plans/
 ```text
 target/atlas-product-migration-fixture/ViewerAcceptance/   只读基准夹具
 $HOME/ViewerAcceptanceRuns/<run-id>/                       一次性可写副本
+target/atlas-product-migration-reference/<atlas-sha256>/<viewport>/<ID>/reference.png
 target/atlas-product-migration-acceptance/<commit>/<viewport>/<ID>/
 ```
 
@@ -204,6 +205,7 @@ target/atlas-product-migration-acceptance/<commit>/<viewport>/<ID>/
 6. 对一个台账 ID 重置需要的夹具变体，执行真实状态配方并记录动作日志。
 7. 状态断言通过后再次验证窗口，捕获原生产品图并生成元数据。
 8. 参考图与原生产品图进入同一个联合对照输入；视觉裁决仍由逐项检查完成，不由像素相似度单独决定。
+9. 参考图必须从当前 `viewer-complete-ui-visual-atlas.html` 导出，并按该文件完整 SHA-256、精确视口与状态 ID 寻址；历史产品提交中的参考截图不能替代当前图谱基准。
 9. 当前 ID 通过后才进入下一个 ID；失败则保留现场并停止该波次。
 10. 运行结束恢复系统设置，关闭辅助进程，保留证据与诊断，删除或保留一次性夹具由非破坏性清理策略决定。
 

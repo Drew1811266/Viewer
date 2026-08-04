@@ -270,6 +270,10 @@ describe('state entry plans', () => {
       ),
       true,
     )
+    assert.deepEqual(expanded.at(-1), {
+      kind: 'assert',
+      target: { name: '交付清单.xlsx' },
+    })
   })
 
   it('builds the advanced-filter visual state from six real conditions', () => {

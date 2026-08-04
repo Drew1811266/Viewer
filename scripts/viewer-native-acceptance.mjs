@@ -412,7 +412,7 @@ export function buildStateEntryPlan(id) {
       { kind: 'click', target: { name: '商品-03.jpg' }, modifiers: ['command'] },
       { kind: 'click', target: { role: 'AXButton', name: '其它文件 · 3' } },
       { kind: 'movePointerToTitlebar' },
-      { kind: 'assert', target: { name: '文件清单.xlsx' } },
+      { kind: 'assert', target: { name: '交付清单.xlsx' } },
     ],
     'OTH-03': [
       { kind: 'prepareFixture', operation: 'prepareOrganizationDrag' },

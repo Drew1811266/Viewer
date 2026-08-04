@@ -37,7 +37,7 @@ const folders: FolderTreeItem[] = [
 afterEach(() => vi.unstubAllGlobals())
 
 describe('FolderTree', () => {
-  it('uses stable sidebar skeleton rows only until folder rows are available', () => {
+  it('keeps stable sidebar skeleton rows for the complete loading transition', () => {
     const rendered = render(
       <FolderTree folders={[]} loading selectedId={null} onSelect={vi.fn()} />,
     )
@@ -46,6 +46,10 @@ describe('FolderTree', () => {
     expect(screen.queryByRole('treeitem')).not.toBeInTheDocument()
 
     rendered.rerender(<FolderTree folders={folders} loading selectedId={null} onSelect={vi.fn()} />)
+    expect(rendered.container.querySelectorAll('.folder-tree-skeleton-row')).toHaveLength(10)
+    expect(screen.queryByRole('treeitem')).not.toBeInTheDocument()
+
+    rendered.rerender(<FolderTree folders={folders} selectedId={null} onSelect={vi.fn()} />)
     expect(rendered.container.querySelector('.folder-tree-skeleton-row')).not.toBeInTheDocument()
     expect(screen.getByRole('treeitem', { name: 'catalog' })).toBeVisible()
   })

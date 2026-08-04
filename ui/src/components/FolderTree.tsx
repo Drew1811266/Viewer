@@ -56,7 +56,7 @@ export default function FolderTree({
 
   return (
     <div className="folder-tree" role="tree" aria-label="项目文件夹">
-      {loading && visible.length === 0 ? (
+      {loading ? (
         <div className="folder-tree-skeleton-list" aria-hidden="true">
           {[
             'folder-skeleton-1',

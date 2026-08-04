@@ -30,7 +30,9 @@ interface DesiredProjection {
 const NATIVE_INITIAL_PROJECTION_HOLD_MS = 600
 
 async function holdNativeInitialProjectionForVisualStability() {
-  if (!('__TAURI_INTERNALS__' in globalThis)) return
+  if (import.meta.env.MODE === 'test' && !('__VIEWER_TEST_NATIVE_LOADING_HOLD__' in globalThis)) {
+    return
+  }
   await new Promise<void>((resolve) => {
     setTimeout(resolve, NATIVE_INITIAL_PROJECTION_HOLD_MS)
   })

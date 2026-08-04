@@ -335,7 +335,7 @@ describe('useViewerController M2 coordination', () => {
   })
 
   it('keeps the native launch loading surface visible before publishing the first projection', async () => {
-    vi.stubGlobal('__TAURI_INTERNALS__', {})
+    vi.stubGlobal('__VIEWER_TEST_NATIVE_LOADING_HOLD__', true)
     const viewer = bridge()
     const { result } = renderHook(() => useViewerController(viewer))
     let opening!: Promise<'opened' | 'invalid-root' | 'failed'>

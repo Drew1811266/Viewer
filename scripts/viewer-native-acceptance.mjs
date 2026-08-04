@@ -224,7 +224,7 @@ export function buildStateEntryPlan(id) {
   const folder = (name) => ({ role: 'AXGroup', name })
   const workspaceReady = [
     { kind: 'waitMissing', target: { name: '扫描项目' } },
-    { kind: 'waitMissing', target: { name: '加载可见缩略图' } },
+    { kind: 'waitMissing', target: { name: '正在生成缩略图' } },
     {
       kind: 'waitMissing',
       target: { name: '2 个任务已完成' },
@@ -281,7 +281,7 @@ export function buildStateEntryPlan(id) {
       { kind: 'beginOpenProject' },
       { kind: 'click', target: folder('衣服/A01') },
       { kind: 'captureCheckpoint' },
-      { kind: 'assert', target: { role: 'AXStaticText', name: '加载可见缩略图' } },
+      { kind: 'assert', target: { role: 'AXStaticText', name: '正在生成缩略图' } },
     ],
     'LAU-08': [
       { kind: 'prepareFixture', operation: 'corruptViewerMetadata' },
@@ -292,6 +292,7 @@ export function buildStateEntryPlan(id) {
       { kind: 'prepareFixture', operation: 'seedRecoveryJournal' },
       openProject,
       ...workspaceReady,
+      { kind: 'click', target: folder('衣服/A01') },
       { kind: 'assert', target: { role: 'AXHeading', name: '项目状态已恢复' } },
     ],
     'SID-01': [

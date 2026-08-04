@@ -273,6 +273,10 @@ describe('Viewer empty state', () => {
       'data-thumbnail-loading',
       'true',
     )
+    const sidebar = screen.getByRole('complementary', { name: '文件夹栏' })
+    expect(within(sidebar).queryByRole('button', { name: 'Catalog' })).not.toBeInTheDocument()
+    expect(sidebar.querySelectorAll('.folder-tree-skeleton-row')).toHaveLength(10)
+    expect(screen.getByText('正在生成缩略图')).toBeVisible()
 
     await act(async () => {
       image.resolve({

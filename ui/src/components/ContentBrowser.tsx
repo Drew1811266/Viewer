@@ -207,7 +207,7 @@ export default function ContentBrowser({
     const settled = work.completed + work.failed
     onThumbnailTaskChange({
       id: 'visible-thumbnails',
-      label: '加载可见缩略图',
+      label: '正在生成缩略图',
       status: settled < work.requested ? 'running' : work.failed > 0 ? 'failed' : 'complete',
       requested: work.requested,
       completed: work.completed,

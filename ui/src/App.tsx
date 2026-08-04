@@ -285,14 +285,18 @@ function ViewerWorkspace({ bridge }: { bridge: ViewerBridge }) {
       hasResults: state.operation.results !== null,
     }
   }, [state.operation])
-  const visibleTasks = useMemo(
-    () =>
-      [scanTask, thumbnailTask, textTask, operationTask].filter(
-        (task): task is TaskFeedback =>
-          task !== null && (!dismissedTasks.has(task.id) || task.status === 'running'),
-      ),
-    [dismissedTasks, operationTask, scanTask, textTask, thumbnailTask],
-  )
+  const visibleTasks = useMemo(() => {
+    const candidates = [scanTask, thumbnailTask, textTask, operationTask].filter(
+      (task): task is TaskFeedback => task !== null,
+    )
+    const running = candidates.some((task) => task.status === 'running')
+    return candidates.filter(
+      (task) =>
+        (!dismissedTasks.has(task.id) || task.status === 'running') &&
+        !(running && task.status === 'complete' && !task.hasResults),
+    )
+  }, [dismissedTasks, operationTask, scanTask, textTask, thumbnailTask])
+  const thumbnailLoading = thumbnailTask?.status === 'running'
   const selectFolderTarget = useCallback(
     (entityId: string | null) => {
       setSelectedFiles([])
@@ -1014,7 +1018,7 @@ function ViewerWorkspace({ bridge }: { bridge: ViewerBridge }) {
           style={{ width: effectiveSidebarCollapsed ? 52 : sidebarWidth }}
         >
           <p className="folder-tree-label">项目目录</p>
-          {state.workspace !== null && (
+          {state.workspace !== null && !thumbnailLoading && (
             <button
               type="button"
               className="project-root-button"
@@ -1026,7 +1030,7 @@ function ViewerWorkspace({ bridge }: { bridge: ViewerBridge }) {
           )}
           <FolderTree
             folders={state.folders}
-            loading={state.workspace === null}
+            loading={state.workspace === null || thumbnailLoading}
             selectedId={state.selectedFolderId}
             onSelect={selectFolderTarget}
             organizationDropTarget={organizationDropTarget}
@@ -1132,10 +1136,10 @@ function ViewerWorkspace({ bridge }: { bridge: ViewerBridge }) {
                   <div
                     className="content-workspace-surface"
                     data-testid="content-workspace-surface"
-                    data-thumbnail-loading={thumbnailTask?.status === 'running' || undefined}
+                    data-thumbnail-loading={thumbnailLoading || undefined}
                     hidden={compareOpen}
                   >
-                    {thumbnailTask?.status === 'running' && <WorkspaceLoadingState />}
+                    {thumbnailLoading && <WorkspaceLoadingState />}
                     {state.showingAggregate && (
                       <ViewerStatusTag className="aggregate-label" tone="info">
                         全部后代文件

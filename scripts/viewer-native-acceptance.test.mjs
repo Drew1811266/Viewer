@@ -131,7 +131,7 @@ describe('state entry plans', () => {
       },
       { kind: 'click', target: { role: 'AXGroup', name: '衣服/A01' } },
       { kind: 'waitMissing', target: { name: '扫描项目' } },
-      { kind: 'waitMissing', target: { name: '加载可见缩略图' } },
+      { kind: 'waitMissing', target: { name: '正在生成缩略图' } },
       {
         kind: 'waitMissing',
         target: { name: '2 个任务已完成' },
@@ -149,7 +149,7 @@ describe('state entry plans', () => {
       },
       { kind: 'click', target: { role: 'AXGroup', name: '衣服/A01' } },
       { kind: 'waitMissing', target: { name: '扫描项目' } },
-      { kind: 'waitMissing', target: { name: '加载可见缩略图' } },
+      { kind: 'waitMissing', target: { name: '正在生成缩略图' } },
       {
         kind: 'waitMissing',
         target: { name: '2 个任务已完成' },
@@ -167,7 +167,7 @@ describe('state entry plans', () => {
       },
       { kind: 'click', target: { role: 'AXGroup', name: '衣服/A01' } },
       { kind: 'waitMissing', target: { name: '扫描项目' } },
-      { kind: 'waitMissing', target: { name: '加载可见缩略图' } },
+      { kind: 'waitMissing', target: { name: '正在生成缩略图' } },
       {
         kind: 'waitMissing',
         target: { name: '2 个任务已完成' },
@@ -187,7 +187,7 @@ describe('state entry plans', () => {
       },
       { kind: 'click', target: { role: 'AXGroup', name: '衣服/A01' } },
       { kind: 'waitMissing', target: { name: '扫描项目' } },
-      { kind: 'waitMissing', target: { name: '加载可见缩略图' } },
+      { kind: 'waitMissing', target: { name: '正在生成缩略图' } },
       {
         kind: 'waitMissing',
         target: { name: '2 个任务已完成' },
@@ -259,7 +259,7 @@ describe('state entry plans', () => {
 
     assert.deepEqual(plan.slice(3, 6), [
       { kind: 'waitMissing', target: { name: '扫描项目' } },
-      { kind: 'waitMissing', target: { name: '加载可见缩略图' } },
+      { kind: 'waitMissing', target: { name: '正在生成缩略图' } },
       {
         kind: 'waitMissing',
         target: { name: '2 个任务已完成' },
@@ -419,7 +419,7 @@ describe('state entry plans', () => {
       { kind: 'beginOpenProject' },
       { kind: 'click', target: { role: 'AXGroup', name: '衣服/A01' } },
       { kind: 'captureCheckpoint' },
-      { kind: 'assert', target: { role: 'AXStaticText', name: '加载可见缩略图' } },
+      { kind: 'assert', target: { role: 'AXStaticText', name: '正在生成缩略图' } },
     ])
     assert.deepEqual(buildStateEntryPlan('LAU-08'), [
       { kind: 'prepareFixture', operation: 'corruptViewerMetadata' },
@@ -430,12 +430,13 @@ describe('state entry plans', () => {
       { kind: 'prepareFixture', operation: 'seedRecoveryJournal' },
       { kind: 'openProject' },
       { kind: 'waitMissing', target: { name: '扫描项目' } },
-      { kind: 'waitMissing', target: { name: '加载可见缩略图' } },
+      { kind: 'waitMissing', target: { name: '正在生成缩略图' } },
       {
         kind: 'waitMissing',
         target: { name: '2 个任务已完成' },
         stableMs: 1_000,
       },
+      { kind: 'click', target: { role: 'AXGroup', name: '衣服/A01' } },
       { kind: 'assert', target: { role: 'AXHeading', name: '项目状态已恢复' } },
     ])
   })
@@ -507,7 +508,7 @@ describe('state entry plans', () => {
         commands.push({ command, payload })
         if (command === 'query') {
           if (
-            ['扫描项目', '2 个任务已完成', '加载可见缩略图'].includes(payload.target.name)
+            ['扫描项目', '2 个任务已完成', '正在生成缩略图'].includes(payload.target.name)
           ) {
             throw new AcceptanceError('STATE_TARGET_NOT_FOUND', 'not found')
           }
@@ -566,7 +567,7 @@ describe('state entry plans', () => {
         commands.push({ command, payload })
         if (command === 'query') {
           if (
-            ['扫描项目', '2 个任务已完成', '加载可见缩略图'].includes(payload.target.name)
+            ['扫描项目', '2 个任务已完成', '正在生成缩略图'].includes(payload.target.name)
           ) {
             throw new AcceptanceError('STATE_TARGET_NOT_FOUND', 'not found')
           }
@@ -688,7 +689,7 @@ describe('state entry plans', () => {
         commands.push({ command, payload })
         if (command === 'query') {
           if (
-            ['扫描项目', '2 个任务已完成', '加载可见缩略图'].includes(payload.target.name)
+            ['扫描项目', '2 个任务已完成', '正在生成缩略图'].includes(payload.target.name)
           ) {
             throw new AcceptanceError('STATE_TARGET_NOT_FOUND', 'not found')
           }

@@ -221,11 +221,20 @@ describe('state entry plans', () => {
       { kind: 'click', target: { role: 'AXCheckBox', name: '保留' } },
       { kind: 'click', target: { role: 'AXCheckBox', name: '待定' } },
     ])
-    assert.deepEqual(plan.find((step) => step.target?.name === '最早修改时间'), {
-      kind: 'setValue',
-      target: { name: '最早修改时间', position: 'rightmost' },
-      text: '2026-01-01T00:00',
-    })
+    const dateIndex = plan.findIndex((step) => step.target?.name === '最早修改时间')
+    assert.deepEqual(plan.slice(dateIndex, dateIndex + 11), [
+      { kind: 'focus', target: { name: '最早修改时间', position: 'rightmost' } },
+      { kind: 'key', key: '2', modifiers: [] },
+      { kind: 'key', key: '0', modifiers: [] },
+      { kind: 'key', key: '2', modifiers: [] },
+      { kind: 'key', key: '6', modifiers: [] },
+      { kind: 'key', key: 'arrowRight', modifiers: [] },
+      { kind: 'key', key: '0', modifiers: [] },
+      { kind: 'key', key: '1', modifiers: [] },
+      { kind: 'key', key: 'arrowRight', modifiers: [] },
+      { kind: 'key', key: '0', modifiers: [] },
+      { kind: 'key', key: '1', modifiers: [] },
+    ])
   })
 
   it('waits for the completion task to stay absent before capture', () => {

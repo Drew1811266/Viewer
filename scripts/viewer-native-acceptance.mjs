@@ -249,20 +249,23 @@ export function buildStateEntryPlan(id) {
       { kind: 'click', target: folder('衣服/A01') },
       ...workspaceReady,
       { kind: 'click', target: { name: '商品-01.jpg' } },
+      { kind: 'movePointerToTitlebar' },
       { kind: 'assert', target: { role: 'AXGroup', name: '选择摘要' } },
     ],
     'FIL-01': [
       openProject,
       { kind: 'click', target: folder('衣服/A01') },
       ...workspaceReady,
-      { kind: 'press', target: { role: 'AXButton', name: '筛选' } },
+      { kind: 'click', target: { role: 'AXButton', name: '筛选' } },
+      { kind: 'movePointerToTitlebar' },
       { kind: 'assert', target: { role: 'AXHeading', name: '筛选' } },
     ],
     'MEN-02': [
       openProject,
       { kind: 'click', target: folder('衣服/A01') },
       ...workspaceReady,
-      { kind: 'press', target: { role: 'AXButton', name: '更多' } },
+      { kind: 'click', target: { role: 'AXButton', name: '更多' } },
+      { kind: 'movePointerToTitlebar' },
       { kind: 'assert', target: { name: '软件设置' } },
     ],
   }
@@ -2002,6 +2005,11 @@ export async function executeStateEntryPlan({
         10_000,
         step.stableMs ?? 0,
       )
+    } else if (step.kind === 'movePointerToTitlebar') {
+      await requestWithActionLog(client, actions, 'pointer', {
+        kind: 'move',
+        point: { x: window.width / 2, y: 12 },
+      })
     } else if (step.kind === 'assert') {
       visible = await queryVisibleElement(client, actions, step.target, 10_000)
     } else {

@@ -154,7 +154,8 @@ describe('state entry plans', () => {
         target: { name: '2 个任务已完成' },
         stableMs: 1_000,
       },
-      { kind: 'press', target: { role: 'AXButton', name: '筛选' } },
+      { kind: 'click', target: { role: 'AXButton', name: '筛选' } },
+      { kind: 'movePointerToTitlebar' },
       { kind: 'assert', target: { role: 'AXHeading', name: '筛选' } },
     ])
     assert.deepEqual(buildStateEntryPlan('MEN-02'), [
@@ -167,7 +168,8 @@ describe('state entry plans', () => {
         target: { name: '2 个任务已完成' },
         stableMs: 1_000,
       },
-      { kind: 'press', target: { role: 'AXButton', name: '更多' } },
+      { kind: 'click', target: { role: 'AXButton', name: '更多' } },
+      { kind: 'movePointerToTitlebar' },
       { kind: 'assert', target: { name: '软件设置' } },
     ])
   })
@@ -175,6 +177,7 @@ describe('state entry plans', () => {
   it('asserts thumbnail selection through the stable accessibility label', () => {
     const plan = buildStateEntryPlan('THU-05')
 
+    assert.deepEqual(plan.at(-2), { kind: 'movePointerToTitlebar' })
     assert.deepEqual(plan.at(-1), {
       kind: 'assert',
       target: { role: 'AXGroup', name: '选择摘要' },
@@ -1887,6 +1890,12 @@ describe('native validation', () => {
       {
         ...base,
         sequence: 8,
+        command: 'pointer',
+        payload: { kind: 'move', point: { x: 512, y: 12 } },
+      },
+      {
+        ...base,
+        sequence: 9,
         command: 'drag',
         payload: {
           from: { x: 100, y: 200 },
@@ -1896,19 +1905,19 @@ describe('native validation', () => {
       },
       {
         ...base,
-        sequence: 9,
+        sequence: 10,
         command: 'capture',
         payload: { path: '/tmp/viewer-acceptance-product.png' },
       },
       {
         ...base,
-        sequence: 10,
+        sequence: 11,
         command: 'shutdown',
         payload: {},
       },
       {
         ...base,
-        sequence: 11,
+        sequence: 12,
         command: 'setValue',
         payload: {
           target: { role: 'AXTextField', name: '搜索' },
@@ -1917,7 +1926,7 @@ describe('native validation', () => {
       },
       {
         ...base,
-        sequence: 12,
+        sequence: 13,
         command: 'drag',
         payload: {
           from: { x: 100, y: 200 },
@@ -1944,7 +1953,7 @@ describe('native validation', () => {
       assert.equal(result.exitCode, 0)
       assert.equal(result.stderr, '')
       assert.deepEqual(
-        result.responses.slice(0, 10).map((response) => ({
+        result.responses.slice(0, 11).map((response) => ({
           ok: response.ok,
           performed: response.result.performed,
           command: response.result.command,
@@ -1957,13 +1966,14 @@ describe('native validation', () => {
           { ok: true, performed: true, command: 'key' },
           { ok: true, performed: true, command: 'pointer' },
           { ok: true, performed: true, command: 'pointer' },
+          { ok: true, performed: true, command: 'pointer' },
           { ok: true, performed: true, command: 'drag' },
           { ok: true, performed: true, command: 'capture' },
           { ok: true, performed: true, command: 'shutdown' },
         ],
       )
       assert.deepEqual(
-        result.responses.slice(10).map((response) => response.error.code),
+        result.responses.slice(11).map((response) => response.error.code),
         ['SAFETY_COMMAND', 'SAFETY_POINT_OUTSIDE_WINDOW'],
       )
     } finally {

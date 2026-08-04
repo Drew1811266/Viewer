@@ -337,7 +337,7 @@ private func validateRequestPayload(_ request: RequestEnvelope) throws {
             }
         } else {
             guard Set(payload.keys) == ["kind", "point"],
-                  ["click", "doubleClick", "rightClick"].contains(kind)
+                  ["click", "doubleClick", "rightClick", "move"].contains(kind)
             else {
                 throw AcceptanceFailure(code: "SAFETY_COMMAND", message: "Invalid pointer payload")
             }
@@ -1118,6 +1118,21 @@ private final class LiveMacSystem: MacSystem {
             throw AcceptanceFailure(code: "SAFETY_COMMAND", message: "Invalid pointer payload")
         }
         let point = try screenPoint(payload["point"], window: window)
+        if kind == "move" {
+            guard let event = CGEvent(
+                mouseEventSource: nil,
+                mouseType: .mouseMoved,
+                mouseCursorPosition: point,
+                mouseButton: .left
+            ) else {
+                throw AcceptanceFailure(
+                    code: "STATE_ACTION_FAILED",
+                    message: "Unable to create pointer move event"
+                )
+            }
+            event.post(tap: .cghidEventTap)
+            return
+        }
         if kind == "scroll" {
             CGEvent(
                 mouseEventSource: nil,

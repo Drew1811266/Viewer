@@ -258,6 +258,7 @@ private let allowedKeys: Set<String> = [
     "arrowRight", "home", "period", "end", "delete", "backspace",
     "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m",
     "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z",
+    "0", "1", "2", "3", "4", "5", "6", "7", "8", "9",
 ]
 private let allowedModifiers: Set<String> = ["shift", "control", "option", "command"]
 
@@ -1073,6 +1074,8 @@ private final class LiveMacSystem: MacSystem {
             "h": 4, "i": 34, "j": 38, "k": 40, "l": 37, "m": 46, "n": 45,
             "o": 31, "p": 35, "q": 12, "r": 15, "s": 1, "t": 17, "u": 32,
             "v": 9, "w": 13, "x": 7, "y": 16, "z": 6,
+            "0": 29, "1": 18, "2": 19, "3": 20, "4": 21,
+            "5": 23, "6": 22, "7": 26, "8": 28, "9": 25,
         ]
         guard let key = payload["key"] as? String,
               let keyCode = keyCodes[key],

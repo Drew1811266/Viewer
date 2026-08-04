@@ -1445,7 +1445,7 @@ describe('protocol schema', () => {
       payload: { key: 'escape', modifiers: ['shift', 'command'] },
     }
     assert.deepEqual(validateCommand(request, { window }), request)
-    for (const key of ['g', 'period']) {
+    for (const key of ['g', 'period', '0', '9']) {
       assert.deepEqual(
         validateCommand(
           {

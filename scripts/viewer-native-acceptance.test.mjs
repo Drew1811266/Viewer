@@ -131,18 +131,25 @@ async function createFixtureBaseline(repoDirectory) {
 describe('fixture run', () => {
   it('copies a manifest-bound baseline without mutating the source', async () => {
     const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), 'viewer-fixture-run-'))
+    const runId = `acceptance-001-${process.pid}-${Date.now()}`
+    const expectedRunRoot = path.join(
+      os.homedir(),
+      'ViewerAcceptanceRuns',
+      runId,
+    )
     try {
       const baseline = await createFixtureBaseline(temporaryRoot)
       const baselineBefore = await readFile(path.join(baseline, '文档/sample.md'))
       const run = await createFixtureRun({
         repoRoot: temporaryRoot,
-        runId: 'acceptance-001',
+        runId,
       })
       const manifest = JSON.parse(await readFile(run.manifestPath, 'utf8'))
 
-      assert.equal(run.runRoot, path.join(temporaryRoot, 'target/atlas-product-migration-fixture/runs/acceptance-001'))
+      assert.equal(run.runRoot, expectedRunRoot)
+      assert.equal(run.variantsRoot, expectedRunRoot)
       assert.equal(manifest.schemaVersion, 1)
-      assert.equal(manifest.runId, 'acceptance-001')
+      assert.equal(manifest.runId, runId)
       assert.ok(manifest.files.some((file) => file.path === '文档/sample.md'))
       assert.ok(
         manifest.files.every(
@@ -152,21 +159,28 @@ describe('fixture run', () => {
       )
       assert.deepEqual(await readFile(path.join(baseline, '文档/sample.md')), baselineBefore)
       await assert.rejects(
-        createFixtureRun({ repoRoot: temporaryRoot, runId: 'acceptance-001' }),
+        createFixtureRun({ repoRoot: temporaryRoot, runId }),
         { code: 'FIXTURE_RUN_EXISTS' },
       )
     } finally {
+      await rm(expectedRunRoot, { recursive: true, force: true })
       await rm(temporaryRoot, { recursive: true, force: true })
     }
   })
 
   it('restores a named variant deterministically from its private snapshot', async () => {
     const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), 'viewer-fixture-reset-'))
+    const runId = `acceptance-002-${process.pid}-${Date.now()}`
+    const expectedRunRoot = path.join(
+      os.homedir(),
+      'ViewerAcceptanceRuns',
+      runId,
+    )
     try {
       await createFixtureBaseline(temporaryRoot)
       const run = await createFixtureRun({
         repoRoot: temporaryRoot,
-        runId: 'acceptance-002',
+        runId,
       })
       const first = await resetFixtureVariant(run, 'search-results')
       await rm(path.join(first, '衣服/A01/image.jpg'))
@@ -177,29 +191,58 @@ describe('fixture run', () => {
       assert.equal(await readFile(path.join(restored, '衣服/A01/image.jpg'), 'utf8'), 'jpeg-data')
       assert.equal(await readFile(path.join(restored, '文档/sample.md'), 'utf8'), '# fixture')
     } finally {
+      await rm(expectedRunRoot, { recursive: true, force: true })
       await rm(temporaryRoot, { recursive: true, force: true })
     }
   })
 
   it('rejects a symbolic link anywhere in the source baseline', async () => {
     const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), 'viewer-fixture-link-'))
+    const runId = `acceptance-003-${process.pid}-${Date.now()}`
+    const expectedRunRoot = path.join(
+      os.homedir(),
+      'ViewerAcceptanceRuns',
+      runId,
+    )
     try {
       const baseline = await createFixtureBaseline(temporaryRoot)
       await symlink('/tmp', path.join(baseline, 'escape'))
       await assert.rejects(
-        createFixtureRun({ repoRoot: temporaryRoot, runId: 'acceptance-003' }),
+        createFixtureRun({ repoRoot: temporaryRoot, runId }),
         { code: 'FIXTURE_SYMLINK' },
       )
       await assert.rejects(
-        stat(
-          path.join(
-            temporaryRoot,
-            'target/atlas-product-migration-fixture/runs/acceptance-003',
-          ),
-        ),
+        stat(expectedRunRoot),
         { code: 'ENOENT' },
       )
     } finally {
+      await rm(expectedRunRoot, { recursive: true, force: true })
+      await rm(temporaryRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('removes only the exact completed home-scoped run', async () => {
+    const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), 'viewer-fixture-cleanup-'))
+    const runId = `cleanup-${process.pid}-${Date.now()}`
+    const siblingId = `cleanup-sibling-${process.pid}-${Date.now()}`
+    const runsRoot = path.join(os.homedir(), 'ViewerAcceptanceRuns')
+    const expectedRunRoot = path.join(runsRoot, runId)
+    const siblingRoot = path.join(runsRoot, siblingId)
+    try {
+      await createFixtureBaseline(temporaryRoot)
+      const run = await createFixtureRun({ repoRoot: temporaryRoot, runId })
+      await mkdir(siblingRoot, { recursive: true })
+      await writeFile(path.join(siblingRoot, 'keep.txt'), 'keep')
+      const acceptance = await import('./viewer-native-acceptance.mjs')
+
+      assert.equal(typeof acceptance.removeFixtureRun, 'function')
+      await acceptance.removeFixtureRun(run)
+
+      await assert.rejects(stat(expectedRunRoot), { code: 'ENOENT' })
+      assert.equal(await readFile(path.join(siblingRoot, 'keep.txt'), 'utf8'), 'keep')
+    } finally {
+      await rm(expectedRunRoot, { recursive: true, force: true })
+      await rm(siblingRoot, { recursive: true, force: true })
       await rm(temporaryRoot, { recursive: true, force: true })
     }
   })
@@ -857,13 +900,10 @@ describe('coordinate validation', () => {
 
 describe('fixture path validation', () => {
   it('accepts only the current disposable run root and descendants', async () => {
-    const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), 'viewer-acceptance-'))
-    const runId = 'run-123'
+    const runId = `run-123-${process.pid}-${Date.now()}`
     const runRoot = path.join(
-      temporaryRoot,
-      'target',
-      'atlas-product-migration-fixture',
-      'runs',
+      os.homedir(),
+      'ViewerAcceptanceRuns',
       runId,
     )
     const child = path.join(runRoot, 'project', '衣服', 'A01')
@@ -871,33 +911,35 @@ describe('fixture path validation', () => {
     try {
       await mkdir(child, { recursive: true })
       assert.equal(
-        await validateFixturePath(runRoot, { repoRoot: temporaryRoot, runId }),
+        await validateFixturePath(runRoot, { runId }),
         runRoot,
       )
       assert.equal(
-        await validateFixturePath(child, { repoRoot: temporaryRoot, runId }),
+        await validateFixturePath(child, { runId }),
         child,
       )
     } finally {
-      await rm(temporaryRoot, { recursive: true, force: true })
+      await rm(runRoot, { recursive: true, force: true })
     }
   })
 
   it('rejects the baseline, repository root, sibling runs and parent escape', async () => {
     const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), 'viewer-acceptance-'))
-    const runId = 'run-123'
+    const runId = `run-123-${process.pid}-${Date.now()}`
     const fixtureRoot = path.join(
       temporaryRoot,
       'target',
       'atlas-product-migration-fixture',
     )
-    const runRoot = path.join(fixtureRoot, 'runs', runId)
+    const runsRoot = path.join(os.homedir(), 'ViewerAcceptanceRuns')
+    const runRoot = path.join(runsRoot, runId)
+    const siblingRun = path.join(runsRoot, `run-456-${process.pid}-${Date.now()}`)
     const rejected = [
       '/',
       temporaryRoot,
       path.join(fixtureRoot, 'ViewerAcceptance'),
-      path.join(fixtureRoot, 'runs', 'run-456'),
-      path.join(runRoot, '..', 'run-456'),
+      siblingRun,
+      path.join(runRoot, '..', path.basename(siblingRun)),
       '$HOME/project',
       '~/project',
       path.join(runRoot, '*.jpg'),
@@ -906,28 +948,28 @@ describe('fixture path validation', () => {
     try {
       await mkdir(path.join(fixtureRoot, 'ViewerAcceptance'), { recursive: true })
       await mkdir(runRoot, { recursive: true })
-      await mkdir(path.join(fixtureRoot, 'runs', 'run-456'), { recursive: true })
+      await mkdir(siblingRun, { recursive: true })
 
       for (const candidate of rejected) {
         await assert.rejects(
-          validateFixturePath(candidate, { repoRoot: temporaryRoot, runId }),
+          validateFixturePath(candidate, { runId }),
           { code: 'SAFETY_FIXTURE_PATH' },
         )
       }
     } finally {
       await rm(temporaryRoot, { recursive: true, force: true })
+      await rm(runRoot, { recursive: true, force: true })
+      await rm(siblingRun, { recursive: true, force: true })
     }
   })
 
   it('rejects a symbolic-link escape from the approved run', async () => {
     const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), 'viewer-acceptance-'))
     const outside = await mkdtemp(path.join(os.tmpdir(), 'viewer-acceptance-outside-'))
-    const runId = 'run-123'
+    const runId = `run-123-${process.pid}-${Date.now()}`
     const runRoot = path.join(
-      temporaryRoot,
-      'target',
-      'atlas-product-migration-fixture',
-      'runs',
+      os.homedir(),
+      'ViewerAcceptanceRuns',
       runId,
     )
     const link = path.join(runRoot, 'escape')
@@ -939,13 +981,13 @@ describe('fixture path validation', () => {
 
       await assert.rejects(
         validateFixturePath(path.join(link, 'secret.txt'), {
-          repoRoot: temporaryRoot,
           runId,
         }),
         { code: 'SAFETY_FIXTURE_PATH' },
       )
     } finally {
       await rm(temporaryRoot, { recursive: true, force: true })
+      await rm(runRoot, { recursive: true, force: true })
       await rm(outside, { recursive: true, force: true })
     }
   })

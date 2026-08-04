@@ -451,12 +451,17 @@ export async function createFixtureRun({ repoRoot, runId }) {
     )
   }
   const sourceFiles = await scanFixtureTree(sourceRoot)
-  const runsRoot = path.join(fixtureRoot, 'runs')
+  const runsRoot = path.join(homedir(), 'ViewerAcceptanceRuns')
   const runRoot = path.join(runsRoot, runId)
   const baselineRoot = path.join(runRoot, 'baseline')
-  const variantsRoot = path.join(runRoot, 'variants')
+  const variantsRoot = runRoot
   const manifestPath = path.join(runRoot, 'fixture-manifest.json')
   await mkdir(runsRoot, { recursive: true })
+  await assertNoSymlinkBetween(
+    homedir(),
+    runsRoot,
+    'SAFETY_FIXTURE_PATH',
+  )
   try {
     await mkdir(runRoot)
   } catch (error) {
@@ -484,7 +489,6 @@ export async function createFixtureRun({ repoRoot, runId }) {
         'Private fixture snapshot does not match the source baseline',
       )
     }
-    await mkdir(variantsRoot)
     const manifest = {
       schemaVersion: 1,
       runId,
@@ -520,14 +524,12 @@ export async function resetFixtureVariant(run, variant) {
     )
   }
   const expectedRunRoot = path.join(
-    run.repoRoot,
-    'target',
-    'atlas-product-migration-fixture',
-    'runs',
+    homedir(),
+    'ViewerAcceptanceRuns',
     run.runId,
   )
   const expectedBaselineRoot = path.join(expectedRunRoot, 'baseline')
-  const expectedVariantsRoot = path.join(expectedRunRoot, 'variants')
+  const expectedVariantsRoot = expectedRunRoot
   if (
     path.normalize(run.runRoot) !== path.normalize(expectedRunRoot) ||
     path.normalize(run.baselineRoot) !== path.normalize(expectedBaselineRoot) ||
@@ -591,6 +593,35 @@ export async function resetFixtureVariant(run, variant) {
     await rm(temporary, { recursive: true, force: true })
     throw error
   }
+}
+
+export async function removeFixtureRun(run) {
+  if (!run || !RUN_ID_PATTERN.test(run.runId)) {
+    throw new AcceptanceError(
+      'SAFETY_FIXTURE_PATH',
+      'Invalid fixture run cleanup request',
+      { runId: run?.runId },
+    )
+  }
+  const expectedRunRoot = path.join(
+    homedir(),
+    'ViewerAcceptanceRuns',
+    run.runId,
+  )
+  const expectedManifestPath = path.join(expectedRunRoot, 'fixture-manifest.json')
+  if (
+    path.normalize(run.runRoot) !== path.normalize(expectedRunRoot) ||
+    path.normalize(run.variantsRoot) !== path.normalize(expectedRunRoot) ||
+    path.normalize(run.manifestPath) !== path.normalize(expectedManifestPath)
+  ) {
+    throw new AcceptanceError(
+      'SAFETY_FIXTURE_PATH',
+      'Fixture cleanup target does not match its home-scoped run ID',
+      { runId: run.runId, runRoot: run.runRoot },
+    )
+  }
+  await validateFixturePath(expectedRunRoot, { runId: run.runId })
+  await rm(expectedRunRoot, { recursive: true })
 }
 
 function deepFreeze(value) {
@@ -1118,7 +1149,7 @@ async function validateContainedPath(candidate, approvedRoot, code) {
   return normalized
 }
 
-export async function validateFixturePath(candidate, { repoRoot, runId }) {
+export async function validateFixturePath(candidate, { runId }) {
   if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(runId)) {
     throw new AcceptanceError('SAFETY_FIXTURE_PATH', 'Invalid fixture run ID', {
       runId,
@@ -1126,11 +1157,14 @@ export async function validateFixturePath(candidate, { repoRoot, runId }) {
   }
 
   const approvedRoot = path.join(
-    repoRoot,
-    'target',
-    'atlas-product-migration-fixture',
-    'runs',
+    homedir(),
+    'ViewerAcceptanceRuns',
     runId,
+  )
+  await assertNoSymlinkBetween(
+    homedir(),
+    approvedRoot,
+    'SAFETY_FIXTURE_PATH',
   )
   return validateContainedPath(candidate, approvedRoot, 'SAFETY_FIXTURE_PATH')
 }
@@ -2085,6 +2119,7 @@ async function captureLaunchNoProject({ repoRoot, options, preflight }) {
     throw error
   } finally {
     await client.close().catch(() => client.terminate())
+    await removeFixtureRun(run)
   }
 }
 

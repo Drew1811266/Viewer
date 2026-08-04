@@ -63,7 +63,7 @@ docs/superpowers/plans/
 
 ```text
 target/atlas-product-migration-fixture/ViewerAcceptance/   只读基准夹具
-target/atlas-product-migration-fixture/runs/<run-id>/      一次性可写副本
+$HOME/ViewerAcceptanceRuns/<run-id>/                       一次性可写副本
 target/atlas-product-migration-acceptance/<commit>/<viewport>/<ID>/
 ```
 
@@ -143,8 +143,8 @@ target/atlas-product-migration-acceptance/<commit>/<viewport>/<ID>/
 
 ### 6.3 文件门禁
 
-- 允许写入和破坏性文件操作的根目录必须同时满足：位于当前工作树 `target/atlas-product-migration-fixture/runs/` 下、包含本次随机 `run-id`、不是符号链接、不是仓库根目录；
-- 每次运行从 `target/atlas-product-migration-fixture/ViewerAcceptance/` 只读基准夹具复制到新的运行目录，状态之间按配方重置；基准夹具自身永远不是可写操作目标；
+- 允许写入和破坏性文件操作的根目录必须同时满足：精确位于 `$HOME/ViewerAcceptanceRuns/<run-id>/`、包含本次随机 `run-id`、不是符号链接、不是用户主目录、仓库根目录或兄弟运行目录；
+- 每次运行从 `target/atlas-product-migration-fixture/ViewerAcceptance/` 只读基准夹具复制到新的浅层运行目录，状态之间按配方重置，验收结束后只删除精确匹配的本次 `run-id`；基准夹具自身永远不是可写操作目标；
 - 源、目标、废纸篓模拟和冲突文件都必须位于该运行目录内；
 - 拒绝空路径、`/`、用户主目录、工作树根、父级逃逸、未解析变量、glob 和符号链接逃逸；
 - 永不调用系统废纸篓清空或操作用户真实项目。

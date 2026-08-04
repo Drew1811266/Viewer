@@ -19,7 +19,7 @@ A row remains `pending` or `blocked` until its automated evidence and both requi
 
 ## Acceptance fixture convention
 
-Native recipes use one disposable real project outside the source tree at `target/atlas-product-migration-fixture/ViewerAcceptance`:
+Native recipes use the read-only baseline at `target/atlas-product-migration-fixture/ViewerAcceptance`. Each controller run verifies that baseline by file hash, copies its writable project into the shallow native-picker boundary `$HOME/ViewerAcceptanceRuns/<run-id>/`, and removes only that exact run after the state capture:
 
 - `角色/B01` and `衣服/A01` contain copied JPG/PNG fixtures, including at least 30 images for density, paging, selection and 20-image comparison.
 - `文档` contains `sample.md`, `plain.txt`, a valid GB18030 text file and a text file larger than 10 MiB.

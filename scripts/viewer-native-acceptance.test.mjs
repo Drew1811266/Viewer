@@ -1472,6 +1472,19 @@ describe('protocol schema', () => {
       },
     }
     assert.deepEqual(validateCommand(pointerRequest, { window }), pointerRequest)
+    for (const payload of [
+      { kind: 'move', point: { x: 512, y: 12 } },
+      {
+        kind: 'click',
+        point: { x: 200, y: 300 },
+        modifiers: ['command'],
+      },
+    ]) {
+      assert.deepEqual(
+        validateCommand({ ...pointerRequest, payload }, { window }).payload,
+        payload,
+      )
+    }
     assert.deepEqual(
       validateCommand(
         {

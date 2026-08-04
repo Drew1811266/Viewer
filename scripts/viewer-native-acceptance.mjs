@@ -323,7 +323,7 @@ export function buildStateEntryPlan(id) {
     'THU-07': [
       ...openContent(),
       { kind: 'click', target: { name: '商品-01.jpg' } },
-      { kind: 'focus', target: { role: 'AXListBox', name: '文件内容' } },
+      { kind: 'focus', target: { name: '文件内容' } },
       { kind: 'key', key: 'arrowRight', modifiers: [] },
       { kind: 'movePointerToTitlebar' },
       { kind: 'assert', target: { role: 'AXGroup', name: '选择摘要' } },
@@ -1589,10 +1589,22 @@ function validatePayload(command, payload, window) {
         ) {
           throw commandError('scroll requires a bounded non-zero integer delta')
         }
-      } else if (!hasExactKeys(payload, ['kind', 'point'])) {
-        throw commandError('pointer requires kind and point')
+      } else {
+        const withModifiers = hasExactKeys(payload, ['kind', 'point', 'modifiers'])
+        if (!hasExactKeys(payload, ['kind', 'point']) && !withModifiers) {
+          throw commandError('pointer requires kind and point')
+        }
+        const modifiers = withModifiers ? payload.modifiers : []
+        if (
+          !Array.isArray(modifiers) ||
+          (payload.kind === 'move' && modifiers.length > 0) ||
+          new Set(modifiers).size !== modifiers.length ||
+          modifiers.some((modifier) => !ALLOWED_MODIFIERS.has(modifier))
+        ) {
+          throw commandError('Unsupported or duplicate pointer modifier')
+        }
       }
-      if (!['click', 'doubleClick', 'rightClick', 'scroll'].includes(payload.kind)) {
+      if (!['click', 'doubleClick', 'rightClick', 'move', 'scroll'].includes(payload.kind)) {
         throw commandError('Unsupported pointer action')
       }
       try {

@@ -1755,7 +1755,7 @@
         key: "sidebar",
         items: [["expanded", "展开"], ["resized", "加宽"], ["collapsed", "折叠"], ["drop", "拖放目标"]],
       }]);
-      return shell(`${states}<div class="grid-wrap"><div class="image-grid" data-density="standard">${imageCards(1)}</div></div>`, {
+      return shell(`${states}<div class="grid-wrap"><div class="image-grid" data-density="standard">${imageCards(0)}</div></div>`, {
         sidebarMode: state.sidebar,
         selected: state.sidebar === "drop" ? "A03" : "A01",
       });

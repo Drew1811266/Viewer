@@ -77,6 +77,42 @@ describe('workspace style contracts', () => {
     })
   })
 
+  it('uses the approved quiet card and compact file metadata hierarchy', () => {
+    const rules = parseRules(appCss)
+    const card = rules.find((rule) => rule.selector === '.image-cell')
+    const stage = rules.find((rule) => rule.selector === '.image-cell-preview')
+    const metadata = rules.find((rule) => rule.selector === '.image-cell-meta')
+    const name = rules.find((rule) => rule.selector === '.image-cell-name')
+    const marker = rules.find((rule) => rule.selector === '.image-cell-meta > .file-marker')
+
+    expect(card?.declarations).toMatchObject({
+      background: 'var(--viewer-thumbnail-card-surface)',
+      border: '1px solid var(--viewer-thumbnail-border)',
+      'border-radius': '9px',
+    })
+    expect(stage?.declarations.background).toBe('var(--viewer-thumbnail-stage-surface)')
+    expect(metadata?.declarations).toMatchObject({
+      'border-top': '1px solid var(--viewer-thumbnail-border)',
+      display: 'flex',
+      gap: '8px',
+      'min-height': '48px',
+      padding: '6px 8px',
+    })
+    expect(name?.declarations).toMatchObject({
+      'font-size': '13px',
+      'font-weight': '500',
+      overflow: 'hidden',
+      'text-overflow': 'ellipsis',
+      'white-space': 'nowrap',
+    })
+    expect(marker?.declarations).toMatchObject({
+      'border-radius': '999px',
+      'font-size': '10px',
+      'font-weight': '700',
+      padding: '3px 6px',
+    })
+  })
+
   it('renders workspace popover commands as quiet menu rows with a real separator', () => {
     const rules = parseRules(appCss)
     const popover = rules.find(

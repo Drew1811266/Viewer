@@ -88,8 +88,10 @@ export function ImageCell({
             )}
           </div>
         </div>
-        <span>{file.name}</span>
-        {markerLabel && <span className="file-marker">{markerLabel}</span>}
+        <div className="image-cell-meta">
+          <span className="image-cell-name">{file.name}</span>
+          {markerLabel && <span className="file-marker">{markerLabel}</span>}
+        </div>
       </div>
       <OrganizationDragHandle
         file={file}

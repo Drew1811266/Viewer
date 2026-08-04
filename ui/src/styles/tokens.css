@@ -45,7 +45,10 @@
   --viewer-folder-identity-surface: #f8f9fb;
   --viewer-folder-identity-hover: #eef4fc;
   --viewer-thumbnail-hover-ring: #8cb8ea;
-  --viewer-thumbnail-surface: #f8f8f6;
+  --viewer-thumbnail-card-surface: #fbfbfa;
+  --viewer-thumbnail-stage-surface: #f7f7f5;
+  --viewer-thumbnail-border: #ececea;
+  --viewer-thumbnail-surface: var(--viewer-thumbnail-stage-surface);
   --viewer-floating-control-surface: rgb(255 255 255 / 88%);
   --viewer-organization-border: #aeb7c3;
   --viewer-organization-text: #465364;

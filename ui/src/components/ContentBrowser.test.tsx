@@ -611,6 +611,24 @@ describe('ContentBrowser', () => {
     expect(screen.queryByRole('status', { name: '选择摘要' })).not.toBeInTheDocument()
   })
 
+  it('keeps the file name and non-default marker in one compact metadata row', () => {
+    const marked = {
+      ...image(1, { width: 1, height: 1 }),
+      marker: { favorite: false, reviewState: 'pending' as const },
+    }
+    render(
+      <ContentBrowser workspace={{ workspace: 'content', images: [marked], otherFiles: [] }} />,
+    )
+
+    const option = screen.getByRole('option', { name: '1.jpg' })
+    const metadata = option.querySelector('.image-cell-meta')
+
+    expect(metadata).not.toBeNull()
+    expect(metadata).toContainElement(screen.getByText('1.jpg'))
+    expect(metadata).toContainElement(screen.getByText('待定'))
+    expect(option.querySelector('.image-cell-name')).toHaveTextContent('1.jpg')
+  })
+
   it('requests each rendered long edge at DPR and leaves successful images ratio-sized', async () => {
     Object.defineProperty(window, 'devicePixelRatio', {
       configurable: true,

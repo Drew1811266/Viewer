@@ -1467,9 +1467,9 @@ summary,
 }
 
 .image-cell {
-  background: var(--viewer-thumbnail-surface);
-  border: 1px solid transparent;
-  border-radius: 8px;
+  background: var(--viewer-thumbnail-card-surface);
+  border: 1px solid var(--viewer-thumbnail-border);
+  border-radius: 9px;
   cursor: default;
   height: 100%;
   overflow: visible;
@@ -1535,17 +1535,39 @@ summary,
 
 .image-cell-preview {
   align-items: center;
-  background: transparent;
+  background: var(--viewer-thumbnail-stage-surface);
   display: flex;
   justify-content: center;
 }
 
-.image-cell > .file-export-surface > span:not(.file-marker) {
+.image-cell-meta {
+  align-items: center;
+  border-top: 1px solid var(--viewer-thumbnail-border);
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+  min-height: 48px;
+  padding: 6px 8px;
+}
+
+.image-cell-name {
   display: block;
+  font-size: 13px;
+  font-weight: 500;
+  min-width: 0;
   overflow: hidden;
-  padding: 5px 2px 0;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.image-cell-meta > .file-marker {
+  background: var(--viewer-warning-soft);
+  border-radius: 999px;
+  color: var(--viewer-warning);
+  flex: 0 0 auto;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 3px 6px;
 }
 
 .file-marker {

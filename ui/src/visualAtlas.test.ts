@@ -99,6 +99,7 @@ describe('complete Viewer visual atlas', () => {
     const document = dom.window.document
 
     clickScreen(document, 'sidebar')
+    expect(document.querySelectorAll('.image-card.selected')).toHaveLength(0)
     clickState(document, 'sidebar-collapsed')
     expect(document.querySelector('[data-viewer-sidebar]')?.getAttribute('data-mode')).toBe(
       'collapsed',

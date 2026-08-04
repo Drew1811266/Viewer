@@ -122,8 +122,8 @@ describe('state entry plans', () => {
   it('uses concrete native actions for the first stable workspace states', () => {
     assert.deepEqual(buildStateEntryPlan('SID-01'), [
       { kind: 'openProject' },
-      { kind: 'press', target: { role: 'AXButton', name: '测试图' } },
-      { kind: 'assert', target: { role: 'AXButton', name: '测试图' } },
+      { kind: 'press', target: { role: 'AXCheckBox', name: '测试图' } },
+      { kind: 'assert', target: { role: 'AXCheckBox', name: '测试图' } },
     ])
     assert.deepEqual(buildStateEntryPlan('STR-03'), [
       { kind: 'openProject' },

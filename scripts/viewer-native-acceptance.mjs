@@ -201,7 +201,7 @@ export class AcceptanceError extends Error {
 
 export function buildStateEntryPlan(id) {
   const openProject = { kind: 'openProject' }
-  const projectRoot = { role: 'AXButton', name: '测试图' }
+  const projectRoot = { role: 'AXCheckBox', name: '测试图' }
   const folder = (name) => ({ role: 'AXGroup', name })
   const plans = {
     'LAU-01': [{ kind: 'ensureNoProject' }],

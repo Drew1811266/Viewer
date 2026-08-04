@@ -1,13 +1,29 @@
 import assert from 'node:assert/strict'
-import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
+import { execFile, spawn } from 'node:child_process'
+import {
+  copyFile,
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  stat,
+  symlink,
+  writeFile,
+} from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, it } from 'node:test'
+import { promisify } from 'node:util'
 
 import {
+  ALLOWED_COMMANDS,
+  NativeAcceptanceClient,
+  PROTOCOL_VERSION,
+  buildNativeHelper,
   parseProcessTable,
   selectExactViewer,
   selectExactWindow,
+  validateCommand,
   validateEvidencePath,
   validateFixturePath,
   validateWindow,
@@ -16,6 +32,74 @@ import {
 
 const repoRoot = '/Users/example/Project/Viewer/.worktrees/atlas'
 const executablePath = `${repoRoot}/target/debug/viewer-desktop`
+const execFileAsync = promisify(execFile)
+
+async function runJsonLines(executable, args, requests) {
+  const child = spawn(executable, args, { stdio: ['pipe', 'pipe', 'pipe'] })
+  child.stdout.setEncoding('utf8')
+  child.stderr.setEncoding('utf8')
+  let stdout = ''
+  let stderr = ''
+  child.stdout.on('data', (chunk) => {
+    stdout += chunk
+  })
+  child.stderr.on('data', (chunk) => {
+    stderr += chunk
+  })
+  for (const request of requests) child.stdin.write(`${JSON.stringify(request)}\n`)
+  child.stdin.end()
+  const exitCode = await new Promise((resolve, reject) => {
+    child.once('error', reject)
+    child.once('close', resolve)
+  })
+  return {
+    exitCode,
+    stderr,
+    responses: stdout
+      .trim()
+      .split('\n')
+      .filter(Boolean)
+      .map((line) => JSON.parse(line)),
+  }
+}
+
+async function createProtocolFixture(temporaryRoot) {
+  const fixturePath = path.join(temporaryRoot, 'protocol-fixture.mjs')
+  await writeFile(
+    fixturePath,
+    `import { appendFileSync } from 'node:fs'
+import readline from 'node:readline'
+
+const mode = process.argv[2]
+const input = readline.createInterface({ input: process.stdin })
+input.on('line', (line) => {
+  const request = JSON.parse(line)
+  if (process.env.REQUEST_LOG) {
+    appendFileSync(process.env.REQUEST_LOG, JSON.stringify(request) + '\\n')
+  }
+  if (mode === 'timeout') return
+  if (mode === 'eof') process.exit(0)
+  if (mode === 'malformed') {
+    process.stdout.write('{not-json}\\n')
+    return
+  }
+  if (mode === 'stderr') {
+    process.stderr.write('fixture diagnostic\\n')
+    process.exit(3)
+  }
+  const sequence = mode === 'out-of-order' ? request.sequence + 1 : request.sequence
+  process.stdout.write(JSON.stringify({
+    version: 1,
+    sequence,
+    ok: true,
+    result: { mode: 'fixture', command: request.command },
+  }) + '\\n')
+  if (request.command === 'shutdown') process.exit(0)
+})
+`,
+  )
+  return fixturePath
+}
 
 describe('selectExactViewer', () => {
   it('returns the only exact current-worktree bare development process', () => {
@@ -387,6 +471,353 @@ describe('evidence path validation', () => {
           code: 'SAFETY_EVIDENCE_PATH',
         })
       }
+    } finally {
+      await rm(temporaryRoot, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('protocol schema', () => {
+  const window = {
+    pid: 101,
+    windowId: 44,
+    x: 20,
+    y: 30,
+    width: 1024,
+    height: 720,
+  }
+  const inspectRequest = {
+    version: 1,
+    sequence: 1,
+    pid: 101,
+    windowId: 44,
+    command: 'inspect',
+    timeoutMs: 3000,
+    payload: {},
+  }
+
+  it('accepts the complete strict inspect envelope', () => {
+    assert.equal(PROTOCOL_VERSION, 1)
+    assert.deepEqual(
+      [...ALLOWED_COMMANDS],
+      [
+        'inspect',
+        'query',
+        'activate',
+        'focus',
+        'setValue',
+        'key',
+        'pointer',
+        'drag',
+        'capture',
+        'shutdown',
+      ],
+    )
+    assert.deepEqual(validateCommand(inspectRequest, { window }), inspectRequest)
+  })
+
+  it('rejects invalid common envelope values and extra fields', () => {
+    const cases = [
+      { ...inspectRequest, version: 2 },
+      { ...inspectRequest, sequence: 0 },
+      { ...inspectRequest, sequence: 1.5 },
+      { ...inspectRequest, pid: 0 },
+      { ...inspectRequest, windowId: 0 },
+      { ...inspectRequest, command: 'shell' },
+      { ...inspectRequest, timeoutMs: 99 },
+      { ...inspectRequest, timeoutMs: 10001 },
+      { ...inspectRequest, extra: true },
+    ]
+
+    for (const request of cases) {
+      assert.throws(() => validateCommand(request, { window }), {
+        code: 'SAFETY_PROTOCOL',
+      })
+    }
+  })
+
+  it('rejects extra payload fields for an otherwise valid command', () => {
+    assert.throws(
+      () =>
+        validateCommand(
+          { ...inspectRequest, payload: { ignored: true } },
+          { window },
+        ),
+      { code: 'SAFETY_COMMAND' },
+    )
+  })
+
+  it('accepts bounded setValue text and rejects text above 4096 scalars', () => {
+    const request = {
+      ...inspectRequest,
+      command: 'setValue',
+      payload: {
+        target: { role: 'AXTextField', name: '搜索' },
+        text: '衣服/A01',
+      },
+    }
+    assert.deepEqual(validateCommand(request, { window }), request)
+    assert.throws(
+      () =>
+        validateCommand(
+          {
+            ...request,
+            payload: { ...request.payload, text: '图'.repeat(4097) },
+          },
+          { window },
+        ),
+      { code: 'SAFETY_COMMAND' },
+    )
+  })
+
+  it('accepts only the approved key and modifier vocabulary', () => {
+    const request = {
+      ...inspectRequest,
+      command: 'key',
+      payload: { key: 'escape', modifiers: ['shift', 'command'] },
+    }
+    assert.deepEqual(validateCommand(request, { window }), request)
+
+    for (const payload of [
+      { key: 'f1', modifiers: [] },
+      { key: 'escape', modifiers: ['fn'] },
+      { key: 'escape', modifiers: ['shift', 'shift'] },
+      { key: 'escape', modifiers: [], script: 'rm' },
+    ]) {
+      assert.throws(
+        () => validateCommand({ ...request, payload }, { window }),
+        { code: 'SAFETY_COMMAND' },
+      )
+    }
+  })
+
+  it('validates pointer and drag coordinates against the current window', () => {
+    const pointerRequest = {
+      ...inspectRequest,
+      command: 'pointer',
+      payload: { kind: 'rightClick', point: { x: 100, y: 200 } },
+    }
+    const dragRequest = {
+      ...inspectRequest,
+      command: 'drag',
+      payload: {
+        from: { x: 100, y: 200 },
+        to: { x: 300, y: 400 },
+        durationMs: 400,
+      },
+    }
+    assert.deepEqual(validateCommand(pointerRequest, { window }), pointerRequest)
+    assert.deepEqual(validateCommand(dragRequest, { window }), dragRequest)
+
+    assert.throws(
+      () =>
+        validateCommand(
+          {
+            ...pointerRequest,
+            payload: { kind: 'click', point: { x: 1024, y: 10 } },
+          },
+          { window },
+        ),
+      { code: 'SAFETY_COMMAND' },
+    )
+    assert.throws(
+      () =>
+        validateCommand(
+          {
+            ...dragRequest,
+            payload: { ...dragRequest.payload, durationMs: 5001 },
+          },
+          { window },
+        ),
+      { code: 'SAFETY_COMMAND' },
+    )
+  })
+})
+
+describe('Swift helper protocol', () => {
+  it('compiles warning-free and correlates valid and rejected commands', async () => {
+    const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), 'viewer-swift-helper-'))
+    const helperPath = path.join(temporaryRoot, 'viewer-native-acceptance-helper')
+    const inspect = {
+      version: 1,
+      sequence: 1,
+      pid: 101,
+      windowId: 44,
+      command: 'inspect',
+      timeoutMs: 3000,
+      payload: {},
+    }
+    const unknown = { ...inspect, sequence: 2, command: 'shell' }
+
+    try {
+      await execFileAsync('xcrun', [
+        'swiftc',
+        '-warnings-as-errors',
+        new URL('./viewer-native-acceptance.swift', import.meta.url).pathname,
+        '-o',
+        helperPath,
+      ])
+      const result = await runJsonLines(helperPath, ['--protocol-test'], [inspect, unknown])
+
+      assert.equal(result.exitCode, 0)
+      assert.equal(result.stderr, '')
+      assert.deepEqual(result.responses, [
+        {
+          version: 1,
+          sequence: 1,
+          ok: true,
+          result: { mode: 'protocol-test' },
+        },
+        {
+          version: 1,
+          sequence: 2,
+          ok: false,
+          error: { code: 'SAFETY_COMMAND', message: 'Unsupported command' },
+        },
+      ])
+    } finally {
+      await rm(temporaryRoot, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('NativeAcceptanceClient', () => {
+  const window = {
+    pid: 101,
+    windowId: 44,
+    x: 20,
+    y: 30,
+    width: 1024,
+    height: 720,
+  }
+
+  it('correlates ordered requests and closes with shutdown', async () => {
+    const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), 'viewer-client-'))
+    const requestLog = path.join(temporaryRoot, 'requests.jsonl')
+    let client
+
+    try {
+      const fixturePath = await createProtocolFixture(temporaryRoot)
+      client = new NativeAcceptanceClient({
+        executablePath: process.execPath,
+        args: [fixturePath, 'valid'],
+        env: { ...process.env, REQUEST_LOG: requestLog },
+        pid: 101,
+        window,
+        defaultTimeoutMs: 500,
+      })
+
+      assert.deepEqual(await client.start(), { mode: 'fixture', command: 'inspect' })
+      assert.deepEqual(
+        await client.request('query', {
+          target: { role: 'AXButton', name: '筛选' },
+        }),
+        { mode: 'fixture', command: 'query' },
+      )
+      await client.close()
+      client = undefined
+
+      const requests = (await readFile(requestLog, 'utf8'))
+        .trim()
+        .split('\n')
+        .map((line) => JSON.parse(line))
+      assert.deepEqual(
+        requests.map(({ sequence, command }) => ({ sequence, command })),
+        [
+          { sequence: 1, command: 'inspect' },
+          { sequence: 2, command: 'query' },
+          { sequence: 3, command: 'shutdown' },
+        ],
+      )
+    } finally {
+      await client?.terminate()
+      await rm(temporaryRoot, { recursive: true, force: true })
+    }
+  })
+
+  for (const [mode, code] of [
+    ['out-of-order', 'SAFETY_PROTOCOL'],
+    ['malformed', 'SAFETY_PROTOCOL'],
+    ['eof', 'PRECONDITION_HELPER_EXIT'],
+    ['timeout', 'PRECONDITION_HELPER_TIMEOUT'],
+  ]) {
+    it(`rejects ${mode} helper behavior`, async () => {
+      const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), 'viewer-client-'))
+      let client
+      try {
+        const fixturePath = await createProtocolFixture(temporaryRoot)
+        client = new NativeAcceptanceClient({
+          executablePath: process.execPath,
+          args: [fixturePath, mode],
+          pid: 101,
+          window,
+          defaultTimeoutMs: 150,
+        })
+        await assert.rejects(client.start(), { code })
+      } finally {
+        await client?.terminate()
+        await rm(temporaryRoot, { recursive: true, force: true })
+      }
+    })
+  }
+
+  it('preserves helper stderr when the child exits', async () => {
+    const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), 'viewer-client-'))
+    let client
+    try {
+      const fixturePath = await createProtocolFixture(temporaryRoot)
+      client = new NativeAcceptanceClient({
+        executablePath: process.execPath,
+        args: [fixturePath, 'stderr'],
+        pid: 101,
+        window,
+        defaultTimeoutMs: 500,
+      })
+      await assert.rejects(client.start(), (error) => {
+        assert.equal(error.code, 'PRECONDITION_HELPER_EXIT')
+        assert.match(error.details.stderr, /fixture diagnostic/)
+        return true
+      })
+    } finally {
+      await client?.terminate()
+      await rm(temporaryRoot, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('native helper build cache', () => {
+  it('keys the warning-free Swift executable by the complete source hash', async () => {
+    const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), 'viewer-helper-build-'))
+    const sourcePath = path.join(temporaryRoot, 'viewer-native-acceptance.swift')
+    try {
+      await copyFile(
+        new URL('./viewer-native-acceptance.swift', import.meta.url),
+        sourcePath,
+      )
+      const first = await buildNativeHelper({
+        repoRoot: temporaryRoot,
+        sourcePath,
+      })
+      const firstModifiedAt = (await stat(first.executablePath)).mtimeMs
+      const second = await buildNativeHelper({
+        repoRoot: temporaryRoot,
+        sourcePath,
+      })
+
+      assert.deepEqual(second, first)
+      assert.equal((await stat(second.executablePath)).mtimeMs, firstModifiedAt)
+      assert.match(
+        first.executablePath,
+        /target\/native-acceptance-tools\/[0-9a-f]{64}\/viewer-native-acceptance-helper$/,
+      )
+
+      await writeFile(sourcePath, `${await readFile(sourcePath, 'utf8')}\n`)
+      const changed = await buildNativeHelper({
+        repoRoot: temporaryRoot,
+        sourcePath,
+      })
+      assert.notEqual(changed.sourceHash, first.sourceHash)
+      assert.notEqual(changed.executablePath, first.executablePath)
     } finally {
       await rm(temporaryRoot, { recursive: true, force: true })
     }

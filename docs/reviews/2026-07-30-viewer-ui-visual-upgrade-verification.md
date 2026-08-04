@@ -6,7 +6,7 @@
 - Migration design: `docs/superpowers/specs/2026-08-02-viewer-atlas-to-product-complete-migration-design.md`
 - Non-omission audit: `docs/reviews/2026-08-02-viewer-atlas-product-component-gap-audit.md`
 - Migration ledger: `docs/reviews/2026-08-02-viewer-atlas-product-migration-ledger.md`
-- Current product commit: `6f2d7b9bdc8f67d06566e249be1a54be0c2969e3`
+- Current product commit: `e69a85a7713da97871164aff997657ecb183e33b`
 - Branch: `codex/viewer-atlas-product-migration`
 - Platform: macOS `26.5.2` (`25F84`), built-in Retina display
 
@@ -32,7 +32,7 @@ The current native target is the bare development executable launched only throu
 
 | State | Current combined comparison | Verdict |
 | --- | --- | --- |
-| `LAU-01` — no project | current joint comparison pending | The first exact 1024 joint image found that the product body copy inherited `16 px` and the atlas retained old `22 / 12 / 32 px` entry rules. Product and atlas now share the approved `20 / 13 / 36 px` title/body/primary-action scale under focused tests; both exact viewport joint images must be recaptured before pass. |
+| `LAU-01` — no project | `target/atlas-product-migration-acceptance/e69a85a7713da97871164aff997657ecb183e33b/1024x720/LAU-01/combined.png`; `target/atlas-product-migration-acceptance/e69a85a7713da97871164aff997657ecb183e33b/1440x900/LAU-01/combined.png` | **Pass.** Product and atlas share the approved `20 / 13 / 36 px` title/body/primary-action scale and 12 px vertical rhythm. At both exact viewports, the only remaining visible difference is the allowed macOS system title bar and its corresponding content-area centering offset; P0/P1/P2 are zero. |
 
 The prior `PRE-01` and `DIA-02` 1024 comparisons remain useful ancestor-commit diagnostics, but they are not current-commit closure evidence.
 
@@ -64,8 +64,8 @@ The radial rows therefore remain pending until a supported state-seeding or UI-c
 
 - Formal product code now covers the 17 audited groups and the 89-state ledger remains one-to-one guarded by tests.
 - The complete automated gate passes on the current product commit.
-- No state is currently closed: the only current exact joint candidate correctly failed the comparison and triggered the entry typography correction.
-- The final Task 15 gate is **not complete**: every row still needs current-commit 1024×720 and 1440×900 native evidence before closure.
+- One of 89 states is closed: `LAU-01` passed current-commit joint comparison at both exact viewports after the type-scale and vertical-rhythm corrections.
+- The final Task 15 gate is **not complete**: the remaining 88 rows still need current-commit 1024×720 and 1440×900 native evidence before closure.
 - No row is promoted to final pass from historical, browser-only, stretched, or accessibility-tree-only evidence.
 
-The next acceptance work is exact 1024×720 capture for `LAU-01`, followed by a supported state-seeding/control route for the project-open and radial-menu states in the canonical bare development process.
+The next acceptance work is a supported state-seeding/control route for the project-open and radial-menu states in the canonical bare development process; static component or browser-only states will not be promoted as native evidence.

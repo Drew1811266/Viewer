@@ -3,15 +3,15 @@
 ## Current Task 15 acceptance run
 
 - Branch: `codex/viewer-atlas-product-migration`
-- Product commit: `6f2d7b9bdc8f67d06566e249be1a54be0c2969e3`
-- Worktree at capture: clean after the entry typography correction.
-- Unique native process: PID `28183`, launched from this worktree's `target/debug/viewer-desktop` by the canonical `pnpm start:viewer` command.
+- Product commit: `e69a85a7713da97871164aff997657ecb183e33b`
+- Worktree at capture: clean after the entry typography and vertical-rhythm corrections.
+- Unique native processes: PID `2881` for the exact 1024 capture and PID `3724` for the exact 1440 capture, each launched from this worktree's `target/debug/viewer-desktop` by the canonical `pnpm start:viewer` command. After restoring the user's display, PID `4859` is the only current 1024 development process.
 - Platform: macOS `26.5.2` (`25F84`)
 - Display at capture: built-in Liquid Retina in `1710 × 1112` logical mode; temporary Dock auto-hide enabled only for capture, then both display mode and Dock preference restored to the user's original `1470 × 956` / Dock-visible settings.
 - Exact native acceptance viewports available: `1024 × 720` and `1440 × 900`. The canonical launcher accepts a temporary Tauri config through `VIEWER_TAURI_CONFIG` while still enforcing the one-process and exact-worktree executable rules.
 - Previous `1291 × 768` and `1024 × 720` constraint reports were produced by selecting the registered bundle app instead of the bare development process. They remain historical evidence only and are not current blockers.
-- Automated gate on the product commit: UI check, 67 UI files / 649 passed / 1 skipped, production build and 28 policy tests plus 47-row scope coverage exited `0`. The immediately preceding launcher/Rust/security gate remains green and those sources are unchanged by this typography-only commit.
-- The first exact 1024 comparison exposed a real entry mismatch: product body copy inherited `16 px`, while the approved body scale is `13 px`; the atlas also retained superseded `22 / 12 / 32 px` entry rules. Commit `6f2d7b9` corrects both product and atlas to `20 / 13 / 36 px`. Earlier `LAU-01` joint images are diagnostic inputs only and cannot close the row.
+- Automated gate on the product commit: UI check, 67 UI files / 649 passed / 1 skipped, production build and 28 policy tests plus 47-row scope coverage exited `0`. The immediately preceding launcher/Rust/security gate remains green and those sources are unchanged by this atlas-rhythm-only follow-up commit.
+- The first exact 1024 comparison exposed a real entry mismatch: product body copy inherited `16 px`, while the approved body scale is `13 px`; the atlas also retained superseded `22 / 12 / 32 px` entry rules. Commit `6f2d7b9` corrected the type scale. The next joint comparison exposed old atlas-only `10 / 17 px` paragraph margins against the approved product `12 px` grid rhythm; commit `e69a85a` replaces those margins with the shared grid rhythm. Earlier `LAU-01` joint images are diagnostic inputs only.
 
 A row remains `pending` or `blocked` until its automated evidence and both required native comparisons are recorded. Historical and superseded captures may explain progress, but they do not close a row for the current product commit.
 
@@ -30,7 +30,7 @@ Native recipes use one disposable real project outside the source tree at `targe
 
 | ID | Wave | Reference state | Product owner | Native entry recipe | Automated evidence | Native 1024 | Native 1440 | Result |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| LAU-01 | Wave 1 | `launch-no-project` | `EmptyProject` | Launch Viewer with no session, or choose `关闭项目` and wait for the empty entry screen. | `EmptyProject` (`EmptyProject.test.tsx`); approved `20 / 13 / 36 px` typography contract in `styles/app.test.ts` and `visualAtlas.test.ts` | not-recorded — native recaptured after fix; current atlas joint image required | not-recorded — previous joint image superseded by typography fix | pending |
+| LAU-01 | Wave 1 | `launch-no-project` | `EmptyProject` | Launch Viewer with no session, or choose `关闭项目` and wait for the empty entry screen. | `EmptyProject` (`EmptyProject.test.tsx`); approved `20 / 13 / 36 px` type scale and 12 px vertical-rhythm contracts in `styles/app.test.ts` and `visualAtlas.test.ts` | pass — `target/atlas-product-migration-acceptance/e69a85a7713da97871164aff997657ecb183e33b/1024x720/LAU-01/combined.png` | pass — `target/atlas-product-migration-acceptance/e69a85a7713da97871164aff997657ecb183e33b/1440x900/LAU-01/combined.png` | pass |
 | LAU-02 | Wave 1 | `launch-drag` | `EmptyProject` drop layer | From Finder drag the `ViewerAcceptance` directory over the empty Viewer window without releasing. | `EmptyProject` (`EmptyProject.test.tsx`) | not-recorded | not-recorded | pending |
 | LAU-03 | Wave 1 | `launch-invalid` | `EmptyProject` local feedback | From Finder drop `tests/fixtures/images/srgb.jpg` onto the empty Viewer window. | `EmptyProject` (`EmptyProject.test.tsx`) | not-recorded | not-recorded | pending |
 | LAU-04 | Wave 1 | `launch-opening` | `EmptyProject` opening state | Click `选择项目文件夹`, choose `ViewerAcceptance`, and capture while project validation is active. | `EmptyProject` (`EmptyProject.test.tsx`) | not-recorded | not-recorded | pending |

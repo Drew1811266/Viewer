@@ -305,7 +305,8 @@ export function buildStateEntryPlan(id) {
       { kind: 'click', target: { name: '商品-02.jpg' }, modifiers: ['command'] },
       {
         kind: 'holdOrganizationDrag',
-        source: { role: 'AXButton', name: '整理 商品-02.jpg' },
+        source: { name: '商品-02.jpg' },
+        handle: { role: 'AXButton', name: '整理 商品-02.jpg' },
         destination: { role: 'AXGroup', name: '目标/Destination' },
         modifiers: [],
       },
@@ -394,7 +395,8 @@ export function buildStateEntryPlan(id) {
       { kind: 'click', target: { name: '商品-02.jpg' }, modifiers: ['command'] },
       {
         kind: 'holdOrganizationDrag',
-        source: { role: 'AXButton', name: '整理 商品-02.jpg' },
+        source: { name: '商品-02.jpg' },
+        handle: { role: 'AXButton', name: '整理 商品-02.jpg' },
         destination: { role: 'AXGroup', name: '目标/Destination' },
         modifiers: ['option'],
       },
@@ -556,6 +558,7 @@ export function buildStateEntryPlan(id) {
     ...step,
     ...(step.target ? { target: { ...step.target } } : {}),
     ...(step.source ? { source: { ...step.source } } : {}),
+    ...(step.handle ? { handle: { ...step.handle } } : {}),
     ...(step.destination ? { destination: { ...step.destination } } : {}),
   }))
 }
@@ -2621,10 +2624,18 @@ export async function executeStateEntryPlan({
         })
       } else if (step.kind === 'holdOrganizationDrag') {
         const source = await queryVisibleElement(client, actions, step.source)
+        await requestWithActionLog(client, actions, 'pointer', {
+          kind: 'move',
+          point: {
+            x: source.frame.x - window.x + source.frame.width - 20,
+            y: source.frame.y - window.y + 20,
+          },
+        })
+        const handle = await queryVisibleElement(client, actions, step.handle)
         const destination = await queryVisibleElement(client, actions, step.destination)
         const from = {
-          x: source.frame.x - window.x + source.frame.width / 2,
-          y: source.frame.y - window.y + source.frame.height / 2,
+          x: handle.frame.x - window.x + handle.frame.width / 2,
+          y: handle.frame.y - window.y + handle.frame.height / 2,
         }
         const to = {
           x: destination.frame.x - window.x + destination.frame.width / 2,

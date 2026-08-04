@@ -280,6 +280,7 @@ export function buildStateEntryPlan(id) {
       { kind: 'prepareFixture', operation: 'populateSearchIndexing' },
       { kind: 'beginOpenProject' },
       { kind: 'click', target: folder('衣服/A01') },
+      { kind: 'captureCheckpoint' },
       { kind: 'assert', target: { role: 'AXStaticText', name: '加载可见缩略图' } },
     ],
     'LAU-08': [
@@ -2606,6 +2607,7 @@ export async function executeStateEntryPlan({
   openProject = openProjectViaPanel,
   ensureNoProject = ensureLaunchNoProject,
   observeHeldPointer = async () => {},
+  observeCaptureCheckpoint = async () => {},
 }) {
   const plan = buildStateEntryPlan(id)
   let visible = null
@@ -2670,6 +2672,8 @@ export async function executeStateEntryPlan({
         visible = await requestWithActionLog(client, actions, 'focus', {
           target: step.target,
         })
+      } else if (step.kind === 'captureCheckpoint') {
+        await observeCaptureCheckpoint()
       } else if (step.kind === 'key') {
         visible = await requestWithActionLog(client, actions, 'key', {
           key: step.key,
@@ -3167,6 +3171,10 @@ async function captureStateRecipe({ repoRoot, options, preflight, id }) {
       projectPath: variantPath,
       window: preflight.window,
       observeHeldPointer: async () => {
+        await requestWithActionLog(client, actions, 'capture', { path: rawPath })
+        capturedDuringEntry = true
+      },
+      observeCaptureCheckpoint: async () => {
         await requestWithActionLog(client, actions, 'capture', { path: rawPath })
         capturedDuringEntry = true
       },

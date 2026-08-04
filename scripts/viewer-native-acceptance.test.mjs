@@ -418,6 +418,7 @@ describe('state entry plans', () => {
       { kind: 'prepareFixture', operation: 'populateSearchIndexing' },
       { kind: 'beginOpenProject' },
       { kind: 'click', target: { role: 'AXGroup', name: '衣服/A01' } },
+      { kind: 'captureCheckpoint' },
       { kind: 'assert', target: { role: 'AXStaticText', name: '加载可见缩略图' } },
     ])
     assert.deepEqual(buildStateEntryPlan('LAU-08'), [

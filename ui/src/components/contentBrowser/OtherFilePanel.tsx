@@ -158,6 +158,7 @@ export default function OtherFilePanel({
                 <OrganizationDragHandle
                   file={file}
                   disabled={organizationDragDisabled}
+                  revealed={selectedIds.has(file.entityId)}
                   onPointerDown={onOrganizationPointerDown}
                   onPointerMove={onOrganizationPointerMove}
                   onPointerUp={onOrganizationPointerUp}

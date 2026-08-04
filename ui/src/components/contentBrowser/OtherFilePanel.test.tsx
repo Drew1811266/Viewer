@@ -117,6 +117,15 @@ describe('OtherFilePanel', () => {
     expect(screen.getByRole('listbox', { name: '其它文件' })).toBeVisible()
   })
 
+  it('reveals the organization handle for a selected other-file row', () => {
+    renderPanel({ mode: 'other_only', selectedIds: new Set(['text-1']) })
+
+    expect(screen.getByRole('button', { name: '整理 first.md' })).toHaveAttribute(
+      'data-revealed',
+      'true',
+    )
+  })
+
   it('forwards every existing text-row interaction with the original file', () => {
     const onSelect = vi.fn()
     const onPreview = vi.fn()

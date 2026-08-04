@@ -96,6 +96,7 @@ export function ImageCell({
       <OrganizationDragHandle
         file={file}
         disabled={organizationDragDisabled}
+        revealed={selected}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}

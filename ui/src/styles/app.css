@@ -1695,6 +1695,7 @@ summary,
 .image-cell:focus-within > .organization-drag-handle,
 .text-file-row:hover > .organization-drag-handle,
 .text-file-row:focus-within > .organization-drag-handle,
+.organization-drag-handle[data-revealed='true'],
 .viewer-shell[data-organization-drag-active="true"] .organization-drag-handle {
   opacity: 1;
   pointer-events: auto;

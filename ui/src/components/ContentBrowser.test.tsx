@@ -1233,6 +1233,17 @@ describe('ContentBrowser', () => {
     expect(screen.queryByTestId('marquee-selection')).not.toBeInTheDocument()
   })
 
+  it('reveals the organization handle for a selected image card', () => {
+    render(<ContentBrowser workspace={workspace(2)} />)
+
+    const handle = screen.getByRole('button', { name: '整理 1.jpg' })
+    expect(handle).not.toHaveAttribute('data-revealed')
+
+    fireEvent.click(screen.getByRole('option', { name: '1.jpg' }))
+
+    expect(handle).toHaveAttribute('data-revealed', 'true')
+  })
+
   it('keeps Markdown and TXT in an independent labelled list', () => {
     render(<ContentBrowser workspace={workspace()} otherFilePanelExpanded />)
 

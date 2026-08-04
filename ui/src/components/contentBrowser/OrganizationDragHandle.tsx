@@ -6,6 +6,7 @@ import ViewerIcon from '../ui/ViewerIcon'
 export function OrganizationDragHandle({
   file,
   disabled,
+  revealed,
   onPointerDown,
   onPointerMove,
   onPointerUp,
@@ -13,6 +14,7 @@ export function OrganizationDragHandle({
 }: {
   file: BrowserFile
   disabled: boolean
+  revealed: boolean
   onPointerDown: (file: BrowserFile, event: PointerEvent<HTMLElement>) => void
   onPointerMove: (event: PointerEvent<HTMLElement>) => void
   onPointerUp: (event: PointerEvent<HTMLElement>) => void
@@ -26,6 +28,7 @@ export function OrganizationDragHandle({
       className="organization-drag-handle"
       aria-label={`整理 ${file.name}`}
       title="拖到左侧文件夹，按住 Option 复制"
+      data-revealed={revealed || undefined}
       disabled={disabled}
       draggable={false}
       onClick={(event) => {

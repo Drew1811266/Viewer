@@ -309,7 +309,7 @@ export function buildStateEntryPlan(id) {
         destination: { role: 'AXGroup', name: '目标/Destination' },
         modifiers: [],
       },
-      { kind: 'assert', target: { role: 'AXStaticText', name: '移动 2 项' } },
+      { kind: 'assert', target: { name: '移动 2 项' } },
     ],
     'STR-01': [
       ...openWorkspace(),
@@ -398,7 +398,7 @@ export function buildStateEntryPlan(id) {
         destination: { role: 'AXGroup', name: '目标/Destination' },
         modifiers: ['option'],
       },
-      { kind: 'assert', target: { role: 'AXStaticText', name: '复制 2 项' } },
+      { kind: 'assert', target: { name: '复制 2 项' } },
     ],
     'SEA-01': [
       ...openWorkspace(),

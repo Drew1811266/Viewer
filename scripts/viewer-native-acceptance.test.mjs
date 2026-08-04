@@ -286,7 +286,7 @@ describe('state entry plans', () => {
           destination: { role: 'AXGroup', name: '目标/Destination' },
           modifiers,
         },
-        { kind: 'assert', target: { role: 'AXStaticText', name: label } },
+        { kind: 'assert', target: { name: label } },
       ])
       assert.equal(plan.some((step) => step.kind === 'sleep'), false, id)
     }

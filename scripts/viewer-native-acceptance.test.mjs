@@ -24,10 +24,12 @@ import {
   PROTOCOL_VERSION,
   STATE_RECIPES,
   buildEvidenceManifest,
+  buildStateEntryPlan,
   buildNativeHelper,
   createFixtureRun,
   combinePngEvidence,
   discoverNativeWindows,
+  executeStateEntryPlan,
   parseNativeAcceptanceCli,
   openProjectViaPanel,
   parseProcessTable,
@@ -95,6 +97,11 @@ describe('recipe registry', () => {
       assert.match(recipe.fixtureVariant, /^[a-z][a-z0-9-]+$/)
       assert.ok([1, 2, 3, 4].includes(recipe.wave))
       assert.ok(Array.isArray(recipe.steps) && recipe.steps.length > 0)
+      assert.deepEqual(
+        recipe.steps.map((step) => step.kind),
+        ['resetFixture', 'focusWindow', 'executeState', 'waitForVisibleState'],
+      )
+      assert.equal(recipe.steps[2].id, id)
       assert.ok(
         recipe.steps.every(
           (step) =>
@@ -108,6 +115,80 @@ describe('recipe registry', () => {
       assert.ok(Object.isFrozen(recipe))
       assert.ok(Object.isFrozen(recipe.steps))
     }
+  })
+})
+
+describe('state entry plans', () => {
+  it('uses concrete native actions for the first stable workspace states', () => {
+    assert.deepEqual(buildStateEntryPlan('SID-01'), [
+      { kind: 'openProject' },
+      { kind: 'press', target: { role: 'AXButton', name: '测试图' } },
+      { kind: 'assert', target: { role: 'AXButton', name: '测试图' } },
+    ])
+    assert.deepEqual(buildStateEntryPlan('STR-03'), [
+      { kind: 'openProject' },
+      { kind: 'click', target: { role: 'AXGroup', name: '衣服/A01' } },
+      { kind: 'assert', target: { role: 'AXGroup', name: '衣服/A01' } },
+    ])
+    assert.deepEqual(buildStateEntryPlan('FIL-01'), [
+      { kind: 'openProject' },
+      { kind: 'press', target: { role: 'AXButton', name: '筛选' } },
+      { kind: 'assert', target: { role: 'AXHeading', name: '筛选' } },
+    ])
+    assert.deepEqual(buildStateEntryPlan('MEN-02'), [
+      { kind: 'openProject' },
+      { kind: 'press', target: { role: 'AXButton', name: '更多' } },
+      { kind: 'assert', target: { name: '软件设置' } },
+    ])
+  })
+
+  it('rejects a state until it has a real executable entry plan', () => {
+    assert.throws(() => buildStateEntryPlan('RAD-07'), {
+      code: 'STATE_RECIPE_EXECUTOR',
+    })
+  })
+
+  it('executes plan steps through logged native requests', async () => {
+    const commands = []
+    const client = {
+      async request(command, payload) {
+        commands.push({ command, payload })
+        if (command === 'query') {
+          return {
+            elements: [
+              {
+                role: 'AXGroup',
+                name: payload.target.name,
+                frame: { x: 120, y: 90, width: 80, height: 24 },
+              },
+            ],
+          }
+        }
+        return { performed: true, command }
+      },
+    }
+    const actions = []
+    let opened = false
+
+    const result = await executeStateEntryPlan({
+      id: 'STR-03',
+      client,
+      actions,
+      projectPath: '/Users/example/ViewerAcceptanceRuns/run/测试图',
+      window: { x: 100, y: 70, width: 1024, height: 720 },
+      openProject: async () => {
+        opened = true
+      },
+    })
+
+    assert.equal(opened, true)
+    assert.equal(result.passed, true)
+    assert.deepEqual(
+      commands.map(({ command }) => command),
+      ['query', 'pointer', 'query'],
+    )
+    assert.deepEqual(commands[1].payload.point, { x: 60, y: 32 })
+    assert.equal(actions.length, 3)
   })
 })
 
@@ -184,6 +265,8 @@ describe('fixture run', () => {
         runId,
       })
       const first = await resetFixtureVariant(run, 'search-results')
+      assert.equal(path.basename(first), '测试图')
+      assert.equal(path.basename(path.dirname(first)), 'search-results')
       await rm(path.join(first, '衣服/A01/image.jpg'))
       await writeFile(path.join(first, '文档/sample.md'), 'mutated')
 

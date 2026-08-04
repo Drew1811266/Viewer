@@ -167,10 +167,8 @@ function createStateRecipe(id, ledgerRecipe) {
   }
   const steps = Object.freeze([
     Object.freeze({ kind: 'resetFixture', variant: fixtureVariant }),
-    Object.freeze({
-      kind: 'nativeUserSequence',
-      instruction: ledgerRecipe.instruction,
-    }),
+    Object.freeze({ kind: 'focusWindow' }),
+    Object.freeze({ kind: 'executeState', id }),
     Object.freeze({
       kind: 'waitForVisibleState',
       referenceState: ledgerRecipe.referenceState,
@@ -199,6 +197,68 @@ export class AcceptanceError extends Error {
     this.code = code
     this.details = details
   }
+}
+
+export function buildStateEntryPlan(id) {
+  const openProject = { kind: 'openProject' }
+  const projectRoot = { role: 'AXButton', name: '测试图' }
+  const folder = (name) => ({ role: 'AXGroup', name })
+  const plans = {
+    'LAU-01': [{ kind: 'ensureNoProject' }],
+    'SID-01': [
+      openProject,
+      { kind: 'press', target: projectRoot },
+      { kind: 'assert', target: projectRoot },
+    ],
+    'STR-01': [
+      openProject,
+      { kind: 'press', target: projectRoot },
+      { kind: 'assert', target: projectRoot },
+    ],
+    'STR-02': [
+      openProject,
+      { kind: 'click', target: folder('衣服') },
+      { kind: 'assert', target: folder('衣服') },
+    ],
+    'STR-03': [
+      openProject,
+      { kind: 'click', target: folder('衣服/A01') },
+      { kind: 'assert', target: folder('衣服/A01') },
+    ],
+    'THU-04': [
+      openProject,
+      { kind: 'click', target: folder('衣服/A01') },
+      { kind: 'assert', target: folder('衣服/A01') },
+    ],
+    'THU-05': [
+      openProject,
+      { kind: 'click', target: folder('衣服/A01') },
+      { kind: 'click', target: { name: '商品-01.jpg' } },
+      { kind: 'assert', target: { name: '已选择 1 项' } },
+    ],
+    'FIL-01': [
+      openProject,
+      { kind: 'press', target: { role: 'AXButton', name: '筛选' } },
+      { kind: 'assert', target: { role: 'AXHeading', name: '筛选' } },
+    ],
+    'MEN-02': [
+      openProject,
+      { kind: 'press', target: { role: 'AXButton', name: '更多' } },
+      { kind: 'assert', target: { name: '软件设置' } },
+    ],
+  }
+  const plan = plans[id]
+  if (!plan) {
+    throw new AcceptanceError(
+      'STATE_RECIPE_EXECUTOR',
+      'State has no real native entry plan yet',
+      { id },
+    )
+  }
+  return plan.map((step) => ({
+    ...step,
+    ...(step.target ? { target: { ...step.target } } : {}),
+  }))
 }
 
 const PNG_SIGNATURE = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])
@@ -553,7 +613,8 @@ export async function resetFixtureVariant(run, variant) {
     )
   }
   await scanFixtureTree(run.baselineRoot)
-  const target = path.join(run.variantsRoot, variant)
+  const variantRoot = path.join(run.variantsRoot, variant)
+  const target = path.join(variantRoot, '测试图')
   const temporary = path.join(
     run.variantsRoot,
     `.${variant}.new-${process.pid}-${randomUUID()}`,
@@ -565,9 +626,11 @@ export async function resetFixtureVariant(run, variant) {
   await Promise.all([
     validateFixturePath(temporary, run),
     validateFixturePath(previous, run),
+    validateFixturePath(variantRoot, run),
     validateFixturePath(target, run),
   ])
   try {
+    await mkdir(variantRoot, { recursive: true })
     await cp(run.baselineRoot, temporary, {
       recursive: true,
       dereference: false,
@@ -1805,6 +1868,49 @@ async function queryVisibleElement(client, actions, target, timeoutMs = 3000) {
   return result.elements[0]
 }
 
+export async function executeStateEntryPlan({
+  id,
+  client,
+  actions,
+  projectPath,
+  window,
+  openProject = openProjectViaPanel,
+  ensureNoProject = ensureLaunchNoProject,
+}) {
+  const plan = buildStateEntryPlan(id)
+  let visible = null
+  for (const step of plan) {
+    if (step.kind === 'ensureNoProject') {
+      visible = await ensureNoProject(client, actions)
+    } else if (step.kind === 'openProject') {
+      await openProject({ client, actions, projectPath, window })
+    } else if (step.kind === 'press') {
+      visible = await requestWithActionLog(client, actions, 'activate', {
+        target: step.target,
+      })
+    } else if (step.kind === 'click') {
+      const element = await queryVisibleElement(client, actions, step.target)
+      await requestWithActionLog(client, actions, 'pointer', {
+        kind: 'click',
+        point: {
+          x: element.frame.x - window.x + element.frame.width / 2,
+          y: element.frame.y - window.y + element.frame.height / 2,
+        },
+      })
+      visible = element
+    } else if (step.kind === 'assert') {
+      visible = await queryVisibleElement(client, actions, step.target, 10_000)
+    } else {
+      throw new AcceptanceError(
+        'STATE_RECIPE_EXECUTOR',
+        'State entry plan contains an unsupported action',
+        { id, kind: step.kind },
+      )
+    }
+  }
+  return { passed: visible !== null, visible }
+}
+
 export async function openProjectViaPanel({
   client,
   actions,
@@ -2072,9 +2178,50 @@ async function normalizeEvidenceImages({ repoRoot, viewport, id, directory, rawP
   return { nativePath, referencePath, combinedPath }
 }
 
-async function captureLaunchNoProject({ repoRoot, options, preflight }) {
-  const id = 'LAU-01'
+async function closeProjectForCleanup(client) {
+  const cleanupActions = []
+  try {
+    await queryVisibleElement(
+      client,
+      cleanupActions,
+      { role: 'AXButton', name: '选择项目文件夹' },
+      500,
+    )
+    return
+  } catch (error) {
+    if (error?.code !== 'PRECONDITION_WAIT_TIMEOUT') throw error
+  }
+  try {
+    await requestWithActionLog(client, cleanupActions, 'activate', {
+      target: { name: '关闭项目' },
+    })
+  } catch (error) {
+    if (!['STATE_TARGET_NOT_FOUND', 'STATE_TARGET_NOT_UNIQUE'].includes(error?.code)) {
+      throw error
+    }
+    await requestWithActionLog(client, cleanupActions, 'key', {
+      key: 'escape',
+      modifiers: [],
+    })
+    await requestWithActionLog(client, cleanupActions, 'activate', {
+      target: { role: 'AXButton', name: '更多' },
+    })
+    await queryVisibleElement(client, cleanupActions, { name: '关闭项目' })
+    await requestWithActionLog(client, cleanupActions, 'activate', {
+      target: { name: '关闭项目' },
+    })
+  }
+  await queryVisibleElement(
+    client,
+    cleanupActions,
+    { role: 'AXButton', name: '选择项目文件夹' },
+    10_000,
+  )
+}
+
+async function captureStateRecipe({ repoRoot, options, preflight, id }) {
   const recipe = STATE_RECIPES.get(id)
+  buildStateEntryPlan(id)
   const run = await createFixtureRun({
     repoRoot,
     runId: `${preflight.commit.slice(0, 12)}-${process.pid}-${randomUUID()}`,
@@ -2099,9 +2246,20 @@ async function captureLaunchNoProject({ repoRoot, options, preflight }) {
     pid: preflight.process.pid,
     window: preflight.window,
   })
+  let clientStarted = false
   try {
     await client.start()
-    const visible = await ensureLaunchNoProject(client, actions)
+    clientStarted = true
+    await requestWithActionLog(client, actions, 'focus', {
+      target: { role: 'AXWindow' },
+    })
+    const entry = await executeStateEntryPlan({
+      id,
+      client,
+      actions,
+      projectPath: variantPath,
+      window: preflight.window,
+    })
     await requestWithActionLog(client, actions, 'capture', { path: rawPath })
     const images = await normalizeEvidenceImages({
       repoRoot,
@@ -2139,7 +2297,7 @@ async function captureLaunchNoProject({ repoRoot, options, preflight }) {
       actions,
       assertion: {
         description: recipe.visibleAssertion,
-        passed: Array.isArray(visible?.elements) && visible.elements.length === 1,
+        passed: entry.passed,
       },
       evidence,
       timestamp: new Date().toISOString(),
@@ -2166,6 +2324,7 @@ async function captureLaunchNoProject({ repoRoot, options, preflight }) {
     ).catch(() => {})
     throw error
   } finally {
+    if (clientStarted) await closeProjectForCleanup(client).catch(() => {})
     await client.close().catch(() => client.terminate())
     await removeFixtureRun(run)
   }
@@ -2187,11 +2346,16 @@ export async function runNativeAcceptanceCli(
   if (options.mode === 'preflight') {
     return { mode: 'preflight', viewport: options.viewport, ...preflight }
   }
-  if (options.mode === 'id' && options.selector === 'LAU-01') {
+  if (options.mode === 'id') {
     return {
       mode: 'capture',
       viewport: options.viewport,
-      ...(await captureLaunchNoProject({ repoRoot, options, preflight })),
+      ...(await captureStateRecipe({
+        repoRoot,
+        options,
+        preflight,
+        id: options.selector,
+      })),
     }
   }
   throw new AcceptanceError(

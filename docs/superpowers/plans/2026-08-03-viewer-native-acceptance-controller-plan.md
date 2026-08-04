@@ -13,7 +13,7 @@
 - Work only in `/Users/abc/Project/Viewer/.worktrees/viewer-atlas-product-migration` on `codex/viewer-atlas-product-migration`; never implement on `main`.
 - Do not modify `ui/`, `src-tauri/`, React state, Tauri commands, localStorage, or release resources to make acceptance states easier to enter.
 - Accept exactly one running Viewer whose real executable is this worktree's `target/debug/viewer-desktop`; reject packaged apps and every other checkout/worktree.
-- Only write or perform destructive file operations below `$HOME/ViewerAcceptanceRuns/<run-id>/`; the worktree `ViewerAcceptance` baseline is read-only, and each exact run is removed after acceptance.
+- Only write or perform destructive file operations below `$HOME/ViewerAcceptanceRuns/<run-id>/`; writable projects use `<variant>/测试图/` so the approved project display name is deterministic, the worktree `ViewerAcceptance` baseline is read-only, and each exact run is removed after acceptance.
 - Every UI state must be reached through real keyboard, pointer, context-menu, drag, file dialog, or system actions and must have an observable state assertion.
 - The only accepted viewports are exact `1024 × 720` and `1440 × 900` Viewer windows.
 - Generated evidence stays ignored under `target/atlas-product-migration-acceptance/<commit>/`; only the ledger and verification index are committed.

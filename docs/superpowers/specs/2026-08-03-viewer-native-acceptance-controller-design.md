@@ -145,7 +145,7 @@ target/atlas-product-migration-acceptance/<commit>/<viewport>/<ID>/
 ### 6.3 文件门禁
 
 - 允许写入和破坏性文件操作的根目录必须同时满足：精确位于 `$HOME/ViewerAcceptanceRuns/<run-id>/`、包含本次随机 `run-id`、不是符号链接、不是用户主目录、仓库根目录或兄弟运行目录；
-- 每次运行从 `target/atlas-product-migration-fixture/ViewerAcceptance/` 只读基准夹具复制到新的浅层运行目录，状态之间按配方重置，验收结束后只删除精确匹配的本次 `run-id`；基准夹具自身永远不是可写操作目标；
+- 每次运行从 `target/atlas-product-migration-fixture/ViewerAcceptance/` 只读基准夹具复制到新的浅层运行目录 `<run-id>/<variant>/测试图/`，以保持图谱批准的项目显示名称；状态之间按配方重置，验收结束后只删除精确匹配的本次 `run-id`；基准夹具自身永远不是可写操作目标；
 - 源、目标、废纸篓模拟和冲突文件都必须位于该运行目录内；
 - 拒绝空路径、`/`、用户主目录、工作树根、父级逃逸、未解析变量、glob 和符号链接逃逸；
 - 永不调用系统废纸篓清空或操作用户真实项目。

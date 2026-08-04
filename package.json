@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "pnpm --dir ui dev",
     "start:viewer": "node scripts/start-viewer-dev.mjs",
+    "test:native-acceptance": "node --test scripts/viewer-native-acceptance.test.mjs",
+    "accept:native": "node scripts/viewer-native-acceptance.mjs",
     "test:ui": "pnpm --dir ui test",
     "coverage:ui": "pnpm --dir ui test:coverage && node scripts/coverage-baseline.mjs --check target/coverage/ui/coverage-summary.json docs/quality/ui-coverage-baseline.json",
     "coverage:rust": "./scripts/run-rust-coverage.sh && node scripts/rust-coverage-baseline.mjs --check target/coverage/rust.json docs/quality/rust-coverage-baseline.json",

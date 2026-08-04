@@ -5,6 +5,7 @@ import {
   mkdir,
   mkdtemp,
   readFile,
+  readdir,
   rm,
   stat,
   symlink,
@@ -385,6 +386,59 @@ describe('native acceptance CLI', () => {
       () => waitFor(() => true, { timeoutMs: 10_001, intervalMs: 1 }),
       { code: 'PRECONDITION_WAIT_LIMIT' },
     )
+  })
+})
+
+async function sourceFiles(root) {
+  const entries = await readdir(root, { withFileTypes: true })
+  const files = []
+  for (const entry of entries) {
+    const candidate = path.join(root, entry.name)
+    if (entry.isDirectory()) files.push(...(await sourceFiles(candidate)))
+    else if (entry.isFile()) files.push(candidate)
+  }
+  return files
+}
+
+describe('package commands and non-shipping boundary', () => {
+  it('exposes only the two explicit local acceptance commands', async () => {
+    const packageJson = JSON.parse(
+      await readFile(path.join(actualRepoRoot, 'package.json'), 'utf8'),
+    )
+    assert.equal(
+      packageJson.scripts['test:native-acceptance'],
+      'node --test scripts/viewer-native-acceptance.test.mjs',
+    )
+    assert.equal(
+      packageJson.scripts['accept:native'],
+      'node scripts/viewer-native-acceptance.mjs',
+    )
+  })
+
+  it('keeps the controller and helper out of every shipping input', async () => {
+    const tauriConfig = await readFile(
+      path.join(actualRepoRoot, 'src-tauri/tauri.conf.json'),
+      'utf8',
+    )
+    assert.doesNotMatch(tauriConfig, /viewer-native-acceptance/)
+
+    const shippingFiles = [
+      ...(await sourceFiles(path.join(actualRepoRoot, 'ui/src'))),
+      ...(await sourceFiles(path.join(actualRepoRoot, 'src-tauri/src'))),
+    ]
+    for (const file of shippingFiles) {
+      const source = await readFile(file, 'utf8')
+      assert.doesNotMatch(source, /viewer-native-acceptance/, file)
+    }
+    const productionUi = path.join(actualRepoRoot, 'ui/dist')
+    try {
+      for (const file of await sourceFiles(productionUi)) {
+        const source = await readFile(file)
+        assert.equal(source.includes(Buffer.from('viewer-native-acceptance')), false, file)
+      }
+    } catch (error) {
+      if (error?.code !== 'ENOENT') throw error
+    }
   })
 })
 

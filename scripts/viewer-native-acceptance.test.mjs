@@ -772,6 +772,17 @@ describe('native acceptance CLI', () => {
       async request(command, payload) {
         requests.push({ command, payload })
         if (command === 'query') {
+          if (payload.target?.name === '选择项目文件夹') {
+            return {
+              elements: [
+                {
+                  role: 'AXButton',
+                  name: '选择项目文件夹',
+                  frame: { x: 400, y: 300, width: 120, height: 36 },
+                },
+              ],
+            }
+          }
           throw new AcceptanceError(
             'STATE_FIXTURE_ENTRY_FAILED',
             'simulated fixture entry failure',
@@ -792,7 +803,9 @@ describe('native acceptance CLI', () => {
     })
     assert.equal(
       requests.filter(
-        (request) => request.payload?.target?.name === '选择项目文件夹',
+        (request) =>
+          request.command === 'activate' &&
+          request.payload?.target?.name === '选择项目文件夹',
       ).length,
       1,
     )
@@ -806,7 +819,9 @@ describe('native acceptance CLI', () => {
     })
     assert.equal(
       requests.filter(
-        (request) => request.payload?.target?.name === '选择项目文件夹',
+        (request) =>
+          request.command === 'activate' &&
+          request.payload?.target?.name === '选择项目文件夹',
       ).length,
       1,
     )

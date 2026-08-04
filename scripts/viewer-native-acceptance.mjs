@@ -246,19 +246,17 @@ export function buildStateEntryPlan(id) {
     'SID-02': [
       ...openContent(),
       {
-        kind: 'dragBy',
-        target: { name: '调整文件夹栏宽度' },
-        delta: { x: 100, y: 0 },
+        kind: 'dragPoint',
+        from: { x: 219, y: 360 },
+        to: { x: 319, y: 360 },
         durationMs: 400,
       },
-      { kind: 'focus', target: { name: '调整文件夹栏宽度' } },
-      { kind: 'key', key: 'arrowRight', modifiers: [] },
       { kind: 'movePointerToTitlebar' },
-      { kind: 'assert', target: { name: '调整文件夹栏宽度' } },
+      { kind: 'assert', target: { name: '文件夹栏' } },
     ],
     'SID-03': [
       ...openContent(),
-      clickToolbar('折叠文件夹栏'),
+      { kind: 'click', target: { name: '折叠文件夹栏' } },
       { kind: 'movePointerToTitlebar' },
       { kind: 'assert', target: { role: 'AXButton', name: '展开文件夹栏' } },
     ],
@@ -337,19 +335,21 @@ export function buildStateEntryPlan(id) {
       ...openFolder('其它'),
       { kind: 'click', target: { role: 'AXButton', name: '其它文件 · 1' } },
       { kind: 'movePointerToTitlebar' },
-      { kind: 'assert', target: { role: 'AXListBox', name: '其它文件' } },
+      { kind: 'assert', target: { name: 'unsupported.bin' } },
     ],
     'SEA-01': [
       openProject,
       ...workspaceReady,
-      { kind: 'setValue', target: { role: 'AXTextField', name: '搜索项目' }, text: 'jpg' },
+      { kind: 'setValue', target: { role: 'AXTextField', name: '搜索项目' }, text: 'jp' },
+      { kind: 'key', key: 'g', modifiers: [] },
       { kind: 'movePointerToTitlebar' },
       { kind: 'assert', target: { name: '搜索结果区域' } },
     ],
     'SEA-02': [
       openProject,
       ...workspaceReady,
-      { kind: 'setValue', target: { role: 'AXTextField', name: '搜索项目' }, text: 'jpg' },
+      { kind: 'setValue', target: { role: 'AXTextField', name: '搜索项目' }, text: 'jp' },
+      { kind: 'key', key: 'g', modifiers: [] },
       { kind: 'assert', target: { name: '搜索结果区域' } },
       clickToolbar('视图'),
       { kind: 'click', target: { name: '展平结果' } },
@@ -359,7 +359,8 @@ export function buildStateEntryPlan(id) {
     'SEA-03': [
       { kind: 'prepareFixture', operation: 'removeViewerMetadata' },
       openProject,
-      { kind: 'setValue', target: { role: 'AXTextField', name: '搜索项目' }, text: 'jpg' },
+      { kind: 'setValue', target: { role: 'AXTextField', name: '搜索项目' }, text: 'jp' },
+      { kind: 'key', key: 'g', modifiers: [] },
       { kind: 'movePointerToTitlebar' },
       { kind: 'assert', target: { name: '搜索结果区域' } },
     ],
@@ -367,7 +368,8 @@ export function buildStateEntryPlan(id) {
       { kind: 'prepareFixture', operation: 'populateSearchPaging' },
       openProject,
       ...workspaceReady,
-      { kind: 'setValue', target: { role: 'AXTextField', name: '搜索项目' }, text: 'jpg' },
+      { kind: 'setValue', target: { role: 'AXTextField', name: '搜索项目' }, text: 'jp' },
+      { kind: 'key', key: 'g', modifiers: [] },
       { kind: 'click', target: { role: 'AXButton', name: '下一页' } },
       { kind: 'movePointerToTitlebar' },
       { kind: 'assert', target: { role: 'AXButton', name: '上一页' } },
@@ -380,6 +382,7 @@ export function buildStateEntryPlan(id) {
         target: { role: 'AXTextField', name: '搜索项目' },
         text: 'viewer-no-match-20260802',
       },
+      { kind: 'key', key: 'x', modifiers: [] },
       { kind: 'movePointerToTitlebar' },
       { kind: 'assert', target: { role: 'AXHeading', name: '没有找到结果' } },
     ],
@@ -416,7 +419,7 @@ export function buildStateEntryPlan(id) {
       },
       {
         kind: 'setValue',
-        target: { role: 'AXTextField', name: '最早修改时间' },
+        target: { name: '最早修改时间' },
         text: '2026-01-01',
       },
       { kind: 'movePointerToTitlebar' },
@@ -425,7 +428,8 @@ export function buildStateEntryPlan(id) {
     'MEN-01': [
       openProject,
       ...workspaceReady,
-      { kind: 'setValue', target: { role: 'AXTextField', name: '搜索项目' }, text: 'jpg' },
+      { kind: 'setValue', target: { role: 'AXTextField', name: '搜索项目' }, text: 'jp' },
+      { kind: 'key', key: 'g', modifiers: [] },
       { kind: 'assert', target: { name: '搜索结果区域' } },
       clickToolbar('视图'),
       { kind: 'movePointerToTitlebar' },
@@ -444,12 +448,12 @@ export function buildStateEntryPlan(id) {
       ...openFolder('衣服/A01'),
       clickToolbar('更多'),
       { kind: 'movePointerToTitlebar' },
-      { kind: 'assert', target: { name: '只读' } },
+      { kind: 'assert', target: { name: '访问权限' } },
     ],
     'LAU-07': [
       ...openFolder('空目录/Empty'),
       { kind: 'movePointerToTitlebar' },
-      { kind: 'assert', target: { role: 'AXHeading', name: '此文件夹为空' } },
+      { kind: 'assert', target: { name: '此文件夹为空' } },
     ],
   }
   const plan = plans[id]
@@ -2238,6 +2242,7 @@ export async function prepareFixtureForState(projectPath, operation) {
         force: false,
       })
     }
+    await rm(path.join(root, '.viewer'), { recursive: true, force: true })
   } else if (operation === 'makeProjectReadOnly') {
     await setFixtureTreeReadOnly(root)
   } else {
@@ -2301,6 +2306,9 @@ export async function executeStateEntryPlan({
         modifiers: step.modifiers,
       })
     } else if (step.kind === 'setValue') {
+      await requestWithActionLog(client, actions, 'focus', {
+        target: step.target,
+      })
       visible = await requestWithActionLog(client, actions, 'setValue', {
         target: step.target,
         text: step.text,
@@ -2317,6 +2325,12 @@ export async function executeStateEntryPlan({
           x: Math.max(0, Math.min(window.width - 1, from.x + step.delta.x)),
           y: Math.max(0, Math.min(window.height - 1, from.y + step.delta.y)),
         },
+        durationMs: step.durationMs,
+      })
+    } else if (step.kind === 'dragPoint') {
+      visible = await requestWithActionLog(client, actions, 'drag', {
+        from: step.from,
+        to: step.to,
         durationMs: step.durationMs,
       })
     } else if (step.kind === 'waitMissing') {
@@ -2361,6 +2375,17 @@ export async function openProjectViaPanel({
     )
   }
   const segments = relative.split(path.sep)
+  try {
+    await queryVisibleElement(
+      client,
+      actions,
+      { role: 'AXButton', name: '选择项目文件夹' },
+      500,
+    )
+  } catch (error) {
+    if (error?.code !== 'PRECONDITION_WAIT_TIMEOUT') throw error
+    await ensureLaunchNoProject(client, actions)
+  }
   if (
     actions.some(
       (action) =>

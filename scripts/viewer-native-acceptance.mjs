@@ -370,7 +370,7 @@ export function buildStateEntryPlan(id) {
       { kind: 'assert', target: { name: '搜索结果区域' } },
     ],
     'SEA-03': [
-      { kind: 'prepareFixture', operation: 'populateSearchPaging' },
+      { kind: 'prepareFixture', operation: 'populateSearchIndexing' },
       ...openWorkspace(null),
       {
         kind: 'assert',
@@ -2364,6 +2364,23 @@ export async function prepareFixtureForState(projectPath, operation) {
     await mkdir(target)
     for (let index = 1; index <= 210; index += 1) {
       await cp(source, path.join(target, `分页-${String(index).padStart(3, '0')}.jpg`), {
+        dereference: false,
+        errorOnExist: true,
+        force: false,
+      })
+    }
+    await rm(path.join(root, '.viewer'), { recursive: true, force: true })
+  } else if (operation === 'populateSearchIndexing') {
+    const imageFolder = path.join(root, '衣服', 'A01')
+    const imageName = (await readdir(imageFolder)).find((name) => /\.jpe?g$/i.test(name))
+    if (imageName === undefined) {
+      throw new AcceptanceError('STATE_RECIPE_EXECUTOR', 'Indexing fixture has no JPEG source')
+    }
+    const source = path.join(imageFolder, imageName)
+    const target = path.join(root, '搜索索引中')
+    await mkdir(target)
+    for (let index = 1; index <= 1_200; index += 1) {
+      await cp(source, path.join(target, `索引-${String(index).padStart(4, '0')}.jpg`), {
         dereference: false,
         errorOnExist: true,
         force: false,

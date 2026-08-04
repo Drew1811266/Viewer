@@ -33,6 +33,7 @@ import {
   parseNativeAcceptanceCli,
   openProjectViaPanel,
   parseProcessTable,
+  prepareFixtureForState,
   selectExactViewer,
   selectExactWindow,
   resetFixtureVariant,
@@ -285,7 +286,7 @@ describe('state entry plans', () => {
     const setValueIndex = plan.findIndex((step) => step.kind === 'setValue')
 
     assert.deepEqual(plan.slice(0, 3), [
-      { kind: 'prepareFixture', operation: 'populateSearchPaging' },
+      { kind: 'prepareFixture', operation: 'populateSearchIndexing' },
       { kind: 'openProject' },
       {
         kind: 'normalizeWorkspace',
@@ -487,6 +488,27 @@ describe('fixture run', () => {
       assert.equal(restored, first)
       assert.equal(await readFile(path.join(restored, '衣服/A01/image.jpg'), 'utf8'), 'jpeg-data')
       assert.equal(await readFile(path.join(restored, '文档/sample.md'), 'utf8'), '# fixture')
+    } finally {
+      await rm(expectedRunRoot, { recursive: true, force: true })
+      await rm(temporaryRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('builds a disposable long-running search-indexing fixture', async () => {
+    const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), 'viewer-fixture-indexing-'))
+    const runId = `acceptance-indexing-${process.pid}-${Date.now()}`
+    const expectedRunRoot = path.join(os.homedir(), 'ViewerAcceptanceRuns', runId)
+    try {
+      await createFixtureBaseline(temporaryRoot)
+      const run = await createFixtureRun({ repoRoot: temporaryRoot, runId })
+      const projectPath = await resetFixtureVariant(run, 'search-results')
+      await mkdir(path.join(projectPath, '.viewer'))
+
+      await prepareFixtureForState(projectPath, 'populateSearchIndexing')
+
+      const generated = await readdir(path.join(projectPath, '搜索索引中'))
+      assert.equal(generated.length, 1_200)
+      await assert.rejects(stat(path.join(projectPath, '.viewer')), { code: 'ENOENT' })
     } finally {
       await rm(expectedRunRoot, { recursive: true, force: true })
       await rm(temporaryRoot, { recursive: true, force: true })

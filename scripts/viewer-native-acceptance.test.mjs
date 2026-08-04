@@ -26,6 +26,7 @@ import {
   buildEvidenceManifest,
   buildNativeHelper,
   createFixtureRun,
+  combinePngEvidence,
   discoverNativeWindows,
   parseNativeAcceptanceCli,
   parseProcessTable,
@@ -39,6 +40,8 @@ import {
   validateWindow,
   validateWindowPoint,
   waitFor,
+  readRgbaPng,
+  writeRgbaPng,
 } from './viewer-native-acceptance.mjs'
 
 const repoRoot = '/Users/example/Project/Viewer/.worktrees/atlas'
@@ -269,6 +272,43 @@ describe('evidence manifest', () => {
       () => buildEvidenceManifest({ id: 'FIL-03' }),
       { code: 'EVIDENCE_MANIFEST_INVALID' },
     )
+  })
+})
+
+describe('joint PNG evidence', () => {
+  it('places reference and native state in one lossless comparison input', async () => {
+    const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), 'viewer-combined-png-'))
+    try {
+      const reference = path.join(temporaryRoot, 'reference.png')
+      const native = path.join(temporaryRoot, 'native.png')
+      const combined = path.join(temporaryRoot, 'combined.png')
+      await writeRgbaPng(reference, {
+        width: 2,
+        height: 1,
+        data: Buffer.from([255, 0, 0, 255, 255, 0, 0, 255]),
+      })
+      await writeRgbaPng(native, {
+        width: 2,
+        height: 1,
+        data: Buffer.from([0, 0, 255, 255, 0, 0, 255, 255]),
+      })
+
+      await combinePngEvidence({ reference, native, output: combined })
+      const image = await readRgbaPng(combined)
+      assert.equal(image.width, 4)
+      assert.equal(image.height, 1)
+      assert.deepEqual(
+        image.data,
+        Buffer.from([
+          255, 0, 0, 255,
+          255, 0, 0, 255,
+          0, 0, 255, 255,
+          0, 0, 255, 255,
+        ]),
+      )
+    } finally {
+      await rm(temporaryRoot, { recursive: true, force: true })
+    }
   })
 })
 

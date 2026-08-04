@@ -269,27 +269,47 @@ describe('state entry plans', () => {
   })
 
   it('holds the native organization pointer over the approved sidebar destination', () => {
-    for (const [id, modifiers] of [
-      ['SID-04', []],
-      ['OTH-03', ['option']],
-    ]) {
-      const plan = buildStateEntryPlan(id)
-      const holdIndex = plan.findIndex((step) => step.kind === 'holdOrganizationDrag')
+    const plan = buildStateEntryPlan('SID-04')
+    const holdIndex = plan.findIndex((step) => step.kind === 'holdOrganizationDrag')
 
-      assert.notEqual(holdIndex, -1, id)
-      assert.deepEqual(plan.slice(holdIndex - 2), [
-        { kind: 'click', target: { name: '商品-01.jpg' } },
-        { kind: 'click', target: { name: '商品-02.jpg' }, modifiers: ['command'] },
-        {
-          kind: 'holdOrganizationDrag',
-          source: { name: '商品-02.jpg' },
-          destination: { role: 'AXGroup', name: '目标/Destination' },
-          modifiers,
-        },
-      ])
-      assert.equal(plan.at(-1).kind, 'holdOrganizationDrag', id)
-      assert.equal(plan.some((step) => step.kind === 'sleep'), false, id)
-    }
+    assert.notEqual(holdIndex, -1)
+    assert.deepEqual(plan.slice(holdIndex - 2), [
+      { kind: 'click', target: { name: '商品-01.jpg' } },
+      { kind: 'click', target: { name: '商品-02.jpg' }, modifiers: ['command'] },
+      {
+        kind: 'holdOrganizationDrag',
+        source: { name: '商品-02.jpg' },
+        destination: { role: 'AXGroup', name: '目标/Destination' },
+        modifiers: [],
+      },
+    ])
+    assert.equal(plan.at(-1).kind, 'holdOrganizationDrag')
+    assert.equal(plan.some((step) => step.kind === 'sleep'), false)
+  })
+
+  it('matches the compact three-item organization drag reference state', () => {
+    const plan = buildStateEntryPlan('OTH-03')
+    const holdIndex = plan.findIndex((step) => step.kind === 'holdOrganizationDrag')
+
+    assert.deepEqual(plan[1], {
+      kind: 'normalizeWorkspace',
+      density: '紧凑',
+      sidebar: 'expanded',
+      sidebarWidth: 220,
+    })
+    assert.deepEqual(plan.slice(holdIndex - 3), [
+      { kind: 'click', target: { name: '商品-01.jpg' } },
+      { kind: 'click', target: { name: '商品-02.jpg' }, modifiers: ['command'] },
+      { kind: 'click', target: { name: '商品-03.jpg' }, modifiers: ['command'] },
+      {
+        kind: 'holdOrganizationDrag',
+        source: { name: '商品-03.jpg' },
+        destination: { role: 'AXGroup', name: '目标/Destination' },
+        modifiers: [],
+      },
+    ])
+    assert.equal(plan.at(-1).kind, 'holdOrganizationDrag')
+    assert.equal(plan.some((step) => step.kind === 'sleep'), false)
   })
 
   it('normalizes persistent workspace chrome before entering every stable Wave 1 state', () => {
@@ -318,6 +338,7 @@ describe('state entry plans', () => {
       'THU-01',
       'OTH-01',
       'OTH-02',
+      'OTH-03',
       'FIL-01',
       'FIL-02',
       'FIL-03',
@@ -548,8 +569,8 @@ describe('state entry plans', () => {
         )
         .map(({ payload }) => payload),
       [
-        { kind: 'leftDown', point: { x: 480, y: 200 }, modifiers: ['option'] },
-        { kind: 'leftDrag', point: { x: 140, y: 394 }, modifiers: ['option'] },
+        { kind: 'leftDown', point: { x: 480, y: 200 }, modifiers: [] },
+        { kind: 'leftDrag', point: { x: 140, y: 394 }, modifiers: [] },
       ],
     )
     assert.ok(

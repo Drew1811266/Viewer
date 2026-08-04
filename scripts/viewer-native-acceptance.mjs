@@ -388,14 +388,15 @@ export function buildStateEntryPlan(id) {
       { kind: 'assert', target: { name: 'unsupported.bin' } },
     ],
     'OTH-03': [
-      ...openContent(),
+      ...openContent('紧凑'),
       { kind: 'click', target: { name: '商品-01.jpg' } },
       { kind: 'click', target: { name: '商品-02.jpg' }, modifiers: ['command'] },
+      { kind: 'click', target: { name: '商品-03.jpg' }, modifiers: ['command'] },
       {
         kind: 'holdOrganizationDrag',
-        source: { name: '商品-02.jpg' },
+        source: { name: '商品-03.jpg' },
         destination: { role: 'AXGroup', name: '目标/Destination' },
-        modifiers: ['option'],
+        modifiers: [],
       },
     ],
     'SEA-01': [

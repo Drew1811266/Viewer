@@ -409,7 +409,10 @@ describe('state entry plans', () => {
     assert.deepEqual(buildStateEntryPlan('LAU-05'), [
       { kind: 'prepareFixture', operation: 'populateSearchIndexing' },
       { kind: 'beginOpenProject' },
-      { kind: 'assert', target: { role: 'AXStaticText', name: '正在读取项目…' } },
+      {
+        kind: 'assert',
+        target: { role: 'AXStaticText', name: '测试图', position: 'rightmost' },
+      },
     ])
     assert.deepEqual(buildStateEntryPlan('LAU-06'), [
       { kind: 'prepareFixture', operation: 'populateSearchIndexing' },

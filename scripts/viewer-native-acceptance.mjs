@@ -15,6 +15,7 @@ import {
   writeFile,
 } from 'node:fs/promises'
 import readline from 'node:readline'
+import { homedir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 import { deflateSync, inflateSync } from 'node:zlib'
@@ -45,12 +46,36 @@ const ALLOWED_KEYS = new Set([
   'arrowLeft',
   'arrowRight',
   'home',
+  'period',
   'end',
   'delete',
   'backspace',
   'a',
+  'b',
   'c',
+  'd',
+  'e',
+  'f',
+  'g',
+  'h',
+  'i',
+  'j',
+  'k',
+  'l',
+  'm',
+  'n',
+  'o',
+  'p',
+  'q',
+  'r',
+  's',
+  't',
+  'u',
   'v',
+  'w',
+  'x',
+  'y',
+  'z',
 ])
 const ALLOWED_MODIFIERS = new Set(['shift', 'control', 'option', 'command'])
 
@@ -1157,9 +1182,12 @@ function commandError(message, details = {}) {
 }
 
 function validateTarget(target) {
-  const allowed = ['role', 'name', 'identifier']
+  const allowed = ['role', 'name', 'identifier', 'position']
   if (!hasOnlyKeys(target, allowed) || Object.keys(target).length === 0) {
     throw commandError('Target must contain only approved selector fields')
+  }
+  if (target.position !== undefined && target.position !== 'rightmost') {
+    throw commandError('Target position must be the deterministic rightmost option')
   }
   for (const value of Object.values(target)) {
     if (typeof value !== 'string' || value.length === 0 || [...value].length > 256) {
@@ -1208,10 +1236,19 @@ function validatePayload(command, payload, window) {
       return
     }
     case 'pointer':
-      if (!hasExactKeys(payload, ['kind', 'point'])) {
+      if (payload.kind === 'scroll') {
+        if (
+          !hasExactKeys(payload, ['kind', 'point', 'deltaY']) ||
+          !Number.isInteger(payload.deltaY) ||
+          payload.deltaY === 0 ||
+          Math.abs(payload.deltaY) > 1000
+        ) {
+          throw commandError('scroll requires a bounded non-zero integer delta')
+        }
+      } else if (!hasExactKeys(payload, ['kind', 'point'])) {
         throw commandError('pointer requires kind and point')
       }
-      if (!['click', 'doubleClick', 'rightClick'].includes(payload.kind)) {
+      if (!['click', 'doubleClick', 'rightClick', 'scroll'].includes(payload.kind)) {
         throw commandError('Unsupported pointer action')
       }
       try {
@@ -1709,6 +1746,178 @@ async function ensureLaunchNoProject(client, actions) {
     },
     { timeoutMs: 10_000, intervalMs: 100 },
   )
+}
+
+async function queryVisibleElement(client, actions, target, timeoutMs = 3000) {
+  const result = await waitFor(
+    async () => {
+      try {
+        return await client.request('query', { target })
+      } catch (error) {
+        if (error?.code === 'STATE_TARGET_NOT_FOUND') return false
+        throw error
+      }
+    },
+    { timeoutMs, intervalMs: 50 },
+  )
+  actions.push({
+    sequence: actions.length + 1,
+    command: 'query',
+    payload: { target },
+    completedAt: new Date().toISOString(),
+    ok: true,
+    result,
+  })
+  return result.elements[0]
+}
+
+export async function openProjectViaPanel({
+  client,
+  actions,
+  projectPath,
+  window,
+}) {
+  const userHome = homedir()
+  const relative = path.relative(userHome, projectPath)
+  if (!isContainedPath(userHome, projectPath) || relative === '') {
+    throw new AcceptanceError(
+      'SAFETY_FIXTURE_PATH',
+      'Open-panel navigation requires a fixture below the current home directory',
+      { projectPath },
+    )
+  }
+  const segments = relative.split(path.sep)
+  if (
+    actions.some(
+      (action) =>
+        action.command === 'activate' &&
+        action.payload?.target?.name === '选择项目文件夹',
+    )
+  ) {
+    throw new AcceptanceError(
+      'STATE_OPEN_PANEL_REENTRY',
+      'A recipe may open the native project chooser only once',
+    )
+  }
+  let panelOpen = false
+  try {
+    await requestWithActionLog(client, actions, 'activate', {
+      target: { role: 'AXButton', name: '选择项目文件夹' },
+    })
+    panelOpen = true
+    const home = await queryVisibleElement(client, actions, {
+      role: 'AXStaticText',
+      name: path.basename(userHome),
+    })
+    await requestWithActionLog(client, actions, 'pointer', {
+      kind: 'click',
+      point: {
+        x: home.frame.x - window.x + home.frame.width / 2,
+        y: home.frame.y - window.y + home.frame.height / 2,
+      },
+    })
+    for (const segment of segments) {
+      if (segment.startsWith('.')) {
+        await requestWithActionLog(client, actions, 'key', {
+          key: 'period',
+          modifiers: ['shift', 'command'],
+        })
+      }
+      const element = await queryVisibleElement(
+        client,
+        actions,
+        { role: 'AXTextField', name: segment, position: 'rightmost' },
+        5000,
+      )
+      let point = {
+        x: element.frame.x - window.x + element.frame.width / 2,
+        y: element.frame.y - window.y + element.frame.height / 2,
+      }
+      if (
+        point.x < 0 ||
+        point.x >= window.width ||
+        point.y < 0 ||
+        point.y >= window.height
+      ) {
+        await requestWithActionLog(client, actions, 'pointer', {
+          kind: 'click',
+          point: {
+            x: Math.max(8, Math.min(window.width - 8, point.x)),
+            y: Math.floor(window.height / 2),
+          },
+        })
+        for (let scroll = 0; scroll < 4; scroll += 1) {
+          await requestWithActionLog(client, actions, 'pointer', {
+            kind: 'scroll',
+            point: {
+              x: Math.max(8, Math.min(window.width - 8, point.x)),
+              y: Math.floor(window.height / 2),
+            },
+            deltaY: 12,
+          })
+        }
+        const firstCharacter = segment[0].toLowerCase()
+        if (
+          !ALLOWED_KEYS.has(firstCharacter) ||
+          !/^[a-z]$/.test(firstCharacter)
+        ) {
+          throw new AcceptanceError(
+            'STATE_TARGET_OFFSCREEN',
+            'Offscreen open-panel segment cannot be reached by approved type-select',
+            { segment },
+          )
+        }
+        await requestWithActionLog(client, actions, 'key', {
+          key: firstCharacter,
+          modifiers: [],
+        })
+        const visibleElement = await queryVisibleElement(
+          client,
+          actions,
+          { role: 'AXTextField', name: segment, position: 'rightmost' },
+          3000,
+        )
+        point = {
+          x: visibleElement.frame.x - window.x + visibleElement.frame.width / 2,
+          y:
+            visibleElement.frame.y -
+            window.y +
+            visibleElement.frame.height / 2,
+        }
+      }
+      await requestWithActionLog(client, actions, 'pointer', {
+        kind: 'click',
+        point,
+      })
+    }
+    await requestWithActionLog(client, actions, 'activate', {
+      target: { role: 'AXButton', name: 'Open' },
+    })
+    const projectVisible = await queryVisibleElement(
+      client,
+      actions,
+      { role: 'AXButton', name: '更多' },
+      10_000,
+    )
+    panelOpen = false
+    return projectVisible
+  } catch (error) {
+    if (panelOpen) {
+      try {
+        await requestWithActionLog(client, actions, 'activate', {
+          target: { role: 'AXButton', name: 'Cancel' },
+        })
+      } catch {
+        try {
+          await requestWithActionLog(client, actions, 'key', {
+            key: 'escape',
+            modifiers: [],
+          })
+        } catch {}
+      }
+    }
+    throw error
+  }
 }
 
 async function createEvidenceDirectory({ repoRoot, commit, viewport, id }) {

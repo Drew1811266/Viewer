@@ -29,6 +29,7 @@ import {
   combinePngEvidence,
   discoverNativeWindows,
   parseNativeAcceptanceCli,
+  openProjectViaPanel,
   parseProcessTable,
   selectExactViewer,
   selectExactWindow,
@@ -431,6 +432,64 @@ describe('native acceptance CLI', () => {
     assert.throws(
       () => waitFor(() => true, { timeoutMs: 10_001, intervalMs: 1 }),
       { code: 'PRECONDITION_WAIT_LIMIT' },
+    )
+  })
+
+  it('refuses open-panel navigation outside the current home fixture boundary', async () => {
+    await assert.rejects(
+      openProjectViaPanel({
+        client: {},
+        actions: [],
+        projectPath: '/tmp/not-an-acceptance-fixture',
+        window: { x: 0, y: 0, width: 1024, height: 720 },
+      }),
+      { code: 'SAFETY_FIXTURE_PATH' },
+    )
+  })
+
+  it('opens the project chooser at most once and closes it after entry failure', async () => {
+    const requests = []
+    const client = {
+      async request(command, payload) {
+        requests.push({ command, payload })
+        if (command === 'query') {
+          throw new AcceptanceError(
+            'STATE_FIXTURE_ENTRY_FAILED',
+            'simulated fixture entry failure',
+          )
+        }
+        return { performed: true, command }
+      },
+    }
+    const actions = []
+    const input = {
+      client,
+      actions,
+      projectPath: path.join(os.homedir(), 'ViewerAcceptanceFixture'),
+      window: { x: 0, y: 0, width: 1024, height: 720 },
+    }
+    await assert.rejects(openProjectViaPanel(input), {
+      code: 'STATE_FIXTURE_ENTRY_FAILED',
+    })
+    assert.equal(
+      requests.filter(
+        (request) => request.payload?.target?.name === '选择项目文件夹',
+      ).length,
+      1,
+    )
+    assert.equal(
+      requests.filter((request) => request.payload?.target?.name === 'Cancel')
+        .length,
+      1,
+    )
+    await assert.rejects(openProjectViaPanel(input), {
+      code: 'STATE_OPEN_PANEL_REENTRY',
+    })
+    assert.equal(
+      requests.filter(
+        (request) => request.payload?.target?.name === '选择项目文件夹',
+      ).length,
+      1,
     )
   })
 })
@@ -1001,6 +1060,28 @@ describe('protocol schema', () => {
     )
   })
 
+  it('allows only the deterministic rightmost target disambiguator', () => {
+    const request = {
+      ...inspectRequest,
+      command: 'query',
+      payload: {
+        target: { role: 'AXTextField', name: 'target', position: 'rightmost' },
+      },
+    }
+    assert.deepEqual(validateCommand(request, { window }), request)
+    assert.throws(
+      () =>
+        validateCommand(
+          {
+            ...request,
+            payload: { target: { ...request.payload.target, position: 'first' } },
+          },
+          { window },
+        ),
+      { code: 'SAFETY_COMMAND' },
+    )
+  })
+
   it('accepts bounded setValue text and rejects text above 4096 scalars', () => {
     const request = {
       ...inspectRequest,
@@ -1031,6 +1112,18 @@ describe('protocol schema', () => {
       payload: { key: 'escape', modifiers: ['shift', 'command'] },
     }
     assert.deepEqual(validateCommand(request, { window }), request)
+    for (const key of ['g', 'period']) {
+      assert.deepEqual(
+        validateCommand(
+          {
+            ...request,
+            payload: { key, modifiers: ['shift', 'command'] },
+          },
+          { window },
+        ).payload,
+        { key, modifiers: ['shift', 'command'] },
+      )
+    }
 
     for (const payload of [
       { key: 'f1', modifiers: [] },
@@ -1061,6 +1154,20 @@ describe('protocol schema', () => {
       },
     }
     assert.deepEqual(validateCommand(pointerRequest, { window }), pointerRequest)
+    assert.deepEqual(
+      validateCommand(
+        {
+          ...pointerRequest,
+          payload: {
+            kind: 'scroll',
+            point: { x: 100, y: 200 },
+            deltaY: -12,
+          },
+        },
+        { window },
+      ).payload.deltaY,
+      -12,
+    )
     assert.deepEqual(validateCommand(dragRequest, { window }), dragRequest)
 
     assert.throws(
@@ -1069,6 +1176,21 @@ describe('protocol schema', () => {
           {
             ...pointerRequest,
             payload: { kind: 'click', point: { x: 1024, y: 10 } },
+          },
+          { window },
+        ),
+      { code: 'SAFETY_COMMAND' },
+    )
+    assert.throws(
+      () =>
+        validateCommand(
+          {
+            ...pointerRequest,
+            payload: {
+              kind: 'scroll',
+              point: { x: 100, y: 200 },
+              deltaY: 0,
+            },
           },
           { window },
         ),
@@ -1304,17 +1426,29 @@ describe('native validation', () => {
         ...base,
         sequence: 4,
         command: 'query',
-        payload: { target: { role: 'AXButton', name: '重复' } },
+        payload: {
+          target: {
+            role: 'AXButton',
+            name: '重复',
+            position: 'rightmost',
+          },
+        },
       },
       {
         ...base,
         sequence: 5,
         command: 'query',
-        payload: { target: { role: 'AXButton', name: '不存在' } },
+        payload: { target: { role: 'AXButton', name: '重复' } },
       },
       {
         ...base,
         sequence: 6,
+        command: 'query',
+        payload: { target: { role: 'AXButton', name: '不存在' } },
+      },
+      {
+        ...base,
+        sequence: 7,
         command: 'pointer',
         payload: { kind: 'click', point: { x: 1024, y: 10 } },
       },
@@ -1376,8 +1510,26 @@ describe('native validation', () => {
           ],
         },
       })
+      assert.deepEqual(result.responses[3], {
+        version: 1,
+        sequence: 4,
+        ok: true,
+        result: {
+          elements: [
+            {
+              role: 'AXButton',
+              name: '重复',
+              identifier: 'duplicate-two',
+              enabled: true,
+              focused: false,
+              frame: { x: 790, y: 40, width: 80, height: 32 },
+              path: [0, 2],
+            },
+          ],
+        },
+      })
       assert.deepEqual(
-        result.responses.slice(3).map((response) => response.error.code),
+        result.responses.slice(4).map((response) => response.error.code),
         [
           'STATE_TARGET_NOT_UNIQUE',
           'STATE_TARGET_NOT_FOUND',
@@ -1432,12 +1584,28 @@ describe('native validation', () => {
       {
         ...base,
         sequence: 5,
+        command: 'key',
+        payload: { key: 'period', modifiers: ['shift', 'command'] },
+      },
+      {
+        ...base,
+        sequence: 6,
+        command: 'pointer',
+        payload: {
+          kind: 'scroll',
+          point: { x: 100, y: 200 },
+          deltaY: 12,
+        },
+      },
+      {
+        ...base,
+        sequence: 7,
         command: 'pointer',
         payload: { kind: 'rightClick', point: { x: 100, y: 200 } },
       },
       {
         ...base,
-        sequence: 6,
+        sequence: 8,
         command: 'drag',
         payload: {
           from: { x: 100, y: 200 },
@@ -1447,19 +1615,19 @@ describe('native validation', () => {
       },
       {
         ...base,
-        sequence: 7,
+        sequence: 9,
         command: 'capture',
         payload: { path: '/tmp/viewer-acceptance-product.png' },
       },
       {
         ...base,
-        sequence: 8,
+        sequence: 10,
         command: 'shutdown',
         payload: {},
       },
       {
         ...base,
-        sequence: 9,
+        sequence: 11,
         command: 'setValue',
         payload: {
           target: { role: 'AXTextField', name: '搜索' },
@@ -1468,7 +1636,7 @@ describe('native validation', () => {
       },
       {
         ...base,
-        sequence: 10,
+        sequence: 12,
         command: 'drag',
         payload: {
           from: { x: 100, y: 200 },
@@ -1495,7 +1663,7 @@ describe('native validation', () => {
       assert.equal(result.exitCode, 0)
       assert.equal(result.stderr, '')
       assert.deepEqual(
-        result.responses.slice(0, 8).map((response) => ({
+        result.responses.slice(0, 10).map((response) => ({
           ok: response.ok,
           performed: response.result.performed,
           command: response.result.command,
@@ -1505,6 +1673,8 @@ describe('native validation', () => {
           { ok: true, performed: true, command: 'focus' },
           { ok: true, performed: true, command: 'setValue' },
           { ok: true, performed: true, command: 'key' },
+          { ok: true, performed: true, command: 'key' },
+          { ok: true, performed: true, command: 'pointer' },
           { ok: true, performed: true, command: 'pointer' },
           { ok: true, performed: true, command: 'drag' },
           { ok: true, performed: true, command: 'capture' },
@@ -1512,7 +1682,7 @@ describe('native validation', () => {
         ],
       )
       assert.deepEqual(
-        result.responses.slice(8).map((response) => response.error.code),
+        result.responses.slice(10).map((response) => response.error.code),
         ['SAFETY_COMMAND', 'SAFETY_POINT_OUTSIDE_WINDOW'],
       )
     } finally {

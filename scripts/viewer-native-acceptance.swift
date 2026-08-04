@@ -188,7 +188,8 @@ private struct FixtureAdapter: NativeAdapter {
             Set(payload.keys).contains("target"),
             let target = payload["target"] as? [String: Any],
             !target.isEmpty,
-            Set(target.keys).isSubset(of: ["role", "name", "identifier"])
+            Set(target.keys).isSubset(of: ["role", "name", "identifier", "position"]),
+            target["position"] == nil || target["position"] as? String == "rightmost"
         else {
             throw AcceptanceFailure(
                 code: "SAFETY_COMMAND",
@@ -196,7 +197,7 @@ private struct FixtureAdapter: NativeAdapter {
             )
         }
 
-        let matches = elements.filter { element in
+        var matches = elements.filter { element in
             if let role = target["role"] as? String, element.role != role { return false }
             if let name = target["name"] as? String, element.name != name { return false }
             if let identifier = target["identifier"] as? String,
@@ -205,6 +206,11 @@ private struct FixtureAdapter: NativeAdapter {
                 return false
             }
             return true
+        }
+        if target["position"] as? String == "rightmost", let rightmost = matches.max(
+            by: { ($0.frame["x"] ?? 0) < ($1.frame["x"] ?? 0) }
+        ) {
+            matches = [rightmost]
         }
         guard !matches.isEmpty else {
             throw AcceptanceFailure(
@@ -249,7 +255,9 @@ private struct FixtureAdapter: NativeAdapter {
 
 private let allowedKeys: Set<String> = [
     "tab", "enter", "space", "escape", "arrowUp", "arrowDown", "arrowLeft",
-    "arrowRight", "home", "end", "delete", "backspace", "a", "c", "v",
+    "arrowRight", "home", "period", "end", "delete", "backspace",
+    "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m",
+    "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z",
 ]
 private let allowedModifiers: Set<String> = ["shift", "control", "option", "command"]
 
@@ -262,7 +270,8 @@ private func validateTargetPayload(_ target: Any?) throws {
     guard
         let target = target as? [String: Any],
         !target.isEmpty,
-        Set(target.keys).isSubset(of: ["role", "name", "identifier"])
+        Set(target.keys).isSubset(of: ["role", "name", "identifier", "position"]),
+        target["position"] == nil || target["position"] as? String == "rightmost"
     else {
         throw AcceptanceFailure(code: "SAFETY_COMMAND", message: "Invalid target selector")
     }
@@ -315,11 +324,23 @@ private func validateRequestPayload(_ request: RequestEnvelope) throws {
             throw AcceptanceFailure(code: "SAFETY_COMMAND", message: "Invalid key payload")
         }
     case "pointer":
-        guard Set(payload.keys) == ["kind", "point"],
-              let kind = payload["kind"] as? String,
-              ["click", "doubleClick", "rightClick"].contains(kind)
-        else {
+        guard let kind = payload["kind"] as? String else {
             throw AcceptanceFailure(code: "SAFETY_COMMAND", message: "Invalid pointer payload")
+        }
+        if kind == "scroll" {
+            guard Set(payload.keys) == ["kind", "point", "deltaY"],
+                  let delta = payload["deltaY"] as? Int,
+                  delta != 0,
+                  abs(delta) <= 1000
+            else {
+                throw AcceptanceFailure(code: "SAFETY_COMMAND", message: "Invalid scroll payload")
+            }
+        } else {
+            guard Set(payload.keys) == ["kind", "point"],
+                  ["click", "doubleClick", "rightClick"].contains(kind)
+            else {
+                throw AcceptanceFailure(code: "SAFETY_COMMAND", message: "Invalid pointer payload")
+            }
         }
         try validatePointPayload(payload["point"])
     case "drag":
@@ -915,6 +936,28 @@ private final class LiveMacSystem: MacSystem {
                 message: "Target element was not found"
             )
         }
+        if target["position"] as? String == "rightmost" {
+            let visibleMatches = matches.filter { match in
+                guard
+                    let frame = match.dictionary["frame"] as? [String: Int],
+                    let x = frame["x"],
+                    let y = frame["y"],
+                    let width = frame["width"],
+                    let height = frame["height"]
+                else { return false }
+                return x + width > Int(window.frame.minX) &&
+                    x < Int(window.frame.maxX) &&
+                    y + height > Int(window.frame.minY) &&
+                    y < Int(window.frame.maxY)
+            }
+            if let rightmost = visibleMatches.max(by: { left, right in
+                let leftFrame = left.dictionary["frame"] as? [String: Int] ?? [:]
+                let rightFrame = right.dictionary["frame"] as? [String: Int] ?? [:]
+                return (leftFrame["x"] ?? 0) < (rightFrame["x"] ?? 0)
+            }) {
+                matches = [rightmost]
+            }
+        }
         guard matches.count == 1 else {
             throw AcceptanceFailure(
                 code: "STATE_TARGET_NOT_UNIQUE",
@@ -1020,8 +1063,11 @@ private final class LiveMacSystem: MacSystem {
         let keyCodes: [String: CGKeyCode] = [
             "tab": 48, "enter": 36, "space": 49, "escape": 53,
             "arrowUp": 126, "arrowDown": 125, "arrowLeft": 123, "arrowRight": 124,
-            "home": 115, "end": 119, "delete": 117, "backspace": 51,
-            "a": 0, "c": 8, "v": 9,
+            "home": 115, "period": 47, "end": 119, "delete": 117, "backspace": 51,
+            "a": 0, "b": 11, "c": 8, "d": 2, "e": 14, "f": 3, "g": 5,
+            "h": 4, "i": 34, "j": 38, "k": 40, "l": 37, "m": 46, "n": 45,
+            "o": 31, "p": 35, "q": 12, "r": 15, "s": 1, "t": 17, "u": 32,
+            "v": 9, "w": 13, "x": 7, "y": 16, "z": 6,
         ]
         guard let key = payload["key"] as? String,
               let keyCode = keyCodes[key],
@@ -1072,6 +1118,32 @@ private final class LiveMacSystem: MacSystem {
             throw AcceptanceFailure(code: "SAFETY_COMMAND", message: "Invalid pointer payload")
         }
         let point = try screenPoint(payload["point"], window: window)
+        if kind == "scroll" {
+            CGEvent(
+                mouseEventSource: nil,
+                mouseType: .mouseMoved,
+                mouseCursorPosition: point,
+                mouseButton: .left
+            )?.post(tap: .cghidEventTap)
+            guard
+                let deltaY = payload["deltaY"] as? Int,
+                let event = CGEvent(
+                    scrollWheelEvent2Source: nil,
+                    units: .line,
+                    wheelCount: 1,
+                    wheel1: Int32(deltaY),
+                    wheel2: 0,
+                    wheel3: 0
+                )
+            else {
+                throw AcceptanceFailure(
+                    code: "STATE_ACTION_FAILED",
+                    message: "Unable to create scroll event"
+                )
+            }
+            event.post(tap: .cghidEventTap)
+            return
+        }
         let button: CGMouseButton = kind == "rightClick" ? .right : .left
         let downType: CGEventType = kind == "rightClick" ? .rightMouseDown : .leftMouseDown
         let upType: CGEventType = kind == "rightClick" ? .rightMouseUp : .leftMouseUp

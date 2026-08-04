@@ -617,6 +617,30 @@ summary,
   margin-top: 10px;
 }
 
+.advanced-filter-editor,
+.advanced-filter-rules {
+  margin-top: 10px;
+}
+
+.advanced-filter-rule {
+  align-items: center;
+  border-bottom: 1px solid var(--viewer-divider-subtle);
+  display: flex;
+  font-size: 12px;
+  justify-content: space-between;
+  min-height: 42px;
+}
+
+.advanced-filter-rule:first-child {
+  border-top: 1px solid var(--viewer-divider-subtle);
+}
+
+.advanced-filter-editor-actions {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 6px;
+}
+
 .active-filter-summary {
   align-items: center;
   color: var(--viewer-text-secondary);

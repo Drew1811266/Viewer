@@ -245,6 +245,13 @@ describe('state entry plans', () => {
       { kind: 'key', key: 'tab', modifiers: [] },
       { kind: 'assert', target: { role: 'AXButton', name: '筛选，6 项已启用' } },
     ])
+    const countIndex = plan.findIndex((step) => step.target?.name === '筛选，6 项已启用')
+    assert.deepEqual(plan.slice(countIndex, countIndex + 4), [
+      { kind: 'assert', target: { role: 'AXButton', name: '筛选，6 项已启用' } },
+      { kind: 'click', target: { role: 'AXButton', name: '完成高级条件编辑' } },
+      { kind: 'movePointerToTitlebar' },
+      { kind: 'assert', target: { namePrefix: '像素宽度 · 至少 1200 px' } },
+    ])
   })
 
   it('waits for the completion task to stay absent before capture', () => {

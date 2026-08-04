@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type {
   FileKind,
   FolderTreeItem,
@@ -64,6 +64,8 @@ export default function SearchToolbar({
 }: SearchToolbarProps) {
   const searchRef = useRef<HTMLInputElement>(null)
   const filterTriggerRef = useRef<HTMLElement>(null)
+  const [advancedOpen, setAdvancedOpen] = useState(false)
+  const [advancedEditing, setAdvancedEditing] = useState(false)
   useEffect(() => {
     if (focusRequest > 0) searchRef.current?.focus()
   }, [focusRequest])
@@ -73,6 +75,15 @@ export default function SearchToolbar({
   }
   const toggleOptions = () => onFilterOpenChange(!filterOpen)
   const chips = useMemo(() => filterChips(query.filters), [query.filters])
+  const advancedRules = useMemo(() => advancedFilterRules(query.filters), [query.filters])
+  useEffect(() => {
+    if (!filterOpen) {
+      setAdvancedOpen(false)
+      setAdvancedEditing(false)
+      return
+    }
+    if (advancedRules.length > 0) setAdvancedOpen(true)
+  }, [advancedRules.length, filterOpen])
   const orientationControls = (
     <>
       <legend>方向</legend>
@@ -310,17 +321,60 @@ export default function SearchToolbar({
           </header>
           {scopeAndSortControls}
           <div className="common-filter-grid">{fileKindAndReviewControls}</div>
-          <details className="advanced-filter-group">
-            <summary role="button">
+          <details className="advanced-filter-group" open={advancedOpen}>
+            <summary
+              role="button"
+              aria-expanded={advancedOpen}
+              onClick={(event) => {
+                event.preventDefault()
+                if (advancedOpen) {
+                  setAdvancedOpen(false)
+                  return
+                }
+                setAdvancedOpen(true)
+                setAdvancedEditing(advancedRules.length === 0)
+              }}
+            >
               <span>高级条件</span>
               <ViewerIcon name="chevron-down" size={14} />
             </summary>
-            <div className="advanced-filter-grid">
-              <fieldset aria-label="方向">{orientationControls}</fieldset>
-              <fieldset aria-label="像素尺寸">{dimensionControls}</fieldset>
-              <fieldset aria-label="文件大小">{fileSizeControls}</fieldset>
-              <fieldset aria-label="修改时间">{modifiedTimeControls}</fieldset>
-            </div>
+            {advancedEditing || advancedRules.length === 0 ? (
+              <div className="advanced-filter-editor">
+                <div className="advanced-filter-grid">
+                  <fieldset aria-label="方向">{orientationControls}</fieldset>
+                  <fieldset aria-label="像素尺寸">{dimensionControls}</fieldset>
+                  <fieldset aria-label="文件大小">{fileSizeControls}</fieldset>
+                  <fieldset aria-label="修改时间">{modifiedTimeControls}</fieldset>
+                </div>
+                {advancedRules.length > 0 && (
+                  <div className="advanced-filter-editor-actions">
+                    <ViewerButton tone="quiet" onClick={() => setAdvancedEditing(false)}>
+                      完成高级条件编辑
+                    </ViewerButton>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="advanced-filter-rules" aria-label="已启用高级条件">
+                {advancedRules.map(({ chip, label, name }) => (
+                  <div className="advanced-filter-rule" key={chipKey(chip)}>
+                    <span>{label}</span>
+                    <ViewerButton
+                      tone="quiet"
+                      aria-label={`移除 ${name} 筛选`}
+                      onClick={() => onRemoveFilter(chip)}
+                    >
+                      移除
+                    </ViewerButton>
+                  </div>
+                ))}
+                <div className="advanced-filter-editor-actions">
+                  <ViewerButton tone="quiet" onClick={() => setAdvancedEditing(true)}>
+                    编辑高级条件
+                  </ViewerButton>
+                </div>
+              </div>
+            )}
           </details>
           <div className="active-filter-summary">{activeFilterChipsAndClearAction}</div>
           <footer className="viewer-filter-footer">
@@ -436,6 +490,71 @@ function filterChips(filters: SearchFilters): Array<{ chip: SearchFilterChip; la
     chips.push({ chip: { kind: 'range', field: 'modified_ns' }, label: '修改时间' })
   }
   return chips
+}
+
+function advancedFilterRules(
+  filters: SearchFilters,
+): Array<{ chip: SearchFilterChip; label: string; name: string }> {
+  const rules: Array<{ chip: SearchFilterChip; label: string; name: string }> = []
+  for (const value of filters.orientations) {
+    rules.push({
+      chip: { kind: 'orientation', value },
+      label: `方向 · ${labelFor(ORIENTATIONS, value)}`,
+      name: '方向',
+    })
+  }
+  if (filters.widthMin !== null || filters.widthMax !== null) {
+    rules.push({
+      chip: { kind: 'range', field: 'width' },
+      label: numericRangeLabel('像素宽度', filters.widthMin, filters.widthMax, ' px'),
+      name: '像素宽度',
+    })
+  }
+  if (filters.heightMin !== null || filters.heightMax !== null) {
+    rules.push({
+      chip: { kind: 'range', field: 'height' },
+      label: numericRangeLabel('像素高度', filters.heightMin, filters.heightMax, ' px'),
+      name: '像素高度',
+    })
+  }
+  if (filters.sizeMin !== null || filters.sizeMax !== null) {
+    rules.push({
+      chip: { kind: 'range', field: 'size' },
+      label: numericRangeLabel('文件大小', filters.sizeMin, filters.sizeMax, ' B'),
+      name: '文件大小',
+    })
+  }
+  if (filters.modifiedNsMin !== null || filters.modifiedNsMax !== null) {
+    rules.push({
+      chip: { kind: 'range', field: 'modified_ns' },
+      label: dateRangeLabel(filters.modifiedNsMin, filters.modifiedNsMax),
+      name: '修改时间',
+    })
+  }
+  return rules
+}
+
+function numericRangeLabel(
+  title: string,
+  minimum: number | null,
+  maximum: number | null,
+  unit: string,
+): string {
+  if (minimum !== null && maximum !== null) return `${title} · ${minimum}–${maximum}${unit}`
+  if (minimum !== null) return `${title} · 至少 ${minimum}${unit}`
+  return `${title} · 至多 ${maximum ?? 0}${unit}`
+}
+
+function dateRangeLabel(minimum: string | null, maximum: string | null): string {
+  const start = minimum === null ? null : formatRuleDate(minimum)
+  const end = maximum === null ? null : formatRuleDate(maximum)
+  if (start !== null && end !== null) return `修改时间 · ${start}–${end}`
+  if (start !== null) return `修改时间 · 从 ${start}`
+  return `修改时间 · 至 ${end ?? ''}`
+}
+
+function formatRuleDate(value: string): string {
+  return nanosecondsToLocal(value).replace('T', ' ')
 }
 
 function labelFor<T>(options: Array<[T, string]>, value: T): string {

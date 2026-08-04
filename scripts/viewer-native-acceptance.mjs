@@ -459,8 +459,9 @@ export function buildStateEntryPlan(id) {
       { kind: 'key', key: 'a', modifiers: [] },
       { kind: 'key', key: 'tab', modifiers: [] },
       { kind: 'assert', target: { role: 'AXButton', name: '筛选，6 项已启用' } },
+      { kind: 'click', target: { role: 'AXButton', name: '完成高级条件编辑' } },
       { kind: 'movePointerToTitlebar' },
-      { kind: 'assert', target: { role: 'AXHeading', name: '筛选' } },
+      { kind: 'assert', target: { namePrefix: '像素宽度 · 至少 1200 px' } },
     ],
     'MEN-01': [
       ...openWorkspace(),

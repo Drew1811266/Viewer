@@ -104,6 +104,41 @@ describe('SearchToolbar', () => {
     expect(screen.getByLabelText('最晚修改时间')).toBeVisible()
   })
 
+  it('summarizes active advanced conditions as compact removable rule rows', () => {
+    const onRemoveFilter = vi.fn()
+    render(
+      <SearchToolbarView
+        filterOpen
+        onFilterOpenChange={vi.fn()}
+        query={query({
+          filters: {
+            ...initialSearchQuery.filters,
+            widthMin: 1200,
+            modifiedNsMin: '1785888000000000000',
+          },
+        })}
+        folders={[]}
+        focusRequest={0}
+        onTextChange={vi.fn()}
+        onScopeChange={vi.fn()}
+        onFiltersChange={vi.fn()}
+        onSortChange={vi.fn()}
+        onRemoveFilter={onRemoveFilter}
+        onClearFilters={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText('像素宽度 · 至少 1200 px')).toBeVisible()
+    expect(screen.getByText(/修改时间 · 从/)).toBeVisible()
+    expect(screen.queryByLabelText('最小宽度')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: '编辑高级条件' }))
+    expect(screen.getByLabelText('最小宽度')).toBeVisible()
+    fireEvent.click(screen.getByRole('button', { name: '完成高级条件编辑' }))
+    fireEvent.click(screen.getByRole('button', { name: '移除 像素宽度 筛选' }))
+    expect(onRemoveFilter).toHaveBeenCalledWith({ kind: 'range', field: 'width' })
+  })
+
   it('uses formal controls and keeps filter changes immediate while Done only closes', () => {
     const onFilterOpenChange = vi.fn()
     const onFiltersChange = vi.fn()

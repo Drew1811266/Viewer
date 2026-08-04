@@ -357,10 +357,37 @@ describe('complete Viewer visual atlas', () => {
     expect(document.querySelector('[data-screen="browser"]')?.getAttribute('aria-current')).toBe(
       'page',
     )
+    const activeConditions = document.querySelectorAll('[data-active-filter-condition="true"]')
     expect(document.querySelector('[data-filter-trigger-count]')?.textContent).toBe(
-      document.querySelector('[data-filter-panel-count]')?.textContent,
+      String(activeConditions.length),
     )
-    expect(document.querySelectorAll('[data-active-filter-condition="true"]')).toHaveLength(6)
+    expect(
+      document
+        .querySelector('[data-filter-condition-count]')
+        ?.getAttribute('data-filter-condition-count'),
+    ).toBe(String(activeConditions.length))
+    expect(activeConditions).toHaveLength(6)
+  })
+
+  it('keeps filter and more-menu examples within approved product authority', () => {
+    const dom = renderAtlas()
+    const document = dom.window.document
+
+    clickScreen(document, 'filters')
+    clickState(document, 'filters-zero')
+    expect(document.querySelector('[aria-label="关闭筛选"]')).not.toBeNull()
+    expect(
+      [...document.querySelectorAll('button')].some((button) => button.textContent === '完成'),
+    ).toBe(true)
+    expect(document.body.textContent).not.toContain('应用筛选')
+
+    clickScreen(document, 'menus')
+    clickState(document, 'menu-more')
+    const menu = document.querySelector('[role="menu"]')
+    expect(menu?.textContent).toContain('软件设置')
+    expect(menu?.textContent).toContain('关闭项目')
+    expect(menu?.textContent).not.toContain('重新扫描项目')
+    expect(menu?.textContent).not.toContain('在文件管理器中显示')
   })
 
   it('renders a compact accessible collapsed sidebar header and visually disabled menu rows', () => {

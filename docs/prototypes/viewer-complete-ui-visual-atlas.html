@@ -714,29 +714,37 @@
       border: 1px solid var(--border);
       border-radius: 12px;
       box-shadow: var(--shadow-popover);
-      padding: 15px;
+      display: grid;
+      gap: 10px;
+      max-height: calc(100% - 49px);
+      overflow: auto;
+      padding: 10px;
       position: absolute;
-      right: 18px;
-      top: 12px;
-      width: 500px;
+      right: 128px;
+      top: 0;
+      width: min(580px, calc(100% - 36px));
       z-index: 20;
     }
     .filter-panel[data-filter-popover] { top: 37px; }
-    .panel-title { align-items: center; display: flex; justify-content: space-between; margin-bottom: 13px; }
-    .panel-title strong { font-size: 14px; }
-    .panel-title button { background: transparent; border: 0; color: var(--secondary); }
-    .filter-grid { display: grid; gap: 11px; grid-template-columns: repeat(2, 1fr); }
+    .filter-header { align-items: center; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; padding-bottom: 8px; }
+    .filter-header strong { font-size: 14px; }
+    .filter-close { align-items: center; background: transparent; border: 0; border-radius: 6px; display: inline-flex; height: 28px; justify-content: center; padding: 0; width: 28px; }
+    .filter-close:hover, .filter-close:focus-visible { background: var(--soft); }
+    .filter-close img, .atlas-advanced-filter-group img { height: 14px; width: 14px; }
+    .filter-grid { display: grid; gap: 10px; grid-template-columns: repeat(2, 1fr); }
     .field label,
-    .field-label { color: var(--secondary); display: block; font-size: 9px; margin-bottom: 5px; }
+    .field-label { color: var(--secondary); display: block; font-size: 12px; font-weight: 600; margin-bottom: 5px; }
     .field select, .field input {
       background: var(--surface);
       border: 1px solid #d4d6d3;
       border-radius: 8px;
       height: 32px;
+      font-size: 13px;
       padding: 0 9px;
       width: 100%;
     }
     .filter-options { display: flex; flex-wrap: wrap; gap: 6px; }
+    .filter-panel .chip { background: var(--surface); border-color: #d4d6d3; border-radius: 8px; font-size: 12px; font-weight: 600; min-height: 30px; padding: 0 12px; }
     .chip {
       background: var(--soft);
       border: 1px solid transparent;
@@ -746,7 +754,13 @@
       padding: 5px 8px;
     }
     .chip.active { background: var(--accent-soft); color: #4254b8; font-weight: 700; }
-    .filter-footer { align-items: center; border-top: 1px solid var(--border); display: flex; justify-content: space-between; margin-top: 14px; padding-top: 12px; }
+    .atlas-advanced-filter-group { border-top: 1px solid var(--border); padding-top: 8px; }
+    .atlas-advanced-filter-group > summary { align-items: center; cursor: pointer; display: flex; font-size: 12px; font-weight: 700; gap: 6px; list-style: none; }
+    .atlas-advanced-filter-group > summary::-webkit-details-marker { display: none; }
+    .atlas-advanced-filter-group[open] > summary img { transform: rotate(180deg); }
+    .atlas-advanced-filter-rules { display: grid; gap: 6px; margin-top: 10px; }
+    .active-filter-summary { color: var(--secondary); font-size: 12px; min-height: 32px; }
+    .filter-footer { align-items: center; border-top: 1px solid var(--border); display: flex; justify-content: space-between; padding-top: 10px; }
 
     /* Preview, compare and text */
     .preview-shell {
@@ -1622,8 +1636,8 @@
       const activeTypes = state.filters === "zero"
         ? []
         : state.filters === "one"
-          ? ["图片"]
-          : ["图片", "Markdown"];
+          ? ["JPEG"]
+          : ["JPEG", "Markdown"];
       const activeReviews = state.filters === "multiple" || state.filters === "advanced"
         ? ["保留", "待定"]
         : [];
@@ -1641,17 +1655,18 @@
     function filterPanelMarkup({ popover = false } = {}) {
       const model = filterConditionModel();
       const prefix = popover ? "toolbar-filter" : "scene-filter";
-      const conditionLabel = model.count === 0 ? "无条件" : `${model.count} 个条件`;
-      return `<section class="filter-panel" data-filter-state="${state.filters}"${popover ? " data-filter-popover" : ""}>
-        <div class="panel-title"><strong>筛选</strong><span class="status-tag ${model.count === 0 ? "pending" : "keep"}"><span data-filter-panel-count>${model.count}</span>${model.count === 0 ? " · 无条件" : " 个条件"}</span></div>
+      const activeLabels = [...model.activeTypes, ...model.activeReviews, ...model.advancedRules];
+      return `<section class="filter-panel" data-filter-state="${state.filters}" data-filter-condition-count="${model.count}"${popover ? " data-filter-popover" : ""}>
+        <div class="filter-header"><strong>筛选</strong><button class="filter-close" type="button" aria-label="关闭筛选"><img src="../../ui/src/assets/icons/lucide/x.svg" alt=""></button></div>
         <div class="filter-grid">
-          <div class="field"><label for="${prefix}-scope">搜索范围</label><select id="${prefix}-scope"><option>整个项目</option></select></div>
-          <div class="field"><label for="${prefix}-sort">排序</label><select id="${prefix}-sort"><option>文件名 · 升序</option></select></div>
-          <div class="field" style="grid-column:1/-1"><span class="field-label">文件类型</span><div class="filter-options">${["图片", "Markdown", "文本", "其它"].map((label) => `<button class="chip${model.activeTypes.includes(label) ? " active" : ""}"${model.activeTypes.includes(label) ? ' data-active-filter-condition="true"' : ""} type="button">${label}</button>`).join("")}</div></div>
-          <div class="field" style="grid-column:1/-1"><span class="field-label">审阅状态</span><div class="filter-options">${["保留", "待定", "淘汰", "未标记"].map((label) => `<button class="chip${model.activeReviews.includes(label) ? " active" : ""}"${model.activeReviews.includes(label) ? ' data-active-filter-condition="true"' : ""} type="button">${label}</button>`).join("")}</div></div>
-          ${model.advancedRules.length ? `<div class="field" style="grid-column:1/-1"><span class="field-label">高级条件</span>${model.advancedRules.map((rule) => `<div class="conflict-row" data-active-filter-condition="true"><span>${rule}</span><button class="viewer-button" type="button">移除</button></div>`).join("")}<button class="menu-row" type="button"><span>添加条件</span><span></span></button></div>` : ""}
+          <div class="field"><label for="${prefix}-scope">范围</label><select id="${prefix}-scope"><option>整个项目</option></select></div>
+          <div class="field"><label for="${prefix}-sort">排序</label><select id="${prefix}-sort"><option>文件名</option></select></div>
+          <div class="field"><span class="field-label">文件类型</span><div class="filter-options">${["JPEG", "PNG", "其它图片", "Markdown", "TXT", "其它文件", "文件夹"].map((label) => `<button class="chip${model.activeTypes.includes(label) ? " active" : ""}"${model.activeTypes.includes(label) ? ' data-active-filter-condition="true"' : ""} type="button">${label}</button>`).join("")}</div></div>
+          <div class="field"><span class="field-label">审阅状态</span><div class="filter-options">${["保留", "待定", "淘汰", "收藏", "未标记"].map((label) => `<button class="chip${model.activeReviews.includes(label) ? " active" : ""}"${model.activeReviews.includes(label) ? ' data-active-filter-condition="true"' : ""} type="button">${label}</button>`).join("")}</div></div>
         </div>
-        <div class="filter-footer"><button class="menu-row" style="width:auto" type="button">清除全部</button><button class="viewer-button primary" type="button">应用筛选</button></div>
+        <details class="atlas-advanced-filter-group"${model.advancedRules.length ? " open" : ""}><summary><span>高级条件</span><img src="../../ui/src/assets/icons/lucide/chevron-down.svg" alt=""></summary>${model.advancedRules.length ? `<div class="atlas-advanced-filter-rules">${model.advancedRules.map((rule) => `<div class="conflict-row" data-active-filter-condition="true"><span>${rule}</span><button class="viewer-button" type="button">移除</button></div>`).join("")}</div>` : ""}</details>
+        <div class="active-filter-summary">${activeLabels.length ? `<div class="filter-options">${activeLabels.map((label) => `<button class="chip active" type="button">${label}</button>`).join("")}</div>` : "未启用筛选条件"}</div>
+        <div class="filter-footer"><button class="menu-row" style="width:auto" type="button"${model.count === 0 ? " disabled" : ""}>清除全部</button><button class="viewer-button primary" type="button">完成</button></div>
       </section>`;
     }
 
@@ -1671,7 +1686,6 @@
       if (type === "more") {
         return `<div class="popover" data-popover-panel>
           <button class="menu-row" type="button"><span>软件设置</span><span></span></button>
-          <button class="menu-row" type="button"><span>访问状态</span><span></span></button>
           <div class="menu-divider"></div>
           <button class="menu-row danger" type="button"><span>关闭项目</span><span></span></button>
         </div>`;
@@ -1849,7 +1863,9 @@
       const readonly = state.menu === "readonly";
       const rows = view
         ? '<button class="menu-row selected" role="menuitem"><span>按文件夹分组</span><span>当前</span></button><button class="menu-row" role="menuitem"><span>显示全部后代文件</span><span></span></button><div class="menu-divider"></div><button class="menu-row" role="menuitem"><span>紧凑缩略图</span><span></span></button><button class="menu-row selected" role="menuitem"><span>标准缩略图</span><span>当前</span></button><button class="menu-row" role="menuitem"><span>大缩略图</span><span></span></button>'
-        : `<button class="menu-row${readonly ? " is-disabled" : ""}" role="menuitem"${readonly ? ' aria-disabled="true" disabled' : ""}><span>重新扫描项目</span><span>${readonly ? "只读" : ""}</span></button><button class="menu-row" role="menuitem"><span>在文件管理器中显示</span><span></span></button><button class="menu-row" role="menuitem"><span>设置</span><span></span></button><div class="menu-divider"></div><button class="menu-row danger${readonly ? " is-disabled" : ""}" role="menuitem"${readonly ? ' aria-disabled="true" disabled' : ""}><span>关闭项目</span><span>${readonly ? "只读" : ""}</span></button>`;
+        : readonly
+          ? '<button class="menu-row" role="menuitem"><span>软件设置</span><span></span></button><button class="menu-row is-disabled" role="menuitem" aria-disabled="true" disabled><span>访问权限</span><span>只读 · 修改命令已停用</span></button><button class="menu-row" role="menuitem"><span>权限设置</span><span></span></button><button class="menu-row" role="menuitem"><span>重新选择目录</span><span></span></button><div class="menu-divider"></div><button class="menu-row danger" role="menuitem"><span>关闭项目</span><span></span></button>'
+          : '<button class="menu-row" role="menuitem"><span>软件设置</span><span></span></button><div class="menu-divider"></div><button class="menu-row danger" role="menuitem"><span>关闭项目</span><span></span></button>';
       const menuKind = view ? "view" : state.menu === "more" ? "more" : "readonly";
       return shell(`${states}${readonly ? '<div class="readonly-banner"><span><strong>只读模式</strong> · 修改命令已停用。</span><span>重新选择目录</span></div>' : ""}<div class="grid-wrap"><div class="image-grid" data-density="compact">${imageCards(0)}</div></div><div class="popover" role="menu" data-menu-kind="${menuKind}" style="top:12px">${rows}</div>`);
     }

@@ -123,7 +123,10 @@ function bridge(access: 'read_write' | 'read_only' = 'read_write'): ViewerBridge
 }
 
 beforeEach(() => vi.useFakeTimers())
-afterEach(() => vi.useRealTimers())
+afterEach(() => {
+  vi.useRealTimers()
+  vi.unstubAllGlobals()
+})
 
 type ExpectedControllerCore = {
   bridge: ViewerBridge
@@ -329,6 +332,33 @@ describe('useViewerController M2 coordination', () => {
     })
 
     expect(viewer.listenCloseBlocked).not.toHaveBeenCalled()
+  })
+
+  it('keeps the native launch loading surface visible before publishing the first projection', async () => {
+    vi.stubGlobal('__TAURI_INTERNALS__', {})
+    const viewer = bridge()
+    const { result } = renderHook(() => useViewerController(viewer))
+    let opening!: Promise<'opened' | 'invalid-root' | 'failed'>
+
+    act(() => {
+      opening = result.current.openProject('/fixture/project')
+    })
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(result.current.state.project?.displayName).toBe('Catalog')
+    expect(result.current.state.workspace).toBeNull()
+    expect(viewer.queryFolder).not.toHaveBeenCalled()
+
+    await act(() => vi.advanceTimersByTimeAsync(599))
+    expect(viewer.queryFolder).not.toHaveBeenCalled()
+
+    await act(() => vi.advanceTimersByTimeAsync(1))
+    await act(() => opening)
+    expect(viewer.queryFolder).toHaveBeenCalledOnce()
+    expect(result.current.state.workspace).toEqual({ workspace: 'empty' })
   })
 
   it('debounces text by 120 ms and ignores a late older response', async () => {

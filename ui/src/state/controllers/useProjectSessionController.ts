@@ -27,6 +27,15 @@ interface DesiredProjection {
   showingAggregate: boolean
 }
 
+const NATIVE_INITIAL_PROJECTION_HOLD_MS = 600
+
+async function holdNativeInitialProjectionForVisualStability() {
+  if (!('__TAURI_INTERNALS__' in globalThis)) return
+  await new Promise<void>((resolve) => {
+    setTimeout(resolve, NATIVE_INITIAL_PROJECTION_HOLD_MS)
+  })
+}
+
 const desiredProjectionByRefresh = new WeakMap<
   RefreshProjection,
   MutableRefObject<DesiredProjection>
@@ -141,6 +150,8 @@ export function useProjectSessionController(core: ControllerCore): ProjectSessio
         const project = await bridge.openProject(path)
         if (requestEpoch !== sessionEpochRef.current) return 'failed' as const
         dispatch({ type: 'project_opened', project })
+        await holdNativeInitialProjectionForVisualStability()
+        if (requestEpoch !== sessionEpochRef.current) return 'failed' as const
         await refreshProjection(project, null, '', false)
         return 'opened' as const
       } catch (error) {

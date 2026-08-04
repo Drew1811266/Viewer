@@ -281,6 +281,20 @@ describe('state entry plans', () => {
     }
   })
 
+  it('waits for the search control and proves the live indexing state for SEA-03', () => {
+    const plan = buildStateEntryPlan('SEA-03')
+    const setValueIndex = plan.findIndex((step) => step.kind === 'setValue')
+
+    assert.deepEqual(plan[setValueIndex - 1], {
+      kind: 'assert',
+      target: { role: 'AXTextField', name: '搜索项目' },
+    })
+    assert.deepEqual(plan.at(-1), {
+      kind: 'assert',
+      target: { namePrefix: '结果仍在更新' },
+    })
+  })
+
   it('rejects a state until it has a real executable entry plan', () => {
     assert.throws(() => buildStateEntryPlan('RAD-07'), {
       code: 'STATE_RECIPE_EXECUTOR',
@@ -1502,6 +1516,28 @@ describe('protocol schema', () => {
             ...request,
             payload: { target: { ...request.payload.target, position: 'first' } },
           },
+          { window },
+        ),
+      { code: 'SAFETY_COMMAND' },
+    )
+  })
+
+  it('accepts a bounded native accessibility name prefix selector', () => {
+    const request = {
+      version: 1,
+      sequence: 7,
+      pid: 101,
+      windowId: 44,
+      command: 'query',
+      timeoutMs: 3000,
+      payload: { target: { namePrefix: '结果仍在更新' } },
+    }
+
+    assert.deepEqual(validateCommand(request, { window }), request)
+    assert.throws(
+      () =>
+        validateCommand(
+          { ...request, payload: { target: { namePrefix: '' } } },
           { window },
         ),
       { code: 'SAFETY_COMMAND' },

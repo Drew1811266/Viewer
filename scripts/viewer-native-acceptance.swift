@@ -188,7 +188,7 @@ private struct FixtureAdapter: NativeAdapter {
             Set(payload.keys).contains("target"),
             let target = payload["target"] as? [String: Any],
             !target.isEmpty,
-            Set(target.keys).isSubset(of: ["role", "name", "identifier", "position"]),
+            Set(target.keys).isSubset(of: ["role", "name", "namePrefix", "identifier", "position"]),
             target["position"] == nil || target["position"] as? String == "rightmost"
         else {
             throw AcceptanceFailure(
@@ -200,6 +200,11 @@ private struct FixtureAdapter: NativeAdapter {
         var matches = elements.filter { element in
             if let role = target["role"] as? String, element.role != role { return false }
             if let name = target["name"] as? String, element.name != name { return false }
+            if let namePrefix = target["namePrefix"] as? String,
+               !element.name.hasPrefix(namePrefix)
+            {
+                return false
+            }
             if let identifier = target["identifier"] as? String,
                element.identifier != identifier
             {
@@ -271,7 +276,7 @@ private func validateTargetPayload(_ target: Any?) throws {
     guard
         let target = target as? [String: Any],
         !target.isEmpty,
-        Set(target.keys).isSubset(of: ["role", "name", "identifier", "position"]),
+        Set(target.keys).isSubset(of: ["role", "name", "namePrefix", "identifier", "position"]),
         target["position"] == nil || target["position"] as? String == "rightmost"
     else {
         throw AcceptanceFailure(code: "SAFETY_COMMAND", message: "Invalid target selector")
@@ -1061,6 +1066,11 @@ private final class LiveMacSystem: MacSystem {
             {
                 return false
             }
+        }
+        if let expectedPrefix = target["namePrefix"] as? String {
+            guard let name = snapshot["name"] as? String,
+                  name.hasPrefix(expectedPrefix)
+            else { return false }
         }
         return true
     }

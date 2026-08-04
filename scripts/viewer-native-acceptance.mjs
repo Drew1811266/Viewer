@@ -372,10 +372,14 @@ export function buildStateEntryPlan(id) {
     'SEA-03': [
       { kind: 'prepareFixture', operation: 'removeViewerMetadata' },
       ...openWorkspace(),
+      {
+        kind: 'assert',
+        target: { role: 'AXTextField', name: '搜索项目' },
+      },
       { kind: 'setValue', target: { role: 'AXTextField', name: '搜索项目' }, text: 'jp' },
       { kind: 'key', key: 'g', modifiers: [] },
       { kind: 'movePointerToTitlebar' },
-      { kind: 'assert', target: { name: '搜索结果区域' } },
+      { kind: 'assert', target: { namePrefix: '结果仍在更新' } },
     ],
     'SEA-04': [
       { kind: 'prepareFixture', operation: 'populateSearchPaging' },
@@ -1549,7 +1553,7 @@ function commandError(message, details = {}) {
 }
 
 function validateTarget(target) {
-  const allowed = ['role', 'name', 'identifier', 'position']
+  const allowed = ['role', 'name', 'namePrefix', 'identifier', 'position']
   if (!hasOnlyKeys(target, allowed) || Object.keys(target).length === 0) {
     throw commandError('Target must contain only approved selector fields')
   }

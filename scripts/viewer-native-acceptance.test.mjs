@@ -445,7 +445,7 @@ describe('state entry plans', () => {
         source: '衣服/A01/商品-01.jpg',
         durationMs: 700,
       },
-      { kind: 'assert', target: { role: 'AXHeading', name: '无法打开此项目' } },
+      { kind: 'assert', target: { role: 'AXStaticText', name: '请选择一个文件夹' } },
     ])
   })
 

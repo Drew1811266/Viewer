@@ -209,6 +209,25 @@ describe('state entry plans', () => {
     })
   })
 
+  it('builds the advanced-filter visual state from six real conditions', () => {
+    const plan = buildStateEntryPlan('FIL-04')
+    const advancedIndex = plan.findIndex(
+      (step) => step.kind === 'click' && step.target?.name === '高级条件',
+    )
+
+    assert.deepEqual(plan.slice(advancedIndex - 4, advancedIndex), [
+      { kind: 'click', target: { role: 'AXCheckBox', name: 'JPEG' } },
+      { kind: 'click', target: { role: 'AXCheckBox', name: 'Markdown' } },
+      { kind: 'click', target: { role: 'AXCheckBox', name: '保留' } },
+      { kind: 'click', target: { role: 'AXCheckBox', name: '待定' } },
+    ])
+    assert.deepEqual(plan.find((step) => step.target?.name === '最早修改时间'), {
+      kind: 'setValue',
+      target: { name: '最早修改时间', position: 'rightmost' },
+      text: '2026-01-01T00:00',
+    })
+  })
+
   it('waits for the completion task to stay absent before capture', () => {
     const plan = buildStateEntryPlan('SID-01')
 

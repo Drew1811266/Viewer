@@ -288,6 +288,9 @@ describe('complete Viewer visual atlas', () => {
     const noProjectAction = noProject?.querySelector('button')
     expect(window.getComputedStyle(noProjectTitle as Element).fontSize).toBe('20px')
     expect(window.getComputedStyle(noProjectCopy as Element).fontSize).toBe('13px')
+    expect(window.getComputedStyle(noProject as Element).display).toBe('grid')
+    expect(window.getComputedStyle(noProject as Element).gap).toBe('12px')
+    expect(window.getComputedStyle(noProjectCopy as Element).margin).toBe('0px')
     expect(window.getComputedStyle(noProjectAction as Element).fontSize).toBe('13px')
     expect(window.getComputedStyle(noProjectAction as Element).minHeight).toBe('36px')
     for (const launchState of [

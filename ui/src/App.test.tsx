@@ -1198,7 +1198,7 @@ describe('Viewer empty state', () => {
 
     act(() => receiveProjectDrop?.({ type: 'drop', paths: ['/fixture/not-a-directory.jpg'] }))
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('请选择项目文件夹')
+    expect(await screen.findByRole('alert')).toHaveTextContent('请选择一个文件夹')
     expect(screen.getByTestId('project-drop-zone')).toHaveAttribute('data-drop-state', 'invalid')
     expect(screen.queryByRole('heading', { name: '无法打开项目' })).not.toBeInTheDocument()
   })

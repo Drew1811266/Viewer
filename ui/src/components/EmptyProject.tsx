@@ -176,11 +176,11 @@ export default function EmptyProject({
       {dropState !== 'idle' && (
         <div className="project-drop-feedback" data-drop-state={dropState}>
           {dropState === 'valid' ? (
-            <strong>松开以打开项目</strong>
+            <strong className="project-drop-message">松开以打开项目</strong>
           ) : (
-            <ViewerLocalFeedback tone="danger" title="无法打开此项目">
-              {localError ?? '请选择一个项目文件夹。'}
-            </ViewerLocalFeedback>
+            <strong className="project-drop-message" role="alert">
+              请选择一个文件夹
+            </strong>
           )}
         </div>
       )}

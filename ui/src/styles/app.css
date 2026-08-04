@@ -122,26 +122,32 @@ summary,
 }
 
 .project-drop-feedback {
-  background: var(--viewer-accent-soft);
   border: 2px solid var(--viewer-accent);
   border-radius: 14px;
-  color: var(--viewer-accent-text);
-  display: grid;
   inset: 22px;
-  padding: var(--viewer-space-6);
-  place-items: center;
   pointer-events: none;
   position: fixed;
   z-index: 1;
 }
 
 .project-drop-feedback[data-drop-state='invalid'] {
-  background: var(--viewer-danger-soft);
   border-color: var(--viewer-danger);
 }
 
-.project-drop-feedback > .viewer-local-feedback {
-  pointer-events: auto;
+.project-drop-message {
+  background: var(--viewer-accent);
+  border-radius: 999px;
+  color: var(--viewer-on-accent);
+  font-size: 10px;
+  left: 50%;
+  padding: 6px 10px;
+  position: absolute;
+  top: 48px;
+  transform: translateX(-50%);
+}
+
+.project-drop-feedback[data-drop-state='invalid'] > .project-drop-message {
+  background: var(--viewer-danger);
 }
 
 .empty-project-feedback {

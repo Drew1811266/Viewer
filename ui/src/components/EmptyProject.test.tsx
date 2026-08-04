@@ -103,7 +103,7 @@ describe('EmptyProject', () => {
     act(() => receiveNativeDrop?.({ type: 'drop', paths: ['/fixture/not-a-directory.jpg'] }))
     await waitFor(() => expect(openProject).toHaveBeenCalledWith('/fixture/not-a-directory.jpg'))
     expect(entry).toHaveAttribute('data-drop-state', 'invalid')
-    expect(screen.getByRole('alert')).toHaveTextContent('请选择项目文件夹')
+    expect(screen.getByRole('alert')).toHaveTextContent('请选择一个文件夹')
   })
 
   it('replaces entry controls with an indeterminate opening state', async () => {
@@ -145,8 +145,8 @@ describe('EmptyProject', () => {
     })
 
     expect(screen.getByTestId('project-drop-zone')).toHaveAttribute('data-drop-state', 'invalid')
-    expect(await screen.findByRole('alert')).toHaveTextContent('请选择项目文件夹')
-    expect(screen.getByRole('alert')).toHaveClass('viewer-local-feedback')
+    expect(await screen.findByRole('alert')).toHaveTextContent('请选择一个文件夹')
+    expect(screen.getByRole('alert')).toHaveClass('project-drop-message')
     expect(viewer.openProject).not.toHaveBeenCalled()
   })
 

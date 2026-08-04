@@ -350,6 +350,35 @@ describe('state entry plans', () => {
     })
   })
 
+  it('enters every non-drag launch state through a real disposable project transition', () => {
+    assert.deepEqual(buildStateEntryPlan('LAU-04'), [
+      { kind: 'prepareFixture', operation: 'seedOpeningRecoveryLoad' },
+      { kind: 'beginOpenProject' },
+      { kind: 'assert', target: { role: 'AXGroup', name: '正在打开项目' } },
+    ])
+    assert.deepEqual(buildStateEntryPlan('LAU-05'), [
+      { kind: 'prepareFixture', operation: 'populateSearchIndexing' },
+      { kind: 'beginOpenProject' },
+      { kind: 'assert', target: { role: 'AXGroup', name: '项目内容加载中' } },
+    ])
+    assert.deepEqual(buildStateEntryPlan('LAU-06'), [
+      { kind: 'prepareFixture', operation: 'populateSearchIndexing' },
+      { kind: 'beginOpenProject' },
+      { kind: 'click', target: { role: 'AXGroup', name: '衣服/A01' } },
+      { kind: 'assert', target: { role: 'AXStaticText', name: '加载可见缩略图' } },
+    ])
+    assert.deepEqual(buildStateEntryPlan('LAU-08'), [
+      { kind: 'prepareFixture', operation: 'corruptViewerMetadata' },
+      { kind: 'beginOpenProject' },
+      { kind: 'assert', target: { role: 'AXStaticText', name: '无法打开此项目' } },
+    ])
+    assert.deepEqual(buildStateEntryPlan('LAU-09'), [
+      { kind: 'prepareFixture', operation: 'seedRecoveryJournal' },
+      { kind: 'openProject' },
+      { kind: 'assert', target: { role: 'AXStaticText', name: '项目恢复完成' } },
+    ])
+  })
+
   it('rejects a state until it has a real executable entry plan', () => {
     assert.throws(() => buildStateEntryPlan('RAD-07'), {
       code: 'STATE_RECIPE_EXECUTOR',
@@ -557,6 +586,75 @@ describe('fixture run', () => {
     } finally {
       await rm(expectedRunRoot, { recursive: true, force: true })
       await rm(temporaryRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('corrupts only the disposable metadata database for the open-error state', async () => {
+    const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), 'viewer-fixture-corrupt-'))
+    const runId = `acceptance-corrupt-${process.pid}-${Date.now()}`
+    const expectedRunRoot = path.join(os.homedir(), 'ViewerAcceptanceRuns', runId)
+    try {
+      await createFixtureBaseline(temporaryRoot)
+      const run = await createFixtureRun({ repoRoot: temporaryRoot, runId })
+      const projectPath = await resetFixtureVariant(run, 'launch-error')
+      await mkdir(path.join(projectPath, '.viewer'))
+      await writeFile(path.join(projectPath, '.viewer/metadata.sqlite'), 'sqlite baseline')
+
+      await prepareFixtureForState(projectPath, 'corruptViewerMetadata')
+
+      assert.equal(
+        await readFile(path.join(projectPath, '.viewer/metadata.sqlite'), 'utf8'),
+        'not-a-viewer-sqlite-database',
+      )
+    } finally {
+      await rm(expectedRunRoot, { recursive: true, force: true })
+      await rm(temporaryRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('seeds one bounded real recovery obligation in the disposable journal', async () => {
+    const baseline = path.join(
+      actualRepoRoot,
+      'target/atlas-product-migration-fixture/ViewerAcceptance',
+    )
+    const runId = `acceptance-recovery-${process.pid}-${Date.now()}`
+    const expectedRunRoot = path.join(os.homedir(), 'ViewerAcceptanceRuns', runId)
+    try {
+      const baselinePlainText = await readFile(path.join(baseline, '文档/plain.txt'))
+      const run = await createFixtureRun({ repoRoot: actualRepoRoot, runId })
+      const projectPath = await resetFixtureVariant(run, 'launch-recovery')
+
+      await prepareFixtureForState(projectPath, 'seedRecoveryJournal')
+
+      const database = path.join(projectPath, '.viewer/metadata.sqlite')
+      const { stdout } = await execFileAsync('/usr/bin/sqlite3', [
+        database,
+        "SELECT b.kind || '|' || b.state || '|' || i.kind || '|' || i.state || '|' || i.temporary_path FROM operation_batches b JOIN operation_items i USING(batch_id) WHERE b.created_at_ms = 1;",
+      ])
+      assert.match(stdout.trim(), /^copy\|running\|copy\|prepared\|目标\/Destination\/\.viewer-copy-[0-9a-f-]+\.part$/)
+      assert.deepEqual(await readFile(path.join(baseline, '文档/plain.txt')), baselinePlainText)
+    } finally {
+      await rm(expectedRunRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('seeds a bounded recovery workload long enough to capture real project validation', async () => {
+    const runId = `acceptance-opening-${process.pid}-${Date.now()}`
+    const expectedRunRoot = path.join(os.homedir(), 'ViewerAcceptanceRuns', runId)
+    try {
+      const run = await createFixtureRun({ repoRoot: actualRepoRoot, runId })
+      const projectPath = await resetFixtureVariant(run, 'entry-and-loading')
+
+      await prepareFixtureForState(projectPath, 'seedOpeningRecoveryLoad')
+
+      const database = path.join(projectPath, '.viewer/metadata.sqlite')
+      const { stdout } = await execFileAsync('/usr/bin/sqlite3', [
+        database,
+        "SELECT COUNT(*) FROM operation_items WHERE updated_at_ms = 2 AND state = 'prepared';",
+      ])
+      assert.equal(stdout.trim(), '400')
+    } finally {
+      await rm(expectedRunRoot, { recursive: true, force: true })
     }
   })
 

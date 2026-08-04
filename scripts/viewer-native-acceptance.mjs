@@ -250,6 +250,32 @@ export function buildStateEntryPlan(id) {
   ]
   const plans = {
     'LAU-01': [{ kind: 'ensureNoProject' }],
+    'LAU-04': [
+      { kind: 'prepareFixture', operation: 'seedOpeningRecoveryLoad' },
+      { kind: 'beginOpenProject' },
+      { kind: 'assert', target: { role: 'AXGroup', name: '正在打开项目' } },
+    ],
+    'LAU-05': [
+      { kind: 'prepareFixture', operation: 'populateSearchIndexing' },
+      { kind: 'beginOpenProject' },
+      { kind: 'assert', target: { role: 'AXGroup', name: '项目内容加载中' } },
+    ],
+    'LAU-06': [
+      { kind: 'prepareFixture', operation: 'populateSearchIndexing' },
+      { kind: 'beginOpenProject' },
+      { kind: 'click', target: folder('衣服/A01') },
+      { kind: 'assert', target: { role: 'AXStaticText', name: '加载可见缩略图' } },
+    ],
+    'LAU-08': [
+      { kind: 'prepareFixture', operation: 'corruptViewerMetadata' },
+      { kind: 'beginOpenProject' },
+      { kind: 'assert', target: { role: 'AXStaticText', name: '无法打开此项目' } },
+    ],
+    'LAU-09': [
+      { kind: 'prepareFixture', operation: 'seedRecoveryJournal' },
+      openProject,
+      { kind: 'assert', target: { role: 'AXStaticText', name: '项目恢复完成' } },
+    ],
     'SID-01': [
       ...openWorkspace(),
       { kind: 'click', target: folder('衣服/A01') },
@@ -2357,6 +2383,30 @@ async function setFixtureTreeReadOnly(root) {
   await chmod(root, 0o555)
 }
 
+async function seedRecoveryObligations(root, count) {
+  const database = path.join(root, '.viewer', 'metadata.sqlite')
+  const source = path.join(root, '文档', 'plain.txt')
+  const destinationDirectory = path.join(root, '目标', 'Destination')
+  await Promise.all([access(database), access(source), access(destinationDirectory)])
+  const batchId = randomUUID()
+  const rows = []
+  for (let index = 0; index < count; index += 1) {
+    const operationId = randomUUID()
+    const entityId = randomUUID()
+    const temporaryPath = `目标/Destination/.viewer-copy-${operationId}.part`
+    rows.push(
+      `INSERT INTO operation_items(operation_id, batch_id, entity_id, kind, state, source_path, destination_path, temporary_path, conflict_policy, updated_at_ms) VALUES('${operationId}', '${batchId}', '${entityId}', 'copy', 'prepared', '文档/plain.txt', '目标/Destination/recovered-${String(index + 1).padStart(4, '0')}.txt', '${temporaryPath}', 'skip', 2);`,
+    )
+  }
+  const sql = [
+    'BEGIN IMMEDIATE;',
+    `INSERT INTO operation_batches(batch_id, kind, created_at_ms, state, requested_count, completed_count, failed_count, skipped_count, started_at_ms) VALUES('${batchId}', 'copy', 1, 'running', ${count}, 0, 0, 0, 1);`,
+    ...rows,
+    'COMMIT;',
+  ].join('\n')
+  await execFileAsync('/usr/bin/sqlite3', ['-bail', database, sql])
+}
+
 export async function prepareFixtureForState(projectPath, operation) {
   const root = assertDisposableProjectPath(projectPath)
   await assertNoSymlinkBetween(
@@ -2404,6 +2454,14 @@ export async function prepareFixtureForState(projectPath, operation) {
     await rm(path.join(root, '.viewer'), { recursive: true, force: true })
   } else if (operation === 'makeProjectReadOnly') {
     await setFixtureTreeReadOnly(root)
+  } else if (operation === 'corruptViewerMetadata') {
+    const database = path.join(root, '.viewer', 'metadata.sqlite')
+    await access(database)
+    await writeFile(database, 'not-a-viewer-sqlite-database')
+  } else if (operation === 'seedRecoveryJournal') {
+    await seedRecoveryObligations(root, 1)
+  } else if (operation === 'seedOpeningRecoveryLoad') {
+    await seedRecoveryObligations(root, 400)
   } else {
     throw new AcceptanceError('STATE_RECIPE_EXECUTOR', 'Unknown fixture preparation', {
       operation,
@@ -2440,6 +2498,14 @@ export async function executeStateEntryPlan({
       })
     } else if (step.kind === 'openProject') {
       await openProject({ client, actions, projectPath, window })
+    } else if (step.kind === 'beginOpenProject') {
+      await openProject({
+        client,
+        actions,
+        projectPath,
+        window,
+        waitForWorkspace: false,
+      })
     } else if (step.kind === 'normalizeWorkspace') {
       visible = await normalizeWorkspaceState({
         client,
@@ -2529,6 +2595,7 @@ export async function openProjectViaPanel({
   actions,
   projectPath,
   window,
+  waitForWorkspace = true,
 }) {
   const userHome = homedir()
   const relative = path.relative(userHome, projectPath)
@@ -2657,13 +2724,14 @@ export async function openProjectViaPanel({
     await requestWithActionLog(client, actions, 'activate', {
       target: { role: 'AXButton', name: 'Open' },
     })
+    panelOpen = false
+    if (!waitForWorkspace) return { performed: true, command: 'activate' }
     const projectVisible = await queryVisibleElement(
       client,
       actions,
       { role: 'AXButton', name: '更多' },
       10_000,
     )
-    panelOpen = false
     return projectVisible
   } catch (error) {
     if (panelOpen) {

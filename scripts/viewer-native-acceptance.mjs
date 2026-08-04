@@ -2138,6 +2138,13 @@ async function ensureLaunchNoProject(client, actions) {
   } catch (error) {
     if (error?.code !== 'STATE_TARGET_NOT_FOUND') throw error
   }
+  try {
+    return await requestWithActionLog(client, actions, 'query', {
+      target: { role: 'AXButton', name: '重新选择' },
+    })
+  } catch (error) {
+    if (error?.code !== 'STATE_TARGET_NOT_FOUND') throw error
+  }
   await requestWithActionLog(client, actions, 'activate', {
     target: { role: 'AXButton', name: '更多' },
   })
@@ -2607,6 +2614,7 @@ export async function openProjectViaPanel({
     )
   }
   const segments = relative.split(path.sep)
+  let triggerName = '选择项目文件夹'
   try {
     await queryVisibleElement(
       client,
@@ -2616,13 +2624,25 @@ export async function openProjectViaPanel({
     )
   } catch (error) {
     if (error?.code !== 'PRECONDITION_WAIT_TIMEOUT') throw error
-    await ensureLaunchNoProject(client, actions)
+    try {
+      await queryVisibleElement(
+        client,
+        actions,
+        { role: 'AXButton', name: '重新选择' },
+        500,
+      )
+      triggerName = '重新选择'
+    } catch (recoveryError) {
+      if (recoveryError?.code !== 'PRECONDITION_WAIT_TIMEOUT') throw recoveryError
+      const ready = await ensureLaunchNoProject(client, actions)
+      triggerName = ready.elements?.[0]?.name === '重新选择' ? '重新选择' : triggerName
+    }
   }
   if (
     actions.some(
       (action) =>
         action.command === 'activate' &&
-        action.payload?.target?.name === '选择项目文件夹',
+        ['选择项目文件夹', '重新选择'].includes(action.payload?.target?.name),
     )
   ) {
     throw new AcceptanceError(
@@ -2633,7 +2653,7 @@ export async function openProjectViaPanel({
   let panelOpen = false
   try {
     await requestWithActionLog(client, actions, 'activate', {
-      target: { role: 'AXButton', name: '选择项目文件夹' },
+      target: { role: 'AXButton', name: triggerName },
     })
     panelOpen = true
     const home = await queryVisibleElement(client, actions, {

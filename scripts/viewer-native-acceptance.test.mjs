@@ -1107,6 +1107,49 @@ describe('native acceptance CLI', () => {
       1,
     )
   })
+
+  it('opens the native chooser from the concise project-error recovery action', async () => {
+    const requests = []
+    const client = {
+      async request(command, payload) {
+        requests.push({ command, payload })
+        if (command === 'query' && payload.target?.name === '选择项目文件夹') {
+          throw new AcceptanceError('STATE_TARGET_NOT_FOUND', 'not idle')
+        }
+        if (command === 'query' && payload.target?.name === '重新选择') {
+          return {
+            elements: [
+              {
+                role: 'AXButton',
+                name: '重新选择',
+                frame: { x: 400, y: 300, width: 88, height: 36 },
+              },
+            ],
+          }
+        }
+        if (command === 'query') {
+          throw new AcceptanceError('STATE_FIXTURE_ENTRY_FAILED', 'stop after opening')
+        }
+        return { performed: true, command }
+      },
+    }
+    await assert.rejects(
+      openProjectViaPanel({
+        client,
+        actions: [],
+        projectPath: path.join(os.homedir(), 'ViewerAcceptanceFixture'),
+        window: { x: 0, y: 0, width: 1024, height: 720 },
+      }),
+      { code: 'STATE_FIXTURE_ENTRY_FAILED' },
+    )
+    assert.equal(
+      requests.filter(
+        (request) =>
+          request.command === 'activate' && request.payload?.target?.name === '重新选择',
+      ).length,
+      1,
+    )
+  })
 })
 
 async function sourceFiles(root) {

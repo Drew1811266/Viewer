@@ -269,9 +269,9 @@ describe('state entry plans', () => {
   })
 
   it('holds the native organization pointer over the approved sidebar destination', () => {
-    for (const [id, modifiers, label] of [
-      ['SID-04', [], '移动 2 项'],
-      ['OTH-03', ['option'], '复制 2 项'],
+    for (const [id, modifiers] of [
+      ['SID-04', []],
+      ['OTH-03', ['option']],
     ]) {
       const plan = buildStateEntryPlan(id)
       const holdIndex = plan.findIndex((step) => step.kind === 'holdOrganizationDrag')
@@ -286,8 +286,8 @@ describe('state entry plans', () => {
           destination: { role: 'AXGroup', name: '目标/Destination' },
           modifiers,
         },
-        { kind: 'assert', target: { name: label } },
       ])
+      assert.equal(plan.at(-1).kind, 'holdOrganizationDrag', id)
       assert.equal(plan.some((step) => step.kind === 'sleep'), false, id)
     }
   })
@@ -571,7 +571,7 @@ describe('state entry plans', () => {
     )
   })
 
-  it('releases a held organization pointer when the visible-state assertion fails', async () => {
+  it('releases a held organization pointer when held-state observation fails', async () => {
     const commands = []
     const client = {
       async request(command, payload) {
@@ -581,9 +581,6 @@ describe('state entry plans', () => {
             ['扫描项目', '2 个任务已完成', '加载可见缩略图'].includes(payload.target.name)
           ) {
             throw new AcceptanceError('STATE_TARGET_NOT_FOUND', 'not found')
-          }
-          if (payload.target.name === '移动 2 项') {
-            throw new AcceptanceError('BROKEN_ASSERTION', 'drag preview missing')
           }
           return {
             elements: [
@@ -609,6 +606,9 @@ describe('state entry plans', () => {
         projectPath: '/Users/example/ViewerAcceptanceRuns/run/测试图',
         window: { x: 100, y: 70, width: 1024, height: 720 },
         openProject: async () => {},
+        observeHeldPointer: async () => {
+          throw new AcceptanceError('BROKEN_ASSERTION', 'held-state capture failed')
+        },
       }),
       { code: 'BROKEN_ASSERTION' },
     )

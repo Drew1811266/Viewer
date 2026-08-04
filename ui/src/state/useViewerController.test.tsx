@@ -118,6 +118,7 @@ function bridge(access: 'read_write' | 'read_only' = 'read_write'): ViewerBridge
     listenCloseBlocked: vi.fn().mockResolvedValue(() => undefined),
     listenProjectClosed: vi.fn().mockResolvedValue(() => undefined),
     listenProjectDrops: vi.fn().mockResolvedValue(() => undefined),
+    listenProjectDropEvents: vi.fn().mockResolvedValue(() => undefined),
   }
 }
 
@@ -143,7 +144,7 @@ type ExpectedRefreshProjection = (
 type ExpectedProjectSessionController = {
   sessionEpoch: number
   refreshProjection: ExpectedRefreshProjection
-  openProject(path: string): Promise<void>
+  openProject(path: string): Promise<'opened' | 'invalid-root' | 'failed'>
   closeProject(choice?: CloseChoice, target?: CloseTarget): Promise<CloseRequestOutcome | undefined>
   reselectProject(): Promise<CloseRequestOutcome | undefined>
   selectFolder(entityId: string | null): Promise<void>

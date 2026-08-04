@@ -46,6 +46,12 @@ import type {
   ViewerSettings,
 } from './types'
 
+export type ProjectDropEvent =
+  | { type: 'enter'; paths: string[] }
+  | { type: 'over' }
+  | { type: 'drop'; paths: string[] }
+  | { type: 'leave' }
+
 export interface ViewerBridge {
   chooseProject(): Promise<string | null>
   openProject(path: string): Promise<ProjectSnapshot>
@@ -80,6 +86,7 @@ export interface ViewerBridge {
   listenCloseBlocked(handler: (event: CloseBlockedEvent) => void): Promise<UnlistenFn>
   listenProjectClosed(handler: () => void): Promise<UnlistenFn>
   listenProjectDrops(handler: (paths: string[]) => void): Promise<UnlistenFn>
+  listenProjectDropEvents(handler: (event: ProjectDropEvent) => void): Promise<UnlistenFn>
 }
 
 export const tauriViewerBridge: ViewerBridge = {
@@ -229,6 +236,15 @@ export const tauriViewerBridge: ViewerBridge = {
     return getCurrentWebview().onDragDropEvent(({ payload }) => {
       if (payload.type === 'drop') {
         handler(payload.paths)
+      }
+    })
+  },
+  listenProjectDropEvents(handler) {
+    return getCurrentWebview().onDragDropEvent(({ payload }) => {
+      if (payload.type === 'enter' || payload.type === 'drop') {
+        handler({ type: payload.type, paths: payload.paths })
+      } else {
+        handler({ type: payload.type })
       }
     })
   },

@@ -1,5 +1,5 @@
 import type { DragEvent } from 'react'
-import { useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ViewerBridge } from '../api/viewer'
 import { safeUserMessage } from '../api/viewer'
 import ViewerButton from './ui/ViewerButton'
@@ -27,19 +27,64 @@ export default function EmptyProject({
   const dragDepth = useRef(0)
   const disabled = busy || working
 
-  async function openPath(path: string) {
-    setLocalError(null)
-    setDropState('idle')
-    setOpeningName(path.split(/[\\/]/).filter(Boolean).at(-1) ?? 'Viewer 项目')
-    setWorking(true)
-    try {
-      await (onOpenProject ? onOpenProject(path) : bridge.openProject(path))
-    } catch (error) {
-      setLocalError(safeUserMessage(error))
-    } finally {
-      setWorking(false)
+  const openPath = useCallback(
+    async (path: string, nativeDrop = false) => {
+      setLocalError(null)
+      setDropState('idle')
+      setOpeningName(path.split(/[\\/]/).filter(Boolean).at(-1) ?? 'Viewer 项目')
+      setWorking(true)
+      try {
+        const result = await (onOpenProject ? onOpenProject(path) : bridge.openProject(path))
+        if (nativeDrop && result === 'invalid-root') {
+          setLocalError('请选择项目文件夹，不能导入单个文件。')
+          setDropState('invalid')
+        }
+      } catch (error) {
+        setLocalError(safeUserMessage(error))
+        if (nativeDrop) setDropState('invalid')
+      } finally {
+        setWorking(false)
+      }
+    },
+    [bridge, onOpenProject],
+  )
+
+  useEffect(() => {
+    let disposed = false
+    let unlisten: (() => void) | undefined
+    void Promise.resolve()
+      .then(() =>
+        bridge.listenProjectDropEvents((event) => {
+          if (event.type === 'enter') {
+            setDropState(event.paths.length === 1 ? 'valid' : 'invalid')
+            if (event.paths.length !== 1) {
+              setLocalError('一次只能导入一个项目文件夹。')
+            }
+          } else if (event.type === 'leave') {
+            setDropState('idle')
+          } else if (event.type === 'drop') {
+            setDropState('idle')
+            if (disabled) return
+            if (event.paths.length !== 1) {
+              setLocalError('一次只能导入一个项目文件夹。')
+              setDropState('invalid')
+              return
+            }
+            const [path] = event.paths
+            if (path !== undefined) void openPath(path, true)
+          }
+        }),
+      )
+      .then((cleanup) => {
+        if (disposed) cleanup()
+        else unlisten = cleanup
+      })
+      .catch(() => undefined)
+    return () => {
+      disposed = true
+      unlisten?.()
     }
-  }
+  }, [bridge, disabled, openPath])
 
   function enterProjectDrag(event: DragEvent<HTMLElement>) {
     if (!hasDirectory(event)) return

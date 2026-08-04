@@ -1,13 +1,18 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const invoke = vi.hoisted(() => vi.fn())
+const onDragDropEvent = vi.hoisted(() => vi.fn())
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke }))
+vi.mock('@tauri-apps/api/webview', () => ({
+  getCurrentWebview: () => ({ onDragDropEvent }),
+}))
 
 import { tauriViewerBridge } from './viewer'
 
 beforeEach(() => {
   invoke.mockReset()
+  onDragDropEvent.mockReset()
 })
 
 afterEach(() => {
@@ -15,6 +20,37 @@ afterEach(() => {
 })
 
 describe('tauriViewerBridge', () => {
+  it('forwards the complete native project drag lifecycle', async () => {
+    let receive:
+      | ((event: {
+          payload:
+            | { type: 'enter'; paths: string[]; position: { x: number; y: number } }
+            | { type: 'over'; position: { x: number; y: number } }
+            | { type: 'drop'; paths: string[]; position: { x: number; y: number } }
+            | { type: 'leave' }
+        }) => void)
+      | undefined
+    const unlisten = vi.fn()
+    onDragDropEvent.mockImplementation(async (handler) => {
+      receive = handler
+      return unlisten
+    })
+    const handler = vi.fn()
+
+    await tauriViewerBridge.listenProjectDropEvents(handler)
+    receive?.({ payload: { type: 'enter', paths: ['/fixture/project'], position: { x: 1, y: 2 } } })
+    receive?.({ payload: { type: 'over', position: { x: 2, y: 3 } } })
+    receive?.({ payload: { type: 'drop', paths: ['/fixture/project'], position: { x: 3, y: 4 } } })
+    receive?.({ payload: { type: 'leave' } })
+
+    expect(handler.mock.calls.map(([event]) => event)).toEqual([
+      { type: 'enter', paths: ['/fixture/project'] },
+      { type: 'over' },
+      { type: 'drop', paths: ['/fixture/project'] },
+      { type: 'leave' },
+    ])
+  })
+
   it('gets the viewer settings without arguments', async () => {
     await tauriViewerBridge.getViewerSettings()
 

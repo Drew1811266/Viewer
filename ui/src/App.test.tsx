@@ -9,7 +9,7 @@ import {
 } from '@testing-library/react'
 import { afterEach, describe, expect, expectTypeOf, it, vi } from 'vitest'
 import App from './App'
-import type { ViewerBridge } from './api/viewer'
+import type { ProjectDropEvent, ViewerBridge } from './api/viewer'
 import { type AppShellState, useAppShellState } from './app/useAppShellState'
 import {
   type OperationDialogsState,
@@ -140,6 +140,7 @@ function bridge(access: 'read_write' | 'read_only' = 'read_write'): ViewerBridge
     listenCloseBlocked: vi.fn().mockResolvedValue(() => undefined),
     listenProjectClosed: vi.fn().mockResolvedValue(() => undefined),
     listenProjectDrops: vi.fn().mockResolvedValue(() => undefined),
+    listenProjectDropEvents: vi.fn().mockResolvedValue(() => undefined),
   }
 }
 
@@ -1163,18 +1164,43 @@ describe('Viewer empty state', () => {
 
   it('opens exactly one project path delivered by the native drop bridge', async () => {
     const viewer = bridge()
-    let receiveProjectDrop: ((paths: string[]) => void) | undefined
-    vi.mocked(viewer.listenProjectDrops).mockImplementation(async (handler) => {
+    let receiveProjectDrop: ((event: ProjectDropEvent) => void) | undefined
+    vi.mocked(viewer.listenProjectDropEvents).mockImplementation(async (handler) => {
       receiveProjectDrop = handler
       return () => undefined
     })
     render(<App bridge={viewer} />)
     await waitFor(() => expect(receiveProjectDrop).toBeDefined())
 
-    act(() => receiveProjectDrop?.(['/fixture/dropped-project']))
+    act(() => receiveProjectDrop?.({ type: 'drop', paths: ['/fixture/dropped-project'] }))
 
     await waitFor(() => expect(viewer.openProject).toHaveBeenCalledWith('/fixture/dropped-project'))
     expect(await screen.findByRole('heading', { name: 'Catalog' })).toBeVisible()
+  })
+
+  it('keeps a native single-file drop on the concise local invalid state', async () => {
+    const viewer = bridge()
+    let receiveProjectDrop: ((event: ProjectDropEvent) => void) | undefined
+    vi.mocked(viewer.listenProjectDropEvents).mockImplementation(async (handler) => {
+      receiveProjectDrop = handler
+      return () => undefined
+    })
+    vi.mocked(viewer.openProject).mockRejectedValue({
+      code: 'invalid_project_root',
+      category: 'validation',
+      userMessage: '请选择一个可读取的真实文件夹。',
+      retryable: true,
+      taskId: null,
+      itemId: null,
+    })
+    render(<App bridge={viewer} />)
+    await waitFor(() => expect(receiveProjectDrop).toBeDefined())
+
+    act(() => receiveProjectDrop?.({ type: 'drop', paths: ['/fixture/not-a-directory.jpg'] }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('请选择项目文件夹')
+    expect(screen.getByTestId('project-drop-zone')).toHaveAttribute('data-drop-state', 'invalid')
+    expect(screen.queryByRole('heading', { name: '无法打开项目' })).not.toBeInTheDocument()
   })
 
   it('renders a safe fallback instead of raw thrown details', async () => {

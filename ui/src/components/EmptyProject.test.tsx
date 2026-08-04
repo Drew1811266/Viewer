@@ -1,6 +1,6 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
-import type { ViewerBridge } from '../api/viewer'
+import type { ProjectDropEvent, ViewerBridge } from '../api/viewer'
 import EmptyProject from './EmptyProject'
 
 function bridge(): ViewerBridge {
@@ -50,6 +50,7 @@ function bridge(): ViewerBridge {
     listenCloseBlocked: vi.fn().mockResolvedValue(() => undefined),
     listenProjectClosed: vi.fn().mockResolvedValue(() => undefined),
     listenProjectDrops: vi.fn().mockResolvedValue(() => undefined),
+    listenProjectDropEvents: vi.fn().mockResolvedValue(() => undefined),
   }
 }
 
@@ -78,6 +79,31 @@ describe('EmptyProject', () => {
 
     fireEvent.dragLeave(entry)
     expect(screen.queryByText('松开以打开项目')).not.toBeInTheDocument()
+  })
+
+  it('renders native Finder hover and invalid-drop feedback on the empty surface', async () => {
+    const viewer = bridge()
+    let receiveNativeDrop: ((event: ProjectDropEvent) => void) | undefined
+    vi.mocked(viewer.listenProjectDropEvents).mockImplementation(async (handler) => {
+      receiveNativeDrop = handler
+      return () => undefined
+    })
+    const openProject = vi.fn().mockResolvedValue('invalid-root')
+    render(<EmptyProject bridge={viewer} onOpenProject={openProject} />)
+    await waitFor(() => expect(receiveNativeDrop).toBeDefined())
+    const entry = screen.getByTestId('project-drop-zone')
+
+    act(() => receiveNativeDrop?.({ type: 'enter', paths: ['/fixture/project'] }))
+    expect(entry).toHaveAttribute('data-drop-state', 'valid')
+    expect(screen.getByText('松开以打开项目')).toBeVisible()
+
+    act(() => receiveNativeDrop?.({ type: 'leave' }))
+    expect(entry).not.toHaveAttribute('data-drop-state')
+
+    act(() => receiveNativeDrop?.({ type: 'drop', paths: ['/fixture/not-a-directory.jpg'] }))
+    await waitFor(() => expect(openProject).toHaveBeenCalledWith('/fixture/not-a-directory.jpg'))
+    expect(entry).toHaveAttribute('data-drop-state', 'invalid')
+    expect(screen.getByRole('alert')).toHaveTextContent('请选择项目文件夹')
   })
 
   it('replaces entry controls with an indeterminate opening state', async () => {

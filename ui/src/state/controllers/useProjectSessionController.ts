@@ -13,7 +13,7 @@ import type { ControllerCore, RefreshProjection } from './types'
 export interface ProjectSessionController {
   sessionEpoch: number
   refreshProjection: RefreshProjection
-  openProject(path: string): Promise<void>
+  openProject(path: string): Promise<'opened' | 'invalid-root' | 'failed'>
   closeProject(choice?: CloseChoice, target?: CloseTarget): Promise<CloseRequestOutcome | undefined>
   reselectProject(): Promise<CloseRequestOutcome | undefined>
   selectFolder(entityId: string | null): Promise<void>
@@ -134,17 +134,28 @@ export function useProjectSessionController(core: ControllerCore): ProjectSessio
 
   const openProject = useCallback(
     async (path: string) => {
-      if (!path || !['empty', 'error'].includes(stateRef.current.status)) return
+      if (!path || !['empty', 'error'].includes(stateRef.current.status)) return 'failed' as const
       const requestEpoch = advanceSessionEpoch()
       dispatch({ type: 'project_open_requested' })
       try {
         const project = await bridge.openProject(path)
-        if (requestEpoch !== sessionEpochRef.current) return
+        if (requestEpoch !== sessionEpochRef.current) return 'failed' as const
         dispatch({ type: 'project_opened', project })
         await refreshProjection(project, null, '', false)
+        return 'opened' as const
       } catch (error) {
-        if (requestEpoch !== sessionEpochRef.current) return
+        if (requestEpoch !== sessionEpochRef.current) return 'failed' as const
+        if (
+          typeof error === 'object' &&
+          error !== null &&
+          'code' in error &&
+          error.code === 'invalid_project_root'
+        ) {
+          dispatch({ type: 'project_closed' })
+          return 'invalid-root' as const
+        }
         dispatch({ type: 'project_open_failed', message: safeUserMessage(error) })
+        return 'failed' as const
       }
     },
     [advanceSessionEpoch, bridge, dispatch, refreshProjection, sessionEpochRef, stateRef],
@@ -314,33 +325,6 @@ export function useProjectSessionController(core: ControllerCore): ProjectSessio
       unlisten?.()
     }
   }, [bridge, dispatch, resetProjectSessionRequests])
-
-  useEffect(() => {
-    let disposed = false
-    let unlisten: (() => void) | undefined
-    void Promise.resolve()
-      .then(() =>
-        bridge.listenProjectDrops((paths) => {
-          if (!['empty', 'error'].includes(stateRef.current.status)) return
-          if (paths.length !== 1) {
-            dispatch({ type: 'input_rejected', message: '一次只能导入一个项目文件夹。' })
-            return
-          }
-          const [path] = paths
-          if (path === undefined) throw new Error('Single project drop is missing its path')
-          void openProject(path)
-        }),
-      )
-      .then((cleanup) => {
-        if (disposed) cleanup()
-        else unlisten = cleanup
-      })
-      .catch(() => undefined)
-    return () => {
-      disposed = true
-      unlisten?.()
-    }
-  }, [bridge, dispatch, openProject, stateRef])
 
   const selectFolder = useCallback(
     async (entityId: string | null) => {

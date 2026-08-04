@@ -336,8 +336,13 @@ private func validateRequestPayload(_ request: RequestEnvelope) throws {
                 throw AcceptanceFailure(code: "SAFETY_COMMAND", message: "Invalid scroll payload")
             }
         } else {
-            guard Set(payload.keys) == ["kind", "point"],
-                  ["click", "doubleClick", "rightClick", "move"].contains(kind)
+            let fields = Set(payload.keys)
+            let modifiers = payload["modifiers"] as? [String] ?? []
+            guard fields == ["kind", "point"] || fields == ["kind", "point", "modifiers"],
+                  ["click", "doubleClick", "rightClick", "move"].contains(kind),
+                  kind != "move" || modifiers.isEmpty,
+                  Set(modifiers).count == modifiers.count,
+                  Set(modifiers).isSubset(of: allowedModifiers)
             else {
                 throw AcceptanceFailure(code: "SAFETY_COMMAND", message: "Invalid pointer payload")
             }
@@ -1163,6 +1168,16 @@ private final class LiveMacSystem: MacSystem {
         let downType: CGEventType = kind == "rightClick" ? .rightMouseDown : .leftMouseDown
         let upType: CGEventType = kind == "rightClick" ? .rightMouseUp : .leftMouseUp
         let clickCount = kind == "doubleClick" ? 2 : 1
+        var flags: CGEventFlags = []
+        for modifier in payload["modifiers"] as? [String] ?? [] {
+            switch modifier {
+            case "shift": flags.insert(.maskShift)
+            case "control": flags.insert(.maskControl)
+            case "option": flags.insert(.maskAlternate)
+            case "command": flags.insert(.maskCommand)
+            default: break
+            }
+        }
         for clickIndex in 1 ... clickCount {
             guard let down = CGEvent(
                 mouseEventSource: nil,
@@ -1182,6 +1197,8 @@ private final class LiveMacSystem: MacSystem {
             }
             down.setIntegerValueField(.mouseEventClickState, value: Int64(clickIndex))
             up.setIntegerValueField(.mouseEventClickState, value: Int64(clickIndex))
+            down.flags = flags
+            up.flags = flags
             down.post(tap: .cghidEventTap)
             up.post(tap: .cghidEventTap)
         }

@@ -204,6 +204,40 @@ describe('state entry plans', () => {
     })
   })
 
+  it('covers every stable Wave 1 product state without recipe sleeps', () => {
+    const ids = [
+      'LAU-07',
+      'SID-02',
+      'SID-03',
+      'STR-04',
+      'STR-05',
+      'THU-01',
+      'THU-02',
+      'THU-03',
+      'THU-06',
+      'THU-07',
+      'OTH-01',
+      'OTH-02',
+      'SEA-01',
+      'SEA-02',
+      'SEA-03',
+      'SEA-04',
+      'SEA-05',
+      'FIL-02',
+      'FIL-03',
+      'FIL-04',
+      'MEN-01',
+      'MEN-03',
+    ]
+
+    for (const id of ids) {
+      const plan = buildStateEntryPlan(id)
+      assert.ok(plan.length > 0, id)
+      assert.equal(plan.some((step) => step.kind === 'sleep'), false, id)
+      assert.equal(plan.at(-1).kind, 'assert', id)
+    }
+  })
+
   it('executes plan steps through logged native requests', async () => {
     const commands = []
     const client = {
@@ -1896,6 +1930,16 @@ describe('native validation', () => {
       {
         ...base,
         sequence: 9,
+        command: 'pointer',
+        payload: {
+          kind: 'click',
+          point: { x: 200, y: 300 },
+          modifiers: ['command'],
+        },
+      },
+      {
+        ...base,
+        sequence: 10,
         command: 'drag',
         payload: {
           from: { x: 100, y: 200 },
@@ -1905,19 +1949,19 @@ describe('native validation', () => {
       },
       {
         ...base,
-        sequence: 10,
+        sequence: 11,
         command: 'capture',
         payload: { path: '/tmp/viewer-acceptance-product.png' },
       },
       {
         ...base,
-        sequence: 11,
+        sequence: 12,
         command: 'shutdown',
         payload: {},
       },
       {
         ...base,
-        sequence: 12,
+        sequence: 13,
         command: 'setValue',
         payload: {
           target: { role: 'AXTextField', name: '搜索' },
@@ -1926,7 +1970,7 @@ describe('native validation', () => {
       },
       {
         ...base,
-        sequence: 13,
+        sequence: 14,
         command: 'drag',
         payload: {
           from: { x: 100, y: 200 },
@@ -1953,7 +1997,7 @@ describe('native validation', () => {
       assert.equal(result.exitCode, 0)
       assert.equal(result.stderr, '')
       assert.deepEqual(
-        result.responses.slice(0, 11).map((response) => ({
+        result.responses.slice(0, 12).map((response) => ({
           ok: response.ok,
           performed: response.result.performed,
           command: response.result.command,
@@ -1967,13 +2011,14 @@ describe('native validation', () => {
           { ok: true, performed: true, command: 'pointer' },
           { ok: true, performed: true, command: 'pointer' },
           { ok: true, performed: true, command: 'pointer' },
+          { ok: true, performed: true, command: 'pointer' },
           { ok: true, performed: true, command: 'drag' },
           { ok: true, performed: true, command: 'capture' },
           { ok: true, performed: true, command: 'shutdown' },
         ],
       )
       assert.deepEqual(
-        result.responses.slice(11).map((response) => response.error.code),
+        result.responses.slice(12).map((response) => response.error.code),
         ['SAFETY_COMMAND', 'SAFETY_POINT_OUTSIDE_WINDOW'],
       )
     } finally {

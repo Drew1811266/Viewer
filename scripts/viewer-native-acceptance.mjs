@@ -4,6 +4,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import {
   access,
+  chmod,
   cp,
   lstat,
   mkdir,
@@ -212,6 +213,28 @@ export function buildStateEntryPlan(id) {
       stableMs: 1_000,
     },
   ]
+  const openFolder = (name) => [
+    openProject,
+    { kind: 'click', target: folder(name) },
+    ...workspaceReady,
+  ]
+  const openContent = () => openFolder('衣服/A01')
+  const clickToolbar = (name) => ({
+    kind: 'click',
+    target: { role: 'AXButton', name },
+  })
+  const openFilter = () => [...openContent(), clickToolbar('筛选')]
+  const openSettingsAtDensity = (name) => [
+    openProject,
+    clickToolbar('更多'),
+    { kind: 'click', target: { name: '软件设置' } },
+    { kind: 'click', target: { role: 'AXRadioButton', name } },
+    { kind: 'click', target: { role: 'AXButton', name: '关闭' } },
+    { kind: 'click', target: folder('衣服/A01') },
+    ...workspaceReady,
+    { kind: 'movePointerToTitlebar' },
+    { kind: 'assert', target: folder('衣服/A01') },
+  ]
   const plans = {
     'LAU-01': [{ kind: 'ensureNoProject' }],
     'SID-01': [
@@ -219,6 +242,25 @@ export function buildStateEntryPlan(id) {
       { kind: 'click', target: folder('衣服/A01') },
       ...workspaceReady,
       { kind: 'assert', target: folder('衣服/A01') },
+    ],
+    'SID-02': [
+      ...openContent(),
+      {
+        kind: 'dragBy',
+        target: { name: '调整文件夹栏宽度' },
+        delta: { x: 100, y: 0 },
+        durationMs: 400,
+      },
+      { kind: 'focus', target: { name: '调整文件夹栏宽度' } },
+      { kind: 'key', key: 'arrowRight', modifiers: [] },
+      { kind: 'movePointerToTitlebar' },
+      { kind: 'assert', target: { name: '调整文件夹栏宽度' } },
+    ],
+    'SID-03': [
+      ...openContent(),
+      clickToolbar('折叠文件夹栏'),
+      { kind: 'movePointerToTitlebar' },
+      { kind: 'assert', target: { role: 'AXButton', name: '展开文件夹栏' } },
     ],
     'STR-01': [
       openProject,
@@ -238,6 +280,23 @@ export function buildStateEntryPlan(id) {
       ...workspaceReady,
       { kind: 'assert', target: folder('衣服/A01') },
     ],
+    'STR-04': [
+      ...openContent(),
+      clickToolbar('视图'),
+      { kind: 'click', target: { name: '显示全部后代文件' } },
+      ...workspaceReady,
+      { kind: 'movePointerToTitlebar' },
+      { kind: 'assert', target: { name: '全部后代文件' } },
+    ],
+    'STR-05': [
+      { kind: 'prepareFixture', operation: 'addThirdContentFolder' },
+      ...openFolder('衣服'),
+      { kind: 'movePointerToTitlebar' },
+      { kind: 'assert', target: folder('衣服') },
+    ],
+    'THU-01': openSettingsAtDensity('紧凑'),
+    'THU-02': openSettingsAtDensity('标准'),
+    'THU-03': openSettingsAtDensity('大图'),
     'THU-04': [
       openProject,
       { kind: 'click', target: folder('衣服/A01') },
@@ -252,6 +311,78 @@ export function buildStateEntryPlan(id) {
       { kind: 'movePointerToTitlebar' },
       { kind: 'assert', target: { role: 'AXGroup', name: '选择摘要' } },
     ],
+    'THU-06': [
+      ...openContent(),
+      { kind: 'click', target: { name: '商品-01.jpg' } },
+      { kind: 'click', target: { name: '商品-02.jpg' }, modifiers: ['command'] },
+      { kind: 'click', target: { name: '商品-03.jpg' }, modifiers: ['command'] },
+      { kind: 'click', target: { name: '商品-04.jpg' }, modifiers: ['command'] },
+      { kind: 'movePointerToTitlebar' },
+      { kind: 'assert', target: { role: 'AXGroup', name: '选择摘要' } },
+    ],
+    'THU-07': [
+      ...openContent(),
+      { kind: 'click', target: { name: '商品-01.jpg' } },
+      { kind: 'focus', target: { role: 'AXListBox', name: '文件内容' } },
+      { kind: 'key', key: 'arrowRight', modifiers: [] },
+      { kind: 'movePointerToTitlebar' },
+      { kind: 'assert', target: { role: 'AXGroup', name: '选择摘要' } },
+    ],
+    'OTH-01': [
+      ...openFolder('其它'),
+      { kind: 'movePointerToTitlebar' },
+      { kind: 'assert', target: { role: 'AXButton', name: '其它文件 · 1' } },
+    ],
+    'OTH-02': [
+      ...openFolder('其它'),
+      { kind: 'click', target: { role: 'AXButton', name: '其它文件 · 1' } },
+      { kind: 'movePointerToTitlebar' },
+      { kind: 'assert', target: { role: 'AXListBox', name: '其它文件' } },
+    ],
+    'SEA-01': [
+      openProject,
+      ...workspaceReady,
+      { kind: 'setValue', target: { role: 'AXTextField', name: '搜索项目' }, text: 'jpg' },
+      { kind: 'movePointerToTitlebar' },
+      { kind: 'assert', target: { name: '搜索结果区域' } },
+    ],
+    'SEA-02': [
+      openProject,
+      ...workspaceReady,
+      { kind: 'setValue', target: { role: 'AXTextField', name: '搜索项目' }, text: 'jpg' },
+      { kind: 'assert', target: { name: '搜索结果区域' } },
+      clickToolbar('视图'),
+      { kind: 'click', target: { name: '展平结果' } },
+      { kind: 'movePointerToTitlebar' },
+      { kind: 'assert', target: { name: '搜索结果区域' } },
+    ],
+    'SEA-03': [
+      { kind: 'prepareFixture', operation: 'removeViewerMetadata' },
+      openProject,
+      { kind: 'setValue', target: { role: 'AXTextField', name: '搜索项目' }, text: 'jpg' },
+      { kind: 'movePointerToTitlebar' },
+      { kind: 'assert', target: { name: '搜索结果区域' } },
+    ],
+    'SEA-04': [
+      { kind: 'prepareFixture', operation: 'populateSearchPaging' },
+      openProject,
+      ...workspaceReady,
+      { kind: 'setValue', target: { role: 'AXTextField', name: '搜索项目' }, text: 'jpg' },
+      { kind: 'click', target: { role: 'AXButton', name: '下一页' } },
+      { kind: 'movePointerToTitlebar' },
+      { kind: 'assert', target: { role: 'AXButton', name: '上一页' } },
+    ],
+    'SEA-05': [
+      openProject,
+      ...workspaceReady,
+      {
+        kind: 'setValue',
+        target: { role: 'AXTextField', name: '搜索项目' },
+        text: 'viewer-no-match-20260802',
+      },
+      { kind: 'movePointerToTitlebar' },
+      { kind: 'assert', target: { role: 'AXHeading', name: '没有找到结果' } },
+    ],
     'FIL-01': [
       openProject,
       { kind: 'click', target: folder('衣服/A01') },
@@ -260,6 +391,46 @@ export function buildStateEntryPlan(id) {
       { kind: 'movePointerToTitlebar' },
       { kind: 'assert', target: { role: 'AXHeading', name: '筛选' } },
     ],
+    'FIL-02': [
+      ...openFilter(),
+      { kind: 'click', target: { role: 'AXCheckBox', name: 'JPEG' } },
+      { kind: 'movePointerToTitlebar' },
+      { kind: 'assert', target: { role: 'AXHeading', name: '筛选' } },
+    ],
+    'FIL-03': [
+      ...openFilter(),
+      { kind: 'click', target: { role: 'AXCheckBox', name: 'JPEG' } },
+      { kind: 'click', target: { role: 'AXCheckBox', name: 'PNG' } },
+      { kind: 'click', target: { role: 'AXCheckBox', name: '保留' } },
+      { kind: 'click', target: { role: 'AXCheckBox', name: '收藏' } },
+      { kind: 'movePointerToTitlebar' },
+      { kind: 'assert', target: { role: 'AXHeading', name: '筛选' } },
+    ],
+    'FIL-04': [
+      ...openFilter(),
+      { kind: 'click', target: { role: 'AXButton', name: '高级条件' } },
+      {
+        kind: 'setValue',
+        target: { role: 'AXTextField', name: '最小宽度' },
+        text: '1200',
+      },
+      {
+        kind: 'setValue',
+        target: { role: 'AXTextField', name: '最早修改时间' },
+        text: '2026-01-01',
+      },
+      { kind: 'movePointerToTitlebar' },
+      { kind: 'assert', target: { role: 'AXHeading', name: '筛选' } },
+    ],
+    'MEN-01': [
+      openProject,
+      ...workspaceReady,
+      { kind: 'setValue', target: { role: 'AXTextField', name: '搜索项目' }, text: 'jpg' },
+      { kind: 'assert', target: { name: '搜索结果区域' } },
+      clickToolbar('视图'),
+      { kind: 'movePointerToTitlebar' },
+      { kind: 'assert', target: { name: '按文件夹分组' } },
+    ],
     'MEN-02': [
       openProject,
       { kind: 'click', target: folder('衣服/A01') },
@@ -267,6 +438,18 @@ export function buildStateEntryPlan(id) {
       { kind: 'click', target: { role: 'AXButton', name: '更多' } },
       { kind: 'movePointerToTitlebar' },
       { kind: 'assert', target: { name: '软件设置' } },
+    ],
+    'MEN-03': [
+      { kind: 'prepareFixture', operation: 'makeProjectReadOnly' },
+      ...openFolder('衣服/A01'),
+      clickToolbar('更多'),
+      { kind: 'movePointerToTitlebar' },
+      { kind: 'assert', target: { name: '只读' } },
+    ],
+    'LAU-07': [
+      ...openFolder('空目录/Empty'),
+      { kind: 'movePointerToTitlebar' },
+      { kind: 'assert', target: { role: 'AXHeading', name: '此文件夹为空' } },
     ],
   }
   const plan = plans[id]
@@ -680,6 +863,23 @@ export async function resetFixtureVariant(run, variant) {
   }
 }
 
+async function setFixtureTreeWritable(root) {
+  let entries
+  try {
+    await chmod(root, 0o700)
+    entries = await readdir(root, { withFileTypes: true })
+  } catch (error) {
+    if (error?.code === 'ENOENT') return
+    throw error
+  }
+  for (const entry of entries) {
+    const candidate = path.join(root, entry.name)
+    if (entry.isSymbolicLink()) continue
+    if (entry.isDirectory()) await setFixtureTreeWritable(candidate)
+    else if (entry.isFile()) await chmod(candidate, 0o600)
+  }
+}
+
 export async function removeFixtureRun(run) {
   if (!run || !RUN_ID_PATTERN.test(run.runId)) {
     throw new AcceptanceError(
@@ -706,6 +906,7 @@ export async function removeFixtureRun(run) {
     )
   }
   await validateFixturePath(expectedRunRoot, { runId: run.runId })
+  await setFixtureTreeWritable(expectedRunRoot)
   await rm(expectedRunRoot, { recursive: true })
 }
 
@@ -1967,6 +2168,74 @@ async function waitForMissingElement(
   }
 }
 
+function assertDisposableProjectPath(projectPath) {
+  const runsRoot = path.join(homedir(), 'ViewerAcceptanceRuns')
+  if (
+    !path.isAbsolute(projectPath) ||
+    !isContainedPath(runsRoot, projectPath) ||
+    path.basename(projectPath) !== '测试图'
+  ) {
+    throw new AcceptanceError(
+      'SAFETY_FIXTURE_PATH',
+      'State preparation requires the exact disposable project root',
+      { projectPath },
+    )
+  }
+  return projectPath
+}
+
+async function setFixtureTreeReadOnly(root) {
+  const entries = await readdir(root, { withFileTypes: true })
+  for (const entry of entries) {
+    const candidate = path.join(root, entry.name)
+    if (entry.isSymbolicLink()) {
+      throw new AcceptanceError('SAFETY_FIXTURE_PATH', 'Fixture preparation found a symlink', {
+        path: candidate,
+      })
+    }
+    if (entry.isDirectory()) await setFixtureTreeReadOnly(candidate)
+    else if (entry.isFile()) await chmod(candidate, 0o444)
+  }
+  await chmod(root, 0o555)
+}
+
+export async function prepareFixtureForState(projectPath, operation) {
+  const root = assertDisposableProjectPath(projectPath)
+  await assertNoSymlinkBetween(
+    path.join(homedir(), 'ViewerAcceptanceRuns'),
+    root,
+    'SAFETY_FIXTURE_PATH',
+  )
+  if (operation === 'removeViewerMetadata') {
+    await rm(path.join(root, '.viewer'), { recursive: true, force: true })
+  } else if (operation === 'addThirdContentFolder') {
+    await cp(path.join(root, '衣服', 'A02'), path.join(root, '衣服', 'A03'), {
+      recursive: true,
+      dereference: false,
+      errorOnExist: true,
+      force: false,
+    })
+  } else if (operation === 'populateSearchPaging') {
+    const source = path.join(root, '衣服', 'A01', '商品-01.jpg')
+    const target = path.join(root, '搜索分页')
+    await mkdir(target)
+    for (let index = 1; index <= 210; index += 1) {
+      await cp(source, path.join(target, `分页-${String(index).padStart(3, '0')}.jpg`), {
+        dereference: false,
+        errorOnExist: true,
+        force: false,
+      })
+    }
+  } else if (operation === 'makeProjectReadOnly') {
+    await setFixtureTreeReadOnly(root)
+  } else {
+    throw new AcceptanceError('STATE_RECIPE_EXECUTOR', 'Unknown fixture preparation', {
+      operation,
+    })
+  }
+  return { operation, projectPath: root }
+}
+
 export async function executeStateEntryPlan({
   id,
   client,
@@ -1981,6 +2250,18 @@ export async function executeStateEntryPlan({
   for (const step of plan) {
     if (step.kind === 'ensureNoProject') {
       visible = await ensureNoProject(client, actions)
+    } else if (step.kind === 'prepareFixture') {
+      const startedAt = new Date().toISOString()
+      const result = await prepareFixtureForState(projectPath, step.operation)
+      actions.push({
+        sequence: actions.length + 1,
+        command: 'fixture',
+        payload: { operation: step.operation },
+        startedAt,
+        completedAt: new Date().toISOString(),
+        ok: true,
+        result,
+      })
     } else if (step.kind === 'openProject') {
       await openProject({ client, actions, projectPath, window })
     } else if (step.kind === 'press') {
@@ -1995,8 +2276,37 @@ export async function executeStateEntryPlan({
           x: element.frame.x - window.x + element.frame.width / 2,
           y: element.frame.y - window.y + element.frame.height / 2,
         },
+        ...(step.modifiers ? { modifiers: step.modifiers } : {}),
       })
       visible = element
+    } else if (step.kind === 'focus') {
+      visible = await requestWithActionLog(client, actions, 'focus', {
+        target: step.target,
+      })
+    } else if (step.kind === 'key') {
+      visible = await requestWithActionLog(client, actions, 'key', {
+        key: step.key,
+        modifiers: step.modifiers,
+      })
+    } else if (step.kind === 'setValue') {
+      visible = await requestWithActionLog(client, actions, 'setValue', {
+        target: step.target,
+        text: step.text,
+      })
+    } else if (step.kind === 'dragBy') {
+      const element = await queryVisibleElement(client, actions, step.target)
+      const from = {
+        x: element.frame.x - window.x + element.frame.width / 2,
+        y: element.frame.y - window.y + element.frame.height / 2,
+      }
+      visible = await requestWithActionLog(client, actions, 'drag', {
+        from,
+        to: {
+          x: Math.max(0, Math.min(window.width - 1, from.x + step.delta.x)),
+          y: Math.max(0, Math.min(window.height - 1, from.y + step.delta.y)),
+        },
+        durationMs: step.durationMs,
+      })
     } else if (step.kind === 'waitMissing') {
       await waitForMissingElement(
         client,

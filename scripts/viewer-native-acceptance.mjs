@@ -667,6 +667,7 @@ function cliError(message, details = {}) {
 }
 
 export function parseNativeAcceptanceCli(argv, { repoRoot }) {
+  const argumentsList = argv[0] === '--' ? argv.slice(1) : argv
   const selectors = []
   let viewport = null
   let outputRoot = path.join(
@@ -675,29 +676,29 @@ export function parseNativeAcceptanceCli(argv, { repoRoot }) {
     'atlas-product-migration-acceptance',
   )
 
-  for (let index = 0; index < argv.length; index += 1) {
-    const argument = argv[index]
+  for (let index = 0; index < argumentsList.length; index += 1) {
+    const argument = argumentsList[index]
     if (argument === '--list') selectors.push({ mode: 'list', value: null })
     else if (argument === '--preflight') {
       selectors.push({ mode: 'preflight', value: null })
     } else if (argument === '--all') selectors.push({ mode: 'all', value: null })
     else if (argument === '--id') {
-      const id = argv[++index]
+      const id = argumentsList[++index]
       if (!STATE_RECIPES.has(id)) throw cliError('Unknown acceptance ID', { id })
       selectors.push({ mode: 'id', value: id })
     } else if (argument === '--wave') {
-      const wave = Number(argv[++index])
+      const wave = Number(argumentsList[++index])
       if (![1, 2, 3, 4].includes(wave)) {
         throw cliError('Wave must be one of 1, 2, 3 or 4', { wave })
       }
       selectors.push({ mode: 'wave', value: wave })
     } else if (argument === '--viewport') {
-      viewport = argv[++index]
+      viewport = argumentsList[++index]
       if (!['1024x720', '1440x900'].includes(viewport)) {
         throw cliError('Viewport must be 1024x720 or 1440x900', { viewport })
       }
     } else if (argument === '--output-root') {
-      outputRoot = argv[++index]
+      outputRoot = argumentsList[++index]
       if (!outputRoot) throw cliError('Missing output root')
     } else {
       throw cliError('Unknown native acceptance argument', { argument })

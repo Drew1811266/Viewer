@@ -334,6 +334,12 @@ describe('native acceptance CLI', () => {
       },
     )
     assert.equal(
+      parseNativeAcceptanceCli(['--', '--preflight', '--viewport', '1024x720'], {
+        repoRoot: actualRepoRoot,
+      }).mode,
+      'preflight',
+    )
+    assert.equal(
       parseNativeAcceptanceCli(['--id', 'FIL-03', '--viewport', '1440x900'], {
         repoRoot: actualRepoRoot,
       }).selector,

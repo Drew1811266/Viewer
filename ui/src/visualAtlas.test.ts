@@ -94,6 +94,23 @@ describe('complete Viewer visual atlas', () => {
     expect(document.querySelectorAll('img[src^="/"], img[src^="http"]')).toHaveLength(0)
   })
 
+  it('models the approved proportional density geometry instead of a fixed column mock', () => {
+    expect(html).toMatch(/\.image-grid\s*\{[^}]*display:\s*flex;[^}]*flex-wrap:\s*wrap;/s)
+    expect(html).toMatch(/\.image-grid\s+\.image-card\s*\{[^}]*flex:\s*0 0 198px;/s)
+    expect(html).toMatch(
+      /\.image-grid\[data-density="compact"\]\s+\.image-card\s*\{[^}]*flex-basis:\s*144px;/s,
+    )
+    expect(html).toMatch(
+      /\.image-grid\[data-density="large"\]\s+\.image-card\s*\{[^}]*flex-basis:\s*252px;/s,
+    )
+    expect(html).toMatch(/\.image-stage\s*\{[^}]*height:\s*132px;/s)
+    expect(html).toMatch(
+      /\.image-grid\[data-density="large"\]\s+\.image-stage\s*\{[^}]*height:\s*168px;/s,
+    )
+    expect(html).toMatch(/\.image-meta\s*\{[^}]*min-height:\s*48px;/s)
+    expect(html).toMatch(/\.image-meta strong\s*\{[^}]*font-size:\s*13px;/s)
+  })
+
   it('exposes real shell and browsing states', () => {
     const dom = renderAtlas()
     const document = dom.window.document

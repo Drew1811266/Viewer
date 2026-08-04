@@ -505,23 +505,23 @@
       width: 100%;
     }
 
-    .grid-wrap { padding: 14px; }
+    .grid-wrap { padding: 12px; }
     .image-grid {
-      display: grid;
+      display: flex;
+      flex-wrap: wrap;
       gap: 12px;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
     }
+    .image-grid .image-card { flex: 0 0 198px; }
     .image-grid[data-density="compact"] {
       gap: 8px;
-      grid-template-columns: repeat(6, minmax(0, 1fr));
     }
+    .image-grid[data-density="compact"] .image-card { flex-basis: 144px; }
     .image-grid[data-density="compact"] .image-stage { height: 96px; }
-    .image-grid[data-density="compact"] .image-meta { min-height: 28px; padding: 4px 6px; }
     .image-grid[data-density="large"] {
       gap: 16px;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
     }
-    .image-grid[data-density="large"] .image-stage { height: 228px; }
+    .image-grid[data-density="large"] .image-card { flex-basis: 252px; }
+    .image-grid[data-density="large"] .image-stage { height: 168px; }
     .image-card {
       background: #fbfbfa;
       border: 1px solid #ececea;
@@ -537,7 +537,7 @@
     }
     .image-stage {
       background: #f7f7f5;
-      height: 154px;
+      height: 132px;
       position: relative;
     }
     .image-card.selected .image-stage::after {
@@ -554,14 +554,14 @@
       display: flex;
       gap: 8px;
       justify-content: space-between;
-      min-height: 34px;
+      min-height: 48px;
       padding: 6px 8px;
     }
-    .image-meta strong { font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .image-meta strong { font-size: 13px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .status-tag {
       border-radius: 999px;
       flex: 0 0 auto;
-      font-size: 8px;
+      font-size: 10px;
       font-weight: 700;
       padding: 3px 6px;
     }

@@ -12,6 +12,7 @@ describe('adaptive other-file panel layout contracts', () => {
       'flex-direction': 'column',
       'min-height': '0',
       overflow: 'hidden',
+      padding: '0',
     })
     expect(
       declarationsFor(

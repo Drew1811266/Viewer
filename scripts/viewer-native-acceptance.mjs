@@ -207,42 +207,52 @@ export function buildStateEntryPlan(id) {
     'LAU-01': [{ kind: 'ensureNoProject' }],
     'SID-01': [
       openProject,
-      { kind: 'press', target: projectRoot },
-      { kind: 'assert', target: projectRoot },
+      { kind: 'click', target: folder('衣服/A01') },
+      { kind: 'waitMissing', target: { name: '扫描项目' } },
+      { kind: 'assert', target: folder('衣服/A01') },
     ],
     'STR-01': [
       openProject,
       { kind: 'press', target: projectRoot },
+      { kind: 'waitMissing', target: { name: '扫描项目' } },
       { kind: 'assert', target: projectRoot },
     ],
     'STR-02': [
       openProject,
       { kind: 'click', target: folder('衣服') },
+      { kind: 'waitMissing', target: { name: '扫描项目' } },
       { kind: 'assert', target: folder('衣服') },
     ],
     'STR-03': [
       openProject,
       { kind: 'click', target: folder('衣服/A01') },
+      { kind: 'waitMissing', target: { name: '扫描项目' } },
       { kind: 'assert', target: folder('衣服/A01') },
     ],
     'THU-04': [
       openProject,
       { kind: 'click', target: folder('衣服/A01') },
+      { kind: 'waitMissing', target: { name: '扫描项目' } },
       { kind: 'assert', target: folder('衣服/A01') },
     ],
     'THU-05': [
       openProject,
       { kind: 'click', target: folder('衣服/A01') },
+      { kind: 'waitMissing', target: { name: '扫描项目' } },
       { kind: 'click', target: { name: '商品-01.jpg' } },
       { kind: 'assert', target: { name: '已选择 1 项' } },
     ],
     'FIL-01': [
       openProject,
+      { kind: 'click', target: folder('衣服/A01') },
+      { kind: 'waitMissing', target: { name: '扫描项目' } },
       { kind: 'press', target: { role: 'AXButton', name: '筛选' } },
       { kind: 'assert', target: { role: 'AXHeading', name: '筛选' } },
     ],
     'MEN-02': [
       openProject,
+      { kind: 'click', target: folder('衣服/A01') },
+      { kind: 'waitMissing', target: { name: '扫描项目' } },
       { kind: 'press', target: { role: 'AXButton', name: '更多' } },
       { kind: 'assert', target: { name: '软件设置' } },
     ],
@@ -1868,6 +1878,48 @@ async function queryVisibleElement(client, actions, target, timeoutMs = 3000) {
   return result.elements[0]
 }
 
+async function waitForMissingElement(client, actions, target, timeoutMs = 10_000) {
+  const startedAt = new Date().toISOString()
+  try {
+    await waitFor(
+      async () => {
+        try {
+          await client.request('query', { target })
+          return false
+        } catch (error) {
+          if (error?.code === 'STATE_TARGET_NOT_FOUND') return true
+          if (error?.code === 'STATE_TARGET_NOT_UNIQUE') return false
+          throw error
+        }
+      },
+      { timeoutMs, intervalMs: 100 },
+    )
+    actions.push({
+      sequence: actions.length + 1,
+      command: 'query',
+      payload: { target, expected: 'missing' },
+      startedAt,
+      completedAt: new Date().toISOString(),
+      ok: true,
+      result: { missing: true },
+    })
+  } catch (error) {
+    actions.push({
+      sequence: actions.length + 1,
+      command: 'query',
+      payload: { target, expected: 'missing' },
+      startedAt,
+      completedAt: new Date().toISOString(),
+      ok: false,
+      error: {
+        code: error?.code ?? 'UNEXPECTED',
+        message: error?.message ?? String(error),
+      },
+    })
+    throw error
+  }
+}
+
 export async function executeStateEntryPlan({
   id,
   client,
@@ -1898,6 +1950,8 @@ export async function executeStateEntryPlan({
         },
       })
       visible = element
+    } else if (step.kind === 'waitMissing') {
+      await waitForMissingElement(client, actions, step.target)
     } else if (step.kind === 'assert') {
       visible = await queryVisibleElement(client, actions, step.target, 10_000)
     } else {

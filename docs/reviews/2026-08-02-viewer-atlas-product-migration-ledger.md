@@ -19,7 +19,7 @@ A row remains `pending` or `blocked` until its automated evidence and both requi
 
 ## Acceptance fixture convention
 
-Native recipes use the read-only baseline at `target/atlas-product-migration-fixture/ViewerAcceptance`. Each controller run verifies that baseline by file hash, copies its writable project into the shallow native-picker boundary `$HOME/ViewerAcceptanceRuns/<run-id>/`, and removes only that exact run after the state capture:
+Native recipes use the read-only baseline at `target/atlas-product-migration-fixture/ViewerAcceptance`. Each controller run verifies that baseline by file hash, copies its writable project to `$HOME/ViewerAcceptanceRuns/<run-id>/<variant>/测试图/` so the atlas-approved project name is preserved, and removes only that exact run after the state capture:
 
 - `角色/B01` and `衣服/A01` contain copied JPG/PNG fixtures, including at least 30 images for density, paging, selection and 20-image comparison.
 - `文档` contains `sample.md`, `plain.txt`, a valid GB18030 text file and a text file larger than 10 MiB.
@@ -41,7 +41,7 @@ Native recipes use the read-only baseline at `target/atlas-product-migration-fix
 | LAU-07 | Wave 1 | `launch-empty` | `ViewerEmptyState` in `App` | Open `ViewerAcceptance`, select `空目录/Empty`, and keep search closed. | `Viewer empty state` (`App.test.tsx`) | not-recorded | not-recorded | pending |
 | LAU-08 | Wave 1 | `launch-error` | `ViewerLocalFeedback` in `EmptyProject` | Close the project and choose the disposable unreadable project copy so real open validation fails. | `EmptyProject` (`EmptyProject.test.tsx`) | not-recorded | not-recorded | pending |
 | LAU-09 | Wave 1 | `launch-recovery` | `GlobalNoticeStack` | Start a real multi-file move in the disposable project, terminate Viewer during the operation, relaunch and reopen the same fixture. | `GlobalNoticeStack` (`GlobalNoticeStack.test.tsx`) | not-recorded | not-recorded | pending |
-| SID-01 | Wave 1 | `sidebar-expanded` | `App` and `FolderTree` | Open `ViewerAcceptance` with the folder sidebar expanded and select the project root. | `App.test.tsx`; `FolderTree.test.tsx` | not-recorded | not-recorded | pending |
+| SID-01 | Wave 1 | `sidebar-expanded` | `App` and `FolderTree` | Open the disposable `测试图` project, select `衣服/A01`, wait until the initial scan task disappears, and leave the folder sidebar expanded. | `App.test.tsx`; `FolderTree.test.tsx` | not-recorded | not-recorded | pending |
 | SID-02 | Wave 1 | `sidebar-resized` | `useAppShellState` separator | Drag the sidebar separator to 320 px, then focus it and verify arrow-key resizing. | `App.test.tsx` | not-recorded | not-recorded | pending |
 | SID-03 | Wave 1 | `sidebar-collapsed` | collapsed navigation rail | Click the sidebar collapse action after opening `ViewerAcceptance`. | `App.test.tsx` | not-recorded | not-recorded | pending |
 | SID-04 | Wave 1 | `sidebar-drop` | `FolderTree` drop target | Select two files in `衣服/A01`, start organization drag, hover `目标/Destination`, then hover their current folder for the invalid variant. | `FolderTree.test.tsx`; `useOrganizationPointerDrag.test.tsx` | not-recorded | not-recorded | pending |

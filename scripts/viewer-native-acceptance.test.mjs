@@ -122,21 +122,27 @@ describe('state entry plans', () => {
   it('uses concrete native actions for the first stable workspace states', () => {
     assert.deepEqual(buildStateEntryPlan('SID-01'), [
       { kind: 'openProject' },
-      { kind: 'press', target: { role: 'AXCheckBox', name: '测试图' } },
-      { kind: 'assert', target: { role: 'AXCheckBox', name: '测试图' } },
+      { kind: 'click', target: { role: 'AXGroup', name: '衣服/A01' } },
+      { kind: 'waitMissing', target: { name: '扫描项目' } },
+      { kind: 'assert', target: { role: 'AXGroup', name: '衣服/A01' } },
     ])
     assert.deepEqual(buildStateEntryPlan('STR-03'), [
       { kind: 'openProject' },
       { kind: 'click', target: { role: 'AXGroup', name: '衣服/A01' } },
+      { kind: 'waitMissing', target: { name: '扫描项目' } },
       { kind: 'assert', target: { role: 'AXGroup', name: '衣服/A01' } },
     ])
     assert.deepEqual(buildStateEntryPlan('FIL-01'), [
       { kind: 'openProject' },
+      { kind: 'click', target: { role: 'AXGroup', name: '衣服/A01' } },
+      { kind: 'waitMissing', target: { name: '扫描项目' } },
       { kind: 'press', target: { role: 'AXButton', name: '筛选' } },
       { kind: 'assert', target: { role: 'AXHeading', name: '筛选' } },
     ])
     assert.deepEqual(buildStateEntryPlan('MEN-02'), [
       { kind: 'openProject' },
+      { kind: 'click', target: { role: 'AXGroup', name: '衣服/A01' } },
+      { kind: 'waitMissing', target: { name: '扫描项目' } },
       { kind: 'press', target: { role: 'AXButton', name: '更多' } },
       { kind: 'assert', target: { name: '软件设置' } },
     ])
@@ -154,6 +160,9 @@ describe('state entry plans', () => {
       async request(command, payload) {
         commands.push({ command, payload })
         if (command === 'query') {
+          if (payload.target.name === '扫描项目') {
+            throw new AcceptanceError('STATE_TARGET_NOT_FOUND', 'not found')
+          }
           return {
             elements: [
               {
@@ -185,10 +194,10 @@ describe('state entry plans', () => {
     assert.equal(result.passed, true)
     assert.deepEqual(
       commands.map(({ command }) => command),
-      ['query', 'pointer', 'query'],
+      ['query', 'pointer', 'query', 'query'],
     )
     assert.deepEqual(commands[1].payload.point, { x: 60, y: 32 })
-    assert.equal(actions.length, 3)
+    assert.equal(actions.length, 4)
   })
 })
 

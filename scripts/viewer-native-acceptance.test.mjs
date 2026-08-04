@@ -222,7 +222,7 @@ describe('state entry plans', () => {
       { kind: 'click', target: { role: 'AXCheckBox', name: '待定' } },
     ])
     const dateIndex = plan.findIndex((step) => step.target?.name === '最早修改时间')
-    assert.deepEqual(plan.slice(dateIndex, dateIndex + 11), [
+    assert.deepEqual(plan.slice(dateIndex, dateIndex + 13), [
       { kind: 'focus', target: { name: '最早修改时间', position: 'rightmost' } },
       { kind: 'key', key: '2', modifiers: [] },
       { kind: 'key', key: '0', modifiers: [] },
@@ -234,6 +234,8 @@ describe('state entry plans', () => {
       { kind: 'key', key: 'arrowRight', modifiers: [] },
       { kind: 'key', key: '0', modifiers: [] },
       { kind: 'key', key: '1', modifiers: [] },
+      { kind: 'key', key: 'tab', modifiers: [] },
+      { kind: 'assert', target: { role: 'AXButton', name: '筛选，6 项已启用' } },
     ])
   })
 

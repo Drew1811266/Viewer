@@ -449,6 +449,8 @@ export function buildStateEntryPlan(id) {
       { kind: 'key', key: 'arrowRight', modifiers: [] },
       { kind: 'key', key: '0', modifiers: [] },
       { kind: 'key', key: '1', modifiers: [] },
+      { kind: 'key', key: 'tab', modifiers: [] },
+      { kind: 'assert', target: { role: 'AXButton', name: '筛选，6 项已启用' } },
       { kind: 'movePointerToTitlebar' },
       { kind: 'assert', target: { role: 'AXHeading', name: '筛选' } },
     ],

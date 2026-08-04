@@ -33,6 +33,7 @@ export const ALLOWED_COMMANDS = new Set([
   'key',
   'pointer',
   'drag',
+  'finderDrag',
   'capture',
   'shutdown',
 ])
@@ -250,6 +251,15 @@ export function buildStateEntryPlan(id) {
   ]
   const plans = {
     'LAU-01': [{ kind: 'ensureNoProject' }],
+    'LAU-02': [
+      { kind: 'ensureNoProject' },
+      { kind: 'holdFinderDrag', source: '.', durationMs: 700 },
+    ],
+    'LAU-03': [
+      { kind: 'ensureNoProject' },
+      { kind: 'finderDrop', source: '衣服/A01/商品-01.jpg', durationMs: 700 },
+      { kind: 'assert', target: { role: 'AXHeading', name: '无法打开此项目' } },
+    ],
     'LAU-04': [
       { kind: 'prepareFixture', operation: 'seedOpeningRecoveryLoad' },
       { kind: 'beginOpenProject' },
@@ -556,7 +566,9 @@ export function buildStateEntryPlan(id) {
   return plan.map((step) => ({
     ...step,
     ...(step.target ? { target: { ...step.target } } : {}),
-    ...(step.source ? { source: { ...step.source } } : {}),
+    ...(step.source && typeof step.source === 'object'
+      ? { source: { ...step.source } }
+      : {}),
     ...(step.destination ? { destination: { ...step.destination } } : {}),
   }))
 }
@@ -1741,6 +1753,48 @@ function validatePayload(command, payload, window) {
         })
       }
       return
+    case 'finderDrag': {
+      if (
+        !hasExactKeys(payload, [
+          'path',
+          'destination',
+          'release',
+          'durationMs',
+        ])
+      ) {
+        throw commandError(
+          'finderDrag requires path, destination, release and durationMs',
+        )
+      }
+      let sourcePath
+      try {
+        sourcePath = validateLiteralAbsolutePath(payload.path, 'SAFETY_COMMAND')
+      } catch (error) {
+        throw commandError('Finder drag path is not a literal absolute path', {
+          cause: error.code,
+        })
+      }
+      const approvedRoot = path.join(homedir(), 'ViewerAcceptanceRuns')
+      if (!isContainedPath(approvedRoot, sourcePath)) {
+        throw commandError('Finder drag path escapes the approved fixture root')
+      }
+      if (
+        typeof payload.release !== 'boolean' ||
+        !Number.isInteger(payload.durationMs) ||
+        payload.durationMs < 50 ||
+        payload.durationMs > 5000
+      ) {
+        throw commandError('Finder drag release or duration is invalid')
+      }
+      try {
+        validateWindowPoint(payload.destination, window)
+      } catch (error) {
+        throw commandError('Finder drag destination is outside the approved window', {
+          cause: error.code,
+        })
+      }
+      return
+    }
     case 'capture':
       if (!hasExactKeys(payload, ['path']) || typeof payload.path !== 'string') {
         throw commandError('capture requires a path')
@@ -2643,6 +2697,39 @@ export async function executeStateEntryPlan({
           to: step.to,
           durationMs: step.durationMs,
         })
+      } else if (step.kind === 'holdFinderDrag' || step.kind === 'finderDrop') {
+        if (
+          typeof step.source !== 'string' ||
+          path.isAbsolute(step.source) ||
+          /[$~*?\[\]{}]/.test(step.source)
+        ) {
+          throw new AcceptanceError(
+            'SAFETY_FIXTURE_PATH',
+            'Finder drag source must be a literal fixture-relative path',
+          )
+        }
+        const sourcePath = path.resolve(projectPath, step.source)
+        if (!isContainedPath(projectPath, sourcePath)) {
+          throw new AcceptanceError(
+            'SAFETY_FIXTURE_PATH',
+            'Finder drag source escapes the disposable project',
+          )
+        }
+        const destination = {
+          x: window.width / 2,
+          y: window.height / 2,
+        }
+        const hold = step.kind === 'holdFinderDrag'
+        visible = await requestWithActionLog(client, actions, 'finderDrag', {
+          path: sourcePath,
+          destination,
+          release: !hold,
+          durationMs: step.durationMs,
+        })
+        if (hold) {
+          heldPointerPoint = destination
+          await observeHeldPointer()
+        }
       } else if (step.kind === 'holdOrganizationDrag') {
         const source = await queryVisibleElement(client, actions, step.source)
         const destination = await queryVisibleElement(client, actions, step.destination)

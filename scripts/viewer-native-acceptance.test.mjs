@@ -429,6 +429,26 @@ describe('state entry plans', () => {
     ])
   })
 
+  it('uses real Finder drag plans for the empty-project drop states', () => {
+    assert.deepEqual(buildStateEntryPlan('LAU-02'), [
+      { kind: 'ensureNoProject' },
+      {
+        kind: 'holdFinderDrag',
+        source: '.',
+        durationMs: 700,
+      },
+    ])
+    assert.deepEqual(buildStateEntryPlan('LAU-03'), [
+      { kind: 'ensureNoProject' },
+      {
+        kind: 'finderDrop',
+        source: '衣服/A01/商品-01.jpg',
+        durationMs: 700,
+      },
+      { kind: 'assert', target: { role: 'AXHeading', name: '无法打开此项目' } },
+    ])
+  })
+
   it('rejects a state until it has a real executable entry plan', () => {
     assert.throws(() => buildStateEntryPlan('RAD-07'), {
       code: 'STATE_RECIPE_EXECUTOR',
@@ -594,6 +614,59 @@ describe('state entry plans', () => {
         .filter(({ command, payload }) => command === 'pointer' && payload.kind === 'leftUp')
         .map(({ payload }) => payload),
       [{ kind: 'leftUp', point: { x: 140, y: 394 } }],
+    )
+  })
+
+  it('keeps an external Finder drag held through capture and releases it once', async () => {
+    const commands = []
+    const client = {
+      async request(command, payload) {
+        commands.push({ command, payload })
+        return { performed: true, command }
+      },
+    }
+    const projectPath = path.join(
+      os.homedir(),
+      'ViewerAcceptanceRuns',
+      'run-123',
+      '测试图',
+    )
+
+    const result = await executeStateEntryPlan({
+      id: 'LAU-02',
+      client,
+      actions: [],
+      projectPath,
+      window: { x: 100, y: 70, width: 1024, height: 720 },
+      ensureNoProject: async () => ({ visible: true }),
+      observeHeldPointer: async () => {
+        commands.push({ command: 'observeHeldPointer', payload: {} })
+      },
+    })
+
+    assert.deepEqual(commands[0], {
+      command: 'finderDrag',
+      payload: {
+        path: projectPath,
+        destination: { x: 512, y: 360 },
+        release: false,
+        durationMs: 700,
+      },
+    })
+    assert.equal(commands[1].command, 'observeHeldPointer')
+
+    await result.releasePointer()
+    await result.releasePointer()
+
+    assert.deepEqual(commands.at(-1), {
+      command: 'pointer',
+      payload: { kind: 'leftUp', point: { x: 512, y: 360 } },
+    })
+    assert.equal(
+      commands.filter(
+        ({ command, payload }) => command === 'pointer' && payload.kind === 'leftUp',
+      ).length,
+      1,
     )
   })
 
@@ -1876,6 +1949,7 @@ describe('protocol schema', () => {
         'key',
         'pointer',
         'drag',
+        'finderDrag',
         'capture',
         'shutdown',
       ],
@@ -2117,6 +2191,42 @@ describe('protocol schema', () => {
         ),
       { code: 'SAFETY_COMMAND' },
     )
+  })
+
+  it('accepts only a home-scoped Finder drag into the approved Viewer window', () => {
+    const request = {
+      ...inspectRequest,
+      command: 'finderDrag',
+      payload: {
+        path: path.join(
+          os.homedir(),
+          'ViewerAcceptanceRuns',
+          'run-123',
+          'entry-and-loading',
+          '测试图',
+        ),
+        destination: { x: 512, y: 360 },
+        release: false,
+        durationMs: 500,
+      },
+    }
+
+    assert.deepEqual(validateCommand(request, { window }), request)
+
+    for (const payload of [
+      { ...request.payload, path: 'ViewerAcceptanceRuns/run-123/测试图' },
+      { ...request.payload, path: path.join(os.homedir(), 'Desktop', '测试图') },
+      { ...request.payload, path: `${os.homedir()}/ViewerAcceptanceRuns/$RUN/测试图` },
+      { ...request.payload, destination: { x: 1024, y: 360 } },
+      { ...request.payload, release: 'false' },
+      { ...request.payload, durationMs: 49 },
+      { ...request.payload, durationMs: 5001 },
+    ]) {
+      assert.throws(
+        () => validateCommand({ ...request, payload }, { window }),
+        { code: 'SAFETY_COMMAND' },
+      )
+    }
   })
 })
 
@@ -2617,6 +2727,65 @@ describe('native validation', () => {
       await rm(temporaryRoot, { recursive: true, force: true })
     }
   })
+
+  it('validates Finder drag scope and destination in Swift fixture mode', async () => {
+    const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), 'viewer-finder-drag-'))
+    const helperPath = path.join(temporaryRoot, 'viewer-native-acceptance-helper')
+    const base = {
+      version: 1,
+      sequence: 1,
+      pid: 101,
+      windowId: 44,
+      command: 'finderDrag',
+      timeoutMs: 3000,
+      payload: {
+        path: path.join(os.homedir(), 'ViewerAcceptanceRuns', 'run-123', '测试图'),
+        destination: { x: 512, y: 360 },
+        release: false,
+        durationMs: 500,
+      },
+    }
+
+    try {
+      await execFileAsync('xcrun', [
+        'swiftc',
+        '-warnings-as-errors',
+        new URL('./viewer-native-acceptance.swift', import.meta.url).pathname,
+        '-o',
+        helperPath,
+      ])
+      const result = await runJsonLines(
+        helperPath,
+        ['--protocol-test', '--protocol-test-fixture'],
+        [
+          base,
+          {
+            ...base,
+            sequence: 2,
+            payload: { ...base.payload, path: path.join(os.homedir(), 'Desktop', '测试图') },
+          },
+          {
+            ...base,
+            sequence: 3,
+            payload: { ...base.payload, destination: { x: 1024, y: 360 } },
+          },
+        ],
+      )
+
+      assert.equal(result.exitCode, 0)
+      assert.equal(result.stderr, '')
+      assert.deepEqual(result.responses[0].result, {
+        performed: true,
+        command: 'finderDrag',
+      })
+      assert.deepEqual(
+        result.responses.slice(1).map((response) => response.error.code),
+        ['SAFETY_COMMAND', 'SAFETY_POINT_OUTSIDE_WINDOW'],
+      )
+    } finally {
+      await rm(temporaryRoot, { recursive: true, force: true })
+    }
+  })
 })
 
 describe('native production guard', () => {
@@ -2729,10 +2898,21 @@ describe('MacAdapter command dispatch', () => {
       {
         ...base,
         sequence: 9,
+        command: 'finderDrag',
+        payload: {
+          path: path.join(os.homedir(), 'ViewerAcceptanceRuns', 'run-123', '测试图'),
+          destination: { x: 512, y: 360 },
+          release: false,
+          durationMs: 500,
+        },
+      },
+      {
+        ...base,
+        sequence: 10,
         command: 'capture',
         payload: { path: '/tmp/viewer-mac-adapter.png' },
       },
-      { ...base, sequence: 10, command: 'shutdown', payload: {} },
+      { ...base, sequence: 11, command: 'shutdown', payload: {} },
     ]
 
     try {
@@ -2775,13 +2955,18 @@ describe('MacAdapter command dispatch', () => {
         ['activate', 'focus', 'setValue', 'key', 'pointer', 'drag'],
       )
       assert.deepEqual(result.responses[8].result, {
+        command: 'finderDrag',
+        performed: true,
+        held: true,
+      })
+      assert.deepEqual(result.responses[9].result, {
         command: 'capture',
         performed: true,
         width: 2048,
         height: 1440,
         sha256: 'a'.repeat(64),
       })
-      assert.deepEqual(result.responses[9].result, {
+      assert.deepEqual(result.responses[10].result, {
         command: 'shutdown',
         performed: true,
       })

@@ -18,6 +18,7 @@ private let allowedCommands: Set<String> = [
     "key",
     "pointer",
     "drag",
+    "finderDrag",
     "capture",
     "shutdown",
 ]
@@ -173,6 +174,15 @@ private struct FixtureAdapter: NativeAdapter {
             }
             try validatePoint(from)
             try validatePoint(to)
+            return ["performed": true, "command": request.command]
+        case "finderDrag":
+            guard let destination = request.payload["destination"] as? [String: Any] else {
+                throw AcceptanceFailure(
+                    code: "SAFETY_COMMAND",
+                    message: "Invalid Finder drag payload"
+                )
+            }
+            try validatePoint(destination)
             return ["performed": true, "command": request.command]
         default:
             return ["performed": true, "command": request.command]
@@ -366,6 +376,28 @@ private func validateRequestPayload(_ request: RequestEnvelope) throws {
         }
         try validatePointPayload(payload["from"])
         try validatePointPayload(payload["to"])
+    case "finderDrag":
+        guard Set(payload.keys) == ["path", "destination", "release", "durationMs"],
+              let sourcePath = payload["path"] as? String,
+              (sourcePath as NSString).isAbsolutePath,
+              !sourcePath.contains(where: { "$~*?[]{}".contains($0) }),
+              payload["release"] is Bool,
+              let duration = payload["durationMs"] as? Int,
+              (50 ... 5000).contains(duration)
+        else {
+            throw AcceptanceFailure(code: "SAFETY_COMMAND", message: "Invalid Finder drag payload")
+        }
+        let fixtureRoot = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("ViewerAcceptanceRuns", isDirectory: true)
+            .standardizedFileURL.path
+        let standardizedSource = URL(fileURLWithPath: sourcePath).standardizedFileURL.path
+        guard standardizedSource == fixtureRoot || standardizedSource.hasPrefix(fixtureRoot + "/") else {
+            throw AcceptanceFailure(
+                code: "SAFETY_COMMAND",
+                message: "Finder drag path escapes the approved fixture root"
+            )
+        }
+        try validatePointPayload(payload["destination"])
     case "capture":
         guard Set(payload.keys) == ["path"],
               let capturePath = payload["path"] as? String,
@@ -527,12 +559,19 @@ private final class RecordingMacSystem: MacSystem {
 
     func perform(
         command: String,
-        payload _: [String: Any],
+        payload: [String: Any],
         pid _: Int,
         window _: MacWindowSnapshot,
         timeoutMilliseconds _: Int
     ) throws -> [String: Any] {
         if command == "focus" { isFrontmost = true }
+        if command == "finderDrag" {
+            return [
+                "performed": true,
+                "command": command,
+                "held": !(payload["release"] as? Bool ?? true),
+            ]
+        }
         return ["performed": true, "command": command]
     }
 
@@ -557,6 +596,10 @@ private struct AXMatch {
 }
 
 private final class LiveMacSystem: MacSystem {
+    private var externalDragHeld = false
+    private var heldFinderWindow: AXUIElement?
+    private var heldFinderWindowFrame: CGRect?
+
     func validateProcess(_ pid: Int) throws {
         errno = 0
         if kill(pid_t(pid), 0) == -1, errno == ESRCH {
@@ -631,6 +674,19 @@ private final class LiveMacSystem: MacSystem {
             )
             return ["performed": true, "command": command]
         }
+        if command == "finderDrag" {
+            return try postFinderDrag(payload, pid: pid, window: window)
+        }
+        if command == "pointer",
+           payload["kind"] as? String == "leftUp",
+           externalDragHeld
+        {
+            try requireStableWindow(pid: pid, window: window, requireFrontmost: false)
+            try postPointer(payload, window: window)
+            externalDragHeld = false
+            restoreHeldFinderWindow()
+            return ["performed": true, "command": command]
+        }
         try requireStableFrontmostWindow(pid: pid, window: window)
         switch command {
         case "activate":
@@ -678,6 +734,289 @@ private final class LiveMacSystem: MacSystem {
             )
         }
         return ["performed": true, "command": command]
+    }
+
+    private func postFinderDrag(
+        _ payload: [String: Any],
+        pid: Int,
+        window: MacWindowSnapshot
+    ) throws -> [String: Any] {
+        guard !externalDragHeld,
+              let sourcePath = payload["path"] as? String,
+              let release = payload["release"] as? Bool,
+              let duration = payload["durationMs"] as? Int
+        else {
+            throw AcceptanceFailure(
+                code: "STATE_ACTION_FAILED",
+                message: "A Finder drag is already active or malformed"
+            )
+        }
+
+        let fixtureRoot = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("ViewerAcceptanceRuns", isDirectory: true)
+            .standardizedFileURL
+            .resolvingSymlinksInPath()
+        let literalSource = URL(fileURLWithPath: sourcePath).standardizedFileURL
+        let resolvedSource = literalSource.resolvingSymlinksInPath()
+        guard literalSource.path == resolvedSource.path,
+              resolvedSource.path.hasPrefix(fixtureRoot.path + "/"),
+              FileManager.default.fileExists(atPath: resolvedSource.path)
+        else {
+            throw AcceptanceFailure(
+                code: "SAFETY_COMMAND",
+                message: "Finder drag source is outside the exact disposable fixture"
+            )
+        }
+
+        let destination = try screenPoint(payload["destination"], window: window)
+        NSWorkspace.shared.activateFileViewerSelecting([resolvedSource])
+        let finder = try waitForFinder(timeoutMilliseconds: 3000)
+        let finderWindow = try focusedFinderWindow(pid: finder.processIdentifier)
+        let originalFrame = axFrame(finderWindow)
+        if let stagedFrame = stagedFinderFrame(around: window.frame),
+           !setAXFrame(finderWindow, frame: stagedFrame)
+        {
+            throw AcceptanceFailure(
+                code: "STATE_ACTION_FAILED",
+                message: "Unable to stage the Finder source window"
+            )
+        }
+
+        let currentFinderFrame = axFrame(finderWindow) ?? originalFrame ?? .zero
+        let sourceElement = try waitForFinderSelection(
+            pid: finder.processIdentifier,
+            name: resolvedSource.lastPathComponent,
+            windowFrame: currentFinderFrame,
+            timeoutMilliseconds: 3000
+        )
+        let sourceFrame = axFrame(sourceElement) ?? .zero
+        guard sourceFrame.width >= 4, sourceFrame.height >= 4 else {
+            if let originalFrame { _ = setAXFrame(finderWindow, frame: originalFrame) }
+            throw AcceptanceFailure(
+                code: "STATE_TARGET_NOT_FOUND",
+                message: "Finder selected item has no usable frame"
+            )
+        }
+        let source = CGPoint(x: sourceFrame.midX, y: sourceFrame.midY)
+        var mouseIsDown = false
+        do {
+            try postMouse(type: .mouseMoved, point: source)
+            try postMouse(type: .leftMouseDown, point: source)
+            mouseIsDown = true
+            usleep(100_000)
+
+            let steps = max(12, min(60, duration / 20))
+            for index in 1 ... steps {
+                let progress = CGFloat(index) / CGFloat(steps)
+                let point = CGPoint(
+                    x: source.x + ((destination.x - source.x) * progress),
+                    y: source.y + ((destination.y - source.y) * progress)
+                )
+                try postMouse(type: .leftMouseDragged, point: point)
+                usleep(useconds_t(max(1, duration * 1000 / steps)))
+            }
+
+            if release {
+                try postMouse(type: .leftMouseUp, point: destination)
+                mouseIsDown = false
+                if let originalFrame { _ = setAXFrame(finderWindow, frame: originalFrame) }
+            } else {
+                externalDragHeld = true
+                heldFinderWindow = finderWindow
+                heldFinderWindowFrame = originalFrame
+            }
+        } catch {
+            if mouseIsDown { try? postMouse(type: .leftMouseUp, point: destination) }
+            if let originalFrame { _ = setAXFrame(finderWindow, frame: originalFrame) }
+            throw error
+        }
+
+        let current = try windowSnapshot(pid: pid, windowID: window.windowID)
+        guard current.frame.equalTo(window.frame) else {
+            if externalDragHeld {
+                try? postMouse(type: .leftMouseUp, point: destination)
+                externalDragHeld = false
+                restoreHeldFinderWindow()
+            }
+            throw AcceptanceFailure(
+                code: "PRECONDITION_WINDOW_OWNER",
+                message: "Viewer window changed during Finder drag"
+            )
+        }
+        return [
+            "performed": true,
+            "command": "finderDrag",
+            "held": !release,
+        ]
+    }
+
+    private func waitForFinder(timeoutMilliseconds: Int) throws -> NSRunningApplication {
+        let deadline = Date().addingTimeInterval(Double(timeoutMilliseconds) / 1000)
+        while Date() < deadline {
+            if let finder = NSRunningApplication
+                .runningApplications(withBundleIdentifier: "com.apple.finder")
+                .first,
+               finder.isActive
+            {
+                return finder
+            }
+            usleep(20_000)
+        }
+        throw AcceptanceFailure(
+            code: "STATE_TARGET_NOT_FOUND",
+            message: "Finder did not expose the selected fixture"
+        )
+    }
+
+    private func focusedFinderWindow(pid: pid_t) throws -> AXUIElement {
+        let application = AXUIElementCreateApplication(pid)
+        if let focused = axAttribute(
+            application,
+            name: kAXFocusedWindowAttribute as CFString
+        ), CFGetTypeID(focused) == AXUIElementGetTypeID() {
+            return unsafeBitCast(focused, to: AXUIElement.self)
+        }
+        let windows = axAttribute(application, name: kAXWindowsAttribute as CFString)
+            as? [AXUIElement] ?? []
+        guard let window = windows.first else {
+            throw AcceptanceFailure(
+                code: "STATE_TARGET_NOT_FOUND",
+                message: "Finder has no accessible source window"
+            )
+        }
+        return window
+    }
+
+    private func stagedFinderFrame(around viewerFrame: CGRect) -> CGRect? {
+        let display = CGDisplayBounds(CGMainDisplayID())
+        let top = max(display.minY + 24, viewerFrame.minY)
+        let height = min(620, max(360, display.maxY - top - 24))
+        let rightSpace = display.maxX - viewerFrame.maxX - 16
+        if rightSpace >= 300 {
+            return CGRect(
+                x: viewerFrame.maxX + 16,
+                y: top,
+                width: min(520, rightSpace),
+                height: height
+            )
+        }
+        let leftSpace = viewerFrame.minX - display.minX - 16
+        if leftSpace >= 300 {
+            let width = min(520, leftSpace)
+            return CGRect(
+                x: viewerFrame.minX - width - 16,
+                y: top,
+                width: width,
+                height: height
+            )
+        }
+        let width = min(360, display.width)
+        return CGRect(
+            x: max(display.minX, viewerFrame.maxX - width),
+            y: top,
+            width: width,
+            height: height
+        )
+    }
+
+    private func setAXFrame(_ element: AXUIElement, frame: CGRect) -> Bool {
+        var point = frame.origin
+        var size = frame.size
+        guard let pointValue = AXValueCreate(.cgPoint, &point),
+              let sizeValue = AXValueCreate(.cgSize, &size)
+        else { return false }
+        let positionResult = AXUIElementSetAttributeValue(
+            element,
+            kAXPositionAttribute as CFString,
+            pointValue
+        )
+        let sizeResult = AXUIElementSetAttributeValue(
+            element,
+            kAXSizeAttribute as CFString,
+            sizeValue
+        )
+        return positionResult == .success && sizeResult == .success
+    }
+
+    private func waitForFinderSelection(
+        pid: pid_t,
+        name: String,
+        windowFrame: CGRect,
+        timeoutMilliseconds: Int
+    ) throws -> AXUIElement {
+        let application = AXUIElementCreateApplication(pid)
+        let deadline = Date().addingTimeInterval(Double(timeoutMilliseconds) / 1000)
+        while Date() < deadline {
+            var candidates: [(element: AXUIElement, score: Int, area: CGFloat)] = []
+            var visited = 0
+
+            func visit(_ element: AXUIElement, depth: Int) {
+                guard depth <= 32, visited < 20_000 else { return }
+                visited += 1
+                if let frame = axFrame(element),
+                   frame.width >= 4,
+                   frame.height >= 4,
+                   frame.intersects(windowFrame)
+                {
+                    let title = axAttribute(element, name: kAXTitleAttribute as CFString) as? String
+                    let description = axAttribute(
+                        element,
+                        name: kAXDescriptionAttribute as CFString
+                    ) as? String
+                    let value = axAttribute(element, name: kAXValueAttribute as CFString) as? String
+                    let elementName = [title, description, value]
+                        .compactMap { $0 }
+                        .first { !$0.isEmpty }
+                    let selected = axAttribute(
+                        element,
+                        name: kAXSelectedAttribute as CFString
+                    ) as? Bool ?? false
+                    let role = axAttribute(element, name: kAXRoleAttribute as CFString) as? String
+                    var score = selected ? 100 : 0
+                    if elementName == name { score += 80 }
+                    if ["AXRow", "AXCell", "AXImage", "AXGroup"].contains(role) { score += 10 }
+                    if score >= 100 || elementName == name {
+                        candidates.append((element, score, frame.width * frame.height))
+                    }
+                }
+                for child in axChildren(element) { visit(child, depth: depth + 1) }
+            }
+
+            visit(application, depth: 0)
+            if let match = candidates.max(by: { left, right in
+                left.score == right.score ? left.area > right.area : left.score < right.score
+            }) {
+                return match.element
+            }
+            usleep(20_000)
+        }
+        throw AcceptanceFailure(
+            code: "STATE_TARGET_NOT_FOUND",
+            message: "Finder selected item was not found"
+        )
+    }
+
+    private func postMouse(type: CGEventType, point: CGPoint) throws {
+        guard let event = CGEvent(
+            mouseEventSource: nil,
+            mouseType: type,
+            mouseCursorPosition: point,
+            mouseButton: .left
+        ) else {
+            throw AcceptanceFailure(
+                code: "STATE_ACTION_FAILED",
+                message: "Unable to create Finder drag event"
+            )
+        }
+        event.post(tap: .cghidEventTap)
+    }
+
+    private func restoreHeldFinderWindow() {
+        if let window = heldFinderWindow, let frame = heldFinderWindowFrame {
+            _ = setAXFrame(window, frame: frame)
+        }
+        heldFinderWindow = nil
+        heldFinderWindowFrame = nil
     }
 
     private func focusTarget(
@@ -780,7 +1119,11 @@ private final class LiveMacSystem: MacSystem {
         pid: Int,
         window: MacWindowSnapshot
     ) throws -> [String: Any] {
-        try requireStableFrontmostWindow(pid: pid, window: window)
+        try requireStableWindow(
+            pid: pid,
+            window: window,
+            requireFrontmost: !externalDragHeld
+        )
         let image = try captureImage(pid: pid, window: window)
 
         let scaleX = Double(image.width) / window.frame.width
@@ -908,8 +1251,16 @@ private final class LiveMacSystem: MacSystem {
         pid: Int,
         window: MacWindowSnapshot
     ) throws {
+        try requireStableWindow(pid: pid, window: window, requireFrontmost: true)
+    }
+
+    private func requireStableWindow(
+        pid: Int,
+        window: MacWindowSnapshot,
+        requireFrontmost: Bool
+    ) throws {
         let current = try windowSnapshot(pid: pid, windowID: window.windowID)
-        guard current.frame.equalTo(window.frame), current.frontmost else {
+        guard current.frame.equalTo(window.frame), !requireFrontmost || current.frontmost else {
             throw AcceptanceFailure(
                 code: "PRECONDITION_WINDOW_OWNER",
                 message: "Target window changed"

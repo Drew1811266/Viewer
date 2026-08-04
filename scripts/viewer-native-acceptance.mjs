@@ -2522,6 +2522,7 @@ export async function executeStateEntryPlan({
   window,
   openProject = openProjectViaPanel,
   ensureNoProject = ensureLaunchNoProject,
+  observeHeldPointer = async () => {},
 }) {
   const plan = buildStateEntryPlan(id)
   let visible = null
@@ -2641,6 +2642,7 @@ export async function executeStateEntryPlan({
           point: to,
           modifiers: step.modifiers,
         })
+        await observeHeldPointer()
       } else if (step.kind === 'waitMissing') {
         await waitForMissingElement(
           client,
@@ -3039,15 +3041,22 @@ async function captureStateRecipe({ repoRoot, options, preflight, id }) {
     await requestWithActionLog(client, actions, 'focus', {
       target: { role: 'AXWindow' },
     })
+    let capturedDuringEntry = false
     const entry = await executeStateEntryPlan({
       id,
       client,
       actions,
       projectPath: variantPath,
       window: preflight.window,
+      observeHeldPointer: async () => {
+        await requestWithActionLog(client, actions, 'capture', { path: rawPath })
+        capturedDuringEntry = true
+      },
     })
     try {
-      await requestWithActionLog(client, actions, 'capture', { path: rawPath })
+      if (!capturedDuringEntry) {
+        await requestWithActionLog(client, actions, 'capture', { path: rawPath })
+      }
     } finally {
       await entry.releasePointer()
     }

@@ -536,6 +536,9 @@ describe('state entry plans', () => {
       projectPath: '/Users/example/ViewerAcceptanceRuns/run/测试图',
       window: { x: 100, y: 70, width: 1024, height: 720 },
       openProject: async () => {},
+      observeHeldPointer: async () => {
+        commands.push({ command: 'observeHeldPointer', payload: {} })
+      },
     })
 
     assert.deepEqual(
@@ -549,6 +552,13 @@ describe('state entry plans', () => {
         { kind: 'leftDrag', point: { x: 140, y: 394 }, modifiers: ['option'] },
       ],
     )
+    assert.ok(
+      commands.findIndex(
+        ({ command, payload }) => command === 'pointer' && payload.kind === 'leftDrag',
+      ) <
+        commands.findIndex(({ command }) => command === 'observeHeldPointer'),
+    )
+    assert.equal(commands.some(({ command }) => command === 'observeHeldPointer'), true)
 
     await result.releasePointer()
     await result.releasePointer()

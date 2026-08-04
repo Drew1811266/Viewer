@@ -823,3 +823,478 @@ describe('native helper build cache', () => {
     }
   })
 })
+
+describe('native validation', () => {
+  it('shares PID, window, unique-target and coordinate guards with the fixture adapter', async () => {
+    const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), 'viewer-native-fixture-'))
+    const helperPath = path.join(temporaryRoot, 'viewer-native-acceptance-helper')
+    const base = {
+      version: 1,
+      sequence: 1,
+      pid: 101,
+      windowId: 44,
+      command: 'inspect',
+      timeoutMs: 3000,
+      payload: {},
+    }
+    const requests = [
+      base,
+      { ...base, sequence: 2, pid: 202 },
+      {
+        ...base,
+        sequence: 3,
+        command: 'query',
+        payload: { target: { role: 'AXButton', name: '筛选' } },
+      },
+      {
+        ...base,
+        sequence: 4,
+        command: 'query',
+        payload: { target: { role: 'AXButton', name: '重复' } },
+      },
+      {
+        ...base,
+        sequence: 5,
+        command: 'query',
+        payload: { target: { role: 'AXButton', name: '不存在' } },
+      },
+      {
+        ...base,
+        sequence: 6,
+        command: 'pointer',
+        payload: { kind: 'click', point: { x: 1024, y: 10 } },
+      },
+    ]
+
+    try {
+      await execFileAsync('xcrun', [
+        'swiftc',
+        '-warnings-as-errors',
+        new URL('./viewer-native-acceptance.swift', import.meta.url).pathname,
+        '-o',
+        helperPath,
+      ])
+      const result = await runJsonLines(
+        helperPath,
+        ['--protocol-test', '--protocol-test-fixture'],
+        requests,
+      )
+
+      assert.equal(result.exitCode, 0)
+      assert.equal(result.stderr, '')
+      assert.deepEqual(result.responses[0], {
+        version: 1,
+        sequence: 1,
+        ok: true,
+        result: {
+          pid: 101,
+          windowId: 44,
+          title: 'Viewer Acceptance Fixture',
+          frame: { x: 20, y: 30, width: 1024, height: 720 },
+          focused: true,
+          frontmost: true,
+        },
+      })
+      assert.deepEqual(result.responses[1], {
+        version: 1,
+        sequence: 2,
+        ok: false,
+        error: {
+          code: 'PRECONDITION_WINDOW_OWNER',
+          message: 'Target window changed',
+        },
+      })
+      assert.deepEqual(result.responses[2], {
+        version: 1,
+        sequence: 3,
+        ok: true,
+        result: {
+          elements: [
+            {
+              role: 'AXButton',
+              name: '筛选',
+              identifier: 'toolbar-filter',
+              enabled: true,
+              focused: false,
+              frame: { x: 900, y: 40, width: 80, height: 32 },
+              path: [0, 0],
+            },
+          ],
+        },
+      })
+      assert.deepEqual(
+        result.responses.slice(3).map((response) => response.error.code),
+        [
+          'STATE_TARGET_NOT_UNIQUE',
+          'STATE_TARGET_NOT_FOUND',
+          'SAFETY_POINT_OUTSIDE_WINDOW',
+        ],
+      )
+    } finally {
+      await rm(temporaryRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('validates every action payload without emitting events in fixture mode', async () => {
+    const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), 'viewer-native-actions-'))
+    const helperPath = path.join(temporaryRoot, 'viewer-native-acceptance-helper')
+    const base = {
+      version: 1,
+      sequence: 1,
+      pid: 101,
+      windowId: 44,
+      command: 'inspect',
+      timeoutMs: 3000,
+      payload: {},
+    }
+    const requests = [
+      {
+        ...base,
+        sequence: 1,
+        command: 'activate',
+        payload: { target: { role: 'AXButton', name: '筛选' } },
+      },
+      {
+        ...base,
+        sequence: 2,
+        command: 'focus',
+        payload: { target: { identifier: 'toolbar-filter' } },
+      },
+      {
+        ...base,
+        sequence: 3,
+        command: 'setValue',
+        payload: {
+          target: { role: 'AXTextField', name: '搜索' },
+          text: '衣服/A01',
+        },
+      },
+      {
+        ...base,
+        sequence: 4,
+        command: 'key',
+        payload: { key: 'escape', modifiers: ['shift'] },
+      },
+      {
+        ...base,
+        sequence: 5,
+        command: 'pointer',
+        payload: { kind: 'rightClick', point: { x: 100, y: 200 } },
+      },
+      {
+        ...base,
+        sequence: 6,
+        command: 'drag',
+        payload: {
+          from: { x: 100, y: 200 },
+          to: { x: 300, y: 400 },
+          durationMs: 400,
+        },
+      },
+      {
+        ...base,
+        sequence: 7,
+        command: 'capture',
+        payload: { path: '/tmp/viewer-acceptance-product.png' },
+      },
+      {
+        ...base,
+        sequence: 8,
+        command: 'shutdown',
+        payload: {},
+      },
+      {
+        ...base,
+        sequence: 9,
+        command: 'setValue',
+        payload: {
+          target: { role: 'AXTextField', name: '搜索' },
+          text: '图'.repeat(4097),
+        },
+      },
+      {
+        ...base,
+        sequence: 10,
+        command: 'drag',
+        payload: {
+          from: { x: 100, y: 200 },
+          to: { x: 1024, y: 400 },
+          durationMs: 400,
+        },
+      },
+    ]
+
+    try {
+      await execFileAsync('xcrun', [
+        'swiftc',
+        '-warnings-as-errors',
+        new URL('./viewer-native-acceptance.swift', import.meta.url).pathname,
+        '-o',
+        helperPath,
+      ])
+      const result = await runJsonLines(
+        helperPath,
+        ['--protocol-test', '--protocol-test-fixture'],
+        requests,
+      )
+
+      assert.equal(result.exitCode, 0)
+      assert.equal(result.stderr, '')
+      assert.deepEqual(
+        result.responses.slice(0, 8).map((response) => ({
+          ok: response.ok,
+          performed: response.result.performed,
+          command: response.result.command,
+        })),
+        [
+          { ok: true, performed: true, command: 'activate' },
+          { ok: true, performed: true, command: 'focus' },
+          { ok: true, performed: true, command: 'setValue' },
+          { ok: true, performed: true, command: 'key' },
+          { ok: true, performed: true, command: 'pointer' },
+          { ok: true, performed: true, command: 'drag' },
+          { ok: true, performed: true, command: 'capture' },
+          { ok: true, performed: true, command: 'shutdown' },
+        ],
+      )
+      assert.deepEqual(
+        result.responses.slice(8).map((response) => response.error.code),
+        ['SAFETY_COMMAND', 'SAFETY_POINT_OUTSIDE_WINDOW'],
+      )
+    } finally {
+      await rm(temporaryRoot, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('native production guard', () => {
+  it('rejects an invalid Viewer PID before attempting a native action', async () => {
+    const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), 'viewer-native-guard-'))
+    const helperPath = path.join(temporaryRoot, 'viewer-native-acceptance-helper')
+    const request = {
+      version: 1,
+      sequence: 1,
+      pid: 2_147_483_647,
+      windowId: 1,
+      command: 'inspect',
+      timeoutMs: 3000,
+      payload: {},
+    }
+
+    try {
+      await execFileAsync('xcrun', [
+        'swiftc',
+        '-warnings-as-errors',
+        new URL('./viewer-native-acceptance.swift', import.meta.url).pathname,
+        '-o',
+        helperPath,
+      ])
+      const result = await runJsonLines(helperPath, [], [request])
+
+      assert.equal(result.exitCode, 0)
+      assert.equal(result.stderr, '')
+      assert.deepEqual(result.responses, [
+        {
+          version: 1,
+          sequence: 1,
+          ok: false,
+          error: {
+            code: 'PRECONDITION_VIEWER_PID',
+            message: 'Viewer PID is not running',
+          },
+        },
+      ])
+    } finally {
+      await rm(temporaryRoot, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('MacAdapter command dispatch', () => {
+  it('routes every validated command through the recording system adapter', async () => {
+    const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), 'viewer-mac-adapter-'))
+    const helperPath = path.join(temporaryRoot, 'viewer-native-acceptance-helper')
+    const base = {
+      version: 1,
+      sequence: 1,
+      pid: 101,
+      windowId: 44,
+      command: 'inspect',
+      timeoutMs: 3000,
+      payload: {},
+    }
+    const requests = [
+      base,
+      {
+        ...base,
+        sequence: 2,
+        command: 'query',
+        payload: { target: { identifier: 'toolbar-filter' } },
+      },
+      {
+        ...base,
+        sequence: 3,
+        command: 'activate',
+        payload: { target: { identifier: 'toolbar-filter' } },
+      },
+      {
+        ...base,
+        sequence: 4,
+        command: 'focus',
+        payload: { target: { identifier: 'toolbar-search' } },
+      },
+      {
+        ...base,
+        sequence: 5,
+        command: 'setValue',
+        payload: {
+          target: { identifier: 'toolbar-search' },
+          text: '衣服/A01',
+        },
+      },
+      {
+        ...base,
+        sequence: 6,
+        command: 'key',
+        payload: { key: 'escape', modifiers: [] },
+      },
+      {
+        ...base,
+        sequence: 7,
+        command: 'pointer',
+        payload: { kind: 'click', point: { x: 100, y: 200 } },
+      },
+      {
+        ...base,
+        sequence: 8,
+        command: 'drag',
+        payload: {
+          from: { x: 100, y: 200 },
+          to: { x: 300, y: 400 },
+          durationMs: 400,
+        },
+      },
+      {
+        ...base,
+        sequence: 9,
+        command: 'capture',
+        payload: { path: '/tmp/viewer-mac-adapter.png' },
+      },
+      { ...base, sequence: 10, command: 'shutdown', payload: {} },
+    ]
+
+    try {
+      await execFileAsync('xcrun', [
+        'swiftc',
+        '-warnings-as-errors',
+        new URL('./viewer-native-acceptance.swift', import.meta.url).pathname,
+        '-o',
+        helperPath,
+      ])
+      const result = await runJsonLines(
+        helperPath,
+        ['--protocol-test', '--protocol-test-mac-fixture'],
+        requests,
+      )
+
+      assert.equal(result.exitCode, 0)
+      assert.equal(result.stderr, '')
+      assert.deepEqual(result.responses[0].result, {
+        pid: 101,
+        windowId: 44,
+        title: 'Viewer Mac Adapter Fixture',
+        frame: { x: 20, y: 30, width: 1024, height: 720 },
+        focused: true,
+        frontmost: true,
+      })
+      assert.deepEqual(result.responses[1].result.elements, [
+        {
+          role: 'AXButton',
+          name: '筛选',
+          identifier: 'toolbar-filter',
+          enabled: true,
+          focused: false,
+          frame: { x: 900, y: 40, width: 80, height: 32 },
+          path: [0, 0],
+        },
+      ])
+      assert.deepEqual(
+        result.responses.slice(2, 8).map((response) => response.result.command),
+        ['activate', 'focus', 'setValue', 'key', 'pointer', 'drag'],
+      )
+      assert.deepEqual(result.responses[8].result, {
+        command: 'capture',
+        performed: true,
+        width: 2048,
+        height: 1440,
+        sha256: 'a'.repeat(64),
+      })
+      assert.deepEqual(result.responses[9].result, {
+        command: 'shutdown',
+        performed: true,
+      })
+    } finally {
+      await rm(temporaryRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('focuses an owned background Viewer window before guarded input', async () => {
+    const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), 'viewer-mac-focus-'))
+    const helperPath = path.join(temporaryRoot, 'viewer-native-acceptance-helper')
+    const base = {
+      version: 1,
+      sequence: 1,
+      pid: 101,
+      windowId: 44,
+      command: 'inspect',
+      timeoutMs: 3000,
+      payload: {},
+    }
+    const requests = [
+      base,
+      {
+        ...base,
+        sequence: 2,
+        command: 'focus',
+        payload: { target: { role: 'AXWindow', name: 'Viewer Mac Adapter Fixture' } },
+      },
+      { ...base, sequence: 3 },
+      {
+        ...base,
+        sequence: 4,
+        command: 'pointer',
+        payload: { kind: 'click', point: { x: 100, y: 200 } },
+      },
+    ]
+
+    try {
+      await execFileAsync('xcrun', [
+        'swiftc',
+        '-warnings-as-errors',
+        new URL('./viewer-native-acceptance.swift', import.meta.url).pathname,
+        '-o',
+        helperPath,
+      ])
+      const result = await runJsonLines(
+        helperPath,
+        ['--protocol-test', '--protocol-test-mac-background-fixture'],
+        requests,
+      )
+
+      assert.equal(result.exitCode, 0)
+      assert.equal(result.stderr, '')
+      assert.equal(result.responses[0].result.frontmost, false)
+      assert.deepEqual(result.responses[1].result, {
+        performed: true,
+        command: 'focus',
+      })
+      assert.equal(result.responses[2].result.frontmost, true)
+      assert.deepEqual(result.responses[3].result, {
+        performed: true,
+        command: 'pointer',
+      })
+    } finally {
+      await rm(temporaryRoot, { recursive: true, force: true })
+    }
+  })
+})

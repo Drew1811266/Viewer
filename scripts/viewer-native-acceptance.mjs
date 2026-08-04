@@ -331,6 +331,7 @@ export function buildStateEntryPlan(id) {
     ],
     'STR-01': [
       ...openWorkspace(),
+      ...workspaceReady,
       { kind: 'press', target: projectRoot },
       ...workspaceReady,
       { kind: 'assert', target: projectRoot },

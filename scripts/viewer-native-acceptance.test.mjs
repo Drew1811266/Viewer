@@ -121,7 +121,12 @@ describe('recipe registry', () => {
 
 describe('state entry plans', () => {
   it('uses concrete native actions for the first stable workspace states', () => {
-    assert.deepEqual(buildStateEntryPlan('STR-01').slice(-3), [
+    const projectRootPlan = buildStateEntryPlan('STR-01')
+    assert.deepEqual(projectRootPlan.filter((step) => step.kind === 'press'), [
+      { kind: 'press', target: { role: 'AXButton', name: '测试图' } },
+    ])
+    assert.deepEqual(projectRootPlan.slice(-4), [
+      { kind: 'waitMissing', target: { name: '扫描项目' } },
       { kind: 'waitMissing', target: { name: '正在生成缩略图' } },
       { kind: 'waitMissing', target: { name: '2 个任务已完成' }, stableMs: 1_000 },
       { kind: 'assert', target: { role: 'AXButton', name: '测试图' } },

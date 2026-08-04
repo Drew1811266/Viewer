@@ -203,72 +203,65 @@ export function buildStateEntryPlan(id) {
   const openProject = { kind: 'openProject' }
   const projectRoot = { role: 'AXCheckBox', name: '测试图' }
   const folder = (name) => ({ role: 'AXGroup', name })
+  const workspaceReady = [
+    { kind: 'waitMissing', target: { name: '扫描项目' } },
+    { kind: 'waitMissing', target: { name: '加载可见缩略图' } },
+    {
+      kind: 'waitMissing',
+      target: { name: '2 个任务已完成' },
+      stableMs: 1_000,
+    },
+  ]
   const plans = {
     'LAU-01': [{ kind: 'ensureNoProject' }],
     'SID-01': [
       openProject,
       { kind: 'click', target: folder('衣服/A01') },
-      { kind: 'waitMissing', target: { name: '扫描项目' } },
-      { kind: 'waitMissing', target: { name: '2 个任务已完成' } },
-      { kind: 'waitMissing', target: { name: '加载可见缩略图' } },
+      ...workspaceReady,
       { kind: 'assert', target: folder('衣服/A01') },
     ],
     'STR-01': [
       openProject,
       { kind: 'press', target: projectRoot },
-      { kind: 'waitMissing', target: { name: '扫描项目' } },
-      { kind: 'waitMissing', target: { name: '2 个任务已完成' } },
-      { kind: 'waitMissing', target: { name: '加载可见缩略图' } },
+      ...workspaceReady,
       { kind: 'assert', target: projectRoot },
     ],
     'STR-02': [
       openProject,
       { kind: 'click', target: folder('衣服') },
-      { kind: 'waitMissing', target: { name: '扫描项目' } },
-      { kind: 'waitMissing', target: { name: '2 个任务已完成' } },
-      { kind: 'waitMissing', target: { name: '加载可见缩略图' } },
+      ...workspaceReady,
       { kind: 'assert', target: folder('衣服') },
     ],
     'STR-03': [
       openProject,
       { kind: 'click', target: folder('衣服/A01') },
-      { kind: 'waitMissing', target: { name: '扫描项目' } },
-      { kind: 'waitMissing', target: { name: '2 个任务已完成' } },
-      { kind: 'waitMissing', target: { name: '加载可见缩略图' } },
+      ...workspaceReady,
       { kind: 'assert', target: folder('衣服/A01') },
     ],
     'THU-04': [
       openProject,
       { kind: 'click', target: folder('衣服/A01') },
-      { kind: 'waitMissing', target: { name: '扫描项目' } },
-      { kind: 'waitMissing', target: { name: '2 个任务已完成' } },
-      { kind: 'waitMissing', target: { name: '加载可见缩略图' } },
+      ...workspaceReady,
       { kind: 'assert', target: folder('衣服/A01') },
     ],
     'THU-05': [
       openProject,
       { kind: 'click', target: folder('衣服/A01') },
-      { kind: 'waitMissing', target: { name: '扫描项目' } },
-      { kind: 'waitMissing', target: { name: '2 个任务已完成' } },
-      { kind: 'waitMissing', target: { name: '加载可见缩略图' } },
+      ...workspaceReady,
       { kind: 'click', target: { name: '商品-01.jpg' } },
       { kind: 'assert', target: { role: 'AXGroup', name: '选择摘要' } },
     ],
     'FIL-01': [
       openProject,
       { kind: 'click', target: folder('衣服/A01') },
-      { kind: 'waitMissing', target: { name: '扫描项目' } },
-      { kind: 'waitMissing', target: { name: '2 个任务已完成' } },
-      { kind: 'waitMissing', target: { name: '加载可见缩略图' } },
+      ...workspaceReady,
       { kind: 'press', target: { role: 'AXButton', name: '筛选' } },
       { kind: 'assert', target: { role: 'AXHeading', name: '筛选' } },
     ],
     'MEN-02': [
       openProject,
       { kind: 'click', target: folder('衣服/A01') },
-      { kind: 'waitMissing', target: { name: '扫描项目' } },
-      { kind: 'waitMissing', target: { name: '2 个任务已完成' } },
-      { kind: 'waitMissing', target: { name: '加载可见缩略图' } },
+      ...workspaceReady,
       { kind: 'press', target: { role: 'AXButton', name: '更多' } },
       { kind: 'assert', target: { name: '软件设置' } },
     ],
@@ -946,6 +939,30 @@ export function waitFor(predicate, { timeoutMs, intervalMs }) {
       )
     }
   })()
+}
+
+export function waitForStable(predicate, { timeoutMs, intervalMs, stableMs }) {
+  if (!Number.isFinite(stableMs) || stableMs <= 0 || stableMs >= timeoutMs) {
+    throw new AcceptanceError(
+      'PRECONDITION_WAIT_LIMIT',
+      'Condition stability must be positive and shorter than its timeout',
+      { timeoutMs, stableMs },
+    )
+  }
+  let stableSince = null
+  return waitFor(
+    async () => {
+      const result = await predicate()
+      if (!result) {
+        stableSince = null
+        return false
+      }
+      const now = Date.now()
+      if (stableSince === null) stableSince = now
+      return now - stableSince >= stableMs ? result : false
+    },
+    { timeoutMs, intervalMs },
+  )
 }
 
 export async function discoverNativeWindows({ helperPath, pid, protocolTest = false }) {
@@ -1894,10 +1911,17 @@ async function queryVisibleElement(client, actions, target, timeoutMs = 3000) {
   return result.elements[0]
 }
 
-async function waitForMissingElement(client, actions, target, timeoutMs = 10_000) {
+async function waitForMissingElement(
+  client,
+  actions,
+  target,
+  timeoutMs = 10_000,
+  stableMs = 0,
+) {
   const startedAt = new Date().toISOString()
   try {
-    await waitFor(
+    const wait = stableMs > 0 ? waitForStable : waitFor
+    await wait(
       async () => {
         try {
           await client.request('query', { target })
@@ -1908,12 +1932,16 @@ async function waitForMissingElement(client, actions, target, timeoutMs = 10_000
           throw error
         }
       },
-      { timeoutMs, intervalMs: 100 },
+      { timeoutMs, intervalMs: 100, ...(stableMs > 0 ? { stableMs } : {}) },
     )
     actions.push({
       sequence: actions.length + 1,
       command: 'query',
-      payload: { target, expected: 'missing' },
+      payload: {
+        target,
+        expected: 'missing',
+        ...(stableMs > 0 ? { stableMs } : {}),
+      },
       startedAt,
       completedAt: new Date().toISOString(),
       ok: true,
@@ -1967,7 +1995,13 @@ export async function executeStateEntryPlan({
       })
       visible = element
     } else if (step.kind === 'waitMissing') {
-      await waitForMissingElement(client, actions, step.target)
+      await waitForMissingElement(
+        client,
+        actions,
+        step.target,
+        10_000,
+        step.stableMs ?? 0,
+      )
     } else if (step.kind === 'assert') {
       visible = await queryVisibleElement(client, actions, step.target, 10_000)
     } else {

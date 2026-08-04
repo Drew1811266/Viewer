@@ -124,24 +124,36 @@ describe('state entry plans', () => {
       { kind: 'openProject' },
       { kind: 'click', target: { role: 'AXGroup', name: '衣服/A01' } },
       { kind: 'waitMissing', target: { name: '扫描项目' } },
-      { kind: 'waitMissing', target: { name: '2 个任务已完成' } },
       { kind: 'waitMissing', target: { name: '加载可见缩略图' } },
+      {
+        kind: 'waitMissing',
+        target: { name: '2 个任务已完成' },
+        stableMs: 1_000,
+      },
       { kind: 'assert', target: { role: 'AXGroup', name: '衣服/A01' } },
     ])
     assert.deepEqual(buildStateEntryPlan('STR-03'), [
       { kind: 'openProject' },
       { kind: 'click', target: { role: 'AXGroup', name: '衣服/A01' } },
       { kind: 'waitMissing', target: { name: '扫描项目' } },
-      { kind: 'waitMissing', target: { name: '2 个任务已完成' } },
       { kind: 'waitMissing', target: { name: '加载可见缩略图' } },
+      {
+        kind: 'waitMissing',
+        target: { name: '2 个任务已完成' },
+        stableMs: 1_000,
+      },
       { kind: 'assert', target: { role: 'AXGroup', name: '衣服/A01' } },
     ])
     assert.deepEqual(buildStateEntryPlan('FIL-01'), [
       { kind: 'openProject' },
       { kind: 'click', target: { role: 'AXGroup', name: '衣服/A01' } },
       { kind: 'waitMissing', target: { name: '扫描项目' } },
-      { kind: 'waitMissing', target: { name: '2 个任务已完成' } },
       { kind: 'waitMissing', target: { name: '加载可见缩略图' } },
+      {
+        kind: 'waitMissing',
+        target: { name: '2 个任务已完成' },
+        stableMs: 1_000,
+      },
       { kind: 'press', target: { role: 'AXButton', name: '筛选' } },
       { kind: 'assert', target: { role: 'AXHeading', name: '筛选' } },
     ])
@@ -149,8 +161,12 @@ describe('state entry plans', () => {
       { kind: 'openProject' },
       { kind: 'click', target: { role: 'AXGroup', name: '衣服/A01' } },
       { kind: 'waitMissing', target: { name: '扫描项目' } },
-      { kind: 'waitMissing', target: { name: '2 个任务已完成' } },
       { kind: 'waitMissing', target: { name: '加载可见缩略图' } },
+      {
+        kind: 'waitMissing',
+        target: { name: '2 个任务已完成' },
+        stableMs: 1_000,
+      },
       { kind: 'press', target: { role: 'AXButton', name: '更多' } },
       { kind: 'assert', target: { name: '软件设置' } },
     ])
@@ -163,6 +179,20 @@ describe('state entry plans', () => {
       kind: 'assert',
       target: { role: 'AXGroup', name: '选择摘要' },
     })
+  })
+
+  it('waits for the completion task to stay absent before capture', () => {
+    const plan = buildStateEntryPlan('SID-01')
+
+    assert.deepEqual(plan.slice(2, 5), [
+      { kind: 'waitMissing', target: { name: '扫描项目' } },
+      { kind: 'waitMissing', target: { name: '加载可见缩略图' } },
+      {
+        kind: 'waitMissing',
+        target: { name: '2 个任务已完成' },
+        stableMs: 1_000,
+      },
+    ])
   })
 
   it('rejects a state until it has a real executable entry plan', () => {
@@ -212,9 +242,11 @@ describe('state entry plans', () => {
     assert.equal(opened, true)
     assert.equal(result.passed, true)
     assert.deepEqual(
-      commands.map(({ command }) => command),
-      ['query', 'pointer', 'query', 'query', 'query', 'query'],
+      commands.slice(0, 4).map(({ command }) => command),
+      ['query', 'pointer', 'query', 'query'],
     )
+    assert.ok(commands.slice(4).every(({ command }) => command === 'query'))
+    assert.ok(commands.length >= 6)
     assert.deepEqual(commands[1].payload.point, { x: 60, y: 32 })
     assert.equal(actions.length, 6)
   })
@@ -666,6 +698,23 @@ describe('native acceptance CLI', () => {
       () => waitFor(() => true, { timeoutMs: 10_001, intervalMs: 1 }),
       { code: 'PRECONDITION_WAIT_LIMIT' },
     )
+  })
+
+  it('requires a condition to remain true for its full stability window', async () => {
+    const acceptance = await import('./viewer-native-acceptance.mjs')
+    assert.equal(typeof acceptance.waitForStable, 'function')
+    let checks = 0
+
+    const result = await acceptance.waitForStable(
+      () => {
+        checks += 1
+        return checks !== 2
+      },
+      { timeoutMs: 100, intervalMs: 1, stableMs: 5 },
+    )
+
+    assert.equal(result, true)
+    assert.ok(checks >= 6)
   })
 
   it('refuses open-panel navigation outside the current home fixture boundary', async () => {

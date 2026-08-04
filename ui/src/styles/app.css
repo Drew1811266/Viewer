@@ -773,7 +773,7 @@ summary,
 
 .search-results-summary,
 .search-pagination,
-.search-empty > div {
+.search-empty {
   align-items: center;
   display: flex;
   gap: 10px;
@@ -791,6 +791,13 @@ summary,
   align-items: baseline;
   display: flex;
   gap: 12px;
+}
+
+.search-empty-results {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
 }
 
 .search-result-list {
@@ -903,15 +910,24 @@ summary,
 }
 
 .search-pagination {
+  border-top: 1px solid var(--viewer-border);
+  font-size: 11px;
   min-height: 40px;
-  justify-content: center;
+  padding: 0 16px;
+}
+
+.search-pagination-actions {
+  align-items: center;
+  display: flex;
+  gap: var(--viewer-space-1);
 }
 
 .search-empty {
-  display: grid;
-  margin: 24px auto;
-  padding: 0 24px;
-  place-items: center;
+  flex: 1;
+  justify-content: center;
+  margin: 0 auto;
+  min-height: 0;
+  padding: 24px;
 }
 
 .search-empty .viewer-empty-state__action {

@@ -191,7 +191,7 @@ describe('state entry plans', () => {
       { kind: 'openProject' },
       {
         kind: 'normalizeWorkspace',
-        density: '紧凑',
+        density: '标准',
         sidebar: 'expanded',
         sidebarWidth: 220,
       },
@@ -217,6 +217,59 @@ describe('state entry plans', () => {
       kind: 'assert',
       target: { role: 'AXGroup', name: '选择摘要' },
     })
+  })
+
+  it('matches the atlas three-item multi-selection state', () => {
+    const plan = buildStateEntryPlan('THU-06')
+    const selectedNames = plan
+      .filter((step) => step.kind === 'click' && /^商品-0[1-9]\.jpg$/.test(step.target?.name ?? ''))
+      .map((step) => step.target.name)
+
+    assert.deepEqual(selectedNames, ['商品-01.jpg', '商品-02.jpg', '商品-03.jpg'])
+  })
+
+  it('keeps the other-file states in the compact A01 content context', () => {
+    const collapsed = buildStateEntryPlan('OTH-01')
+    const expanded = buildStateEntryPlan('OTH-02')
+
+    for (const plan of [collapsed, expanded]) {
+      assert.deepEqual(plan.slice(0, 4), [
+        { kind: 'prepareFixture', operation: 'prepareOrganizationDrag' },
+        { kind: 'openProject' },
+        {
+          kind: 'normalizeWorkspace',
+          density: '紧凑',
+          sidebar: 'expanded',
+          sidebarWidth: 220,
+        },
+        { kind: 'click', target: { role: 'AXGroup', name: '衣服/A01' } },
+      ])
+      assert.deepEqual(
+        plan
+          .filter(
+            (step) => step.kind === 'click' && /^商品-0[1-9]\.jpg$/.test(step.target?.name ?? ''),
+          )
+          .map((step) => step.target.name),
+        ['商品-01.jpg', '商品-02.jpg', '商品-03.jpg'],
+      )
+      assert.equal(
+        plan.some((step) => step.kind === 'click' && step.target?.name === '其它'),
+        false,
+      )
+    }
+
+    assert.equal(
+      collapsed.some(
+        (step) => step.kind === 'click' && step.target?.name === '其它文件 · 3',
+      ),
+      false,
+    )
+    assert.equal(
+      expanded.some(
+        (step) => step.kind === 'click' && step.target?.name === '其它文件 · 3',
+      ),
+      true,
+    )
   })
 
   it('builds the advanced-filter visual state from six real conditions', () => {
@@ -346,6 +399,7 @@ describe('state entry plans', () => {
       'SEA-04',
       'SEA-05',
       'MEN-01',
+      'MEN-02',
       'LAU-07',
     ]
     const compactDensityIds = [
@@ -358,7 +412,6 @@ describe('state entry plans', () => {
       'FIL-02',
       'FIL-03',
       'FIL-04',
-      'MEN-02',
       'MEN-03',
     ]
     const largeDensityIds = ['THU-03']

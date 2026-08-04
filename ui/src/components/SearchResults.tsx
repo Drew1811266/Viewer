@@ -67,30 +67,38 @@ export default function SearchResults({
   if (page.total === 0) {
     const filterCount = activeFilterCount(query)
     return (
-      <section className="search-empty" aria-label="无搜索结果">
-        <ViewerEmptyState
-          title="没有找到结果"
-          description={`关键词“${query.text || '（空）'}”，范围：${
-            query.scopeFolderId === null ? '整个项目' : '当前目录及其后代'
-          }，${filterCount} 个筛选条件。`}
-          action={
-            <>
-              {filterCount > 0 && (
-                <ViewerButton tone="primary" onClick={onClearFilters}>
-                  清除筛选
+      <section className="search-results search-empty-results" aria-label="无搜索结果">
+        <header className="search-results-summary">
+          <div>
+            <strong>“{query.text}” · 0 个结果</strong>
+          </div>
+        </header>
+        <div className="search-empty">
+          <ViewerEmptyState
+            appearance="plain"
+            title="没有找到结果"
+            description={`关键词“${query.text || '（空）'}”，范围：${
+              query.scopeFolderId === null ? '整个项目' : '当前目录及其后代'
+            }，${filterCount} 个筛选条件。`}
+            action={
+              <>
+                {filterCount > 0 && (
+                  <ViewerButton tone="primary" onClick={onClearFilters}>
+                    清除筛选
+                  </ViewerButton>
+                )}
+                {query.scopeFolderId !== null && (
+                  <ViewerButton tone="secondary" onClick={onSearchProject}>
+                    搜索整个项目
+                  </ViewerButton>
+                )}
+                <ViewerButton tone="quiet" onClick={onReturnToFolder}>
+                  返回文件夹内容
                 </ViewerButton>
-              )}
-              {query.scopeFolderId !== null && (
-                <ViewerButton tone="secondary" onClick={onSearchProject}>
-                  搜索整个项目
-                </ViewerButton>
-              )}
-              <ViewerButton tone="quiet" onClick={onReturnToFolder}>
-                返回文件夹内容
-              </ViewerButton>
-            </>
-          }
-        />
+              </>
+            }
+          />
+        </div>
       </section>
     )
   }
@@ -149,23 +157,26 @@ export default function SearchResults({
         </div>
       </div>
       <nav className="search-pagination" aria-label="搜索结果分页">
-        <ViewerButton
-          tone="quiet"
-          disabled={offset === 0}
-          onClick={() => onPageChange(Math.max(0, offset - limit))}
-        >
-          上一页
-        </ViewerButton>
-        <span>
-          {offset + 1}–{Math.min(offset + page.hits.length, page.total)} / {page.total}
+        <span className="search-pagination-summary">
+          第 {Math.floor(offset / limit) + 1} 页 · {offset + 1}–
+          {Math.min(offset + page.hits.length, page.total)} / {page.total}
         </span>
-        <ViewerButton
-          tone="quiet"
-          disabled={offset + page.hits.length >= page.total}
-          onClick={() => onPageChange(offset + limit)}
-        >
-          下一页
-        </ViewerButton>
+        <div className="search-pagination-actions" role="group" aria-label="分页操作">
+          <ViewerButton
+            tone="quiet"
+            disabled={offset === 0}
+            onClick={() => onPageChange(Math.max(0, offset - limit))}
+          >
+            上一页
+          </ViewerButton>
+          <ViewerButton
+            tone="quiet"
+            disabled={offset + page.hits.length >= page.total}
+            onClick={() => onPageChange(offset + limit)}
+          >
+            下一页
+          </ViewerButton>
+        </div>
       </nav>
     </section>
   )

@@ -192,16 +192,46 @@ describe('SearchResults', () => {
         searching={false}
       />,
     )
-    expect(screen.getByText(/shoe/)).toBeVisible()
+    expect(screen.getAllByText(/shoe/)).toHaveLength(2)
     expect(screen.getByText(/当前目录及其后代/)).toBeVisible()
     expect(screen.getByText(/1 个筛选条件/)).toBeVisible()
+    expect(screen.getByText('“shoe” · 0 个结果')).toBeVisible()
     expect(screen.getByRole('heading', { name: '没有找到结果' }).closest('section')).toHaveClass(
       'viewer-empty-state',
     )
+    expect(
+      screen.getByRole('heading', { name: '没有找到结果' }).closest('section'),
+    ).toHaveAttribute('data-appearance', 'plain')
     expect(screen.getByRole('button', { name: '清除筛选' })).toHaveAttribute('data-tone', 'primary')
     fireEvent.click(screen.getByRole('button', { name: '清除筛选' }))
     fireEvent.click(screen.getByRole('button', { name: '搜索整个项目' }))
     expect(clear).toHaveBeenCalledOnce()
     expect(expand).toHaveBeenCalledOnce()
+  })
+
+  it('keeps pagination in the approved page-summary and action groups', () => {
+    render(
+      <SearchResults
+        page={page()}
+        query={query}
+        snippets={{}}
+        offset={40}
+        limit={40}
+        onPageChange={vi.fn()}
+        onVisibleHits={vi.fn()}
+        onClearFilters={vi.fn()}
+        onSearchProject={vi.fn()}
+        onReturnToFolder={vi.fn()}
+        searching={false}
+      />,
+    )
+
+    const pagination = screen.getByRole('navigation', { name: '搜索结果分页' })
+    expect(within(pagination).getByText('第 2 页 · 41–42 / 128')).toHaveClass(
+      'search-pagination-summary',
+    )
+    const actions = within(pagination).getByRole('group', { name: '分页操作' })
+    expect(within(actions).getByRole('button', { name: '上一页' })).toBeVisible()
+    expect(within(actions).getByRole('button', { name: '下一页' })).toBeVisible()
   })
 })

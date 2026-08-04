@@ -88,10 +88,13 @@ describe('EmptyProject', () => {
 
     expect(await screen.findByRole('heading', { name: 'project' })).toBeVisible()
     expect(screen.getByText('正在验证项目…')).toBeVisible()
-    expect(screen.getByRole('status', { name: '正在打开项目' })).toHaveClass('viewer-task-surface')
+    expect(screen.getByRole('progressbar', { name: '正在打开项目' })).toHaveClass(
+      'project-opening-progress',
+    )
     expect(screen.getByRole('progressbar', { name: '正在打开项目' })).not.toHaveAttribute(
       'aria-valuenow',
     )
+    expect(screen.queryByRole('status', { name: '正在打开项目' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '选择项目文件夹' })).not.toBeInTheDocument()
   })
 

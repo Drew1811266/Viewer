@@ -4,7 +4,6 @@ import type { ViewerBridge } from '../api/viewer'
 import { safeUserMessage } from '../api/viewer'
 import ViewerButton from './ui/ViewerButton'
 import ViewerLocalFeedback from './ui/ViewerLocalFeedback'
-import ViewerTaskSurface from './ui/ViewerTaskSurface'
 
 interface EmptyProjectProps {
   bridge: ViewerBridge
@@ -87,9 +86,10 @@ export default function EmptyProject({
     return (
       <main className="project-opening-state" aria-busy="true">
         <h1>{openingName}</h1>
-        <ViewerTaskSurface label="正在打开项目" current={0} total={0} indeterminate>
-          正在验证项目…
-        </ViewerTaskSurface>
+        <p>正在验证项目…</p>
+        <div className="project-opening-progress" role="progressbar" aria-label="正在打开项目">
+          <span />
+        </div>
       </main>
     )
   }

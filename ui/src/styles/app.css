@@ -99,6 +99,25 @@ summary,
   margin: 0;
 }
 
+.project-opening-progress {
+  --viewer-progress: 0.44;
+  background: var(--viewer-row-divider);
+  border-radius: 999px;
+  height: 3px;
+  overflow: hidden;
+  width: 180px;
+}
+
+.project-opening-progress > span {
+  animation: viewer-indeterminate-progress 1.1s var(--viewer-easing) infinite alternate;
+  background: var(--viewer-accent);
+  display: block;
+  height: 100%;
+  transform: scaleX(0.44);
+  transform-origin: left;
+  width: 100%;
+}
+
 .project-drop-feedback {
   background: var(--viewer-accent-soft);
   border: 2px solid var(--viewer-accent);
@@ -2566,7 +2585,8 @@ summary,
   .folder-filmstrip-skeleton,
   .organization-drag-handle,
   .radial-primary-shape,
-  .radial-secondary-shape {
+  .radial-secondary-shape,
+  .project-opening-progress > span {
     transition: none;
     animation: none;
   }

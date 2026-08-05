@@ -248,6 +248,7 @@ export function buildStateEntryPlan(id) {
     ...preparation,
     ...openContent(),
     { kind: 'click', target: image(name) },
+    { kind: 'focus', target: { name: '图片文件' } },
     { kind: 'key', key: 'space', modifiers: [] },
   ]
   const selectImages = (count, density = count > 8 ? '紧凑' : '标准') => [

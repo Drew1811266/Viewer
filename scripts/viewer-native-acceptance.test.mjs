@@ -575,6 +575,14 @@ describe('state entry plans', () => {
       true,
     )
     const previewPlan = buildStateEntryPlan('PRE-01')
+    const previewClickIndex = previewPlan.findIndex(
+      (step) => step.kind === 'click' && step.target?.name === '商品-02.jpg',
+    )
+    assert.deepEqual(previewPlan.slice(previewClickIndex, previewClickIndex + 3), [
+      { kind: 'click', target: { name: '商品-02.jpg' } },
+      { kind: 'focus', target: { name: '图片文件' } },
+      { kind: 'key', key: 'space', modifiers: [] },
+    ])
     assert.equal(
       previewPlan.some(
         (step) => step.kind === 'key' && step.key === 'space' && step.modifiers?.length === 0,

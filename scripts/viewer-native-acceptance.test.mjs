@@ -570,17 +570,14 @@ describe('state entry plans', () => {
   it('opens image, comparison, document and information states through product actions', () => {
     assert.equal(
       buildStateEntryPlan('PRE-01').some(
-        (step) => step.kind === 'contextClick' && step.target?.name === '商品-02.jpg',
+        (step) => step.kind === 'click' && step.target?.name === '商品-02.jpg',
       ),
       true,
     )
     const previewPlan = buildStateEntryPlan('PRE-01')
     assert.equal(
       previewPlan.some(
-        (step) =>
-          step.kind === 'press' &&
-          step.target?.role === 'AXMenuItem' &&
-          step.target?.name === '预览',
+        (step) => step.kind === 'key' && step.key === 'space' && step.modifiers?.length === 0,
       ),
       true,
     )

@@ -273,7 +273,7 @@ describe('Viewer empty state', () => {
     expect(sidebar.querySelectorAll('.folder-tree-skeleton-row')).toHaveLength(0)
     expect(screen.getByRole('option', { name: 'front.jpg' })).toBeVisible()
     expect(screen.getAllByLabelText('缩略图加载中').length).toBeGreaterThan(0)
-    expect(screen.getByText('正在生成缩略图')).toBeVisible()
+    await waitFor(() => expect(screen.getByText('正在生成缩略图')).toBeVisible())
 
     await act(async () => {
       image.resolve({

@@ -578,8 +578,9 @@ describe('state entry plans', () => {
     const previewClickIndex = previewPlan.findIndex(
       (step) => step.kind === 'click' && step.target?.name === '商品-02.jpg',
     )
-    assert.deepEqual(previewPlan.slice(previewClickIndex, previewClickIndex + 3), [
+    assert.deepEqual(previewPlan.slice(previewClickIndex, previewClickIndex + 4), [
       { kind: 'click', target: { name: '商品-02.jpg' } },
+      { kind: 'assert', target: { role: 'AXStaticText', name: '已选择 1 项' } },
       { kind: 'focus', target: { name: '图片文件' } },
       { kind: 'key', key: 'space', modifiers: [] },
     ])

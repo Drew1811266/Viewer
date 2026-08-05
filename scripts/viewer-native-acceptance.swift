@@ -1466,6 +1466,29 @@ private final class LiveMacSystem: MacSystem {
         }
         down.flags = flags
         up.flags = flags
+        let unicodeText: String? = if key == "space" {
+            " "
+        } else if key == "period" {
+            "."
+        } else if key.count == 1 {
+            key
+        } else {
+            nil
+        }
+        if let unicodeText {
+            let unicodeUnits = Array(unicodeText.utf16)
+            unicodeUnits.withUnsafeBufferPointer { buffer in
+                guard let baseAddress = buffer.baseAddress else { return }
+                down.keyboardSetUnicodeString(
+                    stringLength: buffer.count,
+                    unicodeString: baseAddress
+                )
+                up.keyboardSetUnicodeString(
+                    stringLength: buffer.count,
+                    unicodeString: baseAddress
+                )
+            }
+        }
         down.post(tap: .cghidEventTap)
         up.post(tap: .cghidEventTap)
     }

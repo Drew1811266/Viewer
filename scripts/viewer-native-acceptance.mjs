@@ -246,6 +246,7 @@ export function buildStateEntryPlan(id) {
   const image = (name) => ({ name })
   const openImagePreview = (name = '商品-02.jpg', preparation = []) => [
     ...openRadial(name, preparation),
+    { kind: 'assert', target: { role: 'AXMenuItem', name: '预览' } },
     { kind: 'press', target: { role: 'AXMenuItem', name: '预览' } },
   ]
   const selectImages = (count, density = count > 8 ? '紧凑' : '标准') => [

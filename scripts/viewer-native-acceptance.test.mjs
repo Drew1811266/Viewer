@@ -573,10 +573,12 @@ describe('state entry plans', () => {
       previewPlan.filter(
         (step) =>
           (step.kind === 'contextClick' && step.target?.name === '商品-02.jpg') ||
+          (step.kind === 'assert' && step.target?.name === '预览') ||
           (step.kind === 'press' && step.target?.name === '预览'),
       ),
       [
         { kind: 'contextClick', target: { name: '商品-02.jpg' } },
+        { kind: 'assert', target: { role: 'AXMenuItem', name: '预览' } },
         { kind: 'press', target: { role: 'AXMenuItem', name: '预览' } },
       ],
     )

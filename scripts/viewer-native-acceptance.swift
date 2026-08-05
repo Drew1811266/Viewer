@@ -1582,14 +1582,15 @@ private final class LiveMacSystem: MacSystem {
             default: break
             }
         }
+        let eventSource = CGEventSource(stateID: .combinedSessionState)
         for clickIndex in 1 ... clickCount {
             guard let down = CGEvent(
-                mouseEventSource: nil,
+                mouseEventSource: eventSource,
                 mouseType: downType,
                 mouseCursorPosition: point,
                 mouseButton: button
             ), let up = CGEvent(
-                mouseEventSource: nil,
+                mouseEventSource: eventSource,
                 mouseType: upType,
                 mouseCursorPosition: point,
                 mouseButton: button

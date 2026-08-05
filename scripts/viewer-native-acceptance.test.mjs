@@ -3089,6 +3089,77 @@ describe('native validation', () => {
     }
   })
 
+  it('validates held secondary-button input and the keyboard context-menu key in Swift', async () => {
+    const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), 'viewer-native-secondary-'))
+    const helperPath = path.join(temporaryRoot, 'viewer-native-acceptance-helper')
+    const base = {
+      version: 1,
+      sequence: 1,
+      pid: 101,
+      windowId: 44,
+      command: 'inspect',
+      timeoutMs: 3000,
+      payload: {},
+    }
+    const requests = [
+      {
+        ...base,
+        command: 'pointer',
+        payload: { kind: 'rightDown', point: { x: 200, y: 300 } },
+      },
+      {
+        ...base,
+        sequence: 2,
+        command: 'pointer',
+        payload: { kind: 'rightDrag', point: { x: 200, y: 212 } },
+      },
+      {
+        ...base,
+        sequence: 3,
+        command: 'pointer',
+        payload: { kind: 'rightUp', point: { x: 200, y: 212 } },
+      },
+      {
+        ...base,
+        sequence: 4,
+        command: 'key',
+        payload: { key: 'f10', modifiers: ['shift'] },
+      },
+    ]
+
+    try {
+      await execFileAsync('xcrun', [
+        'swiftc',
+        '-warnings-as-errors',
+        new URL('./viewer-native-acceptance.swift', import.meta.url).pathname,
+        '-o',
+        helperPath,
+      ])
+      const result = await runJsonLines(
+        helperPath,
+        ['--protocol-test', '--protocol-test-fixture'],
+        requests,
+      )
+
+      assert.equal(result.exitCode, 0)
+      assert.equal(result.stderr, '')
+      assert.deepEqual(
+        result.responses.map((response) => ({
+          ok: response.ok,
+          command: response.result?.command,
+        })),
+        [
+          { ok: true, command: 'pointer' },
+          { ok: true, command: 'pointer' },
+          { ok: true, command: 'pointer' },
+          { ok: true, command: 'key' },
+        ],
+      )
+    } finally {
+      await rm(temporaryRoot, { recursive: true, force: true })
+    }
+  })
+
   it('validates Finder drag scope and destination in Swift fixture mode', async () => {
     const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), 'viewer-finder-drag-'))
     const helperPath = path.join(temporaryRoot, 'viewer-native-acceptance-helper')

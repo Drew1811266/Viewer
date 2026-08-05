@@ -1451,7 +1451,7 @@ describe('Viewer empty state', () => {
     const file = await screen.findByRole('option', { name: 'front.jpg' })
     expect(screen.queryByLabelText('批量标记')).not.toBeInTheDocument()
     expect(screen.queryByLabelText('文件操作')).not.toBeInTheDocument()
-    openRadialMenu(file)
+    fireEvent.contextMenu(file, { button: 2, clientX: 420, clientY: 260 })
     expect(screen.getByRole('menu', { name: '文件操作' })).toBeVisible()
     fireEvent.click(screen.getByRole('menuitem', { name: '信息' }))
     expect(screen.getByRole('complementary', { name: '文件信息' })).toBeVisible()

@@ -1,0 +1,179 @@
+import { type ReactNode, useCallback, useEffect } from 'react'
+import type { FileCommandPreflight, RenamePreview, RenameRules } from '../../api/types'
+import BatchRenameDialog from '../../components/BatchRenameDialog'
+import CloseOperationDialog from '../../components/CloseOperationDialog'
+import DestinationDialog from '../../components/DestinationDialog'
+import RenameDialog from '../../components/RenameDialog'
+import SettingsDialog from '../../components/SettingsDialog'
+import TrashConfirmation from '../../components/TrashConfirmation'
+import type { AcceptanceSceneRegistry } from '../AcceptanceApp'
+import { ACCEPTANCE_FILES, ACCEPTANCE_FOLDER_TREE } from '../acceptanceFixtures'
+import AcceptanceProductScene, { setAcceptanceInputValue } from './sceneHarness'
+
+const noOp = () => undefined
+const SELECTED_IDS = ACCEPTANCE_FILES.slice(0, 3).map(({ entityId }) => entityId)
+const DESTINATION_ID = 'acceptance-folder-destination'
+
+export const DIALOG_SCENES: AcceptanceSceneRegistry = {
+  'DIA-01': () => (
+    <DialogBackdrop
+      ready={() => document.querySelector('[role="dialog"][aria-label="软件设置"]') !== null}
+    >
+      <SettingsDialog density="standard" error={null} onDensityChange={noOp} onClose={noOp} />
+    </DialogBackdrop>
+  ),
+  'DIA-02': () => (
+    <DialogBackdrop
+      ready={() => document.querySelector('[role="dialog"][aria-label="重命名文件"]') !== null}
+    >
+      <RenameDialog currentName="商品-01.jpg" busy={false} onConfirm={noOp} onCancel={noOp} />
+    </DialogBackdrop>
+  ),
+  'DIA-03': () => <BatchRenameScene />,
+  'DIA-04': () => (
+    <DialogBackdrop ready={() => document.querySelector('[aria-label="目标检查结果"]') !== null}>
+      <DestinationDialog
+        mode="copy"
+        entityIds={[SELECTED_IDS[0] ?? 'acceptance-image-01']}
+        folders={ACCEPTANCE_FOLDER_TREE}
+        busy={false}
+        initialDestinationId={DESTINATION_ID}
+        initialPreflight={READY_PREFLIGHT}
+        requestPreflight={async () => READY_PREFLIGHT}
+        onConfirm={noOp}
+        onCancel={noOp}
+      />
+    </DialogBackdrop>
+  ),
+  'DIA-05': () => (
+    <DialogBackdrop ready={() => document.querySelector('[data-state="conflict"]') !== null}>
+      <DestinationDialog
+        mode="copy"
+        entityIds={SELECTED_IDS.slice(0, 2)}
+        folders={ACCEPTANCE_FOLDER_TREE}
+        busy={false}
+        initialDestinationId={DESTINATION_ID}
+        initialPreflight={CONFLICT_PREFLIGHT}
+        requestPreflight={async () => CONFLICT_PREFLIGHT}
+        onConfirm={noOp}
+        onCancel={noOp}
+      />
+    </DialogBackdrop>
+  ),
+  'DIA-06': () => (
+    <DialogBackdrop
+      ready={() =>
+        document.querySelector('[role="dialog"][aria-label="将文件移到废纸篓？"]') !== null
+      }
+    >
+      <TrashConfirmation count={1} busy={false} onConfirm={noOp} onCancel={noOp} />
+    </DialogBackdrop>
+  ),
+  'DIA-07': () => (
+    <DialogBackdrop
+      ready={() =>
+        document.querySelector('[role="dialog"][aria-label="文件操作尚未完成"]') !== null
+      }
+    >
+      <CloseOperationDialog busy={false} onWait={noOp} onCancelPending={noOp} onStay={noOp} />
+    </DialogBackdrop>
+  ),
+}
+
+function DialogBackdrop({ children, ready }: { children: ReactNode; ready(): boolean }) {
+  const stableReady = useCallback(ready, [ready])
+  return <AcceptanceProductScene ready={stableReady}>{children}</AcceptanceProductScene>
+}
+
+function BatchRenameScene() {
+  useEffect(() => {
+    const act = () => {
+      const prefix = [...document.querySelectorAll<HTMLInputElement>('input')].find((input) =>
+        input.closest('label')?.textContent?.includes('前缀'),
+      )
+      if (prefix !== undefined && prefix.value !== '精选-') {
+        setAcceptanceInputValue(prefix, '精选-')
+        return
+      }
+      const sequence = [...document.querySelectorAll<HTMLLabelElement>('label')]
+        .find((label) => label.textContent?.includes('添加序号'))
+        ?.querySelector<HTMLInputElement>('input')
+      if (sequence !== undefined && sequence !== null && !sequence.checked) {
+        sequence.click()
+        return
+      }
+      const update = [...document.querySelectorAll<HTMLButtonElement>('button')].find(
+        (button) => button.textContent?.trim() === '更新预览',
+      )
+      if (
+        update !== undefined &&
+        document.querySelector('[aria-label="批量重命名完整预览"]') === null
+      ) {
+        update.click()
+      }
+    }
+    const observer = new MutationObserver(act)
+    observer.observe(document.body, { attributes: true, childList: true, subtree: true })
+    act()
+    return () => observer.disconnect()
+  }, [])
+  const ready = useCallback(
+    () => document.querySelector('[aria-label="批量重命名完整预览"]') !== null,
+    [],
+  )
+  return (
+    <AcceptanceProductScene ready={ready}>
+      <BatchRenameDialog
+        entityIds={SELECTED_IDS}
+        busy={false}
+        requestPreview={requestRenamePreview}
+        onConfirm={noOp}
+        onCancel={noOp}
+      />
+    </AcceptanceProductScene>
+  )
+}
+
+async function requestRenamePreview(
+  entityIds: string[],
+  rules: RenameRules,
+): Promise<RenamePreview> {
+  return {
+    executable: true,
+    rows: entityIds.map((entityId, index) => {
+      const source = ACCEPTANCE_FILES[index]
+      const number = rules.sequence
+        ? String(rules.sequence.start + index).padStart(rules.sequence.digits, '0')
+        : ''
+      const proposedName = `${rules.prefix}${number}${source?.name ?? `商品-${index + 1}.jpg`}`
+      return {
+        entityId,
+        sourceRelativePath: source?.relativePath ?? proposedName,
+        destinationRelativePath: `衣服/A01/${proposedName}`,
+        proposedName,
+        errors: [],
+      }
+    }),
+  }
+}
+
+const READY_PREFLIGHT: FileCommandPreflight = {
+  executable: true,
+  rows: [
+    {
+      entityId: SELECTED_IDS[0] ?? 'acceptance-image-01',
+      relativePath: '目标/Destination/商品-01.jpg',
+      state: 'ready',
+    },
+  ],
+}
+
+const CONFLICT_PREFLIGHT: FileCommandPreflight = {
+  executable: true,
+  rows: SELECTED_IDS.slice(0, 2).map((entityId, index) => ({
+    entityId,
+    relativePath: `目标/Destination/商品-0${index + 1}.jpg`,
+    state: 'conflict' as const,
+    code: 'destination_occupied' as const,
+  })),
+}

@@ -215,11 +215,19 @@ export async function captureVisualAcceptanceState({
   page.on('pageerror', onPageError)
   try {
     await makeDirectory(outputDirectory, { recursive: true })
+    const environment = acceptanceEnvironmentFor(request.id)
+    await page.emulateMedia({
+      reducedMotion: environment.reducedMotion,
+      forcedColors: environment.forcedColors,
+    })
     await page.setViewportSize({ width: request.width, height: request.height })
     const url = new URL('/visual-acceptance.html', baseUrl)
     url.searchParams.set('id', request.id)
     url.searchParams.set('viewport', request.viewport)
     await page.goto(url.href, { waitUntil: 'domcontentloaded', timeout: timeoutMs })
+    await page.evaluate(({ zoom }) => {
+      document.documentElement.style.zoom = zoom === 1 ? '' : String(zoom)
+    }, environment)
     const metrics = await waitForAcceptanceReady(page, request, timeoutMs)
     const readyAt = now()
     assertAcceptanceMetrics(metrics, request)
@@ -248,6 +256,14 @@ export async function captureVisualAcceptanceState({
   } finally {
     page.off('console', onConsole)
     page.off('pageerror', onPageError)
+  }
+}
+
+export function acceptanceEnvironmentFor(id) {
+  return {
+    reducedMotion: id === 'A11Y-03' ? 'reduce' : 'no-preference',
+    forcedColors: id === 'A11Y-04' ? 'active' : 'none',
+    zoom: id === 'A11Y-05' ? 2 : 1,
   }
 }
 

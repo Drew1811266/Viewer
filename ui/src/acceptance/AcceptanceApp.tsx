@@ -25,6 +25,7 @@ export default function AcceptanceApp({ request, sceneRegistry }: AcceptanceAppP
   const [status, setStatus] = useState<AcceptanceStatus>('pending')
   const [error, setError] = useState<string | null>(null)
   const Scene = sceneRegistry[request.id] ?? missingScene(request.id)
+  const browserZoom = request.id === 'A11Y-05' ? 2 : 1
 
   useEffect(() => {
     if (status !== 'pending') return
@@ -64,7 +65,11 @@ export default function AcceptanceApp({ request, sceneRegistry }: AcceptanceAppP
         data-acceptance-id={request.id}
         data-acceptance-viewport={request.viewport}
         data-acceptance-status={status}
-        style={{ width: request.width, height: request.height, overflow: 'hidden' }}
+        style={{
+          width: request.width / browserZoom,
+          height: request.height / browserZoom,
+          overflow: 'hidden',
+        }}
       >
         <AcceptanceSceneBoundary key={request.id} onError={fail}>
           <Scene request={request} />

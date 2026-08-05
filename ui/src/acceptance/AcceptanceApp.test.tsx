@@ -99,6 +99,22 @@ describe('Viewer visual acceptance root protocol', () => {
     expect(screen.getAllByRole('alert')).toHaveLength(1)
     errorLog.mockRestore()
   })
+
+  it('uses a half-size logical frame for the 200 percent browser zoom state', () => {
+    const zoomRequest: AcceptanceRequest = {
+      id: 'A11Y-05',
+      viewport: '1024x720',
+      width: 1024,
+      height: 720,
+    }
+    const registry: AcceptanceSceneRegistry = { 'A11Y-05': () => <section>Zoom</section> }
+    const { container } = render(<AcceptanceApp request={zoomRequest} sceneRegistry={registry} />)
+
+    expect(container.querySelector('[data-acceptance-frame]')).toHaveStyle({
+      width: '512px',
+      height: '360px',
+    })
+  })
 })
 
 function runNextFrame(

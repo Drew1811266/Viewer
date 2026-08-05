@@ -11,6 +11,7 @@ import {
   writeRgbaPng,
 } from './viewer-acceptance-evidence.mjs'
 import {
+  acceptanceEnvironmentFor,
   parseVisualAcceptanceCli,
   runVisualAcceptanceBatch,
   selectVisualAcceptanceIds,
@@ -51,6 +52,29 @@ describe('visual acceptance CLI', () => {
 })
 
 describe('Viewer visual acceptance browser lifecycle', () => {
+  it('maps accessibility states to browser media and zoom without native platform claims', () => {
+    assert.deepEqual(acceptanceEnvironmentFor('A11Y-03'), {
+      reducedMotion: 'reduce',
+      forcedColors: 'none',
+      zoom: 1,
+    })
+    assert.deepEqual(acceptanceEnvironmentFor('A11Y-04'), {
+      reducedMotion: 'no-preference',
+      forcedColors: 'active',
+      zoom: 1,
+    })
+    assert.deepEqual(acceptanceEnvironmentFor('A11Y-05'), {
+      reducedMotion: 'no-preference',
+      forcedColors: 'none',
+      zoom: 2,
+    })
+    assert.deepEqual(acceptanceEnvironmentFor('PRE-01'), {
+      reducedMotion: 'no-preference',
+      forcedColors: 'none',
+      zoom: 1,
+    })
+  })
+
   it('reuses one browser and one page per viewport in stable catalog order', async () => {
     const harness = fakePlaywright()
     const summary = await runVisualAcceptanceBatch(
@@ -287,6 +311,9 @@ function fakePlaywright(statusById = {}) {
     async setViewportSize({ width, height }) {
       calls.push(`viewport:${width}x${height}`)
     },
+    async emulateMedia({ reducedMotion, forcedColors }) {
+      calls.push(`media:${currentId}:${reducedMotion}:${forcedColors}`)
+    },
     async goto(url) {
       currentId = new URL(url).searchParams.get('id')
       calls.push(`goto:${currentId}`)
@@ -305,6 +332,10 @@ function fakePlaywright(statusById = {}) {
       }
     },
     async evaluate(_callback, request) {
+      if ('zoom' in request) {
+        calls.push(`zoom:${currentId}:${request.zoom}`)
+        return undefined
+      }
       calls.push(`settle:${request.id}:fonts:images:2frames`)
       return {
         width: request.width,

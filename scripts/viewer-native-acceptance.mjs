@@ -247,7 +247,8 @@ export function buildStateEntryPlan(id) {
   const openImagePreview = (name = '商品-02.jpg', preparation = []) => [
     ...preparation,
     ...openContent(),
-    { kind: 'doubleClick', target: image(name) },
+    { kind: 'contextClick', target: image(name) },
+    { kind: 'click', target: { role: 'AXMenuItem', name: '预览' } },
   ]
   const selectImages = (count, density = count > 8 ? '紧凑' : '标准') => [
     ...openContent(density),
@@ -657,14 +658,16 @@ export function buildStateEntryPlan(id) {
     'PRE-05': [
       { kind: 'prepareFixture', operation: 'addHeavyPreviewImage' },
       ...openFolder('衣服/A01'),
-      { kind: 'doubleClick', target: image('加载中.png') },
+      { kind: 'contextClick', target: image('加载中.png') },
+      { kind: 'click', target: { role: 'AXMenuItem', name: '预览' } },
       { kind: 'assert', target: { role: 'AXHeading', name: '正在载入图片' } },
       { kind: 'captureCheckpoint' },
     ],
     'PRE-06': [
       ...openContent(),
       { kind: 'prepareFixture', operation: 'corruptPreviewImage' },
-      { kind: 'doubleClick', target: image('商品-01.jpg') },
+      { kind: 'contextClick', target: image('商品-01.jpg') },
+      { kind: 'click', target: { role: 'AXMenuItem', name: '预览' } },
       { kind: 'assert', target: { role: 'AXHeading', name: '无法显示这张图片' } },
     ],
     'PRE-07': [
@@ -694,22 +697,26 @@ export function buildStateEntryPlan(id) {
     ],
     'DOC-01': [
       ...openDocumentFolder(),
-      { kind: 'doubleClick', target: { name: 'sample.md' } },
+      { kind: 'contextClick', target: { name: 'sample.md' } },
+      { kind: 'click', target: { role: 'AXMenuItem', name: '预览' } },
       { kind: 'assert', target: { role: 'AXButton', name: '关闭预览' } },
     ],
     'DOC-02': [
       ...openDocumentFolder(),
-      { kind: 'doubleClick', target: { name: 'plain.txt' } },
+      { kind: 'contextClick', target: { name: 'plain.txt' } },
+      { kind: 'click', target: { role: 'AXMenuItem', name: '预览' } },
       { kind: 'assert', target: { role: 'AXButton', name: '关闭预览' } },
     ],
     'DOC-03': [
       ...openDocumentFolder(),
-      { kind: 'doubleClick', target: { name: 'gb18030.txt' } },
+      { kind: 'contextClick', target: { name: 'gb18030.txt' } },
+      { kind: 'click', target: { role: 'AXMenuItem', name: '预览' } },
       { kind: 'assert', target: { role: 'AXHeading', name: '需要选择文本编码' } },
     ],
     'DOC-04': [
       ...openDocumentFolder(),
-      { kind: 'doubleClick', target: { name: 'large.txt' } },
+      { kind: 'contextClick', target: { name: 'large.txt' } },
+      { kind: 'click', target: { role: 'AXMenuItem', name: '预览' } },
       { kind: 'assert', target: { role: 'AXHeading', name: '内容已截断' } },
     ],
     'DOC-05': [
@@ -722,13 +729,15 @@ export function buildStateEntryPlan(id) {
     ],
     'DOC-06': [
       ...openFolder('其它'),
-      { kind: 'doubleClick', target: { name: 'unsupported.bin' } },
+      { kind: 'contextClick', target: { name: 'unsupported.bin' } },
+      { kind: 'click', target: { role: 'AXMenuItem', name: '预览' } },
       { kind: 'assert', target: { name: 'unsupported.bin .BIN 暂不支持预览' } },
     ],
     'DOC-07': [
       ...openFolder('其它'),
       { kind: 'prepareFixture', operation: 'removeUnsupportedFile' },
-      { kind: 'doubleClick', target: { name: 'unsupported.bin' } },
+      { kind: 'contextClick', target: { name: 'unsupported.bin' } },
+      { kind: 'click', target: { role: 'AXMenuItem', name: '预览' } },
       { kind: 'assert', target: { name: 'unsupported.bin .BIN 文件已不可用' } },
     ],
     'INF-01': [

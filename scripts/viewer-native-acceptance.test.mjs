@@ -570,7 +570,7 @@ describe('state entry plans', () => {
   it('opens image, comparison, document and information states through product actions', () => {
     assert.equal(
       buildStateEntryPlan('PRE-01').some(
-        (step) => step.kind === 'doubleClick' && step.target?.name === '商品-02.jpg',
+        (step) => step.kind === 'contextClick' && step.target?.name === '商品-02.jpg',
       ),
       true,
     )

@@ -49,6 +49,33 @@ describe('Viewer visual acceptance root protocol', () => {
     expect(root).toHaveAttribute('data-acceptance-status', 'ready')
   })
 
+  it('waits for a scene readiness boundary before counting the two stable paint frames', async () => {
+    function PendingScene() {
+      return (
+        <section aria-label="async formal workspace" data-acceptance-scene-ready="false">
+          Workspace
+        </section>
+      )
+    }
+    const registry: AcceptanceSceneRegistry = { 'PRE-01': PendingScene }
+    const { container } = render(<AcceptanceApp request={request} sceneRegistry={registry} />)
+    const root = container.querySelector<HTMLElement>('[data-acceptance-id="PRE-01"]')
+    const scene = screen.getByRole('region', { name: 'async formal workspace' })
+
+    expect(root).toHaveAttribute('data-acceptance-status', 'pending')
+    expect(frames).toHaveLength(0)
+
+    await act(async () => {
+      scene.setAttribute('data-acceptance-scene-ready', 'true')
+      await Promise.resolve()
+    })
+    expect(frames).toHaveLength(1)
+    act(() => runNextFrame(frames, 0))
+    expect(root).toHaveAttribute('data-acceptance-status', 'pending')
+    act(() => runNextFrame(frames, 16))
+    expect(root).toHaveAttribute('data-acceptance-status', 'ready')
+  })
+
   it('reports one bounded scene failure outside the screenshot root without retrying', () => {
     const errorLog = vi.spyOn(console, 'error').mockImplementation(() => undefined)
     const registry: AcceptanceSceneRegistry = {

@@ -7,6 +7,7 @@ import {
   ACCEPTANCE_TEXT_FILES,
   ACCEPTANCE_UNSUPPORTED_FILE,
   acceptanceFile,
+  acceptanceWorkspace,
   imageRepresentation,
 } from './acceptanceFixtures'
 
@@ -35,12 +36,8 @@ export function createAcceptanceBridge(overrides: AcceptanceBridgeOverrides = {}
     async folderTree() {
       return ACCEPTANCE_FOLDER_TREE
     },
-    async queryFolder() {
-      return {
-        workspace: 'content' as const,
-        images: ACCEPTANCE_FILES,
-        otherFiles: [...ACCEPTANCE_TEXT_FILES, ACCEPTANCE_UNSUPPORTED_FILE],
-      }
+    async queryFolder(entityId, showingAggregate) {
+      return acceptanceWorkspace(entityId, showingAggregate)
     },
     async requestImage({ entityId, representation }, signal) {
       if (signal?.aborted) throw new DOMException('Image request aborted', 'AbortError')

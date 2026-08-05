@@ -28,13 +28,26 @@ export default function AcceptanceApp({ request, sceneRegistry }: AcceptanceAppP
 
   useEffect(() => {
     if (status !== 'pending') return
-    const firstFrame = requestAnimationFrame(() => {
-      const secondFrame = requestAnimationFrame(() => setStatus('ready'))
-      cancellation.second = secondFrame
-    })
-    const cancellation: { second?: number } = {}
+    const frame = document.querySelector<HTMLElement>(
+      `[data-acceptance-id="${CSS.escape(request.id)}"]`,
+    )
+    const cancellation: { first?: number; second?: number } = {}
+    let observer: MutationObserver | undefined
+    const scheduleStablePaint = () => {
+      if (frame?.querySelector('[data-acceptance-scene-ready="false"]') !== null) return false
+      observer?.disconnect()
+      cancellation.first = requestAnimationFrame(() => {
+        cancellation.second = requestAnimationFrame(() => setStatus('ready'))
+      })
+      return true
+    }
+    if (!scheduleStablePaint() && frame !== null) {
+      observer = new MutationObserver(scheduleStablePaint)
+      observer.observe(frame, { attributes: true, childList: true, subtree: true })
+    }
     return () => {
-      cancelAnimationFrame(firstFrame)
+      observer?.disconnect()
+      if (cancellation.first !== undefined) cancelAnimationFrame(cancellation.first)
       if (cancellation.second !== undefined) cancelAnimationFrame(cancellation.second)
     }
   }, [request.id, request.viewport, status])

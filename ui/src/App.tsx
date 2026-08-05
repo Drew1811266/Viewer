@@ -30,6 +30,7 @@ import GlobalNoticeStack, { type GlobalNotice } from './components/GlobalNoticeS
 import ImagePreview from './components/ImagePreview'
 import InfoOverlay from './components/InfoOverlay'
 import OperationResults from './components/OperationResults'
+import OrganizationDragPreview from './components/OrganizationDragPreview'
 import RadialFileMenu from './components/RadialFileMenu'
 import ReadOnlyBanner from './components/ReadOnlyBanner'
 import RenameDialog from './components/RenameDialog'
@@ -1210,20 +1211,7 @@ function ViewerWorkspace({ bridge }: { bridge: ViewerBridge }) {
         notices={globalNotices}
         belowReadOnly={state.project.access === 'read_only'}
       />
-      {organizationDragView && (
-        <div
-          className="organization-drag-preview"
-          style={
-            {
-              '--organization-drag-x': `${organizationDragView.clientX}px`,
-              '--organization-drag-y': `${organizationDragView.clientY}px`,
-            } as CSSProperties
-          }
-        >
-          {organizationDragView.mode === 'copy' ? '复制' : '移动'} {organizationDragView.itemCount}{' '}
-          项
-        </div>
-      )}
+      {organizationDragView && <OrganizationDragPreview {...organizationDragView} />}
       <TaskBar
         tasks={visibleTasks}
         onCancel={(taskId) => {

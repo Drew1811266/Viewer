@@ -5,6 +5,7 @@
   "packageManager": "pnpm@10.0.0",
   "scripts": {
     "dev": "pnpm --dir ui dev",
+    "dev:visual-acceptance": "pnpm --dir ui exec vite --config vite.visual-acceptance.config.ts --host 127.0.0.1",
     "start:viewer": "node scripts/start-viewer-dev.mjs",
     "test:native-acceptance": "node --test scripts/viewer-native-acceptance.test.mjs",
     "accept:native": "node scripts/viewer-native-acceptance.mjs",
@@ -15,6 +16,7 @@
     "quality:report": "pnpm coverage:ui && pnpm coverage:rust && pnpm architecture:health",
     "dependencies:exceptions": "node scripts/check-dependency-exceptions.mjs",
     "build:ui": "pnpm --dir ui build",
+    "build:visual-acceptance": "pnpm --dir ui exec vite build --config vite.visual-acceptance.config.ts",
     "build:macos": "CI=true tauri build --target aarch64-apple-darwin",
     "gate:m1": "./scripts/run-m1-browsing-gate.sh",
     "gate:m2": "./scripts/run-m2-review-gate.sh",

@@ -1,6 +1,6 @@
 {
   "files": {
-    "includes": ["src/**/*.ts", "src/**/*.tsx", "vite.config.ts"]
+    "includes": ["src/**/*.ts", "src/**/*.tsx", "vite*.config.ts"]
   },
   "formatter": {
     "enabled": true,

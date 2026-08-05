@@ -41,6 +41,12 @@ export const FEEDBACK_SCENES: AcceptanceSceneRegistry = {
       <GlobalNoticeStack
         notices={[
           {
+            id: 'acceptance-index-updated',
+            title: '索引已更新',
+            message: '新增 12 个文件，缩略图正在后台补齐。',
+            tone: 'info',
+          },
+          {
             id: 'acceptance-context-repair',
             title: '文件位置已更新',
             message: '已保留当前选择，并定位到移动后的文件。',
@@ -51,21 +57,7 @@ export const FEEDBACK_SCENES: AcceptanceSceneRegistry = {
       />
     </FeedbackBackdrop>
   ),
-  'RES-03': () => (
-    <FeedbackBackdrop
-      ready={() => document.querySelector('[data-acceptance-local-feedback]') !== null}
-    >
-      <section className="acceptance-local-feedback-stage" data-acceptance-local-feedback>
-        <ViewerLocalFeedback
-          tone="danger"
-          title="无法显示这张图片"
-          action={<ViewerButton onClick={noOp}>重新载入</ViewerButton>}
-        >
-          文件已被移动或当前没有读取权限。
-        </ViewerLocalFeedback>
-      </section>
-    </FeedbackBackdrop>
-  ),
+  'RES-03': () => <LocalFeedbackScene />,
   'RES-04': () => <ReadOnlyScene />,
   'RES-05': () => (
     <FeedbackBackdrop ready={() => document.querySelector('[aria-label="文件操作结果"]') !== null}>
@@ -182,6 +174,55 @@ function TaskScene({ task }: { task: TaskFeedback }) {
       />
     </FeedbackBackdrop>
   )
+}
+
+function LocalFeedbackScene() {
+  useEffect(() => {
+    const openContentFolder = () => navigateToLocalFeedbackFolder(document)
+    const observer = new MutationObserver(openContentFolder)
+    observer.observe(document.body, { attributes: true, childList: true, subtree: true })
+    openContentFolder()
+    return () => observer.disconnect()
+  }, [])
+  const ready = useCallback(
+    () =>
+      document.querySelector('.image-cell') !== null &&
+      document.querySelector('[data-acceptance-local-feedback]') !== null,
+    [],
+  )
+  return (
+    <FeedbackBackdrop ready={ready}>
+      <section className="acceptance-local-feedback-stage" data-acceptance-local-feedback>
+        <ViewerLocalFeedback
+          tone="danger"
+          title="无法显示这张图片"
+          action={<ViewerButton onClick={noOp}>重新载入</ViewerButton>}
+        >
+          文件已被移动或当前没有读取权限。
+        </ViewerLocalFeedback>
+      </section>
+    </FeedbackBackdrop>
+  )
+}
+
+export function navigateToLocalFeedbackFolder(root: Document | Element) {
+  if (root.querySelector('.image-cell') !== null) return 'ready'
+  const folder = root.querySelector<HTMLElement>('[role="treeitem"][aria-label="衣服/A01"]')
+  if (folder !== null && folder.dataset.acceptanceAction !== 'open-local-feedback-folder') {
+    folder.dataset.acceptanceAction = 'open-local-feedback-folder'
+    folder.click()
+    return 'opening'
+  }
+  const disclosure = root.querySelector<HTMLElement>('[aria-label="展开 衣服"]')
+  if (
+    disclosure !== null &&
+    disclosure.dataset.acceptanceAction !== 'expand-local-feedback-parent'
+  ) {
+    disclosure.dataset.acceptanceAction = 'expand-local-feedback-parent'
+    disclosure.click()
+    return 'expanding'
+  }
+  return 'waiting'
 }
 
 function ExpandedFailureTaskScene() {

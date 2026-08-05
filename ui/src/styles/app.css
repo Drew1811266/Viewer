@@ -765,6 +765,11 @@ summary,
   width: 100%;
 }
 
+body:has(.viewer-inspector) .global-notice-stack {
+  right: calc(clamp(320px, 24vw, 340px) + 16px);
+  width: min(360px, calc(100vw - clamp(320px, 24vw, 340px) - 48px));
+}
+
 .global-notice-actions {
   align-items: center;
   display: flex;
@@ -1775,6 +1780,10 @@ summary,
   z-index: 35;
 }
 
+body:has(.viewer-dialog-backdrop) .task-bar {
+  z-index: 29;
+}
+
 .task-surface {
   background: var(--viewer-surface);
   border: 1px solid var(--viewer-border);
@@ -1865,7 +1874,7 @@ summary,
 .settings-dialog-shell {
   display: grid;
   grid-template-columns: 160px minmax(0, 1fr);
-  min-height: 196px;
+  min-height: 144px;
 }
 
 .settings-dialog-navigation {
@@ -2076,7 +2085,7 @@ summary,
   border-bottom: 1px solid var(--viewer-divider-subtle);
   display: grid;
   gap: 8px;
-  grid-template-columns: minmax(140px, 1fr) auto minmax(130px, 160px) auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   min-height: 42px;
   padding: 5px 2px;
 }
@@ -2087,12 +2096,19 @@ summary,
   white-space: nowrap;
 }
 
-.conflict-row[data-state="ready"] {
-  grid-template-columns: minmax(140px, 1fr) auto;
+.conflict-policy-field {
+  grid-column: 1;
+  min-width: 0;
 }
 
-.conflict-row[data-state="blocked"] {
-  grid-template-columns: minmax(140px, 1fr) auto auto;
+.conflict-row > .viewer-choice-chip {
+  grid-column: 2;
+  justify-self: end;
+  white-space: nowrap;
+}
+
+.conflict-row[data-state="blocked"] code {
+  grid-column: 1 / -1;
 }
 
 .conflict-policy-field .viewer-field__label {

@@ -170,6 +170,39 @@ describe('workspace style contracts', () => {
     expect(rules.some((rule) => rule.selector === '.operation-results-list')).toBe(true)
   })
 
+  it('keeps conflict controls on a readable second row instead of squeezing four columns', () => {
+    const rules = parseRules(appCss)
+    const row = rules.find((rule) => rule.selector === '.conflict-row')
+    const policy = rules.find((rule) => rule.selector === '.conflict-policy-field')
+    const applyRemaining = rules.find(
+      (rule) => rule.selector === '.conflict-row > .viewer-choice-chip',
+    )
+    const blockedCode = rules.find(
+      (rule) => rule.selector === '.conflict-row[data-state="blocked"] code',
+    )
+
+    expect(row?.declarations['grid-template-columns']).toBe('minmax(0, 1fr) auto')
+    expect(policy?.declarations['grid-column']).toBe('1')
+    expect(applyRemaining?.declarations).toMatchObject({
+      'grid-column': '2',
+      'justify-self': 'end',
+      'white-space': 'nowrap',
+    })
+    expect(blockedCode?.declarations['grid-column']).toBe('1 / -1')
+  })
+
+  it('keeps global notices beside the formal inspector instead of covering it', () => {
+    const rules = parseRules(appCss)
+    const besideInspector = rules.find(
+      (rule) => rule.selector === 'body:has(.viewer-inspector) .global-notice-stack',
+    )
+
+    expect(besideInspector?.declarations).toMatchObject({
+      right: 'calc(clamp(320px, 24vw, 340px) + 16px)',
+      width: 'min(360px, calc(100vw - clamp(320px, 24vw, 340px) - 48px))',
+    })
+  })
+
   it('consolidates task feedback into one compact surface', () => {
     const rules = parseRules(appCss)
     const surface = rules.find((rule) => rule.selector === '.task-surface')
@@ -193,7 +226,16 @@ describe('workspace style contracts', () => {
     const rules = parseRules(appCss)
     const shell = rules.find((rule) => rule.selector === '.settings-dialog-shell')
 
-    expect(shell?.declarations['min-height']).toBe('196px')
+    expect(shell?.declarations['min-height']).toBe('144px')
+  })
+
+  it('keeps background task feedback behind a modal so it cannot cover dialog actions', () => {
+    const rules = parseRules(appCss)
+    const behindDialog = rules.find(
+      (rule) => rule.selector === 'body:has(.viewer-dialog-backdrop) .task-bar',
+    )
+
+    expect(behindDialog?.declarations['z-index']).toBe('29')
   })
 
   it('groups preview transforms and keeps completion visibly labeled', () => {

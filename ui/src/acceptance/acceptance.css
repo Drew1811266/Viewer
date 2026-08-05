@@ -1,0 +1,19 @@
+.acceptance-local-feedback-stage {
+  bottom: 32px;
+  display: flex;
+  justify-content: center;
+  left: 244px;
+  pointer-events: none;
+  position: fixed;
+  right: 24px;
+  z-index: 19;
+}
+
+.acceptance-local-feedback-stage > .viewer-local-feedback {
+  box-shadow: var(--viewer-shadow-popover);
+  pointer-events: auto;
+}
+
+body:has(.task-bar) .acceptance-local-feedback-stage {
+  bottom: 92px;
+}

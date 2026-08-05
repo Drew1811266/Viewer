@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import type {
   BrowserFile,
   ImageRepresentationRequest,
@@ -22,6 +22,7 @@ import {
   imageRepresentation,
 } from '../acceptanceFixtures'
 import type { AcceptanceRequest } from '../acceptanceRequest'
+import AcceptanceProductScene from './sceneHarness'
 
 const PREVIEW_FILE = namedFile(ACCEPTANCE_FILES, '商品-02.jpg')
 const MARKDOWN_FILE = namedFile(ACCEPTANCE_TEXT_FILES, 'sample.md')
@@ -30,8 +31,8 @@ const GB18030_FILE = namedFile(ACCEPTANCE_TEXT_FILES, 'gb18030.txt')
 const LARGE_TEXT_FILE = namedFile(ACCEPTANCE_TEXT_FILES, 'large.txt')
 
 const BASE_RADIAL_CONTEXT: RadialMenuContext = {
-  selectedCount: 1,
-  selectedImageCount: 1,
+  selectedCount: 3,
+  selectedImageCount: 3,
   previewEnabled: true,
   readOnly: false,
   busy: false,
@@ -68,31 +69,19 @@ export const VIEWING_SCENES: AcceptanceSceneRegistry = {
   'DOC-07': () => (
     <UnsupportedFilePreview file={ACCEPTANCE_UNSUPPORTED_FILE} unavailable onClose={noOp} />
   ),
-  'INF-01': () => (
-    <InfoOverlay
-      files={[PREVIEW_FILE]}
-      dimensions={{
-        [PREVIEW_FILE.entityId]: PREVIEW_FILE.imageMetadata ?? undefined,
-      }}
-      onClose={noOp}
-    />
-  ),
-  'INF-02': () => (
-    <InfoOverlay
-      files={[PREVIEW_FILE, PLAIN_FILE]}
-      selectionInfo={AGGREGATE_SELECTION_INFO}
-      dimensions={{}}
-      onClose={noOp}
-    />
-  ),
+  'INF-01': () => <InfoScene aggregate={false} />,
+  'INF-02': () => <InfoScene aggregate />,
 }
 
 type RadialState = 'click' | 'gesture' | 'mark' | 'organize' | 'disabled' | 'readonly' | 'keyboard'
 
 function RadialScene({ request, state }: { request: AcceptanceRequest; state: RadialState }) {
   const readOnly = state === 'readonly'
+  const selectionCount = state === 'disabled' ? 1 : 3
   const context: RadialMenuContext = {
     ...BASE_RADIAL_CONTEXT,
+    selectedCount: selectionCount,
+    selectedImageCount: selectionCount,
     readOnly,
   }
   const acted = useRef(false)
@@ -103,17 +92,114 @@ function RadialScene({ request, state }: { request: AcceptanceRequest; state: Ra
     if (state === 'organize') menuItem('整理')?.click()
     if (state === 'disabled') menuItem('并排对比')?.focus()
   }, [state])
+  useWorkspaceSelection(selectionCount)
+  const ready = useCallback(
+    () =>
+      workspaceThumbnailsReady() &&
+      document.querySelectorAll('.image-cell[aria-selected="true"]').length === selectionCount &&
+      document.querySelector('[role="menu"][aria-label="文件操作"]') !== null,
+    [selectionCount],
+  )
   return (
-    <RadialFileMenu
-      origin={{ x: request.width / 2, y: request.height / 2 }}
-      viewport={{ width: request.width, height: request.height }}
-      pointerId={state === 'gesture' ? 47 : null}
-      selectionCount={1}
-      readOnly={readOnly}
-      model={buildRadialMenuModel(context)}
-      onAction={noOp}
-      onClose={noOp}
-    />
+    <AcceptanceProductScene ready={ready}>
+      <RadialFileMenu
+        origin={{ x: 220 + (request.width - 220) / 2, y: request.height / 2 }}
+        viewport={{ width: request.width, height: request.height }}
+        pointerId={state === 'gesture' ? 47 : null}
+        selectionCount={selectionCount}
+        readOnly={readOnly}
+        model={buildRadialMenuModel(context)}
+        onAction={noOp}
+        onClose={noOp}
+      />
+    </AcceptanceProductScene>
+  )
+}
+
+function InfoScene({ aggregate }: { aggregate: boolean }) {
+  useWorkspaceSelection(aggregate ? 2 : 1, aggregate ? undefined : PREVIEW_FILE.name)
+  const ready = useCallback(
+    () =>
+      workspaceThumbnailsReady() &&
+      document.querySelector('[role="complementary"][aria-label="文件信息"]') !== null,
+    [],
+  )
+  return (
+    <AcceptanceProductScene ready={ready}>
+      <InfoOverlay
+        files={aggregate ? [PREVIEW_FILE, PLAIN_FILE] : [PREVIEW_FILE]}
+        selectionInfo={aggregate ? AGGREGATE_SELECTION_INFO : undefined}
+        dimensions={
+          aggregate
+            ? {}
+            : {
+                [PREVIEW_FILE.entityId]: PREVIEW_FILE.imageMetadata ?? undefined,
+              }
+        }
+        onClose={noOp}
+      />
+    </AcceptanceProductScene>
+  )
+}
+
+function useWorkspaceSelection(count: number, preferredName?: string) {
+  const completed = useRef(false)
+  useEffect(() => {
+    const select = () => {
+      const cells = [...document.querySelectorAll<HTMLElement>('.image-cell')]
+      if (completed.current) return
+      if (cells.length === 0) {
+        const folder = document.querySelector<HTMLElement>(
+          '[role="treeitem"][aria-label="衣服/A01"]',
+        )
+        if (folder !== null && folder.dataset.acceptanceAction !== 'open-content-folder') {
+          folder.dataset.acceptanceAction = 'open-content-folder'
+          folder.click()
+        } else {
+          const disclosure = document.querySelector<HTMLElement>('[aria-label="展开 衣服"]')
+          if (disclosure !== null && disclosure.dataset.acceptanceAction !== 'expand-clothes') {
+            disclosure.dataset.acceptanceAction = 'expand-clothes'
+            disclosure.click()
+          }
+        }
+        return
+      }
+      if (!workspaceThumbnailsReady()) return
+      const preferred =
+        preferredName === undefined
+          ? []
+          : cells.filter((cell) => cell.getAttribute('aria-label') === preferredName)
+      const candidates = [...preferred, ...cells.filter((cell) => !preferred.includes(cell))]
+      if (candidates.length < count) return
+      const selected = cells.filter((cell) => cell.getAttribute('aria-selected') === 'true')
+      if (selected.length === count) {
+        completed.current = true
+        return
+      }
+      const next =
+        selected.length === 0
+          ? candidates[0]
+          : candidates.find((cell) => cell.getAttribute('aria-selected') !== 'true')
+      next?.dispatchEvent(
+        new MouseEvent('click', {
+          bubbles: true,
+          cancelable: true,
+          metaKey: selected.length > 0,
+        }),
+      )
+    }
+    const observer = new MutationObserver(select)
+    observer.observe(document.body, { attributes: true, childList: true, subtree: true })
+    select()
+    return () => observer.disconnect()
+  }, [count, preferredName])
+}
+
+function workspaceThumbnailsReady(): boolean {
+  const thumbnails = [...document.querySelectorAll<HTMLElement>('.aspect-thumbnail')]
+  return (
+    thumbnails.length > 0 &&
+    thumbnails.every((thumbnail) => thumbnail.dataset.thumbnailState === 'ready')
   )
 }
 

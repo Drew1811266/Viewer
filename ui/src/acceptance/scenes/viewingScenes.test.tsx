@@ -40,11 +40,15 @@ describe('Viewer viewing acceptance scenes', () => {
   })
 
   it.each(['RAD-01', 'RAD-02', 'RAD-03', 'RAD-04', 'RAD-05', 'RAD-06', 'RAD-07'])(
-    '%s renders the formal radial menu surface',
-    (id) => {
+    '%s renders the formal radial menu over the loaded three-item workspace context',
+    async (id) => {
       const rendered = renderScene(id)
       expect(screen.getByRole('menu', { name: '文件操作' })).toBeVisible()
       expect(screen.getAllByRole('menuitem').length).toBeGreaterThan(0)
+      await waitFor(() => expect(document.querySelector('.viewer-shell')).not.toBeNull())
+      expect(document.querySelector('.radial-menu-center')).toHaveTextContent(
+        id === 'RAD-05' ? '1 个文件' : '3 个文件',
+      )
       rendered.unmount()
     },
   )
@@ -132,14 +136,18 @@ describe('Viewer viewing acceptance scenes', () => {
     unavailable.unmount()
   })
 
-  it.each(['INF-01', 'INF-02'])('%s renders the formal file inspector', (id) => {
-    const rendered = renderScene(id)
-    const inspector = screen.getByRole('complementary', { name: '文件信息' })
-    expect(inspector).toBeVisible()
-    if (id === 'INF-01') expect(inspector).toHaveTextContent('商品-02.jpg')
-    if (id === 'INF-02') expect(inspector).toHaveTextContent('文件夹 1 · 图片 1 · 其它文件 1')
-    rendered.unmount()
-  })
+  it.each(['INF-01', 'INF-02'])(
+    '%s renders the formal file inspector in the workspace',
+    async (id) => {
+      const rendered = renderScene(id)
+      const inspector = screen.getByRole('complementary', { name: '文件信息' })
+      expect(inspector).toBeVisible()
+      await waitFor(() => expect(document.querySelector('.viewer-shell')).not.toBeNull())
+      if (id === 'INF-01') expect(inspector).toHaveTextContent('商品-02.jpg')
+      if (id === 'INF-02') expect(inspector).toHaveTextContent('文件夹 1 · 图片 1 · 其它文件 1')
+      rendered.unmount()
+    },
+  )
 })
 
 function renderScene(id: string) {

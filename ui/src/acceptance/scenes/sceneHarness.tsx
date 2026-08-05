@@ -44,7 +44,7 @@ export default function AcceptanceProductScene({
         }
         return
       }
-      if (document.querySelector('.viewer-shell') === null || !ready()) return
+      if (!workspaceVisualsSettled(document) || !ready()) return
       completed.current = true
       observer?.disconnect()
       firstFrame = requestAnimationFrame(() => {
@@ -70,6 +70,19 @@ export default function AcceptanceProductScene({
       <App bridge={bridge as ViewerBridge} />
       {children}
     </div>
+  )
+}
+
+export function workspaceVisualsSettled(root: Document | Element): boolean {
+  const shell = root.querySelector('.viewer-shell')
+  if (shell === null) return false
+  const thumbnails = [...shell.querySelectorAll<HTMLElement>('.aspect-thumbnail')]
+  if (thumbnails.length === 0) return false
+  return thumbnails.every(
+    (thumbnail) =>
+      thumbnail.dataset.thumbnailState === 'ready' &&
+      thumbnail.querySelector('.aspect-thumbnail-placeholder') === null &&
+      thumbnail.querySelector('img') !== null,
   )
 }
 

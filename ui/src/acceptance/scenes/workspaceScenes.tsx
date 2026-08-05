@@ -7,6 +7,7 @@ import OrganizationDragPreview from '../../components/OrganizationDragPreview'
 import type { AcceptanceSceneRegistry } from '../AcceptanceApp'
 import { createAcceptanceBridge } from '../acceptanceBridge'
 import {
+  ACCEPTANCE_CONTENT_FOLDERS,
   ACCEPTANCE_FILES,
   ACCEPTANCE_FOLDER_TREE,
   ACCEPTANCE_PROJECT_SNAPSHOT,
@@ -204,7 +205,7 @@ function launchBridge(state: LaunchState): ViewerBridge {
   })
 }
 
-function workspaceBridge(id: string): ViewerBridge {
+export function workspaceBridge(id: string): ViewerBridge {
   const density =
     id === 'THU-01' || id.startsWith('OTH-') ? 'compact' : id === 'THU-03' ? 'large' : 'standard'
   const snapshot: ProjectSnapshot =
@@ -232,6 +233,9 @@ function workspaceBridge(id: string): ViewerBridge {
     async queryFolder(entityId, showingAggregate) {
       if (id === 'LAU-05') return new Promise<never>(() => undefined)
       if (id === 'LAU-07') return { workspace: 'empty' }
+      if (id === 'STR-01' && entityId === null) {
+        return { workspace: 'category', folders: ACCEPTANCE_CONTENT_FOLDERS }
+      }
       return acceptanceWorkspace(entityId, showingAggregate)
     },
   }
@@ -304,7 +308,7 @@ function workspaceRecipe(id: string): () => boolean {
     }
     if (id === 'SID-04' || id === 'OTH-03') return prepareOrganizationDrag()
     if (id === 'STR-04') {
-      if (textElement('全部后代文件') !== null) return true
+      if (aggregateStateRendered(document)) return true
       const view = namedElement('视图')
       if (document.querySelector('[aria-label="视图选项"]') === null) {
         if (view !== null) clickOnce(view, 'aggregate-view')
@@ -386,6 +390,10 @@ function workspaceRecipe(id: string): () => boolean {
     }
     return document.querySelector('.viewer-shell') !== null
   }
+}
+
+export function aggregateStateRendered(root: Document | Element): boolean {
+  return root.querySelector('.aggregate-label') !== null
 }
 
 function selectFolderAndWait(label: string, readySelector: string): boolean {

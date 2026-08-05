@@ -25,6 +25,20 @@ describe('workspace style contracts', () => {
     expect(header?.declarations['min-height']).toBe('40px')
   })
 
+  it('keeps aggregate browsing as a compact status tag instead of a full-width band', () => {
+    const rules = parseRules(appCss)
+    const aggregate = rules.find(
+      (rule) => rule.selector === '.content-workspace-surface > .aggregate-label',
+    )
+
+    expect(aggregate?.declarations).toMatchObject({
+      display: 'inline-flex',
+      width: 'max-content',
+      'max-width': 'calc(100% - 32px)',
+      margin: '0 16px 8px',
+    })
+  })
+
   it('keeps folder rows at the approved compact density', () => {
     const rules = parseRules(appCss)
 

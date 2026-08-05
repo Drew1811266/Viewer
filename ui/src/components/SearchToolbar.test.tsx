@@ -55,6 +55,14 @@ describe('SearchToolbar', () => {
     expect(searchInputRule.match(/min-width:\s*100px/g) ?? []).toHaveLength(1)
   })
 
+  it('bounds the advanced editor so the formal footer remains reachable in one popover', () => {
+    const advancedRule = appCss.match(/\.advanced-filter-group\s*\{([^}]*)\}/)?.[1] ?? ''
+
+    expect(advancedRule).toContain('max-height: clamp(110px, calc(100vh - 450px), 300px)')
+    expect(advancedRule).toContain('overflow: auto')
+    expect(advancedRule).toContain('scrollbar-gutter: stable')
+  })
+
   it('exposes a named filter menu with keyboard-controlled expanded state', () => {
     render(
       <SearchToolbar

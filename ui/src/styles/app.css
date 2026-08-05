@@ -589,7 +589,10 @@ summary,
 
 .advanced-filter-group {
   border-top: 1px solid var(--viewer-border);
+  max-height: clamp(110px, calc(100vh - 450px), 300px);
+  overflow: auto;
   padding-top: 8px;
+  scrollbar-gutter: stable;
 }
 
 .advanced-filter-group > summary {
@@ -2360,6 +2363,13 @@ body:has(.viewer-dialog-backdrop) .task-bar {
 
 .aggregate-label {
   margin: 0 0 var(--viewer-space-2);
+}
+
+.content-workspace-surface > .aggregate-label {
+  display: inline-flex;
+  margin: 0 16px 8px;
+  max-width: calc(100% - 32px);
+  width: max-content;
 }
 
 .radial-menu-layer {

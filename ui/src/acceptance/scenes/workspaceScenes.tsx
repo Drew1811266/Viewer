@@ -330,7 +330,7 @@ function workspaceRecipe(id: string): () => boolean {
     }
     if (id === 'OTH-02') {
       if (!selectImages(3)) return false
-      const other = namedElement(/其它文件 · \d+ · 已选 3/)
+      const other = namedElement(/^其它文件 · \d+$/)
       if (other !== null) clickOnce(other, 'expand-other')
       return document.querySelector('[role="listbox"][aria-label="其它文件"]') !== null
     }
@@ -458,8 +458,10 @@ function prepareFilter(id: string): boolean {
   if (id === 'FIL-03') return labels.every((label) => choiceInput(label)?.checked)
   if (id === 'FIL-04') {
     const advanced = textElement('高级条件', 'summary')
-    if (document.querySelector('input[aria-label="最小宽度"]') === null && advanced !== null) {
-      clickOnce(advanced, 'advanced-filter')
+    if (document.querySelector('input[aria-label="最小宽度"]') === null) {
+      const edit = textElement('编辑高级条件', 'button')
+      if (edit !== null) clickOnce(edit, 'edit-advanced-filter')
+      else if (advanced !== null) clickOnce(advanced, 'advanced-filter')
       return false
     }
     const width = document.querySelector<HTMLInputElement>('input[aria-label="最小宽度"]')
@@ -500,7 +502,8 @@ function textElement(value: string, selector = '*'): HTMLElement | null {
   return (
     [...document.querySelectorAll<HTMLElement>(selector)].find(
       (candidate) =>
-        candidate.children.length === 0 && candidate.textContent?.trim().includes(value),
+        (selector !== '*' || candidate.children.length === 0) &&
+        candidate.textContent?.trim().includes(value),
     ) ?? null
   )
 }

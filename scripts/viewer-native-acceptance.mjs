@@ -245,14 +245,8 @@ export function buildStateEntryPlan(id) {
   const openFilter = () => [...openContent('紧凑'), clickToolbar('筛选')]
   const image = (name) => ({ name })
   const openImagePreview = (name = '商品-02.jpg', preparation = []) => [
-    ...preparation,
-    ...openContent(),
-    {
-      kind: 'radialActionGesture',
-      target: image(name),
-      delta: { x: 0, y: -88 },
-      actionName: '预览',
-    },
+    ...openRadial(name, preparation),
+    { kind: 'click', target: { role: 'AXMenuItem', name: '预览' } },
   ]
   const selectImages = (count, density = count > 8 ? '紧凑' : '标准') => [
     ...openContent(density),
@@ -3033,31 +3027,6 @@ export async function executeStateEntryPlan({
           point: to,
         })
         await observeHeldPointer()
-      } else if (step.kind === 'radialActionGesture') {
-        const element = await queryVisibleElement(client, actions, step.target)
-        const from = {
-          x: element.frame.x - window.x + element.frame.width / 2,
-          y: element.frame.y - window.y + element.frame.height / 2,
-        }
-        const to = {
-          x: Math.max(0, Math.min(window.width - 1, from.x + step.delta.x)),
-          y: Math.max(0, Math.min(window.height - 1, from.y + step.delta.y)),
-        }
-        await requestWithActionLog(client, actions, 'pointer', {
-          kind: 'rightDown',
-          point: from,
-        })
-        heldPointer = { point: to, kind: 'rightUp' }
-        await queryVisibleElement(client, actions, { role: 'AXMenu', name: '文件操作' })
-        visible = await requestWithActionLog(client, actions, 'pointer', {
-          kind: 'rightDrag',
-          point: to,
-        })
-        await queryVisibleElement(client, actions, {
-          role: 'AXMenuItem',
-          name: step.actionName,
-        })
-        await releasePointer()
       } else if (step.kind === 'holdOrganizationDrag') {
         const source = await queryVisibleElement(client, actions, step.source)
         const destination = await queryVisibleElement(client, actions, step.destination)

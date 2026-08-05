@@ -570,14 +570,14 @@ describe('state entry plans', () => {
   it('opens image, comparison, document and information states through product actions', () => {
     const previewPlan = buildStateEntryPlan('PRE-01')
     assert.deepEqual(
-      previewPlan.filter((step) => step.kind === 'radialActionGesture'),
+      previewPlan.filter(
+        (step) =>
+          (step.kind === 'contextClick' && step.target?.name === '商品-02.jpg') ||
+          (step.kind === 'click' && step.target?.name === '预览'),
+      ),
       [
-        {
-          kind: 'radialActionGesture',
-          target: { name: '商品-02.jpg' },
-          delta: { x: 0, y: -88 },
-          actionName: '预览',
-        },
+        { kind: 'contextClick', target: { name: '商品-02.jpg' } },
+        { kind: 'click', target: { role: 'AXMenuItem', name: '预览' } },
       ],
     )
     assert.deepEqual(
@@ -890,60 +890,6 @@ describe('state entry plans', () => {
         .filter(({ command, payload }) => command === 'pointer' && payload.kind === 'rightUp')
         .map(({ payload }) => payload),
       [{ kind: 'rightUp', point: { x: 460, y: 104 } }],
-    )
-  })
-
-  it('commits a radial preview gesture before continuing the entry plan', async () => {
-    const commands = []
-    const client = {
-      async request(command, payload) {
-        commands.push({ command, payload })
-        if (command === 'query') {
-          if (['扫描项目', '2 个任务已完成', '正在生成缩略图'].includes(payload.target.name)) {
-            throw new AcceptanceError('STATE_TARGET_NOT_FOUND', 'not found')
-          }
-          return {
-            elements: [
-              {
-                role: payload.target.role ?? 'AXGroup',
-                name: payload.target.name,
-                frame: { x: 520, y: 250, width: 80, height: 24 },
-              },
-            ],
-          }
-        }
-        return { performed: true, command }
-      },
-    }
-
-    const result = await executeStateEntryPlan({
-      id: 'PRE-01',
-      client,
-      actions: [],
-      projectPath: '/Users/example/ViewerAcceptanceRuns/run/测试图',
-      window: { x: 100, y: 70, width: 1024, height: 720 },
-      openProject: async () => {},
-    })
-
-    assert.equal(result.passed, true)
-    assert.deepEqual(
-      commands
-        .filter(
-          ({ command, payload }) =>
-            command === 'pointer' && ['rightDown', 'rightDrag', 'rightUp'].includes(payload.kind),
-        )
-        .map(({ payload }) => payload),
-      [
-        { kind: 'rightDown', point: { x: 460, y: 192 } },
-        { kind: 'rightDrag', point: { x: 460, y: 104 } },
-        { kind: 'rightUp', point: { x: 460, y: 104 } },
-      ],
-    )
-    assert.ok(
-      commands.some(
-        ({ command, payload }) =>
-          command === 'query' && payload.target.role === 'AXMenuItem' && payload.target.name === '预览',
-      ),
     )
   })
 

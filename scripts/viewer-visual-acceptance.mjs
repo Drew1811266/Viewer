@@ -123,7 +123,7 @@ export function selectVisualAcceptanceIds(options, changedFiles = []) {
     )
   }
   if (options.mode === 'all') return ACCEPTANCE_STATE_DEFINITIONS.map(({ id }) => id)
-  if (options.mode === 'changed') return selectChangedIds(changedFiles)
+  if (options.mode === 'changed') return affectedAcceptanceIds(changedFiles)
   throw new VisualAcceptanceError('CLI_ARGUMENT', `Unsupported acceptance mode: ${options.mode}`)
 }
 
@@ -420,15 +420,113 @@ export async function resumeVisualEvidence({ request, outputDirectory, runMetada
   return { request, manifestPath, manifest, resumed: true }
 }
 
-function selectChangedIds(changedFiles) {
+const GLOBAL_VISUAL_PATHS = new Set([
+  'ui/src/App.tsx',
+  'ui/src/styles/app.css',
+  'ui/src/styles/primitives.css',
+  'ui/src/styles/tokens.css',
+  'ui/src/acceptance/acceptanceStateCatalog.json',
+  'ui/vite.visual-acceptance.config.ts',
+])
+
+const VIEWER_BUTTON_DEPENDENTS = new Set([
+  'App',
+  'BatchRenameDialog',
+  'CloseOperationDialog',
+  'CompareWorkspace',
+  'DestinationDialog',
+  'EmptyProject',
+  'FolderFilmstripRow',
+  'GlobalNoticeStack',
+  'ImagePreview',
+  'OperationResults',
+  'OtherFilePanel',
+  'ReadOnlyBanner',
+  'RenameDialog',
+  'SearchResults',
+  'SearchToolbar',
+  'SettingsDialog',
+  'TaskBar',
+  'TextPreview',
+  'TrashConfirmation',
+  'UnsupportedFilePreview',
+  'ViewerButton',
+])
+
+const BOUNDED_COMPONENT_IDS = new Map([
+  ['ImagePreview', numberedAcceptanceIds('PRE', 7)],
+  [
+    'RadialFileMenu',
+    [...numberedAcceptanceIds('RAD', 7), 'A11Y-01', 'A11Y-02'],
+  ],
+])
+
+export function affectedAcceptanceIds(
+  changedFiles,
+  definitions = ACCEPTANCE_STATE_DEFINITIONS,
+) {
   if (changedFiles.length === 0) return []
-  const componentNames = new Set(
-    changedFiles.map((file) => path.basename(file).replace(/\.(?:test\.)?[cm]?[jt]sx?$/, '')),
+  const allIds = definitions.map(({ id }) => id)
+  const selected = new Set()
+
+  for (const unnormalizedFile of changedFiles) {
+    const file = unnormalizedFile.replaceAll('\\', '/').replace(/^\.\//, '')
+    if (GLOBAL_VISUAL_PATHS.has(file) || isVisualAuthorityDocument(file)) return allIds
+    if (file.startsWith('ui/src/styles/')) return allIds
+    if (file.startsWith('ui/src/acceptance/')) return allIds
+
+    if (file.startsWith('docs/')) continue
+    if (!file.startsWith('ui/src/components/')) continue
+
+    const componentName = path.basename(file).replace(/\.(?:test\.)?[cm]?[jt]sx?$/, '')
+    const boundedIds = BOUNDED_COMPONENT_IDS.get(componentName)
+    if (boundedIds !== undefined) {
+      addKnownIds(selected, boundedIds, definitions)
+      continue
+    }
+
+    if (componentName === 'ViewerButton') {
+      const dependentIds = definitions
+        .filter(({ components }) =>
+          components.some((component) => VIEWER_BUTTON_DEPENDENTS.has(component)),
+        )
+        .map(({ id }) => id)
+      if (dependentIds.length === 0) return allIds
+      addKnownIds(selected, dependentIds, definitions)
+      continue
+    }
+
+    const directIds = definitions
+      .filter(({ components }) => components.includes(componentName))
+      .map(({ id }) => id)
+    if (directIds.length === 0) return allIds
+    addKnownIds(selected, directIds, definitions)
+  }
+
+  return allIds.filter((id) => selected.has(id))
+}
+
+function isVisualAuthorityDocument(file) {
+  if (!file.startsWith('docs/')) return false
+  return (
+    file.includes('viewer-complete-ui-visual-atlas') ||
+    file.includes('viewer-atlas-product-migration-ledger') ||
+    file.includes('viewer-tiered-visual-acceptance-design')
   )
-  const selected = ACCEPTANCE_STATE_DEFINITIONS.filter(({ components }) =>
-    components.some((component) => componentNames.has(component)),
-  ).map(({ id }) => id)
-  return selected.length === 0 ? ACCEPTANCE_STATE_DEFINITIONS.map(({ id }) => id) : selected
+}
+
+function numberedAcceptanceIds(prefix, count) {
+  return Array.from(
+    { length: count },
+    (_, index) => `${prefix}-${String(index + 1).padStart(2, '0')}`,
+  )
+}
+
+function addKnownIds(selected, ids, definitions) {
+  const knownIds = new Set(definitions.map(({ id }) => id))
+  for (const id of ids) {
+    if (knownIds.has(id)) selected.add(id)
+  }
 }
 
 async function collectChangedFiles(root) {

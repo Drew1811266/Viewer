@@ -127,6 +127,80 @@ export const AUDIT_IDS = Object.freeze([
   ...numberedIds('A11Y', 5),
 ])
 
+export const NATIVE_SMOKE_IDS = Object.freeze([
+  'launch-single-instance',
+  'launch-empty',
+  'open-project-picker',
+  'workspace-scan',
+  'sidebar-window',
+  'thumbnail-keyboard',
+  'radial-native',
+  'preview-native',
+  'compare-native',
+  'text-native',
+  'info-shortcut',
+  'rename-dialog-native',
+  'finder-drop-valid',
+  'finder-drop-invalid',
+  'close-project-native',
+])
+
+export function buildNativeSmokeSessionPlan() {
+  return NATIVE_SMOKE_IDS.map((id, index) =>
+    Object.freeze({
+      id,
+      createFixture: index === 0,
+      startClient: index === 0,
+      openProjectPicker: id === 'open-project-picker',
+      reuseProject: index > NATIVE_SMOKE_IDS.indexOf('open-project-picker'),
+      usesFinder: id === 'finder-drop-valid' || id === 'finder-drop-invalid',
+      destructiveFixtureMutation: false,
+      resetFixture: false,
+    }),
+  )
+}
+
+export async function executeNativeSmokeSession({
+  ids = NATIVE_SMOKE_IDS,
+  createSession,
+  runJourney,
+  closeSession,
+}) {
+  const session = await createSession()
+  const passed = []
+  const failed = []
+  const results = []
+  try {
+    for (const id of ids) {
+      try {
+        const result = await runJourney({ id, session })
+        results.push(result)
+        if (result?.passed === false) {
+          failed.push({ id, error: result.error ?? { message: 'Native smoke assertion failed' } })
+        } else {
+          passed.push(id)
+        }
+      } catch (error) {
+        failed.push({
+          id,
+          error: {
+            code: error?.code ?? 'UNEXPECTED',
+            message: error?.message ?? String(error),
+          },
+        })
+      }
+    }
+  } finally {
+    await closeSession(session)
+  }
+  return {
+    count: ids.length,
+    passed,
+    failed,
+    results,
+  }
+}
+
 const FIXTURE_VARIANT_BY_PREFIX = Object.freeze({
   LAU: 'entry-and-loading',
   SID: 'sidebar-and-drag',
@@ -1159,10 +1233,12 @@ export function parseNativeAcceptanceCli(argv, { repoRoot }) {
 
   for (let index = 0; index < argumentsList.length; index += 1) {
     const argument = argumentsList[index]
+    if (argument === '--') continue
     if (argument === '--list') selectors.push({ mode: 'list', value: null })
     else if (argument === '--preflight') {
       selectors.push({ mode: 'preflight', value: null })
     } else if (argument === '--all') selectors.push({ mode: 'all', value: null })
+    else if (argument === '--smoke') selectors.push({ mode: 'smoke', value: null })
     else if (argument === '--id') {
       const id = argumentsList[++index]
       if (!STATE_RECIPES.has(id)) throw cliError('Unknown acceptance ID', { id })
@@ -1210,7 +1286,7 @@ export function parseNativeAcceptanceCli(argv, { repoRoot }) {
     selector,
     viewport,
     outputRoot: normalizedOutput,
-    destructive: ['id', 'wave', 'all'].includes(mode),
+    destructive: ['id', 'wave', 'all', 'smoke'].includes(mode),
   }
 }
 
@@ -1220,6 +1296,7 @@ export function captureIdsForOptions(options) {
     return AUDIT_IDS.filter((id) => STATE_RECIPES.get(id).wave === options.selector)
   }
   if (options.mode === 'all') return [...AUDIT_IDS]
+  if (options.mode === 'smoke') return [...NATIVE_SMOKE_IDS]
   return []
 }
 
@@ -3362,12 +3439,276 @@ async function captureStateRecipe({ repoRoot, options, preflight, id }) {
   }
 }
 
+async function captureNativeSmokeSuite({ repoRoot, options, preflight, ids }) {
+  const smokeRoot = path.join(
+    repoRoot,
+    'target',
+    'atlas-product-migration-acceptance',
+    preflight.commit,
+    options.viewport,
+    'native-smoke',
+  )
+  const approvedRoot = path.join(
+    repoRoot,
+    'target',
+    'atlas-product-migration-acceptance',
+  )
+  if (!isContainedPath(approvedRoot, smokeRoot)) {
+    throw new AcceptanceError('SAFETY_EVIDENCE_PATH', 'Native smoke root escaped evidence scope')
+  }
+  await mkdir(path.dirname(smokeRoot), { recursive: true })
+  try {
+    await mkdir(smokeRoot)
+  } catch (error) {
+    if (error?.code === 'EEXIST') {
+      throw new AcceptanceError(
+        'CAPTURE_EVIDENCE_EXISTS',
+        'Native smoke evidence already exists for this commit and viewport',
+        { smokeRoot },
+      )
+    }
+    throw error
+  }
+
+  const result = await executeNativeSmokeSession({
+    ids,
+    createSession: async () => {
+      const run = await createFixtureRun({
+        repoRoot,
+        runId: `${preflight.commit.slice(0, 12)}-smoke-${process.pid}-${randomUUID()}`,
+      })
+      let client
+      try {
+        const projectPath = await resetFixtureVariant(run, 'native-smoke')
+        client = new NativeAcceptanceClient({
+          executablePath: preflight.helper.executablePath,
+          pid: preflight.process.pid,
+          window: preflight.window,
+        })
+        await client.start()
+        return { run, projectPath, client }
+      } catch (error) {
+        await client?.close().catch(() => client?.terminate())
+        await removeFixtureRun(run)
+        throw error
+      }
+    },
+    runJourney: async ({ id, session }) => {
+      const directory = path.join(smokeRoot, id)
+      await mkdir(directory)
+      const actions = []
+      const startedAt = new Date().toISOString()
+      try {
+        await requestWithActionLog(session.client, actions, 'focus', {
+          target: { role: 'AXWindow' },
+        })
+        await executeNativeSmokeJourney({
+          id,
+          client: session.client,
+          actions,
+          projectPath: session.projectPath,
+          window: preflight.window,
+          preflight,
+        })
+        const rawPath = path.join(directory, 'native@2x.png')
+        const nativePath = path.join(directory, 'native.png')
+        await requestWithActionLog(session.client, actions, 'capture', { path: rawPath })
+        const [width, height] = options.viewport.split('x').map(Number)
+        await execFileAsync('/usr/bin/sips', [
+          '-z',
+          String(height),
+          String(width),
+          rawPath,
+          '--out',
+          nativePath,
+        ])
+        const manifest = {
+          schemaVersion: 1,
+          kind: 'native-smoke',
+          id,
+          commit: preflight.commit,
+          branch: preflight.branch,
+          dirty: preflight.dirty,
+          viewport: options.viewport,
+          pid: preflight.process.pid,
+          executablePath: preflight.process.executablePath,
+          window: preflight.window,
+          fixture: {
+            runId: session.run.runId,
+            path: session.projectPath,
+          },
+          startedAt,
+          completedAt: new Date().toISOString(),
+          actions,
+          evidence: {
+            raw: { path: rawPath, sha256: await sha256File(rawPath) },
+            native: { path: nativePath, sha256: await sha256File(nativePath) },
+          },
+          passed: true,
+          verdict: 'passed-native-smoke',
+        }
+        await Promise.all([
+          writeFile(
+            path.join(directory, 'actions.jsonl'),
+            `${actions.map((action) => JSON.stringify(action)).join('\n')}\n`,
+            { flag: 'wx' },
+          ),
+          writeFile(
+            path.join(directory, 'manifest.json'),
+            `${JSON.stringify(manifest, null, 2)}\n`,
+            { flag: 'wx' },
+          ),
+        ])
+        return { id, passed: true, directory, manifest }
+      } catch (error) {
+        const failure = {
+          id,
+          startedAt,
+          completedAt: new Date().toISOString(),
+          actions,
+          error: {
+            code: error?.code ?? 'UNEXPECTED',
+            message: error?.message ?? String(error),
+          },
+        }
+        await Promise.all([
+          requestWithActionLog(session.client, actions, 'capture', {
+            path: path.join(directory, 'failure.png'),
+          }).catch(() => {}),
+          writeFile(
+            path.join(directory, 'failure.json'),
+            `${JSON.stringify(failure, null, 2)}\n`,
+            { flag: 'wx' },
+          ),
+        ])
+        await requestWithActionLog(session.client, actions, 'key', {
+          key: 'escape',
+          modifiers: [],
+        }).catch(() => {})
+        throw error
+      }
+    },
+    closeSession: async ({ run, client }) => {
+      await closeProjectForCleanup(client).catch(() => {})
+      await client.close().catch(() => client.terminate())
+      await removeFixtureRun(run)
+    },
+  })
+
+  const summary = {
+    schemaVersion: 1,
+    kind: 'native-smoke-summary',
+    commit: preflight.commit,
+    branch: preflight.branch,
+    viewport: options.viewport,
+    count: result.count,
+    passed: result.passed,
+    failed: result.failed,
+    exitCode: result.failed.length === 0 ? 0 : 1,
+  }
+  await writeFile(
+    path.join(smokeRoot, 'summary.json'),
+    `${JSON.stringify(summary, null, 2)}\n`,
+    { flag: 'wx' },
+  )
+  return { ...result, exitCode: summary.exitCode, evidenceRoot: smokeRoot }
+}
+
+async function executeNativeSmokeJourney({
+  id,
+  client,
+  actions,
+  projectPath,
+  window,
+  preflight,
+}) {
+  const runState = async (stateId, { dismiss = false } = {}) => {
+    const entry = await executeStateEntryPlan({
+      id: stateId,
+      client,
+      actions,
+      projectPath,
+      window,
+      openProject: async () =>
+        queryVisibleElement(client, actions, { role: 'AXButton', name: '更多' }, 10_000),
+    })
+    await entry.releasePointer()
+    if (dismiss) {
+      await requestWithActionLog(client, actions, 'key', {
+        key: 'escape',
+        modifiers: [],
+      })
+    }
+    return entry.visible
+  }
+
+  if (id === 'launch-single-instance') {
+    if (!Number.isInteger(preflight.process?.pid) || preflight.process.pid <= 0) {
+      throw new AcceptanceError('PRECONDITION_PROCESS', 'Native smoke has no bound Viewer PID')
+    }
+    return { pid: preflight.process.pid }
+  }
+  if (id === 'launch-empty') return ensureLaunchNoProject(client, actions)
+  if (id === 'open-project-picker') {
+    return openProjectViaPanel({ client, actions, projectPath, window })
+  }
+  if (id === 'workspace-scan') return runState('SID-01')
+  if (id === 'sidebar-window') return runState('SID-02')
+  if (id === 'thumbnail-keyboard') return runState('THU-07')
+  if (id === 'radial-native') return runState('RAD-01', { dismiss: true })
+  if (id === 'preview-native') return runState('PRE-01', { dismiss: true })
+  if (id === 'compare-native') return runState('COM-01', { dismiss: true })
+  if (id === 'text-native') return runState('DOC-01', { dismiss: true })
+  if (id === 'info-shortcut') return runState('INF-01', { dismiss: true })
+  if (id === 'rename-dialog-native') {
+    await runState('RAD-04')
+    await requestWithActionLog(client, actions, 'activate', {
+      target: { role: 'AXMenuItem', name: '重命名' },
+    })
+    const dialog = await queryVisibleElement(client, actions, {
+      role: 'AXHeading',
+      name: '重命名',
+    })
+    await requestWithActionLog(client, actions, 'key', {
+      key: 'escape',
+      modifiers: [],
+    })
+    return dialog
+  }
+  if (id === 'finder-drop-valid') {
+    await ensureLaunchNoProject(client, actions)
+    await requestWithActionLog(client, actions, 'finderDrag', {
+      path: projectPath,
+      destination: { x: window.width / 2, y: window.height / 2 },
+      release: true,
+      durationMs: 700,
+    })
+    return queryVisibleElement(client, actions, { role: 'AXButton', name: '更多' }, 10_000)
+  }
+  if (id === 'finder-drop-invalid') {
+    await ensureLaunchNoProject(client, actions)
+    await requestWithActionLog(client, actions, 'finderDrag', {
+      path: path.join(projectPath, '衣服', 'A01', '商品-01.jpg'),
+      destination: { x: window.width / 2, y: window.height / 2 },
+      release: true,
+      durationMs: 700,
+    })
+    return queryVisibleElement(client, actions, {
+      role: 'AXStaticText',
+      name: '请选择一个文件夹',
+    })
+  }
+  if (id === 'close-project-native') return ensureLaunchNoProject(client, actions)
+  throw new AcceptanceError('STATE_RECIPE_EXECUTOR', 'Unknown native smoke journey', { id })
+}
+
 export async function runNativeAcceptanceCli(
   argv,
   {
     repoRoot = path.resolve(fileURLToPath(new URL('..', import.meta.url))),
     collectPreflight = collectNativePreflight,
     captureRecipe = captureStateRecipe,
+    captureSmokeSuite = captureNativeSmokeSuite,
   } = {},
 ) {
   const options = parseNativeAcceptanceCli(argv, { repoRoot })
@@ -3379,7 +3720,9 @@ export async function runNativeAcceptanceCli(
     }
   }
   const captureIds = captureIdsForOptions(options)
-  for (const id of captureIds) buildStateEntryPlan(id)
+  if (options.mode !== 'smoke') {
+    for (const id of captureIds) buildStateEntryPlan(id)
+  }
   const preflight = await collectPreflight({ repoRoot, options })
   if (options.mode === 'preflight') {
     return { mode: 'preflight', viewport: options.viewport, ...preflight }
@@ -3393,6 +3736,18 @@ export async function runNativeAcceptanceCli(
         options,
         preflight,
         id: options.selector,
+      })),
+    }
+  }
+  if (options.mode === 'smoke') {
+    return {
+      mode: 'native-smoke',
+      viewport: options.viewport,
+      ...(await captureSmokeSuite({
+        repoRoot,
+        options,
+        preflight,
+        ids: captureIds,
       })),
     }
   }
@@ -3418,6 +3773,7 @@ if (invokedPath === fileURLToPath(import.meta.url)) {
   try {
     const result = await runNativeAcceptanceCli(process.argv.slice(2))
     process.stdout.write(`${JSON.stringify(result, null, 2)}\n`)
+    process.exitCode = result.exitCode ?? 0
   } catch (error) {
     const failure =
       error instanceof AcceptanceError || error instanceof AcceptanceEvidenceError

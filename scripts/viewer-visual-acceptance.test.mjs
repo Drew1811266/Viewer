@@ -11,6 +11,7 @@ import {
   writeRgbaPng,
 } from './viewer-acceptance-evidence.mjs'
 import {
+  affectedAcceptanceIds,
   acceptanceEnvironmentFor,
   parseVisualAcceptanceCli,
   runVisualAcceptanceBatch,
@@ -41,12 +42,92 @@ describe('visual acceptance CLI', () => {
         }),
       { code: 'CLI_ARGUMENT' },
     )
+  })
+})
+
+describe('changed-state selection', () => {
+  const allIds = selectVisualAcceptanceIds({ mode: 'all' })
+
+  it('selects the bounded image-preview and radial-menu contracts', () => {
+    assert.deepEqual(affectedAcceptanceIds(['ui/src/components/ImagePreview.tsx']), [
+      'PRE-01',
+      'PRE-02',
+      'PRE-03',
+      'PRE-04',
+      'PRE-05',
+      'PRE-06',
+      'PRE-07',
+    ])
+    assert.deepEqual(affectedAcceptanceIds(['ui/src/components/RadialFileMenu.tsx']), [
+      'RAD-01',
+      'RAD-02',
+      'RAD-03',
+      'RAD-04',
+      'RAD-05',
+      'RAD-06',
+      'RAD-07',
+      'A11Y-01',
+      'A11Y-02',
+    ])
+  })
+
+  it('selects all states for global visual styles', () => {
+    for (const file of [
+      'ui/src/styles/tokens.css',
+      'ui/src/styles/primitives.css',
+      'ui/src/styles/app.css',
+    ]) {
+      assert.deepEqual(affectedAcceptanceIds([file]), allIds)
+    }
+  })
+
+  it('selects every known ViewerButton consumer without broadening to all states', () => {
+    const selected = affectedAcceptanceIds(['ui/src/components/ui/ViewerButton.tsx'])
+    assert.ok(selected.length > 0)
+    assert.ok(selected.length < allIds.length)
+    for (const id of [
+      'LAU-01',
+      'SEA-01',
+      'FIL-01',
+      'PRE-01',
+      'COM-01',
+      'DOC-01',
+      'DIA-01',
+      'TAS-01',
+      'RES-01',
+      'A11Y-01',
+      'A11Y-04',
+    ]) {
+      assert.ok(selected.includes(id), `expected ViewerButton to affect ${id}`)
+    }
+    assert.equal(selected.includes('RAD-01'), false)
+  })
+
+  it('ignores unrelated docs and selects all states for visual authority docs', () => {
+    assert.deepEqual(affectedAcceptanceIds(['docs/README.md']), [])
+    for (const file of [
+      'docs/prototypes/viewer-complete-ui-visual-atlas.html',
+      'docs/reviews/2026-08-02-viewer-atlas-product-migration-ledger.md',
+      'docs/superpowers/specs/2026-08-04-viewer-tiered-visual-acceptance-design.md',
+    ]) {
+      assert.deepEqual(affectedAcceptanceIds([file]), allIds)
+    }
+  })
+
+  it('fails safe for an unknown production component', () => {
+    assert.deepEqual(
+      affectedAcceptanceIds(['ui/src/components/NewProductionSurface.tsx']),
+      allIds,
+    )
+  })
+
+  it('feeds the conservative mapping into --changed selection', () => {
     assert.deepEqual(
       selectVisualAcceptanceIds(
         { mode: 'changed' },
         ['ui/src/components/ImagePreview.tsx'],
       ),
-      ['PRE-01', 'PRE-02', 'PRE-03', 'PRE-04', 'PRE-05', 'PRE-06', 'PRE-07', 'A11Y-05'],
+      ['PRE-01', 'PRE-02', 'PRE-03', 'PRE-04', 'PRE-05', 'PRE-06', 'PRE-07'],
     )
   })
 })

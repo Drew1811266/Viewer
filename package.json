@@ -9,6 +9,7 @@
     "start:viewer": "node scripts/start-viewer-dev.mjs",
     "test:native-acceptance": "node --test scripts/viewer-native-acceptance.test.mjs",
     "accept:native": "node scripts/viewer-native-acceptance.mjs",
+    "accept:native-smoke": "node scripts/viewer-native-acceptance.mjs --smoke",
     "test:visual-acceptance": "node --test scripts/viewer-visual-acceptance.test.mjs",
     "accept:visual": "node scripts/viewer-visual-acceptance.mjs",
     "test:ui": "pnpm --dir ui test",

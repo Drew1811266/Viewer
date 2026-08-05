@@ -21,16 +21,19 @@ import {
   AUDIT_IDS,
   ALLOWED_COMMANDS,
   AcceptanceError,
+  NATIVE_SMOKE_IDS,
   NativeAcceptanceClient,
   PROTOCOL_VERSION,
   STATE_RECIPES,
   buildEvidenceManifest,
+  buildNativeSmokeSessionPlan,
   buildStateEntryPlan,
   buildNativeHelper,
   createFixtureRun,
   combinePngEvidence,
   discoverNativeWindows,
   executeStateEntryPlan,
+  executeNativeSmokeSession,
   parseNativeAcceptanceCli,
   openProjectViaPanel,
   parseProcessTable,
@@ -1405,6 +1408,112 @@ describe('atlas reference evidence', () => {
 })
 
 describe('native acceptance CLI', () => {
+  it('exposes the exact bounded native smoke matrix and one shared session', async () => {
+    const expected = [
+      'launch-single-instance',
+      'launch-empty',
+      'open-project-picker',
+      'workspace-scan',
+      'sidebar-window',
+      'thumbnail-keyboard',
+      'radial-native',
+      'preview-native',
+      'compare-native',
+      'text-native',
+      'info-shortcut',
+      'rename-dialog-native',
+      'finder-drop-valid',
+      'finder-drop-invalid',
+      'close-project-native',
+    ]
+    assert.deepEqual(NATIVE_SMOKE_IDS, expected)
+    assert.equal(NATIVE_SMOKE_IDS.length, 15)
+    assert.equal(NATIVE_SMOKE_IDS.some((id) => AUDIT_IDS.includes(id)), false)
+
+    const markdown = await readFile(
+      path.join(actualRepoRoot, 'docs/reviews/viewer-native-smoke-matrix.md'),
+      'utf8',
+    )
+    const documentedIds = [
+      ...markdown.matchAll(/^\| `([^`]+)` \|/gm),
+    ].map((match) => match[1])
+    assert.deepEqual(documentedIds, expected)
+
+    const plan = buildNativeSmokeSessionPlan()
+    assert.deepEqual(plan.map(({ id }) => id), expected)
+    assert.equal(plan.filter(({ createFixture }) => createFixture).length, 1)
+    assert.equal(plan.filter(({ startClient }) => startClient).length, 1)
+    assert.equal(plan.filter(({ openProjectPicker }) => openProjectPicker).length, 1)
+    assert.equal(
+      plan.slice(expected.indexOf('open-project-picker') + 1).every(({ reuseProject }) => reuseProject),
+      true,
+    )
+    assert.equal(
+      plan.filter(({ resetFixture }) => resetFixture).every(({ destructiveFixtureMutation }) =>
+        destructiveFixtureMutation,
+      ),
+      true,
+    )
+  })
+
+  it('runs --smoke once without expanding to the 89-state recipe controller', async () => {
+    const calls = []
+    const result = await nativeAcceptance.runNativeAcceptanceCli(
+      ['--smoke', '--viewport', '1024x720'],
+      {
+        repoRoot: actualRepoRoot,
+        collectPreflight: async ({ options }) => {
+          calls.push(['preflight', options.mode])
+          return { commit: 'a'.repeat(40) }
+        },
+        captureRecipe: async ({ id }) => {
+          calls.push(['recipe', id])
+          throw new Error('89-state capture must not run for native smoke')
+        },
+        captureSmokeSuite: async ({ ids, preflight }) => {
+          calls.push(['smoke', [...ids], preflight.commit])
+          return { count: ids.length, passed: [...ids], failed: [] }
+        },
+      },
+    )
+
+    assert.equal(result.mode, 'native-smoke')
+    assert.equal(result.viewport, '1024x720')
+    assert.equal(result.count, 15)
+    assert.deepEqual(result.passed, NATIVE_SMOKE_IDS)
+    assert.equal(calls.some(([kind]) => kind === 'recipe'), false)
+    assert.deepEqual(calls[1], ['smoke', NATIVE_SMOKE_IDS, 'a'.repeat(40)])
+  })
+
+  it('keeps every native smoke journey in one fixture and helper session', async () => {
+    const session = { token: 'shared-native-session' }
+    const seenSessions = []
+    let created = 0
+    let closed = 0
+    const result = await executeNativeSmokeSession({
+      ids: NATIVE_SMOKE_IDS,
+      createSession: async () => {
+        created += 1
+        return session
+      },
+      runJourney: async ({ id, session: received }) => {
+        seenSessions.push(received)
+        return { id, passed: true }
+      },
+      closeSession: async (received) => {
+        assert.equal(received, session)
+        closed += 1
+      },
+    })
+
+    assert.equal(created, 1)
+    assert.equal(closed, 1)
+    assert.equal(seenSessions.length, 15)
+    assert.equal(seenSessions.every((received) => received === session), true)
+    assert.deepEqual(result.passed, NATIVE_SMOKE_IDS)
+    assert.deepEqual(result.failed, [])
+  })
+
   it('selects every Wave 1 capture exactly once in ledger order', () => {
     assert.equal(typeof nativeAcceptance.captureIdsForOptions, 'function')
     assert.deepEqual(
@@ -1505,6 +1614,18 @@ describe('native acceptance CLI', () => {
         repoRoot: actualRepoRoot,
       }).mode,
       'all',
+    )
+    assert.equal(
+      parseNativeAcceptanceCli(['--smoke', '--viewport', '1024x720'], {
+        repoRoot: actualRepoRoot,
+      }).mode,
+      'smoke',
+    )
+    assert.equal(
+      parseNativeAcceptanceCli(['--smoke', '--', '--viewport', '1024x720'], {
+        repoRoot: actualRepoRoot,
+      }).mode,
+      'smoke',
     )
   })
 

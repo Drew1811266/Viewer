@@ -49,6 +49,11 @@ describe('Viewer visual acceptance release isolation', () => {
         ['visual-acceptance.html'],
       )
       assert.equal(
+        acceptanceArtifacts.filter(({ relativePath }) => /^商品-\d{2}\.jpg$/.test(relativePath))
+          .length,
+        30,
+      )
+      assert.equal(
         acceptanceArtifacts.some(({ content }) => content.includes('data-acceptance-id')),
         true,
       )

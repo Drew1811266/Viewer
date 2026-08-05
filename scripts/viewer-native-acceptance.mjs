@@ -2469,6 +2469,14 @@ async function normalizeWorkspaceState({
   density,
   sidebarWidth,
 }) {
+  const closeInformation = await queryOptionalElement(client, actions, {
+    role: 'AXButton',
+    name: '关闭信息',
+  })
+  if (closeInformation !== null) {
+    await clickElement(client, actions, closeInformation, window)
+  }
+
   let collapse = await queryOptionalElement(client, actions, {
     role: 'AXButton',
     name: '折叠文件夹栏',
@@ -3512,7 +3520,7 @@ async function captureNativeSmokeSuite({ repoRoot, options, preflight, ids }) {
         })
         const rawPath = path.join(directory, 'native@2x.png')
         const nativePath = path.join(directory, 'native.png')
-        await requestWithActionLog(session.client, actions, 'capture', { path: rawPath })
+        await focusAndCaptureNativeSmoke(session.client, actions, rawPath)
         const [width, height] = options.viewport.split('x').map(Number)
         await execFileAsync('/usr/bin/sips', [
           '-z',
@@ -3612,6 +3620,13 @@ async function captureNativeSmokeSuite({ repoRoot, options, preflight, ids }) {
     { flag: 'wx' },
   )
   return { ...result, exitCode: summary.exitCode, evidenceRoot: smokeRoot }
+}
+
+export async function focusAndCaptureNativeSmoke(client, actions, path) {
+  await requestWithActionLog(client, actions, 'focus', {
+    target: { role: 'AXWindow' },
+  })
+  return requestWithActionLog(client, actions, 'capture', { path })
 }
 
 async function executeNativeSmokeJourney({

@@ -34,6 +34,7 @@ import {
   discoverNativeWindows,
   executeStateEntryPlan,
   executeNativeSmokeSession,
+  focusAndCaptureNativeSmoke,
   parseNativeAcceptanceCli,
   openProjectViaPanel,
   parseProcessTable,
@@ -712,6 +713,14 @@ describe('state entry plans', () => {
     assert.equal(result.passed, true)
     assert.deepEqual(commands[0], {
       command: 'query',
+      payload: { target: { role: 'AXButton', name: '关闭信息' } },
+    })
+    assert.deepEqual(commands[1], {
+      command: 'pointer',
+      payload: { kind: 'click', point: { x: 60, y: 32 } },
+    })
+    assert.deepEqual(commands[2], {
+      command: 'query',
       payload: { target: { role: 'AXButton', name: '折叠文件夹栏' } },
     })
     assert.deepEqual(
@@ -728,6 +737,27 @@ describe('state entry plans', () => {
     }
     assert.ok(commands.filter(({ command }) => command === 'pointer').length >= 5)
     assert.ok(actions.length >= 12)
+  })
+
+  it('refocuses Viewer before native smoke capture after an external app handoff', async () => {
+    const requests = []
+    const client = {
+      async request(command, payload) {
+        requests.push({ command, payload })
+        return command === 'capture'
+          ? { performed: true, command, width: 2048, height: 1440, sha256: 'a'.repeat(64) }
+          : { performed: true, command }
+      },
+    }
+    const actions = []
+
+    await focusAndCaptureNativeSmoke(client, actions, '/tmp/viewer-native-smoke.png')
+
+    assert.deepEqual(requests, [
+      { command: 'focus', payload: { target: { role: 'AXWindow' } } },
+      { command: 'capture', payload: { path: '/tmp/viewer-native-smoke.png' } },
+    ])
+    assert.equal(actions.length, 2)
   })
   it('keeps an organization drag held through capture and releases it exactly once', async () => {
     const commands = []

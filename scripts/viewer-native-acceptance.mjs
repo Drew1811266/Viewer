@@ -1202,6 +1202,15 @@ export function parseNativeAcceptanceCli(argv, { repoRoot }) {
   }
 }
 
+export function captureIdsForOptions(options) {
+  if (options.mode === 'id') return [options.selector]
+  if (options.mode === 'wave') {
+    return AUDIT_IDS.filter((id) => STATE_RECIPES.get(id).wave === options.selector)
+  }
+  if (options.mode === 'all') return [...AUDIT_IDS]
+  return []
+}
+
 export function validateCapturePreflight({
   options,
   dirty,
@@ -3270,7 +3279,11 @@ async function captureStateRecipe({ repoRoot, options, preflight, id }) {
 
 export async function runNativeAcceptanceCli(
   argv,
-  { repoRoot = path.resolve(fileURLToPath(new URL('..', import.meta.url))) } = {},
+  {
+    repoRoot = path.resolve(fileURLToPath(new URL('..', import.meta.url))),
+    collectPreflight = collectNativePreflight,
+    captureRecipe = captureStateRecipe,
+  } = {},
 ) {
   const options = parseNativeAcceptanceCli(argv, { repoRoot })
   if (options.mode === 'list') {
@@ -3280,7 +3293,9 @@ export async function runNativeAcceptanceCli(
       recipes: AUDIT_IDS.map((id) => STATE_RECIPES.get(id)),
     }
   }
-  const preflight = await collectNativePreflight({ repoRoot, options })
+  const captureIds = captureIdsForOptions(options)
+  for (const id of captureIds) buildStateEntryPlan(id)
+  const preflight = await collectPreflight({ repoRoot, options })
   if (options.mode === 'preflight') {
     return { mode: 'preflight', viewport: options.viewport, ...preflight }
   }
@@ -3288,7 +3303,7 @@ export async function runNativeAcceptanceCli(
     return {
       mode: 'capture',
       viewport: options.viewport,
-      ...(await captureStateRecipe({
+      ...(await captureRecipe({
         repoRoot,
         options,
         preflight,
@@ -3296,11 +3311,21 @@ export async function runNativeAcceptanceCli(
       })),
     }
   }
-  throw new AcceptanceError(
-    'STATE_RECIPE_EXECUTOR',
-    'State capture requires the recipe executor implemented by the next plan task',
-    { mode: options.mode, selector: options.selector },
-  )
+  const captures = []
+  for (const id of captureIds) {
+    const capture = await captureRecipe({ repoRoot, options, preflight, id })
+    captures.push({
+      id,
+      directory: capture.directory,
+      manifestPath: path.join(capture.directory, 'manifest.json'),
+    })
+  }
+  return {
+    mode: 'capture-batch',
+    viewport: options.viewport,
+    count: captures.length,
+    captures,
+  }
 }
 
 const invokedPath = process.argv[1] ? path.resolve(process.argv[1]) : ''

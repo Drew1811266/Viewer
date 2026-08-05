@@ -108,11 +108,11 @@ All commands below ran against the product baseline `c8e020e` and exited `0`:
    `pnpm accept:native -- --preflight --viewport 1440x900`.
 4. Capture and jointly inspect `OTH-01`, `OTH-02`, `OTH-03`, `THU-05`, `THU-06` and `THU-07` at
    `1440 × 900`. Fix and recapture any P0/P1/P2 mismatch before broad capture.
-5. Once the local geometry is accepted, capture all 39 Wave 1 rows at the current final product
+5. Once the local geometry is accepted, capture all 40 Wave 1 rows at the current final product
    commit at both required viewports and update the ledger only from current combined evidence.
 6. Implement real native entry plans for Wave 2–4 before attempting their captures. The controller
    lists all 89 recipes, but `buildStateEntryPlan` currently has real executable plans only for the
-   39 Wave 1 states and intentionally rejects the remaining IDs.
+   40 Wave 1 states and intentionally rejects the remaining IDs.
 7. Complete Wave 2–4 visual comparison, manual accessibility/platform checks and the full final
    command gate. Only then update every ledger row and the verification report, and only then claim
    visual completion.

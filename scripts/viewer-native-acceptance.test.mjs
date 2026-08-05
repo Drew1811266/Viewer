@@ -16,6 +16,7 @@ import path from 'node:path'
 import { describe, it } from 'node:test'
 import { promisify } from 'node:util'
 
+import * as nativeAcceptance from './viewer-native-acceptance.mjs'
 import {
   AUDIT_IDS,
   ALLOWED_COMMANDS,
@@ -1246,6 +1247,63 @@ describe('atlas reference evidence', () => {
 })
 
 describe('native acceptance CLI', () => {
+  it('selects every Wave 1 capture exactly once in ledger order', () => {
+    assert.equal(typeof nativeAcceptance.captureIdsForOptions, 'function')
+    assert.deepEqual(
+      nativeAcceptance.captureIdsForOptions({ mode: 'wave', selector: 1 }),
+      [
+        'LAU-01', 'LAU-02', 'LAU-03', 'LAU-04', 'LAU-05', 'LAU-06', 'LAU-07',
+        'LAU-08', 'LAU-09', 'SID-01', 'SID-02', 'SID-03', 'SID-04', 'STR-01',
+        'STR-02', 'STR-03', 'STR-04', 'STR-05', 'THU-01', 'THU-02', 'THU-03',
+        'THU-04', 'THU-05', 'THU-06', 'THU-07', 'OTH-01', 'OTH-02', 'OTH-03',
+        'SEA-01', 'SEA-02', 'SEA-03', 'SEA-04', 'SEA-05', 'FIL-01', 'FIL-02',
+        'FIL-03', 'FIL-04', 'MEN-01', 'MEN-02', 'MEN-03',
+      ],
+    )
+  })
+
+  it('executes a selected wave as one bounded ordered capture batch', async () => {
+    const captured = []
+    const preflight = { commit: 'a'.repeat(40), marker: 'verified-preflight' }
+    let result
+    let failure
+
+    try {
+      result = await nativeAcceptance.runNativeAcceptanceCli(
+        ['--wave', '1', '--viewport', '1440x900'],
+        {
+          repoRoot: actualRepoRoot,
+          collectPreflight: async ({ options }) => {
+            assert.equal(options.mode, 'wave')
+            return preflight
+          },
+          captureRecipe: async ({ id, preflight: receivedPreflight }) => {
+            assert.equal(receivedPreflight, preflight)
+            captured.push(id)
+            return {
+              directory: `/evidence/${id}`,
+              manifest: { id },
+            }
+          },
+        },
+      )
+    } catch (error) {
+      failure = error
+    }
+
+    assert.equal(failure, undefined)
+    assert.equal(result.mode, 'capture-batch')
+    assert.equal(result.viewport, '1440x900')
+    assert.equal(result.count, 40)
+    assert.deepEqual(captured, nativeAcceptance.captureIdsForOptions({ mode: 'wave', selector: 1 }))
+    assert.deepEqual(result.captures[0], {
+      id: 'LAU-01',
+      directory: '/evidence/LAU-01',
+      manifestPath: '/evidence/LAU-01/manifest.json',
+    })
+    assert.equal(result.captures.at(-1).id, 'MEN-03')
+  })
+
   it('parses every supported selector without performing work', () => {
     assert.deepEqual(parseNativeAcceptanceCli(['--list'], { repoRoot: actualRepoRoot }), {
       mode: 'list',

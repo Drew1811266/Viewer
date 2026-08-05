@@ -9,6 +9,8 @@
     "start:viewer": "node scripts/start-viewer-dev.mjs",
     "test:native-acceptance": "node --test scripts/viewer-native-acceptance.test.mjs",
     "accept:native": "node scripts/viewer-native-acceptance.mjs",
+    "test:visual-acceptance": "node --test scripts/viewer-visual-acceptance.test.mjs",
+    "accept:visual": "node scripts/viewer-visual-acceptance.mjs",
     "test:ui": "pnpm --dir ui test",
     "coverage:ui": "pnpm --dir ui test:coverage && node scripts/coverage-baseline.mjs --check target/coverage/ui/coverage-summary.json docs/quality/ui-coverage-baseline.json",
     "coverage:rust": "./scripts/run-rust-coverage.sh && node scripts/rust-coverage-baseline.mjs --check target/coverage/rust.json docs/quality/rust-coverage-baseline.json",
@@ -29,6 +31,7 @@
     "verify:clean": "node scripts/verify-clean.mjs"
   },
   "devDependencies": {
-    "@tauri-apps/cli": "^2.0.0"
+    "@tauri-apps/cli": "^2.0.0",
+    "playwright": "^1.62.1"
   }
 }

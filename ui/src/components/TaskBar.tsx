@@ -161,42 +161,52 @@ export default function TaskBar({
         </div>
         {surfaceExpanded && (
           <div className="task-list">
-            {visibleTasks.map((currentTask) => (
-              <div className="task-row" key={currentTask.id}>
-                <ViewerTaskSurface
-                  label={`${currentTask.label}进度`}
-                  current={finishedCount(currentTask)}
-                  total={currentTask.requested}
-                  indeterminate={currentTask.requested === 0 && currentTask.status === 'running'}
-                >
-                  {currentTask.label}
-                </ViewerTaskSurface>
-                <TaskActions
-                  task={currentTask}
-                  onCancel={onCancel}
-                  onDismiss={onDismiss}
-                  onShowResults={onShowResults}
-                />
-                <TaskOutcome task={currentTask} />
-                <div className="task-details">
-                  {currentTask.failures.length === 0 ? (
-                    <p>没有失败项目。</p>
-                  ) : (
-                    <ul>
-                      {currentTask.failures.map((failure) => (
-                        <li key={`${failure.item}:${failure.code}`}>
-                          <span>{failure.item}</span> <span>{failure.code}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
+            {visibleTasks.length === 1 ? (
+              <TaskDetails task={primaryTask} />
+            ) : (
+              visibleTasks.map((currentTask) => (
+                <div className="task-row" key={currentTask.id}>
+                  <ViewerTaskSurface
+                    label={`${currentTask.label}进度`}
+                    current={finishedCount(currentTask)}
+                    total={currentTask.requested}
+                    indeterminate={currentTask.requested === 0 && currentTask.status === 'running'}
+                  >
+                    {currentTask.label}
+                  </ViewerTaskSurface>
+                  <TaskActions
+                    task={currentTask}
+                    onCancel={onCancel}
+                    onDismiss={onDismiss}
+                    onShowResults={onShowResults}
+                  />
+                  <TaskOutcome task={currentTask} />
+                  <TaskDetails task={currentTask} />
                 </div>
-              </div>
-            ))}
+              ))
+            )}
           </div>
         )}
       </div>
     </aside>
+  )
+}
+
+function TaskDetails({ task }: { task: TaskFeedback }) {
+  return (
+    <div className="task-details">
+      {task.failures.length === 0 ? (
+        <p>没有失败项目。</p>
+      ) : (
+        <ul>
+          {task.failures.map((failure) => (
+            <li key={`${failure.item}:${failure.code}`}>
+              <span>{failure.item}</span> <span>{failure.code}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   )
 }
 

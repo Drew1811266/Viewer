@@ -103,6 +103,7 @@ describe('TaskBar', () => {
     expect(
       screen.getByRole('button', { name: '收起任务详情' }).querySelector('img'),
     ).toHaveAttribute('src', expect.stringContaining('chevron-down'))
+    expect(screen.getAllByText('扫描项目')).toHaveLength(1)
     expect(screen.getByText('catalog/a.jpg')).toBeVisible()
   })
 

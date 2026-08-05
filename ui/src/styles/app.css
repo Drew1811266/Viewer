@@ -1865,7 +1865,7 @@ summary,
 .settings-dialog-shell {
   display: grid;
   grid-template-columns: 160px minmax(0, 1fr);
-  min-height: 320px;
+  min-height: 196px;
 }
 
 .settings-dialog-navigation {

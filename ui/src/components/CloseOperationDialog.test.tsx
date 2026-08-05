@@ -17,6 +17,7 @@ describe('CloseOperationDialog', () => {
     )
 
     const dialog = screen.getByRole('dialog', { name: '文件操作尚未完成' })
+    expect(dialog).toHaveAttribute('data-size', 'medium')
     expect(dialog).toHaveTextContent('已经完成的项目不会撤销')
     expect(screen.getAllByRole('button').map((button) => button.textContent)).toEqual([
       '停留在当前项目',

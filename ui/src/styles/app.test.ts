@@ -189,6 +189,13 @@ describe('workspace style contracts', () => {
     })
   })
 
+  it('keeps the one-category settings shell compact instead of reserving empty rows', () => {
+    const rules = parseRules(appCss)
+    const shell = rules.find((rule) => rule.selector === '.settings-dialog-shell')
+
+    expect(shell?.declarations['min-height']).toBe('196px')
+  })
+
   it('groups preview transforms and keeps completion visibly labeled', () => {
     const rules = parseRules(viewerStyleSources)
     const segmented = rules.find((rule) => rule.selector === '.viewer-segmented-control')

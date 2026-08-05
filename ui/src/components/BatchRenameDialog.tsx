@@ -201,7 +201,8 @@ export default function BatchRenameDialog({
           <VirtualList
             items={preview.rows}
             rowHeight={52}
-            height={260}
+            height={Math.min(260, Math.max(52, preview.rows.length * 52))}
+            className="rename-preview-list"
             scrollToIndex={firstInvalidIndex >= 0 ? firstInvalidIndex : undefined}
             getKey={(row) => row.entityId}
             renderItem={(row, index) => (

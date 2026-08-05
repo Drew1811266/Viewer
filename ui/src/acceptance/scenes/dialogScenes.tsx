@@ -20,11 +20,7 @@ export const DIALOG_SCENES: AcceptanceSceneRegistry = {
       <SettingsDialog density="standard" error={null} onDensityChange={noOp} onClose={noOp} />
     </DialogBackdrop>
   ),
-  'DIA-02': () => (
-    <DialogBackdrop ready={() => dialogIsNamed('重命名文件')}>
-      <RenameDialog currentName="商品-01.jpg" busy={false} onConfirm={noOp} onCancel={noOp} />
-    </DialogBackdrop>
-  ),
+  'DIA-02': () => <SingleRenameScene />,
   'DIA-03': () => <BatchRenameScene />,
   'DIA-04': () => (
     <DialogBackdrop ready={() => document.querySelector('[aria-label="目标检查结果"]') !== null}>
@@ -58,7 +54,7 @@ export const DIALOG_SCENES: AcceptanceSceneRegistry = {
   ),
   'DIA-06': () => (
     <DialogBackdrop ready={() => dialogIsNamed('将文件移到废纸篓？')}>
-      <TrashConfirmation count={1} busy={false} onConfirm={noOp} onCancel={noOp} />
+      <TrashConfirmation count={3} busy={false} onConfirm={noOp} onCancel={noOp} />
     </DialogBackdrop>
   ),
   'DIA-07': () => (
@@ -73,14 +69,37 @@ function DialogBackdrop({ children, ready }: { children: ReactNode; ready(): boo
   return <AcceptanceProductScene ready={stableReady}>{children}</AcceptanceProductScene>
 }
 
+function SingleRenameScene() {
+  useEffect(() => {
+    const input = document.querySelector<HTMLInputElement>('#rename-file-form input')
+    if (input !== null && input.value !== 'A01-正面-01.jpg') {
+      setAcceptanceInputValue(input, 'A01-正面-01.jpg')
+    }
+  }, [])
+  const ready = useCallback(
+    () =>
+      dialogIsNamed('重命名文件') &&
+      document.querySelector<HTMLInputElement>('#rename-file-form input')?.value ===
+        'A01-正面-01.jpg' &&
+      document.querySelector('#rename-error') === null,
+    [],
+  )
+  return (
+    <DialogBackdrop ready={ready}>
+      <RenameDialog currentName="商品-01.jpg" busy={false} onConfirm={noOp} onCancel={noOp} />
+    </DialogBackdrop>
+  )
+}
+
 function BatchRenameScene() {
   useEffect(() => {
     const act = () => {
       const prefix = [...document.querySelectorAll<HTMLInputElement>('input')].find((input) =>
-        input.closest('label')?.textContent?.includes('前缀'),
+        input.closest('.viewer-field')?.textContent?.includes('前缀'),
       )
       if (prefix !== undefined && prefix.value !== '精选-') {
         setAcceptanceInputValue(prefix, '精选-')
+        queueMicrotask(act)
         return
       }
       const sequence = [...document.querySelectorAll<HTMLLabelElement>('label')]
@@ -88,6 +107,7 @@ function BatchRenameScene() {
         ?.querySelector<HTMLInputElement>('input')
       if (sequence !== undefined && sequence !== null && !sequence.checked) {
         sequence.click()
+        queueMicrotask(act)
         return
       }
       const update = [...document.querySelectorAll<HTMLButtonElement>('button')].find(
@@ -106,7 +126,11 @@ function BatchRenameScene() {
     return () => observer.disconnect()
   }, [])
   const ready = useCallback(
-    () => document.querySelector('[aria-label="批量重命名完整预览"]') !== null,
+    () =>
+      [...document.querySelectorAll<HTMLInputElement>('.viewer-field input')].some(
+        (input) =>
+          input.closest('.viewer-field')?.textContent?.includes('前缀') && input.value === '精选-',
+      ) && document.querySelector('[aria-label="批量重命名完整预览"]') !== null,
     [],
   )
   return (

@@ -20,6 +20,7 @@ export default function CloseOperationDialog({
   return (
     <ModalSheet
       title="文件操作尚未完成"
+      size="medium"
       onCancel={() => {
         if (!busy) onStay()
       }}

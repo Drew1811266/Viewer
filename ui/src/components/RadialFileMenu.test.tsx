@@ -547,6 +547,32 @@ describe('RadialFileMenu', () => {
     expect(action).toHaveBeenCalledWith('preview')
   })
 
+  it('commits a primary gesture when move and release arrive before React rerenders', () => {
+    const action = vi.fn()
+    render(
+      <RadialFileMenu
+        origin={{ x: 320, y: 240 }}
+        pointerId={7}
+        selectionCount={1}
+        model={model}
+        onAction={action}
+        onClose={vi.fn()}
+      />,
+    )
+
+    act(() => {
+      window.dispatchEvent(
+        new PointerEvent('pointermove', { pointerId: 7, clientX: 320, clientY: 150 }),
+      )
+      window.dispatchEvent(
+        new PointerEvent('pointerup', { pointerId: 7, clientX: 320, clientY: 150 }),
+      )
+    })
+
+    expect(action).toHaveBeenCalledOnce()
+    expect(action).toHaveBeenCalledWith('preview')
+  })
+
   it('cancels when a long right-button gesture returns to the center before release', () => {
     const action = vi.fn()
     const close = vi.fn()

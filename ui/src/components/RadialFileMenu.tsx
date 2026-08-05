@@ -67,6 +67,8 @@ export default function RadialFileMenu({
   const rootRef = useRef<HTMLDivElement>(null)
   const startPoint = useRef(origin)
   const maximumTravelled = useRef(0)
+  const pointerPrimaryIndexRef = useRef<number | null>(null)
+  const secondaryIndexRef = useRef<number | null>(null)
   const gesturePromoted = useRef(pointerId === null)
   const gestureCancelled = useRef(false)
   const expandedItem = expandedIndex === null ? null : (model[expandedIndex] ?? null)
@@ -116,12 +118,16 @@ export default function RadialFileMenu({
           ? null
           : secondaryIndexAt(point, fittedOrigin, secondaryAnchor, expandedItem.children.length)
       if (child !== null) {
+        pointerPrimaryIndexRef.current = expandedIndex
+        secondaryIndexRef.current = child
         setPointerPrimaryIndex(expandedIndex)
         setSecondaryIndex(child)
         return
       }
+      secondaryIndexRef.current = null
       setSecondaryIndex(null)
       const nextPrimary = primaryIndexAt(point, fittedOrigin)
+      pointerPrimaryIndexRef.current = nextPrimary
       setPointerPrimaryIndex(nextPrimary)
       if (nextPrimary === null) return
       setPrimaryIndex(nextPrimary)
@@ -139,13 +145,17 @@ export default function RadialFileMenu({
         setClickMode(true)
         return
       }
+      const currentSecondaryIndex = secondaryIndexRef.current
       const child =
-        secondaryIndex === null ? null : (expandedItem?.children?.[secondaryIndex] ?? null)
+        currentSecondaryIndex === null
+          ? null
+          : (expandedItem?.children?.[currentSecondaryIndex] ?? null)
       if (child !== null && !child.disabled && isLeaf(child)) {
         onAction(child.id)
         return
       }
-      const primary = pointerPrimaryIndex === null ? undefined : model[pointerPrimaryIndex]
+      const currentPrimaryIndex = pointerPrimaryIndexRef.current
+      const primary = currentPrimaryIndex === null ? undefined : model[currentPrimaryIndex]
       if (primary !== undefined && !primary.disabled && isLeaf(primary)) {
         onAction(primary.id)
         return

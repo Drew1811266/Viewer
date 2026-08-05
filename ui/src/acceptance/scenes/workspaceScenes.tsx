@@ -360,7 +360,7 @@ function workspaceRecipe(id: string): () => boolean {
           phase = 2
           return false
         }
-        return phase === 2 && document.querySelector('[role="group"]') === null
+        return phase === 2 && document.querySelector('.search-result-group') === null
       }
       if (id === 'MEN-01') {
         const view = namedElement('视图')

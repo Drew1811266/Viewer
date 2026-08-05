@@ -247,10 +247,7 @@ export function buildStateEntryPlan(id) {
   const openImagePreview = (name = '商品-02.jpg', preparation = []) => [
     ...preparation,
     ...openContent(),
-    { kind: 'click', target: image(name) },
-    { kind: 'assert', target: { name: '选择摘要' } },
-    { kind: 'focus', target: { name: '图片文件' } },
-    { kind: 'key', key: 'space', modifiers: [] },
+    { kind: 'doubleClick', target: image(name) },
   ]
   const selectImages = (count, density = count > 8 ? '紧凑' : '标准') => [
     ...openContent(density),

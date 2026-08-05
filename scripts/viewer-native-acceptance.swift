@@ -1605,6 +1605,9 @@ private final class LiveMacSystem: MacSystem {
             up.flags = flags
             down.post(tap: .cghidEventTap)
             up.post(tap: .cghidEventTap)
+            if clickIndex < clickCount {
+                usleep(50_000)
+            }
         }
     }
 

@@ -119,6 +119,7 @@ const directDependencies = [
   'objc2-foundation',
   'objc2-image-io',
   'objc2-quick-look-thumbnailing',
+  'playwright',
   'pulldown-cmark',
   'rusqlite',
   'serde',
@@ -1124,7 +1125,7 @@ test('the UI has one strict lint and format tool', async () => {
     preview: 'vite preview',
   })
   assert.equal(uiPackage.devDependencies['@biomejs/biome'], '2.5.5')
-  assert.deepEqual(config.files.includes, ['src/**/*.ts', 'src/**/*.tsx', 'vite.config.ts'])
+  assert.deepEqual(config.files.includes, ['src/**/*.ts', 'src/**/*.tsx', 'vite*.config.ts'])
   assert.deepEqual(config.formatter, {
     enabled: true,
     indentStyle: 'space',

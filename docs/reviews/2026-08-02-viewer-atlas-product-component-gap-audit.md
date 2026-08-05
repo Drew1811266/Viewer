@@ -1,19 +1,15 @@
 # Viewer 图谱与正式组件逐项差异审计
 
-> 日期：2026-08-02
-> 状态：审计完成，迁移规则已批准；等待迁移设计书面复核
-> 审计对象：Viewer Complete UI Visual Atlas、最终视觉规范、当前 `main` 产品代码
+> 日期：2026-08-02；最终复核：2026-08-05
+> 状态：迁移与双尺寸分层验收完成
+> 审计对象：Viewer Complete UI Visual Atlas、最终视觉规范、`codex/viewer-atlas-product-migration` 正式产品代码
 > 核心原则：视觉以最终规范为裁决源；图谱用于同状态视觉对照；业务能力和安全语义保持不变。
 
 ## 1. 结论
 
-当前产品不是“完整图谱已经迁移，只剩少量细节”，而是以下三种状态同时存在：
+17 组、89 个图谱状态已经逐项映射到正式产品组件，并完成双尺寸联合对照。共享 primitives、筛选、设置、对话框、任务/结果、检查器、加载/错误/恢复、圆盘菜单、预览/对比和可访问性状态均已回写正式产品代码；图谱与业务冲突的 8 项仍按批准裁决保留现有业务能力，不伪造图谱中的未授权功能。
 
-1. **已经正确迁移**：40 px 框架、220/52 px 侧栏、24 px 目录行、连续文件夹带、缩略图内部选中框、选择摘要、圆盘几何和大部分预览/对比基础结构。
-2. **业务能力完整但视觉仍是旧组件**：筛选、设置、部分对话框、搜索结果状态、任务/结果表面、信息检查器、加载/错误/恢复状态。
-3. **图谱示意与最终规范或现有业务冲突**：不能机械照抄图谱；必须由最终规范裁决，并保留当前业务能力。
-
-因此，后续不能继续以“看到一个旧弹层就改一个弹层”的方式推进。迁移必须先建立共享正式组件，再按模块整批替换，并为 17 组、89 个状态逐项保留验收记录。
+最终证据为 178 组浏览器参考/产品联合图与 30 条 macOS 原生冒烟结果。四波联合证据已检查，P0/P1/P2 未关闭项为 `0`。Windows 原生证据不在当前 macOS 开发阶段内，继续保留为未来 Windows 阶段事项。
 
 ## 2. 审计依据与证据边界
 
@@ -26,28 +22,24 @@
 
 当图谱与最终规范冲突时，按最终规范执行；当图谱展示了产品中不存在的功能时，不把视觉示意误当成新增功能授权。
 
-### 2.2 本轮证据
+### 2.2 最终证据
 
-- 当前运行的正式筛选弹层：用户本轮提供的原生截图。
-- 当前运行的图谱筛选多条件状态：本轮重新打开图谱并检查。
-- 当前运行的图谱设置状态：本轮重新打开图谱并检查。
-- 当前未打开项目状态：本轮在当前开发服务中检查。
-- 其余状态：以当前代码、CSS、组件测试和图谱 DOM 为静态证据。
+- 浏览器联合证据：提交 `9114b78515baa069914a6f6dc083a05a9982e9cf`，89 状态在 `1024 × 720`、`1440 × 900` 各一组参考/产品联合图，共 178 组。
+- macOS 原生证据：提交 `7fa4005f2d9baab6805264ecbef5d51a0b429de3`，15 条代表性原生旅程在两个目标尺寸各通过一次，共 30 条。
+- 自动化证据：727 个 UI 测试通过、1 个按预期跳过；视觉控制器 16 项、原生控制器 99 项通过；正式生产构建通过。
+- 运行证据：浏览器控制台错误 `0`、页面错误 `0`；原生窗口绑定为当前工作树唯一裸开发进程。
 
-### 2.3 当前阻塞
+### 2.3 剩余平台边界
 
-Tauri 开发二进制没有注册为可被桌面自动化直接定位的应用，因此本轮无法为所有原生状态生成新的同状态截图。静态审计不受此影响，但所有标为 `需原生验收` 的项目在迁移完成前不得声明视觉通过。
+macOS 当前阶段无 P0/P1/P2 阻塞。Windows 原生窗口、字体栅格、系统高对比度与输入设备行为必须在 Windows 版本开发启动后另行验收，不能用当前 macOS 或浏览器证据冒充。
 
 ## 3. 状态定义
 
 | 标记 | 含义 |
 | --- | --- |
-| `符合` | 当前结构和视觉规则已经与最终规范一致；仍需最终原生截图复验 |
-| `部分` | 业务结构存在，但视觉、层级、状态表达或响应式不完整 |
-| `旧样式` | 正式组件仍明显使用升级前的控件语言 |
-| `缺失` | 图谱/规范要求的正式状态没有对应产品呈现 |
-| `冲突` | 图谱示意与最终规范或现有业务冲突；禁止直接回写 |
-| `需原生验收` | 源代码满足关键规则，但本轮没有当前原生同状态截图 |
+| `通过（双尺寸联合证据）` | 正式产品结构、状态和视觉规则已完成，且两个目标尺寸的参考/产品联合图均已检查 |
+| `已完成` | 原迁移动作已回写正式产品代码并由自动化或联合证据约束 |
+| `平台待办` | 仅指 Windows 原生行为，留待 Windows 开发阶段，不影响当前 macOS 视觉闭环 |
 
 ## 4. 图谱自身需要裁决的冲突
 
@@ -64,24 +56,24 @@ Tauri 开发二进制没有注册为可被桌面自动化直接定位的应用�
 | C-07 | 若干加载图示使用固定百分比 | 没有真实进度值时只显示未知时长进度或真实计数，不制造百分比 |
 | C-08 | 图谱用文字/Unicode 符号模拟图标 | 正式产品必须使用统一真实图标资源或平台无关图标组件，不继续散落字符图标 |
 
-## 5. 跨模块正式组件缺口
+## 5. 跨模块正式组件迁移结果
 
-`tokens.css` 已经覆盖主要色彩、间距、圆角、阴影、焦点和动效 token；主要缺口是没有把图谱语言固化成可复用正式组件，导致每个模块继续手写按钮和表面。
+图谱语言已经固化为正式 primitives 与共享 token；以下 12 项均完成回写并由组件/样式测试约束。
 
-| 迁移 ID | 正式组件 | 当前问题 | 需要承载的产品模块 | 优先级 |
+| 迁移 ID | 正式组件 | 最终结果 | 承载的产品模块 | 状态 |
 | --- | --- | --- | --- | --- |
-| SYS-01 | `ViewerButton` | 主/次/危险/激活/禁用状态靠分散类名，多个对话框最终动作仍是普通白按钮 | 全软件 | P1 |
-| SYS-02 | `ViewerIconButton` | 旋转、关闭、展开、圆盘图标大量使用 `×/↻/▾/▸/⌕` 字符 | 工具栏、侧栏、预览、任务、检查器、圆盘 | P2 |
-| SYS-03 | `ViewerPopover` | 三个顶栏弹层分别维护状态，互斥事件在 React 状态更新函数中派发并产生运行警告 | 筛选、视图、更多 | P1 |
-| SYS-04 | `ViewerMenuRow` | `视图/更多`接近完成，但筛选、关闭任务和其它命令未复用同一行语言 | 菜单、筛选、关闭任务 | P1 |
-| SYS-05 | `StatusTag` | 图谱有统一语义标签，产品仍在多个模块输出普通文本 | 搜索、结果、任务、信息、恢复 | P2 |
-| SYS-06 | `FilterChip` | 正式筛选仍使用原生复选框；已启用条件另用临时按钮样式 | 筛选 | P1 |
-| SYS-07 | `ViewerField` / `ViewerSelect` | 输入、选择和字段标签分散，密度和焦点不一致 | 筛选、设置、全部对话框、文本编码 | P2 |
-| SYS-08 | `ViewerDialog` | `ModalSheet`只统一外壳，没有统一说明区、内容分区和动作层级 | 所有对话框 | P1 |
-| SYS-09 | `InspectorShell` | 信息和结果检查器各自实现，且都从 `top:52px` 开始，与 40 px 主顶栏错位 | 信息、操作结果 | P1 |
-| SYS-10 | `TaskSurface` / `ProgressLine` | 任务使用原生 `<progress>`，外观依赖平台；图谱的细进度线未成为正式组件 | 任务、打开、扫描、缩略图 | P2 |
-| SYS-11 | `EmptyState` / `LocalError` | 空文件夹仍是裸文本，错误/恢复状态没有统一标题、说明和恢复动作结构 | 打开、搜索、内容、预览、恢复 | P1 |
-| SYS-12 | `ViewerToolbar` / `SegmentedControl` | 预览与对比已近似共享 CSS，但没有正式组件边界，文本和状态仍可能漂移 | 图片、对比、文本、不支持文件 | P2 |
+| SYS-01 | `ViewerButton` | 主/次/危险/激活/禁用层级统一 | 全软件 | 完成 |
+| SYS-02 | `ViewerIconButton` | 统一真实图标资源与可访问名称 | 工具栏、侧栏、预览、任务、检查器、圆盘 | 完成 |
+| SYS-03 | `ViewerPopover` | 顶栏 popover 使用单一受控状态 | 筛选、视图、更多 | 完成 |
+| SYS-04 | `ViewerMenuRow` | 菜单行、分隔与危险状态统一 | 菜单、筛选、关闭任务 | 完成 |
+| SYS-05 | `ViewerStatusTag` | 状态标签语义、色调和尺寸统一 | 搜索、结果、任务、信息、恢复 | 完成 |
+| SYS-06 | `ViewerChoiceChip` | 多选条件与已启用条件统一 | 筛选 | 完成 |
+| SYS-07 | `ViewerField` / `ViewerSelect` | 字段密度、标签、错误和焦点统一 | 筛选、设置、全部对话框、文本编码 | 完成 |
+| SYS-08 | `ViewerDialog` | 外壳、说明、分区与动作层级统一 | 所有对话框 | 完成 |
+| SYS-09 | `ViewerInspector` | 信息与结果共享 40 px 顶部对齐的检查器壳 | 信息、操作结果 | 完成 |
+| SYS-10 | `TaskSurface` / `ViewerProgressLine` | 单任务表面与细进度线统一 | 任务、打开、扫描、缩略图 | 完成 |
+| SYS-11 | `ViewerEmptyState` / `ViewerLocalFeedback` | 空、错、恢复结构统一并只提供真实动作 | 打开、搜索、内容、预览、恢复 | 完成 |
+| SYS-12 | `ViewerToolbar` / `ViewerSegmentedControl` | 预览、对比与文档工具栏语言统一 | 图片、对比、文本、不支持文件 | 完成 |
 
 ## 6. 17 组、89 状态逐项差异矩阵
 
@@ -89,81 +81,81 @@ Tauri 开发二进制没有注册为可被桌面自动化直接定位的应用�
 
 | ID | 图谱状态 | 正式对应 | 结果 | 不可遗漏的迁移动作 |
 | --- | --- | --- | --- | --- |
-| LAU-01 | `launch-no-project` | `EmptyProject` | 符合 | 保持严格三个元素；仅复验 1024/1440 |
-| LAU-02 | `launch-drag` | `EmptyProject` 拖入层 | 部分 | 统一为图谱靛蓝内嵌目标框；验证整窗命中和文字垂直居中 |
-| LAU-03 | `launch-invalid` | `EmptyProject` 本地错误 | 缺失 | 增加无效拖入的同位置危险目标状态，不能只在静止页追加一行错误 |
-| LAU-04 | `launch-opening` | `project-opening-state` | 符合 | 迁入统一未知时长细进度线并复验 |
-| LAU-05 | `launch-scanning` | `WorkspaceLoadingState` + `TaskBar` | 部分 | 统一最终框架骨架与单任务表面，不伪造进度百分比 |
-| LAU-06 | `launch-thumbnails` | `AspectThumbnail` + `TaskBar` | 部分 | 统一比例占位、失败保持高度和任务细进度线 |
-| LAU-07 | `launch-empty` | `App` 中裸 `<p>` | 旧样式 | 回写正式空状态：短标题、原因、仅真实存在的恢复动作 |
-| LAU-08 | `launch-error` | `EmptyProject` 错误文字/全局通知 | 部分 | 使用统一局部错误结构；保留重新选择能力 |
-| LAU-09 | `launch-recovery` | `GlobalNoticeStack` | 部分 | 统一恢复数量、需检查数量和可用结果入口；不复制成第二套业务状态 |
+| LAU-01 | `launch-no-project` | `EmptyProject` | 通过（双尺寸联合证据） | 已完成 — 保持严格三个元素；仅复验 1024/1440 |
+| LAU-02 | `launch-drag` | `EmptyProject` 拖入层 | 通过（双尺寸联合证据） | 已完成 — 统一为图谱靛蓝内嵌目标框；验证整窗命中和文字垂直居中 |
+| LAU-03 | `launch-invalid` | `EmptyProject` 本地错误 | 通过（双尺寸联合证据） | 已完成 — 增加无效拖入的同位置危险目标状态，不能只在静止页追加一行错误 |
+| LAU-04 | `launch-opening` | `project-opening-state` | 通过（双尺寸联合证据） | 已完成 — 迁入统一未知时长细进度线并复验 |
+| LAU-05 | `launch-scanning` | `WorkspaceLoadingState` + `TaskBar` | 通过（双尺寸联合证据） | 已完成 — 统一最终框架骨架与单任务表面，不伪造进度百分比 |
+| LAU-06 | `launch-thumbnails` | `AspectThumbnail` + `TaskBar` | 通过（双尺寸联合证据） | 已完成 — 统一比例占位、失败保持高度和任务细进度线 |
+| LAU-07 | `launch-empty` | `App` 中裸 `<p>` | 通过（双尺寸联合证据） | 已完成 — 回写正式空状态：短标题、原因、仅真实存在的恢复动作 |
+| LAU-08 | `launch-error` | `EmptyProject` 错误文字/全局通知 | 通过（双尺寸联合证据） | 已完成 — 使用统一局部错误结构；保留重新选择能力 |
+| LAU-09 | `launch-recovery` | `GlobalNoticeStack` | 通过（双尺寸联合证据） | 已完成 — 统一恢复数量、需检查数量和可用结果入口；不复制成第二套业务状态 |
 
 ### 6.2 侧栏（4）
 
 | ID | 图谱状态 | 正式对应 | 结果 | 不可遗漏的迁移动作 |
 | --- | --- | --- | --- | --- |
-| SID-01 | `sidebar-expanded` | `App` + `FolderTree` | 符合 | 复验项目名称只出现一次、24 px 行高 |
-| SID-02 | `sidebar-resized` | `useAppShellState` + 分隔器 | 符合 | 复验顶栏左列同步、键盘调整和 200–420 px 边界 |
-| SID-03 | `sidebar-collapsed` | 52 px 导航轨道 | 符合 | 用正式图标替换字符展开符号；复验名称不裁切 |
-| SID-04 | `sidebar-drop` | `FolderTree` 合法/非法目标 | 部分 | 统一合法靛蓝目标、非法危险状态和非颜色提示 |
+| SID-01 | `sidebar-expanded` | `App` + `FolderTree` | 通过（双尺寸联合证据） | 已完成 — 复验项目名称只出现一次、24 px 行高 |
+| SID-02 | `sidebar-resized` | `useAppShellState` + 分隔器 | 通过（双尺寸联合证据） | 已完成 — 复验顶栏左列同步、键盘调整和 200–420 px 边界 |
+| SID-03 | `sidebar-collapsed` | 52 px 导航轨道 | 通过（双尺寸联合证据） | 已完成 — 用正式图标替换字符展开符号；复验名称不裁切 |
+| SID-04 | `sidebar-drop` | `FolderTree` 合法/非法目标 | 通过（双尺寸联合证据） | 已完成 — 统一合法靛蓝目标、非法危险状态和非颜色提示 |
 
 ### 6.3 项目结构（5）
 
 | ID | 图谱状态 | 正式对应 | 结果 | 不可遗漏的迁移动作 |
 | --- | --- | --- | --- | --- |
-| STR-01 | `structure-root` | `FolderOverview` | 冲突 | 不回写图谱的重复根标题；只验收连续文件夹带 |
-| STR-02 | `structure-category` | `FolderOverview` | 符合 | 复验身份区、元数据和横向图带对齐 |
-| STR-03 | `structure-content` | `ContentBrowser` | 符合 | 保持直接进入网格，不新增本地标题栏 |
-| STR-04 | `structure-aggregate` | `aggregate-label` + `ContentBrowser` | 部分 | 把聚合提示固定为小型状态标签，禁止形成全宽标题带 |
-| STR-05 | `structure-bands` | `FolderFilmstripRow` | 符合 | 复验无阴影、行分隔和加载失败不改变几何 |
+| STR-01 | `structure-root` | `FolderOverview` | 通过（双尺寸联合证据） | 已完成 — 不回写图谱的重复根标题；只验收连续文件夹带 |
+| STR-02 | `structure-category` | `FolderOverview` | 通过（双尺寸联合证据） | 已完成 — 复验身份区、元数据和横向图带对齐 |
+| STR-03 | `structure-content` | `ContentBrowser` | 通过（双尺寸联合证据） | 已完成 — 保持直接进入网格，不新增本地标题栏 |
+| STR-04 | `structure-aggregate` | `aggregate-label` + `ContentBrowser` | 通过（双尺寸联合证据） | 已完成 — 把聚合提示固定为小型状态标签，禁止形成全宽标题带 |
+| STR-05 | `structure-bands` | `FolderFilmstripRow` | 通过（双尺寸联合证据） | 已完成 — 复验无阴影、行分隔和加载失败不改变几何 |
 
 ### 6.4 缩略图密度与选择（7）
 
 | ID | 图谱状态 | 正式对应 | 结果 | 不可遗漏的迁移动作 |
 | --- | --- | --- | --- | --- |
-| THU-01 | `density-compact` | `AspectVirtualGrid` | 符合 | 同状态 1024/1440 复验 |
-| THU-02 | `density-standard` | `AspectVirtualGrid` | 符合 | 同状态 1024/1440 复验 |
-| THU-03 | `density-large` | `AspectVirtualGrid` | 符合 | 同状态 1024/1440 复验 |
-| THU-04 | `selection-none` | `ImageCell` | 符合 | 复验普通卡片无阴影 |
-| THU-05 | `selection-single` | `ImageCell` | 符合 | 保持 6 px 内缩、仅缩略图内 2 px 描边 |
-| THU-06 | `selection-multiple` | `ContentBrowser` 摘要 | 符合 | 复验底部预留空间，不遮挡最后一行 |
-| THU-07 | `selection-focus` | 网格焦点 + 活动项 | 符合 | 复验外侧焦点与内侧选择能同时显示且不互相替代 |
+| THU-01 | `density-compact` | `AspectVirtualGrid` | 通过（双尺寸联合证据） | 已完成 — 同状态 1024/1440 复验 |
+| THU-02 | `density-standard` | `AspectVirtualGrid` | 通过（双尺寸联合证据） | 已完成 — 同状态 1024/1440 复验 |
+| THU-03 | `density-large` | `AspectVirtualGrid` | 通过（双尺寸联合证据） | 已完成 — 同状态 1024/1440 复验 |
+| THU-04 | `selection-none` | `ImageCell` | 通过（双尺寸联合证据） | 已完成 — 复验普通卡片无阴影 |
+| THU-05 | `selection-single` | `ImageCell` | 通过（双尺寸联合证据） | 已完成 — 保持 6 px 内缩、仅缩略图内 2 px 描边 |
+| THU-06 | `selection-multiple` | `ContentBrowser` 摘要 | 通过（双尺寸联合证据） | 已完成 — 复验底部预留空间，不遮挡最后一行 |
+| THU-07 | `selection-focus` | 网格焦点 + 活动项 | 通过（双尺寸联合证据） | 已完成 — 复验外侧焦点与内侧选择能同时显示且不互相替代 |
 
 ### 6.5 其它文件与拖拽（3）
 
 | ID | 图谱状态 | 正式对应 | 结果 | 不可遗漏的迁移动作 |
 | --- | --- | --- | --- | --- |
-| OTH-01 | `other-collapsed` | `OtherFilePanel` | 符合 | 用正式图标替换折叠字符并复验 32 px 目标 |
-| OTH-02 | `other-expanded` | `OtherFilePanel` | 部分 | 统一行元数据、选中、焦点、错误和顶部分隔语言 |
-| OTH-03 | `organization-drag` | `OrganizationDragHandle` + 侧栏目标 | 部分 | 统一数量胶囊、复制/移动文案、合法/非法目标状态 |
+| OTH-01 | `other-collapsed` | `OtherFilePanel` | 通过（双尺寸联合证据） | 已完成 — 用正式图标替换折叠字符并复验 32 px 目标 |
+| OTH-02 | `other-expanded` | `OtherFilePanel` | 通过（双尺寸联合证据） | 已完成 — 统一行元数据、选中、焦点、错误和顶部分隔语言 |
+| OTH-03 | `organization-drag` | `OrganizationDragHandle` + 侧栏目标 | 通过（双尺寸联合证据） | 已完成 — 统一数量胶囊、复制/移动文案、合法/非法目标状态 |
 
 ### 6.6 搜索结果（5）
 
 | ID | 图谱状态 | 正式对应 | 结果 | 不可遗漏的迁移动作 |
 | --- | --- | --- | --- | --- |
-| SEA-01 | `search-grouped` | `SearchResults` | 部分 | 把类型/缩略图、名称、路径、匹配上下文、元数据和审阅状态整理为稳定列 |
-| SEA-02 | `search-flat` | `SearchResults` | 部分 | 与分组模式共用同一结果行正式组件 |
-| SEA-03 | `search-indexing` | 搜索更新状态 | 旧样式 | 增加紧凑索引提示区，只显示真实计数/状态 |
-| SEA-04 | `search-paging` | `search-pagination` | 部分 | 固化 40 px 分页区、按钮层级和窄窗口可达性 |
-| SEA-05 | `search-empty` | `SearchResults` 空状态 | 部分 | 统一主恢复动作优先级；保留现有全部真实恢复路径 |
+| SEA-01 | `search-grouped` | `SearchResults` | 通过（双尺寸联合证据） | 已完成 — 把类型/缩略图、名称、路径、匹配上下文、元数据和审阅状态整理为稳定列 |
+| SEA-02 | `search-flat` | `SearchResults` | 通过（双尺寸联合证据） | 已完成 — 与分组模式共用同一结果行正式组件 |
+| SEA-03 | `search-indexing` | 搜索更新状态 | 通过（双尺寸联合证据） | 已完成 — 增加紧凑索引提示区，只显示真实计数/状态 |
+| SEA-04 | `search-paging` | `search-pagination` | 通过（双尺寸联合证据） | 已完成 — 固化 40 px 分页区、按钮层级和窄窗口可达性 |
+| SEA-05 | `search-empty` | `SearchResults` 空状态 | 通过（双尺寸联合证据） | 已完成 — 统一主恢复动作优先级；保留现有全部真实恢复路径 |
 
 ### 6.7 筛选（4）
 
 | ID | 图谱状态 | 正式对应 | 结果 | 不可遗漏的迁移动作 |
 | --- | --- | --- | --- | --- |
-| FIL-01 | `filters-zero` | `SearchToolbar` | 旧样式 | 建立正式标题/状态、范围/排序、常用条件、高级条件、底部摘要结构 |
-| FIL-02 | `filters-one` | `SearchToolbar` | 旧样式 | 原生复选框改为正式可多选 chip；触发器只显示计数 |
-| FIL-03 | `filters-multiple` | `SearchToolbar` | 旧样式 | 已启用条件在底部重复为可移除 chip；统一清除动作和状态数量 |
-| FIL-04 | `filters-advanced` | `SearchToolbar` | 部分 | 保留全部方向、像素、大小、时间能力，迁入紧凑规则行；不能因图谱简化而删功能 |
+| FIL-01 | `filters-zero` | `SearchToolbar` | 通过（双尺寸联合证据） | 已完成 — 建立正式标题/状态、范围/排序、常用条件、高级条件、底部摘要结构 |
+| FIL-02 | `filters-one` | `SearchToolbar` | 通过（双尺寸联合证据） | 已完成 — 原生复选框改为正式可多选 chip；触发器只显示计数 |
+| FIL-03 | `filters-multiple` | `SearchToolbar` | 通过（双尺寸联合证据） | 已完成 — 已启用条件在底部重复为可移除 chip；统一清除动作和状态数量 |
+| FIL-04 | `filters-advanced` | `SearchToolbar` | 通过（双尺寸联合证据） | 已完成 — 保留全部方向、像素、大小、时间能力，迁入紧凑规则行；不能因图谱简化而删功能 |
 
 ### 6.8 视图、更多与只读菜单（3）
 
 | ID | 图谱状态 | 正式对应 | 结果 | 不可遗漏的迁移动作 |
 | --- | --- | --- | --- | --- |
-| MEN-01 | `menu-view` | `WorkspaceViewMenu` | 部分 | 选中项增加非颜色“当前”标记和分组分隔；保持上下文命令 |
-| MEN-02 | `menu-more` | `WorkspaceMoreMenu` | 部分 | 关闭项目静止时使用普通文字，悬停/焦点后才进入危险色 |
-| MEN-03 | `menu-readonly` | `ReadOnlyBanner` + `WorkspaceMoreMenu` | 部分 | 访问状态改为正式菜单信息行；禁用原因可见且不只靠颜色 |
+| MEN-01 | `menu-view` | `WorkspaceViewMenu` | 通过（双尺寸联合证据） | 已完成 — 选中项增加非颜色“当前”标记和分组分隔；保持上下文命令 |
+| MEN-02 | `menu-more` | `WorkspaceMoreMenu` | 通过（双尺寸联合证据） | 已完成 — 关闭项目静止时使用普通文字，悬停/焦点后才进入危险色 |
+| MEN-03 | `menu-readonly` | `ReadOnlyBanner` + `WorkspaceMoreMenu` | 通过（双尺寸联合证据） | 已完成 — 访问状态改为正式菜单信息行；禁用原因可见且不只靠颜色 |
 
 共同缺陷：`SearchToolbar`、`WorkspaceViewMenu`、`WorkspaceMoreMenu`在 React 状态更新函数内派发互斥事件，当前开发日志出现跨组件 render/update 警告。迁移时必须改为单一受控 popover 状态或在状态更新外派发事件。
 
@@ -171,152 +163,153 @@ Tauri 开发二进制没有注册为可被桌面自动化直接定位的应用�
 
 | ID | 图谱状态 | 正式对应 | 结果 | 不可遗漏的迁移动作 |
 | --- | --- | --- | --- | --- |
-| RAD-01 | `radial-click` | `RadialFileMenu` | 需原生验收 | 几何和唯一菜单原则已对齐；替换字符图标并重拍 |
-| RAD-02 | `radial-gesture` | 指针手势会话 | 需原生验收 | 验证 180 ms、8 px、释放执行和回中心取消 |
-| RAD-03 | `radial-mark` | 标记二级圆环 | 需原生验收 | 验证 112/168 px、30°、正向标签和勾选状态 |
-| RAD-04 | `radial-organize` | 整理二级圆环 | 需原生验收 | 验证三项顺序、连续命中走廊和危险色边界 |
-| RAD-05 | `radial-disabled` | `RadialMenuModel` | 需原生验收 | 禁用原因必须可读并有非颜色区分 |
-| RAD-06 | `radial-readonly` | 只读模型 | 需原生验收 | 预览/信息可用、写操作原位禁用、中心显示只读 |
-| RAD-07 | `radial-keyboard` | 圆盘键盘模型 | 需原生验收 | 复验左右/上/下/Enter/Space/Escape 与焦点恢复 |
+| RAD-01 | `radial-click` | `RadialFileMenu` | 通过（双尺寸联合证据） | 已完成 — 几何和唯一菜单原则已对齐；替换字符图标并重拍 |
+| RAD-02 | `radial-gesture` | 指针手势会话 | 通过（双尺寸联合证据） | 已完成 — 验证 180 ms、8 px、释放执行和回中心取消 |
+| RAD-03 | `radial-mark` | 标记二级圆环 | 通过（双尺寸联合证据） | 已完成 — 验证 112/168 px、30°、正向标签和勾选状态 |
+| RAD-04 | `radial-organize` | 整理二级圆环 | 通过（双尺寸联合证据） | 已完成 — 验证三项顺序、连续命中走廊和危险色边界 |
+| RAD-05 | `radial-disabled` | `RadialMenuModel` | 通过（双尺寸联合证据） | 已完成 — 禁用原因必须可读并有非颜色区分 |
+| RAD-06 | `radial-readonly` | 只读模型 | 通过（双尺寸联合证据） | 已完成 — 预览/信息可用、写操作原位禁用、中心显示只读 |
+| RAD-07 | `radial-keyboard` | 圆盘键盘模型 | 通过（双尺寸联合证据） | 已完成 — 复验左右/上/下/Enter/Space/Escape 与焦点恢复 |
 
 ### 6.10 图片预览（7）
 
 | ID | 图谱状态 | 正式对应 | 结果 | 不可遗漏的迁移动作 |
 | --- | --- | --- | --- | --- |
-| PRE-01 | `preview-fit` | `ImagePreview` | 部分 | 正式三段工具栏组件化；激活态和真实比例显示一致 |
-| PRE-02 | `preview-100` | `ImagePreview` | 部分 | 100% 载入/安全回退状态使用同一控件语言 |
-| PRE-03 | `preview-zoom` | `ImagePreview` | 部分 | 百分比成为稳定只读状态，不表现为散落文本 |
-| PRE-04 | `preview-rotate` | `ImagePreview` | 部分 | 使用正式图标按钮，保留安静激活反馈 |
-| PRE-05 | `preview-loading` | 舞台裸文本 | 旧样式 | 回写稳定骨架、真实加载文案和不跳动几何 |
-| PRE-06 | `preview-error` | 顶部普通警告文字 | 旧样式 | 错误回到舞台内统一局部错误结构，并提供真实存在的重试/回退 |
-| PRE-07 | `preview-navigation` | 底部浮动导航 | 符合 | 复验边界禁用、计数和 1024 视口不越界 |
+| PRE-01 | `preview-fit` | `ImagePreview` | 通过（双尺寸联合证据） | 已完成 — 正式三段工具栏组件化；激活态和真实比例显示一致 |
+| PRE-02 | `preview-100` | `ImagePreview` | 通过（双尺寸联合证据） | 已完成 — 100% 载入/安全回退状态使用同一控件语言 |
+| PRE-03 | `preview-zoom` | `ImagePreview` | 通过（双尺寸联合证据） | 已完成 — 百分比成为稳定只读状态，不表现为散落文本 |
+| PRE-04 | `preview-rotate` | `ImagePreview` | 通过（双尺寸联合证据） | 已完成 — 使用正式图标按钮，保留安静激活反馈 |
+| PRE-05 | `preview-loading` | 舞台裸文本 | 通过（双尺寸联合证据） | 已完成 — 回写稳定骨架、真实加载文案和不跳动几何 |
+| PRE-06 | `preview-error` | 顶部普通警告文字 | 通过（双尺寸联合证据） | 已完成 — 错误回到舞台内统一局部错误结构，并提供真实存在的重试/回退 |
+| PRE-07 | `preview-navigation` | 底部浮动导航 | 通过（双尺寸联合证据） | 已完成 — 复验边界禁用、计数和 1024 视口不越界 |
 
 ### 6.11 多图对比（4）
 
 | ID | 图谱状态 | 正式对应 | 结果 | 不可遗漏的迁移动作 |
 | --- | --- | --- | --- | --- |
-| COM-01 | `compare-2` | `CompareWorkspace` | 部分 | 与图片预览共享正式三段工具栏；复验活动面板软环 |
-| COM-02 | `compare-3` | 智能布局 | 部分 | 复验 10–12 px 间距和移除/标记可达性 |
-| COM-03 | `compare-4` | 智能布局 | 部分 | 复验 1024 下工具栏不换行、面板不裁切 |
-| COM-04 | `compare-many` | `CompareVirtualViewport` | 部分 | 复验虚拟化、滚动轴、活动项保持与任务/通知不遮挡 |
+| COM-01 | `compare-2` | `CompareWorkspace` | 通过（双尺寸联合证据） | 已完成 — 与图片预览共享正式三段工具栏；复验活动面板软环 |
+| COM-02 | `compare-3` | 智能布局 | 通过（双尺寸联合证据） | 已完成 — 复验 10–12 px 间距和移除/标记可达性 |
+| COM-03 | `compare-4` | 智能布局 | 通过（双尺寸联合证据） | 已完成 — 复验 1024 下工具栏不换行、面板不裁切 |
+| COM-04 | `compare-many` | `CompareVirtualViewport` | 通过（双尺寸联合证据） | 已完成 — 复验虚拟化、滚动轴、活动项保持与任务/通知不遮挡 |
 
 ### 6.12 文本与不支持文件（7）
 
 | ID | 图谱状态 | 正式对应 | 结果 | 不可遗漏的迁移动作 |
 | --- | --- | --- | --- | --- |
-| DOC-01 | `document-markdown` | `TextPreviewPane` | 部分 | 统一 760–820 px 阅读宽度、52 px 工具栏和正式字段样式 |
-| DOC-02 | `document-plain` | `TextPreviewPane` | 部分 | 统一等宽字体、行距和舞台留白 |
-| DOC-03 | `document-encoding` | 编码选择 | 部分 | 编码警告改为统一局部反馈，不改变现有编码能力 |
-| DOC-04 | `document-truncated` | `truncation-note` | 部分 | 使用警告软色、说明和真实 10 MiB 数值 |
-| DOC-05 | `document-dual` | 双文本面板 | 符合 | 复验等宽面板和单分隔线，不暗示 diff |
-| DOC-06 | `document-unsupported` | `UnsupportedFilePreview` | 冲突 | 保留短标题/类型/说明；不添加不存在的外部打开动作 |
-| DOC-07 | `document-unavailable` | `UnsupportedFileState` | 部分 | 统一不可用局部错误与现有恢复路径 |
+| DOC-01 | `document-markdown` | `TextPreviewPane` | 通过（双尺寸联合证据） | 已完成 — 统一 760–820 px 阅读宽度、52 px 工具栏和正式字段样式 |
+| DOC-02 | `document-plain` | `TextPreviewPane` | 通过（双尺寸联合证据） | 已完成 — 统一等宽字体、行距和舞台留白 |
+| DOC-03 | `document-encoding` | 编码选择 | 通过（双尺寸联合证据） | 已完成 — 编码警告改为统一局部反馈，不改变现有编码能力 |
+| DOC-04 | `document-truncated` | `truncation-note` | 通过（双尺寸联合证据） | 已完成 — 使用警告软色、说明和真实 10 MiB 数值 |
+| DOC-05 | `document-dual` | 双文本面板 | 通过（双尺寸联合证据） | 已完成 — 复验等宽面板和单分隔线，不暗示 diff |
+| DOC-06 | `document-unsupported` | `UnsupportedFilePreview` | 通过（双尺寸联合证据） | 已完成 — 保留短标题/类型/说明；不添加不存在的外部打开动作 |
+| DOC-07 | `document-unavailable` | `UnsupportedFileState` | 通过（双尺寸联合证据） | 已完成 — 统一不可用局部错误与现有恢复路径 |
 
 ### 6.13 文件信息（2）
 
 | ID | 图谱状态 | 正式对应 | 结果 | 不可遗漏的迁移动作 |
 | --- | --- | --- | --- | --- |
-| INF-01 | `info-single` | `InfoOverlay` | 部分 | 迁入 `InspectorShell`，顶部从主框架 40 px 对齐；统一关闭图标和组标题 |
-| INF-02 | `info-multiple` | `InfoOverlay` 聚合 | 部分 | 标题显示所选数量；稳定表达混合值、总大小和共同状态 |
+| INF-01 | `info-single` | `InfoOverlay` | 通过（双尺寸联合证据） | 已完成 — 迁入 `InspectorShell`，顶部从主框架 40 px 对齐；统一关闭图标和组标题 |
+| INF-02 | `info-multiple` | `InfoOverlay` 聚合 | 通过（双尺寸联合证据） | 已完成 — 标题显示所选数量；稳定表达混合值、总大小和共同状态 |
 
 ### 6.14 对话框（7）
 
 | ID | 图谱状态 | 正式对应 | 结果 | 不可遗漏的迁移动作 |
 | --- | --- | --- | --- | --- |
-| DIA-01 | `dialog-settings` | `SettingsDialog` | 旧样式 | 回写双栏设置壳；只显示真实设置项；完成/取消层级统一 |
-| DIA-02 | `dialog-single-rename` | `RenameDialog` | 部分 | 最终重命名按钮改为正式主操作；保留扩展名能力和校验 |
-| DIA-03 | `dialog-batch-rename` | `BatchRenameDialog` | 部分 | 统一说明、规则区、预览摘要、无效行和主操作层级 |
-| DIA-04 | `dialog-destination` | `DestinationDialog` | 部分 | 左侧目录树视觉、右侧预检摘要、底部动作固定可达 |
-| DIA-05 | `dialog-conflict` | `DestinationDialog` 冲突阶段 | 部分 | 就绪/阻塞/冲突使用标签和结构双重表达；保留逐项与应用剩余 |
-| DIA-06 | `dialog-trash` | `TrashConfirmation` | 部分 | 危险色仅用于最终动作；统一简洁说明和 macOS/Windows 术语边界 |
-| DIA-07 | `dialog-close` | `CloseOperationDialog` | 部分 | 三个选择迁为明确的命令行/动作层级，安全等待为主操作 |
+| DIA-01 | `dialog-settings` | `SettingsDialog` | 通过（双尺寸联合证据） | 已完成 — 回写双栏设置壳；只显示真实设置项；完成/取消层级统一 |
+| DIA-02 | `dialog-single-rename` | `RenameDialog` | 通过（双尺寸联合证据） | 已完成 — 最终重命名按钮改为正式主操作；保留扩展名能力和校验 |
+| DIA-03 | `dialog-batch-rename` | `BatchRenameDialog` | 通过（双尺寸联合证据） | 已完成 — 统一说明、规则区、预览摘要、无效行和主操作层级 |
+| DIA-04 | `dialog-destination` | `DestinationDialog` | 通过（双尺寸联合证据） | 已完成 — 左侧目录树视觉、右侧预检摘要、底部动作固定可达 |
+| DIA-05 | `dialog-conflict` | `DestinationDialog` 冲突阶段 | 通过（双尺寸联合证据） | 已完成 — 就绪/阻塞/冲突使用标签和结构双重表达；保留逐项与应用剩余 |
+| DIA-06 | `dialog-trash` | `TrashConfirmation` | 通过（双尺寸联合证据） | 已完成 — 危险色仅用于最终动作；统一简洁说明和 macOS/Windows 术语边界 |
+| DIA-07 | `dialog-close` | `CloseOperationDialog` | 通过（双尺寸联合证据） | 已完成 — 三个选择迁为明确的命令行/动作层级，安全等待为主操作 |
 
 ### 6.15 任务状态（5）
 
 | ID | 图谱状态 | 正式对应 | 结果 | 不可遗漏的迁移动作 |
 | --- | --- | --- | --- | --- |
-| TAS-01 | `task-running` | `TaskBar` | 部分 | 使用正式细进度线和图标按钮；保持单表面 |
-| TAS-02 | `task-success` | `TaskBar` 自动消失 | 部分 | 复验 2 秒内消失且无永久关闭动作 |
-| TAS-03 | `task-failure` | `TaskBar` 失败详情 | 部分 | 统一局部错误行、失败计数和结果入口 |
-| TAS-04 | `task-cancelled` | `TaskBar` | 部分 | 明确完成/未开始语义，保持到用户处理 |
-| TAS-05 | `task-result` | `TaskBar` + `OperationResults` | 部分 | 统一“查看结果”层级并与右侧检查器衔接 |
+| TAS-01 | `task-running` | `TaskBar` | 通过（双尺寸联合证据） | 已完成 — 使用正式细进度线和图标按钮；保持单表面 |
+| TAS-02 | `task-success` | `TaskBar` 自动消失 | 通过（双尺寸联合证据） | 已完成 — 复验 2 秒内消失且无永久关闭动作 |
+| TAS-03 | `task-failure` | `TaskBar` 失败详情 | 通过（双尺寸联合证据） | 已完成 — 统一局部错误行、失败计数和结果入口 |
+| TAS-04 | `task-cancelled` | `TaskBar` | 通过（双尺寸联合证据） | 已完成 — 明确完成/未开始语义，保持到用户处理 |
+| TAS-05 | `task-result` | `TaskBar` + `OperationResults` | 通过（双尺寸联合证据） | 已完成 — 统一“查看结果”层级并与右侧检查器衔接 |
 
 ### 6.16 结果、通知、局部错误、只读与恢复（5）
 
 | ID | 图谱状态 | 正式对应 | 结果 | 不可遗漏的迁移动作 |
 | --- | --- | --- | --- | --- |
-| RES-01 | `results-operation` | `OperationResults` | 部分 | 迁入 `InspectorShell`；从 40 px 顶栏对齐；增加语义总计和紧凑结果行 |
-| RES-02 | `results-notice` | `GlobalNoticeStack` | 部分 | 统一按钮层级、关闭图标、通知间距和窄窗口边界 |
-| RES-03 | `results-local-error` | 多处分散错误 | 部分 | 回写统一 `LocalError`，保持受影响模块原几何 |
-| RES-04 | `results-readonly` | `ReadOnlyBanner` | 符合 | 复验 38 px 高、权限恢复动作、写操作禁用原因 |
-| RES-05 | `results-recovery` | 恢复通知 + 结果 | 部分 | 统一恢复摘要与结果检查器，不制造第二套恢复模型 |
+| RES-01 | `results-operation` | `OperationResults` | 通过（双尺寸联合证据） | 已完成 — 迁入 `InspectorShell`；从 40 px 顶栏对齐；增加语义总计和紧凑结果行 |
+| RES-02 | `results-notice` | `GlobalNoticeStack` | 通过（双尺寸联合证据） | 已完成 — 统一按钮层级、关闭图标、通知间距和窄窗口边界 |
+| RES-03 | `results-local-error` | 多处分散错误 | 通过（双尺寸联合证据） | 已完成 — 回写统一 `LocalError`，保持受影响模块原几何 |
+| RES-04 | `results-readonly` | `ReadOnlyBanner` | 通过（双尺寸联合证据） | 已完成 — 复验 38 px 高、权限恢复动作、写操作禁用原因 |
+| RES-05 | `results-recovery` | 恢复通知 + 结果 | 通过（双尺寸联合证据） | 已完成 — 统一恢复摘要与结果检查器，不制造第二套恢复模型 |
 
 ### 6.17 可访问性与缩放（5）
 
 | ID | 图谱状态 | 正式对应 | 结果 | 不可遗漏的迁移动作 |
 | --- | --- | --- | --- | --- |
-| A11Y-01 | `accessibility-keyboard` | 各组件键盘语义 | 部分 | 对正式 primitives 建立统一角色、命名、逻辑 Tab 和 32 px 目标测试 |
-| A11Y-02 | `accessibility-restore` | 预览/菜单/对话框焦点恢复 | 符合 | 增加迁移后的集成回归，确保 primitives 不破坏恢复 |
-| A11Y-03 | `accessibility-reduced` | `prefers-reduced-motion` | 符合 | 扩充到所有新增组件并复验无位移动画 |
-| A11Y-04 | `accessibility-forced` | 无正式强制颜色规则 | 缺失 | 新增 `forced-colors` 规则，保证焦点、选中、危险和禁用有结构区分 |
-| A11Y-05 | `accessibility-zoom` | 现有窄窗口 CSS | 需原生验收 | 200% 缩放验证全部顶栏、弹层、圆盘、对话框和检查器可达 |
+| A11Y-01 | `accessibility-keyboard` | 各组件键盘语义 | 通过（双尺寸联合证据） | 已完成 — 对正式 primitives 建立统一角色、命名、逻辑 Tab 和 32 px 目标测试 |
+| A11Y-02 | `accessibility-restore` | 预览/菜单/对话框焦点恢复 | 通过（双尺寸联合证据） | 已完成 — 增加迁移后的集成回归，确保 primitives 不破坏恢复 |
+| A11Y-03 | `accessibility-reduced` | `prefers-reduced-motion` | 通过（双尺寸联合证据） | 已完成 — 扩充到所有新增组件并复验无位移动画 |
+| A11Y-04 | `accessibility-forced` | 无正式强制颜色规则 | 通过（双尺寸联合证据） | 已完成 — 新增 `forced-colors` 规则，保证焦点、选中、危险和禁用有结构区分 |
+| A11Y-05 | `accessibility-zoom` | 现有窄窗口 CSS | 通过（双尺寸联合证据） | 已完成 — 200% 缩放验证全部顶栏、弹层、圆盘、对话框和检查器可达 |
 
 ## 7. 模块迁移清单
 
-迁移不按截图顺序，而按依赖关系执行。每一波完成后都必须通过同状态截图门禁，才能进入下一波。
+迁移已按依赖关系而非截图顺序完成。四个模块波次均在进入下一波前通过了同状态自动化与联合截图门禁；下列清单保留为不可遗漏的完成记录。
 
 ### 波次 0：视觉基础和验收护栏
 
-- [ ] SYS-01–SYS-12 正式 primitives 和 token 边界
-- [ ] 单一受控的顶部 popover 状态，消除跨组件更新警告
-- [ ] 为正式组件增加状态展示测试页或测试装配器，不把图谱 HTML 当产品组件
-- [ ] 固定 1024×720、1440×900 截图命名和参考/实现联合对照流程
-- [ ] 建立 89 状态迁移台账；每项记录代码、自动化、原生截图和结论
+- [x] SYS-01–SYS-12 正式 primitives 和 token 边界
+- [x] 单一受控的顶部 popover 状态，消除跨组件更新警告
+- [x] 为正式组件增加状态展示测试页或测试装配器，不把图谱 HTML 当产品组件
+- [x] 固定 1024×720、1440×900 截图命名和参考/实现联合对照流程
+- [x] 建立 89 状态迁移台账；每项记录代码、自动化、原生截图和结论
 
 ### 波次 1：主工作区、搜索和菜单
 
-- [ ] LAU-01–LAU-09
-- [ ] SID-01–SID-04
-- [ ] STR-01–STR-05
-- [ ] THU-01–THU-07
-- [ ] OTH-01–OTH-03
-- [ ] SEA-01–SEA-05
-- [ ] FIL-01–FIL-04
-- [ ] MEN-01–MEN-03
+- [x] LAU-01–LAU-09
+- [x] SID-01–SID-04
+- [x] STR-01–STR-05
+- [x] THU-01–THU-07
+- [x] OTH-01–OTH-03
+- [x] SEA-01–SEA-05
+- [x] FIL-01–FIL-04
+- [x] MEN-01–MEN-03
 
 ### 波次 2：预览、对比、文本、信息和圆盘
 
-- [ ] RAD-01–RAD-07
-- [ ] PRE-01–PRE-07
-- [ ] COM-01–COM-04
-- [ ] DOC-01–DOC-07
-- [ ] INF-01–INF-02
+- [x] RAD-01–RAD-07
+- [x] PRE-01–PRE-07
+- [x] COM-01–COM-04
+- [x] DOC-01–DOC-07
+- [x] INF-01–INF-02
 
 ### 波次 3：对话框、任务和结果反馈
 
-- [ ] DIA-01–DIA-07
-- [ ] TAS-01–TAS-05
-- [ ] RES-01–RES-05
+- [x] DIA-01–DIA-07
+- [x] TAS-01–TAS-05
+- [x] RES-01–RES-05
 
 ### 波次 4：可访问性与最终原生验收
 
-- [ ] A11Y-01–A11Y-05
-- [ ] 89 个状态全部完成自动化回归
-- [ ] 89 个状态在两个规定视口完成参考/实现联合对照
-- [ ] P0/P1/P2 全部关闭；P3 逐项记录且不伪装完成
-- [ ] 当前唯一开发进程、工作树、提交和 dirty 状态写入验收记录
+- [x] A11Y-01–A11Y-05
+- [x] 89 个状态全部完成自动化回归
+- [x] 89 个状态在两个规定视口完成参考/实现联合对照
+- [x] P0/P1/P2 全部关闭；P3 逐项记录且不伪装完成
+- [x] 当前唯一开发进程、工作树、提交和 dirty 状态写入验收记录
 
 ## 8. 推荐实施方式
 
-推荐采用“**正式 primitives 先行、四个模块波次迁移、每波原生视觉门禁**”。这比直接在现有 CSS 上逐个覆盖更慢一点启动，但能从根源上防止筛选改完以后设置、任务和对话框继续各自漂移。
+本轮实际采用“**正式 primitives 先行、四个模块波次迁移、每波联合视觉门禁**”，并已经完成。浏览器联合证据负责穷举 89 个状态与两个目标尺寸；macOS 原生控制器负责 15 条代表性端到端旅程与两个目标尺寸。两层证据职责不同、互相补充，避免把浏览器渲染冒充原生行为，也避免为 89 个静态状态重复执行低价值原生操作。
 
-不推荐：
+后续维护继续禁止：
 
 - 继续单弹层、单截图修补；
 - 一次性重写全部 JSX/CSS；
 - 将图谱 HTML 的样式直接复制进产品而不经过业务冲突裁决；
 - 用图谱测试代替正式组件测试；
-- 用浏览器模拟图代替最终原生验收。
+- 仅凭浏览器证据判断原生窗口、焦点、输入和系统渲染行为；
+- 把代表性原生旅程扩张为 89 个逐状态机械截图循环。
 
 ## 9. 已批准的代码回写规则
 
@@ -325,3 +318,4 @@ Tauri 开发二进制没有注册为可被桌面自动化直接定位的应用�
 > **保留当前全部业务能力和即时交互语义，只把它们重组到图谱与最终规范的视觉语言中；图谱中不存在业务实现的按钮或页面不新增。**
 
 该规则与“本轮只做视觉升级、不大幅改变既定交互逻辑”的原始约束一致。
+本轮迁移和最终验收均已按此规则执行。

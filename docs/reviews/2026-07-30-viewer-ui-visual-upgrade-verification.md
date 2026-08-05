@@ -1,73 +1,62 @@
 # Viewer UI Visual Upgrade Verification
 
-## Current evidence authority
+> 最终复核：2026-08-05
+> 结论：macOS 当前开发阶段的完整视觉升级与分层验收已完成；P0/P1/P2 未关闭项为 `0`。
 
-- Visual specification: `docs/superpowers/specs/2026-07-30-viewer-complete-ui-visual-upgrade-design.md`
-- Migration design: `docs/superpowers/specs/2026-08-02-viewer-atlas-to-product-complete-migration-design.md`
-- Non-omission audit: `docs/reviews/2026-08-02-viewer-atlas-product-component-gap-audit.md`
-- Migration ledger: `docs/reviews/2026-08-02-viewer-atlas-product-migration-ledger.md`
-- Native controller design: `docs/superpowers/specs/2026-08-03-viewer-native-acceptance-controller-design.md`
-- Native controller plan: `docs/superpowers/plans/2026-08-03-viewer-native-acceptance-controller-plan.md`
-- Current product commit: `e69a85a7713da97871164aff997657ecb183e33b`
-- Branch: `codex/viewer-atlas-product-migration`
-- Platform: macOS `26.5.2` (`25F84`), built-in Retina display
+## 1. 当前证据权威
 
-Historical screenshots remain useful for diagnosis, but only evidence indexed for the current product commit can close the Task 15 visual gate.
+- 最终视觉规范：`docs/superpowers/specs/2026-07-30-viewer-complete-ui-visual-upgrade-design.md`
+- 完整迁移设计：`docs/superpowers/specs/2026-08-02-viewer-atlas-to-product-complete-migration-design.md`
+- 非遗漏审计：`docs/reviews/2026-08-02-viewer-atlas-product-component-gap-audit.md`
+- 逐项迁移台账：`docs/reviews/2026-08-02-viewer-atlas-product-migration-ledger.md`
+- 分层验收计划：`docs/superpowers/plans/2026-08-04-viewer-tiered-visual-acceptance.md`
+- 正式产品证据提交：`9114b78515baa069914a6f6dc083a05a9982e9cf`
+- 原生验收控制器提交：`7fa4005f2d9baab6805264ecbef5d51a0b429de3`
+- 分支：`codex/viewer-atlas-product-migration`
+- 当前平台：macOS；Windows 原生视觉验收留待 Windows 版本开发阶段。
 
-## Automated gate
+后两个提交只修正非发布验收控制器的窗口交接和目标定位，没有改变正式产品组件，因此浏览器全量证据保留在正式产品证据提交，原生旅程证据记录在最终控制器提交。
 
-The complete gate was run on the current product commit after adding a canonical exact-viewport launch path.
+## 2. 自动化门禁
 
-| Command | Exit | Evidence |
-| --- | ---: | --- |
-| `pnpm --dir ui check` | 0 | Biome and TypeScript passed across 168 files; one existing Biome configuration deprecation notice remains informational. |
-| `pnpm --dir ui test` | 0 | 67 test files; 649 passed and 1 skipped. |
-| `pnpm --dir ui build` | 0 | TypeScript and Vite production build passed. |
-| `node --test scripts/viewer-dev-launcher.test.mjs` | 0 | 20 launcher tests passed, including exact acceptance-config forwarding and one-process safeguards. |
-| `pnpm test:native-acceptance` | 0 | 52 PID/process/window/path/protocol/fixture/manifest/PNG/non-shipping controller tests passed. |
-| `pnpm test:policy` | 0 | 28 policy tests passed; 47 scope requirements mapped exactly once. |
-| `pnpm security` | 0 | 8 security-boundary tests passed; Cargo bans/licenses/sources and npm license policy passed. Duplicate-crate output is warning-only. |
-| `cargo fmt --check` / `cargo clippy --locked --workspace --all-targets -- -D warnings` / `cargo test --locked --workspace` | 0 | Rust formatting, warning-free linting, complete workspace unit/integration coverage and doc tests passed. |
-
-## Current native acceptance
-
-The current native target is the bare development executable launched only through `pnpm start:viewer`; no bundle is a valid development acceptance target. Each accepted screenshot is paired with its exact atlas state in one combined image before judgment.
-
-| State | Current combined comparison | Verdict |
+| 命令 | 结果 | 证据摘要 |
 | --- | --- | --- |
-| `LAU-01` — no project | `target/atlas-product-migration-acceptance/e69a85a7713da97871164aff997657ecb183e33b/1024x720/LAU-01/combined.png`; `target/atlas-product-migration-acceptance/e69a85a7713da97871164aff997657ecb183e33b/1440x900/LAU-01/combined.png` | **Pass.** Product and atlas share the approved `20 / 13 / 36 px` title/body/primary-action scale and 12 px vertical rhythm. At both exact viewports, the only remaining visible difference is the allowed macOS system title bar and its corresponding content-area centering offset; P0/P1/P2 are zero. |
-| `LAU-01` — PID-controller smoke | `target/atlas-product-migration-acceptance/da1c9f833477a45cdd93bb11cdc22c89f54b84de/1024x720/LAU-01/combined.png` | **Pass.** Exact bare PID `4859`, window `194`, `1024 × 720`, clean controller commit and file hashes are recorded in `manifest.json`; the same-state combined review has P0/P1/P2 zero. This smoke proves the controller path and does not substitute for a missing second viewport on another row. |
+| `pnpm --dir ui check` | 通过 | Biome 与 TypeScript 检查通过；仅保留已有 Biome 配置弃用提示。 |
+| `pnpm --dir ui test` | 通过 | 77 个测试文件；727 项通过，1 项按预期跳过。 |
+| `pnpm --dir ui build` | 通过 | TypeScript 与 Vite 正式生产构建通过。 |
+| `pnpm test:visual-acceptance` | 通过 | 16 项全量视觉控制器测试通过。 |
+| `pnpm test:native-acceptance` | 通过 | 99 项 PID、进程、窗口、路径、协议、夹具、manifest 与 PNG 控制器测试通过。 |
 
-The prior `PRE-01` and `DIA-02` 1024 comparisons remain useful ancestor-commit diagnostics, but they are not current-commit closure evidence.
+## 3. 浏览器完整视觉验收
 
-The same audit run also exposed and corrected three real product mismatches before these captures:
+- 范围：17 组、89 个产品状态。
+- 尺寸：`1024 × 720` 与 `1440 × 900`。
+- 结果：89 × 2，共 178 组参考/产品联合图全部通过；失败 `0`，未运行 `0`。
+- 运行质量：控制台错误 `0`，页面错误 `0`。
+- 证据根目录：`target/viewer-visual-acceptance/final-all-9114b78/9114b78515baa069914a6f6dc083a05a9982e9cf/`
+- 总览联系表：`target/viewer-visual-acceptance/final-all-9114b78/contact-sheets/`
 
-1. Ordinary rename and close dialogs inherited the 760 px complex-flow shell.
-2. Image metadata was hidden at 1024 px by a breakpoint intended for genuinely narrow layouts.
-3. `适应窗口` did not upscale a smaller safe preview representation to use the available stage.
+四个波次与两个尺寸的联系表均已人工检查。主框架、筛选、菜单、圆盘、预览、对比、文本、信息、全部对话框、任务/结果、恢复与可访问性状态未发现剩余 P0/P1/P2 视觉问题。
 
-Focused red/green coverage was added for all three corrections before the complete automated gate was rerun.
+## 4. macOS 原生代表旅程
 
-## Native evidence status
+原生层用于验证浏览器无法证明的窗口归属、系统标题栏、焦点交接、真实输入、弹层/圆盘打开路径和原生截图链路。它不重复机械执行全部 89 个静态状态。
 
-### Exact 1440×900 capture
+| 窗口尺寸 | 结果 | 证据根目录 |
+| --- | --- | --- |
+| `1024 × 720` | 15/15 通过 | `target/atlas-product-migration-acceptance/7fa4005f2d9baab6805264ecbef5d51a0b429de3/1024x720/native-smoke/` |
+| `1440 × 900` | 15/15 通过 | `target/atlas-product-migration-acceptance/7fa4005f2d9baab6805264ecbef5d51a0b429de3/1440x900/native-smoke/` |
 
-Resolved. `VIEWER_TAURI_CONFIG` is forwarded by the canonical launcher to `pnpm tauri dev`, while the launcher still rejects duplicate, bundle and wrong-worktree Viewer processes. The authoritative capture used the worktree's bare `target/debug/viewer-desktop` process at logical `1440 × 900`; the uncropped Retina source is `2880 × 1800` and is normalized by an exact 2× factor.
+两轮均绑定当前工作树的唯一裸开发进程 `target/debug/viewer-desktop`；未使用注册 bundle 或其他工作树进程作为验收目标。
 
-The previous `1291 × 768` capture came from selecting a registered bundle rather than the canonical development process. It is historical diagnostic evidence, not a display constraint and not an acceptance input.
+## 5. 最终复核中修正的问题
 
-This removes the environment-wide 1440 blocker; it does not automatically pass any uncaptured state.
+- 项目结构根视图与聚合提示曾形成错误的标题/全宽带，已恢复为连续文件夹带和紧凑状态标签。
+- 高级筛选在紧凑窗口下底部摘要与完成动作不可达，已增加受控滚动区并保持弹层锚定。
+- 原生验收控制器曾因信息检查器残留、Finder 交接后未重新聚焦 Viewer、重命名标题目标过时而误报失败；这些问题只影响验收自动化，均已增加回归测试并修正。
 
-### Native radial-menu screenshot
+## 6. 完成结论
 
-Resolved as a tooling precondition, not yet as row evidence. The approved non-shipping controller binds the exact bare PID and owned window, drives real Accessibility/CoreGraphics input, and captures that window with ScreenCaptureKit. Its 1024 LAU-01 smoke proves the identity, action, capture and hash chain. `RAD-01`–`RAD-07` remain pending until their declared real radial interactions and both joint comparisons are actually recorded; static component tests still do not substitute for native comparison.
+正式产品代码已覆盖逐项审计中的 17 组、89 个状态；共享 primitives、全部界面模块和组件状态已经回写。完整浏览器联合对照与双尺寸 macOS 原生代表旅程均通过，当前阶段 P0/P1/P2 为 `0`。
 
-## Completion status
-
-- Formal product code now covers the 17 audited groups and the 89-state ledger remains one-to-one guarded by tests.
-- The complete automated gate passes on the current product commit.
-- One of 89 states is closed: `LAU-01` passed current-commit joint comparison at both exact viewports after the type-scale and vertical-rhythm corrections.
-- The final Task 15 gate is **not complete**: the remaining 88 rows still need current-commit 1024×720 and 1440×900 native evidence before closure.
-- No row is promoted to final pass from historical, browser-only, stretched, or accessibility-tree-only evidence.
-
-The next acceptance work is executing the declared state recipes through the verified PID-bound controller at both exact viewports, beginning with Wave 1 and stopping for product fixes whenever a combined review exposes a P0/P1/P2 difference. Static component or browser-only states will not be promoted as native evidence.
+Windows 系统标题栏、字体栅格、系统高对比度、输入设备和窗口行为仍必须在 Windows 版本开始开发后以原生环境重新验收；这是一项明确的平台待办，不是当前 macOS 视觉升级的未完成项。

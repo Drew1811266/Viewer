@@ -1,12 +1,24 @@
 # Viewer Final UI Visual Acceptance
 
-Date: 2026-07-31
+Date: 2026-08-05
 
 Prototype: `docs/prototypes/viewer-complete-ui-visual-atlas.html`
 
-Result: **Accepted for Figma audit-board handoff**
+Result: **Accepted — formal product migration and macOS tiered visual verification complete**
 
-## Acceptance scope
+## Current product acceptance
+
+- Formal product evidence commit: `9114b78515baa069914a6f6dc083a05a9982e9cf`.
+- Complete browser comparison: 89 states at `1024 × 720` and `1440 × 900`, 178/178 combined reference/product images passed, with zero console or page errors.
+- Browser evidence: `target/viewer-visual-acceptance/final-all-9114b78/9114b78515baa069914a6f6dc083a05a9982e9cf/`.
+- Native acceptance controller commit: `7fa4005f2d9baab6805264ecbef5d51a0b429de3`.
+- macOS native representative journeys: 15/15 passed at each target size, 30/30 total.
+- Native evidence: `target/atlas-product-migration-acceptance/7fa4005f2d9baab6805264ecbef5d51a0b429de3/`.
+- Final visual severity: P0 `0`, P1 `0`, P2 `0`.
+
+The browser layer exhaustively verifies the visual state matrix; the native layer verifies representative window, focus, input, popover, radial-menu and screenshot paths. The historical Figma board below remains the approved atlas handoff, while the current product evidence above is the final implementation authority.
+
+## Historical atlas acceptance scope
 
 This pass verifies the highest-priority visual-atlas corrections against the
 approved Viewer visual-upgrade specification. The accepted screenshots were
@@ -48,25 +60,29 @@ capture.
 ## Automated verification
 
 - `pnpm --dir ui check` — pass.
-- `pnpm --dir ui exec vitest run src/visualAtlas.test.ts` — 10/10 pass.
-- `pnpm --dir ui test` — 60 files pass; 587 tests pass; 1 existing test skipped.
+- `pnpm --dir ui test` — 77 files pass; 727 tests pass; 1 expected test skipped.
 - `pnpm --dir ui build` — production build pass.
+- `pnpm test:visual-acceptance` — 16/16 pass.
+- `pnpm test:native-acceptance` — 99/99 pass.
 - `git diff --check` — pass.
-- In-app browser console after the acceptance run — no errors or warnings.
+- Complete browser acceptance — 178/178 combined images, zero console or page errors.
+- macOS native acceptance — 30/30 representative journeys pass.
 
 ## Visual acceptance conclusion
 
 No blocking overlap, clipping, state ambiguity, or atlas-control obstruction
-was found in the accepted compact and wide evidence sets. Filter, radial-menu,
-read-only, keyboard, progress, dialog, target-size, inspector-width, and
-contrast-risk contracts now have both visual and automated evidence.
+was found in either the complete product evidence or the accepted historical
+atlas board. Filter, radial-menu, read-only, keyboard, progress, dialog,
+target-size, inspector-width, and contrast-risk contracts have visual,
+automated and representative macOS-native evidence.
 
 This acceptance does not claim full WCAG conformance. Native macOS/Windows
 screen-reader output, OS high-contrast rendering, platform font rasterization,
-and physical input-device behavior still require later testing in packaged
-application builds.
+and physical input-device behavior require platform-specific testing in
+packaged application builds. Windows-native verification remains a future
+platform task because the Windows version is not yet under development.
 
-## Figma audit board
+## Historical Figma atlas audit board
 
 - File:
   [Viewer Final UI Visual Acceptance — 2026-07-31](https://www.figma.com/design/oCtWdesfu5wPx2m9QW1g6Y)

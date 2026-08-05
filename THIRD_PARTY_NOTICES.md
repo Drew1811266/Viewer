@@ -69,6 +69,7 @@ This inventory records the direct third-party dependencies in the Viewer 0.1 loc
 | `@testing-library/react` | 16.3.2 | MIT | React component tests | [testing-library/react-testing-library](https://github.com/testing-library/react-testing-library) | No, test only |
 | `@vitest/coverage-v8` | 4.1.10 | MIT | Frontend V8 coverage collection and reporting | [vitest-dev/vitest](https://github.com/vitest-dev/vitest) | No, test only |
 | `jsdom` | 29.1.1 | MIT | Test DOM runtime | [jsdom/jsdom](https://github.com/jsdom/jsdom) | No, test only |
+| `playwright` | 1.62.1 | Apache-2.0 | Drive the non-shipping exhaustive browser visual-acceptance harness | [microsoft/playwright](https://github.com/microsoft/playwright) | No, test only |
 | `vitest` | 4.1.10 | MIT | Frontend test runner | [vitest-dev/vitest](https://github.com/vitest-dev/vitest) | No, test only |
 
 `viewer-domain`, `viewer-application`, `viewer-infrastructure`, `viewer-platform-macos`, `viewer-test-support` and `viewer-desktop` are internal Viewer workspace packages licensed under Apache-2.0, not third-party dependencies.

@@ -581,7 +581,7 @@ describe('state entry plans', () => {
         {
           kind: 'assert',
           target: { role: 'AXMenuItem', name: '预览' },
-          stableMs: 250,
+          stableMs: 1_000,
         },
         { kind: 'press', target: { role: 'AXMenuItem', name: '预览' } },
       ],

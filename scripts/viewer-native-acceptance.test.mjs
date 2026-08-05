@@ -574,20 +574,16 @@ describe('state entry plans', () => {
       ),
       true,
     )
+    const previewPlan = buildStateEntryPlan('PRE-01')
     assert.equal(
-      buildStateEntryPlan('PRE-01').some(
-        (step) => step.kind === 'key' && step.key === 'enter',
+      previewPlan.some(
+        (step) =>
+          step.kind === 'press' &&
+          step.target?.role === 'AXMenuItem' &&
+          step.target?.name === '预览',
       ),
       true,
     )
-    const previewPlan = buildStateEntryPlan('PRE-01')
-    const menuReadyIndex = previewPlan.findIndex(
-      (step) => step.kind === 'assert' && step.target?.name === '预览',
-    )
-    const enterIndex = previewPlan.findIndex(
-      (step) => step.kind === 'key' && step.key === 'enter',
-    )
-    assert.ok(menuReadyIndex >= 0 && menuReadyIndex < enterIndex)
     assert.deepEqual(
       buildStateEntryPlan('PRE-03').filter((step) => step.kind === 'click').slice(-2),
       [

@@ -96,6 +96,31 @@ describe('Viewer visual acceptance browser lifecycle', () => {
     assert.ok(harness.calls.includes('goto:PRE-03'))
   })
 
+  it('resumes exact clean evidence without reopening or overwriting that state', async () => {
+    const harness = fakePlaywright()
+    harness.dependencies.resumeEvidence = async ({ request, outputDirectory }) => {
+      if (request.id !== 'PRE-02') return null
+      harness.calls.push(`resume:${request.id}`)
+      return {
+        request,
+        manifestPath: path.join(outputDirectory, 'manifest.json'),
+        manifest: { id: request.id, viewport: request.viewport },
+        resumed: true,
+      }
+    }
+
+    const summary = await runVisualAcceptanceBatch(
+      batchOptions(['PRE-01', 'PRE-02', 'PRE-03']),
+      harness.dependencies,
+    )
+
+    assert.equal(summary.exitCode, 0)
+    assert.deepEqual(summary.succeeded, ['PRE-01', 'PRE-02', 'PRE-03'])
+    assert.ok(harness.calls.includes('resume:PRE-02'))
+    assert.equal(harness.calls.includes('goto:PRE-02'), false)
+    assert.equal(harness.calls.includes('screenshot:PRE-02/product.png'), false)
+  })
+
   it('uses bounded ready, font, image and two-frame conditions', async () => {
     const harness = fakePlaywright()
     const request = { id: 'PRE-01', viewport: '1024x720', width: 1024, height: 720 }

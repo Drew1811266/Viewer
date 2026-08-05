@@ -264,6 +264,7 @@ export async function runVisualAcceptanceBatch(options, dependencies = {}) {
   const captureState = dependencies.captureState ?? captureVisualAcceptanceState
   const collectMetadata = dependencies.runMetadata ?? collectRunMetadata
   const finalizeEvidence = dependencies.finalizeEvidence ?? finalizeVisualEvidence
+  const resumeEvidence = dependencies.resumeEvidence ?? resumeVisualEvidence
   const startedAt = now()
   const deadline = startedAt + 20 * 60 * 1_000
   const summary = { exitCode: 0, succeeded: [], failed: [], unrun: [], results: [] }
@@ -296,6 +297,12 @@ export async function runVisualAcceptanceBatch(options, dependencies = {}) {
           )
           let outputCreated = false
           try {
+            const resumed = await resumeEvidence({ request, outputDirectory, runMetadata })
+            if (resumed !== null) {
+              summary.succeeded.push(id)
+              summary.results.push(resumed)
+              continue
+            }
             await makeDirectory(path.dirname(outputDirectory), { recursive: true })
             await makeDirectory(outputDirectory)
             outputCreated = true
@@ -348,6 +355,53 @@ export async function runVisualAcceptanceBatch(options, dependencies = {}) {
     await server?.close()
   }
   return summary
+}
+
+export async function resumeVisualEvidence({ request, outputDirectory, runMetadata }) {
+  if (runMetadata.dirty !== false) return null
+  const manifestPath = path.join(outputDirectory, 'manifest.json')
+  let manifest
+  try {
+    manifest = JSON.parse(await readFile(manifestPath, 'utf8'))
+  } catch (error) {
+    if (error?.code === 'ENOENT' || error instanceof SyntaxError) return null
+    throw error
+  }
+  if (
+    manifest.schemaVersion !== 1 ||
+    manifest.dirty !== false ||
+    manifest.commit !== runMetadata.commit ||
+    manifest.id !== request.id ||
+    manifest.viewport !== request.viewport ||
+    manifest.sourceHashes?.catalog !== runMetadata.catalogHash ||
+    manifest.sourceHashes?.atlas !== runMetadata.atlasHash ||
+    JSON.stringify(manifest.sourceHashes?.css) !== JSON.stringify(runMetadata.cssHashes) ||
+    manifest.verdict !== 'pending-visual-review'
+  ) {
+    return null
+  }
+  const artifactPaths = {
+    product: path.join(outputDirectory, 'product.png'),
+    reference: path.join(outputDirectory, 'reference.png'),
+    combined: path.join(outputDirectory, 'combined.png'),
+  }
+  if (
+    Object.entries(artifactPaths).some(
+      ([key, expected]) => path.resolve(manifest.artifacts?.[key]?.path ?? '') !== path.resolve(expected),
+    )
+  ) {
+    return null
+  }
+  try {
+    await Promise.all([
+      ...Object.values(artifactPaths).map((artifactPath) => readFile(artifactPath)),
+      readFile(path.join(outputDirectory, 'console.json')),
+    ])
+  } catch (error) {
+    if (error?.code === 'ENOENT') return null
+    throw error
+  }
+  return { request, manifestPath, manifest, resumed: true }
 }
 
 function selectChangedIds(changedFiles) {

@@ -683,7 +683,7 @@ private final class LiveMacSystem: MacSystem {
            externalDragHeld
         {
             try requireStableWindow(pid: pid, window: window, requireFrontmost: false)
-            try postPointer(payload, window: window)
+            try postPointer(payload, pid: pid, window: window)
             externalDragHeld = false
             restoreHeldFinderWindow()
             return ["performed": true, "command": command]
@@ -725,7 +725,7 @@ private final class LiveMacSystem: MacSystem {
         case "key":
             try postKey(payload)
         case "pointer":
-            try postPointer(payload, window: window)
+            try postPointer(payload, pid: pid, window: window)
         case "drag":
             try postDrag(payload, window: window)
         default:
@@ -1510,7 +1510,11 @@ private final class LiveMacSystem: MacSystem {
         return CGPoint(x: window.frame.origin.x + x, y: window.frame.origin.y + y)
     }
 
-    private func postPointer(_ payload: [String: Any], window: MacWindowSnapshot) throws {
+    private func postPointer(
+        _ payload: [String: Any],
+        pid: Int,
+        window: MacWindowSnapshot
+    ) throws {
         guard let kind = payload["kind"] as? String else {
             throw AcceptanceFailure(code: "SAFETY_COMMAND", message: "Invalid pointer payload")
         }
@@ -1633,10 +1637,18 @@ private final class LiveMacSystem: MacSystem {
             down.flags = flags
             up.flags = flags
             down.timestamp = CGEventTimestamp(DispatchTime.now().uptimeNanoseconds)
-            down.post(tap: .cghidEventTap)
+            if kind == "doubleClick" {
+                down.postToPid(pid_t(pid))
+            } else {
+                down.post(tap: .cghidEventTap)
+            }
             usleep(12_000)
             up.timestamp = CGEventTimestamp(DispatchTime.now().uptimeNanoseconds)
-            up.post(tap: .cghidEventTap)
+            if kind == "doubleClick" {
+                up.postToPid(pid_t(pid))
+            } else {
+                up.post(tap: .cghidEventTap)
+            }
             if clickIndex < clickCount {
                 usleep(150_000)
             }

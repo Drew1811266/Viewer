@@ -249,7 +249,7 @@ export function buildStateEntryPlan(id) {
     {
       kind: 'assert',
       target: { role: 'AXMenuItem', name: '预览' },
-      stableMs: 1_000,
+      settleMs: 1_000,
     },
     { kind: 'press', target: { role: 'AXMenuItem', name: '预览' } },
   ]
@@ -2496,7 +2496,14 @@ async function ensureLaunchNoProject(client, actions) {
   )
 }
 
-async function queryVisibleElement(client, actions, target, timeoutMs = 3000) {
+async function queryVisibleElement(client, actions, target, timeoutMs = 3000, settleMs = 0) {
+  if (!Number.isFinite(settleMs) || settleMs < 0 || settleMs > 1_000) {
+    throw new AcceptanceError(
+      'PRECONDITION_WAIT_LIMIT',
+      'Visible-state settling must be bounded to one second',
+      { settleMs },
+    )
+  }
   const result = await waitFor(
     async () => {
       try {
@@ -2508,35 +2515,13 @@ async function queryVisibleElement(client, actions, target, timeoutMs = 3000) {
     },
     { timeoutMs, intervalMs: 50 },
   )
+  if (settleMs > 0) {
+    await new Promise((resolve) => setTimeout(resolve, settleMs))
+  }
   actions.push({
     sequence: actions.length + 1,
     command: 'query',
-    payload: { target },
-    completedAt: new Date().toISOString(),
-    ok: true,
-    result,
-  })
-  return result.elements[0]
-}
-
-async function queryStableElement(client, actions, target, stableMs, timeoutMs = 3000) {
-  const startedAt = new Date().toISOString()
-  const result = await waitForStable(
-    async () => {
-      try {
-        return await client.request('query', { target })
-      } catch (error) {
-        if (error?.code === 'STATE_TARGET_NOT_FOUND') return false
-        throw error
-      }
-    },
-    { timeoutMs, intervalMs: 50, stableMs },
-  )
-  actions.push({
-    sequence: actions.length + 1,
-    command: 'query',
-    payload: { target, stableMs },
-    startedAt,
+    payload: { target, ...(settleMs > 0 ? { settleMs } : {}) },
     completedAt: new Date().toISOString(),
     ok: true,
     result,
@@ -3094,10 +3079,13 @@ export async function executeStateEntryPlan({
           point: { x: window.width / 2, y: 12 },
         })
       } else if (step.kind === 'assert') {
-        visible =
-          step.stableMs === undefined
-            ? await queryVisibleElement(client, actions, step.target, 10_000)
-            : await queryStableElement(client, actions, step.target, step.stableMs, 10_000)
+        visible = await queryVisibleElement(
+          client,
+          actions,
+          step.target,
+          10_000,
+          step.settleMs ?? 0,
+        )
       } else {
         throw new AcceptanceError(
           'STATE_RECIPE_EXECUTOR',

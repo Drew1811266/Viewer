@@ -581,7 +581,7 @@ describe('state entry plans', () => {
         {
           kind: 'assert',
           target: { role: 'AXMenuItem', name: '预览' },
-          stableMs: 1_000,
+          settleMs: 1_000,
         },
         { kind: 'press', target: { role: 'AXMenuItem', name: '预览' } },
       ],
@@ -613,11 +613,11 @@ describe('state entry plans', () => {
     )
   })
 
-  it('keeps the radial preview action visible before activating it', async () => {
+  it('lets the radial preview action settle without continuously querying it', async () => {
     const commands = []
     const client = {
       async request(command, payload) {
-        commands.push({ command, payload })
+        commands.push({ command, payload, at: Date.now() })
         if (command === 'query') {
           if (['扫描项目', '2 个任务已完成', '正在生成缩略图'].includes(payload.target.name)) {
             throw new AcceptanceError('STATE_TARGET_NOT_FOUND', 'not found')
@@ -651,7 +651,10 @@ describe('state entry plans', () => {
     const activationIndex = commands.findIndex(
       ({ command, payload }) => command === 'activate' && payload.target.name === '预览',
     )
-    assert.ok(previewQueries.length >= 3)
+    assert.equal(previewQueries.length, 1)
+    assert.ok(
+      commands[activationIndex].at - previewQueries[0].at >= 900,
+    )
     assert.ok(
       commands.findLastIndex(
         ({ command, payload }) => command === 'query' && payload.target.name === '预览',

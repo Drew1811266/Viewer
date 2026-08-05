@@ -986,6 +986,10 @@ describe('ContentBrowser', () => {
     fireEvent.keyDown(grid, { key: 'ArrowRight' })
     fireEvent.keyDown(grid, { key: ' ' })
     expect(preview).toHaveBeenCalledWith(expect.objectContaining({ entityId: 'image-7' }))
+
+    preview.mockClear()
+    fireEvent.keyDown(grid, { key: 'Unidentified', code: 'Space' })
+    expect(preview).toHaveBeenCalledWith(expect.objectContaining({ entityId: 'image-7' }))
   })
 
   it('extends a contiguous selection with Shift plus an arrow key', () => {

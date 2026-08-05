@@ -245,8 +245,12 @@ export function buildStateEntryPlan(id) {
   const openFilter = () => [...openContent('紧凑'), clickToolbar('筛选')]
   const image = (name) => ({ name })
   const openImagePreview = (name = '商品-02.jpg', preparation = []) => [
-    ...openRadial(name, preparation),
-    { kind: 'click', target: { role: 'AXMenuItem', name: '预览' } },
+    ...preparation,
+    ...openContent(),
+    { kind: 'click', target: image(name) },
+    { kind: 'assert', target: { name: '选择摘要' } },
+    { kind: 'focus', target: { name: '图片文件' } },
+    { kind: 'key', key: 'space', modifiers: [] },
   ]
   const selectImages = (count, density = count > 8 ? '紧凑' : '标准') => [
     ...openContent(density),

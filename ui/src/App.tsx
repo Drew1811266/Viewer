@@ -11,6 +11,7 @@ import type {
 } from './api/types'
 import type { ViewerBridge } from './api/viewer'
 import { tauriViewerBridge } from './api/viewer'
+import { createProjectThumbnailCache, type ThumbnailLoader } from './app/projectThumbnailCache'
 import { getAppShellStateInternals, useAppShellState } from './app/useAppShellState'
 import { useDelayedProjectionProgress } from './app/useDelayedProjectionProgress'
 import { useOperationDialogs } from './app/useOperationDialogs'
@@ -192,7 +193,7 @@ function ViewerWorkspace({ bridge }: { bridge: ViewerBridge }) {
   useEffect(() => {
     if (contentViewCommand !== null) setContentViewCommand(null)
   }, [contentViewCommand])
-  const requestThumbnail = useCallback(
+  const loadThumbnail = useCallback<ThumbnailLoader>(
     (file: BrowserFile, maxPixels: number, scaleMilli: number) =>
       bridge
         .requestImage({
@@ -202,21 +203,17 @@ function ViewerWorkspace({ bridge }: { bridge: ViewerBridge }) {
         .then((image) => image.url),
     [bridge],
   )
+  const thumbnailCache = useMemo(
+    () => createProjectThumbnailCache(projectSessionId, loadThumbnail),
+    [loadThumbnail, projectSessionId],
+  )
+  useEffect(() => () => thumbnailCache.clear(), [thumbnailCache])
+  const requestThumbnail = thumbnailCache.request
   const requestFolderImages = useCallback(
     async (entityId: string) => {
       const workspace = await bridge.queryFolder(entityId, false)
       return workspace.workspace === 'content' ? workspace.images : []
     },
-    [bridge],
-  )
-  const requestContentThumbnail = useCallback(
-    (file: BrowserFile, maxPixels: number, scaleMilli: number) =>
-      bridge
-        .requestImage({
-          entityId: file.entityId,
-          representation: { kind: 'thumbnail', maxPixels, scaleMilli },
-        })
-        .then((image) => image.url),
     [bridge],
   )
   const requestPreviewImage = useCallback(
@@ -1166,7 +1163,7 @@ function ViewerWorkspace({ bridge }: { bridge: ViewerBridge }) {
                       viewCommand={contentViewCommand}
                       onViewStateChange={setContentSelectAllRequest}
                       onRequestViewMenu={() => toolbarPopover.setPopoverOpen('view', true)}
-                      requestThumbnail={requestContentThumbnail}
+                      requestThumbnail={requestThumbnail}
                       onThumbnailTaskChange={setThumbnailTask}
                       onPreview={openPreview}
                       onSelectionChange={selectFiles}

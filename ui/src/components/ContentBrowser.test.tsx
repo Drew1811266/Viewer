@@ -408,7 +408,7 @@ describe('ContentBrowser', () => {
     expect(grid.scrollTop).toBe(180)
   })
 
-  it('does not request resolved-cache or pending thumbnail keys again after a shelf toggle', async () => {
+  it('keeps mounted resolved and pending thumbnail requests stable across shelf toggles', async () => {
     const resolved = deferred<string>()
     const pending = deferred<string>()
     const requestThumbnail = vi.fn((file: BrowserFile) =>
@@ -419,9 +419,7 @@ describe('ContentBrowser', () => {
       ...file,
       imageMetadata: { width: 1, height: 1 },
     }))
-    const rendered = render(
-      <ControlledContentBrowser workspace={data} requestThumbnail={requestThumbnail} />,
-    )
+    render(<ControlledContentBrowser workspace={data} requestThumbnail={requestThumbnail} />)
     await waitFor(() => expect(requestThumbnail).toHaveBeenCalledTimes(2))
     await act(async () => {
       resolved.resolve('viewer-image://thumbnail/resolved-image-1')
@@ -437,16 +435,6 @@ describe('ContentBrowser', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '其它文件 · 1' }))
     fireEvent.click(screen.getByRole('button', { name: '其它文件 · 1' }))
-    rendered.rerender(
-      <ControlledContentBrowser
-        workspace={{
-          ...data,
-          images: data.images.map((file) => ({ ...file })),
-          otherFiles: data.otherFiles.map((file) => ({ ...file })),
-        }}
-        requestThumbnail={requestThumbnail}
-      />,
-    )
 
     await waitFor(() => {
       expect(

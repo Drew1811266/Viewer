@@ -759,6 +759,53 @@ describe('Viewer empty state', () => {
     })
   })
 
+  it('reuses the same thumbnail representation from a folder filmstrip in the content grid', async () => {
+    const viewer = bridge()
+    const sharedWorkspace = {
+      ...contentWorkspace(),
+      images: contentWorkspace().images.map((file) => ({
+        ...file,
+        imageMetadata: { width: 3, height: 2 },
+      })),
+    }
+    vi.mocked(viewer.queryFolder).mockImplementation(async (entityId) =>
+      entityId === null ? categoryWorkspace() : sharedWorkspace,
+    )
+    render(<App bridge={viewer} />)
+    fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
+
+    await screen.findByRole('button', { name: '预览 front.jpg' })
+    await waitFor(() => expect(matchingThumbnailCalls(viewer)).toHaveLength(1))
+    fireEvent.click(screen.getByRole('button', { name: '打开 B01' }))
+    expect(await screen.findByRole('option', { name: 'front.jpg' })).toBeVisible()
+    await waitFor(() => expect(matchingThumbnailCalls(viewer)).toHaveLength(1))
+  })
+
+  it('starts a fresh thumbnail session after closing and reopening a project', async () => {
+    const viewer = bridge()
+    const sharedWorkspace = {
+      ...contentWorkspace(),
+      images: contentWorkspace().images.map((file) => ({
+        ...file,
+        imageMetadata: { width: 3, height: 2 },
+      })),
+    }
+    vi.mocked(viewer.queryFolder).mockImplementation(async (entityId) =>
+      entityId === null ? categoryWorkspace() : sharedWorkspace,
+    )
+    render(<App bridge={viewer} />)
+    fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
+    await screen.findByRole('button', { name: '预览 front.jpg' })
+    await waitFor(() => expect(matchingThumbnailCalls(viewer)).toHaveLength(1))
+
+    closeProjectFromMenu()
+    await screen.findByRole('button', { name: '选择项目文件夹' })
+    fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
+    await screen.findByRole('button', { name: '预览 front.jpg' })
+
+    await waitFor(() => expect(matchingThumbnailCalls(viewer)).toHaveLength(2))
+  })
+
   it('applies global density to the normal content grid without replacing selection', async () => {
     const viewer = bridge()
     const baseContent = contentWorkspace()
@@ -2753,6 +2800,18 @@ function contentWorkspace() {
     ],
     otherFiles: [],
   }
+}
+
+function matchingThumbnailCalls(viewer: ViewerBridge) {
+  return vi
+    .mocked(viewer.requestImage)
+    .mock.calls.filter(
+      ([request]) =>
+        request.entityId === 'image-1' &&
+        request.representation.kind === 'thumbnail' &&
+        request.representation.maxPixels === 198 &&
+        request.representation.scaleMilli === 1_000,
+    )
 }
 
 function mixedContentWorkspace({

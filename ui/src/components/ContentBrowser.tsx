@@ -108,8 +108,7 @@ export default function ContentBrowser({
     timeoutId: number
   } | null>(null)
   const pendingSecondaryGesture = useRef<PendingSecondaryGesture | null>(null)
-  const cache = useRef(new Map<string, string>())
-  const pending = useRef(new Map<string, Promise<string>>())
+  const mounted = useRef(true)
   const [work, setWork] = useState<ThumbnailWork>({ requested: 0, completed: 0, failed: 0 })
   const allFiles = useMemo(
     () => [...workspace.images, ...workspace.otherFiles],
@@ -133,6 +132,13 @@ export default function ContentBrowser({
   const activeOtherId = workspace.otherFiles.some(({ entityId }) => entityId === activeId)
     ? activeId
     : null
+
+  useEffect(
+    () => () => {
+      mounted.current = false
+    },
+    [],
+  )
 
   useEffect(() => {
     const ids = new Set(allFiles.map((file) => file.entityId))
@@ -220,28 +226,23 @@ export default function ContentBrowser({
 
   const loadThumbnail = useCallback(
     (file: BrowserFile, maxPixels: number, scaleMilli: number) => {
-      const key = `${file.entityId}:${file.modifiedNs}:${maxPixels}:${scaleMilli}`
-      const existing = cache.current.get(key)
-      if (existing) return Promise.resolve(existing)
-      const inFlight = pending.current.get(key)
-      if (inFlight) return inFlight
       if (requestThumbnail === undefined) return Promise.reject(new Error('thumbnail unavailable'))
 
       setWork((current) => ({ ...current, requested: current.requested + 1 }))
-      const request = requestThumbnail(file, maxPixels, scaleMilli).then(
+      return requestThumbnail(file, maxPixels, scaleMilli).then(
         (url) => {
-          cache.current.set(key, url)
-          setWork((current) => ({ ...current, completed: current.completed + 1 }))
+          if (mounted.current) {
+            setWork((current) => ({ ...current, completed: current.completed + 1 }))
+          }
           return url
         },
         (error: unknown) => {
-          setWork((current) => ({ ...current, failed: current.failed + 1 }))
+          if (mounted.current) {
+            setWork((current) => ({ ...current, failed: current.failed + 1 }))
+          }
           throw error
         },
       )
-      pending.current.set(key, request)
-      void request.finally(() => pending.current.delete(key)).catch(() => undefined)
-      return request
     },
     [requestThumbnail],
   )

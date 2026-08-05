@@ -257,7 +257,7 @@ describe('Viewer empty state', () => {
     expect(within(sidebar).getByRole('button', { name: 'Catalog' })).toBeVisible()
   })
 
-  it('keeps the approved project skeleton visible while initial thumbnails are pending', async () => {
+  it('keeps the project structure and item placeholders visible while thumbnails are pending', async () => {
     const viewer = bridge()
     const image = deferred<Awaited<ReturnType<ViewerBridge['requestImage']>>>()
     vi.mocked(viewer.queryFolder).mockResolvedValue(contentWorkspace())
@@ -267,15 +267,12 @@ describe('Viewer empty state', () => {
     fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
 
     await waitFor(() => expect(viewer.requestImage).toHaveBeenCalled())
-    const loading = await screen.findByRole('status', { name: '项目内容加载中' })
-    expect(loading.querySelectorAll('.workspace-loading-card')).toHaveLength(8)
-    expect(screen.getByTestId('content-workspace-surface')).toHaveAttribute(
-      'data-thumbnail-loading',
-      'true',
-    )
+    expect(screen.queryByRole('status', { name: '项目内容加载中' })).not.toBeInTheDocument()
     const sidebar = screen.getByRole('complementary', { name: '文件夹栏' })
-    expect(within(sidebar).queryByRole('button', { name: 'Catalog' })).not.toBeInTheDocument()
-    expect(sidebar.querySelectorAll('.folder-tree-skeleton-row')).toHaveLength(10)
+    expect(within(sidebar).getByRole('button', { name: 'Catalog' })).toBeVisible()
+    expect(sidebar.querySelectorAll('.folder-tree-skeleton-row')).toHaveLength(0)
+    expect(screen.getByRole('option', { name: 'front.jpg' })).toBeVisible()
+    expect(screen.getAllByLabelText('缩略图加载中').length).toBeGreaterThan(0)
     expect(screen.getByText('正在生成缩略图')).toBeVisible()
 
     await act(async () => {
@@ -292,6 +289,58 @@ describe('Viewer empty state', () => {
     await waitFor(() =>
       expect(screen.queryByRole('status', { name: '项目内容加载中' })).not.toBeInTheDocument(),
     )
+  })
+
+  it('selects the target immediately and delays non-blocking folder progress for 120 ms', async () => {
+    const viewer = bridge()
+    vi.mocked(viewer.folderTree).mockResolvedValue([
+      {
+        entityId: 'folder-b',
+        parentEntityId: null,
+        relativePath: 'folder-b',
+        name: 'folder-b',
+        marker: { reviewState: null, favorite: false },
+      },
+    ])
+    const folderB = deferred<Awaited<ReturnType<ViewerBridge['queryFolder']>>>()
+    vi.mocked(viewer.queryFolder)
+      .mockResolvedValueOnce(contentWorkspace())
+      .mockImplementation((entityId) =>
+        entityId === 'folder-b' ? folderB.promise : Promise.resolve(contentWorkspace()),
+      )
+    render(<App bridge={viewer} />)
+    fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
+    await screen.findByRole('option', { name: 'front.jpg' })
+    vi.useFakeTimers()
+
+    fireEvent.click(screen.getByRole('treeitem', { name: 'folder-b' }))
+
+    expect(screen.getByRole('treeitem', { name: 'folder-b' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    )
+    expect(screen.getByRole('option', { name: 'front.jpg' })).toBeVisible()
+    act(() => vi.advanceTimersByTime(119))
+    expect(screen.queryByRole('progressbar', { name: '正在切换文件夹' })).not.toBeInTheDocument()
+    act(() => vi.advanceTimersByTime(1))
+    expect(screen.getByRole('progressbar', { name: '正在切换文件夹' })).toBeVisible()
+
+    const nextWorkspace = contentWorkspace()
+    nextWorkspace.images = nextWorkspace.images.map((file) => ({
+      ...file,
+      entityId: 'image-b',
+      relativePath: 'folder-b/folder-b.jpg',
+      name: 'folder-b.jpg',
+    }))
+    await act(async () => {
+      folderB.resolve(nextWorkspace)
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(screen.getByRole('option', { name: 'folder-b.jpg' })).toBeVisible()
+    expect(screen.queryByRole('option', { name: 'front.jpg' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('progressbar', { name: '正在切换文件夹' })).not.toBeInTheDocument()
   })
 
   it('routes contextual content selection through the shared View menu', async () => {

@@ -39,6 +39,34 @@ describe('workspace style contracts', () => {
     })
   })
 
+  it('keeps projection progress local without concealing the workspace for thumbnails', () => {
+    const rules = parseRules(appCss)
+    expect(
+      rules.find(
+        ({ selector }) =>
+          selector ===
+            ".content-workspace-surface[data-thumbnail-loading='true'] > .content-browser" ||
+          selector ===
+            ".content-workspace-surface[data-thumbnail-loading='true'] > .workspace-loading",
+      ),
+    ).toBeUndefined()
+
+    const progress = rules.find(({ selector }) => selector === '.projection-progress')
+    expect(progress?.declarations).toMatchObject({
+      background: 'var(--viewer-accent)',
+      height: '2px',
+      'inset-inline': '0',
+      'pointer-events': 'none',
+      position: 'absolute',
+      top: '0',
+    })
+
+    const reducedProgress = parseRules(mediaBody(appCss, '(prefers-reduced-motion: reduce)')).find(
+      ({ selector }) => selector === '.projection-progress',
+    )
+    expect(reducedProgress?.declarations.animation).toBe('none')
+  })
+
   it('keeps folder rows at the approved compact density', () => {
     const rules = parseRules(appCss)
 

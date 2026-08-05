@@ -12,6 +12,7 @@ import type {
 import type { ViewerBridge } from './api/viewer'
 import { tauriViewerBridge } from './api/viewer'
 import { getAppShellStateInternals, useAppShellState } from './app/useAppShellState'
+import { useDelayedProjectionProgress } from './app/useDelayedProjectionProgress'
 import { useOperationDialogs } from './app/useOperationDialogs'
 import { useOtherFilePanelPreference } from './app/useOtherFilePanelPreference'
 import { getPreviewSessionInternals, usePreviewSession } from './app/usePreviewSession'
@@ -297,7 +298,11 @@ function ViewerWorkspace({ bridge }: { bridge: ViewerBridge }) {
         !(running && task.status === 'complete' && !task.hasResults),
     )
   }, [dismissedTasks, operationTask, scanTask, textTask, thumbnailTask])
-  const thumbnailLoading = thumbnailTask?.status === 'running'
+  const displayedFolderId = state.projectionTransition?.selectedFolderId ?? state.selectedFolderId
+  const projectionProgressVisible = useDelayedProjectionProgress(
+    state.projectionTransition,
+    state.workspace !== null,
+  )
   const selectFolderTarget = useCallback(
     (entityId: string | null) => {
       setSelectedFiles([])
@@ -1027,11 +1032,11 @@ function ViewerWorkspace({ bridge }: { bridge: ViewerBridge }) {
           style={{ width: effectiveSidebarCollapsed ? 52 : sidebarWidth }}
         >
           <p className="folder-tree-label">项目目录</p>
-          {state.workspace !== null && !thumbnailLoading && (
+          {state.workspace !== null && (
             <button
               type="button"
               className="project-root-button"
-              aria-pressed={state.selectedFolderId === null}
+              aria-pressed={displayedFolderId === null}
               onClick={() => selectFolderTarget(null)}
             >
               {state.project.displayName}
@@ -1039,8 +1044,8 @@ function ViewerWorkspace({ bridge }: { bridge: ViewerBridge }) {
           )}
           <FolderTree
             folders={state.folders}
-            loading={state.workspace === null || thumbnailLoading}
-            selectedId={state.selectedFolderId}
+            loading={state.workspace === null}
+            selectedId={displayedFolderId}
             onSelect={selectFolderTarget}
             organizationDropTarget={organizationDropTarget}
           />
@@ -1063,6 +1068,9 @@ function ViewerWorkspace({ bridge }: { bridge: ViewerBridge }) {
           className={contentWorkspaceActive ? 'workspace workspace--content' : 'workspace'}
           aria-label="项目内容"
         >
+          {projectionProgressVisible && (
+            <div className="projection-progress" role="progressbar" aria-label="正在切换文件夹" />
+          )}
           {pendingRecoveryReport !== null ? (
             <ViewerEmptyState
               appearance="plain"
@@ -1145,10 +1153,8 @@ function ViewerWorkspace({ bridge }: { bridge: ViewerBridge }) {
                   <div
                     className="content-workspace-surface"
                     data-testid="content-workspace-surface"
-                    data-thumbnail-loading={thumbnailLoading || undefined}
                     hidden={compareOpen}
                   >
-                    {thumbnailLoading && <WorkspaceLoadingState />}
                     {state.showingAggregate && (
                       <ViewerStatusTag className="aggregate-label" tone="info">
                         全部后代文件

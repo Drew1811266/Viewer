@@ -1120,25 +1120,22 @@ body:has(.viewer-inspector) .global-notice-stack {
   min-width: 0;
   overflow: auto;
   padding: 16px;
+  position: relative;
 }
 
 .workspace > .viewer-empty-state {
   margin: max(48px, 12vh) auto 0;
 }
 
-.content-workspace-surface[data-thumbnail-loading='true'] {
-  position: relative;
-}
-
-.content-workspace-surface[data-thumbnail-loading='true'] > .content-browser {
-  opacity: 0;
+.projection-progress {
+  background: var(--viewer-accent);
+  block-size: 2px;
+  height: 2px;
+  inset-inline: 0;
   pointer-events: none;
-}
-
-.content-workspace-surface[data-thumbnail-loading='true'] > .workspace-loading {
-  inset: 0;
   position: absolute;
-  z-index: 1;
+  top: 0;
+  z-index: 2;
 }
 
 .compare-status {
@@ -2627,6 +2624,7 @@ body:has(.viewer-dialog-backdrop) .task-bar {
   .organization-drag-handle,
   .radial-primary-shape,
   .radial-secondary-shape,
+  .projection-progress,
   .project-opening-progress > span {
     transition: none;
     animation: none;

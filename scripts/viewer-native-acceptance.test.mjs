@@ -580,7 +580,7 @@ describe('state entry plans', () => {
     )
     assert.deepEqual(previewPlan.slice(previewClickIndex, previewClickIndex + 4), [
       { kind: 'click', target: { name: '商品-02.jpg' } },
-      { kind: 'assert', target: { role: 'AXStaticText', name: '已选择 1 项' } },
+      { kind: 'assert', target: { name: '选择摘要' } },
       { kind: 'focus', target: { name: '图片文件' } },
       { kind: 'key', key: 'space', modifiers: [] },
     ])

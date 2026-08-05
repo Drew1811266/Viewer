@@ -248,7 +248,7 @@ export function buildStateEntryPlan(id) {
     ...preparation,
     ...openContent(),
     { kind: 'click', target: image(name) },
-    { kind: 'assert', target: { role: 'AXStaticText', name: '已选择 1 项' } },
+    { kind: 'assert', target: { name: '选择摘要' } },
     { kind: 'focus', target: { name: '图片文件' } },
     { kind: 'key', key: 'space', modifiers: [] },
   ]

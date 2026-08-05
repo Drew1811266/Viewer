@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { defined } from '../../defined'
 import type { AcceptanceRequest } from '../acceptanceRequest'
 import { ACCEPTANCE_STATE_DEFINITIONS } from '../acceptanceStateCatalog'
-import { VIEWING_SCENES } from './viewingScenes'
+import { infoInspectorRendered, VIEWING_SCENES } from './viewingScenes'
 
 const request: AcceptanceRequest = {
   id: 'PRE-01',
@@ -143,6 +143,7 @@ describe('Viewer viewing acceptance scenes', () => {
       const inspector = screen.getByRole('complementary', { name: '文件信息' })
       expect(inspector).toBeVisible()
       await waitFor(() => expect(document.querySelector('.viewer-shell')).not.toBeNull())
+      expect(infoInspectorRendered(document)).toBe(true)
       if (id === 'INF-01') expect(inspector).toHaveTextContent('商品-02.jpg')
       if (id === 'INF-02') expect(inspector).toHaveTextContent('文件夹 1 · 图片 1 · 其它文件 1')
       rendered.unmount()

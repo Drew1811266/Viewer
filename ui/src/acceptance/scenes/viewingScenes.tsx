@@ -118,12 +118,7 @@ function RadialScene({ request, state }: { request: AcceptanceRequest; state: Ra
 
 function InfoScene({ aggregate }: { aggregate: boolean }) {
   useWorkspaceSelection(aggregate ? 2 : 1, aggregate ? undefined : PREVIEW_FILE.name)
-  const ready = useCallback(
-    () =>
-      workspaceThumbnailsReady() &&
-      document.querySelector('[role="complementary"][aria-label="文件信息"]') !== null,
-    [],
-  )
+  const ready = useCallback(() => workspaceThumbnailsReady() && infoInspectorRendered(document), [])
   return (
     <AcceptanceProductScene ready={ready}>
       <InfoOverlay
@@ -140,6 +135,10 @@ function InfoScene({ aggregate }: { aggregate: boolean }) {
       />
     </AcceptanceProductScene>
   )
+}
+
+export function infoInspectorRendered(root: Document | Element): boolean {
+  return root.querySelector('aside.viewer-inspector[aria-label="文件信息"]') !== null
 }
 
 function useWorkspaceSelection(count: number, preferredName?: string) {

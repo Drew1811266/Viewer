@@ -145,7 +145,9 @@ describe('Viewer viewing acceptance scenes', () => {
       await waitFor(() => expect(document.querySelector('.viewer-shell')).not.toBeNull())
       expect(infoInspectorRendered(document)).toBe(true)
       if (id === 'INF-01') expect(inspector).toHaveTextContent('商品-02.jpg')
-      if (id === 'INF-02') expect(inspector).toHaveTextContent('文件夹 1 · 图片 1 · 其它文件 1')
+      if (id === 'INF-02') {
+        expect(inspector).toHaveTextContent('文件夹 1 · 图片 1 · 其它文件 1')
+      }
       rendered.unmount()
     },
   )

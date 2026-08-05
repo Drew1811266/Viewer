@@ -117,7 +117,10 @@ function RadialScene({ request, state }: { request: AcceptanceRequest; state: Ra
 }
 
 function InfoScene({ aggregate }: { aggregate: boolean }) {
-  useWorkspaceSelection(aggregate ? 2 : 1, aggregate ? undefined : PREVIEW_FILE.name)
+  useWorkspaceSelection(
+    aggregate ? AGGREGATE_SELECTION_INFO.relativePaths.length : 1,
+    aggregate ? undefined : PREVIEW_FILE.name,
+  )
   const ready = useCallback(() => workspaceThumbnailsReady() && infoInspectorRendered(document), [])
   return (
     <AcceptanceProductScene ready={ready}>

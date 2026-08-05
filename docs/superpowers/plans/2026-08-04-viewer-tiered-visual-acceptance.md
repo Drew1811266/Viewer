@@ -34,6 +34,7 @@ ui/vite.visual-acceptance.config.ts
   Dedicated Vite dev/build config; output is target/viewer-visual-acceptance/site.
 
 ui/src/acceptance/
+  acceptanceStateCatalog.json     Browser/Node shared 89-state metadata.
   acceptanceStateCatalog.ts       89 IDs, wave/reference/component coverage metadata.
   acceptanceStateCatalog.test.ts  Ledger equality, scene coverage and public contract tests.
   acceptanceRequest.ts            Strict id/viewport query parsing.
@@ -43,6 +44,7 @@ ui/src/acceptance/
   AcceptanceApp.tsx               Scene dispatch and pending/ready/error protocol.
   AcceptanceApp.test.tsx          One-state render and status protocol tests.
   main.tsx                         Acceptance-only React entry and formal CSS imports.
+  scenes/index.ts                 Typed registry assembled only by the acceptance entry.
   scenes/workspaceScenes.tsx      Wave 1 formal shell/browsing states.
   scenes/viewingScenes.tsx        Wave 2 radial/preview/compare/document/info states.
   scenes/dialogScenes.tsx         Wave 3 dialog states.
@@ -67,9 +69,11 @@ docs/reviews/viewer-native-smoke-matrix.md
 ### Task 1: Establish the 89-State Catalog Contract
 
 **Files:**
+- Create: `ui/src/acceptance/acceptanceStateCatalog.json`
 - Create: `ui/src/acceptance/acceptanceStateCatalog.ts`
 - Create: `ui/src/acceptance/acceptanceStateCatalog.test.ts`
 - Modify: `ui/src/visualMigrationCoverage.test.ts`
+- Modify: `ui/tsconfig.app.json`
 
 **Interfaces:**
 - Consumes: the 89 rows in `docs/reviews/2026-08-02-viewer-atlas-product-migration-ledger.md`.
@@ -117,7 +121,7 @@ Expected: FAIL because `acceptanceStateCatalog.ts` does not exist.
 
 - [ ] **Step 3: Implement the complete typed catalog**
 
-Add all IDs in ledger order with these fixed group boundaries:
+Add all IDs to `acceptanceStateCatalog.json` in ledger order with these fixed group boundaries:
 
 ```ts
 export type AcceptanceSceneGroup = 'workspace' | 'viewing' | 'dialog' | 'feedback'
@@ -133,7 +137,10 @@ export interface AcceptanceStateDefinition {
 
 Use `workspace` for LAU/SID/STR/THU/OTH/SEA/FIL/MEN, `viewing` for RAD/PRE/COM/DOC/INF, `dialog` for DIA, and `feedback` for TAS/RES/A11Y. Copy each row's exact wave and reference state from the ledger. Populate `components` from the ledger's formal-component column, using source filenames without extensions, for example PRE-01 includes `ImagePreview`, PRE-07 includes `ImagePreview`, COM-04 includes `CompareWorkspace` and `CompareVirtualViewport`, and A11Y-05 includes all named responsive modules.
 
-Implement lookup through a module-level `Map`; throw on unknown IDs rather than returning `undefined`.
+Enable `resolveJsonModule` in `tsconfig.app.json`. Import and validate the shared JSON in
+`acceptanceStateCatalog.ts`, expose it through the typed interface, and implement lookup through a
+module-level `Map`; throw on unknown IDs rather than returning `undefined`. The Node runner in Task 4
+must read this same JSON file rather than maintaining a second ID/wave/reference list.
 
 - [ ] **Step 4: Run the focused test and verify GREEN**
 
@@ -154,7 +161,7 @@ Expected: PASS with 89 unique IDs in the same order.
 - [ ] **Step 7: Commit the catalog contract**
 
 ```bash
-git add ui/src/acceptance/acceptanceStateCatalog.ts ui/src/acceptance/acceptanceStateCatalog.test.ts ui/src/visualMigrationCoverage.test.ts
+git add ui/src/acceptance/acceptanceStateCatalog.json ui/src/acceptance/acceptanceStateCatalog.ts ui/src/acceptance/acceptanceStateCatalog.test.ts ui/src/visualMigrationCoverage.test.ts ui/tsconfig.app.json
 git commit -m "test: define Viewer visual acceptance catalog"
 ```
 
@@ -170,6 +177,7 @@ git commit -m "test: define Viewer visual acceptance catalog"
 - Create: `ui/src/acceptance/AcceptanceApp.tsx`
 - Create: `ui/src/acceptance/AcceptanceApp.test.tsx`
 - Create: `ui/src/acceptance/main.tsx`
+- Create: `ui/src/acceptance/scenes/index.ts`
 - Modify: `ui/tsconfig.node.json`
 - Modify: `package.json`
 - Create: `scripts/viewer-visual-acceptance.test.mjs`
@@ -251,6 +259,9 @@ import '../styles/adaptiveOtherFilePanel.css'
 
 The acceptance config uses the React plugin, `visual-acceptance.html` as the only Rollup input and `../target/viewer-visual-acceptance/site` as `outDir`. It must set `emptyOutDir: true` only for that exact target path. Add `vite.visual-acceptance.config.ts` to `tsconfig.node.json`.
 
+Create `scenes/index.ts` with an initially empty typed registry. A missing scene produces the bounded
+`error` status in `AcceptanceApp`; Task 3 adds PRE-01 before any real capture.
+
 Add root scripts:
 
 ```json
@@ -260,7 +271,11 @@ Add root scripts:
 
 - [ ] **Step 7: Add and verify the release-isolation test**
 
-In `viewer-visual-acceptance.test.mjs`, read `ui/src/main.tsx`, `ui/vite.config.ts`, `src-tauri/tauri.conf.json` and `src-tauri/capabilities/*.json`. Assert none reference `visual-acceptance`, `src/acceptance` or Playwright. Run `pnpm build:ui`, recursively inspect `ui/dist`, and assert no emitted filename or UTF-8 asset contains `data-acceptance-id` or `visual-acceptance.html`.
+In `viewer-visual-acceptance.test.mjs`, run the real production build into a temporary output directory,
+recursively inspect the emitted artifacts, and assert no emitted filename or UTF-8 asset contains
+`data-acceptance-id`, `visual-acceptance.html` or the acceptance catalog. This tests the release build
+boundary itself rather than grepping source text. Separately run the acceptance build and assert its
+only HTML entry is `visual-acceptance.html` under the approved target root.
 
 Run:
 
@@ -275,7 +290,7 @@ Expected: production build contains only the existing product entry; acceptance 
 - [ ] **Step 8: Commit the isolated entry**
 
 ```bash
-git add package.json ui/visual-acceptance.html ui/vite.visual-acceptance.config.ts ui/tsconfig.node.json ui/src/acceptance/acceptanceRequest.ts ui/src/acceptance/acceptanceRequest.test.ts ui/src/acceptance/AcceptanceApp.tsx ui/src/acceptance/AcceptanceApp.test.tsx ui/src/acceptance/main.tsx scripts/viewer-visual-acceptance.test.mjs
+git add package.json ui/visual-acceptance.html ui/vite.visual-acceptance.config.ts ui/tsconfig.node.json ui/src/acceptance/acceptanceRequest.ts ui/src/acceptance/acceptanceRequest.test.ts ui/src/acceptance/AcceptanceApp.tsx ui/src/acceptance/AcceptanceApp.test.tsx ui/src/acceptance/main.tsx ui/src/acceptance/scenes/index.ts scripts/viewer-visual-acceptance.test.mjs
 git commit -m "feat: isolate Viewer visual acceptance entry"
 ```
 

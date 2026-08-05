@@ -135,8 +135,9 @@ export const FEEDBACK_SCENES: AcceptanceSceneRegistry = {
   'A11Y-05': () => (
     <FeedbackBackdrop
       ready={() =>
-        document.querySelector('[role="dialog"][aria-label="软件设置"]') !== null &&
-        document.querySelector('[aria-label="后台任务"]') !== null
+        [...document.querySelectorAll('[role="dialog"] h2')].some(
+          (heading) => heading.textContent?.trim() === '软件设置',
+        ) && document.querySelector('[aria-label="后台任务"]') !== null
       }
       attributes={{ 'data-acceptance-zoom': '200' }}
     >

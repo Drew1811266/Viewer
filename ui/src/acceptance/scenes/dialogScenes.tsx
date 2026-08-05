@@ -16,16 +16,12 @@ const DESTINATION_ID = 'acceptance-folder-destination'
 
 export const DIALOG_SCENES: AcceptanceSceneRegistry = {
   'DIA-01': () => (
-    <DialogBackdrop
-      ready={() => document.querySelector('[role="dialog"][aria-label="软件设置"]') !== null}
-    >
+    <DialogBackdrop ready={() => dialogIsNamed('软件设置')}>
       <SettingsDialog density="standard" error={null} onDensityChange={noOp} onClose={noOp} />
     </DialogBackdrop>
   ),
   'DIA-02': () => (
-    <DialogBackdrop
-      ready={() => document.querySelector('[role="dialog"][aria-label="重命名文件"]') !== null}
-    >
+    <DialogBackdrop ready={() => dialogIsNamed('重命名文件')}>
       <RenameDialog currentName="商品-01.jpg" busy={false} onConfirm={noOp} onCancel={noOp} />
     </DialogBackdrop>
   ),
@@ -61,20 +57,12 @@ export const DIALOG_SCENES: AcceptanceSceneRegistry = {
     </DialogBackdrop>
   ),
   'DIA-06': () => (
-    <DialogBackdrop
-      ready={() =>
-        document.querySelector('[role="dialog"][aria-label="将文件移到废纸篓？"]') !== null
-      }
-    >
+    <DialogBackdrop ready={() => dialogIsNamed('将文件移到废纸篓？')}>
       <TrashConfirmation count={1} busy={false} onConfirm={noOp} onCancel={noOp} />
     </DialogBackdrop>
   ),
   'DIA-07': () => (
-    <DialogBackdrop
-      ready={() =>
-        document.querySelector('[role="dialog"][aria-label="文件操作尚未完成"]') !== null
-      }
-    >
+    <DialogBackdrop ready={() => dialogIsNamed('文件操作尚未完成')}>
       <CloseOperationDialog busy={false} onWait={noOp} onCancelPending={noOp} onStay={noOp} />
     </DialogBackdrop>
   ),
@@ -176,4 +164,10 @@ const CONFLICT_PREFLIGHT: FileCommandPreflight = {
     state: 'conflict' as const,
     code: 'destination_occupied' as const,
   })),
+}
+
+function dialogIsNamed(title: string): boolean {
+  const dialog = document.querySelector('[role="dialog"]')
+  if (dialog === null) return false
+  return [...dialog.querySelectorAll('h2')].some((heading) => heading.textContent?.trim() === title)
 }

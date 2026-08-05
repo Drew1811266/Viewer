@@ -574,6 +574,12 @@ describe('state entry plans', () => {
       ),
       true,
     )
+    assert.equal(
+      buildStateEntryPlan('PRE-01').some(
+        (step) => step.kind === 'key' && step.key === 'enter',
+      ),
+      true,
+    )
     assert.deepEqual(
       buildStateEntryPlan('PRE-03').filter((step) => step.kind === 'click').slice(-2),
       [

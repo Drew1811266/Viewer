@@ -88,6 +88,70 @@ describe('viewerReducer', () => {
     expect(viewerReducer(scanning, { type: 'project_closed' })).toEqual(initialViewerState)
   })
 
+  it('keeps the last workspace while a projection changes and settles the transition', () => {
+    const previousWorkspace = contentWorkspace(['a'])
+    let state = viewerReducer(initialViewerState, { type: 'project_opened', project })
+    state = viewerReducer(state, {
+      type: 'projection_loaded',
+      sessionId: project.sessionId,
+      generation: project.generation,
+      folders: [],
+      workspace: previousWorkspace,
+      selectedFolderId: 'folder-a',
+      selectedFolderPath: 'folder-a',
+      showingAggregate: false,
+    })
+
+    state = viewerReducer(state, {
+      type: 'projection_requested',
+      sessionId: project.sessionId,
+      generation: project.generation,
+      selectedFolderId: 'folder-b',
+      selectedFolderPath: 'folder-b',
+      showingAggregate: false,
+    })
+
+    expect(state.projectionTransition).toEqual({
+      selectedFolderId: 'folder-b',
+      selectedFolderPath: 'folder-b',
+      showingAggregate: false,
+    })
+    expect(state.workspace).toEqual(previousWorkspace)
+
+    state = viewerReducer(state, {
+      type: 'projection_loaded',
+      sessionId: project.sessionId,
+      generation: project.generation,
+      folders: [],
+      workspace: contentWorkspace(['b']),
+      selectedFolderId: 'folder-b',
+      selectedFolderPath: 'folder-b',
+      showingAggregate: false,
+    })
+    expect(state.projectionTransition).toBeNull()
+    expect(state.workspace).toEqual(contentWorkspace(['b']))
+
+    state = viewerReducer(state, {
+      type: 'projection_requested',
+      sessionId: project.sessionId,
+      generation: project.generation,
+      selectedFolderId: 'folder-c',
+      selectedFolderPath: 'folder-c',
+      showingAggregate: false,
+    })
+    state = viewerReducer(state, {
+      type: 'projection_failed',
+      sessionId: project.sessionId,
+      generation: project.generation,
+      message: 'folder unavailable',
+    })
+
+    expect(state.projectionTransition).toBeNull()
+    expect(state.workspace).toEqual(contentWorkspace(['b']))
+    expect(state.errorMessage).toBe('folder unavailable')
+    expect(viewerReducer(state, { type: 'project_closed' }).projectionTransition).toBeNull()
+  })
+
   it('tracks search intent and query controls while folder switches preserve them', () => {
     let state = viewerReducer(initialViewerState, { type: 'project_opened', project })
     state = viewerReducer(state, { type: 'search_focus_requested' })

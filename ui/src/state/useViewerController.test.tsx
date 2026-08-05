@@ -44,10 +44,12 @@ import type { ViewerAction, ViewerState } from './viewerState'
 
 function deferred<T>() {
   let resolve!: (value: T) => void
-  const promise = new Promise<T>((next) => {
+  let reject!: (reason?: unknown) => void
+  const promise = new Promise<T>((next, fail) => {
     resolve = next
+    reject = fail
   })
-  return { promise, resolve }
+  return { promise, resolve, reject }
 }
 
 function bridge(access: 'read_write' | 'read_only' = 'read_write'): ViewerBridge {
@@ -335,22 +337,12 @@ describe('useViewerController M2 coordination', () => {
     expect(viewer.listenCloseBlocked).not.toHaveBeenCalled()
   })
 
-  it('keeps the native launch loading surface visible before publishing the first projection', async () => {
-    vi.stubGlobal('__VIEWER_TEST_NATIVE_LOADING_HOLD__', true)
+  it('requests the first projection immediately after the project opens', async () => {
     const viewer = bridge()
-    let receiveScan: ((event: ScanEvent) => void) | undefined
-    vi.mocked(viewer.listenScan).mockImplementation(async (handler) => {
-      receiveScan = handler
-      return () => undefined
-    })
+    const workspace = deferred<Awaited<ReturnType<ViewerBridge['queryFolder']>>>()
+    vi.mocked(viewer.queryFolder).mockImplementation(() => workspace.promise)
     const { result } = renderHook(() => useViewerController(viewer))
     let opening!: Promise<'opened' | 'invalid-root' | 'failed'>
-
-    await act(async () => {
-      await Promise.resolve()
-      await Promise.resolve()
-    })
-    expect(receiveScan).toBeDefined()
 
     act(() => {
       opening = result.current.openProject('/fixture/project')
@@ -362,26 +354,76 @@ describe('useViewerController M2 coordination', () => {
 
     expect(result.current.state.project?.displayName).toBe('Catalog')
     expect(result.current.state.workspace).toBeNull()
-    expect(viewer.queryFolder).not.toHaveBeenCalled()
-
-    act(() => {
-      receiveScan?.({
-        type: 'files',
-        sessionId: 'session-1',
-        generation: 1,
-        taskId: 'scan-1',
-        nodes: [],
-      })
-    })
-    expect(viewer.queryFolder).not.toHaveBeenCalled()
-
-    await act(() => vi.advanceTimersByTimeAsync(599))
-    expect(viewer.queryFolder).not.toHaveBeenCalled()
-
-    await act(() => vi.advanceTimersByTimeAsync(1))
-    await act(() => opening)
     expect(viewer.queryFolder).toHaveBeenCalledOnce()
+    expect(result.current.state.projectionTransition).toEqual({
+      selectedFolderId: null,
+      selectedFolderPath: '',
+      showingAggregate: false,
+    })
+
+    await act(async () => {
+      workspace.resolve({ workspace: 'empty' })
+      await opening
+    })
+    expect(result.current.state.projectionTransition).toBeNull()
     expect(result.current.state.workspace).toEqual({ workspace: 'empty' })
+  })
+
+  it('keeps the newest folder when older projection success and failure settle late', async () => {
+    const viewer = bridge()
+    const folders = ['folder-a', 'folder-b', 'folder-c'].map((entityId) => ({
+      entityId,
+      parentEntityId: null,
+      relativePath: entityId,
+      name: entityId,
+      marker: { reviewState: null, favorite: false },
+    }))
+    vi.mocked(viewer.folderTree).mockResolvedValue(folders)
+    const { result } = renderHook(() => useViewerController(viewer))
+    await act(() => result.current.openProject('/fixture/project'))
+
+    const folderA = deferred<Awaited<ReturnType<ViewerBridge['queryFolder']>>>()
+    const folderB = deferred<Awaited<ReturnType<ViewerBridge['queryFolder']>>>()
+    const folderC = deferred<Awaited<ReturnType<ViewerBridge['queryFolder']>>>()
+    vi.mocked(viewer.queryFolder).mockImplementation((entityId) => {
+      if (entityId === 'folder-a') return folderA.promise
+      if (entityId === 'folder-b') return folderB.promise
+      if (entityId === 'folder-c') return folderC.promise
+      return Promise.resolve({ workspace: 'empty' })
+    })
+
+    let requestA!: ReturnType<typeof result.current.selectFolder>
+    let requestB!: ReturnType<typeof result.current.selectFolder>
+    let requestC!: ReturnType<typeof result.current.selectFolder>
+    act(() => {
+      requestA = result.current.selectFolder('folder-a')
+      requestB = result.current.selectFolder('folder-b')
+      requestC = result.current.selectFolder('folder-c')
+    })
+
+    expect(result.current.state.projectionTransition).toEqual({
+      selectedFolderId: 'folder-c',
+      selectedFolderPath: 'folder-c',
+      showingAggregate: false,
+    })
+
+    await act(async () => {
+      folderC.resolve(contentWorkspace(['c']))
+      await requestC
+    })
+    await act(async () => {
+      folderA.resolve(contentWorkspace(['a']))
+      await requestA
+    })
+    await act(async () => {
+      folderB.reject(new Error('stale folder failed'))
+      await requestB
+    })
+
+    expect(result.current.state.selectedFolderId).toBe('folder-c')
+    expect(result.current.state.workspace).toEqual(contentWorkspace(['c']))
+    expect(result.current.state.projectionTransition).toBeNull()
+    expect(result.current.state.errorMessage).toBeNull()
   })
 
   it('debounces text by 120 ms and ignores a late older response', async () => {

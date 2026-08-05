@@ -71,6 +71,12 @@ export interface SearchState {
   offset: number
 }
 
+export interface ProjectionTransition {
+  selectedFolderId: string | null
+  selectedFolderPath: string
+  showingAggregate: boolean
+}
+
 export function initialSearchState(): SearchState {
   return {
     focusRequest: 0,
@@ -92,6 +98,7 @@ export interface ViewerState {
   project: ProjectSnapshot | null
   folders: FolderTreeItem[]
   workspace: FolderWorkspace | null
+  projectionTransition: ProjectionTransition | null
   selectedFolderId: string | null
   selectedFolderPath: string
   showingAggregate: boolean
@@ -133,6 +140,7 @@ export const initialViewerState: ViewerState = {
   project: null,
   folders: [],
   workspace: null,
+  projectionTransition: null,
   selectedFolderId: null,
   selectedFolderPath: '',
   showingAggregate: false,
@@ -186,6 +194,14 @@ export type ViewerAction =
   | { type: 'scan_received'; event: ScanEvent }
   | { type: 'index_progress_received'; progress: IndexProgressEvent }
   | { type: 'scan_cancelled'; taskId: string }
+  | {
+      type: 'projection_requested'
+      sessionId: string
+      generation: number
+      selectedFolderId: string | null
+      selectedFolderPath: string
+      showingAggregate: boolean
+    }
   | {
       type: 'projection_loaded'
       sessionId: string

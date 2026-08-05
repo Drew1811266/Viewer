@@ -19,12 +19,24 @@ export function reduceWorkspaceAction(
     case 'scan_cancelled':
       if (state.scan?.taskId !== action.taskId) return state
       return { ...state, scan: { ...state.scan, phase: 'cancelled' } }
+    case 'projection_requested':
+      if (!isCurrentProjection(state, action.sessionId, action.generation)) return state
+      return {
+        ...state,
+        projectionTransition: {
+          selectedFolderId: action.selectedFolderId,
+          selectedFolderPath: action.selectedFolderPath,
+          showingAggregate: action.showingAggregate,
+        },
+        errorMessage: null,
+      }
     case 'projection_loaded':
       if (!isCurrentProjection(state, action.sessionId, action.generation)) return state
       return repairContextAfterProjection(state, {
         ...state,
         folders: action.folders,
         workspace: action.workspace,
+        projectionTransition: null,
         selectedFolderId: action.selectedFolderId,
         selectedFolderPath: action.selectedFolderPath,
         showingAggregate: action.showingAggregate,
@@ -32,7 +44,7 @@ export function reduceWorkspaceAction(
       })
     case 'projection_failed':
       if (!isCurrentProjection(state, action.sessionId, action.generation)) return state
-      return { ...state, errorMessage: action.message }
+      return { ...state, projectionTransition: null, errorMessage: action.message }
     case 'selection_changed':
       return {
         ...state,

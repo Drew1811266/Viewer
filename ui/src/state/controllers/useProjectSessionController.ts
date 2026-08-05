@@ -27,17 +27,6 @@ interface DesiredProjection {
   showingAggregate: boolean
 }
 
-const NATIVE_INITIAL_PROJECTION_HOLD_MS = 600
-
-async function holdNativeInitialProjectionForVisualStability() {
-  if (import.meta.env.MODE === 'test' && !('__VIEWER_TEST_NATIVE_LOADING_HOLD__' in globalThis)) {
-    return
-  }
-  await new Promise<void>((resolve) => {
-    setTimeout(resolve, NATIVE_INITIAL_PROJECTION_HOLD_MS)
-  })
-}
-
 const desiredProjectionByRefresh = new WeakMap<
   RefreshProjection,
   MutableRefObject<DesiredProjection>
@@ -68,7 +57,6 @@ export function useProjectSessionController(core: ControllerCore): ProjectSessio
   const projectionRequestRef = useRef(0)
   const reconcilingGenerationRef = useRef<number | null>(null)
   const closeRequestPendingRef = useRef(false)
-  const initialProjectionHoldRef = useRef(false)
   const desiredProjectionRef = useRef<DesiredProjection>({
     selectedFolderId: null,
     selectedFolderPath: '',
@@ -96,6 +84,14 @@ export function useProjectSessionController(core: ControllerCore): ProjectSessio
         showingAggregate,
       }
       const requestId = ++projectionRequestRef.current
+      dispatch({
+        type: 'projection_requested',
+        sessionId: project.sessionId,
+        generation: project.generation,
+        selectedFolderId,
+        selectedFolderPath,
+        showingAggregate,
+      })
       try {
         const foldersPromise = bridge.folderTree()
         const workspacePromise = repairMissingFolder
@@ -152,10 +148,7 @@ export function useProjectSessionController(core: ControllerCore): ProjectSessio
       try {
         const project = await bridge.openProject(path)
         if (requestEpoch !== sessionEpochRef.current) return 'failed' as const
-        initialProjectionHoldRef.current = true
         dispatch({ type: 'project_opened', project })
-        await holdNativeInitialProjectionForVisualStability()
-        initialProjectionHoldRef.current = false
         if (requestEpoch !== sessionEpochRef.current) return 'failed' as const
         await refreshProjection(project, null, '', false)
         return 'opened' as const
@@ -178,7 +171,6 @@ export function useProjectSessionController(core: ControllerCore): ProjectSessio
   )
 
   const resetProjectSessionRequests = useCallback(() => {
-    initialProjectionHoldRef.current = false
     advanceSessionEpoch()
     projectionRequestRef.current += 1
     desiredProjectionRef.current = {
@@ -245,7 +237,6 @@ export function useProjectSessionController(core: ControllerCore): ProjectSessio
       if (event.generation === project.generation) {
         const desired = desiredProjectionRef.current
         dispatch({ type: 'scan_received', event })
-        if (initialProjectionHoldRef.current) return
         void refreshProjection(
           project,
           desired.selectedFolderId,

@@ -576,7 +576,7 @@ describe('state entry plans', () => {
       { kind: 'click', target: { name: '商品-02.jpg' } },
       { kind: 'assert', target: { name: '选择摘要' } },
       { kind: 'focus', target: { name: '图片文件' } },
-      { kind: 'key', key: 'space', modifiers: [] },
+      { kind: 'key', key: 'enter', modifiers: [] },
     ])
     assert.deepEqual(
       buildStateEntryPlan('PRE-03').filter((step) => step.kind === 'click').slice(-2),

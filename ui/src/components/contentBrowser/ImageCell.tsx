@@ -60,8 +60,10 @@ export function ImageCell({
       onPointerDown={(event) => onRadialMenuPointerDown(file, event)}
       onContextMenuCapture={(event) => event.preventDefault()}
       onContextMenu={(event) => onRadialMenuContextMenu(file, event)}
-      onClick={(event) => onClick(file, event)}
-      onDoubleClick={() => onPreview(file)}
+      onClick={(event) => {
+        onClick(file, event)
+        if (event.detail >= 2) onPreview(file)
+      }}
     >
       <div
         className="file-export-surface"

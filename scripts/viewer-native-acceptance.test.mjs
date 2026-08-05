@@ -569,15 +569,12 @@ describe('state entry plans', () => {
 
   it('opens image, comparison, document and information states through product actions', () => {
     const previewPlan = buildStateEntryPlan('PRE-01')
-    const previewClickIndex = previewPlan.findIndex(
-      (step) => step.kind === 'click' && step.target?.name === '商品-02.jpg',
+    assert.deepEqual(
+      previewPlan.filter(
+        (step) => step.kind === 'doubleClick' && step.target?.name === '商品-02.jpg',
+      ),
+      [{ kind: 'doubleClick', target: { name: '商品-02.jpg' } }],
     )
-    assert.deepEqual(previewPlan.slice(previewClickIndex, previewClickIndex + 4), [
-      { kind: 'click', target: { name: '商品-02.jpg' } },
-      { kind: 'assert', target: { name: '选择摘要' } },
-      { kind: 'focus', target: { name: '图片文件' } },
-      { kind: 'key', key: 'enter', modifiers: [] },
-    ])
     assert.deepEqual(
       buildStateEntryPlan('PRE-03').filter((step) => step.kind === 'click').slice(-2),
       [

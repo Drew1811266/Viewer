@@ -769,7 +769,7 @@ describe('ContentBrowser', () => {
     )
     const second = screen.getByRole('option', { name: '2.jpg' })
     fireEvent.click(second)
-    fireEvent.doubleClick(second)
+    fireEvent.click(second, { detail: 2 })
 
     rendered.rerender(<ContentBrowser workspace={data} density="compact" onPreview={preview} />)
 

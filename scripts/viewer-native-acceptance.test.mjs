@@ -572,16 +572,12 @@ describe('state entry plans', () => {
     assert.deepEqual(
       previewPlan.filter(
         (step) =>
-          (step.kind === 'click' && step.target?.name === '商品-02.jpg') ||
-          (step.kind === 'assert' && step.target?.name === '选择摘要') ||
-          (step.kind === 'focus' && step.target?.name === '图片文件') ||
-          (step.kind === 'key' && step.key === 'space'),
+          (step.kind === 'contextClick' && step.target?.name === '商品-02.jpg') ||
+          (step.kind === 'press' && step.target?.name === '预览'),
       ),
       [
-        { kind: 'click', target: { name: '商品-02.jpg' } },
-        { kind: 'assert', target: { role: 'AXGroup', name: '选择摘要' } },
-        { kind: 'focus', target: { name: '图片文件' } },
-        { kind: 'key', key: 'space', modifiers: [] },
+        { kind: 'contextClick', target: { name: '商品-02.jpg' } },
+        { kind: 'press', target: { role: 'AXMenuItem', name: '预览' } },
       ],
     )
     assert.deepEqual(

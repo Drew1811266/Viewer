@@ -1602,9 +1602,17 @@ private final class LiveMacSystem: MacSystem {
             }
             down.setIntegerValueField(.mouseEventClickState, value: Int64(clickIndex))
             up.setIntegerValueField(.mouseEventClickState, value: Int64(clickIndex))
+            let eventNumber = Int64(
+                (DispatchTime.now().uptimeNanoseconds / 1_000_000) & UInt64(Int32.max)
+            )
+            down.setIntegerValueField(.mouseEventNumber, value: eventNumber)
+            up.setIntegerValueField(.mouseEventNumber, value: eventNumber)
             down.flags = flags
             up.flags = flags
+            down.timestamp = CGEventTimestamp(DispatchTime.now().uptimeNanoseconds)
             down.post(tap: .cghidEventTap)
+            usleep(12_000)
+            up.timestamp = CGEventTimestamp(DispatchTime.now().uptimeNanoseconds)
             up.post(tap: .cghidEventTap)
             if clickIndex < clickCount {
                 usleep(150_000)

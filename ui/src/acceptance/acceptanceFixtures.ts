@@ -57,6 +57,28 @@ export const ACCEPTANCE_TEXT_FILES: BrowserFile[] = [
     imageMetadata: null,
     imageUrl: null,
   },
+  {
+    entityId: 'acceptance-text-gb18030',
+    relativePath: '文档/gb18030.txt',
+    name: 'gb18030.txt',
+    kind: 'text',
+    size: 2_048,
+    modifiedNs: FIXTURE_MODIFIED_NS,
+    marker: { reviewState: null, favorite: false },
+    imageMetadata: null,
+    imageUrl: null,
+  },
+  {
+    entityId: 'acceptance-text-large',
+    relativePath: '文档/large.txt',
+    name: 'large.txt',
+    kind: 'text',
+    size: 10 * 1_024 * 1_024 + 512,
+    modifiedNs: FIXTURE_MODIFIED_NS,
+    marker: { reviewState: null, favorite: false },
+    imageMetadata: null,
+    imageUrl: null,
+  },
 ]
 
 export const ACCEPTANCE_UNSUPPORTED_FILE: BrowserFile = {

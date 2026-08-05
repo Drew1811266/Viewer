@@ -1,7 +1,8 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import { defined } from '../../defined'
 import type { AcceptanceRequest } from '../acceptanceRequest'
+import { ACCEPTANCE_STATE_DEFINITIONS } from '../acceptanceStateCatalog'
 import { VIEWING_SCENES } from './viewingScenes'
 
 const request: AcceptanceRequest = {
@@ -12,6 +13,14 @@ const request: AcceptanceRequest = {
 }
 
 describe('Viewer viewing acceptance scenes', () => {
+  it('covers every viewing catalog state exactly once in ledger order', () => {
+    expect(Object.keys(VIEWING_SCENES)).toEqual(
+      ACCEPTANCE_STATE_DEFINITIONS.filter(({ sceneGroup }) => sceneGroup === 'viewing').map(
+        ({ id }) => id,
+      ),
+    )
+  })
+
   it('renders PRE-01 through the formal fitted ImagePreview behavior', async () => {
     const Scene = defined(VIEWING_SCENES['PRE-01'], 'Missing PRE-01 acceptance scene')
     render(<Scene request={request} />)
@@ -29,4 +38,121 @@ describe('Viewer viewing acceptance scenes', () => {
     fireEvent.click(screen.getByRole('button', { name: '放大' }))
     expect(screen.getByText('125%', { selector: '.preview-scale-label' })).toBeVisible()
   })
+
+  it.each(['RAD-01', 'RAD-02', 'RAD-03', 'RAD-04', 'RAD-05', 'RAD-06', 'RAD-07'])(
+    '%s renders the formal radial menu surface',
+    (id) => {
+      const rendered = renderScene(id)
+      expect(screen.getByRole('menu', { name: '文件操作' })).toBeVisible()
+      expect(screen.getAllByRole('menuitem').length).toBeGreaterThan(0)
+      rendered.unmount()
+    },
+  )
+
+  it.each([
+    ['PRE-01', 'fit'],
+    ['PRE-02', 'original'],
+    ['PRE-03', 'zoom'],
+    ['PRE-04', 'rotate'],
+    ['PRE-07', 'navigation'],
+  ])('%s renders a live formal image preview in %s state', async (id, state) => {
+    const rendered = renderScene(id)
+    const dialog = screen.getByRole('dialog', { name: /图片预览 商品-02\.jpg/ })
+    const image = await within(dialog).findByRole('img', { name: '商品-02.jpg' })
+    expect(image).toBeVisible()
+    if (state === 'original') {
+      await waitFor(() =>
+        expect(screen.getByRole('button', { name: '按 100% 显示' })).toHaveAttribute(
+          'aria-pressed',
+          'true',
+        ),
+      )
+    }
+    if (state === 'zoom') {
+      await waitFor(() =>
+        expect(screen.getByText('156%', { selector: '.preview-scale-label' })).toBeVisible(),
+      )
+    }
+    if (state === 'rotate') {
+      await waitFor(() => expect(image).toHaveStyle({ transform: 'rotate(90deg) scale(1)' }))
+    }
+    if (state === 'navigation') {
+      expect(screen.getByRole('button', { name: '上一张' })).toBeEnabled()
+      expect(screen.getByRole('button', { name: '下一张' })).toBeEnabled()
+    }
+    rendered.unmount()
+  })
+
+  it('renders bounded loading and error image preview states', async () => {
+    const loading = renderScene('PRE-05')
+    expect(screen.getByRole('status')).toHaveTextContent('正在载入图片')
+    loading.unmount()
+
+    const failed = renderScene('PRE-06')
+    expect(await screen.findByRole('alert')).toHaveTextContent('无法显示这张图片')
+    failed.unmount()
+  })
+
+  it.each([
+    ['COM-01', 2],
+    ['COM-02', 3],
+    ['COM-03', 4],
+    ['COM-04', 20],
+  ])('%s renders %d source files through CompareWorkspace', async (id, count) => {
+    const rendered = renderScene(id)
+    const workspace = screen.getByRole('region', { name: '图片对比' })
+    await waitFor(() => expect(workspace).toHaveTextContent(`${count} 张图片`))
+    expect(within(workspace).getByRole('toolbar', { name: '对比工具' })).toBeVisible()
+    rendered.unmount()
+  })
+
+  it.each([
+    ['DOC-01', 'Viewer 视觉验收'],
+    ['DOC-02', 'Viewer 确定性的纯文本预览。'],
+    ['DOC-03', '需要选择文本编码'],
+    ['DOC-04', '内容已截断'],
+  ])('%s renders its formal document state', async (id, visibleText) => {
+    const rendered = renderScene(id)
+    expect(screen.getByRole('toolbar', { name: '文本预览工具' })).toBeVisible()
+    expect(await screen.findByText(visibleText, { exact: false })).toBeVisible()
+    rendered.unmount()
+  })
+
+  it('renders independent dual text panes and both unsupported states', async () => {
+    const dual = renderScene('DOC-05')
+    await waitFor(() => expect(screen.getAllByTestId(/^text-pane-/)).toHaveLength(2))
+    dual.unmount()
+
+    const unsupported = renderScene('DOC-06')
+    expect(screen.getByLabelText(/unsupported\.bin.*暂不支持预览/)).toBeVisible()
+    unsupported.unmount()
+
+    const unavailable = renderScene('DOC-07')
+    expect(screen.getByLabelText(/unsupported\.bin.*文件已不可用/)).toBeVisible()
+    unavailable.unmount()
+  })
+
+  it.each(['INF-01', 'INF-02'])('%s renders the formal file inspector', (id) => {
+    const rendered = renderScene(id)
+    const inspector = screen.getByRole('complementary', { name: '文件信息' })
+    expect(inspector).toBeVisible()
+    if (id === 'INF-01') expect(inspector).toHaveTextContent('商品-02.jpg')
+    if (id === 'INF-02') expect(inspector).toHaveTextContent('文件夹 1 · 图片 1 · 其它文件 1')
+    rendered.unmount()
+  })
 })
+
+function renderScene(id: string) {
+  const Scene = defined(VIEWING_SCENES[id], `Missing ${id} acceptance scene`)
+  const [width, height] = request.viewport.split('x').map(Number)
+  return render(
+    <Scene
+      request={{
+        ...request,
+        id,
+        width: width === 1024 ? 1024 : 1440,
+        height: height === 720 ? 720 : 900,
+      }}
+    />,
+  )
+}

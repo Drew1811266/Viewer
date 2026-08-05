@@ -548,13 +548,7 @@ export default function ContentBrowser({
       commitSelection(new Set())
       return
     }
-    if (
-      (event.key === ' ' ||
-        event.key === 'Spacebar' ||
-        event.code === 'Space' ||
-        event.key === 'Enter') &&
-      activeId
-    ) {
+    if ((event.key === ' ' || event.key === 'Spacebar' || event.code === 'Space') && activeId) {
       event.preventDefault()
       const file = fileById.get(activeId)
       if (file) previewFile(file)

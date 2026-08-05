@@ -769,7 +769,7 @@ describe('ContentBrowser', () => {
     )
     const second = screen.getByRole('option', { name: '2.jpg' })
     fireEvent.click(second)
-    fireEvent.click(second, { detail: 2 })
+    fireEvent.doubleClick(second)
 
     rendered.rerender(<ContentBrowser workspace={data} density="compact" onPreview={preview} />)
 
@@ -989,10 +989,6 @@ describe('ContentBrowser', () => {
 
     preview.mockClear()
     fireEvent.keyDown(grid, { key: 'Unidentified', code: 'Space' })
-    expect(preview).toHaveBeenCalledWith(expect.objectContaining({ entityId: 'image-7' }))
-
-    preview.mockClear()
-    fireEvent.keyDown(grid, { key: 'Enter' })
     expect(preview).toHaveBeenCalledWith(expect.objectContaining({ entityId: 'image-7' }))
   })
 

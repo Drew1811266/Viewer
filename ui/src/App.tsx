@@ -802,7 +802,13 @@ function ViewerWorkspace({ bridge }: { bridge: ViewerBridge }) {
         return
       }
       if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return
-      if (event.key.toLowerCase() === 'c') {
+      if (
+        (event.key === ' ' || event.key === 'Spacebar' || event.code === 'Space') &&
+        selectedFiles.length === 1
+      ) {
+        event.preventDefault()
+        openPreview(defined(selectedFiles[0], 'Missing selected preview file'))
+      } else if (event.key.toLowerCase() === 'c') {
         event.preventDefault()
         openComparison()
       } else if (event.key === 'Enter') {
@@ -822,12 +828,14 @@ function ViewerWorkspace({ bridge }: { bridge: ViewerBridge }) {
     canMutateSelection,
     compareOpen,
     infoOpen,
+    openPreview,
     openRenameDialog,
     openComparison,
     openTrashDialog,
     operationDialog,
     operationBusy,
     resultsBatchId,
+    selectedFiles,
     state.closeBlocked,
     state.status,
     undoLastOperation,

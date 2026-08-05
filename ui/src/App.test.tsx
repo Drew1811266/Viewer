@@ -1864,6 +1864,19 @@ describe('Viewer empty state', () => {
     await waitFor(() => expect(viewer.executeFileCommand).toHaveBeenCalledTimes(2))
   })
 
+  it('opens the selected file from a window-level native Space event', async () => {
+    const viewer = bridge()
+    vi.mocked(viewer.queryFolder).mockResolvedValue(contentWorkspace())
+    render(<App bridge={viewer} />)
+    fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
+    const file = await screen.findByRole('option', { name: 'front.jpg' })
+    fireEvent.click(file)
+
+    fireEvent.keyDown(window, { key: 'Unidentified', code: 'Space' })
+
+    expect(screen.getByRole('dialog', { name: /^图片预览 / })).toBeVisible()
+  })
+
   it('routes Command-Z only outside editable and modal contexts', async () => {
     const viewer = bridge()
     vi.mocked(viewer.queryFolder).mockResolvedValue(contentWorkspace())

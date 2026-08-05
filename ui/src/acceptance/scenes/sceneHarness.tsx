@@ -76,14 +76,29 @@ export default function AcceptanceProductScene({
 export function workspaceVisualsSettled(root: Document | Element): boolean {
   const shell = root.querySelector('.viewer-shell')
   if (shell === null) return false
+  if (
+    shell.querySelector(
+      '.folder-tree-skeleton-row, .folder-filmstrip-skeleton, [data-thumbnail-state="loading"]',
+    ) !== null
+  ) {
+    return false
+  }
   const thumbnails = [...shell.querySelectorAll<HTMLElement>('.aspect-thumbnail')]
-  if (thumbnails.length === 0) return false
-  return thumbnails.every(
-    (thumbnail) =>
+  if (thumbnails.length === 0) {
+    return shell.querySelector('.folder-overview, .content-browser') !== null
+  }
+  return thumbnails.every((thumbnail) => {
+    if (thumbnail.dataset.thumbnailState === 'failed') {
+      return (
+        thumbnail.querySelector('.aspect-thumbnail-placeholder[aria-label="缩略图不可用"]') !== null
+      )
+    }
+    return (
       thumbnail.dataset.thumbnailState === 'ready' &&
       thumbnail.querySelector('.aspect-thumbnail-placeholder') === null &&
-      thumbnail.querySelector('img') !== null,
-  )
+      thumbnail.querySelector('img') !== null
+    )
+  })
 }
 
 export function setAcceptanceInputValue(input: HTMLInputElement, value: string) {

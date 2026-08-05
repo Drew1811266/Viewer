@@ -249,7 +249,6 @@ export function buildStateEntryPlan(id) {
     {
       kind: 'assert',
       target: { role: 'AXMenuItem', name: '预览' },
-      settleMs: 1_000,
     },
     { kind: 'press', target: { role: 'AXMenuItem', name: '预览' } },
   ]
@@ -639,12 +638,12 @@ export function buildStateEntryPlan(id) {
     ],
     'PRE-01': [
       ...openImagePreview(),
-      { kind: 'click', target: { role: 'AXButton', name: '适应窗口' } },
+      { kind: 'click', target: { name: '适应窗口' } },
       { kind: 'assert', target: { role: 'AXButton', name: '关闭预览' } },
     ],
     'PRE-02': [
       ...openImagePreview(),
-      { kind: 'click', target: { role: 'AXButton', name: '按 100% 显示' } },
+      { kind: 'click', target: { name: '按 100% 显示' } },
       { kind: 'assert', target: { role: 'AXStaticText', name: '100%' } },
     ],
     'PRE-03': [
@@ -2496,14 +2495,7 @@ async function ensureLaunchNoProject(client, actions) {
   )
 }
 
-async function queryVisibleElement(client, actions, target, timeoutMs = 3000, settleMs = 0) {
-  if (!Number.isFinite(settleMs) || settleMs < 0 || settleMs > 1_000) {
-    throw new AcceptanceError(
-      'PRECONDITION_WAIT_LIMIT',
-      'Visible-state settling must be bounded to one second',
-      { settleMs },
-    )
-  }
+async function queryVisibleElement(client, actions, target, timeoutMs = 3000) {
   const result = await waitFor(
     async () => {
       try {
@@ -2515,13 +2507,10 @@ async function queryVisibleElement(client, actions, target, timeoutMs = 3000, se
     },
     { timeoutMs, intervalMs: 50 },
   )
-  if (settleMs > 0) {
-    await new Promise((resolve) => setTimeout(resolve, settleMs))
-  }
   actions.push({
     sequence: actions.length + 1,
     command: 'query',
-    payload: { target, ...(settleMs > 0 ? { settleMs } : {}) },
+    payload: { target },
     completedAt: new Date().toISOString(),
     ok: true,
     result,
@@ -3079,13 +3068,7 @@ export async function executeStateEntryPlan({
           point: { x: window.width / 2, y: 12 },
         })
       } else if (step.kind === 'assert') {
-        visible = await queryVisibleElement(
-          client,
-          actions,
-          step.target,
-          10_000,
-          step.settleMs ?? 0,
-        )
+        visible = await queryVisibleElement(client, actions, step.target, 10_000)
       } else {
         throw new AcceptanceError(
           'STATE_RECIPE_EXECUTOR',

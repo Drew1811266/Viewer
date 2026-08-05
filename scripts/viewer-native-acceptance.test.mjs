@@ -581,10 +581,19 @@ describe('state entry plans', () => {
         {
           kind: 'assert',
           target: { role: 'AXMenuItem', name: '预览' },
-          settleMs: 1_000,
         },
         { kind: 'press', target: { role: 'AXMenuItem', name: '预览' } },
       ],
+    )
+    assert.deepEqual(
+      previewPlan.filter((step) => step.kind === 'click' && step.target?.name === '适应窗口'),
+      [{ kind: 'click', target: { name: '适应窗口' } }],
+    )
+    assert.deepEqual(
+      buildStateEntryPlan('PRE-02').filter(
+        (step) => step.kind === 'click' && step.target?.name === '按 100% 显示',
+      ),
+      [{ kind: 'click', target: { name: '按 100% 显示' } }],
     )
     assert.deepEqual(
       buildStateEntryPlan('PRE-03').filter((step) => step.kind === 'click').slice(-2),
@@ -610,55 +619,6 @@ describe('state entry plans', () => {
         (step) => step.kind === 'key' && step.key === 'i' && step.modifiers?.includes('command'),
       ),
       true,
-    )
-  })
-
-  it('lets the radial preview action settle without continuously querying it', async () => {
-    const commands = []
-    const client = {
-      async request(command, payload) {
-        commands.push({ command, payload, at: Date.now() })
-        if (command === 'query') {
-          if (['扫描项目', '2 个任务已完成', '正在生成缩略图'].includes(payload.target.name)) {
-            throw new AcceptanceError('STATE_TARGET_NOT_FOUND', 'not found')
-          }
-          return {
-            elements: [
-              {
-                role: payload.target.role ?? 'AXGroup',
-                name: payload.target.name,
-                frame: { x: 520, y: 250, width: 80, height: 24 },
-              },
-            ],
-          }
-        }
-        return { performed: true, command }
-      },
-    }
-
-    await executeStateEntryPlan({
-      id: 'PRE-01',
-      client,
-      actions: [],
-      projectPath: '/Users/example/ViewerAcceptanceRuns/run/测试图',
-      window: { x: 100, y: 70, width: 1024, height: 720 },
-      openProject: async () => {},
-    })
-
-    const previewQueries = commands.filter(
-      ({ command, payload }) => command === 'query' && payload.target.name === '预览',
-    )
-    const activationIndex = commands.findIndex(
-      ({ command, payload }) => command === 'activate' && payload.target.name === '预览',
-    )
-    assert.equal(previewQueries.length, 1)
-    assert.ok(
-      commands[activationIndex].at - previewQueries[0].at >= 900,
-    )
-    assert.ok(
-      commands.findLastIndex(
-        ({ command, payload }) => command === 'query' && payload.target.name === '预览',
-      ) < activationIndex,
     )
   })
 

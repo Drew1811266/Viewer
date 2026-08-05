@@ -13,6 +13,7 @@ import {
 import {
   affectedAcceptanceIds,
   acceptanceEnvironmentFor,
+  collectChangedFiles,
   parseVisualAcceptanceCli,
   runVisualAcceptanceBatch,
   selectVisualAcceptanceIds,
@@ -129,6 +130,31 @@ describe('changed-state selection', () => {
       ),
       ['PRE-01', 'PRE-02', 'PRE-03', 'PRE-04', 'PRE-05', 'PRE-06', 'PRE-07'],
     )
+  })
+
+  it('includes the last clean commit as well as working and untracked changes', async () => {
+    const calls = []
+    const changed = await collectChangedFiles('/repo', async (_command, args) => {
+      calls.push(args)
+      if (args.join(' ') === 'diff --name-only HEAD^ HEAD') {
+        return { stdout: 'ui/src/components/ImagePreview.tsx\n' }
+      }
+      if (args.join(' ') === 'diff --name-only HEAD') {
+        return { stdout: 'ui/src/components/RadialFileMenu.tsx\n' }
+      }
+      return { stdout: 'docs/README.md\nui/src/components/ImagePreview.tsx\n' }
+    })
+
+    assert.deepEqual(changed, [
+      'ui/src/components/ImagePreview.tsx',
+      'ui/src/components/RadialFileMenu.tsx',
+      'docs/README.md',
+    ])
+    assert.deepEqual(calls, [
+      ['diff', '--name-only', 'HEAD^', 'HEAD'],
+      ['diff', '--name-only', 'HEAD'],
+      ['ls-files', '--others', '--exclude-standard'],
+    ])
   })
 })
 

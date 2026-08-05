@@ -529,12 +529,18 @@ function addKnownIds(selected, ids, definitions) {
   }
 }
 
-async function collectChangedFiles(root) {
-  const [tracked, untracked] = await Promise.all([
-    execFileAsync('git', ['diff', '--name-only', 'HEAD'], { cwd: root }),
-    execFileAsync('git', ['ls-files', '--others', '--exclude-standard'], { cwd: root }),
+export async function collectChangedFiles(root, execute = execFileAsync) {
+  const [committed, tracked, untracked] = await Promise.all([
+    execute('git', ['diff', '--name-only', 'HEAD^', 'HEAD'], { cwd: root }).catch(
+      (error) => {
+        if (error?.code === 128) return { stdout: '' }
+        throw error
+      },
+    ),
+    execute('git', ['diff', '--name-only', 'HEAD'], { cwd: root }),
+    execute('git', ['ls-files', '--others', '--exclude-standard'], { cwd: root }),
   ])
-  return [tracked.stdout, untracked.stdout]
+  return [committed.stdout, tracked.stdout, untracked.stdout]
     .flatMap((output) => output.split(/\r?\n/))
     .filter((file) => file.length > 0)
     .filter((file, index, files) => files.indexOf(file) === index)

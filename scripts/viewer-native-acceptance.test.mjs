@@ -530,9 +530,86 @@ describe('state entry plans', () => {
   })
 
   it('rejects a state until it has a real executable entry plan', () => {
-    assert.throws(() => buildStateEntryPlan('RAD-07'), {
+    assert.throws(() => buildStateEntryPlan('DIA-01'), {
       code: 'STATE_RECIPE_EXECUTOR',
     })
+  })
+
+  it('uses real radial pointer and keyboard entry plans for every round-menu state', () => {
+    assert.deepEqual(
+      buildStateEntryPlan('RAD-01').filter((step) =>
+        ['contextClick', 'assert'].includes(step.kind),
+      ),
+      [
+        { kind: 'contextClick', target: { name: '商品-01.jpg' } },
+        { kind: 'assert', target: { role: 'AXMenu', name: '文件操作' } },
+      ],
+    )
+    assert.deepEqual(
+      buildStateEntryPlan('RAD-02').filter((step) =>
+        ['holdRadialGesture', 'assert'].includes(step.kind),
+      ),
+      [
+        {
+          kind: 'holdRadialGesture',
+          target: { name: '商品-01.jpg' },
+          delta: { x: 0, y: -88 },
+        },
+        { kind: 'assert', target: { role: 'AXMenu', name: '文件操作' } },
+      ],
+    )
+    assert.equal(
+      buildStateEntryPlan('RAD-07').some(
+        (step) =>
+          step.kind === 'key' && step.key === 'f10' && step.modifiers?.includes('shift'),
+      ),
+      true,
+    )
+  })
+
+  it('opens image, comparison, document and information states through product actions', () => {
+    assert.equal(
+      buildStateEntryPlan('PRE-01').some(
+        (step) => step.kind === 'doubleClick' && step.target?.name === '商品-02.jpg',
+      ),
+      true,
+    )
+    assert.deepEqual(
+      buildStateEntryPlan('PRE-03').filter((step) => step.kind === 'click').slice(-2),
+      [
+        { kind: 'click', target: { role: 'AXButton', name: '放大' } },
+        { kind: 'click', target: { role: 'AXButton', name: '放大' } },
+      ],
+    )
+    assert.equal(
+      buildStateEntryPlan('COM-04').filter(
+        (step) => step.kind === 'click' && /^商品-\d{2}\.jpg$/.test(step.target?.name ?? ''),
+      ).length,
+      20,
+    )
+    assert.equal(
+      buildStateEntryPlan('DOC-05').filter(
+        (step) => step.kind === 'click' && ['sample.md', 'plain.txt'].includes(step.target?.name),
+      ).length,
+      2,
+    )
+    assert.equal(
+      buildStateEntryPlan('INF-01').some(
+        (step) => step.kind === 'key' && step.key === 'i' && step.modifiers?.includes('command'),
+      ),
+      true,
+    )
+  })
+
+  it('covers every Wave 2 product state without recipe sleeps', () => {
+    const ids = AUDIT_IDS.filter((id) => STATE_RECIPES.get(id).wave === 2)
+    assert.equal(ids.length, 27)
+    for (const id of ids) {
+      const plan = buildStateEntryPlan(id)
+      assert.ok(plan.length > 0, id)
+      assert.equal(plan.some((step) => step.kind === 'sleep'), false, id)
+      assert.ok(['assert', 'captureCheckpoint'].includes(plan.at(-1).kind), id)
+    }
   })
 
   it('covers every stable Wave 1 product state without recipe sleeps', () => {
@@ -747,6 +824,66 @@ describe('state entry plans', () => {
         ({ command, payload }) => command === 'pointer' && payload.kind === 'leftUp',
       ).length,
       1,
+    )
+  })
+
+  it('keeps a radial secondary-button gesture held through capture and releases it once', async () => {
+    const commands = []
+    const client = {
+      async request(command, payload) {
+        commands.push({ command, payload })
+        if (command === 'query') {
+          if (['扫描项目', '2 个任务已完成', '正在生成缩略图'].includes(payload.target.name)) {
+            throw new AcceptanceError('STATE_TARGET_NOT_FOUND', 'not found')
+          }
+          return {
+            elements: [
+              {
+                role: payload.target.role ?? 'AXGroup',
+                name: payload.target.name,
+                frame: { x: 520, y: 250, width: 80, height: 24 },
+              },
+            ],
+          }
+        }
+        return { performed: true, command }
+      },
+    }
+
+    const result = await executeStateEntryPlan({
+      id: 'RAD-02',
+      client,
+      actions: [],
+      projectPath: '/Users/example/ViewerAcceptanceRuns/run/测试图',
+      window: { x: 100, y: 70, width: 1024, height: 720 },
+      openProject: async () => {},
+      observeHeldPointer: async () => {
+        commands.push({ command: 'observeHeldPointer', payload: {} })
+      },
+    })
+
+    assert.deepEqual(
+      commands
+        .filter(
+          ({ command, payload }) =>
+            command === 'pointer' && ['rightDown', 'rightDrag', 'rightUp'].includes(payload.kind),
+        )
+        .map(({ payload }) => payload),
+      [
+        { kind: 'rightDown', point: { x: 460, y: 192 } },
+        { kind: 'rightDrag', point: { x: 460, y: 104 } },
+      ],
+    )
+    assert.equal(commands.some(({ command }) => command === 'observeHeldPointer'), true)
+
+    await result.releasePointer()
+    await result.releasePointer()
+
+    assert.deepEqual(
+      commands
+        .filter(({ command, payload }) => command === 'pointer' && payload.kind === 'rightUp')
+        .map(({ payload }) => payload),
+      [{ kind: 'rightUp', point: { x: 460, y: 104 } }],
     )
   })
 
@@ -2343,6 +2480,9 @@ describe('protocol schema', () => {
         modifiers: ['option'],
       },
       { kind: 'leftUp', point: { x: 300, y: 400 } },
+      { kind: 'rightDown', point: { x: 200, y: 300 } },
+      { kind: 'rightDrag', point: { x: 300, y: 400 } },
+      { kind: 'rightUp', point: { x: 300, y: 400 } },
     ]) {
       assert.deepEqual(
         validateCommand({ ...pointerRequest, payload }, { window }).payload,

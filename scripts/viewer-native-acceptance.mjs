@@ -52,6 +52,7 @@ const ALLOWED_KEYS = new Set([
   'end',
   'delete',
   'backspace',
+  'f10',
   'a',
   'b',
   'c',
@@ -242,6 +243,29 @@ export function buildStateEntryPlan(id) {
     target: { role: 'AXButton', name },
   })
   const openFilter = () => [...openContent('紧凑'), clickToolbar('筛选')]
+  const image = (name) => ({ name })
+  const openImagePreview = (name = '商品-02.jpg', preparation = []) => [
+    ...preparation,
+    ...openContent(),
+    { kind: 'doubleClick', target: image(name) },
+  ]
+  const selectImages = (count, density = count > 8 ? '紧凑' : '标准') => [
+    ...openContent(density),
+    ...Array.from({ length: count }, (_, index) => ({
+      kind: 'click',
+      target: image(`商品-${String(index + 1).padStart(2, '0')}.jpg`),
+      ...(index === 0 ? {} : { modifiers: ['command'] }),
+    })),
+  ]
+  const openDocumentFolder = (preparation = []) => [
+    ...preparation,
+    ...openFolder('文档'),
+  ]
+  const openRadial = (name = '商品-01.jpg', preparation = []) => [
+    ...preparation,
+    ...openContent(),
+    { kind: 'contextClick', target: image(name) },
+  ]
   const openSettingsAtDensity = (name) => [
     ...openWorkspace(name),
     { kind: 'click', target: folder('衣服/A01') },
@@ -566,6 +590,162 @@ export function buildStateEntryPlan(id) {
       { kind: 'movePointerToTitlebar' },
       { kind: 'assert', target: { name: '权限设置', position: 'rightmost' } },
     ],
+    'RAD-01': [
+      ...openRadial(),
+      { kind: 'assert', target: { role: 'AXMenu', name: '文件操作' } },
+    ],
+    'RAD-02': [
+      ...openContent(),
+      {
+        kind: 'holdRadialGesture',
+        target: image('商品-01.jpg'),
+        delta: { x: 0, y: -88 },
+      },
+      { kind: 'assert', target: { role: 'AXMenu', name: '文件操作' } },
+    ],
+    'RAD-03': [
+      ...openRadial(),
+      { kind: 'click', target: { role: 'AXMenuItem', name: '标记' } },
+      { kind: 'assert', target: { role: 'AXMenuItem', name: '保留' } },
+    ],
+    'RAD-04': [
+      ...openRadial(),
+      { kind: 'click', target: { role: 'AXMenuItem', name: '整理' } },
+      { kind: 'assert', target: { role: 'AXMenuItem', name: '重命名' } },
+    ],
+    'RAD-05': [
+      ...openRadial(),
+      { kind: 'moveTo', target: { role: 'AXMenuItem', name: '并排对比' } },
+      { kind: 'assert', target: { role: 'AXStaticText', name: '请选择 2–20 张图片' } },
+    ],
+    'RAD-06': [
+      { kind: 'prepareFixture', operation: 'makeProjectReadOnly' },
+      ...openRadial(),
+      { kind: 'moveTo', target: { role: 'AXMenuItem', name: '标记' } },
+      { kind: 'assert', target: { role: 'AXStaticText', name: '只读项目不可标记' } },
+    ],
+    'RAD-07': [
+      ...openContent(),
+      { kind: 'click', target: image('商品-01.jpg') },
+      { kind: 'focus', target: { name: '图片文件' } },
+      { kind: 'key', key: 'f10', modifiers: ['shift'] },
+      { kind: 'key', key: 'arrowRight', modifiers: [] },
+      { kind: 'key', key: 'arrowUp', modifiers: [] },
+      { kind: 'assert', target: { role: 'AXMenuItem', name: '保留' } },
+    ],
+    'PRE-01': [
+      ...openImagePreview(),
+      { kind: 'click', target: { role: 'AXButton', name: '适应窗口' } },
+      { kind: 'assert', target: { role: 'AXButton', name: '关闭预览' } },
+    ],
+    'PRE-02': [
+      ...openImagePreview(),
+      { kind: 'click', target: { role: 'AXButton', name: '按 100% 显示' } },
+      { kind: 'assert', target: { role: 'AXStaticText', name: '100%' } },
+    ],
+    'PRE-03': [
+      ...openImagePreview(),
+      { kind: 'click', target: { role: 'AXButton', name: '放大' } },
+      { kind: 'click', target: { role: 'AXButton', name: '放大' } },
+      { kind: 'assert', target: { role: 'AXButton', name: '关闭预览' } },
+    ],
+    'PRE-04': [
+      ...openImagePreview(),
+      { kind: 'click', target: { role: 'AXButton', name: '顺时针旋转' } },
+      { kind: 'assert', target: { role: 'AXButton', name: '关闭预览' } },
+    ],
+    'PRE-05': [
+      { kind: 'prepareFixture', operation: 'addHeavyPreviewImage' },
+      ...openFolder('衣服/A01'),
+      { kind: 'doubleClick', target: image('加载中.png') },
+      { kind: 'assert', target: { role: 'AXHeading', name: '正在载入图片' } },
+      { kind: 'captureCheckpoint' },
+    ],
+    'PRE-06': [
+      ...openContent(),
+      { kind: 'prepareFixture', operation: 'corruptPreviewImage' },
+      { kind: 'doubleClick', target: image('商品-01.jpg') },
+      { kind: 'assert', target: { role: 'AXHeading', name: '无法显示这张图片' } },
+    ],
+    'PRE-07': [
+      ...openImagePreview('商品-02.jpg'),
+      { kind: 'assert', target: { role: 'AXButton', name: '下一张' } },
+    ],
+    'COM-01': [
+      ...selectImages(2),
+      { kind: 'key', key: 'c', modifiers: [] },
+      { kind: 'assert', target: { name: '图片对比' } },
+    ],
+    'COM-02': [
+      ...selectImages(3),
+      { kind: 'key', key: 'c', modifiers: [] },
+      { kind: 'assert', target: { name: '图片对比' } },
+    ],
+    'COM-03': [
+      ...selectImages(4),
+      { kind: 'key', key: 'c', modifiers: [] },
+      { kind: 'assert', target: { name: '图片对比' } },
+    ],
+    'COM-04': [
+      ...selectImages(20),
+      { kind: 'key', key: 'c', modifiers: [] },
+      { kind: 'scrollTarget', target: { name: '全部图片对比' }, deltaY: -24 },
+      { kind: 'assert', target: { name: '图片对比' } },
+    ],
+    'DOC-01': [
+      ...openDocumentFolder(),
+      { kind: 'doubleClick', target: { name: 'sample.md' } },
+      { kind: 'assert', target: { role: 'AXButton', name: '关闭预览' } },
+    ],
+    'DOC-02': [
+      ...openDocumentFolder(),
+      { kind: 'doubleClick', target: { name: 'plain.txt' } },
+      { kind: 'assert', target: { role: 'AXButton', name: '关闭预览' } },
+    ],
+    'DOC-03': [
+      ...openDocumentFolder(),
+      { kind: 'doubleClick', target: { name: 'gb18030.txt' } },
+      { kind: 'assert', target: { role: 'AXHeading', name: '需要选择文本编码' } },
+    ],
+    'DOC-04': [
+      ...openDocumentFolder(),
+      { kind: 'doubleClick', target: { name: 'large.txt' } },
+      { kind: 'assert', target: { role: 'AXHeading', name: '内容已截断' } },
+    ],
+    'DOC-05': [
+      ...openDocumentFolder(),
+      { kind: 'click', target: { name: 'sample.md' } },
+      { kind: 'click', target: { name: 'plain.txt' }, modifiers: ['command'] },
+      { kind: 'contextClick', target: { name: 'plain.txt' } },
+      { kind: 'click', target: { role: 'AXMenuItem', name: '预览' } },
+      { kind: 'assert', target: { role: 'AXButton', name: '关闭预览' } },
+    ],
+    'DOC-06': [
+      ...openFolder('其它'),
+      { kind: 'doubleClick', target: { name: 'unsupported.bin' } },
+      { kind: 'assert', target: { name: 'unsupported.bin .BIN 暂不支持预览' } },
+    ],
+    'DOC-07': [
+      ...openFolder('其它'),
+      { kind: 'prepareFixture', operation: 'removeUnsupportedFile' },
+      { kind: 'doubleClick', target: { name: 'unsupported.bin' } },
+      { kind: 'assert', target: { name: 'unsupported.bin .BIN 文件已不可用' } },
+    ],
+    'INF-01': [
+      ...openContent(),
+      { kind: 'click', target: image('商品-01.jpg') },
+      { kind: 'key', key: 'i', modifiers: ['command'] },
+      { kind: 'assert', target: { name: '文件信息' } },
+    ],
+    'INF-02': [
+      { kind: 'prepareFixture', operation: 'prepareOrganizationDrag' },
+      ...openContent('紧凑'),
+      { kind: 'click', target: image('商品-01.jpg') },
+      { kind: 'click', target: { role: 'AXButton', name: '其它文件 · 3' } },
+      { kind: 'click', target: { name: '产品说明.md' }, modifiers: ['command'] },
+      { kind: 'key', key: 'i', modifiers: ['command'] },
+      { kind: 'assert', target: { name: '文件信息' } },
+    ],
     'LAU-07': [
       ...openFolder('空目录/Empty'),
       { kind: 'movePointerToTitlebar' },
@@ -590,6 +770,7 @@ export function buildStateEntryPlan(id) {
       ? { source: { ...step.source } }
       : {}),
     ...(step.destination ? { destination: { ...step.destination } } : {}),
+    ...(step.delta ? { delta: { ...step.delta } } : {}),
   }))
 }
 
@@ -1733,7 +1914,7 @@ function validatePayload(command, payload, window) {
         const modifiers = withModifiers ? payload.modifiers : []
         if (
           !Array.isArray(modifiers) ||
-          (['move', 'leftUp'].includes(payload.kind) && modifiers.length > 0) ||
+          (['move', 'leftUp', 'rightUp'].includes(payload.kind) && modifiers.length > 0) ||
           new Set(modifiers).size !== modifiers.length ||
           modifiers.some((modifier) => !ALLOWED_MODIFIERS.has(modifier))
         ) {
@@ -1750,6 +1931,9 @@ function validatePayload(command, payload, window) {
           'leftDown',
           'leftDrag',
           'leftUp',
+          'rightDown',
+          'rightDrag',
+          'rightUp',
         ].includes(payload.kind)
       ) {
         throw commandError('Unsupported pointer action')
@@ -2363,6 +2547,17 @@ async function clickElement(client, actions, element, window, modifiers) {
   })
 }
 
+async function pointerAtElement(client, actions, element, window, kind, extra = {}) {
+  return requestWithActionLog(client, actions, 'pointer', {
+    kind,
+    point: {
+      x: element.frame.x - window.x + element.frame.width / 2,
+      y: element.frame.y - window.y + element.frame.height / 2,
+    },
+    ...extra,
+  })
+}
+
 async function normalizeWorkspaceState({
   client,
   actions,
@@ -2602,6 +2797,29 @@ export async function prepareFixtureForState(projectPath, operation) {
       await writeFile(path.join(imageFolder, name), contents, { flag: 'wx' })
     }
     await rm(path.join(root, '.viewer'), { recursive: true, force: true })
+  } else if (operation === 'addHeavyPreviewImage') {
+    const width = 3_072
+    const height = 3_072
+    const data = Buffer.alloc(width * height * 4)
+    for (let offset = 0; offset < data.length; offset += 4) {
+      const pixel = offset / 4
+      const x = pixel % width
+      const y = Math.floor(pixel / width)
+      data[offset] = (x * 13 + y * 3) & 0xff
+      data[offset + 1] = (x * 5 + y * 11) & 0xff
+      data[offset + 2] = (x + y * 7) & 0xff
+      data[offset + 3] = 255
+    }
+    await writeRgbaPng(path.join(root, '衣服', 'A01', '加载中.png'), {
+      width,
+      height,
+      data,
+    })
+    await rm(path.join(root, '.viewer'), { recursive: true, force: true })
+  } else if (operation === 'corruptPreviewImage') {
+    await writeFile(path.join(root, '衣服', 'A01', '商品-01.jpg'), 'invalid-image-data')
+  } else if (operation === 'removeUnsupportedFile') {
+    await rm(path.join(root, '其它', 'unsupported.bin'))
   } else if (operation === 'makeProjectReadOnly') {
     await setFixtureTreeReadOnly(root)
   } else if (operation === 'corruptViewerMetadata') {
@@ -2633,13 +2851,13 @@ export async function executeStateEntryPlan({
 }) {
   const plan = buildStateEntryPlan(id)
   let visible = null
-  let heldPointerPoint = null
+  let heldPointer = null
   const releasePointer = async () => {
-    if (heldPointerPoint === null) return
-    const point = heldPointerPoint
-    heldPointerPoint = null
+    if (heldPointer === null) return
+    const { point, kind } = heldPointer
+    heldPointer = null
     await requestWithActionLog(client, actions, 'pointer', {
-      kind: 'leftUp',
+      kind,
       point,
     })
   }
@@ -2684,6 +2902,26 @@ export async function executeStateEntryPlan({
       } else if (step.kind === 'click') {
         const element = await queryVisibleElement(client, actions, step.target)
         await clickElement(client, actions, element, window, step.modifiers)
+        visible = element
+      } else if (step.kind === 'doubleClick' || step.kind === 'contextClick') {
+        const element = await queryVisibleElement(client, actions, step.target)
+        await pointerAtElement(
+          client,
+          actions,
+          element,
+          window,
+          step.kind === 'doubleClick' ? 'doubleClick' : 'rightClick',
+        )
+        visible = element
+      } else if (step.kind === 'moveTo') {
+        const element = await queryVisibleElement(client, actions, step.target)
+        await pointerAtElement(client, actions, element, window, 'move')
+        visible = element
+      } else if (step.kind === 'scrollTarget') {
+        const element = await queryVisibleElement(client, actions, step.target)
+        await pointerAtElement(client, actions, element, window, 'scroll', {
+          deltaY: step.deltaY,
+        })
         visible = element
       } else if (step.kind === 'clickPoint') {
         visible = await requestWithActionLog(client, actions, 'pointer', {
@@ -2759,9 +2997,29 @@ export async function executeStateEntryPlan({
           durationMs: step.durationMs,
         })
         if (hold) {
-          heldPointerPoint = destination
+          heldPointer = { point: destination, kind: 'leftUp' }
           await observeHeldPointer()
         }
+      } else if (step.kind === 'holdRadialGesture') {
+        const element = await queryVisibleElement(client, actions, step.target)
+        const from = {
+          x: element.frame.x - window.x + element.frame.width / 2,
+          y: element.frame.y - window.y + element.frame.height / 2,
+        }
+        const to = {
+          x: Math.max(0, Math.min(window.width - 1, from.x + step.delta.x)),
+          y: Math.max(0, Math.min(window.height - 1, from.y + step.delta.y)),
+        }
+        await requestWithActionLog(client, actions, 'pointer', {
+          kind: 'rightDown',
+          point: from,
+        })
+        heldPointer = { point: to, kind: 'rightUp' }
+        visible = await requestWithActionLog(client, actions, 'pointer', {
+          kind: 'rightDrag',
+          point: to,
+        })
+        await observeHeldPointer()
       } else if (step.kind === 'holdOrganizationDrag') {
         const source = await queryVisibleElement(client, actions, step.source)
         const destination = await queryVisibleElement(client, actions, step.destination)
@@ -2778,7 +3036,7 @@ export async function executeStateEntryPlan({
           point: from,
           modifiers: step.modifiers,
         })
-        heldPointerPoint = to
+        heldPointer = { point: to, kind: 'leftUp' }
         visible = await requestWithActionLog(client, actions, 'pointer', {
           kind: 'leftDrag',
           point: to,

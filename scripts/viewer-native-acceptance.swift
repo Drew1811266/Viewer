@@ -1434,6 +1434,7 @@ private final class LiveMacSystem: MacSystem {
             "tab": 48, "enter": 36, "space": 49, "escape": 53,
             "arrowUp": 126, "arrowDown": 125, "arrowLeft": 123, "arrowRight": 124,
             "home": 115, "period": 47, "end": 119, "delete": 117, "backspace": 51,
+            "f10": 109,
             "a": 0, "b": 11, "c": 8, "d": 2, "e": 14, "f": 3, "g": 5,
             "h": 4, "i": 34, "j": 38, "k": 40, "l": 37, "m": 46, "n": 45,
             "o": 31, "p": 35, "q": 12, "r": 15, "s": 1, "t": 17, "u": 32,
@@ -1531,11 +1532,14 @@ private final class LiveMacSystem: MacSystem {
             event.post(tap: .cghidEventTap)
             return
         }
-        if ["leftDown", "leftDrag", "leftUp"].contains(kind) {
+        if ["leftDown", "leftDrag", "leftUp", "rightDown", "rightDrag", "rightUp"].contains(kind) {
             let eventType: CGEventType = switch kind {
             case "leftDown": .leftMouseDown
             case "leftDrag": .leftMouseDragged
-            default: .leftMouseUp
+            case "leftUp": .leftMouseUp
+            case "rightDown": .rightMouseDown
+            case "rightDrag": .rightMouseDragged
+            default: .rightMouseUp
             }
             var flags: CGEventFlags = []
             for modifier in payload["modifiers"] as? [String] ?? [] {
@@ -1547,11 +1551,12 @@ private final class LiveMacSystem: MacSystem {
                 default: break
                 }
             }
+            let mouseButton: CGMouseButton = kind.hasPrefix("right") ? .right : .left
             guard let event = CGEvent(
                 mouseEventSource: nil,
                 mouseType: eventType,
                 mouseCursorPosition: point,
-                mouseButton: .left
+                mouseButton: mouseButton
             ) else {
                 throw AcceptanceFailure(
                     code: "STATE_ACTION_FAILED",

@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { ACCEPTANCE_STATE_DEFINITIONS } from './acceptance/acceptanceStateCatalog'
 
 const statePattern =
   /^\| ((?:LAU|SID|STR|THU|OTH|SEA|FIL|MEN|RAD|PRE|COM|DOC|INF|DIA|TAS|RES|A11Y)-\d+) \|/gm
@@ -28,6 +29,7 @@ describe('atlas-to-product migration coverage', () => {
     expect(ledger).toHaveLength(89)
     expect(new Set(ledger).size).toBe(89)
     expect([...ledger].sort()).toEqual([...audit].sort())
+    expect(ACCEPTANCE_STATE_DEFINITIONS.map(({ id }) => id)).toEqual(ledger)
   })
 
   it('records automated evidence for every state before native acceptance', () => {

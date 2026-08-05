@@ -145,6 +145,10 @@ export const NATIVE_SMOKE_IDS = Object.freeze([
   'close-project-native',
 ])
 
+export const NATIVE_SMOKE_TARGETS = Object.freeze({
+  renameDialogHeading: Object.freeze({ role: 'AXHeading', name: '重命名文件' }),
+})
+
 export function buildNativeSmokeSessionPlan() {
   return NATIVE_SMOKE_IDS.map((id, index) =>
     Object.freeze({
@@ -3680,10 +3684,11 @@ async function executeNativeSmokeJourney({
     await requestWithActionLog(client, actions, 'activate', {
       target: { role: 'AXMenuItem', name: '重命名' },
     })
-    const dialog = await queryVisibleElement(client, actions, {
-      role: 'AXHeading',
-      name: '重命名',
-    })
+    const dialog = await queryVisibleElement(
+      client,
+      actions,
+      NATIVE_SMOKE_TARGETS.renameDialogHeading,
+    )
     await requestWithActionLog(client, actions, 'key', {
       key: 'escape',
       modifiers: [],

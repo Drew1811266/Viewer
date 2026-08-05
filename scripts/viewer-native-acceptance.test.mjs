@@ -22,6 +22,7 @@ import {
   ALLOWED_COMMANDS,
   AcceptanceError,
   NATIVE_SMOKE_IDS,
+  NATIVE_SMOKE_TARGETS,
   NativeAcceptanceClient,
   PROTOCOL_VERSION,
   STATE_RECIPES,
@@ -1438,6 +1439,13 @@ describe('atlas reference evidence', () => {
 })
 
 describe('native acceptance CLI', () => {
+  it('targets the formal rename dialog title exposed by the product', () => {
+    assert.deepEqual(NATIVE_SMOKE_TARGETS.renameDialogHeading, {
+      role: 'AXHeading',
+      name: '重命名文件',
+    })
+  })
+
   it('exposes the exact bounded native smoke matrix and one shared session', async () => {
     const expected = [
       'launch-single-instance',

@@ -246,7 +246,11 @@ export function buildStateEntryPlan(id) {
   const image = (name) => ({ name })
   const openImagePreview = (name = '商品-02.jpg', preparation = []) => [
     ...openRadial(name, preparation),
-    { kind: 'assert', target: { role: 'AXMenuItem', name: '预览' } },
+    {
+      kind: 'assert',
+      target: { role: 'AXMenuItem', name: '预览' },
+      stableMs: 250,
+    },
     { kind: 'press', target: { role: 'AXMenuItem', name: '预览' } },
   ]
   const selectImages = (count, density = count > 8 ? '紧凑' : '标准') => [
@@ -2515,6 +2519,31 @@ async function queryVisibleElement(client, actions, target, timeoutMs = 3000) {
   return result.elements[0]
 }
 
+async function queryStableElement(client, actions, target, stableMs, timeoutMs = 3000) {
+  const startedAt = new Date().toISOString()
+  const result = await waitForStable(
+    async () => {
+      try {
+        return await client.request('query', { target })
+      } catch (error) {
+        if (error?.code === 'STATE_TARGET_NOT_FOUND') return false
+        throw error
+      }
+    },
+    { timeoutMs, intervalMs: 50, stableMs },
+  )
+  actions.push({
+    sequence: actions.length + 1,
+    command: 'query',
+    payload: { target, stableMs },
+    startedAt,
+    completedAt: new Date().toISOString(),
+    ok: true,
+    result,
+  })
+  return result.elements[0]
+}
+
 async function queryOptionalElement(client, actions, target) {
   const startedAt = new Date().toISOString()
   try {
@@ -3065,7 +3094,10 @@ export async function executeStateEntryPlan({
           point: { x: window.width / 2, y: 12 },
         })
       } else if (step.kind === 'assert') {
-        visible = await queryVisibleElement(client, actions, step.target, 10_000)
+        visible =
+          step.stableMs === undefined
+            ? await queryVisibleElement(client, actions, step.target, 10_000)
+            : await queryStableElement(client, actions, step.target, step.stableMs, 10_000)
       } else {
         throw new AcceptanceError(
           'STATE_RECIPE_EXECUTOR',

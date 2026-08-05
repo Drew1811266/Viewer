@@ -607,6 +607,20 @@ function cliError(message) {
 if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
   const options = parseVisualAcceptanceCli(process.argv.slice(2))
   const summary = await runVisualAcceptanceBatch(options)
-  process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`)
+  process.stdout.write(`${JSON.stringify(printableSummary(summary), null, 2)}\n`)
   process.exitCode = summary.exitCode
+}
+
+function printableSummary(summary) {
+  return {
+    exitCode: summary.exitCode,
+    succeeded: summary.succeeded,
+    failed: summary.failed,
+    unrun: summary.unrun,
+    evidence: summary.results.map(({ request, manifestPath }) => ({
+      id: request.id,
+      viewport: request.viewport,
+      manifestPath,
+    })),
+  }
 }

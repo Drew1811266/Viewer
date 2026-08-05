@@ -280,8 +280,8 @@ export function buildStateEntryPlan(id) {
       { kind: 'prepareFixture', operation: 'populateSearchIndexing' },
       { kind: 'beginOpenProject' },
       { kind: 'click', target: folder('衣服/A01') },
-      { kind: 'captureCheckpoint' },
       { kind: 'assert', target: { role: 'AXStaticText', name: '正在生成缩略图' } },
+      { kind: 'captureCheckpoint' },
     ],
     'LAU-08': [
       { kind: 'prepareFixture', operation: 'corruptViewerMetadata' },

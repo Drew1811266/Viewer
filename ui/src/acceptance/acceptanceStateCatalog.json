@@ -24,6 +24,8 @@
   { "id": "THU-05", "wave": 1, "referenceState": "selection-single", "sceneGroup": "workspace", "components": ["ImageCell"] },
   { "id": "THU-06", "wave": 1, "referenceState": "selection-multiple", "sceneGroup": "workspace", "components": ["ContentBrowser"] },
   { "id": "THU-07", "wave": 1, "referenceState": "selection-focus", "sceneGroup": "workspace", "components": ["AspectVirtualGrid"] },
+  { "id": "THU-08", "wave": 1, "referenceState": "density-extra-large", "sceneGroup": "workspace", "components": ["AspectVirtualGrid"] },
+  { "id": "THU-09", "wave": 1, "referenceState": "density-maximum", "sceneGroup": "workspace", "components": ["AspectVirtualGrid"] },
   { "id": "OTH-01", "wave": 1, "referenceState": "other-collapsed", "sceneGroup": "workspace", "components": ["OtherFilePanel"] },
   { "id": "OTH-02", "wave": 1, "referenceState": "other-expanded", "sceneGroup": "workspace", "components": ["OtherFilePanel"] },
   { "id": "OTH-03", "wave": 1, "referenceState": "organization-drag", "sceneGroup": "workspace", "components": ["OrganizationDragHandle", "FolderTree"] },

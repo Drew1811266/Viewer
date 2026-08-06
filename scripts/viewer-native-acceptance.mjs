@@ -111,7 +111,7 @@ export const AUDIT_IDS = Object.freeze([
   ...numberedIds('LAU', 9),
   ...numberedIds('SID', 4),
   ...numberedIds('STR', 5),
-  ...numberedIds('THU', 7),
+  ...numberedIds('THU', 9),
   ...numberedIds('OTH', 3),
   ...numberedIds('SEA', 5),
   ...numberedIds('FIL', 4),
@@ -300,13 +300,16 @@ export class AcceptanceError extends Error {
 
 export function buildStateEntryPlan(id) {
   const openProject = { kind: 'openProject' }
-  const normalizeWorkspace = (density = '标准') => ({
+  const normalizeWorkspace = (thumbnailLevel = 2) => ({
     kind: 'normalizeWorkspace',
-    density,
+    thumbnailLevel,
     sidebar: 'expanded',
     sidebarWidth: 220,
   })
-  const openWorkspace = (density = '标准') => [openProject, normalizeWorkspace(density)]
+  const openWorkspace = (thumbnailLevel = 2) => [
+    openProject,
+    normalizeWorkspace(thumbnailLevel),
+  ]
   const projectRoot = { role: 'AXCheckBox', name: '测试图' }
   const folder = (name) => ({ role: 'AXGroup', name })
   const workspaceReady = [
@@ -318,17 +321,17 @@ export function buildStateEntryPlan(id) {
       stableMs: 1_000,
     },
   ]
-  const openFolder = (name, density = '标准') => [
-    ...openWorkspace(density),
+  const openFolder = (name, thumbnailLevel = 2) => [
+    ...openWorkspace(thumbnailLevel),
     { kind: 'click', target: folder(name) },
     ...workspaceReady,
   ]
-  const openContent = (density = '标准') => openFolder('衣服/A01', density)
+  const openContent = (thumbnailLevel = 2) => openFolder('衣服/A01', thumbnailLevel)
   const clickToolbar = (name) => ({
     kind: 'click',
     target: { role: 'AXButton', name },
   })
-  const openFilter = () => [...openContent('紧凑'), clickToolbar('筛选')]
+  const openFilter = () => [...openContent(1), clickToolbar('筛选')]
   const image = (name) => ({ name })
   const openImagePreview = (name = '商品-02.jpg', preparation = []) => [
     ...openRadial(name, preparation),
@@ -338,8 +341,8 @@ export function buildStateEntryPlan(id) {
     },
     { kind: 'press', target: { role: 'AXMenuItem', name: '预览' } },
   ]
-  const selectImages = (count, density = count > 8 ? '紧凑' : '标准') => [
-    ...openContent(density),
+  const selectImages = (count, thumbnailLevel = count > 8 ? 1 : 2) => [
+    ...openContent(thumbnailLevel),
     ...Array.from({ length: count }, (_, index) => ({
       kind: 'click',
       target: image(`商品-${String(index + 1).padStart(2, '0')}.jpg`),
@@ -355,8 +358,8 @@ export function buildStateEntryPlan(id) {
     ...openContent(),
     { kind: 'contextClick', target: image(name) },
   ]
-  const openSettingsAtDensity = (name) => [
-    ...openWorkspace(name),
+  const openSettingsAtLevel = (thumbnailLevel) => [
+    ...openWorkspace(thumbnailLevel),
     { kind: 'click', target: folder('衣服/A01') },
     ...workspaceReady,
     { kind: 'movePointerToTitlebar' },
@@ -462,7 +465,7 @@ export function buildStateEntryPlan(id) {
       { kind: 'assert', target: folder('衣服/A01') },
     ],
     'STR-04': [
-      ...openContent('紧凑'),
+      ...openContent(1),
       clickToolbar('视图'),
       { kind: 'click', target: { name: '显示全部后代文件' } },
       ...workspaceReady,
@@ -475,9 +478,9 @@ export function buildStateEntryPlan(id) {
       { kind: 'movePointerToTitlebar' },
       { kind: 'assert', target: folder('衣服') },
     ],
-    'THU-01': openSettingsAtDensity('紧凑'),
-    'THU-02': openSettingsAtDensity('标准'),
-    'THU-03': openSettingsAtDensity('大图'),
+    'THU-01': openSettingsAtLevel(1),
+    'THU-02': openSettingsAtLevel(2),
+    'THU-03': openSettingsAtLevel(3),
     'THU-04': [
       ...openWorkspace(),
       { kind: 'click', target: folder('衣服/A01') },
@@ -508,9 +511,11 @@ export function buildStateEntryPlan(id) {
       { kind: 'movePointerToTitlebar' },
       { kind: 'assert', target: { role: 'AXGroup', name: '选择摘要' } },
     ],
+    'THU-08': openSettingsAtLevel(4),
+    'THU-09': openSettingsAtLevel(5),
     'OTH-01': [
       { kind: 'prepareFixture', operation: 'prepareOrganizationDrag' },
-      ...openContent('紧凑'),
+      ...openContent(1),
       { kind: 'click', target: { name: '商品-01.jpg' } },
       { kind: 'click', target: { name: '商品-02.jpg' }, modifiers: ['command'] },
       { kind: 'click', target: { name: '商品-03.jpg' }, modifiers: ['command'] },
@@ -519,7 +524,7 @@ export function buildStateEntryPlan(id) {
     ],
     'OTH-02': [
       { kind: 'prepareFixture', operation: 'prepareOrganizationDrag' },
-      ...openContent('紧凑'),
+      ...openContent(1),
       { kind: 'click', target: { name: '商品-01.jpg' } },
       { kind: 'click', target: { name: '商品-02.jpg' }, modifiers: ['command'] },
       { kind: 'click', target: { name: '商品-03.jpg' }, modifiers: ['command'] },
@@ -529,7 +534,7 @@ export function buildStateEntryPlan(id) {
     ],
     'OTH-03': [
       { kind: 'prepareFixture', operation: 'prepareOrganizationDrag' },
-      ...openContent('紧凑'),
+      ...openContent(1),
       { kind: 'click', target: { role: 'AXButton', name: '其它文件 · 3' } },
       { kind: 'click', target: { name: '商品-01.jpg' } },
       { kind: 'click', target: { name: '商品-02.jpg' }, modifiers: ['command'] },
@@ -595,7 +600,7 @@ export function buildStateEntryPlan(id) {
       { kind: 'assert', target: { role: 'AXHeading', name: '没有找到结果' } },
     ],
     'FIL-01': [
-      ...openWorkspace('紧凑'),
+      ...openWorkspace(1),
       { kind: 'click', target: folder('衣服/A01') },
       ...workspaceReady,
       { kind: 'click', target: { role: 'AXButton', name: '筛选' } },
@@ -674,7 +679,7 @@ export function buildStateEntryPlan(id) {
     ],
     'MEN-03': [
       { kind: 'prepareFixture', operation: 'makeProjectReadOnly' },
-      ...openFolder('衣服/A01', '紧凑'),
+      ...openFolder('衣服/A01', 1),
       clickToolbar('更多'),
       { kind: 'movePointerToTitlebar' },
       { kind: 'assert', target: { name: '权限设置', position: 'rightmost' } },
@@ -836,7 +841,7 @@ export function buildStateEntryPlan(id) {
     ],
     'INF-02': [
       { kind: 'prepareFixture', operation: 'prepareOrganizationDrag' },
-      ...openContent('紧凑'),
+      ...openContent(1),
       { kind: 'click', target: image('商品-01.jpg') },
       { kind: 'click', target: { role: 'AXButton', name: '其它文件 · 3' } },
       { kind: 'click', target: { name: '产品说明.md' }, modifiers: ['command'] },
@@ -2470,7 +2475,7 @@ async function normalizeWorkspaceState({
   client,
   actions,
   window,
-  density,
+  thumbnailLevel,
   sidebarWidth,
 }) {
   const closeInformation = await queryOptionalElement(client, actions, {
@@ -2516,7 +2521,14 @@ async function normalizeWorkspaceState({
     })
   }
 
-  if (density === null) return collapse
+  if (thumbnailLevel === null) return collapse
+  if (!Number.isInteger(thumbnailLevel) || thumbnailLevel < 1 || thumbnailLevel > 5) {
+    throw new AcceptanceError(
+      'STATE_SLIDER_LEVEL_INVALID',
+      'Thumbnail level must be an integer from 1 through 5',
+      { thumbnailLevel },
+    )
+  }
 
   const more = await queryVisibleElement(client, actions, {
     role: 'AXButton',
@@ -2525,11 +2537,33 @@ async function normalizeWorkspaceState({
   await clickElement(client, actions, more, window)
   const settings = await queryVisibleElement(client, actions, { name: '软件设置' })
   await clickElement(client, actions, settings, window)
-  const densityOption = await queryVisibleElement(client, actions, {
-    role: 'AXRadioButton',
-    name: density,
+  const thumbnailSliderTarget = {
+    role: 'AXSlider',
+    name: '缩略图大小',
+  }
+  await queryVisibleElement(client, actions, thumbnailSliderTarget)
+  await requestWithActionLog(client, actions, 'focus', {
+    target: thumbnailSliderTarget,
   })
-  await clickElement(client, actions, densityOption, window)
+  await requestWithActionLog(client, actions, 'key', {
+    key: 'home',
+    modifiers: [],
+  })
+  for (let level = 1; level < thumbnailLevel; level += 1) {
+    await requestWithActionLog(client, actions, 'key', {
+      key: 'arrowRight',
+      modifiers: [],
+    })
+  }
+  const normalizedSlider = await queryVisibleElement(client, actions, thumbnailSliderTarget)
+  const actualLevel = Number(normalizedSlider.value)
+  if (!Number.isFinite(actualLevel) || actualLevel !== thumbnailLevel) {
+    throw new AcceptanceError(
+      'STATE_SLIDER_LEVEL_MISMATCH',
+      'Thumbnail slider did not reach the requested level',
+      { expected: thumbnailLevel, actual: normalizedSlider.value ?? null },
+    )
+  }
   const close = await queryVisibleElement(client, actions, {
     role: 'AXButton',
     name: '关闭',
@@ -2808,7 +2842,7 @@ export async function executeStateEntryPlan({
           client,
           actions,
           window,
-          density: step.density,
+          thumbnailLevel: step.thumbnailLevel,
           sidebarWidth: step.sidebarWidth,
         })
       } else if (step.kind === 'press') {

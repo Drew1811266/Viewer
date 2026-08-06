@@ -69,7 +69,7 @@ function parseTableIds(markdown) {
 }
 
 describe('recipe registry', () => {
-  it('is exactly set-equal to both authoritative 89-state documents', async () => {
+  it('is exactly set-equal to both authoritative 91-state documents', async () => {
     const audit = await readFile(
       path.join(
         actualRepoRoot,
@@ -89,8 +89,8 @@ describe('recipe registry', () => {
     const recipeIds = [...STATE_RECIPES.keys()]
 
     for (const ids of [auditIds, ledgerIds, AUDIT_IDS, recipeIds]) {
-      assert.equal(ids.length, 89)
-      assert.equal(new Set(ids).size, 89)
+      assert.equal(ids.length, 91)
+      assert.equal(new Set(ids).size, 91)
     }
     assert.deepEqual(new Set(AUDIT_IDS), new Set(auditIds))
     assert.deepEqual(new Set(AUDIT_IDS), new Set(ledgerIds))
@@ -141,7 +141,7 @@ describe('state entry plans', () => {
       { kind: 'openProject' },
       {
         kind: 'normalizeWorkspace',
-        density: '标准',
+        thumbnailLevel: 2,
         sidebar: 'expanded',
         sidebarWidth: 220,
       },
@@ -159,7 +159,7 @@ describe('state entry plans', () => {
       { kind: 'openProject' },
       {
         kind: 'normalizeWorkspace',
-        density: '标准',
+        thumbnailLevel: 2,
         sidebar: 'expanded',
         sidebarWidth: 220,
       },
@@ -177,7 +177,7 @@ describe('state entry plans', () => {
       { kind: 'openProject' },
       {
         kind: 'normalizeWorkspace',
-        density: '紧凑',
+        thumbnailLevel: 1,
         sidebar: 'expanded',
         sidebarWidth: 220,
       },
@@ -197,7 +197,7 @@ describe('state entry plans', () => {
       { kind: 'openProject' },
       {
         kind: 'normalizeWorkspace',
-        density: '标准',
+        thumbnailLevel: 2,
         sidebar: 'expanded',
         sidebarWidth: 220,
       },
@@ -225,6 +225,28 @@ describe('state entry plans', () => {
     })
   })
 
+  it('maps all five thumbnail size recipes to deterministic slider levels', () => {
+    for (const [id, thumbnailLevel] of [
+      ['THU-01', 1],
+      ['THU-02', 2],
+      ['THU-03', 3],
+      ['THU-08', 4],
+      ['THU-09', 5],
+    ]) {
+      const plan = buildStateEntryPlan(id)
+      assert.deepEqual(plan.slice(0, 3), [
+        { kind: 'openProject' },
+        {
+          kind: 'normalizeWorkspace',
+          thumbnailLevel,
+          sidebar: 'expanded',
+          sidebarWidth: 220,
+        },
+        { kind: 'click', target: { role: 'AXGroup', name: '衣服/A01' } },
+      ])
+    }
+  })
+
   it('matches the atlas three-item multi-selection state', () => {
     const plan = buildStateEntryPlan('THU-06')
     const selectedNames = plan
@@ -244,7 +266,7 @@ describe('state entry plans', () => {
         { kind: 'openProject' },
         {
           kind: 'normalizeWorkspace',
-          density: '紧凑',
+          thumbnailLevel: 1,
           sidebar: 'expanded',
           sidebarWidth: 220,
         },
@@ -369,7 +391,7 @@ describe('state entry plans', () => {
       { kind: 'openProject' },
       {
       kind: 'normalizeWorkspace',
-      density: '紧凑',
+      thumbnailLevel: 1,
       sidebar: 'expanded',
       sidebarWidth: 220,
       },
@@ -391,7 +413,7 @@ describe('state entry plans', () => {
   })
 
   it('normalizes persistent workspace chrome before entering every stable Wave 1 state', () => {
-    const standardDensityIds = [
+    const standardLevelIds = [
       'SID-01',
       'SID-02',
       'SID-03',
@@ -412,7 +434,7 @@ describe('state entry plans', () => {
       'MEN-02',
       'LAU-07',
     ]
-    const compactDensityIds = [
+    const compactLevelIds = [
       'STR-04',
       'THU-01',
       'OTH-01',
@@ -424,12 +446,16 @@ describe('state entry plans', () => {
       'FIL-04',
       'MEN-03',
     ]
-    const largeDensityIds = ['THU-03']
+    const largeLevelIds = ['THU-03']
+    const extraLargeLevelIds = ['THU-08']
+    const maximumLevelIds = ['THU-09']
 
-    for (const [density, ids] of [
-      ['标准', standardDensityIds],
-      ['紧凑', compactDensityIds],
-      ['大图', largeDensityIds],
+    for (const [thumbnailLevel, ids] of [
+      [2, standardLevelIds],
+      [1, compactLevelIds],
+      [3, largeLevelIds],
+      [4, extraLargeLevelIds],
+      [5, maximumLevelIds],
     ]) {
       for (const id of ids) {
         const plan = buildStateEntryPlan(id)
@@ -439,7 +465,7 @@ describe('state entry plans', () => {
           plan[openIndex + 1],
           {
             kind: 'normalizeWorkspace',
-            density,
+            thumbnailLevel,
             sidebar: 'expanded',
             sidebarWidth: 220,
           },
@@ -458,7 +484,7 @@ describe('state entry plans', () => {
       { kind: 'openProject' },
       {
         kind: 'normalizeWorkspace',
-        density: null,
+        thumbnailLevel: null,
         sidebar: 'expanded',
         sidebarWidth: 220,
       },
@@ -648,6 +674,8 @@ describe('state entry plans', () => {
       'THU-01',
       'THU-02',
       'THU-03',
+      'THU-08',
+      'THU-09',
       'THU-06',
       'THU-07',
       'OTH-01',
@@ -688,6 +716,7 @@ describe('state entry plans', () => {
               {
                 role: 'AXGroup',
                 name: payload.target.name,
+                value: payload.target.role === 'AXSlider' ? 2 : undefined,
                 frame: { x: 120, y: 90, width: 80, height: 24 },
               },
             ],
@@ -728,7 +757,7 @@ describe('state entry plans', () => {
       commands.find(({ command }) => command === 'drag')?.payload.to,
       { x: 220, y: 32 },
     )
-    for (const name of ['更多', '软件设置', '标准', '关闭', '衣服/A01']) {
+    for (const name of ['更多', '软件设置', '缩略图大小', '关闭', '衣服/A01']) {
       assert.ok(
         commands.some(
           ({ command, payload }) => command === 'query' && payload.target.name === name,
@@ -736,7 +765,20 @@ describe('state entry plans', () => {
         name,
       )
     }
-    assert.ok(commands.filter(({ command }) => command === 'pointer').length >= 5)
+    assert.ok(commands.filter(({ command }) => command === 'pointer').length >= 4)
+    assert.ok(
+      commands.some(
+        ({ command, payload }) =>
+          command === 'focus' && payload.target?.name === '缩略图大小',
+      ),
+    )
+    assert.deepEqual(
+      commands
+        .filter(({ command }) => command === 'key')
+        .map(({ payload }) => payload.key)
+        .slice(0, 2),
+      ['home', 'arrowRight'],
+    )
     assert.ok(actions.length >= 12)
   })
 
@@ -776,6 +818,7 @@ describe('state entry plans', () => {
               {
                 role: payload.target.role ?? 'AXGroup',
                 name: payload.target.name,
+                value: payload.target.role === 'AXSlider' ? 2 : undefined,
                 frame: payload.target.name === '目标/Destination'
                   ? { x: 180, y: 450, width: 120, height: 28 }
                   : { x: 520, y: 250, width: 80, height: 24 },
@@ -896,6 +939,7 @@ describe('state entry plans', () => {
               {
                 role: payload.target.role ?? 'AXGroup',
                 name: payload.target.name,
+                value: payload.target.role === 'AXSlider' ? 2 : undefined,
                 frame: { x: 520, y: 250, width: 80, height: 24 },
               },
             ],
@@ -958,6 +1002,7 @@ describe('state entry plans', () => {
               {
                 role: payload.target.role ?? 'AXGroup',
                 name: payload.target.name,
+                value: payload.target.role === 'AXSlider' ? 2 : undefined,
                 frame: payload.target.name === '目标/Destination'
                   ? { x: 180, y: 450, width: 120, height: 28 }
                   : { x: 520, y: 250, width: 80, height: 24 },
@@ -1494,7 +1539,7 @@ describe('native acceptance CLI', () => {
     )
   })
 
-  it('runs --smoke once without expanding to the 89-state recipe controller', async () => {
+  it('runs --smoke once without expanding to the 91-state recipe controller', async () => {
     const calls = []
     const result = await nativeAcceptance.runNativeAcceptanceCli(
       ['--smoke', '--viewport', '1024x720'],
@@ -1506,7 +1551,7 @@ describe('native acceptance CLI', () => {
         },
         captureRecipe: async ({ id }) => {
           calls.push(['recipe', id])
-          throw new Error('89-state capture must not run for native smoke')
+          throw new Error('91-state capture must not run for native smoke')
         },
         captureSmokeSuite: async ({ ids, preflight }) => {
           calls.push(['smoke', [...ids], preflight.commit])
@@ -1560,7 +1605,8 @@ describe('native acceptance CLI', () => {
         'LAU-01', 'LAU-02', 'LAU-03', 'LAU-04', 'LAU-05', 'LAU-06', 'LAU-07',
         'LAU-08', 'LAU-09', 'SID-01', 'SID-02', 'SID-03', 'SID-04', 'STR-01',
         'STR-02', 'STR-03', 'STR-04', 'STR-05', 'THU-01', 'THU-02', 'THU-03',
-        'THU-04', 'THU-05', 'THU-06', 'THU-07', 'OTH-01', 'OTH-02', 'OTH-03',
+        'THU-04', 'THU-05', 'THU-06', 'THU-07', 'THU-08', 'THU-09', 'OTH-01',
+        'OTH-02', 'OTH-03',
         'SEA-01', 'SEA-02', 'SEA-03', 'SEA-04', 'SEA-05', 'FIL-01', 'FIL-02',
         'FIL-03', 'FIL-04', 'MEN-01', 'MEN-02', 'MEN-03',
       ],
@@ -1599,7 +1645,7 @@ describe('native acceptance CLI', () => {
     assert.equal(failure, undefined)
     assert.equal(result.mode, 'capture-batch')
     assert.equal(result.viewport, '1440x900')
-    assert.equal(result.count, 40)
+    assert.equal(result.count, 42)
     assert.deepEqual(captured, nativeAcceptance.captureIdsForOptions({ mode: 'wave', selector: 1 }))
     assert.deepEqual(result.captures[0], {
       id: 'LAU-01',

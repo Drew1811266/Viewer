@@ -1390,7 +1390,8 @@ private final class LiveMacSystem: MacSystem {
         let role = axAttribute(element, name: kAXRoleAttribute as CFString) as? String ?? ""
         let title = axAttribute(element, name: kAXTitleAttribute as CFString) as? String
         let description = axAttribute(element, name: kAXDescriptionAttribute as CFString) as? String
-        let value = axAttribute(element, name: kAXValueAttribute as CFString) as? String
+        let rawValue = axAttribute(element, name: kAXValueAttribute as CFString)
+        let value = rawValue as? String
         let identifier = axAttribute(element, name: kAXIdentifierAttribute as CFString) as? String ?? ""
         let enabled = axAttribute(element, name: kAXEnabledAttribute as CFString) as? Bool ?? false
         let focused = axAttribute(element, name: kAXFocusedAttribute as CFString) as? Bool ?? false
@@ -1398,7 +1399,7 @@ private final class LiveMacSystem: MacSystem {
         let name = [title, description, value]
             .compactMap { $0 }
             .first { !$0.isEmpty } ?? ""
-        return [
+        var snapshot: [String: Any] = [
             "role": role,
             "name": name,
             "identifier": identifier,
@@ -1412,6 +1413,12 @@ private final class LiveMacSystem: MacSystem {
             ],
             "path": path,
         ]
+        if let numericValue = rawValue as? NSNumber {
+            snapshot["value"] = numericValue
+        } else if let stringValue = rawValue as? String {
+            snapshot["value"] = stringValue
+        }
+        return snapshot
     }
 
     private func matchesTarget(_ snapshot: [String: Any], target: [String: Any]) -> Bool {

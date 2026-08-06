@@ -83,7 +83,7 @@ export const FEEDBACK_SCENES: AcceptanceSceneRegistry = {
   ),
   'A11Y-01': () => (
     <FeedbackBackdrop
-      ready={() => document.activeElement?.getAttribute('name') === 'thumbnail-density'}
+      ready={() => document.activeElement?.getAttribute('name') === 'thumbnail-size'}
       attributes={{ 'data-acceptance-accessibility': 'keyboard' }}
     >
       <SettingsDialog density="standard" error={null} onDensityChange={noOp} onClose={noOp} />

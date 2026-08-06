@@ -1028,10 +1028,10 @@
     }
     .thumbnail-size-slider::-webkit-slider-thumb {
       appearance: none;
-      background: var(--surface);
-      border: 2px solid var(--accent);
+      background: var(--accent);
+      border: 2px solid var(--surface);
       border-radius: 50%;
-      box-shadow: 0 1px 4px rgb(31 35 42 / 16%);
+      box-shadow: 0 0 0 1px var(--accent);
       height: 18px;
       margin-top: -7px;
       width: 18px;
@@ -1047,27 +1047,26 @@
       height: 4px;
     }
     .thumbnail-size-slider::-moz-range-thumb {
-      background: var(--surface);
-      border: 2px solid var(--accent);
+      background: var(--accent);
+      border: 2px solid var(--surface);
       border-radius: 50%;
-      box-shadow: 0 1px 4px rgb(31 35 42 / 16%);
-      height: 14px;
-      width: 14px;
+      box-shadow: 0 0 0 1px var(--accent);
+      height: 18px;
+      width: 18px;
     }
     .thumbnail-size-slider:focus-visible {
       outline: 2px solid var(--accent);
       outline-offset: 3px;
     }
     .thumbnail-size-levels {
-      color: var(--tertiary);
-      display: grid;
-      font-size: 10px;
-      grid-template-columns: repeat(5, 1fr);
+      color: var(--secondary);
+      display: flex;
+      font-size: 12px;
+      justify-content: space-between;
+      line-height: 16px;
       margin-top: 2px;
-      text-align: center;
+      padding-inline: 9px;
     }
-    .thumbnail-size-levels span:first-child { text-align: left; }
-    .thumbnail-size-levels span:last-child { text-align: right; }
     .thumbnail-size-levels span[data-current="true"] {
       color: var(--accent);
       font-weight: 750;
@@ -2313,7 +2312,7 @@
       const stateBarMarkup = sceneStateBar?.outerHTML ?? "";
       sceneStateBar?.remove();
       mount.innerHTML = `<div class="prototype-frame${stateBarMarkup ? " has-states" : ""}">${stateBarMarkup ? `<div class="prototype-state-dock">${stateBarMarkup}</div>` : ""}<div class="prototype-surface">${template.innerHTML}</div></div>`;
-      if (state.screen === "accessibility" && state.accessibility === "keyboard") {
+      if ((state.screen === "accessibility" && state.accessibility === "keyboard") || (state.screen === "dialogs" && state.dialog === "settings")) {
         mount.querySelector(".thumbnail-size-slider")?.focus();
       }
       document.getElementById("scene-name").textContent = screenMeta[state.screen][0];

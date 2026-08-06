@@ -123,6 +123,15 @@ describe('complete Viewer visual atlas', () => {
     expect(html).toMatch(/\.image-meta strong\s*\{[^}]*font-size:\s*13px;/s)
   })
 
+  it('models the approved accent-filled slider thumb and aligned level labels', () => {
+    expect(html).toMatch(
+      /\.thumbnail-size-slider::-webkit-slider-thumb\s*\{[^}]*background:\s*var\(--accent\);[^}]*border:\s*2px solid var\(--surface\);[^}]*box-shadow:\s*0 0 0 1px var\(--accent\);[^}]*height:\s*18px;[^}]*width:\s*18px;/s,
+    )
+    expect(html).toMatch(
+      /\.thumbnail-size-levels\s*\{[^}]*display:\s*flex;[^}]*justify-content:\s*space-between;[^}]*padding-inline:\s*9px;/s,
+    )
+  })
+
   it('resolves the exported extra-large density state to the atlas CSS token', () => {
     const dom = renderAtlas('#embed=browser&viewport=1024&state=density-extra-large')
 
@@ -311,6 +320,7 @@ describe('complete Viewer visual atlas', () => {
     expect(thumbnailSlider?.step).toBe('1')
     expect(thumbnailSlider?.value).toBe('2')
     expect(thumbnailSlider?.getAttribute('aria-label')).toBe('缩略图大小')
+    expect(document.activeElement).toBe(thumbnailSlider)
     expect(
       [...(settingsDialog?.querySelectorAll('.thumbnail-size-levels span') ?? [])].map((level) =>
         level.textContent?.trim(),

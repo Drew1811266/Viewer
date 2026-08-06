@@ -848,6 +848,13 @@ export function buildStateEntryPlan(id) {
       { kind: 'key', key: 'i', modifiers: ['command'] },
       { kind: 'assert', target: { name: '文件信息' } },
     ],
+    'DIA-01': [
+      ...openWorkspace(),
+      clickToolbar('更多'),
+      { kind: 'click', target: { name: '软件设置' } },
+      { kind: 'focus', target: { role: 'AXSlider', name: '缩略图大小' } },
+      { kind: 'assert', target: { role: 'AXSlider', name: '缩略图大小' } },
+    ],
     'LAU-07': [
       ...openFolder('空目录/Empty'),
       { kind: 'movePointerToTitlebar' },

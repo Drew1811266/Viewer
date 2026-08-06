@@ -560,10 +560,15 @@ describe('state entry plans', () => {
     ])
   })
 
-  it('rejects a state until it has a real executable entry plan', () => {
-    assert.throws(() => buildStateEntryPlan('DIA-01'), {
-      code: 'STATE_RECIPE_EXECUTOR',
-    })
+  it('opens the settings dialog and focuses its real slider for DIA-01', () => {
+    const plan = buildStateEntryPlan('DIA-01')
+
+    assert.deepEqual(plan.slice(-4), [
+      { kind: 'click', target: { role: 'AXButton', name: '更多' } },
+      { kind: 'click', target: { name: '软件设置' } },
+      { kind: 'focus', target: { role: 'AXSlider', name: '缩略图大小' } },
+      { kind: 'assert', target: { role: 'AXSlider', name: '缩略图大小' } },
+    ])
   })
 
   it('uses real radial pointer and keyboard entry plans for every round-menu state', () => {

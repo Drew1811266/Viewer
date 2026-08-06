@@ -852,6 +852,7 @@ export function buildStateEntryPlan(id) {
       ...openWorkspace(),
       clickToolbar('更多'),
       { kind: 'click', target: { name: '软件设置' } },
+      { kind: 'assert', target: { role: 'AXSlider', name: '缩略图大小' } },
       { kind: 'focus', target: { role: 'AXSlider', name: '缩略图大小' } },
       { kind: 'assert', target: { role: 'AXSlider', name: '缩略图大小' } },
     ],

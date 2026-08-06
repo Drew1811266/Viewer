@@ -564,9 +564,10 @@ describe('state entry plans', () => {
   it('opens the settings dialog and focuses its real slider for DIA-01', () => {
     const plan = buildStateEntryPlan('DIA-01')
 
-    assert.deepEqual(plan.slice(-4), [
+    assert.deepEqual(plan.slice(-5), [
       { kind: 'click', target: { role: 'AXButton', name: '更多' } },
       { kind: 'click', target: { name: '软件设置' } },
+      { kind: 'assert', target: { role: 'AXSlider', name: '缩略图大小' } },
       { kind: 'focus', target: { role: 'AXSlider', name: '缩略图大小' } },
       { kind: 'assert', target: { role: 'AXSlider', name: '缩略图大小' } },
     ])

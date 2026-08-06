@@ -2142,6 +2142,10 @@
       return `<div class="viewer-window">${states}<div class="information-layout"><section class="information-selection"><div class="image-grid" data-density="standard">${imageCards(selectedCount)}</div></section>${informationInspector(state.info)}</div></div>`;
     }
 
+    function settingsDialogBody() {
+      return '<div class="dialog wide"><h2>软件设置</h2><div class="settings-dialog-shell"><nav class="settings-dialog-navigation" aria-label="设置分类"><button class="viewer-button primary" type="button">显示与外观</button></nav><section class="settings-dialog-content"><h3>显示与外观</h3><fieldset class="thumbnail-size-control"><legend>缩略图大小</legend><input class="thumbnail-size-slider" type="range" name="thumbnail-size" min="1" max="5" step="1" value="2" aria-label="缩略图大小" aria-valuetext="档位 2，132 像素" style="--thumbnail-level-progress:25%"><div class="thumbnail-size-levels" aria-hidden="true"><span>1</span><span data-current="true">2</span><span>3</span><span>4</span><span>5</span></div></fieldset></section></div><div class="dialog-actions"><button class="viewer-button" type="button">关闭</button></div></div>';
+    }
+
     function dialogsScreen() {
       const states = stateBar([{
         label: "对话框",
@@ -2150,7 +2154,7 @@
       }]);
       let body = "";
       if (state.dialog === "settings") {
-        body = '<div class="dialog wide"><h2>软件设置</h2><div class="settings-dialog-shell"><nav class="settings-dialog-navigation" aria-label="设置分类"><button class="viewer-button primary" type="button">显示与外观</button></nav><section class="settings-dialog-content"><h3>显示与外观</h3><fieldset class="thumbnail-size-control"><legend>缩略图大小</legend><input class="thumbnail-size-slider" type="range" name="thumbnail-size" min="1" max="5" step="1" value="2" aria-label="缩略图大小" aria-valuetext="档位 2，132 像素" style="--thumbnail-level-progress:25%"><div class="thumbnail-size-levels" aria-hidden="true"><span>1</span><span data-current="true">2</span><span>3</span><span>4</span><span>5</span></div></fieldset></section></div><div class="dialog-actions"><button class="viewer-button" type="button">关闭</button></div></div>';
+        body = settingsDialogBody();
       } else if (state.dialog === "single-rename") {
         body = '<div class="dialog"><h2>重命名文件</h2><p>文件扩展名保持不变。</p><div class="field"><label for="single-rename-name">新名称</label><input id="single-rename-name" value="A01-正面-01"></div><div class="dialog-actions"><button class="viewer-button">取消</button><button class="viewer-button primary">重命名</button></div></div>';
       } else if (state.dialog === "batch-rename") {
@@ -2238,6 +2242,15 @@
         key: "accessibility",
         items: [["keyboard", "键盘"], ["restore", "焦点恢复"], ["reduced", "减少动效"], ["forced", "强制颜色"], ["zoom", "200% 缩放"]],
       }]);
+      if (state.accessibility === "keyboard") {
+        const dialogTitleId = "atlas-accessibility-keyboard-title";
+        const semanticBody = settingsDialogBody()
+          .replace('<div class="dialog', `<div role="dialog" aria-modal="true" aria-labelledby="${dialogTitleId}" class="dialog`)
+          .replace("<h2>", `<h2 id="${dialogTitleId}">`);
+        const overlay = `<div class="scrim" data-dialog-state="settings">${semanticBody}</div>`;
+        const content = `${states}<div class="grid-wrap"><div class="image-grid" data-density="standard">${imageCards(2)}</div></div>`;
+        return `<div class="accessible-viewer" data-accessibility-state="keyboard" data-accessible-viewer-state="keyboard">${shell(content, { overlay })}</div>`;
+      }
       const descriptions = {
         keyboard: ["完整键盘路径", "Tab 进入工具栏和内容，方向键移动缩略图焦点，Enter 预览，菜单键打开圆盘。"],
         restore: ["焦点返回原位", "关闭预览、圆盘或对话框后，焦点回到触发操作的缩略图或按钮。"],
@@ -2300,6 +2313,9 @@
       const stateBarMarkup = sceneStateBar?.outerHTML ?? "";
       sceneStateBar?.remove();
       mount.innerHTML = `<div class="prototype-frame${stateBarMarkup ? " has-states" : ""}">${stateBarMarkup ? `<div class="prototype-state-dock">${stateBarMarkup}</div>` : ""}<div class="prototype-surface">${template.innerHTML}</div></div>`;
+      if (state.screen === "accessibility" && state.accessibility === "keyboard") {
+        mount.querySelector(".thumbnail-size-slider")?.focus();
+      }
       document.getElementById("scene-name").textContent = screenMeta[state.screen][0];
       document.getElementById("scene-description").textContent = screenMeta[state.screen][1];
       document.querySelectorAll(".nav-item").forEach((item) => item.setAttribute("aria-current", item.dataset.screen === state.screen ? "page" : "false"));

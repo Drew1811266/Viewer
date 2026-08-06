@@ -131,6 +131,16 @@ describe('complete Viewer visual atlas', () => {
     ).toBe('extra_large')
   })
 
+  it('exports the accessibility keyboard state with the settings slider focused', () => {
+    const dom = renderAtlas('#embed=accessibility&viewport=1024&state=accessibility-keyboard')
+    const slider = dom.window.document.querySelector<HTMLInputElement>(
+      'input[type="range"][name="thumbnail-size"]',
+    )
+
+    expect(slider).not.toBeNull()
+    expect(dom.window.document.activeElement).toBe(slider)
+  })
+
   it('models square complete-card selection instead of an inset thumbnail ring', () => {
     expect(html).toMatch(/\.image-card\s*\{[^}]*border-radius:\s*0;/s)
     expect(html).toMatch(

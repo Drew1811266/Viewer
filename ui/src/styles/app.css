@@ -1430,7 +1430,34 @@ body:has(.viewer-inspector) .global-notice-stack {
   overflow-x: auto;
   overflow-y: hidden;
   padding: 12px 0;
+  scrollbar-color: transparent transparent;
   scrollbar-gutter: stable;
+}
+
+.folder-filmstrip::-webkit-scrollbar {
+  height: 8px;
+}
+
+.folder-filmstrip::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.folder-filmstrip::-webkit-scrollbar-thumb {
+  background-clip: padding-box;
+  background-color: transparent;
+  border: 2px solid transparent;
+  border-radius: 999px;
+  transition: background-color 180ms ease;
+}
+
+.folder-filmstrip-row:hover .folder-filmstrip,
+.folder-filmstrip-row:focus-within .folder-filmstrip {
+  scrollbar-color: var(--viewer-text-tertiary) transparent;
+}
+
+.folder-filmstrip-row:hover .folder-filmstrip::-webkit-scrollbar-thumb,
+.folder-filmstrip-row:focus-within .folder-filmstrip::-webkit-scrollbar-thumb {
+  background-color: var(--viewer-text-tertiary);
 }
 
 .folder-filmstrip > p {
@@ -2607,6 +2634,10 @@ body:has(.viewer-dialog-backdrop) .task-bar {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .folder-filmstrip::-webkit-scrollbar-thumb {
+    transition: none;
+  }
+
   button,
   input,
   select,

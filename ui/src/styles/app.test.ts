@@ -376,6 +376,20 @@ describe('workspace style contracts', () => {
     )
     const image = rules.find((rule) => rule.selector === '.aspect-thumbnail > img')
     const placeholder = rules.find((rule) => rule.selector === '.aspect-thumbnail-placeholder')
+    const thumb = rules.find(
+      (rule) => rule.selector === '.folder-filmstrip::-webkit-scrollbar-thumb',
+    )
+    const visibleThumbSelectors = [
+      '.folder-filmstrip-row:hover .folder-filmstrip::-webkit-scrollbar-thumb',
+      '.folder-filmstrip-row:focus-within .folder-filmstrip::-webkit-scrollbar-thumb',
+    ]
+    const visibleFallbackSelectors = [
+      '.folder-filmstrip-row:hover .folder-filmstrip',
+      '.folder-filmstrip-row:focus-within .folder-filmstrip',
+    ]
+    const reducedThumb = parseRules(mediaBody(appCss, '(prefers-reduced-motion: reduce)')).find(
+      (rule) => rule.selector === '.folder-filmstrip::-webkit-scrollbar-thumb',
+    )
 
     expect(row?.declarations).toMatchObject({
       display: 'grid',
@@ -387,6 +401,24 @@ describe('workspace style contracts', () => {
       'overflow-y': 'hidden',
       'scrollbar-gutter': 'stable',
     })
+    expect(filmstrip?.declarations['scrollbar-color']).toBe('transparent transparent')
+    expect(thumb?.declarations).toMatchObject({
+      'background-color': 'transparent',
+      transition: 'background-color 180ms ease',
+    })
+    for (const selector of visibleThumbSelectors) {
+      expect(
+        rules.find((rule) => rule.selector === selector)?.declarations['background-color'],
+        selector,
+      ).toBe('var(--viewer-text-tertiary)')
+    }
+    for (const selector of visibleFallbackSelectors) {
+      expect(
+        rules.find((rule) => rule.selector === selector)?.declarations['scrollbar-color'],
+        selector,
+      ).toBe('var(--viewer-text-tertiary) transparent')
+    }
+    expect(reducedThumb?.declarations.transition).toBe('none')
     expect(track?.declarations).toMatchObject({
       position: 'relative',
     })

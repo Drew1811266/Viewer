@@ -19,6 +19,8 @@ const THUMBNAIL_GAP = 8
 const FILMSTRIP_INLINE_PADDING = 12
 const OVERSCAN_CELLS = 2
 const OVERSCAN_PIXELS = 256
+const SCROLLBAR_INLINE_INSET = 4
+const SCROLLBAR_MIN_THUMB_WIDTH = 36
 
 interface FolderFilmstripRowProps {
   folder: ContentFolderCard
@@ -205,6 +207,11 @@ export default function FolderFilmstripRow({
   )
 
   const reviewed = folder.reviewProgress.total - folder.reviewProgress.unmarked
+  const scrollbar = overlayScrollbarMetrics(
+    viewport.width,
+    geometry.totalWidth,
+    viewport.scrollLeft,
+  )
 
   return (
     <article
@@ -227,107 +234,141 @@ export default function FolderFilmstripRow({
         <span className="folder-filmstrip-marker">{`文件夹：${markerLabel(folder.marker)}`}</span>
         <span>{`已审阅 ${reviewed} / ${folder.reviewProgress.total}`}</span>
       </button>
-      <div
-        ref={filmstrip}
-        className="folder-filmstrip"
-        role="region"
-        aria-label={`${folder.name} 图片`}
-        data-state={state.status}
-        onScroll={updateViewport}
-      >
-        {state.status === 'idle' && (
-          <span
-            className="folder-filmstrip-deferred"
-            aria-label="等待加载图片"
-            style={{ height: `${imageHeight}px` }}
-          />
-        )}
-        {state.status === 'loading' &&
-          ['first', 'second', 'third', 'fourth'].map((key) => (
+      <div className="folder-filmstrip-shell">
+        <div
+          ref={filmstrip}
+          className="folder-filmstrip"
+          role="region"
+          aria-label={`${folder.name} 图片`}
+          data-state={state.status}
+          onScroll={updateViewport}
+        >
+          {state.status === 'idle' && (
             <span
-              className="folder-filmstrip-skeleton"
-              aria-label="图片加载中"
-              key={key}
-              style={{ width: `${imageHeight}px`, height: `${imageHeight}px` }}
+              className="folder-filmstrip-deferred"
+              aria-label="等待加载图片"
+              style={{ height: `${imageHeight}px` }}
             />
-          ))}
-        {state.status === 'failed' && (
-          <div className="folder-filmstrip-error">
-            <ViewerLocalFeedback
-              tone="danger"
-              title="无法加载图片"
-              action={
-                <ViewerButton
-                  aria-label={`重试 ${folder.name}`}
-                  onClick={() => requestImages(true)}
-                >
-                  重试
-                </ViewerButton>
-              }
-            >
-              此文件夹的缩略图暂时不可用。
-            </ViewerLocalFeedback>
-          </div>
-        )}
-        {state.status === 'ready' && state.images.length === 0 && <p>无图片</p>}
-        {state.status === 'ready' && imageWindow !== null && state.images.length > 0 && (
-          <div
-            className="folder-filmstrip-track"
-            role="list"
-            style={{ width: `${geometry.totalWidth}px`, height: `${imageHeight}px` }}
-          >
-            {getMountedImageIndexes(imageWindow, focusedImageIndex).map((index) => {
-              const file = state.images[index]
-              const item = geometry.items[index]
-              if (file === undefined || item === undefined) {
-                throw new Error(`Missing filmstrip image at mounted index ${index}`)
-              }
-              const dimensions = dimensionsFor(file, recoveredDimensions)
-              return (
-                <div
-                  className="folder-filmstrip-item"
-                  role="listitem"
-                  aria-posinset={index + 1}
-                  aria-setsize={state.images.length}
-                  key={item.key}
-                  style={{
-                    left: `${item.left}px`,
-                    width: `${item.imageWidth}px`,
-                    height: `${item.imageHeight}px`,
-                  }}
-                >
-                  <button
-                    type="button"
-                    className="folder-filmstrip-thumbnail"
-                    aria-label={`预览 ${file.name}`}
-                    title={file.name}
-                    onFocus={() => setFocusedImageIndex(index)}
-                    onBlur={() =>
-                      setFocusedImageIndex((current) => (current === index ? null : current))
-                    }
-                    onClick={() => onPreview(file, state.images)}
+          )}
+          {state.status === 'loading' &&
+            ['first', 'second', 'third', 'fourth'].map((key) => (
+              <span
+                className="folder-filmstrip-skeleton"
+                aria-label="图片加载中"
+                key={key}
+                style={{ width: `${imageHeight}px`, height: `${imageHeight}px` }}
+              />
+            ))}
+          {state.status === 'failed' && (
+            <div className="folder-filmstrip-error">
+              <ViewerLocalFeedback
+                tone="danger"
+                title="无法加载图片"
+                action={
+                  <ViewerButton
+                    aria-label={`重试 ${folder.name}`}
+                    onClick={() => requestImages(true)}
                   >
-                    {isPreviewableImage(file) ? (
-                      <AspectThumbnail
-                        file={file}
-                        width={item.imageWidth}
-                        height={item.imageHeight}
-                        dimensionsKnown={validDimensions(dimensions)}
-                        loadThumbnail={requestThumbnail}
-                        onNaturalDimensions={rememberNaturalDimensions}
-                      />
-                    ) : (
-                      <UnsupportedFileState file={file} compact />
-                    )}
-                  </button>
-                </div>
-              )
-            })}
+                    重试
+                  </ViewerButton>
+                }
+              >
+                此文件夹的缩略图暂时不可用。
+              </ViewerLocalFeedback>
+            </div>
+          )}
+          {state.status === 'ready' && state.images.length === 0 && <p>无图片</p>}
+          {state.status === 'ready' && imageWindow !== null && state.images.length > 0 && (
+            <div
+              className="folder-filmstrip-track"
+              role="list"
+              style={{ width: `${geometry.totalWidth}px`, height: `${imageHeight}px` }}
+            >
+              {getMountedImageIndexes(imageWindow, focusedImageIndex).map((index) => {
+                const file = state.images[index]
+                const item = geometry.items[index]
+                if (file === undefined || item === undefined) {
+                  throw new Error(`Missing filmstrip image at mounted index ${index}`)
+                }
+                const dimensions = dimensionsFor(file, recoveredDimensions)
+                return (
+                  <div
+                    className="folder-filmstrip-item"
+                    role="listitem"
+                    aria-posinset={index + 1}
+                    aria-setsize={state.images.length}
+                    key={item.key}
+                    style={{
+                      left: `${item.left}px`,
+                      width: `${item.imageWidth}px`,
+                      height: `${item.imageHeight}px`,
+                    }}
+                  >
+                    <button
+                      type="button"
+                      className="folder-filmstrip-thumbnail"
+                      aria-label={`预览 ${file.name}`}
+                      title={file.name}
+                      onFocus={() => setFocusedImageIndex(index)}
+                      onBlur={() =>
+                        setFocusedImageIndex((current) => (current === index ? null : current))
+                      }
+                      onClick={() => onPreview(file, state.images)}
+                    >
+                      {isPreviewableImage(file) ? (
+                        <AspectThumbnail
+                          file={file}
+                          width={item.imageWidth}
+                          height={item.imageHeight}
+                          dimensionsKnown={validDimensions(dimensions)}
+                          loadThumbnail={requestThumbnail}
+                          onNaturalDimensions={rememberNaturalDimensions}
+                        />
+                      ) : (
+                        <UnsupportedFileState file={file} compact />
+                      )}
+                    </button>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+        {scrollbar !== null && (
+          <div
+            aria-hidden="true"
+            className="folder-filmstrip-scrollbar"
+            data-testid="folder-filmstrip-scrollbar"
+          >
+            <span
+              className="folder-filmstrip-scrollbar-thumb"
+              data-testid="folder-filmstrip-scrollbar-thumb"
+              style={{
+                width: `${scrollbar.thumbWidth}px`,
+                transform: `translateX(${scrollbar.thumbOffset}px)`,
+              }}
+            />
           </div>
         )}
       </div>
     </article>
   )
+}
+
+function overlayScrollbarMetrics(viewportWidth: number, contentWidth: number, scrollLeft: number) {
+  const trackWidth = Math.max(0, viewportWidth - SCROLLBAR_INLINE_INSET * 2)
+  const maximumScroll = Math.max(0, contentWidth - viewportWidth)
+  if (trackWidth === 0 || maximumScroll === 0) return null
+
+  const thumbWidth = Math.min(
+    trackWidth,
+    Math.max(SCROLLBAR_MIN_THUMB_WIDTH, trackWidth * (viewportWidth / contentWidth)),
+  )
+  const progress = Math.max(0, Math.min(1, scrollLeft / maximumScroll))
+  return {
+    thumbWidth,
+    thumbOffset: (trackWidth - thumbWidth) * progress,
+  }
 }
 
 function imageIdentity(file: BrowserFile): string {

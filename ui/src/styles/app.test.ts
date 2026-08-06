@@ -367,6 +367,7 @@ describe('workspace style contracts', () => {
   it('keeps folder identity fixed beside an independently scrolling filmstrip', () => {
     const rules = parseRules(appCss)
     const row = rules.find((rule) => rule.selector === '.folder-filmstrip-row')
+    const shell = rules.find((rule) => rule.selector === '.folder-filmstrip-shell')
     const filmstrip = rules.find((rule) => rule.selector === '.folder-filmstrip')
     const track = rules.find((rule) => rule.selector === '.folder-filmstrip-track')
     const item = rules.find((rule) => rule.selector === '.folder-filmstrip-item')
@@ -376,49 +377,49 @@ describe('workspace style contracts', () => {
     )
     const image = rules.find((rule) => rule.selector === '.aspect-thumbnail > img')
     const placeholder = rules.find((rule) => rule.selector === '.aspect-thumbnail-placeholder')
-    const thumb = rules.find(
-      (rule) => rule.selector === '.folder-filmstrip::-webkit-scrollbar-thumb',
+    const nativeScrollbar = rules.find(
+      (rule) => rule.selector === '.folder-filmstrip::-webkit-scrollbar',
     )
-    const visibleThumbSelectors = [
-      '.folder-filmstrip-row:hover .folder-filmstrip::-webkit-scrollbar-thumb',
-      '.folder-filmstrip-row:focus-within .folder-filmstrip::-webkit-scrollbar-thumb',
+    const scrollbar = rules.find((rule) => rule.selector === '.folder-filmstrip-scrollbar')
+    const thumb = rules.find((rule) => rule.selector === '.folder-filmstrip-scrollbar-thumb')
+    const visibleScrollbarSelectors = [
+      '.folder-filmstrip-row:hover .folder-filmstrip-scrollbar',
+      '.folder-filmstrip-row:focus-within .folder-filmstrip-scrollbar',
     ]
-    const visibleFallbackSelectors = [
-      '.folder-filmstrip-row:hover .folder-filmstrip',
-      '.folder-filmstrip-row:focus-within .folder-filmstrip',
-    ]
-    const reducedThumb = parseRules(mediaBody(appCss, '(prefers-reduced-motion: reduce)')).find(
-      (rule) => rule.selector === '.folder-filmstrip::-webkit-scrollbar-thumb',
+    const reducedScrollbar = parseRules(mediaBody(appCss, '(prefers-reduced-motion: reduce)')).find(
+      (rule) => rule.selector === '.folder-filmstrip-scrollbar',
     )
 
     expect(row?.declarations).toMatchObject({
       display: 'grid',
       'grid-template-columns': '184px minmax(0, 1fr)',
     })
+    expect(shell?.declarations).toMatchObject({
+      'min-width': '0',
+      position: 'relative',
+    })
     expect(filmstrip?.declarations).toMatchObject({
       'min-width': '0',
       'overflow-x': 'auto',
       'overflow-y': 'hidden',
-      'scrollbar-gutter': 'stable',
+      'scrollbar-width': 'none',
     })
-    expect(filmstrip?.declarations['scrollbar-color']).toBe('transparent transparent')
+    expect(nativeScrollbar?.declarations.display).toBe('none')
+    expect(scrollbar?.declarations).toMatchObject({
+      opacity: '0',
+      'pointer-events': 'none',
+      transition: 'opacity 180ms ease',
+    })
     expect(thumb?.declarations).toMatchObject({
-      'background-color': 'transparent',
-      transition: 'background-color 180ms ease',
+      background: 'var(--viewer-text-tertiary)',
+      'border-radius': '999px',
     })
-    for (const selector of visibleThumbSelectors) {
-      expect(
-        rules.find((rule) => rule.selector === selector)?.declarations['background-color'],
-        selector,
-      ).toBe('var(--viewer-text-tertiary)')
+    for (const selector of visibleScrollbarSelectors) {
+      expect(rules.find((rule) => rule.selector === selector)?.declarations.opacity, selector).toBe(
+        '1',
+      )
     }
-    for (const selector of visibleFallbackSelectors) {
-      expect(
-        rules.find((rule) => rule.selector === selector)?.declarations['scrollbar-color'],
-        selector,
-      ).toBe('var(--viewer-text-tertiary) transparent')
-    }
-    expect(reducedThumb?.declarations.transition).toBe('none')
+    expect(reducedScrollbar?.declarations.transition).toBe('none')
     expect(track?.declarations).toMatchObject({
       position: 'relative',
     })

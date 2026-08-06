@@ -219,6 +219,22 @@ describe('FolderFilmstripRow', () => {
     ])
   })
 
+  it('renders a deterministic overlay scrollbar and tracks horizontal progress', async () => {
+    const files = Array.from({ length: 10 }, (_, index) => image(index))
+    renderRow({ files })
+    const filmstrip = await sizeViewport(200)
+
+    const scrollbar = await screen.findByTestId('folder-filmstrip-scrollbar')
+    const thumb = within(scrollbar).getByTestId('folder-filmstrip-scrollbar-thumb')
+    expect(scrollbar).toHaveAttribute('aria-hidden', 'true')
+    expect(thumb).toHaveStyle({ width: '36px', transform: 'translateX(0px)' })
+
+    filmstrip.scrollLeft = 608
+    fireEvent.scroll(filmstrip)
+
+    await waitFor(() => expect(thumb).toHaveStyle({ transform: 'translateX(78px)' }))
+  })
+
   it('renders unsupported representatives without requesting their thumbnails', async () => {
     const unsupported = {
       ...image(1, { width: 1, height: 1 }),

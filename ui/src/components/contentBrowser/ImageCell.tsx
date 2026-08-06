@@ -69,7 +69,7 @@ export function ImageCell({
         title="拖到 Finder"
         onDragStart={(event) => onFinderDragStart(file, event)}
       >
-        <div className="image-cell-thumbnail-frame" data-selected={selected || undefined}>
+        <div className="image-cell-thumbnail-frame">
           <div
             className="image-cell-preview"
             style={{ width: rect.imageWidth, height: rect.imageHeight }}

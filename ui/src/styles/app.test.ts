@@ -91,31 +91,50 @@ describe('workspace style contracts', () => {
     })
   })
 
-  it('paints selection inside the thumbnail and keyboard focus outside the active card', () => {
+  it('paints selection around the square complete card and keyboard focus outside it', () => {
     const rules = parseRules(appCss)
-    const selectedCard = rules.find((rule) => rule.selector === '.image-cell[aria-selected="true"]')
-    const thumbnailFrame = rules.find((rule) => rule.selector === '.image-cell-thumbnail-frame')
+    const card = rules.find((rule) => rule.selector === '.image-cell')
     const selectionOverlay = rules.find(
+      (rule) => rule.selector === '.image-cell[aria-selected="true"]::after',
+    )
+    const selectedCard = rules.find(
+      (rule) => rule.selector === '.image-cell[aria-selected="true"]',
+    )
+    const legacyOverlay = rules.find(
       (rule) => rule.selector === ".image-cell-thumbnail-frame[data-selected='true']::after",
+    )
+    const organizationHandle = rules.find(
+      (rule) => rule.selector === '.image-cell > .organization-drag-handle',
     )
     const activeFocus = rules.find(
       (rule) =>
         rule.selector === '.aspect-virtual-grid:focus-visible .image-cell[data-active="true"]',
     )
+    const forcedSelection = parseRules(mediaBody(appCss, '(forced-colors: active)')).find(
+      (rule) => rule.selector === '.image-cell[aria-selected="true"]::after',
+    )
 
-    expect(selectedCard?.declarations.border).toBeUndefined()
-    expect(selectedCard?.declarations['box-shadow']).toBeUndefined()
-    expect(thumbnailFrame?.declarations.position).toBe('relative')
+    expect(card?.declarations['border-radius']).toBe('0')
     expect(selectionOverlay?.declarations).toMatchObject({
       border: '2px solid var(--viewer-accent)',
-      inset: '6px',
-      'border-radius': '8px',
+      'border-radius': '0',
+      'box-sizing': 'border-box',
+      inset: '0',
       'pointer-events': 'none',
       position: 'absolute',
+      'z-index': '2',
     })
+    expect(legacyOverlay).toBeUndefined()
+    expect(selectedCard?.declarations.background).toBeUndefined()
+    expect(selectedCard?.declarations['box-shadow']).toBeUndefined()
+    expect(organizationHandle?.declarations['z-index']).toBe('3')
     expect(activeFocus?.declarations).toMatchObject({
       outline: 'var(--viewer-focus-outline)',
       'outline-offset': 'var(--viewer-focus-offset)',
+    })
+    expect(forcedSelection?.declarations).toMatchObject({
+      'border-color': 'Highlight',
+      'border-width': '2px',
     })
   })
 
@@ -130,7 +149,7 @@ describe('workspace style contracts', () => {
     expect(card?.declarations).toMatchObject({
       background: 'var(--viewer-thumbnail-card-surface)',
       border: '1px solid var(--viewer-thumbnail-border)',
-      'border-radius': '9px',
+      'border-radius': '0',
     })
     expect(stage?.declarations.background).toBe('var(--viewer-thumbnail-stage-surface)')
     expect(metadata?.declarations).toMatchObject({

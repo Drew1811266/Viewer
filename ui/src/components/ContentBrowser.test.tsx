@@ -671,15 +671,16 @@ describe('ContentBrowser', () => {
     expect(screen.getByRole('status', { name: '选择摘要' })).toHaveTextContent('已选择 3 项')
   })
 
-  it('keeps the selected boundary inside the thumbnail and explains the radial action', () => {
+  it('uses the complete image card as the selection owner and explains the radial action', () => {
     render(<ContentBrowser workspace={workspace(1)} />)
     const option = screen.getByRole('option', { name: '1.jpg' })
 
     fireEvent.click(option)
 
     expect(option).toHaveAttribute('aria-selected', 'true')
-    const thumbnailFrame = option.querySelector('.image-cell-thumbnail-frame')
-    expect(thumbnailFrame).toHaveAttribute('data-selected', 'true')
+    const metadata = option.querySelector('.image-cell-meta')
+    expect(metadata).toContainElement(screen.getByText('1.jpg'))
+    expect(option.querySelector('.image-cell-thumbnail-frame')).not.toHaveAttribute('data-selected')
     expect(option).not.toHaveAttribute('data-selected')
     expect(screen.getByRole('status', { name: '选择摘要' })).toHaveTextContent(
       '右键打开圆盘菜单 · Esc 取消选择',

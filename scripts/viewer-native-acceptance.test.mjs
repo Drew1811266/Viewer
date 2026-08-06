@@ -709,9 +709,14 @@ describe('state entry plans', () => {
 
   it('executes plan steps through logged native requests', async () => {
     const commands = []
+    let thumbnailLevel = 2
     const client = {
       async request(command, payload) {
         commands.push({ command, payload })
+        if (command === 'key') {
+          if (payload.key === 'home') thumbnailLevel = 1
+          if (payload.key === 'arrowRight') thumbnailLevel = Math.min(5, thumbnailLevel + 1)
+        }
         if (command === 'query') {
           if (
             ['扫描项目', '2 个任务已完成', '正在生成缩略图'].includes(payload.target.name)
@@ -723,7 +728,7 @@ describe('state entry plans', () => {
               {
                 role: 'AXGroup',
                 name: payload.target.name,
-                value: payload.target.role === 'AXSlider' ? 2 : undefined,
+                value: payload.target.role === 'AXSlider' ? thumbnailLevel : undefined,
                 frame: { x: 120, y: 90, width: 80, height: 24 },
               },
             ],
@@ -811,9 +816,14 @@ describe('state entry plans', () => {
   })
   it('keeps an organization drag held through capture and releases it exactly once', async () => {
     const commands = []
+    let thumbnailLevel = 2
     const client = {
       async request(command, payload) {
         commands.push({ command, payload })
+        if (command === 'key') {
+          if (payload.key === 'home') thumbnailLevel = 1
+          if (payload.key === 'arrowRight') thumbnailLevel = Math.min(5, thumbnailLevel + 1)
+        }
         if (command === 'query') {
           if (
             ['扫描项目', '2 个任务已完成', '正在生成缩略图'].includes(payload.target.name)
@@ -825,7 +835,7 @@ describe('state entry plans', () => {
               {
                 role: payload.target.role ?? 'AXGroup',
                 name: payload.target.name,
-                value: payload.target.role === 'AXSlider' ? 2 : undefined,
+                value: payload.target.role === 'AXSlider' ? thumbnailLevel : undefined,
                 frame: payload.target.name === '目标/Destination'
                   ? { x: 180, y: 450, width: 120, height: 28 }
                   : { x: 520, y: 250, width: 80, height: 24 },
@@ -934,9 +944,14 @@ describe('state entry plans', () => {
 
   it('keeps a radial secondary-button gesture held through capture and releases it once', async () => {
     const commands = []
+    let thumbnailLevel = 2
     const client = {
       async request(command, payload) {
         commands.push({ command, payload })
+        if (command === 'key') {
+          if (payload.key === 'home') thumbnailLevel = 1
+          if (payload.key === 'arrowRight') thumbnailLevel = Math.min(5, thumbnailLevel + 1)
+        }
         if (command === 'query') {
           if (['扫描项目', '2 个任务已完成', '正在生成缩略图'].includes(payload.target.name)) {
             throw new AcceptanceError('STATE_TARGET_NOT_FOUND', 'not found')
@@ -946,7 +961,7 @@ describe('state entry plans', () => {
               {
                 role: payload.target.role ?? 'AXGroup',
                 name: payload.target.name,
-                value: payload.target.role === 'AXSlider' ? 2 : undefined,
+                value: payload.target.role === 'AXSlider' ? thumbnailLevel : undefined,
                 frame: { x: 520, y: 250, width: 80, height: 24 },
               },
             ],
@@ -995,9 +1010,14 @@ describe('state entry plans', () => {
 
   it('releases a held organization pointer when held-state observation fails', async () => {
     const commands = []
+    let thumbnailLevel = 2
     const client = {
       async request(command, payload) {
         commands.push({ command, payload })
+        if (command === 'key') {
+          if (payload.key === 'home') thumbnailLevel = 1
+          if (payload.key === 'arrowRight') thumbnailLevel = Math.min(5, thumbnailLevel + 1)
+        }
         if (command === 'query') {
           if (
             ['扫描项目', '2 个任务已完成', '正在生成缩略图'].includes(payload.target.name)
@@ -1009,7 +1029,7 @@ describe('state entry plans', () => {
               {
                 role: payload.target.role ?? 'AXGroup',
                 name: payload.target.name,
-                value: payload.target.role === 'AXSlider' ? 2 : undefined,
+                value: payload.target.role === 'AXSlider' ? thumbnailLevel : undefined,
                 frame: payload.target.name === '目标/Destination'
                   ? { x: 180, y: 450, width: 120, height: 28 }
                   : { x: 520, y: 250, width: 80, height: 24 },

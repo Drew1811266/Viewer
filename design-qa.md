@@ -151,3 +151,35 @@ platform task because the Windows version is not yet under development.
 - Final severity: P0 `0`, P1 `0`, P2 `0`, P3 `0`.
 
 Final result: passed
+
+## 2026-08-06 — Five-Level Thumbnail Size Slider
+
+### Accepted behavior
+
+- Settings uses one accessible range slider with visible numeric stops `1` through `5`; the former `紧凑 / 标准 / 大图` radio cards are removed.
+- The exact level-to-card-size contract is `1 = 96 px`, `2 = 132 px`, `3 = 168 px`, `4 = 204 px`, and `5 = 240 px`.
+- Level 2 remains the default and invalid-value recovery level. The existing settings schema remains version 1, while all five values round-trip through the TypeScript model, Tauri DTO, Rust persistence, and JSON storage.
+- Pointer input, Home/End and arrow-key changes share the same optimistic save behavior; stale completions cannot overwrite the latest user choice, and a failed latest write rolls the UI back to the last persisted value.
+
+### Browser visual evidence
+
+- Product/atlas evidence commit: `fa99c5d75e6c6cc04143b930f127fb8334774987` (later commits change only the native acceptance controller).
+- Final browser run: 8 states at both `1024 × 720` and `1440 × 900`, 16/16 reference/product comparisons completed with no failed or unrun states.
+- Evidence root: `target/viewer-visual-acceptance/five-level-thumbnail-slider-final-v2/fa99c5d75e6c6cc04143b930f127fb8334774987/`.
+- Reviewed states: settings dialog (`DIA-01`), keyboard focus (`A11Y-01`), levels 1–5 (`THU-01`, `THU-02`, `THU-03`, `THU-08`, `THU-09`), and complete-card selection at maximum size (`THU-05`).
+- Level 4 and 5 cards retain complete borders, filename rows, grid gaps, and selection geometry without clipping, overflow, or incomplete edge rendering at either viewport.
+
+### macOS native evidence
+
+- Level 5 grid (`THU-09`) passed at `1024 × 720`: `target/atlas-product-migration-acceptance/96d9a8c57d3da3335133d127a82f5ec728c6a687/1024x720/THU-09/combined.png`.
+- Focused settings slider (`DIA-01`) passed at `1024 × 720`: `target/atlas-product-migration-acceptance/aea8957f451cbbdfe89a99747440a696d410738d/1024x720/DIA-01/combined.png`.
+- The current display safe area limits the native Viewer window to `1280 × 800`, so a native `1440 × 900` capture was not forced. Browser component evidence covers that approved viewport. No macOS display scaling, resolution, Dock, or global scrollbar setting was changed.
+
+### Final review
+
+- Settings hierarchy, slider focus, accent thumb, filled track, numeric alignment, and close action match the approved visual atlas.
+- Levels 4 and 5 increase only thumbnail/card scale; existing interaction logic, square card geometry, complete-card selection outline, filename treatment, and virtualization behavior remain intact.
+- macOS current-stage severity: P0 `0`, P1 `0`, P2 `0`, P3 `0`.
+- Windows-native rendering and input validation remain explicitly deferred until Windows development begins.
+
+Final result: passed

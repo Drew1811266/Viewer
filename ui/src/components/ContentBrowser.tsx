@@ -133,12 +133,12 @@ export default function ContentBrowser({
     ? activeId
     : null
 
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    mounted.current = true
+    return () => {
       mounted.current = false
-    },
-    [],
-  )
+    }
+  }, [])
 
   useEffect(() => {
     const ids = new Set(allFiles.map((file) => file.entityId))

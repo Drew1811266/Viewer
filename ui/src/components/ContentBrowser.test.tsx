@@ -7,7 +7,7 @@ import {
   waitFor,
   within,
 } from '@testing-library/react'
-import { type ComponentProps, useState } from 'react'
+import { type ComponentProps, StrictMode, useState } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { BrowserFile, FolderWorkspace, ImageMetadata, ThumbnailDensity } from '../api/types'
 import { defined } from '../defined'
@@ -406,6 +406,84 @@ describe('ContentBrowser', () => {
 
     expect(screen.getByRole('listbox', { name: '图片文件' })).toBe(grid)
     expect(grid.scrollTop).toBe(180)
+  })
+
+  it('settles successful thumbnail progress after StrictMode effect preflight', async () => {
+    const pending = deferred<string>()
+    const onThumbnailTaskChange = vi.fn()
+
+    render(
+      <StrictMode>
+        <ContentBrowser
+          workspace={ratioWorkspace([{ width: 1, height: 1 }])}
+          requestThumbnail={() => pending.promise}
+          onThumbnailTaskChange={onThumbnailTaskChange}
+        />
+      </StrictMode>,
+    )
+
+    await waitFor(() =>
+      expect(onThumbnailTaskChange).toHaveBeenCalledWith(
+        expect.objectContaining({ status: 'running', completed: 0, failed: 0 }),
+      ),
+    )
+
+    await act(async () => {
+      pending.resolve('viewer-image://thumbnail/strict-success')
+      await pending.promise
+    })
+
+    await waitFor(() => {
+      const settled = onThumbnailTaskChange.mock.calls
+        .map(([task]) => task)
+        .find(
+          (task) =>
+            task?.requested > 0 &&
+            task.completed === task.requested &&
+            task.failed === 0 &&
+            task.status === 'complete',
+        )
+      expect(settled).toBeDefined()
+    })
+  })
+
+  it('settles failed thumbnail progress after StrictMode effect preflight', async () => {
+    const pending = deferred<string>()
+    const onThumbnailTaskChange = vi.fn()
+
+    render(
+      <StrictMode>
+        <ContentBrowser
+          workspace={ratioWorkspace([{ width: 1, height: 1 }])}
+          requestThumbnail={() => pending.promise}
+          onThumbnailTaskChange={onThumbnailTaskChange}
+        />
+      </StrictMode>,
+    )
+
+    await waitFor(() =>
+      expect(onThumbnailTaskChange).toHaveBeenCalledWith(
+        expect.objectContaining({ status: 'running', completed: 0, failed: 0 }),
+      ),
+    )
+
+    await act(async () => {
+      pending.reject(new Error('decode failed'))
+      await Promise.resolve()
+    })
+
+    await waitFor(() => {
+      const settled = onThumbnailTaskChange.mock.calls
+        .map(([task]) => task)
+        .find(
+          (task) =>
+            task?.requested > 0 &&
+            task.completed === 0 &&
+            task.failed === task.requested &&
+            task.status === 'failed',
+        )
+      expect(settled).toBeDefined()
+    })
   })
 
   it('keeps mounted resolved and pending thumbnail requests stable across shelf toggles', async () => {

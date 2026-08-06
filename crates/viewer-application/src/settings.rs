@@ -10,6 +10,8 @@ pub enum ThumbnailDensity {
     #[default]
     Standard,
     Large,
+    ExtraLarge,
+    Maximum,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -93,26 +95,21 @@ mod tests {
     }
 
     #[test]
-    fn updating_thumbnail_density_saves_one_complete_settings_value() {
-        let store = Arc::new(MemorySettingsPort::default());
-        let service = ViewerSettingsService::new(store.clone());
+    fn updating_larger_thumbnail_densities_saves_one_complete_settings_value() {
+        for thumbnail_density in [ThumbnailDensity::ExtraLarge, ThumbnailDensity::Maximum] {
+            let store = Arc::new(MemorySettingsPort::default());
+            let service = ViewerSettingsService::new(store.clone());
 
-        let settings = service
-            .update_thumbnail_density(ThumbnailDensity::Large)
-            .expect("settings update");
+            let settings = service
+                .update_thumbnail_density(thumbnail_density)
+                .expect("settings update");
 
-        assert_eq!(
-            settings,
-            ViewerSettings {
-                thumbnail_density: ThumbnailDensity::Large,
-            }
-        );
-        assert_eq!(
-            store.saved.lock().expect("settings lock").as_slice(),
-            &[ViewerSettings {
-                thumbnail_density: ThumbnailDensity::Large,
-            }]
-        );
+            assert_eq!(settings, ViewerSettings { thumbnail_density });
+            assert_eq!(
+                store.saved.lock().expect("settings lock").as_slice(),
+                &[ViewerSettings { thumbnail_density }]
+            );
+        }
     }
 
     #[test]
@@ -122,7 +119,7 @@ mod tests {
         let service = ViewerSettingsService::new(store);
 
         assert_eq!(
-            service.update_thumbnail_density(ThumbnailDensity::Large),
+            service.update_thumbnail_density(ThumbnailDensity::Maximum),
             Err(ViewerSettingsError::Unavailable)
         );
     }

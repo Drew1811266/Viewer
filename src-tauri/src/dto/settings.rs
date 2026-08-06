@@ -7,6 +7,8 @@ pub enum ThumbnailDensityDto {
     Compact,
     Standard,
     Large,
+    ExtraLarge,
+    Maximum,
 }
 
 impl From<ThumbnailDensity> for ThumbnailDensityDto {
@@ -15,6 +17,8 @@ impl From<ThumbnailDensity> for ThumbnailDensityDto {
             ThumbnailDensity::Compact => Self::Compact,
             ThumbnailDensity::Standard => Self::Standard,
             ThumbnailDensity::Large => Self::Large,
+            ThumbnailDensity::ExtraLarge => Self::ExtraLarge,
+            ThumbnailDensity::Maximum => Self::Maximum,
         }
     }
 }
@@ -25,6 +29,8 @@ impl From<ThumbnailDensityDto> for ThumbnailDensity {
             ThumbnailDensityDto::Compact => Self::Compact,
             ThumbnailDensityDto::Standard => Self::Standard,
             ThumbnailDensityDto::Large => Self::Large,
+            ThumbnailDensityDto::ExtraLarge => Self::ExtraLarge,
+            ThumbnailDensityDto::Maximum => Self::Maximum,
         }
     }
 }
@@ -66,6 +72,15 @@ mod tests {
 
     #[test]
     fn thumbnail_density_accepts_only_the_public_values() {
+        for public_value in ["compact", "standard", "large", "extra_large", "maximum"] {
+            let density =
+                serde_json::from_value::<ThumbnailDensityDto>(serde_json::json!(public_value))
+                    .unwrap();
+            assert_eq!(
+                serde_json::to_value(density).unwrap(),
+                serde_json::json!(public_value)
+            );
+        }
         assert!(
             serde_json::from_value::<ThumbnailDensityDto>(serde_json::json!("thumbnail_density"))
                 .is_err()

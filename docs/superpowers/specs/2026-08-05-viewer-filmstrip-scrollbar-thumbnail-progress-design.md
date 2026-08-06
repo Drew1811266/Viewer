@@ -34,7 +34,8 @@ though thumbnail loading itself continues.
 
 ## Non-goals
 
-- Replacing the native scrollbar with a custom draggable control.
+- Replacing native scrolling with a custom drag, wheel, trackpad, keyboard, or
+  accessibility interaction model. The visual overlay is non-interactive.
 - Changing filmstrip sizing, layout, scrolling distance, or image loading.
 - Counting folder-overview, preview, compare, or cached thumbnail work in the
   content workspace's `正在生成缩略图` task.
@@ -44,24 +45,29 @@ though thumbnail loading itself continues.
 ## Approved Scrollbar Behavior
 
 The existing `.folder-filmstrip` remains the native `overflow-x: auto`
-viewport. Its scrollbar track stays transparent. The thumb is transparent in
-the resting state and transitions its color over 180 ms.
+viewport, so trackpad inertia, wheel/keyboard input, scrolling distance,
+anchoring, and virtualization do not change. Its platform-drawn scrollbar is
+hidden because macOS WebKit does not reliably repaint a native scrollbar thumb
+when only its pseudo-element color changes.
 
-The thumb uses the normal subtle scrollbar color when either condition is
-true:
+`FolderFilmstripRow` renders a non-interactive visual scrollbar overlay only
+when the content width exceeds the viewport width. Its thumb width represents
+the visible fraction of the filmstrip, has a 36 px minimum, and its horizontal
+offset follows the native viewport's real `scrollLeft`. The overlay is fully
+transparent at rest and fades to the normal subtle scrollbar color over 180 ms
+when either condition is true:
 
 1. `.folder-filmstrip-row:hover`
 2. `.folder-filmstrip-row:focus-within`
 
 The hover target is the complete row, including the identity column and image
-area. When neither condition is true, the thumb returns to transparent. The
-scrollbar keeps a stable gutter so rows do not change height during the fade.
-The implementation supplies the WebKit scrollbar rules used by the Tauri
-webview and a standards-based `scrollbar-color` fallback for future engines.
+area. When neither condition is true, the overlay returns to transparent. It
+is positioned over the existing bottom inset and has `pointer-events: none`,
+so it cannot change row height, scroll position, hit testing, or native input.
 
-Reduced-motion users receive the same visibility states without the color
-transition. The scrollbar remains a native control and retains platform input
-and accessibility behavior.
+Reduced-motion users receive the same visibility states without the opacity
+transition. Keyboard focus remains on the existing native filmstrip content;
+`focus-within` only exposes the matching visual position indicator.
 
 ## Approved Progress Lifecycle
 
@@ -96,9 +102,12 @@ another. Promise settlements after a real unmount remain ignored.
 
 Automated regression coverage must prove:
 
-- the resting filmstrip thumb is transparent;
-- row hover and `focus-within` select the visible thumb color;
-- the thumb declares a fade transition and reduced-motion removes it;
+- the native visual scrollbar is hidden while native scrolling remains;
+- an overflow row renders a deterministic overlay thumb whose width and offset
+  track viewport size and `scrollLeft`;
+- the resting overlay is transparent;
+- row hover and `focus-within` reveal only that row's overlay;
+- the overlay declares a fade transition and reduced-motion removes it;
 - a `ContentBrowser` rendered in `StrictMode` reports a running thumbnail task;
 - resolving a pending thumbnail advances its completed count;
 - rejecting a pending thumbnail advances its failed count;

@@ -105,15 +105,21 @@ Escape closes, and focus returns to the invoking file.
 
 ## Thumbnail selection and focus
 
+> 2026-08-06 update: the selection-boundary rules below are replaced by
+> `2026-08-06-viewer-square-image-card-selection-design.md`. The radial-menu,
+> focus, toolbar, launch, and all other corrections in this document remain
+> authoritative.
+
 ### Selection boundary
 
-- Selection is painted only inside the thumbnail region.
-- The boundary is 2 px solid `var(--viewer-accent)`, inset 6 px from the
-  thumbnail edge, with an 8 px radius.
+- Content-grid file cards and their selection boundary use square corners.
+- The boundary is 2 px solid `var(--viewer-accent)`, inset zero from the
+  complete file-card edge, with zero radius.
 - The boundary is an overlay and does not affect measurement, virtualization,
   filename layout, or scrolling.
-- The filename area, drag handle, and complete card do not receive a selection
-  border or selection shadow.
+- The boundary encloses the thumbnail and filename area; the thumbnail region
+  does not receive a second selection boundary.
+- The complete card receives no selection shadow.
 - No opaque tint covers the product image.
 
 ### Focus boundary
@@ -124,7 +130,7 @@ Selection and keyboard focus are separate states:
   standard focus offset;
 - focus does not change `aria-selected`;
 - a focused selected item may display both the outer focus outline and the
-  inner thumbnail selection boundary.
+  complete-card selection boundary.
 
 ### Organization handle and summary
 
@@ -229,12 +235,11 @@ polish is recorded but does not block.
   `.file-context-menu`.
 - Keyboard invocation opens the radial at the active item and restores focus.
 - Pointer dwell and movement preserve gesture behavior.
-- Selected image cells expose `aria-selected="true"` while only the thumbnail
-  owns the visual selection overlay.
+- Selected image cells expose `aria-selected="true"` and the complete card owns
+  the visual selection overlay.
 - Workspace popover command rows have no resting border.
 - The More divider has a named class and correct geometry.
 - Clean completed tasks auto-hide and do not offer a close button.
 - Preview and compare completion controls contain visible `完成`.
 - Existing accessibility, controller, build, Rust, and security gates remain
   green.
-

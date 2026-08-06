@@ -525,7 +525,7 @@
     .image-card {
       background: #fbfbfa;
       border: 1px solid #ececea;
-      border-radius: 9px;
+      border-radius: 0;
       cursor: pointer;
       min-width: 0;
       overflow: hidden;
@@ -540,13 +540,15 @@
       height: 132px;
       position: relative;
     }
-    .image-card.selected .image-stage::after {
+    .image-card.selected::after {
       border: 2px solid var(--accent);
-      border-radius: 8px;
+      border-radius: 0;
+      box-sizing: border-box;
       content: "";
-      inset: 6px;
+      inset: 0;
       pointer-events: none;
       position: absolute;
+      z-index: 2;
     }
     .image-meta {
       align-items: center;
@@ -1421,8 +1423,9 @@
       --surface: Canvas;
       --text: CanvasText;
     }
-    .accessible-viewer[data-accessible-viewer-state="forced"] .image-card.selected .image-stage::after {
-      border: 3px solid Highlight;
+    .accessible-viewer[data-accessible-viewer-state="forced"] .image-card.selected::after {
+      border-color: Highlight;
+      border-width: 2px;
     }
     .accessible-viewer[data-accessible-viewer-state="zoom"] > .viewer-window {
       height: 50%;

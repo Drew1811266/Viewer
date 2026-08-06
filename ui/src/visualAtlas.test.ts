@@ -111,6 +111,17 @@ describe('complete Viewer visual atlas', () => {
     expect(html).toMatch(/\.image-meta strong\s*\{[^}]*font-size:\s*13px;/s)
   })
 
+  it('models square complete-card selection instead of an inset thumbnail ring', () => {
+    expect(html).toMatch(/\.image-card\s*\{[^}]*border-radius:\s*0;/s)
+    expect(html).toMatch(
+      /\.image-card\.selected::after\s*\{[^}]*border:\s*2px solid var\(--accent\);[^}]*border-radius:\s*0;[^}]*box-sizing:\s*border-box;[^}]*inset:\s*0;[^}]*pointer-events:\s*none;[^}]*position:\s*absolute;/s,
+    )
+    expect(html).not.toContain('.image-card.selected .image-stage::after')
+    expect(html).toMatch(
+      /\.accessible-viewer\[data-accessible-viewer-state="forced"\]\s+\.image-card\.selected::after\s*\{[^}]*border-color:\s*Highlight;/s,
+    )
+  })
+
   it('exposes real shell and browsing states', () => {
     const dom = renderAtlas()
     const document = dom.window.document

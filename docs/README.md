@@ -87,6 +87,7 @@ completion.
 | [`superpowers/plans/2026-07-29-viewer-other-files-and-split-text-preview.md`](superpowers/plans/2026-07-29-viewer-other-files-and-split-text-preview.md) | Historical | — |
 | [`superpowers/plans/2026-08-05-viewer-filmstrip-scrollbar-thumbnail-progress.md`](superpowers/plans/2026-08-05-viewer-filmstrip-scrollbar-thumbnail-progress.md) | Historical | — |
 | [`superpowers/plans/2026-08-05-viewer-progressive-folder-loading.md`](superpowers/plans/2026-08-05-viewer-progressive-folder-loading.md) | Historical | — |
+| [`superpowers/plans/2026-08-06-viewer-five-level-thumbnail-slider-implementation-plan.md`](superpowers/plans/2026-08-06-viewer-five-level-thumbnail-slider-implementation-plan.md) | Historical | — |
 | [`superpowers/plans/2026-08-06-viewer-square-image-card-selection.md`](superpowers/plans/2026-08-06-viewer-square-image-card-selection.md) | Historical | — |
 
 ## Historical review evidence

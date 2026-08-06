@@ -1,6 +1,6 @@
 export type ProjectAccess = 'read_write' | 'read_only'
 
-export type ThumbnailDensity = 'compact' | 'standard' | 'large'
+export type ThumbnailDensity = 'compact' | 'standard' | 'large' | 'extra_large' | 'maximum'
 
 export interface ViewerSettings {
   schemaVersion: 1

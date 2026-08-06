@@ -591,12 +591,14 @@ describe('ContentBrowser', () => {
   })
 
   it.each([
-    ['compact', 96],
-    ['standard', 132],
-    ['large', 168],
-  ] satisfies [ThumbnailDensity, number][])(
+    ['compact', 96, 156],
+    ['standard', 132, 192],
+    ['large', 168, 228],
+    ['extra_large', 204, 528],
+    ['maximum', 240, 600],
+  ] satisfies [ThumbnailDensity, number, number][])(
     'uses the %s global density height with proportional source-order rows',
-    (density, expectedHeight) => {
+    (density, expectedHeight, expectedThirdTop) => {
       render(
         <ContentBrowser
           workspace={ratioWorkspace([
@@ -634,7 +636,7 @@ describe('ContentBrowser', () => {
       expect(itemWrapper('image-1')).toHaveStyle({ left: '0px', top: '0px' })
       expect(itemWrapper('image-3')).toHaveStyle({
         left: '0px',
-        top: `${expectedHeight + 60}px`,
+        top: `${expectedThirdTop}px`,
       })
     },
   )
@@ -838,17 +840,40 @@ describe('ContentBrowser', () => {
     fireEvent.click(second)
     fireEvent.doubleClick(second)
 
-    rendered.rerender(<ContentBrowser workspace={data} density="compact" onPreview={preview} />)
+    rendered.rerender(<ContentBrowser workspace={data} density="maximum" onPreview={preview} />)
 
     expect(screen.getByRole('option', { name: '2.jpg' })).toHaveAttribute('aria-selected', 'true')
     expect(screen.getByRole('listbox', { name: '图片文件' })).toHaveAttribute(
       'aria-activedescendant',
       'file-image-2',
     )
-    expect(thumbnailSurface('2.jpg')).toHaveStyle({ width: '144px', height: '96px' })
+    expect(thumbnailSurface('2.jpg')).toHaveStyle({ width: '360px', height: '240px' })
     fireEvent.keyDown(screen.getByRole('listbox', { name: '图片文件' }), { key: ' ' })
     expect(preview).toHaveBeenNthCalledWith(1, expect.objectContaining({ entityId: 'image-2' }))
     expect(preview).toHaveBeenNthCalledWith(2, expect.objectContaining({ entityId: 'image-2' }))
+  })
+
+  it('requests a maximum square thumbnail at 960 physical pixels on a 4x display', async () => {
+    Object.defineProperty(window, 'devicePixelRatio', {
+      configurable: true,
+      value: 4,
+    })
+    const requestThumbnail = vi.fn().mockResolvedValue('viewer-image://maximum')
+    render(
+      <ContentBrowser
+        workspace={ratioWorkspace([{ width: 1, height: 1 }])}
+        density="maximum"
+        requestThumbnail={requestThumbnail}
+      />,
+    )
+    resizeGrid(500)
+
+    await waitFor(() => expect(requestThumbnail).toHaveBeenCalledTimes(1))
+    expect(requestThumbnail).toHaveBeenCalledWith(
+      expect.objectContaining({ entityId: 'image-1' }),
+      960,
+      4_000,
+    )
   })
 
   it('recovers missing metadata by entity and modification identity before revealing the ratio', async () => {

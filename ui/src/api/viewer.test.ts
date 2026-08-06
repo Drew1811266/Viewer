@@ -58,9 +58,9 @@ describe('tauriViewerBridge', () => {
   })
 
   it('updates thumbnail density with the narrow density argument', async () => {
-    await tauriViewerBridge.updateThumbnailDensity('large')
+    await tauriViewerBridge.updateThumbnailDensity('maximum')
 
-    expect(invoke).toHaveBeenCalledWith('update_thumbnail_density', { density: 'large' })
+    expect(invoke).toHaveBeenCalledWith('update_thumbnail_density', { density: 'maximum' })
   })
 
   it('rejects an aborted image request immediately and cancels its native request', async () => {

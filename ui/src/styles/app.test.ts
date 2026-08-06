@@ -305,6 +305,65 @@ describe('workspace style contracts', () => {
     expect(shell?.declarations['min-height']).toBe('144px')
   })
 
+  it('gives the five-stop thumbnail slider one cross-platform visual contract', () => {
+    const rules = parseRules(appCss)
+    const slider = rules.find((rule) => rule.selector === '.thumbnail-size-slider')
+    const track = rules.find(
+      (rule) => rule.selector === '.thumbnail-size-slider::-webkit-slider-runnable-track',
+    )
+    const thumb = rules.find(
+      (rule) => rule.selector === '.thumbnail-size-slider::-webkit-slider-thumb',
+    )
+    const levels = rules.find((rule) => rule.selector === '.thumbnail-size-levels')
+    const current = rules.find(
+      (rule) => rule.selector === '.thumbnail-size-levels span[data-current="true"]',
+    )
+
+    expect(slider?.declarations).toMatchObject({
+      appearance: 'none',
+      background: 'transparent',
+      height: '32px',
+      width: '100%',
+    })
+    expect(track?.declarations).toMatchObject({
+      'border-radius': '999px',
+      height: '4px',
+    })
+    expect(track?.declarations.background).toContain('var(--thumbnail-level-progress)')
+    expect(thumb?.declarations).toMatchObject({
+      appearance: 'none',
+      background: 'var(--viewer-accent)',
+      'border-radius': '50%',
+      height: '18px',
+      width: '18px',
+    })
+    expect(levels?.declarations).toMatchObject({
+      display: 'flex',
+      'justify-content': 'space-between',
+      'padding-inline': '9px',
+    })
+    expect(current?.declarations).toMatchObject({
+      color: 'var(--viewer-accent-text)',
+      'font-weight': '700',
+    })
+
+    const reduced = parseRules(mediaBody(appCss, '(prefers-reduced-motion: reduce)')).find(
+      (rule) => rule.selector === '.thumbnail-size-slider',
+    )
+    expect(reduced?.declarations.transition).toBe('none')
+
+    const forced = parseRules(mediaBody(appCss, '(forced-colors: active)'))
+    expect(
+      forced.find(
+        (rule) => rule.selector === '.thumbnail-size-slider::-webkit-slider-runnable-track',
+      )?.declarations.background,
+    ).toBe('CanvasText')
+    expect(
+      forced.find((rule) => rule.selector === '.thumbnail-size-slider::-webkit-slider-thumb')
+        ?.declarations.background,
+    ).toBe('Highlight')
+  })
+
   it('keeps background task feedback behind a modal so it cannot cover dialog actions', () => {
     const rules = parseRules(appCss)
     const behindDialog = rules.find(

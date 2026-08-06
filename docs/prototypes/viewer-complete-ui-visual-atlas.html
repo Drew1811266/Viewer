@@ -522,6 +522,16 @@
     }
     .image-grid[data-density="large"] .image-card { flex-basis: 252px; }
     .image-grid[data-density="large"] .image-stage { height: 168px; }
+    .image-grid[data-density="extra_large"] {
+      gap: 16px;
+    }
+    .image-grid[data-density="extra_large"] .image-card { flex-basis: 306px; }
+    .image-grid[data-density="extra_large"] .image-stage { height: 204px; }
+    .image-grid[data-density="maximum"] {
+      gap: 16px;
+    }
+    .image-grid[data-density="maximum"] .image-card { flex-basis: 360px; }
+    .image-grid[data-density="maximum"] .image-stage { height: 240px; }
     .image-card {
       background: #fbfbfa;
       border: 1px solid #ececea;
@@ -969,6 +979,98 @@
     .dialog-panel { border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
     .dialog-panel h3 { background: var(--soft); border-bottom: 1px solid var(--border); font-size: 10px; margin: 0; padding: 10px; }
     .dialog-panel .panel-body { padding: 10px; }
+    .settings-dialog-shell {
+      display: grid;
+      grid-template-columns: 160px minmax(0, 1fr);
+      margin-top: 18px;
+      min-height: 160px;
+    }
+    .settings-dialog-navigation {
+      border-right: 1px solid var(--border);
+      padding-right: 16px;
+    }
+    .settings-dialog-navigation .viewer-button {
+      justify-content: flex-start;
+      width: 100%;
+    }
+    .settings-dialog-content {
+      min-width: 0;
+      padding-left: 20px;
+    }
+    .settings-dialog-content h3 {
+      font-size: 14px;
+      margin: 0 0 18px;
+    }
+    .thumbnail-size-control {
+      border: 0;
+      margin: 0;
+      padding: 0;
+    }
+    .thumbnail-size-control legend {
+      color: var(--secondary);
+      font-size: 11px;
+      font-weight: 750;
+      margin-bottom: 14px;
+    }
+    .thumbnail-size-slider {
+      --thumbnail-level-progress: 25%;
+      appearance: none;
+      background: transparent;
+      cursor: pointer;
+      height: 32px;
+      margin: 0;
+      width: 100%;
+    }
+    .thumbnail-size-slider::-webkit-slider-runnable-track {
+      background: linear-gradient(to right, var(--accent) 0 var(--thumbnail-level-progress), #dddfe4 var(--thumbnail-level-progress) 100%);
+      border-radius: 999px;
+      height: 4px;
+    }
+    .thumbnail-size-slider::-webkit-slider-thumb {
+      appearance: none;
+      background: var(--accent);
+      border: 2px solid var(--surface);
+      border-radius: 50%;
+      box-shadow: 0 0 0 1px var(--accent);
+      height: 18px;
+      margin-top: -7px;
+      width: 18px;
+    }
+    .thumbnail-size-slider::-moz-range-track {
+      background: #dddfe4;
+      border-radius: 999px;
+      height: 4px;
+    }
+    .thumbnail-size-slider::-moz-range-progress {
+      background: var(--accent);
+      border-radius: 999px;
+      height: 4px;
+    }
+    .thumbnail-size-slider::-moz-range-thumb {
+      background: var(--accent);
+      border: 2px solid var(--surface);
+      border-radius: 50%;
+      box-shadow: 0 0 0 1px var(--accent);
+      height: 18px;
+      width: 18px;
+    }
+    .thumbnail-size-slider:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 3px;
+    }
+    .thumbnail-size-levels {
+      color: var(--secondary);
+      display: flex;
+      font-size: 12px;
+      justify-content: space-between;
+      line-height: 16px;
+      margin-top: 2px;
+      padding-inline: 9px;
+    }
+    .thumbnail-size-levels span[data-current="true"] {
+      color: var(--accent);
+      font-weight: 750;
+    }
     .conflict-row {
       align-items: center;
       border-bottom: 1px solid #ececea;
@@ -1601,9 +1703,12 @@
       if (embedScreen === "dialogs" && ["destination", "rename", "trash", "close"].includes(embedState)) {
         state.dialog = embedState;
       }
-      const statePrefix = embedState?.split("-")[0];
+      const normalizedEmbedState = embedState === "density-extra-large"
+        ? "density-extra_large"
+        : embedState;
+      const statePrefix = normalizedEmbedState?.split("-")[0];
       if (statePrefix && Object.hasOwn(state, statePrefix)) {
-        state[statePrefix] = embedState.slice(statePrefix.length + 1);
+        state[statePrefix] = normalizedEmbedState.slice(statePrefix.length + 1);
       }
     }
 
@@ -1805,7 +1910,7 @@
 
     function browserScreen() {
       const states = stateBar([
-        { label: "密度", key: "density", items: [["compact", "紧凑"], ["standard", "标准"], ["large", "大图"]] },
+        { label: "密度", key: "density", items: [["compact", "1"], ["standard", "2"], ["large", "3"], ["extra_large", "4", "density-extra-large"], ["maximum", "5"]] },
         { label: "选择", key: "selection", items: [["none", "无"], ["single", "单选"], ["multiple", "多选"], ["focus", "键盘焦点"]] },
       ]);
       const selectedCount = state.selection === "none" ? 0 : state.selection === "multiple" ? 3 : 1;
@@ -2036,6 +2141,10 @@
       return `<div class="viewer-window">${states}<div class="information-layout"><section class="information-selection"><div class="image-grid" data-density="standard">${imageCards(selectedCount)}</div></section>${informationInspector(state.info)}</div></div>`;
     }
 
+    function settingsDialogBody() {
+      return '<div class="dialog wide"><h2>软件设置</h2><div class="settings-dialog-shell"><nav class="settings-dialog-navigation" aria-label="设置分类"><button class="viewer-button primary" type="button">显示与外观</button></nav><section class="settings-dialog-content"><h3>显示与外观</h3><fieldset class="thumbnail-size-control"><legend>缩略图大小</legend><input class="thumbnail-size-slider" type="range" name="thumbnail-size" min="1" max="5" step="1" value="2" aria-label="缩略图大小" aria-valuetext="档位 2，132 像素" style="--thumbnail-level-progress:25%"><div class="thumbnail-size-levels" aria-hidden="true"><span>1</span><span data-current="true">2</span><span>3</span><span>4</span><span>5</span></div></fieldset></section></div><div class="dialog-actions"><button class="viewer-button" type="button">关闭</button></div></div>';
+    }
+
     function dialogsScreen() {
       const states = stateBar([{
         label: "对话框",
@@ -2044,7 +2153,7 @@
       }]);
       let body = "";
       if (state.dialog === "settings") {
-        body = '<div class="dialog wide"><h2>设置</h2><p>Viewer 自有界面在 macOS 与 Windows 共享相同视觉与工作流。</p><div class="dialog-grid"><section class="dialog-panel"><h3>设置分类</h3><div class="panel-body"><div class="tree-row selected">外观</div><div class="tree-row">浏览</div><div class="tree-row">文件操作</div><div class="tree-row">快捷键</div></div></section><section class="dialog-panel"><h3>外观</h3><div class="panel-body"><div class="conflict-row"><label for="settings-density">界面密度</label><select id="settings-density"><option>紧凑高效</option></select></div><div class="conflict-row"><label for="settings-thumbnail-size">缩略图默认大小</label><select id="settings-thumbnail-size"><option>标准</option></select></div><div class="conflict-row"><span>减少界面动效</span><button class="viewer-button">跟随系统</button></div></div></section></div><div class="dialog-actions"><button class="viewer-button">取消</button><button class="viewer-button primary">完成</button></div></div>';
+        body = settingsDialogBody();
       } else if (state.dialog === "single-rename") {
         body = '<div class="dialog"><h2>重命名文件</h2><p>文件扩展名保持不变。</p><div class="field"><label for="single-rename-name">新名称</label><input id="single-rename-name" value="A01-正面-01"></div><div class="dialog-actions"><button class="viewer-button">取消</button><button class="viewer-button primary">重命名</button></div></div>';
       } else if (state.dialog === "batch-rename") {
@@ -2132,6 +2241,15 @@
         key: "accessibility",
         items: [["keyboard", "键盘"], ["restore", "焦点恢复"], ["reduced", "减少动效"], ["forced", "强制颜色"], ["zoom", "200% 缩放"]],
       }]);
+      if (state.accessibility === "keyboard") {
+        const dialogTitleId = "atlas-accessibility-keyboard-title";
+        const semanticBody = settingsDialogBody()
+          .replace('<div class="dialog', `<div role="dialog" aria-modal="true" aria-labelledby="${dialogTitleId}" class="dialog`)
+          .replace("<h2>", `<h2 id="${dialogTitleId}">`);
+        const overlay = `<div class="scrim" data-dialog-state="settings">${semanticBody}</div>`;
+        const content = `${states}<div class="grid-wrap"><div class="image-grid" data-density="standard">${imageCards(2)}</div></div>`;
+        return `<div class="accessible-viewer" data-accessibility-state="keyboard" data-accessible-viewer-state="keyboard">${shell(content, { overlay })}</div>`;
+      }
       const descriptions = {
         keyboard: ["完整键盘路径", "Tab 进入工具栏和内容，方向键移动缩略图焦点，Enter 预览，菜单键打开圆盘。"],
         restore: ["焦点返回原位", "关闭预览、圆盘或对话框后，焦点回到触发操作的缩略图或按钮。"],
@@ -2194,6 +2312,9 @@
       const stateBarMarkup = sceneStateBar?.outerHTML ?? "";
       sceneStateBar?.remove();
       mount.innerHTML = `<div class="prototype-frame${stateBarMarkup ? " has-states" : ""}">${stateBarMarkup ? `<div class="prototype-state-dock">${stateBarMarkup}</div>` : ""}<div class="prototype-surface">${template.innerHTML}</div></div>`;
+      if ((state.screen === "accessibility" && state.accessibility === "keyboard") || (state.screen === "dialogs" && state.dialog === "settings")) {
+        mount.querySelector(".thumbnail-size-slider")?.focus();
+      }
       document.getElementById("scene-name").textContent = screenMeta[state.screen][0];
       document.getElementById("scene-description").textContent = screenMeta[state.screen][1];
       document.querySelectorAll(".nav-item").forEach((item) => item.setAttribute("aria-current", item.dataset.screen === state.screen ? "page" : "false"));

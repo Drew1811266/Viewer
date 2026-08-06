@@ -289,6 +289,18 @@ describe('aspect layout geometry', () => {
     expect(anchoredScrollOffset(previous, next, 'missing', 17, 'vertical')).toBe(17)
   })
 
+  it('keeps level-five flow and filmstrip geometry finite and source ordered', () => {
+    const flow = buildFlowGeometry(sources, 720, 240, 48, 12)
+    const filmstrip = buildFilmstripGeometry(sources, 240, 12, 16)
+
+    expect(flow.items.map(({ key }) => key)).toEqual(sources.map(({ key }) => key))
+    expect(filmstrip.items.map(({ key }) => key)).toEqual(sources.map(({ key }) => key))
+    expect(flow.items.every(({ imageHeight }) => imageHeight === 240)).toBe(true)
+    expect(filmstrip.items.every(({ imageHeight }) => imageHeight === 240)).toBe(true)
+    expectFiniteGeometry(flow)
+    expectFiniteGeometry(filmstrip)
+  })
+
   it('keeps generated geometry finite, monotonic, source-indexed, and within its scroll extent', () => {
     const geometry = buildFlowGeometry(
       [

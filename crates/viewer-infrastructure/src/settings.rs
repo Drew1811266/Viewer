@@ -109,6 +109,61 @@ mod tests {
     }
 
     #[test]
+    fn version_one_larger_thumbnail_densities_load_and_save_without_a_schema_change() {
+        for public_value in ["extra_large", "maximum"] {
+            let directory = tempfile::tempdir().unwrap();
+            std::fs::write(
+                directory.path().join("settings.json"),
+                serde_json::json!({
+                    "schemaVersion": 1,
+                    "thumbnailDensity": public_value,
+                })
+                .to_string(),
+            )
+            .unwrap();
+            let store = JsonViewerSettingsStore::new(directory.path().to_path_buf());
+
+            let loaded = store.load();
+            assert_eq!(
+                serde_json::to_value(loaded.thumbnail_density).unwrap(),
+                serde_json::json!(public_value)
+            );
+            store.save(loaded).unwrap();
+            let saved = std::fs::read_to_string(directory.path().join("settings.json")).unwrap();
+            assert_eq!(
+                serde_json::from_str::<serde_json::Value>(&saved).unwrap(),
+                serde_json::json!({
+                    "schemaVersion": 1,
+                    "thumbnailDensity": public_value,
+                })
+            );
+        }
+    }
+
+    #[test]
+    fn existing_version_one_thumbnail_densities_still_load_unchanged() {
+        for (public_value, expected) in [
+            ("compact", ThumbnailDensity::Compact),
+            ("standard", ThumbnailDensity::Standard),
+            ("large", ThumbnailDensity::Large),
+        ] {
+            let directory = tempfile::tempdir().unwrap();
+            std::fs::write(
+                directory.path().join("settings.json"),
+                serde_json::json!({
+                    "schemaVersion": 1,
+                    "thumbnailDensity": public_value,
+                })
+                .to_string(),
+            )
+            .unwrap();
+            let store = JsonViewerSettingsStore::new(directory.path().to_path_buf());
+
+            assert_eq!(store.load().thumbnail_density, expected);
+        }
+    }
+
+    #[test]
     fn malformed_json_uses_standard() {
         let directory = tempfile::tempdir().unwrap();
         std::fs::write(directory.path().join("settings.json"), "not json").unwrap();

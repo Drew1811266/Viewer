@@ -1,6 +1,12 @@
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 import App from '../../App'
-import type { BrowserFile, ProjectSnapshot, SearchHit, SearchPage } from '../../api/types'
+import type {
+  BrowserFile,
+  ProjectSnapshot,
+  SearchHit,
+  SearchPage,
+  ThumbnailDensity,
+} from '../../api/types'
 import type { ViewerBridge } from '../../api/viewer'
 import EmptyProject from '../../components/EmptyProject'
 import OrganizationDragPreview from '../../components/OrganizationDragPreview'
@@ -41,6 +47,8 @@ export const WORKSPACE_SCENES: AcceptanceSceneRegistry = {
   'THU-05': (props) => <WorkspaceScene {...props} />,
   'THU-06': (props) => <WorkspaceScene {...props} />,
   'THU-07': (props) => <WorkspaceScene {...props} />,
+  'THU-08': (props) => <WorkspaceScene {...props} />,
+  'THU-09': (props) => <WorkspaceScene {...props} />,
   'OTH-01': (props) => <WorkspaceScene {...props} />,
   'OTH-02': (props) => <WorkspaceScene {...props} />,
   'OTH-03': (props) => <WorkspaceScene {...props} />,
@@ -206,8 +214,7 @@ function launchBridge(state: LaunchState): ViewerBridge {
 }
 
 export function workspaceBridge(id: string): ViewerBridge {
-  const density =
-    id === 'THU-01' || id.startsWith('OTH-') ? 'compact' : id === 'THU-03' ? 'large' : 'standard'
+  const density = thumbnailDensityForAcceptanceState(id)
   const snapshot: ProjectSnapshot =
     id === 'MEN-03'
       ? { ...ACCEPTANCE_PROJECT_SNAPSHOT, access: 'read_only' }
@@ -286,7 +293,9 @@ function workspaceRecipe(id: string): () => boolean {
       id === 'THU-01' ||
       id === 'THU-02' ||
       id === 'THU-03' ||
-      id === 'THU-04'
+      id === 'THU-04' ||
+      id === 'THU-08' ||
+      id === 'THU-09'
     ) {
       return document.querySelector('[aria-label="文件内容"]') !== null
     }
@@ -390,6 +399,14 @@ function workspaceRecipe(id: string): () => boolean {
     }
     return document.querySelector('.viewer-shell') !== null
   }
+}
+
+function thumbnailDensityForAcceptanceState(id: string): ThumbnailDensity {
+  if (id === 'THU-01' || id.startsWith('OTH-')) return 'compact'
+  if (id === 'THU-03') return 'large'
+  if (id === 'THU-08') return 'extra_large'
+  if (id === 'THU-09') return 'maximum'
+  return 'standard'
 }
 
 export function aggregateStateRendered(root: Document | Element): boolean {

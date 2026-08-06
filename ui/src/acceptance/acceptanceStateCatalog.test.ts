@@ -54,8 +54,8 @@ describe('Viewer visual acceptance state catalog', () => {
       referenceState,
     }))
 
-    expect(actual).toHaveLength(89)
-    expect(new Set(actual.map(({ id }) => id)).size).toBe(89)
+    expect(actual).toHaveLength(91)
+    expect(new Set(actual.map(({ id }) => id)).size).toBe(91)
     expect(actual).toEqual(expected)
   })
 

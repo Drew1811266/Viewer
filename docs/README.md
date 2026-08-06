@@ -43,6 +43,7 @@ completion.
 | [`superpowers/specs/2026-08-02-viewer-single-instance-development-launcher-design.md`](superpowers/specs/2026-08-02-viewer-single-instance-development-launcher-design.md) | Active | — |
 | [`superpowers/specs/2026-08-03-viewer-native-acceptance-controller-design.md`](superpowers/specs/2026-08-03-viewer-native-acceptance-controller-design.md) | Active | — |
 | [`superpowers/specs/2026-08-04-viewer-tiered-visual-acceptance-design.md`](superpowers/specs/2026-08-04-viewer-tiered-visual-acceptance-design.md) | Active | — |
+| [`superpowers/specs/2026-08-05-viewer-filmstrip-scrollbar-thumbnail-progress-design.md`](superpowers/specs/2026-08-05-viewer-filmstrip-scrollbar-thumbnail-progress-design.md) | Active | — |
 | [`superpowers/specs/2026-08-05-viewer-progressive-folder-loading-design.md`](superpowers/specs/2026-08-05-viewer-progressive-folder-loading-design.md) | Active | — |
 
 ## Superseded decisions

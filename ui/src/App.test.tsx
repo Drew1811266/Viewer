@@ -406,7 +406,7 @@ describe('Viewer empty state', () => {
     expect(screen.getByRole('button', { name: '全选全部文件' })).toBeVisible()
   })
 
-  it('updates density optimistically and restores trigger focus when the dialog closes', async () => {
+  it('updates thumbnail size optimistically and restores trigger focus when the dialog closes', async () => {
     const viewer = bridge()
     const save = deferred<Awaited<ReturnType<ViewerBridge['updateThumbnailDensity']>>>()
     vi.mocked(viewer.updateThumbnailDensity).mockReturnValue(save.promise)
@@ -416,9 +416,9 @@ describe('Viewer empty state', () => {
     trigger.focus()
     openSettingsFromMenu()
 
-    const large = screen.getByRole('radio', { name: '大图' })
-    fireEvent.click(large)
-    expect(large).toBeChecked()
+    const slider = screen.getByRole('slider', { name: '缩略图大小' })
+    fireEvent.change(slider, { target: { value: '3' } })
+    expect(slider).toHaveValue('3')
     fireEvent.click(screen.getByRole('button', { name: '关闭' }))
 
     expect(screen.queryByRole('dialog', { name: '软件设置' })).not.toBeInTheDocument()
@@ -546,7 +546,7 @@ describe('Viewer empty state', () => {
     consoleError.mockRestore()
   })
 
-  it('shows the latest settings save failure and rolls back the selected radio', async () => {
+  it('shows the latest settings save failure and rolls back the thumbnail slider', async () => {
     const viewer = bridge()
     const save = deferred<Awaited<ReturnType<ViewerBridge['updateThumbnailDensity']>>>()
     vi.mocked(viewer.updateThumbnailDensity).mockReturnValue(save.promise)
@@ -554,13 +554,15 @@ describe('Viewer empty state', () => {
     fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
     await screen.findByRole('button', { name: '更多' })
     openSettingsFromMenu()
-    fireEvent.click(screen.getByRole('radio', { name: '大图' }))
+    fireEvent.change(screen.getByRole('slider', { name: '缩略图大小' }), {
+      target: { value: '3' },
+    })
     await waitFor(() => expect(viewer.updateThumbnailDensity).toHaveBeenCalledWith('large'))
 
     save.reject({ userMessage: '设置未能保存' })
 
     expect(await screen.findByRole('alert')).toHaveTextContent('设置未能保存')
-    expect(screen.getByRole('radio', { name: '标准' })).toBeChecked()
+    expect(screen.getByRole('slider', { name: '缩略图大小' })).toHaveValue('2')
   })
 
   it('moves close-project into the compact project menu', async () => {
@@ -745,7 +747,9 @@ describe('Viewer empty state', () => {
     })
 
     openSettingsFromMenu()
-    fireEvent.click(screen.getByRole('radio', { name: '紧凑' }))
+    fireEvent.change(screen.getByRole('slider', { name: '缩略图大小' }), {
+      target: { value: '1' },
+    })
 
     await waitFor(() =>
       expect(front.closest('[role="listitem"]')).toHaveStyle({
@@ -838,7 +842,9 @@ describe('Viewer empty state', () => {
     )
 
     openSettingsFromMenu()
-    fireEvent.click(screen.getByRole('radio', { name: '紧凑' }))
+    fireEvent.change(screen.getByRole('slider', { name: '缩略图大小' }), {
+      target: { value: '1' },
+    })
 
     await waitFor(() =>
       expect(

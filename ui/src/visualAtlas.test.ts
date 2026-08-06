@@ -107,6 +107,18 @@ describe('complete Viewer visual atlas', () => {
     expect(html).toMatch(
       /\.image-grid\[data-density="large"\]\s+\.image-stage\s*\{[^}]*height:\s*168px;/s,
     )
+    expect(html).toMatch(
+      /\.image-grid\[data-density="extra_large"\]\s+\.image-card\s*\{[^}]*flex-basis:\s*306px;/s,
+    )
+    expect(html).toMatch(
+      /\.image-grid\[data-density="extra_large"\]\s+\.image-stage\s*\{[^}]*height:\s*204px;/s,
+    )
+    expect(html).toMatch(
+      /\.image-grid\[data-density="maximum"\]\s+\.image-card\s*\{[^}]*flex-basis:\s*360px;/s,
+    )
+    expect(html).toMatch(
+      /\.image-grid\[data-density="maximum"\]\s+\.image-stage\s*\{[^}]*height:\s*240px;/s,
+    )
     expect(html).toMatch(/\.image-meta\s*\{[^}]*min-height:\s*48px;/s)
     expect(html).toMatch(/\.image-meta strong\s*\{[^}]*font-size:\s*13px;/s)
   })
@@ -143,6 +155,14 @@ describe('complete Viewer visual atlas', () => {
     clickState(document, 'density-compact')
     expect(document.querySelector('[data-thumbnail-grid]')?.getAttribute('data-density')).toBe(
       'compact',
+    )
+    clickState(document, 'density-extra-large')
+    expect(document.querySelector('[data-thumbnail-grid]')?.getAttribute('data-density')).toBe(
+      'extra_large',
+    )
+    clickState(document, 'density-maximum')
+    expect(document.querySelector('[data-thumbnail-grid]')?.getAttribute('data-density')).toBe(
+      'maximum',
     )
     clickState(document, 'selection-multiple')
     expect(document.querySelectorAll('.image-card.selected').length).toBeGreaterThan(1)
@@ -263,6 +283,25 @@ describe('complete Viewer visual atlas', () => {
     const document = dom.window.document
 
     clickScreen(document, 'dialogs')
+    clickState(document, 'dialog-settings')
+    const settingsDialog = document.querySelector('[data-dialog-state="settings"]')
+    const thumbnailSlider = settingsDialog?.querySelector<HTMLInputElement>(
+      'input[type="range"][name="thumbnail-size"]',
+    )
+    expect(thumbnailSlider?.min).toBe('1')
+    expect(thumbnailSlider?.max).toBe('5')
+    expect(thumbnailSlider?.step).toBe('1')
+    expect(thumbnailSlider?.value).toBe('2')
+    expect(thumbnailSlider?.getAttribute('aria-label')).toBe('缩略图大小')
+    expect(
+      [...(settingsDialog?.querySelectorAll('.thumbnail-size-levels span') ?? [])].map((level) =>
+        level.textContent?.trim(),
+      ),
+    ).toEqual(['1', '2', '3', '4', '5'])
+    expect(settingsDialog?.querySelectorAll('input[type="radio"]')).toHaveLength(0)
+    expect(settingsDialog?.textContent).not.toContain('紧凑')
+    expect(settingsDialog?.textContent).not.toContain('标准')
+    expect(settingsDialog?.textContent).not.toContain('大图')
     for (const dialogState of [
       'dialog-settings',
       'dialog-single-rename',

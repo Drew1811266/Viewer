@@ -522,6 +522,16 @@
     }
     .image-grid[data-density="large"] .image-card { flex-basis: 252px; }
     .image-grid[data-density="large"] .image-stage { height: 168px; }
+    .image-grid[data-density="extra_large"] {
+      gap: 16px;
+    }
+    .image-grid[data-density="extra_large"] .image-card { flex-basis: 306px; }
+    .image-grid[data-density="extra_large"] .image-stage { height: 204px; }
+    .image-grid[data-density="maximum"] {
+      gap: 16px;
+    }
+    .image-grid[data-density="maximum"] .image-card { flex-basis: 360px; }
+    .image-grid[data-density="maximum"] .image-stage { height: 240px; }
     .image-card {
       background: #fbfbfa;
       border: 1px solid #ececea;
@@ -969,6 +979,99 @@
     .dialog-panel { border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
     .dialog-panel h3 { background: var(--soft); border-bottom: 1px solid var(--border); font-size: 10px; margin: 0; padding: 10px; }
     .dialog-panel .panel-body { padding: 10px; }
+    .settings-dialog-shell {
+      display: grid;
+      grid-template-columns: 160px minmax(0, 1fr);
+      margin-top: 18px;
+      min-height: 160px;
+    }
+    .settings-dialog-navigation {
+      border-right: 1px solid var(--border);
+      padding-right: 16px;
+    }
+    .settings-dialog-navigation .viewer-button {
+      justify-content: flex-start;
+      width: 100%;
+    }
+    .settings-dialog-content {
+      min-width: 0;
+      padding-left: 20px;
+    }
+    .settings-dialog-content h3 {
+      font-size: 14px;
+      margin: 0 0 18px;
+    }
+    .thumbnail-size-control {
+      border: 0;
+      margin: 0;
+      padding: 0;
+    }
+    .thumbnail-size-control legend {
+      color: var(--secondary);
+      font-size: 11px;
+      font-weight: 750;
+      margin-bottom: 14px;
+    }
+    .thumbnail-size-slider {
+      --thumbnail-level-progress: 25%;
+      appearance: none;
+      background: transparent;
+      cursor: pointer;
+      height: 32px;
+      margin: 0;
+      width: 100%;
+    }
+    .thumbnail-size-slider::-webkit-slider-runnable-track {
+      background: linear-gradient(to right, var(--accent) 0 var(--thumbnail-level-progress), #dddfe4 var(--thumbnail-level-progress) 100%);
+      border-radius: 999px;
+      height: 4px;
+    }
+    .thumbnail-size-slider::-webkit-slider-thumb {
+      appearance: none;
+      background: var(--surface);
+      border: 2px solid var(--accent);
+      border-radius: 50%;
+      box-shadow: 0 1px 4px rgb(31 35 42 / 16%);
+      height: 18px;
+      margin-top: -7px;
+      width: 18px;
+    }
+    .thumbnail-size-slider::-moz-range-track {
+      background: #dddfe4;
+      border-radius: 999px;
+      height: 4px;
+    }
+    .thumbnail-size-slider::-moz-range-progress {
+      background: var(--accent);
+      border-radius: 999px;
+      height: 4px;
+    }
+    .thumbnail-size-slider::-moz-range-thumb {
+      background: var(--surface);
+      border: 2px solid var(--accent);
+      border-radius: 50%;
+      box-shadow: 0 1px 4px rgb(31 35 42 / 16%);
+      height: 14px;
+      width: 14px;
+    }
+    .thumbnail-size-slider:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 3px;
+    }
+    .thumbnail-size-levels {
+      color: var(--tertiary);
+      display: grid;
+      font-size: 10px;
+      grid-template-columns: repeat(5, 1fr);
+      margin-top: 2px;
+      text-align: center;
+    }
+    .thumbnail-size-levels span:first-child { text-align: left; }
+    .thumbnail-size-levels span:last-child { text-align: right; }
+    .thumbnail-size-levels span[data-current="true"] {
+      color: var(--accent);
+      font-weight: 750;
+    }
     .conflict-row {
       align-items: center;
       border-bottom: 1px solid #ececea;
@@ -1805,7 +1908,7 @@
 
     function browserScreen() {
       const states = stateBar([
-        { label: "密度", key: "density", items: [["compact", "紧凑"], ["standard", "标准"], ["large", "大图"]] },
+        { label: "密度", key: "density", items: [["compact", "1"], ["standard", "2"], ["large", "3"], ["extra_large", "4", "density-extra-large"], ["maximum", "5"]] },
         { label: "选择", key: "selection", items: [["none", "无"], ["single", "单选"], ["multiple", "多选"], ["focus", "键盘焦点"]] },
       ]);
       const selectedCount = state.selection === "none" ? 0 : state.selection === "multiple" ? 3 : 1;
@@ -2044,7 +2147,7 @@
       }]);
       let body = "";
       if (state.dialog === "settings") {
-        body = '<div class="dialog wide"><h2>设置</h2><p>Viewer 自有界面在 macOS 与 Windows 共享相同视觉与工作流。</p><div class="dialog-grid"><section class="dialog-panel"><h3>设置分类</h3><div class="panel-body"><div class="tree-row selected">外观</div><div class="tree-row">浏览</div><div class="tree-row">文件操作</div><div class="tree-row">快捷键</div></div></section><section class="dialog-panel"><h3>外观</h3><div class="panel-body"><div class="conflict-row"><label for="settings-density">界面密度</label><select id="settings-density"><option>紧凑高效</option></select></div><div class="conflict-row"><label for="settings-thumbnail-size">缩略图默认大小</label><select id="settings-thumbnail-size"><option>标准</option></select></div><div class="conflict-row"><span>减少界面动效</span><button class="viewer-button">跟随系统</button></div></div></section></div><div class="dialog-actions"><button class="viewer-button">取消</button><button class="viewer-button primary">完成</button></div></div>';
+        body = '<div class="dialog wide"><h2>软件设置</h2><div class="settings-dialog-shell"><nav class="settings-dialog-navigation" aria-label="设置分类"><button class="viewer-button primary" type="button">显示与外观</button></nav><section class="settings-dialog-content"><h3>显示与外观</h3><fieldset class="thumbnail-size-control"><legend>缩略图大小</legend><input class="thumbnail-size-slider" type="range" name="thumbnail-size" min="1" max="5" step="1" value="2" aria-label="缩略图大小" aria-valuetext="档位 2，132 像素" style="--thumbnail-level-progress:25%"><div class="thumbnail-size-levels" aria-hidden="true"><span>1</span><span data-current="true">2</span><span>3</span><span>4</span><span>5</span></div></fieldset></section></div><div class="dialog-actions"><button class="viewer-button" type="button">关闭</button></div></div>';
       } else if (state.dialog === "single-rename") {
         body = '<div class="dialog"><h2>重命名文件</h2><p>文件扩展名保持不变。</p><div class="field"><label for="single-rename-name">新名称</label><input id="single-rename-name" value="A01-正面-01"></div><div class="dialog-actions"><button class="viewer-button">取消</button><button class="viewer-button primary">重命名</button></div></div>';
       } else if (state.dialog === "batch-rename") {

@@ -97,9 +97,7 @@ describe('workspace style contracts', () => {
     const selectionOverlay = rules.find(
       (rule) => rule.selector === '.image-cell[aria-selected="true"]::after',
     )
-    const selectedCard = rules.find(
-      (rule) => rule.selector === '.image-cell[aria-selected="true"]',
-    )
+    const selectedCard = rules.find((rule) => rule.selector === '.image-cell[aria-selected="true"]')
     const legacyOverlay = rules.find(
       (rule) => rule.selector === ".image-cell-thumbnail-frame[data-selected='true']::after",
     )

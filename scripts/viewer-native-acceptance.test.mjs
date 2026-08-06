@@ -51,6 +51,7 @@ import {
   validateWindow,
   validateWindowPoint,
   waitFor,
+  waitForNativeSliderLevel,
   readRgbaPng,
   writeRgbaPng,
 } from './viewer-native-acceptance.mjs'
@@ -1791,6 +1792,32 @@ describe('native acceptance CLI', () => {
       () => waitFor(() => true, { timeoutMs: 10_001, intervalMs: 1 }),
       { code: 'PRECONDITION_WAIT_LIMIT' },
     )
+  })
+
+  it('waits for each native slider level instead of dropping rapid key events', async () => {
+    const values = [3, 3, 1]
+    const actions = []
+    const client = {
+      async request(command, payload) {
+        assert.equal(command, 'query')
+        assert.deepEqual(payload, {
+          target: { role: 'AXSlider', name: '缩略图大小' },
+        })
+        return { elements: [{ value: values.shift() }] }
+      },
+    }
+
+    const slider = await waitForNativeSliderLevel({
+      client,
+      actions,
+      target: { role: 'AXSlider', name: '缩略图大小' },
+      expectedLevel: 1,
+      intervalMs: 1,
+    })
+
+    assert.equal(slider.value, 1)
+    assert.equal(actions.length, 1)
+    assert.equal(actions[0].result.elements[0].value, 1)
   })
 
   it('requires a condition to remain true for its full stability window', async () => {

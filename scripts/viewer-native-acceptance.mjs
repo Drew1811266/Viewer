@@ -2456,6 +2456,42 @@ async function queryOptionalElement(client, actions, target) {
   }
 }
 
+export async function waitForNativeSliderLevel({
+  client,
+  actions,
+  target,
+  expectedLevel,
+  timeoutMs = 3_000,
+  intervalMs = 50,
+}) {
+  if (!Number.isInteger(expectedLevel) || expectedLevel < 1 || expectedLevel > 5) {
+    throw new AcceptanceError(
+      'STATE_SLIDER_LEVEL_INVALID',
+      'Thumbnail level must be an integer from 1 through 5',
+      { expectedLevel },
+    )
+  }
+  const startedAt = new Date().toISOString()
+  const result = await waitFor(
+    async () => {
+      const candidate = await client.request('query', { target })
+      const slider = candidate.elements?.[0]
+      return Number(slider?.value) === expectedLevel ? candidate : false
+    },
+    { timeoutMs, intervalMs },
+  )
+  actions.push({
+    sequence: actions.length + 1,
+    command: 'query',
+    payload: { target },
+    startedAt,
+    completedAt: new Date().toISOString(),
+    ok: true,
+    result,
+  })
+  return result.elements[0]
+}
+
 async function clickElement(client, actions, element, window, modifiers) {
   return requestWithActionLog(client, actions, 'pointer', {
     kind: 'click',
@@ -2556,13 +2592,24 @@ async function normalizeWorkspaceState({
     key: 'home',
     modifiers: [],
   })
-  for (let level = 1; level < thumbnailLevel; level += 1) {
+  let normalizedSlider = await waitForNativeSliderLevel({
+    client,
+    actions,
+    target: thumbnailSliderTarget,
+    expectedLevel: 1,
+  })
+  for (let level = 2; level <= thumbnailLevel; level += 1) {
     await requestWithActionLog(client, actions, 'key', {
       key: 'arrowRight',
       modifiers: [],
     })
+    normalizedSlider = await waitForNativeSliderLevel({
+      client,
+      actions,
+      target: thumbnailSliderTarget,
+      expectedLevel: level,
+    })
   }
-  const normalizedSlider = await queryVisibleElement(client, actions, thumbnailSliderTarget)
   const actualLevel = Number(normalizedSlider.value)
   if (!Number.isFinite(actualLevel) || actualLevel !== thumbnailLevel) {
     throw new AcceptanceError(

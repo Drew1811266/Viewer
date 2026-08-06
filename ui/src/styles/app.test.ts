@@ -136,6 +136,23 @@ describe('workspace style contracts', () => {
     })
   })
 
+  it('paints the neutral card outline above thumbnail content on every edge', () => {
+    const rules = parseRules(appCss)
+    const card = rules.find((rule) => rule.selector === '.image-cell')
+    const outline = rules.find((rule) => rule.selector === '.image-cell::before')
+
+    expect(card?.declarations.border).toBe('0')
+    expect(outline?.declarations).toMatchObject({
+      border: '1px solid var(--viewer-thumbnail-border)',
+      'box-sizing': 'border-box',
+      content: '""',
+      inset: '0',
+      'pointer-events': 'none',
+      position: 'absolute',
+      'z-index': '1',
+    })
+  })
+
   it('uses the approved quiet card and compact file metadata hierarchy', () => {
     const rules = parseRules(appCss)
     const card = rules.find((rule) => rule.selector === '.image-cell')
@@ -146,7 +163,7 @@ describe('workspace style contracts', () => {
 
     expect(card?.declarations).toMatchObject({
       background: 'var(--viewer-thumbnail-card-surface)',
-      border: '1px solid var(--viewer-thumbnail-border)',
+      border: '0',
       'border-radius': '0',
     })
     expect(stage?.declarations.background).toBe('var(--viewer-thumbnail-stage-surface)')

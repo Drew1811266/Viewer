@@ -1566,7 +1566,7 @@ body:has(.viewer-inspector) .global-notice-stack {
 
 .image-cell {
   background: var(--viewer-thumbnail-card-surface);
-  border: 1px solid var(--viewer-thumbnail-border);
+  border: 0;
   border-radius: 0;
   cursor: default;
   height: 100%;
@@ -1579,6 +1579,16 @@ body:has(.viewer-inspector) .global-notice-stack {
   max-width: 100%;
   position: relative;
   width: fit-content;
+}
+
+.image-cell::before {
+  border: 1px solid var(--viewer-thumbnail-border);
+  box-sizing: border-box;
+  content: "";
+  inset: 0;
+  pointer-events: none;
+  position: absolute;
+  z-index: 1;
 }
 
 .image-cell[aria-selected="true"]::after {

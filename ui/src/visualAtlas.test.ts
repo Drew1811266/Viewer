@@ -9,10 +9,10 @@ const htmlPath = resolve(
 )
 const html = readFileSync(htmlPath, 'utf8')
 
-function renderAtlas() {
+function renderAtlas(hash = '') {
   return new JSDOM(html, {
     runScripts: 'dangerously',
-    url: `file://${htmlPath}`,
+    url: `file://${htmlPath}${hash}`,
     beforeParse(window) {
       window.ResizeObserver = class {
         observe() {}
@@ -121,6 +121,14 @@ describe('complete Viewer visual atlas', () => {
     )
     expect(html).toMatch(/\.image-meta\s*\{[^}]*min-height:\s*48px;/s)
     expect(html).toMatch(/\.image-meta strong\s*\{[^}]*font-size:\s*13px;/s)
+  })
+
+  it('resolves the exported extra-large density state to the atlas CSS token', () => {
+    const dom = renderAtlas('#embed=browser&viewport=1024&state=density-extra-large')
+
+    expect(
+      dom.window.document.querySelector('[data-thumbnail-grid]')?.getAttribute('data-density'),
+    ).toBe('extra_large')
   })
 
   it('models square complete-card selection instead of an inset thumbnail ring', () => {

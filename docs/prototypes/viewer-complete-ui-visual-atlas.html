@@ -1704,9 +1704,12 @@
       if (embedScreen === "dialogs" && ["destination", "rename", "trash", "close"].includes(embedState)) {
         state.dialog = embedState;
       }
-      const statePrefix = embedState?.split("-")[0];
+      const normalizedEmbedState = embedState === "density-extra-large"
+        ? "density-extra_large"
+        : embedState;
+      const statePrefix = normalizedEmbedState?.split("-")[0];
       if (statePrefix && Object.hasOwn(state, statePrefix)) {
-        state[statePrefix] = embedState.slice(statePrefix.length + 1);
+        state[statePrefix] = normalizedEmbedState.slice(statePrefix.length + 1);
       }
     }
 

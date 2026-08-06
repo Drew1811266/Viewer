@@ -25,7 +25,7 @@ function Consumer() {
       <output aria-label="density">{current.thumbnailDensity}</output>
       <output aria-label="height">{current.thumbnailHeight}</output>
       {current.settingsError && <p role="alert">{current.settingsError}</p>}
-      {(['compact', 'standard', 'large'] as const).map((density) => (
+      {(['compact', 'standard', 'large', 'extra_large', 'maximum'] as const).map((density) => (
         <button key={density} type="button" onClick={() => current.setThumbnailDensity(density)}>
           {density}
         </button>
@@ -72,66 +72,67 @@ describe('ViewerSettingsProvider', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 
-  it('publishes large immediately before its save resolves', () => {
+  it('publishes maximum immediately before its save resolves', () => {
     const save = deferred<ViewerSettings>()
     renderProvider({
       getViewerSettings: vi.fn().mockResolvedValue(settings('standard')),
       updateThumbnailDensity: () => save.promise,
     })
 
-    fireEvent.click(screen.getByRole('button', { name: 'large' }))
+    fireEvent.click(screen.getByRole('button', { name: 'maximum' }))
 
-    expect(screen.getByLabelText('density')).toHaveTextContent('large')
-    expect(screen.getByLabelText('height')).toHaveTextContent('168')
+    expect(screen.getByLabelText('density')).toHaveTextContent('maximum')
+    expect(screen.getByLabelText('height')).toHaveTextContent('240')
   })
 
-  it('serializes compact then large and ignores the stale compact completion', async () => {
-    const compactSave = deferred<ViewerSettings>()
-    const largeSave = deferred<ViewerSettings>()
+  it('serializes extra-large then maximum and ignores the stale completion', async () => {
+    const extraLargeSave = deferred<ViewerSettings>()
+    const maximumSave = deferred<ViewerSettings>()
     const updateThumbnailDensity = vi
       .fn<(density: ThumbnailDensity) => Promise<ViewerSettings>>()
-      .mockImplementationOnce(() => compactSave.promise)
-      .mockImplementationOnce(() => largeSave.promise)
+      .mockImplementationOnce(() => extraLargeSave.promise)
+      .mockImplementationOnce(() => maximumSave.promise)
     renderProvider({
       getViewerSettings: vi.fn().mockResolvedValue(settings('standard')),
       updateThumbnailDensity,
     })
 
-    fireEvent.click(screen.getByRole('button', { name: 'compact' }))
-    fireEvent.click(screen.getByRole('button', { name: 'large' }))
-    expect(screen.getByLabelText('density')).toHaveTextContent('large')
+    fireEvent.click(screen.getByRole('button', { name: 'extra_large' }))
+    fireEvent.click(screen.getByRole('button', { name: 'maximum' }))
+    expect(screen.getByLabelText('density')).toHaveTextContent('maximum')
     await waitFor(() => expect(updateThumbnailDensity).toHaveBeenCalledTimes(1))
-    expect(updateThumbnailDensity).toHaveBeenNthCalledWith(1, 'compact')
+    expect(updateThumbnailDensity).toHaveBeenNthCalledWith(1, 'extra_large')
 
-    await act(async () => compactSave.resolve(settings('compact')))
-    expect(screen.getByLabelText('density')).toHaveTextContent('large')
+    await act(async () => extraLargeSave.resolve(settings('extra_large')))
+    expect(screen.getByLabelText('density')).toHaveTextContent('maximum')
     await waitFor(() => expect(updateThumbnailDensity).toHaveBeenCalledTimes(2))
-    expect(updateThumbnailDensity).toHaveBeenNthCalledWith(2, 'large')
+    expect(updateThumbnailDensity).toHaveBeenNthCalledWith(2, 'maximum')
 
-    await act(async () => largeSave.resolve(settings('large')))
-    expect(screen.getByLabelText('density')).toHaveTextContent('large')
+    await act(async () => maximumSave.resolve(settings('maximum')))
+    expect(screen.getByLabelText('density')).toHaveTextContent('maximum')
   })
 
   it('rolls the latest failed choice back to the last confirmed value', async () => {
-    const compactSave = deferred<ViewerSettings>()
-    const largeSave = deferred<ViewerSettings>()
+    const extraLargeSave = deferred<ViewerSettings>()
+    const maximumSave = deferred<ViewerSettings>()
     const updateThumbnailDensity = vi
       .fn<(density: ThumbnailDensity) => Promise<ViewerSettings>>()
-      .mockImplementationOnce(() => compactSave.promise)
-      .mockImplementationOnce(() => largeSave.promise)
+      .mockImplementationOnce(() => extraLargeSave.promise)
+      .mockImplementationOnce(() => maximumSave.promise)
     renderProvider({
       getViewerSettings: vi.fn().mockResolvedValue(settings('standard')),
       updateThumbnailDensity,
     })
 
-    fireEvent.click(screen.getByRole('button', { name: 'compact' }))
-    fireEvent.click(screen.getByRole('button', { name: 'large' }))
+    fireEvent.click(screen.getByRole('button', { name: 'extra_large' }))
+    fireEvent.click(screen.getByRole('button', { name: 'maximum' }))
     await waitFor(() => expect(updateThumbnailDensity).toHaveBeenCalledTimes(1))
-    await act(async () => compactSave.resolve(settings('compact')))
+    await act(async () => extraLargeSave.resolve(settings('extra_large')))
     await waitFor(() => expect(updateThumbnailDensity).toHaveBeenCalledTimes(2))
-    await act(async () => largeSave.reject({ userMessage: '设置未能保存' }))
+    await act(async () => maximumSave.reject({ userMessage: '设置未能保存' }))
 
-    expect(screen.getByLabelText('density')).toHaveTextContent('compact')
+    expect(screen.getByLabelText('density')).toHaveTextContent('extra_large')
+    expect(screen.getByLabelText('height')).toHaveTextContent('204')
     expect(screen.getByRole('alert')).toHaveTextContent('设置未能保存')
   })
 
@@ -152,12 +153,12 @@ describe('ViewerSettingsProvider', () => {
     await act(async () => failedSave.reject({ userMessage: '设置未能保存' }))
     expect(screen.getByRole('alert')).toHaveTextContent('设置未能保存')
 
-    fireEvent.click(screen.getByRole('button', { name: 'large' }))
+    fireEvent.click(screen.getByRole('button', { name: 'maximum' }))
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
-    expect(screen.getByLabelText('density')).toHaveTextContent('large')
+    expect(screen.getByLabelText('density')).toHaveTextContent('maximum')
 
-    await act(async () => retrySave.resolve(settings('large')))
-    expect(screen.getByLabelText('density')).toHaveTextContent('large')
+    await act(async () => retrySave.resolve(settings('maximum')))
+    expect(screen.getByLabelText('density')).toHaveTextContent('maximum')
   })
 
   it('ignores an initial load that arrives after the first user choice', async () => {
@@ -168,9 +169,9 @@ describe('ViewerSettingsProvider', () => {
       updateThumbnailDensity: () => save.promise,
     })
 
-    fireEvent.click(screen.getByRole('button', { name: 'large' }))
+    fireEvent.click(screen.getByRole('button', { name: 'maximum' }))
     await act(async () => loaded.resolve(settings('compact')))
 
-    expect(screen.getByLabelText('density')).toHaveTextContent('large')
+    expect(screen.getByLabelText('density')).toHaveTextContent('maximum')
   })
 })

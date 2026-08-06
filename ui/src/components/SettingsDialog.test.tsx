@@ -20,14 +20,12 @@ describe('SettingsDialog', () => {
         />,
       )
       expect(screen.getByRole('navigation', { name: '设置分类' })).toBeVisible()
-      expect(screen.getByRole('radio', { name: '紧凑' })).toBeVisible()
-      expect(screen.getByRole('radio', { name: '标准' })).toBeVisible()
-      expect(screen.getByRole('radio', { name: '大图' })).toBeVisible()
+      expect(screen.getByRole('slider', { name: '缩略图大小' })).toBeVisible()
       expect(screen.getByRole('button', { name: '关闭' })).toBeVisible()
     },
   )
 
-  it('shows one density radio group and reports a choice immediately', () => {
+  it('shows one five-stop size slider and reports a choice immediately', () => {
     const onDensityChange = vi.fn()
     render(
       <SettingsDialog
@@ -46,15 +44,25 @@ describe('SettingsDialog', () => {
     for (const absent of ['浏览', '文件操作', '快捷键']) {
       expect(within(navigation).queryByRole('button', { name: absent })).not.toBeInTheDocument()
     }
-    const group = within(dialog).getByRole('group', { name: '缩略图密度' })
-    expect(within(group).getByRole('radio', { name: '紧凑' })).not.toBeChecked()
-    expect(within(group).getByRole('radio', { name: '标准' })).toBeChecked()
-    const large = within(group).getByRole('radio', { name: '大图' })
-    expect(large).not.toBeChecked()
+    const group = within(dialog).getByRole('group', { name: '缩略图大小' })
+    const slider = within(group).getByRole('slider', { name: '缩略图大小' })
+    expect(slider).toHaveAttribute('min', '1')
+    expect(slider).toHaveAttribute('max', '5')
+    expect(slider).toHaveAttribute('step', '1')
+    expect(slider).toHaveValue('2')
+    expect(slider).toHaveAttribute('aria-valuetext', '档位 2，132 像素')
+    expect(within(group).queryAllByRole('radio')).toHaveLength(0)
+    for (const oldLabel of ['紧凑', '标准', '大图']) {
+      expect(within(group).queryByText(oldLabel)).not.toBeInTheDocument()
+    }
+    const levels = [...group.querySelectorAll('.thumbnail-size-levels span')]
+    expect(levels.map((level) => level.textContent)).toEqual(['1', '2', '3', '4', '5'])
+    expect(levels[1]).toHaveAttribute('data-current', 'true')
+    expect(levels[0]).not.toHaveAttribute('data-current')
 
-    fireEvent.click(large)
+    fireEvent.change(slider, { target: { value: '5' } })
 
-    expect(onDensityChange).toHaveBeenCalledWith('large')
+    expect(onDensityChange).toHaveBeenCalledWith('maximum')
     expect(dialog.querySelector('.viewer-dialog__footer')).not.toBeNull()
     expect(within(dialog).getByRole('button', { name: '关闭' })).toHaveAttribute(
       'data-tone',
@@ -88,7 +96,7 @@ describe('SettingsDialog', () => {
         onClose={onClose}
       />,
     )
-    const first = screen.getByRole('radio', { name: '紧凑' })
+    const first = screen.getByRole('slider', { name: '缩略图大小' })
     const navigationItem = screen.getByRole('button', { name: '显示与外观' })
     const close = screen.getByRole('button', { name: '关闭' })
     expect(first).toHaveFocus()

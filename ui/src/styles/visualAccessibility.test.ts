@@ -15,7 +15,7 @@ describe('Viewer visual accessibility contracts', () => {
       expect(forcedColors).toContain(systemColor)
     }
     for (const selector of [
-      ".image-cell-thumbnail-frame[data-selected='true']::after",
+      '.image-cell[aria-selected="true"]::after',
       ".viewer-menu-row[data-current='true']",
       ".viewer-button[data-tone='danger']",
       ".viewer-choice-chip[data-disabled='true']",

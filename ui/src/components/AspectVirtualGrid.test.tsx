@@ -89,6 +89,25 @@ describe('AspectVirtualGrid', () => {
     expect(screen.queryByRole('button', { name: 'item-100' })).not.toBeInTheDocument()
   })
 
+  it('keeps maximum-size rows virtualized while retaining the active item', () => {
+    const resize = installResizeObserver()
+    renderGrid({
+      items: squareItems(1_000),
+      imageHeight: 240,
+      captionHeight: 48,
+      viewportHeight: 480,
+      gap: 12,
+      activeKey: 'item-0',
+    })
+    resize(1_000)
+
+    const grid = screen.getByRole('listbox', { name: 'images' })
+    expect(surface('item-0')).toHaveStyle({ width: '240px', height: '240px' })
+    expect(screen.getByRole('button', { name: 'item-0' })).toBeInTheDocument()
+    expect(grid.querySelectorAll('[data-virtual-grid-item]').length).toBeLessThan(30)
+    expect(screen.queryByRole('button', { name: 'item-100' })).not.toBeInTheDocument()
+  })
+
   it('applies layout defaults and forwards active-descendant and multiselectable ARIA', () => {
     const resize = installResizeObserver()
     render(

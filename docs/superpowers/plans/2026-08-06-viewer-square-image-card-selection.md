@@ -38,7 +38,7 @@
 - Consumes: `ImageCell` prop `selected: boolean`, the option element's existing `aria-selected`, `.image-cell`, `.image-cell-thumbnail-frame`, `.image-cell-meta`, and shared focus/forced-color tokens.
 - Produces: `.image-cell[aria-selected="true"]::after` as the only visual selection overlay; no public component prop or callback changes.
 
-- [ ] **Step 1: Replace the DOM regression with the complete-card contract**
+- [x] **Step 1: Replace the DOM regression with the complete-card contract**
 
 Rename the test at `ui/src/components/ContentBrowser.test.tsx:674` to `uses the complete image card as the selection owner and explains the radial action`. After clicking the option, assert the filename metadata is inside that option, the option owns `aria-selected`, and the thumbnail frame has no selected-state attribute:
 
@@ -65,7 +65,7 @@ it('uses the complete image card as the selection owner and explains the radial 
 })
 ```
 
-- [ ] **Step 2: Replace the style contract with square complete-card assertions**
+- [x] **Step 2: Replace the style contract with square complete-card assertions**
 
 Replace the current thumbnail-only selection test in `ui/src/styles/app.test.ts` with:
 
@@ -120,7 +120,7 @@ it('paints selection around the square complete card and keyboard focus outside 
 
 In `uses the approved quiet card and compact file metadata hierarchy`, change the expected card radius from `9px` to `0` and leave every other geometry and metadata assertion unchanged.
 
-- [ ] **Step 3: Run the focused contracts and observe the intended failures**
+- [x] **Step 3: Run the focused contracts and observe the intended failures**
 
 ```bash
 pnpm --dir ui exec vitest run src/styles/app.test.ts src/components/ContentBrowser.test.tsx
@@ -128,7 +128,7 @@ pnpm --dir ui exec vitest run src/styles/app.test.ts src/components/ContentBrows
 
 Expected: FAIL because the card still reports `9px`, the complete-card overlay and handle stacking rule do not exist, forced colors still target the thumbnail frame, and the rendered thumbnail frame still has `data-selected="true"`.
 
-- [ ] **Step 4: Remove selected state from the thumbnail frame**
+- [x] **Step 4: Remove selected state from the thumbnail frame**
 
 In `ImageCell.tsx`, replace:
 
@@ -144,7 +144,7 @@ with:
 
 Do not move the filename, marker, export surface, drag handle, or event handlers. Keep `aria-selected={selected}` on the outer `.image-cell`.
 
-- [ ] **Step 5: Move the visual overlay to the complete square card**
+- [x] **Step 5: Move the visual overlay to the complete square card**
 
 In `app.css`, change `.image-cell` to `border-radius: 0`. Replace the legacy thumbnail-frame selected rule with:
 
@@ -163,7 +163,7 @@ In `app.css`, change `.image-cell` to `border-radius: 0`. Replace the legacy thu
 
 Add `z-index: 3` to `.image-cell > .organization-drag-handle`. In the existing `@media (forced-colors: active)` block, replace the thumbnail-frame selector with `.image-cell[aria-selected="true"]::after`. Do not add a transition, selected fill, shadow, or physical border-width change.
 
-- [ ] **Step 6: Run the focused contracts and confirm green**
+- [x] **Step 6: Run the focused contracts and confirm green**
 
 ```bash
 pnpm --dir ui exec vitest run src/styles/app.test.ts src/components/ContentBrowser.test.tsx
@@ -171,7 +171,7 @@ pnpm --dir ui exec vitest run src/styles/app.test.ts src/components/ContentBrows
 
 Expected: both files pass, including the updated complete-card selection contract and all existing selection-summary, preview, radial-menu, thumbnail, and virtual-grid behavior in `ContentBrowser`.
 
-- [ ] **Step 7: Commit the independently testable formal component change**
+- [x] **Step 7: Commit the independently testable formal component change**
 
 ```bash
 git add ui/src/components/ContentBrowser.test.tsx ui/src/styles/app.test.ts ui/src/components/contentBrowser/ImageCell.tsx ui/src/styles/app.css
@@ -188,7 +188,7 @@ git commit -m "fix: select complete square image cards"
 - Consumes: the atlas `.image-card`, `.image-stage`, `.image-meta`, selected class, `aria-selected`, and forced-colors accessibility scene.
 - Produces: an atlas reference whose square whole-card selection geometry matches the formal `.image-cell` contract.
 
-- [ ] **Step 1: Add the failing visual-atlas geometry contract**
+- [x] **Step 1: Add the failing visual-atlas geometry contract**
 
 Add this test after the proportional-density test in `ui/src/visualAtlas.test.ts`:
 
@@ -205,7 +205,7 @@ it('models square complete-card selection instead of an inset thumbnail ring', (
 })
 ```
 
-- [ ] **Step 2: Run the atlas test and observe the intended failure**
+- [x] **Step 2: Run the atlas test and observe the intended failure**
 
 ```bash
 pnpm --dir ui exec vitest run src/visualAtlas.test.ts -t "models square complete-card selection"
@@ -213,7 +213,7 @@ pnpm --dir ui exec vitest run src/visualAtlas.test.ts -t "models square complete
 
 Expected: FAIL because the atlas still uses a `9px` card radius and `.image-card.selected .image-stage::after` with an inset rounded boundary.
 
-- [ ] **Step 3: Update the atlas card and forced-colors reference**
+- [x] **Step 3: Update the atlas card and forced-colors reference**
 
 In `viewer-complete-ui-visual-atlas.html`, change `.image-card` to `border-radius: 0`. Replace the legacy selected rule with:
 
@@ -232,7 +232,7 @@ In `viewer-complete-ui-visual-atlas.html`, change `.image-card` to `border-radiu
 
 Change the forced-colors selector from `.image-card.selected .image-stage::after` to `.image-card.selected::after`. Do not change atlas card size, density variants, thumbnail stage, metadata, or selection interactions.
 
-- [ ] **Step 4: Run the complete atlas suite and confirm green**
+- [x] **Step 4: Run the complete atlas suite and confirm green**
 
 ```bash
 pnpm --dir ui exec vitest run src/visualAtlas.test.ts
@@ -240,7 +240,7 @@ pnpm --dir ui exec vitest run src/visualAtlas.test.ts
 
 Expected: PASS for the new geometry contract and all existing screen/state, interaction, contrast, and local-asset contracts.
 
-- [ ] **Step 5: Commit the independently testable atlas synchronization**
+- [x] **Step 5: Commit the independently testable atlas synchronization**
 
 ```bash
 git add ui/src/visualAtlas.test.ts docs/prototypes/viewer-complete-ui-visual-atlas.html
@@ -258,7 +258,7 @@ git commit -m "docs: sync square image card selection atlas"
 - Consumes: Tasks 1 and 2, acceptance states `THU-04` through `THU-07`, the approved annotated target, and the canonical `pnpm start:viewer` launcher.
 - Produces: one complete verification result, combined reference/product screenshots, a native single-selection capture, a `design-qa.md` verdict, and a restarted single-instance development app.
 
-- [ ] **Step 1: Run the affected regression set once**
+- [x] **Step 1: Run the affected regression set once**
 
 ```bash
 pnpm --dir ui exec vitest run src/styles/app.test.ts src/components/ContentBrowser.test.tsx src/components/contentBrowser/contentSelection.test.ts src/components/AspectVirtualGrid.test.tsx src/visualAtlas.test.ts
@@ -266,7 +266,7 @@ pnpm --dir ui exec vitest run src/styles/app.test.ts src/components/ContentBrows
 
 Expected: PASS. This covers the formal CSS/DOM contract, single and multiple selection, independent keyboard focus, virtual-grid navigation, radial-action copy, and atlas synchronization.
 
-- [ ] **Step 2: Check source quality and diff integrity**
+- [x] **Step 2: Check source quality and diff integrity**
 
 ```bash
 pnpm --dir ui check
@@ -275,7 +275,7 @@ git diff --check
 
 Expected: both commands exit zero and apply no formatting changes.
 
-- [ ] **Step 3: Run the repository-wide verification command exactly once**
+- [x] **Step 3: Run the repository-wide verification command exactly once**
 
 ```bash
 pnpm verify
@@ -283,7 +283,7 @@ pnpm verify
 
 Expected: exit zero for repository policy, clean checks, Biome, TypeScript, all UI tests, production UI build, Rust formatting, Clippy, workspace tests, Tauri security boundaries, dependency policy, and license policy. Do not repeat this command unless it reports a real failure and code changes are made to correct that failure.
 
-- [ ] **Step 4: Generate targeted two-viewport reference/product evidence**
+- [x] **Step 4: Generate targeted two-viewport reference/product evidence**
 
 Run only the four affected visual states; the command defaults to both approved viewports (`1024x720` and `1440x900`):
 
@@ -293,7 +293,7 @@ pnpm accept:visual --id THU-04 --id THU-05 --id THU-06 --id THU-07 --output-root
 
 Expected: eight combined artifacts are generated under `target/viewer-visual-acceptance/`; no unrelated acceptance state is opened. Inspect the combined `THU-04`, `THU-05`, `THU-06`, and `THU-07` images together with the approved annotated target. Pass only when resting cards are square, every selected boundary encloses the filename, no thumbnail-only ring remains, multi-selection has one boundary per card, and keyboard focus remains distinct.
 
-- [ ] **Step 5: Start one current development app and capture the native selected state**
+- [x] **Step 5: Start one current development app and capture the native selected state**
 
 Start through the canonical launcher:
 
@@ -301,15 +301,15 @@ Start through the canonical launcher:
 pnpm start:viewer
 ```
 
-After the launcher reports one current `target/debug/viewer-desktop` process, run one native single-selection recipe at the larger viewport:
+After the launcher reports one current `target/debug/viewer-desktop` process, run one native single-selection recipe at an exact acceptance viewport. On the current display, `1440 × 900` exceeds the safe application area, so use the exact `1024 × 720` viewport instead of changing macOS display or Dock settings:
 
 ```bash
-node scripts/viewer-native-acceptance.mjs --id THU-05 --viewport 1440x900 --output-root /Users/abc/Project/Viewer/target/atlas-product-migration-acceptance/square-image-card-selection
+node scripts/viewer-native-acceptance.mjs --id THU-05 --viewport 1024x720 --output-root /Users/abc/Project/Viewer/.worktrees/codex-square-image-card-selection/target/atlas-product-migration-acceptance/square-image-card-selection
 ```
 
 Expected: the controller uses its disposable `thumbnail-selection` fixture, selects `商品-01.jpg`, records a clean-worktree manifest and combined image, and does not mutate the user's project. It must not change macOS display scaling, Dock settings, or global scrollbar settings.
 
-- [ ] **Step 6: Record the final design QA verdict**
+- [x] **Step 6: Record the final design QA verdict**
 
 Append this section to the existing `design-qa.md`; preserve all earlier acceptance history and replace only the evidence-path observations with the files actually produced:
 
@@ -342,7 +342,7 @@ PASS — the formal component and visual atlas match the approved complete-card 
 
 If any checklist item fails, write `FAIL`, record the mismatch, fix only that mismatch, rerun its focused test and affected acceptance state, and update the evidence before proceeding.
 
-- [ ] **Step 7: Mark the plan Historical and commit acceptance evidence metadata**
+- [x] **Step 7: Mark the plan Historical and commit acceptance evidence metadata**
 
 After all evidence exists, check every box in this plan and add this plan to `Historical implementation plans` in `docs/README.md`. Keep the design spec in `Active sources of truth`. Run:
 

@@ -95,3 +95,59 @@ platform task because the Windows version is not yet under development.
   `target/final-design-acceptance-2026-07-31/figma-audit-board.png`
 - Structural verification: all 22 cards contain exactly one accepted
   screenshot; the audit section is the only top-level canvas node.
+
+## 2026-08-06 — Square Image Card Selection
+
+### Inputs
+
+- Approved design specification: `docs/superpowers/specs/2026-08-06-viewer-square-image-card-selection-design.md`.
+- Authoritative visual source: `docs/prototypes/viewer-complete-ui-visual-atlas.html` at SHA-256 `723c542cff9d32ab63de571342e8abbbdf141dd491a3c56ba284dc313bab7ab5`.
+- Supplemental user target: `/var/folders/hh/jj77kbxs0db1_j1kgh7hbd2c0000gn/T/codex-clipboard-d5bd1d52-517a-4846-900b-bf4128731924.png`; its red annotation defines the required complete-card boundary but is not used as a pixel-identical fixture.
+- Implementation commit: `7ebf8496dea25ca8d104f634b322c2e74df87439` on `codex/square-image-card-selection`, captured from a clean worktree.
+- Automated full-view evidence: `target/viewer-visual-acceptance/square-image-card-selection/7ebf8496dea25ca8d104f634b322c2e74df87439/{1024x720,1440x900}/{THU-04,THU-05,THU-06,THU-07}/combined.png`.
+- Native full-view evidence: `target/atlas-product-migration-acceptance/7ebf8496dea25ca8d104f634b322c2e74df87439/1024x720/THU-05/combined.png`.
+- Native focused-region evidence: `target/atlas-product-migration-acceptance/7ebf8496dea25ca8d104f634b322c2e74df87439/1024x720/THU-05/combined-focus.png`.
+
+### Capture normalization
+
+- Browser source and implementation captures use identical CSS viewports and 1× density: `1024 × 720` produces `1024 × 720` source/product images and a `2048 × 720` combined image; `1440 × 900` produces `1440 × 900` source/product images and a `2880 × 900` combined image.
+- Native `native@2x.png` is `2048 × 1440` Retina output. The acceptance controller normalizes it to `1024 × 720` before combining it with the `1024 × 720` atlas reference, so geometry is judged at the same CSS size rather than by raw device pixels.
+- The native `1440 × 900` window was not forced because the current display's safe application area caps it at `1440 × 847`. The accepted native state therefore uses the exact supported `1024 × 720` viewport without changing macOS display scaling, Dock settings, or global scrollbar settings; both approved sizes remain covered by browser component evidence.
+
+### State and fidelity review
+
+| State | Evidence | Result |
+| --- | --- | --- |
+| `THU-04` resting cards | Both browser viewports | Square card edges; no selection overlay or geometry shift. |
+| `THU-05` single selection | Both browser viewports plus native `1024 × 720` | One 2 px accent boundary encloses the thumbnail and filename; no thumbnail-only ring remains. |
+| `THU-06` multiple selection | Both browser viewports | Exactly one complete-card boundary appears on each of three selected cards. |
+| `THU-07` keyboard focus | Both browser viewports | The complete-card selection boundary remains independent from the outer keyboard-focus treatment. |
+
+- Typography: font family, size, weight, filename baseline, and selection-summary hierarchy remain unchanged; minor native rasterization differences are platform rendering, not token drift.
+- Spacing and layout rhythm: moving the overlay does not change card measurement, image-stage height, filename row, grid gaps, or the selection-summary position.
+- Color and tokens: the boundary uses `--viewer-accent`; the atlas uses its matching accent token. Forced-colors coverage moves to the same complete-card pseudo-element and uses `Highlight` at 2 px.
+- Image quality and cropping: thumbnail assets retain `object-fit: contain`; no new crop, blur, scaling, or loading artifact is visible.
+- Copy and content: source and native fixtures intentionally use different filenames and counts, while label hierarchy and the `已选择 1 项` guidance remain consistent.
+- Interaction and layering: the organization handle stays above the non-interactive overlay, pointer events pass through the overlay, and focus remains separately visible.
+- Scope protection: folder filmstrips, search-result rows, other-file rows, and non-image card families retain their existing geometry.
+
+### Checklist
+
+- [x] Resting content-grid cards have square corners.
+- [x] The selection boundary encloses thumbnail and filename.
+- [x] No inset thumbnail-only boundary remains.
+- [x] Selection does not move card content or grid geometry.
+- [x] Multi-selection draws one boundary per card.
+- [x] Keyboard focus remains visually independent.
+- [x] The organization handle remains above and operable.
+- [x] Forced-colors styling follows the complete card.
+- [x] Folder filmstrips and other card families are unchanged.
+
+### Findings and comparison history
+
+- Initial product finding: rounded image cards and a selection ring limited to the thumbnail stage did not match the approved complete-card intent.
+- Implemented correction: the card radius is `0`, selection ownership remains on `aria-selected`, and the non-measuring overlay moved to `.image-cell::after` with `inset: 0`.
+- Evidence correction during QA: the first `1024 × 720` reference export reused `THU-04` while changing URL fragments. Those stale images were rejected, each reference was reloaded in a fresh document, selected counts were asserted as `0/1/3/1`, and all eight combined states plus the native state were recaptured.
+- Final severity: P0 `0`, P1 `0`, P2 `0`, P3 `0`.
+
+Final result: passed

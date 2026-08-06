@@ -355,7 +355,7 @@ git commit -m "docs: record square image card selection acceptance"
 
 Expected: policy and diff checks pass, and the final documentation commit contains only the QA verdict, index update, and completed plan evidence.
 
-- [ ] **Step 8: Restart the final integrated development build**
+- [x] **Step 8: Restart the final integrated development build**
 
 After integrating the implementation branch into `main`, run:
 

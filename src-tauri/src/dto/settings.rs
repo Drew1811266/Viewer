@@ -91,11 +91,11 @@ impl From<MagnifierAreaDto> for MagnifierArea {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MagnifierPreferencesDto {
     pub shape: MagnifierShapeDto,
-    pub magnification: u8,
+    pub magnification: f64,
     pub area: MagnifierAreaDto,
 }
 
@@ -103,13 +103,13 @@ impl From<MagnifierPreferences> for MagnifierPreferencesDto {
     fn from(value: MagnifierPreferences) -> Self {
         Self {
             shape: value.shape.into(),
-            magnification: value.magnification.into(),
+            magnification: f64::from(value.magnification),
             area: value.area.into(),
         }
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ViewerSettingsDto {
     pub schema_version: u32,
@@ -127,15 +127,15 @@ impl From<ViewerSettings> for ViewerSettingsDto {
     }
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct MagnifierPreferencesUpdateDto {
     pub shape: MagnifierShapeDto,
-    pub magnification: u8,
+    pub magnification: f64,
     pub area: MagnifierAreaDto,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ViewerSettingsUpdateDto {
     pub thumbnail_density: ThumbnailDensityDto,
@@ -172,17 +172,17 @@ mod tests {
                 thumbnail_density: ThumbnailDensity::Compact,
                 magnifier: MagnifierPreferences {
                     shape: MagnifierShape::RoundedRectangle,
-                    magnification: MagnifierMagnification::Five,
+                    magnification: MagnifierMagnification::OnePointFive,
                     area: MagnifierArea::Medium,
                 },
             }))
             .unwrap(),
             serde_json::json!({
-                "schemaVersion": 2,
+                "schemaVersion": 3,
                 "thumbnailDensity": "compact",
                 "magnifier": {
                     "shape": "rounded_rectangle",
-                    "magnification": 5,
+                    "magnification": 1.5,
                     "area": "medium"
                 }
             })
@@ -195,7 +195,7 @@ mod tests {
             "thumbnailDensity": "maximum",
             "magnifier": {
                 "shape": "rounded_rectangle",
-                "magnification": 6,
+                "magnification": 3,
                 "area": "large"
             }
         }))
@@ -207,7 +207,7 @@ mod tests {
                 thumbnail_density: ThumbnailDensity::Maximum,
                 magnifier: MagnifierPreferences {
                     shape: MagnifierShape::RoundedRectangle,
-                    magnification: MagnifierMagnification::Six,
+                    magnification: MagnifierMagnification::Three,
                     area: MagnifierArea::Large,
                 },
             })
@@ -216,7 +216,7 @@ mod tests {
 
     #[test]
     fn complete_settings_input_rejects_invalid_magnification_and_unknown_fields() {
-        for magnification in [2, 7] {
+        for magnification in [0.0, 1.0, 1.4, 2.5, 4.0, 6.0] {
             let input = serde_json::from_value::<ViewerSettingsUpdateDto>(serde_json::json!({
                 "thumbnailDensity": "standard",
                 "magnifier": {
@@ -232,20 +232,24 @@ mod tests {
         for invalid in [
             serde_json::json!({
                 "thumbnailDensity": "standard",
-                "magnifier": { "shape": "square", "magnification": 4, "area": "small" }
+                "magnifier": { "shape": "square", "magnification": 1.5, "area": "small" }
             }),
             serde_json::json!({
                 "thumbnailDensity": "standard",
-                "magnifier": { "shape": "circle", "magnification": 4, "area": "huge" }
+                "magnifier": { "shape": "circle", "magnification": 1.5, "area": "huge" }
             }),
             serde_json::json!({
                 "thumbnailDensity": "standard",
                 "magnifier": {
                     "shape": "circle",
-                    "magnification": 4,
+                    "magnification": 1.5,
                     "area": "small",
                     "unexpected": true
                 }
+            }),
+            serde_json::json!({
+                "thumbnailDensity": "standard",
+                "magnifier": { "shape": "circle", "magnification": "1.5", "area": "small" }
             }),
         ] {
             assert!(serde_json::from_value::<ViewerSettingsUpdateDto>(invalid).is_err());

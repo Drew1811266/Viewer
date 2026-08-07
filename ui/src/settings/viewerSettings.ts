@@ -6,14 +6,14 @@ import type {
 } from '../api/types'
 
 export const MAGNIFIER_SHAPES: readonly MagnifierShape[] = ['circle', 'rounded_rectangle']
-export const MAGNIFIER_MAGNIFICATIONS: readonly MagnifierMagnification[] = [3, 4, 5, 6]
+export const MAGNIFIER_MAGNIFICATIONS: readonly MagnifierMagnification[] = [1.5, 2, 3]
 export const MAGNIFIER_AREAS: readonly MagnifierArea[] = ['small', 'medium', 'large']
 
 export const DEFAULT_VIEWER_SETTINGS_UPDATE: ViewerSettingsUpdate = {
   thumbnailDensity: 'standard',
   magnifier: {
     shape: 'circle',
-    magnification: 4,
+    magnification: 1.5,
     area: 'small',
   },
 }

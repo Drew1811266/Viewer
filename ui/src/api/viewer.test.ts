@@ -60,13 +60,13 @@ describe('tauriViewerBridge', () => {
   it('updates the complete viewer settings atomically', async () => {
     await tauriViewerBridge.updateViewerSettings({
       thumbnailDensity: 'large',
-      magnifier: { shape: 'rounded_rectangle', magnification: 5, area: 'medium' },
+      magnifier: { shape: 'rounded_rectangle', magnification: 2, area: 'medium' },
     })
 
     expect(invoke).toHaveBeenCalledWith('update_viewer_settings', {
       settings: {
         thumbnailDensity: 'large',
-        magnifier: { shape: 'rounded_rectangle', magnification: 5, area: 'medium' },
+        magnifier: { shape: 'rounded_rectangle', magnification: 2, area: 'medium' },
       },
     })
   })

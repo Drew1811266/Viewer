@@ -21,7 +21,7 @@ function deferred<T>() {
 
 const DEFAULT_MAGNIFIER: MagnifierPreferences = {
   shape: 'circle',
-  magnification: 4,
+  magnification: 1.5,
   area: 'small',
 }
 
@@ -29,7 +29,7 @@ function settings(
   thumbnailDensity: ThumbnailDensity,
   magnifier: MagnifierPreferences = DEFAULT_MAGNIFIER,
 ): ViewerSettings {
-  return { schemaVersion: 2, thumbnailDensity, magnifier }
+  return { schemaVersion: 3, thumbnailDensity, magnifier }
 }
 
 function Consumer() {
@@ -48,8 +48,8 @@ function Consumer() {
       <button type="button" onClick={() => current.setMagnifierShape('rounded_rectangle')}>
         rectangle
       </button>
-      <button type="button" onClick={() => current.setMagnifierMagnification(6)}>
-        six
+      <button type="button" onClick={() => current.setMagnifierMagnification(3)}>
+        three
       </button>
       <button type="button" onClick={() => current.setMagnifierArea('large')}>
         large-area
@@ -76,20 +76,20 @@ describe('ViewerSettingsProvider', () => {
     expect(screen.getByLabelText('density')).toHaveTextContent('standard')
     expect(screen.getByLabelText('height')).toHaveTextContent('132')
     expect(screen.getByLabelText('shape')).toHaveTextContent('circle')
-    expect(screen.getByLabelText('magnification')).toHaveTextContent('4')
+    expect(screen.getByLabelText('magnification')).toHaveTextContent('1.5')
     expect(screen.getByLabelText('area')).toHaveTextContent('small')
 
     loaded.resolve(
       settings('compact', {
         shape: 'rounded_rectangle',
-        magnification: 5,
+        magnification: 2,
         area: 'medium',
       }),
     )
     await waitFor(() => expect(screen.getByLabelText('density')).toHaveTextContent('compact'))
     expect(screen.getByLabelText('height')).toHaveTextContent('96')
     expect(screen.getByLabelText('shape')).toHaveTextContent('rounded_rectangle')
-    expect(screen.getByLabelText('magnification')).toHaveTextContent('5')
+    expect(screen.getByLabelText('magnification')).toHaveTextContent('2')
     expect(screen.getByLabelText('area')).toHaveTextContent('medium')
   })
 
@@ -117,7 +117,7 @@ describe('ViewerSettingsProvider', () => {
     await waitFor(() => expect(updateViewerSettings).toHaveBeenCalledOnce())
     expect(updateViewerSettings).toHaveBeenCalledWith({
       thumbnailDensity: 'standard',
-      magnifier: { shape: 'rounded_rectangle', magnification: 4, area: 'small' },
+      magnifier: { shape: 'rounded_rectangle', magnification: 1.5, area: 'small' },
     })
   })
 
@@ -134,16 +134,16 @@ describe('ViewerSettingsProvider', () => {
     })
 
     fireEvent.click(screen.getByRole('button', { name: 'rectangle' }))
-    fireEvent.click(screen.getByRole('button', { name: 'six' }))
+    fireEvent.click(screen.getByRole('button', { name: 'three' }))
     expect(screen.getByLabelText('shape')).toHaveTextContent('rounded_rectangle')
-    expect(screen.getByLabelText('magnification')).toHaveTextContent('6')
+    expect(screen.getByLabelText('magnification')).toHaveTextContent('3')
     await waitFor(() => expect(updateViewerSettings).toHaveBeenCalledTimes(1))
 
     await act(async () =>
       shapeSave.resolve(
         settings('standard', {
           shape: 'rounded_rectangle',
-          magnification: 4,
+          magnification: 1.5,
           area: 'small',
         }),
       ),
@@ -151,19 +151,19 @@ describe('ViewerSettingsProvider', () => {
     await waitFor(() => expect(updateViewerSettings).toHaveBeenCalledTimes(2))
     expect(updateViewerSettings).toHaveBeenNthCalledWith(2, {
       thumbnailDensity: 'standard',
-      magnifier: { shape: 'rounded_rectangle', magnification: 6, area: 'small' },
+      magnifier: { shape: 'rounded_rectangle', magnification: 3, area: 'small' },
     })
 
     await act(async () =>
       magnificationSave.resolve(
         settings('standard', {
           shape: 'rounded_rectangle',
-          magnification: 6,
+          magnification: 3,
           area: 'small',
         }),
       ),
     )
-    expect(screen.getByLabelText('magnification')).toHaveTextContent('6')
+    expect(screen.getByLabelText('magnification')).toHaveTextContent('3')
   })
 
   it('rolls every field back to the last confirmed complete snapshot', async () => {
@@ -185,7 +185,7 @@ describe('ViewerSettingsProvider', () => {
       shapeSave.resolve(
         settings('standard', {
           shape: 'rounded_rectangle',
-          magnification: 4,
+          magnification: 1.5,
           area: 'small',
         }),
       ),
@@ -194,7 +194,7 @@ describe('ViewerSettingsProvider', () => {
     await act(async () => areaSave.reject({ userMessage: '设置未能保存' }))
 
     expect(screen.getByLabelText('shape')).toHaveTextContent('rounded_rectangle')
-    expect(screen.getByLabelText('magnification')).toHaveTextContent('4')
+    expect(screen.getByLabelText('magnification')).toHaveTextContent('1.5')
     expect(screen.getByLabelText('area')).toHaveTextContent('small')
     expect(screen.getByRole('alert')).toHaveTextContent('设置未能保存')
   })
@@ -229,16 +229,16 @@ describe('ViewerSettingsProvider', () => {
       updateViewerSettings: () => save.promise,
     })
 
-    fireEvent.click(screen.getByRole('button', { name: 'six' }))
+    fireEvent.click(screen.getByRole('button', { name: 'three' }))
     await act(async () =>
       loaded.resolve(
-        settings('compact', { shape: 'rounded_rectangle', magnification: 3, area: 'large' }),
+        settings('compact', { shape: 'rounded_rectangle', magnification: 2, area: 'large' }),
       ),
     )
 
     expect(screen.getByLabelText('density')).toHaveTextContent('standard')
     expect(screen.getByLabelText('shape')).toHaveTextContent('circle')
-    expect(screen.getByLabelText('magnification')).toHaveTextContent('6')
+    expect(screen.getByLabelText('magnification')).toHaveTextContent('3')
     expect(screen.getByLabelText('area')).toHaveTextContent('small')
   })
 })

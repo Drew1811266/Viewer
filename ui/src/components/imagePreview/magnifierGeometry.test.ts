@@ -14,7 +14,7 @@ describe('magnifier geometry', () => {
   it('places the sampled original pixel at the lens center used as the CSS transform origin', () => {
     const dimensions = { width: 160, height: 160 }
     const sourcePoint = { x: 1600, y: 1140 }
-    for (const magnification of [3, 4, 5, 6] as const) {
+    for (const magnification of [1.5, 2, 3] as const) {
       const placement = magnifierSourcePlacement(sourcePoint, dimensions, magnification)
 
       expect(placement).toEqual({

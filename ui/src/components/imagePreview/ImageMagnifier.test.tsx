@@ -34,7 +34,7 @@ describe('ImageMagnifier', () => {
         ref={createRef<ImageMagnifierHandle>()}
         shape={shape}
         area={area}
-        magnification={4}
+        magnification={2}
         rotation={0}
         fileName="detail.jpg"
         original={currentOriginal('loading')}
@@ -54,7 +54,7 @@ describe('ImageMagnifier', () => {
         ref={createRef<ImageMagnifierHandle>()}
         shape="circle"
         area="small"
-        magnification={4}
+        magnification={2}
         rotation={90}
         fileName="detail.jpg"
         original={currentOriginal('ready', ORIGINAL)}
@@ -80,7 +80,7 @@ describe('ImageMagnifier', () => {
         ref={createRef<ImageMagnifierHandle>()}
         shape="circle"
         area="small"
-        magnification={4}
+        magnification={2}
         rotation={0}
         fileName="detail.jpg"
         original={currentOriginal(status)}
@@ -118,7 +118,7 @@ describe('ImageMagnifier imperative placement', () => {
         ref={ref}
         shape="circle"
         area="small"
-        magnification={4}
+        magnification={2}
         rotation={90}
         fileName="detail.jpg"
         original={currentOriginal('ready', ORIGINAL)}
@@ -142,7 +142,7 @@ describe('ImageMagnifier imperative placement', () => {
       '--magnifier-y': '180px',
       '--magnifier-source-left': '-1520px',
       '--magnifier-source-top': '-1060px',
-      '--magnifier-scale': '4',
+      '--magnifier-scale': '2',
       '--magnifier-rotation': '90deg',
     })
   })
@@ -154,7 +154,7 @@ describe('ImageMagnifier imperative placement', () => {
         ref={ref}
         shape="circle"
         area="small"
-        magnification={4}
+        magnification={2}
         rotation={0}
         fileName="detail.jpg"
         original={currentOriginal('loading')}

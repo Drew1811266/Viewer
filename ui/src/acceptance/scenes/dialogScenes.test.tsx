@@ -34,13 +34,13 @@ it('grounds rename dialogs in valid atlas-equivalent content', async () => {
   batch.unmount()
 })
 
-it('renders the complete settings-v2 defaults in DIA-01', () => {
+it('renders the complete settings-v3 defaults in DIA-01', () => {
   const rendered = renderScene('DIA-01')
   const dialog = screen.getByRole('dialog', { name: '软件设置' })
 
   expect(screen.getByRole('slider', { name: '缩略图大小' })).toHaveValue('2')
   expect(within(dialog).getByRole('radio', { name: '圆形' })).toBeChecked()
-  expect(within(dialog).getByRole('radio', { name: '4 倍' })).toBeChecked()
+  expect(within(dialog).getByRole('radio', { name: '1.5 倍' })).toBeChecked()
   expect(within(dialog).getByRole('radio', { name: '小' })).toBeChecked()
   rendered.unmount()
 })

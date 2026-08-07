@@ -88,7 +88,7 @@ export const FEEDBACK_SCENES: AcceptanceSceneRegistry = {
     >
       <SettingsDialog
         density="standard"
-        magnifier={{ shape: 'circle', magnification: 4, area: 'small' }}
+        magnifier={{ shape: 'circle', magnification: 1.5, area: 'small' }}
         error={null}
         onDensityChange={noOp}
         onMagnifierShapeChange={noOp}
@@ -145,7 +145,7 @@ export const FEEDBACK_SCENES: AcceptanceSceneRegistry = {
       <TaskBar task={RESULT_TASK} onShowResults={noOp} />
       <SettingsDialog
         density="compact"
-        magnifier={{ shape: 'circle', magnification: 4, area: 'small' }}
+        magnifier={{ shape: 'circle', magnification: 1.5, area: 'small' }}
         error={null}
         onDensityChange={noOp}
         onMagnifierShapeChange={noOp}

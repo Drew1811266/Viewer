@@ -16,12 +16,12 @@ function bridge(): ViewerBridge {
     closeProject: vi.fn().mockResolvedValue('closed'),
     projectSnapshot: vi.fn().mockResolvedValue(null),
     getViewerSettings: vi.fn().mockResolvedValue({
-      schemaVersion: 2,
+      schemaVersion: 3,
       thumbnailDensity: 'standard',
-      magnifier: { shape: 'circle', magnification: 4, area: 'small' },
+      magnifier: { shape: 'circle', magnification: 1.5, area: 'small' },
     }),
     updateViewerSettings: vi.fn().mockImplementation(async (settings) => ({
-      schemaVersion: 2,
+      schemaVersion: 3,
       ...settings,
     })),
     folderTree: vi.fn().mockResolvedValue([]),

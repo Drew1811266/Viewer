@@ -236,9 +236,9 @@ export function workspaceBridge(id: string): ViewerBridge {
     },
     async getViewerSettings() {
       return {
-        schemaVersion: 2,
+        schemaVersion: 3,
         thumbnailDensity: density,
-        magnifier: { shape: 'circle', magnification: 4, area: 'small' },
+        magnifier: { shape: 'circle', magnification: 1.5, area: 'small' },
       }
     },
     async queryFolder(entityId, showingAggregate) {

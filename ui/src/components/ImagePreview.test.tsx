@@ -4,7 +4,7 @@ import type { BrowserFile, ImageRepresentationRequest } from '../api/types'
 import { defined } from '../defined'
 import ImagePreview from './ImagePreview'
 
-const MAGNIFIER = { shape: 'circle', magnification: 4, area: 'small' } as const
+const MAGNIFIER = { shape: 'circle', magnification: 1.5, area: 'small' } as const
 
 function image(index: number): BrowserFile {
   return {

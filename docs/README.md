@@ -49,6 +49,7 @@ completion.
 | [`superpowers/specs/2026-08-06-viewer-compare-original-images-and-eight-item-limit-design.md`](superpowers/specs/2026-08-06-viewer-compare-original-images-and-eight-item-limit-design.md) | Active | — |
 | [`superpowers/specs/2026-08-06-viewer-square-image-card-selection-design.md`](superpowers/specs/2026-08-06-viewer-square-image-card-selection-design.md) | Active | — |
 | [`superpowers/specs/2026-08-07-viewer-fit-relative-original-preview-revision-design.md`](superpowers/specs/2026-08-07-viewer-fit-relative-original-preview-revision-design.md) | Active | — |
+| [`superpowers/specs/2026-08-07-viewer-stable-progressive-preview-and-larger-magnifier-design.md`](superpowers/specs/2026-08-07-viewer-stable-progressive-preview-and-larger-magnifier-design.md) | Active | — |
 | [`superpowers/specs/2026-08-07-viewer-pointer-following-magnifier-revision-design.md`](superpowers/specs/2026-08-07-viewer-pointer-following-magnifier-revision-design.md) | Active | — |
 
 ## Superseded decisions

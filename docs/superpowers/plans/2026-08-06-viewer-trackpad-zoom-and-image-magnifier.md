@@ -526,7 +526,7 @@ Use the existing Viewer chip/radius/token language. Make option rows wrap with a
 pnpm --dir ui exec vitest run src/components/ui/ViewerChoiceChip.test.tsx src/components/SettingsDialog.test.tsx src/styles/app.test.ts
 ```
 
-- [ ] **Step 10: Commit the real settings UI**
+- [x] **Step 10: Commit the real settings UI**
 
 ```bash
 git add ui/src/components/ui/ViewerChoiceChip.tsx ui/src/components/ui/ViewerChoiceChip.test.tsx ui/src/components/SettingsDialog.tsx ui/src/components/SettingsDialog.test.tsx ui/src/styles/app.css ui/src/styles/app.test.ts ui/src/App.tsx
@@ -547,7 +547,7 @@ git commit -m "feat: configure magnifier preferences"
 - Produces pure stage/source mapping, rotation, pan clamping, and anchor-preserving zoom functions.
 - Produces exact lens dimensions and CSS source placement.
 
-- [ ] **Step 1: Define the viewport geometry input and failing boundary tests**
+- [x] **Step 1: Define the viewport geometry input and failing boundary tests**
 
 Use these public types:
 
@@ -571,17 +571,17 @@ export interface ImageViewportGeometry {
 
 Write table tests for contain scale, rotated extents, and offsets at 0/90/180/270 degrees. Assert panning clamps to zero when the transformed image is smaller than the stage and to exact half-overflow when larger.
 
-- [ ] **Step 2: Add failing anchor-preserving zoom tests**
+- [x] **Step 2: Add failing anchor-preserving zoom tests**
 
 For a 1000×800 source in a 500×400 stage, prove that zooming around stage center leaves offset unchanged and zooming around `{ x: 400, y: 300 }` maps that stage point to the same source point before and after zoom. Add lower/upper clamp tests at 0.1 and 8, including a rotated case.
 
-- [ ] **Step 3: Add failing inverse mapping and hit-test tables**
+- [x] **Step 3: Add failing inverse mapping and hit-test tables**
 
 For every rotation, map source center, all four source corners, one inside point, and one gray-stage point through source-to-stage and stage-to-source. Assert round-trip tolerance below `0.001`. Expose an unbounded `stagePointToSourcePoint` for zoom anchoring and a clipped `sourcePointAtStagePoint` for actual-pixel hit testing; the clipped function returns `null` outside actual image pixels, including rotated bounding-box corners.
 
 Add a representation-remap test proving that `{ x: 600, y: 400 }` in a 1200×800 fit representation becomes `{ x: 3000, y: 2000 }` in a 6000×4000 original. This normalized mapping is the lens sample whenever the main view is showing a downsampled fit representation.
 
-- [ ] **Step 4: Add failing exact lens geometry tests**
+- [x] **Step 4: Add failing exact lens geometry tests**
 
 Assert all six approved size/shape combinations exactly:
 
@@ -596,23 +596,23 @@ expect(lensDimensions('rounded_rectangle', 'large')).toEqual({ width: 330, heigh
 
 Test source placement so a sampled source coordinate remains at lens center for factors 3, 4, 5, and 6 under all rotations.
 
-- [ ] **Step 5: Run geometry tests and observe failure**
+- [x] **Step 5: Run geometry tests and observe failure**
 
 ```bash
 pnpm --dir ui exec vitest run src/components/imagePreview/imageGeometry.test.ts src/components/imagePreview/magnifierGeometry.test.ts
 ```
 
-- [ ] **Step 6: Implement the pure matrix math**
+- [x] **Step 6: Implement the pure matrix math**
 
 Model the stage origin at its center. Compute fit scale as `min(1, stage.width * fitInset / source.width, stage.height * fitInset / source.height)`. Original mode uses scale 1; fit uses contain scale; free uses contain scale times `zoom`. Rotate the centered source vector, then add stage center and translation. Inverse mapping subtracts stage center/translation, applies inverse rotation, divides by scale, and adds source center. `stagePointToSourcePoint` returns that mathematical point even outside the image; `sourcePointAtStagePoint` bounds-checks it; `remapSourcePoint` converts by the fit/original width and height ratios.
 
 `zoomAtAnchor` must first sample the unbounded source point under the anchor using the old state, switch to free mode with clamped zoom, calculate the new translation that puts that source point back at the anchor, then clamp translation. Keep functions total for zero-sized stage/source inputs by returning safe zero bounds and `null` hit-test mappings.
 
-- [ ] **Step 7: Implement lens geometry as data, not CSS guesses**
+- [x] **Step 7: Implement lens geometry as data, not CSS guesses**
 
 Expose `lensDimensions(shape, area)` from a frozen typed record and `magnifierSourcePlacement(sourcePoint, dimensions, magnification)` that returns `left`, `top`, `transformOriginX`, and `transformOriginY`. The original image is positioned so the sampled point is lens center; CSS rotation/scale happens around that sampled point.
 
-- [ ] **Step 8: Run geometry tests and confirm green**
+- [x] **Step 8: Run geometry tests and confirm green**
 
 ```bash
 pnpm --dir ui exec vitest run src/components/imagePreview/imageGeometry.test.ts src/components/imagePreview/magnifierGeometry.test.ts

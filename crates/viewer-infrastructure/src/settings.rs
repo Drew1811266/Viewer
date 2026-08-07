@@ -123,7 +123,7 @@ fn parse_v1(value: serde_json::Value) -> Option<ViewerSettings> {
 
 fn parse_v2_density_only(value: serde_json::Value) -> Option<ViewerSettings> {
     let stored = serde_json::from_value::<StoredViewerSettingsV2>(value).ok()?;
-    if stored.schema_version != 2 || !matches!(stored.magnifier.magnification, 3 | 4 | 5 | 6) {
+    if stored.schema_version != 2 || !matches!(stored.magnifier.magnification, 3..=6) {
         return None;
     }
 

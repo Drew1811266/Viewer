@@ -72,17 +72,12 @@ export default function ImagePreview({
   const viewport = useImageViewport({ stage: EMPTY_STAGE, source: EMPTY_STAGE, fitInset: 0.9 })
   const original = useCurrentOriginal({
     file,
-    needed: magnifierEnabled || viewport.state.mode === 'original',
+    needed: magnifierEnabled,
     available: !transformsDisabled,
     requestImage,
   })
   const fitRepresentation = transformsDisabled ? undefined : fitCache.current.get(file.entityId)
-  const representation =
-    viewport.state.mode === 'original'
-      ? original.status === 'ready'
-        ? original.representation
-        : null
-      : fitRepresentation
+  const representation = fitRepresentation
   const gestures = usePreviewGestures({
     stage,
     disabled: transformsDisabled || representation == null,
@@ -186,18 +181,6 @@ export default function ImagePreview({
       onDimensions?.(file.entityId, original.representation.width, original.representation.height)
     }
   }, [file.entityId, onDimensions, original])
-
-  useEffect(() => {
-    if (viewport.state.mode !== 'original') return
-    if (original.status === 'budget_error') {
-      viewport.setFit()
-      setError('原图超出安全预览限制，已返回适应窗口模式。')
-    }
-    if (original.status === 'error') {
-      viewport.setFit()
-      setError('无法加载原图，已返回适应窗口模式。')
-    }
-  }, [original.status, viewport.setFit, viewport.state.mode])
 
   const placeMagnifier = useCallback(
     (stagePoint: Point) => {
@@ -350,17 +333,6 @@ export default function ImagePreview({
         }}
       >
         适应窗口
-      </ViewerButton>
-      <ViewerButton
-        aria-label="按 100% 显示"
-        active={viewport.state.mode === 'original'}
-        disabled={transformsDisabled}
-        onClick={() => {
-          setError(null)
-          viewport.setOriginal()
-        }}
-      >
-        100%
       </ViewerButton>
       <ViewerIconButton
         icon="minus"

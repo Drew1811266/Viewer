@@ -27,7 +27,7 @@ describe('Viewer viewing acceptance scenes', () => {
 
     expect(screen.getByRole('dialog', { name: /图片预览 商品-02\.jpg/ })).toBeVisible()
     expect(screen.getByRole('button', { name: '适应窗口' })).toHaveAttribute('aria-pressed', 'true')
-    expect(screen.getByRole('button', { name: '按 100% 显示' })).toBeVisible()
+    expect(screen.queryByRole('button', { name: '按 100% 显示' })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: '顺时针旋转' })).toBeVisible()
     expect(screen.getByRole('button', { name: '关闭预览' })).toBeVisible()
     const image = await screen.findByRole('img', { name: '商品-02.jpg' })
@@ -55,7 +55,7 @@ describe('Viewer viewing acceptance scenes', () => {
 
   it.each([
     ['PRE-01', 'fit'],
-    ['PRE-02', 'original'],
+    ['PRE-02', 'fit_reset'],
     ['PRE-03', 'zoom'],
     ['PRE-04', 'rotate'],
     ['PRE-07', 'navigation'],
@@ -64,13 +64,15 @@ describe('Viewer viewing acceptance scenes', () => {
     const dialog = screen.getByRole('dialog', { name: /图片预览 商品-02\.jpg/ })
     const image = await within(dialog).findByRole('img', { name: '商品-02.jpg' })
     expect(image).toBeVisible()
-    if (state === 'original') {
+    if (state === 'fit_reset') {
       await waitFor(() =>
-        expect(screen.getByRole('button', { name: '按 100% 显示' })).toHaveAttribute(
+        expect(screen.getByRole('button', { name: '适应窗口' })).toHaveAttribute(
           'aria-pressed',
           'true',
         ),
       )
+      expect(screen.getByText('100%', { selector: '.preview-scale-label' })).toBeVisible()
+      expect(screen.queryByRole('button', { name: '按 100% 显示' })).not.toBeInTheDocument()
     }
     if (state === 'zoom') {
       await waitFor(() =>
@@ -85,6 +87,12 @@ describe('Viewer viewing acceptance scenes', () => {
       expect(screen.getByRole('button', { name: '下一张' })).toBeEnabled()
     }
     rendered.unmount()
+  })
+
+  it('binds PRE-02 to the revised fit-reset reference state', () => {
+    expect(ACCEPTANCE_STATE_DEFINITIONS.find(({ id }) => id === 'PRE-02')?.referenceState).toBe(
+      'preview-fit-reset',
+    )
   })
 
   it('renders bounded loading and error image preview states', async () => {

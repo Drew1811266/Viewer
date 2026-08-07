@@ -49,7 +49,7 @@
   { "id": "RAD-06", "wave": 2, "referenceState": "radial-readonly", "sceneGroup": "viewing", "components": ["RadialFileMenu", "RadialMenuModel"] },
   { "id": "RAD-07", "wave": 2, "referenceState": "radial-keyboard", "sceneGroup": "viewing", "components": ["RadialFileMenu"] },
   { "id": "PRE-01", "wave": 2, "referenceState": "preview-fit", "sceneGroup": "viewing", "components": ["ImagePreview"] },
-  { "id": "PRE-02", "wave": 2, "referenceState": "preview-100", "sceneGroup": "viewing", "components": ["ImagePreview"] },
+  { "id": "PRE-02", "wave": 2, "referenceState": "preview-fit-reset", "sceneGroup": "viewing", "components": ["ImagePreview"] },
   { "id": "PRE-03", "wave": 2, "referenceState": "preview-zoom", "sceneGroup": "viewing", "components": ["ImagePreview"] },
   { "id": "PRE-04", "wave": 2, "referenceState": "preview-rotate", "sceneGroup": "viewing", "components": ["ImagePreview"] },
   { "id": "PRE-05", "wave": 2, "referenceState": "preview-loading", "sceneGroup": "viewing", "components": ["ImagePreview"] },

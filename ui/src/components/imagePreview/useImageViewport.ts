@@ -25,7 +25,6 @@ export interface ImageViewport {
   panBounds: Point
   transform: string
   setFit: () => void
-  setOriginal: () => void
   zoomBy: (factor: number, anchor: Point) => void
   panBy: (delta: Point) => void
   rotateClockwise: () => void
@@ -40,13 +39,6 @@ export function useImageViewport(initialGeometry: ImageViewportGeometry): ImageV
   const setFit = useCallback(() => {
     setState((current) => ({ ...current, mode: 'fit', zoom: 1, offset: { x: 0, y: 0 } }))
   }, [])
-
-  const setOriginal = useCallback(() => {
-    setState((current) => {
-      const next = { ...current, mode: 'original' as const, zoom: 1 }
-      return { ...next, offset: clampOffset(next.offset, panBounds(next, geometry)) }
-    })
-  }, [geometry])
 
   const zoomBy = useCallback(
     (factor: number, anchor: Point) => {
@@ -104,7 +96,6 @@ export function useImageViewport(initialGeometry: ImageViewportGeometry): ImageV
     panBounds: bounds,
     transform,
     setFit,
-    setOriginal,
     zoomBy,
     panBy,
     rotateClockwise,

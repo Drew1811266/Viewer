@@ -29,11 +29,12 @@ function state(overrides: Partial<ImageViewportState> = {}): ImageViewportState 
 }
 
 describe('image viewport geometry', () => {
-  it('derives fit, original, free, and rotated pan bounds from literal dimensions', () => {
+  it('treats fitted display as the only 100% baseline', () => {
     expect(displayScale(state(), GEOMETRY)).toBeCloseTo(0.45)
+    expect(displayScale(state({ mode: 'free', zoom: 1.5 }), GEOMETRY)).toBeCloseTo(0.675)
+    expect(displayScale(state({ mode: 'free', zoom: 2 }), GEOMETRY)).toBeCloseTo(0.9)
     expect(displayScale(state({ rotation: 90 }), GEOMETRY)).toBeCloseTo(0.36)
     expect(panBounds(state(), GEOMETRY)).toEqual({ x: 0, y: 0 })
-    expect(panBounds(state({ mode: 'original' }), GEOMETRY)).toEqual({ x: 250, y: 200 })
     expect(panBounds(state({ mode: 'free', zoom: 2 }), GEOMETRY)).toEqual({ x: 200, y: 160 })
     expect(panBounds(state({ mode: 'free', zoom: 2, rotation: 90 }), GEOMETRY)).toEqual({
       x: 38,
@@ -51,7 +52,7 @@ describe('image viewport geometry', () => {
       source: { width: 100, height: 50 },
       fitInset: 0.9,
     }
-    const rotated = state({ mode: 'original', rotation: 90 })
+    const rotated = state({ mode: 'free', zoom: 1, rotation: 90 })
 
     expect(sourcePointToStagePoint({ x: 0, y: 0 }, rotated, geometry)).toEqual({
       x: 275,
@@ -117,7 +118,7 @@ describe('image viewport geometry', () => {
       fitInset: 0.9,
     }
     expect(displayScale(state(), empty)).toBe(0)
-    expect(panBounds(state({ mode: 'original' }), empty)).toEqual({ x: 0, y: 0 })
+    expect(panBounds(state({ mode: 'free', zoom: 2 }), empty)).toEqual({ x: 0, y: 0 })
     expect(stagePointToSourcePoint({ x: 0, y: 0 }, state(), empty)).toBeNull()
     expect(sourcePointAtStagePoint({ x: 0, y: 0 }, state(), empty)).toBeNull()
   })

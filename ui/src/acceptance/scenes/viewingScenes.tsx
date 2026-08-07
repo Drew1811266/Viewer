@@ -51,7 +51,7 @@ export const VIEWING_SCENES: AcceptanceSceneRegistry = {
   'RAD-06': (props) => <RadialScene {...props} state="readonly" />,
   'RAD-07': (props) => <RadialScene {...props} state="keyboard" />,
   'PRE-01': (props) => <PreviewScene {...props} state="fit" />,
-  'PRE-02': (props) => <PreviewScene {...props} state="original" />,
+  'PRE-02': (props) => <PreviewScene {...props} state="fit_reset" />,
   'PRE-03': (props) => <PreviewScene {...props} state="zoom" />,
   'PRE-04': (props) => <PreviewScene {...props} state="rotate" />,
   'PRE-05': (props) => <PreviewScene {...props} state="loading" />,
@@ -209,7 +209,7 @@ function workspaceThumbnailsReady(): boolean {
 
 type PreviewState =
   | 'fit'
-  | 'original'
+  | 'fit_reset'
   | 'zoom'
   | 'rotate'
   | 'loading'
@@ -224,7 +224,10 @@ function PreviewScene({ state }: { request: AcceptanceRequest; state: PreviewSta
   useEffect(() => {
     if (acted.current) return
     acted.current = true
-    if (state === 'original') namedButton('按 100% 显示')?.click()
+    if (state === 'fit_reset') {
+      namedButton('放大')?.click()
+      namedButton('适应窗口')?.click()
+    }
     if (state === 'zoom') {
       namedButton('放大')?.click()
       namedButton('放大')?.click()
@@ -469,7 +472,13 @@ function menuItem(name: string): HTMLButtonElement | undefined {
 }
 
 function namedButton(name: string): HTMLButtonElement | null {
-  return document.querySelector<HTMLButtonElement>(`button[aria-label="${name}"]`)
+  return (
+    document.querySelector<HTMLButtonElement>(`button[aria-label="${name}"]`) ??
+    [...document.querySelectorAll<HTMLButtonElement>('button')].find(
+      (button) => button.textContent?.trim() === name,
+    ) ??
+    null
+  )
 }
 
 function noOp() {}

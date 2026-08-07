@@ -1,4 +1,4 @@
-export type PreviewMode = 'fit' | 'original' | 'free'
+export type PreviewMode = 'fit' | 'free'
 export type PreviewRotation = 0 | 90 | 180 | 270
 
 export interface Point {
@@ -29,7 +29,6 @@ export const MAX_PREVIEW_ZOOM = 8
 
 export function displayScale(state: ImageViewportState, geometry: ImageViewportGeometry): number {
   if (!hasArea(geometry.stage) || !hasArea(geometry.source)) return 0
-  if (state.mode === 'original') return 1
   const quarterTurn = state.rotation === 90 || state.rotation === 270
   const sourceWidth = quarterTurn ? geometry.source.height : geometry.source.width
   const sourceHeight = quarterTurn ? geometry.source.width : geometry.source.height

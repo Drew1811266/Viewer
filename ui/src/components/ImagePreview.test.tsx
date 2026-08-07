@@ -42,7 +42,7 @@ describe('ImagePreview', () => {
     )
     expect(screen.getByRole('toolbar', { name: '图片预览工具' })).toBeVisible()
     expect(screen.getByRole('button', { name: '适应窗口' })).toBeVisible()
-    expect(screen.getByRole('button', { name: '按 100% 显示' })).toBeVisible()
+    expect(screen.queryByRole('button', { name: '按 100% 显示' })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: '关闭预览' })).toBeVisible()
   })
 
@@ -158,14 +158,14 @@ describe('ImagePreview', () => {
 
     expect(screen.getByLabelText('raw.cr2 .CR2 暂不支持预览')).toBeVisible()
     expect(screen.getByRole('button', { name: '适应窗口' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: '按 100% 显示' })).toBeDisabled()
+    expect(screen.queryByRole('button', { name: '按 100% 显示' })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: '缩小' })).toBeDisabled()
     expect(screen.getByRole('button', { name: '放大' })).toBeDisabled()
     expect(screen.getByRole('button', { name: '顺时针旋转' })).toBeDisabled()
     expect(request).not.toHaveBeenCalled()
   })
 
-  it('starts fitted, rotates for display, and requests original only for explicit 100%', async () => {
+  it('uses fitted display as the only 100% baseline and resets zoom through one control', async () => {
     const files = [image(1), image(2), image(3)]
     const request = vi.fn(
       async (file: BrowserFile, representation: ImageRepresentationRequest) => ({
@@ -192,18 +192,21 @@ describe('ImagePreview', () => {
     expect(screen.getByText('1600 × 1200 px · 200 B')).toBeVisible()
     expect(preview).toHaveAttribute('data-mode', 'fit')
     expect(request.mock.calls.every((call) => call[1].kind === 'fit_preview')).toBe(true)
+    expect(screen.queryByRole('button', { name: '按 100% 显示' })).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: '放大' }))
+    expect(screen.getByText('125%', { selector: '.preview-scale-label' })).toBeVisible()
+    expect(screen.getByRole('button', { name: '适应窗口' })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    )
+    fireEvent.click(screen.getByRole('button', { name: '适应窗口' }))
+    expect(screen.getByText('100%', { selector: '.preview-scale-label' })).toBeVisible()
+    expect(screen.getByRole('button', { name: '适应窗口' })).toHaveAttribute('aria-pressed', 'true')
 
     fireEvent.click(screen.getByRole('button', { name: '顺时针旋转' }))
     expect(preview.getAttribute('style')).toContain('rotate(90deg) scale(')
-
-    fireEvent.click(screen.getByRole('button', { name: '按 100% 显示' }))
-    await waitFor(() =>
-      expect(request).toHaveBeenCalledWith(
-        defined(files[1], 'Expected second preview image'),
-        expect.objectContaining({ kind: 'original100_percent' }),
-        expect.any(AbortSignal),
-      ),
-    )
+    expect(request.mock.calls.every((call) => call[1].kind === 'fit_preview')).toBe(true)
   })
 
   it('navigates in stable content order and prefetches no more than three fit images', async () => {
@@ -337,8 +340,8 @@ describe('ImagePreview', () => {
         expect.any(AbortSignal),
       ),
     )
-    fireEvent.click(screen.getByRole('button', { name: '按 100% 显示' }))
-    await screen.findByRole('img', { name: '1.jpg' })
+    fireEvent.click(screen.getByRole('button', { name: '放大' }))
+    fireEvent.click(screen.getByRole('button', { name: '适应窗口' }))
     expect(
       request.mock.calls.filter(
         ([, representation]) => representation.kind === 'original100_percent',

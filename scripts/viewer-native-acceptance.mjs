@@ -734,7 +734,8 @@ export function buildStateEntryPlan(id) {
     ],
     'PRE-02': [
       ...openImagePreview(),
-      { kind: 'click', target: { name: '按 100% 显示' } },
+      { kind: 'click', target: { role: 'AXButton', name: '放大' } },
+      { kind: 'click', target: { name: '适应窗口' } },
       { kind: 'assert', target: { role: 'AXStaticText', name: '100%' } },
     ],
     'PRE-03': [

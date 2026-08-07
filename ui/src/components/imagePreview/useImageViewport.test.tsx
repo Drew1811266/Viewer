@@ -7,20 +7,13 @@ const STAGE = { width: 500, height: 400 }
 const SOURCE = { width: 1000, height: 800 }
 
 describe('useImageViewport', () => {
-  it('owns every display mode and resets the viewport for a new entity', () => {
+  it('uses fit as the sole reset mode and resets the viewport for a new entity', () => {
     const hook = renderHook(() => useImageViewport({ stage: STAGE, source: SOURCE, fitInset: 0.9 }))
+    expect(hook.result.current).not.toHaveProperty('setOriginal')
 
-    act(() => hook.result.current.setOriginal())
-    expect(hook.result.current.state).toEqual({
-      mode: 'original',
-      zoom: 1,
-      rotation: 0,
-      offset: { x: 0, y: 0 },
-    })
-    expect(hook.result.current.scale).toBe(1)
-
-    act(() => hook.result.current.panBy({ x: 999, y: -999 }))
-    expect(hook.result.current.state.offset).toEqual({ x: 250, y: -200 })
+    act(() => hook.result.current.zoomBy(2, { x: 400, y: 300 }))
+    expect(hook.result.current.state.mode).toBe('free')
+    expect(hook.result.current.state.zoom).toBe(2)
 
     act(() => hook.result.current.setFit())
     expect(hook.result.current.state).toEqual({
@@ -71,14 +64,14 @@ describe('useImageViewport', () => {
   it('uses one bounded pan action for deltas, rotation, and measurement changes', () => {
     const hook = renderHook(() => useImageViewport({ stage: STAGE, source: SOURCE, fitInset: 0.9 }))
 
-    act(() => hook.result.current.setOriginal())
+    act(() => hook.result.current.zoomBy(2, { x: 250, y: 200 }))
     act(() => hook.result.current.panBy({ x: 200, y: 150 }))
     act(() => hook.result.current.panBy({ x: 100, y: 100 }))
-    expect(hook.result.current.state.offset).toEqual({ x: 250, y: 200 })
+    expect(hook.result.current.state.offset).toEqual({ x: 200, y: 160 })
 
     act(() => hook.result.current.rotateClockwise())
     expect(hook.result.current.state.rotation).toBe(90)
-    expect(hook.result.current.state.offset).toEqual({ x: 150, y: 200 })
+    expect(hook.result.current.state.offset).toEqual({ x: 38, y: 160 })
 
     act(() => hook.result.current.rotateClockwise())
     act(() => hook.result.current.rotateClockwise())
@@ -87,7 +80,7 @@ describe('useImageViewport', () => {
 
     act(() => hook.result.current.setMeasurements({ width: 900, height: 700 }, SOURCE))
     expect(hook.result.current.geometry.stage).toEqual({ width: 900, height: 700 })
-    expect(hook.result.current.state.offset).toEqual({ x: 50, y: 50 })
+    expect(hook.result.current.state.offset).toEqual({ x: 38, y: 160 })
 
     act(() => hook.result.current.setMeasurements(STAGE, { width: 0, height: 0 }))
     expect(hook.result.current.state.offset).toEqual({ x: 0, y: 0 })

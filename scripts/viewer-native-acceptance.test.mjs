@@ -629,9 +629,13 @@ describe('state entry plans', () => {
     )
     assert.deepEqual(
       buildStateEntryPlan('PRE-02').filter(
-        (step) => step.kind === 'click' && step.target?.name === '按 100% 显示',
+        (step) =>
+          step.kind === 'click' && ['放大', '适应窗口'].includes(step.target?.name),
       ),
-      [{ kind: 'click', target: { name: '按 100% 显示' } }],
+      [
+        { kind: 'click', target: { role: 'AXButton', name: '放大' } },
+        { kind: 'click', target: { name: '适应窗口' } },
+      ],
     )
     assert.deepEqual(
       buildStateEntryPlan('PRE-03').filter((step) => step.kind === 'click').slice(-2),

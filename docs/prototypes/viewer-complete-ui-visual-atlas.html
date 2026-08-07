@@ -823,7 +823,7 @@
       max-height: 94%;
       max-width: 84%;
     }
-    .preview-stage[data-preview-state="100"] img { height: auto; max-height: none; max-width: none; width: 760px; }
+    .preview-stage[data-preview-state="fit-reset"] img { max-height: 84%; max-width: 84%; }
     .preview-stage[data-preview-state="zoom"] img { max-height: 110%; max-width: 96%; transform: scale(1.18); }
     .preview-stage[data-preview-state="rotate"] img { max-height: 76%; max-width: 66%; transform: rotate(90deg); }
     .preview-loading,
@@ -1982,7 +1982,7 @@
       const states = stateBar([{
         label: "图片预览",
         key: "preview",
-        items: [["fit", "适应"], ["100", "100%"], ["zoom", "缩放"], ["rotate", "旋转"], ["loading", "加载"], ["error", "错误"], ["navigation", "导航"]],
+        items: [["fit", "适应"], ["fit-reset", "适窗重置"], ["zoom", "缩放"], ["rotate", "旋转"], ["loading", "加载"], ["error", "错误"], ["navigation", "导航"]],
       }]);
       let stage = image(0, "图片预览");
       if (state.preview === "loading") {
@@ -1990,9 +1990,9 @@
       } else if (state.preview === "error") {
         stage = '<div class="preview-error"><strong>无法显示这张图片</strong><span>源文件可能已移动或暂时不可读取。</span><button class="viewer-button">重试</button></div>';
       }
-      const scaleLabel = state.preview === "100" ? "100%" : state.preview === "zoom" ? "132%" : "74%";
+      const scaleLabel = state.preview === "zoom" ? "132%" : "100%";
       const navigation = state.preview === "navigation" ? '<div class="preview-nav"><button>上一张</button><span>1 / 30</span><button>下一张</button></div>' : "";
-      return `<div class="viewer-window">${states}<div class="preview-shell"><header class="preview-toolbar"><div class="preview-identity"><strong>2C2A7469.JPG</strong><span>2400 × 3200 · 3.8 MB</span></div><div class="segmented"><button class="${state.preview === "fit" ? "active" : ""}">适应</button><button class="${state.preview === "100" ? "active" : ""}">100%</button><button>缩小</button><button class="${state.preview === "zoom" ? "active" : ""}">${scaleLabel}</button><button>放大</button></div><div class="preview-actions"><button class="viewer-button${state.preview === "rotate" ? " active" : ""}">旋转</button><button class="viewer-button primary">完成</button></div></header><section class="preview-stage" data-preview-state="${state.preview}">${stage}${navigation}</section></div></div>`;
+      return `<div class="viewer-window">${states}<div class="preview-shell"><header class="preview-toolbar"><div class="preview-identity"><strong>2C2A7469.JPG</strong><span>2400 × 3200 · 3.8 MB</span></div><div class="segmented"><button class="${state.preview === "fit" || state.preview === "fit-reset" ? "active" : ""}">适应窗口</button><button>缩小</button><span class="preview-scale">${scaleLabel}</span><button>放大</button></div><div class="preview-actions"><button class="viewer-button${state.preview === "rotate" ? " active" : ""}">旋转</button><button class="viewer-button primary">完成</button></div></header><section class="preview-stage" data-preview-state="${state.preview}">${stage}${navigation}</section></div></div>`;
     }
 
     function compareScreen() {

@@ -261,7 +261,7 @@ describe('complete Viewer visual atlas', () => {
     clickScreen(document, 'preview')
     for (const previewState of [
       'preview-fit',
-      'preview-100',
+      'preview-fit-reset',
       'preview-zoom',
       'preview-rotate',
       'preview-loading',
@@ -273,6 +273,12 @@ describe('complete Viewer visual atlas', () => {
         document.querySelector('[data-preview-state]')?.getAttribute('data-preview-state'),
       ).toBe(previewState.replace('preview-', ''))
     }
+    clickState(document, 'preview-fit-reset')
+    expect(
+      [...document.querySelectorAll('.preview-toolbar .segmented > *')].filter(
+        (control) => control.textContent?.trim() === '100%',
+      ),
+    ).toHaveLength(1)
 
     clickScreen(document, 'compare')
     for (const compareState of ['compare-2', 'compare-3', 'compare-4', 'compare-many']) {

@@ -6,15 +6,31 @@ use std::{
     sync::Mutex,
 };
 use viewer_application::{
-    ThumbnailDensity, VIEWER_SETTINGS_SCHEMA_VERSION, ViewerSettings, ViewerSettingsError,
-    ViewerSettingsPort,
+    MagnifierArea, MagnifierMagnification, MagnifierPreferences, MagnifierShape, ThumbnailDensity,
+    VIEWER_SETTINGS_SCHEMA_VERSION, ViewerSettings, ViewerSettingsError, ViewerSettingsPort,
 };
 
 #[derive(Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct StoredViewerSettings {
+struct StoredViewerSettingsV1 {
     schema_version: u32,
     thumbnail_density: ThumbnailDensity,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct StoredViewerSettingsV2 {
+    schema_version: u32,
+    thumbnail_density: ThumbnailDensity,
+    magnifier: StoredMagnifierPreferences,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct StoredMagnifierPreferences {
+    shape: MagnifierShape,
+    magnification: u8,
+    area: MagnifierArea,
 }
 
 pub struct JsonViewerSettingsStore {
@@ -33,15 +49,9 @@ impl JsonViewerSettingsStore {
 
 impl ViewerSettingsPort for JsonViewerSettingsStore {
     fn load(&self) -> ViewerSettings {
-        let settings = fs::read_to_string(self.directory.join("settings.json"))
+        fs::read_to_string(self.directory.join("settings.json"))
             .ok()
-            .and_then(|json| serde_json::from_str::<StoredViewerSettings>(&json).ok())
-            .filter(|settings| settings.schema_version == VIEWER_SETTINGS_SCHEMA_VERSION);
-
-        settings
-            .map(|settings| ViewerSettings {
-                thumbnail_density: settings.thumbnail_density,
-            })
+            .and_then(|json| parse_stored_settings(&json))
             .unwrap_or_default()
     }
 
@@ -52,9 +62,14 @@ impl ViewerSettingsPort for JsonViewerSettingsStore {
             .map_err(|_| ViewerSettingsError::Unavailable)?;
         fs::create_dir_all(&self.directory).map_err(|_| ViewerSettingsError::Unavailable)?;
 
-        let serialized = serde_json::to_vec(&StoredViewerSettings {
+        let serialized = serde_json::to_vec(&StoredViewerSettingsV2 {
             schema_version: VIEWER_SETTINGS_SCHEMA_VERSION,
             thumbnail_density: settings.thumbnail_density,
+            magnifier: StoredMagnifierPreferences {
+                shape: settings.magnifier.shape,
+                magnification: settings.magnifier.magnification.into(),
+                area: settings.magnifier.area,
+            },
         })
         .map_err(|_| ViewerSettingsError::Unavailable)?;
         let temporary_path = self.directory.join("settings.json.tmp");
@@ -72,10 +87,38 @@ impl ViewerSettingsPort for JsonViewerSettingsStore {
     }
 }
 
+fn parse_stored_settings(json: &str) -> Option<ViewerSettings> {
+    let value = serde_json::from_str::<serde_json::Value>(json).ok()?;
+    match value.get("schemaVersion")?.as_u64()? {
+        1 => {
+            let stored = serde_json::from_value::<StoredViewerSettingsV1>(value).ok()?;
+            (stored.schema_version == 1).then_some(ViewerSettings {
+                thumbnail_density: stored.thumbnail_density,
+                magnifier: MagnifierPreferences::default(),
+            })
+        }
+        2 => {
+            let stored = serde_json::from_value::<StoredViewerSettingsV2>(value).ok()?;
+            let magnification =
+                MagnifierMagnification::try_from(stored.magnifier.magnification).ok()?;
+            (stored.schema_version == VIEWER_SETTINGS_SCHEMA_VERSION).then_some(ViewerSettings {
+                thumbnail_density: stored.thumbnail_density,
+                magnifier: MagnifierPreferences {
+                    shape: stored.magnifier.shape,
+                    magnification,
+                    area: stored.magnifier.area,
+                },
+            })
+        }
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::JsonViewerSettingsStore;
     use viewer_application::{
+        MagnifierArea, MagnifierMagnification, MagnifierPreferences, MagnifierShape,
         ThumbnailDensity, ViewerSettings, ViewerSettingsError, ViewerSettingsPort,
     };
 
@@ -84,7 +127,7 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let store = JsonViewerSettingsStore::new(directory.path().to_path_buf());
 
-        assert_eq!(store.load().thumbnail_density, ThumbnailDensity::Standard);
+        assert_eq!(store.load(), ViewerSettings::default());
     }
 
     #[test]
@@ -94,6 +137,11 @@ mod tests {
         store
             .save(ViewerSettings {
                 thumbnail_density: ThumbnailDensity::Large,
+                magnifier: MagnifierPreferences {
+                    shape: MagnifierShape::RoundedRectangle,
+                    magnification: MagnifierMagnification::Five,
+                    area: MagnifierArea::Medium,
+                },
             })
             .unwrap();
 
@@ -101,15 +149,30 @@ mod tests {
         assert_eq!(
             serde_json::from_str::<serde_json::Value>(&json).unwrap(),
             serde_json::json!({
-                "schemaVersion": 1,
-                "thumbnailDensity": "large"
+                "schemaVersion": 2,
+                "thumbnailDensity": "large",
+                "magnifier": {
+                    "shape": "rounded_rectangle",
+                    "magnification": 5,
+                    "area": "medium"
+                }
             })
         );
-        assert_eq!(store.load().thumbnail_density, ThumbnailDensity::Large);
+        assert_eq!(
+            store.load(),
+            ViewerSettings {
+                thumbnail_density: ThumbnailDensity::Large,
+                magnifier: MagnifierPreferences {
+                    shape: MagnifierShape::RoundedRectangle,
+                    magnification: MagnifierMagnification::Five,
+                    area: MagnifierArea::Medium,
+                },
+            }
+        );
     }
 
     #[test]
-    fn version_one_larger_thumbnail_densities_load_and_save_without_a_schema_change() {
+    fn version_one_preserves_density_and_receives_magnifier_defaults() {
         for public_value in ["extra_large", "maximum"] {
             let directory = tempfile::tempdir().unwrap();
             std::fs::write(
@@ -128,16 +191,40 @@ mod tests {
                 serde_json::to_value(loaded.thumbnail_density).unwrap(),
                 serde_json::json!(public_value)
             );
-            store.save(loaded).unwrap();
-            let saved = std::fs::read_to_string(directory.path().join("settings.json")).unwrap();
-            assert_eq!(
-                serde_json::from_str::<serde_json::Value>(&saved).unwrap(),
-                serde_json::json!({
-                    "schemaVersion": 1,
-                    "thumbnailDensity": public_value,
-                })
-            );
+            assert_eq!(loaded.magnifier, MagnifierPreferences::default());
         }
+    }
+
+    #[test]
+    fn version_two_loads_every_bounded_magnifier_value() {
+        let directory = tempfile::tempdir().unwrap();
+        std::fs::write(
+            directory.path().join("settings.json"),
+            serde_json::json!({
+                "schemaVersion": 2,
+                "thumbnailDensity": "maximum",
+                "magnifier": {
+                    "shape": "rounded_rectangle",
+                    "magnification": 6,
+                    "area": "large"
+                }
+            })
+            .to_string(),
+        )
+        .unwrap();
+        let store = JsonViewerSettingsStore::new(directory.path().to_path_buf());
+
+        assert_eq!(
+            store.load(),
+            ViewerSettings {
+                thumbnail_density: ThumbnailDensity::Maximum,
+                magnifier: MagnifierPreferences {
+                    shape: MagnifierShape::RoundedRectangle,
+                    magnification: MagnifierMagnification::Six,
+                    area: MagnifierArea::Large,
+                },
+            }
+        );
     }
 
     #[test]
@@ -203,12 +290,71 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         std::fs::write(
             directory.path().join("settings.json"),
-            r#"{"schemaVersion":2,"thumbnailDensity":"large"}"#,
+            r#"{"schemaVersion":3,"thumbnailDensity":"large"}"#,
         )
         .unwrap();
         let store = JsonViewerSettingsStore::new(directory.path().to_path_buf());
 
         assert_eq!(store.load().thumbnail_density, ThumbnailDensity::Standard);
+    }
+
+    #[test]
+    fn malformed_version_two_values_use_all_defaults() {
+        let invalid_values = [
+            serde_json::json!({
+                "schemaVersion": 2,
+                "thumbnailDensity": "large",
+                "magnifier": { "shape": "circle", "magnification": 2, "area": "small" }
+            }),
+            serde_json::json!({
+                "schemaVersion": 2,
+                "thumbnailDensity": "large",
+                "magnifier": { "shape": "circle", "magnification": 7, "area": "small" }
+            }),
+            serde_json::json!({
+                "schemaVersion": 2,
+                "thumbnailDensity": "large",
+                "magnifier": { "shape": "circle", "magnification": "4", "area": "small" }
+            }),
+            serde_json::json!({
+                "schemaVersion": 2,
+                "thumbnailDensity": "large",
+                "magnifier": { "shape": "square", "magnification": 4, "area": "small" }
+            }),
+            serde_json::json!({
+                "schemaVersion": 2,
+                "thumbnailDensity": "large",
+                "magnifier": { "shape": "circle", "magnification": 4, "area": "huge" }
+            }),
+            serde_json::json!({
+                "schemaVersion": 2,
+                "thumbnailDensity": "large",
+                "magnifier": { "shape": "circle", "magnification": 4, "area": "small" },
+                "unexpected": true
+            }),
+            serde_json::json!({
+                "schemaVersion": 2,
+                "thumbnailDensity": "large",
+                "magnifier": {
+                    "shape": "circle",
+                    "magnification": 4,
+                    "area": "small",
+                    "unexpected": true
+                }
+            }),
+        ];
+
+        for invalid in invalid_values {
+            let directory = tempfile::tempdir().unwrap();
+            std::fs::write(
+                directory.path().join("settings.json"),
+                invalid.to_string(),
+            )
+            .unwrap();
+            let store = JsonViewerSettingsStore::new(directory.path().to_path_buf());
+
+            assert_eq!(store.load(), ViewerSettings::default(), "input: {invalid}");
+        }
     }
 
     #[test]
@@ -225,6 +371,7 @@ mod tests {
         assert_eq!(
             store.save(ViewerSettings {
                 thumbnail_density: ThumbnailDensity::Large,
+                magnifier: MagnifierPreferences::default(),
             }),
             Err(ViewerSettingsError::Unavailable)
         );

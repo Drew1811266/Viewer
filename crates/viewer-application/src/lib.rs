@@ -36,8 +36,9 @@ pub use ports::{
 pub use project::{ActiveProject, PreparedProject, ProjectOpenError, ProjectSessionService};
 pub use session::{ProjectSession, SessionState, SessionTransitionError};
 pub use settings::{
-    ThumbnailDensity, VIEWER_SETTINGS_SCHEMA_VERSION, ViewerSettings, ViewerSettingsError,
-    ViewerSettingsPort, ViewerSettingsService,
+    MagnifierArea, MagnifierMagnification, MagnifierPreferences, MagnifierShape, ThumbnailDensity,
+    VIEWER_SETTINGS_SCHEMA_VERSION, ViewerSettings, ViewerSettingsError, ViewerSettingsPort,
+    ViewerSettingsService,
 };
 pub use text::{
     MAX_TEXT_PREVIEW_BYTES, TextEncoding, TextPreview, TextPreviewError, TextPreviewPort,

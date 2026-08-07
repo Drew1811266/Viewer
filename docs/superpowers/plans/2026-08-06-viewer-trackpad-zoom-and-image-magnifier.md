@@ -57,7 +57,7 @@
 }
 ```
 
-- [ ] **Step 1: Add failing application-domain tests for bounded defaults and complete saves**
+- [x] **Step 1: Add failing application-domain tests for bounded defaults and complete saves**
 
 In `crates/viewer-application/src/settings.rs`, replace the density-only service expectations with tests that assert:
 
@@ -78,7 +78,7 @@ assert_eq!(
 
 Add a table test proving that `MagnifierMagnification::try_from` accepts only 3, 4, 5, and 6 and that `u8::from(value)` round-trips each accepted value. Update the memory-port test so `service.update(expected)` saves exactly `expected`; retain the failing-store test and assert that it returns `ViewerSettingsError::Unavailable` without changing the last confirmed value.
 
-- [ ] **Step 2: Add failing infrastructure tests for v1 migration and exact v2 parsing**
+- [x] **Step 2: Add failing infrastructure tests for v1 migration and exact v2 parsing**
 
 In `crates/viewer-infrastructure/src/settings.rs`, write tests for all of these cases before production edits:
 
@@ -109,7 +109,7 @@ assert_eq!(loaded.magnifier.area, MagnifierArea::Large);
 
 Also add one case for each invalid v2 magnification (`2`, `7`, and a string), invalid shape, invalid area, extra top-level field, extra nested field, malformed JSON, and future schema version `3`; every case must equal `ViewerSettings::default()`. Change the round-trip assertion from schema 1 to the exact schema-2 JSON shown in this task.
 
-- [ ] **Step 3: Run the focused Rust tests and observe the intended failures**
+- [x] **Step 3: Run the focused Rust tests and observe the intended failures**
 
 ```bash
 cargo test -p viewer-application settings
@@ -118,7 +118,7 @@ cargo test -p viewer-infrastructure settings
 
 Expected: FAIL because schema version 1 and the density-only domain/store do not expose the magnifier contract or migrate v1.
 
-- [ ] **Step 4: Implement typed settings defaults and full-value service updates**
+- [x] **Step 4: Implement typed settings defaults and full-value service updates**
 
 In `crates/viewer-application/src/settings.rs`, define:
 
@@ -176,13 +176,13 @@ pub fn update(&self, settings: ViewerSettings) -> Result<ViewerSettings, ViewerS
 
 Re-export every new public type from `crates/viewer-application/src/lib.rs`.
 
-- [ ] **Step 5: Implement strict version-dispatched storage**
+- [x] **Step 5: Implement strict version-dispatched storage**
 
 In `crates/viewer-infrastructure/src/settings.rs`, define separate `StoredViewerSettingsV1`, `StoredViewerSettingsV2`, and `StoredMagnifierPreferences` structs with `camelCase` plus `deny_unknown_fields`. Read JSON once as `serde_json::Value`, inspect only `schemaVersion`, then deserialize the complete matching struct. Convert v1 to `ViewerSettings { thumbnail_density, magnifier: MagnifierPreferences::default() }`; convert v2 through `MagnifierMagnification::try_from`; return defaults for every failed branch. Save only `StoredViewerSettingsV2` with `schemaVersion: 2` using the existing temporary-file, sync, and atomic-rename path.
 
 Do not silently interpret v2 as v1 and do not partially preserve one field from malformed v2.
 
-- [ ] **Step 6: Run the focused Rust tests and confirm green**
+- [x] **Step 6: Run the focused Rust tests and confirm green**
 
 ```bash
 cargo test -p viewer-application settings

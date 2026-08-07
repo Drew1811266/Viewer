@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
-pub const VIEWER_SETTINGS_SCHEMA_VERSION: u32 = 1;
+pub const VIEWER_SETTINGS_SCHEMA_VERSION: u32 = 2;
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -14,9 +14,68 @@ pub enum ThumbnailDensity {
     Maximum,
 }
 
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MagnifierShape {
+    #[default]
+    Circle,
+    RoundedRectangle,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum MagnifierMagnification {
+    Three,
+    #[default]
+    Four,
+    Five,
+    Six,
+}
+
+impl TryFrom<u8> for MagnifierMagnification {
+    type Error = ();
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            3 => Ok(Self::Three),
+            4 => Ok(Self::Four),
+            5 => Ok(Self::Five),
+            6 => Ok(Self::Six),
+            _ => Err(()),
+        }
+    }
+}
+
+impl From<MagnifierMagnification> for u8 {
+    fn from(value: MagnifierMagnification) -> Self {
+        match value {
+            MagnifierMagnification::Three => 3,
+            MagnifierMagnification::Four => 4,
+            MagnifierMagnification::Five => 5,
+            MagnifierMagnification::Six => 6,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MagnifierArea {
+    #[default]
+    Small,
+    Medium,
+    Large,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct MagnifierPreferences {
+    pub shape: MagnifierShape,
+    pub magnification: MagnifierMagnification,
+    pub area: MagnifierArea,
+}
+
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct ViewerSettings {
     pub thumbnail_density: ThumbnailDensity,
+    pub magnifier: MagnifierPreferences,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, thiserror::Error)]
@@ -43,11 +102,10 @@ impl ViewerSettingsService {
         self.store.load()
     }
 
-    pub fn update_thumbnail_density(
+    pub fn update(
         &self,
-        thumbnail_density: ThumbnailDensity,
+        settings: ViewerSettings,
     ) -> Result<ViewerSettings, ViewerSettingsError> {
-        let settings = ViewerSettings { thumbnail_density };
         self.store.save(settings)?;
         Ok(settings)
     }
@@ -87,40 +145,70 @@ mod tests {
     }
 
     #[test]
-    fn default_settings_use_standard_thumbnail_density() {
+    fn default_settings_use_standard_density_and_small_circle_four_x_magnifier() {
+        assert_eq!(VIEWER_SETTINGS_SCHEMA_VERSION, 2);
         assert_eq!(
-            ViewerSettings::default().thumbnail_density,
-            ThumbnailDensity::Standard
+            ViewerSettings::default(),
+            ViewerSettings {
+                thumbnail_density: ThumbnailDensity::Standard,
+                magnifier: MagnifierPreferences {
+                    shape: MagnifierShape::Circle,
+                    magnification: MagnifierMagnification::Four,
+                    area: MagnifierArea::Small,
+                },
+            }
         );
     }
 
     #[test]
-    fn updating_larger_thumbnail_densities_saves_one_complete_settings_value() {
-        for thumbnail_density in [ThumbnailDensity::ExtraLarge, ThumbnailDensity::Maximum] {
-            let store = Arc::new(MemorySettingsPort::default());
-            let service = ViewerSettingsService::new(store.clone());
-
-            let settings = service
-                .update_thumbnail_density(thumbnail_density)
-                .expect("settings update");
-
-            assert_eq!(settings, ViewerSettings { thumbnail_density });
-            assert_eq!(
-                store.saved.lock().expect("settings lock").as_slice(),
-                &[ViewerSettings { thumbnail_density }]
-            );
+    fn magnification_accepts_only_the_four_public_values() {
+        for (public_value, expected) in [
+            (3, MagnifierMagnification::Three),
+            (4, MagnifierMagnification::Four),
+            (5, MagnifierMagnification::Five),
+            (6, MagnifierMagnification::Six),
+        ] {
+            let parsed = MagnifierMagnification::try_from(public_value).expect("public value");
+            assert_eq!(parsed, expected);
+            assert_eq!(u8::from(parsed), public_value);
+        }
+        for rejected in [0, 1, 2, 7, u8::MAX] {
+            assert!(MagnifierMagnification::try_from(rejected).is_err());
         }
     }
 
     #[test]
-    fn updating_thumbnail_density_returns_unavailable_when_save_fails() {
+    fn updating_settings_saves_one_complete_value() {
+        let store = Arc::new(MemorySettingsPort::default());
+        let service = ViewerSettingsService::new(store.clone());
+        let expected = ViewerSettings {
+            thumbnail_density: ThumbnailDensity::Maximum,
+            magnifier: MagnifierPreferences {
+                shape: MagnifierShape::RoundedRectangle,
+                magnification: MagnifierMagnification::Six,
+                area: MagnifierArea::Large,
+            },
+        };
+
+        let saved = service.update(expected).expect("settings update");
+
+        assert_eq!(saved, expected);
+        assert_eq!(
+            store.saved.lock().expect("settings lock").as_slice(),
+            &[expected]
+        );
+    }
+
+    #[test]
+    fn updating_settings_returns_unavailable_without_saving_when_store_fails() {
         let store = Arc::new(MemorySettingsPort::default());
         store.fail.store(true, Ordering::Release);
-        let service = ViewerSettingsService::new(store);
+        let service = ViewerSettingsService::new(store.clone());
 
         assert_eq!(
-            service.update_thumbnail_density(ThumbnailDensity::Maximum),
+            service.update(ViewerSettings::default()),
             Err(ViewerSettingsError::Unavailable)
         );
+        assert!(store.saved.lock().expect("settings lock").is_empty());
     }
 }

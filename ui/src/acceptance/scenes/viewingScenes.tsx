@@ -220,7 +220,7 @@ type PreviewState =
 function PreviewScene({ state }: { request: AcceptanceRequest; state: PreviewState }) {
   const acted = useRef(false)
   const pointerClientPoint = useRef<{ x: number; y: number } | null>(MAGNIFIER_POINTER)
-  const magnifierReady = useMagnifierSceneReady(state)
+  const magnifierReady = useMagnifierSceneReady(state, pointerClientPoint)
   useEffect(() => {
     if (acted.current) return
     acted.current = true
@@ -259,7 +259,10 @@ function PreviewScene({ state }: { request: AcceptanceRequest; state: PreviewSta
   )
 }
 
-function useMagnifierSceneReady(state: PreviewState): boolean {
+function useMagnifierSceneReady(
+  state: PreviewState,
+  pointerClientPoint: { current: { x: number; y: number } | null },
+): boolean {
   const [ready, setReady] = useState(state !== 'magnifier')
   useEffect(() => {
     if (state !== 'magnifier') return
@@ -267,10 +270,44 @@ function useMagnifierSceneReady(state: PreviewState): boolean {
     let pointerFrame: number | undefined
     let firstSettleFrame: number | undefined
     let secondSettleFrame: number | undefined
+    let sampledRenderedImage = false
+    const dispatchPointerAt = (point: { x: number; y: number }) => {
+      const stage = document.querySelector<HTMLElement>('.image-preview-stage')
+      if (stage === null) return false
+      pointerClientPoint.current = point
+      const pointerMove = new MouseEvent('pointermove', {
+        bubbles: true,
+        cancelable: true,
+        clientX: point.x,
+        clientY: point.y,
+      })
+      Object.defineProperty(pointerMove, 'pointerId', { value: 1 })
+      stage.dispatchEvent(pointerMove)
+      return true
+    }
+    const sampleRenderedImage = () => {
+      if (sampledRenderedImage) return true
+      const image = document.querySelector<HTMLElement>('.image-preview-image')
+      if (image === null) return false
+      const bounds = image.getBoundingClientRect()
+      if (bounds.width <= 0 || bounds.height <= 0) return false
+      sampledRenderedImage = dispatchPointerAt({
+        x: bounds.left + bounds.width / 2,
+        y: bounds.top + bounds.height / 2,
+      })
+      return sampledRenderedImage
+    }
     const attempt = () => {
+      sampleRenderedImage()
       const source = document.querySelector<HTMLImageElement>('.image-magnifier__source')
       const lens = document.querySelector<HTMLElement>('.image-magnifier')
-      if (source === null || lens === null || !magnifierSceneReady(lens, source)) return
+      if (
+        source === null ||
+        lens === null ||
+        !magnifierSceneReady(lens, source, pointerClientPoint.current ?? MAGNIFIER_POINTER)
+      ) {
+        return
+      }
       observer.disconnect()
       settleTimer = setTimeout(() => {
         firstSettleFrame = requestAnimationFrame(() => {
@@ -283,16 +320,9 @@ function useMagnifierSceneReady(state: PreviewState): boolean {
     const button = namedButton('放大镜')
     if (button?.getAttribute('aria-pressed') !== 'true') button?.click()
     pointerFrame = requestAnimationFrame(() => {
-      const stage = document.querySelector<HTMLElement>('.image-preview-stage')
-      if (stage === null) return
-      const pointerMove = new MouseEvent('pointermove', {
-        bubbles: true,
-        cancelable: true,
-        clientX: MAGNIFIER_POINTER.x,
-        clientY: MAGNIFIER_POINTER.y,
-      })
-      Object.defineProperty(pointerMove, 'pointerId', { value: 1 })
-      stage.dispatchEvent(pointerMove)
+      if (!sampleRenderedImage()) {
+        dispatchPointerAt(pointerClientPoint.current ?? MAGNIFIER_POINTER)
+      }
     })
     attempt()
     return () => {
@@ -302,18 +332,22 @@ function useMagnifierSceneReady(state: PreviewState): boolean {
       if (firstSettleFrame !== undefined) cancelAnimationFrame(firstSettleFrame)
       if (secondSettleFrame !== undefined) cancelAnimationFrame(secondSettleFrame)
     }
-  }, [state])
+  }, [pointerClientPoint, state])
   return ready
 }
 
-function magnifierSceneReady(lens: HTMLElement, source: HTMLImageElement): boolean {
+function magnifierSceneReady(
+  lens: HTMLElement,
+  source: HTMLImageElement,
+  pointer: { x: number; y: number },
+): boolean {
   return (
     lens.dataset.visible === 'true' &&
     lens.dataset.shape === 'circle' &&
     lens.style.width === '160px' &&
     lens.style.height === '160px' &&
     lens.style.getPropertyValue('--magnifier-scale') === '1.5' &&
-    lens.style.getPropertyValue('--magnifier-x') !== `${MAGNIFIER_POINTER.x}px` &&
+    lens.style.getPropertyValue('--magnifier-x') !== `${pointer.x}px` &&
     source.src.includes(encodeURIComponent(PREVIEW_FILE.name)) &&
     source.src.includes('representation=original100_percent')
   )

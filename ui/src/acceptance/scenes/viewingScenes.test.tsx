@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { defined } from '../../defined'
 import type { AcceptanceRequest } from '../acceptanceRequest'
 import { ACCEPTANCE_STATE_DEFINITIONS } from '../acceptanceStateCatalog'
@@ -11,6 +11,8 @@ const request: AcceptanceRequest = {
   width: 1024,
   height: 720,
 }
+
+afterEach(() => vi.restoreAllMocks())
 
 describe('Viewer viewing acceptance scenes', () => {
   it('covers every viewing catalog state exactly once in ledger order', () => {
@@ -135,6 +137,32 @@ describe('Viewer viewing acceptance scenes', () => {
     rendered.unmount()
   })
 
+  it('samples the rendered image itself for PRE-08 at the 1440×900 viewport', async () => {
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (
+      this: HTMLElement,
+    ) {
+      if (this.classList.contains('image-preview-stage')) {
+        return rectangle(0, 52, 1440, 848)
+      }
+      if (this.classList.contains('image-preview-image')) {
+        return rectangle(440, 290, 560, 373)
+      }
+      return rectangle(0, 0, 0, 0)
+    })
+    const Scene = defined(VIEWING_SCENES['PRE-08'], 'Missing PRE-08 acceptance scene')
+    render(<Scene request={{ id: 'PRE-08', viewport: '1440x900', width: 1440, height: 900 }} />)
+
+    const lens = await screen.findByTestId('image-magnifier')
+    await waitFor(() => expect(lens).toHaveAttribute('data-visible', 'true'))
+    await waitFor(() =>
+      expect(lens.closest('[data-acceptance-scene-ready]')).toHaveAttribute(
+        'data-acceptance-scene-ready',
+        'true',
+      ),
+    )
+    expect(lens.style.getPropertyValue('--magnifier-x')).toBe('818px')
+  })
+
   it.each([
     ['COM-01', 2],
     ['COM-02', 3],
@@ -204,4 +232,18 @@ function renderScene(id: string) {
       }}
     />,
   )
+}
+
+function rectangle(x: number, y: number, width: number, height: number): DOMRect {
+  return {
+    x,
+    y,
+    left: x,
+    top: y,
+    right: x + width,
+    bottom: y + height,
+    width,
+    height,
+    toJSON: () => undefined,
+  } as DOMRect
 }

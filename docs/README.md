@@ -46,6 +46,7 @@ completion.
 | [`superpowers/specs/2026-08-05-viewer-filmstrip-scrollbar-thumbnail-progress-design.md`](superpowers/specs/2026-08-05-viewer-filmstrip-scrollbar-thumbnail-progress-design.md) | Active | — |
 | [`superpowers/specs/2026-08-05-viewer-progressive-folder-loading-design.md`](superpowers/specs/2026-08-05-viewer-progressive-folder-loading-design.md) | Active | — |
 | [`superpowers/specs/2026-08-06-viewer-five-level-thumbnail-slider-design.md`](superpowers/specs/2026-08-06-viewer-five-level-thumbnail-slider-design.md) | Active | — |
+| [`superpowers/specs/2026-08-06-viewer-compare-original-images-and-eight-item-limit-design.md`](superpowers/specs/2026-08-06-viewer-compare-original-images-and-eight-item-limit-design.md) | Active | — |
 | [`superpowers/specs/2026-08-06-viewer-square-image-card-selection-design.md`](superpowers/specs/2026-08-06-viewer-square-image-card-selection-design.md) | Active | — |
 
 ## Superseded decisions
@@ -88,6 +89,7 @@ completion.
 | [`superpowers/plans/2026-08-05-viewer-filmstrip-scrollbar-thumbnail-progress.md`](superpowers/plans/2026-08-05-viewer-filmstrip-scrollbar-thumbnail-progress.md) | Historical | — |
 | [`superpowers/plans/2026-08-05-viewer-progressive-folder-loading.md`](superpowers/plans/2026-08-05-viewer-progressive-folder-loading.md) | Historical | — |
 | [`superpowers/plans/2026-08-06-viewer-five-level-thumbnail-slider-implementation-plan.md`](superpowers/plans/2026-08-06-viewer-five-level-thumbnail-slider-implementation-plan.md) | Historical | — |
+| [`superpowers/plans/2026-08-06-viewer-compare-original-images-and-eight-item-limit.md`](superpowers/plans/2026-08-06-viewer-compare-original-images-and-eight-item-limit.md) | Historical | — |
 | [`superpowers/plans/2026-08-06-viewer-square-image-card-selection.md`](superpowers/plans/2026-08-06-viewer-square-image-card-selection.md) | Historical | — |
 
 ## Historical review evidence

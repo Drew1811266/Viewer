@@ -57,10 +57,18 @@ describe('tauriViewerBridge', () => {
     expect(invoke).toHaveBeenCalledWith('get_viewer_settings')
   })
 
-  it('updates thumbnail density with the narrow density argument', async () => {
-    await tauriViewerBridge.updateThumbnailDensity('maximum')
+  it('updates the complete viewer settings atomically', async () => {
+    await tauriViewerBridge.updateViewerSettings({
+      thumbnailDensity: 'large',
+      magnifier: { shape: 'rounded_rectangle', magnification: 5, area: 'medium' },
+    })
 
-    expect(invoke).toHaveBeenCalledWith('update_thumbnail_density', { density: 'maximum' })
+    expect(invoke).toHaveBeenCalledWith('update_viewer_settings', {
+      settings: {
+        thumbnailDensity: 'large',
+        magnifier: { shape: 'rounded_rectangle', magnification: 5, area: 'medium' },
+      },
+    })
   })
 
   it('rejects an aborted image request immediately and cancels its native request', async () => {

@@ -82,12 +82,13 @@ function bridge(access: 'read_write' | 'read_only' = 'read_write'): ViewerBridge
     closeProject: vi.fn().mockResolvedValue('closed'),
     projectSnapshot: vi.fn().mockResolvedValue(null),
     getViewerSettings: vi.fn().mockResolvedValue({
-      schemaVersion: 1,
+      schemaVersion: 2,
       thumbnailDensity: 'standard',
+      magnifier: { shape: 'circle', magnification: 4, area: 'small' },
     }),
-    updateThumbnailDensity: vi.fn().mockImplementation(async (thumbnailDensity) => ({
-      schemaVersion: 1,
-      thumbnailDensity,
+    updateViewerSettings: vi.fn().mockImplementation(async (settings) => ({
+      schemaVersion: 2,
+      ...settings,
     })),
     folderTree: vi.fn().mockResolvedValue([]),
     queryFolder: vi.fn().mockResolvedValue({ workspace: 'empty' }),
@@ -408,8 +409,8 @@ describe('Viewer empty state', () => {
 
   it('updates thumbnail size optimistically and restores trigger focus when the dialog closes', async () => {
     const viewer = bridge()
-    const save = deferred<Awaited<ReturnType<ViewerBridge['updateThumbnailDensity']>>>()
-    vi.mocked(viewer.updateThumbnailDensity).mockReturnValue(save.promise)
+    const save = deferred<Awaited<ReturnType<ViewerBridge['updateViewerSettings']>>>()
+    vi.mocked(viewer.updateViewerSettings).mockReturnValue(save.promise)
     render(<App bridge={viewer} />)
     fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
     const trigger = await screen.findByRole('button', { name: '更多' })
@@ -548,8 +549,8 @@ describe('Viewer empty state', () => {
 
   it('shows the latest settings save failure and rolls back the thumbnail slider', async () => {
     const viewer = bridge()
-    const save = deferred<Awaited<ReturnType<ViewerBridge['updateThumbnailDensity']>>>()
-    vi.mocked(viewer.updateThumbnailDensity).mockReturnValue(save.promise)
+    const save = deferred<Awaited<ReturnType<ViewerBridge['updateViewerSettings']>>>()
+    vi.mocked(viewer.updateViewerSettings).mockReturnValue(save.promise)
     render(<App bridge={viewer} />)
     fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
     await screen.findByRole('button', { name: '更多' })
@@ -557,7 +558,12 @@ describe('Viewer empty state', () => {
     fireEvent.change(screen.getByRole('slider', { name: '缩略图大小' }), {
       target: { value: '3' },
     })
-    await waitFor(() => expect(viewer.updateThumbnailDensity).toHaveBeenCalledWith('large'))
+    await waitFor(() =>
+      expect(viewer.updateViewerSettings).toHaveBeenCalledWith({
+        thumbnailDensity: 'large',
+        magnifier: { shape: 'circle', magnification: 4, area: 'small' },
+      }),
+    )
 
     save.reject({ userMessage: '设置未能保存' })
 

@@ -2,9 +2,23 @@ export type ProjectAccess = 'read_write' | 'read_only'
 
 export type ThumbnailDensity = 'compact' | 'standard' | 'large' | 'extra_large' | 'maximum'
 
-export interface ViewerSettings {
-  schemaVersion: 1
+export type MagnifierShape = 'circle' | 'rounded_rectangle'
+export type MagnifierMagnification = 3 | 4 | 5 | 6
+export type MagnifierArea = 'small' | 'medium' | 'large'
+
+export interface MagnifierPreferences {
+  shape: MagnifierShape
+  magnification: MagnifierMagnification
+  area: MagnifierArea
+}
+
+export interface ViewerSettingsUpdate {
   thumbnailDensity: ThumbnailDensity
+  magnifier: MagnifierPreferences
+}
+
+export interface ViewerSettings extends ViewerSettingsUpdate {
+  schemaVersion: 2
 }
 
 export interface ProjectSnapshot {

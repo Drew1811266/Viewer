@@ -191,7 +191,7 @@ cargo test -p viewer-infrastructure settings
 
 Expected: both settings test groups pass, including v1 density preservation, exact v2 round-trip, invalid bounded-value fallback, and save failure.
 
-- [ ] **Step 7: Commit the domain and persistence boundary**
+- [x] **Step 7: Commit the domain and persistence boundary**
 
 ```bash
 git add crates/viewer-application/src/settings.rs crates/viewer-application/src/lib.rs crates/viewer-infrastructure/src/settings.rs
@@ -224,7 +224,7 @@ git commit -m "feat: persist magnifier preferences"
 - Produces Tauri command `update_viewer_settings(settings)` and removes the internal command `update_thumbnail_density`.
 - Rejects invalid native magnification with code `invalid_viewer_settings`, category `validation`, and user message `设置值无效，请重新选择。`.
 
-- [ ] **Step 1: Add failing frozen-shape DTO tests**
+- [x] **Step 1: Add failing frozen-shape DTO tests**
 
 In `src-tauri/src/dto/settings.rs`, assert the output DTO serializes to the exact v2 shape and the input DTO accepts the same object without `schemaVersion`. Add rejection tests for magnification 2 and 7, unknown shape/area strings, and unknown fields. The successful expected domain value is:
 
@@ -241,7 +241,7 @@ ViewerSettings {
 
 Add a command-level unit test that converts invalid magnification to `CommandError::new("invalid_viewer_settings", ErrorCategory::Validation, "设置值无效，请重新选择。", false)`.
 
-- [ ] **Step 2: Add failing TypeScript bridge contract tests**
+- [x] **Step 2: Add failing TypeScript bridge contract tests**
 
 In `ui/src/api/viewer.test.ts`, replace the density-only bridge test and assert:
 
@@ -259,7 +259,7 @@ expect(invoke).toHaveBeenCalledWith('update_viewer_settings', {
 })
 ```
 
-- [ ] **Step 3: Run the focused contracts and observe failure**
+- [x] **Step 3: Run the focused contracts and observe failure**
 
 ```bash
 cargo test -p viewer-desktop settings
@@ -268,7 +268,7 @@ pnpm --dir ui exec vitest run src/api
 
 Expected: FAIL because the DTO and bridge still expose schema v1 and `update_thumbnail_density`.
 
-- [ ] **Step 4: Implement the v2 DTO boundary**
+- [x] **Step 4: Implement the v2 DTO boundary**
 
 Add DTO enums for shape and area, `MagnifierPreferencesDto` for output, and this strict input:
 
@@ -291,7 +291,7 @@ pub struct MagnifierPreferencesUpdateDto {
 
 Implement `TryFrom<ViewerSettingsUpdateDto> for ViewerSettings`. Convert the bounded number through the application-domain `TryFrom<u8>` implementation. Serialize output with numeric magnification and `schemaVersion: 2`.
 
-- [ ] **Step 5: Implement and register the complete update command**
+- [x] **Step 5: Implement and register the complete update command**
 
 In `src-tauri/src/commands/settings.rs`, replace the field command with:
 
@@ -308,7 +308,7 @@ pub fn update_viewer_settings(
 
 Define `invalid_viewer_settings` in `src-tauri/src/error.rs` or locally using the exact error contract above. Register `commands::settings::update_viewer_settings` in `src-tauri/src/lib.rs` and remove the old registration.
 
-- [ ] **Step 6: Implement matching TypeScript public types and bridge**
+- [x] **Step 6: Implement matching TypeScript public types and bridge**
 
 In `ui/src/api/types.ts`, define:
 
@@ -343,7 +343,7 @@ and invoke `update_viewer_settings` with `{ settings }`. Update all bridge fixtu
 
 Mechanically update the provider and every listed bridge mock to expose `updateViewerSettings`. Until Task 3 adds editable magnifier fields, the density setter must send the complete currently loaded snapshot with only `thumbnailDensity` replaced. Keep the complete snapshot in a ref so the application compiles and a density write cannot erase migrated magnifier preferences.
 
-- [ ] **Step 7: Run the focused contracts and confirm green**
+- [x] **Step 7: Run the focused contracts and confirm green**
 
 ```bash
 cargo test -p viewer-desktop settings
@@ -372,7 +372,7 @@ git commit -m "refactor: save complete viewer settings"
 - Extends `useViewerSettings()` with `magnifier`, `setMagnifierShape`, `setMagnifierMagnification`, and `setMagnifierArea`.
 - Preserves `thumbnailDensity`, `thumbnailHeight`, `settingsError`, and `setThumbnailDensity`.
 
-- [ ] **Step 1: Add failing default and bounded-choice tests**
+- [x] **Step 1: Add failing default and bounded-choice tests**
 
 Assert the settings helper exports exactly:
 
@@ -386,7 +386,7 @@ expect(MAGNIFIER_MAGNIFICATIONS).toEqual([3, 4, 5, 6])
 expect(MAGNIFIER_AREAS).toEqual(['small', 'medium', 'large'])
 ```
 
-- [ ] **Step 2: Replace density-only provider fixtures and add multi-field queue tests**
+- [x] **Step 2: Replace density-only provider fixtures and add multi-field queue tests**
 
 Change the test helper to build schema-v2 settings. Extend the consumer with outputs for shape, magnification, and area plus buttons that call each setter. Add tests proving:
 
@@ -406,13 +406,13 @@ expect(updateViewerSettings).toHaveBeenNthCalledWith(2, {
 })
 ```
 
-- [ ] **Step 3: Run provider tests and observe failure**
+- [x] **Step 3: Run provider tests and observe failure**
 
 ```bash
 pnpm --dir ui exec vitest run src/settings/viewerSettings.test.ts src/settings/ViewerSettingsProvider.test.tsx
 ```
 
-- [ ] **Step 4: Implement one complete optimistic snapshot**
+- [x] **Step 4: Implement one complete optimistic snapshot**
 
 Store a `ViewerSettingsUpdate` object in React state and in `confirmedRef`, not separate confirmed fields. Use one `commit(next)` callback that clears the error, updates the optimistic object, increments the sequence, appends `bridge.updateViewerSettings(next)` to the existing serialized promise tail, adopts the returned complete snapshot on success, and restores `confirmedRef.current` only when the latest write fails.
 
@@ -439,7 +439,7 @@ const setMagnifierShape = useCallback((shape: MagnifierShape) => {
 
 Apply the same pattern to density, magnification, and area. Synchronize `optimisticRef` when a load, confirmed save, or rollback is adopted. Ensure `enqueue` does not call `setSettingsState`; keep initial-load suppression keyed by the first queued user sequence.
 
-- [ ] **Step 5: Run provider tests and confirm green**
+- [x] **Step 5: Run provider tests and confirm green**
 
 ```bash
 pnpm --dir ui exec vitest run src/settings/viewerSettings.test.ts src/settings/ViewerSettingsProvider.test.tsx

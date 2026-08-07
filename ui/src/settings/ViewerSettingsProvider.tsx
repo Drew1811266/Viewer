@@ -8,29 +8,57 @@ import {
   useRef,
   useState,
 } from 'react'
-import type { ThumbnailDensity } from '../api/types'
+import type {
+  MagnifierArea,
+  MagnifierMagnification,
+  MagnifierPreferences,
+  MagnifierShape,
+  ThumbnailDensity,
+  ViewerSettings,
+  ViewerSettingsUpdate,
+} from '../api/types'
 import type { ViewerBridge } from '../api/viewer'
 import { safeUserMessage } from '../api/viewer'
 import { THUMBNAIL_HEIGHT } from './thumbnailDensity'
+import { DEFAULT_VIEWER_SETTINGS_UPDATE } from './viewerSettings'
 
 export interface ViewerSettingsContextValue {
   thumbnailDensity: ThumbnailDensity
   thumbnailHeight: number
+  magnifier: MagnifierPreferences
   settingsError: string | null
   setThumbnailDensity: (density: ThumbnailDensity) => void
+  setMagnifierShape: (shape: MagnifierShape) => void
+  setMagnifierMagnification: (magnification: MagnifierMagnification) => void
+  setMagnifierArea: (area: MagnifierArea) => void
 }
 
 interface ViewerSettingsProviderProps {
-  bridge: Pick<ViewerBridge, 'getViewerSettings' | 'updateThumbnailDensity'>
+  bridge: Pick<ViewerBridge, 'getViewerSettings' | 'updateViewerSettings'>
   children: ReactNode
 }
 
 const ViewerSettingsContext = createContext<ViewerSettingsContextValue | null>(null)
 
+function withoutSchema(settings: ViewerSettings): ViewerSettingsUpdate {
+  return {
+    thumbnailDensity: settings.thumbnailDensity,
+    magnifier: { ...settings.magnifier },
+  }
+}
+
+function initialSettings(): ViewerSettingsUpdate {
+  return {
+    thumbnailDensity: DEFAULT_VIEWER_SETTINGS_UPDATE.thumbnailDensity,
+    magnifier: { ...DEFAULT_VIEWER_SETTINGS_UPDATE.magnifier },
+  }
+}
+
 export function ViewerSettingsProvider({ bridge, children }: ViewerSettingsProviderProps) {
-  const [thumbnailDensity, setThumbnailDensityState] = useState<ThumbnailDensity>('standard')
+  const [settings, setSettings] = useState<ViewerSettingsUpdate>(initialSettings)
   const [settingsError, setSettingsError] = useState<string | null>(null)
-  const confirmedRef = useRef<ThumbnailDensity>('standard')
+  const optimisticRef = useRef<ViewerSettingsUpdate>(initialSettings())
+  const confirmedRef = useRef<ViewerSettingsUpdate>(initialSettings())
   const latestSequenceRef = useRef(0)
   const writeTailRef = useRef<Promise<void>>(Promise.resolve())
 
@@ -39,8 +67,10 @@ export function ViewerSettingsProvider({ bridge, children }: ViewerSettingsProvi
     void bridge.getViewerSettings().then(
       (loaded) => {
         if (!active || latestSequenceRef.current !== 0) return
-        confirmedRef.current = loaded.thumbnailDensity
-        setThumbnailDensityState(loaded.thumbnailDensity)
+        const next = withoutSchema(loaded)
+        confirmedRef.current = next
+        optimisticRef.current = next
+        setSettings(next)
       },
       () => undefined,
     )
@@ -49,41 +79,100 @@ export function ViewerSettingsProvider({ bridge, children }: ViewerSettingsProvi
     }
   }, [bridge])
 
-  const setThumbnailDensity = useCallback(
-    (nextDensity: ThumbnailDensity) => {
+  const enqueue = useCallback(
+    (next: ViewerSettingsUpdate) => {
       setSettingsError(null)
-      setThumbnailDensityState(nextDensity)
       const sequence = ++latestSequenceRef.current
       writeTailRef.current = writeTailRef.current
         .catch(() => undefined)
-        .then(() => bridge.updateThumbnailDensity(nextDensity))
+        .then(() => bridge.updateViewerSettings(next))
         .then(
           (saved) => {
-            confirmedRef.current = saved.thumbnailDensity
+            const confirmed = withoutSchema(saved)
+            confirmedRef.current = confirmed
             if (sequence === latestSequenceRef.current) {
-              setThumbnailDensityState(saved.thumbnailDensity)
+              optimisticRef.current = confirmed
+              setSettings(confirmed)
               setSettingsError(null)
             }
           },
           (error: unknown) => {
-            if (sequence === latestSequenceRef.current) {
-              setThumbnailDensityState(confirmedRef.current)
-              setSettingsError(safeUserMessage(error))
-            }
+            if (sequence !== latestSequenceRef.current) return
+            optimisticRef.current = confirmedRef.current
+            setSettings(confirmedRef.current)
+            setSettingsError(safeUserMessage(error))
           },
         )
     },
     [bridge],
   )
 
+  const updateOptimistically = useCallback(
+    (recipe: (current: ViewerSettingsUpdate) => ViewerSettingsUpdate) => {
+      const next = recipe(optimisticRef.current)
+      optimisticRef.current = next
+      setSettings(next)
+      enqueue(next)
+    },
+    [enqueue],
+  )
+
+  const setThumbnailDensity = useCallback(
+    (thumbnailDensity: ThumbnailDensity) => {
+      updateOptimistically((current) => ({ ...current, thumbnailDensity }))
+    },
+    [updateOptimistically],
+  )
+
+  const setMagnifierShape = useCallback(
+    (shape: MagnifierShape) => {
+      updateOptimistically((current) => ({
+        ...current,
+        magnifier: { ...current.magnifier, shape },
+      }))
+    },
+    [updateOptimistically],
+  )
+
+  const setMagnifierMagnification = useCallback(
+    (magnification: MagnifierMagnification) => {
+      updateOptimistically((current) => ({
+        ...current,
+        magnifier: { ...current.magnifier, magnification },
+      }))
+    },
+    [updateOptimistically],
+  )
+
+  const setMagnifierArea = useCallback(
+    (area: MagnifierArea) => {
+      updateOptimistically((current) => ({
+        ...current,
+        magnifier: { ...current.magnifier, area },
+      }))
+    },
+    [updateOptimistically],
+  )
+
   const value = useMemo<ViewerSettingsContextValue>(
     () => ({
-      thumbnailDensity,
-      thumbnailHeight: THUMBNAIL_HEIGHT[thumbnailDensity],
+      thumbnailDensity: settings.thumbnailDensity,
+      thumbnailHeight: THUMBNAIL_HEIGHT[settings.thumbnailDensity],
+      magnifier: settings.magnifier,
       settingsError,
       setThumbnailDensity,
+      setMagnifierShape,
+      setMagnifierMagnification,
+      setMagnifierArea,
     }),
-    [settingsError, setThumbnailDensity, thumbnailDensity],
+    [
+      setMagnifierArea,
+      setMagnifierMagnification,
+      setMagnifierShape,
+      setThumbnailDensity,
+      settings,
+      settingsError,
+    ],
   )
 
   return <ViewerSettingsContext.Provider value={value}>{children}</ViewerSettingsContext.Provider>

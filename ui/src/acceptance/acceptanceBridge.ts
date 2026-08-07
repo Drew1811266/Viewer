@@ -28,10 +28,14 @@ export function createAcceptanceBridge(overrides: AcceptanceBridgeOverrides = {}
       return ACCEPTANCE_PROJECT_SNAPSHOT
     },
     async getViewerSettings() {
-      return { schemaVersion: 1 as const, thumbnailDensity: 'standard' as const }
+      return {
+        schemaVersion: 2 as const,
+        thumbnailDensity: 'standard' as const,
+        magnifier: { shape: 'circle' as const, magnification: 4 as const, area: 'small' as const },
+      }
     },
-    async updateThumbnailDensity(thumbnailDensity) {
-      return { schemaVersion: 1 as const, thumbnailDensity }
+    async updateViewerSettings(settings) {
+      return { schemaVersion: 2 as const, ...settings }
     },
     async folderTree() {
       return ACCEPTANCE_FOLDER_TREE

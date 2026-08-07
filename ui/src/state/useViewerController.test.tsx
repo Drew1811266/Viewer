@@ -65,12 +65,13 @@ function bridge(access: 'read_write' | 'read_only' = 'read_write'): ViewerBridge
     closeProject: vi.fn().mockResolvedValue('closed'),
     projectSnapshot: vi.fn().mockResolvedValue(null),
     getViewerSettings: vi.fn().mockResolvedValue({
-      schemaVersion: 1,
+      schemaVersion: 2,
       thumbnailDensity: 'standard',
+      magnifier: { shape: 'circle', magnification: 4, area: 'small' },
     }),
-    updateThumbnailDensity: vi.fn().mockImplementation(async (thumbnailDensity) => ({
-      schemaVersion: 1,
-      thumbnailDensity,
+    updateViewerSettings: vi.fn().mockImplementation(async (settings) => ({
+      schemaVersion: 2,
+      ...settings,
     })),
     folderTree: vi.fn().mockResolvedValue([]),
     queryFolder: vi.fn().mockResolvedValue({ workspace: 'empty' }),

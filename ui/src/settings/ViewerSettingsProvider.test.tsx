@@ -1,7 +1,12 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { describe, expect, it, vi } from 'vitest'
-import type { ThumbnailDensity, ViewerSettings } from '../api/types'
+import type {
+  MagnifierPreferences,
+  ThumbnailDensity,
+  ViewerSettings,
+  ViewerSettingsUpdate,
+} from '../api/types'
 import { useViewerSettings, ViewerSettingsProvider } from './ViewerSettingsProvider'
 
 function deferred<T>() {
@@ -14,8 +19,17 @@ function deferred<T>() {
   return { promise, resolve, reject }
 }
 
-function settings(thumbnailDensity: ThumbnailDensity): ViewerSettings {
-  return { schemaVersion: 1, thumbnailDensity }
+const DEFAULT_MAGNIFIER: MagnifierPreferences = {
+  shape: 'circle',
+  magnification: 4,
+  area: 'small',
+}
+
+function settings(
+  thumbnailDensity: ThumbnailDensity,
+  magnifier: MagnifierPreferences = DEFAULT_MAGNIFIER,
+): ViewerSettings {
+  return { schemaVersion: 2, thumbnailDensity, magnifier }
 }
 
 function Consumer() {
@@ -24,12 +38,22 @@ function Consumer() {
     <>
       <output aria-label="density">{current.thumbnailDensity}</output>
       <output aria-label="height">{current.thumbnailHeight}</output>
+      <output aria-label="shape">{current.magnifier.shape}</output>
+      <output aria-label="magnification">{current.magnifier.magnification}</output>
+      <output aria-label="area">{current.magnifier.area}</output>
       {current.settingsError && <p role="alert">{current.settingsError}</p>}
-      {(['compact', 'standard', 'large', 'extra_large', 'maximum'] as const).map((density) => (
-        <button key={density} type="button" onClick={() => current.setThumbnailDensity(density)}>
-          {density}
-        </button>
-      ))}
+      <button type="button" onClick={() => current.setThumbnailDensity('maximum')}>
+        maximum
+      </button>
+      <button type="button" onClick={() => current.setMagnifierShape('rounded_rectangle')}>
+        rectangle
+      </button>
+      <button type="button" onClick={() => current.setMagnifierMagnification(6)}>
+        six
+      </button>
+      <button type="button" onClick={() => current.setMagnifierArea('large')}>
+        large-area
+      </button>
     </>
   )
 }
@@ -37,7 +61,7 @@ function Consumer() {
 function renderProvider(
   bridge: {
     getViewerSettings: () => Promise<ViewerSettings>
-    updateThumbnailDensity: (density: ThumbnailDensity) => Promise<ViewerSettings>
+    updateViewerSettings: (settings: ViewerSettingsUpdate) => Promise<ViewerSettings>
   },
   children: ReactNode = <Consumer />,
 ) {
@@ -45,119 +69,155 @@ function renderProvider(
 }
 
 describe('ViewerSettingsProvider', () => {
-  it('shows standard at first load and adopts a compact backend value', async () => {
+  it('starts with complete defaults and adopts every loaded setting', async () => {
     const loaded = deferred<ViewerSettings>()
-    renderProvider({
-      getViewerSettings: () => loaded.promise,
-      updateThumbnailDensity: vi.fn(),
-    })
+    renderProvider({ getViewerSettings: () => loaded.promise, updateViewerSettings: vi.fn() })
 
     expect(screen.getByLabelText('density')).toHaveTextContent('standard')
     expect(screen.getByLabelText('height')).toHaveTextContent('132')
+    expect(screen.getByLabelText('shape')).toHaveTextContent('circle')
+    expect(screen.getByLabelText('magnification')).toHaveTextContent('4')
+    expect(screen.getByLabelText('area')).toHaveTextContent('small')
 
-    loaded.resolve(settings('compact'))
+    loaded.resolve(
+      settings('compact', {
+        shape: 'rounded_rectangle',
+        magnification: 5,
+        area: 'medium',
+      }),
+    )
     await waitFor(() => expect(screen.getByLabelText('density')).toHaveTextContent('compact'))
     expect(screen.getByLabelText('height')).toHaveTextContent('96')
+    expect(screen.getByLabelText('shape')).toHaveTextContent('rounded_rectangle')
+    expect(screen.getByLabelText('magnification')).toHaveTextContent('5')
+    expect(screen.getByLabelText('area')).toHaveTextContent('medium')
   })
 
-  it('keeps standard without a blocking error when initial loading fails', async () => {
+  it('keeps complete defaults without a blocking error when initial loading fails', async () => {
     const loaded = deferred<ViewerSettings>()
-    renderProvider({
-      getViewerSettings: () => loaded.promise,
-      updateThumbnailDensity: vi.fn(),
-    })
+    renderProvider({ getViewerSettings: () => loaded.promise, updateViewerSettings: vi.fn() })
 
     await act(async () => loaded.reject(new Error('offline')))
     expect(screen.getByLabelText('density')).toHaveTextContent('standard')
+    expect(screen.getByLabelText('shape')).toHaveTextContent('circle')
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 
-  it('publishes maximum immediately before its save resolves', () => {
+  it('publishes a complete optimistic shape choice before save resolves', async () => {
     const save = deferred<ViewerSettings>()
+    const updateViewerSettings = vi.fn(() => save.promise)
     renderProvider({
       getViewerSettings: vi.fn().mockResolvedValue(settings('standard')),
-      updateThumbnailDensity: () => save.promise,
+      updateViewerSettings,
     })
 
-    fireEvent.click(screen.getByRole('button', { name: 'maximum' }))
+    fireEvent.click(screen.getByRole('button', { name: 'rectangle' }))
 
-    expect(screen.getByLabelText('density')).toHaveTextContent('maximum')
-    expect(screen.getByLabelText('height')).toHaveTextContent('240')
+    expect(screen.getByLabelText('shape')).toHaveTextContent('rounded_rectangle')
+    await waitFor(() => expect(updateViewerSettings).toHaveBeenCalledOnce())
+    expect(updateViewerSettings).toHaveBeenCalledWith({
+      thumbnailDensity: 'standard',
+      magnifier: { shape: 'rounded_rectangle', magnification: 4, area: 'small' },
+    })
   })
 
-  it('serializes extra-large then maximum and ignores the stale completion', async () => {
-    const extraLargeSave = deferred<ViewerSettings>()
-    const maximumSave = deferred<ViewerSettings>()
-    const updateThumbnailDensity = vi
-      .fn<(density: ThumbnailDensity) => Promise<ViewerSettings>>()
-      .mockImplementationOnce(() => extraLargeSave.promise)
-      .mockImplementationOnce(() => maximumSave.promise)
+  it('serializes cross-field writes without overwriting the prior optimistic field', async () => {
+    const shapeSave = deferred<ViewerSettings>()
+    const magnificationSave = deferred<ViewerSettings>()
+    const updateViewerSettings = vi
+      .fn<(value: ViewerSettingsUpdate) => Promise<ViewerSettings>>()
+      .mockImplementationOnce(() => shapeSave.promise)
+      .mockImplementationOnce(() => magnificationSave.promise)
     renderProvider({
       getViewerSettings: vi.fn().mockResolvedValue(settings('standard')),
-      updateThumbnailDensity,
+      updateViewerSettings,
     })
 
-    fireEvent.click(screen.getByRole('button', { name: 'extra_large' }))
-    fireEvent.click(screen.getByRole('button', { name: 'maximum' }))
-    expect(screen.getByLabelText('density')).toHaveTextContent('maximum')
-    await waitFor(() => expect(updateThumbnailDensity).toHaveBeenCalledTimes(1))
-    expect(updateThumbnailDensity).toHaveBeenNthCalledWith(1, 'extra_large')
+    fireEvent.click(screen.getByRole('button', { name: 'rectangle' }))
+    fireEvent.click(screen.getByRole('button', { name: 'six' }))
+    expect(screen.getByLabelText('shape')).toHaveTextContent('rounded_rectangle')
+    expect(screen.getByLabelText('magnification')).toHaveTextContent('6')
+    await waitFor(() => expect(updateViewerSettings).toHaveBeenCalledTimes(1))
 
-    await act(async () => extraLargeSave.resolve(settings('extra_large')))
-    expect(screen.getByLabelText('density')).toHaveTextContent('maximum')
-    await waitFor(() => expect(updateThumbnailDensity).toHaveBeenCalledTimes(2))
-    expect(updateThumbnailDensity).toHaveBeenNthCalledWith(2, 'maximum')
+    await act(async () =>
+      shapeSave.resolve(
+        settings('standard', {
+          shape: 'rounded_rectangle',
+          magnification: 4,
+          area: 'small',
+        }),
+      ),
+    )
+    await waitFor(() => expect(updateViewerSettings).toHaveBeenCalledTimes(2))
+    expect(updateViewerSettings).toHaveBeenNthCalledWith(2, {
+      thumbnailDensity: 'standard',
+      magnifier: { shape: 'rounded_rectangle', magnification: 6, area: 'small' },
+    })
 
-    await act(async () => maximumSave.resolve(settings('maximum')))
-    expect(screen.getByLabelText('density')).toHaveTextContent('maximum')
+    await act(async () =>
+      magnificationSave.resolve(
+        settings('standard', {
+          shape: 'rounded_rectangle',
+          magnification: 6,
+          area: 'small',
+        }),
+      ),
+    )
+    expect(screen.getByLabelText('magnification')).toHaveTextContent('6')
   })
 
-  it('rolls the latest failed choice back to the last confirmed value', async () => {
-    const extraLargeSave = deferred<ViewerSettings>()
-    const maximumSave = deferred<ViewerSettings>()
-    const updateThumbnailDensity = vi
-      .fn<(density: ThumbnailDensity) => Promise<ViewerSettings>>()
-      .mockImplementationOnce(() => extraLargeSave.promise)
-      .mockImplementationOnce(() => maximumSave.promise)
+  it('rolls every field back to the last confirmed complete snapshot', async () => {
+    const shapeSave = deferred<ViewerSettings>()
+    const areaSave = deferred<ViewerSettings>()
+    const updateViewerSettings = vi
+      .fn<(value: ViewerSettingsUpdate) => Promise<ViewerSettings>>()
+      .mockImplementationOnce(() => shapeSave.promise)
+      .mockImplementationOnce(() => areaSave.promise)
     renderProvider({
       getViewerSettings: vi.fn().mockResolvedValue(settings('standard')),
-      updateThumbnailDensity,
+      updateViewerSettings,
     })
 
-    fireEvent.click(screen.getByRole('button', { name: 'extra_large' }))
-    fireEvent.click(screen.getByRole('button', { name: 'maximum' }))
-    await waitFor(() => expect(updateThumbnailDensity).toHaveBeenCalledTimes(1))
-    await act(async () => extraLargeSave.resolve(settings('extra_large')))
-    await waitFor(() => expect(updateThumbnailDensity).toHaveBeenCalledTimes(2))
-    await act(async () => maximumSave.reject({ userMessage: '设置未能保存' }))
+    fireEvent.click(screen.getByRole('button', { name: 'rectangle' }))
+    fireEvent.click(screen.getByRole('button', { name: 'large-area' }))
+    await waitFor(() => expect(updateViewerSettings).toHaveBeenCalledTimes(1))
+    await act(async () =>
+      shapeSave.resolve(
+        settings('standard', {
+          shape: 'rounded_rectangle',
+          magnification: 4,
+          area: 'small',
+        }),
+      ),
+    )
+    await waitFor(() => expect(updateViewerSettings).toHaveBeenCalledTimes(2))
+    await act(async () => areaSave.reject({ userMessage: '设置未能保存' }))
 
-    expect(screen.getByLabelText('density')).toHaveTextContent('extra_large')
-    expect(screen.getByLabelText('height')).toHaveTextContent('204')
+    expect(screen.getByLabelText('shape')).toHaveTextContent('rounded_rectangle')
+    expect(screen.getByLabelText('magnification')).toHaveTextContent('4')
+    expect(screen.getByLabelText('area')).toHaveTextContent('small')
     expect(screen.getByRole('alert')).toHaveTextContent('设置未能保存')
   })
 
-  it('clears a previous save error when a new choice begins', async () => {
+  it('clears a save error when a new complete choice begins', async () => {
     const failedSave = deferred<ViewerSettings>()
     const retrySave = deferred<ViewerSettings>()
-    const updateThumbnailDensity = vi
-      .fn<(density: ThumbnailDensity) => Promise<ViewerSettings>>()
+    const updateViewerSettings = vi
+      .fn<(value: ViewerSettingsUpdate) => Promise<ViewerSettings>>()
       .mockImplementationOnce(() => failedSave.promise)
       .mockImplementationOnce(() => retrySave.promise)
     renderProvider({
       getViewerSettings: vi.fn().mockResolvedValue(settings('standard')),
-      updateThumbnailDensity,
+      updateViewerSettings,
     })
 
-    fireEvent.click(screen.getByRole('button', { name: 'compact' }))
-    await waitFor(() => expect(updateThumbnailDensity).toHaveBeenCalledTimes(1))
+    fireEvent.click(screen.getByRole('button', { name: 'rectangle' }))
+    await waitFor(() => expect(updateViewerSettings).toHaveBeenCalledTimes(1))
     await act(async () => failedSave.reject({ userMessage: '设置未能保存' }))
     expect(screen.getByRole('alert')).toHaveTextContent('设置未能保存')
 
     fireEvent.click(screen.getByRole('button', { name: 'maximum' }))
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
-    expect(screen.getByLabelText('density')).toHaveTextContent('maximum')
-
-    await act(async () => retrySave.resolve(settings('maximum')))
     expect(screen.getByLabelText('density')).toHaveTextContent('maximum')
   })
 
@@ -166,12 +226,19 @@ describe('ViewerSettingsProvider', () => {
     const save = deferred<ViewerSettings>()
     renderProvider({
       getViewerSettings: () => loaded.promise,
-      updateThumbnailDensity: () => save.promise,
+      updateViewerSettings: () => save.promise,
     })
 
-    fireEvent.click(screen.getByRole('button', { name: 'maximum' }))
-    await act(async () => loaded.resolve(settings('compact')))
+    fireEvent.click(screen.getByRole('button', { name: 'six' }))
+    await act(async () =>
+      loaded.resolve(
+        settings('compact', { shape: 'rounded_rectangle', magnification: 3, area: 'large' }),
+      ),
+    )
 
-    expect(screen.getByLabelText('density')).toHaveTextContent('maximum')
+    expect(screen.getByLabelText('density')).toHaveTextContent('standard')
+    expect(screen.getByLabelText('shape')).toHaveTextContent('circle')
+    expect(screen.getByLabelText('magnification')).toHaveTextContent('6')
+    expect(screen.getByLabelText('area')).toHaveTextContent('small')
   })
 })

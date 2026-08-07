@@ -218,7 +218,7 @@ pub fn run() {
             commands::operations::open_permission_settings,
             commands::finder_drag::begin_finder_drag,
             commands::settings::get_viewer_settings,
-            commands::settings::update_thumbnail_density
+            commands::settings::update_viewer_settings
         ])
         .setup(move |app| {
             let settings_directory = app.path().app_config_dir()?;

@@ -235,7 +235,11 @@ export function workspaceBridge(id: string): ViewerBridge {
       return ACCEPTANCE_FOLDER_TREE
     },
     async getViewerSettings() {
-      return { schemaVersion: 1, thumbnailDensity: density }
+      return {
+        schemaVersion: 2,
+        thumbnailDensity: density,
+        magnifier: { shape: 'circle', magnification: 4, area: 'small' },
+      }
     },
     async queryFolder(entityId, showingAggregate) {
       if (id === 'LAU-05') return new Promise<never>(() => undefined)

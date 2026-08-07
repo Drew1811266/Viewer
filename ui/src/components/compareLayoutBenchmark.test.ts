@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { type CompareLayoutPlan, solveCompareLayout } from './compareLayoutEngine'
 
-const twenty = (ratio: number) =>
-  Array.from({ length: 20 }, (_, index) => ({
+const eight = (ratio: number) =>
+  Array.from({ length: 8 }, (_, index) => ({
     entityId: `image-${index}`,
     aspectRatio: ratio,
   }))
@@ -19,7 +19,7 @@ const solve = (items: ReadonlyArray<{ entityId: string; aspectRatio: number }>) 
   })
 
 const checksum = (plan: CompareLayoutPlan) => {
-  if (plan.rects.length !== 20) return Number.NaN
+  if (plan.rects.length !== 8) return Number.NaN
   return plan.rects.reduce((sum, rect, index) => {
     const dimensions = [
       rect.left,
@@ -45,15 +45,15 @@ const checksum = (plan: CompareLayoutPlan) => {
 
 describe('compare layout performance', () => {
   it.each([0.75, 1, 1.5])('keeps candidate work bounded for ratio %s', (ratio) => {
-    const plan = solve(twenty(ratio))
+    const plan = solve(eight(ratio))
     expect(plan.candidateCount).toBeLessThanOrEqual(6)
-    expect(plan.rects).toHaveLength(20)
+    expect(plan.rects).toHaveLength(8)
   })
 
   it.runIf(process.env.VIEWER_COMPARE_BENCH === '1')(
-    'solves a mixed 20-image set below the current-machine 2 ms target',
+    'solves a mixed 8-image set below the current-machine 2 ms target',
     () => {
-      const mixed = Array.from({ length: 20 }, (_, index) => ({
+      const mixed = Array.from({ length: 8 }, (_, index) => ({
         entityId: `image-${index}`,
         aspectRatio: index % 2 === 0 ? 0.75 : 1.5,
       }))
@@ -65,7 +65,7 @@ describe('compare layout performance', () => {
       }
       const average = (performance.now() - start) / 1_000
       console.info(`compare layout average: ${average.toFixed(4)} ms`)
-      expect(accumulatedChecksum).toBe(230_000)
+      expect(accumulatedChecksum).toBe(44_000)
       expect(average).toBeLessThan(2)
     },
   )

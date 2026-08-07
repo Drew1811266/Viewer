@@ -644,7 +644,7 @@ describe('state entry plans', () => {
       buildStateEntryPlan('COM-04').filter(
         (step) => step.kind === 'click' && /^商品-\d{2}\.jpg$/.test(step.target?.name ?? ''),
       ).length,
-      20,
+      8,
     )
     assert.equal(
       buildStateEntryPlan('DOC-05').filter(

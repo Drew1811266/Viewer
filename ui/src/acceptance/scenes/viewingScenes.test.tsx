@@ -101,7 +101,7 @@ describe('Viewer viewing acceptance scenes', () => {
     ['COM-01', 2],
     ['COM-02', 3],
     ['COM-03', 4],
-    ['COM-04', 20],
+    ['COM-04', 8],
   ])('%s renders %d source files through CompareWorkspace', async (id, count) => {
     const rendered = renderScene(id)
     const workspace = screen.getByRole('region', { name: '图片对比' })

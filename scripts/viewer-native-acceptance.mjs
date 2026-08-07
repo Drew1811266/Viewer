@@ -710,7 +710,7 @@ export function buildStateEntryPlan(id) {
     'RAD-05': [
       ...openRadial(),
       { kind: 'moveTo', target: { role: 'AXMenuItem', name: '并排对比' } },
-      { kind: 'assert', target: { role: 'AXStaticText', name: '请选择 2–20 张图片' } },
+      { kind: 'assert', target: { role: 'AXStaticText', name: '请选择 2–8 张图片' } },
     ],
     'RAD-06': [
       { kind: 'prepareFixture', operation: 'makeProjectReadOnly' },
@@ -783,7 +783,7 @@ export function buildStateEntryPlan(id) {
       { kind: 'assert', target: { name: '图片对比' } },
     ],
     'COM-04': [
-      ...selectImages(20),
+      ...selectImages(8),
       { kind: 'key', key: 'c', modifiers: [] },
       { kind: 'scrollTarget', target: { name: '全部图片对比' }, deltaY: -24 },
       { kind: 'assert', target: { name: '图片对比' } },

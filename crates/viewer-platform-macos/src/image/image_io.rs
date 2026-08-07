@@ -309,6 +309,20 @@ mod tests {
     }
 
     #[test]
+    fn original_representation_preserves_oriented_source_dimensions() {
+        let output = tempfile::NamedTempFile::new().unwrap();
+        let dimensions = ImageIoBackend::default()
+            .render_sync(
+                image_fixture("rotated-6.jpg"),
+                ImageRepresentationKind::Original100Percent,
+                output.path(),
+            )
+            .unwrap();
+        assert_eq!(dimensions, (600, 800));
+        assert_eq!(png_dimensions(output.path()).unwrap(), dimensions);
+    }
+
+    #[test]
     fn original_decode_respects_the_hard_budget() {
         let output = tempfile::NamedTempFile::new().unwrap();
         let backend = ImageIoBackend::new(DecodeBudget::new(1, 1));

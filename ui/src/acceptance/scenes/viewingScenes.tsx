@@ -59,7 +59,7 @@ export const VIEWING_SCENES: AcceptanceSceneRegistry = {
   'COM-01': () => <CompareScene count={2} />,
   'COM-02': () => <CompareScene count={3} />,
   'COM-03': () => <CompareScene count={4} />,
-  'COM-04': () => <CompareScene count={20} />,
+  'COM-04': () => <CompareScene count={8} />,
   'DOC-01': () => <TextScene state="markdown" />,
   'DOC-02': () => <TextScene state="plain" />,
   'DOC-03': () => <TextScene state="encoding" />,

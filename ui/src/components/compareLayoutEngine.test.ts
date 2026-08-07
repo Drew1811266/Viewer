@@ -194,7 +194,7 @@ describe('solveCompareLayout', () => {
   })
 
   it('preserves mixed-ratio source order in the horizontal fallback', () => {
-    const mixed = Array.from({ length: 20 }, (_, index) => ({
+    const mixed = Array.from({ length: 8 }, (_, index) => ({
       entityId: `ordered-${index}`,
       aspectRatio: index % 2 === 0 ? 0.75 : 1.5,
     }))

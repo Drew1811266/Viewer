@@ -4,7 +4,7 @@ import type { Point } from './imageGeometry'
 
 const LINE_HEIGHT = 16
 const PINCH_SENSITIVITY = 0.002
-const WHEEL_LISTENER_OPTIONS = { passive: false } as const
+const WHEEL_LISTENER_OPTIONS = { passive: false, capture: false } as const
 
 interface PreviewGestureOptions {
   stage: RefObject<HTMLElement | null>
@@ -89,7 +89,7 @@ export function usePreviewGestures({
 
     element.addEventListener('wheel', onWheel, WHEEL_LISTENER_OPTIONS)
     return () => {
-      element.removeEventListener('wheel', onWheel, WHEEL_LISTENER_OPTIONS)
+      element.removeEventListener('wheel', onWheel, WHEEL_LISTENER_OPTIONS.capture)
       if (frame.current !== null) cancelAnimationFrame(frame.current)
       frame.current = null
       pendingWheel.current = null

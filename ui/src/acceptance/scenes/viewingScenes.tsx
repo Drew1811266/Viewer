@@ -218,7 +218,7 @@ type PreviewState =
 
 function PreviewScene({ state }: { request: AcceptanceRequest; state: PreviewState }) {
   const acted = useRef(false)
-  const [magnifierReady, setMagnifierReady] = useState(state !== 'magnifier')
+  const magnifierReady = useMagnifierSceneReady(state)
   useEffect(() => {
     if (acted.current) return
     acted.current = true
@@ -229,6 +229,32 @@ function PreviewScene({ state }: { request: AcceptanceRequest; state: PreviewSta
     }
     if (state === 'rotate') namedButton('顺时针旋转')?.click()
   }, [state])
+  const requestImage =
+    state === 'loading' ? neverImage : state === 'error' ? failedImage : requestAcceptanceImage
+  const preview = (
+    <ImagePreview
+      file={PREVIEW_FILE}
+      files={ACCEPTANCE_FILES}
+      magnifier={{ shape: 'circle', magnification: 4, area: 'small' }}
+      requestImage={requestImage}
+      onNavigate={noOp}
+      onClose={noOp}
+    />
+  )
+  return state === 'magnifier' ? (
+    <div
+      data-acceptance-scene-ready={magnifierReady ? 'true' : 'false'}
+      style={{ width: '100%', height: '100%' }}
+    >
+      {preview}
+    </div>
+  ) : (
+    preview
+  )
+}
+
+function useMagnifierSceneReady(state: PreviewState): boolean {
+  const [ready, setReady] = useState(state !== 'magnifier')
   useEffect(() => {
     if (state !== 'magnifier') return
     let pointerFrame: number | undefined
@@ -259,7 +285,7 @@ function PreviewScene({ state }: { request: AcceptanceRequest; state: PreviewSta
         return
       }
       observer.disconnect()
-      setMagnifierReady(true)
+      setReady(true)
     }
     const observer = new MutationObserver(attempt)
     observer.observe(document.body, { attributes: true, childList: true, subtree: true })
@@ -269,28 +295,7 @@ function PreviewScene({ state }: { request: AcceptanceRequest; state: PreviewSta
       if (pointerFrame !== undefined) cancelAnimationFrame(pointerFrame)
     }
   }, [state])
-  const requestImage =
-    state === 'loading' ? neverImage : state === 'error' ? failedImage : requestAcceptanceImage
-  const preview = (
-    <ImagePreview
-      file={PREVIEW_FILE}
-      files={ACCEPTANCE_FILES}
-      magnifier={{ shape: 'circle', magnification: 4, area: 'small' }}
-      requestImage={requestImage}
-      onNavigate={noOp}
-      onClose={noOp}
-    />
-  )
-  return state === 'magnifier' ? (
-    <div
-      data-acceptance-scene-ready={magnifierReady ? 'true' : 'false'}
-      style={{ width: '100%', height: '100%' }}
-    >
-      {preview}
-    </div>
-  ) : (
-    preview
-  )
+  return ready
 }
 
 function magnifierSceneReady(lens: HTMLElement, source: HTMLImageElement): boolean {

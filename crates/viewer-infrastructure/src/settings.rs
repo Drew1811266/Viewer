@@ -346,11 +346,7 @@ mod tests {
 
         for invalid in invalid_values {
             let directory = tempfile::tempdir().unwrap();
-            std::fs::write(
-                directory.path().join("settings.json"),
-                invalid.to_string(),
-            )
-            .unwrap();
+            std::fs::write(directory.path().join("settings.json"), invalid.to_string()).unwrap();
             let store = JsonViewerSettingsStore::new(directory.path().to_path_buf());
 
             assert_eq!(store.load(), ViewerSettings::default(), "input: {invalid}");

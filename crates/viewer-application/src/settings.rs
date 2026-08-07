@@ -102,10 +102,7 @@ impl ViewerSettingsService {
         self.store.load()
     }
 
-    pub fn update(
-        &self,
-        settings: ViewerSettings,
-    ) -> Result<ViewerSettings, ViewerSettingsError> {
+    pub fn update(&self, settings: ViewerSettings) -> Result<ViewerSettings, ViewerSettingsError> {
         self.store.save(settings)?;
         Ok(settings)
     }

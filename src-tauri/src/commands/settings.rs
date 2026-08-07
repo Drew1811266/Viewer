@@ -21,10 +21,7 @@ pub fn update_viewer_settings(
     let settings = settings
         .try_into()
         .map_err(|()| invalid_viewer_settings())?;
-    service
-        .update(settings)
-        .map(Into::into)
-        .map_err(Into::into)
+    service.update(settings).map(Into::into).map_err(Into::into)
 }
 
 fn invalid_viewer_settings() -> CommandError {

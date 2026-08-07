@@ -777,6 +777,9 @@ describe('workspace style contracts', () => {
     const source = rules.find(
       ({ selector }) => selector === '.image-preview-stage .image-magnifier__source',
     )
+    const previewImage = rules.find(
+      ({ selector }) => selector === '.image-preview-stage > .image-preview-image',
+    )
 
     expect(stage?.declarations.overflow).toBe('hidden')
     expect(cursor).toBeUndefined()
@@ -787,15 +790,17 @@ describe('workspace style contracts', () => {
       overflow: 'hidden',
       'pointer-events': 'none',
       position: 'absolute',
-      transform: 'translate(-50%, -50%) scale(0.85)',
+      transform: 'translate(-50%, -50%) scale(0.8)',
       'transform-origin': 'var(--magnifier-shell-origin-x) var(--magnifier-shell-origin-y)',
       visibility: 'hidden',
+      'will-change': 'opacity, transform',
     })
-    expect(lens?.declarations.transition).toContain('110ms')
+    expect(lens?.declarations.transition).toContain('140ms')
     expect(visible?.declarations.opacity).toBe('1')
     expect(visible?.declarations.transform).toContain('scale(1)')
-    expect(visible?.declarations.transition).toContain('140ms')
+    expect(visible?.declarations.animation).toContain('magnifier-pop-in 180ms')
     expect(visible?.declarations.visibility).toBe('visible')
+    expect(previewImage?.declarations['will-change']).toBe('transform')
     expect(circle?.declarations['border-radius']).toBe('50%')
     expect(rectangle?.declarations['border-radius']).toBe('var(--viewer-radius-popover)')
     expect(source?.declarations).toMatchObject({
@@ -805,6 +810,9 @@ describe('workspace style contracts', () => {
       'max-width': 'none',
       'transform-origin': 'var(--magnifier-transform-origin-x) var(--magnifier-transform-origin-y)',
     })
+    expect(appCss).toMatch(
+      /@keyframes magnifier-pop-in[\s\S]*?0%[\s\S]*?scale\(0\.7\)[\s\S]*?65%[\s\S]*?scale\(1\.04\)[\s\S]*?100%[\s\S]*?scale\(1\)/,
+    )
 
     const reduced = parseRules(mediaBody(appCss, '(prefers-reduced-motion: reduce)')).find(
       ({ selector }) => selector === '.image-magnifier',

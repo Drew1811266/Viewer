@@ -2399,6 +2399,64 @@ body:has(.viewer-dialog-backdrop) .task-bar {
   max-width: none;
 }
 
+.image-preview-stage[data-magnifier-over-image="true"] {
+  cursor: none;
+}
+
+.image-magnifier {
+  background: var(--viewer-surface);
+  border: 2px solid var(--viewer-border-strong);
+  box-shadow: var(--viewer-shadow-popover);
+  color: var(--viewer-text);
+  left: var(--magnifier-x);
+  opacity: 0;
+  overflow: hidden;
+  pointer-events: none;
+  position: absolute;
+  top: var(--magnifier-y);
+  transform: translate(-50%, -50%);
+  visibility: hidden;
+  z-index: 2;
+}
+
+.image-magnifier[data-visible="true"] {
+  opacity: 1;
+  visibility: visible;
+}
+
+.image-magnifier[data-shape="circle"] {
+  border-radius: 50%;
+}
+
+.image-magnifier[data-shape="rounded_rectangle"] {
+  border-radius: var(--viewer-radius-popover);
+}
+
+.image-preview-stage .image-magnifier__source {
+  border: 0;
+  box-shadow: none;
+  height: auto;
+  left: var(--magnifier-source-left);
+  max-height: none;
+  max-width: none;
+  position: absolute;
+  top: var(--magnifier-source-top);
+  transform: rotate(var(--magnifier-rotation)) scale(var(--magnifier-scale));
+  transform-origin: var(--magnifier-transform-origin-x) var(--magnifier-transform-origin-y);
+  width: auto;
+}
+
+.image-magnifier__status {
+  align-items: center;
+  display: flex;
+  font-size: 11px;
+  inset: 12px;
+  justify-content: center;
+  line-height: 1.4;
+  position: absolute;
+  text-align: center;
+}
+
 .preview-navigation-float {
   align-items: center;
   background: var(--viewer-surface);
@@ -2744,6 +2802,11 @@ body:has(.viewer-dialog-backdrop) .task-bar {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .image-magnifier {
+    animation: none;
+    transition: none;
+  }
+
   .thumbnail-size-slider,
   .thumbnail-size-slider::-webkit-slider-thumb,
   .thumbnail-size-slider::-moz-range-thumb {
@@ -2786,6 +2849,16 @@ body:has(.viewer-dialog-backdrop) .task-bar {
 }
 
 @media (forced-colors: active) {
+  .image-magnifier {
+    background: Canvas;
+    border-color: CanvasText;
+    box-shadow: none;
+  }
+
+  .image-magnifier__status {
+    color: CanvasText;
+  }
+
   .thumbnail-size-slider::-webkit-slider-runnable-track,
   .thumbnail-size-slider::-moz-range-track {
     background: CanvasText;

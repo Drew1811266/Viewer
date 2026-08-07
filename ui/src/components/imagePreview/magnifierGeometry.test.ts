@@ -14,15 +14,17 @@ describe('magnifier geometry', () => {
   it('places the sampled original pixel at the lens center used as the CSS transform origin', () => {
     const dimensions = { width: 160, height: 160 }
     const sourcePoint = { x: 1600, y: 1140 }
-    const placement = magnifierSourcePlacement(sourcePoint, dimensions)
+    for (const magnification of [3, 4, 5, 6] as const) {
+      const placement = magnifierSourcePlacement(sourcePoint, dimensions, magnification)
 
-    expect(placement).toEqual({
-      left: -1520,
-      top: -1060,
-      transformOriginX: 1600,
-      transformOriginY: 1140,
-    })
-    expect(placement.left + sourcePoint.x).toBe(80)
-    expect(placement.top + sourcePoint.y).toBe(80)
+      expect(placement).toEqual({
+        left: -1520,
+        top: -1060,
+        transformOriginX: 1600,
+        transformOriginY: 1140,
+      })
+      expect(placement.left + sourcePoint.x).toBe(80)
+      expect(placement.top + sourcePoint.y).toBe(80)
+    }
   })
 })

@@ -747,7 +747,7 @@ Do not cache decoded originals in a frontend map. Backend artifact reuse remains
 pnpm --dir ui exec vitest run src/components/imagePreview/useCurrentOriginal.test.tsx
 ```
 
-- [ ] **Step 5: Commit current-original ownership**
+- [x] **Step 5: Commit current-original ownership**
 
 ```bash
 git add ui/src/components/imagePreview/useCurrentOriginal.ts ui/src/components/imagePreview/useCurrentOriginal.test.tsx
@@ -768,11 +768,11 @@ git commit -m "feat: own current magnifier original"
 - `ImageMagnifier` is a `forwardRef` component exposing `place(sample)` and `hide()`.
 - Pointer placement writes CSS variables through one queued animation frame; component props change only for settings, rotation, load status, and source identity.
 
-- [ ] **Step 1: Add failing semantic and geometry component tests**
+- [x] **Step 1: Add failing semantic and geometry component tests**
 
 Render the component for every shape/area combination and assert `data-shape`, width, and height match the approved table. For ready state, assert the lens contains a duplicate `<img>` using the original URL and the supplied filename in a non-announced decorative alt strategy. For loading, budget, and generic error, assert the compact text is respectively `正在载入原图`, `原图超出安全预览限制`, and `无法载入原图`.
 
-- [ ] **Step 2: Add failing imperative-frame tests**
+- [x] **Step 2: Add failing imperative-frame tests**
 
 Call `handle.place` several times before one frame flush. Assert only the latest sample is applied and the lens CSS variables become:
 
@@ -789,17 +789,17 @@ expect(lens).toHaveStyle({
 
 Use sample data that mathematically yields those values. Assert `hide()` clears the visible data attribute immediately and cancels pending placement; unmount cancels a queued frame.
 
-- [ ] **Step 3: Add failing style contracts**
+- [x] **Step 3: Add failing style contracts**
 
 Assert the lens is absolutely positioned, centered on its CSS x/y variables, clipped, pointer-events none, and bounded by the stage overflow. Circle uses 50% radius; rounded rectangle uses the existing Viewer large radius token. Assert the source image uses max-width/max-height none and transform origin variables. Add forced-colors boundary/text rules and reduced-motion rules with no decorative transition.
 
-- [ ] **Step 4: Run focused magnifier tests and observe failure**
+- [x] **Step 4: Run focused magnifier tests and observe failure**
 
 ```bash
 pnpm --dir ui exec vitest run src/components/imagePreview/ImageMagnifier.test.tsx src/styles/app.test.ts
 ```
 
-- [ ] **Step 5: Implement the imperative lens component**
+- [x] **Step 5: Implement the imperative lens component**
 
 Define:
 
@@ -817,11 +817,11 @@ export interface ImageMagnifierHandle {
 
 Use `useImperativeHandle`, refs for the lens/source nodes, a latest-placement ref, and one `requestAnimationFrame`. Set CSS custom properties directly from `magnifierSourcePlacement`. Render a source `<img draggable={false}>` only in ready state. Keep the lens shell mounted while enabled so loading/failure follows the pointer; use `aria-hidden="true"` on the moving visual and let the preview own live announcements/contained feedback.
 
-- [ ] **Step 6: Implement visual styles and accessibility media rules**
+- [x] **Step 6: Implement visual styles and accessibility media rules**
 
 Use a clear border, existing surface/shadow tokens, clipped overflow, and compact centered status text. Set `.image-preview-stage { overflow: hidden; }` only after confirming existing transformed image behavior remains correct. Hide the cursor through a separate `.image-preview-stage[data-magnifier-over-image="true"]` rule so leaving actual pixels restores it immediately.
 
-- [ ] **Step 7: Run focused magnifier tests and confirm green**
+- [x] **Step 7: Run focused magnifier tests and confirm green**
 
 ```bash
 pnpm --dir ui exec vitest run src/components/imagePreview/ImageMagnifier.test.tsx src/styles/app.test.ts

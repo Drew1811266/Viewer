@@ -762,6 +762,61 @@ describe('workspace style contracts', () => {
     expect(contrastRatio('#9d1c13', '#fff3f0')).toBeGreaterThanOrEqual(4.5)
   })
 
+  it('clips the pointer-free magnifier inside the image preview stage', () => {
+    const rules = parseRules(appCss)
+    const stage = rules.find(({ selector }) => selector === '.image-preview-stage')
+    const cursor = rules.find(
+      ({ selector }) => selector === '.image-preview-stage[data-magnifier-over-image="true"]',
+    )
+    const lens = rules.find(({ selector }) => selector === '.image-magnifier')
+    const circle = rules.find(
+      ({ selector }) => selector === '.image-magnifier[data-shape="circle"]',
+    )
+    const rectangle = rules.find(
+      ({ selector }) => selector === '.image-magnifier[data-shape="rounded_rectangle"]',
+    )
+    const source = rules.find(
+      ({ selector }) => selector === '.image-preview-stage .image-magnifier__source',
+    )
+
+    expect(stage?.declarations.overflow).toBe('hidden')
+    expect(cursor?.declarations.cursor).toBe('none')
+    expect(lens?.declarations).toMatchObject({
+      left: 'var(--magnifier-x)',
+      top: 'var(--magnifier-y)',
+      overflow: 'hidden',
+      'pointer-events': 'none',
+      position: 'absolute',
+      transform: 'translate(-50%, -50%)',
+    })
+    expect(circle?.declarations['border-radius']).toBe('50%')
+    expect(rectangle?.declarations['border-radius']).toBe('var(--viewer-radius-popover)')
+    expect(source?.declarations).toMatchObject({
+      left: 'var(--magnifier-source-left)',
+      top: 'var(--magnifier-source-top)',
+      'max-height': 'none',
+      'max-width': 'none',
+      'transform-origin': 'var(--magnifier-transform-origin-x) var(--magnifier-transform-origin-y)',
+    })
+
+    const reduced = parseRules(mediaBody(appCss, '(prefers-reduced-motion: reduce)')).find(
+      ({ selector }) => selector === '.image-magnifier',
+    )
+    expect(reduced?.declarations).toMatchObject({ animation: 'none', transition: 'none' })
+
+    const forced = parseRules(mediaBody(appCss, '(forced-colors: active)'))
+    expect(
+      forced.find(({ selector }) => selector === '.image-magnifier')?.declarations,
+    ).toMatchObject({
+      background: 'Canvas',
+      'border-color': 'CanvasText',
+      'box-shadow': 'none',
+    })
+    expect(
+      forced.find(({ selector }) => selector === '.image-magnifier__status')?.declarations.color,
+    ).toBe('CanvasText')
+  })
+
   it('renders image comparison from the shared light preview theme', () => {
     const rules = parseRules(viewerStyleSources)
     const declaration = (selector: string, property: string) =>

@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
-pub const VIEWER_SETTINGS_SCHEMA_VERSION: u32 = 2;
+pub const VIEWER_SETTINGS_SCHEMA_VERSION: u32 = 3;
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -24,34 +24,34 @@ pub enum MagnifierShape {
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum MagnifierMagnification {
-    Three,
     #[default]
-    Four,
-    Five,
-    Six,
+    OnePointFive,
+    Two,
+    Three,
 }
 
-impl TryFrom<u8> for MagnifierMagnification {
+impl TryFrom<f64> for MagnifierMagnification {
     type Error = ();
 
-    fn try_from(value: u8) -> Result<Self, Self::Error> {
-        match value {
-            3 => Ok(Self::Three),
-            4 => Ok(Self::Four),
-            5 => Ok(Self::Five),
-            6 => Ok(Self::Six),
-            _ => Err(()),
+    fn try_from(value: f64) -> Result<Self, Self::Error> {
+        if value == 1.5 {
+            Ok(Self::OnePointFive)
+        } else if value == 2.0 {
+            Ok(Self::Two)
+        } else if value == 3.0 {
+            Ok(Self::Three)
+        } else {
+            Err(())
         }
     }
 }
 
-impl From<MagnifierMagnification> for u8 {
+impl From<MagnifierMagnification> for f64 {
     fn from(value: MagnifierMagnification) -> Self {
         match value {
-            MagnifierMagnification::Three => 3,
-            MagnifierMagnification::Four => 4,
-            MagnifierMagnification::Five => 5,
-            MagnifierMagnification::Six => 6,
+            MagnifierMagnification::OnePointFive => 1.5,
+            MagnifierMagnification::Two => 2.0,
+            MagnifierMagnification::Three => 3.0,
         }
     }
 }
@@ -142,15 +142,15 @@ mod tests {
     }
 
     #[test]
-    fn default_settings_use_standard_density_and_small_circle_four_x_magnifier() {
-        assert_eq!(VIEWER_SETTINGS_SCHEMA_VERSION, 2);
+    fn default_settings_use_schema_three_and_small_circle_one_point_five_x_magnifier() {
+        assert_eq!(VIEWER_SETTINGS_SCHEMA_VERSION, 3);
         assert_eq!(
             ViewerSettings::default(),
             ViewerSettings {
                 thumbnail_density: ThumbnailDensity::Standard,
                 magnifier: MagnifierPreferences {
                     shape: MagnifierShape::Circle,
-                    magnification: MagnifierMagnification::Four,
+                    magnification: MagnifierMagnification::OnePointFive,
                     area: MagnifierArea::Small,
                 },
             }
@@ -158,18 +158,17 @@ mod tests {
     }
 
     #[test]
-    fn magnification_accepts_only_the_four_public_values() {
+    fn magnification_accepts_only_the_three_public_values() {
         for (public_value, expected) in [
-            (3, MagnifierMagnification::Three),
-            (4, MagnifierMagnification::Four),
-            (5, MagnifierMagnification::Five),
-            (6, MagnifierMagnification::Six),
+            (1.5, MagnifierMagnification::OnePointFive),
+            (2.0, MagnifierMagnification::Two),
+            (3.0, MagnifierMagnification::Three),
         ] {
             let parsed = MagnifierMagnification::try_from(public_value).expect("public value");
             assert_eq!(parsed, expected);
-            assert_eq!(u8::from(parsed), public_value);
+            assert_eq!(f64::from(parsed), public_value);
         }
-        for rejected in [0, 1, 2, 7, u8::MAX] {
+        for rejected in [0.0, 1.0, 1.4, 2.5, 4.0, f64::INFINITY, f64::NAN] {
             assert!(MagnifierMagnification::try_from(rejected).is_err());
         }
     }
@@ -182,7 +181,7 @@ mod tests {
             thumbnail_density: ThumbnailDensity::Maximum,
             magnifier: MagnifierPreferences {
                 shape: MagnifierShape::RoundedRectangle,
-                magnification: MagnifierMagnification::Six,
+                magnification: MagnifierMagnification::Three,
                 area: MagnifierArea::Large,
             },
         };

@@ -827,7 +827,7 @@ Use a clear border, existing surface/shadow tokens, clipped overflow, and compac
 pnpm --dir ui exec vitest run src/components/imagePreview/ImageMagnifier.test.tsx src/styles/app.test.ts
 ```
 
-- [ ] **Step 8: Commit the lens renderer**
+- [x] **Step 8: Commit the lens renderer**
 
 ```bash
 git add ui/src/components/imagePreview/ImageMagnifier.tsx ui/src/components/imagePreview/ImageMagnifier.test.tsx ui/src/styles/app.css ui/src/styles/app.test.ts
@@ -847,17 +847,17 @@ git commit -m "feat: render original detail magnifier"
 **Interfaces:**
 - Adds Viewer icon name `zoom-in` from the already pinned Lucide 1.27.0 source.
 
-- [ ] **Step 1: Add the failing icon registry assertion**
+- [x] **Step 1: Add the failing icon registry assertion**
 
 Extend the icon test so `VIEWER_ICON_NAMES` contains `zoom-in` exactly once and `<ViewerIcon name="zoom-in" />` resolves a no-inline SVG asset with empty alt and `aria-hidden="true"`.
 
-- [ ] **Step 2: Run the icon test and observe failure**
+- [x] **Step 2: Run the icon test and observe failure**
 
 ```bash
 pnpm --dir ui exec vitest run src/components/ui/ViewerIcon.test.tsx
 ```
 
-- [ ] **Step 3: Vendor the pinned asset and register its typed name**
+- [x] **Step 3: Vendor the pinned asset and register its typed name**
 
 Add `'zoom-in'` to `sources` in `scripts/vendor-viewer-icons.mjs`, run:
 
@@ -867,7 +867,7 @@ node scripts/vendor-viewer-icons.mjs
 
 Confirm only the expected pinned SVG set and existing `LICENSE.txt` content changed. Add `'zoom-in'` to `VIEWER_ICON_NAMES` in alphabetical position.
 
-- [ ] **Step 4: Run the icon test and confirm green**
+- [x] **Step 4: Run the icon test and confirm green**
 
 ```bash
 pnpm --dir ui exec vitest run src/components/ui/ViewerIcon.test.tsx

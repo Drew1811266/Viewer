@@ -34,6 +34,7 @@ export const VIEWER_ICON_NAMES = [
   'star',
   'trash-2',
   'x',
+  'zoom-in',
 ] as const
 
 export type ViewerIconName = (typeof VIEWER_ICON_NAMES)[number]

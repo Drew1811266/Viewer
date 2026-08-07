@@ -12,6 +12,15 @@ describe('ViewerIcon', () => {
     expect(icon).toHaveAttribute('height', '16')
   })
 
+  it('resolves the pinned no-inline magnifier asset once', () => {
+    render(<ViewerIcon name="zoom-in" size={16} data-testid="magnifier-icon" />)
+    const icon = screen.getByTestId('magnifier-icon')
+    expect(icon).toHaveAttribute('src', expect.stringContaining('zoom-in'))
+    expect(icon).toHaveAttribute('alt', '')
+    expect(icon).toHaveAttribute('aria-hidden', 'true')
+    expect(VIEWER_ICON_NAMES.filter((name) => name === 'zoom-in')).toHaveLength(1)
+  })
+
   it('publishes every icon name required by the migration', () => {
     expect(VIEWER_ICON_NAMES).toEqual([
       'alert-triangle',
@@ -47,6 +56,7 @@ describe('ViewerIcon', () => {
       'star',
       'trash-2',
       'x',
+      'zoom-in',
     ])
   })
 })

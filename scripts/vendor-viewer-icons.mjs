@@ -37,6 +37,7 @@ const sources = [
   'star',
   'trash-2',
   'x',
+  'zoom-in',
 ]
 const target = path.resolve(process.cwd(), 'ui/src/assets/icons/lucide')
 const repository = 'https://raw.githubusercontent.com/lucide-icons/lucide'

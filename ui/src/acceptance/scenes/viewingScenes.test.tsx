@@ -109,9 +109,19 @@ describe('Viewer viewing acceptance scenes', () => {
     const lens = await screen.findByTestId('image-magnifier')
     const source = screen.getByTestId('image-magnifier-source')
     await waitFor(() => expect(lens).toHaveAttribute('data-visible', 'true'))
+    await waitFor(() =>
+      expect(lens.closest('[data-acceptance-scene-ready]')).toHaveAttribute(
+        'data-acceptance-scene-ready',
+        'true',
+      ),
+    )
     expect(lens).toHaveAttribute('data-shape', 'circle')
     expect(lens).toHaveStyle({ width: '160px', height: '160px' })
     expect(lens.style.getPropertyValue('--magnifier-scale')).toBe('1.5')
+    expect(lens.style.getPropertyValue('--magnifier-x')).toBe('418px')
+    expect(lens.style.getPropertyValue('--magnifier-y')).toBe('338px')
+    expect(lens.style.getPropertyValue('--magnifier-x')).not.toBe('320px')
+    expect(getComputedStyle(lens.parentElement as HTMLElement).cursor).not.toBe('none')
     expect(source.getAttribute('src')).toContain(encodeURIComponent('商品-02.jpg'))
     expect(source.getAttribute('src')).toContain('representation=original100_percent')
     rendered.unmount()

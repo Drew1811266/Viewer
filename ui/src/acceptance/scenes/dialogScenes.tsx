@@ -212,8 +212,12 @@ function settingsDialogReady(): boolean {
   const checkedLabels = [...dialog.querySelectorAll<HTMLInputElement>('input[type="radio"]')]
     .filter((input) => input.checked)
     .map((input) => input.closest('label')?.textContent?.trim())
+  const magnificationLabels = [
+    ...dialog.querySelectorAll<HTMLInputElement>('input[name="magnifier-magnification"]'),
+  ].map((input) => input.closest('label')?.textContent?.trim())
   return (
     slider?.value === '2' &&
+    magnificationLabels.join('|') === '1.5 倍|2 倍|3 倍' &&
     checkedLabels.includes('圆形') &&
     checkedLabels.includes('1.5 倍') &&
     checkedLabels.includes('小')

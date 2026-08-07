@@ -40,7 +40,14 @@ it('renders the complete settings-v3 defaults in DIA-01', () => {
 
   expect(screen.getByRole('slider', { name: '缩略图大小' })).toHaveValue('2')
   expect(within(dialog).getByRole('radio', { name: '圆形' })).toBeChecked()
+  expect(
+    within(within(dialog).getByRole('group', { name: '放大倍数' }))
+      .getAllByRole('radio')
+      .map((radio) => radio.closest('label')?.textContent?.trim()),
+  ).toEqual(['1.5 倍', '2 倍', '3 倍'])
   expect(within(dialog).getByRole('radio', { name: '1.5 倍' })).toBeChecked()
+  expect(within(dialog).getByRole('radio', { name: '2 倍' })).not.toBeChecked()
+  expect(within(dialog).getByRole('radio', { name: '3 倍' })).not.toBeChecked()
   expect(within(dialog).getByRole('radio', { name: '小' })).toBeChecked()
   rendered.unmount()
 })

@@ -29,6 +29,7 @@ const MARKDOWN_FILE = namedFile(ACCEPTANCE_TEXT_FILES, 'sample.md')
 const PLAIN_FILE = namedFile(ACCEPTANCE_TEXT_FILES, 'plain.txt')
 const GB18030_FILE = namedFile(ACCEPTANCE_TEXT_FILES, 'gb18030.txt')
 const LARGE_TEXT_FILE = namedFile(ACCEPTANCE_TEXT_FILES, 'large.txt')
+const MAGNIFIER_POINTER = { x: 320, y: 240 }
 
 const BASE_RADIAL_CONTEXT: RadialMenuContext = {
   selectedCount: 3,
@@ -218,7 +219,7 @@ type PreviewState =
 
 function PreviewScene({ state }: { request: AcceptanceRequest; state: PreviewState }) {
   const acted = useRef(false)
-  const pointerClientPoint = useRef<{ x: number; y: number } | null>({ x: 320, y: 240 })
+  const pointerClientPoint = useRef<{ x: number; y: number } | null>(MAGNIFIER_POINTER)
   const magnifierReady = useMagnifierSceneReady(state)
   useEffect(() => {
     if (acted.current) return
@@ -259,42 +260,44 @@ function useMagnifierSceneReady(state: PreviewState): boolean {
   const [ready, setReady] = useState(state !== 'magnifier')
   useEffect(() => {
     if (state !== 'magnifier') return
+    let settleTimer: ReturnType<typeof setTimeout> | undefined
     let pointerFrame: number | undefined
+    let firstSettleFrame: number | undefined
+    let secondSettleFrame: number | undefined
     const attempt = () => {
-      const button = namedButton('放大镜')
-      if (button?.getAttribute('aria-pressed') !== 'true') {
-        button?.click()
-        return
-      }
-      const stage = document.querySelector<HTMLElement>('.image-preview-stage')
       const source = document.querySelector<HTMLImageElement>('.image-magnifier__source')
       const lens = document.querySelector<HTMLElement>('.image-magnifier')
-      if (stage === null || source === null || lens === null) return
-      if (!magnifierSceneReady(lens, source)) {
-        if (pointerFrame !== undefined) return
-        pointerFrame = requestAnimationFrame(() => {
-          pointerFrame = undefined
-          const bounds = stage.getBoundingClientRect()
-          const pointerMove = new MouseEvent('pointermove', {
-            bubbles: true,
-            cancelable: true,
-            clientX: bounds.width > 0 ? bounds.left + bounds.width / 2 : 320,
-            clientY: bounds.height > 0 ? bounds.top + bounds.height / 2 : 240,
-          })
-          Object.defineProperty(pointerMove, 'pointerId', { value: 1 })
-          stage.dispatchEvent(pointerMove)
-        })
-        return
-      }
+      if (source === null || lens === null || !magnifierSceneReady(lens, source)) return
       observer.disconnect()
-      setReady(true)
+      settleTimer = setTimeout(() => {
+        firstSettleFrame = requestAnimationFrame(() => {
+          secondSettleFrame = requestAnimationFrame(() => setReady(true))
+        })
+      }, 160)
     }
     const observer = new MutationObserver(attempt)
     observer.observe(document.body, { attributes: true, childList: true, subtree: true })
+    const button = namedButton('放大镜')
+    if (button?.getAttribute('aria-pressed') !== 'true') button?.click()
+    pointerFrame = requestAnimationFrame(() => {
+      const stage = document.querySelector<HTMLElement>('.image-preview-stage')
+      if (stage === null) return
+      const pointerMove = new MouseEvent('pointermove', {
+        bubbles: true,
+        cancelable: true,
+        clientX: MAGNIFIER_POINTER.x,
+        clientY: MAGNIFIER_POINTER.y,
+      })
+      Object.defineProperty(pointerMove, 'pointerId', { value: 1 })
+      stage.dispatchEvent(pointerMove)
+    })
     attempt()
     return () => {
       observer.disconnect()
+      if (settleTimer !== undefined) clearTimeout(settleTimer)
       if (pointerFrame !== undefined) cancelAnimationFrame(pointerFrame)
+      if (firstSettleFrame !== undefined) cancelAnimationFrame(firstSettleFrame)
+      if (secondSettleFrame !== undefined) cancelAnimationFrame(secondSettleFrame)
     }
   }, [state])
   return ready
@@ -306,7 +309,8 @@ function magnifierSceneReady(lens: HTMLElement, source: HTMLImageElement): boole
     lens.dataset.shape === 'circle' &&
     lens.style.width === '160px' &&
     lens.style.height === '160px' &&
-    lens.style.getPropertyValue('--magnifier-scale') === '4' &&
+    lens.style.getPropertyValue('--magnifier-scale') === '1.5' &&
+    lens.style.getPropertyValue('--magnifier-x') !== `${MAGNIFIER_POINTER.x}px` &&
     source.src.includes(encodeURIComponent(PREVIEW_FILE.name)) &&
     source.src.includes('representation=original100_percent')
   )

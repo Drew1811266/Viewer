@@ -2524,9 +2524,9 @@ describe('Viewer empty state', () => {
     })
   })
 
-  it('opens comparison with C after selecting 20 images', async () => {
+  it('opens comparison with C after selecting 8 images', async () => {
     const viewer = bridge()
-    vi.mocked(viewer.queryFolder).mockResolvedValue(compareContentWorkspaceWithCount(20))
+    vi.mocked(viewer.queryFolder).mockResolvedValue(compareContentWorkspaceWithCount(8))
     render(<App bridge={viewer} />)
     fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
     const grid = await screen.findByRole('listbox', { name: '图片文件' })
@@ -2539,7 +2539,7 @@ describe('Viewer empty state', () => {
     const mountedOptions = screen.getAllByRole('option')
     expect(mountedOptions.every((item) => item.ariaSelected === 'true')).toBe(true)
     openRadialMenu(defined(mountedOptions[0], 'Expected a mounted selected image'), 222)
-    expect(screen.getByText('20 个文件')).toBeVisible()
+    expect(screen.getByText('8 个文件')).toBeVisible()
   })
 
   it('uses one fit row for four portrait files in a wide comparison workspace', async () => {

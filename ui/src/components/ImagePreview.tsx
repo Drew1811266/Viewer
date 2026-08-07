@@ -70,6 +70,8 @@ export default function ImagePreview({
   const unavailable = unavailableEntityIds.has(file.entityId)
   const transformsDisabled = unavailable || !isPreviewableImage(file)
   const viewport = useImageViewport({ stage: EMPTY_STAGE, source: EMPTY_STAGE, fitInset: 0.9 })
+  const scalePercent = Math.round((viewport.state.mode === 'free' ? viewport.state.zoom : 1) * 100)
+  const [announcedScalePercent, setAnnouncedScalePercent] = useState(scalePercent)
   const original = useCurrentOriginal({
     file,
     needed: magnifierEnabled,
@@ -100,6 +102,11 @@ export default function ImagePreview({
     lastStagePoint.current = null
     hideMagnifier(magnifierHandle, stage)
   }, [file.entityId, viewport.resetForEntity])
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setAnnouncedScalePercent(scalePercent), 300)
+    return () => window.clearTimeout(timer)
+  }, [scalePercent])
 
   useEffect(() => {
     const element = stage.current
@@ -340,8 +347,9 @@ export default function ImagePreview({
         disabled={transformsDisabled}
         onClick={() => zoomFromToolbar(0.8)}
       />
-      <span className="preview-scale-label" aria-live="polite">
-        {Math.round((viewport.state.mode === 'free' ? viewport.state.zoom : 1) * 100)}%
+      <span className="preview-scale-label">{scalePercent}%</span>
+      <span className="visually-hidden" data-testid="preview-scale-announcement" aria-live="polite">
+        缩放比例 {announcedScalePercent}%
       </span>
       <ViewerIconButton
         icon="plus"

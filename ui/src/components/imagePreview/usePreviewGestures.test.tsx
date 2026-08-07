@@ -88,7 +88,7 @@ describe('usePreviewGestures', () => {
     expect(pinch.defaultPrevented).toBe(true)
     expect(actions.zoomBy).not.toHaveBeenCalled()
     frames.shift()?.(0)
-    expect(actions.zoomBy).toHaveBeenCalledWith(Math.exp(0.04), { x: 220, y: 130 })
+    expect(actions.zoomBy).toHaveBeenCalledWith(Math.exp(0.08), { x: 220, y: 130 })
 
     const pan = new WheelEvent('wheel', {
       bubbles: true,
@@ -111,6 +111,41 @@ describe('usePreviewGestures', () => {
     outside.dispatchEvent(outsideWheel)
     expect(outsideWheel.defaultPrevented).toBe(false)
     outside.remove()
+  })
+
+  it('preserves fine pinch deltas while coalescing them into one responsive frame', () => {
+    const actions = { panBy: vi.fn(), zoomBy: vi.fn() }
+    render(<Harness actions={actions} />)
+    const stage = screen.getByTestId('stage')
+    vi.spyOn(stage, 'getBoundingClientRect').mockReturnValue({
+      x: 100,
+      y: 50,
+      left: 100,
+      top: 50,
+      right: 600,
+      bottom: 450,
+      width: 500,
+      height: 400,
+      toJSON: () => undefined,
+    })
+
+    for (const deltaY of [-2, -3, -5]) {
+      stage.dispatchEvent(
+        new WheelEvent('wheel', {
+          bubbles: true,
+          cancelable: true,
+          ctrlKey: true,
+          clientX: 320,
+          clientY: 180,
+          deltaY,
+        }),
+      )
+    }
+
+    expect(frames).toHaveLength(1)
+    frames.shift()?.(16)
+    expect(actions.zoomBy).toHaveBeenCalledTimes(1)
+    expect(actions.zoomBy).toHaveBeenCalledWith(Math.exp(0.04), { x: 220, y: 130 })
   })
 
   it('coalesces wheel work into one frame and cancels pending work on unmount', () => {

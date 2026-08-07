@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef } from 'react'
 import type { Point } from './imageGeometry'
 
 const LINE_HEIGHT = 16
-const PINCH_SENSITIVITY = 0.002
+const PINCH_SENSITIVITY = 0.004
 const WHEEL_LISTENER_OPTIONS = { passive: false, capture: false } as const
 
 interface PreviewGestureOptions {

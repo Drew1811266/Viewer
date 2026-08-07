@@ -583,10 +583,10 @@ describe('ImagePreview', () => {
     expect(pinch.defaultPrevented).toBe(true)
     act(() => frames.shift()?.(0))
     expect(preview).toHaveAttribute('data-mode', 'free')
-    expect(screen.getByText('149%')).toBeVisible()
+    expect(screen.getByText('223%')).toBeVisible()
 
     fireEvent.click(screen.getByRole('button', { name: '放大' }))
-    expect(screen.getByText('186%')).toBeVisible()
+    expect(screen.getByText('278%')).toBeVisible()
     const pan = new WheelEvent('wheel', {
       bubbles: true,
       cancelable: true,
@@ -598,5 +598,46 @@ describe('ImagePreview', () => {
     expect(preview.getAttribute('style')).toContain('translate(-12px, 18px)')
     expect(navigate).not.toHaveBeenCalled()
     vi.unstubAllGlobals()
+  })
+
+  it('updates visible scale immediately but announces only the settled percentage', async () => {
+    const target = image(1)
+    const request = vi.fn(async () => ({
+      cacheKey: 'fit',
+      url: 'viewer-image://localhost/session/fit',
+      width: 800,
+      height: 600,
+      backend: 'image_io' as const,
+    }))
+    render(
+      <ImagePreview
+        file={target}
+        files={[target]}
+        magnifier={MAGNIFIER}
+        pointerClientPoint={POINTER_CLIENT_POINT}
+        requestImage={request}
+        onNavigate={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    )
+    await screen.findByRole('img', { name: '1.jpg' })
+    vi.useFakeTimers()
+
+    try {
+      const live = screen.getByTestId('preview-scale-announcement')
+      expect(live).toHaveTextContent('缩放比例 100%')
+
+      fireEvent.click(screen.getByRole('button', { name: '放大' }))
+      fireEvent.click(screen.getByRole('button', { name: '放大' }))
+      expect(screen.getByText('156%', { selector: '.preview-scale-label' })).toBeVisible()
+      expect(live).toHaveTextContent('缩放比例 100%')
+
+      act(() => vi.advanceTimersByTime(299))
+      expect(live).toHaveTextContent('缩放比例 100%')
+      act(() => vi.advanceTimersByTime(1))
+      expect(live).toHaveTextContent('缩放比例 156%')
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

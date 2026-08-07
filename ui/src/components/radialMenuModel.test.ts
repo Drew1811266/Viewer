@@ -102,9 +102,7 @@ describe('buildRadialMenuModel', () => {
     const eight = buildRadialMenuModel(context({ selectedCount: 8, selectedImageCount: 8 }))[4]
     expect(eight).toMatchObject({ id: 'compare', disabled: false })
 
-    const nine = buildRadialMenuModel(
-      context({ selectedCount: 9, selectedImageCount: 9 }),
-    )[4]
+    const nine = buildRadialMenuModel(context({ selectedCount: 9, selectedImageCount: 9 }))[4]
     expect(nine).toMatchObject({
       id: 'compare',
       disabled: true,

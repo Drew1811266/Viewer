@@ -1,4 +1,4 @@
-import type { MagnifierArea, MagnifierMagnification, MagnifierShape } from '../../api/types'
+import type { MagnifierArea, MagnifierShape } from '../../api/types'
 import type { Point, Size } from './imageGeometry'
 
 const LENS_DIMENSIONS: Record<MagnifierArea, Record<MagnifierShape, Size>> = {
@@ -54,7 +54,6 @@ export function magnifierShellPlacement(
 export function magnifierSourcePlacement(
   sourcePoint: Point,
   dimensions: Size,
-  _magnification: MagnifierMagnification,
 ): MagnifierSourcePlacement {
   return {
     left: dimensions.width / 2 - sourcePoint.x,

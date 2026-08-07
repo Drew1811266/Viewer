@@ -35,6 +35,7 @@ describe('ImageMagnifier', () => {
         shape={shape}
         area={area}
         magnification={1.5}
+        sourceScale={0.25}
         stageSize={{ width: 640, height: 480 }}
         rotation={0}
         fileName="detail.jpg"
@@ -56,6 +57,7 @@ describe('ImageMagnifier', () => {
         shape="circle"
         area="small"
         magnification={1.5}
+        sourceScale={0.25}
         stageSize={{ width: 640, height: 480 }}
         rotation={90}
         fileName="detail.jpg"
@@ -83,6 +85,7 @@ describe('ImageMagnifier', () => {
         shape="circle"
         area="small"
         magnification={1.5}
+        sourceScale={0.25}
         stageSize={{ width: 640, height: 480 }}
         rotation={0}
         fileName="detail.jpg"
@@ -122,6 +125,7 @@ describe('ImageMagnifier imperative placement', () => {
         shape="circle"
         area="small"
         magnification={1.5}
+        sourceScale={0.25}
         stageSize={{ width: 640, height: 480 }}
         rotation={90}
         fileName="detail.jpg"
@@ -146,7 +150,7 @@ describe('ImageMagnifier imperative placement', () => {
       '--magnifier-y': '248px',
       '--magnifier-shell-origin-x': '0px',
       '--magnifier-shell-origin-y': '0px',
-      '--magnifier-scale': '1.5',
+      '--magnifier-scale': '0.375',
       '--magnifier-rotation': '90deg',
     })
     expect(screen.getByTestId('image-magnifier-source')).toHaveStyle({
@@ -181,6 +185,7 @@ describe('ImageMagnifier imperative placement', () => {
         shape="circle"
         area="small"
         magnification={1.5}
+        sourceScale={0.25}
         stageSize={{ width: 640, height: 480 }}
         rotation={0}
         fileName="detail.jpg"

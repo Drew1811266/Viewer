@@ -23,6 +23,7 @@ interface ImageMagnifierProps {
   shape: MagnifierShape
   area: MagnifierArea
   magnification: MagnifierMagnification
+  sourceScale: number
   stageSize: Size
   rotation: PreviewRotation
   fileName: string
@@ -33,13 +34,14 @@ interface MagnifierConfiguration {
   shape: MagnifierShape
   area: MagnifierArea
   magnification: MagnifierMagnification
+  sourceScale: number
   stageSize: Size
   rotation: PreviewRotation
 }
 
 const ImageMagnifier = forwardRef<ImageMagnifierHandle, ImageMagnifierProps>(
   function ImageMagnifier(
-    { shape, area, magnification, stageSize, rotation, fileName, original },
+    { shape, area, magnification, sourceScale, stageSize, rotation, fileName, original },
     forwardedRef,
   ) {
     const lens = useRef<HTMLDivElement>(null)
@@ -50,10 +52,11 @@ const ImageMagnifier = forwardRef<ImageMagnifierHandle, ImageMagnifierProps>(
       shape,
       area,
       magnification,
+      sourceScale,
       stageSize,
       rotation,
     })
-    configuration.current = { shape, area, magnification, stageSize, rotation }
+    configuration.current = { shape, area, magnification, sourceScale, stageSize, rotation }
     const dimensions = lensDimensions(shape, area)
 
     const flush = useCallback(() => {
@@ -68,11 +71,7 @@ const ImageMagnifier = forwardRef<ImageMagnifierHandle, ImageMagnifierProps>(
         current.stageSize,
         currentDimensions,
       )
-      const source = magnifierSourcePlacement(
-        placement.sourcePoint,
-        currentDimensions,
-        current.magnification,
-      )
+      const source = magnifierSourcePlacement(placement.sourcePoint, currentDimensions)
       setPixels(element, '--magnifier-x', shell.center.x)
       setPixels(element, '--magnifier-y', shell.center.y)
       setPixels(element, '--magnifier-shell-origin-x', shell.origin.x)
@@ -85,7 +84,10 @@ const ImageMagnifier = forwardRef<ImageMagnifierHandle, ImageMagnifierProps>(
       }
       setPixels(element, '--magnifier-transform-origin-x', source.transformOriginX)
       setPixels(element, '--magnifier-transform-origin-y', source.transformOriginY)
-      element.style.setProperty('--magnifier-scale', String(current.magnification))
+      element.style.setProperty(
+        '--magnifier-scale',
+        String(current.sourceScale * current.magnification),
+      )
       element.style.setProperty('--magnifier-rotation', `${current.rotation}deg`)
       element.dataset.visible = 'true'
     }, [])
@@ -113,7 +115,7 @@ const ImageMagnifier = forwardRef<ImageMagnifierHandle, ImageMagnifierProps>(
 
     useEffect(() => {
       if (latestPlacement.current !== null && lens.current?.dataset.visible === 'true') schedule()
-    }, [area, magnification, rotation, schedule, shape, stageSize])
+    }, [area, magnification, rotation, schedule, shape, sourceScale, stageSize])
 
     useEffect(
       () => () => {
@@ -125,7 +127,7 @@ const ImageMagnifier = forwardRef<ImageMagnifierHandle, ImageMagnifierProps>(
     const style = {
       width: dimensions.width,
       height: dimensions.height,
-      '--magnifier-scale': String(magnification),
+      '--magnifier-scale': String(sourceScale * magnification),
       '--magnifier-rotation': `${rotation}deg`,
     } as CSSProperties
 

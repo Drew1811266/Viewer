@@ -443,6 +443,7 @@ export default function ImagePreview({
         shape={magnifier.shape}
         area={magnifier.area}
         magnification={magnifier.magnification}
+        sourceScale={viewport.scale}
         stageSize={stageSize}
         rotation={viewport.state.rotation}
         fileName={file.name}

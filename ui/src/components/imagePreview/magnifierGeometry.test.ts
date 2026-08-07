@@ -18,18 +18,16 @@ describe('magnifier geometry', () => {
   it('places the sampled original pixel at the lens center used as the CSS transform origin', () => {
     const dimensions = { width: 160, height: 160 }
     const sourcePoint = { x: 1600, y: 1200 }
-    for (const magnification of [1.5, 2, 3] as const) {
-      const placement = magnifierSourcePlacement(sourcePoint, dimensions, magnification)
+    const placement = magnifierSourcePlacement(sourcePoint, dimensions)
 
-      expect(placement).toEqual({
-        left: -1520,
-        top: -1120,
-        transformOriginX: 1600,
-        transformOriginY: 1200,
-      })
-      expect(placement.left + sourcePoint.x).toBe(80)
-      expect(placement.top + sourcePoint.y).toBe(80)
-    }
+    expect(placement).toEqual({
+      left: -1520,
+      top: -1120,
+      transformOriginX: 1600,
+      transformOriginY: 1200,
+    })
+    expect(placement.left + sourcePoint.x).toBe(80)
+    expect(placement.top + sourcePoint.y).toBe(80)
   })
 
   it('places the lens to the lower-right when both positive axes fit', () => {

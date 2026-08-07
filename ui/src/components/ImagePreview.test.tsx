@@ -425,8 +425,8 @@ describe('ImagePreview', () => {
     const request = vi.fn(async (_file: BrowserFile, request: ImageRepresentationRequest) => ({
       cacheKey: request.kind,
       url: `viewer-image://localhost/session/${request.kind}`,
-      width: request.kind === 'original100_percent' ? 6000 : 800,
-      height: request.kind === 'original100_percent' ? 4000 : 600,
+      width: request.kind === 'original100_percent' ? 1280 : 800,
+      height: request.kind === 'original100_percent' ? 960 : 600,
       backend: 'image_io' as const,
     }))
     render(
@@ -440,7 +440,8 @@ describe('ImagePreview', () => {
         onClose={vi.fn()}
       />,
     )
-    await screen.findByRole('img', { name: '1.jpg' })
+    const preview = await screen.findByRole('img', { name: '1.jpg' })
+    await waitFor(() => expect(preview).toHaveAttribute('data-representation', 'original'))
 
     const dialog = screen.getByRole('dialog')
     const button = screen.getByRole('button', { name: '放大镜' })
@@ -497,8 +498,8 @@ describe('ImagePreview', () => {
     const request = vi.fn(async (_file: BrowserFile, request: ImageRepresentationRequest) => ({
       cacheKey: request.kind,
       url: `viewer-image://localhost/session/${request.kind}`,
-      width: request.kind === 'original100_percent' ? 6000 : 800,
-      height: request.kind === 'original100_percent' ? 4000 : 600,
+      width: request.kind === 'original100_percent' ? 1280 : 800,
+      height: request.kind === 'original100_percent' ? 960 : 600,
       backend: 'image_io' as const,
     }))
     const view = render(
@@ -512,7 +513,8 @@ describe('ImagePreview', () => {
         onClose={vi.fn()}
       />,
     )
-    await screen.findByRole('img', { name: '1.jpg' })
+    const preview = await screen.findByRole('img', { name: '1.jpg' })
+    await waitFor(() => expect(preview).toHaveAttribute('data-representation', 'original'))
     const stage = view.container.querySelector('.image-preview-stage') as HTMLElement
     vi.spyOn(stage, 'getBoundingClientRect').mockReturnValue({
       x: 0,
@@ -539,6 +541,17 @@ describe('ImagePreview', () => {
     expect(pointerClientPoint.current).toEqual({ x: 320, y: 240 })
     expect(lens).toHaveAttribute('data-visible', 'true')
     expect(lens).toHaveStyle({ '--magnifier-x': '418px', '--magnifier-y': '338px' })
+    expect(lens).toHaveStyle({ '--magnifier-scale': '0.675' })
+
+    fireEvent.click(screen.getByRole('button', { name: '放大' }))
+    act(() => {
+      while (frames.length > 0) frames.shift()?.(0)
+    })
+    expect(lens).toHaveStyle({ '--magnifier-scale': '0.84375' })
+    fireEvent.click(screen.getByRole('button', { name: '适应窗口' }))
+    act(() => {
+      while (frames.length > 0) frames.shift()?.(0)
+    })
 
     pointerClientPoint.current = { x: 2, y: 2 }
     fireEvent.keyDown(screen.getByRole('dialog'), { key: 'q' })

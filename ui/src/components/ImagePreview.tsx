@@ -47,6 +47,7 @@ export default function ImagePreview({
   file,
   files,
   magnifier,
+  pointerClientPoint,
   unavailableEntityIds = EMPTY_ENTITY_IDS,
   requestImage,
   onNavigate,
@@ -228,13 +229,39 @@ export default function ImagePreview({
     ],
   )
 
+  const placeLatestMagnifier = useCallback(() => {
+    const element = stage.current
+    const clientPoint = pointerClientPoint.current
+    if (element === null || clientPoint === null) {
+      hideMagnifier(magnifierHandle, stage)
+      return
+    }
+    const bounds = element.getBoundingClientRect()
+    const stagePoint = {
+      x: clientPoint.x - bounds.left,
+      y: clientPoint.y - bounds.top,
+    }
+    lastStagePoint.current = stagePoint
+    placeMagnifier(stagePoint)
+  }, [placeMagnifier, pointerClientPoint])
+
   useEffect(() => {
-    const point = lastStagePoint.current
-    if (point !== null) placeMagnifier(point)
     if (!magnifierEnabled || transformsDisabled || representation == null) {
       hideMagnifier(magnifierHandle, stage)
+      return
     }
-  }, [magnifierEnabled, placeMagnifier, representation, transformsDisabled])
+    placeLatestMagnifier()
+  }, [
+    magnifier.area,
+    magnifier.magnification,
+    magnifier.shape,
+    magnifierEnabled,
+    placeLatestMagnifier,
+    representation,
+    stageSize,
+    transformsDisabled,
+    viewport.state.rotation,
+  ])
 
   function navigate(delta: number) {
     const next = files[currentIndex + delta]
@@ -275,13 +302,26 @@ export default function ImagePreview({
 
   function sampleMagnifier(event: PointerEvent<HTMLDivElement>) {
     gestures.onPointerMove(event)
-    const bounds = event.currentTarget.getBoundingClientRect()
-    const point = { x: event.clientX - bounds.left, y: event.clientY - bounds.top }
+    const point = recordPointer(event)
     lastStagePoint.current = point
     placeMagnifier(point)
   }
 
-  function stopMagnifier() {
+  function startPointer(event: PointerEvent<HTMLDivElement>) {
+    gestures.onPointerDown(event)
+    const point = recordPointer(event)
+    lastStagePoint.current = point
+    placeMagnifier(point)
+  }
+
+  function recordPointer(event: PointerEvent<HTMLDivElement>): Point {
+    pointerClientPoint.current = { x: event.clientX, y: event.clientY }
+    const bounds = event.currentTarget.getBoundingClientRect()
+    return { x: event.clientX - bounds.left, y: event.clientY - bounds.top }
+  }
+
+  function stopMagnifier(event: PointerEvent<HTMLDivElement>) {
+    pointerClientPoint.current = { x: event.clientX, y: event.clientY }
     lastStagePoint.current = null
     hideMagnifier(magnifierHandle, stage)
   }
@@ -372,7 +412,7 @@ export default function ImagePreview({
     <div
       ref={stage}
       className="image-preview-stage"
-      onPointerDown={gestures.onPointerDown}
+      onPointerDown={startPointer}
       onPointerMove={sampleMagnifier}
       onPointerEnter={sampleMagnifier}
       onPointerLeave={stopMagnifier}
@@ -409,18 +449,16 @@ export default function ImagePreview({
           {error}
         </ViewerLocalFeedback>
       )}
-      {magnifierEnabled && (
-        <ImageMagnifier
-          ref={magnifierHandle}
-          shape={magnifier.shape}
-          area={magnifier.area}
-          magnification={magnifier.magnification}
-          stageSize={stageSize}
-          rotation={viewport.state.rotation}
-          fileName={file.name}
-          original={original}
-        />
-      )}
+      <ImageMagnifier
+        ref={magnifierHandle}
+        shape={magnifier.shape}
+        area={magnifier.area}
+        magnification={magnifier.magnification}
+        stageSize={stageSize}
+        rotation={viewport.state.rotation}
+        fileName={file.name}
+        original={original}
+      />
       {magnifierAnnouncement(magnifierEnabled, original.status)}
       {magnifierAnnounced && (
         <span className="visually-hidden" aria-live="polite">

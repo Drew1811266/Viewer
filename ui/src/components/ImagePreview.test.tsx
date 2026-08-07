@@ -352,6 +352,74 @@ describe('ImagePreview', () => {
     expect(button).toHaveAttribute('aria-pressed', 'true')
   })
 
+  it('shows the pointer-adjacent lens immediately for stationary Q activation', async () => {
+    const frames: FrameRequestCallback[] = []
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+      frames.push(callback)
+      return frames.length
+    })
+    vi.stubGlobal('cancelAnimationFrame', vi.fn())
+    const pointerClientPoint = { current: { x: 320, y: 240 } }
+    const target = image(1)
+    const request = vi.fn(async (_file: BrowserFile, request: ImageRepresentationRequest) => ({
+      cacheKey: request.kind,
+      url: `viewer-image://localhost/session/${request.kind}`,
+      width: request.kind === 'original100_percent' ? 6000 : 800,
+      height: request.kind === 'original100_percent' ? 4000 : 600,
+      backend: 'image_io' as const,
+    }))
+    const view = render(
+      <ImagePreview
+        file={target}
+        files={[target]}
+        magnifier={MAGNIFIER}
+        pointerClientPoint={pointerClientPoint}
+        requestImage={request}
+        onNavigate={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    )
+    await screen.findByRole('img', { name: '1.jpg' })
+    const stage = view.container.querySelector('.image-preview-stage') as HTMLElement
+    vi.spyOn(stage, 'getBoundingClientRect').mockReturnValue({
+      x: 0,
+      y: 0,
+      left: 0,
+      top: 0,
+      right: 640,
+      bottom: 480,
+      width: 640,
+      height: 480,
+      toJSON: () => undefined,
+    })
+    const pointerMove = vi.fn()
+    stage.addEventListener('pointermove', pointerMove)
+
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'q' })
+    await waitFor(() => expect(screen.getByTestId('image-magnifier')).toBeInTheDocument())
+    act(() => {
+      while (frames.length > 0) frames.shift()?.(0)
+    })
+
+    const lens = screen.getByTestId('image-magnifier')
+    expect(pointerMove).not.toHaveBeenCalled()
+    expect(pointerClientPoint.current).toEqual({ x: 320, y: 240 })
+    expect(lens).toHaveAttribute('data-visible', 'true')
+    expect(lens).toHaveStyle({ '--magnifier-x': '418px', '--magnifier-y': '338px' })
+
+    pointerClientPoint.current = { x: 2, y: 2 }
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'q' })
+    expect(lens).toBeInTheDocument()
+    expect(lens).not.toHaveAttribute('data-visible')
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'q' })
+    act(() => {
+      while (frames.length > 0) frames.shift()?.(0)
+    })
+
+    expect(screen.getByRole('button', { name: '放大镜' })).toHaveAttribute('aria-pressed', 'true')
+    expect(lens).not.toHaveAttribute('data-visible')
+  })
+
   it('hides the lens outside actual image pixels while preserving enabled state across navigation', async () => {
     const files = [image(1), image(2)]
     const request = vi.fn(

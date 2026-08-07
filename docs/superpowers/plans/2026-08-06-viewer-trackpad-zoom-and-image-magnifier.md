@@ -695,7 +695,7 @@ For pointer drag, ignore non-primary buttons, set pointer capture only when pan 
 pnpm --dir ui exec vitest run src/components/imagePreview/useImageViewport.test.tsx src/components/imagePreview/usePreviewGestures.test.tsx
 ```
 
-- [ ] **Step 8: Commit viewport and gesture hooks**
+- [x] **Step 8: Commit viewport and gesture hooks**
 
 ```bash
 git add ui/src/components/imagePreview/useImageViewport.ts ui/src/components/imagePreview/useImageViewport.test.tsx ui/src/components/imagePreview/usePreviewGestures.ts ui/src/components/imagePreview/usePreviewGestures.test.tsx
@@ -716,7 +716,7 @@ git commit -m "feat: add trackpad preview gestures"
 - Produces `CurrentOriginalState` with status `idle | loading | ready | budget_error | error`, representation, and entity identity.
 - Accepts the existing signal-aware image request callback and `needed` boolean.
 
-- [ ] **Step 1: Add failing lifecycle tests**
+- [x] **Step 1: Add failing lifecycle tests**
 
 Use deferred requests to prove:
 
@@ -729,19 +729,19 @@ Use deferred requests to prove:
 7. Error code `image_budget_exceeded` maps to `budget_error`; other errors map to `error`; AbortError is silent.
 8. A new entity clears the previous failure and retries normally.
 
-- [ ] **Step 2: Run the hook test and observe failure**
+- [x] **Step 2: Run the hook test and observe failure**
 
 ```bash
 pnpm --dir ui exec vitest run src/components/imagePreview/useCurrentOriginal.test.tsx
 ```
 
-- [ ] **Step 3: Implement one request identity and abort controller**
+- [x] **Step 3: Implement one request identity and abort controller**
 
 Mirror the proven cancellation pattern in `ComparePane`, but retain only one current value. The effect dependencies are current `entityId`, `needed`, `available`, and the stable request callback. Create a new `AbortController`, set loading synchronously for the current identity, pass `controller.signal`, reject stale completions by identity, and abort on cleanup.
 
 Do not cache decoded originals in a frontend map. Backend artifact reuse remains available through the existing image cache.
 
-- [ ] **Step 4: Run the hook test and confirm green**
+- [x] **Step 4: Run the hook test and confirm green**
 
 ```bash
 pnpm --dir ui exec vitest run src/components/imagePreview/useCurrentOriginal.test.tsx

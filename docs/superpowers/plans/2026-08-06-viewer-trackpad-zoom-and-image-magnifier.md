@@ -618,7 +618,7 @@ Expose `lensDimensions(shape, area)` from a frozen typed record and `magnifierSo
 pnpm --dir ui exec vitest run src/components/imagePreview/imageGeometry.test.ts src/components/imagePreview/magnifierGeometry.test.ts
 ```
 
-- [ ] **Step 9: Commit pure geometry**
+- [x] **Step 9: Commit pure geometry**
 
 ```bash
 git add ui/src/components/imagePreview/imageGeometry.ts ui/src/components/imagePreview/imageGeometry.test.ts ui/src/components/imagePreview/magnifierGeometry.ts ui/src/components/imagePreview/magnifierGeometry.test.ts
@@ -639,7 +639,7 @@ git commit -m "feat: model preview and magnifier geometry"
 - `useImageViewport` owns `mode`, `zoom`, `rotation`, `offset`, current measurements, and all viewport actions.
 - `usePreviewGestures` attaches one non-passive wheel listener and maps pinch, two-axis pan, and pointer drag into viewport actions.
 
-- [ ] **Step 1: Add failing hook tests for one viewport model**
+- [x] **Step 1: Add failing hook tests for one viewport model**
 
 Use a small test harness with measured stage/source sizes. Prove:
 
@@ -651,7 +651,7 @@ Use a small test harness with measured stage/source sizes. Prove:
 - `setMeasurements()` reclamps after resize or representation change.
 - `resetForEntity()` resets fit/zoom/rotation/offset but does not own magnifier enabled state.
 
-- [ ] **Step 2: Add failing wheel normalization tests**
+- [x] **Step 2: Add failing wheel normalization tests**
 
 Export and test `normalizeWheelDelta(event, pageSize)` for pixel, line, and page delta modes. In a DOM harness, dispatch cancelable wheel events and assert:
 
@@ -669,27 +669,27 @@ stage.dispatchEvent(new WheelEvent('wheel', {
 
 The pinch event calls `zoomBy` with a factor derived from `Math.exp(-deltaY * 0.002)` and a stage-local anchor. An ordinary event with `deltaX: 12, deltaY: -18` calls `panBy({ x: -12, y: 18 })`. Both owned events are default-prevented; events on toolbar/outside stage are untouched.
 
-- [ ] **Step 3: Add failing animation-frame coalescing tests**
+- [x] **Step 3: Add failing animation-frame coalescing tests**
 
 Stub `requestAnimationFrame`. Dispatch several wheel events before flushing one frame and assert only one viewport update occurs with accumulated pan deltas or the latest composed pinch intent. Unmount before flush and assert the frame is canceled and the listener removed.
 
-- [ ] **Step 4: Run focused hook tests and observe failure**
+- [x] **Step 4: Run focused hook tests and observe failure**
 
 ```bash
 pnpm --dir ui exec vitest run src/components/imagePreview/useImageViewport.test.tsx src/components/imagePreview/usePreviewGestures.test.tsx
 ```
 
-- [ ] **Step 5: Implement `useImageViewport` over pure geometry**
+- [x] **Step 5: Implement `useImageViewport` over pure geometry**
 
 Use functional state updates so wheel, pointer, and toolbar calls cannot overwrite each other. Return stable callbacks for `setFit`, `setOriginal`, `zoomBy`, `panBy`, `rotateClockwise`, `setMeasurements`, and `resetForEntity`, plus a CSS transform derived from the state. Do not retain DOM nodes in this hook.
 
-- [ ] **Step 6: Implement non-passive trackpad ownership**
+- [x] **Step 6: Implement non-passive trackpad ownership**
 
 Use `stage.addEventListener('wheel', onWheel, { passive: false })` in an effect. Ignore non-cancelable events and disabled stages. For owned events call `preventDefault`, normalize delta mode, accumulate work, and flush at most once per animation frame. Clamp in the viewport hook, never in the event adapter. Remove the exact listener options and cancel pending frames on cleanup.
 
 For pointer drag, ignore non-primary buttons, set pointer capture only when pan bounds are non-zero, and release/cancel drag on pointer up, pointer cancel, or lost capture.
 
-- [ ] **Step 7: Run focused hook tests and confirm green**
+- [x] **Step 7: Run focused hook tests and confirm green**
 
 ```bash
 pnpm --dir ui exec vitest run src/components/imagePreview/useImageViewport.test.tsx src/components/imagePreview/usePreviewGestures.test.tsx

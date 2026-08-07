@@ -2,13 +2,13 @@ import { describe, expect, it } from 'vitest'
 import {
   clampOffset,
   displayScale,
+  type ImageViewportGeometry,
+  type ImageViewportState,
   panBounds,
   remapSourcePoint,
   sourcePointAtStagePoint,
   sourcePointToStagePoint,
   stagePointToSourcePoint,
-  type ImageViewportGeometry,
-  type ImageViewportState,
   zoomAtAnchor,
 } from './imageGeometry'
 

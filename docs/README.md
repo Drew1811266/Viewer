@@ -97,6 +97,7 @@ completion.
 | [`superpowers/plans/2026-08-06-viewer-square-image-card-selection.md`](superpowers/plans/2026-08-06-viewer-square-image-card-selection.md) | Historical | — |
 | [`superpowers/plans/2026-08-06-viewer-trackpad-zoom-and-image-magnifier.md`](superpowers/plans/2026-08-06-viewer-trackpad-zoom-and-image-magnifier.md) | Historical | — |
 | [`superpowers/plans/2026-08-07-viewer-fit-relative-original-preview-revision.md`](superpowers/plans/2026-08-07-viewer-fit-relative-original-preview-revision.md) | Historical | — |
+| [`superpowers/plans/2026-08-07-viewer-stable-progressive-preview-and-larger-magnifier.md`](superpowers/plans/2026-08-07-viewer-stable-progressive-preview-and-larger-magnifier.md) | Historical | — |
 | [`superpowers/plans/2026-08-07-viewer-pointer-following-magnifier-revision.md`](superpowers/plans/2026-08-07-viewer-pointer-following-magnifier-revision.md) | Historical | — |
 
 ## Historical review evidence

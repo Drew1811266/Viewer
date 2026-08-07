@@ -48,13 +48,14 @@ completion.
 | [`superpowers/specs/2026-08-06-viewer-five-level-thumbnail-slider-design.md`](superpowers/specs/2026-08-06-viewer-five-level-thumbnail-slider-design.md) | Active | — |
 | [`superpowers/specs/2026-08-06-viewer-compare-original-images-and-eight-item-limit-design.md`](superpowers/specs/2026-08-06-viewer-compare-original-images-and-eight-item-limit-design.md) | Active | — |
 | [`superpowers/specs/2026-08-06-viewer-square-image-card-selection-design.md`](superpowers/specs/2026-08-06-viewer-square-image-card-selection-design.md) | Active | — |
-| [`superpowers/specs/2026-08-06-viewer-trackpad-zoom-and-image-magnifier-design.md`](superpowers/specs/2026-08-06-viewer-trackpad-zoom-and-image-magnifier-design.md) | Active | — |
+| [`superpowers/specs/2026-08-07-viewer-pointer-following-magnifier-revision-design.md`](superpowers/specs/2026-08-07-viewer-pointer-following-magnifier-revision-design.md) | Active | — |
 
 ## Superseded decisions
 
 | Document | Status | Replaced by |
 | --- | --- | --- |
 | [`adr/0004-viewer-0.1-architecture-freeze.md`](adr/0004-viewer-0.1-architecture-freeze.md) | Superseded | [`adr/0005-continuous-development-governance.md`](adr/0005-continuous-development-governance.md) |
+| [`superpowers/specs/2026-08-06-viewer-trackpad-zoom-and-image-magnifier-design.md`](superpowers/specs/2026-08-06-viewer-trackpad-zoom-and-image-magnifier-design.md) | Superseded | [`superpowers/specs/2026-08-07-viewer-pointer-following-magnifier-revision-design.md`](superpowers/specs/2026-08-07-viewer-pointer-following-magnifier-revision-design.md) |
 
 ## Historical implementation plans
 

@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { StrictMode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { BrowserFile, ImageRepresentation, ImageRepresentationRequest } from '../api/types'
 import { defined } from '../defined'
@@ -81,15 +82,23 @@ describe('CompareWorkspace', () => {
       kind: 'unsupported_image' as const,
     }
     const supported = image('supported', 'supported.jpg')
-    const requestImage = vi.fn((_file: BrowserFile) => {
+    const requestImage = vi.fn((_file: BrowserFile, _request: ImageRepresentationRequest) => {
       return new Promise<ImageRepresentation>(() => undefined)
     })
 
     renderWorkspace({ files: [unsupported, supported], requestImage })
 
     expect(screen.getByLabelText('raw.cr2 .CR2 暂不支持预览')).toBeVisible()
-    await waitFor(() => expect(requestImage).toHaveBeenCalled())
-    expect(requestImage.mock.calls.map(([file]) => file.entityId)).toEqual(['supported'])
+    await waitFor(() => expect(requestImage).toHaveBeenCalledTimes(2))
+    expect(
+      requestImage.mock.calls.map(([requestedFile, request]) => [
+        requestedFile.entityId,
+        request.kind,
+      ]),
+    ).toEqual([
+      ['supported', 'original100_percent'],
+      ['supported', 'fit_preview'],
+    ])
     expect(screen.getByRole('button', { name: '适应窗口' })).toBeDisabled()
     expect(screen.getByRole('button', { name: '100%' })).toBeDisabled()
     expect(screen.getByRole('button', { name: '缩小当前对比' })).toBeDisabled()
@@ -148,7 +157,10 @@ describe('CompareWorkspace', () => {
 
   it('virtualizes a scrolling portrait set', () => {
     const resize = installCompareResizeObserver()
-    const requestImage = vi.fn(() => new Promise<ImageRepresentation>(() => undefined))
+    const requestImage = vi.fn(
+      (_file: BrowserFile, _request: ImageRepresentationRequest) =>
+        new Promise<ImageRepresentation>(() => undefined),
+    )
     renderWorkspace({ files: portraitFiles(8), requestImage })
     act(() => resize.workspace(1_700, 900))
     expect(screen.getByRole('list', { name: '滚动图片对比' })).toHaveAttribute(
@@ -159,7 +171,12 @@ describe('CompareWorkspace', () => {
     const mountedItems = screen.getAllByRole('listitem')
     expect(mountedItems.length).toBeGreaterThan(0)
     expect(mountedItems.length).toBeLessThan(8)
-    expect(requestImage).toHaveBeenCalledTimes(mountedItems.length)
+    expect(
+      requestImage.mock.calls.filter(([, request]) => request.kind === 'fit_preview'),
+    ).toHaveLength(mountedItems.length)
+    expect(
+      requestImage.mock.calls.filter(([, request]) => request.kind === 'original100_percent'),
+    ).toHaveLength(2)
     expect(
       mountedItems.map((item) => [
         item.getAttribute('aria-posinset'),
@@ -287,208 +304,183 @@ describe('CompareWorkspace', () => {
     expect(screen.getByRole('button', { name: 'a.jpg 标记为保留' })).toBeDisabled()
   })
 
-  it('requests 100% only for the active pane and reuses resident fit proxies', async () => {
-    const requestImage = vi.fn(
-      (_file: BrowserFile, _request: ImageRepresentationRequest) =>
-        new Promise<ImageRepresentation>(() => undefined),
+  it('loads every mounted original through a two-wide FIFO queue without starvation', async () => {
+    const queuedFiles = portraitFiles(4)
+    const originals = new Map(
+      queuedFiles.map((file) => [file.entityId, deferred<ImageRepresentation>()]),
     )
-    renderWorkspace({ requestImage })
-    fireEvent.focus(pane('b'))
-    fireEvent.click(screen.getByRole('button', { name: '100%' }))
+    const started: string[] = []
+    const requestImage = vi.fn((file: BrowserFile, request: ImageRepresentationRequest) => {
+      if (request.kind === 'fit_preview') {
+        return Promise.resolve(imageRepresentation(`proxy-${file.entityId}`))
+      }
+      started.push(file.entityId)
+      return defined(originals.get(file.entityId), `Expected original for ${file.entityId}`).promise
+    })
+    renderWorkspace({ files: queuedFiles, requestImage })
+
+    await waitFor(() => expect(started).toHaveLength(2))
+    await act(async () =>
+      originals.get('portrait-0')?.resolve(imageRepresentation('original-portrait-0')),
+    )
     await waitFor(() =>
-      expect(requestImage).toHaveBeenCalledWith(
-        files[1],
-        {
-          kind: 'original100_percent',
-        },
-        expect.any(AbortSignal),
+      expect([...new Set(started)]).toEqual(['portrait-0', 'portrait-1', 'portrait-2']),
+    )
+    await act(async () =>
+      originals.get('portrait-1')?.resolve(imageRepresentation('original-portrait-1')),
+    )
+    await act(async () =>
+      originals.get('portrait-2')?.resolve(imageRepresentation('original-portrait-2')),
+    )
+    await waitFor(() =>
+      expect([...new Set(started)]).toEqual([
+        'portrait-0',
+        'portrait-1',
+        'portrait-2',
+        'portrait-3',
+      ]),
+    )
+    await act(async () =>
+      originals.get('portrait-3')?.resolve(imageRepresentation('original-portrait-3')),
+    )
+
+    for (const file of queuedFiles) {
+      expect(await screen.findByRole('img', { name: file.name })).toHaveAttribute(
+        'src',
+        `viewer-image://localhost/original-${file.entityId}`,
+      )
+    }
+  })
+
+  it('keeps the original scheduler available after StrictMode effect preflight', async () => {
+    const resize = installCompareResizeObserver()
+    const requestImage = vi.fn((file: BrowserFile, request: ImageRepresentationRequest) =>
+      Promise.resolve(
+        imageRepresentation(
+          `${request.kind === 'original100_percent' ? 'original' : 'proxy'}-${file.entityId}`,
+        ),
       ),
     )
-    expect(
-      requestImage.mock.calls.filter(([, request]) => request.kind === 'original100_percent'),
-    ).toHaveLength(1)
+    render(<StrictMode>{workspace({ requestImage })}</StrictMode>)
+    act(() => resize.workspace(1_700, 900))
+    act(() => resize.stages(640, 480))
 
-    fireEvent.click(screen.getByRole('button', { name: '适应窗口' }))
-    expect(
-      requestImage.mock.calls.filter(([, request]) => request.kind === 'fit_preview'),
-    ).toHaveLength(2)
-  })
-
-  it('recomputes actual pixels when 100% is requested before dimensions arrive', async () => {
-    const requestImage = vi.fn((_file: BrowserFile, request: ImageRepresentationRequest) =>
-      request.kind === 'original100_percent'
-        ? Promise.resolve({
-            cacheKey: 'original-a',
-            url: 'viewer-image://localhost/original-a',
-            width: 4_000,
-            height: 3_000,
-            backend: 'image_io' as const,
-          })
-        : new Promise<ImageRepresentation>(() => undefined),
-    )
-    renderWorkspace({ requestImage })
-    fireEvent.click(screen.getByRole('button', { name: '100%' }))
-
-    await waitFor(() => expect(pane('a')).toHaveAttribute('data-scale', '6.25'))
-  })
-
-  it('returns the transform to fit when an original exceeds the budget', async () => {
-    const status = vi.fn()
-    const requestImage = vi.fn((_file: BrowserFile, request: ImageRepresentationRequest) =>
-      request.kind === 'original100_percent'
-        ? Promise.reject({ code: 'image_budget_exceeded' })
-        : Promise.resolve({
-            cacheKey: 'proxy',
-            url: 'viewer-image://localhost/proxy',
-            width: 800,
-            height: 600,
-            backend: 'image_io' as const,
-          }),
-    )
-    renderWorkspace({ requestImage, onStatus: status })
-    await screen.findByRole('img', { name: 'a.jpg' })
-    fireEvent.click(screen.getByRole('button', { name: '100%' }))
-
-    await waitFor(() => expect(pane('a')).toHaveAttribute('data-scale', '1'))
-    expect(status).toHaveBeenCalledWith('原图超出安全预览限制，已继续使用适窗代理。')
-  })
-
-  it('serializes rapid original switches and keeps every pane proxy resident', async () => {
-    const firstOriginal = deferred<ImageRepresentation>()
-    const secondOriginal = deferred<ImageRepresentation>()
-    let originalCalls = 0
-    const requestImage = vi.fn((file: BrowserFile, request: ImageRepresentationRequest) => {
-      if (request.kind === 'original100_percent') {
-        originalCalls += 1
-        return originalCalls === 1 ? firstOriginal.promise : secondOriginal.promise
-      }
-      return Promise.resolve({
-        cacheKey: `proxy-${file.entityId}`,
-        url: `viewer-image://localhost/proxy-${file.entityId}`,
-        width: 800,
-        height: 600,
-        backend: 'image_io' as const,
-      })
-    })
-    renderWorkspace({ requestImage })
-    await screen.findByRole('img', { name: 'a.jpg' })
-    await screen.findByRole('img', { name: 'b.jpg' })
-
-    fireEvent.click(screen.getByRole('button', { name: '100%' }))
-    await waitFor(() => expect(originalCalls).toBe(1))
-    fireEvent.focus(pane('b'))
-    fireEvent.click(screen.getByRole('button', { name: '100%' }))
-    expect(originalCalls).toBe(1)
-    expect(screen.getByRole('img', { name: 'a.jpg' })).toHaveAttribute(
+    expect(await screen.findByRole('img', { name: 'a.jpg' })).toHaveAttribute(
       'src',
-      'viewer-image://localhost/proxy-a',
+      'viewer-image://localhost/original-a',
     )
-
-    await act(async () => firstOriginal.resolve(imageRepresentation('original-a')))
-    await waitFor(() => expect(originalCalls).toBe(2))
-    await act(async () => secondOriginal.resolve(imageRepresentation('original-b')))
     expect(await screen.findByRole('img', { name: 'b.jpg' })).toHaveAttribute(
       'src',
       'viewer-image://localhost/original-b',
     )
   })
 
-  it('lets a cancelled running original settle before starting the next serialized job', async () => {
-    const originalEntityIds: string[] = []
-    const originalSignals = new Map<string, AbortSignal | undefined>()
-    const requestImage = vi.fn(
-      (
-        file: BrowserFile,
-        request: ImageRepresentationRequest,
-        signal?: AbortSignal,
-      ): Promise<ImageRepresentation> => {
-        if (request.kind !== 'original100_percent') {
-          return Promise.resolve(imageRepresentation(`proxy-${file.entityId}`))
-        }
-        originalEntityIds.push(file.entityId)
-        originalSignals.set(file.entityId, signal)
-        return new Promise((_resolve, reject) => {
-          signal?.addEventListener(
-            'abort',
-            () => reject(new DOMException('request cancelled', 'AbortError')),
-            { once: true },
-          )
-        })
-      },
+  it('keeps Fit and 100% as geometry controls without requesting another source', async () => {
+    const requestImage = vi.fn((file: BrowserFile, request: ImageRepresentationRequest) =>
+      request.kind === 'original100_percent'
+        ? Promise.resolve(imageRepresentation(`original-${file.entityId}`))
+        : Promise.resolve(imageRepresentation(`proxy-${file.entityId}`)),
     )
     renderWorkspace({ requestImage })
-    await screen.findByRole('img', { name: 'a.jpg' })
-    await screen.findByRole('img', { name: 'b.jpg' })
-
-    fireEvent.click(screen.getByRole('button', { name: '100%' }))
-    await waitFor(() => expect(originalEntityIds).toEqual(['a']))
-    fireEvent.focus(pane('b'))
-    fireEvent.click(screen.getByRole('button', { name: '100%' }))
-
-    await waitFor(() => expect(originalSignals.get('a')?.aborted).toBe(true))
-    await waitFor(() => expect(originalEntityIds).toEqual(['a', 'b']))
-    expect(originalSignals.get('b')).toBeInstanceOf(AbortSignal)
-  })
-
-  it('never starts an original job after its queued caller is aborted', async () => {
-    const running = deferred<ImageRepresentation>()
-    const originalEntityIds: string[] = []
-    const requestImage = vi.fn((file: BrowserFile, request: ImageRepresentationRequest) => {
-      if (request.kind !== 'original100_percent') {
-        return Promise.resolve(imageRepresentation(`proxy-${file.entityId}`))
-      }
-      originalEntityIds.push(file.entityId)
-      return running.promise
-    })
-    renderWorkspace({ requestImage })
-    await screen.findByRole('img', { name: 'a.jpg' })
-    await screen.findByRole('img', { name: 'b.jpg' })
-
-    fireEvent.click(screen.getByRole('button', { name: '100%' }))
-    await waitFor(() => expect(originalEntityIds).toEqual(['a']))
-    fireEvent.focus(pane('b'))
-    fireEvent.click(screen.getByRole('button', { name: '100%' }))
-    await waitFor(() => expect(pane('b')).toHaveAttribute('data-scale', '6.25'))
-    fireEvent.click(screen.getByRole('button', { name: '适应窗口' }))
-    await act(async () => running.resolve(imageRepresentation('original-a')))
-
-    expect(originalEntityIds).toEqual(['a'])
-  })
-
-  it('drops a stale queued original before it reaches the native image lane', async () => {
-    const running = deferred<ImageRepresentation>()
-    const latest = deferred<ImageRepresentation>()
-    const originalEntityIds: string[] = []
-    const requestImage = vi.fn((file: BrowserFile, request: ImageRepresentationRequest) => {
-      if (request.kind === 'original100_percent') {
-        originalEntityIds.push(file.entityId)
-        return originalEntityIds.length === 1 ? running.promise : latest.promise
-      }
-      return Promise.resolve({
-        cacheKey: `proxy-${file.entityId}`,
-        url: `viewer-image://localhost/proxy-${file.entityId}`,
-        width: 800,
-        height: 600,
-        backend: 'image_io' as const,
-      })
-    })
-    renderWorkspace({ requestImage })
-    await screen.findByRole('img', { name: 'a.jpg' })
-    fireEvent.click(screen.getByRole('button', { name: '100%' }))
-    await waitFor(() => expect(originalEntityIds).toEqual(['a']))
-    fireEvent.focus(pane('b'))
-    fireEvent.click(screen.getByRole('button', { name: '100%' }))
-    fireEvent.focus(pane('a'))
-    fireEvent.click(screen.getByRole('button', { name: '100%' }))
-    expect(originalEntityIds).toEqual(['a'])
-
-    await act(async () => running.resolve(imageRepresentation('stale-a')))
-    await waitFor(() => expect(originalEntityIds).toEqual(['a', 'a']))
-    await act(async () => latest.resolve(imageRepresentation('latest-a')))
     expect(await screen.findByRole('img', { name: 'a.jpg' })).toHaveAttribute(
       'src',
-      'viewer-image://localhost/latest-a',
+      'viewer-image://localhost/original-a',
     )
+    expect(await screen.findByRole('img', { name: 'b.jpg' })).toHaveAttribute(
+      'src',
+      'viewer-image://localhost/original-b',
+    )
+    const originalCount = requestImage.mock.calls.filter(
+      ([, request]) => request.kind === 'original100_percent',
+    ).length
+    const proxyCount = requestImage.mock.calls.filter(
+      ([, request]) => request.kind === 'fit_preview',
+    ).length
+
+    fireEvent.focus(pane('b'))
+    fireEvent.click(screen.getByRole('button', { name: '100%' }))
+    fireEvent.click(screen.getByRole('button', { name: '适应窗口' }))
+    fireEvent.click(screen.getByRole('button', { name: '100%' }))
+
+    expect(
+      requestImage.mock.calls.filter(([, request]) => request.kind === 'original100_percent'),
+    ).toHaveLength(originalCount)
+    expect(
+      requestImage.mock.calls.filter(([, request]) => request.kind === 'fit_preview'),
+    ).toHaveLength(proxyCount)
+  })
+
+  it('recomputes actual pixels when 100% is requested before dimensions arrive', async () => {
+    const original = deferred<ImageRepresentation>()
+    const withoutMetadata = files.slice(0, 2).map((file) => ({ ...file, imageMetadata: null }))
+    const requestImage = vi.fn((file: BrowserFile, request: ImageRepresentationRequest) => {
+      if (request.kind === 'fit_preview') return new Promise<ImageRepresentation>(() => undefined)
+      return file.entityId === 'a'
+        ? original.promise
+        : new Promise<ImageRepresentation>(() => undefined)
+    })
+    renderWorkspace({ files: withoutMetadata, requestImage })
+    fireEvent.click(screen.getByRole('button', { name: '100%' }))
+
+    await act(async () => original.resolve(imageRepresentation('original-a')))
+    await waitFor(() => expect(pane('a')).toHaveAttribute('data-scale', '6.25'))
+  })
+
+  it('keeps the current transform when an original falls back locally', async () => {
+    const failedOriginal = deferred<ImageRepresentation>()
+    const status = vi.fn()
+    const requestImage = vi.fn((file: BrowserFile, request: ImageRepresentationRequest) => {
+      if (request.kind === 'fit_preview') {
+        return Promise.resolve(imageRepresentation(`proxy-${file.entityId}`))
+      }
+      return file.entityId === 'a'
+        ? failedOriginal.promise
+        : new Promise<ImageRepresentation>(() => undefined)
+    })
+    renderWorkspace({ requestImage, onStatus: status })
+    await screen.findByRole('img', { name: 'a.jpg' })
+    fireEvent.click(screen.getByRole('button', { name: '放大当前对比' }))
+    expect(pane('a')).toHaveAttribute('data-scale', '1.25')
+
+    await act(async () => failedOriginal.reject({ code: 'image_budget_exceeded' }))
+
+    await waitFor(() =>
+      expect(status).toHaveBeenCalledWith('原图超出安全预览限制，已继续使用适窗代理。'),
+    )
+    expect(pane('a')).toHaveAttribute('data-scale', '1.25')
+  })
+
+  it('cancels a removed queued pane before it reaches the native image lane', async () => {
+    const queuedFiles = portraitFiles(4)
+    const originals = new Map(
+      queuedFiles.map((file) => [file.entityId, deferred<ImageRepresentation>()]),
+    )
+    const started: string[] = []
+    const requestImage = vi.fn((file: BrowserFile, request: ImageRepresentationRequest) => {
+      if (request.kind === 'fit_preview') {
+        return Promise.resolve(imageRepresentation(`proxy-${file.entityId}`))
+      }
+      started.push(file.entityId)
+      return defined(originals.get(file.entityId), `Expected original for ${file.entityId}`).promise
+    })
+    renderWorkspace({ files: queuedFiles, requestImage })
+    await waitFor(() => expect(started).toHaveLength(2))
+    await act(async () =>
+      originals.get('portrait-0')?.resolve(imageRepresentation('original-portrait-0')),
+    )
+    await waitFor(() =>
+      expect([...new Set(started)]).toEqual(['portrait-0', 'portrait-1', 'portrait-2']),
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: '移除 portrait-3.jpg' }))
+    await act(async () =>
+      originals.get('portrait-1')?.resolve(imageRepresentation('original-portrait-1')),
+    )
+    await act(async () =>
+      originals.get('portrait-2')?.resolve(imageRepresentation('original-portrait-2')),
+    )
+
+    expect(started).not.toContain('portrait-3')
   })
 
   it('repairs externally removed panes without resetting surviving transforms', async () => {
@@ -514,11 +506,14 @@ describe('CompareWorkspace', () => {
 
   it('keeps a failed pane and its neighbors in their planned rectangles', async () => {
     const resize = installCompareResizeObserver()
-    const requestImage = vi.fn((file: BrowserFile) =>
-      file.entityId === 'landscape-1'
+    const requestImage = vi.fn((file: BrowserFile, request: ImageRepresentationRequest) => {
+      if (request.kind === 'original100_percent') {
+        return new Promise<ImageRepresentation>(() => undefined)
+      }
+      return file.entityId === 'landscape-1'
         ? Promise.reject(new Error('corrupt image'))
-        : Promise.resolve(imageRepresentation(`proxy-${file.entityId}`)),
-    )
+        : Promise.resolve(imageRepresentation(`proxy-${file.entityId}`))
+    })
     renderWorkspace({ files: landscapeFiles(4), requestImage })
     act(() => resize.workspace(1_700, 900))
 
@@ -545,12 +540,14 @@ describe('CompareWorkspace', () => {
       ...file,
       imageMetadata: null,
     }))
-    const requestImage = vi.fn((file: BrowserFile) =>
-      Promise.resolve({
-        ...imageRepresentation(`proxy-${file.entityId}`),
-        width: 1_200,
-        height: 800,
-      }),
+    const requestImage = vi.fn((file: BrowserFile, request: ImageRepresentationRequest) =>
+      request.kind === 'original100_percent'
+        ? new Promise<ImageRepresentation>(() => undefined)
+        : Promise.resolve({
+            ...imageRepresentation(`proxy-${file.entityId}`),
+            width: 1_200,
+            height: 800,
+          }),
     )
     renderWorkspace({ files: missingMetadata, requestImage })
     act(() => resize.workspace(1_700, 900))
@@ -560,7 +557,11 @@ describe('CompareWorkspace', () => {
     )
 
     act(() => resize.stages(800, 400))
-    await waitFor(() => expect(requestImage).toHaveBeenCalledTimes(4))
+    await waitFor(() =>
+      expect(
+        requestImage.mock.calls.filter(([, request]) => request.kind === 'fit_preview'),
+      ).toHaveLength(4),
+    )
     await act(async () => Promise.resolve())
     act(() => resize.flush())
     await waitFor(() =>
@@ -574,7 +575,11 @@ describe('CompareWorkspace', () => {
       .map((item) => item.getAttribute('style'))
 
     act(() => resize.stages(800, 400))
-    await waitFor(() => expect(requestImage).toHaveBeenCalledTimes(8))
+    await waitFor(() =>
+      expect(
+        requestImage.mock.calls.filter(([, request]) => request.kind === 'fit_preview'),
+      ).toHaveLength(8),
+    )
     await act(async () => Promise.resolve())
     expect(resize.pendingFrames()).toBe(0)
     expect(screen.getAllByRole('listitem').map((item) => item.getAttribute('style'))).toEqual(
@@ -729,8 +734,10 @@ function installCompareResizeObserver(): CompareResizeHarness {
 
 function deferred<T>() {
   let resolve!: (value: T) => void
-  const promise = new Promise<T>((next) => {
+  let reject!: (reason?: unknown) => void
+  const promise = new Promise<T>((next, fail) => {
     resolve = next
+    reject = fail
   })
-  return { promise, resolve }
+  return { promise, resolve, reject }
 }

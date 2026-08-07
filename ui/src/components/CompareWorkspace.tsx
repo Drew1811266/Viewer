@@ -12,6 +12,10 @@ import { createCompareState, reconcileComparePanes, reduceCompare } from '../sta
 import { compareValidationMessage } from '../state/comparePolicy'
 import ComparePane from './ComparePane'
 import CompareVirtualViewport from './CompareVirtualViewport'
+import {
+  type CompareOriginalRequestScheduler,
+  createCompareOriginalRequestScheduler,
+} from './compareOriginalRequestScheduler'
 import ViewerButton, { ViewerIconButton } from './ui/ViewerButton'
 import ViewerLocalFeedback from './ui/ViewerLocalFeedback'
 import ViewerSegmentedControl from './ui/ViewerSegmentedControl'
@@ -36,20 +40,6 @@ interface CompareWorkspaceProps {
   onStatus: (message: string) => void
 }
 
-interface OriginalRequestJob {
-  run: () => Promise<ImageRepresentation>
-  resolve: (image: ImageRepresentation) => void
-  reject: (reason: unknown) => void
-  signal?: AbortSignal
-  removeAbortListener: () => void
-}
-
-interface OriginalRequestLane {
-  running: OriginalRequestJob | null
-  queued: OriginalRequestJob | null
-  disposed: boolean
-}
-
 export default function CompareWorkspace({
   files,
   readOnly,
@@ -60,16 +50,18 @@ export default function CompareWorkspace({
   onStatus,
 }: CompareWorkspaceProps) {
   const [model, setModel] = useState<CompareState | null>(() => initialModel(files))
-  const [originalEntityId, setOriginalEntityId] = useState<string | null>(null)
+  const [actualSizeEntityId, setActualSizeEntityId] = useState<string | null>(null)
   const [recoveredDimensions, setRecoveredDimensions] = useState<
     Record<string, RecoveredCompareDimensions | undefined>
   >({})
   const workspaceRef = useRef<HTMLDivElement>(null)
-  const originalLane = useRef<OriginalRequestLane>({
-    running: null,
-    queued: null,
-    disposed: false,
-  })
+  const originalScheduler = useRef<CompareOriginalRequestScheduler<ImageRepresentation> | null>(
+    null,
+  )
+  const originalSchedulerLifecycle = useRef(0)
+  if (originalScheduler.current === null) {
+    originalScheduler.current = createCompareOriginalRequestScheduler<ImageRepresentation>(2)
+  }
   const presentKey = files.map((file) => file.entityId).join('\u0000')
   const filesById = useMemo(() => new Map(files.map((file) => [file.entityId, file])), [files])
   const rotations = useMemo(
@@ -103,24 +95,25 @@ export default function CompareWorkspace({
       if (representation.kind !== 'original100_percent') {
         return requestImage(file, representation, signal)
       }
-      return enqueueOriginalRequest(
-        originalLane.current,
-        () => requestImage(file, representation, signal),
-        signal,
+      return (
+        originalScheduler.current?.enqueue(
+          compareSourceRevision(file),
+          () => requestImage(file, representation, signal),
+          signal,
+        ) ?? Promise.reject({ code: 'image_request_cancelled' as const })
       )
     },
     [requestImage],
   )
 
   useEffect(() => {
-    const lane = originalLane.current
-    lane.disposed = false
+    const scheduler = originalScheduler.current
+    originalSchedulerLifecycle.current += 1
+    const lifecycle = originalSchedulerLifecycle.current
     return () => {
-      lane.disposed = true
-      if (lane.queued !== null) {
-        cancelQueuedOriginal(lane.queued)
-        lane.queued = null
-      }
+      queueMicrotask(() => {
+        if (originalSchedulerLifecycle.current === lifecycle) scheduler?.dispose()
+      })
     }
   }, [])
 
@@ -145,11 +138,11 @@ export default function CompareWorkspace({
     const transition = reconcileComparePanes(model, liveIds)
     if (transition.kind === 'compare') {
       setModel(transition.state)
-      if (!liveIds.includes(originalEntityId ?? '')) setOriginalEntityId(null)
+      if (!liveIds.includes(actualSizeEntityId ?? '')) setActualSizeEntityId(null)
     } else {
       onEntityIdsChange(liveIds)
     }
-  }, [files, model, onEntityIdsChange, originalEntityId, presentKey])
+  }, [actualSizeEntityId, files, model, onEntityIdsChange, presentKey])
 
   if (model === null) {
     return (
@@ -208,7 +201,7 @@ export default function CompareWorkspace({
         entityId,
         metrics,
       })
-      return originalEntityId === entityId
+      return actualSizeEntityId === entityId
         ? reduceCompare(measured, { type: 'actual_size', entityId })
         : measured
     })
@@ -218,20 +211,20 @@ export default function CompareWorkspace({
     if (model === null) return
     const survivors = model.entityIds.filter((candidate) => candidate !== entityId)
     const transition = reconcileComparePanes(model, survivors)
-    if (originalEntityId === entityId) setOriginalEntityId(null)
+    if (actualSizeEntityId === entityId) setActualSizeEntityId(null)
     if (transition.kind === 'compare') setModel(transition.state)
     onEntityIdsChange(survivors)
   }
 
   function fitView() {
     if (transformsDisabled) return
-    setOriginalEntityId(null)
+    setActualSizeEntityId(null)
     update({ type: 'fit', entityId: activeEntityId })
   }
 
   function actualSize() {
     if (transformsDisabled) return
-    setOriginalEntityId(activeEntityId)
+    setActualSizeEntityId(activeEntityId)
     update({ type: 'actual_size', entityId: activeEntityId })
   }
 
@@ -276,9 +269,7 @@ export default function CompareWorkspace({
         onRemove={remove}
         onSetReview={onSetReview}
         onToggleFavorite={onToggleFavorite}
-        onOriginalUnavailable={(targetId, reason) => {
-          if (originalEntityId === targetId) setOriginalEntityId(null)
-          update({ type: 'fit', entityId: targetId })
+        onOriginalUnavailable={(_targetId, reason) => {
           onStatus(
             reason === 'budget'
               ? '原图超出安全预览限制，已继续使用适窗代理。'
@@ -411,66 +402,4 @@ function initialModel(files: BrowserFile[]): CompareState | null {
 
 function sameIds(left: readonly string[], right: readonly string[]): boolean {
   return left.length === right.length && left.every((id, index) => id === right[index])
-}
-
-function enqueueOriginalRequest(
-  lane: OriginalRequestLane,
-  run: () => Promise<ImageRepresentation>,
-  signal?: AbortSignal,
-): Promise<ImageRepresentation> {
-  if (lane.disposed || signal?.aborted) {
-    return Promise.reject(cancelledImageRequest())
-  }
-  return new Promise<ImageRepresentation>((resolve, reject) => {
-    let job!: OriginalRequestJob
-    const abort = () => {
-      if (lane.queued !== job) return
-      lane.queued = null
-      cancelQueuedOriginal(job)
-    }
-    job = {
-      run,
-      resolve,
-      reject,
-      signal,
-      removeAbortListener: () => signal?.removeEventListener('abort', abort),
-    }
-    signal?.addEventListener('abort', abort, { once: true })
-    if (lane.queued !== null) cancelQueuedOriginal(lane.queued)
-    lane.queued = job
-    pumpOriginalLane(lane)
-  })
-}
-
-function pumpOriginalLane(lane: OriginalRequestLane): void {
-  if (lane.disposed || lane.running !== null || lane.queued === null) return
-  const job = lane.queued
-  lane.queued = null
-  lane.running = job
-  void job
-    .run()
-    .then(
-      (image) => {
-        if (job.signal?.aborted) job.reject(cancelledImageRequest())
-        else job.resolve(image)
-      },
-      (reason: unknown) => {
-        if (job.signal?.aborted) job.reject(cancelledImageRequest())
-        else job.reject(reason)
-      },
-    )
-    .finally(() => {
-      job.removeAbortListener()
-      if (lane.running === job) lane.running = null
-      pumpOriginalLane(lane)
-    })
-}
-
-function cancelQueuedOriginal(job: OriginalRequestJob): void {
-  job.removeAbortListener()
-  job.reject(cancelledImageRequest())
-}
-
-function cancelledImageRequest() {
-  return { code: 'image_request_cancelled' }
 }

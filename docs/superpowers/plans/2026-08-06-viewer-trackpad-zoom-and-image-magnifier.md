@@ -350,7 +350,7 @@ cargo test -p viewer-desktop settings
 pnpm --dir ui exec vitest run src/api
 ```
 
-- [ ] **Step 8: Commit the transport boundary**
+- [x] **Step 8: Commit the transport boundary**
 
 ```bash
 git add src-tauri/src/dto/settings.rs src-tauri/src/commands/settings.rs src-tauri/src/lib.rs src-tauri/src/error.rs ui/src/api/types.ts ui/src/api/viewer.ts ui/src/api/viewer.test.ts ui/src/App.test.tsx ui/src/acceptance/acceptanceBridge.ts ui/src/acceptance/acceptanceBridge.test.ts ui/src/acceptance/scenes/workspaceScenes.tsx ui/src/components/EmptyProject.test.tsx ui/src/state/useViewerController.test.tsx ui/src/settings/ViewerSettingsProvider.tsx ui/src/settings/ViewerSettingsProvider.test.tsx
@@ -445,7 +445,7 @@ Apply the same pattern to density, magnification, and area. Synchronize `optimis
 pnpm --dir ui exec vitest run src/settings/viewerSettings.test.ts src/settings/ViewerSettingsProvider.test.tsx
 ```
 
-- [ ] **Step 6: Commit the complete optimistic provider**
+- [x] **Step 6: Commit the complete optimistic provider**
 
 ```bash
 git add ui/src/settings/viewerSettings.ts ui/src/settings/viewerSettings.test.ts ui/src/settings/ViewerSettingsProvider.tsx ui/src/settings/ViewerSettingsProvider.test.tsx
@@ -469,11 +469,11 @@ git commit -m "feat: expose magnifier settings"
 - `ViewerChoiceChip` accepts `type="checkbox" | "radio"`, defaulting to `checkbox`.
 - `SettingsDialog` receives `magnifier`, `onMagnifierShapeChange`, `onMagnifierMagnificationChange`, and `onMagnifierAreaChange` in addition to its existing props.
 
-- [ ] **Step 1: Add failing radio-chip semantics tests**
+- [x] **Step 1: Add failing radio-chip semantics tests**
 
 Render two `ViewerChoiceChip` controls with the same name and `type="radio"`. Assert `getAllByRole('radio')` returns two controls, the selected label has `data-checked="true"`, and changing the second control calls `onCheckedChange(true)`. Retain a checkbox test proving the default type does not regress.
 
-- [ ] **Step 2: Add failing Settings dialog choice tests**
+- [x] **Step 2: Add failing Settings dialog choice tests**
 
 Update every dialog render with default magnifier preferences. Assert the new `图片预览` section contains three named groups:
 
@@ -485,21 +485,21 @@ expect(within(dialog).getByRole('group', { name: '显示面积' })).toBeVisible(
 
 Within those groups assert radio labels `圆形`, `圆角矩形`, `3 倍`, `4 倍`, `5 倍`, `6 倍`, `小`, `中`, and `大`; defaults are circle, 4, and small. Click one option in each group and assert the three typed callbacks receive `rounded_rectangle`, `6`, and `large`. Keep the existing single-category, slider, focus-trap, footer, 1024×720, and 720×450 checks.
 
-- [ ] **Step 3: Add failing style contracts for small-window reachability**
+- [x] **Step 3: Add failing style contracts for small-window reachability**
 
 In `ui/src/styles/app.test.ts`, assert `.settings-dialog-content` remains vertically scrollable, `.magnifier-setting-options` wraps, radio chips have visible focus, and the 720px breakpoint does not hide any of the new fieldsets. Add forced-colors assertions for checked state and focus outline.
 
-- [ ] **Step 4: Run focused UI tests and observe failure**
+- [x] **Step 4: Run focused UI tests and observe failure**
 
 ```bash
 pnpm --dir ui exec vitest run src/components/ui/ViewerChoiceChip.test.tsx src/components/SettingsDialog.test.tsx src/styles/app.test.ts
 ```
 
-- [ ] **Step 5: Generalize `ViewerChoiceChip` without changing its default**
+- [x] **Step 5: Generalize `ViewerChoiceChip` without changing its default**
 
 Change its omitted input props so `type` is accepted, destructure `type = 'checkbox'`, and render `<input type={type}>`. Preserve checked, disabled, class, and `onCheckedChange` behavior.
 
-- [ ] **Step 6: Render the three bounded radio groups**
+- [x] **Step 6: Render the three bounded radio groups**
 
 Keep the single `显示与外观` navigation category. Below the thumbnail slider add a `图片预览` heading and three `fieldset` elements. Map the typed lists from `settings/viewerSettings.ts` to radio chips with stable names. The magnification value conversion must use the typed list lookup rather than an unchecked numeric cast.
 
@@ -512,15 +512,15 @@ const AREA_LABEL = { small: '小', medium: '中', large: '大' } as const
 
 Keep the existing save-error feedback once at the end of the content column.
 
-- [ ] **Step 7: Wire provider values through `App`**
+- [x] **Step 7: Wire provider values through `App`**
 
 Destructure all magnifier values/setters from `useViewerSettings()` and pass them only to the mounted `SettingsDialog` and later to `ImagePreview`. At this task, pass settings to the dialog and leave the preview wiring for Task 10.
 
-- [ ] **Step 8: Add responsive, focus, and forced-colors styles**
+- [x] **Step 8: Add responsive, focus, and forced-colors styles**
 
 Use the existing Viewer chip/radius/token language. Make option rows wrap with a minimum 8px gap, keep legends visible, and avoid fixed dialog-content heights. At 720×450 the sheet body must scroll while the footer remains reachable.
 
-- [ ] **Step 9: Run focused tests and confirm green**
+- [x] **Step 9: Run focused tests and confirm green**
 
 ```bash
 pnpm --dir ui exec vitest run src/components/ui/ViewerChoiceChip.test.tsx src/components/SettingsDialog.test.tsx src/styles/app.test.ts

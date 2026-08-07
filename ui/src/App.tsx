@@ -86,7 +86,15 @@ export default function App({ bridge = tauriViewerBridge }: AppProps) {
 }
 
 function ViewerWorkspace({ bridge }: { bridge: ViewerBridge }) {
-  const { thumbnailDensity, settingsError, setThumbnailDensity } = useViewerSettings()
+  const {
+    thumbnailDensity,
+    magnifier,
+    settingsError,
+    setThumbnailDensity,
+    setMagnifierShape,
+    setMagnifierMagnification,
+    setMagnifierArea,
+  } = useViewerSettings()
   const {
     state,
     openProject,
@@ -1240,8 +1248,12 @@ function ViewerWorkspace({ bridge }: { bridge: ViewerBridge }) {
       {settingsOpen && (
         <SettingsDialog
           density={thumbnailDensity}
+          magnifier={magnifier}
           error={settingsError}
           onDensityChange={setThumbnailDensity}
+          onMagnifierShapeChange={setMagnifierShape}
+          onMagnifierMagnificationChange={setMagnifierMagnification}
+          onMagnifierAreaChange={setMagnifierArea}
           onClose={() => setSettingsOpen(false)}
           returnFocusRef={moreMenuTriggerRef}
         />

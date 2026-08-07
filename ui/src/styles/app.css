@@ -2041,6 +2041,34 @@ body:has(.viewer-dialog-backdrop) .task-bar {
   font-weight: 700;
 }
 
+.settings-dialog-subheading {
+  border-top: 1px solid var(--viewer-border);
+  font-size: 13px;
+  margin: 20px 0 12px;
+  padding-top: 16px;
+}
+
+.magnifier-setting-group {
+  border: 0;
+  margin: 0 0 14px;
+  min-width: 0;
+  padding: 0;
+}
+
+.magnifier-setting-group legend {
+  color: var(--viewer-text-secondary);
+  font-size: 12px;
+  font-weight: 650;
+  margin-bottom: var(--viewer-space-2);
+  padding: 0;
+}
+
+.magnifier-setting-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .settings-dialog-content > .viewer-local-feedback {
   margin-top: var(--viewer-space-3);
 }

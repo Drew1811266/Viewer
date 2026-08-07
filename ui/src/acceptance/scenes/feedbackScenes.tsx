@@ -86,7 +86,16 @@ export const FEEDBACK_SCENES: AcceptanceSceneRegistry = {
       ready={() => document.activeElement?.getAttribute('name') === 'thumbnail-size'}
       attributes={{ 'data-acceptance-accessibility': 'keyboard' }}
     >
-      <SettingsDialog density="standard" error={null} onDensityChange={noOp} onClose={noOp} />
+      <SettingsDialog
+        density="standard"
+        magnifier={{ shape: 'circle', magnification: 4, area: 'small' }}
+        error={null}
+        onDensityChange={noOp}
+        onMagnifierShapeChange={noOp}
+        onMagnifierMagnificationChange={noOp}
+        onMagnifierAreaChange={noOp}
+        onClose={noOp}
+      />
     </FeedbackBackdrop>
   ),
   'A11Y-02': () => <FocusRestorationScene />,
@@ -134,7 +143,16 @@ export const FEEDBACK_SCENES: AcceptanceSceneRegistry = {
       attributes={{ 'data-acceptance-zoom': '200' }}
     >
       <TaskBar task={RESULT_TASK} onShowResults={noOp} />
-      <SettingsDialog density="compact" error={null} onDensityChange={noOp} onClose={noOp} />
+      <SettingsDialog
+        density="compact"
+        magnifier={{ shape: 'circle', magnification: 4, area: 'small' }}
+        error={null}
+        onDensityChange={noOp}
+        onMagnifierShapeChange={noOp}
+        onMagnifierMagnificationChange={noOp}
+        onMagnifierAreaChange={noOp}
+        onClose={noOp}
+      />
     </FeedbackBackdrop>
   ),
 }

@@ -1,6 +1,26 @@
 import { fireEvent, render, screen, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
+import type { MagnifierPreferences } from '../api/types'
 import SettingsDialog from './SettingsDialog'
+
+const DEFAULT_MAGNIFIER: MagnifierPreferences = {
+  shape: 'circle',
+  magnification: 4,
+  area: 'small',
+}
+
+function settingsProps() {
+  return {
+    density: 'standard' as const,
+    magnifier: DEFAULT_MAGNIFIER,
+    error: null,
+    onDensityChange: vi.fn(),
+    onMagnifierShapeChange: vi.fn(),
+    onMagnifierMagnificationChange: vi.fn(),
+    onMagnifierAreaChange: vi.fn(),
+    onClose: vi.fn(),
+  }
+}
 
 describe('SettingsDialog', () => {
   it.each([
@@ -11,14 +31,7 @@ describe('SettingsDialog', () => {
     (width, height) => {
       vi.stubGlobal('innerWidth', width)
       vi.stubGlobal('innerHeight', height)
-      render(
-        <SettingsDialog
-          density="standard"
-          error={null}
-          onDensityChange={vi.fn()}
-          onClose={vi.fn()}
-        />,
-      )
+      render(<SettingsDialog {...settingsProps()} />)
       expect(screen.getByRole('navigation', { name: '设置分类' })).toBeVisible()
       expect(screen.getByRole('slider', { name: '缩略图大小' })).toBeVisible()
       expect(screen.getByRole('button', { name: '关闭' })).toBeVisible()
@@ -27,14 +40,7 @@ describe('SettingsDialog', () => {
 
   it('shows one five-stop size slider and reports a choice immediately', () => {
     const onDensityChange = vi.fn()
-    render(
-      <SettingsDialog
-        density="standard"
-        error={null}
-        onDensityChange={onDensityChange}
-        onClose={vi.fn()}
-      />,
-    )
+    render(<SettingsDialog {...settingsProps()} onDensityChange={onDensityChange} />)
 
     const dialog = screen.getByRole('dialog', { name: '软件设置' })
     expect(within(dialog).getByRole('heading', { name: '显示与外观' })).toBeVisible()
@@ -70,15 +76,33 @@ describe('SettingsDialog', () => {
     )
   })
 
+  it('shows three bounded image-preview groups and reports typed choices', () => {
+    const props = settingsProps()
+    render(<SettingsDialog {...props} />)
+
+    const dialog = screen.getByRole('dialog', { name: '软件设置' })
+    expect(within(dialog).getByRole('heading', { name: '图片预览' })).toBeVisible()
+    const shape = within(dialog).getByRole('group', { name: '放大镜形状' })
+    const magnification = within(dialog).getByRole('group', { name: '放大倍数' })
+    const area = within(dialog).getByRole('group', { name: '显示面积' })
+    expect(within(shape).getAllByRole('radio')).toHaveLength(2)
+    expect(within(magnification).getAllByRole('radio')).toHaveLength(4)
+    expect(within(area).getAllByRole('radio')).toHaveLength(3)
+    expect(within(shape).getByRole('radio', { name: '圆形' })).toBeChecked()
+    expect(within(magnification).getByRole('radio', { name: '4 倍' })).toBeChecked()
+    expect(within(area).getByRole('radio', { name: '小' })).toBeChecked()
+
+    fireEvent.click(within(shape).getByRole('radio', { name: '圆角矩形' }))
+    fireEvent.click(within(magnification).getByRole('radio', { name: '6 倍' }))
+    fireEvent.click(within(area).getByRole('radio', { name: '大' }))
+
+    expect(props.onMagnifierShapeChange).toHaveBeenCalledWith('rounded_rectangle')
+    expect(props.onMagnifierMagnificationChange).toHaveBeenCalledWith(6)
+    expect(props.onMagnifierAreaChange).toHaveBeenCalledWith('large')
+  })
+
   it('shows the latest save error', () => {
-    render(
-      <SettingsDialog
-        density="standard"
-        error="设置未能保存"
-        onDensityChange={vi.fn()}
-        onClose={vi.fn()}
-      />,
-    )
+    render(<SettingsDialog {...settingsProps()} error="设置未能保存" />)
 
     expect(screen.getByRole('alert')).toHaveTextContent('设置未能保存')
   })
@@ -88,14 +112,7 @@ describe('SettingsDialog', () => {
     document.body.append(trigger)
     trigger.focus()
     const onClose = vi.fn()
-    const rendered = render(
-      <SettingsDialog
-        density="standard"
-        error={null}
-        onDensityChange={vi.fn()}
-        onClose={onClose}
-      />,
-    )
+    const rendered = render(<SettingsDialog {...settingsProps()} onClose={onClose} />)
     const first = screen.getByRole('slider', { name: '缩略图大小' })
     const navigationItem = screen.getByRole('button', { name: '显示与外观' })
     const close = screen.getByRole('button', { name: '关闭' })

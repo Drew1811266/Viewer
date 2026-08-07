@@ -3,6 +3,7 @@ import type { InputHTMLAttributes, ReactNode } from 'react'
 export interface ViewerChoiceChipProps
   extends Omit<InputHTMLAttributes<HTMLInputElement>, 'children' | 'onChange' | 'type'> {
   children: ReactNode
+  type?: 'checkbox' | 'radio'
   onCheckedChange?: (checked: boolean) => void
 }
 
@@ -11,6 +12,7 @@ export default function ViewerChoiceChip({
   checked,
   defaultChecked,
   disabled,
+  type = 'checkbox',
   className,
   onCheckedChange,
   ...inputProps
@@ -23,7 +25,7 @@ export default function ViewerChoiceChip({
     >
       <input
         {...inputProps}
-        type="checkbox"
+        type={type}
         checked={checked}
         defaultChecked={defaultChecked}
         disabled={disabled}

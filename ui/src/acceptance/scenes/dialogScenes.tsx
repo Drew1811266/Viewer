@@ -17,7 +17,16 @@ const DESTINATION_ID = 'acceptance-folder-destination'
 export const DIALOG_SCENES: AcceptanceSceneRegistry = {
   'DIA-01': () => (
     <DialogBackdrop ready={() => dialogIsNamed('软件设置')}>
-      <SettingsDialog density="standard" error={null} onDensityChange={noOp} onClose={noOp} />
+      <SettingsDialog
+        density="standard"
+        magnifier={{ shape: 'circle', magnification: 4, area: 'small' }}
+        error={null}
+        onDensityChange={noOp}
+        onMagnifierShapeChange={noOp}
+        onMagnifierMagnificationChange={noOp}
+        onMagnifierAreaChange={noOp}
+        onClose={noOp}
+      />
     </DialogBackdrop>
   ),
   'DIA-02': () => <SingleRenameScene />,

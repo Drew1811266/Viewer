@@ -9,6 +9,30 @@ const viewerStyleSources = viewerStyleFiles
   .join('\n')
 
 describe('workspace style contracts', () => {
+  it('keeps magnifier settings grouped, wrapped, and reachable in the dialog body', () => {
+    const rules = parseRules(appCss)
+    const subheading = rules.find((rule) => rule.selector === '.settings-dialog-subheading')
+    const group = rules.find((rule) => rule.selector === '.magnifier-setting-group')
+    const options = rules.find((rule) => rule.selector === '.magnifier-setting-options')
+
+    expect(subheading?.declarations).toMatchObject({
+      'border-top': '1px solid var(--viewer-border)',
+      'font-size': '13px',
+      margin: '20px 0 12px',
+      'padding-top': '16px',
+    })
+    expect(group?.declarations).toMatchObject({
+      border: '0',
+      margin: '0 0 14px',
+      padding: '0',
+    })
+    expect(options?.declarations).toMatchObject({
+      display: 'flex',
+      'flex-wrap': 'wrap',
+      gap: '8px',
+    })
+  })
+
   it('keeps the resting entry copy on the approved title and body scale', () => {
     const rules = parseRules(appCss)
     const title = rules.find((rule) => rule.selector === '.empty-project h1')

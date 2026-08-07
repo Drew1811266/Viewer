@@ -1,8 +1,12 @@
 import type { CSSProperties } from 'react'
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef } from 'react'
 import type { MagnifierArea, MagnifierMagnification, MagnifierShape } from '../../api/types'
-import type { Point, PreviewRotation } from './imageGeometry'
-import { lensDimensions, magnifierSourcePlacement } from './magnifierGeometry'
+import type { Point, PreviewRotation, Size } from './imageGeometry'
+import {
+  lensDimensions,
+  magnifierShellPlacement,
+  magnifierSourcePlacement,
+} from './magnifierGeometry'
 import type { CurrentOriginalState } from './useCurrentOriginal'
 
 export interface MagnifierPlacement {
@@ -19,6 +23,7 @@ interface ImageMagnifierProps {
   shape: MagnifierShape
   area: MagnifierArea
   magnification: MagnifierMagnification
+  stageSize: Size
   rotation: PreviewRotation
   fileName: string
   original: CurrentOriginalState
@@ -28,19 +33,27 @@ interface MagnifierConfiguration {
   shape: MagnifierShape
   area: MagnifierArea
   magnification: MagnifierMagnification
+  stageSize: Size
   rotation: PreviewRotation
 }
 
 const ImageMagnifier = forwardRef<ImageMagnifierHandle, ImageMagnifierProps>(
   function ImageMagnifier(
-    { shape, area, magnification, rotation, fileName, original },
+    { shape, area, magnification, stageSize, rotation, fileName, original },
     forwardedRef,
   ) {
     const lens = useRef<HTMLDivElement>(null)
+    const sourceImage = useRef<HTMLImageElement>(null)
     const latestPlacement = useRef<MagnifierPlacement | null>(null)
     const frame = useRef<number | null>(null)
-    const configuration = useRef<MagnifierConfiguration>({ shape, area, magnification, rotation })
-    configuration.current = { shape, area, magnification, rotation }
+    const configuration = useRef<MagnifierConfiguration>({
+      shape,
+      area,
+      magnification,
+      stageSize,
+      rotation,
+    })
+    configuration.current = { shape, area, magnification, stageSize, rotation }
     const dimensions = lensDimensions(shape, area)
 
     const flush = useCallback(() => {
@@ -50,15 +63,26 @@ const ImageMagnifier = forwardRef<ImageMagnifierHandle, ImageMagnifierProps>(
       if (placement === null || element === null) return
       const current = configuration.current
       const currentDimensions = lensDimensions(current.shape, current.area)
+      const shell = magnifierShellPlacement(
+        placement.stagePoint,
+        current.stageSize,
+        currentDimensions,
+      )
       const source = magnifierSourcePlacement(
         placement.sourcePoint,
         currentDimensions,
         current.magnification,
       )
-      setPixels(element, '--magnifier-x', placement.stagePoint.x)
-      setPixels(element, '--magnifier-y', placement.stagePoint.y)
+      setPixels(element, '--magnifier-x', shell.center.x)
+      setPixels(element, '--magnifier-y', shell.center.y)
+      setPixels(element, '--magnifier-shell-origin-x', shell.origin.x)
+      setPixels(element, '--magnifier-shell-origin-y', shell.origin.y)
       setPixels(element, '--magnifier-source-left', source.left)
       setPixels(element, '--magnifier-source-top', source.top)
+      if (sourceImage.current !== null) {
+        setPixels(sourceImage.current, '--magnifier-source-left', source.left)
+        setPixels(sourceImage.current, '--magnifier-source-top', source.top)
+      }
       setPixels(element, '--magnifier-transform-origin-x', source.transformOriginX)
       setPixels(element, '--magnifier-transform-origin-y', source.transformOriginY)
       element.style.setProperty('--magnifier-scale', String(current.magnification))
@@ -89,7 +113,7 @@ const ImageMagnifier = forwardRef<ImageMagnifierHandle, ImageMagnifierProps>(
 
     useEffect(() => {
       if (latestPlacement.current !== null && lens.current?.dataset.visible === 'true') schedule()
-    }, [area, magnification, rotation, schedule, shape])
+    }, [area, magnification, rotation, schedule, shape, stageSize])
 
     useEffect(
       () => () => {
@@ -116,6 +140,7 @@ const ImageMagnifier = forwardRef<ImageMagnifierHandle, ImageMagnifierProps>(
       >
         {original.status === 'ready' && original.representation !== null ? (
           <img
+            ref={sourceImage}
             className="image-magnifier__source"
             data-testid="image-magnifier-source"
             data-source-name={fileName}

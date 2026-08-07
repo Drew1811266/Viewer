@@ -34,7 +34,8 @@ describe('ImageMagnifier', () => {
         ref={createRef<ImageMagnifierHandle>()}
         shape={shape}
         area={area}
-        magnification={2}
+        magnification={1.5}
+        stageSize={{ width: 640, height: 480 }}
         rotation={0}
         fileName="detail.jpg"
         original={currentOriginal('loading')}
@@ -54,7 +55,8 @@ describe('ImageMagnifier', () => {
         ref={createRef<ImageMagnifierHandle>()}
         shape="circle"
         area="small"
-        magnification={2}
+        magnification={1.5}
+        stageSize={{ width: 640, height: 480 }}
         rotation={90}
         fileName="detail.jpg"
         original={currentOriginal('ready', ORIGINAL)}
@@ -80,7 +82,8 @@ describe('ImageMagnifier', () => {
         ref={createRef<ImageMagnifierHandle>()}
         shape="circle"
         area="small"
-        magnification={2}
+        magnification={1.5}
+        stageSize={{ width: 640, height: 480 }}
         rotation={0}
         fileName="detail.jpg"
         original={currentOriginal(status)}
@@ -118,7 +121,8 @@ describe('ImageMagnifier imperative placement', () => {
         ref={ref}
         shape="circle"
         area="small"
-        magnification={2}
+        magnification={1.5}
+        stageSize={{ width: 640, height: 480 }}
         rotation={90}
         fileName="detail.jpg"
         original={currentOriginal('ready', ORIGINAL)}
@@ -128,7 +132,7 @@ describe('ImageMagnifier imperative placement', () => {
     act(() => {
       ref.current?.place({ stagePoint: { x: 10, y: 20 }, sourcePoint: { x: 30, y: 40 } })
       ref.current?.place({
-        stagePoint: { x: 240, y: 180 },
+        stagePoint: { x: 200, y: 150 },
         sourcePoint: { x: 1600, y: 1140 },
       })
     })
@@ -138,12 +142,34 @@ describe('ImageMagnifier imperative placement', () => {
     act(() => frames.shift()?.(0))
     expect(screen.getByTestId('image-magnifier')).toHaveAttribute('data-visible', 'true')
     expect(screen.getByTestId('image-magnifier')).toHaveStyle({
-      '--magnifier-x': '240px',
-      '--magnifier-y': '180px',
+      '--magnifier-x': '298px',
+      '--magnifier-y': '248px',
+      '--magnifier-shell-origin-x': '0px',
+      '--magnifier-shell-origin-y': '0px',
+      '--magnifier-scale': '1.5',
+      '--magnifier-rotation': '90deg',
+    })
+    expect(screen.getByTestId('image-magnifier-source')).toHaveStyle({
       '--magnifier-source-left': '-1520px',
       '--magnifier-source-top': '-1060px',
-      '--magnifier-scale': '2',
-      '--magnifier-rotation': '90deg',
+    })
+
+    act(() => {
+      ref.current?.place({
+        stagePoint: { x: 600, y: 440 },
+        sourcePoint: { x: 1600, y: 1140 },
+      })
+      frames.shift()?.(16)
+    })
+    expect(screen.getByTestId('image-magnifier')).toHaveStyle({
+      '--magnifier-x': '502px',
+      '--magnifier-y': '342px',
+      '--magnifier-shell-origin-x': '160px',
+      '--magnifier-shell-origin-y': '160px',
+    })
+    expect(screen.getByTestId('image-magnifier-source')).toHaveStyle({
+      '--magnifier-source-left': '-1520px',
+      '--magnifier-source-top': '-1060px',
     })
   })
 
@@ -154,7 +180,8 @@ describe('ImageMagnifier imperative placement', () => {
         ref={ref}
         shape="circle"
         area="small"
-        magnification={2}
+        magnification={1.5}
+        stageSize={{ width: 640, height: 480 }}
         rotation={0}
         fileName="detail.jpg"
         original={currentOriginal('loading')}

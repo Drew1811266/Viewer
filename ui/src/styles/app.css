@@ -2389,10 +2389,6 @@ body:has(.viewer-dialog-backdrop) .task-bar {
   width: auto;
 }
 
-.image-preview-stage[data-magnifier-over-image="true"] {
-  cursor: none;
-}
-
 .image-magnifier {
   background: var(--viewer-surface);
   border: 2px solid var(--viewer-border-strong);
@@ -2404,13 +2400,23 @@ body:has(.viewer-dialog-backdrop) .task-bar {
   pointer-events: none;
   position: absolute;
   top: var(--magnifier-y);
-  transform: translate(-50%, -50%);
+  transform: translate(-50%, -50%) scale(0.85);
+  transform-origin: var(--magnifier-shell-origin-x) var(--magnifier-shell-origin-y);
+  transition:
+    opacity 110ms ease-in,
+    transform 110ms ease-in,
+    visibility 0s linear 110ms;
   visibility: hidden;
   z-index: 2;
 }
 
 .image-magnifier[data-visible="true"] {
   opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
+  transition:
+    opacity 140ms ease-out,
+    transform 140ms ease-out,
+    visibility 0s linear 0s;
   visibility: visible;
 }
 

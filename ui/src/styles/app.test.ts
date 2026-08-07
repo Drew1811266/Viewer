@@ -758,13 +758,16 @@ describe('workspace style contracts', () => {
     expect(contrastRatio('#9d1c13', '#fff3f0')).toBeGreaterThanOrEqual(4.5)
   })
 
-  it('clips the pointer-free magnifier inside the image preview stage', () => {
+  it('clips and animates the pointer-adjacent magnifier while preserving the cursor', () => {
     const rules = parseRules(appCss)
     const stage = rules.find(({ selector }) => selector === '.image-preview-stage')
     const cursor = rules.find(
       ({ selector }) => selector === '.image-preview-stage[data-magnifier-over-image="true"]',
     )
     const lens = rules.find(({ selector }) => selector === '.image-magnifier')
+    const visible = rules.find(
+      ({ selector }) => selector === '.image-magnifier[data-visible="true"]',
+    )
     const circle = rules.find(
       ({ selector }) => selector === '.image-magnifier[data-shape="circle"]',
     )
@@ -776,15 +779,23 @@ describe('workspace style contracts', () => {
     )
 
     expect(stage?.declarations.overflow).toBe('hidden')
-    expect(cursor?.declarations.cursor).toBe('none')
+    expect(cursor).toBeUndefined()
     expect(lens?.declarations).toMatchObject({
       left: 'var(--magnifier-x)',
       top: 'var(--magnifier-y)',
+      opacity: '0',
       overflow: 'hidden',
       'pointer-events': 'none',
       position: 'absolute',
-      transform: 'translate(-50%, -50%)',
+      transform: 'translate(-50%, -50%) scale(0.85)',
+      'transform-origin': 'var(--magnifier-shell-origin-x) var(--magnifier-shell-origin-y)',
+      visibility: 'hidden',
     })
+    expect(lens?.declarations.transition).toContain('110ms')
+    expect(visible?.declarations.opacity).toBe('1')
+    expect(visible?.declarations.transform).toContain('scale(1)')
+    expect(visible?.declarations.transition).toContain('140ms')
+    expect(visible?.declarations.visibility).toBe('visible')
     expect(circle?.declarations['border-radius']).toBe('50%')
     expect(rectangle?.declarations['border-radius']).toBe('var(--viewer-radius-popover)')
     expect(source?.declarations).toMatchObject({

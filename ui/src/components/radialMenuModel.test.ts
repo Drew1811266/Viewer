@@ -98,17 +98,17 @@ describe('buildRadialMenuModel', () => {
     })
   })
 
-  it('enables compare at 20 and disables it above 20 with exact copy', () => {
-    const twenty = buildRadialMenuModel(context({ selectedCount: 20, selectedImageCount: 20 }))[4]
-    expect(twenty).toMatchObject({ id: 'compare', disabled: false })
+  it('enables compare at 8 and disables it above 8 with exact copy', () => {
+    const eight = buildRadialMenuModel(context({ selectedCount: 8, selectedImageCount: 8 }))[4]
+    expect(eight).toMatchObject({ id: 'compare', disabled: false })
 
-    const twentyOne = buildRadialMenuModel(
-      context({ selectedCount: 21, selectedImageCount: 21 }),
+    const nine = buildRadialMenuModel(
+      context({ selectedCount: 9, selectedImageCount: 9 }),
     )[4]
-    expect(twentyOne).toMatchObject({
+    expect(nine).toMatchObject({
       id: 'compare',
       disabled: true,
-      disabledReason: '最多同时对比 20 张图片',
+      disabledReason: '最多同时对比 8 张图片',
     })
   })
 

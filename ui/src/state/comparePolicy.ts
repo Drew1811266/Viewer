@@ -1,5 +1,5 @@
 export const MIN_COMPARE_IMAGES = 2
-export const MAX_COMPARE_IMAGES = 20
+export const MAX_COMPARE_IMAGES = 8
 
 export interface CompareCandidateLike {
   entityId: string
@@ -33,5 +33,5 @@ export function validateCompareCandidates(
 }
 
 export function compareValidationMessage(_reason: CompareValidationReason): string {
-  return '请选择 2–20 张图片进行对比。'
+  return '请选择 2–8 张图片进行对比。'
 }

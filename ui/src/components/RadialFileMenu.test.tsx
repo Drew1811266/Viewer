@@ -213,11 +213,11 @@ describe('RadialFileMenu', () => {
     expect(sequentialTabStops(container)).toEqual([info])
   })
 
-  it('does not execute a disabled 21-image compare item', () => {
+  it('does not execute a disabled 9-image compare item', () => {
     const action = vi.fn()
     const overCapacityModel = buildRadialMenuModel({
-      selectedCount: 21,
-      selectedImageCount: 21,
+      selectedCount: 9,
+      selectedImageCount: 9,
       previewEnabled: false,
       readOnly: false,
       busy: false,
@@ -229,7 +229,7 @@ describe('RadialFileMenu', () => {
       <RadialFileMenu
         origin={{ x: 320, y: 240 }}
         pointerId={null}
-        selectionCount={21}
+        selectionCount={9}
         model={overCapacityModel}
         onAction={action}
         onClose={vi.fn()}
@@ -240,7 +240,7 @@ describe('RadialFileMenu', () => {
     const compareIndex = overCapacityModel.findIndex((item) => item.id === 'compare')
     const compareSector = document.querySelectorAll('.radial-primary-shape')[compareIndex]
     expect(compare).toHaveAttribute('aria-disabled', 'true')
-    expect(compare).toHaveAttribute('title', '最多同时对比 20 张图片')
+    expect(compare).toHaveAttribute('title', '最多同时对比 8 张图片')
     expect(compareSector).toHaveAttribute('data-disabled', 'true')
     act(() => compare.focus())
     expect(compare).toHaveFocus()
@@ -386,8 +386,8 @@ describe('RadialFileMenu', () => {
 
     const compare = screen.getByRole('menuitem', { name: '并排对比' })
     fireEvent.focus(compare)
-    expect(compare).toHaveAttribute('title', '请选择 2–20 张图片')
-    expect(screen.getByRole('status')).toHaveTextContent('请选择 2–20 张图片')
+    expect(compare).toHaveAttribute('title', '请选择 2–8 张图片')
+    expect(screen.getByRole('status')).toHaveTextContent('请选择 2–8 张图片')
   })
 
   it('promotes a held secondary-click session after 180 ms without executing at center', () => {

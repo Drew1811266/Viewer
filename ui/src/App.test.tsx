@@ -1694,14 +1694,14 @@ describe('Viewer empty state', () => {
     const back = screen.getByRole('option', { name: 'back.jpg' })
     fireEvent.click(front)
     fireEvent.keyDown(window, { key: 'c' })
-    expect(screen.getByText('请选择 2–20 张图片进行对比。')).toBeVisible()
+    expect(screen.getByText('请选择 2–8 张图片进行对比。')).toBeVisible()
 
     fireEvent.click(back, { metaKey: true })
     openRadialMenu(back, 204)
     fireEvent.click(screen.getByRole('menuitem', { name: '并排对比' }))
 
     expect(await screen.findByRole('region', { name: '图片对比' })).toBeVisible()
-    expect(screen.queryByText('请选择 2–20 张 JPG 或 PNG 图片进行对比。')).not.toBeInTheDocument()
+    expect(screen.queryByText('请选择 2–8 张 JPG 或 PNG 图片进行对比。')).not.toBeInTheDocument()
   })
 
   it('closes the radial snapshot as soon as a deferred project close starts', async () => {
@@ -2558,9 +2558,9 @@ describe('Viewer empty state', () => {
     expect(compare).toHaveAttribute('data-layout', 'fit-row')
   })
 
-  it('keeps compare disabled for a 21-image selection', async () => {
+  it('keeps compare disabled for a 9-image selection without truncating selection', async () => {
     const viewer = bridge()
-    vi.mocked(viewer.queryFolder).mockResolvedValue(compareContentWorkspaceWithCount(21))
+    vi.mocked(viewer.queryFolder).mockResolvedValue(compareContentWorkspaceWithCount(9))
     render(<App bridge={viewer} />)
     fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
     const grid = await screen.findByRole('listbox', { name: '图片文件' })
@@ -2570,10 +2570,11 @@ describe('Viewer empty state', () => {
     openRadialMenu(image, 221)
     const compare = screen.getByRole('menuitem', { name: '并排对比' })
     expect(compare).toHaveAttribute('aria-disabled', 'true')
-    expect(compare).toHaveAttribute('title', '最多同时对比 20 张图片')
+    expect(compare).toHaveAttribute('title', '最多同时对比 8 张图片')
     fireEvent.click(compare)
 
     expect(screen.queryByRole('region', { name: '图片对比' })).not.toBeInTheDocument()
+    expect(screen.getByRole('status', { name: '选择摘要' })).toHaveTextContent('已选择 9 项')
   })
 
   it('applies an inline pane marker without replacing the underlying grid selection', async () => {

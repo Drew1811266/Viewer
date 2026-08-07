@@ -137,9 +137,9 @@ export function buildRadialMenuModel(context: RadialMenuContext): RadialMenuItem
         : !context.compareContextAvailable
           ? '请先返回文件夹内容，再选择图片进行对比'
           : context.selectedCount > MAX_COMPARE_IMAGES
-            ? '最多同时对比 20 张图片'
+            ? `最多同时对比 ${MAX_COMPARE_IMAGES} 张图片`
             : context.selectedCount < MIN_COMPARE_IMAGES
-              ? '请选择 2–20 张图片'
+              ? `请选择 ${MIN_COMPARE_IMAGES}–${MAX_COMPARE_IMAGES} 张图片`
               : context.selectedImageCount !== context.selectedCount
                 ? '仅支持图片'
                 : undefined,

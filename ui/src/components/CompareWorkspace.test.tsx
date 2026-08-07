@@ -63,7 +63,7 @@ describe('CompareWorkspace', () => {
 
   it('rejects invalid cardinality and non-image candidates with safe feedback', () => {
     const one = renderWorkspace({ files: files.slice(0, 1) })
-    expect(screen.getByRole('alert')).toHaveTextContent('请选择 2–20 张图片进行对比')
+    expect(screen.getByRole('alert')).toHaveTextContent('请选择 2–8 张图片进行对比')
     one.unmount()
 
     renderWorkspace({
@@ -72,7 +72,7 @@ describe('CompareWorkspace', () => {
         { ...defined(files[1], 'Expected second comparison fixture'), kind: 'text' },
       ],
     })
-    expect(screen.getByRole('alert')).toHaveTextContent('请选择 2–20 张图片进行对比')
+    expect(screen.getByRole('alert')).toHaveTextContent('请选择 2–8 张图片进行对比')
   })
 
   it('keeps unsupported panes request-free and disables active transforms', async () => {
@@ -149,7 +149,7 @@ describe('CompareWorkspace', () => {
   it('virtualizes a scrolling portrait set', () => {
     const resize = installCompareResizeObserver()
     const requestImage = vi.fn(() => new Promise<ImageRepresentation>(() => undefined))
-    renderWorkspace({ files: portraitFiles(20), requestImage })
+    renderWorkspace({ files: portraitFiles(8), requestImage })
     act(() => resize.workspace(1_700, 900))
     expect(screen.getByRole('list', { name: '滚动图片对比' })).toHaveAttribute(
       'data-axis',
@@ -158,7 +158,7 @@ describe('CompareWorkspace', () => {
     act(() => resize.stages(600, 800))
     const mountedItems = screen.getAllByRole('listitem')
     expect(mountedItems.length).toBeGreaterThan(0)
-    expect(mountedItems.length).toBeLessThan(20)
+    expect(mountedItems.length).toBeLessThan(8)
     expect(requestImage).toHaveBeenCalledTimes(mountedItems.length)
     expect(
       mountedItems.map((item) => [
@@ -166,12 +166,12 @@ describe('CompareWorkspace', () => {
         item.getAttribute('aria-setsize'),
       ]),
     ).toEqual([
-      ['1', '20'],
-      ['2', '20'],
-      ['3', '20'],
-      ['4', '20'],
-      ['5', '20'],
-      ['6', '20'],
+      ['1', '8'],
+      ['2', '8'],
+      ['3', '8'],
+      ['4', '8'],
+      ['5', '8'],
+      ['6', '8'],
     ])
   })
 
@@ -194,7 +194,7 @@ describe('CompareWorkspace', () => {
         })
       },
     )
-    renderWorkspace({ files: portraitFiles(20), requestImage })
+    renderWorkspace({ files: portraitFiles(8), requestImage })
     act(() => resize.workspace(1_700, 900))
     act(() => resize.stages(600, 800))
     const initiallyMountedIds = screen
@@ -222,14 +222,9 @@ describe('CompareWorkspace', () => {
     viewport.scrollLeft = 10_000
     fireEvent.scroll(viewport)
 
-    const oldNonActiveIds = initiallyMountedIds.filter((entityId) => entityId !== 'portrait-0')
     await waitFor(() => {
-      for (const entityId of oldNonActiveIds) {
-        expect(
-          screen.queryByRole('group', { name: `对比 ${entityId}.jpg` }),
-        ).not.toBeInTheDocument()
-        expect(initialSignals.get(entityId)?.aborted).toBe(true)
-      }
+      expect(screen.queryByRole('group', { name: '对比 portrait-1.jpg' })).not.toBeInTheDocument()
+      expect(initialSignals.get('portrait-1')?.aborted).toBe(true)
     })
     expect(screen.getByRole('group', { name: '对比 portrait-0.jpg' })).toBeInTheDocument()
     expect(initialSignals.get('portrait-0')?.aborted).toBe(false)

@@ -15,7 +15,7 @@ const images = [
   { entityId: 'd', kind: 'png' as const },
 ]
 
-const twentyImages = Array.from({ length: 20 }, (_, index) => ({
+const eightImages = Array.from({ length: 8 }, (_, index) => ({
   entityId: `image-${index}`,
   kind: 'jpeg' as const,
 }))
@@ -44,12 +44,12 @@ function stateWithMetrics() {
 }
 
 describe('compareModel', () => {
-  it('accepts exactly two to twenty unique image entities', () => {
+  it('accepts exactly two to eight unique image entities', () => {
     expect(createCompareState(images.slice(0, 1))).toEqual({
       ok: false,
       reason: 'invalid_cardinality',
     })
-    expect(createCompareState([...twentyImages, { entityId: 'image-20', kind: 'jpeg' }])).toEqual({
+    expect(createCompareState([...eightImages, { entityId: 'image-8', kind: 'jpeg' }])).toEqual({
       ok: false,
       reason: 'invalid_cardinality',
     })
@@ -63,7 +63,7 @@ describe('compareModel', () => {
       reason: 'unsupported_type',
     })
 
-    const created = createCompareState(twentyImages)
+    const created = createCompareState(eightImages)
     expect(created.ok).toBe(true)
     if (!created.ok) return
     expect(created.state.mode).toBe('synchronized')
@@ -141,30 +141,30 @@ describe('compareModel', () => {
   })
 
   it('preserves surviving transforms and exits to preview or grid', () => {
-    const created = createCompareState(twentyImages)
+    const created = createCompareState(eightImages)
     if (!created.ok) throw new Error('fixture must be valid')
     let state = reduceCompare(created.state, { type: 'mode_changed', mode: 'independent' })
-    state = reduceCompare(state, { type: 'zoom', entityId: 'image-10', factor: 2 })
+    state = reduceCompare(state, { type: 'zoom', entityId: 'image-6', factor: 2 })
 
-    const survivors = twentyImages
+    const survivors = eightImages
       .map(({ entityId }) => entityId)
-      .filter((entityId) => !['image-0', 'image-5', 'image-15'].includes(entityId))
+      .filter((entityId) => !['image-0', 'image-5', 'image-7'].includes(entityId))
     const remaining = reconcileComparePanes(state, survivors)
     expect(remaining.kind).toBe('compare')
     if (remaining.kind !== 'compare') return
     expect(remaining.state.entityIds).toEqual(survivors)
     expect(
-      defined(remaining.state.transforms['image-10'], 'Expected retained transform for image 10')
+      defined(remaining.state.transforms['image-6'], 'Expected retained transform for image 6')
         .scale,
     ).toBe(2)
 
-    const one = reconcileComparePanes(remaining.state, ['image-10'])
-    expect(one).toEqual({ kind: 'single_preview', entityId: 'image-10' })
+    const one = reconcileComparePanes(remaining.state, ['image-6'])
+    expect(one).toEqual({ kind: 'single_preview', entityId: 'image-6' })
     expect(reconcileComparePanes(remaining.state, [])).toEqual({ kind: 'grid' })
   })
 
   it('chooses the nearest surviving active pane with next before previous on a tie', () => {
-    const created = createCompareState(twentyImages.slice(0, 5))
+    const created = createCompareState(eightImages.slice(0, 5))
     if (!created.ok) throw new Error('fixture must be valid')
     const centered = reduceCompare(created.state, {
       type: 'active_changed',

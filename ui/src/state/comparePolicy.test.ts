@@ -9,12 +9,12 @@ import {
 const image = (index: number) => ({ entityId: `image-${index}`, kind: 'jpeg' })
 
 describe('comparePolicy', () => {
-  it('accepts exactly 2 through 20 supported unique images', () => {
+  it('accepts exactly 2 through 8 supported unique images', () => {
     expect(MIN_COMPARE_IMAGES).toBe(2)
-    expect(MAX_COMPARE_IMAGES).toBe(20)
+    expect(MAX_COMPARE_IMAGES).toBe(8)
     expect(validateCompareCandidates([image(1), image(2)])).toEqual({ ok: true })
     expect(
-      validateCompareCandidates(Array.from({ length: 20 }, (_, index) => image(index))),
+      validateCompareCandidates(Array.from({ length: 8 }, (_, index) => image(index))),
     ).toEqual({ ok: true })
     expect(
       validateCompareCandidates([
@@ -30,9 +30,9 @@ describe('comparePolicy', () => {
       reason: 'invalid_cardinality',
     })
     expect(
-      validateCompareCandidates(Array.from({ length: 21 }, (_, index) => image(index))),
+      validateCompareCandidates(Array.from({ length: 9 }, (_, index) => image(index))),
     ).toEqual({ ok: false, reason: 'invalid_cardinality' })
-    expect(compareValidationMessage('invalid_cardinality')).toBe('请选择 2–20 张图片进行对比。')
+    expect(compareValidationMessage('invalid_cardinality')).toBe('请选择 2–8 张图片进行对比。')
   })
 
   it('rejects duplicates and unsupported kinds', () => {

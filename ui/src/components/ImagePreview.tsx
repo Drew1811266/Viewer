@@ -1,4 +1,4 @@
-import type { KeyboardEvent, PointerEvent, ReactNode } from 'react'
+import type { KeyboardEvent, MutableRefObject, PointerEvent, ReactNode } from 'react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type {
   BrowserFile,
@@ -27,6 +27,7 @@ interface ImagePreviewProps {
   file: BrowserFile
   files: BrowserFile[]
   magnifier: MagnifierPreferences
+  pointerClientPoint: MutableRefObject<Point | null>
   unavailableEntityIds?: ReadonlySet<string>
   requestImage: (
     file: BrowserFile,

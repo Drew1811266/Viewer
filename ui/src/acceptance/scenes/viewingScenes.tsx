@@ -218,6 +218,7 @@ type PreviewState =
 
 function PreviewScene({ state }: { request: AcceptanceRequest; state: PreviewState }) {
   const acted = useRef(false)
+  const pointerClientPoint = useRef<{ x: number; y: number } | null>({ x: 320, y: 240 })
   const magnifierReady = useMagnifierSceneReady(state)
   useEffect(() => {
     if (acted.current) return
@@ -236,6 +237,7 @@ function PreviewScene({ state }: { request: AcceptanceRequest; state: PreviewSta
       file={PREVIEW_FILE}
       files={ACCEPTANCE_FILES}
       magnifier={{ shape: 'circle', magnification: 1.5, area: 'small' }}
+      pointerClientPoint={pointerClientPoint}
       requestImage={requestImage}
       onNavigate={noOp}
       onClose={noOp}

@@ -1,4 +1,4 @@
-import type { CSSProperties } from 'react'
+import type { CSSProperties, MutableRefObject } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type {
   BrowserFile,
@@ -31,6 +31,8 @@ import FolderTree from './components/FolderTree'
 import GlobalNoticeStack, { type GlobalNotice } from './components/GlobalNoticeStack'
 import ImagePreview from './components/ImagePreview'
 import InfoOverlay from './components/InfoOverlay'
+import type { Point } from './components/imagePreview/imageGeometry'
+import { useLatestPointerClientPoint } from './components/imagePreview/useLatestPointerClientPoint'
 import OperationResults from './components/OperationResults'
 import OrganizationDragPreview from './components/OrganizationDragPreview'
 import RadialFileMenu from './components/RadialFileMenu'
@@ -78,14 +80,21 @@ const EMPTY_PREVIEW_REPAIR: PreviewRepairMemory = {
 }
 
 export default function App({ bridge = tauriViewerBridge }: AppProps) {
+  const pointerClientPoint = useLatestPointerClientPoint()
   return (
     <ViewerSettingsProvider bridge={bridge}>
-      <ViewerWorkspace bridge={bridge} />
+      <ViewerWorkspace bridge={bridge} pointerClientPoint={pointerClientPoint} />
     </ViewerSettingsProvider>
   )
 }
 
-function ViewerWorkspace({ bridge }: { bridge: ViewerBridge }) {
+function ViewerWorkspace({
+  bridge,
+  pointerClientPoint,
+}: {
+  bridge: ViewerBridge
+  pointerClientPoint: MutableRefObject<Point | null>
+}) {
   const {
     thumbnailDensity,
     magnifier,
@@ -1263,6 +1272,7 @@ function ViewerWorkspace({ bridge }: { bridge: ViewerBridge }) {
           file={activePreviewFile}
           files={activePreviewFiles}
           magnifier={magnifier}
+          pointerClientPoint={pointerClientPoint}
           requestImage={requestPreviewImage}
           onNavigate={navigatePreview}
           onClose={closePreview}

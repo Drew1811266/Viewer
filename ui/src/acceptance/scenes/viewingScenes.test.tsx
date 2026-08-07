@@ -111,7 +111,7 @@ describe('Viewer viewing acceptance scenes', () => {
     await waitFor(() => expect(lens).toHaveAttribute('data-visible', 'true'))
     expect(lens).toHaveAttribute('data-shape', 'circle')
     expect(lens).toHaveStyle({ width: '160px', height: '160px' })
-    expect(lens.style.getPropertyValue('--magnifier-scale')).toBe('4')
+    expect(lens.style.getPropertyValue('--magnifier-scale')).toBe('1.5')
     expect(source.getAttribute('src')).toContain(encodeURIComponent('商品-02.jpg'))
     expect(source.getAttribute('src')).toContain('representation=original100_percent')
     rendered.unmount()

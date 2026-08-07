@@ -48,6 +48,7 @@ completion.
 | [`superpowers/specs/2026-08-06-viewer-five-level-thumbnail-slider-design.md`](superpowers/specs/2026-08-06-viewer-five-level-thumbnail-slider-design.md) | Active | — |
 | [`superpowers/specs/2026-08-06-viewer-compare-original-images-and-eight-item-limit-design.md`](superpowers/specs/2026-08-06-viewer-compare-original-images-and-eight-item-limit-design.md) | Active | — |
 | [`superpowers/specs/2026-08-06-viewer-square-image-card-selection-design.md`](superpowers/specs/2026-08-06-viewer-square-image-card-selection-design.md) | Active | — |
+| [`superpowers/specs/2026-08-07-viewer-fit-relative-original-preview-revision-design.md`](superpowers/specs/2026-08-07-viewer-fit-relative-original-preview-revision-design.md) | Active | — |
 | [`superpowers/specs/2026-08-07-viewer-pointer-following-magnifier-revision-design.md`](superpowers/specs/2026-08-07-viewer-pointer-following-magnifier-revision-design.md) | Active | — |
 
 ## Superseded decisions
@@ -94,6 +95,7 @@ completion.
 | [`superpowers/plans/2026-08-06-viewer-compare-original-images-and-eight-item-limit.md`](superpowers/plans/2026-08-06-viewer-compare-original-images-and-eight-item-limit.md) | Historical | — |
 | [`superpowers/plans/2026-08-06-viewer-square-image-card-selection.md`](superpowers/plans/2026-08-06-viewer-square-image-card-selection.md) | Historical | — |
 | [`superpowers/plans/2026-08-06-viewer-trackpad-zoom-and-image-magnifier.md`](superpowers/plans/2026-08-06-viewer-trackpad-zoom-and-image-magnifier.md) | Historical | — |
+| [`superpowers/plans/2026-08-07-viewer-fit-relative-original-preview-revision.md`](superpowers/plans/2026-08-07-viewer-fit-relative-original-preview-revision.md) | Historical | — |
 | [`superpowers/plans/2026-08-07-viewer-pointer-following-magnifier-revision.md`](superpowers/plans/2026-08-07-viewer-pointer-following-magnifier-revision.md) | Historical | — |
 
 ## Historical review evidence

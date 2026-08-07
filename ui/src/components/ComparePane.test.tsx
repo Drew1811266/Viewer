@@ -79,22 +79,14 @@ describe('ComparePane', () => {
 
   it('keeps the proxy and reports a bounded-memory downgrade when original fails', async () => {
     const resize = installResizeObserver()
-    const requestImage = vi
-      .fn()
-      .mockResolvedValueOnce(representation('proxy-a', 800, 600))
-      .mockRejectedValueOnce({ code: 'image_budget_exceeded' })
-    const originalUnavailable = vi.fn()
-    const rendered = renderPane({ requestImage, onOriginalUnavailable: originalUnavailable })
-    act(() => resize(800, 600))
-    await screen.findByRole('img', { name: 'front.jpg' })
-
-    rendered.rerender(
-      pane({
-        requestImage,
-        useOriginal: true,
-        onOriginalUnavailable: originalUnavailable,
-      }),
+    const requestImage = vi.fn((_file: BrowserFile, request: ImageRepresentationRequest) =>
+      request.kind === 'original100_percent'
+        ? Promise.reject({ code: 'image_budget_exceeded' })
+        : Promise.resolve(representation('proxy-a', 800, 600)),
     )
+    const originalUnavailable = vi.fn()
+    renderPane({ requestImage, onOriginalUnavailable: originalUnavailable })
+    act(() => resize(800, 600))
 
     expect(await screen.findByRole('alert')).toHaveTextContent('原图超出安全预览限制')
     expect(screen.getByRole('alert')).toHaveClass('viewer-local-feedback')
@@ -106,80 +98,52 @@ describe('ComparePane', () => {
     expect(originalUnavailable).toHaveBeenCalledWith('a', 'budget')
   })
 
-  it('requests the original only for 100% mode and reports normalized pointer pan', async () => {
+  it('shows a proxy transiently and replaces it with the original without changing geometry', async () => {
     const resize = installResizeObserver()
-    const requestImage = vi
-      .fn()
-      .mockResolvedValueOnce(representation('proxy-a', 800, 600))
-      .mockResolvedValueOnce(representation('original-a', 4_000, 3_000))
-    const pan = vi.fn()
-    const rendered = renderPane({ requestImage, onPan: pan })
-    act(() => resize(800, 600))
-    await screen.findByRole('img', { name: 'front.jpg' })
-
-    const stage = defined(
-      document.querySelector('.compare-pane-stage'),
-      'Expected compare pane stage',
+    const proxy = deferred<ImageRepresentation>()
+    const original = deferred<ImageRepresentation>()
+    const requestImage = vi.fn((_file: BrowserFile, request: ImageRepresentationRequest) =>
+      request.kind === 'original100_percent' ? original.promise : proxy.promise,
     )
-    expect(stage).not.toBeNull()
-    fireEvent.pointerDown(stage, { button: 0, pointerId: 1, clientX: 200, clientY: 200 })
-    fireEvent.pointerMove(stage, { pointerId: 1, clientX: 280, clientY: 260 })
-    expect(pan).toHaveBeenCalledWith('a', -0.1, -0.1)
+    renderPane({ requestImage })
+    act(() => resize(800, 600))
 
-    rendered.rerender(pane({ requestImage, useOriginal: true, onPan: pan }))
     await waitFor(() =>
-      expect(requestImage).toHaveBeenLastCalledWith(
+      expect(requestImage).toHaveBeenCalledWith(
         file,
-        {
-          kind: 'original100_percent',
-        },
+        { kind: 'original100_percent' },
         expect.any(AbortSignal),
       ),
     )
-    expect(await screen.findByRole('img', { name: 'front.jpg' })).toHaveAttribute(
-      'src',
-      'viewer-image://localhost/original-a',
-    )
+    await act(async () => proxy.resolve(representation('proxy-a', 800, 600)))
+    const proxyImage = await screen.findByRole('img', { name: 'front.jpg' })
+    expect(proxyImage).toHaveAttribute('src', 'viewer-image://localhost/proxy-a')
+    expect(proxyImage).toHaveStyle({ width: '800px', height: '600px' })
+
+    await act(async () => original.resolve(representation('original-a', 4_000, 3_000)))
+    const originalImage = await screen.findByRole('img', { name: 'front.jpg' })
+    expect(originalImage).toHaveAttribute('src', 'viewer-image://localhost/original-a')
+    expect(originalImage).toHaveStyle({ width: '800px', height: '600px' })
   })
 
   it('does not decode the same pane again when only its marker changes', async () => {
     const resize = installResizeObserver()
-    const requestImage = vi.fn().mockResolvedValue(representation('proxy-a', 800, 600))
+    const requestImage = vi.fn((_file: BrowserFile, request: ImageRepresentationRequest) =>
+      Promise.resolve(
+        request.kind === 'original100_percent'
+          ? representation('original-a', 4_000, 3_000)
+          : representation('proxy-a', 800, 600),
+      ),
+    )
     const rendered = renderPane({ requestImage })
     act(() => resize(800, 600))
-    await screen.findByRole('img', { name: 'front.jpg' })
+    await waitFor(() => expect(requestImage).toHaveBeenCalledTimes(2))
 
     rendered.rerender(
       pane({
         requestImage,
         file: { ...file, marker: { reviewState: 'reject', favorite: true } },
       }),
-    )
-    expect(requestImage).toHaveBeenCalledTimes(1)
-  })
-
-  it('restores the retained proxy immediately when an original pane is released', async () => {
-    const resize = installResizeObserver()
-    const requestImage = vi
-      .fn()
-      .mockResolvedValueOnce(representation('proxy-a', 800, 600))
-      .mockResolvedValueOnce(representation('original-a', 4_000, 3_000))
-    const rendered = renderPane({ requestImage })
-    act(() => resize(800, 600))
-    await screen.findByRole('img', { name: 'front.jpg' })
-
-    rendered.rerender(pane({ requestImage, useOriginal: true }))
-    await waitFor(() =>
-      expect(screen.getByRole('img', { name: 'front.jpg' })).toHaveAttribute(
-        'src',
-        'viewer-image://localhost/original-a',
-      ),
-    )
-    rendered.rerender(pane({ requestImage, useOriginal: false }))
-
-    expect(screen.getByRole('img', { name: 'front.jpg' })).toHaveAttribute(
-      'src',
-      'viewer-image://localhost/proxy-a',
     )
     expect(requestImage).toHaveBeenCalledTimes(2)
   })
@@ -262,14 +226,26 @@ describe('ComparePane', () => {
 
   it('invalidates a proxy when the same entity source revision changes', async () => {
     const resize = installResizeObserver()
-    const replacement = deferred<ImageRepresentation>()
-    const requestImage = vi
-      .fn()
-      .mockResolvedValueOnce(representation('old-proxy', 640, 480))
-      .mockReturnValueOnce(replacement.promise)
+    const replacementProxy = deferred<ImageRepresentation>()
+    const replacementOriginal = deferred<ImageRepresentation>()
+    const requestImage = vi.fn((target: BrowserFile, request: ImageRepresentationRequest) => {
+      if (target.modifiedNs === '2') {
+        return request.kind === 'original100_percent'
+          ? replacementOriginal.promise
+          : replacementProxy.promise
+      }
+      return Promise.resolve(
+        request.kind === 'original100_percent'
+          ? representation('old-original', 4_000, 3_000)
+          : representation('old-proxy', 640, 480),
+      )
+    })
     const rendered = renderPane({ requestImage })
     act(() => resize(640, 480))
-    await screen.findByRole('img', { name: 'front.jpg' })
+    expect(await screen.findByRole('img', { name: 'front.jpg' })).toHaveAttribute(
+      'src',
+      'viewer-image://localhost/old-original',
+    )
 
     rendered.rerender(
       pane({
@@ -277,35 +253,56 @@ describe('ComparePane', () => {
         file: { ...file, modifiedNs: '2', size: 101 },
       }),
     )
-    await waitFor(() => expect(requestImage).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(requestImage).toHaveBeenCalledTimes(4))
     expect(screen.queryByRole('img', { name: 'front.jpg' })).not.toBeInTheDocument()
-    await act(async () => replacement.resolve(representation('new-proxy', 640, 480)))
+    await act(async () => replacementProxy.resolve(representation('new-proxy', 640, 480)))
     expect(await screen.findByRole('img', { name: 'front.jpg' })).toHaveAttribute(
       'src',
       'viewer-image://localhost/new-proxy',
+    )
+    await act(async () => replacementOriginal.resolve(representation('new-original', 4_000, 3_000)))
+    expect(await screen.findByRole('img', { name: 'front.jpg' })).toHaveAttribute(
+      'src',
+      'viewer-image://localhost/new-original',
     )
   })
 
   it('ignores a stale representation after the pane entity changes', async () => {
     const resize = installResizeObserver()
-    const first = deferred<ImageRepresentation>()
-    const second = deferred<ImageRepresentation>()
-    const requestImage = vi
-      .fn()
-      .mockReturnValueOnce(first.promise)
-      .mockReturnValueOnce(second.promise)
+    const staleOriginal = deferred<ImageRepresentation>()
+    const replacementProxy = deferred<ImageRepresentation>()
+    const replacementOriginal = deferred<ImageRepresentation>()
+    const requestImage = vi.fn((target: BrowserFile, request: ImageRepresentationRequest) => {
+      if (target.entityId === 'a') {
+        return request.kind === 'original100_percent'
+          ? staleOriginal.promise
+          : Promise.resolve(representation('proxy-a', 640, 480))
+      }
+      return request.kind === 'original100_percent'
+        ? replacementOriginal.promise
+        : replacementProxy.promise
+    })
     const rendered = renderPane({ requestImage })
     act(() => resize(640, 480))
-    await waitFor(() => expect(requestImage).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(requestImage).toHaveBeenCalledTimes(2))
+    expect(await screen.findByRole('img', { name: 'front.jpg' })).toHaveAttribute(
+      'src',
+      'viewer-image://localhost/proxy-a',
+    )
 
     rendered.rerender(pane({ requestImage, file: image('b', 'back.jpg', null, false) }))
-    await waitFor(() => expect(requestImage).toHaveBeenCalledTimes(2))
-    await act(async () => first.resolve(representation('stale-a', 640, 480)))
+    await waitFor(() => expect(requestImage).toHaveBeenCalledTimes(4))
+    await act(async () => staleOriginal.resolve(representation('stale-a', 4_000, 3_000)))
     expect(screen.queryByRole('img')).not.toBeInTheDocument()
-    await act(async () => second.resolve(representation('proxy-b', 640, 480)))
+    await act(async () => replacementProxy.resolve(representation('proxy-b', 640, 480)))
     expect(await screen.findByRole('img', { name: 'back.jpg' })).toHaveAttribute(
       'src',
       'viewer-image://localhost/proxy-b',
+    )
+    await act(async () => replacementOriginal.resolve(representation('original-b', 4_000, 3_000)))
+    expect(await screen.findByRole('img', { name: 'back.jpg' })).toHaveAttribute(
+      'src',
+      'viewer-image://localhost/original-b',
     )
   })
 
@@ -317,7 +314,6 @@ describe('ComparePane', () => {
     )
     renderPane({
       requestImage,
-      useOriginal: true,
       onOriginalUnavailable: originalUnavailable,
     })
     act(() => resize(640, 480))
@@ -351,7 +347,6 @@ describe('ComparePane', () => {
     )
     const rendered = renderPane({
       requestImage,
-      useOriginal: true,
       onOriginalUnavailable: originalUnavailable,
     })
     act(() => resize(640, 480))
@@ -409,7 +404,6 @@ function pane(overrides: Partial<React.ComponentProps<typeof ComparePane>>) {
       file={file}
       transform={transform}
       active
-      useOriginal={false}
       readOnly={false}
       requestImage={vi.fn()}
       onActivate={vi.fn()}

@@ -17,7 +17,6 @@ interface ComparePaneProps {
   file: BrowserFile
   transform: PaneTransform
   active: boolean
-  useOriginal: boolean
   readOnly: boolean
   requestImage: (
     file: BrowserFile,
@@ -59,7 +58,6 @@ export default function ComparePane({
   file,
   transform,
   active,
-  useOriginal,
   readOnly,
   requestImage,
   onActivate,
@@ -156,7 +154,7 @@ export default function ComparePane({
   ])
 
   useEffect(() => {
-    if (!previewable || !useOriginal) {
+    if (!previewable) {
       originalRevision.current += 1
       setOriginal(null)
       setOriginalError(null)
@@ -188,7 +186,7 @@ export default function ComparePane({
       controller.abort()
       if (originalRevision.current === revision) originalRevision.current += 1
     }
-  }, [file.entityId, file.kind, file.modifiedNs, file.size, previewable, requestImage, useOriginal])
+  }, [file.entityId, file.kind, file.modifiedNs, file.size, previewable, requestImage])
 
   useEffect(() => {
     if (!previewable) return
@@ -197,7 +195,6 @@ export default function ComparePane({
       original,
       file.entityId,
       fileSourceRevision(file),
-      useOriginal,
       proxyQuarterTurn,
     )
     if (representation === null || viewport === null) return
@@ -215,7 +212,6 @@ export default function ComparePane({
     proxy,
     previewable,
     proxyQuarterTurn,
-    useOriginal,
     viewport,
   ])
 
@@ -248,7 +244,6 @@ export default function ComparePane({
         original,
         file.entityId,
         fileSourceRevision(file),
-        useOriginal,
         proxyQuarterTurn,
       )
     : null
@@ -263,7 +258,7 @@ export default function ComparePane({
           maxHeight: 'none',
           transform: `translate(${cssNumber((0.5 - transform.centerX) * geometry.displayedWidth)}px, ${cssNumber((0.5 - transform.centerY) * geometry.displayedHeight)}px) rotate(${transform.rotation}deg) scale(${transform.scale})`,
         }
-  const error = previewable ? (useOriginal ? (originalError ?? proxyError) : proxyError) : null
+  const error = previewable ? (originalError ?? proxyError) : null
 
   return (
     <article
@@ -353,14 +348,9 @@ function visibleRepresentation(
   original: LoadedRepresentation | null,
   entityId: string,
   sourceRevision: string,
-  useOriginal: boolean,
   quarterTurn: boolean,
 ): ImageRepresentation | null {
-  if (
-    useOriginal &&
-    original?.entityId === entityId &&
-    original.sourceRevision === sourceRevision
-  ) {
+  if (original?.entityId === entityId && original.sourceRevision === sourceRevision) {
     return original.image
   }
   return proxy?.entityId === entityId &&

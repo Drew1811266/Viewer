@@ -266,7 +266,6 @@ export default function CompareWorkspace({
         file={file}
         transform={transform}
         active={activeEntityId === entityId}
-        useOriginal={originalEntityId === entityId}
         readOnly={readOnly}
         requestImage={requestComparedImage}
         onActivate={() => update({ type: 'active_changed', entityId })}

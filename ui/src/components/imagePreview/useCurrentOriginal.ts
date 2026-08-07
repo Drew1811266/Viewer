@@ -11,7 +11,6 @@ export interface CurrentOriginalState {
 
 interface CurrentOriginalOptions {
   file: BrowserFile
-  needed: boolean
   available: boolean
   requestImage: (
     file: BrowserFile,
@@ -22,7 +21,6 @@ interface CurrentOriginalOptions {
 
 export function useCurrentOriginal({
   file,
-  needed,
   available,
   requestImage,
 }: CurrentOriginalOptions): CurrentOriginalState {
@@ -34,7 +32,7 @@ export function useCurrentOriginal({
   useEffect(() => {
     const requestRevision = ++revision.current
     const entityId = file.entityId
-    if (!needed || !available) {
+    if (!available) {
       setState(idle(entityId))
       return
     }
@@ -65,7 +63,7 @@ export function useCurrentOriginal({
       controller.abort()
       if (revision.current === requestRevision) revision.current += 1
     }
-  }, [available, file.entityId, needed, requestImage])
+  }, [available, file.entityId, requestImage])
 
   return state
 }

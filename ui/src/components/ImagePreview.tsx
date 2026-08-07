@@ -14,7 +14,7 @@ import {
   type Size,
   sourcePointAtStagePoint,
 } from './imagePreview/imageGeometry'
-import { useCurrentOriginal } from './imagePreview/useCurrentOriginal'
+import { type CurrentOriginalState, useCurrentOriginal } from './imagePreview/useCurrentOriginal'
 import { useImageViewport } from './imagePreview/useImageViewport'
 import { usePreviewGestures } from './imagePreview/usePreviewGestures'
 import UnsupportedFileState from './UnsupportedFileState'
@@ -74,12 +74,19 @@ export default function ImagePreview({
   const [announcedScalePercent, setAnnouncedScalePercent] = useState(scalePercent)
   const original = useCurrentOriginal({
     file,
-    needed: magnifierEnabled,
     available: !transformsDisabled,
     requestImage,
   })
   const fitRepresentation = transformsDisabled ? undefined : fitCache.current.get(file.entityId)
-  const representation = fitRepresentation
+  const currentOriginal: CurrentOriginalState =
+    original.entityId === file.entityId
+      ? original
+      : { status: 'loading', entityId: file.entityId, representation: null }
+  const originalRepresentation =
+    currentOriginal.status === 'ready' ? currentOriginal.representation : null
+  const representation = originalRepresentation ?? fitRepresentation
+  const sourceDimensions: Size =
+    file.imageMetadata ?? originalRepresentation ?? fitRepresentation ?? EMPTY_STAGE
   const gestures = usePreviewGestures({
     stage,
     disabled: transformsDisabled || representation == null,
@@ -165,7 +172,6 @@ export default function ImagePreview({
           pendingFit.current.delete(candidate.entityId)
           if (!allowedWindow.current.has(candidate.entityId)) return
           fitCache.current.set(candidate.entityId, loaded)
-          onDimensions?.(candidate.entityId, loaded.width, loaded.height)
           refresh((value) => value + 1)
         },
         () => {
@@ -174,20 +180,17 @@ export default function ImagePreview({
         },
       )
     }
-  }, [currentIndex, file.entityId, files, onDimensions, requestImage, unavailableEntityIds])
+  }, [currentIndex, file.entityId, files, requestImage, unavailableEntityIds])
 
   useEffect(() => {
-    const source = representation
-      ? { width: representation.width, height: representation.height }
-      : EMPTY_STAGE
-    viewport.setMeasurements(stageSize, source)
-  }, [representation, stageSize, viewport.setMeasurements])
+    viewport.setMeasurements(stageSize, sourceDimensions)
+  }, [sourceDimensions, stageSize, viewport.setMeasurements])
 
   useEffect(() => {
-    if (original.status === 'ready' && original.representation !== null) {
-      onDimensions?.(file.entityId, original.representation.width, original.representation.height)
+    if (originalRepresentation !== null) {
+      onDimensions?.(file.entityId, originalRepresentation.width, originalRepresentation.height)
     }
-  }, [file.entityId, onDimensions, original])
+  }, [file.entityId, onDimensions, originalRepresentation])
 
   const placeMagnifier = useCallback(
     (stagePoint: Point) => {
@@ -201,7 +204,7 @@ export default function ImagePreview({
         hideMagnifier(magnifierHandle, stage)
         return
       }
-      const originalSize = original.representation ?? file.imageMetadata ?? representation
+      const originalSize = originalRepresentation ?? file.imageMetadata ?? representation
       magnifierHandle.current?.place({
         stagePoint,
         sourcePoint: remapSourcePoint(sourcePoint, viewport.geometry.source, originalSize),
@@ -211,7 +214,7 @@ export default function ImagePreview({
     [
       file.imageMetadata,
       magnifierEnabled,
-      original.representation,
+      originalRepresentation,
       representation,
       transformsDisabled,
       viewport.geometry,
@@ -316,7 +319,7 @@ export default function ImagePreview({
     hideMagnifier(magnifierHandle, stage)
   }
 
-  const previewDimensions = file.imageMetadata ?? original.representation ?? fitRepresentation
+  const previewDimensions = file.imageMetadata ?? originalRepresentation ?? fitRepresentation
   const previewMetadata = [
     previewDimensions ? `${previewDimensions.width} × ${previewDimensions.height} px` : null,
     formatBytes(file.size),
@@ -409,22 +412,28 @@ export default function ImagePreview({
           className="image-preview-image"
           src={representation.url}
           alt={file.name}
-          width={representation.width}
-          height={representation.height}
+          width={sourceDimensions.width}
+          height={sourceDimensions.height}
           draggable={false}
           data-mode={viewport.state.mode}
+          data-representation={originalRepresentation === null ? 'fit' : 'original'}
           style={{ transform: viewport.transform }}
         />
       ) : null}
       {!unavailable &&
         isPreviewableImage(file) &&
         (representation === undefined || representation === null) &&
-        error === null && (
+        !isFatalImageFailure(error, currentOriginal.status) && (
           <ViewerLocalFeedback tone="info" title="正在载入图片">
             正在准备高分辨率预览…
           </ViewerLocalFeedback>
         )}
-      {error !== null && (
+      {fitRepresentation !== undefined && originalFallbackCopy(currentOriginal.status) !== null && (
+        <ViewerLocalFeedback tone="warning" title="正在使用适窗预览">
+          {originalFallbackCopy(currentOriginal.status)}
+        </ViewerLocalFeedback>
+      )}
+      {representation == null && isFatalImageFailure(error, currentOriginal.status) && (
         <ViewerLocalFeedback tone="danger" title="无法显示这张图片">
           {error}
         </ViewerLocalFeedback>
@@ -437,9 +446,9 @@ export default function ImagePreview({
         stageSize={stageSize}
         rotation={viewport.state.rotation}
         fileName={file.name}
-        original={original}
+        original={currentOriginal}
       />
-      {magnifierAnnouncement(magnifierEnabled, original.status)}
+      {magnifierAnnouncement(magnifierEnabled, currentOriginal.status)}
       {magnifierAnnounced && (
         <span className="visually-hidden" aria-live="polite">
           {magnifierEnabled ? '放大镜已开启' : '放大镜已关闭'}
@@ -523,6 +532,19 @@ function magnifierAnnouncement(
       {status === 'budget_error' ? '放大镜原图超出安全预览限制' : '放大镜无法载入原图'}
     </span>
   )
+}
+
+function originalFallbackCopy(status: CurrentOriginalState['status']): string | null {
+  if (status === 'budget_error') return '原图超出安全预览限制，已继续使用适窗预览。'
+  if (status === 'error') return '无法加载原图，已继续使用适窗预览。'
+  return null
+}
+
+function isFatalImageFailure(
+  fitError: string | null,
+  originalStatus: CurrentOriginalState['status'],
+): boolean {
+  return fitError !== null && originalFallbackCopy(originalStatus) !== null
 }
 
 function formatBytes(bytes: number): string {

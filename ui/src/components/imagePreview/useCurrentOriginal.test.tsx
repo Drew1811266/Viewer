@@ -38,12 +38,11 @@ function deferred<T>() {
 }
 
 describe('useCurrentOriginal', () => {
-  it('does not request until a current available original is needed', async () => {
+  it('requests the current original automatically once it is available', async () => {
     const requestImage = vi.fn(async () => representation('one'))
     const hook = renderHook(
-      ({ needed, available }) =>
-        useCurrentOriginal({ file: image('one'), needed, available, requestImage }),
-      { initialProps: { needed: false, available: true } },
+      ({ available }) => useCurrentOriginal({ file: image('one'), available, requestImage }),
+      { initialProps: { available: false } },
     )
 
     expect(hook.result.current).toEqual({
@@ -53,10 +52,7 @@ describe('useCurrentOriginal', () => {
     })
     expect(requestImage).not.toHaveBeenCalled()
 
-    hook.rerender({ needed: true, available: false })
-    expect(requestImage).not.toHaveBeenCalled()
-
-    hook.rerender({ needed: true, available: true })
+    hook.rerender({ available: true })
     await waitFor(() => expect(hook.result.current.status).toBe('ready'))
     expect(requestImage).toHaveBeenCalledTimes(1)
     expect(requestImage).toHaveBeenCalledWith(
@@ -75,7 +71,7 @@ describe('useCurrentOriginal', () => {
       return file.entityId === 'one' ? first.promise : second.promise
     })
     const hook = renderHook(
-      ({ file }) => useCurrentOriginal({ file, needed: true, available: true, requestImage }),
+      ({ file }) => useCurrentOriginal({ file, available: true, requestImage }),
       { initialProps: { file: image('one') } },
     )
     await waitFor(() => expect(hook.result.current.status).toBe('loading'))
@@ -107,32 +103,26 @@ describe('useCurrentOriginal', () => {
     expect(requestImage).toHaveBeenCalledTimes(2)
   })
 
-  it('aborts on disable, unavailability, and unmount', async () => {
+  it('aborts on unavailability and unmount', async () => {
     const requests: AbortSignal[] = []
     const requestImage = vi.fn((_file: BrowserFile, _request: unknown, signal?: AbortSignal) => {
       if (signal) requests.push(signal)
       return new Promise<ImageRepresentation>(() => undefined)
     })
     const hook = renderHook(
-      ({ needed, available }) =>
-        useCurrentOriginal({ file: image('one'), needed, available, requestImage }),
-      { initialProps: { needed: true, available: true } },
+      ({ available }) => useCurrentOriginal({ file: image('one'), available, requestImage }),
+      { initialProps: { available: true } },
     )
     await waitFor(() => expect(requests).toHaveLength(1))
 
-    hook.rerender({ needed: false, available: true })
+    hook.rerender({ available: false })
     expect(requests[0]?.aborted).toBe(true)
     expect(hook.result.current.status).toBe('idle')
 
-    hook.rerender({ needed: true, available: true })
+    hook.rerender({ available: true })
     await waitFor(() => expect(requests).toHaveLength(2))
-    hook.rerender({ needed: true, available: false })
-    expect(requests[1]?.aborted).toBe(true)
-
-    hook.rerender({ needed: true, available: true })
-    await waitFor(() => expect(requests).toHaveLength(3))
     hook.unmount()
-    expect(requests[2]?.aborted).toBe(true)
+    expect(requests[1]?.aborted).toBe(true)
   })
 
   it.each([
@@ -148,7 +138,7 @@ describe('useCurrentOriginal', () => {
         .mockRejectedValueOnce(error)
         .mockImplementationOnce(() => next.promise)
       const hook = renderHook(
-        ({ file }) => useCurrentOriginal({ file, needed: true, available: true, requestImage }),
+        ({ file }) => useCurrentOriginal({ file, available: true, requestImage }),
         { initialProps: { file: image('one') } },
       )
 

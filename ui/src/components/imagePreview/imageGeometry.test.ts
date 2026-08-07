@@ -31,12 +31,13 @@ function state(overrides: Partial<ImageViewportState> = {}): ImageViewportState 
 describe('image viewport geometry', () => {
   it('derives fit, original, free, and rotated pan bounds from literal dimensions', () => {
     expect(displayScale(state(), GEOMETRY)).toBeCloseTo(0.45)
+    expect(displayScale(state({ rotation: 90 }), GEOMETRY)).toBeCloseTo(0.36)
     expect(panBounds(state(), GEOMETRY)).toEqual({ x: 0, y: 0 })
     expect(panBounds(state({ mode: 'original' }), GEOMETRY)).toEqual({ x: 250, y: 200 })
     expect(panBounds(state({ mode: 'free', zoom: 2 }), GEOMETRY)).toEqual({ x: 200, y: 160 })
     expect(panBounds(state({ mode: 'free', zoom: 2, rotation: 90 }), GEOMETRY)).toEqual({
-      x: 110,
-      y: 250,
+      x: 38,
+      y: 160,
     })
     expect(clampOffset({ x: 999, y: -999 }, { x: 110, y: 250 })).toEqual({
       x: 110,

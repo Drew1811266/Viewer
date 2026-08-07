@@ -873,7 +873,7 @@ Confirm only the expected pinned SVG set and existing `LICENSE.txt` content chan
 pnpm --dir ui exec vitest run src/components/ui/ViewerIcon.test.tsx
 ```
 
-- [ ] **Step 5: Commit asset provenance and registration**
+- [x] **Step 5: Commit asset provenance and registration**
 
 ```bash
 git add scripts/vendor-viewer-icons.mjs ui/src/assets/icons/lucide/zoom-in.svg ui/src/assets/icons/lucide/LICENSE.txt ui/src/components/ui/ViewerIcon.tsx ui/src/components/ui/ViewerIcon.test.tsx
@@ -896,39 +896,39 @@ git commit -m "assets: add magnifier toolbar icon"
 - Adds required prop `magnifier: MagnifierPreferences`.
 - Preserves every existing preview prop and formal behavior.
 
-- [ ] **Step 1: Update existing fixtures and add failing button/Q state tests**
+- [x] **Step 1: Update existing fixtures and add failing button/Q state tests**
 
 Pass default magnifier preferences to every `ImagePreview` test render. Assert the toolbar contains button `放大镜` beside the zoom controls with `aria-pressed="false"`, `aria-keyshortcuts="Q"`, and tooltip containing Q. Test click and unmodified Q toggle the same flag and live announcements `放大镜已开启` / `放大镜已关闭`.
 
 Add a table proving Q is ignored for `metaKey`, `ctrlKey`, `altKey`, `shiftKey`, `repeat`, `isComposing`, and `defaultPrevented`. Assert unsupported/unavailable images disable the button and ignore Q. Retain Escape and arrow navigation tests.
 
-- [ ] **Step 2: Add failing pointer entry/exit and navigation lifetime tests**
+- [x] **Step 2: Add failing pointer entry/exit and navigation lifetime tests**
 
 Mock stage measurements and an image representation. Enable the magnifier, move over a mapped image pixel, and assert stage data says the pointer is over image, cursor-hide styling applies, and lens is visible. Move to gray stage, fire `pointerleave`, and move over toolbar; each hides the lens/restores cursor while the button stays pressed. Re-enter actual pixels and assert the lens returns.
 
 Rerender with the next file and assert `aria-pressed` remains true, the old original signal is aborted, and a new original is requested. Unmount and render a new `ImagePreview`; assert the new session starts false.
 
-- [ ] **Step 3: Add failing original loading/failure/recovery tests**
+- [x] **Step 3: Add failing original loading/failure/recovery tests**
 
 Prove enabling sends exactly one original request and keeps the fit image visible. While pending, the lens follows the pointer with `正在载入原图`. For `image_budget_exceeded`, assert the main fit remains, the lens says `原图超出安全预览限制`, and one contained local stage explanation is rendered. For generic failure, use `无法载入原图`. Navigate next and resolve successfully; assert failure clears and the new original appears. Clicking 100% while magnifier original is ready must reuse that same representation without a second request.
 
-- [ ] **Step 4: Add failing unified viewport integration tests**
+- [x] **Step 4: Add failing unified viewport integration tests**
 
 Assert toolbar plus/minus, pointer drag, pinch wheel, and ordinary two-axis wheel change the one image transform. Check center anchoring and boundary clamps through the rendered style/data attributes. Assert a two-finger pan never calls `onNavigate`, while ArrowLeft/ArrowRight still do.
 
-- [ ] **Step 5: Run focused preview tests and observe failure**
+- [x] **Step 5: Run focused preview tests and observe failure**
 
 ```bash
 pnpm --dir ui exec vitest run src/components/ImagePreview.test.tsx src/styles/app.test.ts
 ```
 
-- [ ] **Step 6: Replace local transform state with `useImageViewport` and `usePreviewGestures`**
+- [x] **Step 6: Replace local transform state with `useImageViewport` and `usePreviewGestures`**
 
 Remove `panBounds`, `clamp`, `dragStart`, and the separate mode/zoom/rotation/offset state from `ImagePreview.tsx`. Measure the stage with `ResizeObserver` and the current display-representation dimensions, pass measurements to the viewport hook, and render its transform. Give the main image explicit natural representation width/height, remove CSS max-size scaling from that element, and let the geometry-derived transform provide the single fit/original/free scale so CSS does not apply contain scaling twice. Connect stage ref/pointer handlers/non-passive wheel behavior through `usePreviewGestures`.
 
 Free mode continues to render the fit representation. Original mode renders the current original. Fit stays visible while the original is loading.
 
-- [ ] **Step 7: Add session magnifier state and strict keyboard ownership**
+- [x] **Step 7: Add session magnifier state and strict keyboard ownership**
 
 Add one `useState(false)` at `ImagePreview` component lifetime and do not reset it in the entity-change effect. Toggle with:
 
@@ -947,23 +947,23 @@ const ownsMagnifierShortcut =
 
 When owned, prevent default, toggle once, and announce the new state through a polite live region. Render a `ViewerIconButton` with `icon="zoom-in"`, stable `label="放大镜"`, `active={magnifierEnabled}`, `aria-keyshortcuts="Q"`, and `title="放大镜（Q）"` beside zoom controls.
 
-- [ ] **Step 8: Share the one current original between 100% and magnifier**
+- [x] **Step 8: Share the one current original between 100% and magnifier**
 
 Set `needed = mode === 'original' || magnifierEnabled` and call `useCurrentOriginal`. If original mode fails, return the main view to fit and retain the existing explanatory suffix. If only the magnifier needs it, do not change main mode. Pass loading/error/ready state into `ImageMagnifier`.
 
-- [ ] **Step 9: Map pointer samples and update the lens imperatively**
+- [x] **Step 9: Map pointer samples and update the lens imperatively**
 
 On stage pointer move, convert client coordinates to stage coordinates and call `sourcePointAtStagePoint` against the current display representation. If the main view is fit/free, remap that coordinate by the display/original dimension ratio before placing the lens; original mode uses the coordinate directly. Place only if enabled, available, and the mapping is non-null. Update a stage data attribute for cursor hiding. When mapping returns null or pointer leaves/cancels, call `hide()` and clear only pointer-over-image state. Rotation is passed to the lens so the duplicate original matches the main orientation.
 
-- [ ] **Step 10: Wire preferences and signal-aware request from `App`**
+- [x] **Step 10: Wire preferences and signal-aware request from `App`**
 
 Pass the provider's `magnifier` to both mounted `ImagePreview` locations in `App.tsx`. The existing `requestPreviewImage(file, representation, signal?)` already delegates the abort signal to the bridge; update only the `ImagePreviewProps` type and tests, not the bridge cancellation protocol.
 
-- [ ] **Step 11: Finish responsive stage/toolbar behavior**
+- [x] **Step 11: Finish responsive stage/toolbar behavior**
 
 Keep the magnifier button in the central display-control group without hiding the navigation. At 720×450 and 200% zoom, controls may wrap/compact according to existing toolbar rules but remain keyboard reachable. Ensure lens overflow cannot create page scrollbars and the cursor-hide selector applies only to the stage's actual-image state.
 
-- [ ] **Step 12: Run focused preview tests and confirm green**
+- [x] **Step 12: Run focused preview tests and confirm green**
 
 ```bash
 pnpm --dir ui exec vitest run src/components/ImagePreview.test.tsx src/components/imagePreview src/styles/app.test.ts

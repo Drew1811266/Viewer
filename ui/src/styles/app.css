@@ -2378,25 +2378,15 @@ body:has(.viewer-dialog-backdrop) .task-bar {
   z-index: 1;
 }
 
-.image-preview-stage img {
+.image-preview-stage > .image-preview-image {
   border: 1px solid var(--preview-border);
   box-shadow: var(--preview-image-shadow);
-  transform-origin: center;
-  user-select: none;
-}
-
-.image-preview-stage img[data-mode="fit"],
-.image-preview-stage img[data-mode="free"] {
-  height: 90%;
-  width: auto;
-  max-height: 90%;
-  max-width: 90%;
-  object-fit: contain;
-}
-
-.image-preview-stage img[data-mode="original"] {
+  height: auto;
   max-height: none;
   max-width: none;
+  transform-origin: center;
+  user-select: none;
+  width: auto;
 }
 
 .image-preview-stage[data-magnifier-over-image="true"] {

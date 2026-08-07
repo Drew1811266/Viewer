@@ -1262,6 +1262,7 @@ function ViewerWorkspace({ bridge }: { bridge: ViewerBridge }) {
         <ImagePreview
           file={activePreviewFile}
           files={activePreviewFiles}
+          magnifier={magnifier}
           requestImage={requestPreviewImage}
           onNavigate={navigatePreview}
           onClose={closePreview}

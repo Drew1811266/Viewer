@@ -1,7 +1,22 @@
 import type { KeyboardEvent, PointerEvent, ReactNode } from 'react'
-import { useEffect, useRef, useState } from 'react'
-import type { BrowserFile, ImageRepresentation, ImageRepresentationRequest } from '../api/types'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import type {
+  BrowserFile,
+  ImageRepresentation,
+  ImageRepresentationRequest,
+  MagnifierPreferences,
+} from '../api/types'
 import { isPreviewableImage } from '../fileKinds'
+import ImageMagnifier, { type ImageMagnifierHandle } from './imagePreview/ImageMagnifier'
+import {
+  type Point,
+  remapSourcePoint,
+  type Size,
+  sourcePointAtStagePoint,
+} from './imagePreview/imageGeometry'
+import { useCurrentOriginal } from './imagePreview/useCurrentOriginal'
+import { useImageViewport } from './imagePreview/useImageViewport'
+import { usePreviewGestures } from './imagePreview/usePreviewGestures'
 import UnsupportedFileState from './UnsupportedFileState'
 import ViewerButton, { ViewerIconButton } from './ui/ViewerButton'
 import ViewerLocalFeedback from './ui/ViewerLocalFeedback'
@@ -11,22 +26,26 @@ import ViewerToolbar from './ui/ViewerToolbar'
 interface ImagePreviewProps {
   file: BrowserFile
   files: BrowserFile[]
+  magnifier: MagnifierPreferences
   unavailableEntityIds?: ReadonlySet<string>
   requestImage: (
     file: BrowserFile,
     representation: ImageRepresentationRequest,
+    signal?: AbortSignal,
   ) => Promise<ImageRepresentation>
   onNavigate: (file: BrowserFile) => void
   onClose: () => void
   onDimensions?: (entityId: string, width: number, height: number) => void
 }
 
-type PreviewMode = 'fit' | 'original' | 'free'
 const EMPTY_ENTITY_IDS: ReadonlySet<string> = new Set()
+const EMPTY_STAGE: Size = { width: 0, height: 0 }
+const DEFAULT_STAGE: Size = { width: 640, height: 480 }
 
 export default function ImagePreview({
   file,
   files,
+  magnifier,
   unavailableEntityIds = EMPTY_ENTITY_IDS,
   requestImage,
   onNavigate,
@@ -35,19 +54,39 @@ export default function ImagePreview({
 }: ImagePreviewProps) {
   const fitCache = useRef(new Map<string, ImageRepresentation>())
   const dialog = useRef<HTMLElement>(null)
+  const stage = useRef<HTMLDivElement>(null)
+  const magnifierHandle = useRef<ImageMagnifierHandle>(null)
   const pendingFit = useRef(new Map<string, Promise<ImageRepresentation>>())
   const allowedWindow = useRef(new Set<string>())
-  const dragStart = useRef<{ x: number; y: number; offsetX: number; offsetY: number } | null>(null)
+  const lastStagePoint = useRef<Point | null>(null)
   const [, refresh] = useState(0)
-  const [original, setOriginal] = useState<ImageRepresentation | null>(null)
-  const [mode, setMode] = useState<PreviewMode>('fit')
-  const [zoom, setZoom] = useState(1)
-  const [rotation, setRotation] = useState(0)
-  const [offset, setOffset] = useState({ x: 0, y: 0 })
+  const [stageSize, setStageSize] = useState(EMPTY_STAGE)
+  const [magnifierEnabled, setMagnifierEnabled] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const currentIndex = files.findIndex((candidate) => candidate.entityId === file.entityId)
   const unavailable = unavailableEntityIds.has(file.entityId)
   const transformsDisabled = unavailable || !isPreviewableImage(file)
+  const viewport = useImageViewport({ stage: EMPTY_STAGE, source: EMPTY_STAGE, fitInset: 0.9 })
+  const original = useCurrentOriginal({
+    file,
+    needed: magnifierEnabled || viewport.state.mode === 'original',
+    available: !transformsDisabled,
+    requestImage,
+  })
+  const fitRepresentation = transformsDisabled ? undefined : fitCache.current.get(file.entityId)
+  const representation =
+    viewport.state.mode === 'original'
+      ? original.status === 'ready'
+        ? original.representation
+        : null
+      : fitRepresentation
+  const gestures = usePreviewGestures({
+    stage,
+    disabled: transformsDisabled || representation == null,
+    panBounds: viewport.panBounds,
+    zoomBy: viewport.zoomBy,
+    panBy: viewport.panBy,
+  })
 
   useEffect(() => {
     const previous = document.activeElement
@@ -58,13 +97,33 @@ export default function ImagePreview({
   }, [])
 
   useEffect(() => {
-    setMode('fit')
-    setZoom(1)
-    setRotation(0)
-    setOffset({ x: 0, y: 0 })
-    setOriginal(null)
+    viewport.resetForEntity()
     setError(null)
-  }, [file.entityId])
+    lastStagePoint.current = null
+    hideMagnifier(magnifierHandle, stage)
+  }, [file.entityId, viewport.resetForEntity])
+
+  useEffect(() => {
+    const element = stage.current
+    if (element === null) return
+    const publish = (size: Size) => {
+      if (size.width > 0 && size.height > 0) {
+        setStageSize({ width: Math.round(size.width), height: Math.round(size.height) })
+      }
+    }
+    const bounds = element.getBoundingClientRect()
+    publish({
+      width: bounds.width || element.clientWidth || DEFAULT_STAGE.width,
+      height: bounds.height || element.clientHeight || DEFAULT_STAGE.height,
+    })
+    if (typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver((entries) => {
+      const content = entries[0]?.contentRect
+      if (content) publish(content)
+    })
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [])
 
   useEffect(() => {
     const windowFiles = files.slice(Math.max(0, currentIndex - 1), currentIndex + 2)
@@ -97,11 +156,11 @@ export default function ImagePreview({
       })
       pendingFit.current.set(candidate.entityId, request)
       void request.then(
-        (representation) => {
+        (loaded) => {
           pendingFit.current.delete(candidate.entityId)
           if (!allowedWindow.current.has(candidate.entityId)) return
-          fitCache.current.set(candidate.entityId, representation)
-          onDimensions?.(candidate.entityId, representation.width, representation.height)
+          fitCache.current.set(candidate.entityId, loaded)
+          onDimensions?.(candidate.entityId, loaded.width, loaded.height)
           refresh((value) => value + 1)
         },
         () => {
@@ -113,45 +172,67 @@ export default function ImagePreview({
   }, [currentIndex, file.entityId, files, onDimensions, requestImage, unavailableEntityIds])
 
   useEffect(() => {
-    if (
-      unavailableEntityIds.has(file.entityId) ||
-      !isPreviewableImage(file) ||
-      mode !== 'original' ||
-      original !== null
-    ) {
-      return
-    }
-    let current = true
-    void requestImage(file, { kind: 'original100_percent' }).then(
-      (representation) => {
-        if (!current) return
-        setOriginal(representation)
-        onDimensions?.(file.entityId, representation.width, representation.height)
-      },
-      (caught: unknown) => {
-        if (!current) return
-        if (commandCode(caught) === 'image_budget_exceeded') {
-          setMode('fit')
-          setError('原图超出安全预览限制，已返回适应窗口模式。')
-        } else {
-          setMode('fit')
-          setError('无法加载原图，已返回适应窗口模式。')
-        }
-      },
-    )
-    return () => {
-      current = false
-    }
-  }, [file, mode, onDimensions, original, requestImage, unavailableEntityIds])
+    const source = representation
+      ? { width: representation.width, height: representation.height }
+      : EMPTY_STAGE
+    viewport.setMeasurements(stageSize, source)
+  }, [representation, stageSize, viewport.setMeasurements])
 
-  const representation = transformsDisabled
-    ? undefined
-    : mode === 'original'
-      ? original
-      : fitCache.current.get(file.entityId)
-  const scale = mode === 'free' ? zoom : 1
-  const translated =
-    offset.x === 0 && offset.y === 0 ? '' : `translate(${offset.x}px, ${offset.y}px) `
+  useEffect(() => {
+    if (original.status === 'ready' && original.representation !== null) {
+      onDimensions?.(file.entityId, original.representation.width, original.representation.height)
+    }
+  }, [file.entityId, onDimensions, original])
+
+  useEffect(() => {
+    if (viewport.state.mode !== 'original') return
+    if (original.status === 'budget_error') {
+      viewport.setFit()
+      setError('原图超出安全预览限制，已返回适应窗口模式。')
+    }
+    if (original.status === 'error') {
+      viewport.setFit()
+      setError('无法加载原图，已返回适应窗口模式。')
+    }
+  }, [original.status, viewport.setFit, viewport.state.mode])
+
+  const placeMagnifier = useCallback(
+    (stagePoint: Point) => {
+      const sourcePoint = sourcePointAtStagePoint(stagePoint, viewport.state, viewport.geometry)
+      if (
+        !magnifierEnabled ||
+        transformsDisabled ||
+        representation == null ||
+        sourcePoint === null
+      ) {
+        hideMagnifier(magnifierHandle, stage)
+        return
+      }
+      const originalSize = original.representation ?? file.imageMetadata ?? representation
+      magnifierHandle.current?.place({
+        stagePoint,
+        sourcePoint: remapSourcePoint(sourcePoint, viewport.geometry.source, originalSize),
+      })
+      if (stage.current) stage.current.dataset.magnifierOverImage = 'true'
+    },
+    [
+      file.imageMetadata,
+      magnifierEnabled,
+      original.representation,
+      representation,
+      transformsDisabled,
+      viewport.geometry,
+      viewport.state,
+    ],
+  )
+
+  useEffect(() => {
+    const point = lastStagePoint.current
+    if (point !== null) placeMagnifier(point)
+    if (!magnifierEnabled || transformsDisabled || representation == null) {
+      hideMagnifier(magnifierHandle, stage)
+    }
+  }, [magnifierEnabled, placeMagnifier, representation, transformsDisabled])
 
   function navigate(delta: number) {
     const next = files[currentIndex + delta]
@@ -159,6 +240,11 @@ export default function ImagePreview({
   }
 
   function keyboard(event: KeyboardEvent<HTMLElement>) {
+    if (ownsMagnifierShortcut(event) && !transformsDisabled) {
+      event.preventDefault()
+      setMagnifierEnabled((current) => !current)
+      return
+    }
     if (event.key === 'Escape') {
       event.preventDefault()
       onClose()
@@ -173,34 +259,27 @@ export default function ImagePreview({
     }
   }
 
-  function zoomBy(factor: number) {
-    setMode('free')
-    setZoom((value) => Math.max(0.1, Math.min(8, value * factor)))
-  }
-
-  function pointerDown(event: PointerEvent<HTMLDivElement>) {
-    const bounds = panBounds(representation, event.currentTarget, mode, zoom, rotation)
-    if (bounds.x === 0 && bounds.y === 0) return
-    dragStart.current = {
-      x: event.clientX,
-      y: event.clientY,
-      offsetX: offset.x,
-      offsetY: offset.y,
-    }
-    event.currentTarget.setPointerCapture?.(event.pointerId)
-  }
-
-  function pointerMove(event: PointerEvent<HTMLDivElement>) {
-    const start = dragStart.current
-    if (start === null) return
-    const bounds = panBounds(representation, event.currentTarget, mode, zoom, rotation)
-    setOffset({
-      x: clamp(start.offsetX + event.clientX - start.x, -bounds.x, bounds.x),
-      y: clamp(start.offsetY + event.clientY - start.y, -bounds.y, bounds.y),
+  function zoomFromToolbar(factor: number) {
+    viewport.zoomBy(factor, {
+      x: viewport.geometry.stage.width / 2,
+      y: viewport.geometry.stage.height / 2,
     })
   }
 
-  const previewDimensions = file.imageMetadata ?? representation
+  function sampleMagnifier(event: PointerEvent<HTMLDivElement>) {
+    gestures.onPointerMove(event)
+    const bounds = event.currentTarget.getBoundingClientRect()
+    const point = { x: event.clientX - bounds.left, y: event.clientY - bounds.top }
+    lastStagePoint.current = point
+    placeMagnifier(point)
+  }
+
+  function stopMagnifier() {
+    lastStagePoint.current = null
+    hideMagnifier(magnifierHandle, stage)
+  }
+
+  const previewDimensions = file.imageMetadata ?? original.representation ?? fitRepresentation
   const previewMetadata = [
     previewDimensions ? `${previewDimensions.width} × ${previewDimensions.height} px` : null,
     formatBytes(file.size),
@@ -216,17 +295,23 @@ export default function ImagePreview({
   const displayControls: ReactNode = (
     <ViewerSegmentedControl label="图片显示控制">
       <ViewerButton
-        active={mode === 'fit'}
+        active={viewport.state.mode === 'fit'}
         disabled={transformsDisabled}
-        onClick={() => setMode('fit')}
+        onClick={() => {
+          setError(null)
+          viewport.setFit()
+        }}
       >
         适应窗口
       </ViewerButton>
       <ViewerButton
         aria-label="按 100% 显示"
-        active={mode === 'original'}
+        active={viewport.state.mode === 'original'}
         disabled={transformsDisabled}
-        onClick={() => setMode('original')}
+        onClick={() => {
+          setError(null)
+          viewport.setOriginal()
+        }}
       >
         100%
       </ViewerButton>
@@ -234,27 +319,37 @@ export default function ImagePreview({
         icon="minus"
         label="缩小"
         disabled={transformsDisabled}
-        onClick={() => zoomBy(0.8)}
+        onClick={() => zoomFromToolbar(0.8)}
       />
       <span className="preview-scale-label" aria-live="polite">
-        {Math.round(scale * 100)}%
+        {Math.round((viewport.state.mode === 'free' ? viewport.state.zoom : 1) * 100)}%
       </span>
       <ViewerIconButton
         icon="plus"
         label="放大"
         disabled={transformsDisabled}
-        onClick={() => zoomBy(1.25)}
+        onClick={() => zoomFromToolbar(1.25)}
       />
     </ViewerSegmentedControl>
   )
   const previewActions: ReactNode = (
     <>
       <ViewerIconButton
+        icon="zoom-in"
+        label="放大镜"
+        title="放大镜（Q）"
+        tone="quiet"
+        active={magnifierEnabled}
+        aria-keyshortcuts="Q"
+        disabled={transformsDisabled}
+        onClick={() => setMagnifierEnabled((current) => !current)}
+      />
+      <ViewerIconButton
         icon="rotate-cw"
         label="顺时针旋转"
         tone="quiet"
         disabled={transformsDisabled}
-        onClick={() => setRotation((value) => (value + 90) % 360)}
+        onClick={viewport.rotateClockwise}
       />
       <ViewerButton
         tone="quiet"
@@ -268,12 +363,15 @@ export default function ImagePreview({
   )
   const previewStage: ReactNode = (
     <div
+      ref={stage}
       className="image-preview-stage"
-      onPointerDown={pointerDown}
-      onPointerMove={pointerMove}
-      onPointerUp={() => {
-        dragStart.current = null
-      }}
+      onPointerDown={gestures.onPointerDown}
+      onPointerMove={sampleMagnifier}
+      onPointerEnter={sampleMagnifier}
+      onPointerLeave={stopMagnifier}
+      onPointerUp={gestures.onPointerUp}
+      onPointerCancel={gestures.onPointerCancel}
+      onLostPointerCapture={gestures.onLostPointerCapture}
     >
       {unavailable ? (
         <UnsupportedFileState file={file} unavailable />
@@ -281,10 +379,14 @@ export default function ImagePreview({
         <UnsupportedFileState file={file} />
       ) : representation ? (
         <img
+          className="image-preview-image"
           src={representation.url}
           alt={file.name}
-          data-mode={mode}
-          style={{ transform: `${translated}rotate(${rotation}deg) scale(${scale})` }}
+          width={representation.width}
+          height={representation.height}
+          draggable={false}
+          data-mode={viewport.state.mode}
+          style={{ transform: viewport.transform }}
         />
       ) : null}
       {!unavailable &&
@@ -300,6 +402,18 @@ export default function ImagePreview({
           {error}
         </ViewerLocalFeedback>
       )}
+      {magnifierEnabled && (
+        <ImageMagnifier
+          ref={magnifierHandle}
+          shape={magnifier.shape}
+          area={magnifier.area}
+          magnification={magnifier.magnification}
+          rotation={viewport.state.rotation}
+          fileName={file.name}
+          original={original}
+        />
+      )}
+      {magnifierAnnouncement(magnifierEnabled, original.status)}
     </div>
   )
   const previewNavigation: ReactNode = (
@@ -347,50 +461,37 @@ export default function ImagePreview({
   )
 }
 
-function commandCode(error: unknown): string | null {
-  if (
-    typeof error === 'object' &&
-    error !== null &&
-    'code' in error &&
-    typeof error.code === 'string'
-  ) {
-    return error.code
-  }
-  return null
+function ownsMagnifierShortcut(event: KeyboardEvent<HTMLElement>): boolean {
+  return (
+    event.key.toLowerCase() === 'q' &&
+    !event.altKey &&
+    !event.ctrlKey &&
+    !event.metaKey &&
+    !event.shiftKey &&
+    !event.repeat &&
+    !event.nativeEvent.isComposing &&
+    !event.defaultPrevented
+  )
 }
 
-function panBounds(
-  representation: ImageRepresentation | undefined | null,
-  stage: HTMLDivElement,
-  mode: PreviewMode,
-  zoom: number,
-  rotation: number,
-): { x: number; y: number } {
-  if (representation === null || representation === undefined || mode === 'fit') {
-    return { x: 0, y: 0 }
-  }
-  const stageWidth = stage.clientWidth
-  const stageHeight = stage.clientHeight
-  if (stageWidth <= 0 || stageHeight <= 0) return { x: 0, y: 0 }
-  const containScale =
-    mode === 'free'
-      ? Math.min(
-          1,
-          (stageWidth * 0.9) / representation.width,
-          (stageHeight * 0.9) / representation.height,
-        )
-      : 1
-  let width = representation.width * containScale * (mode === 'free' ? zoom : 1)
-  let height = representation.height * containScale * (mode === 'free' ? zoom : 1)
-  if (rotation % 180 !== 0) [width, height] = [height, width]
-  return {
-    x: Math.max(0, (width - stageWidth) / 2),
-    y: Math.max(0, (height - stageHeight) / 2),
-  }
+function hideMagnifier(
+  magnifier: { current: ImageMagnifierHandle | null },
+  stage: { current: HTMLElement | null },
+) {
+  magnifier.current?.hide()
+  stage.current?.removeAttribute('data-magnifier-over-image')
 }
 
-function clamp(value: number, minimum: number, maximum: number): number {
-  return Math.max(minimum, Math.min(maximum, value))
+function magnifierAnnouncement(
+  enabled: boolean,
+  status: ReturnType<typeof useCurrentOriginal>['status'],
+): ReactNode {
+  if (!enabled || (status !== 'budget_error' && status !== 'error')) return null
+  return (
+    <span className="visually-hidden" role="status" aria-live="polite">
+      {status === 'budget_error' ? '放大镜原图超出安全预览限制' : '放大镜无法载入原图'}
+    </span>
+  )
 }
 
 function formatBytes(bytes: number): string {

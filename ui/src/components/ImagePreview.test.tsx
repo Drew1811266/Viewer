@@ -1,8 +1,10 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import type { BrowserFile, ImageRepresentationRequest } from '../api/types'
 import { defined } from '../defined'
 import ImagePreview from './ImagePreview'
+
+const MAGNIFIER = { shape: 'circle', magnification: 4, area: 'small' } as const
 
 function image(index: number): BrowserFile {
   return {
@@ -30,6 +32,7 @@ describe('ImagePreview', () => {
       <ImagePreview
         file={target}
         files={[target]}
+        magnifier={MAGNIFIER}
         requestImage={vi.fn(() => new Promise<never>(() => undefined))}
         onNavigate={vi.fn()}
         onClose={vi.fn()}
@@ -53,6 +56,7 @@ describe('ImagePreview', () => {
       <ImagePreview
         file={front}
         files={[front]}
+        magnifier={MAGNIFIER}
         requestImage={vi.fn(() => new Promise<never>(() => undefined))}
         onNavigate={vi.fn()}
         onClose={vi.fn()}
@@ -94,6 +98,7 @@ describe('ImagePreview', () => {
       <ImagePreview
         file={target}
         files={[target]}
+        magnifier={MAGNIFIER}
         requestImage={vi.fn(() => new Promise<never>(() => undefined))}
         onNavigate={vi.fn()}
         onClose={vi.fn()}
@@ -111,6 +116,7 @@ describe('ImagePreview', () => {
       <ImagePreview
         file={target}
         files={[target]}
+        magnifier={MAGNIFIER}
         requestImage={vi.fn(() => Promise.reject(new Error('decode failed')))}
         onNavigate={vi.fn()}
         onClose={vi.fn()}
@@ -137,6 +143,7 @@ describe('ImagePreview', () => {
       <ImagePreview
         file={unsupported}
         files={[unsupported]}
+        magnifier={MAGNIFIER}
         requestImage={request}
         onNavigate={vi.fn()}
         onClose={vi.fn()}
@@ -167,6 +174,7 @@ describe('ImagePreview', () => {
       <ImagePreview
         file={defined(files[1], 'Expected second preview image')}
         files={files}
+        magnifier={MAGNIFIER}
         requestImage={request}
         onNavigate={vi.fn()}
         onClose={vi.fn()}
@@ -179,13 +187,14 @@ describe('ImagePreview', () => {
     expect(request.mock.calls.every((call) => call[1].kind === 'fit_preview')).toBe(true)
 
     fireEvent.click(screen.getByRole('button', { name: '顺时针旋转' }))
-    expect(preview).toHaveStyle({ transform: 'rotate(90deg) scale(1)' })
+    expect(preview.getAttribute('style')).toContain('rotate(90deg) scale(')
 
     fireEvent.click(screen.getByRole('button', { name: '按 100% 显示' }))
     await waitFor(() =>
       expect(request).toHaveBeenCalledWith(
         defined(files[1], 'Expected second preview image'),
         expect.objectContaining({ kind: 'original100_percent' }),
+        expect.any(AbortSignal),
       ),
     )
   })
@@ -204,6 +213,7 @@ describe('ImagePreview', () => {
       <ImagePreview
         file={defined(files[1], 'Expected second preview image')}
         files={files}
+        magnifier={MAGNIFIER}
         requestImage={request}
         onNavigate={navigate}
         onClose={vi.fn()}
@@ -231,6 +241,7 @@ describe('ImagePreview', () => {
       <ImagePreview
         file={defined(files[1], 'Expected second preview image')}
         files={files}
+        magnifier={MAGNIFIER}
         requestImage={request}
         onNavigate={navigate}
         onClose={vi.fn()}
@@ -243,6 +254,7 @@ describe('ImagePreview', () => {
       <ImagePreview
         file={defined(files[1], 'Expected second preview image')}
         files={files}
+        magnifier={MAGNIFIER}
         unavailableEntityIds={new Set(['image-2'])}
         requestImage={request}
         onNavigate={navigate}
@@ -258,5 +270,244 @@ describe('ImagePreview', () => {
     fireEvent.click(screen.getByRole('button', { name: '上一张' }))
     fireEvent.click(screen.getByRole('button', { name: '下一张' }))
     expect(navigate.mock.calls.map(([file]) => file.entityId)).toEqual(['image-1', 'image-3'])
+  })
+
+  it('toggles the magnifier through the toolbar and strict unmodified Q ownership', async () => {
+    const target = image(1)
+    const request = vi.fn(async (_file: BrowserFile, request: ImageRepresentationRequest) => ({
+      cacheKey: request.kind,
+      url: `viewer-image://localhost/session/${request.kind}`,
+      width: request.kind === 'original100_percent' ? 6000 : 800,
+      height: request.kind === 'original100_percent' ? 4000 : 600,
+      backend: 'image_io' as const,
+    }))
+    render(
+      <ImagePreview
+        file={target}
+        files={[target]}
+        magnifier={MAGNIFIER}
+        requestImage={request}
+        onNavigate={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    )
+    await screen.findByRole('img', { name: '1.jpg' })
+
+    const dialog = screen.getByRole('dialog')
+    const button = screen.getByRole('button', { name: '放大镜' })
+    expect(button).toHaveAttribute('aria-pressed', 'false')
+    expect(button).toHaveAttribute('aria-keyshortcuts', 'Q')
+    expect(button).toHaveAttribute('title', '放大镜（Q）')
+
+    fireEvent.keyDown(dialog, { key: 'q', metaKey: true })
+    fireEvent.keyDown(dialog, { key: 'q', repeat: true })
+    fireEvent.keyDown(dialog, { key: 'q', isComposing: true })
+    const alreadyHandled = new KeyboardEvent('keydown', {
+      key: 'q',
+      bubbles: true,
+      cancelable: true,
+    })
+    alreadyHandled.preventDefault()
+    dialog.dispatchEvent(alreadyHandled)
+    expect(button).toHaveAttribute('aria-pressed', 'false')
+    expect(
+      request.mock.calls.every(
+        ([, representation]) => representation.kind !== 'original100_percent',
+      ),
+    ).toBe(true)
+
+    fireEvent.keyDown(dialog, { key: 'q' })
+    expect(button).toHaveAttribute('aria-pressed', 'true')
+    await waitFor(() =>
+      expect(request).toHaveBeenCalledWith(
+        target,
+        { kind: 'original100_percent' },
+        expect.any(AbortSignal),
+      ),
+    )
+    fireEvent.click(screen.getByRole('button', { name: '按 100% 显示' }))
+    await screen.findByRole('img', { name: '1.jpg' })
+    expect(
+      request.mock.calls.filter(
+        ([, representation]) => representation.kind === 'original100_percent',
+      ),
+    ).toHaveLength(1)
+
+    fireEvent.keyDown(dialog, { key: 'Q' })
+    expect(button).toHaveAttribute('aria-pressed', 'false')
+    fireEvent.click(button)
+    expect(button).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('hides the lens outside actual image pixels while preserving enabled state across navigation', async () => {
+    const files = [image(1), image(2)]
+    const request = vi.fn(
+      async (file: BrowserFile, representation: ImageRepresentationRequest) => ({
+        cacheKey: `${file.entityId}:${representation.kind}`,
+        url: `viewer-image://localhost/session/${file.entityId}-${representation.kind}`,
+        width: representation.kind === 'original100_percent' ? 6000 : 800,
+        height: representation.kind === 'original100_percent' ? 4000 : 600,
+        backend: 'image_io' as const,
+      }),
+    )
+    const view = render(
+      <ImagePreview
+        file={files[0] as BrowserFile}
+        files={files}
+        magnifier={MAGNIFIER}
+        requestImage={request}
+        onNavigate={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    )
+    await screen.findByRole('img', { name: '1.jpg' })
+    fireEvent.click(screen.getByRole('button', { name: '放大镜' }))
+    await waitFor(() => expect(screen.getByTestId('image-magnifier-source')).toBeInTheDocument())
+    const stage = view.container.querySelector('.image-preview-stage') as HTMLElement
+
+    fireEvent.pointerMove(stage, { clientX: 320, clientY: 240, pointerId: 1 })
+    expect(stage).toHaveAttribute('data-magnifier-over-image', 'true')
+    fireEvent.pointerMove(stage, { clientX: 2, clientY: 2, pointerId: 1 })
+    expect(stage).not.toHaveAttribute('data-magnifier-over-image')
+    fireEvent.pointerMove(stage, { clientX: 320, clientY: 240, pointerId: 1 })
+    expect(stage).toHaveAttribute('data-magnifier-over-image', 'true')
+    fireEvent.pointerLeave(stage)
+    expect(stage).not.toHaveAttribute('data-magnifier-over-image')
+    expect(screen.getByRole('button', { name: '放大镜' })).toHaveAttribute('aria-pressed', 'true')
+
+    view.rerender(
+      <ImagePreview
+        file={files[1] as BrowserFile}
+        files={files}
+        magnifier={MAGNIFIER}
+        requestImage={request}
+        onNavigate={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    )
+    expect(screen.getByRole('button', { name: '放大镜' })).toHaveAttribute('aria-pressed', 'true')
+    await waitFor(() =>
+      expect(request).toHaveBeenCalledWith(
+        expect.objectContaining({ entityId: 'image-2' }),
+        { kind: 'original100_percent' },
+        expect.any(AbortSignal),
+      ),
+    )
+  })
+
+  it('contains original budget failure in the enabled magnifier without hiding the fit preview', async () => {
+    const files = [image(1), image(2)]
+    const request = vi.fn((file: BrowserFile, representation: ImageRepresentationRequest) =>
+      representation.kind === 'original100_percent' && file.entityId === 'image-1'
+        ? Promise.reject({ code: 'image_budget_exceeded' })
+        : Promise.resolve({
+            cacheKey: `${file.entityId}:${representation.kind}`,
+            url: `viewer-image://localhost/session/${file.entityId}-${representation.kind}`,
+            width: representation.kind === 'original100_percent' ? 6000 : 800,
+            height: representation.kind === 'original100_percent' ? 4000 : 600,
+            backend: 'image_io' as const,
+          }),
+    )
+    const view = render(
+      <ImagePreview
+        file={files[0] as BrowserFile}
+        files={files}
+        magnifier={MAGNIFIER}
+        requestImage={request}
+        onNavigate={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    )
+    await screen.findByRole('img', { name: '1.jpg' })
+    fireEvent.click(screen.getByRole('button', { name: '放大镜' }))
+
+    expect(await screen.findByText('原图超出安全预览限制')).toBeInTheDocument()
+    expect(screen.getByRole('img', { name: '1.jpg' })).toHaveAttribute('data-mode', 'fit')
+    expect(screen.getByRole('button', { name: '放大镜' })).toHaveAttribute('aria-pressed', 'true')
+
+    view.rerender(
+      <ImagePreview
+        file={files[1] as BrowserFile}
+        files={files}
+        magnifier={MAGNIFIER}
+        requestImage={request}
+        onNavigate={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    )
+    await waitFor(() =>
+      expect(screen.getByTestId('image-magnifier-source')).toHaveAttribute(
+        'src',
+        expect.stringContaining('image-2-original100_percent'),
+      ),
+    )
+  })
+
+  it('routes pinch, two-axis pan, and toolbar zoom through one viewport', async () => {
+    const frames: FrameRequestCallback[] = []
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+      frames.push(callback)
+      return frames.length
+    })
+    const target = image(1)
+    const navigate = vi.fn()
+    const request = vi.fn(async () => ({
+      cacheKey: 'fit',
+      url: 'viewer-image://localhost/session/fit',
+      width: 800,
+      height: 600,
+      backend: 'image_io' as const,
+    }))
+    const view = render(
+      <ImagePreview
+        file={target}
+        files={[target]}
+        magnifier={MAGNIFIER}
+        requestImage={request}
+        onNavigate={navigate}
+        onClose={vi.fn()}
+      />,
+    )
+    const preview = await screen.findByRole('img', { name: '1.jpg' })
+    const stage = view.container.querySelector('.image-preview-stage') as HTMLElement
+    vi.spyOn(stage, 'getBoundingClientRect').mockReturnValue({
+      x: 0,
+      y: 0,
+      left: 0,
+      top: 0,
+      right: 640,
+      bottom: 480,
+      width: 640,
+      height: 480,
+      toJSON: () => undefined,
+    })
+
+    const pinch = new WheelEvent('wheel', {
+      bubbles: true,
+      cancelable: true,
+      ctrlKey: true,
+      clientX: 320,
+      clientY: 240,
+      deltaY: -200,
+    })
+    stage.dispatchEvent(pinch)
+    expect(pinch.defaultPrevented).toBe(true)
+    act(() => frames.shift()?.(0))
+    expect(preview).toHaveAttribute('data-mode', 'free')
+    expect(screen.getByText('149%')).toBeVisible()
+
+    fireEvent.click(screen.getByRole('button', { name: '放大' }))
+    expect(screen.getByText('186%')).toBeVisible()
+    const pan = new WheelEvent('wheel', {
+      bubbles: true,
+      cancelable: true,
+      deltaX: 12,
+      deltaY: -18,
+    })
+    stage.dispatchEvent(pan)
+    act(() => frames.shift()?.(16))
+    expect(preview.getAttribute('style')).toContain('translate(-12px, 18px)')
+    expect(navigate).not.toHaveBeenCalled()
+    vi.unstubAllGlobals()
   })
 })

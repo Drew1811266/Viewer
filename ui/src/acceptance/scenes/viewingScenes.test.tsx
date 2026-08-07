@@ -78,7 +78,7 @@ describe('Viewer viewing acceptance scenes', () => {
       )
     }
     if (state === 'rotate') {
-      await waitFor(() => expect(image).toHaveStyle({ transform: 'rotate(90deg) scale(1)' }))
+      await waitFor(() => expect(image.getAttribute('style')).toContain('rotate(90deg)'))
     }
     if (state === 'navigation') {
       expect(screen.getByRole('button', { name: '上一张' })).toBeEnabled()

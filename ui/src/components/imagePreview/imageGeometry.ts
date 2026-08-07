@@ -30,10 +30,13 @@ export const MAX_PREVIEW_ZOOM = 8
 export function displayScale(state: ImageViewportState, geometry: ImageViewportGeometry): number {
   if (!hasArea(geometry.stage) || !hasArea(geometry.source)) return 0
   if (state.mode === 'original') return 1
+  const quarterTurn = state.rotation === 90 || state.rotation === 270
+  const sourceWidth = quarterTurn ? geometry.source.height : geometry.source.width
+  const sourceHeight = quarterTurn ? geometry.source.width : geometry.source.height
   const fitScale = Math.min(
     1,
-    (geometry.stage.width * geometry.fitInset) / geometry.source.width,
-    (geometry.stage.height * geometry.fitInset) / geometry.source.height,
+    (geometry.stage.width * geometry.fitInset) / sourceWidth,
+    (geometry.stage.height * geometry.fitInset) / sourceHeight,
   )
   return fitScale * (state.mode === 'free' ? state.zoom : 1)
 }

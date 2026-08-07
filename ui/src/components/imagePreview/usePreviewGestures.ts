@@ -43,9 +43,13 @@ export function usePreviewGestures({
   zoomBy,
   panBy,
 }: PreviewGestureOptions): PreviewPointerHandlers {
+  usePreviewWheel({ stage, disabled, panBounds, zoomBy, panBy })
+  return usePreviewPointerPan({ stage, disabled, panBounds, zoomBy, panBy })
+}
+
+function usePreviewWheel({ stage, disabled, zoomBy, panBy }: PreviewGestureOptions) {
   const pendingWheel = useRef<PendingWheelAction | null>(null)
   const frame = useRef<number | null>(null)
-  const drag = useRef<{ pointerId: number; point: Point } | null>(null)
 
   useEffect(() => {
     const element = stage.current
@@ -55,10 +59,7 @@ export function usePreviewGestures({
       frame.current = null
       const action = pendingWheel.current
       pendingWheel.current = null
-      if (action?.kind === 'pan') panBy(action.delta)
-      if (action?.kind === 'pinch') {
-        zoomBy(Math.exp(-action.deltaY * PINCH_SENSITIVITY), action.anchor)
-      }
+      executeWheelAction(action, zoomBy, panBy)
     }
     const schedule = () => {
       if (frame.current === null) frame.current = requestAnimationFrame(flush)
@@ -67,23 +68,7 @@ export function usePreviewGestures({
       if (disabled || !event.cancelable || isToolbarTarget(event.target)) return
       event.preventDefault()
       const delta = normalizeWheelDelta(event, element.clientHeight || 1)
-      if (event.ctrlKey) {
-        const bounds = element.getBoundingClientRect()
-        const anchor = { x: event.clientX - bounds.left, y: event.clientY - bounds.top }
-        const previous = pendingWheel.current
-        pendingWheel.current = {
-          kind: 'pinch',
-          deltaY: (previous?.kind === 'pinch' ? previous.deltaY : 0) + delta.y,
-          anchor,
-        }
-      } else {
-        const previous = pendingWheel.current
-        const accumulated = previous?.kind === 'pan' ? previous.delta : { x: 0, y: 0 }
-        pendingWheel.current = {
-          kind: 'pan',
-          delta: { x: accumulated.x - delta.x, y: accumulated.y - delta.y },
-        }
-      }
+      pendingWheel.current = accumulateWheelAction(event, element, delta, pendingWheel.current)
       schedule()
     }
 
@@ -95,7 +80,10 @@ export function usePreviewGestures({
       pendingWheel.current = null
     }
   }, [disabled, panBy, stage, zoomBy])
+}
 
+function usePreviewPointerPan({ disabled, panBounds, panBy }: PreviewGestureOptions) {
+  const drag = useRef<{ pointerId: number; point: Point } | null>(null)
   const finishDrag = useCallback<PointerEventHandler<HTMLDivElement>>((event) => {
     if (drag.current?.pointerId !== event.pointerId) return
     drag.current = null
@@ -135,6 +123,38 @@ export function usePreviewGestures({
     onPointerUp: finishDrag,
     onPointerCancel: finishDrag,
     onLostPointerCapture,
+  }
+}
+
+function executeWheelAction(
+  action: PendingWheelAction | null,
+  zoomBy: PreviewGestureOptions['zoomBy'],
+  panBy: PreviewGestureOptions['panBy'],
+) {
+  if (action?.kind === 'pan') panBy(action.delta)
+  if (action?.kind === 'pinch') {
+    zoomBy(Math.exp(-action.deltaY * PINCH_SENSITIVITY), action.anchor)
+  }
+}
+
+function accumulateWheelAction(
+  event: WheelEvent,
+  element: HTMLElement,
+  delta: Point,
+  previous: PendingWheelAction | null,
+): PendingWheelAction {
+  if (event.ctrlKey) {
+    const bounds = element.getBoundingClientRect()
+    return {
+      kind: 'pinch',
+      deltaY: (previous?.kind === 'pinch' ? previous.deltaY : 0) + delta.y,
+      anchor: { x: event.clientX - bounds.left, y: event.clientY - bounds.top },
+    }
+  }
+  const accumulated = previous?.kind === 'pan' ? previous.delta : { x: 0, y: 0 }
+  return {
+    kind: 'pan',
+    delta: { x: accumulated.x - delta.x, y: accumulated.y - delta.y },
   }
 }
 

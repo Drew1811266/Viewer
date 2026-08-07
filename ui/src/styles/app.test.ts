@@ -727,20 +727,16 @@ describe('workspace style contracts', () => {
     expect(declaration('.viewer-toolbar', 'border-bottom')).toBe('1px solid var(--viewer-border)')
     expect(declaration('.viewer-toolbar', 'height')).toBe('52px')
     expect(declaration('.image-preview-stage', 'background')).toBe('var(--preview-stage)')
-    expect(declaration('.image-preview-stage img', 'border')).toBe(
+    expect(declaration('.image-preview-stage > .image-preview-image', 'border')).toBe(
       '1px solid var(--preview-border)',
     )
-    expect(declaration('.image-preview-stage img', 'box-shadow')).toBe(
+    expect(declaration('.image-preview-stage > .image-preview-image', 'box-shadow')).toBe(
       'var(--preview-image-shadow)',
     )
-    for (const selector of [
-      '.image-preview-stage img[data-mode="fit"]',
-      '.image-preview-stage img[data-mode="free"]',
-    ]) {
-      expect(declaration(selector, 'height')).toBe('90%')
-      expect(declaration(selector, 'width')).toBe('auto')
-      expect(declaration(selector, 'max-width')).toBe('90%')
-    }
+    expect(declaration('.image-preview-stage > .image-preview-image', 'height')).toBe('auto')
+    expect(declaration('.image-preview-stage > .image-preview-image', 'width')).toBe('auto')
+    expect(declaration('.image-preview-stage > .image-preview-image', 'max-height')).toBe('none')
+    expect(declaration('.image-preview-stage > .image-preview-image', 'max-width')).toBe('none')
     expect(declaration('.preview-navigation-float', 'background')).toBe('var(--viewer-surface)')
     expect(declaration('.preview-navigation-float', 'border')).toBe(
       '1px solid var(--viewer-border)',

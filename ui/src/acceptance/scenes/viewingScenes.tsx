@@ -225,6 +225,7 @@ function PreviewScene({ state }: { request: AcceptanceRequest; state: PreviewSta
     <ImagePreview
       file={PREVIEW_FILE}
       files={ACCEPTANCE_FILES}
+      magnifier={{ shape: 'circle', magnification: 4, area: 'small' }}
       requestImage={requestImage}
       onNavigate={noOp}
       onClose={noOp}

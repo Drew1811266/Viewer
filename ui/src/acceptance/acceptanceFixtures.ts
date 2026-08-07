@@ -251,7 +251,7 @@ export function imageRepresentation(
   }
   return {
     cacheKey: `${file.entityId}:${kind}`,
-    url: `/${encodeURIComponent(file.name)}`,
+    url: `/${encodeURIComponent(file.name)}?representation=${kind}`,
     width: file.imageMetadata?.width ?? IMAGE_WIDTH,
     height: file.imageMetadata?.height ?? IMAGE_HEIGHT,
     backend: 'image_io',

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type {
   BrowserFile,
   ImageRepresentationRequest,
@@ -56,6 +56,7 @@ export const VIEWING_SCENES: AcceptanceSceneRegistry = {
   'PRE-05': (props) => <PreviewScene {...props} state="loading" />,
   'PRE-06': (props) => <PreviewScene {...props} state="error" />,
   'PRE-07': (props) => <PreviewScene {...props} state="navigation" />,
+  'PRE-08': (props) => <PreviewScene {...props} state="magnifier" />,
   'COM-01': () => <CompareScene count={2} />,
   'COM-02': () => <CompareScene count={3} />,
   'COM-03': () => <CompareScene count={4} />,
@@ -205,10 +206,19 @@ function workspaceThumbnailsReady(): boolean {
   )
 }
 
-type PreviewState = 'fit' | 'original' | 'zoom' | 'rotate' | 'loading' | 'error' | 'navigation'
+type PreviewState =
+  | 'fit'
+  | 'original'
+  | 'zoom'
+  | 'rotate'
+  | 'loading'
+  | 'error'
+  | 'navigation'
+  | 'magnifier'
 
 function PreviewScene({ state }: { request: AcceptanceRequest; state: PreviewState }) {
   const acted = useRef(false)
+  const [magnifierReady, setMagnifierReady] = useState(state !== 'magnifier')
   useEffect(() => {
     if (acted.current) return
     acted.current = true
@@ -219,9 +229,49 @@ function PreviewScene({ state }: { request: AcceptanceRequest; state: PreviewSta
     }
     if (state === 'rotate') namedButton('顺时针旋转')?.click()
   }, [state])
+  useEffect(() => {
+    if (state !== 'magnifier') return
+    let pointerFrame: number | undefined
+    const attempt = () => {
+      const button = namedButton('放大镜')
+      if (button?.getAttribute('aria-pressed') !== 'true') {
+        button?.click()
+        return
+      }
+      const stage = document.querySelector<HTMLElement>('.image-preview-stage')
+      const source = document.querySelector<HTMLImageElement>('.image-magnifier__source')
+      const lens = document.querySelector<HTMLElement>('.image-magnifier')
+      if (stage === null || source === null || lens === null) return
+      if (!magnifierSceneReady(lens, source)) {
+        if (pointerFrame !== undefined) return
+        pointerFrame = requestAnimationFrame(() => {
+          pointerFrame = undefined
+          const bounds = stage.getBoundingClientRect()
+          const pointerMove = new MouseEvent('pointermove', {
+            bubbles: true,
+            cancelable: true,
+            clientX: bounds.width > 0 ? bounds.left + bounds.width / 2 : 320,
+            clientY: bounds.height > 0 ? bounds.top + bounds.height / 2 : 240,
+          })
+          Object.defineProperty(pointerMove, 'pointerId', { value: 1 })
+          stage.dispatchEvent(pointerMove)
+        })
+        return
+      }
+      observer.disconnect()
+      setMagnifierReady(true)
+    }
+    const observer = new MutationObserver(attempt)
+    observer.observe(document.body, { attributes: true, childList: true, subtree: true })
+    attempt()
+    return () => {
+      observer.disconnect()
+      if (pointerFrame !== undefined) cancelAnimationFrame(pointerFrame)
+    }
+  }, [state])
   const requestImage =
     state === 'loading' ? neverImage : state === 'error' ? failedImage : requestAcceptanceImage
-  return (
+  const preview = (
     <ImagePreview
       file={PREVIEW_FILE}
       files={ACCEPTANCE_FILES}
@@ -230,6 +280,28 @@ function PreviewScene({ state }: { request: AcceptanceRequest; state: PreviewSta
       onNavigate={noOp}
       onClose={noOp}
     />
+  )
+  return state === 'magnifier' ? (
+    <div
+      data-acceptance-scene-ready={magnifierReady ? 'true' : 'false'}
+      style={{ width: '100%', height: '100%' }}
+    >
+      {preview}
+    </div>
+  ) : (
+    preview
+  )
+}
+
+function magnifierSceneReady(lens: HTMLElement, source: HTMLImageElement): boolean {
+  return (
+    lens.dataset.visible === 'true' &&
+    lens.dataset.shape === 'circle' &&
+    lens.style.width === '160px' &&
+    lens.style.height === '160px' &&
+    lens.style.getPropertyValue('--magnifier-scale') === '4' &&
+    source.src.includes(encodeURIComponent(PREVIEW_FILE.name)) &&
+    source.src.includes('representation=original100_percent')
   )
 }
 

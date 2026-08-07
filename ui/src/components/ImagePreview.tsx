@@ -62,6 +62,7 @@ export default function ImagePreview({
   const [, refresh] = useState(0)
   const [stageSize, setStageSize] = useState(EMPTY_STAGE)
   const [magnifierEnabled, setMagnifierEnabled] = useState(false)
+  const [magnifierAnnounced, setMagnifierAnnounced] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const currentIndex = files.findIndex((candidate) => candidate.entityId === file.entityId)
   const unavailable = unavailableEntityIds.has(file.entityId)
@@ -239,10 +240,15 @@ export default function ImagePreview({
     if (next) onNavigate(next)
   }
 
+  function toggleMagnifier() {
+    setMagnifierAnnounced(true)
+    setMagnifierEnabled((current) => !current)
+  }
+
   function keyboard(event: KeyboardEvent<HTMLElement>) {
     if (ownsMagnifierShortcut(event) && !transformsDisabled) {
       event.preventDefault()
-      setMagnifierEnabled((current) => !current)
+      toggleMagnifier()
       return
     }
     if (event.key === 'Escape') {
@@ -342,7 +348,7 @@ export default function ImagePreview({
         active={magnifierEnabled}
         aria-keyshortcuts="Q"
         disabled={transformsDisabled}
-        onClick={() => setMagnifierEnabled((current) => !current)}
+        onClick={toggleMagnifier}
       />
       <ViewerIconButton
         icon="rotate-cw"
@@ -414,6 +420,11 @@ export default function ImagePreview({
         />
       )}
       {magnifierAnnouncement(magnifierEnabled, original.status)}
+      {magnifierAnnounced && (
+        <span className="visually-hidden" aria-live="polite">
+          {magnifierEnabled ? '放大镜已开启' : '放大镜已关闭'}
+        </span>
+      )}
     </div>
   )
   const previewNavigation: ReactNode = (

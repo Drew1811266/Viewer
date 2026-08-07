@@ -969,7 +969,7 @@ Keep the magnifier button in the central display-control group without hiding th
 pnpm --dir ui exec vitest run src/components/ImagePreview.test.tsx src/components/imagePreview src/styles/app.test.ts
 ```
 
-- [ ] **Step 13: Commit the integrated preview feature**
+- [x] **Step 13: Commit the integrated preview feature**
 
 ```bash
 git add ui/src/components/ImagePreview.tsx ui/src/components/ImagePreview.test.tsx ui/src/App.tsx ui/src/styles/app.css ui/src/styles/app.test.ts
@@ -996,11 +996,11 @@ git commit -m "feat: add trackpad zoom and preview magnifier"
 - Extends `DIA-01` to the real settings-v2 controls.
 - Keeps A11Y-05 at 200% page zoom and includes the new UI automatically.
 
-- [ ] **Step 1: Add the approved behavior to the product specification**
+- [x] **Step 1: Add the approved behavior to the product specification**
 
 Under `[REQ-IA-IMAGE-PREVIEW]`, add bullets for Q/button toggle parity, actual-image entry/exit behavior, original-detail lens semantics, session lifetime, and bounded trackpad pan. Add a settings bullet with the exact shape, magnification, area values and defaults. Under the safety section, state that magnifier original loading uses the same 700 MB / 100 MP bound and never substitutes a fit proxy after budget failure.
 
-- [ ] **Step 2: Add failing scene-ledger and scene tests**
+- [x] **Step 2: Add failing scene-ledger and scene tests**
 
 Insert after PRE-07:
 
@@ -1012,17 +1012,17 @@ Extend `PreviewState` with `magnifier`, activate it by clicking the real `放大
 
 Update the viewing-scene test to assert PRE-08 renders the pressed real toolbar button and loaded lens. Update DIA-01 scene/test with all magnifier settings props and assert the default selected radio values.
 
-- [ ] **Step 3: Run scene tests and observe failure**
+- [x] **Step 3: Run scene tests and observe failure**
 
 ```bash
 pnpm --dir ui exec vitest run src/acceptance/scenes/viewingScenes.test.tsx src/acceptance/scenes/dialogScenes.test.tsx
 ```
 
-- [ ] **Step 4: Implement the deterministic PRE-08 scene and DIA-01 extension**
+- [x] **Step 4: Implement the deterministic PRE-08 scene and DIA-01 extension**
 
 Use `requestAcceptanceImage` for both fit and original. Do not special-case production code for acceptance. The scene may call real buttons and dispatch pointer movement in its existing one-time effect after dimensions are measurable. Preserve catalog ordering so `Object.keys(VIEWING_SCENES)` exactly matches the ledger.
 
-- [ ] **Step 5: Extend native acceptance planning for keyboard/button parity**
+- [x] **Step 5: Extend native acceptance planning for keyboard/button parity**
 
 Change the native audit list from `numberedIds('PRE', 7)` to `numberedIds('PRE', 8)`. Add a PRE-08 native plan that opens a real image, presses Q, asserts an `AXStaticText` named `放大镜已开启`, clicks the stable AX button `放大镜`, and asserts an `AXStaticText` named `放大镜已关闭`. This proves Q/button parity without depending on WebKit exposing `aria-pressed` as an AX value.
 

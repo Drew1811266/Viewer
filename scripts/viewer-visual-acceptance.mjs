@@ -454,7 +454,7 @@ const VIEWER_BUTTON_DEPENDENTS = new Set([
 ])
 
 const BOUNDED_COMPONENT_IDS = new Map([
-  ['ImagePreview', numberedAcceptanceIds('PRE', 7)],
+  ['ImagePreview', numberedAcceptanceIds('PRE', 8)],
   [
     'RadialFileMenu',
     [...numberedAcceptanceIds('RAD', 7), 'A11Y-01', 'A11Y-02'],

@@ -117,7 +117,7 @@ export const AUDIT_IDS = Object.freeze([
   ...numberedIds('FIL', 4),
   ...numberedIds('MEN', 3),
   ...numberedIds('RAD', 7),
-  ...numberedIds('PRE', 7),
+  ...numberedIds('PRE', 8),
   ...numberedIds('COM', 4),
   ...numberedIds('DOC', 7),
   ...numberedIds('INF', 2),
@@ -766,6 +766,13 @@ export function buildStateEntryPlan(id) {
     'PRE-07': [
       ...openImagePreview('商品-02.jpg'),
       { kind: 'assert', target: { role: 'AXButton', name: '下一张' } },
+    ],
+    'PRE-08': [
+      ...openImagePreview(),
+      { kind: 'key', key: 'q', modifiers: [] },
+      { kind: 'assert', target: { role: 'AXStaticText', name: '放大镜已开启' } },
+      { kind: 'click', target: { role: 'AXButton', name: '放大镜' } },
+      { kind: 'assert', target: { role: 'AXStaticText', name: '放大镜已关闭' } },
     ],
     'COM-01': [
       ...selectImages(2),

@@ -55,6 +55,7 @@
   { "id": "PRE-05", "wave": 2, "referenceState": "preview-loading", "sceneGroup": "viewing", "components": ["ImagePreview"] },
   { "id": "PRE-06", "wave": 2, "referenceState": "preview-error", "sceneGroup": "viewing", "components": ["ImagePreview"] },
   { "id": "PRE-07", "wave": 2, "referenceState": "preview-navigation", "sceneGroup": "viewing", "components": ["ImagePreview"] },
+  { "id": "PRE-08", "wave": 2, "referenceState": "preview-magnifier", "sceneGroup": "viewing", "components": ["ImagePreview", "ImageMagnifier"] },
   { "id": "COM-01", "wave": 2, "referenceState": "compare-2", "sceneGroup": "viewing", "components": ["CompareWorkspace"] },
   { "id": "COM-02", "wave": 2, "referenceState": "compare-3", "sceneGroup": "viewing", "components": ["CompareWorkspace"] },
   { "id": "COM-03", "wave": 2, "referenceState": "compare-4", "sceneGroup": "viewing", "components": ["CompareWorkspace"] },

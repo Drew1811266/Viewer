@@ -318,6 +318,7 @@ describe('ImagePreview', () => {
 
     fireEvent.keyDown(dialog, { key: 'q' })
     expect(button).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByText('放大镜已开启')).toBeInTheDocument()
     await waitFor(() =>
       expect(request).toHaveBeenCalledWith(
         target,
@@ -335,6 +336,7 @@ describe('ImagePreview', () => {
 
     fireEvent.keyDown(dialog, { key: 'Q' })
     expect(button).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.getByText('放大镜已关闭')).toBeInTheDocument()
     fireEvent.click(button)
     expect(button).toHaveAttribute('aria-pressed', 'true')
   })

@@ -58,6 +58,7 @@ describe('changed-state selection', () => {
       'PRE-05',
       'PRE-06',
       'PRE-07',
+      'PRE-08',
     ])
     assert.deepEqual(affectedAcceptanceIds(['ui/src/components/RadialFileMenu.tsx']), [
       'RAD-01',
@@ -128,7 +129,7 @@ describe('changed-state selection', () => {
         { mode: 'changed' },
         ['ui/src/components/ImagePreview.tsx'],
       ),
-      ['PRE-01', 'PRE-02', 'PRE-03', 'PRE-04', 'PRE-05', 'PRE-06', 'PRE-07'],
+      ['PRE-01', 'PRE-02', 'PRE-03', 'PRE-04', 'PRE-05', 'PRE-06', 'PRE-07', 'PRE-08'],
     )
   })
 

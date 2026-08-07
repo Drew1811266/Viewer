@@ -16,7 +16,7 @@ const DESTINATION_ID = 'acceptance-folder-destination'
 
 export const DIALOG_SCENES: AcceptanceSceneRegistry = {
   'DIA-01': () => (
-    <DialogBackdrop ready={() => dialogIsNamed('软件设置')}>
+    <DialogBackdrop ready={settingsDialogReady}>
       <SettingsDialog
         density="standard"
         magnifier={{ shape: 'circle', magnification: 4, area: 'small' }}
@@ -203,4 +203,19 @@ function dialogIsNamed(title: string): boolean {
   const dialog = document.querySelector('[role="dialog"]')
   if (dialog === null) return false
   return [...dialog.querySelectorAll('h2')].some((heading) => heading.textContent?.trim() === title)
+}
+
+function settingsDialogReady(): boolean {
+  const dialog = document.querySelector<HTMLElement>('[role="dialog"]')
+  if (dialog === null || !dialogIsNamed('软件设置')) return false
+  const slider = dialog.querySelector<HTMLInputElement>('[aria-label="缩略图大小"]')
+  const checkedLabels = [...dialog.querySelectorAll<HTMLInputElement>('input[type="radio"]')]
+    .filter((input) => input.checked)
+    .map((input) => input.closest('label')?.textContent?.trim())
+  return (
+    slider?.value === '2' &&
+    checkedLabels.includes('圆形') &&
+    checkedLabels.includes('4 倍') &&
+    checkedLabels.includes('小')
+  )
 }

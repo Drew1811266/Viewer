@@ -97,6 +97,26 @@ describe('Viewer viewing acceptance scenes', () => {
     failed.unmount()
   })
 
+  it('renders PRE-08 through the pressed real toolbar button and loaded original lens', async () => {
+    const rendered = renderScene('PRE-08')
+
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: '放大镜' })).toHaveAttribute(
+        'aria-pressed',
+        'true',
+      ),
+    )
+    const lens = await screen.findByTestId('image-magnifier')
+    const source = screen.getByTestId('image-magnifier-source')
+    await waitFor(() => expect(lens).toHaveAttribute('data-visible', 'true'))
+    expect(lens).toHaveAttribute('data-shape', 'circle')
+    expect(lens).toHaveStyle({ width: '160px', height: '160px' })
+    expect(lens.style.getPropertyValue('--magnifier-scale')).toBe('4')
+    expect(source.getAttribute('src')).toContain(encodeURIComponent('商品-02.jpg'))
+    expect(source.getAttribute('src')).toContain('representation=original100_percent')
+    rendered.unmount()
+  })
+
   it.each([
     ['COM-01', 2],
     ['COM-02', 3],

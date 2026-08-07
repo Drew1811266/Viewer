@@ -70,7 +70,7 @@ function parseTableIds(markdown) {
 }
 
 describe('recipe registry', () => {
-  it('is exactly set-equal to both authoritative 91-state documents', async () => {
+  it('is exactly set-equal to both authoritative 92-state documents', async () => {
     const audit = await readFile(
       path.join(
         actualRepoRoot,
@@ -90,8 +90,8 @@ describe('recipe registry', () => {
     const recipeIds = [...STATE_RECIPES.keys()]
 
     for (const ids of [auditIds, ledgerIds, AUDIT_IDS, recipeIds]) {
-      assert.equal(ids.length, 91)
-      assert.equal(new Set(ids).size, 91)
+      assert.equal(ids.length, 92)
+      assert.equal(new Set(ids).size, 92)
     }
     assert.deepEqual(new Set(AUDIT_IDS), new Set(auditIds))
     assert.deepEqual(new Set(AUDIT_IDS), new Set(ledgerIds))
@@ -640,6 +640,12 @@ describe('state entry plans', () => {
         { kind: 'click', target: { role: 'AXButton', name: '放大' } },
       ],
     )
+    assert.deepEqual(buildStateEntryPlan('PRE-08').slice(-4), [
+      { kind: 'key', key: 'q', modifiers: [] },
+      { kind: 'assert', target: { role: 'AXStaticText', name: '放大镜已开启' } },
+      { kind: 'click', target: { role: 'AXButton', name: '放大镜' } },
+      { kind: 'assert', target: { role: 'AXStaticText', name: '放大镜已关闭' } },
+    ])
     assert.equal(
       buildStateEntryPlan('COM-04').filter(
         (step) => step.kind === 'click' && /^商品-\d{2}\.jpg$/.test(step.target?.name ?? ''),
@@ -662,7 +668,7 @@ describe('state entry plans', () => {
 
   it('covers every Wave 2 product state without recipe sleeps', () => {
     const ids = AUDIT_IDS.filter((id) => STATE_RECIPES.get(id).wave === 2)
-    assert.equal(ids.length, 27)
+    assert.equal(ids.length, 28)
     for (const id of ids) {
       const plan = buildStateEntryPlan(id)
       assert.ok(plan.length > 0, id)
@@ -1566,7 +1572,7 @@ describe('native acceptance CLI', () => {
     )
   })
 
-  it('runs --smoke once without expanding to the 91-state recipe controller', async () => {
+  it('runs --smoke once without expanding to the 92-state recipe controller', async () => {
     const calls = []
     const result = await nativeAcceptance.runNativeAcceptanceCli(
       ['--smoke', '--viewport', '1024x720'],
@@ -1578,7 +1584,7 @@ describe('native acceptance CLI', () => {
         },
         captureRecipe: async ({ id }) => {
           calls.push(['recipe', id])
-          throw new Error('91-state capture must not run for native smoke')
+          throw new Error('92-state capture must not run for native smoke')
         },
         captureSmokeSuite: async ({ ids, preflight }) => {
           calls.push(['smoke', [...ids], preflight.commit])

@@ -1,12 +1,52 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { Profiler } from 'react'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { BrowserFile, ImageRepresentation, ImageRepresentationRequest } from '../api/types'
 import { defined } from '../defined'
 import ImagePreview from './ImagePreview'
 
 const MAGNIFIER = { shape: 'circle', magnification: 2, area: 'small' } as const
 const POINTER_CLIENT_POINT = { current: null }
+const nativeGetBoundingClientRect = HTMLElement.prototype.getBoundingClientRect
+const previewResizeCallbacks = new Map<Element, ResizeObserverCallback>()
+let initialPreviewStage = { width: 640, height: 480 }
+
+beforeEach(() => {
+  previewResizeCallbacks.clear()
+  initialPreviewStage = { width: 640, height: 480 }
+  vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (
+    this: HTMLElement,
+  ) {
+    if (this.classList.contains('image-preview-stage')) {
+      return stageRect(initialPreviewStage.width, initialPreviewStage.height)
+    }
+    return nativeGetBoundingClientRect.call(this)
+  })
+  class Observer {
+    private node: Element | null = null
+    private readonly callback: ResizeObserverCallback
+
+    constructor(callback: ResizeObserverCallback) {
+      this.callback = callback
+    }
+
+    observe(node: Element) {
+      this.node = node
+      previewResizeCallbacks.set(node, this.callback)
+    }
+
+    disconnect() {
+      if (this.node !== null) previewResizeCallbacks.delete(this.node)
+      this.node = null
+    }
+  }
+  vi.stubGlobal('ResizeObserver', Observer)
+})
+
+afterEach(() => {
+  vi.restoreAllMocks()
+  vi.unstubAllGlobals()
+})
 
 function image(index: number): BrowserFile {
   return {
@@ -47,6 +87,29 @@ function visibleImageSize(image: HTMLElement) {
   return {
     width: Number(image.getAttribute('width')) * scale,
     height: Number(image.getAttribute('height')) * scale,
+  }
+}
+
+function publishPreviewStage(stage: Element, width: number, height: number) {
+  act(() => {
+    previewResizeCallbacks.get(stage)?.(
+      [{ target: stage, contentRect: { width, height } } as ResizeObserverEntry],
+      {} as ResizeObserver,
+    )
+  })
+}
+
+function stageRect(width: number, height: number): DOMRect {
+  return {
+    x: 0,
+    y: 0,
+    left: 0,
+    top: 0,
+    right: width,
+    bottom: height,
+    width,
+    height,
+    toJSON: () => undefined,
   }
 }
 
@@ -315,6 +378,52 @@ describe('ImagePreview', () => {
       expect(committed.width).toBeCloseTo(fittedSize.width, 6)
       expect(committed.height).toBeCloseTo(fittedSize.height, 6)
     }
+  })
+
+  it('waits for a real stage and never commits the 576×384 fallback image', async () => {
+    initialPreviewStage = { width: 0, height: 0 }
+    const fit = deferred<ImageRepresentation>()
+    const committedSizes: Array<{ width: number; height: number }> = []
+    const target = image(1)
+    const request = vi.fn((_file: BrowserFile, representation: ImageRepresentationRequest) =>
+      representation.kind === 'fit_preview'
+        ? fit.promise
+        : new Promise<ImageRepresentation>(() => undefined),
+    )
+
+    const view = render(
+      <Profiler
+        id="real-stage-preview"
+        onRender={() => {
+          const preview = document.querySelector<HTMLElement>('.image-preview-image')
+          if (preview) committedSizes.push(visibleImageSize(preview))
+        }}
+      >
+        <ImagePreview
+          file={target}
+          files={[target]}
+          magnifier={MAGNIFIER}
+          pointerClientPoint={POINTER_CLIENT_POINT}
+          requestImage={request}
+          onNavigate={vi.fn()}
+          onClose={vi.fn()}
+        />
+      </Profiler>,
+    )
+
+    await act(async () => fit.resolve(loaded('fit', 2400, 1600)))
+    expect(screen.queryByRole('img', { name: '1.jpg' })).not.toBeInTheDocument()
+
+    const stage = view.container.querySelector('.image-preview-stage') as HTMLElement
+    publishPreviewStage(stage, 2048, 1060)
+    const preview = await screen.findByRole('img', { name: '1.jpg' })
+
+    const fittedSize = visibleImageSize(preview)
+    expect(fittedSize.width).toBeCloseTo(1431, 6)
+    expect(fittedSize.height).toBeCloseTo(954, 6)
+    expect(committedSizes.length).toBeGreaterThan(0)
+    expect(committedSizes).not.toContainEqual({ width: 576, height: 384 })
+    expect(committedSizes.every(({ width }) => width > 1000)).toBe(true)
   })
 
   it('uses fitted display as the only 100% baseline and resets zoom through one control', async () => {

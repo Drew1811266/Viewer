@@ -17,6 +17,7 @@ import {
 import { type CurrentOriginalState, useCurrentOriginal } from './imagePreview/useCurrentOriginal'
 import { useImageViewport } from './imagePreview/useImageViewport'
 import { usePreviewGestures } from './imagePreview/usePreviewGestures'
+import { isPositiveSize, usePreviewStageSize } from './imagePreview/usePreviewStageSize'
 import UnsupportedFileState from './UnsupportedFileState'
 import ViewerButton, { ViewerIconButton } from './ui/ViewerButton'
 import ViewerLocalFeedback from './ui/ViewerLocalFeedback'
@@ -41,7 +42,6 @@ interface ImagePreviewProps {
 
 const EMPTY_ENTITY_IDS: ReadonlySet<string> = new Set()
 const EMPTY_STAGE: Size = { width: 0, height: 0 }
-const DEFAULT_STAGE: Size = { width: 640, height: 480 }
 
 export default function ImagePreview({
   file,
@@ -62,7 +62,8 @@ export default function ImagePreview({
   const allowedWindow = useRef(new Set<string>())
   const lastStagePoint = useRef<Point | null>(null)
   const [, refresh] = useState(0)
-  const [stageSize, setStageSize] = useState(EMPTY_STAGE)
+  const stageSize = usePreviewStageSize(stage)
+  const [readyEntityId, setReadyEntityId] = useState<string | null>(null)
   const [magnifierEnabled, setMagnifierEnabled] = useState(false)
   const [magnifierAnnounced, setMagnifierAnnounced] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -116,28 +117,6 @@ export default function ImagePreview({
   }, [scalePercent])
 
   useEffect(() => {
-    const element = stage.current
-    if (element === null) return
-    const publish = (size: Size) => {
-      if (size.width > 0 && size.height > 0) {
-        setStageSize({ width: Math.round(size.width), height: Math.round(size.height) })
-      }
-    }
-    const bounds = element.getBoundingClientRect()
-    publish({
-      width: bounds.width || element.clientWidth || DEFAULT_STAGE.width,
-      height: bounds.height || element.clientHeight || DEFAULT_STAGE.height,
-    })
-    if (typeof ResizeObserver === 'undefined') return
-    const observer = new ResizeObserver((entries) => {
-      const content = entries[0]?.contentRect
-      if (content) publish(content)
-    })
-    observer.observe(element)
-    return () => observer.disconnect()
-  }, [])
-
-  useEffect(() => {
     const windowFiles = files.slice(Math.max(0, currentIndex - 1), currentIndex + 2)
     const allowed = new Set(
       windowFiles
@@ -184,7 +163,17 @@ export default function ImagePreview({
 
   useLayoutEffect(() => {
     viewport.setMeasurements(stageSize, sourceDimensions)
-  }, [sourceDimensions, stageSize, viewport.setMeasurements])
+    if (
+      representation !== null &&
+      representation !== undefined &&
+      isPositiveSize(stageSize) &&
+      isPositiveSize(sourceDimensions)
+    ) {
+      setReadyEntityId((current) => (current === file.entityId ? current : file.entityId))
+    }
+  }, [file.entityId, representation, sourceDimensions, stageSize, viewport.setMeasurements])
+
+  const previewReady = readyEntityId === file.entityId
 
   useEffect(() => {
     if (originalRepresentation !== null) {
@@ -408,7 +397,10 @@ export default function ImagePreview({
         <UnsupportedFileState file={file} unavailable />
       ) : !isPreviewableImage(file) ? (
         <UnsupportedFileState file={file} />
-      ) : representation && renderedSource.width > 0 && renderedSource.height > 0 ? (
+      ) : previewReady &&
+        representation &&
+        renderedSource.width > 0 &&
+        renderedSource.height > 0 ? (
         <img
           className="image-preview-image"
           src={representation.url}
@@ -423,7 +415,7 @@ export default function ImagePreview({
       ) : null}
       {!unavailable &&
         isPreviewableImage(file) &&
-        (representation === undefined || representation === null) &&
+        !previewReady &&
         !isFatalImageFailure(error, currentOriginal.status) && (
           <ViewerLocalFeedback tone="info" title="正在载入图片">
             正在准备高分辨率预览…

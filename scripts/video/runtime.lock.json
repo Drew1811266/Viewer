@@ -1,0 +1,103 @@
+{
+  "schemaVersion": 1,
+  "target": "universal-apple-darwin",
+  "mpv": {
+    "tag": "v0.41.0",
+    "commit": "41f6a64",
+    "mesonOptions": {
+      "build-date": "false",
+      "cocoa": "enabled",
+      "cplayer": "false",
+      "gl": "enabled",
+      "gl-cocoa": "enabled",
+      "gpl": "false",
+      "iconv": "enabled",
+      "libmpv": "true",
+      "macos-cocoa-cb": "disabled",
+      "plain-gl": "enabled",
+      "swift-build": "enabled",
+      "videotoolbox-gl": "enabled"
+    }
+  },
+  "ffmpeg": {
+    "tag": "n8.0",
+    "configureOptions": [
+      "--disable-gpl",
+      "--disable-network",
+      "--disable-nonfree",
+      "--disable-ffplay"
+    ]
+  },
+  "components": [
+    {
+      "name": "pkgconf",
+      "version": "2.5.1",
+      "sourceUrl": "https://github.com/pkgconf/pkgconf/archive/refs/tags/pkgconf-2.5.1.tar.gz",
+      "sha256": "79721badcad1987dead9c3609eb4877ab9b58821c06bdacb824f2c8897c11f2a",
+      "license": "ISC"
+    },
+    {
+      "name": "freetype",
+      "version": "2.13.3",
+      "sourceUrl": "https://github.com/freetype/freetype/archive/refs/tags/VER-2-13-3.tar.gz",
+      "sha256": "bc5c898e4756d373e0d991bab053036c5eb2aa7c0d5c67e8662ddc6da40c4103",
+      "license": "FTL"
+    },
+    {
+      "name": "fribidi",
+      "version": "1.0.16",
+      "sourceUrl": "https://github.com/fribidi/fribidi/archive/refs/tags/v1.0.16.tar.gz",
+      "sha256": "5a1d187a33daa58fcee2ad77f0eb9d136dd6fa4096239199ba31e850d397e8a8",
+      "license": "LGPL-2.1-or-later"
+    },
+    {
+      "name": "harfbuzz",
+      "version": "10.4.0",
+      "sourceUrl": "https://github.com/harfbuzz/harfbuzz/archive/refs/tags/10.4.0.tar.gz",
+      "sha256": "0d25a3f74af4e8744700ac19050af5a80ae330378a5802a5cd71e523bb6fda1f",
+      "license": "MIT"
+    },
+    {
+      "name": "libass",
+      "version": "0.17.4",
+      "sourceUrl": "https://github.com/libass/libass/archive/refs/tags/0.17.4.tar.gz",
+      "sha256": "c287d180d93dc9c9021872574b618ac49027e84cc90e1289318b1ee68bb42251",
+      "license": "ISC"
+    },
+    {
+      "name": "ffmpeg",
+      "version": "8.0",
+      "sourceUrl": "https://github.com/FFmpeg/FFmpeg/archive/refs/tags/n8.0.tar.gz",
+      "sha256": "dd4030dbfdc34d9ff255a116bdd1caade42500ac2981efa27f8b151cc54c7b9e",
+      "license": "LGPL-2.1-or-later"
+    },
+    {
+      "name": "fast_float",
+      "version": "2b2395f9ac836ffca6404424bcc252bff7aa80e4",
+      "sourceUrl": "https://github.com/fastfloat/fast_float/archive/2b2395f9ac836ffca6404424bcc252bff7aa80e4.tar.gz",
+      "sha256": "230d20e4e4ac1f6a9df92c4d746c6ec536cdb0c085bc8635d4b88cead5dc22cb",
+      "license": "Apache-2.0"
+    },
+    {
+      "name": "vulkan-headers",
+      "version": "d732b2de303ce505169011d438178191136bfb00",
+      "sourceUrl": "https://github.com/KhronosGroup/Vulkan-Headers/archive/d732b2de303ce505169011d438178191136bfb00.tar.gz",
+      "sha256": "570f9ae1e65466dbaf5fcab667abd079dd0a61c4ab86cf535efd492bf70a5b74",
+      "license": "Apache-2.0"
+    },
+    {
+      "name": "libplacebo",
+      "version": "6.338.2",
+      "sourceUrl": "https://github.com/haasn/libplacebo/archive/refs/tags/v6.338.2.tar.gz",
+      "sha256": "2f1e624e09d72a8c9db70f910f7560e764a1c126dae42acc5b3bcef836a7aec6",
+      "license": "LGPL-2.1-or-later"
+    },
+    {
+      "name": "mpv",
+      "version": "0.41.0",
+      "sourceUrl": "https://github.com/mpv-player/mpv/archive/refs/tags/v0.41.0.tar.gz",
+      "sha256": "ee21092a5ee427353392360929dc64645c54479aefdb5babc5cfbb5fad626209",
+      "license": "LGPL-2.1-or-later"
+    }
+  ]
+}

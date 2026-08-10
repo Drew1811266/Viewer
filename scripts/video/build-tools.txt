@@ -1,0 +1,4 @@
+Jinja2==3.1.6
+MarkupSafe==3.0.3
+meson==1.9.1
+ninja==1.13.0

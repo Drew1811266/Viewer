@@ -7,6 +7,7 @@ members = [
     "crates/viewer-infrastructure",
     "crates/viewer-platform-macos",
     "crates/viewer-test-support",
+    "crates/viewer-video-mpv",
 ]
 
 [workspace.package]

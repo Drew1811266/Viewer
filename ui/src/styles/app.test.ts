@@ -727,6 +727,7 @@ describe('workspace style contracts', () => {
     expect(declaration('.viewer-toolbar', 'border-bottom')).toBe('1px solid var(--viewer-border)')
     expect(declaration('.viewer-toolbar', 'height')).toBe('52px')
     expect(declaration('.image-preview-stage', 'background')).toBe('var(--preview-stage)')
+    expect(declaration('.image-preview-stage', 'overflow')).toBe('hidden')
     expect(declaration('.image-preview-stage > .image-preview-image', 'border')).toBe(
       '1px solid var(--preview-border)',
     )

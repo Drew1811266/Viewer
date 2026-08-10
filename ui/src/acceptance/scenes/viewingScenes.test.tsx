@@ -126,10 +126,10 @@ describe('Viewer viewing acceptance scenes', () => {
       ),
     )
     expect(lens).toHaveAttribute('data-shape', 'circle')
-    expect(lens).toHaveStyle({ width: '160px', height: '160px' })
+    expect(lens).toHaveStyle({ width: '200px', height: '200px' })
     expect(Number(lens.style.getPropertyValue('--magnifier-scale'))).toBeCloseTo(2 * (576 / 560))
-    expect(lens.style.getPropertyValue('--magnifier-x')).toBe('418px')
-    expect(lens.style.getPropertyValue('--magnifier-y')).toBe('338px')
+    expect(lens.style.getPropertyValue('--magnifier-x')).toBe('438px')
+    expect(lens.style.getPropertyValue('--magnifier-y')).toBe('358px')
     expect(lens.style.getPropertyValue('--magnifier-x')).not.toBe('320px')
     expect(getComputedStyle(lens.parentElement as HTMLElement).cursor).not.toBe('none')
     expect(source.getAttribute('src')).toContain(encodeURIComponent('商品-02.jpg'))
@@ -161,7 +161,7 @@ describe('Viewer viewing acceptance scenes', () => {
       ),
     )
     expect(Number(lens.style.getPropertyValue('--magnifier-scale'))).toBeCloseTo(2 * (763.2 / 373))
-    expect(lens.style.getPropertyValue('--magnifier-x')).toBe('818px')
+    expect(lens.style.getPropertyValue('--magnifier-x')).toBe('838px')
   })
 
   it.each([

@@ -3,16 +3,16 @@ import type { Point, Size } from './imageGeometry'
 
 const LENS_DIMENSIONS: Record<MagnifierArea, Record<MagnifierShape, Size>> = {
   small: {
-    circle: { width: 160, height: 160 },
-    rounded_rectangle: { width: 180, height: 120 },
+    circle: { width: 200, height: 200 },
+    rounded_rectangle: { width: 230, height: 150 },
   },
   medium: {
-    circle: { width: 220, height: 220 },
-    rounded_rectangle: { width: 240, height: 160 },
+    circle: { width: 280, height: 280 },
+    rounded_rectangle: { width: 300, height: 200 },
   },
   large: {
-    circle: { width: 300, height: 300 },
-    rounded_rectangle: { width: 330, height: 220 },
+    circle: { width: 380, height: 380 },
+    rounded_rectangle: { width: 420, height: 280 },
   },
 }
 

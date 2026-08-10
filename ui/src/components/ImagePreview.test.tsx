@@ -75,6 +75,28 @@ describe('ImagePreview', () => {
     expect(screen.getByRole('button', { name: '关闭预览' })).toBeVisible()
   })
 
+  it('keeps the large rounded magnifier inside the clipped preview stage at 720×450', () => {
+    vi.stubGlobal('innerWidth', 720)
+    vi.stubGlobal('innerHeight', 450)
+    const target = image(1)
+    render(
+      <ImagePreview
+        file={target}
+        files={[target]}
+        magnifier={{ shape: 'rounded_rectangle', magnification: 2, area: 'large' }}
+        pointerClientPoint={POINTER_CLIENT_POINT}
+        requestImage={vi.fn(() => new Promise<never>(() => undefined))}
+        onNavigate={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    )
+
+    const lens = screen.getByTestId('image-magnifier')
+    const stage = document.querySelector('.image-preview-stage')
+    expect(lens).toHaveStyle({ width: '420px', height: '280px' })
+    expect(stage).toContainElement(lens)
+  })
+
   it('groups image controls in the toolbar and floats navigation over the stage', () => {
     const front = {
       ...image(1),
@@ -593,7 +615,7 @@ describe('ImagePreview', () => {
     expect(pointerMove).not.toHaveBeenCalled()
     expect(pointerClientPoint.current).toEqual({ x: 320, y: 240 })
     expect(lens).toHaveAttribute('data-visible', 'true')
-    expect(lens).toHaveStyle({ '--magnifier-x': '418px', '--magnifier-y': '338px' })
+    expect(lens).toHaveStyle({ '--magnifier-x': '438px', '--magnifier-y': '358px' })
     expect(lens).toHaveStyle({ '--magnifier-scale': '0.9' })
 
     fireEvent.click(screen.getByRole('button', { name: '放大' }))

@@ -345,8 +345,8 @@ function magnifierSceneReady(
   return (
     lens.dataset.visible === 'true' &&
     lens.dataset.shape === 'circle' &&
-    lens.style.width === '160px' &&
-    lens.style.height === '160px' &&
+    lens.style.width === '200px' &&
+    lens.style.height === '200px' &&
     Number.isFinite(magnifierScale) &&
     magnifierScale > 0 &&
     lens.style.getPropertyValue('--magnifier-x') !== `${pointer.x}px` &&

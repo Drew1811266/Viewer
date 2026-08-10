@@ -22,12 +22,12 @@ function currentOriginal(
 
 describe('ImageMagnifier', () => {
   it.each([
-    ['circle', 'small', 160, 160],
-    ['circle', 'medium', 220, 220],
-    ['circle', 'large', 300, 300],
-    ['rounded_rectangle', 'small', 180, 120],
-    ['rounded_rectangle', 'medium', 240, 160],
-    ['rounded_rectangle', 'large', 330, 220],
+    ['circle', 'small', 200, 200],
+    ['circle', 'medium', 280, 280],
+    ['circle', 'large', 380, 380],
+    ['rounded_rectangle', 'small', 230, 150],
+    ['rounded_rectangle', 'medium', 300, 200],
+    ['rounded_rectangle', 'large', 420, 280],
   ] as const)('renders %s %s with the approved fixed area', (shape, area, width, height) => {
     render(
       <ImageMagnifier
@@ -146,16 +146,16 @@ describe('ImageMagnifier imperative placement', () => {
     act(() => frames.shift()?.(0))
     expect(screen.getByTestId('image-magnifier')).toHaveAttribute('data-visible', 'true')
     expect(screen.getByTestId('image-magnifier')).toHaveStyle({
-      '--magnifier-x': '298px',
-      '--magnifier-y': '248px',
+      '--magnifier-x': '318px',
+      '--magnifier-y': '268px',
       '--magnifier-shell-origin-x': '0px',
       '--magnifier-shell-origin-y': '0px',
       '--magnifier-scale': '0.5',
       '--magnifier-rotation': '90deg',
     })
     expect(screen.getByTestId('image-magnifier-source')).toHaveStyle({
-      '--magnifier-source-left': '-1520px',
-      '--magnifier-source-top': '-1060px',
+      '--magnifier-source-left': '-1500px',
+      '--magnifier-source-top': '-1040px',
     })
 
     act(() => {
@@ -166,14 +166,14 @@ describe('ImageMagnifier imperative placement', () => {
       frames.shift()?.(16)
     })
     expect(screen.getByTestId('image-magnifier')).toHaveStyle({
-      '--magnifier-x': '502px',
-      '--magnifier-y': '342px',
-      '--magnifier-shell-origin-x': '160px',
-      '--magnifier-shell-origin-y': '160px',
+      '--magnifier-x': '482px',
+      '--magnifier-y': '322px',
+      '--magnifier-shell-origin-x': '200px',
+      '--magnifier-shell-origin-y': '200px',
     })
     expect(screen.getByTestId('image-magnifier-source')).toHaveStyle({
-      '--magnifier-source-left': '-1520px',
-      '--magnifier-source-top': '-1060px',
+      '--magnifier-source-left': '-1500px',
+      '--magnifier-source-top': '-1040px',
     })
   })
 

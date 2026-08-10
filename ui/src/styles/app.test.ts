@@ -767,16 +767,28 @@ describe('workspace style contracts', () => {
     )
     const track = rules.find(({ selector }) => selector === '.image-preview-loading__progress')
     const indicator = rules.find(({ selector }) => selector === '.image-preview-loading__indicator')
+    const hiddenCandidate = rules.find(
+      ({ selector }) =>
+        selector === '.image-preview-stage > .image-preview-image[data-visible="false"]',
+    )
     const reveal = rules.find(
       ({ selector }) =>
-        selector === '.image-preview-stage > .image-preview-image[data-initial-reveal="true"]',
+        selector === '.image-preview-stage > .image-preview-image[data-visible="true"]',
     )
 
     expect(loading?.declarations.transition).toContain('180ms')
     expect(hidden?.declarations).toMatchObject({ opacity: '0', visibility: 'hidden' })
     expect(track?.declarations).toMatchObject({ height: '4px', overflow: 'hidden' })
     expect(indicator?.declarations.animation).toContain('preview-loading-sweep')
-    expect(reveal?.declarations.animation).toBe('preview-image-reveal 180ms ease-out both')
+    expect(hiddenCandidate?.declarations).toMatchObject({
+      opacity: '0',
+      'pointer-events': 'none',
+      visibility: 'hidden',
+    })
+    expect(reveal?.declarations).toMatchObject({
+      animation: 'preview-image-reveal 180ms ease-out both',
+      visibility: 'visible',
+    })
     expect(appCss).toContain('@keyframes preview-loading-sweep')
     expect(appCss).toContain('@keyframes preview-image-reveal')
 
@@ -784,7 +796,7 @@ describe('workspace style contracts', () => {
     for (const selector of [
       '.image-preview-loading',
       '.image-preview-loading__indicator',
-      '.image-preview-stage > .image-preview-image[data-initial-reveal="true"]',
+      '.image-preview-stage > .image-preview-image[data-visible="true"]',
     ]) {
       expect(reduced.find((rule) => rule.selector === selector)?.declarations).toMatchObject({
         animation: 'none',

@@ -1450,6 +1450,8 @@ describe('Viewer empty state', () => {
     fireEvent.scroll(grid)
     openRadialMenu(file, 107)
     fireEvent.keyDown(grid, { key: ' ' })
+    await waitFor(() => expect(document.querySelector('.image-preview-image')).not.toBeNull())
+    fireEvent.load(document.querySelector('.image-preview-image') as HTMLImageElement)
     await screen.findByRole('img', { name: '1.jpg' })
     expect(screen.queryByRole('menu', { name: '文件操作' })).not.toBeInTheDocument()
 

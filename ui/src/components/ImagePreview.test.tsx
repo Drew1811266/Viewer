@@ -99,6 +99,15 @@ function publishPreviewStage(stage: Element, width: number, height: number) {
   })
 }
 
+async function revealPreviewImage(name: string): Promise<HTMLElement> {
+  await waitFor(() => {
+    expect(document.querySelector('.image-preview-image')).toHaveAttribute('alt', name)
+  })
+  const candidate = document.querySelector<HTMLImageElement>('.image-preview-image')
+  fireEvent.load(candidate as HTMLImageElement)
+  return screen.findByRole('img', { name })
+}
+
 function stageRect(width: number, height: number): DOMRect {
   return {
     x: 0,
@@ -278,10 +287,7 @@ describe('ImagePreview', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
 
     await act(async () => original.resolve(loaded('original', 6000, 4000)))
-    expect(await screen.findByRole('img', { name: '1.jpg' })).toHaveAttribute(
-      'data-representation',
-      'original',
-    )
+    expect(await revealPreviewImage('1.jpg')).toHaveAttribute('data-representation', 'original')
     expect(screen.getByTestId('image-preview-loading')).toHaveAttribute('data-visible', 'false')
   })
 
@@ -316,7 +322,7 @@ describe('ImagePreview', () => {
     expect(request).not.toHaveBeenCalled()
   })
 
-  it('progressively replaces the fit proxy with original pixels without changing display geometry', async () => {
+  it('keeps the fit proxy hidden and reveals the loaded original as the first image frame', async () => {
     const fit = deferred<ImageRepresentation>()
     const original = deferred<ImageRepresentation>()
     const target = {
@@ -326,8 +332,7 @@ describe('ImagePreview', () => {
     const request = vi.fn((_file: BrowserFile, representation: ImageRepresentationRequest) =>
       representation.kind === 'original100_percent' ? original.promise : fit.promise,
     )
-    const onDimensions = vi.fn()
-    render(
+    const view = render(
       <ImagePreview
         file={target}
         files={[target]}
@@ -336,7 +341,6 @@ describe('ImagePreview', () => {
         requestImage={request}
         onNavigate={vi.fn()}
         onClose={vi.fn()}
-        onDimensions={onDimensions}
       />,
     )
 
@@ -348,32 +352,94 @@ describe('ImagePreview', () => {
     })
 
     await act(async () => fit.resolve(loaded('fit', 900, 600)))
-    const preview = await screen.findByRole('img', { name: '1.jpg' })
-    expect(preview).toHaveAttribute('src', expect.stringContaining('/fit'))
-    expect(preview).toHaveAttribute('width', '6000')
-    expect(preview).toHaveAttribute('height', '4000')
-    expect(preview).toHaveAttribute('data-representation', 'fit')
-    expect(onDimensions).not.toHaveBeenCalled()
+    expect(view.container.querySelector('.image-preview-image')).toBeNull()
+    expect(screen.queryByRole('img', { name: '1.jpg' })).not.toBeInTheDocument()
+    expect(screen.getByTestId('image-preview-loading')).toHaveAttribute('data-visible', 'true')
 
-    fireEvent.click(screen.getByRole('button', { name: '放大' }))
-    const zoomedTransform = preview.getAttribute('style')
     await act(async () => original.resolve(loaded('original', 6000, 4000)))
-    await waitFor(() =>
-      expect(preview).toHaveAttribute('src', expect.stringContaining('/original')),
-    )
-    expect(preview).toHaveAttribute('data-representation', 'original')
-    expect(preview.getAttribute('style')).toBe(zoomedTransform)
-    expect(onDimensions).toHaveBeenCalledWith('image-1', 6000, 4000)
+    const candidate = view.container.querySelector<HTMLImageElement>('.image-preview-image')
+    expect(candidate).toHaveAttribute('data-representation', 'original')
+    expect(candidate).toHaveAttribute('data-visible', 'false')
+    expect(screen.queryByRole('img', { name: '1.jpg' })).not.toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: '放大镜' }))
-    expect(
-      request.mock.calls.filter(
-        ([, representation]) => representation.kind === 'original100_percent',
-      ),
-    ).toHaveLength(1)
+    fireEvent.load(candidate as HTMLImageElement)
+    const visible = await screen.findByRole('img', { name: '1.jpg' })
+    expect(visible).toHaveAttribute('data-visible', 'true')
+    expect(visibleImageSize(visible)).toEqual({ width: 576, height: 384 })
+    expect(screen.getByTestId('image-preview-loading')).toHaveAttribute('data-visible', 'false')
   })
 
-  it('commits one stable fitted geometry while a small proxy upgrades to the original', async () => {
+  it('reveals a loaded fit preview only after the original reaches a terminal failure', async () => {
+    const fit = deferred<ImageRepresentation>()
+    const original = deferred<ImageRepresentation>()
+    const target = image(1)
+    const request = vi.fn((_file: BrowserFile, representation: ImageRepresentationRequest) =>
+      representation.kind === 'original100_percent' ? original.promise : fit.promise,
+    )
+    const view = render(
+      <ImagePreview
+        file={target}
+        files={[target]}
+        magnifier={MAGNIFIER}
+        pointerClientPoint={POINTER_CLIENT_POINT}
+        requestImage={request}
+        onNavigate={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    )
+
+    await act(async () => fit.resolve(loaded('fit', 2400, 1600)))
+    expect(view.container.querySelector('.image-preview-image')).toBeNull()
+    await act(async () => original.reject(new Error('original failed')))
+
+    const fallback = view.container.querySelector<HTMLImageElement>('.image-preview-image')
+    expect(fallback).toHaveAttribute('data-representation', 'fit')
+    expect(fallback).toHaveAttribute('data-visible', 'false')
+    fireEvent.load(fallback as HTMLImageElement)
+    expect(await screen.findByRole('img', { name: '1.jpg' })).toHaveAttribute(
+      'data-visible',
+      'true',
+    )
+    expect(screen.getByText('无法加载原图，已继续使用适窗预览。')).toBeVisible()
+  })
+
+  it('does not reuse browser-load readiness after navigating to another image', async () => {
+    const files = [image(1), image(2)]
+    const request = vi.fn(async (file: BrowserFile, representation: ImageRepresentationRequest) =>
+      loaded(`${file.entityId}-${representation.kind}`, 6000, 4000),
+    )
+    const view = render(
+      <ImagePreview
+        file={defined(files[0], 'Expected first preview image')}
+        files={files}
+        magnifier={MAGNIFIER}
+        pointerClientPoint={POINTER_CLIENT_POINT}
+        requestImage={request}
+        onNavigate={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    )
+    await waitFor(() => expect(view.container.querySelector('.image-preview-image')).not.toBeNull())
+    const first = view.container.querySelector<HTMLImageElement>('.image-preview-image')
+    fireEvent.load(first as HTMLImageElement)
+    expect(await screen.findByRole('img', { name: '1.jpg' })).toBeVisible()
+
+    view.rerender(
+      <ImagePreview
+        file={defined(files[1], 'Expected second preview image')}
+        files={files}
+        magnifier={MAGNIFIER}
+        pointerClientPoint={POINTER_CLIENT_POINT}
+        requestImage={request}
+        onNavigate={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    )
+    expect(screen.queryByRole('img', { name: '2.jpg' })).not.toBeInTheDocument()
+    expect(screen.getByTestId('image-preview-loading')).toHaveAttribute('data-visible', 'true')
+  })
+
+  it('commits one stable fitted geometry when the original becomes visible', async () => {
     const fit = deferred<ImageRepresentation>()
     const original = deferred<ImageRepresentation>()
     const target = image(1)
@@ -402,13 +468,14 @@ describe('ImagePreview', () => {
     )
 
     await act(async () => fit.resolve(loaded('fit', 300, 200)))
-    const preview = await screen.findByRole('img', { name: '1.jpg' })
-    const fittedSize = visibleImageSize(preview)
-    expect(fittedSize).toEqual({ width: 576, height: 384 })
-    committedSizes.length = 0
+    expect(screen.queryByRole('img', { name: '1.jpg' })).not.toBeInTheDocument()
 
     await act(async () => original.resolve(loaded('original', 6000, 4000)))
-    await waitFor(() => expect(preview).toHaveAttribute('data-representation', 'original'))
+    committedSizes.length = 0
+    const preview = await revealPreviewImage('1.jpg')
+    const fittedSize = visibleImageSize(preview)
+    expect(fittedSize).toEqual({ width: 576, height: 384 })
+    expect(preview).toHaveAttribute('data-representation', 'original')
 
     expect(committedSizes.length).toBeGreaterThan(0)
     for (const committed of committedSizes) {
@@ -417,15 +484,14 @@ describe('ImagePreview', () => {
     }
   })
 
-  it('waits for a real stage and never commits the 576×384 fallback image', async () => {
+  it('waits for a real stage before revealing the original at final fitted geometry', async () => {
     initialPreviewStage = { width: 0, height: 0 }
     const fit = deferred<ImageRepresentation>()
+    const original = deferred<ImageRepresentation>()
     const committedSizes: Array<{ width: number; height: number }> = []
     const target = image(1)
     const request = vi.fn((_file: BrowserFile, representation: ImageRepresentationRequest) =>
-      representation.kind === 'fit_preview'
-        ? fit.promise
-        : new Promise<ImageRepresentation>(() => undefined),
+      representation.kind === 'fit_preview' ? fit.promise : original.promise,
     )
 
     const view = render(
@@ -450,10 +516,13 @@ describe('ImagePreview', () => {
 
     await act(async () => fit.resolve(loaded('fit', 2400, 1600)))
     expect(screen.queryByRole('img', { name: '1.jpg' })).not.toBeInTheDocument()
+    await act(async () => original.resolve(loaded('original', 6000, 4000)))
+    expect(screen.queryByRole('img', { name: '1.jpg' })).not.toBeInTheDocument()
 
     const stage = view.container.querySelector('.image-preview-stage') as HTMLElement
     publishPreviewStage(stage, 2048, 1060)
-    const preview = await screen.findByRole('img', { name: '1.jpg' })
+    committedSizes.length = 0
+    const preview = await revealPreviewImage('1.jpg')
 
     const fittedSize = visibleImageSize(preview)
     expect(fittedSize.width).toBeCloseTo(1431, 6)
@@ -463,7 +532,7 @@ describe('ImagePreview', () => {
     expect(committedSizes.every(({ width }) => width > 1000)).toBe(true)
     expect(screen.getByTestId('image-preview-loading')).toHaveAttribute('data-visible', 'false')
     expect(screen.getByTestId('image-preview-loading')).toHaveAttribute('aria-hidden', 'true')
-    expect(preview).toHaveAttribute('data-initial-reveal', 'true')
+    expect(preview).toHaveAttribute('data-visible', 'true')
   })
 
   it('uses fitted display as the only 100% baseline and resets zoom through one control', async () => {
@@ -489,7 +558,7 @@ describe('ImagePreview', () => {
       />,
     )
 
-    const preview = await screen.findByRole('img', { name: '2.jpg' })
+    const preview = await revealPreviewImage('2.jpg')
     expect(screen.getByText('1600 × 1200 px · 200 B')).toBeVisible()
     expect(preview).toHaveAttribute('data-mode', 'fit')
     expect(request.mock.calls.map((call) => call[1].kind)).toContain('original100_percent')
@@ -535,7 +604,7 @@ describe('ImagePreview', () => {
         onClose={vi.fn()}
       />,
     )
-    await screen.findByRole('img', { name: '2.jpg' })
+    await revealPreviewImage('2.jpg')
 
     fireEvent.keyDown(screen.getByRole('dialog'), { key: 'ArrowRight' })
 
@@ -618,7 +687,7 @@ describe('ImagePreview', () => {
         onClose={vi.fn()}
       />,
     )
-    await screen.findByRole('img', { name: '2.jpg' })
+    await revealPreviewImage('2.jpg')
     const requestsBeforeRemoval = request.mock.calls.length
 
     rendered.rerender(
@@ -664,7 +733,7 @@ describe('ImagePreview', () => {
         onClose={vi.fn()}
       />,
     )
-    const preview = await screen.findByRole('img', { name: '1.jpg' })
+    const preview = await revealPreviewImage('1.jpg')
     await waitFor(() => expect(preview).toHaveAttribute('data-representation', 'original'))
 
     const dialog = screen.getByRole('dialog')
@@ -737,7 +806,7 @@ describe('ImagePreview', () => {
         onClose={vi.fn()}
       />,
     )
-    const preview = await screen.findByRole('img', { name: '1.jpg' })
+    const preview = await revealPreviewImage('1.jpg')
     await waitFor(() => expect(preview).toHaveAttribute('data-representation', 'original'))
     const stage = view.container.querySelector('.image-preview-stage') as HTMLElement
     vi.spyOn(stage, 'getBoundingClientRect').mockReturnValue({
@@ -812,7 +881,7 @@ describe('ImagePreview', () => {
         onClose={vi.fn()}
       />,
     )
-    await screen.findByRole('img', { name: '1.jpg' })
+    await revealPreviewImage('1.jpg')
     fireEvent.click(screen.getByRole('button', { name: '放大镜' }))
     await waitFor(() => expect(screen.getByTestId('image-magnifier-source')).toBeInTheDocument())
     const stage = view.container.querySelector('.image-preview-stage') as HTMLElement
@@ -875,7 +944,7 @@ describe('ImagePreview', () => {
         onClose={vi.fn()}
       />,
     )
-    await screen.findByRole('img', { name: '1.jpg' })
+    await revealPreviewImage('1.jpg')
 
     const warning = await screen.findByRole('status')
     expect(warning).toHaveTextContent('正在使用适窗预览')
@@ -928,7 +997,7 @@ describe('ImagePreview', () => {
         onClose={vi.fn()}
       />,
     )
-    const preview = await screen.findByRole('img', { name: '1.jpg' })
+    const preview = await revealPreviewImage('1.jpg')
     const stage = view.container.querySelector('.image-preview-stage') as HTMLElement
     vi.spyOn(stage, 'getBoundingClientRect').mockReturnValue({
       x: 0,
@@ -991,7 +1060,7 @@ describe('ImagePreview', () => {
         onClose={vi.fn()}
       />,
     )
-    await screen.findByRole('img', { name: '1.jpg' })
+    await revealPreviewImage('1.jpg')
     vi.useFakeTimers()
 
     try {

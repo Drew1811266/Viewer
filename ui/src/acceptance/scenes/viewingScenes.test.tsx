@@ -44,6 +44,7 @@ describe('Viewer viewing acceptance scenes', () => {
     expect(screen.queryByRole('button', { name: '按 100% 显示' })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: '顺时针旋转' })).toBeVisible()
     expect(screen.getByRole('button', { name: '关闭预览' })).toBeVisible()
+    await revealScenePreviewImage()
     const image = await screen.findByRole('img', { name: '商品-02.jpg' })
     expect(image).toBeVisible()
     expect(image.getAttribute('src')).toContain(encodeURIComponent('商品-02.jpg'))
@@ -76,6 +77,7 @@ describe('Viewer viewing acceptance scenes', () => {
   ])('%s renders a live formal image preview in %s state', async (id, state) => {
     const rendered = renderScene(id)
     const dialog = screen.getByRole('dialog', { name: /图片预览 商品-02\.jpg/ })
+    await revealScenePreviewImage()
     const image = await within(dialog).findByRole('img', { name: '商品-02.jpg' })
     expect(image).toBeVisible()
     if (state === 'fit_reset') {
@@ -121,6 +123,7 @@ describe('Viewer viewing acceptance scenes', () => {
 
   it('renders PRE-08 through the pressed real toolbar button and loaded original lens', async () => {
     const rendered = renderScene('PRE-08')
+    await revealScenePreviewImage()
 
     await waitFor(() =>
       expect(screen.getByRole('button', { name: '放大镜' })).toHaveAttribute(
@@ -163,6 +166,7 @@ describe('Viewer viewing acceptance scenes', () => {
     })
     const Scene = defined(VIEWING_SCENES['PRE-08'], 'Missing PRE-08 acceptance scene')
     render(<Scene request={{ id: 'PRE-08', viewport: '1440x900', width: 1440, height: 900 }} />)
+    await revealScenePreviewImage()
 
     const lens = await screen.findByTestId('image-magnifier')
     await waitFor(() => expect(lens).toHaveAttribute('data-visible', 'true'))
@@ -245,6 +249,12 @@ function renderScene(id: string) {
       }}
     />,
   )
+}
+
+async function revealScenePreviewImage() {
+  await waitFor(() => expect(document.querySelector('.image-preview-image')).not.toBeNull())
+  fireEvent.load(document.querySelector('.image-preview-image') as HTMLImageElement)
+  await screen.findByRole('img', { name: '商品-02.jpg' })
 }
 
 function rectangle(x: number, y: number, width: number, height: number): DOMRect {

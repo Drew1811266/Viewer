@@ -2441,8 +2441,15 @@ body:has(.viewer-dialog-backdrop) .task-bar {
   }
 }
 
-.image-preview-stage > .image-preview-image[data-initial-reveal="true"] {
+.image-preview-stage > .image-preview-image[data-visible="false"] {
+  opacity: 0;
+  pointer-events: none;
+  visibility: hidden;
+}
+
+.image-preview-stage > .image-preview-image[data-visible="true"] {
   animation: preview-image-reveal 180ms ease-out both;
+  visibility: visible;
 }
 
 @keyframes preview-image-reveal {
@@ -2902,7 +2909,7 @@ body:has(.viewer-dialog-backdrop) .task-bar {
     transition: none;
   }
 
-  .image-preview-stage > .image-preview-image[data-initial-reveal="true"] {
+  .image-preview-stage > .image-preview-image[data-visible="true"] {
     animation: none;
     transition: none;
   }

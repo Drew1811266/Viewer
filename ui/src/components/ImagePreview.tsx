@@ -64,7 +64,7 @@ export default function ImagePreview({
   const lastStagePoint = useRef<Point | null>(null)
   const [, refresh] = useState(0)
   const stageSize = usePreviewStageSize(stage)
-  const [readyEntityId, setReadyEntityId] = useState<string | null>(null)
+  const [browserLoadedCandidateKey, setBrowserLoadedCandidateKey] = useState<string | null>(null)
   const [magnifierEnabled, setMagnifierEnabled] = useState(false)
   const [magnifierAnnounced, setMagnifierAnnounced] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -86,12 +86,24 @@ export default function ImagePreview({
       : { status: 'loading', entityId: file.entityId, representation: null }
   const originalRepresentation =
     currentOriginal.status === 'ready' ? currentOriginal.representation : null
-  const representation = originalRepresentation ?? fitRepresentation
-  const sourceDimensions: Size =
-    file.imageMetadata ?? originalRepresentation ?? fitRepresentation ?? EMPTY_STAGE
+  const originalFallback = originalFallbackCopy(currentOriginal.status)
+  const displayRepresentation: ImageRepresentation | null =
+    originalRepresentation ?? (originalFallback === null ? null : (fitRepresentation ?? null))
+  const displayCandidateKey =
+    displayRepresentation === null ? null : `${file.entityId}:${displayRepresentation.cacheKey}`
+  const sourceDimensions: Size = file.imageMetadata ?? displayRepresentation ?? EMPTY_STAGE
+  const geometryReady =
+    isPositiveSize(stageSize) &&
+    isPositiveSize(sourceDimensions) &&
+    sameSize(viewport.geometry.stage, stageSize) &&
+    sameSize(viewport.geometry.source, sourceDimensions)
+  const previewReady =
+    displayCandidateKey !== null &&
+    browserLoadedCandidateKey === displayCandidateKey &&
+    geometryReady
   const gestures = usePreviewGestures({
     stage,
-    disabled: transformsDisabled || representation == null,
+    disabled: transformsDisabled || !previewReady,
     panBounds: viewport.panBounds,
     zoomBy: viewport.zoomBy,
     panBy: viewport.panBy,
@@ -107,6 +119,7 @@ export default function ImagePreview({
 
   useEffect(() => {
     viewport.resetForEntity()
+    setBrowserLoadedCandidateKey(null)
     setError(null)
     lastStagePoint.current = null
     hideMagnifier(magnifierHandle, stage)
@@ -164,17 +177,7 @@ export default function ImagePreview({
 
   useLayoutEffect(() => {
     viewport.setMeasurements(stageSize, sourceDimensions)
-    if (
-      representation !== null &&
-      representation !== undefined &&
-      isPositiveSize(stageSize) &&
-      isPositiveSize(sourceDimensions)
-    ) {
-      setReadyEntityId((current) => (current === file.entityId ? current : file.entityId))
-    }
-  }, [file.entityId, representation, sourceDimensions, stageSize, viewport.setMeasurements])
-
-  const previewReady = readyEntityId === file.entityId
+  }, [sourceDimensions, stageSize, viewport.setMeasurements])
 
   useEffect(() => {
     if (originalRepresentation !== null) {
@@ -188,13 +191,14 @@ export default function ImagePreview({
       if (
         !magnifierEnabled ||
         transformsDisabled ||
-        representation == null ||
+        !previewReady ||
+        displayRepresentation === null ||
         sourcePoint === null
       ) {
         hideMagnifier(magnifierHandle, stage)
         return
       }
-      const originalSize = originalRepresentation ?? file.imageMetadata ?? representation
+      const originalSize = originalRepresentation ?? file.imageMetadata ?? displayRepresentation
       magnifierHandle.current?.place({
         stagePoint,
         sourcePoint: remapSourcePoint(sourcePoint, viewport.geometry.source, originalSize),
@@ -205,7 +209,8 @@ export default function ImagePreview({
       file.imageMetadata,
       magnifierEnabled,
       originalRepresentation,
-      representation,
+      displayRepresentation,
+      previewReady,
       transformsDisabled,
       viewport.geometry,
       viewport.state,
@@ -229,7 +234,7 @@ export default function ImagePreview({
   }, [placeMagnifier, pointerClientPoint])
 
   useEffect(() => {
-    if (!magnifierEnabled || transformsDisabled || representation == null) {
+    if (!magnifierEnabled || transformsDisabled || !previewReady) {
       hideMagnifier(magnifierHandle, stage)
       return
     }
@@ -240,7 +245,7 @@ export default function ImagePreview({
     magnifier.shape,
     magnifierEnabled,
     placeLatestMagnifier,
-    representation,
+    previewReady,
     stageSize,
     transformsDisabled,
     viewport.state.rotation,
@@ -401,20 +406,24 @@ export default function ImagePreview({
         <UnsupportedFileState file={file} unavailable />
       ) : !isPreviewableImage(file) ? (
         <UnsupportedFileState file={file} />
-      ) : previewReady &&
-        representation &&
-        renderedSource.width > 0 &&
-        renderedSource.height > 0 ? (
+      ) : displayRepresentation !== null && isPositiveSize(sourceDimensions) ? (
         <img
+          key={displayCandidateKey}
           className="image-preview-image"
-          src={representation.url}
+          src={displayRepresentation.url}
           alt={file.name}
-          width={renderedSource.width}
-          height={renderedSource.height}
+          width={renderedSource.width || sourceDimensions.width}
+          height={renderedSource.height || sourceDimensions.height}
           draggable={false}
+          aria-hidden={!previewReady}
+          data-visible={previewReady}
           data-mode={viewport.state.mode}
-          data-representation={originalRepresentation === null ? 'fit' : 'original'}
-          data-initial-reveal="true"
+          data-representation={
+            originalRepresentation === displayRepresentation ? 'original' : 'fit'
+          }
+          onLoad={() => {
+            if (displayCandidateKey !== null) setBrowserLoadedCandidateKey(displayCandidateKey)
+          }}
           style={{ transform: viewport.transform }}
         />
       ) : null}
@@ -426,7 +435,7 @@ export default function ImagePreview({
           {originalFallbackCopy(currentOriginal.status)}
         </ViewerLocalFeedback>
       )}
-      {representation == null && fatalImageFailure && (
+      {displayRepresentation === null && fatalImageFailure && (
         <ViewerLocalFeedback tone="danger" title="无法显示这张图片">
           {error}
         </ViewerLocalFeedback>
@@ -539,6 +548,10 @@ function isFatalImageFailure(
   originalStatus: CurrentOriginalState['status'],
 ): boolean {
   return fitError !== null && originalFallbackCopy(originalStatus) !== null
+}
+
+function sameSize(left: Size, right: Size): boolean {
+  return left.width === right.width && left.height === right.height
 }
 
 function formatBytes(bytes: number): string {

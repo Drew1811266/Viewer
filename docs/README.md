@@ -51,6 +51,7 @@ completion.
 | [`superpowers/specs/2026-08-07-viewer-fit-relative-original-preview-revision-design.md`](superpowers/specs/2026-08-07-viewer-fit-relative-original-preview-revision-design.md) | Active | — |
 | [`superpowers/specs/2026-08-07-viewer-stable-progressive-preview-and-larger-magnifier-design.md`](superpowers/specs/2026-08-07-viewer-stable-progressive-preview-and-larger-magnifier-design.md) | Active | — |
 | [`superpowers/specs/2026-08-07-viewer-pointer-following-magnifier-revision-design.md`](superpowers/specs/2026-08-07-viewer-pointer-following-magnifier-revision-design.md) | Active | — |
+| [`superpowers/specs/2026-08-09-viewer-bottom-shelf-preview-loading-design.md`](superpowers/specs/2026-08-09-viewer-bottom-shelf-preview-loading-design.md) | Active | — |
 
 ## Superseded decisions
 
@@ -99,6 +100,8 @@ completion.
 | [`superpowers/plans/2026-08-07-viewer-fit-relative-original-preview-revision.md`](superpowers/plans/2026-08-07-viewer-fit-relative-original-preview-revision.md) | Historical | — |
 | [`superpowers/plans/2026-08-07-viewer-stable-progressive-preview-and-larger-magnifier.md`](superpowers/plans/2026-08-07-viewer-stable-progressive-preview-and-larger-magnifier.md) | Historical | — |
 | [`superpowers/plans/2026-08-07-viewer-pointer-following-magnifier-revision.md`](superpowers/plans/2026-08-07-viewer-pointer-following-magnifier-revision.md) | Historical | — |
+| [`superpowers/plans/2026-08-09-viewer-bottom-shelf-layout.md`](superpowers/plans/2026-08-09-viewer-bottom-shelf-layout.md) | Historical | — |
+| [`superpowers/plans/2026-08-09-viewer-stable-preview-loading.md`](superpowers/plans/2026-08-09-viewer-stable-preview-loading.md) | Historical | — |
 
 ## Historical review evidence
 

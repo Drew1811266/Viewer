@@ -341,12 +341,14 @@ function magnifierSceneReady(
   source: HTMLImageElement,
   pointer: { x: number; y: number },
 ): boolean {
+  const magnifierScale = Number(lens.style.getPropertyValue('--magnifier-scale'))
   return (
     lens.dataset.visible === 'true' &&
     lens.dataset.shape === 'circle' &&
     lens.style.width === '160px' &&
     lens.style.height === '160px' &&
-    lens.style.getPropertyValue('--magnifier-scale') === '1.5' &&
+    Number.isFinite(magnifierScale) &&
+    magnifierScale > 0 &&
     lens.style.getPropertyValue('--magnifier-x') !== `${pointer.x}px` &&
     source.src.includes(encodeURIComponent(PREVIEW_FILE.name)) &&
     source.src.includes('representation=original100_percent')

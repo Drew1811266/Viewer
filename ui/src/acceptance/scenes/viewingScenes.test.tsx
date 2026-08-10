@@ -127,7 +127,7 @@ describe('Viewer viewing acceptance scenes', () => {
     )
     expect(lens).toHaveAttribute('data-shape', 'circle')
     expect(lens).toHaveStyle({ width: '160px', height: '160px' })
-    expect(lens.style.getPropertyValue('--magnifier-scale')).toBe('1.5')
+    expect(Number(lens.style.getPropertyValue('--magnifier-scale'))).toBeCloseTo(1.5 * (576 / 560))
     expect(lens.style.getPropertyValue('--magnifier-x')).toBe('418px')
     expect(lens.style.getPropertyValue('--magnifier-y')).toBe('338px')
     expect(lens.style.getPropertyValue('--magnifier-x')).not.toBe('320px')
@@ -159,6 +159,9 @@ describe('Viewer viewing acceptance scenes', () => {
         'data-acceptance-scene-ready',
         'true',
       ),
+    )
+    expect(Number(lens.style.getPropertyValue('--magnifier-scale'))).toBeCloseTo(
+      1.5 * (763.2 / 373),
     )
     expect(lens.style.getPropertyValue('--magnifier-x')).toBe('818px')
   })

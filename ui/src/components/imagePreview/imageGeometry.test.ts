@@ -29,6 +29,20 @@ function state(overrides: Partial<ImageViewportState> = {}): ImageViewportState 
 }
 
 describe('image viewport geometry', () => {
+  it('fills the fit inset even when the current representation is smaller than the stage', () => {
+    const proxyGeometry: ImageViewportGeometry = {
+      stage: { width: 1920, height: 1000 },
+      source: { width: 560, height: 373 },
+      fitInset: 0.9,
+    }
+
+    const scale = displayScale(state(), proxyGeometry)
+
+    expect(scale).toBeCloseTo(900 / 373)
+    expect(proxyGeometry.source.height * scale).toBeCloseTo(900)
+    expect(proxyGeometry.source.width * scale).toBeGreaterThan(1300)
+  })
+
   it('treats fitted display as the only 100% baseline', () => {
     expect(displayScale(state(), GEOMETRY)).toBeCloseTo(0.45)
     expect(displayScale(state({ mode: 'free', zoom: 1.5 }), GEOMETRY)).toBeCloseTo(0.675)
@@ -55,10 +69,10 @@ describe('image viewport geometry', () => {
     const rotated = state({ mode: 'free', zoom: 1, rotation: 90 })
 
     expect(sourcePointToStagePoint({ x: 0, y: 0 }, rotated, geometry)).toEqual({
-      x: 275,
-      y: 150,
+      x: 340,
+      y: 20,
     })
-    expect(stagePointToSourcePoint({ x: 275, y: 150 }, rotated, geometry)).toEqual({
+    expect(stagePointToSourcePoint({ x: 340, y: 20 }, rotated, geometry)).toEqual({
       x: 0,
       y: 0,
     })

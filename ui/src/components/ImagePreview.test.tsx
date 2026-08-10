@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { Profiler } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 import type { BrowserFile, ImageRepresentation, ImageRepresentationRequest } from '../api/types'
 import { defined } from '../defined'
@@ -38,6 +39,14 @@ function loaded(cacheKey: string, width: number, height: number): ImageRepresent
     width,
     height,
     backend: 'image_io',
+  }
+}
+
+function visibleImageSize(image: HTMLElement) {
+  const scale = Number(image.getAttribute('style')?.match(/scale\(([^)]+)\)/)?.[1])
+  return {
+    width: Number(image.getAttribute('width')) * scale,
+    height: Number(image.getAttribute('height')) * scale,
   }
 }
 
@@ -240,6 +249,50 @@ describe('ImagePreview', () => {
         ([, representation]) => representation.kind === 'original100_percent',
       ),
     ).toHaveLength(1)
+  })
+
+  it('commits one stable fitted geometry while a small proxy upgrades to the original', async () => {
+    const fit = deferred<ImageRepresentation>()
+    const original = deferred<ImageRepresentation>()
+    const target = image(1)
+    const committedSizes: Array<{ width: number; height: number }> = []
+    const request = vi.fn((_file: BrowserFile, representation: ImageRepresentationRequest) =>
+      representation.kind === 'original100_percent' ? original.promise : fit.promise,
+    )
+    render(
+      <Profiler
+        id="stable-progressive-preview"
+        onRender={() => {
+          const preview = document.querySelector<HTMLElement>('.image-preview-image')
+          if (preview) committedSizes.push(visibleImageSize(preview))
+        }}
+      >
+        <ImagePreview
+          file={target}
+          files={[target]}
+          magnifier={MAGNIFIER}
+          pointerClientPoint={POINTER_CLIENT_POINT}
+          requestImage={request}
+          onNavigate={vi.fn()}
+          onClose={vi.fn()}
+        />
+      </Profiler>,
+    )
+
+    await act(async () => fit.resolve(loaded('fit', 300, 200)))
+    const preview = await screen.findByRole('img', { name: '1.jpg' })
+    const fittedSize = visibleImageSize(preview)
+    expect(fittedSize).toEqual({ width: 576, height: 384 })
+    committedSizes.length = 0
+
+    await act(async () => original.resolve(loaded('original', 6000, 4000)))
+    await waitFor(() => expect(preview).toHaveAttribute('data-representation', 'original'))
+
+    expect(committedSizes.length).toBeGreaterThan(0)
+    for (const committed of committedSizes) {
+      expect(committed.width).toBeCloseTo(fittedSize.width, 6)
+      expect(committed.height).toBeCloseTo(fittedSize.height, 6)
+    }
   })
 
   it('uses fitted display as the only 100% baseline and resets zoom through one control', async () => {

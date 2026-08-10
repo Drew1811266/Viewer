@@ -1,5 +1,5 @@
 import type { KeyboardEvent, MutableRefObject, PointerEvent, ReactNode } from 'react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type {
   BrowserFile,
   ImageRepresentation,
@@ -182,7 +182,7 @@ export default function ImagePreview({
     }
   }, [currentIndex, file.entityId, files, requestImage, unavailableEntityIds])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     viewport.setMeasurements(stageSize, sourceDimensions)
   }, [sourceDimensions, stageSize, viewport.setMeasurements])
 
@@ -391,6 +391,7 @@ export default function ImagePreview({
       </ViewerButton>
     </>
   )
+  const renderedSource = viewport.geometry.source
   const previewStage: ReactNode = (
     <div
       ref={stage}
@@ -407,13 +408,13 @@ export default function ImagePreview({
         <UnsupportedFileState file={file} unavailable />
       ) : !isPreviewableImage(file) ? (
         <UnsupportedFileState file={file} />
-      ) : representation ? (
+      ) : representation && renderedSource.width > 0 && renderedSource.height > 0 ? (
         <img
           className="image-preview-image"
           src={representation.url}
           alt={file.name}
-          width={sourceDimensions.width}
-          height={sourceDimensions.height}
+          width={renderedSource.width}
+          height={renderedSource.height}
           draggable={false}
           data-mode={viewport.state.mode}
           data-representation={originalRepresentation === null ? 'fit' : 'original'}

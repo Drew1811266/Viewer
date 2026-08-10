@@ -33,7 +33,6 @@ export function displayScale(state: ImageViewportState, geometry: ImageViewportG
   const sourceWidth = quarterTurn ? geometry.source.height : geometry.source.width
   const sourceHeight = quarterTurn ? geometry.source.width : geometry.source.height
   const fitScale = Math.min(
-    1,
     (geometry.stage.width * geometry.fitInset) / sourceWidth,
     (geometry.stage.height * geometry.fitInset) / sourceHeight,
   )

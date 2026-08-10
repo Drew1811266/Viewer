@@ -223,11 +223,16 @@ describe('ImagePreview', () => {
       />,
     )
 
-    const loadingStage = pending.container.querySelector('.image-preview-stage')
+    const loadingStage = pending.container.querySelector('.image-preview-stage') as HTMLElement
     expect(screen.getByRole('toolbar', { name: '图片预览工具' })).toHaveClass('viewer-toolbar')
-    expect(within(loadingStage as HTMLElement).getByRole('status')).toHaveClass(
-      'viewer-local-feedback',
-    )
+    const loading = within(loadingStage).getByRole('status')
+    expect(loading).toHaveClass('image-preview-loading')
+    expect(loading).toHaveTextContent('正在载入图片')
+    expect(loading).toHaveTextContent('正在准备高清预览…')
+    const progress = within(loading).getByRole('progressbar', { name: '正在准备高清预览' })
+    expect(progress).not.toHaveAttribute('aria-valuenow')
+    expect(progress).not.toHaveAttribute('aria-valuemin')
+    expect(progress).not.toHaveAttribute('aria-valuemax')
     pending.unmount()
 
     render(
@@ -246,6 +251,38 @@ describe('ImagePreview', () => {
     expect(alert).toHaveClass('viewer-local-feedback')
     expect(alert.closest('.image-preview-stage')).not.toBeNull()
     expect(screen.getByRole('toolbar', { name: '图片预览工具' })).toHaveClass('viewer-toolbar')
+  })
+
+  it('keeps progress active when fit fails while original can still recover', async () => {
+    const fit = deferred<ImageRepresentation>()
+    const original = deferred<ImageRepresentation>()
+    const target = image(1)
+    const request = vi.fn((_file: BrowserFile, representation: ImageRepresentationRequest) =>
+      representation.kind === 'fit_preview' ? fit.promise : original.promise,
+    )
+    render(
+      <ImagePreview
+        file={target}
+        files={[target]}
+        magnifier={MAGNIFIER}
+        pointerClientPoint={POINTER_CLIENT_POINT}
+        requestImage={request}
+        onNavigate={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    )
+
+    await waitFor(() => expect(request).toHaveBeenCalledTimes(2))
+    await act(async () => fit.reject(new Error('fit failed')))
+    expect(screen.getByRole('progressbar', { name: '正在准备高清预览' })).toBeVisible()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+
+    await act(async () => original.resolve(loaded('original', 6000, 4000)))
+    expect(await screen.findByRole('img', { name: '1.jpg' })).toHaveAttribute(
+      'data-representation',
+      'original',
+    )
+    expect(screen.getByTestId('image-preview-loading')).toHaveAttribute('data-visible', 'false')
   })
 
   it('renders an unsupported current image without issuing image requests', () => {
@@ -424,6 +461,9 @@ describe('ImagePreview', () => {
     expect(committedSizes.length).toBeGreaterThan(0)
     expect(committedSizes).not.toContainEqual({ width: 576, height: 384 })
     expect(committedSizes.every(({ width }) => width > 1000)).toBe(true)
+    expect(screen.getByTestId('image-preview-loading')).toHaveAttribute('data-visible', 'false')
+    expect(screen.getByTestId('image-preview-loading')).toHaveAttribute('aria-hidden', 'true')
+    expect(preview).toHaveAttribute('data-initial-reveal', 'true')
   })
 
   it('uses fitted display as the only 100% baseline and resets zoom through one control', async () => {

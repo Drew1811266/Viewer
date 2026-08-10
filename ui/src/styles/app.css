@@ -2378,6 +2378,83 @@ body:has(.viewer-dialog-backdrop) .task-bar {
   z-index: 1;
 }
 
+.image-preview-loading {
+  display: grid;
+  gap: 8px;
+  left: 50%;
+  opacity: 1;
+  position: absolute;
+  text-align: center;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  transition:
+    opacity 180ms ease-out,
+    visibility 0s linear 0s;
+  visibility: visible;
+  width: min(320px, calc(100% - 48px));
+  z-index: 1;
+}
+
+.image-preview-loading strong {
+  color: var(--viewer-text);
+  font-size: 13px;
+}
+
+.image-preview-loading p {
+  color: var(--viewer-text-secondary);
+  font-size: 12px;
+  margin: 0;
+}
+
+.image-preview-loading[data-visible="false"] {
+  opacity: 0;
+  transition:
+    opacity 180ms ease-out,
+    visibility 0s linear 180ms;
+  visibility: hidden;
+}
+
+.image-preview-loading__progress {
+  background: var(--viewer-border);
+  border-radius: 999px;
+  height: 4px;
+  margin-top: 4px;
+  overflow: hidden;
+}
+
+.image-preview-loading__indicator {
+  animation: preview-loading-sweep 900ms ease-in-out infinite;
+  background: linear-gradient(90deg, transparent, var(--viewer-accent), transparent);
+  display: block;
+  height: 100%;
+  transform: translateX(-120%);
+  width: 42%;
+}
+
+@keyframes preview-loading-sweep {
+  from {
+    transform: translateX(-120%);
+  }
+
+  to {
+    transform: translateX(350%);
+  }
+}
+
+.image-preview-stage > .image-preview-image[data-initial-reveal="true"] {
+  animation: preview-image-reveal 180ms ease-out both;
+}
+
+@keyframes preview-image-reveal {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
 .image-preview-stage > .image-preview-image {
   border: 1px solid var(--preview-border);
   box-shadow: var(--preview-image-shadow);
@@ -2815,6 +2892,21 @@ body:has(.viewer-dialog-backdrop) .task-bar {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .image-preview-loading {
+    animation: none;
+    transition: none;
+  }
+
+  .image-preview-loading__indicator {
+    animation: none;
+    transition: none;
+  }
+
+  .image-preview-stage > .image-preview-image[data-initial-reveal="true"] {
+    animation: none;
+    transition: none;
+  }
+
   .image-magnifier {
     animation: none;
     transition: none;

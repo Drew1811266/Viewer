@@ -8,6 +8,7 @@ import type {
 } from '../api/types'
 import { isPreviewableImage } from '../fileKinds'
 import ImageMagnifier, { type ImageMagnifierHandle } from './imagePreview/ImageMagnifier'
+import ImagePreviewLoading from './imagePreview/ImagePreviewLoading'
 import {
   type Point,
   remapSourcePoint,
@@ -381,6 +382,9 @@ export default function ImagePreview({
     </>
   )
   const renderedSource = viewport.geometry.source
+  const fatalImageFailure = isFatalImageFailure(error, currentOriginal.status)
+  const showPreviewLoading =
+    !unavailable && isPreviewableImage(file) && !fatalImageFailure && !previewReady
   const previewStage: ReactNode = (
     <div
       ref={stage}
@@ -410,23 +414,19 @@ export default function ImagePreview({
           draggable={false}
           data-mode={viewport.state.mode}
           data-representation={originalRepresentation === null ? 'fit' : 'original'}
+          data-initial-reveal="true"
           style={{ transform: viewport.transform }}
         />
       ) : null}
-      {!unavailable &&
-        isPreviewableImage(file) &&
-        !previewReady &&
-        !isFatalImageFailure(error, currentOriginal.status) && (
-          <ViewerLocalFeedback tone="info" title="正在载入图片">
-            正在准备高分辨率预览…
-          </ViewerLocalFeedback>
-        )}
+      {!unavailable && isPreviewableImage(file) && !fatalImageFailure && (
+        <ImagePreviewLoading visible={showPreviewLoading} />
+      )}
       {fitRepresentation !== undefined && originalFallbackCopy(currentOriginal.status) !== null && (
         <ViewerLocalFeedback tone="warning" title="正在使用适窗预览">
           {originalFallbackCopy(currentOriginal.status)}
         </ViewerLocalFeedback>
       )}
-      {representation == null && isFatalImageFailure(error, currentOriginal.status) && (
+      {representation == null && fatalImageFailure && (
         <ViewerLocalFeedback tone="danger" title="无法显示这张图片">
           {error}
         </ViewerLocalFeedback>

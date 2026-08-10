@@ -759,6 +759,40 @@ describe('workspace style contracts', () => {
     expect(contrastRatio('#9d1c13', '#fff3f0')).toBeGreaterThanOrEqual(4.5)
   })
 
+  it('uses indeterminate preview progress and opacity-only reduced motion', () => {
+    const rules = parseRules(appCss)
+    const loading = rules.find(({ selector }) => selector === '.image-preview-loading')
+    const hidden = rules.find(
+      ({ selector }) => selector === '.image-preview-loading[data-visible="false"]',
+    )
+    const track = rules.find(({ selector }) => selector === '.image-preview-loading__progress')
+    const indicator = rules.find(({ selector }) => selector === '.image-preview-loading__indicator')
+    const reveal = rules.find(
+      ({ selector }) =>
+        selector === '.image-preview-stage > .image-preview-image[data-initial-reveal="true"]',
+    )
+
+    expect(loading?.declarations.transition).toContain('180ms')
+    expect(hidden?.declarations).toMatchObject({ opacity: '0', visibility: 'hidden' })
+    expect(track?.declarations).toMatchObject({ height: '4px', overflow: 'hidden' })
+    expect(indicator?.declarations.animation).toContain('preview-loading-sweep')
+    expect(reveal?.declarations.animation).toBe('preview-image-reveal 180ms ease-out both')
+    expect(appCss).toContain('@keyframes preview-loading-sweep')
+    expect(appCss).toContain('@keyframes preview-image-reveal')
+
+    const reduced = parseRules(mediaBody(appCss, '(prefers-reduced-motion: reduce)'))
+    for (const selector of [
+      '.image-preview-loading',
+      '.image-preview-loading__indicator',
+      '.image-preview-stage > .image-preview-image[data-initial-reveal="true"]',
+    ]) {
+      expect(reduced.find((rule) => rule.selector === selector)?.declarations).toMatchObject({
+        animation: 'none',
+        transition: 'none',
+      })
+    }
+  })
+
   it('clips and animates the pointer-adjacent magnifier while preserving the cursor', () => {
     const rules = parseRules(appCss)
     const stage = rules.find(({ selector }) => selector === '.image-preview-stage')

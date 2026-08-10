@@ -31,6 +31,7 @@ import './styles/app.css'
 
 afterEach(() => {
   vi.useRealTimers()
+  vi.restoreAllMocks()
   vi.unstubAllGlobals()
 })
 
@@ -1413,6 +1414,7 @@ describe('Viewer empty state', () => {
   })
 
   it('keeps grid selection and scroll mounted across image preview', async () => {
+    installPreviewStageBounds()
     const viewer = bridge()
     vi.mocked(viewer.queryFolder).mockResolvedValue({
       workspace: 'content',
@@ -3030,6 +3032,28 @@ function installCompareResizeObserver() {
       }
     },
   }
+}
+
+function installPreviewStageBounds() {
+  const nativeGetBoundingClientRect = HTMLElement.prototype.getBoundingClientRect
+  vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (
+    this: HTMLElement,
+  ) {
+    if (this.classList.contains('image-preview-stage')) {
+      return {
+        x: 0,
+        y: 0,
+        left: 0,
+        top: 0,
+        right: 640,
+        bottom: 480,
+        width: 640,
+        height: 480,
+        toJSON: () => undefined,
+      }
+    }
+    return nativeGetBoundingClientRect.call(this)
+  })
 }
 
 function readOnlyContentWorkspace() {

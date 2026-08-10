@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { defined } from '../../defined'
 import type { AcceptanceRequest } from '../acceptanceRequest'
 import { ACCEPTANCE_STATE_DEFINITIONS } from '../acceptanceStateCatalog'
@@ -11,6 +11,18 @@ const request: AcceptanceRequest = {
   width: 1024,
   height: 720,
 }
+const nativeGetBoundingClientRect = HTMLElement.prototype.getBoundingClientRect
+
+beforeEach(() => {
+  vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (
+    this: HTMLElement,
+  ) {
+    if (this.classList.contains('image-preview-stage')) {
+      return rectangle(0, 0, 640, 480)
+    }
+    return nativeGetBoundingClientRect.call(this)
+  })
+})
 
 afterEach(() => vi.restoreAllMocks())
 

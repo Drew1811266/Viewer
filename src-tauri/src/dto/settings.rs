@@ -172,17 +172,17 @@ mod tests {
                 thumbnail_density: ThumbnailDensity::Compact,
                 magnifier: MagnifierPreferences {
                     shape: MagnifierShape::RoundedRectangle,
-                    magnification: MagnifierMagnification::OnePointFive,
+                    magnification: MagnifierMagnification::Four,
                     area: MagnifierArea::Medium,
                 },
             }))
             .unwrap(),
             serde_json::json!({
-                "schemaVersion": 3,
+                "schemaVersion": 4,
                 "thumbnailDensity": "compact",
                 "magnifier": {
                     "shape": "rounded_rectangle",
-                    "magnification": 1.5,
+                    "magnification": 4.0,
                     "area": "medium"
                 }
             })
@@ -195,7 +195,7 @@ mod tests {
             "thumbnailDensity": "maximum",
             "magnifier": {
                 "shape": "rounded_rectangle",
-                "magnification": 3,
+                "magnification": 4,
                 "area": "large"
             }
         }))
@@ -207,7 +207,7 @@ mod tests {
                 thumbnail_density: ThumbnailDensity::Maximum,
                 magnifier: MagnifierPreferences {
                     shape: MagnifierShape::RoundedRectangle,
-                    magnification: MagnifierMagnification::Three,
+                    magnification: MagnifierMagnification::Four,
                     area: MagnifierArea::Large,
                 },
             })
@@ -216,7 +216,7 @@ mod tests {
 
     #[test]
     fn complete_settings_input_rejects_invalid_magnification_and_unknown_fields() {
-        for magnification in [0.0, 1.0, 1.4, 2.5, 4.0, 6.0] {
+        for magnification in [0.0, 1.0, 1.5, 2.5, 5.0, 6.0] {
             let input = serde_json::from_value::<ViewerSettingsUpdateDto>(serde_json::json!({
                 "thumbnailDensity": "standard",
                 "magnifier": {

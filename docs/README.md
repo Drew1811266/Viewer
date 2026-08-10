@@ -53,6 +53,7 @@ completion.
 | [`superpowers/specs/2026-08-07-viewer-pointer-following-magnifier-revision-design.md`](superpowers/specs/2026-08-07-viewer-pointer-following-magnifier-revision-design.md) | Active | — |
 | [`superpowers/specs/2026-08-09-viewer-bottom-shelf-preview-loading-design.md`](superpowers/specs/2026-08-09-viewer-bottom-shelf-preview-loading-design.md) | Active | — |
 | [`superpowers/specs/2026-08-09-preview-original-single-reveal-design.md`](superpowers/specs/2026-08-09-preview-original-single-reveal-design.md) | Active | — |
+| [`superpowers/specs/2026-08-10-viewer-video-preview-design.md`](superpowers/specs/2026-08-10-viewer-video-preview-design.md) | Active | — |
 
 ## Superseded decisions
 

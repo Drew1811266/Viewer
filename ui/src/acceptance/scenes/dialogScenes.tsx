@@ -19,7 +19,7 @@ export const DIALOG_SCENES: AcceptanceSceneRegistry = {
     <DialogBackdrop ready={settingsDialogReady}>
       <SettingsDialog
         density="standard"
-        magnifier={{ shape: 'circle', magnification: 1.5, area: 'small' }}
+        magnifier={{ shape: 'circle', magnification: 2, area: 'small' }}
         error={null}
         onDensityChange={noOp}
         onMagnifierShapeChange={noOp}
@@ -217,9 +217,9 @@ function settingsDialogReady(): boolean {
   ].map((input) => input.closest('label')?.textContent?.trim())
   return (
     slider?.value === '2' &&
-    magnificationLabels.join('|') === '1.5 倍|2 倍|3 倍' &&
+    magnificationLabels.join('|') === '2 倍|3 倍|4 倍' &&
     checkedLabels.includes('圆形') &&
-    checkedLabels.includes('1.5 倍') &&
+    checkedLabels.includes('2 倍') &&
     checkedLabels.includes('小')
   )
 }

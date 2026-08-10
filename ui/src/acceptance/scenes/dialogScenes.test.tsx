@@ -34,7 +34,7 @@ it('grounds rename dialogs in valid atlas-equivalent content', async () => {
   batch.unmount()
 })
 
-it('renders the complete settings-v3 defaults in DIA-01', () => {
+it('renders the complete settings-v4 defaults in DIA-01', () => {
   const rendered = renderScene('DIA-01')
   const dialog = screen.getByRole('dialog', { name: '软件设置' })
 
@@ -44,9 +44,9 @@ it('renders the complete settings-v3 defaults in DIA-01', () => {
     within(within(dialog).getByRole('group', { name: '放大倍数' }))
       .getAllByRole('radio')
       .map((radio) => radio.closest('label')?.textContent?.trim()),
-  ).toEqual(['1.5 倍', '2 倍', '3 倍'])
-  expect(within(dialog).getByRole('radio', { name: '1.5 倍' })).toBeChecked()
-  expect(within(dialog).getByRole('radio', { name: '2 倍' })).not.toBeChecked()
+  ).toEqual(['2 倍', '3 倍', '4 倍'])
+  expect(within(dialog).getByRole('radio', { name: '2 倍' })).toBeChecked()
+  expect(within(dialog).getByRole('radio', { name: '4 倍' })).not.toBeChecked()
   expect(within(dialog).getByRole('radio', { name: '3 倍' })).not.toBeChecked()
   expect(within(dialog).getByRole('radio', { name: '小' })).toBeChecked()
   rendered.unmount()

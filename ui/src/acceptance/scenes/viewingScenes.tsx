@@ -240,7 +240,7 @@ function PreviewScene({ state }: { request: AcceptanceRequest; state: PreviewSta
     <ImagePreview
       file={PREVIEW_FILE}
       files={ACCEPTANCE_FILES}
-      magnifier={{ shape: 'circle', magnification: 1.5, area: 'small' }}
+      magnifier={{ shape: 'circle', magnification: 2, area: 'small' }}
       pointerClientPoint={pointerClientPoint}
       requestImage={requestImage}
       onNavigate={noOp}

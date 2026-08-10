@@ -47,9 +47,9 @@ describe('Viewer visual acceptance bridge', () => {
       ].sort(),
     )
     await expect(bridge.getViewerSettings()).resolves.toEqual({
-      schemaVersion: 3,
+      schemaVersion: 4,
       thumbnailDensity: 'standard',
-      magnifier: { shape: 'circle', magnification: 1.5, area: 'small' },
+      magnifier: { shape: 'circle', magnification: 2, area: 'small' },
     })
     await expect(bridge.projectSnapshot()).resolves.toMatchObject({
       displayName: '测试图',

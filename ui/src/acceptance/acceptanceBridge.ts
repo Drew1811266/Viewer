@@ -29,17 +29,17 @@ export function createAcceptanceBridge(overrides: AcceptanceBridgeOverrides = {}
     },
     async getViewerSettings() {
       return {
-        schemaVersion: 3 as const,
+        schemaVersion: 4 as const,
         thumbnailDensity: 'standard' as const,
         magnifier: {
           shape: 'circle' as const,
-          magnification: 1.5 as const,
+          magnification: 2 as const,
           area: 'small' as const,
         },
       }
     },
     async updateViewerSettings(settings) {
-      return { schemaVersion: 3 as const, ...settings }
+      return { schemaVersion: 4 as const, ...settings }
     },
     async folderTree() {
       return ACCEPTANCE_FOLDER_TREE

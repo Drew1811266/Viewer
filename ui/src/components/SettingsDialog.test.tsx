@@ -5,7 +5,7 @@ import SettingsDialog from './SettingsDialog'
 
 const DEFAULT_MAGNIFIER: MagnifierPreferences = {
   shape: 'circle',
-  magnification: 1.5,
+  magnification: 2,
   area: 'small',
 }
 
@@ -89,17 +89,17 @@ describe('SettingsDialog', () => {
     expect(within(magnification).getAllByRole('radio')).toHaveLength(3)
     expect(within(area).getAllByRole('radio')).toHaveLength(3)
     expect(within(shape).getByRole('radio', { name: '圆形' })).toBeChecked()
-    expect(within(magnification).getByRole('radio', { name: '1.5 倍' })).toBeChecked()
-    expect(within(magnification).getByRole('radio', { name: '2 倍' })).not.toBeChecked()
+    expect(within(magnification).getByRole('radio', { name: '2 倍' })).toBeChecked()
     expect(within(magnification).getByRole('radio', { name: '3 倍' })).not.toBeChecked()
+    expect(within(magnification).getByRole('radio', { name: '4 倍' })).not.toBeChecked()
     expect(within(area).getByRole('radio', { name: '小' })).toBeChecked()
 
     fireEvent.click(within(shape).getByRole('radio', { name: '圆角矩形' }))
-    fireEvent.click(within(magnification).getByRole('radio', { name: '3 倍' }))
+    fireEvent.click(within(magnification).getByRole('radio', { name: '4 倍' }))
     fireEvent.click(within(area).getByRole('radio', { name: '大' }))
 
     expect(props.onMagnifierShapeChange).toHaveBeenCalledWith('rounded_rectangle')
-    expect(props.onMagnifierMagnificationChange).toHaveBeenCalledWith(3)
+    expect(props.onMagnifierMagnificationChange).toHaveBeenCalledWith(4)
     expect(props.onMagnifierAreaChange).toHaveBeenCalledWith('large')
   })
 

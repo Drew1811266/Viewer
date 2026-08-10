@@ -5,7 +5,7 @@ import type { BrowserFile, ImageRepresentation, ImageRepresentationRequest } fro
 import { defined } from '../defined'
 import ImagePreview from './ImagePreview'
 
-const MAGNIFIER = { shape: 'circle', magnification: 1.5, area: 'small' } as const
+const MAGNIFIER = { shape: 'circle', magnification: 2, area: 'small' } as const
 const POINTER_CLIENT_POINT = { current: null }
 
 function image(index: number): BrowserFile {
@@ -594,13 +594,13 @@ describe('ImagePreview', () => {
     expect(pointerClientPoint.current).toEqual({ x: 320, y: 240 })
     expect(lens).toHaveAttribute('data-visible', 'true')
     expect(lens).toHaveStyle({ '--magnifier-x': '418px', '--magnifier-y': '338px' })
-    expect(lens).toHaveStyle({ '--magnifier-scale': '0.675' })
+    expect(lens).toHaveStyle({ '--magnifier-scale': '0.9' })
 
     fireEvent.click(screen.getByRole('button', { name: '放大' }))
     act(() => {
       while (frames.length > 0) frames.shift()?.(0)
     })
-    expect(lens).toHaveStyle({ '--magnifier-scale': '0.84375' })
+    expect(lens).toHaveStyle({ '--magnifier-scale': '1.125' })
     fireEvent.click(screen.getByRole('button', { name: '适应窗口' }))
     act(() => {
       while (frames.length > 0) frames.shift()?.(0)

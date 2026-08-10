@@ -294,12 +294,18 @@ describe('ContentBrowser', () => {
     )
   })
 
-  it('sizes a mixed image slot to its laid-out rows and reserves the selection summary layer', async () => {
+  it('gives a mixed image grid the full measured slot above the bottom shelf', () => {
     render(<ControlledContentBrowser workspace={workspace(3)} density="compact" />)
 
-    screen.getByTestId('content-image-slot')
-    await waitFor(() =>
-      expect(screen.getByRole('listbox', { name: '图片文件' })).toHaveStyle({ height: '144px' }),
+    const slot = screen.getByTestId('content-image-slot')
+    triggerResize(slot, 900, 640)
+    flushAnimationFrames()
+
+    expect(screen.getByRole('listbox', { name: '图片文件' })).toHaveStyle({
+      height: '640px',
+    })
+    expect(slot.nextElementSibling).toBe(
+      screen.getByRole('button', { name: '其它文件 · 1' }).closest('.other-file-panel'),
     )
 
     const browser = screen.getByRole('region', { name: '文件内容' })

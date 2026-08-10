@@ -54,10 +54,6 @@
   overflow: hidden;
 }
 
-.content-browser[data-content-mode^="mixed_"] .content-browser-image-slot {
-  flex: 0 1 auto;
-}
-
 .other-file-panel {
   border-top: 1px solid var(--viewer-border);
   background: var(--viewer-surface);

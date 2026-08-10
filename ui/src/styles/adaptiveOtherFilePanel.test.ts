@@ -28,6 +28,22 @@ describe('adaptive other-file panel layout contracts', () => {
     })
   })
 
+  it('lets the image slot fill mixed content above the intrinsic bottom shelf', () => {
+    const rules = parseRules(adaptiveOtherFilePanelCss)
+
+    expect(declarationsFor(rules, '.content-browser-image-slot')).toMatchObject({
+      flex: '1 1 auto',
+      'min-height': '0',
+      overflow: 'hidden',
+    })
+    expect(
+      declarationsFor(
+        rules,
+        '.content-browser[data-content-mode^="mixed_"] .content-browser-image-slot',
+      ),
+    ).toBeUndefined()
+  })
+
   it('strictly caps the expanded mixed shelf and lets other-only fill the body', () => {
     const rules = parseRules(adaptiveOtherFilePanelCss)
 

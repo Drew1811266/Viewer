@@ -201,6 +201,15 @@ describe('OtherFilePanel', () => {
     expect(screen.getAllByRole('option')).toHaveLength(otherFiles.length)
   })
 
+  it('requests exactly one row of list height for one expanded other file', () => {
+    renderPanel({ mode: 'mixed_expanded', files: [otherFiles[0] as BrowserFile] })
+
+    expect(screen.getByRole('listbox', { name: '其它文件' })).toHaveStyle({
+      height: `${OTHER_FILE_ROW_HEIGHT}px`,
+    })
+    expect(screen.getAllByRole('option')).toHaveLength(1)
+  })
+
   it.each([
     ['mixed_expanded', 96],
     ['other_only', 280],

@@ -25,7 +25,6 @@ export interface AspectVirtualGridProps<T> {
   imageHeight: number
   captionHeight?: number
   viewportHeight?: number
-  fitContentHeight?: boolean
   gap?: number
   overscanRows?: number
   getKey: (item: T) => string
@@ -75,7 +74,6 @@ export default function AspectVirtualGrid<T>({
   imageHeight,
   captionHeight = 48,
   viewportHeight = 520,
-  fitContentHeight = false,
   gap = 12,
   overscanRows = 2,
   getKey,
@@ -125,10 +123,6 @@ export default function AspectVirtualGrid<T>({
       ),
     [captionHeight, gap, getDimensions, getKey, imageHeight, items, width],
   )
-  const effectiveViewportHeight = fitContentHeight
-    ? Math.min(viewportHeight, geometry.totalHeight)
-    : viewportHeight
-
   useLayoutEffect(() => {
     const node = container.current
     const previous = previousGeometry.current
@@ -158,11 +152,11 @@ export default function AspectVirtualGrid<T>({
       verticalAnchor.current = captureVerticalAnchor(geometry, actualScrollTop)
     }
     previousGeometry.current = geometry
-  }, [effectiveViewportHeight, geometry, scrollTop])
+  }, [geometry, scrollTop, viewportHeight])
 
   const visibleRows = useMemo(
-    () => verticalVisibleRows(geometry, scrollTop, effectiveViewportHeight, overscanRows),
-    [effectiveViewportHeight, geometry, overscanRows, scrollTop],
+    () => verticalVisibleRows(geometry, scrollTop, viewportHeight, overscanRows),
+    [geometry, overscanRows, scrollTop, viewportHeight],
   )
   const mountedIndexes = useMemo(
     () => indexesForRows(geometry, visibleRows, activeKey, focusedKey),
@@ -371,7 +365,7 @@ export default function AspectVirtualGrid<T>({
       tabIndex={0}
       className="virtual-grid aspect-virtual-grid"
       data-marquee-active={marqueeRect ? 'true' : undefined}
-      style={{ height: effectiveViewportHeight, overflow: 'auto', position: 'relative' }}
+      style={{ height: viewportHeight, overflow: 'auto', position: 'relative' }}
       onKeyDown={keyDown}
       onPointerDown={pointerDown}
       onPointerMove={pointerMove}

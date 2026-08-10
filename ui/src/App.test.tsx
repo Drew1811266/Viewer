@@ -29,9 +29,12 @@ import {
 import { defined } from './defined'
 import './styles/app.css'
 
+let restorePreviewStageBounds: (() => void) | null = null
+
 afterEach(() => {
   vi.useRealTimers()
-  vi.restoreAllMocks()
+  restorePreviewStageBounds?.()
+  restorePreviewStageBounds = null
   vi.unstubAllGlobals()
 })
 
@@ -3036,7 +3039,7 @@ function installCompareResizeObserver() {
 
 function installPreviewStageBounds() {
   const nativeGetBoundingClientRect = HTMLElement.prototype.getBoundingClientRect
-  vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (
+  const spy = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (
     this: HTMLElement,
   ) {
     if (this.classList.contains('image-preview-stage')) {
@@ -3054,6 +3057,7 @@ function installPreviewStageBounds() {
     }
     return nativeGetBoundingClientRect.call(this)
   })
+  restorePreviewStageBounds = () => spy.mockRestore()
 }
 
 function readOnlyContentWorkspace() {

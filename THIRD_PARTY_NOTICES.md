@@ -15,6 +15,7 @@ This inventory records the direct third-party dependencies in the Viewer 0.1 loc
 | `encoding_rs` | 0.8.35 | (Apache-2.0 OR MIT) AND BSD-3-Clause | Strict UTF-8, UTF-16 and GB18030 text-preview decoding | [hsivonen/encoding_rs](https://github.com/hsivonen/encoding_rs) | Yes |
 | `getrandom` | 0.4.3 | MIT OR Apache-2.0 | Random transaction identifiers and protected temporary names | [rust-random/getrandom](https://github.com/rust-random/getrandom) | Yes |
 | `libc` | 0.2.186 | MIT OR Apache-2.0 | Native filesystem primitives and memory measurements | [rust-lang/libc](https://github.com/rust-lang/libc) | Yes |
+| `libloading` | 0.8.9 | ISC | Load the exact Viewer-bundled libmpv dynamic library and reviewed symbols | [nagisa/rust_libloading](https://github.com/nagisa/rust_libloading) | Yes |
 | `nucleo-matcher` | 0.3.1 | MPL-2.0 | Unicode-aware fuzzy filename and path scoring; consumed unmodified | [helix-editor/nucleo](https://github.com/helix-editor/nucleo) | Yes |
 | `notify` | 8.2.0 | CC0-1.0 | macOS filesystem event source | [notify-rs/notify](https://github.com/notify-rs/notify) | Yes |
 | `notify-debouncer-full` | 0.7.0 | MIT OR Apache-2.0 | Coalesce filesystem hints before scoped rescans | [notify-rs/notify](https://github.com/notify-rs/notify) | Yes |

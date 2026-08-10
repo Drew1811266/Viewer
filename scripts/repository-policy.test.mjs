@@ -97,6 +97,7 @@ const cargoManifests = [
   'crates/viewer-infrastructure/Cargo.toml',
   'crates/viewer-platform-macos/Cargo.toml',
   'crates/viewer-test-support/Cargo.toml',
+  'crates/viewer-video-mpv/Cargo.toml',
   'src-tauri/Cargo.toml',
 ]
 const directDependencies = [
@@ -109,6 +110,7 @@ const directDependencies = [
   'encoding_rs',
   'getrandom',
   'libc',
+  'libloading',
   'nucleo-matcher',
   'notify',
   'notify-debouncer-full',

@@ -96,6 +96,9 @@ fn release_manifest_locks_the_macos_render_backend_contract() {
         ("swift-build", "enabled"),
         ("videotoolbox-gl", "enabled"),
         ("macos-cocoa-cb", "disabled"),
+        ("javascript", "disabled"),
+        ("lua", "disabled"),
+        ("cplugins", "disabled"),
     ] {
         assert_eq!(
             manifest.mpv.meson_options.get(option).map(String::as_str),

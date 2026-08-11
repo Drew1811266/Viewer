@@ -2,7 +2,7 @@
 
 Date: 2026-08-10 (America/Los_Angeles)
 
-Evidence generated: 2026-08-11T05:04:54.724Z
+Evidence generated: 2026-08-11T05:37:42.142Z
 
 Command: `scripts/video/run-render-feasibility.sh`
 
@@ -10,8 +10,8 @@ Result: exit 0, all ten mandatory rows PASS
 
 ## Tested source
 
-- Commit: `5f673d969a8c3d8ff791b63d38b965fb2db7dfe0`
-- Tree: `63157e43c30715165bdc8e2f1d9b9176f6a68577`
+- Commit: `678b1665ebd9036d2fafb9456059b05461b0365f`
+- Tree: `ec93bbd4ab5e0d846c5dda148eb04f96dcf76707`
 - Working tree at matrix start: clean
 - Machine-readable binding: `target/video-render-feasibility/matrix-result.json` → `source`
 
@@ -69,7 +69,9 @@ Resource counters before the matrix: `0/0/0`. Resource counters after 30 mount/u
 
 Fixture, app-resource, transparency, session-mismatch, action, diagnostics, frame-event, and cancelled-response errors all take/drop the registered session on the main queue. Main-queue submission uses the non-fallible dispatch queue API, so the former callback-scheduling error path no longer exists. Runtime layout resolution accepts only `app.path().resource_dir()`; no environment or absolute-directory production override remains.
 
-The runner launches the signed `.app` through `/usr/bin/open -n -W`, attributes the single new exact current-worktree executable PID before applying the stricter global process-count/path gate, and retains that PID for bounded TERM/KILL cleanup on every later failure. This preserves normal LaunchServices accessibility registration without weakening the PID, window-ID, geometry, or fixture boundaries.
+The runner launches the signed `.app` through `/usr/bin/open -n -W`, records the complete pre-launch PID snapshot, and limits cleanup to post-baseline processes whose command begins with the exact current-worktree executable path. Cleanup stops every such process found before and after launcher teardown, retries a failed targeted stop, bounds both launcher and helper waits, and appends any cleanup failure to the primary matrix error. Multiple candidates and process-table failures therefore cannot silently leak a LaunchServices-owned app or suppress a failing exit.
+
+The helper validates the exact CG owner PID, window ID, and frame before focus preparation. It then activates that exact PID and validated title-bar point, polls the same CG window until frontmost, and only then resolves, raises, and focuses the matching AX target. This ordering handles a background Tauri window whose AX hierarchy is unavailable before activation without weakening PID, window-ID, geometry, or selector boundaries.
 
 ## Signing gate
 
@@ -87,10 +89,10 @@ The product release pipeline must preserve this coherence by signing the nested 
 - Machine-readable result: `target/video-render-feasibility/matrix-result.json`
 - H.264 first revealed: `target/video-render-feasibility/screenshots/h264-1080p-first-revealed.png` (`d894b34d817cc6ef8d2272a95c6e0d23493f5d53d5df6543c027f3d1055bac2d`)
 - H.264 Retina resize: `target/video-render-feasibility/screenshots/h264-retina-resize.png` (`a65e88fc5e15659fd2985ded619f46f93ee8e8f9609e07a393005fcec02ae98c`)
-- HEVC first revealed: `target/video-render-feasibility/screenshots/hevc-portrait-first-revealed.png` (`37dbcb9ca56a6d0215722da293d6a130dfe80fedb19e6db8ac4f903771ad971c`)
-- VFR first revealed: `target/video-render-feasibility/screenshots/vfr-step-first-revealed.png` (`d2ff698ebafcdb1adfcf51cc5e5f85c2eb108a80f4b52e9ef512d054b25d01d9`)
+- HEVC first revealed: `target/video-render-feasibility/screenshots/hevc-portrait-first-revealed.png` (`f7f46941606b7ad4f7fc6b0a4057e41e0724d5d1be87e41d53d8f611d3f50f80`)
+- VFR first revealed: `target/video-render-feasibility/screenshots/vfr-step-first-revealed.png` (`8903d032552314b59754780d7eef667ec9c8ff8c6190583cf98a70998c77638c`)
 - VFR forward/backward: `target/video-render-feasibility/screenshots/vfr-forward-backward.png` (`82672254c0a91f7e62c8c51779185e644cee790dda45ea3c487e2c0ad54b2c90`)
-- Lifecycle baseline: `target/video-render-feasibility/screenshots/lifecycle-30-baseline.png` (`9b9f19ee590da69bee10a2cd96e1b969209e6f6f1265bc4d7058b2cf39630e93`)
+- Lifecycle baseline: `target/video-render-feasibility/screenshots/lifecycle-30-baseline.png` (`91a0e65596e77eb3b99aee8e922892ce152d504785f33c5fe22818e2edf028e3`)
 - Native/build/test/signing logs: `target/video-render-feasibility/logs/`
 
 Decision: PASS — product implementation may continue.

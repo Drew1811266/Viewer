@@ -1,5 +1,5 @@
 import { act, createEvent, fireEvent, render, renderHook, screen } from '@testing-library/react'
-import { type ReactNode, StrictMode } from 'react'
+import { type ReactNode, StrictMode, useLayoutEffect } from 'react'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { BrowserFile } from '../api/types'
 import { getAppShellStateInternals, useAppShellState } from './useAppShellState'
@@ -49,6 +49,22 @@ function ShellHarness({ name }: { name: string }) {
       />
     </section>
   )
+}
+
+function PreviewSessionSwitchHarness({
+  openOnCommit,
+  projectSessionId,
+}: {
+  openOnCommit: boolean
+  projectSessionId: string
+}) {
+  const state = usePreviewSession(projectSessionId)
+
+  useLayoutEffect(() => {
+    if (openOnCommit) state.openPreview(preview('new-session', null, null))
+  }, [openOnCommit, state.openPreview])
+
+  return <output aria-label="active preview">{state.activePreview?.file.name ?? 'none'}</output>
 }
 
 interface RadialContext {
@@ -126,6 +142,18 @@ describe('App shell coordinator internals', () => {
 })
 
 describe('Preview session coordinator internals', () => {
+  it('does not erase a preview opened during the new project session commit', () => {
+    const view = render(
+      <PreviewSessionSwitchHarness projectSessionId="session-1" openOnCommit={false} />,
+    )
+
+    view.rerender(<PreviewSessionSwitchHarness projectSessionId="session-2" openOnCommit={true} />)
+
+    expect(screen.getByRole('status', { name: 'active preview' })).toHaveTextContent(
+      'new-session.jpg',
+    )
+  })
+
   it('does not let a stale batched navigation reopen a closed preview', () => {
     const hook = renderHook(
       () => {

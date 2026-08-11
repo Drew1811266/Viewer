@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useLayoutEffect, useState } from 'react'
 import type { BrowserFile } from '../api/types'
 
 export interface PreviewSession {
@@ -50,7 +50,7 @@ export function usePreviewSession(projectSessionId: string): PreviewSessionState
     setDimensions((current) => ({ ...current, [entityId]: { width, height } }))
   }, [])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     setActivePreview(null)
     setDimensions({})
   }, [projectSessionId])

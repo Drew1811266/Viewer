@@ -7,6 +7,7 @@ use viewer_domain::{
     EntityId, RelativePath,
     file::{FileKind, FileNode, ImageMetadata, Marker, ReviewState},
     search::{SearchSort, SearchSortKey, SortDirection},
+    video::VideoMetadata,
 };
 
 use crate::{metadata::IndexedNode, search::natural_cmp};
@@ -30,6 +31,7 @@ pub struct BrowserFile {
     pub modified_ns: i128,
     pub marker: Marker,
     pub image_metadata: Option<ImageMetadata>,
+    pub video_metadata: Option<VideoMetadata>,
 }
 
 impl From<IndexedNode> for BrowserFile {
@@ -45,6 +47,7 @@ impl From<IndexedNode> for BrowserFile {
             modified_ns: node.modified_ns,
             marker: indexed.marker,
             image_metadata: indexed.image_metadata,
+            video_metadata: indexed.video_metadata,
         }
     }
 }
@@ -81,6 +84,7 @@ pub struct ContentFolderCard {
     pub name: String,
     pub marker: Marker,
     pub image_count: u64,
+    pub video_count: usize,
     pub other_file_count: u64,
     pub review_progress: FolderReviewProgress,
     pub representative_images: Vec<BrowserFile>,
@@ -93,6 +97,7 @@ pub enum FolderWorkspace {
     },
     Content {
         images: Vec<BrowserFile>,
+        videos: Vec<BrowserFile>,
         other_files: Vec<BrowserFile>,
     },
     Empty,
@@ -109,6 +114,7 @@ pub enum SelectionAgreement<T> {
 pub struct SelectionTypeCounts {
     pub folders: u64,
     pub images: u64,
+    pub videos: usize,
     pub other_files: u64,
 }
 
@@ -219,10 +225,11 @@ impl<'a> BrowseService<'a> {
             .filter(|indexed| is_direct_child(&indexed.node.relative_path, folder_path.as_ref()))
             .cloned()
             .collect::<Vec<_>>();
-        let (images, other_files) = split_files(direct, sort);
-        if !images.is_empty() || !other_files.is_empty() {
+        let (images, videos, other_files) = split_files(direct, sort);
+        if !images.is_empty() || !videos.is_empty() || !other_files.is_empty() {
             return Ok(FolderWorkspace::Content {
                 images,
+                videos,
                 other_files,
             });
         }
@@ -261,8 +268,8 @@ impl<'a> BrowseService<'a> {
             .into_iter()
             .filter_map(|(path, folder)| {
                 let files = direct_files_by_parent.remove(&path)?;
-                let (images, other_files) = split_files(files, SearchSort::default());
-                if images.is_empty() && other_files.is_empty() {
+                let (images, videos, other_files) = split_files(files, SearchSort::default());
+                if images.is_empty() && videos.is_empty() && other_files.is_empty() {
                     return None;
                 }
                 let mut review_progress = FolderReviewProgress::default();
@@ -278,6 +285,7 @@ impl<'a> BrowseService<'a> {
                     relative_path: folder.node.relative_path,
                     marker: folder.marker,
                     image_count: images.len() as u64,
+                    video_count: videos.len(),
                     other_file_count: other_files.len() as u64,
                     review_progress,
                     representative_images: images.into_iter().take(4).collect(),
@@ -314,12 +322,13 @@ impl<'a> BrowseService<'a> {
             .into_iter()
             .filter(|indexed| is_in_scope(&indexed.node.relative_path, folder_path.as_ref()))
             .collect::<Vec<_>>();
-        let (images, other_files) = split_files(descendants, SearchSort::default());
-        if images.is_empty() && other_files.is_empty() {
+        let (images, videos, other_files) = split_files(descendants, SearchSort::default());
+        if images.is_empty() && videos.is_empty() && other_files.is_empty() {
             Ok(FolderWorkspace::Empty)
         } else {
             Ok(FolderWorkspace::Content {
                 images,
+                videos,
                 other_files,
             })
         }
@@ -380,6 +389,8 @@ impl<'a> BrowseService<'a> {
                 types.folders = types.folders.saturating_add(1);
             } else if indexed.node.kind.is_image() {
                 types.images = types.images.saturating_add(1);
+            } else if indexed.node.kind == FileKind::Video {
+                types.videos = types.videos.saturating_add(1);
             } else if indexed.node.kind.is_other_file() {
                 types.other_files = types.other_files.saturating_add(1);
             }
@@ -427,19 +438,26 @@ fn agreement<T: Copy + Eq>(mut values: impl Iterator<Item = T>) -> SelectionAgre
     }
 }
 
-fn split_files(nodes: Vec<IndexedNode>, sort: SearchSort) -> (Vec<BrowserFile>, Vec<BrowserFile>) {
+fn split_files(
+    nodes: Vec<IndexedNode>,
+    sort: SearchSort,
+) -> (Vec<BrowserFile>, Vec<BrowserFile>, Vec<BrowserFile>) {
     let mut images = Vec::new();
+    let mut videos = Vec::new();
     let mut other_files = Vec::new();
     for indexed in nodes {
         if indexed.node.kind.is_image() {
             images.push(indexed.into());
+        } else if indexed.node.kind == FileKind::Video {
+            videos.push(indexed.into());
         } else if indexed.node.kind.is_other_file() {
             other_files.push(indexed.into());
         }
     }
     images.sort_by(|left, right| compare_files(left, right, sort));
+    videos.sort_by(|left, right| compare_files(left, right, sort));
     other_files.sort_by(|left, right| compare_files(left, right, sort));
-    (images, other_files)
+    (images, videos, other_files)
 }
 
 fn compare_files(left: &BrowserFile, right: &BrowserFile, sort: SearchSort) -> Ordering {
@@ -475,7 +493,7 @@ fn review_rank(file: &BrowserFile) -> u8 {
 }
 
 fn is_supported_file(kind: FileKind) -> bool {
-    kind.is_image() || kind.is_other_file()
+    kind.is_image() || kind == FileKind::Video || kind.is_other_file()
 }
 
 fn is_direct_child(path: &RelativePath, folder: Option<&RelativePath>) -> bool {

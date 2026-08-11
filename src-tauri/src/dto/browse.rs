@@ -394,6 +394,7 @@ impl From<FolderWorkspace> for FolderWorkspaceDto {
             },
             FolderWorkspace::Content {
                 images,
+                videos: _,
                 other_files,
             } => Self::Content {
                 images: images.into_iter().map(BrowserFileDto::from).collect(),

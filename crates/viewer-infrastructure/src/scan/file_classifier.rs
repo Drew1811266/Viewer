@@ -8,7 +8,8 @@ const UNSUPPORTED_IMAGE_EXTENSIONS: &[&str] = &[
 ];
 
 const VIDEO_EXTENSIONS: &[&str] = &[
-    "mp4", "mov", "m4v", "avi", "mkv", "webm", "wmv", "flv", "mpeg", "mpg",
+    "mp4", "m4v", "mov", "mkv", "webm", "avi", "wmv", "mpg", "mpeg", "ts", "mts", "m2ts", "flv",
+    "ogv", "3gp",
 ];
 
 pub(crate) fn classify_regular_file(path: &Path) -> Option<FileKind> {
@@ -24,7 +25,7 @@ pub(crate) fn classify_regular_file(path: &Path) -> Option<FileKind> {
         Some(value) if UNSUPPORTED_IMAGE_EXTENSIONS.contains(&value) => {
             Some(FileKind::UnsupportedImage)
         }
-        Some(value) if VIDEO_EXTENSIONS.contains(&value) => None,
+        Some(value) if VIDEO_EXTENSIONS.contains(&value) => Some(FileKind::Video),
         _ => Some(FileKind::Other),
     }
 }
@@ -33,4 +34,33 @@ pub(crate) fn is_ignored_entry_name(name: &OsStr) -> bool {
     let name = name.to_string_lossy();
     let lowercase = name.to_ascii_lowercase();
     name.starts_with('.') || matches!(lowercase.as_str(), "thumbs.db" | "desktop.ini")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::classify_regular_file;
+    use std::path::Path;
+    use viewer_domain::file::FileKind;
+
+    #[test]
+    fn common_local_video_extensions_are_candidates() {
+        for name in [
+            "a.mp4", "a.m4v", "a.mov", "a.mkv", "a.webm", "a.avi", "a.wmv", "a.mpg", "a.mpeg",
+            "a.ts", "a.mts", "a.m2ts", "a.flv", "a.ogv", "a.3gp",
+        ] {
+            assert_eq!(
+                classify_regular_file(Path::new(name)),
+                Some(FileKind::Video),
+                "classified {name} incorrectly"
+            );
+        }
+    }
+
+    #[test]
+    fn video_candidate_extensions_follow_case_insensitive_classifier_convention() {
+        assert_eq!(
+            classify_regular_file(Path::new("CLIP.M2TS")),
+            Some(FileKind::Video)
+        );
+    }
 }

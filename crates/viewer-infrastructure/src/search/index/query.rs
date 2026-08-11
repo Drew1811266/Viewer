@@ -15,10 +15,18 @@ impl SessionIndex {
         let connection = self.lock_connection();
         connection
             .query_row(
-                "SELECT entity_id, relative_path, kind, size, modified_ns,
-                        review_state, favorite, image_width, image_height,
-                        image_status, text_status
-                 FROM nodes WHERE entity_id = ?1",
+                "SELECT nodes.entity_id, nodes.relative_path, nodes.kind, nodes.size,
+                        nodes.modified_ns, nodes.review_state, nodes.favorite,
+                        nodes.image_width, nodes.image_height, nodes.image_status,
+                        nodes.text_status, video_metadata.duration_us,
+                        video_metadata.display_width, video_metadata.display_height,
+                        video_metadata.rotation_degrees,
+                        video_metadata.frame_rate_millihertz, video_metadata.video_codec,
+                        video_metadata.audio_codec, video_metadata.probe_status,
+                        video_metadata.failure_kind, video_metadata.updated_generation
+                 FROM nodes
+                 LEFT JOIN video_metadata ON video_metadata.node_id = nodes.entity_id
+                 WHERE nodes.entity_id = ?1",
                 [entity_id.to_string()],
                 read_indexed_node,
             )
@@ -97,11 +105,19 @@ impl BrowseIndexPort for SessionIndex {
         let connection = self.lock_connection();
         let mut statement = connection
             .prepare_cached(
-                "SELECT entity_id, relative_path, kind, size, modified_ns,
-                        review_state, favorite, image_width, image_height,
-                        image_status, text_status
+                "SELECT nodes.entity_id, nodes.relative_path, nodes.kind, nodes.size,
+                        nodes.modified_ns, nodes.review_state, nodes.favorite,
+                        nodes.image_width, nodes.image_height, nodes.image_status,
+                        nodes.text_status, video_metadata.duration_us,
+                        video_metadata.display_width, video_metadata.display_height,
+                        video_metadata.rotation_degrees,
+                        video_metadata.frame_rate_millihertz, video_metadata.video_codec,
+                        video_metadata.audio_codec, video_metadata.probe_status,
+                        video_metadata.failure_kind, video_metadata.updated_generation
                  FROM nodes
-                 ORDER BY relative_path COLLATE NOCASE, relative_path, entity_id",
+                 LEFT JOIN video_metadata ON video_metadata.node_id = nodes.entity_id
+                 ORDER BY nodes.relative_path COLLATE NOCASE, nodes.relative_path,
+                          nodes.entity_id",
             )
             .map_err(SessionIndexError::from)?;
         statement

@@ -231,10 +231,19 @@ fn load_candidates(
     query: &SearchQuery,
 ) -> Result<Vec<Candidate>, SessionIndexError> {
     let mut sql = String::from(
-        "SELECT entity_id, relative_path, kind, size, modified_ns,
-                review_state, favorite, image_width, image_height,
-                image_status, text_status, name
-         FROM nodes WHERE 1 = 1",
+        "SELECT nodes.entity_id, nodes.relative_path, nodes.kind, nodes.size,
+                nodes.modified_ns, nodes.review_state, nodes.favorite,
+                nodes.image_width, nodes.image_height, nodes.image_status,
+                nodes.text_status, video_metadata.duration_us,
+                video_metadata.display_width, video_metadata.display_height,
+                video_metadata.rotation_degrees,
+                video_metadata.frame_rate_millihertz, video_metadata.video_codec,
+                video_metadata.audio_codec, video_metadata.probe_status,
+                video_metadata.failure_kind, video_metadata.updated_generation,
+                nodes.name
+         FROM nodes
+         LEFT JOIN video_metadata ON video_metadata.node_id = nodes.entity_id
+         WHERE 1 = 1",
     );
     let mut values = Vec::<Value>::new();
     if let SearchScope::Subtree(root) = query.scope {
@@ -309,7 +318,7 @@ fn load_candidates(
     let mut statement = connection.prepare(&sql)?;
     let rows = statement.query_map(params_from_iter(values.iter()), |row| {
         let indexed = read_indexed_node(row)?;
-        let name = row.get(11)?;
+        let name = row.get(21)?;
         let group_relative_path = parent_path(&indexed.node.relative_path);
         Ok(Candidate {
             indexed,

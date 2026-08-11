@@ -55,7 +55,6 @@ impl OperationProjectionPort for SessionIndex {
         let transaction = connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(|_| OperationProjectionError::Unavailable)?;
-
         for copy in copies {
             if !node_matches(&transaction, &copy.source)? {
                 return Err(OperationProjectionError::Stale);
@@ -140,6 +139,9 @@ impl OperationProjectionPort for SessionIndex {
         let mut connection = self.lock_connection();
         let transaction = connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(|_| OperationProjectionError::Unavailable)?;
+        transaction
+            .execute_batch("PRAGMA defer_foreign_keys = ON;")
             .map_err(|_| OperationProjectionError::Unavailable)?;
         for mapping in moves {
             if !node_matches(&transaction, &mapping.source)? {
@@ -251,6 +253,14 @@ impl OperationProjectionPort for SessionIndex {
                         ],
                     )
                     .map_err(|_| OperationProjectionError::Unavailable)?;
+                if destination.entity_id.to_string() != row.entity_id {
+                    transaction
+                        .execute(
+                            "UPDATE video_metadata SET node_id = ?2 WHERE node_id = ?1",
+                            params![&row.entity_id, destination.entity_id.to_string()],
+                        )
+                        .map_err(|_| OperationProjectionError::Unavailable)?;
+                }
             } else {
                 transaction
                     .execute(

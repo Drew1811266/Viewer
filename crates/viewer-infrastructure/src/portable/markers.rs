@@ -672,15 +672,7 @@ fn push_placeholders(sql: &mut String, count: usize) {
 }
 
 fn encode_kind(kind: FileKind) -> i64 {
-    match kind {
-        FileKind::Directory => 0,
-        FileKind::Jpeg => 1,
-        FileKind::Png => 2,
-        FileKind::Markdown => 3,
-        FileKind::Text => 4,
-        FileKind::UnsupportedImage => 5,
-        FileKind::Other => 6,
-    }
+    kind.encode()
 }
 
 fn decode_kind(value: i64) -> rusqlite::Result<FileKind> {
@@ -692,6 +684,7 @@ fn decode_kind(value: i64) -> rusqlite::Result<FileKind> {
         4 => Ok(FileKind::Text),
         5 => Ok(FileKind::UnsupportedImage),
         6 => Ok(FileKind::Other),
+        7 => Ok(FileKind::Video),
         _ => Err(persisted_error("kind")),
     }
 }

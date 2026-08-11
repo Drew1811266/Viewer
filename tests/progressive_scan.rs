@@ -124,6 +124,7 @@ async fn run_and_assert_scan(root: &std::path::Path) {
         [
             "README",
             "archive.zip",
+            "ignored.MOV",
             "ignored.pdf",
             "notes.txt",
             "poster.WEBP",
@@ -135,12 +136,12 @@ async fn run_and_assert_scan(root: &std::path::Path) {
     assert!(files.contains(&("poster.WEBP".into(), FileKind::UnsupportedImage)));
     assert!(files.contains(&("archive.zip".into(), FileKind::Other)));
     assert!(files.contains(&("README".into(), FileKind::Other)));
-    assert!(!files.iter().any(|(path, _)| path == "ignored.MOV"));
+    assert!(files.contains(&("ignored.MOV".into(), FileKind::Video)));
     assert!(!files.iter().any(|(path, _)| path == "Thumbs.db"));
     assert!(!files.iter().any(|(path, _)| path == "desktop.ini"));
     let totals = finished.expect("finished event");
     assert_eq!(totals.folders, 3);
-    assert_eq!(totals.files, 8);
+    assert_eq!(totals.files, 9);
     assert_eq!(totals.failed, 0);
     assert!(failed_items.is_empty());
 }

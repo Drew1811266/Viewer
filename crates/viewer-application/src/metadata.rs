@@ -2,6 +2,7 @@ use std::collections::HashSet;
 use viewer_domain::{
     EntityId, OperationId, RelativePath,
     file::{FileKind, FileNode, ImageIndexStatus, ImageMetadata, ReviewState, TextIndexStatus},
+    video::VideoMetadata,
 };
 
 pub use viewer_domain::{file::Marker, search::IndexProgress};
@@ -83,6 +84,7 @@ pub struct IndexedNode {
     pub node: FileNode,
     pub marker: Marker,
     pub image_metadata: Option<ImageMetadata>,
+    pub video_metadata: Option<VideoMetadata>,
     pub image_status: ImageIndexStatus,
     pub text_status: TextIndexStatus,
 }

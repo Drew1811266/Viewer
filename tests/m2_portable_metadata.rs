@@ -396,12 +396,13 @@ fn markers_keep_review_and_favorite_independent_for_files_and_folders() {
 }
 
 #[test]
-fn markers_round_trip_unsupported_images_and_other_files() {
+fn markers_round_trip_appended_file_kinds() {
     let project = TempDir::new().unwrap();
     let store = writable_marker_store(&project);
     let targets = [
         marker_target("assets/source.psd", FileKind::UnsupportedImage),
         marker_target("assets/license.pdf", FileKind::Other),
+        marker_target("assets/clip.mp4", FileKind::Video),
     ];
     let patch = MarkerPatch {
         review: ReviewPatch::Unchanged,
@@ -423,7 +424,7 @@ fn markers_round_trip_unsupported_images_and_other_files() {
             .iter()
             .map(|marker| marker.kind)
             .collect::<Vec<_>>(),
-        [FileKind::Other, FileKind::UnsupportedImage]
+        [FileKind::Video, FileKind::Other, FileKind::UnsupportedImage,]
     );
 }
 

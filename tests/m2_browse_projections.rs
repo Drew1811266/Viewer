@@ -250,6 +250,7 @@ fn selection_info_aggregates_relative_paths_size_types_and_marker_agreement() {
         SelectionTypeCounts {
             folders: 0,
             images: 2,
+            videos: 0,
             other_files: 2,
         }
     );
@@ -284,4 +285,27 @@ fn selection_info_aggregates_relative_paths_size_types_and_marker_agreement() {
     let empty = service.selection_info(&[]).unwrap();
     assert_eq!(empty.common_review, SelectionAgreement::NoneSelected);
     assert_eq!(empty.common_favorite, SelectionAgreement::NoneSelected);
+}
+
+#[test]
+fn selection_info_counts_videos_separately_from_other_files() {
+    let project = IndexedProject::new(&[
+        ("clip.mp4", FileKind::Video, 123),
+        ("notes.txt", FileKind::Text, 7),
+    ]);
+    let service = BrowseService::new(&project.index);
+
+    let selection = service
+        .selection_info(&[project.id("clip.mp4"), project.id("notes.txt")])
+        .unwrap();
+
+    assert_eq!(
+        selection.types,
+        SelectionTypeCounts {
+            folders: 0,
+            images: 0,
+            videos: 1,
+            other_files: 1,
+        }
+    );
 }

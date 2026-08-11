@@ -11,9 +11,23 @@ pub enum FileKind {
     Text,
     UnsupportedImage,
     Other,
+    Video,
 }
 
 impl FileKind {
+    pub const fn encode(self) -> i64 {
+        match self {
+            Self::Directory => 0,
+            Self::Jpeg => 1,
+            Self::Png => 2,
+            Self::Markdown => 3,
+            Self::Text => 4,
+            Self::UnsupportedImage => 5,
+            Self::Other => 6,
+            Self::Video => 7,
+        }
+    }
+
     pub const fn is_image(self) -> bool {
         matches!(self, Self::Jpeg | Self::Png | Self::UnsupportedImage)
     }
@@ -46,6 +60,19 @@ mod tests {
         assert!(FileKind::Other.is_other_file());
         assert!(!FileKind::Other.is_previewable_text());
         assert!(!FileKind::Directory.is_other_file());
+        assert!(!FileKind::Video.is_other_file());
+    }
+
+    #[test]
+    fn video_uses_new_stable_value_without_shifting_existing_kinds() {
+        assert_eq!(FileKind::Directory.encode(), 0);
+        assert_eq!(FileKind::Jpeg.encode(), 1);
+        assert_eq!(FileKind::Png.encode(), 2);
+        assert_eq!(FileKind::Markdown.encode(), 3);
+        assert_eq!(FileKind::Text.encode(), 4);
+        assert_eq!(FileKind::UnsupportedImage.encode(), 5);
+        assert_eq!(FileKind::Other.encode(), 6);
+        assert_eq!(FileKind::Video.encode(), 7);
     }
 }
 

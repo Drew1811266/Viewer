@@ -9,6 +9,7 @@ use viewer_application::metadata::{IndexedNode, Marker};
 use viewer_domain::{
     EntityId, RelativePath,
     file::{FileKind, FileNode, ImageIndexStatus, ImageMetadata, ReviewState, TextIndexStatus},
+    video::{VideoFailureKind, VideoMetadata, VideoProbeStatus},
 };
 
 #[derive(Debug, thiserror::Error)]
@@ -46,15 +47,7 @@ pub struct SessionIndex {
 }
 
 pub(super) fn encode_kind(kind: FileKind) -> i64 {
-    match kind {
-        FileKind::Directory => 0,
-        FileKind::Jpeg => 1,
-        FileKind::Png => 2,
-        FileKind::Markdown => 3,
-        FileKind::Text => 4,
-        FileKind::UnsupportedImage => 5,
-        FileKind::Other => 6,
-    }
+    kind.encode()
 }
 
 pub(super) fn encode_review_state(state: ReviewState) -> i64 {
@@ -94,6 +87,20 @@ fn decode_text_status(value: i64) -> rusqlite::Result<TextIndexStatus> {
     }
 }
 
+fn decode_video_failure(value: i64) -> rusqlite::Result<VideoFailureKind> {
+    match value {
+        0 => Ok(VideoFailureKind::Unsupported),
+        1 => Ok(VideoFailureKind::Damaged),
+        2 => Ok(VideoFailureKind::Unreadable),
+        3 => Ok(VideoFailureKind::Missing),
+        4 => Ok(VideoFailureKind::EngineInitialization),
+        5 => Ok(VideoFailureKind::DecodeFallbackFailed),
+        6 => Ok(VideoFailureKind::RenderSurface),
+        7 => Ok(VideoFailureKind::ThumbnailUnavailable),
+        _ => Err(persisted_error("video_failure_kind", value)),
+    }
+}
+
 pub(super) fn decode_kind(value: i64) -> rusqlite::Result<FileKind> {
     match value {
         0 => Ok(FileKind::Directory),
@@ -103,6 +110,7 @@ pub(super) fn decode_kind(value: i64) -> rusqlite::Result<FileKind> {
         4 => Ok(FileKind::Text),
         5 => Ok(FileKind::UnsupportedImage),
         6 => Ok(FileKind::Other),
+        7 => Ok(FileKind::Video),
         _ => Err(persisted_error("kind", value)),
     }
 }
@@ -143,6 +151,7 @@ pub(super) fn read_indexed_node(row: &rusqlite::Row<'_>) -> rusqlite::Result<Ind
         (None, None) => None,
         _ => return Err(persisted_error("image_dimensions", "partial")),
     };
+    let video_metadata = read_video_metadata(row)?;
     Ok(IndexedNode {
         node,
         marker: Marker {
@@ -150,9 +159,61 @@ pub(super) fn read_indexed_node(row: &rusqlite::Row<'_>) -> rusqlite::Result<Ind
             favorite: row.get(6)?,
         },
         image_metadata,
+        video_metadata,
         image_status: decode_image_status(row.get(9)?)?,
         text_status: decode_text_status(row.get(10)?)?,
     })
+}
+
+fn read_video_metadata(row: &rusqlite::Row<'_>) -> rusqlite::Result<Option<VideoMetadata>> {
+    let Some(probe_status) = row.get::<_, Option<i64>>(18)? else {
+        return Ok(None);
+    };
+    let failure_kind = row.get::<_, Option<i64>>(19)?;
+    let probe_status = match (probe_status, failure_kind) {
+        (0, None) => VideoProbeStatus::Pending,
+        (1, None) => VideoProbeStatus::Ready,
+        (2, Some(failure)) => VideoProbeStatus::Failed(decode_video_failure(failure)?),
+        (status, failure) => {
+            return Err(persisted_error(
+                "video_probe_status",
+                format!("{status}/{failure:?}"),
+            ));
+        }
+    };
+    let duration_us = row
+        .get::<_, Option<i64>>(11)?
+        .map(|value| u64::try_from(value).map_err(|_| persisted_error("video_duration_us", value)))
+        .transpose()?;
+    let display_width = read_optional_u32(row, 12, "video_display_width")?;
+    let display_height = read_optional_u32(row, 13, "video_display_height")?;
+    let persisted_rotation = row.get::<_, i64>(14)?;
+    let rotation_degrees = i16::try_from(persisted_rotation)
+        .map_err(|_| persisted_error("video_rotation_degrees", persisted_rotation))?;
+    let frame_rate_millihertz = read_optional_u32(row, 15, "video_frame_rate_millihertz")?;
+    let persisted_generation = row.get::<_, i64>(20)?;
+    u64::try_from(persisted_generation)
+        .map_err(|_| persisted_error("video_updated_generation", persisted_generation))?;
+    Ok(Some(VideoMetadata {
+        duration_us,
+        display_width,
+        display_height,
+        rotation_degrees,
+        frame_rate_millihertz,
+        video_codec: row.get(16)?,
+        audio_codec: row.get(17)?,
+        probe_status,
+    }))
+}
+
+fn read_optional_u32(
+    row: &rusqlite::Row<'_>,
+    index: usize,
+    field: &'static str,
+) -> rusqlite::Result<Option<u32>> {
+    row.get::<_, Option<i64>>(index)?
+        .map(|value| u32::try_from(value).map_err(|_| persisted_error(field, value)))
+        .transpose()
 }
 
 fn read_count(row: &rusqlite::Row<'_>, index: usize) -> rusqlite::Result<u64> {

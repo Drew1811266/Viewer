@@ -2,6 +2,7 @@ pub mod file;
 pub mod image;
 pub mod operation;
 pub mod search;
+pub mod video;
 
 use serde::{Deserialize, Deserializer, Serialize};
 use std::{
@@ -52,6 +53,8 @@ id_type!(ProjectId);
 id_type!(SessionId);
 id_type!(EntityId);
 id_type!(ImageRequestId);
+id_type!(VideoSessionId);
+id_type!(VideoThumbnailRequestId);
 id_type!(TaskId);
 id_type!(OperationId);
 
@@ -162,5 +165,56 @@ mod tests {
     #[test]
     fn ids_are_distinct() {
         assert_ne!(ProjectId::new().to_string(), ProjectId::new().to_string());
+    }
+
+    #[test]
+    fn video_identifiers_are_uuid_backed_and_round_trip() {
+        let session = VideoSessionId::new();
+        let request = VideoThumbnailRequestId::new();
+
+        assert_eq!(
+            VideoSessionId::from_str(&session.to_string()).unwrap(),
+            session
+        );
+        assert_eq!(
+            VideoThumbnailRequestId::from_str(&request.to_string()).unwrap(),
+            request
+        );
+        assert_ne!(session.to_string(), request.to_string());
+    }
+
+    #[test]
+    fn video_metadata_keeps_optional_properties_and_normalized_failures() {
+        use crate::video::{VideoFailureKind, VideoMetadata, VideoProbeStatus};
+
+        let metadata = VideoMetadata {
+            duration_us: None,
+            display_width: None,
+            display_height: None,
+            rotation_degrees: -90,
+            frame_rate_millihertz: None,
+            video_codec: Some("h264".to_owned()),
+            audio_codec: None,
+            probe_status: VideoProbeStatus::Failed(VideoFailureKind::Damaged),
+        };
+
+        assert_eq!(metadata.duration_us, None);
+        assert_eq!(metadata.rotation_degrees, -90);
+        assert_eq!(
+            metadata.probe_status,
+            VideoProbeStatus::Failed(VideoFailureKind::Damaged)
+        );
+
+        let all_failures = [
+            VideoFailureKind::Unsupported,
+            VideoFailureKind::Damaged,
+            VideoFailureKind::Unreadable,
+            VideoFailureKind::Missing,
+            VideoFailureKind::EngineInitialization,
+            VideoFailureKind::DecodeFallbackFailed,
+            VideoFailureKind::RenderSurface,
+            VideoFailureKind::ThumbnailUnavailable,
+        ];
+        assert_eq!(all_failures.len(), 8);
     }
 }

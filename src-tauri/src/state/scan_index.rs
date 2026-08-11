@@ -361,7 +361,10 @@ pub(crate) async fn rebuild_derived_nodes(
                     }
                 }
             },
-            FileKind::Directory | FileKind::UnsupportedImage | FileKind::Other => {
+            FileKind::Directory
+            | FileKind::UnsupportedImage
+            | FileKind::Other
+            | FileKind::Video => {
                 unreachable!("non-derived kinds were filtered out")
             }
         }

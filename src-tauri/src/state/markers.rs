@@ -147,7 +147,8 @@ fn validated_marker_target(
         | FileKind::Markdown
         | FileKind::Text
         | FileKind::UnsupportedImage
-        | FileKind::Other => metadata.is_file(),
+        | FileKind::Other
+        | FileKind::Video => metadata.is_file(),
     };
     if !kind_matches || entity_id_for_metadata(&metadata, &node.relative_path) != node.entity_id {
         return None;

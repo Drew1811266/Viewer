@@ -12,6 +12,7 @@ use viewer_application::{
 use viewer_domain::{
     EntityId, RelativePath,
     file::{FileKind, FileNode, ImageIndexStatus, ImageMetadata, ReviewState, TextIndexStatus},
+    video::{VideoMetadata, VideoProbeStatus},
 };
 use viewer_infrastructure::{
     portable::{PortableMarkerStore, PortableProjectMetadata},
@@ -760,8 +761,49 @@ fn appended_kinds_participate_in_copy_move_and_rename_projections() {
 }
 
 #[test]
+fn identity_changing_video_move_rekeys_companion_metadata_atomically() {
+    let directory = TempDir::new().unwrap();
+    let index = SessionIndex::open(directory.path().join("session.sqlite")).unwrap();
+    let source = node(EntityId::new(), "clip.mp4", FileKind::Video);
+    let destination = FileNode {
+        entity_id: EntityId::new(),
+        relative_path: path("moved.mp4"),
+        ..source.clone()
+    };
+    let metadata = VideoMetadata {
+        duration_us: Some(1_000_000),
+        display_width: Some(640),
+        display_height: Some(480),
+        rotation_degrees: 0,
+        frame_rate_millihertz: None,
+        video_codec: Some("h264".to_owned()),
+        audio_codec: None,
+        probe_status: VideoProbeStatus::Ready,
+    };
+    index.upsert_batch(std::slice::from_ref(&source)).unwrap();
+    index
+        .replace_video_metadata(source.entity_id, &metadata, 3)
+        .unwrap();
+
+    index
+        .apply_move(
+            &[FileMoveProjection {
+                source: source.clone(),
+                destination: destination.clone(),
+            }],
+            true,
+        )
+        .unwrap();
+
+    assert_eq!(index.indexed_node(source.entity_id).unwrap(), None);
+    let moved = index.indexed_node(destination.entity_id).unwrap().unwrap();
+    assert_eq!(moved.node, destination);
+    assert_eq!(moved.video_metadata, Some(metadata));
+}
+
+#[test]
 fn unknown_persisted_kinds_still_reject_operation_projections() {
-    for invalid_kind in [-1_i64, 7] {
+    for invalid_kind in [-1_i64, 8] {
         let directory = TempDir::new().unwrap();
         let database = directory.path().join("session.sqlite");
         let index = SessionIndex::open(&database).unwrap();

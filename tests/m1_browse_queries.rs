@@ -3,6 +3,7 @@ use viewer_application::browse::{BrowseService, FolderWorkspace};
 use viewer_domain::{
     EntityId, RelativePath,
     file::{FileKind, FileNode},
+    video::{VideoMetadata, VideoProbeStatus},
 };
 use viewer_infrastructure::search::index::SessionIndex;
 
@@ -94,6 +95,7 @@ fn content_query_splits_images_and_other_files() {
         ("id-001/01.jpg", FileKind::Jpeg),
         ("id-001/02.png", FileKind::Png),
         ("id-001/source.webp", FileKind::UnsupportedImage),
+        ("id-001/preview.mp4", FileKind::Video),
         ("id-001/notes.txt", FileKind::Text),
         ("id-001/license.pdf", FileKind::Other),
     ]);
@@ -104,12 +106,15 @@ fn content_query_splits_images_and_other_files() {
         .unwrap();
     let FolderWorkspace::Content {
         images,
+        videos,
         other_files,
     } = workspace
     else {
         panic!("id-001 should be a content workspace")
     };
     assert_eq!(names(&images), ["01.jpg", "02.png", "source.webp"]);
+    assert_eq!(names(&videos), ["preview.mp4"]);
+    assert_eq!(videos[0].video_metadata, None);
     assert_eq!(names(&other_files), ["license.pdf", "notes.txt"]);
 
     let root = service.folder_workspace(None).unwrap();
@@ -117,6 +122,7 @@ fn content_query_splits_images_and_other_files() {
         panic!("root should summarize its content folder")
     };
     assert_eq!(folders[0].image_count, 3);
+    assert_eq!(folders[0].video_count, 1);
     assert_eq!(
         names(&folders[0].representative_images),
         ["01.jpg", "02.png", "source.webp"]
@@ -134,12 +140,14 @@ fn project_root_can_be_a_content_workspace_and_empty_folders_remain_visible() {
 
     let FolderWorkspace::Content {
         images,
+        videos,
         other_files,
     } = service.folder_workspace(None).unwrap()
     else {
         panic!("root should show its direct content")
     };
     assert_eq!(names(&images), ["front.jpg"]);
+    assert!(videos.is_empty());
     assert_eq!(names(&other_files), ["README.txt"]);
     assert!(
         service
@@ -186,6 +194,7 @@ fn aggregate_workspace_is_explicit_and_collects_descendant_files_only() {
         ("catalog", FileKind::Directory),
         ("catalog/id-1", FileKind::Directory),
         ("catalog/id-1/front.jpg", FileKind::Jpeg),
+        ("catalog/id-1/clip.webm", FileKind::Video),
         ("catalog/id-2", FileKind::Directory),
         ("catalog/id-2/prompt.txt", FileKind::Text),
         ("outside", FileKind::Directory),
@@ -195,6 +204,7 @@ fn aggregate_workspace_is_explicit_and_collects_descendant_files_only() {
 
     let FolderWorkspace::Content {
         images,
+        videos,
         other_files,
     } = service
         .aggregate_workspace(Some(project.id("catalog")))
@@ -204,7 +214,35 @@ fn aggregate_workspace_is_explicit_and_collects_descendant_files_only() {
     };
 
     assert_eq!(names(&images), ["front.jpg"]);
+    assert_eq!(names(&videos), ["clip.webm"]);
     assert_eq!(names(&other_files), ["prompt.txt"]);
+}
+
+#[test]
+fn content_query_projects_video_metadata_from_the_companion_table() {
+    let project = IndexedProject::new(&[("clip.mp4", FileKind::Video)]);
+    let metadata = VideoMetadata {
+        duration_us: None,
+        display_width: Some(1_080),
+        display_height: Some(1_920),
+        rotation_degrees: 90,
+        frame_rate_millihertz: None,
+        video_codec: Some("hevc".to_owned()),
+        audio_codec: None,
+        probe_status: VideoProbeStatus::Ready,
+    };
+    project
+        .index
+        .replace_video_metadata(project.id("clip.mp4"), &metadata, 9)
+        .unwrap();
+    let service = BrowseService::new(&project.index);
+
+    let FolderWorkspace::Content { videos, .. } = service.folder_workspace(None).unwrap() else {
+        panic!("root should expose its video")
+    };
+
+    assert_eq!(videos.len(), 1);
+    assert_eq!(videos[0].video_metadata, Some(metadata));
 }
 
 fn names(files: &[viewer_application::browse::BrowserFile]) -> Vec<&str> {

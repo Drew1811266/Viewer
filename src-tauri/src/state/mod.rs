@@ -4,6 +4,7 @@ mod organization;
 mod preview;
 mod scan_index;
 mod session;
+mod video_index;
 
 use common::{
     claim_search_revision, entity_id_for_metadata, invalid_rename_preview, modified_ns,
@@ -15,6 +16,7 @@ pub(crate) use common::{
 };
 pub(crate) use scan_index::rebuild_derived_nodes;
 use scan_index::run_scan;
+pub(crate) use video_index::VideoIndexRuntime;
 
 use crate::{
     dto::{
@@ -56,7 +58,7 @@ use viewer_application::{
         PortableMetadataPort, ReviewPatch,
     },
     scan::{CoordinatedScan, ScanEvent, ScanRequest},
-    scheduler::{TaskClass, TaskCoordinator},
+    scheduler::{DerivedWorkClass, DerivedWorkScheduler, TaskClass, TaskCoordinator},
     undo::{UndoFilePort, UndoReceipt, UndoService, UndoStack},
 };
 use viewer_domain::{
@@ -83,6 +85,7 @@ use viewer_infrastructure::{
     },
     session_cache::{CachedImage, SessionCache},
     text::preview::TextPreviewReader,
+    video_probe::{UnavailableVideoProbe, VideoMetadataProbe},
 };
 use viewer_platform_macos::{
     files::{MacTrashPort, MacVolumePort},
@@ -217,6 +220,7 @@ struct DesktopSession {
     image: Arc<dyn ImagePort>,
     scan_task_id: TaskId,
     scan_task: Option<JoinHandle<Result<(), CommandError>>>,
+    video_index: Arc<VideoIndexRuntime>,
 }
 
 struct UnavailableFileUndoPort;
@@ -241,6 +245,8 @@ struct ScanServices {
     portable_store: Option<Arc<PortableMarkerStore>>,
     marker_lock: Arc<Mutex<()>>,
     scan_ready: tokio::sync::watch::Sender<bool>,
+    derived_scheduler: Arc<DerivedWorkScheduler>,
+    video_index: Arc<VideoIndexRuntime>,
 }
 
 struct OrganizationServices {
@@ -262,6 +268,8 @@ pub struct DesktopRuntime {
     text_reader: Arc<dyn TextPreviewPort>,
     clock: Arc<dyn ClockPort>,
     marker_projection_factory: Arc<dyn DesktopMarkerProjectionFactory>,
+    video_probe: Arc<dyn VideoMetadataProbe>,
+    derived_scheduler: Arc<DerivedWorkScheduler>,
     image_requests: Arc<StdMutex<preview::ImageRequestLifecycles>>,
     session: Mutex<Option<DesktopSession>>,
 }
@@ -289,6 +297,27 @@ impl DesktopRuntime {
             events,
             Arc::new(MacDesktopImageFactory),
             Arc::new(ImageArtifactRegistry::default()),
+        )
+    }
+
+    pub fn new_with_video_probe(
+        cache_base: PathBuf,
+        probe: Arc<dyn ProjectProbePort>,
+        scanner: Arc<dyn ScanPort>,
+        events: Arc<dyn DesktopEventSink>,
+        video_probe: Arc<dyn VideoMetadataProbe>,
+    ) -> Self {
+        Self::new_with_runtime_services(
+            cache_base,
+            probe,
+            scanner,
+            events,
+            Arc::new(MacDesktopImageFactory),
+            Arc::new(ImageArtifactRegistry::default()),
+            ActiveImageSession::default(),
+            Arc::new(SystemClock),
+            Arc::new(SessionMarkerProjectionFactory),
+            video_probe,
         )
     }
 
@@ -330,6 +359,32 @@ impl DesktopRuntime {
             active_image_session,
             Arc::new(SystemClock),
             Arc::new(SessionMarkerProjectionFactory),
+            Arc::new(UnavailableVideoProbe),
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn new_with_media_services(
+        cache_base: PathBuf,
+        probe: Arc<dyn ProjectProbePort>,
+        scanner: Arc<dyn ScanPort>,
+        events: Arc<dyn DesktopEventSink>,
+        image_factory: Arc<dyn DesktopImageFactory>,
+        image_registry: Arc<ImageArtifactRegistry>,
+        active_image_session: ActiveImageSession,
+        video_probe: Arc<dyn VideoMetadataProbe>,
+    ) -> Self {
+        Self::new_with_runtime_services(
+            cache_base,
+            probe,
+            scanner,
+            events,
+            image_factory,
+            image_registry,
+            active_image_session,
+            Arc::new(SystemClock),
+            Arc::new(SessionMarkerProjectionFactory),
+            video_probe,
         )
     }
 
@@ -352,6 +407,7 @@ impl DesktopRuntime {
             ActiveImageSession::default(),
             Arc::new(SystemClock),
             marker_projection_factory,
+            Arc::new(UnavailableVideoProbe),
         )
     }
 
@@ -366,8 +422,10 @@ impl DesktopRuntime {
         active_image_session: ActiveImageSession,
         clock: Arc<dyn ClockPort>,
         marker_projection_factory: Arc<dyn DesktopMarkerProjectionFactory>,
+        video_probe: Arc<dyn VideoMetadataProbe>,
     ) -> Self {
         let coordinator = Arc::new(TaskCoordinator::default());
+        let derived_scheduler = Arc::new(DerivedWorkScheduler::default());
         Self {
             cache_base,
             project_service: ProjectSessionService::new(
@@ -383,6 +441,8 @@ impl DesktopRuntime {
             text_reader: Arc::new(TextPreviewReader),
             clock,
             marker_projection_factory,
+            video_probe,
+            derived_scheduler,
             image_requests: Arc::new(StdMutex::new(preview::ImageRequestLifecycles::default())),
             session: Mutex::new(None),
         }

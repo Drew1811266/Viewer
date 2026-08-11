@@ -7,6 +7,7 @@ use std::{
         atomic::{AtomicUsize, Ordering},
     },
 };
+use tokio_util::sync::CancellationToken;
 use viewer_application::{
     ImageArtifact, ImageBackend, ImageError, ImagePort, ImageRequest, ProjectAccess,
     ProjectOpenError, ProjectProbeError, ProjectProbeOperation, ProjectProbePort, TextEncoding,
@@ -19,15 +20,60 @@ use viewer_desktop::{
 use viewer_domain::{
     EntityId, ImageRequestId, SessionId,
     image::{ImageFormat, ImageProbe, ImageRepresentationKind},
+    video::{VideoMetadata, VideoProbeStatus},
 };
 use viewer_infrastructure::image_cache::ImageArtifactRegistry;
 use viewer_infrastructure::scan::walker::ProjectWalker;
+use viewer_infrastructure::video_probe::{VideoMetadataProbe, VideoProbeError};
 
 struct FixedProbe(ProjectAccess);
 
 impl ProjectProbePort for FixedProbe {
     fn probe(&self, _root: &Path) -> Result<ProjectAccess, ProjectProbeError> {
         Ok(self.0)
+    }
+}
+
+struct BlockedVideoProbe {
+    started: tokio::sync::Notify,
+    release: tokio::sync::Notify,
+    cancellation_observed: std::sync::atomic::AtomicBool,
+}
+
+impl BlockedVideoProbe {
+    fn new() -> Self {
+        Self {
+            started: tokio::sync::Notify::new(),
+            release: tokio::sync::Notify::new(),
+            cancellation_observed: std::sync::atomic::AtomicBool::new(false),
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl VideoMetadataProbe for BlockedVideoProbe {
+    async fn probe(
+        &self,
+        _canonical_path: &Path,
+        cancellation: CancellationToken,
+    ) -> Result<VideoMetadata, VideoProbeError> {
+        self.started.notify_one();
+        tokio::select! {
+            _ = cancellation.cancelled() => {
+                self.cancellation_observed.store(true, Ordering::SeqCst);
+                Err(VideoProbeError::Cancelled)
+            },
+            _ = self.release.notified() => Ok(VideoMetadata {
+                duration_us: Some(2_000_000),
+                display_width: Some(1920),
+                display_height: Some(1080),
+                rotation_degrees: 0,
+                frame_rate_millihertz: Some(30_000),
+                video_codec: Some("h264".into()),
+                audio_codec: None,
+                probe_status: VideoProbeStatus::Ready,
+            }),
+        }
     }
 }
 
@@ -316,6 +362,92 @@ async fn project_scan_commits_progressive_batches_and_close_removes_cache() {
 
     runtime.close_project().await.unwrap();
 
+    assert_eq!(runtime.snapshot().await, None);
+    assert_eq!(fs::read_dir(cache_base.path()).unwrap().count(), 0);
+}
+
+#[tokio::test]
+async fn video_candidate_is_published_pending_before_probe_finishes() {
+    let cache_base = tempfile::tempdir().unwrap();
+    let project = tempfile::tempdir().unwrap();
+    fs::write(project.path().join("clip.mp4"), b"candidate").unwrap();
+    let probe = Arc::new(BlockedVideoProbe::new());
+    let runtime = DesktopRuntime::new_with_video_probe(
+        cache_base.path().to_path_buf(),
+        Arc::new(FixedProbe(ProjectAccess::ReadWrite)),
+        Arc::new(ProjectWalker),
+        Arc::new(RecordingEvents::default()),
+        probe.clone(),
+    );
+
+    runtime.open_project(project.path()).await.unwrap();
+    runtime.wait_for_scan().await.unwrap();
+    let FolderWorkspaceDto::Content {
+        videos_deferred_until_task_9: videos,
+        ..
+    } = runtime.query_folder(None).await.unwrap()
+    else {
+        panic!("root should contain the video candidate")
+    };
+    assert_eq!(videos.len(), 1);
+    assert_eq!(
+        videos[0].video_metadata.as_ref().unwrap().probe_status,
+        VideoProbeStatus::Pending
+    );
+    probe.started.notified().await;
+
+    probe.release.notify_one();
+    let ready = tokio::time::timeout(std::time::Duration::from_secs(1), async {
+        loop {
+            let FolderWorkspaceDto::Content {
+                videos_deferred_until_task_9: videos,
+                ..
+            } = runtime.query_folder(None).await.unwrap()
+            else {
+                panic!("root should remain a content workspace")
+            };
+            if videos[0]
+                .video_metadata
+                .as_ref()
+                .is_some_and(|metadata| metadata.duration_us == Some(2_000_000))
+            {
+                break videos;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("released video metadata should be published");
+    assert_eq!(
+        ready[0].video_metadata.as_ref().unwrap().probe_status,
+        VideoProbeStatus::Ready
+    );
+    runtime.close_project().await.unwrap();
+}
+
+#[tokio::test]
+async fn closing_project_cancels_and_awaits_a_blocked_video_probe() {
+    let cache_base = tempfile::tempdir().unwrap();
+    let project = tempfile::tempdir().unwrap();
+    fs::write(project.path().join("clip.mp4"), b"candidate").unwrap();
+    let probe = Arc::new(BlockedVideoProbe::new());
+    let runtime = DesktopRuntime::new_with_video_probe(
+        cache_base.path().to_path_buf(),
+        Arc::new(FixedProbe(ProjectAccess::ReadWrite)),
+        Arc::new(ProjectWalker),
+        Arc::new(RecordingEvents::default()),
+        probe.clone(),
+    );
+    runtime.open_project(project.path()).await.unwrap();
+    runtime.wait_for_scan().await.unwrap();
+    probe.started.notified().await;
+
+    tokio::time::timeout(std::time::Duration::from_secs(5), runtime.close_project())
+        .await
+        .expect("close must cancel and await the video probe")
+        .unwrap();
+
+    assert!(probe.cancellation_observed.load(Ordering::SeqCst));
     assert_eq!(runtime.snapshot().await, None);
     assert_eq!(fs::read_dir(cache_base.path()).unwrap().count(), 0);
 }

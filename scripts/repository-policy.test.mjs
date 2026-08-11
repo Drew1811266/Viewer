@@ -107,6 +107,7 @@ const directDependencies = [
   'async-trait',
   'blake3',
   'block2',
+  'dispatch2',
   'encoding_rs',
   'getrandom',
   'libc',
@@ -126,9 +127,11 @@ const directDependencies = [
   'rusqlite',
   'serde',
   'serde_json',
+  'sha2',
   'tempfile',
   'thiserror',
   'tokio',
+  'tokio-util',
   'trash',
   'uuid',
   'walkdir',
@@ -765,6 +768,27 @@ test('third-party notices record the locked ammonia version', async () => {
     noticedVersion,
     lockedVersion,
     'THIRD_PARTY_NOTICES.md ammonia version must match Cargo.lock',
+  )
+})
+
+test('third-party notices record the inherited locked dispatch2 dependency', async () => {
+  const [lockfile, notices] = await Promise.all([
+    read('Cargo.lock'),
+    read('THIRD_PARTY_NOTICES.md'),
+  ])
+  const dispatchPackage = normalizeNewlines(lockfile)
+    .split('\n[[package]]\n')
+    .find((block) => /^name = "dispatch2"$/m.test(block))
+  assert.ok(dispatchPackage, 'Cargo.lock must contain dispatch2')
+  const lockedVersion = dispatchPackage.match(/^version = "([^"]+)"$/m)?.[1]
+  assert.ok(lockedVersion, 'Cargo.lock dispatch2 entry must contain a version')
+  const noticedVersion = normalizeNewlines(notices)
+    .match(/^\| `dispatch2` \| ([^|]+?) \|/m)?.[1]
+    .trim()
+  assert.equal(
+    noticedVersion,
+    lockedVersion,
+    'THIRD_PARTY_NOTICES.md dispatch2 version must match Cargo.lock',
   )
 })
 

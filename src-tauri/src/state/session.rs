@@ -182,6 +182,13 @@ impl DesktopRuntime {
                 return Err(error.into());
             }
         };
+        let video_index = Arc::new(VideoIndexRuntime::new(
+            active.clone(),
+            Arc::clone(&self.coordinator),
+            Arc::clone(&index),
+            Arc::clone(&self.video_probe),
+            Arc::clone(&self.derived_scheduler),
+        ));
         let marker_projection = self.marker_projection_factory.create(Arc::clone(&index));
         let mut snapshot = ProjectSnapshot::from(&active);
         let active_session_id = active.session_id;
@@ -253,6 +260,8 @@ impl DesktopRuntime {
                     index: Arc::clone(&index),
                     image: Arc::clone(&image),
                     events: Arc::clone(&self.events),
+                    scheduler: Arc::clone(&self.derived_scheduler),
+                    video_index: Arc::clone(&video_index),
                 }),
             )
             .map_err(|_| operation_backend_unavailable())
@@ -283,6 +292,8 @@ impl DesktopRuntime {
                 portable_store: portable_store.clone(),
                 marker_lock: Arc::clone(&marker_lock),
                 scan_ready,
+                derived_scheduler: Arc::clone(&self.derived_scheduler),
+                video_index: Arc::clone(&video_index),
             },
         ));
         *session = Some(DesktopSession {
@@ -301,6 +312,7 @@ impl DesktopRuntime {
             image,
             scan_task_id,
             scan_task: Some(scan_task),
+            video_index,
         });
         self.active_image_session.set(Some(active_session_id));
         Ok(snapshot)
@@ -319,6 +331,7 @@ impl DesktopRuntime {
         if let Some(operations) = session.operations.take() {
             operations.cancel_and_wait_active().await;
         }
+        session.video_index.cancel_and_wait().await;
         if let Some(mut watcher) = session.watcher.take() {
             watcher.stop().await;
         }

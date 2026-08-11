@@ -40,9 +40,11 @@ pulldown-cmark = { version = "0.13", default-features = false, features = ["html
 rusqlite = { version = "0.40.1", default-features = false, features = ["bundled", "cache"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+sha2 = "0.10"
 tempfile = "3"
 thiserror = "2"
 tokio = { version = "1", features = ["macros", "rt", "sync", "time"] }
+tokio-util = "0.7"
 trash = { version = "5.2.6", default-features = false }
 uuid = { version = "1", features = ["v4", "serde"] }
 walkdir = "2.5.0"

@@ -4138,6 +4138,7 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.18",
  "tokio",
+ "tokio-util",
  "viewer-application",
  "viewer-domain",
  "viewer-infrastructure",
@@ -4170,9 +4171,11 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.18",
  "tokio",
+ "tokio-util",
  "viewer-application",
  "viewer-domain",
  "viewer-test-support",
+ "viewer-video-mpv",
  "walkdir",
 ]
 
@@ -4212,7 +4215,11 @@ name = "viewer-test-support"
 version = "0.1.5"
 dependencies = [
  "async-trait",
+ "serde",
+ "serde_json",
+ "sha2",
  "tempfile",
+ "thiserror 2.0.18",
  "viewer-application",
  "viewer-domain",
 ]
@@ -4221,11 +4228,14 @@ dependencies = [
 name = "viewer-video-mpv"
 version = "0.1.5"
 dependencies = [
+ "libc",
  "libloading 0.8.9",
  "serde",
  "serde_json",
+ "tempfile",
  "thiserror 2.0.18",
  "tokio",
+ "tokio-util",
 ]
 
 [[package]]

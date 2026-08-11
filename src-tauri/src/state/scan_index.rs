@@ -147,6 +147,8 @@ pub(super) async fn run_scan(
         portable_store,
         marker_lock,
         scan_ready,
+        derived_scheduler,
+        video_index,
     } = services;
     let request = ScanRequest {
         session_id: active.session_id,
@@ -164,6 +166,12 @@ pub(super) async fn run_scan(
         Some(event) => Some(event),
         None => incoming.recv().await,
     } {
+        let publication_permit = derived_scheduler
+            .acquire(DerivedWorkClass::FolderPublication)
+            .await;
+        if !coordinator.is_publishable(active.session_id, active.generation) {
+            return Ok(());
+        }
         commit_scan_event(&index, &event)?;
 
         if matches!(event, ScanEvent::Folders { .. } | ScanEvent::Files { .. }) {
@@ -194,6 +202,7 @@ pub(super) async fn run_scan(
             last_progress = Some(Instant::now());
         }
         events.emit_scan(ScanEventDto::from_event(&active, task_id, &event));
+        drop(publication_permit);
     }
 
     match worker.await {
@@ -220,7 +229,7 @@ pub(super) async fn run_scan(
         let _marker_guard = marker_lock.lock().await;
         hydrate_portable_markers(&index, store.as_ref())?;
     }
-    let result = run_derived_indexing(active, coordinator, index, image, events).await;
+    let result = run_derived_indexing(active, coordinator, index, image, events, video_index).await;
     scan_ready.send_replace(true);
     result
 }
@@ -257,12 +266,23 @@ async fn run_derived_indexing(
     index: Arc<SessionIndex>,
     image: Arc<dyn ImagePort>,
     events: Arc<dyn DesktopEventSink>,
+    video_index: Arc<VideoIndexRuntime>,
 ) -> Result<(), CommandError> {
     if !coordinator.is_publishable(active.session_id, active.generation) {
         return Ok(());
     }
     let nodes = BrowseIndexPort::descendants(index.as_ref(), None).map_err(CommandError::from)?;
-    rebuild_derived_nodes(active, coordinator, index, image, events, nodes).await
+    rebuild_derived_nodes(
+        active.clone(),
+        Arc::clone(&coordinator),
+        Arc::clone(&index),
+        image,
+        events,
+        nodes.clone(),
+    )
+    .await?;
+    video_index.enqueue_after_publication(nodes).await;
+    Ok(())
 }
 
 pub(crate) async fn rebuild_derived_nodes(

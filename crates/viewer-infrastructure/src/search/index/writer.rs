@@ -307,6 +307,71 @@ impl SessionIndex {
         Ok(())
     }
 
+    /// Replaces a pending Task 4 anchor only when the complete indexed node is
+    /// still the node that was probed. The single conditional statement keeps
+    /// reconciliation from changing the node between validation and update.
+    pub fn replace_video_metadata_if_current_node(
+        &self,
+        expected_node: &FileNode,
+        metadata: &VideoMetadata,
+        generation: Generation,
+    ) -> Result<bool, SessionIndexError> {
+        let duration_us = metadata
+            .duration_us
+            .map(i64::try_from)
+            .transpose()
+            .map_err(|_| SessionIndexError::InvalidDerivedMetadata(expected_node.entity_id))?;
+        let generation_value = i64::try_from(generation.get())
+            .map_err(|_| SessionIndexError::GenerationOutOfRange(generation.get()))?;
+        let size = i64::try_from(expected_node.size)
+            .map_err(|_| SessionIndexError::SizeOutOfRange(expected_node.size))?;
+        let modified_ns = expected_node.modified_ns.to_string();
+        let (probe_status, failure_kind) = encode_video_probe_status(&metadata.probe_status);
+        let connection = self.lock_connection();
+        let changed = connection.execute(
+            "UPDATE video_metadata SET
+                duration_us = ?2,
+                display_width = ?3,
+                display_height = ?4,
+                rotation_degrees = ?5,
+                frame_rate_millihertz = ?6,
+                video_codec = ?7,
+                audio_codec = ?8,
+                probe_status = ?9,
+                failure_kind = ?10,
+                updated_generation = ?11
+             WHERE node_id = ?1
+               AND probe_status = 0
+               AND updated_generation = ?11
+               AND EXISTS(
+                   SELECT 1 FROM nodes
+                   WHERE entity_id = ?1
+                     AND relative_path = ?12
+                     AND kind = ?13
+                     AND size = ?14
+                     AND modified_ns = ?15
+               )",
+            params![
+                expected_node.entity_id.to_string(),
+                duration_us,
+                metadata.display_width.map(i64::from),
+                metadata.display_height.map(i64::from),
+                i64::from(metadata.rotation_degrees),
+                metadata.frame_rate_millihertz.map(i64::from),
+                metadata.video_codec,
+                metadata.audio_codec,
+                probe_status,
+                failure_kind,
+                generation_value,
+                expected_node.relative_path.as_str(),
+                encode_kind(expected_node.kind),
+                size,
+                modified_ns,
+            ],
+        )?;
+        Ok(changed == 1)
+    }
+
     pub fn hydrate_markers(&self, markers: &[PortableMarker]) -> Result<usize, SessionIndexError> {
         let mut connection = self.lock_connection();
         let transaction = connection.transaction()?;
@@ -859,6 +924,37 @@ mod tests {
                 .unwrap()
                 .video_metadata,
             Some(metadata)
+        );
+    }
+
+    #[test]
+    fn conditional_video_write_rejects_a_changed_same_generation_pending_anchor() {
+        let generation = Generation::new(5);
+        let (_directory, index, entity_id) = index_with_video(generation);
+        let original = index.indexed_node(entity_id).unwrap().unwrap().node;
+        let changed = FileNode {
+            size: original.size + 1,
+            modified_ns: original.modified_ns + 1,
+            ..original.clone()
+        };
+        index
+            .upsert_batch(std::slice::from_ref(&changed), generation)
+            .unwrap();
+
+        let persisted = index
+            .replace_video_metadata_if_current_node(
+                &original,
+                &video_metadata(VideoProbeStatus::Ready),
+                generation,
+            )
+            .unwrap();
+
+        assert!(!persisted);
+        let indexed = index.indexed_node(entity_id).unwrap().unwrap();
+        assert_eq!(indexed.node, changed);
+        assert_eq!(
+            indexed.video_metadata.unwrap().probe_status,
+            VideoProbeStatus::Pending
         );
     }
 

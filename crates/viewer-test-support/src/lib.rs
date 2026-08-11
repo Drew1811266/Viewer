@@ -2,6 +2,7 @@ pub mod faults;
 pub mod image_fixtures;
 pub mod operation_commits;
 pub mod project_fixture;
+pub mod video_fixtures;
 
 use viewer_application::ClockPort;
 

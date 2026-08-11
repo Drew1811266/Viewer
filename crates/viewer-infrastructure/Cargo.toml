@@ -17,8 +17,10 @@ serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
+tokio-util.workspace = true
 viewer-application = { path = "../viewer-application" }
 viewer-domain = { path = "../viewer-domain" }
+viewer-video-mpv = { path = "../viewer-video-mpv" }
 walkdir.workspace = true
 
 [dev-dependencies]

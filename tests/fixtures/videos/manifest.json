@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "fixtures": [
+    {
+      "id": "h264-1080p",
+      "file": "h264-1080p.mp4",
+      "sha256": "972aff59c7183940dbdfae2d906421a26604a10b6bd24432ccf969a028674296",
+      "redistribution": "repository-generated"
+    },
+    {
+      "id": "hevc-portrait",
+      "file": "hevc-portrait.mp4",
+      "sha256": "4e7abaf98918f862ea07c5b529a143cd7f208c3bba7b807dab7995ac8103d0ac",
+      "redistribution": "repository-generated"
+    },
+    {
+      "id": "vfr-step",
+      "file": "vfr-step.mp4",
+      "sha256": "ee9ede284fabb52570fdd51428bf5408fad35de9ef8a4aeaefbcbc577cfcdde9",
+      "redistribution": "repository-generated"
+    }
+  ]
+}

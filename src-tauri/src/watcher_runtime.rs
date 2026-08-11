@@ -1,13 +1,13 @@
 use crate::{
     error::CommandError,
-    state::{DesktopEventSink, rebuild_derived_nodes},
+    state::{DesktopEventSink, VideoIndexRuntime, rebuild_derived_nodes},
 };
 use std::{collections::VecDeque, path::PathBuf, sync::Arc, time::Duration};
 use tokio::{sync::watch, task::JoinHandle};
 use viewer_application::{
     ActiveProject, BrowseIndexPort, ClockPort, ImagePort, WatchSubscription, WatcherError,
     WatcherPort,
-    scheduler::TaskCoordinator,
+    scheduler::{DerivedWorkClass, DerivedWorkScheduler, TaskCoordinator},
     watcher::{ReconcileRequest, WATCHER_DEBOUNCE_MS},
 };
 use viewer_domain::{SessionId, search::Generation};
@@ -25,12 +25,14 @@ pub struct WatcherRuntime {
     task: Option<JoinHandle<()>>,
 }
 
-pub struct WatcherDerivedServices {
-    pub active: ActiveProject,
-    pub coordinator: Arc<TaskCoordinator>,
-    pub index: Arc<SessionIndex>,
-    pub image: Arc<dyn ImagePort>,
-    pub events: Arc<dyn DesktopEventSink>,
+pub(crate) struct WatcherDerivedServices {
+    pub(crate) active: ActiveProject,
+    pub(crate) coordinator: Arc<TaskCoordinator>,
+    pub(crate) index: Arc<SessionIndex>,
+    pub(crate) image: Arc<dyn ImagePort>,
+    pub(crate) events: Arc<dyn DesktopEventSink>,
+    pub(crate) scheduler: Arc<DerivedWorkScheduler>,
+    pub(crate) video_index: Arc<VideoIndexRuntime>,
 }
 
 impl WatcherDerivedServices {
@@ -43,7 +45,7 @@ impl WatcherDerivedServices {
         }
         let nodes =
             BrowseIndexPort::descendants(self.index.as_ref(), None).map_err(CommandError::from)?;
-        let nodes = nodes
+        let nodes: Vec<_> = nodes
             .into_iter()
             .filter(|node| {
                 let absolute = self.active.root.join(node.relative_path.as_str());
@@ -56,15 +58,17 @@ impl WatcherDerivedServices {
             Arc::clone(&self.index),
             Arc::clone(&self.image),
             Arc::clone(&self.events),
-            nodes,
+            nodes.clone(),
         )
-        .await
+        .await?;
+        self.video_index.enqueue_after_publication(nodes).await;
+        Ok(())
     }
 }
 
 impl WatcherRuntime {
     #[allow(clippy::too_many_arguments)]
-    pub fn start(
+    pub(crate) fn start(
         root: PathBuf,
         session_id: SessionId,
         generation: Generation,
@@ -138,7 +142,18 @@ impl WatcherRuntime {
                         }
                         let reason = request.reason;
                         let roots = request.roots.clone();
+                        let publication_permit = if let Some(derived) = derived.as_ref() {
+                            Some(
+                                derived
+                                    .scheduler
+                                    .acquire(DerivedWorkClass::FolderPublication)
+                                    .await,
+                            )
+                        } else {
+                            None
+                        };
                         let result = reconciler.reconcile(request).await;
+                        drop(publication_permit);
                         if *stop_requested.borrow() {
                             return;
                         }
@@ -217,23 +232,26 @@ mod tests {
             atomic::{AtomicBool, AtomicI64, Ordering},
         },
     };
+    use tokio_util::sync::CancellationToken;
     use viewer_application::{
         ImageArtifact, ImageError, ImageRequest, ProjectAccess, WatcherSink,
         metadata::{
             FilePathMove, MarkerChange, MarkerPatch, MarkerRestore, MarkerStoreError, MarkerTarget,
             PortableMarker, PortableMetadataPort,
         },
-        scheduler::TaskCoordinator,
+        scheduler::{DerivedWorkClass, DerivedWorkScheduler, TaskCoordinator},
         watcher::{ReconcileSummary, WatcherEvent},
     };
     use viewer_domain::{
         EntityId, ProjectId, RelativePath,
         file::{FileKind, FileNode, TextIndexStatus},
         image::ImageProbe,
+        video::{VideoMetadata, VideoProbeStatus},
     };
     use viewer_infrastructure::{
         portable::{PortableMarkerStore, PortableProjectMetadata},
         search::index::SessionIndex,
+        video_probe::{VideoMetadataProbe, VideoProbeError},
     };
 
     #[derive(Default)]
@@ -245,6 +263,31 @@ mod tests {
     impl WatchSubscription for TestSubscription {}
 
     struct UnusedImage;
+
+    struct ReadyVideoProbe;
+
+    #[async_trait::async_trait]
+    impl VideoMetadataProbe for ReadyVideoProbe {
+        async fn probe(
+            &self,
+            _canonical_path: &Path,
+            cancellation: CancellationToken,
+        ) -> Result<VideoMetadata, VideoProbeError> {
+            if cancellation.is_cancelled() {
+                return Err(VideoProbeError::Cancelled);
+            }
+            Ok(VideoMetadata {
+                duration_us: Some(1_000_000),
+                display_width: Some(640),
+                display_height: Some(360),
+                rotation_degrees: 0,
+                frame_rate_millihertz: Some(24_000),
+                video_codec: Some("h264".into()),
+                audio_codec: None,
+                probe_status: VideoProbeStatus::Ready,
+            })
+        }
+    }
 
     #[async_trait::async_trait]
     impl ImagePort for UnusedImage {
@@ -397,11 +440,22 @@ mod tests {
         let session_id = SessionId::new();
         let generation = coordinator.begin_session(session_id);
         let clock = Arc::new(AdjustableClock::default());
+        let scheduler = Arc::new(DerivedWorkScheduler::default());
+        let active_probe = scheduler.acquire(DerivedWorkClass::VideoProbe).await;
+        let (launched_probe, mut probe_launch) = tokio::sync::oneshot::channel();
+        let next_probe = {
+            let scheduler = Arc::clone(&scheduler);
+            tokio::spawn(async move {
+                let permit = scheduler.acquire(DerivedWorkClass::VideoProbe).await;
+                let _ = launched_probe.send(());
+                permit
+            })
+        };
         let reconciler = Arc::new(
             ProjectReconciler::new(
                 project.path(),
                 Arc::clone(&coordinator),
-                index,
+                Arc::clone(&index),
                 Some(markers.clone() as Arc<dyn PortableMetadataPort>),
                 clock.clone(),
                 Arc::new(tokio::sync::Mutex::new(())),
@@ -412,6 +466,21 @@ mod tests {
         let watcher = Arc::new(TestWatcher::default());
         let events = Arc::new(RecordingEvents::default());
         let (_scan_ready, scan_ready_rx) = watch::channel(true);
+        let active = ActiveProject {
+            project_id: ProjectId::new(),
+            session_id,
+            generation,
+            root: project.path().canonicalize().unwrap(),
+            display_name: "fixture".into(),
+            access: ProjectAccess::ReadWrite,
+        };
+        let video_index = Arc::new(VideoIndexRuntime::new(
+            active.clone(),
+            Arc::clone(&coordinator),
+            Arc::clone(&index),
+            Arc::new(ReadyVideoProbe),
+            Arc::clone(&scheduler),
+        ));
         let mut runtime = WatcherRuntime::start(
             project.path().to_path_buf(),
             session_id,
@@ -422,7 +491,15 @@ mod tests {
             clock.clone(),
             events.clone(),
             scan_ready_rx,
-            None,
+            Some(WatcherDerivedServices {
+                active,
+                coordinator: Arc::clone(&coordinator),
+                index: Arc::clone(&index),
+                image: Arc::new(UnusedImage),
+                events: Arc::clone(&events) as Arc<dyn DesktopEventSink>,
+                scheduler: Arc::clone(&scheduler),
+                video_index: Arc::clone(&video_index),
+            }),
         )
         .unwrap();
         let old = fs::canonicalize(project.path().join("before.txt")).unwrap();
@@ -438,6 +515,12 @@ mod tests {
             .await
             .expect("reconcile should reach the blocking marker commit");
 
+        drop(active_probe);
+        let probe_launched_during_publication =
+            tokio::time::timeout(Duration::from_millis(250), &mut probe_launch)
+                .await
+                .is_ok();
+
         coordinator.cancel_session(session_id);
         let stopping = tokio::spawn(async move { runtime.stop().await });
         tokio::task::yield_now().await;
@@ -448,6 +531,13 @@ mod tests {
             .await
             .expect("watcher stop should finish after the marker worker drains")
             .unwrap();
+        if !probe_launched_during_publication {
+            tokio::time::timeout(Duration::from_secs(2), probe_launch)
+                .await
+                .expect("next probe should launch after watcher publication")
+                .unwrap();
+        }
+        drop(next_probe.await.unwrap());
 
         assert!(
             !stopped_before_drain,
@@ -456,10 +546,15 @@ mod tests {
         assert!(!marker_finished_before_release);
         assert!(markers.finished.load(Ordering::Acquire));
         assert!(events.0.lock().unwrap().is_empty());
+        assert!(
+            !probe_launched_during_publication,
+            "next probe launched while watcher publication was in progress"
+        );
+        video_index.cancel_and_wait().await;
     }
 
     #[tokio::test]
-    async fn watcher_rebuilds_text_derivation_in_its_single_bounded_session() {
+    async fn watcher_rebuilds_text_and_video_derivation_in_its_single_bounded_session() {
         let project = tempfile::tempdir().unwrap();
         let root = fs::canonicalize(project.path()).unwrap();
         fs::create_dir(root.join(".viewer")).unwrap();
@@ -468,6 +563,7 @@ mod tests {
         let session_id = SessionId::new();
         let generation = coordinator.begin_session(session_id);
         let clock = Arc::new(AdjustableClock::default());
+        let scheduler = Arc::new(DerivedWorkScheduler::default());
         let reconciler = Arc::new(
             ProjectReconciler::new(
                 &root,
@@ -483,6 +579,21 @@ mod tests {
         let watcher = Arc::new(TestWatcher::default());
         let events = Arc::new(RecordingEvents::default());
         let (_scan_ready, scan_ready_rx) = watch::channel(true);
+        let active = ActiveProject {
+            project_id: ProjectId::new(),
+            session_id,
+            generation,
+            root: root.clone(),
+            display_name: "fixture".into(),
+            access: ProjectAccess::ReadWrite,
+        };
+        let video_index = Arc::new(VideoIndexRuntime::new(
+            active.clone(),
+            Arc::clone(&coordinator),
+            Arc::clone(&index),
+            Arc::new(ReadyVideoProbe),
+            Arc::clone(&scheduler),
+        ));
         let mut runtime = WatcherRuntime::start(
             root.clone(),
             session_id,
@@ -494,28 +605,28 @@ mod tests {
             events.clone(),
             scan_ready_rx,
             Some(WatcherDerivedServices {
-                active: ActiveProject {
-                    project_id: ProjectId::new(),
-                    session_id,
-                    generation,
-                    root: root.clone(),
-                    display_name: "fixture".into(),
-                    access: ProjectAccess::ReadWrite,
-                },
+                active,
                 coordinator,
                 index: Arc::clone(&index),
                 image: Arc::new(UnusedImage),
                 events,
+                scheduler,
+                video_index: Arc::clone(&video_index),
             }),
         )
         .unwrap();
         let note = root.join("note.txt");
         fs::write(&note, b"watcher searchable text").unwrap();
+        let clip = root.join("clip.mp4");
+        fs::write(&clip, b"watcher video candidate").unwrap();
         let sink = watcher.sink.lock().unwrap().as_ref().unwrap().clone();
-        sink.send(vec![WatcherEvent::added(note)]).await.unwrap();
+        sink.send(vec![WatcherEvent::added(note), WatcherEvent::added(clip)])
+            .await
+            .unwrap();
         tokio::time::sleep(Duration::from_millis(20)).await;
         clock.0.store(1_000, Ordering::Release);
         let entity_id = filesystem_node(&root, "note.txt").entity_id;
+        let video_entity_id = filesystem_node(&root, "clip.mp4").entity_id;
 
         tokio::time::timeout(Duration::from_secs(2), async {
             loop {
@@ -523,6 +634,14 @@ mod tests {
                     .indexed_node(entity_id)
                     .unwrap()
                     .is_some_and(|node| node.text_status == TextIndexStatus::Ready)
+                    && index
+                        .indexed_node(video_entity_id)
+                        .unwrap()
+                        .is_some_and(|node| {
+                            node.video_metadata.is_some_and(|metadata| {
+                                metadata.probe_status == VideoProbeStatus::Ready
+                            })
+                        })
                 {
                     break;
                 }
@@ -530,7 +649,8 @@ mod tests {
             }
         })
         .await
-        .expect("watcher-derived text should become searchable");
+        .expect("watcher-derived text and video should become ready");
         runtime.stop().await;
+        video_index.cancel_and_wait().await;
     }
 }

@@ -237,7 +237,22 @@ pub fn run() {
             let event_sink = Arc::new(TauriEventSink::default());
             event_sink.attach(app.handle().clone());
             let event_port: Arc<dyn state::DesktopEventSink> = event_sink;
-            let runtime = Arc::new(state::DesktopRuntime::new_with_image_services(
+            let video_probe: Arc<dyn viewer_infrastructure::video_probe::VideoMetadataProbe> = app
+                .path()
+                .resource_dir()
+                .ok()
+                .and_then(|resources| {
+                    viewer_infrastructure::video_probe::VideoProbe::from_bundle_root(&resources)
+                        .ok()
+                })
+                .map(|probe| {
+                    Arc::new(probe)
+                        as Arc<dyn viewer_infrastructure::video_probe::VideoMetadataProbe>
+                })
+                .unwrap_or_else(|| {
+                    Arc::new(viewer_infrastructure::video_probe::UnavailableVideoProbe)
+                });
+            let runtime = Arc::new(state::DesktopRuntime::new_with_media_services(
                 cache_base,
                 Arc::new(viewer_platform_macos::MacProjectProbe),
                 Arc::new(viewer_infrastructure::scan::walker::ProjectWalker),
@@ -245,6 +260,7 @@ pub fn run() {
                 Arc::new(state::MacDesktopImageFactory),
                 Arc::clone(&runtime_registry),
                 runtime_active_image_session.clone(),
+                video_probe,
             ));
             app.manage(runtime);
             app.manage(settings_service);

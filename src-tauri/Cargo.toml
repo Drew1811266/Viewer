@@ -27,6 +27,7 @@ tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
 thiserror.workspace = true
 tokio.workspace = true
+tokio-util.workspace = true
 viewer-application = { path = "../crates/viewer-application" }
 viewer-domain = { path = "../crates/viewer-domain" }
 viewer-infrastructure = { path = "../crates/viewer-infrastructure" }

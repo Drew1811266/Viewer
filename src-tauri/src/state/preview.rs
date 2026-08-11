@@ -148,6 +148,10 @@ impl Drop for ImageRequestLease {
 
 impl DesktopRuntime {
     pub async fn folder_tree(&self) -> Result<Vec<FolderTreeItemDto>, CommandError> {
+        let _permit = self
+            .derived_scheduler
+            .acquire(DerivedWorkClass::CurrentQuery)
+            .await;
         let index = self.active_index().await?;
         BrowseService::new(index.as_ref())
             .folder_tree()
@@ -167,6 +171,10 @@ impl DesktopRuntime {
         folder: Option<EntityId>,
         aggregate: bool,
     ) -> Result<FolderWorkspaceDto, CommandError> {
+        let _permit = self
+            .derived_scheduler
+            .acquire(DerivedWorkClass::CurrentQuery)
+            .await;
         let index = self.active_index().await?;
         let service = BrowseService::new(index.as_ref());
         let result = if aggregate {

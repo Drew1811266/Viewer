@@ -12,6 +12,7 @@ This inventory records the direct third-party dependencies in the Viewer 0.1 loc
 | `async-trait` | 0.1.89 | MIT OR Apache-2.0 | Async Application port traits and adapters | [dtolnay/async-trait](https://github.com/dtolnay/async-trait) | Yes, as expanded code |
 | `blake3` | 1.8.5 | CC0-1.0 OR Apache-2.0 OR Apache-2.0 WITH LLVM-exception | File-operation evidence and recovery fingerprints | [BLAKE3-team/BLAKE3](https://github.com/BLAKE3-team/BLAKE3) | Yes |
 | `block2` | 0.6.2 | MIT | Objective-C completion blocks for Quick Look | [madsmtm/objc2](https://github.com/madsmtm/objc2) | Yes |
+| `dispatch2` | 0.3.1 | Zlib OR Apache-2.0 OR MIT | Schedule native video feasibility rendering work on the macOS main dispatch queue | [madsmtm/objc2](https://github.com/madsmtm/objc2) | Yes, when the video-feasibility feature is enabled |
 | `encoding_rs` | 0.8.35 | (Apache-2.0 OR MIT) AND BSD-3-Clause | Strict UTF-8, UTF-16 and GB18030 text-preview decoding | [hsivonen/encoding_rs](https://github.com/hsivonen/encoding_rs) | Yes |
 | `getrandom` | 0.4.3 | MIT OR Apache-2.0 | Random transaction identifiers and protected temporary names | [rust-random/getrandom](https://github.com/rust-random/getrandom) | Yes |
 | `libc` | 0.2.186 | MIT OR Apache-2.0 | Native filesystem primitives and memory measurements | [rust-lang/libc](https://github.com/rust-lang/libc) | Yes |
@@ -31,6 +32,7 @@ This inventory records the direct third-party dependencies in the Viewer 0.1 loc
 | `serde` | 1.0.228 | MIT OR Apache-2.0 | Typed serialization at IPC and persistence boundaries | [serde-rs/serde](https://github.com/serde-rs/serde) | Yes |
 | `thiserror` | 2.0.18 | MIT OR Apache-2.0 | Structured domain, application and adapter errors | [dtolnay/thiserror](https://github.com/dtolnay/thiserror) | Yes |
 | `tokio` | 1.52.3 | MIT | Async tasks, cancellation, synchronization and timers | [tokio-rs/tokio](https://github.com/tokio-rs/tokio) | Yes |
+| `tokio-util` | 0.7.18 | MIT | Cancellation tokens for bounded video-probe process and session lifecycles | [tokio-rs/tokio](https://github.com/tokio-rs/tokio) | Yes |
 | `trash` | 5.2.6 | MIT | Move user-selected files to the macOS Trash | [ArturKovacs/trash](https://github.com/ArturKovacs/trash) | Yes |
 | `uuid` | 1.24.0 | Apache-2.0 OR MIT | Stable session, file, task and operation identifiers | [uuid-rs/uuid](https://github.com/uuid-rs/uuid) | Yes |
 | `walkdir` | 2.5.0 | Unlicense OR MIT | Bounded recursive project traversal | [BurntSushi/walkdir](https://github.com/BurntSushi/walkdir) | Yes |
@@ -65,6 +67,7 @@ This inventory records the direct third-party dependencies in the Viewer 0.1 loc
 | Package | Version | License | Viewer purpose | Upstream | Distributed |
 | --- | --- | --- | --- | --- | --- |
 | `serde_json` | 1.0.150 | MIT OR Apache-2.0 | Test fixtures, benchmark reports and security configuration tests | [serde-rs/json](https://github.com/serde-rs/json) | No, test only |
+| `sha2` | 0.10.9 | MIT OR Apache-2.0 | Verify immutable video-fixture SHA-256 identities | [RustCrypto/hashes](https://github.com/RustCrypto/hashes) | No, test only |
 | `tempfile` | 3.27.0 | MIT OR Apache-2.0 | Isolated filesystem and crash-recovery tests | [Stebalien/tempfile](https://github.com/Stebalien/tempfile) | No, test only |
 | `@testing-library/jest-dom` | 6.9.1 | MIT | DOM assertions | [testing-library/jest-dom](https://github.com/testing-library/jest-dom) | No, test only |
 | `@testing-library/react` | 16.3.2 | MIT | React component tests | [testing-library/react-testing-library](https://github.com/testing-library/react-testing-library) | No, test only |

@@ -4,17 +4,24 @@ use viewer_application::metadata::{FilePathMove, PortableMarker};
 use viewer_domain::{
     EntityId, RelativePath,
     file::{FileKind, FileNode, ImageIndexStatus, ImageMetadata, ReviewState},
+    search::Generation,
     video::{VideoFailureKind, VideoMetadata, VideoProbeStatus},
 };
 
 use super::{
-    SessionIndex, SessionIndexError, SessionReconcileSummary, encode_kind, encode_review_state,
-    projection::projection_name, read_node,
+    SessionIndex, SessionIndexError, SessionReconcileSummary, decode_generation, encode_kind,
+    encode_review_state, projection::projection_name, read_node,
 };
 use crate::search::text::TextStatus;
 
 impl SessionIndex {
-    pub fn upsert_batch(&self, nodes: &[FileNode]) -> Result<(), SessionIndexError> {
+    pub fn upsert_batch(
+        &self,
+        nodes: &[FileNode],
+        generation: Generation,
+    ) -> Result<(), SessionIndexError> {
+        let generation_value = i64::try_from(generation.get())
+            .map_err(|_| SessionIndexError::GenerationOutOfRange(generation.get()))?;
         let mut connection = self.lock_connection();
         let transaction = connection.transaction()?;
         {
@@ -32,6 +39,25 @@ impl SessionIndex {
             )?;
             let mut find_parent = transaction
                 .prepare_cached("SELECT entity_id FROM nodes WHERE relative_path = ?1")?;
+            let mut clear_stale_video_metadata = transaction.prepare_cached(
+                "DELETE FROM video_metadata
+                 WHERE node_id = ?1
+                   AND (
+                     ?2 != 7
+                     OR EXISTS(
+                       SELECT 1 FROM nodes
+                       WHERE entity_id = ?1
+                         AND (kind != ?2 OR size != ?3 OR modified_ns != ?4)
+                     )
+                   )",
+            )?;
+            let mut anchor_video_generation = transaction.prepare_cached(
+                "INSERT INTO video_metadata(
+                    node_id, rotation_degrees, probe_status, updated_generation
+                 ) VALUES (?1, 0, 0, ?2)
+                 ON CONFLICT(node_id) DO UPDATE SET
+                    updated_generation = excluded.updated_generation",
+            )?;
             for node in nodes {
                 let path = node.relative_path.as_str();
                 let parent_path = path.rsplit_once('/').map(|(parent, _)| parent);
@@ -49,15 +75,27 @@ impl SessionIndex {
                 let name = path.rsplit('/').next().unwrap_or(path);
                 let size = i64::try_from(node.size)
                     .map_err(|_| SessionIndexError::SizeOutOfRange(node.size))?;
+                let kind = encode_kind(node.kind);
+                let modified_ns = node.modified_ns.to_string();
+                clear_stale_video_metadata.execute(params![
+                    node.entity_id.to_string(),
+                    kind,
+                    size,
+                    &modified_ns,
+                ])?;
                 upsert.execute(params![
                     node.entity_id.to_string(),
                     parent_id,
                     path,
                     name,
-                    encode_kind(node.kind),
+                    kind,
                     size,
-                    node.modified_ns.to_string(),
+                    modified_ns,
                 ])?;
+                if node.kind == FileKind::Video {
+                    anchor_video_generation
+                        .execute(params![node.entity_id.to_string(), generation_value])?;
+                }
             }
         }
         transaction.commit()?;
@@ -202,43 +240,52 @@ impl SessionIndex {
         &self,
         entity_id: EntityId,
         metadata: &VideoMetadata,
-        generation: u64,
+        generation: Generation,
     ) -> Result<(), SessionIndexError> {
         let duration_us = metadata
             .duration_us
             .map(i64::try_from)
             .transpose()
             .map_err(|_| SessionIndexError::InvalidDerivedMetadata(entity_id))?;
-        let generation = i64::try_from(generation)
-            .map_err(|_| SessionIndexError::InvalidDerivedMetadata(entity_id))?;
+        let generation_value = i64::try_from(generation.get())
+            .map_err(|_| SessionIndexError::GenerationOutOfRange(generation.get()))?;
         let (probe_status, failure_kind) = encode_video_probe_status(&metadata.probe_status);
         let mut connection = self.lock_connection();
         let transaction = connection.transaction()?;
-        let is_video = transaction.query_row(
-            "SELECT EXISTS(SELECT 1 FROM nodes WHERE entity_id = ?1 AND kind = 7)",
-            [entity_id.to_string()],
-            |row| row.get::<_, bool>(0),
-        )?;
-        if !is_video {
+        let current_generation = transaction
+            .query_row(
+                "SELECT video_metadata.updated_generation
+                 FROM nodes
+                 JOIN video_metadata ON video_metadata.node_id = nodes.entity_id
+                 WHERE nodes.entity_id = ?1 AND nodes.kind = 7",
+                [entity_id.to_string()],
+                |row| row.get::<_, i64>(0),
+            )
+            .optional()?;
+        let Some(current_generation) = current_generation else {
             return Err(SessionIndexError::InvalidDerivedMetadata(entity_id));
+        };
+        let current_generation = decode_generation(current_generation)?;
+        if current_generation != generation {
+            return Err(SessionIndexError::StaleDerivedMetadata {
+                entity_id,
+                attempted_generation: generation.get(),
+                current_generation: current_generation.get(),
+            });
         }
-        transaction.execute(
-            "INSERT INTO video_metadata(
-                node_id, duration_us, display_width, display_height,
-                rotation_degrees, frame_rate_millihertz, video_codec,
-                audio_codec, probe_status, failure_kind, updated_generation
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
-             ON CONFLICT(node_id) DO UPDATE SET
-                duration_us = excluded.duration_us,
-                display_width = excluded.display_width,
-                display_height = excluded.display_height,
-                rotation_degrees = excluded.rotation_degrees,
-                frame_rate_millihertz = excluded.frame_rate_millihertz,
-                video_codec = excluded.video_codec,
-                audio_codec = excluded.audio_codec,
-                probe_status = excluded.probe_status,
-                failure_kind = excluded.failure_kind,
-                updated_generation = excluded.updated_generation",
+        let changed = transaction.execute(
+            "UPDATE video_metadata SET
+                duration_us = ?2,
+                display_width = ?3,
+                display_height = ?4,
+                rotation_degrees = ?5,
+                frame_rate_millihertz = ?6,
+                video_codec = ?7,
+                audio_codec = ?8,
+                probe_status = ?9,
+                failure_kind = ?10,
+                updated_generation = ?11
+             WHERE node_id = ?1",
             params![
                 entity_id.to_string(),
                 duration_us,
@@ -250,9 +297,12 @@ impl SessionIndex {
                 metadata.audio_codec,
                 probe_status,
                 failure_kind,
-                generation,
+                generation_value,
             ],
         )?;
+        if changed != 1 {
+            return Err(SessionIndexError::InvalidDerivedMetadata(entity_id));
+        }
         transaction.commit()?;
         Ok(())
     }
@@ -370,7 +420,10 @@ impl SessionIndex {
         scopes: &[Option<RelativePath>],
         protected: &[Option<RelativePath>],
         observed: &[FileNode],
+        generation: Generation,
     ) -> Result<SessionReconcileSummary, SessionIndexError> {
+        let generation_value = i64::try_from(generation.get())
+            .map_err(|_| SessionIndexError::GenerationOutOfRange(generation.get()))?;
         validate_reconcile_inputs(scopes, observed)?;
         let mut connection = self.lock_connection();
         let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
@@ -472,6 +525,14 @@ impl SessionIndex {
                     node.modified_ns.to_string(),
                 ],
             )?;
+            if node.kind == FileKind::Video {
+                transaction.execute(
+                    "INSERT INTO video_metadata(
+                        node_id, rotation_degrees, probe_status, updated_generation
+                     ) VALUES (?1, 0, 0, ?2)",
+                    params![node.entity_id.to_string(), generation_value],
+                )?;
+            }
         }
 
         let mut moved = 0_u64;
@@ -537,6 +598,21 @@ impl SessionIndex {
                         ],
                     )?;
                 }
+            }
+            if current.kind == FileKind::Video {
+                transaction.execute(
+                    "INSERT INTO video_metadata(
+                        node_id, rotation_degrees, probe_status, updated_generation
+                     ) VALUES (?1, 0, 0, ?2)
+                     ON CONFLICT(node_id) DO UPDATE SET
+                        updated_generation = excluded.updated_generation",
+                    params![current.entity_id.to_string(), generation_value],
+                )?;
+            } else {
+                transaction.execute(
+                    "DELETE FROM video_metadata WHERE node_id = ?1",
+                    [current.entity_id.to_string()],
+                )?;
             }
         }
         transaction.commit()?;
@@ -658,7 +734,7 @@ fn encode_text_status(status: &TextStatus) -> i64 {
     }
 }
 
-fn encode_video_probe_status(status: &VideoProbeStatus) -> (i64, Option<i64>) {
+pub(super) fn encode_video_probe_status(status: &VideoProbeStatus) -> (i64, Option<i64>) {
     match status {
         VideoProbeStatus::Pending => (0, None),
         VideoProbeStatus::Ready => (1, None),
@@ -685,6 +761,7 @@ mod tests {
     use viewer_domain::{
         EntityId, RelativePath,
         file::{FileKind, FileNode},
+        search::Generation,
         video::{VideoFailureKind, VideoMetadata, VideoProbeStatus},
     };
 
@@ -701,29 +778,33 @@ mod tests {
         }
     }
 
-    fn index_with_video() -> (tempfile::TempDir, SessionIndex, EntityId) {
+    fn index_with_video(generation: Generation) -> (tempfile::TempDir, SessionIndex, EntityId) {
         let directory = tempfile::tempdir().unwrap();
         let index = SessionIndex::open(directory.path().join("session.sqlite")).unwrap();
         let entity_id = EntityId::from_u128(42);
         index
-            .upsert_batch(&[FileNode {
-                entity_id,
-                relative_path: RelativePath::parse("clip.mp4").unwrap(),
-                kind: FileKind::Video,
-                size: 123,
-                modified_ns: 456,
-            }])
+            .upsert_batch(
+                &[FileNode {
+                    entity_id,
+                    relative_path: RelativePath::parse("clip.mp4").unwrap(),
+                    kind: FileKind::Video,
+                    size: 123,
+                    modified_ns: 456,
+                }],
+                generation,
+            )
             .unwrap();
         (directory, index, entity_id)
     }
 
     #[test]
     fn replace_video_metadata_round_trips_values_and_generation() {
-        let (_directory, index, entity_id) = index_with_video();
+        let generation = Generation::new(17);
+        let (_directory, index, entity_id) = index_with_video(generation);
         let metadata = video_metadata(VideoProbeStatus::Ready);
 
         index
-            .replace_video_metadata(entity_id, &metadata, 17)
+            .replace_video_metadata(entity_id, &metadata, generation)
             .unwrap();
 
         assert_eq!(
@@ -754,7 +835,8 @@ mod tests {
 
     #[test]
     fn replace_video_metadata_preserves_missing_media_properties() {
-        let (_directory, index, entity_id) = index_with_video();
+        let generation = Generation::new(5);
+        let (_directory, index, entity_id) = index_with_video(generation);
         let metadata = VideoMetadata {
             duration_us: None,
             display_width: None,
@@ -767,7 +849,7 @@ mod tests {
         };
 
         index
-            .replace_video_metadata(entity_id, &metadata, 5)
+            .replace_video_metadata(entity_id, &metadata, generation)
             .unwrap();
 
         assert_eq!(
@@ -782,7 +864,8 @@ mod tests {
 
     #[test]
     fn probe_and_failure_persistence_encodings_are_explicit_and_stable() {
-        let (_directory, index, entity_id) = index_with_video();
+        let generation = Generation::new(7);
+        let (_directory, index, entity_id) = index_with_video(generation);
         let cases = [
             (VideoProbeStatus::Pending, 0_i64, None),
             (VideoProbeStatus::Ready, 1, None),
@@ -828,11 +911,9 @@ mod tests {
             ),
         ];
 
-        for (generation, (status, expected_status, expected_failure)) in
-            cases.into_iter().enumerate()
-        {
+        for (status, expected_status, expected_failure) in cases {
             index
-                .replace_video_metadata(entity_id, &video_metadata(status), generation as u64)
+                .replace_video_metadata(entity_id, &video_metadata(status), generation)
                 .unwrap();
             let connection = index.lock_connection();
             let persisted = connection
@@ -848,10 +929,152 @@ mod tests {
     }
 
     #[test]
-    fn deleting_a_video_node_cascades_to_its_metadata() {
-        let (_directory, index, entity_id) = index_with_video();
+    fn older_video_metadata_generation_cannot_overwrite_newer_metadata() {
+        let old_generation = Generation::new(1);
+        let new_generation = Generation::new(2);
+        let (_directory, index, entity_id) = index_with_video(old_generation);
+        let node = index.indexed_node(entity_id).unwrap().unwrap().node;
         index
-            .replace_video_metadata(entity_id, &video_metadata(VideoProbeStatus::Ready), 1)
+            .replace_video_metadata(
+                entity_id,
+                &video_metadata(VideoProbeStatus::Failed(VideoFailureKind::Damaged)),
+                old_generation,
+            )
+            .unwrap();
+        index
+            .upsert_batch(std::slice::from_ref(&node), new_generation)
+            .unwrap();
+        let newer = video_metadata(VideoProbeStatus::Ready);
+        let older = video_metadata(VideoProbeStatus::Failed(VideoFailureKind::Damaged));
+        index
+            .replace_video_metadata(entity_id, &newer, new_generation)
+            .unwrap();
+
+        assert!(
+            index
+                .replace_video_metadata(entity_id, &older, old_generation)
+                .is_err()
+        );
+
+        assert_eq!(
+            index
+                .indexed_node(entity_id)
+                .unwrap()
+                .unwrap()
+                .video_metadata,
+            Some(newer)
+        );
+        let connection = index.lock_connection();
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT updated_generation FROM video_metadata WHERE node_id = ?1",
+                    [entity_id.to_string()],
+                    |row| row.get::<_, i64>(0),
+                )
+                .unwrap(),
+            2
+        );
+    }
+
+    #[test]
+    fn video_metadata_generation_must_match_the_current_node_projection() {
+        let current_generation = Generation::new(5);
+        let attempted_generation = Generation::new(6);
+        let (_directory, index, entity_id) = index_with_video(current_generation);
+
+        let result = index.replace_video_metadata(
+            entity_id,
+            &video_metadata(VideoProbeStatus::Ready),
+            attempted_generation,
+        );
+
+        assert!(matches!(
+            result,
+            Err(super::SessionIndexError::StaleDerivedMetadata {
+                entity_id: stale_entity,
+                attempted_generation: 6,
+                current_generation: 5,
+            }) if stale_entity == entity_id
+        ));
+        let connection = index.lock_connection();
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT probe_status, failure_kind, updated_generation
+                     FROM video_metadata WHERE node_id = ?1",
+                    [entity_id.to_string()],
+                    |row| Ok((
+                        row.get::<_, i64>(0)?,
+                        row.get::<_, Option<i64>>(1)?,
+                        row.get::<_, i64>(2)?,
+                    )),
+                )
+                .unwrap(),
+            (0, None, 5)
+        );
+    }
+
+    #[test]
+    fn corrupt_projection_generation_rejects_metadata_without_mutating_the_row() {
+        let generation = Generation::new(3);
+        let (_directory, index, entity_id) = index_with_video(generation);
+        let metadata = video_metadata(VideoProbeStatus::Ready);
+        index
+            .replace_video_metadata(entity_id, &metadata, generation)
+            .unwrap();
+        {
+            let connection = index.lock_connection();
+            connection
+                .execute(
+                    "UPDATE video_metadata SET updated_generation = -1 WHERE node_id = ?1",
+                    [entity_id.to_string()],
+                )
+                .unwrap();
+        }
+
+        let result = index.replace_video_metadata(
+            entity_id,
+            &video_metadata(VideoProbeStatus::Failed(VideoFailureKind::Damaged)),
+            generation,
+        );
+
+        assert!(matches!(
+            result,
+            Err(super::SessionIndexError::InvalidPersistedValue {
+                field: "video_updated_generation",
+                ..
+            })
+        ));
+        let connection = index.lock_connection();
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT duration_us, probe_status, failure_kind, updated_generation
+                     FROM video_metadata WHERE node_id = ?1",
+                    [entity_id.to_string()],
+                    |row| Ok((
+                        row.get::<_, Option<i64>>(0)?,
+                        row.get::<_, i64>(1)?,
+                        row.get::<_, Option<i64>>(2)?,
+                        row.get::<_, i64>(3)?,
+                    )),
+                )
+                .unwrap(),
+            (Some(12_345_678), 1, None, -1)
+        );
+    }
+
+    #[test]
+    fn deleting_a_video_node_cascades_to_its_metadata() {
+        let generation = Generation::new(1);
+        let (_directory, index, entity_id) = index_with_video(generation);
+        index
+            .replace_video_metadata(
+                entity_id,
+                &video_metadata(VideoProbeStatus::Ready),
+                generation,
+            )
             .unwrap();
 
         assert_eq!(index.remove_subtree(entity_id).unwrap(), 1);
@@ -866,10 +1089,16 @@ mod tests {
     }
 
     #[test]
-    fn reconciling_changed_video_content_clears_stale_metadata() {
-        let (_directory, index, entity_id) = index_with_video();
+    fn reconciling_changed_video_content_resets_the_current_generation_anchor() {
+        let old_generation = Generation::new(1);
+        let new_generation = Generation::new(2);
+        let (_directory, index, entity_id) = index_with_video(old_generation);
         index
-            .replace_video_metadata(entity_id, &video_metadata(VideoProbeStatus::Ready), 1)
+            .replace_video_metadata(
+                entity_id,
+                &video_metadata(VideoProbeStatus::Ready),
+                old_generation,
+            )
             .unwrap();
 
         let changed = FileNode {
@@ -880,11 +1109,162 @@ mod tests {
             modified_ns: 1_000,
         };
         index
-            .reconcile_subtrees(&[None], &[], std::slice::from_ref(&changed))
+            .reconcile_subtrees(&[None], &[], std::slice::from_ref(&changed), new_generation)
             .unwrap();
 
         let indexed = index.indexed_node(entity_id).unwrap().unwrap();
         assert_eq!(indexed.node, changed);
+        assert_eq!(
+            indexed.video_metadata,
+            Some(VideoMetadata {
+                duration_us: None,
+                display_width: None,
+                display_height: None,
+                rotation_degrees: 0,
+                frame_rate_millihertz: None,
+                video_codec: None,
+                audio_codec: None,
+                probe_status: VideoProbeStatus::Pending,
+            })
+        );
+        assert!(
+            index
+                .replace_video_metadata(
+                    entity_id,
+                    &video_metadata(VideoProbeStatus::Ready),
+                    old_generation,
+                )
+                .is_err()
+        );
+        index
+            .replace_video_metadata(
+                entity_id,
+                &video_metadata(VideoProbeStatus::Ready),
+                new_generation,
+            )
+            .unwrap();
+    }
+
+    #[test]
+    fn upsert_batch_content_change_resets_video_metadata_to_current_pending_anchor() {
+        let generation = Generation::new(1);
+        let (_directory, index, entity_id) = index_with_video(generation);
+        index
+            .replace_video_metadata(
+                entity_id,
+                &video_metadata(VideoProbeStatus::Ready),
+                generation,
+            )
+            .unwrap();
+        let changed = FileNode {
+            entity_id,
+            relative_path: RelativePath::parse("clip.mp4").unwrap(),
+            kind: FileKind::Video,
+            size: 999,
+            modified_ns: 1_000,
+        };
+
+        index
+            .upsert_batch(std::slice::from_ref(&changed), generation)
+            .unwrap();
+
+        let indexed = index.indexed_node(entity_id).unwrap().unwrap();
+        assert_eq!(indexed.node, changed);
+        assert_eq!(
+            indexed.video_metadata,
+            Some(VideoMetadata {
+                duration_us: None,
+                display_width: None,
+                display_height: None,
+                rotation_degrees: 0,
+                frame_rate_millihertz: None,
+                video_codec: None,
+                audio_codec: None,
+                probe_status: VideoProbeStatus::Pending,
+            })
+        );
+        let connection = index.lock_connection();
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT updated_generation FROM video_metadata WHERE node_id = ?1",
+                    [entity_id.to_string()],
+                    |row| row.get::<_, i64>(0),
+                )
+                .unwrap(),
+            1
+        );
+    }
+
+    #[test]
+    fn upsert_batch_reclassification_removes_video_metadata() {
+        let generation = Generation::new(1);
+        let (_directory, index, entity_id) = index_with_video(generation);
+        index
+            .replace_video_metadata(
+                entity_id,
+                &video_metadata(VideoProbeStatus::Ready),
+                generation,
+            )
+            .unwrap();
+        let reclassified = FileNode {
+            entity_id,
+            relative_path: RelativePath::parse("clip.mp4").unwrap(),
+            kind: FileKind::Other,
+            size: 123,
+            modified_ns: 456,
+        };
+
+        index
+            .upsert_batch(std::slice::from_ref(&reclassified), generation)
+            .unwrap();
+
+        let indexed = index.indexed_node(entity_id).unwrap().unwrap();
+        assert_eq!(indexed.node, reclassified);
         assert_eq!(indexed.video_metadata, None);
+        let connection = index.lock_connection();
+        assert_eq!(
+            connection
+                .query_row("SELECT COUNT(*) FROM video_metadata", [], |row| {
+                    row.get::<_, i64>(0)
+                })
+                .unwrap(),
+            0
+        );
+    }
+
+    #[test]
+    fn upsert_batch_rolls_back_metadata_cleanup_when_a_later_node_fails() {
+        let generation = Generation::new(1);
+        let (_directory, index, entity_id) = index_with_video(generation);
+        let metadata = video_metadata(VideoProbeStatus::Ready);
+        index
+            .replace_video_metadata(entity_id, &metadata, generation)
+            .unwrap();
+        let changed = FileNode {
+            entity_id,
+            relative_path: RelativePath::parse("clip.mp4").unwrap(),
+            kind: FileKind::Video,
+            size: 999,
+            modified_ns: 1_000,
+        };
+        let out_of_range = FileNode {
+            entity_id: EntityId::from_u128(43),
+            relative_path: RelativePath::parse("too-large.bin").unwrap(),
+            kind: FileKind::Other,
+            size: u64::MAX,
+            modified_ns: 1,
+        };
+
+        assert!(
+            index
+                .upsert_batch(&[changed, out_of_range], generation)
+                .is_err()
+        );
+
+        let indexed = index.indexed_node(entity_id).unwrap().unwrap();
+        assert_eq!(indexed.node.size, 123);
+        assert_eq!(indexed.node.modified_ns, 456);
+        assert_eq!(indexed.video_metadata, Some(metadata));
     }
 }

@@ -10,9 +10,13 @@ use viewer_application::metadata::{
 use viewer_domain::{
     EntityId, RelativePath,
     file::{FileKind, FileNode},
+    search::Generation,
+    video::VideoProbeStatus,
 };
 
-use super::{SessionIndex, decode_kind, encode_kind, encode_review_state};
+use super::{
+    SessionIndex, decode_kind, encode_kind, encode_review_state, writer::encode_video_probe_status,
+};
 
 impl MarkerProjectionPort for SessionIndex {
     fn sync_markers(&self, changes: &[MarkerChange]) -> Result<(), MarkerProjectionError> {
@@ -49,8 +53,13 @@ impl OperationProjectionPort for SessionIndex {
         &self,
         copies: &[FileCopyProjection],
         case_sensitive: bool,
+        generation: Generation,
     ) -> Result<(), OperationProjectionError> {
         validate_copy_projections(copies, case_sensitive)?;
+        let generation_value =
+            i64::try_from(generation.get()).map_err(|_| OperationProjectionError::InvalidInput)?;
+        let (pending_status, pending_failure) =
+            encode_video_probe_status(&VideoProbeStatus::Pending);
         let mut connection = self.lock_connection();
         let transaction = connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
@@ -124,6 +133,22 @@ impl OperationProjectionPort for SessionIndex {
                     ],
                 )
                 .map_err(|_| OperationProjectionError::Unavailable)?;
+            if copy.destination.kind == FileKind::Video {
+                transaction
+                    .execute(
+                        "INSERT INTO video_metadata(
+                            node_id, rotation_degrees, probe_status, failure_kind,
+                            updated_generation
+                         ) VALUES (?1, 0, ?2, ?3, ?4)",
+                        params![
+                            copy.destination.entity_id.to_string(),
+                            pending_status,
+                            pending_failure,
+                            generation_value,
+                        ],
+                    )
+                    .map_err(|_| OperationProjectionError::Unavailable)?;
+            }
         }
         transaction
             .commit()

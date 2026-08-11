@@ -40,23 +40,26 @@ impl Fixture {
         let note = EntityId::new();
         let other = EntityId::new();
         index
-            .upsert_batch(&[
-                node(root, "catalog", FileKind::Directory, 0, 1),
-                node(id2, "catalog/id2", FileKind::Directory, 0, 2),
-                node(id10, "catalog/id10", FileKind::Directory, 0, 3),
-                node(front, "catalog/id2/正面-front.png", FileKind::Png, 400, 40),
-                node(
-                    portrait,
-                    "catalog/id2/portrait.jpg",
-                    FileKind::Jpeg,
-                    300,
-                    30,
-                ),
-                node(image2, "catalog/id10/image2.jpg", FileKind::Jpeg, 200, 20),
-                node(image10, "catalog/id10/image10.jpg", FileKind::Jpeg, 100, 10),
-                node(note, "catalog/id2/prompt.md", FileKind::Markdown, 500, 50),
-                node(other, "catalog/id2/guide.pdf", FileKind::Other, 600, 60),
-            ])
+            .upsert_batch(
+                &[
+                    node(root, "catalog", FileKind::Directory, 0, 1),
+                    node(id2, "catalog/id2", FileKind::Directory, 0, 2),
+                    node(id10, "catalog/id10", FileKind::Directory, 0, 3),
+                    node(front, "catalog/id2/正面-front.png", FileKind::Png, 400, 40),
+                    node(
+                        portrait,
+                        "catalog/id2/portrait.jpg",
+                        FileKind::Jpeg,
+                        300,
+                        30,
+                    ),
+                    node(image2, "catalog/id10/image2.jpg", FileKind::Jpeg, 200, 20),
+                    node(image10, "catalog/id10/image10.jpg", FileKind::Jpeg, 100, 10),
+                    node(note, "catalog/id2/prompt.md", FileKind::Markdown, 500, 50),
+                    node(other, "catalog/id2/guide.pdf", FileKind::Other, 600, 60),
+                ],
+                Generation::new(1),
+            )
             .unwrap();
         index
             .replace_image_metadata(

@@ -36,7 +36,9 @@ impl IndexedProject {
                 }
             })
             .collect::<Vec<_>>();
-        index.upsert_batch(&nodes).unwrap();
+        index
+            .upsert_batch(&nodes, viewer_domain::search::Generation::new(1))
+            .unwrap();
         Self {
             _directory: directory,
             index,

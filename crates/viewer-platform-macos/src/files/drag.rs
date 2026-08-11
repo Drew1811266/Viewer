@@ -427,14 +427,19 @@ mod tests {
         let index_directory = tempdir().unwrap();
         let index = SessionIndex::open(index_directory.path().join("session.sqlite")).unwrap();
         index
-            .upsert_batch(&[FileNode {
-                entity_id,
-                relative_path: RelativePath::parse(selected.file_name().unwrap().to_str().unwrap())
+            .upsert_batch(
+                &[FileNode {
+                    entity_id,
+                    relative_path: RelativePath::parse(
+                        selected.file_name().unwrap().to_str().unwrap(),
+                    )
                     .unwrap(),
-                kind: FileKind::Jpeg,
-                size: metadata.len(),
-                modified_ns: 1,
-            }])
+                    kind: FileKind::Jpeg,
+                    size: metadata.len(),
+                    modified_ns: 1,
+                }],
+                viewer_domain::search::Generation::new(1),
+            )
             .unwrap();
         prepare_finder_drag(root, &index, &[entity_id]).unwrap()
     }

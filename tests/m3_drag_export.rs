@@ -43,12 +43,15 @@ impl IndexedProject {
         let index_directory = tempfile::tempdir().unwrap();
         let index = SessionIndex::open(index_directory.path().join("session.sqlite")).unwrap();
         index
-            .upsert_batch(&[
-                node(1, "catalog", FileKind::Directory),
-                node(2, "catalog/id-1", FileKind::Directory),
-                node_with_id(front_id, "catalog/id-1/front.jpg", FileKind::Jpeg),
-                node_with_id(prompt_id, "catalog/id-1/prompt.txt", FileKind::Text),
-            ])
+            .upsert_batch(
+                &[
+                    node(1, "catalog", FileKind::Directory),
+                    node(2, "catalog/id-1", FileKind::Directory),
+                    node_with_id(front_id, "catalog/id-1/front.jpg", FileKind::Jpeg),
+                    node_with_id(prompt_id, "catalog/id-1/prompt.txt", FileKind::Text),
+                ],
+                viewer_domain::search::Generation::new(1),
+            )
             .unwrap();
         Self {
             root,
@@ -211,10 +214,13 @@ fn preparation_rejects_symlink_entries_even_when_the_target_is_inside_or_outside
     .unwrap();
     project
         .index
-        .upsert_batch(&[
-            node(5, "outside-link.jpg", FileKind::Jpeg),
-            node(6, "inside-link.jpg", FileKind::Jpeg),
-        ])
+        .upsert_batch(
+            &[
+                node(5, "outside-link.jpg", FileKind::Jpeg),
+                node(6, "inside-link.jpg", FileKind::Jpeg),
+            ],
+            viewer_domain::search::Generation::new(1),
+        )
         .unwrap();
 
     for entity_id in [EntityId::from_u128(5), EntityId::from_u128(6)] {

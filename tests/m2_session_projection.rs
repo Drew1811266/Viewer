@@ -4,6 +4,7 @@ use viewer_application::metadata::{
 use viewer_domain::{
     EntityId, RelativePath,
     file::{FileKind, FileNode, ImageIndexStatus, ImageMetadata, ReviewState, TextIndexStatus},
+    search::Generation,
 };
 use viewer_infrastructure::search::{index::SessionIndex, text::TextStatus};
 
@@ -35,7 +36,7 @@ fn identical_scan_upsert_preserves_marker_and_derived_projection() {
     let image = node(EntityId::new(), "id-1/front.png", FileKind::Png);
     let text = node(EntityId::new(), "id-1/prompt.md", FileKind::Markdown);
     index
-        .upsert_batch(&[folder, image.clone(), text.clone()])
+        .upsert_batch(&[folder, image.clone(), text.clone()], Generation::new(1))
         .unwrap();
     index
         .sync_markers(&[MarkerChange {
@@ -64,7 +65,9 @@ fn identical_scan_upsert_preserves_marker_and_derived_projection() {
         )
         .unwrap();
 
-    index.upsert_batch(&[image.clone(), text.clone()]).unwrap();
+    index
+        .upsert_batch(&[image.clone(), text.clone()], Generation::new(1))
+        .unwrap();
 
     let projected = index.indexed_node(image.entity_id).unwrap().unwrap();
     assert_eq!(projected.marker.review_state, Some(ReviewState::Keep));
@@ -93,11 +96,14 @@ fn portable_hydration_matches_exact_relative_paths_and_ignores_stale_rows() {
     let index = SessionIndex::open(directory.path().join("session.sqlite")).unwrap();
     let file = node(EntityId::new(), "catalog/id-1/front.jpg", FileKind::Jpeg);
     index
-        .upsert_batch(&[
-            node(EntityId::new(), "catalog", FileKind::Directory),
-            node(EntityId::new(), "catalog/id-1", FileKind::Directory),
-            file.clone(),
-        ])
+        .upsert_batch(
+            &[
+                node(EntityId::new(), "catalog", FileKind::Directory),
+                node(EntityId::new(), "catalog/id-1", FileKind::Directory),
+                file.clone(),
+            ],
+            Generation::new(1),
+        )
         .unwrap();
     let marker = Marker {
         review_state: Some(ReviewState::Pending),
@@ -142,10 +148,13 @@ fn batch_marker_projection_rolls_back_when_one_entity_is_missing() {
     let existing = node(EntityId::new(), "id-1/front.jpg", FileKind::Jpeg);
     let missing = node(EntityId::new(), "id-1/missing.jpg", FileKind::Jpeg);
     index
-        .upsert_batch(&[
-            node(EntityId::new(), "id-1", FileKind::Directory),
-            existing.clone(),
-        ])
+        .upsert_batch(
+            &[
+                node(EntityId::new(), "id-1", FileKind::Directory),
+                existing.clone(),
+            ],
+            Generation::new(1),
+        )
         .unwrap();
 
     assert!(
@@ -185,11 +194,14 @@ fn image_metadata_requires_a_current_image_path_and_nonzero_dimensions() {
     let image = node(EntityId::new(), "id-1/front.jpg", FileKind::Jpeg);
     let text = node(EntityId::new(), "id-1/notes.txt", FileKind::Text);
     index
-        .upsert_batch(&[
-            node(EntityId::new(), "id-1", FileKind::Directory),
-            image.clone(),
-            text.clone(),
-        ])
+        .upsert_batch(
+            &[
+                node(EntityId::new(), "id-1", FileKind::Directory),
+                image.clone(),
+                text.clone(),
+            ],
+            Generation::new(1),
+        )
         .unwrap();
 
     for invalid in [
@@ -243,12 +255,15 @@ fn derived_index_progress_is_monotonic_and_counts_isolated_failures() {
     let text_ready = node(EntityId::new(), "ready.md", FileKind::Markdown);
     let text_skipped = node(EntityId::new(), "skipped.txt", FileKind::Text);
     index
-        .upsert_batch(&[
-            image_ready.clone(),
-            image_failed.clone(),
-            text_ready.clone(),
-            text_skipped.clone(),
-        ])
+        .upsert_batch(
+            &[
+                image_ready.clone(),
+                image_failed.clone(),
+                text_ready.clone(),
+                text_skipped.clone(),
+            ],
+            Generation::new(1),
+        )
         .unwrap();
     let initial = index.index_progress().unwrap();
     assert_eq!((initial.images_total, initial.text_total), (2, 2));

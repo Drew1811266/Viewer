@@ -48,6 +48,7 @@ impl DesktopRuntime {
         let volume: Arc<dyn viewer_application::VolumePort> = Arc::new(MacVolumePort);
         let commits = Arc::new(DesktopOperationCommitPort::new(
             active.root.clone(),
+            active.generation,
             Arc::clone(&browse_index),
             Arc::clone(&projection),
             Arc::clone(&metadata),
@@ -57,6 +58,7 @@ impl DesktopRuntime {
         ));
         let recovery_commits = Arc::new(DesktopOperationCommitPort::for_recovery(
             active.root.clone(),
+            active.generation,
             Arc::clone(&browse_index),
             projection,
             metadata,

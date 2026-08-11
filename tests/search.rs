@@ -88,13 +88,16 @@ fn text_index_replacement_is_atomic_and_removes_stale_rows() {
     let relative_path = RelativePath::parse("notes.txt").unwrap();
     let index = SessionIndex::open(&database).unwrap();
     index
-        .upsert_batch(&[FileNode {
-            entity_id,
-            relative_path: relative_path.clone(),
-            kind: FileKind::Text,
-            size: 5,
-            modified_ns: 10,
-        }])
+        .upsert_batch(
+            &[FileNode {
+                entity_id,
+                relative_path: relative_path.clone(),
+                kind: FileKind::Text,
+                size: 5,
+                modified_ns: 10,
+            }],
+            Generation::new(1),
+        )
         .unwrap();
     index
         .replace_text(
@@ -153,15 +156,18 @@ impl SearchFixture {
         let explanation = EntityId::new();
         let notes = EntityId::new();
         index
-            .upsert_batch(&[
-                search_node(product_a, "产品-A", FileKind::Directory),
-                search_node(EntityId::new(), "front-set", FileKind::Directory),
-                search_node(front, "产品-A/front.png", FileKind::Png),
-                search_node(side, "产品-A/side.png", FileKind::Png),
-                search_node(path_only, "front-set/angle.png", FileKind::Png),
-                search_node(explanation, "产品说明.md", FileKind::Markdown),
-                search_node(notes, "notes.txt", FileKind::Text),
-            ])
+            .upsert_batch(
+                &[
+                    search_node(product_a, "产品-A", FileKind::Directory),
+                    search_node(EntityId::new(), "front-set", FileKind::Directory),
+                    search_node(front, "产品-A/front.png", FileKind::Png),
+                    search_node(side, "产品-A/side.png", FileKind::Png),
+                    search_node(path_only, "front-set/angle.png", FileKind::Png),
+                    search_node(explanation, "产品说明.md", FileKind::Markdown),
+                    search_node(notes, "notes.txt", FileKind::Text),
+                ],
+                Generation::new(1),
+            )
             .unwrap();
         index
             .replace_text(

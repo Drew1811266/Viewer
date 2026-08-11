@@ -111,8 +111,14 @@ impl ProjectReconciler {
         self.ensure_current(&request)?;
 
         let index = Arc::clone(&self.index);
+        let generation = request.generation;
         let summary = tokio::task::spawn_blocking(move || {
-            index.reconcile_subtrees(&snapshot.scopes, &snapshot.protected, &snapshot.nodes)
+            index.reconcile_subtrees(
+                &snapshot.scopes,
+                &snapshot.protected,
+                &snapshot.nodes,
+                generation,
+            )
         })
         .await
         .map_err(|_| ProjectReconcileError::IndexUnavailable)?

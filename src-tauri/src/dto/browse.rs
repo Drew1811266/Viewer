@@ -254,6 +254,8 @@ pub struct ContentFolderCardDto {
     pub name: String,
     pub marker: MarkerDto,
     pub image_count: u64,
+    #[serde(skip)]
+    pub video_count_deferred_until_task_9: usize,
     pub other_file_count: u64,
     pub review_progress: FolderReviewProgressDto,
     pub representative_images: Vec<BrowserFileDto>,
@@ -267,6 +269,7 @@ impl From<ContentFolderCard> for ContentFolderCardDto {
             name: folder.name,
             marker: folder.marker.into(),
             image_count: folder.image_count,
+            video_count_deferred_until_task_9: folder.video_count,
             other_file_count: folder.other_file_count,
             review_progress: folder.review_progress.into(),
             representative_images: folder
@@ -323,6 +326,8 @@ impl SelectionAgreementDto<Option<ReviewState>> {
 pub struct SelectionTypeCountsDto {
     pub folders: u64,
     pub images: u64,
+    #[serde(skip)]
+    pub videos_deferred_until_task_9: usize,
     pub other_files: u64,
 }
 
@@ -331,6 +336,7 @@ impl From<SelectionTypeCounts> for SelectionTypeCountsDto {
         Self {
             folders: types.folders,
             images: types.images,
+            videos_deferred_until_task_9: types.videos,
             other_files: types.other_files,
         }
     }
@@ -378,6 +384,8 @@ pub enum FolderWorkspaceDto {
     },
     Content {
         images: Vec<BrowserFileDto>,
+        #[serde(skip)]
+        videos_deferred_until_task_9: Vec<BrowserFile>,
         other_files: Vec<BrowserFileDto>,
     },
     Empty,
@@ -394,10 +402,11 @@ impl From<FolderWorkspace> for FolderWorkspaceDto {
             },
             FolderWorkspace::Content {
                 images,
-                videos: _,
+                videos,
                 other_files,
             } => Self::Content {
                 images: images.into_iter().map(BrowserFileDto::from).collect(),
+                videos_deferred_until_task_9: videos,
                 other_files: other_files.into_iter().map(BrowserFileDto::from).collect(),
             },
             FolderWorkspace::Empty => Self::Empty,

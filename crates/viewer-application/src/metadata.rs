@@ -2,6 +2,7 @@ use std::collections::HashSet;
 use viewer_domain::{
     EntityId, OperationId, RelativePath,
     file::{FileKind, FileNode, ImageIndexStatus, ImageMetadata, ReviewState, TextIndexStatus},
+    search::Generation,
     video::VideoMetadata,
 };
 
@@ -162,6 +163,7 @@ pub trait OperationProjectionPort: Send + Sync {
         &self,
         copies: &[FileCopyProjection],
         case_sensitive: bool,
+        generation: Generation,
     ) -> Result<(), OperationProjectionError>;
 
     fn apply_move(

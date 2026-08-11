@@ -12,6 +12,7 @@ use viewer_application::{
 use viewer_domain::{
     EntityId, RelativePath,
     file::{FileKind, FileNode, ImageIndexStatus, ImageMetadata, ReviewState, TextIndexStatus},
+    search::Generation,
     video::{VideoMetadata, VideoProbeStatus},
 };
 use viewer_infrastructure::{
@@ -257,7 +258,7 @@ fn marker_and_session_path_swaps_stage_away_from_unique_constraints() {
     let session_database = project.path().join("swap-session.sqlite");
     let index = SessionIndex::open(session_database).unwrap();
     index
-        .upsert_batch(&[first.clone(), second.clone()])
+        .upsert_batch(&[first.clone(), second.clone()], Generation::new(1))
         .unwrap();
     index
         .replace_image_metadata(
@@ -357,13 +358,16 @@ fn session_subtree_move_preserves_entities_markers_derived_values_and_fts() {
         FileKind::Markdown,
     );
     index
-        .upsert_batch(&[
-            products,
-            source.clone(),
-            archive,
-            image.clone(),
-            text.clone(),
-        ])
+        .upsert_batch(
+            &[
+                products,
+                source.clone(),
+                archive,
+                image.clone(),
+                text.clone(),
+            ],
+            Generation::new(1),
+        )
         .unwrap();
     index
         .sync_markers(&[viewer_application::metadata::MarkerChange {
@@ -504,7 +508,9 @@ fn identity_changing_move_rekeys_the_session_node_and_search_projection() {
         modified_ns: 11,
         ..source.clone()
     };
-    index.upsert_batch(std::slice::from_ref(&source)).unwrap();
+    index
+        .upsert_batch(std::slice::from_ref(&source), Generation::new(1))
+        .unwrap();
     index
         .replace_text(
             source.entity_id,
@@ -549,7 +555,9 @@ fn session_copy_is_fresh_unmarked_pending_and_conflict_batches_roll_back() {
     let index = SessionIndex::open(directory.path().join("session.sqlite")).unwrap();
     let folder = node(EntityId::new(), "id-1", FileKind::Directory);
     let source = node(EntityId::new(), "id-1/front.png", FileKind::Png);
-    index.upsert_batch(&[folder, source.clone()]).unwrap();
+    index
+        .upsert_batch(&[folder, source.clone()], Generation::new(1))
+        .unwrap();
     index
         .sync_markers(&[viewer_application::metadata::MarkerChange {
             target: target(&source),
@@ -578,6 +586,7 @@ fn session_copy_is_fresh_unmarked_pending_and_conflict_batches_roll_back() {
                 destination: copied.clone(),
             }],
             false,
+            Generation::new(1),
         )
         .unwrap();
 
@@ -602,11 +611,142 @@ fn session_copy_is_fresh_unmarked_pending_and_conflict_batches_roll_back() {
                 },
             ],
             false,
+            Generation::new(1),
         ),
         Err(OperationProjectionError::Conflict)
     );
     assert!(index.indexed_node(first.entity_id).unwrap().is_none());
     assert!(index.indexed_node(second.entity_id).unwrap().is_none());
+}
+
+#[test]
+fn copied_video_is_pending_at_the_current_projection_generation() {
+    let directory = TempDir::new().unwrap();
+    let database = directory.path().join("session.sqlite");
+    let index = SessionIndex::open(&database).unwrap();
+    let source = node(EntityId::new(), "source.mp4", FileKind::Video);
+    index
+        .upsert_batch(std::slice::from_ref(&source), Generation::new(4))
+        .unwrap();
+    index
+        .replace_video_metadata(
+            source.entity_id,
+            &VideoMetadata {
+                duration_us: Some(2_000_000),
+                display_width: Some(1_920),
+                display_height: Some(1_080),
+                rotation_degrees: 0,
+                frame_rate_millihertz: Some(24_000),
+                video_codec: Some("h264".to_owned()),
+                audio_codec: Some("aac".to_owned()),
+                probe_status: VideoProbeStatus::Ready,
+            },
+            Generation::new(4),
+        )
+        .unwrap();
+    let copied = FileNode {
+        entity_id: EntityId::new(),
+        relative_path: path("source copy.mp4"),
+        ..source.clone()
+    };
+
+    index
+        .apply_copy(
+            &[FileCopyProjection {
+                source: source.clone(),
+                destination: copied.clone(),
+            }],
+            true,
+            Generation::new(9),
+        )
+        .unwrap();
+
+    let source_projection = index.indexed_node(source.entity_id).unwrap().unwrap();
+    assert_eq!(
+        source_projection.video_metadata.unwrap().probe_status,
+        VideoProbeStatus::Ready
+    );
+    let copied_projection = index.indexed_node(copied.entity_id).unwrap().unwrap();
+    assert_eq!(
+        copied_projection.video_metadata,
+        Some(VideoMetadata {
+            duration_us: None,
+            display_width: None,
+            display_height: None,
+            rotation_degrees: 0,
+            frame_rate_millihertz: None,
+            video_codec: None,
+            audio_codec: None,
+            probe_status: VideoProbeStatus::Pending,
+        })
+    );
+    let generation = Connection::open(&database)
+        .unwrap()
+        .query_row(
+            "SELECT updated_generation FROM video_metadata WHERE node_id = ?1",
+            [copied.entity_id.to_string()],
+            |row| row.get::<_, i64>(0),
+        )
+        .unwrap();
+    assert_eq!(generation, 9);
+}
+
+#[test]
+fn copied_video_anchor_and_node_roll_back_together_when_a_later_copy_fails() {
+    let directory = TempDir::new().unwrap();
+    let database = directory.path().join("session.sqlite");
+    let index = SessionIndex::open(&database).unwrap();
+    let first_source = node(EntityId::new(), "first.mp4", FileKind::Video);
+    let second_source = node(EntityId::new(), "second.mp4", FileKind::Video);
+    index
+        .upsert_batch(
+            &[first_source.clone(), second_source.clone()],
+            Generation::new(2),
+        )
+        .unwrap();
+    let first_destination = FileNode {
+        entity_id: EntityId::new(),
+        relative_path: path("first copy.mp4"),
+        ..first_source.clone()
+    };
+    let missing_parent_destination = FileNode {
+        entity_id: EntityId::new(),
+        relative_path: path("missing/second copy.mp4"),
+        ..second_source.clone()
+    };
+
+    assert_eq!(
+        index.apply_copy(
+            &[
+                FileCopyProjection {
+                    source: first_source,
+                    destination: first_destination.clone(),
+                },
+                FileCopyProjection {
+                    source: second_source,
+                    destination: missing_parent_destination,
+                },
+            ],
+            true,
+            Generation::new(7),
+        ),
+        Err(OperationProjectionError::Stale)
+    );
+    assert!(
+        index
+            .indexed_node(first_destination.entity_id)
+            .unwrap()
+            .is_none()
+    );
+    let metadata_count = Connection::open(&database)
+        .unwrap()
+        .query_row(
+            "SELECT COUNT(*) FROM video_metadata WHERE node_id = ?1",
+            [first_destination.entity_id.to_string()],
+            |row| row.get::<_, i64>(0),
+        )
+        .unwrap();
+    assert_eq!(metadata_count, 0);
 }
 
 #[test]
@@ -622,7 +762,10 @@ fn appended_kinds_do_not_stale_unrelated_copy_move_or_rename_projections() {
     );
     let other = node(EntityId::new(), "notes.data", FileKind::Other);
     index
-        .upsert_batch(&[archive, source.clone(), unsupported.clone(), other.clone()])
+        .upsert_batch(
+            &[archive, source.clone(), unsupported.clone(), other.clone()],
+            Generation::new(1),
+        )
         .unwrap();
 
     let copied = FileNode {
@@ -637,6 +780,7 @@ fn appended_kinds_do_not_stale_unrelated_copy_move_or_rename_projections() {
                 destination: copied.clone(),
             }],
             true,
+            Generation::new(1),
         )
         .unwrap();
 
@@ -702,7 +846,10 @@ fn appended_kinds_participate_in_copy_move_and_rename_projections() {
     );
     let other = node(EntityId::new(), "notes.data", FileKind::Other);
     index
-        .upsert_batch(&[archive, unsupported.clone(), other.clone()])
+        .upsert_batch(
+            &[archive, unsupported.clone(), other.clone()],
+            Generation::new(1),
+        )
         .unwrap();
 
     let unsupported_copy = FileNode {
@@ -717,6 +864,7 @@ fn appended_kinds_participate_in_copy_move_and_rename_projections() {
                 destination: unsupported_copy.clone(),
             }],
             true,
+            Generation::new(1),
         )
         .unwrap();
 
@@ -780,9 +928,12 @@ fn identity_changing_video_move_rekeys_companion_metadata_atomically() {
         audio_codec: None,
         probe_status: VideoProbeStatus::Ready,
     };
-    index.upsert_batch(std::slice::from_ref(&source)).unwrap();
+    let generation = Generation::new(3);
     index
-        .replace_video_metadata(source.entity_id, &metadata, 3)
+        .upsert_batch(std::slice::from_ref(&source), generation)
+        .unwrap();
+    index
+        .replace_video_metadata(source.entity_id, &metadata, generation)
         .unwrap();
 
     index
@@ -810,7 +961,7 @@ fn unknown_persisted_kinds_still_reject_operation_projections() {
         let source = node(EntityId::new(), "source.png", FileKind::Png);
         let corrupted = node(EntityId::new(), "corrupted.data", FileKind::Other);
         index
-            .upsert_batch(&[source.clone(), corrupted.clone()])
+            .upsert_batch(&[source.clone(), corrupted.clone()], Generation::new(1))
             .unwrap();
         Connection::open(&database)
             .unwrap()
@@ -832,6 +983,7 @@ fn unknown_persisted_kinds_still_reject_operation_projections() {
                     destination,
                 }],
                 true,
+                Generation::new(1),
             ),
             Err(OperationProjectionError::Stale),
             "persisted kind {invalid_kind} must remain invalid"
@@ -862,7 +1014,9 @@ fn trash_removes_session_subtree_and_fts_but_keeps_dormant_portable_marker() {
         entity_id: portable_text.entity_id,
         ..portable_text.clone()
     };
-    index.upsert_batch(&[folder, text.clone()]).unwrap();
+    index
+        .upsert_batch(&[folder, text.clone()], Generation::new(1))
+        .unwrap();
     index
         .replace_text(
             text.entity_id,

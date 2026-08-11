@@ -9,6 +9,7 @@ use viewer_application::{
 use viewer_domain::{
     EntityId, RelativePath, SessionId,
     file::{FileKind, FileNode, ImageIndexStatus, ImageMetadata, ReviewState, TextIndexStatus},
+    search::Generation,
 };
 use viewer_infrastructure::{
     portable::{PortableMarkerStore, PortableProjectMetadata},
@@ -74,7 +75,9 @@ impl Fixture {
     fn index_existing(&self, relative: &str, kind: FileKind) -> EntityId {
         let node = filesystem_node(self.project.root(), relative, kind);
         let entity_id = node.entity_id;
-        self.index.upsert_batch(&[node]).unwrap();
+        self.index
+            .upsert_batch(&[node], Generation::new(1))
+            .unwrap();
         entity_id
     }
 

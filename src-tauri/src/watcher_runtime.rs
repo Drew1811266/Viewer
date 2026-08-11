@@ -388,7 +388,10 @@ mod tests {
         let index =
             Arc::new(SessionIndex::open(project.path().join(".viewer/session.sqlite")).unwrap());
         index
-            .upsert_batch(&[filesystem_node(project.path(), "before.txt")])
+            .upsert_batch(
+                &[filesystem_node(project.path(), "before.txt")],
+                viewer_domain::search::Generation::new(1),
+            )
             .unwrap();
         let coordinator = Arc::new(TaskCoordinator::default());
         let session_id = SessionId::new();

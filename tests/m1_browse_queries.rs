@@ -37,7 +37,9 @@ impl IndexedProject {
                 }
             })
             .collect::<Vec<_>>();
-        index.upsert_batch(&nodes).unwrap();
+        index
+            .upsert_batch(&nodes, viewer_domain::search::Generation::new(1))
+            .unwrap();
         Self {
             _directory: directory,
             index,
@@ -114,7 +116,19 @@ fn content_query_splits_images_and_other_files() {
     };
     assert_eq!(names(&images), ["01.jpg", "02.png", "source.webp"]);
     assert_eq!(names(&videos), ["preview.mp4"]);
-    assert_eq!(videos[0].video_metadata, None);
+    assert_eq!(
+        videos[0].video_metadata,
+        Some(VideoMetadata {
+            duration_us: None,
+            display_width: None,
+            display_height: None,
+            rotation_degrees: 0,
+            frame_rate_millihertz: None,
+            video_codec: None,
+            audio_codec: None,
+            probe_status: VideoProbeStatus::Pending,
+        })
+    );
     assert_eq!(names(&other_files), ["license.pdf", "notes.txt"]);
 
     let root = service.folder_workspace(None).unwrap();
@@ -233,7 +247,11 @@ fn content_query_projects_video_metadata_from_the_companion_table() {
     };
     project
         .index
-        .replace_video_metadata(project.id("clip.mp4"), &metadata, 9)
+        .replace_video_metadata(
+            project.id("clip.mp4"),
+            &metadata,
+            viewer_domain::search::Generation::new(1),
+        )
         .unwrap();
     let service = BrowseService::new(&project.index);
 

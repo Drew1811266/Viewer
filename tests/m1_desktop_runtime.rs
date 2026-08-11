@@ -369,6 +369,7 @@ async fn folder_query_and_image_representation_revalidate_and_reuse_cache() {
     let FolderWorkspaceDto::Content {
         images,
         other_files,
+        ..
     } = workspace
     else {
         panic!("root should be a content folder")

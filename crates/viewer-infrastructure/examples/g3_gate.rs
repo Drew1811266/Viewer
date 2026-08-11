@@ -200,18 +200,18 @@ async fn run_once(corpus: &Path) -> GateResult<RunResult> {
     let mut text_nodes = Vec::new();
     while let Some(event) = events.recv().await {
         match event {
-            ScanEvent::Folders { nodes, .. } => {
+            ScanEvent::Folders { generation, nodes } => {
                 first_folder.get_or_insert_with(|| start.elapsed());
-                index.upsert_batch(&nodes)?;
+                index.upsert_batch(&nodes, generation)?;
             }
-            ScanEvent::Files { nodes, .. } => {
+            ScanEvent::Files { generation, nodes } => {
                 text_nodes.extend(
                     nodes
                         .iter()
                         .filter(|node| matches!(node.kind, FileKind::Markdown | FileKind::Text))
                         .cloned(),
                 );
-                index.upsert_batch(&nodes)?;
+                index.upsert_batch(&nodes, generation)?;
             }
             ScanEvent::FailedItem {
                 relative_display,

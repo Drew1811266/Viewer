@@ -286,6 +286,7 @@ async fn indexed_fixture(
     let FolderWorkspaceDto::Content {
         images,
         other_files,
+        ..
     } = runtime
         .query_folder(Some(parse_id(&folder.entity_id)))
         .await
@@ -371,6 +372,7 @@ async fn marker_commands_support_mixed_targets_and_survive_project_copy_with_sta
     let FolderWorkspaceDto::Content {
         images,
         other_files,
+        ..
     } = runtime
         .query_folder(Some(parse_id(&copied_folder.entity_id)))
         .await

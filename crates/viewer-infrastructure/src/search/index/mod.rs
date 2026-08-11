@@ -9,6 +9,7 @@ use viewer_application::metadata::{IndexedNode, Marker};
 use viewer_domain::{
     EntityId, RelativePath,
     file::{FileKind, FileNode, ImageIndexStatus, ImageMetadata, ReviewState, TextIndexStatus},
+    search::Generation,
     video::{VideoFailureKind, VideoMetadata, VideoProbeStatus},
 };
 
@@ -26,6 +27,16 @@ pub enum SessionIndexError {
     MissingNode(EntityId),
     #[error("derived metadata does not match a current supported node: {0}")]
     InvalidDerivedMetadata(EntityId),
+    #[error(
+        "derived metadata generation {attempted_generation} does not match current projection generation {current_generation} for {entity_id}"
+    )]
+    StaleDerivedMetadata {
+        entity_id: EntityId,
+        attempted_generation: u64,
+        current_generation: u64,
+    },
+    #[error("generation cannot be represented in SQLite: {0}")]
+    GenerationOutOfRange(u64),
     #[error("search query is invalid")]
     InvalidSearchQuery,
     #[error("invalid persisted {field}: {value}")]
@@ -44,6 +55,15 @@ pub struct SessionReconcileSummary {
 
 pub struct SessionIndex {
     connection: Mutex<Connection>,
+}
+
+fn decode_generation(value: i64) -> Result<Generation, SessionIndexError> {
+    let generation =
+        u64::try_from(value).map_err(|_| SessionIndexError::InvalidPersistedValue {
+            field: "video_updated_generation",
+            value: value.to_string(),
+        })?;
+    Ok(Generation::new(generation))
 }
 
 pub(super) fn encode_kind(kind: FileKind) -> i64 {

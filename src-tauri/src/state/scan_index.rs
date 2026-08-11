@@ -391,8 +391,11 @@ fn emit_index_progress_if_current(
 }
 
 fn commit_scan_event(index: &SessionIndex, event: &ScanEvent) -> Result<(), CommandError> {
-    if let ScanEvent::Folders { nodes, .. } | ScanEvent::Files { nodes, .. } = event {
-        index.upsert_batch(nodes).map_err(CommandError::from)?;
+    if let ScanEvent::Folders { nodes, generation } | ScanEvent::Files { nodes, generation } = event
+    {
+        index
+            .upsert_batch(nodes, *generation)
+            .map_err(CommandError::from)?;
     }
     Ok(())
 }
@@ -474,7 +477,10 @@ mod tests {
             modified_ns: 1,
         };
         index
-            .upsert_batch(&[unsupported.clone(), other.clone()])
+            .upsert_batch(
+                &[unsupported.clone(), other.clone()],
+                viewer_domain::search::Generation::new(1),
+            )
             .unwrap();
         let coordinator = Arc::new(TaskCoordinator::default());
         let session_id = SessionId::new();

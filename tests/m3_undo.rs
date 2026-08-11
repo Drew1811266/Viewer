@@ -343,13 +343,16 @@ fn index_node(
     let metadata = fs::metadata(project.root().join(relative)).unwrap();
     let entity_id = EntityId::new();
     index
-        .upsert_batch(&[FileNode {
-            entity_id,
-            relative_path: RelativePath::parse(relative).unwrap(),
-            kind,
-            size: metadata.len(),
-            modified_ns: 1,
-        }])
+        .upsert_batch(
+            &[FileNode {
+                entity_id,
+                relative_path: RelativePath::parse(relative).unwrap(),
+                kind,
+                size: metadata.len(),
+                modified_ns: 1,
+            }],
+            viewer_domain::search::Generation::new(1),
+        )
         .unwrap();
     entity_id
 }

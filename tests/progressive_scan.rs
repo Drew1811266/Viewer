@@ -268,7 +268,7 @@ fn session_index_commits_a_batch_and_reopens_with_the_same_hierarchy() {
     ];
 
     let index = SessionIndex::open(&database).unwrap();
-    index.upsert_batch(&nodes).unwrap();
+    index.upsert_batch(&nodes, Generation::new(1)).unwrap();
     index.close().unwrap();
 
     let index = SessionIndex::open(&database).unwrap();
@@ -310,7 +310,7 @@ fn session_index_rolls_back_the_entire_batch_when_one_item_conflicts() {
     ];
 
     let index = SessionIndex::open(&database).unwrap();
-    assert!(index.upsert_batch(&nodes).is_err());
+    assert!(index.upsert_batch(&nodes, Generation::new(1)).is_err());
     assert!(index.directory_children(None).unwrap().is_empty());
 }
 

@@ -12,11 +12,13 @@ use viewer_domain::{
     EntityId, RelativePath,
     file::FileNode,
     operation::{ConflictPolicy, OperationKind},
+    search::Generation,
 };
 use viewer_infrastructure::operation::journal::{JournalItem, OperationJournal};
 
 pub struct DesktopOperationCommitPort {
     root: PathBuf,
+    generation: Generation,
     index: Arc<dyn BrowseIndexPort>,
     projection: Arc<dyn OperationProjectionPort>,
     metadata: Arc<dyn PortableMetadataPort>,
@@ -27,8 +29,10 @@ pub struct DesktopOperationCommitPort {
 }
 
 impl DesktopOperationCommitPort {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         root: PathBuf,
+        generation: Generation,
         index: Arc<dyn BrowseIndexPort>,
         projection: Arc<dyn OperationProjectionPort>,
         metadata: Arc<dyn PortableMetadataPort>,
@@ -38,6 +42,7 @@ impl DesktopOperationCommitPort {
     ) -> Self {
         Self {
             root,
+            generation,
             index,
             projection,
             metadata,
@@ -48,8 +53,10 @@ impl DesktopOperationCommitPort {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn for_recovery(
         root: PathBuf,
+        generation: Generation,
         index: Arc<dyn BrowseIndexPort>,
         projection: Arc<dyn OperationProjectionPort>,
         metadata: Arc<dyn PortableMetadataPort>,
@@ -59,6 +66,7 @@ impl DesktopOperationCommitPort {
     ) -> Self {
         Self {
             root,
+            generation,
             index,
             projection,
             metadata,
@@ -353,6 +361,7 @@ impl OperationCommitPort for DesktopOperationCommitPort {
                             destination,
                         }],
                         case_sensitive,
+                        self.generation,
                     )
                     .map_err(|_| index_commit_error("projection_stale"))
             }

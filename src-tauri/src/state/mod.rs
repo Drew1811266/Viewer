@@ -407,6 +407,13 @@ mod derived_error_tests {
         assert!(is_stale_derived_write_error(
             &SessionIndexError::MissingNode(entity_id)
         ));
+        assert!(is_stale_derived_write_error(
+            &SessionIndexError::StaleDerivedMetadata {
+                entity_id,
+                attempted_generation: 1,
+                current_generation: 2,
+            }
+        ));
         assert!(!is_stale_derived_write_error(
             &SessionIndexError::InvalidDerivedMetadata(entity_id)
         ));

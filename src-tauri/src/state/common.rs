@@ -166,6 +166,8 @@ pub(super) fn modified_ns(metadata: &std::fs::Metadata) -> i128 {
 pub(crate) fn is_stale_derived_write_error(error: &SessionIndexError) -> bool {
     matches!(
         error,
-        SessionIndexError::MissingTextNode { .. } | SessionIndexError::MissingNode(_)
+        SessionIndexError::MissingTextNode { .. }
+            | SessionIndexError::MissingNode(_)
+            | SessionIndexError::StaleDerivedMetadata { .. }
     )
 }

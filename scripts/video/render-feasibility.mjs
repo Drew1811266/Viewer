@@ -29,6 +29,11 @@ import {
   selectLaunchedViewerProcess,
   verifyFixtureHashes,
 } from './render-feasibility-assertions.mjs'
+import {
+  appendCleanupFailure,
+  cleanupFeasibilityLaunch,
+  renderFeasibilityTestPaths,
+} from './render-feasibility-lifecycle.mjs'
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url))
 const repoRoot = path.resolve(scriptDirectory, '../..')
@@ -233,36 +238,15 @@ async function capture(client, name) {
 
 async function stopViewer(viewer) {
   if (!viewer) return
-  if (viewer.client) {
-    try {
-      await viewer.client.close()
-    } catch {
-      await viewer.client.terminate().catch(() => undefined)
-    }
+  try {
+    await cleanupFeasibilityLaunch(viewer, {
+      currentProcessTable,
+      stopLauncher: stopViewerLauncher,
+      stopProcess: stopViewerProcess,
+    })
+  } finally {
+    if (activeViewer === viewer) activeViewer = undefined
   }
-  if (viewer.pid && processIsRunning(viewer.pid)) {
-    process.kill(viewer.pid, 'SIGTERM')
-    const exited = await waitForProcessExit(viewer.pid, 3_000)
-    if (!exited && processIsRunning(viewer.pid)) {
-      process.kill(viewer.pid, 'SIGKILL')
-      await waitForProcessExit(viewer.pid, 3_000)
-    }
-  }
-  const launcher = viewer.launcher
-  if (launcher && launcher.exitCode === null && launcher.signalCode === null) {
-    const exited = await waitForChildExit(launcher, 3_000)
-    if (!exited && launcher.exitCode === null && launcher.signalCode === null) {
-      launcher.kill('SIGTERM')
-      const terminated = await waitForChildExit(launcher, 3_000)
-      if (!terminated && launcher.exitCode === null && launcher.signalCode === null) {
-        launcher.kill('SIGKILL')
-        if (!(await waitForChildExit(launcher, 3_000))) {
-          throw new Error('Viewer LaunchServices waiter did not exit')
-        }
-      }
-    }
-  }
-  activeViewer = undefined
 }
 
 function processIsRunning(pid) {
@@ -283,12 +267,33 @@ async function waitForProcessExit(pid, timeoutMs) {
   return true
 }
 
+async function stopViewerProcess(pid) {
+  if (!processIsRunning(pid)) return
+  process.kill(pid, 'SIGTERM')
+  if (await waitForProcessExit(pid, 3_000)) return
+  if (processIsRunning(pid)) process.kill(pid, 'SIGKILL')
+  if (!(await waitForProcessExit(pid, 3_000))) {
+    throw new Error(`Viewer process ${pid} did not exit`)
+  }
+}
+
 async function waitForChildExit(child, timeoutMs) {
   if (child.exitCode !== null || child.signalCode !== null) return true
   return Promise.race([
     once(child, 'exit').then(() => true),
     new Promise((resolve) => setTimeout(() => resolve(false), timeoutMs)),
   ])
+}
+
+async function stopViewerLauncher(launcher) {
+  if (launcher.exitCode !== null || launcher.signalCode !== null) return
+  if (await waitForChildExit(launcher, 3_000)) return
+  launcher.kill('SIGTERM')
+  if (await waitForChildExit(launcher, 3_000)) return
+  if (launcher.exitCode === null && launcher.signalCode === null) launcher.kill('SIGKILL')
+  if (!(await waitForChildExit(launcher, 3_000))) {
+    throw new Error('Viewer LaunchServices waiter did not exit')
+  }
 }
 
 function currentProcessTable() {
@@ -371,7 +376,14 @@ async function buildAndLaunch(fixtureId, helperPath) {
     ['-n', '-W', '-o', nativeLogPath, '--stderr', nativeLogPath, appPath],
     { cwd: repoRoot, stdio: 'ignore' },
   )
-  activeViewer = { launcher, pid: undefined, client: undefined, error: undefined }
+  activeViewer = {
+    baselinePids: existingPids,
+    client: undefined,
+    error: undefined,
+    executablePath: appExecutable,
+    launcher,
+    pid: undefined,
+  }
   launcher.once('error', (error) => {
     if (activeViewer?.launcher === launcher) activeViewer.error = error
   })
@@ -537,7 +549,7 @@ async function main() {
   }
   run(
     'node',
-    ['--test', 'scripts/video/render-feasibility-assertions.test.mjs'],
+    ['--test', ...renderFeasibilityTestPaths],
     'test-render-feasibility-assertions.log',
   )
   run(
@@ -660,7 +672,12 @@ try {
   result.error = error?.stack ?? String(error)
   process.exitCode = 1
 } finally {
-  await stopViewer(activeViewer).catch(() => undefined)
+  try {
+    await stopViewer(activeViewer)
+  } catch (error) {
+    result.error = appendCleanupFailure(result.error, error)
+    process.exitCode = 1
+  }
   mkdirSync(outputRoot, { recursive: true })
   writeFileSync(path.join(outputRoot, 'matrix-result.json'), `${JSON.stringify(result, null, 2)}\n`)
   for (const row of matrixRows) console.log(`${result.rows[row] ? 'PASS' : 'FAIL'} ${row}`)

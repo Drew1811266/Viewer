@@ -24,7 +24,9 @@ import {
   analyzeReactOverlay,
   matrixExitCode,
   parsePlaybackTimeUs,
+  parseRenderedFrames,
   proveFrameDirection,
+  verifyFixtureHashes,
 } from './render-feasibility-assertions.mjs'
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url))
@@ -61,8 +63,19 @@ const matrixRows = [
   'no-ipc-frame-buffer',
   '30-mount-unmount-baseline',
 ]
+const fixtures = [
+  ['h264-1080p', 'h264-1080p.mp4'],
+  ['hevc-portrait', 'hevc-portrait.mp4'],
+  ['vfr-step', 'vfr-step.mp4'],
+]
+const firstFrameExpectations = {
+  'h264-1080p': { left: 152, right: 872, minColorRatio: 0.35 },
+  'hevc-portrait': { left: 152, right: 872, minColorRatio: 0.25 },
+  'vfr-step': { left: 152, right: 872, minColorRatio: 0.35 },
+}
 const result = {
   generatedAt: new Date().toISOString(),
+  source: {},
   machine: {},
   fixtures: {},
   native: {},
@@ -177,6 +190,24 @@ async function currentPlaybackTime(client) {
     if (error?.code === 'STATE_TARGET_NOT_FOUND' || /not numeric/.test(String(error))) return null
     throw error
   }
+}
+
+async function waitForRenderedFrames(client, predicate = () => true) {
+  return waitFor(
+    async () => {
+      try {
+        const element = await queryOne(client, { role: 'AXGroup', namePrefix: '已绘制：' })
+        const frames = parseRenderedFrames(element.name)
+        return predicate(frames) ? frames : false
+      } catch (error) {
+        if (error?.code === 'STATE_TARGET_NOT_FOUND' || /not numeric/.test(String(error))) {
+          return false
+        }
+        throw error
+      }
+    },
+    { timeoutMs: 10_000, intervalMs: 50 },
+  )
 }
 
 async function activate(client, name, timeoutMs = 5_000) {
@@ -309,10 +340,18 @@ async function buildAndLaunch(fixtureId, helperPath) {
   await client.start()
   await client.request('focus', { target: { role: 'AXWindow' } })
   await waitForStatus(client, ['首帧：就绪'])
+  const firstRevealedCapture = await capture(client, `${fixtureId}-first-revealed`)
+  const firstRevealedPixels = await assertColorBars(
+    firstRevealedCapture,
+    firstFrameExpectations[fixtureId].left,
+    firstFrameExpectations[fixtureId].right,
+    firstFrameExpectations[fixtureId].minColorRatio,
+  )
+  const [decodedPictureType] = await waitForStatus(client, ['解码帧：I'])
   const hwdec = await waitForElement(client, { name: 'videotoolbox' })
   const videoOutput = await waitForElement(client, { name: 'libmpv' })
   const resources = await waitForElement(client, { name: '1/1/1' })
-  const renderedFrames = await waitForElement(client, { namePrefix: '2' })
+  const renderedFrames = await waitForRenderedFrames(client, (frames) => frames >= 1)
   const playbackTimeUs = await currentPlaybackTime(client)
 
   result.native[fixtureId] = {
@@ -320,14 +359,20 @@ async function buildAndLaunch(fixtureId, helperPath) {
     hwdec: hwdec.name,
     videoOutput: videoOutput.name,
     resources: resources.name,
-    renderedFrames: Number.parseInt(renderedFrames.name, 10),
+    renderedFrames,
     playbackTimeUs,
+    decodedPictureType: decodedPictureType.name.replace('解码帧：', ''),
+    firstRevealedFrame: {
+      screenshot: firstRevealedCapture,
+      pixels: firstRevealedPixels,
+      capturedBeforeBackendPolling: true,
+    },
     log: nativeLogPath,
   }
   return activeViewer
 }
 
-async function assertColorBars(filePath, expectedLeft, expectedRight) {
+async function assertColorBars(filePath, expectedLeft, expectedRight, minColorRatio = 0.35) {
   const image = await readRgbaPng(filePath)
   const scaleX = image.width / 1024
   const scaleY = image.height / 720
@@ -357,7 +402,7 @@ async function assertColorBars(filePath, expectedLeft, expectedRight) {
   const logicalMin = minX / scaleX
   const logicalMax = (maxX + 1) / scaleX
   if (
-    ratio < 0.35 ||
+    ratio < minColorRatio ||
     Math.abs(logicalMin - expectedLeft) > 8 ||
     Math.abs(logicalMax - expectedRight) > 8
   ) {
@@ -395,23 +440,26 @@ function preflight() {
 async function main() {
   mkdirSync(logsRoot, { recursive: true })
   mkdirSync(screenshotsRoot, { recursive: true })
+  for (const [fixtureId, fileName] of fixtures) {
+    const fixturePath = path.join(repoRoot, 'tests', 'fixtures', 'videos', fileName)
+    result.fixtures[fixtureId] = { path: fixturePath, sha256: sha256(fixturePath) }
+  }
+  verifyFixtureHashes(result.fixtures)
   preflight()
 
+  const workingTreeStatus = run('git', ['status', '--short'], 'source-status.log')
+  result.source = {
+    commit: run('git', ['rev-parse', 'HEAD'], 'source-commit.log'),
+    tree: run('git', ['rev-parse', 'HEAD^{tree}'], 'source-tree.log'),
+    clean: workingTreeStatus.length === 0,
+    workingTreeStatus,
+  }
   result.machine = {
     model: run('sysctl', ['-n', 'hw.model'], 'machine-model.log'),
     chip: run('sysctl', ['-n', 'machdep.cpu.brand_string'], 'machine-chip.log'),
     macOS: run('sw_vers', [], 'machine-macos.log'),
     uname: run('uname', ['-a'], 'machine-uname.log'),
   }
-  for (const [fixtureId, fileName] of [
-    ['h264-1080p', 'h264-1080p.mp4'],
-    ['hevc-portrait', 'hevc-portrait.mp4'],
-    ['vfr-step', 'vfr-step.mp4'],
-  ]) {
-    const fixturePath = path.join(repoRoot, 'tests', 'fixtures', 'videos', fileName)
-    result.fixtures[fixtureId] = { path: fixturePath, sha256: sha256(fixturePath) }
-  }
-
   run(
     'node',
     ['--test', 'scripts/video/render-feasibility-assertions.test.mjs'],
@@ -448,8 +496,8 @@ async function main() {
 
   let viewer = await buildAndLaunch('h264-1080p', helper.executablePath)
   const overlay = await waitForElement(viewer.client, { name: 'React 视频控制覆盖层' })
-  const h264Capture = await capture(viewer.client, 'h264-1080p')
-  const initialGeometry = await assertColorBars(h264Capture, 152, 872)
+  const h264Capture = result.native['h264-1080p'].firstRevealedFrame.screenshot
+  const initialGeometry = result.native['h264-1080p'].firstRevealedFrame.pixels
   const overlayPixels = analyzeReactOverlay(await readRgbaPng(h264Capture))
   await activate(viewer.client, '调整原生表面尺寸')
   await waitForElement(viewer.client, { name: 'videotoolbox' })
@@ -465,21 +513,24 @@ async function main() {
   await stopViewer(viewer)
 
   viewer = await buildAndLaunch('hevc-portrait', helper.executablePath)
-  await capture(viewer.client, 'hevc-portrait')
   result.rows['hevc-videotoolbox'] = true
   await stopViewer(viewer)
 
   viewer = await buildAndLaunch('vfr-step', helper.executablePath)
   const reportedInitialTimeUs = result.native['vfr-step'].playbackTimeUs
   const initialTimeUs = reportedInitialTimeUs ?? 0
+  const initialRenderedFrames = result.native['vfr-step'].renderedFrames
   await activate(viewer.client, '前进一帧')
   await waitForStatus(viewer.client, ['前进：完成'])
   const firstForwardTimeUs = await waitForPlaybackTime(
     viewer.client,
     (timeUs) => timeUs > initialTimeUs,
   )
-  const forwardFrames = await waitForElement(viewer.client, { namePrefix: '4' })
-  result.native['vfr-step'].frameStepForwardFrames = Number.parseInt(forwardFrames.name, 10)
+  const forwardFrames = await waitForRenderedFrames(
+    viewer.client,
+    (frames) => frames > initialRenderedFrames,
+  )
+  result.native['vfr-step'].frameStepForwardFrames = forwardFrames
   result.rows['frame-step-forward'] = true
   // Move away from the first-frame boundary before stepping backward. At the
   // boundary mpv intentionally makes time-pos unavailable, which cannot prove
@@ -489,15 +540,22 @@ async function main() {
     viewer.client,
     (timeUs) => timeUs > firstForwardTimeUs,
   )
-  await waitForElement(viewer.client, { namePrefix: '6' })
+  const secondForwardFrames = await waitForRenderedFrames(
+    viewer.client,
+    (frames) => frames > forwardFrames,
+  )
   await activate(viewer.client, '后退一帧')
   await waitForStatus(viewer.client, ['前进：完成', '后退：完成'])
   const backwardTimeUs = await waitForPlaybackTime(
     viewer.client,
     (timeUs) => timeUs < secondForwardTimeUs,
   )
-  const backwardFrames = await waitForElement(viewer.client, { namePrefix: '8' })
-  result.native['vfr-step'].frameStepBackwardFrames = Number.parseInt(backwardFrames.name, 10)
+  const backwardFrames = await waitForRenderedFrames(
+    viewer.client,
+    (frames) => frames > secondForwardFrames,
+  )
+  result.native['vfr-step'].secondFrameStepForwardFrames = secondForwardFrames
+  result.native['vfr-step'].frameStepBackwardFrames = backwardFrames
   result.native['vfr-step'].playbackDirection = proveFrameDirection(
     firstForwardTimeUs,
     secondForwardTimeUs,

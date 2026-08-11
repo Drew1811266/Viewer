@@ -4,6 +4,12 @@ export function parsePlaybackTimeUs(name) {
   return Number.parseInt(match[1], 10)
 }
 
+export function parseRenderedFrames(name) {
+  const match = /^已绘制：(\d+)$/.exec(name)
+  if (!match) throw new Error(`Rendered-frame status is not numeric: ${name}`)
+  return Number.parseInt(match[1], 10)
+}
+
 export function proveFrameDirection(initialUs, forwardUs, backwardUs) {
   if (!(forwardUs > initialUs)) {
     throw new Error(`Playback time did not move forward: ${initialUs} -> ${forwardUs}`)
@@ -16,6 +22,28 @@ export function proveFrameDirection(initialUs, forwardUs, backwardUs) {
 
 export function matrixExitCode(rows) {
   return Object.values(rows).every(Boolean) ? 0 : 1
+}
+
+const REQUIRED_FIXTURE_HASHES = Object.freeze({
+  'h264-1080p': '972aff59c7183940dbdfae2d906421a26604a10b6bd24432ccf969a028674296',
+  'hevc-portrait': '4e7abaf98918f862ea07c5b529a143cd7f208c3bba7b807dab7995ac8103d0ac',
+  'vfr-step': 'ee9ede284fabb52570fdd51428bf5408fad35de9ef8a4aeaefbcbc577cfcdde9',
+})
+
+export function verifyFixtureHashes(fixtures) {
+  const requiredIds = Object.keys(REQUIRED_FIXTURE_HASHES).sort()
+  const actualIds = Object.keys(fixtures).sort()
+  if (actualIds.length !== requiredIds.length || actualIds.some((id, index) => id !== requiredIds[index])) {
+    throw new Error(`Native matrix requires the exact fixture allowlist: ${requiredIds.join(', ')}`)
+  }
+  for (const id of requiredIds) {
+    const actual = fixtures[id]?.sha256
+    const expected = REQUIRED_FIXTURE_HASHES[id]
+    if (actual !== expected) {
+      throw new Error(`Fixture hash mismatch for ${id}: expected ${expected}, got ${actual}`)
+    }
+  }
+  return true
 }
 
 export function analyzeReactOverlay(image) {

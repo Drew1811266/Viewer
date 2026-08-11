@@ -116,6 +116,7 @@ unsafe extern "C" fn get_property(
     let value = match name.as_str() {
         "hwdec-current" => "videotoolbox",
         "current-vo" => "libmpv",
+        "video-frame-info/picture-type" => "I",
         _ => panic!("unexpected property read {name}"),
     };
     calls().lock().unwrap().push(Call::PropertyRead(name));
@@ -189,6 +190,10 @@ fn public_client_contract_is_isolated_and_typed() {
         Some("libmpv")
     );
     assert_eq!(client.current_playback_time_us().unwrap(), Some(1_250_000));
+    assert_eq!(
+        client.current_video_picture_type().unwrap().as_deref(),
+        Some("I")
+    );
     drop(client);
 
     let calls = calls().lock().unwrap();
@@ -243,5 +248,8 @@ fn public_client_contract_is_isolated_and_typed() {
     assert!(calls.contains(&Call::PropertyRead("hwdec-current".to_owned())));
     assert!(calls.contains(&Call::PropertyRead("current-vo".to_owned())));
     assert!(calls.contains(&Call::PropertyRead("time-pos".to_owned())));
+    assert!(calls.contains(&Call::PropertyRead(
+        "video-frame-info/picture-type".to_owned()
+    )));
     assert_eq!(calls.last(), Some(&Call::Destroy));
 }

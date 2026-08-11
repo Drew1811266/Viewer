@@ -1,4 +1,5 @@
 use crate::error::{CommandError, ErrorCategory};
+use dispatch2::DispatchQueue;
 use objc2::{msg_send, runtime::AnyObject};
 use objc2_app_kit::NSColor;
 use serde::{Deserialize, Serialize};
@@ -75,6 +76,7 @@ pub struct VideoFeasibilityReport {
     fixture_id: String,
     rect: SurfaceRectDto,
     first_frame_ready: bool,
+    decoded_picture_type: Option<String>,
     forward_step: bool,
     backward_step: bool,
     playback_time_us: Option<u64>,
@@ -87,26 +89,13 @@ pub async fn run_video_feasibility(
     window: WebviewWindow,
     request: VideoFeasibilityRequest,
 ) -> Result<VideoFeasibilityReport, CommandError> {
-    let fixture = fixture_path(&request.fixture_id)?;
-    let bundle_resources = bundle_resources(&app)?;
-    window
-        .set_background_color(Some(Color(0, 0, 0, 0)))
-        .map_err(|_| {
-            feasibility_error(
-                "video_feasibility_transparency",
-                "无法将网页视图切换为透明背景。",
-            )
-        })?;
     let (sender, receiver) = tokio::sync::oneshot::channel();
-    let command_window = window.clone();
-    window
-        .run_on_main_thread(move || {
-            let result = handle_on_main_thread(command_window, request, fixture, bundle_resources);
-            let _ = sender.send(result);
-        })
-        .map_err(|_| {
-            feasibility_error("video_feasibility_main_thread", "无法调度原生视频测试。")
-        })?;
+    DispatchQueue::main().exec_async(move || {
+        let result = handle_on_main_thread(app, window, request);
+        if sender.send(result).is_err() {
+            ACTIVE_SESSION.with(|slot| slot.borrow_mut().take());
+        }
+    });
     receiver.await.map_err(|_| {
         feasibility_error(
             "video_feasibility_cancelled",
@@ -116,55 +105,71 @@ pub async fn run_video_feasibility(
 }
 
 fn handle_on_main_thread(
+    app: AppHandle,
     window: WebviewWindow,
     request: VideoFeasibilityRequest,
-    fixture: PathBuf,
-    bundle_resources: PathBuf,
 ) -> Result<VideoFeasibilityReport, CommandError> {
-    configure_transparent_webview(&window)?;
-    match request.action {
-        VideoFeasibilityAction::Mount => mount(
-            window,
-            request.fixture_id,
-            request.rect,
-            &fixture,
-            &bundle_resources,
-        ),
-        VideoFeasibilityAction::UpdateGeometry => {
-            with_matching_session(&request.fixture_id, |active| {
-                active
-                    .session
-                    .update_geometry(request.rect.into())
-                    .map_err(render_error)?;
-                active.rect = request.rect;
-                active.report()
-            })
-        }
-        VideoFeasibilityAction::FrameStepForward => {
-            with_matching_session(&request.fixture_id, |active| {
-                active
-                    .session
-                    .frame_step(FrameDirection::Forward)
-                    .map_err(render_error)?;
-                active.forward_step = true;
-                active.report()
-            })
-        }
-        VideoFeasibilityAction::FrameStepBackward => {
-            with_matching_session(&request.fixture_id, |active| {
-                active
-                    .session
-                    .frame_step(FrameDirection::Backward)
-                    .map_err(render_error)?;
-                active.backward_step = true;
-                active.report()
-            })
-        }
-        VideoFeasibilityAction::Status => {
-            with_matching_session(&request.fixture_id, |active| active.report())
-        }
-        VideoFeasibilityAction::Close => close(&request.fixture_id, request.rect),
-    }
+    run_command_with_cleanup(
+        || {
+            let fixture = fixture_path(&request.fixture_id)?;
+            let bundle_resources = bundle_resources(&app)?;
+            window
+                .set_background_color(Some(Color(0, 0, 0, 0)))
+                .map_err(|_| {
+                    feasibility_error(
+                        "video_feasibility_transparency",
+                        "无法将网页视图切换为透明背景。",
+                    )
+                })?;
+            configure_transparent_webview(&window)?;
+            match request.action {
+                VideoFeasibilityAction::Mount => mount(
+                    window,
+                    request.fixture_id,
+                    request.rect,
+                    &fixture,
+                    &bundle_resources,
+                ),
+                VideoFeasibilityAction::UpdateGeometry => {
+                    with_matching_session(&request.fixture_id, |active| {
+                        active
+                            .session
+                            .update_geometry(request.rect.into())
+                            .map_err(render_error)?;
+                        active.rect = request.rect;
+                        active.report()
+                    })
+                }
+                VideoFeasibilityAction::FrameStepForward => {
+                    with_matching_session(&request.fixture_id, |active| {
+                        active
+                            .session
+                            .frame_step(FrameDirection::Forward)
+                            .map_err(render_error)?;
+                        active.forward_step = true;
+                        active.report()
+                    })
+                }
+                VideoFeasibilityAction::FrameStepBackward => {
+                    with_matching_session(&request.fixture_id, |active| {
+                        active
+                            .session
+                            .frame_step(FrameDirection::Backward)
+                            .map_err(render_error)?;
+                        active.backward_step = true;
+                        active.report()
+                    })
+                }
+                VideoFeasibilityAction::Status => {
+                    with_matching_session(&request.fixture_id, |active| active.report())
+                }
+                VideoFeasibilityAction::Close => close(&request.fixture_id, request.rect),
+            }
+        },
+        || {
+            ACTIVE_SESSION.with(|slot| slot.borrow_mut().take());
+        },
+    )
 }
 
 fn mount(
@@ -182,9 +187,8 @@ fn mount(
     let surface = MacVideoSurface::mount(&window, rect.into()).map_err(render_error)?;
     let scheduling_window = window.clone();
     let schedule_draw: Arc<dyn Fn() + Send + Sync> = Arc::new(move || {
-        let main_window = scheduling_window.clone();
         let event_window = scheduling_window.clone();
-        let scheduled = main_window.run_on_main_thread(move || {
+        DispatchQueue::main().exec_async(move || {
             let report = ACTIVE_SESSION.with(|slot| {
                 let mut slot = slot.borrow_mut();
                 slot.as_ref()?;
@@ -200,13 +204,13 @@ fn mount(
                     }
                 }
             });
-            if let Some(report) = report {
-                let _ = event_window.emit(FRAME_EVENT, report);
+            if let Some(report) = report
+                && let Err(error) = event_window.emit(FRAME_EVENT, report)
+            {
+                eprintln!("Viewer video feasibility frame event failed: {error}");
+                ACTIVE_SESSION.with(|slot| slot.borrow_mut().take());
             }
         });
-        if let Err(error) = scheduled {
-            eprintln!("Viewer video feasibility: main-thread draw scheduling failed: {error}");
-        }
     });
     let session =
         MacVideoRenderSession::new(client, surface, schedule_draw).map_err(render_error)?;
@@ -257,6 +261,7 @@ fn close(fixture_id: &str, rect: SurfaceRectDto) -> Result<VideoFeasibilityRepor
         fixture_id: closed.fixture_id,
         rect,
         first_frame_ready: closed.first_frame_ready,
+        decoded_picture_type: closed.decoded_picture_type,
         forward_step: closed.forward_step,
         backward_step: closed.backward_step,
         playback_time_us: closed.playback_time_us,
@@ -293,7 +298,9 @@ impl ActiveFeasibilitySession {
             first_frame_ready: fixture_frame_ready(
                 diagnostics.rendered_frames,
                 self.initial_rendered_frames,
+                self.session.first_decoded_frame_revealed(),
             ),
+            decoded_picture_type: self.session.decoded_picture_type().map(str::to_owned),
             forward_step: self.forward_step,
             backward_step: self.backward_step,
             playback_time_us,
@@ -305,6 +312,17 @@ impl ActiveFeasibilitySession {
 fn clear_session_on_error<T, R, E>(slot: &mut Option<T>, result: Result<R, E>) -> Result<R, E> {
     if result.is_err() {
         slot.take();
+    }
+    result
+}
+
+fn run_command_with_cleanup<R, E>(
+    command: impl FnOnce() -> Result<R, E>,
+    cleanup: impl FnOnce(),
+) -> Result<R, E> {
+    let result = command();
+    if result.is_err() {
+        cleanup();
     }
     result
 }
@@ -330,8 +348,12 @@ fn run_registered_action<T, R, E>(
     clear_session_on_error(slot, result)
 }
 
-fn fixture_frame_ready(rendered_frames: u64, fixture_baseline: u64) -> bool {
-    rendered_frames > fixture_baseline
+fn fixture_frame_ready(
+    rendered_frames: u64,
+    fixture_baseline: u64,
+    decoded_frame_revealed: bool,
+) -> bool {
+    rendered_frames > fixture_baseline && decoded_frame_revealed
 }
 
 fn retain_observed_backend(
@@ -376,12 +398,6 @@ fn fixture_path(fixture_id: &str) -> Result<PathBuf, CommandError> {
 }
 
 fn bundle_resources(app: &AppHandle) -> Result<PathBuf, CommandError> {
-    if let Some(path) = std::env::var_os("VIEWER_VIDEO_BUNDLE_RESOURCES") {
-        let path = PathBuf::from(path);
-        if path.is_absolute() {
-            return Ok(path);
-        }
-    }
     app.path().resource_dir().map_err(|_| {
         feasibility_error(
             "video_feasibility_runtime_missing",
@@ -437,7 +453,7 @@ fn feasibility_error(code: &'static str, message: &'static str) -> CommandError 
 mod tests {
     use super::{
         clear_session_on_error, close_registered_session, fixture_frame_ready, fixture_path,
-        retain_observed_backend, run_registered_action,
+        retain_observed_backend, run_command_with_cleanup, run_registered_action,
     };
     use std::{cell::Cell, rc::Rc};
     use viewer_platform_macos::video::VideoRenderDiagnostics;
@@ -484,6 +500,29 @@ mod tests {
     }
 
     #[test]
+    fn failed_command_precondition_drops_an_existing_native_session() {
+        struct DropProbe(Rc<Cell<bool>>);
+        impl Drop for DropProbe {
+            fn drop(&mut self) {
+                self.0.set(true);
+            }
+        }
+
+        let dropped = Rc::new(Cell::new(false));
+        let mut slot = Some(DropProbe(Rc::clone(&dropped)));
+        let result: Result<(), &str> = run_command_with_cleanup(
+            || Err("fixture rejected"),
+            || {
+                slot.take();
+            },
+        );
+
+        assert_eq!(result, Err("fixture rejected"));
+        assert!(slot.is_none());
+        assert!(dropped.get());
+    }
+
+    #[test]
     fn failed_close_drops_the_registered_native_session() {
         struct DropProbe(Rc<Cell<bool>>);
         impl Drop for DropProbe {
@@ -524,8 +563,19 @@ mod tests {
     #[test]
     fn render_context_wake_does_not_count_as_a_fixture_frame() {
         let baseline_after_context_wake = 8;
-        assert!(!fixture_frame_ready(8, baseline_after_context_wake));
-        assert!(fixture_frame_ready(9, baseline_after_context_wake));
+        assert!(!fixture_frame_ready(8, baseline_after_context_wake, false));
+        assert!(!fixture_frame_ready(9, baseline_after_context_wake, false));
+        assert!(fixture_frame_ready(9, baseline_after_context_wake, true));
+    }
+
+    #[test]
+    fn dispatch_and_bundle_source_have_no_fallible_or_override_escape_hatches() {
+        let source = include_str!("video_feasibility.rs");
+        let fallible_dispatch = ["run", "on", "main", "thread"].join("_");
+        let bundle_override = ["VIEWER", "VIDEO", "BUNDLE", "RESOURCES"].join("_");
+        assert!(source.contains("DispatchQueue::main().exec_async"));
+        assert!(!source.contains(&fallible_dispatch));
+        assert!(!source.contains(&bundle_override));
     }
 
     #[test]
@@ -539,9 +589,10 @@ mod tests {
             std::fs::read_to_string(manifest_root.join("../scripts/video/render-feasibility.mjs"))
                 .expect("read feasibility matrix runner");
 
-        assert!(cargo_manifest.contains(
-            "video-feasibility = [\"dep:viewer-video-mpv\", \"tauri/macos-private-api\"]"
-        ));
+        assert!(cargo_manifest.contains("video-feasibility = ["));
+        assert!(cargo_manifest.contains("\"dep:dispatch2\""));
+        assert!(cargo_manifest.contains("\"dep:viewer-video-mpv\""));
+        assert!(cargo_manifest.contains("\"tauri/macos-private-api\""));
         assert!(cargo_manifest.contains("tauri = { version = \"2\", features = [] }"));
         assert!(!base_config.contains("macOSPrivateApi"));
         assert!(!matrix_runner.contains("macOSPrivateApi"));

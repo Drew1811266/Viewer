@@ -19,6 +19,7 @@ const report = {
   fixtureId: 'h264-1080p',
   rect: { x: 152, y: 120, width: 720, height: 405 },
   firstFrameReady: true,
+  decodedPictureType: 'I',
   forwardStep: false,
   backwardStep: false,
   playbackTimeUs: 0,
@@ -94,6 +95,8 @@ describe('video feasibility scene', () => {
       'true',
     )
     expect(screen.getByText('首帧：就绪')).toBeInTheDocument()
+    expect(screen.getByText('解码帧：I')).toBeInTheDocument()
+    expect(screen.getByRole('status', { name: '已绘制：4' })).toBeInTheDocument()
     expect(JSON.stringify(vi.mocked(invoke).mock.calls)).not.toContain('frameBuffer')
   })
 

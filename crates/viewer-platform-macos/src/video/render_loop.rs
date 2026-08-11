@@ -25,6 +25,7 @@ pub struct MacVideoRenderSession {
     client: Option<MpvClient>,
     open_gl_context: objc2::rc::Retained<NSOpenGLContext>,
     first_frame_revealed: bool,
+    decoded_picture_type: Option<String>,
     media_loaded: bool,
     _client_lease: ResourceLease,
     _render_context_lease: ResourceLease,
@@ -53,6 +54,7 @@ impl MacVideoRenderSession {
             client: Some(client),
             open_gl_context,
             first_frame_revealed: false,
+            decoded_picture_type: None,
             media_loaded: false,
             _client_lease: ResourceLease::acquire(ResourceKind::Client),
             _render_context_lease: ResourceLease::acquire(ResourceKind::RenderContext),
@@ -75,13 +77,21 @@ impl MacVideoRenderSession {
                 self.open_gl_context.flushBuffer();
                 render_context.report_swap();
                 record_rendered_frame();
+                let decoded_picture_type = self
+                    .client
+                    .as_ref()
+                    .map(MpvClient::current_video_picture_type)
+                    .transpose()?
+                    .flatten();
                 if should_reveal_fixture_frame(
                     self.media_loaded,
                     self.first_frame_revealed,
                     should_draw,
+                    decoded_picture_type.is_some(),
                 ) {
                     surface.reveal()?;
                     self.first_frame_revealed = true;
+                    self.decoded_picture_type = decoded_picture_type;
                 }
             }
             Ok(should_draw)
@@ -114,6 +124,14 @@ impl MacVideoRenderSession {
             return Ok(None);
         };
         Ok(client.current_playback_time_us()?)
+    }
+
+    pub fn first_decoded_frame_revealed(&self) -> bool {
+        self.first_frame_revealed
+    }
+
+    pub fn decoded_picture_type(&self) -> Option<&str> {
+        self.decoded_picture_type.as_deref()
     }
 
     pub fn frame_step(&self, direction: FrameDirection) -> Result<(), RenderLoopError> {
@@ -159,8 +177,9 @@ fn should_reveal_fixture_frame(
     media_loaded: bool,
     first_frame_revealed: bool,
     drew_frame: bool,
+    decoded_video_frame: bool,
 ) -> bool {
-    media_loaded && !first_frame_revealed && drew_frame
+    media_loaded && !first_frame_revealed && drew_frame && decoded_video_frame
 }
 
 impl Drop for MacVideoRenderSession {
@@ -175,9 +194,10 @@ mod tests {
 
     #[test]
     fn pre_load_render_context_wake_keeps_the_surface_hidden() {
-        assert!(!should_reveal_fixture_frame(false, false, true));
-        assert!(should_reveal_fixture_frame(true, false, true));
-        assert!(!should_reveal_fixture_frame(true, true, true));
-        assert!(!should_reveal_fixture_frame(true, false, false));
+        assert!(!should_reveal_fixture_frame(false, false, true, true));
+        assert!(!should_reveal_fixture_frame(true, false, true, false));
+        assert!(should_reveal_fixture_frame(true, false, true, true));
+        assert!(!should_reveal_fixture_frame(true, true, true, true));
+        assert!(!should_reveal_fixture_frame(true, false, false, true));
     }
 }

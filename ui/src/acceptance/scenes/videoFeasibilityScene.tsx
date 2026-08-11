@@ -33,6 +33,7 @@ interface VideoFeasibilityReport {
   fixtureId: string
   rect: SurfaceRect
   firstFrameReady: boolean
+  decodedPictureType: string | null
   forwardStep: boolean
   backwardStep: boolean
   playbackTimeUs: number | null
@@ -215,7 +216,13 @@ export function VideoFeasibilityScene({ request }: { request: AcceptanceRequest 
               : `${report.diagnostics.activeClients}/${report.diagnostics.activeRenderContexts}/${report.diagnostics.activeSurfaces}`}
           </dd>
           <dt>已绘制</dt>
-          <dd style={{ margin: 0 }}>{report?.diagnostics.renderedFrames ?? 0} 帧</dd>
+          <dd
+            aria-label={`已绘制：${report?.diagnostics.renderedFrames ?? 0}`}
+            role="status"
+            style={{ margin: 0 }}
+          >
+            {report?.diagnostics.renderedFrames ?? 0} 帧
+          </dd>
         </dl>
         <p
           aria-live="polite"
@@ -229,6 +236,9 @@ export function VideoFeasibilityScene({ request }: { request: AcceptanceRequest 
         >
           <span aria-label={`首帧：${report?.firstFrameReady ? '就绪' : '等待'}`} role="status">
             首帧：{report?.firstFrameReady ? '就绪' : '等待'}
+          </span>
+          <span aria-label={`解码帧：${report?.decodedPictureType ?? '等待'}`} role="status">
+            解码帧：{report?.decodedPictureType ?? '等待'}
           </span>
           <span aria-label={`前进：${report?.forwardStep ? '完成' : '未运行'}`} role="status">
             前进：{report?.forwardStep ? '完成' : '未运行'}

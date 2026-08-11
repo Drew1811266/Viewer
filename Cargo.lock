@@ -4125,6 +4125,7 @@ version = "0.1.5"
 dependencies = [
  "ammonia",
  "async-trait",
+ "dispatch2",
  "libc",
  "objc2",
  "objc2-app-kit",

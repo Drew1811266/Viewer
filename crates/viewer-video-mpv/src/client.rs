@@ -238,6 +238,15 @@ impl MpvClient {
             .map(|seconds| (seconds * 1_000_000.0).round() as u64))
     }
 
+    /// Returns mpv's picture type for the currently decoded video frame.
+    ///
+    /// Unlike container metadata, `video-frame-info` is unavailable until mpv
+    /// has an actual decoded frame. The feasibility surface uses this narrow
+    /// typed read to avoid revealing a pre-video render-context redraw.
+    pub fn current_video_picture_type(&self) -> Result<Option<String>, MpvError> {
+        self.runtime_string_property("video-frame-info/picture-type")
+    }
+
     fn set_option(&self, name: &'static str, value: &str) -> Result<(), MpvError> {
         let option_name = name;
         let name = CString::new(name).map_err(|_| MpvError::InteriorNul)?;

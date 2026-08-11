@@ -2,7 +2,7 @@
 
 Date: 2026-08-10 (America/Los_Angeles)
 
-Evidence generated: 2026-08-11T04:22:42.502Z
+Evidence generated: 2026-08-11T05:04:54.724Z
 
 Command: `scripts/video/run-render-feasibility.sh`
 
@@ -10,8 +10,8 @@ Result: exit 0, all ten mandatory rows PASS
 
 ## Tested source
 
-- Commit: `d09f79de6ea5f029ed19ce3f5d2ddc8834ca1148`
-- Tree: `a0e9159c88a9b8e2b66e83ad237a0ad1155e7d25`
+- Commit: `5f673d969a8c3d8ff791b63d38b965fb2db7dfe0`
+- Tree: `63157e43c30715165bdc8e2f1d9b9176f6a68577`
 - Working tree at matrix start: clean
 - Machine-readable binding: `target/video-render-feasibility/matrix-result.json` → `source`
 
@@ -40,7 +40,7 @@ The hidden surface was revealed only when a render update coincided with mpv's t
 
 | Fixture | First decoded frame | `hwdec-current` | `current-vo` | Initial rendered frames | Active resources |
 | --- | --- | --- | --- | ---: | --- |
-| H.264 1080p | `I` | `videotoolbox` | `libmpv` | 2 | 1/1/1 |
+| H.264 1080p | `I` | `videotoolbox` | `libmpv` | 1 | 1/1/1 |
 | HEVC portrait | `I` | `videotoolbox` | `libmpv` | 1 | 1/1/1 |
 | H.264 VFR | `I` | `videotoolbox` | `libmpv` | 1 | 1/1/1 |
 
@@ -69,6 +69,8 @@ Resource counters before the matrix: `0/0/0`. Resource counters after 30 mount/u
 
 Fixture, app-resource, transparency, session-mismatch, action, diagnostics, frame-event, and cancelled-response errors all take/drop the registered session on the main queue. Main-queue submission uses the non-fallible dispatch queue API, so the former callback-scheduling error path no longer exists. Runtime layout resolution accepts only `app.path().resource_dir()`; no environment or absolute-directory production override remains.
 
+The runner launches the signed `.app` through `/usr/bin/open -n -W`, attributes the single new exact current-worktree executable PID before applying the stricter global process-count/path gate, and retains that PID for bounded TERM/KILL cleanup on every later failure. This preserves normal LaunchServices accessibility registration without weakening the PID, window-ID, geometry, or fixture boundaries.
+
 ## Signing gate
 
 For each fixture build, the staged `libmpv.2.dylib` was ad-hoc signed, the debug app bundle was deep ad-hoc signed, then both gates ran successfully:
@@ -83,12 +85,12 @@ The product release pipeline must preserve this coherence by signing the nested 
 ## Preserved evidence
 
 - Machine-readable result: `target/video-render-feasibility/matrix-result.json`
-- H.264 first revealed: `target/video-render-feasibility/screenshots/h264-1080p-first-revealed.png` (`fb961295e1cd4324464e4af757920c2e7fb9ab325806b467cef6eea939f7c455`)
-- H.264 Retina resize: `target/video-render-feasibility/screenshots/h264-retina-resize.png` (`5abab3361c1fa1957151a2cf000a8657120c43cb2d1edb2ae8daa73fcb7bba69`)
-- HEVC first revealed: `target/video-render-feasibility/screenshots/hevc-portrait-first-revealed.png` (`aabafc9331ee5b0a7066bede8cee94b05e8f1196e6afe1254163fd93bab9bc6a`)
-- VFR first revealed: `target/video-render-feasibility/screenshots/vfr-step-first-revealed.png` (`15e9ecfa2584c2bf245dd2c387782e5032376d63efa01c9bc80f076b231f2181`)
-- VFR forward/backward: `target/video-render-feasibility/screenshots/vfr-forward-backward.png` (`5621617ad7caa555d0bb825857babf364d5ff4fb39590b41adbb512a38066049`)
-- Lifecycle baseline: `target/video-render-feasibility/screenshots/lifecycle-30-baseline.png` (`c9e46856702e17edac5ea8544852d8bd2bb8ee30e8781bae07e957aceb786f98`)
+- H.264 first revealed: `target/video-render-feasibility/screenshots/h264-1080p-first-revealed.png` (`d894b34d817cc6ef8d2272a95c6e0d23493f5d53d5df6543c027f3d1055bac2d`)
+- H.264 Retina resize: `target/video-render-feasibility/screenshots/h264-retina-resize.png` (`a65e88fc5e15659fd2985ded619f46f93ee8e8f9609e07a393005fcec02ae98c`)
+- HEVC first revealed: `target/video-render-feasibility/screenshots/hevc-portrait-first-revealed.png` (`37dbcb9ca56a6d0215722da293d6a130dfe80fedb19e6db8ac4f903771ad971c`)
+- VFR first revealed: `target/video-render-feasibility/screenshots/vfr-step-first-revealed.png` (`d2ff698ebafcdb1adfcf51cc5e5f85c2eb108a80f4b52e9ef512d054b25d01d9`)
+- VFR forward/backward: `target/video-render-feasibility/screenshots/vfr-forward-backward.png` (`82672254c0a91f7e62c8c51779185e644cee790dda45ea3c487e2c0ad54b2c90`)
+- Lifecycle baseline: `target/video-render-feasibility/screenshots/lifecycle-30-baseline.png` (`9b9f19ee590da69bee10a2cd96e1b969209e6f6f1265bc4d7058b2cf39630e93`)
 - Native/build/test/signing logs: `target/video-render-feasibility/logs/`
 
 Decision: PASS — product implementation may continue.

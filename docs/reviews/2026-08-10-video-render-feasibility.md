@@ -2,7 +2,7 @@
 
 Date: 2026-08-10 (America/Los_Angeles)
 
-Evidence generated: 2026-08-11T05:37:42.142Z
+Evidence generated: 2026-08-11T06:01:32.644Z
 
 Command: `scripts/video/run-render-feasibility.sh`
 
@@ -10,8 +10,8 @@ Result: exit 0, all ten mandatory rows PASS
 
 ## Tested source
 
-- Commit: `678b1665ebd9036d2fafb9456059b05461b0365f`
-- Tree: `ec93bbd4ab5e0d846c5dda148eb04f96dcf76707`
+- Commit: `d9735d2ef1af1401fe41eca79740599981ce5e42`
+- Tree: `49d8719667957ad4e74011abc1865d35f44ad633`
 - Working tree at matrix start: clean
 - Machine-readable binding: `target/video-render-feasibility/matrix-result.json` → `source`
 
@@ -40,11 +40,11 @@ The hidden surface was revealed only when a render update coincided with mpv's t
 
 | Fixture | First decoded frame | `hwdec-current` | `current-vo` | Initial rendered frames | Active resources |
 | --- | --- | --- | --- | ---: | --- |
-| H.264 1080p | `I` | `videotoolbox` | `libmpv` | 1 | 1/1/1 |
+| H.264 1080p | `I` | `videotoolbox` | `libmpv` | 2 | 1/1/1 |
 | HEVC portrait | `I` | `videotoolbox` | `libmpv` | 1 | 1/1/1 |
 | H.264 VFR | `I` | `videotoolbox` | `libmpv` | 1 | 1/1/1 |
 
-Initial callback counts are diagnostic, not fixed expectations. The VFR gate instead required strict relative increases 1 → 3 → 5 → 6 across the first forward, second forward, and backward renders. Its typed `time-pos` direction probe observed 66,667 → 133,333 → 66,667 µs.
+Initial callback counts are diagnostic, not fixed expectations: this run observed 2 for H.264 and 1 for HEVC/VFR. The VFR gate instead required strict relative increases 1 → 3 → 5 → 6 across the first forward, second forward, and backward renders. Its typed `time-pos` direction probe observed 66,667 → 133,333 → 66,667 µs.
 
 The H.264 first-revealed color-frame extent was 152..872 CSS px before resize and 212..812 CSS px after resize. Overlay pixel analysis in logical region x=404..620, y=488..540 measured a 0.6068 neutral-pixel ratio and 0.3611 bright-neutral ratio above the saturated native frame. The HEVC first-revealed pixel probe measured a 0.2803 saturated ratio across extent 152..872; H.264 and VFR measured 0.8725.
 
@@ -69,9 +69,9 @@ Resource counters before the matrix: `0/0/0`. Resource counters after 30 mount/u
 
 Fixture, app-resource, transparency, session-mismatch, action, diagnostics, frame-event, and cancelled-response errors all take/drop the registered session on the main queue. Main-queue submission uses the non-fallible dispatch queue API, so the former callback-scheduling error path no longer exists. Runtime layout resolution accepts only `app.path().resource_dir()`; no environment or absolute-directory production override remains.
 
-The runner launches the signed `.app` through `/usr/bin/open -n -W`, records the complete pre-launch PID snapshot, and limits cleanup to post-baseline processes whose command begins with the exact current-worktree executable path. Cleanup stops every such process found before and after launcher teardown, retries a failed targeted stop, bounds both launcher and helper waits, and appends any cleanup failure to the primary matrix error. Multiple candidates and process-table failures therefore cannot silently leak a LaunchServices-owned app or suppress a failing exit.
+The runner launches the signed `.app` through `/usr/bin/open -n -W`, records the complete pre-launch PID snapshot, and limits cleanup to post-baseline processes whose command begins with the exact current-worktree executable path. Cleanup stops every such process found before and after launcher teardown, retries a failed targeted stop, bounds both launcher and helper waits, and appends any cleanup failure to the primary matrix error. Process-table calls have an OS-enforced one-second `SIGKILL` timeout plus an asynchronous lifecycle deadline, so a hung `ps` cannot prevent the already attributed Viewer, launcher, or helper from reaching teardown. Multiple candidates and process-table failures therefore cannot silently leak a LaunchServices-owned app or suppress a failing exit.
 
-The helper validates the exact CG owner PID, window ID, and frame before focus preparation. It then activates that exact PID and validated title-bar point, polls the same CG window until frontmost, and only then resolves, raises, and focuses the matching AX target. This ordering handles a background Tauri window whose AX hierarchy is unavailable before activation without weakening PID, window-ID, geometry, or selector boundaries.
+The helper validates the exact CG owner PID, window ID, and full frame before focus preparation. It activates only that PID through `NSRunningApplication` and a bounded `/usr/bin/osascript` child; it does not inject a global title-bar click. A hung activation child is terminated, escalated to `SIGKILL`, and reaped within a deadline reserved below the enclosing protocol timeout. The helper revalidates the unchanged full CG frame during and after activation, then requires both matching AXWindowNumber (when present) and matching AX geometry before it raises or focuses the target. This ordering handles a background Tauri window whose AX hierarchy is unavailable before activation without weakening PID, window-ID, geometry, or selector boundaries.
 
 ## Signing gate
 
@@ -87,12 +87,12 @@ The product release pipeline must preserve this coherence by signing the nested 
 ## Preserved evidence
 
 - Machine-readable result: `target/video-render-feasibility/matrix-result.json`
-- H.264 first revealed: `target/video-render-feasibility/screenshots/h264-1080p-first-revealed.png` (`d894b34d817cc6ef8d2272a95c6e0d23493f5d53d5df6543c027f3d1055bac2d`)
-- H.264 Retina resize: `target/video-render-feasibility/screenshots/h264-retina-resize.png` (`a65e88fc5e15659fd2985ded619f46f93ee8e8f9609e07a393005fcec02ae98c`)
+- H.264 first revealed: `target/video-render-feasibility/screenshots/h264-1080p-first-revealed.png` (`ec9883588214f061cfdfbfb640823c8772fdf37288111e5ddf764561b382427f`)
+- H.264 Retina resize: `target/video-render-feasibility/screenshots/h264-retina-resize.png` (`6a996cef44a752e3dd02fda3b31f4652a7eccd57a825b0b16092b59b322b8c9c`)
 - HEVC first revealed: `target/video-render-feasibility/screenshots/hevc-portrait-first-revealed.png` (`f7f46941606b7ad4f7fc6b0a4057e41e0724d5d1be87e41d53d8f611d3f50f80`)
 - VFR first revealed: `target/video-render-feasibility/screenshots/vfr-step-first-revealed.png` (`8903d032552314b59754780d7eef667ec9c8ff8c6190583cf98a70998c77638c`)
 - VFR forward/backward: `target/video-render-feasibility/screenshots/vfr-forward-backward.png` (`82672254c0a91f7e62c8c51779185e644cee790dda45ea3c487e2c0ad54b2c90`)
-- Lifecycle baseline: `target/video-render-feasibility/screenshots/lifecycle-30-baseline.png` (`91a0e65596e77eb3b99aee8e922892ce152d504785f33c5fe22818e2edf028e3`)
+- Lifecycle baseline: `target/video-render-feasibility/screenshots/lifecycle-30-baseline.png` (`b46cf8ce4076e3d4bf569c7b13fd8b897f014ca686c2e8524acc266ec49b6918`)
 - Native/build/test/signing logs: `target/video-render-feasibility/logs/`
 
 Decision: PASS — product implementation may continue.

@@ -300,7 +300,9 @@ function currentProcessTable() {
   const completed = spawnSync('ps', ['-axo', 'pid=,ppid=,pgid=,command='], {
     cwd: repoRoot,
     encoding: 'utf8',
+    killSignal: 'SIGKILL',
     maxBuffer: 4 * 1024 * 1024,
+    timeout: 1_000,
   })
   if (completed.error) throw completed.error
   if (completed.status !== 0) {

@@ -6,6 +6,7 @@ function hasExactExecutable(processInfo, executablePath) {
 export const renderFeasibilityTestPaths = Object.freeze([
   'scripts/video/render-feasibility-assertions.test.mjs',
   'scripts/video/render-feasibility-lifecycle.test.mjs',
+  'scripts/viewer-native-acceptance-focus-safety.test.mjs',
 ])
 
 export function attributableViewerProcesses(processes, executablePath, baselinePids) {
@@ -29,7 +30,7 @@ async function settleWithin(operation, timeoutMs) {
   const operationResult = Promise.resolve()
     .then(operation)
     .then(
-      () => ({ status: 'fulfilled' }),
+      (value) => ({ status: 'fulfilled', value }),
       (error) => ({ status: 'rejected', error }),
     )
   const timeoutResult = new Promise((resolve) => {
@@ -59,6 +60,7 @@ export async function cleanupFeasibilityLaunch(
   {
     clientTimeoutMs = 3_000,
     currentProcessTable,
+    processTableTimeoutMs = 1_000,
     stopLauncher,
     stopProcess,
   },
@@ -80,13 +82,18 @@ export async function cleanupFeasibilityLaunch(
   }
 
   const rescanAndStop = async () => {
-    let processes
-    try {
-      processes = currentProcessTable()
-    } catch (error) {
-      scanErrors.push(error)
+    const scanResult = await settleWithin(currentProcessTable, processTableTimeoutMs)
+    if (scanResult.status === 'timeout') {
+      scanErrors.push(
+        new Error(`Process table did not complete within ${processTableTimeoutMs} ms`),
+      )
       return false
     }
+    if (scanResult.status === 'rejected') {
+      scanErrors.push(scanResult.error)
+      return false
+    }
+    const processes = scanResult.value
 
     for (const processInfo of attributableViewerProcesses(
       processes,
@@ -110,7 +117,12 @@ export async function cleanupFeasibilityLaunch(
   const finalScanSucceeded = await rescanAndStop()
 
   if (!finalScanSucceeded && scanErrors.length > 0) {
-    errors.push(new AggregateError(scanErrors, 'Unable to rescan attributable Viewer processes'))
+    errors.push(
+      new AggregateError(
+        scanErrors,
+        `Unable to rescan attributable Viewer processes: ${scanErrors.map(failureText).join('; ')}`,
+      ),
+    )
   }
 
   errors.push(...processErrors.values())

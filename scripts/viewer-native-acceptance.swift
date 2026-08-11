@@ -434,6 +434,90 @@ private struct MacWindowSnapshot {
     }
 }
 
+private func exactCGFrame(_ actual: CGRect, matches expected: CGRect) -> Bool {
+    actual.equalTo(expected)
+}
+
+private func axWindowIdentityMatches(
+    number: Int?,
+    frame: CGRect?,
+    expected: MacWindowSnapshot
+) -> Bool {
+    guard let frame else { return false }
+    let frameMatches = abs(frame.origin.x - expected.frame.origin.x) < 1 &&
+        abs(frame.origin.y - expected.frame.origin.y) < 1 &&
+        abs(frame.width - expected.frame.width) < 1 &&
+        abs(frame.height - expected.frame.height) < 1
+    return frameMatches && (number == nil || number == expected.windowID)
+}
+
+private struct BoundedProcessResult {
+    let timedOut: Bool
+    let terminated: Bool
+    let killed: Bool
+    let reaped: Bool
+    let terminationStatus: Int32
+}
+
+private func runBoundedProcess(
+    _ process: Process,
+    deadline: Date,
+    terminationGraceMilliseconds: Int = 100
+) throws -> BoundedProcessResult {
+    let exited = DispatchSemaphore(value: 0)
+    process.terminationHandler = { _ in exited.signal() }
+    try process.run()
+    let processID = process.processIdentifier
+
+    let remaining = max(0, deadline.timeIntervalSinceNow)
+    if exited.wait(timeout: .now() + remaining) == .success {
+        process.waitUntilExit()
+        return BoundedProcessResult(
+            timedOut: false,
+            terminated: false,
+            killed: false,
+            reaped: true,
+            terminationStatus: process.terminationStatus
+        )
+    }
+
+    var terminated = false
+    var killed = false
+    if process.isRunning {
+        process.terminate()
+        terminated = true
+    }
+    if exited.wait(timeout: .now() + .milliseconds(terminationGraceMilliseconds)) == .timedOut {
+        if process.isRunning {
+            kill(processID, SIGKILL)
+            killed = true
+        }
+        guard exited.wait(timeout: .now() + .milliseconds(terminationGraceMilliseconds)) == .success
+        else {
+            throw AcceptanceFailure(
+                code: "STATE_ACTION_FAILED",
+                message: "Unable to terminate Viewer activation helper"
+            )
+        }
+    }
+    process.waitUntilExit()
+    errno = 0
+    let reaped = kill(processID, 0) == -1 && errno == ESRCH
+    guard reaped else {
+        throw AcceptanceFailure(
+            code: "STATE_ACTION_FAILED",
+            message: "Unable to reap Viewer activation helper"
+        )
+    }
+    return BoundedProcessResult(
+        timedOut: true,
+        terminated: terminated,
+        killed: killed,
+        reaped: reaped,
+        terminationStatus: process.terminationStatus
+    )
+}
+
 private protocol MacSystem {
     func validateProcess(_ pid: Int) throws
     func accessibilityTrusted() -> Bool
@@ -502,6 +586,18 @@ private struct MacAdapter: NativeAdapter {
                     window: window,
                     timeoutMilliseconds: request.timeoutMilliseconds
                 )
+                let preparedWindow = try system.windowSnapshot(
+                    pid: request.pid,
+                    windowID: window.windowID
+                )
+                guard preparedWindow.frontmost,
+                      exactCGFrame(preparedWindow.frame, matches: window.frame)
+                else {
+                    throw AcceptanceFailure(
+                        code: "PRECONDITION_WINDOW_OWNER",
+                        message: "Target window changed"
+                    )
+                }
             }
             return try system.perform(
                 command: request.command,
@@ -515,10 +611,12 @@ private struct MacAdapter: NativeAdapter {
 }
 
 private final class RecordingMacSystem: MacSystem {
-    private let frame = CGRect(x: 20, y: 30, width: 1024, height: 720)
+    private var frame = CGRect(x: 20, y: 30, width: 1024, height: 720)
+    private let changesGeometryOnFocus: Bool
     private var isFrontmost: Bool
 
-    init(frontmost: Bool = true) {
+    init(frontmost: Bool = true, changesGeometryOnFocus: Bool = false) {
+        self.changesGeometryOnFocus = changesGeometryOnFocus
         isFrontmost = frontmost
     }
 
@@ -576,6 +674,9 @@ private final class RecordingMacSystem: MacSystem {
         timeoutMilliseconds _: Int
     ) throws {
         isFrontmost = true
+        if changesGeometryOnFocus {
+            frame.origin.x += 10
+        }
     }
 
     func perform(
@@ -689,6 +790,9 @@ private final class LiveMacSystem: MacSystem {
         window: MacWindowSnapshot,
         timeoutMilliseconds: Int
     ) throws {
+        let deadline = Date().addingTimeInterval(
+            Double(max(1, timeoutMilliseconds - 500)) / 1000
+        )
         guard let application = NSRunningApplication(processIdentifier: pid_t(pid)),
               application.activate(options: [.activateAllWindows])
         else {
@@ -697,33 +801,17 @@ private final class LiveMacSystem: MacSystem {
                 message: "Unable to activate Viewer"
             )
         }
-        let titleBarPoint = CGPoint(
-            x: window.frame.midX,
-            y: window.frame.minY + min(14, window.frame.height / 4)
-        )
-        guard let titleDown = CGEvent(
-            mouseEventSource: nil,
-            mouseType: .leftMouseDown,
-            mouseCursorPosition: titleBarPoint,
-            mouseButton: .left
-        ), let titleUp = CGEvent(
-            mouseEventSource: nil,
-            mouseType: .leftMouseUp,
-            mouseCursorPosition: titleBarPoint,
-            mouseButton: .left
-        ) else {
-            throw AcceptanceFailure(
-                code: "STATE_ACTION_FAILED",
-                message: "Unable to create Viewer activation event"
-            )
-        }
-        titleDown.post(tap: .cghidEventTap)
-        titleUp.post(tap: .cghidEventTap)
-        try bringProcessFrontmost(pid)
+        try bringProcessFrontmost(pid, deadline: deadline)
 
-        let deadline = Date().addingTimeInterval(Double(timeoutMilliseconds) / 1000)
         while Date() < deadline {
-            if try windowSnapshot(pid: pid, windowID: window.windowID).frontmost { return }
+            let current = try windowSnapshot(pid: pid, windowID: window.windowID)
+            guard exactCGFrame(current.frame, matches: window.frame) else {
+                throw AcceptanceFailure(
+                    code: "PRECONDITION_WINDOW_OWNER",
+                    message: "Target window changed"
+                )
+            }
+            if current.frontmost { return }
             usleep(20_000)
         }
         throw AcceptanceFailure(
@@ -1126,7 +1214,7 @@ private final class LiveMacSystem: MacSystem {
         }
     }
 
-    private func bringProcessFrontmost(_ pid: Int) throws {
+    private func bringProcessFrontmost(_ pid: Int, deadline: Date) throws {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
         process.arguments = [
@@ -1136,9 +1224,15 @@ private final class LiveMacSystem: MacSystem {
         process.standardOutput = FileHandle.nullDevice
         process.standardError = FileHandle.nullDevice
         do {
-            try process.run()
-            process.waitUntilExit()
+            let result = try runBoundedProcess(process, deadline: deadline)
+            guard !result.timedOut else {
+                throw AcceptanceFailure(
+                    code: "STATE_ACTION_FAILED",
+                    message: "Viewer activation timed out"
+                )
+            }
         } catch {
+            if let failure = error as? AcceptanceFailure { throw failure }
             throw AcceptanceFailure(
                 code: "STATE_ACTION_FAILED",
                 message: "Unable to request Viewer activation"
@@ -1375,14 +1469,12 @@ private final class LiveMacSystem: MacSystem {
         let windows = axAttribute(application, name: kAXWindowsAttribute as CFString)
             as? [AXUIElement] ?? []
         let matches = windows.filter { candidate in
-            if let number = axAttribute(candidate, name: "AXWindowNumber" as CFString) as? Int {
-                return number == window.windowID
-            }
-            guard let frame = axFrame(candidate) else { return false }
-            return abs(frame.origin.x - window.frame.origin.x) < 1 &&
-                abs(frame.origin.y - window.frame.origin.y) < 1 &&
-                abs(frame.width - window.frame.width) < 1 &&
-                abs(frame.height - window.frame.height) < 1
+            let number = axAttribute(candidate, name: "AXWindowNumber" as CFString) as? Int
+            return axWindowIdentityMatches(
+                number: number,
+                frame: axFrame(candidate),
+                expected: window
+            )
         }
         guard matches.count == 1 else {
             throw AcceptanceFailure(
@@ -1881,6 +1973,63 @@ private func discoverWindows(pid: Int, protocolTest: Bool) throws -> [[String: A
     }
 }
 
+if CommandLine.arguments.contains("--protocol-test-hanging-frontmost-child") {
+    signal(SIGTERM, SIG_IGN)
+    while true { pause() }
+}
+
+if CommandLine.arguments.contains("--protocol-test-bounded-frontmost-child") {
+    do {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: CommandLine.arguments[0])
+        process.arguments = ["--protocol-test-hanging-frontmost-child"]
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+        let result = try runBoundedProcess(
+            process,
+            deadline: Date().addingTimeInterval(0.2),
+            terminationGraceMilliseconds: 50
+        )
+        writeResponse([
+            "timedOut": result.timedOut,
+            "terminated": result.terminated,
+            "killed": result.killed,
+            "reaped": result.reaped,
+        ])
+        exit(EXIT_SUCCESS)
+    } catch {
+        writeResponse(["error": "bounded process test failed"])
+        exit(EXIT_FAILURE)
+    }
+}
+
+if CommandLine.arguments.contains("--protocol-test-ax-window-identity") {
+    let expected = MacWindowSnapshot(
+        windowID: 44,
+        title: "Viewer Identity Fixture",
+        frame: CGRect(x: 20, y: 30, width: 1024, height: 720),
+        frontmost: true
+    )
+    writeResponse([
+        "exactNumberExactFrame": axWindowIdentityMatches(
+            number: 44,
+            frame: expected.frame,
+            expected: expected
+        ),
+        "exactNumberChangedFrame": axWindowIdentityMatches(
+            number: 44,
+            frame: CGRect(x: 30, y: 30, width: 1024, height: 720),
+            expected: expected
+        ),
+        "noNumberExactFrame": axWindowIdentityMatches(
+            number: nil,
+            frame: expected.frame,
+            expected: expected
+        ),
+    ])
+    exit(EXIT_SUCCESS)
+}
+
 if let discoveryIndex = CommandLine.arguments.firstIndex(of: "--discover-windows") {
     do {
         let pidIndex = CommandLine.arguments.index(after: discoveryIndex)
@@ -1920,6 +2069,8 @@ private let adapter: any NativeAdapter = if CommandLine.arguments.contains("--pr
     MacAdapter(system: RecordingMacSystem())
 } else if CommandLine.arguments.contains("--protocol-test-mac-background-fixture") {
     MacAdapter(system: RecordingMacSystem(frontmost: false))
+} else if CommandLine.arguments.contains("--protocol-test-mac-geometry-change-fixture") {
+    MacAdapter(system: RecordingMacSystem(frontmost: false, changesGeometryOnFocus: true))
 } else if CommandLine.arguments.contains("--protocol-test") {
     ProtocolTestAdapter()
 } else {

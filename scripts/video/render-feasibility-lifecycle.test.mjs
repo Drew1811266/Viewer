@@ -14,10 +14,11 @@ function processInfo(pid, command = executablePath) {
   return { pid, command }
 }
 
-test('runs both assertion and lifecycle behavior gates before native work', () => {
+test('runs every focused assertion and lifecycle gate before native work', () => {
   assert.deepEqual(renderFeasibilityTestPaths, [
     'scripts/video/render-feasibility-assertions.test.mjs',
     'scripts/video/render-feasibility-lifecycle.test.mjs',
+    'scripts/viewer-native-acceptance-focus-safety.test.mjs',
   ])
 })
 
@@ -77,6 +78,38 @@ test('rescans after launcher cleanup when initial attribution or ps inspection f
 
   assert.equal(scans, 2)
   assert.deepEqual(stopped, [77])
+})
+
+test('bounds a hung process-table scan and continues Viewer launcher and helper cleanup', async () => {
+  const events = []
+  const never = new Promise(() => {})
+  const startedAt = Date.now()
+
+  await assert.rejects(
+    cleanupFeasibilityLaunch(
+      {
+        baselinePids: new Set(),
+        client: {
+          close: async () => events.push('helper'),
+          terminate: async () => events.push('helper-terminate'),
+        },
+        executablePath,
+        launcher: {},
+        pid: 78,
+      },
+      {
+        clientTimeoutMs: 5,
+        processTableTimeoutMs: 5,
+        currentProcessTable: () => never,
+        stopLauncher: async () => events.push('launcher'),
+        stopProcess: async (pid) => events.push(`process:${pid}`),
+      },
+    ),
+    /process table.*within/i,
+  )
+
+  assert.deepEqual(events, ['process:78', 'launcher', 'helper'])
+  assert.ok(Date.now() - startedAt < 100)
 })
 
 test('stops a previously attributed exact PID even when every cleanup ps scan fails', async () => {

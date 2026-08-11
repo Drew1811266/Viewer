@@ -1,10 +1,8 @@
 import { spawn, spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import {
-  closeSync,
   existsSync,
   mkdirSync,
-  openSync,
   readFileSync,
   writeFileSync,
 } from 'node:fs'
@@ -16,7 +14,9 @@ import {
   NativeAcceptanceClient,
   buildNativeHelper,
   discoverNativeWindows,
+  parseProcessTable,
   readRgbaPng,
+  selectExactViewer,
   waitFor,
   waitForStable,
 } from '../viewer-native-acceptance.mjs'
@@ -26,6 +26,7 @@ import {
   parsePlaybackTimeUs,
   parseRenderedFrames,
   proveFrameDirection,
+  selectLaunchedViewerProcess,
   verifyFixtureHashes,
 } from './render-feasibility-assertions.mjs'
 
@@ -239,19 +240,89 @@ async function stopViewer(viewer) {
       await viewer.client.terminate().catch(() => undefined)
     }
   }
-  const child = viewer.child
-  if (child && child.exitCode === null && child.signalCode === null) {
-    child.kill('SIGTERM')
-    const exited = await Promise.race([
-      once(child, 'exit').then(() => true),
-      new Promise((resolve) => setTimeout(() => resolve(false), 3_000)),
-    ])
-    if (!exited && child.exitCode === null && child.signalCode === null) {
-      child.kill('SIGKILL')
-      await once(child, 'exit')
+  if (viewer.pid && processIsRunning(viewer.pid)) {
+    process.kill(viewer.pid, 'SIGTERM')
+    const exited = await waitForProcessExit(viewer.pid, 3_000)
+    if (!exited && processIsRunning(viewer.pid)) {
+      process.kill(viewer.pid, 'SIGKILL')
+      await waitForProcessExit(viewer.pid, 3_000)
+    }
+  }
+  const launcher = viewer.launcher
+  if (launcher && launcher.exitCode === null && launcher.signalCode === null) {
+    const exited = await waitForChildExit(launcher, 3_000)
+    if (!exited && launcher.exitCode === null && launcher.signalCode === null) {
+      launcher.kill('SIGTERM')
+      const terminated = await waitForChildExit(launcher, 3_000)
+      if (!terminated && launcher.exitCode === null && launcher.signalCode === null) {
+        launcher.kill('SIGKILL')
+        if (!(await waitForChildExit(launcher, 3_000))) {
+          throw new Error('Viewer LaunchServices waiter did not exit')
+        }
+      }
     }
   }
   activeViewer = undefined
+}
+
+function processIsRunning(pid) {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch {
+    return false
+  }
+}
+
+async function waitForProcessExit(pid, timeoutMs) {
+  const deadline = Date.now() + timeoutMs
+  while (processIsRunning(pid)) {
+    if (Date.now() >= deadline) return false
+    await new Promise((resolve) => setTimeout(resolve, 50))
+  }
+  return true
+}
+
+async function waitForChildExit(child, timeoutMs) {
+  if (child.exitCode !== null || child.signalCode !== null) return true
+  return Promise.race([
+    once(child, 'exit').then(() => true),
+    new Promise((resolve) => setTimeout(() => resolve(false), timeoutMs)),
+  ])
+}
+
+function currentProcessTable() {
+  const completed = spawnSync('ps', ['-axo', 'pid=,ppid=,pgid=,command='], {
+    cwd: repoRoot,
+    encoding: 'utf8',
+    maxBuffer: 4 * 1024 * 1024,
+  })
+  if (completed.error) throw completed.error
+  if (completed.status !== 0) {
+    throw new Error(`ps failed with status ${completed.status}`)
+  }
+  return parseProcessTable(completed.stdout)
+}
+
+async function waitForLaunchedViewer(launchState, fixtureId, existingPids) {
+  return waitFor(
+    async () => {
+      const { launcher } = launchState
+      if (launchState.error) throw launchState.error
+      if (launcher.exitCode !== null || launcher.signalCode !== null) {
+        throw new Error(`Viewer launcher exited before ${fixtureId} became ready`)
+      }
+      const processes = currentProcessTable()
+      const launchedViewer = selectLaunchedViewerProcess(processes, appExecutable, existingPids)
+      if (launchedViewer === null) return false
+      launchState.pid = launchedViewer.pid
+      return selectExactViewer(processes, {
+        executablePath: appExecutable,
+        controllerPid: process.pid,
+      })
+    },
+    { timeoutMs: 10_000, intervalMs: 50 },
+  )
 }
 
 async function buildAndLaunch(fixtureId, helperPath) {
@@ -294,22 +365,26 @@ async function buildAndLaunch(fixtureId, helperPath) {
   }
 
   const nativeLogPath = path.join(logsRoot, `native-${fixtureId}.log`)
-  const nativeLogFd = openSync(nativeLogPath, 'w')
-  const child = spawn(appExecutable, [], {
-    cwd: repoRoot,
-    stdio: ['ignore', nativeLogFd, nativeLogFd],
+  const existingPids = new Set(currentProcessTable().map((processInfo) => processInfo.pid))
+  const launcher = spawn(
+    '/usr/bin/open',
+    ['-n', '-W', '-o', nativeLogPath, '--stderr', nativeLogPath, appPath],
+    { cwd: repoRoot, stdio: 'ignore' },
+  )
+  activeViewer = { launcher, pid: undefined, client: undefined, error: undefined }
+  launcher.once('error', (error) => {
+    if (activeViewer?.launcher === launcher) activeViewer.error = error
   })
-  closeSync(nativeLogFd)
-  activeViewer = { child, client: undefined }
+  const viewer = await waitForLaunchedViewer(activeViewer, fixtureId, existingPids)
 
   let candidateWindowId
   const window = await waitForStable(
     async () => {
-      if (child.exitCode !== null || child.signalCode !== null) {
+      if (launcher.exitCode !== null || launcher.signalCode !== null) {
         throw new Error(`Viewer exited before ${fixtureId} became ready`)
       }
       try {
-        const windows = await discoverNativeWindows({ helperPath, pid: child.pid })
+        const windows = await discoverNativeWindows({ helperPath, pid: viewer.pid })
         const candidate =
           windows.find(
             (window) =>
@@ -331,7 +406,7 @@ async function buildAndLaunch(fixtureId, helperPath) {
   )
   const client = new NativeAcceptanceClient({
     executablePath: helperPath,
-    pid: child.pid,
+    pid: viewer.pid,
     window,
     defaultTimeoutMs: 10_000,
   })
@@ -355,7 +430,7 @@ async function buildAndLaunch(fixtureId, helperPath) {
   const playbackTimeUs = await currentPlaybackTime(client)
 
   result.native[fixtureId] = {
-    pid: child.pid,
+    pid: viewer.pid,
     hwdec: hwdec.name,
     videoOutput: videoOutput.name,
     resources: resources.name,

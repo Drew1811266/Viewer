@@ -8,6 +8,7 @@ import {
   parseRenderedFrames,
   parsePlaybackTimeUs,
   proveFrameDirection,
+  selectLaunchedViewerProcess,
   verifyFixtureHashes,
 } from './render-feasibility-assertions.mjs'
 
@@ -62,6 +63,29 @@ test('parses typed playback time and proves forward then backward movement', () 
 test('requires every matrix row before returning a successful exit code', () => {
   assert.equal(matrixExitCode({ first: true, second: true }), 0)
   assert.equal(matrixExitCode({ first: true, second: false }), 1)
+})
+
+test('attributes the new exact app process before stricter Viewer validation', () => {
+  const executablePath = '/worktree/target/debug/bundle/macos/Viewer.app/Contents/MacOS/viewer-desktop'
+  const processes = [
+    { pid: 41, command: '/other-worktree/target/debug/viewer-desktop' },
+    { pid: 52, command: `${executablePath} --acceptance` },
+  ]
+
+  assert.deepEqual(selectLaunchedViewerProcess(processes, executablePath, new Set([41])), {
+    pid: 52,
+    command: `${executablePath} --acceptance`,
+  })
+  assert.equal(selectLaunchedViewerProcess(processes.slice(0, 1), executablePath, new Set([41])), null)
+  assert.throws(
+    () =>
+      selectLaunchedViewerProcess(
+        [...processes, { pid: 53, command: executablePath }],
+        executablePath,
+        new Set([41]),
+      ),
+    /exactly one new exact Viewer process/,
+  )
 })
 
 test('recognizes a neutral React control overlay above saturated video pixels', () => {

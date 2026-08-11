@@ -24,6 +24,22 @@ export function matrixExitCode(rows) {
   return Object.values(rows).every(Boolean) ? 0 : 1
 }
 
+export function selectLaunchedViewerProcess(processes, executablePath, existingPids) {
+  const candidates = processes.filter((processInfo) => {
+    const executable = processInfo.command.trim().split(/\s+/, 1)[0]
+    return executable === executablePath && !existingPids.has(processInfo.pid)
+  })
+  if (candidates.length === 0) return null
+  if (candidates.length !== 1) {
+    throw new Error(
+      `Expected exactly one new exact Viewer process, found ${candidates.length}: ${candidates
+        .map((candidate) => candidate.pid)
+        .join(', ')}`,
+    )
+  }
+  return candidates[0]
+}
+
 const REQUIRED_FIXTURE_HASHES = Object.freeze({
   'h264-1080p': '972aff59c7183940dbdfae2d906421a26604a10b6bd24432ccf969a028674296',
   'hevc-portrait': '4e7abaf98918f862ea07c5b529a143cd7f208c3bba7b807dab7995ac8103d0ac',

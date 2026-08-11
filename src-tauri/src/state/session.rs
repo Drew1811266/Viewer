@@ -208,6 +208,7 @@ impl DesktopRuntime {
         {
             Ok(services) => services,
             Err(error) => {
+                cancel_video_worker_before_session_teardown(video_index.as_ref()).await;
                 image.cancel_session(active.session_id).await;
                 drop(marker_projection);
                 drop(index);
@@ -269,6 +270,7 @@ impl DesktopRuntime {
         let watcher = match watcher_result {
             Ok(watcher) => Some(watcher),
             Err(error) => {
+                cancel_video_worker_before_session_teardown(video_index.as_ref()).await;
                 drop(operations);
                 drop(file_undo_port);
                 image.cancel_session(active.session_id).await;
@@ -331,7 +333,7 @@ impl DesktopRuntime {
         if let Some(operations) = session.operations.take() {
             operations.cancel_and_wait_active().await;
         }
-        session.video_index.cancel_and_wait().await;
+        let video_result = session.video_index.cancel_and_wait().await;
         if let Some(mut watcher) = session.watcher.take() {
             watcher.stop().await;
         }
@@ -361,15 +363,16 @@ impl DesktopRuntime {
         // close must still report a cache cleanup failure. Callers deciding
         // whether an application exit may proceed must not treat retained
         // previews and the temporary SQLite index as a successful shutdown.
-        session.cache.cleanup().map_err(|_| {
+        let cache_result = session.cache.cleanup().map_err(|_| {
             CommandError::new(
                 "project_closed_cache_cleanup_failed",
                 ErrorCategory::Environment,
                 "项目已关闭，但临时缓存未能清除；退出 Viewer 后将重试。",
                 true,
             )
-        })?;
-        Ok(())
+        });
+        cache_result?;
+        video_result
     }
 
     /// Finalizes shutdown when the operating system has committed to ending

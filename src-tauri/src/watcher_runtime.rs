@@ -58,10 +58,11 @@ impl WatcherDerivedServices {
             Arc::clone(&self.index),
             Arc::clone(&self.image),
             Arc::clone(&self.events),
+            Arc::clone(&self.scheduler),
             nodes.clone(),
         )
         .await?;
-        self.video_index.enqueue_after_publication(nodes).await;
+        self.video_index.notify_after_publication()?;
         Ok(())
     }
 }
@@ -251,7 +252,7 @@ mod tests {
     use viewer_infrastructure::{
         portable::{PortableMarkerStore, PortableProjectMetadata},
         search::index::SessionIndex,
-        video_probe::{VideoMetadataProbe, VideoProbeError},
+        video_probe::{MediaFileIdentity, VideoMetadataProbe, VideoProbeError},
     };
 
     #[derive(Default)]
@@ -265,6 +266,12 @@ mod tests {
     struct UnusedImage;
 
     struct ReadyVideoProbe;
+
+    struct BlockingFirstVideoProbe {
+        blocked: AtomicBool,
+        started: tokio::sync::Notify,
+        release: tokio::sync::Notify,
+    }
 
     #[async_trait::async_trait]
     impl VideoMetadataProbe for ReadyVideoProbe {
@@ -286,6 +293,42 @@ mod tests {
                 audio_codec: None,
                 probe_status: VideoProbeStatus::Ready,
             })
+        }
+
+        async fn probe_identity_bound(
+            &self,
+            canonical_path: &Path,
+            _expected_identity: &MediaFileIdentity,
+            cancellation: CancellationToken,
+        ) -> Result<VideoMetadata, VideoProbeError> {
+            self.probe(canonical_path, cancellation).await
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl VideoMetadataProbe for BlockingFirstVideoProbe {
+        async fn probe(
+            &self,
+            _canonical_path: &Path,
+            cancellation: CancellationToken,
+        ) -> Result<VideoMetadata, VideoProbeError> {
+            if !self.blocked.swap(true, Ordering::AcqRel) {
+                self.started.notify_one();
+                tokio::select! {
+                    _ = cancellation.cancelled() => return Err(VideoProbeError::Cancelled),
+                    _ = self.release.notified() => {}
+                }
+            }
+            ReadyVideoProbe.probe(_canonical_path, cancellation).await
+        }
+
+        async fn probe_identity_bound(
+            &self,
+            canonical_path: &Path,
+            _expected_identity: &MediaFileIdentity,
+            cancellation: CancellationToken,
+        ) -> Result<VideoMetadata, VideoProbeError> {
+            self.probe(canonical_path, cancellation).await
         }
     }
 
@@ -550,11 +593,11 @@ mod tests {
             !probe_launched_during_publication,
             "next probe launched while watcher publication was in progress"
         );
-        video_index.cancel_and_wait().await;
+        video_index.cancel_and_wait().await.unwrap();
     }
 
     #[tokio::test]
-    async fn watcher_rebuilds_text_and_video_derivation_in_its_single_bounded_session() {
+    async fn watcher_publication_never_blocks_behind_more_than_legacy_video_queue_capacity() {
         let project = tempfile::tempdir().unwrap();
         let root = fs::canonicalize(project.path()).unwrap();
         fs::create_dir(root.join(".viewer")).unwrap();
@@ -587,11 +630,16 @@ mod tests {
             display_name: "fixture".into(),
             access: ProjectAccess::ReadWrite,
         };
+        let probe = Arc::new(BlockingFirstVideoProbe {
+            blocked: AtomicBool::new(false),
+            started: tokio::sync::Notify::new(),
+            release: tokio::sync::Notify::new(),
+        });
         let video_index = Arc::new(VideoIndexRuntime::new(
             active.clone(),
             Arc::clone(&coordinator),
             Arc::clone(&index),
-            Arc::new(ReadyVideoProbe),
+            probe.clone(),
             Arc::clone(&scheduler),
         ));
         let mut runtime = WatcherRuntime::start(
@@ -609,7 +657,7 @@ mod tests {
                 coordinator,
                 index: Arc::clone(&index),
                 image: Arc::new(UnusedImage),
-                events,
+                events: events.clone(),
                 scheduler,
                 video_index: Arc::clone(&video_index),
             }),
@@ -617,31 +665,57 @@ mod tests {
         .unwrap();
         let note = root.join("note.txt");
         fs::write(&note, b"watcher searchable text").unwrap();
-        let clip = root.join("clip.mp4");
-        fs::write(&clip, b"watcher video candidate").unwrap();
         let sink = watcher.sink.lock().unwrap().as_ref().unwrap().clone();
-        sink.send(vec![WatcherEvent::added(note), WatcherEvent::added(clip)])
+        let mut video_entity_ids = Vec::new();
+        for candidate in 0..6 {
+            let clip = root.join(format!("clip-{candidate}.mp4"));
+            fs::write(&clip, format!("watcher video candidate {candidate}")).unwrap();
+            video_entity_ids
+                .push(filesystem_node(&root, &format!("clip-{candidate}.mp4")).entity_id);
+            let mut batch = vec![WatcherEvent::added(clip)];
+            if candidate == 0 {
+                batch.push(WatcherEvent::added(note.clone()));
+            }
+            sink.send(batch).await.unwrap();
+            tokio::time::sleep(Duration::from_millis(20)).await;
+            clock
+                .0
+                .store(i64::from(candidate + 1) * 1_000, Ordering::Release);
+            tokio::time::timeout(Duration::from_secs(2), async {
+                loop {
+                    if events.0.lock().unwrap().len() > candidate as usize {
+                        break;
+                    }
+                    tokio::time::sleep(Duration::from_millis(10)).await;
+                }
+            })
             .await
-            .unwrap();
-        tokio::time::sleep(Duration::from_millis(20)).await;
-        clock.0.store(1_000, Ordering::Release);
+            .expect("watcher publication must not wait for the blocked video worker");
+        }
+        probe.started.notified().await;
+        assert_eq!(events.0.lock().unwrap().len(), 6);
         let entity_id = filesystem_node(&root, "note.txt").entity_id;
-        let video_entity_id = filesystem_node(&root, "clip.mp4").entity_id;
+        assert!(video_entity_ids.iter().all(|entity_id| {
+            index.indexed_node(*entity_id).unwrap().is_some_and(|node| {
+                node.video_metadata
+                    .is_some_and(|metadata| metadata.probe_status == VideoProbeStatus::Pending)
+            })
+        }));
 
+        probe.release.notify_one();
         tokio::time::timeout(Duration::from_secs(2), async {
             loop {
                 if index
                     .indexed_node(entity_id)
                     .unwrap()
                     .is_some_and(|node| node.text_status == TextIndexStatus::Ready)
-                    && index
-                        .indexed_node(video_entity_id)
-                        .unwrap()
-                        .is_some_and(|node| {
+                    && video_entity_ids.iter().all(|entity_id| {
+                        index.indexed_node(*entity_id).unwrap().is_some_and(|node| {
                             node.video_metadata.is_some_and(|metadata| {
                                 metadata.probe_status == VideoProbeStatus::Ready
                             })
                         })
+                    })
                 {
                     break;
                 }
@@ -651,6 +725,6 @@ mod tests {
         .await
         .expect("watcher-derived text and video should become ready");
         runtime.stop().await;
-        video_index.cancel_and_wait().await;
+        video_index.cancel_and_wait().await.unwrap();
     }
 }

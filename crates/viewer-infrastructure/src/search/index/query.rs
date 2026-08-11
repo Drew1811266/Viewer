@@ -8,6 +8,42 @@ use viewer_domain::{EntityId, RelativePath, file::FileNode};
 use super::{SessionIndex, SessionIndexError, read_count, read_indexed_node, read_node};
 
 impl SessionIndex {
+    pub fn pending_video_nodes_after(
+        &self,
+        after: Option<&FileNode>,
+        limit: usize,
+    ) -> Result<Vec<FileNode>, SessionIndexError> {
+        const MAX_PAGE: usize = 32;
+        if limit == 0 {
+            return Ok(Vec::new());
+        }
+        let connection = self.lock_connection();
+        let mut statement = connection.prepare_cached(
+            "SELECT nodes.entity_id, nodes.relative_path, nodes.kind, nodes.size,
+                    nodes.modified_ns
+             FROM nodes
+             JOIN video_metadata ON video_metadata.node_id = nodes.entity_id
+             WHERE nodes.kind = 7 AND video_metadata.probe_status = 0
+               AND (
+                    ?1 IS NULL
+                    OR nodes.relative_path > ?1 COLLATE BINARY
+                    OR (nodes.relative_path = ?1 AND nodes.entity_id > ?2 COLLATE BINARY)
+               )
+             ORDER BY nodes.relative_path COLLATE BINARY, nodes.entity_id COLLATE BINARY
+             LIMIT ?3",
+        )?;
+        let after_path = after.map(|node| node.relative_path.as_str());
+        let after_entity = after.map(|node| node.entity_id.to_string());
+        let limit = i64::try_from(limit.min(MAX_PAGE)).expect("bounded video page fits in i64");
+        statement
+            .query_map(
+                rusqlite::params![after_path, after_entity, limit],
+                read_node,
+            )?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(Into::into)
+    }
+
     pub fn indexed_node(
         &self,
         entity_id: EntityId,
@@ -215,5 +251,74 @@ impl BrowseIndexPort for SessionIndex {
 impl From<SessionIndexError> for BrowseIndexError {
     fn from(error: SessionIndexError) -> Self {
         Self::Unavailable(error.to_string())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use viewer_domain::{
+        RelativePath,
+        file::{FileKind, FileNode},
+        search::Generation,
+        video::{VideoMetadata, VideoProbeStatus},
+    };
+
+    #[test]
+    fn pending_video_pages_are_bounded_and_keyset_ordered() {
+        let directory = tempfile::tempdir().unwrap();
+        let index = SessionIndex::open(directory.path().join("session.sqlite")).unwrap();
+        let generation = Generation::new(7);
+        let nodes = (0..7)
+            .map(|position| FileNode {
+                entity_id: EntityId::from_u128(position + 1),
+                relative_path: RelativePath::parse(&format!("clip-{position}.mp4")).unwrap(),
+                kind: FileKind::Video,
+                size: position as u64,
+                modified_ns: position as i128,
+            })
+            .collect::<Vec<_>>();
+        index.upsert_batch(&nodes, generation).unwrap();
+        index
+            .replace_video_metadata(
+                nodes[2].entity_id,
+                &VideoMetadata {
+                    duration_us: None,
+                    display_width: None,
+                    display_height: None,
+                    rotation_degrees: 0,
+                    frame_rate_millihertz: None,
+                    video_codec: None,
+                    audio_codec: None,
+                    probe_status: VideoProbeStatus::Failed(
+                        viewer_domain::video::VideoFailureKind::Damaged,
+                    ),
+                },
+                generation,
+            )
+            .unwrap();
+
+        let first = index.pending_video_nodes_after(None, 3).unwrap();
+        assert_eq!(
+            first
+                .iter()
+                .map(|node| node.relative_path.as_str())
+                .collect::<Vec<_>>(),
+            ["clip-0.mp4", "clip-1.mp4", "clip-3.mp4"]
+        );
+        let second = index.pending_video_nodes_after(first.last(), 3).unwrap();
+        assert_eq!(
+            second
+                .iter()
+                .map(|node| node.relative_path.as_str())
+                .collect::<Vec<_>>(),
+            ["clip-4.mp4", "clip-5.mp4", "clip-6.mp4"]
+        );
+        assert!(
+            index
+                .pending_video_nodes_after(second.last(), 3)
+                .unwrap()
+                .is_empty()
+        );
     }
 }

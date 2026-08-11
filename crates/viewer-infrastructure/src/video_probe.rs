@@ -4,6 +4,8 @@ use tokio_util::sync::CancellationToken;
 use viewer_domain::video::{VideoFailureKind, VideoMetadata, VideoProbeStatus};
 use viewer_video_mpv::{BundledMediaTools, MediaToolError, runtime_manifest::RuntimeLayout};
 
+pub use viewer_video_mpv::MediaFileIdentity;
+
 const MAX_CODEC_BYTES: usize = 64;
 const MAX_DIMENSION: u64 = 1_000_000;
 const MAX_FRAME_RATE_MILLIHERTZ: u128 = 1_000_000_000;
@@ -15,6 +17,8 @@ pub enum VideoProbeError {
     Failed(VideoFailureKind),
     #[error("video metadata probe was cancelled")]
     Cancelled,
+    #[error("video input changed after active-entity validation")]
+    SourceChanged,
 }
 
 #[async_trait::async_trait]
@@ -22,6 +26,13 @@ pub trait VideoMetadataProbe: Send + Sync {
     async fn probe(
         &self,
         canonical_path: &Path,
+        cancellation: CancellationToken,
+    ) -> Result<VideoMetadata, VideoProbeError>;
+
+    async fn probe_identity_bound(
+        &self,
+        canonical_path: &Path,
+        expected_identity: &MediaFileIdentity,
         cancellation: CancellationToken,
     ) -> Result<VideoMetadata, VideoProbeError>;
 }
@@ -48,17 +59,33 @@ impl VideoProbe {
         canonical_path: &Path,
         cancellation: CancellationToken,
     ) -> Result<VideoMetadata, VideoProbeError> {
+        let output = self.tools.ffprobe_json(canonical_path, cancellation).await;
+        normalize_output(output)
+    }
+
+    async fn probe_identity_bound(
+        &self,
+        canonical_path: &Path,
+        expected_identity: &MediaFileIdentity,
+        cancellation: CancellationToken,
+    ) -> Result<VideoMetadata, VideoProbeError> {
         let output = self
             .tools
-            .ffprobe_json(canonical_path, cancellation)
-            .await
-            .map_err(map_media_tool_error)?;
-        if !output.status.success() {
-            return Err(damaged());
-        }
-        let json = std::str::from_utf8(&output.stdout).map_err(|_| damaged())?;
-        normalize_ffprobe(json)
+            .ffprobe_json_identity_bound(canonical_path, expected_identity, cancellation)
+            .await;
+        normalize_output(output)
     }
+}
+
+fn normalize_output(
+    output: Result<viewer_video_mpv::MediaToolOutput, MediaToolError>,
+) -> Result<VideoMetadata, VideoProbeError> {
+    let output = output.map_err(map_media_tool_error)?;
+    if !output.status.success() {
+        return Err(damaged());
+    }
+    let json = std::str::from_utf8(&output.stdout).map_err(|_| damaged())?;
+    normalize_ffprobe(json)
 }
 
 #[async_trait::async_trait]
@@ -69,6 +96,16 @@ impl VideoMetadataProbe for VideoProbe {
         cancellation: CancellationToken,
     ) -> Result<VideoMetadata, VideoProbeError> {
         VideoProbe::probe(self, canonical_path, cancellation).await
+    }
+
+    async fn probe_identity_bound(
+        &self,
+        canonical_path: &Path,
+        expected_identity: &MediaFileIdentity,
+        cancellation: CancellationToken,
+    ) -> Result<VideoMetadata, VideoProbeError> {
+        VideoProbe::probe_identity_bound(self, canonical_path, expected_identity, cancellation)
+            .await
     }
 }
 
@@ -88,6 +125,15 @@ impl VideoMetadataProbe for UnavailableVideoProbe {
             Err(engine_init())
         }
     }
+
+    async fn probe_identity_bound(
+        &self,
+        canonical_path: &Path,
+        _expected_identity: &MediaFileIdentity,
+        cancellation: CancellationToken,
+    ) -> Result<VideoMetadata, VideoProbeError> {
+        self.probe(canonical_path, cancellation).await
+    }
 }
 
 fn map_media_tool_error(error: MediaToolError) -> VideoProbeError {
@@ -97,12 +143,16 @@ fn map_media_tool_error(error: MediaToolError) -> VideoProbeError {
         MediaToolError::InputUnreadable | MediaToolError::InputPathNotCanonical => {
             VideoProbeError::Failed(VideoFailureKind::Unreadable)
         }
+        MediaToolError::InputChanged => VideoProbeError::SourceChanged,
         MediaToolError::TimedOut
         | MediaToolError::OutputTooLarge
         | MediaToolError::StdoutTooLarge
         | MediaToolError::StderrTooLarge => damaged(),
         MediaToolError::ExecutablePathMustBeAbsolute
         | MediaToolError::UnexpectedExecutablePath
+        | MediaToolError::UnsafeExecutable
+        | MediaToolError::ExecutableChanged
+        | MediaToolError::RuntimeIntegrity
         | MediaToolError::GateClosed
         | MediaToolError::Io(_) => engine_init(),
     }
@@ -292,6 +342,7 @@ mod tests {
     };
     use tokio_util::sync::CancellationToken;
     use viewer_domain::video::{VideoFailureKind, VideoProbeStatus};
+    use viewer_test_support::video_fixtures::sha256_hex;
     use viewer_video_mpv::{BundledMediaTools, runtime_manifest::RuntimeLayout};
 
     #[test]
@@ -457,11 +508,11 @@ mod tests {
         );
 
         let engine = fake_probe("printf '{}'");
+        let engine_probe = engine.probe();
         fs::remove_file(engine.ffprobe_path()).unwrap();
         let media = canonical_media(engine.path(), "engine.mp4");
         assert_eq!(
-            engine
-                .probe()
+            engine_probe
                 .probe(&media, CancellationToken::new())
                 .await
                 .unwrap_err(),
@@ -508,6 +559,19 @@ mod tests {
         let ffprobe = root.join("bin/ffprobe");
         fs::write(&ffprobe, format!("#!/bin/sh\n{body}\n")).unwrap();
         fs::set_permissions(&ffprobe, fs::Permissions::from_mode(0o755)).unwrap();
+        fs::write(
+            root.join("runtime.lock.json"),
+            r#"{"schemaVersion":1,"target":"universal-apple-darwin","mpv":{"tag":"v0.41.0","commit":"41f6a64","mesonOptions":{}},"ffmpeg":{"tag":"n8.0","configureOptions":["--disable-gpl","--disable-nonfree","--disable-network","--disable-ffplay"]},"components":[]}"#,
+        )
+        .unwrap();
+        fs::write(
+            root.join("runtime.inventory.sha256"),
+            format!(
+                "{}  bin/ffprobe\n",
+                sha256_hex(&fs::read(&ffprobe).unwrap())
+            ),
+        )
+        .unwrap();
         let layout = RuntimeLayout {
             libmpv: root.join("lib/libmpv.2.dylib"),
             ffmpeg: root.join("bin/ffmpeg"),

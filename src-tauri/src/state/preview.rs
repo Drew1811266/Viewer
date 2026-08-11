@@ -267,17 +267,20 @@ impl DesktopRuntime {
             Some(cached) => (cached, false),
             None => {
                 ensure_image_request_active(lease.cancellation())?;
-                let artifact = image
-                    .render(ImageRequest {
+                let artifact = render_visible_image(
+                    &self.derived_scheduler,
+                    image.as_ref(),
+                    ImageRequest {
                         request_id,
                         cancellation: lease.cancellation().clone(),
                         session_id: active.session_id,
                         entity_id,
                         source,
                         kind,
-                    })
-                    .await
-                    .map_err(CommandError::from)?;
+                    },
+                )
+                .await
+                .map_err(CommandError::from)?;
                 if lease.cancellation().is_cancelled() {
                     let _ = cache.discard_owned_image_artifact(&artifact.cache_path);
                     return Err(CommandError::from(ImageError::Cancelled));
@@ -516,6 +519,15 @@ pub(super) fn validated_indexed_source(
     Ok((canonical_source, metadata.len(), modified_ns(&metadata)))
 }
 
+async fn render_visible_image(
+    scheduler: &Arc<DerivedWorkScheduler>,
+    image: &dyn ImagePort,
+    request: ImageRequest,
+) -> Result<viewer_application::ImageArtifact, ImageError> {
+    let _permit = scheduler.acquire(DerivedWorkClass::VisibleDerived).await;
+    image.render(request).await
+}
+
 fn resolve_markdown_image_path(
     markdown_path: &RelativePath,
     destination: &str,
@@ -551,6 +563,88 @@ fn resolve_markdown_image_path(
         }
     }
     RelativePath::parse(&segments.join("/")).ok()
+}
+
+#[cfg(test)]
+mod scheduler_tests {
+    use super::*;
+    use viewer_application::{ImageArtifact, ImageBackend};
+
+    struct BlockingRenderer {
+        started: tokio::sync::Notify,
+        release: tokio::sync::Notify,
+    }
+
+    #[async_trait::async_trait]
+    impl ImagePort for BlockingRenderer {
+        async fn probe(
+            &self,
+            _source: &Path,
+        ) -> Result<viewer_domain::image::ImageProbe, ImageError> {
+            Err(ImageError::Unsupported)
+        }
+
+        async fn render(&self, request: ImageRequest) -> Result<ImageArtifact, ImageError> {
+            self.started.notify_one();
+            self.release.notified().await;
+            Ok(ImageArtifact {
+                cache_path: request.source,
+                mime: "image/jpeg",
+                width: 1,
+                height: 1,
+                backend: ImageBackend::ImageIo,
+            })
+        }
+
+        async fn cancel_session(&self, _session_id: SessionId) {}
+    }
+
+    #[tokio::test]
+    async fn real_visible_render_blocks_video_probe_until_render_finishes() {
+        let scheduler = Arc::new(DerivedWorkScheduler::default());
+        let renderer = Arc::new(BlockingRenderer {
+            started: tokio::sync::Notify::new(),
+            release: tokio::sync::Notify::new(),
+        });
+        let source = tempfile::NamedTempFile::new().unwrap();
+        let render = tokio::spawn({
+            let scheduler = Arc::clone(&scheduler);
+            let renderer = Arc::clone(&renderer);
+            let source = source.path().to_path_buf();
+            async move {
+                render_visible_image(
+                    &scheduler,
+                    renderer.as_ref(),
+                    ImageRequest {
+                        request_id: ImageRequestId::new(),
+                        cancellation: ImageRequestCancellation::new(),
+                        session_id: SessionId::new(),
+                        entity_id: EntityId::new(),
+                        source,
+                        kind: ImageRepresentationKind::Original100Percent,
+                    },
+                )
+                .await
+            }
+        });
+        renderer.started.notified().await;
+
+        let video = scheduler.acquire(DerivedWorkClass::VideoProbe);
+        assert!(
+            tokio::time::timeout(Duration::from_millis(50), video)
+                .await
+                .is_err()
+        );
+        renderer.release.notify_one();
+        render.await.unwrap().unwrap();
+        let permit = tokio::time::timeout(
+            Duration::from_secs(1),
+            scheduler.acquire(DerivedWorkClass::VideoProbe),
+        )
+        .await
+        .unwrap();
+        drop(permit);
+    }
 }
 
 #[cfg(test)]

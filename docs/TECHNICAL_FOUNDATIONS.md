@@ -60,7 +60,7 @@ Viewer 源码采用 **Apache-2.0**。Rust 和 npm 解析结果分别由 `Cargo.l
 | 桌面与前端运行时 | Tauri 2.11.5、`@tauri-apps/api` 2.11.1、React/React DOM 19.2.7 |
 | 图片与 macOS 绑定 | `objc2` 0.6.4、`objc2-*` 0.3.2、`block2` 0.6.2、`dispatch2` 0.3.1；系统 Quick Look/Image I/O/Core Graphics |
 | 文件、索引与搜索 | rusqlite 0.40.1、notify 8.2.0、notify-debouncer-full 0.7.0、nucleo-matcher 0.3.1、trash 5.2.6、walkdir 2.5.0 |
-| 核心运行时 | tokio 1.52.3、tokio-util 0.7.18、serde 1.0.228、uuid 1.24.0、thiserror 2.0.18、blake3 1.8.5；测试夹具校验使用 sha2 0.10.9 |
+| 核心运行时 | tokio 1.52.3、tokio-util 0.7.18、serde 1.0.228、uuid 1.24.0、thiserror 2.0.18、blake3 1.8.5、sha2 0.10.9（bundle/runtime 与测试夹具完整性） |
 | 前端构建 | `@tauri-apps/cli` 2.11.4、Vite 8.1.5、TypeScript 6.0.3、`@vitejs/plugin-react` 6.0.3 |
 | 测试工具 | Vitest 4.1.10、jsdom 29.1.1、Testing Library React 16.3.2、tempfile 3.27.0 |
 

@@ -1,6 +1,29 @@
 use super::preview::validated_indexed_source;
 use super::*;
 
+#[async_trait::async_trait]
+trait TextIndexWork: Send + Sync {
+    async fn extract(
+        &self,
+        source: PathBuf,
+    ) -> Result<viewer_infrastructure::search::text::TextStatus, ()>;
+}
+
+struct LocalTextIndexWork;
+
+#[async_trait::async_trait]
+impl TextIndexWork for LocalTextIndexWork {
+    async fn extract(
+        &self,
+        source: PathBuf,
+    ) -> Result<viewer_infrastructure::search::text::TextStatus, ()> {
+        tokio::task::spawn_blocking(move || TextExtractor::extract(source))
+            .await
+            .map_err(|_| ())?
+            .map_err(|_| ())
+    }
+}
+
 impl DesktopRuntime {
     pub async fn index_progress(&self) -> Result<IndexProgressDto, CommandError> {
         let session = self.session.lock().await;
@@ -229,7 +252,16 @@ pub(super) async fn run_scan(
         let _marker_guard = marker_lock.lock().await;
         hydrate_portable_markers(&index, store.as_ref())?;
     }
-    let result = run_derived_indexing(active, coordinator, index, image, events, video_index).await;
+    let result = run_derived_indexing(
+        active,
+        coordinator,
+        index,
+        image,
+        events,
+        derived_scheduler,
+        video_index,
+    )
+    .await;
     scan_ready.send_replace(true);
     result
 }
@@ -266,6 +298,7 @@ async fn run_derived_indexing(
     index: Arc<SessionIndex>,
     image: Arc<dyn ImagePort>,
     events: Arc<dyn DesktopEventSink>,
+    scheduler: Arc<DerivedWorkScheduler>,
     video_index: Arc<VideoIndexRuntime>,
 ) -> Result<(), CommandError> {
     if !coordinator.is_publishable(active.session_id, active.generation) {
@@ -278,10 +311,11 @@ async fn run_derived_indexing(
         Arc::clone(&index),
         image,
         events,
+        scheduler,
         nodes.clone(),
     )
     .await?;
-    video_index.enqueue_after_publication(nodes).await;
+    video_index.notify_after_publication()?;
     Ok(())
 }
 
@@ -291,7 +325,32 @@ pub(crate) async fn rebuild_derived_nodes(
     index: Arc<SessionIndex>,
     image: Arc<dyn ImagePort>,
     events: Arc<dyn DesktopEventSink>,
+    scheduler: Arc<DerivedWorkScheduler>,
     nodes: Vec<FileNode>,
+) -> Result<(), CommandError> {
+    rebuild_derived_nodes_with_text_work(
+        active,
+        coordinator,
+        index,
+        image,
+        events,
+        scheduler,
+        nodes,
+        Arc::new(LocalTextIndexWork),
+    )
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn rebuild_derived_nodes_with_text_work(
+    active: ActiveProject,
+    coordinator: Arc<TaskCoordinator>,
+    index: Arc<SessionIndex>,
+    image: Arc<dyn ImagePort>,
+    events: Arc<dyn DesktopEventSink>,
+    scheduler: Arc<DerivedWorkScheduler>,
+    nodes: Vec<FileNode>,
+    text_work: Arc<dyn TextIndexWork>,
 ) -> Result<(), CommandError> {
     emit_index_progress_if_current(&active, &coordinator, &index, events.as_ref())?;
     let mut last_progress = Instant::now();
@@ -316,11 +375,15 @@ pub(crate) async fn rebuild_derived_nodes(
         if !pending {
             continue;
         }
-        let source = validated_indexed_source(&active, &node)
-            .map(|(source, _, _)| source)
-            .ok();
         match node.kind {
             FileKind::Jpeg | FileKind::Png => {
+                let permit = scheduler.acquire(DerivedWorkClass::VisibleDerived).await;
+                if !coordinator.is_publishable(active.session_id, active.generation) {
+                    return Ok(());
+                }
+                let source = validated_indexed_source(&active, &node)
+                    .map(|(source, _, _)| source)
+                    .ok();
                 let result = match source {
                     Some(source) => match image.probe(&source).await {
                         Ok(probe) => {
@@ -343,44 +406,57 @@ pub(crate) async fn rebuild_derived_nodes(
                     }
                     return Err(CommandError::from(error));
                 }
+                drop(permit);
             }
-            FileKind::Markdown | FileKind::Text => match source {
-                Some(source) => {
-                    let extracted =
-                        tokio::task::spawn_blocking(move || TextExtractor::extract(source)).await;
-                    match extracted {
-                        Ok(Ok(status)) => {
-                            if let Err(error) =
-                                index.replace_text(node.entity_id, &node.relative_path, &status)
-                            {
-                                if is_stale_derived_write_error(&error) {
-                                    continue;
+            FileKind::Markdown | FileKind::Text => {
+                let current = run_text_index_work(&scheduler, async {
+                    if !coordinator.is_publishable(active.session_id, active.generation) {
+                        return Ok(false);
+                    }
+                    let source = validated_indexed_source(&active, &node)
+                        .map(|(source, _, _)| source)
+                        .ok();
+                    match source {
+                        Some(source) => match text_work.extract(source).await {
+                            Ok(status) => {
+                                if let Err(error) =
+                                    index.replace_text(node.entity_id, &node.relative_path, &status)
+                                {
+                                    if is_stale_derived_write_error(&error) {
+                                        return Ok(true);
+                                    }
+                                    return Err(CommandError::from(error));
                                 }
-                                return Err(CommandError::from(error));
                             }
-                        }
-                        Ok(Err(_)) | Err(_) => {
+                            Err(()) => {
+                                if let Err(error) =
+                                    index.mark_text_failed(node.entity_id, &node.relative_path)
+                                {
+                                    if is_stale_derived_write_error(&error) {
+                                        return Ok(true);
+                                    }
+                                    return Err(CommandError::from(error));
+                                }
+                            }
+                        },
+                        None => {
                             if let Err(error) =
                                 index.mark_text_failed(node.entity_id, &node.relative_path)
                             {
                                 if is_stale_derived_write_error(&error) {
-                                    continue;
+                                    return Ok(true);
                                 }
                                 return Err(CommandError::from(error));
                             }
                         }
                     }
+                    Ok(true)
+                })
+                .await?;
+                if !current {
+                    return Ok(());
                 }
-                None => {
-                    if let Err(error) = index.mark_text_failed(node.entity_id, &node.relative_path)
-                    {
-                        if is_stale_derived_write_error(&error) {
-                            continue;
-                        }
-                        return Err(CommandError::from(error));
-                    }
-                }
-            },
+            }
             FileKind::Directory
             | FileKind::UnsupportedImage
             | FileKind::Other
@@ -388,13 +464,20 @@ pub(crate) async fn rebuild_derived_nodes(
                 unreachable!("non-derived kinds were filtered out")
             }
         }
-
         if last_progress.elapsed() >= Duration::from_millis(50) {
             emit_index_progress_if_current(&active, &coordinator, &index, events.as_ref())?;
             last_progress = Instant::now();
         }
     }
     emit_index_progress_if_current(&active, &coordinator, &index, events.as_ref())
+}
+
+async fn run_text_index_work<T>(
+    scheduler: &Arc<DerivedWorkScheduler>,
+    work: impl std::future::Future<Output = T>,
+) -> T {
+    let _permit = scheduler.acquire(DerivedWorkClass::TextIndex).await;
+    work.await
 }
 
 fn emit_index_progress_if_current(
@@ -476,6 +559,215 @@ mod tests {
         fn emit_scan(&self, _event: ScanEventDto) {}
     }
 
+    struct BlockingImage {
+        started: tokio::sync::Notify,
+        release: tokio::sync::Notify,
+    }
+
+    struct BlockingTextIndexWork {
+        started: tokio::sync::Notify,
+        release: tokio::sync::Notify,
+    }
+
+    #[async_trait::async_trait]
+    impl TextIndexWork for BlockingTextIndexWork {
+        async fn extract(
+            &self,
+            _source: std::path::PathBuf,
+        ) -> Result<viewer_infrastructure::search::text::TextStatus, ()> {
+            self.started.notify_one();
+            self.release.notified().await;
+            Ok(viewer_infrastructure::search::text::TextStatus::Indexed(
+                "persisted text".into(),
+            ))
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl ImagePort for BlockingImage {
+        async fn probe(&self, _source: &Path) -> Result<ImageProbe, ImageError> {
+            self.started.notify_one();
+            self.release.notified().await;
+            Err(ImageError::Unsupported)
+        }
+
+        async fn render(&self, _request: ImageRequest) -> Result<ImageArtifact, ImageError> {
+            Err(ImageError::Unsupported)
+        }
+
+        async fn cancel_session(&self, _session_id: SessionId) {}
+    }
+
+    #[tokio::test]
+    async fn image_rebuild_blocks_lower_priority_video_work_until_probe_finishes() {
+        let project = tempfile::tempdir().unwrap();
+        let source = project.path().join("source.jpg");
+        fs::write(&source, b"image source").unwrap();
+        let source_metadata = fs::symlink_metadata(&source).unwrap();
+        let relative_path = RelativePath::parse("source.jpg").unwrap();
+        let node = FileNode {
+            entity_id: entity_id_for_metadata(&source_metadata, &relative_path),
+            relative_path,
+            kind: FileKind::Jpeg,
+            size: source_metadata.len(),
+            modified_ns: modified_ns(&source_metadata),
+        };
+        let index = Arc::new(SessionIndex::open(project.path().join("session.sqlite")).unwrap());
+        let coordinator = Arc::new(TaskCoordinator::default());
+        let session_id = SessionId::new();
+        let generation = coordinator.begin_session(session_id);
+        index
+            .upsert_batch(std::slice::from_ref(&node), generation)
+            .unwrap();
+        let active = ActiveProject {
+            project_id: ProjectId::new(),
+            session_id,
+            generation,
+            root: project.path().canonicalize().unwrap(),
+            display_name: "fixture".into(),
+            access: ProjectAccess::ReadWrite,
+        };
+        let scheduler = Arc::new(DerivedWorkScheduler::default());
+        let image = Arc::new(BlockingImage {
+            started: tokio::sync::Notify::new(),
+            release: tokio::sync::Notify::new(),
+        });
+        let rebuild = {
+            let scheduler = Arc::clone(&scheduler);
+            let image = Arc::clone(&image);
+            tokio::spawn(async move {
+                rebuild_derived_nodes(
+                    active,
+                    coordinator,
+                    index,
+                    image,
+                    Arc::new(NoopEvents),
+                    scheduler,
+                    vec![node],
+                )
+                .await
+            })
+        };
+        image.started.notified().await;
+
+        let video = tokio::spawn({
+            let scheduler = Arc::clone(&scheduler);
+            async move { scheduler.acquire(DerivedWorkClass::VideoProbe).await }
+        });
+        assert!(
+            tokio::time::timeout(Duration::from_millis(50), video)
+                .await
+                .is_err(),
+            "video work must remain queued while a real image probe is running"
+        );
+
+        image.release.notify_one();
+        rebuild.await.unwrap().unwrap();
+        let permit = tokio::time::timeout(
+            Duration::from_secs(1),
+            scheduler.acquire(DerivedWorkClass::VideoProbe),
+        )
+        .await
+        .expect("video work should start after image rebuild releases its permit");
+        drop(permit);
+    }
+
+    #[tokio::test]
+    async fn real_text_index_work_blocks_lower_priority_video_until_persistence_finishes() {
+        let project = tempfile::tempdir().unwrap();
+        let source = project.path().join("source.txt");
+        fs::write(&source, b"actual text source").unwrap();
+        let source_metadata = fs::symlink_metadata(&source).unwrap();
+        let relative_path = RelativePath::parse("source.txt").unwrap();
+        let node = FileNode {
+            entity_id: entity_id_for_metadata(&source_metadata, &relative_path),
+            relative_path,
+            kind: FileKind::Text,
+            size: source_metadata.len(),
+            modified_ns: modified_ns(&source_metadata),
+        };
+        let index = Arc::new(SessionIndex::open(project.path().join("session.sqlite")).unwrap());
+        let coordinator = Arc::new(TaskCoordinator::default());
+        let session_id = SessionId::new();
+        let generation = coordinator.begin_session(session_id);
+        index
+            .upsert_batch(std::slice::from_ref(&node), generation)
+            .unwrap();
+        let active = ActiveProject {
+            project_id: ProjectId::new(),
+            session_id,
+            generation,
+            root: project.path().canonicalize().unwrap(),
+            display_name: "fixture".into(),
+            access: ProjectAccess::ReadWrite,
+        };
+        let scheduler = Arc::new(DerivedWorkScheduler::default());
+        let text = Arc::new(BlockingTextIndexWork {
+            started: tokio::sync::Notify::new(),
+            release: tokio::sync::Notify::new(),
+        });
+        let rebuild = tokio::spawn({
+            let scheduler = Arc::clone(&scheduler);
+            let text = text.clone();
+            let index = Arc::clone(&index);
+            async move {
+                rebuild_derived_nodes_with_text_work(
+                    active,
+                    coordinator,
+                    index,
+                    Arc::new(CountingImage::default()),
+                    Arc::new(NoopEvents),
+                    scheduler,
+                    vec![node],
+                    text,
+                )
+                .await
+            }
+        });
+        text.started.notified().await;
+        assert_eq!(
+            index
+                .all_indexed_nodes()
+                .unwrap()
+                .into_iter()
+                .next()
+                .unwrap()
+                .text_status,
+            TextIndexStatus::Pending
+        );
+
+        let video = tokio::spawn({
+            let scheduler = Arc::clone(&scheduler);
+            async move { scheduler.acquire(DerivedWorkClass::VideoProbe).await }
+        });
+        assert!(
+            tokio::time::timeout(Duration::from_millis(50), video)
+                .await
+                .is_err(),
+            "video must remain queued while real text indexing/persistence is active"
+        );
+
+        text.release.notify_one();
+        rebuild.await.unwrap().unwrap();
+        assert_eq!(
+            index
+                .all_indexed_nodes()
+                .unwrap()
+                .into_iter()
+                .next()
+                .unwrap()
+                .text_status,
+            TextIndexStatus::Ready
+        );
+        let permit = tokio::time::timeout(
+            Duration::from_secs(1),
+            scheduler.acquire(DerivedWorkClass::VideoProbe),
+        )
+        .await
+        .expect("video should start after text indexing releases its permit");
+        drop(permit);
+    }
+
     #[tokio::test]
     async fn non_previewable_kinds_skip_image_and_text_extraction() {
         let project = tempfile::tempdir().unwrap();
@@ -521,6 +813,7 @@ mod tests {
             Arc::clone(&index),
             image.clone(),
             Arc::new(NoopEvents),
+            Arc::new(DerivedWorkScheduler::default()),
             vec![unsupported.clone(), other.clone()],
         )
         .await

@@ -443,6 +443,11 @@ private protocol MacSystem {
         window: MacWindowSnapshot,
         target: [String: Any]
     ) throws -> [[String: Any]]
+    func prepareFocus(
+        pid: Int,
+        window: MacWindowSnapshot,
+        timeoutMilliseconds: Int
+    ) throws
     func perform(
         command: String,
         payload: [String: Any],
@@ -491,6 +496,13 @@ private struct MacAdapter: NativeAdapter {
         case "shutdown":
             return ["performed": true, "command": request.command]
         default:
+            if request.command == "focus" {
+                try system.prepareFocus(
+                    pid: request.pid,
+                    window: window,
+                    timeoutMilliseconds: request.timeoutMilliseconds
+                )
+            }
             return try system.perform(
                 command: request.command,
                 payload: request.payload,
@@ -558,6 +570,14 @@ private final class RecordingMacSystem: MacSystem {
         ]]
     }
 
+    func prepareFocus(
+        pid _: Int,
+        window _: MacWindowSnapshot,
+        timeoutMilliseconds _: Int
+    ) throws {
+        isFrontmost = true
+    }
+
     func perform(
         command: String,
         payload: [String: Any],
@@ -565,7 +585,12 @@ private final class RecordingMacSystem: MacSystem {
         window _: MacWindowSnapshot,
         timeoutMilliseconds _: Int
     ) throws -> [String: Any] {
-        if command == "focus" { isFrontmost = true }
+        if command == "focus", !isFrontmost {
+            throw AcceptanceFailure(
+                code: "PRECONDITION_WINDOW_OWNER",
+                message: "Target window changed"
+            )
+        }
         if command == "finderDrag" {
             return [
                 "performed": true,
@@ -657,6 +682,54 @@ private final class LiveMacSystem: MacSystem {
         target: [String: Any]
     ) throws -> [[String: Any]] {
         [try uniqueAXMatch(pid: pid, window: window, target: target).dictionary]
+    }
+
+    func prepareFocus(
+        pid: Int,
+        window: MacWindowSnapshot,
+        timeoutMilliseconds: Int
+    ) throws {
+        guard let application = NSRunningApplication(processIdentifier: pid_t(pid)),
+              application.activate(options: [.activateAllWindows])
+        else {
+            throw AcceptanceFailure(
+                code: "STATE_ACTION_FAILED",
+                message: "Unable to activate Viewer"
+            )
+        }
+        let titleBarPoint = CGPoint(
+            x: window.frame.midX,
+            y: window.frame.minY + min(14, window.frame.height / 4)
+        )
+        guard let titleDown = CGEvent(
+            mouseEventSource: nil,
+            mouseType: .leftMouseDown,
+            mouseCursorPosition: titleBarPoint,
+            mouseButton: .left
+        ), let titleUp = CGEvent(
+            mouseEventSource: nil,
+            mouseType: .leftMouseUp,
+            mouseCursorPosition: titleBarPoint,
+            mouseButton: .left
+        ) else {
+            throw AcceptanceFailure(
+                code: "STATE_ACTION_FAILED",
+                message: "Unable to create Viewer activation event"
+            )
+        }
+        titleDown.post(tap: .cghidEventTap)
+        titleUp.post(tap: .cghidEventTap)
+        try bringProcessFrontmost(pid)
+
+        let deadline = Date().addingTimeInterval(Double(timeoutMilliseconds) / 1000)
+        while Date() < deadline {
+            if try windowSnapshot(pid: pid, windowID: window.windowID).frontmost { return }
+            usleep(20_000)
+        }
+        throw AcceptanceFailure(
+            code: "PRECONDITION_WINDOW_OWNER",
+            message: "Viewer did not become frontmost"
+        )
     }
 
     func perform(
@@ -1024,7 +1097,7 @@ private final class LiveMacSystem: MacSystem {
         payload: [String: Any],
         pid: Int,
         window: MacWindowSnapshot,
-        timeoutMilliseconds: Int
+        timeoutMilliseconds _: Int
     ) throws {
         let target = payload["target"] as? [String: Any] ?? [:]
         let match = try uniqueAXMatch(pid: pid, window: window, target: target)
@@ -1035,38 +1108,12 @@ private final class LiveMacSystem: MacSystem {
             kAXMainAttribute as CFString,
             kCFBooleanTrue
         )
-        guard let application = NSRunningApplication(processIdentifier: pid_t(pid)),
-              application.activate(options: [.activateAllWindows]),
-              raiseResult == .success || mainResult == .success
-        else {
+        guard raiseResult == .success || mainResult == .success else {
             throw AcceptanceFailure(
                 code: "STATE_ACTION_FAILED",
-                message: "Unable to activate Viewer"
+                message: "Unable to focus Viewer window"
             )
         }
-        let titleBarPoint = CGPoint(
-            x: window.frame.midX,
-            y: window.frame.minY + min(14, window.frame.height / 4)
-        )
-        guard let titleDown = CGEvent(
-            mouseEventSource: nil,
-            mouseType: .leftMouseDown,
-            mouseCursorPosition: titleBarPoint,
-            mouseButton: .left
-        ), let titleUp = CGEvent(
-            mouseEventSource: nil,
-            mouseType: .leftMouseUp,
-            mouseCursorPosition: titleBarPoint,
-            mouseButton: .left
-        ) else {
-            throw AcceptanceFailure(
-                code: "STATE_ACTION_FAILED",
-                message: "Unable to create Viewer activation event"
-            )
-        }
-        titleDown.post(tap: .cghidEventTap)
-        titleUp.post(tap: .cghidEventTap)
-        try bringProcessFrontmost(pid)
         guard AXUIElementSetAttributeValue(
             match.element,
             kAXFocusedAttribute as CFString,
@@ -1077,16 +1124,6 @@ private final class LiveMacSystem: MacSystem {
                 message: "Accessibility focus action failed"
             )
         }
-
-        let deadline = Date().addingTimeInterval(Double(timeoutMilliseconds) / 1000)
-        while Date() < deadline {
-            if try windowSnapshot(pid: pid, windowID: window.windowID).frontmost { return }
-            usleep(20_000)
-        }
-        throw AcceptanceFailure(
-            code: "PRECONDITION_WINDOW_OWNER",
-            message: "Viewer did not become frontmost"
-        )
     }
 
     private func bringProcessFrontmost(_ pid: Int) throws {

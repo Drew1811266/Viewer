@@ -1,5 +1,5 @@
 use std::{
-    ffi::{CStr, c_char, c_int, c_ulong, c_void},
+    ffi::{CStr, CString, c_char, c_int, c_ulong, c_void},
     path::Path,
     ptr,
     sync::{Mutex, OnceLock},
@@ -18,6 +18,7 @@ enum Call {
     Command(Vec<String>),
     PropertyFlag(String, bool),
     PropertyDouble(String, f64),
+    PropertyRead(String),
     Destroy,
 }
 
@@ -96,6 +97,36 @@ unsafe extern "C" fn set_property(
     0
 }
 
+unsafe extern "C" fn get_property(
+    _: *mut MpvHandle,
+    name: *const c_char,
+    format: MpvFormat,
+    data: *mut c_void,
+) -> c_int {
+    let name = unsafe { CStr::from_ptr(name) }
+        .to_string_lossy()
+        .into_owned();
+    if name == "time-pos" {
+        assert_eq!(format, 5);
+        calls().lock().unwrap().push(Call::PropertyRead(name));
+        unsafe { *data.cast::<f64>() = 1.25 };
+        return 0;
+    }
+    assert_eq!(format, 1);
+    let value = match name.as_str() {
+        "hwdec-current" => "videotoolbox",
+        "current-vo" => "libmpv",
+        _ => panic!("unexpected property read {name}"),
+    };
+    calls().lock().unwrap().push(Call::PropertyRead(name));
+    unsafe { *data.cast::<*mut c_char>() = CString::new(value).unwrap().into_raw() };
+    0
+}
+
+unsafe extern "C" fn free(data: *mut c_void) {
+    drop(unsafe { CString::from_raw(data.cast::<c_char>()) });
+}
+
 unsafe extern "C" fn observe_property(
     _: *mut MpvHandle,
     _: u64,
@@ -118,6 +149,8 @@ fn fake_api() -> MpvApi {
         set_option_string,
         command,
         set_property,
+        get_property,
+        free,
         observe_property,
         wait_event,
     }
@@ -130,6 +163,15 @@ fn public_client_contract_is_isolated_and_typed() {
     let canonical_path = path.canonicalize().unwrap();
 
     let mut client = unsafe { MpvClient::from_api(fake_api()) }.unwrap();
+    client.initialize_for_rendering().unwrap();
+    assert!(
+        !calls()
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|call| matches!(call, Call::Command(_))),
+        "render initialization must not load media before a render context exists"
+    );
     client.open_local_file(&canonical_path).unwrap();
     client.play().unwrap();
     client.pause().unwrap();
@@ -138,6 +180,15 @@ fn public_client_contract_is_isolated_and_typed() {
     client.set_volume_percent(67).unwrap();
     client.set_muted(true).unwrap();
     client.set_rate(PlaybackRate::OneAndHalf).unwrap();
+    assert_eq!(
+        client.active_hardware_decoder().unwrap().as_deref(),
+        Some("videotoolbox")
+    );
+    assert_eq!(
+        client.active_video_output().unwrap().as_deref(),
+        Some("libmpv")
+    );
+    assert_eq!(client.current_playback_time_us().unwrap(), Some(1_250_000));
     drop(client);
 
     let calls = calls().lock().unwrap();
@@ -189,5 +240,8 @@ fn public_client_contract_is_isolated_and_typed() {
     assert!(calls.contains(&Call::PropertyDouble("volume".to_owned(), 67.0)));
     assert!(calls.contains(&Call::PropertyFlag("mute".to_owned(), true)));
     assert!(calls.contains(&Call::PropertyDouble("speed".to_owned(), 1.5)));
+    assert!(calls.contains(&Call::PropertyRead("hwdec-current".to_owned())));
+    assert!(calls.contains(&Call::PropertyRead("current-vo".to_owned())));
+    assert!(calls.contains(&Call::PropertyRead("time-pos".to_owned())));
     assert_eq!(calls.last(), Some(&Call::Destroy));
 }

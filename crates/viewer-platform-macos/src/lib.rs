@@ -4,6 +4,8 @@ pub mod files;
 pub mod image;
 pub mod settings;
 #[cfg(target_os = "macos")]
+pub mod video;
+#[cfg(target_os = "macos")]
 pub mod watcher;
 
 use std::fs::{self, OpenOptions};

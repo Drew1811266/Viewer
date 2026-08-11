@@ -7,6 +7,8 @@ publish = false
 
 [dependencies]
 async-trait.workspace = true
+serde.workspace = true
+thiserror.workspace = true
 tokio.workspace = true
 uuid.workspace = true
 viewer-application = { path = "../viewer-application" }
@@ -25,6 +27,8 @@ objc2-foundation.workspace = true
 objc2-image-io.workspace = true
 objc2-quick-look-thumbnailing.workspace = true
 trash.workspace = true
+tauri = { version = "2", default-features = false, features = ["wry"] }
+viewer-video-mpv = { path = "../viewer-video-mpv" }
 
 [dev-dependencies]
 libc.workspace = true

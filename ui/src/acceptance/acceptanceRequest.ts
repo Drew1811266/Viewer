@@ -9,6 +9,8 @@ export interface AcceptanceRequest {
   height: 720 | 900
 }
 
+export const VIDEO_FEASIBILITY_ACCEPTANCE_ID = 'VIDEO-FEASIBILITY'
+
 const VIEWPORTS = {
   '1024x720': { width: 1024, height: 720 },
   '1440x900': { width: 1440, height: 900 },
@@ -33,7 +35,7 @@ export function parseAcceptanceRequest(search: string): AcceptanceRequest {
   }
 
   const id = ids[0] as string
-  acceptanceDefinition(id)
+  if (id !== VIDEO_FEASIBILITY_ACCEPTANCE_ID) acceptanceDefinition(id)
   const viewport = viewportValues[0] as string
   if (!(viewport in VIEWPORTS)) {
     throw new Error(`Unsupported Viewer acceptance viewport: ${viewport}`)

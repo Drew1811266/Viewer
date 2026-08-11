@@ -127,6 +127,8 @@ unsafe fn load_client_api(library: &Library) -> Result<MpvApi, MpvLoadError> {
         set_option_string: unsafe { symbol(library, b"mpv_set_option_string\0") }?,
         command: unsafe { symbol(library, b"mpv_command\0") }?,
         set_property: unsafe { symbol(library, b"mpv_set_property\0") }?,
+        get_property: unsafe { symbol(library, b"mpv_get_property\0") }?,
+        free: unsafe { symbol(library, b"mpv_free\0") }?,
         observe_property: unsafe { symbol(library, b"mpv_observe_property\0") }?,
         wait_event: unsafe { symbol(library, b"mpv_wait_event\0") }?,
     })

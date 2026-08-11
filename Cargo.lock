@@ -4126,6 +4126,7 @@ dependencies = [
  "ammonia",
  "async-trait",
  "libc",
+ "objc2",
  "objc2-app-kit",
  "pulldown-cmark",
  "serde",
@@ -4140,6 +4141,7 @@ dependencies = [
  "viewer-domain",
  "viewer-infrastructure",
  "viewer-platform-macos",
+ "viewer-video-mpv",
 ]
 
 [[package]]
@@ -4191,7 +4193,9 @@ dependencies = [
  "objc2-quick-look-thumbnailing",
  "serde",
  "serde_json",
+ "tauri",
  "tempfile",
+ "thiserror 2.0.18",
  "tokio",
  "trash",
  "uuid",
@@ -4199,6 +4203,7 @@ dependencies = [
  "viewer-domain",
  "viewer-infrastructure",
  "viewer-test-support",
+ "viewer-video-mpv",
 ]
 
 [[package]]

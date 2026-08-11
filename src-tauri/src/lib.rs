@@ -16,6 +16,8 @@ pub mod image_protocol;
 pub mod markdown;
 pub mod operation_runtime;
 pub mod state;
+#[cfg(all(target_os = "macos", feature = "video-feasibility"))]
+pub mod video_feasibility;
 pub mod watcher_runtime;
 
 pub const APP_NAME: &str = "Viewer";
@@ -218,7 +220,9 @@ pub fn run() {
             commands::operations::open_permission_settings,
             commands::finder_drag::begin_finder_drag,
             commands::settings::get_viewer_settings,
-            commands::settings::update_viewer_settings
+            commands::settings::update_viewer_settings,
+            #[cfg(all(target_os = "macos", feature = "video-feasibility"))]
+            video_feasibility::run_video_feasibility
         ])
         .setup(move |app| {
             let settings_directory = app.path().app_config_dir()?;

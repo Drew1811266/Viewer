@@ -9,6 +9,10 @@ publish = false
 name = "viewer_desktop"
 crate-type = ["lib", "cdylib", "staticlib"]
 
+[features]
+default = []
+video-feasibility = ["dep:viewer-video-mpv", "tauri/macos-private-api"]
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
@@ -27,6 +31,10 @@ viewer-application = { path = "../crates/viewer-application" }
 viewer-domain = { path = "../crates/viewer-domain" }
 viewer-infrastructure = { path = "../crates/viewer-infrastructure" }
 viewer-platform-macos = { path = "../crates/viewer-platform-macos" }
+viewer-video-mpv = { path = "../crates/viewer-video-mpv", optional = true }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2.workspace = true
 
 [dev-dependencies]
 serde_json.workspace = true

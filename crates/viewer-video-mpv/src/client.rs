@@ -1,5 +1,5 @@
 use std::{
-    ffi::{CString, c_int, c_ulong, c_void},
+    ffi::{CStr, CString, c_char, c_int, c_ulong, c_void},
     fs,
     path::Path,
     ptr::NonNull,
@@ -13,7 +13,8 @@ use thiserror::Error;
 
 use crate::{
     ffi::{
-        MPV_CLIENT_API_MAJOR, MPV_FORMAT_DOUBLE, MPV_FORMAT_FLAG, MpvApi, MpvHandle, MpvRenderApi,
+        MPV_CLIENT_API_MAJOR, MPV_ERROR_PROPERTY_UNAVAILABLE, MPV_FORMAT_DOUBLE, MPV_FORMAT_FLAG,
+        MPV_FORMAT_STRING, MpvApi, MpvHandle, MpvRenderApi,
     },
     loader::{LoadedLibrary, MpvLibrary},
 };
@@ -165,6 +166,17 @@ impl MpvClient {
 
     pub fn open_local_file(&mut self, path: &Path) -> Result<(), MpvError> {
         validate_local_file(path)?;
+        self.initialize_for_rendering()?;
+
+        let media_path = path_to_c_string(path)?;
+        self.run_command(&[
+            CString::new("loadfile").expect("static string has no NUL"),
+            media_path,
+            CString::new("replace").expect("static string has no NUL"),
+        ])
+    }
+
+    pub fn initialize_for_rendering(&mut self) -> Result<(), MpvError> {
         if !self.initialized {
             for (name, value) in ISOLATION_OPTIONS {
                 self.set_option(name, value)?;
@@ -173,13 +185,7 @@ impl MpvClient {
             ensure_success("initialize", result)?;
             self.initialized = true;
         }
-
-        let media_path = path_to_c_string(path)?;
-        self.run_command(&[
-            CString::new("loadfile").expect("static string has no NUL"),
-            media_path,
-            CString::new("replace").expect("static string has no NUL"),
-        ])
+        Ok(())
     }
 
     pub fn play(&self) -> Result<(), MpvError> {
@@ -215,6 +221,21 @@ impl MpvClient {
 
     pub fn set_rate(&self, rate: PlaybackRate) -> Result<(), MpvError> {
         self.set_double_property("speed", rate.as_f64())
+    }
+
+    pub fn active_hardware_decoder(&self) -> Result<Option<String>, MpvError> {
+        self.runtime_string_property("hwdec-current")
+    }
+
+    pub fn active_video_output(&self) -> Result<Option<String>, MpvError> {
+        self.runtime_string_property("current-vo")
+    }
+
+    pub fn current_playback_time_us(&self) -> Result<Option<u64>, MpvError> {
+        Ok(self
+            .runtime_double_property("time-pos")?
+            .filter(|seconds| seconds.is_finite() && *seconds >= 0.0)
+            .map(|seconds| (seconds * 1_000_000.0).round() as u64))
     }
 
     fn set_option(&self, name: &'static str, value: &str) -> Result<(), MpvError> {
@@ -265,6 +286,50 @@ impl MpvClient {
             )
         };
         ensure_success("set_property", result)
+    }
+
+    fn runtime_string_property(&self, name: &'static str) -> Result<Option<String>, MpvError> {
+        let name = CString::new(name).expect("static string has no NUL");
+        let mut value: *mut c_char = std::ptr::null_mut();
+        let result = unsafe {
+            (self.inner.api.get_property)(
+                self.inner.handle.as_ptr(),
+                name.as_ptr(),
+                MPV_FORMAT_STRING,
+                (&raw mut value).cast::<c_void>(),
+            )
+        };
+        if result == MPV_ERROR_PROPERTY_UNAVAILABLE {
+            return Ok(None);
+        }
+        ensure_success("get_property", result)?;
+        let value = NonNull::new(value).ok_or(MpvError::Api {
+            operation: "get_property",
+            code: -2,
+        })?;
+        let property = unsafe { CStr::from_ptr(value.as_ptr()) }
+            .to_string_lossy()
+            .into_owned();
+        unsafe { (self.inner.api.free)(value.as_ptr().cast::<c_void>()) };
+        Ok(Some(property))
+    }
+
+    fn runtime_double_property(&self, name: &'static str) -> Result<Option<f64>, MpvError> {
+        let name = CString::new(name).expect("static string has no NUL");
+        let mut value = 0.0;
+        let result = unsafe {
+            (self.inner.api.get_property)(
+                self.inner.handle.as_ptr(),
+                name.as_ptr(),
+                MPV_FORMAT_DOUBLE,
+                (&raw mut value).cast::<c_void>(),
+            )
+        };
+        if result == MPV_ERROR_PROPERTY_UNAVAILABLE {
+            return Ok(None);
+        }
+        ensure_success("get_property", result)?;
+        Ok(Some(value))
     }
 
     fn command_from_strings(&self, arguments: &[&str]) -> Result<(), MpvError> {

@@ -9,6 +9,9 @@ describe('Viewer visual acceptance request', () => {
       width: 1024,
       height: 720,
     })
+    expect(parseAcceptanceRequest('?id=VIDEO-FEASIBILITY&viewport=1024x720').id).toBe(
+      'VIDEO-FEASIBILITY',
+    )
   })
 
   it('rejects unknown states, unsupported viewports and missing identifiers', () => {

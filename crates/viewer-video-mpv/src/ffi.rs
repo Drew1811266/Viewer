@@ -1,6 +1,8 @@
 use std::ffi::{c_char, c_int, c_ulong, c_void};
 
 pub const MPV_CLIENT_API_MAJOR: c_ulong = 2;
+pub const MPV_ERROR_PROPERTY_UNAVAILABLE: c_int = -10;
+pub const MPV_FORMAT_STRING: MpvFormat = 1;
 pub const MPV_FORMAT_FLAG: MpvFormat = 3;
 pub const MPV_FORMAT_INT64: MpvFormat = 4;
 pub const MPV_FORMAT_DOUBLE: MpvFormat = 5;
@@ -66,6 +68,9 @@ pub struct MpvApi {
     pub command: unsafe extern "C" fn(*mut MpvHandle, *const *const c_char) -> c_int,
     pub set_property:
         unsafe extern "C" fn(*mut MpvHandle, *const c_char, MpvFormat, *mut c_void) -> c_int,
+    pub get_property:
+        unsafe extern "C" fn(*mut MpvHandle, *const c_char, MpvFormat, *mut c_void) -> c_int,
+    pub free: unsafe extern "C" fn(*mut c_void),
     pub observe_property:
         unsafe extern "C" fn(*mut MpvHandle, u64, *const c_char, MpvFormat) -> c_int,
     pub wait_event: unsafe extern "C" fn(*mut MpvHandle, f64) -> *const MpvEvent,

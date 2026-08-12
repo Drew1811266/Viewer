@@ -15,6 +15,8 @@ pub mod session;
 pub mod settings;
 pub mod text;
 pub mod undo;
+pub mod video;
+pub mod video_thumbnail;
 pub mod watcher;
 
 pub use browse::{BrowseError, BrowseIndexError, BrowseIndexPort, BrowseService};
@@ -31,7 +33,7 @@ pub use operation_commit::{
 pub use ports::{
     ClockPort, FileMutationPort, FinderDragPort, ImagePort, LocalFileCommandPort, ProjectAccess,
     ProjectProbeError, ProjectProbeOperation, ProjectProbePort, ScanPort, SearchPort,
-    SearchSnippetPort, StagedCopy, StagedCopyLeasePort, TrashPort, VolumePort,
+    SearchSnippetPort, StagedCopy, StagedCopyLeasePort, TrashPort, VideoEngine, VolumePort,
 };
 pub use project::{ActiveProject, PreparedProject, ProjectOpenError, ProjectSessionService};
 pub use session::{ProjectSession, SessionState, SessionTransitionError};
@@ -42,5 +44,13 @@ pub use settings::{
 };
 pub use text::{
     MAX_TEXT_PREVIEW_BYTES, TextEncoding, TextPreview, TextPreviewError, TextPreviewPort,
+};
+pub use video::{
+    EngineEvent, EngineOpenRequest, FrameDirection, PlaybackRate, SurfaceRect, VideoCommand,
+    VideoCommandKind, VideoEngineError, VideoEvent, VideoMedia, VideoPlaybackState,
+    VideoPreviewService, VideoPreviewSnapshot, VideoServiceError, VideoSource, video_neighbors,
+};
+pub use video_thumbnail::{
+    TimelineThumbnailRequest, TimelineThumbnailResult, VideoThumbnailService,
 };
 pub use watcher::{WatchSubscription, WatcherError, WatcherPort, WatcherSink};

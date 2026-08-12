@@ -7,6 +7,7 @@ use crate::{
     finder_drag::{FinderDragError, PreparedFinderDrag},
     scan::{ScanError, ScanRequest, ScanSink},
     search::SearchError,
+    video::{EngineOpenRequest, FrameDirection, PlaybackRate, SurfaceRect, VideoEngineError},
     watcher::FileIdentity,
 };
 
@@ -425,6 +426,29 @@ pub trait ImagePort: Send + Sync {
     async fn probe(&self, source: &Path) -> Result<ImageProbe, ImageError>;
     async fn render(&self, request: ImageRequest) -> Result<ImageArtifact, ImageError>;
     async fn cancel_session(&self, session_id: SessionId);
+}
+
+#[async_trait]
+pub trait VideoEngine: Send + Sync {
+    async fn open_paused(&self, request: EngineOpenRequest) -> Result<(), VideoEngineError>;
+    async fn reveal_surface(&self, generation: u64) -> Result<(), VideoEngineError>;
+    async fn close(&self, generation: u64) -> Result<(), VideoEngineError>;
+    async fn play(&self, generation: u64) -> Result<(), VideoEngineError>;
+    async fn pause(&self, generation: u64) -> Result<(), VideoEngineError>;
+    async fn seek(&self, generation: u64, time_us: u64) -> Result<(), VideoEngineError>;
+    async fn step(
+        &self,
+        generation: u64,
+        direction: FrameDirection,
+    ) -> Result<(), VideoEngineError>;
+    async fn set_volume(&self, generation: u64, percent: u8) -> Result<(), VideoEngineError>;
+    async fn set_muted(&self, generation: u64, muted: bool) -> Result<(), VideoEngineError>;
+    async fn set_rate(&self, generation: u64, rate: PlaybackRate) -> Result<(), VideoEngineError>;
+    async fn set_surface_rect(
+        &self,
+        generation: u64,
+        rect: SurfaceRect,
+    ) -> Result<(), VideoEngineError>;
 }
 
 #[cfg(test)]

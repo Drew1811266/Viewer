@@ -10,3 +10,4 @@ Task 6: fix round 2/5 in progress (dirty, uncommitted working tree on base d0f28
 Task 6: fix round 2/5 (registered PNG storage, PNG encoder, and clippy suppression addressed; 1 Important open: suspended-child executable ABA through proc_pidpath pathname reopen)
 Task 6: fix round 3/5 in progress (kernel-bound child code identity before SIGCONT; dirty, uncommitted working tree on base d0f28f8)
 Task 6: complete (final scoped review 0 Critical / 0 Important; final fresh pnpm verify passed; commit SHA recorded in controller handoff)
+Task 7: complete (single reviewer final 0/0/0; one final fresh pnpm verify passed; commit `feat: add generation-safe video services`; Task 8 not started)

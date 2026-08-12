@@ -9,6 +9,7 @@ import {
 } from '@testing-library/react'
 import { afterEach, describe, expect, expectTypeOf, it, vi } from 'vitest'
 import App from './App'
+import type { FolderWorkspace } from './api/types'
 import type { ProjectDropEvent, ViewerBridge } from './api/viewer'
 import { type AppShellState, useAppShellState } from './app/useAppShellState'
 import {
@@ -1096,6 +1097,69 @@ describe('Viewer empty state', () => {
 
     expect(screen.getByRole('dialog', { name: 'license.other' })).toHaveTextContent('暂不支持预览')
     expect(viewer.previewText).not.toHaveBeenCalled()
+  })
+
+  it('routes video cards through the first-frame shell with video-only navigation', async () => {
+    installVideoPreviewStageBounds()
+    const viewer = bridge()
+    const workspace: Extract<FolderWorkspace, { workspace: 'content' }> = videoContentWorkspace()
+    const first = defined(workspace.videos[0], 'Expected first video fixture')
+    workspace.videos.push({
+      ...first,
+      entityId: 'video-2',
+      relativePath: 'id/trailer.mp4',
+      name: 'trailer.mp4',
+      videoMetadata: { ...first.videoMetadata, coverUrl: 'viewer-image://session/other-cover' },
+    })
+    workspace.otherFiles.push({
+      entityId: 'notes-1',
+      relativePath: 'id/notes.txt',
+      name: 'notes.txt',
+      kind: 'text',
+      size: 20,
+      modifiedNs: '3',
+      marker: { reviewState: null, favorite: false },
+      imageMetadata: null,
+      imageUrl: null,
+      videoMetadata: null,
+    })
+    vi.mocked(viewer.queryFolder).mockResolvedValue(workspace)
+    vi.mocked(viewer.videoOpen).mockImplementation(async ({ entityId }) => ({
+      generation: entityId === 'video-1' ? 11 : 12,
+      sessionId: `playback-${entityId}`,
+      media: {
+        durationUs: 2_000_000,
+        displayWidth: 1_920,
+        displayHeight: 1_080,
+        rotationDegrees: 0,
+      },
+    }))
+    vi.mocked(viewer.videoClose).mockResolvedValue(undefined)
+    vi.mocked(viewer.videoSetSurfaceRect).mockResolvedValue(undefined)
+    render(<App bridge={viewer} />)
+    fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
+
+    fireEvent.doubleClick(await screen.findByRole('option', { name: 'clip.mp4' }))
+
+    const preview = await screen.findByRole('dialog', { name: '视频预览 clip.mp4' })
+    expect(preview).toBeVisible()
+    expect(screen.getByRole('status', { name: '正在加载视频' })).toBeVisible()
+    await waitFor(() =>
+      expect(viewer.videoOpen).toHaveBeenCalledWith({
+        entityId: 'video-1',
+        surfaceRect: { x: 100, y: 125, width: 800, height: 450 },
+      }),
+    )
+    expect(preview.querySelector('img[src^="viewer-image://session/"]')).toBeNull()
+    const navigation = screen.getByRole('navigation', { name: '视频导航' })
+    expect(navigation).toHaveTextContent('1 / 2')
+
+    fireEvent.click(within(navigation).getByRole('button', { name: '下一个视频' }))
+
+    expect(await screen.findByRole('dialog', { name: '视频预览 trailer.mp4' })).toBeVisible()
+    await waitFor(() => expect(viewer.videoOpen).toHaveBeenCalledTimes(2))
+    expect(viewer.videoClose).toHaveBeenCalledWith({ generation: 11 })
+    expect(screen.getByRole('navigation', { name: '视频导航' })).toHaveTextContent('2 / 2')
   })
 
   it('routes two selected text files through radial preview while keeping double-click single-file', async () => {
@@ -3160,6 +3224,29 @@ function installPreviewStageBounds() {
         bottom: 480,
         width: 640,
         height: 480,
+        toJSON: () => undefined,
+      }
+    }
+    return nativeGetBoundingClientRect.call(this)
+  })
+  restorePreviewStageBounds = () => spy.mockRestore()
+}
+
+function installVideoPreviewStageBounds() {
+  const nativeGetBoundingClientRect = HTMLElement.prototype.getBoundingClientRect
+  const spy = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (
+    this: HTMLElement,
+  ) {
+    if (this.classList.contains('video-preview-stage')) {
+      return {
+        x: 100,
+        y: 50,
+        left: 100,
+        top: 50,
+        right: 900,
+        bottom: 650,
+        width: 800,
+        height: 600,
         toJSON: () => undefined,
       }
     }

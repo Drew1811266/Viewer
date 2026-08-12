@@ -1,5 +1,5 @@
 import { useCallback, useLayoutEffect, useState } from 'react'
-import type { BrowserFile } from '../api/types'
+import type { BrowserFile, VideoFile } from '../api/types'
 
 export interface PreviewSession {
   file: BrowserFile
@@ -11,6 +11,7 @@ export interface PreviewSessionState {
   activePreview: PreviewSession | null
   dimensions: Record<string, { width: number; height: number } | undefined>
   openPreview(session: PreviewSession): void
+  openVideoPreview(file: VideoFile, files: VideoFile[]): void
   closePreview(): void
   recordDimensions(entityId: string, width: number, height: number): void
 }
@@ -38,6 +39,10 @@ export function usePreviewSession(projectSessionId: string): PreviewSessionState
     setActivePreview(session)
   }, [])
 
+  const openVideoPreview = useCallback((file: VideoFile, files: VideoFile[]) => {
+    setActivePreview({ file, files, folderOverviewIdentity: null })
+  }, [])
+
   const closePreview = useCallback(() => {
     setActivePreview(null)
   }, [])
@@ -59,6 +64,7 @@ export function usePreviewSession(projectSessionId: string): PreviewSessionState
     activePreview,
     dimensions,
     openPreview,
+    openVideoPreview,
     closePreview,
     recordDimensions,
   }

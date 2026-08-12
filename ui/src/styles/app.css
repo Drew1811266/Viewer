@@ -1,4 +1,5 @@
 @import url('./videoBrowser.css');
+@import url('./videoPreview.css');
 
 :root {
   color: var(--viewer-text);

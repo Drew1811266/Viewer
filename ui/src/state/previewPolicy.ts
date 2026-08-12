@@ -1,4 +1,4 @@
-import type { BrowserFile } from '../api/types'
+import type { BrowserFile, FileKind, VideoFile } from '../api/types'
 import { isPreviewableText } from '../fileKinds'
 
 export type PreviewSelectionResult =
@@ -19,4 +19,17 @@ export function validatePreviewSelection(
     ok: false,
     reason: '仅支持单文件预览，或同时预览 2 个文本文件',
   }
+}
+
+export function videoPreviewNeighbors(
+  videos: readonly VideoFile[],
+  searchHits: readonly { entityId: string; kind: FileKind }[] | null,
+): VideoFile[] {
+  if (searchHits === null) return [...videos]
+  const videosById = new Map(videos.map((video) => [video.entityId, video]))
+  return searchHits.flatMap((hit) => {
+    if (hit.kind !== 'video') return []
+    const video = videosById.get(hit.entityId)
+    return video === undefined ? [] : [video]
+  })
 }

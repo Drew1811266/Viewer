@@ -8,6 +8,7 @@ import type {
   RenamePreview,
   RenameRules,
   TextEncoding,
+  VideoFile,
 } from './api/types'
 import type { ViewerBridge } from './api/viewer'
 import { tauriViewerBridge } from './api/viewer'
@@ -52,15 +53,16 @@ import UnsupportedFilePreview from './components/UnsupportedFilePreview'
 import ViewerButton, { ViewerIconButton } from './components/ui/ViewerButton'
 import ViewerEmptyState from './components/ui/ViewerEmptyState'
 import ViewerStatusTag from './components/ui/ViewerStatusTag'
+import VideoPreview from './components/VideoPreview'
 import WorkspaceLoadingState from './components/WorkspaceLoadingState'
 import WorkspaceMoreMenu from './components/WorkspaceMoreMenu'
 import WorkspaceViewMenu, { type WorkspaceViewContext } from './components/WorkspaceViewMenu'
 import { defined } from './defined'
-import { isImageFile, isPreviewableText } from './fileKinds'
+import { isImageFile, isPreviewableText, isVideoFile } from './fileKinds'
 import { useViewerSettings, ViewerSettingsProvider } from './settings/ViewerSettingsProvider'
 import { compareValidationMessage, validateCompareCandidates } from './state/comparePolicy'
 import { organizationShortcutIsOwned } from './state/organizationShortcutOwnership'
-import { validatePreviewSelection } from './state/previewPolicy'
+import { validatePreviewSelection, videoPreviewNeighbors } from './state/previewPolicy'
 import type { OrganizationDragMode } from './state/useOrganizationPointerDrag'
 import { useOrganizationPointerDrag } from './state/useOrganizationPointerDrag'
 import useReviewShortcuts from './state/useReviewShortcuts'
@@ -160,6 +162,7 @@ function ViewerWorkspace({
     activePreview,
     dimensions,
     openPreview: openPreviewSession,
+    openVideoPreview: openVideoPreviewSession,
     closePreview: closePreviewSession,
     recordDimensions,
   } = previewSession
@@ -596,13 +599,34 @@ function ViewerWorkspace({
     cancelOrganizationPointerDrag()
   }, [cancelOrganizationPointerDrag, state.workspace])
 
+  const currentVideoPreviewFiles = useMemo<VideoFile[]>(() => {
+    if (state.workspace?.workspace !== 'content') return []
+    const searchHits = state.search.showResults ? (state.search.page?.hits ?? []) : null
+    return videoPreviewNeighbors(state.workspace.videos, searchHits)
+  }, [state.search.page?.hits, state.search.showResults, state.workspace])
+
+  const openVideoPreview = useCallback(
+    (entityId: string) => {
+      const file = currentVideoPreviewFiles.find((candidate) => candidate.entityId === entityId)
+      if (file === undefined) return
+      setPreviewRepair(EMPTY_PREVIEW_REPAIR)
+      openVideoPreviewSession(file, currentVideoPreviewFiles)
+      setPreviewEntityId(file.entityId)
+    },
+    [currentVideoPreviewFiles, openVideoPreviewSession, setPreviewEntityId],
+  )
+
   const openPreview = useCallback(
     (file: BrowserFile) => {
+      if (isVideoFile(file)) {
+        openVideoPreview(file.entityId)
+        return
+      }
       setPreviewRepair(EMPTY_PREVIEW_REPAIR)
       openPreviewSession({ file, files: null, folderOverviewIdentity: null })
       setPreviewEntityId(file.entityId)
     },
-    [openPreviewSession, setPreviewEntityId],
+    [openPreviewSession, openVideoPreview, setPreviewEntityId],
   )
 
   const openFilmstripPreview = useCallback(
@@ -912,7 +936,19 @@ function ViewerWorkspace({
           ]
         : null
   const activePreviewFiles =
-    activePreview?.files ?? (state.workspace?.workspace === 'content' ? state.workspace.images : [])
+    activePreview?.file.kind === 'video'
+      ? (activePreview.files ?? currentVideoPreviewFiles)
+          .filter(isVideoFile)
+          .map(
+            (file) =>
+              (state.workspace?.workspace === 'content'
+                ? state.workspace.videos.find(
+                    (workspaceVideo) => workspaceVideo.entityId === file.entityId,
+                  )
+                : undefined) ?? file,
+          )
+      : (activePreview?.files ??
+        (state.workspace?.workspace === 'content' ? state.workspace.images : []))
   const activePreviewFile =
     activePreview === null
       ? null
@@ -1193,6 +1229,7 @@ function ViewerWorkspace({
                       requestThumbnail={requestThumbnail}
                       onThumbnailTaskChange={setThumbnailTask}
                       onPreview={openPreview}
+                      onOpenVideo={openVideoPreview}
                       onSelectionChange={selectFiles}
                       organizationDragDisabled={
                         state.project.access !== 'read_write' || operationBusy || compareOpen
@@ -1290,6 +1327,16 @@ function ViewerWorkspace({
           onClose={closePreview}
           onDimensions={recordDimensions}
           unavailableEntityIds={unavailablePreviewEntityIds}
+        />
+      )}
+      {activePreviewFile && isVideoFile(activePreviewFile) && activePreviewFiles.length > 0 && (
+        <VideoPreview
+          key={activePreviewFile.entityId}
+          file={activePreviewFile}
+          files={activePreviewFiles.filter(isVideoFile)}
+          bridge={bridge}
+          onNavigate={navigatePreview}
+          onClose={closePreview}
         />
       )}
       {activeTextPreviewFiles !== null && (

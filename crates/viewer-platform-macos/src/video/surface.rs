@@ -1,13 +1,13 @@
 #![allow(deprecated)]
 
 use super::diagnostics::{ResourceKind, ResourceLease};
-use objc2::{AnyThread, MainThreadMarker, MainThreadOnly, Message, rc::Retained};
+use objc2::{AnyThread, MainThreadMarker, MainThreadOnly, Message, msg_send, rc::Retained};
 use objc2_app_kit::{
-    NSOpenGLContext, NSOpenGLPFAAccelerated, NSOpenGLPFADoubleBuffer, NSOpenGLPFAOpenGLProfile,
-    NSOpenGLPixelFormat, NSOpenGLProfileVersion3_2Core, NSOpenGLView, NSView, NSWindow,
-    NSWindowOrderingMode,
+    NSColor, NSOpenGLContext, NSOpenGLPFAAccelerated, NSOpenGLPFADoubleBuffer,
+    NSOpenGLPFAOpenGLProfile, NSOpenGLPixelFormat, NSOpenGLProfileVersion3_2Core, NSOpenGLView,
+    NSView, NSWindow, NSWindowOrderingMode,
 };
-use objc2_foundation::{NSPoint, NSRect, NSSize};
+use objc2_foundation::{NSObjectProtocol, NSPoint, NSRect, NSSize};
 use std::{
     ffi::{c_char, c_void},
     ptr::NonNull,
@@ -47,6 +47,8 @@ pub enum SurfaceError {
     OpenGlContextUnavailable,
     #[error("Tauri could not provide the WKWebView on the main thread")]
     WebviewUnavailable,
+    #[error("the WKWebView could not be prepared for native video transparency")]
+    WebviewTransparencyUnavailable,
     #[error("the Tauri window content view has no WKWebView")]
     MissingWebview,
 }
@@ -90,42 +92,52 @@ impl MacVideoSurface {
         // AppKit's main thread. objc2 retains the returned parent for this owner.
         let parent = unsafe { webview.superview() }.ok_or(SurfaceError::MissingParent)?;
         let frame = frame_in_parent(webview, rect).ok_or(SurfaceError::InvalidGeometry)?;
-        let mut attributes = [
-            NSOpenGLPFAOpenGLProfile,
-            NSOpenGLProfileVersion3_2Core,
-            NSOpenGLPFAAccelerated,
-            NSOpenGLPFADoubleBuffer,
-            0,
-        ];
-        let pixel_format = unsafe {
-            NSOpenGLPixelFormat::initWithAttributes(
-                NSOpenGLPixelFormat::alloc(),
-                NonNull::new(attributes.as_mut_ptr()).expect("pixel format attributes are present"),
-            )
-        }
-        .ok_or(SurfaceError::OpenGlViewUnavailable)?;
-        let view = NSOpenGLView::initWithFrame_pixelFormat(
-            NSOpenGLView::alloc(mtm),
-            frame,
-            Some(&pixel_format),
-        )
-        .ok_or(SurfaceError::OpenGlViewUnavailable)?;
-        view.setWantsBestResolutionOpenGLSurface(true);
-        view.setHidden(true);
-        parent.addSubview_positioned_relativeTo(&view, NSWindowOrderingMode::Below, Some(webview));
-        view.prepareOpenGL();
-        if view.openGLContext().is_none() {
-            view.removeFromSuperview();
-            return Err(SurfaceError::OpenGlContextUnavailable);
-        }
+        mount_after_webview_transparency(
+            || configure_transparent_webview(webview),
+            || {
+                let mut attributes = [
+                    NSOpenGLPFAOpenGLProfile,
+                    NSOpenGLProfileVersion3_2Core,
+                    NSOpenGLPFAAccelerated,
+                    NSOpenGLPFADoubleBuffer,
+                    0,
+                ];
+                let pixel_format = unsafe {
+                    NSOpenGLPixelFormat::initWithAttributes(
+                        NSOpenGLPixelFormat::alloc(),
+                        NonNull::new(attributes.as_mut_ptr())
+                            .expect("pixel format attributes are present"),
+                    )
+                }
+                .ok_or(SurfaceError::OpenGlViewUnavailable)?;
+                let view = NSOpenGLView::initWithFrame_pixelFormat(
+                    NSOpenGLView::alloc(mtm),
+                    frame,
+                    Some(&pixel_format),
+                )
+                .ok_or(SurfaceError::OpenGlViewUnavailable)?;
+                view.setWantsBestResolutionOpenGLSurface(true);
+                view.setHidden(true);
+                parent.addSubview_positioned_relativeTo(
+                    &view,
+                    NSWindowOrderingMode::Below,
+                    Some(webview),
+                );
+                view.prepareOpenGL();
+                if view.openGLContext().is_none() {
+                    view.removeFromSuperview();
+                    return Err(SurfaceError::OpenGlContextUnavailable);
+                }
 
-        Ok(Self {
-            view,
-            parent,
-            webview: webview.retain(),
-            mounted: AtomicBool::new(true),
-            _lease: ResourceLease::acquire(ResourceKind::Surface),
-        })
+                Ok(Self {
+                    view,
+                    parent,
+                    webview: webview.retain(),
+                    mounted: AtomicBool::new(true),
+                    _lease: ResourceLease::acquire(ResourceKind::Surface),
+                })
+            },
+        )
     }
 
     pub fn update_geometry(&self, rect: SurfaceRect) -> Result<(), SurfaceError> {
@@ -189,6 +201,28 @@ impl MacVideoSurface {
     pub fn parent(&self) -> &NSView {
         &self.parent
     }
+}
+
+fn mount_after_webview_transparency<T>(
+    configure_transparency: impl FnOnce() -> Result<(), SurfaceError>,
+    attach_surface: impl FnOnce() -> Result<T, SurfaceError>,
+) -> Result<T, SurfaceError> {
+    configure_transparency()?;
+    attach_surface()
+}
+
+fn configure_transparent_webview(webview: &NSView) -> Result<(), SurfaceError> {
+    if !webview.respondsToSelector(objc2::sel!(setUnderPageBackgroundColor:)) {
+        return Err(SurfaceError::WebviewTransparencyUnavailable);
+    }
+    let clear = NSColor::clearColor();
+    // SAFETY: `mount` obtains this view from Tauri/Wry's documented WKWebView
+    // slot, verifies the public selector, and invokes it on AppKit's main
+    // thread. The copied NSColor remains valid after this call returns.
+    unsafe {
+        let _: () = msg_send![webview, setUnderPageBackgroundColor: &*clear];
+    }
+    Ok(())
 }
 
 impl RenderTarget for MacVideoSurface {
@@ -289,4 +323,45 @@ pub fn backing_pixels(size: (f64, f64), scale: f64) -> Option<(i32, i32)> {
         return None;
     }
     Some((width as i32, height as i32))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{SurfaceError, mount_after_webview_transparency};
+    use std::cell::{Cell, RefCell};
+
+    #[test]
+    fn configures_webview_transparency_before_attaching_native_surface() {
+        let order = RefCell::new(Vec::new());
+
+        let result = mount_after_webview_transparency(
+            || {
+                order.borrow_mut().push("transparent");
+                Ok(())
+            },
+            || {
+                order.borrow_mut().push("attach");
+                Ok("mounted")
+            },
+        );
+
+        assert_eq!(result, Ok("mounted"));
+        assert_eq!(*order.borrow(), ["transparent", "attach"]);
+    }
+
+    #[test]
+    fn transparency_failure_is_typed_and_prevents_surface_attachment() {
+        let attached = Cell::new(false);
+
+        let result = mount_after_webview_transparency(
+            || Err(SurfaceError::WebviewTransparencyUnavailable),
+            || {
+                attached.set(true);
+                Ok(())
+            },
+        );
+
+        assert_eq!(result, Err(SurfaceError::WebviewTransparencyUnavailable));
+        assert!(!attached.get());
+    }
 }

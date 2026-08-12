@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import type { BrowserFile } from '../api/types'
-import { validatePreviewSelection } from './previewPolicy'
+import type { BrowserFile, VideoFile } from '../api/types'
+import { validatePreviewSelection, videoPreviewNeighbors } from './previewPolicy'
 
 const file = (kind: BrowserFile['kind']) => ({ kind })
 
@@ -11,6 +11,10 @@ describe('validatePreviewSelection', () => {
       mode: 'single',
     })
     expect(validatePreviewSelection([file('other')])).toEqual({
+      ok: true,
+      mode: 'single',
+    })
+    expect(validatePreviewSelection([file('video')])).toEqual({
       ok: true,
       mode: 'single',
     })
@@ -44,3 +48,52 @@ describe('validatePreviewSelection', () => {
     })
   })
 })
+
+describe('videoPreviewNeighbors', () => {
+  const videos = [video('a'), video('b'), video('c')]
+
+  it('keeps workspace video order outside search', () => {
+    expect(videoPreviewNeighbors(videos, null).map((candidate) => candidate.entityId)).toEqual([
+      'video-a',
+      'video-b',
+      'video-c',
+    ])
+  })
+
+  it('uses only video hits in search-result order', () => {
+    expect(
+      videoPreviewNeighbors(videos, [
+        { entityId: 'video-c', kind: 'video' },
+        { entityId: 'text-1', kind: 'text' },
+        { entityId: 'missing-video', kind: 'video' },
+        { entityId: 'video-a', kind: 'video' },
+      ]).map((candidate) => candidate.entityId),
+    ).toEqual(['video-c', 'video-a'])
+  })
+})
+
+function video(suffix: string): VideoFile {
+  return {
+    entityId: `video-${suffix}`,
+    relativePath: `id/${suffix}.mp4`,
+    name: `${suffix}.mp4`,
+    kind: 'video',
+    size: 1,
+    modifiedNs: '1',
+    marker: { reviewState: null, favorite: false },
+    imageMetadata: null,
+    imageUrl: null,
+    videoMetadata: {
+      durationUs: 1,
+      displayWidth: 1,
+      displayHeight: 1,
+      rotationDegrees: 0,
+      frameRateMillihertz: null,
+      videoCodec: null,
+      audioCodec: null,
+      probeStatus: 'ready',
+      failureKind: null,
+      coverUrl: null,
+    },
+  }
+}

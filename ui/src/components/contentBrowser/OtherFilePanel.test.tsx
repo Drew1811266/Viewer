@@ -15,6 +15,7 @@ const otherFiles: readonly BrowserFile[] = [
     marker: { reviewState: 'keep', favorite: true },
     imageMetadata: null,
     imageUrl: null,
+    videoMetadata: null,
   },
   {
     entityId: 'other-2',
@@ -26,6 +27,7 @@ const otherFiles: readonly BrowserFile[] = [
     marker: { reviewState: null, favorite: false },
     imageMetadata: null,
     imageUrl: null,
+    videoMetadata: null,
   },
 ]
 
@@ -251,6 +253,7 @@ function manyOtherFiles(count: number): BrowserFile[] {
     marker: { reviewState: null, favorite: false },
     imageMetadata: null,
     imageUrl: null,
+    videoMetadata: null,
   }))
 }
 

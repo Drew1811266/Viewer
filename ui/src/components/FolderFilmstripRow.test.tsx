@@ -10,6 +10,7 @@ const folder: ContentFolderCard = {
   name: 'B01',
   marker: { reviewState: null, favorite: false },
   imageCount: 3,
+  videoCount: 0,
   otherFileCount: 1,
   reviewProgress: {
     total: 4,
@@ -36,6 +37,7 @@ function image(
     marker: { reviewState: null, favorite: false },
     imageMetadata: dimensions,
     imageUrl: null,
+    videoMetadata: null,
   }
 }
 

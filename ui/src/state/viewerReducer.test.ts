@@ -6,6 +6,7 @@ import type {
   ProjectSnapshot,
   ScanEvent,
   SearchPage,
+  VideoFile,
 } from '../api/types'
 import { reduceOperationAction } from './reducers/operationReducer'
 import { reduceProjectAction } from './reducers/projectReducer'
@@ -280,6 +281,38 @@ describe('viewerReducer', () => {
     expect(state.selectedEntityIds).toEqual(['folder-1', 'image-1'])
   })
 
+  it('applies marker responses to video files in the active workspace', () => {
+    let state = viewerReducer(initialViewerState, { type: 'project_opened', project })
+    state = viewerReducer(state, {
+      type: 'projection_loaded',
+      sessionId: project.sessionId,
+      generation: project.generation,
+      folders: [],
+      workspace: videoWorkspace(['video-1']),
+      selectedFolderId: null,
+      selectedFolderPath: '',
+      showingAggregate: false,
+    })
+
+    state = viewerReducer(state, {
+      type: 'marker_changes_applied',
+      sessionId: project.sessionId,
+      generation: project.generation,
+      changes: [
+        {
+          entityId: 'video-1',
+          relativePath: 'video-1.mp4',
+          kind: 'video',
+          marker: { reviewState: 'keep', favorite: true },
+        },
+      ],
+    })
+
+    expect(state.workspace?.workspace).toBe('content')
+    if (state.workspace?.workspace !== 'content') throw new Error('Expected content workspace')
+    expect(state.workspace.videos[0]?.marker).toEqual({ reviewState: 'keep', favorite: true })
+  })
+
   it('ignores marker changes from a stale generation', () => {
     const active = viewerReducer(initialViewerState, { type: 'project_opened', project })
     const changed = viewerReducer(active, {
@@ -440,6 +473,42 @@ describe('viewerReducer', () => {
     expect(refreshed.contextRepair).toBeNull()
   })
 
+  it('repairs selected video entities removed by an external projection change', () => {
+    let state = viewerReducer(initialViewerState, { type: 'project_opened', project })
+    state = viewerReducer(state, {
+      type: 'projection_loaded',
+      sessionId: project.sessionId,
+      generation: project.generation,
+      folders: [],
+      workspace: videoWorkspace(['video-1']),
+      selectedFolderId: null,
+      selectedFolderPath: '',
+      showingAggregate: false,
+    })
+    state = viewerReducer(state, { type: 'selection_changed', entityIds: ['video-1'] })
+    state = viewerReducer(state, {
+      type: 'project_changed_received',
+      change: projectChange('session-1', 7),
+    })
+    state = viewerReducer(state, {
+      type: 'projection_loaded',
+      sessionId: project.sessionId,
+      generation: project.generation,
+      folders: [],
+      workspace: videoWorkspace([]),
+      selectedFolderId: null,
+      selectedFolderPath: '',
+      showingAggregate: false,
+    })
+
+    expect(state.selectedEntityIds).toEqual([])
+    expect(state.contextRepair).toEqual({
+      removedEntityIds: ['video-1'],
+      suggestedEntityId: null,
+      message: '部分正在查看的文件已在项目外发生变化。',
+    })
+  })
+
   it('ignores stale project change and close-blocked events', () => {
     const active = viewerReducer(initialViewerState, { type: 'project_opened', project })
     expect(
@@ -545,7 +614,43 @@ function contentWorkspace(ids: string[]) {
   return {
     workspace: 'content' as const,
     images: ids.map(file),
+    videos: [],
     otherFiles: [],
+  }
+}
+
+function videoWorkspace(ids: string[]) {
+  return {
+    workspace: 'content' as const,
+    images: [],
+    videos: ids.map(videoFile),
+    otherFiles: [],
+  }
+}
+
+function videoFile(entityId: string): VideoFile {
+  return {
+    entityId,
+    relativePath: `${entityId}.mp4`,
+    name: `${entityId}.mp4`,
+    kind: 'video',
+    size: 2,
+    modifiedNs: '1',
+    marker: { reviewState: null, favorite: false },
+    imageMetadata: null,
+    imageUrl: null,
+    videoMetadata: {
+      durationUs: 1_000_000,
+      displayWidth: 1_920,
+      displayHeight: 1_080,
+      rotationDegrees: 0,
+      frameRateMillihertz: 30_000,
+      videoCodec: 'h264',
+      audioCodec: 'aac',
+      probeStatus: 'ready',
+      failureKind: null,
+      coverUrl: null,
+    },
   }
 }
 
@@ -560,6 +665,7 @@ function file(entityId: string): BrowserFile {
     marker: { reviewState: null, favorite: false },
     imageMetadata: { width: 1, height: 1 },
     imageUrl: null,
+    videoMetadata: null,
   }
 }
 

@@ -1,6 +1,7 @@
 import type { DragEvent, KeyboardEvent, MouseEvent, PointerEvent } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { BrowserFile, FolderWorkspace, ThumbnailDensity } from '../api/types'
+import { isVideoFile } from '../fileKinds'
 import { type AspectRect, type ImageDimensions, validDimensions } from '../layout/aspectLayout'
 import { THUMBNAIL_HEIGHT } from '../settings/thumbnailDensity'
 import type { OrganizationPointerInput } from '../state/useOrganizationPointerDrag'
@@ -16,6 +17,7 @@ import { rangeSelection, toggleSelection } from './contentBrowser/contentSelecti
 import { ImageCell } from './contentBrowser/ImageCell'
 import OtherFilePanel from './contentBrowser/OtherFilePanel'
 import { useMeasuredElementHeight } from './contentBrowser/useMeasuredElementHeight'
+import { VideoSection } from './contentBrowser/VideoSection'
 import type { MarqueeSelectionChange } from './marqueeSelection'
 import type { RadialMenuRequest } from './RadialFileMenu'
 import type { TaskFeedback } from './TaskBar'
@@ -33,6 +35,7 @@ interface ContentBrowserProps {
   viewportHeight?: number
   requestThumbnail?: (file: BrowserFile, maxPixels: number, scaleMilli: number) => Promise<string>
   onPreview?: (file: BrowserFile) => void
+  onOpenVideo?: (entityId: string) => void
   onSelectionChange?: (files: BrowserFile[]) => void
   onThumbnailTaskChange?: (task: TaskFeedback | null) => void
   organizationDragDisabled?: boolean
@@ -43,6 +46,8 @@ interface ContentBrowserProps {
   onRadialMenuRequest?: (request: RadialMenuRequest) => void
   otherFilePanelExpanded: boolean
   onOtherFilePanelExpandedChange(expanded: boolean): void
+  videoPanelExpanded: boolean
+  onVideoPanelExpandedChange(expanded: boolean): void
   viewCommand?: ContentViewCommand | null
   onViewStateChange?(request: SelectAllRequest): void
   onRequestViewMenu?(): void
@@ -77,6 +82,7 @@ export default function ContentBrowser({
   viewportHeight = 520,
   requestThumbnail,
   onPreview,
+  onOpenVideo,
   onSelectionChange,
   onThumbnailTaskChange,
   organizationDragDisabled = false,
@@ -87,10 +93,13 @@ export default function ContentBrowser({
   onRadialMenuRequest,
   otherFilePanelExpanded,
   onOtherFilePanelExpandedChange,
+  videoPanelExpanded,
+  onVideoPanelExpandedChange,
   viewCommand = null,
   onViewStateChange,
   onRequestViewMenu,
 }: ContentBrowserProps) {
+  const videos = workspace.videos
   const [selected, setSelected] = useState<Set<string>>(() => new Set())
   const [activeId, setActiveId] = useState<string | null>(null)
   const [recoveredDimensions, setRecoveredDimensions] = useState(
@@ -111,23 +120,25 @@ export default function ContentBrowser({
   const mounted = useRef(true)
   const [work, setWork] = useState<ThumbnailWork>({ requested: 0, completed: 0, failed: 0 })
   const allFiles = useMemo(
-    () => [...workspace.images, ...workspace.otherFiles],
-    [workspace.images, workspace.otherFiles],
+    () => [...workspace.images, ...videos, ...workspace.otherFiles],
+    [workspace.images, videos, workspace.otherFiles],
   )
   const mode = resolveAdaptiveContentMode(
-    workspace.images.length,
+    workspace.images.length + videos.length,
     workspace.otherFiles.length,
     otherFilePanelExpanded,
   )
   const selectAllRequest = useMemo(
-    () => resolveSelectAllRequest(workspace.images.length, workspace.otherFiles.length),
-    [workspace.images.length, workspace.otherFiles.length],
+    () =>
+      resolveSelectAllRequest(workspace.images.length, videos.length, workspace.otherFiles.length),
+    [workspace.images.length, videos.length, workspace.otherFiles.length],
   )
   const imageSlot = useMeasuredElementHeight(viewportHeight)
   const fileById = useMemo(() => new Map(allFiles.map((file) => [file.entityId, file])), [allFiles])
   const activeImageId = workspace.images.some(({ entityId }) => entityId === activeId)
     ? activeId
     : null
+  const activeVideoId = videos.some(({ entityId }) => entityId === activeId) ? activeId : null
   const activeOtherId = workspace.otherFiles.some(({ entityId }) => entityId === activeId)
     ? activeId
     : null
@@ -307,13 +318,13 @@ export default function ContentBrowser({
 
   const commitSelectAll = useCallback(
     (scope: SelectAllScope) => {
-      const files = filesForSelectAllScope(workspace, scope)
+      const files = filesForSelectAllScope({ ...workspace, videos }, scope)
       const first = files[0] ?? null
       setActiveId(first?.entityId ?? null)
       anchorId.current = first?.entityId ?? null
       commitSelection(new Set(files.map(({ entityId }) => entityId)))
     },
-    [commitSelection, workspace],
+    [commitSelection, videos, workspace],
   )
 
   useEffect(() => {
@@ -551,7 +562,9 @@ export default function ContentBrowser({
     if ((event.key === ' ' || event.key === 'Spacebar' || event.code === 'Space') && activeId) {
       event.preventDefault()
       const file = fileById.get(activeId)
-      if (file) previewFile(file)
+      if (file === undefined) return
+      if (isVideoFile(file)) onOpenVideo?.(file.entityId)
+      else previewFile(file)
     }
   }
 
@@ -679,6 +692,24 @@ export default function ContentBrowser({
             />
           </div>
         )}
+        <VideoSection
+          videos={videos}
+          expanded={videoPanelExpanded}
+          onExpandedChange={onVideoPanelExpandedChange}
+          selection={selected}
+          activeId={activeVideoId}
+          onOpen={(entityId) => onOpenVideo?.(entityId)}
+          onListKeyDown={handleOtherListKeyboard}
+          onSelect={selectFile}
+          onRadialMenuPointerDown={openRadialMenuFromPointer}
+          onRadialMenuContextMenu={openRadialMenuFromContext}
+          organizationDragDisabled={organizationDragDisabled}
+          onFinderDragStart={startFinderDrag}
+          onOrganizationPointerDown={startPointerOrganization}
+          onOrganizationPointerMove={movePointerOrganization}
+          onOrganizationPointerUp={endPointerOrganization}
+          onOrganizationPointerCancel={cancelPointerOrganization}
+        />
         {mode !== 'image_only' && mode !== 'empty' && (
           <OtherFilePanel
             mode={mode}

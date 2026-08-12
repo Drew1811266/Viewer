@@ -44,7 +44,7 @@ describe('WorkspaceViewMenu', () => {
         context={{
           kind: 'content',
           showingAggregate: false,
-          selectAllRequest: { kind: 'choice' },
+          selectAllRequest: { kind: 'choice', scopes: ['images', 'videos', 'otherFiles'] },
           onSelectAll,
           onShowAllDescendants: vi.fn(),
           onReturnToFolder: vi.fn(),
@@ -67,7 +67,7 @@ describe('WorkspaceViewMenu', () => {
         context={{
           kind: 'content',
           showingAggregate: false,
-          selectAllRequest: { kind: 'choice' },
+          selectAllRequest: { kind: 'choice', scopes: ['images', 'videos', 'otherFiles'] },
           onSelectAll: vi.fn(),
           onShowAllDescendants: vi.fn(),
           onReturnToFolder: vi.fn(),

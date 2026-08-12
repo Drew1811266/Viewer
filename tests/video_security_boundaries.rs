@@ -18,11 +18,8 @@ async fn scanned_runtime(project: &Path) -> (DesktopRuntime, Option<EntityId>, O
     let runtime = DesktopRuntime::new(cache, Arc::new(FixedProbe));
     runtime.open_project(project).await.expect("open project");
     runtime.wait_for_scan().await.expect("finish project scan");
-    let FolderWorkspaceDto::Content {
-        images,
-        videos_deferred_until_task_9: videos,
-        ..
-    } = runtime.query_folder(None).await.expect("query root")
+    let FolderWorkspaceDto::Content { images, videos, .. } =
+        runtime.query_folder(None).await.expect("query root")
     else {
         panic!("root should contain previewable files")
     };
@@ -33,7 +30,7 @@ async fn scanned_runtime(project: &Path) -> (DesktopRuntime, Option<EntityId>, O
     let video = videos
         .iter()
         .find(|file| file.name == "clip.mp4")
-        .map(|file| file.entity_id);
+        .map(|file| file.entity_id.parse().expect("parse video entity"));
     (runtime, image, video)
 }
 

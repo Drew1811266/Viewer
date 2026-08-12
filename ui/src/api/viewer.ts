@@ -42,6 +42,19 @@ import type {
   ToggleFavoriteRequest,
   UndoLastOperationRequest,
   UndoReceipt,
+  VideoCacheStats,
+  VideoEvent,
+  VideoFullscreenRequest,
+  VideoGenerationRequest,
+  VideoMutedRequest,
+  VideoOpenRequest,
+  VideoRateRequest,
+  VideoSeekRequest,
+  VideoSession,
+  VideoStepRequest,
+  VideoSurfaceRectRequest,
+  VideoThumbnailRequest,
+  VideoVolumeRequest,
   ViewerSettings,
   ViewerSettingsUpdate,
 } from './types'
@@ -79,12 +92,27 @@ export interface ViewerBridge {
   cancelOperation(request: CancelOperationRequest): Promise<boolean>
   undoLastOperation(request: UndoLastOperationRequest): Promise<UndoReceipt | null>
   beginFinderDrag(request: BeginFinderDragRequest): Promise<FinderDragReceipt>
+  videoOpen(request: VideoOpenRequest): Promise<VideoSession>
+  videoClose(request: VideoGenerationRequest): Promise<void>
+  videoPlay(request: VideoGenerationRequest): Promise<void>
+  videoPause(request: VideoGenerationRequest): Promise<void>
+  videoSeek(request: VideoSeekRequest): Promise<void>
+  videoStep(request: VideoStepRequest): Promise<void>
+  videoSetVolume(request: VideoVolumeRequest): Promise<void>
+  videoSetMuted(request: VideoMutedRequest): Promise<void>
+  videoSetRate(request: VideoRateRequest): Promise<void>
+  videoSetSurfaceRect(request: VideoSurfaceRectRequest): Promise<void>
+  videoSetFullscreen(request: VideoFullscreenRequest): Promise<void>
+  videoRequestThumbnail(request: VideoThumbnailRequest): Promise<void>
+  videoCacheStats(): Promise<VideoCacheStats>
+  videoCacheClear(): Promise<VideoCacheStats>
   openPermissionSettings(): Promise<void>
   listenScan(handler: (event: ScanEvent) => void): Promise<UnlistenFn>
   listenIndexProgress(handler: (event: IndexProgressEvent) => void): Promise<UnlistenFn>
   listenOperationProgress(handler: (event: OperationProgressEvent) => void): Promise<UnlistenFn>
   listenProjectChanged(handler: (event: ProjectChangedEvent) => void): Promise<UnlistenFn>
   listenCloseBlocked(handler: (event: CloseBlockedEvent) => void): Promise<UnlistenFn>
+  listenVideo(handler: (event: VideoEvent) => void): Promise<UnlistenFn>
   listenProjectClosed(handler: () => void): Promise<UnlistenFn>
   listenProjectDrops(handler: (paths: string[]) => void): Promise<UnlistenFn>
   listenProjectDropEvents(handler: (event: ProjectDropEvent) => void): Promise<UnlistenFn>
@@ -211,6 +239,48 @@ export const tauriViewerBridge: ViewerBridge = {
   beginFinderDrag(request) {
     return invoke<FinderDragReceipt>('begin_finder_drag', { request })
   },
+  videoOpen(request) {
+    return invoke<VideoSession>('video_open', { request })
+  },
+  videoClose(request) {
+    return invoke<void>('video_close', { request })
+  },
+  videoPlay(request) {
+    return invoke<void>('video_play', { request })
+  },
+  videoPause(request) {
+    return invoke<void>('video_pause', { request })
+  },
+  videoSeek(request) {
+    return invoke<void>('video_seek', { request })
+  },
+  videoStep(request) {
+    return invoke<void>('video_step', { request })
+  },
+  videoSetVolume(request) {
+    return invoke<void>('video_set_volume', { request })
+  },
+  videoSetMuted(request) {
+    return invoke<void>('video_set_muted', { request })
+  },
+  videoSetRate(request) {
+    return invoke<void>('video_set_rate', { request })
+  },
+  videoSetSurfaceRect(request) {
+    return invoke<void>('video_set_surface_rect', { request })
+  },
+  videoSetFullscreen(request) {
+    return invoke<void>('video_set_fullscreen', { request })
+  },
+  videoRequestThumbnail(request) {
+    return invoke<void>('video_request_thumbnail', { request })
+  },
+  videoCacheStats() {
+    return invoke<VideoCacheStats>('video_cache_stats')
+  },
+  videoCacheClear() {
+    return invoke<VideoCacheStats>('video_cache_clear')
+  },
   openPermissionSettings() {
     return invoke<void>('open_permission_settings')
   },
@@ -232,6 +302,9 @@ export const tauriViewerBridge: ViewerBridge = {
   },
   listenCloseBlocked(handler) {
     return listen<CloseBlockedEvent>('viewer://close-blocked', ({ payload }) => handler(payload))
+  },
+  listenVideo(handler) {
+    return listen<VideoEvent>('viewer://video-event', ({ payload }) => handler(payload))
   },
   listenProjectClosed(handler) {
     return listen<void>('viewer://project-closed', handler)

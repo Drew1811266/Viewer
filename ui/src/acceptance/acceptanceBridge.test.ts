@@ -25,6 +25,7 @@ describe('Viewer visual acceptance bridge', () => {
         'listenProjectDropEvents',
         'listenProjectDrops',
         'listenScan',
+        'listenVideo',
         'openExternalLink',
         'openPermissionSettings',
         'openProject',
@@ -44,6 +45,20 @@ describe('Viewer visual acceptance bridge', () => {
         'toggleFavorite',
         'undoLastOperation',
         'updateViewerSettings',
+        'videoCacheClear',
+        'videoCacheStats',
+        'videoClose',
+        'videoOpen',
+        'videoPause',
+        'videoPlay',
+        'videoRequestThumbnail',
+        'videoSeek',
+        'videoSetFullscreen',
+        'videoSetMuted',
+        'videoSetRate',
+        'videoSetSurfaceRect',
+        'videoSetVolume',
+        'videoStep',
       ].sort(),
     )
     await expect(bridge.getViewerSettings()).resolves.toEqual({
@@ -60,6 +75,9 @@ describe('Viewer visual acceptance bridge', () => {
     expect(unlisten()).toBeUndefined()
     await expect(bridge.executeFileCommand({} as never)).rejects.toThrow(
       'Unexpected acceptance bridge call: executeFileCommand',
+    )
+    await expect(bridge.videoOpen({} as never)).rejects.toThrow(
+      'Unexpected acceptance bridge call: videoOpen',
     )
   })
 

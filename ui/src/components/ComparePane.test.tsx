@@ -434,6 +434,7 @@ function image(
     marker: { reviewState, favorite },
     imageMetadata: { width: 4_000, height: 3_000 },
     imageUrl: null,
+    videoMetadata: null,
   }
 }
 

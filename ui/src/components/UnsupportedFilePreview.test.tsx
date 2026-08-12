@@ -15,6 +15,7 @@ const file = (name: string): BrowserFile => ({
   marker: { reviewState: null, favorite: false },
   imageMetadata: null,
   imageUrl: null,
+  videoMetadata: null,
 })
 
 describe('UnsupportedFilePreview', () => {

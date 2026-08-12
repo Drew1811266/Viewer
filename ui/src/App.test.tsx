@@ -114,7 +114,7 @@ function bridge(access: 'read_write' | 'read_only' = 'read_write'): ViewerBridge
     selectionInfo: vi.fn().mockResolvedValue({
       relativePaths: [],
       totalSize: 0,
-      types: { folders: 0, images: 0, otherFiles: 0 },
+      types: { folders: 0, images: 0, videos: 0, otherFiles: 0 },
       commonReview: { state: 'none_selected' },
       commonFavorite: { state: 'none_selected' },
     }),
@@ -138,12 +138,27 @@ function bridge(access: 'read_write' | 'read_only' = 'read_write'): ViewerBridge
     cancelOperation: vi.fn().mockResolvedValue(false),
     undoLastOperation: vi.fn().mockResolvedValue(null),
     beginFinderDrag: vi.fn().mockResolvedValue({ fileCount: 1 }),
+    videoOpen: vi.fn(),
+    videoClose: vi.fn(),
+    videoPlay: vi.fn(),
+    videoPause: vi.fn(),
+    videoSeek: vi.fn(),
+    videoStep: vi.fn(),
+    videoSetVolume: vi.fn(),
+    videoSetMuted: vi.fn(),
+    videoSetRate: vi.fn(),
+    videoSetSurfaceRect: vi.fn(),
+    videoSetFullscreen: vi.fn(),
+    videoRequestThumbnail: vi.fn(),
+    videoCacheStats: vi.fn(),
+    videoCacheClear: vi.fn(),
     openPermissionSettings: vi.fn().mockResolvedValue(undefined),
     listenScan: vi.fn().mockResolvedValue(() => undefined),
     listenIndexProgress: vi.fn().mockResolvedValue(() => undefined),
     listenOperationProgress: vi.fn().mockResolvedValue(() => undefined),
     listenProjectChanged: vi.fn().mockResolvedValue(() => undefined),
     listenCloseBlocked: vi.fn().mockResolvedValue(() => undefined),
+    listenVideo: vi.fn().mockResolvedValue(() => undefined),
     listenProjectClosed: vi.fn().mockResolvedValue(() => undefined),
     listenProjectDrops: vi.fn().mockResolvedValue(() => undefined),
     listenProjectDropEvents: vi.fn().mockResolvedValue(() => undefined),
@@ -212,7 +227,7 @@ describe('Viewer empty state', () => {
     expect(
       await screen.findByRole('heading', { name: '这个项目中还没有可显示的文件' }),
     ).toBeVisible()
-    expect(screen.getByText('Viewer 会显示支持的图片、Markdown 与文本文件。')).toBeVisible()
+    expect(screen.getByText('Viewer 会显示支持的图片、视频、Markdown 与文本文件。')).toBeVisible()
     fireEvent.click(screen.getByRole('button', { name: '在文件管理器中显示' }))
     expect(viewer.revealProjectInFileManager).toHaveBeenCalledOnce()
     expect(screen.queryByText('此文件夹中没有支持的文件。')).not.toBeInTheDocument()
@@ -1109,6 +1124,7 @@ describe('Viewer empty state', () => {
           marker: { reviewState: null, favorite: false },
           imageMetadata: null,
           imageUrl: null,
+          videoMetadata: null,
         },
       ],
     }
@@ -1421,6 +1437,7 @@ describe('Viewer empty state', () => {
     const viewer = bridge()
     vi.mocked(viewer.queryFolder).mockResolvedValue({
       workspace: 'content',
+      videos: [],
       images: Array.from({ length: 20 }, (_, index) => ({
         entityId: `image-${index}`,
         relativePath: `id-1/${index}.jpg`,
@@ -1431,6 +1448,7 @@ describe('Viewer empty state', () => {
         marker: { reviewState: null, favorite: false },
         imageMetadata: null,
         imageUrl: null,
+        videoMetadata: null,
       })),
       otherFiles: [],
     })
@@ -2264,6 +2282,50 @@ describe('Viewer empty state', () => {
     )
   })
 
+  it('keeps video entity IDs through organization validation and move preflight', async () => {
+    const viewer = bridge()
+    vi.mocked(viewer.folderTree).mockResolvedValue([
+      {
+        entityId: 'folder-b',
+        parentEntityId: null,
+        relativePath: 'selected',
+        name: 'selected',
+        marker: { reviewState: null, favorite: false },
+      },
+    ])
+    vi.mocked(viewer.queryFolder).mockResolvedValue(videoContentWorkspace())
+    vi.mocked(viewer.preflightFileCommand).mockResolvedValue({
+      rows: [{ entityId: 'video-1', relativePath: 'id/clip.mp4', state: 'ready' }],
+      executable: true,
+    })
+    render(<App bridge={viewer} />)
+    fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
+    const video = await screen.findByRole('option', { name: 'clip.mp4' })
+    fireEvent.click(video)
+    const handle = screen.getByRole('button', { name: '整理 clip.mp4' })
+    const destination = await screen.findByRole('treeitem', { name: 'selected' })
+
+    organizationPointerDrag(handle, destination, {
+      pointerId: 44,
+      altKey: false,
+      releaseAltKey: false,
+    })
+
+    await waitFor(() =>
+      expect(viewer.preflightFileCommand).toHaveBeenCalledWith({
+        sessionId: 'session-1',
+        generation: 1,
+        kind: 'move',
+        items: [
+          {
+            entityId: 'video-1',
+            action: { kind: 'move', destinationFolderId: 'folder-b' },
+          },
+        ],
+      }),
+    )
+  })
+
   it('cancels an active pointer drag when the workspace identity changes', async () => {
     const viewer = bridge()
     vi.mocked(viewer.folderTree).mockResolvedValue([
@@ -2805,6 +2867,7 @@ function viewerDragTransfer() {
 function contentWorkspace() {
   return {
     workspace: 'content' as const,
+    videos: [],
     images: [
       {
         entityId: 'image-1',
@@ -2816,6 +2879,40 @@ function contentWorkspace() {
         marker: { reviewState: null, favorite: false },
         imageMetadata: null,
         imageUrl: null,
+        videoMetadata: null,
+      },
+    ],
+    otherFiles: [],
+  }
+}
+
+function videoContentWorkspace() {
+  return {
+    workspace: 'content' as const,
+    images: [],
+    videos: [
+      {
+        entityId: 'video-1',
+        relativePath: 'id/clip.mp4',
+        name: 'clip.mp4',
+        kind: 'video' as const,
+        size: 200,
+        modifiedNs: '2',
+        marker: { reviewState: null, favorite: false },
+        imageMetadata: null,
+        imageUrl: null,
+        videoMetadata: {
+          durationUs: 2_000_000,
+          displayWidth: 1_920,
+          displayHeight: 1_080,
+          rotationDegrees: 0,
+          frameRateMillihertz: 30_000,
+          videoCodec: 'h264',
+          audioCodec: 'aac',
+          probeStatus: 'ready' as const,
+          failureKind: null,
+          coverUrl: null,
+        },
       },
     ],
     otherFiles: [],
@@ -2856,6 +2953,7 @@ function mixedContentWorkspace({
         marker: { reviewState: null, favorite: false },
         imageMetadata: null,
         imageUrl: null,
+        videoMetadata: null,
       },
     ],
   }
@@ -2875,6 +2973,7 @@ function genericOtherContentWorkspace() {
         marker: { reviewState: null, favorite: false },
         imageMetadata: null,
         imageUrl: null,
+        videoMetadata: null,
       },
     ],
   }
@@ -2884,6 +2983,7 @@ function splitTextContentWorkspace() {
   return {
     workspace: 'content' as const,
     images: [],
+    videos: [],
     otherFiles: [
       {
         entityId: 'text-left',
@@ -2895,6 +2995,7 @@ function splitTextContentWorkspace() {
         marker: { reviewState: null, favorite: false },
         imageMetadata: null,
         imageUrl: null,
+        videoMetadata: null,
       },
       {
         entityId: 'text-right',
@@ -2906,6 +3007,7 @@ function splitTextContentWorkspace() {
         marker: { reviewState: null, favorite: false },
         imageMetadata: null,
         imageUrl: null,
+        videoMetadata: null,
       },
     ],
   }
@@ -2916,6 +3018,7 @@ function unsupportedImageContentWorkspace() {
   if (source === undefined) throw new Error('Expected supported image fixture')
   return {
     workspace: 'content' as const,
+    videos: [],
     images: [
       {
         ...source,
@@ -2938,6 +3041,7 @@ function categoryWorkspace() {
         name: 'B01',
         marker: { reviewState: null, favorite: false },
         imageCount: 2,
+        videoCount: 0,
         otherFileCount: 0,
         reviewProgress: {
           total: 2,
@@ -2957,6 +3061,7 @@ function compareContentWorkspace() {
   const first = defined(contentWorkspace().images[0], 'Expected first content workspace image')
   return {
     workspace: 'content' as const,
+    videos: [],
     images: [
       first,
       {
@@ -2975,6 +3080,7 @@ function compareContentWorkspaceWithCount(count: number) {
   const source = defined(contentWorkspace().images[0], 'Expected source image')
   return {
     workspace: 'content' as const,
+    videos: [],
     images: Array.from({ length: count }, (_, index) => ({
       ...source,
       entityId: `image-${index + 1}`,
@@ -3076,6 +3182,7 @@ function readOnlyContentWorkspace() {
         marker: { reviewState: null, favorite: false },
         imageMetadata: null,
         imageUrl: null,
+        videoMetadata: null,
       },
     ],
   }

@@ -629,6 +629,7 @@ function image(entityId: string, name: string): BrowserFile {
     marker: { reviewState: null, favorite: false },
     imageMetadata: { width: 4_000, height: 3_000 },
     imageUrl: null,
+    videoMetadata: null,
   }
 }
 

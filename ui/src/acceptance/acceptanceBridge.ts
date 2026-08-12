@@ -144,7 +144,10 @@ export function createAcceptanceBridge(overrides: AcceptanceBridgeOverrides = {}
         types: {
           folders: 0,
           images: files.filter(({ kind }) => kind === 'jpeg' || kind === 'png').length,
-          otherFiles: files.filter(({ kind }) => kind !== 'jpeg' && kind !== 'png').length,
+          videos: files.filter(({ kind }) => kind === 'video').length,
+          otherFiles: files.filter(
+            ({ kind }) => kind !== 'jpeg' && kind !== 'png' && kind !== 'video',
+          ).length,
         },
         commonReview:
           files.length === 0 ? { state: 'none_selected' as const } : { state: 'mixed' as const },
@@ -176,6 +179,48 @@ export function createAcceptanceBridge(overrides: AcceptanceBridgeOverrides = {}
     async beginFinderDrag() {
       return unexpected('beginFinderDrag')
     },
+    async videoOpen() {
+      return unexpected('videoOpen')
+    },
+    async videoClose() {
+      return unexpected('videoClose')
+    },
+    async videoPlay() {
+      return unexpected('videoPlay')
+    },
+    async videoPause() {
+      return unexpected('videoPause')
+    },
+    async videoSeek() {
+      return unexpected('videoSeek')
+    },
+    async videoStep() {
+      return unexpected('videoStep')
+    },
+    async videoSetVolume() {
+      return unexpected('videoSetVolume')
+    },
+    async videoSetMuted() {
+      return unexpected('videoSetMuted')
+    },
+    async videoSetRate() {
+      return unexpected('videoSetRate')
+    },
+    async videoSetSurfaceRect() {
+      return unexpected('videoSetSurfaceRect')
+    },
+    async videoSetFullscreen() {
+      return unexpected('videoSetFullscreen')
+    },
+    async videoRequestThumbnail() {
+      return unexpected('videoRequestThumbnail')
+    },
+    async videoCacheStats() {
+      return unexpected('videoCacheStats')
+    },
+    async videoCacheClear() {
+      return unexpected('videoCacheClear')
+    },
     async openPermissionSettings() {
       return undefined
     },
@@ -192,6 +237,9 @@ export function createAcceptanceBridge(overrides: AcceptanceBridgeOverrides = {}
       return noOpUnlisten
     },
     async listenCloseBlocked() {
+      return noOpUnlisten
+    },
+    async listenVideo() {
       return noOpUnlisten
     },
     async listenProjectClosed() {

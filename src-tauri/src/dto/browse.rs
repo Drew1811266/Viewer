@@ -12,6 +12,7 @@ use viewer_application::{
 use viewer_domain::{
     RelativePath, TaskId,
     file::{FileNode, ReviewState},
+    video::{VideoFailureKind, VideoMetadata, VideoProbeStatus},
 };
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -228,6 +229,7 @@ pub struct BrowserFileDto {
     pub marker: MarkerDto,
     pub image_metadata: Option<ImageMetadataDto>,
     pub image_url: Option<String>,
+    pub video_metadata: Option<VideoMetadataDto>,
 }
 
 impl From<BrowserFile> for BrowserFileDto {
@@ -242,6 +244,83 @@ impl From<BrowserFile> for BrowserFileDto {
             marker: file.marker.into(),
             image_metadata: file.image_metadata.map(Into::into),
             image_url: None,
+            video_metadata: file.video_metadata.map(Into::into),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VideoMetadataDto {
+    pub duration_us: Option<u64>,
+    pub display_width: Option<u32>,
+    pub display_height: Option<u32>,
+    pub rotation_degrees: i16,
+    pub frame_rate_millihertz: Option<u32>,
+    pub video_codec: Option<String>,
+    pub audio_codec: Option<String>,
+    pub probe_status: VideoProbeStatusDto,
+    pub failure_kind: Option<VideoFailureKindDto>,
+    pub cover_url: Option<String>,
+}
+
+impl From<VideoMetadata> for VideoMetadataDto {
+    fn from(metadata: VideoMetadata) -> Self {
+        let (probe_status, failure_kind) = match metadata.probe_status {
+            VideoProbeStatus::Pending => (VideoProbeStatusDto::Pending, None),
+            VideoProbeStatus::Ready => (VideoProbeStatusDto::Ready, None),
+            VideoProbeStatus::Failed(kind) => (
+                VideoProbeStatusDto::Failed,
+                Some(VideoFailureKindDto::from(kind)),
+            ),
+        };
+        Self {
+            duration_us: metadata.duration_us,
+            display_width: metadata.display_width,
+            display_height: metadata.display_height,
+            rotation_degrees: metadata.rotation_degrees,
+            frame_rate_millihertz: metadata.frame_rate_millihertz,
+            video_codec: metadata.video_codec,
+            audio_codec: metadata.audio_codec,
+            probe_status,
+            failure_kind,
+            cover_url: None,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum VideoProbeStatusDto {
+    Pending,
+    Ready,
+    Failed,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum VideoFailureKindDto {
+    Unsupported,
+    Damaged,
+    Unreadable,
+    Missing,
+    EngineInitialization,
+    DecodeFallbackFailed,
+    RenderSurface,
+    ThumbnailUnavailable,
+}
+
+impl From<VideoFailureKind> for VideoFailureKindDto {
+    fn from(kind: VideoFailureKind) -> Self {
+        match kind {
+            VideoFailureKind::Unsupported => Self::Unsupported,
+            VideoFailureKind::Damaged => Self::Damaged,
+            VideoFailureKind::Unreadable => Self::Unreadable,
+            VideoFailureKind::Missing => Self::Missing,
+            VideoFailureKind::EngineInitialization => Self::EngineInitialization,
+            VideoFailureKind::DecodeFallbackFailed => Self::DecodeFallbackFailed,
+            VideoFailureKind::RenderSurface => Self::RenderSurface,
+            VideoFailureKind::ThumbnailUnavailable => Self::ThumbnailUnavailable,
         }
     }
 }
@@ -254,8 +333,7 @@ pub struct ContentFolderCardDto {
     pub name: String,
     pub marker: MarkerDto,
     pub image_count: u64,
-    #[serde(skip)]
-    pub video_count_deferred_until_task_9: usize,
+    pub video_count: usize,
     pub other_file_count: u64,
     pub review_progress: FolderReviewProgressDto,
     pub representative_images: Vec<BrowserFileDto>,
@@ -269,7 +347,7 @@ impl From<ContentFolderCard> for ContentFolderCardDto {
             name: folder.name,
             marker: folder.marker.into(),
             image_count: folder.image_count,
-            video_count_deferred_until_task_9: folder.video_count,
+            video_count: folder.video_count,
             other_file_count: folder.other_file_count,
             review_progress: folder.review_progress.into(),
             representative_images: folder
@@ -326,8 +404,7 @@ impl SelectionAgreementDto<Option<ReviewState>> {
 pub struct SelectionTypeCountsDto {
     pub folders: u64,
     pub images: u64,
-    #[serde(skip)]
-    pub videos_deferred_until_task_9: usize,
+    pub videos: usize,
     pub other_files: u64,
 }
 
@@ -336,7 +413,7 @@ impl From<SelectionTypeCounts> for SelectionTypeCountsDto {
         Self {
             folders: types.folders,
             images: types.images,
-            videos_deferred_until_task_9: types.videos,
+            videos: types.videos,
             other_files: types.other_files,
         }
     }
@@ -384,8 +461,7 @@ pub enum FolderWorkspaceDto {
     },
     Content {
         images: Vec<BrowserFileDto>,
-        #[serde(skip)]
-        videos_deferred_until_task_9: Vec<BrowserFile>,
+        videos: Vec<BrowserFileDto>,
         other_files: Vec<BrowserFileDto>,
     },
     Empty,
@@ -406,7 +482,7 @@ impl From<FolderWorkspace> for FolderWorkspaceDto {
                 other_files,
             } => Self::Content {
                 images: images.into_iter().map(BrowserFileDto::from).collect(),
-                videos_deferred_until_task_9: videos,
+                videos: videos.into_iter().map(BrowserFileDto::from).collect(),
                 other_files: other_files.into_iter().map(BrowserFileDto::from).collect(),
             },
             FolderWorkspace::Empty => Self::Empty,

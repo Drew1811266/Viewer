@@ -489,7 +489,7 @@ async function openExternalLink() {}
 const AGGREGATE_SELECTION_INFO: SelectionInfo = {
   relativePaths: [PREVIEW_FILE.relativePath, PLAIN_FILE.relativePath, '衣服/A01'],
   totalSize: PREVIEW_FILE.size + PLAIN_FILE.size,
-  types: { folders: 1, images: 1, otherFiles: 1 },
+  types: { folders: 1, images: 1, videos: 0, otherFiles: 1 },
   commonReview: { state: 'mixed' },
   commonFavorite: { state: 'common', value: false },
 }

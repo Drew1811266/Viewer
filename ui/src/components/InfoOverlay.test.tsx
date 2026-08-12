@@ -13,6 +13,7 @@ const image: BrowserFile = {
   marker: { reviewState: null, favorite: false },
   imageMetadata: null,
   imageUrl: null,
+  videoMetadata: null,
 }
 
 describe('InfoOverlay', () => {
@@ -106,7 +107,7 @@ describe('InfoOverlay', () => {
         selectionInfo={{
           relativePaths: ['catalog/id-1', 'catalog/id-1/front.jpg'],
           totalSize: 3_072,
-          types: { folders: 1, images: 1, otherFiles: 0 },
+          types: { folders: 1, images: 1, videos: 0, otherFiles: 0 },
           commonReview: { state: 'common', value: 'keep' },
           commonFavorite: { state: 'mixed' },
         }}

@@ -294,6 +294,7 @@ function image(entityId: string, imageMetadata: BrowserFile['imageMetadata']): B
     marker: { reviewState: null, favorite: false },
     imageMetadata,
     imageUrl: null,
+    videoMetadata: null,
   }
 }
 

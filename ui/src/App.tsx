@@ -19,6 +19,7 @@ import { useOtherFilePanelPreference } from './app/useOtherFilePanelPreference'
 import { getPreviewSessionInternals, usePreviewSession } from './app/usePreviewSession'
 import { useRadialMenuContextToken, useRadialMenuSession } from './app/useRadialMenuSession'
 import { useToolbarPopover } from './app/useToolbarPopover'
+import { useVideoPanelPreference } from './app/useVideoPanelPreference'
 import BatchRenameDialog from './components/BatchRenameDialog'
 import CloseOperationDialog from './components/CloseOperationDialog'
 import CompareWorkspace from './components/CompareWorkspace'
@@ -149,6 +150,7 @@ function ViewerWorkspace({
   ].join(':')
   const shellState = useAppShellState(projectSessionId)
   const otherFilePanelPreference = useOtherFilePanelPreference(projectSessionId)
+  const videoPanelPreference = useVideoPanelPreference(state.project?.sessionId ?? null)
   const { sidebarCollapsed, sidebarWidth, toggleSidebar, startSidebarResize } = shellState
   const [narrowViewport, setNarrowViewport] = useState(() => window.innerWidth <= 760)
   const effectiveSidebarCollapsed = narrowViewport || sidebarCollapsed
@@ -490,7 +492,11 @@ function ViewerWorkspace({
       ) {
         return
       }
-      const currentFiles = [...state.workspace.images, ...state.workspace.otherFiles]
+      const currentFiles = [
+        ...state.workspace.images,
+        ...state.workspace.videos,
+        ...state.workspace.otherFiles,
+      ]
       const byId = new Map(currentFiles.map((file) => [file.entityId, file]))
       const files = entityIds.map((entityId) => byId.get(entityId))
       if (files.some((file) => file === undefined)) return
@@ -529,7 +535,11 @@ function ViewerWorkspace({
       if (state.workspace?.workspace !== 'content') return false
       const destination = state.folders.find((folder) => folder.entityId === destinationId)
       if (!destination) return false
-      const currentFiles = [...state.workspace.images, ...state.workspace.otherFiles]
+      const currentFiles = [
+        ...state.workspace.images,
+        ...state.workspace.videos,
+        ...state.workspace.otherFiles,
+      ]
       const byId = new Map(currentFiles.map((file) => [file.entityId, file]))
       const files = entityIds.map((entityId) => byId.get(entityId))
       if (files.some((file) => file === undefined)) return false
@@ -1134,7 +1144,7 @@ function ViewerWorkspace({
                 <ViewerEmptyState
                   appearance="plain"
                   title="这个项目中还没有可显示的文件"
-                  description="Viewer 会显示支持的图片、Markdown 与文本文件。"
+                  description="Viewer 会显示支持的图片、视频、Markdown 与文本文件。"
                   action={
                     <ViewerButton
                       onClick={() => {
@@ -1194,6 +1204,8 @@ function ViewerWorkspace({
                       onRadialMenuRequest={beginRadialSession}
                       otherFilePanelExpanded={otherFilePanelPreference.expanded}
                       onOtherFilePanelExpandedChange={otherFilePanelPreference.setExpanded}
+                      videoPanelExpanded={videoPanelPreference.expanded}
+                      onVideoPanelExpandedChange={videoPanelPreference.setExpanded}
                     />
                   </div>
                   {!compareOpen && compareStatus && (

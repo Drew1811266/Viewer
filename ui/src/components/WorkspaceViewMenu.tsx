@@ -135,27 +135,30 @@ function selectAllButtons(
         className="workspace-menu-item"
         onSelect={() => run(() => onSelectAll(request.scope))}
       >
-        {request.scope === 'images' ? '全选图片' : '全选其它文件'}
+        {selectAllLabel(request.scope)}
       </ViewerMenuRow>
     )
   }
   return (
     <>
-      <ViewerMenuRow
-        className="workspace-menu-item"
-        onSelect={() => run(() => onSelectAll('images'))}
-      >
-        全选图片
-      </ViewerMenuRow>
-      <ViewerMenuRow
-        className="workspace-menu-item"
-        onSelect={() => run(() => onSelectAll('other'))}
-      >
-        全选其它文件
-      </ViewerMenuRow>
+      {request.scopes.map((scope) => (
+        <ViewerMenuRow
+          key={scope}
+          className="workspace-menu-item"
+          onSelect={() => run(() => onSelectAll(scope))}
+        >
+          {selectAllLabel(scope)}
+        </ViewerMenuRow>
+      ))}
       <ViewerMenuRow className="workspace-menu-item" onSelect={() => run(() => onSelectAll('all'))}>
         全选全部文件
       </ViewerMenuRow>
     </>
   )
+}
+
+function selectAllLabel(scope: Exclude<SelectAllScope, 'all'>): string {
+  if (scope === 'images') return '全选图片'
+  if (scope === 'videos') return '全选视频'
+  return '全选其它文件'
 }

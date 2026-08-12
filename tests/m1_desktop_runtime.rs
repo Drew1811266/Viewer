@@ -13,7 +13,7 @@ use viewer_application::{
     ProjectOpenError, ProjectProbeError, ProjectProbeOperation, ProjectProbePort, TextEncoding,
 };
 use viewer_desktop::{
-    dto::{FolderWorkspaceDto, ProjectAccessDto},
+    dto::{FolderWorkspaceDto, ProjectAccessDto, VideoProbeStatusDto},
     error::{CommandError, ErrorCategory},
     state::{DesktopEventSink, DesktopImageFactory, DesktopRuntime, ScanEventDto},
 };
@@ -406,26 +406,21 @@ async fn more_than_legacy_capacity_initial_candidates_publish_pending_before_pro
 
     runtime.open_project(project.path()).await.unwrap();
     runtime.wait_for_scan().await.unwrap();
-    let FolderWorkspaceDto::Content {
-        videos_deferred_until_task_9: videos,
-        ..
-    } = runtime.query_folder(None).await.unwrap()
+    let FolderWorkspaceDto::Content { videos, .. } = runtime.query_folder(None).await.unwrap()
     else {
         panic!("root should contain the video candidate")
     };
     assert_eq!(videos.len(), 11);
     assert!(videos.iter().all(|video| {
-        video.video_metadata.as_ref().unwrap().probe_status == VideoProbeStatus::Pending
+        video.video_metadata.as_ref().unwrap().probe_status == VideoProbeStatusDto::Pending
     }));
     probe.started.notified().await;
 
     probe.release.notify_one();
     let ready = tokio::time::timeout(std::time::Duration::from_secs(1), async {
         loop {
-            let FolderWorkspaceDto::Content {
-                videos_deferred_until_task_9: videos,
-                ..
-            } = runtime.query_folder(None).await.unwrap()
+            let FolderWorkspaceDto::Content { videos, .. } =
+                runtime.query_folder(None).await.unwrap()
             else {
                 panic!("root should remain a content workspace")
             };
@@ -443,7 +438,7 @@ async fn more_than_legacy_capacity_initial_candidates_publish_pending_before_pro
     .await
     .expect("released video metadata should be published");
     assert!(ready.iter().all(|video| {
-        video.video_metadata.as_ref().unwrap().probe_status == VideoProbeStatus::Ready
+        video.video_metadata.as_ref().unwrap().probe_status == VideoProbeStatusDto::Ready
     }));
     runtime.close_project().await.unwrap();
 }

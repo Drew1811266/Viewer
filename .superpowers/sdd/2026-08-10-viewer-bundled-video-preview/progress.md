@@ -12,3 +12,4 @@ Task 6: fix round 3/5 in progress (kernel-bound child code identity before SIGCO
 Task 6: complete (final scoped review 0 Critical / 0 Important; final fresh pnpm verify passed; commit SHA recorded in controller handoff)
 Task 7: complete (single reviewer final 0/0/0; one final fresh pnpm verify passed; commit `feat: add generation-safe video services`; Task 8 not started)
 Task 8: complete (single reviewer final 0/0/0 APPROVE; one final fresh pnpm verify passed; commit `feat: bridge native video playback`; Task 9 not started)
+Task 9: complete (single reviewer final 0/0/0 APPROVE; first final pnpm verify found one stale acceptance bridge-key contract; focused fix green and same reviewer approved 0/0/0; required full retry passed; commit `feat: browse videos in a dedicated section`; Task 10 not started)

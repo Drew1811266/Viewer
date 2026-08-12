@@ -9,6 +9,7 @@ const card: ContentFolderCard = {
   name: 'id-001',
   marker: { reviewState: null, favorite: false },
   imageCount: 4,
+  videoCount: 0,
   otherFileCount: 1,
   reviewProgress: {
     total: 5,
@@ -28,6 +29,7 @@ const card: ContentFolderCard = {
     marker: { reviewState: null, favorite: false },
     imageMetadata: null,
     imageUrl: null,
+    videoMetadata: null,
   })),
 }
 

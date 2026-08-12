@@ -149,7 +149,9 @@ function orderedWorkspaceEntityIds(workspace: FolderWorkspace | null): string[] 
   if (workspace.workspace === 'category') {
     return workspace.folders.map((folder) => folder.entityId)
   }
-  return [...workspace.images, ...workspace.otherFiles].map((file) => file.entityId)
+  return [...workspace.images, ...workspace.videos, ...workspace.otherFiles].map(
+    (file) => file.entityId,
+  )
 }
 
 function applyMarkerChanges(state: ViewerState, changes: MarkerChange[]): ViewerState {
@@ -196,6 +198,10 @@ function updateWorkspaceMarkers(
   return {
     ...workspace,
     images: workspace.images.map((file) => ({
+      ...file,
+      marker: markers.get(file.entityId) ?? file.marker,
+    })),
+    videos: workspace.videos.map((file) => ({
       ...file,
       marker: markers.get(file.entityId) ?? file.marker,
     })),

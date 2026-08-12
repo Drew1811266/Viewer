@@ -16,6 +16,7 @@ function image(entityId: string, modifiedNs = '1'): BrowserFile {
     marker: { reviewState: null, favorite: false },
     imageMetadata: { width: 1, height: 1 },
     imageUrl: null,
+    videoMetadata: null,
   }
 }
 

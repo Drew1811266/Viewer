@@ -188,6 +188,29 @@ describe('SearchToolbar', () => {
     expect(onFiltersChange).toHaveBeenCalledOnce()
   })
 
+  it('offers video as a file-kind filter and emits only the video kind', () => {
+    const onFiltersChange = vi.fn()
+    render(
+      <SearchToolbarView
+        filterOpen
+        onFilterOpenChange={vi.fn()}
+        query={query()}
+        folders={[]}
+        focusRequest={0}
+        onTextChange={vi.fn()}
+        onScopeChange={vi.fn()}
+        onFiltersChange={onFiltersChange}
+        onSortChange={vi.fn()}
+        onRemoveFilter={vi.fn()}
+        onClearFilters={vi.fn()}
+      />,
+    )
+
+    fireEvent.click(screen.getByLabelText('视频'))
+
+    expect(onFiltersChange).toHaveBeenCalledWith(expect.objectContaining({ kinds: ['video'] }))
+  })
+
   it('does not count scope or sort as active filter conditions', () => {
     render(
       <SearchToolbar
@@ -373,6 +396,7 @@ describe('SearchToolbar', () => {
       'JPEG',
       'PNG',
       '其它图片',
+      '视频',
       'Markdown',
       'TXT',
       '其它文件',

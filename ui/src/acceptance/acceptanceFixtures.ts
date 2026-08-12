@@ -33,6 +33,7 @@ export const ACCEPTANCE_FILES: BrowserFile[] = Array.from({ length: 30 }, (_, of
     marker: { reviewState: null, favorite: false },
     imageMetadata: { width: IMAGE_WIDTH, height: IMAGE_HEIGHT },
     imageUrl: null,
+    videoMetadata: null,
   }
 })
 
@@ -47,6 +48,7 @@ export const ACCEPTANCE_TEXT_FILES: BrowserFile[] = [
     marker: { reviewState: 'keep', favorite: false },
     imageMetadata: null,
     imageUrl: null,
+    videoMetadata: null,
   },
   {
     entityId: 'acceptance-text-plain',
@@ -58,6 +60,7 @@ export const ACCEPTANCE_TEXT_FILES: BrowserFile[] = [
     marker: { reviewState: null, favorite: true },
     imageMetadata: null,
     imageUrl: null,
+    videoMetadata: null,
   },
   {
     entityId: 'acceptance-text-gb18030',
@@ -69,6 +72,7 @@ export const ACCEPTANCE_TEXT_FILES: BrowserFile[] = [
     marker: { reviewState: null, favorite: false },
     imageMetadata: null,
     imageUrl: null,
+    videoMetadata: null,
   },
   {
     entityId: 'acceptance-text-large',
@@ -80,6 +84,7 @@ export const ACCEPTANCE_TEXT_FILES: BrowserFile[] = [
     marker: { reviewState: null, favorite: false },
     imageMetadata: null,
     imageUrl: null,
+    videoMetadata: null,
   },
 ]
 
@@ -93,6 +98,7 @@ export const ACCEPTANCE_UNSUPPORTED_FILE: BrowserFile = {
   marker: { reviewState: null, favorite: false },
   imageMetadata: null,
   imageUrl: null,
+  videoMetadata: null,
 }
 
 export const ACCEPTANCE_FOLDER_TREE: FolderTreeItem[] = [
@@ -164,6 +170,7 @@ export const ACCEPTANCE_CONTENT_FOLDERS: ContentFolderCard[] = ['A01', 'A02', 'A
     name,
     marker: { reviewState: null, favorite: index === 1 },
     imageCount: index === 0 ? ACCEPTANCE_FILES.length : 6 + index * 3,
+    videoCount: 0,
     otherFileCount: index === 0 ? ACCEPTANCE_TEXT_FILES.length + 1 : 0,
     reviewProgress: {
       total: index === 0 ? ACCEPTANCE_FILES.length : 6 + index * 3,
@@ -210,6 +217,7 @@ export function acceptanceWorkspace(
     return {
       workspace: 'content',
       images: ACCEPTANCE_FILES,
+      videos: [],
       otherFiles: [...ACCEPTANCE_TEXT_FILES, ACCEPTANCE_UNSUPPORTED_FILE],
     }
   }
@@ -229,6 +237,7 @@ function folderCard(
     name,
     marker: { reviewState: null, favorite: false },
     imageCount: representativeImages.length,
+    videoCount: 0,
     otherFileCount,
     reviewProgress: {
       total: representativeImages.length + otherFileCount,

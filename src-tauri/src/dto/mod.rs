@@ -63,7 +63,7 @@ mod tests {
     }
 
     #[test]
-    fn task_9_video_dto_deferral_is_explicit_lossless_in_rust_and_absent_from_json() {
+    fn task_9_video_dto_serializes_workspace_metadata_and_counts() {
         let metadata = VideoMetadata {
             duration_us: Some(2_000_000),
             display_width: Some(1_920),
@@ -90,21 +90,29 @@ mod tests {
             videos: vec![video],
             other_files: Vec::new(),
         });
-        let FolderWorkspaceDto::Content {
-            videos_deferred_until_task_9,
-            ..
-        } = &workspace
-        else {
+        let FolderWorkspaceDto::Content { videos, .. } = &workspace else {
             panic!("workspace should remain content")
         };
-        assert_eq!(videos_deferred_until_task_9.len(), 1);
-        assert_eq!(
-            videos_deferred_until_task_9[0].video_metadata,
-            Some(metadata)
-        );
+        assert_eq!(videos.len(), 1);
+        assert_eq!(videos[0].video_metadata, Some(metadata.into()));
         let workspace_json = serde_json::to_value(&workspace).unwrap();
-        assert!(workspace_json.get("videos").is_none());
-        assert!(workspace_json.get("videosDeferredUntilTask9").is_none());
+        assert_eq!(workspace_json["videos"][0]["name"], "clip.mp4");
+        assert_eq!(workspace_json["videos"][0]["kind"], "video");
+        assert_eq!(
+            workspace_json["videos"][0]["videoMetadata"],
+            serde_json::json!({
+                "durationUs": 2_000_000,
+                "displayWidth": 1_920,
+                "displayHeight": 1_080,
+                "rotationDegrees": 0,
+                "frameRateMillihertz": 30_000,
+                "videoCodec": "h264",
+                "audioCodec": "aac",
+                "probeStatus": "ready",
+                "failureKind": null,
+                "coverUrl": null
+            })
+        );
 
         let folder = ContentFolderCardDto::from(ContentFolderCard {
             entity_id: EntityId::from_u128(10),
@@ -117,13 +125,8 @@ mod tests {
             review_progress: FolderReviewProgress::default(),
             representative_images: Vec::new(),
         });
-        assert_eq!(folder.video_count_deferred_until_task_9, 3);
-        assert!(
-            serde_json::to_value(folder)
-                .unwrap()
-                .get("videoCount")
-                .is_none()
-        );
+        assert_eq!(folder.video_count, 3);
+        assert_eq!(serde_json::to_value(folder).unwrap()["videoCount"], 3);
 
         let counts = SelectionTypeCountsDto::from(SelectionTypeCounts {
             folders: 0,
@@ -131,13 +134,8 @@ mod tests {
             videos: 2,
             other_files: 0,
         });
-        assert_eq!(counts.videos_deferred_until_task_9, 2);
-        assert!(
-            serde_json::to_value(counts)
-                .unwrap()
-                .get("videos")
-                .is_none()
-        );
+        assert_eq!(counts.videos, 2);
+        assert_eq!(serde_json::to_value(counts).unwrap()["videos"], 2);
     }
 
     #[test]

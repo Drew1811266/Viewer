@@ -13,6 +13,7 @@ const file: BrowserFile = {
   marker: { reviewState: null, favorite: false },
   imageMetadata: { width: 3_000, height: 2_000 },
   imageUrl: null,
+  videoMetadata: null,
 }
 
 const originalDevicePixelRatio = window.devicePixelRatio

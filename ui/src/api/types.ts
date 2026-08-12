@@ -43,6 +43,7 @@ export type FileKind =
   | 'text'
   | 'unsupported_image'
   | 'other'
+  | 'video'
 export type ReviewState = 'keep' | 'pending' | 'reject'
 
 export interface Marker {
@@ -53,6 +54,144 @@ export interface Marker {
 export interface ImageMetadata {
   width: number
   height: number
+}
+
+export type VideoFailureKind =
+  | 'unsupported'
+  | 'damaged'
+  | 'unreadable'
+  | 'missing'
+  | 'engine_initialization'
+  | 'decode_fallback_failed'
+  | 'render_surface'
+  | 'thumbnail_unavailable'
+
+export interface VideoMetadata {
+  durationUs: number | null
+  displayWidth: number | null
+  displayHeight: number | null
+  rotationDegrees: number
+  frameRateMillihertz: number | null
+  videoCodec: string | null
+  audioCodec: string | null
+  probeStatus: 'pending' | 'ready' | 'failed'
+  failureKind: VideoFailureKind | null
+  coverUrl: string | null
+}
+
+export interface VideoSurfaceRect {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+export interface VideoOpenRequest {
+  entityId: string
+  surfaceRect: VideoSurfaceRect
+}
+
+export interface VideoGenerationRequest {
+  generation: number
+}
+
+export interface VideoSeekRequest extends VideoGenerationRequest {
+  timeUs: number
+}
+
+export interface VideoStepRequest extends VideoGenerationRequest {
+  direction: 'backward' | 'forward'
+}
+
+export interface VideoVolumeRequest extends VideoGenerationRequest {
+  volumePercent: number
+}
+
+export interface VideoMutedRequest extends VideoGenerationRequest {
+  muted: boolean
+}
+
+export type VideoRate =
+  | 'half'
+  | 'three_quarters'
+  | 'normal'
+  | 'one_and_quarter'
+  | 'one_and_half'
+  | 'double'
+
+export interface VideoRateRequest extends VideoGenerationRequest {
+  rate: VideoRate
+}
+
+export interface VideoSurfaceRectRequest extends VideoGenerationRequest, VideoSurfaceRect {}
+
+export interface VideoFullscreenRequest extends VideoGenerationRequest {
+  fullscreen: boolean
+}
+
+export interface VideoThumbnailRequest extends VideoGenerationRequest {
+  requestId: string
+  timeUs: number
+}
+
+export interface VideoMedia {
+  durationUs: number | null
+  displayWidth: number | null
+  displayHeight: number | null
+  rotationDegrees: number
+}
+
+export interface VideoSession {
+  generation: number
+  sessionId: string
+  media: VideoMedia
+}
+
+export type VideoState =
+  | 'idle'
+  | 'preparing'
+  | 'ready'
+  | 'playing'
+  | 'paused'
+  | 'seeking'
+  | 'frame_stepping'
+  | 'ended'
+  | 'failed'
+  | 'closing'
+
+export interface VideoError {
+  code: string
+  retryable: boolean
+}
+
+export type VideoEvent =
+  | { type: 'prepared'; generation: number; media: VideoMedia }
+  | { type: 'firstFrameReady'; generation: number }
+  | { type: 'stateChanged'; generation: number; state: VideoState }
+  | { type: 'progress'; generation: number; timeUs: number; durationUs: number | null }
+  | {
+      type: 'settingsChanged'
+      generation: number
+      volumePercent: number
+      muted: boolean
+      rate: number
+    }
+  | { type: 'fullscreenChanged'; generation: number; fullscreen: boolean }
+  | {
+      type: 'timelineThumbnailReady'
+      generation: number
+      requestId: string
+      bucketUs: number
+      artifactUrl: string
+    }
+  | { type: 'ended'; generation: number }
+  | { type: 'failed'; generation: number; error: VideoError }
+  | { type: 'closed'; generation: number }
+
+export interface VideoCacheStats {
+  bytesUsed: number
+  entryCount: number
+  budgetBytes: number
 }
 
 export interface ScannedNode {
@@ -100,6 +239,12 @@ export interface BrowserFile {
   marker: Marker
   imageMetadata: ImageMetadata | null
   imageUrl: string | null
+  videoMetadata: VideoMetadata | null
+}
+
+export interface VideoFile extends BrowserFile {
+  kind: 'video'
+  videoMetadata: VideoMetadata
 }
 
 export interface FolderReviewProgress {
@@ -117,6 +262,7 @@ export interface ContentFolderCard {
   name: string
   marker: Marker
   imageCount: number
+  videoCount: number
   otherFileCount: number
   reviewProgress: FolderReviewProgress
   representativeImages: BrowserFile[]
@@ -124,7 +270,7 @@ export interface ContentFolderCard {
 
 export type FolderWorkspace =
   | { workspace: 'category'; folders: ContentFolderCard[] }
-  | { workspace: 'content'; images: BrowserFile[]; otherFiles: BrowserFile[] }
+  | { workspace: 'content'; images: BrowserFile[]; videos: VideoFile[]; otherFiles: BrowserFile[] }
   | { workspace: 'empty' }
 
 export type ImageRepresentationRequest =
@@ -308,7 +454,7 @@ export type SelectionAgreement<T> =
 export interface SelectionInfo {
   relativePaths: string[]
   totalSize: number
-  types: { folders: number; images: number; otherFiles: number }
+  types: { folders: number; images: number; videos: number; otherFiles: number }
   commonReview: SelectionAgreement<ReviewState | null>
   commonFavorite: SelectionAgreement<boolean>
 }

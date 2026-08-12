@@ -9,23 +9,37 @@ import {
 } from '@testing-library/react'
 import { type ComponentProps, StrictMode, useState } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { BrowserFile, FolderWorkspace, ImageMetadata, ThumbnailDensity } from '../api/types'
+import type {
+  BrowserFile,
+  FolderWorkspace,
+  ImageMetadata,
+  ThumbnailDensity,
+  VideoFile,
+} from '../api/types'
 import { defined } from '../defined'
 import ContentBrowserComponent from './ContentBrowser'
 
 type ContentBrowserTestProps = Omit<
   ComponentProps<typeof ContentBrowserComponent>,
-  'density' | 'otherFilePanelExpanded' | 'onOtherFilePanelExpandedChange'
+  | 'density'
+  | 'otherFilePanelExpanded'
+  | 'onOtherFilePanelExpandedChange'
+  | 'videoPanelExpanded'
+  | 'onVideoPanelExpandedChange'
 > & {
   density?: ThumbnailDensity
   otherFilePanelExpanded?: boolean
   onOtherFilePanelExpandedChange?: (expanded: boolean) => void
+  videoPanelExpanded?: boolean
+  onVideoPanelExpandedChange?: (expanded: boolean) => void
 }
 
 function ContentBrowser({
   density = 'standard',
   otherFilePanelExpanded = false,
   onOtherFilePanelExpandedChange = () => undefined,
+  videoPanelExpanded = true,
+  onVideoPanelExpandedChange = () => undefined,
   ...props
 }: ContentBrowserTestProps) {
   return (
@@ -34,6 +48,19 @@ function ContentBrowser({
       density={density}
       otherFilePanelExpanded={otherFilePanelExpanded}
       onOtherFilePanelExpandedChange={onOtherFilePanelExpandedChange}
+      videoPanelExpanded={videoPanelExpanded}
+      onVideoPanelExpandedChange={onVideoPanelExpandedChange}
+    />
+  )
+}
+
+function ControlledVideoContentBrowser(props: ContentBrowserTestProps) {
+  const [expanded, setExpanded] = useState(true)
+  return (
+    <ContentBrowser
+      {...props}
+      videoPanelExpanded={expanded}
+      onVideoPanelExpandedChange={setExpanded}
     />
   )
 }
@@ -119,6 +146,55 @@ function image(index: number, imageMetadata: ImageMetadata | null = null): Brows
     marker: { reviewState: null, favorite: false },
     imageMetadata,
     imageUrl: null,
+    videoMetadata: null,
+  }
+}
+
+function video(name = 'clip.mp4'): VideoFile {
+  return {
+    entityId: `video-${name}`,
+    relativePath: `id-001/${name}`,
+    name,
+    kind: 'video',
+    size: 240,
+    modifiedNs: '20',
+    marker: { reviewState: null, favorite: false },
+    imageMetadata: null,
+    imageUrl: null,
+    videoMetadata: {
+      durationUs: 42_000_000,
+      displayWidth: 1920,
+      displayHeight: 1080,
+      rotationDegrees: 0,
+      frameRateMillihertz: 30_000,
+      videoCodec: 'h264',
+      audioCodec: 'aac',
+      probeStatus: 'ready',
+      failureKind: null,
+      coverUrl: null,
+    },
+  }
+}
+
+function workspaceWithVideo(): Extract<FolderWorkspace, { workspace: 'content' }> {
+  return {
+    workspace: 'content',
+    images: [image(1)],
+    videos: [video()],
+    otherFiles: [
+      {
+        entityId: 'text-1',
+        relativePath: 'id-001/a.txt',
+        name: 'a.txt',
+        kind: 'text',
+        size: 40,
+        modifiedNs: '21',
+        marker: { reviewState: null, favorite: false },
+        imageMetadata: null,
+        imageUrl: null,
+        videoMetadata: null,
+      },
+    ],
   }
 }
 
@@ -127,6 +203,7 @@ function ratioWorkspace(
 ): Extract<FolderWorkspace, { workspace: 'content' }> {
   return {
     workspace: 'content',
+    videos: [],
     images: dimensions.map((metadata, index) => image(index + 1, metadata)),
     otherFiles: [],
   }
@@ -135,6 +212,7 @@ function ratioWorkspace(
 function workspace(count = 10): Extract<FolderWorkspace, { workspace: 'content' }> {
   return {
     workspace: 'content',
+    videos: [],
     images: Array.from({ length: count }, (_, index) => image(index + 1)),
     otherFiles: [
       {
@@ -147,6 +225,7 @@ function workspace(count = 10): Extract<FolderWorkspace, { workspace: 'content' 
         marker: { reviewState: null, favorite: false },
         imageMetadata: null,
         imageUrl: null,
+        videoMetadata: null,
       },
     ],
   }
@@ -158,6 +237,7 @@ function workspaceWithTextFiles(
 ): Extract<FolderWorkspace, { workspace: 'content' }> {
   return {
     workspace: 'content',
+    videos: [],
     images: Array.from({ length: imageCount }, (_, index) => image(index + 1)),
     otherFiles: Array.from({ length: otherCount }, (_, index) => ({
       entityId: `text-${index + 1}`,
@@ -169,6 +249,7 @@ function workspaceWithTextFiles(
       marker: { reviewState: null, favorite: false },
       imageMetadata: null,
       imageUrl: null,
+      videoMetadata: null,
     })),
   }
 }
@@ -269,6 +350,74 @@ function finishMarquee(end: [number, number]) {
 }
 
 describe('ContentBrowser', () => {
+  it('shows videos expanded between images and other files', () => {
+    render(<ContentBrowser workspace={workspaceWithVideo()} />)
+
+    expect(screen.getByRole('button', { name: '收起视频' })).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    )
+    const videoHeading = screen.getByText('视频 · 1')
+    const otherHeading = screen.getByText('其它文件 · 1')
+    expect(
+      videoHeading.compareDocumentPosition(otherHeading) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+  })
+
+  it('omits the video disclosure when no videos exist', () => {
+    render(<ContentBrowser workspace={{ ...workspaceWithVideo(), videos: [] }} />)
+    expect(screen.queryByText(/视频 ·/)).not.toBeInTheDocument()
+  })
+
+  it('keeps video selection while disclosure changes and forwards its entity through selection', () => {
+    const selection = vi.fn()
+    const preview = vi.fn()
+    render(
+      <ControlledVideoContentBrowser
+        workspace={workspaceWithVideo()}
+        onSelectionChange={selection}
+        onPreview={preview}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('option', { name: 'clip.mp4' }))
+    expect(selection).toHaveBeenLastCalledWith([
+      expect.objectContaining({ entityId: 'video-clip.mp4' }),
+    ])
+    fireEvent.click(screen.getByRole('button', { name: '收起视频' }))
+
+    expect(screen.getByRole('status', { name: '选择摘要' })).toHaveTextContent('已选择 1 项')
+    expect(screen.queryByRole('option', { name: 'clip.mp4' })).not.toBeInTheDocument()
+    expect(preview).not.toHaveBeenCalled()
+  })
+
+  it('routes video opens by entity without entering the generic file preview', () => {
+    const openVideo = vi.fn()
+    const preview = vi.fn()
+    render(
+      <ContentBrowser
+        workspace={workspaceWithVideo()}
+        onOpenVideo={openVideo}
+        onPreview={preview}
+      />,
+    )
+
+    const option = screen.getByRole('option', { name: 'clip.mp4' })
+    fireEvent.doubleClick(option)
+
+    expect(openVideo).toHaveBeenCalledWith('video-clip.mp4')
+    expect(preview).not.toHaveBeenCalled()
+
+    openVideo.mockClear()
+    fireEvent.click(option)
+    fireEvent.keyDown(screen.getByRole('listbox', { name: '视频文件' }), {
+      key: ' ',
+      code: 'Space',
+    })
+    expect(openVideo).toHaveBeenCalledWith('video-clip.mp4')
+    expect(preview).not.toHaveBeenCalled()
+  })
+
   it('defaults mixed content to a collapsed controlled shelf and preserves hidden selection', () => {
     const changed = vi.fn()
     render(<ControlledContentBrowser workspace={workspace(2)} onSelectionChange={changed} />)
@@ -706,7 +855,9 @@ describe('ContentBrowser', () => {
       marker: { favorite: false, reviewState: 'pending' as const },
     }
     render(
-      <ContentBrowser workspace={{ workspace: 'content', images: [marked], otherFiles: [] }} />,
+      <ContentBrowser
+        workspace={{ workspace: 'content', images: [marked], videos: [], otherFiles: [] }}
+      />,
     )
 
     const option = screen.getByRole('option', { name: '1.jpg' })
@@ -788,6 +939,7 @@ describe('ContentBrowser', () => {
         workspace={{
           workspace: 'content',
           images: [supported, unsupported],
+          videos: [],
           otherFiles: [],
         }}
         requestThumbnail={requestThumbnail}
@@ -1242,7 +1394,7 @@ describe('ContentBrowser', () => {
 
   it.each([
     ['images', ['1.jpg', '2.jpg'], 'file-image-1'],
-    ['other', ['note-1.txt', 'note-2.txt'], 'file-text-1'],
+    ['otherFiles', ['note-1.txt', 'note-2.txt'], 'file-text-1'],
     ['all', ['1.jpg', '2.jpg', 'note-1.txt', 'note-2.txt'], 'file-image-1'],
   ] as const)(
     'replaces selection with the global %s command scope and anchors it at the first scoped file',
@@ -1261,7 +1413,7 @@ describe('ContentBrowser', () => {
 
       expect(selectedLabels()).toEqual(expectedLabels)
       const owner =
-        scope === 'other'
+        scope === 'otherFiles'
           ? screen.getByRole('listbox', { name: '其它文件' })
           : screen.getByRole('listbox', { name: '图片文件' })
       expect(owner).toHaveAttribute('aria-activedescendant', activeDescendant)

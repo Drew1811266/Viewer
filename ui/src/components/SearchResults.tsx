@@ -327,6 +327,7 @@ function fileKindLabel(kind: SearchHit['kind']): string {
     jpeg: 'JPG',
     png: 'PNG',
     unsupported_image: 'IMG',
+    video: '视频',
     markdown: 'MD',
     text: 'TXT',
     other: '文件',

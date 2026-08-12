@@ -6,7 +6,7 @@ import MarkerControls from './MarkerControls'
 const mixed: SelectionInfo = {
   relativePaths: ['id/1.jpg', 'id/2.jpg'],
   totalSize: 30,
-  types: { folders: 0, images: 2, otherFiles: 0 },
+  types: { folders: 0, images: 2, videos: 0, otherFiles: 0 },
   commonReview: { state: 'mixed' },
   commonFavorite: { state: 'common', value: false },
 }

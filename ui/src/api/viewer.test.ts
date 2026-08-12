@@ -1,9 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const invoke = vi.hoisted(() => vi.fn())
+const listen = vi.hoisted(() => vi.fn())
 const onDragDropEvent = vi.hoisted(() => vi.fn())
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke }))
+vi.mock('@tauri-apps/api/event', () => ({ listen }))
 vi.mock('@tauri-apps/api/webview', () => ({
   getCurrentWebview: () => ({ onDragDropEvent }),
 }))
@@ -12,6 +14,7 @@ import { tauriViewerBridge } from './viewer'
 
 beforeEach(() => {
   invoke.mockReset()
+  listen.mockReset()
   onDragDropEvent.mockReset()
 })
 
@@ -20,6 +23,71 @@ afterEach(() => {
 })
 
 describe('tauriViewerBridge', () => {
+  it('maps every video operation and event to its one matching native contract', async () => {
+    const handler = vi.fn()
+
+    await tauriViewerBridge.videoOpen({
+      entityId: 'video-1',
+      surfaceRect: { x: 10, y: 20, width: 640, height: 360 },
+    })
+    await tauriViewerBridge.videoClose({ generation: 8 })
+    await tauriViewerBridge.videoPlay({ generation: 8 })
+    await tauriViewerBridge.videoPause({ generation: 8 })
+    await tauriViewerBridge.videoSeek({ generation: 8, timeUs: 2_500_000 })
+    await tauriViewerBridge.videoStep({ generation: 8, direction: 'forward' })
+    await tauriViewerBridge.videoSetVolume({ generation: 8, volumePercent: 64 })
+    await tauriViewerBridge.videoSetMuted({ generation: 8, muted: true })
+    await tauriViewerBridge.videoSetRate({ generation: 8, rate: 'one_and_half' })
+    await tauriViewerBridge.videoSetSurfaceRect({
+      generation: 8,
+      x: 12,
+      y: 24,
+      width: 960,
+      height: 540,
+    })
+    await tauriViewerBridge.videoSetFullscreen({ generation: 8, fullscreen: true })
+    await tauriViewerBridge.videoRequestThumbnail({
+      generation: 8,
+      requestId: 'thumbnail-1',
+      timeUs: 3_000_000,
+    })
+    await tauriViewerBridge.videoCacheStats()
+    await tauriViewerBridge.videoCacheClear()
+    await tauriViewerBridge.listenVideo(handler)
+
+    expect(invoke.mock.calls).toEqual([
+      [
+        'video_open',
+        {
+          request: {
+            entityId: 'video-1',
+            surfaceRect: { x: 10, y: 20, width: 640, height: 360 },
+          },
+        },
+      ],
+      ['video_close', { request: { generation: 8 } }],
+      ['video_play', { request: { generation: 8 } }],
+      ['video_pause', { request: { generation: 8 } }],
+      ['video_seek', { request: { generation: 8, timeUs: 2_500_000 } }],
+      ['video_step', { request: { generation: 8, direction: 'forward' } }],
+      ['video_set_volume', { request: { generation: 8, volumePercent: 64 } }],
+      ['video_set_muted', { request: { generation: 8, muted: true } }],
+      ['video_set_rate', { request: { generation: 8, rate: 'one_and_half' } }],
+      [
+        'video_set_surface_rect',
+        { request: { generation: 8, x: 12, y: 24, width: 960, height: 540 } },
+      ],
+      ['video_set_fullscreen', { request: { generation: 8, fullscreen: true } }],
+      [
+        'video_request_thumbnail',
+        { request: { generation: 8, requestId: 'thumbnail-1', timeUs: 3_000_000 } },
+      ],
+      ['video_cache_stats'],
+      ['video_cache_clear'],
+    ])
+    expect(listen).toHaveBeenCalledWith('viewer://video-event', expect.any(Function))
+  })
+
   it('forwards the complete native project drag lifecycle', async () => {
     let receive:
       | ((event: {

@@ -59,6 +59,7 @@ function image(index: number): BrowserFile {
     marker: { reviewState: null, favorite: false },
     imageMetadata: null,
     imageUrl: null,
+    videoMetadata: null,
   }
 }
 

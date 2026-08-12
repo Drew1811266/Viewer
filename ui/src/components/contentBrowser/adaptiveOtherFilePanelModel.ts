@@ -7,15 +7,16 @@ export type AdaptiveContentMode =
   | 'mixed_expanded'
   | 'other_only'
 
-export type SelectAllScope = 'images' | 'other' | 'all'
+export type SelectAllScope = 'images' | 'videos' | 'otherFiles' | 'all'
 
 export type SelectAllRequest =
   | { kind: 'none' }
   | { kind: 'direct'; scope: Exclude<SelectAllScope, 'all'> }
-  | { kind: 'choice' }
+  | { kind: 'choice'; scopes: Array<Exclude<SelectAllScope, 'all'>> }
 
 export interface SelectableContent {
   images: readonly BrowserFile[]
+  videos: readonly BrowserFile[]
   otherFiles: readonly BrowserFile[]
 }
 
@@ -32,12 +33,17 @@ export function resolveAdaptiveContentMode(
 
 export function resolveSelectAllRequest(
   imageCount: number,
+  videoCount: number,
   otherFileCount: number,
 ): SelectAllRequest {
-  if (imageCount <= 0 && otherFileCount <= 0) return { kind: 'none' }
-  if (otherFileCount <= 0) return { kind: 'direct', scope: 'images' }
-  if (imageCount <= 0) return { kind: 'direct', scope: 'other' }
-  return { kind: 'choice' }
+  const available = [
+    ['images', imageCount],
+    ['videos', videoCount],
+    ['otherFiles', otherFileCount],
+  ].filter(([, count]) => Number(count) > 0) as Array<[Exclude<SelectAllScope, 'all'>, number]>
+  if (available.length === 0) return { kind: 'none' }
+  if (available.length === 1) return { kind: 'direct', scope: available[0]?.[0] ?? 'images' }
+  return { kind: 'choice', scopes: available.map(([scope]) => scope) }
 }
 
 export function filesForSelectAllScope(
@@ -45,6 +51,7 @@ export function filesForSelectAllScope(
   scope: SelectAllScope,
 ): readonly BrowserFile[] {
   if (scope === 'images') return content.images
-  if (scope === 'other') return content.otherFiles
-  return [...content.images, ...content.otherFiles]
+  if (scope === 'videos') return content.videos
+  if (scope === 'otherFiles') return content.otherFiles
+  return [...content.images, ...content.videos, ...content.otherFiles]
 }

@@ -1,3 +1,5 @@
+@import url('./videoBrowser.css');
+
 :root {
   color: var(--viewer-text);
   background: var(--viewer-application);

@@ -6,7 +6,9 @@ pub mod search;
 pub mod session_cache;
 pub mod settings;
 pub mod text;
+pub mod video_cache;
 pub mod video_probe;
+pub mod video_thumbnail;
 
 use viewer_application::ClockPort;
 

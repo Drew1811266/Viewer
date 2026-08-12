@@ -2,9 +2,14 @@ use std::{
     collections::{HashMap, hash_map::Entry},
     fs,
     path::{Path, PathBuf},
-    sync::RwLock,
+    sync::{Arc, RwLock},
 };
-use viewer_domain::{EntityId, ProjectId, RelativePath, SessionId, image::ImageRepresentationKind};
+use viewer_domain::{
+    EntityId, ProjectId, RelativePath, SessionId, VideoThumbnailRequestId,
+    image::ImageRepresentationKind, search::Generation,
+};
+
+use crate::{video_cache::VideoCache, video_thumbnail::VideoThumbnailArtifact};
 
 const CACHE_KEY_SCHEMA: &[u8] = b"viewer-image-cache-key\0v1";
 
@@ -87,12 +92,28 @@ impl ImageArtifactToken {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct RegisteredImageArtifact {
     entity_id: EntityId,
     cache_path: PathBuf,
     mime: String,
+    immutable_bytes: Option<Arc<[u8]>>,
+    generation: Option<Generation>,
+    video_request_id: Option<VideoThumbnailRequestId>,
 }
+
+impl PartialEq for RegisteredImageArtifact {
+    fn eq(&self, other: &Self) -> bool {
+        self.entity_id == other.entity_id
+            && self.cache_path == other.cache_path
+            && self.mime == other.mime
+            && self.immutable_bytes == other.immutable_bytes
+            && self.generation == other.generation
+            && self.video_request_id == other.video_request_id
+    }
+}
+
+impl Eq for RegisteredImageArtifact {}
 
 impl RegisteredImageArtifact {
     pub fn entity_id(&self) -> EntityId {
@@ -105,6 +126,22 @@ impl RegisteredImageArtifact {
 
     pub fn mime(&self) -> &str {
         &self.mime
+    }
+
+    pub fn immutable_bytes(&self) -> Option<&[u8]> {
+        self.immutable_bytes.as_deref()
+    }
+
+    pub const fn retains_cache_file(&self) -> bool {
+        false
+    }
+
+    pub const fn generation(&self) -> Option<Generation> {
+        self.generation
+    }
+
+    pub const fn video_request_id(&self) -> Option<VideoThumbnailRequestId> {
+        self.video_request_id
     }
 }
 
@@ -123,6 +160,29 @@ pub enum ImageArtifactRegistryError {
     NotAFile,
     #[error("system random source is unavailable: {0}")]
     RandomSourceUnavailable(String),
+    #[error("video artifact is outside the verified Viewer video cache")]
+    UnverifiedVideoCache,
+}
+
+pub fn register_video_png(
+    registry: &ImageArtifactRegistry,
+    cache: &VideoCache,
+    artifact: &VideoThumbnailArtifact,
+) -> Result<ImageArtifactToken, ImageArtifactRegistryError> {
+    let verified = cache
+        .bind_png_artifact(artifact.path())
+        .map_err(|_| ImageArtifactRegistryError::UnverifiedVideoCache)?;
+    registry.insert_registered(
+        artifact.session_id(),
+        RegisteredImageArtifact {
+            entity_id: EntityId::new(),
+            cache_path: verified.path().to_path_buf(),
+            mime: "image/png".to_owned(),
+            immutable_bytes: Some(verified.bytes()),
+            generation: Some(artifact.generation()),
+            video_request_id: artifact.request_id(),
+        },
+    )
 }
 
 struct RegistryEntry {
@@ -155,7 +215,18 @@ impl ImageArtifactRegistry {
             entity_id,
             cache_path,
             mime: mime.into(),
+            immutable_bytes: None,
+            generation: None,
+            video_request_id: None,
         };
+        self.insert_registered(session_id, artifact)
+    }
+
+    fn insert_registered(
+        &self,
+        session_id: SessionId,
+        artifact: RegisteredImageArtifact,
+    ) -> Result<ImageArtifactToken, ImageArtifactRegistryError> {
         let mut entries = self
             .entries
             .write()

@@ -10,7 +10,14 @@ export async function loadRuntimeLock(path) {
   if (lock.schemaVersion !== 1) fail('unsupported runtime lock schema')
   if (lock.target !== 'universal-apple-darwin') fail('unsupported runtime lock target')
   if (lock.mpv?.mesonOptions?.gpl !== 'false') fail('mpv must be built with gpl=false')
-  for (const option of ['--disable-gpl', '--disable-nonfree', '--disable-network']) {
+  for (const option of [
+    '--disable-gpl',
+    '--disable-nonfree',
+    '--disable-network',
+    '--disable-ffplay',
+    '--enable-zlib',
+    '--enable-encoder=png',
+  ]) {
     if (!lock.ffmpeg?.configureOptions?.includes(option)) {
       fail(`ffmpeg is missing ${option}`)
     }

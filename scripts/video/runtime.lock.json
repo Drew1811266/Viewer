@@ -28,7 +28,9 @@
       "--disable-gpl",
       "--disable-network",
       "--disable-nonfree",
-      "--disable-ffplay"
+      "--disable-ffplay",
+      "--enable-zlib",
+      "--enable-encoder=png"
     ]
   },
   "components": [

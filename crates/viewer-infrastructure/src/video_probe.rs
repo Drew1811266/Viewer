@@ -557,24 +557,28 @@ mod tests {
         let root = directory.path().join("ViewerVideoRuntime");
         fs::create_dir_all(root.join("bin")).unwrap();
         let ffprobe = root.join("bin/ffprobe");
+        let ffmpeg = root.join("bin/ffmpeg");
         fs::write(&ffprobe, format!("#!/bin/sh\n{body}\n")).unwrap();
+        fs::write(&ffmpeg, "#!/bin/sh\nexit 0\n").unwrap();
         fs::set_permissions(&ffprobe, fs::Permissions::from_mode(0o755)).unwrap();
+        fs::set_permissions(&ffmpeg, fs::Permissions::from_mode(0o755)).unwrap();
         fs::write(
             root.join("runtime.lock.json"),
-            r#"{"schemaVersion":1,"target":"universal-apple-darwin","mpv":{"tag":"v0.41.0","commit":"41f6a64","mesonOptions":{}},"ffmpeg":{"tag":"n8.0","configureOptions":["--disable-gpl","--disable-nonfree","--disable-network","--disable-ffplay"]},"components":[]}"#,
+            r#"{"schemaVersion":1,"target":"universal-apple-darwin","mpv":{"tag":"v0.41.0","commit":"41f6a64","mesonOptions":{}},"ffmpeg":{"tag":"n8.0","configureOptions":["--disable-gpl","--disable-nonfree","--disable-network","--disable-ffplay","--enable-zlib","--enable-encoder=png"]},"components":[]}"#,
         )
         .unwrap();
         fs::write(
             root.join("runtime.inventory.sha256"),
             format!(
-                "{}  bin/ffprobe\n",
+                "{}  bin/ffmpeg\n{}  bin/ffprobe\n",
+                sha256_hex(&fs::read(&ffmpeg).unwrap()),
                 sha256_hex(&fs::read(&ffprobe).unwrap())
             ),
         )
         .unwrap();
         let layout = RuntimeLayout {
             libmpv: root.join("lib/libmpv.2.dylib"),
-            ffmpeg: root.join("bin/ffmpeg"),
+            ffmpeg,
             ffprobe,
             manifest: root.join("runtime.lock.json"),
             licenses: root.join("licenses"),

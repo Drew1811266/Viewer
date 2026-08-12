@@ -18,9 +18,38 @@ use viewer_domain::{
     video::{VideoFailureKind, VideoMetadata, VideoProbeStatus},
 };
 use viewer_infrastructure::{
+    image_cache::{ImageArtifactRegistry, register_video_png},
     search::index::SessionIndex,
+    video_cache::VideoCache,
     video_probe::{MediaFileIdentity, VideoMetadataProbe, VideoProbeError},
+    video_thumbnail::VideoThumbnailArtifact,
 };
+
+pub fn register_video_png_url(
+    registry: &ImageArtifactRegistry,
+    coordinator: &TaskCoordinator,
+    cache: &VideoCache,
+    artifact: &VideoThumbnailArtifact,
+) -> Result<String, CommandError> {
+    let session_id = artifact.session_id();
+    let generation = artifact.generation();
+    let token = coordinator
+        .run_if_current(session_id, generation, || {
+            register_video_png(registry, cache, artifact).map_err(CommandError::from)
+        })
+        .ok_or_else(|| {
+            CommandError::new(
+                "video_thumbnail_stale",
+                crate::error::ErrorCategory::Consistency,
+                "视频缩略图请求已失效。",
+                false,
+            )
+        })??;
+    Ok(format!(
+        "viewer-image://localhost/{session_id}/{}",
+        token.as_str()
+    ))
+}
 
 pub(crate) struct VideoIndexRuntime {
     cancellation: CancellationToken,
@@ -465,7 +494,7 @@ fn failed_metadata(kind: VideoFailureKind) -> VideoMetadata {
 mod tests {
     use super::{
         PendingVideoQueue, VideoIndexRuntime, cancel_video_worker_before_session_teardown,
-        probe_video_nodes,
+        probe_video_nodes, register_video_png_url,
     };
     use crate::state::{entity_id_for_metadata, modified_ns};
     use async_trait::async_trait;
@@ -484,13 +513,18 @@ mod tests {
         scheduler::{DerivedWorkScheduler, TaskCoordinator},
     };
     use viewer_domain::{
-        ProjectId, RelativePath, SessionId,
+        ProjectId, RelativePath, SessionId, VideoThumbnailRequestId,
         file::{FileKind, FileNode},
         video::{VideoMetadata, VideoProbeStatus},
     };
     use viewer_infrastructure::{
         search::index::SessionIndex,
+        video_cache::{VideoCache, VideoSourceIdentity},
         video_probe::{MediaFileIdentity, VideoMetadataProbe, VideoProbeError},
+        video_thumbnail::{
+            FrameExtractionError, TimelineThumbnailRequest, VideoFrameExtractor, VideoFrameOutput,
+            VideoThumbnailArtifact, VideoThumbnailContext, VideoThumbnailService,
+        },
     };
 
     struct BlockedProbe {
@@ -1178,5 +1212,95 @@ mod tests {
             audio_codec: None,
             probe_status: VideoProbeStatus::Ready,
         }
+    }
+
+    struct ThumbnailPngExtractor;
+
+    #[async_trait]
+    impl VideoFrameExtractor for ThumbnailPngExtractor {
+        async fn extract_frame(
+            &self,
+            _canonical_path: &Path,
+            _expected_identity: &MediaFileIdentity,
+            _time_us: u64,
+            _output: VideoFrameOutput,
+            _cancellation: CancellationToken,
+        ) -> Result<Vec<u8>, FrameExtractionError> {
+            Ok(b"\x89PNG\r\n\x1a\nvideo".to_vec())
+        }
+    }
+
+    async fn generated_thumbnail(
+        cache: Arc<VideoCache>,
+        coordinator: Arc<TaskCoordinator>,
+        session: SessionId,
+    ) -> (tempfile::TempDir, VideoThumbnailArtifact) {
+        let source_directory = tempfile::tempdir().unwrap();
+        let source_path = source_directory.path().join("clip.mp4");
+        fs::write(&source_path, b"fixture").unwrap();
+        let source_path = source_path.canonicalize().unwrap();
+        let metadata = fs::metadata(&source_path).unwrap();
+        let source = VideoSourceIdentity::new(&source_path, metadata.len(), modified_ns(&metadata));
+        let identity = MediaFileIdentity::from_metadata(&metadata);
+        let generation = coordinator.begin_session(session);
+        let (_playback_tx, playback_rx) = tokio::sync::watch::channel(false);
+        let service = VideoThumbnailService::new(
+            Arc::new(ThumbnailPngExtractor),
+            cache,
+            coordinator,
+            playback_rx,
+        );
+        let artifact = service
+            .timeline(TimelineThumbnailRequest::new(
+                VideoThumbnailContext::new(
+                    session,
+                    generation,
+                    source,
+                    identity,
+                    CancellationToken::new(),
+                ),
+                VideoThumbnailRequestId::new(),
+                1_000_000,
+                5_000_000,
+            ))
+            .await
+            .unwrap();
+        (source_directory, artifact)
+    }
+
+    #[tokio::test]
+    async fn registered_video_png_url_is_session_scoped_and_never_contains_the_cache_path() {
+        use viewer_infrastructure::image_cache::ImageArtifactRegistry;
+
+        let app_cache = tempfile::tempdir().unwrap();
+        let cache = Arc::new(VideoCache::initialize(app_cache.path()).unwrap());
+        let registry = ImageArtifactRegistry::default();
+        let coordinator = Arc::new(TaskCoordinator::default());
+        let session = SessionId::new();
+        let (_source, artifact) =
+            generated_thumbnail(Arc::clone(&cache), Arc::clone(&coordinator), session).await;
+
+        let url = register_video_png_url(&registry, &coordinator, &cache, &artifact).unwrap();
+
+        assert!(url.starts_with(&format!("viewer-image://localhost/{session}/")));
+        assert!(!url.contains(cache.root().to_str().unwrap()));
+    }
+
+    #[tokio::test]
+    async fn registered_video_png_url_rejects_a_stale_generation_before_registry_publication() {
+        use viewer_infrastructure::image_cache::ImageArtifactRegistry;
+
+        let app_cache = tempfile::tempdir().unwrap();
+        let cache = Arc::new(VideoCache::initialize(app_cache.path()).unwrap());
+        let registry = ImageArtifactRegistry::default();
+        let coordinator = Arc::new(TaskCoordinator::default());
+        let session = SessionId::new();
+        let (_source, artifact) =
+            generated_thumbnail(Arc::clone(&cache), Arc::clone(&coordinator), session).await;
+        coordinator.bump_generation(session).unwrap();
+
+        let error = register_video_png_url(&registry, &coordinator, &cache, &artifact).unwrap_err();
+
+        assert_eq!(error.code, "video_thumbnail_stale");
     }
 }

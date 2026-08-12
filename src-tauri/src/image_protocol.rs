@@ -85,14 +85,26 @@ fn protocol_image(artifact: RegisteredImageArtifact) -> Result<ProtocolImage, Pr
     Ok(ProtocolImage {
         cache_path: artifact.cache_path().to_path_buf(),
         mime: artifact.mime().to_owned(),
+        immutable_bytes: artifact.immutable_bytes().map(Arc::from),
     })
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct ProtocolImage {
     cache_path: std::path::PathBuf,
     mime: String,
+    immutable_bytes: Option<Arc<[u8]>>,
 }
+
+impl PartialEq for ProtocolImage {
+    fn eq(&self, other: &Self) -> bool {
+        self.cache_path == other.cache_path
+            && self.mime == other.mime
+            && self.immutable_bytes == other.immutable_bytes
+    }
+}
+
+impl Eq for ProtocolImage {}
 
 impl ProtocolImage {
     pub fn cache_path(&self) -> &Path {
@@ -160,7 +172,7 @@ fn response_for_request(
     }
 
     match resolver.resolve(request.uri().path()) {
-        Ok(image) => match read_image_bytes(image.cache_path()) {
+        Ok(image) => match read_image_bytes(&image) {
             Ok(bytes) => response(StatusCode::OK, image.mime(), bytes),
             Err(_) => error_response(ProtocolError::Internal),
         },
@@ -168,7 +180,14 @@ fn response_for_request(
     }
 }
 
-fn read_image_bytes(path: &Path) -> std::io::Result<Vec<u8>> {
+fn read_image_bytes(image: &ProtocolImage) -> std::io::Result<Vec<u8>> {
+    if let Some(bytes) = &image.immutable_bytes {
+        return Ok(bytes.to_vec());
+    }
+    read_path_image_bytes(image.cache_path())
+}
+
+fn read_path_image_bytes(path: &Path) -> std::io::Result<Vec<u8>> {
     use std::os::unix::fs::OpenOptionsExt;
 
     let mut file = std::fs::OpenOptions::new()
@@ -207,10 +226,83 @@ fn response(status: StatusCode, content_type: &str, body: Vec<u8>) -> Response<V
 #[cfg(test)]
 mod tests {
     use super::{ActiveImageSession, ImageProtocolResolver, ProtocolError, response_for_request};
-    use std::{fs, sync::Arc};
+    use async_trait::async_trait;
+    use std::{fs, path::Path, sync::Arc};
     use tauri::http::{Method, Request, StatusCode, header};
-    use viewer_domain::{EntityId, SessionId};
+    use tokio::sync::watch;
+    use tokio_util::sync::CancellationToken;
+    use viewer_application::scheduler::TaskCoordinator;
+    use viewer_domain::{EntityId, SessionId, VideoThumbnailRequestId};
     use viewer_infrastructure::image_cache::{ImageArtifactRegistry, ImageArtifactToken};
+    use viewer_infrastructure::{
+        image_cache::register_video_png,
+        video_cache::{VideoCache, VideoSourceIdentity},
+        video_probe::MediaFileIdentity,
+        video_thumbnail::{
+            FrameExtractionError, TimelineThumbnailRequest, VideoFrameExtractor, VideoFrameOutput,
+            VideoThumbnailContext, VideoThumbnailService,
+        },
+    };
+
+    const VIDEO_PNG: &[u8] = b"\x89PNG\r\n\x1a\nvideo";
+
+    struct PngExtractor;
+
+    #[async_trait]
+    impl VideoFrameExtractor for PngExtractor {
+        async fn extract_frame(
+            &self,
+            _canonical_path: &Path,
+            _expected_identity: &MediaFileIdentity,
+            _time_us: u64,
+            _output: VideoFrameOutput,
+            _cancellation: CancellationToken,
+        ) -> Result<Vec<u8>, FrameExtractionError> {
+            Ok(VIDEO_PNG.to_vec())
+        }
+    }
+
+    async fn generated_video_artifact(
+        cache: Arc<VideoCache>,
+        session: SessionId,
+    ) -> (
+        tempfile::TempDir,
+        viewer_infrastructure::video_thumbnail::VideoThumbnailArtifact,
+    ) {
+        use std::os::unix::fs::MetadataExt;
+
+        let source_directory = tempfile::tempdir().unwrap();
+        let source_path = source_directory.path().join("clip.mp4");
+        fs::write(&source_path, b"fixture").unwrap();
+        let source_path = source_path.canonicalize().unwrap();
+        let metadata = fs::metadata(&source_path).unwrap();
+        let source = VideoSourceIdentity::new(
+            &source_path,
+            metadata.len(),
+            i128::from(metadata.mtime()) * 1_000_000_000 + i128::from(metadata.mtime_nsec()),
+        );
+        let coordinator = Arc::new(TaskCoordinator::default());
+        let generation = coordinator.begin_session(session);
+        let (_playback_tx, playback_rx) = watch::channel(false);
+        let service =
+            VideoThumbnailService::new(Arc::new(PngExtractor), cache, coordinator, playback_rx);
+        let artifact = service
+            .timeline(TimelineThumbnailRequest::new(
+                VideoThumbnailContext::new(
+                    session,
+                    generation,
+                    source,
+                    MediaFileIdentity::from_metadata(&metadata),
+                    CancellationToken::new(),
+                ),
+                VideoThumbnailRequestId::new(),
+                1_000_000,
+                5_000_000,
+            ))
+            .await
+            .unwrap();
+        (source_directory, artifact)
+    }
 
     struct TestResolver {
         resolver: ImageProtocolResolver,
@@ -441,5 +533,33 @@ mod tests {
             resolver.resolve(&format!("/{first_session}/{}", token.as_str())),
             Err(ProtocolError::Forbidden)
         );
+    }
+
+    #[tokio::test]
+    async fn protocol_serves_a_registered_video_png_without_disclosing_its_cache_path() {
+        let resolver = TestResolver::new();
+        let app_cache = tempfile::tempdir().unwrap();
+        let cache = Arc::new(VideoCache::initialize(app_cache.path()).unwrap());
+        let (_source, artifact) =
+            generated_video_artifact(Arc::clone(&cache), resolver.session_id()).await;
+        let cache_path = artifact.path().to_path_buf();
+        let token = register_video_png(&resolver.registry, &cache, &artifact).unwrap();
+        fs::rename(&cache_path, cache_path.with_extension("registered")).unwrap();
+        fs::write(&cache_path, b"path replacement must not be served").unwrap();
+        let request = Request::builder()
+            .method(Method::GET)
+            .uri(format!(
+                "viewer-image://localhost{}",
+                resolver.path(resolver.session_id(), &token)
+            ))
+            .body(Vec::new())
+            .unwrap();
+
+        let response = response_for_request(&resolver.resolver, &request);
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.headers()[header::CONTENT_TYPE], "image/png");
+        assert_eq!(response.body(), VIDEO_PNG);
+        assert!(!String::from_utf8_lossy(response.body()).contains(cache.root().to_str().unwrap()));
     }
 }

@@ -126,6 +126,8 @@ esac
     --enable-videotoolbox \
     --enable-ffmpeg \
     --enable-ffprobe \
+    --enable-zlib \
+    --enable-encoder=png \
     --extra-cflags="$CFLAGS" \
     --extra-cxxflags="$CXXFLAGS" \
     --extra-ldflags="$LDFLAGS"

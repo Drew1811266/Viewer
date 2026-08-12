@@ -10,6 +10,7 @@ const verifier = fileURLToPath(new URL('./verify-runtime.sh', import.meta.url))
 const linkageValidator = fileURLToPath(new URL('./validate-linkage.mjs', import.meta.url))
 const rpathValidator = fileURLToPath(new URL('./validate-rpaths.mjs', import.meta.url))
 const buildScript = fileURLToPath(new URL('./build-macos-runtime.sh', import.meta.url))
+const runtimeLock = fileURLToPath(new URL('./runtime.lock.json', import.meta.url))
 
 test('runtime verifier rejects an empty stage before native inspection', async () => {
   const stage = await mkdtemp(join(tmpdir(), 'viewer-video-stage-'))
@@ -58,6 +59,17 @@ test('linkage policy rejects non-bundled third-party libraries', async () => {
 test('macOS runtime build explicitly links the approved system iconv', async () => {
   const source = await readFile(buildScript, 'utf8')
   assert.match(source, /"-Dc_link_args=-lc\+\+ -liconv"/)
+})
+
+test('macOS runtime contract explicitly enables only the zlib closure required for PNG thumbnails', async () => {
+  const source = await readFile(buildScript, 'utf8')
+  const lock = JSON.parse(await readFile(runtimeLock, 'utf8'))
+  const options = lock.ffmpeg.configureOptions
+
+  assert.ok(options.includes('--enable-zlib'))
+  assert.ok(options.includes('--enable-encoder=png'))
+  assert.match(source, /--enable-zlib \\/)
+  assert.match(source, /--enable-encoder=png \\/)
 })
 
 test('macOS runtime build enables the backend required for VideoToolbox OpenGL interop', async () => {

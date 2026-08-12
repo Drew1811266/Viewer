@@ -1,6 +1,10 @@
 use std::{env, ffi::OsString, fs, path::PathBuf, process};
 
-use viewer_video_mpv::{BundledMediaTools, MpvClient, MpvLibrary, runtime_manifest::RuntimeLayout};
+use tokio_util::sync::CancellationToken;
+use viewer_video_mpv::{
+    BundledMediaTools, MediaFileIdentity, MediaFrameOutput, MpvClient, MpvLibrary,
+    runtime_manifest::RuntimeLayout,
+};
 
 fn staged_layout() -> RuntimeLayout {
     let resources = PathBuf::from(
@@ -55,12 +59,31 @@ async fn staged_client_accepts_the_locked_down_local_media_options() {
         "{}",
         String::from_utf8_lossy(&encode.stderr)
     );
+    let media = media.canonicalize().unwrap();
+    let identity = MediaFileIdentity::from_metadata(&fs::metadata(&media).unwrap());
+    for (output, expected_width) in [
+        (MediaFrameOutput::Png320, 320_u32),
+        (MediaFrameOutput::Png640, 640_u32),
+    ] {
+        let frame = tools
+            .video_frame_identity_bound(&media, &identity, 0, output, CancellationToken::new())
+            .await
+            .unwrap();
+        assert!(
+            frame.status.success(),
+            "{}",
+            String::from_utf8_lossy(&frame.stderr)
+        );
+        assert!(frame.stdout.starts_with(b"\x89PNG\r\n\x1a\n"));
+        assert_eq!(
+            u32::from_be_bytes(frame.stdout[16..20].try_into().unwrap()),
+            expected_width
+        );
+    }
 
     let library = MpvLibrary::load(&layout).unwrap();
     let mut client = MpvClient::new(&library).unwrap();
-    client
-        .open_local_file(&media.canonicalize().unwrap())
-        .unwrap();
+    client.open_local_file(&media).unwrap();
     drop(client);
     fs::remove_file(media).unwrap();
 }

@@ -47,12 +47,18 @@ while IFS=$'\t' read -r name _version _url _sha256; do
 done < <(node "$script_dir/runtime-lock.mjs" list "$lock_file")
 
 build_configuration=$($stage_dir/bin/ffmpeg -hide_banner -buildconf 2>&1)
-for option in --disable-gpl --disable-nonfree --disable-network --disable-ffplay; do
+for option in --disable-gpl --disable-nonfree --disable-network --disable-ffplay \
+  --enable-zlib --enable-encoder=png; do
   if [[ "$build_configuration" != *"$option"* ]]; then
     printf 'ffmpeg build is missing %s\n' "$option" >&2
     exit 1
   fi
 done
+if ! "$stage_dir/bin/ffmpeg" -hide_banner -encoders 2>/dev/null | \
+  rg -q '^[[:space:]]*V[^[:space:]]*[[:space:]]+png[[:space:]]'; then
+  printf 'ffmpeg build is missing the PNG encoder\n' >&2
+  exit 1
+fi
 for option in --enable-gpl --enable-nonfree --enable-network; do
   if [[ "$build_configuration" == *"$option"* ]]; then
     printf 'ffmpeg build contains prohibited option %s\n' "$option" >&2

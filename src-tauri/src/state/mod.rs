@@ -16,6 +16,7 @@ pub(crate) use common::{
 };
 pub(crate) use scan_index::rebuild_derived_nodes;
 use scan_index::run_scan;
+pub use video_index::register_video_png_url;
 pub(crate) use video_index::{VideoIndexRuntime, cancel_video_worker_before_session_teardown};
 
 use crate::{

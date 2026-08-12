@@ -98,6 +98,105 @@ describe('VideoPreview', () => {
     fireEvent.click(within(navigation).getByRole('button', { name: '上一个视频' }))
     expect(onNavigate).toHaveBeenCalledWith(first)
   })
+
+  it('pauses before stepping when ArrowRight is pressed while playing', async () => {
+    const harness = videoBridgeHarness()
+    render(<VideoPreview file={video('a.mp4')} files={[video('a.mp4')]} bridge={harness.bridge} />)
+    await waitFor(() => expect(harness.open).toHaveBeenCalledOnce())
+    harness.emit({ type: 'stateChanged', generation: 1, state: 'playing' })
+    await screen.findByRole('button', { name: '暂停' })
+
+    fireEvent.keyDown(window, { key: 'ArrowRight' })
+
+    await waitFor(() => expect(harness.order).toEqual(['videoPause', 'videoStep:forward']))
+  })
+
+  it('exits fullscreen first and closes only after fullscreen has ended', async () => {
+    const harness = videoBridgeHarness()
+    const onClose = vi.fn()
+    render(
+      <VideoPreview
+        file={video('a.mp4')}
+        files={[video('a.mp4')]}
+        bridge={harness.bridge}
+        onClose={onClose}
+      />,
+    )
+    await waitFor(() => expect(harness.open).toHaveBeenCalledOnce())
+    harness.emit({ type: 'fullscreenChanged', generation: 1, fullscreen: true })
+    await screen.findByRole('button', { name: '退出全屏' })
+
+    fireEvent.keyDown(window, { key: 'Escape' })
+    await waitFor(() =>
+      expect(harness.setFullscreen).toHaveBeenCalledWith({ generation: 1, fullscreen: false }),
+    )
+    expect(onClose).not.toHaveBeenCalled()
+
+    harness.emit({ type: 'fullscreenChanged', generation: 1, fullscreen: false })
+    await screen.findByRole('button', { name: '进入全屏' })
+    fireEvent.keyDown(window, { key: 'Escape' })
+    expect(onClose).toHaveBeenCalledOnce()
+  })
+
+  it('renders ended playback paused on the final frame without advancing', async () => {
+    const harness = videoBridgeHarness()
+    const onNavigate = vi.fn()
+    render(
+      <VideoPreview
+        file={video('a.mp4')}
+        files={[video('a.mp4'), video('b.mp4')]}
+        bridge={harness.bridge}
+        onNavigate={onNavigate}
+      />,
+    )
+    await waitFor(() => expect(harness.open).toHaveBeenCalledOnce())
+    harness.emit({ type: 'firstFrameReady', generation: 1 })
+    harness.emit({
+      type: 'progress',
+      generation: 1,
+      timeUs: 11_000_000,
+      durationUs: 12_000_000,
+    })
+    harness.emit({ type: 'ended', generation: 1 })
+
+    expect(await screen.findByRole('button', { name: '播放' })).toBeVisible()
+    expect(screen.getByRole('slider', { name: '视频时间轴' })).toHaveAttribute(
+      'aria-valuenow',
+      '12',
+    )
+    expect(onNavigate).not.toHaveBeenCalled()
+  })
+
+  it('serializes rapid control intents and preserves every frame step', async () => {
+    const harness = videoBridgeHarness()
+    render(<VideoPreview file={video('a.mp4')} files={[video('a.mp4')]} bridge={harness.bridge} />)
+    await waitFor(() => expect(harness.open).toHaveBeenCalledOnce())
+    harness.emit({ type: 'stateChanged', generation: 1, state: 'playing' })
+    await screen.findByRole('button', { name: '暂停' })
+
+    fireEvent.keyDown(window, { key: ' ' })
+    fireEvent.keyDown(window, { key: ' ' })
+    fireEvent.keyDown(window, { key: 'm' })
+    fireEvent.keyDown(window, { key: 'm' })
+    fireEvent.keyDown(window, { key: 'f' })
+    fireEvent.keyDown(window, { key: 'f' })
+    fireEvent.keyDown(window, { key: 'ArrowRight' })
+    fireEvent.keyDown(window, { key: 'ArrowRight' })
+
+    await waitFor(() =>
+      expect(harness.order).toEqual([
+        'videoPause',
+        'videoPlay',
+        'videoMuted:true',
+        'videoMuted:false',
+        'videoFullscreen:true',
+        'videoFullscreen:false',
+        'videoPause',
+        'videoStep:forward',
+        'videoStep:forward',
+      ]),
+    )
+  })
 })
 
 function video(name: string): VideoFile {
@@ -141,13 +240,44 @@ function session(generation: number): VideoSession {
 
 function videoBridgeHarness() {
   const listeners: Array<(event: VideoEvent) => void> = []
+  const order: string[] = []
   const open = vi.fn<ViewerBridge['videoOpen']>().mockResolvedValue(session(1))
   const close = vi.fn<ViewerBridge['videoClose']>().mockResolvedValue(undefined)
   const setRect = vi.fn<ViewerBridge['videoSetSurfaceRect']>().mockResolvedValue(undefined)
+  const play = vi.fn<ViewerBridge['videoPlay']>(async () => {
+    order.push('videoPlay')
+  })
+  const pause = vi.fn<ViewerBridge['videoPause']>(async () => {
+    order.push('videoPause')
+  })
+  const seek = vi.fn<ViewerBridge['videoSeek']>().mockResolvedValue(undefined)
+  const step = vi.fn<ViewerBridge['videoStep']>(async ({ direction }) => {
+    order.push(`videoStep:${direction}`)
+  })
+  const setVolume = vi.fn<ViewerBridge['videoSetVolume']>().mockResolvedValue(undefined)
+  const setMuted = vi.fn<ViewerBridge['videoSetMuted']>(async ({ muted }) => {
+    order.push(`videoMuted:${muted}`)
+  })
+  const setRate = vi.fn<ViewerBridge['videoSetRate']>().mockResolvedValue(undefined)
+  const setFullscreen = vi.fn<ViewerBridge['videoSetFullscreen']>(async ({ fullscreen }) => {
+    order.push(`videoFullscreen:${fullscreen}`)
+  })
+  const requestThumbnail = vi
+    .fn<ViewerBridge['videoRequestThumbnail']>()
+    .mockResolvedValue(undefined)
   const bridge: VideoPreviewBridge = {
     videoOpen: open,
     videoClose: close,
+    videoPlay: play,
+    videoPause: pause,
+    videoSeek: seek,
+    videoStep: step,
+    videoSetVolume: setVolume,
+    videoSetMuted: setMuted,
+    videoSetRate: setRate,
     videoSetSurfaceRect: setRect,
+    videoSetFullscreen: setFullscreen,
+    videoRequestThumbnail: requestThumbnail,
     listenVideo: vi.fn(async (listener) => {
       listeners.push(listener)
       return () => undefined
@@ -160,7 +290,17 @@ function videoBridgeHarness() {
       listeners.at(-1)?.(event)
     },
     open,
+    order,
+    pause,
+    play,
+    requestThumbnail,
+    seek,
     setRect,
+    setFullscreen,
+    setMuted,
+    setRate,
+    setVolume,
+    step,
   }
 }
 

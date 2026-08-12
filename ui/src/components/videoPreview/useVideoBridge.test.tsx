@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { useRef } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type {
@@ -230,6 +230,98 @@ describe('useVideoBridge', () => {
       '8:hidden:failed:video_surface_failed',
     )
   })
+
+  it('binds every playback command to the active generation and normalizes bounded values', async () => {
+    installResizeObserver()
+    const harness = videoBridgeHarness()
+    harness.open.mockResolvedValue(session(8))
+    render(<CommandBridgeHarness file={video('a.mp4')} bridge={harness.bridge} />)
+    await waitFor(() =>
+      expect(screen.getByRole('status', { name: 'command state' })).toHaveTextContent('8'),
+    )
+
+    for (const name of [
+      'play',
+      'pause',
+      'backward',
+      'seek',
+      'volume',
+      'muted',
+      'rate',
+      'fullscreen',
+      'thumbnail',
+    ]) {
+      fireEvent.click(screen.getByRole('button', { name }))
+    }
+
+    await waitFor(() =>
+      expect(harness.setFullscreen).toHaveBeenCalledWith({ generation: 8, fullscreen: true }),
+    )
+    expect(harness.play).toHaveBeenCalledWith({ generation: 8 })
+    expect(harness.pause).toHaveBeenCalledWith({ generation: 8 })
+    expect(harness.step).toHaveBeenCalledWith({ generation: 8, direction: 'backward' })
+    expect(harness.seek).toHaveBeenCalledWith({ generation: 8, timeUs: 12_000_000 })
+    expect(harness.setVolume).toHaveBeenCalledWith({ generation: 8, volumePercent: 100 })
+    expect(harness.setMuted).toHaveBeenCalledWith({ generation: 8, muted: true })
+    expect(harness.setRate).toHaveBeenCalledWith({ generation: 8, rate: 'one_and_half' })
+    expect(harness.requestThumbnail).toHaveBeenCalledWith({
+      generation: 8,
+      requestId: 'thumbnail-request',
+      timeUs: 0,
+    })
+  })
+
+  it('publishes only active-generation settings, fullscreen, and timeline artifacts', async () => {
+    installResizeObserver()
+    const harness = videoBridgeHarness()
+    harness.open.mockResolvedValue(session(4))
+    render(<CommandBridgeHarness file={video('a.mp4')} bridge={harness.bridge} />)
+    await waitFor(() =>
+      expect(screen.getByRole('status', { name: 'command state' })).toHaveTextContent('4'),
+    )
+
+    act(() => {
+      harness.emit({
+        type: 'settingsChanged',
+        generation: 3,
+        volumePercent: 20,
+        muted: true,
+        rate: 2,
+      })
+      harness.emit({ type: 'fullscreenChanged', generation: 3, fullscreen: true })
+      harness.emit({
+        type: 'timelineThumbnailReady',
+        generation: 3,
+        requestId: 'stale',
+        bucketUs: 500_000,
+        artifactUrl: 'viewer-image://localhost/stale',
+      })
+    })
+    expect(screen.getByRole('status', { name: 'control state' })).toHaveTextContent(
+      '100:false:1:false:none',
+    )
+
+    act(() => {
+      harness.emit({
+        type: 'settingsChanged',
+        generation: 4,
+        volumePercent: 64,
+        muted: true,
+        rate: 1.25,
+      })
+      harness.emit({ type: 'fullscreenChanged', generation: 4, fullscreen: true })
+      harness.emit({
+        type: 'timelineThumbnailReady',
+        generation: 4,
+        requestId: 'ready',
+        bucketUs: 1_000_000,
+        artifactUrl: 'viewer-image://localhost/ready',
+      })
+    })
+    expect(screen.getByRole('status', { name: 'control state' })).toHaveTextContent(
+      '64:true:1.25:true:ready',
+    )
+  })
 })
 
 function BridgeHarness({
@@ -250,6 +342,40 @@ function BridgeHarness({
         {state.generation}:{state.surfaceVisible ? 'visible' : 'hidden'}
         {state.phase === 'failed' ? `:failed:${state.error?.code}` : ''}
       </output>
+    </>
+  )
+}
+
+function CommandBridgeHarness({ bridge, file }: { bridge: VideoPreviewBridge; file: VideoFile }) {
+  const stage = useRef<HTMLDivElement>(null)
+  const { state, controlState, commands } = useVideoBridge({ bridge, file, retryKey: 0, stage })
+  return (
+    <>
+      <div ref={stage} />
+      <output aria-label="command state">{state.generation}</output>
+      <output aria-label="control state">
+        {controlState.volumePercent}:{String(controlState.muted)}:{controlState.rate}:
+        {String(controlState.fullscreen)}:{controlState.timelineThumbnail?.requestId ?? 'none'}
+      </output>
+      <button type="button" aria-label="play" onClick={() => void commands.play()} />
+      <button type="button" aria-label="pause" onClick={() => void commands.pause()} />
+      <button type="button" aria-label="backward" onClick={() => void commands.step('backward')} />
+      <button type="button" aria-label="seek" onClick={() => void commands.seek(99_000_000)} />
+      <button type="button" aria-label="volume" onClick={() => void commands.setVolume(160)} />
+      <button type="button" aria-label="muted" onClick={() => void commands.setMuted(true)} />
+      <button type="button" aria-label="rate" onClick={() => void commands.setRate(1.5)} />
+      <button
+        type="button"
+        aria-label="fullscreen"
+        onClick={() => void commands.setFullscreen(true)}
+      />
+      <button
+        type="button"
+        aria-label="thumbnail"
+        onClick={() =>
+          void commands.requestThumbnail({ requestId: 'thumbnail-request', timeUs: -10 })
+        }
+      />
     </>
   )
 }
@@ -298,6 +424,17 @@ function videoBridgeHarness() {
   })
   const close = vi.fn<ViewerBridge['videoClose']>().mockResolvedValue(undefined)
   const setRect = vi.fn<ViewerBridge['videoSetSurfaceRect']>().mockResolvedValue(undefined)
+  const play = vi.fn<ViewerBridge['videoPlay']>().mockResolvedValue(undefined)
+  const pause = vi.fn<ViewerBridge['videoPause']>().mockResolvedValue(undefined)
+  const seek = vi.fn<ViewerBridge['videoSeek']>().mockResolvedValue(undefined)
+  const step = vi.fn<ViewerBridge['videoStep']>().mockResolvedValue(undefined)
+  const setVolume = vi.fn<ViewerBridge['videoSetVolume']>().mockResolvedValue(undefined)
+  const setMuted = vi.fn<ViewerBridge['videoSetMuted']>().mockResolvedValue(undefined)
+  const setRate = vi.fn<ViewerBridge['videoSetRate']>().mockResolvedValue(undefined)
+  const setFullscreen = vi.fn<ViewerBridge['videoSetFullscreen']>().mockResolvedValue(undefined)
+  const requestThumbnail = vi
+    .fn<ViewerBridge['videoRequestThumbnail']>()
+    .mockResolvedValue(undefined)
   const unlisten = vi.fn()
   const listen = vi.fn<ViewerBridge['listenVideo']>(async (listener) => {
     order.push('listen')
@@ -307,7 +444,16 @@ function videoBridgeHarness() {
   const bridge: VideoPreviewBridge = {
     videoOpen: open,
     videoClose: close,
+    videoPlay: play,
+    videoPause: pause,
+    videoSeek: seek,
+    videoStep: step,
+    videoSetVolume: setVolume,
+    videoSetMuted: setMuted,
+    videoSetRate: setRate,
     videoSetSurfaceRect: setRect,
+    videoSetFullscreen: setFullscreen,
+    videoRequestThumbnail: requestThumbnail,
     listenVideo: listen,
   }
   return {
@@ -319,7 +465,16 @@ function videoBridgeHarness() {
     listeners,
     open,
     order,
+    pause,
+    play,
+    requestThumbnail,
+    seek,
     setRect,
+    setFullscreen,
+    setMuted,
+    setRate,
+    setVolume,
+    step,
     unlisten,
   }
 }

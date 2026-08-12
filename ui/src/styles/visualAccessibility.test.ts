@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 
 const primitivesCss = readFileSync(resolve(import.meta.dirname, 'primitives.css'), 'utf8')
 const appCss = readFileSync(resolve(import.meta.dirname, 'app.css'), 'utf8')
+const videoPreviewCss = readFileSync(resolve(import.meta.dirname, 'videoPreview.css'), 'utf8')
 const forcedColors = `${mediaBody(primitivesCss, '(forced-colors: active)')}\n${mediaBody(
   appCss,
   '(forced-colors: active)',
@@ -36,6 +37,19 @@ describe('Viewer visual accessibility contracts', () => {
     expect(reducedMotion).toContain('transition: none')
     expect(reducedMotion).toContain('animation: none')
     expect(primitivesCss).toContain('.viewer-task-surface__track')
+  })
+
+  it('keeps video controls immediate in reduced motion and structural in forced colors', () => {
+    const reducedMotion = mediaBody(videoPreviewCss, '(prefers-reduced-motion: reduce)')
+    expect(reducedMotion).toContain('.video-controls')
+    expect(reducedMotion).toContain('transition: none')
+    expect(reducedMotion).toContain('.video-preview-loading__progress > span')
+    expect(reducedMotion).toContain('animation: none')
+
+    const forcedColors = mediaBody(videoPreviewCss, '(forced-colors: active)')
+    expect(forcedColors).toContain('.video-controls')
+    expect(forcedColors).toContain('CanvasText')
+    expect(forcedColors).toContain('Highlight')
   })
 
   it('contains no superseded visible UI glyphs in production source', () => {

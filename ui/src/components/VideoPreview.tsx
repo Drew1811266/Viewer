@@ -1,10 +1,16 @@
-import type { KeyboardEvent, ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import { useEffect, useRef, useState } from 'react'
 import type { VideoFile } from '../api/types'
 import ViewerButton, { ViewerIconButton } from './ui/ViewerButton'
 import ViewerLocalFeedback from './ui/ViewerLocalFeedback'
 import ViewerToolbar from './ui/ViewerToolbar'
 import { useVideoBridge, type VideoPreviewBridge } from './videoPreview/useVideoBridge'
+import {
+  useReducedMotionPreference,
+  useVideoControlsVisibility,
+} from './videoPreview/useVideoControlsVisibility'
+import { useVideoShortcuts } from './videoPreview/useVideoShortcuts'
+import VideoControls, { type VideoControlViewState } from './videoPreview/VideoControls'
 
 export interface VideoPreviewProps {
   file: VideoFile
@@ -26,9 +32,21 @@ export default function VideoPreview({
   const dialog = useRef<HTMLElement>(null)
   const stage = useRef<HTMLDivElement>(null)
   const [retryKey, setRetryKey] = useState(0)
-  const { state } = useVideoBridge({ bridge, file, retryKey, stage })
+  const [seeking, setSeeking] = useState(false)
+  const [adjusting, setAdjusting] = useState(false)
+  const [focusedWithin, setFocusedWithin] = useState(false)
+  const reducedMotion = useReducedMotionPreference()
+  const { state, controlState, commands } = useVideoBridge({ bridge, file, retryKey, stage })
   const currentIndex = files.findIndex((candidate) => candidate.entityId === file.entityId)
   const failed = state.phase === 'failed'
+  const controls = useVideoControlsVisibility({
+    playing: state.phase === 'playing',
+    seeking,
+    adjusting,
+    focusedWithin,
+    error: state.error,
+    reducedMotion,
+  })
 
   useEffect(() => {
     const previous = document.activeElement
@@ -43,21 +61,27 @@ export default function VideoPreview({
     if (next !== undefined) onNavigate(next)
   }
 
-  function keyboard(event: KeyboardEvent<HTMLElement>) {
-    if (event.key === 'Escape') {
-      event.preventDefault()
-      onClose()
-      return
-    }
-    if (event.key === 'ArrowLeft') {
-      event.preventDefault()
-      navigate(-1)
-      return
-    }
-    if (event.key === 'ArrowRight') {
-      event.preventDefault()
-      navigate(1)
-    }
+  useVideoShortcuts({
+    active: true,
+    root: dialog,
+    playing: state.phase === 'playing',
+    fullscreen: controlState.fullscreen,
+    onTogglePlayback: commands.togglePlayback,
+    onStep: commands.step,
+    onToggleMuted: commands.toggleMuted,
+    onToggleFullscreen: commands.toggleFullscreen,
+    onExitFullscreen: () => commands.setFullscreen(false),
+    onClose,
+    onOwnedShortcut: controls.reveal,
+  })
+
+  const controlView: VideoControlViewState = {
+    generation: state.generation,
+    phase: state.phase,
+    timeUs: state.phase === 'ended' && state.durationUs !== null ? state.durationUs : state.timeUs,
+    durationUs: state.durationUs,
+    error: state.error,
+    ...controlState,
   }
 
   const actions: ReactNode = (
@@ -83,10 +107,12 @@ export default function VideoPreview({
       ref={dialog}
       className="preview-overlay video-preview"
       data-surface-visible={state.surfaceVisible}
+      data-fullscreen={controlState.fullscreen}
+      data-reduced-motion={reducedMotion}
       role="dialog"
       aria-label={`视频预览 ${file.name}`}
       tabIndex={-1}
-      onKeyDown={keyboard}
+      onPointerMove={controls.reveal}
     >
       <ViewerToolbar
         label="视频预览工具"
@@ -111,6 +137,18 @@ export default function VideoPreview({
           <ViewerLocalFeedback tone="danger" title="无法播放这个视频">
             请重试；如果问题持续出现，请确认视频文件仍可访问。
           </ViewerLocalFeedback>
+        )}
+        {state.generation > 0 && (
+          <VideoControls
+            view={controlView}
+            commands={commands}
+            visible={controls.visible}
+            reducedMotion={controls.reducedMotion}
+            onActivity={controls.reveal}
+            onSeekingChange={setSeeking}
+            onAdjustingChange={setAdjusting}
+            onFocusWithinChange={setFocusedWithin}
+          />
         )}
       </div>
       <nav className="preview-navigation-float" aria-label="视频导航">

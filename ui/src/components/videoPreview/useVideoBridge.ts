@@ -1,4 +1,13 @@
-import { type RefObject, useEffect, useLayoutEffect, useReducer, useRef, useState } from 'react'
+import {
+  type RefObject,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useReducer,
+  useRef,
+  useState,
+} from 'react'
 import type {
   VideoError,
   VideoEvent,
@@ -6,14 +15,28 @@ import type {
   VideoFile,
   VideoMedia,
   VideoMetadata,
+  VideoRate as VideoRateRequestValue,
 } from '../../api/types'
 import type { ViewerBridge } from '../../api/viewer'
+import type { VideoControlCommands, VideoPlaybackRate } from './VideoControls'
 import { fitVideoRect, hasVideoGeometry } from './videoGeometry'
 import { createPreparingVideoState, reduceVideoState, type VideoPreviewState } from './videoState'
 
 export type VideoPreviewBridge = Pick<
   ViewerBridge,
-  'listenVideo' | 'videoClose' | 'videoOpen' | 'videoSetSurfaceRect'
+  | 'listenVideo'
+  | 'videoClose'
+  | 'videoOpen'
+  | 'videoPause'
+  | 'videoPlay'
+  | 'videoRequestThumbnail'
+  | 'videoSeek'
+  | 'videoSetFullscreen'
+  | 'videoSetMuted'
+  | 'videoSetRate'
+  | 'videoSetSurfaceRect'
+  | 'videoSetVolume'
+  | 'videoStep'
 >
 
 export interface UseVideoBridgeOptions {
@@ -26,6 +49,16 @@ export interface UseVideoBridgeOptions {
 export interface UseVideoBridgeState {
   state: VideoPreviewState
   media: VideoMedia | null
+  controlState: VideoBridgeControlState
+  commands: VideoControlCommands
+}
+
+export interface VideoBridgeControlState {
+  volumePercent: number
+  muted: boolean
+  rate: VideoPlaybackRate
+  fullscreen: boolean
+  timelineThumbnail: Extract<VideoEvent, { type: 'timelineThumbnailReady' }> | null
 }
 
 interface ActiveVideoLifecycle {
@@ -41,10 +74,17 @@ export function useVideoBridge({
 }: UseVideoBridgeOptions): UseVideoBridgeState {
   const [state, dispatch] = useReducer(reduceVideoState, undefined, createPreparingVideoState)
   const [media, setMedia] = useState<VideoMedia | null>(null)
+  const [controlState, setControlState] = useState<VideoBridgeControlState>(
+    createVideoBridgeControlState,
+  )
   const stageRect = useMeasuredVideoStage(stage)
   const activeGeneration = useRef<number | null>(null)
   const activeLifecycle = useRef<ActiveVideoLifecycle | null>(null)
   const lastSurfaceGeometry = useRef<string | null>(null)
+  const commandQueue = useRef<Promise<void>>(Promise.resolve())
+  const playbackIntent = useRef(createBooleanControlIntent(false))
+  const mutedIntent = useRef(createBooleanControlIntent(false))
+  const fullscreenIntent = useRef(createBooleanControlIntent(false))
   const metadataMedia: VideoMedia = file.videoMetadata
   const indexedFailure = indexedVideoError(file.videoMetadata)
   const geometryReady = stageRect !== null && hasVideoGeometry(stageRect, metadataMedia)
@@ -56,7 +96,12 @@ export function useVideoBridge({
   useLayoutEffect(() => {
     activeGeneration.current = null
     lastSurfaceGeometry.current = null
+    commandQueue.current = Promise.resolve()
+    resetBooleanControlIntent(playbackIntent.current, null, false)
+    resetBooleanControlIntent(mutedIntent.current, null, false)
+    resetBooleanControlIntent(fullscreenIntent.current, null, false)
     setMedia(null)
+    setControlState(createVideoBridgeControlState())
     dispatch({ type: 'reset' })
     if (indexedFailure !== null) dispatch({ type: 'openFailed', error: indexedFailure })
   }, [
@@ -96,6 +141,33 @@ export function useVideoBridge({
       }
       if (event.generation !== generation) return
       if (event.type === 'prepared') setMedia(event.media)
+      if (event.type === 'stateChanged') {
+        if (event.state === 'playing') {
+          acknowledgeBooleanControlIntent(playbackIntent.current, event.generation, true)
+        } else if (event.state === 'paused' || event.state === 'ended') {
+          acknowledgeBooleanControlIntent(playbackIntent.current, event.generation, false)
+        }
+      } else if (event.type === 'ended') {
+        acknowledgeBooleanControlIntent(playbackIntent.current, event.generation, false)
+      }
+      if (event.type === 'settingsChanged') {
+        acknowledgeBooleanControlIntent(mutedIntent.current, event.generation, event.muted)
+        setControlState((current) => ({
+          ...current,
+          volumePercent: clampVolume(event.volumePercent),
+          muted: event.muted,
+          rate: eventRate(event.rate),
+        }))
+      } else if (event.type === 'fullscreenChanged') {
+        acknowledgeBooleanControlIntent(
+          fullscreenIntent.current,
+          event.generation,
+          event.fullscreen,
+        )
+        setControlState((current) => ({ ...current, fullscreen: event.fullscreen }))
+      } else if (event.type === 'timelineThumbnailReady') {
+        setControlState((current) => ({ ...current, timelineThumbnail: event }))
+      }
       dispatch(event)
     }
 
@@ -117,6 +189,10 @@ export function useVideoBridge({
           return
         }
         activeGeneration.current = session.generation
+        commandQueue.current = Promise.resolve()
+        resetBooleanControlIntent(playbackIntent.current, session.generation, false)
+        resetBooleanControlIntent(mutedIntent.current, session.generation, false)
+        resetBooleanControlIntent(fullscreenIntent.current, session.generation, false)
         activeLifecycle.current = {
           generation: session.generation,
           fail(error) {
@@ -175,7 +251,257 @@ export function useVideoBridge({
     })
   }, [bridge, media, stageRect, state.generation])
 
-  return { state, media }
+  const withGeneration = useCallback(async (command: (generation: number) => Promise<void>) => {
+    const generation = activeGeneration.current
+    if (generation === null) return
+    await command(generation)
+  }, [])
+
+  const enqueueCommand = useCallback(
+    (
+      generation: number,
+      command: () => Promise<void>,
+      onSkipped: () => void = () => undefined,
+    ): Promise<void> => {
+      const queued = commandQueue.current.then(async () => {
+        if (activeGeneration.current !== generation) {
+          onSkipped()
+          return
+        }
+        await command()
+      })
+      commandQueue.current = queued.catch(() => undefined)
+      return queued
+    },
+    [],
+  )
+
+  const commands = useMemo<VideoControlCommands>(() => {
+    const issueBooleanCommand = (
+      intent: BooleanControlIntent,
+      value: boolean,
+      send: (generation: number, value: boolean) => Promise<void>,
+    ): Promise<void> => {
+      const generation = activeGeneration.current
+      if (generation === null) return Promise.resolve()
+      const reservation = reserveBooleanControlIntent(intent, generation, value)
+      return enqueueCommand(
+        generation,
+        async () => {
+          try {
+            await send(generation, value)
+          } catch (error) {
+            releaseBooleanControlIntent(intent, reservation)
+            throw error
+          }
+        },
+        () => releaseBooleanControlIntent(intent, reservation),
+      )
+    }
+    const toggleBooleanCommand = (
+      intent: BooleanControlIntent,
+      send: (generation: number, value: boolean) => Promise<void>,
+    ): Promise<void> => {
+      const generation = activeGeneration.current
+      if (generation === null || intent.generation !== generation) return Promise.resolve()
+      return issueBooleanCommand(intent, !intent.desired, send)
+    }
+
+    return {
+      play: () =>
+        issueBooleanCommand(playbackIntent.current, true, (generation) =>
+          bridge.videoPlay({ generation }),
+        ),
+      pause: () =>
+        issueBooleanCommand(playbackIntent.current, false, (generation) =>
+          bridge.videoPause({ generation }),
+        ),
+      togglePlayback: () =>
+        toggleBooleanCommand(playbackIntent.current, (generation, playing) =>
+          playing ? bridge.videoPlay({ generation }) : bridge.videoPause({ generation }),
+        ),
+      step(direction) {
+        const generation = activeGeneration.current
+        if (generation === null) return Promise.resolve()
+        const shouldPause =
+          playbackIntent.current.generation === generation && playbackIntent.current.desired
+        const pauseReservation = shouldPause
+          ? reserveBooleanControlIntent(playbackIntent.current, generation, false)
+          : null
+        return enqueueCommand(
+          generation,
+          async () => {
+            if (pauseReservation !== null) {
+              try {
+                await bridge.videoPause({ generation })
+              } catch (error) {
+                releaseBooleanControlIntent(playbackIntent.current, pauseReservation)
+                throw error
+              }
+              if (activeGeneration.current !== generation) return
+            }
+            await bridge.videoStep({ generation, direction })
+          },
+          () => {
+            if (pauseReservation !== null) {
+              releaseBooleanControlIntent(playbackIntent.current, pauseReservation)
+            }
+          },
+        )
+      },
+      seek: (timeUs) =>
+        withGeneration((generation) =>
+          bridge.videoSeek({
+            generation,
+            timeUs: boundedTime(timeUs, state.durationUs),
+          }),
+        ),
+      setVolume: (volumePercent) =>
+        withGeneration((generation) =>
+          bridge.videoSetVolume({ generation, volumePercent: clampVolume(volumePercent) }),
+        ),
+      setMuted: (muted) =>
+        issueBooleanCommand(mutedIntent.current, muted, (generation, value) =>
+          bridge.videoSetMuted({ generation, muted: value }),
+        ),
+      toggleMuted: () =>
+        toggleBooleanCommand(mutedIntent.current, (generation, muted) =>
+          bridge.videoSetMuted({ generation, muted }),
+        ),
+      setRate: (rate) =>
+        withGeneration((generation) =>
+          bridge.videoSetRate({ generation, rate: rateRequestValue(rate) }),
+        ),
+      setFullscreen: (fullscreen) =>
+        issueBooleanCommand(fullscreenIntent.current, fullscreen, (generation, value) =>
+          bridge.videoSetFullscreen({ generation, fullscreen: value }),
+        ),
+      toggleFullscreen: () =>
+        toggleBooleanCommand(fullscreenIntent.current, (generation, fullscreen) =>
+          bridge.videoSetFullscreen({ generation, fullscreen }),
+        ),
+      requestThumbnail: ({ requestId, timeUs }) =>
+        withGeneration((generation) =>
+          bridge.videoRequestThumbnail({
+            generation,
+            requestId,
+            timeUs: boundedTime(timeUs, state.durationUs),
+          }),
+        ),
+    }
+  }, [bridge, enqueueCommand, state.durationUs, withGeneration])
+
+  return { state, media, controlState, commands }
+}
+
+interface BooleanControlIntent {
+  generation: number | null
+  confirmed: boolean
+  desired: boolean
+  nextId: number
+  pending: BooleanControlReservation[]
+}
+
+interface BooleanControlReservation {
+  generation: number
+  id: number
+  value: boolean
+}
+
+function createBooleanControlIntent(confirmed: boolean): BooleanControlIntent {
+  return {
+    generation: null,
+    confirmed,
+    desired: confirmed,
+    nextId: 1,
+    pending: [],
+  }
+}
+
+function resetBooleanControlIntent(
+  intent: BooleanControlIntent,
+  generation: number | null,
+  confirmed: boolean,
+): void {
+  intent.generation = generation
+  intent.confirmed = confirmed
+  intent.desired = confirmed
+  intent.nextId = 1
+  intent.pending = []
+}
+
+function reserveBooleanControlIntent(
+  intent: BooleanControlIntent,
+  generation: number,
+  value: boolean,
+): BooleanControlReservation {
+  if (intent.generation !== generation)
+    resetBooleanControlIntent(intent, generation, intent.confirmed)
+  const reservation = { generation, id: intent.nextId++, value }
+  intent.pending.push(reservation)
+  intent.desired = value
+  return reservation
+}
+
+function releaseBooleanControlIntent(
+  intent: BooleanControlIntent,
+  reservation: BooleanControlReservation,
+): void {
+  if (intent.generation !== reservation.generation) return
+  const index = intent.pending.findIndex((candidate) => candidate.id === reservation.id)
+  if (index === -1) return
+  intent.pending.splice(index, 1)
+  intent.desired = intent.pending.at(-1)?.value ?? intent.confirmed
+}
+
+function acknowledgeBooleanControlIntent(
+  intent: BooleanControlIntent,
+  generation: number,
+  confirmed: boolean,
+): void {
+  if (intent.generation !== generation) return
+  intent.confirmed = confirmed
+  const index = intent.pending.findIndex((candidate) => candidate.value === confirmed)
+  if (index >= 0) intent.pending.splice(0, index + 1)
+  intent.desired = intent.pending.at(-1)?.value ?? confirmed
+}
+
+function createVideoBridgeControlState(): VideoBridgeControlState {
+  return {
+    volumePercent: 100,
+    muted: false,
+    rate: 1,
+    fullscreen: false,
+    timelineThumbnail: null,
+  }
+}
+
+function clampVolume(volumePercent: number): number {
+  if (!Number.isFinite(volumePercent)) return 100
+  return Math.round(Math.min(100, Math.max(0, volumePercent)))
+}
+
+function boundedTime(timeUs: number, durationUs: number | null): number {
+  const duration =
+    durationUs !== null && Number.isFinite(durationUs) && durationUs > 0
+      ? Math.floor(durationUs)
+      : 0
+  const bounded = Number.isFinite(timeUs) ? Math.floor(timeUs) : 0
+  return Math.min(duration, Math.max(0, bounded))
+}
+
+function eventRate(rate: number): VideoPlaybackRate {
+  if (rate === 0.5 || rate === 0.75 || rate === 1.25 || rate === 1.5 || rate === 2) return rate
+  return 1
+}
+
+function rateRequestValue(rate: VideoPlaybackRate): VideoRateRequestValue {
+  if (rate === 0.5) return 'half'
+  if (rate === 0.75) return 'three_quarters'
+  if (rate === 1.25) return 'one_and_quarter'
+  if (rate === 1.5) return 'one_and_half'
+  if (rate === 2) return 'double'
+  return 'normal'
 }
 
 function useMeasuredVideoStage(stage: RefObject<HTMLElement | null>): DOMRectReadOnly | null {

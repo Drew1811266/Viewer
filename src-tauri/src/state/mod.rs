@@ -14,6 +14,7 @@ use common::{
 pub(crate) use common::{
     internal_command_error, is_stale_derived_write_error, project_not_open, stale_project_session,
 };
+pub use preview::AuthorizedVideoSource;
 pub(crate) use scan_index::rebuild_derived_nodes;
 use scan_index::run_scan;
 pub use video_index::register_video_png_url;
@@ -44,7 +45,11 @@ use std::{
     },
     time::Duration,
 };
-use tokio::{sync::Mutex, task::JoinHandle, time::Instant};
+use tokio::{
+    sync::{Mutex, OwnedRwLockReadGuard, RwLock},
+    task::JoinHandle,
+    time::Instant,
+};
 use viewer_application::{
     ActiveProject, BrowseIndexPort, BrowseService, ClockPort, ImageError, ImagePort, ImageRequest,
     ImageRequestCancellation, PreparedFinderDrag, ProjectAccess, ProjectOpenError,
@@ -120,6 +125,41 @@ pub trait DesktopEventSink: Send + Sync {
         _target: CloseTarget,
     ) {
     }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, thiserror::Error)]
+pub enum RuntimeError {
+    #[error("the selected entity is not a video")]
+    NotVideo,
+    #[error("the selected entity does not belong to the active project session")]
+    StaleSession,
+    #[error("the indexed video path is no longer authorized")]
+    PathNotAuthorized,
+    #[error("the indexed video metadata is unavailable")]
+    MetadataUnavailable,
+    #[error("the native video runtime could not close cleanly")]
+    CloseFailed,
+}
+
+impl RuntimeError {
+    pub const fn code(self) -> &'static str {
+        match self {
+            Self::NotVideo => "not_video",
+            Self::StaleSession => "stale_session",
+            Self::PathNotAuthorized => "path_not_authorized",
+            Self::MetadataUnavailable => "video_metadata_unavailable",
+            Self::CloseFailed => "video_close_failed",
+        }
+    }
+}
+
+#[async_trait::async_trait]
+pub trait VideoClosePort: Send + Sync {
+    async fn close_video(&self) -> Result<(), RuntimeError>;
+}
+
+pub struct VideoOpenProjectLease {
+    _guard: OwnedRwLockReadGuard<()>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -272,6 +312,8 @@ pub struct DesktopRuntime {
     video_probe: Arc<dyn VideoMetadataProbe>,
     derived_scheduler: Arc<DerivedWorkScheduler>,
     image_requests: Arc<StdMutex<preview::ImageRequestLifecycles>>,
+    video_lifecycle: StdMutex<Option<Arc<dyn VideoClosePort>>>,
+    video_project_gate: Arc<RwLock<()>>,
     session: Mutex<Option<DesktopSession>>,
 }
 
@@ -445,7 +487,22 @@ impl DesktopRuntime {
             video_probe,
             derived_scheduler,
             image_requests: Arc::new(StdMutex::new(preview::ImageRequestLifecycles::default())),
+            video_lifecycle: StdMutex::new(None),
+            video_project_gate: Arc::new(RwLock::new(())),
             session: Mutex::new(None),
+        }
+    }
+
+    pub fn register_video_lifecycle(&self, lifecycle: Arc<dyn VideoClosePort>) {
+        *self
+            .video_lifecycle
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(lifecycle);
+    }
+
+    pub async fn video_open_project_lease(&self) -> VideoOpenProjectLease {
+        VideoOpenProjectLease {
+            _guard: Arc::clone(&self.video_project_gate).read_owned().await,
         }
     }
 }

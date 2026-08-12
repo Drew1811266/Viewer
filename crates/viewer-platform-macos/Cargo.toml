@@ -16,6 +16,7 @@ viewer-domain = { path = "../viewer-domain" }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 block2.workspace = true
+dispatch2.workspace = true
 libc.workspace = true
 notify.workspace = true
 notify-debouncer-full.workspace = true

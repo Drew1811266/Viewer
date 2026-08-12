@@ -4143,6 +4143,7 @@ dependencies = [
  "viewer-domain",
  "viewer-infrastructure",
  "viewer-platform-macos",
+ "viewer-test-support",
  "viewer-video-mpv",
 ]
 
@@ -4185,6 +4186,7 @@ version = "0.1.5"
 dependencies = [
  "async-trait",
  "block2",
+ "dispatch2",
  "libc",
  "notify",
  "notify-debouncer-full",

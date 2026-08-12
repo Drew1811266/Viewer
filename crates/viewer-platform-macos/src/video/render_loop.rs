@@ -7,6 +7,7 @@ use super::{
 use objc2_app_kit::NSOpenGLContext;
 use std::{path::Path, sync::Arc};
 use thiserror::Error;
+use viewer_video_mpv::PlaybackRate;
 use viewer_video_mpv::{FrameDirection, MpvClient, MpvError, MpvRenderContext, MpvRenderError};
 
 #[derive(Debug, Error)]
@@ -25,6 +26,8 @@ pub struct MacVideoRenderSession {
     client: Option<MpvClient>,
     open_gl_context: objc2::rc::Retained<NSOpenGLContext>,
     first_frame_revealed: bool,
+    first_frame_ready: bool,
+    auto_reveal_first_frame: bool,
     decoded_picture_type: Option<String>,
     media_loaded: bool,
     _client_lease: ResourceLease,
@@ -41,6 +44,23 @@ impl MacVideoRenderSession {
         surface: MacVideoSurface,
         schedule_draw: Arc<dyn Fn() + Send + Sync>,
     ) -> Result<Self, RenderLoopError> {
+        Self::new_with_reveal_policy(client, surface, schedule_draw, true)
+    }
+
+    pub fn new_first_frame_gated(
+        client: MpvClient,
+        surface: MacVideoSurface,
+        schedule_draw: Arc<dyn Fn() + Send + Sync>,
+    ) -> Result<Self, RenderLoopError> {
+        Self::new_with_reveal_policy(client, surface, schedule_draw, false)
+    }
+
+    fn new_with_reveal_policy(
+        client: MpvClient,
+        surface: MacVideoSurface,
+        schedule_draw: Arc<dyn Fn() + Send + Sync>,
+        auto_reveal_first_frame: bool,
+    ) -> Result<Self, RenderLoopError> {
         let open_gl_context = surface.open_gl_context()?;
         open_gl_context.makeCurrentContext();
         let render_context =
@@ -54,6 +74,8 @@ impl MacVideoRenderSession {
             client: Some(client),
             open_gl_context,
             first_frame_revealed: false,
+            first_frame_ready: false,
+            auto_reveal_first_frame,
             decoded_picture_type: None,
             media_loaded: false,
             _client_lease: ResourceLease::acquire(ResourceKind::Client),
@@ -89,9 +111,12 @@ impl MacVideoRenderSession {
                     should_draw,
                     decoded_picture_type.is_some(),
                 ) {
-                    surface.reveal()?;
-                    self.first_frame_revealed = true;
+                    self.first_frame_ready = true;
                     self.decoded_picture_type = decoded_picture_type;
+                    if self.auto_reveal_first_frame {
+                        surface.reveal()?;
+                        self.first_frame_revealed = true;
+                    }
                 }
             }
             Ok(should_draw)
@@ -126,8 +151,30 @@ impl MacVideoRenderSession {
         Ok(client.current_playback_time_us()?)
     }
 
+    pub fn eof_reached(&self) -> Result<bool, RenderLoopError> {
+        let Some(client) = self.client.as_ref() else {
+            return Ok(false);
+        };
+        Ok(client.eof_reached()?.unwrap_or(false))
+    }
+
     pub fn first_decoded_frame_revealed(&self) -> bool {
         self.first_frame_revealed
+    }
+
+    pub fn first_decoded_frame_ready(&self) -> bool {
+        self.first_frame_ready
+    }
+
+    pub fn reveal_surface(&mut self) -> Result<(), RenderLoopError> {
+        if self.first_frame_ready
+            && !self.first_frame_revealed
+            && let Some(surface) = self.surface.as_ref()
+        {
+            surface.reveal()?;
+            self.first_frame_revealed = true;
+        }
+        Ok(())
     }
 
     pub fn decoded_picture_type(&self) -> Option<&str> {
@@ -149,6 +196,41 @@ impl MacVideoRenderSession {
         Ok(())
     }
 
+    pub fn play(&self) -> Result<(), RenderLoopError> {
+        if let Some(client) = self.client.as_ref() {
+            client.play()?;
+        }
+        Ok(())
+    }
+
+    pub fn seek(&self, time_us: u64) -> Result<(), RenderLoopError> {
+        if let Some(client) = self.client.as_ref() {
+            client.seek_absolute_us(time_us)?;
+        }
+        Ok(())
+    }
+
+    pub fn set_volume(&self, percent: u8) -> Result<(), RenderLoopError> {
+        if let Some(client) = self.client.as_ref() {
+            client.set_volume_percent(percent)?;
+        }
+        Ok(())
+    }
+
+    pub fn set_muted(&self, muted: bool) -> Result<(), RenderLoopError> {
+        if let Some(client) = self.client.as_ref() {
+            client.set_muted(muted)?;
+        }
+        Ok(())
+    }
+
+    pub fn set_rate(&self, rate: PlaybackRate) -> Result<(), RenderLoopError> {
+        if let Some(client) = self.client.as_ref() {
+            client.set_rate(rate)?;
+        }
+        Ok(())
+    }
+
     pub fn open_local_file(&mut self, path: &Path) -> Result<(), RenderLoopError> {
         if let Some(client) = self.client.as_mut() {
             client.open_local_file(path)?;
@@ -160,16 +242,22 @@ impl MacVideoRenderSession {
     fn teardown(&mut self) {
         if let Some(surface) = self.surface.as_ref() {
             let _ = surface.hide();
-            let _ = surface.unmount();
+        }
+        if let Some(client) = self.client.as_ref() {
+            let _ = client.pause();
+            let _ = client.set_muted(true);
         }
         self.open_gl_context.makeCurrentContext();
+        // Dropping the render context unregisters update callbacks before the
+        // client or native surface can be destroyed.
         self.render_context.take();
         NSOpenGLContext::clearCurrentContext();
+        self.client.take();
         if let Some(surface) = self.surface.as_ref() {
             let _ = surface.clear_gl_context();
+            let _ = surface.unmount();
         }
         self.surface.take();
-        self.client.take();
     }
 }
 

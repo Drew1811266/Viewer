@@ -238,6 +238,10 @@ impl MpvClient {
             .map(|seconds| (seconds * 1_000_000.0).round() as u64))
     }
 
+    pub fn eof_reached(&self) -> Result<Option<bool>, MpvError> {
+        self.runtime_flag_property("eof-reached")
+    }
+
     /// Returns mpv's picture type for the currently decoded video frame.
     ///
     /// Unlike container metadata, `video-frame-info` is unavailable until mpv
@@ -339,6 +343,24 @@ impl MpvClient {
         }
         ensure_success("get_property", result)?;
         Ok(Some(value))
+    }
+
+    fn runtime_flag_property(&self, name: &'static str) -> Result<Option<bool>, MpvError> {
+        let name = CString::new(name).expect("static string has no NUL");
+        let mut value: c_int = 0;
+        let result = unsafe {
+            (self.inner.api.get_property)(
+                self.inner.handle.as_ptr(),
+                name.as_ptr(),
+                MPV_FORMAT_FLAG,
+                (&raw mut value).cast::<c_void>(),
+            )
+        };
+        if result == MPV_ERROR_PROPERTY_UNAVAILABLE {
+            return Ok(None);
+        }
+        ensure_success("get_property", result)?;
+        Ok(Some(value != 0))
     }
 
     fn command_from_strings(&self, arguments: &[&str]) -> Result<(), MpvError> {

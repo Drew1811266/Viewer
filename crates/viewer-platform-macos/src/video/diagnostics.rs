@@ -17,6 +17,19 @@ pub struct VideoRenderDiagnostics {
     pub rendered_frames: u64,
 }
 
+#[derive(Debug, Default)]
+pub struct VideoDiagnosticsCounters;
+
+impl VideoDiagnosticsCounters {
+    pub fn snapshot(
+        &self,
+        hwdec: impl Into<String>,
+        video_output: impl Into<String>,
+    ) -> VideoRenderDiagnostics {
+        VideoRenderDiagnostics::snapshot(hwdec, video_output)
+    }
+}
+
 impl VideoRenderDiagnostics {
     pub fn snapshot(hwdec: impl Into<String>, video_output: impl Into<String>) -> Self {
         Self {

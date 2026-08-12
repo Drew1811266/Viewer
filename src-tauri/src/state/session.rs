@@ -321,6 +321,7 @@ impl DesktopRuntime {
     }
 
     pub async fn close_project(&self) -> Result<(), CommandError> {
+        let _video_project_close = self.video_project_gate.write().await;
         let Some(mut session) = self.session.lock().await.take() else {
             return Ok(());
         };
@@ -328,6 +329,15 @@ impl DesktopRuntime {
         // guarded by this token must not start after close has taken ownership.
         self.coordinator.cancel_session(session.active.session_id);
         self.active_image_session.set(None);
+        let video_lifecycle = self
+            .video_lifecycle
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone();
+        let playback_result = match video_lifecycle {
+            Some(lifecycle) => lifecycle.close_video().await,
+            None => Ok(()),
+        };
         self.image_registry
             .remove_session(session.active.session_id);
         if let Some(operations) = session.operations.take() {
@@ -372,7 +382,8 @@ impl DesktopRuntime {
             )
         });
         cache_result?;
-        video_result
+        video_result?;
+        playback_result.map_err(CommandError::from)
     }
 
     /// Finalizes shutdown when the operating system has committed to ending

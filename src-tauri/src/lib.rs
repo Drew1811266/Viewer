@@ -16,16 +16,22 @@ pub mod image_protocol;
 pub mod markdown;
 pub mod operation_runtime;
 pub mod state;
+pub mod video_events;
 #[cfg(all(target_os = "macos", feature = "video-feasibility"))]
 pub mod video_feasibility;
+pub mod video_runtime;
 pub mod watcher_runtime;
 
 pub const APP_NAME: &str = "Viewer";
 const PROJECT_CLOSED_EVENT: &str = "viewer://project-closed";
 const TERMINAL_CLOSE_CACHE_CLEANUP_FAILURE: &str = "project_closed_cache_cleanup_failed";
+const TERMINAL_VIDEO_CLOSE_FAILURE: &str = "video_close_failed";
 
 pub(crate) fn is_terminal_close_cleanup_failure(error: &error::CommandError) -> bool {
-    error.code == TERMINAL_CLOSE_CACHE_CLEANUP_FAILURE
+    matches!(
+        error.code.as_str(),
+        TERMINAL_CLOSE_CACHE_CLEANUP_FAILURE | TERMINAL_VIDEO_CLOSE_FAILURE
+    )
 }
 
 fn close_completion_after_attempt(
@@ -221,6 +227,20 @@ pub fn run() {
             commands::finder_drag::begin_finder_drag,
             commands::settings::get_viewer_settings,
             commands::settings::update_viewer_settings,
+            commands::video::video_open,
+            commands::video::video_close,
+            commands::video::video_play,
+            commands::video::video_pause,
+            commands::video::video_seek,
+            commands::video::video_step,
+            commands::video::video_set_volume,
+            commands::video::video_set_muted,
+            commands::video::video_set_rate,
+            commands::video::video_set_surface_rect,
+            commands::video::video_set_fullscreen,
+            commands::video::video_request_thumbnail,
+            commands::video::video_cache_stats,
+            commands::video::video_cache_clear,
             #[cfg(all(target_os = "macos", feature = "video-feasibility"))]
             video_feasibility::run_video_feasibility
         ])
@@ -262,7 +282,55 @@ pub fn run() {
                 runtime_active_image_session.clone(),
                 video_probe,
             ));
+            let video_events: Arc<dyn video_runtime::VideoEventPort> = Arc::new(
+                video_events::TauriVideoEventEmitter::new(app.handle().clone()),
+            );
+            let video_engine = Arc::new(viewer_platform_macos::video::MacOsLibmpvAdapter::new(
+                app.path().resource_dir().unwrap_or_default(),
+            ));
+            let app_cache_root = app.path().app_cache_dir()?;
+            let video_cache =
+                viewer_infrastructure::video_cache::VideoCache::initialize(&app_cache_root)
+                    .map_err(|error| format!("failed to initialize video cache: {error}"))?;
+            let runtime_layout =
+                viewer_video_mpv::runtime_manifest::RuntimeLayout::from_bundle_root(
+                    &app.path().resource_dir()?,
+                )
+                .map_err(|error| format!("failed to validate video runtime: {error}"))?;
+            let media_tools = viewer_video_mpv::BundledMediaTools::from_layout(&runtime_layout)
+                .map_err(|error| format!("failed to initialize media tools: {error}"))?;
+            let thumbnail_bridge = Arc::new(video_runtime::NativeTimelineThumbnailBridge::new(
+                media_tools,
+                video_cache.clone(),
+                Arc::clone(&runtime_registry),
+            ));
+            let timeline_thumbnails: Arc<dyn video_runtime::TimelineThumbnailPort> =
+                thumbnail_bridge.clone();
+            let playback_activity: Arc<dyn video_runtime::PlaybackActivityPort> = thumbnail_bridge;
+            let video_runtime = Arc::new(video_runtime::VideoRuntime::with_native_bridges(
+                Arc::clone(&video_engine),
+                video_cache,
+                video_events,
+                timeline_thumbnails,
+                playback_activity,
+            ));
+            let weak_video_runtime = Arc::downgrade(&video_runtime);
+            let (engine_event_tx, mut engine_event_rx) = tokio::sync::mpsc::unbounded_channel();
+            video_engine.set_event_sink(Arc::new(move |generation, event| {
+                let _ = engine_event_tx.send((generation, event));
+            }));
+            tauri::async_runtime::spawn(async move {
+                while let Some((generation, event)) = engine_event_rx.recv().await {
+                    let Some(video_runtime) = weak_video_runtime.upgrade() else {
+                        break;
+                    };
+                    video_runtime.handle_engine_event(generation, event).await;
+                }
+            });
+            let video_lifecycle: Arc<dyn state::VideoClosePort> = video_runtime.clone();
+            runtime.register_video_lifecycle(video_lifecycle);
             app.manage(runtime);
+            app.manage(video_runtime);
             app.manage(settings_service);
             app.manage(ExitGate::default());
 
@@ -391,6 +459,17 @@ mod tests {
         assert_eq!(
             super::close_completion_after_attempt(&Err(error), CloseTarget::Application),
             Some(CloseCompletionAction::ExitApplication)
+        );
+
+        let video_error = CommandError::new(
+            "video_close_failed",
+            ErrorCategory::Environment,
+            "video close failed",
+            true,
+        );
+        assert_eq!(
+            super::close_completion_after_attempt(&Err(video_error), CloseTarget::Window),
+            Some(CloseCompletionAction::HideWindow)
         );
     }
 

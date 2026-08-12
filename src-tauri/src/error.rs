@@ -55,6 +55,88 @@ use viewer_infrastructure::{
     session_cache::SessionCacheError,
 };
 
+impl From<crate::state::RuntimeError> for CommandError {
+    fn from(error: crate::state::RuntimeError) -> Self {
+        use crate::state::RuntimeError;
+
+        match error {
+            RuntimeError::NotVideo => Self::new(
+                error.code(),
+                ErrorCategory::Validation,
+                "所选文件不是视频。",
+                false,
+            ),
+            RuntimeError::StaleSession => Self::new(
+                error.code(),
+                ErrorCategory::Consistency,
+                "视频已不属于当前项目会话，请刷新后重试。",
+                true,
+            ),
+            RuntimeError::PathNotAuthorized => Self::new(
+                error.code(),
+                ErrorCategory::Validation,
+                "该视频路径不再受当前项目授权。",
+                false,
+            ),
+            RuntimeError::MetadataUnavailable => Self::new(
+                error.code(),
+                ErrorCategory::Content,
+                "视频信息尚不可用，请稍后重试。",
+                true,
+            ),
+            RuntimeError::CloseFailed => Self::new(
+                error.code(),
+                ErrorCategory::Environment,
+                "视频已关闭，但原生播放资源未能完整清理。",
+                true,
+            ),
+        }
+    }
+}
+
+impl From<crate::video_runtime::VideoCommandError> for CommandError {
+    fn from(error: crate::video_runtime::VideoCommandError) -> Self {
+        use crate::video_runtime::VideoCommandError;
+
+        let (category, message, retryable) = match error {
+            VideoCommandError::StaleGeneration => {
+                (ErrorCategory::Conflict, "视频会话已变化，请重试。", true)
+            }
+            VideoCommandError::NoActiveSession => {
+                (ErrorCategory::Conflict, "当前没有打开的视频。", false)
+            }
+            VideoCommandError::InvalidState => {
+                (ErrorCategory::Conflict, "当前播放状态不支持此操作。", false)
+            }
+            VideoCommandError::InvalidVolume => (
+                ErrorCategory::Validation,
+                "音量必须在 0 到 100 之间。",
+                false,
+            ),
+            VideoCommandError::EngineUnavailable => {
+                (ErrorCategory::Environment, "视频播放引擎当前不可用。", true)
+            }
+            VideoCommandError::CacheUnavailable => {
+                (ErrorCategory::Environment, "视频缓存当前不可用。", true)
+            }
+            VideoCommandError::ThumbnailCancelled => (
+                ErrorCategory::Conflict,
+                "视频缩略图请求已被更新的请求替换。",
+                false,
+            ),
+            VideoCommandError::ThumbnailUnavailable => (
+                ErrorCategory::Environment,
+                "视频时间轴缩略图当前不可用。",
+                true,
+            ),
+            VideoCommandError::InvalidThumbnailRequest => {
+                (ErrorCategory::Validation, "视频缩略图请求标识无效。", false)
+            }
+        };
+        Self::new(error.code(), category, message, retryable)
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ErrorCategory {

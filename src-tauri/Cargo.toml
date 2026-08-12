@@ -11,7 +11,7 @@ crate-type = ["lib", "cdylib", "staticlib"]
 
 [features]
 default = []
-video-feasibility = ["dep:dispatch2", "dep:viewer-video-mpv", "tauri/macos-private-api"]
+video-feasibility = ["dep:dispatch2", "tauri/macos-private-api"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
@@ -32,7 +32,7 @@ viewer-application = { path = "../crates/viewer-application" }
 viewer-domain = { path = "../crates/viewer-domain" }
 viewer-infrastructure = { path = "../crates/viewer-infrastructure" }
 viewer-platform-macos = { path = "../crates/viewer-platform-macos" }
-viewer-video-mpv = { path = "../crates/viewer-video-mpv", optional = true }
+viewer-video-mpv = { path = "../crates/viewer-video-mpv" }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 dispatch2 = { workspace = true, optional = true }
@@ -41,6 +41,7 @@ objc2.workspace = true
 [dev-dependencies]
 serde_json.workspace = true
 tempfile.workspace = true
+viewer-test-support = { path = "../crates/viewer-test-support" }
 
 [[test]]
 name = "security_boundaries"
@@ -69,3 +70,11 @@ path = "../tests/m3_compare_budget.rs"
 [[test]]
 name = "m3_readonly_lifecycle"
 path = "../tests/m3_readonly_lifecycle.rs"
+
+[[test]]
+name = "video_security_boundaries"
+path = "../tests/video_security_boundaries.rs"
+
+[[test]]
+name = "video_runtime_lifecycle"
+path = "../tests/video_runtime_lifecycle.rs"

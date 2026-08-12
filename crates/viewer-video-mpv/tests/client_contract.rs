@@ -112,6 +112,12 @@ unsafe extern "C" fn get_property(
         unsafe { *data.cast::<f64>() = 1.25 };
         return 0;
     }
+    if name == "eof-reached" {
+        assert_eq!(format, 3);
+        calls().lock().unwrap().push(Call::PropertyRead(name));
+        unsafe { *data.cast::<c_int>() = 1 };
+        return 0;
+    }
     assert_eq!(format, 1);
     let value = match name.as_str() {
         "hwdec-current" => "videotoolbox",
@@ -190,6 +196,7 @@ fn public_client_contract_is_isolated_and_typed() {
         Some("libmpv")
     );
     assert_eq!(client.current_playback_time_us().unwrap(), Some(1_250_000));
+    assert_eq!(client.eof_reached().unwrap(), Some(true));
     assert_eq!(
         client.current_video_picture_type().unwrap().as_deref(),
         Some("I")
@@ -248,6 +255,7 @@ fn public_client_contract_is_isolated_and_typed() {
     assert!(calls.contains(&Call::PropertyRead("hwdec-current".to_owned())));
     assert!(calls.contains(&Call::PropertyRead("current-vo".to_owned())));
     assert!(calls.contains(&Call::PropertyRead("time-pos".to_owned())));
+    assert!(calls.contains(&Call::PropertyRead("eof-reached".to_owned())));
     assert!(calls.contains(&Call::PropertyRead(
         "video-frame-info/picture-type".to_owned()
     )));

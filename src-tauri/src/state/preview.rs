@@ -147,6 +147,35 @@ impl Drop for ImageRequestLease {
 }
 
 impl DesktopRuntime {
+    pub async fn resolve_video_entity(
+        &self,
+        entity_id: EntityId,
+    ) -> Result<AuthorizedVideoSource, RuntimeError> {
+        let (active, index) = {
+            let session = self.session.lock().await;
+            let session = session.as_ref().ok_or(RuntimeError::StaleSession)?;
+            (session.active.clone(), Arc::clone(&session.index))
+        };
+        let indexed = index
+            .indexed_node(entity_id)
+            .map_err(|_| RuntimeError::StaleSession)?
+            .ok_or(RuntimeError::StaleSession)?;
+        if indexed.node.kind != FileKind::Video {
+            return Err(RuntimeError::NotVideo);
+        }
+        let metadata = indexed
+            .video_metadata
+            .ok_or(RuntimeError::MetadataUnavailable)?;
+        let (canonical_path, _, _) = validated_indexed_source(&active, &indexed.node)
+            .map_err(|()| RuntimeError::PathNotAuthorized)?;
+        Ok(AuthorizedVideoSource {
+            entity_id,
+            session_id: active.session_id,
+            canonical_path,
+            metadata,
+        })
+    }
+
     pub async fn folder_tree(&self) -> Result<Vec<FolderTreeItemDto>, CommandError> {
         let _permit = self
             .derived_scheduler
@@ -459,6 +488,14 @@ impl DesktopRuntime {
                 )
             })
     }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AuthorizedVideoSource {
+    pub entity_id: EntityId,
+    pub session_id: SessionId,
+    pub canonical_path: PathBuf,
+    pub metadata: viewer_domain::video::VideoMetadata,
 }
 
 fn ensure_image_request_active(

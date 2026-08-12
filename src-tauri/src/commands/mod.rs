@@ -6,6 +6,7 @@ pub(crate) mod preview;
 pub(crate) mod project;
 pub(crate) mod search;
 pub(crate) mod settings;
+pub mod video;
 
 use crate::{APP_NAME, HealthResponse};
 

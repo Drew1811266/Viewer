@@ -7,7 +7,7 @@ use std::{
 
 use viewer_video_mpv::{
     FrameDirection, MpvApi, MpvClient, PlaybackRate,
-    ffi::{MpvEvent, MpvFormat, MpvHandle},
+    ffi::{MPV_ERROR_PROPERTY_UNAVAILABLE, MpvEvent, MpvFormat, MpvHandle},
 };
 
 #[derive(Debug, PartialEq)]
@@ -22,9 +22,31 @@ enum Call {
     Destroy,
 }
 
+#[derive(Debug, Default)]
+struct SimulatedCore {
+    paused: bool,
+    media_loaded: bool,
+    first_frame_ready: bool,
+}
+
 fn calls() -> &'static Mutex<Vec<Call>> {
     static CALLS: OnceLock<Mutex<Vec<Call>>> = OnceLock::new();
     CALLS.get_or_init(|| Mutex::new(Vec::new()))
+}
+
+fn simulated_core() -> &'static Mutex<SimulatedCore> {
+    static CORE: OnceLock<Mutex<SimulatedCore>> = OnceLock::new();
+    CORE.get_or_init(|| Mutex::new(SimulatedCore::default()))
+}
+
+fn fake_guard() -> &'static Mutex<()> {
+    static GUARD: OnceLock<Mutex<()>> = OnceLock::new();
+    GUARD.get_or_init(|| Mutex::new(()))
+}
+
+fn reset_fake() {
+    calls().lock().unwrap().clear();
+    *simulated_core().lock().unwrap() = SimulatedCore::default();
 }
 
 unsafe extern "C" fn client_api_version() -> c_ulong {
@@ -75,6 +97,14 @@ unsafe extern "C" fn command(_: *mut MpvHandle, args: *const *const c_char) -> c
         );
         offset += 1;
     }
+    if values.first().map(String::as_str) == Some("loadfile") {
+        let mut core = simulated_core().lock().unwrap();
+        core.media_loaded = true;
+        // Model libmpv's asynchronous load boundary deterministically: a file
+        // opened while already paused still prepares its initial video frame,
+        // while pausing only after loadfile returns can win before that decode.
+        core.first_frame_ready = core.paused;
+    }
     calls().lock().unwrap().push(Call::Command(values));
     0
 }
@@ -89,7 +119,17 @@ unsafe extern "C" fn set_property(
         .to_string_lossy()
         .into_owned();
     let call = match format {
-        3 => Call::PropertyFlag(name, unsafe { *(data.cast::<c_int>()) } != 0),
+        3 => {
+            let value = unsafe { *(data.cast::<c_int>()) } != 0;
+            if name == "pause" {
+                let mut core = simulated_core().lock().unwrap();
+                core.paused = value;
+                if !value && core.media_loaded {
+                    core.first_frame_ready = true;
+                }
+            }
+            Call::PropertyFlag(name, value)
+        }
         5 => Call::PropertyDouble(name, unsafe { *(data.cast::<f64>()) }),
         _ => panic!("unexpected property format {format}"),
     };
@@ -112,6 +152,18 @@ unsafe extern "C" fn get_property(
         unsafe { *data.cast::<f64>() = 1.25 };
         return 0;
     }
+    if name == "mistimed-frame-count" {
+        assert_eq!(format, 5);
+        calls().lock().unwrap().push(Call::PropertyRead(name));
+        unsafe { *data.cast::<f64>() = 3.0 };
+        return 0;
+    }
+    if name == "decoder-frame-drop-count" {
+        assert_eq!(format, 5);
+        calls().lock().unwrap().push(Call::PropertyRead(name));
+        unsafe { *data.cast::<f64>() = 2.0 };
+        return 0;
+    }
     if name == "eof-reached" {
         assert_eq!(format, 3);
         calls().lock().unwrap().push(Call::PropertyRead(name));
@@ -119,6 +171,11 @@ unsafe extern "C" fn get_property(
         return 0;
     }
     assert_eq!(format, 1);
+    if name == "video-frame-info/picture-type"
+        && !simulated_core().lock().unwrap().first_frame_ready
+    {
+        return MPV_ERROR_PROPERTY_UNAVAILABLE;
+    }
     let value = match name.as_str() {
         "hwdec-current" => "videotoolbox",
         "current-vo" => "libmpv",
@@ -165,7 +222,8 @@ fn fake_api() -> MpvApi {
 
 #[test]
 fn public_client_contract_is_isolated_and_typed() {
-    calls().lock().unwrap().clear();
+    let _guard = fake_guard().lock().unwrap();
+    reset_fake();
     let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml");
     let canonical_path = path.canonicalize().unwrap();
 
@@ -196,6 +254,8 @@ fn public_client_contract_is_isolated_and_typed() {
         Some("libmpv")
     );
     assert_eq!(client.current_playback_time_us().unwrap(), Some(1_250_000));
+    assert_eq!(client.mistimed_frame_count().unwrap(), Some(3));
+    assert_eq!(client.decoder_frame_drop_count().unwrap(), Some(2));
     assert_eq!(client.eof_reached().unwrap(), Some(true));
     assert_eq!(
         client.current_video_picture_type().unwrap().as_deref(),
@@ -260,4 +320,32 @@ fn public_client_contract_is_isolated_and_typed() {
         "video-frame-info/picture-type".to_owned()
     )));
     assert_eq!(calls.last(), Some(&Call::Destroy));
+}
+
+#[test]
+fn opening_paused_orders_pause_before_the_asynchronous_load_and_produces_a_first_frame() {
+    let _guard = fake_guard().lock().unwrap();
+    reset_fake();
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml");
+    let canonical_path = path.canonicalize().unwrap();
+    let mut client = unsafe { MpvClient::from_api(fake_api()) }.unwrap();
+
+    client.open_local_file_paused(&canonical_path).unwrap();
+
+    assert_eq!(
+        client.current_video_picture_type().unwrap().as_deref(),
+        Some("I")
+    );
+    let calls = calls().lock().unwrap();
+    let pause_index = calls
+        .iter()
+        .position(|call| call == &Call::PropertyFlag("pause".to_owned(), true))
+        .unwrap();
+    let load_index = calls
+        .iter()
+        .position(|call| {
+            matches!(call, Call::Command(args) if args.first().map(String::as_str) == Some("loadfile"))
+        })
+        .unwrap();
+    assert!(pause_index < load_index);
 }

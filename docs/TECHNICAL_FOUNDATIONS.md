@@ -18,6 +18,7 @@
 - 文件操作事务、撤销语义、冲突处理和崩溃恢复协议。
 - 任务优先级在 Viewer 场景下的具体队列、状态机和 IPC 接口。
 - 性能预算、缓存生命周期和异常降级规则。
+- 平台中立的视频会话、代次、控件、缓存和错误语义。
 
 ## 2. 正式基础技术框架
 
@@ -28,6 +29,7 @@
 | 前端 | React + TypeScript + Vite | 两栏界面、状态呈现、快捷键和交互 | 正式依赖 |
 | 数据库 | SQLite + rusqlite | 持久标记、会话索引和 FTS5 全文搜索 | 正式依赖 |
 | 图片后端 | Quick Look Thumbnailing + Image I/O + Core Graphics + ColorSync | Quick Look 主缩略图、Image I/O 回退与高清预览、ICC 和 EXIF | 已通过 G1，见 ADR 0001 |
+| 视频后端 | LGPL libmpv 0.41.0 + FFmpeg n8.0 + libplacebo 6.338.2 + VideoToolbox | 随包媒体探测、原生 GPU 表面、硬件解码、封面与时间轴帧 | macOS 开发实现；发布签名验收延期 |
 | 文件监听 | notify + notify-debouncer-full + Unix device/inode identity | FSEvents、事件归并、重命名/移动关联 | 已通过 G3，见 ADR 0003；未直接引入 `file-id` |
 | 网格虚拟化 | 自定义 `VirtualGrid` / `VirtualList` | 缩略图、目录卡片和搜索结果虚拟化 | 项目内实现；`ui/package.json` 未引入 TanStack Virtual |
 | 系统废纸篓 | trash-rs | 将文件移入 macOS 废纸篓 | 已通过 G2，封装于平台 Adapter |
@@ -65,6 +67,14 @@ Viewer 源码采用 **Apache-2.0**。Rust 和 npm 解析结果分别由 `Cargo.l
 | 测试工具 | Vitest 4.1.10、jsdom 29.1.1、Testing Library React 16.3.2、tempfile 3.27.0 |
 
 完整逐项版本、许可证、用途、上游与是否进入分发产物的人工复核记录见仓库根目录 `THIRD_PARTY_NOTICES.md`。`nucleo-matcher` 以未修改 MPL-2.0 依赖使用；架构灵感项目不进入构建，单独列于 `ACKNOWLEDGEMENTS.md`。
+
+### 2.5 本地视频预览边界
+
+React 只负责浏览、布局与控件，Tauri IPC 只传递类型化命令、代次状态和已注册缩略图标识；解码帧不进入 JavaScript。平台中立的 `VideoEngine`/服务层隔离 macOS AppKit 与 libmpv 类型，macOS adapter 管理 VideoToolbox、GPU 表面、音频、回调和确定性关闭。
+
+Task 14 的旧 Apple M4 native artifacts 没有绑定 dirty tracked bytes、untracked Task 14 manifest、fixture、machine、app/runtime 与同一 run，不能事后补绑，因此 core native、H.264 1080p60 与 4K readiness/performance 都保持 `UNVERIFIED`，直到新 native run 产生完整 provenance。30-cycle 门只量化 clients/render contexts/surfaces；worker/artifact 关闭由独立 project/session close tests 覆盖，decoder/audio 没有在该门中计数，均不冒充 30-cycle 实测。
+
+开发 smoke 在启动前严格验证 inventory/hash/architecture/loader containment。离线状态还必须读取 runner 在 exact audited app 经 canonical macOS `sandbox-exec` deny-network profile 启动、target process 与 stable window 绑定后原子写出的 launch artifact；env bit 或 emitter boolean 不能成为证据。该记录证明 sandbox launch boundary，不冒充独立 kernel packet capture。signed mode 额外 fail-closed 验证 Developer ID、timestamp、nested/app signature、stapler 与 `spctl`；当前用户 scope 明确延期发布签名验收。
 
 ## 3. 架构方法来源
 

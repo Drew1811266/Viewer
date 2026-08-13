@@ -15,6 +15,8 @@ pub struct VideoRenderDiagnostics {
     pub active_render_contexts: usize,
     pub active_surfaces: usize,
     pub rendered_frames: u64,
+    pub mistimed_frames: u64,
+    pub decoder_dropped_frames: u64,
 }
 
 #[derive(Debug, Default)]
@@ -39,6 +41,8 @@ impl VideoRenderDiagnostics {
             active_render_contexts: ACTIVE_RENDER_CONTEXTS.load(Ordering::Acquire),
             active_surfaces: ACTIVE_SURFACES.load(Ordering::Acquire),
             rendered_frames: RENDERED_FRAMES.load(Ordering::Acquire),
+            mistimed_frames: 0,
+            decoder_dropped_frames: 0,
         }
     }
 }

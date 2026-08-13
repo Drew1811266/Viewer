@@ -198,6 +198,8 @@ fn normalize_ffprobe(json: &str) -> Result<VideoMetadata, VideoProbeError> {
         .map(parse_duration)
         .transpose()?
         .flatten();
+    let video_codec = parse_codec(video.get("codec_name"))?
+        .ok_or(VideoProbeError::Failed(VideoFailureKind::Unsupported))?;
 
     Ok(VideoMetadata {
         duration_us,
@@ -205,7 +207,7 @@ fn normalize_ffprobe(json: &str) -> Result<VideoMetadata, VideoProbeError> {
         display_height,
         rotation_degrees,
         frame_rate_millihertz,
-        video_codec: parse_codec(video.get("codec_name"))?,
+        video_codec: Some(video_codec),
         audio_codec: audio
             .map(|stream| parse_codec(stream.get("codec_name")))
             .transpose()?

@@ -54,6 +54,7 @@ completion.
 | [`superpowers/specs/2026-08-09-viewer-bottom-shelf-preview-loading-design.md`](superpowers/specs/2026-08-09-viewer-bottom-shelf-preview-loading-design.md) | Active | — |
 | [`superpowers/specs/2026-08-09-preview-original-single-reveal-design.md`](superpowers/specs/2026-08-09-preview-original-single-reveal-design.md) | Active | — |
 | [`superpowers/specs/2026-08-10-viewer-video-preview-design.md`](superpowers/specs/2026-08-10-viewer-video-preview-design.md) | Active | — |
+| [`reviews/2026-08-10-video-preview-acceptance.md`](reviews/2026-08-10-video-preview-acceptance.md) | Active development evidence | — |
 
 ## Superseded decisions
 
@@ -105,6 +106,7 @@ completion.
 | [`superpowers/plans/2026-08-09-viewer-bottom-shelf-layout.md`](superpowers/plans/2026-08-09-viewer-bottom-shelf-layout.md) | Historical | — |
 | [`superpowers/plans/2026-08-09-viewer-stable-preview-loading.md`](superpowers/plans/2026-08-09-viewer-stable-preview-loading.md) | Historical | — |
 | [`superpowers/plans/2026-08-09-preview-original-single-reveal.md`](superpowers/plans/2026-08-09-preview-original-single-reveal.md) | Historical | — |
+| [`superpowers/plans/2026-08-10-viewer-bundled-video-preview.md`](superpowers/plans/2026-08-10-viewer-bundled-video-preview.md) | Historical | — |
 
 ## Historical review evidence
 
@@ -117,6 +119,7 @@ completion.
 | [`reviews/2026-07-16-m1-browsing-core-review.md`](reviews/2026-07-16-m1-browsing-core-review.md) | Historical | — |
 | [`reviews/2026-07-16-m2-review-efficiency-review.md`](reviews/2026-07-16-m2-review-efficiency-review.md) | Historical | — |
 | [`reviews/2026-07-16-m3-organization-comparison-review.md`](reviews/2026-07-16-m3-organization-comparison-review.md) | Historical | — |
+| [`reviews/2026-08-10-video-render-feasibility.md`](reviews/2026-08-10-video-render-feasibility.md) | Historical gate evidence | — |
 
 ## Status rules
 

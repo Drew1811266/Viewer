@@ -34,3 +34,21 @@ The controller uses one clean copied fixture, one Viewer process, one native hel
 - The smoke report records each journey result and action log separately from browser visual verdicts.
 - A failed journey is never promoted to visual acceptance. Diagnostics may continue only when the remaining journey is non-destructive and the shared session can be restored safely.
 - Browser `forced-colors` evidence is not macOS Increase Contrast or Windows High Contrast evidence.
+
+## Bundled-video development evidence
+
+Task 14 development acceptance is recorded in
+[`2026-08-10-video-preview-acceptance.md`](2026-08-10-video-preview-acceptance.md).
+The historical Task 14 native artifacts lack the current dirty-source,
+fixture, machine, app/runtime, and shared-run binding, so the core native
+decision is `UNVERIFIED` pending a new run. The collector rejects all stale or
+mismatched bindings and has no timestamp fallback.
+
+The developer smoke runs the same strict inventory/hash/architecture/loader
+audit before launch. Offline status additionally requires the runner-produced
+artifact showing that the exact audited app was spawned with the canonical
+macOS `sandbox-exec` deny-network profile and then bound to its target process
+and stable window. The emitter cannot replace this with an environment flag or
+boolean. This is sandbox launch evidence, not independent packet capture.
+Signed mode adds Developer ID, secure timestamp, nested/app signature, stapler,
+and `spctl`; those release-signing checks remain deferred by scope.

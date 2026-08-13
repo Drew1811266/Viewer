@@ -138,10 +138,13 @@ impl MacVideoRenderSession {
         let Some(client) = self.client.as_ref() else {
             return Ok(VideoRenderDiagnostics::snapshot("", ""));
         };
-        Ok(VideoRenderDiagnostics::snapshot(
+        let mut diagnostics = VideoRenderDiagnostics::snapshot(
             client.active_hardware_decoder()?.unwrap_or_default(),
             client.active_video_output()?.unwrap_or_default(),
-        ))
+        );
+        diagnostics.mistimed_frames = client.mistimed_frame_count()?.unwrap_or(0);
+        diagnostics.decoder_dropped_frames = client.decoder_frame_drop_count()?.unwrap_or(0);
+        Ok(diagnostics)
     }
 
     pub fn playback_time_us(&self) -> Result<Option<u64>, RenderLoopError> {
@@ -231,9 +234,9 @@ impl MacVideoRenderSession {
         Ok(())
     }
 
-    pub fn open_local_file(&mut self, path: &Path) -> Result<(), RenderLoopError> {
+    pub fn open_local_file_paused(&mut self, path: &Path) -> Result<(), RenderLoopError> {
         if let Some(client) = self.client.as_mut() {
-            client.open_local_file(path)?;
+            client.open_local_file_paused(path)?;
             self.media_loaded = true;
         }
         Ok(())

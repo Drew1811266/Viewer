@@ -10,6 +10,12 @@ export function parseRenderedFrames(name) {
   return Number.parseInt(match[1], 10)
 }
 
+export function parseNamedCounter(name, label) {
+  const match = new RegExp(`^${label}：(\\d+)$`).exec(name)
+  if (!match) throw new Error(`${label} status is not numeric: ${name}`)
+  return Number.parseInt(match[1], 10)
+}
+
 export function proveFrameDirection(initialUs, forwardUs, backwardUs) {
   if (!(forwardUs > initialUs)) {
     throw new Error(`Playback time did not move forward: ${initialUs} -> ${forwardUs}`)
@@ -20,8 +26,62 @@ export function proveFrameDirection(initialUs, forwardUs, backwardUs) {
   return { initialUs, forwardUs, backwardUs }
 }
 
+export function validatePerformanceRemount(previousGeneration, expectedGeneration, observed) {
+  const diagnostics = observed.generationDiagnostics
+  if (
+    expectedGeneration <= previousGeneration ||
+    diagnostics.generation !== expectedGeneration ||
+    !diagnostics.mountReturned ||
+    diagnostics.frameUpdates < 1 ||
+    diagnostics.pictureFrames < 1 ||
+    diagnostics.reveals < 1
+  ) {
+    throw new Error('Performance remount is not ready in the expected native generation')
+  }
+  if (
+    !observed.firstFrameReady ||
+    observed.decodedPictureType !== 'I' ||
+    observed.resources !== '1/1/1' ||
+    observed.renderedFrames < 1
+  ) {
+    throw new Error('Performance remount did not publish a decoded first frame and owned resources')
+  }
+  if (observed.hwdec !== 'videotoolbox' || observed.videoOutput !== 'libmpv') {
+    throw new Error('Performance remount did not retain the required native backend')
+  }
+  return observed
+}
+
 export function matrixExitCode(rows) {
   return Object.values(rows).every(Boolean) ? 0 : 1
+}
+
+import { DENY_NETWORK_SANDBOX_PROFILE } from './network-launch-artifact.mjs'
+
+export function nativeLaunchSpec({
+  appExecutable,
+  appPath,
+  nativeLogPath,
+  networkDisabled,
+  env,
+  sandboxExecutable = '/usr/bin/sandbox-exec',
+  openExecutable = '/usr/bin/open',
+}) {
+  return networkDisabled
+    ? {
+        command: sandboxExecutable,
+        argumentsList: ['-p', DENY_NETWORK_SANDBOX_PROFILE, appExecutable],
+        env: { ...env, PATH: '/usr/bin:/bin:/usr/sbin:/sbin' },
+        networkPolicy: 'deny-all',
+        sandboxProfile: DENY_NETWORK_SANDBOX_PROFILE,
+      }
+    : {
+        command: openExecutable,
+        argumentsList: ['-n', '-W', '-o', nativeLogPath, '--stderr', nativeLogPath, appPath],
+        env,
+        networkPolicy: 'unrestricted',
+        sandboxProfile: null,
+      }
 }
 
 export function selectLaunchedViewerProcess(processes, executablePath, existingPids) {

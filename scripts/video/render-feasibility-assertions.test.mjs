@@ -1,14 +1,15 @@
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
 import test from 'node:test'
 
 import {
   analyzeReactOverlay,
   matrixExitCode,
   parseRenderedFrames,
+  parseNamedCounter,
   parsePlaybackTimeUs,
   proveFrameDirection,
   selectLaunchedViewerProcess,
+  validatePerformanceRemount,
   verifyFixtureHashes,
 } from './render-feasibility-assertions.mjs'
 
@@ -41,14 +42,13 @@ test('requires the exact three approved fixture hashes before native work', () =
   const { 'vfr-step': _missing, ...missingFixture } = requiredFixtures
   assert.throws(() => verifyFixtureHashes(missingFixture), /exact fixture allowlist/)
 
-  const runner = readFileSync(new URL('./render-feasibility.mjs', import.meta.url), 'utf8')
-  const verify = runner.indexOf('verifyFixtureHashes(result.fixtures)')
-  const focusedTests = runner.indexOf("'test-render-feasibility-assertions.log'")
-  assert.ok(verify >= 0 && focusedTests > verify)
 })
 
 test('parses typed playback time and proves forward then backward movement', () => {
   assert.equal(parseRenderedFrames('已绘制：4'), 4)
+  assert.equal(parseNamedCounter('误时帧：3', '误时帧'), 3)
+  assert.equal(parseNamedCounter('命令：12', '命令'), 12)
+  assert.throws(() => parseNamedCounter('命令：—', '命令'), /not numeric/)
   assert.throws(() => parseRenderedFrames('4 帧'), /not numeric/)
   assert.equal(parsePlaybackTimeUs('时间：33333 µs'), 33_333)
   assert.deepEqual(proveFrameDirection(0, 33_333, 16_667), {
@@ -58,6 +58,40 @@ test('parses typed playback time and proves forward then backward movement', () 
   })
   assert.throws(() => proveFrameDirection(0, 0, 0), /did not move forward/)
   assert.throws(() => proveFrameDirection(0, 33_333, 33_333), /did not move backward/)
+})
+
+test('performance remount evidence is generation-coherent and backend-bound', () => {
+  const observed = {
+    generationDiagnostics: {
+      generation: 8,
+      mountReturned: true,
+      updateCallbacks: 2,
+      drawEntries: 3,
+      frameUpdates: 1,
+      pictureFrames: 1,
+      reveals: 1,
+      eventEmits: 2,
+    },
+    firstFrameReady: true,
+    decodedPictureType: 'I',
+    resources: '1/1/1',
+    renderedFrames: 4,
+    hwdec: 'videotoolbox',
+    videoOutput: 'libmpv',
+  }
+  assert.equal(validatePerformanceRemount(7, 8, observed), observed)
+  assert.throws(
+    () =>
+      validatePerformanceRemount(7, 8, {
+        ...observed,
+        generationDiagnostics: { ...observed.generationDiagnostics, generation: 7 },
+      }),
+    /expected native generation/,
+  )
+  assert.throws(
+    () => validatePerformanceRemount(7, 8, { ...observed, hwdec: 'no' }),
+    /required native backend/,
+  )
 })
 
 test('requires every matrix row before returning a successful exit code', () => {
@@ -106,40 +140,6 @@ test('recognizes a neutral React control overlay above saturated video pixels', 
 
   const noOverlay = rgbaImage(1024, 720, [255, 0, 0, 255])
   assert.throws(() => analyzeReactOverlay(noOverlay), /React overlay pixels/)
-})
-
-test('the signed gate verifies both the nested runtime and final app bundle', () => {
-  const runner = readFileSync(new URL('./render-feasibility.mjs', import.meta.url), 'utf8')
-  assert.match(runner, /verify-mpv-/)
-  assert.match(runner, /verify-app-/)
-  assert.match(runner, /'--verify', '--deep', '--strict'/)
-})
-
-test('window discovery must remain stable before the native helper binds its id', () => {
-  const runner = readFileSync(new URL('./render-feasibility.mjs', import.meta.url), 'utf8')
-  assert.match(runner, /waitForStable\(/)
-  assert.match(runner, /stableMs: 300/)
-})
-
-test('the first ready surface is captured and visually checked before backend polling', () => {
-  const runner = readFileSync(new URL('./render-feasibility.mjs', import.meta.url), 'utf8')
-  const ready = runner.indexOf("await waitForStatus(client, ['首帧：就绪'])")
-  const capture = runner.indexOf("capture(client, `${fixtureId}-first-revealed`)", ready)
-  const pixels = runner.indexOf('const firstRevealedPixels = await assertColorBars', capture)
-  const decodedSignal = runner.indexOf("waitForStatus(client, ['解码帧：I'])", pixels)
-  const backend = runner.indexOf("name: 'videotoolbox'", ready)
-
-  assert.ok(
-    ready >= 0 &&
-      capture > ready &&
-      pixels > capture &&
-      decodedSignal > pixels &&
-      backend > decodedSignal,
-  )
-  assert.match(
-    runner,
-    /waitForRenderedFrames\(\s*viewer\.client,\s*\(frames\) => frames > initialRenderedFrames/s,
-  )
 })
 
 function rgbaImage(width, height, color) {

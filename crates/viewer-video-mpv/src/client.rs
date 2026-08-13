@@ -167,7 +167,17 @@ impl MpvClient {
     pub fn open_local_file(&mut self, path: &Path) -> Result<(), MpvError> {
         validate_local_file(path)?;
         self.initialize_for_rendering()?;
+        self.load_local_file(path)
+    }
 
+    pub fn open_local_file_paused(&mut self, path: &Path) -> Result<(), MpvError> {
+        validate_local_file(path)?;
+        self.initialize_for_rendering()?;
+        self.pause()?;
+        self.load_local_file(path)
+    }
+
+    fn load_local_file(&self, path: &Path) -> Result<(), MpvError> {
         let media_path = path_to_c_string(path)?;
         self.run_command(&[
             CString::new("loadfile").expect("static string has no NUL"),
@@ -236,6 +246,14 @@ impl MpvClient {
             .runtime_double_property("time-pos")?
             .filter(|seconds| seconds.is_finite() && *seconds >= 0.0)
             .map(|seconds| (seconds * 1_000_000.0).round() as u64))
+    }
+
+    pub fn mistimed_frame_count(&self) -> Result<Option<u64>, MpvError> {
+        self.runtime_counter_property("mistimed-frame-count")
+    }
+
+    pub fn decoder_frame_drop_count(&self) -> Result<Option<u64>, MpvError> {
+        self.runtime_counter_property("decoder-frame-drop-count")
     }
 
     pub fn eof_reached(&self) -> Result<Option<bool>, MpvError> {
@@ -343,6 +361,13 @@ impl MpvClient {
         }
         ensure_success("get_property", result)?;
         Ok(Some(value))
+    }
+
+    fn runtime_counter_property(&self, name: &'static str) -> Result<Option<u64>, MpvError> {
+        Ok(self
+            .runtime_double_property(name)?
+            .filter(|value| value.is_finite() && *value >= 0.0)
+            .map(|value| value.round() as u64))
     }
 
     fn runtime_flag_property(&self, name: &'static str) -> Result<Option<bool>, MpvError> {

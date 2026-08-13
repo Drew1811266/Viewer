@@ -78,3 +78,15 @@ path = "../tests/video_security_boundaries.rs"
 [[test]]
 name = "video_runtime_lifecycle"
 path = "../tests/video_runtime_lifecycle.rs"
+
+[[test]]
+name = "video_fixture_matrix"
+path = "../tests/video_fixture_matrix.rs"
+
+[[test]]
+name = "video_resource_lifecycle"
+path = "../tests/video_resource_lifecycle.rs"
+
+[[test]]
+name = "video_performance_gate"
+path = "../tests/video_performance_gate.rs"

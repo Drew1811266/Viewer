@@ -4,9 +4,13 @@ use objc2::{msg_send, runtime::AnyObject};
 use objc2_app_kit::NSColor;
 use serde::{Deserialize, Serialize};
 use std::{
-    cell::RefCell,
+    cell::{Cell, RefCell},
     path::{Path, PathBuf},
-    sync::Arc,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, AtomicU64, Ordering},
+    },
+    time::Instant,
 };
 use tauri::{AppHandle, Emitter, Manager, WebviewWindow, webview::Color};
 use viewer_platform_macos::video::{
@@ -18,6 +22,7 @@ const FRAME_EVENT: &str = "viewer://video-feasibility-frame";
 
 thread_local! {
     static ACTIVE_SESSION: RefCell<Option<ActiveFeasibilitySession>> = const { RefCell::new(None) };
+    static NEXT_GENERATION: Cell<u64> = const { Cell::new(0) };
 }
 
 struct ActiveFeasibilitySession {
@@ -27,8 +32,89 @@ struct ActiveFeasibilitySession {
     initial_rendered_frames: u64,
     forward_step: bool,
     backward_step: bool,
+    command_serial: u64,
+    last_command_latency_us: u64,
     observed_hwdec: String,
     observed_video_output: String,
+    generation_probe: Arc<FeasibilityGenerationProbe>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct FeasibilityGenerationDiagnostics {
+    generation: u64,
+    mount_returned: bool,
+    update_callbacks: u64,
+    draw_entries: u64,
+    frame_updates: u64,
+    picture_frames: u64,
+    reveals: u64,
+    event_emits: u64,
+}
+
+#[derive(Debug)]
+struct FeasibilityGenerationProbe {
+    generation: u64,
+    mount_returned: AtomicBool,
+    update_callbacks: AtomicU64,
+    draw_entries: AtomicU64,
+    frame_updates: AtomicU64,
+    picture_frames: AtomicU64,
+    reveals: AtomicU64,
+    event_emits: AtomicU64,
+}
+
+impl FeasibilityGenerationProbe {
+    fn new(generation: u64) -> Self {
+        Self {
+            generation,
+            mount_returned: AtomicBool::new(false),
+            update_callbacks: AtomicU64::new(0),
+            draw_entries: AtomicU64::new(0),
+            frame_updates: AtomicU64::new(0),
+            picture_frames: AtomicU64::new(0),
+            reveals: AtomicU64::new(0),
+            event_emits: AtomicU64::new(0),
+        }
+    }
+
+    fn record_mount_returned(&self) {
+        self.mount_returned.store(true, Ordering::Release);
+    }
+
+    fn record_update_callback(&self) {
+        self.update_callbacks.fetch_add(1, Ordering::AcqRel);
+    }
+
+    fn record_draw(&self, frame_update: bool, picture_frame: bool, revealed: bool) {
+        self.draw_entries.fetch_add(1, Ordering::AcqRel);
+        if frame_update {
+            self.frame_updates.fetch_add(1, Ordering::AcqRel);
+        }
+        if picture_frame {
+            self.picture_frames.fetch_add(1, Ordering::AcqRel);
+        }
+        if revealed {
+            self.reveals.fetch_add(1, Ordering::AcqRel);
+        }
+    }
+
+    fn record_event_emit(&self) {
+        self.event_emits.fetch_add(1, Ordering::AcqRel);
+    }
+
+    fn snapshot(&self) -> FeasibilityGenerationDiagnostics {
+        FeasibilityGenerationDiagnostics {
+            generation: self.generation,
+            mount_returned: self.mount_returned.load(Ordering::Acquire),
+            update_callbacks: self.update_callbacks.load(Ordering::Acquire),
+            draw_entries: self.draw_entries.load(Ordering::Acquire),
+            frame_updates: self.frame_updates.load(Ordering::Acquire),
+            picture_frames: self.picture_frames.load(Ordering::Acquire),
+            reveals: self.reveals.load(Ordering::Acquire),
+            event_emits: self.event_emits.load(Ordering::Acquire),
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize)]
@@ -51,13 +137,15 @@ impl From<SurfaceRectDto> for SurfaceRect {
     }
 }
 
-#[derive(Clone, Copy, Debug, Deserialize)]
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum VideoFeasibilityAction {
     Mount,
     UpdateGeometry,
     FrameStepForward,
     FrameStepBackward,
+    Play,
+    Pause,
     Status,
     Close,
 }
@@ -68,6 +156,7 @@ pub struct VideoFeasibilityRequest {
     fixture_id: String,
     action: VideoFeasibilityAction,
     rect: SurfaceRectDto,
+    expected_generation: Option<u64>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -80,6 +169,9 @@ pub struct VideoFeasibilityReport {
     forward_step: bool,
     backward_step: bool,
     playback_time_us: Option<u64>,
+    command_serial: u64,
+    last_command_latency_us: u64,
+    generation_diagnostics: FeasibilityGenerationDiagnostics,
     diagnostics: VideoRenderDiagnostics,
 }
 
@@ -90,10 +182,24 @@ pub async fn run_video_feasibility(
     request: VideoFeasibilityRequest,
 ) -> Result<VideoFeasibilityReport, CommandError> {
     let (sender, receiver) = tokio::sync::oneshot::channel();
+    let cancelled_action = request.action;
+    let cancelled_generation = request.expected_generation;
     DispatchQueue::main().exec_async(move || {
         let result = handle_on_main_thread(app, window, request);
         if sender.send(result).is_err() {
-            ACTIVE_SESSION.with(|slot| slot.borrow_mut().take());
+            ACTIVE_SESSION.with(|slot| {
+                let mut slot = slot.borrow_mut();
+                let active_generation = slot
+                    .as_ref()
+                    .map(|active| active.generation_probe.snapshot().generation);
+                if cancelled_command_owns_session(
+                    cancelled_action,
+                    cancelled_generation,
+                    active_generation,
+                ) {
+                    slot.take();
+                }
+            });
         }
     });
     receiver.await.map_err(|_| {
@@ -109,6 +215,13 @@ fn handle_on_main_thread(
     window: WebviewWindow,
     request: VideoFeasibilityRequest,
 ) -> Result<VideoFeasibilityReport, CommandError> {
+    if request.action == VideoFeasibilityAction::Close {
+        return close(
+            &request.fixture_id,
+            request.expected_generation,
+            request.rect,
+        );
+    }
     run_command_with_cleanup(
         || {
             let fixture = fixture_path(&request.fixture_id)?;
@@ -160,10 +273,28 @@ fn handle_on_main_thread(
                         active.report()
                     })
                 }
+                VideoFeasibilityAction::Play => {
+                    with_matching_session(&request.fixture_id, |active| {
+                        let started = Instant::now();
+                        active.session.play().map_err(render_error)?;
+                        active.last_command_latency_us = elapsed_micros(started);
+                        active.command_serial += 1;
+                        active.report()
+                    })
+                }
+                VideoFeasibilityAction::Pause => {
+                    with_matching_session(&request.fixture_id, |active| {
+                        let started = Instant::now();
+                        active.session.pause().map_err(render_error)?;
+                        active.last_command_latency_us = elapsed_micros(started);
+                        active.command_serial += 1;
+                        active.report()
+                    })
+                }
                 VideoFeasibilityAction::Status => {
                     with_matching_session(&request.fixture_id, |active| active.report())
                 }
-                VideoFeasibilityAction::Close => close(&request.fixture_id, request.rect),
+                VideoFeasibilityAction::Close => unreachable!("close is handled before setup"),
             }
         },
         || {
@@ -180,20 +311,29 @@ fn mount(
     bundle_resources: &Path,
 ) -> Result<VideoFeasibilityReport, CommandError> {
     ACTIVE_SESSION.with(|slot| slot.borrow_mut().take());
+    let generation = NEXT_GENERATION.with(|next| {
+        let generation = next.get() + 1;
+        next.set(generation);
+        generation
+    });
+    let generation_probe = Arc::new(FeasibilityGenerationProbe::new(generation));
     let layout = RuntimeLayout::from_bundle_root(bundle_resources).map_err(render_error)?;
     let library = MpvLibrary::load(&layout).map_err(render_error)?;
     let mut client = MpvClient::new(&library).map_err(render_error)?;
     client.initialize_for_rendering().map_err(render_error)?;
     let surface = MacVideoSurface::mount(&window, rect.into()).map_err(render_error)?;
     let scheduling_window = window.clone();
+    let callback_probe = Arc::clone(&generation_probe);
     let schedule_draw: Arc<dyn Fn() + Send + Sync> = Arc::new(move || {
+        callback_probe.record_update_callback();
         let event_window = scheduling_window.clone();
         DispatchQueue::main().exec_async(move || {
             let report = ACTIVE_SESSION.with(|slot| {
                 let mut slot = slot.borrow_mut();
                 slot.as_ref()?;
                 let result = run_registered_action(&mut slot, |active| {
-                    active.session.draw_if_needed().map_err(render_error)?;
+                    active.draw_and_record().map_err(render_error)?;
+                    active.generation_probe.record_event_emit();
                     active.report()
                 });
                 match result {
@@ -222,15 +362,18 @@ fn mount(
         initial_rendered_frames: diagnostics.rendered_frames,
         forward_step: false,
         backward_step: false,
+        command_serial: 0,
+        last_command_latency_us: 0,
         observed_hwdec: diagnostics.hwdec,
         observed_video_output: diagnostics.video_output,
+        generation_probe,
     };
     ACTIVE_SESSION.with(|slot| {
         let mut slot = slot.borrow_mut();
         *slot = Some(active);
         let result = (|| {
             let active = slot.as_mut().expect("active session was just registered");
-            active.session.draw_if_needed().map_err(render_error)?;
+            active.draw_and_record().map_err(render_error)?;
             active.initial_rendered_frames = active
                 .session
                 .diagnostics()
@@ -238,21 +381,31 @@ fn mount(
                 .rendered_frames;
             active
                 .session
-                .open_local_file(fixture)
+                .open_local_file_paused(fixture)
                 .map_err(render_error)?;
-            active.session.pause().map_err(render_error)?;
+            active.generation_probe.record_mount_returned();
             active.report()
         })();
         clear_session_on_error(&mut slot, result)
     })
 }
 
-fn close(fixture_id: &str, rect: SurfaceRectDto) -> Result<VideoFeasibilityReport, CommandError> {
+fn close(
+    fixture_id: &str,
+    expected_generation: Option<u64>,
+    rect: SurfaceRectDto,
+) -> Result<VideoFeasibilityReport, CommandError> {
     let closed = ACTIVE_SESSION.with(|slot| {
         let mut slot = slot.borrow_mut();
-        let active = slot.as_ref().ok_or_else(no_active_session)?;
+        let active = slot.as_mut().ok_or_else(no_active_session)?;
         if active.fixture_id != fixture_id {
             return Err(fixture_mismatch());
+        }
+        if !generation_owns_session(
+            active.generation_probe.snapshot().generation,
+            expected_generation,
+        ) {
+            return Ok(stale_close_report(active, rect));
         }
         close_registered_session(&mut slot, ActiveFeasibilitySession::report)
     })?;
@@ -265,8 +418,55 @@ fn close(fixture_id: &str, rect: SurfaceRectDto) -> Result<VideoFeasibilityRepor
         forward_step: closed.forward_step,
         backward_step: closed.backward_step,
         playback_time_us: closed.playback_time_us,
+        command_serial: closed.command_serial,
+        last_command_latency_us: closed.last_command_latency_us,
+        generation_diagnostics: closed.generation_diagnostics,
         diagnostics,
     })
+}
+
+fn stale_close_report(
+    active: &ActiveFeasibilitySession,
+    rect: SurfaceRectDto,
+) -> VideoFeasibilityReport {
+    VideoFeasibilityReport {
+        fixture_id: active.fixture_id.clone(),
+        rect,
+        first_frame_ready: false,
+        decoded_picture_type: None,
+        forward_step: active.forward_step,
+        backward_step: active.backward_step,
+        playback_time_us: None,
+        command_serial: active.command_serial,
+        last_command_latency_us: active.last_command_latency_us,
+        generation_diagnostics: active.generation_probe.snapshot(),
+        diagnostics: VideoRenderDiagnostics::snapshot(
+            &active.observed_hwdec,
+            &active.observed_video_output,
+        ),
+    }
+}
+
+fn generation_owns_session(active_generation: u64, expected_generation: Option<u64>) -> bool {
+    match expected_generation {
+        Some(expected) => active_generation == expected,
+        None => true,
+    }
+}
+
+fn cancelled_command_owns_session(
+    action: VideoFeasibilityAction,
+    expected_generation: Option<u64>,
+    active_generation: Option<u64>,
+) -> bool {
+    if action != VideoFeasibilityAction::Close {
+        return true;
+    }
+    match (expected_generation, active_generation) {
+        (Some(expected), Some(active)) => expected == active,
+        (Some(_), None) => false,
+        (None, _) => true,
+    }
 }
 
 fn with_matching_session(
@@ -284,6 +484,16 @@ fn with_matching_session(
 }
 
 impl ActiveFeasibilitySession {
+    fn draw_and_record(&mut self) -> Result<bool, viewer_platform_macos::video::RenderLoopError> {
+        let revealed_before = self.session.first_decoded_frame_revealed();
+        let frame_update = self.session.draw_if_needed()?;
+        let picture_frame = frame_update && self.session.decoded_picture_type().is_some();
+        let revealed = !revealed_before && self.session.first_decoded_frame_revealed();
+        self.generation_probe
+            .record_draw(frame_update, picture_frame, revealed);
+        Ok(frame_update)
+    }
+
     fn report(&mut self) -> Result<VideoFeasibilityReport, CommandError> {
         let mut diagnostics = self.session.diagnostics().map_err(render_error)?;
         let playback_time_us = self.session.playback_time_us().map_err(render_error)?;
@@ -304,6 +514,9 @@ impl ActiveFeasibilitySession {
             forward_step: self.forward_step,
             backward_step: self.backward_step,
             playback_time_us,
+            command_serial: self.command_serial,
+            last_command_latency_us: self.last_command_latency_us,
+            generation_diagnostics: self.generation_probe.snapshot(),
             diagnostics,
         })
     }
@@ -356,6 +569,10 @@ fn fixture_frame_ready(
     rendered_frames > fixture_baseline && decoded_frame_revealed
 }
 
+fn elapsed_micros(started: Instant) -> u64 {
+    u64::try_from(started.elapsed().as_micros()).unwrap_or(u64::MAX)
+}
+
 fn retain_observed_backend(
     diagnostics: &mut VideoRenderDiagnostics,
     observed_hwdec: &mut String,
@@ -378,6 +595,8 @@ fn fixture_path(fixture_id: &str) -> Result<PathBuf, CommandError> {
         "h264-1080p" => "h264-1080p.mp4",
         "hevc-portrait" => "hevc-portrait.mp4",
         "vfr-step" => "vfr-step.mp4",
+        "h264-1080p60" => "../../../target/video-performance/h264-1080p60.mp4",
+        "hevc-4k30" => "../../../target/video-performance/hevc-4k30.mov",
         _ => {
             return Err(feasibility_error(
                 "video_feasibility_fixture_rejected",
@@ -452,15 +671,23 @@ fn feasibility_error(code: &'static str, message: &'static str) -> CommandError 
 #[cfg(test)]
 mod tests {
     use super::{
+        FeasibilityGenerationProbe, VideoFeasibilityAction, cancelled_command_owns_session,
         clear_session_on_error, close_registered_session, fixture_frame_ready, fixture_path,
-        retain_observed_backend, run_command_with_cleanup, run_registered_action,
+        generation_owns_session, retain_observed_backend, run_command_with_cleanup,
+        run_registered_action,
     };
     use std::{cell::Cell, rc::Rc};
     use viewer_platform_macos::video::VideoRenderDiagnostics;
 
     #[test]
     fn feasibility_fixture_ids_are_an_exact_allowlist() {
-        for id in ["h264-1080p", "hevc-portrait", "vfr-step"] {
+        for id in [
+            "h264-1080p",
+            "hevc-portrait",
+            "vfr-step",
+            "h264-1080p60",
+            "hevc-4k30",
+        ] {
             assert!(fixture_path(id).is_ok(), "missing approved fixture {id}");
         }
         assert!(fixture_path("../h264-1080p").is_err());
@@ -569,6 +796,64 @@ mod tests {
     }
 
     #[test]
+    fn feasibility_pipeline_counters_are_bound_to_their_mount_generation() {
+        let first = FeasibilityGenerationProbe::new(41);
+        let second = FeasibilityGenerationProbe::new(42);
+
+        first.record_mount_returned();
+        first.record_update_callback();
+        first.record_draw(true, true, true);
+        first.record_event_emit();
+        second.record_mount_returned();
+        second.record_update_callback();
+        second.record_draw(false, false, false);
+
+        assert_eq!(
+            first.snapshot(),
+            super::FeasibilityGenerationDiagnostics {
+                generation: 41,
+                mount_returned: true,
+                update_callbacks: 1,
+                draw_entries: 1,
+                frame_updates: 1,
+                picture_frames: 1,
+                reveals: 1,
+                event_emits: 1,
+            }
+        );
+        assert_eq!(
+            second.snapshot(),
+            super::FeasibilityGenerationDiagnostics {
+                generation: 42,
+                mount_returned: true,
+                update_callbacks: 1,
+                draw_entries: 1,
+                frame_updates: 0,
+                picture_frames: 0,
+                reveals: 0,
+                event_emits: 0,
+            }
+        );
+    }
+
+    #[test]
+    fn a_late_close_cannot_own_a_newer_same_fixture_generation() {
+        assert!(generation_owns_session(8, Some(8)));
+        assert!(!generation_owns_session(9, Some(8)));
+        assert!(generation_owns_session(9, None));
+        assert!(!cancelled_command_owns_session(
+            VideoFeasibilityAction::Close,
+            Some(8),
+            Some(9),
+        ));
+        assert!(cancelled_command_owns_session(
+            VideoFeasibilityAction::Close,
+            Some(9),
+            Some(9),
+        ));
+    }
+
+    #[test]
     fn dispatch_and_bundle_source_have_no_fallible_or_override_escape_hatches() {
         let source = include_str!("video_feasibility.rs");
         let fallible_dispatch = ["run", "on", "main", "thread"].join("_");
@@ -591,7 +876,8 @@ mod tests {
 
         assert!(cargo_manifest.contains("video-feasibility = ["));
         assert!(cargo_manifest.contains("\"dep:dispatch2\""));
-        assert!(cargo_manifest.contains("\"dep:viewer-video-mpv\""));
+        assert!(cargo_manifest.contains("viewer-video-mpv = { path ="));
+        assert!(!cargo_manifest.contains("\"dep:viewer-video-mpv\""));
         assert!(cargo_manifest.contains("\"tauri/macos-private-api\""));
         assert!(cargo_manifest.contains("tauri = { version = \"2\", features = [] }"));
         assert!(!base_config.contains("macOSPrivateApi"));

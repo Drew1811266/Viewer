@@ -231,9 +231,8 @@ impl VideoEngine for MacOsLibmpvAdapter {
             let mut session = lock(&adapter.session);
             let session = session.as_mut().ok_or(VideoEngineError::Unavailable)?;
             session
-                .open_local_file(&request.source.canonical_path)
+                .open_local_file_paused(&request.source.canonical_path)
                 .map_err(|_| VideoEngineError::Decode)?;
-            session.pause().map_err(|_| VideoEngineError::Decode)?;
             *lock(&adapter.generation) = Some(request.generation);
             adapter
                 .first_frame_published

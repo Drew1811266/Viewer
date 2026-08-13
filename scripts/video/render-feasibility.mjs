@@ -2,7 +2,9 @@ import { spawn, spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import {
   existsSync,
+  closeSync,
   mkdirSync,
+  openSync,
   readFileSync,
   writeFileSync,
 } from 'node:fs'
@@ -23,10 +25,13 @@ import {
 import {
   analyzeReactOverlay,
   matrixExitCode,
+  nativeLaunchSpec,
+  parseNamedCounter,
   parsePlaybackTimeUs,
   parseRenderedFrames,
   proveFrameDirection,
   selectLaunchedViewerProcess,
+  validatePerformanceRemount,
   verifyFixtureHashes,
 } from './render-feasibility-assertions.mjs'
 import {
@@ -34,20 +39,39 @@ import {
   cleanupFeasibilityLaunch,
   renderFeasibilityTestPaths,
 } from './render-feasibility-lifecycle.mjs'
+import {
+  createBuildAttestation,
+  loadVerifiedAuditArtifact,
+  loadVerifiedBuildAttestation,
+  performanceResetPlan,
+  prepareAcceptanceBundle,
+  writeBuildAttestation,
+} from './build-attestation.mjs'
+import { collectSourceIdentity } from './source-identity.mjs'
+import {
+  loadVerifiedNetworkLaunchArtifact,
+  writeNetworkLaunchArtifact,
+} from './network-launch-artifact.mjs'
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url))
 const repoRoot = path.resolve(scriptDirectory, '../..')
 const outputRoot = path.join(repoRoot, 'target', 'video-render-feasibility')
+const matrixResultPath = path.join(outputRoot, 'matrix-result.json')
+const generationDiagnosticPath = path.join(outputRoot, 'task14-generation-diagnostic.json')
+const buildAttestationPath = path.join(outputRoot, 'build-attestation.json')
+const bundleAuditPath = path.join(outputRoot, 'bundle-audit.json')
+const networkLaunchPath = path.join(outputRoot, 'network-launch.json')
 const logsRoot = path.join(outputRoot, 'logs')
 const screenshotsRoot = path.join(outputRoot, 'screenshots')
 const runtimeRoot = path.join(
   repoRoot,
   'target',
-  'viewer-video-runtime',
-  'aarch64-apple-darwin',
+  'task6-review-resources',
   'ViewerVideoRuntime',
 )
-const appPath = path.join(repoRoot, 'target', 'debug', 'bundle', 'macos', 'Viewer.app')
+const appPath = process.env.VIEWER_VIDEO_ACCEPTANCE_APP
+  ? path.resolve(process.env.VIEWER_VIDEO_ACCEPTANCE_APP)
+  : path.join(repoRoot, 'target', 'debug', 'bundle', 'macos', 'Viewer.app')
 const appExecutable = path.join(appPath, 'Contents', 'MacOS', 'viewer-desktop')
 const bundledMpv = path.join(
   appPath,
@@ -57,6 +81,12 @@ const bundledMpv = path.join(
   'lib',
   'libmpv.2.dylib',
 )
+const bundleIdentity = Object.freeze({
+  identifier: 'com.viewer.desktop',
+  productName: 'Viewer',
+  executableRelativePath: 'Contents/MacOS/viewer-desktop',
+})
+const only4k = process.env.VIEWER_VIDEO_ACCEPTANCE_ONLY_4K === '1'
 const matrixRows = [
   'surface-at-dom-rect',
   'retina-resize',
@@ -68,6 +98,9 @@ const matrixRows = [
   'hevc-videotoolbox',
   'no-ipc-frame-buffer',
   '30-mount-unmount-baseline',
+  'timeline-preview',
+  'h264-1080p60-performance',
+  'hevc-4k30-performance',
 ]
 const fixtures = [
   ['h264-1080p', 'h264-1080p.mp4'],
@@ -76,8 +109,10 @@ const fixtures = [
 ]
 const firstFrameExpectations = {
   'h264-1080p': { left: 152, right: 872, minColorRatio: 0.35 },
-  'hevc-portrait': { left: 152, right: 872, minColorRatio: 0.25 },
-  'vfr-step': { left: 152, right: 872, minColorRatio: 0.35 },
+  'hevc-portrait': { left: 212, right: 812, minColorRatio: 0.2 },
+  'vfr-step': { left: 212, right: 812, minColorRatio: 0.35 },
+  'h264-1080p60': { left: 212, right: 812, minColorRatio: 0.25 },
+  'hevc-4k30': { left: 212, right: 812, minColorRatio: 0.25 },
 }
 const result = {
   generatedAt: new Date().toISOString(),
@@ -86,10 +121,46 @@ const result = {
   fixtures: {},
   native: {},
   signing: {},
-  counters: { before: '0/0/0', after: null },
+  counters: { before: null, after: null },
+  lifecycle: null,
+  generationSequence: [],
+  binding: null,
   screenshots: {},
   rows: Object.fromEntries(matrixRows.map((row) => [row, false])),
   error: null,
+  performance: [],
+  rowRunIds: {},
+}
+
+if (only4k) {
+  if (process.env.VIEWER_VIDEO_ACCEPTANCE_SKIP_BUILD !== '1') {
+    throw new Error('only-4k resume requires VIEWER_VIDEO_ACCEPTANCE_SKIP_BUILD=1')
+  }
+  const previous = JSON.parse(readFileSync(matrixResultPath, 'utf8'))
+  const inheritedRows = matrixRows.filter((row) => row !== 'hevc-4k30-performance')
+  for (const row of inheritedRows) {
+    if (previous.rows?.[row] !== true) {
+      throw new Error(`only-4k resume cannot inherit a failed row: ${row}`)
+    }
+  }
+  if (!previous.performance?.some((sample) => sample.id === 'h264-1080p60')) {
+    throw new Error('only-4k resume requires passed h264-1080p60 evidence')
+  }
+  const resumeSourceRunId = previous.generatedAt
+  Object.assign(result, {
+    fixtures: structuredClone(previous.fixtures),
+    native: structuredClone(previous.native),
+    signing: structuredClone(previous.signing),
+    counters: structuredClone(previous.counters),
+    screenshots: structuredClone(previous.screenshots),
+    rows: { ...previous.rows, 'hevc-4k30-performance': false },
+    performance: previous.performance.filter((sample) => sample.id !== 'hevc-4k30'),
+    resumeSourceRunId,
+    rowRunIds: Object.fromEntries(
+      matrixRows.map((row) => [row, previous.rowRunIds?.[row] ?? resumeSourceRunId]),
+    ),
+  })
+  result.rowRunIds['hevc-4k30-performance'] = null
 }
 
 let activeViewer
@@ -116,6 +187,42 @@ function run(command, argumentsList, logName, { env } = {}) {
 
 function sha256(filePath) {
   return createHash('sha256').update(readFileSync(filePath)).digest('hex')
+}
+
+function ensureEvidenceBinding(verifiedAudit) {
+  const buildAttestation = verifiedAudit.attestation
+  const binding = {
+    schemaVersion: 1,
+    runId: result.generatedAt,
+    sourceIdentity: buildAttestation.attestation.sourceIdentity,
+    machine: result.machine,
+    fixtures: Object.entries(result.fixtures).map(([id, fixture]) => ({
+      id,
+      sha256: fixture.sha256,
+    })),
+    appRuntime: buildAttestation.attestation.appRuntime,
+    bundleIdentity: buildAttestation.attestation.bundleIdentity,
+    buildConfig: buildAttestation.attestation.buildConfig,
+    buildAttestationSha256: buildAttestation.sha256,
+    bundleAuditSha256: verifiedAudit.sha256,
+  }
+  if (result.binding !== null && JSON.stringify(result.binding) !== JSON.stringify(binding)) {
+    throw new Error('app/runtime evidence binding changed during the native run')
+  }
+  result.binding = binding
+}
+
+function refreshBundledRuntimeInventory() {
+  const runtime = path.join(appPath, 'Contents', 'Resources', 'ViewerVideoRuntime')
+  const inventoryPath = path.join(runtime, 'runtime.inventory.sha256')
+  const entries = readFileSync(inventoryPath, 'utf8')
+    .trim()
+    .split('\n')
+    .map((line) => line.slice(66))
+  const inventory = entries
+    .map((relative) => `${sha256(path.join(runtime, relative))}  ${relative}`)
+    .join('\n')
+  writeFileSync(inventoryPath, `${inventory}\n`)
 }
 
 function tauriConfig(fixtureId) {
@@ -163,9 +270,19 @@ async function waitForElement(client, target, predicate = () => true, timeoutMs 
 async function waitForStatus(client, requiredFragments, timeoutMs = 10_000) {
   const elements = []
   for (const fragment of requiredFragments) {
-    elements.push(
-      await waitForElement(client, { role: 'AXGroup', name: fragment }, () => true, timeoutMs),
-    )
+    let remainingMs = timeoutMs
+    while (true) {
+      const windowMs = Math.min(remainingMs, 10_000)
+      try {
+        elements.push(
+          await waitForElement(client, { role: 'AXGroup', name: fragment }, () => true, windowMs),
+        )
+        break
+      } catch (error) {
+        remainingMs -= windowMs
+        if (error?.code !== 'PRECONDITION_WAIT_TIMEOUT' || remainingMs <= 0) throw error
+      }
+    }
   }
   return elements
 }
@@ -213,6 +330,28 @@ async function waitForRenderedFrames(client, predicate = () => true) {
       }
     },
     { timeoutMs: 10_000, intervalMs: 50 },
+  )
+}
+
+async function currentNamedCounter(client, label) {
+  const element = await queryOne(client, { role: 'AXGroup', namePrefix: `${label}：` })
+  return parseNamedCounter(element.name, label)
+}
+
+async function waitForNamedCounter(client, label, predicate) {
+  return waitFor(
+    async () => {
+      try {
+        const value = await currentNamedCounter(client, label)
+        return predicate(value) ? value : false
+      } catch (error) {
+        if (error?.code === 'STATE_TARGET_NOT_FOUND' || /not numeric/.test(String(error))) {
+          return false
+        }
+        throw error
+      }
+    },
+    { timeoutMs: 10_000, intervalMs: 20 },
   )
 }
 
@@ -333,51 +472,102 @@ async function waitForLaunchedViewer(launchState, fixtureId, existingPids) {
 }
 
 async function buildAndLaunch(fixtureId, helperPath) {
-  run(
-    'pnpm',
-    [
-      'tauri',
-      'build',
-      '--debug',
-      '--features',
-      'video-feasibility',
-      '--bundles',
-      'app',
-      '--config',
-      tauriConfig(fixtureId),
-    ],
-    `build-${fixtureId}.log`,
-  )
-  run('codesign', ['--force', '--sign', '-', '--timestamp=none', bundledMpv], `sign-mpv-${fixtureId}.log`)
-  run(
-    'codesign',
-    ['--force', '--deep', '--sign', '-', '--timestamp=none', appPath],
-    `sign-app-${fixtureId}.log`,
-  )
-  run(
-    'codesign',
-    ['--verify', '--strict', '--verbose=4', bundledMpv],
-    `verify-mpv-${fixtureId}.log`,
-  )
-  run(
-    'codesign',
-    ['--verify', '--deep', '--strict', '--verbose=4', appPath],
-    `verify-app-${fixtureId}.log`,
-  )
+  const skipBuild = process.env.VIEWER_VIDEO_ACCEPTANCE_SKIP_BUILD === '1'
+  const buildConfig = {
+    profile: 'debug',
+    features: ['video-feasibility'],
+    bundle: 'app',
+    tauriConfig: JSON.parse(tauriConfig(fixtureId)),
+  }
+  const attestationOptions = {
+    sourceRoot: repoRoot,
+    appPath,
+    attestationPath: buildAttestationPath,
+    bundleIdentity,
+    buildConfig,
+  }
+  const verifiedAudit = await prepareAcceptanceBundle({
+    skipBuild,
+    build: () =>
+      run(
+        'pnpm',
+        [
+          'tauri',
+          'build',
+          '--debug',
+          '--features',
+          'video-feasibility',
+          '--bundles',
+          'app',
+          '--config',
+          tauriConfig(fixtureId),
+        ],
+        `build-${fixtureId}.log`,
+      ),
+    signRuntime: () =>
+      run(
+        'codesign',
+        ['--force', '--sign', '-', '--timestamp=none', bundledMpv],
+        `sign-mpv-${fixtureId}.log`,
+      ),
+    refreshInventory: () => refreshBundledRuntimeInventory(),
+    signApp: () =>
+      run(
+        'codesign',
+        ['--force', '--deep', '--sign', '-', '--timestamp=none', appPath],
+        `sign-app-${fixtureId}.log`,
+      ),
+    createOrVerifyAttestation: (isSkip) => {
+      if (!isSkip) {
+        writeBuildAttestation(buildAttestationPath, createBuildAttestation(attestationOptions))
+      }
+      return loadVerifiedBuildAttestation(attestationOptions)
+    },
+    audit: () =>
+      run(
+        '/bin/bash',
+        [
+          path.join(scriptDirectory, 'verify-app-bundle.sh'),
+          '--mode',
+          'development',
+          '--attestation',
+          buildAttestationPath,
+          '--artifact',
+          bundleAuditPath,
+          appPath,
+        ],
+        `bundle-audit-${fixtureId}.log`,
+      ),
+    verifyAudit: () =>
+      loadVerifiedAuditArtifact({ ...attestationOptions, auditPath: bundleAuditPath }),
+  })
+  ensureEvidenceBinding(verifiedAudit)
   result.signing[fixtureId] = {
-    nestedRuntimeVerified: true,
-    appBundleDeepStrictVerified: true,
-    nestedLog: path.join(logsRoot, `verify-mpv-${fixtureId}.log`),
-    appLog: path.join(logsRoot, `verify-app-${fixtureId}.log`),
+    bundleAuditMode: verifiedAudit.artifact.mode,
+    bundleAuditSha256: verifiedAudit.sha256,
+    buildAttestationSha256: verifiedAudit.attestation.sha256,
+    auditLog: path.join(logsRoot, `bundle-audit-${fixtureId}.log`),
   }
 
   const nativeLogPath = path.join(logsRoot, `native-${fixtureId}.log`)
   const existingPids = new Set(currentProcessTable().map((processInfo) => processInfo.pid))
-  const launcher = spawn(
-    '/usr/bin/open',
-    ['-n', '-W', '-o', nativeLogPath, '--stderr', nativeLogPath, appPath],
-    { cwd: repoRoot, stdio: 'ignore' },
-  )
+  const networkDisabled = process.env.VIEWER_VIDEO_ACCEPTANCE_NETWORK_DISABLED === '1'
+  const launch = nativeLaunchSpec({
+    appExecutable,
+    appPath,
+    nativeLogPath,
+    networkDisabled,
+    env: process.env,
+  })
+  const nativeLogDescriptor = networkDisabled ? openSync(nativeLogPath, 'a') : undefined
+  const launcher = spawn(launch.command, launch.argumentsList, {
+    cwd: repoRoot,
+    env: launch.env,
+    stdio: networkDisabled
+      ? ['ignore', nativeLogDescriptor, nativeLogDescriptor]
+      : 'ignore',
+  })
+  if (nativeLogDescriptor !== undefined) closeSync(nativeLogDescriptor)
   activeViewer = {
     baselinePids: existingPids,
     client: undefined,
@@ -418,6 +608,28 @@ async function buildAndLaunch(fixtureId, helperPath) {
     },
     { timeoutMs: 10_000, intervalMs: 100, stableMs: 300 },
   )
+  if (launch.networkPolicy === 'deny-all') {
+    writeNetworkLaunchArtifact({
+      outputPath: networkLaunchPath,
+      appPath,
+      binding: result.binding,
+      launch,
+      launcherPid: launcher.pid,
+      targetPid: viewer.pid,
+      windowIdentity: {
+        windowId: window.windowId,
+        title: window.title,
+        width: window.width,
+        height: window.height,
+      },
+    })
+    const verifiedLaunch = loadVerifiedNetworkLaunchArtifact({
+      artifactPath: networkLaunchPath,
+      appPath,
+      binding: result.binding,
+    })
+    result.binding.networkLaunchSha256 = verifiedLaunch.sha256
+  }
   const client = new NativeAcceptanceClient({
     executablePath: helperPath,
     pid: viewer.pid,
@@ -428,7 +640,7 @@ async function buildAndLaunch(fixtureId, helperPath) {
   activeViewer.window = window
   await client.start()
   await client.request('focus', { target: { role: 'AXWindow' } })
-  await waitForStatus(client, ['首帧：就绪'])
+  await waitForStatus(client, ['首帧：就绪'], 20_000)
   const firstRevealedCapture = await capture(client, `${fixtureId}-first-revealed`)
   const firstRevealedPixels = await assertColorBars(
     firstRevealedCapture,
@@ -458,7 +670,202 @@ async function buildAndLaunch(fixtureId, helperPath) {
     },
     log: nativeLogPath,
   }
+  await recordGeneration(client, fixtureId)
   return activeViewer
+}
+
+async function switchNativeFixture(viewer, fixtureId) {
+  await activate(viewer.client, `切换样本 ${fixtureId}`)
+  await waitForStatus(viewer.client, [`样本：${fixtureId}`, '首帧：就绪'])
+  const firstRevealedCapture = await capture(viewer.client, `${fixtureId}-first-revealed`)
+  const firstRevealedPixels = await assertColorBars(
+    firstRevealedCapture,
+    firstFrameExpectations[fixtureId].left,
+    firstFrameExpectations[fixtureId].right,
+    firstFrameExpectations[fixtureId].minColorRatio,
+  )
+  const [decodedPictureType] = await waitForStatus(viewer.client, ['解码帧：I'])
+  const hwdec = await waitForElement(viewer.client, { name: 'videotoolbox' })
+  const videoOutput = await waitForElement(viewer.client, { name: 'libmpv' })
+  const resources = await waitForElement(viewer.client, { name: '1/1/1' })
+  const renderedFrames = await waitForRenderedFrames(viewer.client, (frames) => frames >= 1)
+  const playbackTimeUs = await currentPlaybackTime(viewer.client)
+  result.native[fixtureId] = {
+    pid: viewer.pid,
+    hwdec: hwdec.name,
+    videoOutput: videoOutput.name,
+    resources: resources.name,
+    renderedFrames,
+    playbackTimeUs,
+    decodedPictureType: decodedPictureType.name.replace('解码帧：', ''),
+    firstRevealedFrame: {
+      screenshot: firstRevealedCapture,
+      pixels: firstRevealedPixels,
+      capturedBeforeBackendPolling: true,
+    },
+    log: result.native['h264-1080p'].log,
+  }
+  await recordGeneration(viewer.client, fixtureId)
+}
+
+async function remountNativeFixture(viewer, fixtureId) {
+  const currentGeneration = await readGenerationDiagnostics(viewer.client)
+  const reset = performanceResetPlan(fixtureId)
+  await activate(viewer.client, reset.action)
+  const mountedGeneration = await waitForGenerationDiagnostics(
+    viewer.client,
+    (next) => next.generation > currentGeneration.generation,
+  )
+  await waitForStatus(viewer.client, [`样本：${reset.fixtureId}`, '首帧：就绪', '解码帧：I'])
+  const hwdec = await waitForElement(viewer.client, { name: 'videotoolbox' })
+  const videoOutput = await waitForElement(viewer.client, { name: 'libmpv' })
+  const resources = await waitForElement(viewer.client, { name: '1/1/1' })
+  const renderedFrames = await waitForRenderedFrames(viewer.client, (frames) => frames >= 1)
+  const confirmedGeneration = await readGenerationDiagnostics(viewer.client)
+  const measured = validatePerformanceRemount(
+    currentGeneration.generation,
+    mountedGeneration.generation,
+    {
+      generationDiagnostics: confirmedGeneration,
+      firstFrameReady: true,
+      decodedPictureType: 'I',
+      resources: resources.name,
+      renderedFrames,
+      hwdec: hwdec.name,
+      videoOutput: videoOutput.name,
+    },
+  )
+  await recordGeneration(viewer.client, fixtureId)
+  return measured
+}
+
+async function readGenerationDiagnostics(client) {
+  const element = await queryOne(client, { role: 'AXGroup', namePrefix: '诊断代：' })
+  const match = /^诊断代：(\d+) 挂载：(\d+) 回调：(\d+) 绘制入口：(\d+) FRAME：(\d+) 图像：(\d+) 显示：(\d+) 事件：(\d+)$/.exec(
+    element.name,
+  )
+  if (!match) throw new Error(`generation diagnostics are not numeric: ${element.name}`)
+  return {
+    generation: Number.parseInt(match[1], 10),
+    mountReturned: Number.parseInt(match[2], 10),
+    updateCallbacks: Number.parseInt(match[3], 10),
+    drawEntries: Number.parseInt(match[4], 10),
+    frameUpdates: Number.parseInt(match[5], 10),
+    pictureFrames: Number.parseInt(match[6], 10),
+    reveals: Number.parseInt(match[7], 10),
+    eventEmits: Number.parseInt(match[8], 10),
+  }
+}
+
+async function waitForGenerationDiagnostics(client, predicate) {
+  return waitFor(
+    async () => {
+      try {
+        const diagnostics = await readGenerationDiagnostics(client)
+        return predicate(diagnostics) ? diagnostics : false
+      } catch (error) {
+        if (error?.code === 'STATE_TARGET_NOT_FOUND' || /not numeric/.test(String(error))) {
+          return false
+        }
+        throw error
+      }
+    },
+    { timeoutMs: 10_000, intervalMs: 50 },
+  )
+}
+
+async function recordGeneration(client, fixtureId) {
+  const diagnostics = await readGenerationDiagnostics(client)
+  const fixture = result.binding?.fixtures.find((entry) => entry.id === fixtureId)
+  if (fixture === undefined) throw new Error(`generation fixture is not evidence-bound: ${fixtureId}`)
+  const visits = result.generationSequence.filter((entry) => entry.fixture.id === fixtureId).length
+  result.generationSequence.push({
+    stage:
+      fixtureId === 'hevc-4k30'
+        ? visits === 0
+          ? 'hevc-4k30-first-passive'
+          : 'hevc-4k30-reopen-passive'
+        : `${fixtureId}-passive-${visits + 1}`,
+    fixture,
+    ready: true,
+    generation: diagnostics,
+  })
+}
+
+function parseResourceCounts(name, label) {
+  const match = new RegExp(`^${label}：(\\d+)\\/(\\d+)\\/(\\d+)$`).exec(name)
+  if (!match) throw new Error(`${label} resource counts are not numeric: ${name}`)
+  return {
+    clients: Number.parseInt(match[1], 10),
+    renderContexts: Number.parseInt(match[2], 10),
+    surfaces: Number.parseInt(match[3], 10),
+  }
+}
+
+async function samplePerformance(viewer, fixtureId, sample) {
+  await switchNativeFixture(viewer, fixtureId)
+  const latencies = []
+  let serial = await currentNamedCounter(viewer.client, '命令')
+  for (let index = 0; index < 10; index += 1) {
+    for (const action of ['播放性能样本', '暂停性能样本']) {
+      await activate(viewer.client, action)
+      serial = await waitForNamedCounter(viewer.client, '命令', (value) => value > serial)
+      latencies.push((await currentNamedCounter(viewer.client, '引擎延迟')) / 1_000)
+    }
+  }
+  const averageCommandLatencyMs = latencies.reduce((sum, value) => sum + value, 0) / latencies.length
+
+  // Accessibility-driven command sampling can consume most of a short sample
+  // even though the native engine acknowledgements are fast. Remount the same
+  // performance fixture before establishing the playback warmup baseline.
+  const measuredSession = await remountNativeFixture(viewer, fixtureId)
+  const resetTimeUs = await currentPlaybackTime(viewer.client)
+  if (resetTimeUs !== null && resetTimeUs > 100_000) {
+    throw new Error(`${fixtureId} did not reset before performance playback: ${resetTimeUs}us`)
+  }
+  serial = await currentNamedCounter(viewer.client, '命令')
+  if (serial !== 0) {
+    throw new Error(`${fixtureId} command serial did not reset: ${serial}`)
+  }
+  const resetRendered = await waitForRenderedFrames(viewer.client)
+  await activate(viewer.client, '播放性能样本')
+  serial = await waitForNamedCounter(viewer.client, '命令', (value) => value > serial)
+  await new Promise((resolve) => setTimeout(resolve, 1_000))
+  const beforeRendered = await waitForRenderedFrames(
+    viewer.client,
+    (frames) => frames > resetRendered,
+  )
+  const beforeMistimed = await currentNamedCounter(viewer.client, '误时帧')
+  const beforeDecoderDropped = await currentNamedCounter(viewer.client, '解码丢帧')
+  await new Promise((resolve) => setTimeout(resolve, 3_000))
+  await activate(viewer.client, '暂停性能样本')
+  await waitForNamedCounter(viewer.client, '命令', (value) => value > serial)
+  const afterRendered = await waitForRenderedFrames(viewer.client)
+  const afterMistimed = await currentNamedCounter(viewer.client, '误时帧')
+  const afterDecoderDropped = await currentNamedCounter(viewer.client, '解码丢帧')
+  const postWarmupRenderedFrames = afterRendered - beforeRendered
+  const postWarmupDroppedFrames =
+    afterMistimed - beforeMistimed + (afterDecoderDropped - beforeDecoderDropped)
+  const droppedPercent =
+    (postWarmupDroppedFrames * 100) / (postWarmupRenderedFrames + postWarmupDroppedFrames)
+  if (!(averageCommandLatencyMs < 100)) {
+    throw new Error(`${fixtureId} average command latency ${averageCommandLatencyMs}ms exceeded 100ms`)
+  }
+  if (!(postWarmupRenderedFrames > 0) || !(droppedPercent < 1)) {
+    throw new Error(`${fixtureId} dropped ${droppedPercent}% after warmup`)
+  }
+  const evidence = {
+    id: fixtureId,
+    ...sample,
+    hwdec: measuredSession.hwdec,
+    videoOutput: measuredSession.videoOutput,
+    averageCommandLatencyMs,
+    postWarmupRenderedFrames,
+    postWarmupDroppedFrames,
+  }
+  result.performance.push(evidence)
+  result.rows[`${fixtureId}-performance`] = true
+  result.rowRunIds[`${fixtureId}-performance`] = result.generatedAt
 }
 
 async function assertColorBars(filePath, expectedLeft, expectedRight, minColorRatio = 0.35) {
@@ -534,6 +941,13 @@ async function main() {
     result.fixtures[fixtureId] = { path: fixturePath, sha256: sha256(fixturePath) }
   }
   verifyFixtureHashes(result.fixtures)
+  for (const [fixtureId, fileName] of [
+    ['h264-1080p60', 'h264-1080p60.mp4'],
+    ['hevc-4k30', 'hevc-4k30.mov'],
+  ]) {
+    const fixturePath = path.join(repoRoot, 'target', 'video-performance', fileName)
+    result.fixtures[fixtureId] = { path: fixturePath, sha256: sha256(fixturePath) }
+  }
   preflight()
 
   const workingTreeStatus = run('git', ['status', '--short'], 'source-status.log')
@@ -542,6 +956,7 @@ async function main() {
     tree: run('git', ['rev-parse', 'HEAD^{tree}'], 'source-tree.log'),
     clean: workingTreeStatus.length === 0,
     workingTreeStatus,
+    identity: collectSourceIdentity(repoRoot),
   }
   result.machine = {
     model: run('sysctl', ['-n', 'hw.model'], 'machine-model.log'),
@@ -570,6 +985,23 @@ async function main() {
     'test-video-feasibility-route.log',
   )
   run(
+    'cargo',
+    [
+      'test',
+      '-p',
+      'viewer-desktop',
+      '--test',
+      'video_resource_lifecycle',
+      'bundled_timeline_preview_produces_a_real_png',
+      '--',
+      '--ignored',
+      '--nocapture',
+    ],
+    'test-bundled-timeline-preview.log',
+    { env: { ...process.env, VIEWER_VIDEO_RUNTIME_DIR: path.join(runtimeRoot, '..') } },
+  )
+  result.rows['timeline-preview'] = true
+  run(
     'pnpm',
     ['--dir', 'ui', 'exec', 'vitest', 'run', 'src/acceptance/scenes/videoFeasibilityScene.test.tsx'],
     'test-video-feasibility-ui.log',
@@ -582,6 +1014,21 @@ async function main() {
     repoRoot,
     sourcePath: path.join(repoRoot, 'scripts', 'viewer-native-acceptance.swift'),
   })
+
+  if (only4k) {
+    const viewer = await buildAndLaunch('h264-1080p', helper.executablePath)
+    await activate(viewer.client, '调整原生表面尺寸')
+    await waitForElement(viewer.client, { name: 'videotoolbox' })
+    await samplePerformance(viewer, 'hevc-4k30', {
+      codec: 'hevc',
+      width: 3840,
+      height: 2160,
+      framesPerSecond: 30,
+      bitDepth: 8,
+    })
+    await stopViewer(viewer)
+    return
+  }
 
   let viewer = await buildAndLaunch('h264-1080p', helper.executablePath)
   const overlay = await waitForElement(viewer.client, { name: 'React 视频控制覆盖层' })
@@ -599,13 +1046,9 @@ async function main() {
   result.rows['react-overlay-z-order'] = true
   result.rows['first-frame-ready'] = true
   result.rows['h264-videotoolbox'] = true
-  await stopViewer(viewer)
-
-  viewer = await buildAndLaunch('hevc-portrait', helper.executablePath)
+  await switchNativeFixture(viewer, 'hevc-portrait')
   result.rows['hevc-videotoolbox'] = true
-  await stopViewer(viewer)
-
-  viewer = await buildAndLaunch('vfr-step', helper.executablePath)
+  await switchNativeFixture(viewer, 'vfr-step')
   const reportedInitialTimeUs = result.native['vfr-step'].playbackTimeUs
   const initialTimeUs = reportedInitialTimeUs ?? 0
   const initialRenderedFrames = result.native['vfr-step'].renderedFrames
@@ -660,11 +1103,48 @@ async function main() {
   // all 30 cycles in about two seconds; wait three, then enforce the exact
   // terminal UI/counter state within the normal ten-second safety bound.
   await new Promise((resolve) => setTimeout(resolve, 3_000))
-  await waitForStatus(viewer.client, ['生命周期：30/30'], 10_000)
-  const released = await waitForElement(viewer.client, { name: '0/0/0' })
-  result.counters.after = released.name
+  const [cycles] = await waitForStatus(viewer.client, ['生命周期：30/30'], 10_000)
+  const baseline = await queryOne(viewer.client, {
+    role: 'AXGroup',
+    namePrefix: '生命周期基线：',
+  })
+  const after = await queryOne(viewer.client, {
+    role: 'AXGroup',
+    namePrefix: '生命周期结束：',
+  })
+  const sequence = await queryOne(viewer.client, {
+    role: 'AXGroup',
+    namePrefix: '生命周期路径：',
+  })
+  const cycleMatch = /^生命周期：(\d+)\/30$/.exec(cycles.name)
+  if (!cycleMatch) throw new Error(`lifecycle cycle count is not numeric: ${cycles.name}`)
+  const beforeCounts = parseResourceCounts(baseline.name, '生命周期基线')
+  const afterCounts = parseResourceCounts(after.name, '生命周期结束')
+  result.lifecycle = {
+    cycles: Number.parseInt(cycleMatch[1], 10),
+    before: beforeCounts,
+    after: afterCounts,
+    fixtureSequence: sequence.name.replace(/^生命周期路径：/, '').split(',').filter(Boolean),
+    measuredResources: ['clients', 'renderContexts', 'surfaces'],
+  }
+  result.counters.before = Object.values(beforeCounts).join('/')
+  result.counters.after = Object.values(afterCounts).join('/')
   await capture(viewer.client, 'lifecycle-30-baseline')
   result.rows['30-mount-unmount-baseline'] = true
+  await samplePerformance(viewer, 'h264-1080p60', {
+    codec: 'h264',
+    width: 1920,
+    height: 1080,
+    framesPerSecond: 60,
+    bitDepth: 8,
+  })
+  await samplePerformance(viewer, 'hevc-4k30', {
+    codec: 'hevc',
+    width: 3840,
+    height: 2160,
+    framesPerSecond: 30,
+    bitDepth: 8,
+  })
   await stopViewer(viewer)
 }
 
@@ -681,7 +1161,27 @@ try {
     process.exitCode = 1
   }
   mkdirSync(outputRoot, { recursive: true })
-  writeFileSync(path.join(outputRoot, 'matrix-result.json'), `${JSON.stringify(result, null, 2)}\n`)
+  if (!only4k && result.binding !== null) {
+    for (const row of matrixRows) {
+      if (result.rows[row] === true && result.rowRunIds[row] === undefined) {
+        result.rowRunIds[row] = result.binding.runId
+      }
+    }
+  }
+  writeFileSync(matrixResultPath, `${JSON.stringify(result, null, 2)}\n`)
+  writeFileSync(
+    generationDiagnosticPath,
+    `${JSON.stringify(
+      {
+        binding: result.binding,
+        generatedAt: result.generatedAt,
+        sequence: result.generationSequence,
+        error: result.error,
+      },
+      null,
+      2,
+    )}\n`,
+  )
   for (const row of matrixRows) console.log(`${result.rows[row] ? 'PASS' : 'FAIL'} ${row}`)
   if (result.error) console.error(result.error)
   if (matrixExitCode(result.rows) !== 0) process.exitCode = 1

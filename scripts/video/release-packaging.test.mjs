@@ -3,8 +3,14 @@ import { chmod, copyFile, mkdir, mkdtemp, readFile, stat, writeFile } from 'node
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { spawnSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
+
+import {
+  collectAppRuntimeIdentity,
+  writeBuildAttestation,
+} from './build-attestation.mjs'
 
 const scripts = dirname(fileURLToPath(import.meta.url))
 const repository = dirname(dirname(scripts))
@@ -151,7 +157,7 @@ test('bundle verifier rejects a missing runtime before native tool inspection', 
   const app = join(directory, 'Viewer.app')
   await mkdir(join(app, 'Contents/Resources'), { recursive: true })
 
-  const result = run(bundleVerifier, [app])
+  const result = run(bundleVerifier, ['--mode', 'development', app])
 
   assert.notEqual(result.status, 0)
   assert.match(result.stderr, /missing bundled video runtime/)
@@ -167,8 +173,9 @@ async function nativeBundleFixture(dependency) {
   await mkdir(join(runtime, 'lib'))
   await mkdir(join(runtime, 'licenses'))
   await mkdir(toolDirectory)
+  await writeFile(join(app, 'Contents/Info.plist'), '<plist>fixture identity</plist>\n')
   for (const executable of [
-    join(app, 'Contents/MacOS/Viewer'),
+    join(app, 'Contents/MacOS/viewer-desktop'),
     join(runtime, 'bin/ffmpeg'),
     join(runtime, 'bin/ffprobe'),
   ]) {
@@ -177,7 +184,12 @@ async function nativeBundleFixture(dependency) {
   }
   await writeFile(join(runtime, 'lib/libmpv.2.dylib'), 'fixture')
   await writeFile(join(runtime, 'runtime.lock.json'), '{}\n')
-  await writeFile(join(runtime, 'runtime.inventory.sha256'), '')
+  const inventory = []
+  for (const relative of ['bin/ffmpeg', 'bin/ffprobe', 'lib/libmpv.2.dylib']) {
+    const digest = createHash('sha256').update(await readFile(join(runtime, relative))).digest('hex')
+    inventory.push(`${digest}  ${relative}`)
+  }
+  await writeFile(join(runtime, 'runtime.inventory.sha256'), `${inventory.join('\n')}\n`)
   const verifier = join(directory, 'verify-runtime.sh')
   await writeFile(verifier, '#!/bin/bash\nexit 0\n')
   await chmod(verifier, 0o755)
@@ -194,7 +206,11 @@ elif [[ "$1" == "-D" ]]; then
     exit 1
   fi
 else
-  printf 'Load command 1\\n          cmd LC_RPATH\\n      cmdsize 48\\n         path @loader_path/../lib (offset 12)\\n'
+  if [[ "$2" == */Contents/MacOS/viewer-desktop ]]; then
+    printf 'Load command 1\\n          cmd LC_RPATH\\n      cmdsize 48\\n         path @executable_path/../Resources/ViewerVideoRuntime/lib (offset 12)\\n'
+  else
+    printf 'Load command 1\\n          cmd LC_RPATH\\n      cmdsize 48\\n         path @loader_path/../lib (offset 12)\\n'
+  fi
 fi
 `,
     codesign: `#!/bin/bash
@@ -216,7 +232,7 @@ exit 0
 
 test('bundle verifier accepts only signed architecture-matched offline runtime files', async () => {
   const fixture = await nativeBundleFixture('@rpath/libmpv.2.dylib')
-  const result = run(bundleVerifier, [fixture.app], {
+  const result = run(bundleVerifier, ['--mode', 'development', fixture.app], {
     PATH: `${fixture.toolDirectory}:${process.env.PATH}`,
     VIEWER_VIDEO_RUNTIME_VERIFIER: fixture.verifier,
   })
@@ -224,9 +240,50 @@ test('bundle verifier accepts only signed architecture-matched offline runtime f
   assert.equal(result.status, 0, result.stderr)
 })
 
+test('development verifier atomically emits an identity-bound audit artifact', async () => {
+  const fixture = await nativeBundleFixture('@rpath/libmpv.2.dylib')
+  const attestationPath = join(dirname(fixture.app), 'build-attestation.json')
+  const artifactPath = join(dirname(fixture.app), 'bundle-audit.json')
+  const bundleIdentity = {
+    identifier: 'com.viewer.desktop',
+    productName: 'Viewer',
+    executableRelativePath: 'Contents/MacOS/viewer-desktop',
+  }
+  writeBuildAttestation(attestationPath, {
+    schemaVersion: 1,
+    sourceIdentity: {},
+    sourceIdentitySha256: '0'.repeat(64),
+    appRuntime: collectAppRuntimeIdentity(fixture.app),
+    bundleIdentity,
+    buildConfig: { profile: 'debug' },
+  })
+  const result = run(
+    bundleVerifier,
+    [
+      '--mode',
+      'development',
+      '--attestation',
+      attestationPath,
+      '--artifact',
+      artifactPath,
+      fixture.app,
+    ],
+    {
+      PATH: `${fixture.toolDirectory}:${process.env.PATH}`,
+      VIEWER_VIDEO_RUNTIME_VERIFIER: fixture.verifier,
+    },
+  )
+
+  assert.equal(result.status, 0, result.stderr)
+  const artifact = JSON.parse(await readFile(artifactPath, 'utf8'))
+  assert.equal(artifact.mode, 'development')
+  assert.deepEqual(artifact.appRuntime, collectAppRuntimeIdentity(fixture.app))
+  assert.equal(artifact.checks.loaderContainment, true)
+})
+
 test('bundle verifier rejects a host-linked runtime dependency', async () => {
   const fixture = await nativeBundleFixture('/opt/homebrew/lib/libcodec.dylib')
-  const result = run(bundleVerifier, [fixture.app], {
+  const result = run(bundleVerifier, ['--mode', 'development', fixture.app], {
     PATH: `${fixture.toolDirectory}:${process.env.PATH}`,
     VIEWER_VIDEO_RUNTIME_VERIFIER: fixture.verifier,
   })
@@ -234,6 +291,22 @@ test('bundle verifier rejects a host-linked runtime dependency', async () => {
   assert.notEqual(result.status, 0)
   assert.match(result.stderr, /host-path dependency/)
 })
+
+for (const dependency of [
+  '/Users/alice/lib/libcodec.dylib',
+  '/opt/local/lib/libcodec.dylib',
+]) {
+  test(`development bundle audit rejects arbitrary absolute dependency ${dependency}`, async () => {
+    const fixture = await nativeBundleFixture(dependency)
+    const result = run(bundleVerifier, ['--mode', 'development', fixture.app], {
+      PATH: `${fixture.toolDirectory}:${process.env.PATH}`,
+      VIEWER_VIDEO_RUNTIME_VERIFIER: fixture.verifier,
+    })
+
+    assert.notEqual(result.status, 0)
+    assert.match(result.stderr, /host-path dependency/)
+  })
+}
 
 test('bundle verifier rejects a host rpath resolution', async () => {
   const fixture = await nativeBundleFixture('@rpath/libcodec.dylib')
@@ -251,7 +324,7 @@ fi
 `,
   )
   await chmod(join(fixture.toolDirectory, 'otool'), 0o755)
-  const result = run(bundleVerifier, [fixture.app], {
+  const result = run(bundleVerifier, ['--mode', 'development', fixture.app], {
     PATH: `${fixture.toolDirectory}:${process.env.PATH}`,
     VIEWER_VIDEO_RUNTIME_VERIFIER: fixture.verifier,
   })
@@ -279,7 +352,7 @@ fi
 `,
   )
   await chmod(join(fixture.toolDirectory, 'otool'), 0o755)
-  const result = run(bundleVerifier, [fixture.app], {
+  const result = run(bundleVerifier, ['--mode', 'development', fixture.app], {
     PATH: `${fixture.toolDirectory}:${process.env.PATH}`,
     VIEWER_VIDEO_RUNTIME_VERIFIER: fixture.verifier,
   })

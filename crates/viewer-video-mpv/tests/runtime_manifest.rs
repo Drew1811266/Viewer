@@ -12,6 +12,14 @@ fn checked_in_manifest_loads_from_an_explicit_path() {
 }
 
 #[test]
+fn runtime_schema_matches_the_build_script_embedding_contract() {
+    assert_eq!(
+        viewer_video_mpv::runtime_manifest::RUNTIME_MANIFEST_SCHEMA_VERSION,
+        1
+    );
+}
+
+#[test]
 fn checked_in_manifest_is_release_compliant() {
     let manifest =
         RuntimeManifest::from_json(include_str!("../../../scripts/video/runtime.lock.json"))

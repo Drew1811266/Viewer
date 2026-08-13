@@ -6,7 +6,8 @@
     "owner": "Viewer maintainers",
     "created": "2026-07-23",
     "reviewAfter": "2026-10-23",
-    "removeWhen": "Tauri removes the transitive unic-* chain"
+    "removeWhen": "Tauri removes the transitive unic-* chain",
+    "videoRuntimeImpact": "None; the exception is outside ViewerVideoRuntime and does not alter its locked LGPL dependency closure"
   },
   {
     "id": "RUSTSEC-2025-0080",
@@ -15,7 +16,8 @@
     "owner": "Viewer maintainers",
     "created": "2026-07-23",
     "reviewAfter": "2026-10-23",
-    "removeWhen": "Tauri removes the transitive unic-* chain"
+    "removeWhen": "Tauri removes the transitive unic-* chain",
+    "videoRuntimeImpact": "None; the exception is outside ViewerVideoRuntime and does not alter its locked LGPL dependency closure"
   },
   {
     "id": "RUSTSEC-2025-0081",
@@ -24,7 +26,8 @@
     "owner": "Viewer maintainers",
     "created": "2026-07-23",
     "reviewAfter": "2026-10-23",
-    "removeWhen": "Tauri removes the transitive unic-* chain"
+    "removeWhen": "Tauri removes the transitive unic-* chain",
+    "videoRuntimeImpact": "None; the exception is outside ViewerVideoRuntime and does not alter its locked LGPL dependency closure"
   },
   {
     "id": "RUSTSEC-2025-0098",
@@ -33,7 +36,8 @@
     "owner": "Viewer maintainers",
     "created": "2026-07-23",
     "reviewAfter": "2026-10-23",
-    "removeWhen": "Tauri removes the transitive unic-* chain"
+    "removeWhen": "Tauri removes the transitive unic-* chain",
+    "videoRuntimeImpact": "None; the exception is outside ViewerVideoRuntime and does not alter its locked LGPL dependency closure"
   },
   {
     "id": "RUSTSEC-2025-0100",
@@ -42,6 +46,7 @@
     "owner": "Viewer maintainers",
     "created": "2026-07-23",
     "reviewAfter": "2026-10-23",
-    "removeWhen": "Tauri removes the transitive unic-* chain"
+    "removeWhen": "Tauri removes the transitive unic-* chain",
+    "videoRuntimeImpact": "None; the exception is outside ViewerVideoRuntime and does not alter its locked LGPL dependency closure"
   }
 ]

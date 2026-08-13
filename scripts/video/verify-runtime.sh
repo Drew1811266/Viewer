@@ -48,6 +48,7 @@ done < <(node "$script_dir/runtime-lock.mjs" list "$lock_file")
 
 build_configuration=$($stage_dir/bin/ffmpeg -hide_banner -buildconf 2>&1)
 for option in --disable-gpl --disable-nonfree --disable-network --disable-ffplay \
+  --disable-devices --disable-avdevice \
   --enable-zlib --enable-encoder=png; do
   if [[ "$build_configuration" != *"$option"* ]]; then
     printf 'ffmpeg build is missing %s\n' "$option" >&2

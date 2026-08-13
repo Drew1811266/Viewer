@@ -15,6 +15,8 @@ export async function loadRuntimeLock(path) {
     '--disable-nonfree',
     '--disable-network',
     '--disable-ffplay',
+    '--disable-devices',
+    '--disable-avdevice',
     '--enable-zlib',
     '--enable-encoder=png',
   ]) {

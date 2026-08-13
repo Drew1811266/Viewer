@@ -80,6 +80,31 @@ This inventory records the direct third-party dependencies in the Viewer 0.1 loc
 
 ## Bundled and operating-system components
 
+### ViewerVideoRuntime
+
+Viewer ships the following unmodified source-built video components inside
+`ViewerVideoRuntime`. All non-Apple runtime dependencies are compiled from the
+reviewed archives below. Static dependencies are incorporated into libmpv or
+the bundled FFmpeg tools; libmpv itself remains dynamically replaceable.
+
+| Component | Version | License | Official source archive | SHA-256 | Enabled/reviewed build options | Security owner | Review date | Upgrade procedure |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `pkgconf` | 2.5.1 | ISC | https://github.com/pkgconf/pkgconf/archive/refs/tags/pkgconf-2.5.1.tar.gz | `79721badcad1987dead9c3609eb4877ab9b58821c06bdacb824f2c8897c11f2a` | static library metadata tool; tests disabled | Viewer maintainers | 2026-08-12 | Follow the runtime upgrade procedure in `docs/quality/DEPENDENCY_HEALTH.md`. |
+| `freetype` | 2.13.3 | FTL | https://github.com/freetype/freetype/archive/refs/tags/VER-2-13-3.tar.gz | `bc5c898e4756d373e0d991bab053036c5eb2aa7c0d5c67e8662ddc6da40c4103` | static; system zlib; optional Brotli, bzip2, HarfBuzz and PNG disabled | Viewer maintainers | 2026-08-12 | Follow the runtime upgrade procedure in `docs/quality/DEPENDENCY_HEALTH.md`. |
+| `fribidi` | 1.0.16 | LGPL-2.1-or-later | https://github.com/fribidi/fribidi/archive/refs/tags/v1.0.16.tar.gz | `5a1d187a33daa58fcee2ad77f0eb9d136dd6fa4096239199ba31e850d397e8a8` | static; deprecated API, docs, binaries and tests disabled | Viewer maintainers | 2026-08-12 | Follow the runtime upgrade procedure in `docs/quality/DEPENDENCY_HEALTH.md`. |
+| `harfbuzz` | 10.4.0 | MIT | https://github.com/harfbuzz/harfbuzz/archive/refs/tags/10.4.0.tar.gz | `0d25a3f74af4e8744700ac19050af5a80ae330378a5802a5cd71e523bb6fda1f` | static minimal shaping build; GLib, Cairo, ICU, CoreText and utilities disabled | Viewer maintainers | 2026-08-12 | Follow the runtime upgrade procedure in `docs/quality/DEPENDENCY_HEALTH.md`. |
+| `libass` | 0.17.4 | ISC | https://github.com/libass/libass/archive/refs/tags/0.17.4.tar.gz | `c287d180d93dc9c9021872574b618ac49027e84cc90e1289318b1ee68bb42251` | static; CoreText enabled; fontconfig, ASM, tests and profiling disabled | Viewer maintainers | 2026-08-12 | Follow the runtime upgrade procedure in `docs/quality/DEPENDENCY_HEALTH.md`. |
+| `ffmpeg` (FFmpeg) | 8.0 (`n8.0`) | LGPL-2.1-or-later | https://github.com/FFmpeg/FFmpeg/archive/refs/tags/n8.0.tar.gz | `dd4030dbfdc34d9ff255a116bdd1caade42500ac2981efa27f8b151cc54c7b9e` | `--disable-gpl --disable-network --disable-nonfree --disable-ffplay --disable-devices --disable-avdevice --enable-zlib --enable-encoder=png`; VideoToolbox and AudioToolbox enabled | Viewer maintainers | 2026-08-12 | Follow the runtime upgrade procedure in `docs/quality/DEPENDENCY_HEALTH.md`. |
+| `fast_float` | 2b2395f9ac836ffca6404424bcc252bff7aa80e4 | Apache-2.0 | https://github.com/fastfloat/fast_float/archive/2b2395f9ac836ffca6404424bcc252bff7aa80e4.tar.gz | `230d20e4e4ac1f6a9df92c4d746c6ec536cdb0c085bc8635d4b88cead5dc22cb` | exact libplacebo submodule source; header-only | Viewer maintainers | 2026-08-12 | Follow the runtime upgrade procedure in `docs/quality/DEPENDENCY_HEALTH.md`. |
+| `vulkan-headers` | d732b2de303ce505169011d438178191136bfb00 | Apache-2.0 | https://github.com/KhronosGroup/Vulkan-Headers/archive/d732b2de303ce505169011d438178191136bfb00.tar.gz | `570f9ae1e65466dbaf5fcab667abd079dd0a61c4ab86cf535efd492bf70a5b74` | exact libplacebo submodule source; Vulkan runtime disabled | Viewer maintainers | 2026-08-12 | Follow the runtime upgrade procedure in `docs/quality/DEPENDENCY_HEALTH.md`. |
+| `libplacebo` | 6.338.2 (`v6.338.2`) | LGPL-2.1-or-later | https://github.com/haasn/libplacebo/archive/refs/tags/v6.338.2.tar.gz | `2f1e624e09d72a8c9db70f910f7560e764a1c126dae42acc5b3bcef836a7aec6` | static minimal build; demos, tests, Vulkan, OpenGL, D3D11 and optional libraries disabled | Viewer maintainers | 2026-08-12 | Follow the runtime upgrade procedure in `docs/quality/DEPENDENCY_HEALTH.md`. |
+| `mpv` / `libmpv` | 0.41.0 (`v0.41.0`, commit `41f6a64`) | LGPL-2.1-or-later | https://github.com/mpv-player/mpv/archive/refs/tags/v0.41.0.tar.gz | `ee21092a5ee427353392360929dc64645c54479aefdb5babc5cfbb5fad626209` | `-Dgpl=false -Dcplayer=false -Dlibmpv=true`; isolated Cocoa/OpenGL/VideoToolbox library build | Viewer maintainers | 2026-08-12 | Follow the runtime upgrade procedure in `docs/quality/DEPENDENCY_HEALTH.md`. |
+
+The complete GNU Lesser General Public License version 2.1-or-later text is
+distributed at `scripts/video/LGPL-2.1-or-later.txt` and inside the runtime
+license directory. The exact reproducible source offer is
+`scripts/video/source-offer.txt`.
+
 | Component | Source/license status | Viewer use | Distribution status |
 | --- | --- | --- | --- |
 | Lucide Icons 1.27.0 | Static SVG subset from [lucide-icons/lucide](https://github.com/lucide-icons/lucide/tree/1.27.0), licensed under ISC with MIT notices retained for Feather-derived icons; full text is bundled at `ui/src/assets/icons/lucide/LICENSE.txt` | Cross-platform Viewer action and state icons | Copied into the frontend bundle |

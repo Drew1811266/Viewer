@@ -68,8 +68,12 @@ test('macOS runtime contract explicitly enables only the zlib closure required f
 
   assert.ok(options.includes('--enable-zlib'))
   assert.ok(options.includes('--enable-encoder=png'))
+  assert.ok(options.includes('--disable-devices'))
+  assert.ok(options.includes('--disable-avdevice'))
   assert.match(source, /--enable-zlib \\/)
   assert.match(source, /--enable-encoder=png \\/)
+  assert.match(source, /--disable-devices \\/)
+  assert.match(source, /--disable-avdevice \\/)
 })
 
 test('macOS runtime build enables the backend required for VideoToolbox OpenGL interop', async () => {

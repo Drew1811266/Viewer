@@ -1,0 +1,16 @@
+Viewer distributes the dynamically linked ViewerVideoRuntime components under
+their recorded licenses. For at least three years after a Viewer binary release,
+the exact corresponding source archives, build scripts, and relinkable Viewer
+source are available from the release source tree.
+
+Reproduce source acquisition and the reviewed build from the repository root:
+
+  node scripts/video/runtime-lock.mjs list scripts/video/runtime.lock.json
+  export VIEWER_VIDEO_WORK_DIR="$(mktemp -d)"
+  export VIEWER_VIDEO_STAGE_DIR="$(pwd)/target/viewer-video-runtime/$(uname -m | sed 's/arm64/aarch64/')-apple-darwin/ViewerVideoRuntime"
+  scripts/video/build-macos-runtime.sh
+  scripts/video/verify-runtime.sh
+
+`runtime-lock.mjs list` prints every exact source URL and SHA-256 digest before
+the build script downloads and independently verifies those archives. The lock,
+build script, and Viewer source are the preferred form for modification.

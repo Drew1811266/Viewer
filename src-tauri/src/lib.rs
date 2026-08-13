@@ -23,9 +23,20 @@ pub mod video_runtime;
 pub mod watcher_runtime;
 
 pub const APP_NAME: &str = "Viewer";
+const EMBEDDED_VIDEO_RUNTIME_SCHEMA_VERSION: &str = env!("VIEWER_VIDEO_RUNTIME_SCHEMA_VERSION");
 const PROJECT_CLOSED_EVENT: &str = "viewer://project-closed";
 const TERMINAL_CLOSE_CACHE_CLEANUP_FAILURE: &str = "project_closed_cache_cleanup_failed";
 const TERMINAL_VIDEO_CLOSE_FAILURE: &str = "video_close_failed";
+
+fn validate_embedded_video_runtime_schema() -> Result<(), String> {
+    let embedded = EMBEDDED_VIDEO_RUNTIME_SCHEMA_VERSION
+        .parse::<u32>()
+        .map_err(|_| "embedded video runtime schema is invalid".to_string())?;
+    if embedded != viewer_video_mpv::runtime_manifest::RUNTIME_MANIFEST_SCHEMA_VERSION {
+        return Err("embedded video runtime schema does not match the loader schema".to_string());
+    }
+    Ok(())
+}
 
 pub(crate) fn is_terminal_close_cleanup_failure(error: &error::CommandError) -> bool {
     matches!(
@@ -246,6 +257,7 @@ pub fn run() {
             video_feasibility::run_video_feasibility
         ])
         .setup(move |app| {
+            validate_embedded_video_runtime_schema()?;
             let settings_directory = app.path().app_config_dir()?;
             let settings_service = Arc::new(ViewerSettingsService::new(Arc::new(
                 JsonViewerSettingsStore::new(settings_directory),

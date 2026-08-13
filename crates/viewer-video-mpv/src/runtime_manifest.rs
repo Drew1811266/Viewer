@@ -7,6 +7,8 @@ use std::{
 use serde::Deserialize;
 use thiserror::Error;
 
+pub const RUNTIME_MANIFEST_SCHEMA_VERSION: u32 = 1;
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RuntimeManifest {
@@ -108,7 +110,7 @@ impl RuntimeManifest {
     }
 
     fn validate(&self) -> Result<(), ManifestError> {
-        if self.schema_version != 1 {
+        if self.schema_version != RUNTIME_MANIFEST_SCHEMA_VERSION {
             return Err(ManifestError::UnsupportedSchema);
         }
         for component in &self.components {

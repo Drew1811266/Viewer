@@ -3,6 +3,11 @@ name: CI
 on:
   push:
   pull_request:
+  schedule:
+    - cron: "23 7 * * 1"
+  release:
+    types: [published]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -93,3 +98,119 @@ jobs:
 
       - name: Assert verification left no artifacts
         run: test -z "$(git status --porcelain)"
+
+  runtime:
+    name: Bundled runtime (${{ matrix.target }})
+    if: github.event_name == 'schedule' || github.event_name == 'release' || github.event_name == 'workflow_dispatch'
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            runner: macos-15
+            architecture: arm64
+          - target: x86_64-apple-darwin
+            runner: macos-15-intel
+            architecture: x86_64
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+
+      - name: Assert matrix architecture
+        shell: bash
+        run: test "$(uname -m)" = "${{ matrix.architecture }}"
+
+      - name: Set up Node.js 24.18.0
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: "24.18.0"
+
+      - name: Activate pnpm 10.0.0 through Corepack
+        shell: bash
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.0.0 --activate
+          pnpm --version
+
+      - name: Install Rust 1.97.0
+        shell: bash
+        run: |
+          rustup toolchain install 1.97.0 --profile minimal --component clippy,rustfmt --target "${{ matrix.target }}"
+          rustc --version --verbose
+
+      - name: Install JavaScript dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Import Developer ID certificate
+        shell: bash
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          VIEWER_VIDEO_SIGNING_IDENTITY: ${{ secrets.VIEWER_VIDEO_SIGNING_IDENTITY }}
+        run: |
+          test -n "$APPLE_CERTIFICATE"
+          test -n "$APPLE_CERTIFICATE_PASSWORD"
+          test -n "$VIEWER_VIDEO_SIGNING_IDENTITY"
+          certificate="$RUNNER_TEMP/viewer-developer-id.p12"
+          keychain="$RUNNER_TEMP/viewer-signing.keychain-db"
+          printf '%s' "$APPLE_CERTIFICATE" | base64 --decode > "$certificate"
+          security create-keychain -p "$RUNNER_TEMP" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$RUNNER_TEMP" "$keychain"
+          security import "$certificate" -P "$APPLE_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$keychain"
+          security list-keychain -d user -s "$keychain"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$RUNNER_TEMP" "$keychain"
+          security find-identity -v -p codesigning "$keychain" | rg -F "$VIEWER_VIDEO_SIGNING_IDENTITY"
+
+      - name: Restore locked video runtime
+        id: runtime-cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: target/viewer-video-runtime/${{ matrix.target }}/ViewerVideoRuntime
+          key: viewer-video-runtime-${{ matrix.target }}-${{ hashFiles('scripts/video/runtime.lock.json', 'scripts/video/build-macos-runtime.sh', 'scripts/video/build-tools.txt') }}
+
+      - name: Build locked video runtime
+        if: steps.runtime-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          export VIEWER_VIDEO_ARCH="${{ matrix.architecture }}"
+          export VIEWER_VIDEO_WORK_DIR="$RUNNER_TEMP/viewer-video-runtime-work"
+          export VIEWER_VIDEO_STAGE_DIR="$GITHUB_WORKSPACE/target/viewer-video-runtime/${{ matrix.target }}/ViewerVideoRuntime"
+          scripts/video/build-macos-runtime.sh
+
+      - name: Stage Tauri release resources
+        shell: bash
+        env:
+          VIEWER_VIDEO_SIGNING_IDENTITY: ${{ secrets.VIEWER_VIDEO_SIGNING_IDENTITY }}
+        run: scripts/video/stage-tauri-resources.sh "target/viewer-video-runtime/${{ matrix.target }}/ViewerVideoRuntime" "target/viewer-video-runtime/universal-apple-darwin/ViewerVideoRuntime"
+
+      - name: Verify staged runtime and licenses
+        run: pnpm video:runtime:verify && pnpm video:licenses:verify
+
+      - name: Build target app bundle
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ secrets.VIEWER_VIDEO_SIGNING_IDENTITY }}
+        run: pnpm exec tauri build --target "${{ matrix.target }}" --bundles app
+
+      - name: Notarize and staple target app bundle
+        shell: bash
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          test -n "$APPLE_ID"
+          test -n "$APPLE_PASSWORD"
+          test -n "$APPLE_TEAM_ID"
+          app="target/${{ matrix.target }}/release/bundle/macos/Viewer.app"
+          archive="$RUNNER_TEMP/Viewer-${{ matrix.target }}.zip"
+          ditto -c -k --keepParent "$app" "$archive"
+          xcrun notarytool submit "$archive" --apple-id "$APPLE_ID" --password "$APPLE_PASSWORD" --team-id "$APPLE_TEAM_ID" --wait
+          xcrun stapler staple "$app"
+
+      - name: Verify target app bundle
+        shell: bash
+        run: scripts/video/verify-app-bundle.sh "target/${{ matrix.target }}/release/bundle/macos/Viewer.app"

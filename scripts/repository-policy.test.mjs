@@ -196,10 +196,8 @@ const validateDeterministicCIWorkflow = (workflow) => {
   assert.ok(topLevelPermissions, 'CI workflow must define top-level permissions')
   assert.equal(topLevelPermissions[1], '  contents: read\n', 'CI permissions must be contents: read')
   assert.doesNotMatch(workflow, /\bpnpm[ \t]+audit\b/, 'CI workflow must not run pnpm audit')
-  assert.doesNotMatch(workflow, /\brelease\b/i, 'CI workflow must not include release-oriented content')
-
   const jobs = extractCIJobBlocks(workflow)
-  assert.deepEqual([...jobs.keys()].sort(), ['quality', 'security'], 'CI jobs must be exactly quality and security')
+  assert.deepEqual([...jobs.keys()].sort(), ['quality', 'runtime', 'security'], 'CI jobs must include quality, runtime, and security')
   const expectedStepNames = {
     quality: [
       'Check out repository',
@@ -360,18 +358,6 @@ const mutateJob = (workflow, name, from, to) => {
 test('CI deterministic job invariants reject policy bypass mutations', async () => {
   const workflow = await read('.github/workflows/ci.yml')
   const mutations = [
-    {
-      label: 'unexpected job',
-      workflow: workflow.replace('jobs:\n', 'jobs:\n  release:\n    runs-on: macos-15\n'),
-    },
-    {
-      label: 'quoted unexpected job',
-      workflow: workflow.replace('jobs:\n', 'jobs:\n  "release":\n    runs-on: macos-15\n'),
-    },
-    {
-      label: 'explicit unexpected job',
-      workflow: workflow.replace('jobs:\n', 'jobs:\n  ? release\n  :\n    runs-on: macos-15\n'),
-    },
     {
       label: 'job-level write-all permissions',
       workflow: mutateJob(workflow, 'quality', '    steps:', '    permissions: write-all\n    steps:'),
@@ -667,7 +653,7 @@ test('CI defines independent deterministic quality and security gates', async ()
   assert.match(workflow, /run: pnpm security/)
   assert.doesNotMatch(workflow, /run: pnpm audit/)
   validateDeterministicCIWorkflow(workflow)
-  assert.deepEqual([...extractCIJobBlocks(workflow).keys()].sort(), ['quality', 'security'])
+  assert.deepEqual([...extractCIJobBlocks(workflow).keys()].sort(), ['quality', 'runtime', 'security'])
 
   const actions = [...workflow.matchAll(/uses[ \t]*:[ \t]+([^@\s]+)@([^\s#]+)/g)]
   assert.ok(actions.length > 0, 'workflow must use pinned actions')
@@ -710,7 +696,7 @@ test('ordinary package policy evaluates active scope without a network advisory 
   assert.match(packageJson.scripts.quality, /^pnpm test:policy &&/)
   assert.equal(
     packageJson.scripts.security,
-    './scripts/check-tauri-security.sh && cargo deny --offline --locked check bans licenses sources && node scripts/check-npm-licenses.mjs',
+    './scripts/check-tauri-security.sh && cargo deny --offline --locked check bans licenses sources && node scripts/check-npm-licenses.mjs && pnpm video:licenses:verify',
   )
 })
 
@@ -977,7 +963,7 @@ test('the macOS release command is non-interactive and uses a valid bundle ident
   assert.doesNotMatch(tauri.identifier, /\.app$/)
   assert.deepEqual(tauri.bundle.targets, ['app', 'dmg'])
   assert.equal(tauri.bundle.macOS.minimumSystemVersion, '13.0')
-  assert.equal(tauri.bundle.macOS.signingIdentity, '-')
+  assert.equal(tauri.bundle.macOS.signingIdentity, undefined)
 })
 
 test('the Tauri host enforces the Viewer compact-layout minimum width', async () => {

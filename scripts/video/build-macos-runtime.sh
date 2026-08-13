@@ -116,6 +116,8 @@ esac
     --disable-debug \
     --disable-doc \
     --disable-ffplay \
+    --disable-devices \
+    --disable-avdevice \
     --disable-gpl \
     --disable-network \
     --disable-nonfree \

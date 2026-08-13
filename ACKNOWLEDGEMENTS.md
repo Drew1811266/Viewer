@@ -12,6 +12,11 @@ Viewer is licensed under Apache License 2.0. This acknowledgement distinguishes 
 - [TypeScript](https://github.com/microsoft/TypeScript), Node.js, pnpm, and the React/Node type declarations — frontend language and toolchain.
 - [Rust](https://github.com/rust-lang/rust) and Cargo — native application language and build toolchain. The direct Rust crates currently include `async-trait`, `blake3`, `block2`, `getrandom`, `libc` (native filesystem operations and benchmark RSS sampling), `nucleo-matcher` (Unicode fuzzy filename/path scoring), `notify` and `notify-debouncer-full` (debounced filesystem hints), the `objc2` Foundation/Core Foundation/Core Graphics/Image I/O/Quick Look Thumbnailing bindings, `rusqlite` with bundled SQLite, `serde`, `serde_json` (tests and benchmark reports), `tempfile` (tests), `thiserror`, `tokio`, `trash` (system Trash adapter), `uuid`, and `walkdir` (bounded project traversal).
 - [Vitest](https://github.com/vitest-dev/vitest), [Testing Library](https://github.com/testing-library/react-testing-library), `jest-dom`, and jsdom — frontend unit and DOM testing.
+- ViewerVideoRuntime — the Viewer-bundled, source-built LGPL video stack based on
+  libmpv/mpv 0.41.0, FFmpeg 8.0, libplacebo 6.338.2, libass 0.17.4, and the
+  exact dependency closure recorded in `scripts/video/runtime.lock.json`.
+  Complete notices, license texts, build options, digests, and reproducible
+  source acquisition commands ship with Viewer.
 
 ## Research and product inspiration (not code dependencies)
 

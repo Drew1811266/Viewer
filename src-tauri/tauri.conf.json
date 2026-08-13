@@ -6,7 +6,7 @@
   "build": {
     "beforeDevCommand": "pnpm --dir ui dev",
     "devUrl": "http://localhost:5173",
-    "beforeBuildCommand": "pnpm --dir ui build",
+    "beforeBuildCommand": "pnpm video:runtime:stage && pnpm --dir ui build",
     "frontendDist": "../ui/dist"
   },
   "app": {
@@ -18,9 +18,11 @@
   "bundle": {
     "active": true,
     "targets": ["app", "dmg"],
+    "resources": [
+      "../target/viewer-video-runtime/universal-apple-darwin/ViewerVideoRuntime"
+    ],
     "macOS": {
-      "minimumSystemVersion": "13.0",
-      "signingIdentity": "-"
+      "minimumSystemVersion": "13.0"
     }
   }
 }

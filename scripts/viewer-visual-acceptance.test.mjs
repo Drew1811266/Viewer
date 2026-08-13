@@ -166,6 +166,11 @@ describe('Viewer visual acceptance browser lifecycle', () => {
       forcedColors: 'none',
       zoom: 1,
     })
+    assert.deepEqual(acceptanceEnvironmentFor('video-reduced-motion'), {
+      reducedMotion: 'reduce',
+      forcedColors: 'none',
+      zoom: 1,
+    })
     assert.deepEqual(acceptanceEnvironmentFor('A11Y-04'), {
       reducedMotion: 'no-preference',
       forcedColors: 'active',

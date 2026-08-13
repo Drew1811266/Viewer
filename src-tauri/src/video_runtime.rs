@@ -4,6 +4,7 @@ use crate::{
     state::{AuthorizedVideoSource, RuntimeError, VideoClosePort},
 };
 use std::{
+    collections::{HashSet, VecDeque},
     future::Future,
     path::Path,
     str::FromStr,
@@ -35,7 +36,47 @@ pub struct VideoRuntime<E: VideoEngine> {
     playback_activity: Option<Arc<dyn PlaybackActivityPort>>,
     active_source: Mutex<Option<AuthorizedVideoSource>>,
     thumbnail_request: Mutex<Option<(u64, String, CancellationToken)>>,
+    open_attempts: Mutex<VideoOpenAttemptState>,
     transition: tokio::sync::Mutex<()>,
+}
+
+#[derive(Clone, Debug)]
+pub struct VideoOpenAttempt {
+    id: String,
+    cancellation: CancellationToken,
+}
+
+impl VideoOpenAttempt {
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+
+    pub const fn cancellation(&self) -> &CancellationToken {
+        &self.cancellation
+    }
+}
+
+#[derive(Default)]
+struct VideoOpenAttemptState {
+    current: Option<VideoOpenAttempt>,
+    terminal: HashSet<String>,
+    terminal_order: VecDeque<String>,
+}
+
+const VIDEO_OPEN_ATTEMPT_TERMINAL_LIMIT: usize = 1_024;
+
+impl VideoOpenAttemptState {
+    fn record_terminal(&mut self, attempt_id: String) {
+        if !self.terminal.insert(attempt_id.clone()) {
+            return;
+        }
+        self.terminal_order.push_back(attempt_id);
+        while self.terminal_order.len() > VIDEO_OPEN_ATTEMPT_TERMINAL_LIMIT {
+            if let Some(expired) = self.terminal_order.pop_front() {
+                self.terminal.remove(&expired);
+            }
+        }
+    }
 }
 
 pub trait VideoEventPort: Send + Sync {
@@ -192,6 +233,7 @@ impl<E: VideoEngine> VideoRuntime<E> {
             playback_activity: None,
             active_source: Mutex::new(None),
             thumbnail_request: Mutex::new(None),
+            open_attempts: Mutex::new(VideoOpenAttemptState::default()),
             transition: tokio::sync::Mutex::new(()),
         }
     }
@@ -206,6 +248,7 @@ impl<E: VideoEngine> VideoRuntime<E> {
             playback_activity: None,
             active_source: Mutex::new(None),
             thumbnail_request: Mutex::new(None),
+            open_attempts: Mutex::new(VideoOpenAttemptState::default()),
             transition: tokio::sync::Mutex::new(()),
         })
     }
@@ -224,6 +267,7 @@ impl<E: VideoEngine> VideoRuntime<E> {
             playback_activity: None,
             active_source: Mutex::new(None),
             thumbnail_request: Mutex::new(None),
+            open_attempts: Mutex::new(VideoOpenAttemptState::default()),
             transition: tokio::sync::Mutex::new(()),
         })
     }
@@ -242,6 +286,7 @@ impl<E: VideoEngine> VideoRuntime<E> {
             playback_activity: None,
             active_source: Mutex::new(None),
             thumbnail_request: Mutex::new(None),
+            open_attempts: Mutex::new(VideoOpenAttemptState::default()),
             transition: tokio::sync::Mutex::new(()),
         }
     }
@@ -262,6 +307,7 @@ impl<E: VideoEngine> VideoRuntime<E> {
             playback_activity: Some(playback_activity),
             active_source: Mutex::new(None),
             thumbnail_request: Mutex::new(None),
+            open_attempts: Mutex::new(VideoOpenAttemptState::default()),
             transition: tokio::sync::Mutex::new(()),
         }
     }
@@ -279,12 +325,83 @@ impl<E: VideoEngine> VideoRuntime<E> {
             playback_activity: Some(playback_activity),
             active_source: Mutex::new(None),
             thumbnail_request: Mutex::new(None),
+            open_attempts: Mutex::new(VideoOpenAttemptState::default()),
             transition: tokio::sync::Mutex::new(()),
         }
     }
 
     pub fn engine(&self) -> &Arc<E> {
         &self.engine
+    }
+
+    pub fn begin_open_attempt(
+        &self,
+        attempt_id: impl Into<String>,
+    ) -> Result<VideoOpenAttempt, VideoCommandError> {
+        let attempt_id = attempt_id.into();
+        let mut attempts = lock(&self.open_attempts);
+        if attempts.terminal.contains(&attempt_id)
+            || attempts
+                .current
+                .as_ref()
+                .is_some_and(|attempt| attempt.id == attempt_id)
+        {
+            return Err(VideoCommandError::StaleOpenAttempt);
+        }
+        if let Some(current) = attempts.current.take() {
+            current.cancellation.cancel();
+            attempts.record_terminal(current.id);
+        }
+        let attempt = VideoOpenAttempt {
+            id: attempt_id,
+            cancellation: CancellationToken::new(),
+        };
+        attempts.current = Some(attempt.clone());
+        Ok(attempt)
+    }
+
+    pub fn open_attempt(&self, attempt_id: &str) -> Result<VideoOpenAttempt, VideoCommandError> {
+        let attempts = lock(&self.open_attempts);
+        attempts
+            .current
+            .as_ref()
+            .filter(|attempt| attempt.id == attempt_id && !attempt.cancellation.is_cancelled())
+            .cloned()
+            .ok_or(VideoCommandError::StaleOpenAttempt)
+    }
+
+    pub fn ensure_open_attempt(&self, attempt: &VideoOpenAttempt) -> Result<(), VideoCommandError> {
+        self.open_attempt(&attempt.id).map(|_| ())
+    }
+
+    pub fn cancel_open_attempt(&self, attempt_id: &str) -> bool {
+        let mut attempts = lock(&self.open_attempts);
+        if let Some(current) = attempts.current.take() {
+            if current.id == attempt_id {
+                current.cancellation.cancel();
+                attempts.record_terminal(current.id);
+                return true;
+            }
+            attempts.current = Some(current);
+        }
+        let was_terminal = attempts.terminal.contains(attempt_id);
+        attempts.record_terminal(attempt_id.to_owned());
+        !was_terminal
+    }
+
+    pub fn finish_open_attempt(&self, attempt_id: &str) {
+        let mut attempts = lock(&self.open_attempts);
+        if attempts
+            .current
+            .as_ref()
+            .is_some_and(|attempt| attempt.id == attempt_id)
+        {
+            let completed = attempts
+                .current
+                .take()
+                .expect("matching open attempt exists");
+            attempts.record_terminal(completed.id);
+        }
     }
 
     pub async fn open_authorized(
@@ -317,6 +434,40 @@ impl<E: VideoEngine> VideoRuntime<E> {
         let result = self.open_authorized_inner(source).await;
         if result.is_err() {
             let _ = self.close_active_inner().await;
+        }
+        result
+    }
+
+    pub async fn replace_authorized_for_attempt<Prepare, Prepared>(
+        &self,
+        attempt: &VideoOpenAttempt,
+        source: AuthorizedVideoSource,
+        prepare: Prepare,
+    ) -> Result<VideoSessionDto, VideoCommandError>
+    where
+        Prepare: FnOnce() -> Prepared,
+        Prepared: Future<Output = Result<(), VideoCommandError>>,
+    {
+        let _transition = self.transition.lock().await;
+        self.ensure_open_attempt(attempt)?;
+        self.close_active_inner().await?;
+        self.ensure_open_attempt(attempt)?;
+        if let Err(error) = prepare().await {
+            let _ = self.engine.close(0).await;
+            return Err(error);
+        }
+        if let Err(error) = self.ensure_open_attempt(attempt) {
+            let _ = self.engine.close(0).await;
+            return Err(error);
+        }
+        let result = self.open_authorized_inner(source).await;
+        if result.is_err() {
+            let _ = self.close_active_inner().await;
+            return result;
+        }
+        if let Err(error) = self.ensure_open_attempt(attempt) {
+            let _ = self.close_active_inner().await;
+            return Err(error);
         }
         result
     }
@@ -736,6 +887,8 @@ fn playback_rate_f32(rate: PlaybackRate) -> f32 {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, thiserror::Error)]
 pub enum VideoCommandError {
+    #[error("video open attempt is stale")]
+    StaleOpenAttempt,
     #[error("video command belongs to a stale generation")]
     StaleGeneration,
     #[error("there is no active video session")]
@@ -759,6 +912,7 @@ pub enum VideoCommandError {
 impl VideoCommandError {
     pub const fn code(self) -> &'static str {
         match self {
+            Self::StaleOpenAttempt => "stale_video_open_attempt",
             Self::StaleGeneration => "stale_video_generation",
             Self::NoActiveSession => "video_not_open",
             Self::InvalidState => "invalid_video_state",

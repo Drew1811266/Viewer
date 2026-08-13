@@ -90,5 +90,17 @@
   { "id": "A11Y-02", "wave": 4, "referenceState": "accessibility-restore", "sceneGroup": "feedback", "components": ["ViewerPopover", "SearchToolbar", "WorkspaceViewMenu", "WorkspaceMoreMenu", "ModalSheet", "SettingsDialog", "RadialFileMenu"] },
   { "id": "A11Y-03", "wave": 4, "referenceState": "accessibility-reduced", "sceneGroup": "feedback", "components": ["ViewerPopover", "ModalSheet", "TaskBar", "ViewerProgress"] },
   { "id": "A11Y-04", "wave": 4, "referenceState": "accessibility-forced", "sceneGroup": "feedback", "components": ["ViewerButton", "ViewerChoiceChip", "ImageCell", "ViewerStatusTag"] },
-  { "id": "A11Y-05", "wave": 4, "referenceState": "accessibility-zoom", "sceneGroup": "feedback", "components": ["SearchToolbar", "WorkspaceViewMenu", "WorkspaceMoreMenu", "RadialFileMenu", "ImagePreview", "InfoOverlay", "ModalSheet", "SettingsDialog", "TaskBar"] }
+  { "id": "A11Y-05", "wave": 4, "referenceState": "accessibility-zoom", "sceneGroup": "feedback", "components": ["SearchToolbar", "WorkspaceViewMenu", "WorkspaceMoreMenu", "RadialFileMenu", "ImagePreview", "InfoOverlay", "ModalSheet", "SettingsDialog", "TaskBar"] },
+  { "id": "workspace-video-expanded", "wave": 4, "referenceState": "workspace-video-expanded", "sceneGroup": "video", "components": ["ContentBrowser", "VideoSection", "VideoCard"] },
+  { "id": "workspace-video-unavailable", "wave": 4, "referenceState": "workspace-video-unavailable", "sceneGroup": "video", "components": ["ContentBrowser", "VideoSection", "VideoCard"] },
+  { "id": "video-preparing", "wave": 4, "referenceState": "video-preparing", "sceneGroup": "video", "components": ["VideoPreview"] },
+  { "id": "video-playing-controls", "wave": 4, "referenceState": "video-playing-controls", "sceneGroup": "video", "components": ["VideoPreview", "VideoControls"] },
+  { "id": "video-paused-controls", "wave": 4, "referenceState": "video-paused-controls", "sceneGroup": "video", "components": ["VideoPreview", "VideoControls"] },
+  { "id": "video-timeline-pending", "wave": 4, "referenceState": "video-timeline-pending", "sceneGroup": "video", "components": ["VideoPreview", "VideoTimeline"] },
+  { "id": "video-timeline-ready", "wave": 4, "referenceState": "video-timeline-ready", "sceneGroup": "video", "components": ["VideoPreview", "VideoTimeline"] },
+  { "id": "video-ended", "wave": 4, "referenceState": "video-ended", "sceneGroup": "video", "components": ["VideoPreview", "VideoControls"] },
+  { "id": "video-failed-retry", "wave": 4, "referenceState": "video-failed-retry", "sceneGroup": "video", "components": ["VideoPreview", "ViewerLocalFeedback"] },
+  { "id": "video-fullscreen-controls", "wave": 4, "referenceState": "video-fullscreen-controls", "sceneGroup": "video", "components": ["VideoPreview", "VideoControls"] },
+  { "id": "settings-video-cache", "wave": 4, "referenceState": "settings-video-cache", "sceneGroup": "video", "components": ["SettingsDialog", "ViewerLocalFeedback"] },
+  { "id": "video-reduced-motion", "wave": 4, "referenceState": "video-reduced-motion", "sceneGroup": "video", "components": ["VideoPreview", "VideoControls"] }
 ]

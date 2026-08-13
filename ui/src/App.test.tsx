@@ -140,6 +140,7 @@ function bridge(access: 'read_write' | 'read_only' = 'read_write'): ViewerBridge
     undoLastOperation: vi.fn().mockResolvedValue(null),
     beginFinderDrag: vi.fn().mockResolvedValue({ fileCount: 1 }),
     videoOpen: vi.fn(),
+    videoCancelOpen: vi.fn().mockResolvedValue(true),
     videoClose: vi.fn(),
     videoPlay: vi.fn(),
     videoPause: vi.fn(),
@@ -151,8 +152,16 @@ function bridge(access: 'read_write' | 'read_only' = 'read_write'): ViewerBridge
     videoSetSurfaceRect: vi.fn(),
     videoSetFullscreen: vi.fn(),
     videoRequestThumbnail: vi.fn(),
-    videoCacheStats: vi.fn(),
-    videoCacheClear: vi.fn(),
+    videoCacheStats: vi.fn().mockResolvedValue({
+      bytesUsed: 268_435_456,
+      budgetBytes: 1_073_741_824,
+      entryCount: 24,
+    }),
+    videoCacheClear: vi.fn().mockResolvedValue({
+      bytesUsed: 0,
+      budgetBytes: 1_073_741_824,
+      entryCount: 0,
+    }),
     openPermissionSettings: vi.fn().mockResolvedValue(undefined),
     listenScan: vi.fn().mockResolvedValue(() => undefined),
     listenIndexProgress: vi.fn().mockResolvedValue(() => undefined),
@@ -1146,6 +1155,7 @@ describe('Viewer empty state', () => {
     expect(screen.getByRole('status', { name: '正在加载视频' })).toBeVisible()
     await waitFor(() =>
       expect(viewer.videoOpen).toHaveBeenCalledWith({
+        attemptId: expect.any(String),
         entityId: 'video-1',
         surfaceRect: { x: 100, y: 125, width: 800, height: 450 },
       }),

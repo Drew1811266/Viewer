@@ -261,7 +261,8 @@ export async function captureVisualAcceptanceState({
 
 export function acceptanceEnvironmentFor(id) {
   return {
-    reducedMotion: id === 'A11Y-03' ? 'reduce' : 'no-preference',
+    reducedMotion:
+      id === 'A11Y-03' || id === 'video-reduced-motion' ? 'reduce' : 'no-preference',
     forcedColors: id === 'A11Y-04' ? 'active' : 'none',
     zoom: id === 'A11Y-05' ? 2 : 1,
   }

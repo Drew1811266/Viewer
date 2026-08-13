@@ -2076,6 +2076,31 @@ body:has(.viewer-dialog-backdrop) .task-bar {
   margin-top: var(--viewer-space-3);
 }
 
+.video-cache-setting {
+  align-items: center;
+  display: flex;
+  gap: var(--viewer-space-3);
+  justify-content: space-between;
+}
+
+.video-cache-setting__summary {
+  color: var(--viewer-text-secondary);
+  display: grid;
+  font-size: 12px;
+  gap: 3px;
+}
+
+.video-cache-setting__summary > span:first-child {
+  color: var(--viewer-text);
+  font-variant-numeric: tabular-nums;
+  font-weight: 650;
+}
+
+.video-cache-setting__confirmation-actions {
+  display: flex;
+  gap: var(--viewer-space-2);
+}
+
 .destination-list legend {
   color: var(--viewer-text-secondary);
   font-size: 12px;

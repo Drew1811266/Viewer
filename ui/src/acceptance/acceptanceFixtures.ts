@@ -6,11 +6,61 @@ import type {
   ImageRepresentation,
   ImageRepresentationRequest,
   ProjectSnapshot,
+  VideoCacheStats,
+  VideoFile,
 } from '../api/types'
+import type { ViewerBridge } from '../api/viewer'
 
 const FIXTURE_MODIFIED_NS = '1767600000000000000'
 const IMAGE_WIDTH = 560
 const IMAGE_HEIGHT = 373
+
+export const ACCEPTANCE_VIDEO_FRAME_URL = '/商品-15.jpg'
+export const ACCEPTANCE_VIDEO_CACHE_STATS: VideoCacheStats = {
+  bytesUsed: 268_435_456,
+  budgetBytes: 1_073_741_824,
+  entryCount: 24,
+}
+
+export const ACCEPTANCE_VIDEO_FILES: VideoFile[] = [
+  acceptanceVideo('acceptance-video-landscape', 'Lookbook-01.mp4', {
+    durationUs: 92_400_000,
+    displayWidth: 1_920,
+    displayHeight: 1_080,
+    coverUrl: '/商品-15.jpg',
+  }),
+  acceptanceVideo('acceptance-video-portrait', 'Campaign-portrait.mov', {
+    durationUs: 48_200_000,
+    displayWidth: 1_080,
+    displayHeight: 1_920,
+    rotationDegrees: 90,
+    coverUrl: '/商品-16.jpg',
+  }),
+  acceptanceVideo('acceptance-video-unavailable', 'Archive-damaged.mkv', {
+    durationUs: null,
+    displayWidth: null,
+    displayHeight: null,
+    videoCodec: null,
+    audioCodec: null,
+    probeStatus: 'failed',
+    failureKind: 'damaged',
+    coverUrl: null,
+  }),
+]
+
+export function acceptanceVideoCacheBridge(): Pick<
+  ViewerBridge,
+  'videoCacheStats' | 'videoCacheClear'
+> {
+  return {
+    async videoCacheStats() {
+      return ACCEPTANCE_VIDEO_CACHE_STATS
+    },
+    async videoCacheClear() {
+      return { ...ACCEPTANCE_VIDEO_CACHE_STATS, bytesUsed: 0, entryCount: 0 }
+    },
+  }
+}
 
 export const ACCEPTANCE_PROJECT_SNAPSHOT: ProjectSnapshot = {
   projectId: 'acceptance-project',
@@ -268,9 +318,43 @@ export function imageRepresentation(
 }
 
 export function acceptanceFile(entityId: string): BrowserFile {
-  const file = [...ACCEPTANCE_FILES, ...ACCEPTANCE_TEXT_FILES, ACCEPTANCE_UNSUPPORTED_FILE].find(
-    (candidate) => candidate.entityId === entityId,
-  )
+  const file = [
+    ...ACCEPTANCE_FILES,
+    ...ACCEPTANCE_VIDEO_FILES,
+    ...ACCEPTANCE_TEXT_FILES,
+    ACCEPTANCE_UNSUPPORTED_FILE,
+  ].find((candidate) => candidate.entityId === entityId)
   if (file === undefined) throw new Error(`Unknown Viewer acceptance file: ${entityId}`)
   return file
+}
+
+function acceptanceVideo(
+  entityId: string,
+  name: string,
+  metadata: Partial<VideoFile['videoMetadata']>,
+): VideoFile {
+  return {
+    entityId,
+    relativePath: `视频/${name}`,
+    name,
+    kind: 'video',
+    size: 24_000_000,
+    modifiedNs: FIXTURE_MODIFIED_NS,
+    marker: { reviewState: null, favorite: false },
+    imageMetadata: null,
+    imageUrl: null,
+    videoMetadata: {
+      durationUs: 92_400_000,
+      displayWidth: 1_920,
+      displayHeight: 1_080,
+      rotationDegrees: 0,
+      frameRateMillihertz: 30_000,
+      videoCodec: 'h264',
+      audioCodec: 'aac',
+      probeStatus: 'ready',
+      failureKind: null,
+      coverUrl: ACCEPTANCE_VIDEO_FRAME_URL,
+      ...metadata,
+    },
+  }
 }

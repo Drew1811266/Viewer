@@ -228,6 +228,7 @@ pub fn run() {
             commands::settings::get_viewer_settings,
             commands::settings::update_viewer_settings,
             commands::video::video_open,
+            commands::video::video_cancel_open,
             commands::video::video_close,
             commands::video::video_play,
             commands::video::video_pause,

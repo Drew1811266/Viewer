@@ -2,6 +2,7 @@ import type { AcceptanceSceneRegistry } from '../AcceptanceApp'
 import { DIALOG_SCENES } from './dialogScenes'
 import { FEEDBACK_SCENES } from './feedbackScenes'
 import { VIDEO_FEASIBILITY_SCENES } from './videoFeasibilityScene'
+import { VIDEO_SCENES } from './videoScenes'
 import { VIEWING_SCENES } from './viewingScenes'
 import { WORKSPACE_SCENES } from './workspaceScenes'
 
@@ -11,4 +12,5 @@ export const ACCEPTANCE_SCENES: AcceptanceSceneRegistry = {
   ...DIALOG_SCENES,
   ...FEEDBACK_SCENES,
   ...VIDEO_FEASIBILITY_SCENES,
+  ...VIDEO_SCENES,
 }

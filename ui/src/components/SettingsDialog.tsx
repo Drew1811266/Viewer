@@ -1,11 +1,13 @@
-import { type CSSProperties, type RefObject, useRef } from 'react'
+import { type CSSProperties, type RefObject, useEffect, useRef, useState } from 'react'
 import type {
   MagnifierArea,
   MagnifierMagnification,
   MagnifierPreferences,
   MagnifierShape,
   ThumbnailDensity,
+  VideoCacheStats,
 } from '../api/types'
+import type { ViewerBridge } from '../api/viewer'
 import {
   THUMBNAIL_LEVELS,
   thumbnailDensityForLevel,
@@ -24,8 +26,12 @@ import ViewerLocalFeedback from './ui/ViewerLocalFeedback'
 
 const SHAPE_LABEL = { circle: '圆形', rounded_rectangle: '圆角矩形' } as const
 const AREA_LABEL = { small: '小', medium: '中', large: '大' } as const
+const VIDEO_CACHE_BUDGET_BYTES = 1_073_741_824
+
+type VideoCacheBridge = Pick<ViewerBridge, 'videoCacheStats' | 'videoCacheClear'>
 
 interface SettingsDialogProps {
+  bridge: VideoCacheBridge
   density: ThumbnailDensity
   magnifier: MagnifierPreferences
   error: string | null
@@ -38,6 +44,7 @@ interface SettingsDialogProps {
 }
 
 export default function SettingsDialog({
+  bridge,
   density,
   magnifier,
   error,
@@ -49,8 +56,46 @@ export default function SettingsDialog({
   returnFocusRef,
 }: SettingsDialogProps) {
   const thumbnailSizeRef = useRef<HTMLInputElement>(null)
+  const [cacheStats, setCacheStats] = useState<VideoCacheStats | null>(null)
+  const [cacheStatus, setCacheStatus] = useState<'loading' | 'ready' | 'cleared' | 'failed'>(
+    'loading',
+  )
+  const [confirmingCacheClear, setConfirmingCacheClear] = useState(false)
+  const [clearingCache, setClearingCache] = useState(false)
   const level = thumbnailLevelForDensity(density)
   const progress = ((level - 1) / (THUMBNAIL_LEVELS.length - 1)) * 100
+
+  useEffect(() => {
+    let open = true
+    void bridge.videoCacheStats().then(
+      (stats) => {
+        if (!open) return
+        setCacheStats(stats)
+        setCacheStatus('ready')
+      },
+      () => {
+        if (open) setCacheStatus('failed')
+      },
+    )
+    return () => {
+      open = false
+    }
+  }, [bridge])
+
+  async function clearVideoCache() {
+    setClearingCache(true)
+    try {
+      const stats = await bridge.videoCacheClear()
+      setCacheStats(stats)
+      setCacheStatus('cleared')
+      setConfirmingCacheClear(false)
+    } catch {
+      setCacheStatus('failed')
+    } finally {
+      setClearingCache(false)
+    }
+  }
+
   return (
     <ModalSheet
       title="软件设置"
@@ -149,6 +194,61 @@ export default function SettingsDialog({
               ))}
             </div>
           </fieldset>
+          <h4 className="settings-dialog-subheading">视频缓存</h4>
+          <section className="video-cache-setting" aria-label="视频缓存">
+            <div className="video-cache-setting__summary">
+              <span>
+                {cacheStats === null
+                  ? '正在读取缓存用量…'
+                  : `${formatCacheBytes(cacheStats.bytesUsed)} / 1 GiB`}
+              </span>
+              <span>
+                {cacheStats === null ? '— 个缓存项' : `${cacheStats.entryCount} 个缓存项`}
+              </span>
+            </div>
+            <ViewerButton
+              tone="secondary"
+              disabled={cacheStatus === 'loading' || clearingCache}
+              onClick={() => {
+                setCacheStatus(cacheStats === null ? 'loading' : 'ready')
+                setConfirmingCacheClear(true)
+              }}
+            >
+              清除视频缓存
+            </ViewerButton>
+          </section>
+          {confirmingCacheClear && (
+            <ViewerLocalFeedback
+              tone="warning"
+              title="清除视频缓存？"
+              action={
+                <div className="video-cache-setting__confirmation-actions">
+                  <ViewerButton
+                    tone="secondary"
+                    disabled={clearingCache}
+                    onClick={() => setConfirmingCacheClear(false)}
+                  >
+                    取消
+                  </ViewerButton>
+                  <ViewerButton tone="danger" loading={clearingCache} onClick={clearVideoCache}>
+                    确认清除视频缓存
+                  </ViewerButton>
+                </div>
+              }
+            >
+              只会移除 Viewer 管理的视频缩略图缓存，不会中断当前画面。
+            </ViewerLocalFeedback>
+          )}
+          {cacheStatus === 'cleared' && (
+            <ViewerLocalFeedback tone="recovery" title="视频缓存已清除">
+              缓存会在需要时自动重新生成。
+            </ViewerLocalFeedback>
+          )}
+          {cacheStatus === 'failed' && (
+            <ViewerLocalFeedback tone="danger" title="无法处理视频缓存">
+              请稍后重试。
+            </ViewerLocalFeedback>
+          )}
           {error && (
             <ViewerLocalFeedback tone="danger" title="无法保存设置">
               {error}
@@ -158,4 +258,19 @@ export default function SettingsDialog({
       </div>
     </ModalSheet>
   )
+}
+
+function formatCacheBytes(bytes: number): string {
+  const safeBytes = Number.isFinite(bytes) ? Math.max(0, bytes) : 0
+  if (safeBytes === 0) return '0 B'
+  if (safeBytes >= VIDEO_CACHE_BUDGET_BYTES) {
+    return `${formatUnit(safeBytes / VIDEO_CACHE_BUDGET_BYTES)} GiB`
+  }
+  const mebibytes = safeBytes / 1_048_576
+  if (mebibytes >= 1) return `${formatUnit(mebibytes)} MiB`
+  return `${Math.round(safeBytes)} B`
+}
+
+function formatUnit(value: number): string {
+  return Number.isInteger(value) ? String(value) : value.toFixed(1)
 }

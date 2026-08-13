@@ -26,6 +26,7 @@ export type VideoPreviewBridge = Pick<
   ViewerBridge,
   | 'listenVideo'
   | 'videoClose'
+  | 'videoCancelOpen'
   | 'videoOpen'
   | 'videoPause'
   | 'videoPlay'
@@ -82,14 +83,17 @@ export function useVideoBridge({
   const activeLifecycle = useRef<ActiveVideoLifecycle | null>(null)
   const lastSurfaceGeometry = useRef<string | null>(null)
   const commandQueue = useRef<Promise<void>>(Promise.resolve())
+  const closeTail = useRef<Promise<void>>(Promise.resolve())
   const playbackIntent = useRef(createBooleanControlIntent(false))
   const mutedIntent = useRef(createBooleanControlIntent(false))
   const fullscreenIntent = useRef(createBooleanControlIntent(false))
   const metadataMedia: VideoMedia = file.videoMetadata
   const indexedFailure = indexedVideoError(file.videoMetadata)
   const geometryReady = stageRect !== null && hasVideoGeometry(stageRect, metadataMedia)
+  const retryingIndexedFailure =
+    retryKey > 0 && indexedFailure !== null && stageRect !== null && hasStageGeometry(stageRect)
   const lifecycleKey =
-    file.videoMetadata.probeStatus === 'ready' && geometryReady
+    (file.videoMetadata.probeStatus === 'ready' && geometryReady) || retryingIndexedFailure
       ? `${file.entityId}:${retryKey}`
       : null
 
@@ -103,7 +107,9 @@ export function useVideoBridge({
     setMedia(null)
     setControlState(createVideoBridgeControlState())
     dispatch({ type: 'reset' })
-    if (indexedFailure !== null) dispatch({ type: 'openFailed', error: indexedFailure })
+    if (indexedFailure !== null && !retryingIndexedFailure) {
+      dispatch({ type: 'openFailed', error: indexedFailure })
+    }
   }, [
     file.entityId,
     file.videoMetadata.displayHeight,
@@ -115,32 +121,52 @@ export function useVideoBridge({
 
   useEffect(() => {
     if (lifecycleKey === null || stageRect === null) return
-    const initialRect = fitVideoRect(stageRect, metadataMedia)
+    const attemptId = crypto.randomUUID()
+    const initialRect = geometryReady
+      ? fitVideoRect(stageRect, metadataMedia)
+      : stageVideoRect(stageRect)
     let disposed = false
     let generation: number | null = null
     let detached = false
     let unlisten: (() => void) | null = null
     const bufferedEvents: VideoEvent[] = []
     const closedGenerations = new Set<number>()
+    let eventsReady = false
+    let eventTail = Promise.resolve()
+    let retryGeometryReady = !retryingIndexedFailure
+    let pendingFirstFrame: Extract<VideoEvent, { type: 'firstFrameReady' }> | null = null
 
     const detach = () => {
       if (detached || unlisten === null) return
       detached = true
       unlisten()
     }
-    const closeOnce = (target: number) => {
-      if (closedGenerations.has(target)) return
+    const closeOnce = (target: number): Promise<void> => {
+      if (closedGenerations.has(target)) return closeTail.current
       closedGenerations.add(target)
-      void bridge.videoClose({ generation: target }).catch(() => undefined)
+      closeTail.current = closeTail.current
+        .then(() => bridge.videoClose({ generation: target }))
+        .catch(() => undefined)
+      return closeTail.current
     }
-    const consume = (event: VideoEvent) => {
+    const consume = async (event: VideoEvent) => {
       if (disposed) return
-      if (generation === null) {
-        bufferedEvents.push(event)
+      if (generation === null) return
+      if (event.generation !== generation) return
+      if (retryingIndexedFailure && event.type === 'firstFrameReady' && !retryGeometryReady) {
+        pendingFirstFrame = event
         return
       }
-      if (event.generation !== generation) return
-      if (event.type === 'prepared') setMedia(event.media)
+      if (event.type === 'prepared') {
+        if (retryingIndexedFailure && hasVideoGeometry(stageRect, event.media)) {
+          const fittedRect = fitVideoRect(stageRect, event.media)
+          await bridge.videoSetSurfaceRect({ generation: event.generation, ...fittedRect })
+          if (disposed) return
+          lastSurfaceGeometry.current = surfaceGeometryKey(event.generation, fittedRect)
+          retryGeometryReady = true
+        }
+        setMedia(event.media)
+      }
       if (event.type === 'stateChanged') {
         if (event.state === 'playing') {
           acknowledgeBooleanControlIntent(playbackIntent.current, event.generation, true)
@@ -169,17 +195,43 @@ export function useVideoBridge({
         setControlState((current) => ({ ...current, timelineThumbnail: event }))
       }
       dispatch(event)
+      if (retryGeometryReady && pendingFirstFrame !== null) {
+        const ready = pendingFirstFrame
+        pendingFirstFrame = null
+        dispatch(ready)
+      }
+    }
+    const enqueue = (event: VideoEvent) => {
+      if (!eventsReady) {
+        bufferedEvents.push(event)
+        return
+      }
+      if (!retryingIndexedFailure) {
+        void consume(event)
+        return
+      }
+      eventTail = eventTail
+        .then(() => consume(event))
+        .catch((error) => {
+          const lifecycle = activeLifecycle.current
+          if (generation !== null && lifecycle?.generation === generation) {
+            lifecycle.fail(videoError(error, 'video_surface_failed'))
+          }
+        })
     }
 
     void (async () => {
       try {
-        const subscribed = await bridge.listenVideo(consume)
+        await closeTail.current
+        if (disposed) return
+        const subscribed = await bridge.listenVideo(enqueue)
         if (disposed) {
           subscribed()
           return
         }
         unlisten = subscribed
         const session = await bridge.videoOpen({
+          attemptId,
           entityId: file.entityId,
           surfaceRect: initialRect,
         })
@@ -187,6 +239,21 @@ export function useVideoBridge({
         if (disposed) {
           closeOnce(session.generation)
           return
+        }
+        if (retryingIndexedFailure && hasVideoGeometry(stageRect, session.media)) {
+          const fittedRect = fitVideoRect(stageRect, session.media)
+          try {
+            await bridge.videoSetSurfaceRect({ generation: session.generation, ...fittedRect })
+          } catch (error) {
+            await closeOnce(session.generation)
+            throw error
+          }
+          lastSurfaceGeometry.current = surfaceGeometryKey(session.generation, fittedRect)
+          retryGeometryReady = true
+          if (disposed) {
+            closeOnce(session.generation)
+            return
+          }
         }
         activeGeneration.current = session.generation
         commandQueue.current = Promise.resolve()
@@ -209,7 +276,8 @@ export function useVideoBridge({
         }
         setMedia(session.media)
         dispatch({ type: 'opened', session })
-        for (const event of bufferedEvents) consume(event)
+        eventsReady = true
+        for (const event of bufferedEvents) enqueue(event)
         bufferedEvents.length = 0
       } catch (error) {
         if (!disposed) {
@@ -223,11 +291,15 @@ export function useVideoBridge({
     return () => {
       disposed = true
       detach()
-      if (generation !== null) closeOnce(generation)
+      if (generation !== null) {
+        closeOnce(generation)
+      } else {
+        void bridge.videoCancelOpen({ attemptId }).catch(() => undefined)
+      }
       if (activeGeneration.current === generation) activeGeneration.current = null
       if (activeLifecycle.current?.generation === generation) activeLifecycle.current = null
     }
-  }, [bridge, file.entityId, lifecycleKey])
+  }, [bridge, file.entityId, geometryReady, lifecycleKey, retryingIndexedFailure])
 
   useEffect(() => {
     if (
@@ -239,7 +311,7 @@ export function useVideoBridge({
       return
     }
     const rect = fitVideoRect(stageRect, media)
-    const geometryKey = `${state.generation}:${rect.x}:${rect.y}:${rect.width}:${rect.height}`
+    const geometryKey = surfaceGeometryKey(state.generation, rect)
     if (lastSurfaceGeometry.current === geometryKey) return
     lastSurfaceGeometry.current = geometryKey
     const generation = state.generation
@@ -541,6 +613,34 @@ function sameRect(left: DOMRectReadOnly | null, right: DOMRectReadOnly): boolean
     left.width === right.width &&
     left.height === right.height
   )
+}
+
+function hasStageGeometry(stage: DOMRectReadOnly): boolean {
+  return (
+    Number.isFinite(stage.left) &&
+    Number.isFinite(stage.top) &&
+    Number.isFinite(stage.width) &&
+    stage.width > 0 &&
+    Number.isFinite(stage.height) &&
+    stage.height > 0
+  )
+}
+
+function stageVideoRect(stage: DOMRectReadOnly) {
+  if (!hasStageGeometry(stage)) throw new RangeError('Video stage geometry is not ready')
+  return {
+    x: Math.round(stage.left),
+    y: Math.round(stage.top),
+    width: Math.round(stage.width),
+    height: Math.round(stage.height),
+  }
+}
+
+function surfaceGeometryKey(
+  generation: number,
+  rect: { x: number; y: number; width: number; height: number },
+): string {
+  return `${generation}:${rect.x}:${rect.y}:${rect.width}:${rect.height}`
 }
 
 function copyRect(rect: DOMRectReadOnly): DOMRectReadOnly {

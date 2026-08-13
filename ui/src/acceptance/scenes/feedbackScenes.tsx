@@ -14,6 +14,7 @@ import {
   ACCEPTANCE_FILES,
   ACCEPTANCE_FOLDER_TREE,
   ACCEPTANCE_PROJECT_SNAPSHOT,
+  acceptanceVideoCacheBridge,
 } from '../acceptanceFixtures'
 import AcceptanceProductScene from './sceneHarness'
 
@@ -87,6 +88,7 @@ export const FEEDBACK_SCENES: AcceptanceSceneRegistry = {
       attributes={{ 'data-acceptance-accessibility': 'keyboard' }}
     >
       <SettingsDialog
+        bridge={acceptanceVideoCacheBridge()}
         density="standard"
         magnifier={{ shape: 'circle', magnification: 2, area: 'small' }}
         error={null}
@@ -144,6 +146,7 @@ export const FEEDBACK_SCENES: AcceptanceSceneRegistry = {
     >
       <TaskBar task={RESULT_TASK} onShowResults={noOp} />
       <SettingsDialog
+        bridge={acceptanceVideoCacheBridge()}
         density="compact"
         magnifier={{ shape: 'circle', magnification: 2, area: 'small' }}
         error={null}

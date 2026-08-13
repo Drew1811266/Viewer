@@ -1,7 +1,7 @@
 import catalog from './acceptanceStateCatalog.json'
 
 export type AcceptanceWave = 1 | 2 | 3 | 4
-export type AcceptanceSceneGroup = 'workspace' | 'viewing' | 'dialog' | 'feedback'
+export type AcceptanceSceneGroup = 'workspace' | 'viewing' | 'dialog' | 'feedback' | 'video'
 
 export interface AcceptanceStateDefinition {
   id: string
@@ -16,7 +16,13 @@ function isAcceptanceWave(value: number): value is AcceptanceWave {
 }
 
 function isSceneGroup(value: string): value is AcceptanceSceneGroup {
-  return value === 'workspace' || value === 'viewing' || value === 'dialog' || value === 'feedback'
+  return (
+    value === 'workspace' ||
+    value === 'viewing' ||
+    value === 'dialog' ||
+    value === 'feedback' ||
+    value === 'video'
+  )
 }
 
 function parseCatalog(): readonly AcceptanceStateDefinition[] {

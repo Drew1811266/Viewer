@@ -68,4 +68,21 @@ describe('VideoCard', () => {
     fireEvent.doubleClick(option)
     expect(onOpen).toHaveBeenCalledWith('video-1')
   })
+
+  it('keeps a playable video available when only its cover thumbnail fails', () => {
+    const onOpen = vi.fn()
+    render(<VideoCard video={video()} selected={false} active={false} onOpen={onOpen} />)
+
+    const option = screen.getByRole('option', { name: 'clip.mp4' })
+    const stage = option.querySelector<HTMLElement>('.video-card-cover-stage')
+    const cover = option.querySelector<HTMLImageElement>('.video-card-cover')
+    fireEvent.error(cover as HTMLImageElement)
+
+    expect(stage).toHaveAttribute('data-thumbnail-state', 'failed')
+    expect(stage).toHaveStyle({ aspectRatio: '16 / 9' })
+    expect(screen.getByLabelText('视频缩略图不可用')).toBeVisible()
+    expect(screen.queryByText('不可用')).not.toBeInTheDocument()
+    fireEvent.doubleClick(option)
+    expect(onOpen).toHaveBeenCalledWith('video-1')
+  })
 })

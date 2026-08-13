@@ -22,6 +22,19 @@ export interface VideoPreviewProps {
 
 const IGNORE = () => undefined
 
+const VIDEO_ERROR_MESSAGES: Readonly<Record<string, string>> = {
+  unsupported: '不支持此视频的容器或编码',
+  damaged: '视频已损坏或无法读取',
+  unreadable: '视频已损坏或无法读取',
+  missing: '视频文件已移动或删除',
+  engine_initialization: '视频引擎无法启动',
+  engineInitialization: '视频引擎无法启动',
+  decode_fallback_failed: '硬件与软件解码均失败',
+  decodeFallbackFailed: '硬件与软件解码均失败',
+  render_surface: '视频显示区域无法创建',
+  renderSurface: '视频显示区域无法创建',
+}
+
 export default function VideoPreview({
   file,
   files,
@@ -31,11 +44,12 @@ export default function VideoPreview({
 }: VideoPreviewProps) {
   const dialog = useRef<HTMLElement>(null)
   const stage = useRef<HTMLDivElement>(null)
-  const [retryKey, setRetryKey] = useState(0)
+  const [retryRequest, setRetryRequest] = useState({ entityId: file.entityId, key: 0 })
   const [seeking, setSeeking] = useState(false)
   const [adjusting, setAdjusting] = useState(false)
   const [focusedWithin, setFocusedWithin] = useState(false)
   const reducedMotion = useReducedMotionPreference()
+  const retryKey = retryRequest.entityId === file.entityId ? retryRequest.key : 0
   const { state, controlState, commands } = useVideoBridge({ bridge, file, retryKey, stage })
   const currentIndex = files.findIndex((candidate) => candidate.entityId === file.entityId)
   const failed = state.phase === 'failed'
@@ -87,14 +101,22 @@ export default function VideoPreview({
   const actions: ReactNode = (
     <>
       {failed && (
-        <ViewerButton tone="quiet" onClick={() => setRetryKey((current) => current + 1)}>
+        <ViewerButton
+          tone="quiet"
+          onClick={() =>
+            setRetryRequest((current) => ({
+              entityId: file.entityId,
+              key: current.entityId === file.entityId ? current.key + 1 : 1,
+            }))
+          }
+        >
           重试
         </ViewerButton>
       )}
       <ViewerButton
         tone="quiet"
         className="preview-complete-action"
-        aria-label="关闭预览"
+        aria-label="完成"
         onClick={onClose}
       >
         完成
@@ -134,8 +156,8 @@ export default function VideoPreview({
           </section>
         )}
         {failed && (
-          <ViewerLocalFeedback tone="danger" title="无法播放这个视频">
-            请重试；如果问题持续出现，请确认视频文件仍可访问。
+          <ViewerLocalFeedback tone="danger" title={videoErrorMessage(state.error?.code)}>
+            此错误仅影响当前视频。你可以重试或完成预览。
           </ViewerLocalFeedback>
         )}
         {state.generation > 0 && (
@@ -172,4 +194,10 @@ export default function VideoPreview({
       </nav>
     </section>
   )
+}
+
+export function videoErrorMessage(code: string | undefined): string {
+  return code === undefined
+    ? '无法播放这个视频'
+    : (VIDEO_ERROR_MESSAGES[code] ?? '无法播放这个视频')
 }

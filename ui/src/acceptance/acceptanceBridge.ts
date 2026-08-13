@@ -6,6 +6,7 @@ import {
   ACCEPTANCE_PROJECT_SNAPSHOT,
   ACCEPTANCE_TEXT_FILES,
   ACCEPTANCE_UNSUPPORTED_FILE,
+  ACCEPTANCE_VIDEO_FILES,
   acceptanceFile,
   acceptanceWorkspace,
   imageRepresentation,
@@ -182,6 +183,9 @@ export function createAcceptanceBridge(overrides: AcceptanceBridgeOverrides = {}
     async videoOpen() {
       return unexpected('videoOpen')
     },
+    async videoCancelOpen() {
+      return unexpected('videoCancelOpen')
+    },
     async videoClose() {
       return unexpected('videoClose')
     },
@@ -257,7 +261,12 @@ export function createAcceptanceBridge(overrides: AcceptanceBridgeOverrides = {}
 }
 
 function allFiles(): BrowserFile[] {
-  return [...ACCEPTANCE_FILES, ...ACCEPTANCE_TEXT_FILES, ACCEPTANCE_UNSUPPORTED_FILE]
+  return [
+    ...ACCEPTANCE_FILES,
+    ...ACCEPTANCE_VIDEO_FILES,
+    ...ACCEPTANCE_TEXT_FILES,
+    ACCEPTANCE_UNSUPPORTED_FILE,
+  ]
 }
 
 function searchHit(file: BrowserFile): SearchHit {

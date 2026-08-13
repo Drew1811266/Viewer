@@ -115,6 +115,7 @@ function bridge(access: 'read_write' | 'read_only' = 'read_write'): ViewerBridge
     undoLastOperation: vi.fn().mockResolvedValue(null),
     beginFinderDrag: vi.fn().mockResolvedValue({ fileCount: 1 }),
     videoOpen: vi.fn(),
+    videoCancelOpen: vi.fn().mockResolvedValue(true),
     videoClose: vi.fn(),
     videoPlay: vi.fn(),
     videoPause: vi.fn(),

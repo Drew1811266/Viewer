@@ -7,7 +7,11 @@ import RenameDialog from '../../components/RenameDialog'
 import SettingsDialog from '../../components/SettingsDialog'
 import TrashConfirmation from '../../components/TrashConfirmation'
 import type { AcceptanceSceneRegistry } from '../AcceptanceApp'
-import { ACCEPTANCE_FILES, ACCEPTANCE_FOLDER_TREE } from '../acceptanceFixtures'
+import {
+  ACCEPTANCE_FILES,
+  ACCEPTANCE_FOLDER_TREE,
+  acceptanceVideoCacheBridge,
+} from '../acceptanceFixtures'
 import AcceptanceProductScene, { setAcceptanceInputValue } from './sceneHarness'
 
 const noOp = () => undefined
@@ -18,6 +22,7 @@ export const DIALOG_SCENES: AcceptanceSceneRegistry = {
   'DIA-01': () => (
     <DialogBackdrop ready={settingsDialogReady}>
       <SettingsDialog
+        bridge={acceptanceVideoCacheBridge()}
         density="standard"
         magnifier={{ shape: 'circle', magnification: 2, area: 'small' }}
         error={null}

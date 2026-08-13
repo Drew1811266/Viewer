@@ -49,8 +49,15 @@ impl From<VideoOpenSurfaceRectDto> for SurfaceRect {
 #[derive(Clone, Debug, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct VideoOpenRequestDto {
+    pub attempt_id: String,
     pub entity_id: String,
     pub surface_rect: VideoOpenSurfaceRectDto,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct VideoOpenAttemptDto {
+    pub attempt_id: String,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]

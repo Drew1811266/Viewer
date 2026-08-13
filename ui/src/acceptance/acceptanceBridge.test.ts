@@ -47,6 +47,7 @@ describe('Viewer visual acceptance bridge', () => {
         'updateViewerSettings',
         'videoCacheClear',
         'videoCacheStats',
+        'videoCancelOpen',
         'videoClose',
         'videoOpen',
         'videoPause',

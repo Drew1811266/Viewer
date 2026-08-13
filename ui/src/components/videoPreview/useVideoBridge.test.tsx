@@ -40,6 +40,7 @@ describe('useVideoBridge', () => {
     )
     expect(harness.order.slice(0, 2)).toEqual(['listen', 'open:a.mp4'])
     expect(harness.open).toHaveBeenCalledWith({
+      attemptId: expect.any(String),
       entityId: 'video-a.mp4',
       surfaceRect: { x: 100, y: 125, width: 800, height: 450 },
     })
@@ -443,6 +444,7 @@ function videoBridgeHarness() {
   })
   const bridge: VideoPreviewBridge = {
     videoOpen: open,
+    videoCancelOpen: vi.fn().mockResolvedValue(true),
     videoClose: close,
     videoPlay: play,
     videoPause: pause,

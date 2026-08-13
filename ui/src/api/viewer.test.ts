@@ -27,8 +27,12 @@ describe('tauriViewerBridge', () => {
     const handler = vi.fn()
 
     await tauriViewerBridge.videoOpen({
+      attemptId: '00000000-0000-4000-8000-000000000001',
       entityId: 'video-1',
       surfaceRect: { x: 10, y: 20, width: 640, height: 360 },
+    })
+    await tauriViewerBridge.videoCancelOpen({
+      attemptId: '00000000-0000-4000-8000-000000000001',
     })
     await tauriViewerBridge.videoClose({ generation: 8 })
     await tauriViewerBridge.videoPlay({ generation: 8 })
@@ -60,11 +64,13 @@ describe('tauriViewerBridge', () => {
         'video_open',
         {
           request: {
+            attemptId: '00000000-0000-4000-8000-000000000001',
             entityId: 'video-1',
             surfaceRect: { x: 10, y: 20, width: 640, height: 360 },
           },
         },
       ],
+      ['video_cancel_open', { request: { attemptId: '00000000-0000-4000-8000-000000000001' } }],
       ['video_close', { request: { generation: 8 } }],
       ['video_play', { request: { generation: 8 } }],
       ['video_pause', { request: { generation: 8 } }],

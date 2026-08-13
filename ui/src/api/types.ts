@@ -87,8 +87,13 @@ export interface VideoSurfaceRect {
 }
 
 export interface VideoOpenRequest {
+  attemptId: string
   entityId: string
   surfaceRect: VideoSurfaceRect
+}
+
+export interface VideoOpenAttemptRequest {
+  attemptId: string
 }
 
 export interface VideoGenerationRequest {

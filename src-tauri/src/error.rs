@@ -84,6 +84,12 @@ impl From<crate::state::RuntimeError> for CommandError {
                 "视频信息尚不可用，请稍后重试。",
                 true,
             ),
+            RuntimeError::VideoRetryFailed(_) => Self::new(
+                error.code(),
+                ErrorCategory::Content,
+                "视频仍无法打开，请稍后重试。",
+                true,
+            ),
             RuntimeError::CloseFailed => Self::new(
                 error.code(),
                 ErrorCategory::Environment,
@@ -99,6 +105,11 @@ impl From<crate::video_runtime::VideoCommandError> for CommandError {
         use crate::video_runtime::VideoCommandError;
 
         let (category, message, retryable) = match error {
+            VideoCommandError::StaleOpenAttempt => (
+                ErrorCategory::Conflict,
+                "视频打开请求已被更新的请求替换。",
+                false,
+            ),
             VideoCommandError::StaleGeneration => {
                 (ErrorCategory::Conflict, "视频会话已变化，请重试。", true)
             }

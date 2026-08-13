@@ -1,5 +1,8 @@
 use super::*;
 use std::collections::{VecDeque, hash_map::Entry};
+use tokio_util::sync::CancellationToken;
+use viewer_domain::video::VideoProbeStatus;
+use viewer_infrastructure::video_probe::{MediaFileIdentity, VideoProbeError};
 
 pub(super) const IMAGE_REQUEST_TERMINAL_LIMIT: usize = 1_024;
 
@@ -151,10 +154,25 @@ impl DesktopRuntime {
         &self,
         entity_id: EntityId,
     ) -> Result<AuthorizedVideoSource, RuntimeError> {
-        let (active, index) = {
+        self.resolve_video_entity_for_open(entity_id, CancellationToken::new())
+            .await
+    }
+
+    pub async fn resolve_video_entity_for_open(
+        &self,
+        entity_id: EntityId,
+        cancellation: CancellationToken,
+    ) -> Result<AuthorizedVideoSource, RuntimeError> {
+        let (active, index, video_probe, scheduler) = {
             let session = self.session.lock().await;
+            ensure_video_open_active(&cancellation)?;
             let session = session.as_ref().ok_or(RuntimeError::StaleSession)?;
-            (session.active.clone(), Arc::clone(&session.index))
+            (
+                session.active.clone(),
+                Arc::clone(&session.index),
+                Arc::clone(&self.video_probe),
+                Arc::clone(&self.derived_scheduler),
+            )
         };
         let indexed = index
             .indexed_node(entity_id)
@@ -163,16 +181,37 @@ impl DesktopRuntime {
         if indexed.node.kind != FileKind::Video {
             return Err(RuntimeError::NotVideo);
         }
-        let metadata = indexed
+        let mut metadata = indexed
             .video_metadata
             .ok_or(RuntimeError::MetadataUnavailable)?;
         let (canonical_path, _, _) = validated_indexed_source(&active, &indexed.node)
             .map_err(|()| RuntimeError::PathNotAuthorized)?;
+        let mut metadata_refreshed_for_retry = false;
+        if matches!(metadata.probe_status, VideoProbeStatus::Failed(_)) {
+            let source_metadata = std::fs::symlink_metadata(&canonical_path)
+                .map_err(|_| RuntimeError::PathNotAuthorized)?;
+            let expected_identity = MediaFileIdentity::from_metadata(&source_metadata);
+            let _permit = scheduler.acquire(DerivedWorkClass::VisibleDerived).await;
+            ensure_video_open_active(&cancellation)?;
+            metadata = video_probe
+                .probe_identity_bound(&canonical_path, &expected_identity, cancellation.clone())
+                .await
+                .map_err(map_video_retry_error)?;
+            ensure_video_open_active(&cancellation)?;
+            if metadata.display_width.is_none_or(|width| width == 0)
+                || metadata.display_height.is_none_or(|height| height == 0)
+            {
+                return Err(RuntimeError::VideoRetryFailed(VideoFailureKind::Damaged));
+            }
+            metadata_refreshed_for_retry = true;
+        }
+        ensure_video_open_active(&cancellation)?;
         Ok(AuthorizedVideoSource {
             entity_id,
             session_id: active.session_id,
             canonical_path,
             metadata,
+            metadata_refreshed_for_retry,
         })
     }
 
@@ -490,12 +529,28 @@ impl DesktopRuntime {
     }
 }
 
+fn map_video_retry_error(error: VideoProbeError) -> RuntimeError {
+    match error {
+        VideoProbeError::Failed(kind) => RuntimeError::VideoRetryFailed(kind),
+        VideoProbeError::Cancelled | VideoProbeError::SourceChanged => RuntimeError::StaleSession,
+    }
+}
+
+fn ensure_video_open_active(cancellation: &CancellationToken) -> Result<(), RuntimeError> {
+    if cancellation.is_cancelled() {
+        Err(RuntimeError::StaleSession)
+    } else {
+        Ok(())
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AuthorizedVideoSource {
     pub entity_id: EntityId,
     pub session_id: SessionId,
     pub canonical_path: PathBuf,
     pub metadata: viewer_domain::video::VideoMetadata,
+    pub metadata_refreshed_for_retry: bool,
 }
 
 fn ensure_image_request_active(

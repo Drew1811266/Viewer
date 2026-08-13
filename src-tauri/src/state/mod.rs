@@ -73,6 +73,7 @@ use viewer_domain::{
     image::ImageRepresentationKind,
     operation::{RenamePreflight, RenameRuleSet, RenameTarget},
     search::{Generation, SearchQuery, SearchScope},
+    video::VideoFailureKind,
 };
 use viewer_infrastructure::operation::{
     copy::LocalFileMutation, journal::OperationJournal, recovery::RecoveryService,
@@ -137,6 +138,8 @@ pub enum RuntimeError {
     PathNotAuthorized,
     #[error("the indexed video metadata is unavailable")]
     MetadataUnavailable,
+    #[error("the indexed video retry probe failed")]
+    VideoRetryFailed(VideoFailureKind),
     #[error("the native video runtime could not close cleanly")]
     CloseFailed,
 }
@@ -148,6 +151,16 @@ impl RuntimeError {
             Self::StaleSession => "stale_session",
             Self::PathNotAuthorized => "path_not_authorized",
             Self::MetadataUnavailable => "video_metadata_unavailable",
+            Self::VideoRetryFailed(kind) => match kind {
+                VideoFailureKind::Unsupported => "unsupported",
+                VideoFailureKind::Damaged => "damaged",
+                VideoFailureKind::Unreadable => "unreadable",
+                VideoFailureKind::Missing => "missing",
+                VideoFailureKind::EngineInitialization => "engine_initialization",
+                VideoFailureKind::DecodeFallbackFailed => "decode_fallback_failed",
+                VideoFailureKind::RenderSurface => "render_surface",
+                VideoFailureKind::ThumbnailUnavailable => "thumbnail_unavailable",
+            },
             Self::CloseFailed => "video_close_failed",
         }
     }

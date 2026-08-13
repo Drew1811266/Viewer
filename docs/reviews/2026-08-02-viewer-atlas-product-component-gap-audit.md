@@ -11,6 +11,8 @@
 
 2026-08-06 扩展：当前权威目录增加 `THU-08`、`THU-09`，总数为 91。原 89 状态结论与证据保持历史原貌；新增两档已完成产品和图谱迁移，双尺寸视觉证据将在五档缩略图最终验收中补录。
 
+2026-08-12 视频预览扩展：权威目录再增加 12 个视频验收状态，当前总数为 104。它们由静态验收工件和 fake bridge 驱动，文档账本与 catalog 保持逐项一对一；历史 89 状态的浏览器和原生证据不被重新表述为视频原生证据。
+
 最终证据为 178 组浏览器参考/产品联合图与 30 条 macOS 原生冒烟结果。四波联合证据已检查，P0/P1/P2 未关闭项为 `0`。Windows 原生证据不在当前 macOS 开发阶段内，继续保留为未来 Windows 阶段事项。
 
 ## 2. 审计依据与证据边界
@@ -258,6 +260,23 @@ macOS 当前阶段无 P0/P1/P2 阻塞。Windows 原生窗口、字体栅格、�
 | A11Y-04 | `accessibility-forced` | 无正式强制颜色规则 | 通过（双尺寸联合证据） | 已完成 — 新增 `forced-colors` 规则，保证焦点、选中、危险和禁用有结构区分 |
 | A11Y-05 | `accessibility-zoom` | 现有窄窗口 CSS | 通过（双尺寸联合证据） | 已完成 — 200% 缩放验证全部顶栏、弹层、圆盘、对话框和检查器可达 |
 
+### 6.18 视频预览验收状态（12）
+
+| ID | 图谱状态 | 正式对应 | 结果 | 不可遗漏的迁移动作 |
+| --- | --- | --- | --- | --- |
+| workspace-video-expanded | `workspace-video-expanded` | `ContentBrowser`、`VideoSection`、`VideoCard` | 已完成 | 已完成 — 视频区可展开并保留可播放卡片的真实打开入口 |
+| workspace-video-unavailable | `workspace-video-unavailable` | `ContentBrowser`、`VideoSection`、`VideoCard` | 已完成 | 已完成 — 不可用缩略图使用固定比例的中性回退，未将可播放视频误标为不可用 |
+| video-preparing | `video-preparing` | `VideoPreview` | 已完成 | 已完成 — 准备中状态通过假 bridge 展示，不启动 libmpv |
+| video-playing-controls | `video-playing-controls` | `VideoPreview`、`VideoControls` | 已完成 | 已完成 — 静态注册视频帧覆盖播放控制层 |
+| video-paused-controls | `video-paused-controls` | `VideoPreview`、`VideoControls` | 已完成 | 已完成 — 暂停控制层保持在正式预览壳内 |
+| video-timeline-pending | `video-timeline-pending` | `VideoPreview`、`VideoTimeline` | 已完成 | 已完成 — 时间线待定状态不伪造可用时长 |
+| video-timeline-ready | `video-timeline-ready` | `VideoPreview`、`VideoTimeline` | 已完成 | 已完成 — 时间线就绪状态使用静态验收工件 |
+| video-ended | `video-ended` | `VideoPreview`、`VideoControls` | 已完成 | 已完成 — 结束状态保留正式控制与导航外壳 |
+| video-failed-retry | `video-failed-retry` | `VideoPreview`、`ViewerLocalFeedback` | 已完成 | 已完成 — 可重试的归一化错误不暴露绝对路径 |
+| video-fullscreen-controls | `video-fullscreen-controls` | `VideoPreview`、`VideoControls` | 已完成 | 已完成 — 全屏控制状态在验收装配器中复用正式组件 |
+| settings-video-cache | `settings-video-cache` | `SettingsDialog`、`ViewerLocalFeedback` | 已完成 | 已完成 — 运行时缓存统计和清除确认不写入设置 schema |
+| video-reduced-motion | `video-reduced-motion` | `VideoPreview`、`VideoControls` | 已完成 | 已完成 — 生产 `matchMedia` 减少动效状态被验收场景直接驱动 |
+
 ## 7. 模块迁移清单
 
 迁移已按依赖关系而非截图顺序完成。四个模块波次均在进入下一波前通过了同状态自动化与联合截图门禁；下列清单保留为不可遗漏的完成记录。
@@ -298,6 +317,7 @@ macOS 当前阶段无 P0/P1/P2 阻塞。Windows 原生窗口、字体栅格、�
 ### 波次 4：可访问性与最终原生验收
 
 - [x] A11Y-01–A11Y-05
+- [x] workspace-video-expanded、workspace-video-unavailable、video-preparing、video-playing-controls、video-paused-controls、video-timeline-pending、video-timeline-ready、video-ended、video-failed-retry、video-fullscreen-controls、settings-video-cache、video-reduced-motion
 - [x] 89 个状态全部完成自动化回归
 - [x] 89 个状态在两个规定视口完成参考/实现联合对照
 - [x] P0/P1/P2 全部关闭；P3 逐项记录且不伪装完成

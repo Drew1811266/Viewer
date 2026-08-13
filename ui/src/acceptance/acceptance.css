@@ -17,3 +17,26 @@
 body:has(.task-bar) .acceptance-local-feedback-stage {
   bottom: 92px;
 }
+
+.acceptance-video-native-frame {
+  background: var(--preview-stage);
+  height: calc(100vh - 52px);
+  inset: 52px 0 0;
+  object-fit: contain;
+  position: fixed;
+  width: 100vw;
+  z-index: 9;
+}
+
+[data-video-acceptance-state='video-fullscreen-controls'] .acceptance-video-native-frame {
+  height: 100vh;
+  inset: 0;
+}
+
+[data-video-acceptance-state='video-reduced-motion'] :is(
+    .video-controls,
+    .video-preview-loading__progress > span
+  ) {
+  animation: none;
+  transition: none;
+}

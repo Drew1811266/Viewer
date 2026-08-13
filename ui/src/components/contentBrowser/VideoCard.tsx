@@ -36,8 +36,12 @@ export function VideoCard({
 }: VideoCardProps) {
   const coverUrl = video.videoMetadata.coverUrl
   const [coverLoaded, setCoverLoaded] = useState(false)
+  const [coverFailed, setCoverFailed] = useState(false)
 
-  useEffect(() => setCoverLoaded(false), [coverUrl])
+  useEffect(() => {
+    setCoverLoaded(false)
+    setCoverFailed(false)
+  }, [coverUrl])
 
   const supportsOrganization =
     onOrganizationPointerDown !== undefined &&
@@ -66,8 +70,12 @@ export function VideoCard({
         title={onFinderDragStart === undefined ? undefined : '拖到 Finder'}
         onDragStart={(event) => onFinderDragStart?.(video, event)}
       >
-        <div className="video-card-cover-stage" style={{ aspectRatio: '16 / 9' }}>
-          {coverUrl !== null && (
+        <div
+          className="video-card-cover-stage"
+          data-thumbnail-state={coverFailed ? 'failed' : coverLoaded ? 'ready' : 'pending'}
+          style={{ aspectRatio: '16 / 9' }}
+        >
+          {coverUrl !== null && !coverFailed && (
             <img
               alt=""
               aria-hidden="true"
@@ -75,7 +83,14 @@ export function VideoCard({
               className={`video-card-cover${coverLoaded ? ' video-card-cover--loaded' : ''}`}
               src={coverUrl}
               onLoad={() => setCoverLoaded(true)}
+              onError={() => {
+                setCoverLoaded(false)
+                setCoverFailed(true)
+              }}
             />
+          )}
+          {coverFailed && (
+            <span className="video-card-thumbnail-failed" aria-label="视频缩略图不可用" />
           )}
           <span className="video-card-play" aria-hidden="true" />
           <span className="video-card-duration">

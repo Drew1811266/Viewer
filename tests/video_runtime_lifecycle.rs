@@ -285,6 +285,7 @@ fn video_source(entity_id: u128) -> viewer_desktop::state::AuthorizedVideoSource
             audio_codec: None,
             probe_status: viewer_domain::video::VideoProbeStatus::Ready,
         },
+        metadata_refreshed_for_retry: false,
     }
 }
 
@@ -401,6 +402,7 @@ async fn typed_runtime_rejects_stale_generation_before_engine_mutation() {
                 audio_codec: None,
                 probe_status: viewer_domain::video::VideoProbeStatus::Ready,
             },
+            metadata_refreshed_for_retry: false,
         })
         .await
         .expect("open authorized source")
@@ -442,6 +444,7 @@ async fn stale_engine_events_are_not_published_by_the_bridge() {
                 audio_codec: None,
                 probe_status: viewer_domain::video::VideoProbeStatus::Ready,
             },
+            metadata_refreshed_for_retry: false,
         })
         .await
         .unwrap()
@@ -586,6 +589,7 @@ async fn newer_thumbnail_request_cancels_old_work_and_only_latest_result_is_publ
                 audio_codec: None,
                 probe_status: viewer_domain::video::VideoProbeStatus::Ready,
             },
+            metadata_refreshed_for_retry: false,
         })
         .await
         .unwrap()
@@ -652,6 +656,7 @@ async fn close_failure_still_resets_session_and_revokes_thumbnail_artifacts() {
                 audio_codec: None,
                 probe_status: viewer_domain::video::VideoProbeStatus::Ready,
             },
+            metadata_refreshed_for_retry: false,
         })
         .await
         .unwrap();

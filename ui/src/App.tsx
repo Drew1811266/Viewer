@@ -1305,6 +1305,7 @@ function ViewerWorkspace({
       )}
       {settingsOpen && (
         <SettingsDialog
+          bridge={bridge}
           density={thumbnailDensity}
           magnifier={magnifier}
           error={settingsError}

@@ -9,6 +9,21 @@ interface LedgerState {
   referenceState: string
 }
 
+const VIDEO_ACCEPTANCE_SCENE_IDS = [
+  'workspace-video-expanded',
+  'workspace-video-unavailable',
+  'video-preparing',
+  'video-playing-controls',
+  'video-paused-controls',
+  'video-timeline-pending',
+  'video-timeline-ready',
+  'video-ended',
+  'video-failed-retry',
+  'video-fullscreen-controls',
+  'settings-video-cache',
+  'video-reduced-motion',
+]
+
 function ledgerStates(): LedgerState[] {
   const source = readFileSync(
     resolve(
@@ -19,7 +34,13 @@ function ledgerStates(): LedgerState[] {
   )
   return source
     .split('\n')
-    .filter((line) => /^\| [A-Z0-9]+-\d{2} \|/.test(line))
+    .filter((line) => {
+      const id = line.match(/^\| ([^|]+) \|/)?.[1]
+      return (
+        id !== undefined &&
+        (/^[A-Z0-9]+-\d{2}$/.test(id) || VIDEO_ACCEPTANCE_SCENE_IDS.includes(id as never))
+      )
+    })
     .map((line) => {
       const cells = line
         .slice(1, -1)
@@ -54,9 +75,17 @@ describe('Viewer visual acceptance state catalog', () => {
       referenceState,
     }))
 
-    expect(actual).toHaveLength(92)
-    expect(new Set(actual.map(({ id }) => id)).size).toBe(92)
+    expect(actual).toHaveLength(104)
+    expect(new Set(actual.map(({ id }) => id)).size).toBe(104)
     expect(actual).toEqual(expected)
+  })
+
+  it('adds the exact video acceptance IDs without replacing the approved atlas catalog', () => {
+    const videos = ACCEPTANCE_STATE_DEFINITIONS.filter(({ sceneGroup }) => sceneGroup === 'video')
+
+    expect(videos.map(({ id }) => id)).toEqual(VIDEO_ACCEPTANCE_SCENE_IDS)
+    expect(videos.map(({ referenceState }) => referenceState)).toEqual(VIDEO_ACCEPTANCE_SCENE_IDS)
+    expect(new Set(ACCEPTANCE_STATE_DEFINITIONS.map(({ id }) => id)).size).toBe(104)
   })
 
   it('fails closed for an unknown visual acceptance state', () => {

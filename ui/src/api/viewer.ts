@@ -47,6 +47,7 @@ import type {
   VideoFullscreenRequest,
   VideoGenerationRequest,
   VideoMutedRequest,
+  VideoOpenAttemptRequest,
   VideoOpenRequest,
   VideoRateRequest,
   VideoSeekRequest,
@@ -93,6 +94,7 @@ export interface ViewerBridge {
   undoLastOperation(request: UndoLastOperationRequest): Promise<UndoReceipt | null>
   beginFinderDrag(request: BeginFinderDragRequest): Promise<FinderDragReceipt>
   videoOpen(request: VideoOpenRequest): Promise<VideoSession>
+  videoCancelOpen(request: VideoOpenAttemptRequest): Promise<boolean>
   videoClose(request: VideoGenerationRequest): Promise<void>
   videoPlay(request: VideoGenerationRequest): Promise<void>
   videoPause(request: VideoGenerationRequest): Promise<void>
@@ -241,6 +243,9 @@ export const tauriViewerBridge: ViewerBridge = {
   },
   videoOpen(request) {
     return invoke<VideoSession>('video_open', { request })
+  },
+  videoCancelOpen(request) {
+    return invoke<boolean>('video_cancel_open', { request })
   },
   videoClose(request) {
     return invoke<void>('video_close', { request })

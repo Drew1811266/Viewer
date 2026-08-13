@@ -1,6 +1,7 @@
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
-import type { MagnifierPreferences } from '../api/types'
+import type { MagnifierPreferences, VideoCacheStats } from '../api/types'
+import type { ViewerBridge } from '../api/viewer'
 import SettingsDialog from './SettingsDialog'
 
 const DEFAULT_MAGNIFIER: MagnifierPreferences = {
@@ -9,8 +10,9 @@ const DEFAULT_MAGNIFIER: MagnifierPreferences = {
   area: 'small',
 }
 
-function settingsProps() {
+function settingsProps(bridge = videoCacheBridge()) {
   return {
+    bridge,
     density: 'standard' as const,
     magnifier: DEFAULT_MAGNIFIER,
     error: null,
@@ -22,7 +24,57 @@ function settingsProps() {
   }
 }
 
+function videoCacheBridge(
+  stats: VideoCacheStats = {
+    bytesUsed: 268_435_456,
+    budgetBytes: 1_073_741_824,
+    entryCount: 24,
+  },
+) {
+  return {
+    videoCacheStats: vi.fn<ViewerBridge['videoCacheStats']>().mockResolvedValue(stats),
+    videoCacheClear: vi.fn<ViewerBridge['videoCacheClear']>().mockResolvedValue({
+      bytesUsed: 0,
+      budgetBytes: 1_073_741_824,
+      entryCount: 0,
+    }),
+  }
+}
+
 describe('SettingsDialog', () => {
+  it('reports runtime cache usage with a fixed 1 GiB limit only while the dialog is open', async () => {
+    const bridge = videoCacheBridge({
+      bytesUsed: 268_435_456,
+      budgetBytes: 2_147_483_648,
+      entryCount: 24,
+    })
+
+    const rendered = render(<SettingsDialog {...settingsProps(bridge)} />)
+
+    expect(await screen.findByText('256 MiB / 1 GiB')).toBeVisible()
+    expect(screen.getByText('24 个缓存项')).toBeVisible()
+    expect(bridge.videoCacheStats).toHaveBeenCalledOnce()
+
+    rendered.unmount()
+    expect(bridge.videoCacheStats).toHaveBeenCalledOnce()
+  })
+
+  it('clears video cache only after confirmation and reports the cleared result', async () => {
+    const bridge = videoCacheBridge()
+    render(<SettingsDialog {...settingsProps(bridge)} />)
+    await screen.findByText('256 MiB / 1 GiB')
+
+    fireEvent.click(screen.getByRole('button', { name: '清除视频缓存' }))
+    expect(bridge.videoCacheClear).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { name: '确认清除视频缓存' }))
+
+    await waitFor(() => expect(bridge.videoCacheClear).toHaveBeenCalledOnce())
+    expect(await screen.findByText('0 B / 1 GiB')).toBeVisible()
+    expect(screen.getByText('0 个缓存项')).toBeVisible()
+    expect(screen.getByRole('status')).toHaveTextContent('视频缓存已清除')
+  })
+
   it.each([
     [1024, 720],
     [720, 450],

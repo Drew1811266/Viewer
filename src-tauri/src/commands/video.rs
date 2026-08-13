@@ -1,16 +1,16 @@
 use crate::{
     dto::{
-        GenerationDto, VideoCacheStatsDto, VideoFullscreenDto, VideoMutedDto, VideoOpenRequestDto,
-        VideoRateDto, VideoSeekDto, VideoSessionDto, VideoStepDto, VideoSurfaceRectDto,
-        VideoThumbnailRequestDto, VideoVolumeDto,
+        GenerationDto, VideoCacheStatsDto, VideoFullscreenDto, VideoMutedDto, VideoOpenAttemptDto,
+        VideoOpenRequestDto, VideoOpenSurfaceRectDto, VideoRateDto, VideoSeekDto, VideoSessionDto,
+        VideoStepDto, VideoSurfaceRectDto, VideoThumbnailRequestDto, VideoVolumeDto,
     },
     error::{CommandError, ErrorCategory},
-    state::DesktopRuntime,
+    state::{AuthorizedVideoSource, DesktopRuntime},
     video_runtime::{VideoCommandError, VideoRuntime},
 };
 use std::{str::FromStr, sync::Arc};
 use tauri::{State, WebviewWindow};
-use viewer_application::VideoEngine;
+use viewer_application::{SurfaceRect, VideoEngine};
 use viewer_domain::EntityId;
 
 pub type NativeVideoRuntime = VideoRuntime<viewer_platform_macos::video::MacOsLibmpvAdapter>;
@@ -22,22 +22,104 @@ pub async fn video_open(
     desktop: State<'_, Arc<DesktopRuntime>>,
     video: State<'_, Arc<NativeVideoRuntime>>,
 ) -> Result<VideoSessionDto, CommandError> {
+    validate_open_attempt_id(&request.attempt_id)?;
     let entity_id = EntityId::from_str(&request.entity_id).map_err(|_| invalid_entity_id())?;
-    let _project_lease = desktop.video_open_project_lease().await;
-    let source = desktop
-        .resolve_video_entity(entity_id)
-        .await
+    let attempt = video
+        .begin_open_attempt(request.attempt_id.clone())
         .map_err(CommandError::from)?;
-    let engine = Arc::clone(video.engine());
-    video
-        .replace_authorized(source, || async move {
-            engine
-                .prepare_surface(window, request.surface_rect.into())
-                .await
-                .map_err(|_| VideoCommandError::EngineUnavailable)
-        })
-        .await
-        .map_err(Into::into)
+    let result = async {
+        let _project_lease = desktop.video_open_project_lease().await;
+        video.ensure_open_attempt(&attempt)?;
+        let source = desktop
+            .resolve_video_entity_for_open(entity_id, attempt.cancellation().clone())
+            .await
+            .map_err(CommandError::from)?;
+        video.ensure_open_attempt(&attempt)?;
+        let surface_rect = initial_video_surface_rect(&source, request.surface_rect);
+        let engine = Arc::clone(video.engine());
+        video
+            .replace_authorized_for_attempt(&attempt, source, || async move {
+                engine
+                    .prepare_surface(window, surface_rect)
+                    .await
+                    .map_err(|_| VideoCommandError::EngineUnavailable)
+            })
+            .await
+            .map_err(CommandError::from)
+    }
+    .await;
+    video.finish_open_attempt(attempt.id());
+    result
+}
+
+#[tauri::command]
+pub fn video_cancel_open(
+    request: VideoOpenAttemptDto,
+    video: State<'_, Arc<NativeVideoRuntime>>,
+) -> Result<bool, CommandError> {
+    validate_open_attempt_id(&request.attempt_id)?;
+    Ok(video.cancel_open_attempt(&request.attempt_id))
+}
+
+fn validate_open_attempt_id(attempt_id: &str) -> Result<(), CommandError> {
+    if attempt_id.len() == 36
+        && attempt_id
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit() || byte == b'-')
+    {
+        Ok(())
+    } else {
+        Err(CommandError::new(
+            "invalid_video_open_attempt",
+            ErrorCategory::Validation,
+            "视频打开请求标识无效。",
+            false,
+        ))
+    }
+}
+
+fn initial_video_surface_rect(
+    source: &AuthorizedVideoSource,
+    requested: VideoOpenSurfaceRectDto,
+) -> SurfaceRect {
+    let stage = SurfaceRect::from(requested);
+    if !source.metadata_refreshed_for_retry {
+        return stage;
+    }
+    let Some(display_width) = source.metadata.display_width.filter(|width| *width > 0) else {
+        return stage;
+    };
+    let Some(display_height) = source.metadata.display_height.filter(|height| *height > 0) else {
+        return stage;
+    };
+    let rotated = source.metadata.rotation_degrees.unsigned_abs() % 180 == 90;
+    let (source_width, source_height) = if rotated {
+        (display_height, display_width)
+    } else {
+        (display_width, display_height)
+    };
+    let scale = f64::min(
+        f64::from(stage.width) / f64::from(source_width),
+        f64::from(stage.height) / f64::from(source_height),
+    );
+    let fitted_width = f64::from(source_width) * scale;
+    let fitted_height = f64::from(source_height) * scale;
+    SurfaceRect {
+        x: js_round_i32(f64::from(stage.x) + (f64::from(stage.width) - fitted_width) / 2.0),
+        y: js_round_i32(f64::from(stage.y) + (f64::from(stage.height) - fitted_height) / 2.0),
+        width: js_round_u32(fitted_width),
+        height: js_round_u32(fitted_height),
+    }
+}
+
+fn js_round_i32(value: f64) -> i32 {
+    (value + 0.5)
+        .floor()
+        .clamp(f64::from(i32::MIN), f64::from(i32::MAX)) as i32
+}
+
+fn js_round_u32(value: f64) -> u32 {
+    (value + 0.5).floor().clamp(0.0, f64::from(u32::MAX)) as u32
 }
 
 #[tauri::command]
@@ -197,4 +279,59 @@ fn fullscreen_unavailable() -> CommandError {
         "无法切换视频全屏状态。",
         true,
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::initial_video_surface_rect;
+    use crate::{dto::VideoOpenSurfaceRectDto, state::AuthorizedVideoSource};
+    use std::path::PathBuf;
+    use viewer_application::SurfaceRect;
+    use viewer_domain::{
+        EntityId, SessionId,
+        video::{VideoMetadata, VideoProbeStatus},
+    };
+
+    fn source(metadata_refreshed_for_retry: bool) -> AuthorizedVideoSource {
+        AuthorizedVideoSource {
+            entity_id: EntityId::from_u128(7),
+            session_id: SessionId::from_u128(8),
+            canonical_path: PathBuf::from("/project/clip.mp4"),
+            metadata: VideoMetadata {
+                duration_us: Some(2_000_000),
+                display_width: Some(1_920),
+                display_height: Some(1_080),
+                rotation_degrees: 0,
+                frame_rate_millihertz: Some(24_000),
+                video_codec: Some("h264".into()),
+                audio_codec: None,
+                probe_status: VideoProbeStatus::Ready,
+            },
+            metadata_refreshed_for_retry,
+        }
+    }
+
+    #[test]
+    fn retry_open_uses_authoritative_fit_before_the_native_surface_is_prepared() {
+        let stage = VideoOpenSurfaceRectDto {
+            x: 100,
+            y: 50,
+            width: 800,
+            height: 600,
+        };
+
+        assert_eq!(
+            initial_video_surface_rect(&source(true), stage),
+            SurfaceRect {
+                x: 100,
+                y: 125,
+                width: 800,
+                height: 450,
+            }
+        );
+        assert_eq!(
+            initial_video_surface_rect(&source(false), stage),
+            SurfaceRect::from(stage)
+        );
+    }
 }

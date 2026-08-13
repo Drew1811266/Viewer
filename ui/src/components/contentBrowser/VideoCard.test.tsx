@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import type { VideoFile } from '../../api/types'
 import { VideoCard } from './VideoCard'
@@ -84,5 +84,27 @@ describe('VideoCard', () => {
     expect(screen.queryByText('不可用')).not.toBeInTheDocument()
     fireEvent.doubleClick(option)
     expect(onOpen).toHaveBeenCalledWith('video-1')
+  })
+
+  it('requests and displays a generated cover when ready metadata has no cover URL', async () => {
+    const requestCover = vi
+      .fn<(entityId: string) => Promise<string>>()
+      .mockResolvedValue('viewer-image://localhost/session/generated-cover')
+    render(
+      <VideoCard
+        video={video({
+          videoMetadata: { ...video().videoMetadata, coverUrl: null },
+        })}
+        selected={false}
+        active={false}
+        onOpen={vi.fn()}
+        requestCover={requestCover}
+      />,
+    )
+
+    await waitFor(() => expect(requestCover).toHaveBeenCalledExactlyOnceWith('video-1'))
+    expect(
+      screen.getByRole('option', { name: 'clip.mp4' }).querySelector('.video-card-cover'),
+    ).toHaveAttribute('src', 'viewer-image://localhost/session/generated-cover')
   })
 })

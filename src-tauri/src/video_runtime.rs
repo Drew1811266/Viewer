@@ -16,13 +16,14 @@ use viewer_application::{
     EngineEvent, FrameDirection, PlaybackRate, SurfaceRect, VideoCommand, VideoCommandKind,
     VideoEngine, VideoPlaybackState, VideoPreviewService, VideoServiceError, VideoSource,
 };
-use viewer_domain::VideoThumbnailRequestId;
+use viewer_domain::{SessionId, VideoThumbnailRequestId, search::Generation};
 use viewer_infrastructure::{
     image_cache::ImageArtifactRegistry,
     video_cache::{CacheError, VideoCache, VideoSourceIdentity},
     video_thumbnail::{
-        TimelineThumbnailRequest, VideoThumbnailContext, VideoThumbnailError,
-        VideoThumbnailService as NativeThumbnailService, quantize_timeline_time,
+        CoverThumbnailRequest, TimelineThumbnailRequest, VideoThumbnailContext,
+        VideoThumbnailError, VideoThumbnailService as NativeThumbnailService,
+        quantize_timeline_time,
     },
 };
 use viewer_video_mpv::{BundledMediaTools, MediaFileIdentity};
@@ -96,6 +97,12 @@ pub struct TimelineThumbnailBridgeRequest {
     pub cancellation: CancellationToken,
 }
 
+#[derive(Clone)]
+pub struct CoverThumbnailBridgeRequest {
+    pub source: AuthorizedVideoSource,
+    pub cancellation: CancellationToken,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TimelineThumbnailBridgeResult {
     pub request_id: String,
@@ -105,6 +112,11 @@ pub struct TimelineThumbnailBridgeResult {
 
 #[async_trait::async_trait]
 pub trait TimelineThumbnailPort: Send + Sync {
+    async fn request_cover(
+        &self,
+        request: CoverThumbnailBridgeRequest,
+    ) -> Result<String, VideoCommandError>;
+
     async fn request(
         &self,
         request: TimelineThumbnailBridgeRequest,
@@ -120,6 +132,7 @@ pub struct NativeTimelineThumbnailBridge {
     coordinator: Arc<TaskCoordinator>,
     playback: tokio::sync::watch::Sender<bool>,
     playback_generation: Mutex<Option<u64>>,
+    thumbnail_session: Mutex<Option<(SessionId, Generation)>>,
 }
 
 impl NativeTimelineThumbnailBridge {
@@ -143,7 +156,21 @@ impl NativeTimelineThumbnailBridge {
             coordinator,
             playback,
             playback_generation: Mutex::new(None),
+            thumbnail_session: Mutex::new(None),
         }
+    }
+
+    fn thumbnail_generation(&self, session_id: SessionId) -> Generation {
+        let mut current = lock(&self.thumbnail_session);
+        if let Some((active_session, generation)) = *current
+            && active_session == session_id
+            && self.coordinator.is_publishable(session_id, generation)
+        {
+            return generation;
+        }
+        let generation = self.coordinator.begin_session(session_id);
+        *current = Some((session_id, generation));
+        generation
     }
 }
 
@@ -160,6 +187,53 @@ impl PlaybackActivityPort for NativeTimelineThumbnailBridge {
 
 #[async_trait::async_trait]
 impl TimelineThumbnailPort for NativeTimelineThumbnailBridge {
+    async fn request_cover(
+        &self,
+        request: CoverThumbnailBridgeRequest,
+    ) -> Result<String, VideoCommandError> {
+        let duration_us = request
+            .source
+            .metadata
+            .duration_us
+            .ok_or(VideoCommandError::ThumbnailUnavailable)?;
+        let metadata = std::fs::symlink_metadata(&request.source.canonical_path)
+            .map_err(|_| VideoCommandError::ThumbnailUnavailable)?;
+        if metadata.file_type().is_symlink() || !metadata.is_file() {
+            return Err(VideoCommandError::ThumbnailUnavailable);
+        }
+        let source = VideoSourceIdentity::new(
+            &request.source.canonical_path,
+            metadata.len(),
+            metadata_modified_ns(&metadata),
+        );
+        let identity = MediaFileIdentity::from_metadata(&metadata);
+        let thumbnail_generation = self.thumbnail_generation(request.source.session_id);
+        let artifact = self
+            .service
+            .cover(CoverThumbnailRequest::new(
+                VideoThumbnailContext::new(
+                    request.source.session_id,
+                    thumbnail_generation,
+                    source,
+                    identity,
+                    request.cancellation.clone(),
+                ),
+                duration_us,
+            ))
+            .await
+            .map_err(map_thumbnail_error)?;
+        if request.cancellation.is_cancelled() {
+            return Err(VideoCommandError::ThumbnailCancelled);
+        }
+        crate::state::register_video_png_url(
+            &self.registry,
+            &self.coordinator,
+            &self.cache,
+            &artifact,
+        )
+        .map_err(|_| VideoCommandError::ThumbnailCancelled)
+    }
+
     async fn request(
         &self,
         request: TimelineThumbnailBridgeRequest,
@@ -182,7 +256,7 @@ impl TimelineThumbnailPort for NativeTimelineThumbnailBridge {
             metadata_modified_ns(&metadata),
         );
         let identity = MediaFileIdentity::from_metadata(&metadata);
-        let thumbnail_generation = self.coordinator.begin_session(request.source.session_id);
+        let thumbnail_generation = self.thumbnail_generation(request.source.session_id);
         let artifact = self
             .service
             .timeline(TimelineThumbnailRequest::new(
@@ -218,7 +292,11 @@ impl TimelineThumbnailPort for NativeTimelineThumbnailBridge {
 
     fn revoke_session(&self, session_id: viewer_domain::SessionId) {
         self.coordinator.cancel_session(session_id);
-        self.registry.remove_video_artifacts(session_id);
+        let mut current = lock(&self.thumbnail_session);
+        if current.is_some_and(|(active_session, _)| active_session == session_id) {
+            *current = None;
+        }
+        self.registry.remove_timeline_video_artifacts(session_id);
     }
 }
 
@@ -705,6 +783,23 @@ impl<E: VideoEngine> VideoRuntime<E> {
             artifact_url: result.artifact_url,
         });
         Ok(())
+    }
+
+    pub async fn request_cover(
+        &self,
+        source: AuthorizedVideoSource,
+    ) -> Result<String, VideoCommandError> {
+        let thumbnails = self
+            .thumbnails
+            .as_ref()
+            .ok_or(VideoCommandError::ThumbnailUnavailable)?
+            .clone();
+        thumbnails
+            .request_cover(CoverThumbnailBridgeRequest {
+                source,
+                cancellation: CancellationToken::new(),
+            })
+            .await
     }
 
     pub async fn handle_engine_event(&self, generation: u64, event: EngineEvent) {

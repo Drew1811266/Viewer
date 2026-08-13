@@ -52,6 +52,18 @@ describe('Viewer visual accessibility contracts', () => {
     expect(forcedColors).toContain('Highlight')
   })
 
+  it('clears every web document canvas layer after the native first frame', () => {
+    for (const selector of [
+      ":root:has(.viewer-shell[data-video-preview-open='true'])",
+      "body:has(.viewer-shell[data-video-preview-open='true'])",
+      "#root:has(.viewer-shell[data-video-preview-open='true'])",
+    ]) {
+      expect(videoPreviewCss).toMatch(
+        new RegExp(`${escapeRegExp(selector)}\\s*\\{[^}]*background:\\s*transparent`, 's'),
+      )
+    }
+  })
+
   it('contains no superseded visible UI glyphs in production source', () => {
     const productionSource = sourceFiles(resolve(import.meta.dirname, '..'))
       .map((path) => readFileSync(path, 'utf8'))
@@ -83,4 +95,8 @@ function mediaBody(source: string, query: string): string {
     if (depth === 0) return source.slice(opening + 1, index)
   }
   return ''
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }

@@ -15,8 +15,8 @@ use viewer_infrastructure::video_cache::{
 use viewer_infrastructure::{
     video_probe::MediaFileIdentity,
     video_thumbnail::{
-        FrameExtractionError, TimelineThumbnailRequest, VideoFrameExtractor, VideoFrameOutput,
-        VideoThumbnailArtifact, VideoThumbnailContext, VideoThumbnailService,
+        CoverThumbnailRequest, FrameExtractionError, TimelineThumbnailRequest, VideoFrameExtractor,
+        VideoFrameOutput, VideoThumbnailArtifact, VideoThumbnailContext, VideoThumbnailService,
     },
 };
 
@@ -90,6 +90,42 @@ async fn generated_artifact(
         .await
         .unwrap();
     (source_directory, coordinator, artifact, request_id)
+}
+
+async fn generated_cover_artifact(
+    cache: Arc<VideoCache>,
+    session: SessionId,
+    coordinator: Arc<TaskCoordinator>,
+) -> (tempfile::TempDir, VideoThumbnailArtifact) {
+    let source_directory = tempdir().unwrap();
+    let path = source_directory.path().join("cover.mp4");
+    fs::write(&path, b"fixture").unwrap();
+    let path = path.canonicalize().unwrap();
+    let metadata = fs::metadata(&path).unwrap();
+    let source = VideoSourceIdentity::new(&path, metadata.len(), modified_ns(&metadata));
+    let identity = MediaFileIdentity::from_metadata(&metadata);
+    let generation = coordinator.begin_session(session);
+    let (_playback_tx, playback_rx) = watch::channel(false);
+    let service = VideoThumbnailService::new(
+        Arc::new(PngExtractor),
+        cache,
+        Arc::clone(&coordinator),
+        playback_rx,
+    );
+    let artifact = service
+        .cover(CoverThumbnailRequest::new(
+            VideoThumbnailContext::new(
+                session,
+                generation,
+                source,
+                identity,
+                CancellationToken::new(),
+            ),
+            5_000_000,
+        ))
+        .await
+        .unwrap();
+    (source_directory, artifact)
 }
 
 fn modified_ns(metadata: &fs::Metadata) -> i128 {
@@ -331,6 +367,31 @@ async fn registered_video_png_is_session_scoped_and_preserves_artifact_identity(
         registry.lookup(SessionId::new(), token.as_str()),
         ImageArtifactLookup::WrongSession
     );
+}
+
+#[tokio::test]
+async fn revoking_timeline_pngs_keeps_browse_covers_registered() {
+    let app_cache = tempdir().unwrap();
+    let cache = Arc::new(VideoCache::initialize(app_cache.path()).unwrap());
+    let (_timeline_source, coordinator, timeline, _request_id) =
+        generated_artifact(Arc::clone(&cache)).await;
+    let session = timeline.session_id();
+    let (_cover_source, cover) =
+        generated_cover_artifact(Arc::clone(&cache), session, coordinator).await;
+    let registry = ImageArtifactRegistry::default();
+    let timeline_token = register_video_png(&registry, &cache, &timeline).unwrap();
+    let cover_token = register_video_png(&registry, &cache, &cover).unwrap();
+
+    assert_eq!(registry.remove_timeline_video_artifacts(session), 1);
+    assert!(matches!(
+        registry.lookup(session, timeline_token.as_str()),
+        ImageArtifactLookup::NotFound
+    ));
+    assert!(matches!(
+        registry.lookup(session, cover_token.as_str()),
+        ImageArtifactLookup::Found(ref registered)
+            if registered.video_request_id().is_none()
+    ));
 }
 
 #[tokio::test]

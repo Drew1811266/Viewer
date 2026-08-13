@@ -8,13 +8,20 @@
   white-space: nowrap;
 }
 
-:root:has(.video-preview[data-surface-visible='true']) {
+:root:has(.viewer-shell[data-video-preview-open='true']) {
   background: transparent;
 }
 
-.viewer-shell:has(> .video-preview[data-surface-visible='true'])
-  > :not(.video-preview) {
-  visibility: hidden;
+body:has(.viewer-shell[data-video-preview-open='true']) {
+  background: transparent;
+}
+
+#root:has(.viewer-shell[data-video-preview-open='true']) {
+  background: transparent;
+}
+
+.viewer-shell[data-video-preview-open='true'] > :not(.video-preview) {
+  display: none;
 }
 
 .video-preview[data-surface-visible='true'] {

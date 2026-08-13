@@ -292,7 +292,11 @@ impl From<VideoFailureKind> for VideoErrorDto {
 }
 
 #[derive(Clone, Debug, Serialize, PartialEq)]
-#[serde(tag = "type", rename_all = "camelCase")]
+#[serde(
+    tag = "type",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
 pub enum VideoEventDto {
     Prepared {
         generation: u64,

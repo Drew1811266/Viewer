@@ -56,6 +56,7 @@ function bridge(): ViewerBridge {
     videoSetRate: vi.fn(),
     videoSetSurfaceRect: vi.fn(),
     videoSetFullscreen: vi.fn(),
+    videoRequestCover: vi.fn(),
     videoRequestThumbnail: vi.fn(),
     videoCacheStats: vi.fn(),
     videoCacheClear: vi.fn(),

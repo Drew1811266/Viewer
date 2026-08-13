@@ -1,4 +1,4 @@
-use std::{env, ffi::OsString, fs, path::PathBuf, process};
+use std::{env, ffi::OsString, fs, path::PathBuf};
 
 use tokio_util::sync::CancellationToken;
 use viewer_video_mpv::{
@@ -37,29 +37,10 @@ async fn staged_media_tool_runs_only_from_the_reviewed_bundle() {
 async fn staged_client_accepts_the_locked_down_local_media_options() {
     let layout = staged_layout();
     let tools = BundledMediaTools::from_layout(&layout).unwrap();
-    let media = env::temp_dir().join(format!("viewer-video-mpv-options-{}.mp4", process::id()));
-    let arguments = [
-        "-y",
-        "-f",
-        "lavfi",
-        "-i",
-        "color=size=16x16:rate=1",
-        "-t",
-        "1",
-        "-c:v",
-        "mpeg4",
-    ]
-    .into_iter()
-    .map(OsString::from)
-    .chain([media.as_os_str().to_owned()])
-    .collect::<Vec<_>>();
-    let encode = tools.ffmpeg(&arguments).await.unwrap();
-    assert!(
-        encode.status.success(),
-        "{}",
-        String::from_utf8_lossy(&encode.stderr)
-    );
-    let media = media.canonicalize().unwrap();
+    let media = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tests/fixtures/videos/h264-aac.mp4")
+        .canonicalize()
+        .unwrap();
     let identity = MediaFileIdentity::from_metadata(&fs::metadata(&media).unwrap());
     for (output, expected_width) in [
         (MediaFrameOutput::Png320, 320_u32),
@@ -85,5 +66,4 @@ async fn staged_client_accepts_the_locked_down_local_media_options() {
     let mut client = MpvClient::new(&library).unwrap();
     client.open_local_file(&media).unwrap();
     drop(client);
-    fs::remove_file(media).unwrap();
 }

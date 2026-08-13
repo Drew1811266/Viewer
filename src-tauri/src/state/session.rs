@@ -188,6 +188,7 @@ impl DesktopRuntime {
             Arc::clone(&index),
             Arc::clone(&self.video_probe),
             Arc::clone(&self.derived_scheduler),
+            Arc::clone(&self.events),
         ));
         let marker_projection = self.marker_projection_factory.create(Arc::clone(&index));
         let mut snapshot = ProjectSnapshot::from(&active);

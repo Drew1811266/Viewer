@@ -52,6 +52,7 @@ describe('Viewer visual acceptance bridge', () => {
         'videoOpen',
         'videoPause',
         'videoPlay',
+        'videoRequestCover',
         'videoRequestThumbnail',
         'videoSeek',
         'videoSetFullscreen',

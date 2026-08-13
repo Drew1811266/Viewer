@@ -216,6 +216,9 @@ export function createAcceptanceBridge(overrides: AcceptanceBridgeOverrides = {}
     async videoSetFullscreen() {
       return unexpected('videoSetFullscreen')
     },
+    async videoRequestCover() {
+      return unexpected('videoRequestCover')
+    },
     async videoRequestThumbnail() {
       return unexpected('videoRequestThumbnail')
     },

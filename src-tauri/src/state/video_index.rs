@@ -1,8 +1,8 @@
 use super::{
-    entity_id_for_metadata, is_stale_derived_write_error, modified_ns,
+    DesktopEventSink, entity_id_for_metadata, is_stale_derived_write_error, modified_ns,
     preview::validated_indexed_source,
 };
-use crate::error::CommandError;
+use crate::{dto::IndexProgressDto, error::CommandError};
 use std::{
     sync::{Arc, Mutex},
     time::Duration,
@@ -84,6 +84,7 @@ struct VideoWorkerServices {
     pending: Arc<dyn PendingVideoQueue>,
     probe: Arc<dyn VideoMetadataProbe>,
     scheduler: Arc<DerivedWorkScheduler>,
+    events: Arc<dyn DesktopEventSink>,
     errors: Arc<Mutex<Vec<CommandError>>>,
 }
 
@@ -94,6 +95,7 @@ impl VideoIndexRuntime {
         index: Arc<SessionIndex>,
         probe: Arc<dyn VideoMetadataProbe>,
         scheduler: Arc<DerivedWorkScheduler>,
+        events: Arc<dyn DesktopEventSink>,
     ) -> Self {
         Self::new_with_queue(
             active,
@@ -102,6 +104,7 @@ impl VideoIndexRuntime {
             index,
             probe,
             scheduler,
+            events,
         )
     }
 
@@ -112,6 +115,7 @@ impl VideoIndexRuntime {
         pending: Arc<dyn PendingVideoQueue>,
         probe: Arc<dyn VideoMetadataProbe>,
         scheduler: Arc<DerivedWorkScheduler>,
+        events: Arc<dyn DesktopEventSink>,
     ) -> Self {
         let cancellation = CancellationToken::new();
         let (wake, mut incoming) = tokio::sync::mpsc::channel(1);
@@ -125,6 +129,7 @@ impl VideoIndexRuntime {
             pending,
             probe,
             scheduler,
+            events,
             errors: Arc::clone(&worker_errors),
         };
         let worker = tokio::spawn(async move {
@@ -224,7 +229,7 @@ async fn drain_pending_video_nodes(
             return retry;
         }
         for node in &page {
-            if let Err(error) = probe_video_nodes(
+            let probe_result = probe_video_nodes(
                 services.active.clone(),
                 Arc::clone(&services.coordinator),
                 Arc::clone(&services.index),
@@ -233,8 +238,14 @@ async fn drain_pending_video_nodes(
                 cancellation.clone(),
                 vec![node.clone()],
             )
-            .await
+            .await;
+            if let Err(error) =
+                emit_index_progress_after_terminal_video(&services, node, &cancellation)
             {
+                record_runtime_error(&services.errors, error);
+                retry = true;
+            }
+            if let Err(error) = probe_result {
                 record_runtime_error(&services.errors, error);
                 retry = true;
             }
@@ -244,6 +255,43 @@ async fn drain_pending_video_nodes(
             return retry;
         }
     }
+}
+
+fn emit_index_progress_after_terminal_video(
+    services: &VideoWorkerServices,
+    node: &FileNode,
+    cancellation: &CancellationToken,
+) -> Result<(), CommandError> {
+    if cancellation.is_cancelled()
+        || !services
+            .coordinator
+            .is_publishable(services.active.session_id, services.active.generation)
+    {
+        return Ok(());
+    }
+    let current = services
+        .index
+        .indexed_node(node.entity_id)
+        .map_err(CommandError::from)?;
+    let Some(current) = current else {
+        return Ok(());
+    };
+    if current.node != *node
+        || !current
+            .video_metadata
+            .as_ref()
+            .is_some_and(|metadata| metadata.probe_status != VideoProbeStatus::Pending)
+    {
+        return Ok(());
+    }
+    let progress = services
+        .index
+        .index_progress()
+        .map_err(CommandError::from)?;
+    services
+        .events
+        .emit_index(IndexProgressDto::from_progress(&services.active, progress));
+    Ok(())
 }
 
 fn record_runtime_error(errors: &Mutex<Vec<CommandError>>, error: CommandError) {
@@ -496,7 +544,7 @@ mod tests {
         PendingVideoQueue, VideoIndexRuntime, cancel_video_worker_before_session_teardown,
         probe_video_nodes, register_video_png_url,
     };
-    use crate::state::{entity_id_for_metadata, modified_ns};
+    use crate::state::{DesktopEventSink, entity_id_for_metadata, modified_ns};
     use async_trait::async_trait;
     use std::{
         fs,
@@ -530,6 +578,23 @@ mod tests {
     struct BlockedProbe {
         started: tokio::sync::Notify,
         release: tokio::sync::Notify,
+    }
+
+    #[derive(Default)]
+    struct RecordingIndexEvents {
+        updates: AtomicUsize,
+    }
+
+    impl DesktopEventSink for RecordingIndexEvents {
+        fn emit_scan(&self, _event: crate::dto::ScanEventDto) {}
+
+        fn emit_index(&self, _event: crate::dto::IndexProgressDto) {
+            self.updates.fetch_add(1, Ordering::AcqRel);
+        }
+    }
+
+    fn no_events() -> Arc<dyn DesktopEventSink> {
+        Arc::new(RecordingIndexEvents::default())
     }
 
     #[async_trait]
@@ -599,6 +664,7 @@ mod tests {
             Arc::clone(&fixture.index),
             probe.clone(),
             Arc::new(DerivedWorkScheduler::default()),
+            no_events(),
         );
         runtime.notify_after_publication().unwrap();
         probe.started.notified().await;
@@ -843,6 +909,7 @@ mod tests {
     #[tokio::test]
     async fn coalesced_wake_is_nonblocking_and_drains_more_than_legacy_capacity() {
         let fixture = MultiFixture::new(11);
+        let events = Arc::new(RecordingIndexEvents::default());
         let probe = Arc::new(CountingReadyProbe {
             calls: AtomicUsize::new(0),
         });
@@ -852,6 +919,7 @@ mod tests {
             Arc::clone(&fixture.index),
             probe.clone(),
             Arc::new(DerivedWorkScheduler::default()),
+            events.clone(),
         );
 
         let started = Instant::now();
@@ -861,6 +929,7 @@ mod tests {
         assert!(started.elapsed() < Duration::from_secs(1));
         fixture.wait_until_terminal().await;
         assert_eq!(probe.calls.load(Ordering::Acquire), 11);
+        assert_eq!(events.updates.load(Ordering::Acquire), 11);
         runtime.cancel_and_wait().await.unwrap();
     }
 
@@ -875,6 +944,7 @@ mod tests {
                 panicked: AtomicBool::new(false),
             }),
             Arc::new(DerivedWorkScheduler::default()),
+            no_events(),
         );
         runtime.notify_after_publication().unwrap();
         fixture.wait_until_terminal().await;
@@ -906,6 +976,7 @@ mod tests {
                 calls: AtomicUsize::new(0),
             }),
             Arc::new(DerivedWorkScheduler::default()),
+            no_events(),
         );
         runtime.notify_after_publication().unwrap();
         fixture.wait_until_terminal().await;
@@ -937,6 +1008,7 @@ mod tests {
                 calls: AtomicUsize::new(0),
             }),
             Arc::new(DerivedWorkScheduler::default()),
+            no_events(),
         );
         runtime.notify_after_publication().unwrap();
         fixture.wait_until_terminal().await;

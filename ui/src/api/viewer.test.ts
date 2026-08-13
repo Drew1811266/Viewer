@@ -55,6 +55,7 @@ describe('tauriViewerBridge', () => {
       requestId: 'thumbnail-1',
       timeUs: 3_000_000,
     })
+    await tauriViewerBridge.videoRequestCover('video-1')
     await tauriViewerBridge.videoCacheStats()
     await tauriViewerBridge.videoCacheClear()
     await tauriViewerBridge.listenVideo(handler)
@@ -88,6 +89,7 @@ describe('tauriViewerBridge', () => {
         'video_request_thumbnail',
         { request: { generation: 8, requestId: 'thumbnail-1', timeUs: 3_000_000 } },
       ],
+      ['video_request_cover', { entityId: 'video-1' }],
       ['video_cache_stats'],
       ['video_cache_clear'],
     ])

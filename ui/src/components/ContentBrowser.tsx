@@ -36,6 +36,7 @@ interface ContentBrowserProps {
   requestThumbnail?: (file: BrowserFile, maxPixels: number, scaleMilli: number) => Promise<string>
   onPreview?: (file: BrowserFile) => void
   onOpenVideo?: (entityId: string) => void
+  requestVideoCover?: (entityId: string) => Promise<string>
   onSelectionChange?: (files: BrowserFile[]) => void
   onThumbnailTaskChange?: (task: TaskFeedback | null) => void
   organizationDragDisabled?: boolean
@@ -83,6 +84,7 @@ export default function ContentBrowser({
   requestThumbnail,
   onPreview,
   onOpenVideo,
+  requestVideoCover,
   onSelectionChange,
   onThumbnailTaskChange,
   organizationDragDisabled = false,
@@ -699,6 +701,7 @@ export default function ContentBrowser({
           selection={selected}
           activeId={activeVideoId}
           onOpen={(entityId) => onOpenVideo?.(entityId)}
+          requestCover={requestVideoCover}
           onListKeyDown={handleOtherListKeyboard}
           onSelect={selectFile}
           onRadialMenuPointerDown={openRadialMenuFromPointer}

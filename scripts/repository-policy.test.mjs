@@ -974,6 +974,14 @@ test('the Tauri host enforces the Viewer compact-layout minimum width', async ()
   assert.ok(mainWindow.width >= mainWindow.minWidth)
 })
 
+test('the macOS Viewer webview is created transparent for the native video surface', async () => {
+  const tauri = JSON.parse(await read('src-tauri/tauri.conf.json'))
+  const [mainWindow] = tauri.app.windows
+
+  assert.equal(tauri.app.macOSPrivateApi, true)
+  assert.equal(mainWindow.transparent, true)
+})
+
 test('the Viewer product version has one Cargo source and matches the Tauri bundle', async () => {
   const memberManifests = [
     'src-tauri/Cargo.toml',

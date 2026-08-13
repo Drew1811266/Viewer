@@ -61,6 +61,24 @@ pub fn video_cancel_open(
     Ok(video.cancel_open_attempt(&request.attempt_id))
 }
 
+#[tauri::command]
+pub async fn video_request_cover(
+    entity_id: String,
+    desktop: State<'_, Arc<DesktopRuntime>>,
+    video: State<'_, Arc<NativeVideoRuntime>>,
+) -> Result<String, CommandError> {
+    let entity_id = EntityId::from_str(&entity_id).map_err(|_| invalid_entity_id())?;
+    let _project_lease = desktop.video_open_project_lease().await;
+    let source = desktop
+        .resolve_video_entity(entity_id)
+        .await
+        .map_err(CommandError::from)?;
+    video
+        .request_cover(source)
+        .await
+        .map_err(CommandError::from)
+}
+
 fn validate_open_attempt_id(attempt_id: &str) -> Result<(), CommandError> {
     if attempt_id.len() == 36
         && attempt_id

@@ -292,6 +292,18 @@ impl ImageArtifactRegistry {
         });
         previous_len - entries.len()
     }
+
+    pub fn remove_timeline_video_artifacts(&self, session_id: SessionId) -> usize {
+        let mut entries = self
+            .entries
+            .write()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let previous_len = entries.len();
+        entries.retain(|_, entry| {
+            entry.session_id != session_id || entry.artifact.video_request_id().is_none()
+        });
+        previous_len - entries.len()
+    }
 }
 
 fn random_token() -> Result<ImageArtifactToken, ImageArtifactRegistryError> {

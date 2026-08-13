@@ -13,7 +13,7 @@ use std::{
     ptr::NonNull,
     sync::atomic::{AtomicBool, Ordering},
 };
-use tauri::{Runtime, WebviewWindow};
+use tauri::{Runtime, WebviewWindow, webview::Color};
 use thiserror::Error;
 use viewer_video_mpv::{OpenGlInit, RenderTarget};
 
@@ -49,6 +49,8 @@ pub enum SurfaceError {
     WebviewUnavailable,
     #[error("the WKWebView could not be prepared for native video transparency")]
     WebviewTransparencyUnavailable,
+    #[error("the Tauri window could not be prepared for native video transparency")]
+    WindowTransparencyUnavailable,
     #[error("the Tauri window content view has no WKWebView")]
     MissingWebview,
 }
@@ -67,23 +69,28 @@ impl MacVideoSurface {
         rect: SurfaceRect,
     ) -> Result<Self, SurfaceError> {
         MainThreadMarker::new().ok_or(SurfaceError::NotMainThread)?;
-        let native_window = window
-            .ns_window()
-            .map_err(|_| SurfaceError::WebviewUnavailable)?;
-        // SAFETY: Tauri documents ns_window as a valid NSWindow pointer. This
-        // method is restricted to AppKit's main thread for the pointer's use.
-        let native_window: &NSWindow = unsafe { &*native_window.cast() };
-        let parent = native_window
-            .contentView()
-            .ok_or(SurfaceError::MissingParent)?;
-        let subviews = parent.subviews();
-        if subviews.is_empty() {
-            return Err(SurfaceError::MissingWebview);
-        }
-        // Wry installs its WKWebView as the first child of the window content
-        // view. We retain it in the surface before adding the OpenGL sibling.
-        let webview = subviews.objectAtIndex(0);
-        Self::mount_in_webview(&webview, rect)
+        mount_after_window_transparency(
+            || configure_transparent_window(window),
+            || {
+                let native_window = window
+                    .ns_window()
+                    .map_err(|_| SurfaceError::WebviewUnavailable)?;
+                // SAFETY: Tauri documents ns_window as a valid NSWindow pointer. This
+                // method is restricted to AppKit's main thread for the pointer's use.
+                let native_window: &NSWindow = unsafe { &*native_window.cast() };
+                let parent = native_window
+                    .contentView()
+                    .ok_or(SurfaceError::MissingParent)?;
+                let subviews = parent.subviews();
+                if subviews.is_empty() {
+                    return Err(SurfaceError::MissingWebview);
+                }
+                // Wry installs its WKWebView as the first child of the window content
+                // view. We retain it in the surface before adding the OpenGL sibling.
+                let webview = subviews.objectAtIndex(0);
+                Self::mount_in_webview(&webview, rect)
+            },
+        )
     }
 
     fn mount_in_webview(webview: &NSView, rect: SurfaceRect) -> Result<Self, SurfaceError> {
@@ -211,6 +218,20 @@ fn mount_after_webview_transparency<T>(
     attach_surface()
 }
 
+fn mount_after_window_transparency<T>(
+    configure_transparency: impl FnOnce() -> Result<(), SurfaceError>,
+    mount_surface: impl FnOnce() -> Result<T, SurfaceError>,
+) -> Result<T, SurfaceError> {
+    configure_transparency()?;
+    mount_surface()
+}
+
+fn configure_transparent_window<R: Runtime>(window: &WebviewWindow<R>) -> Result<(), SurfaceError> {
+    window
+        .set_background_color(Some(Color(0, 0, 0, 0)))
+        .map_err(|_| SurfaceError::WindowTransparencyUnavailable)
+}
+
 fn configure_transparent_webview(webview: &NSView) -> Result<(), SurfaceError> {
     if !webview.respondsToSelector(objc2::sel!(setUnderPageBackgroundColor:)) {
         return Err(SurfaceError::WebviewTransparencyUnavailable);
@@ -327,7 +348,7 @@ pub fn backing_pixels(size: (f64, f64), scale: f64) -> Option<(i32, i32)> {
 
 #[cfg(test)]
 mod tests {
-    use super::{SurfaceError, mount_after_webview_transparency};
+    use super::{SurfaceError, mount_after_webview_transparency, mount_after_window_transparency};
     use std::cell::{Cell, RefCell};
 
     #[test]
@@ -363,5 +384,40 @@ mod tests {
 
         assert_eq!(result, Err(SurfaceError::WebviewTransparencyUnavailable));
         assert!(!attached.get());
+    }
+
+    #[test]
+    fn window_transparency_is_configured_before_native_surface_mounting() {
+        let order = RefCell::new(Vec::new());
+
+        let result = mount_after_window_transparency(
+            || {
+                order.borrow_mut().push("window-transparent");
+                Ok(())
+            },
+            || {
+                order.borrow_mut().push("mount");
+                Ok("mounted")
+            },
+        );
+
+        assert_eq!(result, Ok("mounted"));
+        assert_eq!(*order.borrow(), ["window-transparent", "mount"]);
+    }
+
+    #[test]
+    fn window_transparency_failure_prevents_native_surface_mounting() {
+        let mounted = Cell::new(false);
+
+        let result = mount_after_window_transparency(
+            || Err(SurfaceError::WindowTransparencyUnavailable),
+            || {
+                mounted.set(true);
+                Ok(())
+            },
+        );
+
+        assert_eq!(result, Err(SurfaceError::WindowTransparencyUnavailable));
+        assert!(!mounted.get());
     }
 }

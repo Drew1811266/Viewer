@@ -523,6 +523,7 @@ mod tests {
             Arc::clone(&index),
             Arc::new(ReadyVideoProbe),
             Arc::clone(&scheduler),
+            events.clone(),
         ));
         let mut runtime = WatcherRuntime::start(
             project.path().to_path_buf(),
@@ -641,6 +642,7 @@ mod tests {
             Arc::clone(&index),
             probe.clone(),
             Arc::clone(&scheduler),
+            events.clone(),
         ));
         let mut runtime = WatcherRuntime::start(
             root.clone(),

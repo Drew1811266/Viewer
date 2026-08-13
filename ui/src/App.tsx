@@ -616,6 +616,11 @@ function ViewerWorkspace({
     [currentVideoPreviewFiles, openVideoPreviewSession, setPreviewEntityId],
   )
 
+  const requestVideoCover = useCallback(
+    (entityId: string) => bridge.videoRequestCover(entityId),
+    [bridge],
+  )
+
   const openPreview = useCallback(
     (file: BrowserFile) => {
       if (isVideoFile(file)) {
@@ -1016,6 +1021,9 @@ function ViewerWorkspace({
   return (
     <main
       className="viewer-shell"
+      data-video-preview-open={
+        activePreviewFile !== null && isVideoFile(activePreviewFile) ? true : undefined
+      }
       data-organization-drag-active={organizationDragView ? true : undefined}
       style={
         {
@@ -1230,6 +1238,7 @@ function ViewerWorkspace({
                       onThumbnailTaskChange={setThumbnailTask}
                       onPreview={openPreview}
                       onOpenVideo={openVideoPreview}
+                      requestVideoCover={requestVideoCover}
                       onSelectionChange={selectFiles}
                       organizationDragDisabled={
                         state.project.access !== 'read_write' || operationBusy || compareOpen

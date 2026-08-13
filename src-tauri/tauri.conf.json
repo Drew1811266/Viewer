@@ -10,7 +10,16 @@
     "frontendDist": "../ui/dist"
   },
   "app": {
-    "windows": [{ "title": "Viewer", "width": 1280, "minWidth": 500, "height": 800 }],
+    "macOSPrivateApi": true,
+    "windows": [
+      {
+        "title": "Viewer",
+        "width": 1280,
+        "minWidth": 500,
+        "height": 800,
+        "transparent": true
+      }
+    ],
     "security": {
       "csp": "default-src 'self'; script-src 'self'; connect-src 'self' ipc: http://ipc.localhost; img-src 'self' asset: data: viewer-image: http://viewer-image.localhost; style-src 'self' 'unsafe-inline'; base-uri 'none'; form-action 'none'; object-src 'none'; frame-src 'none'"
     }

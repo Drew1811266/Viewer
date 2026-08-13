@@ -13,6 +13,7 @@ export interface VideoSectionProps {
   selection: ReadonlySet<string>
   activeId: string | null
   onOpen(entityId: string): void
+  requestCover?: (entityId: string) => Promise<string>
   onListKeyDown?: (event: KeyboardEvent<HTMLElement>) => void
   onSelect?: (video: VideoFile, event: MouseEvent<HTMLElement>) => void
   onRadialMenuPointerDown?: (video: VideoFile, event: PointerEvent<HTMLElement>) => void
@@ -32,6 +33,7 @@ export function VideoSection({
   selection,
   activeId,
   onOpen,
+  requestCover,
   onListKeyDown,
   onSelect,
   onRadialMenuPointerDown,
@@ -78,6 +80,7 @@ export function VideoSection({
               selected={selection.has(video.entityId)}
               active={activeId === video.entityId}
               onOpen={onOpen}
+              requestCover={requestCover}
               onClick={onSelect}
               onRadialMenuPointerDown={onRadialMenuPointerDown}
               onRadialMenuContextMenu={onRadialMenuContextMenu}

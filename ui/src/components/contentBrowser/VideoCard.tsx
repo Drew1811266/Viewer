@@ -8,6 +8,7 @@ export interface VideoCardProps {
   selected: boolean
   active: boolean
   onOpen(entityId: string): void
+  requestCover?: (entityId: string) => Promise<string>
   onClick?: (video: VideoFile, event: MouseEvent<HTMLElement>) => void
   onRadialMenuPointerDown?: (video: VideoFile, event: PointerEvent<HTMLElement>) => void
   onRadialMenuContextMenu?: (video: VideoFile, event: MouseEvent<HTMLElement>) => void
@@ -24,6 +25,7 @@ export function VideoCard({
   selected,
   active,
   onOpen,
+  requestCover,
   onClick,
   onRadialMenuPointerDown,
   onRadialMenuContextMenu,
@@ -34,14 +36,39 @@ export function VideoCard({
   onOrganizationPointerUp,
   onOrganizationPointerCancel,
 }: VideoCardProps) {
-  const coverUrl = video.videoMetadata.coverUrl
+  const indexedCoverUrl = video.videoMetadata.coverUrl
+  const [generatedCoverUrl, setGeneratedCoverUrl] = useState<string | null>(null)
+  const coverUrl = indexedCoverUrl ?? generatedCoverUrl
   const [coverLoaded, setCoverLoaded] = useState(false)
   const [coverFailed, setCoverFailed] = useState(false)
 
   useEffect(() => {
+    setGeneratedCoverUrl(null)
     setCoverLoaded(false)
     setCoverFailed(false)
-  }, [coverUrl])
+  }, [indexedCoverUrl, video.entityId])
+
+  useEffect(() => {
+    if (
+      indexedCoverUrl !== null ||
+      requestCover === undefined ||
+      video.videoMetadata.probeStatus !== 'ready'
+    ) {
+      return
+    }
+    let active = true
+    void requestCover(video.entityId).then(
+      (url) => {
+        if (active) setGeneratedCoverUrl(url)
+      },
+      () => {
+        if (active) setCoverFailed(true)
+      },
+    )
+    return () => {
+      active = false
+    }
+  }, [indexedCoverUrl, requestCover, video.entityId, video.videoMetadata.probeStatus])
 
   const supportsOrganization =
     onOrganizationPointerDown !== undefined &&

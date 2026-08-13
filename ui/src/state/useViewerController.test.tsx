@@ -126,6 +126,7 @@ function bridge(access: 'read_write' | 'read_only' = 'read_write'): ViewerBridge
     videoSetRate: vi.fn(),
     videoSetSurfaceRect: vi.fn(),
     videoSetFullscreen: vi.fn(),
+    videoRequestCover: vi.fn(),
     videoRequestThumbnail: vi.fn(),
     videoCacheStats: vi.fn(),
     videoCacheClear: vi.fn(),
@@ -511,7 +512,7 @@ describe('useViewerController M2 coordination', () => {
     )
   })
 
-  it('accepts current index progress and maps Cmd-F to search focus intent', async () => {
+  it('accepts current index progress, refreshes completed metadata, and maps Cmd-F to search focus intent', async () => {
     const viewer = bridge()
     let receiveProgress: ((progress: IndexProgressEvent) => void) | undefined
     vi.mocked(viewer.listenIndexProgress).mockImplementation(async (handler) => {
@@ -526,7 +527,7 @@ describe('useViewerController M2 coordination', () => {
     })
     expect(receiveProgress).toBeDefined()
 
-    act(() => {
+    await act(async () => {
       window.dispatchEvent(new KeyboardEvent('keydown', { key: 'f', metaKey: true }))
       receiveProgress?.({
         sessionId: 'session-1',
@@ -538,9 +539,12 @@ describe('useViewerController M2 coordination', () => {
         textReady: 1,
         textSkipped: 0,
         textFailed: 0,
-        complete: false,
+        complete: true,
       })
+      await Promise.resolve()
+      await Promise.resolve()
     })
+    expect(viewer.queryFolder).toHaveBeenCalledTimes(2)
     expect(result.current.state.search.focusRequest).toBe(1)
     expect(result.current.state.indexProgress?.imagesReady).toBe(1)
   })

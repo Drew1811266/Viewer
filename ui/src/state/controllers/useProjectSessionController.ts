@@ -300,6 +300,15 @@ export function useProjectSessionController(core: ControllerCore): ProjectSessio
       .then(() =>
         bridge.listenIndexProgress((progress) => {
           dispatch({ type: 'index_progress_received', progress })
+          const project = stateRef.current.project
+          if (
+            progress.complete &&
+            project !== null &&
+            progress.sessionId === project.sessionId &&
+            progress.generation === project.generation
+          ) {
+            void refreshDesiredProjection(refreshProjection, project)
+          }
         }),
       )
       .then((cleanup) => {
@@ -311,7 +320,7 @@ export function useProjectSessionController(core: ControllerCore): ProjectSessio
       disposed = true
       unlisten?.()
     }
-  }, [bridge, dispatch])
+  }, [bridge, dispatch, refreshProjection, stateRef])
 
   useEffect(() => {
     let disposed = false

@@ -151,6 +151,7 @@ function bridge(access: 'read_write' | 'read_only' = 'read_write'): ViewerBridge
     videoSetRate: vi.fn(),
     videoSetSurfaceRect: vi.fn(),
     videoSetFullscreen: vi.fn(),
+    videoRequestCover: vi.fn().mockResolvedValue('viewer-image://localhost/session/cover'),
     videoRequestThumbnail: vi.fn(),
     videoCacheStats: vi.fn().mockResolvedValue({
       bytesUsed: 268_435_456,
@@ -1152,6 +1153,7 @@ describe('Viewer empty state', () => {
 
     const preview = await screen.findByRole('dialog', { name: '视频预览 clip.mp4' })
     expect(preview).toBeVisible()
+    expect(preview.closest('.viewer-shell')).toHaveAttribute('data-video-preview-open', 'true')
     expect(screen.getByRole('status', { name: '正在加载视频' })).toBeVisible()
     await waitFor(() =>
       expect(viewer.videoOpen).toHaveBeenCalledWith({

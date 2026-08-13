@@ -41,6 +41,13 @@ impl viewer_desktop::video_runtime::PlaybackActivityPort for RecordingPlaybackAc
 
 #[async_trait::async_trait]
 impl viewer_desktop::video_runtime::TimelineThumbnailPort for BlockingThumbnailPort {
+    async fn request_cover(
+        &self,
+        _request: viewer_desktop::video_runtime::CoverThumbnailBridgeRequest,
+    ) -> Result<String, viewer_desktop::video_runtime::VideoCommandError> {
+        Ok("viewer-image://localhost/session/cover".into())
+    }
+
     async fn request(
         &self,
         request: viewer_desktop::video_runtime::TimelineThumbnailBridgeRequest,
@@ -67,6 +74,25 @@ impl viewer_desktop::video_runtime::TimelineThumbnailPort for BlockingThumbnailP
     fn revoke_session(&self, session_id: SessionId) {
         self.revoked.lock().unwrap().push(session_id);
     }
+}
+
+#[tokio::test]
+async fn browse_cover_request_uses_the_authorized_video_source_without_opening_playback() {
+    let engine = Arc::new(FakeVideoEngine::default());
+    let events = Arc::new(RecordingVideoEvents::default());
+    let thumbnails = Arc::new(BlockingThumbnailPort {
+        first_started: tokio::sync::Notify::new(),
+        first_cancelled: std::sync::atomic::AtomicBool::new(false),
+        revoked: Mutex::new(Vec::new()),
+    });
+    let runtime =
+        viewer_desktop::video_runtime::VideoRuntime::with_bridges(engine, events, thumbnails);
+
+    assert_eq!(
+        runtime.request_cover(video_source(7)).await.unwrap(),
+        "viewer-image://localhost/session/cover"
+    );
+    assert_eq!(runtime.active_generation(), None);
 }
 
 struct FixedProbe;
@@ -325,6 +351,36 @@ fn video_events_use_the_tagged_camel_case_contract() {
     assert_eq!(
         serde_json::to_value(VideoEventDto::FirstFrameReady { generation: 7 }).unwrap()["type"],
         "firstFrameReady"
+    );
+    assert_eq!(
+        serde_json::to_value(VideoEventDto::Progress {
+            generation: 7,
+            time_us: 1_250_000,
+            duration_us: Some(2_000_000),
+        })
+        .unwrap(),
+        serde_json::json!({
+            "type": "progress",
+            "generation": 7,
+            "timeUs": 1_250_000,
+            "durationUs": 2_000_000,
+        })
+    );
+    assert_eq!(
+        serde_json::to_value(VideoEventDto::TimelineThumbnailReady {
+            generation: 7,
+            request_id: "request-1".into(),
+            bucket_us: 1_000_000,
+            artifact_url: "viewer-image://localhost/session/token".into(),
+        })
+        .unwrap(),
+        serde_json::json!({
+            "type": "timelineThumbnailReady",
+            "generation": 7,
+            "requestId": "request-1",
+            "bucketUs": 1_000_000,
+            "artifactUrl": "viewer-image://localhost/session/token",
+        })
     );
 }
 

@@ -125,26 +125,35 @@ impl MacVideoRenderSession {
         result
     }
 
-    pub fn update_geometry_and_redraw(&mut self, rect: SurfaceRect) -> Result<(), RenderLoopError> {
+    pub fn update_geometry(&mut self, rect: SurfaceRect) -> Result<(), RenderLoopError> {
         if let Some(surface) = self.surface.as_ref() {
             surface.update_geometry(rect)?;
             self.open_gl_context
                 .update(objc2::MainThreadMarker::new().ok_or(SurfaceError::NotMainThread)?);
-            if should_redraw_retained_frame(self.first_frame_ready)
-                && let Some(render_context) = self.render_context.as_mut()
-            {
-                self.open_gl_context.makeCurrentContext();
-                let result: Result<(), RenderLoopError> = (|| {
-                    render_context.render(surface)?;
-                    self.open_gl_context.flushBuffer();
-                    render_context.report_swap();
-                    Ok(())
-                })();
-                NSOpenGLContext::clearCurrentContext();
-                result?;
-            }
         }
         Ok(())
+    }
+
+    pub fn redraw_retained_frame(&mut self) -> Result<(), RenderLoopError> {
+        if !should_redraw_retained_frame(self.first_frame_ready) {
+            return Ok(());
+        }
+        let Some(surface) = self.surface.as_ref() else {
+            return Ok(());
+        };
+        let Some(render_context) = self.render_context.as_mut() else {
+            return Ok(());
+        };
+
+        self.open_gl_context.makeCurrentContext();
+        let result: Result<(), RenderLoopError> = (|| {
+            render_context.render(surface)?;
+            self.open_gl_context.flushBuffer();
+            render_context.report_swap();
+            Ok(())
+        })();
+        NSOpenGLContext::clearCurrentContext();
+        result
     }
 
     pub fn diagnostics(&self) -> Result<VideoRenderDiagnostics, RenderLoopError> {

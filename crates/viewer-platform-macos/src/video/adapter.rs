@@ -6,7 +6,7 @@ use super::{
     interaction::{LatestGeometryMailbox, LatestSeekMailbox},
 };
 use async_trait::async_trait;
-use dispatch2::DispatchQueue;
+use dispatch2::{DispatchQueue, DispatchTime};
 use objc2::MainThreadMarker;
 use std::{
     path::PathBuf,
@@ -14,6 +14,7 @@ use std::{
         Arc, Mutex, MutexGuard, OnceLock, Weak,
         atomic::{AtomicBool, Ordering},
     },
+    time::Duration,
 };
 use tauri::{Runtime, WebviewWindow};
 use viewer_application::{
@@ -37,6 +38,7 @@ enum PendingCompletion {
 }
 
 const COMMIT_COMPLETION_TOLERANCE_US: u64 = 50_000;
+const GEOMETRY_REDRAW_INTERVAL: Duration = Duration::from_millis(33);
 
 impl PendingCompletion {
     const fn event_if_ready(self, time_us: u64) -> Option<EngineEvent> {
@@ -220,6 +222,23 @@ impl MacOsLibmpvAdapter {
         Ok(())
     }
 
+    fn schedule_geometry_redraw(&self, generation: u64) -> Result<(), VideoEngineError> {
+        let weak = self
+            .self_reference
+            .get()
+            .cloned()
+            .ok_or(VideoEngineError::Unavailable)?;
+        let deadline = DispatchTime::try_from(GEOMETRY_REDRAW_INTERVAL)
+            .map_err(|()| VideoEngineError::Unavailable)?;
+        DispatchQueue::main()
+            .after(deadline, move || {
+                if let Some(adapter) = weak.upgrade() {
+                    adapter.redraw_geometry_on_main(generation);
+                }
+            })
+            .map_err(|_| VideoEngineError::Unavailable)
+    }
+
     fn drain_seek_on_main(&self) {
         debug_assert!(MainThreadMarker::new().is_some());
         let request = lock(&self.seek_mailbox).take_for_drain();
@@ -275,15 +294,37 @@ impl MacOsLibmpvAdapter {
         if let Some(update) = update {
             let result = self.with_generation(update.generation, |session| {
                 session
-                    .update_geometry_and_redraw(mac_rect(update.rect))
+                    .update_geometry(mac_rect(update.rect))
                     .map_err(|_| VideoEngineError::RenderSurface)
             });
             if result.is_ok() {
                 self.diagnostics.record_geometry_application();
+                if lock(&self.geometry_mailbox)
+                    .mark_applied_for_redraw(update.generation, update.sequence)
+                {
+                    let _ = self.schedule_geometry_redraw(update.generation);
+                }
             }
         }
         if lock(&self.geometry_mailbox).finish_drain() {
             let _ = self.schedule_geometry_drain();
+        }
+    }
+
+    fn redraw_geometry_on_main(&self, generation: u64) {
+        debug_assert!(MainThreadMarker::new().is_some());
+        if lock(&self.geometry_mailbox)
+            .take_for_redraw(generation)
+            .is_some()
+        {
+            let _ = self.with_generation(generation, |session| {
+                session
+                    .redraw_retained_frame()
+                    .map_err(|_| VideoEngineError::RenderSurface)
+            });
+        }
+        if lock(&self.geometry_mailbox).finish_redraw(generation) {
+            let _ = self.schedule_geometry_redraw(generation);
         }
     }
 

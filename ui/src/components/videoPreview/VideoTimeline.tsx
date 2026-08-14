@@ -50,6 +50,10 @@ export default function VideoTimeline({
   const seekFrame = useRef<number | null>(null)
   const pendingSeek = useRef<number | null>(null)
   const lastPreviewSeek = useRef<number | null>(null)
+  const previewPublication = useRef<Promise<void>>(Promise.resolve())
+  const currentGeneration = useRef(generation)
+  const interactionEpoch = useRef(0)
+  currentGeneration.current = generation
   const seekingChange = useRef(onSeekingChange)
   seekingChange.current = onSeekingChange
   const [pointerTimeUs, setPointerTimeUs] = useState<number | null>(null)
@@ -73,6 +77,8 @@ export default function VideoTimeline({
     seekFrame.current = null
     pendingSeek.current = null
     lastPreviewSeek.current = null
+    previewPublication.current = Promise.resolve()
+    interactionEpoch.current += 1
     requestSequence.current = 0
     setDragging(false)
     setPointerTimeUs(null)
@@ -143,17 +149,22 @@ export default function VideoTimeline({
   function scheduleSeek(targetUs: number) {
     pendingSeek.current = targetUs
     if (seekFrame.current !== null) return
-    seekFrame.current = window.requestAnimationFrame(() => flushPreviewSeek())
+    seekFrame.current = window.requestAnimationFrame(() => {
+      void flushPreviewSeek()
+    })
   }
 
-  function flushPreviewSeek() {
+  function flushPreviewSeek(): Promise<void> {
     if (seekFrame.current !== null) window.cancelAnimationFrame(seekFrame.current)
     seekFrame.current = null
     const targetUs = pendingSeek.current
     pendingSeek.current = null
-    if (targetUs === null || targetUs === lastPreviewSeek.current) return
+    if (targetUs === null || targetUs === lastPreviewSeek.current) {
+      return previewPublication.current
+    }
     lastPreviewSeek.current = targetUs
-    void onPreviewSeek(targetUs).catch(() => undefined)
+    previewPublication.current = onPreviewSeek(targetUs).catch(() => undefined)
+    return previewPublication.current
   }
 
   function cancelPendingPreview() {
@@ -166,6 +177,8 @@ export default function VideoTimeline({
     if (event.button !== 0) return
     const targetUs = point(event)
     setCommittedTimeUs(null)
+    lastPreviewSeek.current = null
+    interactionEpoch.current += 1
     dragPointer.current = event.pointerId
     setDragging(true)
     onSeekingChange(true)
@@ -181,11 +194,24 @@ export default function VideoTimeline({
   function pointerUp(event: PointerEvent<HTMLDivElement>) {
     if (dragPointer.current !== event.pointerId) return
     const targetUs = point(event)
-    cancelPendingPreview()
+    pendingSeek.current = targetUs
+    const preview = flushPreviewSeek()
+    const releaseGeneration = generation
+    const releaseEpoch = interactionEpoch.current
     setCommittedTimeUs(targetUs)
-    void onCommitSeek(targetUs).catch(() => {
-      setCommittedTimeUs((current) => (current === targetUs ? null : current))
-    })
+    void preview
+      .then(() => {
+        if (
+          currentGeneration.current !== releaseGeneration ||
+          interactionEpoch.current !== releaseEpoch
+        ) {
+          return
+        }
+        return onCommitSeek(targetUs)
+      })
+      .catch(() => {
+        setCommittedTimeUs((current) => (current === targetUs ? null : current))
+      })
     dragPointer.current = null
     setDragging(false)
     onSeekingChange(false)

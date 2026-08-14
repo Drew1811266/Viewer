@@ -13,6 +13,9 @@ pub(super) struct LatestGeometryMailbox {
     latest_sequence: u64,
     pending: Option<GeometryUpdate>,
     drain_scheduled: bool,
+    latest_applied_sequence: u64,
+    redraw_pending: bool,
+    redraw_scheduled: bool,
 }
 
 impl LatestGeometryMailbox {
@@ -21,6 +24,9 @@ impl LatestGeometryMailbox {
         self.latest_sequence = 0;
         self.pending = None;
         self.drain_scheduled = false;
+        self.latest_applied_sequence = 0;
+        self.redraw_pending = false;
+        self.redraw_scheduled = false;
     }
 
     pub fn invalidate(&mut self) {
@@ -28,6 +34,9 @@ impl LatestGeometryMailbox {
         self.latest_sequence = 0;
         self.pending = None;
         self.drain_scheduled = false;
+        self.latest_applied_sequence = 0;
+        self.redraw_pending = false;
+        self.redraw_scheduled = false;
     }
 
     pub fn publish(
@@ -67,13 +76,50 @@ impl LatestGeometryMailbox {
             false
         }
     }
+
+    pub fn mark_applied_for_redraw(&mut self, generation: u64, sequence: u64) -> bool {
+        if self.active_generation != Some(generation) {
+            return false;
+        }
+        self.latest_applied_sequence = self.latest_applied_sequence.max(sequence);
+        self.redraw_pending = true;
+        if self.redraw_scheduled {
+            return false;
+        }
+        self.redraw_scheduled = true;
+        true
+    }
+
+    pub fn take_for_redraw(&mut self, generation: u64) -> Option<u64> {
+        if self.active_generation != Some(generation) {
+            return None;
+        }
+        if !self.redraw_pending {
+            return None;
+        }
+        self.redraw_pending = false;
+        Some(self.latest_applied_sequence)
+    }
+
+    pub fn finish_redraw(&mut self, generation: u64) -> bool {
+        if self.active_generation != Some(generation) {
+            return false;
+        }
+        if self.redraw_pending {
+            true
+        } else {
+            self.redraw_scheduled = false;
+            false
+        }
+    }
 }
 
 #[derive(Default)]
 pub(super) struct LatestSeekMailbox {
     active_generation: Option<u64>,
     latest_request_id: u64,
-    pending: Option<SeekRequest>,
+    pending_preview: Option<SeekRequest>,
+    pending_commit: Option<SeekRequest>,
     drain_scheduled: bool,
 }
 
@@ -81,14 +127,16 @@ impl LatestSeekMailbox {
     pub fn activate(&mut self, generation: u64) {
         self.active_generation = Some(generation);
         self.latest_request_id = 0;
-        self.pending = None;
+        self.pending_preview = None;
+        self.pending_commit = None;
         self.drain_scheduled = false;
     }
 
     pub fn invalidate(&mut self) {
         self.active_generation = None;
         self.latest_request_id = 0;
-        self.pending = None;
+        self.pending_preview = None;
+        self.pending_commit = None;
         self.drain_scheduled = false;
     }
 
@@ -104,14 +152,17 @@ impl LatestSeekMailbox {
             return Ok(false);
         }
         if self
-            .pending
+            .pending_commit
             .is_some_and(|pending| pending.intent == SeekIntent::Commit)
             && request.intent == SeekIntent::Preview
         {
             return Ok(false);
         }
         self.latest_request_id = request.request_id;
-        self.pending = Some(request);
+        match request.intent {
+            SeekIntent::Preview => self.pending_preview = Some(request),
+            SeekIntent::Commit => self.pending_commit = Some(request),
+        }
         if self.drain_scheduled {
             return Ok(false);
         }
@@ -120,11 +171,13 @@ impl LatestSeekMailbox {
     }
 
     pub fn take_for_drain(&mut self) -> Option<SeekRequest> {
-        self.pending.take()
+        self.pending_preview
+            .take()
+            .or_else(|| self.pending_commit.take())
     }
 
     pub fn finish_drain(&mut self) -> bool {
-        if self.pending.is_some() {
+        if self.pending_preview.is_some() || self.pending_commit.is_some() {
             true
         } else {
             self.drain_scheduled = false;
@@ -184,7 +237,7 @@ mod tests {
     }
 
     #[test]
-    fn commit_replaces_preview_and_stale_generation_is_rejected() {
+    fn commit_follows_the_latest_preview_and_stale_generation_is_rejected() {
         let mut mailbox = LatestSeekMailbox::default();
         mailbox.activate(9);
         assert_eq!(
@@ -193,7 +246,44 @@ mod tests {
         );
         assert_eq!(mailbox.publish(9, preview(2)), Ok(true));
         assert_eq!(mailbox.publish(9, commit(3)), Ok(false));
+        assert_eq!(mailbox.take_for_drain(), Some(preview(2)));
+        assert!(mailbox.finish_drain());
         assert_eq!(mailbox.take_for_drain(), Some(commit(3)));
+        assert!(!mailbox.finish_drain());
+    }
+
+    #[test]
+    fn geometry_burst_schedules_one_expensive_redraw_for_the_latest_applied_rect() {
+        let mut mailbox = LatestGeometryMailbox::default();
+        mailbox.activate(5);
+        let mut redraw_schedules = 0;
+
+        for sequence in 1..=120 {
+            mailbox.publish(5, sequence, geometry(sequence)).unwrap();
+            let update = mailbox.take_for_drain().unwrap();
+            if mailbox.mark_applied_for_redraw(5, update.sequence) {
+                redraw_schedules += 1;
+            }
+        }
+
+        assert_eq!(redraw_schedules, 1);
+        assert_eq!(mailbox.take_for_redraw(5), Some(120));
+        assert!(!mailbox.finish_redraw(5));
+    }
+
+    #[test]
+    fn delayed_redraw_from_an_old_generation_cannot_consume_new_generation_work() {
+        let mut mailbox = LatestGeometryMailbox::default();
+        mailbox.activate(5);
+        assert!(mailbox.mark_applied_for_redraw(5, 1));
+
+        mailbox.activate(6);
+        assert!(mailbox.mark_applied_for_redraw(6, 2));
+        assert_eq!(mailbox.take_for_redraw(5), None);
+        assert!(!mailbox.finish_redraw(5));
+
+        assert_eq!(mailbox.take_for_redraw(6), Some(2));
+        assert!(!mailbox.finish_redraw(6));
     }
 
     #[test]

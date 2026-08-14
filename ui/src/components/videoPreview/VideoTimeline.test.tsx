@@ -111,7 +111,7 @@ describe('VideoTimeline', () => {
     })
   })
 
-  it('previews only the latest drag position per frame and commits exactly once on release', () => {
+  it('previews only the latest drag position per frame and commits exactly once on release', async () => {
     let frame: FrameRequestCallback | null = null
     vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
       frame = callback
@@ -145,6 +145,7 @@ describe('VideoTimeline', () => {
     expect(onCommitSeek).not.toHaveBeenCalled()
 
     fireEvent.pointerUp(slider, { pointerId: 7, clientX: 60 })
+    await act(async () => Promise.resolve())
     expect(onCommitSeek.mock.calls).toEqual([[3_000_000]])
     expect(onPreviewSeek).toHaveBeenCalledTimes(1)
     expect(onSeekingChange.mock.calls).toEqual([[true], [false]])
@@ -171,7 +172,143 @@ describe('VideoTimeline', () => {
     expect(slider).toHaveAttribute('aria-valuenow', '4')
   })
 
-  it('does not carry seek coalescing state into a new generation', () => {
+  it('publishes the release target preview before starting the exact commit', async () => {
+    vi.stubGlobal(
+      'requestAnimationFrame',
+      vi.fn(() => 41),
+    )
+    vi.stubGlobal('cancelAnimationFrame', vi.fn())
+    const preview = deferred<void>()
+    const order: string[] = []
+    const onPreviewSeek = vi.fn((timeUs: number) => {
+      order.push(`preview:${timeUs}`)
+      return preview.promise
+    })
+    const onCommitSeek = vi.fn(async (timeUs: number) => {
+      order.push(`commit:${timeUs}`)
+    })
+    render(
+      <TimelineHarness
+        onPreviewSeek={onPreviewSeek}
+        onCommitSeek={onCommitSeek}
+        thumbnail={null}
+      />,
+    )
+    const slider = screen.getByRole('slider', { name: '视频时间轴' })
+    Object.defineProperty(slider, 'setPointerCapture', { configurable: true, value: vi.fn() })
+    Object.defineProperty(slider, 'releasePointerCapture', { configurable: true, value: vi.fn() })
+
+    fireEvent.pointerDown(slider, { pointerId: 9, clientX: 60 })
+    fireEvent.pointerUp(slider, { pointerId: 9, clientX: 120 })
+
+    expect(order).toEqual(['preview:6000000'])
+    expect(onCommitSeek).not.toHaveBeenCalled()
+
+    await act(async () => preview.resolve())
+    expect(order).toEqual(['preview:6000000', 'commit:6000000'])
+  })
+
+  it('starts every pointer interaction with a fresh preview at the same timestamp', async () => {
+    vi.stubGlobal(
+      'requestAnimationFrame',
+      vi.fn(() => 42),
+    )
+    vi.stubGlobal('cancelAnimationFrame', vi.fn())
+    const onPreviewSeek = vi.fn().mockResolvedValue(undefined)
+    const onCommitSeek = vi.fn().mockResolvedValue(undefined)
+    render(
+      <TimelineHarness
+        onPreviewSeek={onPreviewSeek}
+        onCommitSeek={onCommitSeek}
+        thumbnail={null}
+      />,
+    )
+    const slider = screen.getByRole('slider', { name: '视频时间轴' })
+    Object.defineProperty(slider, 'setPointerCapture', { configurable: true, value: vi.fn() })
+    Object.defineProperty(slider, 'releasePointerCapture', { configurable: true, value: vi.fn() })
+
+    fireEvent.pointerDown(slider, { pointerId: 10, clientX: 100 })
+    fireEvent.pointerUp(slider, { pointerId: 10, clientX: 100 })
+    await act(async () => Promise.resolve())
+    fireEvent.pointerDown(slider, { pointerId: 11, clientX: 100 })
+    fireEvent.pointerUp(slider, { pointerId: 11, clientX: 100 })
+    await act(async () => Promise.resolve())
+
+    expect(onPreviewSeek.mock.calls).toEqual([[5_000_000], [5_000_000]])
+    expect(onCommitSeek.mock.calls).toEqual([[5_000_000], [5_000_000]])
+  })
+
+  it('drops a delayed exact commit when the preview generation changes', async () => {
+    vi.stubGlobal(
+      'requestAnimationFrame',
+      vi.fn(() => 43),
+    )
+    vi.stubGlobal('cancelAnimationFrame', vi.fn())
+    const preview = deferred<void>()
+    const onPreviewSeek = vi.fn(() => preview.promise)
+    const onCommitSeek = vi.fn().mockResolvedValue(undefined)
+    const rendered = render(
+      <TimelineHarness
+        generation={2}
+        onPreviewSeek={onPreviewSeek}
+        onCommitSeek={onCommitSeek}
+        thumbnail={null}
+      />,
+    )
+    const slider = screen.getByRole('slider', { name: '视频时间轴' })
+    Object.defineProperty(slider, 'setPointerCapture', { configurable: true, value: vi.fn() })
+    Object.defineProperty(slider, 'releasePointerCapture', { configurable: true, value: vi.fn() })
+
+    fireEvent.pointerDown(slider, { pointerId: 12, clientX: 140 })
+    fireEvent.pointerUp(slider, { pointerId: 12, clientX: 140 })
+    rendered.rerender(
+      <TimelineHarness
+        generation={3}
+        onPreviewSeek={onPreviewSeek}
+        onCommitSeek={onCommitSeek}
+        thumbnail={null}
+      />,
+    )
+    await act(async () => preview.resolve())
+
+    expect(onCommitSeek).not.toHaveBeenCalled()
+  })
+
+  it('drops an older delayed commit after a newer interaction starts', async () => {
+    vi.stubGlobal(
+      'requestAnimationFrame',
+      vi.fn(() => 44),
+    )
+    vi.stubGlobal('cancelAnimationFrame', vi.fn())
+    const firstPreview = deferred<void>()
+    const onPreviewSeek = vi
+      .fn<(timeUs: number) => Promise<void>>()
+      .mockImplementationOnce(() => firstPreview.promise)
+      .mockResolvedValue(undefined)
+    const onCommitSeek = vi.fn().mockResolvedValue(undefined)
+    render(
+      <TimelineHarness
+        onPreviewSeek={onPreviewSeek}
+        onCommitSeek={onCommitSeek}
+        thumbnail={null}
+      />,
+    )
+    const slider = screen.getByRole('slider', { name: '视频时间轴' })
+    Object.defineProperty(slider, 'setPointerCapture', { configurable: true, value: vi.fn() })
+    Object.defineProperty(slider, 'releasePointerCapture', { configurable: true, value: vi.fn() })
+
+    fireEvent.pointerDown(slider, { pointerId: 13, clientX: 40 })
+    fireEvent.pointerUp(slider, { pointerId: 13, clientX: 40 })
+    fireEvent.pointerDown(slider, { pointerId: 14, clientX: 160 })
+    fireEvent.pointerUp(slider, { pointerId: 14, clientX: 160 })
+    await act(async () => Promise.resolve())
+    expect(onCommitSeek.mock.calls).toEqual([[8_000_000]])
+
+    await act(async () => firstPreview.resolve())
+    expect(onCommitSeek.mock.calls).toEqual([[8_000_000]])
+  })
+
+  it('does not carry seek coalescing state into a new generation', async () => {
     vi.stubGlobal(
       'requestAnimationFrame',
       vi.fn(() => 23),
@@ -193,6 +330,7 @@ describe('VideoTimeline', () => {
 
     fireEvent.pointerDown(slider, { pointerId: 7, clientX: 60 })
     fireEvent.pointerUp(slider, { pointerId: 7, clientX: 60 })
+    await act(async () => Promise.resolve())
     expect(onCommitSeek).toHaveBeenCalledTimes(1)
     expect(onCommitSeek).toHaveBeenLastCalledWith(3_000_000)
 
@@ -206,9 +344,11 @@ describe('VideoTimeline', () => {
     )
     fireEvent.pointerDown(slider, { pointerId: 8, clientX: 60 })
     fireEvent.pointerUp(slider, { pointerId: 8, clientX: 60 })
+    await act(async () => Promise.resolve())
     expect(onCommitSeek).toHaveBeenCalledTimes(2)
     expect(onCommitSeek).toHaveBeenLastCalledWith(3_000_000)
-    expect(onPreviewSeek).not.toHaveBeenCalled()
+    expect(onPreviewSeek).toHaveBeenCalledTimes(2)
+    expect(onPreviewSeek).toHaveBeenLastCalledWith(3_000_000)
   })
 
   it('uses commit-only seeking for keyboard interaction', () => {
@@ -301,4 +441,14 @@ function rect(left: number, top: number, width: number, height: number): DOMRect
     height,
     toJSON: () => undefined,
   }
+}
+
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void
+  let reject!: (reason?: unknown) => void
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise
+    reject = rejectPromise
+  })
+  return { promise, resolve, reject }
 }

@@ -152,6 +152,33 @@ platform task because the Windows version is not yet under development.
 
 Final result: passed
 
+## 2026-08-13 — Native Video Letterbox Leak Correction
+
+### Current-run evidence
+
+- User-reported native window: `/var/folders/hh/jj77kbxs0db1_j1kgh7hbd2c0000gn/T/codex-clipboard-d5298069-8ae2-43ee-9ef6-b7c8e5a483d2.png` (`1968 × 1584`).
+- Corrected native Viewer window: `target/design-qa-video-matte/runtime-refined.png` (`1848 × 1574`, SHA-256 `1aa1263b6d2297c527ace8f022d0f1535167f0cbb93b6a14dc3b4806ae6e0d3a`).
+- Same-viewport comparison: `target/design-qa-video-matte/comparison.png` (`3696 × 1574`, SHA-256 `376236e3fa8313066344e54c6f06634fe1a55d3a7e9c6e573746c81a5a5f2782`). The reported screenshot was normalized to the corrected native capture size before comparison.
+
+### Audit and correction
+
+| Region | Reported defect | Corrected result |
+| --- | --- | --- |
+| Native letterbox | The Web document became transparent across the whole window while the native video occupied only its fitted center rectangle. The underlying browser screen leaked through as a blue top strip and unrelated imagery below the video. | The fitted native rectangle now publishes exact top/right/bottom/left insets. A solid theater matte covers only the transparent area outside that rectangle, while the center stays transparent for the native video. |
+| Metadata | The filename and duration sat inside another dark card over the leaked background, adding unnecessary visual weight. | Passive metadata is flat on the theater matte; the actionable Done button retains a clear boundary. |
+| Playback controls | A second large floating card was stacked over the bottom leak, making the lower third appear oversized and detached from the player. | Timeline and controls sit directly on the stable matte. Individual buttons retain high-contrast borders, white icons, and an accent primary action. |
+| Video framing | Removing the original gradients exposed implementation details outside the native surface. | The full video remains visible at its original aspect ratio; no crop, stretch, or gradient transition is introduced. |
+
+### Verification
+
+- RED: three focused failures proved the missing matte geometry, missing CSS inset publication, and absent solid matte boundary.
+- GREEN: geometry, layout, native-surface shell, controls, timeline, and accessibility suite passed 6 files / 45 tests, including fractional window geometry that cannot emit a negative matte width.
+- `pnpm --dir ui check` and `git diff --check` passed; only the existing Biome configuration deprecation information remains.
+- The corrected screenshot was captured from the running native Viewer window after the implementation update, not from a browser-only acceptance scene.
+- Fresh `pnpm verify` passed end to end: policy 30/30, packaging 30/30, clean verifier 11/11, UI check, 106 UI files / 952 passed + 1 skipped, production build, locked Rust formatting/Clippy/workspace tests, Tauri security boundaries, cargo-deny, npm license policy, and bundled runtime license verification.
+
+Final result: passed
+
 ## 2026-08-13 — Video Control Visibility Refinement
 
 ### Source and implementation evidence

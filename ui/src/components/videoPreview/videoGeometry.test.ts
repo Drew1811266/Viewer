@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { VideoMedia } from '../../api/types'
-import { fitVideoRect, hasVideoGeometry } from './videoGeometry'
+import { fitVideoMatteInsets, fitVideoRect, hasVideoGeometry } from './videoGeometry'
 
 function stage(left: number, top: number, width: number, height: number): DOMRectReadOnly {
   return {
@@ -43,6 +43,26 @@ describe('native video surface geometry', () => {
       width: 338,
       height: 600,
     })
+  })
+
+  it('describes the exact opaque matte outside the fitted native surface', () => {
+    expect(fitVideoMatteInsets(stage(100, 50, 800, 600), media())).toEqual({
+      top: 75,
+      right: 0,
+      bottom: 75,
+      left: 0,
+    })
+    expect(fitVideoMatteInsets(stage(100, 50, 800, 600), media({ rotationDegrees: 90 }))).toEqual({
+      top: 0,
+      right: 231,
+      bottom: 0,
+      left: 231,
+    })
+  })
+
+  it('never publishes a negative matte width for fractional window geometry', () => {
+    const insets = fitVideoMatteInsets(stage(0.4, 0.4, 800.2, 600.2), media())
+    expect(Object.values(insets).every((value) => value >= 0)).toBe(true)
   })
 
   it('requires positive stage and media dimensions before fitting', () => {

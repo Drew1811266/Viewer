@@ -38,24 +38,41 @@ describe('immersive video preview layout', () => {
     })
   })
 
-  it('keeps the video frame free of full-width scrims', () => {
-    expect(rule('.video-preview-stage::before')).toMatchObject({ display: 'none' })
+  it('covers transparent letterbox regions with a solid theater matte', () => {
+    const matte = rule('.video-preview-stage::before')
+    expect(matte).toMatchObject({
+      'border-color': 'var(--video-preview-stage)',
+      'border-style': 'solid',
+      inset: '0',
+      'pointer-events': 'none',
+      position: 'absolute',
+      'z-index': '2',
+    })
+    expect(matte['border-width']?.replace(/\s+/g, ' ')).toBe(
+      'var(--video-preview-matte-top) var(--video-preview-matte-right) var(--video-preview-matte-bottom) var(--video-preview-matte-left)',
+    )
     expect(rule('.video-preview-stage::after')).toMatchObject({ display: 'none' })
   })
 
-  it('uses localized high-contrast surfaces for every control group', () => {
+  it('keeps passive chrome flat while actionable controls stay high contrast', () => {
     expect(rule('.video-preview-title')).toMatchObject({
-      background: 'var(--video-preview-metadata-surface)',
-      border: '1px solid var(--video-preview-surface-border)',
+      background: 'transparent',
+      border: '0',
+      'box-shadow': 'none',
     })
     expect(rule('.video-preview .preview-navigation-float')).toMatchObject({
       background: 'var(--video-preview-navigation-surface)',
       border: '1px solid var(--video-preview-surface-border)',
     })
     expect(rule('.video-controls')).toMatchObject({
-      background: 'var(--video-preview-dock-surface)',
-      border: '1px solid var(--video-preview-surface-border)',
-      'border-radius': '18px',
+      background: 'transparent',
+      border: '0',
+      'box-shadow': 'none',
+      padding: '0',
+    })
+    expect(rule('.video-controls .viewer-button')).toMatchObject({
+      background: 'var(--video-preview-control-surface)',
+      border: '1px solid var(--video-preview-control-border)',
     })
     expect(rule('.video-controls .video-controls__play')).toMatchObject({
       background: 'var(--viewer-accent)',

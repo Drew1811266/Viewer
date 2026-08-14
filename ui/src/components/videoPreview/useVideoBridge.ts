@@ -19,7 +19,12 @@ import type {
 } from '../../api/types'
 import type { ViewerBridge } from '../../api/viewer'
 import type { VideoControlCommands, VideoPlaybackRate } from './VideoControls'
-import { fitVideoRect, hasVideoGeometry } from './videoGeometry'
+import {
+  fitVideoMatteInsets,
+  fitVideoRect,
+  hasVideoGeometry,
+  type VideoMatteInsets,
+} from './videoGeometry'
 import { createPreparingVideoState, reduceVideoState, type VideoPreviewState } from './videoState'
 
 export type VideoPreviewBridge = Pick<
@@ -50,6 +55,7 @@ export interface UseVideoBridgeOptions {
 export interface UseVideoBridgeState {
   state: VideoPreviewState
   media: VideoMedia | null
+  matteInsets: VideoMatteInsets | null
   controlState: VideoBridgeControlState
   commands: VideoControlCommands
 }
@@ -95,6 +101,11 @@ export function useVideoBridge({
   const lifecycleKey =
     (file.videoMetadata.probeStatus === 'ready' && geometryReady) || retryingIndexedFailure
       ? `${file.entityId}:${retryKey}`
+      : null
+  const matteMedia = media ?? (geometryReady ? metadataMedia : null)
+  const matteInsets =
+    stageRect !== null && matteMedia !== null && hasVideoGeometry(stageRect, matteMedia)
+      ? fitVideoMatteInsets(stageRect, matteMedia)
       : null
 
   useLayoutEffect(() => {
@@ -463,7 +474,7 @@ export function useVideoBridge({
     }
   }, [bridge, enqueueCommand, state.durationUs, withGeneration])
 
-  return { state, media, controlState, commands }
+  return { state, media, matteInsets, controlState, commands }
 }
 
 interface BooleanControlIntent {

@@ -40,7 +40,17 @@ body:has(.viewer-shell[data-video-preview-open='true']) {
 }
 
 .video-preview-stage::before {
-  display: none;
+  border-color: var(--video-preview-stage);
+  border-style: solid;
+  border-width:
+    var(--video-preview-matte-top) var(--video-preview-matte-right)
+    var(--video-preview-matte-bottom) var(--video-preview-matte-left);
+  box-sizing: border-box;
+  content: '';
+  inset: 0;
+  pointer-events: none;
+  position: absolute;
+  z-index: 2;
 }
 
 .video-preview-stage::after {
@@ -72,16 +82,13 @@ body:has(.viewer-shell[data-video-preview-open='true']) {
 
 .video-preview-title {
   align-items: flex-start;
-  -webkit-backdrop-filter: blur(18px) saturate(130%);
-  backdrop-filter: blur(18px) saturate(130%);
-  background: var(--video-preview-metadata-surface);
-  border: 1px solid var(--video-preview-surface-border);
-  border-radius: 12px;
-  box-shadow: var(--video-preview-surface-shadow);
+  background: transparent;
+  border: 0;
+  box-shadow: none;
   display: grid;
   gap: 5px;
   min-width: 0;
-  padding: 10px 14px;
+  padding: 0;
 }
 
 .video-preview-title > strong {
@@ -167,19 +174,17 @@ body:has(.viewer-shell[data-video-preview-open='true']) {
 }
 
 .video-controls {
-  -webkit-backdrop-filter: blur(20px) saturate(130%);
-  backdrop-filter: blur(20px) saturate(130%);
-  background: var(--video-preview-dock-surface);
-  border: 1px solid var(--video-preview-surface-border);
-  border-radius: 18px;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
   bottom: 24px;
-  box-shadow: var(--video-preview-surface-shadow);
+  box-shadow: none;
   color: var(--video-preview-text);
   display: grid;
-  gap: 14px;
+  gap: 12px;
   left: 32px;
   opacity: 1;
-  padding: 14px 16px;
+  padding: 0;
   position: absolute;
   right: 32px;
   transform: translateY(0);
@@ -226,7 +231,7 @@ body:has(.viewer-shell[data-video-preview-open='true']) {
 
 .video-controls .viewer-button {
   background: var(--video-preview-control-surface);
-  border-color: var(--video-preview-control-border);
+  border: 1px solid var(--video-preview-control-border);
   color: var(--video-preview-text);
   min-height: 44px;
   min-width: 44px;

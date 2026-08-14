@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 import { useEffect, useRef, useState } from 'react'
 import type { VideoFile } from '../api/types'
 import ViewerButton, { ViewerIconButton } from './ui/ViewerButton'
@@ -51,7 +51,12 @@ export default function VideoPreview({
   const [focusedWithin, setFocusedWithin] = useState(false)
   const reducedMotion = useReducedMotionPreference()
   const retryKey = retryRequest.entityId === file.entityId ? retryRequest.key : 0
-  const { state, controlState, commands } = useVideoBridge({ bridge, file, retryKey, stage })
+  const { state, matteInsets, controlState, commands } = useVideoBridge({
+    bridge,
+    file,
+    retryKey,
+    stage,
+  })
   const currentIndex = files.findIndex((candidate) => candidate.entityId === file.entityId)
   const failed = state.phase === 'failed'
   const controls = useVideoControlsVisibility({
@@ -126,6 +131,15 @@ export default function VideoPreview({
   )
 
   const durationLabel = formatVideoTime(file.videoMetadata.durationUs ?? state.durationUs ?? 0)
+  const matteStyle =
+    matteInsets === null
+      ? undefined
+      : ({
+          '--video-preview-matte-top': `${matteInsets.top}px`,
+          '--video-preview-matte-right': `${matteInsets.right}px`,
+          '--video-preview-matte-bottom': `${matteInsets.bottom}px`,
+          '--video-preview-matte-left': `${matteInsets.left}px`,
+        } as CSSProperties)
 
   return (
     <section
@@ -144,6 +158,7 @@ export default function VideoPreview({
         className="video-preview-stage"
         data-testid="video-preview-stage"
         data-surface-visible={state.surfaceVisible}
+        style={matteStyle}
       >
         <ViewerToolbar
           label="视频预览工具"

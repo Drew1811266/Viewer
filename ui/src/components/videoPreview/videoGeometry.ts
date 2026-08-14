@@ -1,5 +1,12 @@
 import type { VideoMedia, VideoSurfaceRect } from '../../api/types'
 
+export interface VideoMatteInsets {
+  top: number
+  right: number
+  bottom: number
+  left: number
+}
+
 export function hasVideoGeometry(stage: DOMRectReadOnly, media: VideoMedia): boolean {
   return (
     finitePositive(stage.width) &&
@@ -26,6 +33,18 @@ export function fitVideoRect(stage: DOMRectReadOnly, media: VideoMedia): VideoSu
     y: Math.round(stage.top + (stage.height - fittedHeight) / 2),
     width: Math.round(fittedWidth),
     height: Math.round(fittedHeight),
+  }
+}
+
+export function fitVideoMatteInsets(stage: DOMRectReadOnly, media: VideoMedia): VideoMatteInsets {
+  const fitted = fitVideoRect(stage, media)
+  const left = Math.max(0, fitted.x - stage.left)
+  const top = Math.max(0, fitted.y - stage.top)
+  return {
+    top,
+    right: Math.max(0, stage.width - left - fitted.width),
+    bottom: Math.max(0, stage.height - top - fitted.height),
+    left,
   }
 }
 

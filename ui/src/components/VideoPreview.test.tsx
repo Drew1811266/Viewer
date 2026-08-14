@@ -101,6 +101,18 @@ describe('VideoPreview', () => {
     expect(within(toolbar).getByText('00:12')).toBeVisible()
   })
 
+  it('masks the transparent space outside the fitted native video surface', async () => {
+    const harness = videoBridgeHarness()
+    render(<VideoPreview file={video('a.mp4')} files={[video('a.mp4')]} bridge={harness.bridge} />)
+
+    await waitFor(() => expect(harness.open).toHaveBeenCalledOnce())
+    const stage = screen.getByTestId('video-preview-stage')
+    expect(stage.style.getPropertyValue('--video-preview-matte-top')).toBe('75px')
+    expect(stage.style.getPropertyValue('--video-preview-matte-right')).toBe('0px')
+    expect(stage.style.getPropertyValue('--video-preview-matte-bottom')).toBe('75px')
+    expect(stage.style.getPropertyValue('--video-preview-matte-left')).toBe('0px')
+  })
+
   it('keeps the shell and navigation on failure and retries with a new lifecycle', async () => {
     const harness = videoBridgeHarness()
     harness.open.mockResolvedValueOnce(session(3)).mockResolvedValueOnce(session(4))

@@ -2,9 +2,9 @@ use async_trait::async_trait;
 use std::sync::{Arc, Mutex};
 use viewer_application::browse::BrowserFile;
 use viewer_application::{
-    EngineEvent, EngineOpenRequest, FrameDirection, PlaybackRate, SurfaceRect, VideoCommand,
-    VideoCommandKind, VideoEngine, VideoEngineError, VideoMedia, VideoPreviewService,
-    VideoServiceError, VideoSource, video_neighbors,
+    EngineEvent, EngineOpenRequest, FrameDirection, PlaybackRate, SeekIntent, SeekRequest,
+    SurfaceRect, VideoCommand, VideoCommandKind, VideoEngine, VideoEngineError, VideoMedia,
+    VideoPlaybackState, VideoPreviewService, VideoServiceError, VideoSource, video_neighbors,
 };
 use viewer_domain::{
     EntityId, RelativePath,
@@ -18,12 +18,12 @@ enum Call {
     Close(u64),
     Play(u64),
     Pause(u64),
-    Seek(u64, u64),
+    PublishSeek(u64, SeekRequest),
     Step(u64, FrameDirection),
     SetVolume(u64, u8),
     SetMuted(u64, bool),
     SetRate(u64, PlaybackRate),
-    SetSurfaceRect(u64, SurfaceRect),
+    PublishSurfaceRect(u64, u64, SurfaceRect),
 }
 
 #[derive(Default)]
@@ -74,8 +74,8 @@ impl VideoEngine for RecordingEngine {
         Ok(())
     }
 
-    async fn seek(&self, generation: u64, time_us: u64) -> Result<(), VideoEngineError> {
-        self.record(Call::Seek(generation, time_us));
+    fn publish_seek(&self, generation: u64, request: SeekRequest) -> Result<(), VideoEngineError> {
+        self.record(Call::PublishSeek(generation, request));
         Ok(())
     }
 
@@ -103,12 +103,13 @@ impl VideoEngine for RecordingEngine {
         Ok(())
     }
 
-    async fn set_surface_rect(
+    fn publish_surface_rect(
         &self,
         generation: u64,
+        sequence: u64,
         rect: SurfaceRect,
     ) -> Result<(), VideoEngineError> {
-        self.record(Call::SetSurfaceRect(generation, rect));
+        self.record(Call::PublishSurfaceRect(generation, sequence, rect));
         Ok(())
     }
 }
@@ -197,6 +198,64 @@ async fn start_playing(service: &VideoPreviewService<RecordingEngine>, generatio
         .handle_engine_event(generation, EngineEvent::FirstFrameReady)
         .await
         .unwrap();
+}
+
+#[tokio::test]
+async fn preview_does_not_enter_seeking_and_only_matching_commit_completes() {
+    const PREVIEW: SeekRequest = SeekRequest {
+        request_id: 10,
+        time_us: 2_000_000,
+        intent: SeekIntent::Preview,
+    };
+    const COMMIT: SeekRequest = SeekRequest {
+        request_id: 11,
+        time_us: 2_250_000,
+        intent: SeekIntent::Commit,
+    };
+
+    let (service, _) = harness();
+    let generation = service.open(source(1)).await.unwrap();
+    start_playing(&service, generation).await;
+    service
+        .execute(VideoCommand {
+            generation,
+            kind: VideoCommandKind::Pause,
+        })
+        .await
+        .unwrap();
+
+    service.preview_seek(generation, PREVIEW).unwrap();
+    assert_eq!(service.snapshot().state, VideoPlaybackState::Paused);
+
+    service
+        .execute(VideoCommand::seek(generation, COMMIT))
+        .await
+        .unwrap();
+    assert_eq!(service.snapshot().state, VideoPlaybackState::Seeking);
+
+    service
+        .handle_engine_event(
+            generation,
+            EngineEvent::SeekCompleted {
+                request_id: PREVIEW.request_id,
+                time_us: PREVIEW.time_us,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(service.snapshot().state, VideoPlaybackState::Seeking);
+
+    service
+        .handle_engine_event(
+            generation,
+            EngineEvent::SeekCompleted {
+                request_id: COMMIT.request_id,
+                time_us: COMMIT.time_us,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(service.snapshot().state, VideoPlaybackState::Paused);
 }
 
 #[tokio::test]
@@ -389,10 +448,14 @@ async fn seek_returns_to_the_pre_seek_playback_state() {
     start_playing(&service, generation).await;
 
     service
-        .execute(VideoCommand {
+        .execute(VideoCommand::seek(
             generation,
-            kind: VideoCommandKind::Seek(3_000_000),
-        })
+            SeekRequest {
+                request_id: 20,
+                time_us: 3_000_000,
+                intent: SeekIntent::Commit,
+            },
+        ))
         .await
         .unwrap();
     assert_eq!(
@@ -401,13 +464,23 @@ async fn seek_returns_to_the_pre_seek_playback_state() {
     );
     assert_eq!(
         engine.calls().last(),
-        Some(&Call::Seek(generation, 2_000_000))
+        Some(&Call::PublishSeek(
+            generation,
+            SeekRequest {
+                request_id: 20,
+                time_us: 2_000_000,
+                intent: SeekIntent::Commit,
+            },
+        ))
     );
 
     service
         .handle_engine_event(
             generation,
-            EngineEvent::SeekCompleted { time_us: 2_000_000 },
+            EngineEvent::SeekCompleted {
+                request_id: 20,
+                time_us: 2_000_000,
+            },
         )
         .await
         .unwrap();
@@ -424,14 +497,24 @@ async fn seek_returns_to_the_pre_seek_playback_state() {
         .await
         .unwrap();
     service
-        .execute(VideoCommand {
+        .execute(VideoCommand::seek(
             generation,
-            kind: VideoCommandKind::Seek(250_000),
-        })
+            SeekRequest {
+                request_id: 21,
+                time_us: 250_000,
+                intent: SeekIntent::Commit,
+            },
+        ))
         .await
         .unwrap();
     service
-        .handle_engine_event(generation, EngineEvent::SeekCompleted { time_us: 250_000 })
+        .handle_engine_event(
+            generation,
+            EngineEvent::SeekCompleted {
+                request_id: 21,
+                time_us: 250_000,
+            },
+        )
         .await
         .unwrap();
     assert_eq!(
@@ -506,10 +589,14 @@ async fn seek_before_first_frame_is_rejected_without_bypassing_reveal() {
 
     assert_eq!(
         service
-            .execute(VideoCommand {
+            .execute(VideoCommand::seek(
                 generation,
-                kind: VideoCommandKind::Seek(500_000),
-            })
+                SeekRequest {
+                    request_id: 22,
+                    time_us: 500_000,
+                    intent: SeekIntent::Commit,
+                },
+            ))
             .await,
         Err(VideoServiceError::InvalidState)
     );

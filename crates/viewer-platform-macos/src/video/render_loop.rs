@@ -206,9 +206,9 @@ impl MacVideoRenderSession {
         Ok(())
     }
 
-    pub fn seek(&self, time_us: u64) -> Result<(), RenderLoopError> {
+    pub fn seek(&self, time_us: u64, mode: SeekMode) -> Result<(), RenderLoopError> {
         if let Some(client) = self.client.as_ref() {
-            client.seek_absolute_us(time_us, SeekMode::CommitExact)?;
+            client.seek_absolute_us(time_us, mode)?;
         }
         Ok(())
     }

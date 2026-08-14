@@ -46,9 +46,10 @@ pub use text::{
     MAX_TEXT_PREVIEW_BYTES, TextEncoding, TextPreview, TextPreviewError, TextPreviewPort,
 };
 pub use video::{
-    EngineEvent, EngineOpenRequest, FrameDirection, PlaybackRate, SurfaceRect, VideoCommand,
-    VideoCommandKind, VideoEngineError, VideoEvent, VideoMedia, VideoPlaybackState,
-    VideoPreviewService, VideoPreviewSnapshot, VideoServiceError, VideoSource, video_neighbors,
+    EngineEvent, EngineOpenRequest, FrameDirection, PlaybackRate, SeekIntent, SeekRequest,
+    SurfaceRect, VideoCommand, VideoCommandKind, VideoEngineError, VideoEvent, VideoMedia,
+    VideoPlaybackState, VideoPreviewService, VideoPreviewSnapshot, VideoServiceError, VideoSource,
+    video_neighbors,
 };
 pub use video_thumbnail::{
     TimelineThumbnailRequest, TimelineThumbnailResult, VideoThumbnailService,

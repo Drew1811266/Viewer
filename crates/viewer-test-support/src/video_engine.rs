@@ -4,8 +4,8 @@ use std::{
     sync::{Mutex, MutexGuard},
 };
 use viewer_application::{
-    EngineEvent, EngineOpenRequest, FrameDirection, PlaybackRate, SurfaceRect, VideoEngine,
-    VideoEngineError, VideoEvent,
+    EngineEvent, EngineOpenRequest, FrameDirection, PlaybackRate, SeekRequest, SurfaceRect,
+    VideoEngine, VideoEngineError, VideoEvent,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -15,12 +15,12 @@ pub enum FakeVideoEngineCall {
     Close(u64),
     Play(u64),
     Pause(u64),
-    Seek(u64, u64),
+    PublishSeek(u64, SeekRequest),
     Step(u64, FrameDirection),
     SetVolume(u64, u8),
     SetMuted(u64, bool),
     SetRate(u64, PlaybackRate),
-    SetSurfaceRect(u64, SurfaceRect),
+    PublishSurfaceRect(u64, u64, SurfaceRect),
 }
 
 #[derive(Default)]
@@ -82,8 +82,8 @@ impl VideoEngine for FakeVideoEngine {
         self.record(FakeVideoEngineCall::Pause(generation))
     }
 
-    async fn seek(&self, generation: u64, time_us: u64) -> Result<(), VideoEngineError> {
-        self.record(FakeVideoEngineCall::Seek(generation, time_us))
+    fn publish_seek(&self, generation: u64, request: SeekRequest) -> Result<(), VideoEngineError> {
+        self.record(FakeVideoEngineCall::PublishSeek(generation, request))
     }
 
     async fn step(
@@ -106,12 +106,15 @@ impl VideoEngine for FakeVideoEngine {
         self.record(FakeVideoEngineCall::SetRate(generation, rate))
     }
 
-    async fn set_surface_rect(
+    fn publish_surface_rect(
         &self,
         generation: u64,
+        sequence: u64,
         rect: SurfaceRect,
     ) -> Result<(), VideoEngineError> {
-        self.record(FakeVideoEngineCall::SetSurfaceRect(generation, rect))
+        self.record(FakeVideoEngineCall::PublishSurfaceRect(
+            generation, sequence, rect,
+        ))
     }
 }
 
@@ -123,8 +126,8 @@ mod tests {
         task::{Context, Poll, Waker},
     };
     use viewer_application::{
-        EngineEvent, EngineOpenRequest, FrameDirection, PlaybackRate, SurfaceRect, VideoEngine,
-        VideoEngineError, VideoEvent, VideoSource,
+        EngineEvent, EngineOpenRequest, FrameDirection, PlaybackRate, SeekIntent, SeekRequest,
+        SurfaceRect, VideoEngine, VideoEngineError, VideoEvent, VideoSource,
     };
     use viewer_domain::{EntityId, VideoSessionId};
 
@@ -151,12 +154,20 @@ mod tests {
             fake.reveal_surface(4).await.unwrap();
             fake.play(4).await.unwrap();
             fake.pause(4).await.unwrap();
-            fake.seek(4, 123).await.unwrap();
+            fake.publish_seek(
+                4,
+                SeekRequest {
+                    request_id: 8,
+                    time_us: 123,
+                    intent: SeekIntent::Commit,
+                },
+            )
+            .unwrap();
             fake.step(4, FrameDirection::Backward).await.unwrap();
             fake.set_volume(4, 42).await.unwrap();
             fake.set_muted(4, true).await.unwrap();
             fake.set_rate(4, PlaybackRate::OneAndHalf).await.unwrap();
-            fake.set_surface_rect(4, rect).await.unwrap();
+            fake.publish_surface_rect(4, 9, rect).unwrap();
             fake.close(4).await.unwrap();
         });
 
@@ -167,12 +178,19 @@ mod tests {
                 FakeVideoEngineCall::RevealSurface(4),
                 FakeVideoEngineCall::Play(4),
                 FakeVideoEngineCall::Pause(4),
-                FakeVideoEngineCall::Seek(4, 123),
+                FakeVideoEngineCall::PublishSeek(
+                    4,
+                    SeekRequest {
+                        request_id: 8,
+                        time_us: 123,
+                        intent: SeekIntent::Commit,
+                    },
+                ),
                 FakeVideoEngineCall::Step(4, FrameDirection::Backward),
                 FakeVideoEngineCall::SetVolume(4, 42),
                 FakeVideoEngineCall::SetMuted(4, true),
                 FakeVideoEngineCall::SetRate(4, PlaybackRate::OneAndHalf),
-                FakeVideoEngineCall::SetSurfaceRect(4, rect),
+                FakeVideoEngineCall::PublishSurfaceRect(4, 9, rect),
                 FakeVideoEngineCall::Close(4),
             ]
         );

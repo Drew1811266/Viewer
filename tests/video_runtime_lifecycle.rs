@@ -5,7 +5,10 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use viewer_application::{ProjectAccess, ProjectProbeError, ProjectProbePort};
+use viewer_application::{
+    EngineOpenRequest, FrameDirection, PlaybackRate, ProjectAccess, ProjectProbeError,
+    ProjectProbePort, SeekIntent, SeekRequest, SurfaceRect, VideoEngine, VideoEngineError,
+};
 use viewer_desktop::state::{DesktopRuntime, VideoClosePort};
 use viewer_desktop::{
     dto::{VideoEventDto, VideoMediaDto},
@@ -33,10 +36,163 @@ struct BlockingThumbnailPort {
 #[derive(Default)]
 struct RecordingPlaybackActivity(Mutex<Vec<(u64, bool)>>);
 
+struct BlockingTransportEngine {
+    inner: FakeVideoEngine,
+    pause_started: tokio::sync::Notify,
+    pause_release: tokio::sync::Notify,
+}
+
+impl Default for BlockingTransportEngine {
+    fn default() -> Self {
+        Self {
+            inner: FakeVideoEngine::default(),
+            pause_started: tokio::sync::Notify::new(),
+            pause_release: tokio::sync::Notify::new(),
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl VideoEngine for BlockingTransportEngine {
+    async fn open_paused(&self, request: EngineOpenRequest) -> Result<(), VideoEngineError> {
+        self.inner.open_paused(request).await
+    }
+
+    async fn reveal_surface(&self, generation: u64) -> Result<(), VideoEngineError> {
+        self.inner.reveal_surface(generation).await
+    }
+
+    async fn close(&self, generation: u64) -> Result<(), VideoEngineError> {
+        self.inner.close(generation).await
+    }
+
+    async fn play(&self, generation: u64) -> Result<(), VideoEngineError> {
+        self.inner.play(generation).await
+    }
+
+    async fn pause(&self, generation: u64) -> Result<(), VideoEngineError> {
+        self.pause_started.notify_one();
+        self.pause_release.notified().await;
+        self.inner.pause(generation).await
+    }
+
+    fn publish_seek(&self, generation: u64, request: SeekRequest) -> Result<(), VideoEngineError> {
+        self.inner.publish_seek(generation, request)
+    }
+
+    async fn step(
+        &self,
+        generation: u64,
+        direction: FrameDirection,
+    ) -> Result<(), VideoEngineError> {
+        self.inner.step(generation, direction).await
+    }
+
+    async fn set_volume(&self, generation: u64, percent: u8) -> Result<(), VideoEngineError> {
+        self.inner.set_volume(generation, percent).await
+    }
+
+    async fn set_muted(&self, generation: u64, muted: bool) -> Result<(), VideoEngineError> {
+        self.inner.set_muted(generation, muted).await
+    }
+
+    async fn set_rate(&self, generation: u64, rate: PlaybackRate) -> Result<(), VideoEngineError> {
+        self.inner.set_rate(generation, rate).await
+    }
+
+    fn publish_surface_rect(
+        &self,
+        generation: u64,
+        sequence: u64,
+        rect: SurfaceRect,
+    ) -> Result<(), VideoEngineError> {
+        self.inner.publish_surface_rect(generation, sequence, rect)
+    }
+}
+
 impl viewer_desktop::video_runtime::PlaybackActivityPort for RecordingPlaybackActivity {
     fn set_active(&self, generation: u64, active: bool) {
         self.0.lock().unwrap().push((generation, active));
     }
+}
+
+#[tokio::test]
+async fn high_frequency_publication_bypasses_the_transition_lane() {
+    let engine = Arc::new(BlockingTransportEngine::default());
+    let runtime = Arc::new(viewer_desktop::video_runtime::VideoRuntime::new(
+        Arc::clone(&engine),
+    ));
+    let generation = runtime
+        .open_authorized(video_source(7))
+        .await
+        .unwrap()
+        .generation;
+    runtime
+        .handle_engine_event(generation, viewer_application::EngineEvent::FirstFrameReady)
+        .await;
+
+    let pausing_runtime = Arc::clone(&runtime);
+    let pause = tokio::spawn(async move { pausing_runtime.pause(generation).await });
+    engine.pause_started.notified().await;
+
+    tokio::time::timeout(
+        std::time::Duration::from_millis(50),
+        runtime.seek(
+            generation,
+            SeekRequest {
+                request_id: 40,
+                time_us: 500_000,
+                intent: SeekIntent::Preview,
+            },
+        ),
+    )
+    .await
+    .expect("preview publication must not wait for the transition lane")
+    .unwrap();
+    runtime
+        .set_surface_rect(
+            generation,
+            41,
+            SurfaceRect {
+                x: 5,
+                y: 6,
+                width: 640,
+                height: 360,
+            },
+        )
+        .expect("geometry publication must not wait for the transition lane");
+
+    assert!(
+        engine
+            .inner
+            .calls()
+            .contains(&FakeVideoEngineCall::PublishSeek(
+                generation,
+                SeekRequest {
+                    request_id: 40,
+                    time_us: 500_000,
+                    intent: SeekIntent::Preview,
+                },
+            ))
+    );
+    assert!(
+        engine
+            .inner
+            .calls()
+            .contains(&FakeVideoEngineCall::PublishSurfaceRect(
+                generation,
+                41,
+                SurfaceRect {
+                    x: 5,
+                    y: 6,
+                    width: 640,
+                    height: 360,
+                },
+            ))
+    );
+
+    engine.pause_release.notify_one();
+    pause.await.unwrap().unwrap();
 }
 
 #[async_trait::async_trait]
@@ -835,5 +991,39 @@ fn typed_video_requests_reject_unknown_fields_and_untyped_rates() {
             "surfaceRect": { "x": 0, "y": 0, "width": 640, "height": 360 }
         }))
         .is_err()
+    );
+    let preview = serde_json::from_value::<viewer_desktop::dto::VideoSeekDto>(serde_json::json!({
+        "generation": 3,
+        "requestId": 9,
+        "timeUs": 750_000,
+        "intent": "preview"
+    }))
+    .expect("typed preview request");
+    assert_eq!(
+        preview.request(),
+        SeekRequest {
+            request_id: 9,
+            time_us: 750_000,
+            intent: SeekIntent::Preview,
+        }
+    );
+    assert!(
+        serde_json::from_value::<viewer_desktop::dto::VideoSeekDto>(serde_json::json!({
+            "generation": 3,
+            "timeUs": 750_000
+        }))
+        .is_err(),
+        "legacy seeks without request ownership or intent must be rejected"
+    );
+    assert!(
+        serde_json::from_value::<viewer_desktop::dto::VideoSurfaceRectDto>(serde_json::json!({
+            "generation": 3,
+            "x": 0,
+            "y": 0,
+            "width": 640,
+            "height": 360
+        }))
+        .is_err(),
+        "geometry publication must carry a monotonic sequence"
     );
 }

@@ -170,7 +170,7 @@ pub async fn video_seek(
     video: State<'_, Arc<NativeVideoRuntime>>,
 ) -> Result<(), CommandError> {
     video
-        .seek(request.generation, request.time_us)
+        .seek(request.generation, request.request())
         .await
         .map_err(Into::into)
 }
@@ -220,13 +220,12 @@ pub async fn video_set_rate(
 }
 
 #[tauri::command]
-pub async fn video_set_surface_rect(
+pub fn video_set_surface_rect(
     request: VideoSurfaceRectDto,
     video: State<'_, Arc<NativeVideoRuntime>>,
 ) -> Result<(), CommandError> {
     video
-        .set_surface_rect(request.generation, request.rect())
-        .await
+        .set_surface_rect(request.generation, request.sequence, request.rect())
         .map_err(Into::into)
 }
 

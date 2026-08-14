@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use viewer_application::{
-    FrameDirection, PlaybackRate, SurfaceRect, VideoMedia, VideoPlaybackState, VideoPreviewSnapshot,
+    FrameDirection, PlaybackRate, SeekIntent, SeekRequest, SurfaceRect, VideoMedia,
+    VideoPlaybackState, VideoPreviewSnapshot,
 };
 use viewer_domain::video::{VideoFailureKind, VideoMetadata};
 use viewer_infrastructure::video_cache::VideoCacheStats;
@@ -9,6 +10,7 @@ use viewer_infrastructure::video_cache::VideoCacheStats;
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct VideoSurfaceRectDto {
     pub generation: u64,
+    pub sequence: u64,
     pub x: i32,
     pub y: i32,
     pub width: u32,
@@ -70,7 +72,35 @@ pub struct GenerationDto {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct VideoSeekDto {
     pub generation: u64,
+    pub request_id: u64,
     pub time_us: u64,
+    pub intent: VideoSeekIntentDto,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum VideoSeekIntentDto {
+    Preview,
+    Commit,
+}
+
+impl From<VideoSeekIntentDto> for SeekIntent {
+    fn from(value: VideoSeekIntentDto) -> Self {
+        match value {
+            VideoSeekIntentDto::Preview => Self::Preview,
+            VideoSeekIntentDto::Commit => Self::Commit,
+        }
+    }
+}
+
+impl VideoSeekDto {
+    pub fn request(self) -> SeekRequest {
+        SeekRequest {
+            request_id: self.request_id,
+            time_us: self.time_us,
+            intent: self.intent.into(),
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]

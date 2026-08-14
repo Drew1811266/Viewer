@@ -13,8 +13,9 @@ use std::{
 use tokio_util::sync::CancellationToken;
 use viewer_application::scheduler::TaskCoordinator;
 use viewer_application::{
-    EngineEvent, FrameDirection, PlaybackRate, SurfaceRect, VideoCommand, VideoCommandKind,
-    VideoEngine, VideoPlaybackState, VideoPreviewService, VideoServiceError, VideoSource,
+    EngineEvent, FrameDirection, PlaybackRate, SeekIntent, SeekRequest, SurfaceRect, VideoCommand,
+    VideoCommandKind, VideoEngine, VideoPlaybackState, VideoPreviewService, VideoServiceError,
+    VideoSource,
 };
 use viewer_domain::{SessionId, VideoThumbnailRequestId, search::Generation};
 use viewer_infrastructure::{
@@ -664,9 +665,23 @@ impl<E: VideoEngine> VideoRuntime<E> {
         self.execute(generation, VideoCommandKind::Pause).await
     }
 
-    pub async fn seek(&self, generation: u64, time_us: u64) -> Result<(), VideoCommandError> {
-        self.execute(generation, VideoCommandKind::Seek(time_us))
-            .await
+    pub async fn seek(
+        &self,
+        generation: u64,
+        request: SeekRequest,
+    ) -> Result<(), VideoCommandError> {
+        match request.intent {
+            SeekIntent::Preview => {
+                self.ensure_generation(generation)?;
+                self.preview
+                    .preview_seek(generation, request)
+                    .map_err(VideoCommandError::from)
+            }
+            SeekIntent::Commit => {
+                self.execute(generation, VideoCommandKind::Seek(request))
+                    .await
+            }
+        }
     }
 
     pub async fn step(
@@ -697,13 +712,16 @@ impl<E: VideoEngine> VideoRuntime<E> {
             .await
     }
 
-    pub async fn set_surface_rect(
+    pub fn set_surface_rect(
         &self,
         generation: u64,
+        sequence: u64,
         rect: SurfaceRect,
     ) -> Result<(), VideoCommandError> {
-        self.execute(generation, VideoCommandKind::SetSurfaceRect(rect))
-            .await
+        self.ensure_generation(generation)?;
+        self.preview
+            .publish_surface_rect(generation, sequence, rect)
+            .map_err(VideoCommandError::from)
     }
 
     pub fn cache_stats(&self) -> Result<VideoCacheStatsDto, VideoCommandError> {
@@ -832,7 +850,7 @@ impl<E: VideoEngine> VideoRuntime<E> {
                     duration_us: duration_us.or(self.preview.snapshot().duration_us),
                 });
             }
-            EngineEvent::SeekCompleted { time_us } | EngineEvent::FrameStepped { time_us } => {
+            EngineEvent::SeekCompleted { time_us, .. } | EngineEvent::FrameStepped { time_us } => {
                 self.publish(VideoEventDto::Progress {
                     generation,
                     time_us,

@@ -16,26 +16,29 @@ use std::{
 };
 use tauri::{Runtime, WebviewWindow};
 use viewer_application::{
-    EngineEvent, EngineOpenRequest, FrameDirection, PlaybackRate, SurfaceRect, VideoEngine,
-    VideoEngineError,
+    EngineEvent, EngineOpenRequest, FrameDirection, PlaybackRate, SeekIntent, SeekRequest,
+    SurfaceRect, VideoEngine, VideoEngineError,
 };
 use viewer_video_mpv::{
     FrameDirection as MpvFrameDirection, MpvClient, MpvLibrary, PlaybackRate as MpvPlaybackRate,
-    runtime_manifest::RuntimeLayout,
+    SeekMode, runtime_manifest::RuntimeLayout,
 };
 
 type EngineEventSink = dyn Fn(u64, EngineEvent) + Send + Sync;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum PendingCompletion {
-    Seek,
+    Seek { request_id: u64 },
     Step,
 }
 
 impl PendingCompletion {
     const fn event(self, time_us: u64) -> EngineEvent {
         match self {
-            Self::Seek => EngineEvent::SeekCompleted { time_us },
+            Self::Seek { request_id } => EngineEvent::SeekCompleted {
+                request_id,
+                time_us,
+            },
             Self::Step => EngineEvent::FrameStepped { time_us },
         }
     }
@@ -279,12 +282,25 @@ impl VideoEngine for MacOsLibmpvAdapter {
         })
     }
 
-    async fn seek(&self, generation: u64, time_us: u64) -> Result<(), VideoEngineError> {
+    fn publish_seek(&self, generation: u64, request: SeekRequest) -> Result<(), VideoEngineError> {
         self.on_main(move |adapter| {
             adapter.with_generation(generation, |session| {
-                session.seek(time_us).map_err(|_| VideoEngineError::Decode)
+                session
+                    .seek(
+                        request.time_us,
+                        match request.intent {
+                            SeekIntent::Preview => SeekMode::PreviewKeyframe,
+                            SeekIntent::Commit => SeekMode::CommitExact,
+                        },
+                    )
+                    .map_err(|_| VideoEngineError::Decode)
             })?;
-            *lock(&adapter.pending_completion) = Some(PendingCompletion::Seek);
+            *lock(&adapter.pending_completion) = match request.intent {
+                SeekIntent::Preview => None,
+                SeekIntent::Commit => Some(PendingCompletion::Seek {
+                    request_id: request.request_id,
+                }),
+            };
             Ok(())
         })
     }
@@ -345,9 +361,10 @@ impl VideoEngine for MacOsLibmpvAdapter {
         })
     }
 
-    async fn set_surface_rect(
+    fn publish_surface_rect(
         &self,
         generation: u64,
+        _sequence: u64,
         rect: SurfaceRect,
     ) -> Result<(), VideoEngineError> {
         self.on_main(move |adapter| {
@@ -383,8 +400,11 @@ mod tests {
     #[test]
     fn pending_seek_and_step_complete_with_the_drawn_frame_time() {
         assert_eq!(
-            PendingCompletion::Seek.event(750_000),
-            EngineEvent::SeekCompleted { time_us: 750_000 }
+            PendingCompletion::Seek { request_id: 12 }.event(750_000),
+            EngineEvent::SeekCompleted {
+                request_id: 12,
+                time_us: 750_000,
+            }
         );
         assert_eq!(
             PendingCompletion::Step.event(800_000),

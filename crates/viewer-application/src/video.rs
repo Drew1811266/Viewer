@@ -44,6 +44,19 @@ pub struct SurfaceRect {
     pub height: u32,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SeekIntent {
+    Preview,
+    Commit,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct SeekRequest {
+    pub request_id: u64,
+    pub time_us: u64,
+    pub intent: SeekIntent,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct VideoMedia {
     pub duration_us: Option<u64>,
@@ -65,6 +78,7 @@ pub enum EngineEvent {
         time_us: u64,
     },
     SeekCompleted {
+        request_id: u64,
         time_us: u64,
     },
     Failed(VideoFailureKind),
@@ -80,7 +94,7 @@ pub struct VideoEvent {
 pub enum VideoCommandKind {
     Play,
     Pause,
-    Seek(u64),
+    Seek(SeekRequest),
     Step(FrameDirection),
     SetVolume(u8),
     SetMuted(bool),
@@ -100,6 +114,16 @@ impl VideoCommand {
         Self {
             generation,
             kind: VideoCommandKind::Play,
+        }
+    }
+
+    pub const fn seek(generation: u64, request: SeekRequest) -> Self {
+        Self {
+            generation,
+            kind: VideoCommandKind::Seek(SeekRequest {
+                intent: SeekIntent::Commit,
+                ..request
+            }),
         }
     }
 }
@@ -192,6 +216,7 @@ struct ServiceState {
     snapshot: VideoPreviewSnapshot,
     surface_revealed: bool,
     resume_after_seek: bool,
+    active_commit_request_id: Option<u64>,
 }
 
 pub struct VideoPreviewService<E> {
@@ -255,6 +280,7 @@ where
             };
             state.surface_revealed = false;
             state.resume_after_seek = false;
+            state.active_commit_request_id = None;
             EngineOpenRequest {
                 generation,
                 session_id,
@@ -369,9 +395,14 @@ where
                     state.snapshot.state = VideoPlaybackState::Paused;
                 }
             }
-            EngineEvent::SeekCompleted { time_us } => {
+            EngineEvent::SeekCompleted {
+                request_id,
+                time_us,
+            } => {
                 let mut state = self.lock_state();
-                if matches!(state.snapshot.state, VideoPlaybackState::Seeking) {
+                if matches!(state.snapshot.state, VideoPlaybackState::Seeking)
+                    && state.active_commit_request_id == Some(request_id)
+                {
                     state.snapshot.time_us = state
                         .snapshot
                         .duration_us
@@ -382,12 +413,14 @@ where
                         VideoPlaybackState::Paused
                     };
                     state.resume_after_seek = false;
+                    state.active_commit_request_id = None;
                 }
             }
             EngineEvent::Failed(failure) => {
                 let mut state = self.lock_state();
                 state.snapshot.state = VideoPlaybackState::Failed(failure);
                 state.resume_after_seek = false;
+                state.active_commit_request_id = None;
             }
         }
         Ok(())
@@ -439,7 +472,7 @@ where
                 self.run_engine(self.engine.pause(command.generation).await)?;
                 self.lock_state().snapshot.state = VideoPlaybackState::Paused;
             }
-            VideoCommandKind::Seek(time_us) => {
+            VideoCommandKind::Seek(request) => {
                 let current_state = self.snapshot().state;
                 if !matches!(
                     current_state,
@@ -452,13 +485,21 @@ where
                 let time_us = self
                     .snapshot()
                     .duration_us
-                    .map_or(time_us, |duration_us| time_us.min(duration_us));
+                    .map_or(request.time_us, |duration_us| {
+                        request.time_us.min(duration_us)
+                    });
+                let request = SeekRequest {
+                    time_us,
+                    intent: SeekIntent::Commit,
+                    ..request
+                };
                 {
                     let mut state = self.lock_state();
                     state.resume_after_seek = matches!(current_state, VideoPlaybackState::Playing);
+                    state.active_commit_request_id = Some(request.request_id);
                     state.snapshot.state = VideoPlaybackState::Seeking;
                 }
-                self.run_engine(self.engine.seek(command.generation, time_us).await)?;
+                self.run_engine(self.engine.publish_seek(command.generation, request))?;
             }
             VideoCommandKind::Step(direction) => {
                 if matches!(self.snapshot().state, VideoPlaybackState::Playing) {
@@ -490,7 +531,10 @@ where
                 self.lock_state().snapshot.rate = rate;
             }
             VideoCommandKind::SetSurfaceRect(rect) => {
-                self.run_engine(self.engine.set_surface_rect(command.generation, rect).await)?;
+                self.run_engine(
+                    self.engine
+                        .publish_surface_rect(command.generation, 0, rect),
+                )?;
             }
             VideoCommandKind::Close => {
                 self.lock_state().snapshot.state = VideoPlaybackState::Closing;
@@ -515,6 +559,59 @@ where
         let result = self.engine.close(generation).await;
         self.reset_to_idle();
         result.map_err(Into::into)
+    }
+
+    pub fn preview_seek(
+        &self,
+        generation: u64,
+        request: SeekRequest,
+    ) -> Result<(), VideoServiceError> {
+        let request = {
+            let state = self.lock_state();
+            if state.snapshot.generation != generation {
+                return Err(VideoServiceError::StaleGeneration);
+            }
+            if state.snapshot.session_id.is_none() {
+                return Err(VideoServiceError::NoActiveSession);
+            }
+            if !matches!(
+                state.snapshot.state,
+                VideoPlaybackState::Playing
+                    | VideoPlaybackState::Paused
+                    | VideoPlaybackState::Ended
+            ) {
+                return Err(VideoServiceError::InvalidState);
+            }
+            SeekRequest {
+                time_us: state
+                    .snapshot
+                    .duration_us
+                    .map_or(request.time_us, |duration_us| {
+                        request.time_us.min(duration_us)
+                    }),
+                intent: SeekIntent::Preview,
+                ..request
+            }
+        };
+        self.run_engine(self.engine.publish_seek(generation, request))
+    }
+
+    pub fn publish_surface_rect(
+        &self,
+        generation: u64,
+        sequence: u64,
+        rect: SurfaceRect,
+    ) -> Result<(), VideoServiceError> {
+        {
+            let state = self.lock_state();
+            if state.snapshot.generation != generation {
+                return Err(VideoServiceError::StaleGeneration);
+            }
+            if state.snapshot.session_id.is_none() {
+                return Err(VideoServiceError::NoActiveSession);
+            }
+        }
+        self.run_engine(self.engine.publish_surface_rect(generation, sequence, rect))
     }
 
     pub async fn set_volume(&self, percent: u8) -> Result<(), VideoServiceError> {
@@ -566,6 +663,7 @@ where
         state.snapshot.state = VideoPlaybackState::Idle;
         state.surface_revealed = false;
         state.resume_after_seek = false;
+        state.active_commit_request_id = None;
     }
 
     fn lock_state(&self) -> MutexGuard<'_, ServiceState> {

@@ -87,7 +87,7 @@ impl MacOsLibmpvAdapter {
             session: Mutex::new(None),
             generation: Mutex::new(None),
             bundle_root,
-            diagnostics: Arc::new(VideoDiagnosticsCounters),
+            diagnostics: Arc::new(VideoDiagnosticsCounters::default()),
             event_sink: Mutex::new(None),
             pending_completion: Mutex::new(None),
             seek_mailbox: Mutex::new(LatestSeekMailbox::default()),
@@ -146,12 +146,14 @@ impl MacOsLibmpvAdapter {
     pub fn diagnostics(&self) -> VideoRenderDiagnostics {
         self.on_main(|adapter| {
             let session = lock(&adapter.session);
-            match session.as_ref() {
+            let mut diagnostics = match session.as_ref() {
                 Some(session) => session
                     .diagnostics()
                     .map_err(|_| VideoEngineError::Unavailable),
                 None => Ok(adapter.diagnostics.snapshot("", "")),
-            }
+            }?;
+            diagnostics.interaction = adapter.diagnostics.interaction_snapshot();
+            Ok(diagnostics)
         })
         .unwrap_or_else(|_| self.diagnostics.snapshot("", ""))
     }
@@ -239,10 +241,17 @@ impl MacOsLibmpvAdapter {
                     })
                 });
             if result.is_ok() && request.intent == SeekIntent::Commit {
-                *lock(&self.pending_completion) = Some(PendingCompletion::Seek {
+                let mut pending = lock(&self.pending_completion);
+                if matches!(pending.as_ref(), Some(PendingCompletion::Seek { .. })) {
+                    self.diagnostics.record_stale_completion_rejection();
+                }
+                *pending = Some(PendingCompletion::Seek {
                     request_id: request.request_id,
                     target_time_us: request.time_us,
                 });
+                self.diagnostics.record_commit_issue();
+            } else if result.is_ok() && request.intent == SeekIntent::Preview {
+                self.diagnostics.record_preview_issue();
             } else if result.is_err()
                 && request.intent == SeekIntent::Commit
                 && let Some(generation) = generation
@@ -264,11 +273,14 @@ impl MacOsLibmpvAdapter {
         debug_assert!(MainThreadMarker::new().is_some());
         let update = lock(&self.geometry_mailbox).take_for_drain();
         if let Some(update) = update {
-            let _ = self.with_generation(update.generation, |session| {
+            let result = self.with_generation(update.generation, |session| {
                 session
                     .update_geometry_and_redraw(mac_rect(update.rect))
                     .map_err(|_| VideoEngineError::RenderSurface)
             });
+            if result.is_ok() {
+                self.diagnostics.record_geometry_application();
+            }
         }
         if lock(&self.geometry_mailbox).finish_drain() {
             let _ = self.schedule_geometry_drain();
@@ -402,6 +414,14 @@ impl VideoEngine for MacOsLibmpvAdapter {
 
     fn publish_seek(&self, generation: u64, request: SeekRequest) -> Result<(), VideoEngineError> {
         let schedule = lock(&self.seek_mailbox).publish(generation, request)?;
+        match request.intent {
+            SeekIntent::Preview => self
+                .diagnostics
+                .record_preview_publication(request.request_id, !schedule),
+            SeekIntent::Commit => self
+                .diagnostics
+                .record_commit_publication(request.request_id, !schedule),
+        }
         if schedule {
             self.schedule_seek_drain()?;
         }
@@ -471,6 +491,8 @@ impl VideoEngine for MacOsLibmpvAdapter {
         rect: SurfaceRect,
     ) -> Result<(), VideoEngineError> {
         let schedule = lock(&self.geometry_mailbox).publish(generation, sequence, rect)?;
+        self.diagnostics
+            .record_geometry_publication(sequence, !schedule);
         if schedule {
             self.schedule_geometry_drain()?;
         }

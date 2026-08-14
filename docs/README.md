@@ -56,6 +56,7 @@ completion.
 | [`superpowers/specs/2026-08-10-viewer-video-preview-design.md`](superpowers/specs/2026-08-10-viewer-video-preview-design.md) | Active | — |
 | [`superpowers/specs/2026-08-13-viewer-video-control-visibility-design.md`](superpowers/specs/2026-08-13-viewer-video-control-visibility-design.md) | Active | — |
 | [`superpowers/specs/2026-08-13-viewer-video-player-experience-redesign.md`](superpowers/specs/2026-08-13-viewer-video-player-experience-redesign.md) | Active | — |
+| [`superpowers/specs/2026-08-14-viewer-video-interaction-performance-design.md`](superpowers/specs/2026-08-14-viewer-video-interaction-performance-design.md) | Active | — |
 | [`reviews/2026-08-10-video-preview-acceptance.md`](reviews/2026-08-10-video-preview-acceptance.md) | Active development evidence | — |
 
 ## Superseded decisions

@@ -152,6 +152,47 @@ platform task because the Windows version is not yet under development.
 
 Final result: passed
 
+## 2026-08-13 — Immersive Video Playback Interface
+
+### Visual source and capture normalization
+
+- Selected design direction: `/Users/abc/.codex/generated_images/019fdab7-cec2-7cd3-9349-914f807e858f/exec-0918ca01-d216-45dc-a3d3-affc3b299f27.png` (`1586 × 992`, SHA-256 `2e8d491b3e67cc2c8bf7e8b6965cea284db2adb81137fd7902d77df4aae09e14`).
+- Rendered product state: `target/viewer-visual-acceptance/video-ui-redesign-4/313bb31fcf38671580496456366b83c42d9719a4/1440x900/video-playing-controls/product.png` (`1440 × 900`, device scale factor `1`, SHA-256 `e8ed88e286fbb5f54725377f48cd3d3b861a5b1ea559775490e70cc69ca6072b`).
+- Side-by-side comparison: `target/design-qa-video-ui/comparison.png` (SHA-256 `e946367e8628fd30043fd44c6c671fc9426a8b403265fedc5a8e41adb7f4c1d1`).
+- Reviewed state: active video playback with first frame visible, controls revealed, two-item navigation, duration, volume, speed, and fullscreen controls.
+- The visual source was normalized to the same `1440 × 900` review area before comparison. The product intentionally uses `object-fit: contain` for native playback, so portrait or nonmatching media may retain black letterboxing instead of cropping.
+
+### Fidelity review
+
+| Region | Result | Acceptance note |
+| --- | --- | --- |
+| Full-window theater stage | Pass | Playback fills one clipped dark stage; the former white content canvas and exposed lower strip are gone. |
+| Top title bar | Pass | Filename and duration sit over a dark gradient at the upper-left; the Done action remains reachable at the upper-right. |
+| Timeline and transport | Pass | Timeline spans the lower stage, playback is the emphasized primary control, and secondary controls use low-contrast translucent surfaces. |
+| Page navigation | Pass | The page pill is centered above the bottom transport area and remains within the clipped video stage. |
+| Native-video layering | Pass | The visible player root and stage remain transparent so the macOS native surface is not covered; DOM scrims and controls render above it. |
+| Responsive and accessibility states | Pass | Compact layout, reduced motion, forced colors, disabled navigation, and keyboard-owned controls retain explicit styling and focused tests. |
+
+### Findings and correction history
+
+- P1: the original playback view split the interface into a white header, image-like content area, detached control card, and page navigation below the video. Correction: title, navigation, timeline, transport, and settings now share one immersive stage with top and bottom scrims.
+- P1: placing the dark surface directly over the native macOS video hid the decoded frame. Correction: the preview root and stage become transparent after first-frame reveal while their pseudo-element scrims remain layered above the native surface.
+- P1: acceptance rendering initially placed the synthetic native frame behind the underlying workspace. Correction: the acceptance-only frame and preview received explicit sibling z-order without changing production native layering.
+- P1: the lower page-navigation area could appear outside the video boundary and expose unrelated content. Correction: all player chrome is nested inside the absolutely positioned, overflow-clipped stage; the page pill is anchored `154 px` above the lower edge and controls `24 px` above it.
+- Intentional differences: the generated direction uses a neutral child-video placeholder, while product acceptance uses the repository's existing video-state asset; Viewer keeps its own icon set and typography, and contain-fit playback preserves the complete frame instead of imitating the source crop.
+
+### Verification
+
+- Focused player and accessibility suite: 7 files / 49 tests passed.
+- `pnpm --dir ui check` — pass.
+- `pnpm --dir ui build` — pass, 188 modules.
+- Final `pnpm verify` retry — pass: policy and packaging gates, 106 UI files / 946 tests passed with 1 expected skip, production build, locked Rust formatting/Clippy/workspace tests, Tauri security, dependency sources/licenses, npm licenses, and bundled-video licenses.
+- `git diff --check` — pass.
+- The first full verification run correctly rejected raw color literals in the component stylesheet. The exact visual values were moved unchanged into semantic `--video-preview-*` tokens; the focused semantic-color contract passed before the successful full retry.
+- The visual-acceptance capture produced the reviewed product image. Its comparison command reported a missing historical atlas reference, so the selected generated direction above was used as the explicit visual source rather than treating that unrelated missing file as a product failure.
+
+Final result: passed
+
 ## 2026-08-06 — Five-Level Thumbnail Size Slider
 
 ### Accepted behavior

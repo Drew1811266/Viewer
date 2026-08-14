@@ -106,6 +106,7 @@ export default function VideoControls({
           />
           <ViewerIconButton
             icon={playing ? 'pause' : 'play'}
+            className="video-controls__play"
             label={playing ? '暂停' : '播放'}
             title={playing ? '暂停（空格）' : '播放（空格）'}
             aria-keyshortcuts="Space"

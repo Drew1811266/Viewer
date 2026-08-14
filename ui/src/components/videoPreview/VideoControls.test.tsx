@@ -16,6 +16,9 @@ describe('VideoControls', () => {
       'aria-keyshortcuts',
       'Space',
     )
+    expect(within(controls).getByRole('button', { name: '播放' })).toHaveClass(
+      'video-controls__play',
+    )
     expect(within(controls).getByRole('button', { name: '上一帧' })).toHaveAttribute(
       'aria-keyshortcuts',
       'ArrowLeft',

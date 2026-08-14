@@ -11,6 +11,7 @@ import {
 } from './videoPreview/useVideoControlsVisibility'
 import { useVideoShortcuts } from './videoPreview/useVideoShortcuts'
 import VideoControls, { type VideoControlViewState } from './videoPreview/VideoControls'
+import { formatVideoTime } from './videoPreview/VideoTimeline'
 
 export interface VideoPreviewProps {
   file: VideoFile
@@ -124,6 +125,8 @@ export default function VideoPreview({
     </>
   )
 
+  const durationLabel = formatVideoTime(file.videoMetadata.durationUs ?? state.durationUs ?? 0)
+
   return (
     <section
       ref={dialog}
@@ -136,17 +139,23 @@ export default function VideoPreview({
       tabIndex={-1}
       onPointerMove={controls.reveal}
     >
-      <ViewerToolbar
-        label="视频预览工具"
-        leading={<strong>{file.name}</strong>}
-        actions={actions}
-      />
       <div
         ref={stage}
         className="video-preview-stage"
         data-testid="video-preview-stage"
         data-surface-visible={state.surfaceVisible}
       >
+        <ViewerToolbar
+          label="视频预览工具"
+          className="video-preview-topbar"
+          leading={
+            <span className="video-preview-title">
+              <strong>{file.name}</strong>
+              <span>{durationLabel}</span>
+            </span>
+          }
+          actions={actions}
+        />
         {!failed && !state.surfaceVisible && (
           <section className="video-preview-loading" role="status" aria-label="正在加载视频">
             <strong>正在加载视频</strong>
@@ -172,26 +181,26 @@ export default function VideoPreview({
             onFocusWithinChange={setFocusedWithin}
           />
         )}
+        <nav className="preview-navigation-float" aria-label="视频导航">
+          <ViewerIconButton
+            icon="chevron-left"
+            label="上一个视频"
+            tone="quiet"
+            disabled={currentIndex <= 0}
+            onClick={() => navigate(-1)}
+          />
+          <span>
+            {currentIndex + 1} / {files.length}
+          </span>
+          <ViewerIconButton
+            icon="chevron-right"
+            label="下一个视频"
+            tone="quiet"
+            disabled={currentIndex < 0 || currentIndex >= files.length - 1}
+            onClick={() => navigate(1)}
+          />
+        </nav>
       </div>
-      <nav className="preview-navigation-float" aria-label="视频导航">
-        <ViewerIconButton
-          icon="chevron-left"
-          label="上一个视频"
-          tone="quiet"
-          disabled={currentIndex <= 0}
-          onClick={() => navigate(-1)}
-        />
-        <span>
-          {currentIndex + 1} / {files.length}
-        </span>
-        <ViewerIconButton
-          icon="chevron-right"
-          label="下一个视频"
-          tone="quiet"
-          disabled={currentIndex < 0 || currentIndex >= files.length - 1}
-          onClick={() => navigate(1)}
-        />
-      </nav>
     </section>
   )
 }

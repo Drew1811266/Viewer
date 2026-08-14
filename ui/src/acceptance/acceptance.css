@@ -19,13 +19,17 @@ body:has(.task-bar) .acceptance-local-feedback-stage {
 }
 
 .acceptance-video-native-frame {
-  background: var(--preview-stage);
-  height: calc(100vh - 52px);
-  inset: 52px 0 0;
+  background: #080a0f;
+  height: 100vh;
+  inset: 0;
   object-fit: contain;
   position: fixed;
   width: 100vw;
-  z-index: 9;
+  z-index: 11;
+}
+
+[data-video-acceptance-state] .video-preview {
+  z-index: 12;
 }
 
 [data-video-acceptance-state='video-fullscreen-controls'] .acceptance-video-native-frame {

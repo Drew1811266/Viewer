@@ -79,6 +79,28 @@ describe('VideoPreview', () => {
     )
   })
 
+  it('keeps every player chrome surface inside the clipped theater stage', async () => {
+    const harness = videoBridgeHarness()
+    render(
+      <VideoPreview
+        file={video('a.mp4')}
+        files={[video('a.mp4'), video('b.mp4')]}
+        bridge={harness.bridge}
+      />,
+    )
+
+    await waitFor(() => expect(harness.open).toHaveBeenCalledOnce())
+    const stage = screen.getByTestId('video-preview-stage')
+    const toolbar = screen.getByRole('toolbar', { name: '视频预览工具' })
+    const navigation = screen.getByRole('navigation', { name: '视频导航' })
+
+    expect(stage).toContainElement(toolbar)
+    expect(stage).toContainElement(navigation)
+    expect(toolbar).toHaveClass('video-preview-topbar')
+    expect(within(toolbar).getByText('a.mp4')).toBeVisible()
+    expect(within(toolbar).getByText('00:12')).toBeVisible()
+  })
+
   it('keeps the shell and navigation on failure and retries with a new lifecycle', async () => {
     const harness = videoBridgeHarness()
     harness.open.mockResolvedValueOnce(session(3)).mockResolvedValueOnce(session(4))

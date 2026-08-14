@@ -26,6 +26,7 @@ export interface VideoControlCommands {
   pause(): Promise<void>
   togglePlayback(): Promise<void>
   step(direction: 'backward' | 'forward'): Promise<void>
+  previewSeek(timeUs: number): Promise<void>
   seek(timeUs: number): Promise<void>
   setVolume(volumePercent: number): Promise<void>
   setMuted(muted: boolean): Promise<void>
@@ -98,7 +99,8 @@ export default function VideoControls({
         durationUs={view.durationUs}
         timeUs={endedTimeUs}
         thumbnail={view.timelineThumbnail}
-        onSeek={commands.seek}
+        onPreviewSeek={commands.previewSeek}
+        onCommitSeek={commands.seek}
         onRequestThumbnail={commands.requestThumbnail}
         onSeekingChange={onSeekingChange}
         onActivity={onActivity}

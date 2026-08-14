@@ -160,6 +160,7 @@ function controlCommands() {
     pause: vi.fn<VideoControlCommands['pause']>().mockResolvedValue(undefined),
     togglePlayback: vi.fn<VideoControlCommands['togglePlayback']>().mockResolvedValue(undefined),
     step: vi.fn<VideoControlCommands['step']>().mockResolvedValue(undefined),
+    previewSeek: vi.fn<VideoControlCommands['previewSeek']>().mockResolvedValue(undefined),
     seek: vi.fn<VideoControlCommands['seek']>().mockResolvedValue(undefined),
     setVolume: vi.fn<VideoControlCommands['setVolume']>().mockResolvedValue(undefined),
     setMuted: vi.fn<VideoControlCommands['setMuted']>().mockResolvedValue(undefined),

@@ -89,7 +89,7 @@ export function useVideoBridge({
   const activeLifecycle = useRef<ActiveVideoLifecycle | null>(null)
   const lastSurfaceGeometry = useRef<string | null>(null)
   const surfaceUpdateSequence = useRef(0)
-  const surfaceUpdateTail = useRef<Promise<void>>(Promise.resolve())
+  const seekRequestId = useRef(0)
   const commandQueue = useRef<Promise<void>>(Promise.resolve())
   const closeTail = useRef<Promise<void>>(Promise.resolve())
   const playbackIntent = useRef(createBooleanControlIntent(false))
@@ -113,7 +113,8 @@ export function useVideoBridge({
   useLayoutEffect(() => {
     activeGeneration.current = null
     lastSurfaceGeometry.current = null
-    surfaceUpdateSequence.current += 1
+    surfaceUpdateSequence.current = 0
+    seekRequestId.current = 0
     commandQueue.current = Promise.resolve()
     resetBooleanControlIntent(playbackIntent.current, null, false)
     resetBooleanControlIntent(mutedIntent.current, null, false)
@@ -174,7 +175,11 @@ export function useVideoBridge({
       if (event.type === 'prepared') {
         if (retryingIndexedFailure && hasVideoGeometry(stageRect, event.media)) {
           const fittedRect = fitVideoRect(stageRect, event.media)
-          await bridge.videoSetSurfaceRect({ generation: event.generation, ...fittedRect })
+          await bridge.videoSetSurfaceRect({
+            generation: event.generation,
+            sequence: ++surfaceUpdateSequence.current,
+            ...fittedRect,
+          })
           if (disposed) return
           lastSurfaceGeometry.current = surfaceGeometryKey(event.generation, fittedRect)
           retryGeometryReady = true
@@ -257,7 +262,11 @@ export function useVideoBridge({
         if (retryingIndexedFailure && hasVideoGeometry(stageRect, session.media)) {
           const fittedRect = fitVideoRect(stageRect, session.media)
           try {
-            await bridge.videoSetSurfaceRect({ generation: session.generation, ...fittedRect })
+            await bridge.videoSetSurfaceRect({
+              generation: session.generation,
+              sequence: ++surfaceUpdateSequence.current,
+              ...fittedRect,
+            })
           } catch (error) {
             await closeOnce(session.generation)
             throw error
@@ -270,6 +279,7 @@ export function useVideoBridge({
           }
         }
         activeGeneration.current = session.generation
+        seekRequestId.current = 0
         commandQueue.current = Promise.resolve()
         resetBooleanControlIntent(playbackIntent.current, session.generation, false)
         resetBooleanControlIntent(mutedIntent.current, session.generation, false)
@@ -330,30 +340,18 @@ export function useVideoBridge({
     lastSurfaceGeometry.current = geometryKey
     const generation = state.generation
     const updateSequence = ++surfaceUpdateSequence.current
-    surfaceUpdateTail.current = surfaceUpdateTail.current
-      .catch(() => undefined)
-      .then(async () => {
-        if (
-          activeGeneration.current !== generation ||
-          surfaceUpdateSequence.current !== updateSequence
-        ) {
-          return
-        }
-        try {
-          await bridge.videoSetSurfaceRect({ generation, ...rect })
-        } catch {
-          // Window and WebView geometry are published by separate native/DOM
-          // layout passes. Keep the last valid surface alive when one transient
-          // resize sample is rejected; a newer measured rect supersedes it.
-          if (
-            activeGeneration.current === generation &&
-            surfaceUpdateSequence.current === updateSequence &&
-            lastSurfaceGeometry.current === geometryKey
-          ) {
-            lastSurfaceGeometry.current = null
-          }
-        }
-      })
+    void bridge.videoSetSurfaceRect({ generation, sequence: updateSequence, ...rect }).catch(() => {
+      // Window and WebView geometry are published by separate native/DOM
+      // layout passes. Keep the last valid surface alive when one transient
+      // resize sample is rejected; a newer measured rect supersedes it.
+      if (
+        activeGeneration.current === generation &&
+        surfaceUpdateSequence.current === updateSequence &&
+        lastSurfaceGeometry.current === geometryKey
+      ) {
+        lastSurfaceGeometry.current = null
+      }
+    })
   }, [bridge, media, stageRect, state.generation])
 
   const withGeneration = useCallback(async (command: (generation: number) => Promise<void>) => {
@@ -454,11 +452,22 @@ export function useVideoBridge({
           },
         )
       },
+      previewSeek: (timeUs) =>
+        withGeneration((generation) =>
+          bridge.videoSeek({
+            generation,
+            requestId: ++seekRequestId.current,
+            timeUs: boundedTime(timeUs, state.durationUs),
+            intent: 'preview',
+          }),
+        ),
       seek: (timeUs) =>
         withGeneration((generation) =>
           bridge.videoSeek({
             generation,
+            requestId: ++seekRequestId.current,
             timeUs: boundedTime(timeUs, state.durationUs),
+            intent: 'commit',
           }),
         ),
       setVolume: (volumePercent) =>

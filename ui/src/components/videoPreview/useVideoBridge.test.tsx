@@ -81,6 +81,7 @@ describe('useVideoBridge', () => {
     await waitFor(() => expect(harness.setRect).toHaveBeenCalledTimes(1))
     expect(harness.setRect).toHaveBeenLastCalledWith({
       generation: 7,
+      sequence: 1,
       x: 100,
       y: 125,
       width: 800,
@@ -93,6 +94,7 @@ describe('useVideoBridge', () => {
     await waitFor(() => expect(harness.setRect).toHaveBeenCalledTimes(2))
     expect(harness.setRect).toHaveBeenLastCalledWith({
       generation: 7,
+      sequence: 2,
       x: 120,
       y: 168,
       width: 400,
@@ -127,12 +129,13 @@ describe('useVideoBridge', () => {
     resize.trigger(stage, { left: 120, top: 90, width: 520, height: 380 })
     resize.trigger(stage, { left: 128, top: 100, width: 440, height: 320 })
     animation.flush()
-    expect(harness.setRect).toHaveBeenCalledTimes(2)
+    expect(harness.setRect).toHaveBeenCalledTimes(3)
 
     inFlight.reject(new Error('transient resize mismatch'))
     await waitFor(() => expect(harness.setRect).toHaveBeenCalledTimes(3))
     expect(harness.setRect).toHaveBeenLastCalledWith({
       generation: 9,
+      sequence: 3,
       x: 128,
       y: 136,
       width: 440,
@@ -275,6 +278,7 @@ describe('useVideoBridge', () => {
       'play',
       'pause',
       'backward',
+      'preview seek',
       'seek',
       'volume',
       'muted',
@@ -291,7 +295,10 @@ describe('useVideoBridge', () => {
     expect(harness.play).toHaveBeenCalledWith({ generation: 8 })
     expect(harness.pause).toHaveBeenCalledWith({ generation: 8 })
     expect(harness.step).toHaveBeenCalledWith({ generation: 8, direction: 'backward' })
-    expect(harness.seek).toHaveBeenCalledWith({ generation: 8, timeUs: 12_000_000 })
+    expect(harness.seek.mock.calls).toEqual([
+      [{ generation: 8, requestId: 1, timeUs: 12_000_000, intent: 'preview' }],
+      [{ generation: 8, requestId: 2, timeUs: 12_000_000, intent: 'commit' }],
+    ])
     expect(harness.setVolume).toHaveBeenCalledWith({ generation: 8, volumePercent: 100 })
     expect(harness.setMuted).toHaveBeenCalledWith({ generation: 8, muted: true })
     expect(harness.setRate).toHaveBeenCalledWith({ generation: 8, rate: 'one_and_half' })
@@ -391,6 +398,11 @@ function CommandBridgeHarness({ bridge, file }: { bridge: VideoPreviewBridge; fi
       <button type="button" aria-label="play" onClick={() => void commands.play()} />
       <button type="button" aria-label="pause" onClick={() => void commands.pause()} />
       <button type="button" aria-label="backward" onClick={() => void commands.step('backward')} />
+      <button
+        type="button"
+        aria-label="preview seek"
+        onClick={() => void commands.previewSeek(99_000_000)}
+      />
       <button type="button" aria-label="seek" onClick={() => void commands.seek(99_000_000)} />
       <button type="button" aria-label="volume" onClick={() => void commands.setVolume(160)} />
       <button type="button" aria-label="muted" onClick={() => void commands.setMuted(true)} />

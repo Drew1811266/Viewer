@@ -37,13 +37,19 @@ describe('tauriViewerBridge', () => {
     await tauriViewerBridge.videoClose({ generation: 8 })
     await tauriViewerBridge.videoPlay({ generation: 8 })
     await tauriViewerBridge.videoPause({ generation: 8 })
-    await tauriViewerBridge.videoSeek({ generation: 8, timeUs: 2_500_000 })
+    await tauriViewerBridge.videoSeek({
+      generation: 8,
+      requestId: 12,
+      timeUs: 2_500_000,
+      intent: 'preview',
+    })
     await tauriViewerBridge.videoStep({ generation: 8, direction: 'forward' })
     await tauriViewerBridge.videoSetVolume({ generation: 8, volumePercent: 64 })
     await tauriViewerBridge.videoSetMuted({ generation: 8, muted: true })
     await tauriViewerBridge.videoSetRate({ generation: 8, rate: 'one_and_half' })
     await tauriViewerBridge.videoSetSurfaceRect({
       generation: 8,
+      sequence: 13,
       x: 12,
       y: 24,
       width: 960,
@@ -75,14 +81,28 @@ describe('tauriViewerBridge', () => {
       ['video_close', { request: { generation: 8 } }],
       ['video_play', { request: { generation: 8 } }],
       ['video_pause', { request: { generation: 8 } }],
-      ['video_seek', { request: { generation: 8, timeUs: 2_500_000 } }],
+      [
+        'video_seek',
+        {
+          request: { generation: 8, requestId: 12, timeUs: 2_500_000, intent: 'preview' },
+        },
+      ],
       ['video_step', { request: { generation: 8, direction: 'forward' } }],
       ['video_set_volume', { request: { generation: 8, volumePercent: 64 } }],
       ['video_set_muted', { request: { generation: 8, muted: true } }],
       ['video_set_rate', { request: { generation: 8, rate: 'one_and_half' } }],
       [
         'video_set_surface_rect',
-        { request: { generation: 8, x: 12, y: 24, width: 960, height: 540 } },
+        {
+          request: {
+            generation: 8,
+            sequence: 13,
+            x: 12,
+            y: 24,
+            width: 960,
+            height: 540,
+          },
+        },
       ],
       ['video_set_fullscreen', { request: { generation: 8, fullscreen: true } }],
       [

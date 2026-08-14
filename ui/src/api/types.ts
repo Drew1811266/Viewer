@@ -101,7 +101,9 @@ export interface VideoGenerationRequest {
 }
 
 export interface VideoSeekRequest extends VideoGenerationRequest {
+  requestId: number
   timeUs: number
+  intent: 'preview' | 'commit'
 }
 
 export interface VideoStepRequest extends VideoGenerationRequest {
@@ -128,7 +130,9 @@ export interface VideoRateRequest extends VideoGenerationRequest {
   rate: VideoRate
 }
 
-export interface VideoSurfaceRectRequest extends VideoGenerationRequest, VideoSurfaceRect {}
+export interface VideoSurfaceRectRequest extends VideoGenerationRequest, VideoSurfaceRect {
+  sequence: number
+}
 
 export interface VideoFullscreenRequest extends VideoGenerationRequest {
   fullscreen: boolean

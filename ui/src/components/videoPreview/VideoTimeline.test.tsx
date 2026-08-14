@@ -111,16 +111,24 @@ describe('VideoTimeline', () => {
     })
   })
 
-  it('updates displayed time immediately while dragging and coalesces seeks per frame', () => {
+  it('previews only the latest drag position per frame and commits exactly once on release', () => {
     let frame: FrameRequestCallback | null = null
     vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
       frame = callback
       return 19
     })
     vi.stubGlobal('cancelAnimationFrame', vi.fn())
-    const onSeek = vi.fn().mockResolvedValue(undefined)
+    const onPreviewSeek = vi.fn().mockResolvedValue(undefined)
+    const onCommitSeek = vi.fn().mockResolvedValue(undefined)
     const onSeekingChange = vi.fn()
-    render(<TimelineHarness onSeek={onSeek} onSeekingChange={onSeekingChange} thumbnail={null} />)
+    render(
+      <TimelineHarness
+        onPreviewSeek={onPreviewSeek}
+        onCommitSeek={onCommitSeek}
+        onSeekingChange={onSeekingChange}
+        thumbnail={null}
+      />,
+    )
     const slider = screen.getByRole('slider', { name: '视频时间轴' })
     Object.defineProperty(slider, 'setPointerCapture', { configurable: true, value: vi.fn() })
     Object.defineProperty(slider, 'releasePointerCapture', { configurable: true, value: vi.fn() })
@@ -130,12 +138,15 @@ describe('VideoTimeline', () => {
     fireEvent.pointerMove(slider, { pointerId: 7, clientX: 60 })
 
     expect(slider).toHaveAttribute('aria-valuenow', '3')
-    expect(onSeek).not.toHaveBeenCalled()
+    expect(onPreviewSeek).not.toHaveBeenCalled()
+    expect(onCommitSeek).not.toHaveBeenCalled()
     act(() => frame?.(0))
-    expect(onSeek).toHaveBeenCalledOnce()
-    expect(onSeek).toHaveBeenCalledWith(3_000_000)
+    expect(onPreviewSeek.mock.calls).toEqual([[3_000_000]])
+    expect(onCommitSeek).not.toHaveBeenCalled()
 
     fireEvent.pointerUp(slider, { pointerId: 7, clientX: 60 })
+    expect(onCommitSeek.mock.calls).toEqual([[3_000_000]])
+    expect(onPreviewSeek).toHaveBeenCalledTimes(1)
     expect(onSeekingChange.mock.calls).toEqual([[true], [false]])
   })
 
@@ -145,22 +156,59 @@ describe('VideoTimeline', () => {
       vi.fn(() => 23),
     )
     vi.stubGlobal('cancelAnimationFrame', vi.fn())
-    const onSeek = vi.fn().mockResolvedValue(undefined)
-    const rendered = render(<TimelineHarness generation={2} onSeek={onSeek} thumbnail={null} />)
+    const onPreviewSeek = vi.fn().mockResolvedValue(undefined)
+    const onCommitSeek = vi.fn().mockResolvedValue(undefined)
+    const rendered = render(
+      <TimelineHarness
+        generation={2}
+        onPreviewSeek={onPreviewSeek}
+        onCommitSeek={onCommitSeek}
+        thumbnail={null}
+      />,
+    )
     const slider = screen.getByRole('slider', { name: '视频时间轴' })
     Object.defineProperty(slider, 'setPointerCapture', { configurable: true, value: vi.fn() })
     Object.defineProperty(slider, 'releasePointerCapture', { configurable: true, value: vi.fn() })
 
     fireEvent.pointerDown(slider, { pointerId: 7, clientX: 60 })
     fireEvent.pointerUp(slider, { pointerId: 7, clientX: 60 })
-    expect(onSeek).toHaveBeenCalledTimes(1)
-    expect(onSeek).toHaveBeenLastCalledWith(3_000_000)
+    expect(onCommitSeek).toHaveBeenCalledTimes(1)
+    expect(onCommitSeek).toHaveBeenLastCalledWith(3_000_000)
 
-    rendered.rerender(<TimelineHarness generation={3} onSeek={onSeek} thumbnail={null} />)
+    rendered.rerender(
+      <TimelineHarness
+        generation={3}
+        onPreviewSeek={onPreviewSeek}
+        onCommitSeek={onCommitSeek}
+        thumbnail={null}
+      />,
+    )
     fireEvent.pointerDown(slider, { pointerId: 8, clientX: 60 })
     fireEvent.pointerUp(slider, { pointerId: 8, clientX: 60 })
-    expect(onSeek).toHaveBeenCalledTimes(2)
-    expect(onSeek).toHaveBeenLastCalledWith(3_000_000)
+    expect(onCommitSeek).toHaveBeenCalledTimes(2)
+    expect(onCommitSeek).toHaveBeenLastCalledWith(3_000_000)
+    expect(onPreviewSeek).not.toHaveBeenCalled()
+  })
+
+  it('uses commit-only seeking for keyboard interaction', () => {
+    const onPreviewSeek = vi.fn().mockResolvedValue(undefined)
+    const onCommitSeek = vi.fn().mockResolvedValue(undefined)
+    render(
+      <TimelineHarness
+        timeUs={5_000_000}
+        onPreviewSeek={onPreviewSeek}
+        onCommitSeek={onCommitSeek}
+        thumbnail={null}
+      />,
+    )
+    const slider = screen.getByRole('slider', { name: '视频时间轴' })
+
+    fireEvent.keyDown(slider, { key: 'Home' })
+    fireEvent.keyDown(slider, { key: 'End' })
+    fireEvent.keyDown(slider, { key: 'ArrowLeft' })
+
+    expect(onPreviewSeek).not.toHaveBeenCalled()
+    expect(onCommitSeek.mock.calls).toEqual([[0], [10_000_000], [4_000_000]])
   })
 
   it('exposes microsecond-derived slider values and formatted current time without a live region', () => {
@@ -179,14 +227,16 @@ function TimelineHarness({
   generation = 2,
   timeUs = 0,
   thumbnail,
-  onSeek = vi.fn().mockResolvedValue(undefined),
+  onPreviewSeek = vi.fn().mockResolvedValue(undefined),
+  onCommitSeek = vi.fn().mockResolvedValue(undefined),
   onRequestThumbnail = vi.fn().mockResolvedValue(undefined),
   onSeekingChange = vi.fn(),
 }: {
   generation?: number
   timeUs?: number
   thumbnail: Extract<VideoEvent, { type: 'timelineThumbnailReady' }> | null
-  onSeek?: (timeUs: number) => Promise<void>
+  onPreviewSeek?: (timeUs: number) => Promise<void>
+  onCommitSeek?: (timeUs: number) => Promise<void>
   onRequestThumbnail?: (request: { requestId: string; timeUs: number }) => Promise<void>
   onSeekingChange?: (seeking: boolean) => void
 }) {
@@ -196,7 +246,8 @@ function TimelineHarness({
       durationUs={DURATION_US}
       timeUs={timeUs}
       thumbnail={thumbnail}
-      onSeek={onSeek}
+      onPreviewSeek={onPreviewSeek}
+      onCommitSeek={onCommitSeek}
       onRequestThumbnail={onRequestThumbnail}
       onSeekingChange={onSeekingChange}
       onActivity={() => undefined}

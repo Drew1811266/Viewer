@@ -1,4 +1,12 @@
-import { type CSSProperties, type PointerEvent, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  type CSSProperties,
+  type KeyboardEvent,
+  type PointerEvent,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import type { VideoEvent } from '../../api/types'
 
 const TIMELINE_BUCKET_US = 500_000
@@ -18,7 +26,8 @@ export interface VideoTimelineProps {
   durationUs: number | null
   timeUs: number
   thumbnail: TimelineThumbnail | null
-  onSeek(timeUs: number): Promise<void>
+  onPreviewSeek(timeUs: number): Promise<void>
+  onCommitSeek(timeUs: number): Promise<void>
   onRequestThumbnail(request: { requestId: string; timeUs: number }): Promise<void>
   onSeekingChange(seeking: boolean): void
   onActivity(): void
@@ -29,7 +38,8 @@ export default function VideoTimeline({
   durationUs,
   timeUs,
   thumbnail,
-  onSeek,
+  onPreviewSeek,
+  onCommitSeek,
   onRequestThumbnail,
   onSeekingChange,
   onActivity,
@@ -39,7 +49,7 @@ export default function VideoTimeline({
   const dragPointer = useRef<number | null>(null)
   const seekFrame = useRef<number | null>(null)
   const pendingSeek = useRef<number | null>(null)
-  const lastSeek = useRef<number | null>(null)
+  const lastPreviewSeek = useRef<number | null>(null)
   const seekingChange = useRef(onSeekingChange)
   seekingChange.current = onSeekingChange
   const [pointerTimeUs, setPointerTimeUs] = useState<number | null>(null)
@@ -60,7 +70,8 @@ export default function VideoTimeline({
     dragPointer.current = null
     seekFrame.current = null
     pendingSeek.current = null
-    lastSeek.current = null
+    lastPreviewSeek.current = null
+    requestSequence.current = 0
     setDragging(false)
     setPointerTimeUs(null)
     setPendingThumbnail(null)
@@ -124,17 +135,23 @@ export default function VideoTimeline({
   function scheduleSeek(targetUs: number) {
     pendingSeek.current = targetUs
     if (seekFrame.current !== null) return
-    seekFrame.current = window.requestAnimationFrame(() => flushSeek())
+    seekFrame.current = window.requestAnimationFrame(() => flushPreviewSeek())
   }
 
-  function flushSeek() {
+  function flushPreviewSeek() {
     if (seekFrame.current !== null) window.cancelAnimationFrame(seekFrame.current)
     seekFrame.current = null
     const targetUs = pendingSeek.current
     pendingSeek.current = null
-    if (targetUs === null || targetUs === lastSeek.current) return
-    lastSeek.current = targetUs
-    void onSeek(targetUs).catch(() => undefined)
+    if (targetUs === null || targetUs === lastPreviewSeek.current) return
+    lastPreviewSeek.current = targetUs
+    void onPreviewSeek(targetUs).catch(() => undefined)
+  }
+
+  function cancelPendingPreview() {
+    if (seekFrame.current !== null) window.cancelAnimationFrame(seekFrame.current)
+    seekFrame.current = null
+    pendingSeek.current = null
   }
 
   function pointerDown(event: PointerEvent<HTMLDivElement>) {
@@ -155,12 +172,35 @@ export default function VideoTimeline({
   function pointerUp(event: PointerEvent<HTMLDivElement>) {
     if (dragPointer.current !== event.pointerId) return
     const targetUs = point(event)
-    scheduleSeek(targetUs)
-    flushSeek()
+    cancelPendingPreview()
+    void onCommitSeek(targetUs).catch(() => undefined)
     dragPointer.current = null
     setDragging(false)
     onSeekingChange(false)
     event.currentTarget.releasePointerCapture?.(event.pointerId)
+  }
+
+  function pointerCancel(event: PointerEvent<HTMLDivElement>) {
+    if (dragPointer.current !== event.pointerId) return
+    cancelPendingPreview()
+    dragPointer.current = null
+    setDragging(false)
+    onSeekingChange(false)
+    event.currentTarget.releasePointerCapture?.(event.pointerId)
+  }
+
+  function keyDown(event: KeyboardEvent<HTMLDivElement>) {
+    let targetUs: number | null = null
+    if (event.key === 'Home') targetUs = 0
+    else if (event.key === 'End') targetUs = boundedDurationUs
+    else if (event.key === 'ArrowLeft')
+      targetUs = clampTime(currentTimeUs - 1_000_000, boundedDurationUs)
+    else if (event.key === 'ArrowRight')
+      targetUs = clampTime(currentTimeUs + 1_000_000, boundedDurationUs)
+    if (targetUs === null) return
+    event.preventDefault()
+    onActivity()
+    void onCommitSeek(targetUs).catch(() => undefined)
   }
 
   const previewStyle = timelinePreviewStyle(pointerOffsetPx, trackWidthPx)
@@ -182,7 +222,8 @@ export default function VideoTimeline({
         onPointerMove={pointerMove}
         onPointerDown={pointerDown}
         onPointerUp={pointerUp}
-        onPointerCancel={pointerUp}
+        onPointerCancel={pointerCancel}
+        onKeyDown={keyDown}
         onPointerLeave={() => {
           if (dragPointer.current === null) setPointerTimeUs(null)
         }}

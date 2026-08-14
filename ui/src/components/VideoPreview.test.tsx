@@ -234,6 +234,7 @@ describe('VideoPreview', () => {
     await waitFor(() =>
       expect(harness.setRect).toHaveBeenCalledWith({
         generation: 1,
+        sequence: 1,
         x: 100,
         y: 125,
         width: 800,

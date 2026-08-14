@@ -2,7 +2,8 @@
 
 use super::{
     MacVideoRenderSession, MacVideoSurface, SurfaceRect as MacSurfaceRect,
-    VideoDiagnosticsCounters, VideoRenderDiagnostics, interaction::LatestSeekMailbox,
+    VideoDiagnosticsCounters, VideoRenderDiagnostics,
+    interaction::{LatestGeometryMailbox, LatestSeekMailbox},
 };
 use async_trait::async_trait;
 use dispatch2::DispatchQueue;
@@ -65,6 +66,7 @@ pub struct MacOsLibmpvAdapter {
     event_sink: Mutex<Option<Arc<EngineEventSink>>>,
     pending_completion: Mutex<Option<PendingCompletion>>,
     seek_mailbox: Mutex<LatestSeekMailbox>,
+    geometry_mailbox: Mutex<LatestGeometryMailbox>,
     self_reference: OnceLock<Weak<Self>>,
     first_frame_published: AtomicBool,
     ended_published: AtomicBool,
@@ -89,6 +91,7 @@ impl MacOsLibmpvAdapter {
             event_sink: Mutex::new(None),
             pending_completion: Mutex::new(None),
             seek_mailbox: Mutex::new(LatestSeekMailbox::default()),
+            geometry_mailbox: Mutex::new(LatestGeometryMailbox::default()),
             self_reference: OnceLock::new(),
             first_frame_published: AtomicBool::new(false),
             ended_published: AtomicBool::new(false),
@@ -201,6 +204,20 @@ impl MacOsLibmpvAdapter {
         Ok(())
     }
 
+    fn schedule_geometry_drain(&self) -> Result<(), VideoEngineError> {
+        let weak = self
+            .self_reference
+            .get()
+            .cloned()
+            .ok_or(VideoEngineError::Unavailable)?;
+        DispatchQueue::main().exec_async(move || {
+            if let Some(adapter) = weak.upgrade() {
+                adapter.drain_geometry_on_main();
+            }
+        });
+        Ok(())
+    }
+
     fn drain_seek_on_main(&self) {
         debug_assert!(MainThreadMarker::new().is_some());
         let request = lock(&self.seek_mailbox).take_for_drain();
@@ -240,6 +257,21 @@ impl MacOsLibmpvAdapter {
         }
         if lock(&self.seek_mailbox).finish_drain() {
             let _ = self.schedule_seek_drain();
+        }
+    }
+
+    fn drain_geometry_on_main(&self) {
+        debug_assert!(MainThreadMarker::new().is_some());
+        let update = lock(&self.geometry_mailbox).take_for_drain();
+        if let Some(update) = update {
+            let _ = self.with_generation(update.generation, |session| {
+                session
+                    .update_geometry_and_redraw(mac_rect(update.rect))
+                    .map_err(|_| VideoEngineError::RenderSurface)
+            });
+        }
+        if lock(&self.geometry_mailbox).finish_drain() {
+            let _ = self.schedule_geometry_drain();
         }
     }
 
@@ -307,6 +339,7 @@ impl MacOsLibmpvAdapter {
         self.ended_published.store(false, Ordering::Release);
         *lock(&self.pending_completion) = None;
         lock(&self.seek_mailbox).invalidate();
+        lock(&self.geometry_mailbox).invalidate();
     }
 }
 
@@ -321,6 +354,7 @@ impl VideoEngine for MacOsLibmpvAdapter {
                 .map_err(|_| VideoEngineError::Decode)?;
             *lock(&adapter.generation) = Some(request.generation);
             lock(&adapter.seek_mailbox).activate(request.generation);
+            lock(&adapter.geometry_mailbox).activate(request.generation);
             adapter
                 .first_frame_published
                 .store(false, Ordering::Release);
@@ -433,16 +467,14 @@ impl VideoEngine for MacOsLibmpvAdapter {
     fn publish_surface_rect(
         &self,
         generation: u64,
-        _sequence: u64,
+        sequence: u64,
         rect: SurfaceRect,
     ) -> Result<(), VideoEngineError> {
-        self.on_main(move |adapter| {
-            adapter.with_generation(generation, |session| {
-                session
-                    .update_geometry(mac_rect(rect))
-                    .map_err(|_| VideoEngineError::RenderSurface)
-            })
-        })
+        let schedule = lock(&self.geometry_mailbox).publish(generation, sequence, rect)?;
+        if schedule {
+            self.schedule_geometry_drain()?;
+        }
+        Ok(())
     }
 }
 

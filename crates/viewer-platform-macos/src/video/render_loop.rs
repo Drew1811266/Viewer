@@ -125,11 +125,24 @@ impl MacVideoRenderSession {
         result
     }
 
-    pub fn update_geometry(&self, rect: SurfaceRect) -> Result<(), RenderLoopError> {
+    pub fn update_geometry_and_redraw(&mut self, rect: SurfaceRect) -> Result<(), RenderLoopError> {
         if let Some(surface) = self.surface.as_ref() {
             surface.update_geometry(rect)?;
             self.open_gl_context
                 .update(objc2::MainThreadMarker::new().ok_or(SurfaceError::NotMainThread)?);
+            if should_redraw_retained_frame(self.first_frame_ready)
+                && let Some(render_context) = self.render_context.as_mut()
+            {
+                self.open_gl_context.makeCurrentContext();
+                let result: Result<(), RenderLoopError> = (|| {
+                    render_context.render(surface)?;
+                    self.open_gl_context.flushBuffer();
+                    render_context.report_swap();
+                    Ok(())
+                })();
+                NSOpenGLContext::clearCurrentContext();
+                result?;
+            }
         }
         Ok(())
     }
@@ -273,6 +286,10 @@ fn should_reveal_fixture_frame(
     media_loaded && !first_frame_revealed && drew_frame && decoded_video_frame
 }
 
+const fn should_redraw_retained_frame(first_frame_ready: bool) -> bool {
+    first_frame_ready
+}
+
 impl Drop for MacVideoRenderSession {
     fn drop(&mut self) {
         self.teardown();
@@ -281,7 +298,7 @@ impl Drop for MacVideoRenderSession {
 
 #[cfg(test)]
 mod tests {
-    use super::should_reveal_fixture_frame;
+    use super::{should_redraw_retained_frame, should_reveal_fixture_frame};
 
     #[test]
     fn pre_load_render_context_wake_keeps_the_surface_hidden() {
@@ -290,5 +307,11 @@ mod tests {
         assert!(should_reveal_fixture_frame(true, false, true, true));
         assert!(!should_reveal_fixture_frame(true, true, true, true));
         assert!(!should_reveal_fixture_frame(true, false, false, true));
+    }
+
+    #[test]
+    fn retained_frame_redraw_is_allowed_only_after_first_frame_readiness() {
+        assert!(!should_redraw_retained_frame(false));
+        assert!(should_redraw_retained_frame(true));
     }
 }

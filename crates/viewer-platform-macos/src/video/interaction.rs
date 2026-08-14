@@ -1,4 +1,73 @@
-use viewer_application::{SeekIntent, SeekRequest, VideoEngineError};
+use viewer_application::{SeekIntent, SeekRequest, SurfaceRect, VideoEngineError};
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) struct GeometryUpdate {
+    pub generation: u64,
+    pub sequence: u64,
+    pub rect: SurfaceRect,
+}
+
+#[derive(Default)]
+pub(super) struct LatestGeometryMailbox {
+    active_generation: Option<u64>,
+    latest_sequence: u64,
+    pending: Option<GeometryUpdate>,
+    drain_scheduled: bool,
+}
+
+impl LatestGeometryMailbox {
+    pub fn activate(&mut self, generation: u64) {
+        self.active_generation = Some(generation);
+        self.latest_sequence = 0;
+        self.pending = None;
+        self.drain_scheduled = false;
+    }
+
+    pub fn invalidate(&mut self) {
+        self.active_generation = None;
+        self.latest_sequence = 0;
+        self.pending = None;
+        self.drain_scheduled = false;
+    }
+
+    pub fn publish(
+        &mut self,
+        generation: u64,
+        sequence: u64,
+        rect: SurfaceRect,
+    ) -> Result<bool, VideoEngineError> {
+        if self.active_generation != Some(generation) {
+            return Err(VideoEngineError::StaleGeneration);
+        }
+        if sequence <= self.latest_sequence {
+            return Ok(false);
+        }
+        self.latest_sequence = sequence;
+        self.pending = Some(GeometryUpdate {
+            generation,
+            sequence,
+            rect,
+        });
+        if self.drain_scheduled {
+            return Ok(false);
+        }
+        self.drain_scheduled = true;
+        Ok(true)
+    }
+
+    pub fn take_for_drain(&mut self) -> Option<GeometryUpdate> {
+        self.pending.take()
+    }
+
+    pub fn finish_drain(&mut self) -> bool {
+        if self.pending.is_some() {
+            true
+        } else {
+            self.drain_scheduled = false;
+            false
+        }
+    }
+}
 
 #[derive(Default)]
 pub(super) struct LatestSeekMailbox {
@@ -66,8 +135,26 @@ impl LatestSeekMailbox {
 
 #[cfg(test)]
 mod tests {
-    use super::LatestSeekMailbox;
-    use viewer_application::{SeekIntent, SeekRequest, VideoEngineError};
+    use super::{LatestGeometryMailbox, LatestSeekMailbox};
+    use viewer_application::{SeekIntent, SeekRequest, SurfaceRect, VideoEngineError};
+
+    #[test]
+    fn resize_burst_keeps_one_pending_rect_and_one_drain_owner() {
+        let mut mailbox = LatestGeometryMailbox::default();
+        mailbox.activate(5);
+        let mut schedules = 0;
+        for sequence in 1..=120 {
+            if mailbox.publish(5, sequence, geometry(sequence)).unwrap() {
+                schedules += 1;
+            }
+        }
+
+        assert_eq!(schedules, 1);
+        let latest = mailbox.take_for_drain().unwrap();
+        assert_eq!(latest.sequence, 120);
+        assert_eq!(latest.rect, geometry(120));
+        assert!(!mailbox.finish_drain());
+    }
 
     #[test]
     fn one_hundred_twenty_previews_keep_only_the_latest_request() {
@@ -133,6 +220,15 @@ mod tests {
         SeekRequest {
             intent: SeekIntent::Commit,
             ..preview(request_id)
+        }
+    }
+
+    const fn geometry(sequence: u64) -> SurfaceRect {
+        SurfaceRect {
+            x: sequence as i32,
+            y: 2,
+            width: 640,
+            height: 360,
         }
     }
 }

@@ -37,6 +37,37 @@ describe('immersive video preview layout', () => {
       'z-index': '5',
     })
   })
+
+  it('keeps the video frame free of full-width scrims', () => {
+    expect(rule('.video-preview-stage::before')).toMatchObject({ display: 'none' })
+    expect(rule('.video-preview-stage::after')).toMatchObject({ display: 'none' })
+  })
+
+  it('uses localized high-contrast surfaces for every control group', () => {
+    expect(rule('.video-preview-title')).toMatchObject({
+      background: 'var(--video-preview-metadata-surface)',
+      border: '1px solid var(--video-preview-surface-border)',
+    })
+    expect(rule('.video-preview .preview-navigation-float')).toMatchObject({
+      background: 'var(--video-preview-navigation-surface)',
+      border: '1px solid var(--video-preview-surface-border)',
+    })
+    expect(rule('.video-controls')).toMatchObject({
+      background: 'var(--video-preview-dock-surface)',
+      border: '1px solid var(--video-preview-surface-border)',
+      'border-radius': '18px',
+    })
+    expect(rule('.video-controls .video-controls__play')).toMatchObject({
+      background: 'var(--viewer-accent)',
+      color: 'var(--viewer-on-accent)',
+    })
+  })
+
+  it('renders the external icon assets with high contrast over video', () => {
+    expect(rule('.video-preview .viewer-icon')).toMatchObject({
+      filter: 'brightness(0) invert(1)',
+    })
+  })
 })
 
 function rule(selector: string): Record<string, string> {

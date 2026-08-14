@@ -97,38 +97,31 @@
   --preview-image-shadow: var(--viewer-shadow-image);
   --video-preview-stage: #080a0f;
   --video-preview-text: #f7f8fb;
-  --video-preview-muted-text: rgb(235 238 245 / 62%);
-  --video-preview-secondary-text: rgb(238 240 246 / 72%);
-  --video-preview-time-text: rgb(247 248 251 / 88%);
-  --video-preview-top-scrim: linear-gradient(
-    180deg,
-    rgb(5 7 11 / 88%) 0%,
-    rgb(5 7 11 / 48%) 52%,
-    transparent 100%
-  );
-  --video-preview-bottom-scrim: linear-gradient(
-    0deg,
-    rgb(4 6 10 / 94%) 0%,
-    rgb(4 6 10 / 66%) 42%,
-    transparent 100%
-  );
-  --video-preview-toolbar-surface: rgb(18 21 28 / 64%);
-  --video-preview-toolbar-border: rgb(255 255 255 / 10%);
+  --video-preview-muted-text: rgb(235 238 245 / 76%);
+  --video-preview-secondary-text: rgb(247 248 251 / 88%);
+  --video-preview-time-text: rgb(247 248 251 / 96%);
+  --video-preview-metadata-surface: rgb(17 20 27 / 82%);
+  --video-preview-dock-surface: rgb(13 16 22 / 88%);
+  --video-preview-surface-border: rgb(255 255 255 / 24%);
+  --video-preview-surface-shadow: 0 14px 36px rgb(0 0 0 / 30%);
+  --video-preview-toolbar-surface: var(--video-preview-metadata-surface);
+  --video-preview-toolbar-border: var(--video-preview-surface-border);
   --video-preview-toolbar-hover-surface: rgb(31 35 44 / 82%);
-  --video-preview-toolbar-hover-border: rgb(255 255 255 / 22%);
-  --video-preview-navigation-surface: rgb(21 24 31 / 72%);
-  --video-preview-navigation-border: rgb(255 255 255 / 12%);
-  --video-preview-navigation-hover: rgb(255 255 255 / 10%);
+  --video-preview-toolbar-hover-border: rgb(255 255 255 / 36%);
+  --video-preview-navigation-surface: rgb(17 20 27 / 88%);
+  --video-preview-navigation-hover: rgb(255 255 255 / 20%);
   --video-preview-navigation-shadow: 0 12px 32px rgb(0 0 0 / 28%);
-  --video-preview-control-surface: rgb(20 23 29 / 58%);
-  --video-preview-control-border: rgb(255 255 255 / 15%);
-  --video-preview-control-hover-surface: rgb(255 255 255 / 14%);
-  --video-preview-control-hover-border: rgb(255 255 255 / 28%);
-  --video-preview-primary-control-surface: rgb(28 31 39 / 86%);
+  --video-preview-button-surface: rgb(255 255 255 / 10%);
+  --video-preview-button-hover-surface: rgb(255 255 255 / 20%);
+  --video-preview-button-disabled: rgb(255 255 255 / 6%);
+  --video-preview-control-surface: var(--video-preview-button-surface);
+  --video-preview-control-border: var(--video-preview-surface-border);
+  --video-preview-control-hover-surface: var(--video-preview-button-hover-surface);
+  --video-preview-control-hover-border: rgb(255 255 255 / 42%);
   --video-preview-primary-control-shadow: 0 0 0 1px rgb(88 105 207 / 26%),
     0 10px 24px rgb(0 0 0 / 24%);
-  --video-preview-select-surface: rgb(20 23 29 / 72%);
-  --video-preview-track: rgb(255 255 255 / 28%);
+  --video-preview-select-surface: rgb(255 255 255 / 10%);
+  --video-preview-track: rgb(255 255 255 / 46%);
   --video-preview-accent-shadow: 0 0 10px rgb(88 105 207 / 34%);
   --video-preview-thumb: #f7f8fb;
   --video-preview-thumb-shadow: 0 2px 10px rgb(0 0 0 / 32%);

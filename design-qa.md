@@ -152,6 +152,45 @@ platform task because the Windows version is not yet under development.
 
 Final result: passed
 
+## 2026-08-13 — Video Control Visibility Refinement
+
+### Source and implementation evidence
+
+- User running-product source: `/var/folders/hh/jj77kbxs0db1_j1kgh7hbd2c0000gn/T/codex-clipboard-5fc02ea7-c4d6-4453-9b19-0e88eb3c6240.png` (`2558 × 1600`, SHA-256 `922dd29d60225c8f9e1c131856da4f2ec04ec46ffd02932f8cfc82206f742812`).
+- Rendered playing-controls state: `target/viewer-visual-acceptance/video-control-visibility/43b6d30938b9e6844829a2ad45de98846bf7c1d6/1440x900/video-playing-controls/product.png` (`1440 × 900`, SHA-256 `fca77223acd4498e15adab83d0a9aa1b4358acf125a62a062e2547bf0c0cc120`).
+- Same-viewport comparison: `target/design-qa-video-control-visibility/comparison.png` (source normalized to `1440 × 900`; comparison SHA-256 `c571ff07ce0ed5f1010d6deb85d8f3d0379e97ac69c49e497c2a4a6982f905b1`).
+- The acceptance command generated the complete product screenshot but returned nonzero only because the repository's unrelated historical atlas reference file is absent. The supplied user screenshot is the explicit visual source for this refinement.
+
+### Comparison findings
+
+| Region | Result | Acceptance note |
+| --- | --- | --- |
+| Video frame | Pass | The full-width top and bottom gradient scrims are absent; frame brightness remains unchanged outside localized controls. |
+| Metadata and Done | Pass | Filename, duration, and Done use compact high-contrast capsules instead of a darkened top edge. |
+| Page navigation | Pass | The page capsule remains separate; enabled arrows are white with visible button boundaries and disabled arrows remain recognizable. |
+| Timeline | Pass | The track, progress, thumb, and elapsed/total time are visibly stronger without shading the surrounding frame. |
+| Transport and settings | Pass | The inset rounded dock defines the control region; all external SVG icons render white, and play/pause uses a solid accent surface. |
+| Window edge | Pass | The dock remains inset and rounded; it does not form a full-width black band or black transition edge. |
+
+### Correction history
+
+- P1: top and bottom pseudo-element gradients altered the apparent exposure of the video. Correction: both stage scrims are removed from rendering.
+- P1: setting CSS text color did not recolor the externally loaded SVG icon images, leaving transport and navigation glyphs dark. Correction: preview icons use an explicit high-contrast filter, with forced-colors mode restoring system rendering.
+- P1: secondary buttons had low-opacity surfaces and borders directly over arbitrary footage. Correction: every control group now owns a localized semantic surface, stronger border, hover state, and recognizable disabled state.
+- P2: the 4-pixel timeline and 12-pixel thumb were visually weak at the native window size. Correction: the track is 6 pixels, the thumb 16 pixels, and the progress contrast is preserved.
+- Intentional difference: the acceptance state uses the existing Viewer product fixture rather than the user's private video frame. Video content differs, while viewport, interaction state, control hierarchy, and contrast behavior are the reviewed targets.
+
+### Focused verification
+
+- RED contract: three expected failures for stage scrims, missing localized surfaces, and dark external icon assets.
+- GREEN contract: 5/5 immersive layout tests.
+- Focused player, timeline, semantic-color, and accessibility suite: 6 files / 73 tests passed.
+- `pnpm --dir ui check` and `git diff --check` passed; only the existing Biome configuration deprecation information remains.
+- The first full verification attempt stopped at the documentation policy because the new specification was not yet indexed. After adding the exact Active specification and Historical plan rows, the policy gate passed 30/30 with scope coverage 48/48.
+- Fresh final `pnpm verify` passed end to end: UI check, 106 UI files / 949 passed + 1 skipped, production build, locked Rust formatting/Clippy/workspace tests, Tauri security boundaries, cargo-deny, npm license policy, and bundled video-runtime license verification.
+
+Final result: passed
+
 ## 2026-08-13 — Immersive Video Playback Interface
 
 ### Visual source and capture normalization

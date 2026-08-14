@@ -351,7 +351,9 @@ where
                 let mut state = self.lock_state();
                 if matches!(
                     state.snapshot.state,
-                    VideoPlaybackState::Ended | VideoPlaybackState::Failed(_)
+                    VideoPlaybackState::Seeking
+                        | VideoPlaybackState::Ended
+                        | VideoPlaybackState::Failed(_)
                 ) {
                     return Ok(());
                 }

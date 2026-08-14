@@ -236,6 +236,18 @@ async fn preview_does_not_enter_seeking_and_only_matching_commit_completes() {
     service
         .handle_engine_event(
             generation,
+            EngineEvent::TimeChanged {
+                time_us: PREVIEW.time_us,
+                duration_us: None,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(service.snapshot().time_us, 0);
+
+    service
+        .handle_engine_event(
+            generation,
             EngineEvent::SeekCompleted {
                 request_id: PREVIEW.request_id,
                 time_us: PREVIEW.time_us,

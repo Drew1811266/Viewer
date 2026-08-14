@@ -56,11 +56,13 @@ export default function VideoTimeline({
   const [pointerOffsetPx, setPointerOffsetPx] = useState(0)
   const [trackWidthPx, setTrackWidthPx] = useState(0)
   const [dragging, setDragging] = useState(false)
+  const [committedTimeUs, setCommittedTimeUs] = useState<number | null>(null)
   const [pendingThumbnail, setPendingThumbnail] = useState<PendingThumbnail | null>(null)
   const [acceptedThumbnail, setAcceptedThumbnail] = useState<TimelineThumbnail | null>(null)
   const boundedDurationUs = finiteDuration(durationUs)
   const currentTimeUs = clampTime(timeUs, boundedDurationUs)
-  const displayedTimeUs = dragging && pointerTimeUs !== null ? pointerTimeUs : currentTimeUs
+  const displayedTimeUs =
+    dragging && pointerTimeUs !== null ? pointerTimeUs : (committedTimeUs ?? currentTimeUs)
   const pointerBucketUs =
     pointerTimeUs === null ? null : quantizeTimelineTime(pointerTimeUs, boundedDurationUs)
 
@@ -74,10 +76,16 @@ export default function VideoTimeline({
     requestSequence.current = 0
     setDragging(false)
     setPointerTimeUs(null)
+    setCommittedTimeUs(null)
     setPendingThumbnail(null)
     setAcceptedThumbnail(null)
     if (wasDragging) seekingChange.current(false)
   }, [generation])
+
+  useEffect(() => {
+    if (committedTimeUs === null) return
+    if (Math.abs(currentTimeUs - committedTimeUs) <= 50_000) setCommittedTimeUs(null)
+  }, [committedTimeUs, currentTimeUs])
 
   useEffect(() => {
     if (pointerBucketUs === null || generation <= 0 || boundedDurationUs <= 0) return
@@ -157,6 +165,7 @@ export default function VideoTimeline({
   function pointerDown(event: PointerEvent<HTMLDivElement>) {
     if (event.button !== 0) return
     const targetUs = point(event)
+    setCommittedTimeUs(null)
     dragPointer.current = event.pointerId
     setDragging(true)
     onSeekingChange(true)
@@ -173,7 +182,10 @@ export default function VideoTimeline({
     if (dragPointer.current !== event.pointerId) return
     const targetUs = point(event)
     cancelPendingPreview()
-    void onCommitSeek(targetUs).catch(() => undefined)
+    setCommittedTimeUs(targetUs)
+    void onCommitSeek(targetUs).catch(() => {
+      setCommittedTimeUs((current) => (current === targetUs ? null : current))
+    })
     dragPointer.current = null
     setDragging(false)
     onSeekingChange(false)
@@ -200,7 +212,10 @@ export default function VideoTimeline({
     if (targetUs === null) return
     event.preventDefault()
     onActivity()
-    void onCommitSeek(targetUs).catch(() => undefined)
+    setCommittedTimeUs(targetUs)
+    void onCommitSeek(targetUs).catch(() => {
+      setCommittedTimeUs((current) => (current === targetUs ? null : current))
+    })
   }
 
   const previewStyle = timelinePreviewStyle(pointerOffsetPx, trackWidthPx)

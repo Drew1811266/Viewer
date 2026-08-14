@@ -121,7 +121,7 @@ describe('VideoTimeline', () => {
     const onPreviewSeek = vi.fn().mockResolvedValue(undefined)
     const onCommitSeek = vi.fn().mockResolvedValue(undefined)
     const onSeekingChange = vi.fn()
-    render(
+    const rendered = render(
       <TimelineHarness
         onPreviewSeek={onPreviewSeek}
         onCommitSeek={onCommitSeek}
@@ -148,6 +148,27 @@ describe('VideoTimeline', () => {
     expect(onCommitSeek.mock.calls).toEqual([[3_000_000]])
     expect(onPreviewSeek).toHaveBeenCalledTimes(1)
     expect(onSeekingChange.mock.calls).toEqual([[true], [false]])
+    expect(slider).toHaveAttribute('aria-valuenow', '3')
+
+    rendered.rerender(
+      <TimelineHarness
+        timeUs={3_000_000}
+        onPreviewSeek={onPreviewSeek}
+        onCommitSeek={onCommitSeek}
+        onSeekingChange={onSeekingChange}
+        thumbnail={null}
+      />,
+    )
+    rendered.rerender(
+      <TimelineHarness
+        timeUs={4_000_000}
+        onPreviewSeek={onPreviewSeek}
+        onCommitSeek={onCommitSeek}
+        onSeekingChange={onSeekingChange}
+        thumbnail={null}
+      />,
+    )
+    expect(slider).toHaveAttribute('aria-valuenow', '4')
   })
 
   it('does not carry seek coalescing state into a new generation', () => {

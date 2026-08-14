@@ -50,6 +50,21 @@ pub enum FrameDirection {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SeekMode {
+    PreviewKeyframe,
+    CommitExact,
+}
+
+impl SeekMode {
+    fn command_flag(self) -> &'static str {
+        match self {
+            Self::PreviewKeyframe => "absolute+keyframes",
+            Self::CommitExact => "absolute+exact",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PlaybackRate {
     Half,
     ThreeQuarters,
@@ -208,9 +223,9 @@ impl MpvClient {
         self.set_flag_property("pause", true)
     }
 
-    pub fn seek_absolute_us(&self, time_us: u64) -> Result<(), MpvError> {
+    pub fn seek_absolute_us(&self, time_us: u64, mode: SeekMode) -> Result<(), MpvError> {
         let seconds = format!("{:.6}", time_us as f64 / 1_000_000.0);
-        self.command_from_strings(&["seek", &seconds, "absolute+exact"])
+        self.command_from_strings(&["seek", &seconds, mode.command_flag()])
     }
 
     pub fn frame_step(&self, direction: FrameDirection) -> Result<(), MpvError> {

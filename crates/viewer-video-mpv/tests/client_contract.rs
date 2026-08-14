@@ -6,7 +6,7 @@ use std::{
 };
 
 use viewer_video_mpv::{
-    FrameDirection, MpvApi, MpvClient, PlaybackRate,
+    FrameDirection, MpvApi, MpvClient, PlaybackRate, SeekMode,
     ffi::{MPV_ERROR_PROPERTY_UNAVAILABLE, MpvEvent, MpvFormat, MpvHandle},
 };
 
@@ -218,6 +218,33 @@ fn fake_api() -> MpvApi {
         observe_property,
         wait_event,
     }
+}
+
+#[test]
+fn preview_seek_uses_keyframes_and_commit_seek_is_exact() {
+    let _guard = fake_guard().lock().unwrap();
+    reset_fake();
+
+    let mut client = unsafe { MpvClient::from_api(fake_api()) }.unwrap();
+    client.initialize_for_rendering().unwrap();
+    client
+        .seek_absolute_us(1_250_000, SeekMode::PreviewKeyframe)
+        .unwrap();
+    client
+        .seek_absolute_us(2_500_000, SeekMode::CommitExact)
+        .unwrap();
+
+    let calls = calls().lock().unwrap();
+    assert!(calls.contains(&Call::Command(vec![
+        "seek".into(),
+        "1.250000".into(),
+        "absolute+keyframes".into(),
+    ])));
+    assert!(calls.contains(&Call::Command(vec![
+        "seek".into(),
+        "2.500000".into(),
+        "absolute+exact".into(),
+    ])));
 }
 
 #[test]

@@ -7,8 +7,8 @@ use super::{
 use objc2_app_kit::NSOpenGLContext;
 use std::{path::Path, sync::Arc};
 use thiserror::Error;
-use viewer_video_mpv::PlaybackRate;
 use viewer_video_mpv::{FrameDirection, MpvClient, MpvError, MpvRenderContext, MpvRenderError};
+use viewer_video_mpv::{PlaybackRate, SeekMode};
 
 #[derive(Debug, Error)]
 pub enum RenderLoopError {
@@ -208,7 +208,7 @@ impl MacVideoRenderSession {
 
     pub fn seek(&self, time_us: u64) -> Result<(), RenderLoopError> {
         if let Some(client) = self.client.as_ref() {
-            client.seek_absolute_us(time_us)?;
+            client.seek_absolute_us(time_us, SeekMode::CommitExact)?;
         }
         Ok(())
     }

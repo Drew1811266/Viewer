@@ -2,7 +2,7 @@
 
 use super::{
     MacVideoRenderSession, MacVideoSurface, SurfaceRect as MacSurfaceRect,
-    VideoDiagnosticsCounters, VideoRenderDiagnostics,
+    VideoDiagnosticsCounters, VideoRenderDiagnostics, interaction::LatestSeekMailbox,
 };
 use async_trait::async_trait;
 use dispatch2::DispatchQueue;
@@ -10,7 +10,7 @@ use objc2::MainThreadMarker;
 use std::{
     path::PathBuf,
     sync::{
-        Arc, Mutex, MutexGuard, Weak,
+        Arc, Mutex, MutexGuard, OnceLock, Weak,
         atomic::{AtomicBool, Ordering},
     },
 };
@@ -28,18 +28,31 @@ type EngineEventSink = dyn Fn(u64, EngineEvent) + Send + Sync;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum PendingCompletion {
-    Seek { request_id: u64 },
+    Seek {
+        request_id: u64,
+        target_time_us: u64,
+    },
     Step,
 }
 
+const COMMIT_COMPLETION_TOLERANCE_US: u64 = 50_000;
+
 impl PendingCompletion {
-    const fn event(self, time_us: u64) -> EngineEvent {
+    const fn event_if_ready(self, time_us: u64) -> Option<EngineEvent> {
         match self {
-            Self::Seek { request_id } => EngineEvent::SeekCompleted {
+            Self::Seek {
                 request_id,
-                time_us,
-            },
-            Self::Step => EngineEvent::FrameStepped { time_us },
+                target_time_us,
+            } => {
+                if time_us.abs_diff(target_time_us) > COMMIT_COMPLETION_TOLERANCE_US {
+                    return None;
+                }
+                Some(EngineEvent::SeekCompleted {
+                    request_id,
+                    time_us,
+                })
+            }
+            Self::Step => Some(EngineEvent::FrameStepped { time_us }),
         }
     }
 }
@@ -51,6 +64,8 @@ pub struct MacOsLibmpvAdapter {
     diagnostics: Arc<VideoDiagnosticsCounters>,
     event_sink: Mutex<Option<Arc<EngineEventSink>>>,
     pending_completion: Mutex<Option<PendingCompletion>>,
+    seek_mailbox: Mutex<LatestSeekMailbox>,
+    self_reference: OnceLock<Weak<Self>>,
     first_frame_published: AtomicBool,
     ended_published: AtomicBool,
 }
@@ -73,6 +88,8 @@ impl MacOsLibmpvAdapter {
             diagnostics: Arc::new(VideoDiagnosticsCounters),
             event_sink: Mutex::new(None),
             pending_completion: Mutex::new(None),
+            seek_mailbox: Mutex::new(LatestSeekMailbox::default()),
+            self_reference: OnceLock::new(),
             first_frame_published: AtomicBool::new(false),
             ended_published: AtomicBool::new(false),
         }
@@ -87,6 +104,7 @@ impl MacOsLibmpvAdapter {
         window: WebviewWindow<R>,
         rect: SurfaceRect,
     ) -> Result<(), VideoEngineError> {
+        self.self_reference.get_or_init(|| Arc::downgrade(self));
         let weak = Arc::downgrade(self);
         self.on_main(move |adapter| {
             adapter.close_on_main();
@@ -169,6 +187,62 @@ impl MacOsLibmpvAdapter {
         action(session)
     }
 
+    fn schedule_seek_drain(&self) -> Result<(), VideoEngineError> {
+        let weak = self
+            .self_reference
+            .get()
+            .cloned()
+            .ok_or(VideoEngineError::Unavailable)?;
+        DispatchQueue::main().exec_async(move || {
+            if let Some(adapter) = weak.upgrade() {
+                adapter.drain_seek_on_main();
+            }
+        });
+        Ok(())
+    }
+
+    fn drain_seek_on_main(&self) {
+        debug_assert!(MainThreadMarker::new().is_some());
+        let request = lock(&self.seek_mailbox).take_for_drain();
+        if let Some(request) = request {
+            let generation = *lock(&self.generation);
+            let result = generation
+                .ok_or(VideoEngineError::StaleGeneration)
+                .and_then(|generation| {
+                    self.with_generation(generation, |session| {
+                        session
+                            .seek(
+                                request.time_us,
+                                match request.intent {
+                                    SeekIntent::Preview => SeekMode::PreviewKeyframe,
+                                    SeekIntent::Commit => SeekMode::CommitExact,
+                                },
+                            )
+                            .map_err(|_| VideoEngineError::Decode)
+                    })
+                });
+            if result.is_ok() && request.intent == SeekIntent::Commit {
+                *lock(&self.pending_completion) = Some(PendingCompletion::Seek {
+                    request_id: request.request_id,
+                    target_time_us: request.time_us,
+                });
+            } else if result.is_err()
+                && request.intent == SeekIntent::Commit
+                && let Some(generation) = generation
+            {
+                self.emit(
+                    generation,
+                    EngineEvent::Failed(
+                        viewer_domain::video::VideoFailureKind::DecodeFallbackFailed,
+                    ),
+                );
+            }
+        }
+        if lock(&self.seek_mailbox).finish_drain() {
+            let _ = self.schedule_seek_drain();
+        }
+    }
+
     fn draw_on_main(&self) {
         debug_assert!(MainThreadMarker::new().is_some());
         let generation = *lock(&self.generation);
@@ -201,8 +275,16 @@ impl MacOsLibmpvAdapter {
                     duration_us: None,
                 },
             );
-            if let Some(completion) = lock(&self.pending_completion).take() {
-                self.emit(generation, completion.event(time_us));
+            let completion = {
+                let mut pending = lock(&self.pending_completion);
+                let event = pending.and_then(|completion| completion.event_if_ready(time_us));
+                if event.is_some() {
+                    pending.take();
+                }
+                event
+            };
+            if let Some(completion) = completion {
+                self.emit(generation, completion);
             }
         }
         if ended {
@@ -224,6 +306,7 @@ impl MacOsLibmpvAdapter {
         self.first_frame_published.store(false, Ordering::Release);
         self.ended_published.store(false, Ordering::Release);
         *lock(&self.pending_completion) = None;
+        lock(&self.seek_mailbox).invalidate();
     }
 }
 
@@ -237,6 +320,7 @@ impl VideoEngine for MacOsLibmpvAdapter {
                 .open_local_file_paused(&request.source.canonical_path)
                 .map_err(|_| VideoEngineError::Decode)?;
             *lock(&adapter.generation) = Some(request.generation);
+            lock(&adapter.seek_mailbox).activate(request.generation);
             adapter
                 .first_frame_published
                 .store(false, Ordering::Release);
@@ -283,26 +367,11 @@ impl VideoEngine for MacOsLibmpvAdapter {
     }
 
     fn publish_seek(&self, generation: u64, request: SeekRequest) -> Result<(), VideoEngineError> {
-        self.on_main(move |adapter| {
-            adapter.with_generation(generation, |session| {
-                session
-                    .seek(
-                        request.time_us,
-                        match request.intent {
-                            SeekIntent::Preview => SeekMode::PreviewKeyframe,
-                            SeekIntent::Commit => SeekMode::CommitExact,
-                        },
-                    )
-                    .map_err(|_| VideoEngineError::Decode)
-            })?;
-            *lock(&adapter.pending_completion) = match request.intent {
-                SeekIntent::Preview => None,
-                SeekIntent::Commit => Some(PendingCompletion::Seek {
-                    request_id: request.request_id,
-                }),
-            };
-            Ok(())
-        })
+        let schedule = lock(&self.seek_mailbox).publish(generation, request)?;
+        if schedule {
+            self.schedule_seek_drain()?;
+        }
+        Ok(())
     }
 
     async fn step(
@@ -400,15 +469,35 @@ mod tests {
     #[test]
     fn pending_seek_and_step_complete_with_the_drawn_frame_time() {
         assert_eq!(
-            PendingCompletion::Seek { request_id: 12 }.event(750_000),
-            EngineEvent::SeekCompleted {
+            PendingCompletion::Seek {
+                request_id: 12,
+                target_time_us: 750_000,
+            }
+            .event_if_ready(750_000),
+            Some(EngineEvent::SeekCompleted {
                 request_id: 12,
                 time_us: 750_000,
-            }
+            })
         );
         assert_eq!(
-            PendingCompletion::Step.event(800_000),
-            EngineEvent::FrameStepped { time_us: 800_000 }
+            PendingCompletion::Step.event_if_ready(800_000),
+            Some(EngineEvent::FrameStepped { time_us: 800_000 })
+        );
+    }
+
+    #[test]
+    fn pending_commit_completes_only_near_its_own_target() {
+        let pending = PendingCompletion::Seek {
+            request_id: 11,
+            target_time_us: 2_000_000,
+        };
+        assert_eq!(pending.event_if_ready(1_000_000), None);
+        assert_eq!(
+            pending.event_if_ready(2_049_999),
+            Some(EngineEvent::SeekCompleted {
+                request_id: 11,
+                time_us: 2_049_999,
+            })
         );
     }
 }

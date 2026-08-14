@@ -1,5 +1,6 @@
 mod adapter;
 mod diagnostics;
+mod interaction;
 mod render_loop;
 mod surface;
 

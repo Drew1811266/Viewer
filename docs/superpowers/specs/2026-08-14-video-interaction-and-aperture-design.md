@@ -56,12 +56,12 @@ Each geometry request remains sequence-numbered and newest-wins.
 
 The trailing redraw is cancelled by a newer geometry sequence, session close, or generation change.
 
-### Opaque theater with a single transparent aperture
+### Opaque theater cover with a single transparent aperture
 
-The preview document and overlay remain opaque at all times. Transparency is limited to an explicit aperture whose integer pixel rectangle is derived from the same fitted `VideoSurfaceRect` sent to native code.
+The WKWebView substrate remains transparent because the native OpenGL surface is mounted below it. A dedicated theater cover makes every visible preview pixel opaque except for one explicit aperture whose rectangle is derived from the same fitted `VideoSurfaceRect` sent to native code.
 
-- `html`, `body`, `#root`, `.video-preview`, and `.video-preview-stage` keep the theater background.
-- Four real opaque matte regions cover the area above, right, below, and left of the aperture.
+- `html`, `body`, `#root`, `.video-preview`, and `.video-preview-stage` do not paint an additional background over the native surface.
+- Four real opaque matte regions cover the complete area above, right, below, and left of the aperture; together they are the visible theater background.
 - The aperture alone is transparent after the first frame is ready.
 - Before first-frame readiness, an opaque reveal veil covers the aperture.
 - Title, navigation, controls, loading, and errors always render above the matte/aperture layers.
@@ -89,7 +89,7 @@ The aperture/matte values use the exact integer fitted rectangle, not separately
 - A failed media command publishes the existing normalized video failure without leaving the UI in a seeking state.
 - A stale generation/request/geometry sequence is a successful no-op.
 - If the first-frame acknowledgement never arrives, exact commit is not allowed to overtake the preview; a newer request or close cancels it.
-- Invalid aperture geometry fails closed to a fully opaque stage.
+- Invalid aperture geometry replaces the four-region cover with one fully opaque stage veil.
 
 ## Verification
 

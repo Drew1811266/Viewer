@@ -1405,7 +1405,7 @@ describe('Viewer empty state', () => {
       receiveScan = handler
       return () => undefined
     })
-    vi.mocked(viewer.projectSnapshot).mockResolvedValue({
+    vi.mocked(viewer.projectSnapshot).mockResolvedValueOnce(null).mockResolvedValue({
       projectId: 'project-1',
       sessionId: 'session-1',
       generation: 2,
@@ -1427,7 +1427,7 @@ describe('Viewer empty state', () => {
       })
     })
 
-    await waitFor(() => expect(viewer.projectSnapshot).toHaveBeenCalledOnce())
+    await waitFor(() => expect(viewer.projectSnapshot).toHaveBeenCalledTimes(2))
   })
 
   it('returns to the empty surface when the native window closes the session', async () => {
@@ -1840,7 +1840,7 @@ describe('Viewer empty state', () => {
       return () => undefined
     })
     vi.mocked(viewer.queryFolder).mockResolvedValue(contentWorkspace())
-    vi.mocked(viewer.projectSnapshot).mockResolvedValue({
+    vi.mocked(viewer.projectSnapshot).mockResolvedValueOnce(null).mockResolvedValue({
       projectId: 'project-1',
       sessionId: 'session-1',
       generation: 2,
@@ -1864,7 +1864,7 @@ describe('Viewer empty state', () => {
       })
     })
 
-    await waitFor(() => expect(viewer.projectSnapshot).toHaveBeenCalledOnce())
+    await waitFor(() => expect(viewer.projectSnapshot).toHaveBeenCalledTimes(2))
     await waitFor(() =>
       expect(screen.queryByRole('menu', { name: '文件操作' })).not.toBeInTheDocument(),
     )

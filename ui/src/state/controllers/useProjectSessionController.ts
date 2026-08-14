@@ -154,12 +154,17 @@ export function useProjectSessionController(core: ControllerCore): ProjectSessio
         return 'opened' as const
       } catch (error) {
         if (requestEpoch !== sessionEpochRef.current) return 'failed' as const
-        if (
-          typeof error === 'object' &&
-          error !== null &&
-          'code' in error &&
-          error.code === 'invalid_project_root'
-        ) {
+        if (hasCommandCode(error, 'project_already_open')) {
+          const project = await bridge.projectSnapshot().catch(() => null)
+          if (requestEpoch !== sessionEpochRef.current) return 'failed' as const
+          if (project !== null) {
+            dispatch({ type: 'project_opened', project })
+            if (requestEpoch !== sessionEpochRef.current) return 'failed' as const
+            await refreshProjection(project, null, '', false)
+            return 'opened' as const
+          }
+        }
+        if (hasCommandCode(error, 'invalid_project_root')) {
           dispatch({ type: 'project_closed' })
           return 'invalid-root' as const
         }
@@ -179,6 +184,32 @@ export function useProjectSessionController(core: ControllerCore): ProjectSessio
       showingAggregate: false,
     }
   }, [advanceSessionEpoch])
+
+  useEffect(() => {
+    let disposed = false
+    const requestEpoch = sessionEpochRef.current
+    void bridge
+      .projectSnapshot()
+      .then(async (project) => {
+        if (
+          disposed ||
+          project === null ||
+          requestEpoch !== sessionEpochRef.current ||
+          stateRef.current.project !== null ||
+          !['empty', 'error'].includes(stateRef.current.status)
+        ) {
+          return
+        }
+        const restoredEpoch = advanceSessionEpoch()
+        dispatch({ type: 'project_opened', project })
+        if (disposed || restoredEpoch !== sessionEpochRef.current) return
+        await refreshProjection(project, null, '', false)
+      })
+      .catch(() => undefined)
+    return () => {
+      disposed = true
+    }
+  }, [advanceSessionEpoch, bridge, dispatch, refreshProjection, sessionEpochRef, stateRef])
 
   const requestProjectClose = useCallback(
     async (
@@ -394,10 +425,9 @@ export function useProjectSessionController(core: ControllerCore): ProjectSessio
 }
 
 function isTerminalCloseCleanupFailure(error: unknown): boolean {
-  return (
-    typeof error === 'object' &&
-    error !== null &&
-    'code' in error &&
-    error.code === 'project_closed_cache_cleanup_failed'
-  )
+  return hasCommandCode(error, 'project_closed_cache_cleanup_failed')
+}
+
+function hasCommandCode(error: unknown, code: string): boolean {
+  return typeof error === 'object' && error !== null && 'code' in error && error.code === code
 }

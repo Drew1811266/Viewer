@@ -387,6 +387,77 @@ describe('useViewerController M2 coordination', () => {
     expect(result.current.state.workspace).toEqual({ workspace: 'empty' })
   })
 
+  it('restores an already-open native session after the webview reloads', async () => {
+    const viewer = bridge()
+    vi.mocked(viewer.projectSnapshot).mockResolvedValue({
+      projectId: 'project-1',
+      sessionId: 'session-1',
+      generation: 4,
+      displayName: 'Recovered Catalog',
+      access: 'read_write',
+    })
+    vi.mocked(viewer.queryFolder).mockResolvedValue(contentWorkspace(['restored.jpg']))
+
+    const { result } = renderHook(() => useViewerController(viewer))
+
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(viewer.projectSnapshot).toHaveBeenCalledOnce()
+    expect(viewer.openProject).not.toHaveBeenCalled()
+    expect(result.current.state.status).toBe('active')
+    expect(result.current.state.project).toMatchObject({
+      sessionId: 'session-1',
+      generation: 4,
+      displayName: 'Recovered Catalog',
+    })
+    expect(result.current.state.workspace).toEqual(contentWorkspace(['restored.jpg']))
+  })
+
+  it('recovers the native session when choosing a project races webview restoration', async () => {
+    const viewer = bridge()
+    const snapshot = deferred<ProjectSnapshot | null>()
+    vi.mocked(viewer.projectSnapshot).mockImplementation(() => snapshot.promise)
+    vi.mocked(viewer.openProject).mockRejectedValue({
+      code: 'project_already_open',
+      category: 'conflict',
+      userMessage: '请先关闭当前项目。',
+      retryable: false,
+      taskId: null,
+      itemId: null,
+    })
+    vi.mocked(viewer.queryFolder).mockResolvedValue(contentWorkspace(['restored.jpg']))
+    const { result } = renderHook(() => useViewerController(viewer))
+    let opening!: ReturnType<typeof result.current.openProject>
+
+    act(() => {
+      opening = result.current.openProject('/fixture/project')
+    })
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    expect(viewer.openProject).toHaveBeenCalledOnce()
+
+    await act(async () => {
+      snapshot.resolve({
+        projectId: 'project-1',
+        sessionId: 'session-1',
+        generation: 4,
+        displayName: 'Recovered Catalog',
+        access: 'read_write',
+      })
+      expect(await opening).toBe('opened')
+    })
+
+    expect(result.current.state.status).toBe('active')
+    expect(result.current.state.project).toMatchObject({ sessionId: 'session-1', generation: 4 })
+    expect(result.current.state.workspace).toEqual(contentWorkspace(['restored.jpg']))
+  })
+
   it('keeps the newest folder when older projection success and failure settle late', async () => {
     const viewer = bridge()
     const folders = ['folder-a', 'folder-b', 'folder-c'].map((entityId) => ({

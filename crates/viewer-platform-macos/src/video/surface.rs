@@ -314,10 +314,11 @@ pub fn appkit_frame(rect: SurfaceRect, container_height: f64) -> Option<AppKitFr
         return None;
     }
 
+    // DOM layout and AppKit window resizing do not commit in the same run-loop
+    // turn. NSView frames may safely extend outside their parent and are clipped
+    // by the parent; preserving the requested size avoids both a fatal surface
+    // error and a one-frame aspect-ratio distortion during live resize.
     let y = container_height - rect.y - rect.height;
-    if y < 0.0 {
-        return None;
-    }
 
     Some(AppKitFrame {
         x: rect.x,

@@ -72,6 +72,7 @@ describe('useVideoBridge', () => {
 
   it('updates fitted surface geometry after resize without reopening media', async () => {
     const resize = installResizeObserver()
+    const animation = installAnimationFrameHarness()
     const harness = videoBridgeHarness()
     harness.open.mockResolvedValue(session(7))
     render(<BridgeHarness file={video('a.mp4')} bridge={harness.bridge} />)
@@ -87,6 +88,7 @@ describe('useVideoBridge', () => {
     })
 
     resize.trigger(stage, { left: 120, top: 80, width: 400, height: 400 })
+    animation.flush()
 
     await waitFor(() => expect(harness.setRect).toHaveBeenCalledTimes(2))
     expect(harness.setRect).toHaveBeenLastCalledWith({
@@ -97,6 +99,68 @@ describe('useVideoBridge', () => {
       height: 225,
     })
     expect(harness.open).toHaveBeenCalledTimes(1)
+  })
+
+  it('coalesces resize bursts to the latest fitted rect and keeps the active video alive', async () => {
+    const resize = installResizeObserver()
+    const animation = installAnimationFrameHarness()
+    const harness = videoBridgeHarness()
+    const inFlight = deferred<void>()
+    harness.open.mockResolvedValue(session(9))
+    harness.setRect
+      .mockResolvedValueOnce(undefined)
+      .mockReturnValueOnce(inFlight.promise)
+      .mockResolvedValue(undefined)
+    render(<BridgeHarness file={video('a.mp4')} bridge={harness.bridge} />)
+    const stage = screen.getByTestId('video-stage')
+
+    await waitFor(() => expect(harness.setRect).toHaveBeenCalledOnce())
+
+    resize.trigger(stage, { left: 104, top: 60, width: 760, height: 560 })
+    resize.trigger(stage, { left: 108, top: 70, width: 680, height: 500 })
+    resize.trigger(stage, { left: 112, top: 80, width: 600, height: 440 })
+
+    expect(harness.setRect).toHaveBeenCalledOnce()
+    animation.flush()
+    await waitFor(() => expect(harness.setRect).toHaveBeenCalledTimes(2))
+
+    resize.trigger(stage, { left: 120, top: 90, width: 520, height: 380 })
+    resize.trigger(stage, { left: 128, top: 100, width: 440, height: 320 })
+    animation.flush()
+    expect(harness.setRect).toHaveBeenCalledTimes(2)
+
+    inFlight.reject(new Error('transient resize mismatch'))
+    await waitFor(() => expect(harness.setRect).toHaveBeenCalledTimes(3))
+    expect(harness.setRect).toHaveBeenLastCalledWith({
+      generation: 9,
+      x: 128,
+      y: 136,
+      width: 440,
+      height: 248,
+    })
+    act(() => harness.emit({ type: 'firstFrameReady', generation: 9 }))
+    expect(screen.getByRole('status', { name: 'bridge state' })).toHaveTextContent('9:visible')
+    expect(harness.close).not.toHaveBeenCalled()
+  })
+
+  it('ignores a transient zero-sized stage while the window is being resized', async () => {
+    const resize = installResizeObserver()
+    const animation = installAnimationFrameHarness()
+    const harness = videoBridgeHarness()
+    harness.open.mockResolvedValue(session(10))
+    render(<BridgeHarness file={video('a.mp4')} bridge={harness.bridge} />)
+    const stage = screen.getByTestId('video-stage')
+
+    await waitFor(() => expect(harness.open).toHaveBeenCalledOnce())
+    act(() => harness.emit({ type: 'firstFrameReady', generation: 10 }))
+    expect(screen.getByRole('status', { name: 'bridge state' })).toHaveTextContent('10:visible')
+    resize.trigger(stage, { left: 0, top: 0, width: 0, height: 0 })
+    animation.flush()
+    await act(async () => Promise.resolve())
+
+    expect(harness.open).toHaveBeenCalledOnce()
+    expect(harness.close).not.toHaveBeenCalled()
+    expect(screen.getByRole('status', { name: 'bridge state' })).toHaveTextContent('10:visible')
   })
 
   it('keeps the shell retryable when videoOpen rejects', async () => {
@@ -184,52 +248,18 @@ describe('useVideoBridge', () => {
     await waitFor(() => expect(harness.open).toHaveBeenCalledOnce())
   })
 
-  it('terminates the active generation when initial surface geometry is rejected', async () => {
+  it('does not terminate playback when a transient dynamic geometry update is rejected', async () => {
     installResizeObserver()
     const harness = videoBridgeHarness()
     harness.open.mockResolvedValue(session(7))
     harness.setRect.mockRejectedValue(new Error('surface unavailable'))
-    const rendered = render(<BridgeHarness file={video('a.mp4')} bridge={harness.bridge} />)
-
-    await waitFor(() =>
-      expect(screen.getByRole('status', { name: 'bridge state' })).toHaveTextContent(
-        '7:hidden:failed:video_surface_failed',
-      ),
-    )
-    expect(harness.close).toHaveBeenCalledOnce()
-    expect(harness.close).toHaveBeenCalledWith({ generation: 7 })
-    expect(harness.unlisten).toHaveBeenCalledOnce()
-
-    rendered.unmount()
-    expect(harness.close).toHaveBeenCalledOnce()
-  })
-
-  it('closes a revealed surface on geometry failure and ignores later native state', async () => {
-    installResizeObserver()
-    const harness = videoBridgeHarness()
-    const surface = deferred<void>()
-    harness.open.mockResolvedValue(session(8))
-    harness.setRect.mockReturnValue(surface.promise)
     render(<BridgeHarness file={video('a.mp4')} bridge={harness.bridge} />)
 
     await waitFor(() => expect(harness.setRect).toHaveBeenCalledOnce())
-    act(() => harness.emit({ type: 'firstFrameReady', generation: 8 }))
-    expect(screen.getByRole('status', { name: 'bridge state' })).toHaveTextContent('8:visible')
-
-    surface.reject(new Error('surface lost'))
-    await waitFor(() =>
-      expect(screen.getByRole('status', { name: 'bridge state' })).toHaveTextContent(
-        '8:hidden:failed:video_surface_failed',
-      ),
-    )
-    expect(harness.close).toHaveBeenCalledOnce()
-    expect(harness.close).toHaveBeenCalledWith({ generation: 8 })
-    expect(harness.unlisten).toHaveBeenCalledOnce()
-
-    harness.emit({ type: 'stateChanged', generation: 8, state: 'playing' })
-    expect(screen.getByRole('status', { name: 'bridge state' })).toHaveTextContent(
-      '8:hidden:failed:video_surface_failed',
-    )
+    act(() => harness.emit({ type: 'firstFrameReady', generation: 7 }))
+    expect(screen.getByRole('status', { name: 'bridge state' })).toHaveTextContent('7:visible')
+    expect(harness.close).not.toHaveBeenCalled()
+    expect(harness.unlisten).not.toHaveBeenCalled()
   })
 
   it('binds every playback command to the active generation and normalizes bounded values', async () => {
@@ -511,6 +541,28 @@ function installResizeObserver() {
           [{ target: node, contentRect: bounds } as ResizeObserverEntry],
           {} as ResizeObserver,
         )
+      })
+    },
+  }
+}
+
+function installAnimationFrameHarness() {
+  let nextId = 1
+  const callbacks = new Map<number, FrameRequestCallback>()
+  vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+    const id = nextId++
+    callbacks.set(id, callback)
+    return id
+  })
+  vi.stubGlobal('cancelAnimationFrame', (id: number) => {
+    callbacks.delete(id)
+  })
+  return {
+    flush() {
+      const pending = [...callbacks.entries()]
+      callbacks.clear()
+      act(() => {
+        for (const [, callback] of pending) callback(performance.now())
       })
     },
   }

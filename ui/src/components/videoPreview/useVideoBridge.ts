@@ -88,6 +88,8 @@ export function useVideoBridge({
   const activeGeneration = useRef<number | null>(null)
   const activeLifecycle = useRef<ActiveVideoLifecycle | null>(null)
   const lastSurfaceGeometry = useRef<string | null>(null)
+  const surfaceUpdateSequence = useRef(0)
+  const surfaceUpdateTail = useRef<Promise<void>>(Promise.resolve())
   const commandQueue = useRef<Promise<void>>(Promise.resolve())
   const closeTail = useRef<Promise<void>>(Promise.resolve())
   const playbackIntent = useRef(createBooleanControlIntent(false))
@@ -111,6 +113,7 @@ export function useVideoBridge({
   useLayoutEffect(() => {
     activeGeneration.current = null
     lastSurfaceGeometry.current = null
+    surfaceUpdateSequence.current += 1
     commandQueue.current = Promise.resolve()
     resetBooleanControlIntent(playbackIntent.current, null, false)
     resetBooleanControlIntent(mutedIntent.current, null, false)
@@ -326,12 +329,31 @@ export function useVideoBridge({
     if (lastSurfaceGeometry.current === geometryKey) return
     lastSurfaceGeometry.current = geometryKey
     const generation = state.generation
-    void bridge.videoSetSurfaceRect({ generation, ...rect }).catch((error) => {
-      const lifecycle = activeLifecycle.current
-      if (lifecycle?.generation === generation) {
-        lifecycle.fail(videoError(error, 'video_surface_failed'))
-      }
-    })
+    const updateSequence = ++surfaceUpdateSequence.current
+    surfaceUpdateTail.current = surfaceUpdateTail.current
+      .catch(() => undefined)
+      .then(async () => {
+        if (
+          activeGeneration.current !== generation ||
+          surfaceUpdateSequence.current !== updateSequence
+        ) {
+          return
+        }
+        try {
+          await bridge.videoSetSurfaceRect({ generation, ...rect })
+        } catch {
+          // Window and WebView geometry are published by separate native/DOM
+          // layout passes. Keep the last valid surface alive when one transient
+          // resize sample is rejected; a newer measured rect supersedes it.
+          if (
+            activeGeneration.current === generation &&
+            surfaceUpdateSequence.current === updateSequence &&
+            lastSurfaceGeometry.current === geometryKey
+          ) {
+            lastSurfaceGeometry.current = null
+          }
+        }
+      })
   }, [bridge, media, stageRect, state.generation])
 
   const withGeneration = useCallback(async (command: (generation: number) => Promise<void>) => {
@@ -593,19 +615,34 @@ function useMeasuredVideoStage(stage: RefObject<HTMLElement | null>): DOMRectRea
   useLayoutEffect(() => {
     const node = stage.current
     if (node === null) return
+    let frame: number | null = null
     const publish = () => {
       const next = node.getBoundingClientRect()
       if (!finiteRect(next)) return
       setRect((current) => (sameRect(current, next) ? current : copyRect(next)))
     }
+    const schedule = () => {
+      if (frame !== null) return
+      if (typeof requestAnimationFrame === 'undefined') {
+        publish()
+        return
+      }
+      frame = requestAnimationFrame(() => {
+        frame = null
+        publish()
+      })
+    }
     publish()
     const observer =
-      typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => publish())
+      typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => schedule())
     observer?.observe(node)
-    window.addEventListener('resize', publish)
+    window.addEventListener('resize', schedule)
     return () => {
       observer?.disconnect()
-      window.removeEventListener('resize', publish)
+      window.removeEventListener('resize', schedule)
+      if (frame !== null && typeof cancelAnimationFrame !== 'undefined') {
+        cancelAnimationFrame(frame)
+      }
     }
   }, [stage])
 
@@ -613,7 +650,11 @@ function useMeasuredVideoStage(stage: RefObject<HTMLElement | null>): DOMRectRea
 }
 
 function finiteRect(rect: DOMRectReadOnly): boolean {
-  return [rect.left, rect.top, rect.width, rect.height].every(Number.isFinite)
+  return (
+    [rect.left, rect.top, rect.width, rect.height].every(Number.isFinite) &&
+    rect.width > 0 &&
+    rect.height > 0
+  )
 }
 
 function sameRect(left: DOMRectReadOnly | null, right: DOMRectReadOnly): boolean {

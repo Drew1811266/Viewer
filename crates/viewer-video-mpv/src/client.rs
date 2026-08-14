@@ -19,7 +19,7 @@ use crate::{
     loader::{LoadedLibrary, MpvLibrary},
 };
 
-const ISOLATION_OPTIONS: [(&str, &str); 17] = [
+const ISOLATION_OPTIONS: [(&str, &str); 19] = [
     ("vo", "libmpv"),
     ("hwdec", "auto-safe"),
     ("config", "no"),
@@ -36,6 +36,8 @@ const ISOLATION_OPTIONS: [(&str, &str); 17] = [
     ("cover-art-auto", "no"),
     ("aid", "auto"),
     ("loop-file", "no"),
+    ("keep-open", "yes"),
+    ("keep-open-pause", "yes"),
     ("network-timeout", "0"),
 ];
 

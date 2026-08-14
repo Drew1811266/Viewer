@@ -291,6 +291,8 @@ fn public_client_contract_is_isolated_and_typed() {
         ("cover-art-auto", "no"),
         ("aid", "auto"),
         ("loop-file", "no"),
+        ("keep-open", "yes"),
+        ("keep-open-pause", "yes"),
         ("network-timeout", "0"),
     ] {
         let option_index = calls

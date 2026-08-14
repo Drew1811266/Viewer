@@ -39,6 +39,27 @@ fn converts_logical_surface_size_to_retina_backing_pixels() {
 }
 
 #[test]
+fn preserves_aspect_when_a_surface_temporarily_extends_below_a_resizing_webview() {
+    assert_eq!(
+        appkit_frame(
+            SurfaceRect {
+                x: 40.0,
+                y: 900.0,
+                width: 960.0,
+                height: 540.0,
+            },
+            1_200.0,
+        ),
+        Some(AppKitFrame {
+            x: 40.0,
+            y: -240.0,
+            width: 960.0,
+            height: 540.0,
+        })
+    );
+}
+
+#[test]
 fn rejects_invalid_geometry_before_reaching_appkit_or_opengl() {
     assert_eq!(
         appkit_frame(

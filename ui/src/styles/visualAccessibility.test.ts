@@ -42,12 +42,15 @@ describe('Viewer visual accessibility contracts', () => {
   it('keeps video controls immediate in reduced motion and structural in forced colors', () => {
     const reducedMotion = mediaBody(videoPreviewCss, '(prefers-reduced-motion: reduce)')
     expect(reducedMotion).toContain('.video-controls')
+    expect(reducedMotion).toContain('.video-preview-bottom-chrome')
+    expect(reducedMotion).toContain('.video-preview-stage::after')
     expect(reducedMotion).toContain('transition: none')
     expect(reducedMotion).toContain('.video-preview-loading__progress > span')
     expect(reducedMotion).toContain('animation: none')
 
     const forcedColors = mediaBody(videoPreviewCss, '(forced-colors: active)')
     expect(forcedColors).toContain('.video-controls')
+    expect(forcedColors).toContain('.video-controls-more__popover')
     expect(forcedColors).toContain('CanvasText')
     expect(forcedColors).toContain('Highlight')
   })

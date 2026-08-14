@@ -95,7 +95,12 @@
   --preview-danger: var(--viewer-danger);
   --preview-danger-surface: var(--viewer-danger-soft);
   --preview-image-shadow: var(--viewer-shadow-image);
-  --video-preview-stage: #080a0f;
+  --video-preview-ambient-matte: #121722;
+  --video-preview-stage: var(--video-preview-ambient-matte);
+  --video-preview-reveal-duration: 120ms;
+  --video-preview-safe-inline: clamp(16px, 2.2vw, 32px);
+  --video-preview-safe-bottom: max(18px, env(safe-area-inset-bottom));
+  --video-preview-dock-max-width: 1180px;
   --video-preview-text: #f7f8fb;
   --video-preview-muted-text: rgb(235 238 245 / 76%);
   --video-preview-secondary-text: rgb(247 248 251 / 88%);

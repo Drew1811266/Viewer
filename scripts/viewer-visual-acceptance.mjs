@@ -22,7 +22,7 @@ const ACCEPTANCE_STATE_DEFINITIONS = Object.freeze(
 const CATALOG_BY_ID = new Map(
   ACCEPTANCE_STATE_DEFINITIONS.map((definition) => [definition.id, definition]),
 )
-const ACCEPTANCE_VIEWPORTS = new Set(['1024x720', '1440x900'])
+const ACCEPTANCE_VIEWPORTS = new Set(['720x720', '1024x720', '1440x900'])
 
 export class VisualAcceptanceError extends Error {
   constructor(code, message, details = {}) {
@@ -548,6 +548,7 @@ export async function collectChangedFiles(root, execute = execFileAsync) {
 }
 
 function dimensionsFor(viewport) {
+  if (viewport === '720x720') return { width: 720, height: 720 }
   if (viewport === '1024x720') return { width: 1024, height: 720 }
   if (viewport === '1440x900') return { width: 1440, height: 900 }
   throw new VisualAcceptanceError('CLI_ARGUMENT', `Unsupported viewport: ${viewport}`)

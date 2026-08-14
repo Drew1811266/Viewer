@@ -28,20 +28,24 @@ describe('immersive video preview layout', () => {
       top: '0',
       'z-index': '5',
     })
-    expect(rule('.video-preview .preview-navigation-float')).toMatchObject({
-      bottom: '154px',
-      'z-index': '6',
-    })
-    expect(rule('.video-controls')).toMatchObject({
-      bottom: '24px',
+    expect(rule('.video-preview-bottom-chrome')).toMatchObject({
+      bottom: 'var(--video-preview-safe-bottom)',
+      display: 'grid',
+      position: 'absolute',
       'z-index': '5',
     })
+    expect(rule('.video-preview .preview-navigation-float')).toMatchObject({
+      bottom: 'auto',
+      position: 'static',
+      transform: 'none',
+    })
+    expect(rule('.video-controls')).not.toHaveProperty('bottom')
   })
 
-  it('covers transparent letterbox regions with a solid theater matte', () => {
+  it('uses one ambient matte for letterboxing and the first-frame reveal veil', () => {
     const matte = rule('.video-preview-stage::before')
     expect(matte).toMatchObject({
-      'border-color': 'var(--video-preview-stage)',
+      'border-color': 'var(--video-preview-ambient-matte)',
       'border-style': 'solid',
       inset: '0',
       'pointer-events': 'none',
@@ -51,24 +55,31 @@ describe('immersive video preview layout', () => {
     expect(matte['border-width']?.replace(/\s+/g, ' ')).toBe(
       'var(--video-preview-matte-top) var(--video-preview-matte-right) var(--video-preview-matte-bottom) var(--video-preview-matte-left)',
     )
-    expect(rule('.video-preview-stage::after')).toMatchObject({ display: 'none' })
+    expect(rule('.video-preview-stage::after')).toMatchObject({
+      background: 'var(--video-preview-ambient-matte)',
+      opacity: '1',
+      'pointer-events': 'none',
+    })
+    expect(rule(".video-preview-stage[data-surface-visible='true']::after")).toMatchObject({
+      opacity: '0',
+    })
   })
 
-  it('keeps passive chrome flat while actionable controls stay high contrast', () => {
+  it('uses localized surfaces and a strong primary action without full-width bands', () => {
     expect(rule('.video-preview-title')).toMatchObject({
-      background: 'transparent',
-      border: '0',
-      'box-shadow': 'none',
+      background: 'var(--video-preview-metadata-surface)',
+      border: '1px solid var(--video-preview-surface-border)',
+      'box-shadow': 'var(--video-preview-surface-shadow)',
     })
     expect(rule('.video-preview .preview-navigation-float')).toMatchObject({
       background: 'var(--video-preview-navigation-surface)',
       border: '1px solid var(--video-preview-surface-border)',
     })
     expect(rule('.video-controls')).toMatchObject({
-      background: 'transparent',
-      border: '0',
-      'box-shadow': 'none',
-      padding: '0',
+      background: 'var(--video-preview-dock-surface)',
+      border: '1px solid var(--video-preview-surface-border)',
+      'border-radius': '20px',
+      'box-shadow': 'var(--video-preview-surface-shadow)',
     })
     expect(rule('.video-controls .viewer-button')).toMatchObject({
       background: 'var(--video-preview-control-surface)',
@@ -84,6 +95,12 @@ describe('immersive video preview layout', () => {
     expect(rule('.video-preview .viewer-icon')).toMatchObject({
       filter: 'brightness(0) invert(1)',
     })
+  })
+
+  it('hides the fullscreen cursor only with idle chrome', () => {
+    expect(
+      rule(".video-preview[data-fullscreen='true'][data-chrome-visible='false']"),
+    ).toMatchObject({ cursor: 'none' })
   })
 })
 

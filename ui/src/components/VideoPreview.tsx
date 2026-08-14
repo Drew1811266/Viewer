@@ -1,4 +1,4 @@
-import type { CSSProperties, ReactNode } from 'react'
+import type { CSSProperties, FocusEvent, ReactNode } from 'react'
 import { useEffect, useRef, useState } from 'react'
 import type { VideoFile } from '../api/types'
 import ViewerButton, { ViewerIconButton } from './ui/ViewerButton'
@@ -81,6 +81,15 @@ export default function VideoPreview({
     if (next !== undefined) onNavigate(next)
   }
 
+  function bottomChromeFocusLeft(event: FocusEvent<HTMLDivElement>) {
+    if (
+      !(event.relatedTarget instanceof Node) ||
+      !event.currentTarget.contains(event.relatedTarget)
+    ) {
+      setFocusedWithin(false)
+    }
+  }
+
   useVideoShortcuts({
     active: true,
     root: dialog,
@@ -146,6 +155,7 @@ export default function VideoPreview({
       ref={dialog}
       className="preview-overlay video-preview"
       data-surface-visible={state.surfaceVisible}
+      data-chrome-visible={controls.visible}
       data-fullscreen={controlState.fullscreen}
       data-reduced-motion={reducedMotion}
       role="dialog"
@@ -184,37 +194,44 @@ export default function VideoPreview({
             此错误仅影响当前视频。你可以重试或完成预览。
           </ViewerLocalFeedback>
         )}
-        {state.generation > 0 && (
-          <VideoControls
-            view={controlView}
-            commands={commands}
-            visible={controls.visible}
-            reducedMotion={controls.reducedMotion}
-            onActivity={controls.reveal}
-            onSeekingChange={setSeeking}
-            onAdjustingChange={setAdjusting}
-            onFocusWithinChange={setFocusedWithin}
-          />
-        )}
-        <nav className="preview-navigation-float" aria-label="视频导航">
-          <ViewerIconButton
-            icon="chevron-left"
-            label="上一个视频"
-            tone="quiet"
-            disabled={currentIndex <= 0}
-            onClick={() => navigate(-1)}
-          />
-          <span>
-            {currentIndex + 1} / {files.length}
-          </span>
-          <ViewerIconButton
-            icon="chevron-right"
-            label="下一个视频"
-            tone="quiet"
-            disabled={currentIndex < 0 || currentIndex >= files.length - 1}
-            onClick={() => navigate(1)}
-          />
-        </nav>
+        <div
+          className="video-preview-bottom-chrome"
+          data-chrome-visible={controls.visible}
+          onFocusCapture={() => setFocusedWithin(true)}
+          onBlurCapture={bottomChromeFocusLeft}
+        >
+          <nav className="preview-navigation-float" aria-label="视频导航">
+            <ViewerIconButton
+              icon="chevron-left"
+              label="上一个视频"
+              tone="quiet"
+              disabled={currentIndex <= 0}
+              onClick={() => navigate(-1)}
+            />
+            <span>
+              {currentIndex + 1} / {files.length}
+            </span>
+            <ViewerIconButton
+              icon="chevron-right"
+              label="下一个视频"
+              tone="quiet"
+              disabled={currentIndex < 0 || currentIndex >= files.length - 1}
+              onClick={() => navigate(1)}
+            />
+          </nav>
+          {state.generation > 0 && (
+            <VideoControls
+              view={controlView}
+              commands={commands}
+              visible={controls.visible}
+              reducedMotion={controls.reducedMotion}
+              onActivity={controls.reveal}
+              onSeekingChange={setSeeking}
+              onAdjustingChange={setAdjusting}
+              onFocusWithinChange={setFocusedWithin}
+            />
+          )}
+        </div>
       </div>
     </section>
   )

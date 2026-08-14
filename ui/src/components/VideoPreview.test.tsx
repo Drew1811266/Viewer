@@ -17,6 +17,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  vi.useRealTimers()
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
 })
@@ -81,7 +82,7 @@ describe('VideoPreview', () => {
 
   it('keeps every player chrome surface inside the clipped theater stage', async () => {
     const harness = videoBridgeHarness()
-    render(
+    const rendered = render(
       <VideoPreview
         file={video('a.mp4')}
         files={[video('a.mp4'), video('b.mp4')]}
@@ -99,6 +100,41 @@ describe('VideoPreview', () => {
     expect(toolbar).toHaveClass('video-preview-topbar')
     expect(within(toolbar).getByText('a.mp4')).toBeVisible()
     expect(within(toolbar).getByText('00:12')).toBeVisible()
+
+    const bottomChrome = rendered.container.querySelector('.video-preview-bottom-chrome')
+    const controls = screen.getByRole('group', { name: '视频播放控制' })
+    expect(bottomChrome).not.toBeNull()
+    expect(bottomChrome).toContainElement(navigation)
+    expect(bottomChrome).toContainElement(controls)
+    expect(bottomChrome).toHaveAttribute('data-chrome-visible', 'true')
+    expect(screen.getByRole('dialog', { name: '视频预览 a.mp4' })).toHaveAttribute(
+      'data-chrome-visible',
+      'true',
+    )
+  })
+
+  it('hides all bottom chrome while playing idle and restores it when navigation receives focus', async () => {
+    const harness = videoBridgeHarness()
+    render(
+      <VideoPreview
+        file={video('a.mp4')}
+        files={[video('a.mp4'), video('b.mp4')]}
+        bridge={harness.bridge}
+      />,
+    )
+    await waitFor(() => expect(harness.open).toHaveBeenCalledOnce())
+    vi.useFakeTimers()
+
+    await act(async () => {
+      harness.emit({ type: 'stateChanged', generation: 1, state: 'playing' })
+      await Promise.resolve()
+    })
+    const dialog = screen.getByRole('dialog', { name: '视频预览 a.mp4' })
+    act(() => vi.advanceTimersByTime(2_500))
+    expect(dialog).toHaveAttribute('data-chrome-visible', 'false')
+
+    fireEvent.focus(screen.getByRole('button', { name: '下一个视频' }))
+    expect(dialog).toHaveAttribute('data-chrome-visible', 'true')
   })
 
   it('masks the transparent space outside the fitted native video surface', async () => {

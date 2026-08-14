@@ -3,6 +3,12 @@ import { parseAcceptanceRequest } from './acceptanceRequest'
 
 describe('Viewer visual acceptance request', () => {
   it('accepts one known state at one exact approved viewport', () => {
+    expect(parseAcceptanceRequest('?id=video-playing-controls&viewport=720x720')).toEqual({
+      id: 'video-playing-controls',
+      viewport: '720x720',
+      width: 720,
+      height: 720,
+    })
     expect(parseAcceptanceRequest('?id=PRE-01&viewport=1024x720')).toEqual({
       id: 'PRE-01',
       viewport: '1024x720',

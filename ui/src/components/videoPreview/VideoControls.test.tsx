@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, within } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import VideoControls, {
   VIDEO_RATES,
   type VideoControlCommands,
@@ -7,6 +7,10 @@ import VideoControls, {
 } from './VideoControls'
 
 describe('VideoControls', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
   it('offers the approved controls, Chinese names, shortcuts, and exact rates', () => {
     const commands = controlCommands()
     renderControls({ commands })
@@ -82,6 +86,35 @@ describe('VideoControls', () => {
     expect(controls).toHaveAttribute('data-reduced-motion', 'true')
     expect(screen.getByRole('button', { name: '播放' })).toBeInTheDocument()
   })
+
+  it('keeps all controls inline in the wide player', () => {
+    stubCompactViewport(false)
+    renderControls()
+
+    expect(screen.queryByRole('button', { name: '更多播放控制' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '上一帧' })).toBeVisible()
+    expect(screen.getByRole('button', { name: '下一帧' })).toBeVisible()
+    expect(screen.getByRole('slider', { name: '音量' })).toBeVisible()
+    expect(screen.getByRole('combobox', { name: '播放速度' })).toBeVisible()
+  })
+
+  it('keeps primary controls visible and moves secondary controls into More when compact', () => {
+    stubCompactViewport(true)
+    renderControls()
+
+    expect(screen.getByRole('button', { name: '播放' })).toBeVisible()
+    expect(screen.getByRole('button', { name: '静音' })).toBeVisible()
+    expect(screen.getByRole('button', { name: '进入全屏' })).toBeVisible()
+    expect(screen.queryByRole('button', { name: '上一帧' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('slider', { name: '音量' })).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: '更多播放控制' }))
+    const panel = screen.getByRole('region', { name: '更多播放控制' })
+    expect(within(panel).getByRole('button', { name: '上一帧' })).toBeVisible()
+    expect(within(panel).getByRole('button', { name: '下一帧' })).toBeVisible()
+    expect(within(panel).getByRole('slider', { name: '音量' })).toBeVisible()
+    expect(within(panel).getByRole('combobox', { name: '播放速度' })).toBeVisible()
+  })
 })
 
 const CONTROL_VIEW: VideoControlViewState = {
@@ -140,4 +173,20 @@ function controlCommands() {
       .fn<VideoControlCommands['requestThumbnail']>()
       .mockResolvedValue(undefined),
   }
+}
+
+function stubCompactViewport(compact: boolean) {
+  vi.stubGlobal(
+    'matchMedia',
+    vi.fn(() => ({
+      matches: compact,
+      media: '(max-width: 1099px)',
+      onchange: null,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    })),
+  )
 }

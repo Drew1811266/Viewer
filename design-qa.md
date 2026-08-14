@@ -152,6 +152,51 @@ platform task because the Windows version is not yet under development.
 
 Final result: passed
 
+## 2026-08-13 — Responsive Video Player Experience Redesign
+
+### Source truth and capture normalization
+
+- Approved Figma board: [Viewer Video Player Redesign](https://www.figma.com/design/gWuePv7qwGnu32aRryxdyg/Untitled?node-id=9-2), especially `10:11` (wide player) and `11:17` (compact player).
+- Figma source crops: `target/design-qa-video-player-redesign/figma-wide-source.png` (`1286 × 793`, SHA-256 `54f2537cc8030d190938b0273973f3923e372896b8fb173ed5ff45812ae65304`) and `target/design-qa-video-player-redesign/figma-compact-source.png` (`607 × 556`, SHA-256 `8c54afbbbf1eb93bc046bd042afbee1e78ae2ff11d3a58874175ae91f4f5a861`).
+- Product captures: `target/viewer-visual-acceptance/video-player-redesign/cdd43657554d26da1ffcb5837c3dd5052be648ee/1440x900/video-playing-controls/product.png` (`1440 × 900`, SHA-256 `62f8bd0a849306d1ee8d4e9021afe2020d4eb6dbcfa8fa10774054ed03d56c9c`) and `target/viewer-visual-acceptance/video-player-redesign-720/cdd43657554d26da1ffcb5837c3dd5052be648ee/720x720/video-playing-controls/product.png` (`720 × 720`, SHA-256 `1ba577e85507815dc2fdc95588042d9ca707d6b3ce7984b1c1b465a80a046ca1`).
+- Same-input comparison images: `target/design-qa-video-player-redesign/compare-wide.png` (SHA-256 `e5de4040ebdf1703c7eb74849e15498bc9bfad02716e3d3875b9bf95c1e7ddb7`) and `target/design-qa-video-player-redesign/compare-compact.png` (SHA-256 `86372ec6e78c3a8ead9e549aa4659ae0e60046272247aee31c9e5a0b70b05443`).
+- Product screenshots use 1× CSS-pixel density. The Figma board crops preserve the design's natural aspect ratio and are compared as complete player compositions rather than as pixel-identical media content.
+- Reviewed state: active playback, fitted first frame visible, controls revealed, two-video navigation, elapsed/total time, responsive settings, and Done.
+
+### Fidelity and behavior review
+
+| Surface | Result | Acceptance note |
+| --- | --- | --- |
+| Layout hierarchy | Pass | Video remains the dominant surface; metadata, Done, page navigation, timeline, transport, and settings form three localized layers instead of full-width opaque bands. |
+| Wide controls | Pass | At `1440 × 900`, frame stepping, play/pause, volume, rate, and fullscreen remain inline with one timeline and one accessible instance of every control. |
+| Narrow controls | Pass | At `720 × 720`, the dock is `688 px` wide inside `16 px` gutters with no horizontal overflow; frame step, volume, and rate move behind one More trigger. |
+| Geometry | Pass | The React stage remains the single clipped container and retains the existing native `matteInsets`; CSS does not create a second media rectangle or crop the video. |
+| First-frame transition | Pass | Ambient blue-gray matte and letterbox space remain stable until the active generation reveals the native first frame; the `120 ms` veil is removed under reduced motion. |
+| Control priority | Pass | Play/pause is the only accent-filled primary action; secondary icon buttons retain visible boundaries, hover/focus states, and `44 × 44` minimum targets. |
+| Idle and focus | Pass | Playing chrome shares one visibility transition; paused, ended, failed, adjusting, and focus-within states remain visible. Fullscreen cursor hiding follows the same idle state. |
+| Accessibility | Pass | Chinese accessible names, native range/select controls, focus restoration from More, forced-colors system tokens, reduced motion, and keyboard ownership remain covered. |
+| Typography and content | Pass | Viewer typography and dynamic filename/duration remain intact; hierarchy matches the Figma intent without copying its placeholder media or decorative geometry. |
+| Icons and imagery | Pass | Existing Lucide registry icons are reused; the product video fixture is intentionally different from the abstract Figma placeholder and keeps `contain` framing. |
+
+### Findings and iteration history
+
+- P1 resolved: independent absolute navigation and control layers could collide or drift outside the clipped stage. They now share `.video-preview-bottom-chrome`, one bottom anchor, one width cap, and one visibility state.
+- P1 resolved: narrow layouts compressed every control into one row. One live media-query hook now selects a compact branch and More disclosure without hidden duplicate form controls.
+- P1 resolved: the old near-black first-frame transition read as a flash. The stage, loading shell, and letterbox now use one ambient matte with a first-frame veil.
+- P2 resolved: the original visual-acceptance fixture supported only `1024 × 720` and `1440 × 900`; forcing a `720 px` browser around the `1024 px` frame falsely reported overflow. `720 × 720` is now an explicit, non-default acceptance viewport, and fresh browser metrics report frame/body/player width `720`, dock width `688`, and horizontal overflow `false` with no console warnings or errors.
+- Intentional adaptation: production uses real fitted video imagery, existing Viewer primitives, and the native surface contract rather than Figma's abstract placeholder shapes. Navigation and dock are grouped into the approved shared safe region so they cannot overlap even when the media aspect ratio changes.
+- The visual-acceptance runner produced all requested product images. Its comparison wrapper returned nonzero only because no legacy atlas `reference.png` exists for these new video states and the newly added `720 × 720` viewport; the authoritative reference for this redesign is the Figma source above.
+
+### Verification
+
+- RED→GREEN focused contracts covered bottom-chrome containment, ambient reveal, responsive hook updates, compact More behavior, exact control composition, idle/focus restoration, forced colors, reduced motion, and `720 × 720` acceptance parsing.
+- Focused player and style suite: 8 files / 48 tests passed before the viewport addition; the viewport parser and CLI regression add 2 focused passing suites.
+- Fresh `pnpm verify` passed end to end: policy `30/30`, packaging `30/30`, clean-wrapper `11/11`, UI check, `108` UI files / `959` passed + `1` skipped, Vite build (`190` modules), locked Rust formatting/Clippy/workspace tests, Tauri security boundaries, cargo-deny, npm licenses, and bundled runtime license verification.
+- `git diff --check` passed after the visual evidence and documentation index were updated.
+- Final visual severity: P0 `0`, P1 `0`, P2 `0`.
+
+final result: passed
+
 ## 2026-08-13 — Native Video Letterbox Leak Correction
 
 ### Current-run evidence

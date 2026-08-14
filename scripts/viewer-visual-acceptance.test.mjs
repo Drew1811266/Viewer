@@ -44,6 +44,22 @@ describe('visual acceptance CLI', () => {
       { code: 'CLI_ARGUMENT' },
     )
   })
+
+  it('accepts the approved narrow player viewport without adding it to default batches', () => {
+    assert.deepEqual(
+      parseVisualAcceptanceCli([
+        '--id',
+        'video-playing-controls',
+        '--viewport',
+        '720x720',
+      ]).viewports,
+      ['720x720'],
+    )
+    assert.deepEqual(parseVisualAcceptanceCli(['--id', 'video-playing-controls']).viewports, [
+      '1024x720',
+      '1440x900',
+    ])
+  })
 })
 
 describe('changed-state selection', () => {

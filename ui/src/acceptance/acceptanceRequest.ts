@@ -1,17 +1,18 @@
 import { acceptanceDefinition } from './acceptanceStateCatalog'
 
-export type AcceptanceViewport = '1024x720' | '1440x900'
+export type AcceptanceViewport = '720x720' | '1024x720' | '1440x900'
 
 export interface AcceptanceRequest {
   id: string
   viewport: AcceptanceViewport
-  width: 1024 | 1440
+  width: 720 | 1024 | 1440
   height: 720 | 900
 }
 
 export const VIDEO_FEASIBILITY_ACCEPTANCE_ID = 'VIDEO-FEASIBILITY'
 
 const VIEWPORTS = {
+  '720x720': { width: 720, height: 720 },
   '1024x720': { width: 1024, height: 720 },
   '1440x900': { width: 1440, height: 900 },
 } as const

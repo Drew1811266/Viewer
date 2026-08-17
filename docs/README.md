@@ -56,7 +56,7 @@ completion.
 | [`superpowers/specs/2026-08-10-viewer-video-preview-design.md`](superpowers/specs/2026-08-10-viewer-video-preview-design.md) | Active | — |
 | [`superpowers/specs/2026-08-13-viewer-video-control-visibility-design.md`](superpowers/specs/2026-08-13-viewer-video-control-visibility-design.md) | Active | — |
 | [`superpowers/specs/2026-08-13-viewer-video-player-experience-redesign.md`](superpowers/specs/2026-08-13-viewer-video-player-experience-redesign.md) | Active | — |
-| [`superpowers/specs/2026-08-14-viewer-video-interaction-performance-design.md`](superpowers/specs/2026-08-14-viewer-video-interaction-performance-design.md) | Active | — |
+| [`superpowers/specs/2026-08-14-video-interaction-and-aperture-design.md`](superpowers/specs/2026-08-14-video-interaction-and-aperture-design.md) | Active | — |
 | [`reviews/2026-08-10-video-preview-acceptance.md`](reviews/2026-08-10-video-preview-acceptance.md) | Active development evidence | — |
 
 ## Superseded decisions
@@ -65,11 +65,13 @@ completion.
 | --- | --- | --- |
 | [`adr/0004-viewer-0.1-architecture-freeze.md`](adr/0004-viewer-0.1-architecture-freeze.md) | Superseded | [`adr/0005-continuous-development-governance.md`](adr/0005-continuous-development-governance.md) |
 | [`superpowers/specs/2026-08-06-viewer-trackpad-zoom-and-image-magnifier-design.md`](superpowers/specs/2026-08-06-viewer-trackpad-zoom-and-image-magnifier-design.md) | Superseded | [`superpowers/specs/2026-08-07-viewer-pointer-following-magnifier-revision-design.md`](superpowers/specs/2026-08-07-viewer-pointer-following-magnifier-revision-design.md) |
+| [`superpowers/specs/2026-08-14-viewer-video-interaction-performance-design.md`](superpowers/specs/2026-08-14-viewer-video-interaction-performance-design.md) | Superseded | [`superpowers/specs/2026-08-14-video-interaction-and-aperture-design.md`](superpowers/specs/2026-08-14-video-interaction-and-aperture-design.md) |
 
 ## Historical implementation plans
 
 | Document | Status | Replaced by |
 | --- | --- | --- |
+| [`superpowers/plans/2026-08-14-video-interaction-and-aperture.md`](superpowers/plans/2026-08-14-video-interaction-and-aperture.md) | Historical | — |
 | [`superpowers/plans/2026-08-13-viewer-video-control-visibility.md`](superpowers/plans/2026-08-13-viewer-video-control-visibility.md) | Historical | — |
 | [`superpowers/plans/2026-08-13-viewer-video-player-experience-redesign.md`](superpowers/plans/2026-08-13-viewer-video-player-experience-redesign.md) | Historical | — |
 | [`superpowers/plans/2026-07-16-viewer-0.1-roadmap.md`](superpowers/plans/2026-07-16-viewer-0.1-roadmap.md) | Historical | — |

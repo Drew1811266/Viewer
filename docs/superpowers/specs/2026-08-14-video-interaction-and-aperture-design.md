@@ -1,7 +1,7 @@
 # Video Interaction Latency and Surface Aperture Design
 
 Date: 2026-08-14
-Status: proposed
+Status: Approved
 
 ## Problem
 

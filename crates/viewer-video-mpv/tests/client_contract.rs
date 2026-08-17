@@ -3,10 +3,11 @@ use std::{
     path::Path,
     ptr,
     sync::{Mutex, OnceLock},
+    thread::{self, ThreadId},
 };
 
 use viewer_video_mpv::{
-    FrameDirection, MpvApi, MpvClient, PlaybackRate, SeekMode,
+    FrameDirection, MpvApi, MpvClient, MpvPlaybackSnapshot, PlaybackRate, SeekMode,
     ffi::{MPV_ERROR_PROPERTY_UNAVAILABLE, MpvEvent, MpvFormat, MpvHandle},
 };
 
@@ -39,6 +40,11 @@ fn simulated_core() -> &'static Mutex<SimulatedCore> {
     CORE.get_or_init(|| Mutex::new(SimulatedCore::default()))
 }
 
+fn command_threads() -> &'static Mutex<Vec<ThreadId>> {
+    static THREADS: OnceLock<Mutex<Vec<ThreadId>>> = OnceLock::new();
+    THREADS.get_or_init(|| Mutex::new(Vec::new()))
+}
+
 fn fake_guard() -> &'static Mutex<()> {
     static GUARD: OnceLock<Mutex<()>> = OnceLock::new();
     GUARD.get_or_init(|| Mutex::new(()))
@@ -46,6 +52,7 @@ fn fake_guard() -> &'static Mutex<()> {
 
 fn reset_fake() {
     calls().lock().unwrap().clear();
+    command_threads().lock().unwrap().clear();
     *simulated_core().lock().unwrap() = SimulatedCore::default();
 }
 
@@ -83,6 +90,10 @@ unsafe extern "C" fn set_option_string(
 }
 
 unsafe extern "C" fn command(_: *mut MpvHandle, args: *const *const c_char) -> c_int {
+    command_threads()
+        .lock()
+        .unwrap()
+        .push(thread::current().id());
     let mut values = Vec::new();
     let mut offset = 0;
     loop {
@@ -107,6 +118,36 @@ unsafe extern "C" fn command(_: *mut MpvHandle, args: *const *const c_char) -> c
     }
     calls().lock().unwrap().push(Call::Command(values));
     0
+}
+
+#[test]
+fn command_client_executes_media_work_off_the_calling_thread_and_reads_one_snapshot() {
+    let _guard = fake_guard().lock().unwrap();
+    reset_fake();
+
+    let mut client = unsafe { MpvClient::from_api(fake_api()) }.unwrap();
+    client.initialize_for_rendering().unwrap();
+    let commands = client.command_client();
+    let worker_commands = commands.clone();
+    let caller = thread::current().id();
+    thread::spawn(move || {
+        worker_commands
+            .seek_absolute_us(2_500_000, SeekMode::CommitExact)
+            .unwrap();
+    })
+    .join()
+    .unwrap();
+
+    assert_eq!(command_threads().lock().unwrap().len(), 1);
+    assert_ne!(command_threads().lock().unwrap()[0], caller);
+    assert_eq!(
+        commands.playback_snapshot().unwrap(),
+        MpvPlaybackSnapshot {
+            time_us: Some(1_250_000),
+            eof_reached: true,
+            picture_type: None,
+        }
+    );
 }
 
 unsafe extern "C" fn set_property(

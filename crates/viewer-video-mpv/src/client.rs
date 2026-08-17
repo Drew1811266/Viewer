@@ -139,6 +139,18 @@ pub struct MpvClient {
     initialized: bool,
 }
 
+#[derive(Clone)]
+pub struct MpvCommandClient {
+    inner: Arc<ClientInner>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct MpvPlaybackSnapshot {
+    pub time_us: Option<u64>,
+    pub eof_reached: bool,
+    pub picture_type: Option<String>,
+}
+
 impl MpvClient {
     pub fn new(library: &MpvLibrary) -> Result<Self, MpvError> {
         unsafe {
@@ -217,6 +229,12 @@ impl MpvClient {
 
     pub fn play(&self) -> Result<(), MpvError> {
         self.set_flag_property("pause", false)
+    }
+
+    pub fn command_client(&self) -> MpvCommandClient {
+        MpvCommandClient {
+            inner: Arc::clone(&self.inner),
+        }
     }
 
     pub fn pause(&self) -> Result<(), MpvError> {
@@ -406,11 +424,7 @@ impl MpvClient {
     }
 
     fn command_from_strings(&self, arguments: &[&str]) -> Result<(), MpvError> {
-        let arguments = arguments
-            .iter()
-            .map(|argument| CString::new(*argument).map_err(|_| MpvError::InteriorNul))
-            .collect::<Result<Vec<_>, _>>()?;
-        self.run_command(&arguments)
+        command_from_strings(&self.inner, arguments)
     }
 
     fn run_command(&self, arguments: &[CString]) -> Result<(), MpvError> {
@@ -436,6 +450,111 @@ impl MpvClient {
         self.inner._library.as_ref()?;
         Some((self.render_api?, Arc::clone(&self.inner)))
     }
+}
+
+impl MpvCommandClient {
+    pub fn seek_absolute_us(&self, time_us: u64, mode: SeekMode) -> Result<(), MpvError> {
+        let seconds = format!("{:.6}", time_us as f64 / 1_000_000.0);
+        command_from_strings(&self.inner, &["seek", &seconds, mode.command_flag()])
+    }
+
+    pub fn playback_snapshot(&self) -> Result<MpvPlaybackSnapshot, MpvError> {
+        let time_us = runtime_double_property(&self.inner, "time-pos")?
+            .filter(|seconds| seconds.is_finite() && *seconds >= 0.0)
+            .map(|seconds| (seconds * 1_000_000.0).round() as u64);
+        let eof_reached = runtime_flag_property(&self.inner, "eof-reached")?.unwrap_or(false);
+        let picture_type = runtime_string_property(&self.inner, "video-frame-info/picture-type")?;
+        Ok(MpvPlaybackSnapshot {
+            time_us,
+            eof_reached,
+            picture_type,
+        })
+    }
+}
+
+fn command_from_strings(inner: &ClientInner, arguments: &[&str]) -> Result<(), MpvError> {
+    let arguments = arguments
+        .iter()
+        .map(|argument| CString::new(*argument).map_err(|_| MpvError::InteriorNul))
+        .collect::<Result<Vec<_>, _>>()?;
+    let mut pointers = arguments
+        .iter()
+        .map(|argument| argument.as_ptr())
+        .collect::<Vec<_>>();
+    pointers.push(std::ptr::null());
+    let result = unsafe { (inner.api.command)(inner.handle.as_ptr(), pointers.as_ptr()) };
+    ensure_success("command", result)
+}
+
+fn runtime_string_property(
+    inner: &ClientInner,
+    name: &'static str,
+) -> Result<Option<String>, MpvError> {
+    let name = CString::new(name).expect("static string has no NUL");
+    let mut value: *mut c_char = std::ptr::null_mut();
+    let result = unsafe {
+        (inner.api.get_property)(
+            inner.handle.as_ptr(),
+            name.as_ptr(),
+            MPV_FORMAT_STRING,
+            (&raw mut value).cast::<c_void>(),
+        )
+    };
+    if result == MPV_ERROR_PROPERTY_UNAVAILABLE {
+        return Ok(None);
+    }
+    ensure_success("get_property", result)?;
+    let value = NonNull::new(value).ok_or(MpvError::Api {
+        operation: "get_property",
+        code: -2,
+    })?;
+    let property = unsafe { CStr::from_ptr(value.as_ptr()) }
+        .to_string_lossy()
+        .into_owned();
+    unsafe { (inner.api.free)(value.as_ptr().cast::<c_void>()) };
+    Ok(Some(property))
+}
+
+fn runtime_double_property(
+    inner: &ClientInner,
+    name: &'static str,
+) -> Result<Option<f64>, MpvError> {
+    let name = CString::new(name).expect("static string has no NUL");
+    let mut value = 0.0;
+    let result = unsafe {
+        (inner.api.get_property)(
+            inner.handle.as_ptr(),
+            name.as_ptr(),
+            MPV_FORMAT_DOUBLE,
+            (&raw mut value).cast::<c_void>(),
+        )
+    };
+    if result == MPV_ERROR_PROPERTY_UNAVAILABLE {
+        return Ok(None);
+    }
+    ensure_success("get_property", result)?;
+    Ok(Some(value))
+}
+
+fn runtime_flag_property(
+    inner: &ClientInner,
+    name: &'static str,
+) -> Result<Option<bool>, MpvError> {
+    let name = CString::new(name).expect("static string has no NUL");
+    let mut value: c_int = 0;
+    let result = unsafe {
+        (inner.api.get_property)(
+            inner.handle.as_ptr(),
+            name.as_ptr(),
+            MPV_FORMAT_FLAG,
+            (&raw mut value).cast::<c_void>(),
+        )
+    };
+    if result == MPV_ERROR_PROPERTY_UNAVAILABLE {
+        return Ok(None);
+    }
+    ensure_success("get_property", result)?;
+    Ok(Some(value != 0))
 }
 
 fn validate_local_file(path: &Path) -> Result<(), MpvError> {

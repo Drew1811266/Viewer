@@ -99,7 +99,7 @@ export default function VideoPreview({
     if (next !== undefined) onNavigate(next)
   }
 
-  function bottomChromeFocusLeft(event: FocusEvent<HTMLDivElement>) {
+  function chromeFocusLeft(event: FocusEvent<HTMLDivElement>) {
     if (
       !(event.relatedTarget instanceof Node) ||
       !event.currentTarget.contains(event.relatedTarget)
@@ -160,15 +160,7 @@ export default function VideoPreview({
 
   const durationLabel = formatVideoTime(file.videoMetadata.durationUs ?? state.durationUs ?? 0)
   const navigation = (
-    <nav
-      className="preview-navigation-float video-preview-top-navigation"
-      aria-label="视频导航"
-      onFocusCapture={() => {
-        controls.reveal()
-        setFocusedWithin(true)
-      }}
-      onBlurCapture={bottomChromeFocusLeft}
-    >
+    <nav className="preview-navigation-float video-preview-top-navigation" aria-label="视频导航">
       <ViewerIconButton
         icon="chevron-left"
         label="上一个视频"
@@ -206,18 +198,26 @@ export default function VideoPreview({
         data-testid="video-preview-stage"
         data-surface-visible={state.surfaceVisible}
       >
-        <ViewerToolbar
-          label="视频预览工具"
-          className="video-preview-topbar"
-          leading={
-            <span className="video-preview-title">
-              <strong>{file.name}</strong>
-              <span>{durationLabel}</span>
-            </span>
-          }
-          center={navigation}
-          actions={actions}
-        />
+        <div
+          onFocusCapture={() => {
+            controls.reveal()
+            setFocusedWithin(true)
+          }}
+          onBlurCapture={chromeFocusLeft}
+        >
+          <ViewerToolbar
+            label="视频预览工具"
+            className="video-preview-topbar"
+            leading={
+              <span className="video-preview-title">
+                <strong>{file.name}</strong>
+                <span>{durationLabel}</span>
+              </span>
+            }
+            center={navigation}
+            actions={actions}
+          />
+        </div>
         {state.phase === 'ended' && posterUrl !== null && (
           <div className="video-preview-ended-poster">
             <img src={posterUrl} alt={`${file.name} 的视频封面`} draggable={false} />
@@ -240,7 +240,7 @@ export default function VideoPreview({
           className="video-preview-bottom-chrome"
           data-chrome-visible={controls.visible}
           onFocusCapture={() => setFocusedWithin(true)}
-          onBlurCapture={bottomChromeFocusLeft}
+          onBlurCapture={chromeFocusLeft}
         >
           {state.generation > 0 && (
             <VideoControls

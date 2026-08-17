@@ -159,6 +159,19 @@ describe('immersive video preview layout', () => {
     })
   })
 
+  it('keeps a 44px timeline hit region around the compact visible track', () => {
+    const slider = rule('.video-timeline__slider')
+    const track = rule('.video-timeline__track')
+
+    expect(Number.parseFloat(slider.height ?? '0')).toBeGreaterThanOrEqual(44)
+    expect(slider).toMatchObject({ 'align-self': 'end' })
+    expect(Number.parseFloat(track.height ?? '0')).toBeLessThanOrEqual(4)
+    expect(track).toMatchObject({ top: '34px' })
+    expect(rule('.video-preview-bottom-chrome')).toMatchObject({
+      height: 'var(--video-preview-bottom-controller-height)',
+    })
+  })
+
   it('gives controls explicit hover, pressed, focus, active, and disabled states', () => {
     expect(rule('.video-controls .viewer-button:hover:not(:disabled)::before')).toMatchObject({
       background: 'var(--video-preview-control-hover-surface)',

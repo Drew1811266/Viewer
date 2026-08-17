@@ -480,8 +480,9 @@ body:has(.viewer-shell[data-video-preview-open='true']) {
 }
 
 .video-timeline__slider {
+  align-self: end;
   cursor: pointer;
-  height: 16px;
+  height: 44px;
   position: relative;
   touch-action: none;
 }
@@ -499,7 +500,7 @@ body:has(.viewer-shell[data-video-preview-open='true']) {
   overflow: visible;
   position: absolute;
   right: 0;
-  top: 6px;
+  top: 34px;
 }
 
 .video-timeline__progress {

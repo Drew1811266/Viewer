@@ -142,6 +142,37 @@ describe('VideoPreview', () => {
     expect(dialog).toHaveAttribute('data-chrome-visible', 'true')
   })
 
+  it('reveals and pins chrome while toolbar actions hold keyboard focus', async () => {
+    const harness = videoBridgeHarness()
+    render(<VideoPreview file={video('a.mp4')} files={[video('a.mp4')]} bridge={harness.bridge} />)
+    await waitFor(() => expect(harness.open).toHaveBeenCalledOnce())
+    vi.useFakeTimers()
+
+    await act(async () => {
+      harness.emit({ type: 'stateChanged', generation: 1, state: 'playing' })
+      await Promise.resolve()
+    })
+    const dialog = screen.getByRole('dialog', { name: '视频预览 a.mp4' })
+    act(() => vi.advanceTimersByTime(2_500))
+    expect(dialog).toHaveAttribute('data-chrome-visible', 'false')
+
+    fireEvent.focus(screen.getByRole('button', { name: '完成' }))
+    expect(dialog).toHaveAttribute('data-chrome-visible', 'true')
+    act(() => vi.advanceTimersByTime(5_000))
+    expect(dialog).toHaveAttribute('data-chrome-visible', 'true')
+
+    act(() => {
+      harness.emit({
+        type: 'failed',
+        generation: 1,
+        error: { code: 'decode_failed', retryable: true },
+      })
+    })
+    fireEvent.focus(screen.getByRole('button', { name: '重试' }))
+    act(() => vi.advanceTimersByTime(5_000))
+    expect(dialog).toHaveAttribute('data-chrome-visible', 'true')
+  })
+
   it('leaves native theater pixels unobstructed without DOM aperture ownership', async () => {
     const harness = videoBridgeHarness()
     render(<VideoPreview file={video('a.mp4')} files={[video('a.mp4')]} bridge={harness.bridge} />)

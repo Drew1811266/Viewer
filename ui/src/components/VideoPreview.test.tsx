@@ -91,6 +91,11 @@ describe('VideoPreview', () => {
 
     const bottomChrome = rendered.container.querySelector('.video-preview-bottom-chrome')
     const controls = screen.getByRole('group', { name: '视频播放控制' })
+    expect(controls).toHaveAttribute('data-layout', 'wide')
+    expect(within(controls).getByRole('button', { name: '播放' })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    )
     expect(bottomChrome).not.toBeNull()
     expect(bottomChrome).not.toContainElement(navigation)
     expect(bottomChrome).toContainElement(controls)

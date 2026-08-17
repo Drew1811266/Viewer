@@ -42,6 +42,7 @@ describe('Viewer visual accessibility contracts', () => {
   it('keeps video controls immediate in reduced motion and structural in forced colors', () => {
     const reducedMotion = mediaBody(videoPreviewCss, '(prefers-reduced-motion: reduce)')
     expect(reducedMotion).toContain('.video-controls')
+    expect(reducedMotion).toContain('.video-preview-topbar')
     expect(reducedMotion).toContain('.video-preview-bottom-chrome')
     expect(reducedMotion).toContain('.video-preview-stage::after')
     expect(reducedMotion).toContain('transition: none')

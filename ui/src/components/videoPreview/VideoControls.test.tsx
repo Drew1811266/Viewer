@@ -79,6 +79,25 @@ describe('VideoControls', () => {
     expect(screen.getByText('00:08 / 00:08')).toBeVisible()
   })
 
+  it('exposes the current playback state on the primary transport control', () => {
+    const rendered = renderControls()
+    expect(screen.getByRole('button', { name: '播放' })).toHaveAttribute('aria-pressed', 'false')
+
+    rendered.rerender(
+      <VideoControls
+        view={{ ...CONTROL_VIEW, phase: 'playing' }}
+        commands={controlCommands()}
+        visible
+        reducedMotion={false}
+        onActivity={() => undefined}
+        onSeekingChange={() => undefined}
+        onAdjustingChange={() => undefined}
+      />,
+    )
+
+    expect(screen.getByRole('button', { name: '暂停' })).toHaveAttribute('aria-pressed', 'true')
+  })
+
   it('marks hidden and reduced-motion state without removing focused controls', () => {
     renderControls({ visible: false, reducedMotion: true })
     const controls = screen.getByRole('group', { name: '视频播放控制' })

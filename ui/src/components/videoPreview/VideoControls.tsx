@@ -124,6 +124,7 @@ export default function VideoControls({
             title={playing ? '暂停（空格）' : '播放（空格）'}
             aria-keyshortcuts="Space"
             disabled={disabled}
+            active={playing}
             onClick={() => runCommand(commands.togglePlayback())}
           />
           {!compact && (

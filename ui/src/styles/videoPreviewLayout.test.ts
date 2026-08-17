@@ -5,10 +5,29 @@ import { describe, expect, it } from 'vitest'
 const css = readFileSync(resolve(import.meta.dirname, 'videoPreview.css'), 'utf8')
 
 describe('immersive video preview layout', () => {
-  it('reserves exactly 50px above and 88px below the native video viewport', () => {
+  it('overlays compact chrome without reserving native video viewport space', () => {
     expect(rule('.video-preview')).toMatchObject({
-      '--video-preview-top-command-bar-height': '50px',
-      '--video-preview-bottom-inspector-height': '88px',
+      '--video-preview-top-overlay-height': '36px',
+      '--video-preview-bottom-controller-height': '64px',
+    })
+    expect(rule('.video-preview-topbar')).toMatchObject({
+      height: 'var(--video-preview-top-overlay-height)',
+      inset: '10px 12px auto',
+      position: 'absolute',
+    })
+    expect(rule('.video-preview-bottom-chrome')).toMatchObject({
+      bottom: '10px',
+      height: 'var(--video-preview-bottom-controller-height)',
+      'inset-inline': '12px',
+      position: 'absolute',
+    })
+    expect(rule('.video-controls .viewer-button')).toMatchObject({
+      height: '44px',
+      width: '44px',
+    })
+    expect(rule('.video-controls .viewer-button .viewer-icon')).toMatchObject({
+      height: '28px',
+      width: '28px',
     })
   })
 
@@ -49,13 +68,11 @@ describe('immersive video preview layout', () => {
   it('keeps title, navigation, and controls inside the stage safe area', () => {
     expect(rule('.video-preview-topbar')).toMatchObject({
       position: 'absolute',
-      top: '0',
       'z-index': '6',
     })
     expect(rule('.video-preview-bottom-chrome')).toMatchObject({
-      bottom: '0',
       display: 'block',
-      height: 'var(--video-preview-bottom-inspector-height)',
+      height: 'var(--video-preview-bottom-controller-height)',
       position: 'absolute',
       'z-index': '5',
     })
@@ -78,14 +95,15 @@ describe('immersive video preview layout', () => {
       opacity: '0',
     })
     expect(rule('.video-preview-topbar')).toMatchObject({
-      background: 'var(--viewer-surface)',
-      'border-bottom': '1px solid var(--viewer-border)',
+      'backdrop-filter': 'blur(18px) saturate(120%)',
+      background: 'color-mix(in srgb, var(--video-preview-chrome-surface) 88%, transparent)',
+      border: '1px solid var(--viewer-border)',
       color: 'var(--viewer-text)',
-      height: 'var(--video-preview-top-command-bar-height)',
+      height: 'var(--video-preview-top-overlay-height)',
     })
     expect(rule('.video-controls')).toMatchObject({
-      background: 'var(--viewer-surface)',
-      'border-top': '1px solid var(--viewer-border)',
+      background: 'color-mix(in srgb, var(--video-preview-chrome-surface) 88%, transparent)',
+      border: '1px solid var(--viewer-border)',
       color: 'var(--viewer-text)',
       height: '100%',
       width: '100%',
@@ -95,45 +113,79 @@ describe('immersive video preview layout', () => {
   it('uses compact flat chrome with neutral actions and one accent playback action', () => {
     expect(rule('.video-preview-title')).toMatchObject({
       display: 'flex',
-      gap: '12px',
+      gap: '8px',
     })
     expect(rule('.video-preview .preview-navigation-float')).toMatchObject({
       background: 'transparent',
       border: '0',
     })
     expect(rule('.video-controls')).toMatchObject({
-      background: 'var(--viewer-surface)',
-      border: '0',
-      'border-radius': '0',
-      gap: '4px',
-      padding: '6px clamp(12px, 2vw, 24px)',
+      background: 'color-mix(in srgb, var(--video-preview-chrome-surface) 88%, transparent)',
+      border: '1px solid var(--viewer-border)',
+      'border-radius': '10px',
+      gap: '0',
+      padding: '1px 8px',
     })
     expect(rule('.video-controls__row')).toMatchObject({
-      gap: '12px',
+      gap: '8px',
       'padding-top': '0',
     })
     expect(rule('.video-controls .viewer-button')).toMatchObject({
-      background: 'var(--viewer-surface)',
-      border: '1px solid var(--viewer-control-border)',
+      background: 'transparent',
+      border: '0',
+      height: '44px',
       'min-height': '44px',
       'min-width': '44px',
       width: '44px',
     })
+    expect(rule('.video-controls .viewer-button::before')).toMatchObject({
+      background: 'var(--video-preview-control-surface)',
+      border: '1px solid var(--viewer-control-border)',
+      inset: '7px',
+      position: 'absolute',
+    })
     expect(rule('.video-controls .video-controls__play')).toMatchObject({
-      background: 'var(--viewer-accent)',
+      background: 'transparent',
       color: 'var(--viewer-on-accent)',
+      height: '44px',
       'min-height': '44px',
       'min-width': '44px',
       width: '44px',
+    })
+    expect(rule('.video-controls .video-controls__play::before')).toMatchObject({
+      background: 'var(--viewer-accent)',
+      'border-color': 'var(--viewer-accent)',
+      inset: '6px',
+    })
+  })
+
+  it('gives controls explicit hover, pressed, focus, active, and disabled states', () => {
+    expect(rule('.video-controls .viewer-button:hover:not(:disabled)::before')).toMatchObject({
+      background: 'var(--video-preview-control-hover-surface)',
+      'border-color': 'var(--video-preview-control-hover-border)',
+    })
+    expect(rule('.video-controls .viewer-button:active:not(:disabled)::before')).toMatchObject({
+      background: 'var(--viewer-accent-soft)',
+      'border-color': 'var(--viewer-accent)',
+    })
+    expect(rule(".video-controls .viewer-button[data-active='true']::before")).toMatchObject({
+      background: 'var(--viewer-accent-soft)',
+      'border-color': 'var(--viewer-accent)',
+    })
+    expect(rule('.video-controls .viewer-button:focus-visible')).toMatchObject({
+      outline: 'var(--viewer-focus-outline)',
+      'outline-offset': 'var(--viewer-focus-offset)',
+    })
+    expect(rule('.video-controls .viewer-button:disabled')).toMatchObject({
+      opacity: '0.42',
     })
   })
 
   it('covers source-authored black tails with the verified ended poster', () => {
     expect(rule('.video-preview-ended-poster')).toMatchObject({
       background: 'var(--video-preview-stage)',
-      bottom: 'var(--video-preview-bottom-inspector-height)',
+      inset: '0',
       position: 'absolute',
-      top: 'var(--video-preview-top-command-bar-height)',
       'z-index': '4',
     })
     expect(rule('.video-preview-ended-poster > img')).toMatchObject({

@@ -1,7 +1,7 @@
 use super::VideoDisplayGeometry;
 use objc2::{MainThreadMarker, Message, rc::Retained};
 use objc2_app_kit::NSWindow;
-use objc2_foundation::{NSRect, NSSize};
+use objc2_foundation::{NSPoint, NSRect, NSSize};
 use thiserror::Error;
 
 #[derive(Debug, Error, PartialEq, Eq)]
@@ -82,30 +82,39 @@ impl VideoWindowAspectSession {
         MainThreadMarker::new().ok_or(WindowAspectError::NotMainThread)?;
         let display = display_dimensions(media).ok_or(WindowAspectError::InvalidMediaGeometry)?;
         let previous_frame = window.frame();
+        validated_aspect_rect(previous_frame).ok_or(WindowAspectError::InvalidWindowGeometry)?;
         let current_content_frame = window.contentRectForFrameRect(previous_frame);
+        let current_content = validated_aspect_rect(current_content_frame)
+            .ok_or(WindowAspectError::InvalidWindowGeometry)?;
         let screen = window.screen().ok_or(WindowAspectError::MissingScreen)?;
         let visible_frame = screen.visibleFrame();
+        let visible =
+            validated_aspect_rect(visible_frame).ok_or(WindowAspectError::InvalidWindowGeometry)?;
         let visible_content_frame = window.contentRectForFrameRect(visible_frame);
+        let visible_content = validated_aspect_rect(visible_content_frame)
+            .ok_or(WindowAspectError::InvalidWindowGeometry)?;
         let fitted_content_size = best_fit_content_size(
-            AspectSize::new(
-                current_content_frame.size.width,
-                current_content_frame.size.height,
-            ),
-            AspectSize::new(
-                visible_content_frame.size.width,
-                visible_content_frame.size.height,
-            ),
+            AspectSize::new(current_content.width, current_content.height),
+            AspectSize::new(visible_content.width, visible_content.height),
             display.width / display.height,
         )
         .ok_or(WindowAspectError::InvalidWindowGeometry)?;
-        let target_content_frame = NSRect::new(
-            current_content_frame.origin,
-            NSSize::new(fitted_content_size.width, fitted_content_size.height),
+        let target_content = AspectRect::new(
+            current_content.x,
+            current_content.y,
+            fitted_content_size.width,
+            fitted_content_size.height,
         );
-        let target_frame = window.constrainFrameRect_toScreen(
-            window.frameRectForContentRect(target_content_frame),
-            Some(&screen),
-        );
+        if !target_content.is_valid() {
+            return Err(WindowAspectError::InvalidWindowGeometry);
+        }
+        let converted_target_frame = window.frameRectForContentRect(appkit_rect(target_content));
+        let converted_target = validated_aspect_rect(converted_target_frame)
+            .ok_or(WindowAspectError::InvalidWindowGeometry)?;
+        let placed_target = place_frame_inside_visible(converted_target, visible)
+            .ok_or(WindowAspectError::InvalidWindowGeometry)?;
+        let target_frame = appkit_rect(placed_target);
+        validated_aspect_rect(target_frame).ok_or(WindowAspectError::InvalidWindowGeometry)?;
         let previous_aspect = window.contentAspectRatio();
         let installed_aspect = NSSize::new(display.width, display.height);
         let restore_window: Retained<NSWindow> = window.retain();
@@ -131,10 +140,55 @@ impl VideoWindowAspectSession {
     }
 }
 
+fn validated_aspect_rect(rect: NSRect) -> Option<AspectRect> {
+    let rect = AspectRect::new(
+        rect.origin.x,
+        rect.origin.y,
+        rect.size.width,
+        rect.size.height,
+    );
+    rect.is_valid().then_some(rect)
+}
+
+fn appkit_rect(rect: AspectRect) -> NSRect {
+    NSRect::new(
+        NSPoint::new(rect.x, rect.y),
+        NSSize::new(rect.width, rect.height),
+    )
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct AspectSize {
     pub width: f64,
     pub height: f64,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct AspectRect {
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+}
+
+impl AspectRect {
+    pub const fn new(x: f64, y: f64, width: f64, height: f64) -> Self {
+        Self {
+            x,
+            y,
+            width,
+            height,
+        }
+    }
+
+    fn is_valid(self) -> bool {
+        self.x.is_finite()
+            && self.y.is_finite()
+            && self.width.is_finite()
+            && self.height.is_finite()
+            && self.width > 0.0
+            && self.height > 0.0
+    }
 }
 
 impl AspectSize {
@@ -184,6 +238,31 @@ pub fn best_fit_content_size(
     };
     let fit = AspectSize::new(width, height);
     fit.is_valid().then_some(fit)
+}
+
+pub fn place_frame_inside_visible(frame: AspectRect, visible: AspectRect) -> Option<AspectRect> {
+    if !frame.is_valid()
+        || !visible.is_valid()
+        || frame.width > visible.width
+        || frame.height > visible.height
+    {
+        return None;
+    }
+
+    let visible_max_x = visible.x + visible.width;
+    let visible_max_y = visible.y + visible.height;
+    if !visible_max_x.is_finite() || !visible_max_y.is_finite() {
+        return None;
+    }
+    let max_origin_x = visible_max_x - frame.width;
+    let max_origin_y = visible_max_y - frame.height;
+    let placed = AspectRect::new(
+        frame.x.clamp(visible.x, max_origin_x),
+        frame.y.clamp(visible.y, max_origin_y),
+        frame.width,
+        frame.height,
+    );
+    placed.is_valid().then_some(placed)
 }
 
 #[cfg(test)]

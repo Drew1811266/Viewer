@@ -18,5 +18,6 @@ pub use theater::{
     TheaterBounds, TheaterFrame, VideoDisplayGeometry, contain_fit_frame, theater_viewport_frame,
 };
 pub use window_aspect::{
-    AspectSize, VideoWindowAspectSession, WindowAspectError, best_fit_content_size, display_aspect,
+    AspectRect, AspectSize, VideoWindowAspectSession, WindowAspectError, best_fit_content_size,
+    display_aspect, place_frame_inside_visible,
 };

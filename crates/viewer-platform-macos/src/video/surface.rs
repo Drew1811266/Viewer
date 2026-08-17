@@ -14,10 +14,9 @@ use objc2_app_kit::{
 };
 use objc2_foundation::{NSObjectProtocol, NSPoint, NSRect, NSSize};
 use std::{
-    cell::RefCell,
+    cell::{Cell, RefCell},
     ffi::{c_char, c_void},
     ptr::NonNull,
-    sync::atomic::{AtomicBool, Ordering},
 };
 use tauri::{Runtime, WebviewWindow};
 use thiserror::Error;
@@ -63,12 +62,19 @@ pub enum SurfaceError {
     WindowAspect(#[from] WindowAspectError),
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum SurfaceUnmountState {
+    Mounted,
+    Restoring,
+    Unmounted,
+}
+
 pub struct MacVideoSurface {
     view: Retained<NSOpenGLView>,
     theater: Retained<NSBox>,
     parent: Retained<NSView>,
     aspect_session: RefCell<Option<VideoWindowAspectSession>>,
-    mounted: AtomicBool,
+    unmount_state: Cell<SurfaceUnmountState>,
     _lease: ResourceLease,
 }
 
@@ -230,7 +236,7 @@ impl MacVideoSurface {
                             theater,
                             parent,
                             aspect_session: RefCell::new(aspect_session),
-                            mounted: AtomicBool::new(true),
+                            unmount_state: Cell::new(SurfaceUnmountState::Mounted),
                             _lease: ResourceLease::acquire(ResourceKind::Surface),
                         })
                     },
@@ -273,30 +279,26 @@ impl MacVideoSurface {
 
     pub fn unmount(&self) -> Result<(), SurfaceError> {
         MainThreadMarker::new().ok_or(SurfaceError::NotMainThread)?;
-        if !self.mounted.load(Ordering::Acquire) {
-            return Ok(());
-        }
         unmount_after_aspect_restore(
-            || {
-                let mut aspect_session = self.aspect_session.borrow_mut();
+            &self.unmount_state,
+            || self.aspect_session.borrow_mut().take(),
+            |aspect_session| {
                 if let Some(session) = aspect_session.as_mut() {
                     session.restore()?;
                 }
-                aspect_session.take();
                 Ok(())
             },
+            |aspect_session| *self.aspect_session.borrow_mut() = aspect_session,
             || {
-                if self.mounted.swap(false, Ordering::AcqRel) {
-                    self.view.setHidden(true);
-                    self.view.removeFromSuperview();
-                    self.theater.removeFromSuperview();
-                }
+                self.view.setHidden(true);
+                self.view.removeFromSuperview();
+                self.theater.removeFromSuperview();
             },
         )
     }
 
     pub fn is_mounted(&self) -> bool {
-        self.mounted.load(Ordering::Acquire)
+        self.unmount_state.get() == SurfaceUnmountState::Mounted
     }
 
     pub fn open_gl_context(&self) -> Result<Retained<NSOpenGLContext>, SurfaceError> {
@@ -341,13 +343,34 @@ fn mount_after_aspect_session_install<S, T>(
     attach_native_surface(aspect_session)
 }
 
-fn unmount_after_aspect_restore(
-    restore_aspect: impl FnOnce() -> Result<(), SurfaceError>,
+fn unmount_after_aspect_restore<T>(
+    state: &Cell<SurfaceUnmountState>,
+    take_aspect_session: impl FnOnce() -> T,
+    restore_aspect: impl FnOnce(&mut T) -> Result<(), SurfaceError>,
+    reinsert_aspect_session: impl FnOnce(T),
     detach_native_surface: impl FnOnce(),
 ) -> Result<(), SurfaceError> {
-    restore_aspect()?;
-    detach_native_surface();
-    Ok(())
+    if state.get() != SurfaceUnmountState::Mounted {
+        return Ok(());
+    }
+
+    state.set(SurfaceUnmountState::Restoring);
+    let mut aspect_session = take_aspect_session();
+    match restore_aspect(&mut aspect_session) {
+        Ok(()) => {
+            drop(aspect_session);
+            detach_native_surface();
+            state.set(SurfaceUnmountState::Unmounted);
+            Ok(())
+        }
+        Err(error) => {
+            if state.get() == SurfaceUnmountState::Restoring {
+                reinsert_aspect_session(aspect_session);
+                state.set(SurfaceUnmountState::Mounted);
+            }
+            Err(error)
+        }
+    }
 }
 
 fn mount_after_opaque_theater_configuration<T, U>(
@@ -486,8 +509,9 @@ pub fn backing_pixels(size: (f64, f64), scale: f64) -> Option<(i32, i32)> {
 #[cfg(test)]
 mod tests {
     use super::{
-        SurfaceError, mount_after_aspect_session_install, mount_after_opaque_theater_configuration,
-        mount_after_webview_transparency, theater_color_components, unmount_after_aspect_restore,
+        SurfaceError, SurfaceUnmountState, mount_after_aspect_session_install,
+        mount_after_opaque_theater_configuration, mount_after_webview_transparency,
+        theater_color_components, unmount_after_aspect_restore,
     };
     use std::cell::{Cell, RefCell};
 
@@ -629,29 +653,78 @@ mod tests {
     #[test]
     fn unmount_restores_the_aspect_policy_before_detaching_native_views() {
         let order = RefCell::new(Vec::new());
+        let state = Cell::new(SurfaceUnmountState::Mounted);
+        let session = RefCell::new(Some("aspect-session"));
 
         unmount_after_aspect_restore(
-            || {
+            &state,
+            || session.borrow_mut().take(),
+            |_session| {
                 order.borrow_mut().push("restore-aspect");
                 Ok(())
             },
+            |owned| *session.borrow_mut() = owned,
             || order.borrow_mut().push("detach-native-views"),
         )
         .expect("unmount");
 
         assert_eq!(&*order.borrow(), &["restore-aspect", "detach-native-views"]);
+        assert_eq!(state.get(), SurfaceUnmountState::Unmounted);
+        assert_eq!(*session.borrow(), None);
     }
 
     #[test]
-    fn aspect_restore_failure_prevents_native_detachment() {
+    fn aspect_restore_failure_reinserts_ownership_and_prevents_detachment() {
         let detached = Cell::new(false);
+        let state = Cell::new(SurfaceUnmountState::Mounted);
+        let session = RefCell::new(Some("aspect-session"));
 
         let result = unmount_after_aspect_restore(
-            || Err(SurfaceError::InvalidGeometry),
+            &state,
+            || session.borrow_mut().take(),
+            |_session| Err(SurfaceError::InvalidGeometry),
+            |owned| *session.borrow_mut() = owned,
             || detached.set(true),
         );
 
         assert_eq!(result, Err(SurfaceError::InvalidGeometry));
         assert!(!detached.get());
+        assert_eq!(state.get(), SurfaceUnmountState::Mounted);
+        assert_eq!(*session.borrow(), Some("aspect-session"));
+    }
+
+    #[test]
+    fn reentrant_unmount_during_aspect_restore_is_a_safe_no_op() {
+        let order = RefCell::new(Vec::new());
+        let state = Cell::new(SurfaceUnmountState::Mounted);
+        let session = RefCell::new(Some("aspect-session"));
+
+        unmount_after_aspect_restore(
+            &state,
+            || session.borrow_mut().take(),
+            |_session| {
+                order.borrow_mut().push("outer-restore");
+                unmount_after_aspect_restore(
+                    &state,
+                    || {
+                        order.borrow_mut().push("reentrant-take");
+                    },
+                    |_owned| {
+                        order.borrow_mut().push("reentrant-restore");
+                        Ok(())
+                    },
+                    |()| order.borrow_mut().push("reentrant-reinsert"),
+                    || order.borrow_mut().push("reentrant-detach"),
+                )?;
+                Ok(())
+            },
+            |owned| *session.borrow_mut() = owned,
+            || order.borrow_mut().push("outer-detach"),
+        )
+        .expect("outer unmount");
+
+        assert_eq!(&*order.borrow(), &["outer-restore", "outer-detach"]);
+        assert_eq!(state.get(), SurfaceUnmountState::Unmounted);
+        assert_eq!(*session.borrow(), None);
     }
 }

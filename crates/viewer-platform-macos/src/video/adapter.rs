@@ -34,7 +34,7 @@ enum PendingCompletion {
     Step,
 }
 
-const GEOMETRY_REDRAW_INTERVAL: Duration = Duration::from_millis(33);
+const GEOMETRY_SETTLE_INTERVAL: Duration = Duration::from_millis(80);
 
 impl PendingCompletion {
     const fn event_if_ready(self, time_us: u64) -> Option<EngineEvent> {
@@ -56,6 +56,7 @@ pub struct MacOsLibmpvAdapter {
     self_reference: OnceLock<Weak<Self>>,
     first_frame_published: AtomicBool,
     ended_published: AtomicBool,
+    playback_active: AtomicBool,
 }
 
 // SAFETY: AppKit, OpenGL, and render-context values inside `session` are
@@ -82,6 +83,7 @@ impl MacOsLibmpvAdapter {
             self_reference: OnceLock::new(),
             first_frame_published: AtomicBool::new(false),
             ended_published: AtomicBool::new(false),
+            playback_active: AtomicBool::new(false),
         }
     }
 
@@ -134,6 +136,7 @@ impl MacOsLibmpvAdapter {
                 .first_frame_published
                 .store(false, Ordering::Release);
             adapter.ended_published.store(false, Ordering::Release);
+            adapter.playback_active.store(false, Ordering::Release);
             *lock(&adapter.pending_completion) = None;
             Ok(())
         })
@@ -202,18 +205,22 @@ impl MacOsLibmpvAdapter {
         Ok(())
     }
 
-    fn schedule_geometry_redraw(&self, generation: u64) -> Result<(), VideoEngineError> {
+    fn schedule_geometry_redraw(
+        &self,
+        generation: u64,
+        sequence: u64,
+    ) -> Result<(), VideoEngineError> {
         let weak = self
             .self_reference
             .get()
             .cloned()
             .ok_or(VideoEngineError::Unavailable)?;
-        let deadline = DispatchTime::try_from(GEOMETRY_REDRAW_INTERVAL)
+        let deadline = DispatchTime::try_from(GEOMETRY_SETTLE_INTERVAL)
             .map_err(|()| VideoEngineError::Unavailable)?;
         DispatchQueue::main()
             .after(deadline, move || {
                 if let Some(adapter) = weak.upgrade() {
-                    adapter.redraw_geometry_on_main(generation);
+                    adapter.redraw_geometry_on_main(generation, sequence);
                 }
             })
             .map_err(|_| VideoEngineError::Unavailable)
@@ -230,10 +237,12 @@ impl MacOsLibmpvAdapter {
             });
             if result.is_ok() {
                 self.diagnostics.record_geometry_application();
-                if lock(&self.geometry_mailbox)
-                    .mark_applied_for_redraw(update.generation, update.sequence)
-                {
-                    let _ = self.schedule_geometry_redraw(update.generation);
+                if lock(&self.geometry_mailbox).mark_applied(
+                    update.generation,
+                    update.sequence,
+                    self.playback_active.load(Ordering::Acquire),
+                ) {
+                    let _ = self.schedule_geometry_redraw(update.generation, update.sequence);
                 }
             }
         }
@@ -242,20 +251,21 @@ impl MacOsLibmpvAdapter {
         }
     }
 
-    fn redraw_geometry_on_main(&self, generation: u64) {
+    fn redraw_geometry_on_main(&self, generation: u64, scheduled_sequence: u64) {
         debug_assert!(MainThreadMarker::new().is_some());
-        if lock(&self.geometry_mailbox)
-            .take_for_redraw(generation)
-            .is_some()
-        {
+        let redraw = lock(&self.geometry_mailbox)
+            .take_settled_redraw(generation, scheduled_sequence)
+            .is_some();
+        if redraw {
             let _ = self.with_generation(generation, |session| {
                 session
                     .redraw_retained_frame()
                     .map_err(|_| VideoEngineError::RenderSurface)
             });
         }
-        if lock(&self.geometry_mailbox).finish_redraw(generation) {
-            let _ = self.schedule_geometry_redraw(generation);
+        let next_sequence = lock(&self.geometry_mailbox).pending_settled_redraw(generation);
+        if !redraw && let Some(next_sequence) = next_sequence {
+            let _ = self.schedule_geometry_redraw(generation, next_sequence);
         }
     }
 
@@ -322,6 +332,7 @@ impl MacOsLibmpvAdapter {
                     }
                 }
                 if snapshot.eof_reached && !self.ended_published.swap(true, Ordering::AcqRel) {
+                    self.playback_active.store(false, Ordering::Release);
                     self.emit(generation, EngineEvent::Ended);
                 }
             }
@@ -344,6 +355,7 @@ impl MacOsLibmpvAdapter {
             }
             MediaWorkerEvent::Failed { generation } => {
                 if *lock(&self.generation) == Some(generation) {
+                    self.playback_active.store(false, Ordering::Release);
                     self.emit(
                         generation,
                         EngineEvent::Failed(
@@ -419,6 +431,7 @@ impl MacOsLibmpvAdapter {
         *lock(&self.generation) = None;
         self.first_frame_published.store(false, Ordering::Release);
         self.ended_published.store(false, Ordering::Release);
+        self.playback_active.store(false, Ordering::Release);
         *lock(&self.pending_completion) = None;
         lock(&self.geometry_mailbox).invalidate();
         let worker = lock(&self.media_worker).take();
@@ -446,6 +459,7 @@ impl VideoEngine for MacOsLibmpvAdapter {
                 .first_frame_published
                 .store(false, Ordering::Release);
             adapter.ended_published.store(false, Ordering::Release);
+            adapter.playback_active.store(false, Ordering::Release);
             Ok(())
         })
     }
@@ -475,7 +489,10 @@ impl VideoEngine for MacOsLibmpvAdapter {
         self.on_main(move |adapter| {
             adapter.with_generation(generation, |session| {
                 session.play().map_err(|_| VideoEngineError::Decode)
-            })
+            })?;
+            adapter.playback_active.store(true, Ordering::Release);
+            lock(&adapter.geometry_mailbox).cancel_settled_redraw(generation);
+            Ok(())
         })
     }
 
@@ -483,7 +500,9 @@ impl VideoEngine for MacOsLibmpvAdapter {
         self.on_main(move |adapter| {
             adapter.with_generation(generation, |session| {
                 session.pause().map_err(|_| VideoEngineError::Decode)
-            })
+            })?;
+            adapter.playback_active.store(false, Ordering::Release);
+            Ok(())
         })
     }
 
@@ -517,6 +536,7 @@ impl VideoEngine for MacOsLibmpvAdapter {
                     })
                     .map_err(|_| VideoEngineError::Decode)
             })?;
+            adapter.playback_active.store(false, Ordering::Release);
             *lock(&adapter.pending_completion) = Some(PendingCompletion::Step);
             Ok(())
         })

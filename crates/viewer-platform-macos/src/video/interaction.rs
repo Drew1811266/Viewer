@@ -13,9 +13,8 @@ pub(super) struct LatestGeometryMailbox {
     latest_sequence: u64,
     pending: Option<GeometryUpdate>,
     drain_scheduled: bool,
-    latest_applied_sequence: u64,
-    redraw_pending: bool,
-    redraw_scheduled: bool,
+    pending_settled_redraw: Option<u64>,
+    settle_timer_scheduled: bool,
 }
 
 impl LatestGeometryMailbox {
@@ -24,9 +23,8 @@ impl LatestGeometryMailbox {
         self.latest_sequence = 0;
         self.pending = None;
         self.drain_scheduled = false;
-        self.latest_applied_sequence = 0;
-        self.redraw_pending = false;
-        self.redraw_scheduled = false;
+        self.pending_settled_redraw = None;
+        self.settle_timer_scheduled = false;
     }
 
     pub fn invalidate(&mut self) {
@@ -34,9 +32,8 @@ impl LatestGeometryMailbox {
         self.latest_sequence = 0;
         self.pending = None;
         self.drain_scheduled = false;
-        self.latest_applied_sequence = 0;
-        self.redraw_pending = false;
-        self.redraw_scheduled = false;
+        self.pending_settled_redraw = None;
+        self.settle_timer_scheduled = false;
     }
 
     pub fn publish(
@@ -77,39 +74,46 @@ impl LatestGeometryMailbox {
         }
     }
 
-    pub fn mark_applied_for_redraw(&mut self, generation: u64, sequence: u64) -> bool {
+    pub fn mark_applied(&mut self, generation: u64, sequence: u64, playback_active: bool) -> bool {
         if self.active_generation != Some(generation) {
             return false;
         }
-        self.latest_applied_sequence = self.latest_applied_sequence.max(sequence);
-        self.redraw_pending = true;
-        if self.redraw_scheduled {
+        if playback_active {
+            self.pending_settled_redraw = None;
+            self.settle_timer_scheduled = false;
             return false;
         }
-        self.redraw_scheduled = true;
+        self.pending_settled_redraw = Some(sequence);
+        if self.settle_timer_scheduled {
+            return false;
+        }
+        self.settle_timer_scheduled = true;
         true
     }
 
-    pub fn take_for_redraw(&mut self, generation: u64) -> Option<u64> {
+    pub fn take_settled_redraw(&mut self, generation: u64, scheduled_sequence: u64) -> Option<u64> {
         if self.active_generation != Some(generation) {
             return None;
         }
-        if !self.redraw_pending {
+        if self.pending_settled_redraw != Some(scheduled_sequence) {
             return None;
         }
-        self.redraw_pending = false;
-        Some(self.latest_applied_sequence)
+        self.pending_settled_redraw = None;
+        self.settle_timer_scheduled = false;
+        Some(scheduled_sequence)
     }
 
-    pub fn finish_redraw(&mut self, generation: u64) -> bool {
+    pub fn pending_settled_redraw(&self, generation: u64) -> Option<u64> {
         if self.active_generation != Some(generation) {
-            return false;
+            return None;
         }
-        if self.redraw_pending {
-            true
-        } else {
-            self.redraw_scheduled = false;
-            false
+        self.pending_settled_redraw
+    }
+
+    pub fn cancel_settled_redraw(&mut self, generation: u64) {
+        if self.active_generation == Some(generation) {
+            self.pending_settled_redraw = None;
+            self.settle_timer_scheduled = false;
         }
     }
 }
@@ -138,7 +142,7 @@ mod tests {
     }
 
     #[test]
-    fn geometry_burst_schedules_one_expensive_redraw_for_the_latest_applied_rect() {
+    fn paused_resize_burst_redraws_only_the_latest_applied_rect_after_settle() {
         let mut mailbox = LatestGeometryMailbox::default();
         mailbox.activate(5);
         let mut redraw_schedules = 0;
@@ -146,29 +150,41 @@ mod tests {
         for sequence in 1..=120 {
             mailbox.publish(5, sequence, geometry(sequence)).unwrap();
             let update = mailbox.take_for_drain().unwrap();
-            if mailbox.mark_applied_for_redraw(5, update.sequence) {
+            if mailbox.mark_applied(5, update.sequence, false) {
                 redraw_schedules += 1;
             }
         }
 
         assert_eq!(redraw_schedules, 1);
-        assert_eq!(mailbox.take_for_redraw(5), Some(120));
-        assert!(!mailbox.finish_redraw(5));
+        assert_eq!(mailbox.take_settled_redraw(5, 1), None);
+        assert_eq!(mailbox.pending_settled_redraw(5), Some(120));
+        assert_eq!(mailbox.take_settled_redraw(5, 120), Some(120));
+        assert_eq!(mailbox.pending_settled_redraw(5), None);
     }
 
     #[test]
-    fn delayed_redraw_from_an_old_generation_cannot_consume_new_generation_work() {
+    fn playing_resize_uses_natural_frames_without_a_forced_redraw() {
         let mut mailbox = LatestGeometryMailbox::default();
         mailbox.activate(5);
-        assert!(mailbox.mark_applied_for_redraw(5, 1));
+        mailbox.publish(5, 1, geometry(1)).unwrap();
+        let update = mailbox.take_for_drain().unwrap();
+
+        assert!(!mailbox.mark_applied(5, update.sequence, true));
+        assert_eq!(mailbox.pending_settled_redraw(5), None);
+    }
+
+    #[test]
+    fn delayed_paused_redraw_from_an_old_generation_cannot_consume_new_generation_work() {
+        let mut mailbox = LatestGeometryMailbox::default();
+        mailbox.activate(5);
+        assert!(mailbox.mark_applied(5, 1, false));
 
         mailbox.activate(6);
-        assert!(mailbox.mark_applied_for_redraw(6, 2));
-        assert_eq!(mailbox.take_for_redraw(5), None);
-        assert!(!mailbox.finish_redraw(5));
+        assert!(mailbox.mark_applied(6, 2, false));
+        assert_eq!(mailbox.take_settled_redraw(5, 1), None);
+        assert_eq!(mailbox.pending_settled_redraw(5), None);
 
-        assert_eq!(mailbox.take_for_redraw(6), Some(2));
-        assert!(!mailbox.finish_redraw(6));
+        assert_eq!(mailbox.take_settled_redraw(6, 2), Some(2));
     }
 
     const fn geometry(sequence: u64) -> SurfaceRect {

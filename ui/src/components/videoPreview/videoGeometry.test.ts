@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { VideoMedia } from '../../api/types'
-import { fitVideoMatteInsets, fitVideoRect, hasVideoGeometry } from './videoGeometry'
+import { fitVideoSurfaceLayout, hasVideoGeometry } from './videoGeometry'
 
 function stage(left: number, top: number, width: number, height: number): DOMRectReadOnly {
   return {
@@ -28,41 +28,24 @@ function media(overrides: Partial<VideoMedia> = {}): VideoMedia {
 
 describe('native video surface geometry', () => {
   it('centers a landscape video inside stage coordinates', () => {
-    expect(fitVideoRect(stage(100, 50, 800, 600), media())).toEqual({
-      x: 100,
-      y: 125,
-      width: 800,
-      height: 450,
+    expect(fitVideoSurfaceLayout(stage(100, 50, 800, 600), media())).toEqual({
+      surfaceRect: { x: 100, y: 125, width: 800, height: 450 },
+      aperture: { left: 0, top: 75, width: 800, height: 450 },
     })
   })
 
   it.each([90, -90, 270])('swaps display axes for a %d-degree rotation', (rotationDegrees) => {
-    expect(fitVideoRect(stage(100, 50, 800, 600), media({ rotationDegrees }))).toEqual({
-      x: 331,
-      y: 50,
-      width: 338,
-      height: 600,
+    expect(fitVideoSurfaceLayout(stage(100, 50, 800, 600), media({ rotationDegrees }))).toEqual({
+      surfaceRect: { x: 331, y: 50, width: 338, height: 600 },
+      aperture: { left: 231, top: 0, width: 338, height: 600 },
     })
   })
 
-  it('describes the exact opaque matte outside the fitted native surface', () => {
-    expect(fitVideoMatteInsets(stage(100, 50, 800, 600), media())).toEqual({
-      top: 75,
-      right: 0,
-      bottom: 75,
-      left: 0,
+  it('derives the local aperture from the exact integer native rect for fractional geometry', () => {
+    expect(fitVideoSurfaceLayout(stage(0.4, 0.4, 800.2, 600.2), media())).toEqual({
+      surfaceRect: { x: 0, y: 75, width: 800, height: 450 },
+      aperture: { left: -0.4, top: 74.6, width: 800, height: 450 },
     })
-    expect(fitVideoMatteInsets(stage(100, 50, 800, 600), media({ rotationDegrees: 90 }))).toEqual({
-      top: 0,
-      right: 231,
-      bottom: 0,
-      left: 231,
-    })
-  })
-
-  it('never publishes a negative matte width for fractional window geometry', () => {
-    const insets = fitVideoMatteInsets(stage(0.4, 0.4, 800.2, 600.2), media())
-    expect(Object.values(insets).every((value) => value >= 0)).toBe(true)
   })
 
   it('requires positive stage and media dimensions before fitting', () => {

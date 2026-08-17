@@ -137,16 +137,20 @@ describe('VideoPreview', () => {
     expect(dialog).toHaveAttribute('data-chrome-visible', 'true')
   })
 
-  it('masks the transparent space outside the fitted native video surface', async () => {
+  it('masks every region outside the exact fitted native video aperture', async () => {
     const harness = videoBridgeHarness()
     render(<VideoPreview file={video('a.mp4')} files={[video('a.mp4')]} bridge={harness.bridge} />)
 
     await waitFor(() => expect(harness.open).toHaveBeenCalledOnce())
     const stage = screen.getByTestId('video-preview-stage')
-    expect(stage.style.getPropertyValue('--video-preview-matte-top')).toBe('75px')
-    expect(stage.style.getPropertyValue('--video-preview-matte-right')).toBe('0px')
-    expect(stage.style.getPropertyValue('--video-preview-matte-bottom')).toBe('75px')
-    expect(stage.style.getPropertyValue('--video-preview-matte-left')).toBe('0px')
+    expect(stage.style.getPropertyValue('--video-preview-aperture-left')).toBe('0px')
+    expect(stage.style.getPropertyValue('--video-preview-aperture-top')).toBe('75px')
+    expect(stage.style.getPropertyValue('--video-preview-aperture-width')).toBe('800px')
+    expect(stage.style.getPropertyValue('--video-preview-aperture-height')).toBe('450px')
+    for (const edge of ['top', 'right', 'bottom', 'left']) {
+      expect(stage.querySelector(`.video-preview-matte--${edge}`)).toBeInTheDocument()
+    }
+    expect(stage.querySelectorAll('.video-preview-matte')).toHaveLength(4)
   })
 
   it('keeps the shell and navigation on failure and retries with a new lifecycle', async () => {

@@ -42,19 +42,16 @@ describe('immersive video preview layout', () => {
     expect(rule('.video-controls')).not.toHaveProperty('bottom')
   })
 
-  it('uses one ambient matte for letterboxing and the first-frame reveal veil', () => {
-    const matte = rule('.video-preview-stage::before')
-    expect(matte).toMatchObject({
-      'border-color': 'var(--video-preview-ambient-matte)',
-      'border-style': 'solid',
-      inset: '0',
-      'pointer-events': 'none',
-      position: 'absolute',
-      'z-index': '2',
-    })
-    expect(matte['border-width']?.replace(/\s+/g, ' ')).toBe(
-      'var(--video-preview-matte-top) var(--video-preview-matte-right) var(--video-preview-matte-bottom) var(--video-preview-matte-left)',
-    )
+  it('uses four real opaque regions around the aperture and a first-frame reveal veil', () => {
+    expect(rule('.video-preview-stage::before')).toEqual({})
+    for (const edge of ['top', 'right', 'bottom', 'left']) {
+      expect(rule(`.video-preview-matte--${edge}`)).toMatchObject({
+        background: 'var(--video-preview-ambient-matte)',
+        'pointer-events': 'none',
+        position: 'absolute',
+        'z-index': '2',
+      })
+    }
     expect(rule('.video-preview-stage::after')).toMatchObject({
       background: 'var(--video-preview-ambient-matte)',
       opacity: '1',

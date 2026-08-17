@@ -1,10 +1,15 @@
 import type { VideoMedia, VideoSurfaceRect } from '../../api/types'
 
-export interface VideoMatteInsets {
-  top: number
-  right: number
-  bottom: number
+export interface VideoAperture {
   left: number
+  top: number
+  width: number
+  height: number
+}
+
+export interface VideoSurfaceLayout {
+  surfaceRect: VideoSurfaceRect
+  aperture: VideoAperture
 }
 
 export function hasVideoGeometry(stage: DOMRectReadOnly, media: VideoMedia): boolean {
@@ -18,7 +23,10 @@ export function hasVideoGeometry(stage: DOMRectReadOnly, media: VideoMedia): boo
   )
 }
 
-export function fitVideoRect(stage: DOMRectReadOnly, media: VideoMedia): VideoSurfaceRect {
+export function fitVideoSurfaceLayout(
+  stage: DOMRectReadOnly,
+  media: VideoMedia,
+): VideoSurfaceLayout {
   if (!hasVideoGeometry(stage, media)) throw new RangeError('Video geometry is not ready')
   const width = media.displayWidth as number
   const height = media.displayHeight as number
@@ -28,26 +36,27 @@ export function fitVideoRect(stage: DOMRectReadOnly, media: VideoMedia): VideoSu
   const scale = Math.min(stage.width / sourceWidth, stage.height / sourceHeight)
   const fittedWidth = sourceWidth * scale
   const fittedHeight = sourceHeight * scale
-  return {
+  const surfaceRect = {
     x: Math.round(stage.left + (stage.width - fittedWidth) / 2),
     y: Math.round(stage.top + (stage.height - fittedHeight) / 2),
     width: Math.round(fittedWidth),
     height: Math.round(fittedHeight),
   }
-}
-
-export function fitVideoMatteInsets(stage: DOMRectReadOnly, media: VideoMedia): VideoMatteInsets {
-  const fitted = fitVideoRect(stage, media)
-  const left = Math.max(0, fitted.x - stage.left)
-  const top = Math.max(0, fitted.y - stage.top)
   return {
-    top,
-    right: Math.max(0, stage.width - left - fitted.width),
-    bottom: Math.max(0, stage.height - top - fitted.height),
-    left,
+    surfaceRect,
+    aperture: {
+      left: normalizeZero(surfaceRect.x - stage.left),
+      top: normalizeZero(surfaceRect.y - stage.top),
+      width: surfaceRect.width,
+      height: surfaceRect.height,
+    },
   }
 }
 
 function finitePositive(value: number | null): value is number {
   return value !== null && Number.isFinite(value) && value > 0
+}
+
+function normalizeZero(value: number): number {
+  return Object.is(value, -0) ? 0 : value
 }

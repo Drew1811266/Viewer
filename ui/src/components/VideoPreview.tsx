@@ -51,7 +51,7 @@ export default function VideoPreview({
   const [focusedWithin, setFocusedWithin] = useState(false)
   const reducedMotion = useReducedMotionPreference()
   const retryKey = retryRequest.entityId === file.entityId ? retryRequest.key : 0
-  const { state, matteInsets, controlState, commands } = useVideoBridge({
+  const { state, surfaceLayout, controlState, commands } = useVideoBridge({
     bridge,
     file,
     retryKey,
@@ -140,14 +140,14 @@ export default function VideoPreview({
   )
 
   const durationLabel = formatVideoTime(file.videoMetadata.durationUs ?? state.durationUs ?? 0)
-  const matteStyle =
-    matteInsets === null
+  const apertureStyle =
+    surfaceLayout === null
       ? undefined
       : ({
-          '--video-preview-matte-top': `${matteInsets.top}px`,
-          '--video-preview-matte-right': `${matteInsets.right}px`,
-          '--video-preview-matte-bottom': `${matteInsets.bottom}px`,
-          '--video-preview-matte-left': `${matteInsets.left}px`,
+          '--video-preview-aperture-left': `${surfaceLayout.aperture.left}px`,
+          '--video-preview-aperture-top': `${surfaceLayout.aperture.top}px`,
+          '--video-preview-aperture-width': `${surfaceLayout.aperture.width}px`,
+          '--video-preview-aperture-height': `${surfaceLayout.aperture.height}px`,
         } as CSSProperties)
 
   return (
@@ -168,8 +168,15 @@ export default function VideoPreview({
         className="video-preview-stage"
         data-testid="video-preview-stage"
         data-surface-visible={state.surfaceVisible}
-        style={matteStyle}
+        style={apertureStyle}
       >
+        {(['top', 'right', 'bottom', 'left'] as const).map((edge) => (
+          <div
+            key={edge}
+            className={`video-preview-matte video-preview-matte--${edge}`}
+            aria-hidden="true"
+          />
+        ))}
         <ViewerToolbar
           label="视频预览工具"
           className="video-preview-topbar"

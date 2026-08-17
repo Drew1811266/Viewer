@@ -19,12 +19,7 @@ import type {
 } from '../../api/types'
 import type { ViewerBridge } from '../../api/viewer'
 import type { VideoControlCommands, VideoPlaybackRate } from './VideoControls'
-import {
-  fitVideoMatteInsets,
-  fitVideoRect,
-  hasVideoGeometry,
-  type VideoMatteInsets,
-} from './videoGeometry'
+import { fitVideoSurfaceLayout, hasVideoGeometry, type VideoSurfaceLayout } from './videoGeometry'
 import { createPreparingVideoState, reduceVideoState, type VideoPreviewState } from './videoState'
 
 export type VideoPreviewBridge = Pick<
@@ -55,7 +50,7 @@ export interface UseVideoBridgeOptions {
 export interface UseVideoBridgeState {
   state: VideoPreviewState
   media: VideoMedia | null
-  matteInsets: VideoMatteInsets | null
+  surfaceLayout: VideoSurfaceLayout | null
   controlState: VideoBridgeControlState
   commands: VideoControlCommands
 }
@@ -104,11 +99,14 @@ export function useVideoBridge({
     (file.videoMetadata.probeStatus === 'ready' && geometryReady) || retryingIndexedFailure
       ? `${file.entityId}:${retryKey}`
       : null
-  const matteMedia = media ?? (geometryReady ? metadataMedia : null)
-  const matteInsets =
-    stageRect !== null && matteMedia !== null && hasVideoGeometry(stageRect, matteMedia)
-      ? fitVideoMatteInsets(stageRect, matteMedia)
-      : null
+  const layoutMedia = media ?? (geometryReady ? metadataMedia : null)
+  const surfaceLayout = useMemo(
+    () =>
+      stageRect !== null && layoutMedia !== null && hasVideoGeometry(stageRect, layoutMedia)
+        ? fitVideoSurfaceLayout(stageRect, layoutMedia)
+        : null,
+    [layoutMedia, stageRect],
+  )
 
   useLayoutEffect(() => {
     activeGeneration.current = null
@@ -138,7 +136,7 @@ export function useVideoBridge({
     if (lifecycleKey === null || stageRect === null) return
     const attemptId = crypto.randomUUID()
     const initialRect = geometryReady
-      ? fitVideoRect(stageRect, metadataMedia)
+      ? fitVideoSurfaceLayout(stageRect, metadataMedia).surfaceRect
       : stageVideoRect(stageRect)
     let disposed = false
     let generation: number | null = null
@@ -174,7 +172,7 @@ export function useVideoBridge({
       }
       if (event.type === 'prepared') {
         if (retryingIndexedFailure && hasVideoGeometry(stageRect, event.media)) {
-          const fittedRect = fitVideoRect(stageRect, event.media)
+          const fittedRect = fitVideoSurfaceLayout(stageRect, event.media).surfaceRect
           await bridge.videoSetSurfaceRect({
             generation: event.generation,
             sequence: ++surfaceUpdateSequence.current,
@@ -260,7 +258,7 @@ export function useVideoBridge({
           return
         }
         if (retryingIndexedFailure && hasVideoGeometry(stageRect, session.media)) {
-          const fittedRect = fitVideoRect(stageRect, session.media)
+          const fittedRect = fitVideoSurfaceLayout(stageRect, session.media).surfaceRect
           try {
             await bridge.videoSetSurfaceRect({
               generation: session.generation,
@@ -326,15 +324,10 @@ export function useVideoBridge({
   }, [bridge, file.entityId, geometryReady, lifecycleKey, retryingIndexedFailure])
 
   useEffect(() => {
-    if (
-      state.generation === 0 ||
-      media === null ||
-      stageRect === null ||
-      !hasVideoGeometry(stageRect, media)
-    ) {
+    if (state.generation === 0 || surfaceLayout === null) {
       return
     }
-    const rect = fitVideoRect(stageRect, media)
+    const rect = surfaceLayout.surfaceRect
     const geometryKey = surfaceGeometryKey(state.generation, rect)
     if (lastSurfaceGeometry.current === geometryKey) return
     lastSurfaceGeometry.current = geometryKey
@@ -352,7 +345,7 @@ export function useVideoBridge({
         lastSurfaceGeometry.current = null
       }
     })
-  }, [bridge, media, stageRect, state.generation])
+  }, [bridge, state.generation, surfaceLayout])
 
   const withGeneration = useCallback(async (command: (generation: number) => Promise<void>) => {
     const generation = activeGeneration.current
@@ -505,7 +498,7 @@ export function useVideoBridge({
     }
   }, [bridge, enqueueCommand, state.durationUs, withGeneration])
 
-  return { state, media, matteInsets, controlState, commands }
+  return { state, media, surfaceLayout, controlState, commands }
 }
 
 interface BooleanControlIntent {

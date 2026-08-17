@@ -29,6 +29,23 @@ describe('immersive video preview layout', () => {
     })
   })
 
+  it('freezes preview scrolling at the fixed theater boundary', () => {
+    expect(rule('.video-preview')).toMatchObject({
+      inset: '0',
+      overflow: 'hidden',
+      'overscroll-behavior': 'none',
+      position: 'fixed',
+    })
+    expect(rule(":root:has(.viewer-shell[data-video-preview-open='true'])")).toMatchObject({
+      overflow: 'hidden',
+      'overscroll-behavior': 'none',
+    })
+    expect(rule("body:has(.viewer-shell[data-video-preview-open='true'])")).toMatchObject({
+      overflow: 'hidden',
+      'overscroll-behavior': 'none',
+    })
+  })
+
   it('keeps title, navigation, and controls inside the stage safe area', () => {
     expect(rule('.video-preview-topbar')).toMatchObject({
       position: 'absolute',

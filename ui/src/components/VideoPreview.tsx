@@ -9,6 +9,7 @@ import {
   useReducedMotionPreference,
   useVideoControlsVisibility,
 } from './videoPreview/useVideoControlsVisibility'
+import { useVideoPreviewScrollLock } from './videoPreview/useVideoPreviewScrollLock'
 import { useVideoShortcuts } from './videoPreview/useVideoShortcuts'
 import VideoControls, { type VideoControlViewState } from './videoPreview/VideoControls'
 import { formatVideoTime } from './videoPreview/VideoTimeline'
@@ -120,6 +121,7 @@ export default function VideoPreview({
     onClose,
     onOwnedShortcut: controls.reveal,
   })
+  useVideoPreviewScrollLock(dialog)
 
   const controlView: VideoControlViewState = {
     generation: state.generation,

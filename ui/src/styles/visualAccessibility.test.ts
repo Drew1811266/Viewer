@@ -69,6 +69,21 @@ describe('Viewer visual accessibility contracts', () => {
     }
   })
 
+  it('prevents the open preview from scrolling the document canvas', () => {
+    for (const selector of [
+      ":root:has(.viewer-shell[data-video-preview-open='true'])",
+      "body:has(.viewer-shell[data-video-preview-open='true'])",
+      "#root:has(.viewer-shell[data-video-preview-open='true'])",
+    ]) {
+      expect(videoPreviewCss).toMatch(
+        new RegExp(
+          `${escapeRegExp(selector)}\\s*\\{[^}]*overflow:\\s*hidden[^}]*overscroll-behavior:\\s*none`,
+          's',
+        ),
+      )
+    }
+  })
+
   it('contains no superseded visible UI glyphs in production source', () => {
     const productionSource = sourceFiles(resolve(import.meta.dirname, '..'))
       .map((path) => readFileSync(path, 'utf8'))

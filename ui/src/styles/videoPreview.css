@@ -2,8 +2,11 @@
   --video-preview-bottom-inspector-height: 88px;
   --video-preview-top-command-bar-height: 50px;
   background: var(--viewer-application);
+  inset: 0;
   isolation: isolate;
   overflow: hidden;
+  overscroll-behavior: none;
+  position: fixed;
 }
 
 .video-preview[data-surface-visible='true'] {
@@ -12,14 +15,20 @@
 
 :root:has(.viewer-shell[data-video-preview-open='true']) {
   background: transparent;
+  overflow: hidden;
+  overscroll-behavior: none;
 }
 
 body:has(.viewer-shell[data-video-preview-open='true']) {
   background: transparent;
+  overflow: hidden;
+  overscroll-behavior: none;
 }
 
 #root:has(.viewer-shell[data-video-preview-open='true']) {
   background: transparent;
+  overflow: hidden;
+  overscroll-behavior: none;
 }
 
 .viewer-shell[data-video-preview-open='true'] > :not(.video-preview) {

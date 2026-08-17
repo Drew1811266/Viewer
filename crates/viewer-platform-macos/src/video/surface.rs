@@ -1,7 +1,7 @@
 #![allow(deprecated)]
 
 use super::{
-    TheaterBounds, VideoDisplayGeometry,
+    TheaterBounds, VideoDisplayGeometry, VideoWindowAspectSession, WindowAspectError,
     diagnostics::{ResourceKind, ResourceLease},
     theater_viewport_frame,
 };
@@ -14,6 +14,7 @@ use objc2_app_kit::{
 };
 use objc2_foundation::{NSObjectProtocol, NSPoint, NSRect, NSSize};
 use std::{
+    cell::RefCell,
     ffi::{c_char, c_void},
     ptr::NonNull,
     sync::atomic::{AtomicBool, Ordering},
@@ -58,12 +59,15 @@ pub enum SurfaceError {
     WindowBackgroundUnavailable,
     #[error("the Tauri window content view has no WKWebView")]
     MissingWebview,
+    #[error(transparent)]
+    WindowAspect(#[from] WindowAspectError),
 }
 
 pub struct MacVideoSurface {
     view: Retained<NSOpenGLView>,
     theater: Retained<NSBox>,
     parent: Retained<NSView>,
+    aspect_session: RefCell<Option<VideoWindowAspectSession>>,
     mounted: AtomicBool,
     _lease: ResourceLease,
 }
@@ -80,7 +84,7 @@ impl MacVideoSurface {
         if media.width == 0 || media.height == 0 {
             return Err(SurfaceError::InvalidGeometry);
         }
-        Self::mount_with_frame(window, None)
+        Self::mount_with_frame(window, None, Some(media))
     }
 
     pub fn mount<R: Runtime>(
@@ -88,12 +92,13 @@ impl MacVideoSurface {
         rect: SurfaceRect,
     ) -> Result<Self, SurfaceError> {
         let frame = Some(rect);
-        Self::mount_with_frame(window, frame)
+        Self::mount_with_frame(window, frame, None)
     }
 
     fn mount_with_frame<R: Runtime>(
         window: &WebviewWindow<R>,
         rect: Option<SurfaceRect>,
+        media: Option<VideoDisplayGeometry>,
     ) -> Result<Self, SurfaceError> {
         MainThreadMarker::new().ok_or(SurfaceError::NotMainThread)?;
         let native_window = window
@@ -112,13 +117,14 @@ impl MacVideoSurface {
         // Wry installs its WKWebView as the first child of the window content
         // view. The theater is inserted below it and retained by the surface.
         let webview = subviews.objectAtIndex(0);
-        Self::mount_in_webview(native_window, &webview, rect)
+        Self::mount_in_webview(native_window, &webview, rect, media)
     }
 
     fn mount_in_webview(
         window: &NSWindow,
         webview: &NSView,
         rect: Option<SurfaceRect>,
+        media: Option<VideoDisplayGeometry>,
     ) -> Result<Self, SurfaceError> {
         let mtm = MainThreadMarker::new().ok_or(SurfaceError::NotMainThread)?;
         // SAFETY: the WKWebView is retained by its window and this method runs on
@@ -137,87 +143,98 @@ impl MacVideoSurface {
             })
             .transpose()?;
         let theater_parent = parent.clone();
-        mount_after_opaque_theater_configuration(
-            || configure_opaque_window(window),
-            || configure_transparent_webview(webview),
+        mount_after_aspect_session_install(
             || {
-                let theater = NSBox::initWithFrame(NSBox::alloc(mtm), webview.frame());
-                theater.setBoxType(NSBoxType::Custom);
-                theater.setTitlePosition(NSTitlePosition::NoTitle);
-                theater.setBorderWidth(0.0);
-                theater.setContentViewMargins(NSSize::new(0.0, 0.0));
-                theater.setFillColor(&theater_color());
-                theater.setAutoresizingMask(
-                    NSAutoresizingMaskOptions::ViewWidthSizable
-                        | NSAutoresizingMaskOptions::ViewHeightSizable,
-                );
-                theater_parent.addSubview_positioned_relativeTo(
-                    &theater,
-                    NSWindowOrderingMode::Below,
-                    Some(webview),
-                );
-                Ok(theater)
+                media
+                    .map(|media| VideoWindowAspectSession::install(window, media))
+                    .transpose()
+                    .map_err(SurfaceError::from)
             },
-            |theater| {
-                let frame = if let Some(frame) = explicit_frame {
-                    frame
-                } else {
-                    let bounds = theater.bounds();
-                    let viewport = theater_viewport_frame(TheaterBounds {
-                        width: bounds.size.width,
-                        height: bounds.size.height,
-                        scale_factor: window.backingScaleFactor(),
-                    })
-                    .ok_or(SurfaceError::InvalidGeometry)?;
-                    NSRect::new(
-                        NSPoint::new(viewport.x, viewport.y),
-                        NSSize::new(viewport.width, viewport.height),
-                    )
-                };
-                let mut attributes = [
-                    NSOpenGLPFAOpenGLProfile,
-                    NSOpenGLProfileVersion3_2Core,
-                    NSOpenGLPFAAccelerated,
-                    NSOpenGLPFADoubleBuffer,
-                    0,
-                ];
-                let pixel_format = unsafe {
-                    NSOpenGLPixelFormat::initWithAttributes(
-                        NSOpenGLPixelFormat::alloc(),
-                        NonNull::new(attributes.as_mut_ptr())
-                            .expect("pixel format attributes are present"),
-                    )
-                }
-                .ok_or(SurfaceError::OpenGlViewUnavailable)?;
-                let view = NSOpenGLView::initWithFrame_pixelFormat(
-                    NSOpenGLView::alloc(mtm),
-                    frame,
-                    Some(&pixel_format),
-                )
-                .ok_or(SurfaceError::OpenGlViewUnavailable)?;
-                view.setWantsBestResolutionOpenGLSurface(true);
-                if explicit_frame.is_none() {
-                    view.setAutoresizingMask(
-                        NSAutoresizingMaskOptions::ViewWidthSizable
-                            | NSAutoresizingMaskOptions::ViewHeightSizable,
-                    );
-                }
-                view.setHidden(true);
-                theater.addSubview(&view);
-                view.prepareOpenGL();
-                if view.openGLContext().is_none() {
-                    view.removeFromSuperview();
-                    theater.removeFromSuperview();
-                    return Err(SurfaceError::OpenGlContextUnavailable);
-                }
+            |aspect_session| {
+                mount_after_opaque_theater_configuration(
+                    || configure_opaque_window(window),
+                    || configure_transparent_webview(webview),
+                    || {
+                        let theater = NSBox::initWithFrame(NSBox::alloc(mtm), webview.frame());
+                        theater.setBoxType(NSBoxType::Custom);
+                        theater.setTitlePosition(NSTitlePosition::NoTitle);
+                        theater.setBorderWidth(0.0);
+                        theater.setContentViewMargins(NSSize::new(0.0, 0.0));
+                        theater.setFillColor(&theater_color());
+                        theater.setAutoresizingMask(
+                            NSAutoresizingMaskOptions::ViewWidthSizable
+                                | NSAutoresizingMaskOptions::ViewHeightSizable,
+                        );
+                        theater_parent.addSubview_positioned_relativeTo(
+                            &theater,
+                            NSWindowOrderingMode::Below,
+                            Some(webview),
+                        );
+                        Ok(theater)
+                    },
+                    move |theater| {
+                        let frame = if let Some(frame) = explicit_frame {
+                            frame
+                        } else {
+                            let bounds = theater.bounds();
+                            let viewport = theater_viewport_frame(TheaterBounds {
+                                width: bounds.size.width,
+                                height: bounds.size.height,
+                                scale_factor: window.backingScaleFactor(),
+                            })
+                            .ok_or(SurfaceError::InvalidGeometry)?;
+                            NSRect::new(
+                                NSPoint::new(viewport.x, viewport.y),
+                                NSSize::new(viewport.width, viewport.height),
+                            )
+                        };
+                        let mut attributes = [
+                            NSOpenGLPFAOpenGLProfile,
+                            NSOpenGLProfileVersion3_2Core,
+                            NSOpenGLPFAAccelerated,
+                            NSOpenGLPFADoubleBuffer,
+                            0,
+                        ];
+                        let pixel_format = unsafe {
+                            NSOpenGLPixelFormat::initWithAttributes(
+                                NSOpenGLPixelFormat::alloc(),
+                                NonNull::new(attributes.as_mut_ptr())
+                                    .expect("pixel format attributes are present"),
+                            )
+                        }
+                        .ok_or(SurfaceError::OpenGlViewUnavailable)?;
+                        let view = NSOpenGLView::initWithFrame_pixelFormat(
+                            NSOpenGLView::alloc(mtm),
+                            frame,
+                            Some(&pixel_format),
+                        )
+                        .ok_or(SurfaceError::OpenGlViewUnavailable)?;
+                        view.setWantsBestResolutionOpenGLSurface(true);
+                        if explicit_frame.is_none() {
+                            view.setAutoresizingMask(
+                                NSAutoresizingMaskOptions::ViewWidthSizable
+                                    | NSAutoresizingMaskOptions::ViewHeightSizable,
+                            );
+                        }
+                        view.setHidden(true);
+                        theater.addSubview(&view);
+                        view.prepareOpenGL();
+                        if view.openGLContext().is_none() {
+                            view.removeFromSuperview();
+                            theater.removeFromSuperview();
+                            return Err(SurfaceError::OpenGlContextUnavailable);
+                        }
 
-                Ok(Self {
-                    view,
-                    theater,
-                    parent,
-                    mounted: AtomicBool::new(true),
-                    _lease: ResourceLease::acquire(ResourceKind::Surface),
-                })
+                        Ok(Self {
+                            view,
+                            theater,
+                            parent,
+                            aspect_session: RefCell::new(aspect_session),
+                            mounted: AtomicBool::new(true),
+                            _lease: ResourceLease::acquire(ResourceKind::Surface),
+                        })
+                    },
+                )
             },
         )
     }
@@ -256,12 +273,26 @@ impl MacVideoSurface {
 
     pub fn unmount(&self) -> Result<(), SurfaceError> {
         MainThreadMarker::new().ok_or(SurfaceError::NotMainThread)?;
-        if self.mounted.swap(false, Ordering::AcqRel) {
-            self.view.setHidden(true);
-            self.view.removeFromSuperview();
-            self.theater.removeFromSuperview();
+        if !self.mounted.load(Ordering::Acquire) {
+            return Ok(());
         }
-        Ok(())
+        unmount_after_aspect_restore(
+            || {
+                let mut aspect_session = self.aspect_session.borrow_mut();
+                if let Some(session) = aspect_session.as_mut() {
+                    session.restore()?;
+                }
+                aspect_session.take();
+                Ok(())
+            },
+            || {
+                if self.mounted.swap(false, Ordering::AcqRel) {
+                    self.view.setHidden(true);
+                    self.view.removeFromSuperview();
+                    self.theater.removeFromSuperview();
+                }
+            },
+        )
     }
 
     pub fn is_mounted(&self) -> bool {
@@ -300,6 +331,23 @@ fn mount_after_webview_transparency<T>(
 ) -> Result<T, SurfaceError> {
     configure_transparency()?;
     attach_surface()
+}
+
+fn mount_after_aspect_session_install<S, T>(
+    install_aspect_session: impl FnOnce() -> Result<S, SurfaceError>,
+    attach_native_surface: impl FnOnce(S) -> Result<T, SurfaceError>,
+) -> Result<T, SurfaceError> {
+    let aspect_session = install_aspect_session()?;
+    attach_native_surface(aspect_session)
+}
+
+fn unmount_after_aspect_restore(
+    restore_aspect: impl FnOnce() -> Result<(), SurfaceError>,
+    detach_native_surface: impl FnOnce(),
+) -> Result<(), SurfaceError> {
+    restore_aspect()?;
+    detach_native_surface();
+    Ok(())
 }
 
 fn mount_after_opaque_theater_configuration<T, U>(
@@ -438,8 +486,8 @@ pub fn backing_pixels(size: (f64, f64), scale: f64) -> Option<(i32, i32)> {
 #[cfg(test)]
 mod tests {
     use super::{
-        SurfaceError, mount_after_opaque_theater_configuration, mount_after_webview_transparency,
-        theater_color_components,
+        SurfaceError, mount_after_aspect_session_install, mount_after_opaque_theater_configuration,
+        mount_after_webview_transparency, theater_color_components, unmount_after_aspect_restore,
     };
     use std::cell::{Cell, RefCell};
 
@@ -532,5 +580,78 @@ mod tests {
 
         assert_eq!(result, Err(SurfaceError::OpenGlViewUnavailable));
         assert!(!video_attached.get());
+    }
+
+    #[test]
+    fn a_later_mount_failure_drops_and_restores_the_installed_aspect_session() {
+        struct TestAspectSession<'a>(&'a RefCell<Vec<&'static str>>);
+
+        impl Drop for TestAspectSession<'_> {
+            fn drop(&mut self) {
+                self.0.borrow_mut().push("restore-aspect");
+            }
+        }
+
+        let order = RefCell::new(Vec::new());
+        let result = mount_after_aspect_session_install(
+            || {
+                order.borrow_mut().push("install-aspect");
+                Ok(TestAspectSession(&order))
+            },
+            |_session| {
+                order.borrow_mut().push("attach-video");
+                Err::<(), _>(SurfaceError::OpenGlContextUnavailable)
+            },
+        );
+
+        assert_eq!(result, Err(SurfaceError::OpenGlContextUnavailable));
+        assert_eq!(
+            &*order.borrow(),
+            &["install-aspect", "attach-video", "restore-aspect"]
+        );
+    }
+
+    #[test]
+    fn an_aspect_install_failure_prevents_native_attachment() {
+        let attached = Cell::new(false);
+        let result = mount_after_aspect_session_install(
+            || Err::<(), _>(SurfaceError::InvalidGeometry),
+            |()| {
+                attached.set(true);
+                Ok(())
+            },
+        );
+
+        assert_eq!(result, Err(SurfaceError::InvalidGeometry));
+        assert!(!attached.get());
+    }
+
+    #[test]
+    fn unmount_restores_the_aspect_policy_before_detaching_native_views() {
+        let order = RefCell::new(Vec::new());
+
+        unmount_after_aspect_restore(
+            || {
+                order.borrow_mut().push("restore-aspect");
+                Ok(())
+            },
+            || order.borrow_mut().push("detach-native-views"),
+        )
+        .expect("unmount");
+
+        assert_eq!(&*order.borrow(), &["restore-aspect", "detach-native-views"]);
+    }
+
+    #[test]
+    fn aspect_restore_failure_prevents_native_detachment() {
+        let detached = Cell::new(false);
+
+        let result = unmount_after_aspect_restore(
+            || Err(SurfaceError::InvalidGeometry),
+            || detached.set(true),
+        );
+
+        assert_eq!(result, Err(SurfaceError::InvalidGeometry));
+        assert!(!detached.get());
     }
 }

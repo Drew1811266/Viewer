@@ -3,7 +3,8 @@
 use super::{
     MacVideoRenderSession, MacVideoSurface, SurfaceRect as MacSurfaceRect,
     VideoDiagnosticsCounters, VideoRenderDiagnostics,
-    interaction::{LatestGeometryMailbox, LatestSeekMailbox},
+    interaction::LatestGeometryMailbox,
+    media_worker::{MediaCommandWorker, MediaWorkerEvent},
 };
 use async_trait::async_trait;
 use dispatch2::{DispatchQueue, DispatchTime};
@@ -23,38 +24,21 @@ use viewer_application::{
 };
 use viewer_video_mpv::{
     FrameDirection as MpvFrameDirection, MpvClient, MpvLibrary, PlaybackRate as MpvPlaybackRate,
-    SeekMode, runtime_manifest::RuntimeLayout,
+    runtime_manifest::RuntimeLayout,
 };
 
 type EngineEventSink = dyn Fn(u64, EngineEvent) + Send + Sync;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum PendingCompletion {
-    Seek {
-        request_id: u64,
-        target_time_us: u64,
-    },
     Step,
 }
 
-const COMMIT_COMPLETION_TOLERANCE_US: u64 = 50_000;
 const GEOMETRY_REDRAW_INTERVAL: Duration = Duration::from_millis(33);
 
 impl PendingCompletion {
     const fn event_if_ready(self, time_us: u64) -> Option<EngineEvent> {
         match self {
-            Self::Seek {
-                request_id,
-                target_time_us,
-            } => {
-                if time_us.abs_diff(target_time_us) > COMMIT_COMPLETION_TOLERANCE_US {
-                    return None;
-                }
-                Some(EngineEvent::SeekCompleted {
-                    request_id,
-                    time_us,
-                })
-            }
             Self::Step => Some(EngineEvent::FrameStepped { time_us }),
         }
     }
@@ -67,7 +51,7 @@ pub struct MacOsLibmpvAdapter {
     diagnostics: Arc<VideoDiagnosticsCounters>,
     event_sink: Mutex<Option<Arc<EngineEventSink>>>,
     pending_completion: Mutex<Option<PendingCompletion>>,
-    seek_mailbox: Mutex<LatestSeekMailbox>,
+    media_worker: Mutex<Option<MediaCommandWorker>>,
     geometry_mailbox: Mutex<LatestGeometryMailbox>,
     self_reference: OnceLock<Weak<Self>>,
     first_frame_published: AtomicBool,
@@ -75,12 +59,13 @@ pub struct MacOsLibmpvAdapter {
 }
 
 // SAFETY: AppKit, OpenGL, and render-context values inside `session` are
-// created, accessed, and destroyed only through `on_main`. The mutexes make
-// outer scheduling/state access serialized; they do not grant native access
-// away from AppKit's main thread.
+// created, accessed, and destroyed only through `on_main`. The media worker
+// owns only libmpv's documented thread-safe command handle; it never receives
+// an AppKit or render-context value.
 unsafe impl Send for MacOsLibmpvAdapter {}
-// SAFETY: see the `Send` invariant. Every native operation synchronously hops
-// to the main queue before locking or touching the native session.
+// SAFETY: see the `Send` invariant. Every surface/render operation hops to the
+// main queue, while worker state and libmpv command calls use their dedicated
+// synchronized ownership boundaries.
 unsafe impl Sync for MacOsLibmpvAdapter {}
 
 impl MacOsLibmpvAdapter {
@@ -92,7 +77,7 @@ impl MacOsLibmpvAdapter {
             diagnostics: Arc::new(VideoDiagnosticsCounters::default()),
             event_sink: Mutex::new(None),
             pending_completion: Mutex::new(None),
-            seek_mailbox: Mutex::new(LatestSeekMailbox::default()),
+            media_worker: Mutex::new(None),
             geometry_mailbox: Mutex::new(LatestGeometryMailbox::default()),
             self_reference: OnceLock::new(),
             first_frame_published: AtomicBool::new(false),
@@ -122,10 +107,12 @@ impl MacOsLibmpvAdapter {
             client
                 .initialize_for_rendering()
                 .map_err(|_| VideoEngineError::Initialization)?;
+            let command_client = client.command_client();
             let surface = MacVideoSurface::mount(&window, mac_rect(rect))
                 .map_err(|_| VideoEngineError::RenderSurface)?;
+            let draw_weak = Weak::clone(&weak);
             let schedule_draw: Arc<dyn Fn() + Send + Sync> = Arc::new(move || {
-                let weak = Weak::clone(&weak);
+                let weak = Weak::clone(&draw_weak);
                 DispatchQueue::main().exec_async(move || {
                     if let Some(adapter) = weak.upgrade() {
                         adapter.draw_on_main();
@@ -135,6 +122,13 @@ impl MacOsLibmpvAdapter {
             let session =
                 MacVideoRenderSession::new_first_frame_gated(client, surface, schedule_draw)
                     .map_err(|_| VideoEngineError::RenderSurface)?;
+            let event_weak = Weak::clone(&weak);
+            let worker = MediaCommandWorker::start(command_client, move |event| {
+                if let Some(adapter) = event_weak.upgrade() {
+                    adapter.handle_media_worker_event(event);
+                }
+            })?;
+            *lock(&adapter.media_worker) = Some(worker);
             *lock(&adapter.session) = Some(session);
             adapter
                 .first_frame_published
@@ -194,20 +188,6 @@ impl MacOsLibmpvAdapter {
         action(session)
     }
 
-    fn schedule_seek_drain(&self) -> Result<(), VideoEngineError> {
-        let weak = self
-            .self_reference
-            .get()
-            .cloned()
-            .ok_or(VideoEngineError::Unavailable)?;
-        DispatchQueue::main().exec_async(move || {
-            if let Some(adapter) = weak.upgrade() {
-                adapter.drain_seek_on_main();
-            }
-        });
-        Ok(())
-    }
-
     fn schedule_geometry_drain(&self) -> Result<(), VideoEngineError> {
         let weak = self
             .self_reference
@@ -237,55 +217,6 @@ impl MacOsLibmpvAdapter {
                 }
             })
             .map_err(|_| VideoEngineError::Unavailable)
-    }
-
-    fn drain_seek_on_main(&self) {
-        debug_assert!(MainThreadMarker::new().is_some());
-        let request = lock(&self.seek_mailbox).take_for_drain();
-        if let Some(request) = request {
-            let generation = *lock(&self.generation);
-            let result = generation
-                .ok_or(VideoEngineError::StaleGeneration)
-                .and_then(|generation| {
-                    self.with_generation(generation, |session| {
-                        session
-                            .seek(
-                                request.time_us,
-                                match request.intent {
-                                    SeekIntent::Preview => SeekMode::PreviewKeyframe,
-                                    SeekIntent::Commit => SeekMode::CommitExact,
-                                },
-                            )
-                            .map_err(|_| VideoEngineError::Decode)
-                    })
-                });
-            if result.is_ok() && request.intent == SeekIntent::Commit {
-                let mut pending = lock(&self.pending_completion);
-                if matches!(pending.as_ref(), Some(PendingCompletion::Seek { .. })) {
-                    self.diagnostics.record_stale_completion_rejection();
-                }
-                *pending = Some(PendingCompletion::Seek {
-                    request_id: request.request_id,
-                    target_time_us: request.time_us,
-                });
-                self.diagnostics.record_commit_issue();
-            } else if result.is_ok() && request.intent == SeekIntent::Preview {
-                self.diagnostics.record_preview_issue();
-            } else if result.is_err()
-                && request.intent == SeekIntent::Commit
-                && let Some(generation) = generation
-            {
-                self.emit(
-                    generation,
-                    EngineEvent::Failed(
-                        viewer_domain::video::VideoFailureKind::DecodeFallbackFailed,
-                    ),
-                );
-            }
-        }
-        if lock(&self.seek_mailbox).finish_drain() {
-            let _ = self.schedule_seek_drain();
-        }
     }
 
     fn drain_geometry_on_main(&self) {
@@ -330,50 +261,149 @@ impl MacOsLibmpvAdapter {
 
     fn draw_on_main(&self) {
         debug_assert!(MainThreadMarker::new().is_some());
-        let generation = *lock(&self.generation);
-        let (first_frame, progress, ended) = {
+        let rendered = {
             let mut session = lock(&self.session);
             let Some(session) = session.as_mut() else {
                 return;
             };
-            let drew = session.draw_if_needed().unwrap_or(false);
-            (
-                drew && session.first_decoded_frame_ready()
-                    && !self.first_frame_published.swap(true, Ordering::AcqRel),
-                drew.then(|| session.playback_time_us().ok().flatten())
-                    .flatten(),
-                drew && session.eof_reached().unwrap_or(false)
-                    && !self.ended_published.swap(true, Ordering::AcqRel),
-            )
+            session.draw_if_needed().ok().flatten()
         };
-        let Some(generation) = generation else {
+        let (Some(generation), Some(rendered)) = (*lock(&self.generation), rendered) else {
             return;
+        };
+        if let Some(worker) = lock(&self.media_worker).as_ref() {
+            let _ = worker.frame_rendered(generation, rendered.serial);
+        }
+    }
+
+    fn handle_media_worker_event(&self, event: MediaWorkerEvent) {
+        match event {
+            MediaWorkerEvent::SeekIssued {
+                generation, intent, ..
+            } => {
+                if *lock(&self.generation) != Some(generation) {
+                    self.diagnostics.record_stale_completion_rejection();
+                    return;
+                }
+                match intent {
+                    SeekIntent::Preview => self.diagnostics.record_preview_issue(),
+                    SeekIntent::Commit => self.diagnostics.record_commit_issue(),
+                }
+            }
+            MediaWorkerEvent::FrameSnapshot {
+                generation,
+                frame_serial,
+                snapshot,
+            } => {
+                if *lock(&self.generation) != Some(generation) {
+                    self.diagnostics.record_stale_completion_rejection();
+                    return;
+                }
+                self.schedule_frame_confirmation(generation, frame_serial, snapshot.picture_type);
+                if let Some(time_us) = snapshot.time_us {
+                    self.emit(
+                        generation,
+                        EngineEvent::TimeChanged {
+                            time_us,
+                            duration_us: None,
+                        },
+                    );
+                    let completion = {
+                        let mut pending = lock(&self.pending_completion);
+                        let event =
+                            pending.and_then(|completion| completion.event_if_ready(time_us));
+                        if event.is_some() {
+                            pending.take();
+                        }
+                        event
+                    };
+                    if let Some(completion) = completion {
+                        self.emit(generation, completion);
+                    }
+                }
+                if snapshot.eof_reached && !self.ended_published.swap(true, Ordering::AcqRel) {
+                    self.emit(generation, EngineEvent::Ended);
+                }
+            }
+            MediaWorkerEvent::SeekCompleted {
+                generation,
+                request_id,
+                time_us,
+            } => {
+                if *lock(&self.generation) == Some(generation) {
+                    self.emit(
+                        generation,
+                        EngineEvent::SeekCompleted {
+                            request_id,
+                            time_us,
+                        },
+                    );
+                } else {
+                    self.diagnostics.record_stale_completion_rejection();
+                }
+            }
+            MediaWorkerEvent::Failed { generation } => {
+                if *lock(&self.generation) == Some(generation) {
+                    self.emit(
+                        generation,
+                        EngineEvent::Failed(
+                            viewer_domain::video::VideoFailureKind::DecodeFallbackFailed,
+                        ),
+                    );
+                }
+            }
+        }
+    }
+
+    fn schedule_frame_confirmation(
+        &self,
+        generation: u64,
+        frame_serial: u64,
+        picture_type: Option<String>,
+    ) {
+        let Some(weak) = self.self_reference.get().cloned() else {
+            return;
+        };
+        DispatchQueue::main().exec_async(move || {
+            if let Some(adapter) = weak.upgrade() {
+                adapter.confirm_frame_on_main(generation, frame_serial, picture_type);
+            }
+        });
+    }
+
+    fn confirm_frame_on_main(
+        &self,
+        generation: u64,
+        frame_serial: u64,
+        picture_type: Option<String>,
+    ) {
+        debug_assert!(MainThreadMarker::new().is_some());
+        let first_frame = {
+            let mut session = lock(&self.session);
+            let latest_serial = session
+                .as_ref()
+                .and_then(MacVideoRenderSession::latest_rendered_frame_serial);
+            if !frame_snapshot_matches_active_render(
+                *lock(&self.generation),
+                generation,
+                frame_serial,
+                latest_serial,
+            ) {
+                self.diagnostics.record_stale_completion_rejection();
+                return;
+            }
+            session
+                .as_mut()
+                .and_then(|session| {
+                    session
+                        .confirm_first_decoded_frame(frame_serial, picture_type)
+                        .ok()
+                })
+                .unwrap_or(false)
+                && !self.first_frame_published.swap(true, Ordering::AcqRel)
         };
         if first_frame {
             self.emit(generation, EngineEvent::FirstFrameReady);
-        }
-        if let Some(time_us) = progress {
-            self.emit(
-                generation,
-                EngineEvent::TimeChanged {
-                    time_us,
-                    duration_us: None,
-                },
-            );
-            let completion = {
-                let mut pending = lock(&self.pending_completion);
-                let event = pending.and_then(|completion| completion.event_if_ready(time_us));
-                if event.is_some() {
-                    pending.take();
-                }
-                event
-            };
-            if let Some(completion) = completion {
-                self.emit(generation, completion);
-            }
-        }
-        if ended {
-            self.emit(generation, EngineEvent::Ended);
         }
     }
 
@@ -386,13 +416,14 @@ impl MacOsLibmpvAdapter {
 
     fn close_on_main(&self) {
         debug_assert!(MainThreadMarker::new().is_some());
-        lock(&self.session).take();
         *lock(&self.generation) = None;
         self.first_frame_published.store(false, Ordering::Release);
         self.ended_published.store(false, Ordering::Release);
         *lock(&self.pending_completion) = None;
-        lock(&self.seek_mailbox).invalidate();
         lock(&self.geometry_mailbox).invalidate();
+        let worker = lock(&self.media_worker).take();
+        let session = lock(&self.session).take();
+        drop_in_media_shutdown_order(worker, session);
     }
 }
 
@@ -405,8 +436,11 @@ impl VideoEngine for MacOsLibmpvAdapter {
             session
                 .open_local_file_paused(&request.source.canonical_path)
                 .map_err(|_| VideoEngineError::Decode)?;
+            lock(&adapter.media_worker)
+                .as_ref()
+                .ok_or(VideoEngineError::Unavailable)?
+                .activate(request.generation)?;
             *lock(&adapter.generation) = Some(request.generation);
-            lock(&adapter.seek_mailbox).activate(request.generation);
             lock(&adapter.geometry_mailbox).activate(request.generation);
             adapter
                 .first_frame_published
@@ -454,17 +488,17 @@ impl VideoEngine for MacOsLibmpvAdapter {
     }
 
     fn publish_seek(&self, generation: u64, request: SeekRequest) -> Result<(), VideoEngineError> {
-        let schedule = lock(&self.seek_mailbox).publish(generation, request)?;
+        lock(&self.media_worker)
+            .as_ref()
+            .ok_or(VideoEngineError::Unavailable)?
+            .publish_seek(generation, request)?;
         match request.intent {
             SeekIntent::Preview => self
                 .diagnostics
-                .record_preview_publication(request.request_id, !schedule),
+                .record_preview_publication(request.request_id, false),
             SeekIntent::Commit => self
                 .diagnostics
-                .record_commit_publication(request.request_id, !schedule),
-        }
-        if schedule {
-            self.schedule_seek_drain()?;
+                .record_commit_publication(request.request_id, false),
         }
         Ok(())
     }
@@ -550,6 +584,21 @@ fn mac_rect(rect: SurfaceRect) -> MacSurfaceRect {
     }
 }
 
+fn frame_snapshot_matches_active_render(
+    active_generation: Option<u64>,
+    event_generation: u64,
+    event_frame_serial: u64,
+    latest_rendered_serial: Option<u64>,
+) -> bool {
+    active_generation == Some(event_generation)
+        && latest_rendered_serial == Some(event_frame_serial)
+}
+
+fn drop_in_media_shutdown_order<W, S>(worker: Option<W>, session: Option<S>) {
+    drop(worker);
+    drop(session);
+}
+
 fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex
         .lock()
@@ -558,22 +607,15 @@ fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
 
 #[cfg(test)]
 mod tests {
-    use super::PendingCompletion;
+    use std::sync::{Arc, Mutex};
+
+    use super::{
+        PendingCompletion, drop_in_media_shutdown_order, frame_snapshot_matches_active_render,
+    };
     use viewer_application::EngineEvent;
 
     #[test]
-    fn pending_seek_and_step_complete_with_the_drawn_frame_time() {
-        assert_eq!(
-            PendingCompletion::Seek {
-                request_id: 12,
-                target_time_us: 750_000,
-            }
-            .event_if_ready(750_000),
-            Some(EngineEvent::SeekCompleted {
-                request_id: 12,
-                time_us: 750_000,
-            })
-        );
+    fn pending_step_completes_with_the_drawn_frame_time() {
         assert_eq!(
             PendingCompletion::Step.event_if_ready(800_000),
             Some(EngineEvent::FrameStepped { time_us: 800_000 })
@@ -581,18 +623,54 @@ mod tests {
     }
 
     #[test]
-    fn pending_commit_completes_only_near_its_own_target() {
-        let pending = PendingCompletion::Seek {
-            request_id: 11,
-            target_time_us: 2_000_000,
-        };
-        assert_eq!(pending.event_if_ready(1_000_000), None);
-        assert_eq!(
-            pending.event_if_ready(2_049_999),
-            Some(EngineEvent::SeekCompleted {
-                request_id: 11,
-                time_us: 2_049_999,
-            })
+    fn first_frame_snapshot_is_generation_and_frame_serial_guarded() {
+        assert!(frame_snapshot_matches_active_render(
+            Some(7),
+            7,
+            42,
+            Some(42)
+        ));
+        assert!(!frame_snapshot_matches_active_render(
+            Some(7),
+            6,
+            42,
+            Some(42)
+        ));
+        assert!(!frame_snapshot_matches_active_render(
+            Some(7),
+            7,
+            41,
+            Some(42)
+        ));
+        assert!(!frame_snapshot_matches_active_render(None, 7, 42, Some(42)));
+    }
+
+    #[test]
+    fn media_worker_is_shutdown_before_native_session_teardown() {
+        #[derive(Clone)]
+        struct TracedDrop {
+            name: &'static str,
+            trace: Arc<Mutex<Vec<&'static str>>>,
+        }
+
+        impl Drop for TracedDrop {
+            fn drop(&mut self) {
+                self.trace.lock().unwrap().push(self.name);
+            }
+        }
+
+        let trace = Arc::new(Mutex::new(Vec::new()));
+        drop_in_media_shutdown_order(
+            Some(TracedDrop {
+                name: "worker",
+                trace: Arc::clone(&trace),
+            }),
+            Some(TracedDrop {
+                name: "session",
+                trace: Arc::clone(&trace),
+            }),
         );
+
+        assert_eq!(*trace.lock().unwrap(), ["worker", "session"]);
     }
 }

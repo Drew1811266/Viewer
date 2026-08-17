@@ -7,8 +7,8 @@ use super::{
 use objc2_app_kit::NSOpenGLContext;
 use std::{path::Path, sync::Arc};
 use thiserror::Error;
+use viewer_video_mpv::PlaybackRate;
 use viewer_video_mpv::{FrameDirection, MpvClient, MpvError, MpvRenderContext, MpvRenderError};
-use viewer_video_mpv::{PlaybackRate, SeekMode};
 
 #[derive(Debug, Error)]
 pub enum RenderLoopError {
@@ -20,15 +20,60 @@ pub enum RenderLoopError {
     Client(#[from] MpvError),
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct RenderedFrame {
+    pub serial: u64,
+    pub media_loaded: bool,
+}
+
+#[derive(Default)]
+struct FrameReadiness {
+    latest_rendered_frame: Option<RenderedFrame>,
+    first_frame_ready: bool,
+    decoded_picture_type: Option<String>,
+}
+
+impl FrameReadiness {
+    fn record_rendered_frame(&mut self, frame: RenderedFrame) {
+        self.latest_rendered_frame = Some(frame);
+    }
+
+    const fn latest_rendered_frame(&self) -> Option<RenderedFrame> {
+        self.latest_rendered_frame
+    }
+
+    const fn first_frame_ready(&self) -> bool {
+        self.first_frame_ready
+    }
+
+    fn decoded_picture_type(&self) -> Option<&str> {
+        self.decoded_picture_type.as_deref()
+    }
+
+    fn confirm_first_decoded_frame(&mut self, serial: u64, picture_type: Option<String>) -> bool {
+        let Some(rendered) = self.latest_rendered_frame else {
+            return false;
+        };
+        let Some(picture_type) = picture_type else {
+            return false;
+        };
+        if !rendered.media_loaded || rendered.serial != serial {
+            return false;
+        }
+        self.first_frame_ready = true;
+        self.decoded_picture_type = Some(picture_type);
+        true
+    }
+}
+
 pub struct MacVideoRenderSession {
     surface: Option<MacVideoSurface>,
     render_context: Option<MpvRenderContext>,
     client: Option<MpvClient>,
     open_gl_context: objc2::rc::Retained<NSOpenGLContext>,
     first_frame_revealed: bool,
-    first_frame_ready: bool,
+    frame_readiness: FrameReadiness,
     auto_reveal_first_frame: bool,
-    decoded_picture_type: Option<String>,
     media_loaded: bool,
     _client_lease: ResourceLease,
     _render_context_lease: ResourceLease,
@@ -74,21 +119,20 @@ impl MacVideoRenderSession {
             client: Some(client),
             open_gl_context,
             first_frame_revealed: false,
-            first_frame_ready: false,
+            frame_readiness: FrameReadiness::default(),
             auto_reveal_first_frame,
-            decoded_picture_type: None,
             media_loaded: false,
             _client_lease: ResourceLease::acquire(ResourceKind::Client),
             _render_context_lease: ResourceLease::acquire(ResourceKind::RenderContext),
         })
     }
 
-    pub fn draw_if_needed(&mut self) -> Result<bool, RenderLoopError> {
+    pub fn draw_if_needed(&mut self) -> Result<Option<RenderedFrame>, RenderLoopError> {
         let Some(render_context) = self.render_context.as_mut() else {
-            return Ok(false);
+            return Ok(None);
         };
         let Some(surface) = self.surface.as_ref() else {
-            return Ok(false);
+            return Ok(None);
         };
 
         self.open_gl_context.makeCurrentContext();
@@ -99,27 +143,18 @@ impl MacVideoRenderSession {
                 self.open_gl_context.flushBuffer();
                 render_context.report_swap();
                 record_rendered_frame();
-                let decoded_picture_type = self
-                    .client
-                    .as_ref()
-                    .map(MpvClient::current_video_picture_type)
-                    .transpose()?
-                    .flatten();
-                if should_reveal_fixture_frame(
-                    self.media_loaded,
-                    self.first_frame_revealed,
-                    should_draw,
-                    decoded_picture_type.is_some(),
-                ) {
-                    self.first_frame_ready = true;
-                    self.decoded_picture_type = decoded_picture_type;
-                    if self.auto_reveal_first_frame {
-                        surface.reveal()?;
-                        self.first_frame_revealed = true;
-                    }
-                }
+                let serial = self
+                    .frame_readiness
+                    .latest_rendered_frame()
+                    .map_or(1, |frame| frame.serial.saturating_add(1));
+                let rendered = RenderedFrame {
+                    serial,
+                    media_loaded: self.media_loaded,
+                };
+                self.frame_readiness.record_rendered_frame(rendered);
+                return Ok(Some(rendered));
             }
-            Ok(should_draw)
+            Ok(None)
         })();
         NSOpenGLContext::clearCurrentContext();
         result
@@ -135,7 +170,7 @@ impl MacVideoRenderSession {
     }
 
     pub fn redraw_retained_frame(&mut self) -> Result<(), RenderLoopError> {
-        if !should_redraw_retained_frame(self.first_frame_ready) {
+        if !should_redraw_retained_frame(self.frame_readiness.first_frame_ready()) {
             return Ok(());
         }
         let Some(surface) = self.surface.as_ref() else {
@@ -188,11 +223,11 @@ impl MacVideoRenderSession {
     }
 
     pub fn first_decoded_frame_ready(&self) -> bool {
-        self.first_frame_ready
+        self.frame_readiness.first_frame_ready()
     }
 
     pub fn reveal_surface(&mut self) -> Result<(), RenderLoopError> {
-        if self.first_frame_ready
+        if self.frame_readiness.first_frame_ready()
             && !self.first_frame_revealed
             && let Some(surface) = self.surface.as_ref()
         {
@@ -203,7 +238,46 @@ impl MacVideoRenderSession {
     }
 
     pub fn decoded_picture_type(&self) -> Option<&str> {
-        self.decoded_picture_type.as_deref()
+        self.frame_readiness.decoded_picture_type()
+    }
+
+    pub fn latest_rendered_frame_serial(&self) -> Option<u64> {
+        self.frame_readiness
+            .latest_rendered_frame()
+            .map(|frame| frame.serial)
+    }
+
+    pub fn confirm_first_decoded_frame(
+        &mut self,
+        serial: u64,
+        picture_type: Option<String>,
+    ) -> Result<bool, RenderLoopError> {
+        let should_confirm = should_reveal_fixture_frame(
+            self.media_loaded,
+            self.first_frame_revealed,
+            true,
+            picture_type.is_some(),
+        );
+        let confirmed = should_confirm
+            && self
+                .frame_readiness
+                .confirm_first_decoded_frame(serial, picture_type);
+        if confirmed
+            && self.auto_reveal_first_frame
+            && !self.first_frame_revealed
+            && let Some(surface) = self.surface.as_ref()
+        {
+            surface.reveal()?;
+            self.first_frame_revealed = true;
+        }
+        Ok(confirmed)
+    }
+
+    pub fn sample_decoded_picture_type(&self) -> Result<Option<String>, RenderLoopError> {
+        let Some(client) = self.client.as_ref() else {
+            return Ok(None);
+        };
+        Ok(client.current_video_picture_type()?)
     }
 
     pub fn frame_step(&self, direction: FrameDirection) -> Result<(), RenderLoopError> {
@@ -224,13 +298,6 @@ impl MacVideoRenderSession {
     pub fn play(&self) -> Result<(), RenderLoopError> {
         if let Some(client) = self.client.as_ref() {
             client.play()?;
-        }
-        Ok(())
-    }
-
-    pub fn seek(&self, time_us: u64, mode: SeekMode) -> Result<(), RenderLoopError> {
-        if let Some(client) = self.client.as_ref() {
-            client.seek_absolute_us(time_us, mode)?;
         }
         Ok(())
     }
@@ -307,7 +374,9 @@ impl Drop for MacVideoRenderSession {
 
 #[cfg(test)]
 mod tests {
-    use super::{should_redraw_retained_frame, should_reveal_fixture_frame};
+    use super::{
+        FrameReadiness, RenderedFrame, should_redraw_retained_frame, should_reveal_fixture_frame,
+    };
 
     #[test]
     fn pre_load_render_context_wake_keeps_the_surface_hidden() {
@@ -322,5 +391,34 @@ mod tests {
     fn retained_frame_redraw_is_allowed_only_after_first_frame_readiness() {
         assert!(!should_redraw_retained_frame(false));
         assert!(should_redraw_retained_frame(true));
+    }
+
+    #[test]
+    fn rendering_records_a_frame_without_reading_or_confirming_client_properties() {
+        let mut readiness = FrameReadiness::default();
+        let rendered = RenderedFrame {
+            serial: 1,
+            media_loaded: true,
+        };
+
+        readiness.record_rendered_frame(rendered);
+
+        assert_eq!(readiness.latest_rendered_frame(), Some(rendered));
+        assert!(!readiness.first_frame_ready());
+    }
+
+    #[test]
+    fn first_frame_confirmation_requires_the_latest_rendered_serial_and_a_picture_type() {
+        let mut readiness = FrameReadiness::default();
+        readiness.record_rendered_frame(RenderedFrame {
+            serial: 4,
+            media_loaded: true,
+        });
+
+        assert!(!readiness.confirm_first_decoded_frame(3, Some("I".into())));
+        assert!(!readiness.confirm_first_decoded_frame(4, None));
+        assert!(readiness.confirm_first_decoded_frame(4, Some("I".into())));
+        assert!(readiness.first_frame_ready());
+        assert_eq!(readiness.decoded_picture_type(), Some("I"));
     }
 }

@@ -26,6 +26,11 @@ impl MediaCommandBackend for MpvCommandClient {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) enum MediaWorkerEvent {
+    SeekIssued {
+        generation: u64,
+        request_id: u64,
+        intent: SeekIntent,
+    },
     FrameSnapshot {
         generation: u64,
         frame_serial: u64,
@@ -223,6 +228,12 @@ where
                         request_id: request.request_id,
                         frame_serial_before_seek,
                     });
+                    drop(state);
+                    event_sink(MediaWorkerEvent::SeekIssued {
+                        generation,
+                        request_id: request.request_id,
+                        intent: request.intent,
+                    });
                 } else if result.is_err() && state.active_generation == Some(generation) {
                     drop(state);
                     event_sink(MediaWorkerEvent::Failed { generation });
@@ -236,6 +247,12 @@ where
                 let mut state = lock(&shared.state);
                 if result.is_ok() && state.active_generation == Some(generation) {
                     state.pending_completion = Some(request);
+                    drop(state);
+                    event_sink(MediaWorkerEvent::SeekIssued {
+                        generation,
+                        request_id: request.request_id,
+                        intent: request.intent,
+                    });
                 } else if result.is_err() && state.active_generation == Some(generation) {
                     drop(state);
                     event_sink(MediaWorkerEvent::Failed { generation });
@@ -324,13 +341,13 @@ fn next_work(shared: &SharedState) -> Work {
                 request,
             };
         }
-        if let Some((frame_generation, frame_serial)) = state.pending_frame.take() {
-            if frame_generation == generation {
-                return Work::Snapshot {
-                    generation,
-                    frame_serial,
-                };
-            }
+        if let Some((frame_generation, frame_serial)) = state.pending_frame.take()
+            && frame_generation == generation
+        {
+            return Work::Snapshot {
+                generation,
+                frame_serial,
+            };
         }
         state = shared
             .changed
@@ -522,7 +539,7 @@ mod tests {
         let (values, changed) = &*events;
         let values = values.lock().unwrap();
         let (values, timeout) = changed
-            .wait_timeout_while(values, Duration::from_secs(1), |values| values.len() < 2)
+            .wait_timeout_while(values, Duration::from_secs(1), |values| values.len() < 3)
             .unwrap();
         assert!(!timeout.timed_out());
         assert!(values.contains(&MediaWorkerEvent::FrameSnapshot {

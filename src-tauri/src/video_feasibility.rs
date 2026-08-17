@@ -486,7 +486,13 @@ fn with_matching_session(
 impl ActiveFeasibilitySession {
     fn draw_and_record(&mut self) -> Result<bool, viewer_platform_macos::video::RenderLoopError> {
         let revealed_before = self.session.first_decoded_frame_revealed();
-        let frame_update = self.session.draw_if_needed()?;
+        let rendered = self.session.draw_if_needed()?;
+        if let Some(rendered) = rendered {
+            let picture_type = self.session.sample_decoded_picture_type()?;
+            self.session
+                .confirm_first_decoded_frame(rendered.serial, picture_type)?;
+        }
+        let frame_update = rendered.is_some();
         let picture_frame = frame_update && self.session.decoded_picture_type().is_some();
         let revealed = !revealed_before && self.session.first_decoded_frame_revealed();
         self.generation_probe

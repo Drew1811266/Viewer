@@ -137,7 +137,11 @@ impl MediaCommandWorker {
                 state.pending_completion = None;
                 state.awaiting_preview_frame = None;
             }
-            SeekIntent::Commit => state.pending_commit = Some(request),
+            SeekIntent::Commit => {
+                state.pending_preview = None;
+                state.awaiting_preview_frame = None;
+                state.pending_commit = Some(request);
+            }
         }
         self.shared.changed.notify_all();
         Ok(())
@@ -222,6 +226,7 @@ where
                 if result.is_ok()
                     && state.active_generation == Some(generation)
                     && state.latest_preview_request_id == request.request_id
+                    && state.latest_request_id == request.request_id
                 {
                     state.awaiting_preview_frame = Some(PreviewFrameGate {
                         generation,
@@ -438,7 +443,7 @@ mod tests {
     }
 
     #[test]
-    fn exact_commit_waits_for_a_new_frame_from_the_preview_seek() {
+    fn exact_commit_supersedes_preview_without_waiting_for_a_preview_frame() {
         let caller = thread::current().id();
         let backend = RecordingBackend::new(snapshot(4_000_000));
         let events = Arc::new(Mutex::new(Vec::new()));
@@ -450,7 +455,6 @@ mod tests {
         worker.activate(7).unwrap();
 
         worker.publish_seek(7, preview(10, 4_000_000)).unwrap();
-        worker.publish_seek(7, commit(11, 4_000_000)).unwrap();
         let calls = backend.wait_for_calls(1);
         assert_eq!(calls.len(), 1);
         assert!(matches!(
@@ -460,19 +464,19 @@ mod tests {
                 ..
             }
         ));
+        worker.publish_seek(7, commit(11, 4_000_000)).unwrap();
 
-        worker.frame_rendered(7, 41).unwrap();
-        let calls = backend.wait_for_calls(3);
+        let calls = backend.wait_for_calls(2);
         assert_eq!(
             calls.iter().map(call_kind).collect::<Vec<_>>(),
-            ["preview", "snapshot", "commit"]
+            ["preview", "commit"]
         );
         assert!(calls.iter().all(|call| call_thread(call) != caller));
         worker.shutdown_and_join();
     }
 
     #[test]
-    fn a_new_preview_discards_the_old_unacknowledged_commit() {
+    fn a_new_interaction_eventually_issues_its_latest_exact_commit() {
         let backend = RecordingBackend::new(snapshot(8_000_000));
         let mut worker = MediaCommandWorker::start(backend.clone(), |_| {}).unwrap();
         worker.activate(4).unwrap();
@@ -482,17 +486,12 @@ mod tests {
 
         worker.publish_seek(4, preview(3, 8_000_000)).unwrap();
         worker.publish_seek(4, commit(4, 8_000_000)).unwrap();
-        backend.wait_for_calls(2);
-        worker.frame_rendered(4, 9).unwrap();
-        let calls = backend.wait_for_calls(4);
-        assert_eq!(
-            calls.iter().map(call_kind).collect::<Vec<_>>(),
-            ["preview", "preview", "snapshot", "commit"]
-        );
+        let calls = backend.wait_for_calls(2);
         assert!(matches!(
-            calls[3],
+            calls.last().expect("latest exact seek is issued"),
             Call::Seek {
                 time_us: 8_000_000,
+                mode: SeekMode::CommitExact,
                 ..
             }
         ));
@@ -559,6 +558,7 @@ mod tests {
     fn snapshot(time_us: u64) -> MpvPlaybackSnapshot {
         MpvPlaybackSnapshot {
             time_us: Some(time_us),
+            duration_us: Some(20_000_000),
             eof_reached: false,
             picture_type: Some("I".into()),
         }

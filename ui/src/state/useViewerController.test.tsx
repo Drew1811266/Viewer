@@ -124,7 +124,6 @@ function bridge(access: 'read_write' | 'read_only' = 'read_write'): ViewerBridge
     videoSetVolume: vi.fn(),
     videoSetMuted: vi.fn(),
     videoSetRate: vi.fn(),
-    videoSetSurfaceRect: vi.fn(),
     videoSetFullscreen: vi.fn(),
     videoRequestCover: vi.fn(),
     videoRequestThumbnail: vi.fn(),

@@ -1,8 +1,8 @@
 use crate::{
     dto::{
         GenerationDto, VideoCacheStatsDto, VideoFullscreenDto, VideoMutedDto, VideoOpenAttemptDto,
-        VideoOpenRequestDto, VideoOpenSurfaceRectDto, VideoRateDto, VideoSeekDto, VideoSessionDto,
-        VideoStepDto, VideoSurfaceRectDto, VideoThumbnailRequestDto, VideoVolumeDto,
+        VideoOpenRequestDto, VideoRateDto, VideoSeekDto, VideoSessionDto, VideoStepDto,
+        VideoThumbnailRequestDto, VideoVolumeDto,
     },
     error::{CommandError, ErrorCategory},
     state::{AuthorizedVideoSource, DesktopRuntime},
@@ -10,7 +10,7 @@ use crate::{
 };
 use std::{str::FromStr, sync::Arc};
 use tauri::{State, WebviewWindow};
-use viewer_application::{SurfaceRect, VideoEngine};
+use viewer_application::VideoEngine;
 use viewer_domain::EntityId;
 
 pub type NativeVideoRuntime = VideoRuntime<viewer_platform_macos::video::MacOsLibmpvAdapter>;
@@ -35,12 +35,13 @@ pub async fn video_open(
             .await
             .map_err(CommandError::from)?;
         video.ensure_open_attempt(&attempt)?;
-        let surface_rect = initial_video_surface_rect(&source, request.surface_rect);
+        let media_geometry = native_video_geometry(&source);
+        let media_duration_us = source.metadata.duration_us;
         let engine = Arc::clone(video.engine());
         video
             .replace_authorized_for_attempt(&attempt, source, || async move {
                 engine
-                    .prepare_surface(window, surface_rect)
+                    .prepare_surface(window, media_geometry, media_duration_us)
                     .await
                     .map_err(|_| VideoCommandError::EngineUnavailable)
             })
@@ -96,48 +97,14 @@ fn validate_open_attempt_id(attempt_id: &str) -> Result<(), CommandError> {
     }
 }
 
-fn initial_video_surface_rect(
+fn native_video_geometry(
     source: &AuthorizedVideoSource,
-    requested: VideoOpenSurfaceRectDto,
-) -> SurfaceRect {
-    let stage = SurfaceRect::from(requested);
-    if !source.metadata_refreshed_for_retry {
-        return stage;
+) -> viewer_platform_macos::video::VideoDisplayGeometry {
+    viewer_platform_macos::video::VideoDisplayGeometry {
+        width: source.metadata.display_width.unwrap_or(1).max(1),
+        height: source.metadata.display_height.unwrap_or(1).max(1),
+        rotation_degrees: i32::from(source.metadata.rotation_degrees),
     }
-    let Some(display_width) = source.metadata.display_width.filter(|width| *width > 0) else {
-        return stage;
-    };
-    let Some(display_height) = source.metadata.display_height.filter(|height| *height > 0) else {
-        return stage;
-    };
-    let rotated = source.metadata.rotation_degrees.unsigned_abs() % 180 == 90;
-    let (source_width, source_height) = if rotated {
-        (display_height, display_width)
-    } else {
-        (display_width, display_height)
-    };
-    let scale = f64::min(
-        f64::from(stage.width) / f64::from(source_width),
-        f64::from(stage.height) / f64::from(source_height),
-    );
-    let fitted_width = f64::from(source_width) * scale;
-    let fitted_height = f64::from(source_height) * scale;
-    SurfaceRect {
-        x: js_round_i32(f64::from(stage.x) + (f64::from(stage.width) - fitted_width) / 2.0),
-        y: js_round_i32(f64::from(stage.y) + (f64::from(stage.height) - fitted_height) / 2.0),
-        width: js_round_u32(fitted_width),
-        height: js_round_u32(fitted_height),
-    }
-}
-
-fn js_round_i32(value: f64) -> i32 {
-    (value + 0.5)
-        .floor()
-        .clamp(f64::from(i32::MIN), f64::from(i32::MAX)) as i32
-}
-
-fn js_round_u32(value: f64) -> u32 {
-    (value + 0.5).floor().clamp(0.0, f64::from(u32::MAX)) as u32
 }
 
 #[tauri::command]
@@ -220,16 +187,6 @@ pub async fn video_set_rate(
 }
 
 #[tauri::command]
-pub fn video_set_surface_rect(
-    request: VideoSurfaceRectDto,
-    video: State<'_, Arc<NativeVideoRuntime>>,
-) -> Result<(), CommandError> {
-    video
-        .set_surface_rect(request.generation, request.sequence, request.rect())
-        .map_err(Into::into)
-}
-
-#[tauri::command]
 pub async fn video_set_fullscreen(
     request: VideoFullscreenDto,
     window: WebviewWindow,
@@ -300,14 +257,14 @@ fn fullscreen_unavailable() -> CommandError {
 
 #[cfg(test)]
 mod tests {
-    use super::initial_video_surface_rect;
-    use crate::{dto::VideoOpenSurfaceRectDto, state::AuthorizedVideoSource};
+    use super::native_video_geometry;
+    use crate::state::AuthorizedVideoSource;
     use std::path::PathBuf;
-    use viewer_application::SurfaceRect;
     use viewer_domain::{
         EntityId, SessionId,
         video::{VideoMetadata, VideoProbeStatus},
     };
+    use viewer_platform_macos::video::VideoDisplayGeometry;
 
     fn source(metadata_refreshed_for_retry: bool) -> AuthorizedVideoSource {
         AuthorizedVideoSource {
@@ -329,26 +286,15 @@ mod tests {
     }
 
     #[test]
-    fn retry_open_uses_authoritative_fit_before_the_native_surface_is_prepared() {
-        let stage = VideoOpenSurfaceRectDto {
-            x: 100,
-            y: 50,
-            width: 800,
-            height: 600,
-        };
-
+    fn native_theater_uses_authoritative_media_geometry_instead_of_a_browser_rect() {
         assert_eq!(
-            initial_video_surface_rect(&source(true), stage),
-            SurfaceRect {
-                x: 100,
-                y: 125,
-                width: 800,
-                height: 450,
+            native_video_geometry(&source(true)),
+            VideoDisplayGeometry {
+                width: 1_920,
+                height: 1_080,
+                rotation_degrees: 0,
             }
         );
-        assert_eq!(
-            initial_video_surface_rect(&source(false), stage),
-            SurfaceRect::from(stage)
-        );
+        assert_eq!(native_video_geometry(&source(false)).width, 1_920);
     }
 }

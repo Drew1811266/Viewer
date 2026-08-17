@@ -1,7 +1,7 @@
 #![allow(deprecated)]
 
 use super::{
-    MacVideoSurface, SurfaceError, SurfaceRect,
+    MacVideoSurface, SurfaceError,
     diagnostics::{ResourceKind, ResourceLease, VideoRenderDiagnostics, record_rendered_frame},
 };
 use objc2_app_kit::NSOpenGLContext;
@@ -158,15 +158,6 @@ impl MacVideoRenderSession {
         })();
         NSOpenGLContext::clearCurrentContext();
         result
-    }
-
-    pub fn update_geometry(&mut self, rect: SurfaceRect) -> Result<(), RenderLoopError> {
-        if let Some(surface) = self.surface.as_ref() {
-            apply_surface_geometry(|| {
-                surface.update_geometry(rect).map_err(RenderLoopError::from)
-            })?;
-        }
-        Ok(())
     }
 
     pub fn redraw_retained_frame(&mut self) -> Result<(), RenderLoopError> {
@@ -362,12 +353,6 @@ fn should_reveal_fixture_frame(
     media_loaded && !first_frame_revealed && drew_frame && decoded_video_frame
 }
 
-fn apply_surface_geometry(
-    update_surface: impl FnOnce() -> Result<(), RenderLoopError>,
-) -> Result<(), RenderLoopError> {
-    update_surface()
-}
-
 const fn should_redraw_retained_frame(first_frame_ready: bool) -> bool {
     first_frame_ready
 }
@@ -380,11 +365,8 @@ impl Drop for MacVideoRenderSession {
 
 #[cfg(test)]
 mod tests {
-    use std::cell::Cell;
-
     use super::{
-        FrameReadiness, RenderedFrame, apply_surface_geometry, should_redraw_retained_frame,
-        should_reveal_fixture_frame,
+        FrameReadiness, RenderedFrame, should_redraw_retained_frame, should_reveal_fixture_frame,
     };
 
     #[test]
@@ -429,18 +411,5 @@ mod tests {
         assert!(readiness.confirm_first_decoded_frame(4, Some("I".into())));
         assert!(readiness.first_frame_ready());
         assert_eq!(readiness.decoded_picture_type(), Some("I"));
-    }
-
-    #[test]
-    fn a_geometry_change_notifies_the_native_surface_once() {
-        let updates = Cell::new(0);
-
-        apply_surface_geometry(|| {
-            updates.set(updates.get() + 1);
-            Ok(())
-        })
-        .unwrap();
-
-        assert_eq!(updates.get(), 1);
     }
 }

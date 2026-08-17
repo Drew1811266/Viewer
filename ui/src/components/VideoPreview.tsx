@@ -1,4 +1,4 @@
-import type { CSSProperties, FocusEvent, ReactNode } from 'react'
+import type { FocusEvent, ReactNode } from 'react'
 import { useEffect, useRef, useState } from 'react'
 import type { VideoFile } from '../api/types'
 import ViewerButton, { ViewerIconButton } from './ui/ViewerButton'
@@ -44,18 +44,17 @@ export default function VideoPreview({
   onClose = IGNORE,
 }: VideoPreviewProps) {
   const dialog = useRef<HTMLElement>(null)
-  const stage = useRef<HTMLDivElement>(null)
   const [retryRequest, setRetryRequest] = useState({ entityId: file.entityId, key: 0 })
   const [seeking, setSeeking] = useState(false)
   const [adjusting, setAdjusting] = useState(false)
   const [focusedWithin, setFocusedWithin] = useState(false)
+  const [posterUrl, setPosterUrl] = useState(file.videoMetadata.coverUrl)
   const reducedMotion = useReducedMotionPreference()
   const retryKey = retryRequest.entityId === file.entityId ? retryRequest.key : 0
-  const { state, surfaceLayout, controlState, commands } = useVideoBridge({
+  const { state, controlState, commands } = useVideoBridge({
     bridge,
     file,
     retryKey,
-    stage,
   })
   const currentIndex = files.findIndex((candidate) => candidate.entityId === file.entityId)
   const failed = state.phase === 'failed'
@@ -75,6 +74,24 @@ export default function VideoPreview({
       if (previous instanceof HTMLElement && previous.isConnected) previous.focus()
     }
   }, [])
+
+  useEffect(() => {
+    let disposed = false
+    setPosterUrl(file.videoMetadata.coverUrl)
+    if (file.videoMetadata.coverUrl !== null)
+      return () => {
+        disposed = true
+      }
+    void bridge
+      .videoRequestCover(file.entityId)
+      .then((url) => {
+        if (!disposed) setPosterUrl(url)
+      })
+      .catch(() => undefined)
+    return () => {
+      disposed = true
+    }
+  }, [bridge, file.entityId, file.videoMetadata.coverUrl])
 
   function navigate(delta: number) {
     const next = files[currentIndex + delta]
@@ -140,16 +157,35 @@ export default function VideoPreview({
   )
 
   const durationLabel = formatVideoTime(file.videoMetadata.durationUs ?? state.durationUs ?? 0)
-  const apertureStyle =
-    surfaceLayout === null
-      ? undefined
-      : ({
-          '--video-preview-aperture-left': `${surfaceLayout.aperture.left}px`,
-          '--video-preview-aperture-top': `${surfaceLayout.aperture.top}px`,
-          '--video-preview-aperture-width': `${surfaceLayout.aperture.width}px`,
-          '--video-preview-aperture-height': `${surfaceLayout.aperture.height}px`,
-        } as CSSProperties)
-
+  const navigation = (
+    <nav
+      className="preview-navigation-float video-preview-top-navigation"
+      aria-label="视频导航"
+      onFocusCapture={() => {
+        controls.reveal()
+        setFocusedWithin(true)
+      }}
+      onBlurCapture={bottomChromeFocusLeft}
+    >
+      <ViewerIconButton
+        icon="chevron-left"
+        label="上一个视频"
+        tone="quiet"
+        disabled={currentIndex <= 0}
+        onClick={() => navigate(-1)}
+      />
+      <span>
+        {currentIndex + 1} / {files.length}
+      </span>
+      <ViewerIconButton
+        icon="chevron-right"
+        label="下一个视频"
+        tone="quiet"
+        disabled={currentIndex < 0 || currentIndex >= files.length - 1}
+        onClick={() => navigate(1)}
+      />
+    </nav>
+  )
   return (
     <section
       ref={dialog}
@@ -164,19 +200,10 @@ export default function VideoPreview({
       onPointerMove={controls.reveal}
     >
       <div
-        ref={stage}
         className="video-preview-stage"
         data-testid="video-preview-stage"
         data-surface-visible={state.surfaceVisible}
-        style={apertureStyle}
       >
-        {(['top', 'right', 'bottom', 'left'] as const).map((edge) => (
-          <div
-            key={edge}
-            className={`video-preview-matte video-preview-matte--${edge}`}
-            aria-hidden="true"
-          />
-        ))}
         <ViewerToolbar
           label="视频预览工具"
           className="video-preview-topbar"
@@ -186,8 +213,14 @@ export default function VideoPreview({
               <span>{durationLabel}</span>
             </span>
           }
+          center={navigation}
           actions={actions}
         />
+        {state.phase === 'ended' && posterUrl !== null && (
+          <div className="video-preview-ended-poster">
+            <img src={posterUrl} alt={`${file.name} 的视频封面`} draggable={false} />
+          </div>
+        )}
         {!failed && !state.surfaceVisible && (
           <section className="video-preview-loading" role="status" aria-label="正在加载视频">
             <strong>正在加载视频</strong>
@@ -207,25 +240,6 @@ export default function VideoPreview({
           onFocusCapture={() => setFocusedWithin(true)}
           onBlurCapture={bottomChromeFocusLeft}
         >
-          <nav className="preview-navigation-float" aria-label="视频导航">
-            <ViewerIconButton
-              icon="chevron-left"
-              label="上一个视频"
-              tone="quiet"
-              disabled={currentIndex <= 0}
-              onClick={() => navigate(-1)}
-            />
-            <span>
-              {currentIndex + 1} / {files.length}
-            </span>
-            <ViewerIconButton
-              icon="chevron-right"
-              label="下一个视频"
-              tone="quiet"
-              disabled={currentIndex < 0 || currentIndex >= files.length - 1}
-              onClick={() => navigate(1)}
-            />
-          </nav>
           {state.generation > 0 && (
             <VideoControls
               view={controlView}

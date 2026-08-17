@@ -144,6 +144,7 @@ fn command_client_executes_media_work_off_the_calling_thread_and_reads_one_snaps
         commands.playback_snapshot().unwrap(),
         MpvPlaybackSnapshot {
             time_us: Some(1_250_000),
+            duration_us: Some(1_300_000),
             eof_reached: true,
             picture_type: None,
         }
@@ -191,6 +192,12 @@ unsafe extern "C" fn get_property(
         assert_eq!(format, 5);
         calls().lock().unwrap().push(Call::PropertyRead(name));
         unsafe { *data.cast::<f64>() = 1.25 };
+        return 0;
+    }
+    if name == "duration" {
+        assert_eq!(format, 5);
+        calls().lock().unwrap().push(Call::PropertyRead(name));
+        unsafe { *data.cast::<f64>() = 1.3 };
         return 0;
     }
     if name == "mistimed-frame-count" {
@@ -322,6 +329,7 @@ fn public_client_contract_is_isolated_and_typed() {
         Some("libmpv")
     );
     assert_eq!(client.current_playback_time_us().unwrap(), Some(1_250_000));
+    assert_eq!(client.duration_us().unwrap(), Some(1_300_000));
     assert_eq!(client.mistimed_frame_count().unwrap(), Some(3));
     assert_eq!(client.decoder_frame_drop_count().unwrap(), Some(2));
     assert_eq!(client.eof_reached().unwrap(), Some(true));
@@ -361,6 +369,8 @@ fn public_client_contract_is_isolated_and_typed() {
         ("loop-file", "no"),
         ("keep-open", "yes"),
         ("keep-open-pause", "yes"),
+        ("background", "color"),
+        ("background-color", "#111722"),
         ("network-timeout", "0"),
     ] {
         let option_index = calls

@@ -149,7 +149,6 @@ function bridge(access: 'read_write' | 'read_only' = 'read_write'): ViewerBridge
     videoSetVolume: vi.fn(),
     videoSetMuted: vi.fn(),
     videoSetRate: vi.fn(),
-    videoSetSurfaceRect: vi.fn(),
     videoSetFullscreen: vi.fn(),
     videoRequestCover: vi.fn().mockResolvedValue('viewer-image://localhost/session/cover'),
     videoRequestThumbnail: vi.fn(),
@@ -1145,7 +1144,6 @@ describe('Viewer empty state', () => {
       },
     }))
     vi.mocked(viewer.videoClose).mockResolvedValue(undefined)
-    vi.mocked(viewer.videoSetSurfaceRect).mockResolvedValue(undefined)
     render(<App bridge={viewer} />)
     fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
 
@@ -1159,7 +1157,6 @@ describe('Viewer empty state', () => {
       expect(viewer.videoOpen).toHaveBeenCalledWith({
         attemptId: expect.any(String),
         entityId: 'video-1',
-        surfaceRect: { x: 100, y: 125, width: 800, height: 450 },
       }),
     )
     expect(preview.querySelector('img[src^="viewer-image://session/"]')).toBeNull()

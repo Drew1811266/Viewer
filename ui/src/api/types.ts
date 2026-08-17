@@ -79,17 +79,9 @@ export interface VideoMetadata {
   coverUrl: string | null
 }
 
-export interface VideoSurfaceRect {
-  x: number
-  y: number
-  width: number
-  height: number
-}
-
 export interface VideoOpenRequest {
   attemptId: string
   entityId: string
-  surfaceRect: VideoSurfaceRect
 }
 
 export interface VideoOpenAttemptRequest {
@@ -128,10 +120,6 @@ export type VideoRate =
 
 export interface VideoRateRequest extends VideoGenerationRequest {
   rate: VideoRate
-}
-
-export interface VideoSurfaceRectRequest extends VideoGenerationRequest, VideoSurfaceRect {
-  sequence: number
 }
 
 export interface VideoFullscreenRequest extends VideoGenerationRequest {

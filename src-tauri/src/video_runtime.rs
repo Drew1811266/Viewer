@@ -13,7 +13,7 @@ use std::{
 use tokio_util::sync::CancellationToken;
 use viewer_application::scheduler::TaskCoordinator;
 use viewer_application::{
-    EngineEvent, FrameDirection, PlaybackRate, SeekIntent, SeekRequest, SurfaceRect, VideoCommand,
+    EngineEvent, FrameDirection, PlaybackRate, SeekIntent, SeekRequest, VideoCommand,
     VideoCommandKind, VideoEngine, VideoPlaybackState, VideoPreviewService, VideoServiceError,
     VideoSource,
 };
@@ -712,18 +712,6 @@ impl<E: VideoEngine> VideoRuntime<E> {
             .await
     }
 
-    pub fn set_surface_rect(
-        &self,
-        generation: u64,
-        sequence: u64,
-        rect: SurfaceRect,
-    ) -> Result<(), VideoCommandError> {
-        self.ensure_generation(generation)?;
-        self.preview
-            .publish_surface_rect(generation, sequence, rect)
-            .map_err(VideoCommandError::from)
-    }
-
     pub fn cache_stats(&self) -> Result<VideoCacheStatsDto, VideoCommandError> {
         self.cache
             .as_ref()
@@ -898,8 +886,7 @@ impl<E: VideoEngine> VideoRuntime<E> {
             VideoCommandKind::Play
             | VideoCommandKind::Pause
             | VideoCommandKind::Seek(_)
-            | VideoCommandKind::Step(_)
-            | VideoCommandKind::SetSurfaceRect(_) => {}
+            | VideoCommandKind::Step(_) => {}
         }
         self.publish_state(generation);
         Ok(())

@@ -47,9 +47,8 @@ pub use text::{
 };
 pub use video::{
     EngineEvent, EngineOpenRequest, FrameDirection, PlaybackRate, SeekIntent, SeekRequest,
-    SurfaceRect, VideoCommand, VideoCommandKind, VideoEngineError, VideoEvent, VideoMedia,
-    VideoPlaybackState, VideoPreviewService, VideoPreviewSnapshot, VideoServiceError, VideoSource,
-    video_neighbors,
+    VideoCommand, VideoCommandKind, VideoEngineError, VideoEvent, VideoMedia, VideoPlaybackState,
+    VideoPreviewService, VideoPreviewSnapshot, VideoServiceError, VideoSource, video_neighbors,
 };
 pub use video_thumbnail::{
     TimelineThumbnailRequest, TimelineThumbnailResult, VideoThumbnailService,

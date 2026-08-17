@@ -3,8 +3,8 @@ use std::sync::{Arc, Mutex};
 use viewer_application::browse::BrowserFile;
 use viewer_application::{
     EngineEvent, EngineOpenRequest, FrameDirection, PlaybackRate, SeekIntent, SeekRequest,
-    SurfaceRect, VideoCommand, VideoCommandKind, VideoEngine, VideoEngineError, VideoMedia,
-    VideoPlaybackState, VideoPreviewService, VideoServiceError, VideoSource, video_neighbors,
+    VideoCommand, VideoCommandKind, VideoEngine, VideoEngineError, VideoMedia, VideoPlaybackState,
+    VideoPreviewService, VideoServiceError, VideoSource, video_neighbors,
 };
 use viewer_domain::{
     EntityId, RelativePath,
@@ -23,7 +23,6 @@ enum Call {
     SetVolume(u64, u8),
     SetMuted(u64, bool),
     SetRate(u64, PlaybackRate),
-    PublishSurfaceRect(u64, u64, SurfaceRect),
 }
 
 #[derive(Default)]
@@ -100,16 +99,6 @@ impl VideoEngine for RecordingEngine {
 
     async fn set_rate(&self, generation: u64, rate: PlaybackRate) -> Result<(), VideoEngineError> {
         self.record(Call::SetRate(generation, rate));
-        Ok(())
-    }
-
-    fn publish_surface_rect(
-        &self,
-        generation: u64,
-        sequence: u64,
-        rect: SurfaceRect,
-    ) -> Result<(), VideoEngineError> {
-        self.record(Call::PublishSurfaceRect(generation, sequence, rect));
         Ok(())
     }
 }

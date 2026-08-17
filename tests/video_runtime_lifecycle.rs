@@ -7,7 +7,7 @@ use std::{
 
 use viewer_application::{
     EngineOpenRequest, FrameDirection, PlaybackRate, ProjectAccess, ProjectProbeError,
-    ProjectProbePort, SeekIntent, SeekRequest, SurfaceRect, VideoEngine, VideoEngineError,
+    ProjectProbePort, SeekIntent, SeekRequest, VideoEngine, VideoEngineError,
 };
 use viewer_desktop::state::{DesktopRuntime, VideoClosePort};
 use viewer_desktop::{
@@ -99,15 +99,6 @@ impl VideoEngine for BlockingTransportEngine {
     async fn set_rate(&self, generation: u64, rate: PlaybackRate) -> Result<(), VideoEngineError> {
         self.inner.set_rate(generation, rate).await
     }
-
-    fn publish_surface_rect(
-        &self,
-        generation: u64,
-        sequence: u64,
-        rect: SurfaceRect,
-    ) -> Result<(), VideoEngineError> {
-        self.inner.publish_surface_rect(generation, sequence, rect)
-    }
 }
 
 impl viewer_desktop::video_runtime::PlaybackActivityPort for RecordingPlaybackActivity {
@@ -117,7 +108,7 @@ impl viewer_desktop::video_runtime::PlaybackActivityPort for RecordingPlaybackAc
 }
 
 #[tokio::test]
-async fn high_frequency_publication_bypasses_the_transition_lane() {
+async fn high_frequency_seek_publication_bypasses_the_transition_lane() {
     let engine = Arc::new(BlockingTransportEngine::default());
     let runtime = Arc::new(viewer_desktop::video_runtime::VideoRuntime::new(
         Arc::clone(&engine),
@@ -149,19 +140,6 @@ async fn high_frequency_publication_bypasses_the_transition_lane() {
     .await
     .expect("preview publication must not wait for the transition lane")
     .unwrap();
-    runtime
-        .set_surface_rect(
-            generation,
-            41,
-            SurfaceRect {
-                x: 5,
-                y: 6,
-                width: 640,
-                height: 360,
-            },
-        )
-        .expect("geometry publication must not wait for the transition lane");
-
     assert!(
         engine
             .inner
@@ -175,22 +153,6 @@ async fn high_frequency_publication_bypasses_the_transition_lane() {
                 },
             ))
     );
-    assert!(
-        engine
-            .inner
-            .calls()
-            .contains(&FakeVideoEngineCall::PublishSurfaceRect(
-                generation,
-                41,
-                SurfaceRect {
-                    x: 5,
-                    y: 6,
-                    width: 640,
-                    height: 360,
-                },
-            ))
-    );
-
     engine.pause_release.notify_one();
     pause.await.unwrap().unwrap();
 }
@@ -935,6 +897,43 @@ async fn playback_activity_is_generation_scoped_and_tracks_play_pause_fail_and_c
 }
 
 #[tokio::test]
+async fn terminal_playback_is_published_even_when_the_redundant_pause_fails() {
+    let engine = Arc::new(FakeVideoEngine::default());
+    let events = Arc::new(RecordingVideoEvents::default());
+    let runtime = viewer_desktop::video_runtime::VideoRuntime::with_cache_and_events(
+        Arc::clone(&engine),
+        tempfile::tempdir().unwrap().path(),
+        events.clone(),
+    )
+    .unwrap();
+    let generation = runtime
+        .open_authorized(video_source(7))
+        .await
+        .unwrap()
+        .generation;
+    runtime
+        .handle_engine_event(generation, viewer_application::EngineEvent::FirstFrameReady)
+        .await;
+    events.0.lock().unwrap().clear();
+    engine.fail_next(viewer_application::VideoEngineError::Unavailable);
+
+    runtime
+        .handle_engine_event(generation, viewer_application::EngineEvent::Ended)
+        .await;
+
+    assert_eq!(
+        runtime.playback_state(),
+        viewer_application::VideoPlaybackState::Ended
+    );
+    assert!(events
+        .0
+        .lock()
+        .unwrap()
+        .iter()
+        .any(|event| matches!(event, VideoEventDto::Ended { generation: event_generation } if *event_generation == generation)));
+}
+
+#[tokio::test]
 async fn command_failure_releases_playback_activity_without_allowing_stale_watch_mutation() {
     let engine = Arc::new(FakeVideoEngine::default());
     let activity = Arc::new(RecordingPlaybackActivity::default());
@@ -1016,14 +1015,12 @@ fn typed_video_requests_reject_unknown_fields_and_untyped_rates() {
         "legacy seeks without request ownership or intent must be rejected"
     );
     assert!(
-        serde_json::from_value::<viewer_desktop::dto::VideoSurfaceRectDto>(serde_json::json!({
-            "generation": 3,
-            "x": 0,
-            "y": 0,
-            "width": 640,
-            "height": 360
+        serde_json::from_value::<viewer_desktop::dto::VideoOpenRequestDto>(serde_json::json!({
+            "attemptId": "00000000-0000-4000-8000-000000000003",
+            "entityId": "video-3",
+            "surfaceRect": { "x": 0, "y": 0, "width": 640, "height": 360 }
         }))
         .is_err(),
-        "geometry publication must carry a monotonic sequence"
+        "production video open must reject obsolete browser geometry ownership"
     );
 }

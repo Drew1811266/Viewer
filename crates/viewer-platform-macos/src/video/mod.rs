@@ -1,9 +1,9 @@
 mod adapter;
 mod diagnostics;
-mod interaction;
 mod media_worker;
 mod render_loop;
 mod surface;
+mod theater;
 
 pub use adapter::MacOsLibmpvAdapter;
 pub use diagnostics::{
@@ -12,4 +12,8 @@ pub use diagnostics::{
 pub use render_loop::{MacVideoRenderSession, RenderLoopError, RenderedFrame};
 pub use surface::{
     AppKitFrame, MacVideoSurface, SurfaceError, SurfaceRect, appkit_frame, backing_pixels,
+};
+pub use theater::{
+    THEATER_BOTTOM_INSPECTOR_HEIGHT, THEATER_TOP_COMMAND_BAR_HEIGHT, TheaterBounds, TheaterFrame,
+    VideoDisplayGeometry, contain_fit_frame, theater_viewport_frame,
 };

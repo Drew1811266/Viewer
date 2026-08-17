@@ -152,6 +152,42 @@ platform task because the Windows version is not yet under development.
 
 Final result: passed
 
+## 2026-08-17 — Native Extreme-Compact Light Video Chrome
+
+### Source visual truth and normalization
+
+- Visual direction: `/Users/abc/.codex/generated_images/019fdab7-cec2-7cd3-9349-914f807e858f/exec-5a9c0db5-20fb-4fd2-8018-63a64d0abbdd.png` (`1586 × 992`, SHA-256 `4a5341dc92e9478fdf2fb09f50388ec659baaaccf6e7e1fdebac17f7612fddc9`).
+- Superseding approved constraints: `docs/superpowers/specs/2026-08-16-viewer-native-video-theater-refactor-design.md`, “Approved light chrome revision (2026-08-17)”: exact `50 px` top bar, exact `88 px` bottom bar, Viewer light tokens, only unavoidable letterbox darkness, and one accent play/pause action.
+- Native implementation: `target/design-qa-video-light-native/implementation-paused.jpeg` (`1229 × 768`, SHA-256 `62cdf5bb5f76e1b24dd00a27c6bc21b6f638594fbedbaa0d4c52aeb51525ef4f`).
+- Same-input comparison: `target/design-qa-video-light-native/comparison-paused.png` (`2456 × 768`, SHA-256 `4a64c52440240c0037776fd62a3a6974c3c72acde3770045f8d6e001a691a5da`).
+- The source was normalized from `1586 × 992` to `1228 × 768`; the `1229 × 768` native capture was normalized to the same `1228 × 768` half-frame. The review therefore compares equal-size 1× visual regions rather than raw display density.
+- State: paused mid-video with the full native picture, filename/duration, two-video navigation, timeline/time, transport, audio, speed, fullscreen, and Done visible. Media imagery differs intentionally; structure and control hierarchy are the fidelity targets.
+
+### Full-view and focused-region comparison
+
+- **Composition:** the implementation keeps the reference's left metadata, centered navigation, right Done action, dominant fitted video, and two-row controls. The later approved `50/88` contract intentionally removes the source's larger outer frame and dark inset control overlay, giving more height back to the picture.
+- **Typography:** the existing Viewer Inter/SF/PingFang stack, semibold filename, secondary duration/time, and compact control labels maintain the source hierarchy without introducing a display font or decorative text.
+- **Spacing and rhythm:** the top and bottom reservations are visibly fixed and compact; controls align to one timeline row and one transport row. There is no detached card, oversized header, control overlap, or content-area overflow at the `1229 × 768` native window.
+- **Colors and tokens:** application chrome uses the same white surface, neutral border, dark text, and cobalt accent as the main Viewer UI. The play button is the only persistent accent-filled action. Darkness is confined to the media's contain-fit side letterboxes.
+- **Image quality:** the native frame is sharp and contain-fit without crop or stretch. Side letterboxing is symmetric and no desktop, transparent seam, black transition band, or unrelated workspace pixel is visible.
+- **Copy and content:** live filename, duration, position, elapsed/total time, and Chinese accessible control names are all present; no placeholder copy from the generated visual appears in the product.
+- **Focused controls:** external Lucide assets remain crisp, every visible action retains a 44 px target and structural boundary, the disabled next action remains distinguishable, and the timeline/thumb are readable against the white shelf.
+
+### Findings and comparison history
+
+- Earlier P1: application-owned chrome was dark, oversized, and visually disconnected from the rest of Viewer. Fixed by the exact light `50/88` reservations and shared Viewer tokens.
+- Earlier P1: browser/native geometry disagreement could reveal transparent or unrelated pixels. Fixed by AppKit-owned theater/video geometry; the current native capture shows only the intended video and symmetric contain-fit letterbox.
+- Earlier P1: playback completion could leave a black native surface. Fixed by terminal detection using the authorized media duration and by preserving the useful cover at the exact final duration. The fresh native ended capture is `target/design-qa-video-light-native/implementation-ended.jpeg`.
+- Earlier P2: the generated light direction retained a large dark control overlay. The approved compact revision intentionally supersedes it with a flush white `88 px` shelf, which is visibly smaller and increases usable video area.
+- Post-fix native evidence at the same window confirms navigation from `587231.mp4` to `590050.mp4`, a paused mid-video seek, and the ended poster with the final duration. No actionable P0/P1/P2 visual mismatch remains.
+
+### Residual gaps
+
+- This current-run comparison covers the real `1229 × 768` native window. Compact and narrow responsive branches remain covered by focused component/style tests rather than fresh native captures in this iteration.
+- Fullscreen was not recaptured in this iteration; the existing fullscreen ownership and accessibility contracts remain unchanged.
+
+final result: passed
+
 ## 2026-08-13 — Responsive Video Player Experience Redesign
 
 ### Source truth and capture normalization

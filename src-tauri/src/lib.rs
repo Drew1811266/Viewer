@@ -249,7 +249,6 @@ pub fn run() {
             commands::video::video_set_volume,
             commands::video::video_set_muted,
             commands::video::video_set_rate,
-            commands::video::video_set_surface_rect,
             commands::video::video_set_fullscreen,
             commands::video::video_request_thumbnail,
             commands::video::video_cache_stats,
@@ -350,7 +349,12 @@ pub fn run() {
 
             if let Some(window) = app.get_webview_window("main") {
                 let app_handle = app.handle().clone();
+                let resize_video_engine = Arc::clone(&video_engine);
                 window.on_window_event(move |event| {
+                    if matches!(event, tauri::WindowEvent::Resized(_)) {
+                        resize_video_engine.request_native_resize_redraw();
+                        return;
+                    }
                     if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                         api.prevent_close();
                         let app_handle = app_handle.clone();

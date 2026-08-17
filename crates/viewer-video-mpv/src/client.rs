@@ -19,7 +19,7 @@ use crate::{
     loader::{LoadedLibrary, MpvLibrary},
 };
 
-const ISOLATION_OPTIONS: [(&str, &str); 19] = [
+const ISOLATION_OPTIONS: [(&str, &str); 21] = [
     ("vo", "libmpv"),
     ("hwdec", "auto-safe"),
     ("config", "no"),
@@ -38,6 +38,8 @@ const ISOLATION_OPTIONS: [(&str, &str); 19] = [
     ("loop-file", "no"),
     ("keep-open", "yes"),
     ("keep-open-pause", "yes"),
+    ("background", "color"),
+    ("background-color", "#111722"),
     ("network-timeout", "0"),
 ];
 
@@ -147,6 +149,7 @@ pub struct MpvCommandClient {
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct MpvPlaybackSnapshot {
     pub time_us: Option<u64>,
+    pub duration_us: Option<u64>,
     pub eof_reached: bool,
     pub picture_type: Option<String>,
 }
@@ -279,6 +282,13 @@ impl MpvClient {
     pub fn current_playback_time_us(&self) -> Result<Option<u64>, MpvError> {
         Ok(self
             .runtime_double_property("time-pos")?
+            .filter(|seconds| seconds.is_finite() && *seconds >= 0.0)
+            .map(|seconds| (seconds * 1_000_000.0).round() as u64))
+    }
+
+    pub fn duration_us(&self) -> Result<Option<u64>, MpvError> {
+        Ok(self
+            .runtime_double_property("duration")?
             .filter(|seconds| seconds.is_finite() && *seconds >= 0.0)
             .map(|seconds| (seconds * 1_000_000.0).round() as u64))
     }
@@ -462,10 +472,14 @@ impl MpvCommandClient {
         let time_us = runtime_double_property(&self.inner, "time-pos")?
             .filter(|seconds| seconds.is_finite() && *seconds >= 0.0)
             .map(|seconds| (seconds * 1_000_000.0).round() as u64);
+        let duration_us = runtime_double_property(&self.inner, "duration")?
+            .filter(|seconds| seconds.is_finite() && *seconds >= 0.0)
+            .map(|seconds| (seconds * 1_000_000.0).round() as u64);
         let eof_reached = runtime_flag_property(&self.inner, "eof-reached")?.unwrap_or(false);
         let picture_type = runtime_string_property(&self.inner, "video-frame-info/picture-type")?;
         Ok(MpvPlaybackSnapshot {
             time_us,
+            duration_us,
             eof_reached,
             picture_type,
         })

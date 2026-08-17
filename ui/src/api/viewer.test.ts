@@ -29,7 +29,6 @@ describe('tauriViewerBridge', () => {
     await tauriViewerBridge.videoOpen({
       attemptId: '00000000-0000-4000-8000-000000000001',
       entityId: 'video-1',
-      surfaceRect: { x: 10, y: 20, width: 640, height: 360 },
     })
     await tauriViewerBridge.videoCancelOpen({
       attemptId: '00000000-0000-4000-8000-000000000001',
@@ -47,14 +46,6 @@ describe('tauriViewerBridge', () => {
     await tauriViewerBridge.videoSetVolume({ generation: 8, volumePercent: 64 })
     await tauriViewerBridge.videoSetMuted({ generation: 8, muted: true })
     await tauriViewerBridge.videoSetRate({ generation: 8, rate: 'one_and_half' })
-    await tauriViewerBridge.videoSetSurfaceRect({
-      generation: 8,
-      sequence: 13,
-      x: 12,
-      y: 24,
-      width: 960,
-      height: 540,
-    })
     await tauriViewerBridge.videoSetFullscreen({ generation: 8, fullscreen: true })
     await tauriViewerBridge.videoRequestThumbnail({
       generation: 8,
@@ -73,7 +64,6 @@ describe('tauriViewerBridge', () => {
           request: {
             attemptId: '00000000-0000-4000-8000-000000000001',
             entityId: 'video-1',
-            surfaceRect: { x: 10, y: 20, width: 640, height: 360 },
           },
         },
       ],
@@ -91,19 +81,6 @@ describe('tauriViewerBridge', () => {
       ['video_set_volume', { request: { generation: 8, volumePercent: 64 } }],
       ['video_set_muted', { request: { generation: 8, muted: true } }],
       ['video_set_rate', { request: { generation: 8, rate: 'one_and_half' } }],
-      [
-        'video_set_surface_rect',
-        {
-          request: {
-            generation: 8,
-            sequence: 13,
-            x: 12,
-            y: 24,
-            width: 960,
-            height: 540,
-          },
-        },
-      ],
       ['video_set_fullscreen', { request: { generation: 8, fullscreen: true } }],
       [
         'video_request_thumbnail',
@@ -113,6 +90,7 @@ describe('tauriViewerBridge', () => {
       ['video_cache_stats'],
       ['video_cache_clear'],
     ])
+    expect('videoSetSurfaceRect' in tauriViewerBridge).toBe(false)
     expect(listen).toHaveBeenCalledWith('viewer://video-event', expect.any(Function))
   })
 

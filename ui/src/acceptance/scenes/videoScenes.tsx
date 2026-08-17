@@ -191,11 +191,11 @@ function fakeVideoBridge(state: PreviewAcceptanceState): VideoPreviewBridge {
     async videoSetRate() {
       return undefined
     },
-    async videoSetSurfaceRect() {
-      return undefined
-    },
     async videoSetFullscreen() {
       return undefined
+    },
+    async videoRequestCover() {
+      return ACCEPTANCE_VIDEO_FRAME_URL
     },
     async videoRequestThumbnail(request) {
       if (state !== 'video-timeline-ready') return

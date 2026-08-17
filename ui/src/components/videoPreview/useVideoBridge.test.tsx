@@ -1,5 +1,4 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { useRef } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type {
   VideoEvent,
@@ -25,7 +24,6 @@ afterEach(() => {
 
 describe('useVideoBridge', () => {
   it('subscribes before open and replays same-generation events emitted before open resolves', async () => {
-    installResizeObserver()
     const harness = videoBridgeHarness()
     harness.open.mockImplementation(async (request) => {
       harness.order.push(`open:${request.entityId.replace('video-', '')}`)
@@ -42,12 +40,10 @@ describe('useVideoBridge', () => {
     expect(harness.open).toHaveBeenCalledWith({
       attemptId: expect.any(String),
       entityId: 'video-a.mp4',
-      surfaceRect: { x: 100, y: 125, width: 800, height: 450 },
     })
   })
 
   it('ignores late events from the previous file and closes each opened generation once', async () => {
-    installResizeObserver()
     const harness = videoBridgeHarness()
     harness.open
       .mockResolvedValueOnce(session(1))
@@ -70,104 +66,7 @@ describe('useVideoBridge', () => {
     expect(harness.unlisten).toHaveBeenCalledTimes(2)
   })
 
-  it('updates fitted surface geometry after resize without reopening media', async () => {
-    const resize = installResizeObserver()
-    const animation = installAnimationFrameHarness()
-    const harness = videoBridgeHarness()
-    harness.open.mockResolvedValue(session(7))
-    render(<BridgeHarness file={video('a.mp4')} bridge={harness.bridge} />)
-    const stage = screen.getByTestId('video-stage')
-
-    await waitFor(() => expect(harness.setRect).toHaveBeenCalledTimes(1))
-    expect(harness.setRect).toHaveBeenLastCalledWith({
-      generation: 7,
-      sequence: 1,
-      x: 100,
-      y: 125,
-      width: 800,
-      height: 450,
-    })
-
-    resize.trigger(stage, { left: 120, top: 80, width: 400, height: 400 })
-    animation.flush()
-
-    await waitFor(() => expect(harness.setRect).toHaveBeenCalledTimes(2))
-    expect(harness.setRect).toHaveBeenLastCalledWith({
-      generation: 7,
-      sequence: 2,
-      x: 120,
-      y: 168,
-      width: 400,
-      height: 225,
-    })
-    expect(harness.open).toHaveBeenCalledTimes(1)
-  })
-
-  it('coalesces resize bursts to the latest fitted rect and keeps the active video alive', async () => {
-    const resize = installResizeObserver()
-    const animation = installAnimationFrameHarness()
-    const harness = videoBridgeHarness()
-    const inFlight = deferred<void>()
-    harness.open.mockResolvedValue(session(9))
-    harness.setRect
-      .mockResolvedValueOnce(undefined)
-      .mockReturnValueOnce(inFlight.promise)
-      .mockResolvedValue(undefined)
-    render(<BridgeHarness file={video('a.mp4')} bridge={harness.bridge} />)
-    const stage = screen.getByTestId('video-stage')
-
-    await waitFor(() => expect(harness.setRect).toHaveBeenCalledOnce())
-
-    resize.trigger(stage, { left: 104, top: 60, width: 760, height: 560 })
-    resize.trigger(stage, { left: 108, top: 70, width: 680, height: 500 })
-    resize.trigger(stage, { left: 112, top: 80, width: 600, height: 440 })
-
-    expect(harness.setRect).toHaveBeenCalledOnce()
-    animation.flush()
-    await waitFor(() => expect(harness.setRect).toHaveBeenCalledTimes(2))
-
-    resize.trigger(stage, { left: 120, top: 90, width: 520, height: 380 })
-    resize.trigger(stage, { left: 128, top: 100, width: 440, height: 320 })
-    animation.flush()
-    expect(harness.setRect).toHaveBeenCalledTimes(3)
-
-    inFlight.reject(new Error('transient resize mismatch'))
-    await waitFor(() => expect(harness.setRect).toHaveBeenCalledTimes(3))
-    expect(harness.setRect).toHaveBeenLastCalledWith({
-      generation: 9,
-      sequence: 3,
-      x: 128,
-      y: 136,
-      width: 440,
-      height: 248,
-    })
-    act(() => harness.emit({ type: 'firstFrameReady', generation: 9 }))
-    expect(screen.getByRole('status', { name: 'bridge state' })).toHaveTextContent('9:visible')
-    expect(harness.close).not.toHaveBeenCalled()
-  })
-
-  it('ignores a transient zero-sized stage while the window is being resized', async () => {
-    const resize = installResizeObserver()
-    const animation = installAnimationFrameHarness()
-    const harness = videoBridgeHarness()
-    harness.open.mockResolvedValue(session(10))
-    render(<BridgeHarness file={video('a.mp4')} bridge={harness.bridge} />)
-    const stage = screen.getByTestId('video-stage')
-
-    await waitFor(() => expect(harness.open).toHaveBeenCalledOnce())
-    act(() => harness.emit({ type: 'firstFrameReady', generation: 10 }))
-    expect(screen.getByRole('status', { name: 'bridge state' })).toHaveTextContent('10:visible')
-    resize.trigger(stage, { left: 0, top: 0, width: 0, height: 0 })
-    animation.flush()
-    await act(async () => Promise.resolve())
-
-    expect(harness.open).toHaveBeenCalledOnce()
-    expect(harness.close).not.toHaveBeenCalled()
-    expect(screen.getByRole('status', { name: 'bridge state' })).toHaveTextContent('10:visible')
-  })
-
   it('keeps the shell retryable when videoOpen rejects', async () => {
-    installResizeObserver()
     const harness = videoBridgeHarness()
     harness.open.mockRejectedValue({ code: 'decoder_missing', retryable: true })
 
@@ -183,7 +82,6 @@ describe('useVideoBridge', () => {
   })
 
   it('fails explicitly when indexed probe metadata is terminal without dimensions', async () => {
-    installResizeObserver()
     const harness = videoBridgeHarness()
 
     render(
@@ -208,7 +106,6 @@ describe('useVideoBridge', () => {
   })
 
   it('fails explicitly when ready indexed metadata has no display dimensions', async () => {
-    installResizeObserver()
     const harness = videoBridgeHarness()
 
     render(
@@ -232,7 +129,6 @@ describe('useVideoBridge', () => {
   })
 
   it('starts the lifecycle when pending indexed metadata becomes ready', async () => {
-    installResizeObserver()
     const harness = videoBridgeHarness()
     const rendered = render(
       <BridgeHarness
@@ -251,22 +147,7 @@ describe('useVideoBridge', () => {
     await waitFor(() => expect(harness.open).toHaveBeenCalledOnce())
   })
 
-  it('does not terminate playback when a transient dynamic geometry update is rejected', async () => {
-    installResizeObserver()
-    const harness = videoBridgeHarness()
-    harness.open.mockResolvedValue(session(7))
-    harness.setRect.mockRejectedValue(new Error('surface unavailable'))
-    render(<BridgeHarness file={video('a.mp4')} bridge={harness.bridge} />)
-
-    await waitFor(() => expect(harness.setRect).toHaveBeenCalledOnce())
-    act(() => harness.emit({ type: 'firstFrameReady', generation: 7 }))
-    expect(screen.getByRole('status', { name: 'bridge state' })).toHaveTextContent('7:visible')
-    expect(harness.close).not.toHaveBeenCalled()
-    expect(harness.unlisten).not.toHaveBeenCalled()
-  })
-
   it('binds every playback command to the active generation and normalizes bounded values', async () => {
-    installResizeObserver()
     const harness = videoBridgeHarness()
     harness.open.mockResolvedValue(session(8))
     render(<CommandBridgeHarness file={video('a.mp4')} bridge={harness.bridge} />)
@@ -310,7 +191,6 @@ describe('useVideoBridge', () => {
   })
 
   it('publishes only active-generation settings, fullscreen, and timeline artifacts', async () => {
-    installResizeObserver()
     const harness = videoBridgeHarness()
     harness.open.mockResolvedValue(session(4))
     render(<CommandBridgeHarness file={video('a.mp4')} bridge={harness.bridge} />)
@@ -371,25 +251,19 @@ function BridgeHarness({
   file: VideoFile
   retryKey?: number
 }) {
-  const stage = useRef<HTMLDivElement>(null)
-  const { state } = useVideoBridge({ bridge, file, retryKey, stage })
+  const { state } = useVideoBridge({ bridge, file, retryKey })
   return (
-    <>
-      <div ref={stage} data-testid="video-stage" />
-      <output aria-label="bridge state">
-        {state.generation}:{state.surfaceVisible ? 'visible' : 'hidden'}
-        {state.phase === 'failed' ? `:failed:${state.error?.code}` : ''}
-      </output>
-    </>
+    <output aria-label="bridge state">
+      {state.generation}:{state.surfaceVisible ? 'visible' : 'hidden'}
+      {state.phase === 'failed' ? `:failed:${state.error?.code}` : ''}
+    </output>
   )
 }
 
 function CommandBridgeHarness({ bridge, file }: { bridge: VideoPreviewBridge; file: VideoFile }) {
-  const stage = useRef<HTMLDivElement>(null)
-  const { state, controlState, commands } = useVideoBridge({ bridge, file, retryKey: 0, stage })
+  const { state, controlState, commands } = useVideoBridge({ bridge, file, retryKey: 0 })
   return (
     <>
-      <div ref={stage} />
       <output aria-label="command state">{state.generation}</output>
       <output aria-label="control state">
         {controlState.volumePercent}:{String(controlState.muted)}:{controlState.rate}:
@@ -466,7 +340,6 @@ function videoBridgeHarness() {
     return Promise.resolve(session(1))
   })
   const close = vi.fn<ViewerBridge['videoClose']>().mockResolvedValue(undefined)
-  const setRect = vi.fn<ViewerBridge['videoSetSurfaceRect']>().mockResolvedValue(undefined)
   const play = vi.fn<ViewerBridge['videoPlay']>().mockResolvedValue(undefined)
   const pause = vi.fn<ViewerBridge['videoPause']>().mockResolvedValue(undefined)
   const seek = vi.fn<ViewerBridge['videoSeek']>().mockResolvedValue(undefined)
@@ -495,8 +368,8 @@ function videoBridgeHarness() {
     videoSetVolume: setVolume,
     videoSetMuted: setMuted,
     videoSetRate: setRate,
-    videoSetSurfaceRect: setRect,
     videoSetFullscreen: setFullscreen,
+    videoRequestCover: vi.fn().mockResolvedValue('viewer-image://localhost/session/cover'),
     videoRequestThumbnail: requestThumbnail,
     listenVideo: listen,
   }
@@ -513,7 +386,6 @@ function videoBridgeHarness() {
     play,
     requestThumbnail,
     seek,
-    setRect,
     setFullscreen,
     setMuted,
     setRate,
@@ -521,95 +393,4 @@ function videoBridgeHarness() {
     step,
     unlisten,
   }
-}
-
-function installResizeObserver() {
-  const callbacks = new Map<Element, ResizeObserverCallback>()
-  const rectangles = new Map<Element, DOMRectReadOnly>()
-  vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (
-    this: HTMLElement,
-  ) {
-    return (rectangles.get(this) ??
-      rect({ left: 100, top: 50, width: 800, height: 600 })) as DOMRect
-  })
-  class Observer {
-    private readonly callback: ResizeObserverCallback
-
-    constructor(callback: ResizeObserverCallback) {
-      this.callback = callback
-    }
-    observe(node: Element) {
-      callbacks.set(node, this.callback)
-    }
-    disconnect() {}
-  }
-  vi.stubGlobal('ResizeObserver', Observer)
-  return {
-    trigger(node: Element, next: { left: number; top: number; width: number; height: number }) {
-      const bounds = rect(next)
-      rectangles.set(node, bounds)
-      act(() => {
-        callbacks.get(node)?.(
-          [{ target: node, contentRect: bounds } as ResizeObserverEntry],
-          {} as ResizeObserver,
-        )
-      })
-    },
-  }
-}
-
-function installAnimationFrameHarness() {
-  let nextId = 1
-  const callbacks = new Map<number, FrameRequestCallback>()
-  vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
-    const id = nextId++
-    callbacks.set(id, callback)
-    return id
-  })
-  vi.stubGlobal('cancelAnimationFrame', (id: number) => {
-    callbacks.delete(id)
-  })
-  return {
-    flush() {
-      const pending = [...callbacks.entries()]
-      callbacks.clear()
-      act(() => {
-        for (const [, callback] of pending) callback(performance.now())
-      })
-    },
-  }
-}
-
-function rect({
-  left,
-  top,
-  width,
-  height,
-}: {
-  left: number
-  top: number
-  width: number
-  height: number
-}): DOMRectReadOnly {
-  return {
-    x: left,
-    y: top,
-    left,
-    top,
-    right: left + width,
-    bottom: top + height,
-    width,
-    height,
-    toJSON: () => undefined,
-  }
-}
-
-function deferred<T>() {
-  let resolve!: (value: T | PromiseLike<T>) => void
-  let reject!: (reason?: unknown) => void
-  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
-    resolve = resolvePromise
-    reject = rejectPromise
-  })
-  return { promise, reject, resolve }
 }

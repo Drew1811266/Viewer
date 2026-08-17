@@ -53,7 +53,6 @@ import type {
   VideoSeekRequest,
   VideoSession,
   VideoStepRequest,
-  VideoSurfaceRectRequest,
   VideoThumbnailRequest,
   VideoVolumeRequest,
   ViewerSettings,
@@ -103,7 +102,6 @@ export interface ViewerBridge {
   videoSetVolume(request: VideoVolumeRequest): Promise<void>
   videoSetMuted(request: VideoMutedRequest): Promise<void>
   videoSetRate(request: VideoRateRequest): Promise<void>
-  videoSetSurfaceRect(request: VideoSurfaceRectRequest): Promise<void>
   videoSetFullscreen(request: VideoFullscreenRequest): Promise<void>
   videoRequestCover(entityId: string): Promise<string>
   videoRequestThumbnail(request: VideoThumbnailRequest): Promise<void>
@@ -271,9 +269,6 @@ export const tauriViewerBridge: ViewerBridge = {
   },
   videoSetRate(request) {
     return invoke<void>('video_set_rate', { request })
-  },
-  videoSetSurfaceRect(request) {
-    return invoke<void>('video_set_surface_rect', { request })
   },
   videoSetFullscreen(request) {
     return invoke<void>('video_set_fullscreen', { request })

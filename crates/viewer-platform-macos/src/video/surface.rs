@@ -1,11 +1,16 @@
 #![allow(deprecated)]
 
-use super::diagnostics::{ResourceKind, ResourceLease};
-use objc2::{AnyThread, MainThreadMarker, MainThreadOnly, Message, msg_send, rc::Retained};
+use super::{
+    TheaterBounds, VideoDisplayGeometry,
+    diagnostics::{ResourceKind, ResourceLease},
+    theater_viewport_frame,
+};
+use objc2::{AnyThread, MainThreadMarker, MainThreadOnly, msg_send, rc::Retained};
 use objc2_app_kit::{
-    NSColor, NSOpenGLContext, NSOpenGLPFAAccelerated, NSOpenGLPFADoubleBuffer,
-    NSOpenGLPFAOpenGLProfile, NSOpenGLPixelFormat, NSOpenGLProfileVersion3_2Core, NSOpenGLView,
-    NSView, NSWindow, NSWindowOrderingMode,
+    NSAutoresizingMaskOptions, NSBox, NSBoxType, NSColor, NSOpenGLContext, NSOpenGLPFAAccelerated,
+    NSOpenGLPFADoubleBuffer, NSOpenGLPFAOpenGLProfile, NSOpenGLPixelFormat,
+    NSOpenGLProfileVersion3_2Core, NSOpenGLView, NSTitlePosition, NSView, NSWindow,
+    NSWindowOrderingMode,
 };
 use objc2_foundation::{NSObjectProtocol, NSPoint, NSRect, NSSize};
 use std::{
@@ -13,7 +18,7 @@ use std::{
     ptr::NonNull,
     sync::atomic::{AtomicBool, Ordering},
 };
-use tauri::{Runtime, WebviewWindow, webview::Color};
+use tauri::{Runtime, WebviewWindow};
 use thiserror::Error;
 use viewer_video_mpv::{OpenGlInit, RenderTarget};
 
@@ -49,59 +54,125 @@ pub enum SurfaceError {
     WebviewUnavailable,
     #[error("the WKWebView could not be prepared for native video transparency")]
     WebviewTransparencyUnavailable,
-    #[error("the Tauri window could not be prepared for native video transparency")]
-    WindowTransparencyUnavailable,
+    #[error("the Tauri window could not be prepared as an opaque video theater")]
+    WindowBackgroundUnavailable,
     #[error("the Tauri window content view has no WKWebView")]
     MissingWebview,
 }
 
 pub struct MacVideoSurface {
     view: Retained<NSOpenGLView>,
+    theater: Retained<NSBox>,
     parent: Retained<NSView>,
-    webview: Retained<NSView>,
     mounted: AtomicBool,
     _lease: ResourceLease,
 }
 
 impl MacVideoSurface {
+    /// Mounts the production video surface as a native theater owned entirely
+    /// by AppKit. The OpenGL view follows native content-view resizing; libmpv
+    /// performs the media aspect fit inside that backing surface.
+    pub fn mount_theater<R: Runtime>(
+        window: &WebviewWindow<R>,
+        media: VideoDisplayGeometry,
+    ) -> Result<Self, SurfaceError> {
+        if media.width == 0 || media.height == 0 {
+            return Err(SurfaceError::InvalidGeometry);
+        }
+        Self::mount_with_frame(window, None)
+    }
+
     pub fn mount<R: Runtime>(
         window: &WebviewWindow<R>,
         rect: SurfaceRect,
     ) -> Result<Self, SurfaceError> {
-        MainThreadMarker::new().ok_or(SurfaceError::NotMainThread)?;
-        mount_after_window_transparency(
-            || configure_transparent_window(window),
-            || {
-                let native_window = window
-                    .ns_window()
-                    .map_err(|_| SurfaceError::WebviewUnavailable)?;
-                // SAFETY: Tauri documents ns_window as a valid NSWindow pointer. This
-                // method is restricted to AppKit's main thread for the pointer's use.
-                let native_window: &NSWindow = unsafe { &*native_window.cast() };
-                let parent = native_window
-                    .contentView()
-                    .ok_or(SurfaceError::MissingParent)?;
-                let subviews = parent.subviews();
-                if subviews.is_empty() {
-                    return Err(SurfaceError::MissingWebview);
-                }
-                // Wry installs its WKWebView as the first child of the window content
-                // view. We retain it in the surface before adding the OpenGL sibling.
-                let webview = subviews.objectAtIndex(0);
-                Self::mount_in_webview(&webview, rect)
-            },
-        )
+        let frame = Some(rect);
+        Self::mount_with_frame(window, frame)
     }
 
-    fn mount_in_webview(webview: &NSView, rect: SurfaceRect) -> Result<Self, SurfaceError> {
+    fn mount_with_frame<R: Runtime>(
+        window: &WebviewWindow<R>,
+        rect: Option<SurfaceRect>,
+    ) -> Result<Self, SurfaceError> {
+        MainThreadMarker::new().ok_or(SurfaceError::NotMainThread)?;
+        let native_window = window
+            .ns_window()
+            .map_err(|_| SurfaceError::WebviewUnavailable)?;
+        // SAFETY: Tauri documents ns_window as a valid NSWindow pointer. This
+        // method is restricted to AppKit's main thread for the pointer's use.
+        let native_window: &NSWindow = unsafe { &*native_window.cast() };
+        let parent = native_window
+            .contentView()
+            .ok_or(SurfaceError::MissingParent)?;
+        let subviews = parent.subviews();
+        if subviews.is_empty() {
+            return Err(SurfaceError::MissingWebview);
+        }
+        // Wry installs its WKWebView as the first child of the window content
+        // view. The theater is inserted below it and retained by the surface.
+        let webview = subviews.objectAtIndex(0);
+        Self::mount_in_webview(native_window, &webview, rect)
+    }
+
+    fn mount_in_webview(
+        window: &NSWindow,
+        webview: &NSView,
+        rect: Option<SurfaceRect>,
+    ) -> Result<Self, SurfaceError> {
         let mtm = MainThreadMarker::new().ok_or(SurfaceError::NotMainThread)?;
         // SAFETY: the WKWebView is retained by its window and this method runs on
         // AppKit's main thread. objc2 retains the returned parent for this owner.
         let parent = unsafe { webview.superview() }.ok_or(SurfaceError::MissingParent)?;
-        let frame = frame_in_parent(webview, rect).ok_or(SurfaceError::InvalidGeometry)?;
-        mount_after_webview_transparency(
+        let explicit_frame = rect
+            .map(|rect| {
+                appkit_frame(rect, webview.bounds().size.height)
+                    .map(|frame| {
+                        NSRect::new(
+                            NSPoint::new(frame.x, frame.y),
+                            NSSize::new(frame.width, frame.height),
+                        )
+                    })
+                    .ok_or(SurfaceError::InvalidGeometry)
+            })
+            .transpose()?;
+        let theater_parent = parent.clone();
+        mount_after_opaque_theater_configuration(
+            || configure_opaque_window(window),
             || configure_transparent_webview(webview),
             || {
+                let theater = NSBox::initWithFrame(NSBox::alloc(mtm), webview.frame());
+                theater.setBoxType(NSBoxType::Custom);
+                theater.setTitlePosition(NSTitlePosition::NoTitle);
+                theater.setBorderWidth(0.0);
+                theater.setContentViewMargins(NSSize::new(0.0, 0.0));
+                theater.setFillColor(&theater_color());
+                theater.setAutoresizingMask(
+                    NSAutoresizingMaskOptions::ViewWidthSizable
+                        | NSAutoresizingMaskOptions::ViewHeightSizable,
+                );
+                theater_parent.addSubview_positioned_relativeTo(
+                    &theater,
+                    NSWindowOrderingMode::Below,
+                    Some(webview),
+                );
+                Ok(theater)
+            },
+            |theater| {
+                let frame = if let Some(frame) = explicit_frame {
+                    frame
+                } else {
+                    let bounds = theater.bounds();
+                    let viewport = theater_viewport_frame(TheaterBounds {
+                        width: bounds.size.width,
+                        height: bounds.size.height,
+                        scale_factor: window.backingScaleFactor(),
+                    })
+                    .ok_or(SurfaceError::InvalidGeometry)?;
+                    NSRect::new(
+                        NSPoint::new(viewport.x, viewport.y),
+                        NSSize::new(viewport.width, viewport.height),
+                    )
+                };
                 let mut attributes = [
                     NSOpenGLPFAOpenGLProfile,
                     NSOpenGLProfileVersion3_2Core,
@@ -124,22 +195,25 @@ impl MacVideoSurface {
                 )
                 .ok_or(SurfaceError::OpenGlViewUnavailable)?;
                 view.setWantsBestResolutionOpenGLSurface(true);
+                if explicit_frame.is_none() {
+                    view.setAutoresizingMask(
+                        NSAutoresizingMaskOptions::ViewWidthSizable
+                            | NSAutoresizingMaskOptions::ViewHeightSizable,
+                    );
+                }
                 view.setHidden(true);
-                parent.addSubview_positioned_relativeTo(
-                    &view,
-                    NSWindowOrderingMode::Below,
-                    Some(webview),
-                );
+                theater.addSubview(&view);
                 view.prepareOpenGL();
                 if view.openGLContext().is_none() {
                     view.removeFromSuperview();
+                    theater.removeFromSuperview();
                     return Err(SurfaceError::OpenGlContextUnavailable);
                 }
 
                 Ok(Self {
                     view,
+                    theater,
                     parent,
-                    webview: webview.retain(),
                     mounted: AtomicBool::new(true),
                     _lease: ResourceLease::acquire(ResourceKind::Surface),
                 })
@@ -152,7 +226,14 @@ impl MacVideoSurface {
         if !self.is_mounted() {
             return Ok(());
         }
-        let frame = frame_in_parent(&self.webview, rect).ok_or(SurfaceError::InvalidGeometry)?;
+        let frame = appkit_frame(rect, self.theater.bounds().size.height)
+            .map(|frame| {
+                NSRect::new(
+                    NSPoint::new(frame.x, frame.y),
+                    NSSize::new(frame.width, frame.height),
+                )
+            })
+            .ok_or(SurfaceError::InvalidGeometry)?;
         self.view.setFrame(frame);
         self.view.update();
         Ok(())
@@ -177,6 +258,7 @@ impl MacVideoSurface {
         if self.mounted.swap(false, Ordering::AcqRel) {
             self.view.setHidden(true);
             self.view.removeFromSuperview();
+            self.theater.removeFromSuperview();
         }
         Ok(())
     }
@@ -210,6 +292,7 @@ impl MacVideoSurface {
     }
 }
 
+#[cfg(test)]
 fn mount_after_webview_transparency<T>(
     configure_transparency: impl FnOnce() -> Result<(), SurfaceError>,
     attach_surface: impl FnOnce() -> Result<T, SurfaceError>,
@@ -218,18 +301,34 @@ fn mount_after_webview_transparency<T>(
     attach_surface()
 }
 
-fn mount_after_window_transparency<T>(
-    configure_transparency: impl FnOnce() -> Result<(), SurfaceError>,
-    mount_surface: impl FnOnce() -> Result<T, SurfaceError>,
-) -> Result<T, SurfaceError> {
-    configure_transparency()?;
-    mount_surface()
+fn mount_after_opaque_theater_configuration<T, U>(
+    configure_window: impl FnOnce() -> Result<(), SurfaceError>,
+    configure_webview: impl FnOnce() -> Result<(), SurfaceError>,
+    attach_theater: impl FnOnce() -> Result<T, SurfaceError>,
+    attach_video: impl FnOnce(T) -> Result<U, SurfaceError>,
+) -> Result<U, SurfaceError> {
+    configure_window()?;
+    configure_webview()?;
+    let theater = attach_theater()?;
+    attach_video(theater)
 }
 
-fn configure_transparent_window<R: Runtime>(window: &WebviewWindow<R>) -> Result<(), SurfaceError> {
-    window
-        .set_background_color(Some(Color(0, 0, 0, 0)))
-        .map_err(|_| SurfaceError::WindowTransparencyUnavailable)
+fn configure_opaque_window(window: &NSWindow) -> Result<(), SurfaceError> {
+    window.setOpaque(true);
+    window.setBackgroundColor(Some(&theater_color()));
+    if !window.isOpaque() {
+        return Err(SurfaceError::WindowBackgroundUnavailable);
+    }
+    Ok(())
+}
+
+fn theater_color() -> Retained<NSColor> {
+    let [red, green, blue, alpha] = theater_color_components();
+    NSColor::colorWithSRGBRed_green_blue_alpha(red, green, blue, alpha)
+}
+
+fn theater_color_components() -> [f64; 4] {
+    [245.0 / 255.0, 245.0 / 255.0, 243.0 / 255.0, 1.0]
 }
 
 fn configure_transparent_webview(webview: &NSView) -> Result<(), SurfaceError> {
@@ -279,18 +378,6 @@ impl Drop for MacVideoSurface {
             );
         }
     }
-}
-
-fn frame_in_parent(webview: &NSView, rect: SurfaceRect) -> Option<NSRect> {
-    let local = appkit_frame(rect, webview.bounds().size.height)?;
-    let webview_frame = webview.frame();
-    Some(NSRect::new(
-        NSPoint::new(
-            webview_frame.origin.x + local.x,
-            webview_frame.origin.y + local.y,
-        ),
-        NSSize::new(local.width, local.height),
-    ))
 }
 
 unsafe extern "C" fn get_proc_address(_context: *mut c_void, name: *const c_char) -> *mut c_void {
@@ -349,7 +436,10 @@ pub fn backing_pixels(size: (f64, f64), scale: f64) -> Option<(i32, i32)> {
 
 #[cfg(test)]
 mod tests {
-    use super::{SurfaceError, mount_after_webview_transparency, mount_after_window_transparency};
+    use super::{
+        SurfaceError, mount_after_opaque_theater_configuration, mount_after_webview_transparency,
+        theater_color_components,
+    };
     use std::cell::{Cell, RefCell};
 
     #[test]
@@ -388,37 +478,58 @@ mod tests {
     }
 
     #[test]
-    fn window_transparency_is_configured_before_native_surface_mounting() {
+    fn configures_opaque_window_and_webview_before_attaching_theater_and_video() {
         let order = RefCell::new(Vec::new());
 
-        let result = mount_after_window_transparency(
+        let result = mount_after_opaque_theater_configuration(
             || {
-                order.borrow_mut().push("window-transparent");
+                order.borrow_mut().push("window-opaque");
                 Ok(())
             },
             || {
-                order.borrow_mut().push("mount");
-                Ok("mounted")
+                order.borrow_mut().push("webview-transparent");
+                Ok(())
+            },
+            || {
+                order.borrow_mut().push("theater");
+                Ok("native-theater")
+            },
+            |theater| {
+                order.borrow_mut().push("video");
+                Ok(theater)
             },
         );
 
-        assert_eq!(result, Ok("mounted"));
-        assert_eq!(*order.borrow(), ["window-transparent", "mount"]);
+        assert_eq!(result, Ok("native-theater"));
+        assert_eq!(
+            *order.borrow(),
+            ["window-opaque", "webview-transparent", "theater", "video"]
+        );
     }
 
     #[test]
-    fn window_transparency_failure_prevents_native_surface_mounting() {
-        let mounted = Cell::new(false);
+    fn native_theater_uses_the_viewer_light_neutral_surface() {
+        assert_eq!(
+            theater_color_components(),
+            [245.0 / 255.0, 245.0 / 255.0, 243.0 / 255.0, 1.0]
+        );
+    }
 
-        let result = mount_after_window_transparency(
-            || Err(SurfaceError::WindowTransparencyUnavailable),
-            || {
-                mounted.set(true);
+    #[test]
+    fn theater_configuration_failure_prevents_video_attachment() {
+        let video_attached = Cell::new(false);
+
+        let result = mount_after_opaque_theater_configuration(
+            || Ok(()),
+            || Ok(()),
+            || Err(SurfaceError::OpenGlViewUnavailable),
+            |()| {
+                video_attached.set(true);
                 Ok(())
             },
         );
 
-        assert_eq!(result, Err(SurfaceError::WindowTransparencyUnavailable));
-        assert!(!mounted.get());
+        assert_eq!(result, Err(SurfaceError::OpenGlViewUnavailable));
+        assert!(!video_attached.get());
     }
 }

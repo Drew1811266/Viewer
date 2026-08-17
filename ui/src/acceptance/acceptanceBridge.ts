@@ -210,9 +210,6 @@ export function createAcceptanceBridge(overrides: AcceptanceBridgeOverrides = {}
     async videoSetRate() {
       return unexpected('videoSetRate')
     },
-    async videoSetSurfaceRect() {
-      return unexpected('videoSetSurfaceRect')
-    },
     async videoSetFullscreen() {
       return unexpected('videoSetFullscreen')
     },

@@ -172,17 +172,15 @@ describe('VideoTimeline', () => {
     expect(slider).toHaveAttribute('aria-valuenow', '4')
   })
 
-  it('publishes the release target preview before starting the exact commit', async () => {
+  it('commits a click immediately without waiting for a preview seek', async () => {
     vi.stubGlobal(
       'requestAnimationFrame',
       vi.fn(() => 41),
     )
     vi.stubGlobal('cancelAnimationFrame', vi.fn())
-    const preview = deferred<void>()
     const order: string[] = []
-    const onPreviewSeek = vi.fn((timeUs: number) => {
+    const onPreviewSeek = vi.fn(async (timeUs: number) => {
       order.push(`preview:${timeUs}`)
-      return preview.promise
     })
     const onCommitSeek = vi.fn(async (timeUs: number) => {
       order.push(`commit:${timeUs}`)
@@ -201,14 +199,11 @@ describe('VideoTimeline', () => {
     fireEvent.pointerDown(slider, { pointerId: 9, clientX: 60 })
     fireEvent.pointerUp(slider, { pointerId: 9, clientX: 120 })
 
-    expect(order).toEqual(['preview:6000000'])
-    expect(onCommitSeek).not.toHaveBeenCalled()
-
-    await act(async () => preview.resolve())
-    expect(order).toEqual(['preview:6000000', 'commit:6000000'])
+    expect(order).toEqual(['commit:6000000'])
+    expect(onPreviewSeek).not.toHaveBeenCalled()
   })
 
-  it('starts every pointer interaction with a fresh preview at the same timestamp', async () => {
+  it('starts every click interaction with a fresh exact commit at the same timestamp', async () => {
     vi.stubGlobal(
       'requestAnimationFrame',
       vi.fn(() => 42),
@@ -234,20 +229,21 @@ describe('VideoTimeline', () => {
     fireEvent.pointerUp(slider, { pointerId: 11, clientX: 100 })
     await act(async () => Promise.resolve())
 
-    expect(onPreviewSeek.mock.calls).toEqual([[5_000_000], [5_000_000]])
+    expect(onPreviewSeek).not.toHaveBeenCalled()
     expect(onCommitSeek.mock.calls).toEqual([[5_000_000], [5_000_000]])
   })
 
-  it('drops a delayed exact commit when the preview generation changes', async () => {
-    vi.stubGlobal(
-      'requestAnimationFrame',
-      vi.fn(() => 43),
-    )
+  it('does not delay a drag commit behind an unfinished preview seek', async () => {
+    let frame: FrameRequestCallback | null = null
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+      frame = callback
+      return 43
+    })
     vi.stubGlobal('cancelAnimationFrame', vi.fn())
     const preview = deferred<void>()
     const onPreviewSeek = vi.fn(() => preview.promise)
     const onCommitSeek = vi.fn().mockResolvedValue(undefined)
-    const rendered = render(
+    render(
       <TimelineHarness
         generation={2}
         onPreviewSeek={onPreviewSeek}
@@ -259,53 +255,13 @@ describe('VideoTimeline', () => {
     Object.defineProperty(slider, 'setPointerCapture', { configurable: true, value: vi.fn() })
     Object.defineProperty(slider, 'releasePointerCapture', { configurable: true, value: vi.fn() })
 
-    fireEvent.pointerDown(slider, { pointerId: 12, clientX: 140 })
+    fireEvent.pointerDown(slider, { pointerId: 12, clientX: 40 })
+    fireEvent.pointerMove(slider, { pointerId: 12, clientX: 140 })
+    act(() => frame?.(0))
     fireEvent.pointerUp(slider, { pointerId: 12, clientX: 140 })
-    rendered.rerender(
-      <TimelineHarness
-        generation={3}
-        onPreviewSeek={onPreviewSeek}
-        onCommitSeek={onCommitSeek}
-        thumbnail={null}
-      />,
-    )
+    expect(onPreviewSeek).toHaveBeenCalledWith(7_000_000)
+    expect(onCommitSeek).toHaveBeenCalledWith(7_000_000)
     await act(async () => preview.resolve())
-
-    expect(onCommitSeek).not.toHaveBeenCalled()
-  })
-
-  it('drops an older delayed commit after a newer interaction starts', async () => {
-    vi.stubGlobal(
-      'requestAnimationFrame',
-      vi.fn(() => 44),
-    )
-    vi.stubGlobal('cancelAnimationFrame', vi.fn())
-    const firstPreview = deferred<void>()
-    const onPreviewSeek = vi
-      .fn<(timeUs: number) => Promise<void>>()
-      .mockImplementationOnce(() => firstPreview.promise)
-      .mockResolvedValue(undefined)
-    const onCommitSeek = vi.fn().mockResolvedValue(undefined)
-    render(
-      <TimelineHarness
-        onPreviewSeek={onPreviewSeek}
-        onCommitSeek={onCommitSeek}
-        thumbnail={null}
-      />,
-    )
-    const slider = screen.getByRole('slider', { name: '视频时间轴' })
-    Object.defineProperty(slider, 'setPointerCapture', { configurable: true, value: vi.fn() })
-    Object.defineProperty(slider, 'releasePointerCapture', { configurable: true, value: vi.fn() })
-
-    fireEvent.pointerDown(slider, { pointerId: 13, clientX: 40 })
-    fireEvent.pointerUp(slider, { pointerId: 13, clientX: 40 })
-    fireEvent.pointerDown(slider, { pointerId: 14, clientX: 160 })
-    fireEvent.pointerUp(slider, { pointerId: 14, clientX: 160 })
-    await act(async () => Promise.resolve())
-    expect(onCommitSeek.mock.calls).toEqual([[8_000_000]])
-
-    await act(async () => firstPreview.resolve())
-    expect(onCommitSeek.mock.calls).toEqual([[8_000_000]])
   })
 
   it('does not carry seek coalescing state into a new generation', async () => {
@@ -347,8 +303,7 @@ describe('VideoTimeline', () => {
     await act(async () => Promise.resolve())
     expect(onCommitSeek).toHaveBeenCalledTimes(2)
     expect(onCommitSeek).toHaveBeenLastCalledWith(3_000_000)
-    expect(onPreviewSeek).toHaveBeenCalledTimes(2)
-    expect(onPreviewSeek).toHaveBeenLastCalledWith(3_000_000)
+    expect(onPreviewSeek).not.toHaveBeenCalled()
   })
 
   it('uses commit-only seeking for keyboard interaction', () => {

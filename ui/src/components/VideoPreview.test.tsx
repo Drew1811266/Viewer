@@ -1,20 +1,9 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { VideoEvent, VideoFile, VideoSession } from '../api/types'
 import type { ViewerBridge } from '../api/viewer'
 import VideoPreview from './VideoPreview'
 import type { VideoPreviewBridge } from './videoPreview/useVideoBridge'
-
-beforeEach(() => {
-  vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue(rect(100, 50, 800, 600))
-  vi.stubGlobal(
-    'ResizeObserver',
-    class {
-      observe() {}
-      disconnect() {}
-    },
-  )
-})
 
 afterEach(() => {
   vi.useRealTimers()
@@ -69,7 +58,6 @@ describe('VideoPreview', () => {
     await waitFor(() =>
       expect(screen.queryByRole('status', { name: '正在加载视频' })).not.toBeInTheDocument(),
     )
-    expect(harness.setRect).toHaveBeenCalledTimes(1)
     expect(screen.getByRole('dialog', { name: '视频预览 a.mp4' })).toHaveAttribute(
       'data-surface-visible',
       'true',
@@ -104,13 +92,25 @@ describe('VideoPreview', () => {
     const bottomChrome = rendered.container.querySelector('.video-preview-bottom-chrome')
     const controls = screen.getByRole('group', { name: '视频播放控制' })
     expect(bottomChrome).not.toBeNull()
-    expect(bottomChrome).toContainElement(navigation)
+    expect(bottomChrome).not.toContainElement(navigation)
     expect(bottomChrome).toContainElement(controls)
     expect(bottomChrome).toHaveAttribute('data-chrome-visible', 'true')
     expect(screen.getByRole('dialog', { name: '视频预览 a.mp4' })).toHaveAttribute(
       'data-chrome-visible',
       'true',
     )
+  })
+
+  it('keeps navigation in the top command bar and playback controls in the bottom inspector', async () => {
+    const harness = videoBridgeHarness()
+    render(<VideoPreview file={video('a.mp4')} files={[video('a.mp4')]} bridge={harness.bridge} />)
+
+    await waitFor(() => expect(harness.open).toHaveBeenCalledOnce())
+    const navigation = screen.getByRole('navigation', { name: '视频导航' })
+    const controls = screen.getByRole('group', { name: '视频播放控制' })
+    expect(navigation).toHaveClass('video-preview-top-navigation')
+    expect(navigation.closest('.video-preview-bottom-chrome')).toBeNull()
+    expect(controls.closest('.video-preview-bottom-chrome')).not.toBeNull()
   })
 
   it('hides all bottom chrome while playing idle and restores it when navigation receives focus', async () => {
@@ -137,20 +137,14 @@ describe('VideoPreview', () => {
     expect(dialog).toHaveAttribute('data-chrome-visible', 'true')
   })
 
-  it('masks every region outside the exact fitted native video aperture', async () => {
+  it('leaves native theater pixels unobstructed without DOM aperture ownership', async () => {
     const harness = videoBridgeHarness()
     render(<VideoPreview file={video('a.mp4')} files={[video('a.mp4')]} bridge={harness.bridge} />)
 
     await waitFor(() => expect(harness.open).toHaveBeenCalledOnce())
     const stage = screen.getByTestId('video-preview-stage')
-    expect(stage.style.getPropertyValue('--video-preview-aperture-left')).toBe('0px')
-    expect(stage.style.getPropertyValue('--video-preview-aperture-top')).toBe('75px')
-    expect(stage.style.getPropertyValue('--video-preview-aperture-width')).toBe('800px')
-    expect(stage.style.getPropertyValue('--video-preview-aperture-height')).toBe('450px')
-    for (const edge of ['top', 'right', 'bottom', 'left']) {
-      expect(stage.querySelector(`.video-preview-matte--${edge}`)).toBeInTheDocument()
-    }
-    expect(stage.querySelectorAll('.video-preview-matte')).toHaveLength(4)
+    expect(stage.getAttribute('style')).toBeNull()
+    expect(stage.querySelectorAll('.video-preview-matte')).toHaveLength(0)
   })
 
   it('keeps the shell and navigation on failure and retries with a new lifecycle', async () => {
@@ -187,17 +181,7 @@ describe('VideoPreview', () => {
 
   it('retries an indexed terminal failure by opening the same entity', async () => {
     const harness = videoBridgeHarness()
-    const authoritativeMedia = session(1).media
-    harness.open.mockResolvedValue({
-      generation: 1,
-      sessionId: 'session-1',
-      media: {
-        durationUs: null,
-        displayWidth: null,
-        displayHeight: null,
-        rotationDegrees: 0,
-      },
-    })
+    harness.open.mockResolvedValue(session(1))
     const damaged = video('damaged.mp4')
     damaged.videoMetadata = {
       ...damaged.videoMetadata,
@@ -220,7 +204,6 @@ describe('VideoPreview', () => {
       expect(harness.open).toHaveBeenCalledWith({
         attemptId: expect.any(String),
         entityId: damaged.entityId,
-        surfaceRect: { x: 100, y: 50, width: 800, height: 600 },
       }),
     )
     expect(screen.getByRole('status', { name: '正在加载视频' })).toBeVisible()
@@ -228,23 +211,6 @@ describe('VideoPreview', () => {
       harness.emit({ type: 'firstFrameReady', generation: 1 })
       await Promise.resolve()
     })
-    expect(screen.getByRole('status', { name: '正在加载视频' })).toBeVisible()
-    expect(harness.setRect).not.toHaveBeenCalled()
-    await act(async () => {
-      harness.emit({ type: 'prepared', generation: 1, media: authoritativeMedia })
-      await Promise.resolve()
-    })
-
-    await waitFor(() =>
-      expect(harness.setRect).toHaveBeenCalledWith({
-        generation: 1,
-        sequence: 1,
-        x: 100,
-        y: 125,
-        width: 800,
-        height: 450,
-      }),
-    )
     await waitFor(() =>
       expect(screen.queryByRole('status', { name: '正在加载视频' })).not.toBeInTheDocument(),
     )
@@ -320,7 +286,6 @@ describe('VideoPreview', () => {
     expect(harness.open).toHaveBeenNthCalledWith(2, {
       attemptId: expect.any(String),
       entityId: 'video-a.mp4',
-      surfaceRect: { x: 100, y: 125, width: 800, height: 450 },
     })
     expect(order).toEqual(['open:video-a.mp4', 'close:1:start', 'close:1:end', 'open:video-a.mp4'])
   })
@@ -411,7 +376,26 @@ describe('VideoPreview', () => {
       'aria-valuenow',
       '12',
     )
+    expect(screen.getByRole('img', { name: 'a.mp4 的视频封面' })).toHaveAttribute(
+      'src',
+      'viewer-image://localhost/session/cover',
+    )
     expect(onNavigate).not.toHaveBeenCalled()
+  })
+
+  it('prefetches a missing cover so an ended video never exposes a black tail', async () => {
+    const harness = videoBridgeHarness()
+    const file = video('a.mp4')
+    file.videoMetadata.coverUrl = null
+    render(<VideoPreview file={file} files={[file]} bridge={harness.bridge} />)
+
+    await waitFor(() => expect(harness.requestCover).toHaveBeenCalledWith(file.entityId))
+    harness.emit({ type: 'ended', generation: 1 })
+
+    expect(await screen.findByRole('img', { name: 'a.mp4 的视频封面' })).toHaveAttribute(
+      'src',
+      'viewer-image://localhost/session/cover',
+    )
   })
 
   it('serializes rapid control intents and preserves every frame step', async () => {
@@ -491,7 +475,6 @@ function videoBridgeHarness() {
   const open = vi.fn<ViewerBridge['videoOpen']>().mockResolvedValue(session(1))
   const cancelOpen = vi.fn<ViewerBridge['videoCancelOpen']>().mockResolvedValue(true)
   const close = vi.fn<ViewerBridge['videoClose']>().mockResolvedValue(undefined)
-  const setRect = vi.fn<ViewerBridge['videoSetSurfaceRect']>().mockResolvedValue(undefined)
   const play = vi.fn<ViewerBridge['videoPlay']>(async () => {
     order.push('videoPlay')
   })
@@ -513,6 +496,9 @@ function videoBridgeHarness() {
   const requestThumbnail = vi
     .fn<ViewerBridge['videoRequestThumbnail']>()
     .mockResolvedValue(undefined)
+  const requestCover = vi
+    .fn<ViewerBridge['videoRequestCover']>()
+    .mockResolvedValue('viewer-image://localhost/session/cover')
   const bridge: VideoPreviewBridge = {
     videoOpen: open,
     videoCancelOpen: cancelOpen,
@@ -524,8 +510,8 @@ function videoBridgeHarness() {
     videoSetVolume: setVolume,
     videoSetMuted: setMuted,
     videoSetRate: setRate,
-    videoSetSurfaceRect: setRect,
     videoSetFullscreen: setFullscreen,
+    videoRequestCover: requestCover,
     videoRequestThumbnail: requestThumbnail,
     listenVideo: vi.fn(async (listener) => {
       listeners.push(listener)
@@ -543,27 +529,13 @@ function videoBridgeHarness() {
     order,
     pause,
     play,
+    requestCover,
     requestThumbnail,
     seek,
-    setRect,
     setFullscreen,
     setMuted,
     setRate,
     setVolume,
     step,
-  }
-}
-
-function rect(left: number, top: number, width: number, height: number): DOMRect {
-  return {
-    x: left,
-    y: top,
-    left,
-    top,
-    right: left + width,
-    bottom: top + height,
-    width,
-    height,
-    toJSON: () => undefined,
   }
 }

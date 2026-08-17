@@ -36,14 +36,10 @@ pub struct VideoInteractionDiagnostics {
 
 #[derive(Debug, Default)]
 pub struct VideoDiagnosticsCounters {
-    geometry_published: AtomicU64,
-    geometry_applied: AtomicU64,
-    geometry_replaced: AtomicU64,
     preview_published: AtomicU64,
     preview_issued: AtomicU64,
     commit_issued: AtomicU64,
     stale_completions_rejected: AtomicU64,
-    latest_geometry_sequence: AtomicU64,
     latest_seek_request_id: AtomicU64,
 }
 
@@ -56,19 +52,6 @@ impl VideoDiagnosticsCounters {
         let mut snapshot = VideoRenderDiagnostics::snapshot(hwdec, video_output);
         snapshot.interaction = self.interaction_snapshot();
         snapshot
-    }
-
-    pub(crate) fn record_geometry_publication(&self, sequence: u64, replaced: bool) {
-        self.geometry_published.fetch_add(1, Ordering::AcqRel);
-        if replaced {
-            self.geometry_replaced.fetch_add(1, Ordering::AcqRel);
-        }
-        self.latest_geometry_sequence
-            .fetch_max(sequence, Ordering::AcqRel);
-    }
-
-    pub(crate) fn record_geometry_application(&self) {
-        self.geometry_applied.fetch_add(1, Ordering::AcqRel);
     }
 
     pub(crate) fn record_preview_publication(&self, request_id: u64, _replaced: bool) {
@@ -97,14 +80,14 @@ impl VideoDiagnosticsCounters {
 
     pub fn interaction_snapshot(&self) -> VideoInteractionDiagnostics {
         VideoInteractionDiagnostics {
-            geometry_published: self.geometry_published.load(Ordering::Acquire),
-            geometry_applied: self.geometry_applied.load(Ordering::Acquire),
-            geometry_replaced: self.geometry_replaced.load(Ordering::Acquire),
+            geometry_published: 0,
+            geometry_applied: 0,
+            geometry_replaced: 0,
             preview_published: self.preview_published.load(Ordering::Acquire),
             preview_issued: self.preview_issued.load(Ordering::Acquire),
             commit_issued: self.commit_issued.load(Ordering::Acquire),
             stale_completions_rejected: self.stale_completions_rejected.load(Ordering::Acquire),
-            latest_geometry_sequence: self.latest_geometry_sequence.load(Ordering::Acquire),
+            latest_geometry_sequence: 0,
             latest_seek_request_id: self.latest_seek_request_id.load(Ordering::Acquire),
         }
     }
@@ -168,12 +151,8 @@ mod tests {
     };
 
     #[test]
-    fn interaction_metrics_report_bounded_work() {
+    fn interaction_metrics_report_seek_work_without_browser_geometry() {
         let counters = VideoDiagnosticsCounters::default();
-        for sequence in 1..=120 {
-            counters.record_geometry_publication(sequence, sequence > 1);
-        }
-        counters.record_geometry_application();
         for request_id in 1..=120 {
             counters.record_preview_publication(request_id, request_id > 1);
         }
@@ -182,13 +161,13 @@ mod tests {
         counters.record_commit_issue();
 
         let metrics = counters.interaction_snapshot();
-        assert_eq!(metrics.geometry_published, 120);
-        assert_eq!(metrics.geometry_applied, 1);
-        assert_eq!(metrics.geometry_replaced, 119);
+        assert_eq!(metrics.geometry_published, 0);
+        assert_eq!(metrics.geometry_applied, 0);
+        assert_eq!(metrics.geometry_replaced, 0);
         assert_eq!(metrics.preview_published, 120);
         assert_eq!(metrics.preview_issued, 1);
         assert_eq!(metrics.commit_issued, 1);
-        assert_eq!(metrics.latest_geometry_sequence, 120);
+        assert_eq!(metrics.latest_geometry_sequence, 0);
         assert_eq!(metrics.latest_seek_request_id, 121);
     }
 

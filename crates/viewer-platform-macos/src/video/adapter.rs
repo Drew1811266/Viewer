@@ -1,13 +1,12 @@
 #![allow(deprecated)]
 
 use super::{
-    MacVideoRenderSession, MacVideoSurface, SurfaceRect as MacSurfaceRect,
-    VideoDiagnosticsCounters, VideoRenderDiagnostics,
-    interaction::LatestGeometryMailbox,
+    MacVideoRenderSession, MacVideoSurface, VideoDiagnosticsCounters, VideoDisplayGeometry,
+    VideoRenderDiagnostics,
     media_worker::{MediaCommandWorker, MediaWorkerEvent},
 };
 use async_trait::async_trait;
-use dispatch2::{DispatchQueue, DispatchTime};
+use dispatch2::DispatchQueue;
 use objc2::MainThreadMarker;
 use std::{
     path::PathBuf,
@@ -15,16 +14,15 @@ use std::{
         Arc, Mutex, MutexGuard, OnceLock, Weak,
         atomic::{AtomicBool, Ordering},
     },
-    time::Duration,
 };
 use tauri::{Runtime, WebviewWindow};
 use viewer_application::{
     EngineEvent, EngineOpenRequest, FrameDirection, PlaybackRate, SeekIntent, SeekRequest,
-    SurfaceRect, VideoEngine, VideoEngineError,
+    VideoEngine, VideoEngineError,
 };
 use viewer_video_mpv::{
-    FrameDirection as MpvFrameDirection, MpvClient, MpvLibrary, PlaybackRate as MpvPlaybackRate,
-    runtime_manifest::RuntimeLayout,
+    FrameDirection as MpvFrameDirection, MpvClient, MpvLibrary, MpvPlaybackSnapshot,
+    PlaybackRate as MpvPlaybackRate, runtime_manifest::RuntimeLayout,
 };
 
 type EngineEventSink = dyn Fn(u64, EngineEvent) + Send + Sync;
@@ -34,13 +32,49 @@ enum PendingCompletion {
     Step,
 }
 
-const GEOMETRY_SETTLE_INTERVAL: Duration = Duration::from_millis(80);
+#[derive(Default)]
+struct NativeResizeRedrawGate(AtomicBool);
+
+impl NativeResizeRedrawGate {
+    fn claim(&self) -> bool {
+        self.0
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .is_ok()
+    }
+
+    fn release(&self) {
+        self.0.store(false, Ordering::Release);
+    }
+}
 
 impl PendingCompletion {
     const fn event_if_ready(self, time_us: u64) -> Option<EngineEvent> {
         match self {
             Self::Step => Some(EngineEvent::FrameStepped { time_us }),
         }
+    }
+}
+
+const fn snapshot_is_terminal(
+    snapshot: &MpvPlaybackSnapshot,
+    authorized_duration_us: Option<u64>,
+) -> bool {
+    // libmpv can stop producing render callbacks a few frame intervals before
+    // the container duration. Cover that observed final-frame gap so the UI
+    // receives Ended before libmpv clears the retained surface to black.
+    const TERMINAL_GUARD_US: u64 = 150_000;
+    if snapshot.eof_reached {
+        return true;
+    }
+    let duration_us = match authorized_duration_us {
+        Some(duration_us) => Some(duration_us),
+        None => snapshot.duration_us,
+    };
+    match (snapshot.time_us, duration_us) {
+        (Some(time_us), Some(duration_us)) => {
+            duration_us.saturating_sub(time_us) <= TERMINAL_GUARD_US
+        }
+        _ => false,
     }
 }
 
@@ -52,11 +86,12 @@ pub struct MacOsLibmpvAdapter {
     event_sink: Mutex<Option<Arc<EngineEventSink>>>,
     pending_completion: Mutex<Option<PendingCompletion>>,
     media_worker: Mutex<Option<MediaCommandWorker>>,
-    geometry_mailbox: Mutex<LatestGeometryMailbox>,
     self_reference: OnceLock<Weak<Self>>,
     first_frame_published: AtomicBool,
     ended_published: AtomicBool,
     playback_active: AtomicBool,
+    media_duration_us: Mutex<Option<u64>>,
+    native_resize_redraw: NativeResizeRedrawGate,
 }
 
 // SAFETY: AppKit, OpenGL, and render-context values inside `session` are
@@ -79,11 +114,12 @@ impl MacOsLibmpvAdapter {
             event_sink: Mutex::new(None),
             pending_completion: Mutex::new(None),
             media_worker: Mutex::new(None),
-            geometry_mailbox: Mutex::new(LatestGeometryMailbox::default()),
             self_reference: OnceLock::new(),
             first_frame_published: AtomicBool::new(false),
             ended_published: AtomicBool::new(false),
             playback_active: AtomicBool::new(false),
+            media_duration_us: Mutex::new(None),
+            native_resize_redraw: NativeResizeRedrawGate::default(),
         }
     }
 
@@ -94,7 +130,8 @@ impl MacOsLibmpvAdapter {
     pub async fn prepare_surface<R: Runtime>(
         self: &Arc<Self>,
         window: WebviewWindow<R>,
-        rect: SurfaceRect,
+        media: VideoDisplayGeometry,
+        duration_us: Option<u64>,
     ) -> Result<(), VideoEngineError> {
         self.self_reference.get_or_init(|| Arc::downgrade(self));
         let weak = Arc::downgrade(self);
@@ -110,7 +147,7 @@ impl MacOsLibmpvAdapter {
                 .initialize_for_rendering()
                 .map_err(|_| VideoEngineError::Initialization)?;
             let command_client = client.command_client();
-            let surface = MacVideoSurface::mount(&window, mac_rect(rect))
+            let surface = MacVideoSurface::mount_theater(&window, media)
                 .map_err(|_| VideoEngineError::RenderSurface)?;
             let draw_weak = Weak::clone(&weak);
             let schedule_draw: Arc<dyn Fn() + Send + Sync> = Arc::new(move || {
@@ -132,6 +169,7 @@ impl MacOsLibmpvAdapter {
             })?;
             *lock(&adapter.media_worker) = Some(worker);
             *lock(&adapter.session) = Some(session);
+            *lock(&adapter.media_duration_us) = duration_us;
             adapter
                 .first_frame_published
                 .store(false, Ordering::Release);
@@ -159,6 +197,26 @@ impl MacOsLibmpvAdapter {
 
     pub fn active_generation(&self) -> Option<u64> {
         *lock(&self.generation)
+    }
+
+    /// Coalesces native AppKit resize events into retained-frame redraws. The
+    /// view itself resizes synchronously in AppKit; this redraw is only needed
+    /// when playback is paused or ended and no natural frame is arriving.
+    pub fn request_native_resize_redraw(self: &Arc<Self>) {
+        if !self.native_resize_redraw.claim() {
+            return;
+        }
+        let weak = Arc::downgrade(self);
+        DispatchQueue::main().exec_async(move || {
+            let Some(adapter) = weak.upgrade() else {
+                return;
+            };
+            adapter.native_resize_redraw.release();
+            let mut session = lock(&adapter.session);
+            if let Some(session) = session.as_mut() {
+                let _ = session.redraw_retained_frame();
+            }
+        });
     }
 
     fn on_main<T: Send>(
@@ -189,85 +247,6 @@ impl MacOsLibmpvAdapter {
         let mut session = lock(&self.session);
         let session = session.as_mut().ok_or(VideoEngineError::Unavailable)?;
         action(session)
-    }
-
-    fn schedule_geometry_drain(&self) -> Result<(), VideoEngineError> {
-        let weak = self
-            .self_reference
-            .get()
-            .cloned()
-            .ok_or(VideoEngineError::Unavailable)?;
-        DispatchQueue::main().exec_async(move || {
-            if let Some(adapter) = weak.upgrade() {
-                adapter.drain_geometry_on_main();
-            }
-        });
-        Ok(())
-    }
-
-    fn schedule_geometry_redraw(
-        &self,
-        generation: u64,
-        sequence: u64,
-    ) -> Result<(), VideoEngineError> {
-        let weak = self
-            .self_reference
-            .get()
-            .cloned()
-            .ok_or(VideoEngineError::Unavailable)?;
-        let deadline = DispatchTime::try_from(GEOMETRY_SETTLE_INTERVAL)
-            .map_err(|()| VideoEngineError::Unavailable)?;
-        DispatchQueue::main()
-            .after(deadline, move || {
-                if let Some(adapter) = weak.upgrade() {
-                    adapter.redraw_geometry_on_main(generation, sequence);
-                }
-            })
-            .map_err(|_| VideoEngineError::Unavailable)
-    }
-
-    fn drain_geometry_on_main(&self) {
-        debug_assert!(MainThreadMarker::new().is_some());
-        let update = lock(&self.geometry_mailbox).take_for_drain();
-        if let Some(update) = update {
-            let result = self.with_generation(update.generation, |session| {
-                session
-                    .update_geometry(mac_rect(update.rect))
-                    .map_err(|_| VideoEngineError::RenderSurface)
-            });
-            if result.is_ok() {
-                self.diagnostics.record_geometry_application();
-                if lock(&self.geometry_mailbox).mark_applied(
-                    update.generation,
-                    update.sequence,
-                    self.playback_active.load(Ordering::Acquire),
-                ) {
-                    let _ = self.schedule_geometry_redraw(update.generation, update.sequence);
-                }
-            }
-        }
-        if lock(&self.geometry_mailbox).finish_drain() {
-            let _ = self.schedule_geometry_drain();
-        }
-    }
-
-    fn redraw_geometry_on_main(&self, generation: u64, scheduled_sequence: u64) {
-        debug_assert!(MainThreadMarker::new().is_some());
-        let redraw = lock(&self.geometry_mailbox)
-            .take_settled_redraw(generation, scheduled_sequence)
-            .is_some();
-        if redraw {
-            let _ = self.with_generation(generation, |session| {
-                session
-                    .redraw_retained_frame()
-                    .map_err(|_| VideoEngineError::RenderSurface)
-            });
-        }
-        let next_sequence =
-            lock(&self.geometry_mailbox).schedule_pending_settled_redraw(generation);
-        if !redraw && let Some(next_sequence) = next_sequence {
-            let _ = self.schedule_geometry_redraw(generation, next_sequence);
-        }
     }
 
     fn draw_on_main(&self) {
@@ -310,6 +289,8 @@ impl MacOsLibmpvAdapter {
                     self.diagnostics.record_stale_completion_rejection();
                     return;
                 }
+                let terminal_snapshot =
+                    snapshot_is_terminal(&snapshot, *lock(&self.media_duration_us));
                 self.schedule_frame_confirmation(generation, frame_serial, snapshot.picture_type);
                 if let Some(time_us) = snapshot.time_us {
                     self.emit(
@@ -332,7 +313,7 @@ impl MacOsLibmpvAdapter {
                         self.emit(generation, completion);
                     }
                 }
-                if snapshot.eof_reached && !self.ended_published.swap(true, Ordering::AcqRel) {
+                if terminal_snapshot && !self.ended_published.swap(true, Ordering::AcqRel) {
                     self.playback_active.store(false, Ordering::Release);
                     self.emit(generation, EngineEvent::Ended);
                 }
@@ -433,8 +414,8 @@ impl MacOsLibmpvAdapter {
         self.first_frame_published.store(false, Ordering::Release);
         self.ended_published.store(false, Ordering::Release);
         self.playback_active.store(false, Ordering::Release);
+        *lock(&self.media_duration_us) = None;
         *lock(&self.pending_completion) = None;
-        lock(&self.geometry_mailbox).invalidate();
         let worker = lock(&self.media_worker).take();
         let session = lock(&self.session).take();
         drop_in_media_shutdown_order(worker, session);
@@ -455,7 +436,6 @@ impl VideoEngine for MacOsLibmpvAdapter {
                 .ok_or(VideoEngineError::Unavailable)?
                 .activate(request.generation)?;
             *lock(&adapter.generation) = Some(request.generation);
-            lock(&adapter.geometry_mailbox).activate(request.generation);
             adapter
                 .first_frame_published
                 .store(false, Ordering::Release);
@@ -492,7 +472,6 @@ impl VideoEngine for MacOsLibmpvAdapter {
                 session.play().map_err(|_| VideoEngineError::Decode)
             })?;
             adapter.playback_active.store(true, Ordering::Release);
-            lock(&adapter.geometry_mailbox).cancel_settled_redraw(generation);
             Ok(())
         })
     }
@@ -579,30 +558,6 @@ impl VideoEngine for MacOsLibmpvAdapter {
             })
         })
     }
-
-    fn publish_surface_rect(
-        &self,
-        generation: u64,
-        sequence: u64,
-        rect: SurfaceRect,
-    ) -> Result<(), VideoEngineError> {
-        let schedule = lock(&self.geometry_mailbox).publish(generation, sequence, rect)?;
-        self.diagnostics
-            .record_geometry_publication(sequence, !schedule);
-        if schedule {
-            self.schedule_geometry_drain()?;
-        }
-        Ok(())
-    }
-}
-
-fn mac_rect(rect: SurfaceRect) -> MacSurfaceRect {
-    MacSurfaceRect {
-        x: f64::from(rect.x),
-        y: f64::from(rect.y),
-        width: f64::from(rect.width),
-        height: f64::from(rect.height),
-    }
 }
 
 fn frame_snapshot_matches_active_render(
@@ -631,9 +586,11 @@ mod tests {
     use std::sync::{Arc, Mutex};
 
     use super::{
-        PendingCompletion, drop_in_media_shutdown_order, frame_snapshot_matches_active_render,
+        NativeResizeRedrawGate, PendingCompletion, drop_in_media_shutdown_order,
+        frame_snapshot_matches_active_render, snapshot_is_terminal,
     };
     use viewer_application::EngineEvent;
+    use viewer_video_mpv::MpvPlaybackSnapshot;
 
     #[test]
     fn pending_step_completes_with_the_drawn_frame_time() {
@@ -693,5 +650,70 @@ mod tests {
         );
 
         assert_eq!(*trace.lock().unwrap(), ["worker", "session"]);
+    }
+
+    #[test]
+    fn native_resize_burst_keeps_one_pending_retained_frame_redraw() {
+        let gate = NativeResizeRedrawGate::default();
+        assert_eq!((0..120).filter(|_| gate.claim()).count(), 1);
+        gate.release();
+        assert!(gate.claim());
+    }
+
+    #[test]
+    fn final_decoded_frame_is_terminal_before_libmpv_clears_the_surface() {
+        assert!(snapshot_is_terminal(
+            &MpvPlaybackSnapshot {
+                time_us: Some(15_636_000),
+                duration_us: Some(15_680_000),
+                eof_reached: false,
+                picture_type: Some("P".to_owned()),
+            },
+            None
+        ));
+        assert!(snapshot_is_terminal(
+            &MpvPlaybackSnapshot {
+                time_us: Some(15_562_180),
+                duration_us: Some(15_680_000),
+                eof_reached: false,
+                picture_type: Some("P".to_owned()),
+            },
+            None
+        ));
+        assert!(!snapshot_is_terminal(
+            &MpvPlaybackSnapshot {
+                time_us: Some(15_000_000),
+                duration_us: Some(15_680_000),
+                eof_reached: false,
+                picture_type: Some("P".to_owned()),
+            },
+            None
+        ));
+    }
+
+    #[test]
+    fn authorized_media_duration_detects_terminal_frame_when_libmpv_omits_duration() {
+        assert!(snapshot_is_terminal(
+            &MpvPlaybackSnapshot {
+                time_us: Some(15_636_000),
+                duration_us: None,
+                eof_reached: false,
+                picture_type: Some("P".to_owned()),
+            },
+            Some(15_680_000)
+        ));
+    }
+
+    #[test]
+    fn authorized_media_duration_wins_when_libmpv_reports_a_later_container_end() {
+        assert!(snapshot_is_terminal(
+            &MpvPlaybackSnapshot {
+                time_us: Some(15_562_180),
+                duration_us: Some(16_000_000),
+                eof_reached: false,
+                picture_type: Some("P".to_owned()),
+            },
+            Some(15_680_000)
+        ));
     }
 }

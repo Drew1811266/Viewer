@@ -58,7 +58,6 @@ describe('Viewer visual acceptance bridge', () => {
         'videoSetFullscreen',
         'videoSetMuted',
         'videoSetRate',
-        'videoSetSurfaceRect',
         'videoSetVolume',
         'videoStep',
       ].sort(),

@@ -1,5 +1,4 @@
 import {
-  type RefObject,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -19,7 +18,6 @@ import type {
 } from '../../api/types'
 import type { ViewerBridge } from '../../api/viewer'
 import type { VideoControlCommands, VideoPlaybackRate } from './VideoControls'
-import { fitVideoSurfaceLayout, hasVideoGeometry, type VideoSurfaceLayout } from './videoGeometry'
 import { createPreparingVideoState, reduceVideoState, type VideoPreviewState } from './videoState'
 
 export type VideoPreviewBridge = Pick<
@@ -30,12 +28,12 @@ export type VideoPreviewBridge = Pick<
   | 'videoOpen'
   | 'videoPause'
   | 'videoPlay'
+  | 'videoRequestCover'
   | 'videoRequestThumbnail'
   | 'videoSeek'
   | 'videoSetFullscreen'
   | 'videoSetMuted'
   | 'videoSetRate'
-  | 'videoSetSurfaceRect'
   | 'videoSetVolume'
   | 'videoStep'
 >
@@ -44,13 +42,11 @@ export interface UseVideoBridgeOptions {
   bridge: VideoPreviewBridge
   file: VideoFile
   retryKey: number
-  stage: RefObject<HTMLElement | null>
 }
 
 export interface UseVideoBridgeState {
   state: VideoPreviewState
   media: VideoMedia | null
-  surfaceLayout: VideoSurfaceLayout | null
   controlState: VideoBridgeControlState
   commands: VideoControlCommands
 }
@@ -72,46 +68,30 @@ export function useVideoBridge({
   bridge,
   file,
   retryKey,
-  stage,
 }: UseVideoBridgeOptions): UseVideoBridgeState {
   const [state, dispatch] = useReducer(reduceVideoState, undefined, createPreparingVideoState)
   const [media, setMedia] = useState<VideoMedia | null>(null)
   const [controlState, setControlState] = useState<VideoBridgeControlState>(
     createVideoBridgeControlState,
   )
-  const stageRect = useMeasuredVideoStage(stage)
   const activeGeneration = useRef<number | null>(null)
   const activeLifecycle = useRef<ActiveVideoLifecycle | null>(null)
-  const lastSurfaceGeometry = useRef<string | null>(null)
-  const surfaceUpdateSequence = useRef(0)
   const seekRequestId = useRef(0)
   const commandQueue = useRef<Promise<void>>(Promise.resolve())
   const closeTail = useRef<Promise<void>>(Promise.resolve())
   const playbackIntent = useRef(createBooleanControlIntent(false))
   const mutedIntent = useRef(createBooleanControlIntent(false))
   const fullscreenIntent = useRef(createBooleanControlIntent(false))
-  const metadataMedia: VideoMedia = file.videoMetadata
   const indexedFailure = indexedVideoError(file.videoMetadata)
-  const geometryReady = stageRect !== null && hasVideoGeometry(stageRect, metadataMedia)
-  const retryingIndexedFailure =
-    retryKey > 0 && indexedFailure !== null && stageRect !== null && hasStageGeometry(stageRect)
+  const retryingIndexedFailure = retryKey > 0 && indexedFailure !== null
   const lifecycleKey =
-    (file.videoMetadata.probeStatus === 'ready' && geometryReady) || retryingIndexedFailure
+    (file.videoMetadata.probeStatus === 'ready' && indexedFailure === null) ||
+    retryingIndexedFailure
       ? `${file.entityId}:${retryKey}`
       : null
-  const layoutMedia = media ?? (geometryReady ? metadataMedia : null)
-  const surfaceLayout = useMemo(
-    () =>
-      stageRect !== null && layoutMedia !== null && hasVideoGeometry(stageRect, layoutMedia)
-        ? fitVideoSurfaceLayout(stageRect, layoutMedia)
-        : null,
-    [layoutMedia, stageRect],
-  )
 
   useLayoutEffect(() => {
     activeGeneration.current = null
-    lastSurfaceGeometry.current = null
-    surfaceUpdateSequence.current = 0
     seekRequestId.current = 0
     commandQueue.current = Promise.resolve()
     resetBooleanControlIntent(playbackIntent.current, null, false)
@@ -133,11 +113,8 @@ export function useVideoBridge({
   ])
 
   useEffect(() => {
-    if (lifecycleKey === null || stageRect === null) return
+    if (lifecycleKey === null) return
     const attemptId = crypto.randomUUID()
-    const initialRect = geometryReady
-      ? fitVideoSurfaceLayout(stageRect, metadataMedia).surfaceRect
-      : stageVideoRect(stageRect)
     let disposed = false
     let generation: number | null = null
     let detached = false
@@ -145,9 +122,6 @@ export function useVideoBridge({
     const bufferedEvents: VideoEvent[] = []
     const closedGenerations = new Set<number>()
     let eventsReady = false
-    let eventTail = Promise.resolve()
-    let retryGeometryReady = !retryingIndexedFailure
-    let pendingFirstFrame: Extract<VideoEvent, { type: 'firstFrameReady' }> | null = null
 
     const detach = () => {
       if (detached || unlisten === null) return
@@ -166,22 +140,7 @@ export function useVideoBridge({
       if (disposed) return
       if (generation === null) return
       if (event.generation !== generation) return
-      if (retryingIndexedFailure && event.type === 'firstFrameReady' && !retryGeometryReady) {
-        pendingFirstFrame = event
-        return
-      }
       if (event.type === 'prepared') {
-        if (retryingIndexedFailure && hasVideoGeometry(stageRect, event.media)) {
-          const fittedRect = fitVideoSurfaceLayout(stageRect, event.media).surfaceRect
-          await bridge.videoSetSurfaceRect({
-            generation: event.generation,
-            sequence: ++surfaceUpdateSequence.current,
-            ...fittedRect,
-          })
-          if (disposed) return
-          lastSurfaceGeometry.current = surfaceGeometryKey(event.generation, fittedRect)
-          retryGeometryReady = true
-        }
         setMedia(event.media)
       }
       if (event.type === 'stateChanged') {
@@ -212,29 +171,13 @@ export function useVideoBridge({
         setControlState((current) => ({ ...current, timelineThumbnail: event }))
       }
       dispatch(event)
-      if (retryGeometryReady && pendingFirstFrame !== null) {
-        const ready = pendingFirstFrame
-        pendingFirstFrame = null
-        dispatch(ready)
-      }
     }
     const enqueue = (event: VideoEvent) => {
       if (!eventsReady) {
         bufferedEvents.push(event)
         return
       }
-      if (!retryingIndexedFailure) {
-        void consume(event)
-        return
-      }
-      eventTail = eventTail
-        .then(() => consume(event))
-        .catch((error) => {
-          const lifecycle = activeLifecycle.current
-          if (generation !== null && lifecycle?.generation === generation) {
-            lifecycle.fail(videoError(error, 'video_surface_failed'))
-          }
-        })
+      void consume(event)
     }
 
     void (async () => {
@@ -250,31 +193,11 @@ export function useVideoBridge({
         const session = await bridge.videoOpen({
           attemptId,
           entityId: file.entityId,
-          surfaceRect: initialRect,
         })
         generation = session.generation
         if (disposed) {
           closeOnce(session.generation)
           return
-        }
-        if (retryingIndexedFailure && hasVideoGeometry(stageRect, session.media)) {
-          const fittedRect = fitVideoSurfaceLayout(stageRect, session.media).surfaceRect
-          try {
-            await bridge.videoSetSurfaceRect({
-              generation: session.generation,
-              sequence: ++surfaceUpdateSequence.current,
-              ...fittedRect,
-            })
-          } catch (error) {
-            await closeOnce(session.generation)
-            throw error
-          }
-          lastSurfaceGeometry.current = surfaceGeometryKey(session.generation, fittedRect)
-          retryGeometryReady = true
-          if (disposed) {
-            closeOnce(session.generation)
-            return
-          }
         }
         activeGeneration.current = session.generation
         seekRequestId.current = 0
@@ -321,31 +244,7 @@ export function useVideoBridge({
       if (activeGeneration.current === generation) activeGeneration.current = null
       if (activeLifecycle.current?.generation === generation) activeLifecycle.current = null
     }
-  }, [bridge, file.entityId, geometryReady, lifecycleKey, retryingIndexedFailure])
-
-  useEffect(() => {
-    if (state.generation === 0 || surfaceLayout === null) {
-      return
-    }
-    const rect = surfaceLayout.surfaceRect
-    const geometryKey = surfaceGeometryKey(state.generation, rect)
-    if (lastSurfaceGeometry.current === geometryKey) return
-    lastSurfaceGeometry.current = geometryKey
-    const generation = state.generation
-    const updateSequence = ++surfaceUpdateSequence.current
-    void bridge.videoSetSurfaceRect({ generation, sequence: updateSequence, ...rect }).catch(() => {
-      // Window and WebView geometry are published by separate native/DOM
-      // layout passes. Keep the last valid surface alive when one transient
-      // resize sample is rejected; a newer measured rect supersedes it.
-      if (
-        activeGeneration.current === generation &&
-        surfaceUpdateSequence.current === updateSequence &&
-        lastSurfaceGeometry.current === geometryKey
-      ) {
-        lastSurfaceGeometry.current = null
-      }
-    })
-  }, [bridge, state.generation, surfaceLayout])
+  }, [bridge, file.entityId, lifecycleKey, retryingIndexedFailure])
 
   const withGeneration = useCallback(async (command: (generation: number) => Promise<void>) => {
     const generation = activeGeneration.current
@@ -498,7 +397,7 @@ export function useVideoBridge({
     }
   }, [bridge, enqueueCommand, state.durationUs, withGeneration])
 
-  return { state, media, surfaceLayout, controlState, commands }
+  return { state, media, controlState, commands }
 }
 
 interface BooleanControlIntent {
@@ -609,106 +508,6 @@ function rateRequestValue(rate: VideoPlaybackRate): VideoRateRequestValue {
   if (rate === 1.5) return 'one_and_half'
   if (rate === 2) return 'double'
   return 'normal'
-}
-
-function useMeasuredVideoStage(stage: RefObject<HTMLElement | null>): DOMRectReadOnly | null {
-  const [rect, setRect] = useState<DOMRectReadOnly | null>(null)
-
-  useLayoutEffect(() => {
-    const node = stage.current
-    if (node === null) return
-    let frame: number | null = null
-    const publish = () => {
-      const next = node.getBoundingClientRect()
-      if (!finiteRect(next)) return
-      setRect((current) => (sameRect(current, next) ? current : copyRect(next)))
-    }
-    const schedule = () => {
-      if (frame !== null) return
-      if (typeof requestAnimationFrame === 'undefined') {
-        publish()
-        return
-      }
-      frame = requestAnimationFrame(() => {
-        frame = null
-        publish()
-      })
-    }
-    publish()
-    const observer =
-      typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => schedule())
-    observer?.observe(node)
-    window.addEventListener('resize', schedule)
-    return () => {
-      observer?.disconnect()
-      window.removeEventListener('resize', schedule)
-      if (frame !== null && typeof cancelAnimationFrame !== 'undefined') {
-        cancelAnimationFrame(frame)
-      }
-    }
-  }, [stage])
-
-  return rect
-}
-
-function finiteRect(rect: DOMRectReadOnly): boolean {
-  return (
-    [rect.left, rect.top, rect.width, rect.height].every(Number.isFinite) &&
-    rect.width > 0 &&
-    rect.height > 0
-  )
-}
-
-function sameRect(left: DOMRectReadOnly | null, right: DOMRectReadOnly): boolean {
-  return (
-    left !== null &&
-    left.left === right.left &&
-    left.top === right.top &&
-    left.width === right.width &&
-    left.height === right.height
-  )
-}
-
-function hasStageGeometry(stage: DOMRectReadOnly): boolean {
-  return (
-    Number.isFinite(stage.left) &&
-    Number.isFinite(stage.top) &&
-    Number.isFinite(stage.width) &&
-    stage.width > 0 &&
-    Number.isFinite(stage.height) &&
-    stage.height > 0
-  )
-}
-
-function stageVideoRect(stage: DOMRectReadOnly) {
-  if (!hasStageGeometry(stage)) throw new RangeError('Video stage geometry is not ready')
-  return {
-    x: Math.round(stage.left),
-    y: Math.round(stage.top),
-    width: Math.round(stage.width),
-    height: Math.round(stage.height),
-  }
-}
-
-function surfaceGeometryKey(
-  generation: number,
-  rect: { x: number; y: number; width: number; height: number },
-): string {
-  return `${generation}:${rect.x}:${rect.y}:${rect.width}:${rect.height}`
-}
-
-function copyRect(rect: DOMRectReadOnly): DOMRectReadOnly {
-  return {
-    x: rect.left,
-    y: rect.top,
-    left: rect.left,
-    top: rect.top,
-    right: rect.left + rect.width,
-    bottom: rect.top + rect.height,
-    width: rect.width,
-    height: rect.height,
-    toJSON: () => undefined,
-  }
 }
 
 function videoError(error: unknown, fallbackCode = 'video_open_failed'): VideoError {

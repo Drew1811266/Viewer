@@ -7,9 +7,7 @@ use crate::{
     finder_drag::{FinderDragError, PreparedFinderDrag},
     scan::{ScanError, ScanRequest, ScanSink},
     search::SearchError,
-    video::{
-        EngineOpenRequest, FrameDirection, PlaybackRate, SeekRequest, SurfaceRect, VideoEngineError,
-    },
+    video::{EngineOpenRequest, FrameDirection, PlaybackRate, SeekRequest, VideoEngineError},
     watcher::FileIdentity,
 };
 
@@ -446,12 +444,6 @@ pub trait VideoEngine: Send + Sync {
     async fn set_volume(&self, generation: u64, percent: u8) -> Result<(), VideoEngineError>;
     async fn set_muted(&self, generation: u64, muted: bool) -> Result<(), VideoEngineError>;
     async fn set_rate(&self, generation: u64, rate: PlaybackRate) -> Result<(), VideoEngineError>;
-    fn publish_surface_rect(
-        &self,
-        generation: u64,
-        sequence: u64,
-        rect: SurfaceRect,
-    ) -> Result<(), VideoEngineError>;
 }
 
 #[cfg(test)]

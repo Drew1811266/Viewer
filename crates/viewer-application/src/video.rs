@@ -37,14 +37,6 @@ pub enum PlaybackRate {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct SurfaceRect {
-    pub x: i32,
-    pub y: i32,
-    pub width: u32,
-    pub height: u32,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SeekIntent {
     Preview,
     Commit,
@@ -99,7 +91,6 @@ pub enum VideoCommandKind {
     SetVolume(u8),
     SetMuted(bool),
     SetRate(PlaybackRate),
-    SetSurfaceRect(SurfaceRect),
     Close,
 }
 
@@ -376,11 +367,10 @@ where
                 if !should_pause {
                     return Ok(());
                 }
-                if let Err(error) = self.engine.pause(generation).await {
-                    self.lock_state().snapshot.state =
-                        VideoPlaybackState::Failed(error.failure_kind());
-                    return Err(error.into());
-                }
+                // Ended is an authoritative terminal event from the engine.
+                // Some backends no longer accept a redundant pause after EOF;
+                // that must not turn a completed video into a playback failure.
+                let _ = self.engine.pause(generation).await;
                 let mut state = self.lock_state();
                 if let Some(duration_us) = state.snapshot.duration_us {
                     state.snapshot.time_us = duration_us;
@@ -532,12 +522,6 @@ where
                 self.run_engine(self.engine.set_rate(command.generation, rate).await)?;
                 self.lock_state().snapshot.rate = rate;
             }
-            VideoCommandKind::SetSurfaceRect(rect) => {
-                self.run_engine(
-                    self.engine
-                        .publish_surface_rect(command.generation, 0, rect),
-                )?;
-            }
             VideoCommandKind::Close => {
                 self.lock_state().snapshot.state = VideoPlaybackState::Closing;
                 let result = self.engine.close(command.generation).await;
@@ -596,24 +580,6 @@ where
             }
         };
         self.run_engine(self.engine.publish_seek(generation, request))
-    }
-
-    pub fn publish_surface_rect(
-        &self,
-        generation: u64,
-        sequence: u64,
-        rect: SurfaceRect,
-    ) -> Result<(), VideoServiceError> {
-        {
-            let state = self.lock_state();
-            if state.snapshot.generation != generation {
-                return Err(VideoServiceError::StaleGeneration);
-            }
-            if state.snapshot.session_id.is_none() {
-                return Err(VideoServiceError::NoActiveSession);
-            }
-        }
-        self.run_engine(self.engine.publish_surface_rect(generation, sequence, rect))
     }
 
     pub async fn set_volume(&self, percent: u8) -> Result<(), VideoServiceError> {

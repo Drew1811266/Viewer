@@ -4,8 +4,8 @@ use std::{
     sync::{Mutex, MutexGuard},
 };
 use viewer_application::{
-    EngineEvent, EngineOpenRequest, FrameDirection, PlaybackRate, SeekRequest, SurfaceRect,
-    VideoEngine, VideoEngineError, VideoEvent,
+    EngineEvent, EngineOpenRequest, FrameDirection, PlaybackRate, SeekRequest, VideoEngine,
+    VideoEngineError, VideoEvent,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -20,7 +20,6 @@ pub enum FakeVideoEngineCall {
     SetVolume(u64, u8),
     SetMuted(u64, bool),
     SetRate(u64, PlaybackRate),
-    PublishSurfaceRect(u64, u64, SurfaceRect),
 }
 
 #[derive(Default)]
@@ -105,17 +104,6 @@ impl VideoEngine for FakeVideoEngine {
     async fn set_rate(&self, generation: u64, rate: PlaybackRate) -> Result<(), VideoEngineError> {
         self.record(FakeVideoEngineCall::SetRate(generation, rate))
     }
-
-    fn publish_surface_rect(
-        &self,
-        generation: u64,
-        sequence: u64,
-        rect: SurfaceRect,
-    ) -> Result<(), VideoEngineError> {
-        self.record(FakeVideoEngineCall::PublishSurfaceRect(
-            generation, sequence, rect,
-        ))
-    }
 }
 
 #[cfg(test)]
@@ -127,7 +115,7 @@ mod tests {
     };
     use viewer_application::{
         EngineEvent, EngineOpenRequest, FrameDirection, PlaybackRate, SeekIntent, SeekRequest,
-        SurfaceRect, VideoEngine, VideoEngineError, VideoEvent, VideoSource,
+        VideoEngine, VideoEngineError, VideoEvent, VideoSource,
     };
     use viewer_domain::{EntityId, VideoSessionId};
 
@@ -142,13 +130,6 @@ mod tests {
                 canonical_path: "/project/clip.mp4".into(),
             },
         };
-        let rect = SurfaceRect {
-            x: 1,
-            y: 2,
-            width: 640,
-            height: 360,
-        };
-
         block_on(async {
             fake.open_paused(request.clone()).await.unwrap();
             fake.reveal_surface(4).await.unwrap();
@@ -167,7 +148,6 @@ mod tests {
             fake.set_volume(4, 42).await.unwrap();
             fake.set_muted(4, true).await.unwrap();
             fake.set_rate(4, PlaybackRate::OneAndHalf).await.unwrap();
-            fake.publish_surface_rect(4, 9, rect).unwrap();
             fake.close(4).await.unwrap();
         });
 
@@ -190,7 +170,6 @@ mod tests {
                 FakeVideoEngineCall::SetVolume(4, 42),
                 FakeVideoEngineCall::SetMuted(4, true),
                 FakeVideoEngineCall::SetRate(4, PlaybackRate::OneAndHalf),
-                FakeVideoEngineCall::PublishSurfaceRect(4, 9, rect),
                 FakeVideoEngineCall::Close(4),
             ]
         );

@@ -51,7 +51,7 @@ describe('Viewer visual accessibility contracts', () => {
     const forcedColors = mediaBody(videoPreviewCss, '(forced-colors: active)')
     expect(forcedColors).toContain('.video-controls')
     expect(forcedColors).toContain('.video-controls-more__popover')
-    expect(forcedColors).toContain('.video-preview-matte--top')
+    expect(forcedColors).toContain('.video-preview-topbar')
     expect(forcedColors).toContain('.video-preview-stage::after')
     expect(forcedColors).toContain('CanvasText')
     expect(forcedColors).toContain('Highlight')

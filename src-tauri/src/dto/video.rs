@@ -1,59 +1,16 @@
 use serde::{Deserialize, Serialize};
 use viewer_application::{
-    FrameDirection, PlaybackRate, SeekIntent, SeekRequest, SurfaceRect, VideoMedia,
-    VideoPlaybackState, VideoPreviewSnapshot,
+    FrameDirection, PlaybackRate, SeekIntent, SeekRequest, VideoMedia, VideoPlaybackState,
+    VideoPreviewSnapshot,
 };
 use viewer_domain::video::{VideoFailureKind, VideoMetadata};
 use viewer_infrastructure::video_cache::VideoCacheStats;
-
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct VideoSurfaceRectDto {
-    pub generation: u64,
-    pub sequence: u64,
-    pub x: i32,
-    pub y: i32,
-    pub width: u32,
-    pub height: u32,
-}
-
-impl VideoSurfaceRectDto {
-    pub const fn rect(self) -> SurfaceRect {
-        SurfaceRect {
-            x: self.x,
-            y: self.y,
-            width: self.width,
-            height: self.height,
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct VideoOpenSurfaceRectDto {
-    pub x: i32,
-    pub y: i32,
-    pub width: u32,
-    pub height: u32,
-}
-
-impl From<VideoOpenSurfaceRectDto> for SurfaceRect {
-    fn from(value: VideoOpenSurfaceRectDto) -> Self {
-        Self {
-            x: value.x,
-            y: value.y,
-            width: value.width,
-            height: value.height,
-        }
-    }
-}
 
 #[derive(Clone, Debug, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct VideoOpenRequestDto {
     pub attempt_id: String,
     pub entity_id: String,
-    pub surface_rect: VideoOpenSurfaceRectDto,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]

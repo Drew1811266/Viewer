@@ -263,7 +263,8 @@ impl MacOsLibmpvAdapter {
                     .map_err(|_| VideoEngineError::RenderSurface)
             });
         }
-        let next_sequence = lock(&self.geometry_mailbox).pending_settled_redraw(generation);
+        let next_sequence =
+            lock(&self.geometry_mailbox).schedule_pending_settled_redraw(generation);
         if !redraw && let Some(next_sequence) = next_sequence {
             let _ = self.schedule_geometry_redraw(generation, next_sequence);
         }

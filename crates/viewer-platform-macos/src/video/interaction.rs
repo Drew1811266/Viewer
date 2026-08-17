@@ -14,7 +14,7 @@ pub(super) struct LatestGeometryMailbox {
     pending: Option<GeometryUpdate>,
     drain_scheduled: bool,
     pending_settled_redraw: Option<u64>,
-    settle_timer_scheduled: bool,
+    scheduled_settle_sequence: Option<u64>,
 }
 
 impl LatestGeometryMailbox {
@@ -24,7 +24,7 @@ impl LatestGeometryMailbox {
         self.pending = None;
         self.drain_scheduled = false;
         self.pending_settled_redraw = None;
-        self.settle_timer_scheduled = false;
+        self.scheduled_settle_sequence = None;
     }
 
     pub fn invalidate(&mut self) {
@@ -33,7 +33,7 @@ impl LatestGeometryMailbox {
         self.pending = None;
         self.drain_scheduled = false;
         self.pending_settled_redraw = None;
-        self.settle_timer_scheduled = false;
+        self.scheduled_settle_sequence = None;
     }
 
     pub fn publish(
@@ -80,14 +80,13 @@ impl LatestGeometryMailbox {
         }
         if playback_active {
             self.pending_settled_redraw = None;
-            self.settle_timer_scheduled = false;
             return false;
         }
         self.pending_settled_redraw = Some(sequence);
-        if self.settle_timer_scheduled {
+        if self.scheduled_settle_sequence.is_some() {
             return false;
         }
-        self.settle_timer_scheduled = true;
+        self.scheduled_settle_sequence = Some(sequence);
         true
     }
 
@@ -95,25 +94,29 @@ impl LatestGeometryMailbox {
         if self.active_generation != Some(generation) {
             return None;
         }
+        if self.scheduled_settle_sequence != Some(scheduled_sequence) {
+            return None;
+        }
+        self.scheduled_settle_sequence = None;
         if self.pending_settled_redraw != Some(scheduled_sequence) {
             return None;
         }
         self.pending_settled_redraw = None;
-        self.settle_timer_scheduled = false;
         Some(scheduled_sequence)
     }
 
-    pub fn pending_settled_redraw(&self, generation: u64) -> Option<u64> {
-        if self.active_generation != Some(generation) {
+    pub fn schedule_pending_settled_redraw(&mut self, generation: u64) -> Option<u64> {
+        if self.active_generation != Some(generation) || self.scheduled_settle_sequence.is_some() {
             return None;
         }
-        self.pending_settled_redraw
+        let sequence = self.pending_settled_redraw?;
+        self.scheduled_settle_sequence = Some(sequence);
+        Some(sequence)
     }
 
     pub fn cancel_settled_redraw(&mut self, generation: u64) {
         if self.active_generation == Some(generation) {
             self.pending_settled_redraw = None;
-            self.settle_timer_scheduled = false;
         }
     }
 }
@@ -157,9 +160,9 @@ mod tests {
 
         assert_eq!(redraw_schedules, 1);
         assert_eq!(mailbox.take_settled_redraw(5, 1), None);
-        assert_eq!(mailbox.pending_settled_redraw(5), Some(120));
+        assert_eq!(mailbox.schedule_pending_settled_redraw(5), Some(120));
         assert_eq!(mailbox.take_settled_redraw(5, 120), Some(120));
-        assert_eq!(mailbox.pending_settled_redraw(5), None);
+        assert_eq!(mailbox.schedule_pending_settled_redraw(5), None);
     }
 
     #[test]
@@ -170,7 +173,20 @@ mod tests {
         let update = mailbox.take_for_drain().unwrap();
 
         assert!(!mailbox.mark_applied(5, update.sequence, true));
-        assert_eq!(mailbox.pending_settled_redraw(5), None);
+        assert_eq!(mailbox.schedule_pending_settled_redraw(5), None);
+    }
+
+    #[test]
+    fn a_cancelled_paused_timer_releases_ownership_before_the_next_paused_resize() {
+        let mut mailbox = LatestGeometryMailbox::default();
+        mailbox.activate(5);
+        assert!(mailbox.mark_applied(5, 1, false));
+
+        mailbox.cancel_settled_redraw(5);
+        assert_eq!(mailbox.take_settled_redraw(5, 1), None);
+        assert_eq!(mailbox.schedule_pending_settled_redraw(5), None);
+
+        assert!(mailbox.mark_applied(5, 2, false));
     }
 
     #[test]
@@ -182,7 +198,7 @@ mod tests {
         mailbox.activate(6);
         assert!(mailbox.mark_applied(6, 2, false));
         assert_eq!(mailbox.take_settled_redraw(5, 1), None);
-        assert_eq!(mailbox.pending_settled_redraw(5), None);
+        assert_eq!(mailbox.schedule_pending_settled_redraw(5), None);
 
         assert_eq!(mailbox.take_settled_redraw(6, 2), Some(2));
     }

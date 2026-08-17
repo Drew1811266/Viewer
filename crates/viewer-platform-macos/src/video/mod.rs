@@ -14,6 +14,5 @@ pub use surface::{
     AppKitFrame, MacVideoSurface, SurfaceError, SurfaceRect, appkit_frame, backing_pixels,
 };
 pub use theater::{
-    THEATER_BOTTOM_INSPECTOR_HEIGHT, THEATER_TOP_COMMAND_BAR_HEIGHT, TheaterBounds, TheaterFrame,
-    VideoDisplayGeometry, contain_fit_frame, theater_viewport_frame,
+    TheaterBounds, TheaterFrame, VideoDisplayGeometry, contain_fit_frame, theater_viewport_frame,
 };

@@ -20,29 +20,22 @@ pub struct VideoDisplayGeometry {
     pub rotation_degrees: i32,
 }
 
-pub const THEATER_TOP_COMMAND_BAR_HEIGHT: f64 = 50.0;
-pub const THEATER_BOTTOM_INSPECTOR_HEIGHT: f64 = 88.0;
-
-/// Returns the native AppKit viewport left after reserving the opaque player
-/// command bar and inspector. Keeping this layout in AppKit lets the video
-/// resize with the window without a browser measurement/IPC round trip.
+/// Returns the complete native AppKit theater viewport. Compact player chrome
+/// overlays the theater from the webview, so it does not reserve native video
+/// space or require browser measurement/IPC during window resizing.
 pub fn theater_viewport_frame(bounds: TheaterBounds) -> Option<TheaterFrame> {
     if !valid_positive(bounds.width)
         || !valid_positive(bounds.height)
         || !valid_positive(bounds.scale_factor)
-        || bounds.height <= THEATER_TOP_COMMAND_BAR_HEIGHT + THEATER_BOTTOM_INSPECTOR_HEIGHT
     {
         return None;
     }
 
     Some(TheaterFrame {
         x: 0.0,
-        y: align_to_backing_pixel(THEATER_BOTTOM_INSPECTOR_HEIGHT, bounds.scale_factor),
+        y: 0.0,
         width: align_to_backing_pixel(bounds.width, bounds.scale_factor),
-        height: align_to_backing_pixel(
-            bounds.height - THEATER_TOP_COMMAND_BAR_HEIGHT - THEATER_BOTTOM_INSPECTOR_HEIGHT,
-            bounds.scale_factor,
-        ),
+        height: align_to_backing_pixel(bounds.height, bounds.scale_factor),
     })
 }
 

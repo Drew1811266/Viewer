@@ -1,23 +1,52 @@
 use viewer_platform_macos::video::{
-    THEATER_BOTTOM_INSPECTOR_HEIGHT, THEATER_TOP_COMMAND_BAR_HEIGHT, TheaterBounds, TheaterFrame,
-    VideoDisplayGeometry, contain_fit_frame, theater_viewport_frame,
+    TheaterBounds, TheaterFrame, VideoDisplayGeometry, contain_fit_frame, theater_viewport_frame,
 };
 
 #[test]
-fn reserves_native_top_and_bottom_chrome_before_video_aspect_fit() {
-    assert_eq!(THEATER_TOP_COMMAND_BAR_HEIGHT, 50.0);
-    assert_eq!(THEATER_BOTTOM_INSPECTOR_HEIGHT, 88.0);
+fn overlay_chrome_does_not_reserve_native_video_space() {
     assert_eq!(
         theater_viewport_frame(TheaterBounds {
-            width: 1_200.0,
-            height: 800.0,
+            width: 1_024.0,
+            height: 720.0,
             scale_factor: 2.0,
         }),
         Some(TheaterFrame {
             x: 0.0,
-            y: 88.0,
-            width: 1_200.0,
-            height: 662.0,
+            y: 0.0,
+            width: 1_024.0,
+            height: 720.0,
+        })
+    );
+}
+
+#[test]
+fn contains_sixteen_by_nine_media_inside_complete_theater_bounds() {
+    let theater = TheaterBounds {
+        width: 1_024.0,
+        height: 720.0,
+        scale_factor: 2.0,
+    };
+
+    assert_eq!(
+        theater_viewport_frame(theater).and_then(|viewport| {
+            contain_fit_frame(
+                TheaterBounds {
+                    width: viewport.width,
+                    height: viewport.height,
+                    scale_factor: theater.scale_factor,
+                },
+                VideoDisplayGeometry {
+                    width: 1_920,
+                    height: 1_080,
+                    rotation_degrees: 0,
+                },
+            )
+        }),
+        Some(TheaterFrame {
+            x: 0.0,
+            y: 72.0,
+            width: 1_024.0,
+            height: 576.0,
         })
     );
 }

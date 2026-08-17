@@ -69,9 +69,10 @@ pub struct MacVideoSurface {
 }
 
 impl MacVideoSurface {
-    /// Mounts the production video surface as a native theater owned entirely
-    /// by AppKit. The OpenGL view follows native content-view resizing; libmpv
-    /// performs the media aspect fit inside that backing surface.
+    /// Mounts the production video surface across the full native theater.
+    /// The OpenGL view follows native content-view resizing while compact
+    /// webview chrome overlays it; libmpv performs the media aspect fit inside
+    /// that backing surface.
     pub fn mount_theater<R: Runtime>(
         window: &WebviewWindow<R>,
         media: VideoDisplayGeometry,

@@ -42,6 +42,90 @@ struct BlockingTransportEngine {
     pause_release: tokio::sync::Notify,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum AspectLifecycleCall {
+    Install(u32, u32),
+    Restore(u32, u32),
+}
+
+#[derive(Default)]
+struct AspectLifecycleEngine {
+    inner: FakeVideoEngine,
+    installed_aspect: Mutex<Option<(u32, u32)>>,
+    aspect_calls: Mutex<Vec<AspectLifecycleCall>>,
+}
+
+impl AspectLifecycleEngine {
+    fn install_aspect(&self, width: u32, height: u32) {
+        *self.installed_aspect.lock().unwrap() = Some((width, height));
+        self.aspect_calls
+            .lock()
+            .unwrap()
+            .push(AspectLifecycleCall::Install(width, height));
+    }
+
+    fn aspect_calls(&self) -> Vec<AspectLifecycleCall> {
+        self.aspect_calls.lock().unwrap().clone()
+    }
+
+    fn clear_aspect_calls(&self) {
+        self.aspect_calls.lock().unwrap().clear();
+    }
+}
+
+#[async_trait::async_trait]
+impl VideoEngine for AspectLifecycleEngine {
+    async fn open_paused(&self, request: EngineOpenRequest) -> Result<(), VideoEngineError> {
+        self.inner.open_paused(request).await
+    }
+
+    async fn reveal_surface(&self, generation: u64) -> Result<(), VideoEngineError> {
+        self.inner.reveal_surface(generation).await
+    }
+
+    async fn close(&self, generation: u64) -> Result<(), VideoEngineError> {
+        if let Some((width, height)) = self.installed_aspect.lock().unwrap().take() {
+            self.aspect_calls
+                .lock()
+                .unwrap()
+                .push(AspectLifecycleCall::Restore(width, height));
+        }
+        self.inner.close(generation).await
+    }
+
+    async fn play(&self, generation: u64) -> Result<(), VideoEngineError> {
+        self.inner.play(generation).await
+    }
+
+    async fn pause(&self, generation: u64) -> Result<(), VideoEngineError> {
+        self.inner.pause(generation).await
+    }
+
+    fn publish_seek(&self, generation: u64, request: SeekRequest) -> Result<(), VideoEngineError> {
+        self.inner.publish_seek(generation, request)
+    }
+
+    async fn step(
+        &self,
+        generation: u64,
+        direction: FrameDirection,
+    ) -> Result<(), VideoEngineError> {
+        self.inner.step(generation, direction).await
+    }
+
+    async fn set_volume(&self, generation: u64, percent: u8) -> Result<(), VideoEngineError> {
+        self.inner.set_volume(generation, percent).await
+    }
+
+    async fn set_muted(&self, generation: u64, muted: bool) -> Result<(), VideoEngineError> {
+        self.inner.set_muted(generation, muted).await
+    }
+
+    async fn set_rate(&self, generation: u64, rate: PlaybackRate) -> Result<(), VideoEngineError> {
+        self.inner.set_rate(generation, rate).await
+    }
+}
+
 impl Default for BlockingTransportEngine {
     fn default() -> Self {
         Self {
@@ -412,6 +496,106 @@ async fn video_open_serializes_concurrent_replacements_through_publication() {
         FakeVideoEngineCall::OpenPaused(request)
             if request.generation == 2 && request.source.entity_id == EntityId::from_u128(9)
     ));
+}
+
+#[tokio::test]
+async fn replacing_video_restores_old_aspect_before_installing_the_new_generation() {
+    let engine = Arc::new(AspectLifecycleEngine::default());
+    let runtime = viewer_desktop::video_runtime::VideoRuntime::new(Arc::clone(&engine));
+
+    let first_engine = Arc::clone(&engine);
+    runtime
+        .replace_authorized(video_source(7), move || async move {
+            first_engine.install_aspect(16, 9);
+            Ok(())
+        })
+        .await
+        .expect("open landscape video");
+    let second_engine = Arc::clone(&engine);
+    runtime
+        .replace_authorized(video_source(9), move || async move {
+            second_engine.install_aspect(9, 16);
+            Ok(())
+        })
+        .await
+        .expect("replace with portrait video");
+
+    assert_eq!(
+        engine.aspect_calls(),
+        [
+            AspectLifecycleCall::Install(16, 9),
+            AspectLifecycleCall::Restore(16, 9),
+            AspectLifecycleCall::Install(9, 16),
+        ]
+    );
+}
+
+#[tokio::test]
+async fn stale_close_cannot_restore_the_active_generation_aspect() {
+    let engine = Arc::new(AspectLifecycleEngine::default());
+    let runtime = viewer_desktop::video_runtime::VideoRuntime::new(Arc::clone(&engine));
+
+    for entity_id in 1..=8 {
+        let prepared_engine = Arc::clone(&engine);
+        runtime
+            .replace_authorized(video_source(entity_id), move || async move {
+                if entity_id == 8 {
+                    prepared_engine.install_aspect(9, 16);
+                } else {
+                    prepared_engine.install_aspect(16, 9);
+                }
+                Ok(())
+            })
+            .await
+            .expect("advance video generation");
+    }
+    engine.clear_aspect_calls();
+
+    assert_eq!(
+        runtime.close(7).await,
+        Err(viewer_desktop::video_runtime::VideoCommandError::StaleGeneration)
+    );
+    assert!(
+        engine.aspect_calls().is_empty(),
+        "stale close must not restore the active aspect lease"
+    );
+    runtime.close(8).await.expect("close active generation");
+
+    assert_eq!(engine.aspect_calls(), [AspectLifecycleCall::Restore(9, 16)]);
+}
+
+#[tokio::test]
+async fn failed_prepare_restores_the_pre_preview_window_policy() {
+    let engine = Arc::new(AspectLifecycleEngine::default());
+    let runtime = viewer_desktop::video_runtime::VideoRuntime::new(Arc::clone(&engine));
+    let prepared_engine = Arc::clone(&engine);
+
+    let result = runtime
+        .replace_authorized(video_source(7), move || async move {
+            prepared_engine.install_aspect(16, 9);
+            Err(viewer_desktop::video_runtime::VideoCommandError::EngineUnavailable)
+        })
+        .await;
+
+    assert_eq!(
+        result,
+        Err(viewer_desktop::video_runtime::VideoCommandError::EngineUnavailable)
+    );
+    assert_eq!(
+        engine.aspect_calls(),
+        [
+            AspectLifecycleCall::Install(16, 9),
+            AspectLifecycleCall::Restore(16, 9),
+        ]
+    );
+    engine.close(0).await.expect("repeat cleanup is idempotent");
+    assert_eq!(
+        engine.aspect_calls(),
+        [
+            AspectLifecycleCall::Install(16, 9),
+            AspectLifecycleCall::Restore(16, 9),
+        ]
+    );
 }
 
 fn video_source(entity_id: u128) -> viewer_desktop::state::AuthorizedVideoSource {

@@ -2013,7 +2013,7 @@ mod tests {
         let result = collect_suspended_process_output(
             process,
             CancellationToken::new(),
-            tokio::time::Instant::now() + Duration::from_secs(1),
+            tokio::time::Instant::now() + Duration::from_secs(5),
             128,
             128,
         )

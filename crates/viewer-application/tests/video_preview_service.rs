@@ -315,6 +315,52 @@ async fn ended_pauses_on_the_reported_final_frame() {
 }
 
 #[tokio::test]
+async fn play_after_ended_seeks_to_the_start_before_resuming() {
+    let (service, engine) = harness();
+    let generation = service.open(source(1)).await.unwrap();
+    start_playing(&service, generation).await;
+    service
+        .handle_engine_event(generation, EngineEvent::Ended)
+        .await
+        .unwrap();
+
+    service
+        .execute(VideoCommand::play(generation))
+        .await
+        .unwrap();
+
+    let replay_seek = engine
+        .calls()
+        .into_iter()
+        .find_map(|call| match call {
+            Call::PublishSeek(call_generation, request)
+                if call_generation == generation && request.time_us == 0 =>
+            {
+                Some(request)
+            }
+            _ => None,
+        })
+        .expect("replay publishes a seek to the beginning");
+    assert_eq!(replay_seek.intent, SeekIntent::Replay);
+    assert_eq!(service.snapshot().state, VideoPlaybackState::Seeking);
+
+    service
+        .handle_engine_event(
+            generation,
+            EngineEvent::SeekCompleted {
+                request_id: replay_seek.request_id,
+                time_us: 0,
+            },
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(engine.calls().last(), Some(&Call::Play(generation)));
+    assert_eq!(service.snapshot().state, VideoPlaybackState::Playing);
+    assert_eq!(service.snapshot().time_us, 0);
+}
+
+#[tokio::test]
 async fn navigation_closes_then_resets_ephemeral_playback_preferences() {
     let (service, engine) = harness();
     let old_generation = service.open(source(1)).await.unwrap();

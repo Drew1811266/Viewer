@@ -40,6 +40,7 @@ pub enum PlaybackRate {
 pub enum SeekIntent {
     Preview,
     Commit,
+    Replay,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -207,8 +208,11 @@ struct ServiceState {
     snapshot: VideoPreviewSnapshot,
     surface_revealed: bool,
     resume_after_seek: bool,
+    restart_after_seek: bool,
     active_commit_request_id: Option<u64>,
 }
+
+const REPLAY_SEEK_REQUEST_ID: u64 = 0;
 
 pub struct VideoPreviewService<E> {
     engine: Arc<E>,
@@ -271,6 +275,7 @@ where
             };
             state.surface_revealed = false;
             state.resume_after_seek = false;
+            state.restart_after_seek = false;
             state.active_commit_request_id = None;
             EngineOpenRequest {
                 generation,
@@ -391,27 +396,40 @@ where
                 request_id,
                 time_us,
             } => {
-                let mut state = self.lock_state();
-                if matches!(state.snapshot.state, VideoPlaybackState::Seeking)
-                    && state.active_commit_request_id == Some(request_id)
-                {
+                let restart_after_seek = {
+                    let mut state = self.lock_state();
+                    if !matches!(state.snapshot.state, VideoPlaybackState::Seeking)
+                        || state.active_commit_request_id != Some(request_id)
+                    {
+                        return Ok(());
+                    }
                     state.snapshot.time_us = state
                         .snapshot
                         .duration_us
                         .map_or(time_us, |duration_us| time_us.min(duration_us));
-                    state.snapshot.state = if state.resume_after_seek {
-                        VideoPlaybackState::Playing
-                    } else {
-                        VideoPlaybackState::Paused
-                    };
+                    let restart_after_seek = state.restart_after_seek;
+                    if !restart_after_seek {
+                        state.snapshot.state = if state.resume_after_seek {
+                            VideoPlaybackState::Playing
+                        } else {
+                            VideoPlaybackState::Paused
+                        };
+                    }
                     state.resume_after_seek = false;
+                    state.restart_after_seek = false;
                     state.active_commit_request_id = None;
+                    restart_after_seek
+                };
+                if restart_after_seek {
+                    self.run_engine(self.engine.play(generation).await)?;
+                    self.lock_state().snapshot.state = VideoPlaybackState::Playing;
                 }
             }
             EngineEvent::Failed(failure) => {
                 let mut state = self.lock_state();
                 state.snapshot.state = VideoPlaybackState::Failed(failure);
                 state.resume_after_seek = false;
+                state.restart_after_seek = false;
                 state.active_commit_request_id = None;
             }
         }
@@ -450,13 +468,28 @@ where
         }
 
         match command.kind {
-            VideoCommandKind::Play => {
-                if !matches!(self.snapshot().state, VideoPlaybackState::Paused) {
-                    return Err(VideoServiceError::InvalidState);
+            VideoCommandKind::Play => match self.snapshot().state {
+                VideoPlaybackState::Paused => {
+                    self.run_engine(self.engine.play(command.generation).await)?;
+                    self.lock_state().snapshot.state = VideoPlaybackState::Playing;
                 }
-                self.run_engine(self.engine.play(command.generation).await)?;
-                self.lock_state().snapshot.state = VideoPlaybackState::Playing;
-            }
+                VideoPlaybackState::Ended => {
+                    let request = SeekRequest {
+                        request_id: REPLAY_SEEK_REQUEST_ID,
+                        time_us: 0,
+                        intent: SeekIntent::Replay,
+                    };
+                    {
+                        let mut state = self.lock_state();
+                        state.resume_after_seek = true;
+                        state.restart_after_seek = true;
+                        state.active_commit_request_id = Some(request.request_id);
+                        state.snapshot.state = VideoPlaybackState::Seeking;
+                    }
+                    self.run_engine(self.engine.publish_seek(command.generation, request))?;
+                }
+                _ => return Err(VideoServiceError::InvalidState),
+            },
             VideoCommandKind::Pause => {
                 if !matches!(self.snapshot().state, VideoPlaybackState::Playing) {
                     return Err(VideoServiceError::InvalidState);
@@ -488,6 +521,7 @@ where
                 {
                     let mut state = self.lock_state();
                     state.resume_after_seek = matches!(current_state, VideoPlaybackState::Playing);
+                    state.restart_after_seek = false;
                     state.active_commit_request_id = Some(request.request_id);
                     state.snapshot.state = VideoPlaybackState::Seeking;
                 }
@@ -631,6 +665,7 @@ where
         state.snapshot.state = VideoPlaybackState::Idle;
         state.surface_revealed = false;
         state.resume_after_seek = false;
+        state.restart_after_seek = false;
         state.active_commit_request_id = None;
     }
 

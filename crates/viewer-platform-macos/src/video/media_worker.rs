@@ -125,10 +125,12 @@ impl MediaCommandWorker {
         if state.active_generation != Some(generation) {
             return Err(VideoEngineError::StaleGeneration);
         }
-        if request.request_id <= state.latest_request_id {
-            return Ok(());
+        if !matches!(request.intent, SeekIntent::Replay) {
+            if request.request_id <= state.latest_request_id {
+                return Ok(());
+            }
+            state.latest_request_id = request.request_id;
         }
-        state.latest_request_id = request.request_id;
         match request.intent {
             SeekIntent::Preview => {
                 state.latest_preview_request_id = request.request_id;
@@ -137,7 +139,7 @@ impl MediaCommandWorker {
                 state.pending_completion = None;
                 state.awaiting_preview_frame = None;
             }
-            SeekIntent::Commit => {
+            SeekIntent::Commit | SeekIntent::Replay => {
                 state.pending_preview = None;
                 state.awaiting_preview_frame = None;
                 state.pending_commit = Some(request);
@@ -521,6 +523,32 @@ mod tests {
     }
 
     #[test]
+    fn replay_seek_does_not_consume_interaction_request_ids() {
+        let backend = RecordingBackend::new(snapshot(4_000_000));
+        let mut worker = MediaCommandWorker::start(backend.clone(), |_| {}).unwrap();
+        worker.activate(5).unwrap();
+
+        worker.publish_seek(5, commit(7, 1_000_000)).unwrap();
+        backend.wait_for_calls(1);
+        worker.publish_seek(5, replay()).unwrap();
+        backend.wait_for_calls(2);
+        worker.publish_seek(5, commit(8, 4_000_000)).unwrap();
+
+        let calls = backend.wait_for_calls(3);
+        assert_eq!(
+            calls
+                .iter()
+                .filter_map(|call| match call {
+                    Call::Seek { time_us, .. } => Some(*time_us),
+                    Call::Snapshot { .. } => None,
+                })
+                .collect::<Vec<_>>(),
+            [1_000_000, 0, 4_000_000]
+        );
+        worker.shutdown_and_join();
+    }
+
+    #[test]
     fn frame_snapshot_emits_progress_and_seek_completion_for_the_active_request() {
         let backend = RecordingBackend::new(snapshot(3_000_000));
         let events = Arc::new((Mutex::new(Vec::new()), Condvar::new()));
@@ -577,6 +605,14 @@ mod tests {
             request_id,
             time_us,
             intent: SeekIntent::Commit,
+        }
+    }
+
+    const fn replay() -> SeekRequest {
+        SeekRequest {
+            request_id: 0,
+            time_us: 0,
+            intent: SeekIntent::Replay,
         }
     }
 

@@ -47,6 +47,23 @@ impl NativeResizeRedrawGate {
     }
 }
 
+#[derive(Default)]
+struct TerminalEventGate(AtomicBool);
+
+impl TerminalEventGate {
+    fn observe(&self, terminal: bool) -> bool {
+        if !terminal {
+            self.reset();
+            return false;
+        }
+        !self.0.swap(true, Ordering::AcqRel)
+    }
+
+    fn reset(&self) {
+        self.0.store(false, Ordering::Release);
+    }
+}
+
 impl PendingCompletion {
     const fn event_if_ready(self, time_us: u64) -> Option<EngineEvent> {
         match self {
@@ -88,7 +105,7 @@ pub struct MacOsLibmpvAdapter {
     media_worker: Mutex<Option<MediaCommandWorker>>,
     self_reference: OnceLock<Weak<Self>>,
     first_frame_published: AtomicBool,
-    ended_published: AtomicBool,
+    terminal_event_gate: TerminalEventGate,
     playback_active: AtomicBool,
     media_duration_us: Mutex<Option<u64>>,
     native_resize_redraw: NativeResizeRedrawGate,
@@ -116,7 +133,7 @@ impl MacOsLibmpvAdapter {
             media_worker: Mutex::new(None),
             self_reference: OnceLock::new(),
             first_frame_published: AtomicBool::new(false),
-            ended_published: AtomicBool::new(false),
+            terminal_event_gate: TerminalEventGate::default(),
             playback_active: AtomicBool::new(false),
             media_duration_us: Mutex::new(None),
             native_resize_redraw: NativeResizeRedrawGate::default(),
@@ -173,7 +190,7 @@ impl MacOsLibmpvAdapter {
             adapter
                 .first_frame_published
                 .store(false, Ordering::Release);
-            adapter.ended_published.store(false, Ordering::Release);
+            adapter.terminal_event_gate.reset();
             adapter.playback_active.store(false, Ordering::Release);
             *lock(&adapter.pending_completion) = None;
             Ok(())
@@ -277,7 +294,9 @@ impl MacOsLibmpvAdapter {
                 }
                 match intent {
                     SeekIntent::Preview => self.diagnostics.record_preview_issue(),
-                    SeekIntent::Commit => self.diagnostics.record_commit_issue(),
+                    SeekIntent::Commit | SeekIntent::Replay => {
+                        self.diagnostics.record_commit_issue()
+                    }
                 }
             }
             MediaWorkerEvent::FrameSnapshot {
@@ -313,7 +332,7 @@ impl MacOsLibmpvAdapter {
                         self.emit(generation, completion);
                     }
                 }
-                if terminal_snapshot && !self.ended_published.swap(true, Ordering::AcqRel) {
+                if self.terminal_event_gate.observe(terminal_snapshot) {
                     self.playback_active.store(false, Ordering::Release);
                     self.emit(generation, EngineEvent::Ended);
                 }
@@ -412,7 +431,7 @@ impl MacOsLibmpvAdapter {
         debug_assert!(MainThreadMarker::new().is_some());
         *lock(&self.generation) = None;
         self.first_frame_published.store(false, Ordering::Release);
-        self.ended_published.store(false, Ordering::Release);
+        self.terminal_event_gate.reset();
         self.playback_active.store(false, Ordering::Release);
         *lock(&self.media_duration_us) = None;
         *lock(&self.pending_completion) = None;
@@ -439,7 +458,7 @@ impl VideoEngine for MacOsLibmpvAdapter {
             adapter
                 .first_frame_published
                 .store(false, Ordering::Release);
-            adapter.ended_published.store(false, Ordering::Release);
+            adapter.terminal_event_gate.reset();
             adapter.playback_active.store(false, Ordering::Release);
             Ok(())
         })
@@ -495,7 +514,7 @@ impl VideoEngine for MacOsLibmpvAdapter {
             SeekIntent::Preview => self
                 .diagnostics
                 .record_preview_publication(request.request_id, false),
-            SeekIntent::Commit => self
+            SeekIntent::Commit | SeekIntent::Replay => self
                 .diagnostics
                 .record_commit_publication(request.request_id, false),
         }
@@ -586,7 +605,7 @@ mod tests {
     use std::sync::{Arc, Mutex};
 
     use super::{
-        NativeResizeRedrawGate, PendingCompletion, drop_in_media_shutdown_order,
+        NativeResizeRedrawGate, PendingCompletion, TerminalEventGate, drop_in_media_shutdown_order,
         frame_snapshot_matches_active_render, snapshot_is_terminal,
     };
     use viewer_application::EngineEvent;
@@ -658,6 +677,16 @@ mod tests {
         assert_eq!((0..120).filter(|_| gate.claim()).count(), 1);
         gate.release();
         assert!(gate.claim());
+    }
+
+    #[test]
+    fn terminal_event_gate_rearms_after_a_rewind_snapshot() {
+        let gate = TerminalEventGate::default();
+
+        assert!(gate.observe(true));
+        assert!(!gate.observe(true));
+        assert!(!gate.observe(false));
+        assert!(gate.observe(true));
     }
 
     #[test]

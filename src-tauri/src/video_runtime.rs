@@ -677,7 +677,7 @@ impl<E: VideoEngine> VideoRuntime<E> {
                     .preview_seek(generation, request)
                     .map_err(VideoCommandError::from)
             }
-            SeekIntent::Commit => {
+            SeekIntent::Commit | SeekIntent::Replay => {
                 self.execute(generation, VideoCommandKind::Seek(request))
                     .await
             }

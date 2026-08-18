@@ -588,7 +588,54 @@ async fn failed_prepare_restores_the_pre_preview_window_policy() {
             AspectLifecycleCall::Restore(16, 9),
         ]
     );
-    engine.close(0).await.expect("repeat cleanup is idempotent");
+    runtime
+        .close_active()
+        .await
+        .expect("failed prepare leaves no active session");
+    assert_eq!(
+        engine.aspect_calls(),
+        [
+            AspectLifecycleCall::Install(16, 9),
+            AspectLifecycleCall::Restore(16, 9),
+        ]
+    );
+}
+
+#[tokio::test]
+async fn cancellation_after_prepare_restores_the_installed_aspect_without_publishing_a_session() {
+    let engine = Arc::new(AspectLifecycleEngine::default());
+    let runtime = viewer_desktop::video_runtime::VideoRuntime::new(Arc::clone(&engine));
+    let attempt = runtime
+        .begin_open_attempt("00000000-0000-0000-0000-000000000007")
+        .expect("begin open attempt");
+    let prepared_engine = Arc::clone(&engine);
+    let cancel_runtime = &runtime;
+    let attempt_id = attempt.id().to_owned();
+
+    let result = runtime
+        .replace_authorized_for_attempt(&attempt, video_source(7), move || async move {
+            prepared_engine.install_aspect(16, 9);
+            assert!(cancel_runtime.cancel_open_attempt(&attempt_id));
+            Ok(())
+        })
+        .await;
+
+    assert_eq!(
+        result,
+        Err(viewer_desktop::video_runtime::VideoCommandError::StaleOpenAttempt)
+    );
+    assert_eq!(runtime.active_generation(), None);
+    assert_eq!(
+        engine.aspect_calls(),
+        [
+            AspectLifecycleCall::Install(16, 9),
+            AspectLifecycleCall::Restore(16, 9),
+        ]
+    );
+    runtime
+        .close_active()
+        .await
+        .expect("cancelled attempt leaves no active session");
     assert_eq!(
         engine.aspect_calls(),
         [

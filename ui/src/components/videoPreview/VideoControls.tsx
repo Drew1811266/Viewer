@@ -3,6 +3,7 @@ import type { VideoError, VideoEvent } from '../../api/types'
 import { ViewerIconButton } from '../ui/ViewerButton'
 import { useVideoResponsiveLayout } from './useVideoResponsiveLayout'
 import VideoControlsMoreMenu from './VideoControlsMoreMenu'
+import VideoRateMenu from './VideoRateMenu'
 import VideoTimeline from './VideoTimeline'
 
 export const VIDEO_RATES = [0.5, 0.75, 1, 1.25, 1.5, 2] as const
@@ -171,30 +172,19 @@ export default function VideoControls({
                 }}
               />
             </label>
-            <label className="video-controls__rate">
+            <div className="video-controls__rate">
               <span>速度</span>
-              <select
-                aria-label="播放速度"
-                title="播放速度"
-                value={view.rate}
+              <VideoRateMenu
+                rate={view.rate}
+                rates={VIDEO_RATES}
                 disabled={disabled}
-                onPointerDown={() => onAdjustingChange(true)}
-                onPointerUp={() => onAdjustingChange(false)}
-                onBlur={() => onAdjustingChange(false)}
-                onChange={(event) => {
-                  const rate = Number(event.currentTarget.value)
-                  if (!isVideoRate(rate)) return
-                  onActivity()
+                onActivity={onActivity}
+                onOpenChange={onAdjustingChange}
+                onSelect={(rate) => {
                   runCommand(commands.setRate(rate))
                 }}
-              >
-                {VIDEO_RATES.map((rate) => (
-                  <option key={rate} value={rate}>
-                    {rate}×
-                  </option>
-                ))}
-              </select>
-            </label>
+              />
+            </div>
           </>
         )}
         {compact && (
@@ -224,8 +214,4 @@ export default function VideoControls({
 
 function runCommand(command: Promise<void>): void {
   void command.catch(() => undefined)
-}
-
-function isVideoRate(rate: number): rate is VideoPlaybackRate {
-  return VIDEO_RATES.some((candidate) => candidate === rate)
 }

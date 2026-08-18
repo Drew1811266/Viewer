@@ -18,16 +18,15 @@ describe('VideoControlsMoreMenu', () => {
     expect(within(panel).getByRole('button', { name: '上一帧' })).toBeVisible()
     expect(within(panel).getByRole('button', { name: '下一帧' })).toBeVisible()
     expect(within(panel).getByRole('slider', { name: '音量' })).toHaveValue('72')
-    expect(within(panel).getByRole('combobox', { name: '播放速度' })).toHaveValue('1.25')
+    expect(within(panel).getByRole('button', { name: '播放速度，当前 1.25×' })).toBeVisible()
 
     fireEvent.click(within(panel).getByRole('button', { name: '上一帧' }))
     fireEvent.click(within(panel).getByRole('button', { name: '下一帧' }))
     fireEvent.change(within(panel).getByRole('slider', { name: '音量' }), {
       target: { value: '46' },
     })
-    fireEvent.change(within(panel).getByRole('combobox', { name: '播放速度' }), {
-      target: { value: '1.5' },
-    })
+    fireEvent.click(within(panel).getByRole('button', { name: '播放速度，当前 1.25×' }))
+    fireEvent.click(screen.getByRole('option', { name: '1.5×' }))
 
     expect(commands.step.mock.calls).toEqual([['backward'], ['forward']])
     expect(commands.setVolume).toHaveBeenCalledWith(46)

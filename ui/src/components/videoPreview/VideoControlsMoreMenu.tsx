@@ -6,6 +6,7 @@ import type {
   VideoControlViewState,
   VideoPlaybackRate,
 } from './VideoControls'
+import VideoRateMenu from './VideoRateMenu'
 
 export interface VideoControlsMoreMenuProps {
   open: boolean
@@ -94,26 +95,18 @@ export default function VideoControlsMoreMenu({
             }}
           />
         </label>
-        <label className="video-controls-more__field">
+        <div className="video-controls-more__field">
           <span>播放速度</span>
-          <select
-            aria-label="播放速度"
-            value={view.rate}
+          <VideoRateMenu
+            rate={view.rate}
+            rates={rates}
             disabled={disabled}
-            onChange={(event) => {
-              const rate = Number(event.currentTarget.value) as VideoPlaybackRate
-              if (!rates.includes(rate)) return
-              onActivity()
+            onActivity={onActivity}
+            onSelect={(rate) => {
               runCommand(commands.setRate(rate))
             }}
-          >
-            {rates.map((rate) => (
-              <option key={rate} value={rate}>
-                {rate}×
-              </option>
-            ))}
-          </select>
-        </label>
+          />
+        </div>
       </ViewerPopover>
     </div>
   )

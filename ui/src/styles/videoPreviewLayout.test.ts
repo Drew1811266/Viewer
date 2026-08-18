@@ -196,6 +196,19 @@ describe('immersive video preview layout', () => {
     })
   })
 
+  it('keeps the rounded speed menu visible above both control layouts', () => {
+    expect(rule('.video-rate-menu__popover')).toMatchObject({
+      'border-radius': '13px',
+      bottom: 'calc(100% + 8px)',
+    })
+    expect(rule('.video-rate-menu__option')).toMatchObject({
+      'border-radius': '9px',
+    })
+    expect(rule('.video-controls-more__popover')).toMatchObject({
+      overflow: 'visible',
+    })
+  })
+
   it('covers source-authored black tails with the verified ended poster', () => {
     expect(rule('.video-preview-ended-poster')).toMatchObject({
       background: 'var(--video-preview-stage)',

@@ -40,11 +40,13 @@ describe('VideoControls', () => {
       'F',
     )
     expect(VIDEO_RATES).toEqual([0.5, 0.75, 1, 1.25, 1.5, 2])
+    fireEvent.click(within(controls).getByRole('button', { name: '播放速度，当前 1×' }))
+    const listbox = screen.getByRole('listbox', { name: '选择播放速度' })
     expect(
-      within(controls)
+      within(listbox)
         .getAllByRole('option')
-        .map((option) => option.getAttribute('value')),
-    ).toEqual(['0.5', '0.75', '1', '1.25', '1.5', '2'])
+        .map((option) => option.textContent?.trim()),
+    ).toEqual(['0.5×', '0.75×', '1×', '1.25×', '1.5×', '2×'])
   })
 
   it('maps every control to one generation-bound command', () => {
@@ -56,9 +58,8 @@ describe('VideoControls', () => {
     fireEvent.click(screen.getByRole('button', { name: '下一帧' }))
     fireEvent.click(screen.getByRole('button', { name: '静音' }))
     fireEvent.change(screen.getByRole('slider', { name: '音量' }), { target: { value: '64' } })
-    fireEvent.change(screen.getByRole('combobox', { name: '播放速度' }), {
-      target: { value: '1.5' },
-    })
+    fireEvent.click(screen.getByRole('button', { name: '播放速度，当前 1×' }))
+    fireEvent.click(screen.getByRole('option', { name: '1.5×' }))
     fireEvent.click(screen.getByRole('button', { name: '进入全屏' }))
 
     expect(commands.togglePlayback).toHaveBeenCalledOnce()
@@ -114,7 +115,7 @@ describe('VideoControls', () => {
     expect(screen.getByRole('button', { name: '上一帧' })).toBeVisible()
     expect(screen.getByRole('button', { name: '下一帧' })).toBeVisible()
     expect(screen.getByRole('slider', { name: '音量' })).toBeVisible()
-    expect(screen.getByRole('combobox', { name: '播放速度' })).toBeVisible()
+    expect(screen.getByRole('button', { name: '播放速度，当前 1×' })).toBeVisible()
   })
 
   it('keeps primary controls visible and moves secondary controls into More when compact', () => {
@@ -132,7 +133,7 @@ describe('VideoControls', () => {
     expect(within(panel).getByRole('button', { name: '上一帧' })).toBeVisible()
     expect(within(panel).getByRole('button', { name: '下一帧' })).toBeVisible()
     expect(within(panel).getByRole('slider', { name: '音量' })).toBeVisible()
-    expect(within(panel).getByRole('combobox', { name: '播放速度' })).toBeVisible()
+    expect(within(panel).getByRole('button', { name: '播放速度，当前 1×' })).toBeVisible()
   })
 
   it('keeps transport, timeline, and settings as three non-overlapping columns', () => {

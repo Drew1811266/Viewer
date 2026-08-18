@@ -58,6 +58,7 @@ completion.
 | [`superpowers/specs/2026-08-13-viewer-video-player-experience-redesign.md`](superpowers/specs/2026-08-13-viewer-video-player-experience-redesign.md) | Active | — |
 | [`superpowers/specs/2026-08-14-video-interaction-and-aperture-design.md`](superpowers/specs/2026-08-14-video-interaction-and-aperture-design.md) | Active | — |
 | [`superpowers/specs/2026-08-16-viewer-native-video-theater-refactor-design.md`](superpowers/specs/2026-08-16-viewer-native-video-theater-refactor-design.md) | Active | — |
+| [`superpowers/specs/2026-08-17-video-preview-compact-native-aspect-design.md`](superpowers/specs/2026-08-17-video-preview-compact-native-aspect-design.md) | Active | — |
 | [`reviews/2026-08-10-video-preview-acceptance.md`](reviews/2026-08-10-video-preview-acceptance.md) | Active development evidence | — |
 
 ## Superseded decisions
@@ -74,6 +75,7 @@ completion.
 | --- | --- | --- |
 | [`superpowers/plans/2026-08-14-video-interaction-and-aperture.md`](superpowers/plans/2026-08-14-video-interaction-and-aperture.md) | Historical | — |
 | [`superpowers/plans/2026-08-16-viewer-native-video-theater-refactor.md`](superpowers/plans/2026-08-16-viewer-native-video-theater-refactor.md) | Historical | — |
+| [`superpowers/plans/2026-08-17-video-preview-compact-native-aspect.md`](superpowers/plans/2026-08-17-video-preview-compact-native-aspect.md) | Historical | — |
 | [`superpowers/plans/2026-08-13-viewer-video-control-visibility.md`](superpowers/plans/2026-08-13-viewer-video-control-visibility.md) | Historical | — |
 | [`superpowers/plans/2026-08-13-viewer-video-player-experience-redesign.md`](superpowers/plans/2026-08-13-viewer-video-player-experience-redesign.md) | Historical | — |
 | [`superpowers/plans/2026-07-16-viewer-0.1-roadmap.md`](superpowers/plans/2026-07-16-viewer-0.1-roadmap.md) | Historical | — |

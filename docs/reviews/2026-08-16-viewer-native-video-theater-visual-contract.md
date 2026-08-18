@@ -1,7 +1,7 @@
 # Viewer Native Video Theater Visual Contract
 
 Date: 2026-08-16
-Status: Selected target; implementation pending
+Status: Implemented; real macOS QA passed 2026-08-17
 
 ## Source Truth
 
@@ -69,6 +69,12 @@ reference, not production evidence.
 
 ## Acceptance Viewports
 
+The later approved compact native-aspect specification supersedes fixed `1440 × 900`, `1024 × 720`,
+and `720 × 720` content-area captures: the ordinary window itself now follows the media display
+aspect. The equivalent real 16:9 captures are `1280 × 720`, `1024 × 576`, and `720 × 405`.
+Portrait media is separately captured at `450 × 800`. The original viewport list remains below as
+historical context for this contract.
+
 The real Tauri application must be captured at:
 
 - 1440 × 900 wide;
@@ -93,5 +99,60 @@ For compact/narrow, compare against this responsive contract and record any deli
 
 ## Implementation Evidence
 
-Not captured yet. This section must record the source/implementation comparison paths, viewports,
-pixel dimensions, density normalization, focused-region comparisons, and final design-QA result.
+### Current source and normalization
+
+- Exact user reference: `target/design-qa-video-compact-native/source-apple-controls.png`
+  (`930 × 210`, SHA-256
+  `eabd3b718edf0df3923acf06956289751d8f5d102dd5f579affa62ef6497edfc`). These are the
+  exact bytes recovered from the original input image data URI after the clipboard temp path was
+  unavailable.
+- Final clean paused implementation: `target/design-qa-video-compact-native/14-final-paused-clean.jpeg`
+  (`1072 × 603`, SHA-256
+  `f0a19ecf29258204c8fcb1c0b9595f8128b55d691a66a7e7236a11ff6702b755`).
+- Normalized same-state comparison:
+  `target/design-qa-video-compact-native/comparison-paused-controls-normalized.png`
+  (`1561 × 129`, SHA-256
+  `e41085bdd55dd580c07fcfda2e0c1a7a8f2c5b56cc989efbdd3fda77f7786e14`). The source's
+  `930 × 210` 2× controller crop is normalized to `465 × 105` at 1×. The final implementation's
+  `1048 × 70` bottom shelf remains at captured 1× density and native aspect. Both are paused with a
+  partially advanced timeline.
+
+The compact/native-aspect design explicitly uses the Apple reference for hierarchy and state
+inspiration, not for copying purple color or every secondary action. The implementation therefore
+uses Viewer light neutral/cobalt tokens, a one-row compact shelf, existing icons, and More disclosure.
+
+### Real macOS captures and interactions
+
+| State | Evidence | Result |
+| --- | --- | --- |
+| Paused wide | `target/design-qa-video-compact-native/01-paused-wide.png` (`1280 × 720`) | Compact upper/lower overlays; no layout-flow band, seam, or subject-blocking card. |
+| Playing wide | `target/design-qa-video-compact-native/02-playing-wide.png` (`1280 × 720`) | Native frame stays dominant; chrome does not alter media aspect. |
+| Compact | `target/design-qa-video-compact-native/03-compact-1024x576.png` | Frame/volume/rate disclose through More; no duplicate visible controls or collision. |
+| Narrow | `target/design-qa-video-compact-native/04-narrow-720x405.png` | Timeline/time and essential transport remain readable inside the stage. |
+| Portrait | `target/design-qa-video-compact-native/05-portrait-ratio-450x800.png` | Rotation-aware 9:16 constraint replaces 16:9 exactly once, without crop/stretch. |
+| Ended | `target/design-qa-video-compact-native/06-ended-wide.png` (`1280 × 720`) | Exact-duration useful final frame retained; no black terminal surface. |
+| Done restored | `target/design-qa-video-compact-native/12-final-post-done-restored.jpeg` (`1229 × 768`) | Ordinary project frame and selection restored. |
+| Free resize after Done | `target/design-qa-video-compact-native/13-final-post-done-free-resize.jpeg` (`1030 × 768`) | Non-16:9 ordinary resize succeeds; process and project state remain alive. |
+
+Real Computer Use checks covered all four edges and four corners during live resize, vertical and
+horizontal gestures over title/video/timeline/empty overlay, timeline click and drag, ratio
+replacement, fullscreen enter/exit, ended retention, and Done restoration. The eight 16:9 live
+resize results ranged from `1178 × 663` through `828 × 466` and remained ratio-constrained without a
+React catch-up jump. Scroll gestures did not move the document or timeline. A click changed the
+timeline `1.966667 → 0.566667`; a drag committed `1.533333` with the matching native frame.
+
+### Final implementation assessment
+
+- AppKit owns theater composition, native aspect policy, and live resize on the main thread.
+  `MacVideoSurface` owns the aspect session; React does not publish a native rectangle.
+- Fullscreen exit restores the active media ratio. Done restores the original frame and ordinary
+  resize policy.
+- Real QA exposed an AppKit crash when restoring the default `(0,0)` ratio by calling the ratio
+  setter. Focused RED/GREEN coverage now restores an unconstrained window through its prior content
+  resize increments instead; the final real build resizes freely after Done.
+- The exact bundled reviewed runtime passed `scripts/video/verify-runtime.sh`, byte comparison,
+  permissions, and arm64 checks. The fresh app was built with `--debug --no-sign`; no distribution,
+  Developer ID, notarization, or stapling step ran.
+- Current visual severity: P0 `0`, P1 `0`, P2 `0`.
+
+final result: passed

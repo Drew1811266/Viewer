@@ -152,6 +152,61 @@ platform task because the Windows version is not yet under development.
 
 Final result: passed
 
+## 2026-08-17 — Compact Native-Aspect Video Preview (Task 6)
+
+### Exact source and same-state normalization
+
+- Exact user control reference: `target/design-qa-video-compact-native/source-apple-controls.png` (`930 × 210`, SHA-256 `eabd3b718edf0df3923acf06956289751d8f5d102dd5f579affa62ef6497edfc`). The original clipboard temp path was unavailable; these are the exact bytes recovered from the original input image data URI, not a reconstruction.
+- Final fixed-build paused capture: `target/design-qa-video-compact-native/14-final-paused-clean.jpeg` (`1072 × 603`, SHA-256 `f0a19ecf29258204c8fcb1c0b9595f8128b55d691a66a7e7236a11ff6702b755`), paused at `00:00.4 / 00:02` with the timeline partially advanced and compact controls visible.
+- Final fixed-build wide paused capture: `target/design-qa-video-compact-native/11-final-paused-wide.jpeg` (`1280 × 720`, SHA-256 `fba98466355531efeff0d254379790afbf6ae7ab5dcd7884d752189685dddd82`).
+- Same-state comparison: `target/design-qa-video-compact-native/comparison-paused-controls-normalized.png` (`1561 × 129`, SHA-256 `e41085bdd55dd580c07fcfda2e0c1a7a8f2c5b56cc989efbdd3fda77f7786e14`). The `930 × 210` reference controller is a 2× crop and was normalized to `465 × 105` at 1×; the implementation's `1048 × 70` bottom shelf remains at its captured 1× density and native aspect. Both sides show a paused state with a partially advanced timeline.
+- The source defines hierarchy and control-state inspiration. Per the approved design specification, Viewer intentionally keeps its light neutral/cobalt tokens, one-row compact shelf, own icons, and reduced secondary action set instead of copying the source's purple treatment or every Apple action.
+
+### Real macOS capture inventory
+
+| Evidence | Pixels | State and inspection result |
+| --- | ---: | --- |
+| `target/design-qa-video-compact-native/01-paused-wide.png` | `1280 × 720` | 16:9 paused wide; upper metadata/navigation and lower timeline/transport are localized overlays with no layout band or transparent gap. |
+| `target/design-qa-video-compact-native/02-playing-wide.png` | `1280 × 720` | Playing at `00:00.833`; native frame remains dominant and chrome does not change the window ratio. |
+| `target/design-qa-video-compact-native/03-compact-1024x576.png` | `1024 × 576` | Compact branch; More replaces the frame/volume/rate cluster without collision or duplicate visible controls. |
+| `target/design-qa-video-compact-native/04-narrow-720x405.png` | `720 × 405` | Narrow branch; one-row top chrome and compact lower controls remain readable and inside the stage. |
+| `target/design-qa-video-compact-native/05-portrait-ratio-450x800.png` | `450 × 800` | Rotation-aware 9:16 preview; window constraint changes once and fitted content is neither cropped nor stretched. |
+| `target/design-qa-video-compact-native/06-ended-wide.png` | `1280 × 720` | Exact `2 / 2` ended state; colorful terminal frame is retained with no black replacement. |
+| `target/design-qa-video-compact-native/12-final-post-done-restored.jpeg` | `1229 × 768` | Final fixed build after Done; project grid, selection, ordinary frame, and window content are restored. |
+| `target/design-qa-video-compact-native/13-final-post-done-free-resize.jpeg` | `1030 × 768` | Final fixed build after a real right-edge drag; ordinary Viewer is freely resized to a non-16:9 frame, process alive, project state intact. |
+| `target/design-qa-video-compact-native/14-final-paused-clean.jpeg` | `1072 × 603` | Final development app left running for inspection in a clean paused compact state. |
+
+Every listed image was opened and inspected after capture. No desktop pixel, black/transparent seam, crop/stretch, control overlap, detached oversized card, weak primary icon, or subject-blocking full-width opaque band is visible.
+
+### Real interaction evidence
+
+| Check | Real result |
+| --- | --- |
+| 16:9 initial sizing | Opening `h264-1080p.mp4` produced `1280 × 720`; the ratio was owned immediately by the native window. |
+| Eight live-resize handles | Right `1178 × 663`, left `1097 × 617`, top `1024 × 576`, bottom `953 × 536`, top-left `922 × 519`, top-right `891 × 501`, bottom-right `860 × 484`, bottom-left `828 × 466`; each stayed approximately 16:9 during the live drag with no React catch-up jump. |
+| Scroll containment | Vertical and horizontal gestures over title, native video, timeline, and empty overlay left the `720 × 405` window and `1.966667` timeline value unchanged; no document/UI movement occurred. |
+| Timeline click/drag | A click changed `1.966667 → 0.566667` immediately; a drag from local x `180 → 460` changed it to `1.533333` and committed the corresponding native frame. |
+| Ratio replacement | Navigation exercised 16:9 and portrait fixtures; portrait display settled at `450 × 800` (9:16) without retaining the previous constraint. |
+| Fullscreen round-trip | Entered and exited with the actual fullscreen control. Fullscreen showed an owned light-neutral contain-fit region with no desktop/black leak; exit restored the portrait 9:16 constraint. |
+| Ended state | At exact duration `2 / 2`, the useful final color frame remained visible; no black terminal surface appeared. |
+| Done restoration | Done restored the exact `1229 × 768` ordinary project window. A production defect discovered here was corrected; the final build then resized freely to `1030 × 768` while remaining alive and preserving project selection. |
+
+### Visual comparison findings
+
+- Upper overlay: approximately `36 px`, localized at the upper edge, with compact filename/duration, centered navigation, and Done. It neither creates a blank header nor hides a meaningful subject region.
+- Lower controller: approximately `70 px` in the clean compact capture. Timeline, accent play/pause, audio, More, time, and fullscreen align on one compact shelf; wide mode adds frame/rate controls without increasing the media rectangle.
+- Buttons retain `44 px` interaction targets while visible icon bodies remain compact. The cobalt primary action is clearly stronger than the quiet neutral secondaries; borders and glyphs remain legible over the light translucent shelf.
+- Compared with the source's larger dark two-row controller, Viewer is deliberately lighter and shorter. The core hierarchy—primary playback, timeline, elapsed/total time, audio, and secondary output/fullscreen actions—remains recognizable without copying purple styling.
+- P0: `0`; P1: `0`; P2: `0`. No production or visual finding remains open.
+
+### Cross-task and deferred-item triage
+
+- Code inspection plus live behavior confirms AppKit-main-thread mounting and live resize, a surface-owned `VideoWindowAspectSession`, exact project/window/Done restoration, no React native-rectangle publication, and aspect restoration after fullscreen exit.
+- Task 4's deferred extreme finite floating-point clamp-bound inversion cannot be produced by real validated AppKit screen/window coordinates: the visible rect and fitted frame must be finite, positive, and frame-bounded before clamping. It remains non-actionable and does not justify scope expansion.
+- The final fresh development app was built with `--debug --no-sign`; the build log explicitly says signing was skipped. The exact bundled `ViewerVideoRuntime` passed `scripts/video/verify-runtime.sh`, byte-for-byte diff, permissions, and arm64 architecture checks. No Developer ID, notarization, staple, release, or distribution action ran.
+
+final result: passed
+
 ## 2026-08-17 — Native Extreme-Compact Light Video Chrome
 
 ### Source visual truth and normalization

@@ -1,5 +1,5 @@
 .video-preview {
-  --video-preview-bottom-controller-height: 64px;
+  --video-preview-bottom-controller-height: 48px;
   --video-preview-top-overlay-height: 36px;
   background: var(--viewer-application);
   inset: 0;
@@ -88,9 +88,9 @@ body:has(.viewer-shell[data-video-preview-open='true']) {
 }
 
 .video-preview-topbar {
-  -webkit-backdrop-filter: blur(18px) saturate(120%);
-  backdrop-filter: blur(18px) saturate(120%);
-  background: color-mix(in srgb, var(--video-preview-chrome-surface) 88%, transparent);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  background: var(--video-preview-chrome-surface);
   border: 1px solid var(--viewer-border);
   border-radius: 10px;
   color: var(--viewer-text);
@@ -246,17 +246,18 @@ body:has(.viewer-shell[data-video-preview-open='true']) {
 }
 
 .video-controls {
-  -webkit-backdrop-filter: blur(18px) saturate(120%);
-  backdrop-filter: blur(18px) saturate(120%);
-  background: color-mix(in srgb, var(--video-preview-chrome-surface) 88%, transparent);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  background: var(--video-preview-chrome-surface);
   border: 1px solid var(--viewer-border);
   border-radius: 10px;
   box-sizing: border-box;
   box-shadow: none;
   color: var(--viewer-text);
   display: grid;
-  gap: 0;
-  grid-template-rows: 16px 44px;
+  gap: 8px;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-rows: 1fr;
   opacity: 1;
   padding: 1px 8px;
   position: relative;
@@ -287,7 +288,6 @@ body:has(.viewer-shell[data-video-preview-open='true']) {
   transition: none;
 }
 
-.video-controls__row,
 .video-controls__transport,
 .video-controls__settings,
 .video-controls__volume,
@@ -296,16 +296,13 @@ body:has(.viewer-shell[data-video-preview-open='true']) {
   display: flex;
 }
 
-.video-controls__row {
-  border-top: 0;
-  gap: 8px;
-  justify-content: space-between;
-  padding-top: 0;
-}
-
 .video-controls__transport,
 .video-controls__settings {
   gap: 2px;
+}
+
+.video-controls__timeline {
+  min-width: 0;
 }
 
 .video-controls .viewer-button {
@@ -476,11 +473,10 @@ body:has(.viewer-shell[data-video-preview-open='true']) {
   display: grid;
   gap: 8px;
   grid-template-columns: minmax(0, 1fr) auto;
-  height: 16px;
+  height: 44px;
 }
 
 .video-timeline__slider {
-  align-self: end;
   cursor: pointer;
   height: 44px;
   position: relative;
@@ -500,7 +496,7 @@ body:has(.viewer-shell[data-video-preview-open='true']) {
   overflow: visible;
   position: absolute;
   right: 0;
-  top: 34px;
+  top: 20px;
 }
 
 .video-timeline__progress {
@@ -646,6 +642,5 @@ body:has(.viewer-shell[data-video-preview-open='true']) {
     inset-inline: 8px;
   }
   .video-controls { padding-inline: 4px; }
-  .video-controls__row { gap: 4px; }
   .video-controls__settings { gap: 0; }
 }

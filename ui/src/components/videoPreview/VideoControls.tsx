@@ -94,129 +94,129 @@ export default function VideoControls({
       onFocusCapture={() => onFocusWithinChange(true)}
       onBlurCapture={focusLeft}
     >
-      <VideoTimeline
-        generation={view.generation}
-        durationUs={view.durationUs}
-        timeUs={endedTimeUs}
-        thumbnail={view.timelineThumbnail}
-        onPreviewSeek={commands.previewSeek}
-        onCommitSeek={commands.seek}
-        onRequestThumbnail={commands.requestThumbnail}
-        onSeekingChange={onSeekingChange}
-        onActivity={onActivity}
-      />
-      <div className="video-controls__row">
-        <div className="video-controls__transport">
-          {!compact && (
-            <ViewerIconButton
-              icon="skip-back"
-              label="上一帧"
-              title="上一帧（左方向键）"
-              aria-keyshortcuts="ArrowLeft"
-              disabled={disabled}
-              onClick={() => runCommand(commands.step('backward'))}
-            />
-          )}
+      <div className="video-controls__transport">
+        {!compact && (
           <ViewerIconButton
-            icon={playing ? 'pause' : 'play'}
-            className="video-controls__play"
-            label={playing ? '暂停' : '播放'}
-            title={playing ? '暂停（空格）' : '播放（空格）'}
-            aria-keyshortcuts="Space"
+            icon="skip-back"
+            label="上一帧"
+            title="上一帧（左方向键）"
+            aria-keyshortcuts="ArrowLeft"
             disabled={disabled}
-            active={playing}
-            onClick={() => runCommand(commands.togglePlayback())}
+            onClick={() => runCommand(commands.step('backward'))}
           />
-          {!compact && (
-            <ViewerIconButton
-              icon="skip-forward"
-              label="下一帧"
-              title="下一帧（右方向键）"
-              aria-keyshortcuts="ArrowRight"
-              disabled={disabled}
-              onClick={() => runCommand(commands.step('forward'))}
-            />
-          )}
-        </div>
-        <div className="video-controls__settings">
+        )}
+        <ViewerIconButton
+          icon={playing ? 'pause' : 'play'}
+          className="video-controls__play"
+          label={playing ? '暂停' : '播放'}
+          title={playing ? '暂停（空格）' : '播放（空格）'}
+          aria-keyshortcuts="Space"
+          disabled={disabled}
+          active={playing}
+          onClick={() => runCommand(commands.togglePlayback())}
+        />
+        {!compact && (
           <ViewerIconButton
-            icon={view.muted ? 'volume-x' : 'volume-2'}
-            label={view.muted ? '取消静音' : '静音'}
-            title={view.muted ? '取消静音（M）' : '静音（M）'}
-            aria-keyshortcuts="M"
+            icon="skip-forward"
+            label="下一帧"
+            title="下一帧（右方向键）"
+            aria-keyshortcuts="ArrowRight"
             disabled={disabled}
-            active={view.muted}
-            onClick={() => runCommand(commands.toggleMuted())}
+            onClick={() => runCommand(commands.step('forward'))}
           />
-          {!compact && (
-            <>
-              <label className="video-controls__volume">
-                <span>音量</span>
-                <input
-                  type="range"
-                  aria-label="音量"
-                  title="音量（0 到 100）"
-                  min={0}
-                  max={100}
-                  step={1}
-                  value={view.volumePercent}
-                  disabled={disabled}
-                  onPointerDown={() => onAdjustingChange(true)}
-                  onPointerUp={() => onAdjustingChange(false)}
-                  onPointerCancel={() => onAdjustingChange(false)}
-                  onChange={(event) => {
-                    onActivity()
-                    runCommand(commands.setVolume(Number(event.currentTarget.value)))
-                  }}
-                />
-              </label>
-              <label className="video-controls__rate">
-                <span>速度</span>
-                <select
-                  aria-label="播放速度"
-                  title="播放速度"
-                  value={view.rate}
-                  disabled={disabled}
-                  onPointerDown={() => onAdjustingChange(true)}
-                  onPointerUp={() => onAdjustingChange(false)}
-                  onBlur={() => onAdjustingChange(false)}
-                  onChange={(event) => {
-                    const rate = Number(event.currentTarget.value)
-                    if (!isVideoRate(rate)) return
-                    onActivity()
-                    runCommand(commands.setRate(rate))
-                  }}
-                >
-                  {VIDEO_RATES.map((rate) => (
-                    <option key={rate} value={rate}>
-                      {rate}×
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </>
-          )}
-          {compact && (
-            <VideoControlsMoreMenu
-              open={moreOpen}
-              onOpenChange={setMoreOpen}
-              disabled={disabled}
-              view={view}
-              commands={commands}
-              rates={VIDEO_RATES}
-              onActivity={onActivity}
-              onAdjustingChange={onAdjustingChange}
-            />
-          )}
-          <ViewerIconButton
-            icon={view.fullscreen ? 'minimize' : 'maximize'}
-            label={view.fullscreen ? '退出全屏' : '进入全屏'}
-            title={view.fullscreen ? '退出全屏（F 或 Escape）' : '进入全屏（F）'}
-            aria-keyshortcuts={view.fullscreen ? 'F Escape' : 'F'}
+        )}
+      </div>
+      <div className="video-controls__timeline">
+        <VideoTimeline
+          generation={view.generation}
+          durationUs={view.durationUs}
+          timeUs={endedTimeUs}
+          thumbnail={view.timelineThumbnail}
+          onPreviewSeek={commands.previewSeek}
+          onCommitSeek={commands.seek}
+          onRequestThumbnail={commands.requestThumbnail}
+          onSeekingChange={onSeekingChange}
+          onActivity={onActivity}
+        />
+      </div>
+      <div className="video-controls__settings">
+        <ViewerIconButton
+          icon={view.muted ? 'volume-x' : 'volume-2'}
+          label={view.muted ? '取消静音' : '静音'}
+          title={view.muted ? '取消静音（M）' : '静音（M）'}
+          aria-keyshortcuts="M"
+          disabled={disabled}
+          active={view.muted}
+          onClick={() => runCommand(commands.toggleMuted())}
+        />
+        {!compact && (
+          <>
+            <label className="video-controls__volume">
+              <span>音量</span>
+              <input
+                type="range"
+                aria-label="音量"
+                title="音量（0 到 100）"
+                min={0}
+                max={100}
+                step={1}
+                value={view.volumePercent}
+                disabled={disabled}
+                onPointerDown={() => onAdjustingChange(true)}
+                onPointerUp={() => onAdjustingChange(false)}
+                onPointerCancel={() => onAdjustingChange(false)}
+                onChange={(event) => {
+                  onActivity()
+                  runCommand(commands.setVolume(Number(event.currentTarget.value)))
+                }}
+              />
+            </label>
+            <label className="video-controls__rate">
+              <span>速度</span>
+              <select
+                aria-label="播放速度"
+                title="播放速度"
+                value={view.rate}
+                disabled={disabled}
+                onPointerDown={() => onAdjustingChange(true)}
+                onPointerUp={() => onAdjustingChange(false)}
+                onBlur={() => onAdjustingChange(false)}
+                onChange={(event) => {
+                  const rate = Number(event.currentTarget.value)
+                  if (!isVideoRate(rate)) return
+                  onActivity()
+                  runCommand(commands.setRate(rate))
+                }}
+              >
+                {VIDEO_RATES.map((rate) => (
+                  <option key={rate} value={rate}>
+                    {rate}×
+                  </option>
+                ))}
+              </select>
+            </label>
+          </>
+        )}
+        {compact && (
+          <VideoControlsMoreMenu
+            open={moreOpen}
+            onOpenChange={setMoreOpen}
             disabled={disabled}
-            onClick={() => runCommand(commands.toggleFullscreen())}
+            view={view}
+            commands={commands}
+            rates={VIDEO_RATES}
+            onActivity={onActivity}
+            onAdjustingChange={onAdjustingChange}
           />
-        </div>
+        )}
+        <ViewerIconButton
+          icon={view.fullscreen ? 'minimize' : 'maximize'}
+          label={view.fullscreen ? '退出全屏' : '进入全屏'}
+          title={view.fullscreen ? '退出全屏（F 或 Escape）' : '进入全屏（F）'}
+          aria-keyshortcuts={view.fullscreen ? 'F Escape' : 'F'}
+          disabled={disabled}
+          onClick={() => runCommand(commands.toggleFullscreen())}
+        />
       </div>
     </div>
   )

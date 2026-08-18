@@ -134,6 +134,21 @@ describe('VideoControls', () => {
     expect(within(panel).getByRole('slider', { name: '音量' })).toBeVisible()
     expect(within(panel).getByRole('combobox', { name: '播放速度' })).toBeVisible()
   })
+
+  it('keeps transport, timeline, and settings as three non-overlapping columns', () => {
+    stubCompactViewport(true)
+    renderControls()
+
+    const controls = screen.getByRole('group', { name: '视频播放控制' })
+    const directChildren = Array.from(controls.children)
+
+    expect(directChildren.map((child) => child.className)).toEqual([
+      'video-controls__transport',
+      'video-controls__timeline',
+      'video-controls__settings',
+    ])
+    expect(directChildren[1]).toContainElement(screen.getByRole('slider', { name: '视频时间轴' }))
+  })
 })
 
 const CONTROL_VIEW: VideoControlViewState = {

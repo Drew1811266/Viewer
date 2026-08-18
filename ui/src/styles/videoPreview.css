@@ -1,6 +1,6 @@
 .video-preview {
-  --video-preview-bottom-controller-height: 48px;
-  --video-preview-top-overlay-height: 36px;
+  --video-preview-bottom-controller-height: 62px;
+  --video-preview-top-overlay-height: 44px;
   background: var(--viewer-application);
   inset: 0;
   isolation: isolate;
@@ -90,13 +90,16 @@ body:has(.viewer-shell[data-video-preview-open='true']) {
 .video-preview-topbar {
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
-  background: var(--video-preview-chrome-surface);
-  border: 1px solid var(--viewer-border);
-  border-radius: 10px;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
   color: var(--viewer-text);
+  gap: 18px;
   height: var(--video-preview-top-overlay-height);
-  inset: 10px 12px auto;
-  padding: 0 6px 0 12px;
+  inset: 20px 22px auto;
+  padding: 0;
+  pointer-events: none;
   position: absolute;
   transform: translateY(0);
   transition:
@@ -112,7 +115,32 @@ body:has(.viewer-shell[data-video-preview-open='true']) {
 }
 
 .video-preview-topbar .viewer-toolbar__leading {
+  background: var(--video-preview-chrome-surface);
+  border: 1px solid var(--viewer-border);
+  border-radius: 12px;
+  box-shadow: var(--video-preview-popover-shadow);
+  justify-self: start;
+  max-width: min(38vw, 330px);
+  min-height: 44px;
   min-width: 0;
+  padding: 0 14px;
+  pointer-events: auto;
+}
+
+.video-preview-topbar .viewer-toolbar__center {
+  justify-self: center;
+  pointer-events: auto;
+}
+
+.video-preview-topbar .viewer-toolbar__actions {
+  background: var(--video-preview-chrome-surface);
+  border: 1px solid var(--viewer-border);
+  border-radius: 12px;
+  box-shadow: var(--video-preview-popover-shadow);
+  justify-self: end;
+  min-height: 44px;
+  padding: 3px;
+  pointer-events: auto;
 }
 
 .video-preview-title {
@@ -146,31 +174,31 @@ body:has(.viewer-shell[data-video-preview-open='true']) {
   box-shadow: none;
   color: var(--viewer-text);
   font-size: 12px;
-  height: 44px;
+  height: 36px;
   isolation: isolate;
-  min-height: 44px;
+  min-height: 36px;
   padding-inline: 11px;
   position: relative;
 }
 
 .video-preview-topbar .viewer-button::before {
-  background: var(--video-preview-control-surface);
-  border: 1px solid var(--viewer-control-border);
-  border-radius: 8px;
+  background: transparent;
+  border: 0;
+  border-radius: 9px;
   content: '';
-  inset: 7px 3px;
+  inset: 0;
   pointer-events: none;
   position: absolute;
   z-index: -1;
 }
 
 .video-preview-topbar .viewer-icon-button::before {
-  inset: 7px;
+  inset: 0;
 }
 
 .video-preview-topbar .viewer-button:hover:not(:disabled)::before {
   background: var(--video-preview-toolbar-hover-surface);
-  border-color: var(--video-preview-toolbar-hover-border);
+  border-color: transparent;
 }
 
 .video-preview-topbar .viewer-button:active:not(:disabled)::before,
@@ -184,34 +212,35 @@ body:has(.viewer-shell[data-video-preview-open='true']) {
 }
 
 .video-preview-bottom-chrome {
-  bottom: 10px;
+  bottom: 22px;
   display: block;
   height: var(--video-preview-bottom-controller-height);
-  inset-inline: 12px;
+  left: 50%;
   position: absolute;
-  transform: translateY(0);
+  transform: translateX(-50%);
   transition:
     opacity var(--viewer-motion-standard) var(--viewer-easing),
     transform var(--viewer-motion-standard) var(--viewer-easing);
   z-index: 5;
+  width: min(920px, calc(100% - 44px));
 }
 
 .video-preview-bottom-chrome[data-chrome-visible='false'] {
   opacity: 0;
   pointer-events: none;
-  transform: translateY(10px);
+  transform: translate(-50%, 10px);
 }
 
 .video-preview .preview-navigation-float {
-  background: transparent;
-  border: 0;
-  border-radius: 10px;
+  background: var(--video-preview-chrome-surface);
+  border: 1px solid var(--viewer-border);
+  border-radius: 13px;
   bottom: auto;
-  box-shadow: none;
+  box-shadow: var(--video-preview-popover-shadow);
   color: var(--viewer-text);
   gap: 8px;
   min-height: 44px;
-  padding: 0;
+  padding: 3px;
   left: auto;
   position: static;
   transform: none;
@@ -230,10 +259,10 @@ body:has(.viewer-shell[data-video-preview-open='true']) {
   background: transparent;
   border: 0;
   color: var(--viewer-text);
-  height: 44px;
-  min-height: 44px;
-  min-width: 44px;
-  width: 44px;
+  height: 36px;
+  min-height: 36px;
+  min-width: 40px;
+  width: 40px;
 }
 
 .video-preview .preview-navigation-float .viewer-icon-button:disabled {
@@ -250,16 +279,16 @@ body:has(.viewer-shell[data-video-preview-open='true']) {
   backdrop-filter: none;
   background: var(--video-preview-chrome-surface);
   border: 1px solid var(--viewer-border);
-  border-radius: 10px;
+  border-radius: 17px;
   box-sizing: border-box;
   box-shadow: none;
   color: var(--viewer-text);
   display: grid;
-  gap: 8px;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 14px;
+  grid-template-columns: auto minmax(160px, 1fr) auto;
   grid-template-rows: 1fr;
   opacity: 1;
-  padding: 1px 8px;
+  padding: 8px 10px;
   position: relative;
   transform: translateY(0);
   transition:
@@ -309,21 +338,21 @@ body:has(.viewer-shell[data-video-preview-open='true']) {
   background: transparent;
   border: 0;
   color: var(--viewer-text);
-  height: 44px;
+  height: 40px;
   isolation: isolate;
-  min-height: 44px;
-  min-width: 44px;
-  padding: 6px;
+  min-height: 40px;
+  min-width: 40px;
+  padding: 5px;
   position: relative;
-  width: 44px;
+  width: 40px;
 }
 
 .video-controls .viewer-button::before {
-  background: var(--video-preview-control-surface);
-  border: 1px solid var(--viewer-control-border);
-  border-radius: 9px;
+  background: transparent;
+  border: 0;
+  border-radius: 10px;
   content: '';
-  inset: 7px;
+  inset: 0;
   pointer-events: none;
   position: absolute;
   z-index: -1;
@@ -354,8 +383,8 @@ body:has(.viewer-shell[data-video-preview-open='true']) {
 }
 
 .video-controls .viewer-button .viewer-icon {
-  height: 28px;
-  width: 28px;
+  height: 22px;
+  width: 22px;
 }
 
 .video-controls .video-controls__play {
@@ -371,7 +400,8 @@ body:has(.viewer-shell[data-video-preview-open='true']) {
 .video-controls .video-controls__play::before {
   background: var(--viewer-accent);
   border-color: var(--viewer-accent);
-  inset: 6px;
+  border-radius: 12px;
+  inset: -2px;
 }
 
 .video-controls .video-controls__play:hover:not(:disabled)::before,
@@ -733,13 +763,23 @@ body:has(.viewer-shell[data-video-preview-open='true']) {
 
 @media (max-width: 760px) {
   .video-preview-topbar {
-    inset-inline: 8px;
-    padding: 0 4px 0 10px;
+    gap: 8px;
+    inset: 12px 12px auto;
   }
+  .video-preview-topbar .viewer-toolbar__leading {
+    max-width: 36vw;
+    padding-inline: 10px;
+  }
+  .video-preview-title > span { display: none; }
   .video-preview-bottom-chrome {
-    bottom: 8px;
-    inset-inline: 8px;
+    bottom: 12px;
+    width: calc(100% - 24px);
   }
-  .video-controls { padding-inline: 4px; }
+  .video-controls {
+    gap: 6px;
+    grid-template-columns: auto minmax(100px, 1fr) auto;
+    padding-inline: 6px;
+  }
   .video-controls__settings { gap: 0; }
+  .video-timeline__time { min-width: 68px; }
 }

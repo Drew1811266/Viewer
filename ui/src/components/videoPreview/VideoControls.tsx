@@ -3,7 +3,6 @@ import type { VideoError, VideoEvent } from '../../api/types'
 import { ViewerIconButton } from '../ui/ViewerButton'
 import { useVideoResponsiveLayout } from './useVideoResponsiveLayout'
 import VideoControlsMoreMenu from './VideoControlsMoreMenu'
-import VideoRateMenu from './VideoRateMenu'
 import VideoTimeline from './VideoTimeline'
 
 export const VIDEO_RATES = [0.5, 0.75, 1, 1.25, 1.5, 2] as const
@@ -150,55 +149,17 @@ export default function VideoControls({
           active={view.muted}
           onClick={() => runCommand(commands.toggleMuted())}
         />
-        {!compact && (
-          <>
-            <label className="video-controls__volume">
-              <span>音量</span>
-              <input
-                type="range"
-                aria-label="音量"
-                title="音量（0 到 100）"
-                min={0}
-                max={100}
-                step={1}
-                value={view.volumePercent}
-                disabled={disabled}
-                onPointerDown={() => onAdjustingChange(true)}
-                onPointerUp={() => onAdjustingChange(false)}
-                onPointerCancel={() => onAdjustingChange(false)}
-                onChange={(event) => {
-                  onActivity()
-                  runCommand(commands.setVolume(Number(event.currentTarget.value)))
-                }}
-              />
-            </label>
-            <div className="video-controls__rate">
-              <span>速度</span>
-              <VideoRateMenu
-                rate={view.rate}
-                rates={VIDEO_RATES}
-                disabled={disabled}
-                onActivity={onActivity}
-                onOpenChange={onAdjustingChange}
-                onSelect={(rate) => {
-                  runCommand(commands.setRate(rate))
-                }}
-              />
-            </div>
-          </>
-        )}
-        {compact && (
-          <VideoControlsMoreMenu
-            open={moreOpen}
-            onOpenChange={setMoreOpen}
-            disabled={disabled}
-            view={view}
-            commands={commands}
-            rates={VIDEO_RATES}
-            onActivity={onActivity}
-            onAdjustingChange={onAdjustingChange}
-          />
-        )}
+        <VideoControlsMoreMenu
+          open={moreOpen}
+          onOpenChange={setMoreOpen}
+          disabled={disabled}
+          showStepControls={compact}
+          view={view}
+          commands={commands}
+          rates={VIDEO_RATES}
+          onActivity={onActivity}
+          onAdjustingChange={onAdjustingChange}
+        />
         <ViewerIconButton
           icon={view.fullscreen ? 'minimize' : 'maximize'}
           label={view.fullscreen ? '退出全屏' : '进入全屏'}

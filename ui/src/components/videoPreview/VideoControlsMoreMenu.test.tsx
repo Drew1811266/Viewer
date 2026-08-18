@@ -62,6 +62,7 @@ function renderMenu({
         open={open}
         onOpenChange={setOpen}
         disabled={false}
+        showStepControls
         view={{ volumePercent: 72, rate: 1.25 }}
         commands={commands}
         rates={[0.5, 0.75, 1, 1.25, 1.5, 2]}

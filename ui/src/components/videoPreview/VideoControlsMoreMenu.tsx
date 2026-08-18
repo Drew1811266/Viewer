@@ -12,6 +12,7 @@ export interface VideoControlsMoreMenuProps {
   open: boolean
   onOpenChange(open: boolean): void
   disabled: boolean
+  showStepControls: boolean
   view: Pick<VideoControlViewState, 'volumePercent' | 'rate'>
   commands: Pick<VideoControlCommands, 'step' | 'setVolume' | 'setRate'>
   rates: readonly VideoPlaybackRate[]
@@ -23,6 +24,7 @@ export default function VideoControlsMoreMenu({
   open,
   onOpenChange,
   disabled,
+  showStepControls,
   view,
   commands,
   rates,
@@ -61,24 +63,26 @@ export default function VideoControlsMoreMenu({
         triggerRef={triggerRef}
         onOpenChange={setOpen}
       >
-        <div className="video-controls-more__steps" role="group" aria-label="逐帧控制">
-          <ViewerIconButton
-            icon="skip-back"
-            label="上一帧"
-            title="上一帧（左方向键）"
-            aria-keyshortcuts="ArrowLeft"
-            disabled={disabled}
-            onClick={() => runCommand(commands.step('backward'))}
-          />
-          <ViewerIconButton
-            icon="skip-forward"
-            label="下一帧"
-            title="下一帧（右方向键）"
-            aria-keyshortcuts="ArrowRight"
-            disabled={disabled}
-            onClick={() => runCommand(commands.step('forward'))}
-          />
-        </div>
+        {showStepControls && (
+          <div className="video-controls-more__steps" role="group" aria-label="逐帧控制">
+            <ViewerIconButton
+              icon="skip-back"
+              label="上一帧"
+              title="上一帧（左方向键）"
+              aria-keyshortcuts="ArrowLeft"
+              disabled={disabled}
+              onClick={() => runCommand(commands.step('backward'))}
+            />
+            <ViewerIconButton
+              icon="skip-forward"
+              label="下一帧"
+              title="下一帧（右方向键）"
+              aria-keyshortcuts="ArrowRight"
+              disabled={disabled}
+              onClick={() => runCommand(commands.step('forward'))}
+            />
+          </div>
+        )}
         <label className="video-controls-more__field">
           <span>音量</span>
           <input

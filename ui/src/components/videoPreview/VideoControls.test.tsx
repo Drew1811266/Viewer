@@ -40,6 +40,7 @@ describe('VideoControls', () => {
       'F',
     )
     expect(VIDEO_RATES).toEqual([0.5, 0.75, 1, 1.25, 1.5, 2])
+    fireEvent.click(within(controls).getByRole('button', { name: '更多播放控制' }))
     fireEvent.click(within(controls).getByRole('button', { name: '播放速度，当前 1×' }))
     const listbox = screen.getByRole('listbox', { name: '选择播放速度' })
     expect(
@@ -57,6 +58,7 @@ describe('VideoControls', () => {
     fireEvent.click(screen.getByRole('button', { name: '上一帧' }))
     fireEvent.click(screen.getByRole('button', { name: '下一帧' }))
     fireEvent.click(screen.getByRole('button', { name: '静音' }))
+    fireEvent.click(screen.getByRole('button', { name: '更多播放控制' }))
     fireEvent.change(screen.getByRole('slider', { name: '音量' }), { target: { value: '64' } })
     fireEvent.click(screen.getByRole('button', { name: '播放速度，当前 1×' }))
     fireEvent.click(screen.getByRole('option', { name: '1.5×' }))
@@ -107,15 +109,20 @@ describe('VideoControls', () => {
     expect(screen.getByRole('button', { name: '播放' })).toBeInTheDocument()
   })
 
-  it('keeps all controls inline in the wide player', () => {
+  it('keeps the approved compact settings trigger in the wide player', () => {
     stubCompactViewport(false)
     renderControls()
 
-    expect(screen.queryByRole('button', { name: '更多播放控制' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '更多播放控制' })).toBeVisible()
     expect(screen.getByRole('button', { name: '上一帧' })).toBeVisible()
     expect(screen.getByRole('button', { name: '下一帧' })).toBeVisible()
-    expect(screen.getByRole('slider', { name: '音量' })).toBeVisible()
-    expect(screen.getByRole('button', { name: '播放速度，当前 1×' })).toBeVisible()
+    expect(screen.queryByRole('slider', { name: '音量' })).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: '更多播放控制' }))
+    const panel = screen.getByRole('region', { name: '更多播放控制' })
+    expect(within(panel).queryByRole('button', { name: '上一帧' })).not.toBeInTheDocument()
+    expect(within(panel).getByRole('slider', { name: '音量' })).toBeVisible()
+    expect(within(panel).getByRole('button', { name: '播放速度，当前 1×' })).toBeVisible()
   })
 
   it('keeps primary controls visible and moves secondary controls into More when compact', () => {

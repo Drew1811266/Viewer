@@ -116,6 +116,7 @@ impl VideoWindowAspectSession {
         let target_frame = appkit_rect(placed_target);
         validated_aspect_rect(target_frame).ok_or(WindowAspectError::InvalidWindowGeometry)?;
         let previous_aspect = window.contentAspectRatio();
+        let previous_resize_increments = window.contentResizeIncrements();
         let installed_aspect = NSSize::new(display.width, display.height);
         let restore_window: Retained<NSWindow> = window.retain();
         let lease = WindowAspectLease::new(
@@ -126,7 +127,23 @@ impl VideoWindowAspectSession {
             },
             move || {
                 MainThreadMarker::new().ok_or(WindowAspectError::NotMainThread)?;
-                restore_window.setContentAspectRatio(previous_aspect);
+                restore_content_sizing_policy(
+                    AspectSize::new(previous_aspect.width, previous_aspect.height),
+                    AspectSize::new(
+                        previous_resize_increments.width,
+                        previous_resize_increments.height,
+                    ),
+                    |aspect| {
+                        restore_window
+                            .setContentAspectRatio(NSSize::new(aspect.width, aspect.height));
+                    },
+                    |increments| {
+                        restore_window.setContentResizeIncrements(NSSize::new(
+                            increments.width,
+                            increments.height,
+                        ));
+                    },
+                );
                 restore_window.setFrame_display(previous_frame, true);
                 Ok(())
             },
@@ -201,6 +218,19 @@ impl AspectSize {
     }
 }
 
+fn restore_content_sizing_policy(
+    previous_aspect: AspectSize,
+    previous_resize_increments: AspectSize,
+    set_aspect: impl FnOnce(AspectSize),
+    set_resize_increments: impl FnOnce(AspectSize),
+) {
+    if previous_aspect.is_valid() {
+        set_aspect(previous_aspect);
+    } else {
+        set_resize_increments(previous_resize_increments);
+    }
+}
+
 pub fn display_aspect(media: VideoDisplayGeometry) -> Option<f64> {
     let display = display_dimensions(media)?;
     Some(display.width / display.height)
@@ -267,7 +297,7 @@ pub fn place_frame_inside_visible(frame: AspectRect, visible: AspectRect) -> Opt
 
 #[cfg(test)]
 mod tests {
-    use super::{WindowAspectError, WindowAspectLease};
+    use super::{AspectSize, WindowAspectError, WindowAspectLease, restore_content_sizing_policy};
     use std::cell::RefCell;
 
     #[test]
@@ -315,5 +345,22 @@ mod tests {
 
         assert_eq!(result.err(), Some(WindowAspectError::InvalidWindowGeometry));
         assert_eq!(&*calls.borrow(), &["install", "restore"]);
+    }
+
+    #[test]
+    fn an_unconstrained_window_is_restored_without_calling_the_zero_aspect_setter() {
+        let calls = RefCell::new(Vec::new());
+
+        restore_content_sizing_policy(
+            AspectSize::new(0.0, 0.0),
+            AspectSize::new(1.0, 1.0),
+            |aspect| calls.borrow_mut().push(("aspect", aspect)),
+            |increments| calls.borrow_mut().push(("increments", increments)),
+        );
+
+        assert_eq!(
+            &*calls.borrow(),
+            &[("increments", AspectSize::new(1.0, 1.0))]
+        );
     }
 }

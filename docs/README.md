@@ -26,6 +26,7 @@
 | [OPEN_SOURCE_RESEARCH.md](OPEN_SOURCE_RESEARCH.md) | Active | — |
 | [quality/DEPENDENCY_HEALTH.md](quality/DEPENDENCY_HEALTH.md) | Active | — |
 | [architecture/viewer-0.1-api-baseline.md](architecture/viewer-0.1-api-baseline.md) | Active | — |
+| [2026-08-24-viewer-architecture-governance-and-workspace-orchestration-design.md](superpowers/specs/2026-08-24-viewer-architecture-governance-and-workspace-orchestration-design.md) | Active | — |
 | [video-runtime-build.md](video-runtime-build.md) | Active | — |
 | [adr/0001-macos-image-pipeline.md](adr/0001-macos-image-pipeline.md) | Active | — |
 | [adr/0002-file-transaction-protocol.md](adr/0002-file-transaction-protocol.md) | Active | — |

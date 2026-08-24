@@ -34,8 +34,7 @@
 
 ## 历史目标、设计与实施资料
 
-这些资料用于解释需求、设计和实施过程。除标为 Active 的本次文档重建工作外，它们不
-单独证明 0.1.6 当前产品行为。
+这些资料用于解释需求、设计和实施过程，不单独证明 0.1.6 当前产品行为。
 
 ### 历史目标与已替代决策
 
@@ -92,7 +91,7 @@
 | [2026-08-14-viewer-video-interaction-performance-design.md](superpowers/specs/2026-08-14-viewer-video-interaction-performance-design.md) | Superseded | [2026-08-14-video-interaction-and-aperture-design.md](superpowers/specs/2026-08-14-video-interaction-and-aperture-design.md) |
 | [2026-08-16-viewer-native-video-theater-refactor-design.md](superpowers/specs/2026-08-16-viewer-native-video-theater-refactor-design.md) | Historical | — |
 | [2026-08-17-video-preview-compact-native-aspect-design.md](superpowers/specs/2026-08-17-video-preview-compact-native-aspect-design.md) | Historical | — |
-| [2026-08-23-viewer-product-documentation-reconstruction-design.md](superpowers/specs/2026-08-23-viewer-product-documentation-reconstruction-design.md) | Active | — |
+| [2026-08-23-viewer-product-documentation-reconstruction-design.md](superpowers/specs/2026-08-23-viewer-product-documentation-reconstruction-design.md) | Historical | — |
 
 ### 实施计划
 
@@ -159,7 +158,7 @@
 | [2026-08-17-video-preview-compact-native-aspect.md](superpowers/plans/2026-08-17-video-preview-compact-native-aspect.md) | Historical | — |
 | [2026-08-17-video-rate-menu.md](superpowers/plans/2026-08-17-video-rate-menu.md) | Historical | — |
 | [2026-08-18-video-player-faithful-layout.md](superpowers/plans/2026-08-18-video-player-faithful-layout.md) | Historical | — |
-| [2026-08-24-viewer-product-documentation-reconstruction.md](superpowers/plans/2026-08-24-viewer-product-documentation-reconstruction.md) | Active | — |
+| [2026-08-24-viewer-product-documentation-reconstruction.md](superpowers/plans/2026-08-24-viewer-product-documentation-reconstruction.md) | Historical | — |
 
 ### 评审与验收证据
 

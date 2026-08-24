@@ -69,7 +69,7 @@
 - Consumes: the existing `REQ-*` identifiers and scope-matrix rows.
 - Produces: a stable historical requirement source for `validateScopeCoverage`, freeing `docs/PRODUCT_SPEC.md` to describe current behavior without requirement IDs.
 
-- [ ] **Step 1: Change the policy expectation to the historical source and verify failure**
+- [x] **Step 1: Change the policy expectation to the historical source and verify failure**
 
 Update the policy test named `active governance has no M4 owner or Viewer 0.1 delivery gate` so the governance set reads `docs/milestones/viewer-0.1-target-requirements.md` instead of `docs/PRODUCT_SPEC.md`, and add this test:
 
@@ -92,7 +92,7 @@ node --test --test-name-pattern='historical scope coverage|active governance' sc
 
 Expected: FAIL because the historical file and retargeted links do not exist yet.
 
-- [ ] **Step 2: Move the old specification and label it historical**
+- [x] **Step 2: Move the old specification and label it historical**
 
 Move the file with Git so its history is preserved:
 
@@ -116,7 +116,7 @@ Replace the old title and metadata block with:
 
 Keep every existing `REQ-*` heading and body after this block unchanged so the scope coverage count remains stable.
 
-- [ ] **Step 3: Retarget the scope matrix and checker**
+- [x] **Step 3: Retarget the scope matrix and checker**
 
 Change the matrix metadata to:
 
@@ -137,7 +137,7 @@ readFileSync('docs/milestones/viewer-0.1-target-requirements.md', 'utf8')
 
 Keep the matrix input and success message unchanged.
 
-- [ ] **Step 4: Run focused governance verification**
+- [x] **Step 4: Run focused governance verification**
 
 Run:
 
@@ -148,7 +148,7 @@ node scripts/check-scope-coverage.mjs
 
 Expected: scope validation reports the same requirement and frozen M3 counts as before; repository policy may still fail only because the newly committed documentation-reconstruction design has not yet been added to the index.
 
-- [ ] **Step 5: Commit the historical split**
+- [x] **Step 5: Commit the historical split**
 
 ```bash
 git add docs/milestones scripts/check-scope-coverage.mjs scripts/repository-policy.test.mjs
@@ -169,7 +169,7 @@ git commit -m "docs: preserve historical Viewer 0.1 requirements"
 - Consumes: version/config facts from `src-tauri/tauri.conf.json`, user-facing types from `ui/src/api/types.ts`, shell behavior from `ui/src/App.tsx`, and accepted scope in the design spec.
 - Produces: the canonical current-product baseline linked by every other product document.
 
-- [ ] **Step 1: Write the concise current product specification**
+- [x] **Step 1: Write the concise current product specification**
 
 Create `docs/PRODUCT_SPEC.md` with this metadata:
 
@@ -198,7 +198,7 @@ Use these exact top-level sections, each with factual prose rather than requirem
 
 Do not include `REQ-*` identifiers, future platform promises, unverified performance thresholds, or public-release acceptance language.
 
-- [ ] **Step 2: Create the product documentation portal**
+- [x] **Step 2: Create the product documentation portal**
 
 Create `docs/product/README.md` with:
 
@@ -209,7 +209,7 @@ Create `docs/product/README.md` with:
 - a statement that historical specs and plans explain decisions but do not define current behavior;
 - a maintenance link to `DOCUMENTATION_MAINTENANCE.md`.
 
-- [ ] **Step 3: Verify current authority boundaries**
+- [x] **Step 3: Verify current authority boundaries**
 
 Run:
 
@@ -221,7 +221,7 @@ git diff --check
 
 Expected: the first command prints no matches; the second finds the required version/baseline/status metadata; diff check exits zero.
 
-- [ ] **Step 4: Commit the product authority**
+- [x] **Step 4: Commit the product authority**
 
 ```bash
 git add docs/PRODUCT_SPEC.md docs/product/README.md
@@ -242,7 +242,7 @@ git commit -m "docs: establish Viewer 0.1.6 product baseline"
 - Consumes: actual labels and ownership rules from `ui/src/App.tsx`, `ui/src/components/EmptyProject.tsx`, `ContentBrowser.tsx`, `SearchToolbar.tsx`, `ImagePreview.tsx`, `TextPreview.tsx`, `CompareWorkspace.tsx`, `VideoPreview.tsx`, `WorkspaceMoreMenu.tsx`, `useReviewShortcuts.tsx`, `useVideoShortcuts.tsx`, and their tests.
 - Produces: complete operating instructions and one centralized interaction table.
 
-- [ ] **Step 1: Build an evidence checklist before writing**
+- [x] **Step 1: Build an evidence checklist before writing**
 
 Run and save the relevant facts in working notes, not a committed file:
 
@@ -254,7 +254,7 @@ rg -n "aria-label=|title=|快捷键|event\.key|event\.code|metaKey|shiftKey|altK
 
 Cross-check each shortcut against a corresponding UI test. Do not document a key from an old design file unless current code owns it.
 
-- [ ] **Step 2: Write `USER_GUIDE.md`**
+- [x] **Step 2: Write `USER_GUIDE.md`**
 
 Use these sections in order:
 
@@ -278,7 +278,7 @@ Use these sections in order:
 
 Every task section includes: entry point, precondition, action, visible result, and a short “如果未完成” recovery link to `TROUBLESHOOTING.md`.
 
-- [ ] **Step 3: Write `SHORTCUTS.md`**
+- [x] **Step 3: Write `SHORTCUTS.md`**
 
 Organize verified controls by context:
 
@@ -292,7 +292,7 @@ Organize verified controls by context:
 
 For each shortcut include columns `操作`, `按键或手势`, `适用界面`, `限制`. Explicitly state that single-key review commands and preview shortcuts are suppressed when an editable control owns focus, during input-method composition, or when modifiers change ownership. Do not infer native macOS shortcuts that are not handled or explicitly supported by the app.
 
-- [ ] **Step 4: Validate labels and cross-links**
+- [x] **Step 4: Validate labels and cross-links**
 
 Run:
 
@@ -306,7 +306,7 @@ git diff --check
 
 Expected: every documented label has a current UI occurrence, focused-guide links are present, and diff check exits zero.
 
-- [ ] **Step 5: Commit user-facing workflows**
+- [x] **Step 5: Commit user-facing workflows**
 
 ```bash
 git add docs/product/USER_GUIDE.md docs/product/SHORTCUTS.md
@@ -327,7 +327,7 @@ git commit -m "docs: add Viewer user and interaction guides"
 - Consumes: `ui/src/api/types.ts`, `ui/src/fileKinds.ts`, `crates/viewer-domain/src/file.rs`, `crates/viewer-infrastructure/src/scan/file_classifier.rs`, text preview services, video probe/runtime code, Tauri commands, and integrated tests.
 - Produces: a searchable statement of actual behavior and a format table that distinguishes recognition from successful decode.
 
-- [ ] **Step 1: Extract exact format and limit facts**
+- [x] **Step 1: Extract exact format and limit facts**
 
 Run:
 
@@ -341,7 +341,7 @@ sed -n '1,260p' scripts/video/runtime.lock.json
 
 Record exact extension sets, encoding choices, text bounds, video-runtime versions/options, cache budget, and failure kinds. Treat an extension classifier as a scan-candidate list, not a codec guarantee.
 
-- [ ] **Step 2: Write `FEATURE_REFERENCE.md`**
+- [x] **Step 2: Write `FEATURE_REFERENCE.md`**
 
 Use one section per domain:
 
@@ -365,7 +365,7 @@ Use one section per domain:
 
 Each section contains `状态`, `用户行为`, `边界与失败`, and `维护证据`. Evidence uses repository-relative code/test paths and names at least one current component/command and one relevant test where available. Clearly distinguish code-level capability from fully validated native behavior.
 
-- [ ] **Step 3: Write `SUPPORTED_FORMATS.md`**
+- [x] **Step 3: Write `SUPPORTED_FORMATS.md`**
 
 Use separate tables for:
 
@@ -377,7 +377,7 @@ Use separate tables for:
 
 Add a prominent rule: “被扫描识别不代表文件内容一定可解码；实际结果取决于文件内容、权限、完整性和打包运行时。”
 
-- [ ] **Step 4: Cross-check evidence and format claims**
+- [x] **Step 4: Cross-check evidence and format claims**
 
 Run:
 
@@ -391,7 +391,7 @@ git diff --check
 
 Expected: every candidate extension in code appears in the format reference, every feature section has evidence/boundary fields, and diff check exits zero.
 
-- [ ] **Step 5: Commit behavior references**
+- [x] **Step 5: Commit behavior references**
 
 ```bash
 git add docs/product/FEATURE_REFERENCE.md docs/product/SUPPORTED_FORMATS.md
@@ -413,7 +413,7 @@ git commit -m "docs: document Viewer features and supported formats"
 - Consumes: portable metadata, session index/cache, video cache, CSP/capabilities, error DTOs, recovery logic, `SECURITY.md`, and troubleshooting states in UI tests.
 - Produces: explicit trust boundaries, recoverable-data rules, symptom-based recovery, and a repeatable next-version update process.
 
-- [ ] **Step 1: Verify storage and network boundaries**
+- [x] **Step 1: Verify storage and network boundaries**
 
 Inspect:
 
@@ -426,7 +426,7 @@ rg -n '\.viewer|cache|Caches|Application Support|sqlite|remote|network|external 
 
 Classify data into source files, portable project metadata, ephemeral session indexes/thumbnails, bounded video cache, settings, diagnostics/logs, and explicit external-link handoff.
 
-- [ ] **Step 2: Write `DATA_PRIVACY.md`**
+- [x] **Step 2: Write `DATA_PRIVACY.md`**
 
 Include:
 
@@ -443,7 +443,7 @@ Include:
 
 Avoid stating an absolute filesystem location unless current code/config guarantees it across the supported environment.
 
-- [ ] **Step 3: Write `TROUBLESHOOTING.md`**
+- [x] **Step 3: Write `TROUBLESHOOTING.md`**
 
 Use a consistent four-column table: `现象`, `可能原因`, `处理方法`, `不会发生的副作用`. Cover:
 
@@ -461,7 +461,7 @@ Use a consistent four-column table: `现象`, `可能原因`, `处理方法`, `�
 
 For destructive-looking recovery, explicitly state whether source files, `.viewer` markers, or only rebuildable caches are affected.
 
-- [ ] **Step 4: Write `DOCUMENTATION_MAINTENANCE.md`**
+- [x] **Step 4: Write `DOCUMENTATION_MAINTENANCE.md`**
 
 Define this version-update order:
 
@@ -477,7 +477,7 @@ Define this version-update order:
 
 Include a change-impact matrix mapping code areas (`ui/src/components`, `ui/src/state`, `src-tauri/src/commands`, scanner/file classifier, portable metadata, video runtime, settings) to the product documents that must be reviewed.
 
-- [ ] **Step 5: Validate safety language and commit**
+- [x] **Step 5: Validate safety language and commit**
 
 Run:
 
@@ -513,7 +513,7 @@ git commit -m "docs: add Viewer data and recovery documentation"
 - Consumes: current product documents, Git history through tag `v0.1.6`, existing engineering docs, all files in `docs/superpowers/specs/`, and historical plan/review sections.
 - Produces: accurate entry points and a status classification compatible with repository policy.
 
-- [ ] **Step 1: Derive the 0.1.6 change record from Git**
+- [x] **Step 1: Derive the 0.1.6 change record from Git**
 
 Inspect the version interval and recent history:
 
@@ -529,7 +529,7 @@ Write `CHANGELOG.md` with:
 - grouped `新增`, `改进`, `修复`, `文档与工程` bullets supported by commits in the interval;
 - an `Earlier development history` note directing readers to Git history rather than inventing complete prior release notes.
 
-- [ ] **Step 2: Correct and tighten the root README**
+- [x] **Step 2: Correct and tighten the root README**
 
 Change current version to `0.1.6`. Update the capability list so it mentions actual video browsing/preview and does not claim that scanning is limited to only image/text files. Keep the development launch/build instructions intact. In `文档与参与`, add links to:
 
@@ -542,7 +542,7 @@ Change current version to `0.1.6`. Update the capability list so it mentions act
 
 Retain engineering, contribution, security, notices, and acknowledgements links.
 
-- [ ] **Step 3: Rebuild `docs/README.md` by authority type**
+- [x] **Step 3: Rebuild `docs/README.md` by authority type**
 
 Use these sections:
 
@@ -559,7 +559,7 @@ Every `docs/superpowers/specs/*.md` file must have exactly one three-column row 
 
 Mark the approved documentation-reconstruction design Active until implementation verification is complete; at Task 7 it becomes Historical together with this plan.
 
-- [ ] **Step 4: Verify navigation and status inventory**
+- [x] **Step 4: Verify navigation and status inventory**
 
 Run:
 
@@ -571,7 +571,7 @@ git diff --check
 
 Expected: documentation index tests pass, README contains the corrected version and four new links, diff check exits zero.
 
-- [ ] **Step 5: Commit entry points and history**
+- [x] **Step 5: Commit entry points and history**
 
 ```bash
 git add CHANGELOG.md README.md docs/README.md
@@ -594,7 +594,7 @@ git commit -m "docs: publish Viewer 0.1.6 documentation index"
 - Consumes: the completed current product document inventory and Tauri’s authoritative application version.
 - Produces: regression protection against missing docs, version drift, broken local Markdown links, unfinished placeholders, and incorrect history status.
 
-- [ ] **Step 1: Add a failing current-document integrity test**
+- [x] **Step 1: Add a failing current-document integrity test**
 
 Add the `access` helper import, then add:
 
@@ -647,7 +647,7 @@ node --test --test-name-pattern='current product documentation' scripts/reposito
 
 Expected: FAIL initially if the exact version labels or link parser assumptions do not match the completed files; fix the documents or the narrow parser without weakening the inventory, version, placeholder, or local-link assertions.
 
-- [ ] **Step 2: Make integrity enforcement pass**
+- [x] **Step 2: Make integrity enforcement pass**
 
 Normalize the three version labels to:
 
@@ -657,11 +657,11 @@ Normalize the three version labels to:
 
 Keep the product-spec metadata’s separate baseline commit and fact date. Resolve each reported local link by correcting the target; do not silence missing files.
 
-- [ ] **Step 3: Mark implementation records historical**
+- [x] **Step 3: Mark implementation records historical**
 
 In `docs/README.md`, change the documentation-reconstruction design and this implementation plan to `Historical`, each appearing exactly once. Check every task box in this plan only after its command/output has been observed.
 
-- [ ] **Step 4: Run focused product-document verification**
+- [x] **Step 4: Run focused product-document verification**
 
 Run:
 
@@ -674,7 +674,7 @@ git diff --check
 
 Expected: both Node test files pass; scope counts remain stable; the current-version scan prints no matches; diff check exits zero.
 
-- [ ] **Step 5: Run repository verification**
+- [x] **Step 5: Run repository verification**
 
 Because repository policy code changes, run the full gate:
 
@@ -684,7 +684,7 @@ pnpm verify
 
 Expected: quality and security gates exit zero. Existing explicitly allowed dependency-duplicate warnings may remain warnings; no test, lint, type, build, clippy, license, or security failure is acceptable.
 
-- [ ] **Step 6: Inspect final coverage and status**
+- [x] **Step 6: Inspect final coverage and status**
 
 Run:
 
@@ -696,14 +696,14 @@ git status --short --branch
 
 Verify the nine current product authorities plus `CHANGELOG.md`, the historical requirement source, the rebuilt indexes, and policy updates are present. The worktree must contain only the final Task 7 changes before commit.
 
-- [ ] **Step 7: Commit final policy and verification state**
+- [x] **Step 7: Commit final policy and verification state**
 
 ```bash
 git add scripts/repository-policy.test.mjs docs/README.md docs/superpowers/plans/2026-08-24-viewer-product-documentation-reconstruction.md
 git commit -m "test: enforce Viewer product documentation integrity"
 ```
 
-- [ ] **Step 8: Verify the committed result**
+- [x] **Step 8: Verify the committed result**
 
 Run:
 

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
-import { readFile, readdir, stat } from 'node:fs/promises'
+import { access, readFile, readdir, stat } from 'node:fs/promises'
 import test from 'node:test'
 
 import { validateFinderDragAppKitWiring } from './validate-finder-drag-appkit-wiring.mjs'
@@ -11,6 +11,55 @@ const findDocumentationRows = (index, path) =>
   index
     .split('\n')
     .filter((line) => line.match(/^\| \[[^\]]+\]\(([^)]+)\) \|/)?.[1] === path)
+
+const currentProductDocuments = [
+  'docs/PRODUCT_SPEC.md',
+  'docs/product/README.md',
+  'docs/product/USER_GUIDE.md',
+  'docs/product/FEATURE_REFERENCE.md',
+  'docs/product/SHORTCUTS.md',
+  'docs/product/SUPPORTED_FORMATS.md',
+  'docs/product/DATA_PRIVACY.md',
+  'docs/product/TROUBLESHOOTING.md',
+  'docs/product/DOCUMENTATION_MAINTENANCE.md',
+  'CHANGELOG.md',
+]
+
+test('current product documentation is complete, versioned, locally linked, and archived', async () => {
+  const tauri = JSON.parse(await read('src-tauri/tauri.conf.json'))
+  assert.equal(tauri.version, '0.1.6')
+
+  const documents = await Promise.all(
+    currentProductDocuments.map(async (path) => [path, await read(path)]),
+  )
+  const placeholderPattern = new RegExp(['T' + 'BD', 'T' + 'ODO', '待' + '补充'].join('|'))
+  for (const [path, source] of documents) {
+    assert.doesNotMatch(source, placeholderPattern, `${path} contains a placeholder`)
+    for (const [, target] of source.matchAll(/\]\(([^)]+\.md)(?:#[^)]+)?\)/g)) {
+      if (/^[a-z]+:/i.test(target)) continue
+      const sourceUrl = new URL(`../${path}`, import.meta.url)
+      await assert.doesNotReject(
+        access(new URL(target, sourceUrl)),
+        `${path} has a broken local link: ${target}`,
+      )
+    }
+  }
+
+  for (const path of ['README.md', 'docs/PRODUCT_SPEC.md', 'docs/product/README.md']) {
+    const source = documents.find(([candidate]) => candidate === path)?.[1] ?? (await read(path))
+    assert.match(source, new RegExp(`当前(?:开发)?版本[：:]\\s*\\x60?${tauri.version}`))
+  }
+
+  const index = await read('docs/README.md')
+  for (const path of [
+    'superpowers/specs/2026-08-23-viewer-product-documentation-reconstruction-design.md',
+    'superpowers/plans/2026-08-24-viewer-product-documentation-reconstruction.md',
+  ]) {
+    const rows = findDocumentationRows(index, path)
+    assert.equal(rows.length, 1, `${path} must have exactly one index row`)
+    assert.match(rows[0], /^\| .+ \| Historical \| — \|$/, `${path} must be archived`)
+  }
+})
 
 test('documentation row parsing ignores replacement-target links', () => {
   const path = 'superpowers/specs/current-design.md'

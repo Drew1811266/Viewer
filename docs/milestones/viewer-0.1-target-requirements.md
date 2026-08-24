@@ -1,11 +1,16 @@
-# Viewer 产品需求与架构文档
+# Viewer 0.1 历史目标需求
 
-> Status: Active
+> Status: Historical
 
-> 文档状态：持续完善中
-> 当前版本：1.7
-> 更新日期：2026-08-12
-> 目标平台：macOS 首发，后续支持 Windows
+> 原位置：`docs/PRODUCT_SPEC.md`
+>
+> 保存目的：为历史里程碑范围矩阵保留稳定的 `REQ-*` 定义。
+>
+> 当前产品事实：以 [`../PRODUCT_SPEC.md`](../PRODUCT_SPEC.md) 和
+> [`../product/`](../product/) 为准。
+
+本文档记录 Viewer 0.1 开发过程中的目标需求，包含已经实现、部分实现、未来规划和
+当前不适用的条目。它不是 Viewer 0.1.6 的当前功能说明。
 
 ## 1. 产品概述
 

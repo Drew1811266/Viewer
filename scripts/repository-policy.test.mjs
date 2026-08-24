@@ -1078,7 +1078,7 @@ test('M1 IPC fixture validation rejects path disclosure and unsupported kinds', 
 
 test('active governance has no M4 owner or Viewer 0.1 delivery gate', async () => {
   const active = await Promise.all([
-    read('docs/PRODUCT_SPEC.md'),
+    read('docs/milestones/viewer-0.1-target-requirements.md'),
     read('docs/TECHNICAL_FOUNDATIONS.md'),
     read('docs/superpowers/plans/2026-07-16-viewer-0.1-roadmap.md'),
     read('docs/milestones/viewer-0.1-scope-matrix.md'),
@@ -1094,6 +1094,18 @@ test('active governance has no M4 owner or Viewer 0.1 delivery gate', async () =
   ]) {
     assert.doesNotMatch(text, forbidden)
   }
+})
+
+test('historical scope coverage reads the preserved Viewer 0.1 target requirements', async () => {
+  const checker = await read('scripts/check-scope-coverage.mjs')
+  const matrix = await read('docs/milestones/viewer-0.1-scope-matrix.md')
+
+  assert.match(checker, /docs\/milestones\/viewer-0\.1-target-requirements\.md/)
+  assert.doesNotMatch(checker, /readFileSync\('docs\/PRODUCT_SPEC\.md'/)
+  assert.match(
+    matrix,
+    /\[Historical target requirements\]\(viewer-0\.1-target-requirements\.md\)/,
+  )
 })
 
 test('the UI has one strict lint and format tool', async () => {

@@ -1,0 +1,94 @@
+use viewer_application::{
+    ReviewCatalog, ReviewCatalogError, ReviewStreamHead, ReviewStreamLocator,
+};
+use viewer_domain::review::{ProductionId, ProductionScope};
+use viewer_domain::{ProjectId, ReviewRoundId, ReviewStreamId};
+
+fn production(task_id: &str, batch_id: &str) -> ProductionScope {
+    ProductionScope {
+        task_id: ProductionId::parse(task_id).unwrap(),
+        batch_id: ProductionId::parse(batch_id).unwrap(),
+    }
+}
+
+fn stream_head(id: u128, task_id: &str, batch_id: &str) -> ReviewStreamHead {
+    ReviewStreamHead {
+        review_stream_id: ReviewStreamId::from_u128(id),
+        production: Some(production(task_id, batch_id)),
+        completed_round_ids: vec![ReviewRoundId::from_u128(id + 100)],
+        latest_completed_round_id: Some(ReviewRoundId::from_u128(id + 100)),
+    }
+}
+
+fn two_stream_catalog() -> ReviewCatalog {
+    ReviewCatalog {
+        project_id: ProjectId::from_u128(9),
+        streams: vec![
+            stream_head(1, "task-a", "batch-a"),
+            stream_head(2, "task-b", "batch-b"),
+        ],
+    }
+}
+
+#[test]
+fn catalog_never_uses_a_project_global_latest_round() {
+    let catalog = two_stream_catalog();
+    assert!(matches!(
+        catalog.resolve_stream(None),
+        Err(ReviewCatalogError::Ambiguous)
+    ));
+    assert_eq!(
+        catalog
+            .resolve_stream(Some(
+                &ReviewStreamLocator::Id(ReviewStreamId::from_u128(2),)
+            ))
+            .unwrap()
+            .review_stream_id,
+        ReviewStreamId::from_u128(2),
+    );
+}
+
+#[test]
+fn production_locator_requires_one_exact_task_and_batch_match() {
+    let catalog = two_stream_catalog();
+    let locator = ReviewStreamLocator::Production(production("task-b", "batch-b"));
+    assert_eq!(
+        catalog
+            .resolve_stream(Some(&locator))
+            .unwrap()
+            .review_stream_id,
+        ReviewStreamId::from_u128(2)
+    );
+    assert_eq!(
+        catalog.resolve_stream(Some(&ReviewStreamLocator::Production(production(
+            "task-b", "batch-a"
+        )))),
+        Err(ReviewCatalogError::NotFound)
+    );
+}
+
+#[test]
+fn empty_and_duplicate_matching_catalogs_fail_without_guessing() {
+    let empty = ReviewCatalog {
+        project_id: ProjectId::from_u128(9),
+        streams: vec![],
+    };
+    assert_eq!(
+        empty.resolve_stream(None),
+        Err(ReviewCatalogError::NotFound)
+    );
+
+    let duplicate = ReviewCatalog {
+        project_id: ProjectId::from_u128(9),
+        streams: vec![
+            stream_head(1, "task-a", "batch-a"),
+            stream_head(2, "task-a", "batch-a"),
+        ],
+    };
+    assert_eq!(
+        duplicate.resolve_stream(Some(&ReviewStreamLocator::Production(production(
+            "task-a", "batch-a"
+        )))),
+        Err(ReviewCatalogError::Ambiguous)
+    );
+}

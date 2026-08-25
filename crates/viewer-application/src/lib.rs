@@ -8,6 +8,7 @@ pub mod operation_commit;
 pub mod ports;
 pub mod project;
 pub mod rename;
+pub mod review;
 pub mod scan;
 pub mod scheduler;
 pub mod search;
@@ -36,6 +37,12 @@ pub use ports::{
     SearchSnippetPort, StagedCopy, StagedCopyLeasePort, TrashPort, VideoEngine, VolumePort,
 };
 pub use project::{ActiveProject, PreparedProject, ProjectOpenError, ProjectSessionService};
+pub use review::{
+    MAX_COMPLETED_ROUNDS_PER_STREAM, MAX_PRODUCTION_CONTEXT_ENTRIES,
+    MAX_PRODUCTION_CONTEXT_KEY_BYTES, MAX_PRODUCTION_CONTEXT_VALUE_BYTES, MAX_REVIEW_STREAMS,
+    ProductionAsset, ProductionManifest, ReviewCatalog, ReviewCatalogError, ReviewRepositoryError,
+    ReviewRepositoryPort, ReviewStreamHead, ReviewStreamLocator,
+};
 pub use session::{ProjectSession, SessionState, SessionTransitionError};
 pub use settings::{
     MagnifierArea, MagnifierMagnification, MagnifierPreferences, MagnifierShape, ThumbnailDensity,

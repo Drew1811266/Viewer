@@ -1,6 +1,7 @@
 pub mod file;
 pub mod image;
 pub mod operation;
+pub mod review;
 pub mod search;
 pub mod video;
 
@@ -57,6 +58,10 @@ id_type!(VideoSessionId);
 id_type!(VideoThumbnailRequestId);
 id_type!(TaskId);
 id_type!(OperationId);
+id_type!(AssetVersionId);
+id_type!(ReviewStreamId);
+id_type!(ReviewRoundId);
+id_type!(FeedbackId);
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq, Serialize)]
 pub struct RelativePath(String);

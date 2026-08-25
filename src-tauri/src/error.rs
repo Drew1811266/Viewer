@@ -501,8 +501,27 @@ fn internal_error() -> CommandError {
 
 #[cfg(test)]
 mod tests {
-    use super::{CommandError, ErrorCategory};
-    use viewer_application::ViewerSettingsError;
+    use super::{
+        BrowseError, BrowseIndexError, CommandError, ErrorCategory, FinderDragError,
+        ImageArtifactRegistryError, ImageError, MarkerServiceError, ProjectOpenError,
+        ProjectProbeError, SearchError, SessionCacheError, TextPreviewError, UndoServiceError,
+        ViewerSettingsError,
+    };
+    use crate::{state::RuntimeError, video_runtime::VideoCommandError};
+    use std::path::PathBuf;
+
+    fn assert_command_contract(
+        source: impl Into<CommandError>,
+        code: &str,
+        category: ErrorCategory,
+        user_message: &str,
+        retryable: bool,
+    ) {
+        assert_eq!(
+            source.into(),
+            CommandError::new(code, category, user_message, retryable)
+        );
+    }
 
     #[test]
     fn settings_write_failure_is_retryable_environment_error() {
@@ -514,6 +533,217 @@ mod tests {
                 "设置未能保存",
                 true,
             )
+        );
+    }
+
+    #[test]
+    fn finder_drag_failures_preserve_the_public_command_contract() {
+        for (source, code, category, message, retryable) in [
+            (
+                FinderDragError::EmptySelection,
+                "invalid_finder_drag_selection",
+                ErrorCategory::Validation,
+                "请选择至少一个且不重复的文件。",
+                false,
+            ),
+            (
+                FinderDragError::TooManySelection,
+                "finder_drag_selection_too_large",
+                ErrorCategory::Validation,
+                "一次拖动的文件数量过多，请减少选择后重试。",
+                false,
+            ),
+            (
+                FinderDragError::EntityNotFound,
+                "finder_drag_selection_stale",
+                ErrorCategory::Consistency,
+                "部分所选文件已不可用，请刷新项目后重试。",
+                true,
+            ),
+            (
+                FinderDragError::DirectoryNotAllowed,
+                "finder_drag_target_rejected",
+                ErrorCategory::Validation,
+                "该选择不能拖出 Viewer。",
+                false,
+            ),
+            (
+                FinderDragError::NativeUnavailable,
+                "finder_drag_unavailable",
+                ErrorCategory::Environment,
+                "当前无法启动 Finder 拖动，请重试。",
+                true,
+            ),
+        ] {
+            assert_command_contract(source, code, category, message, retryable);
+        }
+    }
+
+    #[test]
+    fn video_failures_preserve_the_public_command_contract() {
+        for (source, code, category, message, retryable) in [
+            (
+                VideoCommandError::StaleOpenAttempt,
+                "stale_video_open_attempt",
+                ErrorCategory::Conflict,
+                "视频打开请求已被更新的请求替换。",
+                false,
+            ),
+            (
+                VideoCommandError::StaleGeneration,
+                "stale_video_generation",
+                ErrorCategory::Conflict,
+                "视频会话已变化，请重试。",
+                true,
+            ),
+            (
+                VideoCommandError::NoActiveSession,
+                "video_not_open",
+                ErrorCategory::Conflict,
+                "当前没有打开的视频。",
+                false,
+            ),
+            (
+                VideoCommandError::InvalidState,
+                "invalid_video_state",
+                ErrorCategory::Conflict,
+                "当前播放状态不支持此操作。",
+                false,
+            ),
+            (
+                VideoCommandError::InvalidVolume,
+                "invalid_video_volume",
+                ErrorCategory::Validation,
+                "音量必须在 0 到 100 之间。",
+                false,
+            ),
+            (
+                VideoCommandError::EngineUnavailable,
+                "video_engine_unavailable",
+                ErrorCategory::Environment,
+                "视频播放引擎当前不可用。",
+                true,
+            ),
+            (
+                VideoCommandError::CacheUnavailable,
+                "video_cache_unavailable",
+                ErrorCategory::Environment,
+                "视频缓存当前不可用。",
+                true,
+            ),
+            (
+                VideoCommandError::ThumbnailCancelled,
+                "video_thumbnail_cancelled",
+                ErrorCategory::Conflict,
+                "视频缩略图请求已被更新的请求替换。",
+                false,
+            ),
+            (
+                VideoCommandError::ThumbnailUnavailable,
+                "video_thumbnail_unavailable",
+                ErrorCategory::Environment,
+                "视频时间轴缩略图当前不可用。",
+                true,
+            ),
+            (
+                VideoCommandError::InvalidThumbnailRequest,
+                "invalid_video_thumbnail_request",
+                ErrorCategory::Validation,
+                "视频缩略图请求标识无效。",
+                false,
+            ),
+        ] {
+            assert_command_contract(source, code, category, message, retryable);
+        }
+    }
+
+    #[test]
+    fn application_failures_preserve_the_public_command_contract() {
+        assert_command_contract(
+            RuntimeError::NotVideo,
+            "not_video",
+            ErrorCategory::Validation,
+            "所选文件不是视频。",
+            false,
+        );
+        assert_command_contract(
+            ProjectOpenError::AlreadyOpen,
+            "project_already_open",
+            ErrorCategory::Conflict,
+            "请先关闭当前项目。",
+            false,
+        );
+        assert_command_contract(
+            ProjectProbeError::NotDirectory {
+                path: PathBuf::from("/fixture/file"),
+            },
+            "invalid_project_root",
+            ErrorCategory::Validation,
+            "请选择一个可读取的真实文件夹。",
+            true,
+        );
+        assert_command_contract(
+            SessionCacheError::ArtifactTooLarge,
+            "cache_budget_exceeded",
+            ErrorCategory::Environment,
+            "临时预览超出缓存预算。",
+            false,
+        );
+        assert_command_contract(
+            BrowseError::DuplicateSelection,
+            "duplicate_selection",
+            ErrorCategory::Validation,
+            "所选文件不能重复。",
+            false,
+        );
+        assert_command_contract(
+            BrowseIndexError::Unavailable("fixture index failure".into()),
+            "session_index_unavailable",
+            ErrorCategory::Consistency,
+            "项目临时索引不可用，请重新打开项目。",
+            true,
+        );
+        assert_command_contract(
+            MarkerServiceError::EmptyTargets,
+            "invalid_marker_targets",
+            ErrorCategory::Validation,
+            "所选标记目标无效，请刷新后重试。",
+            false,
+        );
+        assert_command_contract(
+            UndoServiceError::StaleSession,
+            "stale_project_session",
+            ErrorCategory::Conflict,
+            "项目会话已变化，请重试。",
+            true,
+        );
+        assert_command_contract(
+            SearchError::InvalidQuery,
+            "invalid_search_query",
+            ErrorCategory::Validation,
+            "搜索条件无效，请调整后重试。",
+            false,
+        );
+        assert_command_contract(
+            ImageError::Unsupported,
+            "image_unavailable",
+            ErrorCategory::Content,
+            "无法预览该图片。",
+            false,
+        );
+        assert_command_contract(
+            ImageArtifactRegistryError::NotAFile,
+            "internal_error",
+            ErrorCategory::Internal,
+            "Viewer 遇到内部错误，请重试。",
+            true,
+        );
+        assert_command_contract(
+            TextPreviewError::EncodingRequired,
+            "text_encoding_required",
+            ErrorCategory::Content,
+            "无法自动识别文本编码，请选择编码后重试。",
+            true,
         );
     }
 }

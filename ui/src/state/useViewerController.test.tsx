@@ -457,6 +457,28 @@ describe('useViewerController M2 coordination', () => {
     expect(result.current.state.workspace).toEqual(contentWorkspace(['restored.jpg']))
   })
 
+  it('preserves the already-open error when the native session cannot be recovered', async () => {
+    const viewer = bridge()
+    vi.mocked(viewer.openProject).mockRejectedValue({
+      code: 'project_already_open',
+      category: 'conflict',
+      userMessage: '请先关闭当前项目。',
+      retryable: false,
+      taskId: null,
+      itemId: null,
+    })
+    vi.mocked(viewer.projectSnapshot).mockRejectedValue(new Error('snapshot unavailable'))
+    const { result } = renderHook(() => useViewerController(viewer))
+
+    await act(async () => {
+      expect(await result.current.openProject('/fixture/project')).toBe('failed')
+    })
+
+    expect(result.current.state.status).toBe('error')
+    expect(result.current.state.project).toBeNull()
+    expect(result.current.state.errorMessage).toBe('请先关闭当前项目。')
+  })
+
   it('keeps the newest folder when older projection success and failure settle late', async () => {
     const viewer = bridge()
     const folders = ['folder-a', 'folder-b', 'folder-c'].map((entityId) => ({

@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://viewer.local/protocol/viewer-review-index-v1.schema.json",
+  "title": "Viewer Review Catalog v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["protocolVersion", "projectId", "streams"],
+  "properties": {
+    "protocolVersion": { "const": "viewer.review/1" },
+    "projectId": { "$ref": "#/$defs/uuid" },
+    "streams": {
+      "type": "array",
+      "maxItems": 10000,
+      "items": { "$ref": "#/$defs/stream" }
+    }
+  },
+  "$defs": {
+    "uuid": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+    },
+    "productionId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+    },
+    "stream": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "reviewStreamId",
+        "completedRoundIds",
+        "latestCompletedRoundId"
+      ],
+      "dependentRequired": {
+        "taskId": ["batchId"],
+        "batchId": ["taskId"]
+      },
+      "properties": {
+        "reviewStreamId": { "$ref": "#/$defs/uuid" },
+        "taskId": { "$ref": "#/$defs/productionId" },
+        "batchId": { "$ref": "#/$defs/productionId" },
+        "completedRoundIds": {
+          "type": "array",
+          "maxItems": 10000,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/uuid" }
+        },
+        "latestCompletedRoundId": {
+          "oneOf": [
+            { "$ref": "#/$defs/uuid" },
+            { "type": "null" }
+          ]
+        }
+      }
+    }
+  }
+}

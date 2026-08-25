@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://viewer.local/protocol/viewer-production-v1.schema.json",
+  "title": "Viewer Production Manifest v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["protocolVersion", "taskId", "batchId", "context", "assets"],
+  "properties": {
+    "protocolVersion": { "const": "viewer.production/1" },
+    "taskId": { "$ref": "#/$defs/productionId" },
+    "batchId": { "$ref": "#/$defs/productionId" },
+    "context": {
+      "type": "object",
+      "maxProperties": 64,
+      "propertyNames": { "$ref": "#/$defs/productionId" },
+      "additionalProperties": { "type": "string", "maxLength": 4096 }
+    },
+    "assets": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 50000,
+      "items": { "$ref": "#/$defs/productionAsset" }
+    }
+  },
+  "$defs": {
+    "productionId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+    },
+    "relativePath": {
+      "type": "string",
+      "minLength": 1,
+      "allOf": [
+        { "pattern": "^[^/\\u0000]+(?:/[^/\\u0000]+)*$" },
+        { "not": { "pattern": "(^|/)(?:\\.|\\.\\.)(/|$)" } },
+        { "not": { "pattern": "(^|/)\\.[vV][iI][eE][wW][eE][rR](/|$)" } }
+      ]
+    },
+    "productionAsset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["producerAssetId", "relativePath", "kind"],
+      "properties": {
+        "producerAssetId": { "$ref": "#/$defs/productionId" },
+        "relativePath": { "$ref": "#/$defs/relativePath" },
+        "kind": { "enum": ["image", "video"] },
+        "parentProducerAssetId": { "$ref": "#/$defs/productionId" },
+        "generation": { "type": "integer", "minimum": 0, "maximum": 4294967295 }
+      }
+    }
+  }
+}

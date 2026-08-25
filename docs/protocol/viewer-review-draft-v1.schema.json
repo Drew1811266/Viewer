@@ -1,0 +1,201 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://viewer.local/protocol/viewer-review-draft-v1.schema.json",
+  "title": "Viewer Review Draft v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "protocolVersion",
+    "status",
+    "projectId",
+    "reviewStreamId",
+    "reviewRoundId",
+    "createdAtMs",
+    "assets",
+    "feedback",
+    "unreviewable"
+  ],
+  "dependentRequired": {
+    "taskId": ["batchId"],
+    "batchId": ["taskId"]
+  },
+  "properties": {
+    "protocolVersion": { "const": "viewer.review/1" },
+    "status": { "const": "draft" },
+    "projectId": { "$ref": "#/$defs/uuid" },
+    "reviewStreamId": { "$ref": "#/$defs/uuid" },
+    "reviewRoundId": { "$ref": "#/$defs/uuid" },
+    "taskId": { "$ref": "#/$defs/productionId" },
+    "batchId": { "$ref": "#/$defs/productionId" },
+    "previousCompletedRoundId": { "$ref": "#/$defs/uuid" },
+    "createdAtMs": { "type": "integer", "minimum": 0, "maximum": 9223372036854775807 },
+    "assets": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 50000,
+      "items": { "$ref": "#/$defs/asset" }
+    },
+    "feedback": {
+      "type": "array",
+      "maxItems": 10000,
+      "items": { "$ref": "#/$defs/feedback" }
+    },
+    "unreviewable": {
+      "type": "array",
+      "maxItems": 50000,
+      "items": { "$ref": "#/$defs/unreviewable" }
+    }
+  },
+  "$defs": {
+    "uuid": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+    },
+    "productionId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+    },
+    "relativePath": {
+      "type": "string",
+      "minLength": 1,
+      "allOf": [
+        { "pattern": "^[^/\\u0000]+(?:/[^/\\u0000]+)*$" },
+        { "not": { "pattern": "(^|/)(?:\\.|\\.\\.)(/|$)" } },
+        { "not": { "pattern": "(^|/)\\.[vV][iI][eE][wW][eE][rR](/|$)" } }
+      ]
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sizeBytes", "modifiedNs"],
+      "properties": {
+        "sizeBytes": { "type": "integer", "minimum": 0 },
+        "modifiedNs": { "type": "string", "pattern": "^-?(?:0|[1-9][0-9]*)$" },
+        "blake3": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    },
+    "media": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "width", "height"],
+          "properties": {
+            "kind": { "const": "image" },
+            "width": { "type": "integer", "minimum": 1, "maximum": 4294967295 },
+            "height": { "type": "integer", "minimum": 1, "maximum": 4294967295 }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind"],
+          "dependentRequired": {
+            "displayWidth": ["displayHeight"],
+            "displayHeight": ["displayWidth"]
+          },
+          "properties": {
+            "kind": { "const": "video" },
+            "durationUs": { "type": "integer", "minimum": 1 },
+            "displayWidth": { "type": "integer", "minimum": 1, "maximum": 4294967295 },
+            "displayHeight": { "type": "integer", "minimum": 1, "maximum": 4294967295 }
+          }
+        }
+      ]
+    },
+    "asset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["assetVersionId", "relativePath", "evidence", "media"],
+      "properties": {
+        "assetVersionId": { "$ref": "#/$defs/uuid" },
+        "relativePath": { "$ref": "#/$defs/relativePath" },
+        "evidence": { "$ref": "#/$defs/evidence" },
+        "media": { "$ref": "#/$defs/media" },
+        "producerAssetId": { "$ref": "#/$defs/productionId" },
+        "parentAssetVersionId": { "$ref": "#/$defs/uuid" }
+      }
+    },
+    "anchor": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind"],
+          "properties": { "kind": { "const": "asset" } }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "x", "y", "width", "height"],
+          "properties": {
+            "kind": { "const": "imageRegion" },
+            "x": { "type": "number", "minimum": 0, "maximum": 1 },
+            "y": { "type": "number", "minimum": 0, "maximum": 1 },
+            "width": { "type": "number", "exclusiveMinimum": 0, "maximum": 1 },
+            "height": { "type": "number", "exclusiveMinimum": 0, "maximum": 1 }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "positionUs"],
+          "properties": {
+            "kind": { "const": "videoPoint" },
+            "positionUs": { "type": "integer", "minimum": 0 }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "startUs", "endUs"],
+          "properties": {
+            "kind": { "const": "videoRange" },
+            "startUs": { "type": "integer", "minimum": 0 },
+            "endUs": { "type": "integer", "minimum": 1 }
+          }
+        }
+      ]
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["assetVersionId", "anchor"],
+      "properties": {
+        "assetVersionId": { "$ref": "#/$defs/uuid" },
+        "anchor": { "$ref": "#/$defs/anchor" }
+      }
+    },
+    "feedback": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["feedbackId", "text", "createdAtMs", "targets"],
+      "properties": {
+        "feedbackId": { "$ref": "#/$defs/uuid" },
+        "text": { "type": "string", "minLength": 1, "maxLength": 65536 },
+        "createdAtMs": { "type": "integer", "minimum": 0, "maximum": 9223372036854775807 },
+        "targets": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 10000,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/target" }
+        }
+      }
+    },
+    "failure": {
+      "enum": ["unsupported", "damaged", "unreadable", "permissionDenied", "missing", "decodeFailed"]
+    },
+    "unreviewable": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["assetVersionId", "failure"],
+      "properties": {
+        "assetVersionId": { "$ref": "#/$defs/uuid" },
+        "failure": { "$ref": "#/$defs/failure" }
+      }
+    }
+  }
+}

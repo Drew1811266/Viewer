@@ -1,6 +1,7 @@
 pub mod image_cache;
 pub mod operation;
 pub mod portable;
+pub mod review;
 pub mod scan;
 pub mod search;
 pub mod session_cache;

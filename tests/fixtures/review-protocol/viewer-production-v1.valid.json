@@ -1,0 +1,24 @@
+{
+  "protocolVersion": "viewer.production/1",
+  "taskId": "task-b",
+  "batchId": "batch-b",
+  "context": {
+    "model": "example-image-model",
+    "prompt": "保留整体光线并生成三个候选素材"
+  },
+  "assets": [
+    {
+      "producerAssetId": "asset-image-1",
+      "relativePath": "outputs/image-1.png",
+      "kind": "image",
+      "generation": 1
+    },
+    {
+      "producerAssetId": "asset-video-1",
+      "relativePath": "outputs/video-1.mp4",
+      "kind": "video",
+      "parentProducerAssetId": "asset-image-1",
+      "generation": 2
+    }
+  ]
+}

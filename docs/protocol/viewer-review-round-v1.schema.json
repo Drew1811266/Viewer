@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://viewer.local/protocol/viewer-review-round-v1.schema.json",
+  "title": "Viewer Completed Review Round v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "protocolVersion",
+    "status",
+    "projectId",
+    "reviewStreamId",
+    "reviewRoundId",
+    "createdAtMs",
+    "completedAtMs",
+    "assets",
+    "feedback",
+    "outcomes"
+  ],
+  "dependentRequired": {
+    "taskId": ["batchId"],
+    "batchId": ["taskId"]
+  },
+  "properties": {
+    "protocolVersion": { "const": "viewer.review/1" },
+    "status": { "const": "completed" },
+    "projectId": { "$ref": "viewer-review-draft-v1.schema.json#/$defs/uuid" },
+    "reviewStreamId": { "$ref": "viewer-review-draft-v1.schema.json#/$defs/uuid" },
+    "reviewRoundId": { "$ref": "viewer-review-draft-v1.schema.json#/$defs/uuid" },
+    "taskId": { "$ref": "viewer-review-draft-v1.schema.json#/$defs/productionId" },
+    "batchId": { "$ref": "viewer-review-draft-v1.schema.json#/$defs/productionId" },
+    "previousCompletedRoundId": { "$ref": "viewer-review-draft-v1.schema.json#/$defs/uuid" },
+    "createdAtMs": { "type": "integer", "minimum": 0, "maximum": 9223372036854775807 },
+    "completedAtMs": { "type": "integer", "minimum": 0, "maximum": 9223372036854775807 },
+    "assets": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 50000,
+      "items": { "$ref": "viewer-review-draft-v1.schema.json#/$defs/asset" }
+    },
+    "feedback": {
+      "type": "array",
+      "maxItems": 10000,
+      "items": { "$ref": "viewer-review-draft-v1.schema.json#/$defs/feedback" }
+    },
+    "outcomes": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 50000,
+      "items": { "$ref": "#/$defs/outcome" }
+    }
+  },
+  "$defs": {
+    "outcome": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["assetVersionId", "kind", "feedbackIds"],
+          "properties": {
+            "assetVersionId": { "$ref": "viewer-review-draft-v1.schema.json#/$defs/uuid" },
+            "kind": { "const": "pass" },
+            "feedbackIds": { "const": [] }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["assetVersionId", "kind", "feedbackIds"],
+          "properties": {
+            "assetVersionId": { "$ref": "viewer-review-draft-v1.schema.json#/$defs/uuid" },
+            "kind": { "const": "revise" },
+            "feedbackIds": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 10000,
+              "uniqueItems": true,
+              "items": { "$ref": "viewer-review-draft-v1.schema.json#/$defs/uuid" }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["assetVersionId", "kind", "feedbackIds", "failure"],
+          "properties": {
+            "assetVersionId": { "$ref": "viewer-review-draft-v1.schema.json#/$defs/uuid" },
+            "kind": { "const": "unreviewable" },
+            "feedbackIds": { "const": [] },
+            "failure": { "$ref": "viewer-review-draft-v1.schema.json#/$defs/failure" }
+          }
+        }
+      ]
+    }
+  }
+}

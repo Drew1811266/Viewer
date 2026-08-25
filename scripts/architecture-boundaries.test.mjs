@@ -1,8 +1,13 @@
 import assert from 'node:assert/strict'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import test from 'node:test'
 
 import {
+  collectProductionUiFiles,
   collectWorkspaceDependencyEdges,
+  findForbiddenTauriImports,
   findForbiddenWorkspaceEdges,
   findWorkspaceDependencyCycles,
   readCargoMetadata,
@@ -226,4 +231,84 @@ test('CLI reports success for an allowed acyclic graph', () => {
   assert.equal(result, 0)
   assert.deepEqual(errors, [])
   assert.deepEqual(output, ['Architecture boundary check passed.\n'])
+})
+
+test('collects only production TypeScript files below ui/src', () => {
+  const root = mkdtempSync(join(tmpdir(), 'viewer-ui-boundary-'))
+  try {
+    for (const directory of [
+      'ui/src/api',
+      'ui/src/acceptanceKit',
+      'ui/src/components',
+      'ui/src/acceptance',
+    ]) {
+      mkdirSync(join(root, directory), { recursive: true })
+    }
+    writeFileSync(join(root, 'ui/src/api/viewer.ts'), 'export {}\n')
+    writeFileSync(join(root, 'ui/src/acceptanceKit/production.ts'), 'export {}\n')
+    writeFileSync(join(root, 'ui/src/components/Card.tsx'), 'export function Card() {}\n')
+    writeFileSync(join(root, 'ui/src/components/Card.test.tsx'), 'test("card", () => {})\n')
+    writeFileSync(join(root, 'ui/src/acceptance/scene.tsx'), 'export function Scene() {}\n')
+    writeFileSync(join(root, 'ui/src/components/legacy.js'), 'export {}\n')
+
+    assert.deepEqual([...collectProductionUiFiles(root).keys()], [
+      'ui/src/acceptanceKit/production.ts',
+      'ui/src/api/viewer.ts',
+      'ui/src/components/Card.tsx',
+    ])
+  } finally {
+    rmSync(root, { recursive: true })
+  }
+})
+
+test('allows the API adapter and non-production harnesses but blocks Tauri imports in UI', () => {
+  const files = new Map([
+    ['ui/src/api/viewer.ts', "import { invoke } from '@tauri-apps/api/core'\n"],
+    ['ui/src/components/Card.tsx', "import { invoke } from '@tauri-apps/api/core'\n"],
+    ['ui/src/components/Lazy.ts', "const api = import('@tauri-apps/plugin-dialog')\n"],
+    ['ui/src/components/SideEffect.ts', "import '@tauri-apps/api/event'\n"],
+    ['ui/src/components/Typed.ts', "import type { Event } from '@tauri-apps/api/event'\n"],
+    ['ui/src/acceptance/scene.tsx', "import { listen } from '@tauri-apps/api/event'\n"],
+    ['ui/src/components/Card.test.tsx', "import { invoke } from '@tauri-apps/api/core'\n"],
+  ])
+
+  assert.deepEqual(findForbiddenTauriImports(files), [
+    { path: 'ui/src/components/Card.tsx', specifier: '@tauri-apps/api/core' },
+    { path: 'ui/src/components/Lazy.ts', specifier: '@tauri-apps/plugin-dialog' },
+    { path: 'ui/src/components/SideEffect.ts', specifier: '@tauri-apps/api/event' },
+    { path: 'ui/src/components/Typed.ts', specifier: '@tauri-apps/api/event' },
+  ])
+})
+
+test('does not treat comments or ordinary strings as imports', () => {
+  const files = new Map([
+    ['ui/src/components/Documentation.ts', [
+      "const example = \"import('@tauri-apps/api/core')\"",
+      "// import { invoke } from '@tauri-apps/api/core'",
+      "/* import '@tauri-apps/plugin-dialog' */",
+      '',
+    ].join('\n')],
+  ])
+
+  assert.deepEqual(findForbiddenTauriImports(files), [])
+})
+
+test('CLI blocks production UI Tauri imports alongside the Rust graph', () => {
+  const output = []
+  const errors = []
+  const result = runArchitectureBoundariesCli({
+    root: '/workspace/viewer',
+    readMetadata: () => metadataWithDependencies({}),
+    collectUiFiles: () => new Map([
+      ['ui/src/components/Card.tsx', "import { invoke } from '@tauri-apps/api/core'\n"],
+    ]),
+    stdout: { write: (value) => output.push(value) },
+    stderr: { write: (value) => errors.push(value) },
+  })
+
+  assert.equal(result, 1)
+  assert.deepEqual(output, [])
+  assert.deepEqual(errors, [
+    'ERROR: forbidden production UI Tauri import: ui/src/components/Card.tsx -> @tauri-apps/api/core\n',
+  ])
 })

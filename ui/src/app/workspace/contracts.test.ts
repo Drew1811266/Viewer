@@ -94,6 +94,20 @@ describe('workspace contracts', () => {
     expect(feedbackSource).not.toMatch(/ViewerBridge|useViewerController/)
   })
 
+  it('keeps composition, organization, and viewing orchestration structurally focused', () => {
+    expect(appSource).toMatch(/WorkspaceProjectView/)
+    expect(appSource).not.toMatch(/ContentBrowser|WorkspaceOperationDialogs/)
+    expect(organizationSource).toMatch(/useOrganizationOperations/)
+    expect(organizationSource).toMatch(/useOrganizationDrag/)
+    expect(organizationSource).toMatch(/useOrganizationShortcuts/)
+    expect(organizationSource).not.toMatch(
+      /useOperationDialogs|useOrganizationPointerDrag|useReviewShortcuts/,
+    )
+    expect(viewingSource).toMatch(/usePreviewCoordinator/)
+    expect(viewingSource).toMatch(/useCompareCoordinator/)
+    expect(viewingSource).not.toMatch(/usePreviewSession/)
+  })
+
   it('keeps child bridge capabilities restricted to their declared ports', () => {
     expect(emptyProjectSource).toMatch(/EmptyProjectPort/)
     expect(emptyProjectSource).not.toMatch(/ViewerBridge/)

@@ -8,4 +8,7 @@ pub use protocol::{
     ReviewProtocolError, decode_catalog, decode_completed, decode_draft,
     decode_production_manifest, encode_catalog, encode_completed, encode_draft,
 };
-pub use repository::{ProjectReviewRepository, ReviewRepositoryAccess};
+pub use repository::{
+    NoReviewRepositoryFaults, ProjectReviewRepository, ReviewRepositoryAccess,
+    ReviewRepositoryFaultInjector, ReviewRepositoryFaultPoint,
+};

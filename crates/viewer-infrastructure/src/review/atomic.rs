@@ -6,6 +6,11 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 static TEMPORARY_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
+pub(super) enum AtomicCreateOnceError {
+    AlreadyExists,
+    Io(io::Error),
+}
+
 pub(super) fn atomic_replace(path: &Path, bytes: &[u8]) -> io::Result<()> {
     let parent = path
         .parent()
@@ -13,6 +18,22 @@ pub(super) fn atomic_replace(path: &Path, bytes: &[u8]) -> io::Result<()> {
     let temporary = create_temporary(parent)?;
     let temporary_path = temporary.0.clone();
     let result = write_and_replace(temporary, path, parent, bytes);
+    if result.is_err() {
+        let _ = fs::remove_file(temporary_path);
+    }
+    result
+}
+
+pub(super) fn atomic_create_once(path: &Path, bytes: &[u8]) -> Result<(), AtomicCreateOnceError> {
+    let parent = path.parent().ok_or_else(|| {
+        AtomicCreateOnceError::Io(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "missing parent directory",
+        ))
+    })?;
+    let temporary = create_temporary(parent).map_err(AtomicCreateOnceError::Io)?;
+    let temporary_path = temporary.0.clone();
+    let result = write_and_create_once(temporary, path, parent, bytes);
     if result.is_err() {
         let _ = fs::remove_file(temporary_path);
     }
@@ -55,6 +76,28 @@ fn write_and_replace(
     drop(file);
     fs::rename(&temporary_path, destination)?;
     sync_directory(parent)
+}
+
+fn write_and_create_once(
+    temporary: (PathBuf, File),
+    destination: &Path,
+    parent: &Path,
+    bytes: &[u8],
+) -> Result<(), AtomicCreateOnceError> {
+    let (temporary_path, mut file) = temporary;
+    file.write_all(bytes).map_err(AtomicCreateOnceError::Io)?;
+    file.sync_all().map_err(AtomicCreateOnceError::Io)?;
+    drop(file);
+    match fs::hard_link(&temporary_path, destination) {
+        Ok(()) => {}
+        Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
+            return Err(AtomicCreateOnceError::AlreadyExists);
+        }
+        Err(error) => return Err(AtomicCreateOnceError::Io(error)),
+    }
+    sync_directory(parent).map_err(AtomicCreateOnceError::Io)?;
+    fs::remove_file(&temporary_path).map_err(AtomicCreateOnceError::Io)?;
+    sync_directory(parent).map_err(AtomicCreateOnceError::Io)
 }
 
 pub(super) fn sync_directory(path: &Path) -> io::Result<()> {

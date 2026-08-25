@@ -28,6 +28,7 @@ type ExpectedCommands = Pick<
   | 'cancelOperation'
   | 'loadOperationResults'
   | 'undoLastOperation'
+  | 'beginFinderDrag'
   | 'setPreviewEntityId'
   | 'setCompareEntityIds'
   | 'consumeContextRepair'

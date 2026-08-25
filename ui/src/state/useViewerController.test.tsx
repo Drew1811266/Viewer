@@ -328,12 +328,32 @@ describe('useViewerController M2 coordination', () => {
       'cancelOperation',
       'loadOperationResults',
       'undoLastOperation',
+      'beginFinderDrag',
       'setPreviewEntityId',
       'setCompareEntityIds',
       'consumeContextRepair',
       'clearCloseBlocked',
       'openPermissionSettings',
     ])
+  })
+
+  it('forwards Finder drag with the active project identity and ignores unavailable input', async () => {
+    const viewer = bridge()
+    const { result } = renderHook(() => useViewerController(viewer))
+
+    await act(() => result.current.beginFinderDrag(['image-1']))
+    expect(viewer.beginFinderDrag).not.toHaveBeenCalled()
+
+    await act(() => result.current.openProject('/fixture/project'))
+    await act(() => result.current.beginFinderDrag([]))
+    expect(viewer.beginFinderDrag).not.toHaveBeenCalled()
+
+    await act(() => result.current.beginFinderDrag(['image-1', 'video-1']))
+    expect(viewer.beginFinderDrag).toHaveBeenCalledWith({
+      sessionId: 'session-1',
+      generation: 1,
+      entityIds: ['image-1', 'video-1'],
+    })
   })
 
   it('keeps the close-blocked subscription outside the project session controller', async () => {

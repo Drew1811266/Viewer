@@ -107,6 +107,19 @@ export function useViewerController(bridge: ViewerBridge) {
     }
   }, [bridge])
 
+  const beginFinderDrag = useCallback(
+    async (entityIds: readonly string[]) => {
+      const project = state.project
+      if (project === null || state.status !== 'active' || entityIds.length === 0) return
+      await bridge.beginFinderDrag({
+        sessionId: project.sessionId,
+        generation: project.generation,
+        entityIds: [...entityIds],
+      })
+    },
+    [bridge, state.project, state.status],
+  )
+
   useLifecycleSubscriptions(core, { receiveOperationProgress, refreshProjection })
 
   return {
@@ -131,6 +144,7 @@ export function useViewerController(bridge: ViewerBridge) {
     cancelOperation,
     loadOperationResults,
     undoLastOperation,
+    beginFinderDrag,
     setPreviewEntityId,
     setCompareEntityIds,
     consumeContextRepair,

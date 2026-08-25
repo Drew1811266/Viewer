@@ -18,6 +18,7 @@ import { useOperationDialogs } from './app/useOperationDialogs'
 import { getPreviewSessionInternals, usePreviewSession } from './app/usePreviewSession'
 import { useRadialMenuContextToken, useRadialMenuSession } from './app/useRadialMenuSession'
 import { createWorkspacePorts } from './app/workspace/ports'
+import { useFeedbackCoordinator } from './app/workspace/useFeedbackCoordinator'
 import { useWorkspaceShellCoordinator } from './app/workspace/useWorkspaceShellCoordinator'
 import BatchRenameDialog from './components/BatchRenameDialog'
 import CloseOperationDialog from './components/CloseOperationDialog'
@@ -27,7 +28,7 @@ import DestinationDialog from './components/DestinationDialog'
 import EmptyProject from './components/EmptyProject'
 import FolderOverview from './components/FolderOverview'
 import FolderTree from './components/FolderTree'
-import GlobalNoticeStack, { type GlobalNotice } from './components/GlobalNoticeStack'
+import GlobalNoticeStack from './components/GlobalNoticeStack'
 import ImagePreview from './components/ImagePreview'
 import InfoOverlay from './components/InfoOverlay'
 import type { Point } from './components/imagePreview/imageGeometry'
@@ -42,7 +43,6 @@ import { buildRadialMenuModel } from './components/radialMenuModel'
 import SearchResults from './components/SearchResults'
 import SearchToolbar from './components/SearchToolbar'
 import SettingsDialog from './components/SettingsDialog'
-import type { TaskFeedback } from './components/TaskBar'
 import TaskBar from './components/TaskBar'
 import TextPreview, { type TextPreviewFiles } from './components/TextPreview'
 import TrashConfirmation from './components/TrashConfirmation'
@@ -170,19 +170,21 @@ function ViewerWorkspace({
       projectAccess: state.project?.access ?? null,
       activeOperationLifecycle: state.operation.active?.lifecycle ?? null,
     })
-  const [thumbnailTask, setThumbnailTask] = useState<TaskFeedback | null>(null)
-  const [textTask, setTextTask] = useState<TaskFeedback | null>(null)
-  const [dismissedTasks, setDismissedTasks] = useState<Set<string>>(() => new Set())
   const [selectedFiles, setSelectedFiles] = useState<BrowserFile[]>([])
   const [finderDragMessage, setFinderDragMessage] = useState<string | null>(null)
+  const feedback = useFeedbackCoordinator({
+    projectSessionId,
+    scan: state.scan,
+    operation: state.operation,
+    projectError: state.errorMessage,
+    finderDragMessage,
+    workspaceActionError: shell.workspaceActionError,
+  })
   const [compareStatus, setCompareStatus] = useState<string | null>(null)
   const [resultsBatchId, setResultsBatchId] = useState<string | null>(null)
   const [previewRepair, setPreviewRepair] = useState<PreviewRepairMemory>(EMPTY_PREVIEW_REPAIR)
   const moreMenuTriggerRef = useRef<HTMLElement>(null)
   useEffect(() => {
-    setThumbnailTask(null)
-    setTextTask(null)
-    setDismissedTasks(new Set())
     setSelectedFiles([])
     setFinderDragMessage(null)
     setCompareStatus(null)
@@ -222,75 +224,6 @@ function ViewerWorkspace({
       bridge.previewText({ entityId: file.entityId, encoding }),
     [bridge],
   )
-  const scanTask = useMemo<TaskFeedback | null>(() => {
-    if (state.scan === null) return null
-    const published = state.scan.publishedFolders + state.scan.publishedFiles
-    const failed = state.scan.totals?.failed ?? state.scan.failedItems.length
-    const requested = state.scan.totals
-      ? state.scan.totals.folders + state.scan.totals.files + failed
-      : published + failed + 1
-    return {
-      id: state.scan.taskId,
-      label: '扫描项目',
-      status:
-        state.scan.phase === 'running'
-          ? 'running'
-          : state.scan.phase === 'cancelled'
-            ? 'cancelled'
-            : failed > 0
-              ? 'failed'
-              : 'complete',
-      requested,
-      completed: state.scan.totals
-        ? state.scan.totals.folders + state.scan.totals.files
-        : published,
-      failed,
-      cancellable: state.scan.phase === 'running',
-      failures: state.scan.failedItems.map((failure) => ({
-        item: failure.relativePath,
-        code: failure.code,
-      })),
-    }
-  }, [state.scan])
-  const operationTask = useMemo<TaskFeedback | null>(() => {
-    const progress = state.operation.active
-    if (progress === null) return null
-    const running = progress.lifecycle !== 'completed'
-    const failures =
-      state.operation.results?.items
-        .filter((item) => item.status === 'failed')
-        .map((item) => ({ item: item.relativePath, code: item.code })) ?? []
-    return {
-      id: progress.batchId,
-      label: operationLabel(state.operation.kind),
-      status: running
-        ? 'running'
-        : progress.failed > 0
-          ? 'failed'
-          : progress.cancelled === progress.requested && progress.requested > 0
-            ? 'cancelled'
-            : 'complete',
-      requested: progress.requested,
-      completed: progress.completed,
-      failed: progress.failed,
-      skipped: progress.skipped,
-      cancelled: progress.cancelled,
-      cancellable: progress.lifecycle === 'queued' || progress.lifecycle === 'running',
-      failures,
-      hasResults: state.operation.results !== null,
-    }
-  }, [state.operation])
-  const visibleTasks = useMemo(() => {
-    const candidates = [scanTask, thumbnailTask, textTask, operationTask].filter(
-      (task): task is TaskFeedback => task !== null,
-    )
-    const running = candidates.some((task) => task.status === 'running')
-    return candidates.filter(
-      (task) =>
-        (!dismissedTasks.has(task.id) || task.status === 'running') &&
-        !(running && task.status === 'complete' && !task.hasResults),
-    )
-  }, [dismissedTasks, operationTask, scanTask, textTask, thumbnailTask])
   const displayedFolderId = state.projectionTransition?.selectedFolderId ?? state.selectedFolderId
   const projectionProgressVisible = useDelayedProjectionProgress(
     state.projectionTransition,
@@ -949,31 +882,6 @@ function ViewerWorkspace({
     shell.recoveryAcknowledgedSessionId !== projectSessionId
       ? state.recoveryReport
       : null
-  const globalNotices: GlobalNotice[] = []
-  if (state.errorMessage) {
-    globalNotices.push({
-      id: `application:${state.errorMessage}`,
-      title: 'Viewer 出现问题',
-      message: state.errorMessage,
-      tone: 'danger',
-    })
-  }
-  if (finderDragMessage) {
-    globalNotices.push({
-      id: `finder-drag:${finderDragMessage}`,
-      title: '无法拖出文件',
-      message: finderDragMessage,
-      tone: 'danger',
-    })
-  }
-  if (shell.workspaceActionError) {
-    globalNotices.push({
-      id: `workspace:${shell.workspaceActionError}`,
-      title: '无法在文件管理器中显示项目',
-      message: shell.workspaceActionError,
-      tone: 'danger',
-    })
-  }
   const viewContext: WorkspaceViewContext = state.search.showResults
     ? {
         kind: 'search',
@@ -1196,7 +1104,7 @@ function ViewerWorkspace({
                       onViewStateChange={shell.setSelectAllRequest}
                       onRequestViewMenu={() => shell.toolbarPopover.setPopoverOpen('view', true)}
                       requestThumbnail={requestThumbnail}
-                      onThumbnailTaskChange={setThumbnailTask}
+                      onThumbnailTaskChange={feedback.setThumbnailTask}
                       onPreview={openPreview}
                       onOpenVideo={openVideoPreview}
                       requestVideoCover={requestVideoCover}
@@ -1247,17 +1155,17 @@ function ViewerWorkspace({
         </section>
       </div>
       <GlobalNoticeStack
-        notices={globalNotices}
+        notices={feedback.globalNotices}
         belowReadOnly={state.project.access === 'read_only'}
       />
       {organizationDragView && <OrganizationDragPreview {...organizationDragView} />}
       <TaskBar
-        tasks={visibleTasks}
+        tasks={feedback.visibleTasks}
         onCancel={(taskId) => {
           if (taskId === state.operation.active?.batchId) void cancelOperation()
           else void cancelTask(taskId)
         }}
-        onDismiss={(taskId) => setDismissedTasks((current) => new Set([...current, taskId]))}
+        onDismiss={feedback.dismissTask}
         onShowResults={(taskId) => setResultsBatchId(taskId)}
       />
       {activeRadialMenu !== null && (
@@ -1317,7 +1225,7 @@ function ViewerWorkspace({
           requestPreview={requestTextPreview}
           openExternalLink={bridge.openExternalLink}
           onClose={closePreview}
-          onTaskChange={setTextTask}
+          onTaskChange={feedback.setTextTask}
         />
       )}
       {activePreviewFile?.kind === 'other' && (
@@ -1430,12 +1338,4 @@ function ViewerWorkspace({
 function parentRelativePath(relativePath: string): string {
   const separator = relativePath.lastIndexOf('/')
   return separator === -1 ? '' : relativePath.slice(0, separator)
-}
-
-function operationLabel(kind: 'rename' | 'copy' | 'move' | 'trash' | null): string {
-  if (kind === 'rename') return '重命名文件'
-  if (kind === 'copy') return '复制文件'
-  if (kind === 'move') return '移动文件'
-  if (kind === 'trash') return '移到废纸篓'
-  return '文件操作'
 }

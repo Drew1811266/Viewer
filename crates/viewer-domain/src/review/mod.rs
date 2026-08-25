@@ -1,10 +1,15 @@
 mod asset;
 mod feedback;
+mod round;
 
 pub use asset::{
     AssetEvidence, AssetVersion, ProductionId, ProductionScope, ReviewAssetKind, ReviewMedia,
 };
 pub use feedback::{Feedback, FeedbackAnchor, FeedbackTarget, NormalizedRect};
+pub use round::{
+    ReviewDraft, ReviewOutcome, ReviewOutcomeKind, ReviewRoundError, ReviewSnapshot,
+    ReviewabilityFailure, UnreviewableAsset,
+};
 
 use thiserror::Error;
 

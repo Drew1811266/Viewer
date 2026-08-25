@@ -16,6 +16,7 @@ import {
   measureFunctions,
   measureSourceFiles,
   runArchitectureTrendsCli,
+  validateTrendClassifications,
 } from './architecture-trends.mjs'
 
 test('measures production and test lines with strict file thresholds and stable sorting', () => {
@@ -434,6 +435,17 @@ const classifications = (overrides = {}) => ({
   ...overrides,
 })
 
+const classificationEntry = (overrides = {}) => ({
+  metric: 'file-over-1000',
+  path: 'ui/src/App.tsx',
+  symbol: '',
+  classification: 'governance-target',
+  owner: 'Viewer maintainers',
+  rationale: 'Workspace orchestration is the approved frontend architecture pilot.',
+  reviewTrigger: 'Re-evaluate when the workspace orchestration plan completes.',
+  ...overrides,
+})
+
 test('warns only after trend thresholds are crossed and uses stable warning order', () => {
   const baseline = trends({
     filesOver1000Lines: [{ path: 'src/existing.ts', lines: 1001 }],
@@ -600,6 +612,70 @@ test('trend checks reject unreadable JSON governance data', () => {
 
   assert.equal(result, 1)
   assert.match(errors.join(''), /ERROR: Unexpected token/)
+})
+
+test('validates one exact classification for every baseline outlier', () => {
+  const baseline = trends({
+    filesOver1000Lines: [{ path: 'ui/src/App.tsx', lines: 1001 }],
+  })
+  const registry = classifications({ entries: [classificationEntry()] })
+
+  assert.deepEqual(validateTrendClassifications(baseline, registry), [])
+  assert.deepEqual(
+    validateTrendClassifications(baseline, { ...registry, entries: [] }),
+    ['missing classification: file-over-1000\0ui/src/App.tsx\0'],
+  )
+})
+
+test('rejects malformed, duplicate, and unmatched trend classifications', () => {
+  const baseline = trends({
+    filesOver1000Lines: [{ path: 'ui/src/App.tsx', lines: 1001 }],
+  })
+  const cases = [
+    {
+      label: 'blank owner',
+      entries: [classificationEntry({ owner: '  ' })],
+      message: 'blank owner: file-over-1000\0ui/src/App.tsx\0',
+    },
+    {
+      label: 'blank rationale',
+      entries: [classificationEntry({ rationale: '' })],
+      message: 'blank rationale: file-over-1000\0ui/src/App.tsx\0',
+    },
+    {
+      label: 'blank review trigger',
+      entries: [classificationEntry({ reviewTrigger: '' })],
+      message: 'blank reviewTrigger: file-over-1000\0ui/src/App.tsx\0',
+    },
+    {
+      label: 'unknown classification',
+      entries: [classificationEntry({ classification: 'deferred' })],
+      message: 'unknown classification: file-over-1000\0ui/src/App.tsx\0',
+    },
+    {
+      label: 'duplicate key',
+      entries: [classificationEntry(), classificationEntry()],
+      message: 'duplicate classification: file-over-1000\0ui/src/App.tsx\0',
+    },
+    {
+      label: 'unmatched key',
+      entries: [
+        classificationEntry(),
+        classificationEntry({ path: 'ui/src/Unexpected.tsx' }),
+      ],
+      message: 'classification without baseline outlier: file-over-1000\0ui/src/Unexpected.tsx\0',
+    },
+  ]
+
+  for (const entry of cases) {
+    assert.ok(
+      validateTrendClassifications(
+        baseline,
+        classifications({ entries: entry.entries }),
+      ).includes(entry.message),
+      entry.label,
+    )
+  }
 })
 
 test('supports importing the architecture trends API without running the CLI', () => {

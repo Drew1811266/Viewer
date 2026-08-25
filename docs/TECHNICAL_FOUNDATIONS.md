@@ -76,6 +76,14 @@ Task 14 的旧 Apple M4 native artifacts 没有绑定 dirty tracked bytes、untr
 
 开发 smoke 在启动前严格验证 inventory/hash/architecture/loader containment。离线状态还必须读取 runner 在 exact audited app 经 canonical macOS `sandbox-exec` deny-network profile 启动、target process 与 stable window 绑定后原子写出的 launch artifact；env bit 或 emitter boolean 不能成为证据。该记录证明 sandbox launch boundary，不冒充独立 kernel packet capture。signed mode 额外 fail-closed 验证 Developer ID、timestamp、nested/app signature、stapler 与 `spctl`；当前用户 scope 明确延期发布签名验收。
 
+### 2.6 架构边界与趋势治理
+
+`viewer-desktop` 是唯一生产组合根；Domain 不依赖上层，Application 只依赖 Domain，Infrastructure 与 macOS Platform 通过端口接入 Application/Domain。`viewer-video-mpv` 是获准被 Infrastructure、macOS Platform 和 Desktop 使用的低层媒体驱动，不在本轮拆分 crate。生产依赖方向与环由 `pnpm architecture:boundaries` 阻断，开发依赖不参与生产方向判断，普通依赖和构建依赖均受检查。
+
+前端只有 `ui/src/api/viewer.ts` 可以直接导入 Tauri 包；生产组件和协调器必须经类型化窄端口使用桥接能力。`pnpm architecture:boundaries` 同时复用既有 IPC、DTO、capability 与 Rust 安全契约测试，不建立第二份协议定义。
+
+规模和复杂度属于维护趋势而不是行为正确性。`pnpm architecture:trends` 只读取 Rust/TypeScript 源码并以警告报告变化，不写基线，也不进入发布阻断逻辑。基线更新必须逐个异常键同步分类、责任人、理由和复核触发条件；不能用路径通配符继承既有批准。
+
 ## 3. 架构方法来源
 
 ### Yazi

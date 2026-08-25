@@ -22,7 +22,9 @@
 
 - Add a design and implementation plan before cross-module behavior changes.
 - Add or supersede an ADR when a public contract, persistence schema or security boundary changes.
-- Check architecture-health output before adding responsibility to a file already above its baseline.
+- Run `pnpm architecture:boundaries` for every dependency-direction, composition-root or UI bridge change; it is a mandatory gate.
+- Review `pnpm architecture:trends` before adding responsibility to an existing outlier; it is non-blocking evidence, not a delivery gate.
+- Change the trend baseline only with a one-to-one update to `docs/quality/architecture-trend-classifications.json`, including owner, rationale and review trigger for every exact key.
 
 ## Change discipline
 

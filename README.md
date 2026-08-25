@@ -112,12 +112,20 @@ Viewer 按职责分离领域规则、应用用例、基础设施、平台适配�
 pnpm verify:clean
 ```
 
-`pnpm quality:report` 仅用于生成可选的持续趋势证据，不是发布或交付门禁。它会
-依次运行 UI 覆盖率、Rust 覆盖率和架构健康报告；使用前先安装独立的 Rust 覆盖率
+`pnpm architecture:boundaries` 是 `pnpm verify:clean` 中的强制确定性门禁，检查 Rust
+生产依赖方向与环、生产 UI 的 Tauri 导入边界，以及既有 IPC、DTO、capability 和安全
+契约。`pnpm architecture:trends` 只报告源码规模、函数长度、决策分数和测试比例趋势，
+不会因趋势恶化阻断交付；基线中的每个异常键都必须在分类注册表中有一条经过评审的
+责任、理由和复核触发条件。
+
+`pnpm quality:report` 仅用于生成可选的持续趋势证据，不是发布或交付门禁。它会依次
+运行 UI 覆盖率、Rust 覆盖率和非阻塞架构趋势报告；使用前先安装独立的 Rust 覆盖率
 工具：
 
 ```bash
 cargo install cargo-llvm-cov --version 0.8.7 --locked
+pnpm architecture:boundaries
+pnpm architecture:trends
 pnpm quality:report
 ```
 

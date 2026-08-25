@@ -1,0 +1,743 @@
+{
+  "schemaVersion": 1,
+  "entries": [
+    {
+      "metric": "file-over-1000",
+      "path": "crates/viewer-infrastructure/src/operation/rename.rs",
+      "symbol": "",
+      "owner": "Viewer maintainers",
+      "classification": "accepted",
+      "rationale": "Existing tested backend responsibility is outside the frontend orchestration pilot.",
+      "reviewTrigger": "Re-evaluate when the named module receives a new responsibility."
+    },
+    {
+      "metric": "file-over-1000",
+      "path": "crates/viewer-infrastructure/src/operation/service/execution.rs",
+      "symbol": "",
+      "owner": "Viewer maintainers",
+      "classification": "accepted",
+      "rationale": "Existing tested backend responsibility is outside the frontend orchestration pilot.",
+      "reviewTrigger": "Re-evaluate when the named module receives a new responsibility."
+    },
+    {
+      "metric": "file-over-1000",
+      "path": "crates/viewer-video-mpv/src/process.rs",
+      "symbol": "",
+      "owner": "Viewer maintainers",
+      "classification": "accepted",
+      "rationale": "Focused media runtime or driver responsibility is outside this frontend refactor.",
+      "reviewTrigger": "Re-evaluate on a media lifecycle or crate-boundary change."
+    },
+    {
+      "metric": "file-over-1000",
+      "path": "src-tauri/src/video_runtime.rs",
+      "symbol": "",
+      "owner": "Viewer maintainers",
+      "classification": "accepted",
+      "rationale": "Focused media runtime or driver responsibility is outside this frontend refactor.",
+      "reviewTrigger": "Re-evaluate on a media lifecycle or crate-boundary change."
+    },
+    {
+      "metric": "file-over-1000",
+      "path": "ui/src/App.tsx",
+      "symbol": "",
+      "owner": "Viewer maintainers",
+      "classification": "governance-target",
+      "rationale": "Workspace orchestration is the approved frontend architecture pilot.",
+      "reviewTrigger": "Re-evaluate when the workspace orchestration plan completes."
+    },
+    {
+      "metric": "function-over-200",
+      "path": "crates/viewer-infrastructure/src/operation/service/execution.rs",
+      "symbol": "execute_copy_route",
+      "owner": "Viewer maintainers",
+      "classification": "accepted",
+      "rationale": "Existing tested backend responsibility is outside the frontend orchestration pilot.",
+      "reviewTrigger": "Re-evaluate when the named module receives a new responsibility."
+    },
+    {
+      "metric": "function-over-200",
+      "path": "crates/viewer-infrastructure/src/search/index/writer.rs",
+      "symbol": "reconcile_subtrees",
+      "owner": "Viewer maintainers",
+      "classification": "accepted",
+      "rationale": "Existing tested backend responsibility is outside the frontend orchestration pilot.",
+      "reviewTrigger": "Re-evaluate when the named module receives a new responsibility."
+    },
+    {
+      "metric": "function-over-200",
+      "path": "src-tauri/src/lib.rs",
+      "symbol": "run",
+      "owner": "Viewer maintainers",
+      "classification": "accepted",
+      "rationale": "Existing tested backend responsibility is outside the frontend orchestration pilot.",
+      "reviewTrigger": "Re-evaluate when the named module receives a new responsibility."
+    },
+    {
+      "metric": "function-over-200",
+      "path": "src-tauri/src/state/session.rs",
+      "symbol": "open_project",
+      "owner": "Viewer maintainers",
+      "classification": "accepted",
+      "rationale": "Existing tested backend responsibility is outside the frontend orchestration pilot.",
+      "reviewTrigger": "Re-evaluate when the named module receives a new responsibility."
+    },
+    {
+      "metric": "function-over-200",
+      "path": "ui/src/acceptance/acceptanceBridge.ts",
+      "symbol": "createAcceptanceBridge",
+      "owner": "Viewer maintainers",
+      "classification": "test-exception",
+      "rationale": "Acceptance-only deterministic harness code is outside the production UI boundary.",
+      "reviewTrigger": "Re-evaluate if this path is imported by production UI."
+    },
+    {
+      "metric": "function-over-200",
+      "path": "ui/src/acceptance/scenes/videoFeasibilityScene.tsx",
+      "symbol": "VideoFeasibilityScene",
+      "owner": "Viewer maintainers",
+      "classification": "test-exception",
+      "rationale": "Acceptance-only deterministic harness code is outside the production UI boundary.",
+      "reviewTrigger": "Re-evaluate if this path is imported by production UI."
+    },
+    {
+      "metric": "function-over-200",
+      "path": "ui/src/App.tsx",
+      "symbol": "ViewerWorkspace",
+      "owner": "Viewer maintainers",
+      "classification": "governance-target",
+      "rationale": "Workspace orchestration is the approved frontend architecture pilot.",
+      "reviewTrigger": "Re-evaluate when the workspace orchestration plan completes."
+    },
+    {
+      "metric": "function-over-200",
+      "path": "ui/src/components/AspectVirtualGrid.tsx",
+      "symbol": "AspectVirtualGrid",
+      "owner": "Viewer maintainers",
+      "classification": "accepted",
+      "rationale": "Existing focused UI or state unit is outside root orchestration.",
+      "reviewTrigger": "Re-evaluate on a new responsibility or a further 20% size or decision increase."
+    },
+    {
+      "metric": "function-over-200",
+      "path": "ui/src/components/ComparePane.tsx",
+      "symbol": "ComparePane",
+      "owner": "Viewer maintainers",
+      "classification": "accepted",
+      "rationale": "Existing focused UI or state unit is outside root orchestration.",
+      "reviewTrigger": "Re-evaluate on a new responsibility or a further 20% size or decision increase."
+    },
+    {
+      "metric": "function-over-200",
+      "path": "ui/src/components/CompareWorkspace.tsx",
+      "symbol": "CompareWorkspace",
+      "owner": "Viewer maintainers",
+      "classification": "accepted",
+      "rationale": "Existing focused UI or state unit is outside root orchestration.",
+      "reviewTrigger": "Re-evaluate on a new responsibility or a further 20% size or decision increase."
+    },
+    {
+      "metric": "function-over-200",
+      "path": "ui/src/components/ContentBrowser.tsx",
+      "symbol": "ContentBrowser",
+      "owner": "Viewer maintainers",
+      "classification": "accepted",
+      "rationale": "Existing focused UI or state unit is outside root orchestration.",
+      "reviewTrigger": "Re-evaluate on a new responsibility or a further 20% size or decision increase."
+    },
+    {
+      "metric": "function-over-200",
+      "path": "ui/src/components/DestinationDialog.tsx",
+      "symbol": "DestinationDialog",
+      "owner": "Viewer maintainers",
+      "classification": "accepted",
+      "rationale": "Existing focused UI or state unit is outside root orchestration.",
+      "reviewTrigger": "Re-evaluate on a new responsibility or a further 20% size or decision increase."
+    },
+    {
+      "metric": "function-over-200",
+      "path": "ui/src/components/FolderFilmstripRow.tsx",
+      "symbol": "FolderFilmstripRow",
+      "owner": "Viewer maintainers",
+      "classification": "accepted",
+      "rationale": "Existing focused UI or state unit is outside root orchestration.",
+      "reviewTrigger": "Re-evaluate on a new responsibility or a further 20% size or decision increase."
+    },
+    {
+      "metric": "function-over-200",
+      "path": "ui/src/components/ImagePreview.tsx",
+      "symbol": "ImagePreview",
+      "owner": "Viewer maintainers",
+      "classification": "accepted",
+      "rationale": "Existing focused UI or state unit is outside root orchestration.",
+      "reviewTrigger": "Re-evaluate on a new responsibility or a further 20% size or decision increase."
+    },
+    {
+      "metric": "function-over-200",
+      "path": "ui/src/components/RadialFileMenu.tsx",
+      "symbol": "RadialFileMenu",
+      "owner": "Viewer maintainers",
+      "classification": "accepted",
+      "rationale": "Existing focused UI or state unit is outside root orchestration.",
+      "reviewTrigger": "Re-evaluate on a new responsibility or a further 20% size or decision increase."
+    },
+    {
+      "metric": "function-over-200",
+      "path": "ui/src/components/SearchToolbar.tsx",
+      "symbol": "SearchToolbar",
+      "owner": "Viewer maintainers",
+      "classification": "accepted",
+      "rationale": "Existing focused UI or state unit is outside root orchestration.",
+      "reviewTrigger": "Re-evaluate on a new responsibility or a further 20% size or decision increase."
+    },
+    {
+      "metric": "function-over-200",
+      "path": "ui/src/components/SettingsDialog.tsx",
+      "symbol": "SettingsDialog",
+      "owner": "Viewer maintainers",
+      "classification": "accepted",
+      "rationale": "Existing focused UI or state unit is outside root orchestration.",
+      "reviewTrigger": "Re-evaluate on a new responsibility or a further 20% size or decision increase."
+    },
+    {
+      "metric": "function-over-200",
+      "path": "ui/src/components/VideoPreview.tsx",
+      "symbol": "VideoPreview",
+      "owner": "Viewer maintainers",
+      "classification": "accepted",
+      "rationale": "Existing focused UI or state unit is outside root orchestration.",
+      "reviewTrigger": "Re-evaluate on a new responsibility or a further 20% size or decision increase."
+    },
+    {
+      "metric": "function-over-200",
+      "path": "ui/src/components/videoPreview/useVideoBridge.ts",
+      "symbol": "useVideoBridge",
+      "owner": "Viewer maintainers",
+      "classification": "accepted",
+      "rationale": "Existing focused UI or state unit is outside root orchestration.",
+      "reviewTrigger": "Re-evaluate on a new responsibility or a further 20% size or decision increase."
+    },
+    {
+      "metric": "function-over-200",
+      "path": "ui/src/components/videoPreview/VideoTimeline.tsx",
+      "symbol": "VideoTimeline",
+      "owner": "Viewer maintainers",
+      "classification": "accepted",
+      "rationale": "Existing focused UI or state unit is outside root orchestration.",
+      "reviewTrigger": "Re-evaluate on a new responsibility or a further 20% size or decision increase."
+    },
+    {
+      "metric": "function-over-200",
+      "path": "ui/src/state/controllers/useOperationController.ts",
+      "symbol": "useOperationController",
+      "owner": "Viewer maintainers",
+      "classification": "accepted",
+      "rationale": "Existing focused UI or state unit is outside root orchestration.",
+      "reviewTrigger": "Re-evaluate on a new responsibility or a further 20% size or decision increase."
+    },
+    {
+      "metric": "function-over-200",
+      "path": "ui/src/state/controllers/useProjectSessionController.ts",
+      "symbol": "useProjectSessionController",
+      "owner": "Viewer maintainers",
+      "classification": "accepted",
+      "rationale": "Existing focused UI or state unit is outside root orchestration.",
+      "reviewTrigger": "Re-evaluate on a new responsibility or a further 20% size or decision increase."
+    },
+    {
+      "metric": "function-over-200",
+      "path": "ui/src/state/controllers/useSearchController.ts",
+      "symbol": "useSearchController",
+      "owner": "Viewer maintainers",
+      "classification": "accepted",
+      "rationale": "Existing focused UI or state unit is outside root orchestration.",
+      "reviewTrigger": "Re-evaluate on a new responsibility or a further 20% size or decision increase."
+    },
+    {
+      "metric": "function-over-200",
+      "path": "ui/src/state/controllers/useSelectionMarkerController.ts",
+      "symbol": "useSelectionMarkerController",
+      "owner": "Viewer maintainers",
+      "classification": "accepted",
+      "rationale": "Existing focused UI or state unit is outside root orchestration.",
+      "reviewTrigger": "Re-evaluate on a new responsibility or a further 20% size or decision increase."
+    },
+    {
+      "metric": "function-decision-score",
+      "path": "crates/viewer-application/src/undo.rs",
+      "symbol": "validate_file_batch",
+      "owner": "Viewer maintainers",
+      "classification": "accepted",
+      "rationale": "Existing tested backend responsibility is outside the frontend orchestration pilot.",
+      "reviewTrigger": "Re-evaluate when the named module receives a new responsibility."
+    },
+    {
+      "metric": "function-decision-score",
+      "path": "crates/viewer-application/src/video.rs",
+      "symbol": "handle_engine_event",
+      "owner": "Viewer maintainers",
+      "classification": "accepted",
+      "rationale": "Focused media runtime or driver responsibility is outside this frontend refactor.",
+      "reviewTrigger": "Re-evaluate on a media lifecycle or crate-boundary change."
+    },
+    {
+      "metric": "function-decision-score",
+      "path": "crates/viewer-infrastructure/src/operation/recovery.rs",
+      "symbol": "recover_copy",
+      "owner": "Viewer maintainers",
+      "classification": "accepted",
+      "rationale": "Existing tested backend responsibility is outside the frontend orchestration pilot.",
+      "reviewTrigger": "Re-evaluate when the named module receives a new responsibility."
+    },
+    {
+      "metric": "function-decision-score",
+      "path": "crates/viewer-infrastructure/src/operation/recovery.rs",
+      "symbol": "recover_trash",
+      "owner": "Viewer maintainers",
+      "classification": "accepted",
+      "rationale": "Existing tested backend responsibility is outside the frontend orchestration pilot.",
+      "reviewTrigger": "Re-evaluate when the named module receives a new responsibility."
+    },
+    {
+      "metric": "function-decision-score",
+      "path": "crates/viewer-infrastructure/src/operation/recovery.rs",
+      "symbol": "recover_rename",
+      "owner": "Viewer maintainers",
+      "classification": "accepted",
+      "rationale": "Existing tested backend responsibility is outside the frontend orchestration pilot.",
+      "reviewTrigger": "Re-evaluate when the named module receives a new responsibility."
+    },
+    {
+      "metric": "function-decision-score",
+      "path": "crates/viewer-infrastructure/src/operation/recovery.rs",
+      "symbol": "recover_replace",
+      "owner": "Viewer maintainers",
+      "classification": "accepted",
+      "rationale": "Existing tested backend responsibility is outside the frontend orchestration pilot.",
+      "reviewTrigger": "Re-evaluate when the named module receives a new responsibility."
+    },
+    {
+      "metric": "function-decision-score",
+      "path": "crates/viewer-infrastructure/src/operation/rename.rs",
+      "symbol": "preflight_preview",
+      "owner": "Viewer maintainers",
+      "classification": "accepted",
+      "rationale": "Existing tested backend responsibility is outside the frontend orchestration pilot.",
+      "reviewTrigger": "Re-evaluate when the named module receives a new responsibility."
+    },
+    {
+      "metric": "function-decision-score",
+      "path": "crates/viewer-infrastructure/src/operation/rename.rs",
+      "symbol": "execute_interruptible_with_expectations",
+      "owner": "Viewer maintainers",
+      "classification": "accepted",
+      "rationale": "Existing tested backend responsibility is outside the frontend orchestration pilot.",
+      "reviewTrigger": "Re-evaluate when the named module receives a new responsibility."
+    },
+    {
+      "metric": "function-decision-score",
+      "path": "crates/viewer-infrastructure/src/operation/service/execution.rs",
+      "symbol": "execute_copy_route",
+      "owner": "Viewer maintainers",
+      "classification": "accepted",
+      "rationale": "Existing tested backend responsibility is outside the frontend orchestration pilot.",
+      "reviewTrigger": "Re-evaluate when the named module receives a new responsibility."
+    },
+    {
+      "metric": "function-decision-score",
+      "path": "crates/viewer-infrastructure/src/operation/service/preflight.rs",
+      "symbol": "prepare_simple",
+      "owner": "Viewer maintainers",
+      "classification": "accepted",
+      "rationale": "Existing tested backend responsibility is outside the frontend orchestration pilot.",
+      "reviewTrigger": "Re-evaluate when the named module receives a new responsibility."
+    },
+    {
+      "metric": "function-decision-score",
+      "path": "crates/viewer-infrastructure/src/scan/walker.rs",
+      "symbol": "snapshot_subtrees",
+      "owner": "Viewer maintainers",
+      "classification": "accepted",
+      "rationale": "Existing tested backend responsibility is outside the frontend orchestration pilot.",
+      "reviewTrigger": "Re-evaluate when the named module receives a new responsibility."
+    },
+    {
+      "metric": "function-decision-score",
+      "path": "crates/viewer-infrastructure/src/search/index/projection.rs",
+      "symbol": "apply_move",
+      "owner": "Viewer maintainers",
+      "classification": "accepted",
+      "rationale": "Existing tested backend responsibility is outside the frontend orchestration pilot.",
+      "reviewTrigger": "Re-evaluate when the named module receives a new responsibility."
+    },
+    {
+      "metric": "function-decision-score",
+      "path": "crates/viewer-infrastructure/src/search/index/projection.rs",
+      "symbol": "validate_move_projections",
+      "owner": "Viewer maintainers",
+      "classification": "accepted",
+      "rationale": "Existing tested backend responsibility is outside the frontend orchestration pilot.",
+      "reviewTrigger": "Re-evaluate when the named module receives a new responsibility."
+    },
+    {
+      "metric": "function-decision-score",
+      "path": "crates/viewer-infrastructure/src/search/index/writer.rs",
+      "symbol": "reconcile_subtrees",
+      "owner": "Viewer maintainers",
+      "classification": "accepted",
+      "rationale": "Existing tested backend responsibility is outside the frontend orchestration pilot.",
+      "reviewTrigger": "Re-evaluate when the named module receives a new responsibility."
+    },
+    {
+      "metric": "function-decision-score",
+      "path": "crates/viewer-platform-macos/src/video/media_worker.rs",
+      "symbol": "run_worker",
+      "owner": "Viewer maintainers",
+      "classification": "accepted",
+      "rationale": "Focused media runtime or driver responsibility is outside this frontend refactor.",
+      "reviewTrigger": "Re-evaluate on a media lifecycle or crate-boundary change."
+    },
+    {
+      "metric": "function-decision-score",
+      "path": "src-tauri/src/lib.rs",
+      "symbol": "run",
+      "owner": "Viewer maintainers",
+      "classification": "accepted",
+      "rationale": "Existing tested backend responsibility is outside the frontend orchestration pilot.",
+      "reviewTrigger": "Re-evaluate when the named module receives a new responsibility."
+    },
+    {
+      "metric": "function-decision-score",
+      "path": "src-tauri/src/state/scan_index.rs",
+      "symbol": "rebuild_derived_nodes_with_text_work",
+      "owner": "Viewer maintainers",
+      "classification": "accepted",
+      "rationale": "Existing tested backend responsibility is outside the frontend orchestration pilot.",
+      "reviewTrigger": "Re-evaluate when the named module receives a new responsibility."
+    },
+    {
+      "metric": "function-decision-score",
+      "path": "src-tauri/src/watcher_runtime.rs",
+      "symbol": "start",
+      "owner": "Viewer maintainers",
+      "classification": "accepted",
+      "rationale": "Existing tested backend responsibility is outside the frontend orchestration pilot.",
+      "reviewTrigger": "Re-evaluate when the named module receives a new responsibility."
+    },
+    {
+      "metric": "function-decision-score",
+      "path": "ui/src/acceptance/scenes/videoFeasibilityScene.tsx",
+      "symbol": "VideoFeasibilityScene",
+      "owner": "Viewer maintainers",
+      "classification": "test-exception",
+      "rationale": "Acceptance-only deterministic harness code is outside the production UI boundary.",
+      "reviewTrigger": "Re-evaluate if this path is imported by production UI."
+    },
+    {
+      "metric": "function-decision-score",
+      "path": "ui/src/acceptance/scenes/viewingScenes.tsx",
+      "symbol": "useMagnifierSceneReady",
+      "owner": "Viewer maintainers",
+      "classification": "test-exception",
+      "rationale": "Acceptance-only deterministic harness code is outside the production UI boundary.",
+      "reviewTrigger": "Re-evaluate if this path is imported by production UI."
+    },
+    {
+      "metric": "function-decision-score",
+      "path": "ui/src/acceptance/scenes/workspaceScenes.tsx",
+      "symbol": "workspaceRecipe",
+      "owner": "Viewer maintainers",
+      "classification": "test-exception",
+      "rationale": "Acceptance-only deterministic harness code is outside the production UI boundary.",
+      "reviewTrigger": "Re-evaluate if this path is imported by production UI."
+    },
+    {
+      "metric": "function-decision-score",
+      "path": "ui/src/acceptance/scenes/workspaceScenes.tsx",
+      "symbol": "prepareFilter",
+      "owner": "Viewer maintainers",
+      "classification": "test-exception",
+      "rationale": "Acceptance-only deterministic harness code is outside the production UI boundary.",
+      "reviewTrigger": "Re-evaluate if this path is imported by production UI."
+    },
+    {
+      "metric": "function-decision-score",
+      "path": "ui/src/App.tsx",
+      "symbol": "ViewerWorkspace",
+      "owner": "Viewer maintainers",
+      "classification": "governance-target",
+      "rationale": "Workspace orchestration is the approved frontend architecture pilot.",
+      "reviewTrigger": "Re-evaluate when the workspace orchestration plan completes."
+    },
+    {
+      "metric": "function-decision-score",
+      "path": "ui/src/App.tsx",
+      "symbol": "handleOrganizationShortcut",
+      "owner": "Viewer maintainers",
+      "classification": "governance-target",
+      "rationale": "Workspace orchestration is the approved frontend architecture pilot.",
+      "reviewTrigger": "Re-evaluate when the workspace orchestration plan completes."
+    },
+    {
+      "metric": "function-decision-score",
+      "path": "ui/src/components/AspectVirtualGrid.tsx",
+      "symbol": "AspectVirtualGrid",
+      "owner": "Viewer maintainers",
+      "classification": "accepted",
+      "rationale": "Existing focused UI or state unit is outside root orchestration.",
+      "reviewTrigger": "Re-evaluate on a new responsibility or a further 20% size or decision increase."
+    },
+    {
+      "metric": "function-decision-score",
+      "path": "ui/src/components/ComparePane.tsx",
+      "symbol": "ComparePane",
+      "owner": "Viewer maintainers",
+      "classification": "accepted",
+      "rationale": "Existing focused UI or state unit is outside root orchestration.",
+      "reviewTrigger": "Re-evaluate on a new responsibility or a further 20% size or decision increase."
+    },
+    {
+      "metric": "function-decision-score",
+      "path": "ui/src/components/CompareVirtualViewport.tsx",
+      "symbol": "CompareVirtualViewport",
+      "owner": "Viewer maintainers",
+      "classification": "accepted",
+      "rationale": "Existing focused UI or state unit is outside root orchestration.",
+      "reviewTrigger": "Re-evaluate on a new responsibility or a further 20% size or decision increase."
+    },
+    {
+      "metric": "function-decision-score",
+      "path": "ui/src/components/ContentBrowser.tsx",
+      "symbol": "ContentBrowser",
+      "owner": "Viewer maintainers",
+      "classification": "accepted",
+      "rationale": "Existing focused UI or state unit is outside root orchestration.",
+      "reviewTrigger": "Re-evaluate on a new responsibility or a further 20% size or decision increase."
+    },
+    {
+      "metric": "function-decision-score",
+      "path": "ui/src/components/contentBrowser/useMeasuredElementHeight.ts",
+      "symbol": "useMeasuredElementHeight",
+      "owner": "Viewer maintainers",
+      "classification": "accepted",
+      "rationale": "Existing focused UI or state unit is outside root orchestration.",
+      "reviewTrigger": "Re-evaluate on a new responsibility or a further 20% size or decision increase."
+    },
+    {
+      "metric": "function-decision-score",
+      "path": "ui/src/components/contentBrowser/VideoCard.tsx",
+      "symbol": "VideoCard",
+      "owner": "Viewer maintainers",
+      "classification": "accepted",
+      "rationale": "Existing focused UI or state unit is outside root orchestration.",
+      "reviewTrigger": "Re-evaluate on a new responsibility or a further 20% size or decision increase."
+    },
+    {
+      "metric": "function-decision-score",
+      "path": "ui/src/components/DestinationDialog.tsx",
+      "symbol": "DestinationDialog",
+      "owner": "Viewer maintainers",
+      "classification": "accepted",
+      "rationale": "Existing focused UI or state unit is outside root orchestration.",
+      "reviewTrigger": "Re-evaluate on a new responsibility or a further 20% size or decision increase."
+    },
+    {
+      "metric": "function-decision-score",
+      "path": "ui/src/components/EmptyProject.tsx",
+      "symbol": "EmptyProject",
+      "owner": "Viewer maintainers",
+      "classification": "accepted",
+      "rationale": "Existing focused UI or state unit is outside root orchestration.",
+      "reviewTrigger": "Re-evaluate on a new responsibility or a further 20% size or decision increase."
+    },
+    {
+      "metric": "function-decision-score",
+      "path": "ui/src/components/FolderFilmstripRow.tsx",
+      "symbol": "FolderFilmstripRow",
+      "owner": "Viewer maintainers",
+      "classification": "accepted",
+      "rationale": "Existing focused UI or state unit is outside root orchestration.",
+      "reviewTrigger": "Re-evaluate on a new responsibility or a further 20% size or decision increase."
+    },
+    {
+      "metric": "function-decision-score",
+      "path": "ui/src/components/ImagePreview.tsx",
+      "symbol": "ImagePreview",
+      "owner": "Viewer maintainers",
+      "classification": "accepted",
+      "rationale": "Existing focused UI or state unit is outside root orchestration.",
+      "reviewTrigger": "Re-evaluate on a new responsibility or a further 20% size or decision increase."
+    },
+    {
+      "metric": "function-decision-score",
+      "path": "ui/src/components/InfoOverlay.tsx",
+      "symbol": "InfoOverlay",
+      "owner": "Viewer maintainers",
+      "classification": "accepted",
+      "rationale": "Existing focused UI or state unit is outside root orchestration.",
+      "reviewTrigger": "Re-evaluate on a new responsibility or a further 20% size or decision increase."
+    },
+    {
+      "metric": "function-decision-score",
+      "path": "ui/src/components/RadialFileMenu.tsx",
+      "symbol": "RadialFileMenu",
+      "owner": "Viewer maintainers",
+      "classification": "accepted",
+      "rationale": "Existing focused UI or state unit is outside root orchestration.",
+      "reviewTrigger": "Re-evaluate on a new responsibility or a further 20% size or decision increase."
+    },
+    {
+      "metric": "function-decision-score",
+      "path": "ui/src/components/RadialFileMenu.tsx",
+      "symbol": "handleKeyDown",
+      "owner": "Viewer maintainers",
+      "classification": "accepted",
+      "rationale": "Existing focused UI or state unit is outside root orchestration.",
+      "reviewTrigger": "Re-evaluate on a new responsibility or a further 20% size or decision increase."
+    },
+    {
+      "metric": "function-decision-score",
+      "path": "ui/src/components/TaskBar.tsx",
+      "symbol": "TaskBar",
+      "owner": "Viewer maintainers",
+      "classification": "accepted",
+      "rationale": "Existing focused UI or state unit is outside root orchestration.",
+      "reviewTrigger": "Re-evaluate on a new responsibility or a further 20% size or decision increase."
+    },
+    {
+      "metric": "function-decision-score",
+      "path": "ui/src/components/TextPreviewPane.tsx",
+      "symbol": "TextPreviewPane",
+      "owner": "Viewer maintainers",
+      "classification": "accepted",
+      "rationale": "Existing focused UI or state unit is outside root orchestration.",
+      "reviewTrigger": "Re-evaluate on a new responsibility or a further 20% size or decision increase."
+    },
+    {
+      "metric": "function-decision-score",
+      "path": "ui/src/components/VideoPreview.tsx",
+      "symbol": "VideoPreview",
+      "owner": "Viewer maintainers",
+      "classification": "accepted",
+      "rationale": "Existing focused UI or state unit is outside root orchestration.",
+      "reviewTrigger": "Re-evaluate on a new responsibility or a further 20% size or decision increase."
+    },
+    {
+      "metric": "function-decision-score",
+      "path": "ui/src/components/videoPreview/useVideoBridge.ts",
+      "symbol": "useVideoBridge",
+      "owner": "Viewer maintainers",
+      "classification": "accepted",
+      "rationale": "Existing focused UI or state unit is outside root orchestration.",
+      "reviewTrigger": "Re-evaluate on a new responsibility or a further 20% size or decision increase."
+    },
+    {
+      "metric": "function-decision-score",
+      "path": "ui/src/components/videoPreview/videoState.ts",
+      "symbol": "reduceVideoState",
+      "owner": "Viewer maintainers",
+      "classification": "accepted",
+      "rationale": "Existing focused UI or state unit is outside root orchestration.",
+      "reviewTrigger": "Re-evaluate on a new responsibility or a further 20% size or decision increase."
+    },
+    {
+      "metric": "function-decision-score",
+      "path": "ui/src/components/videoPreview/VideoTimeline.tsx",
+      "symbol": "VideoTimeline",
+      "owner": "Viewer maintainers",
+      "classification": "accepted",
+      "rationale": "Existing focused UI or state unit is outside root orchestration.",
+      "reviewTrigger": "Re-evaluate on a new responsibility or a further 20% size or decision increase."
+    },
+    {
+      "metric": "function-decision-score",
+      "path": "ui/src/state/compareModel.ts",
+      "symbol": "reduceCompare",
+      "owner": "Viewer maintainers",
+      "classification": "accepted",
+      "rationale": "Existing focused UI or state unit is outside root orchestration.",
+      "reviewTrigger": "Re-evaluate on a new responsibility or a further 20% size or decision increase."
+    },
+    {
+      "metric": "function-decision-score",
+      "path": "ui/src/state/controllers/useOperationController.ts",
+      "symbol": "useOperationController",
+      "owner": "Viewer maintainers",
+      "classification": "accepted",
+      "rationale": "Existing focused UI or state unit is outside root orchestration.",
+      "reviewTrigger": "Re-evaluate on a new responsibility or a further 20% size or decision increase."
+    },
+    {
+      "metric": "function-decision-score",
+      "path": "ui/src/state/controllers/useProjectSessionController.ts",
+      "symbol": "useProjectSessionController",
+      "owner": "Viewer maintainers",
+      "classification": "accepted",
+      "rationale": "Existing focused UI or state unit is outside root orchestration.",
+      "reviewTrigger": "Re-evaluate on a new responsibility or a further 20% size or decision increase."
+    },
+    {
+      "metric": "function-decision-score",
+      "path": "ui/src/state/controllers/useSearchController.ts",
+      "symbol": "useSearchController",
+      "owner": "Viewer maintainers",
+      "classification": "accepted",
+      "rationale": "Existing focused UI or state unit is outside root orchestration.",
+      "reviewTrigger": "Re-evaluate on a new responsibility or a further 20% size or decision increase."
+    },
+    {
+      "metric": "function-decision-score",
+      "path": "ui/src/state/controllers/useSelectionMarkerController.ts",
+      "symbol": "useSelectionMarkerController",
+      "owner": "Viewer maintainers",
+      "classification": "accepted",
+      "rationale": "Existing focused UI or state unit is outside root orchestration.",
+      "reviewTrigger": "Re-evaluate on a new responsibility or a further 20% size or decision increase."
+    },
+    {
+      "metric": "function-decision-score",
+      "path": "ui/src/state/reducers/operationReducer.ts",
+      "symbol": "reduceOperationAction",
+      "owner": "Viewer maintainers",
+      "classification": "accepted",
+      "rationale": "Existing focused UI or state unit is outside root orchestration.",
+      "reviewTrigger": "Re-evaluate on a new responsibility or a further 20% size or decision increase."
+    },
+    {
+      "metric": "function-decision-score",
+      "path": "ui/src/state/reducers/projectReducer.ts",
+      "symbol": "reduceProjectAction",
+      "owner": "Viewer maintainers",
+      "classification": "accepted",
+      "rationale": "Existing focused UI or state unit is outside root orchestration.",
+      "reviewTrigger": "Re-evaluate on a new responsibility or a further 20% size or decision increase."
+    },
+    {
+      "metric": "function-decision-score",
+      "path": "ui/src/state/reducers/searchReducer.ts",
+      "symbol": "reduceSearchAction",
+      "owner": "Viewer maintainers",
+      "classification": "accepted",
+      "rationale": "Existing focused UI or state unit is outside root orchestration.",
+      "reviewTrigger": "Re-evaluate on a new responsibility or a further 20% size or decision increase."
+    },
+    {
+      "metric": "function-decision-score",
+      "path": "ui/src/state/reducers/workspaceReducer.ts",
+      "symbol": "reduceWorkspaceAction",
+      "owner": "Viewer maintainers",
+      "classification": "accepted",
+      "rationale": "Existing focused UI or state unit is outside root orchestration.",
+      "reviewTrigger": "Re-evaluate on a new responsibility or a further 20% size or decision increase."
+    },
+    {
+      "metric": "function-decision-score",
+      "path": "ui/src/state/useOrganizationPointerDrag.ts",
+      "symbol": "useOrganizationPointerDrag",
+      "owner": "Viewer maintainers",
+      "classification": "accepted",
+      "rationale": "Existing focused UI or state unit is outside root orchestration.",
+      "reviewTrigger": "Re-evaluate on a new responsibility or a further 20% size or decision increase."
+    }
+  ]
+}

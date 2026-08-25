@@ -601,6 +601,12 @@ export function compareArchitectureTrends(current, baseline) {
 const classificationKey = ({ metric, path, symbol = '' }) =>
   `${metric}\0${path}\0${symbol}`
 
+const ALLOWED_TREND_CLASSIFICATIONS = new Set([
+  'accepted',
+  'governance-target',
+  'test-exception',
+])
+
 const baselineClassificationKeys = (baseline) => [
   ...baseline.filesOver1000Lines.map(({ path }) => classificationKey({
     metric: 'file-over-1000',
@@ -618,7 +624,7 @@ const baselineClassificationKeys = (baseline) => [
   })),
 ].sort()
 
-const validateGovernanceData = (baseline, registry) => {
+export function validateTrendClassifications(baseline, registry) {
   if (baseline?.schemaVersion !== SCHEMA_VERSION) {
     return [`trend baseline schema must be version ${SCHEMA_VERSION}`]
   }
@@ -634,13 +640,25 @@ const validateGovernanceData = (baseline, registry) => {
   }
 
   const errors = []
+  const baselineKeys = new Set(baselineClassificationKeys(baseline))
   const keys = new Set()
   for (const entry of registry.entries) {
     const key = classificationKey(entry)
     if (keys.has(key)) errors.push(`duplicate classification: ${key}`)
     keys.add(key)
+    if (!ALLOWED_TREND_CLASSIFICATIONS.has(entry.classification)) {
+      errors.push(`unknown classification: ${key}`)
+    }
+    for (const field of ['owner', 'rationale', 'reviewTrigger']) {
+      if (typeof entry[field] !== 'string' || entry[field].trim() === '') {
+        errors.push(`blank ${field}: ${key}`)
+      }
+    }
+    if (!baselineKeys.has(key)) {
+      errors.push(`classification without baseline outlier: ${key}`)
+    }
   }
-  for (const key of baselineClassificationKeys(baseline)) {
+  for (const key of baselineKeys) {
     if (!keys.has(key)) errors.push(`missing classification: ${key}`)
   }
   return errors
@@ -684,7 +702,7 @@ export function runArchitectureTrendsCli(
     return 1
   }
 
-  const governanceErrors = validateGovernanceData(baseline, registry)
+  const governanceErrors = validateTrendClassifications(baseline, registry)
   if (governanceErrors.length > 0) {
     for (const error of governanceErrors) stderr.write(`ERROR: ${error}\n`)
     return 1

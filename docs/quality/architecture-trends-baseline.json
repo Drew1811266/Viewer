@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
-  "productionLines": 38323,
-  "testLines": 12960,
-  "testToProductionRatio": 0.33817811757952143,
+  "productionLines": 65398,
+  "testLines": 37591,
+  "testToProductionRatio": 0.5748035108107281,
   "filesOver1000Lines": [
     {
       "path": "crates/viewer-infrastructure/src/operation/rename.rs",
@@ -13,8 +13,16 @@
       "lines": 1056
     },
     {
+      "path": "crates/viewer-video-mpv/src/process.rs",
+      "lines": 1685
+    },
+    {
+      "path": "src-tauri/src/video_runtime.rs",
+      "lines": 1081
+    },
+    {
       "path": "ui/src/App.tsx",
-      "lines": 1138
+      "lines": 1480
     }
   ],
   "functionsOver200Lines": [
@@ -26,60 +34,137 @@
       "decisionScore": 20
     },
     {
+      "path": "crates/viewer-infrastructure/src/search/index/writer.rs",
+      "name": "reconcile_subtrees",
+      "startLine": 483,
+      "lines": 208,
+      "decisionScore": 16
+    },
+    {
+      "path": "src-tauri/src/lib.rs",
+      "name": "run",
+      "startLine": 193,
+      "lines": 255,
+      "decisionScore": 19
+    },
+    {
+      "path": "src-tauri/src/state/session.rs",
+      "name": "open_project",
+      "startLine": 120,
+      "lines": 203,
+      "decisionScore": 12
+    },
+    {
+      "path": "ui/src/acceptance/acceptanceBridge.ts",
+      "name": "createAcceptanceBridge",
+      "startLine": 17,
+      "lines": 245,
+      "decisionScore": 10
+    },
+    {
+      "path": "ui/src/acceptance/scenes/videoFeasibilityScene.tsx",
+      "name": "VideoFeasibilityScene",
+      "startLine": 69,
+      "lines": 468,
+      "decisionScore": 38
+    },
+    {
       "path": "ui/src/App.tsx",
-      "name": "App",
-      "startLine": 50,
-      "lines": 1072,
-      "decisionScore": 158
+      "name": "ViewerWorkspace",
+      "startLine": 94,
+      "lines": 1374,
+      "decisionScore": 190
+    },
+    {
+      "path": "ui/src/components/AspectVirtualGrid.tsx",
+      "name": "AspectVirtualGrid",
+      "startLine": 72,
+      "lines": 358,
+      "decisionScore": 43
     },
     {
       "path": "ui/src/components/ComparePane.tsx",
       "name": "ComparePane",
-      "startLine": 54,
-      "lines": 243,
-      "decisionScore": 25
+      "startLine": 57,
+      "lines": 270,
+      "decisionScore": 32
     },
     {
       "path": "ui/src/components/CompareWorkspace.tsx",
       "name": "CompareWorkspace",
-      "startLine": 45,
-      "lines": 226,
-      "decisionScore": 11
+      "startLine": 43,
+      "lines": 354,
+      "decisionScore": 14
     },
     {
       "path": "ui/src/components/ContentBrowser.tsx",
       "name": "ContentBrowser",
+      "startLine": 80,
+      "lines": 666,
+      "decisionScore": 32
+    },
+    {
+      "path": "ui/src/components/DestinationDialog.tsx",
+      "name": "DestinationDialog",
+      "startLine": 30,
+      "lines": 209,
+      "decisionScore": 16
+    },
+    {
+      "path": "ui/src/components/FolderFilmstripRow.tsx",
+      "name": "FolderFilmstripRow",
       "startLine": 44,
-      "lines": 471,
-      "decisionScore": 17
+      "lines": 313,
+      "decisionScore": 40
     },
     {
       "path": "ui/src/components/ImagePreview.tsx",
       "name": "ImagePreview",
-      "startLine": 19,
-      "lines": 223,
-      "decisionScore": 21
+      "startLine": 47,
+      "lines": 459,
+      "decisionScore": 57
     },
     {
       "path": "ui/src/components/RadialFileMenu.tsx",
       "name": "RadialFileMenu",
-      "startLine": 39,
-      "lines": 354,
-      "decisionScore": 46
+      "startLine": 42,
+      "lines": 415,
+      "decisionScore": 56
     },
     {
       "path": "ui/src/components/SearchToolbar.tsx",
       "name": "SearchToolbar",
-      "startLine": 45,
-      "lines": 261,
-      "decisionScore": 10
+      "startLine": 53,
+      "lines": 341,
+      "decisionScore": 14
     },
     {
-      "path": "ui/src/components/VirtualGrid.tsx",
-      "name": "VirtualGrid",
-      "startLine": 58,
-      "lines": 292,
-      "decisionScore": 24
+      "path": "ui/src/components/SettingsDialog.tsx",
+      "name": "SettingsDialog",
+      "startLine": 46,
+      "lines": 216,
+      "decisionScore": 12
+    },
+    {
+      "path": "ui/src/components/VideoPreview.tsx",
+      "name": "VideoPreview",
+      "startLine": 40,
+      "lines": 222,
+      "decisionScore": 17
+    },
+    {
+      "path": "ui/src/components/videoPreview/useVideoBridge.ts",
+      "name": "useVideoBridge",
+      "startLine": 67,
+      "lines": 335,
+      "decisionScore": 45
+    },
+    {
+      "path": "ui/src/components/videoPreview/VideoTimeline.tsx",
+      "name": "VideoTimeline",
+      "startLine": 36,
+      "lines": 257,
+      "decisionScore": 20
     },
     {
       "path": "ui/src/state/controllers/useOperationController.ts",
@@ -92,8 +177,8 @@
       "path": "ui/src/state/controllers/useProjectSessionController.ts",
       "name": "useProjectSessionController",
       "startLine": 54,
-      "lines": 339,
-      "decisionScore": 40
+      "lines": 372,
+      "decisionScore": 53
     },
     {
       "path": "ui/src/state/controllers/useSearchController.ts",
@@ -117,6 +202,13 @@
       "startLine": 366,
       "lines": 82,
       "decisionScore": 16
+    },
+    {
+      "path": "crates/viewer-application/src/video.rs",
+      "name": "handle_engine_event",
+      "startLine": 294,
+      "lines": 144,
+      "decisionScore": 20
     },
     {
       "path": "crates/viewer-infrastructure/src/operation/recovery.rs",
@@ -177,140 +269,238 @@
     {
       "path": "crates/viewer-infrastructure/src/scan/walker.rs",
       "name": "snapshot_subtrees",
-      "startLine": 125,
+      "startLine": 127,
       "lines": 85,
       "decisionScore": 16
     },
     {
       "path": "crates/viewer-infrastructure/src/search/index/projection.rs",
       "name": "apply_move",
-      "startLine": 134,
-      "lines": 151,
-      "decisionScore": 20
+      "startLine": 158,
+      "lines": 162,
+      "decisionScore": 21
     },
     {
       "path": "crates/viewer-infrastructure/src/search/index/projection.rs",
       "name": "validate_move_projections",
-      "startLine": 417,
+      "startLine": 452,
       "lines": 55,
       "decisionScore": 16
     },
     {
-      "path": "src-tauri/src/lib.rs",
-      "name": "run",
-      "startLine": 171,
-      "lines": 159,
+      "path": "crates/viewer-infrastructure/src/search/index/writer.rs",
+      "name": "reconcile_subtrees",
+      "startLine": 483,
+      "lines": 208,
       "decisionScore": 16
     },
     {
+      "path": "crates/viewer-platform-macos/src/video/media_worker.rs",
+      "name": "run_worker",
+      "startLine": 213,
+      "lines": 109,
+      "decisionScore": 20
+    },
+    {
+      "path": "src-tauri/src/lib.rs",
+      "name": "run",
+      "startLine": 193,
+      "lines": 255,
+      "decisionScore": 19
+    },
+    {
       "path": "src-tauri/src/state/scan_index.rs",
-      "name": "rebuild_derived_nodes",
-      "startLine": 268,
-      "lines": 108,
-      "decisionScore": 23
+      "name": "rebuild_derived_nodes_with_text_work",
+      "startLine": 345,
+      "lines": 129,
+      "decisionScore": 26
     },
     {
       "path": "src-tauri/src/watcher_runtime.rs",
       "name": "start",
-      "startLine": 67,
-      "lines": 110,
-      "decisionScore": 17
+      "startLine": 72,
+      "lines": 121,
+      "decisionScore": 18
+    },
+    {
+      "path": "ui/src/acceptance/scenes/videoFeasibilityScene.tsx",
+      "name": "VideoFeasibilityScene",
+      "startLine": 69,
+      "lines": 468,
+      "decisionScore": 38
+    },
+    {
+      "path": "ui/src/acceptance/scenes/viewingScenes.tsx",
+      "name": "useMagnifierSceneReady",
+      "startLine": 262,
+      "lines": 76,
+      "decisionScore": 16
+    },
+    {
+      "path": "ui/src/acceptance/scenes/workspaceScenes.tsx",
+      "name": "workspaceRecipe",
+      "startLine": 265,
+      "lines": 142,
+      "decisionScore": 70
+    },
+    {
+      "path": "ui/src/acceptance/scenes/workspaceScenes.tsx",
+      "name": "prepareFilter",
+      "startLine": 471,
+      "lines": 40,
+      "decisionScore": 19
     },
     {
       "path": "ui/src/App.tsx",
-      "name": "App",
-      "startLine": 50,
-      "lines": 1072,
-      "decisionScore": 158
+      "name": "ViewerWorkspace",
+      "startLine": 94,
+      "lines": 1374,
+      "decisionScore": 190
     },
     {
       "path": "ui/src/App.tsx",
       "name": "handleOrganizationShortcut",
-      "startLine": 673,
-      "lines": 42,
-      "decisionScore": 26
+      "startLine": 835,
+      "lines": 48,
+      "decisionScore": 30
+    },
+    {
+      "path": "ui/src/components/AspectVirtualGrid.tsx",
+      "name": "AspectVirtualGrid",
+      "startLine": 72,
+      "lines": 358,
+      "decisionScore": 43
     },
     {
       "path": "ui/src/components/ComparePane.tsx",
       "name": "ComparePane",
-      "startLine": 54,
-      "lines": 243,
+      "startLine": 57,
+      "lines": 270,
+      "decisionScore": 32
+    },
+    {
+      "path": "ui/src/components/CompareVirtualViewport.tsx",
+      "name": "CompareVirtualViewport",
+      "startLine": 16,
+      "lines": 161,
       "decisionScore": 25
     },
     {
       "path": "ui/src/components/ContentBrowser.tsx",
       "name": "ContentBrowser",
-      "startLine": 44,
-      "lines": 471,
-      "decisionScore": 17
+      "startLine": 80,
+      "lines": 666,
+      "decisionScore": 32
     },
     {
-      "path": "ui/src/components/ContentBrowser.tsx",
-      "name": "handleKeyboard",
-      "startLine": 354,
-      "lines": 48,
-      "decisionScore": 18
+      "path": "ui/src/components/contentBrowser/useMeasuredElementHeight.ts",
+      "name": "useMeasuredElementHeight",
+      "startLine": 11,
+      "lines": 67,
+      "decisionScore": 16
+    },
+    {
+      "path": "ui/src/components/contentBrowser/VideoCard.tsx",
+      "name": "VideoCard",
+      "startLine": 23,
+      "lines": 125,
+      "decisionScore": 16
     },
     {
       "path": "ui/src/components/DestinationDialog.tsx",
       "name": "DestinationDialog",
-      "startLine": 25,
-      "lines": 181,
+      "startLine": 30,
+      "lines": 209,
       "decisionScore": 16
+    },
+    {
+      "path": "ui/src/components/EmptyProject.tsx",
+      "name": "EmptyProject",
+      "startLine": 16,
+      "lines": 185,
+      "decisionScore": 22
     },
     {
       "path": "ui/src/components/FolderFilmstripRow.tsx",
       "name": "FolderFilmstripRow",
-      "startLine": 23,
-      "lines": 177,
-      "decisionScore": 24
+      "startLine": 44,
+      "lines": 313,
+      "decisionScore": 40
     },
     {
       "path": "ui/src/components/ImagePreview.tsx",
       "name": "ImagePreview",
-      "startLine": 19,
-      "lines": 223,
-      "decisionScore": 21
+      "startLine": 47,
+      "lines": 459,
+      "decisionScore": 57
     },
     {
       "path": "ui/src/components/InfoOverlay.tsx",
       "name": "InfoOverlay",
-      "startLine": 10,
-      "lines": 54,
+      "startLine": 13,
+      "lines": 42,
       "decisionScore": 16
     },
     {
       "path": "ui/src/components/RadialFileMenu.tsx",
       "name": "RadialFileMenu",
-      "startLine": 39,
-      "lines": 354,
-      "decisionScore": 46
+      "startLine": 42,
+      "lines": 415,
+      "decisionScore": 56
     },
     {
       "path": "ui/src/components/RadialFileMenu.tsx",
       "name": "handleKeyDown",
-      "startLine": 214,
+      "startLine": 261,
       "lines": 38,
       "decisionScore": 16
     },
     {
       "path": "ui/src/components/TaskBar.tsx",
       "name": "TaskBar",
-      "startLine": 26,
-      "lines": 160,
-      "decisionScore": 32
+      "startLine": 29,
+      "lines": 165,
+      "decisionScore": 25
     },
     {
-      "path": "ui/src/components/VirtualGrid.tsx",
-      "name": "VirtualGrid",
-      "startLine": 58,
-      "lines": 292,
-      "decisionScore": 24
+      "path": "ui/src/components/TextPreviewPane.tsx",
+      "name": "TextPreviewPane",
+      "startLine": 18,
+      "lines": 133,
+      "decisionScore": 18
+    },
+    {
+      "path": "ui/src/components/VideoPreview.tsx",
+      "name": "VideoPreview",
+      "startLine": 40,
+      "lines": 222,
+      "decisionScore": 17
+    },
+    {
+      "path": "ui/src/components/videoPreview/useVideoBridge.ts",
+      "name": "useVideoBridge",
+      "startLine": 67,
+      "lines": 335,
+      "decisionScore": 45
+    },
+    {
+      "path": "ui/src/components/videoPreview/videoState.ts",
+      "name": "reduceVideoState",
+      "startLine": 37,
+      "lines": 52,
+      "decisionScore": 18
+    },
+    {
+      "path": "ui/src/components/videoPreview/VideoTimeline.tsx",
+      "name": "VideoTimeline",
+      "startLine": 36,
+      "lines": 257,
+      "decisionScore": 20
     },
     {
       "path": "ui/src/state/compareModel.ts",
       "name": "reduceCompare",
-      "startLine": 104,
+      "startLine": 89,
       "lines": 114,
       "decisionScore": 23
     },
@@ -325,8 +515,8 @@
       "path": "ui/src/state/controllers/useProjectSessionController.ts",
       "name": "useProjectSessionController",
       "startLine": 54,
-      "lines": 339,
-      "decisionScore": 40
+      "lines": 372,
+      "decisionScore": 53
     },
     {
       "path": "ui/src/state/controllers/useSearchController.ts",
@@ -366,9 +556,9 @@
     {
       "path": "ui/src/state/reducers/workspaceReducer.ts",
       "name": "reduceWorkspaceAction",
-      "startLine": 5,
-      "lines": 77,
-      "decisionScore": 24
+      "startLine": 6,
+      "lines": 92,
+      "decisionScore": 27
     },
     {
       "path": "ui/src/state/useOrganizationPointerDrag.ts",
@@ -376,78 +566,6 @@
       "startLine": 68,
       "lines": 200,
       "decisionScore": 33
-    }
-  ],
-  "workspaceDependencyEdges": [
-    {
-      "from": "viewer-application",
-      "to": "viewer-domain",
-      "kind": "normal"
-    },
-    {
-      "from": "viewer-desktop",
-      "to": "viewer-application",
-      "kind": "normal"
-    },
-    {
-      "from": "viewer-desktop",
-      "to": "viewer-domain",
-      "kind": "normal"
-    },
-    {
-      "from": "viewer-desktop",
-      "to": "viewer-infrastructure",
-      "kind": "normal"
-    },
-    {
-      "from": "viewer-desktop",
-      "to": "viewer-platform-macos",
-      "kind": "normal"
-    },
-    {
-      "from": "viewer-infrastructure",
-      "to": "viewer-application",
-      "kind": "normal"
-    },
-    {
-      "from": "viewer-infrastructure",
-      "to": "viewer-domain",
-      "kind": "normal"
-    },
-    {
-      "from": "viewer-infrastructure",
-      "to": "viewer-test-support",
-      "kind": "dev"
-    },
-    {
-      "from": "viewer-platform-macos",
-      "to": "viewer-application",
-      "kind": "normal"
-    },
-    {
-      "from": "viewer-platform-macos",
-      "to": "viewer-domain",
-      "kind": "normal"
-    },
-    {
-      "from": "viewer-platform-macos",
-      "to": "viewer-infrastructure",
-      "kind": "dev"
-    },
-    {
-      "from": "viewer-platform-macos",
-      "to": "viewer-test-support",
-      "kind": "dev"
-    },
-    {
-      "from": "viewer-test-support",
-      "to": "viewer-application",
-      "kind": "normal"
-    },
-    {
-      "from": "viewer-test-support",
-      "to": "viewer-domain",
-      "kind": "normal"
     }
   ]
 }

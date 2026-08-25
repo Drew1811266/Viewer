@@ -1400,8 +1400,16 @@ test('quality reports are continuous trends and not a release gate', async () =>
   const packageSource = await read('package.json')
   const packageJson = JSON.parse(packageSource)
   assert.equal(
-    packageJson.scripts['quality:report'],
-    'pnpm coverage:ui && pnpm coverage:rust && pnpm architecture:health',
+    packageJson.scripts['architecture:trends'],
+    'node scripts/architecture-trends.mjs --check docs/quality/architecture-trends-baseline.json docs/quality/architecture-trend-classifications.json',
   )
-  assert.doesNotMatch(packageJson.scripts.verify, /coverage|quality:report|release|M4/)
+  assert.equal(
+    packageJson.scripts['quality:report'],
+    'pnpm coverage:ui && pnpm coverage:rust && pnpm architecture:trends',
+  )
+  assert.match(packageJson.scripts.quality, /pnpm architecture:boundaries/)
+  assert.doesNotMatch(
+    packageJson.scripts.verify,
+    /coverage|quality:report|architecture:trends|release|M4/,
+  )
 })

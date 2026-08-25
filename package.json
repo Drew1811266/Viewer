@@ -15,6 +15,8 @@
     "test:ui": "pnpm --dir ui test",
     "coverage:ui": "pnpm --dir ui test:coverage && node scripts/coverage-baseline.mjs --check target/coverage/ui/coverage-summary.json docs/quality/ui-coverage-baseline.json",
     "coverage:rust": "./scripts/run-rust-coverage.sh && node scripts/rust-coverage-baseline.mjs --check target/coverage/rust.json docs/quality/rust-coverage-baseline.json",
+    "architecture:contracts": "node --test --test-name-pattern='desktop capability and network boundary remains frozen' scripts/repository-policy.test.mjs && pnpm --dir ui exec vitest run src/api/viewer.test.ts src/state/viewerControllerContract.test.tsx && cargo test --locked -p viewer-desktop --test security_boundaries --test video_security_boundaries",
+    "architecture:boundaries": "node scripts/architecture-boundaries.mjs && pnpm architecture:contracts",
     "architecture:health": "node scripts/architecture-health.mjs --check docs/quality/architecture-health-baseline.json",
     "quality:report": "pnpm coverage:ui && pnpm coverage:rust && pnpm architecture:health",
     "dependencies:exceptions": "node scripts/check-dependency-exceptions.mjs",
@@ -30,7 +32,7 @@
     "video:licenses:verify": "scripts/video/verify-licenses.sh",
     "test:video:packaging": "node --test scripts/video/runtime-lock.test.mjs scripts/video/runtime-verifier.test.mjs scripts/video/release-packaging.test.mjs",
     "test:policy": "node --test scripts/repository-policy.test.mjs scripts/scope-coverage.test.mjs && node scripts/check-scope-coverage.mjs",
-    "quality": "pnpm test:policy && pnpm test:video:packaging && node --test scripts/verify-clean.test.mjs && pnpm --dir ui check && pnpm --dir ui test && pnpm --dir ui build && cargo fmt --check && cargo clippy --locked --workspace --all-targets -- -D warnings && cargo test --locked --workspace",
+    "quality": "pnpm test:policy && pnpm architecture:boundaries && pnpm test:video:packaging && node --test scripts/verify-clean.test.mjs && pnpm --dir ui check && pnpm --dir ui test && pnpm --dir ui build && cargo fmt --check && cargo clippy --locked --workspace --all-targets -- -D warnings && cargo test --locked --workspace",
     "security": "./scripts/check-tauri-security.sh && cargo deny --offline --locked check bans licenses sources && node scripts/check-npm-licenses.mjs && pnpm video:licenses:verify",
     "verify": "pnpm quality && pnpm security",
     "verify:clean": "node scripts/verify-clean.mjs"

@@ -827,7 +827,7 @@ test('third-party notices record the inherited locked dispatch2 dependency', asy
   )
 })
 
-test('M3 adds no broad desktop capability or network/update dependency', async () => {
+test('desktop capability and network boundary remains frozen', async () => {
   const [capabilityText, workspace, desktopManifest, packageText, uiPackageText] =
     await Promise.all([
       read('src-tauri/capabilities/main.json'),
@@ -850,6 +850,20 @@ test('M3 adds no broad desktop capability or network/update dependency', async (
     dependencyText,
     /(?:tauri-plugin-(?:fs|http|shell|updater|websocket)|reqwest|axios|electron-updater)/i,
   )
+  const packageJson = JSON.parse(packageText)
+  assert.equal(
+    packageJson.scripts['architecture:contracts'],
+    "node --test --test-name-pattern='desktop capability and network boundary remains frozen' scripts/repository-policy.test.mjs && pnpm --dir ui exec vitest run src/api/viewer.test.ts src/state/viewerControllerContract.test.tsx && cargo test --locked -p viewer-desktop --test security_boundaries --test video_security_boundaries",
+  )
+  assert.equal(
+    packageJson.scripts['architecture:boundaries'],
+    'node scripts/architecture-boundaries.mjs && pnpm architecture:contracts',
+  )
+  assert.match(
+    packageJson.scripts.quality,
+    /^pnpm test:policy && pnpm architecture:boundaries &&/,
+  )
+  assert.doesNotMatch(packageJson.scripts.verify, /architecture:trends|quality:report/)
 })
 
 test('Finder export starts a synthetic AppKit drag from the owning window content view', async () => {

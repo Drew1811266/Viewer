@@ -7,7 +7,7 @@ import type {
   ThumbnailDensity,
   VideoCacheStats,
 } from '../api/types'
-import type { ViewerBridge } from '../api/viewer'
+import type { SettingsPort } from '../app/workspace/ports'
 import {
   THUMBNAIL_LEVELS,
   thumbnailDensityForLevel,
@@ -28,10 +28,8 @@ const SHAPE_LABEL = { circle: '圆形', rounded_rectangle: '圆角矩形' } as c
 const AREA_LABEL = { small: '小', medium: '中', large: '大' } as const
 const VIDEO_CACHE_BUDGET_BYTES = 1_073_741_824
 
-type VideoCacheBridge = Pick<ViewerBridge, 'videoCacheStats' | 'videoCacheClear'>
-
 interface SettingsDialogProps {
-  bridge: VideoCacheBridge
+  bridge: SettingsPort
   density: ThumbnailDensity
   magnifier: MagnifierPreferences
   error: string | null

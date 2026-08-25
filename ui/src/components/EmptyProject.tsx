@@ -1,12 +1,12 @@
 import type { DragEvent } from 'react'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { ViewerBridge } from '../api/viewer'
 import { safeUserMessage } from '../api/viewer'
+import type { EmptyProjectPort } from '../app/workspace/ports'
 import ViewerButton from './ui/ViewerButton'
 import ViewerLocalFeedback from './ui/ViewerLocalFeedback'
 
 interface EmptyProjectProps {
-  bridge: ViewerBridge
+  bridge: EmptyProjectPort
   busy?: boolean
   errorMessage?: string | null
   fatalError?: boolean

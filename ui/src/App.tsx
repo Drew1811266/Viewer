@@ -1,13 +1,16 @@
 import type { CSSProperties, MutableRefObject } from 'react'
 import { useCallback, useMemo, useRef } from 'react'
-import type { RenamePreview, RenameRules } from './api/types'
+import type { FolderTreeItem, RenamePreview, RenameRules } from './api/types'
 import type { ViewerBridge } from './api/viewer'
 import { tauriViewerBridge } from './api/viewer'
 import { useDelayedProjectionProgress } from './app/useDelayedProjectionProgress'
 import type { WorkspaceIntentSink } from './app/workspace/intents'
 import { createWorkspacePorts } from './app/workspace/ports'
 import { useFeedbackCoordinator } from './app/workspace/useFeedbackCoordinator'
-import { useOrganizationCoordinator } from './app/workspace/useOrganizationCoordinator'
+import {
+  type OrganizationCoordinator,
+  useOrganizationCoordinator,
+} from './app/workspace/useOrganizationCoordinator'
 import { useViewingCoordinator } from './app/workspace/useViewingCoordinator'
 import { useWorkspaceShellCoordinator } from './app/workspace/useWorkspaceShellCoordinator'
 import BatchRenameDialog from './components/BatchRenameDialog'
@@ -194,12 +197,10 @@ function ViewerWorkspace({
     }
   }
 
-  const operationDialogSnapshot = organization.operationDialog
-
   if (state.project === null) {
     return (
       <EmptyProject
-        bridge={bridge}
+        bridge={ports.emptyProject}
         busy={state.status === 'opening'}
         errorMessage={state.errorMessage}
         fatalError={state.status === 'error'}
@@ -523,7 +524,7 @@ function ViewerWorkspace({
       )}
       {shell.settingsOpen && (
         <SettingsDialog
-          bridge={bridge}
+          bridge={ports.settings}
           density={thumbnailDensity}
           magnifier={magnifier}
           error={settingsError}
@@ -587,75 +588,7 @@ function ViewerWorkspace({
           onClose={shell.closeInfo}
         />
       )}
-      {operationDialogSnapshot?.kind === 'rename' && (
-        <RenameDialog
-          currentName={operationDialogSnapshot.file.name}
-          busy={organization.operationBusy}
-          onCancel={organization.closeOperationDialog}
-          onConfirm={(proposedName, editExtension) =>
-            void organization.submitFileCommand('rename', [
-              {
-                entityId: operationDialogSnapshot.file.entityId,
-                action: { kind: 'rename', proposedName, editExtension },
-              },
-            ])
-          }
-        />
-      )}
-      {operationDialogSnapshot?.kind === 'batch_rename' && (
-        <BatchRenameDialog
-          entityIds={operationDialogSnapshot.files.map((file) => file.entityId)}
-          busy={organization.operationBusy}
-          requestPreview={(entityIds, rules) => organization.previewRename(entityIds, rules)}
-          onCancel={organization.closeOperationDialog}
-          onConfirm={(_rules: RenameRules, preview: RenamePreview) =>
-            void organization.submitFileCommand(
-              'rename',
-              preview.rows.map((row) => ({
-                entityId: row.entityId,
-                action: {
-                  kind: 'rename',
-                  proposedName: row.proposedName,
-                  editExtension: true,
-                },
-              })),
-            )
-          }
-        />
-      )}
-      {operationDialogSnapshot?.kind === 'destination' && (
-        <DestinationDialog
-          mode={operationDialogSnapshot.mode}
-          entityIds={operationDialogSnapshot.files.map((file) => file.entityId)}
-          folders={state.folders}
-          busy={organization.operationBusy}
-          initialDestinationId={operationDialogSnapshot.initialDestinationId}
-          initialPreflight={operationDialogSnapshot.initialPreflight}
-          requestPreflight={(items) =>
-            organization.preflightFileCommand(operationDialogSnapshot.mode, items)
-          }
-          onCancel={organization.closeOperationDialog}
-          onConfirm={(items, conflicts) =>
-            void organization.submitFileCommand(operationDialogSnapshot.mode, items, conflicts)
-          }
-        />
-      )}
-      {operationDialogSnapshot?.kind === 'trash' && (
-        <TrashConfirmation
-          count={operationDialogSnapshot.files.length}
-          busy={organization.operationBusy}
-          onCancel={organization.closeOperationDialog}
-          onConfirm={() =>
-            void organization.submitFileCommand(
-              'trash',
-              operationDialogSnapshot.files.map((file) => ({
-                entityId: file.entityId,
-                action: { kind: 'trash' },
-              })),
-            )
-          }
-        />
-      )}
+      <WorkspaceOperationDialogs organization={organization} folders={state.folders} />
       {organization.resultsBatchId !== null &&
         state.operation.active?.batchId === organization.resultsBatchId &&
         state.operation.results !== null && (
@@ -679,4 +612,95 @@ function ViewerWorkspace({
       )}
     </main>
   )
+}
+
+function WorkspaceOperationDialogs({
+  organization,
+  folders,
+}: {
+  organization: OrganizationCoordinator
+  folders: FolderTreeItem[]
+}) {
+  const dialog = organization.operationDialog
+
+  if (dialog?.kind === 'rename') {
+    return (
+      <RenameDialog
+        currentName={dialog.file.name}
+        busy={organization.operationBusy}
+        onCancel={organization.closeOperationDialog}
+        onConfirm={(proposedName, editExtension) =>
+          void organization.submitFileCommand('rename', [
+            {
+              entityId: dialog.file.entityId,
+              action: { kind: 'rename', proposedName, editExtension },
+            },
+          ])
+        }
+      />
+    )
+  }
+
+  if (dialog?.kind === 'batch_rename') {
+    return (
+      <BatchRenameDialog
+        entityIds={dialog.files.map((file) => file.entityId)}
+        busy={organization.operationBusy}
+        requestPreview={(entityIds, rules) => organization.previewRename(entityIds, rules)}
+        onCancel={organization.closeOperationDialog}
+        onConfirm={(_rules: RenameRules, preview: RenamePreview) =>
+          void organization.submitFileCommand(
+            'rename',
+            preview.rows.map((row) => ({
+              entityId: row.entityId,
+              action: {
+                kind: 'rename',
+                proposedName: row.proposedName,
+                editExtension: true,
+              },
+            })),
+          )
+        }
+      />
+    )
+  }
+
+  if (dialog?.kind === 'destination') {
+    return (
+      <DestinationDialog
+        mode={dialog.mode}
+        entityIds={dialog.files.map((file) => file.entityId)}
+        folders={folders}
+        busy={organization.operationBusy}
+        initialDestinationId={dialog.initialDestinationId}
+        initialPreflight={dialog.initialPreflight}
+        requestPreflight={(items) => organization.preflightFileCommand(dialog.mode, items)}
+        onCancel={organization.closeOperationDialog}
+        onConfirm={(items, conflicts) =>
+          void organization.submitFileCommand(dialog.mode, items, conflicts)
+        }
+      />
+    )
+  }
+
+  if (dialog?.kind === 'trash') {
+    return (
+      <TrashConfirmation
+        count={dialog.files.length}
+        busy={organization.operationBusy}
+        onCancel={organization.closeOperationDialog}
+        onConfirm={() =>
+          void organization.submitFileCommand(
+            'trash',
+            dialog.files.map((file) => ({
+              entityId: file.entityId,
+              action: { kind: 'trash' },
+            })),
+          )
+        }
+      />
+    )
+  }
+
+  return null
 }

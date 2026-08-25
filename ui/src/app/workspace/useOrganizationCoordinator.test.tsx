@@ -1,8 +1,9 @@
-import { act, renderHook } from '@testing-library/react'
+import { act, fireEvent, renderHook } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import type { BrowserFile } from '../../api/types'
 import type { ViewerState } from '../../state/viewerState'
 import { initialViewerState } from '../../state/viewerState'
+import type { WorkspaceIntentSink } from './intents'
 import type { OrganizationCommands } from './useOrganizationCoordinator'
 import { useOrganizationCoordinator } from './useOrganizationCoordinator'
 
@@ -50,6 +51,30 @@ function state(sessionId = 'session-1'): ViewerState {
   }
 }
 
+function interactiveState(sessionId = 'session-1'): ViewerState {
+  const first = file('image-1')
+  const second = file('image-2')
+  return {
+    ...state(sessionId),
+    workspace: { workspace: 'content', images: [first, second], videos: [], otherFiles: [] },
+  }
+}
+
+function interactiveOptions(
+  viewerState: ViewerState,
+  controller: OrganizationCommands,
+  emitIntent: WorkspaceIntentSink = vi.fn(),
+) {
+  return {
+    state: viewerState,
+    commands: controller,
+    emitIntent,
+    compareOpen: false,
+    activePreviewOpen: false,
+    infoOpen: false,
+  }
+}
+
 function commands(): OrganizationCommands {
   return {
     setSelectedEntityIds: vi.fn(),
@@ -67,12 +92,119 @@ function commands(): OrganizationCommands {
 }
 
 describe('useOrganizationCoordinator', () => {
+  it('routes radial cross-domain actions through intents and keeps marker commands local', () => {
+    const controller = commands()
+    const intents = vi.fn<WorkspaceIntentSink>()
+    const viewerState = interactiveState()
+    const selectedImages =
+      viewerState.workspace?.workspace === 'content' ? viewerState.workspace.images : []
+    const hook = renderHook(() =>
+      useOrganizationCoordinator(interactiveOptions(viewerState, controller, intents)),
+    )
+    const returnFocusTarget = document.createElement('button')
+    document.body.append(returnFocusTarget)
+
+    const run = (
+      action: Parameters<typeof hook.result.current.runRadialAction>[0],
+      files = selectedImages,
+    ) => {
+      act(() =>
+        hook.result.current.beginRadialSession({
+          files,
+          origin: { x: 20, y: 20 },
+          pointerId: null,
+          returnFocusTarget,
+        }),
+      )
+      act(() => hook.result.current.runRadialAction(action))
+    }
+
+    run('preview', selectedImages.slice(0, 1))
+    run('compare')
+    run('organize.rename')
+    run('info')
+    run('mark.keep')
+    run('mark.favorite')
+
+    expect(intents).toHaveBeenCalledWith({
+      kind: 'open-preview',
+      file: selectedImages[0],
+      files: null,
+      folderOverviewIdentity: null,
+    })
+    expect(intents).toHaveBeenCalledWith({ kind: 'enter-compare', files: selectedImages })
+    expect(intents).toHaveBeenCalledWith({ kind: 'start-rename', files: selectedImages })
+    expect(intents).toHaveBeenCalledWith({ kind: 'open-info' })
+    expect(controller.setReviewState).toHaveBeenCalledWith('keep', ['image-1', 'image-2'])
+    expect(controller.toggleFavorite).toHaveBeenCalledWith(['image-1', 'image-2'])
+    expect(hook.result.current.activeRadialMenu).toBeNull()
+    expect(document.activeElement).toBe(returnFocusTarget)
+    returnFocusTarget.remove()
+  })
+
+  it('routes organization shortcuts through intents while keeping undo and Trash local', () => {
+    const controller = commands()
+    const intents = vi.fn<WorkspaceIntentSink>()
+    const viewerState = { ...interactiveState(), selectedEntityIds: ['image-1'] }
+    const hook = renderHook(() =>
+      useOrganizationCoordinator(interactiveOptions(viewerState, controller, intents)),
+    )
+    const selectedImage =
+      viewerState.workspace?.workspace === 'content' ? viewerState.workspace.images[0] : undefined
+    if (selectedImage === undefined) throw new Error('Missing shortcut fixture image')
+
+    act(() => hook.result.current.selectFiles([selectedImage]))
+    fireEvent.keyDown(window, { key: ' ', code: 'Space' })
+    fireEvent.keyDown(window, { key: 'c' })
+    fireEvent.keyDown(window, { key: 'Enter' })
+    fireEvent.keyDown(window, { key: 'i', metaKey: true })
+    fireEvent.keyDown(window, { key: 'z', metaKey: true })
+    fireEvent.keyDown(window, { key: '1' })
+    fireEvent.keyDown(window, { key: 'f' })
+    fireEvent.keyDown(window, { key: 'Delete' })
+
+    expect(intents).toHaveBeenCalledWith({
+      kind: 'open-preview',
+      file: selectedImage,
+      files: null,
+      folderOverviewIdentity: null,
+    })
+    expect(intents).toHaveBeenCalledWith({ kind: 'enter-compare', files: [selectedImage] })
+    expect(intents).toHaveBeenCalledWith({ kind: 'start-rename', files: [selectedImage] })
+    expect(intents).toHaveBeenCalledWith({ kind: 'open-info' })
+    expect(controller.undoLastOperation).toHaveBeenCalledOnce()
+    expect(controller.setReviewState).toHaveBeenCalledWith('keep')
+    expect(controller.toggleFavorite).toHaveBeenCalledWith()
+    expect(hook.result.current.operationDialog).toMatchObject({ kind: 'trash' })
+  })
+
+  it('does not route shortcuts while a preview owns keyboard input', () => {
+    const controller = commands()
+    const intents = vi.fn<WorkspaceIntentSink>()
+    const viewerState = interactiveState()
+    const hook = renderHook(() =>
+      useOrganizationCoordinator({
+        ...interactiveOptions(viewerState, controller, intents),
+        activePreviewOpen: true,
+      }),
+    )
+    const selectedImage =
+      viewerState.workspace?.workspace === 'content' ? viewerState.workspace.images[0] : undefined
+    if (selectedImage === undefined) throw new Error('Missing shortcut fixture image')
+
+    act(() => hook.result.current.selectFiles([selectedImage]))
+    fireEvent.keyDown(window, { key: ' ', code: 'Space' })
+    fireEvent.keyDown(window, { key: 'i', metaKey: true })
+
+    expect(intents).not.toHaveBeenCalled()
+  })
+
   it('owns selection and clears all session-local organization state on project change', async () => {
     const controller = commands()
     const pending = deferred<Awaited<ReturnType<OrganizationCommands['executeFileCommand']>>>()
     vi.mocked(controller.executeFileCommand).mockReturnValue(pending.promise)
     const hook = renderHook(
-      ({ viewerState }) => useOrganizationCoordinator({ state: viewerState, commands: controller }),
+      ({ viewerState }) => useOrganizationCoordinator(interactiveOptions(viewerState, controller)),
       { initialProps: { viewerState: state() } },
     )
 
@@ -120,7 +252,7 @@ describe('useOrganizationCoordinator', () => {
     const controller = commands()
     vi.mocked(controller.beginFinderDrag).mockRejectedValueOnce({ code })
     const hook = renderHook(() =>
-      useOrganizationCoordinator({ state: state(), commands: controller }),
+      useOrganizationCoordinator(interactiveOptions(state(), controller)),
     )
 
     await act(async () => {
@@ -155,7 +287,7 @@ describe('useOrganizationCoordinator', () => {
       },
     }
     const hook = renderHook(
-      ({ viewerState }) => useOrganizationCoordinator({ state: viewerState, commands: controller }),
+      ({ viewerState }) => useOrganizationCoordinator(interactiveOptions(viewerState, controller)),
       { initialProps: { viewerState: completedState } },
     )
 
@@ -168,7 +300,7 @@ describe('useOrganizationCoordinator', () => {
   it('always clears submitting and closes the dialog only after a started command', async () => {
     const controller = commands()
     const hook = renderHook(() =>
-      useOrganizationCoordinator({ state: state(), commands: controller }),
+      useOrganizationCoordinator(interactiveOptions(state(), controller)),
     )
 
     act(() => {

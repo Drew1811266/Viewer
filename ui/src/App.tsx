@@ -2,7 +2,6 @@ import type { CSSProperties, MutableRefObject } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type {
   BrowserFile,
-  FileCommandItem,
   ImageRepresentationRequest,
   RenamePreview,
   RenameRules,
@@ -14,7 +13,7 @@ import { tauriViewerBridge } from './api/viewer'
 import { createProjectThumbnailCache, type ThumbnailLoader } from './app/projectThumbnailCache'
 import { useDelayedProjectionProgress } from './app/useDelayedProjectionProgress'
 import { getPreviewSessionInternals, usePreviewSession } from './app/usePreviewSession'
-import { useRadialMenuContextToken, useRadialMenuSession } from './app/useRadialMenuSession'
+import type { OpenPreviewIntent, WorkspaceIntentSink } from './app/workspace/intents'
 import { createWorkspacePorts } from './app/workspace/ports'
 import { useFeedbackCoordinator } from './app/workspace/useFeedbackCoordinator'
 import { useOrganizationCoordinator } from './app/workspace/useOrganizationCoordinator'
@@ -37,8 +36,6 @@ import OrganizationDragPreview from './components/OrganizationDragPreview'
 import RadialFileMenu from './components/RadialFileMenu'
 import ReadOnlyBanner from './components/ReadOnlyBanner'
 import RenameDialog from './components/RenameDialog'
-import type { RadialLeafAction } from './components/radialMenuModel'
-import { buildRadialMenuModel } from './components/radialMenuModel'
 import SearchResults from './components/SearchResults'
 import SearchToolbar from './components/SearchToolbar'
 import SettingsDialog from './components/SettingsDialog'
@@ -56,12 +53,12 @@ import WorkspaceViewMenu, { type WorkspaceViewContext } from './components/Works
 import { defined } from './defined'
 import { isImageFile, isPreviewableText, isVideoFile } from './fileKinds'
 import { useViewerSettings, ViewerSettingsProvider } from './settings/ViewerSettingsProvider'
-import { compareValidationMessage, validateCompareCandidates } from './state/comparePolicy'
-import { organizationShortcutIsOwned } from './state/organizationShortcutOwnership'
-import { validatePreviewSelection, videoPreviewNeighbors } from './state/previewPolicy'
-import type { OrganizationDragMode } from './state/useOrganizationPointerDrag'
-import { useOrganizationPointerDrag } from './state/useOrganizationPointerDrag'
-import useReviewShortcuts from './state/useReviewShortcuts'
+import {
+  compareEntryAvailability,
+  compareValidationMessage,
+  validateCompareCandidates,
+} from './state/comparePolicy'
+import { videoPreviewNeighbors } from './state/previewPolicy'
 import { useViewerController } from './state/useViewerController'
 
 interface AppProps {
@@ -138,21 +135,35 @@ function ViewerWorkspace({
     openPermissionSettings,
   } = useViewerController(bridge)
   const projectSessionId = state.project?.sessionId ?? 'no-session'
-  const radialProjectIdentity = state.project
-    ? `${state.project.sessionId}:${state.project.generation}`
-    : 'no-project'
-  const organizationWorkspaceIdentity = [
-    state.workspace?.workspace ?? 'none',
-    state.selectedFolderId ?? 'root',
-    state.showingAggregate ? 'aggregate' : 'folder',
-    state.search.showResults ? 'search' : 'browser',
-  ].join(':')
+  const intentTargetRef = useRef<WorkspaceIntentSink>(() => undefined)
+  const emitIntent = useCallback<WorkspaceIntentSink>((intent) => {
+    intentTargetRef.current(intent)
+  }, [])
   const ports = useMemo(() => createWorkspacePorts(bridge), [bridge])
   const shell = useWorkspaceShellCoordinator({
     projectSessionId,
     videoProjectSessionId: state.project?.sessionId ?? null,
     port: ports.shell,
   })
+  const previewSession = usePreviewSession(projectSessionId)
+  const {
+    activePreview,
+    dimensions,
+    openPreview: openPreviewSession,
+    openVideoPreview: openVideoPreviewSession,
+    closePreview: closePreviewSession,
+    recordDimensions,
+  } = previewSession
+  const { navigatePreview: navigatePreviewSession } = getPreviewSessionInternals(previewSession)
+  const compareFiles = useMemo(() => {
+    if (state.workspace?.workspace !== 'content') return []
+    const byId = new Map(state.workspace.images.map((file) => [file.entityId, file]))
+    return state.compareEntityIds.flatMap((entityId) => {
+      const file = byId.get(entityId)
+      return file === undefined ? [] : [file]
+    })
+  }, [state.compareEntityIds, state.workspace])
+  const compareOpen = state.compareEntityIds.length >= 2 && compareFiles.length >= 2
   const organization = useOrganizationCoordinator({
     state,
     commands: {
@@ -168,17 +179,11 @@ function ViewerWorkspace({
       consumeContextRepair,
       beginFinderDrag,
     },
+    emitIntent,
+    compareOpen,
+    activePreviewOpen: activePreview !== null,
+    infoOpen: shell.infoOpen,
   })
-  const previewSession = usePreviewSession(projectSessionId)
-  const {
-    activePreview,
-    dimensions,
-    openPreview: openPreviewSession,
-    openVideoPreview: openVideoPreviewSession,
-    closePreview: closePreviewSession,
-    recordDimensions,
-  } = previewSession
-  const { navigatePreview: navigatePreviewSession } = getPreviewSessionInternals(previewSession)
   const feedback = useFeedbackCoordinator({
     projectSessionId,
     scan: state.scan,
@@ -239,178 +244,6 @@ function ViewerWorkspace({
     },
     [organization.selectFolderTarget, selectFolder],
   )
-  const compareFiles = useMemo(() => {
-    if (state.workspace?.workspace !== 'content') return []
-    const byId = new Map(state.workspace.images.map((file) => [file.entityId, file]))
-    return state.compareEntityIds.flatMap((entityId) => {
-      const file = byId.get(entityId)
-      return file === undefined ? [] : [file]
-    })
-  }, [state.compareEntityIds, state.workspace])
-  const compareOpen = state.compareEntityIds.length >= 2 && compareFiles.length >= 2
-  const compareEntryAvailable =
-    state.workspace?.workspace === 'content' &&
-    !state.search.showResults &&
-    !organization.operationBusy
-  const radialContextKey = useRadialMenuContextToken({
-    activePreview,
-    compareOpen,
-    infoOpen: shell.infoOpen,
-    operationDialog: organization.operationDialog,
-    organizationWorkspaceIdentity,
-    resultsBatchId: organization.resultsBatchId,
-    closeBlocked: state.closeBlocked,
-    contextRepair: state.contextRepair,
-  })
-  const { radialMenu, activeRadialMenu, beginRadialSession, finishRadialSession } =
-    useRadialMenuSession({
-      projectIdentity: radialProjectIdentity,
-      projectStatus: state.status,
-      contextKey: radialContextKey,
-    })
-  const radialModel = useMemo(() => {
-    const files = activeRadialMenu?.files ?? []
-    const reviews = new Set(files.map((file) => file.marker.reviewState))
-    const favorites = new Set(files.map((file) => file.marker.favorite))
-    const previewValidation = validatePreviewSelection(files)
-    return buildRadialMenuModel({
-      selectedCount: files.length,
-      selectedImageCount: files.filter(isImageFile).length,
-      previewEnabled: previewValidation.ok,
-      previewDisabledReason: previewValidation.ok ? undefined : previewValidation.reason,
-      readOnly: state.project?.access === 'read_only',
-      busy: organization.operationBusy,
-      compareContextAvailable: compareEntryAvailable,
-      commonReview: reviews.size === 1 ? (files[0]?.marker.reviewState ?? null) : 'mixed',
-      commonFavorite: favorites.size === 1 ? (files[0]?.marker.favorite ?? false) : 'mixed',
-    })
-  }, [activeRadialMenu, compareEntryAvailable, organization.operationBusy, state.project?.access])
-
-  useEffect(() => {
-    function toggleInfo(event: KeyboardEvent) {
-      if (
-        !(
-          event.metaKey &&
-          !event.ctrlKey &&
-          !event.altKey &&
-          !event.shiftKey &&
-          event.key.toLowerCase() === 'i'
-        ) ||
-        organizationShortcutIsOwned(
-          event,
-          organization.operationDialog !== null ||
-            activePreview !== null ||
-            compareOpen ||
-            organization.resultsBatchId !== null ||
-            organization.operationBusy ||
-            state.closeBlocked !== null,
-        )
-      ) {
-        return
-      }
-      event.preventDefault()
-      if (shell.infoOpen) shell.closeInfo()
-      else shell.openInfo()
-    }
-    window.addEventListener('keydown', toggleInfo)
-    return () => window.removeEventListener('keydown', toggleInfo)
-  }, [
-    activePreview,
-    compareOpen,
-    organization.operationBusy,
-    organization.operationDialog,
-    organization.resultsBatchId,
-    shell.closeInfo,
-    shell.infoOpen,
-    shell.openInfo,
-    state.closeBlocked,
-  ])
-
-  const dropFiles = useCallback(
-    async (entityIds: string[], destinationId: string, mode: 'move' | 'copy') => {
-      if (
-        organization.operationBusy ||
-        state.project?.access !== 'read_write' ||
-        state.workspace?.workspace !== 'content'
-      ) {
-        return
-      }
-      const currentFiles = [
-        ...state.workspace.images,
-        ...state.workspace.videos,
-        ...state.workspace.otherFiles,
-      ]
-      const byId = new Map(currentFiles.map((file) => [file.entityId, file]))
-      const files = entityIds.map((entityId) => byId.get(entityId))
-      if (files.some((file) => file === undefined)) return
-      const items: FileCommandItem[] = entityIds.map((entityId) => ({
-        entityId,
-        action:
-          mode === 'copy'
-            ? { kind: 'copy', destinationFolderId: destinationId }
-            : { kind: 'move', destinationFolderId: destinationId },
-      }))
-      const preflight = await organization.preflightFileCommand(mode, items)
-      if (preflight === null) return
-      if (preflight.executable && preflight.rows.every((row) => row.state === 'ready')) {
-        await organization.submitFileCommand(mode, items)
-        return
-      }
-      organization.openDestinationDialog(mode, files as BrowserFile[], destinationId, preflight)
-    },
-    [
-      organization.openDestinationDialog,
-      organization.operationBusy,
-      organization.preflightFileCommand,
-      organization.submitFileCommand,
-      state.project?.access,
-      state.workspace,
-    ],
-  )
-
-  const isOrganizationDropTargetValid = useCallback(
-    (entityIds: readonly string[], destinationId: string, mode: OrganizationDragMode) => {
-      if (state.workspace?.workspace !== 'content') return false
-      const destination = state.folders.find((folder) => folder.entityId === destinationId)
-      if (!destination) return false
-      const currentFiles = [
-        ...state.workspace.images,
-        ...state.workspace.videos,
-        ...state.workspace.otherFiles,
-      ]
-      const byId = new Map(currentFiles.map((file) => [file.entityId, file]))
-      const files = entityIds.map((entityId) => byId.get(entityId))
-      if (files.some((file) => file === undefined)) return false
-      return (
-        mode === 'copy' ||
-        files.every(
-          (file) =>
-            file !== undefined &&
-            parentRelativePath(file.relativePath) !== destination.relativePath,
-        )
-      )
-    },
-    [state.folders, state.workspace],
-  )
-
-  const organizationDragResetKey = [
-    state.project?.sessionId ?? 'no-session',
-    state.project?.generation ?? 'no-generation',
-    organizationWorkspaceIdentity,
-  ].join(':')
-
-  const {
-    dragView: organizationDragView,
-    dropTarget: organizationDropTarget,
-    handlePointerInput: handleOrganizationPointerInput,
-    cancel: cancelOrganizationPointerDrag,
-  } = useOrganizationPointerDrag({
-    disabled: state.project?.access !== 'read_write' || organization.operationBusy || compareOpen,
-    resetKey: organizationDragResetKey,
-    isDropTargetValid: isOrganizationDropTargetValid,
-    onDrop: dropFiles,
-  })
-
   const [folderOverviewProjectionState, setFolderOverviewProjectionState] = useState(() => ({
     projection: state.workspace,
     sequence: 0,
@@ -429,10 +262,6 @@ function ViewerWorkspace({
     state.selectedFolderId ?? 'root',
     folderOverviewSequence,
   ].join(':')
-
-  useEffect(() => {
-    cancelOrganizationPointerDrag()
-  }, [cancelOrganizationPointerDrag, state.workspace])
 
   const currentVideoPreviewFiles = useMemo<VideoFile[]>(() => {
     if (state.workspace?.workspace !== 'content') return []
@@ -469,6 +298,23 @@ function ViewerWorkspace({
     [openPreviewSession, openVideoPreview, setPreviewEntityId],
   )
 
+  const openWorkspacePreviewIntent = useCallback(
+    (intent: OpenPreviewIntent) => {
+      if (isVideoFile(intent.file)) {
+        openVideoPreview(intent.file.entityId)
+        return
+      }
+      setPreviewRepair(EMPTY_PREVIEW_REPAIR)
+      openPreviewSession({
+        file: intent.file,
+        files: intent.files === null ? null : [...intent.files],
+        folderOverviewIdentity: intent.folderOverviewIdentity,
+      })
+      setPreviewEntityId(intent.file.entityId)
+    },
+    [openPreviewSession, openVideoPreview, setPreviewEntityId],
+  )
+
   const openFilmstripPreview = useCallback(
     (file: BrowserFile, files: BrowserFile[]) => {
       setPreviewRepair(EMPTY_PREVIEW_REPAIR)
@@ -492,11 +338,17 @@ function ViewerWorkspace({
     setPreviewEntityId(null)
   }, [closePreviewSession, setPreviewEntityId])
 
+  const compareAvailability = compareEntryAvailability({
+    workspace: state.workspace,
+    searchResultsOpen: state.search.showResults,
+    operationBusy: organization.operationBusy,
+  })
+
   const openComparison = useCallback(
     (files: BrowserFile[] = organization.selectedFiles) => {
-      if (!compareEntryAvailable) {
+      if (compareAvailability !== 'available') {
         setCompareStatus(
-          organization.operationBusy
+          compareAvailability === 'busy'
             ? '请等待当前文件操作完成后再开始对比。'
             : '请先返回文件夹内容，再选择图片进行对比。',
         )
@@ -515,71 +367,38 @@ function ViewerWorkspace({
     },
     [
       closePreviewSession,
-      compareEntryAvailable,
-      organization.operationBusy,
+      compareAvailability,
       organization.selectedFiles,
       setCompareEntityIds,
       setPreviewEntityId,
     ],
   )
 
-  const runRadialAction = useCallback(
-    (action: RadialLeafAction) => {
-      const files =
-        state.status === 'active' && radialMenu?.projectIdentity === radialProjectIdentity
-          ? radialMenu.files
-          : []
-      if (files.length === 0) {
-        finishRadialSession()
+  intentTargetRef.current = (intent) => {
+    switch (intent.kind) {
+      case 'open-preview':
+        openWorkspacePreviewIntent(intent)
         return
-      }
-      finishRadialSession()
-      const ids = files.map((file) => file.entityId)
-      if (action === 'preview') {
-        const validation = validatePreviewSelection(files)
-        if (!validation.ok) return
-        if (validation.mode === 'single') {
-          openPreview(defined(files[0], 'Single preview requires one file'))
-        } else {
-          const first = defined(files[0], 'Split text preview requires a left file')
-          const second = defined(files[1], 'Split text preview requires a right file')
-          setPreviewRepair(EMPTY_PREVIEW_REPAIR)
-          openPreviewSession({
-            file: first,
-            files: [first, second],
-            folderOverviewIdentity: null,
-          })
-          setPreviewEntityId(first.entityId)
-        }
-      } else if (action === 'mark.keep') void setReviewState('keep', ids)
-      else if (action === 'mark.pending') void setReviewState('pending', ids)
-      else if (action === 'mark.reject') void setReviewState('reject', ids)
-      else if (action === 'mark.clear') void setReviewState(null, ids)
-      else if (action === 'mark.favorite') void toggleFavorite(ids)
-      else if (action === 'organize.rename') organization.openRenameDialog(files)
-      else if (action === 'organize.copy') organization.openDestinationDialog('copy', files)
-      else if (action === 'organize.move') organization.openDestinationDialog('move', files)
-      else if (action === 'trash') organization.openTrashDialog(files)
-      else if (action === 'compare') openComparison(files)
-      else if (action === 'info') shell.openInfo()
-    },
-    [
-      openComparison,
-      openPreview,
-      openPreviewSession,
-      radialMenu,
-      radialProjectIdentity,
-      finishRadialSession,
-      organization.openDestinationDialog,
-      organization.openRenameDialog,
-      organization.openTrashDialog,
-      setPreviewEntityId,
-      setReviewState,
-      shell.openInfo,
-      state.status,
-      toggleFavorite,
-    ],
-  )
+      case 'enter-compare':
+        openComparison([...intent.files])
+        return
+      case 'start-rename':
+        organization.openRenameDialog(intent.files)
+        return
+      case 'show-operation-results':
+        organization.showResults(intent.batchId)
+        return
+      case 'open-settings':
+        shell.openSettings()
+        return
+      case 'open-info':
+        if (shell.infoOpen) shell.closeInfo()
+        else shell.openInfo()
+        return
+      case 'close-project':
+        void closeProject()
+    }
+  }
 
   const changeComparedEntities = useCallback(
     (entityIds: string[]) => {
@@ -652,91 +471,6 @@ function ViewerWorkspace({
       setPreviewEntityId(null)
     }
   }, [activePreview, closePreviewSession, folderOverviewIdentity, setPreviewEntityId])
-
-  useEffect(() => {
-    function handleOrganizationShortcut(event: KeyboardEvent) {
-      if (
-        organizationShortcutIsOwned(
-          event,
-          organization.operationDialog !== null ||
-            activePreview !== null ||
-            compareOpen ||
-            shell.infoOpen ||
-            organization.resultsBatchId !== null ||
-            organization.operationBusy ||
-            state.status !== 'active' ||
-            state.closeBlocked !== null,
-        )
-      ) {
-        return
-      }
-      if (
-        event.metaKey &&
-        !event.ctrlKey &&
-        !event.altKey &&
-        !event.shiftKey &&
-        event.key.toLowerCase() === 'z'
-      ) {
-        if (organization.operationBusy || event.repeat) return
-        event.preventDefault()
-        void organization.undoLastOperation()
-        return
-      }
-      if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return
-      if (
-        (event.key === ' ' || event.key === 'Spacebar' || event.code === 'Space') &&
-        organization.selectedFiles.length === 1
-      ) {
-        event.preventDefault()
-        openPreview(defined(organization.selectedFiles[0], 'Missing selected preview file'))
-      } else if (event.key.toLowerCase() === 'c') {
-        event.preventDefault()
-        openComparison()
-      } else if (event.key === 'Enter') {
-        if (!organization.canMutateSelection) return
-        event.preventDefault()
-        organization.openRenameDialog()
-      } else if (event.key === 'Delete' || event.key === 'Backspace') {
-        if (!organization.canMutateSelection) return
-        event.preventDefault()
-        organization.openTrashDialog()
-      }
-    }
-    window.addEventListener('keydown', handleOrganizationShortcut)
-    return () => window.removeEventListener('keydown', handleOrganizationShortcut)
-  }, [
-    activePreview,
-    compareOpen,
-    openPreview,
-    openComparison,
-    organization.canMutateSelection,
-    organization.openRenameDialog,
-    organization.openTrashDialog,
-    organization.operationBusy,
-    organization.operationDialog,
-    organization.resultsBatchId,
-    organization.selectedFiles,
-    organization.undoLastOperation,
-    shell.infoOpen,
-    state.closeBlocked,
-    state.status,
-  ])
-
-  useReviewShortcuts({
-    disabled:
-      state.project?.access === 'read_only' ||
-      state.selectedEntityIds.length === 0 ||
-      organization.operationBusy ||
-      state.status !== 'active' ||
-      organization.operationDialog !== null ||
-      activePreview !== null ||
-      compareOpen ||
-      shell.infoOpen ||
-      organization.resultsBatchId !== null ||
-      state.closeBlocked !== null,
-    onSetReview: (reviewState) => void setReviewState(reviewState),
-    onToggleFavorite: () => void toggleFavorite(),
-  })
 
   const operationDialogSnapshot = organization.operationDialog
 
@@ -819,7 +553,7 @@ function ViewerWorkspace({
       data-video-preview-open={
         activePreviewFile !== null && isVideoFile(activePreviewFile) ? true : undefined
       }
-      data-organization-drag-active={organizationDragView ? true : undefined}
+      data-organization-drag-active={organization.organizationDragView ? true : undefined}
       style={
         {
           '--viewer-sidebar-width': `${shell.effectiveSidebarCollapsed ? 52 : shell.sidebarWidth}px`,
@@ -873,10 +607,10 @@ function ViewerWorkspace({
             onOpenChange={(open) => shell.toolbarPopover.setPopoverOpen('more', open)}
             access={state.project.access}
             closing={state.status === 'closing'}
-            onOpenSettings={shell.openSettings}
+            onOpenSettings={() => emitIntent({ kind: 'open-settings' })}
             onOpenPermissionSettings={() => void openPermissionSettings()}
             onReselectProject={() => void reselectProject()}
-            onCloseProject={() => void closeProject()}
+            onCloseProject={() => emitIntent({ kind: 'close-project' })}
           />
         </div>
       </header>
@@ -910,7 +644,7 @@ function ViewerWorkspace({
             loading={state.workspace === null}
             selectedId={displayedFolderId}
             onSelect={selectFolderTarget}
-            organizationDropTarget={organizationDropTarget}
+            organizationDropTarget={organization.organizationDropTarget}
           />
           {!shell.effectiveSidebarCollapsed && (
             <button
@@ -1027,10 +761,10 @@ function ViewerWorkspace({
                         compareOpen
                       }
                       onFinderDragStart={organization.exportToFinder}
-                      onOrganizationPointerInput={handleOrganizationPointerInput}
+                      onOrganizationPointerInput={organization.handleOrganizationPointerInput}
                       repairSelectionId={state.contextRepair?.suggestedEntityId ?? null}
                       onRepairSelectionApplied={organization.consumeContextRepair}
-                      onRadialMenuRequest={beginRadialSession}
+                      onRadialMenuRequest={organization.beginRadialSession}
                       otherFilePanelExpanded={shell.otherFilePanel.expanded}
                       onOtherFilePanelExpandedChange={shell.otherFilePanel.setExpanded}
                       videoPanelExpanded={shell.videoPanel.expanded}
@@ -1072,7 +806,9 @@ function ViewerWorkspace({
         notices={feedback.globalNotices}
         belowReadOnly={state.project.access === 'read_only'}
       />
-      {organizationDragView && <OrganizationDragPreview {...organizationDragView} />}
+      {organization.organizationDragView && (
+        <OrganizationDragPreview {...organization.organizationDragView} />
+      )}
       <TaskBar
         tasks={feedback.visibleTasks}
         onCancel={(taskId) => {
@@ -1080,19 +816,19 @@ function ViewerWorkspace({
           else void cancelTask(taskId)
         }}
         onDismiss={feedback.dismissTask}
-        onShowResults={organization.showResults}
+        onShowResults={(batchId) => emitIntent({ kind: 'show-operation-results', batchId })}
       />
-      {activeRadialMenu !== null && (
+      {organization.activeRadialMenu !== null && (
         <RadialFileMenu
-          key={activeRadialMenu.requestId}
-          origin={activeRadialMenu.origin}
-          pointerId={activeRadialMenu.pointerId}
-          selectionCount={activeRadialMenu.files.length}
+          key={organization.activeRadialMenu.requestId}
+          origin={organization.activeRadialMenu.origin}
+          pointerId={organization.activeRadialMenu.pointerId}
+          selectionCount={organization.activeRadialMenu.files.length}
           readOnly={state.project.access === 'read_only'}
-          returnFocusTarget={activeRadialMenu.returnFocusTarget}
-          model={radialModel}
-          onAction={runRadialAction}
-          onClose={finishRadialSession}
+          returnFocusTarget={organization.activeRadialMenu.returnFocusTarget}
+          model={organization.radialModel}
+          onAction={organization.runRadialAction}
+          onClose={organization.finishRadialSession}
         />
       )}
       {shell.settingsOpen && (
@@ -1249,9 +985,4 @@ function ViewerWorkspace({
       )}
     </main>
   )
-}
-
-function parentRelativePath(relativePath: string): string {
-  const separator = relativePath.lastIndexOf('/')
-  return separator === -1 ? '' : relativePath.slice(0, separator)
 }

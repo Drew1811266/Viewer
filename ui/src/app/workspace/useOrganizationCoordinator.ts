@@ -1,18 +1,38 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import type {
   BrowserFile,
   ConflictResolution,
   FileCommandItem,
   FileCommandPreflight,
 } from '../../api/types'
+import type { RadialLeafAction } from '../../components/radialMenuModel'
+import { defined } from '../../defined'
+import { compareEntryAvailability } from '../../state/comparePolicy'
+import { organizationShortcutIsOwned } from '../../state/organizationShortcutOwnership'
+import { validatePreviewSelection } from '../../state/previewPolicy'
+import type {
+  OrganizationDragView,
+  OrganizationDropTarget,
+  OrganizationPointerInput,
+} from '../../state/useOrganizationPointerDrag'
+import { useOrganizationPointerDrag } from '../../state/useOrganizationPointerDrag'
+import useReviewShortcuts from '../../state/useReviewShortcuts'
 import type { ViewerController } from '../../state/useViewerController'
 import type { ViewerState } from '../../state/viewerState'
 import { type OperationDialog, useOperationDialogs } from '../useOperationDialogs'
+import { useRadialMenuContextToken, useRadialMenuSession } from '../useRadialMenuSession'
+import type { WorkspaceIntentSink } from './intents'
 import {
+  buildOrganizationRadialModel,
   canMutateOrganizationSelection,
   finderDragFailureMessage,
+  isOrganizationDropTargetValid,
   organizationOperationBusy,
+  organizationProjectIdentity,
+  organizationWorkspaceIdentity,
 } from './organizationModel'
+
+const ACTIVE_PREVIEW_CONTEXT = {}
 
 export type OrganizationCommands = Pick<
   ViewerController,
@@ -32,6 +52,10 @@ export type OrganizationCommands = Pick<
 export interface OrganizationOptions {
   state: ViewerState
   commands: OrganizationCommands
+  emitIntent: WorkspaceIntentSink
+  compareOpen: boolean
+  activePreviewOpen: boolean
+  infoOpen: boolean
 }
 
 export type OrganizationFileCommandKind = 'rename' | 'copy' | 'move' | 'trash'
@@ -70,14 +94,29 @@ export interface OrganizationCoordinator {
   loadOperationResults: OrganizationCommands['loadOperationResults']
   undoLastOperation: OrganizationCommands['undoLastOperation']
   consumeContextRepair: OrganizationCommands['consumeContextRepair']
+  radialMenu: ReturnType<typeof useRadialMenuSession>['radialMenu']
+  activeRadialMenu: ReturnType<typeof useRadialMenuSession>['activeRadialMenu']
+  radialModel: ReturnType<typeof buildOrganizationRadialModel>
+  beginRadialSession: ReturnType<typeof useRadialMenuSession>['beginRadialSession']
+  finishRadialSession: ReturnType<typeof useRadialMenuSession>['finishRadialSession']
+  runRadialAction(action: RadialLeafAction): void
+  organizationDragView: OrganizationDragView | null
+  organizationDropTarget: OrganizationDropTarget | null
+  handleOrganizationPointerInput(input: OrganizationPointerInput): void
 }
 
 export function useOrganizationCoordinator({
   state,
   commands,
+  emitIntent,
+  compareOpen,
+  activePreviewOpen,
+  infoOpen,
 }: OrganizationOptions): OrganizationCoordinator {
   const {
     setSelectedEntityIds,
+    setReviewState,
+    toggleFavorite,
     previewRename,
     preflightFileCommand,
     executeFileCommand,
@@ -110,6 +149,40 @@ export function useOrganizationCoordinator({
     projectAccess: state.project?.access ?? null,
     operationBusy,
   })
+  const projectIdentity = organizationProjectIdentity(state)
+  const workspaceIdentity = organizationWorkspaceIdentity(state)
+  const radialContextKey = useRadialMenuContextToken({
+    activePreview: activePreviewOpen ? ACTIVE_PREVIEW_CONTEXT : null,
+    compareOpen,
+    infoOpen,
+    operationDialog,
+    organizationWorkspaceIdentity: workspaceIdentity,
+    resultsBatchId,
+    closeBlocked: state.closeBlocked,
+    contextRepair: state.contextRepair,
+  })
+  const { radialMenu, activeRadialMenu, beginRadialSession, finishRadialSession } =
+    useRadialMenuSession({
+      projectIdentity,
+      projectStatus: state.status,
+      contextKey: radialContextKey,
+    })
+  const compareContextAvailable =
+    compareEntryAvailability({
+      workspace: state.workspace,
+      searchResultsOpen: state.search.showResults,
+      operationBusy,
+    }) === 'available'
+  const radialModel = useMemo(
+    () =>
+      buildOrganizationRadialModel({
+        files: activeRadialMenu?.files ?? [],
+        projectAccess: state.project?.access ?? null,
+        operationBusy,
+        compareContextAvailable,
+      }),
+    [activeRadialMenu, compareContextAvailable, operationBusy, state.project?.access],
+  )
 
   useEffect(() => {
     setSelectedFiles([])
@@ -223,6 +296,262 @@ export function useOrganizationCoordinator({
     [executeFileCommand, setOperationDialog, setOperationSubmitting],
   )
 
+  const dropFiles = useCallback(
+    async (entityIds: string[], destinationId: string, mode: 'move' | 'copy') => {
+      if (
+        operationBusy ||
+        state.project?.access !== 'read_write' ||
+        state.workspace?.workspace !== 'content'
+      ) {
+        return
+      }
+      const currentFiles = [
+        ...state.workspace.images,
+        ...state.workspace.videos,
+        ...state.workspace.otherFiles,
+      ]
+      const byId = new Map(currentFiles.map((file) => [file.entityId, file]))
+      const files = entityIds.map((entityId) => byId.get(entityId))
+      if (files.some((file) => file === undefined)) return
+      const items: FileCommandItem[] = entityIds.map((entityId) => ({
+        entityId,
+        action:
+          mode === 'copy'
+            ? { kind: 'copy', destinationFolderId: destinationId }
+            : { kind: 'move', destinationFolderId: destinationId },
+      }))
+      const preflight = await preflightFileCommand(mode, items)
+      if (preflight === null) return
+      if (preflight.executable && preflight.rows.every((row) => row.state === 'ready')) {
+        await submitFileCommand(mode, items)
+        return
+      }
+      openDestinationDialog(mode, files as BrowserFile[], destinationId, preflight)
+    },
+    [
+      openDestinationDialog,
+      operationBusy,
+      preflightFileCommand,
+      state.project?.access,
+      state.workspace,
+      submitFileCommand,
+    ],
+  )
+
+  const validateOrganizationDropTarget = useCallback(
+    (entityIds: readonly string[], destinationId: string, mode: 'move' | 'copy') =>
+      isOrganizationDropTargetValid({
+        workspace: state.workspace,
+        folders: state.folders,
+        entityIds,
+        destinationId,
+        mode,
+      }),
+    [state.folders, state.workspace],
+  )
+  const organizationDragResetKey = [
+    state.project?.sessionId ?? 'no-session',
+    state.project?.generation ?? 'no-generation',
+    workspaceIdentity,
+  ].join(':')
+  const {
+    dragView: organizationDragView,
+    dropTarget: organizationDropTarget,
+    handlePointerInput: handleOrganizationPointerInput,
+    cancel: cancelOrganizationPointerDrag,
+  } = useOrganizationPointerDrag({
+    disabled: state.project?.access !== 'read_write' || operationBusy || compareOpen,
+    resetKey: organizationDragResetKey,
+    isDropTargetValid: validateOrganizationDropTarget,
+    onDrop: dropFiles,
+  })
+
+  useEffect(() => {
+    cancelOrganizationPointerDrag()
+  }, [cancelOrganizationPointerDrag, state.workspace])
+
+  const runRadialAction = useCallback(
+    (action: RadialLeafAction) => {
+      const files =
+        state.status === 'active' && radialMenu?.projectIdentity === projectIdentity
+          ? radialMenu.files
+          : []
+      if (files.length === 0) {
+        finishRadialSession()
+        return
+      }
+      finishRadialSession()
+      const ids = files.map((file) => file.entityId)
+      if (action === 'preview') {
+        const validation = validatePreviewSelection(files)
+        if (!validation.ok) return
+        if (validation.mode === 'single') {
+          emitIntent({
+            kind: 'open-preview',
+            file: defined(files[0], 'Single preview requires one file'),
+            files: null,
+            folderOverviewIdentity: null,
+          })
+        } else {
+          const first = defined(files[0], 'Split text preview requires a left file')
+          const second = defined(files[1], 'Split text preview requires a right file')
+          emitIntent({
+            kind: 'open-preview',
+            file: first,
+            files: [first, second],
+            folderOverviewIdentity: null,
+          })
+        }
+      } else if (action === 'mark.keep') void setReviewState('keep', ids)
+      else if (action === 'mark.pending') void setReviewState('pending', ids)
+      else if (action === 'mark.reject') void setReviewState('reject', ids)
+      else if (action === 'mark.clear') void setReviewState(null, ids)
+      else if (action === 'mark.favorite') void toggleFavorite(ids)
+      else if (action === 'organize.rename') emitIntent({ kind: 'start-rename', files })
+      else if (action === 'organize.copy') openDestinationDialog('copy', files)
+      else if (action === 'organize.move') openDestinationDialog('move', files)
+      else if (action === 'trash') openTrashDialog(files)
+      else if (action === 'compare') emitIntent({ kind: 'enter-compare', files })
+      else if (action === 'info') emitIntent({ kind: 'open-info' })
+    },
+    [
+      emitIntent,
+      finishRadialSession,
+      openDestinationDialog,
+      openTrashDialog,
+      projectIdentity,
+      radialMenu,
+      setReviewState,
+      state.status,
+      toggleFavorite,
+    ],
+  )
+
+  useEffect(() => {
+    function toggleInfo(event: KeyboardEvent) {
+      if (
+        !(
+          event.metaKey &&
+          !event.ctrlKey &&
+          !event.altKey &&
+          !event.shiftKey &&
+          event.key.toLowerCase() === 'i'
+        ) ||
+        organizationShortcutIsOwned(
+          event,
+          operationDialog !== null ||
+            activePreviewOpen ||
+            compareOpen ||
+            resultsBatchId !== null ||
+            operationBusy ||
+            state.closeBlocked !== null,
+        )
+      ) {
+        return
+      }
+      event.preventDefault()
+      emitIntent({ kind: 'open-info' })
+    }
+    window.addEventListener('keydown', toggleInfo)
+    return () => window.removeEventListener('keydown', toggleInfo)
+  }, [
+    activePreviewOpen,
+    compareOpen,
+    emitIntent,
+    operationBusy,
+    operationDialog,
+    resultsBatchId,
+    state.closeBlocked,
+  ])
+
+  useEffect(() => {
+    function handleOrganizationShortcut(event: KeyboardEvent) {
+      if (
+        organizationShortcutIsOwned(
+          event,
+          operationDialog !== null ||
+            activePreviewOpen ||
+            compareOpen ||
+            infoOpen ||
+            resultsBatchId !== null ||
+            operationBusy ||
+            state.status !== 'active' ||
+            state.closeBlocked !== null,
+        )
+      ) {
+        return
+      }
+      if (
+        event.metaKey &&
+        !event.ctrlKey &&
+        !event.altKey &&
+        !event.shiftKey &&
+        event.key.toLowerCase() === 'z'
+      ) {
+        if (operationBusy || event.repeat) return
+        event.preventDefault()
+        void undoLastOperation()
+        return
+      }
+      if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return
+      if (
+        (event.key === ' ' || event.key === 'Spacebar' || event.code === 'Space') &&
+        selectedFiles.length === 1
+      ) {
+        event.preventDefault()
+        emitIntent({
+          kind: 'open-preview',
+          file: defined(selectedFiles[0], 'Missing selected preview file'),
+          files: null,
+          folderOverviewIdentity: null,
+        })
+      } else if (event.key.toLowerCase() === 'c') {
+        event.preventDefault()
+        emitIntent({ kind: 'enter-compare', files: selectedFiles })
+      } else if (event.key === 'Enter') {
+        if (!canMutateSelection) return
+        event.preventDefault()
+        emitIntent({ kind: 'start-rename', files: selectedFiles })
+      } else if (event.key === 'Delete' || event.key === 'Backspace') {
+        if (!canMutateSelection) return
+        event.preventDefault()
+        openTrashDialog()
+      }
+    }
+    window.addEventListener('keydown', handleOrganizationShortcut)
+    return () => window.removeEventListener('keydown', handleOrganizationShortcut)
+  }, [
+    activePreviewOpen,
+    canMutateSelection,
+    compareOpen,
+    emitIntent,
+    infoOpen,
+    openTrashDialog,
+    operationBusy,
+    operationDialog,
+    resultsBatchId,
+    selectedFiles,
+    state.closeBlocked,
+    state.status,
+    undoLastOperation,
+  ])
+
+  useReviewShortcuts({
+    disabled:
+      state.project?.access === 'read_only' ||
+      state.selectedEntityIds.length === 0 ||
+      operationBusy ||
+      state.status !== 'active' ||
+      operationDialog !== null ||
+      activePreviewOpen ||
+      compareOpen ||
+      infoOpen ||
+      resultsBatchId !== null ||
+      state.closeBlocked !== null,
+    onSetReview: (reviewState) => void setReviewState(reviewState),
+    onToggleFavorite: () => void toggleFavorite(),
+  })
+
   const showResults = useCallback((batchId: string) => setResultsBatchId(batchId), [])
   const closeResults = useCallback(() => setResultsBatchId(null), [])
 
@@ -251,5 +580,14 @@ export function useOrganizationCoordinator({
     loadOperationResults,
     undoLastOperation,
     consumeContextRepair,
+    radialMenu,
+    activeRadialMenu,
+    radialModel,
+    beginRadialSession,
+    finishRadialSession,
+    runRadialAction,
+    organizationDragView,
+    organizationDropTarget,
+    handleOrganizationPointerInput,
   }
 }

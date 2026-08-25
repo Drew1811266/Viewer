@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest'
+import type { BrowserFile, FolderTreeItem, VideoFile } from '../../api/types'
 import type { ViewerState } from '../../state/viewerState'
 import {
+  buildOrganizationRadialModel,
   canMutateOrganizationSelection,
   finderDragFailureMessage,
+  isOrganizationDropTargetValid,
   organizationOperationBusy,
 } from './organizationModel'
 
@@ -18,6 +21,57 @@ const activeOperation: NonNullable<ViewerState['operation']['active']> = {
   cancelled: 0,
   activeEntityId: null,
 }
+
+function file(entityId: string, relativePath: string): BrowserFile {
+  return {
+    entityId,
+    relativePath,
+    name: relativePath.split('/').at(-1) ?? relativePath,
+    kind: 'jpeg',
+    size: 1,
+    modifiedNs: '1',
+    marker: { reviewState: null, favorite: false },
+    imageMetadata: { width: 1, height: 1 },
+    imageUrl: null,
+    videoMetadata: null,
+  }
+}
+
+function video(entityId: string, relativePath: string): VideoFile {
+  return {
+    ...file(entityId, relativePath),
+    kind: 'video',
+    videoMetadata: {
+      durationUs: 1_000_000,
+      displayWidth: 1_920,
+      displayHeight: 1_080,
+      rotationDegrees: 0,
+      frameRateMillihertz: 30_000,
+      videoCodec: 'h264',
+      audioCodec: 'aac',
+      probeStatus: 'ready',
+      failureKind: null,
+      coverUrl: null,
+    },
+  }
+}
+
+const folders: FolderTreeItem[] = [
+  {
+    entityId: 'folder-a',
+    parentEntityId: null,
+    relativePath: 'a',
+    name: 'a',
+    marker: { reviewState: null, favorite: false },
+  },
+  {
+    entityId: 'folder-b',
+    parentEntityId: null,
+    relativePath: 'b',
+    name: 'b',
+    marker: { reviewState: null, favorite: false },
+  },
+]
 
 describe('organizationModel', () => {
   it.each([
@@ -102,5 +156,51 @@ describe('organizationModel', () => {
     expect(finderDragFailureMessage({ code: 'backend_unavailable' })).toBe(
       '无法拖到 Finder，请重新拖动。',
     )
+  })
+
+  it('preserves copy and same-folder move validation across every content file collection', () => {
+    const workspace: ViewerState['workspace'] = {
+      workspace: 'content',
+      images: [file('image-1', 'a/front.jpg')],
+      videos: [video('video-1', 'a/clip.mp4')],
+      otherFiles: [file('text-1', 'b/notes.txt')],
+    }
+    const input = { workspace, folders, entityIds: ['image-1'], destinationId: 'folder-a' }
+
+    expect(isOrganizationDropTargetValid({ ...input, mode: 'move' })).toBe(false)
+    expect(isOrganizationDropTargetValid({ ...input, mode: 'copy' })).toBe(true)
+    expect(
+      isOrganizationDropTargetValid({
+        ...input,
+        entityIds: ['video-1'],
+        mode: 'move',
+      }),
+    ).toBe(false)
+    expect(
+      isOrganizationDropTargetValid({
+        ...input,
+        entityIds: ['text-1'],
+        destinationId: 'folder-b',
+        mode: 'move',
+      }),
+    ).toBe(false)
+    expect(
+      isOrganizationDropTargetValid({ ...input, destinationId: 'folder-b', mode: 'move' }),
+    ).toBe(true)
+    expect(isOrganizationDropTargetValid({ ...input, entityIds: ['missing'], mode: 'copy' })).toBe(
+      false,
+    )
+  })
+
+  it('builds the existing radial availability from the selected files', () => {
+    const model = buildOrganizationRadialModel({
+      files: [file('image-1', 'a/front.jpg'), file('image-2', 'a/back.jpg')],
+      projectAccess: 'read_write',
+      operationBusy: false,
+      compareContextAvailable: true,
+    })
+
+    expect(model.find((item) => item.id === 'compare')).toMatchObject({ disabled: false })
+    expect(model.find((item) => item.id === 'organize')).toMatchObject({ disabled: false })
   })
 })

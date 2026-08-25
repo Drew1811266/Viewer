@@ -1,3 +1,5 @@
+import type { ViewerState } from './viewerState'
+
 export const MIN_COMPARE_IMAGES = 2
 export const MAX_COMPARE_IMAGES = 8
 
@@ -12,6 +14,20 @@ export type CompareValidationReason =
   | 'unsupported_type'
 
 export type CompareValidationResult = { ok: true } | { ok: false; reason: CompareValidationReason }
+
+export type CompareEntryAvailability = 'available' | 'busy' | 'folder-context-required'
+
+export function compareEntryAvailability(input: {
+  workspace: ViewerState['workspace']
+  searchResultsOpen: boolean
+  operationBusy: boolean
+}): CompareEntryAvailability {
+  if (input.operationBusy) return 'busy'
+  if (input.workspace?.workspace !== 'content' || input.searchResultsOpen) {
+    return 'folder-context-required'
+  }
+  return 'available'
+}
 
 export function isSupportedCompareKind(kind: string): boolean {
   return kind === 'jpeg' || kind === 'png' || kind === 'unsupported_image'

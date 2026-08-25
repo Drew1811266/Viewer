@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  compareEntryAvailability,
   compareValidationMessage,
   MAX_COMPARE_IMAGES,
   MIN_COMPARE_IMAGES,
@@ -9,6 +10,37 @@ import {
 const image = (index: number) => ({ entityId: `image-${index}`, kind: 'jpeg' })
 
 describe('comparePolicy', () => {
+  it('classifies compare entry availability without changing validation copy', () => {
+    expect(
+      compareEntryAvailability({
+        workspace: { workspace: 'content', images: [], videos: [], otherFiles: [] },
+        searchResultsOpen: false,
+        operationBusy: false,
+      }),
+    ).toBe('available')
+    expect(
+      compareEntryAvailability({
+        workspace: { workspace: 'content', images: [], videos: [], otherFiles: [] },
+        searchResultsOpen: false,
+        operationBusy: true,
+      }),
+    ).toBe('busy')
+    expect(
+      compareEntryAvailability({
+        workspace: { workspace: 'empty' },
+        searchResultsOpen: false,
+        operationBusy: false,
+      }),
+    ).toBe('folder-context-required')
+    expect(
+      compareEntryAvailability({
+        workspace: { workspace: 'content', images: [], videos: [], otherFiles: [] },
+        searchResultsOpen: true,
+        operationBusy: false,
+      }),
+    ).toBe('folder-context-required')
+  })
+
   it('accepts exactly 2 through 8 supported unique images', () => {
     expect(MIN_COMPARE_IMAGES).toBe(2)
     expect(MAX_COMPARE_IMAGES).toBe(8)

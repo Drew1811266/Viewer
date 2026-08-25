@@ -16,27 +16,11 @@ import type {
   VideoMetadata,
   VideoRate as VideoRateRequestValue,
 } from '../../api/types'
-import type { ViewerBridge } from '../../api/viewer'
+import type { VideoPlaybackPort } from '../../app/workspace/ports'
 import type { VideoControlCommands, VideoPlaybackRate } from './VideoControls'
 import { createPreparingVideoState, reduceVideoState, type VideoPreviewState } from './videoState'
 
-export type VideoPreviewBridge = Pick<
-  ViewerBridge,
-  | 'listenVideo'
-  | 'videoClose'
-  | 'videoCancelOpen'
-  | 'videoOpen'
-  | 'videoPause'
-  | 'videoPlay'
-  | 'videoRequestCover'
-  | 'videoRequestThumbnail'
-  | 'videoSeek'
-  | 'videoSetFullscreen'
-  | 'videoSetMuted'
-  | 'videoSetRate'
-  | 'videoSetVolume'
-  | 'videoStep'
->
+export type VideoPreviewBridge = VideoPlaybackPort
 
 export interface UseVideoBridgeOptions {
   bridge: VideoPreviewBridge

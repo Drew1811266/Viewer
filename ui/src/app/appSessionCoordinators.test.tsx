@@ -2,7 +2,7 @@ import { act, createEvent, fireEvent, render, renderHook, screen } from '@testin
 import { type ReactNode, StrictMode, useLayoutEffect } from 'react'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { BrowserFile } from '../api/types'
-import { getAppShellStateInternals, useAppShellState } from './useAppShellState'
+import { useAppShellState } from './useAppShellState'
 import { useOtherFilePanelPreference } from './useOtherFilePanelPreference'
 import {
   getPreviewSessionInternals,
@@ -38,7 +38,6 @@ function preview(
 
 function ShellHarness({ name }: { name: string }) {
   const shell = useAppShellState('session-1')
-  const { resizeSidebarFromKeyboard } = getAppShellStateInternals(shell)
   return (
     <section aria-label={`${name} shell`}>
       <output aria-label={`${name} width`}>{shell.sidebarWidth}</output>
@@ -46,7 +45,7 @@ function ShellHarness({ name }: { name: string }) {
         type="button"
         className="sidebar-separator"
         aria-label={`${name} separator`}
-        onKeyDown={resizeSidebarFromKeyboard}
+        onKeyDown={shell.resizeSidebarFromKeyboard}
       />
     </section>
   )

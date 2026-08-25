@@ -8,19 +8,7 @@ export interface AppShellState {
   setProjectMenuOpen(open: boolean): void
   toggleSidebar(): void
   startSidebarResize(event: ReactPointerEvent<HTMLButtonElement>): void
-}
-
-interface AppShellStateInternals {
   resizeSidebarFromKeyboard(event: ReactKeyboardEvent<HTMLButtonElement>): void
-}
-
-const internalsByShellState = new WeakMap<AppShellState, AppShellStateInternals>()
-
-/** @internal Connects shell-owned keyboard resizing to App's separator element. */
-export function getAppShellStateInternals(state: AppShellState): AppShellStateInternals {
-  const internals = internalsByShellState.get(state)
-  if (internals === undefined) throw new Error('App shell state internals are unavailable')
-  return internals
 }
 
 export function useAppShellState(projectSessionId: string): AppShellState {
@@ -69,15 +57,13 @@ export function useAppShellState(projectSessionId: string): AppShellState {
     setSidebarWidth((width) => Math.max(200, Math.min(420, width + delta)))
   }, [])
 
-  const state: AppShellState = {
+  return {
     sidebarCollapsed,
     sidebarWidth,
     projectMenuOpen,
     setProjectMenuOpen,
     toggleSidebar,
     startSidebarResize,
+    resizeSidebarFromKeyboard,
   }
-  internalsByShellState.set(state, { resizeSidebarFromKeyboard })
-
-  return state
 }

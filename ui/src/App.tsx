@@ -13,19 +13,16 @@ import type {
 import type { ViewerBridge } from './api/viewer'
 import { tauriViewerBridge } from './api/viewer'
 import { createProjectThumbnailCache, type ThumbnailLoader } from './app/projectThumbnailCache'
-import { getAppShellStateInternals, useAppShellState } from './app/useAppShellState'
 import { useDelayedProjectionProgress } from './app/useDelayedProjectionProgress'
 import { useOperationDialogs } from './app/useOperationDialogs'
-import { useOtherFilePanelPreference } from './app/useOtherFilePanelPreference'
 import { getPreviewSessionInternals, usePreviewSession } from './app/usePreviewSession'
 import { useRadialMenuContextToken, useRadialMenuSession } from './app/useRadialMenuSession'
-import { useToolbarPopover } from './app/useToolbarPopover'
-import { useVideoPanelPreference } from './app/useVideoPanelPreference'
+import { createWorkspacePorts } from './app/workspace/ports'
+import { useWorkspaceShellCoordinator } from './app/workspace/useWorkspaceShellCoordinator'
 import BatchRenameDialog from './components/BatchRenameDialog'
 import CloseOperationDialog from './components/CloseOperationDialog'
 import CompareWorkspace from './components/CompareWorkspace'
-import ContentBrowser, { type ContentViewCommand } from './components/ContentBrowser'
-import type { SelectAllRequest } from './components/contentBrowser/adaptiveOtherFilePanelModel'
+import ContentBrowser from './components/ContentBrowser'
 import DestinationDialog from './components/DestinationDialog'
 import EmptyProject from './components/EmptyProject'
 import FolderOverview from './components/FolderOverview'
@@ -150,13 +147,12 @@ function ViewerWorkspace({
     state.showingAggregate ? 'aggregate' : 'folder',
     state.search.showResults ? 'search' : 'browser',
   ].join(':')
-  const shellState = useAppShellState(projectSessionId)
-  const otherFilePanelPreference = useOtherFilePanelPreference(projectSessionId)
-  const videoPanelPreference = useVideoPanelPreference(state.project?.sessionId ?? null)
-  const { sidebarCollapsed, sidebarWidth, toggleSidebar, startSidebarResize } = shellState
-  const [narrowViewport, setNarrowViewport] = useState(() => window.innerWidth <= 760)
-  const effectiveSidebarCollapsed = narrowViewport || sidebarCollapsed
-  const { resizeSidebarFromKeyboard } = getAppShellStateInternals(shellState)
+  const ports = useMemo(() => createWorkspacePorts(bridge), [bridge])
+  const shell = useWorkspaceShellCoordinator({
+    projectSessionId,
+    videoProjectSessionId: state.project?.sessionId ?? null,
+    port: ports.shell,
+  })
   const previewSession = usePreviewSession(projectSessionId)
   const {
     activePreview,
@@ -179,27 +175,10 @@ function ViewerWorkspace({
   const [dismissedTasks, setDismissedTasks] = useState<Set<string>>(() => new Set())
   const [selectedFiles, setSelectedFiles] = useState<BrowserFile[]>([])
   const [finderDragMessage, setFinderDragMessage] = useState<string | null>(null)
-  const [workspaceActionError, setWorkspaceActionError] = useState<string | null>(null)
-  const [recoveryAcknowledgedSessionId, setRecoveryAcknowledgedSessionId] = useState<string | null>(
-    null,
-  )
   const [compareStatus, setCompareStatus] = useState<string | null>(null)
   const [resultsBatchId, setResultsBatchId] = useState<string | null>(null)
-  const [infoOpen, setInfoOpen] = useState(false)
-  const [settingsOpen, setSettingsOpen] = useState(false)
   const [previewRepair, setPreviewRepair] = useState<PreviewRepairMemory>(EMPTY_PREVIEW_REPAIR)
-  const [contentSelectAllRequest, setContentSelectAllRequest] = useState<SelectAllRequest>({
-    kind: 'none',
-  })
-  const [contentViewCommand, setContentViewCommand] = useState<ContentViewCommand | null>(null)
-  const toolbarPopover = useToolbarPopover()
-  const contentViewCommandRequestId = useRef(0)
   const moreMenuTriggerRef = useRef<HTMLElement>(null)
-  useEffect(() => {
-    const updateViewport = () => setNarrowViewport(window.innerWidth <= 760)
-    window.addEventListener('resize', updateViewport)
-    return () => window.removeEventListener('resize', updateViewport)
-  }, [])
   useEffect(() => {
     setThumbnailTask(null)
     setTextTask(null)
@@ -208,13 +187,8 @@ function ViewerWorkspace({
     setFinderDragMessage(null)
     setCompareStatus(null)
     setResultsBatchId(null)
-    setInfoOpen(false)
-    setSettingsOpen(false)
     setPreviewRepair(EMPTY_PREVIEW_REPAIR)
   }, [projectSessionId])
-  useEffect(() => {
-    if (contentViewCommand !== null) setContentViewCommand(null)
-  }, [contentViewCommand])
   const loadThumbnail = useCallback<ThumbnailLoader>(
     (file: BrowserFile, maxPixels: number, scaleMilli: number) =>
       bridge
@@ -359,7 +333,7 @@ function ViewerWorkspace({
   const radialContextKey = useRadialMenuContextToken({
     activePreview,
     compareOpen,
-    infoOpen,
+    infoOpen: shell.infoOpen,
     operationDialog,
     organizationWorkspaceIdentity,
     resultsBatchId,
@@ -413,7 +387,8 @@ function ViewerWorkspace({
         return
       }
       event.preventDefault()
-      setInfoOpen((open) => !open)
+      if (shell.infoOpen) shell.closeInfo()
+      else shell.openInfo()
     }
     window.addEventListener('keydown', toggleInfo)
     return () => window.removeEventListener('keydown', toggleInfo)
@@ -423,6 +398,9 @@ function ViewerWorkspace({
     operationBusy,
     operationDialog,
     resultsBatchId,
+    shell.closeInfo,
+    shell.infoOpen,
+    shell.openInfo,
     state.closeBlocked,
   ])
 
@@ -736,7 +714,7 @@ function ViewerWorkspace({
         setOperationDialog({ kind: 'destination', mode: 'move', files })
       } else if (action === 'trash') setOperationDialog({ kind: 'trash', files })
       else if (action === 'compare') openComparison(files)
-      else if (action === 'info') setInfoOpen(true)
+      else if (action === 'info') shell.openInfo()
     },
     [
       openComparison,
@@ -747,6 +725,7 @@ function ViewerWorkspace({
       finishRadialSession,
       setPreviewEntityId,
       setReviewState,
+      shell.openInfo,
       state.status,
       toggleFavorite,
     ],
@@ -839,7 +818,7 @@ function ViewerWorkspace({
           operationDialog !== null ||
             activePreview !== null ||
             compareOpen ||
-            infoOpen ||
+            shell.infoOpen ||
             resultsBatchId !== null ||
             operationBusy ||
             state.status !== 'active' ||
@@ -886,7 +865,7 @@ function ViewerWorkspace({
     activePreview,
     canMutateSelection,
     compareOpen,
-    infoOpen,
+    shell.infoOpen,
     openPreview,
     openRenameDialog,
     openComparison,
@@ -909,7 +888,7 @@ function ViewerWorkspace({
       operationDialog !== null ||
       activePreview !== null ||
       compareOpen ||
-      infoOpen ||
+      shell.infoOpen ||
       resultsBatchId !== null ||
       state.closeBlocked !== null,
     onSetReview: (reviewState) => void setReviewState(reviewState),
@@ -967,7 +946,7 @@ function ViewerWorkspace({
   const pendingRecoveryReport =
     state.recoveryReport !== null &&
     (state.recoveryReport.recovered > 0 || state.recoveryReport.needsUserReview > 0) &&
-    recoveryAcknowledgedSessionId !== projectSessionId
+    shell.recoveryAcknowledgedSessionId !== projectSessionId
       ? state.recoveryReport
       : null
   const globalNotices: GlobalNotice[] = []
@@ -987,11 +966,11 @@ function ViewerWorkspace({
       tone: 'danger',
     })
   }
-  if (workspaceActionError) {
+  if (shell.workspaceActionError) {
     globalNotices.push({
-      id: `workspace:${workspaceActionError}`,
+      id: `workspace:${shell.workspaceActionError}`,
       title: '无法在文件管理器中显示项目',
-      message: workspaceActionError,
+      message: shell.workspaceActionError,
       tone: 'danger',
     })
   }
@@ -1007,12 +986,8 @@ function ViewerWorkspace({
         ? {
             kind: 'content',
             showingAggregate: state.showingAggregate,
-            selectAllRequest: contentSelectAllRequest,
-            onSelectAll: (scope) =>
-              setContentViewCommand({
-                requestId: ++contentViewCommandRequestId.current,
-                scope,
-              }),
+            selectAllRequest: shell.selectAllRequest,
+            onSelectAll: shell.requestSelectAll,
             onShowAllDescendants: () => void showAllDescendants(),
             onReturnToFolder: returnToFolderContext,
           }
@@ -1027,19 +1002,19 @@ function ViewerWorkspace({
       data-organization-drag-active={organizationDragView ? true : undefined}
       style={
         {
-          '--viewer-sidebar-width': `${effectiveSidebarCollapsed ? 52 : sidebarWidth}px`,
+          '--viewer-sidebar-width': `${shell.effectiveSidebarCollapsed ? 52 : shell.sidebarWidth}px`,
         } as CSSProperties
       }
     >
       <header className="workspace-header">
-        <div className="project-identity" data-collapsed={effectiveSidebarCollapsed}>
-          {effectiveSidebarCollapsed ? (
+        <div className="project-identity" data-collapsed={shell.effectiveSidebarCollapsed}>
+          {shell.effectiveSidebarCollapsed ? (
             <ViewerIconButton
               icon="chevron-right"
-              label={narrowViewport ? '窄窗口中已折叠文件夹栏' : '展开文件夹栏'}
+              label={shell.narrowViewport ? '窄窗口中已折叠文件夹栏' : '展开文件夹栏'}
               tone="quiet"
-              onClick={toggleSidebar}
-              disabled={narrowViewport}
+              onClick={shell.toggleSidebar}
+              disabled={shell.narrowViewport}
             />
           ) : (
             <>
@@ -1048,15 +1023,15 @@ function ViewerWorkspace({
                 icon="chevron-left"
                 label="折叠文件夹栏"
                 tone="quiet"
-                onClick={toggleSidebar}
+                onClick={shell.toggleSidebar}
               />
             </>
           )}
         </div>
         <div className="workspace-header-main" role="toolbar" aria-label="Viewer 工具栏">
           <SearchToolbar
-            filterOpen={toolbarPopover.openPopover === 'filter'}
-            onFilterOpenChange={(open) => toolbarPopover.setPopoverOpen('filter', open)}
+            filterOpen={shell.toolbarPopover.openPopover === 'filter'}
+            onFilterOpenChange={(open) => shell.toolbarPopover.setPopoverOpen('filter', open)}
             query={state.search.query}
             folders={state.folders}
             focusRequest={state.search.focusRequest}
@@ -1069,16 +1044,16 @@ function ViewerWorkspace({
           />
           <WorkspaceViewMenu
             context={viewContext}
-            open={toolbarPopover.openPopover === 'view'}
-            onOpenChange={(open) => toolbarPopover.setPopoverOpen('view', open)}
+            open={shell.toolbarPopover.openPopover === 'view'}
+            onOpenChange={(open) => shell.toolbarPopover.setPopoverOpen('view', open)}
           />
           <WorkspaceMoreMenu
             ref={moreMenuTriggerRef}
-            open={toolbarPopover.openPopover === 'more'}
-            onOpenChange={(open) => toolbarPopover.setPopoverOpen('more', open)}
+            open={shell.toolbarPopover.openPopover === 'more'}
+            onOpenChange={(open) => shell.toolbarPopover.setPopoverOpen('more', open)}
             access={state.project.access}
             closing={state.status === 'closing'}
-            onOpenSettings={() => setSettingsOpen(true)}
+            onOpenSettings={shell.openSettings}
             onOpenPermissionSettings={() => void openPermissionSettings()}
             onReselectProject={() => void reselectProject()}
             onCloseProject={() => void closeProject()}
@@ -1096,8 +1071,8 @@ function ViewerWorkspace({
         <aside
           className="folder-sidebar"
           aria-label="文件夹栏"
-          data-collapsed={effectiveSidebarCollapsed}
-          style={{ width: effectiveSidebarCollapsed ? 52 : sidebarWidth }}
+          data-collapsed={shell.effectiveSidebarCollapsed}
+          style={{ width: shell.effectiveSidebarCollapsed ? 52 : shell.sidebarWidth }}
         >
           <p className="folder-tree-label">项目目录</p>
           {state.workspace !== null && (
@@ -1117,7 +1092,7 @@ function ViewerWorkspace({
             onSelect={selectFolderTarget}
             organizationDropTarget={organizationDropTarget}
           />
-          {!effectiveSidebarCollapsed && (
+          {!shell.effectiveSidebarCollapsed && (
             <button
               type="button"
               className="sidebar-separator"
@@ -1126,9 +1101,9 @@ function ViewerWorkspace({
               aria-orientation="vertical"
               aria-valuemin={200}
               aria-valuemax={420}
-              aria-valuenow={sidebarWidth}
-              onPointerDown={startSidebarResize}
-              onKeyDown={resizeSidebarFromKeyboard}
+              aria-valuenow={shell.sidebarWidth}
+              onPointerDown={shell.startSidebarResize}
+              onKeyDown={shell.resizeSidebarFromKeyboard}
             />
           )}
         </aside>
@@ -1145,10 +1120,7 @@ function ViewerWorkspace({
               title="项目状态已恢复"
               description={`${pendingRecoveryReport.recovered} 项操作已经恢复，${pendingRecoveryReport.needsUserReview} 项需要检查。`}
               action={
-                <ViewerButton
-                  tone="primary"
-                  onClick={() => setRecoveryAcknowledgedSessionId(projectSessionId)}
-                >
+                <ViewerButton tone="primary" onClick={shell.acknowledgeRecovery}>
                   继续浏览项目
                 </ViewerButton>
               }
@@ -1190,18 +1162,7 @@ function ViewerWorkspace({
                   title="这个项目中还没有可显示的文件"
                   description="Viewer 会显示支持的图片、视频、Markdown 与文本文件。"
                   action={
-                    <ViewerButton
-                      onClick={() => {
-                        setWorkspaceActionError(null)
-                        void bridge
-                          .revealProjectInFileManager()
-                          .catch(() =>
-                            setWorkspaceActionError('请在 Finder 中手动打开当前项目文件夹。'),
-                          )
-                      }}
-                    >
-                      在文件管理器中显示
-                    </ViewerButton>
+                    <ViewerButton onClick={shell.revealProject}>在文件管理器中显示</ViewerButton>
                   }
                 />
               )}
@@ -1231,9 +1192,9 @@ function ViewerWorkspace({
                     <ContentBrowser
                       workspace={state.workspace}
                       density={thumbnailDensity}
-                      viewCommand={contentViewCommand}
-                      onViewStateChange={setContentSelectAllRequest}
-                      onRequestViewMenu={() => toolbarPopover.setPopoverOpen('view', true)}
+                      viewCommand={shell.contentViewCommand}
+                      onViewStateChange={shell.setSelectAllRequest}
+                      onRequestViewMenu={() => shell.toolbarPopover.setPopoverOpen('view', true)}
                       requestThumbnail={requestThumbnail}
                       onThumbnailTaskChange={setThumbnailTask}
                       onPreview={openPreview}
@@ -1248,10 +1209,10 @@ function ViewerWorkspace({
                       repairSelectionId={state.contextRepair?.suggestedEntityId ?? null}
                       onRepairSelectionApplied={consumeContextRepair}
                       onRadialMenuRequest={beginRadialSession}
-                      otherFilePanelExpanded={otherFilePanelPreference.expanded}
-                      onOtherFilePanelExpandedChange={otherFilePanelPreference.setExpanded}
-                      videoPanelExpanded={videoPanelPreference.expanded}
-                      onVideoPanelExpandedChange={videoPanelPreference.setExpanded}
+                      otherFilePanelExpanded={shell.otherFilePanel.expanded}
+                      onOtherFilePanelExpandedChange={shell.otherFilePanel.setExpanded}
+                      videoPanelExpanded={shell.videoPanel.expanded}
+                      onVideoPanelExpandedChange={shell.videoPanel.setExpanded}
                     />
                   </div>
                   {!compareOpen && compareStatus && (
@@ -1312,7 +1273,7 @@ function ViewerWorkspace({
           onClose={finishRadialSession}
         />
       )}
-      {settingsOpen && (
+      {shell.settingsOpen && (
         <SettingsDialog
           bridge={bridge}
           density={thumbnailDensity}
@@ -1322,7 +1283,7 @@ function ViewerWorkspace({
           onMagnifierShapeChange={setMagnifierShape}
           onMagnifierMagnificationChange={setMagnifierMagnification}
           onMagnifierAreaChange={setMagnifierArea}
-          onClose={() => setSettingsOpen(false)}
+          onClose={shell.closeSettings}
           returnFocusRef={moreMenuTriggerRef}
         />
       )}
@@ -1366,12 +1327,12 @@ function ViewerWorkspace({
           onClose={closePreview}
         />
       )}
-      {infoOpen && (
+      {shell.infoOpen && (
         <InfoOverlay
           files={selectedFiles}
           selectionInfo={state.selectionInfo}
           dimensions={dimensions}
-          onClose={() => setInfoOpen(false)}
+          onClose={shell.closeInfo}
         />
       )}
       {operationDialog?.kind === 'rename' && (

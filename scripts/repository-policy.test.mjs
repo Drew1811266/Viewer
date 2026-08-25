@@ -716,7 +716,12 @@ test('CI defines independent deterministic quality and security gates', async ()
     packageJson.scripts['test:policy'],
     'node --test scripts/repository-policy.test.mjs scripts/scope-coverage.test.mjs && node scripts/check-scope-coverage.mjs',
   )
+  assert.equal(
+    packageJson.scripts['test:review-protocol'],
+    'node --test scripts/review-protocol/read-latest.test.mjs',
+  )
   assert.match(packageJson.scripts.quality, /^pnpm test:policy &&/)
+  assert.match(packageJson.scripts.quality, /pnpm test:policy && pnpm test:review-protocol &&/)
   assert.match(packageJson.scripts.quality, /scripts\/verify-clean\.test\.mjs/)
   assert.match(packageJson.scripts.quality, /pnpm --dir ui check/)
   assert.match(packageJson.scripts.quality, /pnpm --dir ui test/)
@@ -861,7 +866,7 @@ test('desktop capability and network boundary remains frozen', async () => {
   )
   assert.match(
     packageJson.scripts.quality,
-    /^pnpm test:policy && pnpm architecture:boundaries &&/,
+    /^pnpm test:policy && pnpm test:review-protocol && pnpm architecture:boundaries &&/,
   )
   assert.doesNotMatch(packageJson.scripts.verify, /architecture:trends|quality:report/)
 })

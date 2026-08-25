@@ -24,6 +24,7 @@
 | --- | --- | --- |
 | [TECHNICAL_FOUNDATIONS.md](TECHNICAL_FOUNDATIONS.md) | Active | — |
 | [OPEN_SOURCE_RESEARCH.md](OPEN_SOURCE_RESEARCH.md) | Active | — |
+| [protocol/README.md](protocol/README.md) | Active | — |
 | [quality/DEPENDENCY_HEALTH.md](quality/DEPENDENCY_HEALTH.md) | Active | — |
 | [architecture/viewer-0.1-api-baseline.md](architecture/viewer-0.1-api-baseline.md) | Active | — |
 | [2026-08-24-viewer-architecture-governance-and-workspace-orchestration-design.md](superpowers/specs/2026-08-24-viewer-architecture-governance-and-workspace-orchestration-design.md) | Active | — |

@@ -1,0 +1,24 @@
+{
+  "protocolVersion": "viewer.review/1",
+  "projectId": "00000000-0000-4000-8000-000000000001",
+  "streams": [
+    {
+      "reviewStreamId": "00000000-0000-4000-8000-000000000101",
+      "taskId": "task-a",
+      "batchId": "batch-a",
+      "completedRoundIds": [
+        "00000000-0000-4000-8000-000000000201"
+      ],
+      "latestCompletedRoundId": "00000000-0000-4000-8000-000000000201"
+    },
+    {
+      "reviewStreamId": "00000000-0000-4000-8000-000000000102",
+      "taskId": "task-b",
+      "batchId": "batch-b",
+      "completedRoundIds": [
+        "00000000-0000-4000-8000-000000000202"
+      ],
+      "latestCompletedRoundId": "00000000-0000-4000-8000-000000000202"
+    }
+  ]
+}

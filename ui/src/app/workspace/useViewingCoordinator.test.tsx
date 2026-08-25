@@ -83,6 +83,128 @@ function options(
 }
 
 describe('useViewingCoordinator', () => {
+  it('preserves exact validation, busy, and folder-context compare failures', () => {
+    const first = file('first')
+    const second = file('second')
+    const workspace = {
+      workspace: 'content' as const,
+      images: [first, second],
+      videos: [],
+      otherFiles: [],
+    }
+    const viewingCommands = commands()
+    const hook = renderHook(
+      ({ viewerState }) =>
+        useViewingCoordinator(options('session-1', viewerState, previewPort(), viewingCommands)),
+      { initialProps: { viewerState: state('session-1', workspace) } },
+    )
+
+    act(() => hook.result.current.enterCompare([first], false))
+    expect(hook.result.current.compareStatus).toBe('请选择 2–8 张图片进行对比。')
+    expect(viewingCommands.setCompareEntityIds).not.toHaveBeenCalled()
+
+    act(() => hook.result.current.enterCompare([first, second], true))
+    expect(hook.result.current.compareStatus).toBe('请等待当前文件操作完成后再开始对比。')
+
+    hook.rerender({ viewerState: state('session-1', { workspace: 'empty' }) })
+    act(() => hook.result.current.enterCompare([first, second], false))
+    expect(hook.result.current.compareStatus).toBe('请先返回文件夹内容，再选择图片进行对比。')
+  })
+
+  it('closes preview and clears repair before setting ordered compare IDs', () => {
+    const old = file('old')
+    const first = file('first')
+    const second = file('second')
+    const workspace = {
+      workspace: 'content' as const,
+      images: [old, first, second],
+      videos: [],
+      otherFiles: [],
+    }
+    const viewingCommands = commands()
+    const repairedState: ViewerState = {
+      ...state('session-1', workspace),
+      contextRepair: {
+        removedEntityIds: ['old'],
+        suggestedEntityId: 'first',
+        message: '旧文件已移除',
+      },
+    }
+    const hook = renderHook(
+      ({ viewerState }) =>
+        useViewingCoordinator(options('session-1', viewerState, previewPort(), viewingCommands)),
+      { initialProps: { viewerState: repairedState } },
+    )
+
+    act(() => hook.result.current.openPreview(old))
+    hook.rerender({ viewerState: { ...repairedState, contextRepair: null } })
+    expect([...hook.result.current.unavailablePreviewEntityIds]).toEqual(['old'])
+    vi.mocked(viewingCommands.setPreviewEntityId).mockClear()
+    vi.mocked(viewingCommands.setCompareEntityIds).mockClear()
+
+    act(() => hook.result.current.enterCompare([first, second], false))
+
+    expect(hook.result.current.activePreview).toBeNull()
+    expect(hook.result.current.unavailablePreviewEntityIds.size).toBe(0)
+    expect(viewingCommands.setPreviewEntityId).toHaveBeenCalledWith(null)
+    expect(viewingCommands.setCompareEntityIds).toHaveBeenCalledWith(['first', 'second'])
+    expect(vi.mocked(viewingCommands.setPreviewEntityId).mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(viewingCommands.setCompareEntityIds).mock.invocationCallOrder[0] ?? 0,
+    )
+  })
+
+  it('opens one surviving compared image as preview', () => {
+    const survivor = file('survivor')
+    const viewerState = {
+      ...state('session-1', {
+        workspace: 'content',
+        images: [survivor],
+        videos: [],
+        otherFiles: [],
+      }),
+      compareEntityIds: ['survivor', 'removed'],
+    }
+    const viewingCommands = commands()
+    const hook = renderHook(() =>
+      useViewingCoordinator(options('session-1', viewerState, previewPort(), viewingCommands)),
+    )
+
+    expect(viewingCommands.setCompareEntityIds).toHaveBeenCalledWith([])
+    expect(hook.result.current.activePreviewFile).toBe(survivor)
+  })
+
+  it('closes comparison on search and repairs external removal in original ID order', () => {
+    const first = file('first')
+    const third = file('third')
+    const workspace = {
+      workspace: 'content' as const,
+      images: [third, first],
+      videos: [],
+      otherFiles: [],
+    }
+    const viewingCommands = commands()
+    const base = {
+      ...state('session-1', workspace),
+      compareEntityIds: ['first', 'removed', 'third'],
+    }
+    const hook = renderHook(
+      ({ viewerState }) =>
+        useViewingCoordinator(options('session-1', viewerState, previewPort(), viewingCommands)),
+      { initialProps: { viewerState: base } },
+    )
+
+    expect(viewingCommands.setCompareEntityIds).toHaveBeenCalledWith(['first', 'third'])
+    vi.mocked(viewingCommands.setCompareEntityIds).mockClear()
+    hook.rerender({
+      viewerState: {
+        ...base,
+        compareEntityIds: ['first', 'third'],
+        search: { ...base.search, showResults: true },
+      },
+    })
+    expect(viewingCommands.setCompareEntityIds).toHaveBeenCalledWith([])
+  })
+
   it('invalidates preview, repair, and thumbnail cache ownership on project change', async () => {
     const image = file('image-1')
     const port = previewPort()

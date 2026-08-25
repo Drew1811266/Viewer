@@ -1,6 +1,6 @@
 import type { CSSProperties, MutableRefObject } from 'react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { BrowserFile, RenamePreview, RenameRules } from './api/types'
+import { useCallback, useMemo, useRef } from 'react'
+import type { RenamePreview, RenameRules } from './api/types'
 import type { ViewerBridge } from './api/viewer'
 import { tauriViewerBridge } from './api/viewer'
 import { useDelayedProjectionProgress } from './app/useDelayedProjectionProgress'
@@ -44,11 +44,6 @@ import WorkspaceMoreMenu from './components/WorkspaceMoreMenu'
 import WorkspaceViewMenu, { type WorkspaceViewContext } from './components/WorkspaceViewMenu'
 import { isImageFile, isVideoFile } from './fileKinds'
 import { useViewerSettings, ViewerSettingsProvider } from './settings/ViewerSettingsProvider'
-import {
-  compareEntryAvailability,
-  compareValidationMessage,
-  validateCompareCandidates,
-} from './state/comparePolicy'
 import { useViewerController } from './state/useViewerController'
 
 interface AppProps {
@@ -125,15 +120,6 @@ function ViewerWorkspace({
     videoProjectSessionId: state.project?.sessionId ?? null,
     port: ports.shell,
   })
-  const compareFiles = useMemo(() => {
-    if (state.workspace?.workspace !== 'content') return []
-    const byId = new Map(state.workspace.images.map((file) => [file.entityId, file]))
-    return state.compareEntityIds.flatMap((entityId) => {
-      const file = byId.get(entityId)
-      return file === undefined ? [] : [file]
-    })
-  }, [state.compareEntityIds, state.workspace])
-  const compareOpen = state.compareEntityIds.length >= 2 && compareFiles.length >= 2
   const viewing = useViewingCoordinator({
     state,
     projectSessionId,
@@ -157,7 +143,7 @@ function ViewerWorkspace({
       beginFinderDrag,
     },
     emitIntent,
-    compareOpen,
+    compareOpen: viewing.compareOpen,
     activePreviewOpen: viewing.activePreview !== null,
     infoOpen: shell.infoOpen,
   })
@@ -169,11 +155,7 @@ function ViewerWorkspace({
     finderDragMessage: organization.finderDragMessage,
     workspaceActionError: shell.workspaceActionError,
   })
-  const [compareStatus, setCompareStatus] = useState<string | null>(null)
   const moreMenuTriggerRef = useRef<HTMLElement>(null)
-  useEffect(() => {
-    setCompareStatus(null)
-  }, [projectSessionId])
   const displayedFolderId = state.projectionTransition?.selectedFolderId ?? state.selectedFolderId
   const projectionProgressVisible = useDelayedProjectionProgress(
     state.projectionTransition,
@@ -186,41 +168,13 @@ function ViewerWorkspace({
     },
     [organization.selectFolderTarget, selectFolder],
   )
-  const compareAvailability = compareEntryAvailability({
-    workspace: state.workspace,
-    searchResultsOpen: state.search.showResults,
-    operationBusy: organization.operationBusy,
-  })
-
-  const openComparison = useCallback(
-    (files: BrowserFile[] = organization.selectedFiles) => {
-      if (compareAvailability !== 'available') {
-        setCompareStatus(
-          compareAvailability === 'busy'
-            ? '请等待当前文件操作完成后再开始对比。'
-            : '请先返回文件夹内容，再选择图片进行对比。',
-        )
-        return
-      }
-      const validation = validateCompareCandidates(files)
-      if (!validation.ok) {
-        setCompareStatus(compareValidationMessage(validation.reason))
-        return
-      }
-      setCompareStatus(null)
-      viewing.closePreview()
-      setCompareEntityIds(files.map((file) => file.entityId))
-    },
-    [compareAvailability, organization.selectedFiles, setCompareEntityIds, viewing.closePreview],
-  )
-
   intentTargetRef.current = (intent) => {
     switch (intent.kind) {
       case 'open-preview':
         viewing.openIntentPreview(intent)
         return
       case 'enter-compare':
-        openComparison([...intent.files])
+        viewing.enterCompare(intent.files, organization.operationBusy)
         return
       case 'start-rename':
         organization.openRenameDialog(intent.files)
@@ -239,33 +193,6 @@ function ViewerWorkspace({
         void closeProject()
     }
   }
-
-  const changeComparedEntities = useCallback(
-    (entityIds: string[]) => {
-      setCompareStatus(null)
-      if (entityIds.length >= 2) {
-        setCompareEntityIds(entityIds)
-        return
-      }
-      setCompareEntityIds([])
-      if (entityIds.length !== 1 || state.workspace?.workspace !== 'content') return
-      const survivor = state.workspace.images.find((file) => file.entityId === entityIds[0])
-      if (survivor !== undefined) viewing.openPreview(survivor)
-    },
-    [setCompareEntityIds, state.workspace, viewing.openPreview],
-  )
-
-  useEffect(() => {
-    if (state.compareEntityIds.length === 0) return
-    const liveIds = compareFiles.map((file) => file.entityId)
-    if (liveIds.length !== state.compareEntityIds.length || liveIds.length < 2) {
-      changeComparedEntities(liveIds)
-    }
-  }, [changeComparedEntities, compareFiles, state.compareEntityIds])
-
-  useEffect(() => {
-    if (compareOpen && state.search.showResults) changeComparedEntities([])
-  }, [changeComparedEntities, compareOpen, state.search.showResults])
 
   const operationDialogSnapshot = organization.operationDialog
 
@@ -499,7 +426,7 @@ function ViewerWorkspace({
                   <div
                     className="content-workspace-surface"
                     data-testid="content-workspace-surface"
-                    hidden={compareOpen}
+                    hidden={viewing.compareOpen}
                   >
                     {state.showingAggregate && (
                       <ViewerStatusTag className="aggregate-label" tone="info">
@@ -521,7 +448,7 @@ function ViewerWorkspace({
                       organizationDragDisabled={
                         state.project.access !== 'read_write' ||
                         organization.operationBusy ||
-                        compareOpen
+                        viewing.compareOpen
                       }
                       onFinderDragStart={organization.exportToFinder}
                       onOrganizationPointerInput={organization.handleOrganizationPointerInput}
@@ -534,27 +461,27 @@ function ViewerWorkspace({
                       onVideoPanelExpandedChange={shell.videoPanel.setExpanded}
                     />
                   </div>
-                  {!compareOpen && compareStatus && (
+                  {!viewing.compareOpen && viewing.compareStatus && (
                     <p className="compare-status" role="status">
-                      {compareStatus}
+                      {viewing.compareStatus}
                     </p>
                   )}
-                  {compareOpen && (
+                  {viewing.compareOpen && (
                     <>
                       <CompareWorkspace
-                        files={compareFiles}
+                        files={viewing.compareFiles}
                         readOnly={state.project.access === 'read_only'}
                         requestImage={viewing.requestPreviewImage}
-                        onEntityIdsChange={changeComparedEntities}
+                        onEntityIdsChange={viewing.changeComparedEntities}
                         onSetReview={(entityId, reviewState) =>
                           void setReviewState(reviewState, [entityId])
                         }
                         onToggleFavorite={(entityId) => void toggleFavorite([entityId])}
-                        onStatus={setCompareStatus}
+                        onStatus={viewing.setCompareStatus}
                       />
-                      {compareStatus && (
+                      {viewing.compareStatus && (
                         <p className="compare-status" role="status">
-                          {compareStatus}
+                          {viewing.compareStatus}
                         </p>
                       )}
                     </>

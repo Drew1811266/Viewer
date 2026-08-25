@@ -2,6 +2,11 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { BrowserFile, ImageRepresentationRequest, TextEncoding } from '../../api/types'
 import type { TextPreviewFiles } from '../../components/TextPreview'
 import { isVideoFile } from '../../fileKinds'
+import {
+  compareEntryAvailability,
+  compareValidationMessage,
+  validateCompareCandidates,
+} from '../../state/comparePolicy'
 import type { ViewerController } from '../../state/useViewerController'
 import type { ViewerState } from '../../state/viewerState'
 import { createProjectThumbnailCache, type ThumbnailLoader } from '../projectThumbnailCache'
@@ -18,6 +23,7 @@ import {
   EMPTY_PREVIEW_REPAIR,
   resolveActivePreviewFile,
   resolveActivePreviewFiles,
+  resolveCompareFiles,
   unavailablePreviewEntityIds,
   viewingVideoNeighbors,
 } from './viewingModel'
@@ -62,6 +68,12 @@ export interface ViewingCoordinator {
   closePreview(): void
   recordDimensions(entityId: string, width: number, height: number): void
   playbackPort: VideoPlaybackPort
+  compareFiles: BrowserFile[]
+  compareOpen: boolean
+  compareStatus: string | null
+  enterCompare(files: readonly BrowserFile[], operationBusy: boolean): void
+  changeComparedEntities(entityIds: string[]): void
+  setCompareStatus(message: string | null): void
 }
 
 export function useViewingCoordinator({
@@ -71,7 +83,7 @@ export function useViewingCoordinator({
   playbackPort,
   commands,
 }: ViewingOptions): ViewingCoordinator {
-  const { setPreviewEntityId } = commands
+  const { setPreviewEntityId, setCompareEntityIds } = commands
   const previewSession = usePreviewSession(projectSessionId)
   const {
     activePreview,
@@ -83,6 +95,7 @@ export function useViewingCoordinator({
   } = previewSession
   const { navigatePreview: navigatePreviewSession } = getPreviewSessionInternals(previewSession)
   const [previewRepair, setPreviewRepair] = useState(EMPTY_PREVIEW_REPAIR)
+  const [compareStatus, setCompareStatus] = useState<string | null>(null)
   const [folderOverviewProjectionState, setFolderOverviewProjectionState] = useState(() => ({
     projection: state.workspace,
     sequence: 0,
@@ -104,6 +117,7 @@ export function useViewingCoordinator({
 
   useEffect(() => {
     setPreviewRepair(EMPTY_PREVIEW_REPAIR)
+    setCompareStatus(null)
   }, [projectSessionId])
 
   const loadThumbnail = useCallback<ThumbnailLoader>(
@@ -212,6 +226,64 @@ export function useViewingCoordinator({
     setPreviewEntityId(null)
   }, [closePreviewSession, setPreviewEntityId])
 
+  const compareFiles = useMemo(
+    () => resolveCompareFiles(state.workspace, state.compareEntityIds),
+    [state.compareEntityIds, state.workspace],
+  )
+  const compareOpen = state.compareEntityIds.length >= 2 && compareFiles.length >= 2
+  const enterCompare = useCallback(
+    (files: readonly BrowserFile[], operationBusy: boolean) => {
+      const availability = compareEntryAvailability({
+        workspace: state.workspace,
+        searchResultsOpen: state.search.showResults,
+        operationBusy,
+      })
+      if (availability !== 'available') {
+        setCompareStatus(
+          availability === 'busy'
+            ? '请等待当前文件操作完成后再开始对比。'
+            : '请先返回文件夹内容，再选择图片进行对比。',
+        )
+        return
+      }
+      const validation = validateCompareCandidates(files)
+      if (!validation.ok) {
+        setCompareStatus(compareValidationMessage(validation.reason))
+        return
+      }
+      setCompareStatus(null)
+      closePreview()
+      setCompareEntityIds(files.map((file) => file.entityId))
+    },
+    [closePreview, setCompareEntityIds, state.search.showResults, state.workspace],
+  )
+  const changeComparedEntities = useCallback(
+    (entityIds: string[]) => {
+      setCompareStatus(null)
+      if (entityIds.length >= 2) {
+        setCompareEntityIds(entityIds)
+        return
+      }
+      setCompareEntityIds([])
+      if (entityIds.length !== 1 || state.workspace?.workspace !== 'content') return
+      const survivor = state.workspace.images.find((file) => file.entityId === entityIds[0])
+      if (survivor !== undefined) openPreview(survivor)
+    },
+    [openPreview, setCompareEntityIds, state.workspace],
+  )
+
+  useEffect(() => {
+    if (state.compareEntityIds.length === 0) return
+    const liveIds = compareFiles.map((file) => file.entityId)
+    if (liveIds.length !== state.compareEntityIds.length || liveIds.length < 2) {
+      changeComparedEntities(liveIds)
+    }
+  }, [changeComparedEntities, compareFiles, state.compareEntityIds])
+
+  useEffect(() => {
+    if (compareOpen && state.search.showResults) changeComparedEntities([])
+  }, [changeComparedEntities, compareOpen, state.search.showResults])
+
   useEffect(() => {
     setPreviewRepair((current) =>
       accumulatePreviewRepair(current, activePreview, state.contextRepair),
@@ -266,5 +338,11 @@ export function useViewingCoordinator({
     closePreview,
     recordDimensions,
     playbackPort,
+    compareFiles,
+    compareOpen,
+    compareStatus,
+    enterCompare,
+    changeComparedEntities,
+    setCompareStatus,
   }
 }

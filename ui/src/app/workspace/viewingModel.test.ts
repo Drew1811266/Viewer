@@ -6,6 +6,7 @@ import {
   activeTextPreviewFiles,
   resolveActivePreviewFile,
   resolveActivePreviewFiles,
+  resolveCompareFiles,
   unavailablePreviewEntityIds,
   viewingVideoNeighbors,
 } from './viewingModel'
@@ -108,5 +109,18 @@ describe('viewingModel', () => {
     expect(files).toEqual([first, removed])
     expect(resolveActivePreviewFile(session, files)).toBe(removed)
     expect([...unavailablePreviewEntityIds(repair, null)]).toEqual(['removed'])
+  })
+
+  it('repairs compared image IDs without reordering survivors', () => {
+    const first = file('first')
+    const third = file('third')
+    const workspace = {
+      workspace: 'content' as const,
+      images: [third, first],
+      videos: [],
+      otherFiles: [],
+    }
+
+    expect(resolveCompareFiles(workspace, ['first', 'removed', 'third'])).toEqual([first, third])
   })
 })

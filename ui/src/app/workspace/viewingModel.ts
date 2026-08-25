@@ -25,6 +25,18 @@ export function viewingVideoNeighbors(
   return videoPreviewNeighbors(workspace.videos, searchResultsOpen ? searchHits : null)
 }
 
+export function resolveCompareFiles(
+  workspace: FolderWorkspace | null,
+  compareEntityIds: readonly string[],
+): BrowserFile[] {
+  if (workspace?.workspace !== 'content') return []
+  const byId = new Map(workspace.images.map((file) => [file.entityId, file]))
+  return compareEntityIds.flatMap((entityId) => {
+    const file = byId.get(entityId)
+    return file === undefined ? [] : [file]
+  })
+}
+
 export function activeTextPreviewFiles(
   activePreview: PreviewSession | null,
 ): TextPreviewFiles | null {

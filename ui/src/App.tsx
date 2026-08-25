@@ -1,22 +1,14 @@
 import type { CSSProperties, MutableRefObject } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type {
-  BrowserFile,
-  ImageRepresentationRequest,
-  RenamePreview,
-  RenameRules,
-  TextEncoding,
-  VideoFile,
-} from './api/types'
+import type { BrowserFile, RenamePreview, RenameRules } from './api/types'
 import type { ViewerBridge } from './api/viewer'
 import { tauriViewerBridge } from './api/viewer'
-import { createProjectThumbnailCache, type ThumbnailLoader } from './app/projectThumbnailCache'
 import { useDelayedProjectionProgress } from './app/useDelayedProjectionProgress'
-import { getPreviewSessionInternals, usePreviewSession } from './app/usePreviewSession'
-import type { OpenPreviewIntent, WorkspaceIntentSink } from './app/workspace/intents'
+import type { WorkspaceIntentSink } from './app/workspace/intents'
 import { createWorkspacePorts } from './app/workspace/ports'
 import { useFeedbackCoordinator } from './app/workspace/useFeedbackCoordinator'
 import { useOrganizationCoordinator } from './app/workspace/useOrganizationCoordinator'
+import { useViewingCoordinator } from './app/workspace/useViewingCoordinator'
 import { useWorkspaceShellCoordinator } from './app/workspace/useWorkspaceShellCoordinator'
 import BatchRenameDialog from './components/BatchRenameDialog'
 import CloseOperationDialog from './components/CloseOperationDialog'
@@ -40,7 +32,7 @@ import SearchResults from './components/SearchResults'
 import SearchToolbar from './components/SearchToolbar'
 import SettingsDialog from './components/SettingsDialog'
 import TaskBar from './components/TaskBar'
-import TextPreview, { type TextPreviewFiles } from './components/TextPreview'
+import TextPreview from './components/TextPreview'
 import TrashConfirmation from './components/TrashConfirmation'
 import UnsupportedFilePreview from './components/UnsupportedFilePreview'
 import ViewerButton, { ViewerIconButton } from './components/ui/ViewerButton'
@@ -50,29 +42,17 @@ import VideoPreview from './components/VideoPreview'
 import WorkspaceLoadingState from './components/WorkspaceLoadingState'
 import WorkspaceMoreMenu from './components/WorkspaceMoreMenu'
 import WorkspaceViewMenu, { type WorkspaceViewContext } from './components/WorkspaceViewMenu'
-import { defined } from './defined'
-import { isImageFile, isPreviewableText, isVideoFile } from './fileKinds'
+import { isImageFile, isVideoFile } from './fileKinds'
 import { useViewerSettings, ViewerSettingsProvider } from './settings/ViewerSettingsProvider'
 import {
   compareEntryAvailability,
   compareValidationMessage,
   validateCompareCandidates,
 } from './state/comparePolicy'
-import { videoPreviewNeighbors } from './state/previewPolicy'
 import { useViewerController } from './state/useViewerController'
 
 interface AppProps {
   bridge?: ViewerBridge
-}
-
-interface PreviewRepairMemory {
-  unavailableEntityIds: ReadonlySet<string>
-  message: string | null
-}
-
-const EMPTY_PREVIEW_REPAIR: PreviewRepairMemory = {
-  unavailableEntityIds: new Set(),
-  message: null,
 }
 
 export default function App({ bridge = tauriViewerBridge }: AppProps) {
@@ -145,16 +125,6 @@ function ViewerWorkspace({
     videoProjectSessionId: state.project?.sessionId ?? null,
     port: ports.shell,
   })
-  const previewSession = usePreviewSession(projectSessionId)
-  const {
-    activePreview,
-    dimensions,
-    openPreview: openPreviewSession,
-    openVideoPreview: openVideoPreviewSession,
-    closePreview: closePreviewSession,
-    recordDimensions,
-  } = previewSession
-  const { navigatePreview: navigatePreviewSession } = getPreviewSessionInternals(previewSession)
   const compareFiles = useMemo(() => {
     if (state.workspace?.workspace !== 'content') return []
     const byId = new Map(state.workspace.images.map((file) => [file.entityId, file]))
@@ -164,6 +134,13 @@ function ViewerWorkspace({
     })
   }, [state.compareEntityIds, state.workspace])
   const compareOpen = state.compareEntityIds.length >= 2 && compareFiles.length >= 2
+  const viewing = useViewingCoordinator({
+    state,
+    projectSessionId,
+    port: ports.preview,
+    playbackPort: ports.playback,
+    commands: { setPreviewEntityId, setCompareEntityIds },
+  })
   const organization = useOrganizationCoordinator({
     state,
     commands: {
@@ -181,7 +158,7 @@ function ViewerWorkspace({
     },
     emitIntent,
     compareOpen,
-    activePreviewOpen: activePreview !== null,
+    activePreviewOpen: viewing.activePreview !== null,
     infoOpen: shell.infoOpen,
   })
   const feedback = useFeedbackCoordinator({
@@ -193,45 +170,10 @@ function ViewerWorkspace({
     workspaceActionError: shell.workspaceActionError,
   })
   const [compareStatus, setCompareStatus] = useState<string | null>(null)
-  const [previewRepair, setPreviewRepair] = useState<PreviewRepairMemory>(EMPTY_PREVIEW_REPAIR)
   const moreMenuTriggerRef = useRef<HTMLElement>(null)
   useEffect(() => {
     setCompareStatus(null)
-    setPreviewRepair(EMPTY_PREVIEW_REPAIR)
   }, [projectSessionId])
-  const loadThumbnail = useCallback<ThumbnailLoader>(
-    (file: BrowserFile, maxPixels: number, scaleMilli: number) =>
-      bridge
-        .requestImage({
-          entityId: file.entityId,
-          representation: { kind: 'thumbnail', maxPixels, scaleMilli },
-        })
-        .then((image) => image.url),
-    [bridge],
-  )
-  const thumbnailCache = useMemo(
-    () => createProjectThumbnailCache(projectSessionId, loadThumbnail),
-    [loadThumbnail, projectSessionId],
-  )
-  useEffect(() => () => thumbnailCache.clear(), [thumbnailCache])
-  const requestThumbnail = thumbnailCache.request
-  const requestFolderImages = useCallback(
-    async (entityId: string) => {
-      const workspace = await bridge.queryFolder(entityId, false)
-      return workspace.workspace === 'content' ? workspace.images : []
-    },
-    [bridge],
-  )
-  const requestPreviewImage = useCallback(
-    (file: BrowserFile, representation: ImageRepresentationRequest, signal?: AbortSignal) =>
-      bridge.requestImage({ entityId: file.entityId, representation }, signal),
-    [bridge],
-  )
-  const requestTextPreview = useCallback(
-    (file: BrowserFile, encoding?: TextEncoding) =>
-      bridge.previewText({ entityId: file.entityId, encoding }),
-    [bridge],
-  )
   const displayedFolderId = state.projectionTransition?.selectedFolderId ?? state.selectedFolderId
   const projectionProgressVisible = useDelayedProjectionProgress(
     state.projectionTransition,
@@ -244,100 +186,6 @@ function ViewerWorkspace({
     },
     [organization.selectFolderTarget, selectFolder],
   )
-  const [folderOverviewProjectionState, setFolderOverviewProjectionState] = useState(() => ({
-    projection: state.workspace,
-    sequence: 0,
-  }))
-  let folderOverviewSequence = folderOverviewProjectionState.sequence
-  if (folderOverviewProjectionState.projection !== state.workspace) {
-    folderOverviewSequence += 1
-    setFolderOverviewProjectionState({
-      projection: state.workspace,
-      sequence: folderOverviewSequence,
-    })
-  }
-  const folderOverviewIdentity = [
-    state.project?.sessionId ?? 'no-session',
-    state.project?.generation ?? 0,
-    state.selectedFolderId ?? 'root',
-    folderOverviewSequence,
-  ].join(':')
-
-  const currentVideoPreviewFiles = useMemo<VideoFile[]>(() => {
-    if (state.workspace?.workspace !== 'content') return []
-    const searchHits = state.search.showResults ? (state.search.page?.hits ?? []) : null
-    return videoPreviewNeighbors(state.workspace.videos, searchHits)
-  }, [state.search.page?.hits, state.search.showResults, state.workspace])
-
-  const openVideoPreview = useCallback(
-    (entityId: string) => {
-      const file = currentVideoPreviewFiles.find((candidate) => candidate.entityId === entityId)
-      if (file === undefined) return
-      setPreviewRepair(EMPTY_PREVIEW_REPAIR)
-      openVideoPreviewSession(file, currentVideoPreviewFiles)
-      setPreviewEntityId(file.entityId)
-    },
-    [currentVideoPreviewFiles, openVideoPreviewSession, setPreviewEntityId],
-  )
-
-  const requestVideoCover = useCallback(
-    (entityId: string) => bridge.videoRequestCover(entityId),
-    [bridge],
-  )
-
-  const openPreview = useCallback(
-    (file: BrowserFile) => {
-      if (isVideoFile(file)) {
-        openVideoPreview(file.entityId)
-        return
-      }
-      setPreviewRepair(EMPTY_PREVIEW_REPAIR)
-      openPreviewSession({ file, files: null, folderOverviewIdentity: null })
-      setPreviewEntityId(file.entityId)
-    },
-    [openPreviewSession, openVideoPreview, setPreviewEntityId],
-  )
-
-  const openWorkspacePreviewIntent = useCallback(
-    (intent: OpenPreviewIntent) => {
-      if (isVideoFile(intent.file)) {
-        openVideoPreview(intent.file.entityId)
-        return
-      }
-      setPreviewRepair(EMPTY_PREVIEW_REPAIR)
-      openPreviewSession({
-        file: intent.file,
-        files: intent.files === null ? null : [...intent.files],
-        folderOverviewIdentity: intent.folderOverviewIdentity,
-      })
-      setPreviewEntityId(intent.file.entityId)
-    },
-    [openPreviewSession, openVideoPreview, setPreviewEntityId],
-  )
-
-  const openFilmstripPreview = useCallback(
-    (file: BrowserFile, files: BrowserFile[]) => {
-      setPreviewRepair(EMPTY_PREVIEW_REPAIR)
-      openPreviewSession({ file, files, folderOverviewIdentity })
-      setPreviewEntityId(file.entityId)
-    },
-    [folderOverviewIdentity, openPreviewSession, setPreviewEntityId],
-  )
-
-  const navigatePreview = useCallback(
-    (file: BrowserFile) => {
-      navigatePreviewSession(file)
-      setPreviewEntityId(file.entityId)
-    },
-    [navigatePreviewSession, setPreviewEntityId],
-  )
-
-  const closePreview = useCallback(() => {
-    setPreviewRepair(EMPTY_PREVIEW_REPAIR)
-    closePreviewSession()
-    setPreviewEntityId(null)
-  }, [closePreviewSession, setPreviewEntityId])
-
   const compareAvailability = compareEntryAvailability({
     workspace: state.workspace,
     searchResultsOpen: state.search.showResults,
@@ -360,24 +208,16 @@ function ViewerWorkspace({
         return
       }
       setCompareStatus(null)
-      setPreviewRepair(EMPTY_PREVIEW_REPAIR)
-      closePreviewSession()
-      setPreviewEntityId(null)
+      viewing.closePreview()
       setCompareEntityIds(files.map((file) => file.entityId))
     },
-    [
-      closePreviewSession,
-      compareAvailability,
-      organization.selectedFiles,
-      setCompareEntityIds,
-      setPreviewEntityId,
-    ],
+    [compareAvailability, organization.selectedFiles, setCompareEntityIds, viewing.closePreview],
   )
 
   intentTargetRef.current = (intent) => {
     switch (intent.kind) {
       case 'open-preview':
-        openWorkspacePreviewIntent(intent)
+        viewing.openIntentPreview(intent)
         return
       case 'enter-compare':
         openComparison([...intent.files])
@@ -410,9 +250,9 @@ function ViewerWorkspace({
       setCompareEntityIds([])
       if (entityIds.length !== 1 || state.workspace?.workspace !== 'content') return
       const survivor = state.workspace.images.find((file) => file.entityId === entityIds[0])
-      if (survivor !== undefined) openPreview(survivor)
+      if (survivor !== undefined) viewing.openPreview(survivor)
     },
-    [openPreview, setCompareEntityIds, state.workspace],
+    [setCompareEntityIds, state.workspace, viewing.openPreview],
   )
 
   useEffect(() => {
@@ -426,51 +266,6 @@ function ViewerWorkspace({
   useEffect(() => {
     if (compareOpen && state.search.showResults) changeComparedEntities([])
   }, [changeComparedEntities, compareOpen, state.search.showResults])
-
-  useEffect(() => {
-    if (activePreview === null || state.contextRepair === null) return
-    const sessionEntityIds = new Set(
-      (activePreview.files ?? [activePreview.file]).map((file) => file.entityId),
-    )
-    const removedSessionEntityIds = state.contextRepair.removedEntityIds.filter((entityId) =>
-      sessionEntityIds.has(entityId),
-    )
-    if (removedSessionEntityIds.length === 0) return
-    setPreviewRepair((current) => {
-      const unavailableEntityIds = new Set(current.unavailableEntityIds)
-      let changed = current.message !== state.contextRepair?.message
-      for (const entityId of removedSessionEntityIds) {
-        if (!unavailableEntityIds.has(entityId)) {
-          unavailableEntityIds.add(entityId)
-          changed = true
-        }
-      }
-      return changed
-        ? { unavailableEntityIds, message: state.contextRepair?.message ?? null }
-        : current
-    })
-  }, [activePreview, state.contextRepair])
-
-  const unavailablePreviewEntityIds = useMemo(
-    () =>
-      new Set([
-        ...previewRepair.unavailableEntityIds,
-        ...(state.contextRepair?.removedEntityIds ?? []),
-      ]),
-    [previewRepair.unavailableEntityIds, state.contextRepair?.removedEntityIds],
-  )
-
-  useEffect(() => {
-    if (
-      activePreview !== null &&
-      activePreview.folderOverviewIdentity !== null &&
-      activePreview.folderOverviewIdentity !== folderOverviewIdentity
-    ) {
-      setPreviewRepair(EMPTY_PREVIEW_REPAIR)
-      closePreviewSession()
-      setPreviewEntityId(null)
-    }
-  }, [activePreview, closePreviewSession, folderOverviewIdentity, setPreviewEntityId])
 
   const operationDialogSnapshot = organization.operationDialog
 
@@ -486,42 +281,8 @@ function ViewerWorkspace({
     )
   }
 
-  const sessionPreviewFiles =
-    activePreview === null ? [] : (activePreview.files ?? [activePreview.file])
-  const activeTextPreviewFiles: TextPreviewFiles | null =
-    sessionPreviewFiles.length === 1 &&
-    isPreviewableText(defined(sessionPreviewFiles[0], 'Missing single preview file'))
-      ? [defined(sessionPreviewFiles[0], 'Missing single preview file')]
-      : sessionPreviewFiles.length === 2 && sessionPreviewFiles.every(isPreviewableText)
-        ? [
-            defined(sessionPreviewFiles[0], 'Missing left text preview file'),
-            defined(sessionPreviewFiles[1], 'Missing right text preview file'),
-          ]
-        : null
-  const activePreviewFiles =
-    activePreview?.file.kind === 'video'
-      ? (activePreview.files ?? currentVideoPreviewFiles)
-          .filter(isVideoFile)
-          .map(
-            (file) =>
-              (state.workspace?.workspace === 'content'
-                ? state.workspace.videos.find(
-                    (workspaceVideo) => workspaceVideo.entityId === file.entityId,
-                  )
-                : undefined) ?? file,
-          )
-      : (activePreview?.files ??
-        (state.workspace?.workspace === 'content' ? state.workspace.images : []))
-  const activePreviewFile =
-    activePreview === null
-      ? null
-      : (activePreviewFiles.find(
-          (candidate) => candidate.entityId === activePreview.file.entityId,
-        ) ?? activePreview.file)
   const contentWorkspaceActive =
     !state.search.showResults && state.workspace?.workspace === 'content'
-  const contextRepairMessage =
-    state.contextRepair?.message ?? (activePreview === null ? null : previewRepair.message)
   const pendingRecoveryReport =
     state.recoveryReport !== null &&
     (state.recoveryReport.recovered > 0 || state.recoveryReport.needsUserReview > 0) &&
@@ -551,7 +312,9 @@ function ViewerWorkspace({
     <main
       className="viewer-shell"
       data-video-preview-open={
-        activePreviewFile !== null && isVideoFile(activePreviewFile) ? true : undefined
+        viewing.activePreviewFile !== null && isVideoFile(viewing.activePreviewFile)
+          ? true
+          : undefined
       }
       data-organization-drag-active={organization.organizationDragView ? true : undefined}
       style={
@@ -681,9 +444,9 @@ function ViewerWorkspace({
             />
           ) : (
             <>
-              {contextRepairMessage && (
+              {viewing.contextRepairMessage && (
                 <p className="context-repair-banner local-error" role="status">
-                  {contextRepairMessage}
+                  {viewing.contextRepairMessage}
                 </p>
               )}
               {state.search.showResults &&
@@ -722,12 +485,12 @@ function ViewerWorkspace({
               )}
               {!state.search.showResults && state.workspace?.workspace === 'category' && (
                 <FolderOverview
-                  key={folderOverviewIdentity}
+                  key={viewing.folderOverviewIdentity}
                   folders={state.workspace.folders}
                   density={thumbnailDensity}
-                  requestFolderImages={requestFolderImages}
-                  requestThumbnail={requestThumbnail}
-                  onPreview={openFilmstripPreview}
+                  requestFolderImages={viewing.requestFolderImages}
+                  requestThumbnail={viewing.requestThumbnail}
+                  onPreview={viewing.openFilmstripPreview}
                   onSelect={selectFolderTarget}
                 />
               )}
@@ -749,11 +512,11 @@ function ViewerWorkspace({
                       viewCommand={shell.contentViewCommand}
                       onViewStateChange={shell.setSelectAllRequest}
                       onRequestViewMenu={() => shell.toolbarPopover.setPopoverOpen('view', true)}
-                      requestThumbnail={requestThumbnail}
+                      requestThumbnail={viewing.requestThumbnail}
                       onThumbnailTaskChange={feedback.setThumbnailTask}
-                      onPreview={openPreview}
-                      onOpenVideo={openVideoPreview}
-                      requestVideoCover={requestVideoCover}
+                      onPreview={viewing.openPreview}
+                      onOpenVideo={viewing.openVideoPreview}
+                      requestVideoCover={viewing.requestVideoCover}
                       onSelectionChange={organization.selectFiles}
                       organizationDragDisabled={
                         state.project.access !== 'read_write' ||
@@ -781,7 +544,7 @@ function ViewerWorkspace({
                       <CompareWorkspace
                         files={compareFiles}
                         readOnly={state.project.access === 'read_only'}
-                        requestImage={requestPreviewImage}
+                        requestImage={viewing.requestPreviewImage}
                         onEntityIdsChange={changeComparedEntities}
                         onSetReview={(entityId, reviewState) =>
                           void setReviewState(reviewState, [entityId])
@@ -845,51 +608,55 @@ function ViewerWorkspace({
           returnFocusRef={moreMenuTriggerRef}
         />
       )}
-      {activePreviewFile && isImageFile(activePreviewFile) && activePreviewFiles.length > 0 && (
-        <ImagePreview
-          file={activePreviewFile}
-          files={activePreviewFiles}
-          magnifier={magnifier}
-          pointerClientPoint={pointerClientPoint}
-          requestImage={requestPreviewImage}
-          onNavigate={navigatePreview}
-          onClose={closePreview}
-          onDimensions={recordDimensions}
-          unavailableEntityIds={unavailablePreviewEntityIds}
-        />
-      )}
-      {activePreviewFile && isVideoFile(activePreviewFile) && activePreviewFiles.length > 0 && (
-        <VideoPreview
-          key={activePreviewFile.entityId}
-          file={activePreviewFile}
-          files={activePreviewFiles.filter(isVideoFile)}
-          bridge={bridge}
-          onNavigate={navigatePreview}
-          onClose={closePreview}
-        />
-      )}
-      {activeTextPreviewFiles !== null && (
+      {viewing.activePreviewFile &&
+        isImageFile(viewing.activePreviewFile) &&
+        viewing.activePreviewFiles.length > 0 && (
+          <ImagePreview
+            file={viewing.activePreviewFile}
+            files={viewing.activePreviewFiles}
+            magnifier={magnifier}
+            pointerClientPoint={pointerClientPoint}
+            requestImage={viewing.requestPreviewImage}
+            onNavigate={viewing.navigatePreview}
+            onClose={viewing.closePreview}
+            onDimensions={viewing.recordDimensions}
+            unavailableEntityIds={viewing.unavailablePreviewEntityIds}
+          />
+        )}
+      {viewing.activePreviewFile &&
+        isVideoFile(viewing.activePreviewFile) &&
+        viewing.activePreviewFiles.length > 0 && (
+          <VideoPreview
+            key={viewing.activePreviewFile.entityId}
+            file={viewing.activePreviewFile}
+            files={viewing.activePreviewFiles.filter(isVideoFile)}
+            bridge={viewing.playbackPort}
+            onNavigate={viewing.navigatePreview}
+            onClose={viewing.closePreview}
+          />
+        )}
+      {viewing.activeTextPreviewFiles !== null && (
         <TextPreview
-          files={activeTextPreviewFiles}
-          unavailableEntityIds={unavailablePreviewEntityIds}
-          requestPreview={requestTextPreview}
-          openExternalLink={bridge.openExternalLink}
-          onClose={closePreview}
+          files={viewing.activeTextPreviewFiles}
+          unavailableEntityIds={viewing.unavailablePreviewEntityIds}
+          requestPreview={viewing.requestTextPreview}
+          openExternalLink={viewing.openExternalLink}
+          onClose={viewing.closePreview}
           onTaskChange={feedback.setTextTask}
         />
       )}
-      {activePreviewFile?.kind === 'other' && (
+      {viewing.activePreviewFile?.kind === 'other' && (
         <UnsupportedFilePreview
-          file={activePreviewFile}
-          unavailable={unavailablePreviewEntityIds.has(activePreviewFile.entityId)}
-          onClose={closePreview}
+          file={viewing.activePreviewFile}
+          unavailable={viewing.unavailablePreviewEntityIds.has(viewing.activePreviewFile.entityId)}
+          onClose={viewing.closePreview}
         />
       )}
       {shell.infoOpen && (
         <InfoOverlay
           files={organization.selectedFiles}
           selectionInfo={state.selectionInfo}
-          dimensions={dimensions}
+          dimensions={viewing.dimensions}
           onClose={shell.closeInfo}
         />
       )}

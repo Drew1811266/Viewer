@@ -19,10 +19,6 @@
     {
       "path": "src-tauri/src/video_runtime.rs",
       "lines": 1081
-    },
-    {
-      "path": "ui/src/App.tsx",
-      "lines": 1480
     }
   ],
   "functionsOver200Lines": [
@@ -67,13 +63,6 @@
       "startLine": 69,
       "lines": 468,
       "decisionScore": 38
-    },
-    {
-      "path": "ui/src/App.tsx",
-      "name": "ViewerWorkspace",
-      "startLine": 94,
-      "lines": 1374,
-      "decisionScore": 190
     },
     {
       "path": "ui/src/components/AspectVirtualGrid.tsx",
@@ -349,20 +338,6 @@
       "startLine": 471,
       "lines": 40,
       "decisionScore": 19
-    },
-    {
-      "path": "ui/src/App.tsx",
-      "name": "ViewerWorkspace",
-      "startLine": 94,
-      "lines": 1374,
-      "decisionScore": 190
-    },
-    {
-      "path": "ui/src/App.tsx",
-      "name": "handleOrganizationShortcut",
-      "startLine": 835,
-      "lines": 48,
-      "decisionScore": 30
     },
     {
       "path": "ui/src/components/AspectVirtualGrid.tsx",

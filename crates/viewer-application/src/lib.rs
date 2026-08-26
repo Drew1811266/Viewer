@@ -9,6 +9,7 @@ pub mod ports;
 pub mod project;
 pub mod rename;
 pub mod review;
+pub mod review_assets;
 pub mod scan;
 pub mod scheduler;
 pub mod search;
@@ -43,6 +44,11 @@ pub use review::{
     ProductionAsset, ProductionManifest, ReviewCatalog, ReviewCatalogError, ReviewRepositoryError,
     ReviewRepositoryInspection, ReviewRepositoryPort, ReviewRepositoryProviderPort,
     ReviewStreamHead, ReviewStreamLocator,
+};
+pub use review_assets::{
+    PreparedReviewAsset, ReviewAssetCatalogPort, ReviewAssetError, ReviewAssetValidation,
+    ReviewProgressPort, ReviewScope, ReviewScopeResolution, ReviewTaskCancellation,
+    ReviewTaskProgress,
 };
 pub use session::{ProjectSession, SessionState, SessionTransitionError};
 pub use settings::{

@@ -264,6 +264,7 @@ impl DesktopRuntime {
                     events: Arc::clone(&self.events),
                     scheduler: Arc::clone(&self.derived_scheduler),
                     video_index: Arc::clone(&video_index),
+                    review_changes: viewer_infrastructure::review::ReviewChangeLedger::default(),
                 }),
             )
             .map_err(|_| operation_backend_unavailable())

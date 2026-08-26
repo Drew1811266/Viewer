@@ -1,9 +1,13 @@
+mod assets;
 mod atomic;
+mod change_ledger;
 mod lease;
 mod protocol;
 mod provider;
 mod repository;
 
+pub use assets::IndexedReviewAssetCatalog;
+pub use change_ledger::ReviewChangeLedger;
 pub use protocol::{
     MAX_REVIEW_DOCUMENT_BYTES, MAX_REVIEW_INDEX_BYTES, PRODUCTION_PROTOCOL_V1, REVIEW_PROTOCOL_V1,
     ReviewProtocolError, decode_catalog, decode_completed, decode_draft,

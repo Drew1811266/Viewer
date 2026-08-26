@@ -2,7 +2,12 @@ use crate::{
     error::CommandError,
     state::{DesktopEventSink, VideoIndexRuntime, rebuild_derived_nodes},
 };
-use std::{collections::VecDeque, path::PathBuf, sync::Arc, time::Duration};
+use std::{
+    collections::{HashSet, VecDeque},
+    path::PathBuf,
+    sync::Arc,
+    time::Duration,
+};
 use tokio::{sync::watch, task::JoinHandle};
 use viewer_application::{
     ActiveProject, BrowseIndexPort, ClockPort, ImagePort, WatchSubscription, WatcherError,
@@ -11,6 +16,7 @@ use viewer_application::{
     watcher::{ReconcileRequest, WATCHER_DEBOUNCE_MS},
 };
 use viewer_domain::{SessionId, search::Generation};
+use viewer_infrastructure::review::ReviewChangeLedger;
 use viewer_infrastructure::scan::{
     reconcile::{ExpectedChangeLedger, ReconcilePlanner},
     reconcile_service::{ProjectReconcileError, ProjectReconciler},
@@ -33,6 +39,7 @@ pub(crate) struct WatcherDerivedServices {
     pub(crate) events: Arc<dyn DesktopEventSink>,
     pub(crate) scheduler: Arc<DerivedWorkScheduler>,
     pub(crate) video_index: Arc<VideoIndexRuntime>,
+    pub(crate) review_changes: ReviewChangeLedger,
 }
 
 impl WatcherDerivedServices {
@@ -64,6 +71,32 @@ impl WatcherDerivedServices {
         .await?;
         self.video_index.notify_after_publication()?;
         Ok(())
+    }
+
+    fn review_entities(
+        &self,
+        roots: &[PathBuf],
+    ) -> Result<Vec<viewer_domain::EntityId>, CommandError> {
+        let nodes =
+            BrowseIndexPort::descendants(self.index.as_ref(), None).map_err(CommandError::from)?;
+        Ok(nodes
+            .into_iter()
+            .filter(|node| {
+                let absolute = self.active.root.join(node.relative_path.as_str());
+                roots.iter().any(|root| absolute.starts_with(root))
+            })
+            .map(|node| node.entity_id)
+            .collect())
+    }
+
+    fn record_review_changes(&self, roots: &[PathBuf], before: Vec<viewer_domain::EntityId>) {
+        let mut changed = before.into_iter().collect::<HashSet<_>>();
+        if let Ok(after) = self.review_entities(roots) {
+            changed.extend(after);
+        }
+        for entity_id in changed {
+            self.review_changes.record(entity_id);
+        }
     }
 }
 
@@ -143,6 +176,10 @@ impl WatcherRuntime {
                         }
                         let reason = request.reason;
                         let roots = request.roots.clone();
+                        let review_entities_before = derived
+                            .as_ref()
+                            .and_then(|derived| derived.review_entities(&roots).ok())
+                            .unwrap_or_default();
                         let publication_permit = if let Some(derived) = derived.as_ref() {
                             Some(
                                 derived
@@ -171,6 +208,9 @@ impl WatcherRuntime {
                                 failed: 1,
                             },
                         };
+                        if let Some(derived) = derived.as_ref() {
+                            derived.record_review_changes(&roots, review_entities_before);
+                        }
                         if let Some(derived) = derived.as_ref()
                             && derived.rebuild(&roots).await.is_err()
                         {
@@ -543,6 +583,7 @@ mod tests {
                 events: Arc::clone(&events) as Arc<dyn DesktopEventSink>,
                 scheduler: Arc::clone(&scheduler),
                 video_index: Arc::clone(&video_index),
+                review_changes: ReviewChangeLedger::default(),
             }),
         )
         .unwrap();
@@ -644,6 +685,7 @@ mod tests {
             Arc::clone(&scheduler),
             events.clone(),
         ));
+        let review_changes = ReviewChangeLedger::default();
         let mut runtime = WatcherRuntime::start(
             root.clone(),
             session_id,
@@ -662,6 +704,7 @@ mod tests {
                 events: events.clone(),
                 scheduler,
                 video_index: Arc::clone(&video_index),
+                review_changes: review_changes.clone(),
             }),
         )
         .unwrap();
@@ -674,6 +717,7 @@ mod tests {
             fs::write(&clip, format!("watcher video candidate {candidate}")).unwrap();
             video_entity_ids
                 .push(filesystem_node(&root, &format!("clip-{candidate}.mp4")).entity_id);
+            review_changes.replace_members(&video_entity_ids);
             let mut batch = vec![WatcherEvent::added(clip)];
             if candidate == 0 {
                 batch.push(WatcherEvent::added(note.clone()));
@@ -693,6 +737,10 @@ mod tests {
             })
             .await
             .expect("watcher publication must not wait for the blocked video worker");
+            assert!(
+                review_changes.revision(*video_entity_ids.last().unwrap()) > 0,
+                "reconciled fixed member must advance the review change ledger"
+            );
         }
         probe.started.notified().await;
         assert_eq!(events.0.lock().unwrap().len(), 6);

@@ -164,6 +164,10 @@ impl BrowseIndexPort for SessionIndex {
             .map_err(Into::into)
     }
 
+    fn indexed_node(&self, entity_id: EntityId) -> Result<Option<IndexedNode>, BrowseIndexError> {
+        SessionIndex::indexed_node(self, entity_id).map_err(Into::into)
+    }
+
     fn node(&self, entity_id: EntityId) -> Result<Option<FileNode>, BrowseIndexError> {
         let connection = self.lock_connection();
         connection

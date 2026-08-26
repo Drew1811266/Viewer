@@ -426,17 +426,17 @@ pub trait ReviewAssetCatalogPort: Send + Sync {
 - Stable failure mapping is exact: UnsupportedImage -> `Unsupported`; image probe Unsupported -> `Unsupported`, Corrupt -> `Damaged`, and a proven permission/open error -> `PermissionDenied`/`Unreadable`; successful image probe is reviewable even if an earlier thumbnail/index operation failed. Video Unsupported/Damaged/Unreadable/Missing/DecodeFallbackFailed map to protocol equivalents. Image BudgetExceeded/generic transient I/O and Video EngineInitialization/RenderSurface/ThumbnailUnavailable/Pending remain `Pending`, not `unreviewable`.
 - Revalidation is deterministic: missing/path/source-identity/size mismatch -> conflict; same identity/path/size with changed mtime or `change_revision` -> stream BLAKE3 and continue only on exact digest equality; unchanged identity/path/size/mtime/revision -> reuse saved digest; `blake3: None` assets require exact identity/path/size/mtime and unchanged media failure. Media bounds or stable-failure changes are conflicts/pending facts, never silent pass.
 
-- [ ] **Step 1: Write scope, hashing, cancellation, and failure-mapping tests**
+- [x] **Step 1: Write scope, hashing, cancellation, and failure-mapping tests**
 
 Include selected mixed kinds, direct folder, aggregate descendants, empty candidate set, duplicate Entity IDs, symlink, replacement during hash, cancellation, grid-renderable image, unopened video, transient video failure, stable video failure, and changed-ledger rehash.
 
-- [ ] **Step 2: Run focused tests and confirm the port/adapter is absent**
+- [x] **Step 2: Run focused tests and confirm the port/adapter is absent**
 
 Run: `cargo test --locked -p viewer-infrastructure --test review_assets`
 
 Expected: FAIL because the review asset adapter and contract do not exist.
 
-- [ ] **Step 3: Implement scope resolution first, then evidence preparation**
+- [x] **Step 3: Implement scope resolution first, then evidence preparation**
 
 Use small private functions with independently tested semantics:
 
@@ -450,7 +450,7 @@ fn hash_blake3_streaming(file: &mut File, cancel: &ReviewTaskCancellation)
 
 Do not place Tokio, BLAKE3, or filesystem code in `viewer-application`.
 
-- [ ] **Step 4: Verify focused application/infrastructure tests and watcher regression**
+- [x] **Step 4: Verify focused application/infrastructure tests and watcher regression**
 
 Run:
 
@@ -462,7 +462,7 @@ cargo test --locked -p viewer-desktop watcher
 
 Expected: all pass; watcher behavior remains unchanged except for recording bounded Entity IDs.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add crates/viewer-application/src/browse.rs crates/viewer-application/src/review_assets.rs crates/viewer-application/src/lib.rs crates/viewer-infrastructure/src/review/assets.rs crates/viewer-infrastructure/src/review/change_ledger.rs crates/viewer-infrastructure/src/review/mod.rs crates/viewer-infrastructure/src/lib.rs crates/viewer-infrastructure/tests/review_assets.rs src-tauri/src/watcher_runtime.rs

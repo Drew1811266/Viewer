@@ -47,13 +47,14 @@ pub use review::{
     ReviewStreamHead, ReviewStreamLocator,
 };
 pub use review_assets::{
-    PreparedReviewAsset, ReviewAssetCatalogPort, ReviewAssetError, ReviewAssetValidation,
-    ReviewProgressPort, ReviewScope, ReviewScopeResolution, ReviewTaskCancellation,
-    ReviewTaskProgress,
+    PreparedReviewAsset, ReviewAssetCatalogPort, ReviewAssetConflictKind, ReviewAssetError,
+    ReviewAssetValidation, ReviewProgressPort, ReviewScope, ReviewScopeResolution,
+    ReviewTaskCancellation, ReviewTaskProgress,
 };
 pub use review_session::{
-    AddReviewFeedback, DeleteReviewFeedback, ReviewConflictKind, ReviewConflictSnapshot,
-    ReviewFeedbackSnapshot, ReviewMemberSnapshot, ReviewMutationGuard, ReviewProposalId,
+    AddReviewFeedback, DeleteReviewFeedback, ReviewCompletionProposal, ReviewCompletionProposalId,
+    ReviewCompletionSummary, ReviewConflictKind, ReviewConflictSnapshot, ReviewFeedbackSnapshot,
+    ReviewFeedbackSummary, ReviewMemberSnapshot, ReviewMutationGuard, ReviewProposalId,
     ReviewResumeSnapshot, ReviewScopeProposal, ReviewSessionCounts, ReviewSessionError,
     ReviewSessionPhase, ReviewSessionService, ReviewSessionSnapshot, ReviewUnreviewableSnapshot,
     ReviewUserError, UpdateReviewFeedback,

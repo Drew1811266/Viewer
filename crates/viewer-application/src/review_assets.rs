@@ -33,12 +33,23 @@ pub struct PreparedReviewAsset {
     pub change_revision: u64,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ReviewAssetConflictKind {
+    Missing,
+    Moved,
+    Replaced,
+    SizeChanged,
+    ContentChanged,
+    MediaChanged,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ReviewAssetValidation {
     Current(PreparedReviewAsset),
     Conflict {
         asset_version_id: AssetVersionId,
         relative_path: RelativePath,
+        kind: ReviewAssetConflictKind,
     },
     Pending {
         asset_version_id: AssetVersionId,

@@ -719,6 +719,7 @@ async fn media_confirmation_distinguishes_reviewable_stable_and_transient_failur
         vec![ReviewAssetValidation::Conflict {
             asset_version_id: stable_video[0].asset.id,
             relative_path: stable_video[0].asset.relative_path.clone(),
+            kind: viewer_application::ReviewAssetConflictKind::MediaChanged,
         }]
     );
     assert_eq!(
@@ -779,6 +780,7 @@ async fn watcher_ledger_forces_rehash_even_when_projection_evidence_looks_unchan
         vec![ReviewAssetValidation::Conflict {
             asset_version_id: prepared.asset.id,
             relative_path: image.relative_path,
+            kind: viewer_application::ReviewAssetConflictKind::ContentChanged,
         }]
     );
 }

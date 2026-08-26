@@ -15,8 +15,9 @@ use tokio::time::{Duration, sleep};
 use tokio_util::sync::CancellationToken;
 use viewer_application::{
     BrowseIndexPort, ImageError, ImagePort, PreparedReviewAsset, ReviewAssetCatalogPort,
-    ReviewAssetError, ReviewAssetValidation, ReviewProgressPort, ReviewScope,
-    ReviewScopeResolution, ReviewTaskCancellation, ReviewTaskProgress, metadata::IndexedNode,
+    ReviewAssetConflictKind, ReviewAssetError, ReviewAssetValidation, ReviewProgressPort,
+    ReviewScope, ReviewScopeResolution, ReviewTaskCancellation, ReviewTaskProgress,
+    metadata::IndexedNode,
 };
 use viewer_domain::file::{FileKind, FileNode, ImageIndexStatus};
 use viewer_domain::review::{
@@ -294,32 +295,36 @@ impl IndexedReviewAssetCatalog {
         prepared: &PreparedReviewAsset,
         cancellation: &ReviewTaskCancellation,
     ) -> Result<ReviewAssetValidation, ReviewAssetError> {
-        let conflict = || ReviewAssetValidation::Conflict {
+        let conflict = |kind| ReviewAssetValidation::Conflict {
             asset_version_id: prepared.asset.id,
             relative_path: prepared.asset.relative_path.clone(),
+            kind,
         };
         let pending = || ReviewAssetValidation::Pending {
             asset_version_id: prepared.asset.id,
             relative_path: prepared.asset.relative_path.clone(),
         };
         if prepared.asset.source_entity_id != Some(prepared.entity_id) {
-            return Ok(conflict());
+            return Ok(conflict(ReviewAssetConflictKind::Replaced));
         }
         let indexed = match self.index.indexed_node(prepared.entity_id) {
             Ok(Some(indexed)) => indexed,
-            Ok(None) => return Ok(conflict()),
+            Ok(None) => return Ok(conflict(ReviewAssetConflictKind::Missing)),
             Err(_) => return Err(ReviewAssetError::IndexUnavailable),
         };
-        if indexed.node.relative_path != prepared.asset.relative_path
-            || indexed.node.size != prepared.asset.evidence.size_bytes
-            || candidate_kind(indexed.node.kind) != Some(asset_kind(&prepared.asset.media))
-        {
-            return Ok(conflict());
+        if indexed.node.relative_path != prepared.asset.relative_path {
+            return Ok(conflict(ReviewAssetConflictKind::Moved));
+        }
+        if indexed.node.size != prepared.asset.evidence.size_bytes {
+            return Ok(conflict(ReviewAssetConflictKind::SizeChanged));
+        }
+        if candidate_kind(indexed.node.kind) != Some(asset_kind(&prepared.asset.media)) {
+            return Ok(conflict(ReviewAssetConflictKind::MediaChanged));
         }
         let current_metadata =
             match validate_current_owned_metadata(&self.project_root, &indexed.node) {
                 Ok(metadata) => metadata,
-                Err(_) => return Ok(conflict()),
+                Err(_) => return Ok(conflict(ReviewAssetConflictKind::Replaced)),
             };
         let current_modified_ns = modified_ns(&current_metadata);
         let current_revision = self.changes.revision(prepared.entity_id);
@@ -341,13 +346,13 @@ impl IndexedReviewAssetCatalog {
             let capture = match capture {
                 Ok(capture) => capture,
                 Err(ReviewAssetError::Cancelled) => return Err(ReviewAssetError::Cancelled),
-                Err(_) => return Ok(conflict()),
+                Err(_) => return Ok(conflict(ReviewAssetConflictKind::Replaced)),
             };
             source_failure = capture.failure;
             current_digest = capture.digest;
             media_identity = capture.media_identity;
             if prepared.asset.evidence.blake3 != current_digest {
-                return Ok(conflict());
+                return Ok(conflict(ReviewAssetConflictKind::ContentChanged));
             }
         } else {
             media_identity = MediaFileIdentity::from_metadata(&current_metadata);
@@ -366,24 +371,24 @@ impl IndexedReviewAssetCatalog {
         {
             Ok(assessment) => assessment,
             Err(ReviewAssetError::SourceChanged | ReviewAssetError::UnsafeSource) => {
-                return Ok(conflict());
+                return Ok(conflict(ReviewAssetConflictKind::Replaced));
             }
             Err(error) => return Err(error),
         };
         let current_after = match validate_current_owned_metadata(&self.project_root, &indexed.node)
         {
             Ok(metadata) => metadata,
-            Err(_) => return Ok(conflict()),
+            Err(_) => return Ok(conflict(ReviewAssetConflictKind::Replaced)),
         };
         if !same_metadata(&current_metadata, &current_after) {
-            return Ok(conflict());
+            return Ok(conflict(ReviewAssetConflictKind::Replaced));
         }
         let (media, failure) = match assessment {
             FailureAssessment::Pending => return Ok(pending()),
             FailureAssessment::Known { media, failure } => (media, failure),
         };
         if media != prepared.asset.media || failure != prepared.failure {
-            return Ok(conflict());
+            return Ok(conflict(ReviewAssetConflictKind::MediaChanged));
         }
         let mut current = prepared.clone();
         current.asset.evidence.modified_ns = current_modified_ns;

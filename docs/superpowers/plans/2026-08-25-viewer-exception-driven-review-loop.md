@@ -374,10 +374,24 @@ pub struct PreparedReviewAsset {
     pub change_revision: u64,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ReviewAssetConflictKind {
+    Missing,
+    Moved,
+    Replaced,
+    SizeChanged,
+    ContentChanged,
+    MediaChanged,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ReviewAssetValidation {
     Current(PreparedReviewAsset),
-    Conflict { asset_version_id: AssetVersionId, relative_path: RelativePath },
+    Conflict {
+        asset_version_id: AssetVersionId,
+        relative_path: RelativePath,
+        kind: ReviewAssetConflictKind,
+    },
     Pending { asset_version_id: AssetVersionId, relative_path: RelativePath },
 }
 
@@ -807,7 +821,7 @@ pub async fn abandon(&self, guard: ReviewMutationGuard)
 - `abandon` calls exact `delete_draft`; only success clears Active state and drops writer. It never publishes, indexes, or deletes Completed records.
 - Cancellation is accepted during hash/revalidation before `ReviewDraft::complete`; once create-once publication begins it cannot be presented as cancelled.
 
-- [ ] **Step 1: Write completion and failure-recovery tests**
+- [x] **Step 1: Write completion and failure-recovery tests**
 
 Cover outcome precedence, all-default-pass, stable failure, pending failure, each conflict type, changed-but-equal digest, changed digest, summary/completion race, publish success, both phase-1 fault points, exact-head mismatch, abandon success/failure, and writer release.
 
@@ -829,13 +843,13 @@ async fn feedback_wins_and_remaining_assets_pass_only_after_completion() {
 }
 ```
 
-- [ ] **Step 2: Run tests and confirm missing completion API**
+- [x] **Step 2: Run tests and confirm missing completion API**
 
 Run: `cargo test --locked -p viewer-application --test review_session_completion`
 
 Expected: FAIL before completion/recovery/abandon methods exist.
 
-- [ ] **Step 3: Implement one validation result reducer and exact-head verifier**
+- [x] **Step 3: Implement one validation result reducer and exact-head verifier**
 
 ```rust
 fn apply_validations(
@@ -852,7 +866,7 @@ fn exact_head_is_published(
 
 Reuse these functions for summary, completion, resume recovery, and publish recovery. Do not let Tauri recompute counts.
 
-- [ ] **Step 4: Verify all review application and repository tests**
+- [x] **Step 4: Verify all review application and repository tests**
 
 Run:
 
@@ -863,7 +877,7 @@ cargo test --locked -p viewer-infrastructure --test review_repository
 
 Expected: all pass, including stage-1 fault injection.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add crates/viewer-application/src/review_session.rs crates/viewer-application/tests/review_session_completion.rs

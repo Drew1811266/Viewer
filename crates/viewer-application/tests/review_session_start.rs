@@ -875,6 +875,7 @@ async fn resume_revalidates_exact_members_and_keeps_hash_conflicts_visible() {
         .set_validations(vec![ReviewAssetValidation::Conflict {
             asset_version_id: prepared.asset.id,
             relative_path: prepared.asset.relative_path.clone(),
+            kind: viewer_application::ReviewAssetConflictKind::ContentChanged,
         }]);
 
     let snapshot = fixture.service.resume(fixture.progress()).await.unwrap();
@@ -883,6 +884,39 @@ async fn resume_revalidates_exact_members_and_keeps_hash_conflicts_visible() {
     assert_eq!(snapshot.conflicts.len(), 1);
     assert_eq!(snapshot.feedback.len(), saved.feedback.len());
     assert!(fixture.repositories.writer_is_held());
+    fixture.service.shutdown().await;
+}
+
+#[tokio::test]
+async fn resume_persists_changed_stable_failure_facts_before_entering_active() {
+    let fixture = Fixture::new();
+    let saved = draft(fixture.project_id, 10, 11);
+    fixture.repositories.set_drafts(vec![saved.clone()]);
+    fixture.service.inspect().await;
+    let mut current = PreparedReviewAsset {
+        entity_id: saved.assets[0].source_entity_id.unwrap(),
+        asset: saved.assets[0].clone(),
+        failure: Some(ReviewabilityFailure::Damaged),
+        change_revision: 0,
+    };
+    current.asset.evidence.modified_ns += 1;
+    fixture
+        .assets
+        .set_validations(vec![ReviewAssetValidation::Current(current)]);
+
+    let resumed = fixture.service.resume(fixture.progress()).await.unwrap();
+
+    assert_eq!(resumed.phase, ReviewSessionPhase::Active);
+    assert_eq!(resumed.unreviewable.len(), 1);
+    assert_eq!(
+        fixture
+            .repositories
+            .saved_draft()
+            .unwrap()
+            .unreviewable
+            .len(),
+        1
+    );
     fixture.service.shutdown().await;
 }
 

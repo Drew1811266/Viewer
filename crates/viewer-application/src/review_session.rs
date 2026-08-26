@@ -1,8 +1,8 @@
 use crate::{
-    ClockPort, PreparedReviewAsset, ReviewAssetCatalogPort, ReviewAssetError,
-    ReviewAssetValidation, ReviewCatalog, ReviewProgressPort, ReviewRepositoryError,
-    ReviewRepositoryPort, ReviewRepositoryProviderPort, ReviewScope, ReviewScopeResolution,
-    ReviewStreamHead, ReviewTaskCancellation,
+    ClockPort, PreparedReviewAsset, ReviewAssetCatalogPort, ReviewAssetConflictKind,
+    ReviewAssetError, ReviewAssetValidation, ReviewCatalog, ReviewProgressPort,
+    ReviewRepositoryError, ReviewRepositoryPort, ReviewRepositoryProviderPort, ReviewScope,
+    ReviewScopeResolution, ReviewStreamHead, ReviewTaskCancellation,
 };
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -63,6 +63,45 @@ pub struct DeleteReviewFeedback {
     pub feedback_id: FeedbackId,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ReviewFeedbackSummary {
+    pub feedback_id: FeedbackId,
+    pub text: String,
+    pub target_count: u32,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ReviewCompletionSummary {
+    pub review_round_id: ReviewRoundId,
+    pub revision: u64,
+    pub total: u32,
+    pub revise: u32,
+    pub unreviewable: u32,
+    pub default_pass: u32,
+    pub feedback: Vec<ReviewFeedbackSummary>,
+    pub conflicts: Vec<ReviewConflictSnapshot>,
+    pub pending: Vec<RelativePath>,
+    pub can_complete: bool,
+}
+
+impl ReviewCompletionSummary {
+    pub const fn guard(&self) -> ReviewMutationGuard {
+        ReviewMutationGuard {
+            review_round_id: self.review_round_id,
+            expected_revision: self.revision,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub struct ReviewCompletionProposalId(u64);
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ReviewCompletionProposal {
+    pub id: ReviewCompletionProposalId,
+    pub summary: ReviewCompletionSummary,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct ReviewSessionSnapshot {
     pub phase: ReviewSessionPhase,
@@ -120,15 +159,7 @@ pub struct ReviewConflictSnapshot {
     pub kind: ReviewConflictKind,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum ReviewConflictKind {
-    Missing,
-    Moved,
-    Replaced,
-    SizeChanged,
-    ContentChanged,
-    MediaChanged,
-}
+pub type ReviewConflictKind = ReviewAssetConflictKind;
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct ReviewSessionCounts {
@@ -182,6 +213,14 @@ pub enum ReviewSessionError {
     InvalidFeedback,
     #[error("review Feedback does not exist")]
     FeedbackNotFound,
+    #[error("review completion proposal is stale")]
+    StaleCompletionProposal,
+    #[error("review completion is blocked by unresolved assets")]
+    CompletionBlocked,
+    #[error("review completion facts changed after confirmation")]
+    CompletionChanged,
+    #[error("review Draft could not be abandoned")]
+    AbandonFailed,
 }
 
 impl ReviewSessionError {
@@ -204,6 +243,10 @@ impl ReviewSessionError {
             Self::StaleRevision => "review_revision_stale",
             Self::InvalidFeedback => "review_feedback_invalid",
             Self::FeedbackNotFound => "review_feedback_not_found",
+            Self::StaleCompletionProposal => "review_completion_proposal_stale",
+            Self::CompletionBlocked => "review_completion_blocked",
+            Self::CompletionChanged => "review_completion_changed",
+            Self::AbandonFailed => "review_abandon_failed",
         }
     }
 
@@ -236,6 +279,8 @@ struct ReviewSessionState {
     task: Option<ReviewTask>,
     next_task_id: u64,
     active: Option<ActiveReviewSession>,
+    completion_proposal: Option<ReviewCompletionProposal>,
+    next_completion_proposal_id: u64,
     displayed_completed: Option<ReviewSnapshot>,
     writer: Option<Box<dyn ReviewRepositoryPort>>,
     error: Option<ReviewUserError>,
@@ -245,6 +290,7 @@ struct ReviewTask {
     id: u64,
     cancellation: ReviewTaskCancellation,
     return_phase: ReviewSessionPhase,
+    cancellable: bool,
 }
 
 struct ActiveReviewSession {
@@ -257,6 +303,30 @@ struct ActiveReviewSession {
 struct StartedReview {
     active: ActiveReviewSession,
     writer: Box<dyn ReviewRepositoryPort>,
+}
+
+struct ReviewValidationWork {
+    review_round_id: ReviewRoundId,
+    revision: u64,
+    draft: ReviewDraft,
+    prepared: Vec<PreparedReviewAsset>,
+    fixed_conflicts: Vec<ReviewConflictSnapshot>,
+}
+
+struct ValidatedReview {
+    work_revision: u64,
+    draft: ReviewDraft,
+    prepared: Vec<PreparedReviewAsset>,
+    conflicts: Vec<ReviewConflictSnapshot>,
+    pending: Vec<RelativePath>,
+    stable_facts_changed: bool,
+}
+
+#[derive(Default)]
+struct SilentReviewProgress;
+
+impl ReviewProgressPort for SilentReviewProgress {
+    fn report(&self, _progress: crate::ReviewTaskProgress) {}
 }
 
 impl ReviewSessionService {
@@ -296,6 +366,7 @@ impl ReviewSessionService {
         };
         let mut state = self.state.lock().await;
         state.proposal = None;
+        state.completion_proposal = None;
         state.active = None;
         state.writer = None;
         state.error = None;
@@ -606,10 +677,10 @@ impl ReviewSessionService {
             _ => return Err(ReviewSessionError::RecoveryRequired),
         }
         let mut prepared = Vec::new();
-        let mut conflicts = Vec::new();
+        let mut fixed_conflicts = Vec::new();
         for asset in &active.assets {
             let Some(entity_id) = asset.source_entity_id else {
-                conflicts.push(conflict_for(asset.id, asset.relative_path.clone()));
+                fixed_conflicts.push(conflict_for(asset.id, asset.relative_path.clone()));
                 continue;
             };
             let failure = active
@@ -629,50 +700,43 @@ impl ReviewSessionService {
             .revalidate_assets(&prepared, cancellation.clone(), progress)
             .await
             .map_err(map_asset_error)?;
-        if validations.len() != prepared.len() {
-            return Err(ReviewSessionError::AssetUnavailable);
-        }
-        let mut validated = Vec::with_capacity(prepared.len());
-        for (original, validation) in prepared.into_iter().zip(validations) {
-            match validation {
-                ReviewAssetValidation::Current(current)
-                    if same_fixed_member(&original, &current) =>
-                {
-                    validated.push(current);
-                }
-                ReviewAssetValidation::Conflict {
-                    asset_version_id,
-                    relative_path,
-                } if asset_version_id == original.asset.id
-                    && relative_path == original.asset.relative_path =>
-                {
-                    conflicts.push(conflict_for(asset_version_id, relative_path));
-                    validated.push(original);
-                }
-                ReviewAssetValidation::Pending {
-                    asset_version_id,
-                    relative_path,
-                } if asset_version_id == original.asset.id
-                    && relative_path == original.asset.relative_path =>
-                {
-                    conflicts.push(ReviewConflictSnapshot {
-                        asset_version_id,
-                        relative_path,
-                        kind: ReviewConflictKind::MediaChanged,
-                    });
-                    validated.push(original);
-                }
-                _ => return Err(ReviewSessionError::AssetUnavailable),
-            }
-        }
         if cancellation.is_cancelled() {
             return Err(ReviewSessionError::Cancelled);
         }
+        let mut validated = apply_validations(
+            ReviewValidationWork {
+                review_round_id: active.review_round_id,
+                revision: 0,
+                draft: active,
+                prepared,
+                fixed_conflicts,
+            },
+            validations,
+        )?;
+        for relative_path in validated.pending.drain(..) {
+            let asset_version_id = validated
+                .draft
+                .assets
+                .iter()
+                .find(|asset| asset.relative_path == relative_path)
+                .map(|asset| asset.id)
+                .ok_or(ReviewSessionError::AssetUnavailable)?;
+            validated.conflicts.push(ReviewConflictSnapshot {
+                asset_version_id,
+                relative_path,
+                kind: ReviewConflictKind::MediaChanged,
+            });
+        }
+        if validated.stable_facts_changed {
+            writer
+                .save_draft(&validated.draft)
+                .map_err(|_| ReviewSessionError::SaveFailed)?;
+        }
         Ok(StartedReview {
             active: ActiveReviewSession {
-                draft: active,
-                prepared: validated,
-                conflicts,
+                draft: validated.draft,
+                prepared: validated.prepared,
+                conflicts: validated.conflicts,
                 revision: 1,
             },
             writer,
@@ -684,6 +748,9 @@ impl ReviewSessionService {
         let Some(task) = state.task.as_ref() else {
             return false;
         };
+        if !task.cancellable {
+            return false;
+        }
         task.cancellation.cancel();
         true
     }
@@ -740,13 +807,429 @@ impl ReviewSessionService {
         })
     }
 
+    pub async fn snapshot(&self) -> ReviewSessionSnapshot {
+        let state = self.state.lock().await;
+        snapshot(&state)
+    }
+
+    pub async fn completion_summary(
+        &self,
+        guard: ReviewMutationGuard,
+    ) -> Result<ReviewCompletionProposal, ReviewSessionError> {
+        let (task_id, work, cancellation) = {
+            let mut state = self.state.lock().await;
+            validate_active_guard(&state, guard)?;
+            state.completion_proposal = None;
+            let work = validation_work(
+                state
+                    .active
+                    .as_ref()
+                    .ok_or(ReviewSessionError::InvalidState)?,
+            );
+            let task = transition_to_preparing(&mut state)?;
+            state.phase = ReviewSessionPhase::Completing;
+            (task.id, work, task.cancellation)
+        };
+        let result = self
+            .perform_validation(work, cancellation, Arc::new(SilentReviewProgress))
+            .await;
+        self.finish_completion_summary(task_id, result).await
+    }
+
+    async fn perform_validation(
+        &self,
+        work: ReviewValidationWork,
+        cancellation: ReviewTaskCancellation,
+        progress: Arc<dyn ReviewProgressPort>,
+    ) -> Result<ValidatedReview, ReviewSessionError> {
+        let validations = self
+            .catalog
+            .revalidate_assets(&work.prepared, cancellation.clone(), progress)
+            .await
+            .map_err(map_asset_error)?;
+        if cancellation.is_cancelled() {
+            return Err(ReviewSessionError::Cancelled);
+        }
+        apply_validations(work, validations)
+    }
+
+    async fn finish_completion_summary(
+        &self,
+        task_id: u64,
+        result: Result<ValidatedReview, ReviewSessionError>,
+    ) -> Result<ReviewCompletionProposal, ReviewSessionError> {
+        let mut state = self.state.lock().await;
+        if state.task.as_ref().map(|task| task.id) != Some(task_id) {
+            drop(state);
+            self.task_changed.notify_waiters();
+            return Err(ReviewSessionError::Cancelled);
+        }
+        state.task = None;
+        let validated = match result {
+            Ok(validated) => validated,
+            Err(error) => {
+                state.phase = ReviewSessionPhase::Active;
+                drop(state);
+                self.task_changed.notify_waiters();
+                return Err(error);
+            }
+        };
+        let active = state
+            .active
+            .as_ref()
+            .ok_or(ReviewSessionError::InvalidState)?;
+        if active.draft.review_round_id != validated.draft.review_round_id
+            || active.revision != validated.work_revision
+        {
+            state.phase = ReviewSessionPhase::Active;
+            drop(state);
+            self.task_changed.notify_waiters();
+            return Err(ReviewSessionError::StaleRevision);
+        }
+        let next_revision = if validated.stable_facts_changed {
+            Some(
+                active
+                    .revision
+                    .checked_add(1)
+                    .ok_or(ReviewSessionError::InvalidData)?,
+            )
+        } else {
+            None
+        };
+        let next_proposal_id = state
+            .next_completion_proposal_id
+            .checked_add(1)
+            .ok_or(ReviewSessionError::InvalidData)?;
+        if validated.stable_facts_changed
+            && state
+                .writer
+                .as_deref()
+                .ok_or(ReviewSessionError::InvalidState)?
+                .save_draft(&validated.draft)
+                .is_err()
+        {
+            state.phase = ReviewSessionPhase::Active;
+            drop(state);
+            self.task_changed.notify_waiters();
+            return Err(ReviewSessionError::SaveFailed);
+        }
+        let active = state
+            .active
+            .as_mut()
+            .ok_or(ReviewSessionError::InvalidState)?;
+        active.draft = validated.draft;
+        active.prepared = validated.prepared;
+        active.conflicts = validated.conflicts.clone();
+        if let Some(next_revision) = next_revision {
+            active.revision = next_revision;
+        }
+        let summary = completion_summary_projection(
+            &active.draft,
+            active.revision,
+            validated.conflicts,
+            validated.pending,
+        );
+        let proposal = ReviewCompletionProposal {
+            id: ReviewCompletionProposalId(next_proposal_id),
+            summary,
+        };
+        state.next_completion_proposal_id = next_proposal_id;
+        state.completion_proposal = Some(proposal.clone());
+        state.phase = ReviewSessionPhase::Active;
+        state.error = None;
+        drop(state);
+        self.task_changed.notify_waiters();
+        Ok(proposal)
+    }
+
+    pub async fn complete(
+        &self,
+        proposal_id: ReviewCompletionProposalId,
+        guard: ReviewMutationGuard,
+        progress: Arc<dyn ReviewProgressPort>,
+    ) -> Result<ReviewSessionSnapshot, ReviewSessionError> {
+        let (task_id, confirmed, work, cancellation) = {
+            let mut state = self.state.lock().await;
+            if state.phase != ReviewSessionPhase::Active || state.task.is_some() {
+                return Err(ReviewSessionError::InvalidState);
+            }
+            let proposal = state
+                .completion_proposal
+                .as_ref()
+                .filter(|proposal| proposal.id == proposal_id)
+                .cloned()
+                .ok_or(ReviewSessionError::StaleCompletionProposal)?;
+            if !proposal.summary.can_complete {
+                return Err(ReviewSessionError::CompletionBlocked);
+            }
+            if proposal.summary.guard() != guard {
+                return Err(ReviewSessionError::StaleCompletionProposal);
+            }
+            validate_active_guard(&state, guard)?;
+            let work = validation_work(
+                state
+                    .active
+                    .as_ref()
+                    .ok_or(ReviewSessionError::InvalidState)?,
+            );
+            state.completion_proposal = None;
+            let task = transition_to_preparing(&mut state)?;
+            state.phase = ReviewSessionPhase::Completing;
+            (task.id, proposal.summary, work, task.cancellation)
+        };
+        let result = self
+            .perform_validation(work, cancellation.clone(), progress)
+            .await;
+        self.finish_complete(task_id, confirmed, cancellation, result)
+            .await
+    }
+
+    async fn finish_complete(
+        &self,
+        task_id: u64,
+        confirmed: ReviewCompletionSummary,
+        cancellation: ReviewTaskCancellation,
+        result: Result<ValidatedReview, ReviewSessionError>,
+    ) -> Result<ReviewSessionSnapshot, ReviewSessionError> {
+        let (draft, writer) = {
+            let mut state = self.state.lock().await;
+            if state.task.as_ref().map(|task| task.id) != Some(task_id) {
+                drop(state);
+                self.task_changed.notify_waiters();
+                return Err(ReviewSessionError::Cancelled);
+            }
+            let validated = match result {
+                Ok(validated) if !cancellation.is_cancelled() => validated,
+                Ok(_) => {
+                    state.task = None;
+                    state.phase = ReviewSessionPhase::Active;
+                    drop(state);
+                    self.task_changed.notify_waiters();
+                    return Err(ReviewSessionError::Cancelled);
+                }
+                Err(error) => {
+                    state.task = None;
+                    state.phase = ReviewSessionPhase::Active;
+                    drop(state);
+                    self.task_changed.notify_waiters();
+                    return Err(error);
+                }
+            };
+            let active = state
+                .active
+                .as_ref()
+                .ok_or(ReviewSessionError::InvalidState)?;
+            if active.draft.review_round_id != validated.draft.review_round_id
+                || active.revision != validated.work_revision
+            {
+                state.task = None;
+                state.phase = ReviewSessionPhase::Active;
+                drop(state);
+                self.task_changed.notify_waiters();
+                return Err(ReviewSessionError::StaleRevision);
+            }
+            let next_revision = if validated.stable_facts_changed {
+                Some(
+                    active
+                        .revision
+                        .checked_add(1)
+                        .ok_or(ReviewSessionError::InvalidData)?,
+                )
+            } else {
+                None
+            };
+            if validated.stable_facts_changed
+                && state
+                    .writer
+                    .as_deref()
+                    .ok_or(ReviewSessionError::InvalidState)?
+                    .save_draft(&validated.draft)
+                    .is_err()
+            {
+                state.task = None;
+                state.phase = ReviewSessionPhase::Active;
+                drop(state);
+                self.task_changed.notify_waiters();
+                return Err(ReviewSessionError::SaveFailed);
+            }
+            let active = state
+                .active
+                .as_mut()
+                .ok_or(ReviewSessionError::InvalidState)?;
+            active.draft = validated.draft;
+            active.prepared = validated.prepared;
+            active.conflicts = validated.conflicts.clone();
+            if let Some(next_revision) = next_revision {
+                active.revision = next_revision;
+            }
+            let current = completion_summary_projection(
+                &active.draft,
+                active.revision,
+                validated.conflicts,
+                validated.pending,
+            );
+            if current != confirmed {
+                state.task = None;
+                state.phase = ReviewSessionPhase::Active;
+                drop(state);
+                self.task_changed.notify_waiters();
+                return Err(ReviewSessionError::CompletionChanged);
+            }
+            let draft = active.draft.clone();
+            if cancellation.is_cancelled() {
+                state.task = None;
+                state.phase = ReviewSessionPhase::Active;
+                drop(state);
+                self.task_changed.notify_waiters();
+                return Err(ReviewSessionError::Cancelled);
+            }
+            state
+                .task
+                .as_mut()
+                .ok_or(ReviewSessionError::InvalidState)?
+                .cancellable = false;
+            let writer = state
+                .writer
+                .take()
+                .ok_or(ReviewSessionError::InvalidState)?;
+            (draft, writer)
+        };
+
+        let completed = match draft.complete(self.clock.unix_millis()) {
+            Ok(completed) => completed,
+            Err(_) => {
+                return self
+                    .restore_after_prepublication_error(
+                        task_id,
+                        writer,
+                        ReviewSessionError::InvalidData,
+                    )
+                    .await;
+            }
+        };
+        let publish_result = writer.publish(&completed);
+        let directly_verified = publish_result.is_ok()
+            && repository_has_exact_completed(writer.as_ref(), self.project_id, &completed);
+        drop(writer);
+        let verified = if directly_verified {
+            true
+        } else {
+            match self.repositories.open_writer() {
+                Ok(recovered) => {
+                    let verified = repository_has_exact_completed(
+                        recovered.as_ref(),
+                        self.project_id,
+                        &completed,
+                    );
+                    drop(recovered);
+                    verified
+                }
+                Err(_) => false,
+            }
+        };
+
+        let mut state = self.state.lock().await;
+        if state.task.as_ref().map(|task| task.id) != Some(task_id) {
+            state.writer = None;
+            state.active = None;
+            state.phase = ReviewSessionPhase::RecoveryRequired;
+            state.error = Some(user_error(ReviewSessionError::RecoveryRequired));
+            drop(state);
+            self.catalog.release_tracking();
+            self.task_changed.notify_waiters();
+            return Err(ReviewSessionError::RecoveryRequired);
+        }
+        state.task = None;
+        state.writer = None;
+        state.completion_proposal = None;
+        state.active = None;
+        if verified {
+            state.phase = ReviewSessionPhase::CompletedReadOnly;
+            state.displayed_completed = Some(completed);
+            state.error = None;
+            let result = snapshot(&state);
+            drop(state);
+            self.catalog.release_tracking();
+            self.task_changed.notify_waiters();
+            Ok(result)
+        } else {
+            state.phase = ReviewSessionPhase::RecoveryRequired;
+            state.displayed_completed = None;
+            state.error = Some(user_error(ReviewSessionError::RecoveryRequired));
+            drop(state);
+            self.catalog.release_tracking();
+            self.task_changed.notify_waiters();
+            Err(ReviewSessionError::RecoveryRequired)
+        }
+    }
+
+    async fn restore_after_prepublication_error(
+        &self,
+        task_id: u64,
+        writer: Box<dyn ReviewRepositoryPort>,
+        error: ReviewSessionError,
+    ) -> Result<ReviewSessionSnapshot, ReviewSessionError> {
+        let mut state = self.state.lock().await;
+        if state.task.as_ref().map(|task| task.id) == Some(task_id) {
+            state.task = None;
+            state.writer = Some(writer);
+            state.phase = ReviewSessionPhase::Active;
+        } else {
+            drop(writer);
+            state.active = None;
+            state.phase = ReviewSessionPhase::RecoveryRequired;
+        }
+        drop(state);
+        self.task_changed.notify_waiters();
+        Err(error)
+    }
+
+    pub async fn abandon(
+        &self,
+        guard: ReviewMutationGuard,
+    ) -> Result<ReviewSessionSnapshot, ReviewSessionError> {
+        let writer = {
+            let mut state = self.state.lock().await;
+            validate_active_guard(&state, guard)?;
+            let active = state
+                .active
+                .as_ref()
+                .ok_or(ReviewSessionError::InvalidState)?;
+            let stream_id = active.draft.review_stream_id;
+            let round_id = active.draft.review_round_id;
+            if state
+                .writer
+                .as_deref()
+                .ok_or(ReviewSessionError::InvalidState)?
+                .delete_draft(stream_id, round_id)
+                .is_err()
+            {
+                return Err(ReviewSessionError::AbandonFailed);
+            }
+            state.active = None;
+            state.completion_proposal = None;
+            state.displayed_completed = None;
+            state.resume = None;
+            state.proposal = None;
+            state.phase = ReviewSessionPhase::Idle;
+            state.error = None;
+            state.writer.take()
+        };
+        drop(writer);
+        self.catalog.release_tracking();
+        let state = self.state.lock().await;
+        Ok(snapshot(&state))
+    }
+
     pub async fn shutdown(&self) {
         loop {
             let notified = self.task_changed.notified();
             let writer = {
                 let mut state = self.state.lock().await;
                 if let Some(task) = state.task.as_ref() {
-                    task.cancellation.cancel();
+                    if task.cancellable {
+                        task.cancellation.cancel();
+                    }
                     None
                 } else {
                     state.active = None;
@@ -767,9 +1250,11 @@ impl ReviewSessionService {
         let mut state = self.state.lock().await;
         let next_proposal_id = state.next_proposal_id;
         let next_task_id = state.next_task_id;
+        let next_completion_proposal_id = state.next_completion_proposal_id;
         *state = ReviewSessionState::new();
         state.next_proposal_id = next_proposal_id;
         state.next_task_id = next_task_id;
+        state.next_completion_proposal_id = next_completion_proposal_id;
     }
 }
 
@@ -783,6 +1268,8 @@ impl ReviewSessionState {
             task: None,
             next_task_id: 0,
             active: None,
+            completion_proposal: None,
+            next_completion_proposal_id: 0,
             displayed_completed: None,
             writer: None,
             error: None,
@@ -808,6 +1295,7 @@ fn transition_to_preparing(
         id: state.next_task_id,
         cancellation: ReviewTaskCancellation::default(),
         return_phase: state.phase,
+        cancellable: true,
     };
     state.phase = ReviewSessionPhase::Preparing;
     state.error = None;
@@ -815,6 +1303,7 @@ fn transition_to_preparing(
         id: task.id,
         cancellation: task.cancellation.clone(),
         return_phase: task.return_phase,
+        cancellable: task.cancellable,
     });
     Ok(task)
 }
@@ -827,6 +1316,7 @@ fn install_active(
     state.phase = ReviewSessionPhase::Active;
     state.resume = None;
     state.proposal = None;
+    state.completion_proposal = None;
     state.displayed_completed = None;
     state.error = None;
     state.active = Some(active);
@@ -880,8 +1370,160 @@ where
         .ok_or(ReviewSessionError::InvalidState)?;
     active.draft = draft;
     active.revision = next_revision;
+    state.completion_proposal = None;
     state.error = None;
     Ok(snapshot(state))
+}
+
+fn validate_active_guard(
+    state: &ReviewSessionState,
+    guard: ReviewMutationGuard,
+) -> Result<(), ReviewSessionError> {
+    if state.phase != ReviewSessionPhase::Active || state.task.is_some() {
+        return Err(ReviewSessionError::InvalidState);
+    }
+    let active = state
+        .active
+        .as_ref()
+        .ok_or(ReviewSessionError::InvalidState)?;
+    if active.draft.review_round_id != guard.review_round_id {
+        return Err(ReviewSessionError::StaleRound);
+    }
+    if active.revision != guard.expected_revision {
+        return Err(ReviewSessionError::StaleRevision);
+    }
+    Ok(())
+}
+
+fn validation_work(active: &ActiveReviewSession) -> ReviewValidationWork {
+    let prepared_ids = active
+        .prepared
+        .iter()
+        .map(|prepared| prepared.asset.id)
+        .collect::<HashSet<_>>();
+    ReviewValidationWork {
+        review_round_id: active.draft.review_round_id,
+        revision: active.revision,
+        draft: active.draft.clone(),
+        prepared: active.prepared.clone(),
+        fixed_conflicts: active
+            .conflicts
+            .iter()
+            .filter(|conflict| !prepared_ids.contains(&conflict.asset_version_id))
+            .cloned()
+            .collect(),
+    }
+}
+
+fn apply_validations(
+    work: ReviewValidationWork,
+    validations: Vec<ReviewAssetValidation>,
+) -> Result<ValidatedReview, ReviewSessionError> {
+    if work.review_round_id != work.draft.review_round_id
+        || validations.len() != work.prepared.len()
+    {
+        return Err(ReviewSessionError::AssetUnavailable);
+    }
+    let mut draft = work.draft;
+    let previous_unreviewable = draft.unreviewable.clone();
+    let existing_failures = draft
+        .unreviewable
+        .iter()
+        .map(|item| (item.asset_version_id, item.failure))
+        .collect::<HashMap<_, _>>();
+    let mut resolved_failures = HashMap::new();
+    let mut prepared = Vec::with_capacity(work.prepared.len());
+    let mut conflicts = work.fixed_conflicts;
+    let mut pending = Vec::new();
+    for (original, validation) in work.prepared.into_iter().zip(validations) {
+        match validation {
+            ReviewAssetValidation::Current(current) if same_fixed_member(&original, &current) => {
+                resolved_failures.insert(current.asset.id, current.failure);
+                prepared.push(current);
+            }
+            ReviewAssetValidation::Conflict {
+                asset_version_id,
+                relative_path,
+                kind,
+            } if asset_version_id == original.asset.id
+                && relative_path == original.asset.relative_path =>
+            {
+                conflicts.push(ReviewConflictSnapshot {
+                    asset_version_id,
+                    relative_path,
+                    kind,
+                });
+                prepared.push(original);
+            }
+            ReviewAssetValidation::Pending {
+                asset_version_id,
+                relative_path,
+            } if asset_version_id == original.asset.id
+                && relative_path == original.asset.relative_path =>
+            {
+                pending.push(relative_path);
+                prepared.push(original);
+            }
+            _ => return Err(ReviewSessionError::AssetUnavailable),
+        }
+    }
+    let stable_failures = draft
+        .assets
+        .iter()
+        .filter_map(|asset| {
+            resolved_failures
+                .get(&asset.id)
+                .copied()
+                .unwrap_or_else(|| existing_failures.get(&asset.id).copied())
+                .map(|failure| (asset.id, failure))
+        })
+        .collect::<Vec<_>>();
+    draft.unreviewable.clear();
+    for (asset_version_id, failure) in stable_failures {
+        draft
+            .mark_unreviewable(asset_version_id, failure)
+            .map_err(|_| ReviewSessionError::InvalidData)?;
+    }
+    let stable_facts_changed = draft.unreviewable != previous_unreviewable;
+    Ok(ValidatedReview {
+        work_revision: work.revision,
+        draft,
+        prepared,
+        conflicts,
+        pending,
+        stable_facts_changed,
+    })
+}
+
+fn completion_summary_projection(
+    draft: &ReviewDraft,
+    revision: u64,
+    conflicts: Vec<ReviewConflictSnapshot>,
+    pending: Vec<RelativePath>,
+) -> ReviewCompletionSummary {
+    let counts = draft_counts(draft);
+    ReviewCompletionSummary {
+        review_round_id: draft.review_round_id,
+        revision,
+        total: counts.total,
+        revise: counts.revise,
+        unreviewable: counts.unreviewable,
+        default_pass: counts
+            .total
+            .saturating_sub(counts.revise + counts.unreviewable),
+        feedback: draft
+            .feedback
+            .iter()
+            .map(|feedback| ReviewFeedbackSummary {
+                feedback_id: feedback.id,
+                text: feedback.text.clone(),
+                target_count: feedback.targets.len() as u32,
+            })
+            .collect(),
+        can_complete: conflicts.is_empty() && pending.is_empty(),
+        conflicts,
+        pending,
+    }
 }
 
 fn asset_targets(
@@ -921,6 +1563,42 @@ fn manual_stream(catalog: &ReviewCatalog) -> Result<Option<&ReviewStreamHead>, R
     } else {
         Ok(first)
     }
+}
+
+fn exact_head_is_published(
+    catalog: &ReviewCatalog,
+    stream_id: ReviewStreamId,
+    round_id: ReviewRoundId,
+) -> bool {
+    let mut matches = catalog
+        .streams
+        .iter()
+        .filter(|stream| stream.review_stream_id == stream_id);
+    let Some(stream) = matches.next() else {
+        return false;
+    };
+    matches.next().is_none()
+        && stream.latest_completed_round_id == Some(round_id)
+        && stream.completed_round_ids.last() == Some(&round_id)
+        && stream.completed_round_ids.contains(&round_id)
+}
+
+fn repository_has_exact_completed(
+    repository: &dyn ReviewRepositoryPort,
+    project_id: ProjectId,
+    completed: &ReviewSnapshot,
+) -> bool {
+    let Ok(catalog) = repository.load_catalog() else {
+        return false;
+    };
+    catalog.project_id == project_id
+        && exact_head_is_published(
+            &catalog,
+            completed.review_stream_id,
+            completed.review_round_id,
+        )
+        && repository.load_completed(completed.review_stream_id, completed.review_round_id)
+            == Ok(Some(completed.clone()))
 }
 
 fn snapshot(state: &ReviewSessionState) -> ReviewSessionSnapshot {
@@ -1166,7 +1844,7 @@ fn conflict_for(
     ReviewConflictSnapshot {
         asset_version_id,
         relative_path,
-        kind: ReviewConflictKind::ContentChanged,
+        kind: ReviewAssetConflictKind::ContentChanged,
     }
 }
 

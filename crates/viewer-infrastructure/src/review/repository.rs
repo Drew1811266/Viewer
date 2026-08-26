@@ -460,14 +460,15 @@ fn discover_active_draft(
             _ => return Err(ReviewRepositoryError::RecoveryRequired),
         }
 
-        if let Some(stream) = catalog
+        match catalog
             .streams
             .iter()
             .find(|stream| stream.review_stream_id == draft.review_stream_id)
         {
-            if stream.production != draft.production {
+            Some(stream) if stream.production != draft.production => {
                 return Err(ReviewRepositoryError::RecoveryRequired);
             }
+            _ => {}
         }
         if active.replace(draft).is_some() {
             return Err(ReviewRepositoryError::RecoveryRequired);

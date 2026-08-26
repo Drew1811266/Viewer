@@ -621,7 +621,7 @@ pub async fn shutdown(&self);
 - `resume` opens writer, reloads the exact Draft under lease, revalidates every saved member using source identity/path/hash, reconstructs the AssetVersion-to-Entity binding, and enters `Active` only after validation. Conflicts remain visible and block completion but do not erase Feedback.
 - Cancellation before first save returns to `Idle` with the prior `resume` projection (if one existed) and drops writer. `shutdown` cancels preparation, waits for the task boundary, releases asset tracking, and drops writer deterministically.
 
-- [ ] **Step 1: Create fakes and write state-transition tests**
+- [x] **Step 1: Create fakes and write state-transition tests**
 
 Test zero/one/many Drafts, future production Draft refusal, Busy, read-only Draft projection, empty candidates, stale proposal, scope re-resolution changes, first/reused/ambiguous manual Stream, production-Stream isolation, exact latest Completed read-only projection, later Round previous head, save failure, cancellation, resume hash mismatch, and shutdown writer release.
 
@@ -637,13 +637,13 @@ async fn start_rechecks_unique_draft_after_acquiring_writer() {
 }
 ```
 
-- [ ] **Step 2: Run the application integration test and observe the missing service**
+- [x] **Step 2: Run the application integration test and observe the missing service**
 
 Run: `cargo test --locked -p viewer-application --test review_session_start`
 
 Expected: FAIL to compile before `review_session.rs` exists.
 
-- [ ] **Step 3: Implement the state machine with one mutex and explicit transition helpers**
+- [x] **Step 3: Implement the state machine with one mutex and explicit transition helpers**
 
 Do not hold the mutex across arbitrary adapter work. Store a task token/state transition under the mutex, perform async work with immutable inputs, then reacquire and commit only if the same task token is current.
 
@@ -655,13 +655,13 @@ fn transition_to_preparing(state: &mut ReviewSessionState, task: ReviewTask)
 fn install_active(state: &mut ReviewSessionState, active: ActiveReviewSession);
 ```
 
-- [ ] **Step 4: Verify the entire application crate**
+- [x] **Step 4: Verify the entire application crate**
 
 Run: `cargo test --locked -p viewer-application`
 
 Expected: all existing and new application tests pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add crates/viewer-application/src/review_session.rs crates/viewer-application/src/lib.rs crates/viewer-application/tests/review_session_start.rs

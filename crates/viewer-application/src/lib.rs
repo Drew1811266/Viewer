@@ -10,6 +10,7 @@ pub mod project;
 pub mod rename;
 pub mod review;
 pub mod review_assets;
+pub mod review_session;
 pub mod scan;
 pub mod scheduler;
 pub mod search;
@@ -49,6 +50,12 @@ pub use review_assets::{
     PreparedReviewAsset, ReviewAssetCatalogPort, ReviewAssetError, ReviewAssetValidation,
     ReviewProgressPort, ReviewScope, ReviewScopeResolution, ReviewTaskCancellation,
     ReviewTaskProgress,
+};
+pub use review_session::{
+    ReviewConflictKind, ReviewConflictSnapshot, ReviewFeedbackSnapshot, ReviewMemberSnapshot,
+    ReviewProposalId, ReviewResumeSnapshot, ReviewScopeProposal, ReviewSessionCounts,
+    ReviewSessionError, ReviewSessionPhase, ReviewSessionService, ReviewSessionSnapshot,
+    ReviewUnreviewableSnapshot, ReviewUserError,
 };
 pub use session::{ProjectSession, SessionState, SessionTransitionError};
 pub use settings::{

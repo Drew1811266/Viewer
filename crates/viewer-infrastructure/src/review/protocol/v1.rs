@@ -9,7 +9,8 @@ use std::str::FromStr;
 use viewer_application::{
     MAX_COMPLETED_ROUNDS_PER_STREAM, MAX_PRODUCTION_CONTEXT_ENTRIES,
     MAX_PRODUCTION_CONTEXT_KEY_BYTES, MAX_PRODUCTION_CONTEXT_VALUE_BYTES, MAX_REVIEW_STREAMS,
-    ProductionAsset, ProductionManifest, ReviewCatalog, ReviewStreamHead,
+    ProductionAsset, ProductionManifest, ReviewCatalog, ReviewProtocolVersion,
+    ReviewRecordLocation, ReviewRoundRecord, ReviewStreamHead,
 };
 use viewer_domain::RelativePath;
 use viewer_domain::review::{
@@ -453,10 +454,22 @@ fn parse_catalog(stored: StoredCatalog) -> Result<ReviewCatalog, ReviewProtocolE
         if completed_round_ids.last().copied() != latest_completed_round_id {
             return Err(ReviewProtocolError::InvalidData);
         }
+        let completed_rounds = completed_round_ids
+            .iter()
+            .copied()
+            .map(|review_round_id| {
+                Ok(ReviewRoundRecord {
+                    review_round_id,
+                    protocol_version: ReviewProtocolVersion::V1,
+                    location: legacy_round_location(review_round_id)?,
+                    blake3: [0; 32],
+                })
+            })
+            .collect::<Result<Vec<_>, ReviewProtocolError>>()?;
         streams.push(ReviewStreamHead {
             review_stream_id,
             production,
-            completed_round_ids,
+            completed_rounds,
             latest_completed_round_id,
         });
     }
@@ -467,6 +480,15 @@ fn parse_catalog(stored: StoredCatalog) -> Result<ReviewCatalog, ReviewProtocolE
 }
 
 fn stored_catalog(catalog: &ReviewCatalog) -> Result<StoredCatalog, ReviewProtocolError> {
+    for stream in &catalog.streams {
+        for record in &stream.completed_rounds {
+            if record.protocol_version != ReviewProtocolVersion::V1
+                || record.location != legacy_round_location(record.review_round_id)?
+            {
+                return Err(ReviewProtocolError::InvalidData);
+            }
+        }
+    }
     let candidate = StoredCatalog {
         protocol_version: REVIEW_PROTOCOL_V1.to_owned(),
         project_id: catalog.project_id.to_string(),
@@ -484,9 +506,8 @@ fn stored_catalog(catalog: &ReviewCatalog) -> Result<StoredCatalog, ReviewProtoc
                     .as_ref()
                     .map(|scope| scope.batch_id.as_str().to_owned()),
                 completed_round_ids: stream
-                    .completed_round_ids
-                    .iter()
-                    .map(ToString::to_string)
+                    .completed_round_ids()
+                    .map(|id| id.to_string())
                     .collect(),
                 latest_completed_round_id: stream
                     .latest_completed_round_id
@@ -496,6 +517,13 @@ fn stored_catalog(catalog: &ReviewCatalog) -> Result<StoredCatalog, ReviewProtoc
     };
     parse_catalog(candidate.clone())?;
     Ok(candidate)
+}
+
+fn legacy_round_location(
+    round_id: viewer_domain::ReviewRoundId,
+) -> Result<ReviewRecordLocation, ReviewProtocolError> {
+    ReviewRecordLocation::new(format!("rounds/{round_id}.json"))
+        .map_err(|_| ReviewProtocolError::InvalidData)
 }
 
 fn parse_asset(stored: StoredAsset) -> Result<AssetVersion, ReviewProtocolError> {

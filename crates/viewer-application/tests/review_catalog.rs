@@ -1,5 +1,6 @@
 use viewer_application::{
-    ReviewCatalog, ReviewCatalogError, ReviewStreamHead, ReviewStreamLocator,
+    ReviewCatalog, ReviewCatalogError, ReviewProtocolVersion, ReviewRecordLocation,
+    ReviewRoundRecord, ReviewStreamHead, ReviewStreamLocator,
 };
 use viewer_domain::review::{ProductionId, ProductionScope};
 use viewer_domain::{ProjectId, ReviewRoundId, ReviewStreamId};
@@ -12,11 +13,17 @@ fn production(task_id: &str, batch_id: &str) -> ProductionScope {
 }
 
 fn stream_head(id: u128, task_id: &str, batch_id: &str) -> ReviewStreamHead {
+    let review_round_id = ReviewRoundId::from_u128(id + 100);
     ReviewStreamHead {
         review_stream_id: ReviewStreamId::from_u128(id),
         production: Some(production(task_id, batch_id)),
-        completed_round_ids: vec![ReviewRoundId::from_u128(id + 100)],
-        latest_completed_round_id: Some(ReviewRoundId::from_u128(id + 100)),
+        completed_rounds: vec![ReviewRoundRecord {
+            review_round_id,
+            protocol_version: ReviewProtocolVersion::V1,
+            location: ReviewRecordLocation::new(format!("rounds/{review_round_id}.json")).unwrap(),
+            blake3: [0; 32],
+        }],
+        latest_completed_round_id: Some(review_round_id),
     }
 }
 
@@ -91,4 +98,21 @@ fn empty_and_duplicate_matching_catalogs_fail_without_guessing() {
         )))),
         Err(ReviewCatalogError::Ambiguous)
     );
+}
+
+#[test]
+fn catalog_resolves_round_records_without_exposing_absolute_paths() {
+    let record = ReviewRoundRecord {
+        review_round_id: ReviewRoundId::from_u128(7),
+        protocol_version: ReviewProtocolVersion::V2,
+        location: ReviewRecordLocation::new(
+            "rounds/00000000-0000-0000-0000-000000000007/round.json",
+        )
+        .unwrap(),
+        blake3: [0x2a; 32],
+    };
+
+    assert!(!record.location.as_str().starts_with('/'));
+    assert!(ReviewRecordLocation::new("../outside.json").is_err());
+    assert!(ReviewRecordLocation::new("rounds\\outside.json").is_err());
 }

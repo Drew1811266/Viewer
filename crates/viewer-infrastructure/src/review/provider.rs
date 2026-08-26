@@ -3,10 +3,10 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 use viewer_application::{
-    ProjectAccess, ReviewCatalog, ReviewRepositoryError, ReviewRepositoryInspection,
-    ReviewRepositoryPort, ReviewRepositoryProviderPort,
+    PersistedReviewDraft, ProjectAccess, ReviewCatalog, ReviewRepositoryError,
+    ReviewRepositoryInspection, ReviewRepositoryPort, ReviewRepositoryProviderPort,
 };
-use viewer_domain::review::{ReviewDraft, ReviewSnapshot};
+use viewer_domain::review::ReviewSnapshot;
 use viewer_domain::{ProjectId, ReviewRoundId, ReviewStreamId};
 
 pub struct ProjectReviewRepositoryProvider {
@@ -100,7 +100,7 @@ impl ReviewRepositoryPort for EmptyReadOnlyReviewRepository {
         Ok(self.catalog.clone())
     }
 
-    fn load_active_draft(&self) -> Result<Option<ReviewDraft>, ReviewRepositoryError> {
+    fn load_active_draft(&self) -> Result<Option<PersistedReviewDraft>, ReviewRepositoryError> {
         Ok(None)
     }
 
@@ -108,11 +108,11 @@ impl ReviewRepositoryPort for EmptyReadOnlyReviewRepository {
         &self,
         _stream_id: ReviewStreamId,
         _round_id: ReviewRoundId,
-    ) -> Result<Option<ReviewDraft>, ReviewRepositoryError> {
+    ) -> Result<Option<PersistedReviewDraft>, ReviewRepositoryError> {
         Ok(None)
     }
 
-    fn save_draft(&self, _draft: &ReviewDraft) -> Result<(), ReviewRepositoryError> {
+    fn save_draft(&self, _draft: &PersistedReviewDraft) -> Result<(), ReviewRepositoryError> {
         Err(ReviewRepositoryError::ReadOnly)
     }
 

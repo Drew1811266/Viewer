@@ -2,11 +2,12 @@ use async_trait::async_trait;
 use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::{Arc, Mutex};
 use viewer_application::{
-    AddReviewFeedback, ClockPort, DeleteReviewFeedback, PreparedReviewAsset,
+    AddReviewFeedback, ClockPort, DeleteReviewFeedback, PersistedReviewDraft, PreparedReviewAsset,
     ReviewAssetCatalogPort, ReviewAssetError, ReviewAssetValidation, ReviewCatalog,
-    ReviewMutationGuard, ReviewProgressPort, ReviewRepositoryError, ReviewRepositoryInspection,
-    ReviewRepositoryPort, ReviewRepositoryProviderPort, ReviewScope, ReviewScopeResolution,
-    ReviewSessionService, ReviewTaskCancellation, ReviewTaskProgress, UpdateReviewFeedback,
+    ReviewMutationGuard, ReviewProgressPort, ReviewProtocolVersion, ReviewRepositoryError,
+    ReviewRepositoryInspection, ReviewRepositoryPort, ReviewRepositoryProviderPort, ReviewScope,
+    ReviewScopeResolution, ReviewSessionService, ReviewTaskCancellation, ReviewTaskProgress,
+    UpdateReviewFeedback,
 };
 use viewer_domain::review::{
     AssetEvidence, AssetVersion, MAX_FEEDBACK_TEXT_BYTES, ReviewDraft, ReviewMedia, ReviewSnapshot,
@@ -103,7 +104,12 @@ impl ReviewRepositoryProviderPort for FakeRepositories {
                 project_id: self.project_id,
                 streams: vec![],
             },
-            active_draft: self.state.lock().unwrap().draft.clone(),
+            active_draft: self.state.lock().unwrap().draft.clone().map(|draft| {
+                PersistedReviewDraft {
+                    protocol_version: ReviewProtocolVersion::V1,
+                    draft,
+                }
+            }),
         })
     }
 
@@ -152,15 +158,24 @@ impl ReviewRepositoryPort for FakeRepository {
         })
     }
 
-    fn load_active_draft(&self) -> Result<Option<ReviewDraft>, ReviewRepositoryError> {
-        Ok(self.state.lock().unwrap().draft.clone())
+    fn load_active_draft(&self) -> Result<Option<PersistedReviewDraft>, ReviewRepositoryError> {
+        Ok(self
+            .state
+            .lock()
+            .unwrap()
+            .draft
+            .clone()
+            .map(|draft| PersistedReviewDraft {
+                protocol_version: ReviewProtocolVersion::V1,
+                draft,
+            }))
     }
 
     fn load_draft(
         &self,
         stream_id: ReviewStreamId,
         round_id: ReviewRoundId,
-    ) -> Result<Option<ReviewDraft>, ReviewRepositoryError> {
+    ) -> Result<Option<PersistedReviewDraft>, ReviewRepositoryError> {
         Ok(self
             .state
             .lock()
@@ -170,16 +185,20 @@ impl ReviewRepositoryPort for FakeRepository {
             .filter(|draft| {
                 draft.review_stream_id == stream_id && draft.review_round_id == round_id
             })
-            .cloned())
+            .cloned()
+            .map(|draft| PersistedReviewDraft {
+                protocol_version: ReviewProtocolVersion::V1,
+                draft,
+            }))
     }
 
-    fn save_draft(&self, draft: &ReviewDraft) -> Result<(), ReviewRepositoryError> {
+    fn save_draft(&self, draft: &PersistedReviewDraft) -> Result<(), ReviewRepositoryError> {
         let mut state = self.state.lock().unwrap();
         state.save_attempts += 1;
         if state.fail_save {
             return Err(ReviewRepositoryError::Unavailable);
         }
-        state.draft = Some(draft.clone());
+        state.draft = Some(draft.draft.clone());
         Ok(())
     }
 

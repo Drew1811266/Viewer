@@ -1,8 +1,10 @@
 use super::atomic::{AtomicCreateOnceError, atomic_create_once, atomic_replace, sync_directory};
+use super::catalog::{legacy_round_location, prepare_v2_catalog_migration};
 use super::lease::ProjectReviewLease;
 use super::{
-    MAX_REVIEW_DOCUMENT_BYTES, MAX_REVIEW_INDEX_BYTES, ReviewProtocolError, decode_catalog,
-    decode_completed, decode_draft, encode_catalog, encode_completed, encode_draft,
+    MAX_REVIEW_DOCUMENT_BYTES, MAX_REVIEW_INDEX_BYTES, ReviewProtocolError,
+    decode_catalog_versioned, decode_completed_versioned, decode_draft_versioned, encode_catalog,
+    encode_completed, encode_draft, encode_draft_v2,
 };
 use std::fs::{self, OpenOptions};
 use std::io::{self, Read};
@@ -11,10 +13,11 @@ use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use viewer_application::{
-    MAX_COMPLETED_ROUNDS_PER_STREAM, MAX_REVIEW_STREAMS, ReviewCatalog, ReviewRepositoryError,
-    ReviewRepositoryPort, ReviewStreamHead,
+    DecodedReview, MAX_COMPLETED_ROUNDS_PER_STREAM, MAX_REVIEW_STREAMS, PersistedReviewDraft,
+    ReviewCatalog, ReviewProtocolVersion, ReviewRecordLocation, ReviewRepositoryError,
+    ReviewRepositoryPort, ReviewRoundRecord, ReviewStreamHead,
 };
-use viewer_domain::review::{ReviewDraft, ReviewSnapshot};
+use viewer_domain::review::ReviewSnapshot;
 use viewer_domain::{ProjectId, ReviewRoundId, ReviewStreamId};
 
 const VIEWER_DIRECTORY: &str = ".viewer";
@@ -100,8 +103,8 @@ impl ProjectReviewRepository {
         if let Some(reviews) = existing_reviews {
             validate_directory(&reviews)?;
             validate_owned_children(&reviews)?;
-            if let Some(catalog) = read_catalog_file(&reviews.join(INDEX_FILE))? {
-                validate_catalog_identity(&catalog, project_id)?;
+            if let Some(catalog) = read_catalog_document(&reviews, project_id)? {
+                validate_catalog_identity(&catalog.value, project_id)?;
             }
         } else {
             create_directory(&reviews_root)?;
@@ -123,9 +126,9 @@ impl ProjectReviewRepository {
 
         let lease = ProjectReviewLease::acquire(&reviews_root.join(LOCK_FILE))?;
         validate_owned_children(&reviews_root)?;
-        let existing_catalog = read_catalog_file(&reviews_root.join(INDEX_FILE))?;
+        let existing_catalog = read_catalog_document(&reviews_root, project_id)?;
         if let Some(catalog) = &existing_catalog {
-            validate_catalog_identity(catalog, project_id)?;
+            validate_catalog_identity(&catalog.value, project_id)?;
         }
         ensure_owned_directory(&reviews_root, DRAFTS_DIRECTORY)?;
         ensure_owned_directory(&reviews_root, ROUNDS_DIRECTORY)?;
@@ -152,14 +155,14 @@ impl ProjectReviewRepository {
     }
 
     pub fn load_catalog(&self) -> Result<ReviewCatalog, ReviewRepositoryError> {
-        let Some(catalog) = read_catalog_file(&self.reviews_root.join(INDEX_FILE))? else {
+        let Some(catalog) = read_catalog_document(&self.reviews_root, self.project_id)? else {
             return Ok(empty_catalog(self.project_id));
         };
-        validate_catalog_identity(&catalog, self.project_id)?;
-        Ok(catalog)
+        validate_catalog_identity(&catalog.value, self.project_id)?;
+        Ok(catalog.value)
     }
 
-    pub fn load_active_draft(&self) -> Result<Option<ReviewDraft>, ReviewRepositoryError> {
+    pub fn load_active_draft(&self) -> Result<Option<PersistedReviewDraft>, ReviewRepositoryError> {
         let catalog = self.load_catalog()?;
         discover_active_draft(self, &catalog)
     }
@@ -168,12 +171,12 @@ impl ProjectReviewRepository {
         &self,
         stream_id: ReviewStreamId,
         round_id: ReviewRoundId,
-    ) -> Result<Option<ReviewDraft>, ReviewRepositoryError> {
+    ) -> Result<Option<PersistedReviewDraft>, ReviewRepositoryError> {
         let catalog = self.load_catalog()?;
         if let Some(indexed_stream) = catalog
             .streams
             .iter()
-            .find(|stream| stream.completed_round_ids.contains(&round_id))
+            .find(|stream| stream.completed_round_ids().any(|id| id == round_id))
         {
             return if indexed_stream.review_stream_id == stream_id {
                 Ok(None)
@@ -185,17 +188,23 @@ impl ProjectReviewRepository {
         let Some(bytes) = read_bounded(&path, MAX_REVIEW_DOCUMENT_BYTES)? else {
             return Ok(None);
         };
-        let draft = decode_draft(&bytes).map_err(map_protocol_error)?;
-        if draft.project_id != self.project_id
-            || draft.review_stream_id != stream_id
-            || draft.review_round_id != round_id
+        let decoded = decode_draft_versioned(&bytes).map_err(map_protocol_error)?;
+        if decoded.value.project_id != self.project_id
+            || decoded.value.review_stream_id != stream_id
+            || decoded.value.review_round_id != round_id
         {
             return Err(ReviewRepositoryError::InvalidData);
         }
-        Ok(Some(draft))
+        Ok(Some(PersistedReviewDraft {
+            protocol_version: decoded.version,
+            draft: decoded.value,
+        }))
     }
 
-    pub fn save_draft(&self, draft: &ReviewDraft) -> Result<(), ReviewRepositoryError> {
+    pub fn save_draft(
+        &self,
+        persisted: &PersistedReviewDraft,
+    ) -> Result<(), ReviewRepositoryError> {
         if self.access != ReviewRepositoryAccess::ReadWrite {
             return Err(ReviewRepositoryError::ReadOnly);
         }
@@ -203,15 +212,27 @@ impl ProjectReviewRepository {
             .write_guard
             .lock()
             .map_err(|_| ReviewRepositoryError::Unavailable)?;
+        let draft = &persisted.draft;
         if draft.project_id != self.project_id {
             return Err(ReviewRepositoryError::InvalidData);
+        }
+        if self.load_catalog()?.streams.iter().any(|stream| {
+            stream
+                .completed_round_ids()
+                .any(|round_id| round_id == draft.review_round_id)
+        }) {
+            return Err(ReviewRepositoryError::Conflict);
         }
         match safe_file_kind(&self.completed_path(draft.review_round_id))? {
             Some(OwnedPathKind::File) => return Err(ReviewRepositoryError::Conflict),
             Some(_) => return Err(ReviewRepositoryError::InvalidData),
             None => {}
         }
-        let bytes = encode_draft(draft).map_err(map_protocol_error)?;
+        let bytes = match persisted.protocol_version {
+            ReviewProtocolVersion::V1 => encode_draft(draft),
+            ReviewProtocolVersion::V2 => encode_draft_v2(draft),
+        }
+        .map_err(map_protocol_error)?;
         replace_checked(&self.draft_path(draft.review_round_id), &bytes)
     }
 
@@ -230,7 +251,9 @@ impl ProjectReviewRepository {
         let path = self.draft_path(round_id);
         let bytes = read_bounded(&path, MAX_REVIEW_DOCUMENT_BYTES)?
             .ok_or(ReviewRepositoryError::NotFound)?;
-        let draft = decode_draft(&bytes).map_err(map_protocol_error)?;
+        let draft = decode_draft_versioned(&bytes)
+            .map_err(map_protocol_error)?
+            .value;
         if draft.project_id != self.project_id
             || draft.review_stream_id != stream_id
             || draft.review_round_id != round_id
@@ -238,7 +261,8 @@ impl ProjectReviewRepository {
             return Err(ReviewRepositoryError::InvalidData);
         }
         if self.load_catalog()?.streams.iter().any(|stream| {
-            stream.review_stream_id == stream_id && stream.completed_round_ids.contains(&round_id)
+            stream.review_stream_id == stream_id
+                && stream.completed_round_ids().any(|id| id == round_id)
         }) {
             return Err(ReviewRepositoryError::Conflict);
         }
@@ -260,12 +284,26 @@ impl ProjectReviewRepository {
         else {
             return Ok(None);
         };
-        if !stream.completed_round_ids.contains(&round_id) {
+        let Some(record) = stream
+            .completed_rounds
+            .iter()
+            .find(|record| record.review_round_id == round_id)
+        else {
             return Ok(None);
+        };
+        let bytes = read_bounded(
+            &self.reviews_root.join(record.location.as_str()),
+            MAX_REVIEW_DOCUMENT_BYTES,
+        )?
+        .ok_or(ReviewRepositoryError::InvalidData)?;
+        if *blake3::hash(&bytes).as_bytes() != record.blake3 {
+            return Err(ReviewRepositoryError::InvalidData);
         }
-        let bytes = read_bounded(&self.completed_path(round_id), MAX_REVIEW_DOCUMENT_BYTES)?
-            .ok_or(ReviewRepositoryError::InvalidData)?;
-        let snapshot = decode_completed(&bytes).map_err(map_protocol_error)?;
+        let decoded = decode_completed_versioned(&bytes).map_err(map_protocol_error)?;
+        if decoded.version != record.protocol_version {
+            return Err(ReviewRepositoryError::InvalidData);
+        }
+        let snapshot = decoded.value;
         if snapshot.project_id != self.project_id
             || snapshot.review_stream_id != stream_id
             || snapshot.review_round_id != round_id
@@ -299,13 +337,35 @@ impl ProjectReviewRepository {
             .map_err(map_create_once_error)?;
         self.faults
             .check(ReviewRepositoryFaultPoint::AfterRoundDurableBeforeIndex)?;
-        append_snapshot(&mut catalog, snapshot);
+        append_snapshot(
+            &mut catalog,
+            snapshot,
+            ReviewRoundRecord {
+                review_round_id: snapshot.review_round_id,
+                protocol_version: ReviewProtocolVersion::V1,
+                location: ReviewRecordLocation::new(legacy_round_location(
+                    snapshot.review_round_id,
+                ))
+                .map_err(|_| ReviewRepositoryError::InvalidData)?,
+                blake3: *blake3::hash(&round_bytes).as_bytes(),
+            },
+        );
         let catalog_bytes = encode_catalog(&catalog).map_err(map_protocol_error)?;
         self.faults
             .check(ReviewRepositoryFaultPoint::BeforeIndexReplace)?;
         replace_checked(&self.reviews_root.join(INDEX_FILE), &catalog_bytes)?;
         self.remove_stale_draft(snapshot.review_round_id);
         Ok(())
+    }
+
+    pub fn prepare_v2_catalog_migration(
+        &self,
+        catalog_document: &ReviewCatalog,
+    ) -> Result<ReviewCatalog, ReviewRepositoryError> {
+        prepare_v2_catalog_migration(catalog_document.clone(), |_, round_id| {
+            read_bounded(&self.completed_path(round_id), MAX_REVIEW_DOCUMENT_BYTES)?
+                .ok_or(ReviewRepositoryError::RecoveryRequired)
+        })
     }
 
     fn draft_path(&self, round_id: ReviewRoundId) -> PathBuf {
@@ -349,7 +409,7 @@ impl ProjectReviewRepository {
         for round_id in catalog
             .streams
             .iter()
-            .flat_map(|stream| stream.completed_round_ids.iter().copied())
+            .flat_map(|stream| stream.completed_round_ids())
         {
             self.remove_stale_draft(round_id);
         }
@@ -368,7 +428,7 @@ impl ReviewRepositoryPort for ProjectReviewRepository {
         ProjectReviewRepository::load_catalog(self)
     }
 
-    fn load_active_draft(&self) -> Result<Option<ReviewDraft>, ReviewRepositoryError> {
+    fn load_active_draft(&self) -> Result<Option<PersistedReviewDraft>, ReviewRepositoryError> {
         ProjectReviewRepository::load_active_draft(self)
     }
 
@@ -376,11 +436,11 @@ impl ReviewRepositoryPort for ProjectReviewRepository {
         &self,
         stream_id: ReviewStreamId,
         round_id: ReviewRoundId,
-    ) -> Result<Option<ReviewDraft>, ReviewRepositoryError> {
+    ) -> Result<Option<PersistedReviewDraft>, ReviewRepositoryError> {
         ProjectReviewRepository::load_draft(self, stream_id, round_id)
     }
 
-    fn save_draft(&self, draft: &ReviewDraft) -> Result<(), ReviewRepositoryError> {
+    fn save_draft(&self, draft: &PersistedReviewDraft) -> Result<(), ReviewRepositoryError> {
         ProjectReviewRepository::save_draft(self, draft)
     }
 
@@ -408,7 +468,7 @@ impl ReviewRepositoryPort for ProjectReviewRepository {
 fn discover_active_draft(
     repository: &ProjectReviewRepository,
     catalog: &ReviewCatalog,
-) -> Result<Option<ReviewDraft>, ReviewRepositoryError> {
+) -> Result<Option<PersistedReviewDraft>, ReviewRepositoryError> {
     let drafts_directory = repository.reviews_root.join(DRAFTS_DIRECTORY);
     match safe_file_kind(&drafts_directory)? {
         None => return Ok(None),
@@ -439,7 +499,8 @@ fn discover_active_draft(
         let bytes = read_bounded(&path, MAX_REVIEW_DOCUMENT_BYTES)
             .map_err(map_draft_discovery_repository_error)?
             .ok_or(ReviewRepositoryError::RecoveryRequired)?;
-        let draft = decode_draft(&bytes).map_err(map_draft_discovery_protocol_error)?;
+        let decoded = decode_draft_versioned(&bytes).map_err(map_draft_discovery_protocol_error)?;
+        let draft = &decoded.value;
         if draft.project_id != repository.project_id || draft.review_round_id != filename_round_id {
             return Err(ReviewRepositoryError::RecoveryRequired);
         }
@@ -447,7 +508,11 @@ fn discover_active_draft(
         let indexed_owners = catalog
             .streams
             .iter()
-            .filter(|stream| stream.completed_round_ids.contains(&filename_round_id))
+            .filter(|stream| {
+                stream
+                    .completed_round_ids()
+                    .any(|round_id| round_id == filename_round_id)
+            })
             .collect::<Vec<_>>();
         match indexed_owners.as_slice() {
             [] => {}
@@ -470,7 +535,13 @@ fn discover_active_draft(
             }
             _ => {}
         }
-        if active.replace(draft).is_some() {
+        if active
+            .replace(PersistedReviewDraft {
+                protocol_version: decoded.version,
+                draft: decoded.value,
+            })
+            .is_some()
+        {
             return Err(ReviewRepositoryError::RecoveryRequired);
         }
     }
@@ -498,8 +569,8 @@ fn prepare_catalog_append(
 ) -> Result<(), ReviewRepositoryError> {
     if catalog.streams.iter().any(|stream| {
         stream
-            .completed_round_ids
-            .contains(&snapshot.review_round_id)
+            .completed_round_ids()
+            .any(|round_id| round_id == snapshot.review_round_id)
     }) {
         return Err(ReviewRepositoryError::Conflict);
     }
@@ -513,7 +584,7 @@ fn prepare_catalog_append(
         {
             return Err(ReviewRepositoryError::Conflict);
         }
-        if stream.completed_round_ids.len() >= MAX_COMPLETED_ROUNDS_PER_STREAM {
+        if stream.completed_rounds.len() >= MAX_COMPLETED_ROUNDS_PER_STREAM {
             return Err(ReviewRepositoryError::LimitExceeded);
         }
         return Ok(());
@@ -534,20 +605,24 @@ fn prepare_catalog_append(
     Ok(())
 }
 
-fn append_snapshot(catalog: &mut ReviewCatalog, snapshot: &ReviewSnapshot) {
+fn append_snapshot(
+    catalog: &mut ReviewCatalog,
+    snapshot: &ReviewSnapshot,
+    record: ReviewRoundRecord,
+) {
     if let Some(stream) = catalog
         .streams
         .iter_mut()
         .find(|stream| stream.review_stream_id == snapshot.review_stream_id)
     {
-        stream.completed_round_ids.push(snapshot.review_round_id);
+        stream.completed_rounds.push(record);
         stream.latest_completed_round_id = Some(snapshot.review_round_id);
         return;
     }
     catalog.streams.push(ReviewStreamHead {
         review_stream_id: snapshot.review_stream_id,
         production: snapshot.production.clone(),
-        completed_round_ids: vec![snapshot.review_round_id],
+        completed_rounds: vec![record],
         latest_completed_round_id: Some(snapshot.review_round_id),
     });
 }
@@ -588,8 +663,12 @@ fn inspect_unindexed_rounds(
         let bytes = read_bounded(&path, MAX_REVIEW_DOCUMENT_BYTES)
             .map_err(|_| ReviewRepositoryError::RecoveryRequired)?
             .ok_or(ReviewRepositoryError::RecoveryRequired)?;
-        let snapshot =
-            decode_completed(&bytes).map_err(|_| ReviewRepositoryError::RecoveryRequired)?;
+        let decoded = decode_completed_versioned(&bytes)
+            .map_err(|_| ReviewRepositoryError::RecoveryRequired)?;
+        if decoded.version != ReviewProtocolVersion::V1 {
+            return Err(ReviewRepositoryError::RecoveryRequired);
+        }
+        let snapshot = decoded.value;
         if snapshot.project_id != repository.project_id
             || snapshot.review_round_id != filename_round_id
         {
@@ -599,7 +678,11 @@ fn inspect_unindexed_rounds(
         let indexed_owners = catalog
             .streams
             .iter()
-            .filter(|stream| stream.completed_round_ids.contains(&filename_round_id))
+            .filter(|stream| {
+                stream
+                    .completed_round_ids()
+                    .any(|round_id| round_id == filename_round_id)
+            })
             .collect::<Vec<_>>();
         match indexed_owners.as_slice() {
             [] => unindexed.push(snapshot),
@@ -658,7 +741,7 @@ fn plan_orphan_recovery(
             catalog.streams.push(ReviewStreamHead {
                 review_stream_id: stream_id,
                 production,
-                completed_round_ids: Vec::new(),
+                completed_rounds: Vec::new(),
                 latest_completed_round_id: None,
             });
             catalog.streams.len() - 1
@@ -682,14 +765,22 @@ fn plan_orphan_recovery(
                 return Err(ReviewRepositoryError::RecoveryRequired);
             }
             let snapshot = pending.remove(candidates[0]);
-            if catalog.streams[stream_index].completed_round_ids.len()
+            if catalog.streams[stream_index].completed_rounds.len()
                 >= MAX_COMPLETED_ROUNDS_PER_STREAM
             {
                 return Err(ReviewRepositoryError::RecoveryRequired);
             }
             catalog.streams[stream_index]
-                .completed_round_ids
-                .push(snapshot.review_round_id);
+                .completed_rounds
+                .push(ReviewRoundRecord {
+                    review_round_id: snapshot.review_round_id,
+                    protocol_version: ReviewProtocolVersion::V1,
+                    location: ReviewRecordLocation::new(legacy_round_location(
+                        snapshot.review_round_id,
+                    ))
+                    .map_err(|_| ReviewRepositoryError::RecoveryRequired)?,
+                    blake3: [0; 32],
+                });
             catalog.streams[stream_index].latest_completed_round_id =
                 Some(snapshot.review_round_id);
         }
@@ -718,10 +809,25 @@ fn validate_catalog_identity(
     }
 }
 
-fn read_catalog_file(path: &Path) -> Result<Option<ReviewCatalog>, ReviewRepositoryError> {
-    read_bounded(path, MAX_REVIEW_INDEX_BYTES)?
-        .map(|bytes| decode_catalog(&bytes).map_err(map_protocol_error))
-        .transpose()
+fn read_catalog_document(
+    reviews_root: &Path,
+    project_id: ProjectId,
+) -> Result<Option<DecodedReview<ReviewCatalog>>, ReviewRepositoryError> {
+    let Some(bytes) = read_bounded(&reviews_root.join(INDEX_FILE), MAX_REVIEW_INDEX_BYTES)? else {
+        return Ok(None);
+    };
+    let mut decoded = decode_catalog_versioned(&bytes).map_err(map_protocol_error)?;
+    validate_catalog_identity(&decoded.value, project_id)?;
+    if decoded.version == ReviewProtocolVersion::V1 {
+        decoded.value = prepare_v2_catalog_migration(decoded.value, |_, round_id| {
+            read_bounded(
+                &reviews_root.join(legacy_round_location(round_id)),
+                MAX_REVIEW_DOCUMENT_BYTES,
+            )?
+            .ok_or(ReviewRepositoryError::RecoveryRequired)
+        })?;
+    }
+    Ok(Some(decoded))
 }
 
 fn read_bounded(path: &Path, max_bytes: u64) -> Result<Option<Vec<u8>>, ReviewRepositoryError> {

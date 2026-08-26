@@ -3,11 +3,12 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicI64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use viewer_application::{
-    ClockPort, PreparedReviewAsset, ReviewAssetCatalogPort, ReviewAssetError,
-    ReviewAssetValidation, ReviewCatalog, ReviewProgressPort, ReviewRepositoryError,
-    ReviewRepositoryInspection, ReviewRepositoryPort, ReviewRepositoryProviderPort, ReviewScope,
-    ReviewScopeResolution, ReviewSessionPhase, ReviewSessionService, ReviewStreamHead,
-    ReviewTaskCancellation, ReviewTaskProgress,
+    ClockPort, PersistedReviewDraft, PreparedReviewAsset, ReviewAssetCatalogPort, ReviewAssetError,
+    ReviewAssetValidation, ReviewCatalog, ReviewProgressPort, ReviewProtocolVersion,
+    ReviewRecordLocation, ReviewRepositoryError, ReviewRepositoryInspection, ReviewRepositoryPort,
+    ReviewRepositoryProviderPort, ReviewRoundRecord, ReviewScope, ReviewScopeResolution,
+    ReviewSessionPhase, ReviewSessionService, ReviewStreamHead, ReviewTaskCancellation,
+    ReviewTaskProgress,
 };
 use viewer_domain::review::{
     AssetEvidence, AssetVersion, ProductionId, ProductionScope, ReviewDraft, ReviewMedia,
@@ -207,7 +208,7 @@ impl ReviewRepositoryProviderPort for FakeRepositories {
                 project_id: self.project_id,
                 streams: vec![],
             }),
-            active_draft: state.drafts.first().cloned(),
+            active_draft: state.drafts.first().cloned().map(versioned_draft),
         })
     }
 
@@ -268,12 +269,12 @@ impl ReviewRepositoryPort for FakeRepository {
             }))
     }
 
-    fn load_active_draft(&self) -> Result<Option<ReviewDraft>, ReviewRepositoryError> {
+    fn load_active_draft(&self) -> Result<Option<PersistedReviewDraft>, ReviewRepositoryError> {
         let state = self.state.lock().unwrap();
         if state.drafts.len() > 1 {
             Err(ReviewRepositoryError::RecoveryRequired)
         } else {
-            Ok(state.drafts.first().cloned())
+            Ok(state.drafts.first().cloned().map(versioned_draft))
         }
     }
 
@@ -281,7 +282,7 @@ impl ReviewRepositoryPort for FakeRepository {
         &self,
         stream_id: ReviewStreamId,
         round_id: ReviewRoundId,
-    ) -> Result<Option<ReviewDraft>, ReviewRepositoryError> {
+    ) -> Result<Option<PersistedReviewDraft>, ReviewRepositoryError> {
         Ok(self
             .state
             .lock()
@@ -289,10 +290,11 @@ impl ReviewRepositoryPort for FakeRepository {
             .drafts
             .iter()
             .find(|draft| draft.review_stream_id == stream_id && draft.review_round_id == round_id)
-            .cloned())
+            .cloned()
+            .map(versioned_draft))
     }
 
-    fn save_draft(&self, draft: &ReviewDraft) -> Result<(), ReviewRepositoryError> {
+    fn save_draft(&self, draft: &PersistedReviewDraft) -> Result<(), ReviewRepositoryError> {
         let mut state = self.state.lock().unwrap();
         state.save_count += 1;
         if state.fail_save {
@@ -301,11 +303,11 @@ impl ReviewRepositoryPort for FakeRepository {
         if let Some(existing) = state
             .drafts
             .iter_mut()
-            .find(|existing| existing.review_round_id == draft.review_round_id)
+            .find(|existing| existing.review_round_id == draft.draft.review_round_id)
         {
-            *existing = draft.clone();
+            *existing = draft.draft.clone();
         } else {
-            state.drafts.push(draft.clone());
+            state.drafts.push(draft.draft.clone());
         }
         Ok(())
     }
@@ -452,6 +454,22 @@ fn draft(project_id: ProjectId, stream: u128, round: u128) -> ReviewDraft {
     .unwrap()
 }
 
+fn versioned_draft(draft: ReviewDraft) -> PersistedReviewDraft {
+    PersistedReviewDraft {
+        protocol_version: ReviewProtocolVersion::V1,
+        draft,
+    }
+}
+
+fn round_record(round_id: ReviewRoundId) -> ReviewRoundRecord {
+    ReviewRoundRecord {
+        review_round_id: round_id,
+        protocol_version: ReviewProtocolVersion::V1,
+        location: ReviewRecordLocation::new(format!("rounds/{round_id}.json")).unwrap(),
+        blake3: [0; 32],
+    }
+}
+
 fn production_scope() -> ProductionScope {
     ProductionScope {
         task_id: ProductionId::parse("task-1").unwrap(),
@@ -505,13 +523,13 @@ async fn inspection_selects_one_exact_manual_head_and_ignores_production_streams
             ReviewStreamHead {
                 review_stream_id: ReviewStreamId::from_u128(99),
                 production: Some(production_scope()),
-                completed_round_ids: vec![],
+                completed_rounds: vec![],
                 latest_completed_round_id: None,
             },
             ReviewStreamHead {
                 review_stream_id: completed.review_stream_id,
                 production: None,
-                completed_round_ids: vec![completed.review_round_id],
+                completed_rounds: vec![round_record(completed.review_round_id)],
                 latest_completed_round_id: Some(completed.review_round_id),
             },
         ],
@@ -534,7 +552,7 @@ async fn inspection_selects_one_exact_manual_head_and_ignores_production_streams
     catalog.streams.push(ReviewStreamHead {
         review_stream_id: ReviewStreamId::from_u128(12),
         production: None,
-        completed_round_ids: vec![],
+        completed_rounds: vec![],
         latest_completed_round_id: None,
     });
     fixture.repositories.set_catalog(catalog);
@@ -622,13 +640,13 @@ async fn later_manual_round_reuses_stream_and_exact_head_while_production_is_iso
             ReviewStreamHead {
                 review_stream_id: ReviewStreamId::from_u128(99),
                 production: Some(production_scope()),
-                completed_round_ids: vec![],
+                completed_rounds: vec![],
                 latest_completed_round_id: None,
             },
             ReviewStreamHead {
                 review_stream_id: head.review_stream_id,
                 production: None,
-                completed_round_ids: vec![head.review_round_id],
+                completed_rounds: vec![round_record(head.review_round_id)],
                 latest_completed_round_id: Some(head.review_round_id),
             },
         ],
@@ -774,13 +792,13 @@ async fn start_rejects_ambiguous_manual_streams_rechecked_under_the_writer() {
             ReviewStreamHead {
                 review_stream_id: ReviewStreamId::from_u128(10),
                 production: None,
-                completed_round_ids: vec![],
+                completed_rounds: vec![],
                 latest_completed_round_id: None,
             },
             ReviewStreamHead {
                 review_stream_id: ReviewStreamId::from_u128(20),
                 production: None,
-                completed_round_ids: vec![],
+                completed_rounds: vec![],
                 latest_completed_round_id: None,
             },
         ],

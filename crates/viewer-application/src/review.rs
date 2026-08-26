@@ -43,8 +43,61 @@ pub struct ProductionManifest {
 pub struct ReviewStreamHead {
     pub review_stream_id: ReviewStreamId,
     pub production: Option<ProductionScope>,
-    pub completed_round_ids: Vec<ReviewRoundId>,
+    pub completed_rounds: Vec<ReviewRoundRecord>,
     pub latest_completed_round_id: Option<ReviewRoundId>,
+}
+
+impl ReviewStreamHead {
+    pub fn completed_round_ids(&self) -> impl ExactSizeIterator<Item = ReviewRoundId> + '_ {
+        self.completed_rounds
+            .iter()
+            .map(|record| record.review_round_id)
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ReviewRecordLocation(String);
+
+impl ReviewRecordLocation {
+    pub fn new(value: impl Into<String>) -> Result<Self, ReviewRecordLocationError> {
+        let value = value.into();
+        if !record_location_is_valid(&value) {
+            return Err(ReviewRecordLocationError::Invalid);
+        }
+        Ok(Self(value))
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+fn record_location_is_valid(value: &str) -> bool {
+    if value.is_empty()
+        || value.starts_with('/')
+        || value.contains('\\')
+        || value.contains('\0')
+        || value.as_bytes().get(1) == Some(&b':')
+    {
+        return false;
+    }
+    value
+        .split('/')
+        .all(|component| !component.is_empty() && component != "." && component != "..")
+}
+
+#[derive(Clone, Copy, Debug, Eq, Error, PartialEq)]
+pub enum ReviewRecordLocationError {
+    #[error("review record location must be a normalized relative path")]
+    Invalid,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ReviewRoundRecord {
+    pub review_round_id: ReviewRoundId,
+    pub protocol_version: ReviewProtocolVersion,
+    pub location: ReviewRecordLocation,
+    pub blake3: [u8; 32],
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -90,13 +143,13 @@ impl ReviewCatalog {
 
 pub trait ReviewRepositoryPort: Send + Sync {
     fn load_catalog(&self) -> Result<ReviewCatalog, ReviewRepositoryError>;
-    fn load_active_draft(&self) -> Result<Option<ReviewDraft>, ReviewRepositoryError>;
+    fn load_active_draft(&self) -> Result<Option<PersistedReviewDraft>, ReviewRepositoryError>;
     fn load_draft(
         &self,
         stream_id: ReviewStreamId,
         round_id: ReviewRoundId,
-    ) -> Result<Option<ReviewDraft>, ReviewRepositoryError>;
-    fn save_draft(&self, draft: &ReviewDraft) -> Result<(), ReviewRepositoryError>;
+    ) -> Result<Option<PersistedReviewDraft>, ReviewRepositoryError>;
+    fn save_draft(&self, draft: &PersistedReviewDraft) -> Result<(), ReviewRepositoryError>;
     fn delete_draft(
         &self,
         stream_id: ReviewStreamId,
@@ -113,7 +166,13 @@ pub trait ReviewRepositoryPort: Send + Sync {
 #[derive(Clone, Debug, PartialEq)]
 pub struct ReviewRepositoryInspection {
     pub catalog: ReviewCatalog,
-    pub active_draft: Option<ReviewDraft>,
+    pub active_draft: Option<PersistedReviewDraft>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct PersistedReviewDraft {
+    pub protocol_version: ReviewProtocolVersion,
+    pub draft: ReviewDraft,
 }
 
 pub trait ReviewRepositoryProviderPort: Send + Sync {

@@ -42,9 +42,10 @@ pub use project::{ActiveProject, PreparedProject, ProjectOpenError, ProjectSessi
 pub use review::{
     DecodedReview, MAX_COMPLETED_ROUNDS_PER_STREAM, MAX_PRODUCTION_CONTEXT_ENTRIES,
     MAX_PRODUCTION_CONTEXT_KEY_BYTES, MAX_PRODUCTION_CONTEXT_VALUE_BYTES, MAX_REVIEW_STREAMS,
-    ProductionAsset, ProductionManifest, ReviewCatalog, ReviewCatalogError, ReviewProtocolVersion,
-    ReviewRepositoryError, ReviewRepositoryInspection, ReviewRepositoryPort,
-    ReviewRepositoryProviderPort, ReviewStreamHead, ReviewStreamLocator,
+    PersistedReviewDraft, ProductionAsset, ProductionManifest, ReviewCatalog, ReviewCatalogError,
+    ReviewProtocolVersion, ReviewRecordLocation, ReviewRecordLocationError, ReviewRepositoryError,
+    ReviewRepositoryInspection, ReviewRepositoryPort, ReviewRepositoryProviderPort,
+    ReviewRoundRecord, ReviewStreamHead, ReviewStreamLocator,
 };
 pub use review_assets::{
     PreparedReviewAsset, ReviewAssetCatalogPort, ReviewAssetConflictKind, ReviewAssetError,

@@ -1,16 +1,32 @@
 use super::common::{
-    MAX_REVIEW_DOCUMENT_BYTES, ReviewProtocolError, decode_document, encode_document, parse_digest,
+    MAX_REVIEW_DOCUMENT_BYTES, MAX_REVIEW_INDEX_BYTES, ReviewProtocolError, decode_document,
+    encode_digest, encode_document, parse_digest,
 };
 use super::{REVIEW_PROTOCOL_V1, REVIEW_PROTOCOL_V2, v1};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::HashSet;
 use std::str::FromStr;
-use viewer_domain::AssetVersionId;
+use viewer_application::{
+    MAX_COMPLETED_ROUNDS_PER_STREAM, MAX_REVIEW_STREAMS, ReviewCatalog, ReviewProtocolVersion,
+    ReviewRecordLocation, ReviewRoundRecord, ReviewStreamHead,
+};
 use viewer_domain::review::{
     Feedback, FeedbackAnchor, FeedbackTarget, ImageStroke, NormalizedPoint, NormalizedRect,
-    ReviewDraft, ReviewRoundError, ReviewSnapshot, ReviewValueError,
+    ProductionId, ProductionScope, ReviewDraft, ReviewRoundError, ReviewSnapshot, ReviewValueError,
 };
+use viewer_domain::{AssetVersionId, ReviewRoundId, ReviewStreamId};
+
+pub fn decode_catalog(bytes: &[u8]) -> Result<ReviewCatalog, ReviewProtocolError> {
+    let stored: StoredCatalogV2 =
+        decode_document(bytes, MAX_REVIEW_INDEX_BYTES, REVIEW_PROTOCOL_V2)?;
+    parse_catalog(stored)
+}
+
+pub fn encode_catalog(catalog: &ReviewCatalog) -> Result<Vec<u8>, ReviewProtocolError> {
+    let stored = stored_catalog(catalog)?;
+    encode_document(&stored, MAX_REVIEW_INDEX_BYTES)
+}
 
 pub fn decode_draft(bytes: &[u8]) -> Result<ReviewDraft, ReviewProtocolError> {
     let value: Value = decode_document(bytes, MAX_REVIEW_DOCUMENT_BYTES, REVIEW_PROTOCOL_V2)?;
@@ -359,6 +375,151 @@ fn valid_location(value: &str, root: &str) -> bool {
             .all(|component| !component.is_empty() && component != "." && component != "..")
 }
 
+fn parse_catalog(stored: StoredCatalogV2) -> Result<ReviewCatalog, ReviewProtocolError> {
+    if stored.streams.len() > MAX_REVIEW_STREAMS {
+        return Err(ReviewProtocolError::LimitExceeded);
+    }
+    let project_id = parse_id(&stored.project_id)?;
+    let mut stream_ids = HashSet::with_capacity(stored.streams.len());
+    let mut production_scopes = HashSet::new();
+    let mut round_ids = HashSet::new();
+    let mut streams = Vec::with_capacity(stored.streams.len());
+    for stream in stored.streams {
+        let review_stream_id: ReviewStreamId = parse_id(&stream.review_stream_id)?;
+        if !stream_ids.insert(review_stream_id) {
+            return Err(ReviewProtocolError::InvalidData);
+        }
+        let production = parse_catalog_production(stream.task_id, stream.batch_id)?;
+        if production
+            .as_ref()
+            .is_some_and(|scope| !production_scopes.insert(scope.clone()))
+        {
+            return Err(ReviewProtocolError::InvalidData);
+        }
+        if stream.completed_rounds.len() > MAX_COMPLETED_ROUNDS_PER_STREAM {
+            return Err(ReviewProtocolError::LimitExceeded);
+        }
+        let completed_rounds = stream
+            .completed_rounds
+            .into_iter()
+            .map(|record| {
+                let review_round_id: ReviewRoundId = parse_id(&record.review_round_id)?;
+                if !round_ids.insert(review_round_id) {
+                    return Err(ReviewProtocolError::InvalidData);
+                }
+                let protocol_version = parse_record_protocol(&record.protocol_version)?;
+                let location = ReviewRecordLocation::new(record.location)
+                    .map_err(|_| ReviewProtocolError::InvalidData)?;
+                if location.as_str() != canonical_record_location(review_round_id, protocol_version)
+                {
+                    return Err(ReviewProtocolError::InvalidData);
+                }
+                Ok(ReviewRoundRecord {
+                    review_round_id,
+                    protocol_version,
+                    location,
+                    blake3: parse_digest(&record.blake3)?,
+                })
+            })
+            .collect::<Result<Vec<_>, ReviewProtocolError>>()?;
+        let latest_completed_round_id = stream
+            .latest_completed_round_id
+            .as_deref()
+            .map(parse_id)
+            .transpose()?;
+        if completed_rounds.last().map(|record| record.review_round_id) != latest_completed_round_id
+        {
+            return Err(ReviewProtocolError::InvalidData);
+        }
+        streams.push(ReviewStreamHead {
+            review_stream_id,
+            production,
+            completed_rounds,
+            latest_completed_round_id,
+        });
+    }
+    Ok(ReviewCatalog {
+        project_id,
+        streams,
+    })
+}
+
+fn stored_catalog(catalog: &ReviewCatalog) -> Result<StoredCatalogV2, ReviewProtocolError> {
+    let candidate = StoredCatalogV2 {
+        project_id: catalog.project_id.to_string(),
+        protocol_version: REVIEW_PROTOCOL_V2.to_owned(),
+        streams: catalog
+            .streams
+            .iter()
+            .map(|stream| StoredStreamV2 {
+                batch_id: stream
+                    .production
+                    .as_ref()
+                    .map(|scope| scope.batch_id.as_str().to_owned()),
+                completed_rounds: stream
+                    .completed_rounds
+                    .iter()
+                    .map(|record| StoredRoundRecordV2 {
+                        blake3: encode_digest(record.blake3),
+                        location: record.location.as_str().to_owned(),
+                        protocol_version: record_protocol(record.protocol_version).to_owned(),
+                        review_round_id: record.review_round_id.to_string(),
+                    })
+                    .collect(),
+                latest_completed_round_id: stream
+                    .latest_completed_round_id
+                    .map(|id| id.to_string()),
+                review_stream_id: stream.review_stream_id.to_string(),
+                task_id: stream
+                    .production
+                    .as_ref()
+                    .map(|scope| scope.task_id.as_str().to_owned()),
+            })
+            .collect(),
+    };
+    parse_catalog(candidate.clone())?;
+    Ok(candidate)
+}
+
+fn parse_catalog_production(
+    task_id: Option<String>,
+    batch_id: Option<String>,
+) -> Result<Option<ProductionScope>, ReviewProtocolError> {
+    match (task_id, batch_id) {
+        (None, None) => Ok(None),
+        (Some(task_id), Some(batch_id)) => Ok(Some(ProductionScope {
+            task_id: ProductionId::parse(&task_id).map_err(map_value_error)?,
+            batch_id: ProductionId::parse(&batch_id).map_err(map_value_error)?,
+        })),
+        _ => Err(ReviewProtocolError::InvalidData),
+    }
+}
+
+fn parse_record_protocol(value: &str) -> Result<ReviewProtocolVersion, ReviewProtocolError> {
+    match value {
+        REVIEW_PROTOCOL_V1 => Ok(ReviewProtocolVersion::V1),
+        REVIEW_PROTOCOL_V2 => Ok(ReviewProtocolVersion::V2),
+        _ => Err(ReviewProtocolError::UnsupportedVersion),
+    }
+}
+
+fn record_protocol(value: ReviewProtocolVersion) -> &'static str {
+    match value {
+        ReviewProtocolVersion::V1 => REVIEW_PROTOCOL_V1,
+        ReviewProtocolVersion::V2 => REVIEW_PROTOCOL_V2,
+    }
+}
+
+fn canonical_record_location(
+    round_id: ReviewRoundId,
+    protocol_version: ReviewProtocolVersion,
+) -> String {
+    match protocol_version {
+        ReviewProtocolVersion::V1 => format!("rounds/{round_id}.json"),
+        ReviewProtocolVersion::V2 => format!("rounds/{round_id}/round.json"),
+    }
+}
+
 fn parse_id<T>(value: &str) -> Result<T, ReviewProtocolError>
 where
     T: FromStr,
@@ -603,4 +764,33 @@ struct StoredArtifactV2 {
 struct StoredArtifactAnnotationV2 {
     ordinal: u32,
     feedback_id: String,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct StoredCatalogV2 {
+    project_id: String,
+    protocol_version: String,
+    streams: Vec<StoredStreamV2>,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct StoredStreamV2 {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    batch_id: Option<String>,
+    completed_rounds: Vec<StoredRoundRecordV2>,
+    latest_completed_round_id: Option<String>,
+    review_stream_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    task_id: Option<String>,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct StoredRoundRecordV2 {
+    blake3: String,
+    location: String,
+    protocol_version: String,
+    review_round_id: String,
 }

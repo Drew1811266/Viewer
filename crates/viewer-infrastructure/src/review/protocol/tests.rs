@@ -1,6 +1,7 @@
 use super::{
-    REVIEW_PROTOCOL_V1, ReviewProtocolError, decode_completed_versioned, decode_draft_versioned,
-    detect_review_protocol, encode_completed_v2, encode_draft_v2, v1, v2,
+    REVIEW_PROTOCOL_V1, ReviewProtocolError, decode_catalog_versioned, decode_completed_versioned,
+    decode_draft_versioned, detect_review_protocol, encode_catalog_v2, encode_completed_v2,
+    encode_draft_v2, v1, v2,
 };
 use serde_json::{Value, json};
 use viewer_application::ReviewProtocolVersion;
@@ -77,6 +78,21 @@ fn v2_draft_preserves_image_strokes_byte_for_byte() {
         FeedbackAnchor::ImageStroke(_)
     ));
     assert_eq!(encode_draft_v2(&decoded.value).unwrap(), bytes);
+}
+
+#[test]
+fn v2_catalog_preserves_versioned_round_records_byte_for_byte() {
+    let bytes =
+        include_bytes!("../../../../../tests/fixtures/review-protocol/review-index-v2.valid.json");
+    let decoded = decode_catalog_versioned(bytes).unwrap();
+
+    assert_eq!(decoded.version, ReviewProtocolVersion::V2);
+    assert_eq!(decoded.value.streams[0].completed_rounds.len(), 2);
+    assert_eq!(
+        decoded.value.streams[0].completed_rounds[0].protocol_version,
+        ReviewProtocolVersion::V1
+    );
+    assert_eq!(encode_catalog_v2(&decoded.value).unwrap(), bytes);
 }
 
 #[test]

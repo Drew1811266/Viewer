@@ -1,8 +1,9 @@
 use crate::{
-    ClockPort, PreparedReviewAsset, ReviewAssetCatalogPort, ReviewAssetConflictKind,
-    ReviewAssetError, ReviewAssetValidation, ReviewCatalog, ReviewProgressPort,
-    ReviewRepositoryError, ReviewRepositoryPort, ReviewRepositoryProviderPort, ReviewScope,
-    ReviewScopeResolution, ReviewStreamHead, ReviewTaskCancellation,
+    ClockPort, PersistedReviewDraft, PreparedReviewAsset, ReviewAssetCatalogPort,
+    ReviewAssetConflictKind, ReviewAssetError, ReviewAssetValidation, ReviewCatalog,
+    ReviewProgressPort, ReviewProtocolVersion, ReviewRepositoryError, ReviewRepositoryPort,
+    ReviewRepositoryProviderPort, ReviewScope, ReviewScopeResolution, ReviewStreamHead,
+    ReviewTaskCancellation,
 };
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -317,6 +318,7 @@ struct ReviewTask {
 }
 
 struct ActiveReviewSession {
+    protocol_version: ReviewProtocolVersion,
     draft: ReviewDraft,
     prepared: Vec<PreparedReviewAsset>,
     conflicts: Vec<ReviewConflictSnapshot>,
@@ -329,6 +331,7 @@ struct StartedReview {
 }
 
 struct ReviewValidationWork {
+    protocol_version: ReviewProtocolVersion,
     review_round_id: ReviewRoundId,
     revision: u64,
     draft: ReviewDraft,
@@ -337,6 +340,7 @@ struct ReviewValidationWork {
 }
 
 struct ValidatedReview {
+    protocol_version: ReviewProtocolVersion,
     work_revision: u64,
     draft: ReviewDraft,
     prepared: Vec<PreparedReviewAsset>,
@@ -422,11 +426,11 @@ impl ReviewSessionService {
             return Err(ReviewSessionError::RecoveryRequired);
         }
         if let Some(draft) = inspection.active_draft {
-            if draft.project_id != self.project_id || draft.production.is_some() {
+            if draft.draft.project_id != self.project_id || draft.draft.production.is_some() {
                 return Err(ReviewSessionError::RecoveryRequired);
             }
             return Ok(InspectionProjection::Idle {
-                resume: Some(resume_snapshot(&draft)?),
+                resume: Some(resume_snapshot(&draft.draft)?),
             });
         }
         let Some(stream) = manual_stream(&inspection.catalog)? else {
@@ -595,10 +599,14 @@ impl ReviewSessionService {
             return Err(ReviewSessionError::Cancelled);
         }
         writer
-            .save_draft(&draft)
+            .save_draft(&PersistedReviewDraft {
+                protocol_version: ReviewProtocolVersion::V1,
+                draft: draft.clone(),
+            })
             .map_err(|_| ReviewSessionError::SaveFailed)?;
         Ok(StartedReview {
             active: ActiveReviewSession {
+                protocol_version: ReviewProtocolVersion::V1,
                 draft,
                 prepared,
                 conflicts: vec![],
@@ -680,10 +688,12 @@ impl ReviewSessionService {
             .repositories
             .open_writer()
             .map_err(map_repository_error)?;
-        let active = writer
+        let persisted = writer
             .load_active_draft()
             .map_err(map_repository_error)?
             .ok_or(ReviewSessionError::RecoveryRequired)?;
+        let protocol_version = persisted.protocol_version;
+        let active = persisted.draft;
         if active.project_id != self.project_id
             || active.production.is_some()
             || active.review_stream_id != resume.review_stream_id
@@ -731,6 +741,7 @@ impl ReviewSessionService {
         }
         let mut validated = apply_validations(
             ReviewValidationWork {
+                protocol_version,
                 review_round_id: active.review_round_id,
                 revision: 0,
                 draft: active,
@@ -755,11 +766,15 @@ impl ReviewSessionService {
         }
         if validated.stable_facts_changed {
             writer
-                .save_draft(&validated.draft)
+                .save_draft(&PersistedReviewDraft {
+                    protocol_version: validated.protocol_version,
+                    draft: validated.draft.clone(),
+                })
                 .map_err(|_| ReviewSessionError::SaveFailed)?;
         }
         Ok(StartedReview {
             active: ActiveReviewSession {
+                protocol_version: validated.protocol_version,
                 draft: validated.draft,
                 prepared: validated.prepared,
                 conflicts: validated.conflicts,
@@ -931,7 +946,10 @@ impl ReviewSessionService {
                 .writer
                 .as_deref()
                 .ok_or(ReviewSessionError::InvalidState)?
-                .save_draft(&validated.draft)
+                .save_draft(&PersistedReviewDraft {
+                    protocol_version: validated.protocol_version,
+                    draft: validated.draft.clone(),
+                })
                 .is_err()
         {
             state.phase = ReviewSessionPhase::Active;
@@ -1069,7 +1087,10 @@ impl ReviewSessionService {
                     .writer
                     .as_deref()
                     .ok_or(ReviewSessionError::InvalidState)?
-                    .save_draft(&validated.draft)
+                    .save_draft(&PersistedReviewDraft {
+                        protocol_version: validated.protocol_version,
+                        draft: validated.draft.clone(),
+                    })
                     .is_err()
             {
                 state.task = None;
@@ -1382,13 +1403,17 @@ where
         .iter()
         .map(|prepared| (prepared.entity_id, prepared.asset.id))
         .collect();
+    let protocol_version = active.protocol_version;
     let mut draft = active.draft.clone();
     change(&mut draft, &bindings)?;
     state
         .writer
         .as_deref()
         .ok_or(ReviewSessionError::InvalidState)?
-        .save_draft(&draft)
+        .save_draft(&PersistedReviewDraft {
+            protocol_version,
+            draft: draft.clone(),
+        })
         .map_err(|_| ReviewSessionError::SaveFailed)?;
     let active = state
         .active
@@ -1428,6 +1453,7 @@ fn validation_work(active: &ActiveReviewSession) -> ReviewValidationWork {
         .map(|prepared| prepared.asset.id)
         .collect::<HashSet<_>>();
     ReviewValidationWork {
+        protocol_version: active.protocol_version,
         review_round_id: active.draft.review_round_id,
         revision: active.revision,
         draft: active.draft.clone(),
@@ -1512,6 +1538,7 @@ fn apply_validations(
     }
     let stable_facts_changed = draft.unreviewable != previous_unreviewable;
     Ok(ValidatedReview {
+        protocol_version: work.protocol_version,
         work_revision: work.revision,
         draft,
         prepared,
@@ -1605,8 +1632,10 @@ fn exact_head_is_published(
     };
     matches.next().is_none()
         && stream.latest_completed_round_id == Some(round_id)
-        && stream.completed_round_ids.last() == Some(&round_id)
-        && stream.completed_round_ids.contains(&round_id)
+        && stream.completed_round_ids().last() == Some(round_id)
+        && stream
+            .completed_round_ids()
+            .any(|candidate| candidate == round_id)
 }
 
 fn repository_has_exact_completed(

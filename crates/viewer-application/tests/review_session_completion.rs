@@ -3,10 +3,11 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicI64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use viewer_application::{
-    AddReviewFeedback, ClockPort, PreparedReviewAsset, ReviewAssetCatalogPort,
-    ReviewAssetConflictKind, ReviewAssetError, ReviewAssetValidation, ReviewCatalog,
-    ReviewCompletionProposalId, ReviewMutationGuard, ReviewProgressPort, ReviewRepositoryError,
-    ReviewRepositoryInspection, ReviewRepositoryPort, ReviewRepositoryProviderPort, ReviewScope,
+    AddReviewFeedback, ClockPort, PersistedReviewDraft, PreparedReviewAsset,
+    ReviewAssetCatalogPort, ReviewAssetConflictKind, ReviewAssetError, ReviewAssetValidation,
+    ReviewCatalog, ReviewCompletionProposalId, ReviewMutationGuard, ReviewProgressPort,
+    ReviewProtocolVersion, ReviewRecordLocation, ReviewRepositoryError, ReviewRepositoryInspection,
+    ReviewRepositoryPort, ReviewRepositoryProviderPort, ReviewRoundRecord, ReviewScope,
     ReviewScopeResolution, ReviewSessionPhase, ReviewSessionService, ReviewStreamHead,
     ReviewTaskCancellation, ReviewTaskProgress,
 };
@@ -159,7 +160,7 @@ impl ReviewRepositoryProviderPort for FakeRepositories {
         let state = self.state.lock().unwrap();
         Ok(ReviewRepositoryInspection {
             catalog: state.catalog.clone(),
-            active_draft: state.draft.clone(),
+            active_draft: state.draft.clone().map(versioned_draft),
         })
     }
 
@@ -206,15 +207,21 @@ impl ReviewRepositoryPort for FakeRepository {
         Ok(self.state.lock().unwrap().catalog.clone())
     }
 
-    fn load_active_draft(&self) -> Result<Option<ReviewDraft>, ReviewRepositoryError> {
-        Ok(self.state.lock().unwrap().draft.clone())
+    fn load_active_draft(&self) -> Result<Option<PersistedReviewDraft>, ReviewRepositoryError> {
+        Ok(self
+            .state
+            .lock()
+            .unwrap()
+            .draft
+            .clone()
+            .map(versioned_draft))
     }
 
     fn load_draft(
         &self,
         stream_id: ReviewStreamId,
         round_id: ReviewRoundId,
-    ) -> Result<Option<ReviewDraft>, ReviewRepositoryError> {
+    ) -> Result<Option<PersistedReviewDraft>, ReviewRepositoryError> {
         Ok(self
             .state
             .lock()
@@ -224,16 +231,17 @@ impl ReviewRepositoryPort for FakeRepository {
             .filter(|draft| {
                 draft.review_stream_id == stream_id && draft.review_round_id == round_id
             })
-            .cloned())
+            .cloned()
+            .map(versioned_draft))
     }
 
-    fn save_draft(&self, draft: &ReviewDraft) -> Result<(), ReviewRepositoryError> {
+    fn save_draft(&self, draft: &PersistedReviewDraft) -> Result<(), ReviewRepositoryError> {
         let mut state = self.state.lock().unwrap();
         state.save_attempts += 1;
         if state.fail_save {
             return Err(ReviewRepositoryError::Unavailable);
         }
-        state.draft = Some(draft.clone());
+        state.draft = Some(draft.draft.clone());
         Ok(())
     }
 
@@ -305,17 +313,34 @@ fn append_completed(state: &mut RepositoryState, completed: ReviewSnapshot) {
         .iter_mut()
         .find(|stream| stream.review_stream_id == completed.review_stream_id);
     if let Some(stream) = stream {
-        stream.completed_round_ids.push(completed.review_round_id);
+        stream.completed_rounds.push(round_record(&completed));
         stream.latest_completed_round_id = Some(completed.review_round_id);
     } else {
         state.catalog.streams.push(ReviewStreamHead {
             review_stream_id: completed.review_stream_id,
             production: completed.production.clone(),
-            completed_round_ids: vec![completed.review_round_id],
+            completed_rounds: vec![round_record(&completed)],
             latest_completed_round_id: Some(completed.review_round_id),
         });
     }
     state.draft = None;
+}
+
+fn versioned_draft(draft: ReviewDraft) -> PersistedReviewDraft {
+    PersistedReviewDraft {
+        protocol_version: ReviewProtocolVersion::V1,
+        draft,
+    }
+}
+
+fn round_record(snapshot: &ReviewSnapshot) -> ReviewRoundRecord {
+    ReviewRoundRecord {
+        review_round_id: snapshot.review_round_id,
+        protocol_version: ReviewProtocolVersion::V1,
+        location: ReviewRecordLocation::new(format!("rounds/{}.json", snapshot.review_round_id))
+            .unwrap(),
+        blake3: [0; 32],
+    }
 }
 
 struct Fixture {

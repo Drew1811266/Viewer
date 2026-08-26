@@ -3,8 +3,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::{fs, path::Path};
 use tempfile::TempDir;
 use viewer_application::{
-    ProjectAccess, ReviewCatalog, ReviewRepositoryError, ReviewRepositoryPort,
-    ReviewRepositoryProviderPort, ReviewStreamHead,
+    PersistedReviewDraft, ProjectAccess, ReviewCatalog, ReviewProtocolVersion,
+    ReviewRepositoryError, ReviewRepositoryPort, ReviewRepositoryProviderPort, ReviewStreamHead,
 };
 use viewer_domain::review::{
     AssetEvidence, AssetVersion, ReviewDraft, ReviewMedia, ReviewSnapshot,
@@ -13,7 +13,7 @@ use viewer_domain::{AssetVersionId, ProjectId, RelativePath, ReviewRoundId, Revi
 use viewer_infrastructure::review::{
     ProjectReviewRepository, ProjectReviewRepositoryProvider, ReviewRepositoryAccess,
     ReviewRepositoryFaultInjector, ReviewRepositoryFaultPoint, encode_catalog, encode_completed,
-    encode_draft,
+    encode_draft, encode_draft_v2,
 };
 
 struct PersistentProject {
@@ -23,6 +23,10 @@ struct PersistentProject {
 
 impl PersistentProject {
     fn new() -> Self {
+        Self::with_project_id(ProjectId::from_u128(1))
+    }
+
+    fn with_project_id(project_id: ProjectId) -> Self {
         let directory = tempfile::tempdir().unwrap();
         let viewer = directory.path().join(".viewer");
         fs::create_dir(&viewer).unwrap();
@@ -30,7 +34,7 @@ impl PersistentProject {
         fs::write(viewer.join("metadata.sqlite"), b"database sentinel").unwrap();
         Self {
             directory,
-            project_id: ProjectId::from_u128(1),
+            project_id,
         }
     }
 
@@ -41,6 +45,33 @@ impl PersistentProject {
     fn reviews(&self) -> std::path::PathBuf {
         self.root().join(".viewer/reviews")
     }
+}
+
+fn legacy_fixture_project(copy_round: bool) -> (PersistentProject, std::path::PathBuf) {
+    let project =
+        PersistentProject::with_project_id("00000000-0000-4000-8000-000000000001".parse().unwrap());
+    let fixture = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tests/fixtures/review-protocol/project/.viewer/reviews");
+    fs::create_dir_all(project.reviews().join("rounds")).unwrap();
+    let mut index: serde_json::Value =
+        serde_json::from_slice(&fs::read(fixture.join("index.json")).unwrap()).unwrap();
+    index["streams"].as_array_mut().unwrap().remove(0);
+    fs::write(
+        project.reviews().join("index.json"),
+        format!("{}\n", serde_json::to_string_pretty(&index).unwrap()),
+    )
+    .unwrap();
+    let round_path = project
+        .reviews()
+        .join("rounds/00000000-0000-4000-8000-000000000202.json");
+    if copy_round {
+        fs::copy(
+            fixture.join("rounds/00000000-0000-4000-8000-000000000202.json"),
+            &round_path,
+        )
+        .unwrap();
+    }
+    (project, round_path)
 }
 
 fn review_draft(
@@ -73,6 +104,13 @@ fn review_draft(
         }],
     )
     .unwrap()
+}
+
+fn persisted_v1(draft: ReviewDraft) -> PersistedReviewDraft {
+    PersistedReviewDraft {
+        protocol_version: ReviewProtocolVersion::V1,
+        draft,
+    }
 }
 
 fn open_writable(
@@ -143,6 +181,97 @@ fn open_writable_with_faults(
 }
 
 #[test]
+fn reading_v1_catalog_projects_v2_records_without_rewriting_history() {
+    let (project, legacy_round) = legacy_fixture_project(true);
+    let index_path = project.reviews().join("index.json");
+    let index_before = fs::read(&index_path).unwrap();
+    let round_before = fs::read(&legacy_round).unwrap();
+
+    let reader = ProjectReviewRepository::open(
+        project.root(),
+        project.project_id,
+        ReviewRepositoryAccess::ReadOnly,
+    )
+    .unwrap();
+    let readonly_catalog = reader.load_catalog().unwrap();
+    drop(reader);
+    let repository = open_writable(&project).unwrap();
+    let catalog = repository.load_catalog().unwrap();
+    let record = &catalog.streams[0].completed_rounds[0];
+
+    assert_eq!(readonly_catalog, catalog);
+    assert_eq!(record.protocol_version, ReviewProtocolVersion::V1);
+    assert_eq!(record.blake3, *blake3::hash(&round_before).as_bytes());
+    assert_eq!(fs::read(index_path).unwrap(), index_before);
+    assert_eq!(fs::read(legacy_round).unwrap(), round_before);
+}
+
+#[test]
+fn invalid_v1_history_requires_recovery_and_never_rewrites_the_index() {
+    for corruption in ["missing", "malformed", "identity"] {
+        let (project, round_path) = legacy_fixture_project(corruption != "missing");
+        if corruption == "malformed" {
+            fs::write(&round_path, b"{}\n").unwrap();
+        } else if corruption == "identity" {
+            let mut value: serde_json::Value =
+                serde_json::from_slice(&fs::read(&round_path).unwrap()).unwrap();
+            value["reviewRoundId"] =
+                serde_json::Value::String(ReviewRoundId::from_u128(999).to_string());
+            fs::write(
+                &round_path,
+                format!("{}\n", serde_json::to_string_pretty(&value).unwrap()),
+            )
+            .unwrap();
+        }
+        let index_path = project.reviews().join("index.json");
+        let index_before = fs::read(&index_path).unwrap();
+
+        assert_eq!(
+            open_writable(&project).err(),
+            Some(ReviewRepositoryError::RecoveryRequired),
+            "accepted {corruption} v1 history"
+        );
+        assert_eq!(fs::read(index_path).unwrap(), index_before);
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn symlinked_v1_history_requires_recovery_without_following_or_rewriting() {
+    use std::os::unix::fs::symlink;
+
+    let (project, round_path) = legacy_fixture_project(false);
+    let outside = tempfile::NamedTempFile::new().unwrap();
+    symlink(outside.path(), &round_path).unwrap();
+    let index_path = project.reviews().join("index.json");
+    let index_before = fs::read(&index_path).unwrap();
+
+    assert_eq!(
+        open_writable(&project).err(),
+        Some(ReviewRepositoryError::RecoveryRequired)
+    );
+    assert_eq!(fs::read(index_path).unwrap(), index_before);
+}
+
+#[test]
+fn v1_digest_change_after_projection_aborts_migration_without_rewriting_index() {
+    let (project, round_path) = legacy_fixture_project(true);
+    let repository = open_writable(&project).unwrap();
+    let catalog_document = repository.load_catalog().unwrap();
+    let index_path = project.reviews().join("index.json");
+    let index_before = fs::read(&index_path).unwrap();
+    let mut changed = fs::read(&round_path).unwrap();
+    changed.push(b' ');
+    fs::write(&round_path, changed).unwrap();
+
+    assert_eq!(
+        repository.prepare_v2_catalog_migration(&catalog_document),
+        Err(ReviewRepositoryError::RecoveryRequired)
+    );
+    assert_eq!(fs::read(index_path).unwrap(), index_before);
+}
+
+#[test]
 fn writable_repository_creates_only_review_paths_and_round_trips_a_draft() {
     let project = PersistentProject::new();
     let manifest_before = fs::read(project.root().join(".viewer/project.json")).unwrap();
@@ -154,13 +283,13 @@ fn writable_repository_creates_only_review_paths_and_round_trips_a_draft() {
         ReviewRoundId::from_u128(2),
     );
 
-    repository.save_draft(&draft).unwrap();
+    repository.save_draft(&persisted_v1(draft.clone())).unwrap();
 
     assert_eq!(
         repository
             .load_draft(draft.review_stream_id, draft.review_round_id)
             .unwrap(),
-        Some(draft)
+        Some(persisted_v1(draft))
     );
     assert_eq!(
         fs::read(project.root().join(".viewer/project.json")).unwrap(),
@@ -198,7 +327,7 @@ fn readonly_absent_repository_creates_nothing_and_rejects_writes() {
 
     assert_eq!(repository.load_catalog().unwrap().streams, vec![]);
     assert_eq!(
-        repository.save_draft(&draft),
+        repository.save_draft(&persisted_v1(draft)),
         Err(ReviewRepositoryError::ReadOnly)
     );
     assert!(!project.reviews().exists());
@@ -251,7 +380,7 @@ fn draft_project_and_requested_identity_must_match_the_repository() {
     );
 
     assert_eq!(
-        repository.save_draft(&wrong_project),
+        repository.save_draft(&persisted_v1(wrong_project)),
         Err(ReviewRepositoryError::InvalidData)
     );
     assert!(
@@ -266,7 +395,7 @@ fn draft_project_and_requested_identity_must_match_the_repository() {
         ReviewStreamId::from_u128(1),
         ReviewRoundId::from_u128(2),
     );
-    repository.save_draft(&draft).unwrap();
+    repository.save_draft(&persisted_v1(draft.clone())).unwrap();
     assert_eq!(
         repository.load_draft(ReviewStreamId::from_u128(44), draft.review_round_id),
         Err(ReviewRepositoryError::InvalidData)
@@ -312,7 +441,7 @@ fn a_completed_round_id_can_never_be_reused_by_a_draft() {
     .unwrap();
 
     assert_eq!(
-        repository.save_draft(&draft),
+        repository.save_draft(&persisted_v1(draft.clone())),
         Err(ReviewRepositoryError::Conflict)
     );
     assert!(
@@ -327,7 +456,7 @@ fn a_completed_round_id_can_never_be_reused_by_a_draft() {
 fn unsupported_index_is_left_byte_for_byte_unchanged() {
     let project = PersistentProject::new();
     fs::create_dir(project.reviews()).unwrap();
-    let index = br#"{"protocolVersion":"viewer.review/2","projectId":"00000000-0000-0000-0000-000000000001","streams":[]}"#;
+    let index = br#"{"protocolVersion":"viewer.review/99","projectId":"00000000-0000-0000-0000-000000000001","streams":[]}"#;
     fs::write(project.reviews().join("index.json"), index).unwrap();
 
     assert!(matches!(
@@ -340,6 +469,22 @@ fn unsupported_index_is_left_byte_for_byte_unchanged() {
     );
     assert!(!project.reviews().join("drafts").exists());
     assert!(!project.reviews().join("rounds").exists());
+}
+
+#[test]
+fn v2_index_is_supported_without_being_rewritten_on_open() {
+    let project = PersistentProject::new();
+    fs::create_dir(project.reviews()).unwrap();
+    let index = br#"{"protocolVersion":"viewer.review/2","projectId":"00000000-0000-0000-0000-000000000001","streams":[]}"#;
+    fs::write(project.reviews().join("index.json"), index).unwrap();
+
+    let repository = open_writable(&project).unwrap();
+
+    assert!(repository.load_catalog().unwrap().streams.is_empty());
+    assert_eq!(
+        fs::read(project.reviews().join("index.json")).unwrap(),
+        index
+    );
 }
 
 #[test]
@@ -491,7 +636,7 @@ fn failed_index_publication_keeps_the_old_head_and_recovers_one_linear_orphan() 
             ReviewStreamId::from_u128(1),
             ReviewRoundId::from_u128(11),
         );
-        repository.save_draft(&draft).unwrap();
+        repository.save_draft(&persisted_v1(draft.clone())).unwrap();
         let round = draft.complete(2_000).unwrap();
 
         assert_eq!(
@@ -578,7 +723,7 @@ fn a_unique_multi_round_orphan_chain_recovers_in_causal_order() {
     let repository = open_writable(&project).unwrap();
     let recovered_stream = stream(&repository.load_catalog().unwrap(), 1).clone();
     assert_eq!(
-        recovered_stream.completed_round_ids,
+        recovered_stream.completed_round_ids().collect::<Vec<_>>(),
         vec![first.review_round_id, second.review_round_id]
     );
     assert_eq!(
@@ -684,7 +829,7 @@ fn published_history_ignores_a_stale_draft_when_cleanup_cannot_finish() {
         ReviewStreamId::from_u128(1),
         ReviewRoundId::from_u128(11),
     );
-    repository.save_draft(&draft).unwrap();
+    repository.save_draft(&persisted_v1(draft.clone())).unwrap();
     let snapshot = draft.complete(2_000).unwrap();
     let drafts_directory = project.reviews().join("drafts");
     fs::set_permissions(&drafts_directory, fs::Permissions::from_mode(0o555)).unwrap();
@@ -737,7 +882,7 @@ fn concurrent_publication_on_one_repository_serializes_stream_compare_and_set() 
     );
     assert_eq!(
         repository.load_catalog().unwrap().streams[0]
-            .completed_round_ids
+            .completed_round_ids()
             .len(),
         1
     );
@@ -780,7 +925,7 @@ fn provider_preserves_unsupported_draft_versions_without_mutation() {
     let path = project
         .reviews()
         .join("drafts/00000000-0000-0000-0000-00000000000b.json");
-    let unsupported = br#"{"protocolVersion":"viewer.review/2","status":"draft"}"#;
+    let unsupported = br#"{"protocolVersion":"viewer.review/99","status":"draft"}"#;
     fs::write(&path, unsupported).unwrap();
 
     assert_eq!(
@@ -788,6 +933,34 @@ fn provider_preserves_unsupported_draft_versions_without_mutation() {
         Err(ReviewRepositoryError::UnsupportedVersion)
     );
     assert_eq!(fs::read(path).unwrap(), unsupported);
+}
+
+#[test]
+fn repository_preserves_v2_draft_version_across_save_and_discovery() {
+    let project = PersistentProject::new();
+    let provider = ProjectReviewRepositoryProvider::new(project.root(), project.project_id);
+    let draft = review_draft(
+        project.project_id,
+        ReviewStreamId::from_u128(1),
+        ReviewRoundId::from_u128(11),
+    );
+    let persisted = PersistedReviewDraft {
+        protocol_version: ReviewProtocolVersion::V2,
+        draft,
+    };
+    let writer = provider.open_writer().unwrap();
+
+    writer.save_draft(&persisted).unwrap();
+    drop(writer);
+
+    let path = project
+        .reviews()
+        .join("drafts/00000000-0000-0000-0000-00000000000b.json");
+    assert_eq!(
+        fs::read(&path).unwrap(),
+        encode_draft_v2(&persisted.draft).unwrap()
+    );
+    assert_eq!(provider.inspect().unwrap().active_draft, Some(persisted));
 }
 
 #[test]
@@ -800,17 +973,24 @@ fn provider_discovers_one_exact_draft_and_refuses_ambiguous_or_invalid_entries()
         ReviewStreamId::from_u128(1),
         ReviewRoundId::from_u128(11),
     );
-    writer.save_draft(&first).unwrap();
+    writer.save_draft(&persisted_v1(first.clone())).unwrap();
     drop(writer);
 
-    assert_eq!(provider.inspect().unwrap().active_draft, Some(first));
+    assert_eq!(
+        provider.inspect().unwrap().active_draft,
+        Some(persisted_v1(first))
+    );
 
     let second = review_draft(
         project.project_id,
         ReviewStreamId::from_u128(1),
         ReviewRoundId::from_u128(12),
     );
-    provider.open_writer().unwrap().save_draft(&second).unwrap();
+    provider
+        .open_writer()
+        .unwrap()
+        .save_draft(&persisted_v1(second.clone()))
+        .unwrap();
     assert_eq!(
         provider.inspect(),
         Err(ReviewRepositoryError::RecoveryRequired)
@@ -900,7 +1080,7 @@ fn delete_draft_checks_exact_ownership_and_never_touches_completed_history() {
         ReviewStreamId::from_u128(1),
         ReviewRoundId::from_u128(11),
     );
-    writer.save_draft(&draft).unwrap();
+    writer.save_draft(&persisted_v1(draft.clone())).unwrap();
 
     assert_eq!(
         writer.delete_draft(ReviewStreamId::from_u128(99), draft.review_round_id),
@@ -910,7 +1090,7 @@ fn delete_draft_checks_exact_ownership_and_never_touches_completed_history() {
         writer
             .load_draft(draft.review_stream_id, draft.review_round_id)
             .unwrap(),
-        Some(draft.clone())
+        Some(persisted_v1(draft.clone()))
     );
 
     writer
@@ -948,7 +1128,7 @@ fn failed_draft_deletion_keeps_the_draft_readable() {
         ReviewStreamId::from_u128(1),
         ReviewRoundId::from_u128(11),
     );
-    writer.save_draft(&draft).unwrap();
+    writer.save_draft(&persisted_v1(draft.clone())).unwrap();
     let drafts_directory = project.reviews().join("drafts");
     fs::set_permissions(&drafts_directory, fs::Permissions::from_mode(0o555)).unwrap();
 
@@ -957,5 +1137,5 @@ fn failed_draft_deletion_keeps_the_draft_readable() {
     fs::set_permissions(&drafts_directory, fs::Permissions::from_mode(0o755)).unwrap();
 
     assert_eq!(delete_result, Err(ReviewRepositoryError::Unavailable));
-    assert_eq!(readable_result.unwrap(), Some(draft));
+    assert_eq!(readable_result.unwrap(), Some(persisted_v1(draft)));
 }

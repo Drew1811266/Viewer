@@ -621,9 +621,9 @@ async fn run_publish_recovery(
         let Some(draft) = repository_state.active_draft else {
             return run_standard(project, scenario).await;
         };
-        let stream_id = draft.review_stream_id;
-        let round_id = draft.review_round_id;
-        let snapshot = draft.complete(SystemClock.unix_millis())?;
+        let stream_id = draft.draft.review_stream_id;
+        let round_id = draft.draft.review_round_id;
+        let snapshot = draft.draft.complete(SystemClock.unix_millis())?;
         let repository = ProjectReviewRepository::open_with_faults(
             project,
             PROJECT_ID,
@@ -675,9 +675,9 @@ async fn run_multiple_drafts(
     let mut duplicate = writer
         .load_active_draft()?
         .ok_or("first Draft was not persisted")?;
-    duplicate.review_stream_id = ReviewStreamId::new();
-    duplicate.review_round_id = ReviewRoundId::new();
-    duplicate.previous_completed_round_id = None;
+    duplicate.draft.review_stream_id = ReviewStreamId::new();
+    duplicate.draft.review_round_id = ReviewRoundId::new();
+    duplicate.draft.previous_completed_round_id = None;
     writer.save_draft(&duplicate)?;
     drop(writer);
 

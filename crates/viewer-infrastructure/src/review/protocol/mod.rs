@@ -13,7 +13,7 @@ pub use v1::{
     decode_catalog, decode_completed, decode_draft, decode_production_manifest, encode_catalog,
     encode_completed, encode_draft,
 };
-use viewer_application::{DecodedReview, ReviewProtocolVersion};
+use viewer_application::{DecodedReview, ReviewCatalog, ReviewProtocolVersion};
 use viewer_domain::review::{ReviewDraft, ReviewSnapshot};
 
 pub fn detect_review_protocol(bytes: &[u8]) -> Result<&'static str, ReviewProtocolError> {
@@ -40,6 +40,22 @@ pub fn decode_draft_versioned(
     }
 }
 
+pub fn decode_catalog_versioned(
+    bytes: &[u8],
+) -> Result<DecodedReview<ReviewCatalog>, ReviewProtocolError> {
+    match detect_review_protocol(bytes)? {
+        REVIEW_PROTOCOL_V1 => Ok(DecodedReview {
+            version: ReviewProtocolVersion::V1,
+            value: v1::decode_catalog(bytes)?,
+        }),
+        REVIEW_PROTOCOL_V2 => Ok(DecodedReview {
+            version: ReviewProtocolVersion::V2,
+            value: v2::decode_catalog(bytes)?,
+        }),
+        _ => Err(ReviewProtocolError::UnsupportedVersion),
+    }
+}
+
 pub fn decode_completed_versioned(
     bytes: &[u8],
 ) -> Result<DecodedReview<ReviewSnapshot>, ReviewProtocolError> {
@@ -58,6 +74,10 @@ pub fn decode_completed_versioned(
 
 pub fn encode_draft_v2(draft: &ReviewDraft) -> Result<Vec<u8>, ReviewProtocolError> {
     v2::encode_draft(draft)
+}
+
+pub fn encode_catalog_v2(catalog: &ReviewCatalog) -> Result<Vec<u8>, ReviewProtocolError> {
+    v2::encode_catalog(catalog)
 }
 
 pub fn encode_completed_v2(snapshot: &ReviewSnapshot) -> Result<Vec<u8>, ReviewProtocolError> {

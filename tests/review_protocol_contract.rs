@@ -6,9 +6,9 @@ use viewer_domain::review::{
     FeedbackAnchor, ImageStroke, NormalizedPoint, ReviewMedia, ReviewabilityFailure,
 };
 use viewer_infrastructure::review::{
-    ReviewProtocolError, decode_catalog, decode_completed, decode_completed_versioned,
-    decode_draft, decode_production_manifest, encode_catalog, encode_completed,
-    encode_completed_v2, encode_draft,
+    ReviewProtocolError, decode_catalog, decode_catalog_versioned, decode_completed,
+    decode_completed_versioned, decode_draft, decode_production_manifest, encode_catalog,
+    encode_catalog_v2, encode_completed, encode_completed_v2, encode_draft,
 };
 
 fn fixture(name: &str) -> Vec<u8> {
@@ -110,6 +110,14 @@ fn canonical_v2_round_decodes_and_reencodes_byte_for_byte() {
     let decoded = decode_completed_versioned(&completed).unwrap();
 
     assert_eq!(encode_completed_v2(&decoded.value).unwrap(), completed);
+}
+
+#[test]
+fn canonical_v2_index_decodes_and_reencodes_byte_for_byte() {
+    let index = fixture("review-index-v2.valid.json");
+    let decoded = decode_catalog_versioned(&index).unwrap();
+
+    assert_eq!(encode_catalog_v2(&decoded.value).unwrap(), index);
 }
 
 #[test]

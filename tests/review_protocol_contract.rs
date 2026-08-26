@@ -2,7 +2,9 @@ use serde_json::{Value, json};
 use std::fs;
 use std::path::PathBuf;
 use viewer_domain::EntityId;
-use viewer_domain::review::{ReviewMedia, ReviewabilityFailure};
+use viewer_domain::review::{
+    FeedbackAnchor, ImageStroke, NormalizedPoint, ReviewMedia, ReviewabilityFailure,
+};
 use viewer_infrastructure::review::{
     ReviewProtocolError, decode_catalog, decode_completed, decode_draft,
     decode_production_manifest, encode_catalog, encode_completed, encode_draft,
@@ -58,6 +60,47 @@ fn canonical_v1_documents_decode_and_reencode_without_semantic_drift() {
             .len(),
         2
     );
+}
+
+#[test]
+fn v1_round_fixture_round_trips_byte_for_byte() {
+    let completed = fixture("review-round-v1.valid.json");
+    assert_eq!(
+        encode_completed(&decode_completed(&completed).unwrap()).unwrap(),
+        completed,
+    );
+}
+
+#[test]
+fn v1_image_region_maps_to_internal_image_rect() {
+    let draft = decode_draft(&fixture("review-draft-v1.valid.json")).unwrap();
+
+    assert!(
+        draft
+            .feedback
+            .iter()
+            .flat_map(|feedback| &feedback.targets)
+            .any(|target| matches!(target.anchor, FeedbackAnchor::ImageRect(_)))
+    );
+    assert!(
+        String::from_utf8(encode_draft(&draft).unwrap())
+            .unwrap()
+            .contains("\"imageRegion\"")
+    );
+}
+
+#[test]
+fn v1_encoder_rejects_image_strokes_without_panicking() {
+    let mut draft = decode_draft(&fixture("review-draft-v1.valid.json")).unwrap();
+    draft.feedback[0].targets[0].anchor = FeedbackAnchor::ImageStroke(
+        ImageStroke::new(vec![
+            NormalizedPoint::new(0.1, 0.2).unwrap(),
+            NormalizedPoint::new(0.7, 0.8).unwrap(),
+        ])
+        .unwrap(),
+    );
+
+    assert_eq!(encode_draft(&draft), Err(ReviewProtocolError::InvalidData));
 }
 
 #[test]

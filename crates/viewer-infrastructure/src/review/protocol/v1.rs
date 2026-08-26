@@ -1,7 +1,11 @@
-use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use super::common::{
+    MAX_REVIEW_DOCUMENT_BYTES, MAX_REVIEW_INDEX_BYTES, ReviewProtocolError, decode_document,
+    encode_digest, encode_document, parse_digest,
+};
+use super::{PRODUCTION_PROTOCOL_V1, REVIEW_PROTOCOL_V1};
+use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashSet};
 use std::str::FromStr;
-use thiserror::Error;
 use viewer_application::{
     MAX_COMPLETED_ROUNDS_PER_STREAM, MAX_PRODUCTION_CONTEXT_ENTRIES,
     MAX_PRODUCTION_CONTEXT_KEY_BYTES, MAX_PRODUCTION_CONTEXT_VALUE_BYTES, MAX_REVIEW_STREAMS,
@@ -14,21 +18,6 @@ use viewer_domain::review::{
     ProductionScope, ReviewAssetKind, ReviewDraft, ReviewMedia, ReviewOutcome, ReviewOutcomeKind,
     ReviewRoundError, ReviewSnapshot, ReviewValueError, ReviewabilityFailure,
 };
-
-pub const PRODUCTION_PROTOCOL_V1: &str = "viewer.production/1";
-pub const REVIEW_PROTOCOL_V1: &str = "viewer.review/1";
-pub const MAX_REVIEW_DOCUMENT_BYTES: u64 = 64 * 1024 * 1024;
-pub const MAX_REVIEW_INDEX_BYTES: u64 = 16 * 1024 * 1024;
-
-#[derive(Clone, Copy, Debug, Eq, Error, PartialEq)]
-pub enum ReviewProtocolError {
-    #[error("review protocol version is unsupported")]
-    UnsupportedVersion,
-    #[error("review protocol data is invalid")]
-    InvalidData,
-    #[error("review protocol limit was exceeded")]
-    LimitExceeded,
-}
 
 pub fn decode_production_manifest(bytes: &[u8]) -> Result<ProductionManifest, ReviewProtocolError> {
     let stored: StoredProductionManifest =
@@ -114,7 +103,11 @@ pub fn encode_draft(draft: &ReviewDraft) -> Result<Vec<u8>, ReviewProtocolError>
         previous_completed_round_id: draft.previous_completed_round_id.map(|id| id.to_string()),
         created_at_ms: draft.created_at_ms,
         assets: draft.assets.iter().map(stored_asset).collect(),
-        feedback: draft.feedback.iter().map(stored_feedback).collect(),
+        feedback: draft
+            .feedback
+            .iter()
+            .map(stored_feedback)
+            .collect::<Result<Vec<_>, _>>()?,
         unreviewable: draft
             .unreviewable
             .iter()
@@ -166,7 +159,11 @@ pub fn encode_completed(snapshot: &ReviewSnapshot) -> Result<Vec<u8>, ReviewProt
         created_at_ms: validated.created_at_ms,
         completed_at_ms: validated.completed_at_ms,
         assets: validated.assets.iter().map(stored_asset).collect(),
-        feedback: validated.feedback.iter().map(stored_feedback).collect(),
+        feedback: validated
+            .feedback
+            .iter()
+            .map(stored_feedback)
+            .collect::<Result<Vec<_>, _>>()?,
         outcomes: validated.outcomes.iter().map(stored_outcome).collect(),
     };
     encode_document(&stored, MAX_REVIEW_DOCUMENT_BYTES)
@@ -333,6 +330,11 @@ fn validated_snapshot(snapshot: &ReviewSnapshot) -> Result<ReviewSnapshot, Revie
             })
         })
         .collect();
+    let feedback = snapshot
+        .feedback
+        .iter()
+        .map(stored_feedback)
+        .collect::<Result<Vec<_>, _>>()?;
     let draft = build_draft(
         snapshot.project_id.to_string(),
         snapshot.review_stream_id.to_string(),
@@ -350,7 +352,7 @@ fn validated_snapshot(snapshot: &ReviewSnapshot) -> Result<ReviewSnapshot, Revie
             .map(|id| id.to_string()),
         snapshot.created_at_ms,
         snapshot.assets.iter().map(stored_asset).collect(),
-        snapshot.feedback.iter().map(stored_feedback).collect(),
+        feedback,
         unreviewable,
     )?;
     let validated = draft
@@ -596,7 +598,7 @@ fn parse_feedback(stored: StoredFeedback) -> Result<Feedback, ReviewProtocolErro
                     y,
                     width,
                     height,
-                } => FeedbackAnchor::ImageRegion(
+                } => FeedbackAnchor::ImageRect(
                     NormalizedRect::new(x, y, width, height).map_err(map_value_error)?,
                 ),
                 StoredAnchor::VideoPoint { position_us } => {
@@ -621,24 +623,26 @@ fn parse_feedback(stored: StoredFeedback) -> Result<Feedback, ReviewProtocolErro
     .map_err(map_value_error)
 }
 
-fn stored_feedback(feedback: &Feedback) -> StoredFeedback {
-    StoredFeedback {
+fn stored_feedback(feedback: &Feedback) -> Result<StoredFeedback, ReviewProtocolError> {
+    Ok(StoredFeedback {
         feedback_id: feedback.id.to_string(),
         text: feedback.text.clone(),
         created_at_ms: feedback.created_at_ms,
         targets: feedback
             .targets
             .iter()
-            .map(|target| StoredTarget {
-                asset_version_id: target.asset_version_id.to_string(),
-                anchor: match &target.anchor {
+            .map(|target| {
+                let anchor = match &target.anchor {
                     FeedbackAnchor::Asset => StoredAnchor::Asset,
-                    FeedbackAnchor::ImageRegion(rect) => StoredAnchor::ImageRegion {
+                    FeedbackAnchor::ImageRect(rect) => StoredAnchor::ImageRegion {
                         x: rect.x(),
                         y: rect.y(),
                         width: rect.width(),
                         height: rect.height(),
                     },
+                    FeedbackAnchor::ImageStroke(_) => {
+                        return Err(ReviewProtocolError::InvalidData);
+                    }
                     FeedbackAnchor::VideoPoint { position_us } => StoredAnchor::VideoPoint {
                         position_us: *position_us,
                     },
@@ -646,10 +650,14 @@ fn stored_feedback(feedback: &Feedback) -> StoredFeedback {
                         start_us: *start_us,
                         end_us: *end_us,
                     },
-                },
+                };
+                Ok(StoredTarget {
+                    asset_version_id: target.asset_version_id.to_string(),
+                    anchor,
+                })
             })
-            .collect(),
-    }
+            .collect::<Result<Vec<_>, _>>()?,
+    })
 }
 
 fn stored_outcome(outcome: &ReviewOutcome) -> StoredOutcome {
@@ -694,74 +702,6 @@ where
     T::from_str(value).map_err(|_| ReviewProtocolError::InvalidData)
 }
 
-fn parse_digest(value: &str) -> Result<[u8; 32], ReviewProtocolError> {
-    if value.len() != 64
-        || !value
-            .bytes()
-            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
-    {
-        return Err(ReviewProtocolError::InvalidData);
-    }
-    let mut result = [0_u8; 32];
-    for (index, slot) in result.iter_mut().enumerate() {
-        let high = hex_nibble(value.as_bytes()[index * 2])?;
-        let low = hex_nibble(value.as_bytes()[index * 2 + 1])?;
-        *slot = (high << 4) | low;
-    }
-    Ok(result)
-}
-
-fn hex_nibble(value: u8) -> Result<u8, ReviewProtocolError> {
-    match value {
-        b'0'..=b'9' => Ok(value - b'0'),
-        b'a'..=b'f' => Ok(value - b'a' + 10),
-        _ => Err(ReviewProtocolError::InvalidData),
-    }
-}
-
-fn encode_digest(value: [u8; 32]) -> String {
-    const HEX: &[u8; 16] = b"0123456789abcdef";
-    let mut encoded = String::with_capacity(64);
-    for byte in value {
-        encoded.push(HEX[(byte >> 4) as usize] as char);
-        encoded.push(HEX[(byte & 0x0f) as usize] as char);
-    }
-    encoded
-}
-
-fn decode_document<T>(
-    bytes: &[u8],
-    max_bytes: u64,
-    expected_protocol: &str,
-) -> Result<T, ReviewProtocolError>
-where
-    T: DeserializeOwned,
-{
-    if bytes.len() as u64 > max_bytes {
-        return Err(ReviewProtocolError::LimitExceeded);
-    }
-    let envelope: StoredVersionEnvelope =
-        serde_json::from_slice(bytes).map_err(|_| ReviewProtocolError::InvalidData)?;
-    if envelope.protocol_version != expected_protocol {
-        return Err(ReviewProtocolError::UnsupportedVersion);
-    }
-    serde_json::from_slice(bytes).map_err(|_| ReviewProtocolError::InvalidData)
-}
-
-fn encode_document<T>(value: &T, max_bytes: u64) -> Result<Vec<u8>, ReviewProtocolError>
-where
-    T: Serialize,
-{
-    let mut encoded =
-        serde_json::to_vec_pretty(value).map_err(|_| ReviewProtocolError::InvalidData)?;
-    encoded.push(b'\n');
-    if encoded.len() as u64 > max_bytes {
-        Err(ReviewProtocolError::LimitExceeded)
-    } else {
-        Ok(encoded)
-    }
-}
-
 fn map_value_error(error: ReviewValueError) -> ReviewProtocolError {
     match error {
         ReviewValueError::LimitExceeded => ReviewProtocolError::LimitExceeded,
@@ -782,12 +722,6 @@ fn limit_or_invalid(is_invalid: bool) -> ReviewProtocolError {
     } else {
         ReviewProtocolError::LimitExceeded
     }
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct StoredVersionEnvelope {
-    protocol_version: String,
 }
 
 #[derive(Deserialize)]

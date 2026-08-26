@@ -2,6 +2,7 @@ mod common;
 mod markers;
 mod organization;
 mod preview;
+mod review;
 mod scan_index;
 mod session;
 mod video_index;
@@ -104,6 +105,7 @@ pub use crate::dto::ScanEventDto;
 pub trait DesktopEventSink: Send + Sync {
     fn emit_scan(&self, event: ScanEventDto);
     fn emit_index(&self, _event: IndexProgressDto) {}
+    fn emit_review(&self, _event: crate::dto::ReviewProgressDto) {}
     fn emit_operation(
         &self,
         _session_id: SessionId,
@@ -275,6 +277,8 @@ struct DesktopSession {
     scan_task_id: TaskId,
     scan_task: Option<JoinHandle<Result<(), CommandError>>>,
     video_index: Arc<VideoIndexRuntime>,
+    review: Arc<viewer_application::ReviewSessionService>,
+    review_changes: viewer_infrastructure::review::ReviewChangeLedger,
 }
 
 struct UnavailableFileUndoPort;

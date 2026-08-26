@@ -29,6 +29,16 @@ pub enum ReviewSessionPhase {
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct ReviewProposalId(u64);
 
+impl ReviewProposalId {
+    pub const fn from_raw(value: u64) -> Option<Self> {
+        if value == 0 { None } else { Some(Self(value)) }
+    }
+
+    pub const fn get(self) -> u64 {
+        self.0
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct ReviewScopeProposal {
     pub id: ReviewProposalId,
@@ -95,6 +105,16 @@ impl ReviewCompletionSummary {
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct ReviewCompletionProposalId(u64);
+
+impl ReviewCompletionProposalId {
+    pub const fn from_raw(value: u64) -> Option<Self> {
+        if value == 0 { None } else { Some(Self(value)) }
+    }
+
+    pub const fn get(self) -> u64 {
+        self.0
+    }
+}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ReviewCompletionProposal {
@@ -195,6 +215,8 @@ pub enum ReviewSessionError {
     ReadOnly,
     #[error("review data requires explicit recovery")]
     RecoveryRequired,
+    #[error("review protocol version is unsupported")]
+    UnsupportedVersion,
     #[error("review repository is unavailable")]
     RepositoryUnavailable,
     #[error("review asset evidence is unavailable")]
@@ -234,6 +256,7 @@ impl ReviewSessionError {
             Self::Busy => "review_writer_busy",
             Self::ReadOnly => "review_project_read_only",
             Self::RecoveryRequired => "review_recovery_required",
+            Self::UnsupportedVersion => "review_unsupported_version",
             Self::RepositoryUnavailable => "review_repository_unavailable",
             Self::AssetUnavailable => "review_asset_unavailable",
             Self::Cancelled => "review_task_cancelled",
@@ -612,7 +635,10 @@ impl ReviewSessionService {
                     ReviewSessionError::Busy | ReviewSessionError::ReadOnly => {
                         ReviewSessionPhase::WriteUnavailable
                     }
-                    ReviewSessionError::RecoveryRequired => ReviewSessionPhase::RecoveryRequired,
+                    ReviewSessionError::RecoveryRequired
+                    | ReviewSessionError::UnsupportedVersion => {
+                        ReviewSessionPhase::RecoveryRequired
+                    }
                     _ => return_phase,
                 };
                 state.error = Some(user_error(error));
@@ -1877,9 +1903,10 @@ fn map_repository_error(error: ReviewRepositoryError) -> ReviewSessionError {
     match error {
         ReviewRepositoryError::Busy => ReviewSessionError::Busy,
         ReviewRepositoryError::ReadOnly => ReviewSessionError::ReadOnly,
-        ReviewRepositoryError::RecoveryRequired
-        | ReviewRepositoryError::UnsupportedVersion
-        | ReviewRepositoryError::InvalidData => ReviewSessionError::RecoveryRequired,
+        ReviewRepositoryError::UnsupportedVersion => ReviewSessionError::UnsupportedVersion,
+        ReviewRepositoryError::RecoveryRequired | ReviewRepositoryError::InvalidData => {
+            ReviewSessionError::RecoveryRequired
+        }
         ReviewRepositoryError::NotFound | ReviewRepositoryError::Conflict => {
             ReviewSessionError::RecoveryRequired
         }
@@ -1906,7 +1933,9 @@ fn map_asset_error(error: ReviewAssetError) -> ReviewSessionError {
 
 fn phase_for_error(error: ReviewSessionError) -> ReviewSessionPhase {
     match error {
-        ReviewSessionError::RecoveryRequired => ReviewSessionPhase::RecoveryRequired,
+        ReviewSessionError::RecoveryRequired | ReviewSessionError::UnsupportedVersion => {
+            ReviewSessionPhase::RecoveryRequired
+        }
         ReviewSessionError::Busy | ReviewSessionError::ReadOnly => {
             ReviewSessionPhase::WriteUnavailable
         }

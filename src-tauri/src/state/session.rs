@@ -1,6 +1,50 @@
 use super::*;
 
 impl DesktopRuntime {
+    fn prepare_review_services(
+        &self,
+        active: &ActiveProject,
+        index: Arc<SessionIndex>,
+        image: Arc<dyn ImagePort>,
+    ) -> Result<
+        (
+            Arc<viewer_application::ReviewSessionService>,
+            viewer_infrastructure::review::ReviewChangeLedger,
+        ),
+        CommandError,
+    > {
+        let review_changes = viewer_infrastructure::review::ReviewChangeLedger::default();
+        let browse_index: Arc<dyn BrowseIndexPort> = index;
+        let asset_catalog: Arc<dyn viewer_application::ReviewAssetCatalogPort> = Arc::new(
+            viewer_infrastructure::review::IndexedReviewAssetCatalog::new(
+                &active.root,
+                browse_index,
+                image,
+                Arc::clone(&self.video_probe),
+                review_changes.clone(),
+            )
+            .map_err(|_| {
+                CommandError::from(viewer_application::ReviewSessionError::AssetUnavailable)
+            })?,
+        );
+        let repositories: Arc<dyn viewer_application::ReviewRepositoryProviderPort> = Arc::new(
+            viewer_infrastructure::review::ProjectReviewRepositoryProvider::new_with_access(
+                &active.root,
+                active.project_id,
+                active.access,
+            ),
+        );
+        Ok((
+            Arc::new(viewer_application::ReviewSessionService::new(
+                active.project_id,
+                asset_catalog,
+                repositories,
+                Arc::clone(&self.clock),
+            )),
+            review_changes,
+        ))
+    }
+
     async fn prepare_organization_services(
         &self,
         active: &ActiveProject,
@@ -196,6 +240,21 @@ impl DesktopRuntime {
         let scan_task_id = TaskId::new();
         let marker_lock = Arc::new(Mutex::new(()));
         let undo_stack = Arc::new(StdMutex::new(UndoStack::new(active_session_id)));
+        let (review, review_changes) =
+            match self.prepare_review_services(&active, Arc::clone(&index), Arc::clone(&image)) {
+                Ok(services) => services,
+                Err(error) => {
+                    cancel_video_worker_before_session_teardown(video_index.as_ref()).await;
+                    image.cancel_session(active.session_id).await;
+                    drop(marker_projection);
+                    drop(index);
+                    drop(portable_store);
+                    let _ = cache.cleanup();
+                    let _ = self.project_service.close();
+                    return Err(error);
+                }
+            };
+        let _ = review.inspect().await;
         let organization = match self
             .prepare_organization_services(
                 &active,
@@ -209,6 +268,7 @@ impl DesktopRuntime {
         {
             Ok(services) => services,
             Err(error) => {
+                review.shutdown().await;
                 cancel_video_worker_before_session_teardown(video_index.as_ref()).await;
                 image.cancel_session(active.session_id).await;
                 drop(marker_projection);
@@ -264,7 +324,7 @@ impl DesktopRuntime {
                     events: Arc::clone(&self.events),
                     scheduler: Arc::clone(&self.derived_scheduler),
                     video_index: Arc::clone(&video_index),
-                    review_changes: viewer_infrastructure::review::ReviewChangeLedger::default(),
+                    review_changes: review_changes.clone(),
                 }),
             )
             .map_err(|_| operation_backend_unavailable())
@@ -272,6 +332,7 @@ impl DesktopRuntime {
         let watcher = match watcher_result {
             Ok(watcher) => Some(watcher),
             Err(error) => {
+                review.shutdown().await;
                 cancel_video_worker_before_session_teardown(video_index.as_ref()).await;
                 drop(operations);
                 drop(file_undo_port);
@@ -317,6 +378,8 @@ impl DesktopRuntime {
             scan_task_id,
             scan_task: Some(scan_task),
             video_index,
+            review,
+            review_changes,
         });
         self.active_image_session.set(Some(active_session_id));
         Ok(snapshot)
@@ -331,6 +394,8 @@ impl DesktopRuntime {
         // guarded by this token must not start after close has taken ownership.
         self.coordinator.cancel_session(session.active.session_id);
         self.active_image_session.set(None);
+        session.review.shutdown().await;
+        session.review_changes.clear();
         let video_lifecycle = self
             .video_lifecycle
             .lock()

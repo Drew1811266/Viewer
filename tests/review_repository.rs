@@ -3,8 +3,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::{fs, path::Path};
 use tempfile::TempDir;
 use viewer_application::{
-    ReviewCatalog, ReviewRepositoryError, ReviewRepositoryPort, ReviewRepositoryProviderPort,
-    ReviewStreamHead,
+    ProjectAccess, ReviewCatalog, ReviewRepositoryError, ReviewRepositoryPort,
+    ReviewRepositoryProviderPort, ReviewStreamHead,
 };
 use viewer_domain::review::{
     AssetEvidence, AssetVersion, ReviewDraft, ReviewMedia, ReviewSnapshot,
@@ -202,6 +202,29 @@ fn readonly_absent_repository_creates_nothing_and_rejects_writes() {
         Err(ReviewRepositoryError::ReadOnly)
     );
     assert!(!project.reviews().exists());
+}
+
+#[test]
+fn readonly_provider_without_viewer_metadata_is_an_empty_side_effect_free_reader() {
+    let directory = tempfile::tempdir().unwrap();
+    let project_id = ProjectId::from_u128(1);
+    let provider = ProjectReviewRepositoryProvider::new_with_access(
+        directory.path(),
+        project_id,
+        ProjectAccess::ReadOnly,
+    );
+
+    let inspection = provider.inspect().unwrap();
+
+    assert_eq!(inspection.catalog.project_id, project_id);
+    assert!(inspection.catalog.streams.is_empty());
+    assert!(inspection.active_draft.is_none());
+    assert!(provider.open_reader().is_ok());
+    assert!(matches!(
+        provider.open_writer(),
+        Err(ReviewRepositoryError::ReadOnly)
+    ));
+    assert!(!directory.path().join(".viewer").exists());
 }
 
 #[test]

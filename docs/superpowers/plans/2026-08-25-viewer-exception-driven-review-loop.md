@@ -924,17 +924,17 @@ event: viewer://review-progress -> ReviewProgressDto
 - Progress DTO includes session/generation, task kind, completed, total, and cancellable. It carries no file path.
 - Map errors to stable codes such as `review_read_only`, `review_busy`, `review_stale_session`, `review_stale_revision`, `review_completion_changed`, `review_version_conflict`, `review_pending_validation`, `review_recovery_required`, `review_unsupported_version`, `review_invalid_data`, and `review_unavailable`.
 
-- [ ] **Step 1: Write DTO and runtime contract tests**
+- [x] **Step 1: Write DTO and runtime contract tests**
 
 Test exact serde shapes, invalid IDs, over-limit text/targets, session/generation mismatch, stale Round/revision, changed completion summary, safe relative conflict paths, no absolute error leakage, Busy does not block browse, and teardown releases writer/cancels progress.
 
-- [ ] **Step 2: Run desktop review test and observe missing modules**
+- [x] **Step 2: Run desktop review test and observe missing modules**
 
 Run: `cargo test --locked -p viewer-desktop --test review_commands`
 
 Expected: FAIL because DTOs, commands, and runtime composition are absent.
 
-- [ ] **Step 3: Implement translation-only commands and session composition**
+- [x] **Step 3: Implement translation-only commands and session composition**
 
 Each command should follow this shape:
 
@@ -951,7 +951,7 @@ pub async fn review_add_feedback(
 
 No command reads the filesystem or Domain collections directly.
 
-- [ ] **Step 4: Run desktop, security-boundary, and architecture-contract tests**
+- [x] **Step 4: Run desktop, security-boundary, and architecture-contract tests**
 
 Run:
 
@@ -962,7 +962,7 @@ pnpm architecture:contracts
 
 Expected: all pass; project browse remains available for every review-only failure.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src-tauri/src/dto/review.rs src-tauri/src/dto/mod.rs src-tauri/src/commands/review.rs src-tauri/src/commands/mod.rs src-tauri/src/state/review.rs src-tauri/src/state/mod.rs src-tauri/src/state/session.rs src-tauri/src/error.rs src-tauri/src/lib.rs src-tauri/tests/review_commands.rs

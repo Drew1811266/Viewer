@@ -1,6 +1,7 @@
 mod atomic;
 mod lease;
 mod protocol;
+mod provider;
 mod repository;
 
 pub use protocol::{
@@ -8,6 +9,7 @@ pub use protocol::{
     ReviewProtocolError, decode_catalog, decode_completed, decode_draft,
     decode_production_manifest, encode_catalog, encode_completed, encode_draft,
 };
+pub use provider::ProjectReviewRepositoryProvider;
 pub use repository::{
     NoReviewRepositoryFaults, ProjectReviewRepository, ReviewRepositoryAccess,
     ReviewRepositoryFaultInjector, ReviewRepositoryFaultPoint,

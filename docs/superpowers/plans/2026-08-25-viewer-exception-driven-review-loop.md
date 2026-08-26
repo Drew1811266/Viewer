@@ -289,7 +289,7 @@ pub trait ReviewRepositoryProviderPort: Send + Sync {
 - `open_writer()` acquires the existing lease and performs existing orphan recovery. Dropping its returned repository is the only normal lease-release mechanism.
 - `delete_draft` verifies exact canonical filename, Project/Stream/Round ownership, regular no-follow file type, and writer access before durable deletion. Missing exact Draft returns `NotFound`; it never deletes Completed data.
 
-- [ ] **Step 1: Write real-filesystem failure tests**
+- [x] **Step 1: Write real-filesystem failure tests**
 
 Cover: absent review directory leaves it absent; zero Draft; one Draft; two Drafts; malformed filename; symlink; wrong Project/Stream; Busy while writer is alive; lease becomes available after drop; deletion failure leaves Draft readable.
 
@@ -307,17 +307,17 @@ fn inspection_does_not_create_reviews_and_refuses_multiple_drafts() {
 }
 ```
 
-- [ ] **Step 2: Run the focused test and observe missing API failures**
+- [x] **Step 2: Run the focused test and observe missing API failures**
 
 Run: `cargo test --locked -p viewer-infrastructure --test review_repository`
 
 Expected: FAIL to compile until the provider and repository extensions exist.
 
-- [ ] **Step 3: Implement discovery/deletion with existing bounded/no-follow helpers**
+- [x] **Step 3: Implement discovery/deletion with existing bounded/no-follow helpers**
 
 Keep Draft scanning inside `repository.rs` so the provider does not duplicate path security. Return the full validated Draft only after its filename Round ID matches its contents. Use directory sync after successful removal.
 
-- [ ] **Step 4: Verify repository and phase-1 publication behavior**
+- [x] **Step 4: Verify repository and phase-1 publication behavior**
 
 Run:
 
@@ -328,7 +328,7 @@ cargo test --locked -p viewer-infrastructure review
 
 Expected: all new lifecycle tests and all previous atomic publication/recovery tests pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add crates/viewer-application/src/review.rs crates/viewer-infrastructure/src/review/repository.rs crates/viewer-infrastructure/src/review/provider.rs crates/viewer-infrastructure/src/review/mod.rs tests/review_repository.rs

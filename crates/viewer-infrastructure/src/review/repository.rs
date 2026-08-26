@@ -159,6 +159,11 @@ impl ProjectReviewRepository {
         Ok(catalog)
     }
 
+    pub fn load_active_draft(&self) -> Result<Option<ReviewDraft>, ReviewRepositoryError> {
+        let catalog = self.load_catalog()?;
+        discover_active_draft(self, &catalog)
+    }
+
     pub fn load_draft(
         &self,
         stream_id: ReviewStreamId,
@@ -208,6 +213,38 @@ impl ProjectReviewRepository {
         }
         let bytes = encode_draft(draft).map_err(map_protocol_error)?;
         replace_checked(&self.draft_path(draft.review_round_id), &bytes)
+    }
+
+    pub fn delete_draft(
+        &self,
+        stream_id: ReviewStreamId,
+        round_id: ReviewRoundId,
+    ) -> Result<(), ReviewRepositoryError> {
+        if self.access != ReviewRepositoryAccess::ReadWrite {
+            return Err(ReviewRepositoryError::ReadOnly);
+        }
+        let _guard = self
+            .write_guard
+            .lock()
+            .map_err(|_| ReviewRepositoryError::Unavailable)?;
+        let path = self.draft_path(round_id);
+        let bytes = read_bounded(&path, MAX_REVIEW_DOCUMENT_BYTES)?
+            .ok_or(ReviewRepositoryError::NotFound)?;
+        let draft = decode_draft(&bytes).map_err(map_protocol_error)?;
+        if draft.project_id != self.project_id
+            || draft.review_stream_id != stream_id
+            || draft.review_round_id != round_id
+        {
+            return Err(ReviewRepositoryError::InvalidData);
+        }
+        if self.load_catalog()?.streams.iter().any(|stream| {
+            stream.review_stream_id == stream_id && stream.completed_round_ids.contains(&round_id)
+        }) {
+            return Err(ReviewRepositoryError::Conflict);
+        }
+        fs::remove_file(&path).map_err(map_open_error)?;
+        sync_directory(path.parent().ok_or(ReviewRepositoryError::InvalidData)?)
+            .map_err(|_| ReviewRepositoryError::Unavailable)
     }
 
     pub fn load_completed(
@@ -331,6 +368,10 @@ impl ReviewRepositoryPort for ProjectReviewRepository {
         ProjectReviewRepository::load_catalog(self)
     }
 
+    fn load_active_draft(&self) -> Result<Option<ReviewDraft>, ReviewRepositoryError> {
+        ProjectReviewRepository::load_active_draft(self)
+    }
+
     fn load_draft(
         &self,
         stream_id: ReviewStreamId,
@@ -343,6 +384,14 @@ impl ReviewRepositoryPort for ProjectReviewRepository {
         ProjectReviewRepository::save_draft(self, draft)
     }
 
+    fn delete_draft(
+        &self,
+        stream_id: ReviewStreamId,
+        round_id: ReviewRoundId,
+    ) -> Result<(), ReviewRepositoryError> {
+        ProjectReviewRepository::delete_draft(self, stream_id, round_id)
+    }
+
     fn load_completed(
         &self,
         stream_id: ReviewStreamId,
@@ -353,6 +402,92 @@ impl ReviewRepositoryPort for ProjectReviewRepository {
 
     fn publish(&self, snapshot: &ReviewSnapshot) -> Result<(), ReviewRepositoryError> {
         ProjectReviewRepository::publish(self, snapshot)
+    }
+}
+
+fn discover_active_draft(
+    repository: &ProjectReviewRepository,
+    catalog: &ReviewCatalog,
+) -> Result<Option<ReviewDraft>, ReviewRepositoryError> {
+    let drafts_directory = repository.reviews_root.join(DRAFTS_DIRECTORY);
+    match safe_file_kind(&drafts_directory)? {
+        None => return Ok(None),
+        Some(OwnedPathKind::Directory) => {}
+        Some(_) => return Err(ReviewRepositoryError::RecoveryRequired),
+    }
+    let entries =
+        fs::read_dir(&drafts_directory).map_err(|_| ReviewRepositoryError::Unavailable)?;
+    let mut active = None;
+    for entry in entries {
+        let entry = entry.map_err(|_| ReviewRepositoryError::Unavailable)?;
+        let path = entry.path();
+        if safe_file_kind(&path)? != Some(OwnedPathKind::File) {
+            return Err(ReviewRepositoryError::RecoveryRequired);
+        }
+        let filename = entry
+            .file_name()
+            .into_string()
+            .map_err(|_| ReviewRepositoryError::RecoveryRequired)?;
+        let encoded_id = filename
+            .strip_suffix(".json")
+            .ok_or(ReviewRepositoryError::RecoveryRequired)?;
+        let filename_round_id = ReviewRoundId::from_str(encoded_id)
+            .map_err(|_| ReviewRepositoryError::RecoveryRequired)?;
+        if filename != format!("{filename_round_id}.json") {
+            return Err(ReviewRepositoryError::RecoveryRequired);
+        }
+        let bytes = read_bounded(&path, MAX_REVIEW_DOCUMENT_BYTES)
+            .map_err(map_draft_discovery_repository_error)?
+            .ok_or(ReviewRepositoryError::RecoveryRequired)?;
+        let draft = decode_draft(&bytes).map_err(map_draft_discovery_protocol_error)?;
+        if draft.project_id != repository.project_id || draft.review_round_id != filename_round_id {
+            return Err(ReviewRepositoryError::RecoveryRequired);
+        }
+
+        let indexed_owners = catalog
+            .streams
+            .iter()
+            .filter(|stream| stream.completed_round_ids.contains(&filename_round_id))
+            .collect::<Vec<_>>();
+        match indexed_owners.as_slice() {
+            [] => {}
+            [owner]
+                if owner.review_stream_id == draft.review_stream_id
+                    && owner.production == draft.production =>
+            {
+                continue;
+            }
+            _ => return Err(ReviewRepositoryError::RecoveryRequired),
+        }
+
+        if let Some(stream) = catalog
+            .streams
+            .iter()
+            .find(|stream| stream.review_stream_id == draft.review_stream_id)
+        {
+            if stream.production != draft.production {
+                return Err(ReviewRepositoryError::RecoveryRequired);
+            }
+        }
+        if active.replace(draft).is_some() {
+            return Err(ReviewRepositoryError::RecoveryRequired);
+        }
+    }
+    Ok(active)
+}
+
+fn map_draft_discovery_repository_error(error: ReviewRepositoryError) -> ReviewRepositoryError {
+    match error {
+        ReviewRepositoryError::Unavailable | ReviewRepositoryError::LimitExceeded => error,
+        _ => ReviewRepositoryError::RecoveryRequired,
+    }
+}
+
+fn map_draft_discovery_protocol_error(error: ReviewProtocolError) -> ReviewRepositoryError {
+    match map_protocol_error(error) {
+        error @ (ReviewRepositoryError::UnsupportedVersion
+        | ReviewRepositoryError::LimitExceeded) => error,
+        _ => ReviewRepositoryError::RecoveryRequired,
     }
 }
 

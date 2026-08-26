@@ -41,7 +41,8 @@ pub use review::{
     MAX_COMPLETED_ROUNDS_PER_STREAM, MAX_PRODUCTION_CONTEXT_ENTRIES,
     MAX_PRODUCTION_CONTEXT_KEY_BYTES, MAX_PRODUCTION_CONTEXT_VALUE_BYTES, MAX_REVIEW_STREAMS,
     ProductionAsset, ProductionManifest, ReviewCatalog, ReviewCatalogError, ReviewRepositoryError,
-    ReviewRepositoryPort, ReviewStreamHead, ReviewStreamLocator,
+    ReviewRepositoryInspection, ReviewRepositoryPort, ReviewRepositoryProviderPort,
+    ReviewStreamHead, ReviewStreamLocator,
 };
 pub use session::{ProjectSession, SessionState, SessionTransitionError};
 pub use settings::{

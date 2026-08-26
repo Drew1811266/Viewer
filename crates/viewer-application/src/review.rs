@@ -78,18 +78,36 @@ impl ReviewCatalog {
 
 pub trait ReviewRepositoryPort: Send + Sync {
     fn load_catalog(&self) -> Result<ReviewCatalog, ReviewRepositoryError>;
+    fn load_active_draft(&self) -> Result<Option<ReviewDraft>, ReviewRepositoryError>;
     fn load_draft(
         &self,
         stream_id: ReviewStreamId,
         round_id: ReviewRoundId,
     ) -> Result<Option<ReviewDraft>, ReviewRepositoryError>;
     fn save_draft(&self, draft: &ReviewDraft) -> Result<(), ReviewRepositoryError>;
+    fn delete_draft(
+        &self,
+        stream_id: ReviewStreamId,
+        round_id: ReviewRoundId,
+    ) -> Result<(), ReviewRepositoryError>;
     fn load_completed(
         &self,
         stream_id: ReviewStreamId,
         round_id: ReviewRoundId,
     ) -> Result<Option<ReviewSnapshot>, ReviewRepositoryError>;
     fn publish(&self, snapshot: &ReviewSnapshot) -> Result<(), ReviewRepositoryError>;
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct ReviewRepositoryInspection {
+    pub catalog: ReviewCatalog,
+    pub active_draft: Option<ReviewDraft>,
+}
+
+pub trait ReviewRepositoryProviderPort: Send + Sync {
+    fn inspect(&self) -> Result<ReviewRepositoryInspection, ReviewRepositoryError>;
+    fn open_reader(&self) -> Result<Box<dyn ReviewRepositoryPort>, ReviewRepositoryError>;
+    fn open_writer(&self) -> Result<Box<dyn ReviewRepositoryPort>, ReviewRepositoryError>;
 }
 
 #[derive(Clone, Copy, Debug, Eq, Error, PartialEq)]

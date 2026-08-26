@@ -11,6 +11,18 @@ pub const MAX_PRODUCTION_CONTEXT_ENTRIES: usize = 64;
 pub const MAX_PRODUCTION_CONTEXT_KEY_BYTES: usize = 128;
 pub const MAX_PRODUCTION_CONTEXT_VALUE_BYTES: usize = 4_096;
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ReviewProtocolVersion {
+    V1,
+    V2,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct DecodedReview<T> {
+    pub version: ReviewProtocolVersion,
+    pub value: T,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ProductionAsset {
     pub producer_asset_id: ProductionId,

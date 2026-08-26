@@ -6,8 +6,9 @@ use viewer_domain::review::{
     FeedbackAnchor, ImageStroke, NormalizedPoint, ReviewMedia, ReviewabilityFailure,
 };
 use viewer_infrastructure::review::{
-    ReviewProtocolError, decode_catalog, decode_completed, decode_draft,
-    decode_production_manifest, encode_catalog, encode_completed, encode_draft,
+    ReviewProtocolError, decode_catalog, decode_completed, decode_completed_versioned,
+    decode_draft, decode_production_manifest, encode_catalog, encode_completed,
+    encode_completed_v2, encode_draft,
 };
 
 fn fixture(name: &str) -> Vec<u8> {
@@ -101,6 +102,14 @@ fn v1_encoder_rejects_image_strokes_without_panicking() {
     );
 
     assert_eq!(encode_draft(&draft), Err(ReviewProtocolError::InvalidData));
+}
+
+#[test]
+fn canonical_v2_round_decodes_and_reencodes_byte_for_byte() {
+    let completed = fixture("review-round-v2.valid.json");
+    let decoded = decode_completed_versioned(&completed).unwrap();
+
+    assert_eq!(encode_completed_v2(&decoded.value).unwrap(), completed);
 }
 
 #[test]

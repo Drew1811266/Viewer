@@ -1,0 +1,26 @@
+{
+  "projectId": "00000000-0000-4000-8000-000000000001",
+  "protocolVersion": "viewer.review/2",
+  "streams": [
+    {
+      "batchId": "batch-b",
+      "completedRounds": [
+        {
+          "blake3": "a729a92519621730581c27472bca0e947df37d819105883ff57b65b20d8be43f",
+          "location": "rounds/00000000-0000-4000-8000-000000000202.json",
+          "protocolVersion": "viewer.review/1",
+          "reviewRoundId": "00000000-0000-4000-8000-000000000202"
+        },
+        {
+          "blake3": "0000000000000000000000000000000000000000000000000000000000000000",
+          "location": "rounds/00000000-0000-4000-8000-000000000204/round.json",
+          "protocolVersion": "viewer.review/2",
+          "reviewRoundId": "00000000-0000-4000-8000-000000000204"
+        }
+      ],
+      "latestCompletedRoundId": "00000000-0000-4000-8000-000000000204",
+      "reviewStreamId": "00000000-0000-4000-8000-000000000102",
+      "taskId": "task-b"
+    }
+  ]
+}

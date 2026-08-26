@@ -1,0 +1,54 @@
+{
+  "assets": [
+    {
+      "assetVersionId": "00000000-0000-4000-8000-000000000301",
+      "evidence": {
+        "blake3": "0000000000000000000000000000000000000000000000000000000000000000",
+        "modifiedNs": "1000000001",
+        "sizeBytes": 1024
+      },
+      "media": {
+        "height": 1024,
+        "kind": "image",
+        "width": 1024
+      },
+      "relativePath": "outputs/image-1.png",
+      "sourceEntityId": "00000000-0000-4000-8000-000000000051"
+    }
+  ],
+  "batchId": "batch-b",
+  "createdAtMs": 1000,
+  "feedback": [
+    {
+      "createdAtMs": 1100,
+      "feedbackId": "00000000-0000-4000-8000-000000000401",
+      "targets": [
+        {
+          "anchor": {
+            "kind": "imageStroke",
+            "points": [
+              {
+                "x": 0.2,
+                "y": 0.2
+              },
+              {
+                "x": 0.8,
+                "y": 0.7
+              }
+            ]
+          },
+          "assetVersionId": "00000000-0000-4000-8000-000000000301"
+        }
+      ],
+      "text": "袖口边缘需要重画"
+    }
+  ],
+  "previousCompletedRoundId": "00000000-0000-4000-8000-000000000202",
+  "projectId": "00000000-0000-4000-8000-000000000001",
+  "protocolVersion": "viewer.review/2",
+  "reviewRoundId": "00000000-0000-4000-8000-000000000204",
+  "reviewStreamId": "00000000-0000-4000-8000-000000000102",
+  "status": "draft",
+  "taskId": "task-b",
+  "unreviewable": []
+}

@@ -40,11 +40,11 @@ pub use ports::{
 };
 pub use project::{ActiveProject, PreparedProject, ProjectOpenError, ProjectSessionService};
 pub use review::{
-    MAX_COMPLETED_ROUNDS_PER_STREAM, MAX_PRODUCTION_CONTEXT_ENTRIES,
+    DecodedReview, MAX_COMPLETED_ROUNDS_PER_STREAM, MAX_PRODUCTION_CONTEXT_ENTRIES,
     MAX_PRODUCTION_CONTEXT_KEY_BYTES, MAX_PRODUCTION_CONTEXT_VALUE_BYTES, MAX_REVIEW_STREAMS,
-    ProductionAsset, ProductionManifest, ReviewCatalog, ReviewCatalogError, ReviewRepositoryError,
-    ReviewRepositoryInspection, ReviewRepositoryPort, ReviewRepositoryProviderPort,
-    ReviewStreamHead, ReviewStreamLocator,
+    ProductionAsset, ProductionManifest, ReviewCatalog, ReviewCatalogError, ReviewProtocolVersion,
+    ReviewRepositoryError, ReviewRepositoryInspection, ReviewRepositoryPort,
+    ReviewRepositoryProviderPort, ReviewStreamHead, ReviewStreamLocator,
 };
 pub use review_assets::{
     PreparedReviewAsset, ReviewAssetCatalogPort, ReviewAssetConflictKind, ReviewAssetError,

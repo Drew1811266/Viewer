@@ -1,0 +1,606 @@
+use super::common::{
+    MAX_REVIEW_DOCUMENT_BYTES, ReviewProtocolError, decode_document, encode_document, parse_digest,
+};
+use super::{REVIEW_PROTOCOL_V1, REVIEW_PROTOCOL_V2, v1};
+use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
+use std::collections::HashSet;
+use std::str::FromStr;
+use viewer_domain::AssetVersionId;
+use viewer_domain::review::{
+    Feedback, FeedbackAnchor, FeedbackTarget, ImageStroke, NormalizedPoint, NormalizedRect,
+    ReviewDraft, ReviewRoundError, ReviewSnapshot, ReviewValueError,
+};
+
+pub fn decode_draft(bytes: &[u8]) -> Result<ReviewDraft, ReviewProtocolError> {
+    let value: Value = decode_document(bytes, MAX_REVIEW_DOCUMENT_BYTES, REVIEW_PROTOCOL_V2)?;
+    let stored: StoredDraftV2 =
+        serde_json::from_value(value.clone()).map_err(|_| ReviewProtocolError::InvalidData)?;
+    let shell = v1_shell(value, &stored.feedback, false)?;
+    let decoded = v1::decode_draft(&shell)?;
+    rebuild_draft(decoded, stored.feedback)
+}
+
+pub fn encode_draft(draft: &ReviewDraft) -> Result<Vec<u8>, ReviewProtocolError> {
+    let validated = validated_draft(draft)?;
+    let shell = v1_safe_draft(&validated)?;
+    let mut value: Value = serde_json::from_slice(&v1::encode_draft(&shell)?)
+        .map_err(|_| ReviewProtocolError::InvalidData)?;
+    set_protocol(&mut value, REVIEW_PROTOCOL_V2)?;
+    set_feedback(&mut value, &validated.feedback)?;
+    encode_document(&value, MAX_REVIEW_DOCUMENT_BYTES)
+}
+
+pub fn decode_completed(bytes: &[u8]) -> Result<ReviewSnapshot, ReviewProtocolError> {
+    let value: Value = decode_document(bytes, MAX_REVIEW_DOCUMENT_BYTES, REVIEW_PROTOCOL_V2)?;
+    let stored: StoredCompletedV2 =
+        serde_json::from_value(value.clone()).map_err(|_| ReviewProtocolError::InvalidData)?;
+    let shell = v1_shell(value, &stored.feedback, true)?;
+    let decoded = v1::decode_completed(&shell)?;
+    let snapshot = rebuild_snapshot(decoded, stored.feedback)?;
+    validate_artifacts(&stored.artifacts, &snapshot)?;
+    Ok(snapshot)
+}
+
+pub fn encode_completed(snapshot: &ReviewSnapshot) -> Result<Vec<u8>, ReviewProtocolError> {
+    let validated = validated_snapshot(snapshot)?;
+    let shell = v1_safe_snapshot(&validated)?;
+    let mut value: Value = serde_json::from_slice(&v1::encode_completed(&shell)?)
+        .map_err(|_| ReviewProtocolError::InvalidData)?;
+    set_protocol(&mut value, REVIEW_PROTOCOL_V2)?;
+    set_feedback(&mut value, &validated.feedback)?;
+    value
+        .as_object_mut()
+        .ok_or(ReviewProtocolError::InvalidData)?
+        .insert("artifacts".to_owned(), Value::Array(Vec::new()));
+    encode_document(&value, MAX_REVIEW_DOCUMENT_BYTES)
+}
+
+fn v1_shell(
+    mut value: Value,
+    feedback: &[StoredFeedbackV2],
+    completed: bool,
+) -> Result<Vec<u8>, ReviewProtocolError> {
+    set_protocol(&mut value, REVIEW_PROTOCOL_V1)?;
+    let object = value
+        .as_object_mut()
+        .ok_or(ReviewProtocolError::InvalidData)?;
+    if completed {
+        object.remove("artifacts");
+    }
+    object.insert(
+        "feedback".to_owned(),
+        Value::Array(feedback.iter().map(v1_feedback_shell).collect()),
+    );
+    serde_json::to_vec(&value).map_err(|_| ReviewProtocolError::InvalidData)
+}
+
+fn set_protocol(value: &mut Value, protocol: &str) -> Result<(), ReviewProtocolError> {
+    value
+        .as_object_mut()
+        .ok_or(ReviewProtocolError::InvalidData)?
+        .insert(
+            "protocolVersion".to_owned(),
+            Value::String(protocol.to_owned()),
+        );
+    Ok(())
+}
+
+fn set_feedback(value: &mut Value, feedback: &[Feedback]) -> Result<(), ReviewProtocolError> {
+    let stored = feedback
+        .iter()
+        .map(StoredFeedbackV2::from_domain)
+        .collect::<Result<Vec<_>, _>>()?;
+    value
+        .as_object_mut()
+        .ok_or(ReviewProtocolError::InvalidData)?
+        .insert(
+            "feedback".to_owned(),
+            serde_json::to_value(stored).map_err(|_| ReviewProtocolError::InvalidData)?,
+        );
+    Ok(())
+}
+
+fn v1_feedback_shell(feedback: &StoredFeedbackV2) -> Value {
+    let mut asset_ids = HashSet::new();
+    let targets = feedback
+        .targets
+        .iter()
+        .filter(|target| asset_ids.insert(target.asset_version_id.as_str()))
+        .map(|target| {
+            json!({
+                "assetVersionId": target.asset_version_id,
+                "anchor": { "kind": "asset" }
+            })
+        })
+        .collect::<Vec<_>>();
+    json!({
+        "feedbackId": feedback.feedback_id,
+        "text": feedback.text,
+        "createdAtMs": feedback.created_at_ms,
+        "targets": targets,
+    })
+}
+
+fn rebuild_draft(
+    decoded: ReviewDraft,
+    feedback: Vec<StoredFeedbackV2>,
+) -> Result<ReviewDraft, ReviewProtocolError> {
+    let mut rebuilt = ReviewDraft::new(
+        decoded.project_id,
+        decoded.review_stream_id,
+        decoded.review_round_id,
+        decoded.production,
+        decoded.previous_completed_round_id,
+        decoded.created_at_ms,
+        decoded.assets,
+    )
+    .map_err(map_round_error)?;
+    for stored in feedback {
+        rebuilt
+            .upsert_feedback(stored.into_domain()?)
+            .map_err(map_round_error)?;
+    }
+    for item in decoded.unreviewable {
+        rebuilt
+            .mark_unreviewable(item.asset_version_id, item.failure)
+            .map_err(map_round_error)?;
+    }
+    Ok(rebuilt)
+}
+
+fn rebuild_snapshot(
+    decoded: ReviewSnapshot,
+    feedback: Vec<StoredFeedbackV2>,
+) -> Result<ReviewSnapshot, ReviewProtocolError> {
+    let expected_outcomes = decoded.outcomes.clone();
+    let completed_at_ms = decoded.completed_at_ms;
+    let mut draft = ReviewDraft::new(
+        decoded.project_id,
+        decoded.review_stream_id,
+        decoded.review_round_id,
+        decoded.production,
+        decoded.previous_completed_round_id,
+        decoded.created_at_ms,
+        decoded.assets,
+    )
+    .map_err(map_round_error)?;
+    for stored in feedback {
+        draft
+            .upsert_feedback(stored.into_domain()?)
+            .map_err(map_round_error)?;
+    }
+    for outcome in &expected_outcomes {
+        if let Some(failure) = outcome.failure {
+            draft
+                .mark_unreviewable(outcome.asset_version_id, failure)
+                .map_err(map_round_error)?;
+        }
+    }
+    let rebuilt = draft.complete(completed_at_ms).map_err(map_round_error)?;
+    if rebuilt.outcomes != expected_outcomes {
+        return Err(ReviewProtocolError::InvalidData);
+    }
+    Ok(rebuilt)
+}
+
+fn validated_draft(draft: &ReviewDraft) -> Result<ReviewDraft, ReviewProtocolError> {
+    let mut validated = ReviewDraft::new(
+        draft.project_id,
+        draft.review_stream_id,
+        draft.review_round_id,
+        draft.production.clone(),
+        draft.previous_completed_round_id,
+        draft.created_at_ms,
+        draft.assets.clone(),
+    )
+    .map_err(map_round_error)?;
+    let mut ids = HashSet::new();
+    for feedback in &draft.feedback {
+        if !ids.insert(feedback.id) {
+            return Err(ReviewProtocolError::InvalidData);
+        }
+        validated
+            .upsert_feedback(feedback.clone())
+            .map_err(map_round_error)?;
+    }
+    let mut unreviewable_ids = HashSet::new();
+    for item in &draft.unreviewable {
+        if !unreviewable_ids.insert(item.asset_version_id) {
+            return Err(ReviewProtocolError::InvalidData);
+        }
+        validated
+            .mark_unreviewable(item.asset_version_id, item.failure)
+            .map_err(map_round_error)?;
+    }
+    if &validated != draft {
+        return Err(ReviewProtocolError::InvalidData);
+    }
+    Ok(validated)
+}
+
+fn validated_snapshot(snapshot: &ReviewSnapshot) -> Result<ReviewSnapshot, ReviewProtocolError> {
+    let mut draft = ReviewDraft::new(
+        snapshot.project_id,
+        snapshot.review_stream_id,
+        snapshot.review_round_id,
+        snapshot.production.clone(),
+        snapshot.previous_completed_round_id,
+        snapshot.created_at_ms,
+        snapshot.assets.clone(),
+    )
+    .map_err(map_round_error)?;
+    let mut ids = HashSet::new();
+    for feedback in &snapshot.feedback {
+        if !ids.insert(feedback.id) {
+            return Err(ReviewProtocolError::InvalidData);
+        }
+        draft
+            .upsert_feedback(feedback.clone())
+            .map_err(map_round_error)?;
+    }
+    for outcome in &snapshot.outcomes {
+        if let Some(failure) = outcome.failure {
+            draft
+                .mark_unreviewable(outcome.asset_version_id, failure)
+                .map_err(map_round_error)?;
+        }
+    }
+    let validated = draft
+        .complete(snapshot.completed_at_ms)
+        .map_err(map_round_error)?;
+    if &validated != snapshot {
+        return Err(ReviewProtocolError::InvalidData);
+    }
+    Ok(validated)
+}
+
+fn v1_safe_draft(draft: &ReviewDraft) -> Result<ReviewDraft, ReviewProtocolError> {
+    let mut safe = draft.clone();
+    safe.feedback = draft
+        .feedback
+        .iter()
+        .map(v1_safe_feedback)
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(safe)
+}
+
+fn v1_safe_snapshot(snapshot: &ReviewSnapshot) -> Result<ReviewSnapshot, ReviewProtocolError> {
+    let mut safe = snapshot.clone();
+    safe.feedback = snapshot
+        .feedback
+        .iter()
+        .map(v1_safe_feedback)
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(safe)
+}
+
+fn v1_safe_feedback(feedback: &Feedback) -> Result<Feedback, ReviewProtocolError> {
+    let mut asset_ids = HashSet::new();
+    let targets = feedback
+        .targets
+        .iter()
+        .filter(|target| asset_ids.insert(target.asset_version_id))
+        .map(|target| FeedbackTarget {
+            asset_version_id: target.asset_version_id,
+            anchor: FeedbackAnchor::Asset,
+        })
+        .collect();
+    Feedback::new(
+        feedback.id,
+        feedback.text.clone(),
+        feedback.created_at_ms,
+        targets,
+    )
+    .map_err(map_value_error)
+}
+
+fn validate_artifacts(
+    artifacts: &[StoredArtifactV2],
+    snapshot: &ReviewSnapshot,
+) -> Result<(), ReviewProtocolError> {
+    let mut asset_ids = HashSet::new();
+    for artifact in artifacts {
+        if !asset_ids.insert(artifact.asset_version_id.as_str())
+            || !valid_location(&artifact.relative_path, "artifacts")
+            || artifact.media_type != "image/png"
+            || artifact.width == 0
+            || artifact.height == 0
+        {
+            return Err(ReviewProtocolError::InvalidData);
+        }
+        parse_digest(&artifact.blake3)?;
+        let asset_id: AssetVersionId = parse_id(&artifact.asset_version_id)?;
+        if !snapshot.assets.iter().any(|asset| asset.id == asset_id) {
+            return Err(ReviewProtocolError::InvalidData);
+        }
+        let expected = snapshot
+            .feedback
+            .iter()
+            .filter(|feedback| {
+                feedback.targets.iter().any(|target| {
+                    target.asset_version_id == asset_id
+                        && matches!(
+                            target.anchor,
+                            FeedbackAnchor::ImageRect(_) | FeedbackAnchor::ImageStroke(_)
+                        )
+                })
+            })
+            .map(|feedback| feedback.id)
+            .collect::<HashSet<_>>();
+        let mut ordinals = HashSet::new();
+        let mut feedback_ids = HashSet::new();
+        for annotation in &artifact.annotations {
+            let feedback_id = parse_id(&annotation.feedback_id)?;
+            if annotation.ordinal == 0
+                || !ordinals.insert(annotation.ordinal)
+                || !feedback_ids.insert(feedback_id)
+            {
+                return Err(ReviewProtocolError::InvalidData);
+            }
+        }
+        if feedback_ids != expected
+            || (1..=artifact.annotations.len() as u32).any(|ordinal| !ordinals.contains(&ordinal))
+        {
+            return Err(ReviewProtocolError::InvalidData);
+        }
+    }
+    Ok(())
+}
+
+fn valid_location(value: &str, root: &str) -> bool {
+    if value.is_empty() || value.starts_with('/') || value.contains('\\') || value.contains('\0') {
+        return false;
+    }
+    let mut components = value.split('/');
+    components.next() == Some(root)
+        && components.clone().next().is_some()
+        && components
+            .all(|component| !component.is_empty() && component != "." && component != "..")
+}
+
+fn parse_id<T>(value: &str) -> Result<T, ReviewProtocolError>
+where
+    T: FromStr,
+{
+    T::from_str(value).map_err(|_| ReviewProtocolError::InvalidData)
+}
+
+fn map_value_error(error: ReviewValueError) -> ReviewProtocolError {
+    match error {
+        ReviewValueError::LimitExceeded => ReviewProtocolError::LimitExceeded,
+        _ => ReviewProtocolError::InvalidData,
+    }
+}
+
+fn map_round_error(error: ReviewRoundError) -> ReviewProtocolError {
+    match error {
+        ReviewRoundError::LimitExceeded => ReviewProtocolError::LimitExceeded,
+        _ => ReviewProtocolError::InvalidData,
+    }
+}
+
+#[allow(dead_code)]
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct StoredDraftV2 {
+    protocol_version: String,
+    status: StoredDraftStatus,
+    project_id: String,
+    review_stream_id: String,
+    review_round_id: String,
+    task_id: Option<String>,
+    batch_id: Option<String>,
+    previous_completed_round_id: Option<String>,
+    created_at_ms: i64,
+    assets: Vec<Value>,
+    feedback: Vec<StoredFeedbackV2>,
+    unreviewable: Vec<Value>,
+}
+
+#[allow(dead_code)]
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct StoredCompletedV2 {
+    protocol_version: String,
+    status: StoredCompletedStatus,
+    project_id: String,
+    review_stream_id: String,
+    review_round_id: String,
+    task_id: Option<String>,
+    batch_id: Option<String>,
+    previous_completed_round_id: Option<String>,
+    created_at_ms: i64,
+    completed_at_ms: i64,
+    assets: Vec<Value>,
+    feedback: Vec<StoredFeedbackV2>,
+    outcomes: Vec<Value>,
+    artifacts: Vec<StoredArtifactV2>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum StoredDraftStatus {
+    Draft,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum StoredCompletedStatus {
+    Completed,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct StoredFeedbackV2 {
+    feedback_id: String,
+    text: String,
+    created_at_ms: i64,
+    targets: Vec<StoredTargetV2>,
+}
+
+impl StoredFeedbackV2 {
+    fn from_domain(feedback: &Feedback) -> Result<Self, ReviewProtocolError> {
+        Ok(Self {
+            feedback_id: feedback.id.to_string(),
+            text: feedback.text.clone(),
+            created_at_ms: feedback.created_at_ms,
+            targets: feedback
+                .targets
+                .iter()
+                .map(StoredTargetV2::from_domain)
+                .collect::<Result<Vec<_>, _>>()?,
+        })
+    }
+
+    fn into_domain(self) -> Result<Feedback, ReviewProtocolError> {
+        Feedback::new(
+            parse_id(&self.feedback_id)?,
+            self.text,
+            self.created_at_ms,
+            self.targets
+                .into_iter()
+                .map(StoredTargetV2::into_domain)
+                .collect::<Result<Vec<_>, _>>()?,
+        )
+        .map_err(map_value_error)
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct StoredTargetV2 {
+    asset_version_id: String,
+    anchor: StoredAnchorV2,
+}
+
+impl StoredTargetV2 {
+    fn from_domain(target: &FeedbackTarget) -> Result<Self, ReviewProtocolError> {
+        Ok(Self {
+            asset_version_id: target.asset_version_id.to_string(),
+            anchor: StoredAnchorV2::from_domain(&target.anchor),
+        })
+    }
+
+    fn into_domain(self) -> Result<FeedbackTarget, ReviewProtocolError> {
+        Ok(FeedbackTarget {
+            asset_version_id: parse_id(&self.asset_version_id)?,
+            anchor: self.anchor.into_domain()?,
+        })
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(
+    tag = "kind",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase",
+    deny_unknown_fields
+)]
+enum StoredAnchorV2 {
+    Asset,
+    ImageRect {
+        x: f64,
+        y: f64,
+        width: f64,
+        height: f64,
+    },
+    ImageStroke {
+        points: Vec<StoredPointV2>,
+    },
+    VideoPoint {
+        position_us: u64,
+    },
+    VideoRange {
+        start_us: u64,
+        end_us: u64,
+    },
+}
+
+impl StoredAnchorV2 {
+    fn from_domain(anchor: &FeedbackAnchor) -> Self {
+        match anchor {
+            FeedbackAnchor::Asset => Self::Asset,
+            FeedbackAnchor::ImageRect(rect) => Self::ImageRect {
+                x: rect.x(),
+                y: rect.y(),
+                width: rect.width(),
+                height: rect.height(),
+            },
+            FeedbackAnchor::ImageStroke(stroke) => Self::ImageStroke {
+                points: stroke
+                    .points()
+                    .iter()
+                    .map(|point| StoredPointV2 {
+                        x: point.x(),
+                        y: point.y(),
+                    })
+                    .collect(),
+            },
+            FeedbackAnchor::VideoPoint { position_us } => Self::VideoPoint {
+                position_us: *position_us,
+            },
+            FeedbackAnchor::VideoRange { start_us, end_us } => Self::VideoRange {
+                start_us: *start_us,
+                end_us: *end_us,
+            },
+        }
+    }
+
+    fn into_domain(self) -> Result<FeedbackAnchor, ReviewProtocolError> {
+        match self {
+            Self::Asset => Ok(FeedbackAnchor::Asset),
+            Self::ImageRect {
+                x,
+                y,
+                width,
+                height,
+            } => Ok(FeedbackAnchor::ImageRect(
+                NormalizedRect::new(x, y, width, height).map_err(map_value_error)?,
+            )),
+            Self::ImageStroke { points } => Ok(FeedbackAnchor::ImageStroke(
+                ImageStroke::new(
+                    points
+                        .into_iter()
+                        .map(|point| {
+                            NormalizedPoint::new(point.x, point.y).map_err(map_value_error)
+                        })
+                        .collect::<Result<Vec<_>, _>>()?,
+                )
+                .map_err(map_value_error)?,
+            )),
+            Self::VideoPoint { position_us } => Ok(FeedbackAnchor::VideoPoint { position_us }),
+            Self::VideoRange { start_us, end_us } => {
+                Ok(FeedbackAnchor::VideoRange { start_us, end_us })
+            }
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct StoredPointV2 {
+    x: f64,
+    y: f64,
+}
+
+#[allow(dead_code)]
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct StoredArtifactV2 {
+    asset_version_id: String,
+    relative_path: String,
+    blake3: String,
+    media_type: String,
+    width: u32,
+    height: u32,
+    annotations: Vec<StoredArtifactAnnotationV2>,
+}
+
+#[allow(dead_code)]
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct StoredArtifactAnnotationV2 {
+    ordinal: u32,
+    feedback_id: String,
+}

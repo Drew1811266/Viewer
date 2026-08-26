@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://viewer.local/protocol/viewer-review-index-v2.schema.json",
+  "title": "Viewer Review Catalog v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["protocolVersion", "projectId", "streams"],
+  "properties": {
+    "protocolVersion": { "const": "viewer.review/2" },
+    "projectId": { "$ref": "#/$defs/uuid" },
+    "streams": {
+      "type": "array",
+      "maxItems": 10000,
+      "items": { "$ref": "#/$defs/stream" }
+    }
+  },
+  "$defs": {
+    "uuid": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+    },
+    "productionId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "roundRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reviewRoundId", "protocolVersion", "location", "blake3"],
+      "properties": {
+        "reviewRoundId": { "$ref": "#/$defs/uuid" },
+        "protocolVersion": { "enum": ["viewer.review/1", "viewer.review/2"] },
+        "location": {
+          "type": "string",
+          "pattern": "^rounds/(?!.*(?:^|/)\\.\\.?/)(?!/)(?!.*\\\\).+$"
+        },
+        "blake3": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "stream": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reviewStreamId", "completedRounds", "latestCompletedRoundId"],
+      "dependentRequired": { "taskId": ["batchId"], "batchId": ["taskId"] },
+      "properties": {
+        "reviewStreamId": { "$ref": "#/$defs/uuid" },
+        "taskId": { "$ref": "#/$defs/productionId" },
+        "batchId": { "$ref": "#/$defs/productionId" },
+        "completedRounds": {
+          "type": "array",
+          "maxItems": 10000,
+          "items": { "$ref": "#/$defs/roundRecord" }
+        },
+        "latestCompletedRoundId": {
+          "oneOf": [{ "$ref": "#/$defs/uuid" }, { "type": "null" }]
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,134 @@
+{
+  "artifacts": [],
+  "assets": [
+    {
+      "assetVersionId": "00000000-0000-4000-8000-000000000301",
+      "evidence": {
+        "blake3": "0000000000000000000000000000000000000000000000000000000000000000",
+        "modifiedNs": "1000000001",
+        "sizeBytes": 1024
+      },
+      "media": {
+        "height": 1024,
+        "kind": "image",
+        "width": 1024
+      },
+      "producerAssetId": "asset-image-1",
+      "relativePath": "outputs/image-1.png",
+      "sourceEntityId": "00000000-0000-4000-8000-000000000051"
+    },
+    {
+      "assetVersionId": "00000000-0000-4000-8000-000000000302",
+      "evidence": {
+        "modifiedNs": "1000000002",
+        "sizeBytes": 4096
+      },
+      "media": {
+        "displayHeight": 1080,
+        "displayWidth": 1920,
+        "durationUs": 5000000,
+        "kind": "video"
+      },
+      "relativePath": "outputs/video-1.mp4"
+    }
+  ],
+  "batchId": "batch-b",
+  "completedAtMs": 1200,
+  "createdAtMs": 1000,
+  "feedback": [
+    {
+      "createdAtMs": 1100,
+      "feedbackId": "00000000-0000-4000-8000-000000000401",
+      "targets": [
+        {
+          "anchor": {
+            "height": 0.25,
+            "kind": "imageRect",
+            "width": 0.2,
+            "x": 0.6,
+            "y": 0.3
+          },
+          "assetVersionId": "00000000-0000-4000-8000-000000000301"
+        }
+      ],
+      "text": "右手结构需要修正"
+    },
+    {
+      "createdAtMs": 1110,
+      "feedbackId": "00000000-0000-4000-8000-000000000402",
+      "targets": [
+        {
+          "anchor": {
+            "kind": "imageStroke",
+            "points": [
+              {
+                "x": 0.2,
+                "y": 0.2
+              },
+              {
+                "x": 0.8,
+                "y": 0.7
+              }
+            ]
+          },
+          "assetVersionId": "00000000-0000-4000-8000-000000000301"
+        }
+      ],
+      "text": "袖口边缘需要重画"
+    },
+    {
+      "createdAtMs": 1120,
+      "feedbackId": "00000000-0000-4000-8000-000000000403",
+      "targets": [
+        {
+          "anchor": {
+            "kind": "videoPoint",
+            "positionUs": 1000000
+          },
+          "assetVersionId": "00000000-0000-4000-8000-000000000302"
+        }
+      ],
+      "text": "这一帧需要调整"
+    },
+    {
+      "createdAtMs": 1130,
+      "feedbackId": "00000000-0000-4000-8000-000000000404",
+      "targets": [
+        {
+          "anchor": {
+            "endUs": 3000000,
+            "kind": "videoRange",
+            "startUs": 2000000
+          },
+          "assetVersionId": "00000000-0000-4000-8000-000000000302"
+        }
+      ],
+      "text": "这一段节奏需要优化"
+    }
+  ],
+  "outcomes": [
+    {
+      "assetVersionId": "00000000-0000-4000-8000-000000000301",
+      "feedbackIds": [
+        "00000000-0000-4000-8000-000000000401",
+        "00000000-0000-4000-8000-000000000402"
+      ],
+      "kind": "revise"
+    },
+    {
+      "assetVersionId": "00000000-0000-4000-8000-000000000302",
+      "feedbackIds": [
+        "00000000-0000-4000-8000-000000000403",
+        "00000000-0000-4000-8000-000000000404"
+      ],
+      "kind": "revise"
+    }
+  ],
+  "previousCompletedRoundId": "00000000-0000-4000-8000-000000000202",
+  "projectId": "00000000-0000-4000-8000-000000000001",
+  "protocolVersion": "viewer.review/2",
+  "reviewRoundId": "00000000-0000-4000-8000-000000000204",
+  "reviewStreamId": "00000000-0000-4000-8000-000000000102",
+  "status": "completed",
+  "taskId": "task-b"
+}

@@ -5,10 +5,10 @@ use std::sync::{Arc, Mutex};
 use viewer_application::{
     ClockPort, PersistedReviewDraft, PreparedReviewAsset, ReviewAssetCatalogPort, ReviewAssetError,
     ReviewAssetValidation, ReviewCatalog, ReviewProgressPort, ReviewProtocolVersion,
-    ReviewRecordLocation, ReviewRepositoryError, ReviewRepositoryInspection, ReviewRepositoryPort,
-    ReviewRepositoryProviderPort, ReviewRoundRecord, ReviewScope, ReviewScopeResolution,
-    ReviewSessionPhase, ReviewSessionService, ReviewStreamHead, ReviewTaskCancellation,
-    ReviewTaskProgress,
+    ReviewPublication, ReviewRecordLocation, ReviewRepositoryError, ReviewRepositoryInspection,
+    ReviewRepositoryPort, ReviewRepositoryProviderPort, ReviewRoundRecord, ReviewScope,
+    ReviewScopeResolution, ReviewSessionPhase, ReviewSessionService, ReviewStreamHead,
+    ReviewTaskCancellation, ReviewTaskProgress,
 };
 use viewer_domain::review::{
     AssetEvidence, AssetVersion, ProductionId, ProductionScope, ReviewDraft, ReviewMedia,
@@ -147,6 +147,7 @@ struct RepositoryState {
     fail_save: bool,
     draft_on_next_writer_open: Option<ReviewDraft>,
     save_count: usize,
+    last_saved_protocol_version: Option<ReviewProtocolVersion>,
 }
 
 struct FakeRepositories {
@@ -297,6 +298,7 @@ impl ReviewRepositoryPort for FakeRepository {
     fn save_draft(&self, draft: &PersistedReviewDraft) -> Result<(), ReviewRepositoryError> {
         let mut state = self.state.lock().unwrap();
         state.save_count += 1;
+        state.last_saved_protocol_version = Some(draft.protocol_version);
         if state.fail_save {
             return Err(ReviewRepositoryError::Unavailable);
         }
@@ -342,7 +344,7 @@ impl ReviewRepositoryPort for FakeRepository {
             .cloned())
     }
 
-    fn publish(&self, _snapshot: &ReviewSnapshot) -> Result<(), ReviewRepositoryError> {
+    fn publish(&self, _publication: &ReviewPublication) -> Result<(), ReviewRepositoryError> {
         Ok(())
     }
 }
@@ -624,6 +626,15 @@ async fn start_creates_one_manual_draft_marks_failures_and_holds_writer_until_sh
     assert_eq!(saved.production, None);
     assert_eq!(saved.previous_completed_round_id, None);
     assert_eq!(saved.assets.len(), 2);
+    assert_eq!(
+        fixture
+            .repositories
+            .state
+            .lock()
+            .unwrap()
+            .last_saved_protocol_version,
+        Some(ReviewProtocolVersion::V2)
+    );
 
     fixture.service.shutdown().await;
     assert!(!fixture.repositories.writer_is_held());

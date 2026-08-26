@@ -1,5 +1,6 @@
 mod assets;
 mod atomic;
+mod bundle;
 mod catalog;
 mod change_ledger;
 mod lease;

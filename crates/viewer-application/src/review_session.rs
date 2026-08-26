@@ -1,9 +1,9 @@
 use crate::{
     ClockPort, PersistedReviewDraft, PreparedReviewAsset, ReviewAssetCatalogPort,
     ReviewAssetConflictKind, ReviewAssetError, ReviewAssetValidation, ReviewCatalog,
-    ReviewProgressPort, ReviewProtocolVersion, ReviewRepositoryError, ReviewRepositoryPort,
-    ReviewRepositoryProviderPort, ReviewScope, ReviewScopeResolution, ReviewStreamHead,
-    ReviewTaskCancellation,
+    ReviewProgressPort, ReviewProtocolVersion, ReviewPublication, ReviewRepositoryError,
+    ReviewRepositoryPort, ReviewRepositoryProviderPort, ReviewScope, ReviewScopeResolution,
+    ReviewStreamHead, ReviewTaskCancellation,
 };
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -600,13 +600,13 @@ impl ReviewSessionService {
         }
         writer
             .save_draft(&PersistedReviewDraft {
-                protocol_version: ReviewProtocolVersion::V1,
+                protocol_version: ReviewProtocolVersion::V2,
                 draft: draft.clone(),
             })
             .map_err(|_| ReviewSessionError::SaveFailed)?;
         Ok(StartedReview {
             active: ActiveReviewSession {
-                protocol_version: ReviewProtocolVersion::V1,
+                protocol_version: ReviewProtocolVersion::V2,
                 draft,
                 prepared,
                 conflicts: vec![],
@@ -1035,7 +1035,7 @@ impl ReviewSessionService {
         cancellation: ReviewTaskCancellation,
         result: Result<ValidatedReview, ReviewSessionError>,
     ) -> Result<ReviewSessionSnapshot, ReviewSessionError> {
-        let (draft, writer) = {
+        let (protocol_version, draft, writer) = {
             let mut state = self.state.lock().await;
             if state.task.as_ref().map(|task| task.id) != Some(task_id) {
                 drop(state);
@@ -1122,6 +1122,7 @@ impl ReviewSessionService {
                 self.task_changed.notify_waiters();
                 return Err(ReviewSessionError::CompletionChanged);
             }
+            let protocol_version = active.protocol_version;
             let draft = active.draft.clone();
             if cancellation.is_cancelled() {
                 state.task = None;
@@ -1139,7 +1140,7 @@ impl ReviewSessionService {
                 .writer
                 .take()
                 .ok_or(ReviewSessionError::InvalidState)?;
-            (draft, writer)
+            (protocol_version, draft, writer)
         };
 
         let completed = match draft.complete(self.clock.unix_millis()) {
@@ -1154,7 +1155,11 @@ impl ReviewSessionService {
                     .await;
             }
         };
-        let publish_result = writer.publish(&completed);
+        let publish_result = writer.publish(&ReviewPublication {
+            protocol_version,
+            snapshot: completed.clone(),
+            artifacts: vec![],
+        });
         let directly_verified = publish_result.is_ok()
             && repository_has_exact_completed(writer.as_ref(), self.project_id, &completed);
         drop(writer);

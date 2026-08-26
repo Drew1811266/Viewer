@@ -5,6 +5,8 @@ use viewer_domain::review::{
 };
 use viewer_domain::{ProjectId, RelativePath, ReviewRoundId, ReviewStreamId};
 
+use crate::ReviewPublication;
+
 pub const MAX_REVIEW_STREAMS: usize = 10_000;
 pub const MAX_COMPLETED_ROUNDS_PER_STREAM: usize = 10_000;
 pub const MAX_PRODUCTION_CONTEXT_ENTRIES: usize = 64;
@@ -160,7 +162,7 @@ pub trait ReviewRepositoryPort: Send + Sync {
         stream_id: ReviewStreamId,
         round_id: ReviewRoundId,
     ) -> Result<Option<ReviewSnapshot>, ReviewRepositoryError>;
-    fn publish(&self, snapshot: &ReviewSnapshot) -> Result<(), ReviewRepositoryError>;
+    fn publish(&self, publication: &ReviewPublication) -> Result<(), ReviewRepositoryError>;
 }
 
 #[derive(Clone, Debug, PartialEq)]

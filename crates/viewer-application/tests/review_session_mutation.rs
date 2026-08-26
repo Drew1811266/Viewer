@@ -4,10 +4,10 @@ use std::sync::{Arc, Mutex};
 use viewer_application::{
     AddReviewFeedback, ClockPort, DeleteReviewFeedback, PersistedReviewDraft, PreparedReviewAsset,
     ReviewAssetCatalogPort, ReviewAssetError, ReviewAssetValidation, ReviewCatalog,
-    ReviewMutationGuard, ReviewProgressPort, ReviewProtocolVersion, ReviewRepositoryError,
-    ReviewRepositoryInspection, ReviewRepositoryPort, ReviewRepositoryProviderPort, ReviewScope,
-    ReviewScopeResolution, ReviewSessionService, ReviewTaskCancellation, ReviewTaskProgress,
-    UpdateReviewFeedback,
+    ReviewMutationGuard, ReviewProgressPort, ReviewProtocolVersion, ReviewPublication,
+    ReviewRepositoryError, ReviewRepositoryInspection, ReviewRepositoryPort,
+    ReviewRepositoryProviderPort, ReviewScope, ReviewScopeResolution, ReviewSessionService,
+    ReviewTaskCancellation, ReviewTaskProgress, UpdateReviewFeedback,
 };
 use viewer_domain::review::{
     AssetEvidence, AssetVersion, MAX_FEEDBACK_TEXT_BYTES, ReviewDraft, ReviewMedia, ReviewSnapshot,
@@ -219,7 +219,7 @@ impl ReviewRepositoryPort for FakeRepository {
         Ok(None)
     }
 
-    fn publish(&self, _snapshot: &ReviewSnapshot) -> Result<(), ReviewRepositoryError> {
+    fn publish(&self, _publication: &ReviewPublication) -> Result<(), ReviewRepositoryError> {
         Ok(())
     }
 }

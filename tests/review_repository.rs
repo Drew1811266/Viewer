@@ -1,15 +1,19 @@
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::{fs, path::Path};
 use tempfile::TempDir;
 use viewer_application::{
-    PersistedReviewDraft, ProjectAccess, ReviewCatalog, ReviewProtocolVersion,
-    ReviewRepositoryError, ReviewRepositoryPort, ReviewRepositoryProviderPort, ReviewStreamHead,
+    PersistedReviewDraft, ProjectAccess, ReviewArtifactAnnotation, ReviewCatalog,
+    ReviewProtocolVersion, ReviewPublication, ReviewRenderedArtifact, ReviewRepositoryError,
+    ReviewRepositoryPort, ReviewRepositoryProviderPort, ReviewStreamHead,
 };
 use viewer_domain::review::{
-    AssetEvidence, AssetVersion, ReviewDraft, ReviewMedia, ReviewSnapshot,
+    AssetEvidence, AssetVersion, Feedback, FeedbackAnchor, FeedbackTarget, NormalizedRect,
+    ReviewDraft, ReviewMedia, ReviewSnapshot,
 };
-use viewer_domain::{AssetVersionId, ProjectId, RelativePath, ReviewRoundId, ReviewStreamId};
+use viewer_domain::{
+    AssetVersionId, FeedbackId, ProjectId, RelativePath, ReviewRoundId, ReviewStreamId,
+};
 use viewer_infrastructure::review::{
     ProjectReviewRepository, ProjectReviewRepositoryProvider, ReviewRepositoryAccess,
     ReviewRepositoryFaultInjector, ReviewRepositoryFaultPoint, encode_catalog, encode_completed,
@@ -113,6 +117,13 @@ fn persisted_v1(draft: ReviewDraft) -> PersistedReviewDraft {
     }
 }
 
+fn persisted_v2(draft: ReviewDraft) -> PersistedReviewDraft {
+    PersistedReviewDraft {
+        protocol_version: ReviewProtocolVersion::V2,
+        draft,
+    }
+}
+
 fn open_writable(
     project: &PersistentProject,
 ) -> Result<ProjectReviewRepository, ReviewRepositoryError> {
@@ -138,6 +149,132 @@ fn completed_round(
     draft.complete(2_000).unwrap()
 }
 
+fn v1_publication(snapshot: ReviewSnapshot) -> ReviewPublication {
+    ReviewPublication {
+        protocol_version: ReviewProtocolVersion::V1,
+        snapshot,
+        artifacts: vec![],
+    }
+}
+
+fn v2_annotated_draft(project_id: ProjectId) -> ReviewDraft {
+    let mut draft = review_draft(
+        project_id,
+        ReviewStreamId::from_u128(21),
+        ReviewRoundId::from_u128(22),
+    );
+    let asset_version_id = draft.assets[0].id;
+    let feedback_id = FeedbackId::from_u128(23);
+    draft
+        .upsert_feedback(
+            Feedback::new(
+                feedback_id,
+                "右手结构需要修正".into(),
+                1_100,
+                vec![FeedbackTarget {
+                    asset_version_id,
+                    anchor: FeedbackAnchor::ImageRect(
+                        NormalizedRect::new(0.2, 0.3, 0.4, 0.2).unwrap(),
+                    ),
+                }],
+            )
+            .unwrap(),
+        )
+        .unwrap();
+    draft
+}
+
+fn v2_publication(project_id: ProjectId) -> ReviewPublication {
+    let draft = v2_annotated_draft(project_id);
+    let asset_version_id = draft.assets[0].id;
+    let feedback_id = draft.feedback[0].id;
+    let artifact_path =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/images/alpha.png");
+    let artifact_bytes = fs::read(&artifact_path).unwrap();
+    ReviewPublication {
+        protocol_version: ReviewProtocolVersion::V2,
+        snapshot: draft.complete(2_000).unwrap(),
+        artifacts: vec![ReviewRenderedArtifact {
+            asset_version_id,
+            temporary_path: artifact_path,
+            media_type: "image/png".into(),
+            width: 640,
+            height: 480,
+            size_bytes: artifact_bytes.len() as u64,
+            blake3: *blake3::hash(&artifact_bytes).as_bytes(),
+            annotations: vec![ReviewArtifactAnnotation {
+                ordinal: 1,
+                feedback_id,
+            }],
+        }],
+    }
+}
+
+fn v2_two_artifact_publication(project_id: ProjectId) -> ReviewPublication {
+    let first = review_draft(
+        project_id,
+        ReviewStreamId::from_u128(31),
+        ReviewRoundId::from_u128(32),
+    );
+    let mut second_asset = first.assets[0].clone();
+    second_asset.id = AssetVersionId::from_u128(4);
+    second_asset.relative_path = RelativePath::parse("renders/frame-2.png").unwrap();
+    let mut draft = ReviewDraft::new(
+        project_id,
+        ReviewStreamId::from_u128(31),
+        ReviewRoundId::from_u128(32),
+        None,
+        None,
+        1_000,
+        vec![first.assets[0].clone(), second_asset],
+    )
+    .unwrap();
+    for (ordinal, asset) in draft.assets.clone().into_iter().enumerate() {
+        draft
+            .upsert_feedback(
+                Feedback::new(
+                    FeedbackId::from_u128(40 + ordinal as u128),
+                    format!("修正第 {} 张图", ordinal + 1),
+                    1_100 + ordinal as i64,
+                    vec![FeedbackTarget {
+                        asset_version_id: asset.id,
+                        anchor: FeedbackAnchor::ImageRect(
+                            NormalizedRect::new(0.1, 0.1, 0.2, 0.2).unwrap(),
+                        ),
+                    }],
+                )
+                .unwrap(),
+            )
+            .unwrap();
+    }
+    let artifact_path =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/images/alpha.png");
+    let artifact_bytes = fs::read(&artifact_path).unwrap();
+    let artifacts = draft
+        .assets
+        .iter()
+        .zip(&draft.feedback)
+        .map(|(asset, feedback)| ReviewRenderedArtifact {
+            asset_version_id: asset.id,
+            temporary_path: artifact_path.clone(),
+            media_type: "image/png".into(),
+            width: 640,
+            height: 480,
+            size_bytes: artifact_bytes.len() as u64,
+            blake3: *blake3::hash(&artifact_bytes).as_bytes(),
+            annotations: vec![ReviewArtifactAnnotation {
+                ordinal: 1,
+                feedback_id: feedback.id,
+            }],
+        })
+        .collect();
+    ReviewPublication {
+        protocol_version: ReviewProtocolVersion::V2,
+        snapshot: draft.complete(2_000).unwrap(),
+        artifacts,
+    }
+}
+
 fn stream(catalog: &ReviewCatalog, id: u128) -> &ReviewStreamHead {
     catalog
         .streams
@@ -149,6 +286,34 @@ fn stream(catalog: &ReviewCatalog, id: u128) -> &ReviewStreamHead {
 struct FailOnce {
     point: ReviewRepositoryFaultPoint,
     fired: AtomicBool,
+}
+
+struct FailOnCall {
+    point: ReviewRepositoryFaultPoint,
+    target_call: usize,
+    calls: AtomicUsize,
+}
+
+impl ReviewRepositoryFaultInjector for FailOnCall {
+    fn check(&self, point: ReviewRepositoryFaultPoint) -> Result<(), ReviewRepositoryError> {
+        if point == self.point && self.calls.fetch_add(1, Ordering::SeqCst) + 1 == self.target_call
+        {
+            Err(ReviewRepositoryError::Unavailable)
+        } else {
+            Ok(())
+        }
+    }
+}
+
+fn fail_on_call(
+    point: ReviewRepositoryFaultPoint,
+    target_call: usize,
+) -> Arc<dyn ReviewRepositoryFaultInjector> {
+    Arc::new(FailOnCall {
+        point,
+        target_call,
+        calls: AtomicUsize::new(0),
+    })
 }
 
 impl ReviewRepositoryFaultInjector for FailOnce {
@@ -178,6 +343,338 @@ fn open_writable_with_faults(
         ReviewRepositoryAccess::ReadWrite,
         faults,
     )
+}
+
+#[test]
+fn v2_publish_recovers_after_bundle_rename_before_catalog_replace() {
+    let project = PersistentProject::new();
+    let publication = v2_publication(project.project_id);
+    let round_id = publication.snapshot.review_round_id;
+    let repository = open_writable_with_faults(
+        &project,
+        fail_once(ReviewRepositoryFaultPoint::AfterBundleDurableBeforeIndex),
+    )
+    .unwrap();
+
+    assert_eq!(
+        repository.publish(&publication),
+        Err(ReviewRepositoryError::Unavailable)
+    );
+    drop(repository);
+
+    let reopened = open_writable(&project).unwrap();
+    let catalog = reopened.load_catalog().unwrap();
+    assert!(
+        catalog.streams[0]
+            .completed_round_ids()
+            .any(|candidate| candidate == round_id)
+    );
+    assert!(
+        project
+            .reviews()
+            .join(format!("rounds/{round_id}/round.json"))
+            .is_file()
+    );
+    assert_eq!(
+        reopened
+            .load_completed(
+                publication.snapshot.review_stream_id,
+                publication.snapshot.review_round_id,
+            )
+            .unwrap(),
+        Some(publication.snapshot)
+    );
+}
+
+#[test]
+fn v2_publish_rejects_artifact_digest_or_path_substitution() {
+    let project = PersistentProject::new();
+    let mut publication = v2_publication(project.project_id);
+    publication.artifacts[0].blake3 = [0; 32];
+
+    assert_eq!(
+        open_writable(&project).unwrap().publish(&publication),
+        Err(ReviewRepositoryError::InvalidData)
+    );
+    assert!(
+        fs::read_dir(project.reviews().join("rounds"))
+            .unwrap()
+            .next()
+            .is_none()
+    );
+}
+
+#[test]
+fn every_v2_durable_boundary_reopens_to_one_consistent_state() {
+    for (point, bundle_is_durable) in [
+        (ReviewRepositoryFaultPoint::AfterArtifactFileSync, false),
+        (ReviewRepositoryFaultPoint::AfterRoundManifestSync, false),
+        (ReviewRepositoryFaultPoint::AfterBundleDirectorySync, false),
+        (
+            ReviewRepositoryFaultPoint::AfterBundleDurableBeforeIndex,
+            true,
+        ),
+        (ReviewRepositoryFaultPoint::BeforeIndexReplace, true),
+        (ReviewRepositoryFaultPoint::AfterIndexReplace, true),
+    ] {
+        let project = PersistentProject::new();
+        let draft = v2_annotated_draft(project.project_id);
+        let publication = v2_publication(project.project_id);
+        let round_id = publication.snapshot.review_round_id;
+        let repository = open_writable_with_faults(&project, fail_once(point)).unwrap();
+        repository.save_draft(&persisted_v2(draft)).unwrap();
+
+        assert_eq!(
+            repository.publish(&publication),
+            Err(ReviewRepositoryError::Unavailable),
+            "fault {point:?} did not interrupt publication"
+        );
+        drop(repository);
+
+        if !bundle_is_durable {
+            let reader = ProjectReviewRepository::open(
+                project.root(),
+                project.project_id,
+                ReviewRepositoryAccess::ReadOnly,
+            )
+            .unwrap();
+            assert!(reader.load_catalog().unwrap().streams.is_empty());
+            assert!(reader.load_active_draft().unwrap().is_some());
+            drop(reader);
+        }
+
+        let reopened = open_writable(&project).unwrap();
+        let catalog = reopened.load_catalog().unwrap();
+        if bundle_is_durable {
+            assert!(
+                catalog.streams[0]
+                    .completed_round_ids()
+                    .any(|candidate| candidate == round_id)
+            );
+            assert!(reopened.load_active_draft().unwrap().is_none());
+            assert!(
+                project
+                    .reviews()
+                    .join(format!("rounds/{round_id}/round.json"))
+                    .is_file()
+            );
+        } else {
+            assert!(catalog.streams.is_empty());
+            assert!(reopened.load_active_draft().unwrap().is_some());
+            assert!(
+                !project
+                    .reviews()
+                    .join(format!("rounds/{round_id}"))
+                    .exists()
+            );
+            assert!(
+                fs::read_dir(project.reviews().join("rounds"))
+                    .unwrap()
+                    .next()
+                    .is_none()
+            );
+        }
+    }
+}
+
+#[test]
+fn every_artifact_file_sync_boundary_leaves_only_a_cleanup_safe_transaction() {
+    for target_call in [1, 2] {
+        let project = PersistentProject::new();
+        let publication = v2_two_artifact_publication(project.project_id);
+        let repository = open_writable_with_faults(
+            &project,
+            fail_on_call(
+                ReviewRepositoryFaultPoint::AfterArtifactFileSync,
+                target_call,
+            ),
+        )
+        .unwrap();
+
+        assert_eq!(
+            repository.publish(&publication),
+            Err(ReviewRepositoryError::Unavailable)
+        );
+        let temporary = fs::read_dir(project.reviews().join("rounds"))
+            .unwrap()
+            .next()
+            .unwrap()
+            .unwrap()
+            .path();
+        assert_eq!(
+            fs::read_dir(temporary.join("artifacts")).unwrap().count(),
+            target_call
+        );
+        drop(repository);
+
+        let reopened = open_writable(&project).unwrap();
+        assert!(reopened.load_catalog().unwrap().streams.is_empty());
+        assert!(
+            fs::read_dir(project.reviews().join("rounds"))
+                .unwrap()
+                .next()
+                .is_none()
+        );
+    }
+}
+
+#[test]
+fn v2_publish_rejects_invalid_artifact_shape_and_annotation_mapping() {
+    type PublicationMutation = Box<dyn Fn(&mut ReviewPublication)>;
+    let cases: Vec<PublicationMutation> = vec![
+        Box::new(|publication| publication.artifacts[0].media_type = "image/jpeg".into()),
+        Box::new(|publication| publication.artifacts[0].width = 0),
+        Box::new(|publication| publication.artifacts[0].width = 16_777_217),
+        Box::new(|publication| publication.artifacts[0].size_bytes = 64 * 1024 * 1024 + 1),
+        Box::new(|publication| publication.artifacts[0].annotations[0].ordinal = 2),
+        Box::new(|publication| {
+            publication.artifacts[0].annotations[0].feedback_id = FeedbackId::from_u128(999)
+        }),
+        Box::new(|publication| publication.artifacts.push(publication.artifacts[0].clone())),
+    ];
+
+    for mutate in cases {
+        let project = PersistentProject::new();
+        let mut publication = v2_publication(project.project_id);
+        mutate(&mut publication);
+
+        assert!(matches!(
+            open_writable(&project).unwrap().publish(&publication),
+            Err(ReviewRepositoryError::InvalidData | ReviewRepositoryError::LimitExceeded)
+        ));
+        assert!(
+            fs::read_dir(project.reviews().join("rounds"))
+                .unwrap()
+                .next()
+                .is_none()
+        );
+    }
+}
+
+#[test]
+fn indexed_v2_bundle_tampering_requires_recovery_without_rewriting_catalog() {
+    for tamper in ["digest", "extra"] {
+        let project = PersistentProject::new();
+        let publication = v2_publication(project.project_id);
+        let round_id = publication.snapshot.review_round_id;
+        let asset_id = publication.artifacts[0].asset_version_id;
+        let repository = open_writable(&project).unwrap();
+        repository.publish(&publication).unwrap();
+        drop(repository);
+        let index_path = project.reviews().join("index.json");
+        let index_before = fs::read(&index_path).unwrap();
+        let artifacts = project
+            .reviews()
+            .join(format!("rounds/{round_id}/artifacts"));
+        if tamper == "digest" {
+            let path = artifacts.join(format!("{asset_id}-annotation.png"));
+            let mut bytes = fs::read(&path).unwrap();
+            bytes.push(0);
+            fs::write(path, bytes).unwrap();
+        } else {
+            fs::write(artifacts.join("unexpected.png"), b"unexpected").unwrap();
+        }
+
+        assert_eq!(
+            open_writable(&project).err(),
+            Some(ReviewRepositoryError::RecoveryRequired),
+            "accepted {tamper} tampering"
+        );
+        assert_eq!(fs::read(index_path).unwrap(), index_before);
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn indexed_v2_artifact_symlink_is_never_followed() {
+    use std::os::unix::fs::symlink;
+
+    let project = PersistentProject::new();
+    let publication = v2_publication(project.project_id);
+    let round_id = publication.snapshot.review_round_id;
+    let asset_id = publication.artifacts[0].asset_version_id;
+    let repository = open_writable(&project).unwrap();
+    repository.publish(&publication).unwrap();
+    drop(repository);
+    let artifact = project.reviews().join(format!(
+        "rounds/{round_id}/artifacts/{asset_id}-annotation.png"
+    ));
+    fs::remove_file(&artifact).unwrap();
+    let outside = tempfile::NamedTempFile::new().unwrap();
+    symlink(outside.path(), artifact).unwrap();
+
+    assert_eq!(
+        open_writable(&project).err(),
+        Some(ReviewRepositoryError::RecoveryRequired)
+    );
+}
+
+#[test]
+fn malformed_transaction_directory_is_not_deleted_as_owned_state() {
+    let project = PersistentProject::new();
+    drop(open_writable(&project).unwrap());
+    let round_id = ReviewRoundId::from_u128(22);
+    let temporary = project
+        .reviews()
+        .join(format!("rounds/.{round_id}.tmp-000000000000000a"));
+    fs::create_dir(&temporary).unwrap();
+    fs::write(temporary.join("not-owned.txt"), b"keep").unwrap();
+    let index_path = project.reviews().join("index.json");
+    let index_before = fs::read(&index_path).unwrap();
+
+    assert_eq!(
+        open_writable(&project).err(),
+        Some(ReviewRepositoryError::RecoveryRequired)
+    );
+    assert!(temporary.join("not-owned.txt").is_file());
+    assert_eq!(fs::read(index_path).unwrap(), index_before);
+}
+
+#[test]
+fn v1_publication_rejects_artifacts_and_keeps_the_v1_catalog_protocol() {
+    let project = PersistentProject::new();
+    let repository = open_writable(&project).unwrap();
+    let snapshot = completed_round(project.project_id, 1, 11, None);
+    let mut invalid = v1_publication(snapshot.clone());
+    invalid.artifacts = v2_publication(project.project_id).artifacts;
+    assert_eq!(
+        repository.publish(&invalid),
+        Err(ReviewRepositoryError::InvalidData)
+    );
+
+    repository.publish(&v1_publication(snapshot)).unwrap();
+
+    let index: serde_json::Value =
+        serde_json::from_slice(&fs::read(project.reviews().join("index.json")).unwrap()).unwrap();
+    assert_eq!(index["protocolVersion"], "viewer.review/1");
+}
+
+#[test]
+fn first_successful_v2_publish_atomically_migrates_legacy_catalog_records() {
+    let (project, legacy_round) = legacy_fixture_project(true);
+    let legacy_bytes = fs::read(&legacy_round).unwrap();
+    let v1_index_before = fs::read(project.reviews().join("index.json")).unwrap();
+    let publication = v2_publication(project.project_id);
+    let repository = open_writable(&project).unwrap();
+
+    repository.publish(&publication).unwrap();
+
+    let index_bytes = fs::read(project.reviews().join("index.json")).unwrap();
+    let index: serde_json::Value = serde_json::from_slice(&index_bytes).unwrap();
+    assert_ne!(index_bytes, v1_index_before);
+    assert_eq!(index["protocolVersion"], "viewer.review/2");
+    let catalog = repository.load_catalog().unwrap();
+    let legacy_record = catalog
+        .streams
+        .iter()
+        .flat_map(|stream| &stream.completed_rounds)
+        .find(|record| record.protocol_version == ReviewProtocolVersion::V1)
+        .unwrap();
+    assert_eq!(
+        legacy_record.blake3,
+        *blake3::hash(&legacy_bytes).as_bytes()
+    );
+    assert_eq!(fs::read(legacy_round).unwrap(), legacy_bytes);
 }
 
 #[test]
@@ -575,8 +1072,8 @@ fn publishing_updates_only_the_target_stream_and_never_overwrites_a_round() {
     let first = completed_round(project.project_id, 1, 11, None);
     let other = completed_round(project.project_id, 2, 21, None);
 
-    repository.publish(&first).unwrap();
-    repository.publish(&other).unwrap();
+    repository.publish(&v1_publication(first.clone())).unwrap();
+    repository.publish(&v1_publication(other.clone())).unwrap();
 
     let catalog = repository.load_catalog().unwrap();
     assert_eq!(
@@ -588,7 +1085,7 @@ fn publishing_updates_only_the_target_stream_and_never_overwrites_a_round() {
         Some(other.review_round_id)
     );
     assert_eq!(
-        repository.publish(&first),
+        repository.publish(&v1_publication(first.clone())),
         Err(ReviewRepositoryError::Conflict)
     );
     assert_eq!(
@@ -604,11 +1101,11 @@ fn publishing_rejects_a_stale_stream_head_before_creating_the_round() {
     let project = PersistentProject::new();
     let repository = open_writable(&project).unwrap();
     let first = completed_round(project.project_id, 1, 11, None);
-    repository.publish(&first).unwrap();
+    repository.publish(&v1_publication(first.clone())).unwrap();
     let stale = completed_round(project.project_id, 1, 12, None);
 
     assert_eq!(
-        repository.publish(&stale),
+        repository.publish(&v1_publication(stale.clone())),
         Err(ReviewRepositoryError::Conflict)
     );
     assert!(
@@ -640,7 +1137,7 @@ fn failed_index_publication_keeps_the_old_head_and_recovers_one_linear_orphan() 
         let round = draft.complete(2_000).unwrap();
 
         assert_eq!(
-            repository.publish(&round),
+            repository.publish(&v1_publication(round.clone())),
             Err(ReviewRepositoryError::Unavailable)
         );
         assert!(repository.load_catalog().unwrap().streams.is_empty());
@@ -834,7 +1331,9 @@ fn published_history_ignores_a_stale_draft_when_cleanup_cannot_finish() {
     let drafts_directory = project.reviews().join("drafts");
     fs::set_permissions(&drafts_directory, fs::Permissions::from_mode(0o555)).unwrap();
 
-    repository.publish(&snapshot).unwrap();
+    repository
+        .publish(&v1_publication(snapshot.clone()))
+        .unwrap();
     let draft_path = drafts_directory.join(format!("{}.json", snapshot.review_round_id));
     assert!(draft_path.exists());
     assert_eq!(
@@ -864,11 +1363,11 @@ fn concurrent_publication_on_one_repository_serializes_stream_compare_and_set() 
     let competing = completed_round(project.project_id, 1, 12, None);
     let left = {
         let repository = Arc::clone(&repository);
-        std::thread::spawn(move || repository.publish(&first))
+        std::thread::spawn(move || repository.publish(&v1_publication(first)))
     };
     let right = {
         let repository = Arc::clone(&repository);
-        std::thread::spawn(move || repository.publish(&competing))
+        std::thread::spawn(move || repository.publish(&v1_publication(competing)))
     };
 
     let results = [left.join().unwrap(), right.join().unwrap()];
@@ -1102,7 +1601,7 @@ fn delete_draft_checks_exact_ownership_and_never_touches_completed_history() {
     );
 
     let completed = completed_round(project.project_id, 1, 21, None);
-    writer.publish(&completed).unwrap();
+    writer.publish(&v1_publication(completed.clone())).unwrap();
     assert_eq!(
         writer.delete_draft(completed.review_stream_id, completed.review_round_id),
         Err(ReviewRepositoryError::NotFound)

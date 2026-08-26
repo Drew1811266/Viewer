@@ -6,10 +6,10 @@ use viewer_application::{
     AddReviewFeedback, ClockPort, PersistedReviewDraft, PreparedReviewAsset,
     ReviewAssetCatalogPort, ReviewAssetConflictKind, ReviewAssetError, ReviewAssetValidation,
     ReviewCatalog, ReviewCompletionProposalId, ReviewMutationGuard, ReviewProgressPort,
-    ReviewProtocolVersion, ReviewRecordLocation, ReviewRepositoryError, ReviewRepositoryInspection,
-    ReviewRepositoryPort, ReviewRepositoryProviderPort, ReviewRoundRecord, ReviewScope,
-    ReviewScopeResolution, ReviewSessionPhase, ReviewSessionService, ReviewStreamHead,
-    ReviewTaskCancellation, ReviewTaskProgress,
+    ReviewProtocolVersion, ReviewPublication, ReviewRecordLocation, ReviewRepositoryError,
+    ReviewRepositoryInspection, ReviewRepositoryPort, ReviewRepositoryProviderPort,
+    ReviewRoundRecord, ReviewScope, ReviewScopeResolution, ReviewSessionPhase,
+    ReviewSessionService, ReviewStreamHead, ReviewTaskCancellation, ReviewTaskProgress,
 };
 use viewer_domain::review::{
     AssetEvidence, AssetVersion, ReviewDraft, ReviewMedia, ReviewOutcomeKind, ReviewSnapshot,
@@ -145,6 +145,7 @@ struct RepositoryState {
     writer_opens: usize,
     save_attempts: usize,
     publish_attempts: usize,
+    last_published_protocol_version: Option<ReviewProtocolVersion>,
     delete_attempts: usize,
     fail_save: bool,
     fail_delete: bool,
@@ -280,9 +281,11 @@ impl ReviewRepositoryPort for FakeRepository {
             .cloned())
     }
 
-    fn publish(&self, snapshot: &ReviewSnapshot) -> Result<(), ReviewRepositoryError> {
+    fn publish(&self, publication: &ReviewPublication) -> Result<(), ReviewRepositoryError> {
         let mut state = self.state.lock().unwrap();
         state.publish_attempts += 1;
+        state.last_published_protocol_version = Some(publication.protocol_version);
+        let snapshot = &publication.snapshot;
         match state.publish_behavior {
             PublishBehavior::Success => {
                 append_completed(&mut state, snapshot.clone());
@@ -393,6 +396,7 @@ impl Fixture {
                 writer_opens: 0,
                 save_attempts: 0,
                 publish_attempts: 0,
+                last_published_protocol_version: None,
                 delete_attempts: 0,
                 fail_save: false,
                 fail_delete: false,
@@ -533,6 +537,10 @@ async fn feedback_wins_and_remaining_assets_pass_only_after_verified_completion(
     assert_eq!(persisted.outcomes[0].kind, ReviewOutcomeKind::Revise);
     assert_eq!(persisted.outcomes[1].kind, ReviewOutcomeKind::Unreviewable);
     assert_eq!(persisted.outcomes[2].kind, ReviewOutcomeKind::Pass);
+    assert_eq!(
+        state.last_published_protocol_version,
+        Some(ReviewProtocolVersion::V2)
+    );
     assert!(!state.writer_held);
     assert!(state.draft.is_none());
 }

@@ -3,7 +3,7 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 use viewer_application::{
-    PersistedReviewDraft, ProjectAccess, ReviewCatalog, ReviewRepositoryError,
+    PersistedReviewDraft, ProjectAccess, ReviewCatalog, ReviewPublication, ReviewRepositoryError,
     ReviewRepositoryInspection, ReviewRepositoryPort, ReviewRepositoryProviderPort,
 };
 use viewer_domain::review::ReviewSnapshot;
@@ -132,7 +132,7 @@ impl ReviewRepositoryPort for EmptyReadOnlyReviewRepository {
         Ok(None)
     }
 
-    fn publish(&self, _snapshot: &ReviewSnapshot) -> Result<(), ReviewRepositoryError> {
+    fn publish(&self, _publication: &ReviewPublication) -> Result<(), ReviewRepositoryError> {
         Err(ReviewRepositoryError::ReadOnly)
     }
 }

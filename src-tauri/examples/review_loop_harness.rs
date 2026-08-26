@@ -10,8 +10,8 @@ use tokio_util::sync::CancellationToken;
 use viewer_application::{
     AddReviewFeedback, BrowseIndexPort, ClockPort, ImagePort, ProjectAccess,
     ReviewAssetConflictKind, ReviewCompletionProposal, ReviewMutationGuard, ReviewProgressPort,
-    ReviewRepositoryError, ReviewRepositoryProviderPort, ReviewScope, ReviewSessionPhase,
-    ReviewSessionService, ReviewSessionSnapshot, ReviewTaskProgress,
+    ReviewPublication, ReviewRepositoryError, ReviewRepositoryProviderPort, ReviewScope,
+    ReviewSessionPhase, ReviewSessionService, ReviewSessionSnapshot, ReviewTaskProgress,
 };
 use viewer_desktop::error::CommandError;
 use viewer_domain::file::{FileKind, FileNode, ReviewState};
@@ -174,7 +174,11 @@ struct CrashAfterRoundDurable;
 
 impl ReviewRepositoryFaultInjector for CrashAfterRoundDurable {
     fn check(&self, point: ReviewRepositoryFaultPoint) -> Result<(), ReviewRepositoryError> {
-        if point == ReviewRepositoryFaultPoint::AfterRoundDurableBeforeIndex {
+        if matches!(
+            point,
+            ReviewRepositoryFaultPoint::AfterRoundDurableBeforeIndex
+                | ReviewRepositoryFaultPoint::AfterBundleDurableBeforeIndex
+        ) {
             Err(ReviewRepositoryError::Unavailable)
         } else {
             Ok(())
@@ -613,7 +617,16 @@ async fn run_publish_recovery(
     scenario: Scenario,
 ) -> Result<HarnessResult, Box<dyn Error>> {
     let rounds_directory = project.join(".viewer/reviews/rounds");
-    let has_durable_round = regular_json_files(&rounds_directory)?.next().is_some();
+    let has_durable_round = regular_json_files(&rounds_directory)?.next().is_some()
+        || (rounds_directory.is_dir()
+            && fs::read_dir(&rounds_directory)?.any(|entry| {
+                entry.is_ok_and(|entry| {
+                    let path = entry.path();
+                    !entry.file_name().to_string_lossy().starts_with('.')
+                        && path.is_dir()
+                        && path.join("round.json").is_file()
+                })
+            }));
 
     if !has_durable_round {
         let repository_state =
@@ -621,6 +634,7 @@ async fn run_publish_recovery(
         let Some(draft) = repository_state.active_draft else {
             return run_standard(project, scenario).await;
         };
+        let protocol_version = draft.protocol_version;
         let stream_id = draft.draft.review_stream_id;
         let round_id = draft.draft.review_round_id;
         let snapshot = draft.draft.complete(SystemClock.unix_millis())?;
@@ -631,7 +645,11 @@ async fn run_publish_recovery(
             Arc::new(CrashAfterRoundDurable),
         )?;
         let error = repository
-            .publish(&snapshot)
+            .publish(&ReviewPublication {
+                protocol_version,
+                snapshot: snapshot.clone(),
+                artifacts: vec![],
+            })
             .expect_err("fault point must interrupt publication");
         if error != ReviewRepositoryError::Unavailable {
             return Err("publication failed at an unexpected boundary".into());
@@ -741,10 +759,19 @@ fn completed_result(
             }
         }
     }
-    let round_document = fs::read_to_string(project.join(format!(
+    let legacy_round = project.join(format!(
         ".viewer/reviews/rounds/{}.json",
         snapshot.review_round_id
-    )))?;
+    ));
+    let bundled_round = project.join(format!(
+        ".viewer/reviews/rounds/{}/round.json",
+        snapshot.review_round_id
+    ));
+    let round_document = if legacy_round.is_file() {
+        fs::read_to_string(legacy_round)?
+    } else {
+        fs::read_to_string(bundled_round)?
+    };
     let protocol_omits_marker_state = !round_document.contains("\"marker\"");
     let protocol_omits_favorite_state = !round_document.contains("\"favorite\"");
     Ok(HarnessResult {

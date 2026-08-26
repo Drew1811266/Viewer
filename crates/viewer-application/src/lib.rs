@@ -9,6 +9,7 @@ pub mod ports;
 pub mod project;
 pub mod rename;
 pub mod review;
+pub mod review_artifact;
 pub mod review_assets;
 pub mod review_session;
 pub mod scan;
@@ -46,6 +47,10 @@ pub use review::{
     ReviewProtocolVersion, ReviewRecordLocation, ReviewRecordLocationError, ReviewRepositoryError,
     ReviewRepositoryInspection, ReviewRepositoryPort, ReviewRepositoryProviderPort,
     ReviewRoundRecord, ReviewStreamHead, ReviewStreamLocator,
+};
+pub use review_artifact::{
+    MAX_REVIEW_ARTIFACT_BYTES, MAX_REVIEW_ARTIFACT_PIXELS, MAX_REVIEW_BUNDLE_BYTES,
+    ReviewArtifactAnnotation, ReviewPublication, ReviewRenderedArtifact,
 };
 pub use review_assets::{
     PreparedReviewAsset, ReviewAssetCatalogPort, ReviewAssetConflictKind, ReviewAssetError,

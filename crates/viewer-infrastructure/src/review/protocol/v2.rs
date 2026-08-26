@@ -15,7 +15,30 @@ use viewer_domain::review::{
     Feedback, FeedbackAnchor, FeedbackTarget, ImageStroke, NormalizedPoint, NormalizedRect,
     ProductionId, ProductionScope, ReviewDraft, ReviewRoundError, ReviewSnapshot, ReviewValueError,
 };
-use viewer_domain::{AssetVersionId, ReviewRoundId, ReviewStreamId};
+use viewer_domain::{AssetVersionId, FeedbackId, ReviewRoundId, ReviewStreamId};
+
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct V2CompletedDocument {
+    pub snapshot: ReviewSnapshot,
+    pub artifacts: Vec<V2ArtifactRecord>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct V2ArtifactRecord {
+    pub asset_version_id: AssetVersionId,
+    pub relative_path: String,
+    pub blake3: [u8; 32],
+    pub media_type: String,
+    pub width: u32,
+    pub height: u32,
+    pub annotations: Vec<V2ArtifactAnnotation>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct V2ArtifactAnnotation {
+    pub ordinal: u32,
+    pub feedback_id: FeedbackId,
+}
 
 pub fn decode_catalog(bytes: &[u8]) -> Result<ReviewCatalog, ReviewProtocolError> {
     let stored: StoredCatalogV2 =
@@ -48,6 +71,12 @@ pub fn encode_draft(draft: &ReviewDraft) -> Result<Vec<u8>, ReviewProtocolError>
 }
 
 pub fn decode_completed(bytes: &[u8]) -> Result<ReviewSnapshot, ReviewProtocolError> {
+    Ok(decode_completed_document(bytes)?.snapshot)
+}
+
+pub(crate) fn decode_completed_document(
+    bytes: &[u8],
+) -> Result<V2CompletedDocument, ReviewProtocolError> {
     let value: Value = decode_document(bytes, MAX_REVIEW_DOCUMENT_BYTES, REVIEW_PROTOCOL_V2)?;
     let stored: StoredCompletedV2 =
         serde_json::from_value(value.clone()).map_err(|_| ReviewProtocolError::InvalidData)?;
@@ -55,20 +84,43 @@ pub fn decode_completed(bytes: &[u8]) -> Result<ReviewSnapshot, ReviewProtocolEr
     let decoded = v1::decode_completed(&shell)?;
     let snapshot = rebuild_snapshot(decoded, stored.feedback)?;
     validate_artifacts(&stored.artifacts, &snapshot)?;
-    Ok(snapshot)
+    let artifacts = stored
+        .artifacts
+        .into_iter()
+        .map(V2ArtifactRecord::try_from)
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(V2CompletedDocument {
+        snapshot,
+        artifacts,
+    })
 }
 
 pub fn encode_completed(snapshot: &ReviewSnapshot) -> Result<Vec<u8>, ReviewProtocolError> {
+    encode_completed_with_artifacts(snapshot, &[])
+}
+
+pub(crate) fn encode_completed_with_artifacts(
+    snapshot: &ReviewSnapshot,
+    artifacts: &[V2ArtifactRecord],
+) -> Result<Vec<u8>, ReviewProtocolError> {
     let validated = validated_snapshot(snapshot)?;
     let shell = v1_safe_snapshot(&validated)?;
     let mut value: Value = serde_json::from_slice(&v1::encode_completed(&shell)?)
         .map_err(|_| ReviewProtocolError::InvalidData)?;
     set_protocol(&mut value, REVIEW_PROTOCOL_V2)?;
     set_feedback(&mut value, &validated.feedback)?;
+    let stored_artifacts = artifacts
+        .iter()
+        .map(StoredArtifactV2::from_record)
+        .collect::<Vec<_>>();
+    validate_artifacts(&stored_artifacts, &validated)?;
     value
         .as_object_mut()
         .ok_or(ReviewProtocolError::InvalidData)?
-        .insert("artifacts".to_owned(), Value::Array(Vec::new()));
+        .insert(
+            "artifacts".to_owned(),
+            serde_json::to_value(stored_artifacts).map_err(|_| ReviewProtocolError::InvalidData)?,
+        );
     encode_document(&value, MAX_REVIEW_DOCUMENT_BYTES)
 }
 
@@ -745,8 +797,7 @@ struct StoredPointV2 {
     y: f64,
 }
 
-#[allow(dead_code)]
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct StoredArtifactV2 {
     asset_version_id: String,
@@ -758,8 +809,53 @@ struct StoredArtifactV2 {
     annotations: Vec<StoredArtifactAnnotationV2>,
 }
 
-#[allow(dead_code)]
-#[derive(Deserialize)]
+impl StoredArtifactV2 {
+    fn from_record(record: &V2ArtifactRecord) -> Self {
+        Self {
+            asset_version_id: record.asset_version_id.to_string(),
+            relative_path: record.relative_path.clone(),
+            blake3: encode_digest(record.blake3),
+            media_type: record.media_type.clone(),
+            width: record.width,
+            height: record.height,
+            annotations: record
+                .annotations
+                .iter()
+                .map(|annotation| StoredArtifactAnnotationV2 {
+                    ordinal: annotation.ordinal,
+                    feedback_id: annotation.feedback_id.to_string(),
+                })
+                .collect(),
+        }
+    }
+}
+
+impl TryFrom<StoredArtifactV2> for V2ArtifactRecord {
+    type Error = ReviewProtocolError;
+
+    fn try_from(stored: StoredArtifactV2) -> Result<Self, Self::Error> {
+        Ok(Self {
+            asset_version_id: parse_id(&stored.asset_version_id)?,
+            relative_path: stored.relative_path,
+            blake3: parse_digest(&stored.blake3)?,
+            media_type: stored.media_type,
+            width: stored.width,
+            height: stored.height,
+            annotations: stored
+                .annotations
+                .into_iter()
+                .map(|annotation| {
+                    Ok(V2ArtifactAnnotation {
+                        ordinal: annotation.ordinal,
+                        feedback_id: parse_id(&annotation.feedback_id)?,
+                    })
+                })
+                .collect::<Result<Vec<_>, ReviewProtocolError>>()?,
+        })
+    }
+}
+
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct StoredArtifactAnnotationV2 {
     ordinal: u32,

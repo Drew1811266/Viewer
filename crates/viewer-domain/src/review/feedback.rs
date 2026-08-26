@@ -1,4 +1,6 @@
-use super::{MAX_FEEDBACK_TEXT_BYTES, MAX_TARGETS_PER_FEEDBACK, ReviewValueError};
+use super::{
+    MAX_FEEDBACK_TEXT_BYTES, MAX_IMAGE_STROKE_POINTS, MAX_TARGETS_PER_FEEDBACK, ReviewValueError,
+};
 use crate::{AssetVersionId, FeedbackId};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -46,12 +48,93 @@ impl NormalizedRect {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct NormalizedPoint {
+    x: f64,
+    y: f64,
+}
+
+impl NormalizedPoint {
+    pub fn new(x: f64, y: f64) -> Result<Self, ReviewValueError> {
+        let valid =
+            x.is_finite() && y.is_finite() && (0.0..=1.0).contains(&x) && (0.0..=1.0).contains(&y);
+        valid
+            .then_some(Self { x, y })
+            .ok_or(ReviewValueError::InvalidNumber)
+    }
+
+    pub fn x(&self) -> f64 {
+        self.x
+    }
+
+    pub fn y(&self) -> f64 {
+        self.y
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct ImageStroke {
+    points: Vec<NormalizedPoint>,
+}
+
+impl ImageStroke {
+    pub fn new(points: Vec<NormalizedPoint>) -> Result<Self, ReviewValueError> {
+        if points.len() > MAX_IMAGE_STROKE_POINTS {
+            return Err(ReviewValueError::LimitExceeded);
+        }
+        if points.len() < 2 {
+            return Err(ReviewValueError::InvalidNumber);
+        }
+        let (min_x, max_x, min_y, max_y) = normalized_bounds(&points);
+        if max_x <= min_x || max_y <= min_y {
+            return Err(ReviewValueError::InvalidNumber);
+        }
+        Ok(Self { points })
+    }
+
+    pub fn points(&self) -> &[NormalizedPoint] {
+        &self.points
+    }
+}
+
+fn normalized_bounds(points: &[NormalizedPoint]) -> (f64, f64, f64, f64) {
+    points.iter().fold(
+        (
+            f64::INFINITY,
+            f64::NEG_INFINITY,
+            f64::INFINITY,
+            f64::NEG_INFINITY,
+        ),
+        |(min_x, max_x, min_y, max_y), point| {
+            (
+                min_x.min(point.x()),
+                max_x.max(point.x()),
+                min_y.min(point.y()),
+                max_y.max(point.y()),
+            )
+        },
+    )
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum FeedbackAnchor {
     Asset,
-    ImageRegion(NormalizedRect),
+    ImageRect(NormalizedRect),
+    ImageStroke(ImageStroke),
     VideoPoint { position_us: u64 },
     VideoRange { start_us: u64, end_us: u64 },
+}
+
+impl FeedbackAnchor {
+    pub fn kind_name(&self) -> &'static str {
+        match self {
+            Self::Asset => "asset",
+            Self::ImageRect(_) => "imageRect",
+            Self::ImageStroke(_) => "imageStroke",
+            Self::VideoPoint { .. } => "videoPoint",
+            Self::VideoRange { .. } => "videoRange",
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]

@@ -1,6 +1,6 @@
 use super::{
     AssetVersion, Feedback, FeedbackAnchor, MAX_ASSETS_PER_ROUND, MAX_FEEDBACK_ITEMS_PER_ROUND,
-    ProductionScope, ReviewMedia,
+    MAX_IMAGE_STROKE_POINTS_PER_ROUND, ProductionScope, ReviewMedia,
 };
 use crate::{AssetVersionId, FeedbackId, ProjectId, ReviewRoundId, ReviewStreamId};
 use std::collections::HashSet;
@@ -108,6 +108,24 @@ impl ReviewDraft {
                 .find(|asset| asset.id == target.asset_version_id)
                 .ok_or(ReviewRoundError::UnknownAsset)?;
             validate_anchor(asset, &target.anchor)?;
+        }
+
+        let retained_stroke_points = self
+            .feedback
+            .iter()
+            .filter(|candidate| candidate.id != feedback.id)
+            .flat_map(|candidate| &candidate.targets)
+            .map(stroke_point_count)
+            .sum::<usize>();
+        let candidate_stroke_points = feedback
+            .targets
+            .iter()
+            .map(stroke_point_count)
+            .sum::<usize>();
+        if retained_stroke_points.saturating_add(candidate_stroke_points)
+            > MAX_IMAGE_STROKE_POINTS_PER_ROUND
+        {
+            return Err(ReviewRoundError::LimitExceeded);
         }
 
         if let Some(index) = self
@@ -270,20 +288,17 @@ fn asset_is_valid(asset: &AssetVersion) -> bool {
 
 fn validate_anchor(asset: &AssetVersion, anchor: &FeedbackAnchor) -> Result<(), ReviewRoundError> {
     match (&asset.media, anchor) {
-        (_, FeedbackAnchor::Asset)
-        | (
-            ReviewMedia::Image {
-                width: Some(_),
-                height: Some(_),
-            },
-            FeedbackAnchor::ImageRegion(_),
-        ) => Ok(()),
+        (_, FeedbackAnchor::Asset) => Ok(()),
         (
             ReviewMedia::Image {
-                width: None,
-                height: None,
+                width: Some(width),
+                height: Some(height),
             },
-            FeedbackAnchor::ImageRegion(_),
+            FeedbackAnchor::ImageRect(_) | FeedbackAnchor::ImageStroke(_),
+        ) if *width > 0 && *height > 0 => Ok(()),
+        (
+            ReviewMedia::Image { .. },
+            FeedbackAnchor::ImageRect(_) | FeedbackAnchor::ImageStroke(_),
         ) => Err(ReviewRoundError::AnchorUnavailable),
         (ReviewMedia::Video { duration_us, .. }, FeedbackAnchor::VideoPoint { position_us }) => {
             if duration_us.is_some_and(|duration| *position_us > duration) {
@@ -300,6 +315,13 @@ fn validate_anchor(asset: &AssetVersion, anchor: &FeedbackAnchor) -> Result<(), 
             }
         }
         _ => Err(ReviewRoundError::AnchorMediaMismatch),
+    }
+}
+
+fn stroke_point_count(target: &super::FeedbackTarget) -> usize {
+    match &target.anchor {
+        FeedbackAnchor::ImageStroke(stroke) => stroke.points().len(),
+        _ => 0,
     }
 }
 

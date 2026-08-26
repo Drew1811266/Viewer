@@ -1,7 +1,8 @@
 use viewer_domain::review::{
-    AssetEvidence, AssetVersion, Feedback, FeedbackAnchor, FeedbackTarget, MAX_ASSETS_PER_ROUND,
-    MAX_FEEDBACK_ITEMS_PER_ROUND, NormalizedRect, ReviewDraft, ReviewMedia, ReviewOutcomeKind,
-    ReviewRoundError, ReviewabilityFailure,
+    AssetEvidence, AssetVersion, Feedback, FeedbackAnchor, FeedbackTarget, ImageStroke,
+    MAX_ASSETS_PER_ROUND, MAX_FEEDBACK_ITEMS_PER_ROUND, MAX_IMAGE_STROKE_POINTS,
+    MAX_IMAGE_STROKE_POINTS_PER_ROUND, NormalizedPoint, NormalizedRect, ReviewDraft, ReviewMedia,
+    ReviewOutcomeKind, ReviewRoundError, ReviewValueError, ReviewabilityFailure,
 };
 use viewer_domain::{
     AssetVersionId, EntityId, FeedbackId, ProjectId, RelativePath, ReviewRoundId, ReviewStreamId,
@@ -75,6 +76,156 @@ fn feedback(
         }],
     )
     .unwrap()
+}
+
+fn diagonal_stroke(point_count: usize) -> ImageStroke {
+    ImageStroke::new(
+        (0..point_count)
+            .map(|index| {
+                let value = index as f64 / (point_count - 1) as f64;
+                NormalizedPoint::new(value, value).unwrap()
+            })
+            .collect(),
+    )
+    .unwrap()
+}
+
+#[test]
+fn image_anchors_accept_normalized_rectangles_and_strokes() {
+    let rect = NormalizedRect::new(0.1, 0.2, 0.3, 0.4).unwrap();
+    let stroke = ImageStroke::new(vec![
+        NormalizedPoint::new(0.1, 0.2).unwrap(),
+        NormalizedPoint::new(0.4, 0.6).unwrap(),
+    ])
+    .unwrap();
+
+    assert_eq!(FeedbackAnchor::ImageRect(rect).kind_name(), "imageRect");
+    assert_eq!(
+        FeedbackAnchor::ImageStroke(stroke).kind_name(),
+        "imageStroke"
+    );
+}
+
+#[test]
+fn image_strokes_reject_invalid_coordinates_and_unbounded_payloads() {
+    assert_eq!(
+        NormalizedPoint::new(f64::NAN, 0.2),
+        Err(ReviewValueError::InvalidNumber)
+    );
+    assert_eq!(
+        NormalizedPoint::new(1.1, 0.2),
+        Err(ReviewValueError::InvalidNumber)
+    );
+    assert_eq!(
+        ImageStroke::new(vec![NormalizedPoint::new(0.2, 0.2).unwrap(); 2]),
+        Err(ReviewValueError::InvalidNumber),
+    );
+    assert_eq!(
+        ImageStroke::new(vec![
+            NormalizedPoint::new(0.2, 0.1).unwrap(),
+            NormalizedPoint::new(0.2, 0.8).unwrap(),
+        ]),
+        Err(ReviewValueError::InvalidNumber),
+    );
+    assert_eq!(
+        ImageStroke::new(
+            (0..=MAX_IMAGE_STROKE_POINTS)
+                .map(|index| {
+                    NormalizedPoint::new(
+                        index as f64 / MAX_IMAGE_STROKE_POINTS as f64,
+                        index as f64 / MAX_IMAGE_STROKE_POINTS as f64,
+                    )
+                    .unwrap()
+                })
+                .collect(),
+        ),
+        Err(ReviewValueError::LimitExceeded),
+    );
+}
+
+#[test]
+fn local_image_anchors_require_confirmed_image_dimensions() {
+    let mut unknown_size = image_asset(1);
+    unknown_size.media = ReviewMedia::Image {
+        width: None,
+        height: None,
+    };
+    let unknown_id = unknown_size.id;
+    let mut image_draft = review_draft(vec![unknown_size]);
+    assert_eq!(
+        image_draft.upsert_feedback(feedback(
+            1,
+            unknown_id,
+            "标出领口",
+            FeedbackAnchor::ImageRect(NormalizedRect::new(0.1, 0.1, 0.2, 0.2).unwrap()),
+        )),
+        Err(ReviewRoundError::AnchorUnavailable),
+    );
+
+    let video = video_asset(2, Some(1_000));
+    let video_id = video.id;
+    let mut video_draft = review_draft(vec![video]);
+    assert_eq!(
+        video_draft.upsert_feedback(feedback(
+            2,
+            video_id,
+            "错误媒体",
+            FeedbackAnchor::ImageStroke(
+                ImageStroke::new(vec![
+                    NormalizedPoint::new(0.1, 0.1).unwrap(),
+                    NormalizedPoint::new(0.2, 0.3).unwrap(),
+                ])
+                .unwrap(),
+            ),
+        )),
+        Err(ReviewRoundError::AnchorMediaMismatch),
+    );
+}
+
+#[test]
+fn draft_limits_the_total_number_of_image_stroke_points_after_replacement() {
+    let asset = image_asset(1);
+    let mut draft = review_draft(vec![asset.clone()]);
+    for id in 1..=97 {
+        draft
+            .upsert_feedback(feedback(
+                id,
+                asset.id,
+                "密集画笔标注",
+                FeedbackAnchor::ImageStroke(diagonal_stroke(MAX_IMAGE_STROKE_POINTS)),
+            ))
+            .unwrap();
+    }
+    draft
+        .upsert_feedback(feedback(
+            98,
+            asset.id,
+            "达到轮次上限",
+            FeedbackAnchor::ImageStroke(diagonal_stroke(
+                MAX_IMAGE_STROKE_POINTS_PER_ROUND - 97 * MAX_IMAGE_STROKE_POINTS,
+            )),
+        ))
+        .unwrap();
+
+    assert_eq!(
+        draft.upsert_feedback(feedback(
+            99,
+            asset.id,
+            "超过轮次上限",
+            FeedbackAnchor::ImageStroke(diagonal_stroke(2)),
+        )),
+        Err(ReviewRoundError::LimitExceeded),
+    );
+    assert!(
+        draft
+            .upsert_feedback(feedback(
+                98,
+                asset.id,
+                "替换为更短路径",
+                FeedbackAnchor::ImageStroke(diagonal_stroke(2)),
+            ))
+            .is_ok()
+    );
 }
 
 #[test]
@@ -300,7 +451,7 @@ fn feedback_takes_precedence_over_an_unreviewable_marker() {
 }
 
 #[test]
-fn image_regions_cannot_target_video_assets() {
+fn image_rects_cannot_target_video_assets() {
     let video = video_asset(1, Some(100));
     let mut draft = review_draft(vec![video.clone()]);
     assert_eq!(
@@ -308,7 +459,7 @@ fn image_regions_cannot_target_video_assets() {
             1,
             video.id,
             "错误区域",
-            FeedbackAnchor::ImageRegion(NormalizedRect::new(0.1, 0.1, 0.2, 0.2).unwrap()),
+            FeedbackAnchor::ImageRect(NormalizedRect::new(0.1, 0.1, 0.2, 0.2).unwrap()),
         )),
         Err(ReviewRoundError::AnchorMediaMismatch)
     );
@@ -473,7 +624,7 @@ fn source_identity_and_unavailable_image_bounds_are_explicit_domain_facts() {
             1,
             asset.id,
             "没有真实边界时不能创建区域意见",
-            FeedbackAnchor::ImageRegion(NormalizedRect::new(0.1, 0.1, 0.2, 0.2).unwrap()),
+            FeedbackAnchor::ImageRect(NormalizedRect::new(0.1, 0.1, 0.2, 0.2).unwrap()),
         )),
         Err(ReviewRoundError::AnchorUnavailable)
     );

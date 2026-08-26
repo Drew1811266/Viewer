@@ -369,6 +369,10 @@ async fn preparation_streams_content_and_reports_only_completed_members() {
     );
     assert_eq!(prepared[0].asset.source_entity_id, Some(image.entity_id));
     assert_eq!(
+        prepared[0].source_path,
+        fs::canonicalize(project.root()).unwrap().join("image.png")
+    );
+    assert_eq!(
         prepared[0].asset.media,
         ReviewMedia::Image {
             width: Some(640),
@@ -827,4 +831,8 @@ async fn changed_mtime_rehashes_filesystem_truth_even_if_the_index_is_stale() {
         prepared.asset.evidence.blake3
     );
     assert_eq!(current.asset.evidence.modified_ns, actual_modified);
+    assert_eq!(
+        current.source_path,
+        fs::canonicalize(project.root()).unwrap().join("image.png")
+    );
 }

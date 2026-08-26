@@ -729,6 +729,7 @@ impl ReviewSessionService {
                 asset: asset.clone(),
                 failure,
                 change_revision: 0,
+                source_path: std::path::PathBuf::new(),
             });
         }
         let validations = self

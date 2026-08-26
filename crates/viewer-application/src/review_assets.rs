@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use std::path::PathBuf;
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
@@ -31,6 +32,7 @@ pub struct PreparedReviewAsset {
     pub asset: AssetVersion,
     pub failure: Option<ReviewabilityFailure>,
     pub change_revision: u64,
+    pub source_path: PathBuf,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -44,6 +46,7 @@ pub enum ReviewAssetConflictKind {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[allow(clippy::large_enum_variant)]
 pub enum ReviewAssetValidation {
     Current(PreparedReviewAsset),
     Conflict {
@@ -65,6 +68,23 @@ pub struct ReviewTaskProgress {
 
 #[derive(Clone, Default)]
 pub struct ReviewTaskCancellation(Arc<AtomicBool>);
+
+impl std::fmt::Debug for ReviewTaskCancellation {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("ReviewTaskCancellation")
+            .field("cancelled", &self.is_cancelled())
+            .finish()
+    }
+}
+
+impl PartialEq for ReviewTaskCancellation {
+    fn eq(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.0, &other.0)
+    }
+}
+
+impl Eq for ReviewTaskCancellation {}
 
 impl ReviewTaskCancellation {
     pub fn cancel(&self) {

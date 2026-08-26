@@ -467,6 +467,7 @@ fn prepared_asset(
         },
         failure,
         change_revision: 0,
+        source_path: std::path::PathBuf::from(format!("/protected/asset-{ordinal}.png")),
     }
 }
 

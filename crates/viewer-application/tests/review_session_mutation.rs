@@ -311,6 +311,7 @@ fn prepared_asset(entity_id: EntityId, ordinal: usize) -> PreparedReviewAsset {
         },
         failure: None,
         change_revision: 0,
+        source_path: std::path::PathBuf::from(format!("/protected/asset-{ordinal}.png")),
     }
 }
 

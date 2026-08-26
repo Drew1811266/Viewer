@@ -50,7 +50,9 @@ pub use review::{
 };
 pub use review_artifact::{
     MAX_REVIEW_ARTIFACT_BYTES, MAX_REVIEW_ARTIFACT_PIXELS, MAX_REVIEW_BUNDLE_BYTES,
-    ReviewArtifactAnnotation, ReviewPublication, ReviewRenderedArtifact,
+    NumberedImageAnnotation, REVIEW_ANNOTATION_MAX_EDGE, ReviewArtifactAnnotation,
+    ReviewArtifactError, ReviewArtifactPort, ReviewArtifactRenderRequest, ReviewPublication,
+    ReviewRenderedArtifact,
 };
 pub use review_assets::{
     PreparedReviewAsset, ReviewAssetCatalogPort, ReviewAssetConflictKind, ReviewAssetError,

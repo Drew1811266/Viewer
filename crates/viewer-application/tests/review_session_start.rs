@@ -419,6 +419,7 @@ fn prepared_asset(
         },
         failure,
         change_revision: 0,
+        source_path: std::path::PathBuf::from("/protected").join(path),
     }
 }
 
@@ -898,6 +899,7 @@ async fn resume_revalidates_exact_members_and_keeps_hash_conflicts_visible() {
         asset: saved.assets[0].clone(),
         failure: None,
         change_revision: 0,
+        source_path: std::path::PathBuf::from("/protected/a.png"),
     };
     fixture
         .assets
@@ -927,6 +929,7 @@ async fn resume_persists_changed_stable_failure_facts_before_entering_active() {
         asset: saved.assets[0].clone(),
         failure: Some(ReviewabilityFailure::Damaged),
         change_revision: 0,
+        source_path: std::path::PathBuf::from("/protected/a.png"),
     };
     current.asset.evidence.modified_ns += 1;
     fixture
@@ -980,6 +983,7 @@ async fn resume_rejects_revalidation_output_for_a_different_fixed_member() {
         asset: saved.assets[0].clone(),
         failure: None,
         change_revision: 0,
+        source_path: std::path::PathBuf::from("/protected/a.png"),
     };
     wrong.asset.id = AssetVersionId::from_u128(999);
     fixture

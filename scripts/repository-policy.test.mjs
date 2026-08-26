@@ -732,7 +732,7 @@ test('CI defines independent deterministic quality and security gates', async ()
   )
   assert.equal(
     packageJson.scripts['test:review-protocol'],
-    'node --test scripts/review-protocol/read-latest.test.mjs',
+    'node --test scripts/review-protocol/read-latest.test.mjs scripts/review-protocol/schema-contract.test.mjs',
   )
   assert.equal(
     packageJson.scripts['test:review-loop'],
@@ -814,6 +814,18 @@ test('manual review transport and dependency boundaries remain one-way', async (
   ])
   assert.doesNotMatch(applicationManifest, /viewer-infrastructure|\btauri\b/)
   assert.doesNotMatch(applicationSources.join('\n'), /viewer_infrastructure|\btauri::/)
+
+  const protectedReviewPathConsumers = [
+    await read('src-tauri/src/dto/review.rs'),
+    ...(await collectSourceFiles('crates/viewer-infrastructure/src/review/protocol', ['.rs'])).map(
+      (path) => read(path),
+    ),
+  ]
+  assert.doesNotMatch(
+    (await Promise.all(protectedReviewPathConsumers)).join('\n'),
+    /PreparedReviewAsset|source_path|sourcePath/,
+    'protected review source paths must stop at Application and never enter DTOs or protocols',
+  )
 
   const packageJson = JSON.parse(await read('package.json'))
   assert.equal(

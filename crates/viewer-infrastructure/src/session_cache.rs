@@ -70,6 +70,7 @@ impl SessionCache {
         let root = base.join(session_id.to_string());
         fs::create_dir(&root)?;
         fs::create_dir(root.join("images"))?;
+        fs::create_dir(root.join("review-artifacts"))?;
         Ok(Self {
             base,
             root,
@@ -89,6 +90,10 @@ impl SessionCache {
 
     pub fn image_root(&self) -> PathBuf {
         self.root.join("images")
+    }
+
+    pub fn review_artifact_root(&self) -> PathBuf {
+        self.root.join("review-artifacts")
     }
 
     pub fn lookup_image(&self, key: ImageCacheKey) -> Option<CachedImage> {
@@ -301,6 +306,18 @@ mod tests {
 
         assert!(!owned.exists());
         assert!(sibling.exists());
+    }
+
+    #[test]
+    fn review_artifact_directory_is_session_scoped_and_removed_with_the_session() {
+        let base = tempfile::tempdir().unwrap();
+        let cache = SessionCache::create_in(base.path(), fixed_session(13)).unwrap();
+        let artifact_root = cache.review_artifact_root();
+
+        assert!(artifact_root.is_dir());
+        assert_eq!(artifact_root.parent(), Some(cache.root()));
+        cache.cleanup().unwrap();
+        assert!(!artifact_root.exists());
     }
 
     #[test]

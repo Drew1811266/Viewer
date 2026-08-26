@@ -394,6 +394,7 @@ impl IndexedReviewAssetCatalog {
         current.asset.evidence.modified_ns = current_modified_ns;
         current.asset.evidence.blake3 = current_digest;
         current.change_revision = current_revision;
+        current.source_path = self.project_root.join(current.asset.relative_path.as_str());
         Ok(ReviewAssetValidation::Current(current))
     }
 }
@@ -431,6 +432,7 @@ async fn prepare_one(
     let FailureAssessment::Known { media, failure } = assessment else {
         return Err(ReviewAssetError::Pending);
     };
+    let source_path = project_root.join(indexed.node.relative_path.as_str());
     Ok(PreparedReviewAsset {
         entity_id: indexed.node.entity_id,
         asset: AssetVersion {
@@ -448,6 +450,7 @@ async fn prepare_one(
         },
         failure,
         change_revision,
+        source_path,
     })
 }
 

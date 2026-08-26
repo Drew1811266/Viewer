@@ -1,5 +1,7 @@
 use super::encode::encode_png;
-use objc2_core_foundation::{CFBoolean, CFDictionary, CFNumber, CFString, CFType, CFURL};
+use objc2_core_foundation::{
+    CFBoolean, CFData, CFDictionary, CFNumber, CFRetained, CFString, CFType, CFURL,
+};
 use objc2_core_graphics::CGImage;
 use objc2_image_io::{
     CGImageSource, CGImageSourceStatus, kCGImagePropertyHasAlpha, kCGImagePropertyOrientation,
@@ -29,29 +31,7 @@ impl ImageIoBackend {
 
     pub fn probe_sync(&self, source: impl AsRef<Path>) -> Result<ImageProbe, ImageError> {
         let image_source = open_image_source(source.as_ref())?;
-        let format = image_format(&image_source)?;
-        let properties = image_properties(&image_source)?;
-
-        let width = required_u32_property(&properties, unsafe { kCGImagePropertyPixelWidth })?;
-        let height = required_u32_property(&properties, unsafe { kCGImagePropertyPixelHeight })?;
-        let orientation =
-            optional_i64_property(&properties, unsafe { kCGImagePropertyOrientation })
-                .unwrap_or(1)
-                .try_into()
-                .map_err(|_| ImageError::Corrupt)?;
-        let has_alpha = optional_bool_property(&properties, unsafe { kCGImagePropertyHasAlpha })
-            .unwrap_or(false);
-        let icc_profile_name =
-            optional_string_property(&properties, unsafe { kCGImagePropertyProfileName });
-
-        Ok(ImageProbe {
-            format,
-            width,
-            height,
-            orientation,
-            has_alpha,
-            icc_profile_name,
-        })
+        probe_image_source(&image_source)
     }
 
     pub fn render_thumbnail_sync(
@@ -64,36 +44,12 @@ impl ImageIoBackend {
             return Err(ImageError::BudgetExceeded);
         }
 
-        let requested_max_pixels = max_pixels;
         let image_source = open_image_source(source.as_ref())?;
-        let _ = image_format(&image_source)?;
-        let max_pixel_number = CFNumber::new_i64(i64::from(requested_max_pixels));
-        let options = CFDictionary::<CFString, CFType>::from_slices(
-            &[
-                unsafe { kCGImageSourceCreateThumbnailFromImageAlways },
-                unsafe { kCGImageSourceCreateThumbnailWithTransform },
-                unsafe { kCGImageSourceThumbnailMaxPixelSize },
-                unsafe { kCGImageSourceShouldCacheImmediately },
-            ],
-            &[
-                CFBoolean::new(true).as_ref(),
-                CFBoolean::new(true).as_ref(),
-                max_pixel_number.as_ref(),
-                CFBoolean::new(true).as_ref(),
-            ],
-        );
-
-        // SAFETY: The options dictionary contains only the documented Image I/O
-        // thumbnail keys with CFBoolean/CFNumber values of the required types.
-        let thumbnail = unsafe { image_source.thumbnail_at_index(0, Some(options.as_opaque())) }
-            .ok_or(ImageError::Corrupt)?;
+        let thumbnail = thumbnail_from_image_source(&image_source, max_pixels)?;
         let width = u32::try_from(CGImage::width(Some(&thumbnail)))
             .map_err(|_| ImageError::BudgetExceeded)?;
         let height = u32::try_from(CGImage::height(Some(&thumbnail)))
             .map_err(|_| ImageError::BudgetExceeded)?;
-        if width > requested_max_pixels || height > requested_max_pixels {
-            return Err(ImageError::BudgetExceeded);
-        }
 
         encode_png(&thumbnail, destination.as_ref())?;
         Ok((width, height))
@@ -133,7 +89,7 @@ impl ImageIoBackend {
     }
 }
 
-fn oriented_dimensions(probe: &ImageProbe) -> (u32, u32) {
+pub(super) fn oriented_dimensions(probe: &ImageProbe) -> (u32, u32) {
     if matches!(probe.orientation, 5..=8) {
         (probe.height, probe.width)
     } else {
@@ -194,6 +150,88 @@ fn open_image_source(
         return Err(ImageError::Corrupt);
     }
     Ok(image_source)
+}
+
+pub(super) fn open_image_bytes(bytes: &[u8]) -> Result<CFRetained<CGImageSource>, ImageError> {
+    let data = CFData::from_bytes(bytes);
+    // SAFETY: `data` contains immutable bytes for the lifetime retained by the
+    // image source, and no untyped options are supplied.
+    let image_source =
+        unsafe { CGImageSource::with_data(&data, None) }.ok_or(ImageError::Corrupt)?;
+    validate_image_source(&image_source)?;
+    Ok(image_source)
+}
+
+fn validate_image_source(image_source: &CGImageSource) -> Result<(), ImageError> {
+    // SAFETY: The source owns immutable local bytes and remains alive for both
+    // status queries.
+    if unsafe { image_source.status() } != CGImageSourceStatus::StatusComplete
+        || unsafe { image_source.count() } == 0
+    {
+        return Err(ImageError::Corrupt);
+    }
+    Ok(())
+}
+
+pub(super) fn probe_image_source(image_source: &CGImageSource) -> Result<ImageProbe, ImageError> {
+    validate_image_source(image_source)?;
+    let format = image_format(image_source)?;
+    let properties = image_properties(image_source)?;
+    let width = required_u32_property(&properties, unsafe { kCGImagePropertyPixelWidth })?;
+    let height = required_u32_property(&properties, unsafe { kCGImagePropertyPixelHeight })?;
+    let orientation = optional_i64_property(&properties, unsafe { kCGImagePropertyOrientation })
+        .unwrap_or(1)
+        .try_into()
+        .map_err(|_| ImageError::Corrupt)?;
+    let has_alpha =
+        optional_bool_property(&properties, unsafe { kCGImagePropertyHasAlpha }).unwrap_or(false);
+    let icc_profile_name =
+        optional_string_property(&properties, unsafe { kCGImagePropertyProfileName });
+    Ok(ImageProbe {
+        format,
+        width,
+        height,
+        orientation,
+        has_alpha,
+        icc_profile_name,
+    })
+}
+
+pub(super) fn thumbnail_from_image_source(
+    image_source: &CGImageSource,
+    max_pixels: u32,
+) -> Result<CFRetained<CGImage>, ImageError> {
+    if max_pixels == 0 {
+        return Err(ImageError::BudgetExceeded);
+    }
+    let _ = image_format(image_source)?;
+    let max_pixel_number = CFNumber::new_i64(i64::from(max_pixels));
+    let options = CFDictionary::<CFString, CFType>::from_slices(
+        &[
+            unsafe { kCGImageSourceCreateThumbnailFromImageAlways },
+            unsafe { kCGImageSourceCreateThumbnailWithTransform },
+            unsafe { kCGImageSourceThumbnailMaxPixelSize },
+            unsafe { kCGImageSourceShouldCacheImmediately },
+        ],
+        &[
+            CFBoolean::new(true).as_ref(),
+            CFBoolean::new(true).as_ref(),
+            max_pixel_number.as_ref(),
+            CFBoolean::new(true).as_ref(),
+        ],
+    );
+    // SAFETY: The options dictionary contains only documented Image I/O
+    // thumbnail keys with values of the required Core Foundation types.
+    let thumbnail = unsafe { image_source.thumbnail_at_index(0, Some(options.as_opaque())) }
+        .ok_or(ImageError::Corrupt)?;
+    let width =
+        u32::try_from(CGImage::width(Some(&thumbnail))).map_err(|_| ImageError::BudgetExceeded)?;
+    let height =
+        u32::try_from(CGImage::height(Some(&thumbnail))).map_err(|_| ImageError::BudgetExceeded)?;
+    if width == 0 || height == 0 || width > max_pixels || height > max_pixels {
+        return Err(ImageError::BudgetExceeded);
+    }
+    Ok(thumbnail)
 }
 
 fn image_format(image_source: &CGImageSource) -> Result<ImageFormat, ImageError> {

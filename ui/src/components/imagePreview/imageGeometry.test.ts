@@ -4,11 +4,13 @@ import {
   displayScale,
   type ImageViewportGeometry,
   type ImageViewportState,
+  normalizedToStage,
   panBounds,
   remapSourcePoint,
   sourcePointAtStagePoint,
   sourcePointToStagePoint,
   stagePointToSourcePoint,
+  stageToNormalized,
   zoomAtAnchor,
 } from './imageGeometry'
 
@@ -29,6 +31,43 @@ function state(overrides: Partial<ImageViewportState> = {}): ImageViewportState 
 }
 
 describe('image viewport geometry', () => {
+  const source = { width: 6720, height: 4480 }
+  const stage = { left: 120, top: 80, width: 960, height: 640 }
+
+  it('maps the rendered image center to canonical normalized coordinates', () => {
+    expect(stageToNormalized({ x: 600, y: 400 }, source, stage, 0, 1)).toEqual({
+      x: 0.5,
+      y: 0.5,
+    })
+  })
+
+  it.each([0, 1, 2, 3] as const)(
+    'round-trips canonical coordinates through rotation %i',
+    (quarterTurns) => {
+      for (const zoom of [0.5, 1, 2, 4]) {
+        const normalized = { x: 0.23, y: 0.71 }
+        const projected = normalizedToStage(normalized, source, stage, quarterTurns, zoom)
+        expect(projected).not.toBeNull()
+        expect(
+          stageToNormalized(
+            projected as { x: number; y: number },
+            source,
+            stage,
+            quarterTurns,
+            zoom,
+          ),
+        ).toEqual(
+          expect.objectContaining({ x: expect.closeTo(0.23, 10), y: expect.closeTo(0.71, 10) }),
+        )
+      }
+    },
+  )
+
+  it('returns null when source or stage geometry is unavailable', () => {
+    expect(stageToNormalized({ x: 0, y: 0 }, { width: 0, height: 1 }, stage, 0, 1)).toBeNull()
+    expect(normalizedToStage({ x: 0.5, y: 0.5 }, source, { ...stage, width: 0 }, 0, 1)).toBeNull()
+  })
+
   it('fills the fit inset even when the current representation is smaller than the stage', () => {
     const proxyGeometry: ImageViewportGeometry = {
       stage: { width: 1920, height: 1000 },

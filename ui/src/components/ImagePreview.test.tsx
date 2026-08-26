@@ -145,7 +145,7 @@ describe('ImagePreview', () => {
     expect(screen.getByRole('toolbar', { name: '图片预览工具' })).toBeVisible()
     expect(screen.getByRole('button', { name: '适应窗口' })).toBeVisible()
     expect(screen.queryByRole('button', { name: '按 100% 显示' })).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '关闭预览' })).toBeVisible()
+    expect(screen.getByRole('button', { name: '返回网格' })).toBeVisible()
   })
 
   it('keeps the large rounded magnifier inside the clipped preview stage at 720×450', () => {
@@ -205,9 +205,9 @@ describe('ImagePreview', () => {
       expect(iconButton).toHaveClass('viewer-icon-button')
       expect(iconButton.querySelector('.viewer-icon')).toHaveAttribute('aria-hidden', 'true')
     }
-    const complete = within(actions as HTMLElement).getByRole('button', { name: '关闭预览' })
+    const complete = within(actions as HTMLElement).getByRole('button', { name: '返回网格' })
     expect(complete).toHaveClass('viewer-button', 'preview-complete-action')
-    expect(complete).toHaveTextContent('完成')
+    expect(complete).toHaveTextContent('返回网格')
     const navigation = within(dialog).getByRole('navigation', { name: '图片导航' })
     expect(navigation).toHaveClass('preview-navigation-float')
     expect(within(navigation).getByRole('button', { name: '上一张' })).toHaveClass(
@@ -217,6 +217,29 @@ describe('ImagePreview', () => {
       'viewer-icon-button',
     )
     expect(within(dialog).queryByText('front.jpg')?.closest('footer')).toBeNull()
+  })
+
+  it('keeps ordinary preview navigation and closes through 返回网格', () => {
+    const first = image(1)
+    const second = image(2)
+    const onNavigate = vi.fn()
+    const onClose = vi.fn()
+    render(
+      <ImagePreview
+        file={first}
+        files={[first, second]}
+        magnifier={MAGNIFIER}
+        pointerClientPoint={POINTER_CLIENT_POINT}
+        requestImage={vi.fn(() => new Promise<never>(() => undefined))}
+        onNavigate={onNavigate}
+        onClose={onClose}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: '下一张' }))
+    expect(onNavigate).toHaveBeenCalledWith(second)
+    fireEvent.click(screen.getByRole('button', { name: '返回网格' }))
+    expect(onClose).toHaveBeenCalledOnce()
   })
 
   it('keeps the formal toolbar mounted while loading and contains failure feedback in the stage', async () => {

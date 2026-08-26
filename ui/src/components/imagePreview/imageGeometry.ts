@@ -11,6 +11,13 @@ export interface Size {
   height: number
 }
 
+export interface StageRect extends Size {
+  left: number
+  top: number
+}
+
+export type QuarterTurns = 0 | 1 | 2 | 3
+
 export interface ImageViewportState {
   mode: PreviewMode
   zoom: number
@@ -26,6 +33,45 @@ export interface ImageViewportGeometry {
 
 export const MIN_PREVIEW_ZOOM = 0.1
 export const MAX_PREVIEW_ZOOM = 8
+
+export function normalizedToStage(
+  point: Point,
+  source: Size,
+  stage: StageRect,
+  quarterTurns: QuarterTurns,
+  zoom: number,
+): Point | null {
+  if (!canProject(point, source, stage, quarterTurns, zoom) || !isNormalized(point)) return null
+  const centered = {
+    x: (point.x - 0.5) * stage.width * zoom,
+    y: (point.y - 0.5) * stage.height * zoom,
+  }
+  const rotated = rotateQuarterTurnsClockwise(centered, quarterTurns)
+  return {
+    x: stage.left + stage.width / 2 + rotated.x,
+    y: stage.top + stage.height / 2 + rotated.y,
+  }
+}
+
+export function stageToNormalized(
+  point: Point,
+  source: Size,
+  stage: StageRect,
+  quarterTurns: QuarterTurns,
+  zoom: number,
+): Point | null {
+  if (!canProject(point, source, stage, quarterTurns, zoom)) return null
+  const translated = {
+    x: point.x - stage.left - stage.width / 2,
+    y: point.y - stage.top - stage.height / 2,
+  }
+  const unrotated = rotateQuarterTurnsCounterClockwise(translated, quarterTurns)
+  const normalized = {
+    x: unrotated.x / (stage.width * zoom) + 0.5,
+    y: unrotated.y / (stage.height * zoom) + 0.5,
+  }
+  return isNormalized(normalized) ? normalized : null
+}
 
 export function displayScale(state: ImageViewportState, geometry: ImageViewportGeometry): number {
   if (!hasArea(geometry.stage) || !hasArea(geometry.source)) return 0
@@ -163,6 +209,46 @@ function hasArea(size: Size): boolean {
   return (
     Number.isFinite(size.width) && Number.isFinite(size.height) && size.width > 0 && size.height > 0
   )
+}
+
+function canProject(
+  point: Point,
+  source: Size,
+  stage: StageRect,
+  quarterTurns: QuarterTurns,
+  zoom: number,
+): boolean {
+  return (
+    Number.isFinite(point.x) &&
+    Number.isFinite(point.y) &&
+    hasArea(source) &&
+    hasArea(stage) &&
+    Number.isFinite(stage.left) &&
+    Number.isFinite(stage.top) &&
+    Number.isInteger(quarterTurns) &&
+    quarterTurns >= 0 &&
+    quarterTurns <= 3 &&
+    Number.isFinite(zoom) &&
+    zoom > 0
+  )
+}
+
+function isNormalized(point: Point): boolean {
+  return point.x >= 0 && point.x <= 1 && point.y >= 0 && point.y <= 1
+}
+
+function rotateQuarterTurnsClockwise(point: Point, quarterTurns: QuarterTurns): Point {
+  if (quarterTurns === 1) return { x: -point.y, y: point.x }
+  if (quarterTurns === 2) return { x: -point.x, y: -point.y }
+  if (quarterTurns === 3) return { x: point.y, y: -point.x }
+  return point
+}
+
+function rotateQuarterTurnsCounterClockwise(point: Point, quarterTurns: QuarterTurns): Point {
+  if (quarterTurns === 1) return { x: point.y, y: -point.x }
+  if (quarterTurns === 2) return { x: -point.x, y: -point.y }
+  if (quarterTurns === 3) return { x: -point.y, y: point.x }
+  return point
 }
 
 function clamp(value: number, minimum: number, maximum: number): number {

@@ -2411,6 +2411,17 @@ body:has(.viewer-dialog-backdrop) .task-bar {
   position: relative;
 }
 
+.image-preview-surface__content {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+.image-preview-surface__content > .image-preview-stage {
+  min-width: 0;
+}
+
 .image-preview-stage > .viewer-local-feedback {
   left: 50%;
   position: absolute;

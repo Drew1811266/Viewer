@@ -1,0 +1,615 @@
+import type { KeyboardEvent, MutableRefObject, PointerEvent, ReactNode } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import type {
+  BrowserFile,
+  ImageRepresentation,
+  ImageRepresentationRequest,
+  MagnifierPreferences,
+} from '../../api/types'
+import { isPreviewableImage } from '../../fileKinds'
+import UnsupportedFileState from '../UnsupportedFileState'
+import ViewerButton, { ViewerIconButton } from '../ui/ViewerButton'
+import ViewerLocalFeedback from '../ui/ViewerLocalFeedback'
+import ViewerSegmentedControl from '../ui/ViewerSegmentedControl'
+import ViewerToolbar from '../ui/ViewerToolbar'
+import ImageMagnifier, { type ImageMagnifierHandle } from './ImageMagnifier'
+import ImagePreviewLoading from './ImagePreviewLoading'
+import {
+  type Point,
+  remapSourcePoint,
+  type Size,
+  sourcePointAtStagePoint,
+  sourcePointToStagePoint,
+} from './imageGeometry'
+import { type CurrentOriginalState, useCurrentOriginal } from './useCurrentOriginal'
+import { useImageViewport } from './useImageViewport'
+import { usePreviewGestures } from './usePreviewGestures'
+import { isPositiveSize, usePreviewStageSize } from './usePreviewStageSize'
+
+export interface ImagePreviewProjection {
+  sourceSize: Size
+  stageRect: { left: number; top: number; width: number; height: number }
+  stageToNormalized(point: Point): Point | null
+  normalizedToStage(point: Point): Point | null
+}
+
+export interface ImagePreviewSurfaceSlots {
+  toolbarLeading?: ReactNode
+  toolbarActions?: ReactNode
+  stageOverlay?: (projection: ImagePreviewProjection) => ReactNode
+  sidePanel?: ReactNode
+}
+
+export interface ImagePreviewSurfaceProps {
+  file: BrowserFile
+  files: BrowserFile[]
+  magnifier: MagnifierPreferences
+  pointerClientPoint: MutableRefObject<Point | null>
+  unavailableEntityIds?: ReadonlySet<string>
+  requestImage: (
+    file: BrowserFile,
+    representation: ImageRepresentationRequest,
+    signal?: AbortSignal,
+  ) => Promise<ImageRepresentation>
+  onNavigate: (file: BrowserFile) => void
+  onDimensions?: (entityId: string, width: number, height: number) => void
+  ariaLabel?: string
+  onEscape?: () => void
+  slots?: ImagePreviewSurfaceSlots
+}
+
+const EMPTY_ENTITY_IDS: ReadonlySet<string> = new Set()
+const EMPTY_STAGE: Size = { width: 0, height: 0 }
+
+export default function ImagePreviewSurface({
+  file,
+  files,
+  magnifier,
+  pointerClientPoint,
+  unavailableEntityIds = EMPTY_ENTITY_IDS,
+  requestImage,
+  onNavigate,
+  onDimensions,
+  ariaLabel,
+  onEscape,
+  slots,
+}: ImagePreviewSurfaceProps) {
+  const fitCache = useRef(new Map<string, ImageRepresentation>())
+  const dialog = useRef<HTMLElement>(null)
+  const stage = useRef<HTMLDivElement>(null)
+  const magnifierHandle = useRef<ImageMagnifierHandle>(null)
+  const pendingFit = useRef(new Map<string, Promise<ImageRepresentation>>())
+  const allowedWindow = useRef(new Set<string>())
+  const lastStagePoint = useRef<Point | null>(null)
+  const [, refresh] = useState(0)
+  const stageSize = usePreviewStageSize(stage)
+  const [browserLoadedCandidateKey, setBrowserLoadedCandidateKey] = useState<string | null>(null)
+  const [magnifierEnabled, setMagnifierEnabled] = useState(false)
+  const [magnifierAnnounced, setMagnifierAnnounced] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const currentIndex = files.findIndex((candidate) => candidate.entityId === file.entityId)
+  const unavailable = unavailableEntityIds.has(file.entityId)
+  const transformsDisabled = unavailable || !isPreviewableImage(file)
+  const viewport = useImageViewport({ stage: EMPTY_STAGE, source: EMPTY_STAGE, fitInset: 0.9 })
+  const scalePercent = Math.round((viewport.state.mode === 'free' ? viewport.state.zoom : 1) * 100)
+  const [announcedScalePercent, setAnnouncedScalePercent] = useState(scalePercent)
+  const original = useCurrentOriginal({
+    file,
+    available: !transformsDisabled,
+    requestImage,
+  })
+  const fitRepresentation = transformsDisabled ? undefined : fitCache.current.get(file.entityId)
+  const currentOriginal: CurrentOriginalState =
+    original.entityId === file.entityId
+      ? original
+      : { status: 'loading', entityId: file.entityId, representation: null }
+  const originalRepresentation =
+    currentOriginal.status === 'ready' ? currentOriginal.representation : null
+  const originalFallback = originalFallbackCopy(currentOriginal.status)
+  const displayRepresentation: ImageRepresentation | null =
+    originalRepresentation ?? (originalFallback === null ? null : (fitRepresentation ?? null))
+  const displayCandidateKey =
+    displayRepresentation === null ? null : `${file.entityId}:${displayRepresentation.cacheKey}`
+  const sourceDimensions: Size = file.imageMetadata ?? displayRepresentation ?? EMPTY_STAGE
+  const geometryReady =
+    isPositiveSize(stageSize) &&
+    isPositiveSize(sourceDimensions) &&
+    sameSize(viewport.geometry.stage, stageSize) &&
+    sameSize(viewport.geometry.source, sourceDimensions)
+  const previewReady =
+    displayCandidateKey !== null &&
+    browserLoadedCandidateKey === displayCandidateKey &&
+    geometryReady
+  const gestures = usePreviewGestures({
+    stage,
+    disabled: transformsDisabled || !previewReady,
+    panBounds: viewport.panBounds,
+    zoomBy: viewport.zoomBy,
+    panBy: viewport.panBy,
+  })
+
+  useEffect(() => {
+    const previous = document.activeElement
+    dialog.current?.focus()
+    return () => {
+      if (previous instanceof HTMLElement && previous.isConnected) previous.focus()
+    }
+  }, [])
+
+  useEffect(() => {
+    viewport.resetForEntity()
+    setBrowserLoadedCandidateKey(null)
+    setError(null)
+    lastStagePoint.current = null
+    hideMagnifier(magnifierHandle, stage)
+  }, [file.entityId, viewport.resetForEntity])
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setAnnouncedScalePercent(scalePercent), 300)
+    return () => window.clearTimeout(timer)
+  }, [scalePercent])
+
+  useEffect(() => {
+    const windowFiles = files.slice(Math.max(0, currentIndex - 1), currentIndex + 2)
+    const allowed = new Set(
+      windowFiles
+        .filter(
+          (candidate) =>
+            isPreviewableImage(candidate) && !unavailableEntityIds.has(candidate.entityId),
+        )
+        .map((candidate) => candidate.entityId),
+    )
+    allowedWindow.current = allowed
+    for (const entityId of fitCache.current.keys()) {
+      if (!allowed.has(entityId)) fitCache.current.delete(entityId)
+    }
+    for (const candidate of windowFiles) {
+      if (
+        !isPreviewableImage(candidate) ||
+        unavailableEntityIds.has(candidate.entityId) ||
+        fitCache.current.has(candidate.entityId) ||
+        pendingFit.current.has(candidate.entityId)
+      ) {
+        continue
+      }
+      const request = requestImage(candidate, {
+        kind: 'fit_preview',
+        maxWidth: 2_400,
+        maxHeight: 2_400,
+        scaleMilli: 1_000,
+      })
+      pendingFit.current.set(candidate.entityId, request)
+      void request.then(
+        (loaded) => {
+          pendingFit.current.delete(candidate.entityId)
+          if (!allowedWindow.current.has(candidate.entityId)) return
+          fitCache.current.set(candidate.entityId, loaded)
+          refresh((value) => value + 1)
+        },
+        () => {
+          pendingFit.current.delete(candidate.entityId)
+          if (candidate.entityId === file.entityId) setError('无法预览该图片。')
+        },
+      )
+    }
+  }, [currentIndex, file.entityId, files, requestImage, unavailableEntityIds])
+
+  useLayoutEffect(() => {
+    viewport.setMeasurements(stageSize, sourceDimensions)
+  }, [sourceDimensions, stageSize, viewport.setMeasurements])
+
+  useEffect(() => {
+    if (originalRepresentation !== null) {
+      onDimensions?.(file.entityId, originalRepresentation.width, originalRepresentation.height)
+    }
+  }, [file.entityId, onDimensions, originalRepresentation])
+
+  const placeMagnifier = useCallback(
+    (stagePoint: Point) => {
+      const sourcePoint = sourcePointAtStagePoint(stagePoint, viewport.state, viewport.geometry)
+      if (
+        !magnifierEnabled ||
+        transformsDisabled ||
+        !previewReady ||
+        displayRepresentation === null ||
+        sourcePoint === null
+      ) {
+        hideMagnifier(magnifierHandle, stage)
+        return
+      }
+      const originalSize = originalRepresentation ?? file.imageMetadata ?? displayRepresentation
+      magnifierHandle.current?.place({
+        stagePoint,
+        sourcePoint: remapSourcePoint(sourcePoint, viewport.geometry.source, originalSize),
+      })
+      if (stage.current) stage.current.dataset.magnifierOverImage = 'true'
+    },
+    [
+      file.imageMetadata,
+      magnifierEnabled,
+      originalRepresentation,
+      displayRepresentation,
+      previewReady,
+      transformsDisabled,
+      viewport.geometry,
+      viewport.state,
+    ],
+  )
+
+  const placeLatestMagnifier = useCallback(() => {
+    const element = stage.current
+    const clientPoint = pointerClientPoint.current
+    if (element === null || clientPoint === null) {
+      hideMagnifier(magnifierHandle, stage)
+      return
+    }
+    const bounds = element.getBoundingClientRect()
+    const stagePoint = {
+      x: clientPoint.x - bounds.left,
+      y: clientPoint.y - bounds.top,
+    }
+    lastStagePoint.current = stagePoint
+    placeMagnifier(stagePoint)
+  }, [placeMagnifier, pointerClientPoint])
+
+  useEffect(() => {
+    if (!magnifierEnabled || transformsDisabled || !previewReady) {
+      hideMagnifier(magnifierHandle, stage)
+      return
+    }
+    placeLatestMagnifier()
+  }, [
+    magnifier.area,
+    magnifier.magnification,
+    magnifier.shape,
+    magnifierEnabled,
+    placeLatestMagnifier,
+    previewReady,
+    stageSize,
+    transformsDisabled,
+    viewport.state.rotation,
+  ])
+
+  function navigate(delta: number) {
+    const next = files[currentIndex + delta]
+    if (next) onNavigate(next)
+  }
+
+  function toggleMagnifier() {
+    setMagnifierAnnounced(true)
+    setMagnifierEnabled((current) => !current)
+  }
+
+  function keyboard(event: KeyboardEvent<HTMLElement>) {
+    if (ownsMagnifierShortcut(event) && !transformsDisabled) {
+      event.preventDefault()
+      toggleMagnifier()
+      return
+    }
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      onEscape?.()
+    }
+    if (event.key === 'ArrowLeft') {
+      event.preventDefault()
+      navigate(-1)
+    }
+    if (event.key === 'ArrowRight') {
+      event.preventDefault()
+      navigate(1)
+    }
+  }
+
+  function zoomFromToolbar(factor: number) {
+    viewport.zoomBy(factor, {
+      x: viewport.geometry.stage.width / 2,
+      y: viewport.geometry.stage.height / 2,
+    })
+  }
+
+  function sampleMagnifier(event: PointerEvent<HTMLDivElement>) {
+    gestures.onPointerMove(event)
+    const point = recordPointer(event)
+    lastStagePoint.current = point
+    placeMagnifier(point)
+  }
+
+  function startPointer(event: PointerEvent<HTMLDivElement>) {
+    gestures.onPointerDown(event)
+    const point = recordPointer(event)
+    lastStagePoint.current = point
+    placeMagnifier(point)
+  }
+
+  function recordPointer(event: PointerEvent<HTMLDivElement>): Point {
+    pointerClientPoint.current = { x: event.clientX, y: event.clientY }
+    const bounds = event.currentTarget.getBoundingClientRect()
+    return { x: event.clientX - bounds.left, y: event.clientY - bounds.top }
+  }
+
+  function stopMagnifier(event: PointerEvent<HTMLDivElement>) {
+    pointerClientPoint.current = { x: event.clientX, y: event.clientY }
+    lastStagePoint.current = null
+    hideMagnifier(magnifierHandle, stage)
+  }
+
+  const displayControls: ReactNode = (
+    <ViewerSegmentedControl label="图片显示控制">
+      <ViewerButton
+        active={viewport.state.mode === 'fit'}
+        disabled={transformsDisabled}
+        onClick={() => {
+          setError(null)
+          viewport.setFit()
+        }}
+      >
+        适应窗口
+      </ViewerButton>
+      <ViewerIconButton
+        icon="minus"
+        label="缩小"
+        disabled={transformsDisabled}
+        onClick={() => zoomFromToolbar(0.8)}
+      />
+      <span className="preview-scale-label">{scalePercent}%</span>
+      <span className="visually-hidden" data-testid="preview-scale-announcement" aria-live="polite">
+        缩放比例 {announcedScalePercent}%
+      </span>
+      <ViewerIconButton
+        icon="plus"
+        label="放大"
+        disabled={transformsDisabled}
+        onClick={() => zoomFromToolbar(1.25)}
+      />
+    </ViewerSegmentedControl>
+  )
+  const previewActions: ReactNode = (
+    <>
+      <ViewerIconButton
+        icon="zoom-in"
+        label="放大镜"
+        title="放大镜（Q）"
+        tone="quiet"
+        active={magnifierEnabled}
+        aria-keyshortcuts="Q"
+        disabled={transformsDisabled}
+        onClick={toggleMagnifier}
+      />
+      <ViewerIconButton
+        icon="rotate-cw"
+        label="顺时针旋转"
+        tone="quiet"
+        disabled={transformsDisabled}
+        onClick={viewport.rotateClockwise}
+      />
+      {slots?.toolbarActions}
+    </>
+  )
+  const renderedSource = viewport.geometry.source
+  const fatalImageFailure = isFatalImageFailure(error, currentOriginal.status)
+  const showPreviewLoading =
+    !unavailable && isPreviewableImage(file) && !fatalImageFailure && !previewReady
+  const previewStage: ReactNode = (
+    <div
+      ref={stage}
+      className="image-preview-stage"
+      onPointerDown={startPointer}
+      onPointerMove={sampleMagnifier}
+      onPointerEnter={sampleMagnifier}
+      onPointerLeave={stopMagnifier}
+      onPointerUp={gestures.onPointerUp}
+      onPointerCancel={gestures.onPointerCancel}
+      onLostPointerCapture={gestures.onLostPointerCapture}
+    >
+      {unavailable ? (
+        <UnsupportedFileState file={file} unavailable />
+      ) : !isPreviewableImage(file) ? (
+        <UnsupportedFileState file={file} />
+      ) : displayRepresentation !== null && isPositiveSize(sourceDimensions) ? (
+        <img
+          key={displayCandidateKey}
+          className="image-preview-image"
+          src={displayRepresentation.url}
+          alt={file.name}
+          width={renderedSource.width || sourceDimensions.width}
+          height={renderedSource.height || sourceDimensions.height}
+          draggable={false}
+          aria-hidden={!previewReady}
+          data-visible={previewReady}
+          data-mode={viewport.state.mode}
+          data-representation={
+            originalRepresentation === displayRepresentation ? 'original' : 'fit'
+          }
+          onLoad={() => {
+            if (displayCandidateKey !== null) setBrowserLoadedCandidateKey(displayCandidateKey)
+          }}
+          style={{ transform: viewport.transform }}
+        />
+      ) : null}
+      {!unavailable && isPreviewableImage(file) && !fatalImageFailure && (
+        <ImagePreviewLoading visible={showPreviewLoading} />
+      )}
+      {fitRepresentation !== undefined && originalFallbackCopy(currentOriginal.status) !== null && (
+        <ViewerLocalFeedback tone="warning" title="正在使用适窗预览">
+          {originalFallbackCopy(currentOriginal.status)}
+        </ViewerLocalFeedback>
+      )}
+      {displayRepresentation === null && fatalImageFailure && (
+        <ViewerLocalFeedback tone="danger" title="无法显示这张图片">
+          {error}
+        </ViewerLocalFeedback>
+      )}
+      <ImageMagnifier
+        ref={magnifierHandle}
+        shape={magnifier.shape}
+        area={magnifier.area}
+        magnification={magnifier.magnification}
+        sourceScale={viewport.scale}
+        stageSize={stageSize}
+        rotation={viewport.state.rotation}
+        fileName={file.name}
+        original={currentOriginal}
+      />
+      {magnifierAnnouncement(magnifierEnabled, currentOriginal.status)}
+      {magnifierAnnounced && (
+        <span className="visually-hidden" aria-live="polite">
+          {magnifierEnabled ? '放大镜已开启' : '放大镜已关闭'}
+        </span>
+      )}
+      {slots?.stageOverlay?.({
+        sourceSize: sourceDimensions,
+        stageRect: stageRect(stage),
+        stageToNormalized: (point) =>
+          stagePointToNormalized(point, stage, viewport.state, viewport.geometry),
+        normalizedToStage: (point) =>
+          normalizedPointToStage(point, stage, viewport.state, viewport.geometry),
+      })}
+    </div>
+  )
+  const previewNavigation: ReactNode = (
+    <>
+      <ViewerIconButton
+        icon="chevron-left"
+        label="上一张"
+        tone="quiet"
+        disabled={currentIndex <= 0}
+        onClick={() => navigate(-1)}
+      />
+      <span>
+        {currentIndex + 1} / {files.length}
+      </span>
+      <ViewerIconButton
+        icon="chevron-right"
+        label="下一张"
+        tone="quiet"
+        disabled={currentIndex < 0 || currentIndex >= files.length - 1}
+        onClick={() => navigate(1)}
+      />
+    </>
+  )
+
+  return (
+    <section
+      ref={dialog}
+      className="preview-overlay image-preview"
+      role="dialog"
+      aria-label={ariaLabel ?? `图片预览 ${file.name}`}
+      tabIndex={-1}
+      onKeyDown={keyboard}
+    >
+      <ViewerToolbar
+        label="图片预览工具"
+        leading={slots?.toolbarLeading}
+        center={displayControls}
+        actions={previewActions}
+      />
+      <div className="image-preview-surface__content">
+        {previewStage}
+        {slots?.sidePanel}
+      </div>
+      <nav className="preview-navigation-float" aria-label="图片导航">
+        {previewNavigation}
+      </nav>
+    </section>
+  )
+}
+
+function ownsMagnifierShortcut(event: KeyboardEvent<HTMLElement>): boolean {
+  return (
+    event.key.toLowerCase() === 'q' &&
+    !event.altKey &&
+    !event.ctrlKey &&
+    !event.metaKey &&
+    !event.shiftKey &&
+    !event.repeat &&
+    !event.nativeEvent.isComposing &&
+    !event.defaultPrevented
+  )
+}
+
+function hideMagnifier(
+  magnifier: { current: ImageMagnifierHandle | null },
+  stage: { current: HTMLElement | null },
+) {
+  magnifier.current?.hide()
+  stage.current?.removeAttribute('data-magnifier-over-image')
+}
+
+function magnifierAnnouncement(
+  enabled: boolean,
+  status: ReturnType<typeof useCurrentOriginal>['status'],
+): ReactNode {
+  if (!enabled || (status !== 'budget_error' && status !== 'error')) return null
+  return (
+    <span className="visually-hidden" role="status" aria-live="polite">
+      {status === 'budget_error' ? '放大镜原图超出安全预览限制' : '放大镜无法载入原图'}
+    </span>
+  )
+}
+
+function originalFallbackCopy(status: CurrentOriginalState['status']): string | null {
+  if (status === 'budget_error') return '原图超出安全预览限制，已继续使用适窗预览。'
+  if (status === 'error') return '无法加载原图，已继续使用适窗预览。'
+  return null
+}
+
+function isFatalImageFailure(
+  fitError: string | null,
+  originalStatus: CurrentOriginalState['status'],
+): boolean {
+  return fitError !== null && originalFallbackCopy(originalStatus) !== null
+}
+
+function sameSize(left: Size, right: Size): boolean {
+  return left.width === right.width && left.height === right.height
+}
+
+function stageRect(stage: { current: HTMLElement | null }) {
+  const bounds = stage.current?.getBoundingClientRect()
+  return bounds === undefined
+    ? { left: 0, top: 0, width: 0, height: 0 }
+    : { left: bounds.left, top: bounds.top, width: bounds.width, height: bounds.height }
+}
+
+function stagePointToNormalized(
+  point: Point,
+  stage: { current: HTMLElement | null },
+  state: Parameters<typeof sourcePointAtStagePoint>[1],
+  geometry: Parameters<typeof sourcePointAtStagePoint>[2],
+): Point | null {
+  const bounds = stage.current?.getBoundingClientRect()
+  if (bounds === undefined || !isPositiveSize(geometry.source)) return null
+  const sourcePoint = sourcePointAtStagePoint(
+    { x: point.x - bounds.left, y: point.y - bounds.top },
+    state,
+    geometry,
+  )
+  return sourcePoint === null
+    ? null
+    : { x: sourcePoint.x / geometry.source.width, y: sourcePoint.y / geometry.source.height }
+}
+
+function normalizedPointToStage(
+  point: Point,
+  stage: { current: HTMLElement | null },
+  state: Parameters<typeof sourcePointToStagePoint>[1],
+  geometry: Parameters<typeof sourcePointToStagePoint>[2],
+): Point | null {
+  const bounds = stage.current?.getBoundingClientRect()
+  if (
+    bounds === undefined ||
+    !isPositiveSize(geometry.source) ||
+    point.x < 0 ||
+    point.x > 1 ||
+    point.y < 0 ||
+    point.y > 1
+  ) {
+    return null
+  }
+  const stagePoint = sourcePointToStagePoint(
+    { x: point.x * geometry.source.width, y: point.y * geometry.source.height },
+    state,
+    geometry,
+  )
+  return { x: bounds.left + stagePoint.x, y: bounds.top + stagePoint.y }
+}

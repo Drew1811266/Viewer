@@ -11,6 +11,7 @@
   "assets": [
     {
       "assetVersionId": "00000000-0000-4000-8000-000000000301",
+      "sourceEntityId": "00000000-0000-4000-8000-000000000051",
       "relativePath": "outputs/image-1.png",
       "evidence": {
         "sizeBytes": 1024,

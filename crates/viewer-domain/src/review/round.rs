@@ -169,6 +169,20 @@ impl ReviewDraft {
         {
             return Err(ReviewRoundError::InvalidTimestamp);
         }
+        if self.assets.iter().any(|asset| {
+            matches!(
+                asset.media,
+                ReviewMedia::Image {
+                    width: None,
+                    height: None,
+                }
+            ) && !self
+                .unreviewable
+                .iter()
+                .any(|item| item.asset_version_id == asset.id)
+        }) {
+            return Err(ReviewRoundError::InvalidAsset);
+        }
 
         let outcomes = self
             .assets
@@ -234,7 +248,11 @@ fn asset_is_valid(asset: &AssetVersion) -> bool {
         return false;
     }
     match asset.media {
-        ReviewMedia::Image { width, height } => width > 0 && height > 0,
+        ReviewMedia::Image { width, height } => match (width, height) {
+            (None, None) => true,
+            (Some(width), Some(height)) => width > 0 && height > 0,
+            _ => false,
+        },
         ReviewMedia::Video {
             duration_us,
             display_width,
@@ -253,7 +271,20 @@ fn asset_is_valid(asset: &AssetVersion) -> bool {
 fn validate_anchor(asset: &AssetVersion, anchor: &FeedbackAnchor) -> Result<(), ReviewRoundError> {
     match (&asset.media, anchor) {
         (_, FeedbackAnchor::Asset)
-        | (ReviewMedia::Image { .. }, FeedbackAnchor::ImageRegion(_)) => Ok(()),
+        | (
+            ReviewMedia::Image {
+                width: Some(_),
+                height: Some(_),
+            },
+            FeedbackAnchor::ImageRegion(_),
+        ) => Ok(()),
+        (
+            ReviewMedia::Image {
+                width: None,
+                height: None,
+            },
+            FeedbackAnchor::ImageRegion(_),
+        ) => Err(ReviewRoundError::AnchorUnavailable),
         (ReviewMedia::Video { duration_us, .. }, FeedbackAnchor::VideoPoint { position_us }) => {
             if duration_us.is_some_and(|duration| *position_us > duration) {
                 Err(ReviewRoundError::AnchorOutOfBounds)
@@ -306,4 +337,6 @@ pub enum ReviewRoundError {
     AnchorMediaMismatch,
     #[error("feedback anchor exceeds the target media bounds")]
     AnchorOutOfBounds,
+    #[error("feedback anchor requires media bounds that are unavailable")]
+    AnchorUnavailable,
 }

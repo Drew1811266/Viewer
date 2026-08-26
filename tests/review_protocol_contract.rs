@@ -1,6 +1,8 @@
 use serde_json::{Value, json};
 use std::fs;
 use std::path::PathBuf;
+use viewer_domain::EntityId;
+use viewer_domain::review::{ReviewMedia, ReviewabilityFailure};
 use viewer_infrastructure::review::{
     ReviewProtocolError, decode_catalog, decode_completed, decode_draft,
     decode_production_manifest, encode_catalog, encode_completed, encode_draft,
@@ -136,4 +138,76 @@ fn draft_and_completed_status_payloads_are_not_interchangeable() {
         decode_completed(&completed_as_draft),
         Err(ReviewProtocolError::InvalidData)
     );
+}
+
+#[test]
+fn review_v1_accepts_legacy_assets_without_local_source_identity() {
+    let bytes = mutate_document("review-draft-v1.valid.json", |document| {
+        document["assets"][0]
+            .as_object_mut()
+            .unwrap()
+            .remove("sourceEntityId");
+    });
+    let draft = decode_draft(&bytes).unwrap();
+
+    assert_eq!(draft.assets[0].source_entity_id, None);
+}
+
+#[test]
+fn review_v1_round_trips_optional_local_source_identity() {
+    let entity_id = EntityId::from_u128(0x51);
+    let mut draft = decode_draft(&fixture("review-draft-v1.valid.json")).unwrap();
+    draft.assets[0].source_entity_id = Some(entity_id);
+    let mut completed = decode_completed(&fixture("review-round-v1.valid.json")).unwrap();
+    completed.assets[0].source_entity_id = Some(entity_id);
+
+    let decoded_draft = decode_draft(&encode_draft(&draft).unwrap()).unwrap();
+    let decoded_completed = decode_completed(&encode_completed(&completed).unwrap()).unwrap();
+
+    assert_eq!(decoded_draft.assets[0].source_entity_id, Some(entity_id));
+    assert_eq!(
+        decoded_completed.assets[0].source_entity_id,
+        Some(entity_id)
+    );
+}
+
+#[test]
+fn review_v1_represents_confirmed_unreviewable_image_without_fake_dimensions() {
+    let bytes = mutate_document("review-draft-v1.valid.json", |document| {
+        document["assets"][2]["media"] = json!({ "kind": "image" });
+        document["unreviewable"] = json!([{
+            "assetVersionId": "00000000-0000-4000-8000-000000000303",
+            "failure": "decodeFailed"
+        }]);
+    });
+
+    let draft = decode_draft(&bytes).unwrap();
+
+    assert_eq!(
+        draft.assets[2].media,
+        ReviewMedia::Image {
+            width: None,
+            height: None,
+        }
+    );
+    assert_eq!(
+        draft.unreviewable[0].failure,
+        ReviewabilityFailure::DecodeFailed
+    );
+    let encoded: Value = serde_json::from_slice(&encode_draft(&draft).unwrap()).unwrap();
+    assert_eq!(encoded["assets"][2]["media"], json!({ "kind": "image" }));
+}
+
+#[test]
+fn review_v1_rejects_partial_or_zero_image_dimensions() {
+    for media in [
+        json!({ "kind": "image", "width": 100 }),
+        json!({ "kind": "image", "height": 100 }),
+        json!({ "kind": "image", "width": 0, "height": 100 }),
+    ] {
+        let bytes = mutate_document("review-draft-v1.valid.json", |document| {
+            document["assets"][0]["media"] = media;
+        });
+        assert_eq!(decode_draft(&bytes), Err(ReviewProtocolError::InvalidData));
+    }
 }

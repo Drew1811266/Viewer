@@ -185,7 +185,7 @@ pub enum ReviewMedia {
 - Existing image media with positive `width`/`height` decodes to `Some`/`Some`. Newly confirmed unreviewable images may omit both fields and decode to `None`/`None`; one present and one absent, or zero, remains invalid.
 - `FeedbackAnchor::ImageRegion` requires real `Some`/`Some` bounds. Phase 2 creates only `FeedbackAnchor::Asset`, so missing bounds never authorize a fabricated region coordinate system.
 
-- [ ] **Step 1: Add backward-compatibility tests before changing the model**
+- [x] **Step 1: Add backward-compatibility tests before changing the model**
 
 Add tests that remove `sourceEntityId` from the current fixture, decode it, and assert `source_entity_id == None`; add a second round trip asserting an exact UUID survives Draft and Completed encoding.
 
@@ -217,17 +217,17 @@ fn review_v1_represents_confirmed_unreviewable_image_without_fake_dimensions() {
 }
 ```
 
-- [ ] **Step 2: Run the focused test and observe the expected compile/schema failure**
+- [x] **Step 2: Run the focused test and observe the expected compile/schema failure**
 
 Run: `cargo test --locked -p viewer-infrastructure --test review_protocol_contract review_v1_`
 
 Expected: FAIL because `AssetVersion`/protocol do not expose `source_entity_id` and image bounds are still mandatory integers.
 
-- [ ] **Step 3: Add the optional model/DTO/schema field and update every constructor explicitly**
+- [x] **Step 3: Add the optional model/DTO/schema field and update every constructor explicitly**
 
 Use `#[serde(default, skip_serializing_if = "Option::is_none")]` on source identity and each image dimension. Update the schema so image `width` and `height` are optional but mutually dependent. Do not use a blanket `..Default::default()` migration for `AssetVersion`; update every constructor so reviewers can distinguish manual `Some(entity_id)` from legacy/producer `None`, and real image dimensions from confirmed unavailable dimensions.
 
-- [ ] **Step 4: Verify protocol compatibility and the reference reader**
+- [x] **Step 4: Verify protocol compatibility and the reference reader**
 
 Run:
 
@@ -238,7 +238,7 @@ pnpm test:review-protocol
 
 Expected: all protocol tests pass; the Node reader still reads the exact Completed head and ignores Drafts.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add crates/viewer-domain/src/review/asset.rs crates/viewer-domain/src/review/round.rs crates/viewer-infrastructure/src/review/protocol.rs docs/protocol/viewer-review-draft-v1.schema.json docs/protocol/viewer-review-round-v1.schema.json tests/review_protocol_contract.rs tests/fixtures/review-protocol/review-draft-v1.valid.json tests/fixtures/review-protocol/review-round-v1.valid.json

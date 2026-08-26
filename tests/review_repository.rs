@@ -55,6 +55,7 @@ fn review_draft(
         1_000,
         vec![AssetVersion {
             id: AssetVersionId::from_u128(3),
+            source_entity_id: None,
             relative_path: RelativePath::parse("renders/frame.png").unwrap(),
             evidence: AssetEvidence {
                 size_bytes: 4,
@@ -62,8 +63,8 @@ fn review_draft(
                 blake3: None,
             },
             media: ReviewMedia::Image {
-                width: 10,
-                height: 20,
+                width: Some(10),
+                height: Some(20),
             },
             producer_asset_id: None,
             parent_asset_version_id: None,

@@ -22,6 +22,7 @@ function idle(): ReviewSessionSnapshot {
     revision: 0,
     members: [],
     feedback: [],
+    restorableFeedbackId: null,
     unreviewable: [],
     conflicts: [],
     counts: { total: 0, feedbackItems: 0, revise: 0, unreviewable: 0, pass: 0 },
@@ -60,6 +61,13 @@ function active(): ReviewSessionSnapshot {
         text: '降低高光强度',
         createdAtMs: 1,
         targetEntityIds: ['image-1'],
+        targets: [
+          {
+            assetVersionId: 'asset-1',
+            entityId: 'image-1',
+            anchor: { kind: 'asset' },
+          },
+        ],
         targetCount: 1,
       },
     ],

@@ -36,11 +36,15 @@ import type {
   ReviewMutationGuardRequest,
   ReviewPreviewStartRequest,
   ReviewProgress,
+  ReviewReplaceFeedbackAnchorRequest,
+  ReviewRestoreDeletedFeedbackRequest,
   ReviewScopeProposal,
   ReviewSessionRequest,
   ReviewSessionSnapshot,
   ReviewStartRequest,
+  ReviewStartWithFeedbackRequest,
   ReviewUpdateFeedbackRequest,
+  ReviewUpdateFeedbackTextRequest,
   ScanEvent,
   SearchPage,
   SearchProjectRequest,
@@ -119,10 +123,18 @@ export interface ViewerBridge {
   reviewStatus(request: ReviewSessionRequest): Promise<ReviewSessionSnapshot>
   reviewPreviewStart(request: ReviewPreviewStartRequest): Promise<ReviewScopeProposal>
   reviewStart(request: ReviewStartRequest): Promise<ReviewSessionSnapshot>
+  reviewStartWithFeedback(request: ReviewStartWithFeedbackRequest): Promise<ReviewSessionSnapshot>
   reviewResume(request: ReviewSessionRequest): Promise<ReviewSessionSnapshot>
   reviewAddFeedback(request: ReviewAddFeedbackRequest): Promise<ReviewSessionSnapshot>
   reviewUpdateFeedback(request: ReviewUpdateFeedbackRequest): Promise<ReviewSessionSnapshot>
+  reviewUpdateFeedbackText(request: ReviewUpdateFeedbackTextRequest): Promise<ReviewSessionSnapshot>
+  reviewReplaceFeedbackAnchor(
+    request: ReviewReplaceFeedbackAnchorRequest,
+  ): Promise<ReviewSessionSnapshot>
   reviewDeleteFeedback(request: ReviewDeleteFeedbackRequest): Promise<ReviewSessionSnapshot>
+  reviewRestoreDeletedFeedback(
+    request: ReviewRestoreDeletedFeedbackRequest,
+  ): Promise<ReviewSessionSnapshot>
   reviewCompletionSummary(request: ReviewMutationGuardRequest): Promise<ReviewCompletionProposal>
   reviewComplete(request: ReviewCompleteRequest): Promise<ReviewSessionSnapshot>
   reviewAbandon(request: ReviewMutationGuardRequest): Promise<ReviewSessionSnapshot>
@@ -285,6 +297,9 @@ export const tauriViewerBridge: ViewerBridge = {
   reviewStart(request) {
     return invoke<ReviewSessionSnapshot>('review_start', { request })
   },
+  reviewStartWithFeedback(request) {
+    return invoke<ReviewSessionSnapshot>('review_start_with_feedback', { request })
+  },
   reviewResume(request) {
     return invoke<ReviewSessionSnapshot>('review_resume', { request })
   },
@@ -294,8 +309,17 @@ export const tauriViewerBridge: ViewerBridge = {
   reviewUpdateFeedback(request) {
     return invoke<ReviewSessionSnapshot>('review_update_feedback', { request })
   },
+  reviewUpdateFeedbackText(request) {
+    return invoke<ReviewSessionSnapshot>('review_update_feedback_text', { request })
+  },
+  reviewReplaceFeedbackAnchor(request) {
+    return invoke<ReviewSessionSnapshot>('review_replace_feedback_anchor', { request })
+  },
   reviewDeleteFeedback(request) {
     return invoke<ReviewSessionSnapshot>('review_delete_feedback', { request })
+  },
+  reviewRestoreDeletedFeedback(request) {
+    return invoke<ReviewSessionSnapshot>('review_restore_deleted_feedback', { request })
   },
   reviewCompletionSummary(request) {
     return invoke<ReviewCompletionProposal>('review_completion_summary', { request })

@@ -4,9 +4,12 @@ use crate::dto::{
     ReviewSessionSnapshotDto, ReviewTaskKindDto,
 };
 use viewer_application::{
-    AddReviewFeedback, DeleteReviewFeedback, ReviewCompletionProposalId, ReviewMutationGuard,
-    ReviewProgressPort, ReviewProposalId, ReviewScope, ReviewTaskProgress, UpdateReviewFeedback,
+    AddReviewFeedback, DeleteReviewFeedback, ReplaceReviewFeedbackAnchor,
+    ReviewCompletionProposalId, ReviewMutationGuard, ReviewProgressPort, ReviewProposalId,
+    ReviewScope, ReviewTaskProgress, StartReviewWithFeedback, UpdateReviewFeedback,
+    UpdateReviewFeedbackText,
 };
+use viewer_domain::FeedbackId;
 
 struct DesktopReviewProgress {
     events: Arc<dyn DesktopEventSink>,
@@ -100,6 +103,23 @@ impl DesktopRuntime {
             .map_err(Into::into)
     }
 
+    pub async fn review_start_with_feedback(
+        &self,
+        session_id: SessionId,
+        generation: Generation,
+        command: StartReviewWithFeedback,
+    ) -> Result<ReviewSessionSnapshotDto, CommandError> {
+        let service = self.review_service(session_id, generation).await?;
+        service
+            .start_with_feedback(
+                command,
+                self.review_progress(session_id, generation, ReviewTaskKindDto::Start),
+            )
+            .await
+            .map(Into::into)
+            .map_err(Into::into)
+    }
+
     pub async fn review_resume(
         &self,
         session_id: SessionId,
@@ -141,6 +161,34 @@ impl DesktopRuntime {
             .map_err(Into::into)
     }
 
+    pub async fn review_update_feedback_text(
+        &self,
+        session_id: SessionId,
+        generation: Generation,
+        command: UpdateReviewFeedbackText,
+    ) -> Result<ReviewSessionSnapshotDto, CommandError> {
+        let service = self.review_service(session_id, generation).await?;
+        service
+            .update_feedback_text(command)
+            .await
+            .map(Into::into)
+            .map_err(Into::into)
+    }
+
+    pub async fn review_replace_feedback_anchor(
+        &self,
+        session_id: SessionId,
+        generation: Generation,
+        command: ReplaceReviewFeedbackAnchor,
+    ) -> Result<ReviewSessionSnapshotDto, CommandError> {
+        let service = self.review_service(session_id, generation).await?;
+        service
+            .replace_feedback_anchor(command)
+            .await
+            .map(Into::into)
+            .map_err(Into::into)
+    }
+
     pub async fn review_delete_feedback(
         &self,
         session_id: SessionId,
@@ -150,6 +198,21 @@ impl DesktopRuntime {
         let service = self.review_service(session_id, generation).await?;
         service
             .delete_feedback(command)
+            .await
+            .map(Into::into)
+            .map_err(Into::into)
+    }
+
+    pub async fn review_restore_deleted_feedback(
+        &self,
+        session_id: SessionId,
+        generation: Generation,
+        guard: ReviewMutationGuard,
+        feedback_id: FeedbackId,
+    ) -> Result<ReviewSessionSnapshotDto, CommandError> {
+        let service = self.review_service(session_id, generation).await?;
+        service
+            .restore_deleted_feedback(guard, feedback_id)
             .await
             .map(Into::into)
             .map_err(Into::into)

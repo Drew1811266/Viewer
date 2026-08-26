@@ -13,6 +13,7 @@ function idle(): ReviewSessionSnapshot {
     revision: 0,
     members: [],
     feedback: [],
+    restorableFeedbackId: null,
     unreviewable: [],
     conflicts: [],
     counts: { total: 0, feedbackItems: 0, revise: 0, unreviewable: 0, pass: 0 },
@@ -67,10 +68,14 @@ function port(status: ReviewSessionSnapshot = idle()): ReviewPort {
       resolution: { candidateCount: 2, imageCount: 1, videoCount: 1, excludedCount: 0 },
     }),
     reviewStart: vi.fn().mockResolvedValue(active()),
+    reviewStartWithFeedback: vi.fn().mockResolvedValue(active()),
     reviewResume: vi.fn().mockResolvedValue(active()),
     reviewAddFeedback: vi.fn().mockResolvedValue(active(2)),
     reviewUpdateFeedback: vi.fn().mockResolvedValue(active(2)),
+    reviewUpdateFeedbackText: vi.fn().mockResolvedValue(active(2)),
+    reviewReplaceFeedbackAnchor: vi.fn().mockResolvedValue(active(2)),
     reviewDeleteFeedback: vi.fn().mockResolvedValue(active(2)),
+    reviewRestoreDeletedFeedback: vi.fn().mockResolvedValue(active(2)),
     reviewCompletionSummary: vi.fn().mockResolvedValue({
       proposalId: 20,
       summary: {
@@ -235,7 +240,7 @@ describe('useReviewSessionCoordinator', () => {
       expect.objectContaining({
         expectedRevision: 1,
         text: '降低高光强度',
-        targetEntityIds: ['image-1'],
+        targets: [{ entityId: 'image-1', anchor: { kind: 'asset' } }],
       }),
     )
     expect(hook.result.current.snapshot.revision).toBe(1)
@@ -274,6 +279,13 @@ describe('useReviewSessionCoordinator', () => {
           text: '原意见',
           createdAtMs: 1,
           targetEntityIds: ['image-1'],
+          targets: [
+            {
+              assetVersionId: 'asset-version-1',
+              entityId: 'image-1',
+              anchor: { kind: 'asset' as const },
+            },
+          ],
           targetCount: 1,
         },
       ],
@@ -282,7 +294,7 @@ describe('useReviewSessionCoordinator', () => {
     vi.mocked(reviewPort.reviewStatus)
       .mockResolvedValueOnce(saved)
       .mockResolvedValueOnce({ ...saved, revision: 2 })
-    vi.mocked(reviewPort.reviewUpdateFeedback).mockRejectedValue({
+    vi.mocked(reviewPort.reviewUpdateFeedbackText).mockRejectedValue({
       code: 'review_stale_revision',
       category: 'conflict',
       userMessage: '评审内容已变化，请刷新后重试。',

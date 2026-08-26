@@ -3,15 +3,17 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::str::FromStr;
 use viewer_application::{
-    AddReviewFeedback, DeleteReviewFeedback, ReviewAssetConflictKind, ReviewCompletionProposal,
-    ReviewCompletionProposalId, ReviewConflictSnapshot, ReviewFeedbackSnapshot,
-    ReviewFeedbackTargetInput, ReviewMemberSnapshot, ReviewMutationGuard, ReviewProposalId,
-    ReviewScope, ReviewScopeProposal, ReviewSessionCounts, ReviewSessionPhase,
-    ReviewSessionSnapshot, ReviewUnreviewableSnapshot, ReviewUserError, UpdateReviewFeedback,
+    AddReviewFeedback, DeleteReviewFeedback, ReplaceReviewFeedbackAnchor, ReviewAssetConflictKind,
+    ReviewCompletionProposal, ReviewCompletionProposalId, ReviewConflictSnapshot,
+    ReviewFeedbackSnapshot, ReviewFeedbackTargetInput, ReviewFeedbackTargetSnapshot,
+    ReviewMemberSnapshot, ReviewMutationGuard, ReviewProposalId, ReviewScope, ReviewScopeProposal,
+    ReviewSessionCounts, ReviewSessionPhase, ReviewSessionSnapshot, ReviewUnreviewableSnapshot,
+    ReviewUserError, StartReviewWithFeedback, UpdateReviewFeedback, UpdateReviewFeedbackText,
 };
 use viewer_domain::review::{
-    FeedbackAnchor, MAX_ASSETS_PER_ROUND, MAX_FEEDBACK_TEXT_BYTES, MAX_TARGETS_PER_FEEDBACK,
-    ReviewAssetKind, ReviewabilityFailure,
+    FeedbackAnchor, ImageStroke, MAX_ASSETS_PER_ROUND, MAX_FEEDBACK_TEXT_BYTES,
+    MAX_TARGETS_PER_FEEDBACK, NormalizedPoint, NormalizedRect, ReviewAssetKind,
+    ReviewabilityFailure,
 };
 use viewer_domain::search::Generation;
 use viewer_domain::{EntityId, FeedbackId, ReviewRoundId, SessionId};
@@ -125,7 +127,135 @@ impl ReviewGuardRequestDto {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[serde(
+    tag = "kind",
+    rename_all = "snake_case",
+    rename_all_fields = "camelCase",
+    deny_unknown_fields
+)]
+pub enum ReviewAnchorDto {
+    Asset,
+    ImageRect {
+        x: f64,
+        y: f64,
+        width: f64,
+        height: f64,
+    },
+    ImageStroke {
+        points: Vec<ReviewPointDto>,
+    },
+    VideoPoint {
+        position_us: u64,
+    },
+    VideoRange {
+        start_us: u64,
+        end_us: u64,
+    },
+}
+
+impl ReviewAnchorDto {
+    fn try_into_anchor(self) -> Result<FeedbackAnchor, CommandError> {
+        match self {
+            Self::Asset => Ok(FeedbackAnchor::Asset),
+            Self::ImageRect {
+                x,
+                y,
+                width,
+                height,
+            } => NormalizedRect::new(x, y, width, height)
+                .map(FeedbackAnchor::ImageRect)
+                .map_err(|_| review_invalid_data()),
+            Self::ImageStroke { points } => points
+                .into_iter()
+                .map(|point| {
+                    NormalizedPoint::new(point.x, point.y).map_err(|_| review_invalid_data())
+                })
+                .collect::<Result<Vec<_>, _>>()
+                .and_then(|points| {
+                    ImageStroke::new(points)
+                        .map(FeedbackAnchor::ImageStroke)
+                        .map_err(|_| review_invalid_data())
+                }),
+            Self::VideoPoint { position_us } => Ok(FeedbackAnchor::VideoPoint { position_us }),
+            Self::VideoRange { start_us, end_us } if start_us < end_us => {
+                Ok(FeedbackAnchor::VideoRange { start_us, end_us })
+            }
+            Self::VideoRange { .. } => Err(review_invalid_data()),
+        }
+    }
+}
+
+impl From<FeedbackAnchor> for ReviewAnchorDto {
+    fn from(anchor: FeedbackAnchor) -> Self {
+        match anchor {
+            FeedbackAnchor::Asset => Self::Asset,
+            FeedbackAnchor::ImageRect(rect) => Self::ImageRect {
+                x: rect.x(),
+                y: rect.y(),
+                width: rect.width(),
+                height: rect.height(),
+            },
+            FeedbackAnchor::ImageStroke(stroke) => Self::ImageStroke {
+                points: stroke
+                    .points()
+                    .iter()
+                    .map(|point| ReviewPointDto {
+                        x: point.x(),
+                        y: point.y(),
+                    })
+                    .collect(),
+            },
+            FeedbackAnchor::VideoPoint { position_us } => Self::VideoPoint { position_us },
+            FeedbackAnchor::VideoRange { start_us, end_us } => {
+                Self::VideoRange { start_us, end_us }
+            }
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ReviewPointDto {
+    pub x: f64,
+    pub y: f64,
+}
+
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ReviewFeedbackTargetRequestDto {
+    pub entity_id: String,
+    pub anchor: ReviewAnchorDto,
+}
+
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ReviewStartWithFeedbackRequestDto {
+    pub session_id: String,
+    pub generation: u64,
+    pub proposal_id: u64,
+    pub text: String,
+    pub targets: Vec<ReviewFeedbackTargetRequestDto>,
+}
+
+impl ReviewStartWithFeedbackRequestDto {
+    pub fn try_into_parts(
+        self,
+    ) -> Result<(ReviewRequestContext, StartReviewWithFeedback), CommandError> {
+        validate_feedback_text(&self.text)?;
+        Ok((
+            request_context(&self.session_id, self.generation)?,
+            StartReviewWithFeedback {
+                proposal_id: ReviewProposalId::from_raw(self.proposal_id)
+                    .ok_or_else(review_invalid_data)?,
+                text: self.text,
+                targets: parse_feedback_targets(self.targets)?,
+            },
+        ))
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ReviewAddFeedbackRequestDto {
     pub session_id: String,
@@ -133,7 +263,7 @@ pub struct ReviewAddFeedbackRequestDto {
     pub review_round_id: String,
     pub expected_revision: u64,
     pub text: String,
-    pub target_entity_ids: Vec<String>,
+    pub targets: Vec<ReviewFeedbackTargetRequestDto>,
 }
 
 impl ReviewAddFeedbackRequestDto {
@@ -150,19 +280,13 @@ impl ReviewAddFeedbackRequestDto {
             AddReviewFeedback {
                 guard,
                 text: self.text,
-                targets: parse_entity_ids(&self.target_entity_ids, MAX_TARGETS_PER_FEEDBACK)?
-                    .into_iter()
-                    .map(|entity_id| ReviewFeedbackTargetInput {
-                        entity_id,
-                        anchor: FeedbackAnchor::Asset,
-                    })
-                    .collect(),
+                targets: parse_feedback_targets(self.targets)?,
             },
         ))
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ReviewUpdateFeedbackRequestDto {
     pub session_id: String,
@@ -171,7 +295,7 @@ pub struct ReviewUpdateFeedbackRequestDto {
     pub expected_revision: u64,
     pub feedback_id: String,
     pub text: String,
-    pub target_entity_ids: Vec<String>,
+    pub targets: Vec<ReviewFeedbackTargetRequestDto>,
 }
 
 impl ReviewUpdateFeedbackRequestDto {
@@ -192,13 +316,81 @@ impl ReviewUpdateFeedbackRequestDto {
                 feedback_id: FeedbackId::from_str(&self.feedback_id)
                     .map_err(|_| review_invalid_data())?,
                 text: self.text,
-                targets: parse_entity_ids(&self.target_entity_ids, MAX_TARGETS_PER_FEEDBACK)?
-                    .into_iter()
-                    .map(|entity_id| ReviewFeedbackTargetInput {
-                        entity_id,
-                        anchor: FeedbackAnchor::Asset,
-                    })
-                    .collect(),
+                targets: parse_feedback_targets(self.targets)?,
+            },
+        ))
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ReviewUpdateFeedbackTextRequestDto {
+    pub session_id: String,
+    pub generation: u64,
+    pub review_round_id: String,
+    pub expected_revision: u64,
+    pub feedback_id: String,
+    pub text: String,
+}
+
+impl ReviewUpdateFeedbackTextRequestDto {
+    pub fn try_into_parts(
+        self,
+    ) -> Result<(ReviewRequestContext, UpdateReviewFeedbackText), CommandError> {
+        let (context, guard) = guard_parts(
+            &self.session_id,
+            self.generation,
+            &self.review_round_id,
+            self.expected_revision,
+        )?;
+        validate_feedback_text(&self.text)?;
+        Ok((
+            context,
+            UpdateReviewFeedbackText {
+                guard,
+                feedback_id: FeedbackId::from_str(&self.feedback_id)
+                    .map_err(|_| review_invalid_data())?,
+                text: self.text,
+            },
+        ))
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ReviewReplaceFeedbackAnchorRequestDto {
+    pub session_id: String,
+    pub generation: u64,
+    pub review_round_id: String,
+    pub expected_revision: u64,
+    pub feedback_id: String,
+    pub target: ReviewFeedbackTargetRequestDto,
+}
+
+impl ReviewReplaceFeedbackAnchorRequestDto {
+    pub fn try_into_parts(
+        self,
+    ) -> Result<(ReviewRequestContext, ReplaceReviewFeedbackAnchor), CommandError> {
+        let (context, guard) = guard_parts(
+            &self.session_id,
+            self.generation,
+            &self.review_round_id,
+            self.expected_revision,
+        )?;
+        let mut targets = parse_feedback_targets(vec![self.target])?;
+        if !matches!(
+            targets.first().map(|target| &target.anchor),
+            Some(FeedbackAnchor::ImageRect(_) | FeedbackAnchor::ImageStroke(_))
+        ) {
+            return Err(review_invalid_data());
+        }
+        Ok((
+            context,
+            ReplaceReviewFeedbackAnchor {
+                guard,
+                feedback_id: FeedbackId::from_str(&self.feedback_id)
+                    .map_err(|_| review_invalid_data())?,
+                target: targets.pop().ok_or_else(review_invalid_data)?,
             },
         ))
     }
@@ -234,6 +426,8 @@ impl ReviewDeleteFeedbackRequestDto {
         ))
     }
 }
+
+pub type ReviewRestoreDeletedFeedbackRequestDto = ReviewDeleteFeedbackRequestDto;
 
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -367,13 +561,32 @@ impl From<ReviewMemberSnapshot> for ReviewMemberSnapshotDto {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReviewFeedbackTargetSnapshotDto {
+    pub asset_version_id: String,
+    pub entity_id: Option<String>,
+    pub anchor: ReviewAnchorDto,
+}
+
+impl From<ReviewFeedbackTargetSnapshot> for ReviewFeedbackTargetSnapshotDto {
+    fn from(target: ReviewFeedbackTargetSnapshot) -> Self {
+        Self {
+            asset_version_id: target.asset_version_id.to_string(),
+            entity_id: target.entity_id.map(|id| id.to_string()),
+            anchor: target.anchor.into(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ReviewFeedbackSnapshotDto {
     pub feedback_id: String,
     pub text: String,
     pub created_at_ms: i64,
     pub target_entity_ids: Vec<String>,
+    pub targets: Vec<ReviewFeedbackTargetSnapshotDto>,
     pub target_count: u32,
 }
 
@@ -388,6 +601,7 @@ impl From<ReviewFeedbackSnapshot> for ReviewFeedbackSnapshotDto {
                 .into_iter()
                 .map(|id| id.to_string())
                 .collect(),
+            targets: feedback.targets.into_iter().map(Into::into).collect(),
             target_count: feedback.target_count,
         }
     }
@@ -525,7 +739,7 @@ pub struct ReviewResumeSnapshotDto {
     pub feedback_items: u32,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ReviewSessionSnapshotDto {
     pub phase: ReviewSessionPhaseDto,
@@ -535,6 +749,7 @@ pub struct ReviewSessionSnapshotDto {
     pub revision: u64,
     pub members: Vec<ReviewMemberSnapshotDto>,
     pub feedback: Vec<ReviewFeedbackSnapshotDto>,
+    pub restorable_feedback_id: Option<String>,
     pub unreviewable: Vec<ReviewUnreviewableSnapshotDto>,
     pub conflicts: Vec<ReviewConflictSnapshotDto>,
     pub counts: ReviewSessionCountsDto,
@@ -565,6 +780,7 @@ impl From<ReviewSessionSnapshot> for ReviewSessionSnapshotDto {
             revision: snapshot.revision,
             members: snapshot.members.into_iter().map(Into::into).collect(),
             feedback: snapshot.feedback.into_iter().map(Into::into).collect(),
+            restorable_feedback_id: snapshot.restorable_feedback_id.map(|id| id.to_string()),
             unreviewable: snapshot.unreviewable.into_iter().map(Into::into).collect(),
             conflicts: snapshot.conflicts.into_iter().map(Into::into).collect(),
             counts: snapshot.counts.into(),
@@ -685,6 +901,28 @@ fn parse_entity_ids(values: &[String], maximum: usize) -> Result<Vec<EntityId>, 
                 return Err(review_invalid_data());
             }
             Ok(entity_id)
+        })
+        .collect()
+}
+
+fn parse_feedback_targets(
+    targets: Vec<ReviewFeedbackTargetRequestDto>,
+) -> Result<Vec<ReviewFeedbackTargetInput>, CommandError> {
+    if targets.is_empty() || targets.len() > MAX_TARGETS_PER_FEEDBACK {
+        return Err(review_invalid_data());
+    }
+    let mut seen = HashSet::with_capacity(targets.len());
+    targets
+        .into_iter()
+        .map(|target| {
+            let entity_id = parse_entity_id(&target.entity_id)?;
+            if !seen.insert(entity_id) {
+                return Err(review_invalid_data());
+            }
+            Ok(ReviewFeedbackTargetInput {
+                entity_id,
+                anchor: target.anchor.try_into_anchor()?,
+            })
         })
         .collect()
 }

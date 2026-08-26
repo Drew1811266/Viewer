@@ -1,8 +1,10 @@
 use crate::dto::{
     ReviewAddFeedbackRequestDto, ReviewCompleteRequestDto, ReviewCompletionProposalDto,
     ReviewDeleteFeedbackRequestDto, ReviewGuardRequestDto, ReviewPreviewStartRequestDto,
+    ReviewReplaceFeedbackAnchorRequestDto, ReviewRestoreDeletedFeedbackRequestDto,
     ReviewScopeProposalDto, ReviewSessionSnapshotDto, ReviewStartRequestDto,
-    ReviewUpdateFeedbackRequestDto, SessionGenerationRequestDto,
+    ReviewStartWithFeedbackRequestDto, ReviewUpdateFeedbackRequestDto,
+    ReviewUpdateFeedbackTextRequestDto, SessionGenerationRequestDto,
 };
 use crate::error::CommandError;
 use crate::state::DesktopRuntime;
@@ -43,6 +45,17 @@ pub async fn review_start(
 }
 
 #[tauri::command]
+pub async fn review_start_with_feedback(
+    runtime: State<'_, Arc<DesktopRuntime>>,
+    request: ReviewStartWithFeedbackRequestDto,
+) -> Result<ReviewSessionSnapshotDto, CommandError> {
+    let (context, command) = request.try_into_parts()?;
+    runtime
+        .review_start_with_feedback(context.session_id, context.generation, command)
+        .await
+}
+
+#[tauri::command]
 pub async fn review_resume(
     runtime: State<'_, Arc<DesktopRuntime>>,
     request: SessionGenerationRequestDto,
@@ -76,6 +89,28 @@ pub async fn review_update_feedback(
 }
 
 #[tauri::command]
+pub async fn review_update_feedback_text(
+    runtime: State<'_, Arc<DesktopRuntime>>,
+    request: ReviewUpdateFeedbackTextRequestDto,
+) -> Result<ReviewSessionSnapshotDto, CommandError> {
+    let (context, command) = request.try_into_parts()?;
+    runtime
+        .review_update_feedback_text(context.session_id, context.generation, command)
+        .await
+}
+
+#[tauri::command]
+pub async fn review_replace_feedback_anchor(
+    runtime: State<'_, Arc<DesktopRuntime>>,
+    request: ReviewReplaceFeedbackAnchorRequestDto,
+) -> Result<ReviewSessionSnapshotDto, CommandError> {
+    let (context, command) = request.try_into_parts()?;
+    runtime
+        .review_replace_feedback_anchor(context.session_id, context.generation, command)
+        .await
+}
+
+#[tauri::command]
 pub async fn review_delete_feedback(
     runtime: State<'_, Arc<DesktopRuntime>>,
     request: ReviewDeleteFeedbackRequestDto,
@@ -83,6 +118,22 @@ pub async fn review_delete_feedback(
     let (context, command) = request.try_into_parts()?;
     runtime
         .review_delete_feedback(context.session_id, context.generation, command)
+        .await
+}
+
+#[tauri::command]
+pub async fn review_restore_deleted_feedback(
+    runtime: State<'_, Arc<DesktopRuntime>>,
+    request: ReviewRestoreDeletedFeedbackRequestDto,
+) -> Result<ReviewSessionSnapshotDto, CommandError> {
+    let (context, command) = request.try_into_parts()?;
+    runtime
+        .review_restore_deleted_feedback(
+            context.session_id,
+            context.generation,
+            command.guard,
+            command.feedback_id,
+        )
         .await
 }
 

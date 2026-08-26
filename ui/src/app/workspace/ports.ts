@@ -37,10 +37,14 @@ export type ReviewPort = Pick<
   | 'reviewStatus'
   | 'reviewPreviewStart'
   | 'reviewStart'
+  | 'reviewStartWithFeedback'
   | 'reviewResume'
   | 'reviewAddFeedback'
   | 'reviewUpdateFeedback'
+  | 'reviewUpdateFeedbackText'
+  | 'reviewReplaceFeedbackAnchor'
   | 'reviewDeleteFeedback'
+  | 'reviewRestoreDeletedFeedback'
   | 'reviewCompletionSummary'
   | 'reviewComplete'
   | 'reviewAbandon'
@@ -98,10 +102,14 @@ export function createWorkspacePorts(bridge: ViewerBridge): WorkspacePorts {
       reviewStatus: bridge.reviewStatus,
       reviewPreviewStart: bridge.reviewPreviewStart,
       reviewStart: bridge.reviewStart,
+      reviewStartWithFeedback: bridge.reviewStartWithFeedback,
       reviewResume: bridge.reviewResume,
       reviewAddFeedback: bridge.reviewAddFeedback,
       reviewUpdateFeedback: bridge.reviewUpdateFeedback,
+      reviewUpdateFeedbackText: bridge.reviewUpdateFeedbackText,
+      reviewReplaceFeedbackAnchor: bridge.reviewReplaceFeedbackAnchor,
       reviewDeleteFeedback: bridge.reviewDeleteFeedback,
+      reviewRestoreDeletedFeedback: bridge.reviewRestoreDeletedFeedback,
       reviewCompletionSummary: bridge.reviewCompletionSummary,
       reviewComplete: bridge.reviewComplete,
       reviewAbandon: bridge.reviewAbandon,

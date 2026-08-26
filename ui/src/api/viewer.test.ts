@@ -40,19 +40,50 @@ describe('tauriViewerBridge', () => {
       scope: { kind: 'selection', entityIds: ['image-1', 'video-1'] },
     })
     await tauriViewerBridge.reviewStart({ ...session, proposalId: 11 })
+    await tauriViewerBridge.reviewStartWithFeedback({
+      ...session,
+      proposalId: 11,
+      text: '修正衣领边缘',
+      targets: [
+        {
+          entityId: 'image-1',
+          anchor: { kind: 'image_rect', x: 0.2, y: 0.1, width: 0.3, height: 0.2 },
+        },
+      ],
+    })
     await tauriViewerBridge.reviewResume(session)
     await tauriViewerBridge.reviewAddFeedback({
       ...guard,
       text: '降低高光强度',
-      targetEntityIds: ['image-1'],
+      targets: [{ entityId: 'image-1', anchor: { kind: 'asset' } }],
     })
     await tauriViewerBridge.reviewUpdateFeedback({
       ...guard,
       feedbackId: 'feedback-1',
       text: '进一步降低高光强度',
-      targetEntityIds: ['image-1'],
+      targets: [{ entityId: 'image-1', anchor: { kind: 'asset' } }],
+    })
+    await tauriViewerBridge.reviewUpdateFeedbackText({
+      ...guard,
+      feedbackId: 'feedback-1',
+      text: '只调整文字',
+    })
+    await tauriViewerBridge.reviewReplaceFeedbackAnchor({
+      ...guard,
+      feedbackId: 'feedback-1',
+      target: {
+        entityId: 'image-1',
+        anchor: {
+          kind: 'image_stroke',
+          points: [
+            { x: 0.2, y: 0.3 },
+            { x: 0.7, y: 0.6 },
+          ],
+        },
+      },
     })
     await tauriViewerBridge.reviewDeleteFeedback({ ...guard, feedbackId: 'feedback-1' })
+    await tauriViewerBridge.reviewRestoreDeletedFeedback({ ...guard, feedbackId: 'feedback-1' })
     await tauriViewerBridge.reviewCompletionSummary(guard)
     await tauriViewerBridge.reviewComplete({ ...guard, proposalId: 12 })
     await tauriViewerBridge.reviewAbandon(guard)
@@ -71,6 +102,22 @@ describe('tauriViewerBridge', () => {
         },
       ],
       ['review_start', { request: { ...session, proposalId: 11 } }],
+      [
+        'review_start_with_feedback',
+        {
+          request: {
+            ...session,
+            proposalId: 11,
+            text: '修正衣领边缘',
+            targets: [
+              {
+                entityId: 'image-1',
+                anchor: { kind: 'image_rect', x: 0.2, y: 0.1, width: 0.3, height: 0.2 },
+              },
+            ],
+          },
+        },
+      ],
       ['review_resume', { request: session }],
       [
         'review_add_feedback',
@@ -78,7 +125,7 @@ describe('tauriViewerBridge', () => {
           request: {
             ...guard,
             text: '降低高光强度',
-            targetEntityIds: ['image-1'],
+            targets: [{ entityId: 'image-1', anchor: { kind: 'asset' } }],
           },
         },
       ],
@@ -89,16 +136,48 @@ describe('tauriViewerBridge', () => {
             ...guard,
             feedbackId: 'feedback-1',
             text: '进一步降低高光强度',
-            targetEntityIds: ['image-1'],
+            targets: [{ entityId: 'image-1', anchor: { kind: 'asset' } }],
+          },
+        },
+      ],
+      [
+        'review_update_feedback_text',
+        {
+          request: { ...guard, feedbackId: 'feedback-1', text: '只调整文字' },
+        },
+      ],
+      [
+        'review_replace_feedback_anchor',
+        {
+          request: {
+            ...guard,
+            feedbackId: 'feedback-1',
+            target: {
+              entityId: 'image-1',
+              anchor: {
+                kind: 'image_stroke',
+                points: [
+                  { x: 0.2, y: 0.3 },
+                  { x: 0.7, y: 0.6 },
+                ],
+              },
+            },
           },
         },
       ],
       ['review_delete_feedback', { request: { ...guard, feedbackId: 'feedback-1' } }],
+      ['review_restore_deleted_feedback', { request: { ...guard, feedbackId: 'feedback-1' } }],
       ['review_completion_summary', { request: guard }],
       ['review_complete', { request: { ...guard, proposalId: 12 } }],
       ['review_abandon', { request: guard }],
       ['review_cancel_task', { request: session }],
     ])
+    const reviewPayloads = invoke.mock.calls
+      .filter(([command]) => String(command).startsWith('review_'))
+      .map(([, payload]) => payload)
+    expect(JSON.stringify(reviewPayloads)).not.toMatch(
+      /sourcePath|artifactPath|assetVersion|digest|\/Users\//,
+    )
     expect(listen).toHaveBeenCalledWith('viewer://review-progress', expect.any(Function))
 
     const event = {

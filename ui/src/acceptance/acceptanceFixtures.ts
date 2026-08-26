@@ -128,9 +128,15 @@ export function acceptanceReviewSnapshot(
         targetEntityIds: ACCEPTANCE_REVIEW_MEMBERS.slice(0, 2).flatMap((member) =>
           member.entityId === null ? [] : [member.entityId],
         ),
+        targets: ACCEPTANCE_REVIEW_MEMBERS.slice(0, 2).map((member) => ({
+          assetVersionId: member.assetVersionId,
+          entityId: member.entityId,
+          anchor: { kind: 'asset' as const },
+        })),
         targetCount: 2,
       },
     ],
+    restorableFeedbackId: null,
     unreviewable: [
       {
         assetVersionId:

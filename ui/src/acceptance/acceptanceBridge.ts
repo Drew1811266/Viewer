@@ -189,6 +189,9 @@ export function createAcceptanceBridge(overrides: AcceptanceBridgeOverrides = {}
     async reviewStart() {
       return unexpected('reviewStart')
     },
+    async reviewStartWithFeedback() {
+      return unexpected('reviewStartWithFeedback')
+    },
     async reviewResume() {
       return unexpected('reviewResume')
     },
@@ -198,8 +201,17 @@ export function createAcceptanceBridge(overrides: AcceptanceBridgeOverrides = {}
     async reviewUpdateFeedback() {
       return unexpected('reviewUpdateFeedback')
     },
+    async reviewUpdateFeedbackText() {
+      return unexpected('reviewUpdateFeedbackText')
+    },
+    async reviewReplaceFeedbackAnchor() {
+      return unexpected('reviewReplaceFeedbackAnchor')
+    },
     async reviewDeleteFeedback() {
       return unexpected('reviewDeleteFeedback')
+    },
+    async reviewRestoreDeletedFeedback() {
+      return unexpected('reviewRestoreDeletedFeedback')
     },
     async reviewCompletionSummary() {
       return unexpected('reviewCompletionSummary')
@@ -338,6 +350,7 @@ function idleReviewSnapshot() {
     revision: 0,
     members: [],
     feedback: [],
+    restorableFeedbackId: null,
     unreviewable: [],
     conflicts: [],
     counts: { total: 0, feedbackItems: 0, revise: 0, unreviewable: 0, pass: 0 },

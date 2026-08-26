@@ -92,10 +92,14 @@ describe('workspace contracts', () => {
       'reviewCompletionSummary',
       'reviewDeleteFeedback',
       'reviewPreviewStart',
+      'reviewReplaceFeedbackAnchor',
+      'reviewRestoreDeletedFeedback',
       'reviewResume',
       'reviewStart',
+      'reviewStartWithFeedback',
       'reviewStatus',
       'reviewUpdateFeedback',
+      'reviewUpdateFeedbackText',
     ])
   })
 

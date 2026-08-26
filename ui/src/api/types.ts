@@ -657,6 +657,23 @@ export interface ReviewStartRequest extends ReviewSessionRequest {
   proposalId: number
 }
 
+export type ReviewAnchor =
+  | { kind: 'asset' }
+  | { kind: 'image_rect'; x: number; y: number; width: number; height: number }
+  | { kind: 'image_stroke'; points: ReadonlyArray<{ x: number; y: number }> }
+  | { kind: 'video_point'; positionUs: number }
+  | { kind: 'video_range'; startUs: number; endUs: number }
+
+export interface ReviewFeedbackTargetInput {
+  entityId: string
+  anchor: ReviewAnchor
+}
+
+export interface ReviewStartWithFeedbackRequest extends ReviewStartRequest {
+  text: string
+  targets: ReadonlyArray<ReviewFeedbackTargetInput>
+}
+
 export interface ReviewMutationGuardRequest extends ReviewSessionRequest {
   reviewRoundId: string
   expectedRevision: number
@@ -664,16 +681,28 @@ export interface ReviewMutationGuardRequest extends ReviewSessionRequest {
 
 export interface ReviewAddFeedbackRequest extends ReviewMutationGuardRequest {
   text: string
-  targetEntityIds: string[]
+  targets: ReadonlyArray<ReviewFeedbackTargetInput>
 }
 
 export interface ReviewUpdateFeedbackRequest extends ReviewAddFeedbackRequest {
   feedbackId: string
 }
 
+export interface ReviewUpdateFeedbackTextRequest extends ReviewMutationGuardRequest {
+  feedbackId: string
+  text: string
+}
+
+export interface ReviewReplaceFeedbackAnchorRequest extends ReviewMutationGuardRequest {
+  feedbackId: string
+  target: ReviewFeedbackTargetInput
+}
+
 export interface ReviewDeleteFeedbackRequest extends ReviewMutationGuardRequest {
   feedbackId: string
 }
+
+export type ReviewRestoreDeletedFeedbackRequest = ReviewDeleteFeedbackRequest
 
 export interface ReviewCompleteRequest extends ReviewMutationGuardRequest {
   proposalId: number
@@ -731,7 +760,14 @@ export interface ReviewFeedbackSnapshot {
   text: string
   createdAtMs: number
   targetEntityIds: string[]
+  targets: ReviewFeedbackTargetSnapshot[]
   targetCount: number
+}
+
+export interface ReviewFeedbackTargetSnapshot {
+  assetVersionId: string
+  entityId: string | null
+  anchor: ReviewAnchor
 }
 
 export type ReviewabilityFailure =
@@ -784,6 +820,7 @@ export interface ReviewSessionSnapshot {
   revision: number
   members: ReviewMemberSnapshot[]
   feedback: ReviewFeedbackSnapshot[]
+  restorableFeedbackId: string | null
   unreviewable: ReviewUnreviewableSnapshot[]
   conflicts: ReviewConflictSnapshot[]
   counts: ReviewSessionCounts

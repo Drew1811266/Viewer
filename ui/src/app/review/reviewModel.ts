@@ -80,6 +80,7 @@ export function idleReviewSnapshot(): ReviewSessionSnapshot {
     revision: 0,
     members: [],
     feedback: [],
+    restorableFeedbackId: null,
     unreviewable: [],
     conflicts: [],
     counts: { total: 0, feedbackItems: 0, revise: 0, unreviewable: 0, pass: 0 },

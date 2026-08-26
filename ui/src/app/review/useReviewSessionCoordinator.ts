@@ -324,7 +324,10 @@ export function useReviewSessionCoordinator({
           const next = await portRef.current.reviewAddFeedback({
             ...guard,
             text: frozen.text,
-            targetEntityIds: frozen.targetEntityIds,
+            targets: frozen.targetEntityIds.map((entityId) => ({
+              entityId,
+              anchor: { kind: 'asset' as const },
+            })),
           })
           if (epochRef.current === epoch) {
             installMutation(next)
@@ -364,11 +367,10 @@ export function useReviewSessionCoordinator({
           return
         }
         try {
-          const next = await portRef.current.reviewUpdateFeedback({
+          const next = await portRef.current.reviewUpdateFeedbackText({
             ...guard,
             feedbackId: frozen.feedbackId as string,
             text: frozen.text,
-            targetEntityIds: frozen.targetEntityIds,
           })
           if (epochRef.current === epoch) {
             installMutation(next)

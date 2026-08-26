@@ -29,7 +29,11 @@ describe('atlas-to-product migration coverage', () => {
     expect(ledger).toHaveLength(104)
     expect(new Set(ledger).size).toBe(104)
     expect([...ledger].sort()).toEqual([...audit].sort())
-    expect(ACCEPTANCE_STATE_DEFINITIONS.map(({ id }) => id)).toEqual(ledger)
+    expect(
+      ACCEPTANCE_STATE_DEFINITIONS.filter(({ sceneGroup }) => sceneGroup !== 'review').map(
+        ({ id }) => id,
+      ),
+    ).toEqual(ledger)
   })
 
   it('records automated evidence for every state before native acceptance', () => {

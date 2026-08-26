@@ -1183,21 +1183,21 @@ RVW-15 review-zoom-200
 - Completion scenes must contain no viewed-count or “review progress” language.
 - Conflict paths are project-relative; no fixture or rendered error includes an absolute path.
 
-- [ ] **Step 1: Add catalog entries and failing scene-contract tests**
+- [x] **Step 1: Add catalog entries and failing scene-contract tests**
 
 Assert every review state has one registered scene, every scene uses the shared harness, and no scene bypasses the coordinator by supplying protocol JSON directly to a component.
 
-- [ ] **Step 2: Run acceptance unit tests and observe missing scenes**
+- [x] **Step 2: Run acceptance unit tests and observe missing scenes**
 
 Run: `pnpm --dir ui exec vitest run src/acceptance/scenes/reviewScenes.test.tsx src/acceptance/acceptanceStateCatalog.test.ts`
 
 Expected: FAIL until all catalog IDs resolve.
 
-- [ ] **Step 3: Implement fixtures/scenes and inspect rendered output**
+- [x] **Step 3: Implement fixtures/scenes and inspect rendered output**
 
 Run the visual acceptance server and capture all review states with the existing acceptance script. Inspect normal, dark/light if supported by the harness, keyboard focus, and 200% zoom. Fix component CSS, not scene-only CSS.
 
-- [ ] **Step 4: Verify acceptance gates**
+- [x] **Step 4: Verify acceptance gates**
 
 Run:
 
@@ -1209,7 +1209,9 @@ pnpm accept:visual -- --id RVW-01 --id RVW-02 --id RVW-03 --id RVW-04 --id RVW-0
 
 Expected: deterministic tests/build pass and the review captures contain no clipping, hidden primary action, color-only status, or focus loss. If the last command requires the local display/runtime, record that environment precondition explicitly; do not count an unrun capture as passed.
 
-- [ ] **Step 5: Commit**
+Capture record (2026-08-25): the deterministic tests and acceptance build passed. All 15 states reached the ready and geometry gates and produced 30 `product.png` captures at 1024×720 and 1440×900 under `target/viewer-visual-acceptance/review-loop-r6/`; both contact sheets were inspected. `RVW-15` used the verified 2× browser environment. The harness does not expose a light/dark color-scheme switch, so no unsupported dark-theme result is claimed. Finalization returned `ENOENT` only after capture because these new review states have no legacy Atlas `reference.png`; therefore no reference comparison or passed visual verdict is claimed.
+
+- [x] **Step 5: Commit**
 
 ```bash
 git add ui/src/acceptance/acceptanceBridge.ts ui/src/acceptance/acceptanceFixtures.ts ui/src/acceptance/scenes/reviewScenes.tsx ui/src/acceptance/scenes/reviewScenes.test.tsx ui/src/acceptance/scenes/index.ts ui/src/acceptance/acceptanceStateCatalog.json ui/src/acceptance/acceptanceStateCatalog.test.ts

@@ -6,6 +6,10 @@ import type {
   ImageRepresentation,
   ImageRepresentationRequest,
   ProjectSnapshot,
+  ReviewCompletionProposal,
+  ReviewConflictSnapshot,
+  ReviewMemberSnapshot,
+  ReviewSessionSnapshot,
   VideoCacheStats,
   VideoFile,
 } from '../api/types'
@@ -86,6 +90,87 @@ export const ACCEPTANCE_FILES: BrowserFile[] = Array.from({ length: 30 }, (_, of
     videoMetadata: null,
   }
 })
+
+export const ACCEPTANCE_REVIEW_MEMBERS: ReviewMemberSnapshot[] = ACCEPTANCE_FILES.slice(0, 6).map(
+  (file, index) => ({
+    assetVersionId: `acceptance-asset-version-${index + 1}`,
+    entityId: file.entityId,
+    relativePath: file.relativePath,
+    displayName: file.name,
+    kind: 'image',
+    feedbackItems: index < 2 ? 1 : 0,
+  }),
+)
+
+export const ACCEPTANCE_REVIEW_CONFLICTS: ReviewConflictSnapshot[] = [
+  {
+    assetVersionId: ACCEPTANCE_REVIEW_MEMBERS[2]?.assetVersionId ?? 'acceptance-asset-version-3',
+    relativePath: ACCEPTANCE_FILES[2]?.relativePath ?? '衣服/A01/商品-03.jpg',
+    kind: 'content_changed',
+  },
+]
+
+export function acceptanceReviewSnapshot(
+  overrides: Partial<ReviewSessionSnapshot> = {},
+): ReviewSessionSnapshot {
+  const snapshot: ReviewSessionSnapshot = {
+    phase: 'active',
+    resume: null,
+    reviewStreamId: 'acceptance-review-stream',
+    reviewRoundId: 'acceptance-review-round',
+    revision: 4,
+    members: ACCEPTANCE_REVIEW_MEMBERS,
+    feedback: [
+      {
+        feedbackId: 'acceptance-feedback-1',
+        text: '降低商品表面的高光强度，并保持布料纹理清晰。',
+        createdAtMs: 1_767_600_000_000,
+        targetEntityIds: ACCEPTANCE_REVIEW_MEMBERS.slice(0, 2).flatMap((member) =>
+          member.entityId === null ? [] : [member.entityId],
+        ),
+        targetCount: 2,
+      },
+    ],
+    unreviewable: [
+      {
+        assetVersionId:
+          ACCEPTANCE_REVIEW_MEMBERS[5]?.assetVersionId ?? 'acceptance-asset-version-6',
+        relativePath: ACCEPTANCE_FILES[5]?.relativePath ?? '衣服/A01/商品-06.jpg',
+        failure: 'decode_failed',
+      },
+    ],
+    conflicts: [],
+    counts: { total: 6, feedbackItems: 1, revise: 2, unreviewable: 1, pass: 0 },
+    error: null,
+  }
+  return { ...snapshot, ...overrides }
+}
+
+export function acceptanceReviewCompletion(
+  conflicts: ReviewConflictSnapshot[] = [],
+): ReviewCompletionProposal {
+  return {
+    proposalId: 72,
+    summary: {
+      reviewRoundId: 'acceptance-review-round',
+      revision: 4,
+      total: 6,
+      revise: 2,
+      unreviewable: 1,
+      defaultPass: 3,
+      feedback: [
+        {
+          feedbackId: 'acceptance-feedback-1',
+          text: '降低商品表面的高光强度，并保持布料纹理清晰。',
+          targetCount: 2,
+        },
+      ],
+      conflicts,
+      pending: [],
+      canComplete: conflicts.length === 0,
+    },
+  }
+}
 
 export const ACCEPTANCE_TEXT_FILES: BrowserFile[] = [
   {

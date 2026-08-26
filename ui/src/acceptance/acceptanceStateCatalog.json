@@ -102,5 +102,20 @@
   { "id": "video-failed-retry", "wave": 4, "referenceState": "video-failed-retry", "sceneGroup": "video", "components": ["VideoPreview", "ViewerLocalFeedback"] },
   { "id": "video-fullscreen-controls", "wave": 4, "referenceState": "video-fullscreen-controls", "sceneGroup": "video", "components": ["VideoPreview", "VideoControls"] },
   { "id": "settings-video-cache", "wave": 4, "referenceState": "settings-video-cache", "sceneGroup": "video", "components": ["SettingsDialog", "ViewerLocalFeedback"] },
-  { "id": "video-reduced-motion", "wave": 4, "referenceState": "video-reduced-motion", "sceneGroup": "video", "components": ["VideoPreview", "VideoControls"] }
+  { "id": "video-reduced-motion", "wave": 4, "referenceState": "video-reduced-motion", "sceneGroup": "video", "components": ["VideoPreview", "VideoControls"] },
+  { "id": "RVW-01", "wave": 4, "referenceState": "review-start-selection", "sceneGroup": "review", "components": ["App", "ReviewStartDialog"] },
+  { "id": "RVW-02", "wave": 4, "referenceState": "review-start-folder-aggregate", "sceneGroup": "review", "components": ["App", "ReviewStartDialog"] },
+  { "id": "RVW-03", "wave": 4, "referenceState": "review-active-grid", "sceneGroup": "review", "components": ["App", "ReviewContextBar", "ContentBrowser"] },
+  { "id": "RVW-04", "wave": 4, "referenceState": "review-active-preview", "sceneGroup": "review", "components": ["App", "ReviewContextBar", "ImagePreview"] },
+  { "id": "RVW-05", "wave": 4, "referenceState": "review-inspector-multi-target", "sceneGroup": "review", "components": ["App", "ReviewInspector", "ContentBrowser"] },
+  { "id": "RVW-06", "wave": 4, "referenceState": "review-save-error", "sceneGroup": "review", "components": ["App", "ReviewInspector", "ViewerLocalFeedback"] },
+  { "id": "RVW-07", "wave": 4, "referenceState": "review-resume", "sceneGroup": "review", "components": ["App", "ReviewRecoveryNotice"] },
+  { "id": "RVW-08", "wave": 4, "referenceState": "review-writer-busy", "sceneGroup": "review", "components": ["App", "ReviewRecoveryNotice"] },
+  { "id": "RVW-09", "wave": 4, "referenceState": "review-read-only", "sceneGroup": "review", "components": ["App", "ReadOnlyBanner", "ReviewRecoveryNotice"] },
+  { "id": "RVW-10", "wave": 4, "referenceState": "review-completion-summary", "sceneGroup": "review", "components": ["App", "ReviewCompletionDialog"] },
+  { "id": "RVW-11", "wave": 4, "referenceState": "review-version-conflict", "sceneGroup": "review", "components": ["App", "ReviewCompletionDialog", "ReviewConflictList"] },
+  { "id": "RVW-12", "wave": 4, "referenceState": "review-recovery-required", "sceneGroup": "review", "components": ["App", "ReviewRecoveryNotice"] },
+  { "id": "RVW-13", "wave": 4, "referenceState": "review-completed-read-only", "sceneGroup": "review", "components": ["App", "ReviewContextBar", "ReviewInspector"] },
+  { "id": "RVW-14", "wave": 4, "referenceState": "review-keyboard-focus", "sceneGroup": "review", "components": ["App", "ReviewInspector", "ModalSheet", "ViewerButton"] },
+  { "id": "RVW-15", "wave": 4, "referenceState": "review-zoom-200", "sceneGroup": "review", "components": ["App", "ReviewInspector", "ReviewContextBar"] }
 ]

@@ -15,6 +15,12 @@
   font-synthesis: none;
 }
 
+html,
+body,
+#root {
+  height: 100%;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -208,9 +214,12 @@ summary,
 }
 
 .viewer-shell {
+  container-name: viewer-shell;
+  container-type: inline-size;
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  height: 100%;
+  position: relative;
 }
 
 .workspace-header {

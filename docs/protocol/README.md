@@ -2,7 +2,9 @@
 
 ## 状态与范围
 
-本文档是 **Active 的协议设计与实现证据**，用于稳定 Viewer 未来 AI 素材评审工作流的开放边界；它不是 Viewer 0.1.6 已提供给用户的产品功能，也不表示当前界面已经具备创建或完成评审轮次的入口。
+本文档是 **Active 的协议与集成边界**。Viewer 0.1.6 当前已经提供手动创建、恢复和完成评审
+轮次的界面，并使用本协议保存结果；Production Manifest 执行、返工版本关系和具体 Agent
+集成仍属于未来阶段。
 
 Viewer 目前仍处于开发初期。本协议基础工作不产生签名、公证、正式安装包、发售或销售任务；后续普通功能开发也不应默认列出这些发布阶段事项，除非项目明确进入相应阶段并由用户另行授权。
 
@@ -10,6 +12,8 @@ Viewer 目前仍处于开发初期。本协议基础工作不产生签名、公�
 
 - 生产工具或 AI Agent 拥有项目中的 `viewer-production.json`，使用 `viewer.production/1` 描述一次生产任务及其素材清单。
 - Viewer 独占写入 `.viewer/reviews/`，使用 `viewer.review/1` 保存目录索引、可恢复 Draft 和不可变 Completed Round。
+- 当前手动入口由 Viewer 自身根据用户明确选择或当前浏览范围固定素材，写入一个无
+  Production Scope 的手动 Review Stream；它不会读取或执行 `viewer-production.json`。
 - Agent、自动化脚本和第三方集成只能把已被 `index.json` 收录的 Completed Round 当作返工指令来源。
 - `.viewer/reviews/drafts/` 中的数据用于 Viewer 自身恢复编辑状态，**永远不是有效的 Agent 指令**，即使 Draft 的时间或 Round ID 更新。
 
@@ -35,6 +39,15 @@ Completed Round 的 Outcome 只有三种：
 
 Draft 不包含 Outcome，也不能推进 Completed head。Completed Round 文件只创建一次；Viewer 先持久化 Round，再原子更新 `index.json`。中断恢复只接受 `previousCompletedRoundId` 构成的唯一线性链，遇到分叉或无法连接的孤儿记录时停止并要求显式恢复。
 
+当前手动工作流主要记录需要返工的例外。批量网格曝光和打开图片／视频预览具有同等资格；
+协议不记录浏览次数、停留时间、滚动位置或播放行为。完成前如果固定素材被替换、移动、删除
+或内容身份改变，Viewer 会阻止发布，避免把未经核验的新内容默认为通过。稳定、已确认的技术
+失败可以成为 `unreviewable`；尚未完成探测或普通缩略图失败不能被静默归入该结果。
+
+手动素材可以携带可选 `sourceEntityId`，用于把固定版本关联到 Viewer 已验证的本地实体身份。
+旧版 v1 文档没有该字段时仍可读取。可评审图片继续保存完整宽高；仅在图片已确认不可评审时，
+宽高可以成对省略，禁止只提供其中一个值。
+
 ## Review Stream 选择
 
 “最新完成结果”只存在于一个 Review Stream 内，协议没有、也不得推导项目级全局 latest。读取方必须使用以下一种方式选择恰好一个 Stream：
@@ -44,6 +57,10 @@ Draft 不包含 Outcome，也不能推进 Completed head。Completed Round 文�
 - 仅当项目中恰好有一个 Stream 时省略选择器。
 
 选择结果为零或多个时，读取方必须报错，不能根据文件时间、Round ID、Draft 或目录顺序猜测。
+
+Viewer 当前在一个项目中维护至多一个无 Production Scope 的手动 Stream，后续手动 Round
+追加到该 Stream。带 `taskId`／`batchId` 的 Production Stream 仍由未来阶段生产，不能被当前
+手动入口误认或改写。
 
 ## 版本与兼容性
 

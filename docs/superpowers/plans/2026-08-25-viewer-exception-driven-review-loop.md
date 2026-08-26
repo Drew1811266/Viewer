@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-> Status: Ready for execution
+> Status: Complete — 2026-08-26
 
 **Goal:** Connect Viewer's phase-1 open review protocol to the current project session and workspace so a user can freeze an explicit image/video set, persist natural-language rework Feedback, safely resume the Draft, and explicitly publish one immutable exception-driven Completed Round.
 
@@ -1303,7 +1303,7 @@ git commit -m "test: gate the manual review loop"
 - Preserve the development-stage statement: signing, Apple notarization, formal installer, public release, sale, and sales tasks are not ordinary completion items and must not be proposed without explicit authorization.
 - Do not rewrite or discard unrelated documentation edits already present in the working tree. Reconcile line-by-line and stage only phase-2 hunks.
 
-- [ ] **Step 1: Run focused verification from a clean task worktree**
+- [x] **Step 1: Run focused verification from a clean task worktree**
 
 ```bash
 cargo fmt --check
@@ -1320,7 +1320,7 @@ pnpm test:policy
 
 Expected: every command exits 0. Record exact output for any environment-conditioned native check; a skip is a skip, not a pass.
 
-- [ ] **Step 2: Run the repository's complete verification and cleanliness checks**
+- [x] **Step 2: Run the repository's complete verification and cleanliness checks**
 
 Run:
 
@@ -1331,7 +1331,7 @@ pnpm verify:clean
 
 Expected: both commands exit 0; `verify` runs quality and security gates, and `verify:clean` proves the worktree contains no untracked/generated artifacts outside explicit ignored acceptance/brainstorm paths.
 
-- [ ] **Step 3: Exercise the real development application manually**
+- [x] **Step 3: Exercise the real development application manually**
 
 Run: `pnpm start:viewer`
 
@@ -1355,11 +1355,11 @@ open project
 
 Do not use the user's production materials. Stop the dev process cleanly after verification.
 
-- [ ] **Step 4: Update documentation status only from verified facts**
+- [x] **Step 4: Update documentation status only from verified facts**
 
 Change the design status to `Implemented` and this plan status to `Complete` only after Steps 1–3 pass. If any required check is blocked, document the exact blocker and keep status `In progress`.
 
-- [ ] **Step 5: Review the final diff for scope and architecture**
+- [x] **Step 5: Review the final diff for scope and architecture**
 
 Run:
 
@@ -1373,7 +1373,7 @@ rg -n "sign|notari|installer|release|发售|公证|签名|正式安装包" docs/
 
 Expected: no accidental placeholders; release-related matches appear only in explicit out-of-scope/development-stage language; unrelated user modifications remain unstaged and unchanged.
 
-- [ ] **Step 6: Commit the verified product truth**
+- [x] **Step 6: Commit the verified product truth**
 
 ```bash
 git add -p docs/PRODUCT_SPEC.md
@@ -1383,6 +1383,29 @@ git commit -m "docs: record the manual review loop"
 ```
 
 Do not stage unrelated pre-existing documentation hunks. After commit, re-run `git status --short` and compare the preserved user-file diff hash captured before execution.
+
+**Completion evidence (2026-08-26):**
+
+- All focused commands in Step 1 exited 0. UI verification reported 121 passing test files,
+  1057 passing tests, and 1 existing skipped test. The UI production build completed with the existing
+  chunk-size warning; Biome reported only its existing configuration deprecation information.
+- `pnpm verify` and `pnpm verify:clean` both exited 0. Policy reported 33 passing tests and exact scope
+  coverage; review protocol reported 13 passing tests; the production-composition review harness reported
+  6 passing scenarios. Cargo dependency checks retained their existing duplicate-version warnings.
+- Full Rust workspace tests passed. Tests that explicitly require a staged/bundled video runtime or a
+  particular macOS native acceptance environment remained ignored and are not counted as passes.
+- The real UI flow used `/tmp/viewer-review-manual.8dLXTL`, containing only copied repository fixtures.
+  It verified image/video browsing and preview, a two-image manual Draft, byte-exact single- and multi-target
+  Chinese Feedback, explicit Draft resume, a completion summary without viewed counts, completion blocking
+  after one fixed source was replaced, evidence restoration, immutable completion, and read-only reopen.
+- The existing Node reader successfully read exact manual Stream
+  `f67fb64c-9a0e-4ab0-ba4f-ca4ddfa7eabd` and Round
+  `6aee13bd-0557-4e7f-bd00-e5675b2807a1`. The same session also verified search, two-image compare,
+  keep/favorite markers, rename, and undo without changing review Outcomes.
+- `pnpm start:viewer` ran the branch's development executable after the isolated worktree received the
+  already verified local video runtime in ignored `target/` paths. For macOS UI automation only, the same
+  debug executable was wrapped in an unsigned debug `.app`; no signing, notarization, installer, release,
+  sale, or user production material was involved. Viewer was quit cleanly after the run.
 
 ---
 

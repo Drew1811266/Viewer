@@ -40,6 +40,9 @@
 | [adr/0003-scan-search-and-generation.md](adr/0003-scan-search-and-generation.md) | Active | — |
 | [adr/0005-continuous-development-governance.md](adr/0005-continuous-development-governance.md) | Active | — |
 
+AI 素材评审路线阶段 2 已于 2026-08-26 完成：设计文档内部状态为 `Implemented`，实施计划
+内部状态为 `Complete`。两份文档继续以 Active 治理资料保留，用于约束未来阶段的依赖边界。
+
 ## 历史目标、设计与实施资料
 
 这些资料用于解释需求、设计和实施过程，不单独证明 0.1.6 当前产品行为。

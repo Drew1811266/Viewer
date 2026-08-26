@@ -3,16 +3,18 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicI64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use viewer_application::{
-    ClockPort, PersistedReviewDraft, PreparedReviewAsset, ReviewAssetCatalogPort, ReviewAssetError,
-    ReviewAssetValidation, ReviewCatalog, ReviewProgressPort, ReviewProtocolVersion,
-    ReviewPublication, ReviewRecordLocation, ReviewRepositoryError, ReviewRepositoryInspection,
-    ReviewRepositoryPort, ReviewRepositoryProviderPort, ReviewRoundRecord, ReviewScope,
-    ReviewScopeResolution, ReviewSessionPhase, ReviewSessionService, ReviewStreamHead,
-    ReviewTaskCancellation, ReviewTaskProgress,
+    ClockPort, PersistedReviewDraft, PreparedReviewAsset, ReviewArtifactError, ReviewArtifactPort,
+    ReviewArtifactRenderRequest, ReviewAssetCatalogPort, ReviewAssetError, ReviewAssetValidation,
+    ReviewCatalog, ReviewFeedbackTargetInput, ReviewProgressPort, ReviewProtocolVersion,
+    ReviewPublication, ReviewRecordLocation, ReviewRenderedArtifact, ReviewRepositoryError,
+    ReviewRepositoryInspection, ReviewRepositoryPort, ReviewRepositoryProviderPort,
+    ReviewRoundRecord, ReviewScope, ReviewScopeResolution, ReviewSessionError, ReviewSessionPhase,
+    ReviewSessionService, ReviewStreamHead, ReviewTaskCancellation, ReviewTaskProgress,
+    StartReviewWithFeedback,
 };
 use viewer_domain::review::{
-    AssetEvidence, AssetVersion, ProductionId, ProductionScope, ReviewDraft, ReviewMedia,
-    ReviewSnapshot, ReviewabilityFailure,
+    AssetEvidence, AssetVersion, FeedbackAnchor, NormalizedRect, ProductionId, ProductionScope,
+    ReviewDraft, ReviewMedia, ReviewSnapshot, ReviewabilityFailure,
 };
 use viewer_domain::{
     AssetVersionId, EntityId, ProjectId, RelativePath, ReviewRoundId, ReviewStreamId,
@@ -30,6 +32,18 @@ struct TestClock(AtomicI64);
 impl ClockPort for TestClock {
     fn unix_millis(&self) -> i64 {
         self.0.load(Ordering::Acquire)
+    }
+}
+
+struct FakeReviewArtifactPort;
+
+#[async_trait]
+impl ReviewArtifactPort for FakeReviewArtifactPort {
+    async fn render(
+        &self,
+        _request: ReviewArtifactRenderRequest,
+    ) -> Result<ReviewRenderedArtifact, ReviewArtifactError> {
+        Err(ReviewArtifactError::Unavailable)
     }
 }
 
@@ -370,6 +384,7 @@ impl Fixture {
             assets.clone(),
             repositories.clone(),
             Arc::new(TestClock(AtomicI64::new(1_000))),
+            Arc::new(FakeReviewArtifactPort),
         ));
         Self {
             project_id,
@@ -471,6 +486,67 @@ fn round_record(round_id: ReviewRoundId) -> ReviewRoundRecord {
         location: ReviewRecordLocation::new(format!("rounds/{round_id}.json")).unwrap(),
         blake3: [0; 32],
     }
+}
+
+fn first_rect_feedback(
+    proposal_id: viewer_application::ReviewProposalId,
+) -> StartReviewWithFeedback {
+    StartReviewWithFeedback {
+        proposal_id,
+        text: "右手结构需要修正".to_owned(),
+        targets: vec![ReviewFeedbackTargetInput {
+            entity_id: EntityId::from_u128(1),
+            anchor: FeedbackAnchor::ImageRect(NormalizedRect::new(0.62, 0.35, 0.18, 0.22).unwrap()),
+        }],
+    }
+}
+
+#[tokio::test]
+async fn first_valid_feedback_creates_one_v2_draft_write_with_fixed_scope() {
+    let fixture = Fixture::new();
+    let proposal = fixture.service.preview_start(selection()).await.unwrap();
+
+    let snapshot = fixture
+        .service
+        .start_with_feedback(first_rect_feedback(proposal.id), fixture.progress())
+        .await
+        .unwrap();
+
+    let state = fixture.repositories.state.lock().unwrap();
+    assert_eq!(state.save_count, 1);
+    assert_eq!(
+        state.last_saved_protocol_version,
+        Some(ReviewProtocolVersion::V2)
+    );
+    assert_eq!(state.drafts.len(), 1);
+    drop(state);
+    assert_eq!(snapshot.members.len(), 2);
+    assert_eq!(snapshot.feedback.len(), 1);
+    assert!(matches!(
+        snapshot.feedback[0].targets[0].anchor,
+        FeedbackAnchor::ImageRect(_)
+    ));
+}
+
+#[tokio::test]
+async fn failed_first_save_leaves_no_empty_draft_and_keeps_session_idle() {
+    let fixture = Fixture::new();
+    fixture.repositories.state.lock().unwrap().fail_save = true;
+    let proposal = fixture.service.preview_start(selection()).await.unwrap();
+
+    assert_eq!(
+        fixture
+            .service
+            .start_with_feedback(first_rect_feedback(proposal.id), fixture.progress())
+            .await,
+        Err(ReviewSessionError::SaveFailed)
+    );
+
+    assert!(fixture.repositories.state.lock().unwrap().drafts.is_empty());
+    assert_eq!(
+        fixture.service.snapshot().await.phase,
+        ReviewSessionPhase::Idle
+    );
 }
 
 fn production_scope() -> ProductionScope {

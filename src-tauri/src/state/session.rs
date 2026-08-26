@@ -4,6 +4,7 @@ impl DesktopRuntime {
     fn prepare_review_services(
         &self,
         active: &ActiveProject,
+        cache: &SessionCache,
         index: Arc<SessionIndex>,
         image: Arc<dyn ImagePort>,
     ) -> Result<
@@ -34,12 +35,21 @@ impl DesktopRuntime {
                 active.access,
             ),
         );
+        let artifacts: Arc<dyn viewer_application::ReviewArtifactPort> = Arc::new(
+            viewer_platform_macos::image::MacReviewArtifactRenderer::new(
+                &cache.review_artifact_root(),
+            )
+            .map_err(|_| {
+                CommandError::from(viewer_application::ReviewSessionError::AssetUnavailable)
+            })?,
+        );
         Ok((
             Arc::new(viewer_application::ReviewSessionService::new(
                 active.project_id,
                 asset_catalog,
                 repositories,
                 Arc::clone(&self.clock),
+                artifacts,
             )),
             review_changes,
         ))
@@ -240,20 +250,24 @@ impl DesktopRuntime {
         let scan_task_id = TaskId::new();
         let marker_lock = Arc::new(Mutex::new(()));
         let undo_stack = Arc::new(StdMutex::new(UndoStack::new(active_session_id)));
-        let (review, review_changes) =
-            match self.prepare_review_services(&active, Arc::clone(&index), Arc::clone(&image)) {
-                Ok(services) => services,
-                Err(error) => {
-                    cancel_video_worker_before_session_teardown(video_index.as_ref()).await;
-                    image.cancel_session(active.session_id).await;
-                    drop(marker_projection);
-                    drop(index);
-                    drop(portable_store);
-                    let _ = cache.cleanup();
-                    let _ = self.project_service.close();
-                    return Err(error);
-                }
-            };
+        let (review, review_changes) = match self.prepare_review_services(
+            &active,
+            cache.as_ref(),
+            Arc::clone(&index),
+            Arc::clone(&image),
+        ) {
+            Ok(services) => services,
+            Err(error) => {
+                cancel_video_worker_before_session_teardown(video_index.as_ref()).await;
+                image.cancel_session(active.session_id).await;
+                drop(marker_projection);
+                drop(index);
+                drop(portable_store);
+                let _ = cache.cleanup();
+                let _ = self.project_service.close();
+                return Err(error);
+            }
+        };
         let _ = review.inspect().await;
         let organization = match self
             .prepare_organization_services(

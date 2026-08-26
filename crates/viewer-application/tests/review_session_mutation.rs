@@ -3,16 +3,19 @@ use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::{Arc, Mutex};
 use viewer_application::{
     AddReviewFeedback, ClockPort, DeleteReviewFeedback, PersistedReviewDraft, PreparedReviewAsset,
-    ReviewAssetCatalogPort, ReviewAssetError, ReviewAssetValidation, ReviewCatalog,
-    ReviewMutationGuard, ReviewProgressPort, ReviewProtocolVersion, ReviewPublication,
-    ReviewRepositoryError, ReviewRepositoryInspection, ReviewRepositoryPort,
-    ReviewRepositoryProviderPort, ReviewScope, ReviewScopeResolution, ReviewSessionService,
-    ReviewTaskCancellation, ReviewTaskProgress, UpdateReviewFeedback,
+    ReplaceReviewFeedbackAnchor, ReviewArtifactError, ReviewArtifactPort,
+    ReviewArtifactRenderRequest, ReviewAssetCatalogPort, ReviewAssetError, ReviewAssetValidation,
+    ReviewCatalog, ReviewFeedbackTargetInput, ReviewMutationGuard, ReviewProgressPort,
+    ReviewProtocolVersion, ReviewPublication, ReviewRenderedArtifact, ReviewRepositoryError,
+    ReviewRepositoryInspection, ReviewRepositoryPort, ReviewRepositoryProviderPort, ReviewScope,
+    ReviewScopeResolution, ReviewSessionService, ReviewTaskCancellation, ReviewTaskProgress,
+    UpdateReviewFeedback, UpdateReviewFeedbackText,
 };
 use viewer_domain::review::{
-    AssetEvidence, AssetVersion, MAX_FEEDBACK_TEXT_BYTES, ReviewDraft, ReviewMedia, ReviewSnapshot,
+    AssetEvidence, AssetVersion, FeedbackAnchor, ImageStroke, MAX_FEEDBACK_TEXT_BYTES,
+    NormalizedPoint, NormalizedRect, ReviewDraft, ReviewMedia, ReviewSnapshot,
 };
-use viewer_domain::{EntityId, ProjectId, RelativePath, ReviewRoundId, ReviewStreamId};
+use viewer_domain::{EntityId, FeedbackId, ProjectId, RelativePath, ReviewRoundId, ReviewStreamId};
 
 #[derive(Default)]
 struct NoProgress;
@@ -26,6 +29,18 @@ struct TestClock(AtomicI64);
 impl ClockPort for TestClock {
     fn unix_millis(&self) -> i64 {
         self.0.load(Ordering::Acquire)
+    }
+}
+
+struct FakeReviewArtifactPort;
+
+#[async_trait]
+impl ReviewArtifactPort for FakeReviewArtifactPort {
+    async fn render(
+        &self,
+        _request: ReviewArtifactRenderRequest,
+    ) -> Result<ReviewRenderedArtifact, ReviewArtifactError> {
+        Err(ReviewArtifactError::Unavailable)
     }
 }
 
@@ -84,12 +99,24 @@ impl ReviewAssetCatalogPort for FakeAssetCatalog {
     fn release_tracking(&self) {}
 }
 
-#[derive(Default)]
 struct RepositoryState {
     draft: Option<ReviewDraft>,
+    protocol_version: ReviewProtocolVersion,
     writer_held: bool,
     fail_save: bool,
     save_attempts: usize,
+}
+
+impl Default for RepositoryState {
+    fn default() -> Self {
+        Self {
+            draft: None,
+            protocol_version: ReviewProtocolVersion::V1,
+            writer_held: false,
+            fail_save: false,
+            save_attempts: 0,
+        }
+    }
 }
 
 struct FakeRepositories {
@@ -99,16 +126,15 @@ struct FakeRepositories {
 
 impl ReviewRepositoryProviderPort for FakeRepositories {
     fn inspect(&self) -> Result<ReviewRepositoryInspection, ReviewRepositoryError> {
+        let state = self.state.lock().unwrap();
         Ok(ReviewRepositoryInspection {
             catalog: ReviewCatalog {
                 project_id: self.project_id,
                 streams: vec![],
             },
-            active_draft: self.state.lock().unwrap().draft.clone().map(|draft| {
-                PersistedReviewDraft {
-                    protocol_version: ReviewProtocolVersion::V1,
-                    draft,
-                }
+            active_draft: state.draft.clone().map(|draft| PersistedReviewDraft {
+                protocol_version: state.protocol_version,
+                draft,
             }),
         })
     }
@@ -159,16 +185,11 @@ impl ReviewRepositoryPort for FakeRepository {
     }
 
     fn load_active_draft(&self) -> Result<Option<PersistedReviewDraft>, ReviewRepositoryError> {
-        Ok(self
-            .state
-            .lock()
-            .unwrap()
-            .draft
-            .clone()
-            .map(|draft| PersistedReviewDraft {
-                protocol_version: ReviewProtocolVersion::V1,
-                draft,
-            }))
+        let state = self.state.lock().unwrap();
+        Ok(state.draft.clone().map(|draft| PersistedReviewDraft {
+            protocol_version: state.protocol_version,
+            draft,
+        }))
     }
 
     fn load_draft(
@@ -176,10 +197,8 @@ impl ReviewRepositoryPort for FakeRepository {
         stream_id: ReviewStreamId,
         round_id: ReviewRoundId,
     ) -> Result<Option<PersistedReviewDraft>, ReviewRepositoryError> {
-        Ok(self
-            .state
-            .lock()
-            .unwrap()
+        let state = self.state.lock().unwrap();
+        Ok(state
             .draft
             .as_ref()
             .filter(|draft| {
@@ -187,7 +206,7 @@ impl ReviewRepositoryPort for FakeRepository {
             })
             .cloned()
             .map(|draft| PersistedReviewDraft {
-                protocol_version: ReviewProtocolVersion::V1,
+                protocol_version: state.protocol_version,
                 draft,
             }))
     }
@@ -198,6 +217,7 @@ impl ReviewRepositoryPort for FakeRepository {
         if state.fail_save {
             return Err(ReviewRepositoryError::Unavailable);
         }
+        state.protocol_version = draft.protocol_version;
         state.draft = Some(draft.draft.clone());
         Ok(())
     }
@@ -251,6 +271,7 @@ impl Fixture {
             catalog,
             repositories.clone(),
             clock.clone(),
+            Arc::new(FakeReviewArtifactPort),
         ));
         let proposal = service
             .preview_start(ReviewScope::Selection {
@@ -262,6 +283,65 @@ impl Fixture {
             .start(proposal.id, Arc::new(NoProgress))
             .await
             .unwrap();
+        Self {
+            service,
+            repositories,
+            clock,
+            entity_ids,
+        }
+    }
+
+    async fn resumed_v1() -> Self {
+        let project_id = ProjectId::from_u128(1);
+        let entity_ids = [EntityId::from_u128(1), EntityId::from_u128(2)];
+        let prepared = entity_ids
+            .iter()
+            .enumerate()
+            .map(|(index, entity_id)| prepared_asset(*entity_id, index + 1))
+            .collect::<Vec<_>>();
+        let mut draft = ReviewDraft::new(
+            project_id,
+            ReviewStreamId::from_u128(10),
+            ReviewRoundId::from_u128(20),
+            None,
+            None,
+            900,
+            prepared.iter().map(|asset| asset.asset.clone()).collect(),
+        )
+        .unwrap();
+        draft
+            .upsert_feedback(
+                viewer_domain::review::Feedback::new(
+                    FeedbackId::from_u128(30),
+                    "旧意见".to_owned(),
+                    950,
+                    vec![viewer_domain::review::FeedbackTarget {
+                        asset_version_id: prepared[0].asset.id,
+                        anchor: FeedbackAnchor::Asset,
+                    }],
+                )
+                .unwrap(),
+            )
+            .unwrap();
+        let catalog = Arc::new(FakeAssetCatalog { prepared });
+        let repositories = Arc::new(FakeRepositories {
+            project_id,
+            state: Arc::new(Mutex::new(RepositoryState {
+                draft: Some(draft),
+                protocol_version: ReviewProtocolVersion::V1,
+                ..RepositoryState::default()
+            })),
+        });
+        let clock = Arc::new(TestClock(AtomicI64::new(1_000)));
+        let service = Arc::new(ReviewSessionService::new(
+            project_id,
+            catalog,
+            repositories.clone(),
+            clock.clone(),
+            Arc::new(FakeReviewArtifactPort),
+        ));
+        service.inspect().await;
+        service.resume(Arc::new(NoProgress)).await.unwrap();
         Self {
             service,
             repositories,
@@ -330,7 +410,33 @@ fn add(
     AddReviewFeedback {
         guard,
         text: text.to_owned(),
-        target_entity_ids,
+        targets: target_entity_ids
+            .into_iter()
+            .map(|entity_id| ReviewFeedbackTargetInput {
+                entity_id,
+                anchor: FeedbackAnchor::Asset,
+            })
+            .collect(),
+    }
+}
+
+fn rect_target(entity_id: EntityId, x: f64) -> ReviewFeedbackTargetInput {
+    ReviewFeedbackTargetInput {
+        entity_id,
+        anchor: FeedbackAnchor::ImageRect(NormalizedRect::new(x, 0.2, 0.2, 0.3).unwrap()),
+    }
+}
+
+fn stroke_target(entity_id: EntityId, start: f64) -> ReviewFeedbackTargetInput {
+    ReviewFeedbackTargetInput {
+        entity_id,
+        anchor: FeedbackAnchor::ImageStroke(
+            ImageStroke::new(vec![
+                NormalizedPoint::new(start, 0.2).unwrap(),
+                NormalizedPoint::new(start + 0.2, 0.5).unwrap(),
+            ])
+            .unwrap(),
+        ),
     }
 }
 
@@ -350,7 +456,14 @@ async fn add_feedback_preserves_natural_language_and_freezes_one_or_many_targets
     assert_eq!(after.revision, before.revision + 1);
     assert_eq!(after.feedback.len(), 1);
     assert_eq!(after.feedback[0].text, text);
-    assert_eq!(after.feedback[0].target_entity_ids, fixture.entity_ids);
+    assert_eq!(
+        after.feedback[0]
+            .targets
+            .iter()
+            .filter_map(|target| target.entity_id)
+            .collect::<Vec<_>>(),
+        fixture.entity_ids
+    );
     assert_eq!(after.counts.revise, 2);
     assert_eq!(after.counts.pass, 0);
     let saved = fixture.saved_draft();
@@ -408,7 +521,10 @@ async fn update_keeps_feedback_identity_and_timestamp_but_replaces_text_and_targ
             guard: guard(&added),
             feedback_id,
             text: "新意见".to_owned(),
-            target_entity_ids: vec![fixture.entity_ids[1]],
+            targets: vec![ReviewFeedbackTargetInput {
+                entity_id: fixture.entity_ids[1],
+                anchor: FeedbackAnchor::Asset,
+            }],
         })
         .await
         .unwrap();
@@ -417,9 +533,204 @@ async fn update_keeps_feedback_identity_and_timestamp_but_replaces_text_and_targ
     assert_eq!(updated.feedback[0].created_at_ms, created_at_ms);
     assert_eq!(updated.feedback[0].text, "新意见");
     assert_eq!(
-        updated.feedback[0].target_entity_ids,
+        updated.feedback[0]
+            .targets
+            .iter()
+            .filter_map(|target| target.entity_id)
+            .collect::<Vec<_>>(),
         vec![fixture.entity_ids[1]]
     );
+}
+
+#[tokio::test]
+async fn rectangle_update_preserves_feedback_identity_and_creation_time() {
+    let fixture = Fixture::active().await;
+    let initial = fixture.snapshot().await;
+    let added = fixture
+        .service
+        .add_feedback(AddReviewFeedback {
+            guard: guard(&initial),
+            text: "旧位置".to_owned(),
+            targets: vec![rect_target(fixture.entity_ids[0], 0.1)],
+        })
+        .await
+        .unwrap();
+    let original = added.feedback[0].clone();
+
+    let updated = fixture
+        .service
+        .update_feedback(UpdateReviewFeedback {
+            guard: guard(&added),
+            feedback_id: original.feedback_id,
+            text: "新位置".to_owned(),
+            targets: vec![rect_target(fixture.entity_ids[0], 0.5)],
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(updated.feedback[0].feedback_id, original.feedback_id);
+    assert_eq!(updated.feedback[0].created_at_ms, original.created_at_ms);
+    assert!(matches!(
+        updated.feedback[0].targets[0].anchor,
+        FeedbackAnchor::ImageRect(rect) if rect.x() == 0.5
+    ));
+}
+
+#[tokio::test]
+async fn brush_redraw_replaces_the_complete_stroke() {
+    let fixture = Fixture::active().await;
+    let initial = fixture.snapshot().await;
+    let added = fixture
+        .service
+        .add_feedback(AddReviewFeedback {
+            guard: guard(&initial),
+            text: "重画轮廓".to_owned(),
+            targets: vec![stroke_target(fixture.entity_ids[0], 0.1)],
+        })
+        .await
+        .unwrap();
+
+    let replaced = fixture
+        .service
+        .replace_feedback_anchor(ReplaceReviewFeedbackAnchor {
+            guard: guard(&added),
+            feedback_id: added.feedback[0].feedback_id,
+            target: stroke_target(fixture.entity_ids[0], 0.6),
+        })
+        .await
+        .unwrap();
+
+    let FeedbackAnchor::ImageStroke(stroke) = &replaced.feedback[0].targets[0].anchor else {
+        panic!("expected image stroke");
+    };
+    assert_eq!(stroke.points()[0].x(), 0.6);
+    assert_eq!(stroke.points().len(), 2);
+}
+
+#[tokio::test]
+async fn delete_restore_is_single_slot_server_held_and_cleared_by_later_success() {
+    let fixture = Fixture::active().await;
+    let initial = fixture.snapshot().await;
+    let added = fixture
+        .service
+        .add_feedback(AddReviewFeedback {
+            guard: guard(&initial),
+            text: "保留完整对象".to_owned(),
+            targets: vec![rect_target(fixture.entity_ids[0], 0.1)],
+        })
+        .await
+        .unwrap();
+    let original = fixture.saved_draft().feedback[0].clone();
+    let deleted = fixture
+        .service
+        .delete_feedback(DeleteReviewFeedback {
+            guard: guard(&added),
+            feedback_id: original.id,
+        })
+        .await
+        .unwrap();
+    assert_eq!(deleted.restorable_feedback_id, Some(original.id));
+
+    let restored = fixture
+        .service
+        .restore_deleted_feedback(guard(&deleted), original.id)
+        .await
+        .unwrap();
+    assert_eq!(fixture.saved_draft().feedback, vec![original.clone()]);
+    assert_eq!(restored.restorable_feedback_id, None);
+
+    let deleted_again = fixture
+        .service
+        .delete_feedback(DeleteReviewFeedback {
+            guard: guard(&restored),
+            feedback_id: original.id,
+        })
+        .await
+        .unwrap();
+    let after_other_mutation = fixture
+        .service
+        .add_feedback(add(
+            guard(&deleted_again),
+            "另一条意见",
+            vec![fixture.entity_ids[1]],
+        ))
+        .await
+        .unwrap();
+    assert_eq!(after_other_mutation.restorable_feedback_id, None);
+}
+
+#[tokio::test]
+async fn fixed_membership_blank_text_and_anchor_mismatch_are_rejected_without_writes() {
+    let fixture = Fixture::active().await;
+    let snapshot = fixture.snapshot().await;
+    let attempts = fixture.save_attempts();
+    for command in [
+        AddReviewFeedback {
+            guard: guard(&snapshot),
+            text: "越界目标".to_owned(),
+            targets: vec![rect_target(EntityId::from_u128(999), 0.1)],
+        },
+        AddReviewFeedback {
+            guard: guard(&snapshot),
+            text: "  ".to_owned(),
+            targets: vec![rect_target(fixture.entity_ids[0], 0.1)],
+        },
+        AddReviewFeedback {
+            guard: guard(&snapshot),
+            text: "媒体类型不匹配".to_owned(),
+            targets: vec![ReviewFeedbackTargetInput {
+                entity_id: fixture.entity_ids[0],
+                anchor: FeedbackAnchor::VideoPoint { position_us: 1 },
+            }],
+        },
+    ] {
+        assert_eq!(
+            fixture
+                .service
+                .add_feedback(command)
+                .await
+                .unwrap_err()
+                .code(),
+            "review_feedback_invalid"
+        );
+    }
+    assert_eq!(fixture.save_attempts(), attempts);
+}
+
+#[tokio::test]
+async fn resumed_v1_text_edit_preserves_v1_then_local_anchor_upgrade_is_atomic() {
+    let fixture = Fixture::resumed_v1().await;
+    let resumed = fixture.snapshot().await;
+    let text_updated = fixture
+        .service
+        .update_feedback_text(UpdateReviewFeedbackText {
+            guard: guard(&resumed),
+            feedback_id: resumed.feedback[0].feedback_id,
+            text: "只改文字".to_owned(),
+        })
+        .await
+        .unwrap();
+    assert_eq!(
+        fixture.repositories.state.lock().unwrap().protocol_version,
+        ReviewProtocolVersion::V1
+    );
+
+    fixture
+        .service
+        .replace_feedback_anchor(ReplaceReviewFeedbackAnchor {
+            guard: guard(&text_updated),
+            feedback_id: text_updated.feedback[0].feedback_id,
+            target: rect_target(fixture.entity_ids[0], 0.4),
+        })
+        .await
+        .unwrap();
+
+    let state = fixture.repositories.state.lock().unwrap();
+    assert_eq!(state.protocol_version, ReviewProtocolVersion::V2);
+    assert!(matches!(
+        state.draft.as_ref().unwrap().feedback[0].targets[0].anchor,
+        FeedbackAnchor::ImageRect(_)
+    ));
 }
 
 #[tokio::test]

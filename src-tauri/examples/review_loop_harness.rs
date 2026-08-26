@@ -9,13 +9,16 @@ use tempfile::TempDir;
 use tokio_util::sync::CancellationToken;
 use viewer_application::{
     AddReviewFeedback, BrowseIndexPort, ClockPort, ImagePort, ProjectAccess,
-    ReviewAssetConflictKind, ReviewCompletionProposal, ReviewMutationGuard, ReviewProgressPort,
-    ReviewPublication, ReviewRepositoryError, ReviewRepositoryProviderPort, ReviewScope,
-    ReviewSessionPhase, ReviewSessionService, ReviewSessionSnapshot, ReviewTaskProgress,
+    ReviewAssetConflictKind, ReviewCompletionProposal, ReviewFeedbackTargetInput,
+    ReviewMutationGuard, ReviewProgressPort, ReviewPublication, ReviewRepositoryError,
+    ReviewRepositoryProviderPort, ReviewScope, ReviewSessionPhase, ReviewSessionService,
+    ReviewSessionSnapshot, ReviewTaskProgress,
 };
 use viewer_desktop::error::CommandError;
 use viewer_domain::file::{FileKind, FileNode, ReviewState};
-use viewer_domain::review::{ReviewOutcomeKind, ReviewSnapshot, ReviewabilityFailure};
+use viewer_domain::review::{
+    FeedbackAnchor, ReviewOutcomeKind, ReviewSnapshot, ReviewabilityFailure,
+};
 use viewer_domain::search::Generation;
 use viewer_domain::{EntityId, ProjectId, RelativePath, ReviewRoundId, ReviewStreamId};
 use viewer_infrastructure::SystemClock;
@@ -28,7 +31,7 @@ use viewer_infrastructure::search::index::SessionIndex;
 use viewer_infrastructure::video_probe::{
     MediaFileIdentity, UnavailableVideoProbe, VideoMetadataProbe, VideoProbeError,
 };
-use viewer_platform_macos::image::MacImagePort;
+use viewer_platform_macos::image::{MacImagePort, MacReviewArtifactRenderer};
 
 const PROJECT_ID: ProjectId = ProjectId::from_u128(0xfeed_f00d);
 const SINGLE_FEEDBACK: &str = "降低高光强度，保留布料纹理。";
@@ -290,8 +293,16 @@ fn build_composition(
         project, PROJECT_ID, access,
     ));
     let repositories: Arc<dyn ReviewRepositoryProviderPort> = provider.clone();
-    let service =
-        ReviewSessionService::new(PROJECT_ID, catalog, repositories, Arc::new(SystemClock));
+    let artifacts = Arc::new(MacReviewArtifactRenderer::new(
+        &cache.path().join("review-artifacts"),
+    )?);
+    let service = ReviewSessionService::new(
+        PROJECT_ID,
+        catalog,
+        repositories,
+        Arc::new(SystemClock),
+        artifacts,
+    );
     Ok(Composition {
         _cache: cache,
         index,
@@ -388,7 +399,10 @@ async fn add_standard_feedback(
                 expected_revision: active.revision,
             },
             text: SINGLE_FEEDBACK.to_owned(),
-            target_entity_ids: vec![entity_for_path(&composition.nodes, "hero.png")?],
+            targets: vec![ReviewFeedbackTargetInput {
+                entity_id: entity_for_path(&composition.nodes, "hero.png")?,
+                anchor: FeedbackAnchor::Asset,
+            }],
         })
         .await?;
     composition
@@ -399,9 +413,15 @@ async fn add_standard_feedback(
                 expected_revision: active.revision,
             },
             text: MULTI_FEEDBACK.to_owned(),
-            target_entity_ids: vec![
-                entity_for_path(&composition.nodes, "hero.png")?,
-                entity_for_path(&composition.nodes, "variant.jpg")?,
+            targets: vec![
+                ReviewFeedbackTargetInput {
+                    entity_id: entity_for_path(&composition.nodes, "hero.png")?,
+                    anchor: FeedbackAnchor::Asset,
+                },
+                ReviewFeedbackTargetInput {
+                    entity_id: entity_for_path(&composition.nodes, "variant.jpg")?,
+                    anchor: FeedbackAnchor::Asset,
+                },
             ],
         })
         .await

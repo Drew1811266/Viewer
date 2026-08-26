@@ -60,12 +60,14 @@ pub use review_assets::{
     ReviewTaskCancellation, ReviewTaskProgress,
 };
 pub use review_session::{
-    AddReviewFeedback, DeleteReviewFeedback, ReviewCompletionProposal, ReviewCompletionProposalId,
-    ReviewCompletionSummary, ReviewConflictKind, ReviewConflictSnapshot, ReviewFeedbackSnapshot,
-    ReviewFeedbackSummary, ReviewMemberSnapshot, ReviewMutationGuard, ReviewProposalId,
-    ReviewResumeSnapshot, ReviewScopeProposal, ReviewSessionCounts, ReviewSessionError,
-    ReviewSessionPhase, ReviewSessionService, ReviewSessionSnapshot, ReviewUnreviewableSnapshot,
-    ReviewUserError, UpdateReviewFeedback,
+    AddReviewFeedback, DeleteReviewFeedback, ReplaceReviewFeedbackAnchor, ReviewCompletionProposal,
+    ReviewCompletionProposalId, ReviewCompletionSummary, ReviewConflictKind,
+    ReviewConflictSnapshot, ReviewFeedbackSnapshot, ReviewFeedbackSummary,
+    ReviewFeedbackTargetInput, ReviewFeedbackTargetSnapshot, ReviewMemberSnapshot,
+    ReviewMutationGuard, ReviewProposalId, ReviewResumeSnapshot, ReviewScopeProposal,
+    ReviewSessionCounts, ReviewSessionError, ReviewSessionPhase, ReviewSessionService,
+    ReviewSessionSnapshot, ReviewUnreviewableSnapshot, ReviewUserError, StartReviewWithFeedback,
+    UpdateReviewFeedback, UpdateReviewFeedbackText,
 };
 pub use session::{ProjectSession, SessionState, SessionTransitionError};
 pub use settings::{

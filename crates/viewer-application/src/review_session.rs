@@ -1,9 +1,10 @@
 use crate::{
-    ClockPort, PersistedReviewDraft, PreparedReviewAsset, ReviewAssetCatalogPort,
+    ClockPort, NumberedImageAnnotation, PersistedReviewDraft, PreparedReviewAsset,
+    ReviewArtifactError, ReviewArtifactPort, ReviewArtifactRenderRequest, ReviewAssetCatalogPort,
     ReviewAssetConflictKind, ReviewAssetError, ReviewAssetValidation, ReviewCatalog,
-    ReviewProgressPort, ReviewProtocolVersion, ReviewPublication, ReviewRepositoryError,
-    ReviewRepositoryPort, ReviewRepositoryProviderPort, ReviewScope, ReviewScopeResolution,
-    ReviewStreamHead, ReviewTaskCancellation,
+    ReviewProgressPort, ReviewProtocolVersion, ReviewPublication, ReviewRenderedArtifact,
+    ReviewRepositoryError, ReviewRepositoryPort, ReviewRepositoryProviderPort, ReviewScope,
+    ReviewScopeResolution, ReviewStreamHead, ReviewTaskCancellation,
 };
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -53,19 +54,46 @@ pub struct ReviewMutationGuard {
     pub expected_revision: u64,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
+pub struct ReviewFeedbackTargetInput {
+    pub entity_id: EntityId,
+    pub anchor: FeedbackAnchor,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct StartReviewWithFeedback {
+    pub proposal_id: ReviewProposalId,
+    pub text: String,
+    pub targets: Vec<ReviewFeedbackTargetInput>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct AddReviewFeedback {
     pub guard: ReviewMutationGuard,
     pub text: String,
-    pub target_entity_ids: Vec<EntityId>,
+    pub targets: Vec<ReviewFeedbackTargetInput>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct UpdateReviewFeedback {
     pub guard: ReviewMutationGuard,
     pub feedback_id: FeedbackId,
     pub text: String,
-    pub target_entity_ids: Vec<EntityId>,
+    pub targets: Vec<ReviewFeedbackTargetInput>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct UpdateReviewFeedbackText {
+    pub guard: ReviewMutationGuard,
+    pub feedback_id: FeedbackId,
+    pub text: String,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct ReplaceReviewFeedbackAnchor {
+    pub guard: ReviewMutationGuard,
+    pub feedback_id: FeedbackId,
+    pub target: ReviewFeedbackTargetInput,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -132,6 +160,7 @@ pub struct ReviewSessionSnapshot {
     pub revision: u64,
     pub members: Vec<ReviewMemberSnapshot>,
     pub feedback: Vec<ReviewFeedbackSnapshot>,
+    pub restorable_feedback_id: Option<FeedbackId>,
     pub unreviewable: Vec<ReviewUnreviewableSnapshot>,
     pub conflicts: Vec<ReviewConflictSnapshot>,
     pub counts: ReviewSessionCounts,
@@ -163,7 +192,15 @@ pub struct ReviewFeedbackSnapshot {
     pub text: String,
     pub created_at_ms: i64,
     pub target_entity_ids: Vec<EntityId>,
+    pub targets: Vec<ReviewFeedbackTargetSnapshot>,
     pub target_count: u32,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct ReviewFeedbackTargetSnapshot {
+    pub asset_version_id: AssetVersionId,
+    pub entity_id: Option<EntityId>,
+    pub anchor: FeedbackAnchor,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -291,6 +328,7 @@ pub struct ReviewSessionService {
     catalog: Arc<dyn ReviewAssetCatalogPort>,
     repositories: Arc<dyn ReviewRepositoryProviderPort>,
     clock: Arc<dyn ClockPort>,
+    artifacts: Arc<dyn ReviewArtifactPort>,
     state: Mutex<ReviewSessionState>,
     task_changed: Notify,
 }
@@ -323,6 +361,7 @@ struct ActiveReviewSession {
     prepared: Vec<PreparedReviewAsset>,
     conflicts: Vec<ReviewConflictSnapshot>,
     revision: u64,
+    last_deleted_feedback: Option<Feedback>,
 }
 
 struct StartedReview {
@@ -362,12 +401,14 @@ impl ReviewSessionService {
         catalog: Arc<dyn ReviewAssetCatalogPort>,
         repositories: Arc<dyn ReviewRepositoryProviderPort>,
         clock: Arc<dyn ClockPort>,
+        artifacts: Arc<dyn ReviewArtifactPort>,
     ) -> Self {
         Self {
             project_id,
             catalog,
             repositories,
             clock,
+            artifacts,
             state: Mutex::new(ReviewSessionState::new()),
             task_changed: Notify::new(),
         }
@@ -520,13 +561,53 @@ impl ReviewSessionService {
             (task.id, proposal, task.cancellation)
         };
 
-        let result = self.perform_start(proposal, cancellation, progress).await;
+        let result = self
+            .perform_start(proposal, None, cancellation, progress)
+            .await;
+        self.finish_start(task_id, result).await
+    }
+
+    pub async fn start_with_feedback(
+        &self,
+        command: StartReviewWithFeedback,
+        progress: Arc<dyn ReviewProgressPort>,
+    ) -> Result<ReviewSessionSnapshot, ReviewSessionError> {
+        let (task_id, proposal, cancellation) = {
+            let mut state = self.state.lock().await;
+            let proposal = state
+                .proposal
+                .as_ref()
+                .filter(|proposal| proposal.id == command.proposal_id)
+                .cloned()
+                .ok_or(ReviewSessionError::StaleProposal)?;
+            if !matches!(
+                state.phase,
+                ReviewSessionPhase::Idle
+                    | ReviewSessionPhase::CompletedReadOnly
+                    | ReviewSessionPhase::WriteUnavailable
+            ) || state.task.is_some()
+            {
+                return Err(ReviewSessionError::InvalidState);
+            }
+            let task = transition_to_preparing(&mut state)?;
+            (task.id, proposal, task.cancellation)
+        };
+
+        let result = self
+            .perform_start(
+                proposal,
+                Some((command.text, command.targets)),
+                cancellation,
+                progress,
+            )
+            .await;
         self.finish_start(task_id, result).await
     }
 
     async fn perform_start(
         &self,
         proposal: ReviewScopeProposal,
+        initial_feedback: Option<(String, Vec<ReviewFeedbackTargetInput>)>,
         cancellation: ReviewTaskCancellation,
         progress: Arc<dyn ReviewProgressPort>,
     ) -> Result<StartedReview, ReviewSessionError> {
@@ -595,6 +676,19 @@ impl ReviewSessionService {
                     .map_err(|_| ReviewSessionError::InvalidData)?;
             }
         }
+        if let Some((text, target_inputs)) = initial_feedback {
+            let bindings = prepared
+                .iter()
+                .map(|prepared| (prepared.entity_id, prepared.asset.id))
+                .collect();
+            let targets = feedback_targets(&target_inputs, &bindings)?;
+            let feedback =
+                Feedback::new(FeedbackId::new(), text, self.clock.unix_millis(), targets)
+                    .map_err(|_| ReviewSessionError::InvalidFeedback)?;
+            draft
+                .upsert_feedback(feedback)
+                .map_err(|_| ReviewSessionError::InvalidFeedback)?;
+        }
         if cancellation.is_cancelled() {
             return Err(ReviewSessionError::Cancelled);
         }
@@ -611,6 +705,7 @@ impl ReviewSessionService {
                 prepared,
                 conflicts: vec![],
                 revision: 1,
+                last_deleted_feedback: None,
             },
             writer,
         })
@@ -780,6 +875,7 @@ impl ReviewSessionService {
                 prepared: validated.prepared,
                 conflicts: validated.conflicts,
                 revision: 1,
+                last_deleted_feedback: None,
             },
             writer,
         })
@@ -803,36 +899,128 @@ impl ReviewSessionService {
     ) -> Result<ReviewSessionSnapshot, ReviewSessionError> {
         let feedback_id = FeedbackId::new();
         let created_at_ms = self.clock.unix_millis();
+        let upgrade_to_v2 = targets_have_local_anchor(&command.targets);
         let mut state = self.state.lock().await;
-        mutate_active(&mut state, command.guard, |draft, bindings| {
-            let targets = asset_targets(&command.target_entity_ids, bindings)?;
-            let feedback = Feedback::new(feedback_id, command.text, created_at_ms, targets)
-                .map_err(|_| ReviewSessionError::InvalidFeedback)?;
-            draft
-                .upsert_feedback(feedback)
-                .map_err(|_| ReviewSessionError::InvalidFeedback)
-        })
+        mutate_active(
+            &mut state,
+            command.guard,
+            upgrade_to_v2,
+            |draft, bindings| {
+                let targets = feedback_targets(&command.targets, bindings)?;
+                let feedback = Feedback::new(feedback_id, command.text, created_at_ms, targets)
+                    .map_err(|_| ReviewSessionError::InvalidFeedback)?;
+                draft
+                    .upsert_feedback(feedback)
+                    .map_err(|_| ReviewSessionError::InvalidFeedback)?;
+                Ok(None)
+            },
+        )
     }
 
     pub async fn update_feedback(
         &self,
         command: UpdateReviewFeedback,
     ) -> Result<ReviewSessionSnapshot, ReviewSessionError> {
+        let upgrade_to_v2 = targets_have_local_anchor(&command.targets);
         let mut state = self.state.lock().await;
-        mutate_active(&mut state, command.guard, |draft, bindings| {
-            let created_at_ms = draft
+        mutate_active(
+            &mut state,
+            command.guard,
+            upgrade_to_v2,
+            |draft, bindings| {
+                let created_at_ms = draft
+                    .feedback
+                    .iter()
+                    .find(|feedback| feedback.id == command.feedback_id)
+                    .map(|feedback| feedback.created_at_ms)
+                    .ok_or(ReviewSessionError::FeedbackNotFound)?;
+                let targets = feedback_targets(&command.targets, bindings)?;
+                let feedback =
+                    Feedback::new(command.feedback_id, command.text, created_at_ms, targets)
+                        .map_err(|_| ReviewSessionError::InvalidFeedback)?;
+                draft
+                    .upsert_feedback(feedback)
+                    .map_err(|_| ReviewSessionError::InvalidFeedback)?;
+                Ok(None)
+            },
+        )
+    }
+
+    pub async fn update_feedback_text(
+        &self,
+        command: UpdateReviewFeedbackText,
+    ) -> Result<ReviewSessionSnapshot, ReviewSessionError> {
+        let mut state = self.state.lock().await;
+        mutate_active(&mut state, command.guard, false, |draft, _bindings| {
+            let existing = draft
                 .feedback
                 .iter()
                 .find(|feedback| feedback.id == command.feedback_id)
-                .map(|feedback| feedback.created_at_ms)
+                .cloned()
                 .ok_or(ReviewSessionError::FeedbackNotFound)?;
-            let targets = asset_targets(&command.target_entity_ids, bindings)?;
-            let feedback = Feedback::new(command.feedback_id, command.text, created_at_ms, targets)
-                .map_err(|_| ReviewSessionError::InvalidFeedback)?;
+            let feedback = Feedback::new(
+                existing.id,
+                command.text,
+                existing.created_at_ms,
+                existing.targets,
+            )
+            .map_err(|_| ReviewSessionError::InvalidFeedback)?;
             draft
                 .upsert_feedback(feedback)
-                .map_err(|_| ReviewSessionError::InvalidFeedback)
+                .map_err(|_| ReviewSessionError::InvalidFeedback)?;
+            Ok(None)
         })
+    }
+
+    pub async fn replace_feedback_anchor(
+        &self,
+        command: ReplaceReviewFeedbackAnchor,
+    ) -> Result<ReviewSessionSnapshot, ReviewSessionError> {
+        let upgrade_to_v2 = matches!(
+            &command.target.anchor,
+            FeedbackAnchor::ImageRect(_) | FeedbackAnchor::ImageStroke(_)
+        );
+        let mut state = self.state.lock().await;
+        mutate_active(
+            &mut state,
+            command.guard,
+            upgrade_to_v2,
+            |draft, bindings| {
+                let existing = draft
+                    .feedback
+                    .iter()
+                    .find(|feedback| feedback.id == command.feedback_id)
+                    .cloned()
+                    .ok_or(ReviewSessionError::FeedbackNotFound)?;
+                let mut targets =
+                    feedback_targets(std::slice::from_ref(&command.target), bindings)?;
+                let replacement = targets.pop().ok_or(ReviewSessionError::InvalidFeedback)?;
+                let entity_asset_id = replacement.asset_version_id;
+                let mut replaced = false;
+                let targets = existing
+                    .targets
+                    .into_iter()
+                    .map(|target| {
+                        if target.asset_version_id == entity_asset_id {
+                            replaced = true;
+                            replacement.clone()
+                        } else {
+                            target
+                        }
+                    })
+                    .collect::<Vec<_>>();
+                if !replaced {
+                    return Err(ReviewSessionError::InvalidFeedback);
+                }
+                let feedback =
+                    Feedback::new(existing.id, existing.text, existing.created_at_ms, targets)
+                        .map_err(|_| ReviewSessionError::InvalidFeedback)?;
+                draft
+                    .upsert_feedback(feedback)
+                    .map_err(|_| ReviewSessionError::InvalidFeedback)?;
+                Ok(None)
+            },
+        )
     }
 
     pub async fn delete_feedback(
@@ -840,12 +1028,38 @@ impl ReviewSessionService {
         command: DeleteReviewFeedback,
     ) -> Result<ReviewSessionSnapshot, ReviewSessionError> {
         let mut state = self.state.lock().await;
-        mutate_active(&mut state, command.guard, |draft, _bindings| {
-            if draft.remove_feedback(command.feedback_id) {
-                Ok(())
-            } else {
-                Err(ReviewSessionError::FeedbackNotFound)
+        mutate_active(&mut state, command.guard, false, |draft, _bindings| {
+            let deleted = draft
+                .feedback
+                .iter()
+                .find(|feedback| feedback.id == command.feedback_id)
+                .cloned()
+                .ok_or(ReviewSessionError::FeedbackNotFound)?;
+            if !draft.remove_feedback(command.feedback_id) {
+                return Err(ReviewSessionError::FeedbackNotFound);
             }
+            Ok(Some(deleted))
+        })
+    }
+
+    pub async fn restore_deleted_feedback(
+        &self,
+        guard: ReviewMutationGuard,
+        feedback_id: FeedbackId,
+    ) -> Result<ReviewSessionSnapshot, ReviewSessionError> {
+        let mut state = self.state.lock().await;
+        validate_active_guard(&state, guard)?;
+        let deleted = state
+            .active
+            .as_ref()
+            .and_then(|active| active.last_deleted_feedback.clone())
+            .filter(|feedback| feedback.id == feedback_id)
+            .ok_or(ReviewSessionError::FeedbackNotFound)?;
+        mutate_active(&mut state, guard, false, move |draft, _bindings| {
+            draft
+                .upsert_feedback(deleted)
+                .map_err(|_| ReviewSessionError::InvalidFeedback)?;
+            Ok(None)
         })
     }
 
@@ -1036,7 +1250,7 @@ impl ReviewSessionService {
         cancellation: ReviewTaskCancellation,
         result: Result<ValidatedReview, ReviewSessionError>,
     ) -> Result<ReviewSessionSnapshot, ReviewSessionError> {
-        let (protocol_version, draft, writer) = {
+        let (protocol_version, draft, prepared) = {
             let mut state = self.state.lock().await;
             if state.task.as_ref().map(|task| task.id) != Some(task_id) {
                 drop(state);
@@ -1132,54 +1346,96 @@ impl ReviewSessionService {
                 self.task_changed.notify_waiters();
                 return Err(ReviewSessionError::Cancelled);
             }
+            let prepared = active.prepared.clone();
+            (protocol_version, draft, prepared)
+        };
+
+        let completed = match draft.clone().complete(self.clock.unix_millis()) {
+            Ok(completed) => completed,
+            Err(_) => {
+                return self
+                    .finish_prepublication_error(task_id, ReviewSessionError::InvalidData)
+                    .await;
+            }
+        };
+        let artifacts = match self
+            .render_review_artifacts(&draft, &prepared, cancellation.clone())
+            .await
+        {
+            Ok(artifacts) => artifacts,
+            Err(error) => {
+                return self.finish_prepublication_error(task_id, error).await;
+            }
+        };
+        let writer = {
+            let mut state = self.state.lock().await;
+            if state.task.as_ref().map(|task| task.id) != Some(task_id) {
+                cleanup_rendered_artifacts(&artifacts);
+                drop(state);
+                self.task_changed.notify_waiters();
+                return Err(ReviewSessionError::Cancelled);
+            }
+            if cancellation.is_cancelled() {
+                cleanup_rendered_artifacts(&artifacts);
+                state.task = None;
+                state.phase = ReviewSessionPhase::Active;
+                drop(state);
+                self.task_changed.notify_waiters();
+                return Err(ReviewSessionError::Cancelled);
+            }
             state
                 .task
                 .as_mut()
                 .ok_or(ReviewSessionError::InvalidState)?
                 .cancellable = false;
-            let writer = state
+            state
                 .writer
                 .take()
-                .ok_or(ReviewSessionError::InvalidState)?;
-            (protocol_version, draft, writer)
-        };
-
-        let completed = match draft.complete(self.clock.unix_millis()) {
-            Ok(completed) => completed,
-            Err(_) => {
-                return self
-                    .restore_after_prepublication_error(
-                        task_id,
-                        writer,
-                        ReviewSessionError::InvalidData,
-                    )
-                    .await;
-            }
+                .ok_or(ReviewSessionError::InvalidState)?
         };
         let publish_result = writer.publish(&ReviewPublication {
             protocol_version,
             snapshot: completed.clone(),
-            artifacts: vec![],
+            artifacts: artifacts.clone(),
         });
-        let directly_verified = publish_result.is_ok()
-            && repository_has_exact_completed(writer.as_ref(), self.project_id, &completed);
+        let directly_verified =
+            repository_has_exact_completed(writer.as_ref(), self.project_id, &completed);
         drop(writer);
+        let mut recovered_writer = None;
         let verified = if directly_verified {
             true
-        } else {
-            match self.repositories.open_writer() {
-                Ok(recovered) => {
-                    let verified = repository_has_exact_completed(
-                        recovered.as_ref(),
-                        self.project_id,
-                        &completed,
-                    );
-                    drop(recovered);
-                    verified
-                }
-                Err(_) => false,
+        } else if let Ok(recovered) = self.repositories.open_writer() {
+            if repository_has_exact_completed(recovered.as_ref(), self.project_id, &completed) {
+                drop(recovered);
+                true
+            } else {
+                recovered_writer = Some(recovered);
+                false
             }
+        } else {
+            false
         };
+
+        if !verified
+            && publish_result.is_err()
+            && let Some(recovered) = recovered_writer.take()
+        {
+            let completed_exists = recovered
+                .load_completed(completed.review_stream_id, completed.review_round_id)
+                .ok()
+                .flatten()
+                .is_some();
+            if !completed_exists
+                && repository_has_exact_draft(recovered.as_ref(), protocol_version, &draft)
+            {
+                cleanup_rendered_artifacts(&artifacts);
+                return self
+                    .restore_after_publication_failure(task_id, recovered)
+                    .await;
+            }
+            drop(recovered);
+        }
+        drop(recovered_writer);
 
         let mut state = self.state.lock().await;
         if state.task.as_ref().map(|task| task.id) != Some(task_id) {
@@ -1206,6 +1462,7 @@ impl ReviewSessionService {
             self.task_changed.notify_waiters();
             Ok(result)
         } else {
+            cleanup_rendered_artifacts(&artifacts);
             state.phase = ReviewSessionPhase::RecoveryRequired;
             state.displayed_completed = None;
             state.error = Some(user_error(ReviewSessionError::RecoveryRequired));
@@ -1216,25 +1473,141 @@ impl ReviewSessionService {
         }
     }
 
-    async fn restore_after_prepublication_error(
+    async fn finish_prepublication_error(
         &self,
         task_id: u64,
-        writer: Box<dyn ReviewRepositoryPort>,
         error: ReviewSessionError,
     ) -> Result<ReviewSessionSnapshot, ReviewSessionError> {
         let mut state = self.state.lock().await;
         if state.task.as_ref().map(|task| task.id) == Some(task_id) {
             state.task = None;
-            state.writer = Some(writer);
             state.phase = ReviewSessionPhase::Active;
         } else {
-            drop(writer);
             state.active = None;
             state.phase = ReviewSessionPhase::RecoveryRequired;
         }
         drop(state);
         self.task_changed.notify_waiters();
         Err(error)
+    }
+
+    async fn restore_after_publication_failure(
+        &self,
+        task_id: u64,
+        writer: Box<dyn ReviewRepositoryPort>,
+    ) -> Result<ReviewSessionSnapshot, ReviewSessionError> {
+        let mut state = self.state.lock().await;
+        if state.task.as_ref().map(|task| task.id) == Some(task_id) {
+            state.task = None;
+            state.writer = Some(writer);
+            state.phase = ReviewSessionPhase::Active;
+            state.error = Some(user_error(ReviewSessionError::RepositoryUnavailable));
+            drop(state);
+            self.task_changed.notify_waiters();
+            Err(ReviewSessionError::RepositoryUnavailable)
+        } else {
+            drop(writer);
+            state.active = None;
+            state.phase = ReviewSessionPhase::RecoveryRequired;
+            state.error = Some(user_error(ReviewSessionError::RecoveryRequired));
+            drop(state);
+            self.catalog.release_tracking();
+            self.task_changed.notify_waiters();
+            Err(ReviewSessionError::RecoveryRequired)
+        }
+    }
+
+    async fn render_review_artifacts(
+        &self,
+        draft: &ReviewDraft,
+        prepared: &[PreparedReviewAsset],
+        cancellation: ReviewTaskCancellation,
+    ) -> Result<Vec<ReviewRenderedArtifact>, ReviewSessionError> {
+        let mut rendered = Vec::new();
+        for prepared_asset in prepared {
+            if cancellation.is_cancelled() {
+                cleanup_rendered_artifacts(&rendered);
+                return Err(ReviewSessionError::Cancelled);
+            }
+            if !matches!(prepared_asset.asset.media, ReviewMedia::Image { .. }) {
+                continue;
+            }
+            let mut annotations = draft
+                .feedback
+                .iter()
+                .flat_map(|feedback| {
+                    feedback
+                        .targets
+                        .iter()
+                        .filter(move |target| {
+                            target.asset_version_id == prepared_asset.asset.id
+                                && matches!(
+                                    target.anchor,
+                                    FeedbackAnchor::ImageRect(_) | FeedbackAnchor::ImageStroke(_)
+                                )
+                        })
+                        .map(move |target| {
+                            (feedback.created_at_ms, feedback.id, target.anchor.clone())
+                        })
+                })
+                .collect::<Vec<_>>();
+            if annotations.is_empty() {
+                continue;
+            }
+            annotations.sort_by(|left, right| {
+                left.0
+                    .cmp(&right.0)
+                    .then_with(|| left.1.to_string().cmp(&right.1.to_string()))
+            });
+            let numbered = annotations
+                .into_iter()
+                .enumerate()
+                .map(
+                    |(index, (_, feedback_id, anchor))| NumberedImageAnnotation {
+                        ordinal: u32::try_from(index + 1).unwrap_or(u32::MAX),
+                        feedback_id,
+                        anchor,
+                    },
+                )
+                .collect::<Vec<_>>();
+            let expected_annotations = numbered
+                .iter()
+                .map(|annotation| crate::ReviewArtifactAnnotation {
+                    ordinal: annotation.ordinal,
+                    feedback_id: annotation.feedback_id,
+                })
+                .collect::<Vec<_>>();
+            let artifact = match self
+                .artifacts
+                .render(ReviewArtifactRenderRequest {
+                    source_path: prepared_asset.source_path.clone(),
+                    expected_asset: prepared_asset.asset.clone(),
+                    cancellation: cancellation.clone(),
+                    annotations: numbered,
+                })
+                .await
+            {
+                Ok(artifact) => artifact,
+                Err(error) => {
+                    cleanup_rendered_artifacts(&rendered);
+                    return Err(map_artifact_error(error, &cancellation));
+                }
+            };
+            if artifact.asset_version_id != prepared_asset.asset.id
+                || artifact.annotations != expected_annotations
+                || artifact.media_type != "image/png"
+                || artifact.size_bytes == 0
+                || artifact.width == 0
+                || artifact.height == 0
+            {
+                let mut invalid = rendered;
+                invalid.push(artifact);
+                cleanup_rendered_artifacts(&invalid);
+                return Err(ReviewSessionError::AssetUnavailable);
+            }
+            rendered.push(artifact);
+        }
+        Ok(rendered)
     }
 
     pub async fn abandon(
@@ -1379,13 +1752,14 @@ fn install_active(
 fn mutate_active<F>(
     state: &mut ReviewSessionState,
     guard: ReviewMutationGuard,
+    upgrade_to_v2: bool,
     change: F,
 ) -> Result<ReviewSessionSnapshot, ReviewSessionError>
 where
     F: FnOnce(
         &mut ReviewDraft,
         &HashMap<EntityId, AssetVersionId>,
-    ) -> Result<(), ReviewSessionError>,
+    ) -> Result<Option<Feedback>, ReviewSessionError>,
 {
     if state.phase != ReviewSessionPhase::Active || state.task.is_some() {
         return Err(ReviewSessionError::InvalidState);
@@ -1409,9 +1783,13 @@ where
         .iter()
         .map(|prepared| (prepared.entity_id, prepared.asset.id))
         .collect();
-    let protocol_version = active.protocol_version;
+    let protocol_version = if upgrade_to_v2 {
+        ReviewProtocolVersion::V2
+    } else {
+        active.protocol_version
+    };
     let mut draft = active.draft.clone();
-    change(&mut draft, &bindings)?;
+    let last_deleted_feedback = change(&mut draft, &bindings)?;
     state
         .writer
         .as_deref()
@@ -1426,7 +1804,9 @@ where
         .as_mut()
         .ok_or(ReviewSessionError::InvalidState)?;
     active.draft = draft;
+    active.protocol_version = protocol_version;
     active.revision = next_revision;
+    active.last_deleted_feedback = last_deleted_feedback;
     state.completion_proposal = None;
     state.error = None;
     Ok(snapshot(state))
@@ -1585,30 +1965,39 @@ fn completion_summary_projection(
     }
 }
 
-fn asset_targets(
-    entity_ids: &[EntityId],
+fn feedback_targets(
+    inputs: &[ReviewFeedbackTargetInput],
     bindings: &HashMap<EntityId, AssetVersionId>,
 ) -> Result<Vec<FeedbackTarget>, ReviewSessionError> {
-    if entity_ids.is_empty() {
+    if inputs.is_empty() {
         return Err(ReviewSessionError::InvalidFeedback);
     }
-    let mut seen = HashSet::with_capacity(entity_ids.len());
-    entity_ids
+    let mut seen = HashSet::with_capacity(inputs.len());
+    inputs
         .iter()
-        .map(|entity_id| {
-            if !seen.insert(*entity_id) {
+        .map(|input| {
+            if !seen.insert(input.entity_id) {
                 return Err(ReviewSessionError::InvalidFeedback);
             }
             let asset_version_id = bindings
-                .get(entity_id)
+                .get(&input.entity_id)
                 .copied()
                 .ok_or(ReviewSessionError::InvalidFeedback)?;
             Ok(FeedbackTarget {
                 asset_version_id,
-                anchor: FeedbackAnchor::Asset,
+                anchor: input.anchor.clone(),
             })
         })
         .collect()
+}
+
+fn targets_have_local_anchor(inputs: &[ReviewFeedbackTargetInput]) -> bool {
+    inputs.iter().any(|input| {
+        matches!(
+            &input.anchor,
+            FeedbackAnchor::ImageRect(_) | FeedbackAnchor::ImageStroke(_)
+        )
+    })
 }
 
 fn manual_stream(catalog: &ReviewCatalog) -> Result<Option<&ReviewStreamHead>, ReviewSessionError> {
@@ -1662,6 +2051,37 @@ fn repository_has_exact_completed(
             == Ok(Some(completed.clone()))
 }
 
+fn repository_has_exact_draft(
+    repository: &dyn ReviewRepositoryPort,
+    protocol_version: ReviewProtocolVersion,
+    draft: &ReviewDraft,
+) -> bool {
+    repository
+        .load_draft(draft.review_stream_id, draft.review_round_id)
+        .is_ok_and(|persisted| {
+            persisted.is_some_and(|persisted| {
+                persisted.protocol_version == protocol_version && persisted.draft == *draft
+            })
+        })
+}
+
+fn map_artifact_error(
+    error: ReviewArtifactError,
+    cancellation: &ReviewTaskCancellation,
+) -> ReviewSessionError {
+    if cancellation.is_cancelled() || error == ReviewArtifactError::Cancelled {
+        ReviewSessionError::Cancelled
+    } else {
+        ReviewSessionError::AssetUnavailable
+    }
+}
+
+fn cleanup_rendered_artifacts(artifacts: &[ReviewRenderedArtifact]) {
+    for artifact in artifacts {
+        let _ = std::fs::remove_file(&artifact.temporary_path);
+    }
+}
+
 fn snapshot(state: &ReviewSessionState) -> ReviewSessionSnapshot {
     if let Some(active) = state.active.as_ref() {
         let bindings = active
@@ -1675,6 +2095,10 @@ fn snapshot(state: &ReviewSessionState) -> ReviewSessionSnapshot {
             active.revision,
             &bindings,
             active.conflicts.clone(),
+            active
+                .last_deleted_feedback
+                .as_ref()
+                .map(|feedback| feedback.id),
             state.resume.clone(),
             state.error.clone(),
         );
@@ -1690,6 +2114,7 @@ fn snapshot(state: &ReviewSessionState) -> ReviewSessionSnapshot {
         revision: 0,
         members: vec![],
         feedback: vec![],
+        restorable_feedback_id: None,
         unreviewable: vec![],
         conflicts: vec![],
         counts: ReviewSessionCounts::default(),
@@ -1704,6 +2129,7 @@ fn snapshot_from_draft(
     revision: u64,
     bindings: &HashMap<AssetVersionId, EntityId>,
     conflicts: Vec<ReviewConflictSnapshot>,
+    restorable_feedback_id: Option<FeedbackId>,
     resume: Option<ReviewResumeSnapshot>,
     error: Option<ReviewUserError>,
 ) -> ReviewSessionSnapshot {
@@ -1715,6 +2141,7 @@ fn snapshot_from_draft(
         revision,
         members: member_snapshots(&draft.assets, &draft.feedback, bindings),
         feedback: feedback_snapshots(&draft.feedback, bindings),
+        restorable_feedback_id,
         unreviewable: unreviewable_snapshots(draft),
         conflicts,
         counts: draft_counts(draft),
@@ -1744,6 +2171,7 @@ fn snapshot_from_completed(
         revision: 0,
         members: member_snapshots(&completed.assets, &completed.feedback, &bindings),
         feedback: feedback_snapshots(&completed.feedback, &bindings),
+        restorable_feedback_id: None,
         unreviewable: completed
             .outcomes
             .iter()
@@ -1815,6 +2243,15 @@ fn feedback_snapshots(
                 .targets
                 .iter()
                 .filter_map(|target| bindings.get(&target.asset_version_id).copied())
+                .collect(),
+            targets: feedback
+                .targets
+                .iter()
+                .map(|target| ReviewFeedbackTargetSnapshot {
+                    asset_version_id: target.asset_version_id,
+                    entity_id: bindings.get(&target.asset_version_id).copied(),
+                    anchor: target.anchor.clone(),
+                })
                 .collect(),
             target_count: feedback.targets.len() as u32,
         })

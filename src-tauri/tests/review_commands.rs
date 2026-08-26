@@ -3,14 +3,16 @@ use std::path::Path;
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use viewer_application::{
-    AddReviewFeedback, ProjectAccess, ProjectProbeError, ProjectProbePort, ReviewMutationGuard,
-    ReviewProposalId, ReviewRepositoryProviderPort, ReviewScope,
+    AddReviewFeedback, ProjectAccess, ProjectProbeError, ProjectProbePort,
+    ReviewFeedbackTargetInput, ReviewMutationGuard, ReviewProposalId, ReviewRepositoryProviderPort,
+    ReviewScope,
 };
 use viewer_desktop::dto::{
     ReviewAddFeedbackRequestDto, ReviewPreviewStartRequestDto, ReviewProgressDto,
     ReviewScopeRequestDto, ReviewSessionPhaseDto,
 };
 use viewer_desktop::state::{DesktopEventSink, DesktopRuntime};
+use viewer_domain::review::FeedbackAnchor;
 use viewer_domain::search::Generation;
 use viewer_domain::{EntityId, ProjectId, ReviewRoundId, SessionId};
 use viewer_infrastructure::review::ProjectReviewRepositoryProvider;
@@ -212,7 +214,10 @@ async fn desktop_review_session_uses_current_session_emits_path_free_progress_an
                     expected_revision: active.revision + 1,
                 },
                 text: "需要调整".to_owned(),
-                target_entity_ids: vec![entity_id],
+                targets: vec![ReviewFeedbackTargetInput {
+                    entity_id,
+                    anchor: FeedbackAnchor::Asset,
+                }],
             },
         )
         .await

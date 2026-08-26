@@ -4,18 +4,22 @@ use std::sync::atomic::{AtomicI64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use viewer_application::{
     AddReviewFeedback, ClockPort, PersistedReviewDraft, PreparedReviewAsset,
+    ReviewArtifactAnnotation, ReviewArtifactError, ReviewArtifactPort, ReviewArtifactRenderRequest,
     ReviewAssetCatalogPort, ReviewAssetConflictKind, ReviewAssetError, ReviewAssetValidation,
-    ReviewCatalog, ReviewCompletionProposalId, ReviewMutationGuard, ReviewProgressPort,
-    ReviewProtocolVersion, ReviewPublication, ReviewRecordLocation, ReviewRepositoryError,
-    ReviewRepositoryInspection, ReviewRepositoryPort, ReviewRepositoryProviderPort,
-    ReviewRoundRecord, ReviewScope, ReviewScopeResolution, ReviewSessionPhase,
-    ReviewSessionService, ReviewStreamHead, ReviewTaskCancellation, ReviewTaskProgress,
+    ReviewCatalog, ReviewCompletionProposalId, ReviewFeedbackTargetInput, ReviewMutationGuard,
+    ReviewProgressPort, ReviewProtocolVersion, ReviewPublication, ReviewRecordLocation,
+    ReviewRenderedArtifact, ReviewRepositoryError, ReviewRepositoryInspection,
+    ReviewRepositoryPort, ReviewRepositoryProviderPort, ReviewRoundRecord, ReviewScope,
+    ReviewScopeResolution, ReviewSessionPhase, ReviewSessionService, ReviewStreamHead,
+    ReviewTaskCancellation, ReviewTaskProgress,
 };
 use viewer_domain::review::{
-    AssetEvidence, AssetVersion, ReviewDraft, ReviewMedia, ReviewOutcomeKind, ReviewSnapshot,
-    ReviewabilityFailure,
+    AssetEvidence, AssetVersion, FeedbackAnchor, ImageStroke, NormalizedPoint, NormalizedRect,
+    ReviewDraft, ReviewMedia, ReviewOutcomeKind, ReviewSnapshot, ReviewabilityFailure,
 };
-use viewer_domain::{EntityId, ProjectId, RelativePath, ReviewRoundId, ReviewStreamId};
+use viewer_domain::{
+    AssetVersionId, EntityId, ProjectId, RelativePath, ReviewRoundId, ReviewStreamId,
+};
 
 #[derive(Default)]
 struct NoProgress;
@@ -29,6 +33,60 @@ struct TestClock(AtomicI64);
 impl ClockPort for TestClock {
     fn unix_millis(&self) -> i64 {
         self.0.load(Ordering::Acquire)
+    }
+}
+
+struct FakeReviewArtifactPort {
+    root: std::path::PathBuf,
+    requests: Mutex<Vec<ReviewArtifactRenderRequest>>,
+    fail_after: AtomicUsize,
+}
+
+impl FakeReviewArtifactPort {
+    fn new(root: std::path::PathBuf) -> Self {
+        Self {
+            root,
+            requests: Mutex::new(vec![]),
+            fail_after: AtomicUsize::new(usize::MAX),
+        }
+    }
+}
+
+#[async_trait]
+impl ReviewArtifactPort for FakeReviewArtifactPort {
+    async fn render(
+        &self,
+        request: ReviewArtifactRenderRequest,
+    ) -> Result<ReviewRenderedArtifact, ReviewArtifactError> {
+        request.validate()?;
+        if self.requests.lock().unwrap().len() >= self.fail_after.load(Ordering::Acquire) {
+            return Err(ReviewArtifactError::Unavailable);
+        }
+        let mut requests = self.requests.lock().unwrap();
+        let temporary_path = self
+            .root
+            .join(format!("artifact-{}.png", requests.len() + 1));
+        std::fs::write(&temporary_path, b"bounded-test-artifact")
+            .map_err(|_| ReviewArtifactError::Unavailable)?;
+        let artifact = ReviewRenderedArtifact {
+            asset_version_id: request.expected_asset.id,
+            temporary_path,
+            media_type: "image/png".to_owned(),
+            width: 100,
+            height: 50,
+            size_bytes: 21,
+            blake3: [7; 32],
+            annotations: request
+                .annotations
+                .iter()
+                .map(|annotation| ReviewArtifactAnnotation {
+                    ordinal: annotation.ordinal,
+                    feedback_id: annotation.feedback_id,
+                })
+                .collect(),
+        };
+        requests.push(request);
+        Ok(artifact)
     }
 }
 
@@ -139,6 +197,7 @@ enum PublishBehavior {
 struct RepositoryState {
     catalog: ReviewCatalog,
     draft: Option<ReviewDraft>,
+    draft_protocol_version: ReviewProtocolVersion,
     completed: HashMap<ReviewRoundId, ReviewSnapshot>,
     orphan: Option<ReviewSnapshot>,
     writer_held: bool,
@@ -146,6 +205,7 @@ struct RepositoryState {
     save_attempts: usize,
     publish_attempts: usize,
     last_published_protocol_version: Option<ReviewProtocolVersion>,
+    last_published_artifacts: Vec<ReviewRenderedArtifact>,
     delete_attempts: usize,
     fail_save: bool,
     fail_delete: bool,
@@ -161,7 +221,10 @@ impl ReviewRepositoryProviderPort for FakeRepositories {
         let state = self.state.lock().unwrap();
         Ok(ReviewRepositoryInspection {
             catalog: state.catalog.clone(),
-            active_draft: state.draft.clone().map(versioned_draft),
+            active_draft: state.draft.clone().map(|draft| PersistedReviewDraft {
+                protocol_version: state.draft_protocol_version,
+                draft,
+            }),
         })
     }
 
@@ -209,13 +272,11 @@ impl ReviewRepositoryPort for FakeRepository {
     }
 
     fn load_active_draft(&self) -> Result<Option<PersistedReviewDraft>, ReviewRepositoryError> {
-        Ok(self
-            .state
-            .lock()
-            .unwrap()
-            .draft
-            .clone()
-            .map(versioned_draft))
+        let state = self.state.lock().unwrap();
+        Ok(state.draft.clone().map(|draft| PersistedReviewDraft {
+            protocol_version: state.draft_protocol_version,
+            draft,
+        }))
     }
 
     fn load_draft(
@@ -223,17 +284,18 @@ impl ReviewRepositoryPort for FakeRepository {
         stream_id: ReviewStreamId,
         round_id: ReviewRoundId,
     ) -> Result<Option<PersistedReviewDraft>, ReviewRepositoryError> {
-        Ok(self
-            .state
-            .lock()
-            .unwrap()
+        let state = self.state.lock().unwrap();
+        Ok(state
             .draft
             .as_ref()
             .filter(|draft| {
                 draft.review_stream_id == stream_id && draft.review_round_id == round_id
             })
             .cloned()
-            .map(versioned_draft))
+            .map(|draft| PersistedReviewDraft {
+                protocol_version: state.draft_protocol_version,
+                draft,
+            }))
     }
 
     fn save_draft(&self, draft: &PersistedReviewDraft) -> Result<(), ReviewRepositoryError> {
@@ -242,6 +304,7 @@ impl ReviewRepositoryPort for FakeRepository {
         if state.fail_save {
             return Err(ReviewRepositoryError::Unavailable);
         }
+        state.draft_protocol_version = draft.protocol_version;
         state.draft = Some(draft.draft.clone());
         Ok(())
     }
@@ -285,6 +348,7 @@ impl ReviewRepositoryPort for FakeRepository {
         let mut state = self.state.lock().unwrap();
         state.publish_attempts += 1;
         state.last_published_protocol_version = Some(publication.protocol_version);
+        state.last_published_artifacts = publication.artifacts.clone();
         let snapshot = &publication.snapshot;
         match state.publish_behavior {
             PublishBehavior::Success => {
@@ -329,13 +393,6 @@ fn append_completed(state: &mut RepositoryState, completed: ReviewSnapshot) {
     state.draft = None;
 }
 
-fn versioned_draft(draft: ReviewDraft) -> PersistedReviewDraft {
-    PersistedReviewDraft {
-        protocol_version: ReviewProtocolVersion::V1,
-        draft,
-    }
-}
-
 fn round_record(snapshot: &ReviewSnapshot) -> ReviewRoundRecord {
     ReviewRoundRecord {
         review_round_id: snapshot.review_round_id,
@@ -351,6 +408,8 @@ struct Fixture {
     assets: Arc<FakeAssetCatalog>,
     repositories: Arc<FakeRepositories>,
     clock: Arc<TestClock>,
+    artifacts: Arc<FakeReviewArtifactPort>,
+    _artifact_root: tempfile::TempDir,
     entity_ids: [EntityId; 3],
 }
 
@@ -390,6 +449,7 @@ impl Fixture {
                     streams: vec![],
                 },
                 draft: None,
+                draft_protocol_version: ReviewProtocolVersion::V1,
                 completed: HashMap::new(),
                 orphan: None,
                 writer_held: false,
@@ -397,6 +457,7 @@ impl Fixture {
                 save_attempts: 0,
                 publish_attempts: 0,
                 last_published_protocol_version: None,
+                last_published_artifacts: vec![],
                 delete_attempts: 0,
                 fail_save: false,
                 fail_delete: false,
@@ -404,11 +465,16 @@ impl Fixture {
             })),
         });
         let clock = Arc::new(TestClock(AtomicI64::new(1_000)));
+        let artifact_root = tempfile::tempdir().unwrap();
+        let artifacts = Arc::new(FakeReviewArtifactPort::new(
+            artifact_root.path().to_path_buf(),
+        ));
         let service = Arc::new(ReviewSessionService::new(
             project_id,
             assets.clone(),
             repositories.clone(),
             clock.clone(),
+            artifacts.clone(),
         ));
         let proposal = service
             .preview_start(ReviewScope::Selection {
@@ -425,6 +491,8 @@ impl Fixture {
             assets,
             repositories,
             clock,
+            artifacts,
+            _artifact_root: artifact_root,
             entity_ids,
         }
     }
@@ -498,6 +566,26 @@ async fn summary(fixture: &Fixture) -> viewer_application::ReviewCompletionPropo
         .unwrap()
 }
 
+fn rect_target(entity_id: EntityId, x: f64) -> ReviewFeedbackTargetInput {
+    ReviewFeedbackTargetInput {
+        entity_id,
+        anchor: FeedbackAnchor::ImageRect(NormalizedRect::new(x, 0.2, 0.2, 0.3).unwrap()),
+    }
+}
+
+fn stroke_target(entity_id: EntityId) -> ReviewFeedbackTargetInput {
+    ReviewFeedbackTargetInput {
+        entity_id,
+        anchor: FeedbackAnchor::ImageStroke(
+            ImageStroke::new(vec![
+                NormalizedPoint::new(0.1, 0.1).unwrap(),
+                NormalizedPoint::new(0.8, 0.7).unwrap(),
+            ])
+            .unwrap(),
+        ),
+    }
+}
+
 #[tokio::test]
 async fn feedback_wins_and_remaining_assets_pass_only_after_verified_completion() {
     let fixture = Fixture::active(Some(ReviewabilityFailure::Damaged)).await;
@@ -508,7 +596,10 @@ async fn feedback_wins_and_remaining_assets_pass_only_after_verified_completion(
         .add_feedback(AddReviewFeedback {
             guard: guard(&before),
             text: "修正人物手部".to_owned(),
-            target_entity_ids: vec![fixture.entity_ids[0]],
+            targets: vec![ReviewFeedbackTargetInput {
+                entity_id: fixture.entity_ids[0],
+                anchor: FeedbackAnchor::Asset,
+            }],
         })
         .await
         .unwrap();
@@ -544,6 +635,123 @@ async fn feedback_wins_and_remaining_assets_pass_only_after_verified_completion(
     );
     assert!(!state.writer_held);
     assert!(state.draft.is_none());
+}
+
+#[tokio::test]
+async fn completion_renders_only_local_image_anchors_with_stable_per_image_ordinals() {
+    let fixture = Fixture::active(None).await;
+    let mut snapshot = fixture.snapshot().await;
+    snapshot = fixture
+        .service
+        .add_feedback(AddReviewFeedback {
+            guard: guard(&snapshot),
+            text: "整图意见不生成标记".to_owned(),
+            targets: vec![ReviewFeedbackTargetInput {
+                entity_id: fixture.entity_ids[0],
+                anchor: FeedbackAnchor::Asset,
+            }],
+        })
+        .await
+        .unwrap();
+    snapshot = fixture
+        .service
+        .add_feedback(AddReviewFeedback {
+            guard: guard(&snapshot),
+            text: "第一处".to_owned(),
+            targets: vec![rect_target(fixture.entity_ids[0], 0.1)],
+        })
+        .await
+        .unwrap();
+    fixture.clock.0.store(1_100, Ordering::Release);
+    snapshot = fixture
+        .service
+        .add_feedback(AddReviewFeedback {
+            guard: guard(&snapshot),
+            text: "第二处".to_owned(),
+            targets: vec![stroke_target(fixture.entity_ids[0])],
+        })
+        .await
+        .unwrap();
+    fixture.clock.0.store(1_200, Ordering::Release);
+    snapshot = fixture
+        .service
+        .add_feedback(AddReviewFeedback {
+            guard: guard(&snapshot),
+            text: "另一张图".to_owned(),
+            targets: vec![rect_target(fixture.entity_ids[1], 0.4)],
+        })
+        .await
+        .unwrap();
+    let proposal = fixture
+        .service
+        .completion_summary(guard(&snapshot))
+        .await
+        .unwrap();
+    fixture.clock.0.store(2_000, Ordering::Release);
+
+    fixture
+        .service
+        .complete(proposal.id, proposal.summary.guard(), fixture.progress())
+        .await
+        .unwrap();
+
+    let requests = fixture.artifacts.requests.lock().unwrap();
+    assert_eq!(requests.len(), 2);
+    assert_eq!(
+        requests[0].expected_asset.id,
+        AssetVersionId::from_u128(101)
+    );
+    assert_eq!(
+        requests[0]
+            .annotations
+            .iter()
+            .map(|annotation| annotation.ordinal)
+            .collect::<Vec<_>>(),
+        vec![1, 2]
+    );
+    assert_eq!(
+        requests[1].expected_asset.id,
+        AssetVersionId::from_u128(102)
+    );
+    assert_eq!(requests[1].annotations[0].ordinal, 1);
+    drop(requests);
+    assert_eq!(fixture.repository_state().last_published_artifacts.len(), 2);
+}
+
+#[tokio::test]
+async fn render_failure_removes_prior_leases_and_returns_to_the_intact_active_draft() {
+    let fixture = Fixture::active(None).await;
+    let mut snapshot = fixture.snapshot().await;
+    for (entity_id, x) in [(fixture.entity_ids[0], 0.1), (fixture.entity_ids[1], 0.4)] {
+        snapshot = fixture
+            .service
+            .add_feedback(AddReviewFeedback {
+                guard: guard(&snapshot),
+                text: format!("修正 {x}"),
+                targets: vec![rect_target(entity_id, x)],
+            })
+            .await
+            .unwrap();
+    }
+    let proposal = fixture
+        .service
+        .completion_summary(guard(&snapshot))
+        .await
+        .unwrap();
+    fixture.artifacts.fail_after.store(1, Ordering::Release);
+
+    let error = fixture
+        .service
+        .complete(proposal.id, proposal.summary.guard(), fixture.progress())
+        .await
+        .unwrap_err();
+
+    assert_eq!(error.code(), "review_asset_unavailable");
+    let after = fixture.snapshot().await;
+    assert_eq!(after.phase, ReviewSessionPhase::Active);
+    assert_eq!(after.feedback, snapshot.feedback);
+    assert_eq!(fixture.repository_state().publish_attempts, 0);
+    assert!(!fixture.artifacts.root.join("artifact-1.png").exists());
 }
 
 #[tokio::test]
@@ -774,7 +982,10 @@ async fn feedback_mutation_invalidates_an_existing_completion_proposal() {
         .add_feedback(AddReviewFeedback {
             guard: proposal.summary.guard(),
             text: "需要调整".to_owned(),
-            target_entity_ids: vec![fixture.entity_ids[0]],
+            targets: vec![ReviewFeedbackTargetInput {
+                entity_id: fixture.entity_ids[0],
+                anchor: FeedbackAnchor::Asset,
+            }],
         })
         .await
         .unwrap();
@@ -816,27 +1027,45 @@ async fn both_durable_pre_index_faults_reopen_recover_and_verify_exact_success()
 }
 
 #[tokio::test]
-async fn uncertain_publication_without_exact_head_enters_recovery_not_false_success() {
-    for behavior in [
-        PublishBehavior::ErrorWithoutDurability,
-        PublishBehavior::SuccessWithWrongHead,
-    ] {
-        let fixture = Fixture::active(None).await;
-        fixture.repository_state().publish_behavior = behavior;
-        let proposal = summary(&fixture).await;
-        fixture.clock.0.store(2_000, Ordering::Release);
+async fn failed_publication_with_an_exact_draft_returns_active_for_retry() {
+    let fixture = Fixture::active(None).await;
+    fixture.repository_state().publish_behavior = PublishBehavior::ErrorWithoutDurability;
+    let before = fixture.snapshot().await;
+    let proposal = summary(&fixture).await;
+    fixture.clock.0.store(2_000, Ordering::Release);
 
-        let error = fixture
-            .service
-            .complete(proposal.id, proposal.summary.guard(), fixture.progress())
-            .await
-            .unwrap_err();
+    let error = fixture
+        .service
+        .complete(proposal.id, proposal.summary.guard(), fixture.progress())
+        .await
+        .unwrap_err();
 
-        assert_eq!(error.code(), "review_recovery_required");
-        let snapshot = fixture.snapshot().await;
-        assert_eq!(snapshot.phase, ReviewSessionPhase::RecoveryRequired);
-        assert!(!fixture.repository_state().writer_held);
-    }
+    assert_eq!(error.code(), "review_repository_unavailable");
+    let snapshot = fixture.snapshot().await;
+    assert_eq!(snapshot.phase, ReviewSessionPhase::Active);
+    assert_eq!(snapshot.feedback, before.feedback);
+    assert!(fixture.repository_state().writer_held);
+}
+
+#[tokio::test]
+async fn successful_publication_without_an_exact_head_enters_recovery() {
+    let fixture = Fixture::active(None).await;
+    fixture.repository_state().publish_behavior = PublishBehavior::SuccessWithWrongHead;
+    let proposal = summary(&fixture).await;
+    fixture.clock.0.store(2_000, Ordering::Release);
+
+    let error = fixture
+        .service
+        .complete(proposal.id, proposal.summary.guard(), fixture.progress())
+        .await
+        .unwrap_err();
+
+    assert_eq!(error.code(), "review_recovery_required");
+    assert_eq!(
+        fixture.snapshot().await.phase,
+        ReviewSessionPhase::RecoveryRequired
+    );
+    assert!(!fixture.repository_state().writer_held);
 }
 
 #[tokio::test]

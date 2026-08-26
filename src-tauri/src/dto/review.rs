@@ -5,13 +5,13 @@ use std::str::FromStr;
 use viewer_application::{
     AddReviewFeedback, DeleteReviewFeedback, ReviewAssetConflictKind, ReviewCompletionProposal,
     ReviewCompletionProposalId, ReviewConflictSnapshot, ReviewFeedbackSnapshot,
-    ReviewMemberSnapshot, ReviewMutationGuard, ReviewProposalId, ReviewScope, ReviewScopeProposal,
-    ReviewSessionCounts, ReviewSessionPhase, ReviewSessionSnapshot, ReviewUnreviewableSnapshot,
-    ReviewUserError, UpdateReviewFeedback,
+    ReviewFeedbackTargetInput, ReviewMemberSnapshot, ReviewMutationGuard, ReviewProposalId,
+    ReviewScope, ReviewScopeProposal, ReviewSessionCounts, ReviewSessionPhase,
+    ReviewSessionSnapshot, ReviewUnreviewableSnapshot, ReviewUserError, UpdateReviewFeedback,
 };
 use viewer_domain::review::{
-    MAX_ASSETS_PER_ROUND, MAX_FEEDBACK_TEXT_BYTES, MAX_TARGETS_PER_FEEDBACK, ReviewAssetKind,
-    ReviewabilityFailure,
+    FeedbackAnchor, MAX_ASSETS_PER_ROUND, MAX_FEEDBACK_TEXT_BYTES, MAX_TARGETS_PER_FEEDBACK,
+    ReviewAssetKind, ReviewabilityFailure,
 };
 use viewer_domain::search::Generation;
 use viewer_domain::{EntityId, FeedbackId, ReviewRoundId, SessionId};
@@ -150,10 +150,13 @@ impl ReviewAddFeedbackRequestDto {
             AddReviewFeedback {
                 guard,
                 text: self.text,
-                target_entity_ids: parse_entity_ids(
-                    &self.target_entity_ids,
-                    MAX_TARGETS_PER_FEEDBACK,
-                )?,
+                targets: parse_entity_ids(&self.target_entity_ids, MAX_TARGETS_PER_FEEDBACK)?
+                    .into_iter()
+                    .map(|entity_id| ReviewFeedbackTargetInput {
+                        entity_id,
+                        anchor: FeedbackAnchor::Asset,
+                    })
+                    .collect(),
             },
         ))
     }
@@ -189,10 +192,13 @@ impl ReviewUpdateFeedbackRequestDto {
                 feedback_id: FeedbackId::from_str(&self.feedback_id)
                     .map_err(|_| review_invalid_data())?,
                 text: self.text,
-                target_entity_ids: parse_entity_ids(
-                    &self.target_entity_ids,
-                    MAX_TARGETS_PER_FEEDBACK,
-                )?,
+                targets: parse_entity_ids(&self.target_entity_ids, MAX_TARGETS_PER_FEEDBACK)?
+                    .into_iter()
+                    .map(|entity_id| ReviewFeedbackTargetInput {
+                        entity_id,
+                        anchor: FeedbackAnchor::Asset,
+                    })
+                    .collect(),
             },
         ))
     }

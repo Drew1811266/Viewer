@@ -24,6 +24,7 @@ describe('Viewer visual acceptance bridge', () => {
         'listenProjectClosed',
         'listenProjectDropEvents',
         'listenProjectDrops',
+        'listenReviewProgress',
         'listenScan',
         'listenVideo',
         'openExternalLink',
@@ -38,6 +39,17 @@ describe('Viewer visual acceptance bridge', () => {
         'queryFolder',
         'requestImage',
         'revealProjectInFileManager',
+        'reviewAbandon',
+        'reviewAddFeedback',
+        'reviewCancelTask',
+        'reviewComplete',
+        'reviewCompletionSummary',
+        'reviewDeleteFeedback',
+        'reviewPreviewStart',
+        'reviewResume',
+        'reviewStart',
+        'reviewStatus',
+        'reviewUpdateFeedback',
         'searchProject',
         'searchTextSnippet',
         'selectionInfo',
@@ -74,11 +86,19 @@ describe('Viewer visual acceptance bridge', () => {
     const unlisten = await bridge.listenScan(() => undefined)
     expect(unlisten).toBeTypeOf('function')
     expect(unlisten()).toBeUndefined()
+    await expect(
+      bridge.reviewStatus({ sessionId: '00000000-0000-4000-8000-000000000001', generation: 1 }),
+    ).resolves.toMatchObject({ phase: 'idle', revision: 0 })
+    const stopReviewProgress = await bridge.listenReviewProgress(() => undefined)
+    expect(stopReviewProgress()).toBeUndefined()
     await expect(bridge.executeFileCommand({} as never)).rejects.toThrow(
       'Unexpected acceptance bridge call: executeFileCommand',
     )
     await expect(bridge.videoOpen({} as never)).rejects.toThrow(
       'Unexpected acceptance bridge call: videoOpen',
+    )
+    await expect(bridge.reviewStart({} as never)).rejects.toThrow(
+      'Unexpected acceptance bridge call: reviewStart',
     )
   })
 

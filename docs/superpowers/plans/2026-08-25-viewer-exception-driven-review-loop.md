@@ -1108,11 +1108,11 @@ git commit -m "feat: coordinate review sessions in ui"
 - Reuse `ModalSheet` focus trapping and Escape semantics. Add an explicit discard confirmation for nonempty unsaved editor text; do not silently close it.
 - Keep `WorkspaceProjectView.tsx` changes to props/slots and shallow placement. All conditional review rendering belongs in focused components.
 
-- [ ] **Step 1: Write component and App regression tests**
+- [x] **Step 1: Write component and App regression tests**
 
 Cover toolbar visibility/disabled states, counts, no viewed text, return-to-members, member target rules, `metaKey + Enter`, edit/delete, discard guard, save error, resume prompt, Busy/read-only/recovery, conflict-disabled completion, Completed read-only, focus return, ARIA live state, Escape, and unchanged existing browsing/preview/marker actions.
 
-- [ ] **Step 2: Run focused tests and capture failing component imports**
+- [x] **Step 2: Run focused tests and capture failing component imports**
 
 Run:
 
@@ -1122,11 +1122,11 @@ pnpm --dir ui exec vitest run src/components/review/reviewComponents.test.tsx sr
 
 Expected: FAIL before review components and App composition are added.
 
-- [ ] **Step 3: Implement semantic structure before styling**
+- [x] **Step 3: Implement semantic structure before styling**
 
 Use buttons, labels, lists, and `aria-live`/`aria-describedby` relationships first. Add CSS only after behavior tests pass. At 200% zoom, Inspector must remain usable without covering completion controls or forcing horizontal page scrolling.
 
-- [ ] **Step 4: Verify review UI and all current UI behavior**
+- [x] **Step 4: Verify review UI and all current UI behavior**
 
 Run:
 
@@ -1139,7 +1139,7 @@ pnpm --dir ui build
 
 Expected: all tests/check/build pass; no existing App/component test is weakened or deleted.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add ui/src/components/review ui/src/app/workspace/WorkspaceProjectView.tsx ui/src/App.tsx ui/src/App.test.tsx ui/src/styles/review.css ui/src/styles/app.css

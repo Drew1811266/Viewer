@@ -1,5 +1,6 @@
 @import url('./videoBrowser.css');
 @import url('./videoPreview.css');
+@import url('./review.css');
 
 :root {
   color: var(--viewer-text);
@@ -864,6 +865,10 @@ body:has(.viewer-inspector) .global-notice-stack {
   background: var(--viewer-accent-soft);
   outline: var(--viewer-focus-outline);
   outline-offset: var(--viewer-focus-offset);
+}
+
+.search-result-hit > .search-result-item[aria-selected='true'] {
+  background: var(--viewer-accent-soft);
 }
 
 .search-result-title {

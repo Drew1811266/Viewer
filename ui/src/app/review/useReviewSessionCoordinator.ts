@@ -30,6 +30,7 @@ export interface ReviewSessionCoordinatorOptions {
   sessionId: string
   generation: number
   selectedEntityIds: string[]
+  enabled?: boolean
 }
 
 export interface ReviewSessionCoordinator {
@@ -42,6 +43,7 @@ export interface ReviewSessionCoordinator {
   discardConfirmation: ReviewDiscardConfirmation | null
   previewStart(scope: ReviewScopeRequest): Promise<void>
   confirmStart(): Promise<void>
+  dismissStart(): void
   resume(): Promise<void>
   beginCreate(): void
   setEditorText(text: string): void
@@ -51,6 +53,7 @@ export interface ReviewSessionCoordinator {
   deleteFeedback(feedbackId: string): Promise<void>
   prepareCompletion(): Promise<void>
   confirmCompletion(): Promise<void>
+  dismissCompletion(): void
   abandon(): Promise<void>
   cancelTask(): Promise<void>
   requestDiscard(reason: ReviewDiscardReason, continuation?: () => void): boolean
@@ -63,6 +66,7 @@ export function useReviewSessionCoordinator({
   sessionId,
   generation,
   selectedEntityIds,
+  enabled = true,
 }: ReviewSessionCoordinatorOptions): ReviewSessionCoordinator {
   const [snapshot, setSnapshot] = useState<ReviewSessionSnapshot>(idleReviewSnapshot)
   const [proposal, setProposal] = useState<ReviewScopeProposal | null>(null)
@@ -124,6 +128,8 @@ export function useReviewSessionCoordinator({
     setDiscardConfirmation(null)
     discardContinuationRef.current = null
 
+    if (!enabled) return
+
     const request = { sessionId, generation }
     let disposed = false
     let unlisten: (() => void) | null = null
@@ -159,7 +165,7 @@ export function useReviewSessionCoordinator({
       disposed = true
       unlisten?.()
     }
-  }, [port, sessionId, generation])
+  }, [port, sessionId, generation, enabled])
 
   function enqueue(operation: (epoch: number) => Promise<void>): Promise<void> {
     const epoch = epochRef.current
@@ -208,6 +214,16 @@ export function useReviewSessionCoordinator({
 
   function clearEditor() {
     commitEditor(emptyReviewEditor())
+  }
+
+  function resetCreateEditor() {
+    commitEditor({
+      ...emptyReviewEditor(),
+      targetEntityIds: eligibleReviewTargetIds(
+        selectedEntityIdsRef.current,
+        snapshotRef.current.members,
+      ),
+    })
   }
 
   function requestDiscard(reason: ReviewDiscardReason, continuation?: () => void): boolean {
@@ -267,6 +283,10 @@ export function useReviewSessionCoordinator({
         }
       })
     },
+    dismissStart() {
+      previewRequestRef.current += 1
+      commitProposal(null)
+    },
     resume() {
       return enqueue(async (epoch) => {
         try {
@@ -308,7 +328,7 @@ export function useReviewSessionCoordinator({
           })
           if (epochRef.current === epoch) {
             installMutation(next)
-            clearEditor()
+            resetCreateEditor()
           }
         } catch (cause) {
           await reportFailure(cause, epoch, true)
@@ -352,7 +372,7 @@ export function useReviewSessionCoordinator({
           })
           if (epochRef.current === epoch) {
             installMutation(next)
-            clearEditor()
+            resetCreateEditor()
           }
         } catch (cause) {
           await reportFailure(cause, epoch, true)
@@ -402,6 +422,9 @@ export function useReviewSessionCoordinator({
           await reportFailure(cause, epoch)
         }
       })
+    },
+    dismissCompletion() {
+      commitCompletion(null)
     },
     abandon() {
       return enqueue(async (epoch) => {

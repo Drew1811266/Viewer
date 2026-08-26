@@ -247,10 +247,106 @@ describe('Viewer empty state', () => {
 
     const toolbar = screen.getByRole('toolbar', { name: 'Viewer 工具栏' })
     expect(within(toolbar).getByRole('button', { name: /^筛选/ })).toBeVisible()
+    expect(within(toolbar).getByRole('button', { name: '开始评审' })).toBeVisible()
     expect(within(toolbar).getByRole('button', { name: '视图' })).toBeVisible()
     expect(within(toolbar).getByRole('button', { name: '更多' })).toBeVisible()
     expect(within(toolbar).queryByRole('button', { name: '软件设置' })).not.toBeInTheDocument()
     expect(within(toolbar).queryByRole('button', { name: '项目菜单' })).not.toBeInTheDocument()
+  })
+
+  it('previews a selected fixed review scope through the typed bridge', async () => {
+    const viewer = bridge()
+    vi.mocked(viewer.queryFolder).mockResolvedValue(contentWorkspace())
+    vi.mocked(viewer.reviewPreviewStart).mockResolvedValue({
+      proposalId: 7,
+      resolution: { candidateCount: 1, imageCount: 1, videoCount: 0, excludedCount: 0 },
+    })
+    render(<App bridge={viewer} />)
+    fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
+    fireEvent.click(await screen.findByRole('option', { name: 'front.jpg' }))
+
+    fireEvent.click(screen.getByRole('button', { name: '开始评审' }))
+
+    await waitFor(() =>
+      expect(viewer.reviewPreviewStart).toHaveBeenCalledWith({
+        sessionId: 'session-1',
+        generation: 1,
+        scope: { kind: 'selection', entityIds: ['image-1'] },
+      }),
+    )
+    expect(await screen.findByRole('dialog', { name: '确认本轮评审范围' })).toBeVisible()
+  })
+
+  it('treats folder navigation as a folder scope instead of a selected material', async () => {
+    const viewer = bridge()
+    vi.mocked(viewer.folderTree).mockResolvedValue([
+      {
+        entityId: 'folder-1',
+        parentEntityId: null,
+        relativePath: 'folder-1',
+        name: 'folder-1',
+        marker: { reviewState: null, favorite: false },
+      },
+    ])
+    vi.mocked(viewer.queryFolder).mockResolvedValue(contentWorkspace())
+    vi.mocked(viewer.reviewPreviewStart).mockResolvedValue({
+      proposalId: 8,
+      resolution: { candidateCount: 1, imageCount: 1, videoCount: 0, excludedCount: 0 },
+    })
+    render(<App bridge={viewer} />)
+    fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
+    fireEvent.click(await screen.findByRole('treeitem', { name: 'folder-1' }))
+
+    fireEvent.click(screen.getByRole('button', { name: '开始评审' }))
+
+    await waitFor(() =>
+      expect(viewer.reviewPreviewStart).toHaveBeenCalledWith({
+        sessionId: 'session-1',
+        generation: 1,
+        scope: { kind: 'folder', folderId: 'folder-1', includeDescendants: false },
+      }),
+    )
+  })
+
+  it('guards project close while a review opinion is nonempty and unsaved', async () => {
+    const viewer = bridge()
+    vi.mocked(viewer.queryFolder).mockResolvedValue(contentWorkspace())
+    vi.mocked(viewer.reviewStatus).mockResolvedValue({
+      phase: 'active',
+      resume: null,
+      reviewStreamId: 'stream-1',
+      reviewRoundId: 'round-1',
+      revision: 1,
+      members: [
+        {
+          assetVersionId: 'asset-1',
+          entityId: 'image-1',
+          relativePath: 'id/front.jpg',
+          displayName: 'front.jpg',
+          kind: 'image',
+          feedbackItems: 0,
+        },
+      ],
+      feedback: [],
+      unreviewable: [],
+      conflicts: [],
+      counts: { total: 1, feedbackItems: 0, revise: 0, unreviewable: 0, pass: 0 },
+      error: null,
+    })
+    render(<App bridge={viewer} />)
+    fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
+    fireEvent.click(await screen.findByRole('option', { name: 'front.jpg' }))
+    fireEvent.click(await screen.findByRole('button', { name: '评审意见' }))
+    fireEvent.change(screen.getByRole('textbox', { name: '返工意见' }), {
+      target: { value: '保留这条未保存意见' },
+    })
+
+    closeProjectFromMenu()
+
+    expect(screen.getByRole('dialog', { name: '放弃未保存的意见？' })).toBeVisible()
+    expect(viewer.closeProject).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: '放弃未保存内容' }))
+    await waitFor(() => expect(viewer.closeProject).toHaveBeenCalledOnce())
   })
 
   it('renders a formal empty state when the selected folder has no supported files', async () => {

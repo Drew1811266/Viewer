@@ -38,6 +38,7 @@ interface ContentBrowserProps {
   onOpenVideo?: (entityId: string) => void
   requestVideoCover?: (entityId: string) => Promise<string>
   onSelectionChange?: (files: BrowserFile[]) => void
+  selectedEntityIds?: string[]
   onThumbnailTaskChange?: (task: TaskFeedback | null) => void
   organizationDragDisabled?: boolean
   onFinderDragStart?: (entityIds: string[]) => void
@@ -86,6 +87,7 @@ export default function ContentBrowser({
   onOpenVideo,
   requestVideoCover,
   onSelectionChange,
+  selectedEntityIds,
   onThumbnailTaskChange,
   organizationDragDisabled = false,
   onFinderDragStart,
@@ -163,6 +165,15 @@ export default function ContentBrowser({
     }
     if (activeId && !ids.has(activeId)) setActiveId(null)
   }, [activeId, allFiles, onSelectionChange, selected])
+
+  useEffect(() => {
+    if (selectedEntityIds === undefined) return
+    const visibleIds = new Set(allFiles.map((file) => file.entityId))
+    const next = new Set(selectedEntityIds.filter((entityId) => visibleIds.has(entityId)))
+    if (sameSelection(selected, next)) return
+    setSelected(next)
+    onSelectionChange?.(allFiles.filter((file) => next.has(file.entityId)))
+  }, [allFiles, onSelectionChange, selected, selectedEntityIds])
 
   useEffect(() => {
     marqueeSelection.current = null
@@ -773,6 +784,10 @@ function imageIdentity(file: BrowserFile): string {
 
 function imageEntityId(file: BrowserFile): string {
   return file.entityId
+}
+
+function sameSelection(left: ReadonlySet<string>, right: ReadonlySet<string>): boolean {
+  return left.size === right.size && [...left].every((entityId) => right.has(entityId))
 }
 
 function dimensionsFor(

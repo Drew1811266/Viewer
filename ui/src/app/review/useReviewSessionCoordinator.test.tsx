@@ -249,6 +249,22 @@ describe('useReviewSessionCoordinator', () => {
     )
   })
 
+  it('clears saved text while retaining the current eligible targets for the next opinion', async () => {
+    const reviewPort = port(active())
+    const hook = renderHook(() => useReviewSessionCoordinator(options(reviewPort)))
+    await waitFor(() => expect(hook.result.current.snapshot.phase).toBe('active'))
+    act(() => {
+      hook.result.current.beginCreate()
+      hook.result.current.setEditorText('第一条意见')
+    })
+
+    await act(() => hook.result.current.submitFeedback())
+
+    expect(hook.result.current.editor).toEqual(
+      expect.objectContaining({ text: '', targetEntityIds: ['image-1'], saveState: 'idle' }),
+    )
+  })
+
   it('reloads a stale snapshot while preserving edit text and targets', async () => {
     const saved = {
       ...active(),

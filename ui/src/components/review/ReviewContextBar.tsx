@@ -1,4 +1,4 @@
-import type { ReviewSessionSnapshot } from '../../api/types'
+import type { ReviewSessionSnapshot } from '../../app/review/reviewModel'
 import ViewerButton from '../ui/ViewerButton'
 
 interface ReviewContextBarProps {

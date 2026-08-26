@@ -77,6 +77,18 @@ export type ProjectDropEvent =
   | { type: 'drop'; paths: string[] }
   | { type: 'leave' }
 
+export const videoFeasibilityBridge = {
+  invoke<T>(command: 'run_video_feasibility', payload: { request: unknown }): Promise<T> {
+    return invoke<T>(command, payload)
+  },
+  listen<T>(
+    event: 'viewer://video-feasibility-frame',
+    handler: (event: { payload: T }) => void,
+  ): Promise<UnlistenFn> {
+    return listen<T>(event, handler)
+  },
+}
+
 export interface ViewerBridge {
   chooseProject(): Promise<string | null>
   openProject(path: string): Promise<ProjectSnapshot>

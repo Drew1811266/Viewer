@@ -1245,17 +1245,17 @@ git commit -m "test: add review acceptance states"
 - Add separate cases for read-only, Busy, corrupted image, stable video failure, replacement, move, delete, publish fault recovery, and multiple Draft fail-closed.
 - Do not install or invoke Codex, Claude, OpenCode, network services, signing, notarization, installers, or release systems.
 
-- [ ] **Step 1: Write the e2e tests against a missing driver**
+- [x] **Step 1: Write the e2e tests against a missing driver**
 
 Run: `pnpm test:review-loop`
 
 Expected: FAIL because the driver/test seam is absent.
 
-- [ ] **Step 2: Implement the fixed Rust harness and Node driver**
+- [x] **Step 2: Implement the fixed Rust harness and Node driver**
 
 Implement these exact harness scenarios: `standard`, `read_only`, `writer_busy`, `corrupt_image`, `stable_video_failure`, `replaced`, `moved`, `deleted`, `publish_recovery`, and `multiple_drafts`. The Node test must call the existing Agent-independent reference reader as a separate process for `standard` and `publish_recovery`, then assert its JSON output rather than importing reader internals.
 
-- [ ] **Step 3: Freeze architecture policy**
+- [x] **Step 3: Freeze architecture policy**
 
 Add repository-policy assertions that:
 
@@ -1265,7 +1265,7 @@ Add repository-policy assertions that:
 - `viewer-application` has no dependency on `viewer-infrastructure` or Tauri;
 - the review-loop test remains in `quality`.
 
-- [ ] **Step 4: Run protocol, e2e, policy, and architecture gates**
+- [x] **Step 4: Run protocol, e2e, policy, and architecture gates**
 
 Run:
 
@@ -1278,7 +1278,7 @@ pnpm architecture:boundaries
 
 Expected: all pass and the exact manual Stream head is readable by the phase-1 reader.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src-tauri/examples/review_loop_harness.rs scripts/review-protocol/manual-round-e2e.mjs scripts/review-protocol/manual-round-e2e.test.mjs package.json scripts/repository-policy.test.mjs

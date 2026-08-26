@@ -5,7 +5,7 @@ import type {
   ReviewCompletionProposal,
   ReviewScopeRequest,
   ReviewSessionSnapshot,
-} from '../../api/types'
+} from '../../app/review/reviewModel'
 import type { ReviewSessionCoordinator } from '../../app/review/useReviewSessionCoordinator'
 import ReviewCompletionDialog from './ReviewCompletionDialog'
 import ReviewInspector from './ReviewInspector'

@@ -1,12 +1,14 @@
-import { invoke } from '@tauri-apps/api/core'
-import { listen } from '@tauri-apps/api/event'
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AcceptanceRequest } from '../acceptanceRequest'
 import { VideoFeasibilityScene } from './videoFeasibilityScene'
 
-vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }))
-vi.mock('@tauri-apps/api/event', () => ({ listen: vi.fn() }))
+const invoke = vi.hoisted(() => vi.fn())
+const listen = vi.hoisted(() => vi.fn())
+
+vi.mock('../../api/viewer', () => ({
+  videoFeasibilityBridge: { invoke, listen },
+}))
 
 const request: AcceptanceRequest = {
   id: 'VIDEO-FEASIBILITY',

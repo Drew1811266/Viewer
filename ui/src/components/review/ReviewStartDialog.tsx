@@ -1,6 +1,6 @@
 import type { RefObject } from 'react'
 import { useRef } from 'react'
-import type { ReviewScopeProposal } from '../../api/types'
+import type { ReviewScopeProposal } from '../../app/review/reviewModel'
 import ModalSheet from '../ModalSheet'
 import ViewerButton from '../ui/ViewerButton'
 

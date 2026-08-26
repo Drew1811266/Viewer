@@ -1,4 +1,4 @@
-import type { ReviewConflictSnapshot } from '../../api/types'
+import type { ReviewConflictSnapshot } from '../../app/review/reviewModel'
 
 interface ReviewConflictListProps {
   conflicts: ReviewConflictSnapshot[]

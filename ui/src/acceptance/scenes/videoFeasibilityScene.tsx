@@ -1,8 +1,9 @@
-import { invoke } from '@tauri-apps/api/core'
-import { listen } from '@tauri-apps/api/event'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { videoFeasibilityBridge } from '../../api/viewer'
 import type { AcceptanceSceneRegistry } from '../AcceptanceApp'
 import type { AcceptanceRequest } from '../acceptanceRequest'
+
+const { invoke, listen } = videoFeasibilityBridge
 
 type FixtureId = 'h264-1080p' | 'hevc-portrait' | 'vfr-step' | 'h264-1080p60' | 'hevc-4k30'
 type FeasibilityAction =

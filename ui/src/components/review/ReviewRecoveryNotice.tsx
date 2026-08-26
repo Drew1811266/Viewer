@@ -1,4 +1,4 @@
-import type { ProjectAccess } from '../../api/types'
+import type { ProjectAccess } from '../../app/review/reviewModel'
 import type { ReviewSessionCoordinator } from '../../app/review/useReviewSessionCoordinator'
 import ViewerButton from '../ui/ViewerButton'
 

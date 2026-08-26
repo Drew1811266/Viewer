@@ -1,9 +1,24 @@
 import type {
+  ProjectAccess,
+  ReviewCompletionProposal,
+  ReviewConflictSnapshot,
   ReviewEditorState,
   ReviewMemberSnapshot,
+  ReviewScopeProposal,
   ReviewScopeRequest,
   ReviewSessionSnapshot,
 } from '../../api/types'
+
+export type {
+  ProjectAccess,
+  ReviewCompletionProposal,
+  ReviewConflictSnapshot,
+  ReviewEditorState,
+  ReviewMemberSnapshot,
+  ReviewScopeProposal,
+  ReviewScopeRequest,
+  ReviewSessionSnapshot,
+}
 
 export type ReviewScopeContext =
   | {

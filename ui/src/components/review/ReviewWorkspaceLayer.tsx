@@ -1,5 +1,5 @@
 import { useId, useRef, useState } from 'react'
-import type { ProjectAccess, ReviewScopeRequest } from '../../api/types'
+import type { ProjectAccess, ReviewScopeRequest } from '../../app/review/reviewModel'
 import type { ReviewSessionCoordinator } from '../../app/review/useReviewSessionCoordinator'
 import ModalSheet from '../ModalSheet'
 import ViewerButton from '../ui/ViewerButton'

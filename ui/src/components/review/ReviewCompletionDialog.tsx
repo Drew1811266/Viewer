@@ -1,5 +1,5 @@
 import { useRef } from 'react'
-import type { ReviewCompletionProposal } from '../../api/types'
+import type { ReviewCompletionProposal } from '../../app/review/reviewModel'
 import ModalSheet from '../ModalSheet'
 import ViewerButton from '../ui/ViewerButton'
 import ReviewConflictList from './ReviewConflictList'

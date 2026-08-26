@@ -16,6 +16,7 @@ import {
 } from './reviewModel'
 import type { ReviewSessionCoordinator } from './useReviewSessionCoordinator'
 
+export type { ReviewAnchor } from '../../api/types'
 export type { AnnotationEditorState, AnnotationTool, SavedImageFeedback }
 
 export type ReviewLeaveIntent =

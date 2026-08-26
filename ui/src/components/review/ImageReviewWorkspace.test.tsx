@@ -1,0 +1,281 @@
+import { fireEvent, render, screen } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type {
+  ImageReviewWorkbenchController,
+  SavedImageFeedback,
+} from '../../app/review/useImageReviewWorkbench'
+import type {
+  ImagePreviewProjection,
+  ImagePreviewSurfaceProps,
+} from '../imagePreview/ImagePreviewSurface'
+import ImageReviewWorkspace from './ImageReviewWorkspace'
+
+const TEST_PROJECTION: ImagePreviewProjection = {
+  sourceSize: { width: 640, height: 480 },
+  stageRect: { left: 0, top: 0, width: 640, height: 480 },
+  stageToNormalized: ({ x, y }) => ({ x: x / 640, y: y / 480 }),
+  normalizedToStage: ({ x, y }) => ({ x: x * 640, y: y * 480 }),
+}
+
+vi.mock('../imagePreview/ImagePreviewSurface', () => ({
+  default: ({ slots, onEscape }: ImagePreviewSurfaceProps) => (
+    <section
+      data-testid="preview-surface"
+      onKeyDown={(event) => event.key === 'Escape' && onEscape?.()}
+    >
+      <header>
+        {slots?.toolbarLeading}
+        {slots?.toolbarActions}
+      </header>
+      <div>{slots?.stageOverlay?.(TEST_PROJECTION)}</div>
+      {slots?.sidePanel}
+    </section>
+  ),
+}))
+
+const REVIEW_FILE: ImagePreviewSurfaceProps['file'] = {
+  entityId: 'image-1',
+  relativePath: 'batch/image-1.jpg',
+  name: 'image-1.jpg',
+  kind: 'jpeg',
+  size: 1_024,
+  modifiedNs: '1',
+  marker: { reviewState: null, favorite: false },
+  imageMetadata: { width: 640, height: 480 },
+  imageUrl: null,
+  videoMetadata: null,
+}
+
+function surfaceFixture(): Omit<ImagePreviewSurfaceProps, 'slots'> {
+  return {
+    file: REVIEW_FILE,
+    files: [REVIEW_FILE],
+    magnifier: { shape: 'circle', magnification: 2, area: 'small' },
+    pointerClientPoint: { current: null },
+    requestImage: vi.fn(async () => ({
+      cacheKey: 'image-1-fit',
+      url: 'viewer-image://localhost/session/image-1-fit',
+      width: 640,
+      height: 480,
+      backend: 'image_io' as const,
+    })),
+    onNavigate: vi.fn(),
+  }
+}
+
+function savedRect(
+  feedbackId: string,
+  ordinal: number,
+  text: string,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+): SavedImageFeedback {
+  return {
+    feedbackId,
+    ordinal,
+    text,
+    createdAtMs: ordinal,
+    anchor: { kind: 'image_rect', x, y, width, height },
+  }
+}
+
+function savedStroke(
+  feedbackId: string,
+  ordinal: number,
+  text: string,
+  points: ReadonlyArray<{ x: number; y: number }>,
+): SavedImageFeedback {
+  return {
+    feedbackId,
+    ordinal,
+    text,
+    createdAtMs: ordinal,
+    anchor: { kind: 'image_stroke', points },
+  }
+}
+
+function controllerFixture(
+  feedback: ReadonlyArray<SavedImageFeedback>,
+): ImageReviewWorkbenchController {
+  return {
+    tool: 'browse',
+    editor: {
+      status: 'idle',
+      tool: 'browse',
+      temporarilyPanning: false,
+      selectedFeedbackId: null,
+    },
+    dirty: false,
+    feedback,
+    selectedFeedbackId: null,
+    railOpen: true,
+    readOnlyReason: null,
+    restorableFeedbackId: null,
+    setTool: vi.fn(),
+    setTemporaryPan: vi.fn(),
+    beginAnnotation: vi.fn(),
+    updateDraftAnchor: vi.fn(),
+    updateDraftText: vi.fn(),
+    saveDraft: vi.fn(async () => undefined),
+    cancelDraft: vi.fn(),
+    selectFeedback: vi.fn(),
+    updateFeedbackText: vi.fn(async () => undefined),
+    replaceFeedbackAnchor: vi.fn(async () => undefined),
+    deleteFeedback: vi.fn(async () => undefined),
+    restoreDeletedFeedback: vi.fn(async () => undefined),
+    setRailOpen: vi.fn(),
+    requestLeave: vi.fn(async () => 'proceeded' as const),
+    discardUnsavedAndProceed: vi.fn(async () => undefined),
+  }
+}
+
+describe('ImageReviewWorkspace', () => {
+  beforeEach(() => vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null))
+  afterEach(() => {
+    vi.restoreAllMocks()
+    vi.unstubAllGlobals()
+  })
+  it('shows four independent numbered comments without permanent text bubbles', () => {
+    const controller = controllerFixture([
+      savedRect('feedback-1', 1, '衣领边缘需要更平整', 0.1, 0.1, 0.2, 0.15),
+      savedStroke('feedback-2', 2, '右袖阴影断裂', [
+        { x: 0.2, y: 0.2 },
+        { x: 0.35, y: 0.45 },
+      ]),
+      savedRect('feedback-3', 3, '左袖长度不一致', 0.6, 0.2, 0.18, 0.3),
+      savedStroke('feedback-4', 4, '裤脚接缝需要修正', [
+        { x: 0.42, y: 0.7 },
+        { x: 0.58, y: 0.82 },
+      ]),
+    ])
+    render(
+      <ImageReviewWorkspace
+        {...surfaceFixture()}
+        controller={controller}
+        onReturnGrid={vi.fn()}
+        onFinishReview={vi.fn()}
+      />,
+    )
+
+    expect(screen.getAllByTestId('annotation-marker')).toHaveLength(4)
+    expect(screen.getAllByRole('listitem', { name: /意见/ })).toHaveLength(4)
+    expect(screen.queryAllByTestId('permanent-text-bubble')).toHaveLength(0)
+  })
+
+  it('routes tool shortcuts, suppresses them in text input, and keeps completion separate', () => {
+    const controller = controllerFixture([])
+    const finish = vi.fn()
+    const returnGrid = vi.fn()
+    render(
+      <ImageReviewWorkspace
+        {...surfaceFixture()}
+        controller={controller}
+        onReturnGrid={returnGrid}
+        onFinishReview={finish}
+      />,
+    )
+
+    fireEvent.keyDown(window, { key: 'b' })
+    expect(controller.setTool).toHaveBeenCalledWith('brush')
+    fireEvent.keyDown(window, { key: 'r' })
+    expect(controller.setTool).toHaveBeenCalledWith('rectangle')
+    fireEvent.keyDown(window, { key: 'v' })
+    expect(controller.setTool).toHaveBeenCalledWith('browse')
+    fireEvent.keyDown(window, { key: ' ', code: 'Space' })
+    fireEvent.keyUp(window, { key: ' ', code: 'Space' })
+    expect(controller.setTemporaryPan).toHaveBeenNthCalledWith(1, true)
+    expect(controller.setTemporaryPan).toHaveBeenNthCalledWith(2, false)
+
+    fireEvent.click(screen.getByRole('button', { name: '整图意见' }))
+    expect(controller.beginAnnotation).toHaveBeenCalledWith({ kind: 'asset' })
+    fireEvent.click(screen.getByRole('button', { name: '完成本轮评审' }))
+    expect(controller.requestLeave).toHaveBeenCalledWith({ kind: 'finish_review' })
+    fireEvent.click(screen.getByRole('button', { name: '返回网格' }))
+    expect(controller.requestLeave).toHaveBeenCalledWith({ kind: 'return_grid' })
+  })
+
+  it('keeps editing keyboard-safe, announces save failures, and restores focus after cancel', () => {
+    const idle = controllerFixture([])
+    const rendered = render(
+      <ImageReviewWorkspace
+        {...surfaceFixture()}
+        controller={idle}
+        onReturnGrid={vi.fn()}
+        onFinishReview={vi.fn()}
+      />,
+    )
+    const returnButton = screen.getByRole('button', { name: '返回网格' })
+    returnButton.focus()
+
+    const editing = controllerFixture([])
+    editing.dirty = true
+    editing.editor = {
+      status: 'save_error',
+      tool: 'rectangle',
+      temporarilyPanning: false,
+      selectedFeedbackId: null,
+      sourceFeedbackId: null,
+      draftAnchor: { kind: 'image_rect', x: 0.1, y: 0.1, width: 0.2, height: 0.2 },
+      text: '修正领口',
+      message: '意见尚未保存，请重试。',
+    }
+    rendered.rerender(
+      <ImageReviewWorkspace
+        {...surfaceFixture()}
+        controller={editing}
+        onReturnGrid={vi.fn()}
+        onFinishReview={vi.fn()}
+      />,
+    )
+    const input = screen.getByRole('textbox', { name: '标注意见' })
+    expect(input).toHaveFocus()
+    expect(screen.getByRole('status')).toHaveAttribute('aria-live', 'polite')
+    fireEvent.keyDown(input, { key: 'b' })
+    expect(editing.setTool).not.toHaveBeenCalled()
+    fireEvent.keyDown(input, { key: 'Enter', metaKey: true })
+    expect(editing.saveDraft).toHaveBeenCalledOnce()
+    fireEvent.keyDown(window, { key: 'Escape' })
+    expect(editing.cancelDraft).toHaveBeenCalledOnce()
+
+    rendered.rerender(
+      <ImageReviewWorkspace
+        {...surfaceFixture()}
+        controller={idle}
+        onReturnGrid={vi.fn()}
+        onFinishReview={vi.fn()}
+      />,
+    )
+    expect(returnButton).toHaveFocus()
+    expect(screen.getByRole('button', { name: '浏览' })).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('defaults the feedback rail closed when the workbench opens in a compact viewport', () => {
+    vi.stubGlobal(
+      'matchMedia',
+      vi.fn(() => ({
+        matches: true,
+        media: '(max-width: 700px)',
+        onchange: null,
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      })),
+    )
+    const controller = controllerFixture([])
+
+    render(
+      <ImageReviewWorkspace
+        {...surfaceFixture()}
+        controller={controller}
+        onReturnGrid={vi.fn()}
+        onFinishReview={vi.fn()}
+      />,
+    )
+
+    expect(controller.setRailOpen).toHaveBeenCalledWith(false)
+  })
+})

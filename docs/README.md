@@ -29,6 +29,8 @@
 | [architecture/viewer-0.1-api-baseline.md](architecture/viewer-0.1-api-baseline.md) | Active | — |
 | [2026-08-24-viewer-architecture-governance-and-workspace-orchestration-design.md](superpowers/specs/2026-08-24-viewer-architecture-governance-and-workspace-orchestration-design.md) | Active | — |
 | [2026-08-25-viewer-ai-material-review-workflow-design.md](superpowers/specs/2026-08-25-viewer-ai-material-review-workflow-design.md) | Active | — |
+| [2026-08-25-viewer-exception-driven-review-loop-design.md](superpowers/specs/2026-08-25-viewer-exception-driven-review-loop-design.md) | Active | — |
+| [2026-08-25-viewer-exception-driven-review-loop.md](superpowers/plans/2026-08-25-viewer-exception-driven-review-loop.md) | Active | — |
 | [2026-08-25-viewer-open-review-protocol-foundation.md](superpowers/plans/2026-08-25-viewer-open-review-protocol-foundation.md) | Active | — |
 | [2026-08-24-viewer-architecture-boundary-governance.md](superpowers/plans/2026-08-24-viewer-architecture-boundary-governance.md) | Active | — |
 | [2026-08-24-viewer-workspace-orchestration-refactor.md](superpowers/plans/2026-08-24-viewer-workspace-orchestration-refactor.md) | Active | — |

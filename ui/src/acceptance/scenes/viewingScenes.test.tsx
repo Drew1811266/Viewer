@@ -43,7 +43,7 @@ describe('Viewer viewing acceptance scenes', () => {
     expect(screen.getByRole('button', { name: '适应窗口' })).toHaveAttribute('aria-pressed', 'true')
     expect(screen.queryByRole('button', { name: '按 100% 显示' })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: '顺时针旋转' })).toBeVisible()
-    expect(screen.getByRole('button', { name: '关闭预览' })).toBeVisible()
+    expect(screen.getByRole('button', { name: '返回网格' })).toBeVisible()
     await revealScenePreviewImage()
     const image = await screen.findByRole('img', { name: '商品-02.jpg' })
     expect(image).toBeVisible()

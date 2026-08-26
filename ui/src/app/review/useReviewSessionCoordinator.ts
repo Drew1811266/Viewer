@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type {
+  ReviewAnchor,
   ReviewCompletionProposal,
   ReviewEditorState,
   ReviewProgress,
@@ -42,6 +43,18 @@ export interface ReviewSessionCoordinator {
   error: string | null
   discardConfirmation: ReviewDiscardConfirmation | null
   previewStart(scope: ReviewScopeRequest): Promise<void>
+  startWithFeedback(input: AnchoredFeedbackInput): Promise<ReviewSessionSnapshot | null>
+  addAnchoredFeedback(input: AnchoredFeedbackInput): Promise<ReviewSessionSnapshot | null>
+  updateAnchoredFeedbackText(
+    feedbackId: string,
+    text: string,
+  ): Promise<ReviewSessionSnapshot | null>
+  replaceAnchoredFeedbackAnchor(
+    feedbackId: string,
+    entityId: string,
+    anchor: ReviewAnchor,
+  ): Promise<ReviewSessionSnapshot | null>
+  restoreDeletedFeedback(feedbackId: string): Promise<ReviewSessionSnapshot | null>
   confirmStart(): Promise<void>
   dismissStart(): void
   resume(): Promise<void>
@@ -50,7 +63,7 @@ export interface ReviewSessionCoordinator {
   submitFeedback(): Promise<void>
   beginEdit(feedbackId: string): void
   saveEdit(): Promise<void>
-  deleteFeedback(feedbackId: string): Promise<void>
+  deleteFeedback(feedbackId: string): Promise<ReviewSessionSnapshot | null>
   prepareCompletion(): Promise<void>
   confirmCompletion(): Promise<void>
   dismissCompletion(): void
@@ -59,6 +72,12 @@ export interface ReviewSessionCoordinator {
   requestDiscard(reason: ReviewDiscardReason, continuation?: () => void): boolean
   confirmDiscard(): void
   cancelDiscard(): void
+}
+
+export interface AnchoredFeedbackInput {
+  entityId: string
+  text: string
+  anchor: ReviewAnchor
 }
 
 export function useReviewSessionCoordinator({
@@ -168,11 +187,22 @@ export function useReviewSessionCoordinator({
   }, [port, sessionId, generation, enabled])
 
   function enqueue(operation: (epoch: number) => Promise<void>): Promise<void> {
+    return enqueueResult(async (epoch) => {
+      await operation(epoch)
+      return undefined
+    }).then(() => undefined)
+  }
+
+  function enqueueResult<T>(operation: (epoch: number) => Promise<T>): Promise<T | null> {
     const epoch = epochRef.current
     const queued = queueRef.current.then(async () => {
-      if (epochRef.current === epoch) await operation(epoch)
+      if (epochRef.current !== epoch) return null
+      return operation(epoch)
     })
-    queueRef.current = queued.catch(() => undefined)
+    queueRef.current = queued.then(
+      () => undefined,
+      () => undefined,
+    )
     return queued
   }
 
@@ -241,6 +271,25 @@ export function useReviewSessionCoordinator({
     requestDiscard('context_replacement', () => commitEditor(next))
   }
 
+  function guardedMutation(
+    operation: (
+      guard: NonNullable<ReturnType<typeof currentGuard>>,
+    ) => Promise<ReviewSessionSnapshot>,
+  ): Promise<ReviewSessionSnapshot | null> {
+    return enqueueResult(async (epoch) => {
+      try {
+        const guard = currentGuard()
+        if (guard === null) throw new Error('Review round unavailable')
+        const next = await operation(guard)
+        if (epochRef.current === epoch) installMutation(next)
+        return next
+      } catch (cause) {
+        await reportFailure(cause, epoch)
+        throw cause
+      }
+    })
+  }
+
   return {
     snapshot,
     proposal,
@@ -264,6 +313,59 @@ export function useReviewSessionCoordinator({
           setError(reviewErrorMessage(cause))
         }
       }
+    },
+    startWithFeedback(input) {
+      const selectedProposal = proposalRef.current
+      if (selectedProposal === null) return Promise.reject(new Error('Review proposal unavailable'))
+      const frozen = { ...input, anchor: cloneReviewAnchor(input.anchor) }
+      return enqueueResult(async (epoch) => {
+        try {
+          const next = await portRef.current.reviewStartWithFeedback({
+            ...contextRef.current,
+            proposalId: selectedProposal.proposalId,
+            text: frozen.text,
+            targets: [{ entityId: frozen.entityId, anchor: frozen.anchor }],
+          })
+          if (epochRef.current === epoch) {
+            installMutation(next)
+            commitProposal(null)
+          }
+          return next
+        } catch (cause) {
+          await reportFailure(cause, epoch)
+          throw cause
+        }
+      })
+    },
+    addAnchoredFeedback(input) {
+      const frozen = { ...input, anchor: cloneReviewAnchor(input.anchor) }
+      return guardedMutation((guard) =>
+        portRef.current.reviewAddFeedback({
+          ...guard,
+          text: frozen.text,
+          targets: [{ entityId: frozen.entityId, anchor: frozen.anchor }],
+        }),
+      )
+    },
+    updateAnchoredFeedbackText(feedbackId, text) {
+      return guardedMutation((guard) =>
+        portRef.current.reviewUpdateFeedbackText({ ...guard, feedbackId, text }),
+      )
+    },
+    replaceAnchoredFeedbackAnchor(feedbackId, entityId, anchor) {
+      const frozenAnchor = cloneReviewAnchor(anchor)
+      return guardedMutation((guard) =>
+        portRef.current.reviewReplaceFeedbackAnchor({
+          ...guard,
+          feedbackId,
+          target: { entityId, anchor: frozenAnchor },
+        }),
+      )
+    },
+    restoreDeletedFeedback(feedbackId) {
+      return guardedMutation((guard) =>
+        portRef.current.reviewRestoreDeletedFeedback({ ...guard, feedbackId }),
+      )
     },
     confirmStart() {
       const selectedProposal = proposalRef.current
@@ -382,14 +484,16 @@ export function useReviewSessionCoordinator({
       })
     },
     deleteFeedback(feedbackId) {
-      return enqueue(async (epoch) => {
+      return enqueueResult(async (epoch) => {
         const guard = currentGuard()
-        if (guard === null) return
+        if (guard === null) return null
         try {
           const next = await portRef.current.reviewDeleteFeedback({ ...guard, feedbackId })
           if (epochRef.current === epoch) installMutation(next)
+          return next
         } catch (cause) {
           await reportFailure(cause, epoch)
+          return null
         }
       })
     },
@@ -481,4 +585,10 @@ function reviewErrorMessage(error: unknown): string {
     return error.userMessage
   }
   return '评审操作未完成，请重试。'
+}
+
+function cloneReviewAnchor(anchor: ReviewAnchor): ReviewAnchor {
+  return anchor.kind === 'image_stroke'
+    ? { kind: 'image_stroke', points: anchor.points.map((point) => ({ ...point })) }
+    : { ...anchor }
 }

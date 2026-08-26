@@ -170,6 +170,58 @@ describe('useReviewSessionCoordinator', () => {
     })
   })
 
+  it('freezes the preview proposal for an atomic anchored first feedback', async () => {
+    const reviewPort = port()
+    const firstSaved = {
+      ...active(),
+      feedback: [
+        {
+          feedbackId: 'feedback-1',
+          text: '修正袖口',
+          createdAtMs: 10,
+          targetEntityIds: ['image-1'],
+          targets: [
+            {
+              assetVersionId: 'asset-version-1',
+              entityId: 'image-1',
+              anchor: { kind: 'image_rect' as const, x: 0.1, y: 0.2, width: 0.3, height: 0.4 },
+            },
+          ],
+          targetCount: 1,
+        },
+      ],
+    }
+    vi.mocked(reviewPort.reviewStartWithFeedback).mockResolvedValue(firstSaved)
+    const hook = renderHook(() => useReviewSessionCoordinator(options(reviewPort)))
+    await waitFor(() => expect(reviewPort.reviewStatus).toHaveBeenCalled())
+    await act(() => hook.result.current.previewStart({ kind: 'selection', entityIds: ['image-1'] }))
+
+    let returned: ReviewSessionSnapshot | null = null
+    await act(async () => {
+      returned = await hook.result.current.startWithFeedback({
+        entityId: 'image-1',
+        text: '修正袖口',
+        anchor: { kind: 'image_rect', x: 0.1, y: 0.2, width: 0.3, height: 0.4 },
+      })
+    })
+
+    expect(reviewPort.reviewStartWithFeedback).toHaveBeenCalledWith({
+      sessionId: 'session-1',
+      generation: 1,
+      proposalId: 10,
+      text: '修正袖口',
+      targets: [
+        {
+          entityId: 'image-1',
+          anchor: { kind: 'image_rect', x: 0.1, y: 0.2, width: 0.3, height: 0.4 },
+        },
+      ],
+    })
+    expect(returned).toBe(firstSaved)
+    expect(hook.result.current.snapshot).toBe(firstSaved)
+    expect(hook.result.current.proposal).toBeNull()
+  })
+
   it('serializes mutations and builds every guard from the latest saved snapshot', async () => {
     const reviewPort = port(active())
     const first = deferred<ReviewSessionSnapshot>()
@@ -179,8 +231,8 @@ describe('useReviewSessionCoordinator', () => {
     const hook = renderHook(() => useReviewSessionCoordinator(options(reviewPort)))
     await waitFor(() => expect(hook.result.current.snapshot.phase).toBe('active'))
 
-    let firstDelete!: Promise<void>
-    let secondDelete!: Promise<void>
+    let firstDelete!: Promise<ReviewSessionSnapshot | null>
+    let secondDelete!: Promise<ReviewSessionSnapshot | null>
     act(() => {
       firstDelete = hook.result.current.deleteFeedback('feedback-1')
       secondDelete = hook.result.current.deleteFeedback('feedback-2')

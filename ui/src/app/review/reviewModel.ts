@@ -1,5 +1,6 @@
 import type {
   ProjectAccess,
+  ReviewAnchor,
   ReviewCompletionProposal,
   ReviewConflictSnapshot,
   ReviewEditorState,
@@ -28,6 +29,20 @@ export type ReviewScopeContext =
       selectedEntityIds: string[]
     }
   | { kind: 'search'; selectedEntityIds: string[] }
+
+export interface SavedImageFeedback {
+  feedbackId: string
+  text: string
+  createdAtMs: number
+  ordinal: number | null
+  anchor: ReviewAnchor
+}
+
+export type ImageReviewReadOnlyReason =
+  | 'outside_scope'
+  | 'write_unavailable'
+  | 'recovery_required'
+  | null
 
 export function deriveReviewScope(context: ReviewScopeContext): ReviewScopeRequest | null {
   const entityIds = uniqueIds(context.selectedEntityIds)
@@ -86,6 +101,53 @@ export function idleReviewSnapshot(): ReviewSessionSnapshot {
     counts: { total: 0, feedbackItems: 0, revise: 0, unreviewable: 0, pass: 0 },
     error: null,
   }
+}
+
+export function imageFeedbackForEntity(
+  snapshot: ReviewSessionSnapshot,
+  entityId: string,
+): SavedImageFeedback[] {
+  let localOrdinal = 0
+  return snapshot.feedback.flatMap((feedback) => {
+    const target = feedback.targets.find((candidate) => candidate.entityId === entityId)
+    if (target === undefined) return []
+    let ordinal: number | null = null
+    if (target.anchor.kind !== 'asset') {
+      localOrdinal += 1
+      ordinal = localOrdinal
+    }
+    return [
+      {
+        feedbackId: feedback.feedbackId,
+        text: feedback.text,
+        createdAtMs: feedback.createdAtMs,
+        ordinal,
+        anchor: target.anchor,
+      },
+    ]
+  })
+}
+
+export function imageReviewReadOnlyReason(
+  snapshot: ReviewSessionSnapshot,
+  entityId: string,
+): ImageReviewReadOnlyReason {
+  if (snapshot.phase === 'recovery_required') return 'recovery_required'
+  if (
+    snapshot.phase === 'preparing' ||
+    snapshot.phase === 'completing' ||
+    snapshot.phase === 'write_unavailable' ||
+    snapshot.phase === 'completed_read_only'
+  ) {
+    return 'write_unavailable'
+  }
+  if (
+    snapshot.reviewRoundId !== null &&
+    !snapshot.members.some((member) => member.entityId === entityId)
+  ) {
+    return 'outside_scope'
+  }
+  return null
 }
 
 function uniqueIds(entityIds: readonly string[]): string[] {

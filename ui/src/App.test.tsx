@@ -874,7 +874,7 @@ describe('Viewer empty state', () => {
     expect(preview).toHaveTextContent('back.jpg')
     expect(preview).toHaveTextContent('2 / 2')
 
-    fireEvent.click(screen.getByRole('button', { name: '关闭预览' }))
+    fireEvent.click(screen.getByRole('button', { name: '返回网格' }))
     expect(front).toHaveFocus()
     expect(viewer.queryFolder).toHaveBeenNthCalledWith(2, 'folder-b01', false)
   })
@@ -1155,7 +1155,7 @@ describe('Viewer empty state', () => {
     const back = screen.getByRole('option', { name: 'back.jpg' })
     fireEvent.doubleClick(front)
     expect(screen.getByRole('dialog', { name: /^图片预览 / })).toBeVisible()
-    fireEvent.click(screen.getByRole('button', { name: '关闭预览' }))
+    fireEvent.click(screen.getByRole('button', { name: '返回网格' }))
     fireEvent.click(front)
     fireEvent.click(back, { metaKey: true })
 
@@ -1671,7 +1671,7 @@ describe('Viewer empty state', () => {
     await screen.findByRole('img', { name: '1.jpg' })
     expect(screen.queryByRole('menu', { name: '文件操作' })).not.toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: '关闭预览' }))
+    fireEvent.click(screen.getByRole('button', { name: '返回网格' }))
 
     expect(screen.getByRole('listbox', { name: '图片文件' })).toBe(grid)
     expect(grid.scrollTop).toBe(200)
@@ -2240,7 +2240,7 @@ describe('Viewer empty state', () => {
     expect(screen.getByRole('dialog', { name: /^图片预览 / })).toBeVisible()
     fireEvent.keyDown(window, { key: 'Delete' })
     expect(screen.queryByRole('dialog', { name: '将文件移到废纸篓？' })).not.toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: '关闭预览' }))
+    fireEvent.click(screen.getByRole('button', { name: '返回网格' }))
 
     fireEvent.keyDown(window, { key: 'Delete' })
     fireEvent.keyDown(window, { key: 'z', metaKey: true })
@@ -2326,7 +2326,7 @@ describe('Viewer empty state', () => {
     expect(screen.getByRole('menuitem', { name: '信息' })).toHaveAttribute('aria-disabled', 'false')
     fireEvent.click(screen.getByRole('menuitem', { name: '预览' }))
     expect(screen.getByRole('dialog', { name: /^图片预览 / })).toBeVisible()
-    fireEvent.click(screen.getByRole('button', { name: '关闭预览' }))
+    fireEvent.click(screen.getByRole('button', { name: '返回网格' }))
 
     const back = screen.getByRole('option', { name: 'back.jpg' })
     fireEvent.click(back, { metaKey: true })

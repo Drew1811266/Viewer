@@ -56,6 +56,52 @@ test('reads the selected Stream head and ignores a newer Draft', async () => {
   assert.notEqual(round.reviewRoundId, '00000000-0000-4000-8000-000000000203')
 })
 
+test('accepts optional local source identity and unavailable bounds only for unreviewable images', async () => {
+  await using fixture = await disposableProject()
+  const round = path.join(fixture.project, `.viewer/reviews/rounds/${ROUND_B}.json`)
+  await mutateJson(round, (document) => {
+    document.assets[0].sourceEntityId = '00000000-0000-4000-8000-000000000051'
+    document.assets[2].media = { kind: 'image' }
+    document.outcomes[2] = {
+      assetVersionId: document.assets[2].assetVersionId,
+      kind: 'unreviewable',
+      feedbackIds: [],
+      failure: 'decodeFailed',
+    }
+  })
+
+  const completed = await readLatestCompletedReview({
+    projectRoot: fixture.project,
+    reviewStreamId: STREAM_B,
+  })
+
+  assert.equal(completed.assets[0].sourceEntityId, '00000000-0000-4000-8000-000000000051')
+  assert.deepEqual(completed.assets[2].media, { kind: 'image' })
+})
+
+test('rejects invalid source identity, partial image bounds, and unavailable bounds on pass', async () => {
+  for (const mutate of [
+    (document) => {
+      document.assets[0].sourceEntityId = 'not-an-entity-id'
+    },
+    (document) => {
+      document.assets[0].media = { kind: 'image', width: 100 }
+    },
+    (document) => {
+      document.assets[2].media = { kind: 'image' }
+    },
+  ]) {
+    await using fixture = await disposableProject()
+    const round = path.join(fixture.project, `.viewer/reviews/rounds/${ROUND_B}.json`)
+    await mutateJson(round, mutate)
+
+    await assert.rejects(
+      readLatestCompletedReview({ projectRoot: fixture.project, reviewStreamId: STREAM_B }),
+      /asset|image|outcome/i,
+    )
+  }
+})
+
 test('lists Streams and selects one exact production scope', async () => {
   assert.deepEqual(await listReviewStreams({ projectRoot: fixtureProject }), [
     {

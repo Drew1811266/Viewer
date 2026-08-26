@@ -9,6 +9,8 @@ pub mod ports;
 pub mod project;
 pub mod rename;
 pub mod review;
+pub mod review_assets;
+pub mod review_session;
 pub mod scan;
 pub mod scheduler;
 pub mod search;
@@ -41,7 +43,21 @@ pub use review::{
     MAX_COMPLETED_ROUNDS_PER_STREAM, MAX_PRODUCTION_CONTEXT_ENTRIES,
     MAX_PRODUCTION_CONTEXT_KEY_BYTES, MAX_PRODUCTION_CONTEXT_VALUE_BYTES, MAX_REVIEW_STREAMS,
     ProductionAsset, ProductionManifest, ReviewCatalog, ReviewCatalogError, ReviewRepositoryError,
-    ReviewRepositoryPort, ReviewStreamHead, ReviewStreamLocator,
+    ReviewRepositoryInspection, ReviewRepositoryPort, ReviewRepositoryProviderPort,
+    ReviewStreamHead, ReviewStreamLocator,
+};
+pub use review_assets::{
+    PreparedReviewAsset, ReviewAssetCatalogPort, ReviewAssetConflictKind, ReviewAssetError,
+    ReviewAssetValidation, ReviewProgressPort, ReviewScope, ReviewScopeResolution,
+    ReviewTaskCancellation, ReviewTaskProgress,
+};
+pub use review_session::{
+    AddReviewFeedback, DeleteReviewFeedback, ReviewCompletionProposal, ReviewCompletionProposalId,
+    ReviewCompletionSummary, ReviewConflictKind, ReviewConflictSnapshot, ReviewFeedbackSnapshot,
+    ReviewFeedbackSummary, ReviewMemberSnapshot, ReviewMutationGuard, ReviewProposalId,
+    ReviewResumeSnapshot, ReviewScopeProposal, ReviewSessionCounts, ReviewSessionError,
+    ReviewSessionPhase, ReviewSessionService, ReviewSessionSnapshot, ReviewUnreviewableSnapshot,
+    ReviewUserError, UpdateReviewFeedback,
 };
 pub use session::{ProjectSession, SessionState, SessionTransitionError};
 pub use settings::{

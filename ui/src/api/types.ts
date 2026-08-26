@@ -639,3 +639,189 @@ export type CloseChoice = 'wait' | 'cancel_pending' | 'stay'
 export type CloseRequestOutcome = 'closed' | 'stayed'
 
 export type CloseTarget = 'project' | 'window' | 'application'
+
+export interface ReviewSessionRequest {
+  sessionId: string
+  generation: number
+}
+
+export type ReviewScopeRequest =
+  | { kind: 'selection'; entityIds: string[] }
+  | { kind: 'folder'; folderId: string | null; includeDescendants: boolean }
+
+export interface ReviewPreviewStartRequest extends ReviewSessionRequest {
+  scope: ReviewScopeRequest
+}
+
+export interface ReviewStartRequest extends ReviewSessionRequest {
+  proposalId: number
+}
+
+export interface ReviewMutationGuardRequest extends ReviewSessionRequest {
+  reviewRoundId: string
+  expectedRevision: number
+}
+
+export interface ReviewAddFeedbackRequest extends ReviewMutationGuardRequest {
+  text: string
+  targetEntityIds: string[]
+}
+
+export interface ReviewUpdateFeedbackRequest extends ReviewAddFeedbackRequest {
+  feedbackId: string
+}
+
+export interface ReviewDeleteFeedbackRequest extends ReviewMutationGuardRequest {
+  feedbackId: string
+}
+
+export interface ReviewCompleteRequest extends ReviewMutationGuardRequest {
+  proposalId: number
+}
+
+export type ReviewTaskKind = 'start' | 'resume' | 'completion_summary' | 'complete'
+
+export interface ReviewProgress extends ReviewSessionRequest {
+  taskKind: ReviewTaskKind
+  completed: number
+  total: number
+  cancellable: boolean
+}
+
+export interface ReviewScopeResolution {
+  candidateCount: number
+  imageCount: number
+  videoCount: number
+  excludedCount: number
+}
+
+export interface ReviewScopeProposal {
+  proposalId: number
+  resolution: ReviewScopeResolution
+}
+
+export type ReviewSessionPhase =
+  | 'idle'
+  | 'preparing'
+  | 'active'
+  | 'completing'
+  | 'completed_read_only'
+  | 'write_unavailable'
+  | 'recovery_required'
+
+export interface ReviewResumeSnapshot {
+  reviewStreamId: string
+  reviewRoundId: string
+  createdAtMs: number
+  total: number
+  feedbackItems: number
+}
+
+export interface ReviewMemberSnapshot {
+  assetVersionId: string
+  entityId: string | null
+  relativePath: string
+  displayName: string
+  kind: 'image' | 'video'
+  feedbackItems: number
+}
+
+export interface ReviewFeedbackSnapshot {
+  feedbackId: string
+  text: string
+  createdAtMs: number
+  targetEntityIds: string[]
+  targetCount: number
+}
+
+export type ReviewabilityFailure =
+  | 'unsupported'
+  | 'damaged'
+  | 'unreadable'
+  | 'permission_denied'
+  | 'missing'
+  | 'decode_failed'
+
+export interface ReviewUnreviewableSnapshot {
+  assetVersionId: string
+  relativePath: string
+  failure: ReviewabilityFailure
+}
+
+export type ReviewConflictKind =
+  | 'missing'
+  | 'moved'
+  | 'replaced'
+  | 'size_changed'
+  | 'content_changed'
+  | 'media_changed'
+
+export interface ReviewConflictSnapshot {
+  assetVersionId: string
+  relativePath: string
+  kind: ReviewConflictKind
+}
+
+export interface ReviewSessionCounts {
+  total: number
+  feedbackItems: number
+  revise: number
+  unreviewable: number
+  pass: number
+}
+
+export interface ReviewUserError {
+  code: string
+  retryable: boolean
+  affectedPaths: string[]
+}
+
+export interface ReviewSessionSnapshot {
+  phase: ReviewSessionPhase
+  resume: ReviewResumeSnapshot | null
+  reviewStreamId: string | null
+  reviewRoundId: string | null
+  revision: number
+  members: ReviewMemberSnapshot[]
+  feedback: ReviewFeedbackSnapshot[]
+  unreviewable: ReviewUnreviewableSnapshot[]
+  conflicts: ReviewConflictSnapshot[]
+  counts: ReviewSessionCounts
+  error: ReviewUserError | null
+}
+
+export interface ReviewFeedbackSummary {
+  feedbackId: string
+  text: string
+  targetCount: number
+}
+
+export interface ReviewCompletionSummary {
+  reviewRoundId: string
+  revision: number
+  total: number
+  revise: number
+  unreviewable: number
+  defaultPass: number
+  feedback: ReviewFeedbackSummary[]
+  conflicts: ReviewConflictSnapshot[]
+  pending: string[]
+  canComplete: boolean
+}
+
+export interface ReviewCompletionProposal {
+  proposalId: number
+  summary: ReviewCompletionSummary
+}
+
+export type ReviewEditorSaveState = 'idle' | 'saving' | 'error'
+
+export interface ReviewEditorState {
+  mode: 'create' | 'edit'
+  feedbackId: string | null
+  text: string
+  savedText: string
+  targetEntityIds: string[]
+  saveState: ReviewEditorSaveState
+  error: string | null
+}

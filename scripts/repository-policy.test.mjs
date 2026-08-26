@@ -12,6 +12,20 @@ const findDocumentationRows = (index, path) =>
     .split('\n')
     .filter((line) => line.match(/^\| \[[^\]]+\]\(([^)]+)\) \|/)?.[1] === path)
 
+const collectSourceFiles = async (directory, extensions) => {
+  const entries = await readdir(new URL(`../${directory}/`, import.meta.url), {
+    withFileTypes: true,
+  })
+  const nested = await Promise.all(
+    entries.map(async (entry) => {
+      const path = `${directory}/${entry.name}`
+      if (entry.isDirectory()) return collectSourceFiles(path, extensions)
+      return extensions.some((extension) => entry.name.endsWith(extension)) ? [path] : []
+    }),
+  )
+  return nested.flat().sort()
+}
+
 const currentProductDocuments = [
   'docs/PRODUCT_SPEC.md',
   'docs/product/README.md',
@@ -720,8 +734,15 @@ test('CI defines independent deterministic quality and security gates', async ()
     packageJson.scripts['test:review-protocol'],
     'node --test scripts/review-protocol/read-latest.test.mjs',
   )
+  assert.equal(
+    packageJson.scripts['test:review-loop'],
+    'node --test scripts/review-protocol/manual-round-e2e.test.mjs',
+  )
   assert.match(packageJson.scripts.quality, /^pnpm test:policy &&/)
-  assert.match(packageJson.scripts.quality, /pnpm test:policy && pnpm test:review-protocol &&/)
+  assert.match(
+    packageJson.scripts.quality,
+    /pnpm test:policy && pnpm test:review-protocol && pnpm test:review-loop &&/,
+  )
   assert.match(packageJson.scripts.quality, /scripts\/verify-clean\.test\.mjs/)
   assert.match(packageJson.scripts.quality, /pnpm --dir ui check/)
   assert.match(packageJson.scripts.quality, /pnpm --dir ui test/)
@@ -751,6 +772,57 @@ test('ordinary package policy evaluates active scope without a network advisory 
   assert.equal(
     packageJson.scripts.security,
     './scripts/check-tauri-security.sh && cargo deny --offline --locked check bans licenses sources && node scripts/check-npm-licenses.mjs && pnpm video:licenses:verify',
+  )
+})
+
+test('manual review transport and dependency boundaries remain one-way', async () => {
+  const uiFiles = await collectSourceFiles('ui/src', ['.ts', '.tsx'])
+  const tauriImporters = []
+  for (const path of uiFiles) {
+    const source = await read(path)
+    if (/(?:\bfrom\s*|\bimport\s*\()\s*['"]@tauri-apps\/api(?:\/[^'"]+)?['"]/.test(source)) {
+      tauriImporters.push(path)
+    }
+  }
+  assert.deepEqual(
+    tauriImporters,
+    ['ui/src/api/viewer.ts'],
+    'Tauri imports must stop at the typed Viewer API boundary',
+  )
+
+  const reviewComponents = await collectSourceFiles('ui/src/components/review', ['.ts', '.tsx'])
+  for (const path of reviewComponents) {
+    const source = await read(path)
+    assert.doesNotMatch(source, /@tauri-apps\//, `${path} imports Tauri directly`)
+    assert.doesNotMatch(source, /(?:\.\.\/)+api\/types/, `${path} imports transport DTOs`)
+  }
+
+  const reviewCommands = await read('src-tauri/src/commands/review.rs')
+  for (const forbidden of [
+    /serde_json/,
+    /\b(?:std|tokio)::fs\b/,
+    /\bfs::(?:write|rename|remove|create_dir|copy)\b/,
+    /\b(?:ReviewOutcome|ReviewSnapshot|ReviewDraft|ReviewabilityFailure)\b/,
+    /\bblake3\b/i,
+  ]) {
+    assert.doesNotMatch(reviewCommands, forbidden)
+  }
+
+  const [applicationManifest, ...applicationSources] = await Promise.all([
+    read('crates/viewer-application/Cargo.toml'),
+    ...(await collectSourceFiles('crates/viewer-application/src', ['.rs'])).map(read),
+  ])
+  assert.doesNotMatch(applicationManifest, /viewer-infrastructure|\btauri\b/)
+  assert.doesNotMatch(applicationSources.join('\n'), /viewer_infrastructure|\btauri::/)
+
+  const packageJson = JSON.parse(await read('package.json'))
+  assert.equal(
+    packageJson.scripts['test:review-loop'],
+    'node --test scripts/review-protocol/manual-round-e2e.test.mjs',
+  )
+  assert.match(
+    packageJson.scripts.quality,
+    /pnpm test:review-protocol && pnpm test:review-loop && pnpm architecture:boundaries/,
   )
 })
 
@@ -866,7 +938,7 @@ test('desktop capability and network boundary remains frozen', async () => {
   )
   assert.match(
     packageJson.scripts.quality,
-    /^pnpm test:policy && pnpm test:review-protocol && pnpm architecture:boundaries &&/,
+    /^pnpm test:policy && pnpm test:review-protocol && pnpm test:review-loop && pnpm architecture:boundaries &&/,
   )
   assert.doesNotMatch(packageJson.scripts.verify, /architecture:trends|quality:report/)
 })

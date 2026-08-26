@@ -81,7 +81,11 @@
         {
           "type": "object",
           "additionalProperties": false,
-          "required": ["kind", "width", "height"],
+          "required": ["kind"],
+          "dependentRequired": {
+            "width": ["height"],
+            "height": ["width"]
+          },
           "properties": {
             "kind": { "const": "image" },
             "width": { "type": "integer", "minimum": 1, "maximum": 4294967295 },
@@ -111,6 +115,7 @@
       "required": ["assetVersionId", "relativePath", "evidence", "media"],
       "properties": {
         "assetVersionId": { "$ref": "#/$defs/uuid" },
+        "sourceEntityId": { "$ref": "#/$defs/uuid" },
         "relativePath": { "$ref": "#/$defs/relativePath" },
         "evidence": { "$ref": "#/$defs/evidence" },
         "media": { "$ref": "#/$defs/media" },

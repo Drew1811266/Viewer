@@ -3,15 +3,17 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::{fs, path::Path};
 use tempfile::TempDir;
 use viewer_application::{
-    ReviewCatalog, ReviewRepositoryError, ReviewRepositoryPort, ReviewStreamHead,
+    ProjectAccess, ReviewCatalog, ReviewRepositoryError, ReviewRepositoryPort,
+    ReviewRepositoryProviderPort, ReviewStreamHead,
 };
 use viewer_domain::review::{
     AssetEvidence, AssetVersion, ReviewDraft, ReviewMedia, ReviewSnapshot,
 };
 use viewer_domain::{AssetVersionId, ProjectId, RelativePath, ReviewRoundId, ReviewStreamId};
 use viewer_infrastructure::review::{
-    ProjectReviewRepository, ReviewRepositoryAccess, ReviewRepositoryFaultInjector,
-    ReviewRepositoryFaultPoint, encode_catalog, encode_completed, encode_draft,
+    ProjectReviewRepository, ProjectReviewRepositoryProvider, ReviewRepositoryAccess,
+    ReviewRepositoryFaultInjector, ReviewRepositoryFaultPoint, encode_catalog, encode_completed,
+    encode_draft,
 };
 
 struct PersistentProject {
@@ -55,6 +57,7 @@ fn review_draft(
         1_000,
         vec![AssetVersion {
             id: AssetVersionId::from_u128(3),
+            source_entity_id: None,
             relative_path: RelativePath::parse("renders/frame.png").unwrap(),
             evidence: AssetEvidence {
                 size_bytes: 4,
@@ -62,8 +65,8 @@ fn review_draft(
                 blake3: None,
             },
             media: ReviewMedia::Image {
-                width: 10,
-                height: 20,
+                width: Some(10),
+                height: Some(20),
             },
             producer_asset_id: None,
             parent_asset_version_id: None,
@@ -199,6 +202,29 @@ fn readonly_absent_repository_creates_nothing_and_rejects_writes() {
         Err(ReviewRepositoryError::ReadOnly)
     );
     assert!(!project.reviews().exists());
+}
+
+#[test]
+fn readonly_provider_without_viewer_metadata_is_an_empty_side_effect_free_reader() {
+    let directory = tempfile::tempdir().unwrap();
+    let project_id = ProjectId::from_u128(1);
+    let provider = ProjectReviewRepositoryProvider::new_with_access(
+        directory.path(),
+        project_id,
+        ProjectAccess::ReadOnly,
+    );
+
+    let inspection = provider.inspect().unwrap();
+
+    assert_eq!(inspection.catalog.project_id, project_id);
+    assert!(inspection.catalog.streams.is_empty());
+    assert!(inspection.active_draft.is_none());
+    assert!(provider.open_reader().is_ok());
+    assert!(matches!(
+        provider.open_writer(),
+        Err(ReviewRepositoryError::ReadOnly)
+    ));
+    assert!(!directory.path().join(".viewer").exists());
 }
 
 #[test]
@@ -724,4 +750,212 @@ fn project_repository_implements_the_complete_application_port() {
     let port: &dyn ReviewRepositoryPort = &repository;
 
     assert_eq!(port.load_catalog().unwrap().project_id, project.project_id);
+}
+
+#[test]
+fn provider_inspection_is_side_effect_free_for_absent_and_empty_repositories() {
+    let project = PersistentProject::new();
+    let provider = ProjectReviewRepositoryProvider::new(project.root(), project.project_id);
+
+    let absent = provider.inspect().unwrap();
+    assert_eq!(absent.catalog.project_id, project.project_id);
+    assert!(absent.catalog.streams.is_empty());
+    assert_eq!(absent.active_draft, None);
+    let reader = provider.open_reader().unwrap();
+    assert!(reader.load_catalog().unwrap().streams.is_empty());
+    assert_eq!(reader.load_active_draft().unwrap(), None);
+    assert!(!project.reviews().exists());
+
+    drop(provider.open_writer().unwrap());
+    let empty = provider.inspect().unwrap();
+    assert!(empty.catalog.streams.is_empty());
+    assert_eq!(empty.active_draft, None);
+}
+
+#[test]
+fn provider_preserves_unsupported_draft_versions_without_mutation() {
+    let project = PersistentProject::new();
+    let provider = ProjectReviewRepositoryProvider::new(project.root(), project.project_id);
+    drop(provider.open_writer().unwrap());
+    let path = project
+        .reviews()
+        .join("drafts/00000000-0000-0000-0000-00000000000b.json");
+    let unsupported = br#"{"protocolVersion":"viewer.review/2","status":"draft"}"#;
+    fs::write(&path, unsupported).unwrap();
+
+    assert_eq!(
+        provider.inspect(),
+        Err(ReviewRepositoryError::UnsupportedVersion)
+    );
+    assert_eq!(fs::read(path).unwrap(), unsupported);
+}
+
+#[test]
+fn provider_discovers_one_exact_draft_and_refuses_ambiguous_or_invalid_entries() {
+    let project = PersistentProject::new();
+    let provider = ProjectReviewRepositoryProvider::new(project.root(), project.project_id);
+    let writer = provider.open_writer().unwrap();
+    let first = review_draft(
+        project.project_id,
+        ReviewStreamId::from_u128(1),
+        ReviewRoundId::from_u128(11),
+    );
+    writer.save_draft(&first).unwrap();
+    drop(writer);
+
+    assert_eq!(provider.inspect().unwrap().active_draft, Some(first));
+
+    let second = review_draft(
+        project.project_id,
+        ReviewStreamId::from_u128(1),
+        ReviewRoundId::from_u128(12),
+    );
+    provider.open_writer().unwrap().save_draft(&second).unwrap();
+    assert_eq!(
+        provider.inspect(),
+        Err(ReviewRepositoryError::RecoveryRequired)
+    );
+
+    fs::remove_file(
+        project
+            .reviews()
+            .join(format!("drafts/{}.json", second.review_round_id)),
+    )
+    .unwrap();
+    fs::write(project.reviews().join("drafts/not-a-round.json"), b"{}").unwrap();
+    assert_eq!(
+        provider.inspect(),
+        Err(ReviewRepositoryError::RecoveryRequired)
+    );
+}
+
+#[test]
+fn provider_refuses_draft_payloads_owned_by_another_project() {
+    let project = PersistentProject::new();
+    let provider = ProjectReviewRepositoryProvider::new(project.root(), project.project_id);
+    drop(provider.open_writer().unwrap());
+    let foreign = review_draft(
+        ProjectId::from_u128(99),
+        ReviewStreamId::from_u128(1),
+        ReviewRoundId::from_u128(11),
+    );
+    fs::write(
+        project
+            .reviews()
+            .join(format!("drafts/{}.json", foreign.review_round_id)),
+        encode_draft(&foreign).unwrap(),
+    )
+    .unwrap();
+
+    assert_eq!(
+        provider.inspect(),
+        Err(ReviewRepositoryError::RecoveryRequired)
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn provider_refuses_a_symlinked_draft_without_following_it() {
+    use std::os::unix::fs::symlink;
+
+    let project = PersistentProject::new();
+    let provider = ProjectReviewRepositoryProvider::new(project.root(), project.project_id);
+    drop(provider.open_writer().unwrap());
+    let outside = tempfile::NamedTempFile::new().unwrap();
+    symlink(
+        outside.path(),
+        project
+            .reviews()
+            .join("drafts/00000000-0000-0000-0000-00000000000b.json"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        provider.inspect(),
+        Err(ReviewRepositoryError::RecoveryRequired)
+    );
+}
+
+#[test]
+fn provider_writer_lease_is_held_by_the_returned_port_until_drop() {
+    let project = PersistentProject::new();
+    let provider = ProjectReviewRepositoryProvider::new(project.root(), project.project_id);
+    let first = provider.open_writer().unwrap();
+
+    assert!(matches!(
+        provider.open_writer(),
+        Err(ReviewRepositoryError::Busy)
+    ));
+    drop(first);
+    assert!(provider.open_writer().is_ok());
+}
+
+#[test]
+fn delete_draft_checks_exact_ownership_and_never_touches_completed_history() {
+    let project = PersistentProject::new();
+    let provider = ProjectReviewRepositoryProvider::new(project.root(), project.project_id);
+    let writer = provider.open_writer().unwrap();
+    let draft = review_draft(
+        project.project_id,
+        ReviewStreamId::from_u128(1),
+        ReviewRoundId::from_u128(11),
+    );
+    writer.save_draft(&draft).unwrap();
+
+    assert_eq!(
+        writer.delete_draft(ReviewStreamId::from_u128(99), draft.review_round_id),
+        Err(ReviewRepositoryError::InvalidData)
+    );
+    assert_eq!(
+        writer
+            .load_draft(draft.review_stream_id, draft.review_round_id)
+            .unwrap(),
+        Some(draft.clone())
+    );
+
+    writer
+        .delete_draft(draft.review_stream_id, draft.review_round_id)
+        .unwrap();
+    assert_eq!(
+        writer.delete_draft(draft.review_stream_id, draft.review_round_id),
+        Err(ReviewRepositoryError::NotFound)
+    );
+
+    let completed = completed_round(project.project_id, 1, 21, None);
+    writer.publish(&completed).unwrap();
+    assert_eq!(
+        writer.delete_draft(completed.review_stream_id, completed.review_round_id),
+        Err(ReviewRepositoryError::NotFound)
+    );
+    assert_eq!(
+        writer
+            .load_completed(completed.review_stream_id, completed.review_round_id)
+            .unwrap(),
+        Some(completed)
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn failed_draft_deletion_keeps_the_draft_readable() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let project = PersistentProject::new();
+    let provider = ProjectReviewRepositoryProvider::new(project.root(), project.project_id);
+    let writer = provider.open_writer().unwrap();
+    let draft = review_draft(
+        project.project_id,
+        ReviewStreamId::from_u128(1),
+        ReviewRoundId::from_u128(11),
+    );
+    writer.save_draft(&draft).unwrap();
+    let drafts_directory = project.reviews().join("drafts");
+    fs::set_permissions(&drafts_directory, fs::Permissions::from_mode(0o555)).unwrap();
+
+    let delete_result = writer.delete_draft(draft.review_stream_id, draft.review_round_id);
+    let readable_result = writer.load_draft(draft.review_stream_id, draft.review_round_id);
+    fs::set_permissions(&drafts_directory, fs::Permissions::from_mode(0o755)).unwrap();
+
+    assert_eq!(delete_result, Err(ReviewRepositoryError::Unavailable));
+    assert_eq!(readable_result.unwrap(), Some(draft));
 }

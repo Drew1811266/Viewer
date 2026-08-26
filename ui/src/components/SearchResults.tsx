@@ -1,4 +1,4 @@
-import type { UIEvent } from 'react'
+import type { KeyboardEvent, MouseEvent, UIEvent } from 'react'
 import { useEffect, useMemo, useState } from 'react'
 import type { MatchRange, SearchHit, SearchPage, SearchQueryModel } from '../api/types'
 import ViewerButton from './ui/ViewerButton'
@@ -17,6 +17,8 @@ interface SearchResultsProps {
   onSearchProject: () => void
   onReturnToFolder: () => void
   searching: boolean
+  selectedEntityIds?: string[]
+  onSelectionChange?: (entityIds: string[]) => void
 }
 
 type ResultRow =
@@ -40,6 +42,8 @@ export default function SearchResults({
   onSearchProject,
   onReturnToFolder,
   searching,
+  selectedEntityIds = [],
+  onSelectionChange,
 }: SearchResultsProps) {
   const [scrollTop, setScrollTop] = useState(0)
   const rows = useMemo(() => resultRows(page.hits, query.layout), [page.hits, query.layout])
@@ -62,6 +66,7 @@ export default function SearchResults({
     () => visibleRows.flatMap((row) => (row.type === 'hit' ? [row.hit.entityId] : [])),
     [visibleRows],
   )
+  const selectedIds = useMemo(() => new Set(selectedEntityIds), [selectedEntityIds])
   useEffect(() => onVisibleHits(visibleIds), [onVisibleHits, visibleIds])
 
   if (page.total === 0) {
@@ -149,7 +154,13 @@ export default function SearchResults({
                     <span>{row.count} 项</span>
                   </div>
                 ) : (
-                  <ResultItem hit={row.hit} snippet={snippets[row.hit.entityId]} />
+                  <ResultItem
+                    hit={row.hit}
+                    snippet={snippets[row.hit.entityId]}
+                    selected={selectedIds.has(row.hit.entityId)}
+                    selectedEntityIds={selectedEntityIds}
+                    onSelectionChange={onSelectionChange}
+                  />
                 )}
               </div>
             )
@@ -182,7 +193,19 @@ export default function SearchResults({
   )
 }
 
-function ResultItem({ hit, snippet }: { hit: SearchHit; snippet: string | null | undefined }) {
+function ResultItem({
+  hit,
+  snippet,
+  selected,
+  selectedEntityIds,
+  onSelectionChange,
+}: {
+  hit: SearchHit
+  snippet: string | null | undefined
+  selected: boolean
+  selectedEntityIds: string[]
+  onSelectionChange?: (entityIds: string[]) => void
+}) {
   const nameRanges =
     hit.matchedField === 'filename' || hit.matchedField === 'exact_filename' ? hit.matchRanges : []
   const pathRanges = hit.matchedField === 'path' ? hit.matchRanges : []
@@ -190,9 +213,17 @@ function ResultItem({ hit, snippet }: { hit: SearchHit; snippet: string | null |
     <div
       className="search-result-item"
       role="option"
-      tabIndex={undefined}
+      tabIndex={onSelectionChange === undefined ? undefined : 0}
       aria-label={`${hit.name} ${hit.relativePath}`}
-      aria-selected="false"
+      aria-selected={selected}
+      onClick={(event) =>
+        selectSearchResult(event, hit.entityId, selectedEntityIds, onSelectionChange)
+      }
+      onKeyDown={(event) => {
+        if (event.key !== 'Enter' && event.key !== ' ') return
+        event.preventDefault()
+        selectSearchResult(event, hit.entityId, selectedEntityIds, onSelectionChange)
+      }}
     >
       <div className="search-result-type" aria-hidden="true">
         <ViewerStatusTag tone="neutral">{fileKindLabel(hit.kind)}</ViewerStatusTag>
@@ -222,6 +253,23 @@ function ResultItem({ hit, snippet }: { hit: SearchHit; snippet: string | null |
       </div>
     </div>
   )
+}
+
+function selectSearchResult(
+  event: Pick<MouseEvent | KeyboardEvent, 'metaKey' | 'ctrlKey'>,
+  entityId: string,
+  selectedEntityIds: string[],
+  onSelectionChange: ((entityIds: string[]) => void) | undefined,
+) {
+  if (onSelectionChange === undefined) return
+  if (!event.metaKey && !event.ctrlKey) {
+    onSelectionChange([entityId])
+    return
+  }
+  const selected = new Set(selectedEntityIds)
+  if (selected.has(entityId)) selected.delete(entityId)
+  else selected.add(entityId)
+  onSelectionChange([...selected])
 }
 
 function HighlightedText({ value, ranges }: { value: string; ranges: MatchRange[] }) {

@@ -24,6 +24,24 @@ const VIDEO_ACCEPTANCE_SCENE_IDS = [
   'video-reduced-motion',
 ]
 
+const REVIEW_ACCEPTANCE_STATES = [
+  ['RVW-01', 'review-start-selection'],
+  ['RVW-02', 'review-start-folder-aggregate'],
+  ['RVW-03', 'review-active-grid'],
+  ['RVW-04', 'review-active-preview'],
+  ['RVW-05', 'review-inspector-multi-target'],
+  ['RVW-06', 'review-save-error'],
+  ['RVW-07', 'review-resume'],
+  ['RVW-08', 'review-writer-busy'],
+  ['RVW-09', 'review-read-only'],
+  ['RVW-10', 'review-completion-summary'],
+  ['RVW-11', 'review-version-conflict'],
+  ['RVW-12', 'review-recovery-required'],
+  ['RVW-13', 'review-completed-read-only'],
+  ['RVW-14', 'review-keyboard-focus'],
+  ['RVW-15', 'review-zoom-200'],
+] as const
+
 function ledgerStates(): LedgerState[] {
   const source = readFileSync(
     resolve(
@@ -69,11 +87,9 @@ function ledgerStates(): LedgerState[] {
 describe('Viewer visual acceptance state catalog', () => {
   it('matches every ledger ID, wave and atlas reference state exactly once', () => {
     const expected = ledgerStates()
-    const actual = ACCEPTANCE_STATE_DEFINITIONS.map(({ id, wave, referenceState }) => ({
-      id,
-      wave,
-      referenceState,
-    }))
+    const actual = ACCEPTANCE_STATE_DEFINITIONS.filter(
+      ({ sceneGroup }) => sceneGroup !== 'review',
+    ).map(({ id, wave, referenceState }) => ({ id, wave, referenceState }))
 
     expect(actual).toHaveLength(104)
     expect(new Set(actual.map(({ id }) => id)).size).toBe(104)
@@ -85,7 +101,18 @@ describe('Viewer visual acceptance state catalog', () => {
 
     expect(videos.map(({ id }) => id)).toEqual(VIDEO_ACCEPTANCE_SCENE_IDS)
     expect(videos.map(({ referenceState }) => referenceState)).toEqual(VIDEO_ACCEPTANCE_SCENE_IDS)
-    expect(new Set(ACCEPTANCE_STATE_DEFINITIONS.map(({ id }) => id)).size).toBe(104)
+    expect(new Set(ACCEPTANCE_STATE_DEFINITIONS.map(({ id }) => id)).size).toBe(119)
+  })
+
+  it('adds the exact exception-driven review acceptance states as a separate catalog group', () => {
+    const reviews = ACCEPTANCE_STATE_DEFINITIONS.filter(({ sceneGroup }) => sceneGroup === 'review')
+
+    expect(reviews.map(({ id, referenceState }) => [id, referenceState])).toEqual(
+      REVIEW_ACCEPTANCE_STATES,
+    )
+    expect(reviews.every(({ wave }) => wave === 4)).toBe(true)
+    expect(ACCEPTANCE_STATE_DEFINITIONS).toHaveLength(119)
+    expect(new Set(ACCEPTANCE_STATE_DEFINITIONS.map(({ id }) => id)).size).toBe(119)
   })
 
   it('fails closed for an unknown visual acceptance state', () => {

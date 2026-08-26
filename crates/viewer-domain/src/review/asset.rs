@@ -1,5 +1,5 @@
 use super::ReviewValueError;
-use crate::{AssetVersionId, RelativePath};
+use crate::{AssetVersionId, EntityId, RelativePath};
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct ProductionId(String);
@@ -45,8 +45,8 @@ pub enum ReviewAssetKind {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ReviewMedia {
     Image {
-        width: u32,
-        height: u32,
+        width: Option<u32>,
+        height: Option<u32>,
     },
     Video {
         duration_us: Option<u64>,
@@ -58,6 +58,7 @@ pub enum ReviewMedia {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AssetVersion {
     pub id: AssetVersionId,
+    pub source_entity_id: Option<EntityId>,
     pub relative_path: RelativePath,
     pub evidence: AssetEvidence,
     pub media: ReviewMedia,

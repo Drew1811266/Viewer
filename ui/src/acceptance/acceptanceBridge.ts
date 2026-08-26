@@ -180,6 +180,39 @@ export function createAcceptanceBridge(overrides: AcceptanceBridgeOverrides = {}
     async beginFinderDrag() {
       return unexpected('beginFinderDrag')
     },
+    async reviewStatus() {
+      return idleReviewSnapshot()
+    },
+    async reviewPreviewStart() {
+      return unexpected('reviewPreviewStart')
+    },
+    async reviewStart() {
+      return unexpected('reviewStart')
+    },
+    async reviewResume() {
+      return unexpected('reviewResume')
+    },
+    async reviewAddFeedback() {
+      return unexpected('reviewAddFeedback')
+    },
+    async reviewUpdateFeedback() {
+      return unexpected('reviewUpdateFeedback')
+    },
+    async reviewDeleteFeedback() {
+      return unexpected('reviewDeleteFeedback')
+    },
+    async reviewCompletionSummary() {
+      return unexpected('reviewCompletionSummary')
+    },
+    async reviewComplete() {
+      return unexpected('reviewComplete')
+    },
+    async reviewAbandon() {
+      return unexpected('reviewAbandon')
+    },
+    async reviewCancelTask() {
+      return false
+    },
     async videoOpen() {
       return unexpected('videoOpen')
     },
@@ -246,6 +279,9 @@ export function createAcceptanceBridge(overrides: AcceptanceBridgeOverrides = {}
     async listenVideo() {
       return noOpUnlisten
     },
+    async listenReviewProgress() {
+      return noOpUnlisten
+    },
     async listenProjectClosed() {
       return noOpUnlisten
     },
@@ -292,6 +328,22 @@ function markerChange(entityId: string, marker: Marker) {
 }
 
 function noOpUnlisten() {}
+
+function idleReviewSnapshot() {
+  return {
+    phase: 'idle' as const,
+    resume: null,
+    reviewStreamId: null,
+    reviewRoundId: null,
+    revision: 0,
+    members: [],
+    feedback: [],
+    unreviewable: [],
+    conflicts: [],
+    counts: { total: 0, feedbackItems: 0, revise: 0, unreviewable: 0, pass: 0 },
+    error: null,
+  }
+}
 
 function unexpected<T>(method: string): Promise<T> {
   return Promise.reject(new Error(`Unexpected acceptance bridge call: ${method}`))

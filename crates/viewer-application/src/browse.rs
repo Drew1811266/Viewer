@@ -136,6 +136,12 @@ pub enum BrowseIndexError {
 pub trait BrowseIndexPort: Send + Sync {
     fn all_folders(&self) -> Result<Vec<FileNode>, BrowseIndexError>;
     fn all_indexed_nodes(&self) -> Result<Vec<IndexedNode>, BrowseIndexError>;
+    fn indexed_node(&self, entity_id: EntityId) -> Result<Option<IndexedNode>, BrowseIndexError> {
+        Ok(self
+            .all_indexed_nodes()?
+            .into_iter()
+            .find(|indexed| indexed.node.entity_id == entity_id))
+    }
     fn node(&self, entity_id: EntityId) -> Result<Option<FileNode>, BrowseIndexError>;
     fn node_by_relative_path(
         &self,

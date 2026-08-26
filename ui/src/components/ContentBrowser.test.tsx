@@ -2189,6 +2189,20 @@ describe('ContentBrowser', () => {
     expect(screen.queryByText('未标记')).not.toBeInTheDocument()
     expect(screen.getByText('保留 · 收藏')).toBeVisible()
   })
+
+  it('projects an external fixed-member selection through the existing browser', () => {
+    const rendered = render(
+      <ContentBrowser workspace={workspace(2)} selectedEntityIds={['image-2']} />,
+    )
+    expect(screen.getByRole('option', { name: '2.jpg' })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('status', { name: '选择摘要' })).toHaveTextContent('已选择 1 项')
+
+    rendered.rerender(
+      <ContentBrowser workspace={workspace(2)} selectedEntityIds={['image-1', 'image-2']} />,
+    )
+    expect(screen.getByRole('option', { name: '1.jpg' })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('status', { name: '选择摘要' })).toHaveTextContent('已选择 2 项')
+  })
 })
 
 function itemWrapper(entityId: string): HTMLElement {

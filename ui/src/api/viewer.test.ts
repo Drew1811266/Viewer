@@ -23,6 +23,98 @@ afterEach(() => {
 })
 
 describe('tauriViewerBridge', () => {
+  it('maps every review operation and the progress event to the native contract', async () => {
+    const unlisten = vi.fn()
+    let receive: ((event: { payload: unknown }) => void) | undefined
+    listen.mockImplementation(async (_event, handler) => {
+      receive = handler
+      return unlisten
+    })
+    const progress = vi.fn()
+    const session = { sessionId: 'session-1', generation: 7 }
+    const guard = { ...session, reviewRoundId: 'round-1', expectedRevision: 4 }
+
+    await tauriViewerBridge.reviewStatus(session)
+    await tauriViewerBridge.reviewPreviewStart({
+      ...session,
+      scope: { kind: 'selection', entityIds: ['image-1', 'video-1'] },
+    })
+    await tauriViewerBridge.reviewStart({ ...session, proposalId: 11 })
+    await tauriViewerBridge.reviewResume(session)
+    await tauriViewerBridge.reviewAddFeedback({
+      ...guard,
+      text: '降低高光强度',
+      targetEntityIds: ['image-1'],
+    })
+    await tauriViewerBridge.reviewUpdateFeedback({
+      ...guard,
+      feedbackId: 'feedback-1',
+      text: '进一步降低高光强度',
+      targetEntityIds: ['image-1'],
+    })
+    await tauriViewerBridge.reviewDeleteFeedback({ ...guard, feedbackId: 'feedback-1' })
+    await tauriViewerBridge.reviewCompletionSummary(guard)
+    await tauriViewerBridge.reviewComplete({ ...guard, proposalId: 12 })
+    await tauriViewerBridge.reviewAbandon(guard)
+    await tauriViewerBridge.reviewCancelTask(session)
+    const stop = await tauriViewerBridge.listenReviewProgress(progress)
+
+    expect(invoke.mock.calls).toEqual([
+      ['review_status', { request: session }],
+      [
+        'review_preview_start',
+        {
+          request: {
+            ...session,
+            scope: { kind: 'selection', entityIds: ['image-1', 'video-1'] },
+          },
+        },
+      ],
+      ['review_start', { request: { ...session, proposalId: 11 } }],
+      ['review_resume', { request: session }],
+      [
+        'review_add_feedback',
+        {
+          request: {
+            ...guard,
+            text: '降低高光强度',
+            targetEntityIds: ['image-1'],
+          },
+        },
+      ],
+      [
+        'review_update_feedback',
+        {
+          request: {
+            ...guard,
+            feedbackId: 'feedback-1',
+            text: '进一步降低高光强度',
+            targetEntityIds: ['image-1'],
+          },
+        },
+      ],
+      ['review_delete_feedback', { request: { ...guard, feedbackId: 'feedback-1' } }],
+      ['review_completion_summary', { request: guard }],
+      ['review_complete', { request: { ...guard, proposalId: 12 } }],
+      ['review_abandon', { request: guard }],
+      ['review_cancel_task', { request: session }],
+    ])
+    expect(listen).toHaveBeenCalledWith('viewer://review-progress', expect.any(Function))
+
+    const event = {
+      sessionId: 'session-1',
+      generation: 7,
+      taskKind: 'start',
+      completed: 2,
+      total: 3,
+      cancellable: true,
+    }
+    receive?.({ payload: event })
+    expect(progress).toHaveBeenCalledWith(event)
+    stop()
+    expect(unlisten).toHaveBeenCalledOnce()
+  })
+
   it('maps every video operation and event to its one matching native contract', async () => {
     const handler = vi.fn()
 

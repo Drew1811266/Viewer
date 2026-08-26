@@ -1,11 +1,109 @@
 use serde::Serialize;
 use viewer_application::{
     BrowseError, BrowseIndexError, FinderDragError, ImageError, ProjectOpenError,
-    ProjectProbeError, TextPreviewError, ViewerSettingsError,
+    ProjectProbeError, ReviewSessionError, TextPreviewError, ViewerSettingsError,
     metadata::{MarkerServiceError, MarkerStoreError},
     search::SearchError,
     undo::{UndoError, UndoServiceError},
 };
+
+impl From<ReviewSessionError> for CommandError {
+    fn from(error: ReviewSessionError) -> Self {
+        let (code, category, message, retryable) = match error {
+            ReviewSessionError::ReadOnly => (
+                "review_read_only",
+                ErrorCategory::Conflict,
+                "当前项目为只读，不能修改评审。",
+                false,
+            ),
+            ReviewSessionError::Busy => (
+                "review_busy",
+                ErrorCategory::Conflict,
+                "另一个 Viewer 正在修改该项目的评审，请稍后重试。",
+                true,
+            ),
+            ReviewSessionError::StaleRound => (
+                "review_stale_round",
+                ErrorCategory::Conflict,
+                "评审轮次已变化，请刷新后重试。",
+                true,
+            ),
+            ReviewSessionError::StaleRevision => (
+                "review_stale_revision",
+                ErrorCategory::Conflict,
+                "评审内容已变化，请刷新后重试。",
+                true,
+            ),
+            ReviewSessionError::StaleProposal | ReviewSessionError::StaleCompletionProposal => (
+                "review_proposal_stale",
+                ErrorCategory::Conflict,
+                "评审确认信息已过期，请重新确认。",
+                true,
+            ),
+            ReviewSessionError::CompletionChanged => (
+                "review_completion_changed",
+                ErrorCategory::Conflict,
+                "素材状态在确认后发生变化，请重新检查完成摘要。",
+                true,
+            ),
+            ReviewSessionError::CompletionBlocked => (
+                "review_pending_validation",
+                ErrorCategory::Conflict,
+                "仍有素材冲突或等待验证，暂时不能完成评审。",
+                true,
+            ),
+            ReviewSessionError::RecoveryRequired => (
+                "review_recovery_required",
+                ErrorCategory::Consistency,
+                "评审记录需要恢复处理；普通素材浏览仍可继续。",
+                false,
+            ),
+            ReviewSessionError::UnsupportedVersion => (
+                "review_unsupported_version",
+                ErrorCategory::Consistency,
+                "该项目的评审协议版本暂不受支持；普通素材浏览仍可继续。",
+                false,
+            ),
+            ReviewSessionError::ScopeChanged | ReviewSessionError::DraftAlreadyActive => (
+                "review_version_conflict",
+                ErrorCategory::Conflict,
+                "评审范围或活动轮次已变化，请刷新后重试。",
+                true,
+            ),
+            ReviewSessionError::EmptyScope
+            | ReviewSessionError::InvalidFeedback
+            | ReviewSessionError::FeedbackNotFound
+            | ReviewSessionError::InvalidData => (
+                "review_invalid_data",
+                ErrorCategory::Validation,
+                "评审请求无效，请刷新后重试。",
+                false,
+            ),
+            ReviewSessionError::Cancelled => (
+                "review_cancelled",
+                ErrorCategory::Conflict,
+                "评审任务已取消。",
+                true,
+            ),
+            ReviewSessionError::InvalidState => (
+                "review_invalid_state",
+                ErrorCategory::Conflict,
+                "当前评审状态不支持该操作。",
+                false,
+            ),
+            ReviewSessionError::AbandonFailed
+            | ReviewSessionError::SaveFailed
+            | ReviewSessionError::RepositoryUnavailable
+            | ReviewSessionError::AssetUnavailable => (
+                "review_unavailable",
+                ErrorCategory::Environment,
+                "评审数据当前不可用，请稍后重试。",
+                true,
+            ),
+        };
+        Self::new(code, category, message, retryable)
+    }
+}
 
 impl From<FinderDragError> for CommandError {
     fn from(error: FinderDragError) -> Self {

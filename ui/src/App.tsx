@@ -2,6 +2,8 @@ import type { MutableRefObject } from 'react'
 import { useCallback, useMemo, useRef } from 'react'
 import type { ViewerBridge } from './api/viewer'
 import { tauriViewerBridge } from './api/viewer'
+import { deriveReviewScope } from './app/review/reviewModel'
+import { useReviewSessionCoordinator } from './app/review/useReviewSessionCoordinator'
 import type { WorkspaceIntentSink } from './app/workspace/intents'
 import { createWorkspacePorts } from './app/workspace/ports'
 import { useFeedbackCoordinator } from './app/workspace/useFeedbackCoordinator'
@@ -12,6 +14,7 @@ import WorkspaceProjectView from './app/workspace/WorkspaceProjectView'
 import EmptyProject from './components/EmptyProject'
 import type { Point } from './components/imagePreview/imageGeometry'
 import { useLatestPointerClientPoint } from './components/imagePreview/useLatestPointerClientPoint'
+import ReviewWorkspaceLayer, { ReviewToolbarAction } from './components/review/ReviewWorkspaceLayer'
 import { useViewerSettings, ViewerSettingsProvider } from './settings/ViewerSettingsProvider'
 import { useViewerController } from './state/useViewerController'
 
@@ -87,6 +90,44 @@ function ViewerWorkspace({
     finderDragMessage: organization.finderDragMessage,
     workspaceActionError: shell.workspaceActionError,
   })
+  const reviewSelectedEntityIds = state.search.showResults
+    ? state.selectedEntityIds
+    : organization.selectedFiles.map((file) => file.entityId)
+  const review = useReviewSessionCoordinator({
+    port: ports.review,
+    sessionId: state.project?.sessionId ?? 'no-session',
+    generation: state.project?.generation ?? 0,
+    selectedEntityIds: reviewSelectedEntityIds,
+    enabled: state.project !== null,
+  })
+  const reviewScope = deriveReviewScope(
+    state.search.showResults
+      ? { kind: 'search', selectedEntityIds: reviewSelectedEntityIds }
+      : {
+          kind: 'folder',
+          folderId: state.projectionTransition?.selectedFolderId ?? state.selectedFolderId,
+          includeDescendants:
+            state.projectionTransition?.showingAggregate ?? state.showingAggregate,
+          selectedEntityIds: reviewSelectedEntityIds,
+        },
+  )
+  const returnToReviewMembers = useCallback(
+    async (entityIds: string[]) => {
+      controller.returnToFolderContext()
+      await controller.selectFolder(null)
+      await controller.showAllDescendants()
+      controller.setSelectedEntityIds(entityIds)
+    },
+    [
+      controller.returnToFolderContext,
+      controller.selectFolder,
+      controller.setSelectedEntityIds,
+      controller.showAllDescendants,
+    ],
+  )
+  const reselectProject = useCallback(() => {
+    review.requestDiscard('context_replacement', () => void controller.reselectProject())
+  }, [controller.reselectProject, review.requestDiscard])
 
   intentTargetRef.current = (intent) => {
     switch (intent.kind) {
@@ -110,7 +151,7 @@ function ViewerWorkspace({
         else shell.openInfo()
         return
       case 'close-project':
-        void controller.closeProject()
+        review.requestDiscard('project_close', () => void controller.closeProject())
     }
   }
 
@@ -140,6 +181,22 @@ function ViewerWorkspace({
       feedback={feedback}
       emitIntent={emitIntent}
       pointerClientPoint={pointerClientPoint}
+      reviewToolbarAction={
+        <ReviewToolbarAction
+          review={review}
+          scope={reviewScope}
+          projectAccess={state.project.access}
+        />
+      }
+      reviewLayer={
+        <ReviewWorkspaceLayer
+          review={review}
+          selectedEntityIds={reviewSelectedEntityIds}
+          projectAccess={state.project.access}
+          onReturnToMembers={(entityIds) => void returnToReviewMembers(entityIds)}
+        />
+      }
+      onReselectProject={reselectProject}
     />
   )
 }

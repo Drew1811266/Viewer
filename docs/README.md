@@ -29,6 +29,8 @@
 | [architecture/viewer-0.1-api-baseline.md](architecture/viewer-0.1-api-baseline.md) | Active | — |
 | [2026-08-24-viewer-architecture-governance-and-workspace-orchestration-design.md](superpowers/specs/2026-08-24-viewer-architecture-governance-and-workspace-orchestration-design.md) | Active | — |
 | [2026-08-25-viewer-ai-material-review-workflow-design.md](superpowers/specs/2026-08-25-viewer-ai-material-review-workflow-design.md) | Active | — |
+| [2026-08-25-viewer-exception-driven-review-loop-design.md](superpowers/specs/2026-08-25-viewer-exception-driven-review-loop-design.md) | Active | — |
+| [2026-08-25-viewer-exception-driven-review-loop.md](superpowers/plans/2026-08-25-viewer-exception-driven-review-loop.md) | Active | — |
 | [2026-08-25-viewer-open-review-protocol-foundation.md](superpowers/plans/2026-08-25-viewer-open-review-protocol-foundation.md) | Active | — |
 | [2026-08-24-viewer-architecture-boundary-governance.md](superpowers/plans/2026-08-24-viewer-architecture-boundary-governance.md) | Active | — |
 | [2026-08-24-viewer-workspace-orchestration-refactor.md](superpowers/plans/2026-08-24-viewer-workspace-orchestration-refactor.md) | Active | — |
@@ -37,6 +39,9 @@
 | [adr/0002-file-transaction-protocol.md](adr/0002-file-transaction-protocol.md) | Active | — |
 | [adr/0003-scan-search-and-generation.md](adr/0003-scan-search-and-generation.md) | Active | — |
 | [adr/0005-continuous-development-governance.md](adr/0005-continuous-development-governance.md) | Active | — |
+
+AI 素材评审路线阶段 2 已于 2026-08-26 完成：设计文档内部状态为 `Implemented`，实施计划
+内部状态为 `Complete`。两份文档继续以 Active 治理资料保留，用于约束未来阶段的依赖边界。
 
 ## 历史目标、设计与实施资料
 

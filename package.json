@@ -33,7 +33,8 @@
     "test:video:packaging": "node --test scripts/video/runtime-lock.test.mjs scripts/video/runtime-verifier.test.mjs scripts/video/release-packaging.test.mjs",
     "test:policy": "node --test scripts/repository-policy.test.mjs scripts/scope-coverage.test.mjs && node scripts/check-scope-coverage.mjs",
     "test:review-protocol": "node --test scripts/review-protocol/read-latest.test.mjs",
-    "quality": "pnpm test:policy && pnpm test:review-protocol && pnpm architecture:boundaries && pnpm test:video:packaging && node --test scripts/verify-clean.test.mjs && pnpm --dir ui check && pnpm --dir ui test && pnpm --dir ui build && cargo fmt --check && cargo clippy --locked --workspace --all-targets -- -D warnings && cargo test --locked --workspace",
+    "test:review-loop": "node --test scripts/review-protocol/manual-round-e2e.test.mjs",
+    "quality": "pnpm test:policy && pnpm test:review-protocol && pnpm test:review-loop && pnpm architecture:boundaries && pnpm test:video:packaging && node --test scripts/verify-clean.test.mjs && pnpm --dir ui check && pnpm --dir ui test && pnpm --dir ui build && cargo fmt --check && cargo clippy --locked --workspace --all-targets -- -D warnings && cargo test --locked --workspace",
     "security": "./scripts/check-tauri-security.sh && cargo deny --offline --locked check bans licenses sources && node scripts/check-npm-licenses.mjs && pnpm video:licenses:verify",
     "verify": "pnpm quality && pnpm security",
     "verify:clean": "node scripts/verify-clean.mjs"

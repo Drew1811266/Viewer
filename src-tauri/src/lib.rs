@@ -106,6 +106,12 @@ impl state::DesktopEventSink for TauriEventSink {
         }
     }
 
+    fn emit_review(&self, event: dto::ReviewProgressDto) {
+        if let Some(app) = self.0.get() {
+            let _ = app.emit("viewer://review-progress", event);
+        }
+    }
+
     fn emit_operation(
         &self,
         session_id: viewer_domain::SessionId,
@@ -227,6 +233,17 @@ pub fn run() {
             commands::markers::set_review_state,
             commands::markers::toggle_favorite,
             commands::markers::selection_info,
+            commands::review::review_status,
+            commands::review::review_preview_start,
+            commands::review::review_start,
+            commands::review::review_resume,
+            commands::review::review_add_feedback,
+            commands::review::review_update_feedback,
+            commands::review::review_delete_feedback,
+            commands::review::review_completion_summary,
+            commands::review::review_complete,
+            commands::review::review_abandon,
+            commands::review::review_cancel_task,
             commands::operations::preview_rename,
             commands::operations::preflight_file_command,
             commands::operations::execute_file_command,

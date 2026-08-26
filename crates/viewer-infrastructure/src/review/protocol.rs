@@ -525,6 +525,11 @@ fn parse_asset(stored: StoredAsset) -> Result<AssetVersion, ReviewProtocolError>
     };
     Ok(AssetVersion {
         id: parse_id(&stored.asset_version_id)?,
+        source_entity_id: stored
+            .source_entity_id
+            .as_deref()
+            .map(parse_id)
+            .transpose()?,
         relative_path: parse_relative_path(&stored.relative_path)?,
         evidence: AssetEvidence {
             size_bytes: stored.evidence.size_bytes,
@@ -560,6 +565,7 @@ fn stored_asset(asset: &AssetVersion) -> StoredAsset {
     };
     StoredAsset {
         asset_version_id: asset.id.to_string(),
+        source_entity_id: asset.source_entity_id.map(|id| id.to_string()),
         relative_path: asset.relative_path.as_str().to_owned(),
         evidence: StoredEvidence {
             size_bytes: asset.evidence.size_bytes,
@@ -898,6 +904,8 @@ enum StoredCompletedStatus {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct StoredAsset {
     asset_version_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    source_entity_id: Option<String>,
     relative_path: String,
     evidence: StoredEvidence,
     media: StoredMedia,
@@ -925,8 +933,10 @@ struct StoredEvidence {
 )]
 enum StoredMedia {
     Image {
-        width: u32,
-        height: u32,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        width: Option<u32>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        height: Option<u32>,
     },
     Video {
         #[serde(skip_serializing_if = "Option::is_none")]

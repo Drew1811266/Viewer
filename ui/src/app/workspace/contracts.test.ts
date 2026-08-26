@@ -11,6 +11,11 @@ const appSource = source('src/App.tsx')
 const organizationSource = source('src/app/workspace/useOrganizationCoordinator.ts')
 const viewingSource = source('src/app/workspace/useViewingCoordinator.ts')
 const feedbackSource = source('src/app/workspace/useFeedbackCoordinator.ts')
+const reviewCoordinatorSource = source('src/app/review/useReviewSessionCoordinator.ts')
+const reviewModelSource = source('src/app/review/reviewModel.ts')
+const workspaceViewSource = source('src/app/workspace/WorkspaceProjectView.tsx')
+const reviewLayerSource = source('src/components/review/ReviewWorkspaceLayer.tsx')
+const reviewInspectorSource = source('src/components/review/ReviewInspector.tsx')
 const emptyProjectSource = source('src/components/EmptyProject.tsx')
 const settingsSource = source('src/components/SettingsDialog.tsx')
 const videoPreviewSource = source('src/components/VideoPreview.tsx')
@@ -78,6 +83,20 @@ describe('workspace contracts', () => {
     ])
     expect('closeProject' in ports.emptyProject).toBe(false)
     expect(Object.keys(ports.shell)).toEqual(['revealProjectInFileManager'])
+    expect(Object.keys(ports.review).sort()).toEqual([
+      'listenReviewProgress',
+      'reviewAbandon',
+      'reviewAddFeedback',
+      'reviewCancelTask',
+      'reviewComplete',
+      'reviewCompletionSummary',
+      'reviewDeleteFeedback',
+      'reviewPreviewStart',
+      'reviewResume',
+      'reviewStart',
+      'reviewStatus',
+      'reviewUpdateFeedback',
+    ])
   })
 
   it('keeps ViewerWorkspace as the typed composition boundary', () => {
@@ -89,6 +108,11 @@ describe('workspace contracts', () => {
     expect(appSource).toMatch(/useFeedbackCoordinator/)
     expect(appSource).toMatch(/useOrganizationCoordinator/)
     expect(appSource).toMatch(/useViewingCoordinator/)
+    expect(appSource).toMatch(/useReviewSessionCoordinator/)
+    expect(appSource).toMatch(/ReviewWorkspaceLayer/)
+    expect(workspaceViewSource).toMatch(/reviewToolbarAction/)
+    expect(workspaceViewSource).toMatch(/reviewLayer/)
+    expect(workspaceViewSource).not.toMatch(/ReviewWorkspaceLayer|ReviewInspector/)
     expect(organizationSource).not.toMatch(/useViewingCoordinator|useWorkspaceShellCoordinator/)
     expect(viewingSource).not.toMatch(/useOrganizationCoordinator|useWorkspaceShellCoordinator/)
     expect(feedbackSource).not.toMatch(/ViewerBridge|useViewerController/)
@@ -115,5 +139,17 @@ describe('workspace contracts', () => {
     expect(settingsSource).not.toMatch(/ViewerBridge/)
     expect(videoPreviewSource).toMatch(/VideoPreviewBridge/)
     expect(videoPreviewSource).not.toMatch(/ViewerBridge/)
+    expect(reviewCoordinatorSource).not.toMatch(
+      /@tauri-apps|ViewerBridge|useViewerController|ViewerState/,
+    )
+    expect(reviewModelSource).not.toMatch(
+      /@tauri-apps|ViewerBridge|useViewerController|ViewerState/,
+    )
+    expect(reviewLayerSource).not.toMatch(
+      /@tauri-apps|ViewerBridge|useViewerController|ViewerState/,
+    )
+    expect(reviewInspectorSource).not.toMatch(
+      /@tauri-apps|ViewerBridge|useViewerController|ViewerState/,
+    )
   })
 })

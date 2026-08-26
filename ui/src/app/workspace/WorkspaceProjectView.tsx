@@ -1,4 +1,4 @@
-import type { CSSProperties, MutableRefObject } from 'react'
+import type { CSSProperties, MutableRefObject, ReactNode } from 'react'
 import { useCallback, useRef } from 'react'
 import type { FolderTreeItem, RenamePreview, RenameRules } from '../../api/types'
 import BatchRenameDialog from '../../components/BatchRenameDialog'
@@ -53,7 +53,6 @@ export type WorkspaceViewCommands = Pick<
   | 'closeProject'
   | 'openPermissionSettings'
   | 'removeSearchFilter'
-  | 'reselectProject'
   | 'returnToFolderContext'
   | 'selectFolder'
   | 'setReviewState'
@@ -63,6 +62,7 @@ export type WorkspaceViewCommands = Pick<
   | 'setSearchScope'
   | 'setSearchSort'
   | 'setSearchText'
+  | 'setSelectedEntityIds'
   | 'setVisibleSearchHits'
   | 'showAllDescendants'
   | 'toggleFavorite'
@@ -81,6 +81,9 @@ export interface WorkspaceProjectViewProps {
   feedback: FeedbackCoordinator
   emitIntent: WorkspaceIntentSink
   pointerClientPoint: MutableRefObject<Point | null>
+  reviewToolbarAction: ReactNode
+  reviewLayer: ReactNode
+  onReselectProject(): void
 }
 
 export default function WorkspaceProjectView(props: WorkspaceProjectViewProps) {
@@ -130,9 +133,10 @@ export default function WorkspaceProjectView(props: WorkspaceProjectViewProps) {
         <ReadOnlyBanner
           busy={state.status === 'closing'}
           onOpenSettings={() => void commands.openPermissionSettings()}
-          onReselect={() => void commands.reselectProject()}
+          onReselect={props.onReselectProject}
         />
       )}
+      {props.reviewLayer}
       <WorkspaceColumns
         {...props}
         displayedFolderId={displayedFolderId}
@@ -182,6 +186,8 @@ function WorkspaceHeader({
   emitIntent,
   viewContext,
   moreMenuTriggerRef,
+  reviewToolbarAction,
+  onReselectProject,
 }: WorkspaceProjectViewProps & {
   viewContext: WorkspaceViewContext
   moreMenuTriggerRef: MutableRefObject<HTMLElement | null>
@@ -223,6 +229,7 @@ function WorkspaceHeader({
           onRemoveFilter={commands.removeSearchFilter}
           onClearFilters={commands.clearSearchFilters}
         />
+        {reviewToolbarAction}
         <WorkspaceViewMenu
           context={viewContext}
           open={shell.toolbarPopover.openPopover === 'view'}
@@ -236,7 +243,7 @@ function WorkspaceHeader({
           closing={state.status === 'closing'}
           onOpenSettings={() => emitIntent({ kind: 'open-settings' })}
           onOpenPermissionSettings={() => void commands.openPermissionSettings()}
-          onReselectProject={() => void commands.reselectProject()}
+          onReselectProject={onReselectProject}
           onCloseProject={() => emitIntent({ kind: 'close-project' })}
         />
       </div>
@@ -443,6 +450,8 @@ function WorkspaceSearchContent({
       onClearFilters={commands.clearSearchFilters}
       onSearchProject={() => commands.setSearchScope(null)}
       onReturnToFolder={commands.returnToFolderContext}
+      selectedEntityIds={state.selectedEntityIds}
+      onSelectionChange={commands.setSelectedEntityIds}
       searching={state.search.status === 'searching' || !state.search.page.progress.complete}
     />
   )
@@ -525,6 +534,7 @@ function ContentWorkspace({
           onOpenVideo={viewing.openVideoPreview}
           requestVideoCover={viewing.requestVideoCover}
           onSelectionChange={organization.selectFiles}
+          selectedEntityIds={state.selectedEntityIds}
           organizationDragDisabled={
             project.access !== 'read_write' || organization.operationBusy || viewing.compareOpen
           }

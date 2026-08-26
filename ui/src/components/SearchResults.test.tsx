@@ -123,6 +123,53 @@ describe('SearchResults', () => {
     )
   })
 
+  it('allows explicit search-result selection without treating the whole query as a scope', () => {
+    const selection = vi.fn()
+    const rendered = render(
+      <SearchResults
+        page={page()}
+        query={query}
+        snippets={{}}
+        offset={0}
+        limit={200}
+        onPageChange={vi.fn()}
+        onVisibleHits={vi.fn()}
+        onClearFilters={vi.fn()}
+        onSearchProject={vi.fn()}
+        onReturnToFolder={vi.fn()}
+        selectedEntityIds={[]}
+        onSelectionChange={selection}
+        searching={false}
+      />,
+    )
+    const first = screen.getByRole('option', { name: 'shoe.jpg 衣服 / A01 / shoe.jpg' })
+    const second = screen.getByRole('option', { name: 'prompt.txt 衣服 / A01 / prompt.txt' })
+    expect(first).toHaveAttribute('tabindex', '0')
+    fireEvent.click(first)
+    expect(selection).toHaveBeenLastCalledWith(['1'])
+
+    rendered.rerender(
+      <SearchResults
+        page={page()}
+        query={query}
+        snippets={{}}
+        offset={0}
+        limit={200}
+        onPageChange={vi.fn()}
+        onVisibleHits={vi.fn()}
+        onClearFilters={vi.fn()}
+        onSearchProject={vi.fn()}
+        onReturnToFolder={vi.fn()}
+        selectedEntityIds={['1']}
+        onSelectionChange={selection}
+        searching={false}
+      />,
+    )
+    expect(first).toHaveAttribute('aria-selected', 'true')
+    fireEvent.keyDown(second, { key: ' ', metaKey: true })
+    expect(selection).toHaveBeenLastCalledWith(['1', '2'])
+  })
+
   it('keeps the same formal result row structure in flat layout', () => {
     render(
       <SearchResults

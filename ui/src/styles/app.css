@@ -1,5 +1,6 @@
 @import url('./videoBrowser.css');
 @import url('./videoPreview.css');
+@import url('./review.css');
 
 :root {
   color: var(--viewer-text);
@@ -12,6 +13,12 @@
     "Microsoft YaHei UI",
     sans-serif;
   font-synthesis: none;
+}
+
+html,
+body,
+#root {
+  height: 100%;
 }
 
 * {
@@ -207,9 +214,12 @@ summary,
 }
 
 .viewer-shell {
+  container-name: viewer-shell;
+  container-type: inline-size;
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  height: 100%;
+  position: relative;
 }
 
 .workspace-header {
@@ -864,6 +874,10 @@ body:has(.viewer-inspector) .global-notice-stack {
   background: var(--viewer-accent-soft);
   outline: var(--viewer-focus-outline);
   outline-offset: var(--viewer-focus-offset);
+}
+
+.search-result-hit > .search-result-item[aria-selected='true'] {
+  background: var(--viewer-accent-soft);
 }
 
 .search-result-title {

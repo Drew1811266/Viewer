@@ -1,7 +1,13 @@
 import catalog from './acceptanceStateCatalog.json'
 
 export type AcceptanceWave = 1 | 2 | 3 | 4
-export type AcceptanceSceneGroup = 'workspace' | 'viewing' | 'dialog' | 'feedback' | 'video'
+export type AcceptanceSceneGroup =
+  | 'workspace'
+  | 'viewing'
+  | 'dialog'
+  | 'feedback'
+  | 'video'
+  | 'review'
 
 export interface AcceptanceStateDefinition {
   id: string
@@ -21,7 +27,8 @@ function isSceneGroup(value: string): value is AcceptanceSceneGroup {
     value === 'viewing' ||
     value === 'dialog' ||
     value === 'feedback' ||
-    value === 'video'
+    value === 'video' ||
+    value === 'review'
   )
 }
 

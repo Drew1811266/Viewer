@@ -277,13 +277,16 @@ function validateAssets(assets) {
     requireExactKeys(
       asset,
       [
-        'assetVersionId', 'relativePath', 'evidence', 'media', 'producerAssetId',
+        'assetVersionId', 'sourceEntityId', 'relativePath', 'evidence', 'media', 'producerAssetId',
         'parentAssetVersionId',
       ],
       label,
-      ['producerAssetId', 'parentAssetVersionId'],
+      ['sourceEntityId', 'producerAssetId', 'parentAssetVersionId'],
     )
     requireUuid(asset.assetVersionId, `${label} id`)
+    if (asset.sourceEntityId !== undefined) {
+      requireUuid(asset.sourceEntityId, `${label} source entity id`)
+    }
     if (ids.has(asset.assetVersionId)) throw new Error('completed round has duplicate asset identities')
     ids.add(asset.assetVersionId)
     if (typeof asset.relativePath !== 'string' || !isSafeRelativePath(asset.relativePath)) {
@@ -309,9 +312,20 @@ function validateAssets(assets) {
     }
     requireObject(asset.media, `${label} media`)
     if (asset.media.kind === 'image') {
-      requireExactKeys(asset.media, ['kind', 'width', 'height'], `${label} media`)
-      requirePositiveInteger(asset.media.width, `${label} image width`, MAX_U32)
-      requirePositiveInteger(asset.media.height, `${label} image height`, MAX_U32)
+      requireExactKeys(
+        asset.media,
+        ['kind', 'width', 'height'],
+        `${label} media`,
+        ['width', 'height'],
+      )
+      const hasWidth = asset.media.width !== undefined
+      if (hasWidth !== (asset.media.height !== undefined)) {
+        throw new Error(`${label} image dimensions are incomplete`)
+      }
+      if (hasWidth) {
+        requirePositiveInteger(asset.media.width, `${label} image width`, MAX_U32)
+        requirePositiveInteger(asset.media.height, `${label} image height`, MAX_U32)
+      }
     } else if (asset.media.kind === 'video') {
       requireExactKeys(
         asset.media,
@@ -420,6 +434,7 @@ function validateOutcomes(outcomes, assets, feedbackById) {
   requireArray(outcomes, 'completed round outcomes', 1, MAX_ASSETS)
   if (outcomes.length !== assets.length) throw new Error('completed round outcomes do not cover every asset')
   const assetIds = new Set(assets.map((asset) => asset.assetVersionId))
+  const assetsById = new Map(assets.map((asset) => [asset.assetVersionId, asset]))
   const outcomeIds = new Set()
   for (const [index, outcome] of outcomes.entries()) {
     const label = `outcome ${index}`
@@ -451,6 +466,12 @@ function validateOutcomes(outcomes, assets, feedbackById) {
       }
     } else {
       throw new Error(`${label} kind is invalid`)
+    }
+    const asset = assetsById.get(outcome.assetVersionId)
+    if (asset.media.kind === 'image'
+        && asset.media.width === undefined
+        && outcome.kind !== 'unreviewable') {
+      throw new Error(`${label} unavailable image bounds require an unreviewable outcome`)
     }
   }
 }

@@ -4,12 +4,13 @@ use viewer_domain::review::{
     ReviewRoundError, ReviewabilityFailure,
 };
 use viewer_domain::{
-    AssetVersionId, FeedbackId, ProjectId, RelativePath, ReviewRoundId, ReviewStreamId,
+    AssetVersionId, EntityId, FeedbackId, ProjectId, RelativePath, ReviewRoundId, ReviewStreamId,
 };
 
 fn image_asset(id: u128) -> AssetVersion {
     AssetVersion {
         id: AssetVersionId::from_u128(id),
+        source_entity_id: None,
         relative_path: RelativePath::parse(&format!("images/{id}.png")).unwrap(),
         evidence: AssetEvidence {
             size_bytes: 100,
@@ -17,8 +18,8 @@ fn image_asset(id: u128) -> AssetVersion {
             blake3: None,
         },
         media: ReviewMedia::Image {
-            width: 100,
-            height: 100,
+            width: Some(100),
+            height: Some(100),
         },
         producer_asset_id: None,
         parent_asset_version_id: None,
@@ -28,6 +29,7 @@ fn image_asset(id: u128) -> AssetVersion {
 fn video_asset(id: u128, duration_us: Option<u64>) -> AssetVersion {
     AssetVersion {
         id: AssetVersionId::from_u128(id),
+        source_entity_id: None,
         relative_path: RelativePath::parse(&format!("videos/{id}.mp4")).unwrap(),
         evidence: AssetEvidence {
             size_bytes: 200,
@@ -193,8 +195,8 @@ fn draft_rejects_empty_duplicate_and_invalid_asset_sets() {
 
     let mut invalid = image_asset(3);
     invalid.media = ReviewMedia::Image {
-        width: 0,
-        height: 100,
+        width: Some(0),
+        height: Some(100),
     };
     assert_eq!(
         ReviewDraft::new(
@@ -450,4 +452,74 @@ fn completion_rejects_feedback_timestamped_after_the_snapshot() {
         )
         .unwrap();
     assert_eq!(draft.complete(20), Err(ReviewRoundError::InvalidTimestamp));
+}
+
+#[test]
+fn source_identity_and_unavailable_image_bounds_are_explicit_domain_facts() {
+    let mut asset = image_asset(1);
+    asset.source_entity_id = Some(EntityId::from_u128(99));
+    asset.media = ReviewMedia::Image {
+        width: None,
+        height: None,
+    };
+
+    let mut draft = review_draft(vec![asset.clone()]);
+    assert_eq!(
+        draft.assets[0].source_entity_id,
+        Some(EntityId::from_u128(99))
+    );
+    assert_eq!(
+        draft.upsert_feedback(feedback(
+            1,
+            asset.id,
+            "没有真实边界时不能创建区域意见",
+            FeedbackAnchor::ImageRegion(NormalizedRect::new(0.1, 0.1, 0.2, 0.2).unwrap()),
+        )),
+        Err(ReviewRoundError::AnchorUnavailable)
+    );
+    assert_eq!(
+        draft.clone().complete(20),
+        Err(ReviewRoundError::InvalidAsset)
+    );
+
+    draft
+        .mark_unreviewable(asset.id, ReviewabilityFailure::DecodeFailed)
+        .unwrap();
+    assert_eq!(
+        draft.complete(20).unwrap().outcomes[0].kind,
+        ReviewOutcomeKind::Unreviewable
+    );
+}
+
+#[test]
+fn unavailable_image_bounds_must_be_absent_or_present_as_a_pair() {
+    for media in [
+        ReviewMedia::Image {
+            width: Some(100),
+            height: None,
+        },
+        ReviewMedia::Image {
+            width: None,
+            height: Some(100),
+        },
+        ReviewMedia::Image {
+            width: Some(0),
+            height: Some(100),
+        },
+    ] {
+        let mut asset = image_asset(1);
+        asset.media = media;
+        assert_eq!(
+            ReviewDraft::new(
+                ProjectId::from_u128(1),
+                ReviewStreamId::from_u128(2),
+                ReviewRoundId::from_u128(3),
+                None,
+                None,
+                10,
+                vec![asset],
+            ),
+            Err(ReviewRoundError::InvalidAsset)
+        );
+    }
 }

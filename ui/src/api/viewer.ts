@@ -29,6 +29,18 @@ import type {
   ProjectChangedEvent,
   ProjectSnapshot,
   RenamePreview,
+  ReviewAddFeedbackRequest,
+  ReviewCompleteRequest,
+  ReviewCompletionProposal,
+  ReviewDeleteFeedbackRequest,
+  ReviewMutationGuardRequest,
+  ReviewPreviewStartRequest,
+  ReviewProgress,
+  ReviewScopeProposal,
+  ReviewSessionRequest,
+  ReviewSessionSnapshot,
+  ReviewStartRequest,
+  ReviewUpdateFeedbackRequest,
   ScanEvent,
   SearchPage,
   SearchProjectRequest,
@@ -65,6 +77,18 @@ export type ProjectDropEvent =
   | { type: 'drop'; paths: string[] }
   | { type: 'leave' }
 
+export const videoFeasibilityBridge = {
+  invoke<T>(command: 'run_video_feasibility', payload: { request: unknown }): Promise<T> {
+    return invoke<T>(command, payload)
+  },
+  listen<T>(
+    event: 'viewer://video-feasibility-frame',
+    handler: (event: { payload: T }) => void,
+  ): Promise<UnlistenFn> {
+    return listen<T>(event, handler)
+  },
+}
+
 export interface ViewerBridge {
   chooseProject(): Promise<string | null>
   openProject(path: string): Promise<ProjectSnapshot>
@@ -92,6 +116,17 @@ export interface ViewerBridge {
   cancelOperation(request: CancelOperationRequest): Promise<boolean>
   undoLastOperation(request: UndoLastOperationRequest): Promise<UndoReceipt | null>
   beginFinderDrag(request: BeginFinderDragRequest): Promise<FinderDragReceipt>
+  reviewStatus(request: ReviewSessionRequest): Promise<ReviewSessionSnapshot>
+  reviewPreviewStart(request: ReviewPreviewStartRequest): Promise<ReviewScopeProposal>
+  reviewStart(request: ReviewStartRequest): Promise<ReviewSessionSnapshot>
+  reviewResume(request: ReviewSessionRequest): Promise<ReviewSessionSnapshot>
+  reviewAddFeedback(request: ReviewAddFeedbackRequest): Promise<ReviewSessionSnapshot>
+  reviewUpdateFeedback(request: ReviewUpdateFeedbackRequest): Promise<ReviewSessionSnapshot>
+  reviewDeleteFeedback(request: ReviewDeleteFeedbackRequest): Promise<ReviewSessionSnapshot>
+  reviewCompletionSummary(request: ReviewMutationGuardRequest): Promise<ReviewCompletionProposal>
+  reviewComplete(request: ReviewCompleteRequest): Promise<ReviewSessionSnapshot>
+  reviewAbandon(request: ReviewMutationGuardRequest): Promise<ReviewSessionSnapshot>
+  reviewCancelTask(request: ReviewSessionRequest): Promise<boolean>
   videoOpen(request: VideoOpenRequest): Promise<VideoSession>
   videoCancelOpen(request: VideoOpenAttemptRequest): Promise<boolean>
   videoClose(request: VideoGenerationRequest): Promise<void>
@@ -114,6 +149,7 @@ export interface ViewerBridge {
   listenProjectChanged(handler: (event: ProjectChangedEvent) => void): Promise<UnlistenFn>
   listenCloseBlocked(handler: (event: CloseBlockedEvent) => void): Promise<UnlistenFn>
   listenVideo(handler: (event: VideoEvent) => void): Promise<UnlistenFn>
+  listenReviewProgress(handler: (event: ReviewProgress) => void): Promise<UnlistenFn>
   listenProjectClosed(handler: () => void): Promise<UnlistenFn>
   listenProjectDrops(handler: (paths: string[]) => void): Promise<UnlistenFn>
   listenProjectDropEvents(handler: (event: ProjectDropEvent) => void): Promise<UnlistenFn>
@@ -240,6 +276,39 @@ export const tauriViewerBridge: ViewerBridge = {
   beginFinderDrag(request) {
     return invoke<FinderDragReceipt>('begin_finder_drag', { request })
   },
+  reviewStatus(request) {
+    return invoke<ReviewSessionSnapshot>('review_status', { request })
+  },
+  reviewPreviewStart(request) {
+    return invoke<ReviewScopeProposal>('review_preview_start', { request })
+  },
+  reviewStart(request) {
+    return invoke<ReviewSessionSnapshot>('review_start', { request })
+  },
+  reviewResume(request) {
+    return invoke<ReviewSessionSnapshot>('review_resume', { request })
+  },
+  reviewAddFeedback(request) {
+    return invoke<ReviewSessionSnapshot>('review_add_feedback', { request })
+  },
+  reviewUpdateFeedback(request) {
+    return invoke<ReviewSessionSnapshot>('review_update_feedback', { request })
+  },
+  reviewDeleteFeedback(request) {
+    return invoke<ReviewSessionSnapshot>('review_delete_feedback', { request })
+  },
+  reviewCompletionSummary(request) {
+    return invoke<ReviewCompletionProposal>('review_completion_summary', { request })
+  },
+  reviewComplete(request) {
+    return invoke<ReviewSessionSnapshot>('review_complete', { request })
+  },
+  reviewAbandon(request) {
+    return invoke<ReviewSessionSnapshot>('review_abandon', { request })
+  },
+  reviewCancelTask(request) {
+    return invoke<boolean>('review_cancel_task', { request })
+  },
   videoOpen(request) {
     return invoke<VideoSession>('video_open', { request })
   },
@@ -309,6 +378,9 @@ export const tauriViewerBridge: ViewerBridge = {
   },
   listenVideo(handler) {
     return listen<VideoEvent>('viewer://video-event', ({ payload }) => handler(payload))
+  },
+  listenReviewProgress(handler) {
+    return listen<ReviewProgress>('viewer://review-progress', ({ payload }) => handler(payload))
   },
   listenProjectClosed(handler) {
     return listen<void>('viewer://project-closed', handler)

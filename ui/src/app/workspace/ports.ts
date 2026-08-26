@@ -32,12 +32,29 @@ export type EmptyProjectPort = Pick<
 
 export type WorkspaceShellPort = Pick<ViewerBridge, 'revealProjectInFileManager'>
 
+export type ReviewPort = Pick<
+  ViewerBridge,
+  | 'reviewStatus'
+  | 'reviewPreviewStart'
+  | 'reviewStart'
+  | 'reviewResume'
+  | 'reviewAddFeedback'
+  | 'reviewUpdateFeedback'
+  | 'reviewDeleteFeedback'
+  | 'reviewCompletionSummary'
+  | 'reviewComplete'
+  | 'reviewAbandon'
+  | 'reviewCancelTask'
+  | 'listenReviewProgress'
+>
+
 export interface WorkspacePorts {
   preview: PreviewDataPort
   playback: VideoPlaybackPort
   settings: SettingsPort
   emptyProject: EmptyProjectPort
   shell: WorkspaceShellPort
+  review: ReviewPort
 }
 
 export function createWorkspacePorts(bridge: ViewerBridge): WorkspacePorts {
@@ -76,6 +93,20 @@ export function createWorkspacePorts(bridge: ViewerBridge): WorkspacePorts {
     },
     shell: {
       revealProjectInFileManager: bridge.revealProjectInFileManager,
+    },
+    review: {
+      reviewStatus: bridge.reviewStatus,
+      reviewPreviewStart: bridge.reviewPreviewStart,
+      reviewStart: bridge.reviewStart,
+      reviewResume: bridge.reviewResume,
+      reviewAddFeedback: bridge.reviewAddFeedback,
+      reviewUpdateFeedback: bridge.reviewUpdateFeedback,
+      reviewDeleteFeedback: bridge.reviewDeleteFeedback,
+      reviewCompletionSummary: bridge.reviewCompletionSummary,
+      reviewComplete: bridge.reviewComplete,
+      reviewAbandon: bridge.reviewAbandon,
+      reviewCancelTask: bridge.reviewCancelTask,
+      listenReviewProgress: bridge.listenReviewProgress,
     },
   }
 }

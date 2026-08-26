@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-> Status: Ready for execution
+> Status: Complete — 2026-08-26
 
 **Goal:** Connect Viewer's phase-1 open review protocol to the current project session and workspace so a user can freeze an explicit image/video set, persist natural-language rework Feedback, safely resume the Draft, and explicitly publish one immutable exception-driven Completed Round.
 
@@ -185,7 +185,7 @@ pub enum ReviewMedia {
 - Existing image media with positive `width`/`height` decodes to `Some`/`Some`. Newly confirmed unreviewable images may omit both fields and decode to `None`/`None`; one present and one absent, or zero, remains invalid.
 - `FeedbackAnchor::ImageRegion` requires real `Some`/`Some` bounds. Phase 2 creates only `FeedbackAnchor::Asset`, so missing bounds never authorize a fabricated region coordinate system.
 
-- [ ] **Step 1: Add backward-compatibility tests before changing the model**
+- [x] **Step 1: Add backward-compatibility tests before changing the model**
 
 Add tests that remove `sourceEntityId` from the current fixture, decode it, and assert `source_entity_id == None`; add a second round trip asserting an exact UUID survives Draft and Completed encoding.
 
@@ -217,17 +217,17 @@ fn review_v1_represents_confirmed_unreviewable_image_without_fake_dimensions() {
 }
 ```
 
-- [ ] **Step 2: Run the focused test and observe the expected compile/schema failure**
+- [x] **Step 2: Run the focused test and observe the expected compile/schema failure**
 
 Run: `cargo test --locked -p viewer-infrastructure --test review_protocol_contract review_v1_`
 
 Expected: FAIL because `AssetVersion`/protocol do not expose `source_entity_id` and image bounds are still mandatory integers.
 
-- [ ] **Step 3: Add the optional model/DTO/schema field and update every constructor explicitly**
+- [x] **Step 3: Add the optional model/DTO/schema field and update every constructor explicitly**
 
 Use `#[serde(default, skip_serializing_if = "Option::is_none")]` on source identity and each image dimension. Update the schema so image `width` and `height` are optional but mutually dependent. Do not use a blanket `..Default::default()` migration for `AssetVersion`; update every constructor so reviewers can distinguish manual `Some(entity_id)` from legacy/producer `None`, and real image dimensions from confirmed unavailable dimensions.
 
-- [ ] **Step 4: Verify protocol compatibility and the reference reader**
+- [x] **Step 4: Verify protocol compatibility and the reference reader**
 
 Run:
 
@@ -238,7 +238,7 @@ pnpm test:review-protocol
 
 Expected: all protocol tests pass; the Node reader still reads the exact Completed head and ignores Drafts.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add crates/viewer-domain/src/review/asset.rs crates/viewer-domain/src/review/round.rs crates/viewer-infrastructure/src/review/protocol.rs docs/protocol/viewer-review-draft-v1.schema.json docs/protocol/viewer-review-round-v1.schema.json tests/review_protocol_contract.rs tests/fixtures/review-protocol/review-draft-v1.valid.json tests/fixtures/review-protocol/review-round-v1.valid.json
@@ -289,7 +289,7 @@ pub trait ReviewRepositoryProviderPort: Send + Sync {
 - `open_writer()` acquires the existing lease and performs existing orphan recovery. Dropping its returned repository is the only normal lease-release mechanism.
 - `delete_draft` verifies exact canonical filename, Project/Stream/Round ownership, regular no-follow file type, and writer access before durable deletion. Missing exact Draft returns `NotFound`; it never deletes Completed data.
 
-- [ ] **Step 1: Write real-filesystem failure tests**
+- [x] **Step 1: Write real-filesystem failure tests**
 
 Cover: absent review directory leaves it absent; zero Draft; one Draft; two Drafts; malformed filename; symlink; wrong Project/Stream; Busy while writer is alive; lease becomes available after drop; deletion failure leaves Draft readable.
 
@@ -307,17 +307,17 @@ fn inspection_does_not_create_reviews_and_refuses_multiple_drafts() {
 }
 ```
 
-- [ ] **Step 2: Run the focused test and observe missing API failures**
+- [x] **Step 2: Run the focused test and observe missing API failures**
 
 Run: `cargo test --locked -p viewer-infrastructure --test review_repository`
 
 Expected: FAIL to compile until the provider and repository extensions exist.
 
-- [ ] **Step 3: Implement discovery/deletion with existing bounded/no-follow helpers**
+- [x] **Step 3: Implement discovery/deletion with existing bounded/no-follow helpers**
 
 Keep Draft scanning inside `repository.rs` so the provider does not duplicate path security. Return the full validated Draft only after its filename Round ID matches its contents. Use directory sync after successful removal.
 
-- [ ] **Step 4: Verify repository and phase-1 publication behavior**
+- [x] **Step 4: Verify repository and phase-1 publication behavior**
 
 Run:
 
@@ -328,7 +328,7 @@ cargo test --locked -p viewer-infrastructure review
 
 Expected: all new lifecycle tests and all previous atomic publication/recovery tests pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add crates/viewer-application/src/review.rs crates/viewer-infrastructure/src/review/repository.rs crates/viewer-infrastructure/src/review/provider.rs crates/viewer-infrastructure/src/review/mod.rs tests/review_repository.rs
@@ -374,10 +374,24 @@ pub struct PreparedReviewAsset {
     pub change_revision: u64,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ReviewAssetConflictKind {
+    Missing,
+    Moved,
+    Replaced,
+    SizeChanged,
+    ContentChanged,
+    MediaChanged,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ReviewAssetValidation {
     Current(PreparedReviewAsset),
-    Conflict { asset_version_id: AssetVersionId, relative_path: RelativePath },
+    Conflict {
+        asset_version_id: AssetVersionId,
+        relative_path: RelativePath,
+        kind: ReviewAssetConflictKind,
+    },
     Pending { asset_version_id: AssetVersionId, relative_path: RelativePath },
 }
 
@@ -426,17 +440,17 @@ pub trait ReviewAssetCatalogPort: Send + Sync {
 - Stable failure mapping is exact: UnsupportedImage -> `Unsupported`; image probe Unsupported -> `Unsupported`, Corrupt -> `Damaged`, and a proven permission/open error -> `PermissionDenied`/`Unreadable`; successful image probe is reviewable even if an earlier thumbnail/index operation failed. Video Unsupported/Damaged/Unreadable/Missing/DecodeFallbackFailed map to protocol equivalents. Image BudgetExceeded/generic transient I/O and Video EngineInitialization/RenderSurface/ThumbnailUnavailable/Pending remain `Pending`, not `unreviewable`.
 - Revalidation is deterministic: missing/path/source-identity/size mismatch -> conflict; same identity/path/size with changed mtime or `change_revision` -> stream BLAKE3 and continue only on exact digest equality; unchanged identity/path/size/mtime/revision -> reuse saved digest; `blake3: None` assets require exact identity/path/size/mtime and unchanged media failure. Media bounds or stable-failure changes are conflicts/pending facts, never silent pass.
 
-- [ ] **Step 1: Write scope, hashing, cancellation, and failure-mapping tests**
+- [x] **Step 1: Write scope, hashing, cancellation, and failure-mapping tests**
 
 Include selected mixed kinds, direct folder, aggregate descendants, empty candidate set, duplicate Entity IDs, symlink, replacement during hash, cancellation, grid-renderable image, unopened video, transient video failure, stable video failure, and changed-ledger rehash.
 
-- [ ] **Step 2: Run focused tests and confirm the port/adapter is absent**
+- [x] **Step 2: Run focused tests and confirm the port/adapter is absent**
 
 Run: `cargo test --locked -p viewer-infrastructure --test review_assets`
 
 Expected: FAIL because the review asset adapter and contract do not exist.
 
-- [ ] **Step 3: Implement scope resolution first, then evidence preparation**
+- [x] **Step 3: Implement scope resolution first, then evidence preparation**
 
 Use small private functions with independently tested semantics:
 
@@ -450,7 +464,7 @@ fn hash_blake3_streaming(file: &mut File, cancel: &ReviewTaskCancellation)
 
 Do not place Tokio, BLAKE3, or filesystem code in `viewer-application`.
 
-- [ ] **Step 4: Verify focused application/infrastructure tests and watcher regression**
+- [x] **Step 4: Verify focused application/infrastructure tests and watcher regression**
 
 Run:
 
@@ -462,7 +476,7 @@ cargo test --locked -p viewer-desktop watcher
 
 Expected: all pass; watcher behavior remains unchanged except for recording bounded Entity IDs.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add crates/viewer-application/src/browse.rs crates/viewer-application/src/review_assets.rs crates/viewer-application/src/lib.rs crates/viewer-infrastructure/src/review/assets.rs crates/viewer-infrastructure/src/review/change_ledger.rs crates/viewer-infrastructure/src/review/mod.rs crates/viewer-infrastructure/src/lib.rs crates/viewer-infrastructure/tests/review_assets.rs src-tauri/src/watcher_runtime.rs
@@ -621,7 +635,7 @@ pub async fn shutdown(&self);
 - `resume` opens writer, reloads the exact Draft under lease, revalidates every saved member using source identity/path/hash, reconstructs the AssetVersion-to-Entity binding, and enters `Active` only after validation. Conflicts remain visible and block completion but do not erase Feedback.
 - Cancellation before first save returns to `Idle` with the prior `resume` projection (if one existed) and drops writer. `shutdown` cancels preparation, waits for the task boundary, releases asset tracking, and drops writer deterministically.
 
-- [ ] **Step 1: Create fakes and write state-transition tests**
+- [x] **Step 1: Create fakes and write state-transition tests**
 
 Test zero/one/many Drafts, future production Draft refusal, Busy, read-only Draft projection, empty candidates, stale proposal, scope re-resolution changes, first/reused/ambiguous manual Stream, production-Stream isolation, exact latest Completed read-only projection, later Round previous head, save failure, cancellation, resume hash mismatch, and shutdown writer release.
 
@@ -637,13 +651,13 @@ async fn start_rechecks_unique_draft_after_acquiring_writer() {
 }
 ```
 
-- [ ] **Step 2: Run the application integration test and observe the missing service**
+- [x] **Step 2: Run the application integration test and observe the missing service**
 
 Run: `cargo test --locked -p viewer-application --test review_session_start`
 
 Expected: FAIL to compile before `review_session.rs` exists.
 
-- [ ] **Step 3: Implement the state machine with one mutex and explicit transition helpers**
+- [x] **Step 3: Implement the state machine with one mutex and explicit transition helpers**
 
 Do not hold the mutex across arbitrary adapter work. Store a task token/state transition under the mutex, perform async work with immutable inputs, then reacquire and commit only if the same task token is current.
 
@@ -655,13 +669,13 @@ fn transition_to_preparing(state: &mut ReviewSessionState, task: ReviewTask)
 fn install_active(state: &mut ReviewSessionState, active: ActiveReviewSession);
 ```
 
-- [ ] **Step 4: Verify the entire application crate**
+- [x] **Step 4: Verify the entire application crate**
 
 Run: `cargo test --locked -p viewer-application`
 
 Expected: all existing and new application tests pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add crates/viewer-application/src/review_session.rs crates/viewer-application/src/lib.rs crates/viewer-application/tests/review_session_start.rs
@@ -716,17 +730,17 @@ pub async fn delete_feedback(&self, command: DeleteReviewFeedback)
 - Serialize mutations through the service mutex. A second command using the first command's old revision returns `StaleRevision` without attempting a save.
 - Every successful Draft mutation invalidates any cached completion proposal; a proposal can authorize only the exact saved revision summarized for the user.
 
-- [ ] **Step 1: Write mutation transaction tests**
+- [x] **Step 1: Write mutation transaction tests**
 
 Cover single/multiple targets, frozen targets, multiple Feedback on one asset, edit, delete, nonmember, whitespace, limits, save failure, concurrent same-revision commands, stale Round ID, stale revision, and revision monotonicity.
 
-- [ ] **Step 2: Run tests and verify red state**
+- [x] **Step 2: Run tests and verify red state**
 
 Run: `cargo test --locked -p viewer-application --test review_session_mutation`
 
 Expected: FAIL because mutation APIs are not implemented.
 
-- [ ] **Step 3: Implement one shared clone-save-swap helper**
+- [x] **Step 3: Implement one shared clone-save-swap helper**
 
 ```rust
 fn mutate_active<F>(
@@ -741,13 +755,13 @@ where
 
 Do not duplicate save/revision logic among add, update, and delete.
 
-- [ ] **Step 4: Verify mutation and start suites together**
+- [x] **Step 4: Verify mutation and start suites together**
 
 Run: `cargo test --locked -p viewer-application --test review_session_start --test review_session_mutation`
 
 Expected: all pass, including save-failure snapshot invariants.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add crates/viewer-application/src/review_session.rs crates/viewer-application/tests/review_session_mutation.rs
@@ -807,7 +821,7 @@ pub async fn abandon(&self, guard: ReviewMutationGuard)
 - `abandon` calls exact `delete_draft`; only success clears Active state and drops writer. It never publishes, indexes, or deletes Completed records.
 - Cancellation is accepted during hash/revalidation before `ReviewDraft::complete`; once create-once publication begins it cannot be presented as cancelled.
 
-- [ ] **Step 1: Write completion and failure-recovery tests**
+- [x] **Step 1: Write completion and failure-recovery tests**
 
 Cover outcome precedence, all-default-pass, stable failure, pending failure, each conflict type, changed-but-equal digest, changed digest, summary/completion race, publish success, both phase-1 fault points, exact-head mismatch, abandon success/failure, and writer release.
 
@@ -829,13 +843,13 @@ async fn feedback_wins_and_remaining_assets_pass_only_after_completion() {
 }
 ```
 
-- [ ] **Step 2: Run tests and confirm missing completion API**
+- [x] **Step 2: Run tests and confirm missing completion API**
 
 Run: `cargo test --locked -p viewer-application --test review_session_completion`
 
 Expected: FAIL before completion/recovery/abandon methods exist.
 
-- [ ] **Step 3: Implement one validation result reducer and exact-head verifier**
+- [x] **Step 3: Implement one validation result reducer and exact-head verifier**
 
 ```rust
 fn apply_validations(
@@ -852,7 +866,7 @@ fn exact_head_is_published(
 
 Reuse these functions for summary, completion, resume recovery, and publish recovery. Do not let Tauri recompute counts.
 
-- [ ] **Step 4: Verify all review application and repository tests**
+- [x] **Step 4: Verify all review application and repository tests**
 
 Run:
 
@@ -863,7 +877,7 @@ cargo test --locked -p viewer-infrastructure --test review_repository
 
 Expected: all pass, including stage-1 fault injection.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add crates/viewer-application/src/review_session.rs crates/viewer-application/tests/review_session_completion.rs
@@ -910,17 +924,17 @@ event: viewer://review-progress -> ReviewProgressDto
 - Progress DTO includes session/generation, task kind, completed, total, and cancellable. It carries no file path.
 - Map errors to stable codes such as `review_read_only`, `review_busy`, `review_stale_session`, `review_stale_revision`, `review_completion_changed`, `review_version_conflict`, `review_pending_validation`, `review_recovery_required`, `review_unsupported_version`, `review_invalid_data`, and `review_unavailable`.
 
-- [ ] **Step 1: Write DTO and runtime contract tests**
+- [x] **Step 1: Write DTO and runtime contract tests**
 
 Test exact serde shapes, invalid IDs, over-limit text/targets, session/generation mismatch, stale Round/revision, changed completion summary, safe relative conflict paths, no absolute error leakage, Busy does not block browse, and teardown releases writer/cancels progress.
 
-- [ ] **Step 2: Run desktop review test and observe missing modules**
+- [x] **Step 2: Run desktop review test and observe missing modules**
 
 Run: `cargo test --locked -p viewer-desktop --test review_commands`
 
 Expected: FAIL because DTOs, commands, and runtime composition are absent.
 
-- [ ] **Step 3: Implement translation-only commands and session composition**
+- [x] **Step 3: Implement translation-only commands and session composition**
 
 Each command should follow this shape:
 
@@ -937,7 +951,7 @@ pub async fn review_add_feedback(
 
 No command reads the filesystem or Domain collections directly.
 
-- [ ] **Step 4: Run desktop, security-boundary, and architecture-contract tests**
+- [x] **Step 4: Run desktop, security-boundary, and architecture-contract tests**
 
 Run:
 
@@ -948,7 +962,7 @@ pnpm architecture:contracts
 
 Expected: all pass; project browse remains available for every review-only failure.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src-tauri/src/dto/review.rs src-tauri/src/dto/mod.rs src-tauri/src/commands/review.rs src-tauri/src/commands/mod.rs src-tauri/src/state/review.rs src-tauri/src/state/mod.rs src-tauri/src/state/session.rs src-tauri/src/error.rs src-tauri/src/lib.rs src-tauri/tests/review_commands.rs
@@ -1015,11 +1029,11 @@ export interface ReviewSessionCoordinator {
 - Nonempty unsaved text requires confirmation before inspector/dialog close, project close, or review context replacement.
 - Rename the existing workspace `FeedbackCoordinator` only if necessary for clarity; prefer referring to the new feature as `ReviewSessionCoordinator` and the old one as global notice coordination to avoid a broad rename.
 
-- [ ] **Step 1: Write bridge and coordinator behavior tests**
+- [x] **Step 1: Write bridge and coordinator behavior tests**
 
 Cover exact command names/payloads, progress unsubscribe, session reset, selection vs folder scope, search no-selection exclusion, same-revision serialization, save failure, stale reload, editor preservation, frozen targets, cancel, and unsaved-text guard.
 
-- [ ] **Step 2: Run focused UI tests and observe missing review surface**
+- [x] **Step 2: Run focused UI tests and observe missing review surface**
 
 Run:
 
@@ -1029,11 +1043,11 @@ pnpm --dir ui exec vitest run src/api/viewer.test.ts src/app/review/reviewModel.
 
 Expected: FAIL before review types, bridge methods, and coordinator exist.
 
-- [ ] **Step 3: Implement the bridge first, then pure model, then hook**
+- [x] **Step 3: Implement the bridge first, then pure model, then hook**
 
 Keep all scope derivation in pure functions with exhaustive tagged-union switches. Never infer `pass` or `unreviewable` in TypeScript; render backend counts only.
 
-- [ ] **Step 4: Verify boundary and TypeScript checks**
+- [x] **Step 4: Verify boundary and TypeScript checks**
 
 Run:
 
@@ -1044,7 +1058,7 @@ pnpm --dir ui check
 
 Expected: all pass; contract test proves review components/coordinator do not import Tauri or `useViewerController`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add ui/src/api/types.ts ui/src/api/viewer.ts ui/src/api/viewer.test.ts ui/src/app/workspace/ports.ts ui/src/app/workspace/contracts.test.ts ui/src/app/review/reviewModel.ts ui/src/app/review/reviewModel.test.ts ui/src/app/review/useReviewSessionCoordinator.ts ui/src/app/review/useReviewSessionCoordinator.test.tsx
@@ -1094,11 +1108,11 @@ git commit -m "feat: coordinate review sessions in ui"
 - Reuse `ModalSheet` focus trapping and Escape semantics. Add an explicit discard confirmation for nonempty unsaved editor text; do not silently close it.
 - Keep `WorkspaceProjectView.tsx` changes to props/slots and shallow placement. All conditional review rendering belongs in focused components.
 
-- [ ] **Step 1: Write component and App regression tests**
+- [x] **Step 1: Write component and App regression tests**
 
 Cover toolbar visibility/disabled states, counts, no viewed text, return-to-members, member target rules, `metaKey + Enter`, edit/delete, discard guard, save error, resume prompt, Busy/read-only/recovery, conflict-disabled completion, Completed read-only, focus return, ARIA live state, Escape, and unchanged existing browsing/preview/marker actions.
 
-- [ ] **Step 2: Run focused tests and capture failing component imports**
+- [x] **Step 2: Run focused tests and capture failing component imports**
 
 Run:
 
@@ -1108,11 +1122,11 @@ pnpm --dir ui exec vitest run src/components/review/reviewComponents.test.tsx sr
 
 Expected: FAIL before review components and App composition are added.
 
-- [ ] **Step 3: Implement semantic structure before styling**
+- [x] **Step 3: Implement semantic structure before styling**
 
 Use buttons, labels, lists, and `aria-live`/`aria-describedby` relationships first. Add CSS only after behavior tests pass. At 200% zoom, Inspector must remain usable without covering completion controls or forcing horizontal page scrolling.
 
-- [ ] **Step 4: Verify review UI and all current UI behavior**
+- [x] **Step 4: Verify review UI and all current UI behavior**
 
 Run:
 
@@ -1125,7 +1139,7 @@ pnpm --dir ui build
 
 Expected: all tests/check/build pass; no existing App/component test is weakened or deleted.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add ui/src/components/review ui/src/app/workspace/WorkspaceProjectView.tsx ui/src/App.tsx ui/src/App.test.tsx ui/src/styles/review.css ui/src/styles/app.css
@@ -1169,21 +1183,21 @@ RVW-15 review-zoom-200
 - Completion scenes must contain no viewed-count or “review progress” language.
 - Conflict paths are project-relative; no fixture or rendered error includes an absolute path.
 
-- [ ] **Step 1: Add catalog entries and failing scene-contract tests**
+- [x] **Step 1: Add catalog entries and failing scene-contract tests**
 
 Assert every review state has one registered scene, every scene uses the shared harness, and no scene bypasses the coordinator by supplying protocol JSON directly to a component.
 
-- [ ] **Step 2: Run acceptance unit tests and observe missing scenes**
+- [x] **Step 2: Run acceptance unit tests and observe missing scenes**
 
 Run: `pnpm --dir ui exec vitest run src/acceptance/scenes/reviewScenes.test.tsx src/acceptance/acceptanceStateCatalog.test.ts`
 
 Expected: FAIL until all catalog IDs resolve.
 
-- [ ] **Step 3: Implement fixtures/scenes and inspect rendered output**
+- [x] **Step 3: Implement fixtures/scenes and inspect rendered output**
 
 Run the visual acceptance server and capture all review states with the existing acceptance script. Inspect normal, dark/light if supported by the harness, keyboard focus, and 200% zoom. Fix component CSS, not scene-only CSS.
 
-- [ ] **Step 4: Verify acceptance gates**
+- [x] **Step 4: Verify acceptance gates**
 
 Run:
 
@@ -1195,7 +1209,9 @@ pnpm accept:visual -- --id RVW-01 --id RVW-02 --id RVW-03 --id RVW-04 --id RVW-0
 
 Expected: deterministic tests/build pass and the review captures contain no clipping, hidden primary action, color-only status, or focus loss. If the last command requires the local display/runtime, record that environment precondition explicitly; do not count an unrun capture as passed.
 
-- [ ] **Step 5: Commit**
+Capture record (2026-08-25): the deterministic tests and acceptance build passed. All 15 states reached the ready and geometry gates and produced 30 `product.png` captures at 1024×720 and 1440×900 under `target/viewer-visual-acceptance/review-loop-r6/`; both contact sheets were inspected. `RVW-15` used the verified 2× browser environment. The harness does not expose a light/dark color-scheme switch, so no unsupported dark-theme result is claimed. Finalization returned `ENOENT` only after capture because these new review states have no legacy Atlas `reference.png`; therefore no reference comparison or passed visual verdict is claimed.
+
+- [x] **Step 5: Commit**
 
 ```bash
 git add ui/src/acceptance/acceptanceBridge.ts ui/src/acceptance/acceptanceFixtures.ts ui/src/acceptance/scenes/reviewScenes.tsx ui/src/acceptance/scenes/reviewScenes.test.tsx ui/src/acceptance/scenes/index.ts ui/src/acceptance/acceptanceStateCatalog.json ui/src/acceptance/acceptanceStateCatalog.test.ts
@@ -1229,17 +1245,17 @@ git commit -m "test: add review acceptance states"
 - Add separate cases for read-only, Busy, corrupted image, stable video failure, replacement, move, delete, publish fault recovery, and multiple Draft fail-closed.
 - Do not install or invoke Codex, Claude, OpenCode, network services, signing, notarization, installers, or release systems.
 
-- [ ] **Step 1: Write the e2e tests against a missing driver**
+- [x] **Step 1: Write the e2e tests against a missing driver**
 
 Run: `pnpm test:review-loop`
 
 Expected: FAIL because the driver/test seam is absent.
 
-- [ ] **Step 2: Implement the fixed Rust harness and Node driver**
+- [x] **Step 2: Implement the fixed Rust harness and Node driver**
 
 Implement these exact harness scenarios: `standard`, `read_only`, `writer_busy`, `corrupt_image`, `stable_video_failure`, `replaced`, `moved`, `deleted`, `publish_recovery`, and `multiple_drafts`. The Node test must call the existing Agent-independent reference reader as a separate process for `standard` and `publish_recovery`, then assert its JSON output rather than importing reader internals.
 
-- [ ] **Step 3: Freeze architecture policy**
+- [x] **Step 3: Freeze architecture policy**
 
 Add repository-policy assertions that:
 
@@ -1249,7 +1265,7 @@ Add repository-policy assertions that:
 - `viewer-application` has no dependency on `viewer-infrastructure` or Tauri;
 - the review-loop test remains in `quality`.
 
-- [ ] **Step 4: Run protocol, e2e, policy, and architecture gates**
+- [x] **Step 4: Run protocol, e2e, policy, and architecture gates**
 
 Run:
 
@@ -1262,7 +1278,7 @@ pnpm architecture:boundaries
 
 Expected: all pass and the exact manual Stream head is readable by the phase-1 reader.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src-tauri/examples/review_loop_harness.rs scripts/review-protocol/manual-round-e2e.mjs scripts/review-protocol/manual-round-e2e.test.mjs package.json scripts/repository-policy.test.mjs
@@ -1287,7 +1303,7 @@ git commit -m "test: gate the manual review loop"
 - Preserve the development-stage statement: signing, Apple notarization, formal installer, public release, sale, and sales tasks are not ordinary completion items and must not be proposed without explicit authorization.
 - Do not rewrite or discard unrelated documentation edits already present in the working tree. Reconcile line-by-line and stage only phase-2 hunks.
 
-- [ ] **Step 1: Run focused verification from a clean task worktree**
+- [x] **Step 1: Run focused verification from a clean task worktree**
 
 ```bash
 cargo fmt --check
@@ -1304,7 +1320,7 @@ pnpm test:policy
 
 Expected: every command exits 0. Record exact output for any environment-conditioned native check; a skip is a skip, not a pass.
 
-- [ ] **Step 2: Run the repository's complete verification and cleanliness checks**
+- [x] **Step 2: Run the repository's complete verification and cleanliness checks**
 
 Run:
 
@@ -1315,7 +1331,7 @@ pnpm verify:clean
 
 Expected: both commands exit 0; `verify` runs quality and security gates, and `verify:clean` proves the worktree contains no untracked/generated artifacts outside explicit ignored acceptance/brainstorm paths.
 
-- [ ] **Step 3: Exercise the real development application manually**
+- [x] **Step 3: Exercise the real development application manually**
 
 Run: `pnpm start:viewer`
 
@@ -1339,11 +1355,11 @@ open project
 
 Do not use the user's production materials. Stop the dev process cleanly after verification.
 
-- [ ] **Step 4: Update documentation status only from verified facts**
+- [x] **Step 4: Update documentation status only from verified facts**
 
 Change the design status to `Implemented` and this plan status to `Complete` only after Steps 1–3 pass. If any required check is blocked, document the exact blocker and keep status `In progress`.
 
-- [ ] **Step 5: Review the final diff for scope and architecture**
+- [x] **Step 5: Review the final diff for scope and architecture**
 
 Run:
 
@@ -1357,7 +1373,7 @@ rg -n "sign|notari|installer|release|发售|公证|签名|正式安装包" docs/
 
 Expected: no accidental placeholders; release-related matches appear only in explicit out-of-scope/development-stage language; unrelated user modifications remain unstaged and unchanged.
 
-- [ ] **Step 6: Commit the verified product truth**
+- [x] **Step 6: Commit the verified product truth**
 
 ```bash
 git add -p docs/PRODUCT_SPEC.md
@@ -1367,6 +1383,29 @@ git commit -m "docs: record the manual review loop"
 ```
 
 Do not stage unrelated pre-existing documentation hunks. After commit, re-run `git status --short` and compare the preserved user-file diff hash captured before execution.
+
+**Completion evidence (2026-08-26):**
+
+- All focused commands in Step 1 exited 0. UI verification reported 121 passing test files,
+  1057 passing tests, and 1 existing skipped test. The UI production build completed with the existing
+  chunk-size warning; Biome reported only its existing configuration deprecation information.
+- `pnpm verify` and `pnpm verify:clean` both exited 0. Policy reported 33 passing tests and exact scope
+  coverage; review protocol reported 13 passing tests; the production-composition review harness reported
+  6 passing scenarios. Cargo dependency checks retained their existing duplicate-version warnings.
+- Full Rust workspace tests passed. Tests that explicitly require a staged/bundled video runtime or a
+  particular macOS native acceptance environment remained ignored and are not counted as passes.
+- The real UI flow used `/tmp/viewer-review-manual.8dLXTL`, containing only copied repository fixtures.
+  It verified image/video browsing and preview, a two-image manual Draft, byte-exact single- and multi-target
+  Chinese Feedback, explicit Draft resume, a completion summary without viewed counts, completion blocking
+  after one fixed source was replaced, evidence restoration, immutable completion, and read-only reopen.
+- The existing Node reader successfully read exact manual Stream
+  `f67fb64c-9a0e-4ab0-ba4f-ca4ddfa7eabd` and Round
+  `6aee13bd-0557-4e7f-bd00-e5675b2807a1`. The same session also verified search, two-image compare,
+  keep/favorite markers, rename, and undo without changing review Outcomes.
+- `pnpm start:viewer` ran the branch's development executable after the isolated worktree received the
+  already verified local video runtime in ignored `target/` paths. For macOS UI automation only, the same
+  debug executable was wrapped in an unsigned debug `.app`; no signing, notarization, installer, release,
+  sale, or user production material was involved. Viewer was quit cleanly after the run.
 
 ---
 

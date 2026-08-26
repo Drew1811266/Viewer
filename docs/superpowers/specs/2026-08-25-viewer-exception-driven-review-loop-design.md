@@ -1,6 +1,6 @@
 # Viewer 例外驱动基础评审闭环设计
 
-> Status: Proposed — 对话设计已确认，等待书面规格复核
+> Status: Accepted — 书面规格已由项目负责人确认
 >
 > Date: 2026-08-25
 >

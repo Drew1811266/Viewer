@@ -716,17 +716,17 @@ pub async fn delete_feedback(&self, command: DeleteReviewFeedback)
 - Serialize mutations through the service mutex. A second command using the first command's old revision returns `StaleRevision` without attempting a save.
 - Every successful Draft mutation invalidates any cached completion proposal; a proposal can authorize only the exact saved revision summarized for the user.
 
-- [ ] **Step 1: Write mutation transaction tests**
+- [x] **Step 1: Write mutation transaction tests**
 
 Cover single/multiple targets, frozen targets, multiple Feedback on one asset, edit, delete, nonmember, whitespace, limits, save failure, concurrent same-revision commands, stale Round ID, stale revision, and revision monotonicity.
 
-- [ ] **Step 2: Run tests and verify red state**
+- [x] **Step 2: Run tests and verify red state**
 
 Run: `cargo test --locked -p viewer-application --test review_session_mutation`
 
 Expected: FAIL because mutation APIs are not implemented.
 
-- [ ] **Step 3: Implement one shared clone-save-swap helper**
+- [x] **Step 3: Implement one shared clone-save-swap helper**
 
 ```rust
 fn mutate_active<F>(
@@ -741,13 +741,13 @@ where
 
 Do not duplicate save/revision logic among add, update, and delete.
 
-- [ ] **Step 4: Verify mutation and start suites together**
+- [x] **Step 4: Verify mutation and start suites together**
 
 Run: `cargo test --locked -p viewer-application --test review_session_start --test review_session_mutation`
 
 Expected: all pass, including save-failure snapshot invariants.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add crates/viewer-application/src/review_session.rs crates/viewer-application/tests/review_session_mutation.rs

@@ -52,10 +52,11 @@ pub use review_assets::{
     ReviewTaskProgress,
 };
 pub use review_session::{
-    ReviewConflictKind, ReviewConflictSnapshot, ReviewFeedbackSnapshot, ReviewMemberSnapshot,
-    ReviewProposalId, ReviewResumeSnapshot, ReviewScopeProposal, ReviewSessionCounts,
-    ReviewSessionError, ReviewSessionPhase, ReviewSessionService, ReviewSessionSnapshot,
-    ReviewUnreviewableSnapshot, ReviewUserError,
+    AddReviewFeedback, DeleteReviewFeedback, ReviewConflictKind, ReviewConflictSnapshot,
+    ReviewFeedbackSnapshot, ReviewMemberSnapshot, ReviewMutationGuard, ReviewProposalId,
+    ReviewResumeSnapshot, ReviewScopeProposal, ReviewSessionCounts, ReviewSessionError,
+    ReviewSessionPhase, ReviewSessionService, ReviewSessionSnapshot, ReviewUnreviewableSnapshot,
+    ReviewUserError, UpdateReviewFeedback,
 };
 pub use session::{ProjectSession, SessionState, SessionTransitionError};
 pub use settings::{

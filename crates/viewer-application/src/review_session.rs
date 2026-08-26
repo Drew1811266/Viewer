@@ -8,8 +8,8 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use tokio::sync::{Mutex, Notify};
 use viewer_domain::review::{
-    Feedback, ReviewAssetKind, ReviewDraft, ReviewMedia, ReviewOutcomeKind, ReviewSnapshot,
-    ReviewabilityFailure,
+    Feedback, FeedbackAnchor, FeedbackTarget, ReviewAssetKind, ReviewDraft, ReviewMedia,
+    ReviewOutcomeKind, ReviewSnapshot, ReviewabilityFailure,
 };
 use viewer_domain::{
     AssetVersionId, EntityId, FeedbackId, ProjectId, RelativePath, ReviewRoundId, ReviewStreamId,
@@ -34,6 +34,33 @@ pub struct ReviewScopeProposal {
     pub id: ReviewProposalId,
     pub scope: ReviewScope,
     pub resolution: ReviewScopeResolution,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ReviewMutationGuard {
+    pub review_round_id: ReviewRoundId,
+    pub expected_revision: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AddReviewFeedback {
+    pub guard: ReviewMutationGuard,
+    pub text: String,
+    pub target_entity_ids: Vec<EntityId>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct UpdateReviewFeedback {
+    pub guard: ReviewMutationGuard,
+    pub feedback_id: FeedbackId,
+    pub text: String,
+    pub target_entity_ids: Vec<EntityId>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DeleteReviewFeedback {
+    pub guard: ReviewMutationGuard,
+    pub feedback_id: FeedbackId,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -147,6 +174,14 @@ pub enum ReviewSessionError {
     SaveFailed,
     #[error("review domain data is invalid")]
     InvalidData,
+    #[error("review command targets a stale Round")]
+    StaleRound,
+    #[error("review command targets a stale revision")]
+    StaleRevision,
+    #[error("review Feedback is invalid")]
+    InvalidFeedback,
+    #[error("review Feedback does not exist")]
+    FeedbackNotFound,
 }
 
 impl ReviewSessionError {
@@ -165,6 +200,10 @@ impl ReviewSessionError {
             Self::Cancelled => "review_task_cancelled",
             Self::SaveFailed => "review_save_failed",
             Self::InvalidData => "review_invalid_data",
+            Self::StaleRound => "review_round_stale",
+            Self::StaleRevision => "review_revision_stale",
+            Self::InvalidFeedback => "review_feedback_invalid",
+            Self::FeedbackNotFound => "review_feedback_not_found",
         }
     }
 
@@ -649,6 +688,58 @@ impl ReviewSessionService {
         true
     }
 
+    pub async fn add_feedback(
+        &self,
+        command: AddReviewFeedback,
+    ) -> Result<ReviewSessionSnapshot, ReviewSessionError> {
+        let feedback_id = FeedbackId::new();
+        let created_at_ms = self.clock.unix_millis();
+        let mut state = self.state.lock().await;
+        mutate_active(&mut state, command.guard, |draft, bindings| {
+            let targets = asset_targets(&command.target_entity_ids, bindings)?;
+            let feedback = Feedback::new(feedback_id, command.text, created_at_ms, targets)
+                .map_err(|_| ReviewSessionError::InvalidFeedback)?;
+            draft
+                .upsert_feedback(feedback)
+                .map_err(|_| ReviewSessionError::InvalidFeedback)
+        })
+    }
+
+    pub async fn update_feedback(
+        &self,
+        command: UpdateReviewFeedback,
+    ) -> Result<ReviewSessionSnapshot, ReviewSessionError> {
+        let mut state = self.state.lock().await;
+        mutate_active(&mut state, command.guard, |draft, bindings| {
+            let created_at_ms = draft
+                .feedback
+                .iter()
+                .find(|feedback| feedback.id == command.feedback_id)
+                .map(|feedback| feedback.created_at_ms)
+                .ok_or(ReviewSessionError::FeedbackNotFound)?;
+            let targets = asset_targets(&command.target_entity_ids, bindings)?;
+            let feedback = Feedback::new(command.feedback_id, command.text, created_at_ms, targets)
+                .map_err(|_| ReviewSessionError::InvalidFeedback)?;
+            draft
+                .upsert_feedback(feedback)
+                .map_err(|_| ReviewSessionError::InvalidFeedback)
+        })
+    }
+
+    pub async fn delete_feedback(
+        &self,
+        command: DeleteReviewFeedback,
+    ) -> Result<ReviewSessionSnapshot, ReviewSessionError> {
+        let mut state = self.state.lock().await;
+        mutate_active(&mut state, command.guard, |draft, _bindings| {
+            if draft.remove_feedback(command.feedback_id) {
+                Ok(())
+            } else {
+                Err(ReviewSessionError::FeedbackNotFound)
+            }
+        })
+    }
+
     pub async fn shutdown(&self) {
         loop {
             let notified = self.task_changed.notified();
@@ -740,6 +831,83 @@ fn install_active(
     state.error = None;
     state.active = Some(active);
     state.writer = Some(writer);
+}
+
+fn mutate_active<F>(
+    state: &mut ReviewSessionState,
+    guard: ReviewMutationGuard,
+    change: F,
+) -> Result<ReviewSessionSnapshot, ReviewSessionError>
+where
+    F: FnOnce(
+        &mut ReviewDraft,
+        &HashMap<EntityId, AssetVersionId>,
+    ) -> Result<(), ReviewSessionError>,
+{
+    if state.phase != ReviewSessionPhase::Active || state.task.is_some() {
+        return Err(ReviewSessionError::InvalidState);
+    }
+    let active = state
+        .active
+        .as_ref()
+        .ok_or(ReviewSessionError::InvalidState)?;
+    if guard.review_round_id != active.draft.review_round_id {
+        return Err(ReviewSessionError::StaleRound);
+    }
+    if guard.expected_revision != active.revision {
+        return Err(ReviewSessionError::StaleRevision);
+    }
+    let next_revision = active
+        .revision
+        .checked_add(1)
+        .ok_or(ReviewSessionError::InvalidData)?;
+    let bindings = active
+        .prepared
+        .iter()
+        .map(|prepared| (prepared.entity_id, prepared.asset.id))
+        .collect();
+    let mut draft = active.draft.clone();
+    change(&mut draft, &bindings)?;
+    state
+        .writer
+        .as_deref()
+        .ok_or(ReviewSessionError::InvalidState)?
+        .save_draft(&draft)
+        .map_err(|_| ReviewSessionError::SaveFailed)?;
+    let active = state
+        .active
+        .as_mut()
+        .ok_or(ReviewSessionError::InvalidState)?;
+    active.draft = draft;
+    active.revision = next_revision;
+    state.error = None;
+    Ok(snapshot(state))
+}
+
+fn asset_targets(
+    entity_ids: &[EntityId],
+    bindings: &HashMap<EntityId, AssetVersionId>,
+) -> Result<Vec<FeedbackTarget>, ReviewSessionError> {
+    if entity_ids.is_empty() {
+        return Err(ReviewSessionError::InvalidFeedback);
+    }
+    let mut seen = HashSet::with_capacity(entity_ids.len());
+    entity_ids
+        .iter()
+        .map(|entity_id| {
+            if !seen.insert(*entity_id) {
+                return Err(ReviewSessionError::InvalidFeedback);
+            }
+            let asset_version_id = bindings
+                .get(entity_id)
+                .copied()
+                .ok_or(ReviewSessionError::InvalidFeedback)?;
+            Ok(FeedbackTarget {
+                asset_version_id,
+                anchor: FeedbackAnchor::Asset,
+            })
+        })
+        .collect()
 }
 
 fn manual_stream(catalog: &ReviewCatalog) -> Result<Option<&ReviewStreamHead>, ReviewSessionError> {
@@ -954,7 +1122,7 @@ fn draft_counts(draft: &ReviewDraft) -> ReviewSessionCounts {
         feedback_items: draft.feedback.len() as u32,
         revise: revised.len() as u32,
         unreviewable: unreviewable as u32,
-        pass: total.saturating_sub(revised.len() + unreviewable) as u32,
+        pass: 0,
     }
 }
 

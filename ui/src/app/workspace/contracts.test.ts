@@ -11,6 +11,8 @@ const appSource = source('src/App.tsx')
 const organizationSource = source('src/app/workspace/useOrganizationCoordinator.ts')
 const viewingSource = source('src/app/workspace/useViewingCoordinator.ts')
 const feedbackSource = source('src/app/workspace/useFeedbackCoordinator.ts')
+const reviewCoordinatorSource = source('src/app/review/useReviewSessionCoordinator.ts')
+const reviewModelSource = source('src/app/review/reviewModel.ts')
 const emptyProjectSource = source('src/components/EmptyProject.tsx')
 const settingsSource = source('src/components/SettingsDialog.tsx')
 const videoPreviewSource = source('src/components/VideoPreview.tsx')
@@ -78,6 +80,20 @@ describe('workspace contracts', () => {
     ])
     expect('closeProject' in ports.emptyProject).toBe(false)
     expect(Object.keys(ports.shell)).toEqual(['revealProjectInFileManager'])
+    expect(Object.keys(ports.review).sort()).toEqual([
+      'listenReviewProgress',
+      'reviewAbandon',
+      'reviewAddFeedback',
+      'reviewCancelTask',
+      'reviewComplete',
+      'reviewCompletionSummary',
+      'reviewDeleteFeedback',
+      'reviewPreviewStart',
+      'reviewResume',
+      'reviewStart',
+      'reviewStatus',
+      'reviewUpdateFeedback',
+    ])
   })
 
   it('keeps ViewerWorkspace as the typed composition boundary', () => {
@@ -115,5 +131,11 @@ describe('workspace contracts', () => {
     expect(settingsSource).not.toMatch(/ViewerBridge/)
     expect(videoPreviewSource).toMatch(/VideoPreviewBridge/)
     expect(videoPreviewSource).not.toMatch(/ViewerBridge/)
+    expect(reviewCoordinatorSource).not.toMatch(
+      /@tauri-apps|ViewerBridge|useViewerController|ViewerState/,
+    )
+    expect(reviewModelSource).not.toMatch(
+      /@tauri-apps|ViewerBridge|useViewerController|ViewerState/,
+    )
   })
 })

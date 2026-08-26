@@ -1029,11 +1029,11 @@ export interface ReviewSessionCoordinator {
 - Nonempty unsaved text requires confirmation before inspector/dialog close, project close, or review context replacement.
 - Rename the existing workspace `FeedbackCoordinator` only if necessary for clarity; prefer referring to the new feature as `ReviewSessionCoordinator` and the old one as global notice coordination to avoid a broad rename.
 
-- [ ] **Step 1: Write bridge and coordinator behavior tests**
+- [x] **Step 1: Write bridge and coordinator behavior tests**
 
 Cover exact command names/payloads, progress unsubscribe, session reset, selection vs folder scope, search no-selection exclusion, same-revision serialization, save failure, stale reload, editor preservation, frozen targets, cancel, and unsaved-text guard.
 
-- [ ] **Step 2: Run focused UI tests and observe missing review surface**
+- [x] **Step 2: Run focused UI tests and observe missing review surface**
 
 Run:
 
@@ -1043,11 +1043,11 @@ pnpm --dir ui exec vitest run src/api/viewer.test.ts src/app/review/reviewModel.
 
 Expected: FAIL before review types, bridge methods, and coordinator exist.
 
-- [ ] **Step 3: Implement the bridge first, then pure model, then hook**
+- [x] **Step 3: Implement the bridge first, then pure model, then hook**
 
 Keep all scope derivation in pure functions with exhaustive tagged-union switches. Never infer `pass` or `unreviewable` in TypeScript; render backend counts only.
 
-- [ ] **Step 4: Verify boundary and TypeScript checks**
+- [x] **Step 4: Verify boundary and TypeScript checks**
 
 Run:
 
@@ -1058,7 +1058,7 @@ pnpm --dir ui check
 
 Expected: all pass; contract test proves review components/coordinator do not import Tauri or `useViewerController`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add ui/src/api/types.ts ui/src/api/viewer.ts ui/src/api/viewer.test.ts ui/src/app/workspace/ports.ts ui/src/app/workspace/contracts.test.ts ui/src/app/review/reviewModel.ts ui/src/app/review/reviewModel.test.ts ui/src/app/review/useReviewSessionCoordinator.ts ui/src/app/review/useReviewSessionCoordinator.test.tsx

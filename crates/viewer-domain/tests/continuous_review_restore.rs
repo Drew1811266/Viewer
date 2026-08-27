@@ -393,3 +393,45 @@ fn bulk_restore_shares_text_and_asset_payloads_up_to_the_target_limit() {
         assert_eq!(restored.feedback[0], before.feedback[0]);
     }
 }
+
+#[test]
+fn explicitly_selecting_all_affected_shared_targets_allows_restoring_old_text() {
+    let before = state();
+    let selection = ArchiveSelection {
+        expected_snapshot_id: before.snapshot_id,
+        groups: vec![ArchiveGroup {
+            basis: ArchiveBasis::Unknown,
+            targets: vec![key(&before, 11), key(&before, 12)],
+        }],
+    };
+    let plan = plan_archive(&before, &[], &selection, &[]).unwrap();
+    let archive = ArchiveCheckpoint::from_plan(
+        &before,
+        reference(&before),
+        &plan,
+        ReviewArchiveId::from_u128(1),
+        20,
+    )
+    .unwrap();
+    let mut current = before.clone();
+    current.snapshot_id = ReviewSnapshotId::from_u128(5);
+    current.feedback[0] = update_feedback_text(
+        &before.feedback[0],
+        ReviewTextRevisionId::from_u128(30),
+        "后来的共同意见",
+    )
+    .unwrap();
+    let decisions = vec![restore(key(&before, 11)), restore(key(&before, 12))];
+    let (next, plan) = apply_restore(
+        &current,
+        &archive,
+        std::slice::from_ref(&before),
+        &decisions,
+        ReviewSnapshotId::from_u128(6),
+    )
+    .unwrap();
+    assert!(plan.conflicts.is_empty());
+    assert_eq!(plan.coverage_reversals.len(), 2);
+    assert_eq!(next.feedback, before.feedback);
+    assert_eq!(current.feedback[0].text, "后来的共同意见");
+}

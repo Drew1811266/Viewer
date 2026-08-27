@@ -164,7 +164,7 @@ fn validate_transitions(
             reasons.insert(change.target_id, change.kind);
         }
         cursor.key = change.after;
-        cursor.ever_present |= change.after.is_some();
+        cursor.ever_present |= change.after.is_some() || change.historical_key.is_some();
     }
     for (id, cursor) in cursors {
         if cursor.key

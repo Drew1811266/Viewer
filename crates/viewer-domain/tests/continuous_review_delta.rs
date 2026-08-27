@@ -526,3 +526,30 @@ fn history_only_keys_cannot_change_the_owner_known_from_the_end_snapshot() {
         Err(ContinuousReviewError::DuplicateIdentity)
     );
 }
+
+#[test]
+fn an_identity_seen_in_history_cannot_be_reintroduced_as_new() {
+    let before = state();
+    let after = add_feedback(
+        &before,
+        feedback(20, &[(21, 1)]),
+        ReviewSnapshotId::from_u128(4),
+    )
+    .unwrap();
+    let added = key(&after, 21);
+    let changes = vec![
+        ReviewChange {
+            target_id: added.target_id,
+            before: None,
+            after: None,
+            kind: ReviewChangeKind::Archived,
+            archive_id: Some(ReviewArchiveId::from_u128(1)),
+            historical_key: Some(added),
+        },
+        change(None, Some(added), ReviewChangeKind::Added),
+    ];
+    assert_eq!(
+        diff_review(&before, &after, &changes),
+        Err(ContinuousReviewError::DuplicateIdentity)
+    );
+}

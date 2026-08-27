@@ -49,10 +49,15 @@ These ignored local artifacts do not ship with this ledger; their presence must 
 before relying on them. The user supplied Downloads/测试图; the native30-image journey has now
 run on its independent 衣服/A01 copy with a tauri://localhost development window. Four saved
 annotations, grid badge, exact draft recovery, 29pass/1revise/0unreviewable, external Reader
-and unchanged source bytes passed. Actual PNG inspection exposed a new unfixed N1: outlines
-after the first annotation turn white. Native overall acceptance and product-doc closeout remain
-pending that defect, not a missing fixture/window. The clean3d942f0 automated rerun passed;
-see the checkpoint for its evidence and N1's reproducible pixel probe.
+and unchanged source bytes passed. Actual PNG inspection exposed N1: outlines after the first
+annotation turned white. The user's later explicit fix request was completed in `25a6ac8` with
+graphics-state isolation and a failing-then-passing renderer regression. A fresh independent copy
+at `target/review-workbench-native-w0apTA/` passed the same native journey and visual/pixel PNG
+checks: all four outlines are RGBA(113,77,0,255), with visible white ordinals. Original images,
+both test copies and the old completed round remain unchanged. The bounded review and clean
+`25a6ac8` full quality/security gate passed (UI1142/Rust853; existing skips disclosed in checkpoint).
+N1 and native-journey acceptance are closed; overall product-doc integration and Task14 closeout
+remain pending. These native results do not alter the frozen browser references above.
 
 | ID | Wave | Reference state | Production surface | Recipe | Automated evidence | 1024×720 | 1440×900 | Verdict |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |

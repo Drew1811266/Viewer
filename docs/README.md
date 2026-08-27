@@ -43,13 +43,15 @@
 | [adr/0002-file-transaction-protocol.md](adr/0002-file-transaction-protocol.md) | Active | — |
 | [adr/0003-scan-search-and-generation.md](adr/0003-scan-search-and-generation.md) | Active | — |
 | [adr/0005-continuous-development-governance.md](adr/0005-continuous-development-governance.md) | Active | — |
+| [adr/0006-continuous-review-snapshot-and-archive-protocol.md](adr/0006-continuous-review-snapshot-and-archive-protocol.md) | Active | — |
 
 AI 素材评审路线阶段 2 已于 2026-08-26 完成：设计文档内部状态为 `Implemented`，实施计划
 内部状态为 `Complete`。两份文档继续以 Active 治理资料保留，用于约束未来阶段的依赖边界。
 
 持续评审与 Agent 交接完整设计已于 2026-08-27 获用户确认；实施计划已拆为六个阶段、23 个
-任务，编码尚未开始。两份文档的 Active 状态表示当前工程依据，不表示产品已解除完成锁定或
-切换到新协议；现有协议和图片工作台文档的当前事实不会因设计／计划提交而自动改变。
+任务；阶段 A 的纯 Domain 任务 1–5 已在授权的独立分支完成并通过复审，证据见
+[阶段记录](reviews/2026-08-27-continuous-review-domain-phase-a.md)。其余阶段尚未实施。
+Active 不表示产品已解除完成锁定或切换到新协议；UI、迁移和对外读取均未接入。
 
 ## 历史目标、设计与实施资料
 
@@ -194,6 +196,7 @@ AI 素材评审路线阶段 2 已于 2026-08-26 完成：设计文档内部状�
 | [2026-08-02-viewer-atlas-product-component-gap-audit.md](reviews/2026-08-02-viewer-atlas-product-component-gap-audit.md) | Development evidence | — |
 | [2026-08-02-viewer-atlas-product-migration-ledger.md](reviews/2026-08-02-viewer-atlas-product-migration-ledger.md) | Development evidence | — |
 | [2026-08-26-image-review-visual-baseline.md](reviews/2026-08-26-image-review-visual-baseline.md) | Development evidence | — |
+| [2026-08-27-continuous-review-domain-phase-a.md](reviews/2026-08-27-continuous-review-domain-phase-a.md) | Development evidence | — |
 | [2026-08-05-viewer-progressive-loading-acceptance.md](reviews/2026-08-05-viewer-progressive-loading-acceptance.md) | Development evidence | — |
 | [2026-08-10-video-preview-acceptance.md](reviews/2026-08-10-video-preview-acceptance.md) | Development evidence | — |
 | [2026-08-10-video-render-feasibility.md](reviews/2026-08-10-video-render-feasibility.md) | Development evidence | — |

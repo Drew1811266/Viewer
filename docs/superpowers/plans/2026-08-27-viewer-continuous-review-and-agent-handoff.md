@@ -12,9 +12,12 @@
 
 > Status: Active
 >
-> 执行状态：未开始，0 / 23 个任务完成；本文中的代码片段是实施指引，不是已落地代码。
+> 执行状态：阶段 A 的任务 1–5 已完成并分别提交，5 / 23；全仓门禁与独立复审通过。
+> 阶段 B–F 未开始；未接入 UI、存储、迁移或 Agent 读取入口。
 >
-> 基线：`a539f8df5f3e0f3239110df44515ba7cb583e308`。本次计划提交只改变文档。
+> 计划基线：`a539f8df5f3e0f3239110df44515ba7cb583e308`；实施基线：`d7abb9961f377ae257c3283ef7893218ec0c53f9`。
+> 阶段 A 在用户授权的 `.worktrees/continuous-review-domain`、`codex/continuous-review-domain` 内实施；原分支未改动。
+> 证据与续接点见[阶段 A 记录](../../reviews/2026-08-27-continuous-review-domain-phase-a.md)。
 
 ## Global Constraints
 
@@ -63,7 +66,7 @@
 
 | 所在位置 | 计划文件／修改入口 | 职责 |
 | --- | --- | --- |
-| Domain | `crates/viewer-domain/src/review/continuous/{mod,model,mutation,archive,restore,delta,source}.rs` | 纯规则；不序列化文件布局，不做 IO |
+| Domain | `crates/viewer-domain/src/review/continuous/{mod,model,mutation,archive,restore,delta,source,validation}.rs` | 纯规则与跨快照身份核验；不序列化文件布局，不做 IO |
 | Domain exports | `crates/viewer-domain/src/lib.rs`、`review/mod.rs` | 新强类型 ID 与窄公共导出；不复用文件整理的 ReviewState 名称 |
 | Application | `crates/viewer-application/src/review_workspace/{mod,ports,service,editing,archiving,history,usage,migration,projection}.rs` | 用例、版本守卫、恢复和只读投影 |
 | Evidence port | `crates/viewer-application/src/review_evidence.rs` | 已验证图像表示与编号预览；保留 legacy ArtifactPort |
@@ -103,6 +106,24 @@
 `DuplicateIdentity`、`StaleSnapshot`、`SelectionConflict`、`NeedsConfirmation`。
 IO／不确定提交错误不得塞入 Domain，见任务 7–8 的 `ReviewCommitError`。
 
+### 阶段 A 实施细化（后续任务继续沿用）
+
+- `ArchiveCheckpoint` 保存 `project_id`、`stream_id` 和 `before: SnapshotRef`，不只保存裸
+  `before_snapshot_id`。未知 usage 仍需用真实摘要引用 C 的历史内容；读取时访问 `before.snapshot_id`。
+- 增加 `apply_archive`／`apply_restore` 纯函数：重新校验计划、生成新状态，不信任被外部改写的移出数组。
+- 恢复 decisions 是明确选择范围；空选择不复活任何目标。即时撤销由应用层核实后选择
+  `archive.removed`，不能用全部历史目标替代。共同文字冲突不得覆盖未选目标。
+- `ContinueAsNew` 增加 `created_at_ms`、`confirmed_anchor: Option<FeedbackAnchor>`；没有
+  确认位置时保持待确认。继续提出不撤销旧意见的存档覆盖；同身份恢复才撤销对应覆盖。
+- 恢复保留旧版本的保存事实，另返回 `requires_source_check`；执行条件必须再经过读时源检查。
+  历史 Ready 不是新读取授权；无检查或源变化都不能进入 actionable。
+- 纯状态变更清空未绑定的 parent，由应用／仓储提供真实前驱摘要；无内容变化的操作不制造版本。
+- 复用旧素材／Anchor 校验只扩大 `round.rs` 内部可见性；公共接口变更按治理要求提前登记
+  [ADR 0006](../../adr/0006-continuous-review-snapshot-and-archive-protocol.md)，Task 6 再补线协议决策。
+- 新增私有 `validation.rs` 与测试 fixture 模块以复用跨快照约束；不增加依赖或改变旧评审行为。
+- 恢复计划按意见版本共享 `RestoreFeedbackContent`／原文和素材元数据；每项只持有自己的目标，
+  应用时按索引合并，避免共同意见 10,000 个目标造成全文复制放大。
+
 ---
 
 ### Task 1: 强类型身份、当前状态与验证
@@ -122,7 +143,7 @@ impl VersionedTarget {
 }
 ```
 
-- [ ] **Step 1 — 写空状态和身份约束 RED 测试。**
+- [x] **Step 1 — 写空状态和身份约束 RED 测试。**
 
 ```rust
 #[test]
@@ -137,8 +158,8 @@ fn an_empty_current_state_has_identity_but_no_pass_outcomes() {
 }
 ```
 
-- [ ] **Step 2 — 运行 RED。** `cargo test --locked -p viewer-domain --test continuous_review_state`；预期新类型缺失或约束断言失败，不能接受路径／测试未发现作为 RED。
-- [ ] **Step 3 — 建立最小模型。** State 字段为 `project_id`、`stream_id`、`snapshot_id`、`parent: Option<SnapshotRef>`、`assets: Vec<AssetVersion>`、`feedback: Vec<VersionedFeedback>`；不含 `pass`。Feedback 字段为 `id`、`text_revision_id`、`text`、`created_at_ms`、`targets`、`history_ref`。Target 字段为 `id`、`revision_id`、`asset_version_id`、`anchor`、`availability`；`asset()` 建立 `FeedbackAnchor::Asset` 和 Ready。
+- [x] **Step 2 — 运行 RED。** `cargo test --locked -p viewer-domain --test continuous_review_state`；预期新类型缺失或约束断言失败，不能接受路径／测试未发现作为 RED。
+- [x] **Step 3 — 建立最小模型。** State 字段为 `project_id`、`stream_id`、`snapshot_id`、`parent: Option<SnapshotRef>`、`assets: Vec<AssetVersion>`、`feedback: Vec<VersionedFeedback>`；不含 `pass`。Feedback 字段为 `id`、`text_revision_id`、`text`、`created_at_ms`、`targets`、`history_ref`。Target 字段为 `id`、`revision_id`、`asset_version_id`、`anchor`、`availability`；`asset()` 建立 `FeedbackAnchor::Asset` 和 Ready。
 
 ```rust
 pub enum ReviewAvailability { Ready, NeedsConfirmation(Vec<ReviewPendingReason>) }
@@ -155,9 +176,9 @@ pub struct TargetVersionKey {
 }
 ```
 
-- [ ] **Step 4 — 逐条加负例并通过。** 外键缺失、重复 ID、空文字／空目标、非有限 Anchor、错误媒体、空待确认原因、资源超限。模型复用现有 Anchor 验证；状态不接受跨上下文引用。`SnapshotRef { snapshot_id: ReviewSnapshotId, blake3: [u8;32] }`；`HistoryRef { project_id, stream_id, source: HistorySource }`。HistorySource 为 Snapshot { snapshot, keys: Vec<TargetVersionKey> } 或 Legacy { round_id, record_blake3, targets: Vec<LegacyTargetRef> }；`LegacyTargetRef { round_id, feedback_id, target_index: u32 }` 的序号只用于定位不可变旧记录，不冒充 v3 稳定 Target ID。带 Anchor 的类型只派生 PartialEq，不错误派生 Eq；现有 UUID ID 没有 Ord，索引用 HashMap 并在序列化边界显式规范排序。
-- [ ] **Step 5 — GREEN 与旧 Domain 回归。** `cargo test --locked -p viewer-domain`；空状态合法，有意见却无对应素材非法。
-- [ ] **Step 6 — 提交。** 只暂存本任务 Files，`git commit -m "feat(review): model continuous review identities and state"`。
+- [x] **Step 4 — 逐条加负例并通过。** 外键缺失、重复 ID、空文字／空目标、非有限 Anchor、错误媒体、空待确认原因、资源超限。模型复用现有 Anchor 验证；状态不接受跨上下文引用。`SnapshotRef { snapshot_id: ReviewSnapshotId, blake3: [u8;32] }`；`HistoryRef { project_id, stream_id, source: HistorySource }`。HistorySource 为 Snapshot { snapshot, keys: Vec<TargetVersionKey> } 或 Legacy { round_id, record_blake3, targets: Vec<LegacyTargetRef> }；`LegacyTargetRef { round_id, feedback_id, target_index: u32 }` 的序号只用于定位不可变旧记录，不冒充 v3 稳定 Target ID。带 Anchor 的类型只派生 PartialEq，不错误派生 Eq；现有 UUID ID 没有 Ord，索引用 HashMap 并在序列化边界显式规范排序。
+- [x] **Step 5 — GREEN 与旧 Domain 回归。** `cargo test --locked -p viewer-domain`；空状态合法，有意见却无对应素材非法。
+- [x] **Step 6 — 提交。** 只暂存本任务 Files，`git commit -m "feat(review): model continuous review identities and state"`。
 
 ### Task 2: 新增、文字编辑、重绘与目标级撤回
 
@@ -171,7 +192,7 @@ archive_id: Option<ReviewArchiveId>, historical_key: Option<TargetVersionKey> }`
 VersionedFeedback, ReviewSnapshotId) -> Result<ContinuousReviewState, ContinuousReviewError>`。
 保存状态的前驱引用由 Application／Repository 对照真实已提交摘要设置，纯函数不自造摘要。
 
-- [ ] **Step 1 — 写“修改不是追加”的 RED 测试。**
+- [x] **Step 1 — 写“修改不是追加”的 RED 测试。**
 
 ```rust
 let feedback = VersionedFeedback {
@@ -188,8 +209,8 @@ assert_eq!(feedback.text, "袖口收紧");
 assert_eq!(revised.text, "袖口收紧，保留褶皱");
 ```
 
-- [ ] **Step 2 — RED。** `cargo test --locked -p viewer-domain --test continuous_review_mutation`。
-- [ ] **Step 3 — 实现复制后更新，不改历史对象。**
+- [x] **Step 2 — RED。** `cargo test --locked -p viewer-domain --test continuous_review_mutation`。
+- [x] **Step 3 — 实现复制后更新，不改历史对象。**
 
 ```rust
 let mut next = feedback.clone();
@@ -200,9 +221,9 @@ Ok(next)
 ```
 
 为 VersionedFeedback 增加 `validate() -> Result<(), ContinuousReviewError>` 并复用 Task 1 约束；新增意见需新 Feedback ID；重绘只改指定目标 revision／anchor；撤回只移除选定目标，最后一目标撤回后移除空 Feedback，但保留完整空 State。
-- [ ] **Step 4 — 加入共同意见两目标、删除不存在目标、重复 ID、新素材追加及不保留空标记的测试。** 撤回记录原因 Withdrawn；不产生反向修改文字。
-- [ ] **Step 5 — GREEN。** `cargo test --locked -p viewer-domain --test continuous_review_state --test continuous_review_mutation`。
-- [ ] **Step 6 — 提交。** `git commit -m "feat(review): preserve feedback identity across current edits"`，只暂存 Files。
+- [x] **Step 4 — 加入共同意见两目标、删除不存在目标、重复 ID、新素材追加及不保留空标记的测试。** 撤回记录原因 Withdrawn；不产生反向修改文字。
+- [x] **Step 5 — GREEN。** `cargo test --locked -p viewer-domain --test continuous_review_state --test continuous_review_mutation`。
+- [x] **Step 6 — 提交。** `git commit -m "feat(review): preserve feedback identity across current edits"`，只暂存 Files。
 
 ### Task 3: 精确部分存档与后补意见保护
 
@@ -221,7 +242,7 @@ pub fn plan_archive(current: &ContinuousReviewState, bases: &[ContinuousReviewSt
 必须仍与 C 精确相等。`ArchiveBasisSource::AgentDeclared { usage_id }`／`UserSelected` 是正式
 枚举定义。`ArchiveCoverage { archive_id, key, active }` 由已核验存档及恢复链提供，不能查目录猜测。
 
-- [ ] **Step 1 — RED：B 读后 C 改动不能一起消失。**
+- [x] **Step 1 — RED：B 读后 C 改动不能一起消失。**
 
 ```rust
 let b = TargetVersionKey {
@@ -234,8 +255,8 @@ assert_eq!(classify_archive(Some(b), b), ArchiveDisposition::RemoveCurrent);
 assert_eq!(classify_archive(None, b), ArchiveDisposition::AlreadyAbsent);
 ```
 
-- [ ] **Step 2 — RED。** `cargo test --locked -p viewer-domain --test continuous_review_archive`。
-- [ ] **Step 3 — 实现纯比较。**
+- [x] **Step 2 — RED。** `cargo test --locked -p viewer-domain --test continuous_review_archive`。
+- [x] **Step 3 — 实现纯比较。**
 
 ```rust
 match current {
@@ -250,11 +271,11 @@ match current {
 正式字段为 `ArchivePlan { expected_snapshot_id, groups, removed, retained, already_covered }`；
 removed／already_covered 为精确键数组，retained 元素同时记录依据键、可选当前键和 disposition。
 `ArchivePlan::is_noop() -> bool` 判断没有新历史事实也没有当前移出。`ArchiveCheckpoint` 增加
-archive_id、created_at_ms、before_snapshot_id，并固定计划中的分组与结果。未知依据组的历史
-内容取 before_snapshot_id 对应的 C；usageBasis=null 不等于历史内容没有可核验来源。
-- [ ] **Step 4 — 增加共同意见只存图 1、图 2 保留，删除后不复活，新增不移出，重绘保留，空选择不建档、有效覆盖去重及已撤销覆盖可再次存档的测试。**
-- [ ] **Step 5 — GREEN。** `cargo test --locked -p viewer-domain --test continuous_review_archive`。
-- [ ] **Step 6 — 提交。** `git commit -m "feat(review): archive exact target revisions without losing later edits"`。
+archive_id、created_at_ms、project_id、stream_id、before: SnapshotRef，并固定计划中的分组与结果。
+未知依据组的历史内容取 before 对应的 C；usageBasis=null 不等于历史内容没有可核验来源。
+- [x] **Step 4 — 增加共同意见只存图 1、图 2 保留，删除后不复活，新增不移出，重绘保留，空选择不建档、有效覆盖去重及已撤销覆盖可再次存档的测试。**
+- [x] **Step 5 — GREEN。** `cargo test --locked -p viewer-domain --test continuous_review_archive`。
+- [x] **Step 6 — 提交。** `git commit -m "feat(review): archive exact target revisions without losing later edits"`。
 
 ### Task 4: 撤销存档、选择恢复与继续提出
 
@@ -262,7 +283,7 @@ archive_id、created_at_ms、before_snapshot_id，并固定计划中的分组与
 
 **Interfaces:** `RestoreDisposition = Restore | ConfirmConflict | AlreadyCurrent`。`RestoreDecision { historical_key: TargetVersionKey, choice: RestoreChoice }`；`RestoreChoice` 为 PreserveCurrent／UseHistorical／ContinueAsNew，后者携带新 Feedback／文字／Target／目标版本 ID、目标 AssetVersionId 和确认后的 Anchor。RestorePlan 含恢复目标、冲突目标和按键记录的存档覆盖撤销事件。Produces `classify_restore(Option<TargetVersionKey>, TargetVersionKey) -> RestoreDisposition`、`plan_restore(&ContinuousReviewState, &ArchiveCheckpoint, &[ContinuousReviewState], &[RestoreDecision]) -> Result<RestorePlan, ContinuousReviewError>`。第三参数为经过验证的历史依据内容，不能仅凭历史键恢复猜测的原文。一个历史键最多一个 decision，未知键或重复选择报错。
 
-- [ ] **Step 1 — RED：新内容不能被整体回滚。** 构造 old 与 newer 两个同 Target ID、不同文字版本的键。
+- [x] **Step 1 — RED：新内容不能被整体回滚。** 构造 old 与 newer 两个同 Target ID、不同文字版本的键。
 
 ```rust
 let old = TargetVersionKey {
@@ -275,8 +296,8 @@ assert_eq!(classify_restore(Some(old), old), RestoreDisposition::AlreadyCurrent)
 assert_eq!(classify_restore(None, old), RestoreDisposition::Restore);
 ```
 
-- [ ] **Step 2 — RED。** `cargo test --locked -p viewer-domain --test continuous_review_restore`。
-- [ ] **Step 3 — 实现恢复判定与新来源。**
+- [x] **Step 2 — RED。** `cargo test --locked -p viewer-domain --test continuous_review_restore`。
+- [x] **Step 3 — 实现恢复判定与新来源。**
 
 ```rust
 match current {
@@ -287,9 +308,9 @@ match current {
 ```
 
 无后续变更的撤销追加恢复事件；有后续变更按明确选择处理。ContinueAsNew 使用新 Feedback／Target 身份，HistoryRef 指向旧键；尚未确认新图适用性时标 ApplicabilityUnconfirmed。不得复用旧坐标并直接 Ready。
-- [ ] **Step 4 — 加测试：源改变时撤销仍待确认；已删除目标与明确恢复区分；重复恢复去重；旧档案字节和新意见都保持。**
-- [ ] **Step 5 — GREEN。** `cargo test --locked -p viewer-domain --test continuous_review_restore --test continuous_review_archive`。
-- [ ] **Step 6 — 提交。** `git commit -m "feat(review): restore archived feedback without overwriting current work"`。
+- [x] **Step 4 — 加测试：源改变时撤销仍待确认；已删除目标与明确恢复区分；重复恢复去重；旧档案字节和新意见都保持。**
+- [x] **Step 5 — GREEN。** `cargo test --locked -p viewer-domain --test continuous_review_restore --test continuous_review_archive`。
+- [x] **Step 6 — 提交。** `git commit -m "feat(review): restore archived feedback without overwriting current work"`。
 
 ### Task 5: 完整当前投影与精确净增量
 
@@ -303,7 +324,7 @@ Rust 字段为 `asset_version_id`、`checked_at_ms`、`status`；序列化／DTO
 target_id、before／after 版本键、text_changed／anchor_changed／binding_changed／availability_changed
 以及 `removal_reason: Option<ReviewChangeKind>`。投影返回身份，读取结果另带完整原文，不能只有 ID。
 
-- [ ] **Step 1 — RED：读时检查不能改变保存快照。** 用 Task 1 字段构造一条 Ready 目标的 state，checks 对它返回 Changed。
+- [x] **Step 1 — RED：读时检查不能改变保存快照。** 用 Task 1 字段构造一条 Ready 目标的 state，checks 对它返回 Changed。
 
 ```rust
 let before = state.clone();
@@ -314,8 +335,8 @@ assert_eq!(state, before);
 assert!(diff_review(&before, &state, &[]).unwrap().targets.is_empty());
 ```
 
-- [ ] **Step 2 — RED。** `cargo test --locked -p viewer-domain --test continuous_review_delta`。
-- [ ] **Step 3 — 实现按身份对齐和原文／几何净比较。** 版本键用于识别，不以“版本号变了”强制输出无内容差异的修改；取 union(Target IDs)，逐项比较存活状态及字段，移出原因由 ReviewChange 验证。Projection 不升级用户待确认项。
+- [x] **Step 2 — RED。** `cargo test --locked -p viewer-domain --test continuous_review_delta`。
+- [x] **Step 3 — 实现按身份对齐和原文／几何净比较。** 版本键用于识别，不以“版本号变了”强制输出无内容差异的修改；取 union(Target IDs)，逐项比较存活状态及字段，移出原因由 ReviewChange 验证。Projection 不升级用户待确认项。
 
 ```rust
 let can_execute = matches!(target.availability, ReviewAvailability::Ready)
@@ -324,13 +345,13 @@ if can_execute { actionable.push(target.id); }
 else { needs_confirmation.push(target.id); }
 ```
 
-- [ ] **Step 4 — 加测试：新增后删除、改后改回、只重绘、共同意见部分存档、撤回不是逆向指令、缺少 source check 不能 Ready、同目标不能落入两类。**
-- [ ] **Step 5 — GREEN／检查点 A。** `cargo test --locked -p viewer-domain`；审阅纯规则后才进入存储。
-- [ ] **Step 6 — 提交。** `git commit -m "feat(review): separate current projection from historical deltas"`。
+- [x] **Step 4 — 加测试：新增后删除、改后改回、只重绘、共同意见部分存档、撤回不是逆向指令、缺少 source check 不能 Ready、同目标不能落入两类。**
+- [x] **Step 5 — GREEN／检查点 A。** `cargo test --locked -p viewer-domain`；审阅纯规则后才进入存储。
+- [x] **Step 6 — 提交。** `git commit -m "feat(review): separate current projection from historical deltas"`。
 
 ### Task 6: v3 Schema、Rust 编解码与契约夹具
 
-**Files:** Create `docs/adr/0006-continuous-review-snapshot-and-archive-protocol.md`；`docs/protocol/viewer-review-index-v3.schema.json`、`docs/protocol/viewer-review-state-v3.schema.json`、`docs/protocol/viewer-review-archive-v3.schema.json`、`docs/protocol/viewer-review-read-result-v3.schema.json`、`docs/protocol/viewer-review-usage-v1.schema.json`；`crates/viewer-infrastructure/src/review/protocol/v3/mod.rs`、`crates/viewer-infrastructure/src/review/protocol/v3/records.rs`、`crates/viewer-infrastructure/src/review/protocol/v3/validate.rs`；`tests/fixtures/review-protocol/review-index-v3.valid.json`、`tests/fixtures/review-protocol/review-state-v3.valid.json`、`tests/fixtures/review-protocol/review-archive-v3.valid.json`、`tests/fixtures/review-protocol/review-read-result-v3.valid.json`、`tests/fixtures/review-protocol/review-usage-v1.valid.json`、`tests/fixtures/review-protocol/continuous-review-cases.json`；`scripts/review-protocol/v3-fixtures.mjs`；`tests/review_protocol_v3_contract.rs`。Modify `crates/viewer-infrastructure/src/review/protocol/mod.rs`、`crates/viewer-infrastructure/src/review/mod.rs`、`crates/viewer-infrastructure/Cargo.toml`、`scripts/review-protocol/schema-contract.test.mjs`、`docs/README.md`。
+**Files:** Create `docs/protocol/viewer-review-index-v3.schema.json`、`docs/protocol/viewer-review-state-v3.schema.json`、`docs/protocol/viewer-review-archive-v3.schema.json`、`docs/protocol/viewer-review-read-result-v3.schema.json`、`docs/protocol/viewer-review-usage-v1.schema.json`；`crates/viewer-infrastructure/src/review/protocol/v3/mod.rs`、`crates/viewer-infrastructure/src/review/protocol/v3/records.rs`、`crates/viewer-infrastructure/src/review/protocol/v3/validate.rs`；`tests/fixtures/review-protocol/review-index-v3.valid.json`、`tests/fixtures/review-protocol/review-state-v3.valid.json`、`tests/fixtures/review-protocol/review-archive-v3.valid.json`、`tests/fixtures/review-protocol/review-read-result-v3.valid.json`、`tests/fixtures/review-protocol/review-usage-v1.valid.json`、`tests/fixtures/review-protocol/continuous-review-cases.json`；`scripts/review-protocol/v3-fixtures.mjs`；`tests/review_protocol_v3_contract.rs`。Modify `docs/adr/0006-continuous-review-snapshot-and-archive-protocol.md`、`crates/viewer-infrastructure/src/review/protocol/mod.rs`、`crates/viewer-infrastructure/src/review/mod.rs`、`crates/viewer-infrastructure/Cargo.toml`、`scripts/review-protocol/schema-contract.test.mjs`、`docs/README.md`。
 
 **Interfaces:** `encode_state_v3(&ReviewStateRecord) -> Result<Vec<u8>, ReviewProtocolError>`、`decode_state_v3(&[u8]) -> Result<ReviewStateRecord, ReviewProtocolError>`；`encode_index_v3`／`decode_index_v3` 对应 ReviewIndexV3，`encode_archive_v3`／`decode_archive_v3` 对应 ReviewArchiveRecord，`encode_usage_v1`／`decode_usage_v1` 对应 ReviewUsageRecord，参数及返回规则为 typed record→bytes 与 bytes→typed record。StateRecord 含 domain state、操作 ID／载荷摘要、转移原因、证据清单；IndexV3 按 Stream 保存 currentRef、archiveRefs、legacyRefs；ArchiveRecord 包含 checkpoint、beforeRef、resultSnapshotId，禁止循环摘要引用。Wire DTO 独立于 Domain；Task 7 增加的应用存储模型由 adapter 映射，不能反向让 Application import wire DTO。
 
@@ -362,7 +383,7 @@ test('v3 current state is closed and has no completed outcome contract', async (
 
 该片段是 properties 子树。State 根的完整必填字段为 protocolVersion、kind、projectId、reviewStreamId、snapshotId、parent、commandId、payloadDigest、assets、feedback、changes、evidence；Index 为 protocolVersion、kind、projectId、streams；Archive 为 protocolVersion、kind、projectId、reviewStreamId、archiveId、createdAtMs、beforeRef、resultSnapshotId、groups、removed、retained；Usage 为 protocolVersion、declarationId、projectId、reviewStreamId、basis、targets、outputs。ReadResult 按 Task 15 的判别联合闭合，不容许把 history 当 current。Rust records 使用 `#[serde(deny_unknown_fields)]`，再经过 Domain 验证，不只靠反序列化成功。
 - [ ] **Step 4 — 加 Rust↔JSON 夹具往返及负例。** 重复目标、跨 Stream 引用、摘要错误、错误角色、循环父链、未知 major、图片标记重复编号、缺失必需证据声明；legacy 能力缺失必须显式标记。夹具至少含非空当前、空当前、部分存档、后补保留、待确认和 legacy 混合场景；测试修改均先复制到临时工程。
-- [ ] **Step 5 — GREEN，登记 ADR。** `cargo test --locked -p viewer-infrastructure --test review_protocol_v3_contract && pnpm test:review-protocol && pnpm test:policy`。ADR 记录新契约与旧接口失败方式，Current 协议说明暂不宣称已启用 v3。
+- [ ] **Step 5 — GREEN，扩展 ADR。** `cargo test --locked -p viewer-infrastructure --test review_protocol_v3_contract && pnpm test:review-protocol && pnpm test:policy`。在阶段 A 已登记的 ADR 0006 中补充 wire 契约与旧接口失败方式，Current 协议说明暂不宣称已启用 v3。
 - [ ] **Step 6 — 提交。** `git commit -m "feat(review): define versioned continuous review wire contracts"`。
 
 ### Task 7: 不可变仓储端口、共享租约与原子提交
@@ -469,6 +490,11 @@ let rendered = evidence.render(ReviewEvidenceRequest { base, annotations, cancel
 **Files:** Modify `crates/viewer-application/src/review_assets.rs`、`crates/viewer-infrastructure/src/review/assets.rs`、`crates/viewer-infrastructure/src/review/change_ledger.rs`、`crates/viewer-domain/src/review/continuous/source.rs`、`crates/viewer-domain/src/review/continuous/model.rs`。Create `crates/viewer-infrastructure/tests/continuous_review_assets.rs`。
 
 **Interfaces:** Adds `ContinuousReviewAssetPort`，由 `IndexedReviewAssetCatalog` 实现；async `prepare_additions(&[EntityId], cancellation) -> Result<Vec<PreparedReviewAsset>, ReviewAssetError>`、`check_sources(&[AssetVersion], cancellation) -> Result<Vec<SourceCheck>, ReviewAssetError>`。既有 `ReviewAssetCatalogPort` 的 legacy 方法保持行为。`SourceBindingDecision { target_key, new_asset_version_id, anchor, confirmation }`；confirmation 明确 `UserConfirmed` 或已核验 Producer 关系加用户位置确认，不能由文件名生成。
+
+阶段 A 审阅约束：保存的 `AssetVersion`（包括捕获时路径、实体与 mtime）是不可变事实。
+Task 10 须在实时素材目录／独立定位映射中表达已确认的改名和移动，先明确该映射的归属及
+校验接口，再实现源读取；不能修改旧捕获记录、只因改名生成新内容版本，或放松内容身份核验。
+此定位映射尚未在阶段 A 实现，属于本任务的前置接口细化，不得忽略设计第 7.1 节。
 
 - [ ] **Step 1 — RED：评审图 2 不能丢失图 1 的变化跟踪。** 在新测试中准备两个临时素材，分别调用 prepare_additions 后更改第一张，检查两张版本。
 

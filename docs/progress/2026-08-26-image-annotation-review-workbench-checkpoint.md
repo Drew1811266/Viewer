@@ -6,8 +6,8 @@
 跨层复核的 8 项问题已修复于 `ee71acc`；验收脚本增量 `4366312` 也已通过独立聚焦复核。
 两种尺寸、18 项修复后完整成对视觉检查已通过。已确认截图、摘要和验证范围见
 [首版基准确认记录](../reviews/2026-08-26-image-review-visual-baseline.md)。
-设计 §13.4 的原生高分辨率完整流程仍待 Mac 手动解锁及测试图片目录，产品文档和最终收尾
-仍未完成。此前 `2d68d3d` 的完整验证仅是历史证据，不能替代后续提交的验证。
+设计 §13.4 的原生高分辨率完整流程仍待可操作的开发版窗口及测试图片目录，产品文档和
+最终收尾仍未完成。此前 `2d68d3d` 的完整验证仅是历史证据，不能替代后续提交的验证。
 不要重复询问视觉方向或已取得的捕获许可。
 
 ## 续接位置
@@ -164,16 +164,39 @@ Viewer 仍处于开发初期。代码签名、Apple 公证、正式安装包、�
 分别为 `target/review-workbench-native-fixture.mjs` 和 `target/review-workbench-native-result.mjs`。
 后验断言尚未针对真实完成结果运行，不得据脚本存在宣称流程通过。
 
+后续主机于 22:35 唤醒，应用枚举不再返回锁屏错误，但没有找到 Viewer；以配置中的
+`com.viewer.desktop` 获取窗口返回 `Invalid app`。精确的开发版进程仍在运行。
+这是原生 UI 自动化定位未就绪，不是原生功能已验收，也不能继续把早期锁屏当作唯一当前原因。
+没有绕过 UI 工具改用其他输入注入方式。
+
 依设计 §14，保持产品文档原有事实边界及计划/设计 Active 状态；在上述原生证据补齐前，
 不将本轮整体写为已实施或完成。
 
+## 检查点完整验证中的休眠中断
+
+干净 `f57b24c` 上的 `pnpm verify:clean` 未通过，原始日志保留为
+`target/review-workbench-checkpoint-verify.log`：UI 1024 通过、4 失败、1 跳过，另有
+17 个工作进程启动错误；后续生产构建、完整 Rust 和安全检查尚未在这次运行执行。
+不能把这次运行与其他日志拼接为一次完整通过。
+
+已按系统性排错核对：UI 于 21:29:25 开始，macOS 电源日志在 21:29:31 进入空闲休眠，
+其后多次短暂 DarkWake 后继续休眠，直到 22:35:19 才由用户活动唤醒。两个 5 秒限制的
+测试实际分别记录约 1016 秒和 974 秒；一个纯同步按钮测试也记录约 1016 秒。
+3 个失败是超时，第 4 个发生在同一 App 文件前一项超时之后。相关测试及配置没有被修复增量改动。
+
+唤醒后，在同一提交上用仅作用于子进程生命周期的 `caffeinate -i` 重跑两个失败文件：
+`App.test.tsx`、`ViewerControls.test.tsx` 共 96 项通过，耗时 5.50 秒。
+日志为 `target/review-workbench-checkpoint-focused-awake.log`。没有延长超时、减少测试、
+改动产品代码或长期电源配置。完整验证仍需重新从头执行，不能仅凭这次聚焦通过宣称完成。
+
 ## 下一步
 
-1. 当前检查点提交执行 `pnpm verify:clean`、`pnpm architecture:trends` 和视觉脚本测试，
-   日志分别保存为 `target/review-workbench-checkpoint-verify.log`、
-   `target/review-workbench-checkpoint-trends.log`、`target/review-workbench-checkpoint-visual-tests.log`；
-   续接时核对实际输出和提交，不把日志路径本身当作通过证明。
-2. 用户手动解锁并提供高分辨率测试目录后，只复制素材到独立测试目录，完成设计 §13.4：
+1. 当前检查点提交用 `caffeinate -i pnpm verify:clean` 从头重跑，日志保存为
+   `target/review-workbench-checkpoint-verify-awake.log`。独立架构趋势已退出 0（24 条告警），
+   视觉脚本测试 17 项通过，日志为 `target/review-workbench-checkpoint-trends.log`、
+   `target/review-workbench-checkpoint-visual-tests.log`。续接时核对实际输出和提交，
+   不把日志路径本身当作通过证明。
+2. 取得可操作的开发窗口及用户提供的高分辨率测试目录后，只复制素材到独立测试目录，完成设计 §13.4：
    第 6 张两条路径+两个矩形、网格 4 条、重开恢复、29 通过/1 返工/0 不可评审、Reader 校验。
 3. 原生验收通过后，同步产品规格、使用指南、功能、快捷键、隐私、故障排查及变更记录。
 4. 在最终实现/文档提交上执行完整质量、安全与 `pnpm verify:clean`，再更新设计和计划最终状态。

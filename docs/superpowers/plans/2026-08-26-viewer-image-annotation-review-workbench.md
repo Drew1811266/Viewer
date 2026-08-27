@@ -20,7 +20,8 @@ initial references and complete paired evidence are established. The eight Impor
 from the whole-branch review were fixed in `ee71acc`; the acceptance-only continuation `4366312`
 also passed the same scoped re-review, with no remaining Critical/Important findings.
 All18 post-fix visual pairs pass. The spec §13.4 real high-resolution native journey remains
-unrun while the Mac is locked and its source-image folder is unavailable; product-document
+unrun: after the earlier Mac lock, the host woke but the UI tool still cannot identify the
+unbundled development process, and the source-image folder is unavailable; product-document
 updates and final closeout remain pending. This is not an implementation-complete claim.
 
 Update: the user accepted the displayed RVW-17 workbench as the first visual baseline.
@@ -1844,7 +1845,9 @@ Document the exact image annotation workflow, tool semantics, shortcuts, fixed-s
 
 Checkpoint: Steps 4–5 passing does not waive the binding spec §13.4 native high-resolution
 journey. Per spec §14, keep product truth and completion statuses pending until that evidence
-also passes; current blockers are manual Mac unlock and the high-resolution fixture folder.
+also passes; current blockers are a controllable development window and the high-resolution
+fixture folder. The checkpoint also records a sleep-interrupted full verification and its
+focused awake diagnostic; only a fresh full run may satisfy the final clean-tree gate.
 
 Every product-facing document must repeat the durable boundary: Viewer is in early development; signing, Apple notarization, formal installers, public release and sale are not normal post-feature tasks and are not required to close this work.
 

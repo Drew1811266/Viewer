@@ -47,7 +47,8 @@ were inspected without replacing references; exact pixel counts are in the basel
 The previous ee71acc RVW-20 timeouts remain failed evidence, not retroactive passes.
 These ignored local artifacts do not ship with this ledger; their presence must be rechecked
 before relying on them. This visual pass does not complete spec §13.4's real high-resolution
-native30-image journey: manual Mac unlock and the source-image folder are still needed.
+native30-image journey: after the earlier lock, the host woke but the UI tool cannot identify
+the unbundled development process; a controllable native window and source-image folder are needed.
 
 | ID | Wave | Reference state | Production surface | Recipe | Automated evidence | 1024×720 | 1440×900 | Verdict |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |

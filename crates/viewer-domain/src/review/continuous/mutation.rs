@@ -163,10 +163,10 @@ impl ReviewChange {
         {
             return invalid();
         }
-        if let (Some(before), Some(after)) = (self.before, self.after) {
-            if before.feedback_id != after.feedback_id {
-                return invalid();
-            }
+        if let (Some(before), Some(after)) = (self.before, self.after)
+            && before.feedback_id != after.feedback_id
+        {
+            return invalid();
         }
         let has_archive = self.archive_id.is_some() && self.historical_key.is_some();
         if !matches!(self.kind, Archived | Restored)

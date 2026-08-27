@@ -31,6 +31,7 @@
 | [2026-08-25-viewer-ai-material-review-workflow-design.md](superpowers/specs/2026-08-25-viewer-ai-material-review-workflow-design.md) | Active | — |
 | [2026-08-25-viewer-exception-driven-review-loop-design.md](superpowers/specs/2026-08-25-viewer-exception-driven-review-loop-design.md) | Active | — |
 | [2026-08-26-viewer-image-annotation-review-workbench-design.md](superpowers/specs/2026-08-26-viewer-image-annotation-review-workbench-design.md) | Active | — |
+| [2026-08-27-viewer-continuous-review-and-agent-handoff-design.md](superpowers/specs/2026-08-27-viewer-continuous-review-and-agent-handoff-design.md) | Active | — |
 | [2026-08-26-viewer-image-annotation-review-workbench.md](superpowers/plans/2026-08-26-viewer-image-annotation-review-workbench.md) | Active | — |
 | [2026-08-25-viewer-exception-driven-review-loop.md](superpowers/plans/2026-08-25-viewer-exception-driven-review-loop.md) | Active | — |
 | [2026-08-25-viewer-open-review-protocol-foundation.md](superpowers/plans/2026-08-25-viewer-open-review-protocol-foundation.md) | Active | — |
@@ -44,6 +45,10 @@
 
 AI 素材评审路线阶段 2 已于 2026-08-26 完成：设计文档内部状态为 `Implemented`，实施计划
 内部状态为 `Complete`。两份文档继续以 Active 治理资料保留，用于约束未来阶段的依赖边界。
+
+持续评审与 Agent 交接设计于 2026-08-27 完成分节规则确认，完整设计待用户审阅，尚未实施。
+其 Active 状态表示正在设计中的工程资料，不表示当前产品已解除完成锁定或切换到新协议；
+现有协议和图片工作台文档的当前事实不会因本次设计提交而自动改变。
 
 ## 历史目标、设计与实施资料
 

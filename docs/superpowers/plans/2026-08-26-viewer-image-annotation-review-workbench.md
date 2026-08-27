@@ -19,10 +19,14 @@ Tasks 1–13 are implemented, tested and committed through `76e5d0c`. Task 14 re
 initial references and complete paired evidence are established. The eight Important findings
 from the whole-branch review were fixed in `ee71acc`; the acceptance-only continuation `4366312`
 also passed the same scoped re-review, with no remaining Critical/Important findings.
-All18 post-fix visual pairs pass. The spec §13.4 real high-resolution native journey remains
-unrun: after the earlier Mac lock, the host woke but the UI tool still cannot identify the
-unbundled development process, and the source-image folder is unavailable; product-document
-updates and final closeout remain pending. This is not an implementation-complete claim.
+All18 post-fix visual pairs pass. The user supplied `Downloads/测试图`; the real native journey
+now ran on an independent copy of its 30-image `衣服/A01` folder. Four annotations on image6,
+grid badge, exact draft recovery, 29pass/1revise/0unreviewable, Reader validation and original-byte
+immutability passed. Inspection of the real PNG exposed a new N1: outlines after the first
+annotation turn white. This remains unfixed, so native overall acceptance, product-document
+updates and final closeout remain pending. The folder/window blockers are resolved.
+The clean `3d942f0` full automated gate passed after the sleep-interrupted attempt; it does not
+cover N1. See the checkpoint for the actual artifact, pixel probe and source location.
 
 Update: the user accepted the displayed RVW-17 workbench as the first visual baseline.
 `pnpm verify:clean` passed on `2d68d3d` with a clean worktree. See the
@@ -1843,11 +1847,12 @@ state differences. Frozen references were not replaced. Browser fixtures are not
 
 Document the exact image annotation workflow, tool semantics, shortcuts, fixed-scope/outside-scope behavior, default-pass rule, local `.viewer/reviews` storage, read-only PNG derivation, original-file immutability, recovery messages and v1/v2 protocol contract. Change the design status to `Implemented` and this plan status to `Complete` only after Steps 4–5 pass.
 
-Checkpoint: Steps 4–5 passing does not waive the binding spec §13.4 native high-resolution
-journey. Per spec §14, keep product truth and completion statuses pending until that evidence
-also passes; current blockers are a controllable development window and the high-resolution
-fixture folder. The checkpoint also records a sleep-interrupted full verification and its
-focused awake diagnostic; only a fresh full run may satisfy the final clean-tree gate.
+Checkpoint: the native high-resolution journey now passes persistence, recovery, outcome,
+Reader and source-immutability assertions, but its actual PNG has an unfixed multi-annotation
+outline-color defect (N1). Per spec §14, product truth and completion statuses stay pending
+until the native artifact also passes inspection. Source folder and window access are resolved.
+The clean `3d942f0` full automated rerun passed; final code/document commits still need their
+own clean-tree gate. Preserve the failed artifact as evidence instead of rewriting its round.
 
 Every product-facing document must repeat the durable boundary: Viewer is in early development; signing, Apple notarization, formal installers, public release and sale are not normal post-feature tasks and are not required to close this work.
 

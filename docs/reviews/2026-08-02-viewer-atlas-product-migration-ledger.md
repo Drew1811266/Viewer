@@ -46,9 +46,13 @@ RVW-20 returns to Browse after committed redraw. These intentional correction di
 were inspected without replacing references; exact pixel counts are in the baseline record.
 The previous ee71acc RVW-20 timeouts remain failed evidence, not retroactive passes.
 These ignored local artifacts do not ship with this ledger; their presence must be rechecked
-before relying on them. This visual pass does not complete spec §13.4's real high-resolution
-native30-image journey: after the earlier lock, the host woke but the UI tool cannot identify
-the unbundled development process; a controllable native window and source-image folder are needed.
+before relying on them. The user supplied Downloads/测试图; the native30-image journey has now
+run on its independent 衣服/A01 copy with a tauri://localhost development window. Four saved
+annotations, grid badge, exact draft recovery, 29pass/1revise/0unreviewable, external Reader
+and unchanged source bytes passed. Actual PNG inspection exposed a new unfixed N1: outlines
+after the first annotation turn white. Native overall acceptance and product-doc closeout remain
+pending that defect, not a missing fixture/window. The clean3d942f0 automated rerun passed;
+see the checkpoint for its evidence and N1's reproducible pixel probe.
 
 | ID | Wave | Reference state | Production surface | Recipe | Automated evidence | 1024×720 | 1440×900 | Verdict |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |

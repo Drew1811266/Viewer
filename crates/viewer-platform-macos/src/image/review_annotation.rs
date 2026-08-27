@@ -392,6 +392,8 @@ fn draw_annotations(
 }
 
 fn draw_marker(context: &CGContext, center: CGPoint, ordinal: u32, width: u32, height: u32) {
+    let graphics_context = NSGraphicsContext::graphicsContextWithCGContext_flipped(context, false);
+    let _guard = GraphicsContextGuard::install(context, &graphics_context);
     let short_edge = f64::from(width.min(height));
     let radius = (short_edge * 0.025).clamp(14.0, 30.0).min(short_edge / 2.0);
     let center = CGPoint::new(
@@ -405,8 +407,6 @@ fn draw_marker(context: &CGContext, center: CGPoint, ordinal: u32, width: u32, h
     CGContext::set_rgb_fill_color(Some(context), REVIEW_RED.0, REVIEW_RED.1, REVIEW_RED.2, 1.0);
     CGContext::fill_ellipse_in_rect(Some(context), marker);
 
-    let graphics_context = NSGraphicsContext::graphicsContextWithCGContext_flipped(context, false);
-    let _guard = GraphicsContextGuard::install(&graphics_context);
     let font = NSFont::boldSystemFontOfSize(radius);
     let color = NSColor::whiteColor();
     let values: [&AnyObject; 2] = [font.as_super().as_super(), color.as_super().as_super()];
@@ -426,20 +426,25 @@ fn draw_marker(context: &CGContext, center: CGPoint, ordinal: u32, width: u32, h
     unsafe { label.drawAtPoint_withAttributes(origin, Some(&attributes)) };
 }
 
-struct GraphicsContextGuard {
+struct GraphicsContextGuard<'a> {
+    context: &'a CGContext,
     previous: Option<objc2::rc::Retained<NSGraphicsContext>>,
 }
 
-impl GraphicsContextGuard {
-    fn install(context: &NSGraphicsContext) -> Self {
+impl<'a> GraphicsContextGuard<'a> {
+    fn install(context: &'a CGContext, graphics_context: &NSGraphicsContext) -> Self {
         let previous = NSGraphicsContext::currentContext();
-        NSGraphicsContext::setCurrentContext(Some(context));
-        Self { previous }
+        // AppKit text drawing also changes the CGContext's stroke color. Restoring
+        // only the current NSGraphicsContext would leak that state into the next anchor.
+        CGContext::save_g_state(Some(context));
+        NSGraphicsContext::setCurrentContext(Some(graphics_context));
+        Self { context, previous }
     }
 }
 
-impl Drop for GraphicsContextGuard {
+impl Drop for GraphicsContextGuard<'_> {
     fn drop(&mut self) {
+        CGContext::restore_g_state(Some(self.context));
         NSGraphicsContext::setCurrentContext(self.previous.as_deref());
     }
 }
@@ -777,6 +782,81 @@ mod tests {
             );
             assert_eq!(fs::read(&source).unwrap(), original);
         }
+    }
+
+    #[tokio::test]
+    async fn exported_outline_color_survives_each_numbered_marker() {
+        let source_path = fixture("rotated-6.jpg");
+        let original = fs::read(&source_path).unwrap();
+        let anchors = [
+            FeedbackAnchor::ImageStroke(
+                ImageStroke::new(vec![
+                    NormalizedPoint::new(0.1, 0.2).unwrap(),
+                    NormalizedPoint::new(0.2, 0.4).unwrap(),
+                ])
+                .unwrap(),
+            ),
+            FeedbackAnchor::ImageStroke(
+                ImageStroke::new(vec![
+                    NormalizedPoint::new(0.3, 0.2).unwrap(),
+                    NormalizedPoint::new(0.4, 0.4).unwrap(),
+                ])
+                .unwrap(),
+            ),
+            FeedbackAnchor::ImageRect(NormalizedRect::new(0.5, 0.2, 0.1, 0.2).unwrap()),
+            FeedbackAnchor::ImageRect(NormalizedRect::new(0.75, 0.2, 0.1, 0.2).unwrap()),
+        ];
+
+        // Both shape orders must retain visible outlines after drawing white numbers.
+        for order in [[0, 1, 2, 3], [2, 3, 0, 1]] {
+            let cache = tempfile::tempdir().unwrap();
+            let renderer = MacReviewArtifactRenderer::new(cache.path()).unwrap();
+            let numbered = order
+                .iter()
+                .enumerate()
+                .map(|(index, &anchor)| NumberedImageAnnotation {
+                    ordinal: index as u32 + 1,
+                    feedback_id: FeedbackId::from_u128(index as u128 + 11),
+                    anchor: anchors[anchor].clone(),
+                })
+                .collect();
+            let artifact = renderer
+                .render(request(
+                    source_path.clone(),
+                    ReviewTaskCancellation::default(),
+                    numbered,
+                ))
+                .await
+                .unwrap();
+            let pixels = decoded_rgba(&artifact.temporary_path, 600, 800);
+            let pixel = |x: usize, y: usize| &pixels[(y * 600 + x) * 4..(y * 600 + x) * 4 + 3];
+
+            // Literal midpoints on both paths and both rectangle edges, away from badges.
+            for (outline_x, marker_x) in [(90, 60), (210, 180), (300, 300), (450, 450)] {
+                for (channel, expected) in pixel(outline_x, 240).iter().zip([113_i16, 77, 0]) {
+                    assert!(
+                        (i16::from(*channel) - expected).abs() < 8,
+                        "outline at ({outline_x},240) lost its color for order {order:?}: {:?}",
+                        pixel(outline_x, 240)
+                    );
+                }
+                // Sample strictly inside the badge: changing the text color to hide the
+                // leak must not pass by making the white ordinal disappear.
+                let mut white_pixels = 0;
+                for y in 153..167 {
+                    for badge_x in (marker_x - 7)..(marker_x + 7) {
+                        if pixel(badge_x, y).iter().all(|channel| *channel > 245) {
+                            white_pixels += 1;
+                        }
+                    }
+                }
+                assert!(
+                    white_pixels >= 3,
+                    "ordinal must remain white at ({marker_x},160)"
+                );
+            }
+        }
+        assert_eq!(fs::read(&source_path).unwrap(), original);
     }
 
     #[tokio::test]

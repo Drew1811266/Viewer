@@ -14,24 +14,14 @@ import ViewerSegmentedControl from '../ui/ViewerSegmentedControl'
 import ViewerToolbar from '../ui/ViewerToolbar'
 import ImageMagnifier, { type ImageMagnifierHandle } from './ImageMagnifier'
 import ImagePreviewLoading from './ImagePreviewLoading'
-import {
-  type Point,
-  remapSourcePoint,
-  type Size,
-  sourcePointAtStagePoint,
-  sourcePointToStagePoint,
-} from './imageGeometry'
+import { type Point, remapSourcePoint, type Size, sourcePointAtStagePoint } from './imageGeometry'
+import { createImagePreviewProjection, type ImagePreviewProjection } from './imagePreviewProjection'
 import { type CurrentOriginalState, useCurrentOriginal } from './useCurrentOriginal'
 import { useImageViewport } from './useImageViewport'
 import { usePreviewGestures } from './usePreviewGestures'
 import { isPositiveSize, usePreviewStageSize } from './usePreviewStageSize'
 
-export interface ImagePreviewProjection {
-  sourceSize: Size
-  stageRect: { left: number; top: number; width: number; height: number }
-  stageToNormalized(point: Point): Point | null
-  normalizedToStage(point: Point): Point | null
-}
+export type { ImagePreviewProjection } from './imagePreviewProjection'
 
 export interface ImagePreviewSurfaceSlots {
   toolbarLeading?: ReactNode
@@ -458,14 +448,14 @@ export default function ImagePreviewSurface({
           {magnifierEnabled ? '放大镜已开启' : '放大镜已关闭'}
         </span>
       )}
-      {slots?.stageOverlay?.({
-        sourceSize: sourceDimensions,
-        stageRect: stageRect(stage),
-        stageToNormalized: (point) =>
-          stagePointToNormalized(point, stage, viewport.state, viewport.geometry),
-        normalizedToStage: (point) =>
-          normalizedPointToStage(point, stage, viewport.state, viewport.geometry),
-      })}
+      {slots?.stageOverlay?.(
+        createImagePreviewProjection(
+          stage.current?.getBoundingClientRect() ?? null,
+          viewport.state,
+          viewport.geometry,
+          sourceDimensions,
+        ),
+      )}
     </div>
   )
   const previewNavigation: ReactNode = (
@@ -564,54 +554,4 @@ function isFatalImageFailure(
 
 function sameSize(left: Size, right: Size): boolean {
   return left.width === right.width && left.height === right.height
-}
-
-function stageRect(stage: { current: HTMLElement | null }) {
-  const bounds = stage.current?.getBoundingClientRect()
-  return bounds === undefined
-    ? { left: 0, top: 0, width: 0, height: 0 }
-    : { left: bounds.left, top: bounds.top, width: bounds.width, height: bounds.height }
-}
-
-function stagePointToNormalized(
-  point: Point,
-  stage: { current: HTMLElement | null },
-  state: Parameters<typeof sourcePointAtStagePoint>[1],
-  geometry: Parameters<typeof sourcePointAtStagePoint>[2],
-): Point | null {
-  const bounds = stage.current?.getBoundingClientRect()
-  if (bounds === undefined || !isPositiveSize(geometry.source)) return null
-  const sourcePoint = sourcePointAtStagePoint(
-    { x: point.x - bounds.left, y: point.y - bounds.top },
-    state,
-    geometry,
-  )
-  return sourcePoint === null
-    ? null
-    : { x: sourcePoint.x / geometry.source.width, y: sourcePoint.y / geometry.source.height }
-}
-
-function normalizedPointToStage(
-  point: Point,
-  stage: { current: HTMLElement | null },
-  state: Parameters<typeof sourcePointToStagePoint>[1],
-  geometry: Parameters<typeof sourcePointToStagePoint>[2],
-): Point | null {
-  const bounds = stage.current?.getBoundingClientRect()
-  if (
-    bounds === undefined ||
-    !isPositiveSize(geometry.source) ||
-    point.x < 0 ||
-    point.x > 1 ||
-    point.y < 0 ||
-    point.y > 1
-  ) {
-    return null
-  }
-  const stagePoint = sourcePointToStagePoint(
-    { x: point.x * geometry.source.width, y: point.y * geometry.source.height },
-    state,
-    geometry,
-  )
-  return { x: bounds.left + stagePoint.x, y: bounds.top + stagePoint.y }
 }

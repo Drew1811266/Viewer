@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ImageReviewWorkbenchController } from '../../app/review/useImageReviewWorkbench'
 import type { ImagePreviewProjection } from '../imagePreview/ImagePreviewSurface'
+import { createImagePreviewProjection } from '../imagePreview/imagePreviewProjection'
 import AnnotationCanvas from './AnnotationCanvas'
 
 const PROJECTION: ImagePreviewProjection = {
@@ -60,6 +61,49 @@ function controller(
 describe('AnnotationCanvas', () => {
   beforeEach(() => vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null))
   afterEach(() => vi.restoreAllMocks())
+  it('keeps the unsaved anchor visible while editing or retrying a failed save', () => {
+    const context = {
+      setTransform: vi.fn(),
+      clearRect: vi.fn(),
+      beginPath: vi.fn(),
+      moveTo: vi.fn(),
+      lineTo: vi.fn(),
+      closePath: vi.fn(),
+      stroke: vi.fn(),
+      strokeRect: vi.fn(),
+      save: vi.fn(),
+      restore: vi.fn(),
+      setLineDash: vi.fn(),
+    }
+    vi.mocked(HTMLCanvasElement.prototype.getContext).mockReturnValue(
+      context as unknown as CanvasRenderingContext2D,
+    )
+    render(
+      <AnnotationCanvas
+        projection={PROJECTION}
+        controller={controller({
+          feedback: [],
+          editor: {
+            status: 'save_error',
+            tool: 'rectangle',
+            temporarilyPanning: false,
+            selectedFeedbackId: null,
+            sourceFeedbackId: null,
+            draftAnchor: { kind: 'image_rect', x: 0.1, y: 0.2, width: 0.2, height: 0.3 },
+            text: '保留未保存区域',
+            message: '请重试',
+          },
+        })}
+      />,
+    )
+    expect(context.setLineDash).toHaveBeenCalledWith([6, 4])
+    expect(context.strokeRect).toHaveBeenCalledOnce()
+    const rect = context.strokeRect.mock.calls[0] ?? []
+    expect(rect[0]).toBeCloseTo(64)
+    expect(rect[1]).toBeCloseTo(96)
+    expect(rect[2]).toBeCloseTo(128)
+    expect(rect[3]).toBeCloseTo(144)
+  })
   it('selects a numbered marker and provides keyboard rectangle movement', () => {
     const review = controller({ selectedFeedbackId: 'feedback-1' })
     const parentKeyDown = vi.fn()
@@ -139,6 +183,25 @@ describe('AnnotationCanvas', () => {
     await waitFor(() => expect(review.replaceFeedbackAnchor).toHaveBeenCalledOnce())
     expect(screen.getByTestId('annotation-canvas')).toHaveAttribute('data-has-candidate', 'true')
     expect(marker).toBeVisible()
+  })
+
+  it('moves a selected rectangle when its visible marker starts outside the image', () => {
+    const review = controller({ selectedFeedbackId: 'feedback-1' })
+    const projection = createImagePreviewProjection(
+      { left: 0, top: 0, width: 640, height: 480 },
+      { mode: 'fit', zoom: 1, rotation: 0, offset: { x: 0, y: 0 } },
+      { stage: { width: 640, height: 480 }, source: { width: 640, height: 480 }, fitInset: 1 },
+    )
+    render(<AnnotationCanvas projection={projection} controller={review} />)
+    const marker = screen.getByRole('button', { name: '意见 1：调整领口' })
+    expect(projection.stageToNormalized({ x: 256, y: -8 })).toBeNull()
+    fireEvent.pointerDown(marker, { clientX: 256, clientY: -8, pointerId: 3 })
+    fireEvent.pointerUp(window, { clientX: 320, clientY: 40, pointerId: 3 })
+    const replacement = vi.mocked(review.replaceFeedbackAnchor).mock.calls[0]?.[1]
+    expect(replacement?.kind).toBe('image_rect')
+    if (replacement?.kind !== 'image_rect') throw new Error('expected rectangle replacement')
+    expect(replacement.x).toBeCloseTo(0.2)
+    expect(replacement.y).toBeCloseTo(0.3)
   })
 
   it('creates a normalized rectangle only after pointer release', () => {

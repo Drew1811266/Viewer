@@ -10,6 +10,7 @@ import {
   acceptanceReviewSnapshot,
 } from '../acceptanceFixtures'
 import type { AcceptanceRequest } from '../acceptanceRequest'
+import { REVIEW_WORKBENCH_SCENES, workbenchBridgeOverrides } from './reviewWorkbenchScenes'
 import AcceptanceProductScene from './sceneHarness'
 
 export const REVIEW_ACCEPTANCE_SCENE_IDS = [
@@ -28,6 +29,15 @@ export const REVIEW_ACCEPTANCE_SCENE_IDS = [
   'RVW-13',
   'RVW-14',
   'RVW-15',
+  'RVW-16',
+  'RVW-17',
+  'RVW-18',
+  'RVW-19',
+  'RVW-20',
+  'RVW-21',
+  'RVW-22',
+  'RVW-23',
+  'RVW-24',
 ] as const
 
 export const REVIEW_SCENES: AcceptanceSceneRegistry = Object.fromEntries(
@@ -91,7 +101,7 @@ export function reviewAcceptanceBridgeOverrides(id: string): AcceptanceBridgeOve
   if (id === 'RVW-09') {
     overrides.openProject = async () => ({ ...ACCEPTANCE_PROJECT_SNAPSHOT, access: 'read_only' })
   }
-  return overrides
+  return { ...overrides, ...workbenchBridgeOverrides(id) }
 }
 
 function snapshotForState(id: string) {
@@ -165,7 +175,7 @@ function reviewAcceptanceRecipe(id: string): () => boolean {
     }
 
     if (id === 'RVW-10' || id === 'RVW-11') {
-      clickOnce(namedButton('完成本轮'), 'prepare-completion')
+      clickOnce(namedButton('完成本轮评审'), 'prepare-completion')
       return (
         hasDialog('完成本轮评审') &&
         (id !== 'RVW-11' || hasText(ACCEPTANCE_FILES[2]?.relativePath ?? '衣服/A01/商品-03.jpg'))
@@ -178,6 +188,18 @@ function reviewAcceptanceRecipe(id: string): () => boolean {
     }
 
     if (!contentWorkspaceReady()) return false
+
+    const workbenchRecipe = REVIEW_WORKBENCH_SCENES[id]
+    if (workbenchRecipe !== undefined) {
+      if (id !== 'RVW-23' && document.querySelector('.image-preview') === null) {
+        const images = document.querySelectorAll<HTMLElement>('.image-cell')
+        const image = images[id === 'RVW-21' ? 6 : 0]
+        if (image !== undefined)
+          dispatchOnce(image, 'open-workbench', new MouseEvent('dblclick', { bubbles: true }))
+        return false
+      }
+      return workbenchRecipe()
+    }
 
     if (id === 'RVW-01') {
       if (!selectImages(1)) return false
@@ -192,7 +214,9 @@ function reviewAcceptanceRecipe(id: string): () => boolean {
       if (document.querySelector('.image-preview') === null && image !== null) {
         dispatchOnce(image, 'open-preview', new MouseEvent('dblclick', { bubbles: true }))
       }
-      return document.querySelector('.image-preview') !== null && hasText('本轮评审')
+      return (
+        document.querySelector('.image-preview') !== null && namedButton('完成本轮评审') !== null
+      )
     }
 
     const targetCount = id === 'RVW-05' ? 2 : 1
@@ -214,7 +238,7 @@ function reviewAcceptanceRecipe(id: string): () => boolean {
     if (id === 'RVW-14') {
       if (textarea === null) return false
       setTextAreaOnce(textarea, 'unsaved-focus', '保留未保存的自然语言意见。')
-      clickOnce(namedButton('完成本轮'), 'guard-completion')
+      clickOnce(namedButton('完成本轮评审'), 'guard-completion')
       return hasDialog('放弃未保存的意见？') && dialogContainsFocusedControl()
     }
     if (id === 'RVW-15') {

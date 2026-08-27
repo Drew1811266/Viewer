@@ -8,17 +8,15 @@ import '../styles/adaptiveOtherFilePanel.css'
 import './acceptance.css'
 import AcceptanceApp from './AcceptanceApp'
 import { parseAcceptanceRequest } from './acceptanceRequest'
+import { acceptanceBrowserZoom } from './acceptanceStateCatalog'
 import { ACCEPTANCE_SCENES } from './scenes'
 
 const root = createRoot(defined(document.getElementById('root'), 'Missing acceptance root element'))
 
 try {
-  root.render(
-    <AcceptanceApp
-      request={parseAcceptanceRequest(window.location.search)}
-      sceneRegistry={ACCEPTANCE_SCENES}
-    />,
-  )
+  const request = parseAcceptanceRequest(window.location.search)
+  document.documentElement.style.zoom = String(acceptanceBrowserZoom(request.id))
+  root.render(<AcceptanceApp request={request} sceneRegistry={ACCEPTANCE_SCENES} />)
 } catch (caught: unknown) {
   const message = caught instanceof Error ? caught.message : String(caught)
   root.render(

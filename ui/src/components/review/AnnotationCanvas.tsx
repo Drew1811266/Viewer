@@ -23,6 +23,10 @@ export default function AnnotationCanvas({ projection, controller }: AnnotationC
   const canvas = useRef<HTMLCanvasElement>(null)
   const gesture = useRef<DrawingGesture | null>(null)
   const [candidate, setCandidate] = useState<ReviewAnchor | null>(null)
+  const draftAnchor =
+    controller.editor.status === 'idle' || controller.editor.status === 'drawing'
+      ? null
+      : controller.editor.draftAnchor
   const drawingEnabled =
     controller.readOnlyReason === null &&
     !controller.editor.temporarilyPanning &&
@@ -60,13 +64,14 @@ export default function AnnotationCanvas({ projection, controller }: AnnotationC
     context.lineWidth = 2
     context.strokeStyle = annotationColor(element)
     for (const feedback of controller.feedback) drawAnchor(context, feedback.anchor, projection)
-    if (candidate !== null) {
+    const transientAnchor = candidate ?? draftAnchor
+    if (transientAnchor !== null) {
       context.save()
       context.setLineDash([6, 4])
-      drawAnchor(context, candidate, projection)
+      drawAnchor(context, transientAnchor, projection)
       context.restore()
     }
-  }, [candidate, controller.feedback, projection])
+  }, [candidate, controller.feedback, draftAnchor, projection])
 
   function beginDrawing(event: ReactPointerEvent<HTMLCanvasElement>) {
     if (!drawingEnabled) return
@@ -152,6 +157,7 @@ export default function AnnotationCanvas({ projection, controller }: AnnotationC
         data-testid="annotation-canvas"
         data-interactive={drawingEnabled || undefined}
         data-has-candidate={candidate !== null || undefined}
+        data-has-draft-anchor={(draftAnchor !== null && draftAnchor.kind !== 'asset') || undefined}
         onPointerDown={beginDrawing}
         onPointerMove={continueDrawing}
         onPointerUp={finishDrawing}
@@ -223,6 +229,7 @@ function AnnotationMarker({
         type="button"
         className="annotation-marker"
         data-testid="annotation-marker"
+        data-anchor-kind={feedback.anchor.kind}
         data-selected={selected || undefined}
         aria-label={`意见 ${ordinal}：${feedback.text}`}
         style={local}
@@ -317,13 +324,19 @@ function beginRectPointerEdit(
 ) {
   event.preventDefault()
   event.stopPropagation()
-  const start = projection.stageToNormalized({ x: event.clientX, y: event.clientY })
+  const start = projection.stageToNormalized(
+    { x: event.clientX, y: event.clientY },
+    { allowOutsideImage: true },
+  )
   if (start === null) return
   const startPoint = start
   let candidate: Extract<ReviewAnchor, { kind: 'image_rect' }> = anchor
 
   function move(pointer: PointerEvent) {
-    const point = projection.stageToNormalized({ x: pointer.clientX, y: pointer.clientY })
+    const point = projection.stageToNormalized(
+      { x: pointer.clientX, y: pointer.clientY },
+      { allowOutsideImage: true },
+    )
     if (point === null) return
     candidate =
       handle === null

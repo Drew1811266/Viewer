@@ -90,7 +90,7 @@
   { "id": "A11Y-02", "wave": 4, "referenceState": "accessibility-restore", "sceneGroup": "feedback", "components": ["ViewerPopover", "SearchToolbar", "WorkspaceViewMenu", "WorkspaceMoreMenu", "ModalSheet", "SettingsDialog", "RadialFileMenu"] },
   { "id": "A11Y-03", "wave": 4, "referenceState": "accessibility-reduced", "sceneGroup": "feedback", "components": ["ViewerPopover", "ModalSheet", "TaskBar", "ViewerProgress"] },
   { "id": "A11Y-04", "wave": 4, "referenceState": "accessibility-forced", "sceneGroup": "feedback", "components": ["ViewerButton", "ViewerChoiceChip", "ImageCell", "ViewerStatusTag"] },
-  { "id": "A11Y-05", "wave": 4, "referenceState": "accessibility-zoom", "sceneGroup": "feedback", "components": ["SearchToolbar", "WorkspaceViewMenu", "WorkspaceMoreMenu", "RadialFileMenu", "ImagePreview", "InfoOverlay", "ModalSheet", "SettingsDialog", "TaskBar"] },
+  { "id": "A11Y-05", "wave": 4, "referenceState": "accessibility-zoom", "sceneGroup": "feedback", "browserZoom": 2, "components": ["SearchToolbar", "WorkspaceViewMenu", "WorkspaceMoreMenu", "RadialFileMenu", "ImagePreview", "InfoOverlay", "ModalSheet", "SettingsDialog", "TaskBar"] },
   { "id": "workspace-video-expanded", "wave": 4, "referenceState": "workspace-video-expanded", "sceneGroup": "video", "components": ["ContentBrowser", "VideoSection", "VideoCard"] },
   { "id": "workspace-video-unavailable", "wave": 4, "referenceState": "workspace-video-unavailable", "sceneGroup": "video", "components": ["ContentBrowser", "VideoSection", "VideoCard"] },
   { "id": "video-preparing", "wave": 4, "referenceState": "video-preparing", "sceneGroup": "video", "components": ["VideoPreview"] },
@@ -117,5 +117,14 @@
   { "id": "RVW-12", "wave": 4, "referenceState": "review-recovery-required", "sceneGroup": "review", "components": ["App", "ReviewRecoveryNotice"] },
   { "id": "RVW-13", "wave": 4, "referenceState": "review-completed-read-only", "sceneGroup": "review", "components": ["App", "ReviewContextBar", "ReviewInspector"] },
   { "id": "RVW-14", "wave": 4, "referenceState": "review-keyboard-focus", "sceneGroup": "review", "components": ["App", "ReviewInspector", "ModalSheet", "ViewerButton"] },
-  { "id": "RVW-15", "wave": 4, "referenceState": "review-zoom-200", "sceneGroup": "review", "components": ["App", "ReviewInspector", "ReviewContextBar"] }
+  { "id": "RVW-15", "wave": 4, "referenceState": "review-zoom-200", "sceneGroup": "review", "browserZoom": 2, "components": ["App", "ReviewInspector", "ReviewContextBar"] },
+  { "id": "RVW-16", "wave": 4, "referenceState": "review-auto-start-first-annotation", "sceneGroup": "review", "components": ["App", "ImageReviewWorkspace", "AnnotationCanvas", "InlineFeedbackEditor"] },
+  { "id": "RVW-17", "wave": 4, "referenceState": "review-image-four-annotations", "sceneGroup": "review", "components": ["App", "ImageReviewWorkspace", "AnnotationCanvas", "ReviewFeedbackRail"] },
+  { "id": "RVW-18", "wave": 4, "referenceState": "review-annotation-save-error", "sceneGroup": "review", "components": ["App", "ImageReviewWorkspace", "InlineFeedbackEditor"] },
+  { "id": "RVW-19", "wave": 4, "referenceState": "review-rectangle-edit", "sceneGroup": "review", "components": ["App", "ImageReviewWorkspace", "AnnotationCanvas", "AnnotationToolbar"] },
+  { "id": "RVW-20", "wave": 4, "referenceState": "review-brush-redraw", "sceneGroup": "review", "components": ["App", "ImageReviewWorkspace", "AnnotationCanvas", "AnnotationToolbar"] },
+  { "id": "RVW-21", "wave": 4, "referenceState": "review-outside-scope-read-only", "sceneGroup": "review", "components": ["App", "WorkspaceImageReviewPreview", "ImagePreview"] },
+  { "id": "RVW-22", "wave": 4, "referenceState": "review-unsaved-leave-guard", "sceneGroup": "review", "components": ["App", "WorkspaceImageReviewPreview", "InlineFeedbackEditor", "ModalSheet"] },
+  { "id": "RVW-23", "wave": 4, "referenceState": "review-grid-feedback-badges", "sceneGroup": "review", "components": ["App", "ImageCell", "ReviewFeedbackCountBadge", "ContentBrowser"] },
+  { "id": "RVW-24", "wave": 4, "referenceState": "review-workbench-zoom-200", "sceneGroup": "review", "browserZoom": 2, "components": ["App", "ImageReviewWorkspace", "AnnotationCanvas", "ReviewFeedbackRail", "AnnotationToolbar"] }
 ]

@@ -15,6 +15,7 @@ export interface AcceptanceStateDefinition {
   referenceState: string
   sceneGroup: AcceptanceSceneGroup
   components: readonly string[]
+  browserZoom: 1 | 2
 }
 
 function isAcceptanceWave(value: number): value is AcceptanceWave {
@@ -34,7 +35,12 @@ function isSceneGroup(value: string): value is AcceptanceSceneGroup {
 
 function parseCatalog(): readonly AcceptanceStateDefinition[] {
   return catalog.map((entry) => {
-    if (!isAcceptanceWave(entry.wave) || !isSceneGroup(entry.sceneGroup)) {
+    const browserZoom = entry.browserZoom ?? 1
+    if (
+      !isAcceptanceWave(entry.wave) ||
+      !isSceneGroup(entry.sceneGroup) ||
+      (browserZoom !== 1 && browserZoom !== 2)
+    ) {
       throw new Error(`Invalid Viewer acceptance state definition: ${entry.id}`)
     }
     return {
@@ -43,6 +49,7 @@ function parseCatalog(): readonly AcceptanceStateDefinition[] {
       referenceState: entry.referenceState,
       sceneGroup: entry.sceneGroup,
       components: entry.components,
+      browserZoom,
     }
   })
 }
@@ -57,4 +64,8 @@ export function acceptanceDefinition(id: string): AcceptanceStateDefinition {
   const definition = DEFINITIONS_BY_ID.get(id)
   if (definition === undefined) throw new Error(`Unknown Viewer acceptance state: ${id}`)
   return definition
+}
+
+export function acceptanceBrowserZoom(id: string): 1 | 2 {
+  return DEFINITIONS_BY_ID.get(id)?.browserZoom ?? 1
 }

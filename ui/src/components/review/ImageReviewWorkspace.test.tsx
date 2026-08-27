@@ -9,6 +9,7 @@ import type {
   ImagePreviewSurfaceProps,
 } from '../imagePreview/ImagePreviewSurface'
 import ImageReviewWorkspace from './ImageReviewWorkspace'
+import InlineFeedbackEditor from './InlineFeedbackEditor'
 
 const TEST_PROJECTION: ImagePreviewProjection = {
   sourceSize: { width: 640, height: 480 },
@@ -21,6 +22,7 @@ vi.mock('../imagePreview/ImagePreviewSurface', () => ({
   default: ({ slots, onEscape }: ImagePreviewSurfaceProps) => (
     <section
       data-testid="preview-surface"
+      className="image-preview"
       onKeyDown={(event) => event.key === 'Escape' && onEscape?.()}
     >
       <header>
@@ -138,6 +140,51 @@ describe('ImageReviewWorkspace', () => {
   afterEach(() => {
     vi.restoreAllMocks()
     vi.unstubAllGlobals()
+  })
+  it('uses a compact bounded editor when the logical canvas is short', () => {
+    const controller = controllerFixture([])
+    render(
+      <InlineFeedbackEditor
+        controller={controller}
+        anchor={{ kind: 'image_rect', x: 0.4, y: 0.2, width: 0.2, height: 0.2 }}
+        projection={{ ...TEST_PROJECTION, stageRect: { left: 0, top: 0, width: 512, height: 155 } }}
+      />,
+    )
+    expect(screen.getByRole('region', { name: '标注意见编辑器' })).toHaveAttribute(
+      'data-compact',
+      'true',
+    )
+  })
+  it('returns keyboard focus to the retained opinion after a failed write', () => {
+    const controller = controllerFixture([])
+    controller.editor = {
+      status: 'saving',
+      tool: 'rectangle',
+      temporarilyPanning: false,
+      selectedFeedbackId: null,
+      sourceFeedbackId: null,
+      draftAnchor: { kind: 'image_rect', x: 0.1, y: 0.1, width: 0.2, height: 0.2 },
+      text: '保留文字',
+    }
+    const rendered = render(
+      <InlineFeedbackEditor controller={controller} anchor={controller.editor.draftAnchor} />,
+    )
+    expect(screen.getByRole('textbox')).toBeDisabled()
+    const failed: ImageReviewWorkbenchController = {
+      ...controller,
+      editor: { ...controller.editor, status: 'save_error', message: '请重试' },
+    }
+    rendered.rerender(
+      <InlineFeedbackEditor controller={failed} anchor={controller.editor.draftAnchor} />,
+    )
+    expect(screen.getByRole('textbox')).toHaveFocus()
+  })
+  it('collapses the rail from the actual logical surface width at 200% zoom', () => {
+    vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(512)
+    vi.stubGlobal('matchMedia', () => ({ matches: false }))
+    const controller = controllerFixture([])
+    render(<ImageReviewWorkspace {...surfaceFixture()} controller={controller} />)
+    expect(controller.setRailOpen).toHaveBeenCalledWith(false)
   })
   it('shows four independent numbered comments without permanent text bubbles', () => {
     const controller = controllerFixture([

@@ -195,6 +195,7 @@ AI 素材评审路线阶段 2 已于 2026-08-26 完成：设计文档内部状�
 | [acceptance/m3-organization-comparison-acceptance.md](acceptance/m3-organization-comparison-acceptance.md) | Development evidence | — |
 | [progress/2026-07-16-viewer-m3-paused-checkpoint.md](progress/2026-07-16-viewer-m3-paused-checkpoint.md) | Historical | — |
 | [progress/2026-08-03-viewer-atlas-product-migration-paused-checkpoint.md](progress/2026-08-03-viewer-atlas-product-migration-paused-checkpoint.md) | Historical | — |
+| [progress/2026-08-26-image-annotation-review-workbench-checkpoint.md](progress/2026-08-26-image-annotation-review-workbench-checkpoint.md) | Development evidence | — |
 | [prototypes/viewer-complete-ui-visual-atlas.html](prototypes/viewer-complete-ui-visual-atlas.html) | Historical | — |
 
 ## 状态定义

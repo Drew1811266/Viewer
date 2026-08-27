@@ -264,7 +264,7 @@ export function acceptanceEnvironmentFor(id) {
     reducedMotion:
       id === 'A11Y-03' || id === 'video-reduced-motion' ? 'reduce' : 'no-preference',
     forcedColors: id === 'A11Y-04' ? 'active' : 'none',
-    zoom: id === 'A11Y-05' || id === 'RVW-15' ? 2 : 1,
+    zoom: CATALOG_BY_ID.get(id)?.browserZoom ?? 1,
   }
 }
 

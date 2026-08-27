@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useLayoutEffect, useRef } from 'react'
 import type { ImageReviewWorkbenchController } from '../../app/review/useImageReviewWorkbench'
 import ImagePreviewSurface, {
   type ImagePreviewSurfaceProps,
@@ -19,11 +19,15 @@ export default function ImageReviewWorkspace({
   ...surfaceProps
 }: ImageReviewWorkspaceProps) {
   const compactDefaultEntity = useRef<string | null>(null)
+  const identity = useRef<HTMLElement | null>(null)
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (compactDefaultEntity.current === surfaceProps.file.entityId) return
     compactDefaultEntity.current = surfaceProps.file.entityId
-    if (window.matchMedia?.('(max-width: 700px)').matches) controller.setRailOpen(false)
+    const width = identity.current?.closest<HTMLElement>('.image-preview')?.clientWidth ?? 0
+    if ((width > 0 && width <= 700) || window.matchMedia?.('(max-width: 700px)').matches) {
+      controller.setRailOpen(false)
+    }
   }, [controller, surfaceProps.file.entityId])
 
   const metadata = surfaceProps.file.imageMetadata
@@ -50,7 +54,7 @@ export default function ImageReviewWorkspace({
       slots={{
         toolbarLeading: (
           <>
-            <strong>{surfaceProps.file.name}</strong>
+            <strong ref={identity}>{surfaceProps.file.name}</strong>
             <span>
               {metadata === null
                 ? formatBytes(surfaceProps.file.size)

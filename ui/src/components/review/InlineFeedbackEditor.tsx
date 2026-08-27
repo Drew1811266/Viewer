@@ -35,10 +35,17 @@ export default function InlineFeedbackEditor({
     }
   }, [])
 
+  useEffect(() => {
+    if (editor.status === 'save_error') input.current?.focus()
+  }, [editor.status])
+
   return (
     <section
       className="inline-feedback-editor"
       data-embedded={embedded || undefined}
+      data-compact={
+        (!embedded && projection !== undefined && projection.stageRect.height < 200) || undefined
+      }
       aria-label={anchor.kind === 'asset' ? '整图意见编辑器' : '标注意见编辑器'}
       style={embedded ? undefined : editorPosition(anchor, projection)}
     >

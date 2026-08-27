@@ -202,6 +202,11 @@ describe('Viewer visual acceptance browser lifecycle', () => {
       forcedColors: 'none',
       zoom: 2,
     })
+    assert.deepEqual(acceptanceEnvironmentFor('RVW-24'), {
+      reducedMotion: 'no-preference',
+      forcedColors: 'none',
+      zoom: 2,
+    })
     assert.deepEqual(acceptanceEnvironmentFor('PRE-01'), {
       reducedMotion: 'no-preference',
       forcedColors: 'none',

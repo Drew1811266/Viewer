@@ -40,6 +40,15 @@ const REVIEW_ACCEPTANCE_STATES = [
   ['RVW-13', 'review-completed-read-only'],
   ['RVW-14', 'review-keyboard-focus'],
   ['RVW-15', 'review-zoom-200'],
+  ['RVW-16', 'review-auto-start-first-annotation'],
+  ['RVW-17', 'review-image-four-annotations'],
+  ['RVW-18', 'review-annotation-save-error'],
+  ['RVW-19', 'review-rectangle-edit'],
+  ['RVW-20', 'review-brush-redraw'],
+  ['RVW-21', 'review-outside-scope-read-only'],
+  ['RVW-22', 'review-unsaved-leave-guard'],
+  ['RVW-23', 'review-grid-feedback-badges'],
+  ['RVW-24', 'review-workbench-zoom-200'],
 ] as const
 
 function ledgerStates(): LedgerState[] {
@@ -86,7 +95,7 @@ function ledgerStates(): LedgerState[] {
 
 describe('Viewer visual acceptance state catalog', () => {
   it('matches every ledger ID, wave and atlas reference state exactly once', () => {
-    const expected = ledgerStates()
+    const expected = ledgerStates().filter(({ id }) => !id.startsWith('RVW-'))
     const actual = ACCEPTANCE_STATE_DEFINITIONS.filter(
       ({ sceneGroup }) => sceneGroup !== 'review',
     ).map(({ id, wave, referenceState }) => ({ id, wave, referenceState }))
@@ -101,7 +110,7 @@ describe('Viewer visual acceptance state catalog', () => {
 
     expect(videos.map(({ id }) => id)).toEqual(VIDEO_ACCEPTANCE_SCENE_IDS)
     expect(videos.map(({ referenceState }) => referenceState)).toEqual(VIDEO_ACCEPTANCE_SCENE_IDS)
-    expect(new Set(ACCEPTANCE_STATE_DEFINITIONS.map(({ id }) => id)).size).toBe(119)
+    expect(new Set(ACCEPTANCE_STATE_DEFINITIONS.map(({ id }) => id)).size).toBe(128)
   })
 
   it('adds the exact exception-driven review acceptance states as a separate catalog group', () => {
@@ -111,8 +120,15 @@ describe('Viewer visual acceptance state catalog', () => {
       REVIEW_ACCEPTANCE_STATES,
     )
     expect(reviews.every(({ wave }) => wave === 4)).toBe(true)
-    expect(ACCEPTANCE_STATE_DEFINITIONS).toHaveLength(119)
-    expect(new Set(ACCEPTANCE_STATE_DEFINITIONS.map(({ id }) => id)).size).toBe(119)
+    expect(ACCEPTANCE_STATE_DEFINITIONS).toHaveLength(128)
+    expect(new Set(ACCEPTANCE_STATE_DEFINITIONS.map(({ id }) => id)).size).toBe(128)
+  })
+
+  it('declares browser zoom once for both review zoom states and preserves existing accessibility zoom', () => {
+    expect(acceptanceDefinition('RVW-24')).toHaveProperty('browserZoom', 2)
+    expect(acceptanceDefinition('RVW-15')).toHaveProperty('browserZoom', 2)
+    expect(acceptanceDefinition('A11Y-05')).toHaveProperty('browserZoom', 2)
+    expect(acceptanceDefinition('RVW-17')).toHaveProperty('browserZoom', 1)
   })
 
   it('fails closed for an unknown visual acceptance state', () => {

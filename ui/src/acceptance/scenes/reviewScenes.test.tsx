@@ -3,6 +3,7 @@ import { resolve } from 'node:path'
 import { render, screen, waitFor } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import { defined } from '../../defined'
+import { ACCEPTANCE_FILES } from '../acceptanceFixtures'
 import type { AcceptanceRequest } from '../acceptanceRequest'
 import { ACCEPTANCE_STATE_DEFINITIONS } from '../acceptanceStateCatalog'
 import {
@@ -10,6 +11,7 @@ import {
   REVIEW_SCENES,
   reviewAcceptanceBridgeOverrides,
 } from './reviewScenes'
+import { REVIEW_WORKBENCH_SCENES, workbenchToolbarFits } from './reviewWorkbenchScenes'
 
 const request: AcceptanceRequest = {
   id: 'RVW-08',
@@ -19,6 +21,154 @@ const request: AcceptanceRequest = {
 }
 
 describe('review acceptance scenes', () => {
+  it('rejects overlapping or clipped toolbar buttons even when image data is ready', () => {
+    const { container } = render(
+      <section className="image-preview">
+        <header className="viewer-toolbar">
+          <button type="button">缩放</button>
+          <button type="button">画笔</button>
+        </header>
+      </section>,
+    )
+    const header = container.querySelector('header') as HTMLElement
+    const buttons = container.querySelectorAll('button')
+    header.getBoundingClientRect = () => new DOMRect(0, 0, 1000, 50)
+    const first = defined(buttons[0], 'zoom')
+    const second = defined(buttons[1], 'brush')
+    first.getBoundingClientRect = () => new DOMRect(400, 10, 100, 30)
+    second.getBoundingClientRect = () => new DOMRect(420, 10, 100, 30)
+    expect(workbenchToolbarFits()).toBe(false)
+    second.getBoundingClientRect = () => new DOMRect(520, 10, 100, 30)
+    expect(workbenchToolbarFits()).toBe(true)
+    second.getBoundingClientRect = () => new DOMRect(950, 10, 100, 30)
+    expect(workbenchToolbarFits()).toBe(false)
+  })
+  it('registers nine semantic workbench recipes that never settle on empty markup', () => {
+    expect(Object.keys(REVIEW_WORKBENCH_SCENES)).toEqual([
+      'RVW-16',
+      'RVW-17',
+      'RVW-18',
+      'RVW-19',
+      'RVW-20',
+      'RVW-21',
+      'RVW-22',
+      'RVW-23',
+      'RVW-24',
+    ])
+    for (const [id, recipe] of Object.entries(REVIEW_WORKBENCH_SCENES)) {
+      expect(REVIEW_SCENES[id]).toBeDefined()
+      expect(recipe()).toBe(false)
+    }
+  })
+
+  it('seeds four stable local annotations with the original Chinese text on one image', async () => {
+    const bridge = reviewAcceptanceBridgeOverrides('RVW-17')
+    const status = await defined(
+      bridge.reviewStatus,
+      'status',
+    )({
+      sessionId: 'acceptance-session',
+      generation: 1,
+    })
+    expect(status.feedback.map(({ text }) => text)).toEqual([
+      '领口需要收窄，保留原有材质。',
+      '右袖边缘有伪影，请重画这一段。',
+      '左侧接缝需要拉直。',
+      '裤脚颜色请与衣身统一。',
+    ])
+    expect(status.feedback.map(({ feedbackId }) => feedbackId)).toEqual([
+      'acceptance-annotation-1',
+      'acceptance-annotation-2',
+      'acceptance-annotation-3',
+      'acceptance-annotation-4',
+    ])
+    expect(status.feedback.map(({ targets }) => targets[0]?.anchor.kind)).toEqual([
+      'image_rect',
+      'image_stroke',
+      'image_rect',
+      'image_rect',
+    ])
+    expect(status.members[0]?.feedbackItems).toBe(4)
+    expect(status.counts).toMatchObject({ feedbackItems: 4, revise: 1 })
+  })
+
+  it('starts with no draft and resolves the first anchored write without pending network work', async () => {
+    const bridge = reviewAcceptanceBridgeOverrides('RVW-16')
+    const context = { sessionId: 'acceptance-session', generation: 1 }
+    expect(await defined(bridge.reviewStatus, 'status')(context)).toMatchObject({
+      phase: 'idle',
+      reviewRoundId: null,
+      feedback: [],
+    })
+    const proposal = await defined(
+      bridge.reviewPreviewStart,
+      'scope proposal',
+    )({
+      ...context,
+      scope: { kind: 'folder', folderId: 'acceptance-folder-a01', includeDescendants: false },
+    })
+    const result = await defined(
+      bridge.reviewStartWithFeedback,
+      'first anchored write',
+    )({
+      ...context,
+      proposalId: 41,
+      text: '领口需要收窄，保留原有材质。',
+      targets: [
+        {
+          entityId: 'acceptance-image-01',
+          anchor: {
+            kind: 'image_rect',
+            x: 0.4,
+            y: 0.1,
+            width: 0.2,
+            height: 0.15,
+          },
+        },
+      ],
+    })
+    expect(result.phase).toBe('active')
+    expect(result.feedback).toHaveLength(1)
+    expect(result.counts.total).toBe(proposal.resolution.candidateCount)
+    expect(result.members.map((member) => member.entityId)).toEqual(
+      ACCEPTANCE_FILES.map((file) => file.entityId),
+    )
+    expect(await defined(bridge.reviewStatus, 'status')(context)).toEqual(result)
+  })
+
+  it('keeps failed annotation writes local and preserves the saved four opinions', async () => {
+    const bridge = reviewAcceptanceBridgeOverrides('RVW-18')
+    await expect(
+      defined(
+        bridge.reviewAddFeedback,
+        'anchored write',
+      )({
+        sessionId: 'acceptance-session',
+        generation: 1,
+        reviewRoundId: 'acceptance-review-round',
+        expectedRevision: 4,
+        text: '这处标注尚未保存。',
+        targets: [
+          {
+            entityId: 'acceptance-image-01',
+            anchor: { kind: 'image_rect', x: 0.1, y: 0.1, width: 0.2, height: 0.2 },
+          },
+        ],
+      }),
+    ).rejects.toMatchObject({ code: 'review_save_failed' })
+    expect(
+      (
+        await defined(
+          bridge.reviewStatus,
+          'status',
+        )({
+          sessionId: 'acceptance-session',
+          generation: 1,
+        })
+      ).feedback,
+    ).toHaveLength(4)
+  })
+
   it('registers every review catalog state exactly once and in approved order', () => {
     const catalogIds = ACCEPTANCE_STATE_DEFINITIONS.filter(
       ({ sceneGroup }) => sceneGroup === 'review',

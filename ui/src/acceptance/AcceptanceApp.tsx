@@ -7,6 +7,7 @@ import {
   useState,
 } from 'react'
 import type { AcceptanceRequest } from './acceptanceRequest'
+import { acceptanceBrowserZoom } from './acceptanceStateCatalog'
 
 export interface AcceptanceSceneProps {
   request: AcceptanceRequest
@@ -25,7 +26,7 @@ export default function AcceptanceApp({ request, sceneRegistry }: AcceptanceAppP
   const [status, setStatus] = useState<AcceptanceStatus>('pending')
   const [error, setError] = useState<string | null>(null)
   const Scene = sceneRegistry[request.id] ?? missingScene(request.id)
-  const browserZoom = request.id === 'A11Y-05' || request.id === 'RVW-15' ? 2 : 1
+  const browserZoom = acceptanceBrowserZoom(request.id)
 
   useEffect(() => {
     if (status !== 'pending') return

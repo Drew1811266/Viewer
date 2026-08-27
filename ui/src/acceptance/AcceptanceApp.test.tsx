@@ -100,20 +100,30 @@ describe('Viewer visual acceptance root protocol', () => {
     errorLog.mockRestore()
   })
 
-  it('uses a half-size logical frame for the 200 percent browser zoom state', () => {
+  it.each(['A11Y-05', 'RVW-15', 'RVW-24'])('uses a half-size logical frame for %s', (id) => {
     const zoomRequest: AcceptanceRequest = {
-      id: 'A11Y-05',
+      id,
       viewport: '1024x720',
       width: 1024,
       height: 720,
     }
-    const registry: AcceptanceSceneRegistry = { 'A11Y-05': () => <section>Zoom</section> }
+    const registry: AcceptanceSceneRegistry = { [id]: () => <section>Zoom</section> }
     const { container } = render(<AcceptanceApp request={zoomRequest} sceneRegistry={registry} />)
 
     expect(container.querySelector('[data-acceptance-frame]')).toHaveStyle({
       width: '512px',
       height: '360px',
     })
+  })
+  it('preserves the uncatalogued video feasibility probe', () => {
+    const probe = { ...request, id: 'VIDEO-FEASIBILITY' }
+    render(
+      <AcceptanceApp
+        request={probe}
+        sceneRegistry={{ 'VIDEO-FEASIBILITY': () => <section>Probe</section> }}
+      />,
+    )
+    expect(screen.getByText('Probe')).toBeVisible()
   })
 })
 

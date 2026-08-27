@@ -3,8 +3,10 @@
 mod archive;
 mod model;
 mod mutation;
+mod restore;
 mod validation;
 
 pub use archive::*;
 pub use model::*;
 pub use mutation::*;
+pub use restore::*;

@@ -71,3 +71,35 @@ pub fn reference(state: &ContinuousReviewState) -> SnapshotRef {
 pub fn rect() -> FeedbackAnchor {
     FeedbackAnchor::ImageRect(NormalizedRect::new(0.1, 0.2, 0.3, 0.4).unwrap())
 }
+
+pub fn archived() -> (
+    ContinuousReviewState,
+    ContinuousReviewState,
+    ArchiveCheckpoint,
+) {
+    let before = state();
+    let selection = ArchiveSelection {
+        expected_snapshot_id: before.snapshot_id,
+        groups: vec![ArchiveGroup {
+            basis: ArchiveBasis::Unknown,
+            targets: vec![key(&before, 11)],
+        }],
+    };
+    let (current, plan) = apply_archive(
+        &before,
+        &[],
+        &selection,
+        &[],
+        ReviewSnapshotId::from_u128(4),
+    )
+    .unwrap();
+    let archive = ArchiveCheckpoint::from_plan(
+        &before,
+        reference(&before),
+        &plan,
+        ReviewArchiveId::from_u128(1),
+        20,
+    )
+    .unwrap();
+    (before, current, archive)
+}

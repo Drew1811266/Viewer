@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
+import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import test from 'node:test'
 
 import { createManualRoundScenario } from './manual-round-e2e.mjs'
+import { blake3Hex } from './read-latest.mjs'
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const readerPath = path.join(repositoryRoot, 'scripts/review-protocol/read-latest.mjs')
@@ -12,6 +14,12 @@ const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}
 const feedbackTexts = [
   '降低高光强度，保留布料纹理。',
   '统一背景色温，并修正边缘伪影。',
+]
+const annotationTexts = [
+  '领口需要收窄，保留原有材质。',
+  '右袖边缘有伪影，请重画这一段。',
+  '左侧接缝需要拉直。',
+  '裤脚颜色请与衣身统一。',
 ]
 
 async function withScenario(name, assertion) {
@@ -94,6 +102,52 @@ test('a Draft is invisible, then the same Stream completes and is byte-exactly A
     assert.deepEqual(round.feedback.map((feedback) => feedback.text), feedbackTexts)
     assert.deepEqual(round.feedback.map((feedback) => feedback.targets.length), [1, 2])
     assert.deepEqual(countOutcomes(round.outcomes), { pass: 1, revise: 2, unreviewable: 1 })
+  })
+})
+
+test('four image annotations survive a service reopen and publish one verified artifact', async () => {
+  await withScenario('annotations', async (scenario) => {
+    const source = path.join(scenario.projectRoot, 'hero.png')
+    const originalDigest = blake3Hex(await readFile(source))
+    const completed = await scenario.run()
+
+    assert.equal(completed.status, 'completed')
+    assert.equal(completed.resumedAnnotationsVerified, true)
+    assert.equal(completed.draftIgnoredBeforeCompletion, true)
+    assert.deepEqual(completed.counts, { total: 3, revise: 1, unreviewable: 0, pass: 2 })
+    assert.deepEqual(completed.feedbackTexts, annotationTexts)
+
+    const round = parseSuccessfulReader(invokeReader(scenario.projectRoot, completed.streamId))
+    assert.equal(round.protocolVersion, 'viewer.review/2')
+    assert.equal(round.reviewRoundId, completed.roundId)
+    assert.deepEqual(round.feedback.map((feedback) => feedback.text), annotationTexts)
+    assert.deepEqual(
+      round.feedback.map((feedback) => feedback.targets[0].anchor.kind),
+      ['imageRect', 'imageStroke', 'imageRect', 'imageRect'],
+    )
+    assert.deepEqual(countOutcomes(round.outcomes), { pass: 2, revise: 1, unreviewable: 0 })
+    assert.equal(round.artifacts.length, 1)
+    const [artifact] = round.artifacts
+    const orderedFeedback = [...round.feedback].sort((left, right) => (
+      left.createdAtMs - right.createdAtMs || left.feedbackId.localeCompare(right.feedbackId)
+    ))
+    assert.deepEqual(
+      artifact.annotations,
+      orderedFeedback.map((feedback, index) => ({ ordinal: index + 1, feedbackId: feedback.feedbackId })),
+    )
+    assert.equal(artifact.assetVersionId, round.feedback[0].targets[0].assetVersionId)
+    assert.equal(artifact.mediaType, 'image/png')
+    assert.equal(artifact.width, 640)
+    assert.equal(artifact.height, 480)
+    assertSafeRelativePaths([artifact.relativePath])
+    const artifactBytes = await readFile(path.join(
+      scenario.projectRoot,
+      '.viewer/reviews/rounds',
+      round.reviewRoundId,
+      artifact.relativePath,
+    ))
+    assert.equal(blake3Hex(artifactBytes), artifact.blake3)
+    assert.equal(blake3Hex(await readFile(source)), originalDigest)
   })
 })
 

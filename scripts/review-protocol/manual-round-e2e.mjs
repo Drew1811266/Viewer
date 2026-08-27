@@ -8,6 +8,7 @@ const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url))
 const fixtureRoot = path.join(repositoryRoot, 'tests/fixtures')
 const allowedScenarios = new Set([
   'standard',
+  'annotations',
   'read_only',
   'writer_busy',
   'corrupt_image',
@@ -21,6 +22,11 @@ const allowedScenarios = new Set([
 const maximumHarnessBytes = 64 * 1024
 
 const fixturesByScenario = {
+  annotations: [
+    ['images/alpha.png', 'hero.png'],
+    ['images/srgb.jpg', 'variant.jpg'],
+    ['images/p3.jpg', 'pass.jpg'],
+  ],
   standard: [
     ['images/alpha.png', 'hero.png'],
     ['images/srgb.jpg', 'variant.jpg'],

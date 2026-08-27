@@ -1,0 +1,153 @@
+{
+  "artifacts": [
+    {
+      "annotations": [
+        {
+          "feedbackId": "00000000-0000-4000-8000-000000000401",
+          "ordinal": 1
+        },
+        {
+          "feedbackId": "00000000-0000-4000-8000-000000000402",
+          "ordinal": 2
+        }
+      ],
+      "assetVersionId": "00000000-0000-4000-8000-000000000301",
+      "blake3": "c7656fdc8b6441fb9693ef94efdec4e6a226ba74167195ff299d0423509a7dc8",
+      "height": 480,
+      "mediaType": "image/png",
+      "relativePath": "artifacts/00000000-0000-4000-8000-000000000301-annotation.png",
+      "width": 640
+    }
+  ],
+  "assets": [
+    {
+      "assetVersionId": "00000000-0000-4000-8000-000000000301",
+      "evidence": {
+        "blake3": "0000000000000000000000000000000000000000000000000000000000000000",
+        "modifiedNs": "1000000001",
+        "sizeBytes": 1024
+      },
+      "media": {
+        "height": 1024,
+        "kind": "image",
+        "width": 1024
+      },
+      "producerAssetId": "asset-image-1",
+      "relativePath": "outputs/image-1.png",
+      "sourceEntityId": "00000000-0000-4000-8000-000000000051"
+    },
+    {
+      "assetVersionId": "00000000-0000-4000-8000-000000000302",
+      "evidence": {
+        "modifiedNs": "1000000002",
+        "sizeBytes": 4096
+      },
+      "media": {
+        "displayHeight": 1080,
+        "displayWidth": 1920,
+        "durationUs": 5000000,
+        "kind": "video"
+      },
+      "relativePath": "outputs/video-1.mp4"
+    }
+  ],
+  "batchId": "batch-b",
+  "completedAtMs": 1200,
+  "createdAtMs": 1000,
+  "feedback": [
+    {
+      "createdAtMs": 1100,
+      "feedbackId": "00000000-0000-4000-8000-000000000401",
+      "targets": [
+        {
+          "anchor": {
+            "kind": "imageStroke",
+            "points": [
+              {
+                "x": 0.58,
+                "y": 0.3
+              },
+              {
+                "x": 0.72,
+                "y": 0.56
+              }
+            ]
+          },
+          "assetVersionId": "00000000-0000-4000-8000-000000000301"
+        }
+      ],
+      "text": "右手结构需要修正"
+    },
+    {
+      "createdAtMs": 1110,
+      "feedbackId": "00000000-0000-4000-8000-000000000402",
+      "targets": [
+        {
+          "anchor": {
+            "height": 0.2,
+            "kind": "imageRect",
+            "width": 0.24,
+            "x": 0.18,
+            "y": 0.62
+          },
+          "assetVersionId": "00000000-0000-4000-8000-000000000301"
+        }
+      ],
+      "text": "袖口边缘需要重画"
+    },
+    {
+      "createdAtMs": 1120,
+      "feedbackId": "00000000-0000-4000-8000-000000000403",
+      "targets": [
+        {
+          "anchor": {
+            "kind": "videoPoint",
+            "positionUs": 1000000
+          },
+          "assetVersionId": "00000000-0000-4000-8000-000000000302"
+        }
+      ],
+      "text": "这一帧需要调整"
+    },
+    {
+      "createdAtMs": 1130,
+      "feedbackId": "00000000-0000-4000-8000-000000000404",
+      "targets": [
+        {
+          "anchor": {
+            "endUs": 3000000,
+            "kind": "videoRange",
+            "startUs": 2000000
+          },
+          "assetVersionId": "00000000-0000-4000-8000-000000000302"
+        }
+      ],
+      "text": "这一段节奏需要优化"
+    }
+  ],
+  "outcomes": [
+    {
+      "assetVersionId": "00000000-0000-4000-8000-000000000301",
+      "feedbackIds": [
+        "00000000-0000-4000-8000-000000000401",
+        "00000000-0000-4000-8000-000000000402"
+      ],
+      "kind": "revise"
+    },
+    {
+      "assetVersionId": "00000000-0000-4000-8000-000000000302",
+      "feedbackIds": [
+        "00000000-0000-4000-8000-000000000403",
+        "00000000-0000-4000-8000-000000000404"
+      ],
+      "kind": "revise"
+    }
+  ],
+  "previousCompletedRoundId": "00000000-0000-4000-8000-000000000202",
+  "projectId": "00000000-0000-4000-8000-000000000001",
+  "protocolVersion": "viewer.review/2",
+  "reviewRoundId": "00000000-0000-4000-8000-000000000204",
+  "reviewStreamId": "00000000-0000-4000-8000-000000000102",
+  "status": "completed",
+  "taskId": "task-b"
+}

@@ -12,12 +12,13 @@ use viewer_application::{
     ReviewAssetConflictKind, ReviewCompletionProposal, ReviewFeedbackTargetInput,
     ReviewMutationGuard, ReviewProgressPort, ReviewPublication, ReviewRepositoryError,
     ReviewRepositoryProviderPort, ReviewScope, ReviewSessionPhase, ReviewSessionService,
-    ReviewSessionSnapshot, ReviewTaskProgress,
+    ReviewSessionSnapshot, ReviewTaskProgress, StartReviewWithFeedback,
 };
 use viewer_desktop::error::CommandError;
 use viewer_domain::file::{FileKind, FileNode, ReviewState};
 use viewer_domain::review::{
-    FeedbackAnchor, ReviewOutcomeKind, ReviewSnapshot, ReviewabilityFailure,
+    FeedbackAnchor, ImageStroke, NormalizedPoint, NormalizedRect, ReviewOutcomeKind,
+    ReviewSnapshot, ReviewabilityFailure,
 };
 use viewer_domain::search::Generation;
 use viewer_domain::{EntityId, ProjectId, RelativePath, ReviewRoundId, ReviewStreamId};
@@ -36,10 +37,17 @@ use viewer_platform_macos::image::{MacImagePort, MacReviewArtifactRenderer};
 const PROJECT_ID: ProjectId = ProjectId::from_u128(0xfeed_f00d);
 const SINGLE_FEEDBACK: &str = "降低高光强度，保留布料纹理。";
 const MULTI_FEEDBACK: &str = "统一背景色温，并修正边缘伪影。";
+const ANNOTATION_FEEDBACK: [&str; 4] = [
+    "领口需要收窄，保留原有材质。",
+    "右袖边缘有伪影，请重画这一段。",
+    "左侧接缝需要拉直。",
+    "裤脚颜色请与衣身统一。",
+];
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum Scenario {
     Standard,
+    Annotations,
     ReadOnly,
     WriterBusy,
     CorruptImage,
@@ -55,6 +63,7 @@ impl Scenario {
     fn parse(value: &str) -> Option<Self> {
         match value {
             "standard" => Some(Self::Standard),
+            "annotations" => Some(Self::Annotations),
             "read_only" => Some(Self::ReadOnly),
             "writer_busy" => Some(Self::WriterBusy),
             "corrupt_image" => Some(Self::CorruptImage),
@@ -71,6 +80,7 @@ impl Scenario {
     const fn name(self) -> &'static str {
         match self {
             Self::Standard => "standard",
+            Self::Annotations => "annotations",
             Self::ReadOnly => "read_only",
             Self::WriterBusy => "writer_busy",
             Self::CorruptImage => "corrupt_image",
@@ -104,6 +114,7 @@ struct HarnessResult {
     draft_ignored_before_completion: bool,
     completed_round_published: bool,
     recovered_publish: bool,
+    resumed_annotations_verified: bool,
     marker_state_ignored: bool,
     favorite_state_ignored: bool,
     counts: Counts,
@@ -125,6 +136,7 @@ impl HarnessResult {
             draft_ignored_before_completion: false,
             completed_round_published: false,
             recovered_publish: false,
+            resumed_annotations_verified: false,
             marker_state_ignored: false,
             favorite_state_ignored: false,
             counts: Counts::default(),
@@ -251,6 +263,7 @@ fn parse_arguments(
 async fn run_scenario(project: &Path, scenario: Scenario) -> Result<HarnessResult, Box<dyn Error>> {
     match scenario {
         Scenario::Standard => run_standard(project, scenario).await,
+        Scenario::Annotations => run_annotations(project, scenario).await,
         Scenario::ReadOnly => run_unwritable(project, scenario, ProjectAccess::ReadOnly).await,
         Scenario::WriterBusy => run_writer_busy(project, scenario).await,
         Scenario::CorruptImage | Scenario::StableVideoFailure => {
@@ -293,9 +306,9 @@ fn build_composition(
         project, PROJECT_ID, access,
     ));
     let repositories: Arc<dyn ReviewRepositoryProviderPort> = provider.clone();
-    let artifacts = Arc::new(MacReviewArtifactRenderer::new(
-        &cache.path().join("review-artifacts"),
-    )?);
+    let artifact_root = cache.path().join("review-artifacts");
+    fs::create_dir(&artifact_root)?;
+    let artifacts = Arc::new(MacReviewArtifactRenderer::new(&artifact_root)?);
     let service = ReviewSessionService::new(
         PROJECT_ID,
         catalog,
@@ -494,6 +507,118 @@ async fn run_standard(project: &Path, scenario: Scenario) -> Result<HarnessResul
     )?;
     composition.service.shutdown().await;
     Ok(result)
+}
+
+async fn run_annotations(
+    project: &Path,
+    scenario: Scenario,
+) -> Result<HarnessResult, Box<dyn Error>> {
+    let anchors = image_annotation_anchors()?;
+    let first = build_composition(project, scenario, ProjectAccess::ReadWrite)?;
+    let _ = first.service.inspect().await;
+    let hero = entity_for_path(&first.nodes, "hero.png")?;
+    let proposal = first
+        .service
+        .preview_start(ReviewScope::Selection {
+            entity_ids: media_entity_ids(&first.nodes),
+        })
+        .await?;
+    let mut active = first
+        .service
+        .start_with_feedback(
+            StartReviewWithFeedback {
+                proposal_id: proposal.id,
+                text: ANNOTATION_FEEDBACK[0].to_owned(),
+                targets: vec![ReviewFeedbackTargetInput {
+                    entity_id: hero,
+                    anchor: anchors[0].clone(),
+                }],
+            },
+            Arc::new(SilentProgress),
+        )
+        .await?;
+    if active.members.len() != 3 || active.feedback.len() != 1 {
+        return Err("first annotation did not atomically create the fixed image scope".into());
+    }
+    let round_id = active.review_round_id.ok_or("annotation Round has no id")?;
+    for (text, anchor) in ANNOTATION_FEEDBACK.iter().zip(&anchors).skip(1) {
+        active = first
+            .service
+            .add_feedback(AddReviewFeedback {
+                guard: ReviewMutationGuard {
+                    review_round_id: round_id,
+                    expected_revision: active.revision,
+                },
+                text: (*text).to_owned(),
+                targets: vec![ReviewFeedbackTargetInput {
+                    entity_id: hero,
+                    anchor: anchor.clone(),
+                }],
+            })
+            .await?;
+    }
+    let expected_feedback = active.feedback.clone();
+    let expected_members = active.members.clone();
+    let expected_stream = active.review_stream_id;
+    let before_reopen = first.provider.inspect()?;
+    let draft_hidden =
+        before_reopen.catalog.streams.is_empty() && before_reopen.active_draft.is_some();
+    first.service.shutdown().await;
+    drop(first);
+
+    let reopened = build_composition(project, scenario, ProjectAccess::ReadWrite)?;
+    let inspected = reopened.service.inspect().await;
+    if inspected
+        .resume
+        .as_ref()
+        .map(|resume| resume.review_round_id)
+        != Some(round_id)
+    {
+        return Err("reopen did not discover the exact annotation Draft".into());
+    }
+    let resumed = reopened.service.resume(Arc::new(SilentProgress)).await?;
+    if resumed.review_round_id != Some(round_id)
+        || resumed.review_stream_id != expected_stream
+        || resumed.feedback != expected_feedback
+        || resumed.members != expected_members
+        || resumed.feedback.len() != anchors.len()
+        || resumed
+            .feedback
+            .iter()
+            .zip(&anchors)
+            .any(|(feedback, anchor)| {
+                feedback.targets.len() != 1 || feedback.targets[0].anchor != *anchor
+            })
+    {
+        return Err("annotation Draft did not restore all feedback and exact anchors".into());
+    }
+    let (completed, _) = complete_round(&reopened, &resumed).await?;
+    if completed.phase != ReviewSessionPhase::CompletedReadOnly {
+        return Err("annotation Round did not complete".into());
+    }
+    let mut result = load_completed_result(
+        project,
+        scenario,
+        reopened.provider.as_ref(),
+        draft_hidden,
+        false,
+    )?;
+    result.resumed_annotations_verified = true;
+    reopened.service.shutdown().await;
+    Ok(result)
+}
+
+fn image_annotation_anchors() -> Result<Vec<FeedbackAnchor>, Box<dyn Error>> {
+    Ok(vec![
+        FeedbackAnchor::ImageRect(NormalizedRect::new(0.3, 0.1, 0.25, 0.2)?),
+        FeedbackAnchor::ImageStroke(ImageStroke::new(vec![
+            NormalizedPoint::new(0.6, 0.2)?,
+            NormalizedPoint::new(0.75, 0.45)?,
+            NormalizedPoint::new(0.68, 0.6)?,
+        ])?),
+        FeedbackAnchor::ImageRect(NormalizedRect::new(0.15, 0.4, 0.2, 0.3)?),
+        FeedbackAnchor::ImageRect(NormalizedRect::new(0.4, 0.75, 0.3, 0.15)?),
+    ])
 }
 
 async fn run_unwritable(
@@ -803,6 +928,7 @@ fn completed_result(
         draft_ignored_before_completion: draft_hidden,
         completed_round_published: true,
         recovered_publish,
+        resumed_annotations_verified: false,
         marker_state_ignored: protocol_omits_marker_state,
         favorite_state_ignored: protocol_omits_favorite_state,
         counts,

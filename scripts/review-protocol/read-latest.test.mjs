@@ -7,6 +7,7 @@ import path from 'node:path'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 import {
+  blake3Hex,
   listReviewStreams,
   readLatestCompletedReview,
 } from './read-latest.mjs'
@@ -14,14 +15,19 @@ import {
 const fixtureProject = fileURLToPath(
   new URL('../../tests/fixtures/review-protocol/project', import.meta.url),
 )
+const mixedFixtureProject = fileURLToPath(
+  new URL('../../tests/fixtures/review-protocol/project-v2-mixed', import.meta.url),
+)
 const reader = fileURLToPath(new URL('./read-latest.mjs', import.meta.url))
 const STREAM_B = '00000000-0000-4000-8000-000000000102'
 const ROUND_B = '00000000-0000-4000-8000-000000000202'
+const ROUND_V2 = '00000000-0000-4000-8000-000000000204'
+const ARTIFACT_V2 = '00000000-0000-4000-8000-000000000301-annotation.png'
 
-async function disposableProject() {
+async function disposableProject(source = fixtureProject) {
   const directory = await mkdtemp(path.join(tmpdir(), 'viewer-review-reader-'))
   const project = path.join(directory, 'project')
-  await cp(fixtureProject, project, { recursive: true })
+  await cp(source, project, { recursive: true })
   return {
     project,
     async [Symbol.asyncDispose]() {
@@ -30,10 +36,61 @@ async function disposableProject() {
   }
 }
 
+function mixedIndex(project) {
+  return path.join(project, '.viewer/reviews/index.json')
+}
+
+function mixedBundle(project) {
+  return path.join(project, `.viewer/reviews/rounds/${ROUND_V2}`)
+}
+
+function mixedManifest(project) {
+  return path.join(mixedBundle(project), 'round.json')
+}
+
+function mixedArtifact(project) {
+  return path.join(mixedBundle(project), 'artifacts', ARTIFACT_V2)
+}
+
+test('BLAKE3 verification matches the canonical empty and abc vectors', () => {
+  assert.equal(
+    blake3Hex(Buffer.alloc(0)),
+    'af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262',
+  )
+  assert.equal(
+    blake3Hex(Buffer.from('abc')),
+    '6437b3ac38465133ffb63b75273a8db548c558465d79db03fd359c6cd5bd9d85',
+  )
+})
+
+test('BLAKE3 verification matches official block, chunk, and tree-boundary vectors', () => {
+  // The input pattern and 32-byte prefixes come from BLAKE3-team/BLAKE3 test_vectors.
+  for (const [length, expected] of [
+    [64, '4eed7141ea4a5cd4b788606bd23f46e212af9cacebacdc7d1f4c6dc7f2511b98'],
+    [65, 'de1e5fa0be70df6d2be8fffd0e99ceaa8eb6e8c93a63f2d8d1c30ecb6b263dee'],
+    [1024, '42214739f095a406f3fc83deb889744ac00df831c10daa55189b5d121c855af7'],
+    [1025, 'd00278ae47eb27b34faecf67b4fe263f82d5412916c1ffd97c8cb7fb814b8444'],
+    [2048, 'e776b6028c7cd22a4d0ba182a8bf62205d2ef576467e838ed6f2529b85fba24a'],
+    [3072, 'b98cb0ff3623be03326b373de6b9095218513e64f1ee2edd2525c7ad1e5cffd2'],
+    [5121, '628bd2cb2004694adaab7bbd778a25df25c47b9d4155a55f8fbd79f2fe154cff'],
+  ]) {
+    const input = Buffer.from(Array.from({ length }, (_, index) => index % 251))
+    assert.equal(blake3Hex(input), expected, `input length ${length}`)
+  }
+})
+
 async function mutateJson(file, mutation) {
   const document = JSON.parse(await readFile(file, 'utf8'))
   mutation(document)
   await writeFile(file, `${JSON.stringify(document, null, 2)}\n`)
+}
+
+async function mutateMixedManifest(project, mutation) {
+  await mutateJson(mixedManifest(project), mutation)
+  const digest = blake3Hex(await readFile(mixedManifest(project)))
+  await mutateJson(mixedIndex(project), (document) => {
+    document.streams[0].completedRounds[1].blake3 = digest
+  })
 }
 
 async function makeOversize(file, bytes) {
@@ -54,6 +111,224 @@ test('reads the selected Stream head and ignores a newer Draft', async () => {
   assert.equal(round.status, 'completed')
   assert.equal(round.reviewRoundId, ROUND_B)
   assert.notEqual(round.reviewRoundId, '00000000-0000-4000-8000-000000000203')
+})
+
+test('reads mixed v1 and v2 history and verifies the indexed bundle', async () => {
+  const result = await readLatestCompletedReview({ projectRoot: mixedFixtureProject })
+
+  assert.equal(result.protocolVersion, 'viewer.review/2')
+  assert.equal(result.reviewRoundId, ROUND_V2)
+  assert.equal(result.feedback[0].text, '右手结构需要修正')
+  assert.equal(result.feedback[0].targets[0].anchor.kind, 'imageStroke')
+  assert.match(result.artifacts[0].relativePath, /^artifacts\/[0-9a-f-]+-annotation\.png$/)
+  assert.match(result.artifacts[0].blake3, /^[0-9a-f]{64}$/)
+})
+
+test('dispatches a legacy v1 Round recorded by a v2 catalog', async () => {
+  await using fixture = await disposableProject(mixedFixtureProject)
+  await mutateJson(mixedIndex(fixture.project), (document) => {
+    document.streams[0].completedRounds.reverse()
+    document.streams[0].latestCompletedRoundId = ROUND_B
+  })
+
+  const result = await readLatestCompletedReview({ projectRoot: fixture.project })
+
+  assert.equal(result.protocolVersion, 'viewer.review/1')
+  assert.equal(result.reviewRoundId, ROUND_B)
+})
+
+test('rejects a v2 catalog digest mismatch before parsing the manifest', async () => {
+  await using fixture = await disposableProject(mixedFixtureProject)
+  await mutateJson(mixedIndex(fixture.project), (document) => {
+    document.streams[0].completedRounds[1].blake3 = 'f'.repeat(64)
+  })
+  await writeFile(mixedManifest(fixture.project), 'not JSON')
+
+  await assert.rejects(
+    readLatestCompletedReview({ projectRoot: fixture.project }),
+    /digest/i,
+  )
+})
+
+test('rejects mismatched v2 manifest identity and escaping catalog locations', async () => {
+  await using identity = await disposableProject(mixedFixtureProject)
+  const replacement = '00000000-0000-4000-8000-000000000205'
+  await cp(
+    mixedBundle(identity.project),
+    path.join(identity.project, `.viewer/reviews/rounds/${replacement}`),
+    { recursive: true },
+  )
+  await mutateJson(mixedIndex(identity.project), (document) => {
+    document.streams[0].completedRounds[1].reviewRoundId = replacement
+    document.streams[0].completedRounds[1].location = `rounds/${replacement}/round.json`
+    document.streams[0].latestCompletedRoundId = replacement
+  })
+  await assert.rejects(
+    readLatestCompletedReview({ projectRoot: identity.project }),
+    /round identity/i,
+  )
+
+  await using escaping = await disposableProject(mixedFixtureProject)
+  await mutateJson(mixedIndex(escaping.project), (document) => {
+    document.streams[0].completedRounds[1].location = 'rounds/../outside/round.json'
+  })
+  await assert.rejects(
+    readLatestCompletedReview({ projectRoot: escaping.project }),
+    /location/i,
+  )
+})
+
+test('rejects symlinked v2 bundle components and artifacts', async () => {
+  await using bundleFixture = await disposableProject(mixedFixtureProject)
+  const bundle = mixedBundle(bundleFixture.project)
+  const outsideBundle = `${bundle}.outside`
+  await cp(bundle, outsideBundle, { recursive: true })
+  await rm(bundle, { recursive: true })
+  await symlink(outsideBundle, bundle)
+  await assert.rejects(
+    readLatestCompletedReview({ projectRoot: bundleFixture.project }),
+    /symbolic link/i,
+  )
+
+  await using artifactFixture = await disposableProject(mixedFixtureProject)
+  const artifact = mixedArtifact(artifactFixture.project)
+  const outsideArtifact = `${artifact}.outside`
+  await writeFile(outsideArtifact, await readFile(artifact))
+  await rm(artifact)
+  await symlink(outsideArtifact, artifact)
+  await assert.rejects(
+    readLatestCompletedReview({ projectRoot: artifactFixture.project }),
+    /symbolic link/i,
+  )
+})
+
+test('rejects missing and extra undeclared v2 artifacts', async () => {
+  await using missing = await disposableProject(mixedFixtureProject)
+  await rm(mixedArtifact(missing.project))
+  await assert.rejects(
+    readLatestCompletedReview({ projectRoot: missing.project }),
+    /artifact.*unavailable|missing.*artifact/i,
+  )
+
+  await using extra = await disposableProject(mixedFixtureProject)
+  await writeFile(path.join(mixedBundle(extra.project), 'artifacts', 'undeclared.png'), 'extra')
+  await assert.rejects(
+    readLatestCompletedReview({ projectRoot: extra.project }),
+    /undeclared|unexpected artifact/i,
+  )
+})
+
+test('rejects oversized v2 JSON and PNG before decoding them', async () => {
+  for (const [target, message] of [
+    [mixedManifest, /round.*size limit/i],
+    [mixedArtifact, /artifact.*size limit/i],
+  ]) {
+    await using fixture = await disposableProject(mixedFixtureProject)
+    await makeOversize(target(fixture.project), 64 * 1024 * 1024 + 1)
+    await assert.rejects(
+      readLatestCompletedReview({ projectRoot: fixture.project }),
+      message,
+    )
+  }
+})
+
+test('rejects malformed v2 anchors and artifact metadata after verifying the manifest', async () => {
+  for (const [mutation, message] of [
+    [(document) => { document.feedback[0].targets[0].anchor.kind = 'imageRegion' }, /anchor/i],
+    [(document) => {
+      document.feedback[0].targets[0].anchor.points = [{ x: 0.2, y: 0.2 }, { x: 0.2, y: 0.3 }]
+    }, /stroke/i],
+    [(document) => {
+      document.feedback[0].targets[0].anchor.points = Array.from({ length: 2049 }, () => ({ x: 0.2, y: 0.3 }))
+    }, /points/i],
+    [(document) => { document.artifacts[0].relativePath = 'artifacts/../outside.png' }, /relative path/i],
+    [(document) => { document.artifacts[0].mediaType = 'image/jpeg' }, /media type/i],
+    [(document) => { document.artifacts[0].annotations[1].ordinal = 3 }, /mapping/i],
+    [(document) => { document.artifacts[0].annotations.pop() }, /mapping/i],
+    [(document) => { document.artifacts = [] }, /cover/i],
+    [(document) => { document.artifacts[0].width += 1 }, /dimensions/i],
+    [(document) => { document.artifacts[0].blake3 = '0'.repeat(64) }, /artifact.*digest/i],
+  ]) {
+    await using fixture = await disposableProject(mixedFixtureProject)
+    await mutateMixedManifest(fixture.project, mutation)
+    await assert.rejects(readLatestCompletedReview({ projectRoot: fixture.project }), message)
+  }
+})
+
+test('rejects artifact corruption and a digest-valid non-PNG artifact', async () => {
+  await using corrupt = await disposableProject(mixedFixtureProject)
+  await writeFile(mixedArtifact(corrupt.project), 'corrupt artifact')
+  await assert.rejects(
+    readLatestCompletedReview({ projectRoot: corrupt.project }),
+    /artifact.*digest/i,
+  )
+
+  await using notPng = await disposableProject(mixedFixtureProject)
+  const bytes = Buffer.from('not a PNG even when its digest is correct')
+  await writeFile(mixedArtifact(notPng.project), bytes)
+  await mutateMixedManifest(notPng.project, (document) => {
+    document.artifacts[0].blake3 = blake3Hex(bytes)
+  })
+  await assert.rejects(
+    readLatestCompletedReview({ projectRoot: notPng.project }),
+    /not a PNG/i,
+  )
+})
+
+test('rejects v2 outcomes that omit the feedback attached to their asset', async () => {
+  for (const mutation of [
+    (document) => { document.outcomes[0].feedbackIds.pop() },
+    (document) => { document.outcomes[0].kind = 'pass'; document.outcomes[0].feedbackIds = [] },
+  ]) {
+    await using fixture = await disposableProject(mixedFixtureProject)
+    await mutateMixedManifest(fixture.project, mutation)
+    await assert.rejects(
+      readLatestCompletedReview({ projectRoot: fixture.project }),
+      /outcome.*feedback/i,
+    )
+  }
+})
+
+test('enforces the domain-wide 200000 stroke-point limit before returning a Round', async () => {
+  await using fixture = await disposableProject(mixedFixtureProject)
+  await mutateMixedManifest(fixture.project, (document) => {
+    const template = document.feedback[0]
+    const strokes = Array.from({ length: 98 }, (_, index) => ({
+      ...structuredClone(template),
+      feedbackId: `00000000-0000-4000-8000-${(10000 + index).toString(16).padStart(12, '0')}`,
+      createdAtMs: 1100 + index,
+    }))
+    for (const feedback of strokes) {
+      feedback.targets[0].anchor.points = Array.from({ length: 2048 }, (_, index) => ({
+        x: 0.1 + (index % 2) * 0.2,
+        y: 0.1 + (index % 3) * 0.2,
+      }))
+    }
+    document.feedback = [...strokes, ...document.feedback.slice(2)]
+    document.outcomes[0].feedbackIds = strokes.map((feedback) => feedback.feedbackId)
+    document.artifacts[0].annotations = strokes.map((feedback, index) => ({
+      ordinal: index + 1,
+      feedbackId: feedback.feedbackId,
+    }))
+  })
+  await assert.rejects(
+    readLatestCompletedReview({ projectRoot: fixture.project }),
+    /stroke.*limit/i,
+  )
+})
+
+test('rejects unknown catalog and indexed Round protocols without guessing', async () => {
+  for (const mutation of [
+    (document) => { document.protocolVersion = 'viewer.review/99' },
+    (document) => { document.streams[0].completedRounds[1].protocolVersion = 'viewer.review/99' },
+  ]) {
+    await using fixture = await disposableProject(mixedFixtureProject)
+    await mutateJson(mixedIndex(fixture.project), mutation)
+    await assert.rejects(
+      readLatestCompletedReview({ projectRoot: fixture.project }),
+      /unsupported review protocol version/i,
+    )
+  }
 })
 
 test('accepts optional local source identity and unavailable bounds only for unreviewable images', async () => {
@@ -202,7 +477,7 @@ test('rejects oversized index and round files before parsing', async () => {
 test('rejects unsupported versions, missing heads, and ambiguous production selectors', async () => {
   await using unsupported = await disposableProject()
   await mutateJson(path.join(unsupported.project, '.viewer/reviews/index.json'), (document) => {
-    document.protocolVersion = 'viewer.review/2'
+    document.protocolVersion = 'viewer.review/99'
   })
   await assert.rejects(
     readLatestCompletedReview({ projectRoot: unsupported.project, reviewStreamId: STREAM_B }),

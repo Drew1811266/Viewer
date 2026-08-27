@@ -1,0 +1,103 @@
+{
+  "protocolVersion": "viewer.review/1",
+  "status": "completed",
+  "projectId": "00000000-0000-4000-8000-000000000001",
+  "reviewStreamId": "00000000-0000-4000-8000-000000000102",
+  "reviewRoundId": "00000000-0000-4000-8000-000000000202",
+  "taskId": "task-b",
+  "batchId": "batch-b",
+  "previousCompletedRoundId": "00000000-0000-4000-8000-000000000201",
+  "createdAtMs": 1000,
+  "completedAtMs": 1200,
+  "assets": [
+    {
+      "assetVersionId": "00000000-0000-4000-8000-000000000301",
+      "relativePath": "outputs/image-1.png",
+      "evidence": {
+        "sizeBytes": 1024,
+        "modifiedNs": "1000000001",
+        "blake3": "0000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "media": {
+        "kind": "image",
+        "width": 1024,
+        "height": 1024
+      },
+      "producerAssetId": "asset-image-1"
+    },
+    {
+      "assetVersionId": "00000000-0000-4000-8000-000000000302",
+      "relativePath": "outputs/video-1.mp4",
+      "evidence": {
+        "sizeBytes": 4096,
+        "modifiedNs": "1000000002"
+      },
+      "media": {
+        "kind": "video",
+        "durationUs": 5000000,
+        "displayWidth": 1920,
+        "displayHeight": 1080
+      },
+      "producerAssetId": "asset-video-1",
+      "parentAssetVersionId": "00000000-0000-4000-8000-000000000301"
+    },
+    {
+      "assetVersionId": "00000000-0000-4000-8000-000000000303",
+      "relativePath": "outputs/image-2.png",
+      "evidence": {
+        "sizeBytes": 2048,
+        "modifiedNs": "1000000003"
+      },
+      "media": {
+        "kind": "image",
+        "width": 1024,
+        "height": 1024
+      }
+    }
+  ],
+  "feedback": [
+    {
+      "feedbackId": "00000000-0000-4000-8000-000000000401",
+      "text": "人物手部需要修正，整体光线保持不变。",
+      "createdAtMs": 1100,
+      "targets": [
+        {
+          "assetVersionId": "00000000-0000-4000-8000-000000000301",
+          "anchor": {
+            "kind": "asset"
+          }
+        },
+        {
+          "assetVersionId": "00000000-0000-4000-8000-000000000301",
+          "anchor": {
+            "kind": "imageRegion",
+            "x": 0.6,
+            "y": 0.3,
+            "width": 0.2,
+            "height": 0.25
+          }
+        }
+      ]
+    }
+  ],
+  "outcomes": [
+    {
+      "assetVersionId": "00000000-0000-4000-8000-000000000301",
+      "kind": "revise",
+      "feedbackIds": [
+        "00000000-0000-4000-8000-000000000401"
+      ]
+    },
+    {
+      "assetVersionId": "00000000-0000-4000-8000-000000000302",
+      "kind": "unreviewable",
+      "feedbackIds": [],
+      "failure": "decodeFailed"
+    },
+    {
+      "assetVersionId": "00000000-0000-4000-8000-000000000303",
+      "kind": "pass",
+      "feedbackIds": []
+    }
+  ]
+}

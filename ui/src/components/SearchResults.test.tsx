@@ -73,6 +73,7 @@ describe('SearchResults', () => {
         onClearFilters={vi.fn()}
         onSearchProject={vi.fn()}
         onReturnToFolder={vi.fn()}
+        feedbackCountByEntityId={new Map([['1', 2]])}
         searching
       />,
     )
@@ -95,6 +96,8 @@ describe('SearchResults', () => {
     expect(within(result).getByText('JPG')).toHaveClass('viewer-status-tag')
     expect(within(result).getByText('1200 × 800 · 10 B')).toHaveClass('search-result-metadata')
     expect(within(result).getByText('未标记 · 收藏')).toHaveClass('viewer-status-tag')
+    expect(within(result).getByText('返工 · 2 条')).toHaveClass('viewer-status-tag')
+    expect(screen.getAllByText(/返工/)).toHaveLength(1)
     expect(screen.getByTestId('search-snippet-2')).toHaveTextContent('片'.repeat(160))
     expect(screen.getByTestId('search-snippet-2')).not.toHaveTextContent('片'.repeat(161))
     expect(visible).toHaveBeenCalledWith(expect.arrayContaining(['1', '2']))

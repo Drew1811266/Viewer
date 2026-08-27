@@ -11,6 +11,7 @@ import {
 } from '../layout/aspectLayout'
 import { THUMBNAIL_HEIGHT } from '../settings/thumbnailDensity'
 import AspectThumbnail from './AspectThumbnail'
+import ReviewFeedbackCountBadge from './review/ReviewFeedbackCountBadge'
 import UnsupportedFileState from './UnsupportedFileState'
 import ViewerButton from './ui/ViewerButton'
 import ViewerLocalFeedback from './ui/ViewerLocalFeedback'
@@ -29,6 +30,7 @@ interface FolderFilmstripRowProps {
   onSelect: (entityId: string) => void
   onPreview: (file: BrowserFile, files: BrowserFile[]) => void
   requestThumbnail?: (file: BrowserFile, maxPixels: number, scaleMilli: number) => Promise<string>
+  feedbackCountByEntityId?: ReadonlyMap<string, number>
 }
 
 type RowState =
@@ -48,6 +50,7 @@ export default function FolderFilmstripRow({
   onSelect,
   onPreview,
   requestThumbnail,
+  feedbackCountByEntityId,
 }: FolderFilmstripRowProps) {
   const row = useRef<HTMLElement>(null)
   const filmstrip = useRef<HTMLDivElement>(null)
@@ -328,6 +331,10 @@ export default function FolderFilmstripRow({
                         <UnsupportedFileState file={file} compact />
                       )}
                     </button>
+                    <ReviewFeedbackCountBadge
+                      count={feedbackCountByEntityId?.get(file.entityId)}
+                      className="folder-filmstrip-feedback-count"
+                    />
                   </div>
                 )
               })}

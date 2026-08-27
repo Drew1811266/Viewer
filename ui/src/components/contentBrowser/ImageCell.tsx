@@ -3,6 +3,7 @@ import type { BrowserFile } from '../../api/types'
 import { isPreviewableImage } from '../../fileKinds'
 import type { AspectRect, ImageDimensions } from '../../layout/aspectLayout'
 import AspectThumbnail from '../AspectThumbnail'
+import ReviewFeedbackCountBadge from '../review/ReviewFeedbackCountBadge'
 import UnsupportedFileState from '../UnsupportedFileState'
 import { OrganizationDragHandle } from './OrganizationDragHandle'
 
@@ -15,6 +16,7 @@ export function ImageCell({
   loadThumbnail,
   onNaturalDimensions,
   markerLabel,
+  feedbackCount,
   onClick,
   onPreview,
   onRadialMenuPointerDown,
@@ -37,6 +39,7 @@ export function ImageCell({
     dimensions: ImageDimensions,
   ) => void
   markerLabel: string | null
+  feedbackCount?: number
   onClick: (file: BrowserFile, event: MouseEvent) => void
   onPreview: (file: BrowserFile) => void
   onRadialMenuPointerDown: (file: BrowserFile, event: PointerEvent<HTMLElement>) => void
@@ -90,6 +93,7 @@ export function ImageCell({
         </div>
         <div className="image-cell-meta">
           <span className="image-cell-name">{file.name}</span>
+          <ReviewFeedbackCountBadge count={feedbackCount} />
           {markerLabel && <span className="file-marker">{markerLabel}</span>}
         </div>
       </div>

@@ -194,7 +194,8 @@ describe('useReviewSessionCoordinator', () => {
     vi.mocked(reviewPort.reviewStartWithFeedback).mockResolvedValue(firstSaved)
     const hook = renderHook(() => useReviewSessionCoordinator(options(reviewPort)))
     await waitFor(() => expect(reviewPort.reviewStatus).toHaveBeenCalled())
-    await act(() => hook.result.current.previewStart({ kind: 'selection', entityIds: ['image-1'] }))
+    await act(() => hook.result.current.captureStart({ kind: 'selection', entityIds: ['image-1'] }))
+    expect(hook.result.current.proposal).toBeNull()
 
     let returned: ReviewSessionSnapshot | null = null
     await act(async () => {

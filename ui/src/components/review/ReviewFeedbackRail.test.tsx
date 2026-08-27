@@ -35,6 +35,7 @@ function controller(
     railOpen: true,
     readOnlyReason: null,
     restorableFeedbackId: 'feedback-3',
+    leaveConfirmation: null,
     setTool: vi.fn(),
     setTemporaryPan: vi.fn(),
     beginAnnotation: vi.fn(),
@@ -49,6 +50,7 @@ function controller(
     restoreDeletedFeedback: vi.fn(async () => undefined),
     setRailOpen: vi.fn(),
     requestLeave: vi.fn(async () => 'proceeded' as const),
+    cancelLeave: vi.fn(),
     discardUnsavedAndProceed: vi.fn(async () => undefined),
     ...overrides,
   }

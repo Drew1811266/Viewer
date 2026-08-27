@@ -122,4 +122,20 @@ describe('FolderOverview', () => {
     for (const track of tracks) expect(track).toHaveStyle({ height: '96px' })
     for (const item of items) expect(item).toHaveStyle({ width: '96px', height: '96px' })
   })
+
+  it('passes review feedback counts into loaded folder filmstrips', async () => {
+    render(
+      <FolderOverview
+        folders={[card]}
+        density="standard"
+        requestFolderImages={vi.fn().mockResolvedValue(card.representativeImages)}
+        onPreview={vi.fn()}
+        onSelect={vi.fn()}
+        feedbackCountByEntityId={new Map([['1', 2]])}
+      />,
+    )
+
+    await screen.findByRole('button', { name: '预览 1.jpg' })
+    expect(screen.getByText('返工 · 2 条')).toBeVisible()
+  })
 })

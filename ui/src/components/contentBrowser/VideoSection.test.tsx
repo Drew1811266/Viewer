@@ -56,6 +56,7 @@ describe('VideoSection', () => {
         selection={new Set(['video-1'])}
         activeId="video-1"
         onOpen={onOpen}
+        feedbackCountByEntityId={new Map([['video-1', 2]])}
       />,
     )
 
@@ -66,6 +67,7 @@ describe('VideoSection', () => {
       'aria-selected',
       'true',
     )
+    expect(screen.getByText('返工 · 2 条')).toBeVisible()
     fireEvent.doubleClick(screen.getByRole('option', { name: 'clip.mp4' }))
     expect(onOpen).toHaveBeenCalledWith('video-1')
 

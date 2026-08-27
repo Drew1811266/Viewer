@@ -111,6 +111,20 @@ function ViewerWorkspace({
           selectedEntityIds: reviewSelectedEntityIds,
         },
   )
+  const feedbackCountByEntityId = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const feedbackItem of review.snapshot.feedback) {
+      const targetEntityIds = new Set(
+        feedbackItem.targets.flatMap((target) =>
+          target.entityId === null ? [] : [target.entityId],
+        ),
+      )
+      for (const entityId of targetEntityIds) {
+        counts.set(entityId, (counts.get(entityId) ?? 0) + 1)
+      }
+    }
+    return counts
+  }, [review.snapshot.feedback])
   const returnToReviewMembers = useCallback(
     async (entityIds: string[]) => {
       controller.returnToFolderContext()
@@ -181,6 +195,12 @@ function ViewerWorkspace({
       feedback={feedback}
       emitIntent={emitIntent}
       pointerClientPoint={pointerClientPoint}
+      review={{
+        coordinator: review,
+        capturedScope: reviewScope,
+        feedbackCountByEntityId,
+        onReturnToMembers: (entityIds) => void returnToReviewMembers(entityIds),
+      }}
       reviewToolbarAction={
         <ReviewToolbarAction
           review={review}
@@ -193,6 +213,7 @@ function ViewerWorkspace({
           review={review}
           selectedEntityIds={reviewSelectedEntityIds}
           projectAccess={state.project.access}
+          contextBarHidden={viewing.activePreview !== null}
           onReturnToMembers={(entityIds) => void returnToReviewMembers(entityIds)}
         />
       }

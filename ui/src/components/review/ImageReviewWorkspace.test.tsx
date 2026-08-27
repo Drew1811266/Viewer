@@ -113,6 +113,7 @@ function controllerFixture(
     railOpen: true,
     readOnlyReason: null,
     restorableFeedbackId: null,
+    leaveConfirmation: null,
     setTool: vi.fn(),
     setTemporaryPan: vi.fn(),
     beginAnnotation: vi.fn(),
@@ -127,6 +128,7 @@ function controllerFixture(
     restoreDeletedFeedback: vi.fn(async () => undefined),
     setRailOpen: vi.fn(),
     requestLeave: vi.fn(async () => 'proceeded' as const),
+    cancelLeave: vi.fn(),
     discardUnsavedAndProceed: vi.fn(async () => undefined),
   }
 }
@@ -150,14 +152,7 @@ describe('ImageReviewWorkspace', () => {
         { x: 0.58, y: 0.82 },
       ]),
     ])
-    render(
-      <ImageReviewWorkspace
-        {...surfaceFixture()}
-        controller={controller}
-        onReturnGrid={vi.fn()}
-        onFinishReview={vi.fn()}
-      />,
-    )
+    render(<ImageReviewWorkspace {...surfaceFixture()} controller={controller} />)
 
     expect(screen.getAllByTestId('annotation-marker')).toHaveLength(4)
     expect(screen.getAllByRole('listitem', { name: /意见/ })).toHaveLength(4)
@@ -166,16 +161,7 @@ describe('ImageReviewWorkspace', () => {
 
   it('routes tool shortcuts, suppresses them in text input, and keeps completion separate', () => {
     const controller = controllerFixture([])
-    const finish = vi.fn()
-    const returnGrid = vi.fn()
-    render(
-      <ImageReviewWorkspace
-        {...surfaceFixture()}
-        controller={controller}
-        onReturnGrid={returnGrid}
-        onFinishReview={finish}
-      />,
-    )
+    render(<ImageReviewWorkspace {...surfaceFixture()} controller={controller} />)
 
     fireEvent.keyDown(window, { key: 'b' })
     expect(controller.setTool).toHaveBeenCalledWith('brush')
@@ -196,16 +182,29 @@ describe('ImageReviewWorkspace', () => {
     expect(controller.requestLeave).toHaveBeenCalledWith({ kind: 'return_grid' })
   })
 
+  it('delegates leave execution to the controller without invoking a second callback', async () => {
+    const returnGrid = vi.fn()
+    const finishReview = vi.fn()
+    const controller = controllerFixture([])
+    controller.requestLeave = vi.fn(async (intent) => {
+      if (intent.kind === 'return_grid') returnGrid()
+      if (intent.kind === 'finish_review') finishReview()
+      return 'proceeded' as const
+    })
+    render(<ImageReviewWorkspace {...surfaceFixture()} controller={controller} />)
+
+    fireEvent.click(screen.getByRole('button', { name: '返回网格' }))
+    fireEvent.click(screen.getByRole('button', { name: '完成本轮评审' }))
+
+    await vi.waitFor(() => {
+      expect(returnGrid).toHaveBeenCalledOnce()
+      expect(finishReview).toHaveBeenCalledOnce()
+    })
+  })
+
   it('keeps editing keyboard-safe, announces save failures, and restores focus after cancel', () => {
     const idle = controllerFixture([])
-    const rendered = render(
-      <ImageReviewWorkspace
-        {...surfaceFixture()}
-        controller={idle}
-        onReturnGrid={vi.fn()}
-        onFinishReview={vi.fn()}
-      />,
-    )
+    const rendered = render(<ImageReviewWorkspace {...surfaceFixture()} controller={idle} />)
     const returnButton = screen.getByRole('button', { name: '返回网格' })
     returnButton.focus()
 
@@ -221,14 +220,7 @@ describe('ImageReviewWorkspace', () => {
       text: '修正领口',
       message: '意见尚未保存，请重试。',
     }
-    rendered.rerender(
-      <ImageReviewWorkspace
-        {...surfaceFixture()}
-        controller={editing}
-        onReturnGrid={vi.fn()}
-        onFinishReview={vi.fn()}
-      />,
-    )
+    rendered.rerender(<ImageReviewWorkspace {...surfaceFixture()} controller={editing} />)
     const input = screen.getByRole('textbox', { name: '标注意见' })
     expect(input).toHaveFocus()
     expect(screen.getByRole('status')).toHaveAttribute('aria-live', 'polite')
@@ -239,14 +231,7 @@ describe('ImageReviewWorkspace', () => {
     fireEvent.keyDown(window, { key: 'Escape' })
     expect(editing.cancelDraft).toHaveBeenCalledOnce()
 
-    rendered.rerender(
-      <ImageReviewWorkspace
-        {...surfaceFixture()}
-        controller={idle}
-        onReturnGrid={vi.fn()}
-        onFinishReview={vi.fn()}
-      />,
-    )
+    rendered.rerender(<ImageReviewWorkspace {...surfaceFixture()} controller={idle} />)
     expect(returnButton).toHaveFocus()
     expect(screen.getByRole('button', { name: '浏览' })).toHaveAttribute('aria-pressed', 'true')
   })
@@ -267,14 +252,7 @@ describe('ImageReviewWorkspace', () => {
     )
     const controller = controllerFixture([])
 
-    render(
-      <ImageReviewWorkspace
-        {...surfaceFixture()}
-        controller={controller}
-        onReturnGrid={vi.fn()}
-        onFinishReview={vi.fn()}
-      />,
-    )
+    render(<ImageReviewWorkspace {...surfaceFixture()} controller={controller} />)
 
     expect(controller.setRailOpen).toHaveBeenCalledWith(false)
   })

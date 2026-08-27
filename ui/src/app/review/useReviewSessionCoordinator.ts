@@ -43,6 +43,7 @@ export interface ReviewSessionCoordinator {
   error: string | null
   discardConfirmation: ReviewDiscardConfirmation | null
   previewStart(scope: ReviewScopeRequest): Promise<void>
+  captureStart(scope: ReviewScopeRequest): Promise<void>
   startWithFeedback(input: AnchoredFeedbackInput): Promise<ReviewSessionSnapshot | null>
   addAnchoredFeedback(input: AnchoredFeedbackInput): Promise<ReviewSessionSnapshot | null>
   updateAnchoredFeedbackText(
@@ -290,6 +291,23 @@ export function useReviewSessionCoordinator({
     })
   }
 
+  async function requestStartProposal(scope: ReviewScopeRequest, visible: boolean): Promise<void> {
+    const epoch = epochRef.current
+    const requestId = previewRequestRef.current + 1
+    previewRequestRef.current = requestId
+    setError(null)
+    try {
+      const next = await portRef.current.reviewPreviewStart({ ...contextRef.current, scope })
+      if (epochRef.current !== epoch || previewRequestRef.current !== requestId) return
+      if (visible) commitProposal(next)
+      else proposalRef.current = next
+    } catch (cause) {
+      if (epochRef.current === epoch && previewRequestRef.current === requestId) {
+        setError(reviewErrorMessage(cause))
+      }
+    }
+  }
+
   return {
     snapshot,
     proposal,
@@ -298,21 +316,11 @@ export function useReviewSessionCoordinator({
     progress,
     error,
     discardConfirmation,
-    async previewStart(scope) {
-      const epoch = epochRef.current
-      const requestId = previewRequestRef.current + 1
-      previewRequestRef.current = requestId
-      setError(null)
-      try {
-        const next = await portRef.current.reviewPreviewStart({ ...contextRef.current, scope })
-        if (epochRef.current === epoch && previewRequestRef.current === requestId) {
-          commitProposal(next)
-        }
-      } catch (cause) {
-        if (epochRef.current === epoch && previewRequestRef.current === requestId) {
-          setError(reviewErrorMessage(cause))
-        }
-      }
+    previewStart(scope) {
+      return requestStartProposal(scope, true)
+    },
+    captureStart(scope) {
+      return requestStartProposal(scope, false)
     },
     startWithFeedback(input) {
       const selectedProposal = proposalRef.current

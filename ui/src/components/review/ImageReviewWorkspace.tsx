@@ -1,8 +1,5 @@
 import { useEffect, useRef } from 'react'
-import type {
-  ImageReviewWorkbenchController,
-  ReviewLeaveIntent,
-} from '../../app/review/useImageReviewWorkbench'
+import type { ImageReviewWorkbenchController } from '../../app/review/useImageReviewWorkbench'
 import ImagePreviewSurface, {
   type ImagePreviewSurfaceProps,
 } from '../imagePreview/ImagePreviewSurface'
@@ -12,17 +9,13 @@ import AnnotationToolbar from './AnnotationToolbar'
 import InlineFeedbackEditor from './InlineFeedbackEditor'
 import ReviewFeedbackRail from './ReviewFeedbackRail'
 
-export interface ImageReviewWorkspaceProps extends Omit<ImagePreviewSurfaceProps, 'slots'> {
+export interface ImageReviewWorkspaceProps
+  extends Omit<ImagePreviewSurfaceProps, 'slots' | 'onNavigate'> {
   controller: ImageReviewWorkbenchController
-  onReturnGrid(): void
-  onFinishReview(): void
 }
 
 export default function ImageReviewWorkspace({
   controller,
-  onReturnGrid,
-  onFinishReview,
-  onNavigate,
   ...surfaceProps
 }: ImageReviewWorkspaceProps) {
   const compactDefaultEntity = useRef<string | null>(null)
@@ -32,10 +25,6 @@ export default function ImageReviewWorkspace({
     compactDefaultEntity.current = surfaceProps.file.entityId
     if (window.matchMedia?.('(max-width: 700px)').matches) controller.setRailOpen(false)
   }, [controller, surfaceProps.file.entityId])
-
-  async function leave(intent: ReviewLeaveIntent, action: () => void) {
-    if ((await controller.requestLeave(intent)) === 'proceeded') action()
-  }
 
   const metadata = surfaceProps.file.imageMetadata
 
@@ -50,13 +39,14 @@ export default function ImageReviewWorkspace({
           (candidate) => candidate.entityId === file.entityId,
         )
         const offset = nextIndex < currentIndex ? -1 : 1
-        void leave({ kind: 'navigate', offset }, () => onNavigate(file))
+        void controller.requestLeave({ kind: 'navigate', offset })
       }}
       onEscape={() => {
         if (controller.dirty) controller.cancelDraft()
-        else void leave({ kind: 'return_grid' }, onReturnGrid)
+        else void controller.requestLeave({ kind: 'return_grid' })
       }}
       ariaLabel={`图片评审 ${surfaceProps.file.name}`}
+      toolbarLabel="图片评审工具"
       slots={{
         toolbarLeading: (
           <>
@@ -71,16 +61,26 @@ export default function ImageReviewWorkspace({
         toolbarActions: (
           <>
             <AnnotationToolbar controller={controller} />
-            <ViewerButton
-              tone="quiet"
-              onClick={() => void leave({ kind: 'finish_review' }, onFinishReview)}
-            >
-              完成本轮评审
-            </ViewerButton>
+            {controller.readOnlyReason === null && (
+              <>
+                <ViewerButton
+                  tone="quiet"
+                  onClick={() => void controller.requestLeave({ kind: 'finish_review' })}
+                >
+                  完成本轮评审
+                </ViewerButton>
+                <ViewerButton
+                  tone="quiet"
+                  onClick={() => void controller.requestLeave({ kind: 'abandon_review' })}
+                >
+                  放弃本轮
+                </ViewerButton>
+              </>
+            )}
             <ViewerButton
               tone="quiet"
               className="preview-complete-action"
-              onClick={() => void leave({ kind: 'return_grid' }, onReturnGrid)}
+              onClick={() => void controller.requestLeave({ kind: 'return_grid' })}
             >
               返回网格
             </ViewerButton>

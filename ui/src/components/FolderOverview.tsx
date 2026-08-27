@@ -9,6 +9,7 @@ interface FolderOverviewProps {
   onPreview: (file: BrowserFile, files: BrowserFile[]) => void
   requestFolderImages: (entityId: string) => Promise<BrowserFile[]>
   requestThumbnail?: (file: BrowserFile, maxPixels: number, scaleMilli: number) => Promise<string>
+  feedbackCountByEntityId?: ReadonlyMap<string, number>
 }
 
 export default function FolderOverview({
@@ -18,6 +19,7 @@ export default function FolderOverview({
   onPreview,
   requestFolderImages,
   requestThumbnail,
+  feedbackCountByEntityId,
 }: FolderOverviewProps) {
   const requests = useRef(new Map<string, Promise<BrowserFile[]>>())
   const loadImages = useCallback(
@@ -42,6 +44,7 @@ export default function FolderOverview({
             key={folder.entityId}
             loadImages={loadImages}
             requestThumbnail={requestThumbnail}
+            feedbackCountByEntityId={feedbackCountByEntityId}
             onSelect={onSelect}
             onPreview={onPreview}
           />

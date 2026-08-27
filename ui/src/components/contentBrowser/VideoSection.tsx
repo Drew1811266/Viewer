@@ -12,6 +12,7 @@ export interface VideoSectionProps {
   onExpandedChange(expanded: boolean): void
   selection: ReadonlySet<string>
   activeId: string | null
+  feedbackCountByEntityId?: ReadonlyMap<string, number>
   onOpen(entityId: string): void
   requestCover?: (entityId: string) => Promise<string>
   onListKeyDown?: (event: KeyboardEvent<HTMLElement>) => void
@@ -32,6 +33,7 @@ export function VideoSection({
   onExpandedChange,
   selection,
   activeId,
+  feedbackCountByEntityId,
   onOpen,
   requestCover,
   onListKeyDown,
@@ -79,6 +81,7 @@ export function VideoSection({
               video={video}
               selected={selection.has(video.entityId)}
               active={activeId === video.entityId}
+              feedbackCount={feedbackCountByEntityId?.get(video.entityId)}
               onOpen={onOpen}
               requestCover={requestCover}
               onClick={onSelect}

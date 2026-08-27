@@ -54,6 +54,10 @@ export default function ReviewCompletionDialog({
           <dd>{summary.revise}</dd>
         </div>
         <div>
+          <dt>意见</dt>
+          <dd>{summary.feedback.length}</dd>
+        </div>
+        <div>
           <dt>不可评审</dt>
           <dd>{summary.unreviewable}</dd>
         </div>

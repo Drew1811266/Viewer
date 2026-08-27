@@ -37,7 +37,7 @@ export default function ReviewContextBar({
         {!completed && (
           <>
             <ViewerButton tone="primary" onClick={onPrepareCompletion}>
-              完成本轮
+              完成本轮评审
             </ViewerButton>
             <ViewerButton tone="quiet" onClick={onRequestAbandon}>
               放弃本轮

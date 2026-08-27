@@ -75,6 +75,7 @@ function coordinator(current = snapshot()): ReviewSessionCoordinator {
     error: null,
     discardConfirmation: null,
     previewStart: vi.fn().mockResolvedValue(undefined),
+    captureStart: vi.fn().mockResolvedValue(undefined),
     startWithFeedback: vi.fn().mockResolvedValue(saved()),
     addAnchoredFeedback: vi.fn().mockResolvedValue(saved()),
     updateAnchoredFeedbackText: vi.fn().mockResolvedValue(saved()),
@@ -108,8 +109,8 @@ describe('useImageReviewWorkbench', () => {
       useImageReviewWorkbench({ coordinator: review, entityId: 'image-1', scope }),
     )
 
-    await waitFor(() => expect(review.previewStart).toHaveBeenCalledOnce())
-    expect(review.previewStart).toHaveBeenCalledWith(scope)
+    await waitFor(() => expect(review.captureStart).toHaveBeenCalledOnce())
+    expect(review.captureStart).toHaveBeenCalledWith(scope)
     act(() => {
       hook.result.current.beginAnnotation(RECT)
       hook.result.current.updateDraftText('修正袖口')
@@ -121,7 +122,7 @@ describe('useImageReviewWorkbench', () => {
       text: '修正袖口',
       anchor: RECT,
     })
-    expect(review.previewStart).toHaveBeenCalledOnce()
+    expect(review.captureStart).toHaveBeenCalledOnce()
     expect(hook.result.current.feedback).toEqual([
       expect.objectContaining({ feedbackId: 'feedback-1', text: '服务端意见', anchor: RECT }),
     ])
@@ -177,9 +178,18 @@ describe('useImageReviewWorkbench', () => {
       { kind: 'close_project' },
       { kind: 'finish_review' },
     ] as const) {
-      await expect(hook.result.current.requestLeave(intent)).resolves.toBe('blocked')
+      let outcome: 'blocked' | 'proceeded' | null = null
+      await act(async () => {
+        outcome = await hook.result.current.requestLeave(intent)
+      })
+      expect(outcome).toBe('blocked')
     }
     expect(onLeave).not.toHaveBeenCalled()
+    expect(hook.result.current.leaveConfirmation).toEqual({ kind: 'finish_review' })
+
+    act(() => hook.result.current.cancelLeave())
+    expect(hook.result.current.leaveConfirmation).toBeNull()
+    await act(() => hook.result.current.requestLeave({ kind: 'finish_review' }))
 
     await act(() => hook.result.current.discardUnsavedAndProceed())
     expect(onLeave).toHaveBeenCalledWith({ kind: 'finish_review' })

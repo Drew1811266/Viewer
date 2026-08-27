@@ -1,6 +1,7 @@
 import type { KeyboardEvent, MouseEvent, UIEvent } from 'react'
 import { useEffect, useMemo, useState } from 'react'
 import type { MatchRange, SearchHit, SearchPage, SearchQueryModel } from '../api/types'
+import ReviewFeedbackCountBadge from './review/ReviewFeedbackCountBadge'
 import ViewerButton from './ui/ViewerButton'
 import ViewerEmptyState from './ui/ViewerEmptyState'
 import ViewerStatusTag, { type ViewerStatusTagTone } from './ui/ViewerStatusTag'
@@ -19,6 +20,7 @@ interface SearchResultsProps {
   searching: boolean
   selectedEntityIds?: string[]
   onSelectionChange?: (entityIds: string[]) => void
+  feedbackCountByEntityId?: ReadonlyMap<string, number>
 }
 
 type ResultRow =
@@ -44,6 +46,7 @@ export default function SearchResults({
   searching,
   selectedEntityIds = [],
   onSelectionChange,
+  feedbackCountByEntityId,
 }: SearchResultsProps) {
   const [scrollTop, setScrollTop] = useState(0)
   const rows = useMemo(() => resultRows(page.hits, query.layout), [page.hits, query.layout])
@@ -160,6 +163,7 @@ export default function SearchResults({
                     selected={selectedIds.has(row.hit.entityId)}
                     selectedEntityIds={selectedEntityIds}
                     onSelectionChange={onSelectionChange}
+                    feedbackCount={feedbackCountByEntityId?.get(row.hit.entityId)}
                   />
                 )}
               </div>
@@ -199,12 +203,14 @@ function ResultItem({
   selected,
   selectedEntityIds,
   onSelectionChange,
+  feedbackCount,
 }: {
   hit: SearchHit
   snippet: string | null | undefined
   selected: boolean
   selectedEntityIds: string[]
   onSelectionChange?: (entityIds: string[]) => void
+  feedbackCount?: number
 }) {
   const nameRanges =
     hit.matchedField === 'filename' || hit.matchedField === 'exact_filename' ? hit.matchRanges : []
@@ -249,6 +255,7 @@ function ResultItem({
         <span className="search-result-metadata">{metadataLabel(hit)}</span>
       </div>
       <div className="search-result-state">
+        <ReviewFeedbackCountBadge count={feedbackCount} />
         <ViewerStatusTag tone={markerTone(hit)}>{markerLabel(hit)}</ViewerStatusTag>
       </div>
     </div>

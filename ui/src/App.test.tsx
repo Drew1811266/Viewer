@@ -9,7 +9,7 @@ import {
 } from '@testing-library/react'
 import { afterEach, describe, expect, expectTypeOf, it, vi } from 'vitest'
 import App from './App'
-import type { FolderWorkspace } from './api/types'
+import type { FolderWorkspace, ReviewSessionSnapshot } from './api/types'
 import type { ProjectDropEvent, ViewerBridge } from './api/viewer'
 import { type AppShellState, useAppShellState } from './app/useAppShellState'
 import {
@@ -349,6 +349,42 @@ describe('Viewer empty state', () => {
     closeProjectFromMenu()
 
     expect(screen.getByRole('dialog', { name: '放弃未保存的意见？' })).toBeVisible()
+    expect(viewer.closeProject).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: '放弃未保存内容' }))
+    await waitFor(() => expect(viewer.closeProject).toHaveBeenCalledOnce())
+  })
+
+  it('routes active-round member images to the workbench and nonmembers to fixed-scope preview', async () => {
+    const viewer = bridge()
+    vi.mocked(viewer.queryFolder).mockResolvedValue(twoImageContentWorkspace())
+    vi.mocked(viewer.reviewStatus).mockResolvedValue(activeImageReviewSnapshot())
+    render(<App bridge={viewer} />)
+    fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
+    fireEvent.doubleClick(await screen.findByRole('option', { name: 'front.jpg' }))
+
+    expect(await screen.findByRole('toolbar', { name: '图片评审工具' })).toBeVisible()
+    const workbench = screen.getByRole('dialog', { name: '图片评审 front.jpg' })
+    fireEvent.keyDown(workbench, { key: 'ArrowRight' })
+
+    expect(await screen.findByText('这张图片不在当前评审范围内')).toBeVisible()
+    expect(screen.queryByRole('toolbar', { name: '图片评审工具' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '返回本轮素材' })).toBeVisible()
+    expect(screen.getByRole('button', { name: '完成当前评审' })).toBeVisible()
+    expect(screen.getByRole('button', { name: '放弃当前草稿后重新开始' })).toBeVisible()
+  })
+
+  it('uses the image annotation leave guard before project close', async () => {
+    const viewer = bridge()
+    vi.mocked(viewer.queryFolder).mockResolvedValue(twoImageContentWorkspace())
+    vi.mocked(viewer.reviewStatus).mockResolvedValue(activeImageReviewSnapshot())
+    render(<App bridge={viewer} />)
+    fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
+    fireEvent.doubleClick(await screen.findByRole('option', { name: 'front.jpg' }))
+    fireEvent.click(await screen.findByRole('button', { name: '整图意见' }))
+
+    closeProjectFromMenu()
+
+    expect(screen.getByRole('dialog', { name: '放弃未保存的标注？' })).toBeVisible()
     expect(viewer.closeProject).not.toHaveBeenCalled()
     fireEvent.click(screen.getByRole('button', { name: '放弃未保存内容' }))
     await waitFor(() => expect(viewer.closeProject).toHaveBeenCalledOnce())
@@ -865,14 +901,14 @@ describe('Viewer empty state', () => {
     front.focus()
     fireEvent.click(front)
 
-    const preview = screen.getByRole('dialog', { name: /^图片预览 / })
+    const preview = screen.getByRole('dialog', { name: /^图片评审 / })
     expect(preview).toHaveTextContent('front.jpg')
     expect(preview).toHaveTextContent('1 / 2')
     expect(screen.getByRole('region', { name: 'B01 图片' })).toBeInTheDocument()
 
     fireEvent.keyDown(preview, { key: 'ArrowRight' })
-    expect(preview).toHaveTextContent('back.jpg')
-    expect(preview).toHaveTextContent('2 / 2')
+    await waitFor(() => expect(screen.getByRole('dialog')).toHaveTextContent('back.jpg'))
+    expect(screen.getByRole('dialog')).toHaveTextContent('2 / 2')
 
     fireEvent.click(screen.getByRole('button', { name: '返回网格' }))
     expect(front).toHaveFocus()
@@ -1099,7 +1135,7 @@ describe('Viewer empty state', () => {
     await waitFor(() => expect(receiveProjectChanged).toBeDefined())
     fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
     fireEvent.click(await screen.findByRole('button', { name: '预览 front.jpg' }))
-    expect(screen.getByRole('dialog', { name: /^图片预览 / })).toHaveTextContent('1 / 2')
+    expect(screen.getByRole('dialog', { name: /^图片评审 / })).toHaveTextContent('1 / 2')
 
     act(() => {
       receiveProjectChanged?.({
@@ -1116,14 +1152,14 @@ describe('Viewer empty state', () => {
     })
 
     await waitFor(() =>
-      expect(screen.queryByRole('dialog', { name: /^图片预览 / })).not.toBeInTheDocument(),
+      expect(screen.queryByRole('dialog', { name: /^图片评审 / })).not.toBeInTheDocument(),
     )
     const updated = await screen.findByRole('button', { name: '预览 updated.jpg' })
     fireEvent.keyDown(window, { key: 'ArrowRight' })
     expect(screen.queryByText('back.jpg')).not.toBeInTheDocument()
 
     fireEvent.click(updated)
-    expect(screen.getByRole('dialog', { name: /^图片预览 / })).toHaveTextContent('1 / 1')
+    expect(screen.getByRole('dialog', { name: /^图片评审 / })).toHaveTextContent('1 / 1')
   })
 
   it('keeps read-only browsing and comparison available while disabling every write', async () => {
@@ -1860,7 +1896,7 @@ describe('Viewer empty state', () => {
     fireEvent.pointerMove(window, { pointerId: 202, clientX: 420, clientY: 170 })
     fireEvent.pointerUp(window, { pointerId: 202, clientX: 420, clientY: 170 })
 
-    expect(screen.getByRole('dialog', { name: /^图片预览 / })).toHaveTextContent('back.jpg')
+    expect(screen.getByRole('dialog', { name: /^图片评审 / })).toHaveTextContent('back.jpg')
   })
 
   it('restores the original content target after a click fallback is replaced', async () => {
@@ -2205,7 +2241,7 @@ describe('Viewer empty state', () => {
 
     fireEvent.keyDown(window, { key: 'Unidentified', code: 'Space' })
 
-    expect(screen.getByRole('dialog', { name: /^图片预览 / })).toBeVisible()
+    expect(screen.getByRole('dialog', { name: /^图片评审 / })).toBeVisible()
   })
 
   it('routes Command-Z only outside editable and modal contexts', async () => {
@@ -2237,7 +2273,7 @@ describe('Viewer empty state', () => {
     expect(screen.queryByRole('dialog', { name: '将文件移到废纸篓？' })).not.toBeInTheDocument()
 
     fireEvent.doubleClick(file)
-    expect(screen.getByRole('dialog', { name: /^图片预览 / })).toBeVisible()
+    expect(screen.getByRole('dialog', { name: /^图片评审 / })).toBeVisible()
     fireEvent.keyDown(window, { key: 'Delete' })
     expect(screen.queryByRole('dialog', { name: '将文件移到废纸篓？' })).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: '返回网格' }))
@@ -2325,7 +2361,7 @@ describe('Viewer empty state', () => {
     expect(screen.getByRole('menuitem', { name: '预览' })).toHaveAttribute('aria-disabled', 'false')
     expect(screen.getByRole('menuitem', { name: '信息' })).toHaveAttribute('aria-disabled', 'false')
     fireEvent.click(screen.getByRole('menuitem', { name: '预览' }))
-    expect(screen.getByRole('dialog', { name: /^图片预览 / })).toBeVisible()
+    expect(screen.getByRole('dialog', { name: /^图片评审 / })).toBeVisible()
     fireEvent.click(screen.getByRole('button', { name: '返回网格' }))
 
     const back = screen.getByRole('option', { name: 'back.jpg' })
@@ -2334,7 +2370,7 @@ describe('Viewer empty state', () => {
     const multiPreview = screen.getByRole('menuitem', { name: '预览' })
     expect(multiPreview).toHaveAttribute('aria-disabled', 'true')
     fireEvent.click(multiPreview)
-    expect(screen.queryByRole('dialog', { name: /^图片预览 / })).not.toBeInTheDocument()
+    expect(screen.queryByRole('dialog', { name: /^图片评审 / })).not.toBeInTheDocument()
 
     await act(async () => {
       results.resolve({ total: 0, offset: 0, items: [] })
@@ -2888,7 +2924,7 @@ describe('Viewer empty state', () => {
     fireEvent.keyDown(window, { key: 'c' })
 
     fireEvent.click(await screen.findByRole('button', { name: '移除 front.jpg' }))
-    expect(await screen.findByRole('dialog', { name: /^图片预览 / })).toHaveTextContent('back.jpg')
+    expect(await screen.findByRole('dialog', { name: /^图片评审 / })).toHaveTextContent('back.jpg')
     expect(screen.queryByRole('region', { name: '图片对比' })).not.toBeInTheDocument()
   })
 
@@ -3081,6 +3117,49 @@ function contentWorkspace() {
       },
     ],
     otherFiles: [],
+  }
+}
+
+function twoImageContentWorkspace() {
+  const first = contentWorkspace()
+  return {
+    ...first,
+    images: [
+      ...first.images,
+      {
+        ...defined(first.images[0], 'Expected front image fixture'),
+        entityId: 'image-2',
+        relativePath: 'id/back.jpg',
+        name: 'back.jpg',
+        modifiedNs: '2',
+      },
+    ],
+  }
+}
+
+function activeImageReviewSnapshot(): ReviewSessionSnapshot {
+  return {
+    phase: 'active',
+    resume: null,
+    reviewStreamId: 'stream-1',
+    reviewRoundId: 'round-1',
+    revision: 1,
+    members: [
+      {
+        assetVersionId: 'asset-1',
+        entityId: 'image-1',
+        relativePath: 'id/front.jpg',
+        displayName: 'front.jpg',
+        kind: 'image',
+        feedbackItems: 0,
+      },
+    ],
+    feedback: [],
+    restorableFeedbackId: null,
+    unreviewable: [],
+    conflicts: [],
+    counts: { total: 1, feedbackItems: 0, revise: 0, unreviewable: 0, pass: 0 },
+    error: null,
   }
 }
 

@@ -350,6 +350,27 @@ function finishMarquee(end: [number, number]) {
 }
 
 describe('ContentBrowser', () => {
+  it('shows feedback counts for affected images and videos without inventing pass controls', async () => {
+    render(
+      <ContentBrowser
+        workspace={workspaceWithVideo()}
+        requestThumbnail={vi.fn().mockResolvedValue('viewer-image://thumbnail')}
+        feedbackCountByEntityId={
+          new Map([
+            ['image-1', 2],
+            ['video-clip.mp4', 1],
+          ])
+        }
+      />,
+    )
+
+    const imageOption = await screen.findByRole('option', { name: '1.jpg' })
+    const videoOption = screen.getByRole('option', { name: 'clip.mp4' })
+    expect(within(imageOption).getByText('返工 · 2 条')).toBeVisible()
+    expect(within(videoOption).getByText('返工 · 1 条')).toBeVisible()
+    expect(screen.queryByRole('button', { name: /通过/ })).not.toBeInTheDocument()
+  })
+
   it('shows videos expanded between images and other files', () => {
     render(<ContentBrowser workspace={workspaceWithVideo()} />)
 

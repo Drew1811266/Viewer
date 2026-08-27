@@ -50,6 +50,21 @@
   background: var(--viewer-danger-emphasis-soft);
 }
 
+.review-outside-scope-notice {
+  left: var(--viewer-space-3);
+  position: fixed;
+  right: var(--viewer-space-3);
+  top: 58px;
+  z-index: 11;
+}
+
+.review-outside-scope-notice__actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--viewer-space-2);
+}
+
 .review-progress {
   background: var(--viewer-surface);
   justify-content: flex-end;
@@ -195,7 +210,19 @@
 }
 
 .review-count-grid--completion {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.review-feedback-count-badge {
+  flex: 0 0 auto;
+}
+
+.folder-filmstrip-feedback-count {
+  pointer-events: none;
+  position: absolute;
+  right: var(--viewer-space-1);
+  top: var(--viewer-space-1);
+  z-index: 1;
 }
 
 .review-count-grid > div {

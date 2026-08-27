@@ -31,6 +31,30 @@ function video(overrides: Partial<VideoFile> = {}): VideoFile {
 }
 
 describe('VideoCard', () => {
+  it('shows only a positive review feedback count', () => {
+    const rendered = render(
+      <VideoCard
+        video={video()}
+        selected={false}
+        active={false}
+        onOpen={vi.fn()}
+        feedbackCount={3}
+      />,
+    )
+
+    expect(screen.getByText('返工 · 3 条')).toBeVisible()
+    rendered.rerender(
+      <VideoCard
+        video={video()}
+        selected={false}
+        active={false}
+        onOpen={vi.fn()}
+        feedbackCount={0}
+      />,
+    )
+    expect(screen.queryByText(/返工/)).not.toBeInTheDocument()
+  })
+
   it('keeps a 16:9 stage while its cover fades in and formats duration from microseconds', () => {
     render(<VideoCard video={video()} selected={false} active={false} onOpen={vi.fn()} />)
 

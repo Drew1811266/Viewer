@@ -42,6 +42,7 @@ export interface ImageReviewWorkbenchController {
   railOpen: boolean
   readOnlyReason: ImageReviewReadOnlyReason
   restorableFeedbackId: string | null
+  leaveConfirmation: ReviewLeaveIntent | null
   setTool(tool: AnnotationTool): void
   setTemporaryPan(active: boolean): void
   beginAnnotation(anchor: ReviewAnchor): void
@@ -56,6 +57,7 @@ export interface ImageReviewWorkbenchController {
   restoreDeletedFeedback(feedbackId: string): Promise<void>
   setRailOpen(open: boolean): void
   requestLeave(intent: ReviewLeaveIntent): Promise<'proceeded' | 'blocked'>
+  cancelLeave(): void
   discardUnsavedAndProceed(): Promise<void>
 }
 
@@ -72,6 +74,7 @@ export function useImageReviewWorkbench({
   )
   const [snapshot, setSnapshot] = useState(coordinator.snapshot)
   const [railOpen, setRailOpen] = useState(true)
+  const [leaveConfirmation, setLeaveConfirmation] = useState<ReviewLeaveIntent | null>(null)
   const coordinatorRef = useRef(coordinator)
   const editorRef = useRef(editor)
   const onLeaveRef = useRef(onLeave)
@@ -89,7 +92,7 @@ export function useImageReviewWorkbench({
   useEffect(() => {
     if (snapshot.phase !== 'idle' || previewRequestedRef.current) return
     previewRequestedRef.current = true
-    previewPromiseRef.current = coordinatorRef.current.previewStart(capturedScopeRef.current)
+    previewPromiseRef.current = coordinatorRef.current.captureStart(capturedScopeRef.current)
   }, [snapshot.phase])
 
   const installSnapshot = useCallback((next: ReviewSessionSnapshot | null) => {
@@ -159,6 +162,7 @@ export function useImageReviewWorkbench({
   const requestLeave = useCallback(async (intent: ReviewLeaveIntent) => {
     if (hasUnsavedAnnotation(editorRef.current)) {
       pendingLeaveRef.current = intent
+      setLeaveConfirmation(intent)
       return 'blocked' as const
     }
     await onLeaveRef.current?.(intent)
@@ -174,6 +178,7 @@ export function useImageReviewWorkbench({
     railOpen,
     readOnlyReason: imageReviewReadOnlyReason(snapshot, entityId),
     restorableFeedbackId: snapshot.restorableFeedbackId,
+    leaveConfirmation,
     setTool(tool) {
       dispatch({ type: 'set_tool', tool })
     },
@@ -215,9 +220,14 @@ export function useImageReviewWorkbench({
     },
     setRailOpen,
     requestLeave,
+    cancelLeave() {
+      pendingLeaveRef.current = null
+      setLeaveConfirmation(null)
+    },
     async discardUnsavedAndProceed() {
       const pending = pendingLeaveRef.current
       pendingLeaveRef.current = null
+      setLeaveConfirmation(null)
       dispatch({ type: 'cancel_draft' })
       if (pending !== null) await onLeaveRef.current?.(pending)
     },

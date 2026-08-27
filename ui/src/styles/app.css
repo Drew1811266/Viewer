@@ -925,7 +925,12 @@ body:has(.viewer-inspector) .global-notice-stack {
 .search-result-type,
 .search-result-state {
   display: flex;
+  gap: var(--viewer-space-1);
   justify-content: center;
+}
+
+.search-result-state {
+  flex-wrap: wrap;
 }
 
 .search-result-hit mark {

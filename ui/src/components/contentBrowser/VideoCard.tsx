@@ -1,12 +1,14 @@
 import type { DragEvent, MouseEvent, PointerEvent } from 'react'
 import { useEffect, useState } from 'react'
 import type { VideoFile } from '../../api/types'
+import ReviewFeedbackCountBadge from '../review/ReviewFeedbackCountBadge'
 import { OrganizationDragHandle } from './OrganizationDragHandle'
 
 export interface VideoCardProps {
   video: VideoFile
   selected: boolean
   active: boolean
+  feedbackCount?: number
   onOpen(entityId: string): void
   requestCover?: (entityId: string) => Promise<string>
   onClick?: (video: VideoFile, event: MouseEvent<HTMLElement>) => void
@@ -24,6 +26,7 @@ export function VideoCard({
   video,
   selected,
   active,
+  feedbackCount,
   onOpen,
   requestCover,
   onClick,
@@ -129,6 +132,7 @@ export function VideoCard({
         </div>
         <div className="video-card-meta">
           <span className="video-card-name">{video.name}</span>
+          <ReviewFeedbackCountBadge count={feedbackCount} />
         </div>
       </div>
       {supportsOrganization && (

@@ -9,7 +9,6 @@ import DestinationDialog from '../../components/DestinationDialog'
 import FolderOverview from '../../components/FolderOverview'
 import FolderTree from '../../components/FolderTree'
 import GlobalNoticeStack from '../../components/GlobalNoticeStack'
-import ImagePreview from '../../components/ImagePreview'
 import InfoOverlay from '../../components/InfoOverlay'
 import type { Point } from '../../components/imagePreview/imageGeometry'
 import OperationResults from '../../components/OperationResults'
@@ -35,6 +34,7 @@ import { isImageFile, isVideoFile } from '../../fileKinds'
 import type { ViewerSettingsContextValue } from '../../settings/ViewerSettingsProvider'
 import type { ViewerController } from '../../state/useViewerController'
 import type { ViewerState } from '../../state/viewerState'
+import type { ImageReviewWorkbenchController } from '../review/useImageReviewWorkbench'
 import { useDelayedProjectionProgress } from '../useDelayedProjectionProgress'
 import type { WorkspaceIntentSink } from './intents'
 import type { WorkspacePorts } from './ports'
@@ -42,8 +42,14 @@ import type { FeedbackCoordinator } from './useFeedbackCoordinator'
 import type { OrganizationCoordinator } from './useOrganizationCoordinator'
 import type { ViewingCoordinator } from './useViewingCoordinator'
 import type { WorkspaceShellCoordinator } from './useWorkspaceShellCoordinator'
+import WorkspaceImageReviewPreview, {
+  type WorkspaceReviewPresentation,
+} from './WorkspaceImageReviewPreview'
 
 type Project = NonNullable<ViewerState['project']>
+
+export type { ImageReviewRoute, WorkspaceReviewPresentation } from './WorkspaceImageReviewPreview'
+export { resolveImageReviewRoute } from './WorkspaceImageReviewPreview'
 
 export type WorkspaceViewCommands = Pick<
   ViewerController,
@@ -81,6 +87,7 @@ export interface WorkspaceProjectViewProps {
   feedback: FeedbackCoordinator
   emitIntent: WorkspaceIntentSink
   pointerClientPoint: MutableRefObject<Point | null>
+  review: WorkspaceReviewPresentation
   reviewToolbarAction: ReactNode
   reviewLayer: ReactNode
   onReselectProject(): void
@@ -89,6 +96,7 @@ export interface WorkspaceProjectViewProps {
 export default function WorkspaceProjectView(props: WorkspaceProjectViewProps) {
   const { state, project, projectSessionId, commands, shell, viewing, organization } = props
   const moreMenuTriggerRef = useRef<HTMLElement>(null)
+  const activeImageReviewControllerRef = useRef<ImageReviewWorkbenchController | null>(null)
   const displayedFolderId = state.projectionTransition?.selectedFolderId ?? state.selectedFolderId
   const projectionProgressVisible = useDelayedProjectionProgress(
     state.projectionTransition,
@@ -108,6 +116,14 @@ export default function WorkspaceProjectView(props: WorkspaceProjectViewProps) {
     shell.recoveryAcknowledgedSessionId !== projectSessionId
       ? state.recoveryReport
       : null
+  const requestCloseProject = useCallback(() => {
+    const workbench = activeImageReviewControllerRef.current
+    if (workbench !== null) {
+      void workbench.requestLeave({ kind: 'close_project' })
+      return
+    }
+    props.emitIntent({ kind: 'close-project' })
+  }, [props.emitIntent])
 
   return (
     <main
@@ -128,6 +144,7 @@ export default function WorkspaceProjectView(props: WorkspaceProjectViewProps) {
         {...props}
         viewContext={viewContext}
         moreMenuTriggerRef={moreMenuTriggerRef}
+        onCloseProject={requestCloseProject}
       />
       {project.access === 'read_only' && (
         <ReadOnlyBanner
@@ -145,7 +162,11 @@ export default function WorkspaceProjectView(props: WorkspaceProjectViewProps) {
         selectFolderTarget={selectFolderTarget}
       />
       <WorkspaceFeedbackLayers {...props} />
-      <WorkspaceOverlays {...props} moreMenuTriggerRef={moreMenuTriggerRef} />
+      <WorkspaceOverlays
+        {...props}
+        moreMenuTriggerRef={moreMenuTriggerRef}
+        activeImageReviewControllerRef={activeImageReviewControllerRef}
+      />
     </main>
   )
 }
@@ -188,9 +209,11 @@ function WorkspaceHeader({
   moreMenuTriggerRef,
   reviewToolbarAction,
   onReselectProject,
+  onCloseProject,
 }: WorkspaceProjectViewProps & {
   viewContext: WorkspaceViewContext
   moreMenuTriggerRef: MutableRefObject<HTMLElement | null>
+  onCloseProject(): void
 }) {
   return (
     <header className="workspace-header">
@@ -244,7 +267,7 @@ function WorkspaceHeader({
           onOpenSettings={() => emitIntent({ kind: 'open-settings' })}
           onOpenPermissionSettings={() => void commands.openPermissionSettings()}
           onReselectProject={onReselectProject}
-          onCloseProject={() => emitIntent({ kind: 'close-project' })}
+          onCloseProject={onCloseProject}
         />
       </div>
     </header>
@@ -259,6 +282,7 @@ function WorkspaceColumns({
   viewing,
   organization,
   feedback,
+  review,
   commands,
   displayedFolderId,
   projectionProgressVisible,
@@ -319,6 +343,7 @@ function WorkspaceColumns({
         viewing={viewing}
         organization={organization}
         feedback={feedback}
+        review={review}
         thumbnailDensity={settings.thumbnailDensity}
         projectionProgressVisible={projectionProgressVisible}
         pendingRecoveryReport={pendingRecoveryReport}
@@ -336,13 +361,14 @@ function WorkspaceContent({
   viewing,
   organization,
   feedback,
+  review,
   thumbnailDensity,
   projectionProgressVisible,
   pendingRecoveryReport,
   selectFolderTarget,
 }: Pick<
   WorkspaceProjectViewProps,
-  'state' | 'project' | 'commands' | 'shell' | 'viewing' | 'organization' | 'feedback'
+  'state' | 'project' | 'commands' | 'shell' | 'viewing' | 'organization' | 'feedback' | 'review'
 > & {
   thumbnailDensity: ViewerSettingsContextValue['thumbnailDensity']
   projectionProgressVisible: boolean
@@ -380,6 +406,7 @@ function WorkspaceContent({
           viewing={viewing}
           organization={organization}
           feedback={feedback}
+          review={review}
           thumbnailDensity={thumbnailDensity}
           selectFolderTarget={selectFolderTarget}
         />
@@ -396,11 +423,12 @@ function WorkspaceContentBody({
   viewing,
   organization,
   feedback,
+  review,
   thumbnailDensity,
   selectFolderTarget,
 }: Pick<
   WorkspaceProjectViewProps,
-  'state' | 'project' | 'commands' | 'shell' | 'viewing' | 'organization' | 'feedback'
+  'state' | 'project' | 'commands' | 'shell' | 'viewing' | 'organization' | 'feedback' | 'review'
 > & {
   thumbnailDensity: ViewerSettingsContextValue['thumbnailDensity']
   selectFolderTarget(entityId: string | null): void
@@ -412,7 +440,7 @@ function WorkspaceContentBody({
           {viewing.contextRepairMessage}
         </p>
       )}
-      <WorkspaceSearchContent state={state} commands={commands} />
+      <WorkspaceSearchContent state={state} commands={commands} review={review} />
       <WorkspaceBrowseContent
         state={state}
         project={project}
@@ -421,6 +449,7 @@ function WorkspaceContentBody({
         viewing={viewing}
         organization={organization}
         feedback={feedback}
+        review={review}
         thumbnailDensity={thumbnailDensity}
         selectFolderTarget={selectFolderTarget}
       />
@@ -431,7 +460,8 @@ function WorkspaceContentBody({
 function WorkspaceSearchContent({
   state,
   commands,
-}: Pick<WorkspaceProjectViewProps, 'state' | 'commands'>) {
+  review,
+}: Pick<WorkspaceProjectViewProps, 'state' | 'commands' | 'review'>) {
   if (!state.search.showResults) return null
   if (state.search.page === null) {
     if (state.search.status === 'searching') return <p role="status">正在搜索…</p>
@@ -453,6 +483,7 @@ function WorkspaceSearchContent({
       selectedEntityIds={state.selectedEntityIds}
       onSelectionChange={commands.setSelectedEntityIds}
       searching={state.search.status === 'searching' || !state.search.page.progress.complete}
+      feedbackCountByEntityId={review.feedbackCountByEntityId}
     />
   )
 }
@@ -460,7 +491,7 @@ function WorkspaceSearchContent({
 function WorkspaceBrowseContent(
   props: Pick<
     WorkspaceProjectViewProps,
-    'state' | 'project' | 'commands' | 'shell' | 'viewing' | 'organization' | 'feedback'
+    'state' | 'project' | 'commands' | 'shell' | 'viewing' | 'organization' | 'feedback' | 'review'
   > & {
     thumbnailDensity: ViewerSettingsContextValue['thumbnailDensity']
     selectFolderTarget(entityId: string | null): void
@@ -489,6 +520,7 @@ function WorkspaceBrowseContent(
         requestThumbnail={viewing.requestThumbnail}
         onPreview={viewing.openFilmstripPreview}
         onSelect={selectFolderTarget}
+        feedbackCountByEntityId={props.review.feedbackCountByEntityId}
       />
     )
   }
@@ -503,10 +535,11 @@ function ContentWorkspace({
   viewing,
   organization,
   feedback,
+  review,
   thumbnailDensity,
 }: Pick<
   WorkspaceProjectViewProps,
-  'state' | 'project' | 'commands' | 'shell' | 'viewing' | 'organization' | 'feedback'
+  'state' | 'project' | 'commands' | 'shell' | 'viewing' | 'organization' | 'feedback' | 'review'
 > & { thumbnailDensity: ViewerSettingsContextValue['thumbnailDensity'] }) {
   if (state.workspace?.workspace !== 'content') return null
 
@@ -547,6 +580,7 @@ function ContentWorkspace({
           onOtherFilePanelExpandedChange={shell.otherFilePanel.setExpanded}
           videoPanelExpanded={shell.videoPanel.expanded}
           onVideoPanelExpandedChange={shell.videoPanel.setExpanded}
+          feedbackCountByEntityId={review.feedbackCountByEntityId}
         />
       </div>
       {!viewing.compareOpen && viewing.compareStatus && (
@@ -623,6 +657,7 @@ function WorkspaceFeedbackLayers({
 
 function WorkspaceOverlays({
   state,
+  project,
   settings,
   ports,
   commands,
@@ -630,9 +665,15 @@ function WorkspaceOverlays({
   viewing,
   organization,
   feedback,
+  review,
+  emitIntent,
   pointerClientPoint,
   moreMenuTriggerRef,
-}: WorkspaceProjectViewProps & { moreMenuTriggerRef: MutableRefObject<HTMLElement | null> }) {
+  activeImageReviewControllerRef,
+}: WorkspaceProjectViewProps & {
+  moreMenuTriggerRef: MutableRefObject<HTMLElement | null>
+  activeImageReviewControllerRef: MutableRefObject<ImageReviewWorkbenchController | null>
+}) {
   return (
     <>
       {shell.settingsOpen && (
@@ -652,16 +693,21 @@ function WorkspaceOverlays({
       {viewing.activePreviewFile &&
         isImageFile(viewing.activePreviewFile) &&
         viewing.activePreviewFiles.length > 0 && (
-          <ImagePreview
+          <WorkspaceImageReviewPreview
+            key={viewing.activePreviewFile.entityId}
             file={viewing.activePreviewFile}
             files={viewing.activePreviewFiles}
             magnifier={settings.magnifier}
             pointerClientPoint={pointerClientPoint}
             requestImage={viewing.requestPreviewImage}
+            unavailableEntityIds={viewing.unavailablePreviewEntityIds}
             onNavigate={viewing.navigatePreview}
             onClose={viewing.closePreview}
             onDimensions={viewing.recordDimensions}
-            unavailableEntityIds={viewing.unavailablePreviewEntityIds}
+            projectAccess={project.access}
+            review={review}
+            emitIntent={emitIntent}
+            activeControllerRef={activeImageReviewControllerRef}
           />
         )}
       {viewing.activePreviewFile &&

@@ -13,6 +13,7 @@ interface ReviewWorkspaceLayerProps {
   review: ReviewSessionCoordinator
   selectedEntityIds: string[]
   projectAccess: ProjectAccess
+  contextBarHidden?: boolean
   onReturnToMembers(entityIds: string[]): void
 }
 
@@ -20,6 +21,11 @@ interface ReviewToolbarActionProps {
   review: ReviewSessionCoordinator
   scope: ReviewScopeRequest | null
   projectAccess: ProjectAccess
+}
+
+interface ReviewAbandonDialogProps {
+  review: ReviewSessionCoordinator
+  onClose(): void
 }
 
 export function ReviewToolbarAction({ review, scope, projectAccess }: ReviewToolbarActionProps) {
@@ -51,11 +57,11 @@ export default function ReviewWorkspaceLayer({
   review,
   selectedEntityIds,
   projectAccess,
+  contextBarHidden = false,
   onReturnToMembers,
 }: ReviewWorkspaceLayerProps) {
   const [inspectorOpen, setInspectorOpen] = useState(false)
   const [abandonOpen, setAbandonOpen] = useState(false)
-  const abandonCancelRef = useRef<HTMLButtonElement>(null)
   const active = review.snapshot.phase === 'active'
   const completed = review.snapshot.phase === 'completed_read_only'
   const members = review.snapshot.members.flatMap((member) =>
@@ -65,7 +71,7 @@ export default function ReviewWorkspaceLayer({
   return (
     <>
       <ReviewRecoveryNotice review={review} projectAccess={projectAccess} />
-      {(active || completed) && (
+      {!contextBarHidden && (active || completed) && (
         <ReviewContextBar
           snapshot={review.snapshot}
           inspectorOpen={inspectorOpen}
@@ -96,7 +102,7 @@ export default function ReviewWorkspaceLayer({
           )}
         </div>
       )}
-      {inspectorOpen && (active || completed) && (
+      {!contextBarHidden && inspectorOpen && (active || completed) && (
         <ReviewInspector
           review={review}
           selectedEntityIds={selectedEntityIds}
@@ -120,32 +126,7 @@ export default function ReviewWorkspaceLayer({
           onCancel={review.dismissCompletion}
         />
       )}
-      {abandonOpen && (
-        <ModalSheet
-          title="放弃本轮评审？"
-          destructive
-          onCancel={() => setAbandonOpen(false)}
-          initialFocusRef={abandonCancelRef}
-          footer={
-            <>
-              <ViewerButton ref={abandonCancelRef} onClick={() => setAbandonOpen(false)}>
-                保留本轮
-              </ViewerButton>
-              <ViewerButton
-                tone="danger"
-                onClick={() => {
-                  void review.abandon()
-                  setAbandonOpen(false)
-                }}
-              >
-                确认放弃
-              </ViewerButton>
-            </>
-          }
-        >
-          <p>放弃只删除未完成草稿，不会产生完成记录。删除成功前仍会保留本轮。</p>
-        </ModalSheet>
-      )}
+      {abandonOpen && <ReviewAbandonDialog review={review} onClose={() => setAbandonOpen(false)} />}
       {review.discardConfirmation !== null && (
         <ModalSheet
           title="放弃未保存的意见？"
@@ -164,6 +145,36 @@ export default function ReviewWorkspaceLayer({
         </ModalSheet>
       )}
     </>
+  )
+}
+
+export function ReviewAbandonDialog({ review, onClose }: ReviewAbandonDialogProps) {
+  const abandonCancelRef = useRef<HTMLButtonElement>(null)
+  return (
+    <ModalSheet
+      title="放弃本轮评审？"
+      destructive
+      onCancel={onClose}
+      initialFocusRef={abandonCancelRef}
+      footer={
+        <>
+          <ViewerButton ref={abandonCancelRef} onClick={onClose}>
+            保留本轮
+          </ViewerButton>
+          <ViewerButton
+            tone="danger"
+            onClick={() => {
+              void review.abandon()
+              onClose()
+            }}
+          >
+            确认放弃
+          </ViewerButton>
+        </>
+      }
+    >
+      <p>放弃只删除未完成草稿，不会产生完成记录。删除成功前仍会保留本轮。</p>
+    </ModalSheet>
   )
 }
 

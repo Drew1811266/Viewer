@@ -102,12 +102,14 @@ function renderRow({
   requestThumbnail = vi.fn().mockResolvedValue('viewer-image://thumbnail'),
   loadImages = vi.fn().mockResolvedValue(files),
   onPreview = vi.fn(),
+  feedbackCountByEntityId = new Map(),
 }: {
   files?: BrowserFile[]
   density?: ThumbnailDensity
   requestThumbnail?: (file: BrowserFile, maxPixels: number, scaleMilli: number) => Promise<string>
   loadImages?: (entityId: string, retry?: boolean) => Promise<BrowserFile[]>
   onPreview?: (file: BrowserFile, files: BrowserFile[]) => void
+  feedbackCountByEntityId?: ReadonlyMap<string, number>
 } = {}) {
   const rendered = render(
     <FolderFilmstripRow
@@ -117,6 +119,7 @@ function renderRow({
       requestThumbnail={requestThumbnail}
       onSelect={vi.fn()}
       onPreview={onPreview}
+      feedbackCountByEntityId={feedbackCountByEntityId}
     />,
   )
   return { ...rendered, loadImages, onPreview, requestThumbnail }
@@ -138,6 +141,19 @@ async function sizeViewport(width: number, scrollLeft = 0) {
 }
 
 describe('FolderFilmstripRow', () => {
+  it('shows feedback counts only on affected filmstrip images', async () => {
+    const filmstrip = renderRow({
+      feedbackCountByEntityId: new Map([
+        ['image-1', 4],
+        ['image-2', 0],
+      ]),
+    })
+
+    await filmstrip.findByRole('button', { name: '预览 image-1.jpg' })
+    expect(screen.getByText('返工 · 4 条')).toBeVisible()
+    expect(screen.getAllByText(/返工/)).toHaveLength(1)
+  })
+
   it('loads near the viewport and preserves folder navigation, source order, and preview context', async () => {
     installIntersectionObserver()
     const loadImages = vi.fn().mockResolvedValue(mixedImages)

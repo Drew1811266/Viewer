@@ -122,6 +122,7 @@ function coordinator(
     error: null,
     discardConfirmation: null,
     previewStart: vi.fn().mockResolvedValue(undefined),
+    captureStart: vi.fn().mockResolvedValue(undefined),
     startWithFeedback: vi.fn().mockResolvedValue(snapshot),
     addAnchoredFeedback: vi.fn().mockResolvedValue(snapshot),
     updateAnchoredFeedbackText: vi.fn().mockResolvedValue(snapshot),
@@ -230,7 +231,7 @@ describe('review workspace components', () => {
     expect(context).not.toHaveTextContent(/已浏览|浏览进度/)
     fireEvent.click(within(context).getByRole('button', { name: '返回本轮素材' }))
     expect(returnToMembers).toHaveBeenCalledWith(['image-1', 'video-1'])
-    fireEvent.click(within(context).getByRole('button', { name: '完成本轮' }))
+    fireEvent.click(within(context).getByRole('button', { name: '完成本轮评审' }))
     expect(review.requestDiscard).toHaveBeenCalledWith('context_replacement', expect.any(Function))
     expect(review.prepareCompletion).toHaveBeenCalledOnce()
   })
@@ -339,6 +340,7 @@ describe('review workspace components', () => {
 
     const dialog = screen.getByRole('dialog', { name: '完成本轮评审' })
     expect(dialog).toHaveTextContent('返工2')
+    expect(dialog).toHaveTextContent('意见1')
     expect(dialog).toHaveTextContent('不可评审1')
     expect(dialog).toHaveTextContent('默认通过1')
     expect(dialog).toHaveTextContent('降低高光强度')

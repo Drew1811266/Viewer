@@ -53,6 +53,7 @@ interface ContentBrowserProps {
   viewCommand?: ContentViewCommand | null
   onViewStateChange?(request: SelectAllRequest): void
   onRequestViewMenu?(): void
+  feedbackCountByEntityId?: ReadonlyMap<string, number>
 }
 
 interface ThumbnailWork {
@@ -102,6 +103,7 @@ export default function ContentBrowser({
   viewCommand = null,
   onViewStateChange,
   onRequestViewMenu,
+  feedbackCountByEntityId,
 }: ContentBrowserProps) {
   const videos = workspace.videos
   const [selected, setSelected] = useState<Set<string>>(() => new Set())
@@ -690,6 +692,7 @@ export default function ContentBrowser({
                   loadThumbnail={loadThumbnail}
                   onNaturalDimensions={rememberNaturalDimensions}
                   markerLabel={markerLabel(file.marker)}
+                  feedbackCount={feedbackCountByEntityId?.get(file.entityId)}
                   onClick={selectFile}
                   onPreview={previewFile}
                   onRadialMenuPointerDown={openRadialMenuFromPointer}
@@ -711,6 +714,7 @@ export default function ContentBrowser({
           onExpandedChange={onVideoPanelExpandedChange}
           selection={selected}
           activeId={activeVideoId}
+          feedbackCountByEntityId={feedbackCountByEntityId}
           onOpen={(entityId) => onOpenVideo?.(entityId)}
           requestCover={requestVideoCover}
           onListKeyDown={handleOtherListKeyboard}

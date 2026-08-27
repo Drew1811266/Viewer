@@ -142,6 +142,8 @@
 .video-card-meta {
   align-items: center;
   display: flex;
+  gap: var(--viewer-space-2);
+  justify-content: space-between;
   min-height: 28px;
   padding: 5px 4px 1px;
 }

@@ -54,6 +54,7 @@ export interface ImagePreviewSurfaceProps {
   onNavigate: (file: BrowserFile) => void
   onDimensions?: (entityId: string, width: number, height: number) => void
   ariaLabel?: string
+  toolbarLabel?: string
   onEscape?: () => void
   slots?: ImagePreviewSurfaceSlots
 }
@@ -71,6 +72,7 @@ export default function ImagePreviewSurface({
   onNavigate,
   onDimensions,
   ariaLabel,
+  toolbarLabel = '图片预览工具',
   onEscape,
   slots,
 }: ImagePreviewSurfaceProps) {
@@ -498,7 +500,7 @@ export default function ImagePreviewSurface({
       onKeyDown={keyboard}
     >
       <ViewerToolbar
-        label="图片预览工具"
+        label={toolbarLabel}
         leading={slots?.toolbarLeading}
         center={displayControls}
         actions={previewActions}

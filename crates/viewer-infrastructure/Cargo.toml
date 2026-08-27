@@ -98,3 +98,7 @@ path = "../../tests/review_protocol_contract.rs"
 [[test]]
 name = "review_repository"
 path = "../../tests/review_repository.rs"
+
+[[test]]
+name = "review_protocol_v3_contract"
+path = "../../tests/review_protocol_v3_contract.rs"

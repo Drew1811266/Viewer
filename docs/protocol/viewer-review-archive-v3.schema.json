@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://viewer.local/protocol/viewer-review-archive-v3.schema.json",
+  "title": "viewer-review-archive-v3",
+  "description": "Active engineering contract; not yet connected to the product. Cross-reference integrity, UTF-8 byte limits and aggregate PNG budgets are enforced by codecs/repositories.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "protocolVersion",
+    "kind",
+    "projectId",
+    "reviewStreamId",
+    "archiveId",
+    "createdAtMs",
+    "beforeRef",
+    "resultSnapshotId",
+    "groups",
+    "removed",
+    "retained"
+  ],
+  "properties": {
+    "protocolVersion": {
+      "const": "viewer.review/3"
+    },
+    "kind": {
+      "const": "archive"
+    },
+    "projectId": {
+      "$ref": "viewer-review-state-v3.schema.json#/$defs/uuid"
+    },
+    "reviewStreamId": {
+      "$ref": "viewer-review-state-v3.schema.json#/$defs/uuid"
+    },
+    "archiveId": {
+      "$ref": "viewer-review-state-v3.schema.json#/$defs/uuid"
+    },
+    "createdAtMs": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "beforeRef": {
+      "$ref": "viewer-review-state-v3.schema.json#/$defs/snapshotRef"
+    },
+    "resultSnapshotId": {
+      "$ref": "viewer-review-state-v3.schema.json#/$defs/uuid"
+    },
+    "groups": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 10000,
+      "items": {
+        "$ref": "viewer-review-state-v3.schema.json#/$defs/group"
+      }
+    },
+    "removed": {
+      "type": "array",
+      "minItems": 0,
+      "maxItems": 100000000,
+      "items": {
+        "$ref": "viewer-review-state-v3.schema.json#/$defs/targetKey"
+      }
+    },
+    "retained": {
+      "type": "array",
+      "minItems": 0,
+      "maxItems": 100000000,
+      "items": {
+        "$ref": "viewer-review-state-v3.schema.json#/$defs/retention"
+      }
+    }
+  }
+}

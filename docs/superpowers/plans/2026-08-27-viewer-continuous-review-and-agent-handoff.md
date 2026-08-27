@@ -13,7 +13,8 @@
 > Status: Active
 >
 > 执行状态：阶段 A 的任务 1–5 已完成并分别提交，5 / 23；全仓门禁与独立复审通过。
-> 阶段 B–F 未开始；未接入 UI、存储、迁移或 Agent 读取入口。
+> 阶段 B 已开始，任务 6 的 v3 协议与夹具已完成，累计 6 / 23；任务 7–10 待实施。
+> 未接入 UI、存储、迁移或 Agent 读取入口。
 >
 > 计划基线：`a539f8df5f3e0f3239110df44515ba7cb583e308`；实施基线：`d7abb9961f377ae257c3283ef7893218ec0c53f9`。
 > 阶段 A 在用户授权的 `.worktrees/continuous-review-domain`、`codex/continuous-review-domain` 内实施；原分支未改动。
@@ -361,7 +362,7 @@ name 闭合集为 current_nonempty、current_empty、partial_archive、later_edi
 源 PNG 复制 `tests/fixtures/images/alpha.png`；旧证据复制既有 project-v2-mixed 的 PNG，不改其字节。
 content-addressed 文件名由实际摘要生成，只有临时工程被写入；这些路径不是新增静态 fixture 目录。
 
-- [ ] **Step 1 — RED：闭合格式和空当前状态不是 Completed。**
+- [x] **Step 1 — RED：闭合格式和空当前状态不是 Completed。**
 
 ```js
 test('v3 current state is closed and has no completed outcome contract', async () => {
@@ -374,17 +375,31 @@ test('v3 current state is closed and has no completed outcome contract', async (
 })
 ```
 
-- [ ] **Step 2 — RED。** `node --test scripts/review-protocol/schema-contract.test.mjs`；随后 `cargo test --locked -p viewer-infrastructure --test review_protocol_v3_contract`。
-- [ ] **Step 3 — 写入闭合 Schema 和 DTO。** 所有嵌套对象 `additionalProperties:false`；字符串、数组、字节和数字分别有界。记录依次使用 `kind: state/index/archive`；Usage 固定独立版本；ReadResult 明确 `role: current/history`、status、snapshotRef、sourceChecks、actionable、needsConfirmation、historyRefs、delta。
+- [x] **Step 2 — RED。** `node --test scripts/review-protocol/schema-contract.test.mjs`；随后 `cargo test --locked -p viewer-infrastructure --test review_protocol_v3_contract`。
+- [x] **Step 3 — 写入闭合 Schema 和 DTO。** 所有嵌套对象 `additionalProperties:false`；字符串、数组、字节和数字分别有界。记录依次使用 `kind: state/index/archive`；Usage 固定独立版本；ReadResult 明确 `role: current/history`、status、snapshotRef、sourceChecks、actionable、needsConfirmation、historyRefs、delta。
 
 ```json
 {"protocolVersion":{"const":"viewer.review/3"},"kind":{"const":"state"},"feedback":{"type":"array","minItems":0,"maxItems":10000}}
 ```
 
 该片段是 properties 子树。State 根的完整必填字段为 protocolVersion、kind、projectId、reviewStreamId、snapshotId、parent、commandId、payloadDigest、assets、feedback、changes、evidence；Index 为 protocolVersion、kind、projectId、streams；Archive 为 protocolVersion、kind、projectId、reviewStreamId、archiveId、createdAtMs、beforeRef、resultSnapshotId、groups、removed、retained；Usage 为 protocolVersion、declarationId、projectId、reviewStreamId、basis、targets、outputs。ReadResult 按 Task 15 的判别联合闭合，不容许把 history 当 current。Rust records 使用 `#[serde(deny_unknown_fields)]`，再经过 Domain 验证，不只靠反序列化成功。
-- [ ] **Step 4 — 加 Rust↔JSON 夹具往返及负例。** 重复目标、跨 Stream 引用、摘要错误、错误角色、循环父链、未知 major、图片标记重复编号、缺失必需证据声明；legacy 能力缺失必须显式标记。夹具至少含非空当前、空当前、部分存档、后补保留、待确认和 legacy 混合场景；测试修改均先复制到临时工程。
-- [ ] **Step 5 — GREEN，扩展 ADR。** `cargo test --locked -p viewer-infrastructure --test review_protocol_v3_contract && pnpm test:review-protocol && pnpm test:policy`。在阶段 A 已登记的 ADR 0006 中补充 wire 契约与旧接口失败方式，Current 协议说明暂不宣称已启用 v3。
-- [ ] **Step 6 — 提交。** `git commit -m "feat(review): define versioned continuous review wire contracts"`。
+- [x] **Step 4 — 加 Rust↔JSON 夹具往返及负例。** 重复目标、跨 Stream 引用、摘要错误、错误角色、循环父链、未知 major、图片标记重复编号、缺失必需证据声明；legacy 能力缺失必须显式标记。夹具至少含非空当前、空当前、部分存档、后补保留、待确认和 legacy 混合场景；测试修改均先复制到临时工程。
+- [x] **Step 5 — GREEN，扩展 ADR。** `cargo test --locked -p viewer-infrastructure --test review_protocol_v3_contract && pnpm test:review-protocol && pnpm test:policy`。在阶段 A 已登记的 ADR 0006 中补充 wire 契约与旧接口失败方式，Current 协议说明暂不宣称已启用 v3。
+- [x] **Step 6 — 提交。** `git commit -m "feat(review): define versioned continuous review wire contracts"`。
+
+### 阶段 B 的 wire 细化（Task 6）
+
+- SnapshotRef 不接受任意文件路径；状态位置固定由 ID 推导，索引中的其他记录位置按类型与 ID 校验。
+- 历史读取采用 `selector + entries`：每个依据快照独立携带内容与选中键，防止多个 B 的版本
+  被拼成虚构快照。legacy entry 保留旧轮次与 Feedback／目标位置，不补造 v3 身份。
+- 所有 nullable 字段要求显式存在；无载荷标签也拒绝多余字段。UUID 要求连字符形式；
+  除十进制字符串 modifiedNs 外，整数使用 JavaScript 精确范围；项目路径上限 4096 UTF-8 字节。
+- 聚合目标数组上限由既有 10,000 条意见 × 每条 10,000 目标推导；64 MiB 文档上限通常更早命中。
+  v3 编码器在写出过程中限制缓冲增长，不先构造无限大 JSON 再检查大小。
+- 新增窄 wire 子模块、read/history-result 模块与 bounded 编码模块；Node Schema 夹具验证器只用于测试。
+  未增加依赖，也未让 Domain 或 Application 引用 Infrastructure wire DTO。
+- Task 7–8 继续负责真实摘要、父链循环／可达性和 CAS；Task 9 继续负责真实 PNG 核验与捕获。
+  Task 6 的编解码通过不等于这些仓储检查已经实现。
 
 ### Task 7: 不可变仓储端口、共享租约与原子提交
 

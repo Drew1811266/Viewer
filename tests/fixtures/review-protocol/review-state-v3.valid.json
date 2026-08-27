@@ -1,0 +1,137 @@
+{
+  "protocolVersion": "viewer.review/3",
+  "kind": "state",
+  "projectId": "00000000-0000-4000-8000-000000000001",
+  "reviewStreamId": "00000000-0000-4000-8000-000000000101",
+  "snapshotId": "00000000-0000-4000-8000-000000000501",
+  "parent": null,
+  "commandId": "00000000-0000-4000-8000-000000000701",
+  "payloadDigest": "0707070707070707070707070707070707070707070707070707070707070707",
+  "assets": [
+    {
+      "assetVersionId": "00000000-0000-4000-8000-000000000301",
+      "sourceEntityId": null,
+      "relativePath": "image-a.png",
+      "evidence": {
+        "sizeBytes": 16912,
+        "modifiedNs": "1",
+        "blake3": "c7656fdc8b6441fb9693ef94efdec4e6a226ba74167195ff299d0423509a7dc8"
+      },
+      "media": {
+        "kind": "image",
+        "width": 640,
+        "height": 480
+      },
+      "producerAssetId": null,
+      "parentAssetVersionId": null
+    },
+    {
+      "assetVersionId": "00000000-0000-4000-8000-000000000302",
+      "sourceEntityId": null,
+      "relativePath": "image-b.png",
+      "evidence": {
+        "sizeBytes": 16912,
+        "modifiedNs": "1",
+        "blake3": "c7656fdc8b6441fb9693ef94efdec4e6a226ba74167195ff299d0423509a7dc8"
+      },
+      "media": {
+        "kind": "image",
+        "width": 640,
+        "height": 480
+      },
+      "producerAssetId": null,
+      "parentAssetVersionId": null
+    }
+  ],
+  "feedback": [
+    {
+      "feedbackId": "00000000-0000-4000-8000-000000000401",
+      "textRevisionId": "00000000-0000-4000-8000-000000000402",
+      "text": "袖口收紧，保留褶皱。",
+      "createdAtMs": 1,
+      "historyRef": null,
+      "targets": [
+        {
+          "targetId": "00000000-0000-4000-8000-000000000411",
+          "targetRevisionId": "00000000-0000-4000-8000-000000000421",
+          "assetVersionId": "00000000-0000-4000-8000-000000000301",
+          "anchor": {
+            "kind": "asset"
+          },
+          "availability": {
+            "kind": "ready"
+          }
+        },
+        {
+          "targetId": "00000000-0000-4000-8000-000000000412",
+          "targetRevisionId": "00000000-0000-4000-8000-000000000422",
+          "assetVersionId": "00000000-0000-4000-8000-000000000302",
+          "anchor": {
+            "kind": "asset"
+          },
+          "availability": {
+            "kind": "ready"
+          }
+        }
+      ]
+    }
+  ],
+  "changes": [
+    {
+      "targetId": "00000000-0000-4000-8000-000000000411",
+      "before": null,
+      "after": {
+        "feedbackId": "00000000-0000-4000-8000-000000000401",
+        "textRevisionId": "00000000-0000-4000-8000-000000000402",
+        "targetId": "00000000-0000-4000-8000-000000000411",
+        "targetRevisionId": "00000000-0000-4000-8000-000000000421"
+      },
+      "kind": "added",
+      "archiveId": null,
+      "historicalKey": null
+    },
+    {
+      "targetId": "00000000-0000-4000-8000-000000000412",
+      "before": null,
+      "after": {
+        "feedbackId": "00000000-0000-4000-8000-000000000401",
+        "textRevisionId": "00000000-0000-4000-8000-000000000402",
+        "targetId": "00000000-0000-4000-8000-000000000412",
+        "targetRevisionId": "00000000-0000-4000-8000-000000000422"
+      },
+      "kind": "added",
+      "archiveId": null,
+      "historicalKey": null
+    }
+  ],
+  "evidence": [
+    {
+      "assetVersionId": "00000000-0000-4000-8000-000000000301",
+      "capability": {
+        "kind": "image",
+        "base": {
+          "blake3": "c7656fdc8b6441fb9693ef94efdec4e6a226ba74167195ff299d0423509a7dc8",
+          "sizeBytes": 16912,
+          "width": 640,
+          "height": 480
+        },
+        "annotated": null,
+        "annotations": []
+      }
+    },
+    {
+      "assetVersionId": "00000000-0000-4000-8000-000000000302",
+      "capability": {
+        "kind": "image",
+        "base": {
+          "blake3": "c7656fdc8b6441fb9693ef94efdec4e6a226ba74167195ff299d0423509a7dc8",
+          "sizeBytes": 16912,
+          "width": 640,
+          "height": 480
+        },
+        "annotated": null,
+        "annotations": []
+      }
+    }
+  ]
+}

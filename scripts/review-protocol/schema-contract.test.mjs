@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict'
-import { readFile } from 'node:fs/promises'
+import { readFile, stat } from 'node:fs/promises'
 import test from 'node:test'
+import { validateFixture } from './schema-fixture-validation.mjs'
+import { createProjectV3Case } from './v3-fixtures.mjs'
+import { blake3Hex } from './read-latest.mjs'
 
 async function schema(name) {
   return JSON.parse(await readFile(`docs/protocol/${name}`, 'utf8'))
@@ -28,4 +31,60 @@ test('v2 schemas declare closed bounded anchor and artifact contracts', async ()
   assert.equal(round.$defs.artifact.properties.mediaType.const, 'image/png')
   assert.equal(index.$defs.roundRecord.properties.location.pattern, '^rounds/(?!.*(?:^|/)\\.\\.?/)(?!/)(?!.*\\\\).+$')
   assert.equal(round.$defs.artifact.properties.relativePath.pattern, '^artifacts/(?!.*(?:^|/)\\.\\.?/)(?!/)(?!.*\\\\).+$')
+})
+
+test('v3 golden documents validate, while unknown fields and wrong roles are rejected', async () => {
+  for (const [file, schemaName] of [
+    ['review-state-v3', 'viewer-review-state-v3'], ['review-index-v3', 'viewer-review-index-v3'],
+    ['review-archive-v3', 'viewer-review-archive-v3'], ['review-read-result-v3', 'viewer-review-read-result-v3'],
+    ['review-usage-v1', 'viewer-review-usage-v1'],
+  ]) {
+    const definition = await schema(`${schemaName}.schema.json`)
+    const value = JSON.parse(await readFile(`tests/fixtures/review-protocol/${file}.valid.json`, 'utf8'))
+    assert.equal(await validateFixture(value, definition), true, file)
+    assert.equal(await validateFixture({ ...value, outcomes: [] }, definition), false, `${file}: unexpected outcomes`)
+    assert.equal(await validateFixture({ ...value, protocolVersion: 'viewer.review/99' }, definition), false, `${file}: future major`)
+  }
+  const definition = await schema('viewer-review-read-result-v3.schema.json')
+  const value = JSON.parse(await readFile('tests/fixtures/review-protocol/review-read-result-v3.valid.json', 'utf8'))
+  assert.equal(await validateFixture({ ...value, role: 'history' }, definition), false)
+})
+
+test('owned v3 cases have real content-addressed references and clean up without changing legacy fixtures', async () => {
+  const legacyPath = 'tests/fixtures/review-protocol/project-v2-mixed/.viewer/reviews/index.json'
+  const legacyBefore = await readFile(legacyPath)
+  for (const name of ['current_nonempty', 'current_empty', 'partial_archive', 'later_edit', 'pending_source', 'legacy_mixed']) {
+    const fixture = await createProjectV3Case(name)
+    try {
+      const base = `${fixture.projectRoot}/.viewer/reviews`
+      const index = JSON.parse(await readFile(`${base}/index.json`, 'utf8'))
+      assert.equal(await validateFixture(index, await schema('viewer-review-index-v3.schema.json')), true, name)
+      const stream = index.streams.find(item => item.reviewStreamId === fixture.streamId)
+      let reference = stream.currentRef
+      let nodes = 0
+      while (reference) {
+        const bytes = await readFile(`${base}/states/${reference.snapshotId}.json`)
+        assert.equal(blake3Hex(bytes), reference.blake3)
+        const state = JSON.parse(bytes)
+        assert.equal(await validateFixture(state, await schema('viewer-review-state-v3.schema.json')), true, name)
+        for (const binding of state.evidence) {
+          if (binding.capability.kind !== 'image') continue
+          const png = await readFile(`${base}/evidence/${binding.capability.base.blake3}.png`)
+          assert.equal(blake3Hex(png), binding.capability.base.blake3)
+        }
+        if (nodes === 0 && name === 'current_empty') assert.deepEqual(state.feedback, [])
+        reference = state.parent
+        assert.ok(++nodes <= 3)
+      }
+      assert.equal(nodes, fixture.snapshotIds.length)
+      if (name === 'legacy_mixed') {
+        for (const legacy of index.streams.flatMap(item => item.legacyRefs)) {
+          assert.equal(blake3Hex(await readFile(`${base}/${legacy.location}`)), legacy.blake3)
+        }
+      }
+    } finally { await fixture.cleanup() }
+    await assert.rejects(stat(fixture.projectRoot), { code: 'ENOENT' })
+  }
+  assert.deepEqual(await readFile(legacyPath), legacyBefore)
+  await assert.rejects(createProjectV3Case('not-a-case'))
 })

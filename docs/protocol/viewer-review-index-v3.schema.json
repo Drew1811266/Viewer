@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://viewer.local/protocol/viewer-review-index-v3.schema.json",
+  "title": "viewer-review-index-v3",
+  "description": "Active engineering contract; not yet connected to the product. Cross-reference integrity, UTF-8 byte limits and aggregate PNG budgets are enforced by codecs/repositories.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "protocolVersion",
+    "kind",
+    "projectId",
+    "streams"
+  ],
+  "properties": {
+    "protocolVersion": {
+      "const": "viewer.review/3"
+    },
+    "kind": {
+      "const": "index"
+    },
+    "projectId": {
+      "$ref": "viewer-review-state-v3.schema.json#/$defs/uuid"
+    },
+    "streams": {
+      "type": "array",
+      "minItems": 0,
+      "maxItems": 10000,
+      "items": {
+        "$ref": "viewer-review-state-v3.schema.json#/$defs/stream"
+      }
+    }
+  }
+}

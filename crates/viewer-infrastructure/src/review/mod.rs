@@ -10,6 +10,7 @@ mod repository;
 
 pub use assets::IndexedReviewAssetCatalog;
 pub use change_ledger::ReviewChangeLedger;
+pub use protocol::v3;
 pub use protocol::{
     MAX_REVIEW_DOCUMENT_BYTES, MAX_REVIEW_INDEX_BYTES, PRODUCTION_PROTOCOL_V1, REVIEW_PROTOCOL_V1,
     REVIEW_PROTOCOL_V2, ReviewProtocolError, decode_catalog, decode_catalog_versioned,

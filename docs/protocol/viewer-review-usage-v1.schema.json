@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://viewer.local/protocol/viewer-review-usage-v1.schema.json",
+  "title": "viewer-review-usage-v1",
+  "description": "Active engineering contract; not yet connected to the product. Cross-reference integrity, UTF-8 byte limits and aggregate PNG budgets are enforced by codecs/repositories.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "protocolVersion",
+    "declarationId",
+    "projectId",
+    "reviewStreamId",
+    "basis",
+    "targets",
+    "outputs"
+  ],
+  "properties": {
+    "protocolVersion": {
+      "const": "viewer.review.usage/1"
+    },
+    "declarationId": {
+      "$ref": "viewer-review-state-v3.schema.json#/$defs/uuid"
+    },
+    "projectId": {
+      "$ref": "viewer-review-state-v3.schema.json#/$defs/uuid"
+    },
+    "reviewStreamId": {
+      "$ref": "viewer-review-state-v3.schema.json#/$defs/uuid"
+    },
+    "basis": {
+      "$ref": "viewer-review-state-v3.schema.json#/$defs/snapshotRef"
+    },
+    "targets": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 100000000,
+      "items": {
+        "$ref": "viewer-review-state-v3.schema.json#/$defs/targetKey"
+      }
+    },
+    "outputs": {
+      "type": "array",
+      "minItems": 0,
+      "maxItems": 50000,
+      "items": {
+        "$ref": "viewer-review-state-v3.schema.json#/$defs/output"
+      }
+    }
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "protocolVersion": "viewer.review/3",
+  "kind": "index",
+  "projectId": "00000000-0000-4000-8000-000000000001",
+  "streams": [
+    {
+      "reviewStreamId": "00000000-0000-4000-8000-000000000101",
+      "taskId": null,
+      "batchId": null,
+      "currentRef": {
+        "snapshotId": "00000000-0000-4000-8000-000000000501",
+        "blake3": "5050505050505050505050505050505050505050505050505050505050505050"
+      },
+      "archiveRefs": [],
+      "legacyRefs": [],
+      "usageRefs": []
+    }
+  ]
+}

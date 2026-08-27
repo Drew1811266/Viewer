@@ -50,7 +50,8 @@ All entries below are stable for Viewer 0.1 and contain no I/O or platform imple
 | `search::SearchScope`, `SearchQuery`, `MatchedField`, `SearchHit`, `SearchPage` | Domain query model | Query service, search adapter, paged IPC results | G3 Unicode/filter/ranking tests |
 | `search::Generation`; `new`, `get`, `Default` | Domain task version | Session coordinator, scan/search/watcher requests | G3 stale-publication tests |
 | `ReviewSnapshotId`, `ReviewTargetId`, `ReviewTextRevisionId`, `ReviewTargetRevisionId`, `ReviewArchiveId`, `ReviewCommandId`, `ReviewUsageId` | Continuous review identity | Currently pure Domain tests; future adapters/application | `continuous_review_state` and mutation/archive tests |
-| `review::continuous` state/history/availability and exact target-version types; add/edit/withdraw, archive/restore planning and application, `project_current`, `diff_review` | Continuous review pure rules | Currently Domain tests only; not wired to IPC or persistence | `cargo test --locked -p viewer-domain`; [ADR 0006](../adr/0006-continuous-review-snapshot-and-archive-protocol.md) |
+| `review::continuous` state/history/availability and exact target-version types; add/edit/withdraw, archive/restore planning and application, `project_current`, `diff_review` | Continuous review pure rules | Domain and v3 protocol adapters; not wired to IPC or persistence | `cargo test --locked -p viewer-domain`; [ADR 0006](../adr/0006-continuous-review-snapshot-and-archive-protocol.md) |
+| Infrastructure `review::v3` state/index/archive/usage/read-result records and typed encode/decode functions | Continuous review wire contracts | Isolated contract tests; repository integration pending | `review_protocol_v3_contract`, Node schema/case tests; [ADR 0006](../adr/0006-continuous-review-snapshot-and-archive-protocol.md) |
 
 ## `viewer-application`
 

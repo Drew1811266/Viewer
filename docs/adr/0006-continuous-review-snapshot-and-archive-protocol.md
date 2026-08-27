@@ -2,7 +2,7 @@
 
 > Status: Active
 >
-> Decision: Accepted for Phase A Domain contracts; wire/storage decisions remain planned.
+> Decision: Accepted for Phase A Domain and Task 6 wire contracts; repository integration remains planned.
 >
 > Date: 2026-08-27
 
@@ -42,6 +42,35 @@ separate pure rules from protocol, repository, application and UI phases.
   reverse instructions. History-only events do not replace the actual removal cause.
   Target ownership remains fixed across absent intervals, including historical-only events.
 
+## Wire contract implemented in Task 6
+
+- Add the explicit `review::v3` codecs and five closed JSON schemas. State/index/archive use
+  `viewer.review/3`; producer declarations use `viewer.review.usage/1`. Legacy dispatch still rejects
+  v3 and cannot reinterpret it as Completed. The application and external reader are not switched.
+- State contains full Domain content, command identity/digest, typed transitions and image evidence
+  bindings. Snapshot references contain ID and BLAKE3; their canonical `states/{id}.json` location is
+  derived, not accepted as an arbitrary path. Index archive/usage/legacy locations must match the ID
+  and record type. Legacy locations and bytes remain unchanged.
+- Unknown archive usage is `usageBasis: null`; `beforeRef` still identifies the actual historical
+  content. Removed/retained keys must account for every selected target exactly once. Repository
+  verification of real basis bytes and reachability remains necessary before trusting the result.
+- Read results distinguish current, explicit history, no state and errors. Current projection is
+  checked against source checks and saved availability. History has a selector and separate entries
+  per basis, rather than flattening different revisions into a fabricated snapshot. Legacy entries
+  retain legacy Feedback/round identities and do not invent v3 target/revision IDs. History has no
+  actionable field. Archive entries include exact selected keys alongside the immutable basis content.
+- Required nullable fields must be present. Tags without payload reject extra fields too. UUIDs use
+  hyphenated representation, digests are lowercase hex, nanosecond timestamps are canonical decimal
+  strings, and other integer values are restricted to JavaScript's exact integer range. Source paths
+  are portable, bounded project-relative strings, with no `.viewer`, traversal or backslash aliases.
+- Per-feedback/asset limits remain as designed; aggregate target-shaped arrays are bounded by the
+  product of the existing feedback and per-feedback target limits. JSON byte limits remain the tighter
+  document bound. Encoding stops growing its buffer at that bound rather than allocating an unlimited
+  document first. Evidence declarations enforce single-PNG and unique-content aggregate budgets.
+- Wire adapters are split by state, asset, feedback/history and change responsibility. They do not add
+  serialization dependencies to Domain. Six owned temporary fixture cases validate real hashes and
+  transitions across Node-produced JSON and Rust; static media and legacy fixtures are read-only.
+
 ## Trust boundary and remaining work
 
 Domain validates supplied state/identity relationships, not file bytes, real-time source freshness,
@@ -54,9 +83,9 @@ must represent a confirmed live relocation in the asset catalog or a separate lo
 must not mint a new content version for a rename or weaken captured-content validation. That locator
 ownership/interface is a required Phase B refinement, not an implemented Phase A capability.
 
-`viewer.review/3` JSON schemas, codecs, atomic repository commits, evidence capture, migration,
-application services, Agent readers and UI are **not implemented by this ADR's Phase A work**.
-Task 6 will extend this same ADR when defining wire contracts; its existence does not mark Task 6 done.
+Atomic repository commits, evidence capture, migration, application services, Agent readers and UI
+are not implemented by the Phase A and Task 6 contract work. Codecs validate declarations, not actual
+file bytes or graph reachability; they do not authorize execution of feedback on disk.
 
 No protocol bytes, original materials, product UI or version number are changed in Phase A. Signing,
 notarization, formal installers, publication and sales are outside the current development scope.

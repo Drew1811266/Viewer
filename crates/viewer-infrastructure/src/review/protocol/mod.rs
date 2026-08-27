@@ -3,6 +3,7 @@ mod common;
 mod tests;
 pub mod v1;
 pub mod v2;
+pub mod v3;
 
 pub const PRODUCTION_PROTOCOL_V1: &str = "viewer.production/1";
 pub const REVIEW_PROTOCOL_V1: &str = "viewer.review/1";

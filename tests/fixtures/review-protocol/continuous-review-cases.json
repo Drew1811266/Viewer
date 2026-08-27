@@ -1,0 +1,65 @@
+[
+  {
+    "name": "current_nonempty",
+    "currentTargets": [
+      "00000000-0000-4000-8000-000000000411",
+      "00000000-0000-4000-8000-000000000412"
+    ],
+    "archiveTargets": [],
+    "laterText": null,
+    "pending": false
+  },
+  {
+    "name": "current_empty",
+    "currentTargets": [],
+    "archiveTargets": [
+      "00000000-0000-4000-8000-000000000411",
+      "00000000-0000-4000-8000-000000000412"
+    ],
+    "laterText": null,
+    "pending": false
+  },
+  {
+    "name": "partial_archive",
+    "currentTargets": [
+      "00000000-0000-4000-8000-000000000412"
+    ],
+    "archiveTargets": [
+      "00000000-0000-4000-8000-000000000411"
+    ],
+    "laterText": null,
+    "pending": false
+  },
+  {
+    "name": "later_edit",
+    "currentTargets": [
+      "00000000-0000-4000-8000-000000000411",
+      "00000000-0000-4000-8000-000000000412"
+    ],
+    "archiveTargets": [
+      "00000000-0000-4000-8000-000000000411"
+    ],
+    "laterText": "袖口收紧，保留原材质。",
+    "pending": false
+  },
+  {
+    "name": "pending_source",
+    "currentTargets": [
+      "00000000-0000-4000-8000-000000000411",
+      "00000000-0000-4000-8000-000000000412"
+    ],
+    "archiveTargets": [],
+    "laterText": null,
+    "pending": true
+  },
+  {
+    "name": "legacy_mixed",
+    "currentTargets": [
+      "00000000-0000-4000-8000-000000000411",
+      "00000000-0000-4000-8000-000000000412"
+    ],
+    "archiveTargets": [],
+    "laterText": null,
+    "pending": false
+  }
+]

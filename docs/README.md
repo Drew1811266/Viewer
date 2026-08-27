@@ -187,6 +187,7 @@ AI 素材评审路线阶段 2 已于 2026-08-26 完成：设计文档内部状�
 | [2026-07-30-viewer-ui-visual-upgrade-verification.md](reviews/2026-07-30-viewer-ui-visual-upgrade-verification.md) | Development evidence | — |
 | [2026-08-02-viewer-atlas-product-component-gap-audit.md](reviews/2026-08-02-viewer-atlas-product-component-gap-audit.md) | Development evidence | — |
 | [2026-08-02-viewer-atlas-product-migration-ledger.md](reviews/2026-08-02-viewer-atlas-product-migration-ledger.md) | Development evidence | — |
+| [2026-08-26-image-review-visual-baseline.md](reviews/2026-08-26-image-review-visual-baseline.md) | Development evidence | — |
 | [2026-08-05-viewer-progressive-loading-acceptance.md](reviews/2026-08-05-viewer-progressive-loading-acceptance.md) | Development evidence | — |
 | [2026-08-10-video-preview-acceptance.md](reviews/2026-08-10-video-preview-acceptance.md) | Development evidence | — |
 | [2026-08-10-video-render-feasibility.md](reviews/2026-08-10-video-render-feasibility.md) | Development evidence | — |

@@ -28,6 +28,12 @@ acceptance. The 1024-wide product images were inspected; the 1440-wide captures 
 the current in-app browser. References and paired comparisons remain pending. See
 [the checkpoint](../progress/2026-08-26-image-annotation-review-workbench-checkpoint.md).
 
+The user subsequently accepted the displayed RVW-17 workbench as the initial visual baseline;
+the exact screenshot and source commit are saved in the
+[baseline confirmation](2026-08-26-image-review-visual-baseline.md). This does not change the
+pending visual verdicts below: the complete state reference set and uncropped wide captures
+are still required.
+
 Evidence root for the rows below:
 `target/viewer-visual-acceptance/image-annotation-review-workbench/browser-product-evidence/`.
 Each `<viewport>/<ID>/` contains `product.jpg` and `manifest.json`; the actual format and size

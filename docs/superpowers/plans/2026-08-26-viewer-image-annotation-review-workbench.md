@@ -19,6 +19,12 @@ Tasks 1–13 are implemented, tested and committed through `76e5d0c`. Task 14 re
 approved visual references, complete paired visual evidence, final product-document updates
 and the final clean-tree gate are still pending. This is not an implementation-complete claim.
 
+Update: the user accepted the displayed RVW-17 workbench as the first visual baseline.
+`pnpm verify:clean` passed on `2d68d3d` with a clean worktree. See the
+[baseline confirmation](../../reviews/2026-08-26-image-review-visual-baseline.md).
+Full-width capture and the complete visual-state reference set remain pending; this does not
+mark Step 5, Step 6, Step 8 or the whole plan complete.
+
 See [the development checkpoint](../../progress/2026-08-26-image-annotation-review-workbench-checkpoint.md)
 for commit mapping, verified scope, capture limitations and the next decision. Do not rerun
 product discovery or expand the approved scope when resuming.

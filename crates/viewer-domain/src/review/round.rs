@@ -261,7 +261,7 @@ impl ReviewDraft {
     }
 }
 
-fn asset_is_valid(asset: &AssetVersion) -> bool {
+pub(super) fn asset_is_valid(asset: &AssetVersion) -> bool {
     if asset.parent_asset_version_id == Some(asset.id) {
         return false;
     }
@@ -286,7 +286,10 @@ fn asset_is_valid(asset: &AssetVersion) -> bool {
     }
 }
 
-fn validate_anchor(asset: &AssetVersion, anchor: &FeedbackAnchor) -> Result<(), ReviewRoundError> {
+pub(super) fn validate_anchor(
+    asset: &AssetVersion,
+    anchor: &FeedbackAnchor,
+) -> Result<(), ReviewRoundError> {
     match (&asset.media, anchor) {
         (_, FeedbackAnchor::Asset) => Ok(()),
         (

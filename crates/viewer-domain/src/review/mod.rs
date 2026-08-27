@@ -1,4 +1,5 @@
 mod asset;
+pub mod continuous;
 mod feedback;
 mod round;
 

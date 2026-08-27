@@ -62,6 +62,13 @@ id_type!(AssetVersionId);
 id_type!(ReviewStreamId);
 id_type!(ReviewRoundId);
 id_type!(FeedbackId);
+id_type!(ReviewSnapshotId);
+id_type!(ReviewTargetId);
+id_type!(ReviewTextRevisionId);
+id_type!(ReviewTargetRevisionId);
+id_type!(ReviewArchiveId);
+id_type!(ReviewCommandId);
+id_type!(ReviewUsageId);
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq, Serialize)]
 pub struct RelativePath(String);

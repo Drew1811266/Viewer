@@ -308,3 +308,88 @@ fn unrelated_new_work_survives_a_selected_restore() {
     .unwrap();
     assert_eq!(next.feedback[1], current.feedback[1]);
 }
+
+#[test]
+fn bulk_restore_shares_text_and_asset_payloads_up_to_the_target_limit() {
+    use viewer_domain::review::{MAX_FEEDBACK_TEXT_BYTES, MAX_TARGETS_PER_FEEDBACK};
+    for count in [2, MAX_TARGETS_PER_FEEDBACK] {
+        let mut before = state();
+        before.feedback = vec![feedback(
+            10,
+            &(0..count)
+                .map(|i| (1000 + i as u128, 1))
+                .collect::<Vec<_>>(),
+        )];
+        before.feedback[0].text = "a".repeat(MAX_FEEDBACK_TEXT_BYTES);
+        let keys: Vec<_> = before.feedback[0]
+            .targets
+            .iter()
+            .map(|target| TargetVersionKey {
+                feedback_id: before.feedback[0].id,
+                text_revision_id: before.feedback[0].text_revision_id,
+                target_id: target.id,
+                target_revision_id: target.revision_id,
+            })
+            .collect();
+        let selection = ArchiveSelection {
+            expected_snapshot_id: before.snapshot_id,
+            groups: vec![ArchiveGroup {
+                basis: ArchiveBasis::Unknown,
+                targets: keys.clone(),
+            }],
+        };
+        let (current, plan) = apply_archive(
+            &before,
+            &[],
+            &selection,
+            &[],
+            ReviewSnapshotId::from_u128(4),
+        )
+        .unwrap();
+        let archive = ArchiveCheckpoint::from_plan(
+            &before,
+            reference(&before),
+            &plan,
+            ReviewArchiveId::from_u128(1),
+            20,
+        )
+        .unwrap();
+        let decisions: Vec<_> = keys.into_iter().map(restore).collect();
+        let plan = plan_restore(
+            &current,
+            &archive,
+            std::slice::from_ref(&before),
+            &decisions,
+        )
+        .unwrap();
+        assert_eq!(plan.restored.len(), count);
+        assert!(
+            std::ptr::eq(
+                plan.restored[0].feedback.text.as_ptr(),
+                plan.restored[count - 1].feedback.text.as_ptr()
+            ),
+            "shared feedback text must have one allocation, not one per target"
+        );
+        assert!(
+            std::ptr::eq(
+                plan.restored[0].asset.relative_path.as_str().as_ptr(),
+                plan.restored[count - 1]
+                    .asset
+                    .relative_path
+                    .as_str()
+                    .as_ptr()
+            ),
+            "shared asset metadata must have one allocation"
+        );
+        let (restored, _) = apply_restore(
+            &current,
+            &archive,
+            std::slice::from_ref(&before),
+            &decisions,
+            ReviewSnapshotId::from_u128(5),
+        )
+        .unwrap();
+        assert_eq!(restored.feedback.len(), 1);
+        assert_eq!(restored.feedback[0], before.feedback[0]);
+    }
+}

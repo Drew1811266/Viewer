@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 
 use super::mutation::prepare_next;
 use super::validation::ValidatedStates;
@@ -39,11 +40,42 @@ pub enum RestoreChoice {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub struct RestoreFeedbackContent {
+    pub id: FeedbackId,
+    pub text_revision_id: ReviewTextRevisionId,
+    pub text: Arc<str>,
+    pub created_at_ms: i64,
+    pub history_ref: Option<HistoryRef>,
+}
+
+impl RestoreFeedbackContent {
+    fn from_feedback(feedback: &VersionedFeedback) -> Self {
+        Self {
+            id: feedback.id,
+            text_revision_id: feedback.text_revision_id,
+            text: Arc::from(feedback.text.as_str()),
+            created_at_ms: feedback.created_at_ms,
+            history_ref: feedback.history_ref.clone(),
+        }
+    }
+
+    fn matches(&self, feedback: &VersionedFeedback, target: &VersionedTarget) -> bool {
+        self.id == feedback.id
+            && self.text_revision_id == feedback.text_revision_id
+            && self.text.as_ref() == feedback.text
+            && self.created_at_ms == feedback.created_at_ms
+            && self.history_ref == feedback.history_ref
+            && feedback.targets.as_slice() == std::slice::from_ref(target)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct RestoredFeedback {
     pub historical_key: TargetVersionKey,
-    /// Exactly one selected target; merging must not replace an entire shared feedback item.
-    pub feedback: VersionedFeedback,
-    pub asset: AssetVersion,
+    /// Shared per feedback version, not a full feedback clone for every selected target.
+    pub feedback: Arc<RestoreFeedbackContent>,
+    pub target: VersionedTarget,
+    pub asset: Arc<AssetVersion>,
     pub continued_as_new: bool,
 }
 
@@ -133,6 +165,22 @@ pub fn plan_restore(
         .map(|asset| (asset.id, asset))
         .collect();
     let mut identities = RestoreIdentities::new(&states);
+    let mut shared_feedback = HashMap::new();
+    let mut shared_assets = HashMap::new();
+    let shared_conflicts: HashSet<_> = current
+        .feedback
+        .iter()
+        .filter(|feedback| {
+            selected_texts
+                .get(&feedback.id)
+                .is_some_and(|revision| *revision != feedback.text_revision_id)
+                && feedback
+                    .targets
+                    .iter()
+                    .any(|target| !selected_targets.contains(&target.id))
+        })
+        .map(|feedback| feedback.id)
+        .collect();
     let mut plan = RestorePlan {
         expected_snapshot_id: current.snapshot_id,
         restored: vec![],
@@ -151,8 +199,12 @@ pub fn plan_restore(
         if matches!(decision.choice, RestoreChoice::PreserveCurrent) {
             continue;
         }
-        let mut feedback = old_feedback.clone();
-        feedback.targets = vec![old_target.clone()];
+        let mut feedback = Arc::clone(
+            shared_feedback
+                .entry((old_feedback.id, old_feedback.text_revision_id))
+                .or_insert_with(|| Arc::new(RestoreFeedbackContent::from_feedback(old_feedback))),
+        );
+        let mut target = old_target.clone();
         let continued_as_new = matches!(decision.choice, RestoreChoice::ContinueAsNew { .. });
         let asset = match &decision.choice {
             RestoreChoice::UseHistorical => {
@@ -162,23 +214,13 @@ pub fn plan_restore(
                 {
                     continue;
                 }
-                if current_feedback
-                    .get(&key.feedback_id)
-                    .is_some_and(|feedback| {
-                        feedback.text_revision_id != key.text_revision_id
-                            && feedback
-                                .targets
-                                .iter()
-                                .any(|target| !selected_targets.contains(&target.id))
-                    })
-                {
+                if shared_conflicts.contains(&key.feedback_id) {
                     plan.conflicts.push(key);
                     continue;
                 }
-                (*assets
+                *assets
                     .get(&old_target.asset_version_id)
-                    .ok_or(MissingReference)?)
-                .clone()
+                    .ok_or(MissingReference)?
             }
             RestoreChoice::ContinueAsNew {
                 feedback_id,
@@ -192,18 +234,21 @@ pub fn plan_restore(
                 if *created_at_ms < archive.created_at_ms {
                     return Err(InvalidData);
                 }
-                feedback.id = *feedback_id;
-                feedback.text_revision_id = *text_revision_id;
-                feedback.created_at_ms = *created_at_ms;
-                feedback.history_ref = Some(HistoryRef {
-                    project_id: current.project_id,
-                    stream_id: current.stream_id,
-                    source: HistorySource::Snapshot {
-                        snapshot: reference,
-                        keys: vec![key],
-                    },
+                feedback = Arc::new(RestoreFeedbackContent {
+                    id: *feedback_id,
+                    text_revision_id: *text_revision_id,
+                    text: Arc::clone(&feedback.text),
+                    created_at_ms: *created_at_ms,
+                    history_ref: Some(HistoryRef {
+                        project_id: current.project_id,
+                        stream_id: current.stream_id,
+                        source: HistorySource::Snapshot {
+                            snapshot: reference,
+                            keys: vec![key],
+                        },
+                    }),
                 });
-                feedback.targets = vec![VersionedTarget {
+                target = VersionedTarget {
                     id: *target_id,
                     revision_id: *target_revision_id,
                     asset_version_id: *target_asset_version_id,
@@ -217,25 +262,34 @@ pub fn plan_restore(
                             ReviewPendingReason::ApplicabilityUnconfirmed,
                         ])
                     },
-                }];
+                };
                 if current_feedback
                     .get(feedback_id)
-                    .is_some_and(|existing| **existing == feedback)
+                    .is_some_and(|existing| feedback.matches(existing, &target))
                 {
                     continue;
                 }
-                identities.claim(&feedback)?;
-                (*current_assets
+                identities.claim(&feedback, &target)?;
+                *current_assets
                     .get(target_asset_version_id)
-                    .ok_or(MissingReference)?)
-                .clone()
+                    .ok_or(MissingReference)?
             }
             RestoreChoice::PreserveCurrent => {
                 unreachable!("handled before preparing a restoration")
             }
         };
-        feedback.validate()?;
-        validate_anchor(&asset, &feedback.targets[0].anchor).map_err(|_| InvalidData)?;
+        // Text/origin came from a validated historical record; new timestamps and identities
+        // were checked above. Newly supplied video ranges still need their intrinsic bounds.
+        if matches!(target.anchor, FeedbackAnchor::VideoRange { start_us, end_us } if start_us >= end_us)
+        {
+            return Err(InvalidData);
+        }
+        validate_anchor(asset, &target.anchor).map_err(|_| InvalidData)?;
+        let asset = Arc::clone(
+            shared_assets
+                .entry(asset.id)
+                .or_insert_with(|| Arc::new(asset.clone())),
+        );
         if !continued_as_new {
             plan.coverage_reversals.push(ArchiveCoverage {
                 archive_id: archive.archive_id,
@@ -243,10 +297,11 @@ pub fn plan_restore(
                 active: false,
             });
         }
-        plan.requires_source_check.push(feedback.targets[0].id);
+        plan.requires_source_check.push(target.id);
         plan.restored.push(RestoredFeedback {
             historical_key: key,
             feedback,
+            target,
             asset,
             continued_as_new,
         });
@@ -272,29 +327,52 @@ pub fn apply_restore(
         return Err(ContinuousReviewError::DuplicateIdentity);
     }
     let mut next = prepare_next(current, snapshot_id)?;
+    let mut asset_ids: HashSet<_> = next.assets.iter().map(|asset| asset.id).collect();
+    let mut feedback_positions: HashMap<_, _> = next
+        .feedback
+        .iter()
+        .enumerate()
+        .map(|(i, feedback)| (feedback.id, i))
+        .collect();
+    let mut target_positions: HashMap<_, _> = next
+        .feedback
+        .iter()
+        .flat_map(|feedback| {
+            feedback
+                .targets
+                .iter()
+                .enumerate()
+                .map(|(i, target)| (target.id, i))
+        })
+        .collect();
     for item in &plan.restored {
-        if !next.assets.iter().any(|asset| asset.id == item.asset.id) {
-            next.assets.push(item.asset.clone());
+        if asset_ids.insert(item.asset.id) {
+            next.assets.push((*item.asset).clone());
         }
         let incoming = &item.feedback;
-        if let Some(feedback) = next
-            .feedback
-            .iter_mut()
-            .find(|feedback| feedback.id == incoming.id)
-        {
-            feedback.text.clone_from(&incoming.text);
-            feedback.text_revision_id = incoming.text_revision_id;
-            if let Some(target) = feedback
-                .targets
-                .iter_mut()
-                .find(|target| target.id == incoming.targets[0].id)
-            {
-                *target = incoming.targets[0].clone();
+        if let Some(&position) = feedback_positions.get(&incoming.id) {
+            let feedback = &mut next.feedback[position];
+            if feedback.text_revision_id != incoming.text_revision_id {
+                feedback.text = incoming.text.to_string();
+                feedback.text_revision_id = incoming.text_revision_id;
+            }
+            if let Some(&position) = target_positions.get(&item.target.id) {
+                feedback.targets[position] = item.target.clone();
             } else {
-                feedback.targets.push(incoming.targets[0].clone());
+                target_positions.insert(item.target.id, feedback.targets.len());
+                feedback.targets.push(item.target.clone());
             }
         } else {
-            next.feedback.push(incoming.clone());
+            feedback_positions.insert(incoming.id, next.feedback.len());
+            target_positions.insert(item.target.id, 0);
+            next.feedback.push(VersionedFeedback {
+                id: incoming.id,
+                text_revision_id: incoming.text_revision_id,
+                text: incoming.text.to_string(),
+                created_at_ms: incoming.created_at_ms,
+                targets: vec![item.target.clone()],
+                history_ref: incoming.history_ref.clone(),
+            });
         }
     }
     next.validate()?;
@@ -370,11 +448,15 @@ impl RestoreIdentities {
         ids
     }
 
-    fn claim(&mut self, feedback: &VersionedFeedback) -> Result<(), ContinuousReviewError> {
+    fn claim(
+        &mut self,
+        feedback: &RestoreFeedbackContent,
+        target: &VersionedTarget,
+    ) -> Result<(), ContinuousReviewError> {
         if !self.feedback.insert(feedback.id)
             || !self.text.insert(feedback.text_revision_id)
-            || !self.targets.insert(feedback.targets[0].id)
-            || !self.revisions.insert(feedback.targets[0].revision_id)
+            || !self.targets.insert(target.id)
+            || !self.revisions.insert(target.revision_id)
         {
             return Err(ContinuousReviewError::DuplicateIdentity);
         }

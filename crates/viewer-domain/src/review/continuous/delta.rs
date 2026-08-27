@@ -6,7 +6,7 @@ use super::{
     ReviewChangeKind, TargetVersionKey,
 };
 use crate::review::{MAX_FEEDBACK_ITEMS_PER_ROUND, MAX_TARGETS_PER_FEEDBACK};
-use crate::{ReviewSnapshotId, ReviewTargetId};
+use crate::{FeedbackId, ReviewSnapshotId, ReviewTargetId};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ReviewDelta {
@@ -112,6 +112,7 @@ fn same_availability(before: &ReviewAvailability, after: &ReviewAvailability) ->
 
 struct TransitionCursor {
     key: Option<TargetVersionKey>,
+    owner: Option<FeedbackId>,
     ever_present: bool,
 }
 
@@ -136,9 +137,23 @@ fn validate_transitions(
                 .map(|(feedback, target)| feedback.key(target));
             TransitionCursor {
                 key,
+                owner: key.map(|key| key.feedback_id).or_else(|| {
+                    after
+                        .get(&change.target_id)
+                        .map(|(feedback, _)| feedback.id)
+                }),
                 ever_present: key.is_some(),
             }
         });
+        for key in [change.before, change.after, change.historical_key]
+            .into_iter()
+            .flatten()
+        {
+            if cursor.owner.is_some_and(|owner| owner != key.feedback_id) {
+                return Err(DuplicateIdentity);
+            }
+            cursor.owner = Some(key.feedback_id);
+        }
         if cursor.key != change.before {
             return Err(SelectionConflict);
         }

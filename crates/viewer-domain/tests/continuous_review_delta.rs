@@ -453,3 +453,76 @@ fn newly_added_targets_are_reported_in_stable_current_order() {
             .all(|target| target.before.is_none() && target.after.is_some())
     );
 }
+
+#[test]
+fn a_target_keeps_its_owner_even_while_absent_from_the_transition_chain() {
+    let before = state();
+    let after = withdraw_targets(
+        &before,
+        &[ReviewTargetId::from_u128(11)],
+        ReviewSnapshotId::from_u128(4),
+    )
+    .unwrap();
+    let original = key(&before, 11);
+    let foreign = TargetVersionKey {
+        feedback_id: FeedbackId::from_u128(99),
+        text_revision_id: ReviewTextRevisionId::from_u128(99),
+        target_revision_id: ReviewTargetRevisionId::from_u128(99),
+        ..original
+    };
+    let restored = ReviewChange {
+        target_id: original.target_id,
+        before: None,
+        after: Some(foreign),
+        kind: ReviewChangeKind::Restored,
+        archive_id: Some(ReviewArchiveId::from_u128(1)),
+        historical_key: Some(foreign),
+    };
+    let archived = ReviewChange {
+        before: Some(foreign),
+        after: None,
+        kind: ReviewChangeKind::Archived,
+        ..restored.clone()
+    };
+    let changes = vec![
+        change(Some(original), None, ReviewChangeKind::Withdrawn),
+        restored,
+        archived,
+    ];
+    assert!(changes.iter().all(|change| change.validate().is_ok()));
+    assert_eq!(
+        diff_review(&before, &after, &changes),
+        Err(ContinuousReviewError::DuplicateIdentity)
+    );
+}
+
+#[test]
+fn history_only_keys_cannot_change_the_owner_known_from_the_end_snapshot() {
+    let before = state();
+    let after = add_feedback(
+        &before,
+        feedback(20, &[(21, 1)]),
+        ReviewSnapshotId::from_u128(4),
+    )
+    .unwrap();
+    let added = key(&after, 21);
+    let wrong_history = TargetVersionKey {
+        feedback_id: FeedbackId::from_u128(99),
+        ..added
+    };
+    let changes = vec![
+        ReviewChange {
+            target_id: added.target_id,
+            before: None,
+            after: None,
+            kind: ReviewChangeKind::Archived,
+            archive_id: Some(ReviewArchiveId::from_u128(1)),
+            historical_key: Some(wrong_history),
+        },
+        change(None, Some(added), ReviewChangeKind::Added),
+    ];
+    assert_eq!(
+        diff_review(&before, &after, &changes),
+        Err(ContinuousReviewError::DuplicateIdentity)
+    );
+}

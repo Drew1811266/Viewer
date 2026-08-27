@@ -36,6 +36,9 @@ const ANCHORS: ReviewAnchor[] = [
 const FIRST_ENTITY = 'acceptance-image-01'
 const FIRST_VERSION = 'acceptance-asset-version-1'
 const UNSAVED_TEXT = '请保留这里的布料纹理，再修正边缘。'
+// Observe the snapshot returned by the real coordinator's acceptance bridge call.
+// A dispatched pointer gesture alone is not evidence of a committed replacement.
+let brushRedrawSnapshot: ReviewSessionSnapshot | null = null
 
 function annotatedSnapshot(count = 4): ReviewSessionSnapshot {
   return acceptanceReviewSnapshot({
@@ -89,6 +92,7 @@ export function workbenchBridgeOverrides(id: string): AcceptanceBridgeOverrides 
           counts: { total: 0, feedbackItems: 0, revise: 0, unreviewable: 0, pass: 0 },
         })
       : annotatedSnapshot()
+  if (id === 'RVW-20') brushRedrawSnapshot = snapshot
   function save(text: string, targets: ReadonlyArray<ReviewFeedbackTargetInput>) {
     const first = targets[0]
     if (first === undefined || !text.trim()) throw new Error('Invalid acceptance annotation')
@@ -155,6 +159,7 @@ export function workbenchBridgeOverrides(id: string): AcceptanceBridgeOverrides 
               },
         ),
       }
+      if (id === 'RVW-20') brushRedrawSnapshot = snapshot
       return snapshot
     },
   }
@@ -317,11 +322,11 @@ function rectangleEditReady() {
 
 function brushRedrawReady() {
   if (!fourAnnotationsReady()) return false
-  clickEnabled('重绘意见 2', 'select-brush')
-  if (document.querySelector('.annotation-canvas-layer')?.getAttribute('data-tool') !== 'brush')
-    return false
   const canvas = document.querySelector<HTMLElement>('.annotation-canvas')
+  const tool = document.querySelector('.annotation-canvas-layer')?.getAttribute('data-tool')
   if (canvas?.dataset.acceptanceDrawing !== 'redraw') {
+    clickEnabled('重绘意见 2', 'select-brush')
+    if (tool !== 'brush') return false
     drawOnce('redraw', [
       { x: 0.7, y: 0.3 },
       { x: 0.8, y: 0.5 },
@@ -330,8 +335,36 @@ function brushRedrawReady() {
     return false
   }
   return (
+    tool === 'browse' &&
+    brushReplacementCommitted() &&
     !canvas.hasAttribute('data-has-candidate') &&
-    document.querySelector('.annotation-marker[data-selected="true"]')?.textContent === '2'
+    !canvas.hasAttribute('data-has-draft-anchor') &&
+    document.querySelector('.inline-feedback-editor, .review-feedback-rail__error') === null &&
+    document
+      .querySelector('.annotation-marker[data-selected="true"]')
+      ?.getAttribute('aria-label') === `意见 2：${OPINIONS[1]}` &&
+    document.querySelector(
+      '.review-feedback-rail [aria-label="意见 2"][data-selected="true"] strong',
+    )?.textContent === OPINIONS[1]
+  )
+}
+
+function brushReplacementCommitted() {
+  const original = annotatedSnapshot().feedback[1]
+  const feedback = brushRedrawSnapshot?.feedback.find(
+    (item) => item.feedbackId === original?.feedbackId,
+  )
+  const target = feedback?.targets[0]
+  return (
+    original !== undefined &&
+    brushRedrawSnapshot?.feedback.length === 4 &&
+    feedback?.text === original.text &&
+    feedback.createdAtMs === original.createdAtMs &&
+    feedback.targets.length === 1 &&
+    target?.assetVersionId === FIRST_VERSION &&
+    target.entityId === FIRST_ENTITY &&
+    target.anchor.kind === 'image_stroke' &&
+    JSON.stringify(target.anchor) !== JSON.stringify(ANCHORS[1])
   )
 }
 

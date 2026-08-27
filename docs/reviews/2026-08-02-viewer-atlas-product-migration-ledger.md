@@ -33,27 +33,33 @@ The user subsequently accepted the displayed RVW-17 workbench as the initial vis
 the exact screenshot and source commit are saved in the
 [baseline confirmation](2026-08-26-image-review-visual-baseline.md). Initial reference provenance
 is recorded separately from the later independent paired run. Eight Important functional
-review findings are being corrected; final post-fix comparison must use the frozen references.
+review findings were corrected in `ee71acc`; its RVW-20 acceptance-only follow-up `4366312`
+also passed the same scoped re-review. No Critical/Important correction finding remains open.
 
 Evidence root for the rows below:
-`target/viewer-visual-acceptance/image-annotation-review-workbench/paired-baseline/80096563e8cd57430fba0c7092e0a8a212bc8b6d/`.
+`target/viewer-visual-acceptance/image-annotation-review-workbench/final/43663129a46032e1c7ee2998ce7e783fd5388e26/`.
 Each `<viewport>/<ID>/` contains full-size `product.png`, `reference.png`, `combined.png`,
 `manifest.json` and `console.json`. All18 pairs were inspected; dimensions, clean commit and
-hashes verified, page/console errors0. Sixteen pairs are pixel-identical; RVW-18 differs by11/34
-pixels with no visible content/layout change. These ignored local artifacts do not ship with
-this ledger; their presence must be rechecked before relying on them.
+hashes verified, page/console errors0. References remain frozen at8009656. Twelve pairs are
+pixel-identical. RVW-18 and RVW-22 now disable saved-item mutation while unsaved work is owned;
+RVW-20 returns to Browse after committed redraw. These intentional correction differences
+were inspected without replacing references; exact pixel counts are in the baseline record.
+The previous ee71acc RVW-20 timeouts remain failed evidence, not retroactive passes.
+These ignored local artifacts do not ship with this ledger; their presence must be rechecked
+before relying on them. This visual pass does not complete spec §13.4's real high-resolution
+native30-image journey: manual Mac unlock and the source-image folder are still needed.
 
 | ID | Wave | Reference state | Production surface | Recipe | Automated evidence | 1024×720 | 1440×900 | Verdict |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| RVW-16 | Wave 4 | `review-auto-start-first-annotation` | `ImageReviewWorkspace` | Save the first rectangle opinion from idle, freezing all 30 folder images. | `reviewScenes.test.tsx`; start-with-feedback use-case tests | initial pair pass | initial pair pass | post-fix check pending |
-| RVW-17 | Wave 4 | `review-image-four-annotations` | `ImageReviewWorkspace` | Open one fixed member with three rectangles and one brush opinion. | `reviewScenes.test.tsx`; `ImageReviewWorkspace.test.tsx` | initial pair pass | initial pair pass | post-fix check pending |
-| RVW-18 | Wave 4 | `review-annotation-save-error` | `InlineFeedbackEditor` | Reject a new anchored save; retain text, dashed geometry and input focus. | `AnnotationCanvas.test.tsx`; `ImageReviewWorkspace.test.tsx` | initial pair pass | initial pair pass | post-fix check pending |
-| RVW-19 | Wave 4 | `review-rectangle-edit` | `AnnotationCanvas` | Resize a selected rectangle with keyboard; separately drag its offset marker after shrinking. | `AnnotationCanvas.test.tsx`; `imagePreviewProjection.test.ts` | initial pair pass | initial pair pass | post-fix check pending |
-| RVW-20 | Wave 4 | `review-brush-redraw` | `AnnotationCanvas` | Redraw the existing brush while retaining feedback ID and text. | `AnnotationCanvas.test.tsx`; `reviewScenes.test.tsx` | initial pair pass | initial pair pass | post-fix check pending |
-| RVW-21 | Wave 4 | `review-outside-scope-read-only` | `WorkspaceImageReviewPreview` | Open image seven outside the six-member Draft; no writable annotation toolbar. | workspace integration and review-scene tests | initial pair pass | initial pair pass | post-fix check pending |
-| RVW-22 | Wave 4 | `review-unsaved-leave-guard` | `ImageReviewWorkspace` | Attempt leaving with unsaved anchor/text; focus defaults to continue editing. | `ImageReviewWorkspace.test.tsx`; workbench state tests | initial pair pass | initial pair pass | post-fix check pending |
-| RVW-23 | Wave 4 | `review-grid-feedback-badges` | `ContentBrowser` | Return to the grid; only the annotated image has the four-opinion badge. | workspace integration and review-scene tests | initial pair pass | initial pair pass | post-fix check pending |
-| RVW-24 | Wave 4 | `review-workbench-zoom-200` | `ImageReviewWorkspace` | Load four annotations at 200% effective zoom; verify toolbar and navigation bounds. | `imagePreviewProjection.test.ts`; `ImageReviewWorkspace.test.tsx`; catalog tests | initial pair pass | initial pair pass | post-fix check pending |
+| RVW-16 | Wave 4 | `review-auto-start-first-annotation` | `ImageReviewWorkspace` | Save the first rectangle opinion from idle, freezing all 30 folder images. | `reviewScenes.test.tsx`; start-with-feedback use-case tests | pass | pass | post-fix pair pass |
+| RVW-17 | Wave 4 | `review-image-four-annotations` | `ImageReviewWorkspace` | Open one fixed member with three rectangles and one brush opinion. | `reviewScenes.test.tsx`; `ImageReviewWorkspace.test.tsx` | pass | pass | post-fix pair pass |
+| RVW-18 | Wave 4 | `review-annotation-save-error` | `InlineFeedbackEditor` | Reject a new anchored save; retain text, dashed geometry and input focus. | `AnnotationCanvas.test.tsx`; `ImageReviewWorkspace.test.tsx` | pass | pass | dirty-edit protection difference inspected |
+| RVW-19 | Wave 4 | `review-rectangle-edit` | `AnnotationCanvas` | Resize a selected rectangle with keyboard; separately drag its offset marker after shrinking. | `AnnotationCanvas.test.tsx`; `imagePreviewProjection.test.ts` | pass | pass | post-fix pair pass |
+| RVW-20 | Wave 4 | `review-brush-redraw` | `AnnotationCanvas` | Redraw the existing brush; verify changed committed anchor with ID/text/creation time retained and no dirty work. | `AnnotationCanvas.test.tsx`; `reviewWorkbenchScenes.test.tsx`; real workbench integration | pass | pass | committed Browse-state difference inspected |
+| RVW-21 | Wave 4 | `review-outside-scope-read-only` | `WorkspaceImageReviewPreview` | Open image seven outside the six-member Draft; no writable annotation toolbar. | workspace integration and review-scene tests | pass | pass | post-fix pair pass |
+| RVW-22 | Wave 4 | `review-unsaved-leave-guard` | `ImageReviewWorkspace` | Attempt leaving with unsaved anchor/text; focus defaults to continue editing. | `ImageReviewWorkspace.test.tsx`; workbench state tests | pass | pass | dirty-edit protection difference inspected |
+| RVW-23 | Wave 4 | `review-grid-feedback-badges` | `ContentBrowser` | Return to the grid; only the annotated image has the four-opinion badge. | workspace integration and review-scene tests | pass | pass | post-fix pair pass |
+| RVW-24 | Wave 4 | `review-workbench-zoom-200` | `ImageReviewWorkspace` | Load four annotations at 200% effective zoom; verify toolbar and navigation bounds. | `imagePreviewProjection.test.ts`; `ImageReviewWorkspace.test.tsx`; catalog tests | pass | pass | post-fix pair pass |
 
 Native recipes use the read-only baseline at `target/atlas-product-migration-fixture/ViewerAcceptance`. Each controller run verifies that baseline by file hash, copies its writable project to `$HOME/ViewerAcceptanceRuns/<run-id>/<variant>/测试图/` so the atlas-approved project name is preserved, and removes only that exact run after the state capture:
 

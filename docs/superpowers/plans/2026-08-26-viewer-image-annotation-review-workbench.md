@@ -16,17 +16,22 @@
 
 Tasks 1–13 are implemented, tested and committed through `76e5d0c`. Task 14 remains
 **in progress**: functional gates and nine real-App acceptance recipes are implemented;
-initial references and complete paired evidence are established. Eight Important findings
-from the whole-branch review are being corrected; post-fix visual verification, product-document
-updates and the final clean-tree gate remain pending. This is not an implementation-complete claim.
+initial references and complete paired evidence are established. The eight Important findings
+from the whole-branch review were fixed in `ee71acc`; the acceptance-only continuation `4366312`
+also passed the same scoped re-review, with no remaining Critical/Important findings.
+All18 post-fix visual pairs pass. The spec §13.4 real high-resolution native journey remains
+unrun while the Mac is locked and its source-image folder is unavailable; product-document
+updates and final closeout remain pending. This is not an implementation-complete claim.
 
 Update: the user accepted the displayed RVW-17 workbench as the first visual baseline.
 `pnpm verify:clean` passed on `2d68d3d` with a clean worktree. See the
 [baseline confirmation](../../reviews/2026-08-26-image-review-visual-baseline.md).
 The user explicitly permitted local Playwright capture. All18 full-size reference/product pairs
 at clean `8009656` passed initial-baseline inspection after an acceptance-readiness correction.
-The fixes must be compared against those frozen references; Step 5, Step 6, Step 8 and the whole
-plan remain incomplete until their final gates pass.
+Fresh paired captures at clean `4366312` were compared against those unchanged frozen references;
+all18 runtime/integrity checks and individual joint-image inspections passed. Step 5 is complete.
+Step 6, Step 8 and the whole plan remain incomplete until the remaining gates pass; the existing
+spec §13.4 native requirement and §14 product-document ordering still apply.
 
 See [the development checkpoint](../../progress/2026-08-26-image-annotation-review-workbench-checkpoint.md)
 for commit mapping, verified scope, capture limitations and the next decision. Do not rerun
@@ -1819,7 +1824,7 @@ pnpm test:visual-acceptance
 
 Expected: every command exits 0.
 
-- [ ] **Step 5: Capture and inspect the nine approved visual states**
+- [x] **Step 5: Capture and inspect the nine approved visual states**
 
 Run:
 
@@ -1829,9 +1834,17 @@ pnpm accept:visual --id RVW-16 --id RVW-17 --id RVW-18 --id RVW-19 --id RVW-20 -
 
 Expected: both default viewports pass runtime assertions and produce `product.png`, `reference.png`, `combined.png`, and `manifest.json`. Inspect every combined image for clipping, overlay drift, rail/image overlap, editor overflow, focus visibility and 200% zoom readability; record the evidence paths and verdicts in the acceptance ledger.
 
+Evidence: clean `43663129a46032e1c7ee2998ce7e783fd5388e26`, all18 pass. See the baseline
+confirmation and acceptance ledger for exact paths and the disclosed dirty-edit/committed-tool
+state differences. Frozen references were not replaced. Browser fixtures are not native evidence.
+
 - [ ] **Step 6: Update product truth only after implementation evidence passes**
 
 Document the exact image annotation workflow, tool semantics, shortcuts, fixed-scope/outside-scope behavior, default-pass rule, local `.viewer/reviews` storage, read-only PNG derivation, original-file immutability, recovery messages and v1/v2 protocol contract. Change the design status to `Implemented` and this plan status to `Complete` only after Steps 4–5 pass.
+
+Checkpoint: Steps 4–5 passing does not waive the binding spec §13.4 native high-resolution
+journey. Per spec §14, keep product truth and completion statuses pending until that evidence
+also passes; current blockers are manual Mac unlock and the high-resolution fixture folder.
 
 Every product-facing document must repeat the durable boundary: Viewer is in early development; signing, Apple notarization, formal installers, public release and sale are not normal post-feature tasks and are not required to close this work.
 

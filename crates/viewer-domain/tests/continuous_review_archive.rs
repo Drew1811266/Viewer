@@ -285,3 +285,70 @@ fn inconsistent_hash_references_and_duplicate_coverage_are_invalid() {
         Err(ContinuousReviewError::DuplicateIdentity)
     );
 }
+
+#[test]
+fn an_archive_that_only_records_old_history_still_validates_the_resulting_snapshot() {
+    let mut b = state();
+    b.feedback[0].history_ref = Some(HistoryRef {
+        project_id: b.project_id,
+        stream_id: b.stream_id,
+        source: HistorySource::Snapshot {
+            snapshot: SnapshotRef {
+                snapshot_id: ReviewSnapshotId::from_u128(10),
+                blake3: [4; 32],
+            },
+            keys: vec![key(&b, 11)],
+        },
+    });
+    let mut c = b.clone();
+    c.snapshot_id = ReviewSnapshotId::from_u128(4);
+    c.feedback[0] = update_feedback_text(
+        &c.feedback[0],
+        ReviewTextRevisionId::from_u128(30),
+        "后补内容",
+    )
+    .unwrap();
+    assert_eq!(
+        apply_archive(
+            &c,
+            std::slice::from_ref(&b),
+            &selection(&c, &b, &[11]),
+            &[],
+            ReviewSnapshotId::from_u128(10)
+        ),
+        Err(ContinuousReviewError::InvalidData)
+    );
+}
+
+#[test]
+fn a_manually_constructed_unknown_basis_cannot_claim_noncurrent_history() {
+    let c = state();
+    let wrong = TargetVersionKey {
+        text_revision_id: ReviewTextRevisionId::from_u128(99),
+        ..key(&c, 11)
+    };
+    let forged = ArchivePlan {
+        expected_snapshot_id: c.snapshot_id,
+        groups: vec![ArchiveGroup {
+            basis: ArchiveBasis::Unknown,
+            targets: vec![wrong],
+        }],
+        removed: vec![],
+        retained: vec![ArchiveRetention {
+            basis: wrong,
+            current: Some(key(&c, 11)),
+            disposition: ArchiveDisposition::RetainLaterEdit,
+        }],
+        already_covered: vec![],
+    };
+    assert_eq!(
+        ArchiveCheckpoint::from_plan(
+            &c,
+            reference(&c),
+            &forged,
+            ReviewArchiveId::from_u128(1),
+            30
+        ),
+        Err(ContinuousReviewError::SelectionConflict)
+    );
+}

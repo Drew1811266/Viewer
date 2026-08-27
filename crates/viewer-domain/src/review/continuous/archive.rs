@@ -275,6 +275,7 @@ pub fn apply_archive(
     {
         return Err(ContinuousReviewError::DuplicateIdentity);
     }
+    next.validate()?;
     Ok((next, plan))
 }
 
@@ -318,17 +319,22 @@ pub(super) fn validate_results(
     let targets = target_index(current);
     let mut expected_removed = vec![];
     let mut expected_retained = vec![];
-    for key in groups.iter().flat_map(|group| &group.targets) {
-        let current_key = targets
-            .get(&key.target_id)
-            .map(|(feedback, target)| feedback.key(target));
-        match classify_archive(current_key, *key) {
-            ArchiveDisposition::RemoveCurrent => expected_removed.push(*key),
-            disposition => expected_retained.push(ArchiveRetention {
-                basis: *key,
-                current: current_key,
-                disposition,
-            }),
+    for group in groups {
+        for key in &group.targets {
+            let current_key = targets
+                .get(&key.target_id)
+                .map(|(feedback, target)| feedback.key(target));
+            if matches!(group.basis, ArchiveBasis::Unknown) && current_key != Some(*key) {
+                return Err(ContinuousReviewError::SelectionConflict);
+            }
+            match classify_archive(current_key, *key) {
+                ArchiveDisposition::RemoveCurrent => expected_removed.push(*key),
+                disposition => expected_retained.push(ArchiveRetention {
+                    basis: *key,
+                    current: current_key,
+                    disposition,
+                }),
+            }
         }
     }
     if expected_removed != removed || expected_retained != retained {

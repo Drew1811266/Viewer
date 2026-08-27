@@ -284,3 +284,20 @@ fn change_reasons_are_typed_and_cannot_claim_a_withdrawal_is_an_archive() {
         Err(ContinuousReviewError::InvalidData)
     );
 }
+
+#[test]
+fn archive_evidence_cannot_change_the_feedback_owner_of_a_retained_target() {
+    let key = key(&state(), 11);
+    let event = ReviewChange {
+        target_id: key.target_id,
+        before: Some(key),
+        after: Some(key),
+        kind: ReviewChangeKind::Archived,
+        archive_id: Some(ReviewArchiveId::from_u128(1)),
+        historical_key: Some(TargetVersionKey {
+            feedback_id: FeedbackId::from_u128(99),
+            ..key
+        }),
+    };
+    assert_eq!(event.validate(), Err(ContinuousReviewError::InvalidData));
+}

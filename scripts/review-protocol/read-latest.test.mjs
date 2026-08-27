@@ -242,8 +242,11 @@ test('rejects malformed v2 anchors and artifact metadata after verifying the man
       document.feedback[0].targets[0].anchor.points = Array.from({ length: 2049 }, () => ({ x: 0.2, y: 0.3 }))
     }, /points/i],
     [(document) => { document.artifacts[0].relativePath = 'artifacts/../outside.png' }, /relative path/i],
+    [(document) => { document.artifacts[0].relativePath = `artifacts/nested/${ARTIFACT_V2}` }, /relative path/i],
+    [(document) => { document.artifacts[0].width = 4_294_967_295 }, /pixel/i],
     [(document) => { document.artifacts[0].mediaType = 'image/jpeg' }, /media type/i],
     [(document) => { document.artifacts[0].annotations[1].ordinal = 3 }, /mapping/i],
+    [(document) => { document.artifacts[0].annotations[0].ordinal = 2; document.artifacts[0].annotations[1].ordinal = 1 }, /mapping/i],
     [(document) => { document.artifacts[0].annotations.pop() }, /mapping/i],
     [(document) => { document.artifacts = [] }, /cover/i],
     [(document) => { document.artifacts[0].width += 1 }, /dimensions/i],

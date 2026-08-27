@@ -35,8 +35,7 @@ export default function AcceptanceApp({ request, sceneRegistry }: AcceptanceAppP
     )
     const cancellation: { first?: number; second?: number } = {}
     let observer: MutationObserver | undefined
-    const sceneReady = () =>
-      frame?.querySelector('[data-acceptance-scene-ready="false"]') === null
+    const sceneReady = () => frame?.querySelector('[data-acceptance-scene-ready="false"]') === null
     const cancelStablePaint = () => {
       if (cancellation.first !== undefined) cancelAnimationFrame(cancellation.first)
       if (cancellation.second !== undefined) cancelAnimationFrame(cancellation.second)

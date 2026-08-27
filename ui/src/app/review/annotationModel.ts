@@ -5,6 +5,7 @@ export type AnnotationTool = 'browse' | 'brush' | 'rectangle'
 interface AnnotationEditorInteraction {
   tool: AnnotationTool
   temporarilyPanning: boolean
+  operation?: 'text' | 'geometry'
 }
 
 export type AnnotationEditorState =
@@ -16,6 +17,7 @@ export type AnnotationEditorState =
       status: 'drawing'
       tool: 'brush' | 'rectangle'
       draftAnchor: ReviewAnchor
+      sourceFeedbackId?: string
       selectedFeedbackId: string | null
     })
   | (AnnotationEditorInteraction & {
@@ -45,11 +47,17 @@ export type AnnotationEditorAction =
   | { type: 'set_tool'; tool: AnnotationTool }
   | { type: 'temporary_pan_start' }
   | { type: 'temporary_pan_end' }
-  | { type: 'begin_drawing'; anchor: ReviewAnchor }
+  | { type: 'begin_drawing'; anchor: ReviewAnchor; feedbackId?: string }
   | { type: 'update_draft_anchor'; anchor: ReviewAnchor }
   | { type: 'complete_drawing' }
   | { type: 'begin_annotation'; anchor: ReviewAnchor }
-  | { type: 'begin_edit'; feedbackId: string; anchor: ReviewAnchor; text: string }
+  | {
+      type: 'begin_edit'
+      feedbackId: string
+      anchor: ReviewAnchor
+      text: string
+      operation?: 'text' | 'geometry'
+    }
   | { type: 'update_text'; text: string }
   | { type: 'request_save' }
   | { type: 'save_failed'; message: string }
@@ -81,12 +89,14 @@ export function annotationEditorReducer(
     case 'temporary_pan_end':
       return { ...state, temporarilyPanning: false }
     case 'begin_drawing':
+      if (state.status !== 'idle') return state
       if (state.tool !== 'brush' && state.tool !== 'rectangle') return state
       return {
         status: 'drawing',
         tool: state.tool,
         temporarilyPanning: false,
         draftAnchor: action.anchor,
+        sourceFeedbackId: action.feedbackId,
         selectedFeedbackId: selectedFeedbackId(state),
       }
     case 'update_draft_anchor':
@@ -109,7 +119,7 @@ export function annotationEditorReducer(
           }
         : idleState(state.selectedFeedbackId)
     case 'begin_annotation':
-      if (!isValidAnnotationAnchor(action.anchor)) return state
+      if (state.status !== 'idle' || !isValidAnnotationAnchor(action.anchor)) return state
       return {
         status: 'editing',
         tool: state.tool,
@@ -120,6 +130,11 @@ export function annotationEditorReducer(
         selectedFeedbackId: selectedFeedbackId(state),
       }
     case 'begin_edit':
+      if (
+        state.status !== 'idle' &&
+        !(state.status === 'drawing' && state.sourceFeedbackId === action.feedbackId)
+      )
+        return state
       if (!isValidAnnotationAnchor(action.anchor)) return state
       return {
         status: 'editing',
@@ -128,6 +143,7 @@ export function annotationEditorReducer(
         draftAnchor: action.anchor,
         text: action.text,
         sourceFeedbackId: action.feedbackId,
+        operation: action.operation,
         selectedFeedbackId: action.feedbackId,
       }
     case 'update_text':
@@ -159,7 +175,9 @@ export function annotationEditorReducer(
     case 'select_feedback':
       return state.status === 'idle' ? { ...state, selectedFeedbackId: action.feedbackId } : state
     case 'cancel_draft':
-      return hasUnsavedAnnotation(state) ? idleState(selectedFeedbackId(state)) : state
+      return state.status !== 'saving' && hasUnsavedAnnotation(state)
+        ? idleState(selectedFeedbackId(state))
+        : state
     case 'escape':
       if (state.status !== 'idle') return idleState(selectedFeedbackId(state))
       return { ...state, tool: 'browse', temporarilyPanning: false }

@@ -4,11 +4,44 @@ import {
   deriveReviewScope,
   eligibleReviewTargetIds,
   hasUnsavedReviewText,
+  idleReviewSnapshot,
   imageFeedbackForEntity,
   imageReviewReadOnlyReason,
 } from './reviewModel'
 
 describe('reviewModel', () => {
+  it('uses creation time then identity for restored/resumed and equal-time image ordinals without mutating the snapshot', () => {
+    const snapshot = idleReviewSnapshot()
+    snapshot.feedback = [
+      ['b', 20],
+      ['z', 10],
+      ['a', 20],
+    ].map(([feedbackId, createdAtMs]) => ({
+      feedbackId: String(feedbackId),
+      createdAtMs: Number(createdAtMs),
+      text: String(feedbackId),
+      targetEntityIds: ['image-1'],
+      targetCount: 1,
+      targets: [
+        {
+          entityId: 'image-1',
+          assetVersionId: 'asset-1',
+          anchor: { kind: 'image_rect', x: 0.1, y: 0.1, width: 0.2, height: 0.2 },
+        },
+      ],
+    }))
+    expect(
+      imageFeedbackForEntity(snapshot, 'image-1').map(({ feedbackId, ordinal }) => [
+        feedbackId,
+        ordinal,
+      ]),
+    ).toEqual([
+      ['z', 1],
+      ['a', 2],
+      ['b', 3],
+    ])
+    expect(snapshot.feedback.map(({ feedbackId }) => feedbackId)).toEqual(['b', 'z', 'a'])
+  })
   it('uses an explicit selection in folder and search contexts', () => {
     expect(
       deriveReviewScope({

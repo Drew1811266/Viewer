@@ -1,5 +1,24 @@
 {
-  "artifacts": [],
+  "artifacts": [
+    {
+      "annotations": [
+        {
+          "feedbackId": "00000000-0000-4000-8000-000000000401",
+          "ordinal": 1
+        },
+        {
+          "feedbackId": "00000000-0000-4000-8000-000000000402",
+          "ordinal": 2
+        }
+      ],
+      "assetVersionId": "00000000-0000-4000-8000-000000000301",
+      "blake3": "c7656fdc8b6441fb9693ef94efdec4e6a226ba74167195ff299d0423509a7dc8",
+      "height": 480,
+      "mediaType": "image/png",
+      "relativePath": "artifacts/00000000-0000-4000-8000-000000000301-annotation.png",
+      "width": 640
+    }
+  ],
   "assets": [
     {
       "assetVersionId": "00000000-0000-4000-8000-000000000301",

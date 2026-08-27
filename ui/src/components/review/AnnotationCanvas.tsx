@@ -1,5 +1,5 @@
 import type { PointerEvent as ReactPointerEvent } from 'react'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import { rectFromDrag, simplifyNormalizedStroke } from '../../app/review/annotationGeometry'
 import type {
   ImageReviewWorkbenchController,
@@ -15,32 +15,31 @@ interface AnnotationCanvasProps {
 
 type DrawingGesture =
   | { kind: 'rectangle'; start: { x: number; y: number } }
-  | { kind: 'brush'; points: Array<{ x: number; y: number }>; feedbackId: string | null }
+  | { kind: 'brush'; points: Array<{ x: number; y: number }> }
 
 type RectHandle = 'north_west' | 'north_east' | 'south_east' | 'south_west'
 
 export default function AnnotationCanvas({ projection, controller }: AnnotationCanvasProps) {
   const canvas = useRef<HTMLCanvasElement>(null)
   const gesture = useRef<DrawingGesture | null>(null)
-  const [candidate, setCandidate] = useState<ReviewAnchor | null>(null)
+  const candidate =
+    controller.editor.status === 'drawing' ||
+    (controller.editor.status !== 'idle' && controller.editor.operation === 'geometry')
+      ? controller.editor.draftAnchor
+      : null
   const draftAnchor =
     controller.editor.status === 'idle' || controller.editor.status === 'drawing'
       ? null
       : controller.editor.draftAnchor
   const drawingEnabled =
     controller.readOnlyReason === null &&
+    (controller.editor.status === 'idle' || controller.editor.status === 'drawing') &&
     !controller.editor.temporarilyPanning &&
     (controller.tool === 'brush' || controller.tool === 'rectangle')
 
-  async function persistReplacement(feedbackId: string, anchor: ReviewAnchor) {
-    setCandidate(anchor)
-    try {
-      await controller.replaceFeedbackAnchor(feedbackId, anchor)
-      setCandidate(null)
-    } catch {
-      // Keep the server geometry and the transient candidate visible so the user can retry.
-    }
-  }
+  useEffect(() => {
+    if (controller.editor.status !== 'drawing') gesture.current = null
+  }, [controller.editor.status])
 
   useEffect(() => {
     const element = canvas.current
@@ -78,20 +77,19 @@ export default function AnnotationCanvas({ projection, controller }: AnnotationC
     event.stopPropagation()
     const point = projection.stageToNormalized({ x: event.clientX, y: event.clientY })
     if (point === null) return
+    const initial: ReviewAnchor =
+      controller.tool === 'rectangle'
+        ? { kind: 'image_rect', x: point.x, y: point.y, width: 0, height: 0 }
+        : { kind: 'image_stroke', points: [point] }
+    if (!controller.beginDrawing(initial, controller.redrawFeedbackId ?? undefined)) return
     event.currentTarget.setPointerCapture?.(event.pointerId)
     if (controller.tool === 'rectangle') {
       gesture.current = { kind: 'rectangle', start: point }
       return
     }
-    const selected = controller.feedback.find(
-      (feedback) =>
-        feedback.feedbackId === controller.selectedFeedbackId &&
-        feedback.anchor.kind === 'image_stroke',
-    )
     gesture.current = {
       kind: 'brush',
       points: [point],
-      feedbackId: selected?.feedbackId ?? null,
     }
   }
 
@@ -103,7 +101,7 @@ export default function AnnotationCanvas({ projection, controller }: AnnotationC
     if (point === null) return
     if (current.kind === 'rectangle') {
       const rect = rectFromDrag(current.start, point)
-      setCandidate(rect === null ? null : { kind: 'image_rect', ...rect })
+      if (rect !== null) controller.updateDraftAnchor({ kind: 'image_rect', ...rect })
       return
     }
     current.points.push(point)
@@ -112,7 +110,7 @@ export default function AnnotationCanvas({ projection, controller }: AnnotationC
       sourceHeight: projection.sourceSize.height,
       maxPoints: 2_048,
     })
-    setCandidate(points === null ? null : { kind: 'image_stroke', points })
+    if (points !== null) controller.updateDraftAnchor({ kind: 'image_stroke', points })
   }
 
   function finishDrawing(event: ReactPointerEvent<HTMLCanvasElement>) {
@@ -123,8 +121,7 @@ export default function AnnotationCanvas({ projection, controller }: AnnotationC
     if (current.kind === 'rectangle') {
       const end = projection.stageToNormalized({ x: event.clientX, y: event.clientY })
       const rect = end === null ? null : rectFromDrag(current.start, end)
-      setCandidate(null)
-      if (rect !== null) controller.beginAnnotation({ kind: 'image_rect', ...rect })
+      void controller.finishDrawing(rect === null ? null : { kind: 'image_rect', ...rect })
       return
     }
     const points = simplifyNormalizedStroke(current.points, {
@@ -133,16 +130,11 @@ export default function AnnotationCanvas({ projection, controller }: AnnotationC
       maxPoints: 2_048,
     })
     if (points === null) {
-      setCandidate(null)
+      void controller.finishDrawing(null)
       return
     }
     const anchor: ReviewAnchor = { kind: 'image_stroke', points }
-    if (current.feedbackId === null) {
-      setCandidate(null)
-      controller.beginAnnotation(anchor)
-      return
-    }
-    void persistReplacement(current.feedbackId, anchor)
+    void controller.finishDrawing(anchor)
   }
 
   return (
@@ -164,7 +156,7 @@ export default function AnnotationCanvas({ projection, controller }: AnnotationC
         onPointerCancel={(event) => {
           if (gesture.current !== null) event.stopPropagation()
           gesture.current = null
-          setCandidate(null)
+          controller.cancelDraft()
         }}
       />
       <div className="annotation-markers">
@@ -174,10 +166,15 @@ export default function AnnotationCanvas({ projection, controller }: AnnotationC
             feedback={feedback}
             projection={projection}
             selected={feedback.feedbackId === controller.selectedFeedbackId}
-            readOnly={controller.readOnlyReason !== null}
+            readOnly={
+              controller.readOnlyReason !== null ||
+              (controller.dirty && controller.editor.status !== 'drawing')
+            }
+            drawing={controller.editor.status === 'drawing'}
             onSelect={() => controller.selectFeedback(feedback.feedbackId)}
-            onReplace={(anchor) => persistReplacement(feedback.feedbackId, anchor)}
-            onCandidate={setCandidate}
+            onReplace={(anchor) => controller.replaceFeedbackAnchor(feedback.feedbackId, anchor)}
+            onCandidate={(anchor) => controller.stageFeedbackAnchor(feedback.feedbackId, anchor)}
+            onCancel={controller.cancelDraft}
           />
         ))}
       </div>
@@ -190,9 +187,11 @@ interface AnnotationMarkerProps {
   projection: ImagePreviewProjection
   selected: boolean
   readOnly: boolean
+  drawing: boolean
   onSelect(): void
   onReplace(anchor: ReviewAnchor): Promise<void>
-  onCandidate(anchor: ReviewAnchor | null): void
+  onCandidate(anchor: ReviewAnchor): boolean
+  onCancel(): void
 }
 
 function AnnotationMarker({
@@ -200,10 +199,17 @@ function AnnotationMarker({
   projection,
   selected,
   readOnly,
+  drawing,
   onSelect,
   onReplace,
   onCandidate,
+  onCancel,
 }: AnnotationMarkerProps) {
+  const pointerCleanup = useRef<(() => void) | null>(null)
+  useEffect(() => {
+    if (!drawing) pointerCleanup.current?.()
+  }, [drawing])
+  useEffect(() => () => pointerCleanup.current?.(), [])
   if (feedback.anchor.kind === 'asset' || feedback.ordinal === null) return null
   const point = markerPoint(feedback.anchor)
   const projected = projection.normalizedToStage(point)
@@ -238,7 +244,15 @@ function AnnotationMarker({
         onPointerDown={(event) => {
           event.stopPropagation()
           if (!selected || readOnly || feedback.anchor.kind !== 'image_rect') return
-          beginRectPointerEdit(event, feedback.anchor, null, projection, onCandidate, onReplace)
+          pointerCleanup.current = beginRectPointerEdit(
+            event,
+            feedback.anchor,
+            null,
+            projection,
+            onCandidate,
+            onReplace,
+            onCancel,
+          )
         }}
       >
         {ordinal}
@@ -253,8 +267,10 @@ function AnnotationMarker({
             anchor={feedback.anchor as Extract<ReviewAnchor, { kind: 'image_rect' }>}
             projection={projection}
             readOnly={readOnly}
+            drawing={drawing}
             onCandidate={onCandidate}
             onReplace={onReplace}
+            onCancel={onCancel}
           />
         ))}
     </>
@@ -267,8 +283,10 @@ interface RectHandleButtonProps {
   anchor: Extract<ReviewAnchor, { kind: 'image_rect' }>
   projection: ImagePreviewProjection
   readOnly: boolean
-  onCandidate(anchor: ReviewAnchor | null): void
+  drawing: boolean
+  onCandidate(anchor: ReviewAnchor): boolean
   onReplace(anchor: ReviewAnchor): Promise<void>
+  onCancel(): void
 }
 
 function RectHandleButton({
@@ -277,9 +295,16 @@ function RectHandleButton({
   anchor,
   projection,
   readOnly,
+  drawing,
   onCandidate,
   onReplace,
+  onCancel,
 }: RectHandleButtonProps) {
+  const pointerCleanup = useRef<(() => void) | null>(null)
+  useEffect(() => {
+    if (!drawing) pointerCleanup.current?.()
+  }, [drawing])
+  useEffect(() => () => pointerCleanup.current?.(), [])
   const point = handlePoint(anchor, handle)
   const projected = projection.normalizedToStage(point)
   if (projected === null) return null
@@ -294,9 +319,18 @@ function RectHandleButton({
         left: projected.x - projection.stageRect.left,
         top: projected.y - projection.stageRect.top,
       }}
-      onPointerDown={(event) =>
-        beginRectPointerEdit(event, anchor, handle, projection, onCandidate, onReplace)
-      }
+      onPointerDown={(event) => {
+        if (!readOnly)
+          pointerCleanup.current = beginRectPointerEdit(
+            event,
+            anchor,
+            handle,
+            projection,
+            onCandidate,
+            onReplace,
+            onCancel,
+          )
+      }}
       onKeyDown={(event) => {
         const resized = resizeRectFromArrow(
           anchor,
@@ -319,8 +353,9 @@ function beginRectPointerEdit(
   anchor: Extract<ReviewAnchor, { kind: 'image_rect' }>,
   handle: RectHandle | null,
   projection: ImagePreviewProjection,
-  onCandidate: (anchor: ReviewAnchor | null) => void,
+  onCandidate: (anchor: ReviewAnchor) => boolean,
   onReplace: (anchor: ReviewAnchor) => Promise<void>,
+  onCancel: () => void,
 ) {
   event.preventDefault()
   event.stopPropagation()
@@ -328,7 +363,7 @@ function beginRectPointerEdit(
     { x: event.clientX, y: event.clientY },
     { allowOutsideImage: true },
   )
-  if (start === null) return
+  if (start === null || !onCandidate(anchor)) return null
   const startPoint = start
   let candidate: Extract<ReviewAnchor, { kind: 'image_rect' }> = anchor
 
@@ -347,13 +382,24 @@ function beginRectPointerEdit(
 
   function finish(pointer: PointerEvent) {
     move(pointer)
+    cleanup()
+    void onReplace(candidate)
+  }
+
+  function cleanup() {
     window.removeEventListener('pointermove', move)
     window.removeEventListener('pointerup', finish)
-    void onReplace(candidate)
+    window.removeEventListener('pointercancel', cancel)
+  }
+  function cancel() {
+    cleanup()
+    onCancel()
   }
 
   window.addEventListener('pointermove', move)
   window.addEventListener('pointerup', finish)
+  window.addEventListener('pointercancel', cancel)
+  return cleanup
 }
 
 function drawAnchor(

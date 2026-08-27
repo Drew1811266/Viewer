@@ -11,7 +11,7 @@ export default function AnnotationToolbar({ controller }: AnnotationToolbarProps
 
   useEffect(() => {
     function keyDown(event: KeyboardEvent) {
-      if (event.defaultPrevented) return
+      if (event.defaultPrevented || event.isComposing) return
       const commandEnter = event.key === 'Enter' && (event.metaKey || event.ctrlKey)
       if (commandEnter) {
         if (controller.dirty) {

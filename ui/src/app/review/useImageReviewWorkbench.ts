@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
 import type { ReviewAnchor, ReviewScopeRequest, ReviewSessionSnapshot } from '../../api/types'
 import {
+  type AnnotationEditorAction,
   type AnnotationEditorState,
   type AnnotationTool,
   annotationEditorReducer,
@@ -39,6 +40,7 @@ export interface ImageReviewWorkbenchController {
   dirty: boolean
   feedback: ReadonlyArray<SavedImageFeedback>
   selectedFeedbackId: string | null
+  redrawFeedbackId: string | null
   railOpen: boolean
   readOnlyReason: ImageReviewReadOnlyReason
   restorableFeedbackId: string | null
@@ -46,12 +48,16 @@ export interface ImageReviewWorkbenchController {
   setTool(tool: AnnotationTool): void
   setTemporaryPan(active: boolean): void
   beginAnnotation(anchor: ReviewAnchor): void
+  beginDrawing(anchor: ReviewAnchor, feedbackId?: string): boolean
+  finishDrawing(anchor: ReviewAnchor | null): Promise<void>
+  beginFeedbackTextEdit(feedbackId: string): void
+  beginRedraw(feedbackId: string): void
+  stageFeedbackAnchor(feedbackId: string, anchor: ReviewAnchor): boolean
   updateDraftAnchor(anchor: ReviewAnchor): void
   updateDraftText(text: string): void
   saveDraft(): Promise<void>
   cancelDraft(): void
   selectFeedback(feedbackId: string | null): void
-  updateFeedbackText(feedbackId: string, text: string): Promise<void>
   replaceFeedbackAnchor(feedbackId: string, anchor: ReviewAnchor): Promise<void>
   deleteFeedback(feedbackId: string): Promise<void>
   restoreDeletedFeedback(feedbackId: string): Promise<void>
@@ -67,13 +73,14 @@ export function useImageReviewWorkbench({
   scope,
   onLeave,
 }: UseImageReviewWorkbenchOptions): ImageReviewWorkbenchController {
-  const [editor, dispatch] = useReducer(
+  const [editor, reduce] = useReducer(
     annotationEditorReducer,
     undefined,
     initialAnnotationEditorState,
   )
   const [snapshot, setSnapshot] = useState(coordinator.snapshot)
   const [railOpen, setRailOpen] = useState(true)
+  const [redrawFeedbackId, setRedrawFeedbackId] = useState<string | null>(null)
   const [leaveConfirmation, setLeaveConfirmation] = useState<ReviewLeaveIntent | null>(null)
   const coordinatorRef = useRef(coordinator)
   const editorRef = useRef(editor)
@@ -86,6 +93,12 @@ export function useImageReviewWorkbench({
   coordinatorRef.current = coordinator
   editorRef.current = editor
   onLeaveRef.current = onLeave
+  // Synchronous ownership also guards back-to-back pointer/leave/save commands
+  // before React has committed the next render.
+  const dispatch = useCallback((action: AnnotationEditorAction) => {
+    editorRef.current = annotationEditorReducer(editorRef.current, action)
+    reduce(action)
+  }, [])
 
   useEffect(() => setSnapshot(coordinator.snapshot), [coordinator.snapshot])
 
@@ -113,15 +126,26 @@ export function useImageReviewWorkbench({
       text: draft.text,
       anchor: cloneReviewAnchor(draft.draftAnchor),
       sourceFeedbackId: draft.sourceFeedbackId,
+      operation: draft.operation,
     }
+    const existingIds = new Set(
+      imageFeedbackForEntity(snapshot, entityId).map((item) => item.feedbackId),
+    )
     dispatch({ type: 'request_save' })
     try {
       let next: ReviewSessionSnapshot | null
       if (frozen.sourceFeedbackId !== null) {
-        next = await coordinatorRef.current.updateAnchoredFeedbackText(
-          frozen.sourceFeedbackId,
-          frozen.text,
-        )
+        next =
+          frozen.operation === 'geometry'
+            ? await coordinatorRef.current.replaceAnchoredFeedbackAnchor(
+                frozen.sourceFeedbackId,
+                entityId,
+                frozen.anchor,
+              )
+            : await coordinatorRef.current.updateAnchoredFeedbackText(
+                frozen.sourceFeedbackId,
+                frozen.text,
+              )
       } else if (snapshot.phase === 'active') {
         next = await coordinatorRef.current.addAnchoredFeedback({
           entityId,
@@ -141,19 +165,60 @@ export function useImageReviewWorkbench({
         installed === null
           ? null
           : frozen.sourceFeedbackId === null
-            ? imageFeedbackForEntity(installed, entityId).at(-1)
+            ? imageFeedbackForEntity(installed, entityId).find(
+                (item) => !existingIds.has(item.feedbackId),
+              )
             : imageFeedbackForEntity(installed, entityId).find(
                 (feedback) => feedback.feedbackId === frozen.sourceFeedbackId,
               )
       if (saved === null || saved === undefined) throw new Error('Saved feedback unavailable')
       dispatch({ type: 'save_succeeded', feedbackId: saved.feedbackId })
+      setRedrawFeedbackId(null)
     } catch (cause) {
       dispatch({ type: 'save_failed', message: reviewErrorMessage(cause) })
     }
-  }, [entityId, installSnapshot, snapshot.phase])
+  }, [dispatch, entityId, installSnapshot, snapshot])
+
+  const beginDrawing = useCallback(
+    (anchor: ReviewAnchor, feedbackId?: string) => {
+      if (
+        hasUnsavedAnnotation(editorRef.current) ||
+        imageReviewReadOnlyReason(snapshot, entityId) !== null
+      )
+        return false
+      dispatch({ type: 'begin_drawing', anchor: cloneReviewAnchor(anchor), feedbackId })
+      return editorRef.current.status === 'drawing'
+    },
+    [dispatch, entityId, snapshot],
+  )
+
+  const replaceFeedbackAnchor = useCallback(
+    async (feedbackId: string, anchor: ReviewAnchor) => {
+      const state = editorRef.current
+      if (
+        state.status !== 'idle' &&
+        !(state.status === 'drawing' && state.sourceFeedbackId === feedbackId)
+      )
+        return
+      const feedback = imageFeedbackForEntity(snapshot, entityId).find(
+        (item) => item.feedbackId === feedbackId,
+      )
+      if (feedback === undefined || imageReviewReadOnlyReason(snapshot, entityId) !== null) return
+      dispatch({
+        type: 'begin_edit',
+        feedbackId,
+        anchor: cloneReviewAnchor(anchor),
+        text: feedback.text,
+        operation: 'geometry',
+      })
+      await saveDraft()
+    },
+    [dispatch, entityId, saveDraft, snapshot],
+  )
 
   const applySavedMutation = useCallback(
     async (operation: () => Promise<ReviewSessionSnapshot | null>) => {
+      if (hasUnsavedAnnotation(editorRef.current)) return
       installSnapshot(await operation())
     },
     [installSnapshot],
@@ -175,11 +240,14 @@ export function useImageReviewWorkbench({
     dirty: hasUnsavedAnnotation(editor),
     feedback: imageFeedbackForEntity(snapshot, entityId),
     selectedFeedbackId: editor.selectedFeedbackId,
+    redrawFeedbackId,
     railOpen,
     readOnlyReason: imageReviewReadOnlyReason(snapshot, entityId),
     restorableFeedbackId: snapshot.restorableFeedbackId,
     leaveConfirmation,
     setTool(tool) {
+      if (hasUnsavedAnnotation(editorRef.current)) return
+      setRedrawFeedbackId(null)
       dispatch({ type: 'set_tool', tool })
     },
     setTemporaryPan(active) {
@@ -188,6 +256,63 @@ export function useImageReviewWorkbench({
     beginAnnotation(anchor) {
       if (imageReviewReadOnlyReason(snapshot, entityId) !== null) return
       dispatch({ type: 'begin_annotation', anchor })
+    },
+    beginDrawing,
+    async finishDrawing(anchor) {
+      const state = editorRef.current
+      if (state.status !== 'drawing') return
+      if (anchor === null || !isValidAnnotationAnchor(anchor)) {
+        dispatch({ type: 'cancel_draft' })
+      } else if (state.sourceFeedbackId !== undefined) {
+        await replaceFeedbackAnchor(state.sourceFeedbackId, anchor)
+      } else {
+        dispatch({ type: 'update_draft_anchor', anchor })
+        dispatch({ type: 'complete_drawing' })
+      }
+    },
+    beginFeedbackTextEdit(feedbackId) {
+      if (
+        hasUnsavedAnnotation(editorRef.current) ||
+        imageReviewReadOnlyReason(snapshot, entityId) !== null
+      )
+        return
+      const feedback = imageFeedbackForEntity(snapshot, entityId).find(
+        (item) => item.feedbackId === feedbackId,
+      )
+      if (feedback !== undefined)
+        dispatch({
+          type: 'begin_edit',
+          feedbackId,
+          anchor: feedback.anchor,
+          text: feedback.text,
+          operation: 'text',
+        })
+    },
+    beginRedraw(feedbackId) {
+      if (
+        hasUnsavedAnnotation(editorRef.current) ||
+        imageReviewReadOnlyReason(snapshot, entityId) !== null
+      )
+        return
+      if (
+        !imageFeedbackForEntity(snapshot, entityId).some(
+          (item) => item.feedbackId === feedbackId && item.anchor.kind === 'image_stroke',
+        )
+      )
+        return
+      dispatch({ type: 'select_feedback', feedbackId })
+      dispatch({ type: 'set_tool', tool: 'brush' })
+      setRedrawFeedbackId(feedbackId)
+    },
+    stageFeedbackAnchor(feedbackId, anchor) {
+      const state = editorRef.current
+      if (state.status === 'idle') {
+        dispatch({ type: 'set_tool', tool: anchor.kind === 'image_stroke' ? 'brush' : 'rectangle' })
+        return beginDrawing(anchor, feedbackId)
+      }
+      if (state.status !== 'drawing' || state.sourceFeedbackId !== feedbackId) return false
+      dispatch({ type: 'update_draft_anchor', anchor })
+      return true
     },
     updateDraftAnchor(anchor) {
       dispatch({ type: 'update_draft_anchor', anchor })
@@ -198,20 +323,12 @@ export function useImageReviewWorkbench({
     saveDraft,
     cancelDraft() {
       dispatch({ type: 'cancel_draft' })
+      setRedrawFeedbackId(null)
     },
     selectFeedback(feedbackId) {
       dispatch({ type: 'select_feedback', feedbackId })
     },
-    updateFeedbackText(feedbackId, text) {
-      return applySavedMutation(() =>
-        coordinatorRef.current.updateAnchoredFeedbackText(feedbackId, text),
-      )
-    },
-    replaceFeedbackAnchor(feedbackId, anchor) {
-      return applySavedMutation(() =>
-        coordinatorRef.current.replaceAnchoredFeedbackAnchor(feedbackId, entityId, anchor),
-      )
-    },
+    replaceFeedbackAnchor,
     deleteFeedback(feedbackId) {
       return applySavedMutation(() => coordinatorRef.current.deleteFeedback(feedbackId))
     },
@@ -225,10 +342,14 @@ export function useImageReviewWorkbench({
       setLeaveConfirmation(null)
     },
     async discardUnsavedAndProceed() {
+      // A committed write cannot be discarded mid-flight. Keep the confirmation
+      // and ownership until it settles, then allow explicit discard/retry.
+      if (editorRef.current.status === 'saving') return
       const pending = pendingLeaveRef.current
       pendingLeaveRef.current = null
       setLeaveConfirmation(null)
       dispatch({ type: 'cancel_draft' })
+      setRedrawFeedbackId(null)
       if (pending !== null) await onLeaveRef.current?.(pending)
     },
   }

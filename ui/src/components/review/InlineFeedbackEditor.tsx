@@ -58,6 +58,7 @@ export default function InlineFeedbackEditor({
           disabled={saving}
           onChange={(event) => controller.updateDraftText(event.target.value)}
           onKeyDown={(event) => {
+            if (event.nativeEvent.isComposing) return
             if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
               event.preventDefault()
               void controller.saveDraft()

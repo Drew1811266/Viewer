@@ -325,11 +325,9 @@ fn draw_annotations(
         CGPoint::ZERO,
         CGSize::new(f64::from(width), f64::from(height)),
     );
-    CGContext::save_g_state(Some(&context));
-    CGContext::translate_ctm(Some(&context), 0.0, f64::from(height));
-    CGContext::scale_ctm(Some(&context), 1.0, -1.0);
+    // A plain bitmap context preserves CGImage row orientation. Only normalized
+    // top-origin annotation coordinates need the y conversion below.
     CGContext::draw_image(Some(&context), bounds, Some(source));
-    CGContext::restore_g_state(Some(&context));
 
     let line_width = (f64::from(width.min(height)) * 0.006).clamp(3.0, 12.0);
     CGContext::set_rgb_stroke_color(
@@ -394,7 +392,8 @@ fn draw_annotations(
 }
 
 fn draw_marker(context: &CGContext, center: CGPoint, ordinal: u32, width: u32, height: u32) {
-    let radius = (f64::from(width.min(height)) * 0.025).clamp(14.0, 30.0);
+    let short_edge = f64::from(width.min(height));
+    let radius = (short_edge * 0.025).clamp(14.0, 30.0).min(short_edge / 2.0);
     let center = CGPoint::new(
         center.x.clamp(radius, f64::from(width) - radius),
         center.y.clamp(radius, f64::from(height) - radius),
@@ -525,6 +524,14 @@ impl Drop for OwnedArtifact {
 #[cfg(test)]
 mod tests {
     use super::{MacReviewArtifactRenderer, ReviewArtifactRenderCheckpoint};
+    use objc2_core_foundation::{
+        CFDictionary, CFNumber, CFString, CFType, CFURL, CGPoint, CGRect, CGSize,
+    };
+    use objc2_core_graphics::{
+        CGBitmapContextCreate, CGBitmapContextCreateImage, CGColorSpace, CGContext, CGImage,
+        CGImageAlphaInfo,
+    };
+    use objc2_image_io::{CGImageDestination, kCGImagePropertyOrientation};
     use std::fs;
     use std::path::{Path, PathBuf};
     use std::sync::Arc;
@@ -605,6 +612,170 @@ mod tests {
             source_path,
             cancellation,
             annotations,
+        }
+    }
+
+    // Literal two-colour source: orientation 6 rotates left/right into top/bottom.
+    fn asymmetric_source(path: &Path, width: u32, height: u32, orientation: i64) {
+        let mut rgba = Vec::<u8>::new();
+        for y in 0..height {
+            for x in 0..width {
+                let red = if orientation == 6 {
+                    x < width / 2
+                } else {
+                    y < height / 2
+                };
+                rgba.extend_from_slice(if red {
+                    &[255, 0, 0, 255]
+                } else {
+                    &[0, 0, 255, 255]
+                });
+            }
+        }
+        let space = CGColorSpace::new_device_rgb().unwrap();
+        // SAFETY: Owned RGBA storage outlives the context and its copied image.
+        let context = unsafe {
+            CGBitmapContextCreate(
+                rgba.as_mut_ptr().cast(),
+                width as usize,
+                height as usize,
+                8,
+                width as usize * 4,
+                Some(&space),
+                CGImageAlphaInfo::PremultipliedLast.0,
+            )
+        }
+        .unwrap();
+        let image = CGBitmapContextCreateImage(Some(&context)).unwrap();
+        let url = CFURL::from_file_path(path).unwrap();
+        let kind = CFString::from_str(if orientation == 6 {
+            "public.jpeg"
+        } else {
+            "public.png"
+        });
+        let value = CFNumber::new_i64(orientation);
+        let properties = CFDictionary::<CFString, CFType>::from_slices(
+            &[unsafe { kCGImagePropertyOrientation }],
+            &[value.as_ref()],
+        );
+        // SAFETY: A single image and the documented integer orientation property.
+        unsafe {
+            let destination = CGImageDestination::with_url(&url, &kind, 1, None).unwrap();
+            destination.add_image(&image, Some(properties.as_opaque()));
+            assert!(destination.finalize());
+        }
+    }
+
+    fn decoded_rgba(path: &Path, width: u32, height: u32) -> Vec<u8> {
+        let source = super::open_image_bytes(&fs::read(path).unwrap()).unwrap();
+        let image = super::thumbnail_from_image_source(&source, width.max(height)).unwrap();
+        assert_eq!(
+            (CGImage::width(Some(&image)), CGImage::height(Some(&image))),
+            (width as usize, height as usize)
+        );
+        let mut pixels = vec![0; width as usize * height as usize * 4];
+        let space = CGColorSpace::new_device_rgb().unwrap();
+        // SAFETY: The checked RGBA buffer is alive until the context is dropped.
+        let context = unsafe {
+            CGBitmapContextCreate(
+                pixels.as_mut_ptr().cast(),
+                width as usize,
+                height as usize,
+                8,
+                width as usize * 4,
+                Some(&space),
+                CGImageAlphaInfo::PremultipliedLast.0,
+            )
+        }
+        .unwrap();
+        CGContext::draw_image(
+            Some(&context),
+            CGRect::new(CGPoint::ZERO, CGSize::new(width.into(), height.into())),
+            Some(&image),
+        );
+        drop(context);
+        pixels
+    }
+
+    #[tokio::test]
+    async fn exported_pixels_keep_source_top_bottom_and_top_anchor_including_exif_orientation() {
+        for orientation in [1, 6] {
+            let source_root = tempfile::tempdir().unwrap();
+            let source = source_root.path().join(if orientation == 6 {
+                "source.jpg"
+            } else {
+                "source.png"
+            });
+            let (raw_width, raw_height) = if orientation == 6 {
+                (200, 120)
+            } else {
+                (120, 200)
+            };
+            asymmetric_source(&source, raw_width, raw_height, orientation);
+            let original = fs::read(&source).unwrap();
+            let cache = tempfile::tempdir().unwrap();
+            let renderer = MacReviewArtifactRenderer::new(cache.path()).unwrap();
+            let mut input = request(
+                source.clone(),
+                ReviewTaskCancellation::default(),
+                vec![NumberedImageAnnotation {
+                    ordinal: 1,
+                    feedback_id: FeedbackId::from_u128(1),
+                    anchor: FeedbackAnchor::ImageRect(
+                        NormalizedRect::new(0.3, 0.1, 0.4, 0.2).unwrap(),
+                    ),
+                }],
+            );
+            input.expected_asset.media = ReviewMedia::Image {
+                width: Some(120),
+                height: Some(200),
+            };
+            let artifact = renderer.render(input).await.unwrap();
+            let pixels = decoded_rgba(&artifact.temporary_path, 120, 200);
+            let pixel = |x: usize, y: usize| &pixels[(y * 120 + x) * 4..(y * 120 + x) * 4 + 3];
+            assert!(
+                pixel(110, 10)[0] > 240 && pixel(110, 10)[2] < 15,
+                "top must remain red, orientation {orientation}: {:?}",
+                pixel(110, 10)
+            );
+            assert!(
+                pixel(110, 190)[2] > 240 && pixel(110, 190)[0] < 15,
+                "bottom must remain blue"
+            );
+            // Right edge of the top rectangle is gold, not source red/blue.
+            assert!(
+                (pixel(84, 40)[0] as i32 - 113).abs() < 8
+                    && (pixel(84, 40)[1] as i32 - 77).abs() < 8
+            );
+            assert_eq!(fs::read(&source).unwrap(), original);
+        }
+    }
+
+    #[tokio::test]
+    async fn renderer_accepts_tiny_and_thin_sources_without_mutating_them() {
+        for (width, height) in [(1, 1), (16, 16), (1, 200), (200, 1)] {
+            let source_root = tempfile::tempdir().unwrap();
+            let source = source_root.path().join("tiny.png");
+            asymmetric_source(&source, width, height, 1);
+            let original = fs::read(&source).unwrap();
+            let cache = tempfile::tempdir().unwrap();
+            let renderer = MacReviewArtifactRenderer::new(cache.path()).unwrap();
+            let mut input = request(
+                source.clone(),
+                ReviewTaskCancellation::default(),
+                annotations(0.1),
+            );
+            input.expected_asset.media = ReviewMedia::Image {
+                width: Some(width),
+                height: Some(height),
+            };
+            let artifact = renderer.render(input).await.unwrap();
+            assert_eq!((artifact.width, artifact.height), (width, height));
+            assert_eq!(
+                decoded_rgba(&artifact.temporary_path, width, height).len(),
+                width as usize * height as usize * 4
+            );
+            assert_eq!(fs::read(&source).unwrap(), original);
         }
     }
 

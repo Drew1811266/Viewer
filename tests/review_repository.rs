@@ -157,6 +157,171 @@ fn v1_publication(snapshot: ReviewSnapshot) -> ReviewPublication {
     }
 }
 
+#[tokio::test]
+async fn resumed_v1_region_completes_without_rendering_or_rewriting_history() {
+    use viewer_application::{
+        ReviewMutationGuard, ReviewSessionPhase, ReviewSessionService, UpdateReviewFeedbackText,
+    };
+    for edit_text in [false, true] {
+        let project = PersistentProject::new();
+        let repository = open_writable(&project).unwrap();
+        let historical = completed_round(project.project_id, 51, 52, None);
+        repository
+            .publish(&v1_publication(historical.clone()))
+            .unwrap();
+        let historical_path = project
+            .reviews()
+            .join(format!("rounds/{}.json", historical.review_round_id));
+        let historical_bytes = fs::read(&historical_path).unwrap();
+        let mut draft = v2_annotated_draft(project.project_id);
+        draft.review_stream_id = historical.review_stream_id;
+        draft.previous_completed_round_id = Some(historical.review_round_id);
+        draft.assets[0].source_entity_id = Some(viewer_domain::EntityId::from_u128(3));
+        let earlier = Feedback::new(
+            FeedbackId::from_u128(24),
+            "较早的区域意见".into(),
+            1_050,
+            draft.feedback[0].targets.clone(),
+        )
+        .unwrap();
+        draft.upsert_feedback(earlier).unwrap();
+        repository.save_draft(&persisted_v1(draft.clone())).unwrap();
+        let draft_path = project
+            .reviews()
+            .join(format!("drafts/{}.json", draft.review_round_id));
+        let original_draft_bytes = fs::read(&draft_path).unwrap();
+        drop(repository);
+        let catalog = Arc::new(LegacyCompletionAssets(draft.assets[0].clone()));
+        let renderer = Arc::new(RejectLegacyRendering(AtomicUsize::new(0)));
+        let service = ReviewSessionService::new(
+            project.project_id,
+            catalog,
+            Arc::new(ProjectReviewRepositoryProvider::new(
+                project.root(),
+                project.project_id,
+            )),
+            Arc::new(LegacyCompletionClock),
+            renderer.clone(),
+        );
+        service.inspect().await;
+        let mut snapshot = service
+            .resume(Arc::new(LegacyCompletionProgress))
+            .await
+            .unwrap();
+        assert_eq!(
+            snapshot
+                .feedback
+                .iter()
+                .map(|item| item.feedback_id)
+                .collect::<Vec<_>>(),
+            vec![FeedbackId::from_u128(24), FeedbackId::from_u128(23)]
+        );
+        assert_eq!(fs::read(&draft_path).unwrap(), original_draft_bytes);
+        if edit_text {
+            snapshot = service
+                .update_feedback_text(UpdateReviewFeedbackText {
+                    guard: ReviewMutationGuard {
+                        review_round_id: snapshot.review_round_id.unwrap(),
+                        expected_revision: snapshot.revision,
+                    },
+                    feedback_id: draft.feedback[0].id,
+                    text: "文字编辑仍保持 v1".into(),
+                })
+                .await
+                .unwrap();
+        }
+        let proposal = service
+            .completion_summary(ReviewMutationGuard {
+                review_round_id: snapshot.review_round_id.unwrap(),
+                expected_revision: snapshot.revision,
+            })
+            .await
+            .unwrap();
+        let completed = service
+            .complete(
+                proposal.id,
+                proposal.summary.guard(),
+                Arc::new(LegacyCompletionProgress),
+            )
+            .await
+            .unwrap();
+        assert_eq!(completed.phase, ReviewSessionPhase::CompletedReadOnly);
+        assert_eq!(renderer.0.load(Ordering::SeqCst), 0);
+        let bytes = fs::read(
+            project
+                .reviews()
+                .join(format!("rounds/{}.json", draft.review_round_id)),
+        )
+        .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(json["protocolVersion"], "viewer.review/1");
+        assert!(String::from_utf8(bytes).unwrap().contains("imageRegion"));
+        assert_eq!(fs::read(&historical_path).unwrap(), historical_bytes);
+    }
+}
+
+struct LegacyCompletionClock;
+impl viewer_application::ClockPort for LegacyCompletionClock {
+    fn unix_millis(&self) -> i64 {
+        3_000
+    }
+}
+struct LegacyCompletionProgress;
+impl viewer_application::ReviewProgressPort for LegacyCompletionProgress {
+    fn report(&self, _: viewer_application::ReviewTaskProgress) {}
+}
+struct RejectLegacyRendering(AtomicUsize);
+#[async_trait::async_trait]
+impl viewer_application::ReviewArtifactPort for RejectLegacyRendering {
+    async fn render(
+        &self,
+        _: viewer_application::ReviewArtifactRenderRequest,
+    ) -> Result<ReviewRenderedArtifact, viewer_application::ReviewArtifactError> {
+        self.0.fetch_add(1, Ordering::SeqCst);
+        Err(viewer_application::ReviewArtifactError::Unavailable)
+    }
+}
+struct LegacyCompletionAssets(AssetVersion);
+#[async_trait::async_trait]
+impl viewer_application::ReviewAssetCatalogPort for LegacyCompletionAssets {
+    async fn resolve_scope(
+        &self,
+        _: &viewer_application::ReviewScope,
+    ) -> Result<viewer_application::ReviewScopeResolution, viewer_application::ReviewAssetError>
+    {
+        unreachable!("resumption must retain the persisted scope")
+    }
+    async fn prepare_assets(
+        &self,
+        _: &[viewer_domain::EntityId],
+        _: viewer_application::ReviewTaskCancellation,
+        _: Arc<dyn viewer_application::ReviewProgressPort>,
+    ) -> Result<Vec<viewer_application::PreparedReviewAsset>, viewer_application::ReviewAssetError>
+    {
+        Ok(vec![viewer_application::PreparedReviewAsset {
+            entity_id: self.0.source_entity_id.unwrap(),
+            asset: self.0.clone(),
+            failure: None,
+            change_revision: 0,
+            source_path: "/unused/v1-source.png".into(),
+        }])
+    }
+    async fn revalidate_assets(
+        &self,
+        assets: &[viewer_application::PreparedReviewAsset],
+        _: viewer_application::ReviewTaskCancellation,
+        _: Arc<dyn viewer_application::ReviewProgressPort>,
+    ) -> Result<Vec<viewer_application::ReviewAssetValidation>, viewer_application::ReviewAssetError>
+    {
+        Ok(assets
+            .iter()
+            .cloned()
+            .map(viewer_application::ReviewAssetValidation::Current)
+            .collect())
+    }
+    fn release_tracking(&self) {}
+}
+
 fn v2_annotated_draft(project_id: ProjectId) -> ReviewDraft {
     let mut draft = review_draft(
         project_id,
@@ -582,6 +747,196 @@ fn indexed_v2_bundle_tampering_requires_recovery_without_rewriting_catalog() {
         );
         assert_eq!(fs::read(index_path).unwrap(), index_before);
     }
+}
+
+#[test]
+fn malformed_v2_orphans_never_promote_or_remove_the_active_draft() {
+    let mut accepted = vec![];
+    for case in [
+        "missing_records",
+        "missing_file",
+        "non_png",
+        "wrong_dimensions",
+        "nested_path",
+        "pixels",
+        "artifact_bytes",
+        "bundle_bytes",
+    ] {
+        let project = PersistentProject::new();
+        let mut publication = v2_publication(project.project_id);
+        let repository = open_writable(&project).unwrap();
+        let history = completed_round(project.project_id, 21, 20, None);
+        repository
+            .publish(&v1_publication(history.clone()))
+            .unwrap();
+        publication.snapshot.previous_completed_round_id = Some(history.review_round_id);
+        let mut draft = v2_annotated_draft(project.project_id);
+        draft.previous_completed_round_id = Some(history.review_round_id);
+        repository.save_draft(&persisted_v2(draft)).unwrap();
+        let index_path = project.reviews().join("index.json");
+        let draft_path = project.reviews().join(format!(
+            "drafts/{}.json",
+            publication.snapshot.review_round_id
+        ));
+        let original_index = fs::read(&index_path).unwrap();
+        let original_draft = fs::read(&draft_path).unwrap();
+        repository.publish(&publication).unwrap();
+        drop(repository);
+        // Restore the pre-publication durable catalog/draft to model a crash
+        // after bundle rename but before catalog replacement.
+        fs::write(&index_path, &original_index).unwrap();
+        fs::write(&draft_path, &original_draft).unwrap();
+        let round_dir = project
+            .reviews()
+            .join(format!("rounds/{}", publication.snapshot.review_round_id));
+        let manifest_path = round_dir.join("round.json");
+        let mut manifest: serde_json::Value =
+            serde_json::from_slice(&fs::read(&manifest_path).unwrap()).unwrap();
+        let artifact_path =
+            round_dir.join(manifest["artifacts"][0]["relativePath"].as_str().unwrap());
+        match case {
+            "missing_records" => {
+                manifest["artifacts"] = serde_json::json!([]);
+                fs::remove_file(&artifact_path).unwrap();
+            }
+            "missing_file" => {
+                fs::remove_file(&artifact_path).unwrap();
+            }
+            "non_png" => {
+                fs::write(&artifact_path, b"digest-valid but not PNG").unwrap();
+                manifest["artifacts"][0]["blake3"] = serde_json::json!(
+                    blake3::hash(b"digest-valid but not PNG")
+                        .to_hex()
+                        .to_string()
+                );
+            }
+            "wrong_dimensions" => manifest["artifacts"][0]["width"] = serde_json::json!(639),
+            "nested_path" => {
+                manifest["artifacts"][0]["relativePath"] = serde_json::json!(format!(
+                    "artifacts/nested/{}-annotation.png",
+                    publication.artifacts[0].asset_version_id
+                ))
+            }
+            "pixels" => manifest["artifacts"][0]["width"] = serde_json::json!(u32::MAX),
+            "artifact_bytes" => {
+                fs::OpenOptions::new()
+                    .write(true)
+                    .open(&artifact_path)
+                    .unwrap()
+                    .set_len(viewer_application::MAX_REVIEW_ARTIFACT_BYTES + 1)
+                    .unwrap();
+            }
+            "bundle_bytes" => {
+                let mut records = vec![];
+                let template_asset = manifest["assets"][0].clone();
+                let template_feedback = manifest["feedback"][0].clone();
+                let template_outcome = manifest["outcomes"][0].clone();
+                let template_artifact = manifest["artifacts"][0].clone();
+                manifest["assets"] = serde_json::json!([]);
+                manifest["feedback"] = serde_json::json!([]);
+                manifest["outcomes"] = serde_json::json!([]);
+                fs::remove_file(&artifact_path).unwrap();
+                // Hard links model individually valid 64MiB files exceeding
+                // the 4GiB aggregate bound without allocating 4GiB of disk.
+                let mut bytes = fs::read(&publication.artifacts[0].temporary_path).unwrap();
+                bytes.resize(viewer_application::MAX_REVIEW_ARTIFACT_BYTES as usize, 0);
+                let digest = blake3::hash(&bytes).to_hex().to_string();
+                let file_count = viewer_application::MAX_REVIEW_BUNDLE_BYTES
+                    / viewer_application::MAX_REVIEW_ARTIFACT_BYTES
+                    + 1;
+                let mut first_file = None;
+                for n in 0..file_count {
+                    let asset_id = AssetVersionId::from_u128(500 + u128::from(n)).to_string();
+                    let feedback_id = FeedbackId::from_u128(600 + u128::from(n)).to_string();
+                    let mut asset = template_asset.clone();
+                    asset["assetVersionId"] = serde_json::json!(asset_id);
+                    asset["relativePath"] = serde_json::json!(format!("image-{n}.png"));
+                    let mut feedback = template_feedback.clone();
+                    feedback["feedbackId"] = serde_json::json!(feedback_id);
+                    feedback["targets"][0]["assetVersionId"] = serde_json::json!(asset_id);
+                    let mut outcome = template_outcome.clone();
+                    outcome["assetVersionId"] = serde_json::json!(asset_id);
+                    outcome["feedbackIds"] = serde_json::json!([feedback_id]);
+                    let mut artifact = template_artifact.clone();
+                    artifact["assetVersionId"] = serde_json::json!(asset_id);
+                    artifact["relativePath"] =
+                        serde_json::json!(format!("artifacts/{asset_id}-annotation.png"));
+                    artifact["blake3"] = serde_json::json!(digest);
+                    artifact["annotations"][0]["feedbackId"] = serde_json::json!(feedback_id);
+                    let destination = round_dir.join(artifact["relativePath"].as_str().unwrap());
+                    if let Some(first) = &first_file {
+                        fs::hard_link(first, &destination).unwrap();
+                    } else {
+                        fs::write(&destination, &bytes).unwrap();
+                        first_file = Some(destination);
+                    }
+                    manifest["assets"].as_array_mut().unwrap().push(asset);
+                    manifest["feedback"].as_array_mut().unwrap().push(feedback);
+                    manifest["outcomes"].as_array_mut().unwrap().push(outcome);
+                    records.push(artifact);
+                }
+                manifest["artifacts"] = serde_json::json!(records);
+            }
+            _ => unreachable!(),
+        }
+        fs::write(manifest_path, serde_json::to_vec_pretty(&manifest).unwrap()).unwrap();
+        let result = open_writable(&project);
+        if result.is_ok() {
+            accepted.push(case);
+            continue;
+        }
+        assert_eq!(
+            fs::read(&index_path).unwrap(),
+            original_index,
+            "catalog changed: {case}"
+        );
+        assert_eq!(
+            fs::read(&draft_path).unwrap(),
+            original_draft,
+            "draft changed: {case}"
+        );
+    }
+    assert!(
+        accepted.is_empty(),
+        "malformed orphans accepted: {accepted:?}"
+    );
+}
+
+#[test]
+fn publication_rejects_digest_valid_non_png_and_mismatched_png_dimensions() {
+    let mut accepted = vec![];
+    for non_png in [true, false] {
+        let project = PersistentProject::new();
+        let repository = open_writable(&project).unwrap();
+        let mut publication = v2_publication(project.project_id);
+        let source = tempfile::NamedTempFile::new().unwrap();
+        if non_png {
+            let bytes = b"not a PNG, but digest verified";
+            fs::write(source.path(), bytes).unwrap();
+            publication.artifacts[0].temporary_path = source.path().into();
+            publication.artifacts[0].size_bytes = bytes.len() as u64;
+            publication.artifacts[0].blake3 = *blake3::hash(bytes).as_bytes();
+        } else {
+            publication.artifacts[0].width -= 1;
+        }
+        repository
+            .save_draft(&persisted_v2(v2_annotated_draft(project.project_id)))
+            .unwrap();
+        let index = fs::read(project.reviews().join("index.json")).unwrap();
+        if repository.publish(&publication).is_ok() {
+            accepted.push(non_png);
+            continue;
+        }
+        assert_eq!(
+            fs::read(project.reviews().join("index.json")).unwrap(),
+            index
+        );
+        assert!(repository.load_active_draft().unwrap().is_some());
+    }
+    assert!(
+        accepted.is_empty(),
+        "invalid PNG published (non_png): {accepted:?}"
+    );
 }
 
 #[cfg(unix)]

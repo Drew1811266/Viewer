@@ -95,6 +95,7 @@ export default function ImageReviewWorkspace({
             <AnnotationCanvas projection={projection} controller={controller} />
             {controller.editor.status !== 'idle' &&
               controller.editor.status !== 'drawing' &&
+              controller.editor.sourceFeedbackId === null &&
               controller.editor.draftAnchor.kind !== 'asset' && (
                 <InlineFeedbackEditor
                   controller={controller}

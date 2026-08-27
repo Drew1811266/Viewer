@@ -8,8 +8,8 @@ use serde_json::{Value, json};
 use std::collections::HashSet;
 use std::str::FromStr;
 use viewer_application::{
-    MAX_COMPLETED_ROUNDS_PER_STREAM, MAX_REVIEW_STREAMS, ReviewCatalog, ReviewProtocolVersion,
-    ReviewRecordLocation, ReviewRoundRecord, ReviewStreamHead,
+    MAX_COMPLETED_ROUNDS_PER_STREAM, MAX_REVIEW_ARTIFACT_PIXELS, MAX_REVIEW_STREAMS, ReviewCatalog,
+    ReviewProtocolVersion, ReviewRecordLocation, ReviewRoundRecord, ReviewStreamHead,
 };
 use viewer_domain::review::{
     Feedback, FeedbackAnchor, FeedbackTarget, ImageStroke, NormalizedPoint, NormalizedRect,
@@ -369,20 +369,21 @@ fn validate_artifacts(
 ) -> Result<(), ReviewProtocolError> {
     let mut asset_ids = HashSet::new();
     for artifact in artifacts {
-        if !asset_ids.insert(artifact.asset_version_id.as_str())
-            || !valid_location(&artifact.relative_path, "artifacts")
+        let asset_id: AssetVersionId = parse_id(&artifact.asset_version_id)?;
+        if !asset_ids.insert(asset_id)
+            || artifact.relative_path != format!("artifacts/{asset_id}-annotation.png")
             || artifact.media_type != "image/png"
             || artifact.width == 0
             || artifact.height == 0
+            || u64::from(artifact.width) * u64::from(artifact.height) > MAX_REVIEW_ARTIFACT_PIXELS
         {
             return Err(ReviewProtocolError::InvalidData);
         }
         parse_digest(&artifact.blake3)?;
-        let asset_id: AssetVersionId = parse_id(&artifact.asset_version_id)?;
         if !snapshot.assets.iter().any(|asset| asset.id == asset_id) {
             return Err(ReviewProtocolError::InvalidData);
         }
-        let expected = snapshot
+        let mut expected = snapshot
             .feedback
             .iter()
             .filter(|feedback| {
@@ -394,8 +395,11 @@ fn validate_artifacts(
                         )
                 })
             })
-            .map(|feedback| feedback.id)
-            .collect::<HashSet<_>>();
+            .collect::<Vec<_>>();
+        expected.sort_by_key(|feedback| (feedback.created_at_ms, feedback.id.to_string()));
+        if expected.is_empty() {
+            return Err(ReviewProtocolError::InvalidData);
+        }
         let mut ordinals = HashSet::new();
         let mut feedback_ids = HashSet::new();
         for annotation in &artifact.annotations {
@@ -403,28 +407,36 @@ fn validate_artifacts(
             if annotation.ordinal == 0
                 || !ordinals.insert(annotation.ordinal)
                 || !feedback_ids.insert(feedback_id)
+                || expected
+                    .get(annotation.ordinal.saturating_sub(1) as usize)
+                    .map(|feedback| feedback.id)
+                    != Some(feedback_id)
             {
                 return Err(ReviewProtocolError::InvalidData);
             }
         }
-        if feedback_ids != expected
+        if feedback_ids.len() != expected.len()
             || (1..=artifact.annotations.len() as u32).any(|ordinal| !ordinals.contains(&ordinal))
         {
             return Err(ReviewProtocolError::InvalidData);
         }
     }
-    Ok(())
-}
-
-fn valid_location(value: &str, root: &str) -> bool {
-    if value.is_empty() || value.starts_with('/') || value.contains('\\') || value.contains('\0') {
-        return false;
+    let expected_assets = snapshot
+        .feedback
+        .iter()
+        .flat_map(|feedback| &feedback.targets)
+        .filter(|target| {
+            matches!(
+                target.anchor,
+                FeedbackAnchor::ImageRect(_) | FeedbackAnchor::ImageStroke(_)
+            )
+        })
+        .map(|target| target.asset_version_id)
+        .collect::<HashSet<_>>();
+    if asset_ids != expected_assets {
+        return Err(ReviewProtocolError::InvalidData);
     }
-    let mut components = value.split('/');
-    components.next() == Some(root)
-        && components.clone().next().is_some()
-        && components
-            .all(|component| !component.is_empty() && component != "." && component != "..")
+    Ok(())
 }
 
 fn parse_catalog(stored: StoredCatalogV2) -> Result<ReviewCatalog, ReviewProtocolError> {

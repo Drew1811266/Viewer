@@ -708,6 +708,9 @@ function validateArtifactRecords(artifacts, assets, feedbackById) {
     }
     requireArray(artifact.annotations, `${label} annotations`, 1, MAX_FEEDBACK)
     const expectedFeedback = expectedByAsset.get(artifact.assetVersionId) ?? new Set()
+    const canonicalFeedback = [...expectedFeedback].map((id) => feedbackById.get(id))
+      .sort((left, right) => left.createdAtMs - right.createdAtMs
+        || (left.feedbackId < right.feedbackId ? -1 : left.feedbackId > right.feedbackId ? 1 : 0))
     const ordinals = new Set()
     const feedbackIds = new Set()
     for (const [annotationIndex, annotation] of artifact.annotations.entries()) {
@@ -717,7 +720,8 @@ function validateArtifactRecords(artifacts, assets, feedbackById) {
       requirePositiveInteger(annotation.ordinal, `${annotationLabel} ordinal`, MAX_U32)
       requireUuid(annotation.feedbackId, `${annotationLabel} feedback id`)
       if (ordinals.has(annotation.ordinal) || feedbackIds.has(annotation.feedbackId)
-          || !expectedFeedback.has(annotation.feedbackId)) {
+          || !expectedFeedback.has(annotation.feedbackId)
+          || canonicalFeedback[annotation.ordinal - 1]?.feedbackId !== annotation.feedbackId) {
         throw new Error(`${annotationLabel} mapping is invalid`)
       }
       ordinals.add(annotation.ordinal)

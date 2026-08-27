@@ -105,11 +105,44 @@ fn v1_encoder_rejects_image_strokes_without_panicking() {
 }
 
 #[test]
-fn canonical_v2_round_decodes_and_reencodes_byte_for_byte() {
+fn canonical_v2_round_decodes_but_cannot_be_reencoded_without_its_artifacts() {
     let completed = fixture("review-round-v2.valid.json");
     let decoded = decode_completed_versioned(&completed).unwrap();
 
-    assert_eq!(encode_completed_v2(&decoded.value).unwrap(), completed);
+    assert_eq!(
+        encode_completed_v2(&decoded.value),
+        Err(ReviewProtocolError::InvalidData)
+    );
+}
+
+#[test]
+fn v2_round_rejects_missing_noncanonical_and_oversized_artifact_records() {
+    for mutation in [
+        "missing",
+        "nested",
+        "pixels",
+        "empty_mapping",
+        "swapped_mapping",
+    ] {
+        let bytes = mutate_document("review-round-v2.valid.json", |document| match mutation {
+            "missing" => document["artifacts"] = json!([]),
+            "nested" => {
+                document["artifacts"][0]["relativePath"] =
+                    json!("artifacts/nested/00000000-0000-4000-8000-000000000301-annotation.png")
+            }
+            "pixels" => document["artifacts"][0]["width"] = json!(u32::MAX),
+            "empty_mapping" => document["artifacts"][0]["annotations"] = json!([]),
+            "swapped_mapping" => {
+                document["artifacts"][0]["annotations"][0]["ordinal"] = json!(2);
+                document["artifacts"][0]["annotations"][1]["ordinal"] = json!(1);
+            }
+            _ => unreachable!(),
+        });
+        assert!(
+            decode_completed_versioned(&bytes).is_err(),
+            "accepted {mutation}"
+        );
+    }
 }
 
 #[test]

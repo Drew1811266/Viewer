@@ -755,6 +755,96 @@ async fn render_failure_removes_prior_leases_and_returns_to_the_intact_active_dr
 }
 
 #[tokio::test]
+async fn snapshot_and_artifact_ordinals_agree_after_delete_undo_and_equal_time_additions() {
+    use viewer_application::DeleteReviewFeedback;
+    for equal_time in [false, true] {
+        let fixture = Fixture::active(None).await;
+        let first = fixture
+            .service
+            .add_feedback(AddReviewFeedback {
+                guard: guard(&fixture.snapshot().await),
+                text: "A".into(),
+                targets: vec![rect_target(fixture.entity_ids[0], 0.1)],
+            })
+            .await
+            .unwrap();
+        let a = first.feedback[0].feedback_id;
+        if !equal_time {
+            fixture.clock.0.store(1_100, Ordering::Release);
+        }
+        let both = fixture
+            .service
+            .add_feedback(AddReviewFeedback {
+                guard: guard(&first),
+                text: "B".into(),
+                targets: vec![rect_target(fixture.entity_ids[0], 0.5)],
+            })
+            .await
+            .unwrap();
+        let b = both
+            .feedback
+            .iter()
+            .find(|item| item.feedback_id != a)
+            .unwrap()
+            .feedback_id;
+        let mut canonical = vec![a, b];
+        if equal_time {
+            canonical.sort_by_key(|id| id.to_string());
+        }
+        // Delete whichever canonical opinion is first, then append it through undo.
+        let deleted = fixture
+            .service
+            .delete_feedback(DeleteReviewFeedback {
+                guard: guard(&both),
+                feedback_id: canonical[0],
+            })
+            .await
+            .unwrap();
+        let restored = fixture
+            .service
+            .restore_deleted_feedback(guard(&deleted), canonical[0])
+            .await
+            .unwrap();
+        assert_eq!(
+            restored
+                .feedback
+                .iter()
+                .map(|item| item.feedback_id)
+                .collect::<Vec<_>>(),
+            canonical
+        );
+        let proposal = fixture
+            .service
+            .completion_summary(guard(&restored))
+            .await
+            .unwrap();
+        fixture.clock.0.store(2_000, Ordering::Release);
+        let completed = fixture
+            .service
+            .complete(proposal.id, proposal.summary.guard(), fixture.progress())
+            .await
+            .unwrap();
+        assert_eq!(
+            completed
+                .feedback
+                .iter()
+                .map(|item| item.feedback_id)
+                .collect::<Vec<_>>(),
+            canonical
+        );
+        let requests = fixture.artifacts.requests.lock().unwrap();
+        assert_eq!(
+            requests[0]
+                .annotations
+                .iter()
+                .map(|item| (item.feedback_id, item.ordinal))
+                .collect::<Vec<_>>(),
+            vec![(canonical[0], 1), (canonical[1], 2)]
+        );
+    }
+}
+
+#[tokio::test]
 async fn a_round_without_feedback_or_failure_becomes_all_default_pass() {
     let fixture = Fixture::active(None).await;
     let proposal = summary(&fixture).await;

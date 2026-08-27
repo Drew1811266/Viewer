@@ -108,24 +108,30 @@ export function imageFeedbackForEntity(
   entityId: string,
 ): SavedImageFeedback[] {
   let localOrdinal = 0
-  return snapshot.feedback.flatMap((feedback) => {
-    const target = feedback.targets.find((candidate) => candidate.entityId === entityId)
-    if (target === undefined) return []
-    let ordinal: number | null = null
-    if (target.anchor.kind !== 'asset') {
-      localOrdinal += 1
-      ordinal = localOrdinal
-    }
-    return [
-      {
-        feedbackId: feedback.feedbackId,
-        text: feedback.text,
-        createdAtMs: feedback.createdAtMs,
-        ordinal,
-        anchor: target.anchor,
-      },
-    ]
-  })
+  return [...snapshot.feedback]
+    .sort(
+      (left, right) =>
+        left.createdAtMs - right.createdAtMs ||
+        (left.feedbackId < right.feedbackId ? -1 : left.feedbackId > right.feedbackId ? 1 : 0),
+    )
+    .flatMap((feedback) => {
+      const target = feedback.targets.find((candidate) => candidate.entityId === entityId)
+      if (target === undefined) return []
+      let ordinal: number | null = null
+      if (target.anchor.kind !== 'asset') {
+        localOrdinal += 1
+        ordinal = localOrdinal
+      }
+      return [
+        {
+          feedbackId: feedback.feedbackId,
+          text: feedback.text,
+          createdAtMs: feedback.createdAtMs,
+          ordinal,
+          anchor: target.anchor,
+        },
+      ]
+    })
 }
 
 export function imageReviewReadOnlyReason(

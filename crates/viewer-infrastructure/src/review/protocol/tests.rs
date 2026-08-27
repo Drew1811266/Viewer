@@ -1,7 +1,6 @@
 use super::{
     REVIEW_PROTOCOL_V1, ReviewProtocolError, decode_catalog_versioned, decode_completed_versioned,
-    decode_draft_versioned, detect_review_protocol, encode_catalog_v2, encode_completed_v2,
-    encode_draft_v2, v1, v2,
+    decode_draft_versioned, detect_review_protocol, encode_catalog_v2, encode_draft_v2, v1, v2,
 };
 use serde_json::{Value, json};
 use viewer_application::ReviewProtocolVersion;
@@ -63,7 +62,11 @@ fn v2_round_preserves_rect_stroke_and_reserved_video_anchors() {
             .flat_map(|feedback| &feedback.targets)
             .any(|target| matches!(target.anchor, FeedbackAnchor::ImageStroke(_)))
     );
-    assert_eq!(encode_completed_v2(&decoded.value).unwrap(), bytes);
+    let document = v2::decode_completed_document(bytes).unwrap();
+    let encoded =
+        v2::encode_completed_with_artifacts(&document.snapshot, &document.artifacts).unwrap();
+    assert_eq!(encoded, bytes);
+    assert_eq!(v2::decode_completed_document(&encoded).unwrap(), document);
 }
 
 #[test]

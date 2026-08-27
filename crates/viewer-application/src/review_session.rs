@@ -1358,13 +1358,17 @@ impl ReviewSessionService {
                     .await;
             }
         };
-        let artifacts = match self
-            .render_review_artifacts(&draft, &prepared, cancellation.clone())
-            .await
-        {
-            Ok(artifacts) => artifacts,
-            Err(error) => {
-                return self.finish_prepublication_error(task_id, error).await;
+        let artifacts = if protocol_version == ReviewProtocolVersion::V1 {
+            // Resuming or editing text does not upgrade the legacy publication
+            // contract. v1 has no derived-artifact references.
+            Vec::new()
+        } else {
+            match self
+                .render_review_artifacts(&draft, &prepared, cancellation.clone())
+                .await
+            {
+                Ok(artifacts) => artifacts,
+                Err(error) => return self.finish_prepublication_error(task_id, error).await,
             }
         };
         let writer = {
@@ -2233,8 +2237,11 @@ fn feedback_snapshots(
     feedback: &[Feedback],
     bindings: &HashMap<AssetVersionId, EntityId>,
 ) -> Vec<ReviewFeedbackSnapshot> {
-    feedback
-        .iter()
+    // Project canonical numbering without changing persisted (including v1) order.
+    let mut ordered = feedback.iter().collect::<Vec<_>>();
+    ordered.sort_by_key(|feedback| (feedback.created_at_ms, feedback.id.to_string()));
+    ordered
+        .into_iter()
         .map(|feedback| ReviewFeedbackSnapshot {
             feedback_id: feedback.id,
             text: feedback.text.clone(),

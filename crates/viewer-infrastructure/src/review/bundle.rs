@@ -41,6 +41,9 @@ pub(crate) fn publish_v2(
     faults: &dyn ReviewRepositoryFaultInjector,
 ) -> Result<(), ReviewRepositoryError> {
     let records = validate_publication(publication)?;
+    // Validate complete references and canonical ordinals before any bundle write.
+    let round_bytes = encode_completed_with_artifacts(&publication.snapshot, &records)
+        .map_err(super::repository::map_protocol_error)?;
     for artifact in &publication.artifacts {
         validate_source_artifact(artifact)?;
     }
@@ -59,8 +62,6 @@ pub(crate) fn publish_v2(
         faults.check(ReviewRepositoryFaultPoint::AfterArtifactFileSync)?;
     }
 
-    let round_bytes = encode_completed_with_artifacts(&publication.snapshot, &records)
-        .map_err(super::repository::map_protocol_error)?;
     write_synced_new(&temporary_directory.join(ROUND_MANIFEST), &round_bytes)?;
     faults.check(ReviewRepositoryFaultPoint::AfterRoundManifestSync)?;
     sync_directory(&artifacts_directory).map_err(map_io_error)?;
@@ -338,8 +339,15 @@ fn copy_artifact(
         .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC)
         .open(destination)
         .map_err(map_io_error)?;
+    let mut header = [0_u8; 24];
+    source
+        .read_exact(&mut header)
+        .map_err(|_| ReviewRepositoryError::InvalidData)?;
+    validate_png_header(&header, artifact.width, artifact.height)?;
     let mut hasher = blake3::Hasher::new();
-    let mut copied = 0_u64;
+    hasher.update(&header);
+    target.write_all(&header).map_err(map_io_error)?;
+    let mut copied = header.len() as u64;
     let mut buffer = [0_u8; COPY_BUFFER_BYTES];
     loop {
         let read = source.read(&mut buffer).map_err(map_io_error)?;
@@ -381,8 +389,14 @@ fn validate_source_artifact(
     {
         return Err(ReviewRepositoryError::InvalidData);
     }
+    let mut header = [0_u8; 24];
+    source
+        .read_exact(&mut header)
+        .map_err(|_| ReviewRepositoryError::InvalidData)?;
+    validate_png_header(&header, artifact.width, artifact.height)?;
     let mut hasher = blake3::Hasher::new();
-    let mut read_total = 0_u64;
+    hasher.update(&header);
+    let mut read_total = header.len() as u64;
     let mut buffer = [0_u8; COPY_BUFFER_BYTES];
     loop {
         let read = source
@@ -436,11 +450,31 @@ fn validate_bundle_contents(
     {
         return Err(ReviewRepositoryError::RecoveryRequired);
     }
+    let entries = fs::read_dir(&artifacts_directory)
+        .map_err(|_| ReviewRepositoryError::RecoveryRequired)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|_| ReviewRepositoryError::RecoveryRequired)?;
+    let mut bundle_bytes = 0_u64;
+    // Check aggregate sizes before reading/hashing potentially GiBs of data.
+    for entry in &entries {
+        let metadata = fs::symlink_metadata(entry.path())
+            .map_err(|_| ReviewRepositoryError::RecoveryRequired)?;
+        if !metadata.is_file() || metadata.file_type().is_symlink() {
+            return Err(ReviewRepositoryError::RecoveryRequired);
+        }
+        if metadata.len() > MAX_REVIEW_ARTIFACT_BYTES {
+            return Err(ReviewRepositoryError::LimitExceeded);
+        }
+        bundle_bytes = bundle_bytes
+            .checked_add(metadata.len())
+            .ok_or(ReviewRepositoryError::LimitExceeded)?;
+        if bundle_bytes > MAX_REVIEW_BUNDLE_BYTES {
+            return Err(ReviewRepositoryError::LimitExceeded);
+        }
+    }
     let mut seen = HashSet::new();
-    for entry in
-        fs::read_dir(&artifacts_directory).map_err(|_| ReviewRepositoryError::RecoveryRequired)?
-    {
-        let entry = entry.map_err(|_| ReviewRepositoryError::RecoveryRequired)?;
+    let mut read_total = 0_u64;
+    for entry in entries {
         let filename = entry
             .file_name()
             .into_string()
@@ -451,13 +485,34 @@ fn validate_bundle_contents(
         if !seen.insert(filename) || path_kind(&entry.path())? != Some(PathKind::File) {
             return Err(ReviewRepositoryError::RecoveryRequired);
         }
-        let bytes = read_regular_bounded(&entry.path(), MAX_REVIEW_ARTIFACT_BYTES)?;
+        let bytes = read_regular_bounded(
+            &entry.path(),
+            MAX_REVIEW_ARTIFACT_BYTES.min(MAX_REVIEW_BUNDLE_BYTES - read_total),
+        )?;
+        read_total += bytes.len() as u64;
+        validate_png_header(&bytes, artifact.width, artifact.height)
+            .map_err(|_| ReviewRepositoryError::RecoveryRequired)?;
         if *blake3::hash(&bytes).as_bytes() != artifact.blake3 {
             return Err(ReviewRepositoryError::RecoveryRequired);
         }
     }
     if seen.len() != expected_files.len() {
         return Err(ReviewRepositoryError::RecoveryRequired);
+    }
+    Ok(())
+}
+
+fn validate_png_header(bytes: &[u8], width: u32, height: u32) -> Result<(), ReviewRepositoryError> {
+    if bytes.len() < 24
+        || &bytes[..8] != b"\x89PNG\r\n\x1a\n"
+        || &bytes[12..16] != b"IHDR"
+        || u32::from_be_bytes(bytes[16..20].try_into().unwrap()) != width
+        || u32::from_be_bytes(bytes[20..24].try_into().unwrap()) != height
+        || width == 0
+        || height == 0
+        || u64::from(width) * u64::from(height) > MAX_REVIEW_ARTIFACT_PIXELS
+    {
+        return Err(ReviewRepositoryError::InvalidData);
     }
     Ok(())
 }

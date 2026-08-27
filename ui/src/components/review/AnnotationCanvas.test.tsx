@@ -24,6 +24,12 @@ function controller(
       selectedFeedbackId: null,
     },
     dirty: false,
+    redrawFeedbackId: null,
+    beginDrawing: vi.fn(() => true),
+    finishDrawing: vi.fn(async () => undefined),
+    beginFeedbackTextEdit: vi.fn(),
+    beginRedraw: vi.fn(),
+    stageFeedbackAnchor: vi.fn(() => true),
     feedback: [
       {
         feedbackId: 'feedback-1',
@@ -46,7 +52,6 @@ function controller(
     saveDraft: vi.fn(async () => undefined),
     cancelDraft: vi.fn(),
     selectFeedback: vi.fn(),
-    updateFeedbackText: vi.fn(async () => undefined),
     replaceFeedbackAnchor: vi.fn(async () => undefined),
     deleteFeedback: vi.fn(async () => undefined),
     restoreDeletedFeedback: vi.fn(async () => undefined),
@@ -141,7 +146,7 @@ describe('AnnotationCanvas', () => {
     expect(parentKeyDown).not.toHaveBeenCalled()
   })
 
-  it('moves a selected rectangle by pointer and keeps the candidate until persistence resolves', async () => {
+  it('sends a selected rectangle pointer candidate to the controller before saving', async () => {
     let resolve!: () => void
     const pending = new Promise<void>((done) => {
       resolve = done
@@ -160,7 +165,7 @@ describe('AnnotationCanvas', () => {
     if (replacement?.kind !== 'image_rect') throw new Error('expected rectangle replacement')
     expect(replacement.x).toBeCloseTo(0.2)
     expect(replacement.y).toBeCloseTo(0.3)
-    expect(screen.getByTestId('annotation-canvas')).toHaveAttribute('data-has-candidate', 'true')
+    expect(review.stageFeedbackAnchor).toHaveBeenCalledWith('feedback-1', replacement)
     resolve()
     await pending
     await waitFor(() =>
@@ -168,19 +173,24 @@ describe('AnnotationCanvas', () => {
     )
   })
 
-  it('retains a failed saved-geometry candidate beside the server geometry', async () => {
+  it('renders a controller-owned failed geometry candidate beside the server geometry', async () => {
     const review = controller({
       selectedFeedbackId: 'feedback-1',
-      replaceFeedbackAnchor: vi.fn().mockRejectedValue(new Error('write failed')),
+      editor: {
+        status: 'save_error',
+        tool: 'rectangle',
+        temporarilyPanning: false,
+        selectedFeedbackId: 'feedback-1',
+        sourceFeedbackId: 'feedback-1',
+        operation: 'geometry',
+        draftAnchor: { kind: 'image_rect', x: 0.2, y: 0.3, width: 0.3, height: 0.4 },
+        text: '调整领口',
+        message: '请重试',
+      },
     })
     render(<AnnotationCanvas projection={PROJECTION} controller={review} />)
 
     const marker = screen.getByRole('button', { name: '意见 1：调整领口' })
-    fireEvent.pointerDown(marker, { clientX: 266, clientY: 116, pointerId: 3 })
-    fireEvent.pointerMove(window, { clientX: 330, clientY: 164, pointerId: 3 })
-    fireEvent.pointerUp(window, { clientX: 330, clientY: 164, pointerId: 3 })
-
-    await waitFor(() => expect(review.replaceFeedbackAnchor).toHaveBeenCalledOnce())
     expect(screen.getByTestId('annotation-canvas')).toHaveAttribute('data-has-candidate', 'true')
     expect(marker).toBeVisible()
   })
@@ -216,9 +226,9 @@ describe('AnnotationCanvas', () => {
 
     fireEvent.pointerDown(canvas, { clientX: 74, clientY: 68, pointerId: 1 })
     fireEvent.pointerMove(canvas, { clientX: 330, clientY: 260, pointerId: 1 })
-    expect(review.beginAnnotation).not.toHaveBeenCalled()
+    expect(review.finishDrawing).not.toHaveBeenCalled()
     fireEvent.pointerUp(canvas, { clientX: 330, clientY: 260, pointerId: 1 })
-    expect(review.beginAnnotation).toHaveBeenCalledWith({
+    expect(review.finishDrawing).toHaveBeenCalledWith({
       kind: 'image_rect',
       x: 0.1,
       y: 0.1,
@@ -232,6 +242,7 @@ describe('AnnotationCanvas', () => {
     const review = controller({
       tool: 'brush',
       selectedFeedbackId: 'feedback-2',
+      redrawFeedbackId: 'feedback-2',
       feedback: [
         {
           feedbackId: 'feedback-2',
@@ -255,8 +266,11 @@ describe('AnnotationCanvas', () => {
     fireEvent.pointerMove(canvas, { clientX: 330, clientY: 260, pointerId: 2 })
     fireEvent.pointerUp(canvas, { clientX: 458, clientY: 356, pointerId: 2 })
 
-    expect(review.replaceFeedbackAnchor).toHaveBeenCalledWith(
+    expect(review.beginDrawing).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: 'image_stroke' }),
       'feedback-2',
+    )
+    expect(review.finishDrawing).toHaveBeenCalledWith(
       expect.objectContaining({ kind: 'image_stroke' }),
     )
     expect(review.beginAnnotation).not.toHaveBeenCalled()

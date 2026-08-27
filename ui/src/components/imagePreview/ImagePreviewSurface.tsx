@@ -273,6 +273,15 @@ export default function ImagePreviewSurface({
   }
 
   function keyboard(event: KeyboardEvent<HTMLElement>) {
+    if (event.defaultPrevented || event.nativeEvent.isComposing) return
+    const target = event.target
+    const textEntry =
+      target instanceof HTMLElement &&
+      (target.matches('input, textarea, select') ||
+        target.isContentEditable ||
+        target.closest('[contenteditable="true"], [contenteditable=""]') !== null)
+    // Editors retain caret/text shortcuts; Escape remains an explicit cancel.
+    if (textEntry && event.key !== 'Escape') return
     if (ownsMagnifierShortcut(event) && !transformsDisabled) {
       event.preventDefault()
       toggleMagnifier()

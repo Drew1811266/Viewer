@@ -1,7 +1,73 @@
-import { describe, expect, it } from 'vitest'
-import { workspaceVisualsSettled } from './sceneHarness'
+import { act, render } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import AcceptanceProductScene, { workspaceVisualsSettled } from './sceneHarness'
+
+vi.mock('../../App', () => ({
+  default: () => (
+    <main className="viewer-shell">
+      <section className="content-browser" />
+    </main>
+  ),
+}))
 
 describe('acceptance product scene readiness', () => {
+  const frames: Array<{ id: number; callback: FrameRequestCallback; cancelled: boolean }> = []
+  let nextFrameId = 1
+
+  beforeEach(() => {
+    frames.length = 0
+    nextFrameId = 1
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+      const id = nextFrameId
+      nextFrameId += 1
+      frames.push({ id, callback, cancelled: false })
+      return id
+    })
+    vi.stubGlobal('cancelAnimationFrame', (id: number) => {
+      const frame = frames.find((candidate) => candidate.id === id)
+      if (frame !== undefined) frame.cancelled = true
+    })
+  })
+
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('holds readiness when thumbnail work begins during its stable paint frames', async () => {
+    const { container } = render(
+      <AcceptanceProductScene ready={() => document.querySelector('.task-bar') === null}>
+        {null}
+      </AcceptanceProductScene>,
+    )
+    const root = container.querySelector<HTMLElement>('.acceptance-scene-root')
+
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    expect(root).toHaveAttribute('data-acceptance-scene-ready', 'false')
+    expect(document.querySelector('.viewer-shell')).not.toBeNull()
+    expect(workspaceVisualsSettled(document)).toBe(true)
+    expect(frames).toHaveLength(1)
+
+    const task = document.createElement('aside')
+    task.className = 'task-bar'
+    await act(async () => {
+      document.body.append(task)
+      await Promise.resolve()
+    })
+
+    act(() => runNextFrame(frames, 0))
+    act(() => runNextFrame(frames, 16))
+    expect(root).toHaveAttribute('data-acceptance-scene-ready', 'false')
+
+    await act(async () => {
+      task.remove()
+      await Promise.resolve()
+    })
+    act(() => runNextFrame(frames, 32))
+    act(() => runNextFrame(frames, 48))
+    expect(root).toHaveAttribute('data-acceptance-scene-ready', 'true')
+  })
+
   it('waits for real thumbnail content instead of capturing workspace skeletons', () => {
     const root = document.createElement('div')
     root.innerHTML = `
@@ -54,3 +120,11 @@ describe('acceptance product scene readiness', () => {
     expect(workspaceVisualsSettled(root)).toBe(false)
   })
 })
+
+function runNextFrame(
+  frames: Array<{ callback: FrameRequestCallback; cancelled: boolean }>,
+  timestamp: number,
+) {
+  const frame = frames.shift()
+  if (frame !== undefined && !frame.cancelled) frame.callback(timestamp)
+}

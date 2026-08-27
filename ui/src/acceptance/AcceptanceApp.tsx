@@ -35,22 +35,40 @@ export default function AcceptanceApp({ request, sceneRegistry }: AcceptanceAppP
     )
     const cancellation: { first?: number; second?: number } = {}
     let observer: MutationObserver | undefined
+    const sceneReady = () =>
+      frame?.querySelector('[data-acceptance-scene-ready="false"]') === null
+    const cancelStablePaint = () => {
+      if (cancellation.first !== undefined) cancelAnimationFrame(cancellation.first)
+      if (cancellation.second !== undefined) cancelAnimationFrame(cancellation.second)
+      cancellation.first = undefined
+      cancellation.second = undefined
+    }
     const scheduleStablePaint = () => {
-      if (frame?.querySelector('[data-acceptance-scene-ready="false"]') !== null) return false
-      observer?.disconnect()
+      if (!sceneReady()) {
+        cancelStablePaint()
+        return false
+      }
+      if (cancellation.first !== undefined || cancellation.second !== undefined) return true
       cancellation.first = requestAnimationFrame(() => {
-        cancellation.second = requestAnimationFrame(() => setStatus('ready'))
+        cancellation.first = undefined
+        if (!sceneReady()) return
+        cancellation.second = requestAnimationFrame(() => {
+          cancellation.second = undefined
+          if (!sceneReady()) return
+          observer?.disconnect()
+          setStatus('ready')
+        })
       })
       return true
     }
-    if (!scheduleStablePaint() && frame !== null) {
+    if (frame !== null) {
       observer = new MutationObserver(scheduleStablePaint)
       observer.observe(frame, { attributes: true, childList: true, subtree: true })
+      scheduleStablePaint()
     }
     return () => {
       observer?.disconnect()
-      if (cancellation.first !== undefined) cancelAnimationFrame(cancellation.first)
-      if (cancellation.second !== undefined) cancelAnimationFrame(cancellation.second)
+      cancelStablePaint()
     }
   }, [request.id, request.viewport, status])
 

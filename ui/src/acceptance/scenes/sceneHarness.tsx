@@ -32,8 +32,21 @@ export default function AcceptanceProductScene({
     let observer: MutationObserver | undefined
     let firstFrame: number | undefined
     let secondFrame: number | undefined
+    const cancelStablePaint = () => {
+      if (firstFrame !== undefined) cancelAnimationFrame(firstFrame)
+      if (secondFrame !== undefined) cancelAnimationFrame(secondFrame)
+      firstFrame = undefined
+      secondFrame = undefined
+    }
+    const invalidate = () => {
+      cancelStablePaint()
+      if (completed.current) {
+        completed.current = false
+        setSettled(false)
+      }
+    }
+    const visuallyReady = () => workspaceVisualsSettled(document) && ready()
     const attempt = () => {
-      if (completed.current) return
       const choose = document.querySelector<HTMLElement>(
         '.empty-project [aria-label="选择项目文件夹"], .empty-project button',
       )
@@ -44,11 +57,26 @@ export default function AcceptanceProductScene({
         }
         return
       }
-      if (!workspaceVisualsSettled(document) || !ready()) return
-      completed.current = true
-      observer?.disconnect()
+      if (!visuallyReady()) {
+        invalidate()
+        return
+      }
+      if (completed.current || firstFrame !== undefined || secondFrame !== undefined) return
       firstFrame = requestAnimationFrame(() => {
-        secondFrame = requestAnimationFrame(() => setSettled(true))
+        firstFrame = undefined
+        if (!visuallyReady()) {
+          invalidate()
+          return
+        }
+        secondFrame = requestAnimationFrame(() => {
+          secondFrame = undefined
+          if (!visuallyReady()) {
+            invalidate()
+            return
+          }
+          completed.current = true
+          setSettled(true)
+        })
       })
     }
     observer = new MutationObserver(attempt)
@@ -56,8 +84,7 @@ export default function AcceptanceProductScene({
     attempt()
     return () => {
       observer?.disconnect()
-      if (firstFrame !== undefined) cancelAnimationFrame(firstFrame)
-      if (secondFrame !== undefined) cancelAnimationFrame(secondFrame)
+      cancelStablePaint()
     }
   }, [ready])
   return (

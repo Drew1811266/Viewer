@@ -76,6 +76,31 @@ describe('Viewer visual acceptance root protocol', () => {
     expect(root).toHaveAttribute('data-acceptance-status', 'ready')
   })
 
+  it('restarts its stable paint frames when the scene readiness boundary reopens', async () => {
+    function PendingScene() {
+      return (
+        <section aria-label="late thumbnail workspace" data-acceptance-scene-ready="false">
+          Workspace
+        </section>
+      )
+    }
+    const registry: AcceptanceSceneRegistry = { 'PRE-01': PendingScene }
+    const { container } = render(<AcceptanceApp request={request} sceneRegistry={registry} />)
+    const root = container.querySelector<HTMLElement>('[data-acceptance-id="PRE-01"]')
+    const scene = screen.getByRole('region', { name: 'late thumbnail workspace' })
+
+    await setSceneReadiness(scene, 'true')
+    act(() => runNextFrame(frames, 0))
+    await setSceneReadiness(scene, 'false')
+    act(() => runNextFrame(frames, 16))
+    expect(root).toHaveAttribute('data-acceptance-status', 'pending')
+
+    await setSceneReadiness(scene, 'true')
+    act(() => runNextFrame(frames, 32))
+    act(() => runNextFrame(frames, 48))
+    expect(root).toHaveAttribute('data-acceptance-status', 'ready')
+  })
+
   it('reports one bounded scene failure outside the screenshot root without retrying', () => {
     const errorLog = vi.spyOn(console, 'error').mockImplementation(() => undefined)
     const registry: AcceptanceSceneRegistry = {
@@ -133,4 +158,11 @@ function runNextFrame(
 ) {
   const frame = frames.shift()
   if (frame !== undefined && !frame.cancelled) frame.callback(timestamp)
+}
+
+async function setSceneReadiness(scene: HTMLElement, value: 'true' | 'false') {
+  await act(async () => {
+    scene.setAttribute('data-acceptance-scene-ready', value)
+    await Promise.resolve()
+  })
 }

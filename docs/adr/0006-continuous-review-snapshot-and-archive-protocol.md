@@ -2,7 +2,7 @@
 
 > Status: Active
 >
-> Decision: Accepted for Phase A and Tasks 6–10 contracts; Phase B checkpoint verification is in progress.
+> Decision: Accepted and verified for Phases A–B (Tasks 1–10); application/UI/Agent integration remains pending.
 >
 > Date: 2026-08-27
 

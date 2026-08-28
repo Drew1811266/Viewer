@@ -30,6 +30,7 @@ This inventory records the direct third-party dependencies in the Viewer 0.1 loc
 | `pulldown-cmark` | 0.13.4 | MIT | Parse Markdown into a filtered event stream before HTML sanitization | [raphlinus/pulldown-cmark](https://github.com/raphlinus/pulldown-cmark) | Yes |
 | `rusqlite` | 0.40.1 | MIT | Portable metadata and rebuildable session/search indexes | [rusqlite/rusqlite](https://github.com/rusqlite/rusqlite) | Yes |
 | `serde` | 1.0.228 | MIT OR Apache-2.0 | Typed serialization at IPC and persistence boundaries | [serde-rs/serde](https://github.com/serde-rs/serde) | Yes |
+| `serde_json` | 1.0.150 | MIT OR Apache-2.0 | Review protocol JSON and bounded desktop DTO response measurement; also fixtures and diagnostics | [serde-rs/json](https://github.com/serde-rs/json) | Yes |
 | `sha2` | 0.10.9 | MIT OR Apache-2.0 | Verify bundled ffprobe runtime integrity and immutable video-fixture identities | [RustCrypto/hashes](https://github.com/RustCrypto/hashes) | Yes |
 | `thiserror` | 2.0.18 | MIT OR Apache-2.0 | Structured domain, application and adapter errors | [dtolnay/thiserror](https://github.com/dtolnay/thiserror) | Yes |
 | `tokio` | 1.52.3 | MIT | Async tasks, cancellation, synchronization and timers | [tokio-rs/tokio](https://github.com/tokio-rs/tokio) | Yes |
@@ -67,7 +68,6 @@ This inventory records the direct third-party dependencies in the Viewer 0.1 loc
 
 | Package | Version | License | Viewer purpose | Upstream | Distributed |
 | --- | --- | --- | --- | --- | --- |
-| `serde_json` | 1.0.150 | MIT OR Apache-2.0 | Test fixtures, benchmark reports and security configuration tests | [serde-rs/json](https://github.com/serde-rs/json) | No, test only |
 | `tempfile` | 3.27.0 | MIT OR Apache-2.0 | Isolated filesystem and crash-recovery tests | [Stebalien/tempfile](https://github.com/Stebalien/tempfile) | No, test only |
 | `@testing-library/jest-dom` | 6.9.1 | MIT | DOM assertions | [testing-library/jest-dom](https://github.com/testing-library/jest-dom) | No, test only |
 | `@testing-library/react` | 16.3.2 | MIT | React component tests | [testing-library/react-testing-library](https://github.com/testing-library/react-testing-library) | No, test only |

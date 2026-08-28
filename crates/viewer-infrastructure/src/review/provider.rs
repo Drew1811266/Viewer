@@ -20,9 +20,15 @@ pub struct ProjectReviewRepositoryProvider {
 }
 
 impl ProjectReviewRepositoryProvider {
-    /// Resolves the unique manual stream without creating metadata or acquiring a write lease.
-    pub fn manual_review_stream(&self) -> Result<Option<ReviewStreamId>, ReviewCommitError> {
-        super::continuous::manual_context::resolve(&self.project_root, self.project_id)
+    /// Resolves the unique manual stream, or a stable empty context before the first commit.
+    /// Never creates metadata or acquires a write lease.
+    pub fn manual_review_stream(&self) -> Result<ReviewStreamId, ReviewCommitError> {
+        Ok(
+            super::continuous::manual_context::resolve(&self.project_root, self.project_id)?
+                .unwrap_or_else(|| {
+                    super::continuous::manual_context::empty_stream(self.project_id)
+                }),
+        )
     }
 
     pub fn migrate_with_faults(

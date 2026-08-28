@@ -23,6 +23,7 @@ libc.workspace = true
 objc2-app-kit.workspace = true
 pulldown-cmark.workspace = true
 serde.workspace = true
+serde_json.workspace = true
 tauri = { version = "2", features = ["macos-private-api"] }
 tauri-plugin-dialog = "2"
 thiserror.workspace = true
@@ -39,7 +40,6 @@ dispatch2 = { workspace = true, optional = true }
 objc2.workspace = true
 
 [dev-dependencies]
-serde_json.workspace = true
 tempfile.workspace = true
 viewer-test-support = { path = "../crates/viewer-test-support" }
 

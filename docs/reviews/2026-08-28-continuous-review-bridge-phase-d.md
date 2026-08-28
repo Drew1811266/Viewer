@@ -11,7 +11,8 @@
 `codex/continuous-review-domain`，实现起点 `afb50d9`。主代理实施，结束前独立只读复核。
 不启用新 UI、不迁移真实旧项目、不读取或改动下载/测试图、不改原媒体。
 所有创建评审元数据的测试使用自有 TempDir，静态夹具仅复制后使用。
-没有新增依赖、网络或文件系统权限，没有修改架构趋势基线。
+没有引入新依赖包/版本、网络或文件系统权限，没有修改架构趋势基线。Desktop 将已锁定并在
+依赖白名单中的 serde_json 从测试依赖提升为运行依赖，以流式度量 DTO 响应；通知清单已更新。
 
 ## 桥接对应关系
 
@@ -73,7 +74,28 @@
 `target/continuous-review-task16-verify-clean-stable.log`。包含协议 54 项、UI 133 文件 / 1144 项
 通过（既有 1 跳过）、workspace Rust、Clippy、格式、架构边界、安全和依赖政策。
 先前的视频超时测试本次通过，视频源码未改动；保留初次失败事实。
-独立只读复核：待执行。首次保存失败后的重开恢复、响应资源边界继续补查，不提前验收。
+独立只读复核固定范围 `afb50d9..db456ef`：未发现 Critical，3 项 Important、1 项 Minor。
+不将全仓门禁通过等同于交叉边界无缺陷；以下修正需再次门禁和复验：
+
+1. 首次保存失败后仅有 recovery、没有 index，随机人工 Stream 会使重开过滤掉旧输入。
+   真实桌面 SourceChanged→重开测试先 RED，改为固定 project ID 命名空间派生后 GREEN；
+   既有人工 Stream 优先，生产 Stream 不被选中，无元数据写入。派生规则见 ADR 0006。
+2. 排队中的已提交信封重试被取消，会被 Desktop 提前截断而丢回执。真实存储提交→持有 gate→
+   重试排队→cancel 测试 RED 后，为 apply 保留 Application 既有提交查询路径，GREEN。
+   其余查询仍提前取消；未提交的取消不会生成成功状态。
+3. RestorePlan 的共享 Arc 在 JSON 中会重复展开。以 65,536 字节正文 / 10,000 目标的共享
+   Domain 计划验证 64 MiB 流式输出预算；不分配约 625 MiB 展开 JSON，不返回部分成功，
+   已知提交时仍返回 CommittedViewUnavailable + 原 receipt。11 个命令统一经过该边界。
+4. 旧视频位置可能超过 JavaScript 精确整数。负例确认旧编码会输出 9007199254740993；
+   新编码明确拒绝该位置/区间，精确边界仍可往返，避免静默舍入。
+
+专项日志为 `target/continuous-review-task16-first-recovery-{red,green}.log`、
+`target/continuous-review-task16-queued-retry-{red,green}.log`、
+`target/continuous-review-task16-response-budget-{red,green}.log` 与
+`target/continuous-review-task16-response-and-anchor-green.log`。response-budget-green 日志
+同时记录了 Anchor 负例的失败，是其 RED 证据，不是整份测试的最终通过证明。
+
+修正后的全仓门禁和独立复验：待执行。
 
 Task 17–23 未开始；本记录不声称新 UI 已可使用，也不替代后续真实交互验收。
 签名、公证、正式安装包、上架、公开发布和发售不属于当前开发任务或验收条件。

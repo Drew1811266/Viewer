@@ -7,7 +7,8 @@ use viewer_application::{
     review_evidence::*,
 };
 use viewer_domain::{
-    EntityId, ReviewCommandId, SessionId, review::FeedbackAnchor, search::Generation,
+    EntityId, ReviewCommandId, ReviewStreamId, SessionId, review::FeedbackAnchor,
+    search::Generation,
 };
 use viewer_platform_macos::image::MacReviewEvidenceRenderer;
 
@@ -16,6 +17,82 @@ impl ProjectProbePort for Probe {
     fn probe(&self, _: &Path) -> Result<ProjectAccess, ProjectProbeError> {
         Ok(ProjectAccess::ReadWrite)
     }
+}
+
+#[tokio::test]
+async fn review_workspace_cancelled_queued_retry_still_reports_the_committed_receipt() {
+    let root = tempfile::tempdir().unwrap();
+    let cache = tempfile::tempdir().unwrap();
+    fs::copy(
+        viewer_test_support::image_fixtures::image_fixture("alpha.png"),
+        root.path().join("image.png"),
+    )
+    .unwrap();
+    let runtime = Arc::new(DesktopRuntime::new(
+        cache.path().to_path_buf(),
+        Arc::new(Probe),
+    ));
+    let opened = runtime.open_project(root.path()).await.unwrap();
+    runtime.wait_for_scan().await.unwrap();
+    let id: SessionId = opened.session_id.parse().unwrap();
+    let generation = Generation::new(opened.generation);
+    let FolderWorkspaceDto::Content { images, .. } = runtime.query_folder(None).await.unwrap()
+    else {
+        panic!("image missing")
+    };
+    let entity: EntityId = images[0].entity_id.parse().unwrap();
+    let asset = runtime
+        .prepare_review_assets(id, generation, vec![entity])
+        .await
+        .unwrap()[0]
+        .asset
+        .0
+        .id;
+    let envelope = runtime
+        .prepare_review_command(
+            id,
+            generation,
+            ReviewCommandId::new(),
+            None,
+            ReviewWorkspaceCommand::SaveFeedback {
+                feedback_id: None,
+                text: "保留原文".into(),
+                targets: vec![TargetEdit::Add {
+                    asset_version_id: asset,
+                    anchor: FeedbackAnchor::Asset,
+                }],
+            },
+        )
+        .await
+        .unwrap();
+    let saved = runtime
+        .apply_review_command(id, generation, envelope.clone())
+        .await
+        .unwrap();
+    let session = runtime
+        .session
+        .lock()
+        .await
+        .as_ref()
+        .unwrap()
+        .review_workspace
+        .clone();
+    let gate = session.gate.lock().await;
+    let owner = runtime.clone();
+    let retry =
+        tokio::spawn(async move { owner.apply_review_command(id, generation, envelope).await });
+    tokio::time::timeout(Duration::from_secs(10), async {
+        while session.tasks.cancel() == 0 {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    drop(gate);
+    let error = retry.await.unwrap().unwrap_err();
+    assert_eq!(error.code, Code::CommittedViewUnavailable);
+    assert_eq!(error.committed_receipt.unwrap().0, saved.receipt);
+    runtime.close_project().await.unwrap();
 }
 struct GatedRenderer {
     real: MacReviewEvidenceRenderer,

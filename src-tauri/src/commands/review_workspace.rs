@@ -16,6 +16,7 @@ pub async fn get_review_workspace(
         .get_review_workspace(request.session_id, Generation::new(request.generation))
         .await
         .map(Into::into)
+        .and_then(|value| review_response(value, None))
 }
 #[tauri::command]
 pub async fn prepare_review_assets(
@@ -29,6 +30,7 @@ pub async fn prepare_review_assets(
             request.entity_ids,
         )
         .await
+        .and_then(|value| review_response(value, None))
 }
 #[tauri::command]
 pub async fn prepare_review_command(
@@ -45,6 +47,7 @@ pub async fn prepare_review_command(
         )
         .await
         .map(Into::into)
+        .and_then(|value| review_response(value, None))
 }
 #[tauri::command]
 pub async fn apply_review_command(
@@ -58,7 +61,10 @@ pub async fn apply_review_command(
             request.envelope,
         )
         .await
-        .map(Into::into)
+        .and_then(|value| {
+            let receipt = value.receipt;
+            review_response(value.into(), Some(receipt))
+        })
 }
 #[tauri::command]
 pub async fn preview_review_archive(
@@ -73,6 +79,7 @@ pub async fn preview_review_archive(
         )
         .await
         .map(Into::into)
+        .and_then(|value| review_response(value, None))
 }
 #[tauri::command]
 pub async fn preview_review_restore(
@@ -88,6 +95,7 @@ pub async fn preview_review_restore(
         )
         .await
         .map(Into::into)
+        .and_then(|value| review_response(value, None))
 }
 #[tauri::command]
 pub async fn get_review_history(
@@ -102,6 +110,7 @@ pub async fn get_review_history(
         )
         .await
         .map(Into::into)
+        .and_then(|value| review_response(value, None))
 }
 #[tauri::command]
 pub async fn inspect_review_usage(
@@ -116,6 +125,7 @@ pub async fn inspect_review_usage(
         )
         .await
         .map(Into::into)
+        .and_then(|value| review_response(value, None))
 }
 #[tauri::command]
 pub async fn inspect_review_migration(
@@ -126,6 +136,7 @@ pub async fn inspect_review_migration(
         .inspect_review_migration(request.session_id, Generation::new(request.generation))
         .await
         .map(Into::into)
+        .and_then(|value| review_response(value, None))
 }
 #[tauri::command]
 pub async fn get_review_evidence(
@@ -141,6 +152,7 @@ pub async fn get_review_evidence(
             request.role,
         )
         .await
+        .and_then(|value| review_response(value, None))
 }
 #[tauri::command]
 pub async fn cancel_review_workspace_task(
@@ -150,4 +162,5 @@ pub async fn cancel_review_workspace_task(
     runtime
         .cancel_review_workspace_task(request.session_id, Generation::new(request.generation))
         .await
+        .and_then(|value| review_response(value, None))
 }

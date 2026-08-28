@@ -9,13 +9,24 @@ use viewer_domain::{
 #[test]
 fn review_workspace_context_lookup_does_not_create_metadata() {
     let (root, provider) = setup();
-    assert_eq!(provider.manual_review_stream().unwrap(), None);
+    let first = provider.manual_review_stream().unwrap();
+    let reopened = viewer_infrastructure::review::ProjectReviewRepositoryProvider::new(
+        root.path(),
+        viewer_domain::ProjectId::from_u128(1),
+    );
+    assert_eq!(first, reopened.manual_review_stream().unwrap());
+    let other = viewer_infrastructure::review::ProjectReviewRepositoryProvider::new(
+        root.path(),
+        viewer_domain::ProjectId::from_u128(2),
+    );
+    assert_ne!(first, other.manual_review_stream().unwrap());
     assert!(!root.path().join(".viewer").exists());
 }
 
 #[test]
 fn review_workspace_manual_context_never_selects_or_retargets_production() {
     let (_root, provider) = setup();
+    let empty_manual = provider.manual_review_stream().unwrap();
     let mut production = request(3, None);
     production.production = Some(ProductionScope {
         task_id: ProductionId::parse("task-a").unwrap(),
@@ -26,7 +37,7 @@ fn review_workspace_manual_context_never_selects_or_retargets_production() {
         .unwrap()
         .commit(production)
         .unwrap();
-    assert_eq!(provider.manual_review_stream().unwrap(), None);
+    assert_eq!(provider.manual_review_stream().unwrap(), empty_manual);
     let mut manual = request(4, None);
     manual.next.state.stream_id = ReviewStreamId::from_u128(9);
     provider
@@ -36,7 +47,7 @@ fn review_workspace_manual_context_never_selects_or_retargets_production() {
         .unwrap();
     assert_eq!(
         provider.manual_review_stream().unwrap(),
-        Some(ReviewStreamId::from_u128(9))
+        ReviewStreamId::from_u128(9)
     );
 }
 

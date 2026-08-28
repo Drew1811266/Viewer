@@ -160,6 +160,12 @@ restart retries do not regenerate IDs. Context is selected by the backend's uniq
 cannot be retargeted by an incoming envelope. A committed write with an unavailable refreshed view
 retains its receipt in the public result, distinct from an uncommitted failure.
 
+Before any manual stream is committed, its ID is derived from the canonical project ID with the
+fixed BLAKE3 derivation context `viewer.review.manual-stream/1` (first 16 bytes, big-endian UUID
+identity). Reopening therefore finds failed-first-save recovery without creating a successful index
+or adopting a stream from untrusted recovery records. Existing indexed/legacy manual streams win;
+production streams never become the fallback. This derivation is stable across sessions and paths.
+
 The session owns continuous-review work. Cancel affects currently registered work only. Close revokes
 image authorization first, cancels work, waits for it to exit and then cleans up resources. Cancellation
 continues through preparation, rendering and post-commit view refresh; every asynchronous reply is
@@ -181,8 +187,20 @@ review tokens when necessary. A caller can request committed evidence again by s
 eviction never deletes source files, history, evidence or another session's tokens. A prebinding call
 also caps each batch at 128 entities / 64 MiB PNG bytes, so registration cannot evict earlier previews
 from that same returned batch. URLs are temporary, not persistent evidence identifiers.
-Cancellation after a known commit, including an idempotent retry, may stop its view refresh but
-must still report the same committed receipt.
+Cancellation after a known commit, including an idempotent retry queued behind another operation,
+may stop its view refresh but must still report the same committed receipt. Accepted apply calls
+reach Application's command lookup before ordinary cancellation shortcuts; other queries retain
+their early cancellation checks. Close still waits for accepted work before resource cleanup.
+
+All 11 desktop responses are measured by a bounded streaming JSON sink before Tauri allocates the
+encoded response. The 64 MiB encoded-byte ceiling includes repeated Arc content, escapes and array
+overhead; over-limit queries fail explicitly, and apply-response failures retain the committed
+receipt. No partial successful payload is returned. This bounded extra serialization pass trades
+CPU for a fixed output limit without first allocating the expanded JSON. It does not impose a total
+incoming IPC allocation limit. Video Anchor output uses the same JavaScript-exact integer checks
+as other fields, including legacy unknown-duration values; unrepresentable values are rejected.
+Desktop promotes the already locked/approved `serde_json` dependency from test-only to runtime for
+this boundary. No new package or version is introduced; its runtime purpose is in third-party notices.
 
 ### Phase D reader architecture amendment — accepted 2026-08-28
 

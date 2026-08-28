@@ -100,7 +100,7 @@ impl DesktopRuntime {
     ) -> Result<ReviewApplyResult, Error> {
         let session = self.continuous_session(id, generation, true).await?;
         let result = session
-            .run(move |b, cancel| async move {
+            .run_apply(move |b, cancel| async move {
                 b.service
                     .apply_with_cancellation(envelope, cancel)
                     .await

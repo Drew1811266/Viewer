@@ -267,7 +267,19 @@ impl WireValue for Point {
 }
 impl WireValue for FeedbackAnchor {
     fn encode<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
-        crate::dto::ReviewAnchorDto::from(self.clone()).serialize(s)
+        // Legacy unknown-duration video may contain any u64; the old DTO has no JS-exact guard.
+        match self {
+            Self::VideoPoint { position_us } => Anchor::VideoPoint {
+                position_us: *position_us,
+            }
+            .serialize(s),
+            Self::VideoRange { start_us, end_us } => Anchor::VideoRange {
+                start_us: *start_us,
+                end_us: *end_us,
+            }
+            .serialize(s),
+            _ => crate::dto::ReviewAnchorDto::from(self.clone()).serialize(s),
+        }
     }
     fn decode<'de, D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
         let invalid = |_| de::Error::custom("invalid review anchor");

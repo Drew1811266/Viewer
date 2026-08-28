@@ -11,7 +11,7 @@ use viewer_application::{
     BrowseIndexPort, ClockPort, ImagePort, ProjectAccess, ReviewTaskCancellation,
     review_workspace::*,
 };
-use viewer_domain::{ProjectId, RelativePath, ReviewStreamId};
+use viewer_domain::{ProjectId, RelativePath};
 use viewer_infrastructure::{
     review::{
         ContinuousReviewCommandCodec, IndexedReviewAssetCatalog, ProjectReviewRepositoryProvider,
@@ -63,11 +63,36 @@ impl ReviewWorkspaceSession {
         self: &Arc<Self>,
         operation: impl FnOnce(Arc<Initialized>, ReviewTaskCancellation) -> F + Send + 'static,
     ) -> Result<T, Error> {
+        self.run_with_policy(false, operation).await
+    }
+
+    /// An accepted apply must reconcile a previously committed command even if cancelled while
+    /// queued. Application owns cancellation after command lookup and preserves known receipts.
+    pub(super) async fn run_apply<
+        T: Send + 'static,
+        F: Future<Output = Result<T, Error>> + Send + 'static,
+    >(
+        self: &Arc<Self>,
+        operation: impl FnOnce(Arc<Initialized>, ReviewTaskCancellation) -> F + Send + 'static,
+    ) -> Result<T, Error> {
+        self.run_with_policy(true, operation).await
+    }
+
+    async fn run_with_policy<
+        T: Send + 'static,
+        F: Future<Output = Result<T, Error>> + Send + 'static,
+    >(
+        self: &Arc<Self>,
+        reconcile_commit: bool,
+        operation: impl FnOnce(Arc<Initialized>, ReviewTaskCancellation) -> F + Send + 'static,
+    ) -> Result<T, Error> {
         let owner = self.clone();
         self.tasks
             .run(move |cancel| async move {
                 let _serial = owner.gate.lock().await;
-                check_cancelled(&cancel)?;
+                if !reconcile_commit {
+                    check_cancelled(&cancel)?;
+                }
                 let initialized = owner
                     .initialized
                     .get_or_try_init(|| async {
@@ -78,7 +103,9 @@ impl ReviewWorkspaceSession {
                     })
                     .await?
                     .clone();
-                check_cancelled(&cancel)?;
+                if !reconcile_commit {
+                    check_cancelled(&cancel)?;
+                }
                 operation(initialized, cancel).await
             })
             .await
@@ -100,8 +127,7 @@ fn initialize(config: ReviewWorkspaceConfig) -> Result<Arc<Initialized>, Error> 
     ));
     let stream = provider
         .manual_review_stream()
-        .map_err(ReviewWorkspaceError::from)?
-        .unwrap_or_else(ReviewStreamId::new);
+        .map_err(ReviewWorkspaceError::from)?;
     let context = ReviewWorkspaceContext {
         project_id: config.project_id,
         stream_id: stream,

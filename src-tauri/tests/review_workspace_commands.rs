@@ -229,14 +229,29 @@ async fn review_workspace_unprepared_and_changed_source_never_silently_rebind() 
             .code,
         ReviewWorkspaceErrorCode::SourceChanged
     );
+    let failed = runtime
+        .get_review_workspace(session, generation)
+        .await
+        .unwrap();
+    assert!(failed.current.is_none());
     assert!(
-        runtime
-            .get_review_workspace(session, generation)
-            .await
-            .unwrap()
-            .current
-            .is_none()
+        failed
+            .recovery
+            .iter()
+            .any(|d| d.editor_input.text == "袖口收紧，保留材质")
     );
+    runtime.close_project().await.unwrap();
+    let (reopened, new_generation, _) = open(&runtime, root.path()).await;
+    let resumed = runtime
+        .get_review_workspace(reopened, new_generation)
+        .await
+        .unwrap();
+    assert_eq!(
+        resumed.stream_id, failed.stream_id,
+        "a failed first save has no committed index but still owns recovery input"
+    );
+    assert_eq!(resumed.recovery, failed.recovery);
+    assert!(resumed.current.is_none());
     runtime.close_project().await.unwrap();
 }
 

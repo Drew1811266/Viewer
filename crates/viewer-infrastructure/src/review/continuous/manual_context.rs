@@ -4,6 +4,18 @@ use std::path::Path;
 use viewer_application::review_workspace::ReviewCommitError;
 use viewer_domain::{ProjectId, ReviewStreamId};
 
+/// Stable before the first committed index, including failed-save recovery across sessions.
+/// Project identity, not paths or untrusted recovery candidates, determines this empty context.
+pub(in crate::review) fn empty_stream(project: ProjectId) -> ReviewStreamId {
+    let digest = blake3::derive_key(
+        "viewer.review.manual-stream/1",
+        project.to_string().as_bytes(),
+    );
+    ReviewStreamId::from_u128(u128::from_be_bytes(
+        digest[..16].try_into().expect("fixed digest"),
+    ))
+}
+
 /// Read-only selection from one index observation, including a legacy manual active draft.
 /// Absence is not permission to adopt a producer stream or migrate a project.
 pub(in crate::review) fn resolve(

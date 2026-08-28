@@ -7,6 +7,7 @@ mod legacy;
 mod plans;
 mod recovery;
 mod requests;
+mod response;
 mod selection;
 mod view;
 mod wire;
@@ -14,6 +15,7 @@ mod wire;
 pub use error::*;
 pub use evidence::{PreparedReviewAssetDto, ReviewEvidenceImageDto};
 pub use requests::*;
+pub use response::review_response;
 pub use wire::ReviewWire;
 pub type PreparedReviewCommandDto =
     ReviewWire<viewer_application::review_workspace::ReviewCommandEnvelope>;

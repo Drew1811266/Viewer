@@ -281,3 +281,5 @@ The `continuous_review_state`, `continuous_review_mutation`, `continuous_review_
 `continuous_review_restore` and `continuous_review_delta` integration suites cover the pure rules.
 Checkpoint evidence and any contract refinements are recorded in the
 [Phase A record](../reviews/2026-08-27-continuous-review-domain-phase-a.md).
+Application, declaration, migration and recovery checkpoint evidence is recorded in the
+[Phase C record](../reviews/2026-08-27-continuous-review-application-phase-c.md).

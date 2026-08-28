@@ -12,16 +12,17 @@
 
 > Status: Active
 >
-> 执行状态：阶段 A（任务 1–5）与阶段 B（任务 6–10）已完成，累计 10 / 23。
-> 阶段 B 最终实现 `8c846a3` 已通过完整 `pnpm verify:clean` 和只读独立复验，检查点 B 完成。
-> 下一阶段从 Task 11 的 Application 用例接入开始；任务 11–23 尚未完成。
-> 新仓储仅用于隔离测试，未接入 UI、迁移或 Agent 读取入口。
+> 执行状态：阶段 A–C（任务 1–13）已完成，累计 13 / 23。
+> 阶段 C 最终实现 `21edbf6` 已通过完整 `pnpm verify:clean` 和只读独立复验，检查点 C 完成。
+> 下一阶段从 Task 14 的独立读取器安全 IO 与摘要开始；任务 14–23 尚未完成。
+> 应用用例、声明和迁移仅在隔离工程验证；UI、桌面组装和 Agent 读取入口尚未切换。
 >
 > 计划基线：`a539f8df5f3e0f3239110df44515ba7cb583e308`；实施基线：`d7abb9961f377ae257c3283ef7893218ec0c53f9`。
 > 阶段 A 在用户授权的 `.worktrees/continuous-review-domain`、`codex/continuous-review-domain` 内实施；原分支未改动。
 > 阶段 A 证据见[阶段 A 记录](../../reviews/2026-08-27-continuous-review-domain-phase-a.md)；
 > 暂停事实见[阶段 B 暂停检查点](../../progress/2026-08-27-continuous-review-phase-b-paused-checkpoint.md)；
-> 恢复后的状态见[阶段 B 记录](../../reviews/2026-08-27-continuous-review-persistence-phase-b.md)。
+> 阶段 B 结果见[阶段 B 记录](../../reviews/2026-08-27-continuous-review-persistence-phase-b.md)；
+> 最新状态与后续限制见[阶段 C 记录](../../reviews/2026-08-27-continuous-review-application-phase-c.md)。
 
 ## Global Constraints
 
@@ -563,7 +564,8 @@ let disposition = if observed_hash == captured_hash {
 阶段 B 复审后续项：接入用例时量测多存档／长历史的保存与读取成本。目前每次提交会核验全部
 已索引 archive／usage，并重复追溯父链；单次 10,000 节点边界不等于已证明交互延迟达标。
 若量测需要优化，复用单次操作内的有界验证上下文，不能省略摘要、祖先关系或证据验证，
-也不能跨当前索引复用未经核验的缓存。此项尚未量测，不是已完成的性能保证。
+也不能跨当前索引复用未经核验的缓存。阶段 C 已完成隔离量测和单次操作复用，见阶段记录；
+它不是大规模实际 UI 延迟的性能保证。
 
 **Files:** Create `crates/viewer-application/src/review_workspace/service.rs`、`crates/viewer-application/src/review_workspace/editing.rs`、`crates/viewer-application/src/review_workspace/archiving.rs`、`crates/viewer-application/src/review_workspace/history.rs`、`crates/viewer-application/src/review_workspace/projection.rs`、`crates/viewer-application/tests/continuous_review_service.rs`、`crates/viewer-application/tests/support/continuous_review.rs`；`crates/viewer-infrastructure/src/review/continuous/command.rs`。Modify `crates/viewer-application/src/review_workspace/mod.rs`、`crates/viewer-application/src/review_workspace/ports.rs`、`crates/viewer-infrastructure/src/review/continuous/mod.rs`。
 
@@ -578,7 +580,7 @@ MigrationInspection／MigrationChoice／MigrationPlan／MigrationBinding 数据�
 声明，12／13 分别实现核验行为。未注入相应能力时返回 CapabilityUnavailable，不伪造成功，
 这些入口在 Task 21 前不向普通用户开放。后续模块直接重用类型，不重复声明同名模型。
 
-- [ ] **Step 1 — RED：首条意见可读、第二张无需完成前一张。** support 文件实现有界内存 Repository、固定 Clock、可取消 FakeAsset／FakeEvidence 以及真实字段构造器；所有 Fake 都实现上述 port，不生产依赖 Infrastructure。
+- [x] **Step 1 — RED：首条意见可读、第二张无需完成前一张。** support 文件实现有界内存 Repository、固定 Clock、可取消 FakeAsset／FakeEvidence 以及真实字段构造器；所有 Fake 都实现上述 port，不生产依赖 Infrastructure。
 
 ```rust
 let first = service.apply(first_envelope).await.unwrap();
@@ -588,8 +590,8 @@ assert_eq!(second.view.current.as_ref().unwrap().state.feedback.len(), 2);
 ```
 
 两个 envelope 由 service.prepare 获取；第二次 expected 使用第一次成功 snapshot ID。support fixture 使用固定 UUID、非空文字、两张 AssetVersion、已核验最小 PNG，不虚构完成状态。
-- [ ] **Step 2 — RED。** `cargo test --locked -p viewer-application --test continuous_review_service`。
-- [ ] **Step 3 — 编排小用例。** prepare/validate → 保存 recovery → 捕获／复用证据 → Domain 转移 → 最终源核验和 CAS → receipt/view。Service 不亲自序列化 JSON；editing／archiving／history／projection 各自只负责自己的用例。
+- [x] **Step 2 — RED。** `cargo test --locked -p viewer-application --test continuous_review_service`。
+- [x] **Step 3 — 编排小用例。** prepare/validate → 保存 recovery → 捕获／复用证据 → Domain 转移 → 最终源核验和 CAS → receipt/view。Service 不亲自序列化 JSON；editing／archiving／history／projection 各自只负责自己的用例。
 
 ```rust
 let plan = plan_archive(&current.state, &bases, &selection, &coverage)?;
@@ -597,9 +599,9 @@ if plan.is_noop() { return Err(ReviewWorkspaceError::NoChanges); }
 ```
 
 复用 Task 3 的 `is_noop()`；预览后 C 改变返回 StaleSnapshot，并要求新的预览，不自动扩大范围。
-- [ ] **Step 4 — 测试保存失败不丢输入、空标记不提交、取消只保留 recovery、当前空仍有身份、源变化进入待确认、历史继续提出、部分恢复、过期预览和幂等 receipt 不回退当前。** shared feedback 文字修改必须更新全部目标使用的 textRevision；同目标不能跨两种投影。
-- [ ] **Step 5 — GREEN。** `cargo test --locked -p viewer-application && cargo test --locked -p viewer-infrastructure --test continuous_review_repository && pnpm architecture:boundaries`。
-- [ ] **Step 6 — 提交。** `git commit -m "feat(review): coordinate continuous editing and manual archives"`。
+- [x] **Step 4 — 测试保存失败不丢输入、空标记不提交、取消只保留 recovery、当前空仍有身份、源变化进入待确认、历史继续提出、部分恢复、过期预览和幂等 receipt 不回退当前。** shared feedback 文字修改必须更新全部目标使用的 textRevision；同目标不能跨两种投影。
+- [x] **Step 5 — GREEN。** `cargo test --locked -p viewer-application && cargo test --locked -p viewer-infrastructure --test continuous_review_repository && pnpm architecture:boundaries`。
+- [x] **Step 6 — 提交。** `git commit -m "feat(review): coordinate continuous editing and manual archives"`。
 
 ### Task 12: 外部使用依据声明的显式导入与核验
 
@@ -612,7 +614,7 @@ Service 增加 `with_usage_importer(Arc<dyn UsageImportPort>) -> Self` 和 async
 扫描文件系统。preview 保存于当前 service 的有界候选集合，按 id＋digest 查找；重启后未采用
 声明需要重新显式导入，不能从临时恢复文件猜为已采用。
 
-- [ ] **Step 1 — RED：合法声明也不证明已返工。** 临时工程中写 producer 自有 `handoff/usage.json`，其 basis 指向已提交 B，仅包含图 1 的目标键。
+- [x] **Step 1 — RED：合法声明也不证明已返工。** 临时工程中写 producer 自有 `handoff/usage.json`，其 basis 指向已提交 B，仅包含图 1 的目标键。
 
 ```rust
 let preview = importer.inspect(&RelativePath::parse("handoff/usage.json").unwrap()).unwrap();
@@ -622,8 +624,8 @@ assert!(!project.path().join(".viewer/reviews/usage").exists());
 ```
 
 测试对象 importer 是本任务的 `ProjectUsageImporter`，构造参数为项目根、项目／Stream 身份和只读 repository；不把声明自由文本作为路径或脚本解释。
-- [ ] **Step 2 — RED。** `cargo test --locked -p viewer-infrastructure --test continuous_review_usage`。
-- [ ] **Step 3 — 实现结构和引用核验后再展示。**
+- [x] **Step 2 — RED。** `cargo test --locked -p viewer-infrastructure --test continuous_review_usage`。
+- [x] **Step 3 — 实现结构和引用核验后再展示。**
 
 ```rust
 if declaration.project_id != project_id || declaration.stream_id != stream_id {
@@ -632,9 +634,9 @@ if declaration.project_id != project_id || declaration.stream_id != stream_id {
 ```
 
 核验 basis 摘要、所有 TargetVersionKey 实际属于 B；同 ID 同规范内容去重，不同内容冲突。输出映射单独核验项目相对路径、hash、旧 asset；映射异常不得变成已确认 lineage，不影响合法依据部分的人工选择。
-- [ ] **Step 4 — 测试伪造范围、旧 revision、跨项目／Stream、穿越／符号链接、64 MiB 边界、导入后替换、重复 ID、没有 outputs 和错误 outputs。** 无效声明保留错误原因；无需声明也能走 Unknown 手动存档。导入或采用都不自动存档、不执行 Agent。
-- [ ] **Step 5 — GREEN。** `cargo test --locked -p viewer-infrastructure --test continuous_review_usage && cargo test --locked -p viewer-application --test continuous_review_service`。
-- [ ] **Step 6 — 提交。** `git commit -m "feat(review): validate optional producer usage declarations"`。
+- [x] **Step 4 — 测试伪造范围、旧 revision、跨项目／Stream、穿越／符号链接、64 MiB 边界、导入后替换、重复 ID、没有 outputs 和错误 outputs。** 无效声明保留错误原因；无需声明也能走 Unknown 手动存档。导入或采用都不自动存档、不执行 Agent。
+- [x] **Step 5 — GREEN。** `cargo test --locked -p viewer-infrastructure --test continuous_review_usage && cargo test --locked -p viewer-application --test continuous_review_service`。
+- [x] **Step 6 — 提交。** `git commit -m "feat(review): validate optional producer usage declarations"`。
 
 ### Task 13: v1/v2 安全迁移与未确认历史候选
 
@@ -642,7 +644,7 @@ if declaration.project_id != project_id || declaration.stream_id != stream_id {
 
 **Interfaces:** 复用 Task 11 ports.rs 中的 `MigrationInspection { legacy_protocol, index_digest, active_draft, completed_candidates, limitations }`；`MigrationChoice = ContinueSelected { legacy_targets: Vec<LegacyTargetRef>, bindings: Vec<MigrationBinding> } | KeepHistoryOnly`。`MigrationBinding { legacy_target, new_asset_version_id, anchor, position_confirmed }`，不能为不存在 v3 ID 的旧目标捏造 TargetVersionKey。`MigrationPlan { inspection_digest, choice }`；inspect 为只读，Migrate 命令携带计划并复查旧 index digest。provider 增加 `inspect_migration() -> Result<Option<MigrationInspection>, ReviewCommitError>`、`migrate(MigrationPlan, ReviewCommandId, [u8;32]) -> Result<ReviewCommitReceipt, ReviewCommitError>`，最后一参是已重算核验的 envelope payload digest；写入复用同一租约和 Task 8 幂等恢复。备份路径 `recovery/legacy-index-{blake3}.json`，不可变，v3 index 保留其摘要引用。读旧索引的 view 由 inspection 生成 migration_required，不先尝试用 v3 decoder 打开 legacy current。
 
-- [ ] **Step 1 — RED：只有 Completed 时不能自动变当前要求。** 复制已有 v1 与 v2 fixture 到 TempDir；记住旧文件摘要并执行 KeepHistoryOnly。
+- [x] **Step 1 — RED：只有 Completed 时不能自动变当前要求。** 复制已有 v1 与 v2 fixture 到 TempDir；记住旧文件摘要并执行 KeepHistoryOnly。
 
 ```rust
 assert!(migrated.current.as_ref().unwrap().state.feedback.is_empty());
@@ -651,17 +653,17 @@ assert_eq!(std::fs::read(&old_evidence_path).unwrap(), old_evidence_bytes);
 ```
 
 有旧历史的迁移生成合法空 current 状态；没有旧评审数据则保持 no_review_state，直到第一条成功保存。历史候选是独立 UI 数据，不塞进 actionable。
-- [ ] **Step 2 — RED。** `cargo test --locked -p viewer-infrastructure --test continuous_review_migration`。
-- [ ] **Step 3 — 核验、备份、转换、一次公布。** 活动 Draft 保留原意见身份并补齐新 revision／Target ID；无法核对源或旧缺失证据的限制显式保留。Completed 仅按用户选择建立新身份及 HistoryRef，未选内容仍只在 legacy history。
+- [x] **Step 2 — RED。** `cargo test --locked -p viewer-infrastructure --test continuous_review_migration`。
+- [x] **Step 3 — 核验、备份、转换、一次公布。** 活动 Draft 保留原意见身份并补齐新 revision／Target ID；无法核对源或旧缺失证据的限制显式保留。Completed 仅按用户选择建立新身份及 HistoryRef，未选内容仍只在 legacy history。
 
 ```rust
 let should_activate = matches!(choice, MigrationChoice::ContinueSelected { .. });
 ```
 
 这里的 `..` 是 Rust 模式语法；完整 choice 字段见 Interfaces。不得把 should_activate 应用于未选的全部 Completed。失败前后旧字节不变，旧索引备份不能被当前读取器当作有效入口。
-- [ ] **Step 4 — 测试 Draft 有效／源变、仅 Completed、混合 v1/v2、损坏必需证据、半途崩溃、回执丢失、重复迁移、只读工程、未知主版本和已有外部旧副本无法撤销的提示数据。** 不自动迁移，不建立 compatibility latest；旧 writer 读 v3 必须拒绝写。
-- [ ] **Step 5 — GREEN／检查点 C。** `cargo test --locked -p viewer-infrastructure --test continuous_review_migration --test continuous_review_usage --test review_repository && cargo test --locked -p viewer-application`。
-- [ ] **Step 6 — 提交。** `git commit -m "feat(review): migrate legacy reviews without reviving old instructions"`。
+- [x] **Step 4 — 测试 Draft 有效／源变、仅 Completed、混合 v1/v2、损坏必需证据、半途崩溃、回执丢失、重复迁移、只读工程、未知主版本和已有外部旧副本无法撤销的提示数据。** 不自动迁移，不建立 compatibility latest；旧 writer 读 v3 必须拒绝写。
+- [x] **Step 5 — GREEN／检查点 C。** `cargo test --locked -p viewer-infrastructure --test continuous_review_migration --test continuous_review_usage --test review_repository && cargo test --locked -p viewer-application`。
+- [x] **Step 6 — 提交。** `git commit -m "feat(review): migrate legacy reviews without reviving old instructions"`。
 
 ### Task 14: 独立读取器的共享安全 IO 与流式摘要
 

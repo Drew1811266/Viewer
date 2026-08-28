@@ -5,6 +5,9 @@
 > 日期：2026-08-27。阶段 B（任务 6–10）已通过全仓门禁与独立复验；累计完成 10 / 23。
 > 下一阶段从任务 11 开始，尚未实施 Application 用例接入或切换产品入口。
 
+后续：阶段 C（任务 11–13）现已完成并通过全仓门禁与独立复验，累计 13 / 23。
+本记录保留阶段 B 时的事实；最新续接位置为 Task 14，见[阶段 C 记录](2026-08-27-continuous-review-application-phase-c.md)。
+
 ## 范围
 
 继续用户批准的[六阶段实施计划](../superpowers/plans/2026-08-27-viewer-continuous-review-and-agent-handoff.md)。

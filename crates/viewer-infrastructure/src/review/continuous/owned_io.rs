@@ -15,6 +15,24 @@ pub(super) struct Directory {
 }
 
 impl Directory {
+    pub fn entries(&self, limit: usize) -> Result<Vec<String>, ReviewCommitError> {
+        self.verify()?;
+        let mut names = vec![];
+        for entry in fs::read_dir(&self.path).map_err(map_io)? {
+            if names.len() >= limit {
+                return Err(ReviewCommitError::LimitExceeded);
+            }
+            names.push(
+                entry
+                    .map_err(map_io)?
+                    .file_name()
+                    .into_string()
+                    .map_err(|_| ReviewCommitError::Integrity)?,
+            );
+        }
+        self.verify()?;
+        Ok(names)
+    }
     pub fn open(path: &Path) -> Result<Self, ReviewCommitError> {
         let file = OpenOptions::new()
             .read(true)
@@ -57,6 +75,7 @@ impl Directory {
             Err(error) if error.kind() == io::ErrorKind::NotFound && !create => return Ok(None),
             Err(error) => return Err(map_io(error)),
         };
+        self.verify_open_name(&file, name)?;
         self.verify()?;
         let child = Self {
             file,
@@ -86,6 +105,7 @@ impl Directory {
         if !metadata.is_file() || metadata.nlink() != 1 {
             return Err(ReviewCommitError::Integrity);
         }
+        self.verify_open_name(&file, name)?;
         self.verify()?;
         Ok(Some(file))
     }
@@ -116,8 +136,20 @@ impl Directory {
     }
 
     pub fn exact_name(&self, name: &str) -> Result<(), ReviewCommitError> {
-        leaf_name(name).map_err(map_io)?;
+        let leaf = leaf_name(name).map_err(map_io)?;
         self.verify()?;
+        match open_at(&self.file, &leaf, libc::O_RDONLY) {
+            Ok(file) => {
+                self.verify_open_name(&file, name)?;
+                return self.verify();
+            }
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+            Err(error) => return Err(map_io(error)),
+        }
+        self.scan_name(name)
+    }
+
+    fn scan_name(&self, name: &str) -> Result<(), ReviewCommitError> {
         for entry in fs::read_dir(&self.path).map_err(map_io)? {
             let entry = entry.map_err(map_io)?;
             let observed = entry.file_name();
@@ -127,6 +159,43 @@ impl Directory {
         }
         self.verify()
     }
+
+    fn verify_open_name(&self, file: &File, name: &str) -> Result<(), ReviewCommitError> {
+        #[cfg(any(target_os = "macos", target_os = "linux"))]
+        {
+            let observed = descriptor_path(file)?;
+            if observed.file_name() != Some(std::ffi::OsStr::new(name)) {
+                return Err(ReviewCommitError::Integrity);
+            }
+            Ok(())
+        }
+        #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+        {
+            let _ = file;
+            self.scan_name(name)
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn descriptor_path(file: &File) -> Result<PathBuf, ReviewCommitError> {
+    use std::{
+        ffi::{CStr, OsStr},
+        os::unix::ffi::OsStrExt,
+    };
+    let mut path = vec![0_i8; libc::PATH_MAX as usize];
+    // As in the file-operation adapter: resolve the live descriptor, never an untrusted link.
+    let result = unsafe { libc::fcntl(file.as_raw_fd(), libc::F_GETPATH, path.as_mut_ptr()) };
+    if result < 0 {
+        return Err(map_io(io::Error::last_os_error()));
+    }
+    let current = unsafe { CStr::from_ptr(path.as_ptr()) };
+    Ok(PathBuf::from(OsStr::from_bytes(current.to_bytes())))
+}
+
+#[cfg(target_os = "linux")]
+fn descriptor_path(file: &File) -> Result<PathBuf, ReviewCommitError> {
+    fs::read_link(format!("/proc/self/fd/{}", file.as_raw_fd())).map_err(map_io)
 }
 
 pub(super) fn same_identity(a: &Metadata, b: &Metadata) -> bool {
@@ -153,5 +222,24 @@ pub(super) fn map_io(error: io::Error) -> ReviewCommitError {
             ReviewCommitError::Integrity
         }
         _ => ReviewCommitError::Io,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn canonical_names_remain_required_for_descriptor_reads() {
+        let root = tempfile::TempDir::new().unwrap();
+        fs::write(root.path().join("State.json"), b"data").unwrap();
+        let directory = Directory::open(root.path()).unwrap();
+        assert!(directory.regular("state.json", false).is_err());
+        assert_eq!(
+            directory.read("State.json", 10).unwrap(),
+            Some(b"data".to_vec())
+        );
+        fs::create_dir(root.path().join("States")).unwrap();
+        assert!(directory.child("states", false).is_err());
+        assert!(directory.child("States", false).unwrap().is_some());
     }
 }

@@ -1,9 +1,13 @@
 use super::super::{MAX_REVIEW_INDEX_BYTES, ReviewProtocolError, lease::ProjectReviewLease, v3};
+use super::faults::{NoReviewCommitFaults, ReviewCommitFaultInjector};
 use super::{
     history, mapping,
     owned_io::{Directory, map_io, same_identity},
 };
-use std::{path::Path, sync::Mutex};
+use std::{
+    path::Path,
+    sync::{Arc, Mutex},
+};
 use viewer_application::{ReviewRepositoryError, review_workspace::*};
 use viewer_domain::review::continuous::{ArchiveCheckpoint, SnapshotRef};
 use viewer_domain::{ProjectId, ReviewArchiveId, ReviewCommandId, ReviewStreamId};
@@ -18,6 +22,7 @@ pub(in crate::review) struct ContinuousReviewRepository {
     pub(super) root: Directory,
     pub(super) project_id: ProjectId,
     pub(super) writer: Option<Writer>,
+    pub(super) faults: Arc<dyn ReviewCommitFaultInjector>,
 }
 
 pub(super) struct View {
@@ -32,10 +37,20 @@ impl ContinuousReviewRepository {
         project_id: ProjectId,
         writable: bool,
     ) -> Result<Self, ReviewCommitError> {
+        Self::open_with_faults(path, project_id, writable, Arc::new(NoReviewCommitFaults))
+    }
+
+    pub fn open_with_faults(
+        path: &Path,
+        project_id: ProjectId,
+        writable: bool,
+        faults: Arc<dyn ReviewCommitFaultInjector>,
+    ) -> Result<Self, ReviewCommitError> {
         let mut repository = Self {
             root: Directory::open(path)?,
             project_id,
             writer: None,
+            faults,
         };
         if let Some(directory) = repository.directory(writable)? {
             if writable {
@@ -108,6 +123,31 @@ impl ContinuousReviewRepository {
 }
 
 impl ContinuousReviewRepositoryPort for ContinuousReviewRepository {
+    fn save_recovery(&self, draft: &RecoveryDraft) -> Result<(), ReviewCommitError> {
+        super::recovery::save(self, draft)
+    }
+    fn load_recovery(&self) -> Result<Vec<RecoveryDraft>, ReviewCommitError> {
+        super::recovery::load(self)
+    }
+    fn resolve_recovery(
+        &self,
+        command_id: ReviewCommandId,
+    ) -> Result<CommandLookup, ReviewCommitError> {
+        super::recovery::resolve(self, command_id)
+    }
+    fn load_current_ref(
+        &self,
+        stream_id: ReviewStreamId,
+    ) -> Result<Option<SnapshotRef>, ReviewCommitError> {
+        Ok(self.view()?.and_then(|view| {
+            view.index
+                .streams
+                .iter()
+                .find(|s| s.review_stream_id == stream_id)
+                .and_then(|s| s.current_ref)
+        }))
+    }
+
     fn load_current(
         &self,
         stream_id: ReviewStreamId,

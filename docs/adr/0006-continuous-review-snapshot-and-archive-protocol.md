@@ -107,9 +107,15 @@ must represent a confirmed live relocation in the asset catalog or a separate lo
 must not mint a new content version for a rename or weaken captured-content validation. That locator
 ownership/interface is a required Phase B refinement, not an implemented Phase A capability.
 
-Persistent command deduplication, recovery fault coverage and bounded-history refinements remain
-Task 8. Evidence capture, explicit legacy migration/provenance admission, application services,
-Agent readers and UI are not connected by Tasks 6–7. Existing legacy indexes are not silently replaced;
+Task 8 implements persistent command deduplication before CAS, six fault boundaries, bounded recovery
+and history traversal. RecoveryDraft adds an explicit stream_id (including first-save recovery);
+the internal closed `viewer.review.recovery/1` format is never Agent feedback. Recovery lists are
+bounded to 10,000 entries and 64 MiB total. The index fault is after rename and before directory sync;
+uncertain results preserve the published index and are resolved by command/digest, never rolled back.
+Active archive coverage cannot be recorded twice; explicit restoration permits subsequent archival.
+
+Evidence capture, explicit legacy migration/provenance admission, application services,
+Agent readers and UI are not connected by Tasks 6–8. Existing legacy indexes are not silently replaced;
 legacy-origin continuous states need the later explicit migration adapter. Repository validation does
 not authorize execution of feedback on disk.
 

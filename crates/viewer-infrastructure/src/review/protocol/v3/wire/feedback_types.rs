@@ -134,6 +134,7 @@ impl TryFrom<Target> for VersionedTarget {
     }
 }
 vector_adapter!(feedback, VersionedFeedback, Feedback);
+vector_adapter!(targets, VersionedTarget, Target);
 
 #[derive(Serialize, Deserialize)]
 #[serde(
@@ -323,3 +324,18 @@ impl From<History> for HistoryRef {
     }
 }
 vector_adapter!(histories, HistoryRef, History);
+
+pub(in crate::review::protocol::v3) mod optional_history {
+    use super::*;
+    pub fn serialize<S: Serializer>(
+        value: &Option<HistoryRef>,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error> {
+        value.as_ref().map(History::from).serialize(serializer)
+    }
+    pub fn deserialize<'de, D: Deserializer<'de>>(
+        deserializer: D,
+    ) -> Result<Option<HistoryRef>, D::Error> {
+        Ok(Option::<History>::deserialize(deserializer)?.map(Into::into))
+    }
+}

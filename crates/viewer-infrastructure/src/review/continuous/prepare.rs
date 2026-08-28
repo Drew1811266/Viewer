@@ -31,6 +31,7 @@ pub(super) fn prepare(
     let record: v3::ReviewStateRecord = request.next.into();
     let bytes = v3::encode_state_v3(&record).map_err(protocol_error)?;
     validate_chain(view, &record)?;
+    super::coverage::require_uncovered(view, record.state.stream_id, &request.archives)?;
     super::archives::validate_commit(view, &record, &request.archives)?;
     references::feedback_origins(view, &record)?;
     references::transitions(view, &record, &request.archives)?;

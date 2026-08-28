@@ -6,6 +6,34 @@ use viewer_domain::{
 };
 
 #[derive(Clone, Debug, PartialEq)]
+pub struct RecoveryDraft {
+    pub stream_id: ReviewStreamId,
+    pub command_id: ReviewCommandId,
+    pub expected_snapshot_id: Option<viewer_domain::ReviewSnapshotId>,
+    pub payload_digest: [u8; 32],
+    pub editor_input: RecoveryEditorInput,
+    pub failure: ReviewRecoveryFailure,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct RecoveryEditorInput {
+    pub text: String,
+    pub feedback_id: Option<viewer_domain::FeedbackId>,
+    pub targets: Vec<VersionedTarget>,
+    pub history_ref: Option<HistoryRef>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ReviewRecoveryFailure {
+    RenderFailed,
+    SourceChanged,
+    WriteFailed,
+    CommitUnknown,
+    Cancelled,
+    StaleSnapshot,
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct PreparedContinuousSnapshot {
     pub state: ContinuousReviewState,
     pub command_id: ReviewCommandId,
@@ -128,6 +156,16 @@ pub enum ReviewCommitError {
 }
 
 pub trait ContinuousReviewRepositoryPort: Send + Sync {
+    fn save_recovery(&self, draft: &RecoveryDraft) -> Result<(), ReviewCommitError>;
+    fn load_recovery(&self) -> Result<Vec<RecoveryDraft>, ReviewCommitError>;
+    fn resolve_recovery(
+        &self,
+        command_id: ReviewCommandId,
+    ) -> Result<CommandLookup, ReviewCommitError>;
+    fn load_current_ref(
+        &self,
+        stream_id: ReviewStreamId,
+    ) -> Result<Option<SnapshotRef>, ReviewCommitError>;
     fn load_current(
         &self,
         stream_id: ReviewStreamId,

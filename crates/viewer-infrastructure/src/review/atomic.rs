@@ -87,7 +87,22 @@ fn create_temporary(parent: &File) -> io::Result<(CString, File)> {
 }
 
 pub(super) fn atomic_replace_at(parent: &File, name: &str, bytes: &[u8]) -> io::Result<()> {
-    publish(parent, name, false, |file| file.write_all(bytes))
+    atomic_replace_at_with_barrier(parent, name, bytes, || Ok(()))
+}
+
+pub(super) fn atomic_replace_at_with_barrier(
+    parent: &File,
+    name: &str,
+    bytes: &[u8],
+    before_directory_sync: impl FnOnce() -> io::Result<()>,
+) -> io::Result<()> {
+    publish(
+        parent,
+        name,
+        false,
+        |file| file.write_all(bytes),
+        before_directory_sync,
+    )
 }
 
 pub(super) fn atomic_create_once_at(
@@ -103,7 +118,7 @@ pub(super) fn atomic_create_once_with(
     name: &str,
     write: impl FnOnce(&mut File) -> io::Result<()>,
 ) -> Result<(), AtomicCreateOnceError> {
-    publish(parent, name, true, write).map_err(|error| {
+    publish(parent, name, true, write, || Ok(())).map_err(|error| {
         if error.kind() == io::ErrorKind::AlreadyExists {
             AtomicCreateOnceError::AlreadyExists
         } else {
@@ -117,6 +132,7 @@ fn publish(
     name: &str,
     once: bool,
     write: impl FnOnce(&mut File) -> io::Result<()>,
+    before_directory_sync: impl FnOnce() -> io::Result<()>,
 ) -> io::Result<()> {
     let destination = leaf_name(name)?;
     let (temporary, mut file) = create_temporary(parent)?;
@@ -135,6 +151,9 @@ fn publish(
         if status != 0 {
             return Err(io::Error::last_os_error());
         }
+        // Publication has happened. A failed durability barrier must never restore
+        // the previous index: callers must resolve the command from the head.
+        before_directory_sync()?;
         parent.sync_all()?;
         if once {
             unlink_temporary(parent, &temporary)?;
@@ -194,6 +213,19 @@ mod tests {
         ));
         assert_eq!(fs::read(root.path().join("state.json")).unwrap(), b"first");
         assert!(atomic_replace_at(&parent, "../escape", b"bad").is_err());
+        assert_eq!(fs::read_dir(root.path()).unwrap().count(), 1);
+    }
+
+    #[test]
+    fn failure_at_index_directory_sync_reports_error_without_rolling_back_published_bytes() {
+        let root = tempfile::TempDir::new().unwrap();
+        let parent = File::open(root.path()).unwrap();
+        atomic_replace_at(&parent, "index.json", b"old").unwrap();
+        let result = atomic_replace_at_with_barrier(&parent, "index.json", b"new", || {
+            Err(io::Error::other("injected directory sync failure"))
+        });
+        assert!(result.is_err());
+        assert_eq!(fs::read(root.path().join("index.json")).unwrap(), b"new");
         assert_eq!(fs::read_dir(root.path()).unwrap().count(), 1);
     }
 }

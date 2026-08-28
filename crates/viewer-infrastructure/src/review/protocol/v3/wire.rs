@@ -215,6 +215,6 @@ mod state;
 pub(super) use asset::assets;
 pub(super) use change::{changes, deltas};
 use feedback_types::Anchor;
-pub(super) use feedback_types::{feedback, histories};
+pub(super) use feedback_types::{feedback, histories, optional_history, targets};
 pub(super) use legacy::legacy_feedback;
 pub(super) use state::{Protocol, State};

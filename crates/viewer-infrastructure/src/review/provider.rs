@@ -20,6 +20,23 @@ pub struct ProjectReviewRepositoryProvider {
 }
 
 impl ProjectReviewRepositoryProvider {
+    pub fn continuous_writer_with_faults(
+        &self,
+        faults: Arc<dyn super::ReviewCommitFaultInjector>,
+    ) -> Result<Arc<dyn ContinuousReviewRepositoryPort>, ReviewCommitError> {
+        if self.project_access != ProjectAccess::ReadWrite {
+            return Err(ReviewCommitError::ReadOnly);
+        }
+        Ok(Arc::new(
+            super::continuous::ContinuousReviewRepository::open_with_faults(
+                &self.project_root,
+                self.project_id,
+                true,
+                faults,
+            )?,
+        ))
+    }
+
     pub fn continuous_reader(
         &self,
     ) -> Result<Arc<dyn ContinuousReviewRepositoryPort>, ReviewCommitError> {

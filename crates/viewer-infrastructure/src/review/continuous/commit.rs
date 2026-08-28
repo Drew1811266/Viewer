@@ -1,8 +1,9 @@
 use super::super::{
     MAX_REVIEW_DOCUMENT_BYTES,
-    atomic::{AtomicCreateOnceError, atomic_create_once_at, atomic_replace_at},
+    atomic::{AtomicCreateOnceError, atomic_create_once_at, atomic_replace_at_with_barrier},
     v3,
 };
+use super::faults::ReviewCommitFaultPoint;
 use super::{
     history,
     owned_io::{Directory, map_io},
@@ -21,15 +22,48 @@ pub(super) fn commit(
         .ok_or(ReviewCommitError::ReadOnly)?;
     let _guard = writer.gate.lock().map_err(|_| ReviewCommitError::Io)?;
     let mut view = repository.view()?.ok_or(ReviewCommitError::Integrity)?;
+    if request.next.state.project_id != repository.project_id {
+        return Err(ReviewCommitError::Integrity);
+    }
+    if let Some(stream) = view
+        .index
+        .streams
+        .iter()
+        .find(|s| s.review_stream_id == request.next.state.stream_id)
+        && super::mapping::scope(stream)? != request.production
+    {
+        return Err(ReviewCommitError::Integrity);
+    }
+    match history::find_command(&view, request.next.state.stream_id, request.next.command_id)? {
+        CommandLookup::Found(receipt) if receipt.payload_digest == request.next.payload_digest => {
+            return Ok(receipt);
+        }
+        CommandLookup::Found(_) => return Err(ReviewCommitError::CommandConflict),
+        CommandLookup::Unavailable => return Err(ReviewCommitError::LookupUnavailable),
+        CommandLookup::Absent => {}
+    }
     let prepared = prepare(&mut view, request)?;
-    install(&view, &prepared)?;
+    install(repository, &view, &prepared)?;
     validate_installed(&view, &prepared)?;
+    repository
+        .faults
+        .check(ReviewCommitFaultPoint::BeforeIndex)?;
     let observed = repository.view()?.ok_or(ReviewCommitError::Integrity)?;
     if observed.index_bytes != view.index_bytes {
         return Err(ReviewCommitError::StaleSnapshot);
     }
-    atomic_replace_at(&view.directory.file, "index.json", &prepared.index_bytes)
-        .map_err(|_| ReviewCommitError::OutcomeUnknown)?;
+    atomic_replace_at_with_barrier(
+        &view.directory.file,
+        "index.json",
+        &prepared.index_bytes,
+        || {
+            repository
+                .faults
+                .check(ReviewCommitFaultPoint::AfterIndex)
+                .map_err(|_| std::io::Error::other("injected index durability failure"))
+        },
+    )
+    .map_err(|_| ReviewCommitError::OutcomeUnknown)?;
     repository
         .view()
         .map_err(|_| ReviewCommitError::OutcomeUnknown)?;
@@ -40,8 +74,15 @@ pub(super) fn commit(
     })
 }
 
-fn install(view: &View, prepared: &PreparedCommit) -> Result<(), ReviewCommitError> {
+fn install(
+    repository: &ContinuousReviewRepository,
+    view: &View,
+    prepared: &PreparedCommit,
+) -> Result<(), ReviewCommitError> {
     super::evidence::install(view, &prepared.record.evidence, &prepared.staged)?;
+    repository
+        .faults
+        .check(ReviewCommitFaultPoint::AfterEvidence)?;
     let states = view
         .directory
         .child("states", true)?
@@ -51,6 +92,9 @@ fn install(view: &View, prepared: &PreparedCommit) -> Result<(), ReviewCommitErr
         &format!("{}.json", prepared.reference.snapshot_id),
         &prepared.bytes,
     )?;
+    repository
+        .faults
+        .check(ReviewCommitFaultPoint::AfterState)?;
     if !prepared.archives.is_empty() {
         let directory = view
             .directory
@@ -81,7 +125,9 @@ fn install(view: &View, prepared: &PreparedCommit) -> Result<(), ReviewCommitErr
             )?;
         }
     }
-    Ok(())
+    repository
+        .faults
+        .check(ReviewCommitFaultPoint::AfterArchive)
 }
 
 fn validate_installed(view: &View, prepared: &PreparedCommit) -> Result<(), ReviewCommitError> {

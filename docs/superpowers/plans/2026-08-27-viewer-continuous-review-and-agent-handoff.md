@@ -13,8 +13,8 @@
 > Status: Active
 >
 > 执行状态：阶段 A 的任务 1–5 已完成并分别提交，5 / 23；全仓门禁与独立复审通过。
-> 阶段 B 已按用户「继续」恢复实施；任务 6–7 已完成，累计 7 / 23。
-> 下一项为任务 8 的持久幂等与恢复，任务 9–10 尚未开始；阶段 B 不算完成。
+> 阶段 B 已按用户「继续」恢复实施；任务 6–8 已完成，累计 8 / 23。
+> 下一项为任务 9 的不可变底图捕获与渲染，任务 10 尚未开始；阶段 B 不算完成。
 > 新仓储仅用于隔离测试，未接入 UI、迁移或 Agent 读取入口。
 >
 > 计划基线：`a539f8df5f3e0f3239110df44515ba7cb583e308`；实施基线：`d7abb9961f377ae257c3283ef7893218ec0c53f9`。
@@ -449,9 +449,9 @@ if observed_current != request.expected {
 
 **Files:** Create `crates/viewer-infrastructure/src/review/continuous/recovery.rs`、`crates/viewer-infrastructure/tests/continuous_review_recovery.rs`。Modify `crates/viewer-application/src/review_workspace/ports.rs`、`crates/viewer-infrastructure/src/review/continuous/mod.rs`、`crates/viewer-infrastructure/src/review/continuous/commit.rs`、`crates/viewer-infrastructure/src/review/continuous/history.rs`。
 
-**Interfaces:** Consumes Task 7。Adds `RecoveryDraft { command_id, expected_snapshot_id, payload_digest, editor_input: RecoveryEditorInput, failure: ReviewRecoveryFailure }`；`RecoveryEditorInput { text: String, feedback_id: Option<FeedbackId>, targets: Vec<VersionedTarget>, history_ref: Option<HistoryRef> }`，不是可执行脚本。ReviewRecoveryFailure 为 RenderFailed／SourceChanged／WriteFailed／CommitUnknown／Cancelled／StaleSnapshot。Repository 增加 `save_recovery(&RecoveryDraft) -> Result<(), ReviewCommitError>`、`load_recovery() -> Result<Vec<RecoveryDraft>, ReviewCommitError>`、`resolve_recovery(ReviewCommandId) -> Result<CommandLookup, ReviewCommitError>`。`ReviewCommitFaultPoint` 为 AfterRecovery、AfterEvidence、AfterState、AfterArchive、BeforeIndex、AfterIndex；测试注入器复用现有 FaultInjector 风格，无 UI 开关。
+**Interfaces:** Consumes Task 7。Adds `RecoveryDraft { stream_id, command_id, expected_snapshot_id, payload_digest, editor_input: RecoveryEditorInput, failure: ReviewRecoveryFailure }`；`RecoveryEditorInput { text: String, feedback_id: Option<FeedbackId>, targets: Vec<VersionedTarget>, history_ref: Option<HistoryRef> }`，不是可执行脚本。ReviewRecoveryFailure 为 RenderFailed／SourceChanged／WriteFailed／CommitUnknown／Cancelled／StaleSnapshot。Repository 增加 `save_recovery(&RecoveryDraft) -> Result<(), ReviewCommitError>`、`load_recovery() -> Result<Vec<RecoveryDraft>, ReviewCommitError>`、`resolve_recovery(ReviewCommandId) -> Result<CommandLookup, ReviewCommitError>`。`ReviewCommitFaultPoint` 为 AfterRecovery、AfterEvidence、AfterState、AfterArchive、BeforeIndex、AfterIndex；测试注入器复用现有 FaultInjector 风格，无 UI 开关。
 
-- [ ] **Step 1 — RED：提交成功但回执丢失只能产生一次状态。** 构造 Task 7 的有效 request，注入 AfterIndex 错误并重新打开 writer。
+- [x] **Step 1 — RED：提交成功但回执丢失只能产生一次状态。** 构造 Task 7 的有效 request，注入 AfterIndex 错误并重新打开 writer。
 
 ```rust
 assert!(matches!(writer.commit(request.clone()), Err(ReviewCommitError::OutcomeUnknown)));
@@ -460,8 +460,8 @@ assert_eq!(retry.snapshot, reader.load_current_ref(stream_id).unwrap().unwrap())
 ```
 
 为端口增加 `load_current_ref(stream_id) -> Result<Option<SnapshotRef>, ReviewCommitError>`；实现读取已固定的索引，不重新编码 State 计算替代摘要。
-- [ ] **Step 2 — RED。** `cargo test --locked -p viewer-infrastructure --test continuous_review_recovery`。
-- [ ] **Step 3 — 先查持久命令，再判断新写入。**
+- [x] **Step 2 — RED。** `cargo test --locked -p viewer-infrastructure --test continuous_review_recovery`。
+- [x] **Step 3 — 先查持久命令，再判断新写入。**
 
 ```rust
 match repository.find_command(stream_id, command_id)? {
@@ -473,9 +473,11 @@ match repository.find_command(stream_id, command_id)? {
 ```
 
 只读取可达且核验过的链，10,000 节点上限同时约束 CPU／IO；循环、缺链或超限不得返回 Absent。已成功命令即使当前已前进，也返回原 receipt；不要求客户端重建曾生成的 snapshot／evidence ID。
-- [ ] **Step 4 — 遍历全部故障点；测试磁盘写失败、索引同步失败、损坏引用、同 command ID 不同 payload、并发、限制边界与已撤销覆盖再次存档。** 索引前失败保持旧入口；结果不确定则先核验，不新建命令重试。Recovery 不得出现在当前／历史读取结果；本轮不删除任何已提交历史或共享证据。
-- [ ] **Step 5 — GREEN。** `cargo test --locked -p viewer-infrastructure --test continuous_review_recovery --test continuous_review_repository`。
-- [ ] **Step 6 — 提交。** `git commit -m "feat(review): recover uncertain commits without duplicate feedback"`。
+- [x] **Step 4 — 遍历全部故障点；测试磁盘写失败、索引同步失败、损坏引用、同 command ID 不同 payload、并发、限制边界与已撤销覆盖再次存档。** 索引前失败保持旧入口；结果不确定则先核验，不新建命令重试。Recovery 不得出现在当前／历史读取结果；本轮不删除任何已提交历史或共享证据。
+- [x] **Step 5 — GREEN。** `cargo test --locked -p viewer-infrastructure --test continuous_review_recovery --test continuous_review_repository`。
+- [x] **Step 6 — 提交。** `git commit -m "feat(review): recover uncertain commits without duplicate feedback"`。
+
+Task 8 接口细化：RecoveryDraft 显式包含 stream_id，使首次保存（expected_snapshot_id 为空）也能精确查命令。恢复记录采用 Viewer 内部闭合协议 viewer.review.recovery/1，不是 Agent 入口；列表最多 10,000 文件／合计 64 MiB。AfterRecovery 在显式保存输入后注入，提交不伪造编辑器输入。AfterIndex 位于索引 rename 后、目录 fsync 前；失败不回滚，重试核验原 receipt。恢复记录保留，不删除历史或证据。
 
 ### Task 9: 首次保存前捕获底图与不可变编号证据
 

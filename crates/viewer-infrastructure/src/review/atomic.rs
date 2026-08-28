@@ -1,59 +1,81 @@
-use std::fs::{self, File, OpenOptions};
+use std::ffi::{CStr, CString};
+use std::fs::{File, OpenOptions};
 use std::io::{self, Write};
+use std::os::fd::{AsRawFd, FromRawFd};
 use std::os::unix::fs::OpenOptionsExt;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 static TEMPORARY_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
+#[derive(Debug)]
 pub(super) enum AtomicCreateOnceError {
     AlreadyExists,
     Io(io::Error),
 }
 
 pub(super) fn atomic_replace(path: &Path, bytes: &[u8]) -> io::Result<()> {
-    let parent = path
-        .parent()
-        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "missing parent directory"))?;
-    let temporary = create_temporary(parent)?;
-    let temporary_path = temporary.0.clone();
-    let result = write_and_replace(temporary, path, parent, bytes);
-    if result.is_err() {
-        let _ = fs::remove_file(temporary_path);
-    }
-    result
+    let (parent, name) = destination(path)?;
+    atomic_replace_at(&parent, name, bytes)
 }
 
 pub(super) fn atomic_create_once(path: &Path, bytes: &[u8]) -> Result<(), AtomicCreateOnceError> {
-    let parent = path.parent().ok_or_else(|| {
-        AtomicCreateOnceError::Io(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            "missing parent directory",
-        ))
-    })?;
-    let temporary = create_temporary(parent).map_err(AtomicCreateOnceError::Io)?;
-    let temporary_path = temporary.0.clone();
-    let result = write_and_create_once(temporary, path, parent, bytes);
-    if result.is_err() {
-        let _ = fs::remove_file(temporary_path);
-    }
-    result
+    let (parent, name) = destination(path).map_err(AtomicCreateOnceError::Io)?;
+    atomic_create_once_at(&parent, name, bytes)
 }
 
-fn create_temporary(parent: &Path) -> io::Result<(PathBuf, File)> {
+fn destination(path: &Path) -> io::Result<(File, &str)> {
+    let parent = path.parent().ok_or_else(invalid_name)?;
+    let name = path
+        .file_name()
+        .and_then(|v| v.to_str())
+        .ok_or_else(invalid_name)?;
+    let directory = OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC)
+        .open(parent)?;
+    Ok((directory, name))
+}
+
+pub(super) fn leaf_name(name: &str) -> io::Result<CString> {
+    if name.is_empty() || name == "." || name == ".." || name.contains(['/', '\\']) {
+        return Err(invalid_name());
+    }
+    CString::new(name).map_err(|_| invalid_name())
+}
+
+fn invalid_name() -> io::Error {
+    io::Error::new(
+        io::ErrorKind::InvalidInput,
+        "expected a single repository filename",
+    )
+}
+
+pub(super) fn open_at(parent: &File, name: &CStr, flags: i32) -> io::Result<File> {
+    // The owned descriptor anchors lookup; no component in `name` can escape it.
+    let fd = unsafe {
+        libc::openat(
+            parent.as_raw_fd(),
+            name.as_ptr(),
+            flags | libc::O_NOFOLLOW | libc::O_CLOEXEC | libc::O_NONBLOCK,
+            0o600,
+        )
+    };
+    if fd < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(unsafe { File::from_raw_fd(fd) })
+}
+
+fn create_temporary(parent: &File) -> io::Result<(CString, File)> {
     for _ in 0..64 {
         let sequence = TEMPORARY_SEQUENCE.fetch_add(1, Ordering::Relaxed);
-        let path = parent.join(format!(
+        let name = leaf_name(&format!(
             ".viewer-review-{}-{sequence:016x}.tmp",
             std::process::id()
-        ));
-        match OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC)
-            .open(&path)
-        {
-            Ok(file) => return Ok((path, file)),
+        ))?;
+        match open_at(parent, &name, libc::O_WRONLY | libc::O_CREAT | libc::O_EXCL) {
+            Ok(file) => return Ok((name, file)),
             Err(error) if error.kind() == io::ErrorKind::AlreadyExists => continue,
             Err(error) => return Err(error),
         }
@@ -64,42 +86,114 @@ fn create_temporary(parent: &Path) -> io::Result<(PathBuf, File)> {
     ))
 }
 
-fn write_and_replace(
-    temporary: (PathBuf, File),
-    destination: &Path,
-    parent: &Path,
-    bytes: &[u8],
-) -> io::Result<()> {
-    let (temporary_path, mut file) = temporary;
-    file.write_all(bytes)?;
-    file.sync_all()?;
-    drop(file);
-    fs::rename(&temporary_path, destination)?;
-    sync_directory(parent)
+pub(super) fn atomic_replace_at(parent: &File, name: &str, bytes: &[u8]) -> io::Result<()> {
+    publish(parent, name, false, |file| file.write_all(bytes))
 }
 
-fn write_and_create_once(
-    temporary: (PathBuf, File),
-    destination: &Path,
-    parent: &Path,
+pub(super) fn atomic_create_once_at(
+    parent: &File,
+    name: &str,
     bytes: &[u8],
 ) -> Result<(), AtomicCreateOnceError> {
-    let (temporary_path, mut file) = temporary;
-    file.write_all(bytes).map_err(AtomicCreateOnceError::Io)?;
-    file.sync_all().map_err(AtomicCreateOnceError::Io)?;
-    drop(file);
-    match fs::hard_link(&temporary_path, destination) {
-        Ok(()) => {}
-        Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
-            return Err(AtomicCreateOnceError::AlreadyExists);
+    atomic_create_once_with(parent, name, |file| file.write_all(bytes))
+}
+
+pub(super) fn atomic_create_once_with(
+    parent: &File,
+    name: &str,
+    write: impl FnOnce(&mut File) -> io::Result<()>,
+) -> Result<(), AtomicCreateOnceError> {
+    publish(parent, name, true, write).map_err(|error| {
+        if error.kind() == io::ErrorKind::AlreadyExists {
+            AtomicCreateOnceError::AlreadyExists
+        } else {
+            AtomicCreateOnceError::Io(error)
         }
-        Err(error) => return Err(AtomicCreateOnceError::Io(error)),
+    })
+}
+
+fn publish(
+    parent: &File,
+    name: &str,
+    once: bool,
+    write: impl FnOnce(&mut File) -> io::Result<()>,
+) -> io::Result<()> {
+    let destination = leaf_name(name)?;
+    let (temporary, mut file) = create_temporary(parent)?;
+    let result = (|| {
+        write(&mut file)?;
+        file.sync_all()?;
+        drop(file);
+        let fd = parent.as_raw_fd();
+        let status = unsafe {
+            if once {
+                libc::linkat(fd, temporary.as_ptr(), fd, destination.as_ptr(), 0)
+            } else {
+                libc::renameat(fd, temporary.as_ptr(), fd, destination.as_ptr())
+            }
+        };
+        if status != 0 {
+            return Err(io::Error::last_os_error());
+        }
+        parent.sync_all()?;
+        if once {
+            unlink_temporary(parent, &temporary)?;
+            parent.sync_all()?;
+        }
+        Ok(())
+    })();
+    if result.is_err() {
+        let _ = unlink_temporary(parent, &temporary);
     }
-    sync_directory(parent).map_err(AtomicCreateOnceError::Io)?;
-    fs::remove_file(&temporary_path).map_err(AtomicCreateOnceError::Io)?;
-    sync_directory(parent).map_err(AtomicCreateOnceError::Io)
+    result
+}
+
+fn unlink_temporary(parent: &File, temporary: &CStr) -> io::Result<()> {
+    if unsafe { libc::unlinkat(parent.as_raw_fd(), temporary.as_ptr(), 0) } == 0 {
+        Ok(())
+    } else {
+        Err(io::Error::last_os_error())
+    }
 }
 
 pub(super) fn sync_directory(path: &Path) -> io::Result<()> {
     File::open(path)?.sync_all()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::os::unix::fs::symlink;
+
+    #[test]
+    fn descriptor_publication_never_follows_a_replaced_parent_path() {
+        let root = tempfile::TempDir::new().unwrap();
+        let outside = tempfile::TempDir::new().unwrap();
+        let original = root.path().join("original");
+        fs::create_dir(&original).unwrap();
+        let parent = File::open(&original).unwrap();
+        fs::rename(&original, root.path().join("moved")).unwrap();
+        symlink(outside.path(), &original).unwrap();
+        atomic_replace_at(&parent, "index.json", b"committed").unwrap();
+        assert_eq!(
+            fs::read(root.path().join("moved/index.json")).unwrap(),
+            b"committed"
+        );
+        assert_eq!(fs::read_dir(outside.path()).unwrap().count(), 0);
+    }
+
+    #[test]
+    fn descriptor_create_once_preserves_existing_bytes_and_rejects_path_components() {
+        let root = tempfile::TempDir::new().unwrap();
+        let parent = File::open(root.path()).unwrap();
+        atomic_create_once_at(&parent, "state.json", b"first").unwrap();
+        assert!(matches!(
+            atomic_create_once_at(&parent, "state.json", b"other"),
+            Err(AtomicCreateOnceError::AlreadyExists)
+        ));
+        assert_eq!(fs::read(root.path().join("state.json")).unwrap(), b"first");
+        assert!(atomic_replace_at(&parent, "../escape", b"bad").is_err());
+        assert_eq!(fs::read_dir(root.path()).unwrap().count(), 1);
+    }
 }

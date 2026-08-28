@@ -22,6 +22,15 @@ pub(super) fn target_index(state: &ContinuousReviewState) -> TargetIndex<'_> {
         .collect()
 }
 
+/// Check immutable identities shared by two snapshots without requiring their full history in RAM.
+/// The repository separately establishes byte integrity and reachability before calling this.
+pub fn validate_shared_identities(
+    candidate: &ContinuousReviewState,
+    historical: &ContinuousReviewState,
+) -> Result<(), ContinuousReviewError> {
+    ValidatedStates::new(candidate, std::slice::from_ref(historical)).map(|_| ())
+}
+
 pub(super) struct ValidatedStates<'a> {
     pub states: HashMap<ReviewSnapshotId, &'a ContinuousReviewState>,
     pub targets: HashMap<ReviewSnapshotId, TargetIndex<'a>>,

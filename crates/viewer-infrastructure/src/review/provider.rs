@@ -2,6 +2,10 @@ use super::{ProjectReviewRepository, ReviewRepositoryAccess};
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use viewer_application::review_workspace::{
+    ContinuousReviewRepositoryPort, ContinuousReviewRepositoryProviderPort, ReviewCommitError,
+};
 use viewer_application::{
     PersistedReviewDraft, ProjectAccess, ReviewCatalog, ReviewPublication, ReviewRepositoryError,
     ReviewRepositoryInspection, ReviewRepositoryPort, ReviewRepositoryProviderPort,
@@ -16,6 +20,33 @@ pub struct ProjectReviewRepositoryProvider {
 }
 
 impl ProjectReviewRepositoryProvider {
+    pub fn continuous_reader(
+        &self,
+    ) -> Result<Arc<dyn ContinuousReviewRepositoryPort>, ReviewCommitError> {
+        Ok(Arc::new(
+            super::continuous::ContinuousReviewRepository::open(
+                &self.project_root,
+                self.project_id,
+                false,
+            )?,
+        ))
+    }
+
+    pub fn continuous_writer(
+        &self,
+    ) -> Result<Arc<dyn ContinuousReviewRepositoryPort>, ReviewCommitError> {
+        if self.project_access != ProjectAccess::ReadWrite {
+            return Err(ReviewCommitError::ReadOnly);
+        }
+        Ok(Arc::new(
+            super::continuous::ContinuousReviewRepository::open(
+                &self.project_root,
+                self.project_id,
+                true,
+            )?,
+        ))
+    }
+
     pub fn new(project_root: &Path, project_id: ProjectId) -> Self {
         Self {
             project_root: project_root.to_path_buf(),
@@ -54,6 +85,15 @@ impl ProjectReviewRepositoryProvider {
             project_id: self.project_id,
             streams: vec![],
         }
+    }
+}
+
+impl ContinuousReviewRepositoryProviderPort for ProjectReviewRepositoryProvider {
+    fn open_reader(&self) -> Result<Arc<dyn ContinuousReviewRepositoryPort>, ReviewCommitError> {
+        self.continuous_reader()
+    }
+    fn open_writer(&self) -> Result<Arc<dyn ContinuousReviewRepositoryPort>, ReviewCommitError> {
+        self.continuous_writer()
     }
 }
 

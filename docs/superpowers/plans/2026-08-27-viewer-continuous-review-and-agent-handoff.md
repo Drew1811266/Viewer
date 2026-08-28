@@ -13,12 +13,15 @@
 > Status: Active
 >
 > 执行状态：阶段 A 的任务 1–5 已完成并分别提交，5 / 23；全仓门禁与独立复审通过。
-> 阶段 B 已开始，任务 6 的 v3 协议与夹具已完成，累计 6 / 23；任务 7–10 待实施。
-> 未接入 UI、存储、迁移或 Agent 读取入口。
+> 阶段 B 已按用户「继续」恢复实施；任务 6–7 已完成，累计 7 / 23。
+> 下一项为任务 8 的持久幂等与恢复，任务 9–10 尚未开始；阶段 B 不算完成。
+> 新仓储仅用于隔离测试，未接入 UI、迁移或 Agent 读取入口。
 >
 > 计划基线：`a539f8df5f3e0f3239110df44515ba7cb583e308`；实施基线：`d7abb9961f377ae257c3283ef7893218ec0c53f9`。
 > 阶段 A 在用户授权的 `.worktrees/continuous-review-domain`、`codex/continuous-review-domain` 内实施；原分支未改动。
-> 证据与续接点见[阶段 A 记录](../../reviews/2026-08-27-continuous-review-domain-phase-a.md)。
+> 阶段 A 证据见[阶段 A 记录](../../reviews/2026-08-27-continuous-review-domain-phase-a.md)；
+> 暂停事实见[阶段 B 暂停检查点](../../progress/2026-08-27-continuous-review-phase-b-paused-checkpoint.md)；
+> 恢复后的状态见[阶段 B 记录](../../reviews/2026-08-27-continuous-review-persistence-phase-b.md)。
 
 ## Global Constraints
 
@@ -403,6 +406,14 @@ test('v3 current state is closed and has no completed outcome contract', async (
 
 ### Task 7: 不可变仓储端口、共享租约与原子提交
 
+> 2026-08-27 已完成，20 项新仓储测试、49 项旧仓储测试、Domain 和架构边界门禁通过。
+> 实施新增窄 prepare／mapping／references／archives／owned_io 模块；提前建立 evidence／usage
+> 的仓储安装与核验部分，不代表 Task 9 原生捕获或 Task 12 外部导入已经完成。
+
+**接口细化：** `ReviewCommitRequest` 增加 `production: Option<ProductionScope>`，
+`StoredContinuousSnapshot` 也返回同一固定索引中的作用域。首次提交按显式作用域登记 Stream；
+后续提交必须完全一致。None 对应唯一人工流，不允许猜测／改写已有任务和批次归属。
+
 **Files:** Create `crates/viewer-application/src/review_workspace/mod.rs`、`crates/viewer-application/src/review_workspace/ports.rs`；`crates/viewer-infrastructure/src/review/continuous/mod.rs`、`crates/viewer-infrastructure/src/review/continuous/repository.rs`、`crates/viewer-infrastructure/src/review/continuous/commit.rs`、`crates/viewer-infrastructure/src/review/continuous/history.rs`；`crates/viewer-infrastructure/tests/continuous_review_repository.rs`。Modify `crates/viewer-application/src/lib.rs`、`crates/viewer-infrastructure/src/review/mod.rs`、`crates/viewer-infrastructure/src/review/atomic.rs`、`crates/viewer-infrastructure/src/review/provider.rs`。
 
 **Interfaces:** Consumes Tasks 1–6。Application 定义 `PreparedContinuousSnapshot { state, command_id, payload_digest: [u8;32], changes, evidence }`；`StoredContinuousSnapshot` 在这些只读字段之外包含 `reference: SnapshotRef`，来自读取时固定的索引引用，不写回状态文件造成自摘要循环。`ReviewCommitRequest { expected: Option<SnapshotRef>, next: PreparedContinuousSnapshot, archives: Vec<ArchiveCheckpoint>, adopted_usage: Vec<ReviewUsageDeclaration>, staged_evidence: Vec<PreparedEvidenceFile> }`；`ReviewCommitReceipt { command_id, payload_digest, snapshot: SnapshotRef }`。这些都是应用模型，不引用 Infrastructure wire DTO。load_current 一次返回内容与其固定引用，不能分别读两次索引来拼接。
@@ -411,7 +422,7 @@ test('v3 current state is closed and has no completed outcome contract', async (
 
 `ContinuousReviewRepositoryPort: Send + Sync` 同步方法：`load_current(stream_id) -> Result<Option<StoredContinuousSnapshot>, ReviewCommitError>`、`load_snapshot(stream_id, &SnapshotRef) -> Result<StoredContinuousSnapshot, ReviewCommitError>`、`load_archive(stream_id, archive_id) -> Result<ArchiveCheckpoint, ReviewCommitError>`、`find_command(stream_id, command_id) -> Result<CommandLookup, ReviewCommitError>`、`commit(ReviewCommitRequest) -> Result<ReviewCommitReceipt, ReviewCommitError>`。`CommandLookup = Found(ReviewCommitReceipt) | Absent | Unavailable`；Absent 仅在完整查明后返回。Provider 的 `open_reader()`／`open_writer()` 返回 `Arc<dyn ContinuousReviewRepositoryPort>`，writer 生命周期持有现有 `write.lock` 租约；reader 不创建目录。`ReviewCommitError` 区分 StaleSnapshot、CommandConflict、ReadOnly、LeaseBusy、Integrity、LimitExceeded、LookupUnavailable、Io、OutcomeUnknown。
 
-- [ ] **Step 1 — RED：CAS 失败不改变当前。** 在新集成测试中建立 `TempDir`，使用 `ProjectReviewRepositoryProvider` 新增的 `continuous_reader()`／`continuous_writer()`，提交固定 ID 的空初始状态，再用另一个 expected 提交。
+- [x] **Step 1 — RED：CAS 失败不改变当前。** 在新集成测试中建立 `TempDir`，使用 `ProjectReviewRepositoryProvider` 新增的 `continuous_reader()`／`continuous_writer()`，提交固定 ID 的空初始状态，再用另一个 expected 提交。
 
 ```rust
 assert!(matches!(writer.commit(stale_request), Err(ReviewCommitError::StaleSnapshot)));
@@ -420,8 +431,8 @@ assert_eq!(reread.state.snapshot_id, first.snapshot.snapshot_id);
 ```
 
 测试中的 first 来自第一次 `commit` 返回值；stale_request 完整构造为同项目／Stream、新 snapshot ID、错误 expected、空 archives／usage／evidence。新集成测试文件直接拥有工程，不读写真实 `.viewer`。
-- [ ] **Step 2 — RED。** `cargo test --locked -p viewer-infrastructure --test continuous_review_repository`。
-- [ ] **Step 3 — 按设计的提交顺序实现。** 验证期望与输入 → 安装证据／状态／存档不可变文件 → 验证全部引用 → CAS 重查 → 原子替换并同步索引。证据按内容寻址复用；同名已有文件仍核验完整字节。对象引用图不得循环。
+- [x] **Step 2 — RED。** `cargo test --locked -p viewer-infrastructure --test continuous_review_repository`。
+- [x] **Step 3 — 按设计的提交顺序实现。** 验证期望与输入 → 安装证据／状态／存档不可变文件 → 验证全部引用 → CAS 重查 → 原子替换并同步索引。证据按内容寻址复用；同名已有文件仍核验完整字节。对象引用图不得循环。
 
 ```rust
 if observed_current != request.expected {
@@ -430,9 +441,9 @@ if observed_current != request.expected {
 ```
 
 这项比较必须在最后的索引发布前再次执行；IO 放入桌面既有阻塞任务边界。复用 atomic_create_once／atomic_replace，只在 review 内部扩大可见性，不新开第二把锁。
-- [ ] **Step 4 — 加入原子存档、多个 Stream 不互相覆盖、只读无目录副作用、旧／新 writer 互斥、非法相对位置／符号链接和同名不同摘要测试。** Repository 不接受任意外部 snapshot 路径，只接受从已提交索引可达的身份和引用。
-- [ ] **Step 5 — GREEN。** `cargo test --locked -p viewer-infrastructure --test continuous_review_repository --test review_repository && pnpm architecture:boundaries`。
-- [ ] **Step 6 — 提交。** `git commit -m "feat(review): atomically commit continuous review snapshots"`。
+- [x] **Step 4 — 加入原子存档、多个 Stream 不互相覆盖、只读无目录副作用、旧／新 writer 互斥、非法相对位置／符号链接和同名不同摘要测试。** Repository 不接受任意外部 snapshot 路径，只接受从已提交索引可达的身份和引用。
+- [x] **Step 5 — GREEN。** `cargo test --locked -p viewer-infrastructure --test continuous_review_repository --test review_repository && pnpm architecture:boundaries`。
+- [x] **Step 6 — 提交。** `git commit -m "feat(review): atomically commit continuous review snapshots"`。
 
 ### Task 8: 持久幂等、故障恢复与资源边界
 

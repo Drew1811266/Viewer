@@ -50,7 +50,10 @@ AI 素材评审路线阶段 2 已于 2026-08-26 完成：设计文档内部状�
 
 持续评审与 Agent 交接完整设计已于 2026-08-27 获用户确认；实施计划已拆为六个阶段、23 个
 任务；阶段 A 的纯 Domain 任务 1–5 已在授权的独立分支完成并通过复审，证据见
-[阶段记录](reviews/2026-08-27-continuous-review-domain-phase-a.md)。阶段 B 正在实施：任务 6
+[阶段记录](reviews/2026-08-27-continuous-review-domain-phase-a.md)。阶段 B 已按用户要求恢复实施：
+任务 6–7 已完成，接下来实施任务 8；最新状态见
+[阶段 B 记录](reviews/2026-08-27-continuous-review-persistence-phase-b.md)，此前暂停状态见
+[暂停检查点](progress/2026-08-27-continuous-review-phase-b-paused-checkpoint.md)。任务 6
 新增 [v3 状态 Schema](protocol/viewer-review-state-v3.schema.json)、
 [索引 Schema](protocol/viewer-review-index-v3.schema.json)、
 [存档 Schema](protocol/viewer-review-archive-v3.schema.json)、

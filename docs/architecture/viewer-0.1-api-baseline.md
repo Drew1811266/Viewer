@@ -50,8 +50,8 @@ All entries below are stable for Viewer 0.1 and contain no I/O or platform imple
 | `search::SearchScope`, `SearchQuery`, `MatchedField`, `SearchHit`, `SearchPage` | Domain query model | Query service, search adapter, paged IPC results | G3 Unicode/filter/ranking tests |
 | `search::Generation`; `new`, `get`, `Default` | Domain task version | Session coordinator, scan/search/watcher requests | G3 stale-publication tests |
 | `ReviewSnapshotId`, `ReviewTargetId`, `ReviewTextRevisionId`, `ReviewTargetRevisionId`, `ReviewArchiveId`, `ReviewCommandId`, `ReviewUsageId` | Continuous review identity | Currently pure Domain tests; future adapters/application | `continuous_review_state` and mutation/archive tests |
-| `review::continuous` state/history/availability and exact target-version types; add/edit/withdraw, archive/restore planning and application, `project_current`, `diff_review` | Continuous review pure rules | Domain and v3 protocol adapters; not wired to IPC or persistence | `cargo test --locked -p viewer-domain`; [ADR 0006](../adr/0006-continuous-review-snapshot-and-archive-protocol.md) |
-| Infrastructure `review::v3` state/index/archive/usage/read-result records and typed encode/decode functions | Continuous review wire contracts | Isolated contract tests; repository integration pending | `review_protocol_v3_contract`, Node schema/case tests; [ADR 0006](../adr/0006-continuous-review-snapshot-and-archive-protocol.md) |
+| `review::continuous` state/history/availability and exact target-version types; add/edit/withdraw, archive/restore planning and application, `project_current`, `diff_review`, `validate_shared_identities` | Continuous review pure rules | Domain, v3 protocol and repository adapters; not wired to IPC | `cargo test --locked -p viewer-domain`; [ADR 0006](../adr/0006-continuous-review-snapshot-and-archive-protocol.md) |
+| Infrastructure `review::v3` state/index/archive/usage/read-result records and typed encode/decode functions | Continuous review wire contracts | Contract tests and continuous repository adapter; no production entry switch | `review_protocol_v3_contract`, `continuous_review_repository`, Node schema/case tests; [ADR 0006](../adr/0006-continuous-review-snapshot-and-archive-protocol.md) |
 
 ## `viewer-application`
 
@@ -60,6 +60,7 @@ Application APIs are stable ports and use-case state. Async traits remain runtim
 | Public API | Owner | Intended caller / implementer | Validated by |
 | --- | --- | --- | --- |
 | Modules `image`, `operation`, `ports`, `scan`, `scheduler`, `search`, `session`, `undo`, `watcher` and root re-exports | Application root | Infrastructure, platform adapters, Tauri composition | Workspace dependency policy |
+| `review_workspace::{ContinuousReviewRepositoryPort, ContinuousReviewRepositoryProviderPort}`; prepared/stored snapshot, evidence, usage, commit/lookup/error types | Continuous review persistence contract | Filesystem adapter and isolated tests; later application service | `continuous_review_repository`; explicit production scope guard, shared lease, immutable records and CAS |
 | `ImageRequest`, `ImageBackend`, `ImageArtifact`, `ImageError` | Image contract | Preview/compare use cases and `viewer-platform-macos` | G1 image gate |
 | `FileSnapshot`, `FileOperationError` + `io`, `InjectedCrash`, `FaultInjector::after_persist`, `NoFaults` | File transaction contract | Infrastructure executors, platform identity, fault fixtures | G2 fault/recovery gate |
 | `ProjectAccess`, `ProjectProbeOperation`, `ProjectProbeError` + `io`, `ProjectProbePort::probe` | Project-open port | Session service and platform access probe | Foundation session/probe tests |

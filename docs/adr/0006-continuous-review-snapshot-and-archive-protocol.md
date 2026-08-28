@@ -2,7 +2,7 @@
 
 > Status: Active
 >
-> Decision: Accepted for Phase A Domain and Task 6 wire contracts; repository integration remains planned.
+> Decision: Accepted for Phase A Domain and Tasks 6–7 wire/repository contracts; remaining Phase B work is in progress.
 >
 > Date: 2026-08-27
 
@@ -73,6 +73,30 @@ separate pure rules from protocol, repository, application and UI phases.
 
 ## Trust boundary and remaining work
 
+Task 7 interface refinement: application commit requests carry `production: Option<ProductionScope>`;
+stored snapshots expose the same scope from their fixed index view. A new stream is registered with
+that explicit scope; an existing stream must match it exactly. This supplies the task/batch metadata
+absent from the pure Domain state without guessing or rewriting another stream's ownership. Wire
+records remain infrastructure-owned and are mapped to independent application types.
+
+Task 7 implements the application repository ports and a filesystem adapter sharing the existing
+`write.lock` lease. Atomic publication now uses descriptor-relative temporary files/link/rename in
+the same atomic module for both legacy and continuous repositories. The writer also checks that its
+lease file and repository directory have not been substituted. Readers do not create metadata.
+
+The transaction verifies expected reference and stream scope, validates state/archive/usage inputs,
+installs immutable evidence and records, checks their references, rechecks the fixed index bytes,
+then publishes one index atomically. Existing object names cannot be reused for different bytes.
+Partial archives preserve shared feedback and later edits. Snapshot-origin references and claimed
+archive/usage transitions require actual committed evidence; unindexed files do not establish history.
+Image base identity stays fixed for a captured AssetVersion across the verified parent chain.
+
+Domain exposes the narrow `validate_shared_identities(candidate, historical)` validator so the
+repository can check historical sightings one snapshot at a time without duplicating identity rules
+or loading all complete states simultaneously. The adapter separately verifies hashes/reachability.
+PNG installation and reads stream one file at a time and check digest, size and image header;
+native capture/decoding/annotation rendering remains Task 9, not an implemented repository capability.
+
 Domain validates supplied state/identity relationships, not file bytes, real-time source freshness,
 global uniqueness across an unloaded repository, or graph reachability. Phase B must verify digests,
 bounded reference traversal, immutable records and source evidence. Later application/reader code must
@@ -83,9 +107,11 @@ must represent a confirmed live relocation in the asset catalog or a separate lo
 must not mint a new content version for a rename or weaken captured-content validation. That locator
 ownership/interface is a required Phase B refinement, not an implemented Phase A capability.
 
-Atomic repository commits, evidence capture, migration, application services, Agent readers and UI
-are not implemented by the Phase A and Task 6 contract work. Codecs validate declarations, not actual
-file bytes or graph reachability; they do not authorize execution of feedback on disk.
+Persistent command deduplication, recovery fault coverage and bounded-history refinements remain
+Task 8. Evidence capture, explicit legacy migration/provenance admission, application services,
+Agent readers and UI are not connected by Tasks 6–7. Existing legacy indexes are not silently replaced;
+legacy-origin continuous states need the later explicit migration adapter. Repository validation does
+not authorize execution of feedback on disk.
 
 No protocol bytes, original materials, product UI or version number are changed in Phase A. Signing,
 notarization, formal installers, publication and sales are outside the current development scope.

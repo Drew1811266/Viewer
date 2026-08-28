@@ -14,3 +14,4 @@ pub use model::*;
 pub use mutation::*;
 pub use restore::*;
 pub use source::*;
+pub use validation::validate_shared_identities;

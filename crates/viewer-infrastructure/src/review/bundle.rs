@@ -502,7 +502,11 @@ fn validate_bundle_contents(
     Ok(())
 }
 
-fn validate_png_header(bytes: &[u8], width: u32, height: u32) -> Result<(), ReviewRepositoryError> {
+pub(super) fn validate_png_header(
+    bytes: &[u8],
+    width: u32,
+    height: u32,
+) -> Result<(), ReviewRepositoryError> {
     if bytes.len() < 24
         || &bytes[..8] != b"\x89PNG\r\n\x1a\n"
         || &bytes[12..16] != b"IHDR"

@@ -3,6 +3,7 @@ mod atomic;
 mod bundle;
 mod catalog;
 mod change_ledger;
+mod continuous;
 mod lease;
 mod protocol;
 mod provider;

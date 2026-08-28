@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
+import fs from 'node:fs/promises'
+import { syncBuiltinESMExports } from 'node:module'
 import { link, mkdir, mkdtemp, open, readFile, readdir, rename, rm, symlink, truncate, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -81,7 +83,7 @@ test('rejects repository and source replacement during reads, even with identica
   const original = prototype.read
   await probe.close()
   for (const source of [false, true]) {
-    const destination = source ? path.join(root, 'source') : path.join(repository, 'index.json')
+    const destination = source ? path.join(root, 'source') : path.join(repository, 'states/a.json')
     await writeFile(destination, '{}')
     await writeFile(`${destination}.replacement`, '{}')
     let changed = false
@@ -91,9 +93,89 @@ test('rejects repository and source replacement during reads, even with identica
       return result
     })
     if (source) assert.equal((await reader.checkSource('source', { sizeBytes: 2, blake3: blake3Hex(Buffer.from('{}')) })).status, 'unverified')
-    else await assert.rejects(reader.readRepositoryJson('index.json', 64), /changed|identity/)
+    else await assert.rejects(reader.readRepositoryJson('states/a.json', 64), /changed|identity/)
     mock.mock.restore()
     assert.ok(changed)
+  }
+})
+
+test('atomic index publication retains one complete opened version while immutable objects reject replacement', async t => {
+  const { repository, reader } = await project(t)
+  const file = path.join(repository, 'index.json')
+  await writeFile(file, '{"version":1}')
+  await writeFile(`${file}.next`, '{"version":2}')
+  const probe = await open(file, 'r')
+  const prototype = Object.getPrototypeOf(probe)
+  const original = prototype.read
+  await probe.close()
+  let replaced = false
+  const hook = t.mock.method(prototype, 'read', async function (...args) {
+    const result = await original.apply(this, args)
+    if (!replaced) { replaced = true; await rename(`${file}.next`, file) }
+    return result
+  })
+  try { assert.deepEqual((await reader.readRepositoryJson('index.json', 64)).data, { version: 1 }) }
+  finally { hook.mock.restore() }
+  assert.deepEqual((await reader.readRepositoryJson('index.json', 64)).data, { version: 2 })
+})
+
+test('directory substitution between checks cannot publish bytes from outside the project', async t => {
+  // Genuine filesystem calls; the hooks only schedule directory moves between
+  // individual async checks. Include a parent above the selected project root.
+  for (const aboveRoot of [false, true]) {
+    const owned = await mkdtemp(path.join(tmpdir(), 'viewer-directory-race-'))
+    const original = { ...fs }
+    const projectRoot = path.join(owned, 'parent/project')
+    const outside = path.join(owned, 'outside')
+    const repository = path.join(projectRoot, '.viewer/reviews')
+    await mkdir(repository, { recursive: true })
+    const redirected = aboveRoot ? path.join(outside, 'project/.viewer/reviews') : outside
+    await mkdir(redirected, { recursive: true })
+    await writeFile(path.join(repository, 'index.json'), '{"origin":"inside"}')
+    await writeFile(path.join(redirected, 'index.json'), '{"origin":"outside"}')
+    const canonical = await original.realpath(projectRoot)
+    const target = aboveRoot ? path.dirname(canonical) : path.join(canonical, '.viewer/reviews')
+    const parked = `${target}-parked`
+    const leaf = path.join(canonical, '.viewer/reviews/index.json')
+    const reader = await openSafeProject(projectRoot)
+    let moved = false
+    const restore = async () => {
+      if (moved) {
+        await original.unlink(target)
+        await original.rename(parked, target)
+        moved = false
+      }
+    }
+    let directories = 0
+    let leaves = 0
+    const statHook = t.mock.method(fs, 'lstat', async (file, ...args) => {
+      const result = await original.lstat(file, ...args)
+      if (file === target && [1, 3].includes(++directories)) {
+        await original.rename(target, parked)
+        await original.symlink(outside, target)
+        moved = true
+      }
+      if (file === leaf && ++leaves === 2) await restore()
+      return result
+    })
+    const openHook = t.mock.method(fs, 'open', async (file, ...args) => {
+      const result = await original.open(file, ...args)
+      if (file === leaf) await restore()
+      return result
+    })
+    syncBuiltinESMExports()
+    try {
+      const result = await reader.readRepositoryJson('index.json', 64).catch(error => error)
+      if (result instanceof Error) assert.match(result.message, /changed|symbolic|identity/)
+      else assert.deepEqual(result.data, { origin: 'inside' })
+      assert.ok(directories > 0)
+    } finally {
+      statHook.mock.restore()
+      openHook.mock.restore()
+      syncBuiltinESMExports()
+      await restore()
+      await original.rm(owned, { recursive: true, force: true })
+    }
   }
 })
 

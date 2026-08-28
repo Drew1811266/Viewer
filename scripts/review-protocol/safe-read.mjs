@@ -58,25 +58,38 @@ export async function openSafeProject(projectRoot) {
   }
   let root
   let identity
+  const ancestors = []
   const requestedRoot = path.resolve(projectRoot)
   try {
     const before = await metadata(requestedRoot, 'project root', true)
     root = await realpath(requestedRoot)
     identity = await metadata(root, 'project root', true)
     if (!sameIdentity(before, identity)) fail('integrity', 'project root identity changed')
+    for (let directory = path.dirname(root); ; directory = path.dirname(directory)) {
+      ancestors.unshift([directory, await metadata(directory, 'project ancestor', true)])
+      if (directory === path.dirname(directory)) break
+    }
   } catch (error) { throw ioError(error, 'project root') }
 
   async function checkRoot() {
-    if (!sameIdentity(identity, await metadata(root, 'project root', true))
+    const current = await metadata(root, 'project root', true)
+    if (!sameIdentity(identity, current)
         || !sameIdentity(identity, await metadata(requestedRoot, 'project root', true))
         || await realpath(requestedRoot) !== root || await realpath(root) !== root) {
       fail('integrity', 'project root identity changed')
     }
+    return current
   }
   async function locate(relative, label, directory = false) {
-    await checkRoot()
-    let current = root
     const directories = []
+    for (const [ancestor, pinned] of ancestors) {
+      const before = await metadata(ancestor, 'project ancestor', true)
+      if (!sameIdentity(before, pinned)) fail('integrity', 'project ancestor identity changed')
+      directories.push([ancestor, before])
+    }
+    const rootBefore = await checkRoot()
+    let current = root
+    directories.push([root, rootBefore])
     const parts = relative.split('/')
     for (const [i, part] of parts.entries()) {
       current = path.join(current, part)
@@ -89,13 +102,24 @@ export async function openSafeProject(projectRoot) {
   }
   async function revalidate(located, label) {
     await checkRoot()
-    for (const [directory, before] of located.directories) {
-      if (!sameIdentity(before, await metadata(directory, label, true))) {
+    for (const [index, [directory, before]] of located.directories.entries()) {
+      const after = await metadata(directory, label, true)
+      if (!sameIdentity(before, after)) {
         fail('integrity', `${label} directory identity changed during read`)
+      }
+      // Node has no portable openat. Parent mutation timestamps also detect a
+      // directory swapped out and back between individual lstat/open calls.
+      // The final containing directory may gain files during normal publication;
+      // its own replacement changes the timestamp of its checked parent.
+      if (index < located.directories.length - 1
+          && (before.ctimeNs !== after.ctimeNs || before.mtimeNs !== after.mtimeNs)) {
+        const error = new SafeReadError('integrity', `${label} parent directory changed during read`)
+        error.retryableDirectoryChange = true
+        throw error
       }
     }
   }
-  async function read(relative, maximumBytes, label, sourceHash = false) {
+  async function read(relative, maximumBytes, label, sourceHash = false, mutableIndex = false) {
     let handle
     try {
       const located = await locate(relative, label)
@@ -122,9 +146,25 @@ export async function openSafeProject(projectRoot) {
       const after = await handle.stat({ bigint: true })
       await revalidate(located, label)
       const atPath = await metadata(located.file, label, false)
-      if (BigInt(total) !== before.size || !sameFile(before, after) || !sameFile(after, atPath)) {
+      const publishedNewIndex = mutableIndex && after.nlink === 0n && !sameIdentity(after, atPath)
+        && sameIdentity(before, after) && before.size === after.size && before.mtimeNs === after.mtimeNs
+      if (publishedNewIndex) {
+        // Atomic rename may unlink the fixed old index. Re-read that SAME handle
+        // to reject torn bytes without switching to the new published version.
+        let verified = 0
+        while (verified < total) {
+          const { bytesRead } = await handle.read(buffer, 0, Math.min(buffer.length, total - verified), verified)
+          if (!bytesRead || !buffer.subarray(0, bytesRead).equals(bytes.subarray(verified, verified + bytesRead))) {
+            fail('integrity', `${label} contents changed during read`)
+          }
+          verified += bytesRead
+        }
+        if (!sameFile(after, await handle.stat({ bigint: true }))) fail('integrity', `${label} contents changed during read`)
+      }
+      if (BigInt(total) !== before.size || (!publishedNewIndex && (!sameFile(before, after) || !sameFile(after, atPath)))) {
         fail('integrity', `${label} identity or contents changed during read`)
       }
+      await revalidate(located, label)
       return hash ? { blake3: hash.digestHex(), sizeBytes: total } : bytes
     } catch (error) { throw ioError(error, label) }
     finally { await handle?.close() }
@@ -134,7 +174,14 @@ export async function openSafeProject(projectRoot) {
     if (!Number.isSafeInteger(maximumBytes) || maximumBytes < 0 || maximumBytes > MAX_JSON_BYTES) {
       fail('limit_exceeded', `${label} size limit is invalid`)
     }
-    return read(`.viewer/reviews/${location}`, maximumBytes, label)
+    for (let attempt = 0; ; attempt += 1) {
+      try { return await read(`.viewer/reviews/${location}`, maximumBytes, label, false, location === 'index.json') }
+      catch (error) {
+        // Retry the same exact location only; callers retain their selected
+        // SnapshotRef and digest. Sustained mutations fail closed after 3 tries.
+        if (!error.retryableDirectoryChange || attempt === 2) throw error
+      }
+    }
   }
   return Object.freeze({
     readRepositoryBytes: repositoryBytes,

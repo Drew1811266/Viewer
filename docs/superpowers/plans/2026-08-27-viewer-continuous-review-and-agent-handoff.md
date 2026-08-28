@@ -14,7 +14,8 @@
 >
 > 执行状态：阶段 A–C（任务 1–13）已完成，累计 13 / 23。
 > 阶段 C 最终实现 `21edbf6` 已通过完整 `pnpm verify:clean` 和只读独立复验，检查点 C 完成。
-> 下一阶段从 Task 14 的独立读取器安全 IO 与摘要开始；任务 14–23 尚未完成。
+> Task 14 已开始，但 Node 文件访问的并发安全边界尚未通过；任务 14–23 尚未完成。
+> 当前等待“Node 入口 + Rust 只读核心”架构调整确认，见[阶段 D 架构检查点](../../progress/2026-08-27-continuous-review-phase-d-architecture-checkpoint.md)。
 > 应用用例、声明和迁移仅在隔离工程验证；UI、桌面组装和 Agent 读取入口尚未切换。
 >
 > 计划基线：`a539f8df5f3e0f3239110df44515ba7cb583e308`；实施基线：`d7abb9961f377ae257c3283ef7893218ec0c53f9`。
@@ -22,7 +23,7 @@
 > 阶段 A 证据见[阶段 A 记录](../../reviews/2026-08-27-continuous-review-domain-phase-a.md)；
 > 暂停事实见[阶段 B 暂停检查点](../../progress/2026-08-27-continuous-review-phase-b-paused-checkpoint.md)；
 > 阶段 B 结果见[阶段 B 记录](../../reviews/2026-08-27-continuous-review-persistence-phase-b.md)；
-> 最新状态与后续限制见[阶段 C 记录](../../reviews/2026-08-27-continuous-review-application-phase-c.md)。
+> 已通过状态与限制见[阶段 C 记录](../../reviews/2026-08-27-continuous-review-application-phase-c.md)；最新进行中状态见上述阶段 D 检查点。
 
 ## Global Constraints
 
@@ -666,6 +667,9 @@ let should_activate = matches!(choice, MigrationChoice::ContinueSelected { .. })
 - [x] **Step 6 — 提交。** `git commit -m "feat(review): migrate legacy reviews without reviving old instructions"`。
 
 ### Task 14: 独立读取器的共享安全 IO 与流式摘要
+
+> 进行中，未通过：首版 `cc7e13f` 的 39 项测试后，复审发现并发索引替换和目录访问约束缺口。
+> 当前候选的全套协议测试失败；暂停等待架构方案确认，不将下列任务标为已完成。
 
 **Files:** Create `scripts/review-protocol/blake3.mjs`、`scripts/review-protocol/blake3.test.mjs`、`scripts/review-protocol/safe-read.mjs`、`scripts/review-protocol/safe-read.test.mjs`。Modify `scripts/review-protocol/read-latest.mjs`、`scripts/review-protocol/read-latest.test.mjs`、`package.json`。
 

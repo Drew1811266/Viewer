@@ -103,6 +103,11 @@ test('missing index uses only the existing project identity and publishes no sta
   const value = await readCurrentReview({ projectRoot })
   assert.deepEqual(value, { protocolVersion: 'viewer.review/3', status: 'no_review_state', role: 'current', projectId: id(1), reviewStreamId: null })
   assert.equal(await validateFixture(value, schema), true)
+  await mkdir(path.join(projectRoot, '.viewer/reviews/drafts'), { recursive: true })
+  await writeFile(path.join(projectRoot, '.viewer/reviews/drafts/orphan.json'), '{}')
+  const orphaned = await readCurrentReview({ projectRoot })
+  assert.equal(orphaned.status, 'error', 'missing index with legacy draft is not an empty project')
+  assert.equal(orphaned.code, 'integrity')
 })
 
 test('unknown since keeps complete current and reports unavailable; archive removal has a proven net reason', async t => {
@@ -144,4 +149,55 @@ test('current CLI sends typed errors only to stderr and successful complete JSON
   assert.notEqual(bad.status, 0)
   assert.equal(bad.stdout, '')
   assert.equal(JSON.parse(bad.stderr).status, 'error')
+})
+
+test('unreachable or other-stream since never changes the selected current instruction set', async t => {
+  const f = await fixture(t, 'legacy_mixed')
+  const base = path.join(f.projectRoot, '.viewer/reviews')
+  const index = JSON.parse(await readFile(path.join(base, 'index.json')))
+  const other = index.streams.find(s => s.reviewStreamId !== f.streamId)
+  const state = { protocolVersion: 'viewer.review/3', kind: 'state', projectId: index.projectId,
+    reviewStreamId: other.reviewStreamId, snapshotId: id(880), parent: null, commandId: id(881), payloadDigest: '0'.repeat(64),
+    assets: [], feedback: [], evidence: [], changes: [] }
+  const bytes = Buffer.from(JSON.stringify(state))
+  await writeFile(path.join(base, `states/${state.snapshotId}.json`), bytes)
+  other.currentRef = { snapshotId: state.snapshotId, blake3: blake3Hex(bytes) }
+  await writeFile(path.join(base, 'index.json'), JSON.stringify(index))
+  const current = await readCurrentReview(f)
+  const different = await readCurrentReview({ ...f, sinceSnapshotId: state.snapshotId })
+  assert.equal(different.delta.reason, 'wrong_context')
+  assert.deepEqual(different.feedback, current.feedback)
+  const uncommitted = { ...state, reviewStreamId: f.streamId, snapshotId: id(882) }
+  await writeFile(path.join(base, `states/${uncommitted.snapshotId}.json`), JSON.stringify(uncommitted))
+  const result = await readCurrentReview({ ...f, sinceSnapshotId: uncommitted.snapshotId })
+  assert.equal(result.delta.reason, 'unknown_snapshot')
+  assert.deepEqual(result.snapshotRef, current.snapshotRef)
+})
+
+test('a damaged delta chain leaves verified current intact and never falls back to older prose', async t => {
+  const f = await fixture(t, 'later_edit')
+  const base = path.join(f.projectRoot, '.viewer/reviews')
+  const current = await readCurrentReview(f)
+  await writeFile(path.join(base, `states/${f.snapshotIds[0]}.json`), 'corrupt old snapshot')
+  const result = await readCurrentReview({ ...f, sinceSnapshotId: f.snapshotIds[0] })
+  assert.equal(result.status, 'ok', result.message)
+  assert.deepEqual(result.feedback, current.feedback)
+  assert.deepEqual(result.delta, { status: 'unavailable', reason: 'integrity' })
+})
+
+test('delta rejects an extra archival event that its committed checkpoint does not authorize', async t => {
+  const f = await fixture(t, 'partial_archive')
+  await editCurrent(f, state => {
+    const feedback = state.feedback[0]
+    const target = feedback.targets[0]
+    const key = { feedbackId: feedback.feedbackId, textRevisionId: feedback.textRevisionId, targetId: target.targetId, targetRevisionId: target.targetRevisionId }
+    state.changes.push({ targetId: target.targetId, before: key, after: null, kind: 'archived', archiveId: state.changes[0].archiveId, historicalKey: key })
+    state.feedback = []
+    for (const binding of state.evidence) {
+      if (binding.capability.kind === 'image') { binding.capability.annotations = []; binding.capability.annotated = null }
+    }
+  })
+  const result = await readCurrentReview({ ...f, sinceSnapshotId: f.snapshotIds[0] })
+  assert.equal(result.status, 'ok', result.message)
+  assert.deepEqual(result.delta, { status: 'unavailable', reason: 'integrity' })
 })

@@ -11,6 +11,7 @@ use std::{
     collections::HashMap,
     fs::File,
     io::{self, Read, Seek, Write},
+    os::unix::fs::MetadataExt,
 };
 use viewer_application::{
     MAX_REVIEW_ARTIFACT_BYTES,
@@ -132,7 +133,7 @@ pub(super) fn copy_png(
     {
         return Err(ReviewCommitError::LimitExceeded);
     }
-    if before.len() != reference.size_bytes || !before.is_file() {
+    if before.len() != reference.size_bytes || !before.is_file() || before.nlink() != 1 {
         return Err(ReviewCommitError::Integrity);
     }
     let mut header = Vec::with_capacity(24);
@@ -153,9 +154,11 @@ pub(super) fn copy_png(
         hasher.update(&buffer[..count]);
         output.write_all(&buffer[..count]).map_err(map_io)?;
     }
+    let after = input.metadata().map_err(map_io)?;
     if total != reference.size_bytes
         || hasher.finalize().as_bytes() != &reference.blake3
-        || !same_contents(&before, &input.metadata().map_err(map_io)?)
+        || after.nlink() != 1
+        || !same_contents(&before, &after)
     {
         return Err(ReviewCommitError::Integrity);
     }

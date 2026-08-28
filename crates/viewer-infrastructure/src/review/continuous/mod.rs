@@ -14,6 +14,7 @@ mod migration_inspect;
 pub(in crate::review) mod migration_recovery;
 mod owned_io;
 mod prepare;
+mod reader;
 mod recovery;
 mod references;
 mod repository;
@@ -23,5 +24,6 @@ mod usage_source;
 
 pub use command::ContinuousReviewCommandCodec;
 pub use faults::{NoReviewCommitFaults, ReviewCommitFaultInjector, ReviewCommitFaultPoint};
+pub use reader::run_review_reader;
 pub(super) use repository::ContinuousReviewRepository;
 pub use usage_import::ProjectUsageImporter;

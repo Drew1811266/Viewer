@@ -17,6 +17,7 @@ use super::common::{
     MAX_REVIEW_DOCUMENT_BYTES, MAX_REVIEW_INDEX_BYTES, ReviewProtocolError, decode_document,
 };
 use bounded::encode_document;
+pub(in crate::review) use bounded::encode_document as encode_bounded_json;
 pub use read_result::*;
 pub use records::*;
 

@@ -100,6 +100,25 @@ pub struct LegacyAnnotation {
 }
 
 impl HistoryReadResult {
+    pub(in crate::review) fn from_verified(
+        project_id: ProjectId,
+        review_stream_id: ReviewStreamId,
+        selector: ReadHistorySelector,
+        entries: Vec<HistoryEntry>,
+        limitations: Vec<HistoryLimitation>,
+    ) -> Self {
+        Self {
+            protocol_version: wire::Protocol::V3,
+            status: OkStatus::Ok,
+            role: HistoryRole::History,
+            project_id,
+            review_stream_id,
+            selector,
+            entries,
+            limitations,
+        }
+    }
+
     pub(super) fn validate(&self) -> Result<(), ReviewProtocolError> {
         use ReviewProtocolError::*;
         if self.entries.is_empty() {
@@ -258,7 +277,9 @@ fn validate_legacy_evidence(
     if evidence.len() > 50_000 {
         return Err(LimitExceeded);
     }
-    if reference.protocol_version == "viewer.review/1" {
+    if reference.protocol_version == "viewer.review/1"
+        || reference.kind == super::LegacyRecordKind::Draft
+    {
         return if evidence.is_empty() {
             Ok(())
         } else {
@@ -267,17 +288,22 @@ fn validate_legacy_evidence(
     }
     let mut expected = std::collections::HashMap::<_, Vec<_>>::new();
     for item in &draft.feedback {
+        let mut seen_assets = HashSet::new();
         for target in &item.targets {
             if matches!(
                 target.anchor,
                 FeedbackAnchor::ImageRect(_) | FeedbackAnchor::ImageStroke(_)
-            ) {
+            ) && seen_assets.insert(target.asset_version_id)
+            {
                 expected
                     .entry(target.asset_version_id)
                     .or_default()
-                    .push(item.id);
+                    .push((item.created_at_ms, item.id));
             }
         }
+    }
+    for feedback in expected.values_mut() {
+        feedback.sort_by_key(|(time, id)| (*time, id.to_string()));
     }
     let mut bytes = 0;
     for image in evidence {
@@ -292,13 +318,16 @@ fn validate_legacy_evidence(
         let Some(ids) = expected.remove(&image.asset_version_id) else {
             return Err(InvalidData);
         };
+        let mut ordinals = HashSet::new();
         if ids.len() != image.annotations.len()
-            || image
-                .annotations
-                .iter()
-                .zip(ids)
-                .enumerate()
-                .any(|(i, (a, id))| a.ordinal as usize != i + 1 || a.feedback_id != id)
+            || image.annotations.iter().any(|a| {
+                !ordinals.insert(a.ordinal)
+                    || a.ordinal == 0
+                    || ids
+                        .get(a.ordinal.saturating_sub(1) as usize)
+                        .map(|(_, id)| *id)
+                        != Some(a.feedback_id)
+            })
         {
             return Err(InvalidData);
         }

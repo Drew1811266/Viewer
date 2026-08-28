@@ -52,7 +52,7 @@ AI 素材评审路线阶段 2 已于 2026-08-26 完成：设计文档内部状�
 任务；阶段 A 的纯 Domain 任务 1–5 已在授权的独立分支完成并通过复审，证据见
 [阶段记录](reviews/2026-08-27-continuous-review-domain-phase-a.md)。阶段 B、C 现也已完成：
 任务 1–13 已通过全仓门禁与独立复验，累计 13 / 23；任务 14 已开始但尚未通过，读取器架构
-调整待确认，最新状态见[阶段 D 架构检查点](progress/2026-08-27-continuous-review-phase-d-architecture-checkpoint.md)。已通过结果见
+调整已于 2026-08-28 获批、正在实施，最新状态见[阶段 D 架构检查点](progress/2026-08-27-continuous-review-phase-d-architecture-checkpoint.md)。已通过结果见
 [阶段 C 记录](reviews/2026-08-27-continuous-review-application-phase-c.md)，阶段 B 结果见
 [阶段 B 记录](reviews/2026-08-27-continuous-review-persistence-phase-b.md)，此前暂停状态见
 [暂停检查点](progress/2026-08-27-continuous-review-phase-b-paused-checkpoint.md)。任务 6

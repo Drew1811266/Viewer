@@ -97,7 +97,12 @@ v1 索引保留 `completedRoundIds`。v2 索引以 `completedRounds` 保存每�
 
 ## Agent 无关参考读取器
 
-[`scripts/review-protocol/read-latest.mjs`](../../scripts/review-protocol/read-latest.mjs) 只使用 Node.js 内置模块，不依赖 Codex、Claude、OpenCode 或其他特定 Agent。它不联网、不启动 Viewer、不启动 Agent、不写项目文件，也不枚举 Draft 作为结果。
+[`scripts/review-protocol/read-latest.mjs`](../../scripts/review-protocol/read-latest.mjs) 的 Node 入口只使用内置模块，文件访问与协议验证由本地 Rust 只读核心完成，不依赖 Codex、Claude、OpenCode 或其他特定 Agent。它不联网、不启动 Viewer、不启动 Agent、不写项目文件，也不枚举 Draft 作为结果。
+
+开发者先显式执行 `pnpm build:review-reader`。默认使用本工作树 `target/debug/viewer-review-reader`；
+也可用调用者设置的绝对路径 `VIEWER_REVIEW_READER` 指定可信二进制。读取时不自动构建／下载，
+不从受审项目、项目配置或 PATH 查找程序。缺少核心时明确报错，不退回未验证的 Node 路径读取。
+内部是有界的一次性 stdin/stdout JSON 调用，不是常驻服务；没有安装包或签名要求。
 
 ```bash
 node scripts/review-protocol/read-latest.mjs \
@@ -127,3 +132,25 @@ v1 历史记录。旧 v1 索引没有摘要字段，继续按原契约验证身�
 成功时输出原始自然语言意见、Anchor 和已验证的相对 artifact 路径，不返回绝对素材路径或
 缓存路径；失败时写入 stderr 并以状态码 `1` 退出。摘要提供内容完整性校验，不代表对评审
 意见来源的身份认证。读取器不自动执行意见、不修改项目，也不猜测尚未完成的结果。
+
+## v3 持续评审读取入口（开发中，尚未接入产品 UI）
+
+隔离分支提供 `read-current.mjs` 和 `read-history.mjs`，使用相同只读核心。旧入口遇到 v3
+明确拒绝并提示当前入口；当前入口遇到旧协议要求显式迁移，绝不把旧 Completed 当作新任务。
+
+```bash
+node scripts/review-protocol/read-current.mjs --project /absolute/test-project
+node scripts/review-protocol/read-current.mjs --project /absolute/test-project --stream STREAM_UUID --since SNAPSHOT_UUID
+node scripts/review-protocol/read-history.mjs --project /absolute/test-project --stream STREAM_UUID --archive ARCHIVE_UUID
+```
+
+当前支持 `--list`、单个 `--stream` 或成对 `--task`／`--batch`；历史必须指定 Stream，并在
+`--snapshot`、`--archive`、`--legacy-round` 中恰选一个，没有隐式 latest。v3 成功 JSON 写
+stdout，typed error JSON 写 stderr、exit 1。库入口对预期读取错误返回 `status: error`；
+legacy 库入口仍抛错，CLI 仍使用 `error: …` stderr。错误码稳定，底层解析诊断文字不是机器契约。
+
+每次读取固定一版 index：并发保存不会将已打开的旧版本重选为新版本。完整 current 是本次
+待办清单的权威输入，空 current 不回退历史、不等于“全部通过”；Agent 应以它替换缓存待办，
+不能把历次结果不断追加。sourceChecks 只证明检查时刻，执行前仍应核对目标内容版本。
+delta 只描述已提交净变化，不携带旧原文；无法证明起点或超过 10,000 节点时返回 unavailable，
+完整 current 仍可单独使用。history 没有 actionable，也不证明 Agent 已执行或问题已解决。

@@ -176,7 +176,7 @@ pub enum DeltaUnavailableReason {
 }
 
 impl ReviewReadResult {
-    pub(super) fn validate(&self) -> Result<(), ReviewProtocolError> {
+    pub(in crate::review) fn validate(&self) -> Result<(), ReviewProtocolError> {
         use ReviewProtocolError::*;
         let (project_id, stream_id, reference, assets, feedback, evidence) = match self {
             Self::Current(v) => (
@@ -287,5 +287,61 @@ impl ReviewReadResult {
             _ => unreachable!(),
         }
         Ok(())
+    }
+}
+
+impl CurrentReadResult {
+    pub(in crate::review) fn from_verified(
+        snapshot_ref: SnapshotRef,
+        record: ReviewStateRecord,
+        source_checks: Vec<ReadSourceCheck>,
+        delta: ReadDelta,
+    ) -> Result<Self, ReviewProtocolError> {
+        let projected = project_current(
+            &record.state,
+            &source_checks.iter().map(Into::into).collect::<Vec<_>>(),
+        )
+        .map_err(validate::domain_error)?;
+        let mut history_refs = vec![];
+        for reference in record
+            .state
+            .feedback
+            .iter()
+            .filter_map(|f| f.history_ref.as_ref())
+        {
+            if !history_refs.contains(reference) {
+                history_refs.push(reference.clone());
+            }
+        }
+        Ok(Self {
+            protocol_version: wire::Protocol::V3,
+            status: OkStatus::Ok,
+            role: CurrentRole::Current,
+            project_id: record.state.project_id,
+            review_stream_id: record.state.stream_id,
+            snapshot_ref,
+            assets: record.state.assets,
+            feedback: record.state.feedback,
+            evidence: record.evidence,
+            source_checks,
+            actionable: projected.actionable,
+            needs_confirmation: projected.needs_confirmation,
+            history_refs,
+            delta,
+        })
+    }
+}
+impl NoReviewStateResult {
+    pub(in crate::review) fn new(
+        project_id: ProjectId,
+        review_stream_id: Option<ReviewStreamId>,
+    ) -> Self {
+        Self {
+            protocol_version: wire::Protocol::V3,
+            status: NoStateStatus::NoState,
+            role: CurrentRole::Current,
+            project_id,
+            review_stream_id,
+        }
     }
 }

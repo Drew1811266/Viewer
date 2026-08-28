@@ -732,8 +732,9 @@ test('CI defines independent deterministic quality and security gates', async ()
   )
   assert.equal(
     packageJson.scripts['test:review-protocol'],
-    'node --test scripts/review-protocol/blake3.test.mjs scripts/review-protocol/safe-read.test.mjs scripts/review-protocol/read-latest.test.mjs scripts/review-protocol/schema-contract.test.mjs',
+    'pnpm build:review-reader && node --test scripts/review-protocol/blake3.test.mjs scripts/review-protocol/native-reader.test.mjs scripts/review-protocol/read-latest.test.mjs scripts/review-protocol/read-current.test.mjs scripts/review-protocol/read-history.test.mjs scripts/review-protocol/schema-contract.test.mjs',
   )
+  assert.equal(packageJson.scripts['build:review-reader'], 'cargo build --locked --offline -p viewer-infrastructure --bin viewer-review-reader')
   assert.equal(
     packageJson.scripts['test:review-loop'],
     'node --test scripts/review-protocol/manual-round-e2e.test.mjs',

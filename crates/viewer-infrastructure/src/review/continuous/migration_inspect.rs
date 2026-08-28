@@ -36,11 +36,7 @@ pub(super) fn scan(
     project: ProjectId,
 ) -> Result<Option<InspectedLegacy>, ReviewCommitError> {
     let Some(bytes) = directory.read("index.json", MAX_REVIEW_INDEX_BYTES)? else {
-        if let Some(drafts) = directory.child("drafts", false)?
-            && !drafts.entries(1)?.is_empty()
-        {
-            return Err(ReviewCommitError::Integrity);
-        }
+        verify_without_index(directory)?;
         return Ok(None);
     };
     if v3::decode_index_v3(&bytes).is_ok() {
@@ -93,6 +89,16 @@ pub(super) fn scan(
         index,
         inspection,
     }))
+}
+
+/// Shared no-index policy; callers that already pinned absence must not reopen a newer index.
+pub(super) fn verify_without_index(directory: &Directory) -> Result<(), ReviewCommitError> {
+    if let Some(drafts) = directory.child("drafts", false)?
+        && !drafts.entries(1)?.is_empty()
+    {
+        return Err(ReviewCommitError::Integrity);
+    }
+    Ok(())
 }
 
 fn scan_completed(

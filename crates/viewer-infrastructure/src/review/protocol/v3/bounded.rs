@@ -29,7 +29,7 @@ impl Write for BoundedJsonBuffer {
         Ok(())
     }
 }
-pub(super) fn encode_document<T: Serialize>(
+pub(in crate::review) fn encode_document<T: Serialize>(
     value: &T,
     max_bytes: u64,
 ) -> Result<Vec<u8>, ReviewProtocolError> {

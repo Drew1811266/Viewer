@@ -174,7 +174,7 @@ test('rejects mismatched v2 manifest identity and escaping catalog locations', a
   })
   await assert.rejects(
     readLatestCompletedReview({ projectRoot: escaping.project }),
-    /location/i,
+    { code: 'integrity' },
   )
 })
 
@@ -187,7 +187,7 @@ test('rejects symlinked v2 bundle components and artifacts', async () => {
   await symlink(outsideBundle, bundle)
   await assert.rejects(
     readLatestCompletedReview({ projectRoot: bundleFixture.project }),
-    /symbolic link/i,
+    { code: 'integrity' },
   )
 
   await using artifactFixture = await disposableProject(mixedFixtureProject)
@@ -198,7 +198,7 @@ test('rejects symlinked v2 bundle components and artifacts', async () => {
   await symlink(outsideArtifact, artifact)
   await assert.rejects(
     readLatestCompletedReview({ projectRoot: artifactFixture.project }),
-    /symbolic link/i,
+    { code: 'integrity' },
   )
 })
 
@@ -207,21 +207,21 @@ test('rejects missing and extra undeclared v2 artifacts', async () => {
   await rm(mixedArtifact(missing.project))
   await assert.rejects(
     readLatestCompletedReview({ projectRoot: missing.project }),
-    /artifact.*unavailable|missing.*artifact/i,
+    { code: 'integrity' },
   )
 
   await using extra = await disposableProject(mixedFixtureProject)
   await writeFile(path.join(mixedBundle(extra.project), 'artifacts', 'undeclared.png'), 'extra')
   await assert.rejects(
     readLatestCompletedReview({ projectRoot: extra.project }),
-    /undeclared|unexpected artifact/i,
+    { code: 'integrity' },
   )
 })
 
 test('rejects oversized v2 JSON and PNG before decoding them', async () => {
   for (const [target, message] of [
-    [mixedManifest, /round.*size limit/i],
-    [mixedArtifact, /artifact.*size limit/i],
+    [mixedManifest, { code: 'limit_exceeded' }],
+    [mixedArtifact, { code: 'limit_exceeded' }],
   ]) {
     await using fixture = await disposableProject(mixedFixtureProject)
     await makeOversize(target(fixture.project), 64 * 1024 * 1024 + 1)
@@ -234,23 +234,23 @@ test('rejects oversized v2 JSON and PNG before decoding them', async () => {
 
 test('rejects malformed v2 anchors and artifact metadata after verifying the manifest', async () => {
   for (const [mutation, message] of [
-    [(document) => { document.feedback[0].targets[0].anchor.kind = 'imageRegion' }, /anchor/i],
+    [(document) => { document.feedback[0].targets[0].anchor.kind = 'imageRegion' }, { code: 'integrity' }],
     [(document) => {
       document.feedback[0].targets[0].anchor.points = [{ x: 0.2, y: 0.2 }, { x: 0.2, y: 0.3 }]
-    }, /stroke/i],
+    }, { code: 'integrity' }],
     [(document) => {
       document.feedback[0].targets[0].anchor.points = Array.from({ length: 2049 }, () => ({ x: 0.2, y: 0.3 }))
-    }, /points/i],
-    [(document) => { document.artifacts[0].relativePath = 'artifacts/../outside.png' }, /relative path/i],
-    [(document) => { document.artifacts[0].relativePath = `artifacts/nested/${ARTIFACT_V2}` }, /relative path/i],
-    [(document) => { document.artifacts[0].width = 4_294_967_295 }, /pixel/i],
-    [(document) => { document.artifacts[0].mediaType = 'image/jpeg' }, /media type/i],
-    [(document) => { document.artifacts[0].annotations[1].ordinal = 3 }, /mapping/i],
-    [(document) => { document.artifacts[0].annotations[0].ordinal = 2; document.artifacts[0].annotations[1].ordinal = 1 }, /mapping/i],
-    [(document) => { document.artifacts[0].annotations.pop() }, /mapping/i],
-    [(document) => { document.artifacts = [] }, /cover/i],
-    [(document) => { document.artifacts[0].width += 1 }, /dimensions/i],
-    [(document) => { document.artifacts[0].blake3 = '0'.repeat(64) }, /artifact.*digest/i],
+    }, { code: 'limit_exceeded' }],
+    [(document) => { document.artifacts[0].relativePath = 'artifacts/../outside.png' }, { code: 'integrity' }],
+    [(document) => { document.artifacts[0].relativePath = `artifacts/nested/${ARTIFACT_V2}` }, { code: 'integrity' }],
+    [(document) => { document.artifacts[0].width = 4_294_967_295 }, { code: 'integrity' }],
+    [(document) => { document.artifacts[0].mediaType = 'image/jpeg' }, { code: 'integrity' }],
+    [(document) => { document.artifacts[0].annotations[1].ordinal = 3 }, { code: 'integrity' }],
+    [(document) => { document.artifacts[0].annotations[0].ordinal = 2; document.artifacts[0].annotations[1].ordinal = 1 }, { code: 'integrity' }],
+    [(document) => { document.artifacts[0].annotations.pop() }, { code: 'integrity' }],
+    [(document) => { document.artifacts = [] }, { code: 'integrity' }],
+    [(document) => { document.artifacts[0].width += 1 }, { code: 'integrity' }],
+    [(document) => { document.artifacts[0].blake3 = '0'.repeat(64) }, { code: 'integrity' }],
   ]) {
     await using fixture = await disposableProject(mixedFixtureProject)
     await mutateMixedManifest(fixture.project, mutation)
@@ -263,7 +263,7 @@ test('rejects artifact corruption and a digest-valid non-PNG artifact', async ()
   await writeFile(mixedArtifact(corrupt.project), 'corrupt artifact')
   await assert.rejects(
     readLatestCompletedReview({ projectRoot: corrupt.project }),
-    /artifact.*digest/i,
+    { code: 'integrity' },
   )
 
   await using notPng = await disposableProject(mixedFixtureProject)
@@ -274,7 +274,7 @@ test('rejects artifact corruption and a digest-valid non-PNG artifact', async ()
   })
   await assert.rejects(
     readLatestCompletedReview({ projectRoot: notPng.project }),
-    /not a PNG/i,
+    { code: 'integrity' },
   )
 })
 
@@ -287,7 +287,7 @@ test('rejects v2 outcomes that omit the feedback attached to their asset', async
     await mutateMixedManifest(fixture.project, mutation)
     await assert.rejects(
       readLatestCompletedReview({ projectRoot: fixture.project }),
-      /outcome.*feedback/i,
+      { code: 'integrity' },
     )
   }
 })
@@ -316,7 +316,7 @@ test('enforces the domain-wide 200000 stroke-point limit before returning a Roun
   })
   await assert.rejects(
     readLatestCompletedReview({ projectRoot: fixture.project }),
-    /stroke.*limit/i,
+    { code: 'limit_exceeded' },
   )
 })
 
@@ -375,7 +375,7 @@ test('rejects invalid source identity, partial image bounds, and unavailable bou
 
     await assert.rejects(
       readLatestCompletedReview({ projectRoot: fixture.project, reviewStreamId: STREAM_B }),
-      /asset|image|outcome/i,
+      { code: 'integrity' },
     )
   }
 })
@@ -441,7 +441,7 @@ test('rejects malformed nested Completed values instead of returning partially v
 
   await assert.rejects(
     readLatestCompletedReview({ projectRoot: fixture.project, reviewStreamId: STREAM_B }),
-    /anchor/i,
+    { code: 'integrity' },
   )
 })
 
@@ -458,15 +458,15 @@ test('rejects symlinked index and round files', async () => {
     await symlink(replacement, file)
     await assert.rejects(
       readLatestCompletedReview({ projectRoot: fixture.project, reviewStreamId: STREAM_B }),
-      /symbolic link/i,
+      { code: 'integrity' },
     )
   }
 })
 
 test('rejects oversized index and round files before parsing', async () => {
   for (const [relative, bytes, message] of [
-    ['.viewer/reviews/index.json', 16 * 1024 * 1024 + 1, /index.*size limit/i],
-    [`.viewer/reviews/rounds/${ROUND_B}.json`, 64 * 1024 * 1024 + 1, /round.*size limit/i],
+    ['.viewer/reviews/index.json', 16 * 1024 * 1024 + 1, { code: 'limit_exceeded' }],
+    [`.viewer/reviews/rounds/${ROUND_B}.json`, 64 * 1024 * 1024 + 1, { code: 'limit_exceeded' }],
   ]) {
     await using fixture = await disposableProject()
     await makeOversize(path.join(fixture.project, relative), bytes)
@@ -508,7 +508,7 @@ test('rejects unsupported versions, missing heads, and ambiguous production sele
       taskId: 'task-b',
       batchId: 'batch-b',
     }),
-    /multiple review streams match task and batch/i,
+    { code: 'integrity' },
   )
 })
 

@@ -202,6 +202,20 @@ pub(super) fn archive(
     stream_id: ReviewStreamId,
     archive_id: ReviewArchiveId,
 ) -> Result<v3::ReviewArchiveRecord, ReviewCommitError> {
+    archive_with_plan(view, stream_id, archive_id).map(|(record, _)| record)
+}
+
+pub(super) fn archive_with_plan(
+    view: &View,
+    stream_id: ReviewStreamId,
+    archive_id: ReviewArchiveId,
+) -> Result<
+    (
+        v3::ReviewArchiveRecord,
+        viewer_domain::review::continuous::ArchivePlan,
+    ),
+    ReviewCommitError,
+> {
     let reference = stream(view, stream_id)?
         .archive_refs
         .iter()
@@ -237,5 +251,5 @@ pub(super) fn archive(
             return Err(ReviewCommitError::Integrity);
         }
     }
-    Ok(record)
+    Ok((record, plan))
 }

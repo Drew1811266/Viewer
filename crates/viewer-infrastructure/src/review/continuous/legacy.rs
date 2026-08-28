@@ -36,6 +36,16 @@ pub(super) fn read(
     scope: Option<ProductionScope>,
     reference: &v3::LegacyRecordRef,
 ) -> Result<LegacyReviewRecord, ReviewCommitError> {
+    read_with_evidence(root, project, stream, scope, reference).map(|(record, _)| record)
+}
+
+pub(super) fn read_with_evidence(
+    root: &Directory,
+    project: ProjectId,
+    stream: ReviewStreamId,
+    scope: Option<ProductionScope>,
+    reference: &v3::LegacyRecordRef,
+) -> Result<(LegacyReviewRecord, Vec<v3::LegacyEvidence>), ReviewCommitError> {
     #[cfg(test)]
     LEGACY_READS.with(|c| c.set(c.get() + 1));
     let (directory, name) = location(root, reference)?;
@@ -53,6 +63,7 @@ pub(super) fn read(
         protocol::REVIEW_PROTOCOL_V2 => ReviewProtocolVersion::V2,
         _ => return Err(ReviewCommitError::UnsupportedProtocol),
     };
+    let mut images = vec![];
     let contents = if reference.kind == v3::LegacyRecordKind::Draft {
         LegacyReviewContents::Draft(
             protocol::decode_draft_versioned(&bytes)
@@ -63,32 +74,7 @@ pub(super) fn read(
         LegacyReviewContents::Completed(protocol::decode_completed(&bytes).map_err(protocol_error)?)
     } else {
         let document = protocol::v2::decode_completed_document(&bytes).map_err(protocol_error)?;
-        let mut total = 0_u64;
-        for artifact in document.artifacts {
-            let artifacts = directory.required_child("artifacts")?;
-            let mut file = artifacts
-                .regular(
-                    &format!("{}-annotation.png", artifact.asset_version_id),
-                    false,
-                )?
-                .ok_or(ReviewCommitError::Integrity)?;
-            let size_bytes = file.metadata().map_err(|_| ReviewCommitError::Io)?.len();
-            total = total
-                .checked_add(size_bytes)
-                .filter(|v| *v <= 4 * 1024 * 1024 * 1024)
-                .ok_or(ReviewCommitError::LimitExceeded)?;
-            super::evidence::copy_png(
-                &mut file,
-                &v3::EvidenceRef {
-                    blake3: artifact.blake3,
-                    size_bytes,
-                    width: artifact.width,
-                    height: artifact.height,
-                },
-                &mut std::io::sink(),
-            )?;
-            artifacts.verify()?;
-        }
+        images = verify_artifacts(&directory, &document.artifacts)?;
         LegacyReviewContents::Completed(document.snapshot)
     };
     let (actual_project, actual_stream, round, production) = match &contents {
@@ -112,16 +98,85 @@ pub(super) fn read(
     {
         return Err(ReviewCommitError::Integrity);
     }
-    Ok(LegacyReviewRecord {
-        reference: LegacyReviewReference {
-            stream_id: stream,
-            round_id: round,
-            protocol,
-            is_draft: reference.kind == v3::LegacyRecordKind::Draft,
-            blake3: reference.blake3,
+    Ok((
+        LegacyReviewRecord {
+            reference: LegacyReviewReference {
+                stream_id: stream,
+                round_id: round,
+                protocol,
+                is_draft: reference.kind == v3::LegacyRecordKind::Draft,
+                blake3: reference.blake3,
+            },
+            contents,
         },
-        contents,
-    })
+        images,
+    ))
+}
+
+pub(super) fn verify_artifacts(
+    directory: &Directory,
+    records: &[protocol::v2::V2ArtifactRecord],
+) -> Result<Vec<v3::LegacyEvidence>, ReviewCommitError> {
+    let mut bundle_names = directory.entries(2)?;
+    bundle_names.sort();
+    if bundle_names != ["artifacts", "round.json"] {
+        return Err(ReviewCommitError::Integrity);
+    }
+    let artifacts = directory.required_child("artifacts")?;
+    let expected: std::collections::HashSet<_> = records
+        .iter()
+        .map(|a| format!("{}-annotation.png", a.asset_version_id))
+        .collect();
+    let names = artifacts.entries(50_000)?;
+    if names.len() != expected.len() || names.iter().any(|n| !expected.contains(n)) {
+        return Err(ReviewCommitError::Integrity);
+    }
+    let mut total = 0_u64;
+    let mut images = Vec::with_capacity(records.len());
+    for artifact in records {
+        let mut file = artifacts
+            .regular(
+                &format!("{}-annotation.png", artifact.asset_version_id),
+                false,
+            )?
+            .ok_or(ReviewCommitError::Integrity)?;
+        let size_bytes = file.metadata().map_err(|_| ReviewCommitError::Io)?.len();
+        total = total
+            .checked_add(size_bytes)
+            .filter(|v| *v <= 4 * 1024 * 1024 * 1024)
+            .ok_or(ReviewCommitError::LimitExceeded)?;
+        super::evidence::copy_png(
+            &mut file,
+            &v3::EvidenceRef {
+                blake3: artifact.blake3,
+                size_bytes,
+                width: artifact.width,
+                height: artifact.height,
+            },
+            &mut std::io::sink(),
+        )?;
+        artifacts.verify()?;
+        images.push(v3::LegacyEvidence {
+            asset_version_id: artifact.asset_version_id,
+            relative_path: artifact.relative_path.clone(),
+            image: v3::EvidenceRef {
+                blake3: artifact.blake3,
+                size_bytes,
+                width: artifact.width,
+                height: artifact.height,
+            },
+            annotations: artifact
+                .annotations
+                .iter()
+                .map(|a| v3::LegacyAnnotation {
+                    ordinal: a.ordinal,
+                    feedback_id: a.feedback_id,
+                })
+                .collect(),
+        });
+    }
+    directory.verify()?;
+    Ok(images)
 }
 
 #[cfg(test)]

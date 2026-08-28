@@ -871,7 +871,7 @@ fn file_identity(metadata: &Metadata) -> (u64, u64) {
 }
 
 #[cfg(unix)]
-fn entity_id(metadata: &Metadata, _relative: &RelativePath) -> EntityId {
+pub(in crate::review) fn entity_id(metadata: &Metadata, _relative: &RelativePath) -> EntityId {
     let (device, inode) = file_identity(metadata);
     EntityId::from_u128((u128::from(device) << 64) | u128::from(inode))
 }

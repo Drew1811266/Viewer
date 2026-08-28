@@ -2,7 +2,7 @@
 
 > Status: Development evidence
 >
-> 2026-08-28；Task 14–15 候选实现通过两轮全仓门禁，独立复审待完成。
+> 2026-08-28；Task 14–15 候选及审阅修正已实现，固定工作树全仓门禁通过，最终独立复核待完成。
 > 累计已验收仍为 13 / 23；Task 16 桌面桥接及阶段 E/F 尚未开始。
 
 ## 范围和架构
@@ -36,6 +36,30 @@
 6. 显式读取迁移后的 v2 Draft 时，缺少旧证据是 limitation，不捏造 PNG 或误报已声明 PNG 损坏。
 7. 无 index 但存在旧 Draft 不能报合法空工程；复用已有无索引检查，不重开另一版 index。
 8. v3 库支持单独的 `{ signal }` 取消控制；取消结束本次进程读取，不产生部分成功清单。
+9. 独立审阅发现 metadata 捕获和 index 名称核验之间仍有原子替换窗口。名称查询后再检查
+   已打开句柄的链接数；仅已确认 unlink 的 index 容忍名称查询失败，Linux 仅接受精确的
+   `index.json (deleted)` 后缀。已观测的其他名称、硬链接及不可变对象不适用此例外。
+
+## 独立复审修正
+
+首次只读审阅范围为 `1dccf78..7863439`，结论为“有一项 Important，修正后再验收”，
+没有 Critical 或其他 Minor。问题是名称核验使用过期的 nlink 结果，可能拒绝正常索引发布。
+
+新增真实 TempDir 回归，在 metadata 捕获后、名称核验前原子替换，验证仍返回旧索引字节；
+同时覆盖 linked rename、大小写别名和不可变 PNG 的严格拒绝。本机 macOS 的真实替换测试
+未触发名称查询失败，因此另对有界名称判定函数加入显式失败观测：`Err(Io)` + nlink 0
+在修正前 RED、修正后 GREEN；它验证判定规则，不冒充实际复现 F_GETPATH 失败。
+Linux deleted-suffix 分支另有条件编译测试，但本次未在 Linux 执行。
+
+补充并发诊断使用独占临时工程，300 次 current 读取期间完成 8,905 次同内容索引原子发布，
+错误数 0；它不是跨平台无竞态证明。原生 IO 现有 11 项在本机通过，协议 54 项通过。
+专项日志为 `target/continuous-review-phase-d-index-observation-{red,green}.log` 和
+`target/continuous-review-phase-d-index-protocol-green.log`。最终独立复核待完成。
+第一次修正后全跑中，quality/security 均通过，但主线程运行期间更新本记录和协议说明，
+导致 verify:clean 检出新增文档修改项，最终 exit 1；该次不能算通过。保留日志
+`target/continuous-review-phase-d-verify-clean-review-fix.log`，停止编辑后重新从固定工作树全跑。
+随后 `pnpm verify:clean` 在固定工作树上完整通过，exit 0，日志为
+`target/continuous-review-phase-d-verify-clean-review-fix-stable.log`。
 
 ## 已执行验证
 
@@ -43,13 +67,14 @@
 | --- | --- |
 | 恢复基线旧 Node 协议测试 | 41 项，40 通过、1 失败；未验收旧实现的大源核验缺陷 |
 | 原生 IO／源／传输／当前历史入口 RED | 缺实现或预期断言失败；日志保留于 target |
-| 索引原子替换、目录及祖先替换、链接／非普通文件等原生 IO | 7 通过 |
+| 索引原子替换、目录及祖先替换、链接／非普通文件等原生 IO | 初版 7；审阅修正后本机 11 通过 |
 | 原生源检查与 32 MiB 文件固定缓冲 | 3 通过 |
 | delta 日志顺序和有界追加 | 1 通过 |
 | `pnpm test:review-protocol`（第二轮门禁） | 54 通过，exit 0 |
 | Rust writer → Node reader、修改后改回／撤回、10,000 与 10,001 节点 | 3 通过 |
 | `pnpm verify:clean` 第一轮 | exit 0；补查旧 Draft／无 index／取消后再次全跑 |
 | `pnpm verify:clean` 第二轮 | exit 0；含 UI 132 文件、1142 通过、既有 1 跳过，workspace Rust、边界和依赖政策 |
+| 审阅修正后固定工作树 `pnpm verify:clean` | exit 0；协议 54、UI 1142 通过／既有 1 跳过、workspace Rust、边界和依赖政策全部通过 |
 | `git diff --check` | exit 0 |
 | 架构趋势 | 非阻断告警保留，不调整基线掩盖；包含既有问题与新增读取边界复杂度 |
 

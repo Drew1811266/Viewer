@@ -59,10 +59,8 @@ impl Directory {
         if !before.is_file() || before.nlink() > 1 {
             return Err(ReviewCommitError::Integrity);
         }
-        // Atomic rename may already have unlinked this opened index. Never reopen the new head.
-        if before.nlink() == 1 {
-            self.verify_open_name(&file, "index.json")?;
-        }
+        // Atomic rename can unlink this descriptor even after `before` was captured.
+        self.verify_index_name(&file)?;
         self.verify()?;
         Ok(Some(PinnedIndex {
             directory: self,
@@ -200,6 +198,19 @@ impl Directory {
         self.verify()
     }
 
+    fn verify_index_name(&self, file: &File) -> Result<(), ReviewCommitError> {
+        #[cfg(any(target_os = "macos", target_os = "linux"))]
+        {
+            let observed = descriptor_path(file);
+            // Query links after the name: an earlier count can miss atomic publication.
+            verify_index_observation(observed, file.metadata().map_err(map_io)?.nlink())
+        }
+        #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+        {
+            self.verify_open_name(file, "index.json")
+        }
+    }
+
     fn verify_open_name(&self, file: &File, name: &str) -> Result<(), ReviewCommitError> {
         #[cfg(any(target_os = "macos", target_os = "linux"))]
         {
@@ -214,6 +225,31 @@ impl Directory {
             let _ = file;
             self.scan_name(name)
         }
+    }
+}
+
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+fn verify_index_observation(
+    observed: Result<PathBuf, ReviewCommitError>,
+    links: u64,
+) -> Result<(), ReviewCommitError> {
+    if links > 1 {
+        return Err(ReviewCommitError::Integrity);
+    }
+    match observed {
+        Ok(path) if path.file_name() == Some(std::ffi::OsStr::new("index.json")) => Ok(()),
+        #[cfg(target_os = "linux")]
+        Ok(path)
+            if links == 0
+                && path.file_name() == Some(std::ffi::OsStr::new("index.json (deleted)")) =>
+        {
+            Ok(())
+        }
+        // Some platforms cannot resolve an unlinked vnode. The already-open index remains
+        // readable; PinnedIndex still checks its identity/content and the owning directory.
+        Err(_) if links == 0 => Ok(()),
+        Ok(_) => Err(ReviewCommitError::Integrity),
+        Err(error) => Err(error),
     }
 }
 
@@ -356,6 +392,117 @@ pub(super) fn map_io(error: io::Error) -> ReviewCommitError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    #[test]
+    fn pinned_index_unavailable_name_requires_verified_unlink() {
+        assert_eq!(
+            verify_index_observation(Err(ReviewCommitError::Io), 0),
+            Ok(())
+        );
+        assert_eq!(
+            verify_index_observation(Err(ReviewCommitError::Io), 1),
+            Err(ReviewCommitError::Io)
+        );
+        for name in ["renamed.json", "Index.json"] {
+            assert_eq!(
+                verify_index_observation(Ok(PathBuf::from(name)), 0),
+                Err(ReviewCommitError::Integrity)
+            );
+        }
+        assert_eq!(
+            verify_index_observation(Ok(PathBuf::from("index.json")), 2),
+            Err(ReviewCommitError::Integrity)
+        );
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn pinned_index_deleted_descriptor_suffix_requires_verified_unlink() {
+        assert_eq!(
+            verify_index_observation(Ok(PathBuf::from("index.json (deleted)")), 0),
+            Ok(())
+        );
+        for (name, links) in [
+            ("index.json (deleted)", 1),
+            ("Index.json (deleted)", 0),
+            ("renamed.json (deleted)", 0),
+        ] {
+            assert_eq!(
+                verify_index_observation(Ok(PathBuf::from(name)), links),
+                Err(ReviewCommitError::Integrity)
+            );
+        }
+    }
+
+    #[test]
+    fn opened_index_survives_atomic_publication_before_name_verification() {
+        let root = tempfile::TempDir::new().unwrap();
+        fs::write(root.path().join("index.json"), b"old committed index").unwrap();
+        let directory = Directory::open(root.path()).unwrap();
+        directory.scan_name("index.json").unwrap();
+        let file = open_at(
+            &directory.file,
+            &leaf_name("index.json").unwrap(),
+            libc::O_RDONLY,
+        )
+        .unwrap();
+        let before = file.metadata().unwrap();
+        assert_eq!(before.nlink(), 1);
+
+        // Force publication into the gap between the metadata capture and descriptor-name check.
+        fs::write(root.path().join("replacement"), b"new committed index").unwrap();
+        fs::rename(
+            root.path().join("replacement"),
+            root.path().join("index.json"),
+        )
+        .unwrap();
+        assert_eq!(file.metadata().unwrap().nlink(), 0);
+        directory.verify_index_name(&file).unwrap();
+        let pinned = PinnedIndex {
+            directory: &directory,
+            file,
+            before,
+        };
+        assert_eq!(pinned.read(1024).unwrap(), b"old committed index");
+        assert_eq!(
+            directory.pin_index().unwrap().unwrap().read(1024).unwrap(),
+            b"new committed index"
+        );
+    }
+
+    #[test]
+    fn pinned_index_name_verification_rejects_linked_renames() {
+        for replacement_name in ["renamed.json", "Index.json"] {
+            let root = tempfile::TempDir::new().unwrap();
+            fs::write(root.path().join("index.json"), b"committed index").unwrap();
+            let directory = Directory::open(root.path()).unwrap();
+            let pinned = directory.pin_index().unwrap().unwrap();
+            fs::rename(
+                root.path().join("index.json"),
+                root.path().join(replacement_name),
+            )
+            .unwrap();
+            assert_eq!(pinned.file.metadata().unwrap().nlink(), 1);
+            assert_eq!(
+                directory.verify_index_name(&pinned.file),
+                Err(ReviewCommitError::Integrity),
+                "{replacement_name}"
+            );
+        }
+    }
+
+    #[test]
+    fn pinned_index_rejects_case_alias_before_open() {
+        let root = tempfile::TempDir::new().unwrap();
+        fs::write(root.path().join("Index.json"), b"aliased index").unwrap();
+        let directory = Directory::open(root.path()).unwrap();
+        assert!(matches!(
+            directory.pin_index(),
+            Err(ReviewCommitError::Integrity)
+        ));
+    }
+
     #[test]
     fn opened_index_survives_atomic_publication_without_selecting_new_bytes() {
         let root = tempfile::TempDir::new().unwrap();

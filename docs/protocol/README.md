@@ -149,6 +149,9 @@ node scripts/review-protocol/read-history.mjs --project /absolute/test-project -
 stdout，typed error JSON 写 stderr、exit 1。库入口对预期读取错误返回 `status: error`；
 legacy 库入口仍抛错，CLI 仍使用 `error: …` stderr。错误码稳定，底层解析诊断文字不是机器契约。
 
+v3 库函数接受独立的第二参数 `{ signal: AbortSignal }`。取消会结束本次子进程读取，返回
+typed IO error，不返回部分成功清单；signal 不进入协议请求，也不会触发项目写入。
+
 每次读取固定一版 index：并发保存不会将已打开的旧版本重选为新版本。完整 current 是本次
 待办清单的权威输入，空 current 不回退历史、不等于“全部通过”；Agent 应以它替换缓存待办，
 不能把历次结果不断追加。sourceChecks 只证明检查时刻，执行前仍应核对目标内容版本。

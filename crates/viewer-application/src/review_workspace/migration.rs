@@ -17,9 +17,6 @@ impl ContinuousReviewService {
         envelope: ReviewCommandEnvelope,
         cancellation: ReviewTaskCancellation,
     ) -> Result<ReviewApplyResult, ReviewWorkspaceError> {
-        if cancellation.is_cancelled() {
-            return Err(ReviewWorkspaceError::Cancelled);
-        }
         let Some(inspection) = self.inspect_migration().await? else {
             let provider = self.provider.clone();
             let stream = self.context.stream_id;
@@ -38,6 +35,34 @@ impl ContinuousReviewService {
                 CommandLookup::Absent => Err(ReviewWorkspaceError::NoChanges),
             };
         };
+        let mut draft = super::recovery::draft(&envelope, ReviewRecoveryFailure::WriteFailed)?;
+        let recovery = draft.clone();
+        let provider = self.provider.clone();
+        super::service::io(move || provider.save_migration_recovery(&recovery)).await?;
+        let result = self
+            .commit_migration(envelope, inspection, cancellation)
+            .await;
+        match result {
+            Ok(receipt) => self.refresh_after_commit(receipt).await,
+            Err(error) => {
+                draft.failure = super::recovery::failure(&error);
+                let provider = self.provider.clone();
+                // The first durable input remains even if updating its diagnostic fails.
+                let _ = super::service::io(move || provider.save_migration_recovery(&draft)).await;
+                Err(error)
+            }
+        }
+    }
+
+    async fn commit_migration(
+        &self,
+        envelope: ReviewCommandEnvelope,
+        inspection: MigrationInspection,
+        cancellation: ReviewTaskCancellation,
+    ) -> Result<ReviewCommitReceipt, ReviewWorkspaceError> {
+        if cancellation.is_cancelled() {
+            return Err(ReviewWorkspaceError::Cancelled);
+        }
         let assets = self.prepared.lock().await;
         let versions: Vec<_> = assets.values().map(|a| a.asset.clone()).collect();
         let state = prepare_migration_state(&inspection, &envelope, &versions)?;
@@ -123,7 +148,7 @@ impl ContinuousReviewService {
         .await?;
         drop(evidence.leases);
         drop(assets);
-        self.refresh_after_commit(receipt).await
+        Ok(receipt)
     }
 }
 

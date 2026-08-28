@@ -152,11 +152,14 @@ impl ContinuousReviewRepository {
                     legacy.index
                 }
             },
-            None => v3::ReviewIndexV3 {
-                legacy_index: None,
-                project_id: self.project_id,
-                streams: vec![],
-            },
+            None => {
+                super::migration_inspect::scan(&directory, self.project_id)?;
+                v3::ReviewIndexV3 {
+                    legacy_index: None,
+                    project_id: self.project_id,
+                    streams: vec![],
+                }
+            }
         };
         if index.project_id != self.project_id {
             return Err(ReviewCommitError::Integrity);
@@ -171,6 +174,12 @@ impl ContinuousReviewRepository {
 }
 
 impl ContinuousReviewRepositoryPort for ContinuousReviewRepository {
+    fn load_unresolved_recovery(
+        &self,
+        stream: ReviewStreamId,
+    ) -> Result<Vec<RecoveryDraft>, ReviewCommitError> {
+        super::recovery::unresolved(self, stream)
+    }
     fn load_legacy(
         &self,
         stream: ReviewStreamId,

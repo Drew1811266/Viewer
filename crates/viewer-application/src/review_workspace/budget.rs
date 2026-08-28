@@ -52,6 +52,7 @@ pub(super) fn command_bytes(command: &ReviewWorkspaceCommand) -> usize {
             }
         }
         ReviewWorkspaceCommand::ConfirmSource(binding) => add(anchor_bytes(&binding.anchor)),
+        ReviewWorkspaceCommand::ConfirmApplicability { anchor, .. } => add(anchor_bytes(anchor)),
         ReviewWorkspaceCommand::AdoptUsage { .. } => {}
         ReviewWorkspaceCommand::ContinueLegacy {
             history_ref,
@@ -87,4 +88,37 @@ fn anchor_bytes(anchor: &FeedbackAnchor) -> usize {
         FeedbackAnchor::ImageStroke(stroke) => size_of_val(stroke.points()),
         _ => 0,
     }
+}
+
+pub(super) fn snapshot_bytes(snapshot: &StoredContinuousSnapshot) -> usize {
+    let mut total = 4096_usize;
+    for asset in &snapshot.state.assets {
+        total = total
+            .saturating_add(1024)
+            .saturating_add(asset.relative_path.as_str().len());
+    }
+    for feedback in &snapshot.state.feedback {
+        total = total
+            .saturating_add(512)
+            .saturating_add(feedback.text.len());
+        for target in &feedback.targets {
+            total = total
+                .saturating_add(512)
+                .saturating_add(anchor_bytes(&target.anchor));
+        }
+        if let Some(history) = &feedback.history_ref {
+            let count = match &history.source {
+                HistorySource::Snapshot { keys, .. } => keys.len(),
+                HistorySource::Legacy { targets, .. } => targets.len(),
+            };
+            total = total.saturating_add(count.saturating_mul(128));
+        }
+    }
+    for evidence in &snapshot.evidence {
+        total = total.saturating_add(512);
+        if let EvidenceCapability::Image { annotations, .. } = &evidence.capability {
+            total = total.saturating_add(annotations.len().saturating_mul(128));
+        }
+    }
+    total.saturating_add(snapshot.changes.len().saturating_mul(256))
 }

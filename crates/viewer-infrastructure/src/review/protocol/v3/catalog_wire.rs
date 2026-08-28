@@ -12,8 +12,18 @@ pub(super) struct Index {
     #[serde(deserialize_with = "wire::canonical_id")]
     project_id: ProjectId,
     streams: Vec<ReviewStreamV3>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "nonnull_legacy_index"
+    )]
     legacy_index: Option<super::LegacyIndexRef>,
+}
+
+fn nonnull_legacy_index<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<super::LegacyIndexRef>, D::Error> {
+    super::LegacyIndexRef::deserialize(deserializer).map(Some)
 }
 #[derive(Serialize, Deserialize)]
 enum IndexKind {

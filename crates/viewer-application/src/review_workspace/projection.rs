@@ -11,6 +11,12 @@ impl ContinuousReviewService {
             return Err(ReviewWorkspaceError::WrongContext);
         }
         if let Some(migration) = self.inspect_migration().await? {
+            let provider = self.provider.clone();
+            let recovery = super::service::io(move || provider.load_migration_recovery())
+                .await?
+                .into_iter()
+                .filter(|d| d.stream_id == stream)
+                .collect();
             return Ok(ReviewWorkspaceView {
                 stream_id: stream,
                 current: None,
@@ -19,7 +25,7 @@ impl ContinuousReviewService {
                     actionable: vec![],
                     needs_confirmation: vec![],
                 },
-                recovery: vec![],
+                recovery,
                 migration: Some(migration),
                 capabilities: ReviewWorkspaceCapabilities {
                     continuous_editing: false,
@@ -32,19 +38,7 @@ impl ContinuousReviewService {
         let (current, recovery) = super::service::io(move || {
             let reader = provider.open_reader()?;
             let current = reader.load_current(stream)?;
-            let mut recovery = vec![];
-            for draft in reader
-                .load_recovery()?
-                .into_iter()
-                .filter(|r| r.stream_id == stream)
-            {
-                if !matches!(
-                    reader.resolve_recovery(draft.command_id)?,
-                    CommandLookup::Found(_)
-                ) {
-                    recovery.push(draft);
-                }
-            }
+            let recovery = reader.load_unresolved_recovery(stream)?;
             Ok((current, recovery))
         })
         .await?;

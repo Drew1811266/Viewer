@@ -63,6 +63,7 @@ impl ContinuousReviewService {
         self.usages_for(
             &ReviewWorkspaceCommand::Archive(selection.clone()),
             repository,
+            None,
         )
         .await?;
         super::service::work(move || {

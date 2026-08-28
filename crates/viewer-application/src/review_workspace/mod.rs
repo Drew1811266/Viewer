@@ -11,6 +11,9 @@ mod model;
 mod ports;
 mod projection;
 mod recovery;
+mod recovery_selection;
+#[cfg(test)]
+mod recovery_tests;
 mod service;
 mod transition;
 mod usage;

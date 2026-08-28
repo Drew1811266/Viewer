@@ -8,6 +8,11 @@ pub(super) fn draft(
     failure: ReviewRecoveryFailure,
 ) -> Result<RecoveryDraft, ReviewWorkspaceError> {
     let mut input = RecoveryEditorInput {
+        migration: match &envelope.command {
+            ReviewWorkspaceCommand::Migrate(plan) => Some(plan.clone()),
+            _ => None,
+        },
+        selections: vec![],
         text: String::new(),
         feedback_id: None,
         targets: vec![],
@@ -47,6 +52,7 @@ pub(super) fn draft(
             });
         }
     }
+    super::recovery_selection::preserve(envelope, &mut input)?;
     Ok(RecoveryDraft {
         stream_id: envelope.context.stream_id,
         command_id: envelope.command_id,
@@ -55,4 +61,27 @@ pub(super) fn draft(
         editor_input: input,
         failure,
     })
+}
+
+pub(super) fn failure(error: &ReviewWorkspaceError) -> ReviewRecoveryFailure {
+    match error {
+        ReviewWorkspaceError::Cancelled
+        | ReviewWorkspaceError::Asset(crate::ReviewAssetError::Cancelled)
+        | ReviewWorkspaceError::Evidence(crate::ReviewArtifactError::Cancelled) => {
+            ReviewRecoveryFailure::Cancelled
+        }
+        ReviewWorkspaceError::Repository(ReviewCommitError::OutcomeUnknown) => {
+            ReviewRecoveryFailure::CommitUnknown
+        }
+        ReviewWorkspaceError::Repository(ReviewCommitError::StaleSnapshot) => {
+            ReviewRecoveryFailure::StaleSnapshot
+        }
+        ReviewWorkspaceError::Evidence(crate::ReviewArtifactError::SourceChanged)
+        | ReviewWorkspaceError::Usage(UsageImportError::SourceChanged)
+        | ReviewWorkspaceError::Asset(crate::ReviewAssetError::SourceChanged) => {
+            ReviewRecoveryFailure::SourceChanged
+        }
+        ReviewWorkspaceError::Evidence(_) => ReviewRecoveryFailure::RenderFailed,
+        _ => ReviewRecoveryFailure::WriteFailed,
+    }
 }

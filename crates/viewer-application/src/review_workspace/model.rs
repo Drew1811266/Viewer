@@ -49,6 +49,11 @@ pub enum ReviewWorkspaceCommand {
         bindings: Vec<SourceBindingDecision>,
     },
     ConfirmSource(SourceBindingDecision),
+    ConfirmApplicability {
+        key: TargetVersionKey,
+        asset_version_id: AssetVersionId,
+        anchor: FeedbackAnchor,
+    },
     AdoptUsage {
         declaration_id: ReviewUsageId,
     },
@@ -72,6 +77,7 @@ pub struct GeneratedReviewIds {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct ReviewCommandEnvelope {
+    pub usage_selections: Vec<PreparedUsageSelection>,
     pub context: ReviewWorkspaceContext,
     pub command_id: ReviewCommandId,
     pub expected_snapshot_id: Option<ReviewSnapshotId>,
@@ -81,8 +87,25 @@ pub struct ReviewCommandEnvelope {
 }
 
 pub trait ReviewCommandCodecPort: Send + Sync {
+    fn usage_digest(
+        &self,
+        declaration: &ReviewUsageDeclaration,
+    ) -> Result<[u8; 32], ReviewWorkspaceError>;
     /// Canonical, bounded encoding of all fields except payload_digest, followed by BLAKE3.
     fn digest(&self, envelope: &ReviewCommandEnvelope) -> Result<[u8; 32], ReviewWorkspaceError>;
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PreparedUsageSelection {
+    pub id: viewer_domain::ReviewUsageId,
+    /// None requires an already committed immutable declaration; never a later imported candidate.
+    pub candidate: Option<PreparedUsageCandidate>,
+}
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PreparedUsageCandidate {
+    pub canonical_digest: [u8; 32],
+    pub source_digest: [u8; 32],
+    pub source: RelativePath,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, thiserror::Error)]

@@ -23,12 +23,21 @@ pub(super) fn save(
         .ok_or(ReviewCommitError::ReadOnly)?;
     let _guard = writer.gate.lock().map_err(|_| ReviewCommitError::Io)?;
     let view = repository.view()?.ok_or(ReviewCommitError::Integrity)?;
-    let bytes = recovery_wire::encode(repository.project_id, draft).map_err(protocol_error)?;
+    save_view(&view, draft)?;
+    repository.view()?;
+    repository
+        .faults
+        .check(ReviewCommitFaultPoint::AfterRecovery)
+}
+
+/// Caller holds the same project writer lease, including before the v3 index exists.
+pub(super) fn save_view(view: &View, draft: &RecoveryDraft) -> Result<(), ReviewCommitError> {
+    let bytes = recovery_wire::encode(view.index.project_id, draft).map_err(protocol_error)?;
     let directory = view
         .directory
         .child("recovery", true)?
         .ok_or(ReviewCommitError::Integrity)?;
-    if let Some(existing) = read(&view, &directory, draft.command_id)?
+    if let Some(existing) = read(view, &directory, draft.command_id)?
         && (existing.stream_id != draft.stream_id
             || existing.payload_digest != draft.payload_digest
             || existing.expected_snapshot_id != draft.expected_snapshot_id
@@ -44,10 +53,7 @@ pub(super) fn save(
     )
     .map_err(|_| ReviewCommitError::Io)?;
     directory.verify()?;
-    repository.view()?;
-    repository
-        .faults
-        .check(ReviewCommitFaultPoint::AfterRecovery)
+    view.directory.verify()
 }
 
 pub(super) fn load(
@@ -56,6 +62,10 @@ pub(super) fn load(
     let Some(view) = repository.view()? else {
         return Ok(vec![]);
     };
+    load_view(&view)
+}
+
+pub(super) fn load_view(view: &View) -> Result<Vec<RecoveryDraft>, ReviewCommitError> {
     let Some(directory) = view.directory.child("recovery", false)? else {
         return Ok(vec![]);
     };
@@ -73,6 +83,55 @@ pub(super) fn load(
         drafts.push(draft);
     }
     Ok(drafts)
+}
+
+pub(super) fn unresolved(
+    repository: &ContinuousReviewRepository,
+    stream: viewer_domain::ReviewStreamId,
+) -> Result<Vec<RecoveryDraft>, ReviewCommitError> {
+    use std::collections::{HashMap, HashSet};
+    let Some(view) = repository.view()? else {
+        return Ok(vec![]);
+    };
+    let drafts: Vec<_> = load_view(&view)?
+        .into_iter()
+        .filter(|d| d.stream_id == stream)
+        .collect();
+    if drafts.is_empty()
+        || !view
+            .index
+            .streams
+            .iter()
+            .any(|s| s.review_stream_id == stream)
+    {
+        return Ok(drafts);
+    }
+    let mut requested: HashMap<_, _> = drafts
+        .iter()
+        .map(|d| (d.command_id, d.payload_digest))
+        .collect();
+    let mut found = HashSet::new();
+    let mut conflict = false;
+    // A corrupt/too-long tail leaves remaining inputs unresolved; it never proves absence.
+    let _ = history::walk(&view, stream, |_, record| {
+        if let Some(digest) = requested.get(&record.command_id) {
+            if *digest != record.payload_digest {
+                conflict = true;
+                return Err(ReviewCommitError::CommandConflict);
+            }
+            super::evidence::verify(&view, &record.evidence)?;
+            requested.remove(&record.command_id);
+            found.insert(record.command_id);
+        }
+        Ok(requested.is_empty())
+    });
+    if conflict {
+        return Err(ReviewCommitError::CommandConflict);
+    }
+    Ok(drafts
+        .into_iter()
+        .filter(|d| !found.contains(&d.command_id))
+        .collect())
 }
 
 fn entries(directory: &Directory) -> Result<Vec<(String, ReviewCommandId)>, ReviewCommitError> {

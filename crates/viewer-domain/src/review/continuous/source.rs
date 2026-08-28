@@ -65,6 +65,49 @@ pub fn apply_source_binding(
     Ok(next)
 }
 
+/// Confirms a provisional anchor on the same asset, without claiming source replacement or
+/// clearing missing evidence/source restrictions. Fresh read-time source checks still apply.
+pub fn confirm_applicability(
+    current: &ContinuousReviewState,
+    key: super::TargetVersionKey,
+    anchor: crate::review::FeedbackAnchor,
+    revision: crate::ReviewTargetRevisionId,
+    snapshot: crate::ReviewSnapshotId,
+) -> Result<ContinuousReviewState, ContinuousReviewError> {
+    use ContinuousReviewError::*;
+    current.validate()?;
+    if current.target_key(key.target_id) != Some(key) {
+        return Err(StaleSnapshot);
+    }
+    if current
+        .feedback
+        .iter()
+        .flat_map(|f| &f.targets)
+        .any(|t| t.revision_id == revision)
+    {
+        return Err(DuplicateIdentity);
+    }
+    let mut next = super::mutation::prepare_next(current, snapshot)?;
+    let target = next
+        .feedback
+        .iter_mut()
+        .flat_map(|f| &mut f.targets)
+        .find(|t| t.id == key.target_id)
+        .ok_or(MissingReference)?;
+    if target.availability
+        != ReviewAvailability::NeedsConfirmation(vec![
+            super::ReviewPendingReason::ApplicabilityUnconfirmed,
+        ])
+    {
+        return Err(NeedsConfirmation);
+    }
+    target.anchor = anchor;
+    target.revision_id = revision;
+    target.availability = ReviewAvailability::Ready;
+    next.validate()?;
+    Ok(next)
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SourceCheckStatus {
     Match,

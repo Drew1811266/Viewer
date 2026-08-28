@@ -49,6 +49,10 @@ struct Recovery {
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct Input {
+    #[serde(default, with = "super::recovery_migration")]
+    migration: Option<viewer_application::review_workspace::MigrationPlan>,
+    #[serde(default, with = "super::recovery_selection")]
+    selections: Vec<viewer_application::review_workspace::RecoveryTargetSelection>,
     text: String,
     #[serde(deserialize_with = "wire::optional_id")]
     feedback_id: Option<FeedbackId>,
@@ -108,6 +112,8 @@ pub(in crate::review) fn encode(
         expected_snapshot_id: draft.expected_snapshot_id,
         payload_digest: draft.payload_digest,
         editor_input: Input {
+            migration: input.migration.clone(),
+            selections: input.selections.clone(),
             text: input.text.clone(),
             feedback_id: input.feedback_id,
             targets: input.targets.clone(),
@@ -132,6 +138,8 @@ pub(in crate::review) fn decode(
         expected_snapshot_id: wire.expected_snapshot_id,
         payload_digest: wire.payload_digest,
         editor_input: RecoveryEditorInput {
+            migration: wire.editor_input.migration,
+            selections: wire.editor_input.selections,
             text: wire.editor_input.text,
             feedback_id: wire.editor_input.feedback_id,
             targets: wire.editor_input.targets,
@@ -146,7 +154,21 @@ pub(in crate::review) fn decode(
 fn validate(project: ProjectId, draft: &RecoveryDraft) -> Result<(), ReviewProtocolError> {
     use std::collections::HashSet;
     let input = &draft.editor_input;
-    if input.text.len() > MAX_FEEDBACK_TEXT_BYTES || input.targets.len() > MAX_TARGETS_PER_FEEDBACK
+    super::recovery_migration::validate(input.migration.as_ref())?;
+    super::recovery_selection::validate(input)?;
+    if input.migration.is_some()
+        && (draft.expected_snapshot_id.is_some()
+            || !input.selections.is_empty()
+            || !input.targets.is_empty()
+            || input.history_ref.is_some()
+            || input.feedback_id.is_some()
+            || !input.text.is_empty())
+    {
+        return Err(ReviewProtocolError::InvalidData);
+    }
+    if input.text.len() > MAX_FEEDBACK_TEXT_BYTES
+        || input.targets.len() > MAX_TARGETS_PER_FEEDBACK
+        || input.selections.len() > MAX_TARGETS_PER_FEEDBACK
     {
         return Err(ReviewProtocolError::LimitExceeded);
     }

@@ -11,6 +11,7 @@ mod legacy;
 mod mapping;
 pub(in crate::review) mod migration;
 mod migration_inspect;
+pub(in crate::review) mod migration_recovery;
 mod owned_io;
 mod prepare;
 mod recovery;

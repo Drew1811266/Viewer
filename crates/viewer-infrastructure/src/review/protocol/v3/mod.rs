@@ -5,6 +5,8 @@ mod catalog_wire;
 mod history_result;
 mod read_result;
 mod records;
+mod recovery_migration;
+mod recovery_selection;
 pub(in crate::review) mod recovery_wire;
 #[cfg(test)]
 mod tests;

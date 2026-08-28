@@ -43,9 +43,30 @@ impl ContinuousReviewService {
                     });
                 }
             }
+            let mut combined = Vec::<(SnapshotRef, Vec<TargetVersionKey>)>::new();
+            let mut positions = HashMap::new();
+            let mut seen = HashSet::new();
+            for (reference, targets) in selections {
+                let position = *positions.entry(reference).or_insert_with(|| {
+                    combined.push((reference, vec![]));
+                    combined.len() - 1
+                });
+                for key in targets {
+                    if seen.insert((reference, key)) {
+                        combined[position].1.push(key);
+                    }
+                }
+            }
             let mut entries = vec![];
-            for (reference, selected) in selections {
+            let mut retained = restore_actions.len().saturating_mul(128);
+            for (reference, selected) in combined {
                 let state = reader.load_snapshot(stream, &reference)?;
+                retained = retained
+                    .saturating_add(super::budget::snapshot_bytes(&state))
+                    .saturating_add(selected.len().saturating_mul(128));
+                if retained > super::budget::MAX_PREPARED_BYTES {
+                    return Err(ReviewCommitError::LimitExceeded.into());
+                }
                 entries.push(HistoryEntry {
                     snapshot: reference,
                     feedback: state.state.feedback,

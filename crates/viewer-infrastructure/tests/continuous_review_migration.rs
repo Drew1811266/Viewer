@@ -56,6 +56,7 @@ fn keep_request(
     inspection: &MigrationInspection,
 ) -> MigrationCommitRequest {
     let mut envelope = ReviewCommandEnvelope {
+        usage_selections: vec![],
         context: context.clone(),
         command_id: ReviewCommandId::new(),
         expected_snapshot_id: None,
@@ -128,6 +129,90 @@ fn completed_only_migration_is_explicit_atomic_and_does_not_activate_old_require
             .load_recovery()
             .unwrap()
             .is_empty()
+    );
+}
+
+#[test]
+fn migration_recovery_retains_raw_bindings_without_replacing_the_legacy_index() {
+    use viewer_domain::review::{FeedbackAnchor, NormalizedRect};
+    let (root, provider, context, before) = legacy();
+    let inspection = provider.inspect_migration().unwrap().unwrap();
+    let old = &inspection.completed_candidates[0];
+    let target = LegacyTargetRef {
+        round_id: old.review_round_id,
+        feedback_id: old.feedback[0].id,
+        target_index: 0,
+    };
+    let plan = MigrationPlan {
+        inspection_digest: inspection.inspection_digest,
+        choice: MigrationChoice::ContinueSelected {
+            legacy_targets: vec![target],
+            bindings: vec![MigrationBinding {
+                legacy_target: target,
+                new_asset_version_id: AssetVersionId::new(),
+                anchor: FeedbackAnchor::ImageRect(NormalizedRect::new(0.1, 0.2, 0.3, 0.4).unwrap()),
+                position_confirmed: true,
+            }],
+        },
+    };
+    let recovery = RecoveryDraft {
+        stream_id: context.stream_id,
+        command_id: ReviewCommandId::new(),
+        expected_snapshot_id: None,
+        payload_digest: [7; 32],
+        editor_input: RecoveryEditorInput {
+            migration: Some(plan),
+            selections: vec![],
+            text: String::new(),
+            feedback_id: None,
+            targets: vec![],
+            history_ref: None,
+        },
+        failure: ReviewRecoveryFailure::Cancelled,
+    };
+    assert!(provider.load_migration_recovery().unwrap().is_empty());
+    assert!(!root.path().join(".viewer/reviews/write.lock").exists());
+    provider.save_migration_recovery(&recovery).unwrap();
+    let reopened = ProjectReviewRepositoryProvider::new(root.path(), context.project_id);
+    assert_eq!(
+        reopened.load_migration_recovery().unwrap(),
+        vec![recovery.clone()]
+    );
+    assert_eq!(
+        fs::read(root.path().join(".viewer/reviews/index.json")).unwrap(),
+        before
+    );
+    assert!(!root.path().join(".viewer/reviews/states").exists());
+    let readonly = ProjectReviewRepositoryProvider::new_with_access(
+        root.path(),
+        context.project_id,
+        viewer_application::ProjectAccess::ReadOnly,
+    );
+    assert_eq!(
+        readonly.save_migration_recovery(&recovery),
+        Err(ReviewCommitError::ReadOnly)
+    );
+    let mut changed = recovery.clone();
+    changed
+        .editor_input
+        .migration
+        .as_mut()
+        .unwrap()
+        .inspection_digest = [9; 32];
+    assert_eq!(
+        reopened.save_migration_recovery(&changed),
+        Err(ReviewCommitError::CommandConflict)
+    );
+    reopened
+        .migrate(keep_request(context.clone(), &inspection))
+        .unwrap();
+    assert_eq!(
+        reopened
+            .continuous_reader()
+            .unwrap()
+            .load_unresolved_recovery(context.stream_id)
+            .unwrap(),
+        vec![recovery]
     );
 }
 
@@ -595,5 +680,32 @@ fn a_new_inspection_after_failed_migration_can_retain_more_than_one_immutable_ba
             .load_recovery()
             .unwrap()
             .is_empty()
+    );
+}
+
+#[test]
+fn a_missing_index_with_a_legacy_draft_cannot_be_bypassed_by_a_fresh_writer() {
+    let (root, provider, _, _) = legacy();
+    add_draft(&root);
+    fs::remove_file(root.path().join(".viewer/reviews/index.json")).unwrap();
+    assert_eq!(
+        provider.inspect_migration(),
+        Err(ReviewCommitError::Integrity)
+    );
+    assert!(matches!(
+        provider.continuous_writer(),
+        Err(ReviewCommitError::Integrity)
+    ));
+    assert!(!root.path().join(".viewer/reviews/index.json").exists());
+}
+
+#[test]
+fn optional_legacy_index_reference_is_not_nullable() {
+    let mut index: serde_json::Value =
+        serde_json::from_slice(&fixture("review-index-v3.valid.json")).unwrap();
+    index["legacyIndex"] = serde_json::Value::Null;
+    assert!(
+        viewer_infrastructure::review::v3::decode_index_v3(&serde_json::to_vec(&index).unwrap())
+            .is_err()
     );
 }

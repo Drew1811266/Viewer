@@ -52,3 +52,66 @@ fn explicit_binding_revises_one_target_and_preserves_old_assets_and_text() {
         Err(ContinuousReviewError::DuplicateIdentity)
     );
 }
+
+#[test]
+fn applicability_confirmation_cannot_clear_evidence_or_source_restrictions() {
+    let mut current = state();
+    let key = key(&current, 11);
+    for reasons in [
+        vec![ReviewPendingReason::LegacyEvidenceAbsent],
+        vec![
+            ReviewPendingReason::ApplicabilityUnconfirmed,
+            ReviewPendingReason::LegacyEvidenceAbsent,
+        ],
+    ] {
+        current.feedback[0].targets[0].availability =
+            ReviewAvailability::NeedsConfirmation(reasons);
+        assert_eq!(
+            confirm_applicability(
+                &current,
+                key,
+                rect(),
+                ReviewTargetRevisionId::new(),
+                ReviewSnapshotId::new()
+            ),
+            Err(ContinuousReviewError::NeedsConfirmation)
+        );
+    }
+    current.feedback[0].targets[0].availability =
+        ReviewAvailability::NeedsConfirmation(vec![ReviewPendingReason::ApplicabilityUnconfirmed]);
+    let mut stale = key;
+    stale.target_revision_id = ReviewTargetRevisionId::new();
+    assert_eq!(
+        confirm_applicability(
+            &current,
+            stale,
+            rect(),
+            ReviewTargetRevisionId::new(),
+            ReviewSnapshotId::new()
+        ),
+        Err(ContinuousReviewError::StaleSnapshot)
+    );
+    let next = confirm_applicability(
+        &current,
+        key,
+        rect(),
+        ReviewTargetRevisionId::new(),
+        ReviewSnapshotId::new(),
+    )
+    .unwrap();
+    assert_eq!(
+        next.feedback[0].targets[0].asset_version_id,
+        current.feedback[0].targets[0].asset_version_id
+    );
+    let projection = project_current(
+        &next,
+        &[SourceCheck {
+            asset_version_id: next.assets[0].id,
+            checked_at_ms: 100,
+            status: SourceCheckStatus::Changed,
+        }],
+    )
+    .unwrap();
+    assert!(projection.actionable.is_empty());
+    assert!(projection.needs_confirmation.contains(&key.target_id));
+}

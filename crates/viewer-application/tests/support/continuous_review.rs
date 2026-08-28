@@ -30,6 +30,17 @@ pub struct MemoryRepository {
     legacy: Mutex<Option<MigrationInspection>>,
 }
 impl MemoryRepository {
+    pub fn seed_history_fixture(
+        &self,
+        states: Vec<StoredContinuousSnapshot>,
+        archive: ArchiveCheckpoint,
+    ) {
+        *self.states.lock().unwrap() = states;
+        self.archives
+            .lock()
+            .unwrap()
+            .insert(archive.archive_id, archive);
+    }
     pub fn current(&self) -> Option<StoredContinuousSnapshot> {
         self.states.lock().unwrap().last().cloned()
     }
@@ -248,6 +259,12 @@ impl ContinuousReviewRepositoryPort for MemoryRepository {
 }
 struct Provider(Arc<MemoryRepository>);
 impl ContinuousReviewRepositoryProviderPort for Provider {
+    fn save_migration_recovery(&self, draft: &RecoveryDraft) -> Result<(), ReviewCommitError> {
+        self.0.save_recovery(draft)
+    }
+    fn load_migration_recovery(&self) -> Result<Vec<RecoveryDraft>, ReviewCommitError> {
+        self.0.load_recovery()
+    }
     fn inspect_migration(&self) -> Result<Option<MigrationInspection>, ReviewCommitError> {
         Ok(self.0.migration.lock().unwrap().clone())
     }
@@ -445,6 +462,16 @@ impl ClockPort for Clock {
 }
 struct Codec;
 impl ReviewCommandCodecPort for Codec {
+    fn usage_digest(
+        &self,
+        declaration: &ReviewUsageDeclaration,
+    ) -> Result<[u8; 32], ReviewWorkspaceError> {
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        format!("{declaration:?}").hash(&mut h);
+        let mut digest = [0; 32];
+        digest[..8].copy_from_slice(&h.finish().to_le_bytes());
+        Ok(digest)
+    }
     fn digest(&self, e: &ReviewCommandEnvelope) -> Result<[u8; 32], ReviewWorkspaceError> {
         let mut clean = e.clone();
         clean.payload_digest = [0; 32];
@@ -468,7 +495,11 @@ impl UsageImportPort for Importer {
         if preview.source != *source {
             return Err(UsageImportError::UnsafePath);
         }
-        Ok(preview.clone())
+        let mut result = preview.clone();
+        result.canonical_digest = Codec
+            .usage_digest(&result.declaration)
+            .map_err(|_| UsageImportError::InvalidDeclaration)?;
+        Ok(result)
     }
 }
 pub fn usage_importer(result: &ReviewApplyResult) -> Arc<Importer> {

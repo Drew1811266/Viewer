@@ -166,6 +166,8 @@ fn draft() -> RecoveryDraft {
         expected_snapshot_id: None,
         payload_digest: [3; 32],
         editor_input: RecoveryEditorInput {
+            migration: None,
+            selections: vec![],
             text: "未提交：请保留原来的颜色。".into(),
             feedback_id: None,
             targets: vec![],
@@ -214,6 +216,62 @@ fn recovery_input_survives_its_durable_fault_but_never_becomes_current_feedback(
             .feedback
             .is_empty()
     );
+}
+
+#[test]
+fn recovery_binding_roundtrips_geometry_and_rejects_mismatched_selection_ids() {
+    use viewer_domain::{
+        review::{FeedbackAnchor, NormalizedRect, continuous::*},
+        *,
+    };
+    let (_root, provider) = setup();
+    let writer = provider.continuous_writer().unwrap();
+    let mut d = draft();
+    let key = TargetVersionKey {
+        feedback_id: FeedbackId::new(),
+        text_revision_id: ReviewTextRevisionId::new(),
+        target_id: ReviewTargetId::new(),
+        target_revision_id: ReviewTargetRevisionId::new(),
+    };
+    let target = VersionedTarget {
+        id: key.target_id,
+        revision_id: ReviewTargetRevisionId::new(),
+        asset_version_id: AssetVersionId::new(),
+        anchor: FeedbackAnchor::ImageRect(NormalizedRect::new(0.1, 0.2, 0.3, 0.4).unwrap()),
+        availability: ReviewAvailability::Ready,
+    };
+    d.editor_input.selections = vec![RecoveryTargetSelection {
+        origin: RecoveryTargetOrigin::Current { key },
+        feedback_id: key.feedback_id,
+        text_revision_id: key.text_revision_id,
+        target_id: target.id,
+        target_revision_id: target.revision_id,
+        asset_version_id: target.asset_version_id,
+        confirmation: RecoveryTargetConfirmation::UserConfirmed,
+    }];
+    d.editor_input.targets = vec![target];
+    writer.save_recovery(&d).unwrap();
+    drop(writer);
+    let writer = provider.continuous_writer().unwrap();
+    assert_eq!(writer.load_recovery().unwrap(), vec![d.clone()]);
+    let mut bad = d.clone();
+    bad.command_id = ReviewCommandId::new();
+    bad.editor_input.selections[0].asset_version_id = AssetVersionId::new();
+    assert_eq!(
+        writer.save_recovery(&bad),
+        Err(ReviewCommitError::Integrity)
+    );
+    let mut duplicate = d.clone();
+    duplicate.command_id = ReviewCommandId::new();
+    duplicate
+        .editor_input
+        .selections
+        .push(duplicate.editor_input.selections[0].clone());
+    assert_eq!(
+        writer.save_recovery(&duplicate),
+        Err(ReviewCommitError::Integrity)
+    );
+    assert_eq!(writer.load_recovery().unwrap(), vec![d]);
 }
 
 #[test]

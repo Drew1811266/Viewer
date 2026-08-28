@@ -15,7 +15,7 @@ pub struct ContinuousReviewService {
     pub(super) provider: Arc<dyn ContinuousReviewRepositoryProviderPort>,
     pub(super) assets: Arc<dyn ContinuousReviewAssetPort>,
     pub(super) evidence: Arc<dyn ReviewEvidencePort>,
-    codec: Arc<dyn ReviewCommandCodecPort>,
+    pub(super) codec: Arc<dyn ReviewCommandCodecPort>,
     clock: Arc<dyn ClockPort>,
     pub(super) prepared: Mutex<HashMap<AssetVersionId, PreparedReviewAsset>>,
     envelopes: Mutex<HashMap<ReviewCommandId, ReviewCommandEnvelope>>,
@@ -113,6 +113,7 @@ impl ContinuousReviewService {
         }
         let retained_bytes = envelopes.values().fold(0_usize, |sum, e| {
             sum.saturating_add(super::budget::command_bytes(&e.command))
+                .saturating_add(super::usage::selection_bytes(&e.usage_selections))
                 .saturating_add(super::migration::generated_bytes(&e.generated.migration))
         });
         let migration = if let ReviewWorkspaceCommand::Migrate(plan) = &command {
@@ -127,15 +128,18 @@ impl ContinuousReviewService {
         } else {
             vec![]
         };
+        let usage_selections = self.prepare_usages(&command).await;
         if envelopes.len() >= 128
             || retained_bytes
                 .saturating_add(super::budget::command_bytes(&command))
                 .saturating_add(super::migration::generated_bytes(&migration))
+                .saturating_add(super::usage::selection_bytes(&usage_selections))
                 > super::budget::MAX_PREPARED_BYTES
         {
             return Err(ContinuousReviewError::LimitExceeded.into());
         }
         let mut envelope = ReviewCommandEnvelope {
+            usage_selections,
             context: self.context.clone(),
             command_id,
             expected_snapshot_id,
@@ -206,31 +210,39 @@ impl ContinuousReviewService {
         }
         let empty =
             ContinuousReviewState::empty(self.context.project_id, stream, ReviewSnapshotId::new());
-        let adopted_usage = self.usages_for(&envelope.command, writer.clone()).await?;
-        let assets = self.prepared.lock().await;
-        let repository = writer.clone();
-        let saved = current.clone();
-        let empty_state = empty.clone();
-        let request = envelope.clone();
-        let prepared = assets.clone();
-        let usages = adopted_usage.clone();
-        let transition = work(move || {
-            super::transition::prepare(
-                repository.as_ref(),
-                saved.as_ref(),
-                &empty_state,
-                &request,
-                &prepared,
-                &usages,
-            )
-        })
-        .await?;
-        let next = transition.next;
         let draft = super::recovery::draft(&envelope, ReviewRecoveryFailure::WriteFailed)?;
-        let repository = writer.clone();
-        let recovery = draft.clone();
-        io(move || repository.save_recovery(&recovery)).await?;
+        let mut recovery_saved = false;
         let result = async {
+            let adopted_usage = self
+                .usages_for(
+                    &envelope.command,
+                    writer.clone(),
+                    Some(&envelope.usage_selections),
+                )
+                .await?;
+            let assets = self.prepared.lock().await;
+            let repository = writer.clone();
+            let saved = current.clone();
+            let empty_state = empty.clone();
+            let request = envelope.clone();
+            let prepared = assets.clone();
+            let usages = adopted_usage.clone();
+            let transition = work(move || {
+                super::transition::prepare(
+                    repository.as_ref(),
+                    saved.as_ref(),
+                    &empty_state,
+                    &request,
+                    &prepared,
+                    &usages,
+                )
+            })
+            .await?;
+            let next = transition.next;
+            let repository = writer.clone();
+            let recovery = draft.clone();
+            io(move || repository.save_recovery(&recovery)).await?;
+            recovery_saved = true;
             if cancellation.is_cancelled() {
                 return Err(ReviewWorkspaceError::Cancelled);
             }
@@ -269,30 +281,20 @@ impl ContinuousReviewService {
             Ok(receipt)
         }
         .await;
-        drop(assets);
         match result {
             Ok(receipt) => self.refresh_after_commit(receipt).await,
             Err(error) => {
                 let mut draft = draft;
-                draft.failure = match error {
-                    ReviewWorkspaceError::Cancelled
-                    | ReviewWorkspaceError::Asset(crate::ReviewAssetError::Cancelled)
-                    | ReviewWorkspaceError::Evidence(crate::ReviewArtifactError::Cancelled) => {
-                        ReviewRecoveryFailure::Cancelled
-                    }
-                    ReviewWorkspaceError::Repository(ReviewCommitError::OutcomeUnknown) => {
-                        ReviewRecoveryFailure::CommitUnknown
-                    }
-                    ReviewWorkspaceError::Evidence(crate::ReviewArtifactError::SourceChanged)
-                    | ReviewWorkspaceError::Asset(crate::ReviewAssetError::SourceChanged) => {
-                        ReviewRecoveryFailure::SourceChanged
-                    }
-                    ReviewWorkspaceError::Evidence(_) => ReviewRecoveryFailure::RenderFailed,
-                    _ => ReviewRecoveryFailure::WriteFailed,
-                };
+                draft.failure = super::recovery::failure(&error);
                 // Recovery already exists. A failed diagnostic update must not hide OutcomeUnknown.
-                let repository = writer.clone();
-                let _ = io(move || repository.save_recovery(&draft)).await;
+                if recovery_saved
+                    || !draft.editor_input.text.is_empty()
+                    || !draft.editor_input.targets.is_empty()
+                    || !draft.editor_input.selections.is_empty()
+                {
+                    let repository = writer.clone();
+                    let _ = io(move || repository.save_recovery(&draft)).await;
+                }
                 Err(error)
             }
         }

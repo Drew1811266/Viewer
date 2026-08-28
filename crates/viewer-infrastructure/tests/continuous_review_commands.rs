@@ -7,6 +7,7 @@ use viewer_infrastructure::review::ContinuousReviewCommandCodec;
 
 fn envelope() -> ReviewCommandEnvelope {
     ReviewCommandEnvelope {
+        usage_selections: vec![],
         context: ReviewWorkspaceContext {
             project_id: ProjectId::from_u128(1),
             stream_id: ReviewStreamId::from_u128(2),
@@ -104,4 +105,30 @@ fn archive_proof_and_selection_are_in_the_digest() {
         };
     }
     assert_ne!(codec.digest(&e).unwrap(), digest);
+}
+
+#[test]
+fn usage_selection_digest_binds_source_bytes_canonical_contents_and_path() {
+    let mut e = envelope();
+    e.usage_selections = vec![PreparedUsageSelection {
+        id: ReviewUsageId::new(),
+        candidate: Some(PreparedUsageCandidate {
+            canonical_digest: [1; 32],
+            source_digest: [2; 32],
+            source: RelativePath::parse("handoff/a.json").unwrap(),
+        }),
+    }];
+    let codec = ContinuousReviewCommandCodec;
+    let digest = codec.digest(&e).unwrap();
+    for field in 0..4 {
+        let mut changed = e.clone();
+        let candidate = changed.usage_selections[0].candidate.as_mut().unwrap();
+        match field {
+            0 => candidate.canonical_digest = [3; 32],
+            1 => candidate.source_digest = [3; 32],
+            2 => candidate.source = RelativePath::parse("handoff/b.json").unwrap(),
+            _ => changed.usage_selections[0].candidate = None,
+        }
+        assert_ne!(codec.digest(&changed).unwrap(), digest);
+    }
 }

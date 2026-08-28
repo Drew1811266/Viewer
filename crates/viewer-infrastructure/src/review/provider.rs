@@ -121,6 +121,20 @@ impl ProjectReviewRepositoryProvider {
 }
 
 impl ContinuousReviewRepositoryProviderPort for ProjectReviewRepositoryProvider {
+    fn save_migration_recovery(
+        &self,
+        draft: &viewer_application::review_workspace::RecoveryDraft,
+    ) -> Result<(), ReviewCommitError> {
+        if self.project_access != ProjectAccess::ReadWrite {
+            return Err(ReviewCommitError::ReadOnly);
+        }
+        super::continuous::migration_recovery::save(&self.project_root, self.project_id, draft)
+    }
+    fn load_migration_recovery(
+        &self,
+    ) -> Result<Vec<viewer_application::review_workspace::RecoveryDraft>, ReviewCommitError> {
+        super::continuous::migration_recovery::load(&self.project_root, self.project_id)
+    }
     fn inspect_migration(
         &self,
     ) -> Result<Option<viewer_application::review_workspace::MigrationInspection>, ReviewCommitError>

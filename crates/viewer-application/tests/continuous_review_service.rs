@@ -96,7 +96,12 @@ async fn legacy_view_is_read_only_until_explicit_migration_and_retry_keeps_ids()
         ))
     );
     let saved = f.repository.current().unwrap();
-    let result = service.apply(envelope).await.unwrap();
+    let cancel = ReviewTaskCancellation::default();
+    cancel.cancel();
+    let result = service
+        .apply_with_cancellation(envelope, cancel)
+        .await
+        .unwrap();
     assert_eq!(result.receipt.snapshot, saved.reference);
     assert!(result.view.projection.actionable.is_empty());
     assert_eq!(result.view.projection.needs_confirmation.len(), 1);
@@ -159,6 +164,23 @@ async fn migration_explicit_fresh_binding_captures_new_evidence_and_cancellation
         Err(ReviewWorkspaceError::Cancelled)
     );
     assert!(f.repository.current().is_none());
+    let recovery = f
+        .service()
+        .view(ReviewStreamId::from_u128(2))
+        .await
+        .unwrap()
+        .recovery;
+    assert_eq!(
+        recovery.len(),
+        1,
+        "migration choices must survive cancellation and restart"
+    );
+    assert_eq!(recovery[0].command_id, envelope.command_id);
+    let ReviewWorkspaceCommand::Migrate(plan) = &envelope.command else {
+        unreachable!()
+    };
+    assert_eq!(recovery[0].editor_input.migration.as_ref(), Some(plan));
+    assert_eq!(recovery[0].failure, ReviewRecoveryFailure::Cancelled);
     let result = service.apply(envelope).await.unwrap();
     assert_eq!(result.view.projection.actionable.len(), 1);
     assert_eq!(f.evidence.captures(), 1);
@@ -245,6 +267,268 @@ async fn migrated_legacy_history_can_be_continued_later_using_legacy_keys_and_fr
     assert_eq!(state.feedback[1].text, old.feedback[0].text);
     assert_eq!(result.view.projection.actionable.len(), 1);
     assert_eq!(result.view.projection.needs_confirmation.len(), 1);
+}
+
+#[tokio::test]
+async fn prepared_usage_cannot_be_substituted_by_same_id_after_service_restart() {
+    let f = Fixture::new();
+    let initial = f.service();
+    let first = first(&f, &initial).await;
+    let importer = usage_importer(&first);
+    let source = importer.0.lock().unwrap().source.clone();
+    let service = f.service().with_usage_importer(importer.clone());
+    let preview = service.inspect_usage(source.clone()).await.unwrap();
+    let envelope = service
+        .prepare(
+            ReviewCommandId::new(),
+            Some(first.receipt.snapshot.snapshot_id),
+            ReviewWorkspaceCommand::AdoptUsage {
+                declaration_id: preview.declaration.id,
+            },
+        )
+        .await
+        .unwrap();
+    drop(service);
+    {
+        let mut changed = importer.0.lock().unwrap();
+        changed.declaration.outputs.push(UsageOutput {
+            relative_path: RelativePath::parse("different.png").unwrap(),
+            blake3: [7; 32],
+            previous_asset_version_id: first.view.current.as_ref().unwrap().state.assets[0].id,
+        });
+        changed.canonical_digest = [99; 32];
+        changed.source_digest = [98; 32];
+    }
+    let restarted = f.service().with_usage_importer(importer);
+    restarted.inspect_usage(source).await.unwrap();
+    assert!(matches!(
+        restarted.apply(envelope).await,
+        Err(ReviewWorkspaceError::Usage(UsageImportError::SourceChanged))
+    ));
+    assert_eq!(
+        f.repository.current().unwrap().reference,
+        first.receipt.snapshot
+    );
+}
+
+#[tokio::test]
+async fn restored_pending_target_can_be_explicitly_confirmed_on_the_same_asset_version() {
+    let f = Fixture::new();
+    let service = f.service();
+    let first = first(&f, &service).await;
+    let asset = first.view.current.as_ref().unwrap().state.assets[0].id;
+    let archived = service
+        .apply(
+            service
+                .prepare(
+                    ReviewCommandId::new(),
+                    Some(first.receipt.snapshot.snapshot_id),
+                    ReviewWorkspaceCommand::Archive(unknown(&first)),
+                )
+                .await
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let archive = f
+        .repository
+        .load_coverage(
+            ReviewStreamId::from_u128(2),
+            archived.receipt.snapshot,
+            &[key(&first)],
+        )
+        .unwrap()[0]
+        .archive_id;
+    let restored = service
+        .apply(
+            service
+                .prepare(
+                    ReviewCommandId::new(),
+                    Some(archived.receipt.snapshot.snapshot_id),
+                    ReviewWorkspaceCommand::Restore {
+                        archive_id: archive,
+                        decisions: vec![RestoreDecision {
+                            historical_key: key(&first),
+                            choice: RestoreChoice::ContinueAsNew {
+                                feedback_id: FeedbackId::new(),
+                                text_revision_id: ReviewTextRevisionId::new(),
+                                target_id: ReviewTargetId::new(),
+                                target_revision_id: ReviewTargetRevisionId::new(),
+                                target_asset_version_id: asset,
+                                confirmed_anchor: None,
+                                created_at_ms: 100,
+                            },
+                        }],
+                    },
+                )
+                .await
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(restored.view.projection.needs_confirmation.len(), 1);
+    let before_key = key(&restored);
+    let command = ReviewWorkspaceCommand::ConfirmApplicability {
+        key: before_key,
+        asset_version_id: asset,
+        anchor: FeedbackAnchor::Asset,
+    };
+    let result = service
+        .apply(
+            service
+                .prepare(
+                    ReviewCommandId::new(),
+                    Some(restored.receipt.snapshot.snapshot_id),
+                    command,
+                )
+                .await
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(result.view.projection.actionable.len(), 1);
+    assert_eq!(
+        result.view.current.as_ref().unwrap().state.feedback[0].targets[0].asset_version_id,
+        asset
+    );
+    assert_ne!(
+        key(&result).target_revision_id,
+        before_key.target_revision_id
+    );
+}
+
+#[tokio::test]
+async fn archive_history_coalesces_groups_of_the_same_exact_snapshot() {
+    let f = Fixture::new();
+    let service = f.service();
+    let a = service
+        .prepare_assets(
+            &[EntityId::from_u128(10)],
+            ReviewTaskCancellation::default(),
+        )
+        .await
+        .unwrap()
+        .remove(0);
+    let first = service
+        .apply(
+            service
+                .prepare(
+                    ReviewCommandId::new(),
+                    None,
+                    ReviewWorkspaceCommand::SaveFeedback {
+                        feedback_id: None,
+                        text: "two targets".into(),
+                        targets: vec![
+                            TargetEdit::Add {
+                                asset_version_id: a.id,
+                                anchor: FeedbackAnchor::Asset,
+                            },
+                            TargetEdit::Add {
+                                asset_version_id: a.id,
+                                anchor: FeedbackAnchor::Asset,
+                            },
+                        ],
+                    },
+                )
+                .await
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let state = &first.view.current.as_ref().unwrap().state;
+    let groups = state.feedback[0]
+        .targets
+        .iter()
+        .map(|t| ArchiveGroup {
+            basis: ArchiveBasis::Unknown,
+            targets: vec![state.target_key(t.id).unwrap()],
+        })
+        .collect();
+    let archived = service
+        .apply(
+            service
+                .prepare(
+                    ReviewCommandId::new(),
+                    Some(first.receipt.snapshot.snapshot_id),
+                    ReviewWorkspaceCommand::Archive(ArchiveSelection {
+                        expected_snapshot_id: first.receipt.snapshot.snapshot_id,
+                        groups,
+                    }),
+                )
+                .await
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let archive = f
+        .repository
+        .load_coverage(
+            ReviewStreamId::from_u128(2),
+            archived.receipt.snapshot,
+            &[key(&first)],
+        )
+        .unwrap()[0]
+        .archive_id;
+    let history = service
+        .history(viewer_application::review_evidence::HistorySelector::Archive(archive))
+        .await
+        .unwrap();
+    assert_eq!(history.entries.len(), 1);
+    assert_eq!(history.entries[0].selected.len(), 2);
+}
+
+#[tokio::test]
+async fn archive_history_enforces_an_aggregate_budget_across_distinct_snapshots() {
+    let f = Fixture::new();
+    let service = f.service();
+    let initial = first(&f, &service).await.view.current.unwrap();
+    let mut states = vec![];
+    let mut groups = vec![];
+    for _ in 0..3 {
+        let mut snapshot = initial.clone();
+        snapshot.reference.snapshot_id = ReviewSnapshotId::new();
+        snapshot.state.snapshot_id = snapshot.reference.snapshot_id;
+        snapshot.state.feedback[0].targets[0].revision_id = ReviewTargetRevisionId::new();
+        for i in 0..25_000 {
+            let mut asset = initial.state.assets[0].clone();
+            asset.id = AssetVersionId::from_u128(1_000_000 + i);
+            snapshot.state.assets.push(asset);
+        }
+        snapshot.state.validate().unwrap();
+        groups.push(ArchiveGroup {
+            basis: ArchiveBasis::Known {
+                snapshot: snapshot.reference,
+                source: ArchiveBasisSource::UserSelected,
+            },
+            targets: vec![
+                snapshot
+                    .state
+                    .target_key(snapshot.state.feedback[0].targets[0].id)
+                    .unwrap(),
+            ],
+        });
+        states.push(snapshot);
+    }
+    let archive = ArchiveCheckpoint {
+        project_id: initial.state.project_id,
+        stream_id: initial.state.stream_id,
+        archive_id: ReviewArchiveId::new(),
+        created_at_ms: 100,
+        before: states[2].reference,
+        groups,
+        removed: vec![],
+        retained: vec![],
+    };
+    let id = archive.archive_id;
+    f.repository.seed_history_fixture(states, archive);
+    assert_eq!(
+        service
+            .history(viewer_application::review_evidence::HistorySelector::Archive(id))
+            .await,
+        Err(ReviewWorkspaceError::Repository(
+            ReviewCommitError::LimitExceeded
+        ))
+    );
 }
 
 async fn first(f: &Fixture, service: &ContinuousReviewService) -> ReviewApplyResult {
@@ -566,6 +850,14 @@ async fn historical_continue_creates_new_identity_and_explicit_origin() {
         )
         .await
         .unwrap();
+    let recovered = cancelled_input(&service, &e).await;
+    assert_eq!(recovered.history_ref, Some(history_ref.clone()));
+    assert_eq!(recovered.targets[0].asset_version_id, assets[0].id);
+    assert_eq!(recovered.targets[0].anchor, FeedbackAnchor::Asset);
+    assert_eq!(
+        recovered.selections[0].origin,
+        RecoveryTargetOrigin::Snapshot { key: key(&b) }
+    );
     let c = service.apply(e).await.unwrap();
     let new = &c.view.current.as_ref().unwrap().state.feedback[1];
     assert_ne!(new.id, key(&b).feedback_id);
@@ -1161,6 +1453,37 @@ async fn verified_producer_mapping_still_requires_an_explicit_selected_binding()
         )
         .await
         .unwrap();
+    let old_digest = importer.0.lock().unwrap().source_digest;
+    importer.0.lock().unwrap().source_digest = [97; 32];
+    assert_eq!(
+        service.apply(e.clone()).await,
+        Err(ReviewWorkspaceError::Usage(UsageImportError::SourceChanged))
+    );
+    let early_failure = f
+        .service()
+        .view(e.context.stream_id)
+        .await
+        .unwrap()
+        .recovery;
+    assert!(
+        early_failure
+            .iter()
+            .any(|d| d.command_id == e.command_id && d.editor_input.selections.len() == 1),
+        "a binding must survive a failure before rendering or transition preparation"
+    );
+    importer.0.lock().unwrap().source_digest = old_digest;
+    let recovered = cancelled_input(&service, &e).await;
+    assert_eq!(recovered.targets[0].asset_version_id, new.id);
+    assert_eq!(
+        recovered.selections[0].origin,
+        RecoveryTargetOrigin::Current { key: key(&b) }
+    );
+    assert_eq!(
+        recovered.selections[0].confirmation,
+        RecoveryTargetConfirmation::ProducerVerified {
+            usage_id: preview.declaration.id
+        }
+    );
     let c = service.apply(e).await.unwrap();
     assert_eq!(
         c.view.current.as_ref().unwrap().state.feedback[0].targets[0].asset_version_id,
@@ -1171,4 +1494,25 @@ async fn verified_producer_mapping_still_requires_an_explicit_selected_binding()
         "原文保留"
     );
     assert_eq!(c.view.projection.actionable.len(), 1);
+}
+
+async fn cancelled_input(
+    service: &ContinuousReviewService,
+    e: &ReviewCommandEnvelope,
+) -> RecoveryEditorInput {
+    let cancel = ReviewTaskCancellation::default();
+    cancel.cancel();
+    assert_eq!(
+        service.apply_with_cancellation(e.clone(), cancel).await,
+        Err(ReviewWorkspaceError::Cancelled)
+    );
+    service
+        .view(e.context.stream_id)
+        .await
+        .unwrap()
+        .recovery
+        .into_iter()
+        .find(|d| d.command_id == e.command_id)
+        .unwrap()
+        .editor_input
 }

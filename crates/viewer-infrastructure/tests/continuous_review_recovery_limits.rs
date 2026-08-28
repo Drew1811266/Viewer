@@ -12,6 +12,8 @@ fn draft(sequence: u128) -> RecoveryDraft {
         expected_snapshot_id: None,
         payload_digest: [3; 32],
         editor_input: RecoveryEditorInput {
+            migration: None,
+            selections: vec![],
             text: "保留这份未提交输入。".into(),
             feedback_id: None,
             targets: vec![],

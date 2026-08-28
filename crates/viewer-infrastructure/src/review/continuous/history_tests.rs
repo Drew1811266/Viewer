@@ -66,3 +66,67 @@ fn repeated_ancestry_proofs_reuse_only_the_operation_local_verified_edges() {
         Err(ReviewCommitError::Integrity)
     );
 }
+
+#[test]
+fn recovery_resolution_walks_committed_history_once_for_all_input_records() {
+    let root = tempfile::tempdir().unwrap();
+    let project = ProjectId::from_u128(1);
+    let stream = ReviewStreamId::from_u128(2);
+    let repository = ContinuousReviewRepository::open(root.path(), project, true).unwrap();
+    let mut expected = None;
+    for i in 10..20 {
+        let command = ReviewCommandId::from_u128(i);
+        repository
+            .save_recovery(&RecoveryDraft {
+                stream_id: stream,
+                command_id: command,
+                expected_snapshot_id: expected.map(|r: SnapshotRef| r.snapshot_id),
+                payload_digest: [i as u8; 32],
+                editor_input: RecoveryEditorInput {
+                    migration: None,
+                    text: "raw input".into(),
+                    feedback_id: None,
+                    targets: vec![],
+                    history_ref: None,
+                    selections: vec![],
+                },
+                failure: ReviewRecoveryFailure::WriteFailed,
+            })
+            .unwrap();
+        expected = Some(
+            repository
+                .commit(ReviewCommitRequest {
+                    expected,
+                    production: None,
+                    next: PreparedContinuousSnapshot {
+                        state: ContinuousReviewState::empty(
+                            project,
+                            stream,
+                            ReviewSnapshotId::from_u128(i),
+                        ),
+                        command_id: command,
+                        payload_digest: [i as u8; 32],
+                        changes: vec![],
+                        evidence: vec![],
+                    },
+                    archives: vec![],
+                    adopted_usage: vec![],
+                    staged_evidence: vec![],
+                })
+                .unwrap()
+                .snapshot,
+        );
+    }
+    DOCUMENT_READS.with(|c| c.set(0));
+    assert!(
+        repository
+            .load_unresolved_recovery(stream)
+            .unwrap()
+            .is_empty()
+    );
+    assert_eq!(
+        DOCUMENT_READS.with(|c| c.get()),
+        10,
+        "one bounded pass, not one history walk per recovered command"
+    );
+}

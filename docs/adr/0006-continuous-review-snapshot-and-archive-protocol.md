@@ -238,6 +238,42 @@ the legacy writer lease and recheck the complete inspection before atomic index 
 after replacement return OutcomeUnknown; earlier faults leave the old entry valid. Legacy writers
 reject v3. No real project is migrated and no compatibility "latest" entry is emitted.
 
+### Phase C review corrections
+
+Prepared envelopes bind each selected usage ID to its inspected canonical digest, source-byte digest
+and relative path. A selection without an inspected candidate must already exist as an immutable
+adopted usage. Reimporting the same ID with different contents after a restart cannot change the
+meaning of an outstanding command. ReviewCommandCodecPort::usage_digest computes the same canonical
+usage digest as the repository. An adopted record no longer depends on the external file remaining.
+
+Recovery retains unpublished input, never Agent instructions or authorization to replay. Its private
+closed wire format now includes exact origin keys, new target/asset identities, confirmation choices
+and geometry for historical continuation, legacy continuation, source/applicability confirmation and
+continue-as-new restoration. Missing provisional geometry remains explicitly unconfirmed. Early
+usage/transition failures also preserve submitted input when storage permits. Optional migration
+input preserves the exact inspection digest and selected legacy targets/new bindings. The provider's
+save_migration_recovery / load_migration_recovery work before a v3 index exists, sharing the legacy
+writer lease without publishing or modifying the old index. Recovery never bypasses fresh preview,
+source, inspection, position or expected-snapshot checks; prepared asset handles are not automatically
+reconstituted after restart. Already-committed migrations are resolved before considering cancellation.
+
+ConfirmApplicability is separate from source replacement: it revises a provisional target anchor
+on the same asset only when its sole stored pending reason is ApplicabilityUnconfirmed. It cannot
+clear missing clean evidence or source restrictions. Read-time source checks still decide projection.
+
+History projection coalesces exact SnapshotRefs and target selections, with a conservative 64 MiB
+aggregate retained-payload budget across distinct entries. Recovery reconciliation traverses committed
+history once per view, leaving unavailable tails unresolved. Exact snapshot/legacy provenance is
+verified once per operation, including all declared legacy PNGs; no cross-operation trust is cached.
+Missing index plus legacy drafts is rejected by ordinary writers as well as migration inspection.
+The optional public legacyIndex field rejects explicit null, matching its JSON Schema.
+
+Recovery retention remains finite: 10,000 records and 64 MiB total record bytes per project, including
+records whose commands already committed. Index backups have a separate 64-record / 64 MiB bound.
+Repeated saves therefore consume cumulative capacity; reaching a limit fails closed and does not
+delete history or recovery input. This is not an unlimited-session or production-scale guarantee.
+Any future retention/compaction policy requires separate design and verification before UI rollout.
+
 The `continuous_review_state`, `continuous_review_mutation`, `continuous_review_archive`,
 `continuous_review_restore` and `continuous_review_delta` integration suites cover the pure rules.
 Checkpoint evidence and any contract refinements are recorded in the

@@ -8,20 +8,58 @@ pub(super) fn feedback_origins(
     view: &View,
     record: &v3::ReviewStateRecord,
 ) -> Result<(), ReviewCommitError> {
-    for feedback in &record.state.feedback {
-        let Some(origin) = &feedback.history_ref else {
-            continue;
-        };
+    let mut snapshots = std::collections::HashMap::new();
+    let mut legacy = std::collections::HashMap::new();
+    for origin in record
+        .state
+        .feedback
+        .iter()
+        .filter_map(|f| f.history_ref.as_ref())
+    {
+        if origin.project_id != view.index.project_id || origin.stream_id != record.state.stream_id
+        {
+            return Err(ReviewCommitError::Integrity);
+        }
         match &origin.source {
-            HistorySource::Snapshot { snapshot, keys } => {
-                let basis =
-                    history::reachable_from(view, origin.stream_id, record.state.parent, snapshot)?;
-                let available = target_keys(&basis.state);
-                if keys.iter().any(|key| !available.contains(key)) {
-                    return Err(ReviewCommitError::Integrity);
-                }
-            }
-            HistorySource::Legacy { .. } => super::legacy::validate_origin(view, origin)?,
+            HistorySource::Snapshot { snapshot, keys } => snapshots
+                .entry((origin.stream_id, *snapshot))
+                .or_insert_with(Vec::new)
+                .extend(keys.iter().copied()),
+            HistorySource::Legacy {
+                round_id,
+                record_blake3,
+                targets,
+            } => legacy
+                .entry((origin.stream_id, *round_id, *record_blake3))
+                .or_insert_with(Vec::new)
+                .extend(targets.iter().copied()),
+        }
+    }
+    for ((stream, snapshot), keys) in snapshots {
+        let basis = history::reachable_from(view, stream, record.state.parent, &snapshot)?;
+        let available = target_keys(&basis.state);
+        if keys.iter().any(|k| !available.contains(k)) {
+            return Err(ReviewCommitError::Integrity);
+        }
+    }
+    for ((stream, round, digest), targets) in legacy {
+        let source = super::legacy::load(view, stream, round)?;
+        if source.reference.blake3 != digest {
+            return Err(ReviewCommitError::Integrity);
+        }
+        let feedback = match &source.contents {
+            viewer_application::review_workspace::LegacyReviewContents::Draft(d) => &d.feedback,
+            viewer_application::review_workspace::LegacyReviewContents::Completed(d) => &d.feedback,
+        };
+        let available: std::collections::HashMap<_, _> =
+            feedback.iter().map(|f| (f.id, f.targets.len())).collect();
+        if targets.iter().any(|t| {
+            t.round_id != round
+                || !available
+                    .get(&t.feedback_id)
+                    .is_some_and(|len| (t.target_index as usize) < *len)
+        }) {
+            return Err(ReviewCommitError::Integrity);
         }
     }
     Ok(())

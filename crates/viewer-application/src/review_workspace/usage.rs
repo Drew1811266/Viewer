@@ -15,6 +15,24 @@ pub(super) struct VerifiedUsage {
 }
 
 impl ContinuousReviewService {
+    pub(super) async fn prepare_usages(
+        &self,
+        command: &ReviewWorkspaceCommand,
+    ) -> Vec<PreparedUsageSelection> {
+        let previews = self.usage_previews.lock().await;
+        usage_ids(command)
+            .into_iter()
+            .map(|id| PreparedUsageSelection {
+                id,
+                candidate: previews.get(&id).map(|p| PreparedUsageCandidate {
+                    canonical_digest: p.canonical_digest,
+                    source_digest: p.source_digest,
+                    source: p.source.clone(),
+                }),
+            })
+            .collect()
+    }
+
     pub fn with_usage_importer(mut self, importer: Arc<dyn UsageImportPort>) -> Self {
         self.usage_importer = Some(importer);
         self
@@ -57,52 +75,29 @@ impl ContinuousReviewService {
         &self,
         command: &ReviewWorkspaceCommand,
         repository: Arc<dyn ContinuousReviewRepositoryPort>,
+        selections: Option<&[PreparedUsageSelection]>,
     ) -> Result<Vec<VerifiedUsage>, ReviewWorkspaceError> {
-        let mut ids = vec![];
-        let mut seen = HashSet::new();
-        let mut add = |id| {
-            if seen.insert(id) {
-                ids.push(id);
+        let owned;
+        let selections = if let Some(selections) = selections {
+            if selections.iter().map(|s| s.id).collect::<Vec<_>>() != usage_ids(command) {
+                return Err(UsageImportError::InvalidScope.into());
             }
+            selections
+        } else {
+            owned = self.prepare_usages(command).await;
+            &owned
         };
-        match command {
-            ReviewWorkspaceCommand::AdoptUsage { declaration_id } => add(*declaration_id),
-            ReviewWorkspaceCommand::Archive(selection) => {
-                for group in &selection.groups {
-                    if let ArchiveBasis::Known {
-                        source: ArchiveBasisSource::AgentDeclared { usage_id },
-                        ..
-                    } = group.basis
-                    {
-                        add(usage_id);
-                    }
-                }
-            }
-            ReviewWorkspaceCommand::ConfirmSource(binding) => {
-                if let SourceBindingConfirmation::ProducerVerifiedAndPositionConfirmed {
-                    usage_id,
-                } = binding.confirmation
-                {
-                    add(usage_id);
-                }
-            }
-            ReviewWorkspaceCommand::ContinueHistorical { bindings, .. } => {
-                for binding in bindings {
-                    if let SourceBindingConfirmation::ProducerVerifiedAndPositionConfirmed {
-                        usage_id,
-                    } = binding.confirmation
-                    {
-                        add(usage_id);
-                    }
-                }
-            }
-            _ => {}
-        }
         let mut result = vec![];
-        for id in ids {
+        for selection in selections {
+            let id = selection.id;
             let reader = repository.clone();
             let stream = self.context.stream_id;
             if let Some(stored) = super::service::io(move || reader.load_usage(stream, id)).await? {
+                if let Some(expected) = &selection.candidate
+                    && self.codec.usage_digest(&stored)? != expected.canonical_digest
+                {
+                    return Err(UsageImportError::SourceChanged.into());
+                }
                 if self
                     .usage_previews
                     .lock()
@@ -125,6 +120,16 @@ impl ContinuousReviewService {
                 .get(&id)
                 .cloned()
                 .ok_or(ReviewWorkspaceError::CapabilityUnavailable)?;
+            let expected = selection
+                .candidate
+                .as_ref()
+                .ok_or(ReviewWorkspaceError::CapabilityUnavailable)?;
+            if preview.canonical_digest != expected.canonical_digest
+                || preview.source_digest != expected.source_digest
+                || preview.source != expected.source
+            {
+                return Err(UsageImportError::SourceChanged.into());
+            }
             let importer = self
                 .usage_importer
                 .clone()
@@ -249,4 +254,54 @@ pub(super) fn validate_binding(
         return Err(UsageImportError::InvalidScope.into());
     }
     Ok(())
+}
+
+fn usage_ids(command: &ReviewWorkspaceCommand) -> Vec<viewer_domain::ReviewUsageId> {
+    let mut ids = vec![];
+    let mut seen = HashSet::new();
+    let mut add = |id| {
+        if seen.insert(id) {
+            ids.push(id);
+        }
+    };
+    match command {
+        ReviewWorkspaceCommand::AdoptUsage { declaration_id } => add(*declaration_id),
+        ReviewWorkspaceCommand::Archive(selection) => {
+            for group in &selection.groups {
+                if let ArchiveBasis::Known {
+                    source: ArchiveBasisSource::AgentDeclared { usage_id },
+                    ..
+                } = group.basis
+                {
+                    add(usage_id);
+                }
+            }
+        }
+        ReviewWorkspaceCommand::ConfirmSource(binding) => {
+            if let SourceBindingConfirmation::ProducerVerifiedAndPositionConfirmed { usage_id } =
+                binding.confirmation
+            {
+                add(usage_id);
+            }
+        }
+        ReviewWorkspaceCommand::ContinueHistorical { bindings, .. } => {
+            for binding in bindings {
+                if let SourceBindingConfirmation::ProducerVerifiedAndPositionConfirmed {
+                    usage_id,
+                } = binding.confirmation
+                {
+                    add(usage_id);
+                }
+            }
+        }
+        _ => {}
+    }
+    ids
+}
+
+pub(super) fn selection_bytes(selections: &[PreparedUsageSelection]) -> usize {
+    selections.iter().fold(0_usize, |sum, s| {
+        sum.saturating_add(256)
+            .saturating_add(s.candidate.as_ref().map_or(0, |p| p.source.as_str().len()))
+    })
 }

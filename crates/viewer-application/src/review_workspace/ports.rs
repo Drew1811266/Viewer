@@ -17,10 +17,49 @@ pub struct RecoveryDraft {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct RecoveryEditorInput {
+    pub migration: Option<super::MigrationPlan>,
+    pub selections: Vec<RecoveryTargetSelection>,
     pub text: String,
     pub feedback_id: Option<viewer_domain::FeedbackId>,
     pub targets: Vec<VersionedTarget>,
     pub history_ref: Option<HistoryRef>,
+}
+
+/// Unpublished editor choices. These are recovery input, not executable feedback or an
+/// authorization to replay an old command against a changed current snapshot.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RecoveryTargetSelection {
+    pub origin: RecoveryTargetOrigin,
+    pub feedback_id: viewer_domain::FeedbackId,
+    pub text_revision_id: viewer_domain::ReviewTextRevisionId,
+    pub target_id: viewer_domain::ReviewTargetId,
+    pub target_revision_id: viewer_domain::ReviewTargetRevisionId,
+    pub asset_version_id: AssetVersionId,
+    pub confirmation: RecoveryTargetConfirmation,
+}
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum RecoveryTargetOrigin {
+    Current {
+        key: TargetVersionKey,
+    },
+    Snapshot {
+        key: TargetVersionKey,
+    },
+    Legacy {
+        round_id: viewer_domain::ReviewRoundId,
+        feedback_id: viewer_domain::FeedbackId,
+        target_index: u32,
+    },
+    Archive {
+        archive_id: ReviewArchiveId,
+        key: TargetVersionKey,
+    },
+}
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum RecoveryTargetConfirmation {
+    Unconfirmed,
+    UserConfirmed,
+    ProducerVerified { usage_id: ReviewUsageId },
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -164,6 +203,20 @@ pub enum ReviewCommitError {
 }
 
 pub trait ContinuousReviewRepositoryPort: Send + Sync {
+    fn load_unresolved_recovery(
+        &self,
+        stream: ReviewStreamId,
+    ) -> Result<Vec<RecoveryDraft>, ReviewCommitError> {
+        self.load_recovery()?
+            .into_iter()
+            .filter(|d| d.stream_id == stream)
+            .filter_map(|d| match self.resolve_recovery(d.command_id) {
+                Ok(CommandLookup::Found(_)) => None,
+                Ok(_) => Some(Ok(d)),
+                Err(e) => Some(Err(e)),
+            })
+            .collect()
+    }
     fn load_legacy(
         &self,
         _stream: ReviewStreamId,
@@ -226,6 +279,12 @@ pub trait ContinuousReviewRepositoryPort: Send + Sync {
 }
 
 pub trait ContinuousReviewRepositoryProviderPort: Send + Sync {
+    fn save_migration_recovery(&self, _draft: &RecoveryDraft) -> Result<(), ReviewCommitError> {
+        Err(ReviewCommitError::MigrationRequired)
+    }
+    fn load_migration_recovery(&self) -> Result<Vec<RecoveryDraft>, ReviewCommitError> {
+        Ok(vec![])
+    }
     fn inspect_migration(&self) -> Result<Option<super::MigrationInspection>, ReviewCommitError> {
         Ok(None)
     }

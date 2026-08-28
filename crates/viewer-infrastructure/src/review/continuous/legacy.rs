@@ -36,6 +36,8 @@ pub(super) fn read(
     scope: Option<ProductionScope>,
     reference: &v3::LegacyRecordRef,
 ) -> Result<LegacyReviewRecord, ReviewCommitError> {
+    #[cfg(test)]
+    LEGACY_READS.with(|c| c.set(c.get() + 1));
     let (directory, name) = location(root, reference)?;
     let bytes = directory
         .read(&name, MAX_REVIEW_DOCUMENT_BYTES)?
@@ -122,6 +124,12 @@ pub(super) fn read(
     })
 }
 
+#[cfg(test)]
+thread_local! {static LEGACY_READS:std::cell::Cell<usize>=const {std::cell::Cell::new(0)};}
+#[cfg(test)]
+#[path = "legacy_tests.rs"]
+mod tests;
+
 pub(super) fn load(
     view: &View,
     stream: ReviewStreamId,
@@ -140,37 +148,4 @@ pub(super) fn load(
         super::mapping::scope(stream)?,
         reference,
     )
-}
-
-pub(super) fn validate_origin(
-    view: &View,
-    origin: &viewer_domain::review::continuous::HistoryRef,
-) -> Result<(), ReviewCommitError> {
-    use viewer_domain::review::continuous::HistorySource;
-    let HistorySource::Legacy {
-        round_id,
-        record_blake3,
-        targets,
-    } = &origin.source
-    else {
-        return Err(ReviewCommitError::Integrity);
-    };
-    let record = load(view, origin.stream_id, *round_id)?;
-    if origin.project_id != view.index.project_id || record.reference.blake3 != *record_blake3 {
-        return Err(ReviewCommitError::Integrity);
-    }
-    let feedback = match &record.contents {
-        LegacyReviewContents::Draft(d) => &d.feedback,
-        LegacyReviewContents::Completed(d) => &d.feedback,
-    };
-    for target in targets {
-        if target.round_id != *round_id
-            || !feedback.iter().any(|f| {
-                f.id == target.feedback_id && (target.target_index as usize) < f.targets.len()
-            })
-        {
-            return Err(ReviewCommitError::Integrity);
-        }
-    }
-    Ok(())
 }

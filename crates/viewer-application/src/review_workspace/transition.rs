@@ -128,6 +128,32 @@ pub(super) fn prepare(
                 snapshot,
             )?
         }
+        ReviewWorkspaceCommand::ConfirmApplicability {
+            key,
+            asset_version_id,
+            anchor,
+        } => {
+            if !before
+                .feedback
+                .iter()
+                .flat_map(|f| &f.targets)
+                .any(|t| t.id == key.target_id && t.asset_version_id == *asset_version_id)
+            {
+                return Err(ContinuousReviewError::MissingReference.into());
+            }
+            confirm_applicability(
+                before,
+                *key,
+                anchor.clone(),
+                envelope
+                    .generated
+                    .targets
+                    .first()
+                    .ok_or(ContinuousReviewError::InvalidData)?
+                    .1,
+                snapshot,
+            )?
+        }
         ReviewWorkspaceCommand::AdoptUsage { declaration_id } => {
             if !usages.iter().any(|u| u.declaration.id == *declaration_id) {
                 return Err(ReviewWorkspaceError::CapabilityUnavailable);

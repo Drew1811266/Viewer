@@ -8,6 +8,15 @@ use viewer_domain::review::{MAX_FEEDBACK_TEXT_BYTES, MAX_TARGETS_PER_FEEDBACK, c
 
 pub struct ContinuousReviewCommandCodec;
 impl ReviewCommandCodecPort for ContinuousReviewCommandCodec {
+    fn usage_digest(
+        &self,
+        declaration: &ReviewUsageDeclaration,
+    ) -> Result<[u8; 32], ReviewWorkspaceError> {
+        let record: crate::review::v3::ReviewUsageRecord = declaration.clone().into();
+        let bytes = crate::review::v3::encode_usage_v1(&record)
+            .map_err(super::repository::protocol_error)?;
+        Ok(*blake3::hash(&bytes).as_bytes())
+    }
     fn digest(&self, e: &ReviewCommandEnvelope) -> Result<[u8; 32], ReviewWorkspaceError> {
         if e.generated.targets.len() > MAX_TARGETS_PER_FEEDBACK
             || !(0..=9_007_199_254_740_991).contains(&e.generated.created_at_ms)
@@ -15,6 +24,20 @@ impl ReviewCommandCodecPort for ContinuousReviewCommandCodec {
             return Err(ContinuousReviewError::LimitExceeded.into());
         }
         let mut out = Encoder::new();
+        if e.usage_selections.len() > 10_000 {
+            return Err(ContinuousReviewError::LimitExceeded.into());
+        }
+        out.field(&e.usage_selections.len())?;
+        for selection in &e.usage_selections {
+            out.field(&(selection.id, selection.candidate.is_some()))?;
+            if let Some(candidate) = &selection.candidate {
+                out.field(&(
+                    candidate.canonical_digest,
+                    candidate.source_digest,
+                    candidate.source.as_str(),
+                ))?;
+            }
+        }
         out.field(&"viewer.review.command/1")?;
         out.field(&(
             e.context.project_id,
@@ -169,6 +192,15 @@ impl ReviewCommandCodecPort for ContinuousReviewCommandCodec {
             ReviewWorkspaceCommand::ConfirmSource(binding) => {
                 out.field(&"confirmSource")?;
                 out.binding(binding)?;
+            }
+            ReviewWorkspaceCommand::ConfirmApplicability {
+                key,
+                asset_version_id,
+                anchor,
+            } => {
+                out.field(&("confirmApplicability", asset_version_id))?;
+                out.key(key)?;
+                out.anchor(anchor)?;
             }
             ReviewWorkspaceCommand::AdoptUsage { declaration_id } => {
                 out.field(&("adoptUsage", declaration_id))?

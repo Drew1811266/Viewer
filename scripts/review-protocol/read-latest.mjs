@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 
-import { constants } from 'node:fs'
-import { lstat, open, opendir, realpath } from 'node:fs/promises'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
+import { blake3Hex } from './blake3.mjs'
+export { blake3Hex } from './blake3.mjs'
+import { openSafeProject, isSafeRepositoryLocation } from './safe-read.mjs'
 
 const REVIEW_PROTOCOL_V1 = 'viewer.review/1'
 const REVIEW_PROTOCOL_V2 = 'viewer.review/2'
@@ -28,7 +29,6 @@ const reviewabilityFailures = new Set([
 const uuidPattern = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/
 const productionIdPattern = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/
 const digestPattern = /^[0-9a-f]{64}$/
-const pngSignature = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
 
 export async function listReviewStreams({ projectRoot } = {}) {
   const { catalog } = await readCatalog(projectRoot)
@@ -46,7 +46,7 @@ export async function readLatestCompletedReview({
   batchId,
 } = {}) {
   validateSelector({ reviewStreamId, taskId, batchId })
-  const { reviewsRoot, catalog } = await readCatalog(projectRoot)
+  const { reader, catalog } = await readCatalog(projectRoot)
   const selected = selectStream(catalog.streams, { reviewStreamId, taskId, batchId })
   if (selected.latestCompletedRoundId === null) {
     throw new Error('selected review stream has no completed review head')
@@ -54,12 +54,7 @@ export async function readLatestCompletedReview({
 
   const roundId = selected.latestCompletedRoundId
   const record = completedRecord(selected, roundId, catalog.protocolVersion)
-  const roundPath = await resolveSafeLocation(
-    reviewsRoot,
-    record.location,
-    'completed round',
-  )
-  const roundBytes = await readBoundedFile(roundPath, MAX_ROUND_BYTES, 'completed round')
+  const roundBytes = await reader.readRepositoryBytes(record.location, MAX_ROUND_BYTES, 'completed round')
   if (record.blake3 !== null && blake3Hex(roundBytes) !== record.blake3) {
     throw new Error('completed round digest does not match the review index')
   }
@@ -79,7 +74,7 @@ export async function readLatestCompletedReview({
     throw new Error('completed round production identity does not match the selected review stream')
   }
   if (record.protocolVersion === REVIEW_PROTOCOL_V2) {
-    await validateArtifactFiles(path.dirname(roundPath), round.artifacts)
+    await validateArtifactFiles(reader, path.posix.dirname(record.location), round.artifacts)
   }
   return round
 }
@@ -138,103 +133,10 @@ function selectStream(streams, selector) {
 }
 
 async function readCatalog(projectRoot) {
-  const root = await resolveProjectRoot(projectRoot)
-  const viewerRoot = path.join(root, '.viewer')
-  const reviewsRoot = path.join(viewerRoot, 'reviews')
-  await requireSafeDirectory(viewerRoot, '.viewer directory')
-  await requireSafeDirectory(reviewsRoot, 'review repository directory')
-  const catalog = parseJson(
-    await readBoundedFile(path.join(reviewsRoot, 'index.json'), MAX_INDEX_BYTES, 'review index'),
-    'review index',
-  )
+  const reader = await openSafeProject(projectRoot)
+  const { data: catalog } = await reader.readRepositoryJson('index.json', MAX_INDEX_BYTES, 'review index')
   validateCatalog(catalog)
-  return { reviewsRoot, catalog }
-}
-
-async function resolveProjectRoot(projectRoot) {
-  if (typeof projectRoot !== 'string' || projectRoot.length === 0) {
-    throw new Error('project root is required')
-  }
-  const candidate = path.resolve(projectRoot)
-  await requireSafeDirectory(candidate, 'project root')
-  const resolved = await realpath(candidate)
-  await requireSafeDirectory(resolved, 'project root')
-  return resolved
-}
-
-async function requireSafeDirectory(directory, label) {
-  let metadata
-  try {
-    metadata = await lstat(directory)
-  } catch {
-    throw new Error(`${label} is unavailable`)
-  }
-  if (metadata.isSymbolicLink()) throw new Error(`${label} cannot be a symbolic link`)
-  if (!metadata.isDirectory()) throw new Error(`${label} must be a directory`)
-}
-
-async function resolveSafeLocation(root, relativeLocation, label) {
-  if (typeof relativeLocation !== 'string' || !isSafeRepositoryLocation(relativeLocation)) {
-    throw new Error(`${label} location is invalid`)
-  }
-  let current = root
-  const components = relativeLocation.split('/')
-  for (const [index, component] of components.entries()) {
-    current = path.join(current, component)
-    let metadata
-    try {
-      metadata = await lstat(current)
-    } catch {
-      throw new Error(`${label} is unavailable`)
-    }
-    if (metadata.isSymbolicLink()) {
-      throw new Error(`${label} path component cannot be a symbolic link`)
-    }
-    if (index < components.length - 1 && !metadata.isDirectory()) {
-      throw new Error(`${label} path component must be a directory`)
-    }
-    if (index === components.length - 1 && !metadata.isFile()) {
-      throw new Error(`${label} must be a regular file`)
-    }
-  }
-  return current
-}
-
-async function readBoundedFile(file, maximumBytes, label) {
-  let metadata
-  try {
-    metadata = await lstat(file)
-  } catch {
-    throw new Error(`${label} is unavailable`)
-  }
-  if (metadata.isSymbolicLink()) throw new Error(`${label} cannot be a symbolic link`)
-  if (!metadata.isFile()) throw new Error(`${label} must be a regular file`)
-  if (metadata.size > maximumBytes) throw new Error(`${label} exceeds its size limit`)
-
-  let handle
-  try {
-    handle = await open(file, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0))
-    const openedMetadata = await handle.stat()
-    if (!openedMetadata.isFile()) throw new Error(`${label} must be a regular file`)
-    if (openedMetadata.size > maximumBytes) throw new Error(`${label} exceeds its size limit`)
-    const chunks = []
-    let totalBytes = 0
-    while (true) {
-      const buffer = Buffer.allocUnsafe(Math.min(64 * 1024, maximumBytes - totalBytes + 1))
-      const { bytesRead } = await handle.read(buffer, 0, buffer.length, null)
-      if (bytesRead === 0) break
-      totalBytes += bytesRead
-      if (totalBytes > maximumBytes) throw new Error(`${label} exceeds its size limit`)
-      chunks.push(buffer.subarray(0, bytesRead))
-    }
-    return Buffer.concat(chunks, totalBytes)
-  } catch (error) {
-    if (error instanceof Error && error.message.startsWith(label)) throw error
-    if (error?.code === 'ELOOP') throw new Error(`${label} cannot be a symbolic link`)
-    throw new Error(`${label} is unavailable`)
-  } finally {
-    await handle?.close()
-  }
+  return { reader, catalog }
 }
 
 function parseJson(bytes, label) {
@@ -739,12 +641,9 @@ function validateArtifactRecords(artifacts, assets, feedbackById) {
   }
 }
 
-async function validateArtifactFiles(roundDirectory, artifacts) {
-  await requireSafeDirectory(roundDirectory, 'completed round bundle')
-  const artifactsDirectory = path.join(roundDirectory, 'artifacts')
-  await requireSafeDirectory(artifactsDirectory, 'review artifacts directory')
-
-  const bundleEntries = await readSafeDirectoryEntries(roundDirectory, 'completed round bundle', 2)
+async function validateArtifactFiles(reader, roundDirectory, artifacts) {
+  const artifactsDirectory = path.posix.join(roundDirectory, 'artifacts')
+  const bundleEntries = await reader.readRepositoryDirectory(roundDirectory, 2, 'completed round bundle')
   const allowedBundleEntries = new Set(['round.json', 'artifacts'])
   if (bundleEntries.length !== allowedBundleEntries.size
       || bundleEntries.some((entry) => !allowedBundleEntries.has(entry.name))) {
@@ -754,9 +653,8 @@ async function validateArtifactFiles(roundDirectory, artifacts) {
   const expectedNames = new Set(
     artifacts.map((artifact) => path.posix.basename(artifact.relativePath)),
   )
-  const artifactEntries = await readSafeDirectoryEntries(
-    artifactsDirectory,
-    'review artifacts directory',
+  const artifactEntries = await reader.readRepositoryDirectory(
+    artifactsDirectory, MAX_ASSETS, 'review artifacts directory',
   )
   for (const entry of artifactEntries) {
     if (!entry.isFile() || !expectedNames.has(entry.name)) {
@@ -770,162 +668,14 @@ async function validateArtifactFiles(roundDirectory, artifacts) {
   let totalBytes = 0
   for (const [index, artifact] of artifacts.entries()) {
     const label = `review artifact ${index}`
-    const artifactPath = await resolveSafeLocation(roundDirectory, artifact.relativePath, label)
-    const bytes = await readBoundedFile(
-      artifactPath,
-      Math.min(MAX_ARTIFACT_BYTES, MAX_BUNDLE_BYTES - totalBytes),
+    const { bytes } = await reader.readRepositoryPng(
+      path.posix.join(roundDirectory, artifact.relativePath),
+      artifact,
       label,
+      Math.min(MAX_ARTIFACT_BYTES, MAX_BUNDLE_BYTES - totalBytes),
     )
     totalBytes += bytes.length
-    if (blake3Hex(bytes) !== artifact.blake3) {
-      throw new Error(`${label} digest does not match its manifest`)
-    }
-    const dimensions = pngDimensions(bytes, label)
-    if (dimensions.width !== artifact.width || dimensions.height !== artifact.height) {
-      throw new Error(`${label} dimensions do not match its manifest`)
-    }
   }
-}
-
-async function readSafeDirectoryEntries(directory, label, maximumEntries = MAX_ASSETS) {
-  let handle
-  try {
-    handle = await opendir(directory)
-  } catch {
-    throw new Error(`${label} is unavailable`)
-  }
-  const entries = []
-  for await (const entry of handle) {
-    if (entry.isSymbolicLink()) throw new Error(`${label} cannot contain a symbolic link`)
-    entries.push(entry)
-    if (entries.length > maximumEntries) throw new Error(`${label} exceeds its entry limit`)
-  }
-  return entries
-}
-
-function pngDimensions(bytes, label) {
-  if (bytes.length < 24 || !bytes.subarray(0, pngSignature.length).equals(pngSignature)
-      || bytes.toString('ascii', 12, 16) !== 'IHDR') {
-    throw new Error(`${label} is not a PNG image`)
-  }
-  const width = bytes.readUInt32BE(16)
-  const height = bytes.readUInt32BE(20)
-  if (width === 0 || height === 0 || width * height > MAX_ARTIFACT_PIXELS) {
-    throw new Error(`${label} dimensions are invalid`)
-  }
-  return { width, height }
-}
-
-// Unkeyed, 32-byte BLAKE3 for the bounded protocol files. The reference algorithm
-// and test vectors are published at https://github.com/BLAKE3-team/BLAKE3.
-const blake3Iv = Uint32Array.from([
-  0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a,
-  0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19,
-])
-const blake3Permutation = [2, 6, 3, 10, 7, 0, 4, 13, 1, 11, 12, 5, 9, 14, 15, 8]
-const blake3Schedules = [Array.from({ length: 16 }, (_, index) => index)]
-for (let round = 1; round < 7; round += 1) {
-  const previous = blake3Schedules[round - 1]
-  blake3Schedules.push(blake3Permutation.map((index) => previous[index]))
-}
-
-export function blake3Hex(bytes) {
-  if (!(bytes instanceof Uint8Array)) throw new TypeError('BLAKE3 input must be bytes')
-  const chunkCount = Math.max(1, Math.ceil(bytes.length / 1024))
-  const stack = []
-  for (let chunkIndex = 0; chunkIndex < chunkCount - 1; chunkIndex += 1) {
-    let value = blake3ChainingValue(
-      blake3ChunkOutput(bytes.subarray(chunkIndex * 1024, (chunkIndex + 1) * 1024), chunkIndex),
-    )
-    let totalChunks = chunkIndex + 1
-    while (totalChunks % 2 === 0) {
-      value = blake3ChainingValue(blake3ParentOutput(stack.pop(), value))
-      totalChunks /= 2
-    }
-    stack.push(value)
-  }
-  let output = blake3ChunkOutput(bytes.subarray((chunkCount - 1) * 1024), chunkCount - 1)
-  while (stack.length > 0) {
-    output = blake3ParentOutput(stack.pop(), blake3ChainingValue(output))
-  }
-  const words = blake3Compress({ ...output, counter: 0, flags: output.flags | 8 })
-  const digest = Buffer.alloc(32)
-  for (let index = 0; index < 8; index += 1) digest.writeUInt32LE(words[index], index * 4)
-  return digest.toString('hex')
-}
-
-function blake3ChunkOutput(bytes, counter) {
-  const blockCount = Math.max(1, Math.ceil(bytes.length / 64))
-  let inputCv = blake3Iv
-  let output
-  for (let index = 0; index < blockCount; index += 1) {
-    const block = bytes.subarray(index * 64, (index + 1) * 64)
-    const blockWords = new Uint32Array(16)
-    for (let offset = 0; offset < block.length; offset += 1) {
-      blockWords[offset >>> 2] |= block[offset] << ((offset & 3) * 8)
-    }
-    output = {
-      inputCv,
-      blockWords,
-      counter,
-      blockLength: block.length,
-      flags: (index === 0 ? 1 : 0) | (index === blockCount - 1 ? 2 : 0),
-    }
-    if (index < blockCount - 1) inputCv = blake3ChainingValue(output)
-  }
-  return output
-}
-
-function blake3ParentOutput(left, right) {
-  const blockWords = new Uint32Array(16)
-  blockWords.set(left)
-  blockWords.set(right, 8)
-  return { inputCv: blake3Iv, blockWords, counter: 0, blockLength: 64, flags: 4 }
-}
-
-function blake3ChainingValue(output) {
-  return blake3Compress(output).slice(0, 8)
-}
-
-function blake3Compress({ inputCv, blockWords, counter, blockLength, flags }) {
-  const state = new Uint32Array(16)
-  state.set(inputCv)
-  state.set(blake3Iv.subarray(0, 4), 8)
-  state[12] = counter >>> 0
-  state[13] = Math.floor(counter / 0x1_0000_0000)
-  state[14] = blockLength
-  state[15] = flags
-  for (const schedule of blake3Schedules) {
-    const word = (index) => blockWords[schedule[index]]
-    blake3Mix(state, 0, 4, 8, 12, word(0), word(1))
-    blake3Mix(state, 1, 5, 9, 13, word(2), word(3))
-    blake3Mix(state, 2, 6, 10, 14, word(4), word(5))
-    blake3Mix(state, 3, 7, 11, 15, word(6), word(7))
-    blake3Mix(state, 0, 5, 10, 15, word(8), word(9))
-    blake3Mix(state, 1, 6, 11, 12, word(10), word(11))
-    blake3Mix(state, 2, 7, 8, 13, word(12), word(13))
-    blake3Mix(state, 3, 4, 9, 14, word(14), word(15))
-  }
-  for (let index = 0; index < 8; index += 1) {
-    state[index] ^= state[index + 8]
-    state[index + 8] ^= inputCv[index]
-  }
-  return state
-}
-
-function blake3Mix(state, a, b, c, d, x, y) {
-  state[a] = state[a] + state[b] + x
-  state[d] = rotateRight(state[d] ^ state[a], 16)
-  state[c] = state[c] + state[d]
-  state[b] = rotateRight(state[b] ^ state[c], 12)
-  state[a] = state[a] + state[b] + y
-  state[d] = rotateRight(state[d] ^ state[a], 8)
-  state[c] = state[c] + state[d]
-  state[b] = rotateRight(state[b] ^ state[c], 7)
-}
-
-function rotateRight(value, amount) {
-  return (value >>> amount) | (value << (32 - amount))
 }
 
 function requireObject(value, label) {
@@ -981,13 +731,6 @@ function isSafeRelativePath(value) {
     && !/^[A-Za-z]:/.test(value)
     && value.split('/').every((segment) => segment !== '' && segment !== '.' && segment !== '..'
       && segment.toLowerCase() !== '.viewer')
-}
-
-function isSafeRepositoryLocation(value) {
-  return typeof value === 'string'
-    && isSafeRelativePath(value)
-    && !value.includes('\0')
-    && !/^[A-Za-z]:/.test(value)
 }
 
 function parseArguments(argumentsList) {

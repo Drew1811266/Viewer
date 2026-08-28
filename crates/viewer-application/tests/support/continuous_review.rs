@@ -25,6 +25,7 @@ pub struct MemoryRepository {
     archives: Mutex<HashMap<ReviewArchiveId, ArchiveCheckpoint>>,
     pub fail_commit: Mutex<Option<ReviewCommitError>>,
     pub fail_view_after_commit: Mutex<bool>,
+    pub cancel_after_commit: Mutex<Option<ReviewTaskCancellation>>,
     usage: Mutex<HashMap<ReviewUsageId, ReviewUsageDeclaration>>,
     pub migration: Mutex<Option<MigrationInspection>>,
     legacy: Mutex<Option<MigrationInspection>>,
@@ -250,6 +251,9 @@ impl ContinuousReviewRepositoryPort for MemoryRepository {
             changes: r.next.changes,
             evidence: r.next.evidence,
         });
+        if let Some(cancel) = self.cancel_after_commit.lock().unwrap().take() {
+            cancel.cancel();
+        }
         if failure == Some(ReviewCommitError::OutcomeUnknown) {
             Err(ReviewCommitError::OutcomeUnknown)
         } else {

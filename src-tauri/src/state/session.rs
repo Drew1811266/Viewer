@@ -375,6 +375,19 @@ impl DesktopRuntime {
                 video_index: Arc::clone(&video_index),
             },
         ));
+        let review_workspace = Arc::new(review_workspace::ReviewWorkspaceSession::new(
+            review_workspace::ReviewWorkspaceConfig {
+                root: active.root.clone(),
+                project_id: active.project_id,
+                access: active.access,
+                index: index.clone(),
+                image: image.clone(),
+                video: self.video_probe.clone(),
+                changes: review_changes.clone(),
+                clock: self.clock.clone(),
+                staging: cache.review_artifact_root(),
+            },
+        ));
         *session = Some(DesktopSession {
             active,
             snapshot: snapshot.clone(),
@@ -393,6 +406,7 @@ impl DesktopRuntime {
             scan_task: Some(scan_task),
             video_index,
             review,
+            review_workspace,
             review_changes,
         });
         self.active_image_session.set(Some(active_session_id));
@@ -408,6 +422,8 @@ impl DesktopRuntime {
         // guarded by this token must not start after close has taken ownership.
         self.coordinator.cancel_session(session.active.session_id);
         self.active_image_session.set(None);
+        session.review_workspace.tasks.revoke();
+        session.review_workspace.tasks.close().await;
         session.review.shutdown().await;
         session.review_changes.clear();
         let video_lifecycle = self

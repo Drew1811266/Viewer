@@ -20,6 +20,11 @@ pub struct ProjectReviewRepositoryProvider {
 }
 
 impl ProjectReviewRepositoryProvider {
+    /// Resolves the unique manual stream without creating metadata or acquiring a write lease.
+    pub fn manual_review_stream(&self) -> Result<Option<ReviewStreamId>, ReviewCommitError> {
+        super::continuous::manual_context::resolve(&self.project_root, self.project_id)
+    }
+
     pub fn migrate_with_faults(
         &self,
         request: viewer_application::review_workspace::MigrationCommitRequest,

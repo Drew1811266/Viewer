@@ -9,6 +9,9 @@ use viewer_infrastructure::image_cache::{
     ImageArtifactLookup, ImageArtifactRegistry, RegisteredImageArtifact,
 };
 
+#[cfg(test)]
+mod review_tests;
+
 #[derive(Clone, Default)]
 pub struct ActiveImageSession(Arc<RwLock<Option<SessionId>>>);
 

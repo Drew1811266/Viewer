@@ -2,7 +2,7 @@
 
 > Status: Active
 >
-> Decision: Phases A–C and Phase D Tasks 14–15 verified; native reader amendment implemented on 2026-08-28. Task 16 and UI integration remain pending.
+> Decision: Phases A–C and Phase D Tasks 14–15 verified; native reader amendment implemented on 2026-08-28. Task 16 desktop amendment accepted and implemented, verification in progress; UI integration remains pending.
 >
 > Date: 2026-08-27
 
@@ -146,6 +146,43 @@ No protocol bytes, original materials, product UI or version number are changed 
 notarization, formal installers, publication and sales are outside the current development scope.
 
 ## Verification
+
+### Task 16 desktop boundary amendment — accepted 2026-08-28, verification in progress
+
+Desktop preparation accepts session/generation and indexed entity IDs, never a client-supplied trusted
+AssetVersion or absolute path. It returns the captured version together with its matching immutable
+preview. Saving cannot silently recapture a different version. Historical evidence requires an exact
+committed selector, asset version and role; only verified immutable PNG bytes enter session tokens.
+
+The closed desktop envelope includes context, generated identities and usage selections as well as
+command ID, expected snapshot, digest and command. It round-trips the complete application envelope;
+restart retries do not regenerate IDs. Context is selected by the backend's unique manual stream and
+cannot be retargeted by an incoming envelope. A committed write with an unavailable refreshed view
+retains its receipt in the public result, distinct from an uncommitted failure.
+
+The session owns continuous-review work. Cancel affects currently registered work only. Close revokes
+image authorization first, cancels work, waits for it to exit and then cleans up resources. Cancellation
+continues through preparation, rendering and post-commit view refresh; every asynchronous reply is
+checked against the original session/generation before exposing data or registering a token. Existing
+legacy UI and real projects remain untouched until the later explicit integration phase.
+
+The 11-command TypeScript port is separate from the legacy ViewerBridge; declaring it does not
+activate the new UI. Desktop-owned serde adapters keep serialization out of Application/Domain and
+do not expose persistence JSON as a component API. Inputs reject unknown fields and missing nullable
+keys; UUIDs and digests are canonical, project-relative paths are confined, integer numbers are
+JavaScript-exact and nanosecond timestamps are decimal strings. Desktop decoding bounds arrays to
+100,000 entries (target edits to 10,000, brush points to 2,048), text to 65,536 bytes and paths to
+4,096 bytes; existing Domain and repository aggregate budgets still apply. These are per-field decode
+limits, not a claim of a total IPC allocation limit.
+
+Each session owns at most 128 registered review operations. Its temporary review PNG token cache
+retains at most 128 entries / 64 MiB, reuses matching previews and evicts least-recently-registered
+review tokens when necessary. A caller can request committed evidence again by selector; cache
+eviction never deletes source files, history, evidence or another session's tokens. A prebinding call
+also caps each batch at 128 entities / 64 MiB PNG bytes, so registration cannot evict earlier previews
+from that same returned batch. URLs are temporary, not persistent evidence identifiers.
+Cancellation after a known commit, including an idempotent retry, may stop its view refresh but
+must still report the same committed receipt.
 
 ### Phase D reader architecture amendment — accepted 2026-08-28
 

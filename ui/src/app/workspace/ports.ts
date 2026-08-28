@@ -1,5 +1,7 @@
 import type { ViewerBridge } from '../../api/viewer'
 
+export type { ReviewWorkspacePort } from '../../api/reviewWorkspaceTypes'
+
 export type PreviewDataPort = Pick<
   ViewerBridge,
   'queryFolder' | 'requestImage' | 'previewText' | 'openExternalLink' | 'videoRequestCover'

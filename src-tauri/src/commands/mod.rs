@@ -5,6 +5,7 @@ pub(crate) mod operations;
 pub(crate) mod preview;
 pub(crate) mod project;
 pub(crate) mod review;
+pub(crate) mod review_workspace;
 pub(crate) mod search;
 pub(crate) mod settings;
 pub mod video;

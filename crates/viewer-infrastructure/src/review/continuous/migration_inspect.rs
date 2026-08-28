@@ -35,7 +35,19 @@ pub(super) fn scan(
     directory: &Directory,
     project: ProjectId,
 ) -> Result<Option<InspectedLegacy>, ReviewCommitError> {
-    let Some(bytes) = directory.read("index.json", MAX_REVIEW_INDEX_BYTES)? else {
+    scan_index(
+        directory,
+        project,
+        directory.read("index.json", MAX_REVIEW_INDEX_BYTES)?,
+    )
+}
+
+pub(super) fn scan_index(
+    directory: &Directory,
+    project: ProjectId,
+    bytes: Option<Vec<u8>>,
+) -> Result<Option<InspectedLegacy>, ReviewCommitError> {
+    let Some(bytes) = bytes else {
         verify_without_index(directory)?;
         return Ok(None);
     };

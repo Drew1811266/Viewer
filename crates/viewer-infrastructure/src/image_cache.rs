@@ -12,6 +12,8 @@ use viewer_domain::{
 use crate::{video_cache::VideoCache, video_thumbnail::VideoThumbnailArtifact};
 
 const CACHE_KEY_SCHEMA: &[u8] = b"viewer-image-cache-key\0v1";
+mod review;
+pub use review::register_review_png;
 
 #[derive(Clone, Copy)]
 pub struct ImageCacheKeyInput<'a> {
@@ -162,6 +164,8 @@ pub enum ImageArtifactRegistryError {
     RandomSourceUnavailable(String),
     #[error("video artifact is outside the verified Viewer video cache")]
     UnverifiedVideoCache,
+    #[error("review image digest does not match its verified evidence")]
+    UnverifiedReviewImage,
 }
 
 pub fn register_video_png(
@@ -188,6 +192,7 @@ pub fn register_video_png(
 struct RegistryEntry {
     session_id: SessionId,
     artifact: RegisteredImageArtifact,
+    review: Option<review::Registration>,
 }
 
 #[derive(Default)]
@@ -237,6 +242,7 @@ impl ImageArtifactRegistry {
                 entry.insert(RegistryEntry {
                     session_id,
                     artifact,
+                    review: None,
                 });
                 return Ok(token);
             }

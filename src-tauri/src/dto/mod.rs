@@ -4,6 +4,7 @@ mod operations;
 mod preview;
 mod project;
 mod review;
+pub mod review_workspace;
 mod search;
 mod settings;
 mod video;

@@ -7,6 +7,16 @@ impl ContinuousReviewService {
         &self,
         stream: viewer_domain::ReviewStreamId,
     ) -> Result<ReviewWorkspaceView, ReviewWorkspaceError> {
+        self.view_with_cancellation(stream, ReviewTaskCancellation::default())
+            .await
+    }
+
+    pub async fn view_with_cancellation(
+        &self,
+        stream: viewer_domain::ReviewStreamId,
+        cancellation: ReviewTaskCancellation,
+    ) -> Result<ReviewWorkspaceView, ReviewWorkspaceError> {
+        super::preview::check_cancelled(&cancellation)?;
         if stream != self.context.stream_id {
             return Err(ReviewWorkspaceError::WrongContext);
         }
@@ -17,6 +27,7 @@ impl ContinuousReviewService {
                 .into_iter()
                 .filter(|d| d.stream_id == stream)
                 .collect();
+            super::preview::check_cancelled(&cancellation)?;
             return Ok(ReviewWorkspaceView {
                 stream_id: stream,
                 current: None,
@@ -42,6 +53,7 @@ impl ContinuousReviewService {
             Ok((current, recovery))
         })
         .await?;
+        super::preview::check_cancelled(&cancellation)?;
         if current.as_ref().is_some_and(|s| {
             s.state.project_id != self.context.project_id || s.production != self.context.production
         }) {
@@ -50,7 +62,7 @@ impl ContinuousReviewService {
         let (source_checks, projection) = if let Some(current) = &current {
             let checks = self
                 .assets
-                .check_sources(&current.state.assets, ReviewTaskCancellation::default())
+                .check_sources(&current.state.assets, cancellation.clone())
                 .await?;
             let projection = project_current(&current.state, &checks)?;
             (checks, projection)
@@ -63,6 +75,7 @@ impl ContinuousReviewService {
                 },
             )
         };
+        super::preview::check_cancelled(&cancellation)?;
         Ok(ReviewWorkspaceView {
             stream_id: stream,
             current,

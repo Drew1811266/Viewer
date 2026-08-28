@@ -28,7 +28,7 @@ impl ContinuousReviewService {
                 CommandLookup::Found(receipt)
                     if receipt.payload_digest == envelope.payload_digest =>
                 {
-                    self.refresh_after_commit(receipt).await
+                    self.refresh_after_commit(receipt, cancellation).await
                 }
                 CommandLookup::Found(_) => Err(ReviewCommitError::CommandConflict.into()),
                 CommandLookup::Unavailable => Err(ReviewCommitError::LookupUnavailable.into()),
@@ -40,10 +40,10 @@ impl ContinuousReviewService {
         let provider = self.provider.clone();
         super::service::io(move || provider.save_migration_recovery(&recovery)).await?;
         let result = self
-            .commit_migration(envelope, inspection, cancellation)
+            .commit_migration(envelope, inspection, cancellation.clone())
             .await;
         match result {
-            Ok(receipt) => self.refresh_after_commit(receipt).await,
+            Ok(receipt) => self.refresh_after_commit(receipt, cancellation).await,
             Err(error) => {
                 draft.failure = super::recovery::failure(&error);
                 let provider = self.provider.clone();

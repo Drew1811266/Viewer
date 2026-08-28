@@ -3,6 +3,7 @@ mod markers;
 mod organization;
 mod preview;
 mod review;
+mod review_workspace;
 mod scan_index;
 mod session;
 mod video_index;
@@ -278,6 +279,7 @@ struct DesktopSession {
     scan_task: Option<JoinHandle<Result<(), CommandError>>>,
     video_index: Arc<VideoIndexRuntime>,
     review: Arc<viewer_application::ReviewSessionService>,
+    review_workspace: Arc<review_workspace::ReviewWorkspaceSession>,
     review_changes: viewer_infrastructure::review::ReviewChangeLedger,
 }
 

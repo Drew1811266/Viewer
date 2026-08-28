@@ -1,4 +1,21 @@
 import { invoke } from '@tauri-apps/api/core'
+import type { ReviewWorkspacePort } from './reviewWorkspaceTypes'
+
+// Separate from the legacy ViewerBridge: declaring this transport does not switch product UI.
+export const tauriReviewWorkspaceBridge: ReviewWorkspacePort = {
+  getWorkspace: (request) => invoke('get_review_workspace', { request }),
+  prepareAssets: (request) => invoke('prepare_review_assets', { request }),
+  prepareCommand: (request) => invoke('prepare_review_command', { request }),
+  applyCommand: (request) => invoke('apply_review_command', { request }),
+  previewArchive: (request) => invoke('preview_review_archive', { request }),
+  previewRestore: (request) => invoke('preview_review_restore', { request }),
+  getHistory: (request) => invoke('get_review_history', { request }),
+  inspectUsage: (request) => invoke('inspect_review_usage', { request }),
+  inspectMigration: (request) => invoke('inspect_review_migration', { request }),
+  getEvidence: (request) => invoke('get_review_evidence', { request }),
+  cancelTask: (request) => invoke('cancel_review_workspace_task', { request }),
+}
+
 import type { UnlistenFn } from '@tauri-apps/api/event'
 import { listen } from '@tauri-apps/api/event'
 import { getCurrentWebview } from '@tauri-apps/api/webview'

@@ -8,6 +8,7 @@ mod evidence_load;
 mod faults;
 mod history;
 mod legacy;
+pub(in crate::review) mod manual_context;
 mod mapping;
 pub(in crate::review) mod migration;
 mod migration_inspect;

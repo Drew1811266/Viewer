@@ -56,13 +56,15 @@ impl ContinuousReviewService {
         entities: &[EntityId],
         cancellation: ReviewTaskCancellation,
     ) -> Result<Vec<AssetVersion>, ReviewWorkspaceError> {
+        super::preview::check_cancelled(&cancellation)?;
         if entities.len() > MAX_ASSETS_PER_ROUND {
             return Err(ContinuousReviewError::LimitExceeded.into());
         }
         let values = self
             .assets
-            .prepare_additions(entities, cancellation)
+            .prepare_additions(entities, cancellation.clone())
             .await?;
+        super::preview::check_cancelled(&cancellation)?;
         let mut prepared = self.prepared.lock().await;
         let new_count = values
             .iter()
@@ -195,7 +197,7 @@ impl ContinuousReviewService {
                 if receipt.payload_digest != envelope.payload_digest {
                     return Err(ReviewCommitError::CommandConflict.into());
                 }
-                return self.refresh_after_commit(receipt).await;
+                return self.refresh_after_commit(receipt, cancellation).await;
             }
             CommandLookup::Unavailable => return Err(ReviewCommitError::LookupUnavailable.into()),
             CommandLookup::Absent => {}
@@ -282,7 +284,7 @@ impl ContinuousReviewService {
         }
         .await;
         match result {
-            Ok(receipt) => self.refresh_after_commit(receipt).await,
+            Ok(receipt) => self.refresh_after_commit(receipt, cancellation).await,
             Err(error) => {
                 let mut draft = draft;
                 draft.failure = super::recovery::failure(&error);
@@ -303,10 +305,11 @@ impl ContinuousReviewService {
     pub(super) async fn refresh_after_commit(
         &self,
         receipt: ReviewCommitReceipt,
+        cancellation: ReviewTaskCancellation,
     ) -> Result<ReviewApplyResult, ReviewWorkspaceError> {
         self.envelopes.lock().await.remove(&receipt.command_id);
         let view = self
-            .view(self.context.stream_id)
+            .view_with_cancellation(self.context.stream_id, cancellation)
             .await
             .map_err(|_| ReviewWorkspaceError::CommittedViewUnavailable(receipt))?;
         Ok(ReviewApplyResult { receipt, view })

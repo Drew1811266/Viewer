@@ -56,6 +56,29 @@ fn save(asset_version_id: AssetVersionId, text: &str) -> ReviewWorkspaceCommand 
 }
 
 #[tokio::test]
+async fn preview_batch_rejects_more_than_cache_capacity_before_capture() {
+    let f = Fixture::new();
+    let service = f.service();
+    let ids: Vec<_> = (0..129).map(EntityId::from_u128).collect();
+    assert!(matches!(
+        service
+            .prepare_asset_previews(&ids, ReviewTaskCancellation::default())
+            .await,
+        Err(ReviewWorkspaceError::Asset(
+            viewer_application::ReviewAssetError::LimitExceeded
+        ))
+    ));
+    assert_eq!(f.evidence.captures(), 0);
+    let previews = service
+        .prepare_asset_previews(&ids[..128], ReviewTaskCancellation::default())
+        .await
+        .unwrap();
+    assert_eq!(previews.len(), 128);
+    assert_eq!(f.evidence.captures(), 128);
+    assert!(f.repository.current().is_none());
+}
+
+#[tokio::test]
 async fn legacy_view_is_read_only_until_explicit_migration_and_retry_keeps_ids() {
     let f = Fixture::new();
     let inspection = f.legacy_draft();
@@ -98,10 +121,15 @@ async fn legacy_view_is_read_only_until_explicit_migration_and_retry_keeps_ids()
     let saved = f.repository.current().unwrap();
     let cancel = ReviewTaskCancellation::default();
     cancel.cancel();
-    let result = service
-        .apply_with_cancellation(envelope, cancel)
+    let error = service
+        .apply_with_cancellation(envelope.clone(), cancel)
         .await
-        .unwrap();
+        .unwrap_err();
+    let ReviewWorkspaceError::CommittedViewUnavailable(receipt) = error else {
+        panic!("cancelled retry must retain its known receipt: {error:?}");
+    };
+    assert_eq!(receipt.snapshot, saved.reference);
+    let result = service.apply(envelope).await.unwrap();
     assert_eq!(result.receipt.snapshot, saved.reference);
     assert!(result.view.projection.actionable.is_empty());
     assert_eq!(result.view.projection.needs_confirmation.len(), 1);
@@ -1515,4 +1543,102 @@ async fn cancelled_input(
         .find(|d| d.command_id == e.command_id)
         .unwrap()
         .editor_input
+}
+#[tokio::test]
+async fn prebound_preview_has_the_exact_asset_that_save_accepts() {
+    let fixture = Fixture::new();
+    let service = fixture.service();
+    let previews = service
+        .prepare_asset_previews(
+            &[EntityId::from_u128(10)],
+            ReviewTaskCancellation::default(),
+        )
+        .await
+        .unwrap();
+    let preview = &previews[0];
+    assert_eq!(preview.image.as_ref().unwrap().asset(), &preview.asset);
+    assert_eq!(
+        preview.image.as_ref().unwrap().role(),
+        viewer_application::review_evidence::EvidenceRole::Base
+    );
+    let envelope = service
+        .prepare(
+            ReviewCommandId::new(),
+            None,
+            ReviewWorkspaceCommand::SaveFeedback {
+                feedback_id: None,
+                text: "reviewed these exact pixels".into(),
+                targets: vec![TargetEdit::Add {
+                    asset_version_id: preview.asset.id,
+                    anchor: FeedbackAnchor::Asset,
+                }],
+            },
+        )
+        .await
+        .unwrap();
+    let result = service.apply(envelope).await.unwrap();
+    assert_eq!(
+        result.view.current.unwrap().state.assets,
+        vec![preview.asset.clone()]
+    );
+}
+
+#[tokio::test]
+async fn cancellation_after_commit_keeps_receipt_instead_of_reporting_uncommitted_failure() {
+    let fixture = Fixture::new();
+    let service = fixture.service();
+    let assets = service
+        .prepare_assets(
+            &[EntityId::from_u128(10)],
+            ReviewTaskCancellation::default(),
+        )
+        .await
+        .unwrap();
+    let envelope = service
+        .prepare(
+            ReviewCommandId::new(),
+            None,
+            ReviewWorkspaceCommand::SaveFeedback {
+                feedback_id: None,
+                text: "keep receipt".into(),
+                targets: vec![TargetEdit::Add {
+                    asset_version_id: assets[0].id,
+                    anchor: FeedbackAnchor::Asset,
+                }],
+            },
+        )
+        .await
+        .unwrap();
+    let cancellation = ReviewTaskCancellation::default();
+    *fixture.repository.cancel_after_commit.lock().unwrap() = Some(cancellation.clone());
+    let error = service
+        .apply_with_cancellation(envelope.clone(), cancellation)
+        .await
+        .unwrap_err();
+    let ReviewWorkspaceError::CommittedViewUnavailable(receipt) = error else {
+        panic!("lost committed receipt: {error:?}")
+    };
+    assert_eq!(receipt.command_id, envelope.command_id);
+    assert_eq!(
+        fixture.repository.current().unwrap().reference,
+        receipt.snapshot
+    );
+    assert_eq!(
+        fixture.service().apply(envelope).await.unwrap().receipt,
+        receipt
+    );
+}
+
+#[tokio::test]
+async fn view_respects_cancellation_even_when_no_review_state_exists() {
+    let fixture = Fixture::new();
+    let cancel = ReviewTaskCancellation::default();
+    cancel.cancel();
+    assert!(matches!(
+        fixture
+            .service()
+            .view_with_cancellation(ReviewStreamId::from_u128(2), cancel)
+            .await,
+        Err(ReviewWorkspaceError::Cancelled)
+    ));
 }

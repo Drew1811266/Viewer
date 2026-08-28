@@ -1,4 +1,5 @@
 use super::*;
+mod catalog;
 use std::{fs, os::unix::fs::MetadataExt, path::Path};
 use viewer_application::{PreparedReviewAsset, ReviewTaskCancellation};
 use viewer_domain::review::{

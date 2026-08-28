@@ -555,7 +555,7 @@ let disposition = if observed_hash == captured_hash {
 
 移动位置与素材业务版本分开：已有可靠实体／事务映射可给出候选定位，重复内容和多候选不得静默确认；用户明确绑定才产生新的目标 revision。未知新文件可独立提出意见。
 - [x] **Step 4 — 测试同大小同 mtime 覆写、改名、跨目录移动、两个相同内容文件、多候选、缺失、不可读、检查中再次变化及取消。** 不能自动存档、转移几何或判定解决；源异常保留旧原文与证据。
-- [x] **Step 5 — GREEN／检查点 B。** `cargo test --locked -p viewer-infrastructure --test continuous_review_assets --test continuous_review_repository --test continuous_review_recovery && cargo test --locked -p viewer-platform-macos review_`。
+- [x] **Step 5 — GREEN／检查点 B。** `cargo test --locked -p viewer-infrastructure --test continuous_review_assets --test continuous_review_repository --test continuous_review_recovery && cargo test --locked -p viewer-platform-macos review_`。检查点复审补充：continuous 图片／视频均绕过索引媒体缓存，hash＋probe 跨区间身份核验；图片 raw probe 按 EXIF 归一到证据正向尺寸。1–8／非法方向、真实 catalog→native capture 及视频旧缓存负例均须通过，legacy 契约不变。
 - [x] **Step 6 — 提交。** `git commit -m "feat(review): validate source versions without guessing asset lineage"`。
 
 ### Task 11: 持续评审 Application 用例

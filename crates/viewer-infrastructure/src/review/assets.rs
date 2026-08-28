@@ -234,8 +234,16 @@ impl ReviewAssetCatalogPort for IndexedReviewAssetCatalog {
                         return Err(ReviewAssetError::Cancelled);
                     }
                 };
-                let prepared =
-                    prepare_one(root, indexed, image, video, changes, cancellation).await?;
+                let prepared = prepare_one(
+                    root,
+                    indexed,
+                    image,
+                    video,
+                    changes,
+                    cancellation,
+                    MediaProbeMode::Legacy,
+                )
+                .await?;
                 Ok::<_, ReviewAssetError>((position, prepared))
             });
         }
@@ -365,10 +373,13 @@ impl IndexedReviewAssetCatalog {
             &self.image,
             &self.video,
             &self.project_root.join(indexed.node.relative_path.as_str()),
-            &indexed,
-            source_failure,
-            &media_identity,
-            cancellation,
+            MediaAssessmentRequest {
+                indexed: &indexed,
+                source_failure,
+                media_identity: &media_identity,
+                cancellation,
+                mode: MediaProbeMode::Legacy,
+            },
         )
         .await
         {
@@ -409,6 +420,7 @@ async fn prepare_one(
     video: Arc<dyn VideoMetadataProbe>,
     changes: ReviewChangeLedger,
     cancellation: ReviewTaskCancellation,
+    mode: MediaProbeMode,
 ) -> Result<PreparedReviewAsset, ReviewAssetError> {
     if cancellation.is_cancelled() {
         return Err(ReviewAssetError::Cancelled);
@@ -425,10 +437,13 @@ async fn prepare_one(
         &image,
         &video,
         &project_root.join(indexed.node.relative_path.as_str()),
-        &indexed,
-        captured.failure,
-        &captured.media_identity,
-        &cancellation,
+        MediaAssessmentRequest {
+            indexed: &indexed,
+            source_failure: captured.failure,
+            media_identity: &captured.media_identity,
+            cancellation: &cancellation,
+            mode,
+        },
     )
     .await?;
     validate_owned_metadata(&project_root, &indexed.node)?;
@@ -526,15 +541,33 @@ enum FailureAssessment {
     Pending,
 }
 
+#[derive(Clone, Copy, Eq, PartialEq)]
+enum MediaProbeMode {
+    Legacy,
+    Continuous,
+}
+
+struct MediaAssessmentRequest<'a> {
+    indexed: &'a IndexedNode,
+    source_failure: Option<ReviewabilityFailure>,
+    media_identity: &'a MediaFileIdentity,
+    cancellation: &'a ReviewTaskCancellation,
+    mode: MediaProbeMode,
+}
+
 async fn assess_media(
     image: &Arc<dyn ImagePort>,
     video: &Arc<dyn VideoMetadataProbe>,
     source: &Path,
-    indexed: &IndexedNode,
-    source_failure: Option<ReviewabilityFailure>,
-    media_identity: &MediaFileIdentity,
-    cancellation: &ReviewTaskCancellation,
+    request: MediaAssessmentRequest<'_>,
 ) -> Result<FailureAssessment, ReviewAssetError> {
+    let MediaAssessmentRequest {
+        indexed,
+        source_failure,
+        media_identity,
+        cancellation,
+        mode,
+    } = request;
     if cancellation.is_cancelled() {
         return Err(ReviewAssetError::Cancelled);
     }
@@ -553,8 +586,9 @@ async fn assess_media(
             failure: Some(ReviewabilityFailure::Unsupported),
         }),
         FileKind::Jpeg | FileKind::Png => {
-            if let (ImageIndexStatus::Ready, Some(metadata)) =
-                (indexed.image_status, indexed.image_metadata)
+            if mode == MediaProbeMode::Legacy
+                && let (ImageIndexStatus::Ready, Some(metadata)) =
+                    (indexed.image_status, indexed.image_metadata)
             {
                 return Ok(FailureAssessment::Known {
                     media: ReviewMedia::Image {
@@ -571,13 +605,9 @@ async fn assess_media(
                 }
             };
             match probe {
-                Ok(probe) if probe.width > 0 && probe.height > 0 => Ok(FailureAssessment::Known {
-                    media: ReviewMedia::Image {
-                        width: Some(probe.width),
-                        height: Some(probe.height),
-                    },
-                    failure: None,
-                }),
+                Ok(probe) if probe.width > 0 && probe.height > 0 => {
+                    Ok(image_probe_assessment(&probe, mode))
+                }
                 Ok(_) | Err(ImageError::BudgetExceeded | ImageError::Io(_)) => {
                     Ok(FailureAssessment::Pending)
                 }
@@ -593,7 +623,8 @@ async fn assess_media(
             }
         }
         FileKind::Video => {
-            if let Some(metadata) = indexed.video_metadata.as_ref()
+            if mode == MediaProbeMode::Legacy
+                && let Some(metadata) = indexed.video_metadata.as_ref()
                 && metadata.probe_status == VideoProbeStatus::Ready
                 && valid_video_media(metadata)
             {
@@ -624,6 +655,36 @@ async fn assess_media(
         FileKind::Directory | FileKind::Markdown | FileKind::Text | FileKind::Other => {
             Err(ReviewAssetError::InvalidScope)
         }
+    }
+}
+
+fn image_probe_assessment(
+    probe: &viewer_domain::image::ImageProbe,
+    mode: MediaProbeMode,
+) -> FailureAssessment {
+    if mode == MediaProbeMode::Continuous && !(1..=8).contains(&probe.orientation) {
+        return FailureAssessment::Known {
+            media: ReviewMedia::Image {
+                width: None,
+                height: None,
+            },
+            failure: Some(ReviewabilityFailure::Damaged),
+        };
+    }
+    // ImagePort keeps its raw pixel-dimensions + EXIF contract. Only the new
+    // review asset is normalized to the same upright space as captured evidence.
+    let (width, height) =
+        if mode == MediaProbeMode::Continuous && (5..=8).contains(&probe.orientation) {
+            (probe.height, probe.width)
+        } else {
+            (probe.width, probe.height)
+        };
+    FailureAssessment::Known {
+        media: ReviewMedia::Image {
+            width: Some(width),
+            height: Some(height),
+        },
+        failure: None,
     }
 }
 

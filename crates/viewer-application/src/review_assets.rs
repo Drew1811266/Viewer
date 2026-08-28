@@ -143,6 +143,9 @@ pub struct SourceRelocationDecision {
 }
 #[async_trait]
 pub trait ContinuousReviewAssetPort: Send + Sync {
+    /// Captures a fresh digest and media metadata within one verified source-identity
+    /// interval, without trusting Ready index caches. Image dimensions are EXIF-upright
+    /// (orientations 5..=8 swap the raw probe axes), matching the captured evidence.
     async fn prepare_additions(
         &self,
         entity_ids: &[EntityId],

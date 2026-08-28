@@ -126,6 +126,179 @@ impl VideoMetadataProbe for Probe {
 }
 
 #[tokio::test]
+async fn fresh_image_probe_uses_exif_upright_dimensions_without_reusing_indexed_dimensions() {
+    for orientation in 1..=8 {
+        let f = Fixture::new();
+        let node = f.write("oriented.png", b"source");
+        let image = InterceptProbe(Arc::new(move |_| ImageProbe {
+            format: ImageFormat::Png,
+            width: 800,
+            height: 600,
+            orientation,
+            has_alpha: false,
+            icc_profile_name: None,
+        }));
+        let catalog = IndexedReviewAssetCatalog::new(
+            f.root.path(),
+            f.index.clone(),
+            Arc::new(image),
+            Arc::new(Probe),
+            f.ledger.clone(),
+        )
+        .unwrap();
+        let value = catalog
+            .prepare_additions(&[node.entity_id], ReviewTaskCancellation::default())
+            .await
+            .unwrap()
+            .remove(0);
+        let (width, height) = if orientation >= 5 {
+            (600, 800)
+        } else {
+            (800, 600)
+        };
+        assert_eq!(
+            value.asset.media,
+            viewer_domain::review::ReviewMedia::Image {
+                width: Some(width),
+                height: Some(height),
+            },
+            "orientation {orientation}"
+        );
+        assert_eq!(value.failure, None);
+    }
+}
+
+#[tokio::test]
+async fn fresh_image_probe_does_not_make_an_invalid_orientation_reviewable() {
+    for orientation in [0, 9] {
+        let f = Fixture::new();
+        let node = f.write("invalid.png", b"source");
+        let image = InterceptProbe(Arc::new(move |_| ImageProbe {
+            format: ImageFormat::Png,
+            width: 800,
+            height: 600,
+            orientation,
+            has_alpha: false,
+            icc_profile_name: None,
+        }));
+        let catalog = IndexedReviewAssetCatalog::new(
+            f.root.path(),
+            f.index.clone(),
+            Arc::new(image),
+            Arc::new(Probe),
+            f.ledger.clone(),
+        )
+        .unwrap();
+        let value = catalog
+            .prepare_additions(&[node.entity_id], ReviewTaskCancellation::default())
+            .await
+            .unwrap()
+            .remove(0);
+        assert_eq!(
+            value.failure,
+            Some(viewer_domain::review::ReviewabilityFailure::Damaged)
+        );
+    }
+}
+
+#[tokio::test]
+async fn fresh_video_probe_does_not_pair_new_content_with_cached_duration_or_dimensions() {
+    use viewer_domain::video::{VideoMetadata, VideoProbeStatus};
+    use viewer_infrastructure::video_probe::MediaFileIdentity;
+    struct FreshProbe(MediaFileIdentity, VideoMetadata);
+    #[async_trait]
+    impl VideoMetadataProbe for FreshProbe {
+        async fn probe(
+            &self,
+            _: &Path,
+            _: CancellationToken,
+        ) -> Result<VideoMetadata, VideoProbeError> {
+            panic!("continuous preparation must bind video probing to the captured identity")
+        }
+        async fn probe_identity_bound(
+            &self,
+            _: &Path,
+            identity: &MediaFileIdentity,
+            _: CancellationToken,
+        ) -> Result<VideoMetadata, VideoProbeError> {
+            assert_eq!(*identity, self.0);
+            Ok(self.1.clone())
+        }
+    }
+    let f = Fixture::new();
+    let path = f.root.path().join("clip.mp4");
+    fs::write(&path, b"old clip").unwrap();
+    let before = fs::metadata(&path).unwrap();
+    let mut node = f.node("clip.mp4");
+    node.kind = FileKind::Video;
+    f.index
+        .upsert_batch(std::slice::from_ref(&node), Generation::new(1))
+        .unwrap();
+    let old_media = VideoMetadata {
+        duration_us: Some(10),
+        display_width: Some(320),
+        display_height: Some(240),
+        rotation_degrees: 0,
+        frame_rate_millihertz: Some(30_000),
+        video_codec: None,
+        audio_codec: None,
+        probe_status: VideoProbeStatus::Ready,
+    };
+    f.index
+        .replace_video_metadata(node.entity_id, &old_media, Generation::new(1))
+        .unwrap();
+    fs::write(&path, b"new clip").unwrap();
+    fs::File::options()
+        .write(true)
+        .open(&path)
+        .unwrap()
+        .set_times(fs::FileTimes::new().set_modified(before.modified().unwrap()))
+        .unwrap();
+    let fresh = VideoMetadata {
+        duration_us: Some(50),
+        display_width: Some(800),
+        display_height: Some(600),
+        ..old_media
+    };
+    let catalog = IndexedReviewAssetCatalog::new(
+        f.root.path(),
+        f.index.clone(),
+        Arc::new(Probe),
+        Arc::new(FreshProbe(
+            MediaFileIdentity::from_metadata(&fs::metadata(&path).unwrap()),
+            fresh,
+        )),
+        f.ledger.clone(),
+    )
+    .unwrap();
+    let value = catalog
+        .prepare_additions(&[node.entity_id], ReviewTaskCancellation::default())
+        .await
+        .unwrap()
+        .remove(0);
+    assert_eq!(
+        value.asset.evidence.blake3,
+        Some(*blake3::hash(b"new clip").as_bytes())
+    );
+    assert_eq!(
+        value.asset.media,
+        viewer_domain::review::ReviewMedia::Video {
+            duration_us: Some(50),
+            display_width: Some(800),
+            display_height: Some(600),
+        }
+    );
+    assert_eq!(
+        catalog
+            .check_sources(&[value.asset], ReviewTaskCancellation::default())
+            .await
+            .unwrap()[0]
+            .status,
+        SourceCheckStatus::Match
+    );
+}
+
+#[tokio::test]
 async fn additions_preserve_previous_tracking_and_always_hash_source_content() {
     let fixture = Fixture::new();
     let first = fixture.write("first.png", b"first");

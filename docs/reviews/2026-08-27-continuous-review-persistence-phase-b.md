@@ -138,6 +138,21 @@ Rust／静态／边界／离线许可检查通过。日志为 `target/continuous
 旧仓储 49 项通过，Infrastructure 全目标严格 Clippy 与 diff 检查通过。
 修正后的全仓门禁和原复审者复验尚待记录，不能用此聚焦结果宣称检查点完成。
 
+上述三项修正提交 `8849bfa`，第三轮完整 `pnpm verify:clean` exit 0，日志为
+`target/continuous-review-phase-b-verify-reviewed.log`；前端仍为 1,142 通过／1 跳过。
+原复审者在该 HEAD 独立重跑 108 项并确认三项 P2 关闭，同时发现两项媒体衔接 P2：
+
+- 原生 ImagePort 返回原始宽高＋EXIF，扫描索引已是正向宽高；只绕开缓存却沿用 raw 宽高
+  会导致非方形旋转图片捕获误报 SourceChanged。新 fake-probe 方向测试先 RED，真实
+  catalog→MacImagePort→capture_base 串接在 orientation 5 同样 RED；新增显式
+  MediaProbeMode，在 continuous 模式校验 1–8 并对 5–8 交换宽高，不改变 ImagePort 或 legacy。
+- continuous 视频仍复用 Ready 媒体缓存；同大小／mtime 覆盖后可能新摘要配旧时长／尺寸。
+  对应负例先 RED，再将 continuous 模式下图片和视频统一为新鲜探测；原身份区间守卫保留。
+
+本次聚焦 GREEN：素材 11 项、旧素材 9 项、原生 `review_` 17 项通过；真实串接逐一覆盖
+EXIF 1–8，并核验原文件未改动；非法方向 0／9 不可评审。Infrastructure／macOS 严格
+Clippy 与 diff 检查通过。此修正后的完整门禁及最终独立复验仍待执行／记录。
+
 非阻塞性能后续项：大量存档时，每次保存对 archive／usage 的全量核验会重复追溯父链，
 存在约 O(存档数 × 快照数) 的 IO 成本。Task 11 明确补量测；尚不声称大历史下延迟达标。
 优化只能采用有界、单次操作内验证复用，不能降低完整性保证。

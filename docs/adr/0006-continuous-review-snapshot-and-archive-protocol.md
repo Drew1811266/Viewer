@@ -113,7 +113,11 @@ full hash verification and prior-locator CAS. It does not mint a content version
 or mutate historical metadata. The locator is not a cross-process persistence protocol; later readers
 without this authority must verify the captured path or report pending, never guess a new location.
 Source checks always stream the content and validate pre/post identity. Preparation incrementally
-retains prior tracking. Explicit binding revises only the selected target; producer-proof validation
+retains prior tracking. Continuous preparation bypasses both image and video metadata caches and
+checks one identity interval spanning hashing and probing. It maps raw ImagePort dimensions into
+EXIF-upright review dimensions (5–8 swap axes, invalid orientations are not reviewable), matching
+native capture; ImagePort and legacy preparation retain their prior contracts.
+Explicit binding revises only the selected target; producer-proof validation
 and user position confirmation remain Application prerequisites, not implied by a Domain enum.
 
 Task 8 implements persistent command deduplication before CAS, six fault boundaries, bounded recovery

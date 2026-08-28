@@ -2,7 +2,7 @@
 
 > Status: Active
 >
-> Decision: Phases A–C and Phase D Tasks 14–15 verified; native reader amendment implemented on 2026-08-28. Task 16 desktop amendment accepted and implemented, verification in progress; UI integration remains pending.
+> Decision: Phases A–D (Tasks 1–16) verified. Native reader and desktop amendments implemented and independently reviewed on 2026-08-28; UI integration remains pending.
 >
 > Date: 2026-08-27
 
@@ -147,7 +147,7 @@ notarization, formal installers, publication and sales are outside the current d
 
 ## Verification
 
-### Task 16 desktop boundary amendment — accepted 2026-08-28, verification in progress
+### Task 16 desktop boundary amendment — accepted and verified 2026-08-28
 
 Desktop preparation accepts session/generation and indexed entity IDs, never a client-supplied trusted
 AssetVersion or absolute path. It returns the captured version together with its matching immutable
@@ -201,6 +201,12 @@ incoming IPC allocation limit. Video Anchor output uses the same JavaScript-exac
 as other fields, including legacy unknown-duration values; unrepresentable values are rejected.
 Desktop promotes the already locked/approved `serde_json` dependency from test-only to runtime for
 this boundary. No new package or version is introduced; its runtime purpose is in third-party notices.
+
+The frozen desktop correction commit `384d4cc` passed `pnpm verify:clean` (exit 0) and independent
+read-only re-review of the initial three Important findings and one Minor finding. Task 16 and
+Phase D are accepted; this does not activate or accept the later UI. See the
+[desktop verification record](../reviews/2026-08-28-continuous-review-bridge-phase-d.md) for RED/GREEN
+evidence, the earlier video-test failure and remaining phase boundaries.
 
 ### Phase D reader architecture amendment — accepted 2026-08-28
 

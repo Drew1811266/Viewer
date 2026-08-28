@@ -12,12 +12,12 @@
 
 > Status: Active
 >
-> 执行状态：阶段 A–C 和阶段 D 的任务 14–15 已完成，累计 15 / 23。
+> 执行状态：阶段 A–D（任务 1–16）已完成，累计 16 / 23。
 > 阶段 C 最终实现 `21edbf6` 已通过完整 `pnpm verify:clean` 和只读独立复验，检查点 C 完成。
 > 2026-08-28 获批的“Node 入口 + Rust 只读核心”已实现：`7863439`，并发修正 `76726a1`；完整门禁及只读独立复核通过。
-> Task 16 的素材预绑定入口、完整信封 DTO 和取消链路补充已获用户同意，正在隔离实施；阶段 E/F 尚未开始，阶段 D 尚未整体完成。
-> 最新状态见[Task 16 契约检查点](../../progress/2026-08-28-continuous-review-task16-contract-checkpoint.md)；已验收结果见[阶段 D 读取器记录](../../reviews/2026-08-28-continuous-review-reader-phase-d.md)及[架构检查点](../../progress/2026-08-27-continuous-review-phase-d-architecture-checkpoint.md)。
-> 应用用例、声明、迁移和 Agent 读取器仅在隔离工程验证；UI 和桌面组装尚未切换。
+> Task 16 桥接 `db456ef`、审阅修正 `384d4cc` 已通过完整门禁与只读独立复验；阶段 D 完成，阶段 E/F 尚未开始。
+> 最新状态见[Task 16 契约检查点](../../progress/2026-08-28-continuous-review-task16-contract-checkpoint.md)及[阶段 D 桥接记录](../../reviews/2026-08-28-continuous-review-bridge-phase-d.md)；读取器结果见[阶段 D 读取器记录](../../reviews/2026-08-28-continuous-review-reader-phase-d.md)。
+> 应用用例、声明、迁移、Agent 读取器和新桥接仅在隔离工程验证；新桌面接口已组装，旧 UI 未切换，真实工程未迁移。
 >
 > 计划基线：`a539f8df5f3e0f3239110df44515ba7cb583e308`；实施基线：`d7abb9961f377ae257c3283ef7893218ec0c53f9`。
 > 阶段 A 在用户授权的 `.worktrees/continuous-review-domain`、`codex/continuous-review-domain` 内实施；原分支未改动。
@@ -717,7 +717,7 @@ assert.equal(Object.hasOwn(result, 'outcomes'), false)
 ### Task 16: 桌面命令、DTO 和历史证据授权
 
 > 2026-08-28：接口核对和[契约补充](../../progress/2026-08-28-continuous-review-task16-contract-checkpoint.md)
-> 已获用户确认。下列接口替代原来的九命令／四字段示例，实施后再验收。
+> 已获用户确认。下列接口替代原来的九命令／四字段示例；实现和审阅修正已通过全仓门禁及独立复验，Task 16 验收完成。
 
 **Files:** Create `src-tauri/src/commands/review_workspace.rs`、`src-tauri/src/dto/review_workspace.rs`、`src-tauri/src/state/review_workspace.rs`、`ui/src/api/reviewWorkspaceTypes.ts`。Modify `src-tauri/src/commands/mod.rs`、`src-tauri/src/dto/mod.rs`、`src-tauri/src/state/mod.rs`、`src-tauri/src/state/session.rs`、`src-tauri/src/lib.rs`、`src-tauri/src/image_protocol.rs`、`crates/viewer-infrastructure/src/image_cache.rs`、`ui/src/api/viewer.ts`、`ui/src/app/workspace/ports.ts`。Tests 随新 Rust 模块；Create `ui/src/api/reviewWorkspaceTypes.test.ts`。
 
@@ -725,7 +725,7 @@ assert.equal(Object.hasOwn(result, 'outcomes'), false)
 
 TypeScript `ReviewWorkspacePort` 对应方法为 getWorkspace／prepareAssets／prepareCommand／applyCommand／previewArchive／previewRestore／getHistory／inspectUsage／inspectMigration／getEvidence／cancelTask，返回 typed Promise，DTO 与 Rust 使用相同判别字段；可沿用 UUID string，但不混淆 snapshot ID 与 legacy round ID。新增 registry 函数 `register_review_png(&ImageArtifactRegistry, SessionId, EntityId, &BoundReviewImage) -> Result<ImageArtifactToken, ImageArtifactRegistryError>`，使用既有 token／error 类型；已验证 immutable_bytes 通道不放开任意路径和 generic fs capability。DTO 按命令、视图、历史／迁移和校验拆分，Application 不依赖 serde；后端只读选择唯一人工 Stream，旧 UI 不切换。
 
-- [ ] **Step 1 — RED：关闭会话后历史 token 失效。** 在 image_protocol 模块测试中建立 ActiveImageSession，登记核验过的 PNG，关闭后用原 URL 请求。
+- [x] **Step 1 — RED：关闭会话后历史 token 失效。** 在 image_protocol 模块测试中建立 ActiveImageSession，登记核验过的 PNG，关闭后用原 URL 请求。
 
 ```rust
 let active = ActiveImageSession::default();
@@ -739,8 +739,8 @@ assert_eq!(resolver.resolve(&request_path), Err(ProtocolError::Forbidden));
 ```
 
 registry 为 Arc<ImageArtifactRegistry>；verified 来自 Task 9 仓储 load_evidence，session_id／entity_id 是固定测试 ID。resolver 接受 URI path 而非完整 URL；不能为配合测试扩展公网／文件权限。
-- [ ] **Step 2 — RED。** `cargo test --locked -p viewer-desktop review_workspace && cargo test --locked -p viewer-desktop image_protocol`；包名已由 `src-tauri/Cargo.toml` 核对。
-- [ ] **Step 3 — 注入新 service 并保持边界。** 当前 active generation 与 cancellation 贯穿 prepare／render／commit／preview，切工程后旧任务不能向新会话发结果。旧流程仅处理 legacy，v3 的编辑不进入 CompletedReadOnly。
+- [x] **Step 2 — RED。** `cargo test --locked -p viewer-desktop review_workspace && cargo test --locked -p viewer-desktop image_protocol`；包名已由 `src-tauri/Cargo.toml` 核对。证据、DTO、预绑定和运行集成均保留 RED→GREEN 日志。
+- [x] **Step 3 — 注入新 service 并保持边界。** 当前 active generation 与 cancellation 贯穿 prepare／render／commit／preview，切工程后旧任务不能向新会话发结果。旧流程仅处理 legacy，v3 的编辑不进入 CompletedReadOnly。
 
 ```ts
 export interface PreparedReviewCommand {
@@ -755,15 +755,15 @@ export interface PreparedReviewCommand {
 ```
 
 此 DTO 无损对应 ReviewCommandEnvelope（包括迁移生成身份与声明来源）；内部 bytes 使用严格 64 小写 hex 传输。prepare 仅生成／规范化并返回 envelope，UI 不需要新 hash 运行库；apply 验证后端固定 context、session、digest、expected 和命令目标。已提交但刷新失败保留 receipt。关闭先撤销授权、取消全部工作，再等待任务退出后清理；普通 cancel 仅取消当前已登记任务，不毒化下一次调用。cancellation 传到素材准备、捕获、渲染、保存后 view；await 后重新检查 generation，旧回复不注册新 token。
-- [ ] **Step 4 — 加跨会话／过期 generation、伪造 evidence 路径／角色／摘要、关闭中渲染、取消、闭合 DTO 拒绝额外字段与旧 API mock 回归。** 待确认图的当前源预览与旧证据预览必须分别标识，不冒充同一图片。
-- [ ] **Step 5 — GREEN／检查点 D。** 新 Rust 模块测试、`pnpm --dir ui typecheck`、`pnpm architecture:boundaries`、`pnpm test:review-protocol`。列出桥接命令与 port 一一对应审阅，不更新边界基线来掩盖违规。
-- [ ] **Step 6 — 提交。** `git commit -m "feat(review): bridge continuous workflows with session-safe evidence"`。
+- [x] **Step 4 — 加跨会话／过期 generation、伪造 evidence 路径／角色／摘要、关闭中渲染、取消、闭合 DTO 拒绝额外字段与旧 API mock 回归。** 预绑定当前源与按 selector 获取的历史证据分别带对应 AssetVersionId。补齐首保存失败重开恢复、排队取消仍查回执、响应编码预算和旧视频数值边界回归。
+- [x] **Step 5 — GREEN／检查点 D。** 新 Rust 模块测试、`pnpm --dir ui typecheck`、`pnpm architecture:boundaries`、`pnpm test:review-protocol` 通过；修正提交 `384d4cc` 的完整 `pnpm verify:clean` exit 0，独立复验确认三项 Important 和一项 Minor 已解决。11 命令与 port 对照见桥接记录；趋势仍 48 项非阻断告警，未调基线。
+- [x] **Step 6 — 提交。** 实现 `db456ef`（`feat(review): bridge continuous workflows with session-safe evidence`）；审阅修正 `384d4cc`。仅隔离分支，未合并或推送。
 
 ### Task 17: UI 持续评审协调器与输入保留
 
 **Files:** Create `ui/src/app/review/continuousReviewModel.ts`、`ui/src/app/review/continuousReviewModel.test.ts`、`ui/src/app/review/useContinuousReviewCoordinator.ts`、`ui/src/app/review/useContinuousReviewCoordinator.test.tsx`。Modify `ui/src/app/workspace/ports.ts`。
 
-**Interfaces:** `useContinuousReviewCoordinator({ sessionId, port, onError }) -> ContinuousReviewCoordinator`；state 为 loading／ready／saving／save_failed／recovery_required／migration_required／unavailable 的闭合联合。Coordinator 暴露 view、editorInput、pendingEnvelope、saveFeedback、withdrawTargets、previewArchive、commitArchive、previewRestore、restore、continueHistorical、confirmSource、inspectUsage、adoptUsage、inspectMigration、migrate、getHistory、getEvidence、retry、cancel。所有 async 方法返回 Promise<void> 或对应 preview，交由明确错误状态表达失败，不能吞掉 reject。未提交输入与最近成功 snapshot 独立。
+**Interfaces:** `useContinuousReviewCoordinator({ sessionId, generation, port, onError }) -> ContinuousReviewCoordinator`；state 为 loading／ready／saving／save_failed／recovery_required／migration_required／unavailable 的闭合联合。Coordinator 暴露 view、editorInput、pendingEnvelope、saveFeedback、withdrawTargets、previewArchive、commitArchive、previewRestore、restore、continueHistorical、confirmSource、inspectUsage、adoptUsage、inspectMigration、migrate、getHistory、getEvidence、retry、cancel。所有 async 方法返回 Promise<void> 或对应 preview，交由明确错误状态表达失败，不能吞掉 reject。未提交输入与最近成功 snapshot 独立。
 
 - [ ] **Step 1 — RED：回执丢失时重试同一 envelope，失败不清空原文。** 用 React Testing Library renderHook 和实现 Task 16 全部方法的 vi.fn port；第一 apply 拒绝 OutcomeUnknown，第二返回已提交 receipt。
 

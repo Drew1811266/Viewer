@@ -6,8 +6,8 @@
 >
 > 设计审阅状态：三组产品规则已逐节确认；本完整设计及技术细化已于 2026-08-27 获用户确认。
 >
-> 实施状态：用户授权的阶段 A–C 和阶段 D 的任务 14–15 已完成，累计 15 / 23；各自通过全仓门禁与独立复审。
-> 2026-08-28 获批的 Node 入口 + Rust 只读核心已实现；Task 16 的[契约细化](../../progress/2026-08-28-continuous-review-task16-contract-checkpoint.md)已获确认，桥接实现正在全仓验证与独立复核，阶段 D 尚未整体通过，E–F 未开始。
+> 实施状态：用户授权的阶段 A–D（任务 1–16）已完成，累计 16 / 23；各自通过全仓门禁与独立复审。
+> 2026-08-28 获批的 Node 入口 + Rust 只读核心和 Task 16 桌面桥接均已验收，见[桥接记录](../../reviews/2026-08-28-continuous-review-bridge-phase-d.md)。阶段 E–F 未开始，新 UI 未启用，未迁移真实工程。
 > 见[阶段 D 读取器记录](../../reviews/2026-08-28-continuous-review-reader-phase-d.md)及[架构检查点](../../progress/2026-08-27-continuous-review-phase-d-architecture-checkpoint.md)。本文仍不是当前产品行为说明，不表示新协议或 UI 已启用。
 >
 > 核对基线：`b2eaad0`，分支 `codex/image-annotation-review-workbench`。

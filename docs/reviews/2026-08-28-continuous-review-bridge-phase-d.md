@@ -3,7 +3,7 @@
 > Status: Development evidence
 >
 > 2026-08-28：获批的素材预绑定、完整命令信封和取消链路已实现。
-> 当前处于全仓验证及独立只读复核，Task 16 尚未验收，累计仍为 15 / 23。
+> Task 16 实施、审阅修正后的全仓门禁及独立只读复验通过；阶段 D 完成，累计 16 / 23。
 
 ## 范围
 
@@ -56,7 +56,7 @@
 渲染中关闭工程且清理顺序正确；旧桥接兼容与新 port 的 11 项命令映射。
 
 定向日志在 `target/continuous-review-task16-*.log`。早期 RED 和静态检查失败日志保留，
-不把它们当作最终验收结果。全仓门禁、最终提交号和独立复核结论待下节记录。
+不把它们当作最终验收结果。全仓门禁、最终提交号和独立复核结论见下节。
 
 ## 验收状态
 
@@ -95,7 +95,22 @@
 `target/continuous-review-task16-response-and-anchor-green.log`。response-budget-green 日志
 同时记录了 Anchor 负例的失败，是其 RED 证据，不是整份测试的最终通过证明。
 
-修正后的全仓门禁和独立复验：待执行。
+修正提交 `384d4cce28b9ed0d1e0d6f1f64d6805b0d2c095f` 的固定工作树
+`pnpm verify:clean` 完整通过，exit 0，日志
+`target/continuous-review-task16-verify-clean-review-fixes.log`。独立审阅者只读复验
+`db456ef..384d4cc`，确认原三项 Important 和一项 Minor 均解决，无新增 Critical/Important；
+复验没有并行编辑、编译或测试，不把主代理测试结果冒称独立动态测试。
+
+| 最终验证 | 结果 |
+| --- | --- |
+| 桌面定向测试（原生关闭、排队重试、命令、DTO、响应预算） | 8 + 4 + 7 + 2 = 21 通过 |
+| Application 持续评审服务（全仓门禁内） | 32 通过 |
+| `pnpm verify:clean` | exit 0；协议 54、UI 133 文件 / 1144 通过 / 既有 1 跳过，workspace Rust、Clippy、构建、边界及依赖政策通过 |
+| `pnpm architecture:trends` | exit 0，48 项非阻断告警，未修改趋势基线 |
+| 原工作树检查 | 干净，仍为 `d7abb9961f377ae257c3283ef7893218ec0c53f9` |
+
+实现检查点为 `db456ef`，审阅修正检查点为 `384d4cc`。未合并、推送或清理隔离工作树。
+阶段 D 验收关闭；下一步是 Task 17 的 UI 持续评审协调器和输入保留。
 
 Task 17–23 未开始；本记录不声称新 UI 已可使用，也不替代后续真实交互验收。
 签名、公证、正式安装包、上架、公开发布和发售不属于当前开发任务或验收条件。

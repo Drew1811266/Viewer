@@ -135,6 +135,10 @@ pub enum CommandLookup {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, thiserror::Error)]
 pub enum ReviewCommitError {
+    #[error("legacy review data requires explicit migration")]
+    MigrationRequired,
+    #[error("unsupported review protocol version")]
+    UnsupportedProtocol,
     #[error("review snapshot changed")]
     StaleSnapshot,
     #[error("command identity has a different payload")]
@@ -160,6 +164,13 @@ pub enum ReviewCommitError {
 }
 
 pub trait ContinuousReviewRepositoryPort: Send + Sync {
+    fn load_legacy(
+        &self,
+        _stream: ReviewStreamId,
+        _round: viewer_domain::ReviewRoundId,
+    ) -> Result<super::LegacyReviewRecord, ReviewCommitError> {
+        Err(ReviewCommitError::EvidenceAbsent)
+    }
     fn load_usage(
         &self,
         stream_id: ReviewStreamId,
@@ -215,6 +226,15 @@ pub trait ContinuousReviewRepositoryPort: Send + Sync {
 }
 
 pub trait ContinuousReviewRepositoryProviderPort: Send + Sync {
+    fn inspect_migration(&self) -> Result<Option<super::MigrationInspection>, ReviewCommitError> {
+        Ok(None)
+    }
+    fn migrate(
+        &self,
+        _request: super::MigrationCommitRequest,
+    ) -> Result<ReviewCommitReceipt, ReviewCommitError> {
+        Err(ReviewCommitError::MigrationRequired)
+    }
     fn open_reader(&self) -> Result<Arc<dyn ContinuousReviewRepositoryPort>, ReviewCommitError>;
     fn open_writer(&self) -> Result<Arc<dyn ContinuousReviewRepositoryPort>, ReviewCommitError>;
 }

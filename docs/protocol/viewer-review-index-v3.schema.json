@@ -12,6 +12,12 @@
     "streams"
   ],
   "properties": {
+    "legacyIndex": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["blake3"],
+      "properties": { "blake3": { "type": "string", "pattern": "^[0-9a-f]{64}$" } }
+    },
     "protocolVersion": {
       "const": "viewer.review/3"
     },

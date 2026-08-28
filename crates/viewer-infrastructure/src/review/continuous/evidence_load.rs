@@ -127,6 +127,19 @@ fn legacy(
         .iter()
         .find(|r| r.round_id == id)
         .ok_or(Error::Integrity)?;
+    if reference.kind == v3::LegacyRecordKind::Draft {
+        let verified = super::legacy::load(view, stream_id, id)?;
+        if let viewer_application::review_workspace::LegacyReviewContents::Draft(draft) =
+            verified.contents
+        {
+            return if draft.assets.iter().any(|a| a.id == asset_id) {
+                Err(Error::EvidenceAbsent)
+            } else {
+                Err(Error::Integrity)
+            };
+        }
+        return Err(Error::Integrity);
+    }
     let rounds = view.directory.required_child("rounds")?;
     let (directory, name) = match reference.protocol_version.as_str() {
         protocol::REVIEW_PROTOCOL_V1 => (rounds, format!("{id}.json")),

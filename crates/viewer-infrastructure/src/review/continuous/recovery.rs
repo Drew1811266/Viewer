@@ -78,11 +78,41 @@ pub(super) fn load(
 fn entries(directory: &Directory) -> Result<Vec<(String, ReviewCommandId)>, ReviewCommitError> {
     // Bound both real records and ignored staging remnants. A crash or an active
     // save's temporary name must not turn 10,000 valid drafts into an unreadable set.
-    let mut names = directory.entries(MAX_RECOVERY_FILES + MAX_TEMPORARY_FILES)?;
+    let mut names = directory.entries(MAX_RECOVERY_FILES + MAX_TEMPORARY_FILES + 64)?;
     names.sort();
     let mut records = vec![];
     let mut temporary_count = 0;
+    let mut backup_count = 0;
+    let mut backup_bytes = 0_u64;
     for name in names {
+        if let Some(digest) = name
+            .strip_prefix("legacy-index-")
+            .and_then(|v| v.strip_suffix(".json"))
+        {
+            if digest.len() != 64
+                || !digest
+                    .bytes()
+                    .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+            {
+                return Err(ReviewCommitError::Integrity);
+            }
+            backup_count += 1;
+            if backup_count > 64 {
+                return Err(ReviewCommitError::LimitExceeded);
+            }
+            let bytes = directory
+                .read(&name, crate::review::MAX_REVIEW_INDEX_BYTES)?
+                .ok_or(ReviewCommitError::Integrity)?;
+            backup_bytes = backup_bytes
+                .checked_add(bytes.len() as u64)
+                .filter(|v| *v <= MAX_REVIEW_DOCUMENT_BYTES)
+                .ok_or(ReviewCommitError::LimitExceeded)?;
+            if blake3::hash(&bytes).to_hex().as_str() != digest {
+                return Err(ReviewCommitError::Integrity);
+            }
+            crate::review::protocol::decode_catalog_versioned(&bytes).map_err(protocol_error)?;
+            continue;
+        }
         if name.starts_with(".viewer-review-") && name.ends_with(".tmp") {
             temporary_count += 1;
             if temporary_count > MAX_TEMPORARY_FILES {

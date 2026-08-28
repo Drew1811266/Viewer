@@ -20,6 +20,21 @@ pub struct ProjectReviewRepositoryProvider {
 }
 
 impl ProjectReviewRepositoryProvider {
+    pub fn migrate_with_faults(
+        &self,
+        request: viewer_application::review_workspace::MigrationCommitRequest,
+        faults: Arc<dyn super::ReviewCommitFaultInjector>,
+    ) -> Result<viewer_application::review_workspace::ReviewCommitReceipt, ReviewCommitError> {
+        if self.project_access != ProjectAccess::ReadWrite {
+            return Err(ReviewCommitError::ReadOnly);
+        }
+        super::continuous::migration::migrate(
+            &self.project_root,
+            self.project_id,
+            request,
+            Some(faults),
+        )
+    }
     pub fn continuous_writer_with_faults(
         &self,
         faults: Arc<dyn super::ReviewCommitFaultInjector>,
@@ -106,6 +121,21 @@ impl ProjectReviewRepositoryProvider {
 }
 
 impl ContinuousReviewRepositoryProviderPort for ProjectReviewRepositoryProvider {
+    fn inspect_migration(
+        &self,
+    ) -> Result<Option<viewer_application::review_workspace::MigrationInspection>, ReviewCommitError>
+    {
+        super::continuous::migration::inspect(&self.project_root, self.project_id)
+    }
+    fn migrate(
+        &self,
+        request: viewer_application::review_workspace::MigrationCommitRequest,
+    ) -> Result<viewer_application::review_workspace::ReviewCommitReceipt, ReviewCommitError> {
+        if self.project_access != ProjectAccess::ReadWrite {
+            return Err(ReviewCommitError::ReadOnly);
+        }
+        super::continuous::migration::migrate(&self.project_root, self.project_id, request, None)
+    }
     fn open_reader(&self) -> Result<Arc<dyn ContinuousReviewRepositoryPort>, ReviewCommitError> {
         self.continuous_reader()
     }

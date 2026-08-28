@@ -53,6 +53,19 @@ pub(super) fn command_bytes(command: &ReviewWorkspaceCommand) -> usize {
         }
         ReviewWorkspaceCommand::ConfirmSource(binding) => add(anchor_bytes(&binding.anchor)),
         ReviewWorkspaceCommand::AdoptUsage { .. } => {}
+        ReviewWorkspaceCommand::ContinueLegacy {
+            history_ref,
+            bindings,
+        } => {
+            add(size_of_val(bindings.as_slice()));
+            add(bindings.len().saturating_mul(32));
+            if let HistorySource::Legacy { targets, .. } = &history_ref.source {
+                add(size_of_val(targets.as_slice()));
+            }
+            for binding in bindings {
+                add(anchor_bytes(&binding.anchor));
+            }
+        }
         ReviewWorkspaceCommand::Migrate(plan) => {
             if let MigrationChoice::ContinueSelected {
                 legacy_targets,

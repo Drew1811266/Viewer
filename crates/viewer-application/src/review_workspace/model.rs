@@ -53,6 +53,10 @@ pub enum ReviewWorkspaceCommand {
         declaration_id: ReviewUsageId,
     },
     Migrate(MigrationPlan),
+    ContinueLegacy {
+        history_ref: HistoryRef,
+        bindings: Vec<MigrationBinding>,
+    },
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -62,6 +66,7 @@ pub struct GeneratedReviewIds {
     pub text_revision_id: ReviewTextRevisionId,
     pub archive_id: ReviewArchiveId,
     pub targets: Vec<(ReviewTargetId, ReviewTargetRevisionId)>,
+    pub migration: Vec<MigrationFeedbackIds>,
     pub created_at_ms: i64,
 }
 
@@ -146,7 +151,7 @@ pub struct HistoryEntry {
 pub struct HistoryView {
     pub selector: HistorySelector,
     pub entries: Vec<HistoryEntry>,
-    pub legacy: Option<ReviewSnapshot>,
+    pub legacy: Option<LegacyReviewRecord>,
     pub limitations: Vec<ReviewHistoryLimitation>,
     pub restore_actions: Vec<TargetVersionKey>,
 }
@@ -207,6 +212,9 @@ pub trait UsageImportPort: Send + Sync {
 pub struct MigrationInspection {
     pub legacy_protocol: ReviewProtocolVersion,
     pub index_digest: [u8; 32],
+    /// Includes the index, every indexed legacy record, and the active draft.
+    pub inspection_digest: [u8; 32],
+    pub legacy_records: Vec<LegacyReviewReference>,
     pub active_draft: Option<PersistedReviewDraft>,
     pub completed_candidates: Vec<ReviewSnapshot>,
     pub limitations: Vec<ReviewHistoryLimitation>,
@@ -230,4 +238,41 @@ pub struct MigrationBinding {
 pub struct MigrationPlan {
     pub inspection_digest: [u8; 32],
     pub choice: MigrationChoice,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct LegacyReviewReference {
+    pub stream_id: ReviewStreamId,
+    pub round_id: viewer_domain::ReviewRoundId,
+    pub protocol: ReviewProtocolVersion,
+    pub is_draft: bool,
+    pub blake3: [u8; 32],
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct LegacyReviewRecord {
+    pub reference: LegacyReviewReference,
+    pub contents: LegacyReviewContents,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum LegacyReviewContents {
+    Draft(viewer_domain::review::ReviewDraft),
+    Completed(ReviewSnapshot),
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MigrationFeedbackIds {
+    pub round_id: viewer_domain::ReviewRoundId,
+    pub legacy_feedback_id: FeedbackId,
+    pub feedback_id: FeedbackId,
+    pub text_revision_id: ReviewTextRevisionId,
+    pub targets: Vec<(u32, ReviewTargetId, ReviewTargetRevisionId)>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct MigrationCommitRequest {
+    pub envelope: ReviewCommandEnvelope,
+    pub next: PreparedContinuousSnapshot,
+    pub staged_evidence: Vec<PreparedEvidenceFile>,
 }

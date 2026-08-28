@@ -20,6 +20,34 @@ pub(super) async fn prepare(
     prepared_assets: &HashMap<AssetVersionId, PreparedReviewAsset>,
     cancellation: ReviewTaskCancellation,
 ) -> Result<EvidencePreparation, ReviewWorkspaceError> {
+    prepare_inner(
+        renderer,
+        Some(repository),
+        previous,
+        next,
+        prepared_assets,
+        cancellation,
+    )
+    .await
+}
+
+pub(super) async fn prepare_new(
+    renderer: &dyn ReviewEvidencePort,
+    next: &ContinuousReviewState,
+    prepared_assets: &HashMap<AssetVersionId, PreparedReviewAsset>,
+    cancellation: ReviewTaskCancellation,
+) -> Result<EvidencePreparation, ReviewWorkspaceError> {
+    prepare_inner(renderer, None, None, next, prepared_assets, cancellation).await
+}
+
+async fn prepare_inner(
+    renderer: &dyn ReviewEvidencePort,
+    repository: Option<Arc<dyn ContinuousReviewRepositoryPort>>,
+    previous: Option<&StoredContinuousSnapshot>,
+    next: &ContinuousReviewState,
+    prepared_assets: &HashMap<AssetVersionId, PreparedReviewAsset>,
+    cancellation: ReviewTaskCancellation,
+) -> Result<EvidencePreparation, ReviewWorkspaceError> {
     let mut result = EvidencePreparation {
         bindings: vec![],
         files: vec![],
@@ -99,7 +127,7 @@ pub(super) async fn prepare(
             }
         }
         let base = if let Some(previous) = previous.filter(|_| old.is_some()) {
-            let repository = repository.clone();
+            let repository = repository.clone().ok_or(ReviewCommitError::Integrity)?;
             let reference = previous.reference;
             let stream = next.stream_id;
             let asset_id = asset.id;

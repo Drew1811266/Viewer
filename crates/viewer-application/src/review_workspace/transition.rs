@@ -103,6 +103,9 @@ pub(super) fn prepare(
         ReviewWorkspaceCommand::ContinueHistorical { .. } => {
             super::history::continue_historical(repository, before, envelope, assets, usages)?
         }
+        ReviewWorkspaceCommand::ContinueLegacy { .. } => {
+            super::legacy_history::continue_legacy(repository, before, envelope, assets)?
+        }
         ReviewWorkspaceCommand::ConfirmSource(decision) => {
             let mut with_assets = before.clone();
             super::editing::add_asset(&mut with_assets, decision.new_asset_version_id, assets)?;

@@ -16,6 +16,7 @@ fn envelope() -> ReviewCommandEnvelope {
         expected_snapshot_id: None,
         payload_digest: [0; 32],
         generated: GeneratedReviewIds {
+            migration: vec![],
             snapshot_id: ReviewSnapshotId::from_u128(4),
             feedback_id: FeedbackId::from_u128(5),
             text_revision_id: ReviewTextRevisionId::from_u128(6),

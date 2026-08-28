@@ -43,6 +43,13 @@ pub(super) fn commit(
         CommandLookup::Absent => {}
     }
     let prepared = prepare(&mut view, request)?;
+    if let Some(bytes) = &view.index_bytes
+        && crate::review::protocol::decode_catalog_versioned(bytes).is_ok()
+    {
+        // An empty legacy catalog contains no review data; its first successful save creates
+        // the first state, retaining the old index just as an explicit migration would.
+        super::migration::save_backup(&view.directory, bytes)?;
+    }
     install(repository, &view, &prepared)?;
     validate_installed(&view, &prepared)?;
     repository
@@ -74,7 +81,7 @@ pub(super) fn commit(
     })
 }
 
-fn install(
+pub(super) fn install(
     repository: &ContinuousReviewRepository,
     view: &View,
     prepared: &PreparedCommit,
@@ -130,7 +137,10 @@ fn install(
         .check(ReviewCommitFaultPoint::AfterArchive)
 }
 
-fn validate_installed(view: &View, prepared: &PreparedCommit) -> Result<(), ReviewCommitError> {
+pub(super) fn validate_installed(
+    view: &View,
+    prepared: &PreparedCommit,
+) -> Result<(), ReviewCommitError> {
     let id = prepared.record.state.stream_id;
     history::read_state(view, id, &prepared.reference)?;
     for archive in &history::stream(view, id)?.archive_refs {

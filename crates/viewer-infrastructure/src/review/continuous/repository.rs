@@ -50,6 +50,24 @@ impl ContinuousReviewRepository {
         writable: bool,
         faults: Arc<dyn ReviewCommitFaultInjector>,
     ) -> Result<Self, ReviewCommitError> {
+        Self::open_internal(path, project_id, writable, faults, false)
+    }
+
+    pub(super) fn open_migration(
+        path: &Path,
+        project_id: ProjectId,
+        faults: Arc<dyn ReviewCommitFaultInjector>,
+    ) -> Result<Self, ReviewCommitError> {
+        Self::open_internal(path, project_id, true, faults, true)
+    }
+
+    fn open_internal(
+        path: &Path,
+        project_id: ProjectId,
+        writable: bool,
+        faults: Arc<dyn ReviewCommitFaultInjector>,
+        migration: bool,
+    ) -> Result<Self, ReviewCommitError> {
         let mut repository = Self {
             root: Directory::open(path)?,
             project_id,
@@ -73,7 +91,9 @@ impl ContinuousReviewRepository {
                     gate: Mutex::new(()),
                 });
             }
-            repository.view()?;
+            if !migration {
+                repository.view()?;
+            }
         }
         Ok(repository)
     }
@@ -85,7 +105,7 @@ impl ContinuousReviewRepository {
         viewer.child("reviews", create)
     }
 
-    pub(super) fn view(&self) -> Result<Option<View>, ReviewCommitError> {
+    pub(super) fn checked_directory(&self) -> Result<Option<Directory>, ReviewCommitError> {
         let Some(directory) = self.directory(false)? else {
             return Ok(None);
         };
@@ -107,10 +127,33 @@ impl ContinuousReviewRepository {
                 return Err(ReviewCommitError::Integrity);
             }
         }
+        Ok(Some(directory))
+    }
+
+    pub(super) fn view(&self) -> Result<Option<View>, ReviewCommitError> {
+        let Some(directory) = self.checked_directory()? else {
+            return Ok(None);
+        };
         let index_bytes = directory.read("index.json", MAX_REVIEW_INDEX_BYTES)?;
         let index = match &index_bytes {
-            Some(bytes) => v3::decode_index_v3(bytes).map_err(protocol_error)?,
+            Some(bytes) => match v3::decode_index_v3(bytes) {
+                Ok(index) => {
+                    if let Some(backup) = &index.legacy_index {
+                        super::migration::verify_backup(&directory, backup, self.project_id)?;
+                    }
+                    index
+                }
+                Err(error) => {
+                    let legacy = super::migration_inspect::scan(&directory, self.project_id)?
+                        .ok_or_else(|| protocol_error(error))?;
+                    if legacy.has_data() {
+                        return Err(ReviewCommitError::MigrationRequired);
+                    }
+                    legacy.index
+                }
+            },
             None => v3::ReviewIndexV3 {
+                legacy_index: None,
                 project_id: self.project_id,
                 streams: vec![],
             },
@@ -128,6 +171,17 @@ impl ContinuousReviewRepository {
 }
 
 impl ContinuousReviewRepositoryPort for ContinuousReviewRepository {
+    fn load_legacy(
+        &self,
+        stream: ReviewStreamId,
+        round: viewer_domain::ReviewRoundId,
+    ) -> Result<LegacyReviewRecord, ReviewCommitError> {
+        super::legacy::load(
+            &self.view()?.ok_or(ReviewCommitError::Integrity)?,
+            stream,
+            round,
+        )
+    }
     fn load_usage(
         &self,
         stream_id: ReviewStreamId,
@@ -255,6 +309,7 @@ impl ContinuousReviewRepositoryPort for ContinuousReviewRepository {
 
 pub(super) fn protocol_error(error: ReviewProtocolError) -> ReviewCommitError {
     match error {
+        ReviewProtocolError::UnsupportedVersion => ReviewCommitError::UnsupportedProtocol,
         ReviewProtocolError::LimitExceeded => ReviewCommitError::LimitExceeded,
         _ => ReviewCommitError::Integrity,
     }

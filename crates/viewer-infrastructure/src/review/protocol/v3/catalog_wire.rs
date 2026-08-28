@@ -12,6 +12,8 @@ pub(super) struct Index {
     #[serde(deserialize_with = "wire::canonical_id")]
     project_id: ProjectId,
     streams: Vec<ReviewStreamV3>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    legacy_index: Option<super::LegacyIndexRef>,
 }
 #[derive(Serialize, Deserialize)]
 enum IndexKind {
@@ -25,6 +27,7 @@ impl From<&ReviewIndexV3> for Index {
             kind: IndexKind::Index,
             project_id: value.project_id,
             streams: value.streams.clone(),
+            legacy_index: value.legacy_index.clone(),
         }
     }
 }
@@ -33,6 +36,7 @@ impl Index {
         ReviewIndexV3 {
             project_id: self.project_id,
             streams: self.streams,
+            legacy_index: self.legacy_index,
         }
     }
 }

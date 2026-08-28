@@ -21,8 +21,7 @@ pub(super) fn feedback_origins(
                     return Err(ReviewCommitError::Integrity);
                 }
             }
-            // Legacy provenance is admitted by the explicit migration adapter, not guessed here.
-            HistorySource::Legacy { .. } => return Err(ReviewCommitError::Integrity),
+            HistorySource::Legacy { .. } => super::legacy::validate_origin(view, origin)?,
         }
     }
     Ok(())

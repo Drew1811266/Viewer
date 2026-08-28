@@ -88,6 +88,7 @@ fn legacy_absent_base_is_distinct_from_a_missing_or_corrupt_declared_preview() {
         fs::create_dir_all(path.parent().unwrap()).unwrap();
         fs::write(&path, &bytes).unwrap();
         let index = v3::ReviewIndexV3 {
+            legacy_index: None,
             project_id: snapshot.project_id,
             streams: vec![v3::ReviewStreamV3 {
                 review_stream_id: snapshot.review_stream_id,
@@ -97,6 +98,7 @@ fn legacy_absent_base_is_distinct_from_a_missing_or_corrupt_declared_preview() {
                 archive_refs: vec![],
                 usage_refs: vec![],
                 legacy_refs: vec![v3::LegacyRecordRef {
+                    kind: v3::LegacyRecordKind::Completed,
                     round_id: snapshot.review_round_id,
                     protocol_version: format!("viewer.review/{version}"),
                     location,
@@ -246,9 +248,16 @@ fn legacy_and_continuous_writers_share_one_lease_and_read_only_access_cannot_wri
         Err(ReviewCommitError::LeaseBusy)
     ));
     drop(legacy);
-    // An existing legacy index requires explicit migration, never silent replacement.
+    // A catalog with no drafts or history remains no_review_state; opening does not migrate it.
     let before = fs::read(root.path().join(".viewer/reviews/index.json")).unwrap();
-    assert!(provider.continuous_writer().is_err());
+    assert!(
+        provider
+            .continuous_writer()
+            .unwrap()
+            .load_current(ReviewStreamId::from_u128(2))
+            .unwrap()
+            .is_none()
+    );
     assert_eq!(
         fs::read(root.path().join(".viewer/reviews/index.json")).unwrap(),
         before

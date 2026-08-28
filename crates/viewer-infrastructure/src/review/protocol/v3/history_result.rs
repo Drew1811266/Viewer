@@ -210,6 +210,7 @@ impl HistoryReadResult {
                         return Err(InvalidData);
                     }
                     validate::index(&ReviewIndexV3 {
+                        legacy_index: None,
                         project_id: self.project_id,
                         streams: vec![ReviewStreamV3 {
                             review_stream_id: self.review_stream_id,

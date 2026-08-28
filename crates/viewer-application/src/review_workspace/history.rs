@@ -27,8 +27,20 @@ impl ContinuousReviewService {
                         restore_actions.extend_from_slice(&group.targets);
                     }
                 }
-                HistorySelector::Legacy(_) => {
-                    return Err(ReviewWorkspaceError::CapabilityUnavailable);
+                HistorySelector::Legacy(round) => {
+                    let legacy = reader.load_legacy(stream, round)?;
+                    return Ok(HistoryView {
+                        selector,
+                        entries: vec![],
+                        legacy: Some(legacy),
+                        limitations: vec![
+                            ReviewHistoryLimitation::BackgroundOnly,
+                            ReviewHistoryLimitation::LegacyEvidenceAbsent,
+                            ReviewHistoryLimitation::UsageUnconfirmed,
+                            ReviewHistoryLimitation::ExternalCopiesCannotBeRevoked,
+                        ],
+                        restore_actions: vec![],
+                    });
                 }
             }
             let mut entries = vec![];

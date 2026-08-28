@@ -10,6 +10,24 @@ impl ContinuousReviewService {
         if stream != self.context.stream_id {
             return Err(ReviewWorkspaceError::WrongContext);
         }
+        if let Some(migration) = self.inspect_migration().await? {
+            return Ok(ReviewWorkspaceView {
+                stream_id: stream,
+                current: None,
+                source_checks: vec![],
+                projection: CurrentReviewProjection {
+                    actionable: vec![],
+                    needs_confirmation: vec![],
+                },
+                recovery: vec![],
+                migration: Some(migration),
+                capabilities: ReviewWorkspaceCapabilities {
+                    continuous_editing: false,
+                    usage_import: false,
+                    migration: true,
+                },
+            });
+        }
         let provider = self.provider.clone();
         let (current, recovery) = super::service::io(move || {
             let reader = provider.open_reader()?;

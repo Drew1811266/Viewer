@@ -64,6 +64,14 @@ pub struct EvidenceBinding {
 pub struct ReviewIndexV3 {
     pub project_id: ProjectId,
     pub streams: Vec<ReviewStreamV3>,
+    pub legacy_index: Option<LegacyIndexRef>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct LegacyIndexRef {
+    #[serde(with = "super::wire::digest")]
+    pub blake3: [u8; 32],
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -95,12 +103,27 @@ pub struct ArchiveRecordRef {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct LegacyRecordRef {
+    #[serde(default, skip_serializing_if = "LegacyRecordKind::is_completed")]
+    pub kind: LegacyRecordKind,
     #[serde(deserialize_with = "super::wire::canonical_id")]
     pub round_id: ReviewRoundId,
     pub protocol_version: String,
     pub location: String,
     #[serde(with = "super::wire::digest")]
     pub blake3: [u8; 32],
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum LegacyRecordKind {
+    #[default]
+    Completed,
+    Draft,
+}
+impl LegacyRecordKind {
+    fn is_completed(&self) -> bool {
+        *self == Self::Completed
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]

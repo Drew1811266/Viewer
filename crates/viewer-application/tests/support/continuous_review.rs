@@ -26,6 +26,8 @@ pub struct MemoryRepository {
     pub fail_commit: Mutex<Option<ReviewCommitError>>,
     pub fail_view_after_commit: Mutex<bool>,
     usage: Mutex<HashMap<ReviewUsageId, ReviewUsageDeclaration>>,
+    pub migration: Mutex<Option<MigrationInspection>>,
+    legacy: Mutex<Option<MigrationInspection>>,
 }
 impl MemoryRepository {
     pub fn current(&self) -> Option<StoredContinuousSnapshot> {
@@ -33,6 +35,40 @@ impl MemoryRepository {
     }
 }
 impl ContinuousReviewRepositoryPort for MemoryRepository {
+    fn load_legacy(
+        &self,
+        stream: ReviewStreamId,
+        round: ReviewRoundId,
+    ) -> Result<LegacyReviewRecord, ReviewCommitError> {
+        let inspection = self.legacy.lock().unwrap();
+        let inspection = inspection.as_ref().ok_or(ReviewCommitError::Integrity)?;
+        let reference = inspection
+            .legacy_records
+            .iter()
+            .find(|r| r.round_id == round && r.stream_id == stream)
+            .ok_or(ReviewCommitError::Integrity)?
+            .clone();
+        let contents = if let Some(draft) = inspection
+            .active_draft
+            .as_ref()
+            .filter(|d| d.draft.review_round_id == round)
+        {
+            LegacyReviewContents::Draft(draft.draft.clone())
+        } else {
+            LegacyReviewContents::Completed(
+                inspection
+                    .completed_candidates
+                    .iter()
+                    .find(|c| c.review_round_id == round)
+                    .ok_or(ReviewCommitError::Integrity)?
+                    .clone(),
+            )
+        };
+        Ok(LegacyReviewRecord {
+            reference,
+            contents,
+        })
+    }
     fn load_usage(
         &self,
         _: ReviewStreamId,
@@ -212,10 +248,50 @@ impl ContinuousReviewRepositoryPort for MemoryRepository {
 }
 struct Provider(Arc<MemoryRepository>);
 impl ContinuousReviewRepositoryProviderPort for Provider {
+    fn inspect_migration(&self) -> Result<Option<MigrationInspection>, ReviewCommitError> {
+        Ok(self.0.migration.lock().unwrap().clone())
+    }
+    fn migrate(
+        &self,
+        request: MigrationCommitRequest,
+    ) -> Result<ReviewCommitReceipt, ReviewCommitError> {
+        let inspection = self
+            .0
+            .migration
+            .lock()
+            .unwrap()
+            .clone()
+            .ok_or(ReviewCommitError::MigrationRequired)?;
+        *self.0.legacy.lock().unwrap() = Some(inspection.clone());
+        let state =
+            prepare_migration_state(&inspection, &request.envelope, &request.next.state.assets)
+                .map_err(|_| ReviewCommitError::StaleSnapshot)?;
+        if state != request.next.state {
+            return Err(ReviewCommitError::Integrity);
+        }
+        let result = self.0.commit(ReviewCommitRequest {
+            expected: None,
+            production: request.envelope.context.production,
+            next: request.next,
+            archives: vec![],
+            adopted_usage: vec![],
+            staged_evidence: request.staged_evidence,
+        });
+        if result.is_ok() || result == Err(ReviewCommitError::OutcomeUnknown) {
+            *self.0.migration.lock().unwrap() = None;
+        }
+        result
+    }
     fn open_reader(&self) -> Result<Arc<dyn ContinuousReviewRepositoryPort>, ReviewCommitError> {
+        if self.0.migration.lock().unwrap().is_some() {
+            return Err(ReviewCommitError::MigrationRequired);
+        }
         Ok(self.0.clone())
     }
     fn open_writer(&self) -> Result<Arc<dyn ContinuousReviewRepositoryPort>, ReviewCommitError> {
+        if self.0.migration.lock().unwrap().is_some() {
+            return Err(ReviewCommitError::MigrationRequired);
+        }
         Ok(self.0.clone())
     }
 }
@@ -414,6 +490,52 @@ pub fn usage_importer(result: &ReviewApplyResult) -> Arc<Importer> {
     })))
 }
 impl Fixture {
+    pub fn legacy_draft(&self) -> MigrationInspection {
+        let mut draft = ReviewDraft::new(
+            ProjectId::from_u128(1),
+            ReviewStreamId::from_u128(2),
+            ReviewRoundId::from_u128(50),
+            None,
+            None,
+            1,
+            vec![asset(EntityId::from_u128(10))],
+        )
+        .unwrap();
+        draft
+            .upsert_feedback(Feedback {
+                id: FeedbackId::from_u128(51),
+                text: "保留这条原文".into(),
+                created_at_ms: 2,
+                targets: vec![FeedbackTarget {
+                    asset_version_id: draft.assets[0].id,
+                    anchor: FeedbackAnchor::Asset,
+                }],
+            })
+            .unwrap();
+        let inspection = MigrationInspection {
+            legacy_protocol: ReviewProtocolVersion::V2,
+            index_digest: [1; 32],
+            inspection_digest: [2; 32],
+            legacy_records: vec![LegacyReviewReference {
+                stream_id: draft.review_stream_id,
+                round_id: draft.review_round_id,
+                protocol: ReviewProtocolVersion::V2,
+                is_draft: true,
+                blake3: [3; 32],
+            }],
+            active_draft: Some(PersistedReviewDraft {
+                protocol_version: ReviewProtocolVersion::V2,
+                draft,
+            }),
+            completed_candidates: vec![],
+            limitations: vec![
+                ReviewHistoryLimitation::LegacyEvidenceAbsent,
+                ReviewHistoryLimitation::ExternalCopiesCannotBeRevoked,
+            ],
+        };
+        *self.repository.migration.lock().unwrap() = Some(inspection.clone());
+        inspection
+    }
     pub fn new() -> Self {
         Self {
             repository: Arc::default(),

@@ -914,6 +914,7 @@
         "blake3"
       ],
       "properties": {
+        "kind": { "enum": ["completed", "draft"] },
         "roundId": {
           "$ref": "#/$defs/uuid"
         },
@@ -926,7 +927,7 @@
         "location": {
           "type": "string",
           "maxLength": 54,
-          "pattern": "^rounds/[0-9a-f-]{36}(?:\\.json|/round\\.json)$"
+          "pattern": "^(?:rounds/[0-9a-f-]{36}(?:\\.json|/round\\.json)|drafts/[0-9a-f-]{36}\\.json)$"
         },
         "blake3": {
           "$ref": "#/$defs/digest"

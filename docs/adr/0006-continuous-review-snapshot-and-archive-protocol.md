@@ -200,6 +200,44 @@ path and full digest, requires explicit position confirmation, and remains subje
 checks. Unrelated later rebinding cannot be laundered through an earlier declaration. No hashing or
 declaration field proves who produced an output or whether the requested work was performed.
 
+### Task 13 explicit migration refinements
+
+Migration inspection binds both the original index digest and a composite inspection digest covering
+all indexed legacy record digests and the active draft. The latter is essential because draft saves
+do not update the legacy index. Only the latest completed record of each stream is offered as a
+candidate; all indexed records and declared PNGs are verified, with at most 10,000 legacy records and
+64 MiB of retained candidate/draft wire bytes per inspection. No source-file scan implies consent.
+
+Prepare expands migration identities once into the command envelope. Apply and the repository use
+the same pure migration-state builder; retries never regenerate identities. The provider receives
+`MigrationCommitRequest` (envelope, prepared state and staged evidence), not just a choice/digest:
+context, exact generated IDs and image evidence are necessary for the atomic migration boundary.
+The command cache accounts for migration IDs; one migration is capped at 100,000 selected targets.
+
+The v3 index has an optional hash-only `legacyIndex` reference; the canonical backup is
+`recovery/legacy-index-{blake3}.json`. Legacy refs distinguish `draft` from `completed` (the default
+for existing v3 engineering fixtures). Drafts remain at their original canonical paths and bytes,
+not relabeled as Completed. Recovery enumeration recognizes verified index backups separately from
+editable input. Interrupted attempts may leave multiple immutable backups; these are bounded,
+never interpreted as Agent requirements, and not automatically deleted.
+
+Draft feedback retains its identity/text and gains target/text revisions. Old v1/v2 image records
+have no immutable clean base: those targets explicitly retain `LegacyEvidenceAbsent` pending state,
+even if a live source currently matches. Only an explicit new-asset binding and position confirmation
+permits fresh capture. Video source checks remain independent; no video backup is fabricated.
+Completed feedback is never automatically current; selected targets gain new identities/provenance,
+and unbound selections remain pending. `ContinueLegacy` uses LegacyTargetRef plus explicit bindings
+after migration, rather than inventing v3 keys for old targets. History returns a typed Draft or
+Completed record and no actionable list. Another stream's active draft blocks an inapplicable context.
+
+A legacy catalog with no active draft and no indexed history has nothing to migrate: it reads as
+no_review_state and opening it changes no bytes. Its first successful new save retains the empty
+old index backup and creates the first state. Unindexed orphan files are not adopted. Nonempty legacy
+data requires explicit migration; unknown protocol versions fail closed. All migration writes share
+the legacy writer lease and recheck the complete inspection before atomic index replacement. Faults
+after replacement return OutcomeUnknown; earlier faults leave the old entry valid. Legacy writers
+reject v3. No real project is migrated and no compatibility "latest" entry is emitted.
+
 The `continuous_review_state`, `continuous_review_mutation`, `continuous_review_archive`,
 `continuous_review_restore` and `continuous_review_delta` integration suites cover the pure rules.
 Checkpoint evidence and any contract refinements are recorded in the

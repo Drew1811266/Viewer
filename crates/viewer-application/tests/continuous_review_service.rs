@@ -55,6 +55,198 @@ fn save(asset_version_id: AssetVersionId, text: &str) -> ReviewWorkspaceCommand 
     }
 }
 
+#[tokio::test]
+async fn legacy_view_is_read_only_until_explicit_migration_and_retry_keeps_ids() {
+    let f = Fixture::new();
+    let inspection = f.legacy_draft();
+    let service = f.service();
+    service
+        .prepare_assets(
+            &[EntityId::from_u128(10)],
+            ReviewTaskCancellation::default(),
+        )
+        .await
+        .unwrap();
+    let view = service.view(ReviewStreamId::from_u128(2)).await.unwrap();
+    assert!(view.migration.is_some());
+    assert!(view.current.is_none());
+    assert!(!view.capabilities.continuous_editing);
+    let command = ReviewWorkspaceCommand::Migrate(MigrationPlan {
+        inspection_digest: inspection.inspection_digest,
+        choice: MigrationChoice::KeepHistoryOnly,
+    });
+    let envelope = service
+        .prepare(ReviewCommandId::new(), None, command.clone())
+        .await
+        .unwrap();
+    assert_eq!(
+        service
+            .prepare(envelope.command_id, None, command)
+            .await
+            .unwrap(),
+        envelope
+    );
+    assert!(f.repository.current().is_none());
+    *f.assets.changed.lock().unwrap() = true;
+    *f.repository.fail_commit.lock().unwrap() = Some(ReviewCommitError::OutcomeUnknown);
+    assert_eq!(
+        service.apply(envelope.clone()).await,
+        Err(ReviewWorkspaceError::Repository(
+            ReviewCommitError::OutcomeUnknown
+        ))
+    );
+    let saved = f.repository.current().unwrap();
+    let result = service.apply(envelope).await.unwrap();
+    assert_eq!(result.receipt.snapshot, saved.reference);
+    assert!(result.view.projection.actionable.is_empty());
+    assert_eq!(result.view.projection.needs_confirmation.len(), 1);
+    assert_eq!(
+        saved.state.feedback[0].id,
+        inspection.active_draft.unwrap().draft.feedback[0].id
+    );
+    assert_eq!(
+        f.evidence.captures(),
+        0,
+        "legacy source must not silently become old evidence"
+    );
+}
+
+#[tokio::test]
+async fn migration_explicit_fresh_binding_captures_new_evidence_and_cancellation_leaves_old_data() {
+    let f = Fixture::new();
+    let inspection = f.legacy_draft();
+    let service = f.service();
+    service.inspect_migration().await.unwrap();
+    let new = service
+        .prepare_assets(
+            &[EntityId::from_u128(11)],
+            ReviewTaskCancellation::default(),
+        )
+        .await
+        .unwrap()
+        .remove(0);
+    let old = &inspection.active_draft.as_ref().unwrap().draft;
+    let target = LegacyTargetRef {
+        round_id: old.review_round_id,
+        feedback_id: old.feedback[0].id,
+        target_index: 0,
+    };
+    let envelope = service
+        .prepare(
+            ReviewCommandId::new(),
+            None,
+            ReviewWorkspaceCommand::Migrate(MigrationPlan {
+                inspection_digest: inspection.inspection_digest,
+                choice: MigrationChoice::ContinueSelected {
+                    legacy_targets: vec![],
+                    bindings: vec![MigrationBinding {
+                        legacy_target: target,
+                        new_asset_version_id: new.id,
+                        anchor: FeedbackAnchor::Asset,
+                        position_confirmed: true,
+                    }],
+                },
+            }),
+        )
+        .await
+        .unwrap();
+    let cancel = ReviewTaskCancellation::default();
+    cancel.cancel();
+    assert_eq!(
+        service
+            .apply_with_cancellation(envelope.clone(), cancel)
+            .await,
+        Err(ReviewWorkspaceError::Cancelled)
+    );
+    assert!(f.repository.current().is_none());
+    let result = service.apply(envelope).await.unwrap();
+    assert_eq!(result.view.projection.actionable.len(), 1);
+    assert_eq!(f.evidence.captures(), 1);
+    let current = result.view.current.unwrap();
+    assert_eq!(
+        current.state.feedback[0].targets[0].asset_version_id,
+        new.id
+    );
+    assert!(matches!(
+        current.evidence[0].capability,
+        EvidenceCapability::Image { .. }
+    ));
+}
+
+#[tokio::test]
+async fn migrated_legacy_history_can_be_continued_later_using_legacy_keys_and_fresh_identity() {
+    use viewer_application::review_evidence::HistorySelector;
+    let f = Fixture::new();
+    let inspection = f.legacy_draft();
+    let service = f.service();
+    service.inspect_migration().await.unwrap();
+    let envelope = service
+        .prepare(
+            ReviewCommandId::new(),
+            None,
+            ReviewWorkspaceCommand::Migrate(MigrationPlan {
+                inspection_digest: inspection.inspection_digest,
+                choice: MigrationChoice::KeepHistoryOnly,
+            }),
+        )
+        .await
+        .unwrap();
+    let first = service.apply(envelope).await.unwrap();
+    let old = &inspection.active_draft.as_ref().unwrap().draft;
+    let history = service
+        .history(HistorySelector::Legacy(old.review_round_id))
+        .await
+        .unwrap();
+    assert!(history.entries.is_empty());
+    assert!(history.restore_actions.is_empty());
+    assert!(history.legacy.is_some());
+    let version = service
+        .prepare_assets(
+            &[EntityId::from_u128(11)],
+            ReviewTaskCancellation::default(),
+        )
+        .await
+        .unwrap()
+        .remove(0);
+    let key = LegacyTargetRef {
+        round_id: old.review_round_id,
+        feedback_id: old.feedback[0].id,
+        target_index: 0,
+    };
+    let history_ref = HistoryRef {
+        project_id: old.project_id,
+        stream_id: old.review_stream_id,
+        source: HistorySource::Legacy {
+            round_id: old.review_round_id,
+            record_blake3: inspection.legacy_records[0].blake3,
+            targets: vec![key],
+        },
+    };
+    let envelope = service
+        .prepare(
+            ReviewCommandId::new(),
+            Some(first.receipt.snapshot.snapshot_id),
+            ReviewWorkspaceCommand::ContinueLegacy {
+                history_ref,
+                bindings: vec![MigrationBinding {
+                    legacy_target: key,
+                    new_asset_version_id: version.id,
+                    anchor: FeedbackAnchor::Asset,
+                    position_confirmed: true,
+                }],
+            },
+        )
+        .await
+        .unwrap();
+    let result = service.apply(envelope).await.unwrap();
+    let state = result.view.current.unwrap().state;
+    assert_eq!(state.feedback.len(), 2);
+    assert_ne!(state.feedback[1].id, old.feedback[0].id);
+    assert_eq!(state.feedback[1].text, old.feedback[0].text);
+    assert_eq!(result.view.projection.actionable.len(), 1);
+    assert_eq!(result.view.projection.needs_confirmation.len(), 1);
+}
+
 async fn first(f: &Fixture, service: &ContinuousReviewService) -> ReviewApplyResult {
     let assets = service
         .prepare_assets(

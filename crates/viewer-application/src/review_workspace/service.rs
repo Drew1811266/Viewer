@@ -14,7 +14,7 @@ pub struct ContinuousReviewService {
     pub(super) context: ReviewWorkspaceContext,
     pub(super) provider: Arc<dyn ContinuousReviewRepositoryProviderPort>,
     pub(super) assets: Arc<dyn ContinuousReviewAssetPort>,
-    evidence: Arc<dyn ReviewEvidencePort>,
+    pub(super) evidence: Arc<dyn ReviewEvidencePort>,
     codec: Arc<dyn ReviewCommandCodecPort>,
     clock: Arc<dyn ClockPort>,
     pub(super) prepared: Mutex<HashMap<AssetVersionId, PreparedReviewAsset>>,
@@ -22,6 +22,7 @@ pub struct ContinuousReviewService {
     gate: Mutex<()>,
     pub(super) usage_importer: Option<Arc<dyn UsageImportPort>>,
     pub(super) usage_previews: Mutex<HashMap<ReviewUsageId, UsageImportPreview>>,
+    pub(super) migration_inspection: Mutex<Option<MigrationInspection>>,
 }
 impl ContinuousReviewService {
     pub fn new(
@@ -44,6 +45,7 @@ impl ContinuousReviewService {
             gate: Mutex::new(()),
             usage_importer: None,
             usage_previews: Mutex::new(HashMap::new()),
+            migration_inspection: Mutex::new(None),
         }
     }
 
@@ -96,6 +98,7 @@ impl ContinuousReviewService {
         let count = match &command {
             ReviewWorkspaceCommand::SaveFeedback { targets, .. } => targets.len(),
             ReviewWorkspaceCommand::ContinueHistorical { bindings, .. } => bindings.len(),
+            ReviewWorkspaceCommand::ContinueLegacy { bindings, .. } => bindings.len(),
             _ => 1,
         };
         if count > MAX_TARGETS_PER_FEEDBACK {
@@ -110,9 +113,24 @@ impl ContinuousReviewService {
         }
         let retained_bytes = envelopes.values().fold(0_usize, |sum, e| {
             sum.saturating_add(super::budget::command_bytes(&e.command))
+                .saturating_add(super::migration::generated_bytes(&e.generated.migration))
         });
+        let migration = if let ReviewWorkspaceCommand::Migrate(plan) = &command {
+            let inspection = self.migration_inspection.lock().await;
+            super::migration_state::generate(
+                inspection
+                    .as_ref()
+                    .ok_or(ReviewWorkspaceError::PreviewRequired)?,
+                &self.context,
+                plan,
+            )?
+        } else {
+            vec![]
+        };
         if envelopes.len() >= 128
-            || retained_bytes.saturating_add(super::budget::command_bytes(&command))
+            || retained_bytes
+                .saturating_add(super::budget::command_bytes(&command))
+                .saturating_add(super::migration::generated_bytes(&migration))
                 > super::budget::MAX_PREPARED_BYTES
         {
             return Err(ContinuousReviewError::LimitExceeded.into());
@@ -131,6 +149,7 @@ impl ContinuousReviewService {
                 targets: (0..count)
                     .map(|_| (ReviewTargetId::new(), ReviewTargetRevisionId::new()))
                     .collect(),
+                migration,
                 created_at_ms: self.clock.unix_millis(),
             },
         };
@@ -158,6 +177,9 @@ impl ContinuousReviewService {
         }
         if self.codec.digest(&envelope)? != envelope.payload_digest {
             return Err(ReviewCommitError::CommandConflict.into());
+        }
+        if matches!(envelope.command, ReviewWorkspaceCommand::Migrate(_)) {
+            return self.apply_migration(envelope, cancellation).await;
         }
         let provider = self.provider.clone();
         let writer = io(move || provider.open_writer()).await?;
@@ -276,7 +298,7 @@ impl ContinuousReviewService {
         }
     }
 
-    async fn refresh_after_commit(
+    pub(super) async fn refresh_after_commit(
         &self,
         receipt: ReviewCommitReceipt,
     ) -> Result<ReviewApplyResult, ReviewWorkspaceError> {

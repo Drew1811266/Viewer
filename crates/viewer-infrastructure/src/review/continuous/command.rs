@@ -36,6 +36,26 @@ impl ReviewCommandCodecPort for ContinuousReviewCommandCodec {
             &e.generated.targets,
             e.generated.created_at_ms,
         ))?;
+        if e.generated.migration.len() > 10_000
+            || e.generated
+                .migration
+                .iter()
+                .map(|g| g.targets.len())
+                .sum::<usize>()
+                > 100_000
+        {
+            return Err(ContinuousReviewError::LimitExceeded.into());
+        }
+        out.field(&e.generated.migration.len())?;
+        for generated in &e.generated.migration {
+            out.field(&(
+                generated.round_id,
+                generated.legacy_feedback_id,
+                generated.feedback_id,
+                generated.text_revision_id,
+                &generated.targets,
+            ))?;
+        }
         match &e.command {
             ReviewWorkspaceCommand::SaveFeedback {
                 feedback_id,
@@ -173,6 +193,19 @@ impl ReviewCommandCodecPort for ContinuousReviewCommandCodec {
                             out.anchor(&binding.anchor)?;
                         }
                     }
+                }
+            }
+            ReviewWorkspaceCommand::ContinueLegacy {
+                history_ref,
+                bindings,
+            } => {
+                out.field(&("continueLegacy", bindings.len()))?;
+                out.limit_targets(bindings.len())?;
+                out.history(history_ref)?;
+                for binding in bindings {
+                    out.legacy(&binding.legacy_target)?;
+                    out.field(&(binding.new_asset_version_id, binding.position_confirmed))?;
+                    out.anchor(&binding.anchor)?;
                 }
             }
         }

@@ -368,6 +368,7 @@ fn history_lookup_is_bounded_at_ten_thousand_nodes_without_hiding_valid_current(
         previous = Some(reference);
     }
     let mut index = v3::ReviewIndexV3 {
+        legacy_index: None,
         project_id: ProjectId::from_u128(1),
         streams: vec![v3::ReviewStreamV3 {
             review_stream_id: ReviewStreamId::from_u128(2),

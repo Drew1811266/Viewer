@@ -265,10 +265,15 @@ pub(super) fn index(value: &ReviewIndexV3) -> Result<(), ReviewProtocolError> {
             if !legacy.insert(reference.round_id) {
                 return Err(InvalidData);
             }
-            let expected = match reference.protocol_version.as_str() {
+            let completed = match reference.protocol_version.as_str() {
                 "viewer.review/1" => format!("rounds/{}.json", reference.round_id),
                 "viewer.review/2" => format!("rounds/{}/round.json", reference.round_id),
                 _ => return Err(UnsupportedVersion),
+            };
+            let expected = if reference.kind == super::LegacyRecordKind::Draft {
+                format!("drafts/{}.json", reference.round_id)
+            } else {
+                completed
             };
             if reference.location != expected {
                 return Err(InvalidData);

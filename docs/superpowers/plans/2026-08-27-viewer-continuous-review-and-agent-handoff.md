@@ -477,7 +477,7 @@ match repository.find_command(stream_id, command_id)? {
 - [x] **Step 5 — GREEN。** `cargo test --locked -p viewer-infrastructure --test continuous_review_recovery --test continuous_review_repository`。
 - [x] **Step 6 — 提交。** `git commit -m "feat(review): recover uncertain commits without duplicate feedback"`。
 
-Task 8 接口细化：RecoveryDraft 显式包含 stream_id，使首次保存（expected_snapshot_id 为空）也能精确查命令。恢复记录采用 Viewer 内部闭合协议 viewer.review.recovery/1，不是 Agent 入口；列表最多 10,000 文件／合计 64 MiB。AfterRecovery 在显式保存输入后注入，提交不伪造编辑器输入。AfterIndex 位于索引 rename 后、目录 fsync 前；失败不回滚，重试核验原 receipt。恢复记录保留，不删除历史或证据。
+Task 8 接口细化：RecoveryDraft 显式包含 stream_id，使首次保存（expected_snapshot_id 为空）也能精确查命令。恢复记录采用 Viewer 内部闭合协议 viewer.review.recovery/1，不是 Agent 入口；列表最多 10,000 记录／合计 64 MiB，写前在同一守卫下计算替换后的数量／字节。最多 64 个暂存残留另行有界忽略，不当作草稿，也不自动清理。AfterRecovery 在显式保存输入后注入，提交不伪造编辑器输入。AfterIndex 位于索引 rename 后、目录 fsync 前；失败不回滚，重试核验原 receipt。恢复记录保留，不删除历史或证据。
 
 ### Task 9: 首次保存前捕获底图与不可变编号证据
 
@@ -559,6 +559,11 @@ let disposition = if observed_hash == captured_hash {
 - [x] **Step 6 — 提交。** `git commit -m "feat(review): validate source versions without guessing asset lineage"`。
 
 ### Task 11: 持续评审 Application 用例
+
+阶段 B 复审后续项：接入用例时量测多存档／长历史的保存与读取成本。目前每次提交会核验全部
+已索引 archive／usage，并重复追溯父链；单次 10,000 节点边界不等于已证明交互延迟达标。
+若量测需要优化，复用单次操作内的有界验证上下文，不能省略摘要、祖先关系或证据验证，
+也不能跨当前索引复用未经核验的缓存。此项尚未量测，不是已完成的性能保证。
 
 **Files:** Create `crates/viewer-application/src/review_workspace/service.rs`、`crates/viewer-application/src/review_workspace/editing.rs`、`crates/viewer-application/src/review_workspace/archiving.rs`、`crates/viewer-application/src/review_workspace/history.rs`、`crates/viewer-application/src/review_workspace/projection.rs`、`crates/viewer-application/tests/continuous_review_service.rs`、`crates/viewer-application/tests/support/continuous_review.rs`；`crates/viewer-infrastructure/src/review/continuous/command.rs`。Modify `crates/viewer-application/src/review_workspace/mod.rs`、`crates/viewer-application/src/review_workspace/ports.rs`、`crates/viewer-infrastructure/src/review/continuous/mod.rs`。
 

@@ -4,13 +4,14 @@ use super::super::{
 use super::{
     faults::ReviewCommitFaultPoint,
     history,
-    owned_io::Directory,
+    owned_io::{Directory, map_io},
     repository::{ContinuousReviewRepository, View, protocol_error},
 };
 use viewer_application::review_workspace::*;
 use viewer_domain::ReviewCommandId;
 
 const MAX_RECOVERY_FILES: usize = 10_000;
+const MAX_TEMPORARY_FILES: usize = 64;
 
 pub(super) fn save(
     repository: &ContinuousReviewRepository,
@@ -35,6 +36,7 @@ pub(super) fn save(
     {
         return Err(ReviewCommitError::CommandConflict);
     }
+    verify_capacity(&directory, draft.command_id, bytes.len() as u64)?;
     atomic_replace_at(
         &directory.file,
         &format!("{}.json", draft.command_id),
@@ -57,21 +59,9 @@ pub(super) fn load(
     let Some(directory) = view.directory.child("recovery", false)? else {
         return Ok(vec![]);
     };
-    let mut names = directory.entries(MAX_RECOVERY_FILES)?;
-    names.sort();
     let mut drafts = vec![];
     let mut total = 0_u64;
-    for name in names {
-        if name.starts_with(".viewer-review-") && name.ends_with(".tmp") {
-            continue;
-        }
-        let text = name
-            .strip_suffix(".json")
-            .ok_or(ReviewCommitError::Integrity)?;
-        let id: ReviewCommandId = text.parse().map_err(|_| ReviewCommitError::Integrity)?;
-        if id.to_string() != text {
-            return Err(ReviewCommitError::Integrity);
-        }
+    for (name, id) in entries(&directory)? {
         let bytes = directory
             .read(&name, MAX_REVIEW_DOCUMENT_BYTES - total)?
             .ok_or(ReviewCommitError::Integrity)?;
@@ -83,6 +73,62 @@ pub(super) fn load(
         drafts.push(draft);
     }
     Ok(drafts)
+}
+
+fn entries(directory: &Directory) -> Result<Vec<(String, ReviewCommandId)>, ReviewCommitError> {
+    // Bound both real records and ignored staging remnants. A crash or an active
+    // save's temporary name must not turn 10,000 valid drafts into an unreadable set.
+    let mut names = directory.entries(MAX_RECOVERY_FILES + MAX_TEMPORARY_FILES)?;
+    names.sort();
+    let mut records = vec![];
+    let mut temporary_count = 0;
+    for name in names {
+        if name.starts_with(".viewer-review-") && name.ends_with(".tmp") {
+            temporary_count += 1;
+            if temporary_count > MAX_TEMPORARY_FILES {
+                return Err(ReviewCommitError::LimitExceeded);
+            }
+            continue;
+        }
+        if records.len() >= MAX_RECOVERY_FILES {
+            return Err(ReviewCommitError::LimitExceeded);
+        }
+        let text = name
+            .strip_suffix(".json")
+            .ok_or(ReviewCommitError::Integrity)?;
+        let id: ReviewCommandId = text.parse().map_err(|_| ReviewCommitError::Integrity)?;
+        if id.to_string() != text {
+            return Err(ReviewCommitError::Integrity);
+        }
+        records.push((name, id));
+    }
+    Ok(records)
+}
+
+fn verify_capacity(
+    directory: &Directory,
+    command_id: ReviewCommandId,
+    replacement_bytes: u64,
+) -> Result<(), ReviewCommitError> {
+    let records = entries(directory)?;
+    let replaces = records.iter().any(|(_, id)| *id == command_id);
+    if !replaces && records.len() == MAX_RECOVERY_FILES {
+        return Err(ReviewCommitError::LimitExceeded);
+    }
+    let mut projected = replacement_bytes;
+    for (name, id) in records {
+        if id == command_id {
+            continue;
+        }
+        let file = directory
+            .regular(&name, false)?
+            .ok_or(ReviewCommitError::Integrity)?;
+        projected = projected
+            .checked_add(file.metadata().map_err(map_io)?.len())
+            .filter(|total| *total <= MAX_REVIEW_DOCUMENT_BYTES)
+            .ok_or(ReviewCommitError::LimitExceeded)?;
+    }
+    directory.verify()
 }
 
 pub(super) fn resolve(

@@ -80,15 +80,20 @@ absent from the pure Domain state without guessing or rewriting another stream's
 records remain infrastructure-owned and are mapped to independent application types.
 
 Task 7 implements the application repository ports and a filesystem adapter sharing the existing
-`write.lock` lease. Atomic publication now uses descriptor-relative temporary files/link/rename in
+`write.lock` lease. Atomic publication uses descriptor-relative temporary files and rename in
 the same atomic module for both legacy and continuous repositories. The writer also checks that its
 lease file and repository directory have not been substituted. Readers do not create metadata.
+Immutable create-once uses exclusive rename (Darwin RENAME_EXCL / Linux RENAME_NOREPLACE), never
+link-then-unlink: interruption must not strand a double-linked object rejected by nlink checks.
+Unsupported exclusive-rename platforms/filesystems fail closed rather than weaken this invariant.
 
 The transaction verifies expected reference and stream scope, validates state/archive/usage inputs,
 installs immutable evidence and records, checks their references, rechecks the fixed index bytes,
 then publishes one index atomically. Existing object names cannot be reused for different bytes.
 Partial archives preserve shared feedback and later edits. Snapshot-origin references and claimed
 archive/usage transitions require actual committed evidence; unindexed files do not establish history.
+An archive's known basis must be reachable from that checkpoint's historical `before`, not just from
+today's current head: restoring the same target later cannot become an earlier archive's basis.
 Image base identity stays fixed for a captured AssetVersion across the verified parent chain.
 
 Domain exposes the narrow `validate_shared_identities(candidate, historical)` validator so the
@@ -114,7 +119,10 @@ and user position confirmation remain Application prerequisites, not implied by 
 Task 8 implements persistent command deduplication before CAS, six fault boundaries, bounded recovery
 and history traversal. RecoveryDraft adds an explicit stream_id (including first-save recovery);
 the internal closed `viewer.review.recovery/1` format is never Agent feedback. Recovery lists are
-bounded to 10,000 entries and 64 MiB total. The index fault is after rename and before directory sync;
+bounded to 10,000 records and 64 MiB total. Saves check projected count/bytes under the writer gate,
+accounting for replacements before publication. Up to 64 staging remnants are separately bounded
+and ignored; they are not recovery input, and neither input nor remnants are automatically deleted.
+The index fault is after rename and before directory sync;
 uncertain results preserve the published index and are resolved by command/digest, never rolled back.
 Active archive coverage cannot be recorded twice; explicit restoration permits subsequent archival.
 

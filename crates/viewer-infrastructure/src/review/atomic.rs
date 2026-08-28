@@ -141,30 +141,65 @@ fn publish(
         file.sync_all()?;
         drop(file);
         let fd = parent.as_raw_fd();
-        let status = unsafe {
-            if once {
-                libc::linkat(fd, temporary.as_ptr(), fd, destination.as_ptr(), 0)
-            } else {
-                libc::renameat(fd, temporary.as_ptr(), fd, destination.as_ptr())
-            }
-        };
-        if status != 0 {
+        if once {
+            rename_exclusive(parent, &temporary, &destination)?;
+        } else if unsafe { libc::renameat(fd, temporary.as_ptr(), fd, destination.as_ptr()) } != 0 {
             return Err(io::Error::last_os_error());
         }
         // Publication has happened. A failed durability barrier must never restore
         // the previous index: callers must resolve the command from the head.
         before_directory_sync()?;
         parent.sync_all()?;
-        if once {
-            unlink_temporary(parent, &temporary)?;
-            parent.sync_all()?;
-        }
         Ok(())
     })();
     if result.is_err() {
         let _ = unlink_temporary(parent, &temporary);
     }
     result
+}
+
+fn rename_exclusive(parent: &File, temporary: &CStr, destination: &CStr) -> io::Result<()> {
+    let fd = parent.as_raw_fd();
+    // Both names are validated single components in the same owned directory.
+    // Never publish via link/unlink: an interruption would leave nlink == 2,
+    // making an otherwise valid immutable object fail the repository's safety checks.
+    #[cfg(target_os = "macos")]
+    let status = unsafe {
+        libc::renameatx_np(
+            fd,
+            temporary.as_ptr(),
+            fd,
+            destination.as_ptr(),
+            libc::RENAME_EXCL,
+        )
+    };
+    #[cfg(target_os = "linux")]
+    let status = unsafe {
+        libc::syscall(
+            libc::SYS_renameat2,
+            fd,
+            temporary.as_ptr(),
+            fd,
+            destination.as_ptr(),
+            libc::RENAME_NOREPLACE,
+        )
+    };
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    {
+        if status == 0 {
+            Ok(())
+        } else {
+            Err(io::Error::last_os_error())
+        }
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    {
+        let _ = (fd, temporary, destination);
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "exclusive rename is required",
+        ))
+    }
 }
 
 fn unlink_temporary(parent: &File, temporary: &CStr) -> io::Result<()> {
@@ -183,7 +218,45 @@ pub(super) fn sync_directory(path: &Path) -> io::Result<()> {
 mod tests {
     use super::*;
     use std::fs;
-    use std::os::unix::fs::symlink;
+    use std::os::unix::fs::{MetadataExt, symlink};
+
+    #[test]
+    fn interrupted_create_once_keeps_single_linked_bytes_and_is_retryable() {
+        const CHILD_DIRECTORY: &str = "VIEWER_ATOMIC_INTERRUPT_TEST_DIRECTORY";
+        if let Some(path) = std::env::var_os(CHILD_DIRECTORY) {
+            let parent = File::open(path).unwrap();
+            publish(
+                &parent,
+                "state.json",
+                true,
+                |file| file.write_all(b"immutable"),
+                || std::process::exit(73),
+            )
+            .unwrap();
+            panic!("child did not interrupt publication");
+        }
+        let root = tempfile::TempDir::new().unwrap();
+        // Exit at the publication/barrier boundary without stack unwinding or cleanup.
+        let child = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "review::atomic::tests::interrupted_create_once_keeps_single_linked_bytes_and_is_retryable",
+            ])
+            .env(CHILD_DIRECTORY, root.path())
+            .output()
+            .unwrap();
+        assert_eq!(child.status.code(), Some(73), "{child:?}");
+        let path = root.path().join("state.json");
+        assert_eq!(fs::metadata(&path).unwrap().nlink(), 1);
+        assert_eq!(fs::read(&path).unwrap(), b"immutable");
+        assert_eq!(fs::read_dir(root.path()).unwrap().count(), 1);
+        let parent = File::open(root.path()).unwrap();
+        assert!(matches!(
+            atomic_create_once_at(&parent, "state.json", b"replacement"),
+            Err(AtomicCreateOnceError::AlreadyExists)
+        ));
+        assert_eq!(fs::read(path).unwrap(), b"immutable");
+    }
 
     #[test]
     fn descriptor_publication_never_follows_a_replaced_parent_path() {

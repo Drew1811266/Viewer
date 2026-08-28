@@ -24,9 +24,10 @@ pub(super) fn verify_checkpoint(
     };
     for group in &checkpoint.groups {
         let bases = match &group.basis {
-            ArchiveBasis::Known { snapshot, .. } => {
-                vec![history::reachable(view, before.stream_id, snapshot)?.state]
-            }
+            ArchiveBasis::Known { snapshot, .. } => vec![
+                history::reachable_from(view, before.stream_id, Some(checkpoint.before), snapshot)?
+                    .state,
+            ],
             ArchiveBasis::Unknown => vec![],
         };
         let selection = ArchiveSelection {

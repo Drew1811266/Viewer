@@ -53,7 +53,8 @@ AI 素材评审路线阶段 2 已于 2026-08-26 完成：设计文档内部状�
 [阶段记录](reviews/2026-08-27-continuous-review-domain-phase-a.md)。阶段 B、C 现也已完成：
 任务 1–15 已通过各自全仓门禁与独立复验，累计 15 / 23。2026-08-28 已完成获批的
 Node 入口 + Rust 只读核心，见[阶段 D 读取器记录](reviews/2026-08-28-continuous-review-reader-phase-d.md)；
-Task 16 桌面桥接及阶段 E/F 尚未开始，阶段 D 尚未整体完成。架构调整及原失败事实见
+Task 16 已完成接口核对，因桥接契约缺口暂停在实现前，见[Task 16 检查点](progress/2026-08-28-continuous-review-task16-contract-checkpoint.md)。
+阶段 E/F 尚未开始，阶段 D 尚未整体完成。架构调整及原失败事实见
 [阶段 D 架构检查点](progress/2026-08-27-continuous-review-phase-d-architecture-checkpoint.md)。此前已通过结果见
 [阶段 C 记录](reviews/2026-08-27-continuous-review-application-phase-c.md)，阶段 B 结果见
 [阶段 B 记录](reviews/2026-08-27-continuous-review-persistence-phase-b.md)，此前暂停状态见

@@ -15,7 +15,8 @@
 > 执行状态：阶段 A–C 和阶段 D 的任务 14–15 已完成，累计 15 / 23。
 > 阶段 C 最终实现 `21edbf6` 已通过完整 `pnpm verify:clean` 和只读独立复验，检查点 C 完成。
 > 2026-08-28 获批的“Node 入口 + Rust 只读核心”已实现：`7863439`，并发修正 `76726a1`；完整门禁及只读独立复核通过。
-> Task 16 桌面桥接和阶段 E/F 尚未开始；阶段 D 尚未整体完成。见[阶段 D 读取器记录](../../reviews/2026-08-28-continuous-review-reader-phase-d.md)及[架构检查点](../../progress/2026-08-27-continuous-review-phase-d-architecture-checkpoint.md)。
+> Task 16 已核对接口，因素材预绑定入口和完整信封 DTO 缺口暂停在实现前，补充建议待确认；阶段 E/F 尚未开始，阶段 D 尚未整体完成。
+> 最新状态见[Task 16 契约检查点](../../progress/2026-08-28-continuous-review-task16-contract-checkpoint.md)；已验收结果见[阶段 D 读取器记录](../../reviews/2026-08-28-continuous-review-reader-phase-d.md)及[架构检查点](../../progress/2026-08-27-continuous-review-phase-d-architecture-checkpoint.md)。
 > 应用用例、声明、迁移和 Agent 读取器仅在隔离工程验证；UI 和桌面组装尚未切换。
 >
 > 计划基线：`a539f8df5f3e0f3239110df44515ba7cb583e308`；实施基线：`d7abb9961f377ae257c3283ef7893218ec0c53f9`。
@@ -714,6 +715,10 @@ assert.equal(Object.hasOwn(result, 'outcomes'), false)
 - [x] **Step 6 — 提交。** 可构建实现 `7863439`，审阅修正 `76726a1`；完整验证见[阶段 D 读取器记录](../../reviews/2026-08-28-continuous-review-reader-phase-d.md)。
 
 ### Task 16: 桌面命令、DTO 和历史证据授权
+
+> 2026-08-28：接口核对已完成，运行实现尚未开始。以下是原计划；缺失的预绑定入口、完整
+> 重试信封及取消链路细化见[契约检查点](../../progress/2026-08-28-continuous-review-task16-contract-checkpoint.md)，
+> 建议待用户确认，不可将下方四字段示例直接作为完整 apply 信封。
 
 **Files:** Create `src-tauri/src/commands/review_workspace.rs`、`src-tauri/src/dto/review_workspace.rs`、`src-tauri/src/state/review_workspace.rs`、`ui/src/api/reviewWorkspaceTypes.ts`。Modify `src-tauri/src/commands/mod.rs`、`src-tauri/src/dto/mod.rs`、`src-tauri/src/state/mod.rs`、`src-tauri/src/state/session.rs`、`src-tauri/src/lib.rs`、`src-tauri/src/image_protocol.rs`、`crates/viewer-infrastructure/src/image_cache.rs`、`ui/src/api/viewer.ts`、`ui/src/app/workspace/ports.ts`。Tests 随新 Rust 模块；Create `ui/src/api/reviewWorkspaceTypes.test.ts`。
 

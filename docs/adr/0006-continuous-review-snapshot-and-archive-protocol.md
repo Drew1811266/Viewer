@@ -2,7 +2,7 @@
 
 > Status: Active
 >
-> Decision: Accepted and verified for Phases A–B (Tasks 1–10); application/UI/Agent integration remains pending.
+> Decision: Phases A–C verified; Phase D reader architecture amendment accepted on 2026-08-28, implementation pending. UI integration remains pending.
 >
 > Date: 2026-08-27
 
@@ -146,6 +146,30 @@ No protocol bytes, original materials, product UI or version number are changed 
 notarization, formal installers, publication and sales are outside the current development scope.
 
 ## Verification
+
+### Phase D reader architecture amendment — accepted 2026-08-28
+
+The external Node API/CLI delegates to a locally built `viewer-review-reader` binary in the existing
+infrastructure crate. Rust owns descriptor-relative IO, legacy/v3 decoding, evidence checks and
+Domain projection/delta rules. Node owns argument parsing and bounded subprocess transport only.
+This replaces the unaccepted Node pathname-rechecking implementation; it does not activate v3 UI.
+No new third-party runtime dependency is introduced, but a native build is now an explicit prerequisite.
+
+The trusted executable is resolved relative to the installed scripts, or from the caller's explicit
+absolute `VIEWER_REVIEW_READER` override, never repository metadata or an implicit PATH search.
+The internal `viewer.review.reader/1` request is a closed union with a 64 KiB input cap; one bounded
+JSON response is emitted without shell invocation, network, project writes or automatic compilation.
+Legacy API/CLI output and failure conventions remain compatible. Current/history retain the v3
+typed read-result contract and never silently delegate to legacy latest.
+
+Each operation fixes one index and one verified View. A normal atomic index replacement may unlink
+the already-open old index without invalidating its unchanged bytes. This exception does not apply
+to immutable records, source checks or evidence. Directory traversal and enumeration use directory
+descriptors; path metadata rechecks are additional detection, not the confinement mechanism.
+Absent review state requires an existing validated project identity; the reader never creates it.
+Delta traversal is bounded and reuses the pure Domain diff, not a second JavaScript implementation.
+Focused native IO tests, legacy compatibility, owned v3 fixtures and Rust-writer/Node-reader tests
+must pass before accepting this replacement. The previous WIP test failures remain historical evidence.
 
 ### Phase C application interface refinements (Task 11)
 

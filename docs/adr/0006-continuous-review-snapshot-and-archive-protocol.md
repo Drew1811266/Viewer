@@ -147,6 +147,41 @@ notarization, formal installers, publication and sales are outside the current d
 
 ## Verification
 
+### Phase C application interface refinements (Task 11)
+
+The service constructor additionally takes an immutable `ReviewWorkspaceContext` (project, stream,
+production scope). The same context is covered by the command digest. Viewing a stream cannot silently
+change the target of a subsequent command. `prepare_assets` binds the in-process preview to captured
+AssetVersion IDs before editing; apply only uses those versions or committed immutable evidence.
+Redraw input includes its original asset ID so geometry can survive a stale command even after the
+target has been withdrawn by another writer. These are application contracts, not new product choices.
+
+Prepare generates and retains command identities without repository writes. The pending-envelope
+cache is bounded by both 128 entries and a conservative 64 MiB retained-payload budget; committed
+entries are released. Apply accepts the original complete envelope after restart, recomputes its
+digest, and looks up the command before CAS. A known commit followed by a view-refresh error returns
+`CommittedViewUnavailable(receipt)`, not a claim that the write failed. The original recovery-input
+payload stays independent of later current state. `apply_with_cancellation` carries explicit shared
+cancellation; blocking repository operations run on the blocking executor.
+
+Command hashing is an internal `viewer.review.command/1` stream of explicitly ordered/tagged JSON
+values separated by NUL, including context, generated identities, expected snapshot and the entire
+command, excluding the digest itself. It is streamed into BLAKE3 with a 64 MiB cap; no Debug text,
+filesystem path authority or client-supplied digest is trusted. Wire/IPC DTO encoding remains Phase D.
+
+Local annotation pixels can be reused for text-only edits, but their TargetVersionKey mappings are
+updated to the new text revision in the same state. Changed target revisions or numbering trigger
+rendering from the verified immutable base. History views retain separate snapshot entries and
+explicit selected keys; they have no actionable field. Coverage lookup is bound to an exact head.
+
+Task 11 measures archive-heavy persistence. A single fixed repository View now retains at most
+10,000 hash-verified `(stream, snapshot-ref) -> parent-ref` edges. These are bounded ancestry facts,
+not cached full states or image bytes. Repeated reference proofs reuse those facts only within that
+operation; requested records, archives, usage declarations and required evidence are still read and
+verified. A new operation starts with no inherited proof cache. The historical-before ancestry rule,
+cycle/digest checks and per-walk bound are unchanged. This reduces repeated filesystem reads without
+claiming constant cost or large-project latency guarantees.
+
 The `continuous_review_state`, `continuous_review_mutation`, `continuous_review_archive`,
 `continuous_review_restore` and `continuous_review_delta` integration suites cover the pure rules.
 Checkpoint evidence and any contract refinements are recorded in the

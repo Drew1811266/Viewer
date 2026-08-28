@@ -119,7 +119,7 @@ pub struct ReviewCommitRequest {
     pub staged_evidence: Vec<PreparedEvidenceFile>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ReviewCommitReceipt {
     pub command_id: ReviewCommandId,
     pub payload_digest: [u8; 32],
@@ -160,6 +160,13 @@ pub enum ReviewCommitError {
 }
 
 pub trait ContinuousReviewRepositoryPort: Send + Sync {
+    /// Coverage at an exact committed head, not at a guessed latest state.
+    fn load_coverage(
+        &self,
+        stream_id: ReviewStreamId,
+        head: SnapshotRef,
+        keys: &[TargetVersionKey],
+    ) -> Result<Vec<ArchiveCoverage>, ReviewCommitError>;
     fn load_evidence(
         &self,
         stream_id: ReviewStreamId,

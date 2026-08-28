@@ -1,0 +1,56 @@
+# 持续评审阶段 C：应用用例实施记录
+
+> Status: Development evidence
+>
+> 日期：2026-08-27。阶段 C 正在实施；尚未通过检查点 C，不代表新流程已在 UI 中开放。
+
+## 范围与基线
+
+沿用批准的[实施计划](../superpowers/plans/2026-08-27-viewer-continuous-review-and-agent-handoff.md)，
+在 `/Users/abc/Project/Viewer/.worktrees/continuous-review-domain`／`codex/continuous-review-domain`
+推进任务 11–13。基线 `3098d3b`；阶段 B 的 46 项仓储／恢复／素材测试和 Application
+27 项单元测试在开始前通过。原工作区和真实素材不在写入范围内。
+
+## 任务 11：专项门禁通过
+
+- 新增独立持续编辑、存档恢复、历史投影、证据准备、恢复输入和命令预算模块，不增加
+  legacy `review_session` 的编排职责；未切换桌面组装、UI 或 Agent reader。
+- 显式项目／Stream 上下文、预览时准备的素材版本、可取消 apply、提交后刷新失败回执，
+  以及规范化命令摘要的接口补全见 [ADR 0006](../adr/0006-continuous-review-snapshot-and-archive-protocol.md)。
+- 15 项应用测试覆盖连续保存、原文／共享文字版本、部分存档与恢复、旧依据保留新文字、
+  来源变化待确认、历史继续提出、取消／写失败／过期输入恢复、回执丢失与乱序重试、
+  当前空身份、非法输入、命令预算和文字修改复用标注像素。
+- 真实 macOS catalog→原生捕获→Application→文件仓储串接通过：EXIF 6 正向尺寸、四处标注、
+  部分存档／恢复、覆盖后的旧意见编辑与旧证据读取。只写 TempDir，不接触用户原图。
+- 命令摘要 2 项、仓储 22 项、恢复 13 项、存档时间顺序负例 1 项通过。先观察失败再修正
+  文字编辑重绘、待提交命令总量限制、单次祖先证明重复 IO；未放宽静态门禁。
+
+### 存档成本量测
+
+使用 `continuous_review_costs` 显式忽略测试，在独立临时工程构造一个素材、两个目标，反复
+存档／恢复同一目标。Debug 构建，当前读取取 20 次均值；保存和 coverage 各一次。
+这不是 UI 延迟、视频源扫描或大图片证据负载验收，不设易波动的时间断言。
+
+| 存档数／测量时快照数 | 原保存 ms | 验证复用后保存 ms | 原 coverage ms | 复用后 coverage ms | 复用后当前读取 μs |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 10 / 22 | 71 | 32 | 29 | 8 | 372 |
+| 30 / 62 | 412 | 62 | 206 | 24 | 458 |
+| 60 / 122 | 1,418 | 112 | 708 | 51 | 663 |
+
+日志：隔离工作区 `target/continuous-review-phase-c-costs-before.log` 与
+`target/continuous-review-phase-c-costs-after.log`。图中只比较同一次开发环境运行，不能承诺
+所有项目均有相同比例改善；历史遍历和大数据成本仍然有界且非零。
+
+单元测试确认：重复证明中间祖先不重复读文件，所请求记录仍被重新核验；新 View 不继承信任，
+请求文件损坏仍拒绝。已有 10,000 / 10,001 节点限制、未来依据伪造与故障恢复测试保持通过。
+
+## 待完成
+
+任务 11 的 Application 全量、仓储 22 项、architecture:boundaries 通过；Application、
+Infrastructure、macOS 全目标严格 Clippy 通过。边界日志为
+`target/continuous-review-phase-c-task11-boundaries.log`。测试模块位置的一项 Clippy 错误已按
+既有规范拆为独立测试文件后复验，不增加豁免。阶段 C 完整 `verify:clean` 尚未执行。
+
+继续任务 12 外部声明导入、任务 13 显式迁移，最后执行全仓门禁与只读独立复审。
+当前不自动迁移任何旧索引，不把历史或存档解释为 Agent 已执行、问题已解决或素材已通过。
+签名、公证、正式安装包、上架、公开发布和发售不属于开发初期的本轮任务或验收。

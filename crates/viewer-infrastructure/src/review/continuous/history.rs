@@ -33,6 +33,8 @@ fn read_document(
     stream_id: ReviewStreamId,
     reference: &SnapshotRef,
 ) -> Result<v3::ReviewStateRecord, ReviewCommitError> {
+    #[cfg(test)]
+    DOCUMENT_READS.with(|count| count.set(count.get() + 1));
     let states = view.directory.required_child("states")?;
     let bytes = states
         .read(
@@ -48,8 +50,27 @@ fn read_document(
     {
         return Err(ReviewCommitError::Integrity);
     }
+    let mut ancestry = view.ancestry.borrow_mut();
+    let key = (stream_id, *reference);
+    if ancestry
+        .get(&key)
+        .is_some_and(|parent| *parent != record.state.parent)
+    {
+        return Err(ReviewCommitError::Integrity);
+    }
+    // Bounded metadata only, not 10,000 complete states. Full cache falls back to reads.
+    if ancestry.len() < MAX_HISTORY_NODES {
+        ancestry.insert(key, record.state.parent);
+    }
     Ok(record)
 }
+
+#[cfg(test)]
+thread_local! { static DOCUMENT_READS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) }; }
+
+#[cfg(test)]
+#[path = "history_tests.rs"]
+mod tests;
 
 pub(super) fn verify_digest(bytes: &[u8], digest: &[u8; 32]) -> Result<(), ReviewCommitError> {
     if blake3::hash(bytes).as_bytes() != digest {
@@ -108,20 +129,37 @@ pub(super) fn reachable_from(
     start: Option<SnapshotRef>,
     requested: &SnapshotRef,
 ) -> Result<v3::ReviewStateRecord, ReviewCommitError> {
-    let mut found = None;
-    walk_from(view, stream_id, start, |reference, record| {
-        if reference.snapshot_id == requested.snapshot_id {
-            if reference != *requested {
-                return Err(ReviewCommitError::Integrity);
-            }
-            found = Some(record);
-            return Ok(true);
+    let found = find_reference(view, stream_id, start, requested.snapshot_id)?;
+    if found != *requested {
+        return Err(ReviewCommitError::Integrity);
+    }
+    read_state(view, stream_id, &found)
+}
+
+fn find_reference(
+    view: &View,
+    stream: ReviewStreamId,
+    mut next: Option<SnapshotRef>,
+    requested: viewer_domain::ReviewSnapshotId,
+) -> Result<SnapshotRef, ReviewCommitError> {
+    let mut seen = HashSet::new();
+    while let Some(reference) = next {
+        if seen.len() >= MAX_HISTORY_NODES {
+            return Err(ReviewCommitError::LimitExceeded);
         }
-        Ok(false)
-    })?;
-    let record = found.ok_or(ReviewCommitError::Integrity)?;
-    super::evidence::verify(view, &record.evidence)?;
-    Ok(record)
+        if !seen.insert(reference.snapshot_id) {
+            return Err(ReviewCommitError::Integrity);
+        }
+        if reference.snapshot_id == requested {
+            return Ok(reference);
+        }
+        let cached = view.ancestry.borrow().get(&(stream, reference)).copied();
+        next = match cached {
+            Some(parent) => parent,
+            None => read_document(view, stream, &reference)?.state.parent,
+        };
+    }
+    Err(ReviewCommitError::Integrity)
 }
 
 pub(super) fn find_command(
@@ -181,24 +219,20 @@ pub(super) fn archive(
     let before = reachable(view, stream_id, &record.checkpoint.before)?;
     let plan = super::archives::verify_checkpoint(view, &record.checkpoint, &before.state)?;
     super::references::declared_usage(view, &record.checkpoint, &[])?;
-    let mut result_found = false;
-    walk(view, stream_id, |_, result| {
-        if result.state.snapshot_id == record.result_snapshot_id {
-            if result.state.parent != Some(record.checkpoint.before) {
-                return Err(ReviewCommitError::Integrity);
-            }
-            for change in plan.changes(archive_id) {
-                if !result.changes.contains(&change) {
-                    return Err(ReviewCommitError::Integrity);
-                }
-            }
-            result_found = true;
-            return Ok(true);
-        }
-        Ok(false)
-    })?;
-    if !result_found {
+    let result_ref = find_reference(
+        view,
+        stream_id,
+        stream(view, stream_id)?.current_ref,
+        record.result_snapshot_id,
+    )?;
+    let result = read_document(view, stream_id, &result_ref)?;
+    if result.state.parent != Some(record.checkpoint.before) {
         return Err(ReviewCommitError::Integrity);
+    }
+    for change in plan.changes(archive_id) {
+        if !result.changes.contains(&change) {
+            return Err(ReviewCommitError::Integrity);
+        }
     }
     Ok(record)
 }

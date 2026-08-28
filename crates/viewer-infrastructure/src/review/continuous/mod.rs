@@ -1,4 +1,6 @@
 mod archives;
+mod command;
+mod command_fields;
 mod commit;
 mod coverage;
 mod evidence;
@@ -13,5 +15,6 @@ mod references;
 mod repository;
 mod usage;
 
+pub use command::ContinuousReviewCommandCodec;
 pub use faults::{NoReviewCommitFaults, ReviewCommitFaultInjector, ReviewCommitFaultPoint};
 pub(super) use repository::ContinuousReviewRepository;

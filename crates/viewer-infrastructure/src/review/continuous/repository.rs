@@ -29,6 +29,10 @@ pub(super) struct View {
     pub directory: Directory,
     pub index: v3::ReviewIndexV3,
     pub index_bytes: Option<Vec<u8>>,
+    /// Hash-verified parent facts for this one operation, never retained on the repository.
+    pub ancestry: std::cell::RefCell<
+        std::collections::HashMap<(ReviewStreamId, SnapshotRef), Option<SnapshotRef>>,
+    >,
 }
 
 impl ContinuousReviewRepository {
@@ -118,11 +122,24 @@ impl ContinuousReviewRepository {
             directory,
             index,
             index_bytes,
+            ancestry: Default::default(),
         }))
     }
 }
 
 impl ContinuousReviewRepositoryPort for ContinuousReviewRepository {
+    fn load_coverage(
+        &self,
+        stream_id: ReviewStreamId,
+        head: SnapshotRef,
+        keys: &[viewer_domain::review::continuous::TargetVersionKey],
+    ) -> Result<Vec<viewer_domain::review::continuous::ArchiveCoverage>, ReviewCommitError> {
+        let view = self.view()?.ok_or(ReviewCommitError::Integrity)?;
+        if history::stream(&view, stream_id)?.current_ref != Some(head) {
+            return Err(ReviewCommitError::StaleSnapshot);
+        }
+        super::coverage::load(&view, stream_id, keys)
+    }
     fn load_evidence(
         &self,
         stream_id: ReviewStreamId,

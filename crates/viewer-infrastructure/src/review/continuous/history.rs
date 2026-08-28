@@ -69,6 +69,9 @@ fn read_document(
 thread_local! { static DOCUMENT_READS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) }; }
 
 #[cfg(test)]
+#[path = "archive_group_tests.rs"]
+mod archive_group_tests;
+#[cfg(test)]
 #[path = "history_tests.rs"]
 mod tests;
 

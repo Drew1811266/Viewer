@@ -1,9 +1,11 @@
 use super::super::v3;
 use super::{history, repository::View};
+use std::collections::{HashMap, HashSet};
 use viewer_application::review_workspace::ReviewCommitError;
 use viewer_domain::review::continuous::*;
 
-/// Validate each basis separately: a 10,000-node history is never collected as 10,000 full states.
+/// Validate each exact basis once, retaining only target outcomes between batches rather
+/// than collecting full historical states. Preserve the original group/target order.
 pub(super) fn verify_checkpoint(
     view: &View,
     checkpoint: &ArchiveCheckpoint,
@@ -17,28 +19,51 @@ pub(super) fn verify_checkpoint(
     }
     let mut combined = ArchivePlan {
         expected_snapshot_id: before.snapshot_id,
-        groups: vec![],
+        groups: checkpoint.groups.clone(),
         removed: vec![],
         retained: vec![],
         already_covered: vec![],
     };
+    let mut batches = HashMap::<Option<SnapshotRef>, Vec<ArchiveGroup>>::new();
     for group in &checkpoint.groups {
-        let bases = match &group.basis {
-            ArchiveBasis::Known { snapshot, .. } => vec![
-                history::reachable_from(view, before.stream_id, Some(checkpoint.before), snapshot)?
-                    .state,
+        let key = match group.basis {
+            ArchiveBasis::Known { snapshot, .. } => Some(snapshot),
+            ArchiveBasis::Unknown => None,
+        };
+        batches.entry(key).or_default().push(group.clone());
+    }
+    let mut removed = HashSet::new();
+    let mut retained = HashMap::new();
+    for (reference, groups) in batches {
+        let bases = match reference {
+            Some(snapshot) => vec![
+                history::reachable_from(
+                    view,
+                    before.stream_id,
+                    Some(checkpoint.before),
+                    &snapshot,
+                )?
+                .state,
             ],
-            ArchiveBasis::Unknown => vec![],
+            None => vec![],
         };
         let selection = ArchiveSelection {
             expected_snapshot_id: before.snapshot_id,
-            groups: vec![group.clone()],
+            groups,
         };
         let plan = plan_archive(before, &bases, &selection, &[])
             .map_err(|_| ReviewCommitError::Integrity)?;
-        combined.groups.extend(plan.groups);
-        combined.removed.extend(plan.removed);
-        combined.retained.extend(plan.retained);
+        removed.extend(plan.removed);
+        retained.extend(plan.retained.into_iter().map(|r| (r.basis, r)));
+    }
+    for key in checkpoint.groups.iter().flat_map(|g| &g.targets) {
+        if removed.remove(key) {
+            combined.removed.push(*key);
+        } else if let Some(retention) = retained.remove(key) {
+            combined.retained.push(retention);
+        } else {
+            return Err(ReviewCommitError::Integrity);
+        }
     }
     let derived = ArchiveCheckpoint::from_plan(
         before,

@@ -265,6 +265,9 @@ History projection coalesces exact SnapshotRefs and target selections, with a co
 aggregate retained-payload budget across distinct entries. Recovery reconciliation traverses committed
 history once per view, leaving unavailable tails unresolved. Exact snapshot/legacy provenance is
 verified once per operation, including all declared legacy PNGs; no cross-operation trust is cached.
+Checkpoint verification also batches groups by exact basis reference before reading JSON/PNG. It
+derives outcomes per batch, then restores the original group and target order without merging their
+source metadata; only one full basis state is retained between batches.
 Missing index plus legacy drafts is rejected by ordinary writers as well as migration inspection.
 The optional public legacyIndex field rejects explicit null, matching its JSON Schema.
 

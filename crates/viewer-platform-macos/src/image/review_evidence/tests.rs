@@ -12,14 +12,16 @@ use viewer_domain::{
 
 fn prepared(path: &Path, width: u32, height: u32) -> PreparedReviewAsset {
     let metadata = fs::metadata(path).unwrap();
+    let entity_id =
+        EntityId::from_u128((u128::from(metadata.dev()) << 64) | u128::from(metadata.ino()));
     PreparedReviewAsset {
-        entity_id: EntityId::from_u128(1),
+        entity_id,
         source_path: path.into(),
         failure: None,
         change_revision: 0,
         asset: AssetVersion {
             id: AssetVersionId::from_u128(2),
-            source_entity_id: Some(EntityId::from_u128(1)),
+            source_entity_id: Some(entity_id),
             relative_path: RelativePath::parse(path.file_name().unwrap().to_str().unwrap())
                 .unwrap(),
             evidence: AssetEvidence {
@@ -147,6 +149,31 @@ async fn review_evidence_whole_image_and_leases_are_independent_of_cache_files()
     assert!(!temporary.exists());
     assert_eq!(*blake3::hash(base.png()).as_bytes(), base.blake3());
     assert_eq!(fs::read_dir(output.path()).unwrap().count(), 0);
+}
+
+#[tokio::test]
+async fn review_evidence_verified_relocation_preserves_original_asset_metadata() {
+    let root = tempfile::tempdir().unwrap();
+    let output = tempfile::tempdir().unwrap();
+    let source = root.path().join("original.png");
+    fs::copy(
+        viewer_test_support::image_fixtures::image_fixture("alpha.png"),
+        &source,
+    )
+    .unwrap();
+    let mut asset = prepared(&source, 640, 480);
+    let captured = asset.asset.clone();
+    let moved = root.path().join("moved.png");
+    fs::copy(&source, &moved).unwrap();
+    let observed = prepared(&moved, 640, 480);
+    asset.source_path = moved;
+    asset.entity_id = observed.entity_id;
+    let renderer = MacReviewEvidenceRenderer::new(output.path()).unwrap();
+    let base = renderer
+        .capture_base(asset, ReviewTaskCancellation::default())
+        .await
+        .unwrap();
+    assert_eq!(base.asset(), &captured);
 }
 
 #[tokio::test]

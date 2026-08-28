@@ -120,6 +120,46 @@ pub enum ReviewAssetError {
     Cancelled,
     #[error("review asset evidence is unavailable")]
     Unavailable,
+    #[error("source relocation requires an exact explicit confirmation")]
+    UnconfirmedLocation,
+    #[error("the confirmed source locator changed")]
+    StaleLocator,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ReviewSourceLocator {
+    pub entity_id: EntityId,
+    pub relative_path: RelativePath,
+}
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SourceLocatorConfirmation {
+    UserConfirmed,
+}
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SourceRelocationDecision {
+    pub previous: Option<ReviewSourceLocator>,
+    pub candidate: ReviewSourceLocator,
+    pub confirmation: SourceLocatorConfirmation,
+}
+#[async_trait]
+pub trait ContinuousReviewAssetPort: Send + Sync {
+    async fn prepare_additions(
+        &self,
+        entity_ids: &[EntityId],
+        cancellation: ReviewTaskCancellation,
+    ) -> Result<Vec<PreparedReviewAsset>, ReviewAssetError>;
+    async fn check_sources(
+        &self,
+        assets: &[AssetVersion],
+        cancellation: ReviewTaskCancellation,
+    ) -> Result<Vec<viewer_domain::review::continuous::SourceCheck>, ReviewAssetError>;
+    /// Only call after an explicit user selection. Digest equality alone grants no relocation.
+    async fn confirm_relocation(
+        &self,
+        asset: &AssetVersion,
+        decision: SourceRelocationDecision,
+        cancellation: ReviewTaskCancellation,
+    ) -> Result<(), ReviewAssetError>;
 }
 
 #[async_trait]

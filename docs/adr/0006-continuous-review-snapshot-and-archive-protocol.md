@@ -2,7 +2,7 @@
 
 > Status: Active
 >
-> Decision: Accepted for Phase A Domain and Tasks 6–7 wire/repository contracts; remaining Phase B work is in progress.
+> Decision: Accepted for Phase A and Tasks 6–10 contracts; Phase B checkpoint verification is in progress.
 >
 > Date: 2026-08-27
 
@@ -103,9 +103,13 @@ bounded reference traversal, immutable records and source evidence. Later applic
 not treat a Domain state or a restore plan as an authorization to execute feedback.
 
 Captured `AssetVersion` records, including their historical locator/mtime, remain immutable. Task 10
-must represent a confirmed live relocation in the asset catalog or a separate locator mapping; it
-must not mint a new content version for a rename or weaken captured-content validation. That locator
-ownership/interface is a required Phase B refinement, not an implemented Phase A capability.
+implements confirmed live relocation in the session-owned asset catalog with exact entity/path,
+full hash verification and prior-locator CAS. It does not mint a content version for a confirmed rename
+or mutate historical metadata. The locator is not a cross-process persistence protocol; later readers
+without this authority must verify the captured path or report pending, never guess a new location.
+Source checks always stream the content and validate pre/post identity. Preparation incrementally
+retains prior tracking. Explicit binding revises only the selected target; producer-proof validation
+and user position confirmation remain Application prerequisites, not implied by a Domain enum.
 
 Task 8 implements persistent command deduplication before CAS, six fault boundaries, bounded recovery
 and history traversal. RecoveryDraft adds an explicit stream_id (including first-save recovery);

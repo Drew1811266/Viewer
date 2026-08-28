@@ -54,10 +54,7 @@ impl MacReviewEvidenceRenderer {
         if cancellation.is_cancelled() {
             return Err(Error::Cancelled);
         }
-        if asset.failure.is_some()
-            || asset.asset.evidence.blake3.is_none()
-            || asset.asset.source_entity_id != Some(asset.entity_id)
-        {
+        if asset.failure.is_some() || asset.asset.evidence.blake3.is_none() {
             return Err(Error::InvalidRequest);
         }
         let expected = match asset.asset.media {

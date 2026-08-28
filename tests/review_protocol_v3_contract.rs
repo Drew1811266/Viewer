@@ -603,6 +603,57 @@ fn empty_current_round_trips_without_completed_or_pass_semantics() {
 }
 
 #[test]
+fn evidence_budget_counts_unique_pngs_and_rejects_over_four_gib_without_loading_them() {
+    use viewer_infrastructure::review::v3::{EvidenceBinding, EvidenceCapability, EvidenceRef};
+    let template = decode_state_v3(&serde_json::to_vec(&image_document()).unwrap())
+        .unwrap()
+        .state
+        .assets
+        .remove(0);
+    let mut record = empty_record();
+    for i in 0..65_u8 {
+        let mut asset = template.clone();
+        asset.id = viewer_domain::AssetVersionId::from_u128(u128::from(i) + 100);
+        asset.relative_path =
+            viewer_domain::RelativePath::parse(&format!("image-{i}.png")).unwrap();
+        record.evidence.push(EvidenceBinding {
+            asset_version_id: asset.id,
+            capability: EvidenceCapability::Image {
+                base: EvidenceRef {
+                    blake3: [i; 32],
+                    size_bytes: 64 * 1024 * 1024,
+                    width: 4096,
+                    height: 4096,
+                },
+                annotated: None,
+                annotations: vec![],
+            },
+        });
+        record.state.assets.push(asset);
+        if i == 63 {
+            assert!(encode_state_v3(&record).is_ok());
+        }
+    }
+    assert_eq!(
+        encode_state_v3(&record),
+        Err(ReviewProtocolError::LimitExceeded)
+    );
+    let first = record.evidence[0].capability.clone();
+    record.evidence[64].capability = first;
+    assert!(
+        encode_state_v3(&record).is_ok(),
+        "shared content is counted once"
+    );
+    if let EvidenceCapability::Image { base, .. } = &mut record.evidence[64].capability {
+        base.size_bytes += 1;
+    }
+    assert!(
+        encode_state_v3(&record).is_err(),
+        "single PNG exceeds limit"
+    );
+}
+
+#[test]
 fn state_rejects_unknown_fields_versions_bad_digests_and_self_parent() {
     let value: Value = serde_json::from_slice(&encode_state_v3(&empty_record()).unwrap()).unwrap();
     for (field, replacement, expected) in [

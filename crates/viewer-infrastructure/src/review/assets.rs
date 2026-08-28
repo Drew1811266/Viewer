@@ -28,6 +28,7 @@ use viewer_domain::video::{VideoFailureKind, VideoMetadata, VideoProbeStatus};
 use viewer_domain::{AssetVersionId, EntityId, RelativePath};
 
 const HASH_BUFFER_BYTES: usize = 64 * 1024;
+mod continuous;
 const MAX_EVIDENCE_CONCURRENCY: usize = 4;
 
 pub struct IndexedReviewAssetCatalog {
@@ -37,6 +38,7 @@ pub struct IndexedReviewAssetCatalog {
     video: Arc<dyn VideoMetadataProbe>,
     changes: ReviewChangeLedger,
     evidence_gate: Arc<Semaphore>,
+    continuous: std::sync::Mutex<continuous::CatalogState>,
 }
 
 impl IndexedReviewAssetCatalog {
@@ -65,6 +67,7 @@ impl IndexedReviewAssetCatalog {
             video,
             changes,
             evidence_gate: Arc::new(Semaphore::new(concurrency)),
+            continuous: std::sync::Mutex::new(continuous::CatalogState::default()),
         })
     }
 
@@ -755,7 +758,7 @@ fn open_owned_source(root: &Path, relative: &RelativePath) -> io::Result<File> {
         libc::openat(
             directory.as_raw_fd(),
             leaf.as_ptr(),
-            libc::O_RDONLY | libc::O_NOFOLLOW | libc::O_CLOEXEC,
+            libc::O_RDONLY | libc::O_NOFOLLOW | libc::O_CLOEXEC | libc::O_NONBLOCK,
         )
     };
     if descriptor < 0 {

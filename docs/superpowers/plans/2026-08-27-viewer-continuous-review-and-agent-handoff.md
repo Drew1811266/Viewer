@@ -13,8 +13,8 @@
 > Status: Active
 >
 > 执行状态：阶段 A 的任务 1–5 已完成并分别提交，5 / 23；全仓门禁与独立复审通过。
-> 阶段 B 已按用户「继续」恢复实施；任务 6–9 已完成，累计 9 / 23。
-> 下一项为任务 10 的动态素材核验与实时定位映射；阶段 B 不算完成。
+> 阶段 B 已按用户「继续」恢复实施；任务 6–10 已完成实现与聚焦验证，累计 10 / 23。
+> 正在执行阶段 B 全仓门禁与独立复审；检查点尚未完成。
 > 新仓储仅用于隔离测试，未接入 UI、迁移或 Agent 读取入口。
 >
 > 计划基线：`a539f8df5f3e0f3239110df44515ba7cb583e308`；实施基线：`d7abb9961f377ae257c3283ef7893218ec0c53f9`。
@@ -524,7 +524,16 @@ Task 10 须在实时素材目录／独立定位映射中表达已确认的改名
 校验接口，再实现源读取；不能修改旧捕获记录、只因改名生成新内容版本，或放松内容身份核验。
 此定位映射尚未在阶段 A 实现，属于本任务的前置接口细化，不得忽略设计第 7.1 节。
 
-- [ ] **Step 1 — RED：评审图 2 不能丢失图 1 的变化跟踪。** 在新测试中准备两个临时素材，分别调用 prepare_additions 后更改第一张，检查两张版本。
+Task 10 实施接口细化：定位映射归 IndexedReviewAssetCatalog 会话所有，按 AssetVersionId
+保存显式确认的 entity_id／relative_path；不写入旧 AssetVersion。端口提供 confirm_relocation，
+输入包含旧版本、明确候选位置、前一定位（CAS）与 UserConfirmed；再次核验候选实体及完整
+BLAKE3 相等后才登记。不搜索同名／同哈希文件自动归并。未确认的移动返回 Unverified。
+映射不是当前意见或可执行事实，也不是跨进程持久协议；后续 Application／独立 reader
+没有这项已核验定位时必须按历史路径安全核验或返回待确认，不能猜测或假定内存映射存在。
+prepare_additions 增量保留跟踪；同实体、同内容及已确认定位复用旧内容版本。显式换版
+由独立 SourceBindingDecision 产生新 target revision，不因文件变动自动绑定。
+
+- [x] **Step 1 — RED：评审图 2 不能丢失图 1 的变化跟踪。** 在新测试中准备两个临时素材，分别调用 prepare_additions 后更改第一张，检查两张版本。
 
 ```rust
 let checks = catalog.check_sources(&[first.asset, second.asset], cancellation).await.unwrap();
@@ -533,8 +542,8 @@ assert_eq!(checks[0].status, SourceCheckStatus::Changed);
 assert_eq!(checks[1].status, SourceCheckStatus::Match);
 ```
 
-- [ ] **Step 2 — RED。** `cargo test --locked -p viewer-infrastructure --test continuous_review_assets`。
-- [ ] **Step 3 — 实现有界流式核验与增量登记。** 复用安全打开／文件身份前后检查和已有 BLAKE3；新加入合并成员而非 replace_members 清空旧集合。校验不能只依赖 size／mtime；读时结果不写入保存状态。
+- [x] **Step 2 — RED。** `cargo test --locked -p viewer-infrastructure --test continuous_review_assets`。
+- [x] **Step 3 — 实现有界流式核验与增量登记。** 复用安全打开／文件身份前后检查和已有 BLAKE3；新加入合并成员而非 replace_members 清空旧集合。校验不能只依赖 size／mtime；读时结果不写入保存状态。
 
 ```rust
 let disposition = if observed_hash == captured_hash {
@@ -545,9 +554,9 @@ let disposition = if observed_hash == captured_hash {
 ```
 
 移动位置与素材业务版本分开：已有可靠实体／事务映射可给出候选定位，重复内容和多候选不得静默确认；用户明确绑定才产生新的目标 revision。未知新文件可独立提出意见。
-- [ ] **Step 4 — 测试同大小同 mtime 覆写、改名、跨目录移动、两个相同内容文件、多候选、缺失、不可读、检查中再次变化及取消。** 不能自动存档、转移几何或判定解决；源异常保留旧原文与证据。
-- [ ] **Step 5 — GREEN／检查点 B。** `cargo test --locked -p viewer-infrastructure --test continuous_review_assets --test continuous_review_repository --test continuous_review_recovery && cargo test --locked -p viewer-platform-macos review_`。
-- [ ] **Step 6 — 提交。** `git commit -m "feat(review): validate source versions without guessing asset lineage"`。
+- [x] **Step 4 — 测试同大小同 mtime 覆写、改名、跨目录移动、两个相同内容文件、多候选、缺失、不可读、检查中再次变化及取消。** 不能自动存档、转移几何或判定解决；源异常保留旧原文与证据。
+- [x] **Step 5 — GREEN／检查点 B。** `cargo test --locked -p viewer-infrastructure --test continuous_review_assets --test continuous_review_repository --test continuous_review_recovery && cargo test --locked -p viewer-platform-macos review_`。
+- [x] **Step 6 — 提交。** `git commit -m "feat(review): validate source versions without guessing asset lineage"`。
 
 ### Task 11: 持续评审 Application 用例
 

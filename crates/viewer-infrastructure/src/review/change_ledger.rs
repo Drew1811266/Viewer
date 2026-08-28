@@ -14,6 +14,25 @@ struct ReviewChangeLedgerState {
 }
 
 impl ReviewChangeLedger {
+    pub(super) fn add_members(
+        &self,
+        entity_ids: &[EntityId],
+    ) -> Result<(), viewer_application::ReviewAssetError> {
+        let mut state = self.state.lock().unwrap_or_else(|error| error.into_inner());
+        let added = entity_ids
+            .iter()
+            .copied()
+            .filter(|id| !state.member_revisions.contains_key(id))
+            .collect::<std::collections::HashSet<_>>();
+        if state.member_revisions.len() + added.len() > viewer_domain::review::MAX_ASSETS_PER_ROUND
+        {
+            return Err(viewer_application::ReviewAssetError::LimitExceeded);
+        }
+        for id in added {
+            state.member_revisions.insert(id, 0);
+        }
+        Ok(())
+    }
     pub fn replace_members(&self, entity_ids: &[EntityId]) {
         let mut state = self.state.lock().unwrap_or_else(|error| error.into_inner());
         state.member_revisions.clear();

@@ -30,12 +30,16 @@ impl CapturedSource {
         let before = file.metadata().map_err(|_| Error::Unavailable)?;
         if !before.is_file()
             || before.len() != asset.asset.evidence.size_bytes
-            || i128::from(before.mtime()) * 1_000_000_000 + i128::from(before.mtime_nsec())
-                != asset.asset.evidence.modified_ns
+            || viewer_domain::EntityId::from_u128(
+                (u128::from(before.dev()) << 64) | u128::from(before.ino()),
+            ) != asset.entity_id
         {
             return Err(Error::SourceChanged);
         }
         let mut value = Self { file, before };
+        // PreparedReviewAsset supplies the verified live locator; the historical
+        // AssetVersion's path/entity/mtime stay unchanged after confirmed relocation.
+        // Complete bytes are still required to match its captured content digest.
         value.verify(asset)?;
         check(cancellation, hook, Checkpoint::CaptureOpened)?;
         let mut output = scratch.create("source.dat")?;

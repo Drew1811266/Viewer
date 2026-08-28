@@ -2406,7 +2406,9 @@ fn map_asset_error(error: ReviewAssetError) -> ReviewSessionError {
         | ReviewAssetError::UnsafeSource
         | ReviewAssetError::SourceChanged
         | ReviewAssetError::Pending
-        | ReviewAssetError::Unavailable => ReviewSessionError::AssetUnavailable,
+        | ReviewAssetError::Unavailable
+        | ReviewAssetError::UnconfirmedLocation
+        | ReviewAssetError::StaleLocator => ReviewSessionError::AssetUnavailable,
     }
 }
 

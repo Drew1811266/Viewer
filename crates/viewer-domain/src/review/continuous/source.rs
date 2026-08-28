@@ -4,6 +4,67 @@ use super::{ContinuousReviewError, ContinuousReviewState, ReviewAvailability};
 use crate::review::MAX_ASSETS_PER_ROUND;
 use crate::{AssetVersionId, ReviewTargetId};
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum SourceBindingConfirmation {
+    UserConfirmed,
+    /// Application must verify the producer declaration and receive the user's
+    /// position confirmation before constructing this pure decision.
+    ProducerVerifiedAndPositionConfirmed {
+        usage_id: crate::ReviewUsageId,
+    },
+}
+#[derive(Clone, Debug, PartialEq)]
+pub struct SourceBindingDecision {
+    pub target_key: super::TargetVersionKey,
+    pub new_asset_version_id: AssetVersionId,
+    pub anchor: crate::review::FeedbackAnchor,
+    pub confirmation: SourceBindingConfirmation,
+}
+
+pub fn apply_source_binding(
+    current: &ContinuousReviewState,
+    decision: &SourceBindingDecision,
+    revision: crate::ReviewTargetRevisionId,
+    snapshot: crate::ReviewSnapshotId,
+) -> Result<ContinuousReviewState, ContinuousReviewError> {
+    use ContinuousReviewError::*;
+    current.validate()?;
+    if current.target_key(decision.target_key.target_id) != Some(decision.target_key) {
+        return Err(StaleSnapshot);
+    }
+    if current
+        .feedback
+        .iter()
+        .flat_map(|f| &f.targets)
+        .any(|t| t.revision_id == revision)
+    {
+        return Err(DuplicateIdentity);
+    }
+    if !current
+        .assets
+        .iter()
+        .any(|a| a.id == decision.new_asset_version_id)
+    {
+        return Err(MissingReference);
+    }
+    let mut next = super::mutation::prepare_next(current, snapshot)?;
+    let target = next
+        .feedback
+        .iter_mut()
+        .flat_map(|f| &mut f.targets)
+        .find(|t| t.id == decision.target_key.target_id)
+        .ok_or(MissingReference)?;
+    if target.asset_version_id == decision.new_asset_version_id {
+        return Err(InvalidData);
+    }
+    target.asset_version_id = decision.new_asset_version_id;
+    target.revision_id = revision;
+    target.anchor = decision.anchor.clone();
+    target.availability = ReviewAvailability::Ready;
+    next.validate()?;
+    Ok(next)
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SourceCheckStatus {
     Match,

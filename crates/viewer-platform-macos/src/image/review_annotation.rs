@@ -295,7 +295,7 @@ fn modified_ns(metadata: &Metadata) -> i128 {
     i128::from(metadata.mtime()) * 1_000_000_000 + i128::from(metadata.mtime_nsec())
 }
 
-fn draw_annotations(
+pub(super) fn draw_annotations(
     source: &CGImage,
     width: u32,
     height: u32,
@@ -489,7 +489,7 @@ fn inspect_output(
     Ok((total, *hasher.finalize().as_bytes()))
 }
 
-fn map_image_error(error: viewer_application::ImageError) -> ReviewArtifactError {
+pub(super) fn map_image_error(error: viewer_application::ImageError) -> ReviewArtifactError {
     match error {
         viewer_application::ImageError::Unsupported | viewer_application::ImageError::Corrupt => {
             ReviewArtifactError::DecodeFailed
@@ -527,7 +527,7 @@ impl Drop for OwnedArtifact {
 }
 
 #[cfg(test)]
-mod tests {
+pub(super) mod tests {
     use super::{MacReviewArtifactRenderer, ReviewArtifactRenderCheckpoint};
     use objc2_core_foundation::{
         CFDictionary, CFNumber, CFString, CFType, CFURL, CGPoint, CGRect, CGSize,
@@ -621,7 +621,12 @@ mod tests {
     }
 
     // Literal two-colour source: orientation 6 rotates left/right into top/bottom.
-    fn asymmetric_source(path: &Path, width: u32, height: u32, orientation: i64) {
+    pub(in crate::image) fn asymmetric_source(
+        path: &Path,
+        width: u32,
+        height: u32,
+        orientation: i64,
+    ) {
         let mut rgba = Vec::<u8>::new();
         for y in 0..height {
             for x in 0..width {
@@ -671,7 +676,7 @@ mod tests {
         }
     }
 
-    fn decoded_rgba(path: &Path, width: u32, height: u32) -> Vec<u8> {
+    pub(in crate::image) fn decoded_rgba(path: &Path, width: u32, height: u32) -> Vec<u8> {
         let source = super::open_image_bytes(&fs::read(path).unwrap()).unwrap();
         let image = super::thumbnail_from_image_source(&source, width.max(height)).unwrap();
         assert_eq!(

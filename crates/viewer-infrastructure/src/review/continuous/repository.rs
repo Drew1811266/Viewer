@@ -123,6 +123,16 @@ impl ContinuousReviewRepository {
 }
 
 impl ContinuousReviewRepositoryPort for ContinuousReviewRepository {
+    fn load_evidence(
+        &self,
+        stream_id: ReviewStreamId,
+        selector: &viewer_application::review_evidence::HistorySelector,
+        asset_version_id: viewer_domain::AssetVersionId,
+        role: viewer_application::review_evidence::EvidenceRole,
+    ) -> Result<viewer_application::review_evidence::BoundReviewImage, ReviewCommitError> {
+        let view = self.view()?.ok_or(ReviewCommitError::Integrity)?;
+        super::evidence_load::load(&view, stream_id, selector, asset_version_id, role)
+    }
     fn save_recovery(&self, draft: &RecoveryDraft) -> Result<(), ReviewCommitError> {
         super::recovery::save(self, draft)
     }

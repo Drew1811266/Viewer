@@ -13,8 +13,8 @@
 > Status: Active
 >
 > 执行状态：阶段 A 的任务 1–5 已完成并分别提交，5 / 23；全仓门禁与独立复审通过。
-> 阶段 B 已按用户「继续」恢复实施；任务 6–8 已完成，累计 8 / 23。
-> 下一项为任务 9 的不可变底图捕获与渲染，任务 10 尚未开始；阶段 B 不算完成。
+> 阶段 B 已按用户「继续」恢复实施；任务 6–9 已完成，累计 9 / 23。
+> 下一项为任务 10 的动态素材核验与实时定位映射；阶段 B 不算完成。
 > 新仓储仅用于隔离测试，未接入 UI、迁移或 Agent 读取入口。
 >
 > 计划基线：`a539f8df5f3e0f3239110df44515ba7cb583e308`；实施基线：`d7abb9961f377ae257c3283ef7893218ec0c53f9`。
@@ -490,7 +490,7 @@ Repository 增加 `load_evidence(stream_id, &HistorySelector, AssetVersionId, Ev
 在本任务定义为 Snapshot(SnapshotRef)／Archive(ReviewArchiveId)／Legacy(ReviewRoundId)，Task 11
 直接复用。只接受已提交可达记录中该角色的证据，不将源文件路径授权为历史证据。
 
-- [ ] **Step 1 — RED：覆写源文件后还能从旧底图重绘。** 用现有 `viewer_test_support::image_fixtures::image_fixture("alpha.png")` 建立临时源文件，capture 后替换其内容，再 render。
+- [x] **Step 1 — RED：覆写源文件后还能从旧底图重绘。** 用现有 `viewer_test_support::image_fixtures::image_fixture("alpha.png")` 建立临时源文件，capture 后替换其内容，再 render。
 
 ```rust
 let before_hash = base.blake3();
@@ -500,8 +500,8 @@ assert_eq!(result.annotations.len(), 4);
 ```
 
 `BoundReviewImage::blake3() -> [u8;32]` 是只读访问器；Result 的 base_ref 与 annotations 对应前述 EvidenceRef 和编号绑定。测试使用两笔画、两个矩形，绘制数据不依赖真实图片私密内容。
-- [ ] **Step 2 — RED。** `cargo test --locked -p viewer-platform-macos review_evidence`。
-- [ ] **Step 3 — 最小提取已有渲染原语。** 分离安全源解码、不可变底图、标记绘制、PNG 编码；保留每个 marker 的 CGContext 状态隔离。整图意见也在首次成功保存前捕获底图，局部意见额外要求编号预览。
+- [x] **Step 2 — RED。** `cargo test --locked -p viewer-platform-macos review_evidence`。
+- [x] **Step 3 — 最小提取已有渲染原语。** 分离安全源解码、不可变底图、标记绘制、PNG 编码；保留每个 marker 的 CGContext 状态隔离。整图意见也在首次成功保存前捕获底图，局部意见额外要求编号预览。
 
 ```rust
 let base = evidence.capture_base(prepared_asset, cancellation.clone()).await?;
@@ -509,9 +509,9 @@ let rendered = evidence.render(ReviewEvidenceRequest { base, annotations, cancel
 ```
 
 本段调用由 Task 11 用例接入；捕获与保存必须核验 source 指纹、尺寸和方向一致，PreparedReviewAsset 必须是工作台正在评审的版本，不能在保存时重新捕获新版本冒充用户已看到的旧图。只改文字时复用底图；几何／编号改变重新渲染，所有映射固定于同一快照。
-- [ ] **Step 4 — 加入同 Feedback 多 Target 编号、EXIF 方向、原生四轮廓颜色、source 捕获中变化、取消、PNG／总量超限、legacy 原本缺失与已声明 PNG 损坏的区分测试。** 不将 4 GiB 全部读入内存；逐文件验证。普通缓存淘汰不得删除 repository evidence。
-- [ ] **Step 5 — GREEN。** `cargo test --locked -p viewer-platform-macos review_ && cargo test --locked -p viewer-infrastructure --test continuous_review_repository`。
-- [ ] **Step 6 — 提交。** `git commit -m "feat(review): preserve image evidence before source replacement"`。
+- [x] **Step 4 — 加入同 Feedback 多 Target 编号、EXIF 方向、原生四轮廓颜色、source 捕获中变化、取消、PNG／总量超限、legacy 原本缺失与已声明 PNG 损坏的区分测试。** 不将 4 GiB 全部读入内存；逐文件验证。普通缓存淘汰不得删除 repository evidence。
+- [x] **Step 5 — GREEN。** `cargo test --locked -p viewer-platform-macos review_ && cargo test --locked -p viewer-infrastructure --test continuous_review_repository`。
+- [x] **Step 6 — 提交。** `git commit -m "feat(review): preserve image evidence before source replacement"`。
 
 ### Task 10: 动态素材加入、读时核验和显式换版
 

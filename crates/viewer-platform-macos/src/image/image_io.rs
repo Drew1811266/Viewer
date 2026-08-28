@@ -125,7 +125,7 @@ fn fit_max_dimension(
     u32::try_from(target_width.max(target_height).max(1)).map_err(|_| ImageError::BudgetExceeded)
 }
 
-fn open_image_source(
+pub(super) fn open_image_source(
     source: &Path,
 ) -> Result<objc2_core_foundation::CFRetained<CGImageSource>, ImageError> {
     std::fs::metadata(source).map_err(|error| {

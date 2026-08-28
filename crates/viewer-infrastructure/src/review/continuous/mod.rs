@@ -2,6 +2,7 @@ mod archives;
 mod commit;
 mod coverage;
 mod evidence;
+mod evidence_load;
 mod faults;
 mod history;
 mod mapping;

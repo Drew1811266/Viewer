@@ -149,6 +149,10 @@ pub enum ReviewCommitError {
     LimitExceeded,
     #[error("committed command history is unavailable")]
     LookupUnavailable,
+    #[error("this historical record did not declare the requested image evidence")]
+    EvidenceAbsent,
+    #[error("archive contains multiple image revisions; select an exact snapshot")]
+    AmbiguousEvidence,
     #[error("review repository IO failed")]
     Io,
     #[error("commit outcome is unknown; look up the original command before retrying")]
@@ -156,6 +160,13 @@ pub enum ReviewCommitError {
 }
 
 pub trait ContinuousReviewRepositoryPort: Send + Sync {
+    fn load_evidence(
+        &self,
+        stream_id: ReviewStreamId,
+        selector: &crate::review_evidence::HistorySelector,
+        asset_version_id: AssetVersionId,
+        role: crate::review_evidence::EvidenceRole,
+    ) -> Result<crate::review_evidence::BoundReviewImage, ReviewCommitError>;
     fn save_recovery(&self, draft: &RecoveryDraft) -> Result<(), ReviewCommitError>;
     fn load_recovery(&self) -> Result<Vec<RecoveryDraft>, ReviewCommitError>;
     fn resolve_recovery(

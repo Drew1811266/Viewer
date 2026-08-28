@@ -114,8 +114,15 @@ bounded to 10,000 entries and 64 MiB total. The index fault is after rename and 
 uncertain results preserve the published index and are resolved by command/digest, never rolled back.
 Active archive coverage cannot be recorded twice; explicit restoration permits subsequent archival.
 
-Evidence capture, explicit legacy migration/provenance admission, application services,
-Agent readers and UI are not connected by Tasks 6–8. Existing legacy indexes are not silently replaced;
+Task 9 adds immutable in-process BoundReviewImage bytes with complete captured asset identity and
+EXIF-upright pixel mapping. Trusted adapters verify hashes before constructing it; native rendering
+verifies again and refuses annotated images as clean bases. Source capture uses a bounded streaming
+copy into owned private scratch, then decodes only that copy. Staging leases own temporary files until
+the repository has copied them. History selectors load only committed evidence; ambiguous archive
+previews require an exact snapshot. Legacy evidence absence is distinct from declared-file corruption.
+
+Explicit legacy migration/provenance admission, application services,
+Agent readers and UI are not connected by Tasks 6–9. Existing legacy indexes are not silently replaced;
 legacy-origin continuous states need the later explicit migration adapter. Repository validation does
 not authorize execution of feedback on disk.
 

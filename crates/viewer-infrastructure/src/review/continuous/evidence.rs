@@ -122,7 +122,7 @@ pub(super) fn install(
     Ok(())
 }
 
-fn copy_png(
+pub(super) fn copy_png(
     input: &mut File,
     reference: &v3::EvidenceRef,
     output: &mut impl Write,

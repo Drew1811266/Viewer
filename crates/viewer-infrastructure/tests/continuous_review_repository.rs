@@ -11,6 +11,171 @@ use support::*;
 use viewer_infrastructure::review::ProjectReviewRepositoryProvider;
 
 #[test]
+fn history_image_capability_owns_verified_bytes_and_is_not_a_live_source_path() {
+    use viewer_application::review_evidence::{EvidenceRole, HistorySelector};
+    let (root, provider) = setup();
+    let writer = provider.continuous_writer().unwrap();
+    let initial = image_request(&root);
+    let asset = initial.next.state.assets[0].clone();
+    let committed = writer.commit(initial).unwrap();
+    let capability = writer
+        .load_evidence(
+            ReviewStreamId::from_u128(2),
+            &HistorySelector::Snapshot(committed.snapshot),
+            asset.id,
+            EvidenceRole::Base,
+        )
+        .unwrap();
+    assert_eq!(capability.asset(), &asset);
+    fs::write(root.path().join("prepared.png"), b"source replaced").unwrap();
+    let before = writer
+        .load_current(ReviewStreamId::from_u128(2))
+        .unwrap()
+        .unwrap();
+    let archive = archive_request(&before, &before, 4);
+    let archive_id = archive.archives[0].archive_id;
+    writer.commit(archive).unwrap();
+    let historical = writer
+        .load_evidence(
+            ReviewStreamId::from_u128(2),
+            &HistorySelector::Archive(archive_id),
+            asset.id,
+            EvidenceRole::Base,
+        )
+        .unwrap();
+    assert_eq!(historical.png(), capability.png());
+    let path = root.path().join(format!(
+        ".viewer/reviews/evidence/{}.png",
+        blake3::Hash::from_bytes(capability.blake3()).to_hex()
+    ));
+    fs::write(&path, b"broken evidence").unwrap();
+    assert_eq!(
+        *blake3::hash(capability.png()).as_bytes(),
+        capability.blake3()
+    );
+    assert!(matches!(
+        writer.load_evidence(
+            ReviewStreamId::from_u128(2),
+            &HistorySelector::Snapshot(committed.snapshot),
+            asset.id,
+            EvidenceRole::Base
+        ),
+        Err(ReviewCommitError::Integrity)
+    ));
+}
+
+#[test]
+fn legacy_absent_base_is_distinct_from_a_missing_or_corrupt_declared_preview() {
+    use viewer_application::review_evidence::{EvidenceRole, HistorySelector};
+    use viewer_infrastructure::review::{decode_completed_versioned, v3};
+    for version in [1, 2] {
+        let root = TempDir::new().unwrap();
+        let bytes = fs::read(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(format!(
+                "../../tests/fixtures/review-protocol/review-round-v{version}.valid.json"
+            )),
+        )
+        .unwrap();
+        let snapshot = decode_completed_versioned(&bytes).unwrap().value;
+        let directory = root.path().join(".viewer/reviews");
+        fs::create_dir_all(directory.join("rounds")).unwrap();
+        let location = if version == 1 {
+            format!("rounds/{}.json", snapshot.review_round_id)
+        } else {
+            format!("rounds/{}/round.json", snapshot.review_round_id)
+        };
+        let path = directory.join(&location);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(&path, &bytes).unwrap();
+        let index = v3::ReviewIndexV3 {
+            project_id: snapshot.project_id,
+            streams: vec![v3::ReviewStreamV3 {
+                review_stream_id: snapshot.review_stream_id,
+                task_id: Some("task-b".into()),
+                batch_id: Some("batch-b".into()),
+                current_ref: None,
+                archive_refs: vec![],
+                usage_refs: vec![],
+                legacy_refs: vec![v3::LegacyRecordRef {
+                    round_id: snapshot.review_round_id,
+                    protocol_version: format!("viewer.review/{version}"),
+                    location,
+                    blake3: *blake3::hash(&bytes).as_bytes(),
+                }],
+            }],
+        };
+        fs::write(
+            directory.join("index.json"),
+            v3::encode_index_v3(&index).unwrap(),
+        )
+        .unwrap();
+        let reader = ProjectReviewRepositoryProvider::new(root.path(), snapshot.project_id)
+            .continuous_reader()
+            .unwrap();
+        let selector = HistorySelector::Legacy(snapshot.review_round_id);
+        let asset = snapshot.assets[0].id;
+        assert!(matches!(
+            reader.load_evidence(
+                snapshot.review_stream_id,
+                &selector,
+                asset,
+                EvidenceRole::Base
+            ),
+            Err(ReviewCommitError::EvidenceAbsent)
+        ));
+        if version == 1 {
+            assert!(matches!(
+                reader.load_evidence(
+                    snapshot.review_stream_id,
+                    &selector,
+                    asset,
+                    EvidenceRole::Annotated
+                ),
+                Err(ReviewCommitError::EvidenceAbsent)
+            ));
+        } else {
+            assert!(matches!(
+                reader.load_evidence(
+                    snapshot.review_stream_id,
+                    &selector,
+                    asset,
+                    EvidenceRole::Annotated
+                ),
+                Err(ReviewCommitError::Integrity)
+            ));
+            let artifacts = path.parent().unwrap().join("artifacts");
+            fs::create_dir(&artifacts).unwrap();
+            let png = artifacts.join(format!("{asset}-annotation.png"));
+            fs::copy(
+                viewer_test_support::image_fixtures::image_fixture("alpha.png"),
+                &png,
+            )
+            .unwrap();
+            let image = reader
+                .load_evidence(
+                    snapshot.review_stream_id,
+                    &selector,
+                    asset,
+                    EvidenceRole::Annotated,
+                )
+                .unwrap();
+            assert_eq!(image.role(), EvidenceRole::Annotated);
+            fs::write(png, b"declared evidence was damaged").unwrap();
+            assert!(matches!(
+                reader.load_evidence(
+                    snapshot.review_stream_id,
+                    &selector,
+                    asset,
+                    EvidenceRole::Annotated
+                ),
+                Err(ReviewCommitError::Integrity)
+            ));
+        }
+        assert_eq!(fs::read(path).unwrap(), bytes);
+    }
+}
+
+#[test]
 fn reader_is_side_effect_free_and_observes_first_atomic_commit() {
     let (root, provider) = setup();
     let reader = provider.continuous_reader().unwrap();

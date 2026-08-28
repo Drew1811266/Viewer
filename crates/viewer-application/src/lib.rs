@@ -11,6 +11,7 @@ pub mod rename;
 pub mod review;
 pub mod review_artifact;
 pub mod review_assets;
+pub mod review_evidence;
 pub mod review_session;
 pub mod review_workspace;
 pub mod scan;

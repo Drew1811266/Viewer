@@ -1,6 +1,11 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { expect, it, vi } from 'vitest'
-import type { ReviewApplyResult, ReviewArchivePlan } from '../../api/reviewWorkspaceTypes'
+import type {
+  ReviewApplyResult,
+  ReviewArchivePlan,
+  ReviewRestorePlan,
+} from '../../api/reviewWorkspaceTypes'
+import { ContinuousReviewSession } from './continuousReviewSession'
 import {
   applied,
   archivePlan,
@@ -120,6 +125,106 @@ it('an older preview response cannot replace the newest user selection', async (
     groups: [{ basis: { kind: 'unknown' }, targets: [secondKey] }],
   })
 })
+
+it('a locally stale new preview invalidates an older in-flight archive preview and its result', async () => {
+  const port = reviewPort(workspace('base'))
+  const oldPreview = deferred<ReviewArchivePlan>()
+  vi.mocked(port.previewArchive).mockReturnValueOnce(oldPreview.promise)
+  const { result } = renderHook(() => useContinuousReviewCoordinator({ ...session, port }))
+  await waitFor(() => expect(result.current.state.kind).toBe('ready'))
+  let first!: Promise<unknown>
+  act(() => {
+    first = result.current.previewArchive(archiveSelection()).catch((error) => error)
+  })
+  await act(async () => {
+    await expect(
+      result.current.previewArchive(archiveSelection('stale-head')),
+    ).rejects.toMatchObject({
+      code: 'stale_snapshot',
+    })
+  })
+  await act(async () => {
+    oldPreview.resolve(archivePlan())
+    expect(await first).toMatchObject({ code: 'cancelled' })
+  })
+  expect(result.current.error?.code).toBe('stale_snapshot')
+  await act(async () => {
+    await expect(result.current.commitArchive()).rejects.toMatchObject({ code: 'preview_required' })
+  })
+  expect(port.previewArchive).toHaveBeenCalledOnce()
+  expect(port.prepareCommand).not.toHaveBeenCalled()
+})
+
+it('cannot revive an archive preview when a subscriber requests a newer preview during result notification', async () => {
+  const port = reviewPort(workspace('base'))
+  const oldPreview = deferred<ReviewArchivePlan>()
+  vi.mocked(port.previewArchive).mockReturnValueOnce(oldPreview.promise)
+  const coordinator = new ContinuousReviewSession(port, session, () => {})
+  const stop = coordinator.start()
+  let unsubscribe = () => {}
+  try {
+    await waitFor(() => expect(coordinator.getSnapshot().state.kind).toBe('ready'))
+    const first = coordinator.actions.previewArchive(archiveSelection()).catch((error) => error)
+    let next: Promise<unknown> | null = null
+    let requested = false
+    unsubscribe = coordinator.subscribe(() => {
+      if (requested) return
+      requested = true
+      next = coordinator.actions
+        .previewArchive(archiveSelection('stale-head'))
+        .catch((error) => error)
+    })
+    oldPreview.resolve(archivePlan())
+    expect(await first).toMatchObject({ code: 'cancelled' })
+    expect(await next).toMatchObject({ code: 'stale_snapshot' })
+    expect(coordinator.getSnapshot().error?.code).toBe('stale_snapshot')
+    await expect(coordinator.actions.commitArchive()).rejects.toMatchObject({
+      code: 'preview_required',
+    })
+    expect(port.prepareCommand).not.toHaveBeenCalled()
+  } finally {
+    unsubscribe()
+    await stop()
+  }
+})
+
+it.each(['archive', 'restore'] as const)(
+  'dirty-input rejection invalidates an older in-flight %s preview even after discard',
+  async (kind) => {
+    const port = reviewPort(workspace('base'))
+    const oldArchive = deferred<ReviewArchivePlan>()
+    const oldRestore = deferred<ReviewRestorePlan>()
+    vi.mocked(port.previewArchive).mockReturnValueOnce(oldArchive.promise)
+    vi.mocked(port.previewRestore).mockReturnValueOnce(oldRestore.promise)
+    const { result } = renderHook(() => useContinuousReviewCoordinator({ ...session, port }))
+    await waitFor(() => expect(result.current.state.kind).toBe('ready'))
+    const preview = () =>
+      kind === 'archive'
+        ? result.current.previewArchive(archiveSelection())
+        : result.current.previewRestore('archive-1', [])
+    let first!: Promise<unknown>
+    act(() => {
+      first = preview().catch((error) => error)
+      expect(result.current.beginEditor(input)).toBe(true)
+    })
+    await act(async () => {
+      await expect(preview()).rejects.toMatchObject({ code: 'needs_confirmation' })
+    })
+    act(() => {
+      expect(result.current.discardEditor()).toBe(true)
+    })
+    await act(async () => {
+      if (kind === 'archive') oldArchive.resolve(archivePlan())
+      else oldRestore.resolve(restorePlan())
+      expect(await first).toMatchObject({ code: 'cancelled' })
+    })
+    await act(async () => {
+      const commit = kind === 'archive' ? result.current.commitArchive() : result.current.restore()
+      await expect(commit).rejects.toMatchObject({ code: 'preview_required' })
+    })
+    expect(port.prepareCommand).not.toHaveBeenCalled()
+  },
+)
 
 it('refresh invalidates an old archive preview even before a new current head is received', async () => {
   const port = reviewPort(workspace('base'))

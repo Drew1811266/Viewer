@@ -34,13 +34,13 @@ export function continuousReviewActions(
   let archive: {
     version: number
     selection: ReviewArchiveSelection
-    plan: ReviewArchivePlan
+    plan: ReviewArchivePlan | null
   } | null = null
   let restore: {
     version: number
     archiveId: string
     decisions: ReviewRestoreDecision[]
-    plan: ReviewRestorePlan
+    plan: ReviewRestorePlan | null
   } | null = null
   let archiving: Promise<void> | null = null
   let restoring: Promise<void> | null = null
@@ -56,28 +56,30 @@ export function continuousReviewActions(
 
   return {
     previewArchive: async (selection: ReviewArchiveSelection): Promise<ReviewArchivePlan> => {
-      archive = null
-      const blocked = noDraft()
-      if (blocked) return driver.reject(blocked)
-      if (selection.expectedSnapshotId !== currentId())
-        return driver.reject(
-          reviewWorkspaceError('stale_snapshot', '意见已变化，请刷新后重新预览', false),
-        )
       const frozen = structuredClone(selection)
       const version = driver.version()
-      const plan = await driver.query('archive', (scope) =>
-        port.previewArchive({ ...scope, selection: frozen }),
-      )
+      const request = { version, selection: frozen, plan: null as ReviewArchivePlan | null }
+      archive = request
+      const plan = await driver.query('archive', async (scope) => {
+        // Even a locally rejected request supersedes an older in-flight preview.
+        const blocked = noDraft()
+        if (blocked) throw blocked
+        if (frozen.expectedSnapshotId !== currentId())
+          throw reviewWorkspaceError('stale_snapshot', '意见已变化，请刷新后重新预览', false)
+        return port.previewArchive({ ...scope, selection: frozen })
+      })
+      if (archive !== request || version !== driver.version())
+        throw reviewWorkspaceError('cancelled', '预览已失效，请重新获取', true)
       if (plan.expectedSnapshotId !== frozen.expectedSnapshotId)
         return driver.reject(
           reviewWorkspaceError('stale_snapshot', '预览不属于当前显示版本', false),
         )
-      archive = { version, selection: frozen, plan: structuredClone(plan) }
+      request.plan = structuredClone(plan)
       return plan
     },
     commitArchive: (): Promise<void> => {
       if (archiving !== null) return archiving
-      if (archive === null || archive.version !== driver.version())
+      if (archive === null || archive.plan === null || archive.version !== driver.version())
         return driver.reject(previewRequired())
       const blocked = noDraft()
       if (blocked) return driver.reject(blocked)
@@ -101,25 +103,33 @@ export function continuousReviewActions(
       archiveId: string,
       decisions: ReviewRestoreDecision[],
     ): Promise<ReviewRestorePlan> => {
-      restore = null
-      const blocked = noDraft()
-      if (blocked) return driver.reject(blocked)
       const expected = currentId()
       const version = driver.version()
       const frozen = structuredClone(decisions)
-      const plan = await driver.query('restore', (scope) =>
-        port.previewRestore({ ...scope, archiveId, decisions: frozen }),
-      )
+      const request = {
+        version,
+        archiveId,
+        decisions: frozen,
+        plan: null as ReviewRestorePlan | null,
+      }
+      restore = request
+      const plan = await driver.query('restore', async (scope) => {
+        const blocked = noDraft()
+        if (blocked) throw blocked
+        return port.previewRestore({ ...scope, archiveId, decisions: frozen })
+      })
+      if (restore !== request || version !== driver.version())
+        throw reviewWorkspaceError('cancelled', '预览已失效，请重新获取', true)
       if (plan.expectedSnapshotId !== expected)
         return driver.reject(
           reviewWorkspaceError('stale_snapshot', '意见已变化，请刷新后重新预览', false),
         )
-      restore = { version, archiveId, decisions: frozen, plan: structuredClone(plan) }
+      request.plan = structuredClone(plan)
       return plan
     },
     restore: (): Promise<void> => {
       if (restoring !== null) return restoring
-      if (restore === null || restore.version !== driver.version())
+      if (restore === null || restore.plan === null || restore.version !== driver.version())
         return driver.reject(previewRequired())
       if (restore.plan.conflicts.length > 0)
         return driver.reject(

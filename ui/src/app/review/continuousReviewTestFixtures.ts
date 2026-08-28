@@ -6,6 +6,7 @@ import type {
   ReviewArchivePlan,
   ReviewArchiveSelection,
   ReviewMigrationInspection,
+  ReviewRecoveryDraft,
   ReviewRestorePlan,
   ReviewWorkspaceError,
   ReviewWorkspacePort,
@@ -53,6 +54,23 @@ export function migrationInspection(): ReviewMigrationInspection {
     activeDraft: null,
     completedCandidates: [],
     limitations: ['usage_unconfirmed'],
+  }
+}
+export function recoveryDraft(commandId = 'different-command'): ReviewRecoveryDraft {
+  return {
+    streamId: 'stream-1',
+    commandId,
+    expectedSnapshotId: 'base',
+    payloadDigest: 'ab'.repeat(32),
+    failure: 'commit_unknown',
+    editorInput: {
+      migration: null,
+      selections: [],
+      text: '未决输入',
+      feedbackId: null,
+      targets: [],
+      historyRef: null,
+    },
   }
 }
 export const input = {

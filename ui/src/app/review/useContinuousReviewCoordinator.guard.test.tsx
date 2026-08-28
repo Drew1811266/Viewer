@@ -6,6 +6,8 @@ import {
   deferred,
   failure,
   input,
+  migrationInspection,
+  recoveryDraft,
   reviewPort,
   session,
   workspace,
@@ -87,6 +89,41 @@ it('retry cannot clear geometry edited after a definite failure; saving the new 
   expect(vi.mocked(port.prepareCommand).mock.calls[1]?.[0].command).toMatchObject({
     targets: newTargets,
   })
+})
+
+it('retry waits for an in-flight refresh before applying the retained envelope', async () => {
+  const port = reviewPort(workspace('base'))
+  const read = deferred<ReviewWorkspaceView>()
+  vi.mocked(port.applyCommand).mockRejectedValueOnce(failure('io'))
+  const { result } = renderHook(() => useContinuousReviewCoordinator({ ...session, port }))
+  await waitFor(() => expect(result.current.state.kind).toBe('ready'))
+  act(() => {
+    result.current.beginEditor(input)
+  })
+  await act(async () => {
+    await expect(result.current.saveFeedback()).rejects.toMatchObject({ code: 'io' })
+  })
+  const retained = result.current.pendingEnvelope
+  vi.mocked(port.getWorkspace).mockReturnValueOnce(read.promise)
+  let reading!: Promise<void>
+  act(() => {
+    reading = result.current.refresh()
+  })
+  await act(async () => {
+    await expect(result.current.retry()).rejects.toMatchObject({ code: 'busy' })
+  })
+  expect(port.applyCommand).toHaveBeenCalledOnce()
+  expect(result.current.pendingEnvelope).toBe(retained)
+  expect(result.current.editorInput.text).toBe(input.text)
+  await act(async () => {
+    read.resolve(workspace('base'))
+    await reading
+  })
+  await act(() => result.current.retry())
+  expect(port.prepareCommand).toHaveBeenCalledOnce()
+  expect(vi.mocked(port.applyCommand).mock.calls[1]?.[0].envelope).toBe(retained)
+  expect(result.current.view?.current?.reference.snapshotId).toBe('saved-snapshot')
+  expect(result.current.lastReceipt?.snapshot.snapshotId).toBe('saved-snapshot')
 })
 
 it('late refresh responses neither roll back the view nor overwrite a newer load error', async () => {
@@ -194,45 +231,110 @@ it('a late cancellation acknowledgement cannot relabel an already successful sav
   expect(result.current.lastReceipt?.snapshot.snapshotId).toBe('saved-snapshot')
 })
 
-it('a pending command cannot bypass a different unresolved recovery discovered on refresh', async () => {
+it.each(['save', 'retry'] as const)(
+  '%s cannot bypass a different unresolved recovery discovered on refresh',
+  async (action) => {
+    const port = reviewPort(workspace('base'))
+    vi.mocked(port.applyCommand).mockRejectedValueOnce(failure('io'))
+    const { result } = renderHook(() => useContinuousReviewCoordinator({ ...session, port }))
+    await waitFor(() => expect(result.current.state.kind).toBe('ready'))
+    act(() => {
+      result.current.beginEditor(input)
+    })
+    await act(async () => {
+      await expect(result.current.saveFeedback()).rejects.toMatchObject({ code: 'io' })
+    })
+    const latest = workspace('base')
+    latest.recovery = [recoveryDraft()]
+    vi.mocked(port.getWorkspace).mockResolvedValue(latest)
+    await act(() => result.current.refresh())
+    act(() => {
+      result.current.setEditorText('后续编辑')
+    })
+    await act(async () => {
+      const pending = action === 'save' ? result.current.saveFeedback() : result.current.retry()
+      await expect(pending).rejects.toMatchObject({
+        code: 'needs_confirmation',
+      })
+    })
+    expect(port.prepareCommand).toHaveBeenCalledOnce()
+    expect(port.applyCommand).toHaveBeenCalledOnce()
+    expect(result.current.view?.recovery).toHaveLength(1)
+    expect(result.current.editorInput.text).toBe('后续编辑')
+    expect(result.current.pendingEnvelope).not.toBeNull()
+  },
+)
+
+it('unresolved recovery also blocks a new migration command despite migration capability', async () => {
+  const view = workspace()
+  view.migration = migrationInspection()
+  view.capabilities = { continuousEditing: false, usageImport: false, migration: true }
+  view.recovery = [recoveryDraft('uncertain-migration')]
+  const port = reviewPort(view)
+  const { result } = renderHook(() => useContinuousReviewCoordinator({ ...session, port }))
+  await waitFor(() => expect(result.current.state.kind).toBe('migration_required'))
+  await act(async () => {
+    await expect(
+      result.current.migrate({
+        inspectionDigest: migrationInspection().inspectionDigest,
+        choice: { kind: 'keep_history_only' },
+      }),
+    ).rejects.toMatchObject({ code: 'needs_confirmation' })
+  })
+  expect(port.prepareCommand).not.toHaveBeenCalled()
+  expect(port.applyCommand).not.toHaveBeenCalled()
+  expect(result.current.view?.recovery).toEqual(view.recovery)
+})
+
+it('reconciles the same uncertain command without inventing a new envelope after refresh', async () => {
   const port = reviewPort(workspace('base'))
-  vi.mocked(port.applyCommand).mockRejectedValueOnce(failure('io'))
+  vi.mocked(port.applyCommand).mockRejectedValueOnce(failure('outcome_unknown'))
   const { result } = renderHook(() => useContinuousReviewCoordinator({ ...session, port }))
   await waitFor(() => expect(result.current.state.kind).toBe('ready'))
   act(() => {
     result.current.beginEditor(input)
   })
   await act(async () => {
-    await expect(result.current.saveFeedback()).rejects.toMatchObject({ code: 'io' })
+    await expect(result.current.saveFeedback()).rejects.toMatchObject({ code: 'outcome_unknown' })
   })
-  const latest = workspace('base')
-  latest.recovery = [
-    {
-      streamId: 'stream-1',
-      commandId: 'different-command',
-      expectedSnapshotId: 'base',
-      payloadDigest: 'ab'.repeat(32),
-      failure: 'commit_unknown',
-      editorInput: {
-        migration: null,
-        selections: [],
-        text: '另一条未决输入',
-        feedbackId: null,
-        targets: [],
-        historyRef: null,
-      },
-    },
-  ]
-  vi.mocked(port.getWorkspace).mockResolvedValue(latest)
+  const retained = result.current.pendingEnvelope
+  if (!retained) throw new Error('Missing envelope')
+  const view = workspace('later-head')
+  view.recovery = [{ ...recoveryDraft(retained.commandId), payloadDigest: retained.payloadDigest }]
+  vi.mocked(port.getWorkspace).mockResolvedValue(view)
   await act(() => result.current.refresh())
-  act(() => {
-    result.current.setEditorText('后续编辑')
-  })
-  await act(async () => {
-    await expect(result.current.saveFeedback()).rejects.toMatchObject({
-      code: 'needs_confirmation',
-    })
-  })
+  await act(() => result.current.retry())
   expect(port.prepareCommand).toHaveBeenCalledOnce()
-  expect(result.current.view?.recovery).toHaveLength(1)
+  expect(vi.mocked(port.applyCommand).mock.calls[1]?.[0].envelope).toBe(retained)
+  expect(result.current.pendingEnvelope).toBeNull()
+})
+
+it('reconciles a known migration receipt even after refresh no longer requires migration', async () => {
+  const view = workspace()
+  view.migration = migrationInspection()
+  view.capabilities = { continuousEditing: false, usageImport: false, migration: true }
+  const port = reviewPort(view)
+  vi.mocked(port.applyCommand).mockImplementationOnce(async ({ envelope }) => {
+    throw {
+      ...failure('committed_view_unavailable', false),
+      committedReceipt: applied(envelope).receipt,
+    }
+  })
+  const { result } = renderHook(() => useContinuousReviewCoordinator({ ...session, port }))
+  await waitFor(() => expect(result.current.state.kind).toBe('migration_required'))
+  await act(async () => {
+    await expect(
+      result.current.migrate({
+        inspectionDigest: migrationInspection().inspectionDigest,
+        choice: { kind: 'keep_history_only' },
+      }),
+    ).rejects.toMatchObject({ code: 'committed_view_unavailable' })
+  })
+  const retained = result.current.pendingEnvelope
+  vi.mocked(port.getWorkspace).mockResolvedValue(workspace('saved-snapshot'))
+  await act(() => result.current.refresh())
+  await act(() => result.current.retry())
+  expect(port.prepareCommand).toHaveBeenCalledOnce()
+  expect(vi.mocked(port.applyCommand).mock.calls[1]?.[0].envelope).toBe(retained)
+  expect(result.current.state.kind).toBe('ready')
 })

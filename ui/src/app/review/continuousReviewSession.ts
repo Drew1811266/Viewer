@@ -126,12 +126,21 @@ export class ContinuousReviewSession {
     }
     return Promise.reject(error)
   }
+  private recoveryError(): ReviewWorkspaceError | null {
+    return this.snapshot.view?.recovery.some(
+      (draft) => draft.commandId !== this.pending?.request.commandId,
+    )
+      ? reviewWorkspaceError('needs_confirmation', '存在待处理恢复输入', false)
+      : null
+  }
   private editingError(kind?: ReviewWorkspaceCommand['kind']): ReviewWorkspaceError | null {
     if (!this.isActive()) return this.stale()
     if (this.cancelling) return reviewWorkspaceError('busy', '正在取消上一个操作', true)
     if (this.loading || this.snapshot.view === null)
       return reviewWorkspaceError('busy', '正在加载评审', true)
     if (this.snapshot.state.kind === 'unavailable') return this.snapshot.state.error
+    const recovery = this.recoveryError()
+    if (recovery !== null) return recovery
     if (kind === 'migrate' && this.snapshot.view.migration !== null) {
       return this.snapshot.view.capabilities.migration
         ? null
@@ -141,12 +150,6 @@ export class ContinuousReviewSession {
       return reviewWorkspaceError('migration_required', '需要先确认迁移', false)
     if (!this.snapshot.view.capabilities.continuousEditing)
       return reviewWorkspaceError('read_only', '项目不可写', false)
-    if (
-      this.snapshot.view.recovery.some(
-        (draft) => draft.commandId !== this.pending?.request.commandId,
-      )
-    )
-      return reviewWorkspaceError('needs_confirmation', '存在待处理恢复输入', false)
     if (kind === 'adopt_usage' && !this.snapshot.view.capabilities.usageImport)
       return reviewWorkspaceError('capability_unavailable', '项目不支持使用依据导入', false)
     return null
@@ -355,6 +358,9 @@ export class ContinuousReviewSession {
     if (!this.isActive()) return Promise.reject(this.stale())
     if (this.cancelling)
       return this.reject(reviewWorkspaceError('busy', '正在取消上一个操作', true))
+    if (this.loading) return this.reject(reviewWorkspaceError('busy', '正在加载评审', true))
+    const recovery = this.pending === null ? null : this.recoveryError()
+    if (recovery !== null) return this.reject(recovery)
     if (
       this.pending?.frozenInput &&
       (!sameReviewValue(this.pending.frozenInput.targets, this.snapshot.editorInput.targets) ||

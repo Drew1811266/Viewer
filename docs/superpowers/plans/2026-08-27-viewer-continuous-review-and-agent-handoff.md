@@ -15,7 +15,8 @@
 > 执行状态：阶段 A–D（任务 1–16）已完成，累计 16 / 23。
 > 阶段 C 最终实现 `21edbf6` 已通过完整 `pnpm verify:clean` 和只读独立复验，检查点 C 完成。
 > 2026-08-28 获批的“Node 入口 + Rust 只读核心”已实现：`7863439`，并发修正 `76726a1`；完整门禁及只读独立复核通过。
-> Task 16 桥接 `db456ef`、审阅修正 `384d4cc` 已通过完整门禁与只读独立复验；阶段 D 完成，阶段 E/F 尚未开始。
+> Task 16 桥接 `db456ef`、审阅修正 `384d4cc` 已通过完整门禁与只读独立复验；阶段 D 完成。
+> 2026-08-28 已继续实施阶段 E 的 Task 17；定向验证通过，完整门禁和独立复核进行中，见[协调器记录](../../reviews/2026-08-28-continuous-review-coordinator-task17.md)。Task 18–23 未开始，新 UI 仍未启用。
 > 最新状态见[Task 16 契约检查点](../../progress/2026-08-28-continuous-review-task16-contract-checkpoint.md)及[阶段 D 桥接记录](../../reviews/2026-08-28-continuous-review-bridge-phase-d.md)；读取器结果见[阶段 D 读取器记录](../../reviews/2026-08-28-continuous-review-reader-phase-d.md)。
 > 应用用例、声明、迁移、Agent 读取器和新桥接仅在隔离工程验证；新桌面接口已组装，旧 UI 未切换，真实工程未迁移。
 >
@@ -762,6 +763,12 @@ export interface PreparedReviewCommand {
 ### Task 17: UI 持续评审协调器与输入保留
 
 **Files:** Create `ui/src/app/review/continuousReviewModel.ts`、`ui/src/app/review/continuousReviewModel.test.ts`、`ui/src/app/review/useContinuousReviewCoordinator.ts`、`ui/src/app/review/useContinuousReviewCoordinator.test.tsx`。Modify `ui/src/app/workspace/ports.ts`。
+
+实施细化：会话/写入生命周期与具名用例分别放入 `continuousReviewSession.ts` 和
+`continuousReviewActions.ts`，测试按生命周期/预览/其他用例/守卫拆分，并共享测试夹具。
+Task 16 已完成 ports.ts 的独立类型导出，本任务不提前修改旧 WorkspacePorts 工厂。
+补充暴露现有端口的素材预绑定、适用性确认和 legacy 继续提出；输入增加显式刷新/版本依据
+确认入口，刷新不自动重新绑定输入。细节和证据见[Task 17 记录](../../reviews/2026-08-28-continuous-review-coordinator-task17.md)。
 
 **Interfaces:** `useContinuousReviewCoordinator({ sessionId, generation, port, onError }) -> ContinuousReviewCoordinator`；state 为 loading／ready／saving／save_failed／recovery_required／migration_required／unavailable 的闭合联合。Coordinator 暴露 view、editorInput、pendingEnvelope、saveFeedback、withdrawTargets、previewArchive、commitArchive、previewRestore、restore、continueHistorical、confirmSource、inspectUsage、adoptUsage、inspectMigration、migrate、getHistory、getEvidence、retry、cancel。所有 async 方法返回 Promise<void> 或对应 preview，交由明确错误状态表达失败，不能吞掉 reject。未提交输入与最近成功 snapshot 独立。
 

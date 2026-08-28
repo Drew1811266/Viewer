@@ -79,8 +79,17 @@ impl ContinuousReviewAssetPort for IndexedReviewAssetCatalog {
         self.changes
             .add_members(&nodes.iter().map(|n| n.node.entity_id).collect::<Vec<_>>())?;
         let mut prepared = Vec::with_capacity(nodes.len());
-        for indexed in nodes {
+        for mut indexed in nodes {
             let _permit = tokio::select! {permit=self.evidence_gate.acquire()=>permit.map_err(|_|ReviewAssetError::Unavailable)?,()=wait_until_cancelled(cancellation.clone())=>return Err(ReviewAssetError::Cancelled)};
+            // Indexed dimensions may belong to bytes replaced without a size/mtime
+            // change. Continuous preparation requires a fresh media probe.
+            indexed.image_status = ImageIndexStatus::Pending;
+            indexed.image_metadata = None;
+            let node = indexed.node.clone();
+            let before = MediaFileIdentity::from_metadata(&validate_owned_metadata(
+                &self.project_root,
+                &node,
+            )?);
             let asset = prepare_one(
                 self.project_root.clone(),
                 indexed,
@@ -90,6 +99,13 @@ impl ContinuousReviewAssetPort for IndexedReviewAssetCatalog {
                 cancellation.clone(),
             )
             .await?;
+            let after = MediaFileIdentity::from_metadata(&validate_owned_metadata(
+                &self.project_root,
+                &node,
+            )?);
+            if before != after {
+                return Err(ReviewAssetError::SourceChanged);
+            }
             prepared.push(asset);
         }
         if cancellation.is_cancelled() {

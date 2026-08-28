@@ -103,6 +103,20 @@ ProducerVerifiedAndPositionConfirmed 是纯规则输入契约，Application 必�
 
 ## 续接
 
+### 检查点复核进展
+
+首次 `pnpm verify:clean` 在 `a0e2192` 上通过：前端 132 文件、1,142 通过／1 跳过，
+Rust 全量、格式化、严格 Clippy、架构／安全边界及离线依赖许可检查通过；门禁没有改变工作树。
+日志为隔离工作区 `target/continuous-review-phase-b-verify.log`（生成日志，不纳入源码）。
+
+随后主审补测复现两项遗漏：Ready 索引尺寸可能过时；探测期间同 inode、同 size／mtime
+覆盖可能绕过准备末尾检查。仅在 continuous adapter 强制重新探测尺寸，并对整个
+hash＋probe 区间核验含 ctime 的 MediaFileIdentity。先观察两项 RED，单独刷新探测后仍有
+一项 RED，再补身份区间核验使两项 GREEN。新素材集成现为 8 项，旧素材 9 项仍通过，
+Infrastructure 严格 Clippy 通过。旧端口正常行为不变。
+
+只读独立复审已发起；上述修正后的完整门禁及复审结论尚待记录。
+
 完成阶段 B 全仓门禁和只读独立复审后，下一阶段从任务 11 的 Application 用例接入开始。
 
 Viewer 仍是开发初期；签名、公证、正式安装包、上架、公开发布和发售不属于本轮任务或验收。

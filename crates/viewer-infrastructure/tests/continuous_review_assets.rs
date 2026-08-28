@@ -77,6 +77,18 @@ impl Fixture {
     }
 }
 struct Probe;
+type ProbeHook = Arc<dyn Fn(&Path) -> ImageProbe + Send + Sync>;
+struct InterceptProbe(ProbeHook);
+#[async_trait]
+impl ImagePort for InterceptProbe {
+    async fn probe(&self, path: &Path) -> Result<ImageProbe, ImageError> {
+        Ok((self.0)(path))
+    }
+    async fn render(&self, _: ImageRequest) -> Result<ImageArtifact, ImageError> {
+        panic!("not a renderer")
+    }
+    async fn cancel_session(&self, _: SessionId) {}
+}
 #[async_trait]
 impl ImagePort for Probe {
     async fn probe(&self, _: &Path) -> Result<ImageProbe, ImageError> {
@@ -486,5 +498,77 @@ async fn concurrent_relocation_confirmations_are_cas_guarded_and_input_is_bounde
             .check_sources(&[changed], ReviewTaskCancellation::default())
             .await,
         Err(ReviewAssetError::InvalidScope)
+    );
+}
+
+#[tokio::test]
+async fn continuous_preparation_does_not_trust_cached_dimensions_after_an_undetected_overwrite() {
+    let f = Fixture::new();
+    let node = f.write("a.png", b"original");
+    let image = InterceptProbe(Arc::new(|_| ImageProbe {
+        format: ImageFormat::Png,
+        width: 30,
+        height: 20,
+        orientation: 1,
+        has_alpha: false,
+        icc_profile_name: None,
+    }));
+    let catalog = IndexedReviewAssetCatalog::new(
+        f.root.path(),
+        f.index.clone(),
+        Arc::new(image),
+        Arc::new(Probe),
+        f.ledger.clone(),
+    )
+    .unwrap();
+    let prepared = catalog
+        .prepare_additions(&[node.entity_id], ReviewTaskCancellation::default())
+        .await
+        .unwrap()
+        .remove(0);
+    assert_eq!(
+        prepared.asset.media,
+        viewer_domain::review::ReviewMedia::Image {
+            width: Some(30),
+            height: Some(20)
+        }
+    );
+}
+
+#[tokio::test]
+async fn preparation_rejects_same_inode_overwrite_during_media_probe_even_when_mtime_is_restored() {
+    let f = Fixture::new();
+    let node = f.write("a.png", b"original");
+    let image = InterceptProbe(Arc::new(|path| {
+        let time = fs::metadata(path).unwrap().modified().unwrap();
+        fs::write(path, b"ORIGINAL").unwrap();
+        fs::File::options()
+            .write(true)
+            .open(path)
+            .unwrap()
+            .set_times(fs::FileTimes::new().set_modified(time))
+            .unwrap();
+        ImageProbe {
+            format: ImageFormat::Png,
+            width: 10,
+            height: 10,
+            orientation: 1,
+            has_alpha: false,
+            icc_profile_name: None,
+        }
+    }));
+    let catalog = IndexedReviewAssetCatalog::new(
+        f.root.path(),
+        f.index.clone(),
+        Arc::new(image),
+        Arc::new(Probe),
+        f.ledger.clone(),
+    )
+    .unwrap();
+    assert_eq!(
+        catalog
+            .prepare_additions(&[node.entity_id], ReviewTaskCancellation::default())
+            .await,
+        Err(ReviewAssetError::SourceChanged)
     );
 }

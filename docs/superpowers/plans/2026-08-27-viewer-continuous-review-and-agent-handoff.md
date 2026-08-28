@@ -12,12 +12,12 @@
 
 > Status: Active
 >
-> 执行状态：阶段 A–D（任务 1–16）已完成，累计 16 / 23。
+> 执行状态：阶段 A–D（任务 1–16）及阶段 E 的 Task 17 已完成，累计 17 / 23。
 > 阶段 C 最终实现 `21edbf6` 已通过完整 `pnpm verify:clean` 和只读独立复验，检查点 C 完成。
 > 2026-08-28 获批的“Node 入口 + Rust 只读核心”已实现：`7863439`，并发修正 `76726a1`；完整门禁及只读独立复核通过。
 > Task 16 桥接 `db456ef`、审阅修正 `384d4cc` 已通过完整门禁与只读独立复验；阶段 D 完成。
-> 2026-08-28 已继续实施阶段 E 的 Task 17；定向验证通过，完整门禁和独立复核进行中，见[协调器记录](../../reviews/2026-08-28-continuous-review-coordinator-task17.md)。Task 18–23 未开始，新 UI 仍未启用。
-> 最新状态见[Task 16 契约检查点](../../progress/2026-08-28-continuous-review-task16-contract-checkpoint.md)及[阶段 D 桥接记录](../../reviews/2026-08-28-continuous-review-bridge-phase-d.md)；读取器结果见[阶段 D 读取器记录](../../reviews/2026-08-28-continuous-review-reader-phase-d.md)。
+> 2026-08-28 Task 17 实现 `da1dcff`、修正 `d69a36a` 已通过完整门禁与独立复验，见[协调器记录](../../reviews/2026-08-28-continuous-review-coordinator-task17.md)。下一步 Task 18；Task 18–23 未开始，新 UI 仍未启用。
+> 阶段 D 既有状态见[Task 16 契约检查点](../../progress/2026-08-28-continuous-review-task16-contract-checkpoint.md)及[阶段 D 桥接记录](../../reviews/2026-08-28-continuous-review-bridge-phase-d.md)；读取器结果见[阶段 D 读取器记录](../../reviews/2026-08-28-continuous-review-reader-phase-d.md)。
 > 应用用例、声明、迁移、Agent 读取器和新桥接仅在隔离工程验证；新桌面接口已组装，旧 UI 未切换，真实工程未迁移。
 >
 > 计划基线：`a539f8df5f3e0f3239110df44515ba7cb583e308`；实施基线：`d7abb9961f377ae257c3283ef7893218ec0c53f9`。
@@ -25,7 +25,7 @@
 > 阶段 A 证据见[阶段 A 记录](../../reviews/2026-08-27-continuous-review-domain-phase-a.md)；
 > 暂停事实见[阶段 B 暂停检查点](../../progress/2026-08-27-continuous-review-phase-b-paused-checkpoint.md)；
 > 阶段 B 结果见[阶段 B 记录](../../reviews/2026-08-27-continuous-review-persistence-phase-b.md)；
-> 已通过状态与限制见[阶段 C 记录](../../reviews/2026-08-27-continuous-review-application-phase-c.md)；最新进行中状态见上述阶段 D 检查点。
+> 阶段 C 已通过状态与限制见[阶段 C 记录](../../reviews/2026-08-27-continuous-review-application-phase-c.md)；最新状态见上述 Task 17 协调器记录。
 
 ## Global Constraints
 
@@ -772,7 +772,7 @@ Task 16 已完成 ports.ts 的独立类型导出，本任务不提前修改旧 W
 
 **Interfaces:** `useContinuousReviewCoordinator({ sessionId, generation, port, onError }) -> ContinuousReviewCoordinator`；state 为 loading／ready／saving／save_failed／recovery_required／migration_required／unavailable 的闭合联合。Coordinator 暴露 view、editorInput、pendingEnvelope、saveFeedback、withdrawTargets、previewArchive、commitArchive、previewRestore、restore、continueHistorical、confirmSource、inspectUsage、adoptUsage、inspectMigration、migrate、getHistory、getEvidence、retry、cancel。所有 async 方法返回 Promise<void> 或对应 preview，交由明确错误状态表达失败，不能吞掉 reject。未提交输入与最近成功 snapshot 独立。
 
-- [ ] **Step 1 — RED：回执丢失时重试同一 envelope，失败不清空原文。** 用 React Testing Library renderHook 和实现 Task 16 全部方法的 vi.fn port；第一 apply 拒绝 OutcomeUnknown，第二返回已提交 receipt。
+- [x] **Step 1 — RED：回执丢失时重试同一 envelope，失败不清空原文。** 用 React Testing Library renderHook 和实现 Task 16 全部方法的 vi.fn port；第一 apply 拒绝 OutcomeUnknown，第二返回已提交 receipt。
 
 ```ts
 expect(result.current.editorInput.text).toBe('袖口收紧，保留褶皱')
@@ -781,8 +781,8 @@ expect(port.applyCommand.mock.calls[1]?.[0]).toEqual(port.applyCommand.mock.call
 ```
 
 这里 applyCommand 参数固定为 `{ sessionId, generation, envelope }`；prepareCommand 参数固定为 `{ sessionId, generation, commandId, expectedSnapshotId, command }`，遵循 Task 16 已确认的会话契约，不再为同一 retry 调用 prepare 生成新 ID。
-- [ ] **Step 2 — RED。** `pnpm --dir ui test src/app/review/useContinuousReviewCoordinator.test.tsx src/app/review/continuousReviewModel.test.ts`。
-- [ ] **Step 3 — 串行化语义命令并隔离会话 epoch。** 保存前冻结输入并 prepare；失败保留 input／envelope；成功清理的只能是对应输入版本，不清掉保存过程中用户新打的字。
+- [x] **Step 2 — RED。** `pnpm --dir ui test src/app/review/useContinuousReviewCoordinator.test.tsx src/app/review/continuousReviewModel.test.ts`。分批 RED→GREEN 日志见协调器记录。
+- [x] **Step 3 — 串行化语义命令并隔离会话 epoch。** 保存前冻结输入并 prepare；失败保留 input／envelope；成功清理的只能是对应输入版本，不清掉保存过程中用户新打的字。
 
 ```ts
 if (replyEpoch !== activeEpoch.current) return
@@ -791,9 +791,9 @@ if (savedInputRevision === inputRevision.current) clearEditorInput()
 ```
 
 `inputRevision` 是仅 UI 编辑保护计数；持久外部版本仍是 snapshot ID。setView 用 apply 返回的重新读取 view，不能将历史 receipt.snapshot 当当前 head。
-- [ ] **Step 4 — 测试双击保存／存档、乱序响应、切图有脏输入、切项目／关闭、StaleSnapshot 要重预览、只读项目、当前空和迁移状态。** 并发任务不能用新 ID 自动重发失败命令；用户明确改写载荷才新建操作。
-- [ ] **Step 5 — GREEN。** `pnpm --dir ui test src/app/review/useContinuousReviewCoordinator.test.tsx src/app/review/continuousReviewModel.test.ts && pnpm --dir ui typecheck`。
-- [ ] **Step 6 — 提交。** `git commit -m "feat(review): preserve edits across continuous save and retry"`。
+- [x] **Step 4 — 测试双击保存／存档、乱序响应、切图有脏输入、切项目／关闭、StaleSnapshot 要重预览、只读项目、当前空和迁移状态。** 并发任务不能用新 ID 自动重发失败命令；用户明确改写载荷才新建操作。复核后补充刷新与重试互斥、重试/迁移恢复守卫、预览本地拒绝及订阅重入的失效回归。
+- [x] **Step 5 — GREEN。** 评审目录 11 文件 / 90 项通过（本次新增 65），UI check、完整 `pnpm verify:clean` exit 0；UI 全仓 1209 通过 + 1 个既有跳过。独立复验确认三项 Important 全部解决，无剩余阻断。趋势 49 项非阻断告警，未改基线。
+- [x] **Step 6 — 提交。** 实现 `da1dcff`（`feat(review): preserve edits across continuous save and retry`）；复核修正 `d69a36a`。仅隔离分支本地提交，未合并或推送。
 
 ### Task 18: 大图工作台接入持续编辑与动态素材范围
 

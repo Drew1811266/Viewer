@@ -182,6 +182,24 @@ verified. A new operation starts with no inherited proof cache. The historical-b
 cycle/digest checks and per-walk bound are unchanged. This reduces repeated filesystem reads without
 claiming constant cost or large-project latency guarantees.
 
+### Task 12 usage claims and output candidates
+
+The optional importer reads only explicitly selected producer-owned project-relative files, never
+scans or writes `.viewer/reviews`. Canonical declaration identity is separate from the exact source
+bytes inspected. Unadopted candidates are session-bound and capped at 128 entries / 64 MiB; applying
+an adoption or an archive re-inspects those bytes. Already adopted declarations are read from their
+verified immutable repository copies. Neither inspection nor adoption archives feedback by itself.
+
+The repository validates the declaration's project/stream, basis digest and complete target-key
+membership. Output mappings remain raw producer claims: a bad previous-asset ID or mismatched output
+does not invalidate an otherwise valid basis or erase the original declaration. This refines Phase B's
+over-broad output membership rejection. Preserving a claim does **not** confirm lineage. The importer
+reports output candidate checks separately; producer-backed source binding additionally proves the
+selected target's old asset identity from the actual basis snapshot, matches the prepared new asset's
+path and full digest, requires explicit position confirmation, and remains subject to fresh source
+checks. Unrelated later rebinding cannot be laundered through an earlier declaration. No hashing or
+declaration field proves who produced an output or whether the requested work was performed.
+
 The `continuous_review_state`, `continuous_review_mutation`, `continuous_review_archive`,
 `continuous_review_restore` and `continuous_review_delta` integration suites cover the pure rules.
 Checkpoint evidence and any contract refinements are recorded in the

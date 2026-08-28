@@ -128,6 +128,21 @@ impl ContinuousReviewRepository {
 }
 
 impl ContinuousReviewRepositoryPort for ContinuousReviewRepository {
+    fn load_usage(
+        &self,
+        stream_id: ReviewStreamId,
+        id: viewer_domain::ReviewUsageId,
+    ) -> Result<Option<ReviewUsageDeclaration>, ReviewCommitError> {
+        let Some(view) = self.view()? else {
+            return Ok(None);
+        };
+        if !view.index.streams.iter().any(|s| {
+            s.review_stream_id == stream_id && s.usage_refs.iter().any(|r| r.declaration_id == id)
+        }) {
+            return Ok(None);
+        }
+        super::usage::read(&view, stream_id, id).map(|r| Some(r.into()))
+    }
     fn load_coverage(
         &self,
         stream_id: ReviewStreamId,

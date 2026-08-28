@@ -25,6 +25,7 @@ pub struct MemoryRepository {
     archives: Mutex<HashMap<ReviewArchiveId, ArchiveCheckpoint>>,
     pub fail_commit: Mutex<Option<ReviewCommitError>>,
     pub fail_view_after_commit: Mutex<bool>,
+    usage: Mutex<HashMap<ReviewUsageId, ReviewUsageDeclaration>>,
 }
 impl MemoryRepository {
     pub fn current(&self) -> Option<StoredContinuousSnapshot> {
@@ -32,6 +33,13 @@ impl MemoryRepository {
     }
 }
 impl ContinuousReviewRepositoryPort for MemoryRepository {
+    fn load_usage(
+        &self,
+        _: ReviewStreamId,
+        id: ReviewUsageId,
+    ) -> Result<Option<ReviewUsageDeclaration>, ReviewCommitError> {
+        Ok(self.usage.lock().unwrap().get(&id).cloned())
+    }
     fn load_coverage(
         &self,
         _: ReviewStreamId,
@@ -176,6 +184,9 @@ impl ContinuousReviewRepositoryPort for MemoryRepository {
             snapshot: reference,
         };
         let mut state = r.next.state;
+        for usage in r.adopted_usage {
+            self.usage.lock().unwrap().insert(usage.id, usage);
+        }
         state.parent = r.expected;
         for archive in r.archives {
             self.archives
@@ -372,6 +383,35 @@ pub struct Fixture {
     pub repository: Arc<MemoryRepository>,
     pub evidence: Arc<Evidence>,
     pub assets: Arc<Assets>,
+}
+
+pub struct Importer(pub Mutex<UsageImportPreview>);
+impl UsageImportPort for Importer {
+    fn inspect(&self, source: &RelativePath) -> Result<UsageImportPreview, UsageImportError> {
+        let preview = self.0.lock().unwrap();
+        if preview.source != *source {
+            return Err(UsageImportError::UnsafePath);
+        }
+        Ok(preview.clone())
+    }
+}
+pub fn usage_importer(result: &ReviewApplyResult) -> Arc<Importer> {
+    let state = &result.view.current.as_ref().unwrap().state;
+    let target = state.target_key(state.feedback[0].targets[0].id).unwrap();
+    Arc::new(Importer(Mutex::new(UsageImportPreview {
+        declaration: ReviewUsageDeclaration {
+            id: ReviewUsageId::from_u128(80),
+            project_id: state.project_id,
+            stream_id: state.stream_id,
+            basis: result.receipt.snapshot,
+            targets: vec![target],
+            outputs: vec![],
+        },
+        canonical_digest: [8; 32],
+        source: RelativePath::parse("handoff/usage.json").unwrap(),
+        source_digest: [9; 32],
+        outputs: vec![],
+    })))
 }
 impl Fixture {
     pub fn new() -> Self {

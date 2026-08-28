@@ -255,4 +255,61 @@ async fn review_workspace_native_save_archive_restore_and_preview_version_guard(
             .blake3(),
         base.blake3()
     );
+    use viewer_infrastructure::review::{ProjectUsageImporter, v3};
+    let usage = v3::ReviewUsageRecord {
+        declaration_id: viewer_domain::ReviewUsageId::from_u128(81),
+        project_id: project,
+        review_stream_id: stream,
+        basis: first.receipt.snapshot,
+        targets: vec![selected],
+        outputs: vec![],
+    };
+    let bytes = v3::encode_usage_v1(&usage).unwrap();
+    let declaration_path = RelativePath::parse("handoff.json").unwrap();
+    fs::write(root.path().join(declaration_path.as_str()), &bytes).unwrap();
+    let service = service.with_usage_importer(Arc::new(
+        ProjectUsageImporter::new(
+            root.path(),
+            project,
+            stream,
+            provider.continuous_reader().unwrap(),
+        )
+        .unwrap(),
+    ));
+    service
+        .inspect_usage(declaration_path.clone())
+        .await
+        .unwrap();
+    let e = service
+        .prepare(
+            ReviewCommandId::new(),
+            Some(changed.receipt.snapshot.snapshot_id),
+            ReviewWorkspaceCommand::AdoptUsage {
+                declaration_id: usage.declaration_id,
+            },
+        )
+        .await
+        .unwrap();
+    let mut replacement = bytes.clone();
+    replacement.push(b' ');
+    fs::write(root.path().join(declaration_path.as_str()), replacement).unwrap();
+    assert!(matches!(
+        service.apply(e.clone()).await,
+        Err(ReviewWorkspaceError::Usage(UsageImportError::SourceChanged))
+    ));
+    assert_eq!(
+        reader.load_current_ref(stream).unwrap(),
+        Some(changed.receipt.snapshot)
+    );
+    fs::write(root.path().join(declaration_path.as_str()), bytes).unwrap();
+    let adopted = service.apply(e).await.unwrap();
+    assert_eq!(adopted.view.projection.needs_confirmation.len(), 4);
+    assert_eq!(
+        reader
+            .load_usage(stream, usage.declaration_id)
+            .unwrap()
+            .unwrap()
+            .basis,
+        first.receipt.snapshot
+    );
 }

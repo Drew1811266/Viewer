@@ -11,6 +11,7 @@ mod repository;
 
 pub use assets::IndexedReviewAssetCatalog;
 pub use change_ledger::ReviewChangeLedger;
+pub use continuous::ProjectUsageImporter;
 pub use continuous::{
     ContinuousReviewCommandCodec, NoReviewCommitFaults, ReviewCommitFaultInjector,
     ReviewCommitFaultPoint,

@@ -59,6 +59,7 @@ pub(super) fn continue_historical(
     current: &ContinuousReviewState,
     envelope: &ReviewCommandEnvelope,
     prepared: &HashMap<AssetVersionId, crate::PreparedReviewAsset>,
+    usages: &[super::usage::VerifiedUsage],
 ) -> Result<ContinuousReviewState, ReviewWorkspaceError> {
     let ReviewWorkspaceCommand::ContinueHistorical {
         history_ref,
@@ -97,10 +98,13 @@ pub(super) fn continue_historical(
         {
             return Err(ContinuousReviewError::MissingReference.into());
         }
-        if binding.confirmation != SourceBindingConfirmation::UserConfirmed {
-            return Err(ReviewWorkspaceError::CapabilityUnavailable);
-        }
         super::editing::add_asset(&mut next, binding.new_asset_version_id, prepared)?;
+        let new = next
+            .assets
+            .iter()
+            .find(|a| a.id == binding.new_asset_version_id)
+            .ok_or(ContinuousReviewError::MissingReference)?;
+        super::usage::validate_binding(&history.state, new, binding, usages)?;
         targets.push(VersionedTarget {
             id,
             revision_id,

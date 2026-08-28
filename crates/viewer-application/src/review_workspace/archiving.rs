@@ -58,6 +58,13 @@ impl ContinuousReviewService {
     ) -> Result<ArchivePlan, ReviewWorkspaceError> {
         let provider = self.provider.clone();
         let stream = self.context.stream_id;
+        let read_provider = provider.clone();
+        let repository = super::service::io(move || read_provider.open_reader()).await?;
+        self.usages_for(
+            &ReviewWorkspaceCommand::Archive(selection.clone()),
+            repository,
+        )
+        .await?;
         super::service::work(move || {
             let reader = provider.open_reader()?;
             let current = reader

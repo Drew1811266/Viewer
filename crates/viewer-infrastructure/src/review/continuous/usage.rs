@@ -28,6 +28,26 @@ impl From<ReviewUsageDeclaration> for v3::ReviewUsageRecord {
         }
     }
 }
+impl From<v3::ReviewUsageRecord> for ReviewUsageDeclaration {
+    fn from(value: v3::ReviewUsageRecord) -> Self {
+        Self {
+            id: value.declaration_id,
+            project_id: value.project_id,
+            stream_id: value.review_stream_id,
+            basis: value.basis,
+            targets: value.targets,
+            outputs: value
+                .outputs
+                .into_iter()
+                .map(|o| viewer_application::review_workspace::UsageOutput {
+                    relative_path: o.relative_path,
+                    blake3: o.blake3,
+                    previous_asset_version_id: o.previous_asset_version_id,
+                })
+                .collect(),
+        }
+    }
+}
 
 pub(super) fn validate(
     view: &View,
@@ -51,13 +71,10 @@ pub(super) fn validate(
             })
         })
         .collect();
-    let assets: HashSet<_> = basis.state.assets.iter().map(|a| a.id).collect();
-    if record.targets.iter().any(|key| !keys.contains(key))
-        || record
-            .outputs
-            .iter()
-            .any(|v| !assets.contains(&v.previous_asset_version_id))
-    {
+    // The exact basis/target claim is validated here. Outputs remain producer claims,
+    // not confirmed lineage; Application verifies old-target ownership and fresh new bytes
+    // separately before accepting a producer-backed SourceBindingDecision.
+    if record.targets.iter().any(|key| !keys.contains(key)) {
         return Err(ReviewCommitError::Integrity);
     }
     Ok(())

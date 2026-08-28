@@ -718,3 +718,265 @@ async fn prepared_command_cache_has_an_aggregate_memory_budget() {
     );
     assert!(f.repository.current().is_none());
 }
+
+#[tokio::test]
+async fn importing_and_adopting_usage_never_archives_or_claims_execution() {
+    let f = Fixture::new();
+    let original = f.service();
+    let b = first(&f, &original).await;
+    let importer = usage_importer(&b);
+    let service = f.service().with_usage_importer(importer.clone());
+    let source = importer.0.lock().unwrap().source.clone();
+    let preview = service.inspect_usage(source).await.unwrap();
+    assert_eq!(
+        f.repository.current().unwrap().reference,
+        b.receipt.snapshot
+    );
+    let command = ReviewWorkspaceCommand::AdoptUsage {
+        declaration_id: preview.declaration.id,
+    };
+    let e = service
+        .prepare(
+            ReviewCommandId::new(),
+            Some(b.receipt.snapshot.snapshot_id),
+            command.clone(),
+        )
+        .await
+        .unwrap();
+    let c = service.apply(e).await.unwrap();
+    assert_eq!(key(&b), key(&c));
+    assert_eq!(c.view.projection.actionable.len(), 1);
+    let e = service
+        .prepare(
+            ReviewCommandId::new(),
+            Some(c.receipt.snapshot.snapshot_id),
+            command,
+        )
+        .await
+        .unwrap();
+    assert!(matches!(
+        service.apply(e).await,
+        Err(ReviewWorkspaceError::NoChanges)
+    ));
+}
+
+#[tokio::test]
+async fn changed_usage_after_inspection_cannot_be_adopted() {
+    let f = Fixture::new();
+    let original = f.service();
+    let b = first(&f, &original).await;
+    let importer = usage_importer(&b);
+    let service = f.service().with_usage_importer(importer.clone());
+    let source = importer.0.lock().unwrap().source.clone();
+    let preview = service.inspect_usage(source).await.unwrap();
+    importer.0.lock().unwrap().source_digest = [0; 32];
+    let e = service
+        .prepare(
+            ReviewCommandId::new(),
+            Some(b.receipt.snapshot.snapshot_id),
+            ReviewWorkspaceCommand::AdoptUsage {
+                declaration_id: preview.declaration.id,
+            },
+        )
+        .await
+        .unwrap();
+    assert!(matches!(
+        service.apply(e).await,
+        Err(ReviewWorkspaceError::Usage(UsageImportError::SourceChanged))
+    ));
+    assert_eq!(
+        f.repository.current().unwrap().reference,
+        b.receipt.snapshot
+    );
+}
+
+#[tokio::test]
+async fn selected_usage_is_adopted_atomically_with_archive_but_never_inferred() {
+    let f = Fixture::new();
+    let original = f.service();
+    let b = first(&f, &original).await;
+    let importer = usage_importer(&b);
+    let service = f.service().with_usage_importer(importer.clone());
+    let source = importer.0.lock().unwrap().source.clone();
+    let preview = service.inspect_usage(source).await.unwrap();
+    let selection = ArchiveSelection {
+        expected_snapshot_id: b.receipt.snapshot.snapshot_id,
+        groups: vec![ArchiveGroup {
+            basis: ArchiveBasis::Known {
+                snapshot: b.receipt.snapshot,
+                source: ArchiveBasisSource::AgentDeclared {
+                    usage_id: preview.declaration.id,
+                },
+            },
+            targets: vec![key(&b)],
+        }],
+    };
+    let e = service
+        .prepare(
+            ReviewCommandId::new(),
+            Some(b.receipt.snapshot.snapshot_id),
+            ReviewWorkspaceCommand::Archive(selection),
+        )
+        .await
+        .unwrap();
+    *f.repository.fail_commit.lock().unwrap() = Some(ReviewCommitError::Io);
+    assert!(service.apply(e.clone()).await.is_err());
+    assert!(
+        ContinuousReviewRepositoryPort::load_usage(
+            f.repository.as_ref(),
+            ReviewStreamId::from_u128(2),
+            preview.declaration.id
+        )
+        .unwrap()
+        .is_none()
+    );
+    let c = service.apply(e).await.unwrap();
+    assert!(c.view.current.as_ref().unwrap().state.feedback.is_empty());
+    assert!(
+        ContinuousReviewRepositoryPort::load_usage(
+            f.repository.as_ref(),
+            ReviewStreamId::from_u128(2),
+            preview.declaration.id
+        )
+        .unwrap()
+        .is_some()
+    );
+}
+
+#[tokio::test]
+async fn usage_import_requires_explicit_capability_and_context() {
+    let f = Fixture::new();
+    let service = f.service();
+    assert!(matches!(
+        service
+            .inspect_usage(RelativePath::parse("usage.json").unwrap())
+            .await,
+        Err(ReviewWorkspaceError::CapabilityUnavailable)
+    ));
+    let b = first(&f, &service).await;
+    let importer = usage_importer(&b);
+    importer.0.lock().unwrap().declaration.stream_id = ReviewStreamId::new();
+    let source = importer.0.lock().unwrap().source.clone();
+    assert!(matches!(
+        f.service()
+            .with_usage_importer(importer)
+            .inspect_usage(source)
+            .await,
+        Err(ReviewWorkspaceError::Usage(UsageImportError::WrongContext))
+    ));
+}
+
+#[tokio::test]
+async fn producer_binding_cannot_use_an_unrelated_previous_version_even_if_the_target_id_matches() {
+    let f = Fixture::new();
+    let original = f.service();
+    let b = first(&f, &original).await;
+    let importer = usage_importer(&b);
+    let service = f.service().with_usage_importer(importer.clone());
+    let assets = service
+        .prepare_assets(
+            &[EntityId::from_u128(11), EntityId::from_u128(12)],
+            ReviewTaskCancellation::default(),
+        )
+        .await
+        .unwrap();
+    let rebind = SourceBindingDecision {
+        target_key: key(&b),
+        new_asset_version_id: assets[0].id,
+        anchor: FeedbackAnchor::Asset,
+        confirmation: SourceBindingConfirmation::UserConfirmed,
+    };
+    let e = service
+        .prepare(
+            ReviewCommandId::new(),
+            Some(b.receipt.snapshot.snapshot_id),
+            ReviewWorkspaceCommand::ConfirmSource(rebind),
+        )
+        .await
+        .unwrap();
+    let c = service.apply(e).await.unwrap();
+    {
+        let mut preview = importer.0.lock().unwrap();
+        preview.declaration.outputs = vec![UsageOutput {
+            relative_path: assets[1].relative_path.clone(),
+            blake3: assets[1].evidence.blake3.unwrap(),
+            previous_asset_version_id: assets[0].id,
+        }];
+    }
+    let source = importer.0.lock().unwrap().source.clone();
+    let preview = service.inspect_usage(source).await.unwrap();
+    let e = service
+        .prepare(
+            ReviewCommandId::new(),
+            Some(c.receipt.snapshot.snapshot_id),
+            ReviewWorkspaceCommand::ConfirmSource(SourceBindingDecision {
+                target_key: key(&c),
+                new_asset_version_id: assets[1].id,
+                anchor: FeedbackAnchor::Asset,
+                confirmation: SourceBindingConfirmation::ProducerVerifiedAndPositionConfirmed {
+                    usage_id: preview.declaration.id,
+                },
+            }),
+        )
+        .await
+        .unwrap();
+    assert!(matches!(
+        service.apply(e).await,
+        Err(ReviewWorkspaceError::Usage(UsageImportError::InvalidScope))
+    ));
+}
+
+#[tokio::test]
+async fn verified_producer_mapping_still_requires_an_explicit_selected_binding() {
+    let f = Fixture::new();
+    let original = f.service();
+    let b = first(&f, &original).await;
+    let importer = usage_importer(&b);
+    let service = f.service().with_usage_importer(importer.clone());
+    let new = service
+        .prepare_assets(
+            &[EntityId::from_u128(11)],
+            ReviewTaskCancellation::default(),
+        )
+        .await
+        .unwrap()
+        .remove(0);
+    let previous = b.view.current.as_ref().unwrap().state.feedback[0].targets[0].asset_version_id;
+    importer.0.lock().unwrap().declaration.outputs = vec![UsageOutput {
+        relative_path: new.relative_path.clone(),
+        blake3: new.evidence.blake3.unwrap(),
+        previous_asset_version_id: previous,
+    }];
+    let source = importer.0.lock().unwrap().source.clone();
+    let preview = service.inspect_usage(source).await.unwrap();
+    assert_eq!(
+        f.repository.current().unwrap().state.feedback[0].targets[0].asset_version_id,
+        previous
+    );
+    let binding = SourceBindingDecision {
+        target_key: key(&b),
+        new_asset_version_id: new.id,
+        anchor: FeedbackAnchor::Asset,
+        confirmation: SourceBindingConfirmation::ProducerVerifiedAndPositionConfirmed {
+            usage_id: preview.declaration.id,
+        },
+    };
+    let e = service
+        .prepare(
+            ReviewCommandId::new(),
+            Some(b.receipt.snapshot.snapshot_id),
+            ReviewWorkspaceCommand::ConfirmSource(binding),
+        )
+        .await
+        .unwrap();
+    let c = service.apply(e).await.unwrap();
+    assert_eq!(
+        c.view.current.as_ref().unwrap().state.feedback[0].targets[0].asset_version_id,
+        new.id
+    );
+    assert_eq!(
+        c.view.current.as_ref().unwrap().state.feedback[0].text,
+        "原文保留"
+    );
+    assert_eq!(c.view.projection.actionable.len(), 1);
+}

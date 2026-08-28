@@ -160,6 +160,11 @@ pub enum ReviewCommitError {
 }
 
 pub trait ContinuousReviewRepositoryPort: Send + Sync {
+    fn load_usage(
+        &self,
+        stream_id: ReviewStreamId,
+        id: ReviewUsageId,
+    ) -> Result<Option<ReviewUsageDeclaration>, ReviewCommitError>;
     /// Coverage at an exact committed head, not at a guessed latest state.
     fn load_coverage(
         &self,

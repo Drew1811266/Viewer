@@ -14,7 +14,10 @@ mod recovery;
 mod references;
 mod repository;
 mod usage;
+mod usage_import;
+mod usage_source;
 
 pub use command::ContinuousReviewCommandCodec;
 pub use faults::{NoReviewCommitFaults, ReviewCommitFaultInjector, ReviewCommitFaultPoint};
 pub(super) use repository::ContinuousReviewRepository;
+pub use usage_import::ProjectUsageImporter;

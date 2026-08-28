@@ -14,6 +14,7 @@ pub(super) fn prepare(
     empty: &ContinuousReviewState,
     envelope: &ReviewCommandEnvelope,
     assets: &HashMap<AssetVersionId, crate::PreparedReviewAsset>,
+    usages: &[super::usage::VerifiedUsage],
 ) -> Result<Transition, ReviewWorkspaceError> {
     let before = current.map_or(empty, |s| &s.state);
     let snapshot = envelope.generated.snapshot_id;
@@ -100,14 +101,17 @@ pub(super) fn prepare(
             next
         }
         ReviewWorkspaceCommand::ContinueHistorical { .. } => {
-            super::history::continue_historical(repository, before, envelope, assets)?
+            super::history::continue_historical(repository, before, envelope, assets, usages)?
         }
         ReviewWorkspaceCommand::ConfirmSource(decision) => {
-            if decision.confirmation != SourceBindingConfirmation::UserConfirmed {
-                return Err(ReviewWorkspaceError::CapabilityUnavailable);
-            }
             let mut with_assets = before.clone();
             super::editing::add_asset(&mut with_assets, decision.new_asset_version_id, assets)?;
+            let new = with_assets
+                .assets
+                .iter()
+                .find(|a| a.id == decision.new_asset_version_id)
+                .ok_or(ContinuousReviewError::MissingReference)?;
+            super::usage::validate_binding(&with_assets, new, decision, usages)?;
             kind = ReviewChangeKind::Rebound;
             apply_source_binding(
                 &with_assets,
@@ -121,7 +125,16 @@ pub(super) fn prepare(
                 snapshot,
             )?
         }
-        ReviewWorkspaceCommand::AdoptUsage { .. } | ReviewWorkspaceCommand::Migrate(_) => {
+        ReviewWorkspaceCommand::AdoptUsage { declaration_id } => {
+            if !usages.iter().any(|u| u.declaration.id == *declaration_id) {
+                return Err(ReviewWorkspaceError::CapabilityUnavailable);
+            }
+            let mut next = before.clone();
+            next.snapshot_id = snapshot;
+            next.parent = None;
+            next
+        }
+        ReviewWorkspaceCommand::Migrate(_) => {
             return Err(ReviewWorkspaceError::CapabilityUnavailable);
         }
     };

@@ -60,7 +60,7 @@ impl ContinuousReviewService {
             migration: None,
             capabilities: ReviewWorkspaceCapabilities {
                 continuous_editing: true,
-                usage_import: false,
+                usage_import: self.usage_importer.is_some(),
                 migration: false,
             },
         })

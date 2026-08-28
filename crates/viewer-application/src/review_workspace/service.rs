@@ -20,6 +20,8 @@ pub struct ContinuousReviewService {
     pub(super) prepared: Mutex<HashMap<AssetVersionId, PreparedReviewAsset>>,
     envelopes: Mutex<HashMap<ReviewCommandId, ReviewCommandEnvelope>>,
     gate: Mutex<()>,
+    pub(super) usage_importer: Option<Arc<dyn UsageImportPort>>,
+    pub(super) usage_previews: Mutex<HashMap<ReviewUsageId, UsageImportPreview>>,
 }
 impl ContinuousReviewService {
     pub fn new(
@@ -40,6 +42,8 @@ impl ContinuousReviewService {
             prepared: Mutex::new(HashMap::new()),
             envelopes: Mutex::new(HashMap::new()),
             gate: Mutex::new(()),
+            usage_importer: None,
+            usage_previews: Mutex::new(HashMap::new()),
         }
     }
 
@@ -180,12 +184,14 @@ impl ContinuousReviewService {
         }
         let empty =
             ContinuousReviewState::empty(self.context.project_id, stream, ReviewSnapshotId::new());
+        let adopted_usage = self.usages_for(&envelope.command, writer.clone()).await?;
         let assets = self.prepared.lock().await;
         let repository = writer.clone();
         let saved = current.clone();
         let empty_state = empty.clone();
         let request = envelope.clone();
         let prepared = assets.clone();
+        let usages = adopted_usage.clone();
         let transition = work(move || {
             super::transition::prepare(
                 repository.as_ref(),
@@ -193,6 +199,7 @@ impl ContinuousReviewService {
                 &empty_state,
                 &request,
                 &prepared,
+                &usages,
             )
         })
         .await?;
@@ -231,7 +238,7 @@ impl ContinuousReviewService {
                     evidence: evidence.bindings,
                 },
                 archives: transition.archives,
-                adopted_usage: vec![],
+                adopted_usage: adopted_usage.into_iter().map(|u| u.declaration).collect(),
                 staged_evidence: evidence.files,
             };
             let repository = writer.clone();

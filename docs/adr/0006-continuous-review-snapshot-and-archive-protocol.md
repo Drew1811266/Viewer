@@ -2,7 +2,7 @@
 
 > Status: Active
 >
-> Decision: Phases A–C verified; Phase D reader architecture amendment accepted on 2026-08-28, implementation pending. UI integration remains pending.
+> Decision: Phases A–C and Phase D Tasks 14–15 verified; native reader amendment implemented on 2026-08-28. Task 16 and UI integration remain pending.
 >
 > Date: 2026-08-27
 
@@ -169,7 +169,12 @@ descriptors; path metadata rechecks are additional detection, not the confinemen
 Absent review state requires an existing validated project identity; the reader never creates it.
 Delta traversal is bounded and reuses the pure Domain diff, not a second JavaScript implementation.
 Focused native IO tests, legacy compatibility, owned v3 fixtures and Rust-writer/Node-reader tests
-must pass before accepting this replacement. The previous WIP test failures remain historical evidence.
+passed with the full verification gate and independent read-only review for Tasks 14–15. The index
+name check observes the descriptor name before rechecking its current link count; only a verified
+unlink permits a missing name (or Linux's exact deleted-index suffix). Observed mismatched names
+and immutable replacements remain rejected. Linux has a conditional regression but was not run on
+Linux in this checkpoint. Evidence and limitations are in the [reader verification record](../reviews/2026-08-28-continuous-review-reader-phase-d.md).
+The previous WIP test failures remain historical evidence; Task 16 and product UI are not accepted by this result.
 
 ### Phase C application interface refinements (Task 11)
 

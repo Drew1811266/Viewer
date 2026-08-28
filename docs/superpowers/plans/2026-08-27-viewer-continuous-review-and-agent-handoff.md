@@ -12,11 +12,11 @@
 
 > Status: Active
 >
-> 执行状态：阶段 A–C（任务 1–13）已完成，累计 13 / 23。
+> 执行状态：阶段 A–C 和阶段 D 的任务 14–15 已完成，累计 15 / 23。
 > 阶段 C 最终实现 `21edbf6` 已通过完整 `pnpm verify:clean` 和只读独立复验，检查点 C 完成。
-> Task 14 已开始，但 Node 文件访问的并发安全边界尚未通过；任务 14–23 尚未完成。
-> 2026-08-28 用户批准“Node 入口 + Rust 只读核心”，按下述修订后的 Task 14–15 继续，见[阶段 D 架构检查点](../../progress/2026-08-27-continuous-review-phase-d-architecture-checkpoint.md)。
-> 应用用例、声明和迁移仅在隔离工程验证；UI、桌面组装和 Agent 读取入口尚未切换。
+> 2026-08-28 获批的“Node 入口 + Rust 只读核心”已实现：`7863439`，并发修正 `76726a1`；完整门禁及只读独立复核通过。
+> Task 16 桌面桥接和阶段 E/F 尚未开始；阶段 D 尚未整体完成。见[阶段 D 读取器记录](../../reviews/2026-08-28-continuous-review-reader-phase-d.md)及[架构检查点](../../progress/2026-08-27-continuous-review-phase-d-architecture-checkpoint.md)。
+> 应用用例、声明、迁移和 Agent 读取器仅在隔离工程验证；UI 和桌面组装尚未切换。
 >
 > 计划基线：`a539f8df5f3e0f3239110df44515ba7cb583e308`；实施基线：`d7abb9961f377ae257c3283ef7893218ec0c53f9`。
 > 阶段 A 在用户授权的 `.worktrees/continuous-review-domain`、`codex/continuous-review-domain` 内实施；原分支未改动。
@@ -668,20 +668,22 @@ let should_activate = matches!(choice, MigrationChoice::ContinueSelected { .. })
 
 ### Task 14: 原生只读 IO、legacy 兼容与 Node 桥接（2026-08-28 修订）
 
-> 首版 `cc7e13f` 及候选 `1dccf78` 未验收。已批准替换路径复查架构，不删减安全覆盖。
+> 已完成，独立复核通过。首版 `cc7e13f` 及候选 `1dccf78` 未验收；改用已批准的原生架构，不删减安全覆盖。
 
 **Files:** Create `crates/viewer-infrastructure/src/bin/viewer-review-reader.rs`、`crates/viewer-infrastructure/src/review/continuous/reader/{mod,request,project,legacy}.rs`、`scripts/review-protocol/native-reader.mjs`、`scripts/review-protocol/native-reader.test.mjs`。Modify `review/{mod,continuous/mod,continuous/owned_io}.rs`、`scripts/review-protocol/read-latest.mjs`、`package.json`、`scripts/repository-policy.test.mjs`。保留 `blake3.mjs` 及黄金测试供既有 fixture 调用；安全覆盖迁入 Rust 后删除未验收的 `safe-read.mjs`／测试。
 
 **Interfaces:** 内部请求协议 `viewer.review.reader/1`，闭合操作 `legacyLatest`／`legacyList`，共同字段 `projectRoot`，选择字段 `reviewStreamId?` 或成对 `taskId?`／`batchId?`。stdin 最多 64 KiB，stdout 最多 64 MiB；错误为有界 code/message。Node `invokeReader(operation, options)` 通过无 shell 的进程调用发送一次请求。默认二进制位于脚本工作树的 `target/debug/viewer-review-reader`；仅允许调用者用绝对 `VIEWER_REVIEW_READER` 覆盖，不搜索项目/PATH、不自动构建。新 `build:review-reader` 为 `cargo build --locked --offline -p viewer-infrastructure --bin viewer-review-reader`；协议门禁显式先构建再测试。
 
-- [ ] **Step 1 — RED：固定 index 与目录句柄。** Rust `owned_io` 单元测试在打开 index 后原子替换，断言返回旧字节；将已打开目录替换为其他目录／符号链接，断言失败且不读新目录。补 descriptor 枚举、大小写别名、硬链接、FIFO、目录与预分配大小边界。真实 TempDir + 文件句柄，不能仅 mock stat。
-- [ ] **Step 2 — RED。** `cargo test --locked -p viewer-infrastructure review::continuous::owned_io`；Node 加实际二进制入口测试，请求未知字段／超限、缺二进制、相对 override 和 legacy 输出／CLI 失败方式。
-- [ ] **Step 3 — 实现共享只读访问与 native legacy。** 逐级目录句柄访问与枚举；单独的 pinned-index 读取容忍正常 unlink，其他对象仍严格核验。复用 Rust legacy decoder，v2 必需 PNG 逐块摘要并校验包内精确文件集合；返回核验后的原始 JSON，保持旧字段可选性。核心没有写仓储／迁移／Viewer 启动入口。
-- [ ] **Step 4 — 兼容与范围测试。** 现有 v1/v2 正负例全部通过；大小写、穿越、链接、非普通文件、损坏 PNG、总量上限和并发保存覆盖不撤销。源检查的 64 KiB 固定缓冲测试迁至 Task 15 Rust source 模块，旧 Node 实现不再充当安全边界。
-- [ ] **Step 5 — GREEN。** `pnpm test:review-protocol && cargo test --locked -p viewer-infrastructure`；精确同步 policy 的脚本清单，不放宽边界规则。
-- [ ] **Step 6 — 提交检查点。** `git commit -m "refactor(review): anchor external reader IO in native core"`；不合并／推送／接 UI。
+- [x] **Step 1 — RED：固定 index 与目录句柄。** Rust `owned_io` 单元测试在打开 index 后原子替换，断言返回旧字节；将已打开目录替换为其他目录／符号链接，断言失败且不读新目录。补 descriptor 枚举、大小写别名、硬链接、FIFO、目录与预分配大小边界。真实 TempDir + 文件句柄，不能仅 mock stat。
+- [x] **Step 2 — RED。** `cargo test --locked -p viewer-infrastructure review::continuous::owned_io`；Node 加实际二进制入口测试，请求未知字段／超限、缺二进制、相对 override 和 legacy 输出／CLI 失败方式。
+- [x] **Step 3 — 实现共享只读访问与 native legacy。** 逐级目录句柄访问与枚举；单独的 pinned-index 读取容忍正常 unlink，其他对象仍严格核验。复用 Rust legacy decoder，v2 必需 PNG 逐块摘要并校验包内精确文件集合；返回核验后的原始 JSON，保持旧字段可选性。核心没有写仓储／迁移／Viewer 启动入口。
+- [x] **Step 4 — 兼容与范围测试。** 现有 v1/v2 正负例全部通过；大小写、穿越、链接、非普通文件、损坏 PNG、总量上限和并发保存覆盖不撤销。源检查的 64 KiB 固定缓冲测试迁至 Task 15 Rust source 模块，旧 Node 实现不再充当安全边界。
+- [x] **Step 5 — GREEN。** `pnpm test:review-protocol && cargo test --locked -p viewer-infrastructure`；精确同步 policy 的脚本清单，不放宽边界规则。
+- [x] **Step 6 — 提交检查点。** 与 Task 15 共用原生入口和 DTO，以一个可构建实现 `7863439` 保存，再提交审阅修正 `76726a1`；不合并／推送／接 UI。
 
 ### Task 15: 当前／历史读取入口与可选精确增量
+
+> 已完成，独立复核通过；与 Task 14 共享可构建提交，各独立边界的 RED→GREEN 证据保留。
 
 **Files:** Create `crates/viewer-infrastructure/src/review/continuous/reader/{current,history,delta,source}.rs`、`scripts/review-protocol/read-current.mjs`、`scripts/review-protocol/read-history.mjs`。已有 RED `read-current.test.mjs`／`read-history.test.mjs` 纳入门禁。Modify `reader/{mod,request,project}.rs`、`continuous/history.rs`、`protocol/v3/read_result.rs`、`package.json`、`tests/review_protocol_v3_contract.rs`。不新增第二套 JS v3 校验器。
 
@@ -692,7 +694,7 @@ let should_activate = matches!(choice, MigrationChoice::ContinueSelected { .. })
 库入口将预期的协议／IO 失败转换为 error result，CLI 根据 status 决定退出码；内部安全 IO
 可抛错误，但不能让 public reader 在同类失败上有时返回空 current、有时抛无类型异常。
 
-- [ ] **Step 1 — RED：空当前不回退旧存档。** 调用 `createProjectV3Case('current_empty')`，取得独占 projectRoot／streamId；用 try/finally 调用 cleanup。
+- [x] **Step 1 — RED：空当前不回退旧存档。** 调用 `createProjectV3Case('current_empty')`，取得独占 projectRoot／streamId；用 try/finally 调用 cleanup。
 
 ```js
 const result = await readCurrentReview({ projectRoot, reviewStreamId })
@@ -703,13 +705,13 @@ assert.deepEqual(result.needsConfirmation, [])
 assert.equal(Object.hasOwn(result, 'outcomes'), false)
 ```
 
-- [ ] **Step 2 — RED。** `node --test scripts/review-protocol/read-current.test.mjs scripts/review-protocol/read-history.test.mjs`。
-- [ ] **Step 3 — 固定一个 Rust View 后完整核验。** 通过共享 `history::read_state`／引用核验／v3 codec 加载，不能调用每次重开 index 的多次 repository 方法拼结果。`current`／`history`／`list` 为新增闭合请求操作。`CurrentReadResult` 等增加 crate 内构造器并调用既有编码校验；当前投影和净增量分别复用 Domain `project_current`／`diff_review`。source 以根目录句柄逐级打开，64 KiB 缓冲完整 hash，前后身份和重新打开核对；源失败映射 pending，不更改已保存状态。
+- [x] **Step 2 — RED。** `node --test scripts/review-protocol/read-current.test.mjs scripts/review-protocol/read-history.test.mjs`。
+- [x] **Step 3 — 固定一个 Rust View 后完整核验。** 通过共享 `history::read_state`／引用核验／v3 codec 加载，不能调用每次重开 index 的多次 repository 方法拼结果。`current`／`history`／`list` 为新增闭合请求操作。`CurrentReadResult` 等增加 crate 内构造器并调用既有编码校验；当前投影和净增量分别复用 Domain `project_current`／`diff_review`。source 以根目录句柄逐级打开，64 KiB 缓冲完整 hash，前后身份和重新打开核对；源失败映射 pending，不更改已保存状态。
 
 历史 snapshot 必须可达；archive 按已验证依据分组、保持 selected keys；legacy 仅显式 round。历史结果保留字节累计最多 64 MiB。增量沿固定链最多 10,000 节点，累计 transition 内存最多 64 MiB，逐个读取而非留存所有状态；无法完整证明时返回 unavailable，不破坏已验证 current。未建索引时验证现有 `.viewer/project.json`，身份缺失返回 typed IO error，不生成新 UUID。
-- [ ] **Step 4 — 测试缺索引／空 current／仅 pending／损坏必需证据、同快照读时源变化、正在保存、未知 since、跨项目／Stream、10,000 节点边界、循环、withdrawn／archived 原因、legacy 无证据限制及未知主版本。** read-latest 遇 v3 明确拒绝并提示新入口；history 永不变成当前 Agent 指令。
-- [ ] **Step 5 — GREEN。** `pnpm test:review-protocol && cargo test --locked -p viewer-infrastructure --test review_protocol_v3_contract`；新 Node tests 加入门禁，记录 Rust 写入→Node 读取字节互通结果。
-- [ ] **Step 6 — 提交。** `git commit -m "feat(review): expose current snapshots and explicit review history"`。
+- [x] **Step 4 — 测试缺索引／空 current／仅 pending／损坏必需证据、同快照读时源变化、正在保存、未知 since、跨项目／Stream、10,000 节点边界、循环、withdrawn／archived 原因、legacy 无证据限制及未知主版本。** read-latest 遇 v3 明确拒绝并提示新入口；history 永不变成当前 Agent 指令。
+- [x] **Step 5 — GREEN。** `pnpm test:review-protocol && cargo test --locked -p viewer-infrastructure --test review_protocol_v3_contract`；新 Node tests 加入门禁，记录 Rust 写入→Node 读取字节互通结果。
+- [x] **Step 6 — 提交。** 可构建实现 `7863439`，审阅修正 `76726a1`；完整验证见[阶段 D 读取器记录](../../reviews/2026-08-28-continuous-review-reader-phase-d.md)。
 
 ### Task 16: 桌面命令、DTO 和历史证据授权
 

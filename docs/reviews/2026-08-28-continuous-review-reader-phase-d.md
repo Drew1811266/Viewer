@@ -1,14 +1,15 @@
-# 持续评审阶段 D：原生只读读取器候选验证
+# 持续评审阶段 D：原生只读读取器验证
 
 > Status: Development evidence
 >
-> 2026-08-28；Task 14–15 候选及审阅修正已实现，固定工作树全仓门禁通过，最终独立复核待完成。
-> 累计已验收仍为 13 / 23；Task 16 桌面桥接及阶段 E/F 尚未开始。
+> 2026-08-28；Task 14–15 实现、固定工作树全仓门禁及最终独立复核通过。
+> 累计已验收 15 / 23；Task 16 桌面桥接及阶段 E/F 尚未开始，阶段 D 尚未整体完成。
 
 ## 范围和架构
 
 工作树 `/Users/abc/Project/Viewer/.worktrees/continuous-review-domain`，分支
-`codex/continuous-review-domain`。起点 `1dccf78`；获批架构修订提交 `7387a6b`。
+`codex/continuous-review-domain`。起点 `1dccf78`；获批架构修订提交 `7387a6b`，
+原生读取器实现 `7863439`，独立审阅修正 `76726a1`。
 本次执行用户已确认的 Node 入口 + Rust 只读核心方案，不改变产品 UI，不迁移真实工程。
 
 - 新程序 `viewer-review-reader` 位于现有 infrastructure crate；没有新第三方依赖。
@@ -54,12 +55,16 @@ Linux deleted-suffix 分支另有条件编译测试，但本次未在 Linux 执�
 补充并发诊断使用独占临时工程，300 次 current 读取期间完成 8,905 次同内容索引原子发布，
 错误数 0；它不是跨平台无竞态证明。原生 IO 现有 11 项在本机通过，协议 54 项通过。
 专项日志为 `target/continuous-review-phase-d-index-observation-{red,green}.log` 和
-`target/continuous-review-phase-d-index-protocol-green.log`。最终独立复核待完成。
+`target/continuous-review-phase-d-index-protocol-green.log`。
 第一次修正后全跑中，quality/security 均通过，但主线程运行期间更新本记录和协议说明，
 导致 verify:clean 检出新增文档修改项，最终 exit 1；该次不能算通过。保留日志
 `target/continuous-review-phase-d-verify-clean-review-fix.log`，停止编辑后重新从固定工作树全跑。
 随后 `pnpm verify:clean` 在固定工作树上完整通过，exit 0，日志为
 `target/continuous-review-phase-d-verify-clean-review-fix-stable.log`。
+
+同一位只读审阅者复核冻结提交 `76726a1`，确认此前 Important 已解决，Task 14–15
+检查点可验收，无新增 Critical／Important／Minor；独立重跑本机原生 IO 11 / 11 通过，
+差异检查通过。结论仅覆盖读取器，不包括 Task 16／UI，也不补作 Linux 动态验证承诺。
 
 ## 已执行验证
 
@@ -84,7 +89,7 @@ Task 14–15 共用原生入口及 DTO，因此作为一个可构建候选提交
 
 ## 尚未完成
 
-独立只读复审和最终检查点；Task 16 桌面命令／会话安全证据授权；阶段 E UI 和阶段 F 实机闭环。
+Task 16 桌面命令／会话安全证据授权；阶段 E UI 和阶段 F 实机闭环。
 此记录不表示新流程已在当前软件启用，也不等于阶段 D 整体完成。
 签名、公证、正式安装包、上架、公开发布和发售不是任务或验收项。
 

@@ -51,8 +51,10 @@ AI 素材评审路线阶段 2 已于 2026-08-26 完成：设计文档内部状�
 持续评审与 Agent 交接完整设计已于 2026-08-27 获用户确认；实施计划已拆为六个阶段、23 个
 任务；阶段 A 的纯 Domain 任务 1–5 已在授权的独立分支完成并通过复审，证据见
 [阶段记录](reviews/2026-08-27-continuous-review-domain-phase-a.md)。阶段 B、C 现也已完成：
-任务 1–13 已通过全仓门禁与独立复验，累计 13 / 23；任务 14 已开始但尚未通过，读取器架构
-调整已于 2026-08-28 获批、正在实施，最新状态见[阶段 D 架构检查点](progress/2026-08-27-continuous-review-phase-d-architecture-checkpoint.md)。已通过结果见
+任务 1–15 已通过各自全仓门禁与独立复验，累计 15 / 23。2026-08-28 已完成获批的
+Node 入口 + Rust 只读核心，见[阶段 D 读取器记录](reviews/2026-08-28-continuous-review-reader-phase-d.md)；
+Task 16 桌面桥接及阶段 E/F 尚未开始，阶段 D 尚未整体完成。架构调整及原失败事实见
+[阶段 D 架构检查点](progress/2026-08-27-continuous-review-phase-d-architecture-checkpoint.md)。此前已通过结果见
 [阶段 C 记录](reviews/2026-08-27-continuous-review-application-phase-c.md)，阶段 B 结果见
 [阶段 B 记录](reviews/2026-08-27-continuous-review-persistence-phase-b.md)，此前暂停状态见
 [暂停检查点](progress/2026-08-27-continuous-review-phase-b-paused-checkpoint.md)。任务 6
@@ -61,7 +63,7 @@ AI 素材评审路线阶段 2 已于 2026-08-26 完成：设计文档内部状�
 [存档 Schema](protocol/viewer-review-archive-v3.schema.json)、
 [读取结果 Schema](protocol/viewer-review-read-result-v3.schema.json)与
 [使用声明 Schema](protocol/viewer-review-usage-v1.schema.json)，均为 Active 工程契约。
-Active 不表示产品已解除完成锁定或切换到新协议；迁移仅在隔离工程验证，UI、桌面组装和对外读取均未接入。
+Active 不表示产品已解除完成锁定或切换到新协议；迁移与对外读取器仅在隔离工程验证，UI 和桌面组装尚未接入。
 
 ## 历史目标、设计与实施资料
 

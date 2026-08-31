@@ -34,6 +34,8 @@ interface ArchiveDialogState {
   selection: ReviewArchiveSelection
 }
 
+type ContinuousArchivePreview = ReturnType<typeof useContinuousArchivePreview>
+
 interface ReviewToolbarActionProps {
   review: ReviewSessionCoordinator
   scope: ReviewScopeRequest | null
@@ -81,22 +83,73 @@ export default function ReviewWorkspaceLayer({
 }: ReviewWorkspaceLayerProps) {
   const [inspectorOpen, setInspectorOpen] = useState(false)
   const [abandonOpen, setAbandonOpen] = useState(false)
-  const [archiveDialog, setArchiveDialog] = useState<ArchiveDialogState | null>(null)
-  const [archiveBusy, setArchiveBusy] = useState(false)
-  const [archiveError, setArchiveError] = useState<string | null>(null)
-  const [archiveNotice, setArchiveNotice] = useState<string | null>(null)
-  const archiveSessionKey = continuousReview?.workbenchSessionKey ?? null
-  const archiveSessionKeyRef = useRef(archiveSessionKey)
-  useLayoutEffect(() => {
-    if (archiveSessionKeyRef.current === archiveSessionKey) return
-    archiveSessionKeyRef.current = archiveSessionKey
-    setArchiveDialog(null)
-    setArchiveBusy(false)
-    setArchiveError(null)
-    setArchiveNotice(null)
-  }, [archiveSessionKey])
+  const archive = useContinuousArchivePreview(continuousReview, archiveSelection)
   const active = review.snapshot.phase === 'active'
   const completed = review.snapshot.phase === 'completed_read_only'
+
+  return (
+    <>
+      <ReviewRecoveryNotice review={review} projectAccess={projectAccess} />
+      <ReviewWorkspaceContext
+        review={review}
+        continuousReview={continuousReview}
+        archive={archive}
+        contextBarHidden={contextBarHidden}
+        inspectorOpen={inspectorOpen}
+        completed={completed}
+        onReturnToMembers={onReturnToMembers}
+        onToggleInspector={() => {
+          if (inspectorOpen) review.requestDiscard('inspector_close', () => setInspectorOpen(false))
+          else {
+            if (!completed) review.beginCreate()
+            setInspectorOpen(true)
+          }
+        }}
+        onAbandon={() => setAbandonOpen(true)}
+      />
+      <ReviewProgressNotice review={review} />
+      <ReviewWorkspaceInspector
+        review={review}
+        selectedEntityIds={selectedEntityIds}
+        contextBarHidden={contextBarHidden}
+        inspectorOpen={inspectorOpen}
+        active={active}
+        completed={completed}
+        onClose={() => setInspectorOpen(false)}
+      />
+      <ReviewWorkspaceDialogs
+        review={review}
+        archive={archive}
+        abandonOpen={abandonOpen}
+        onCloseAbandon={() => setAbandonOpen(false)}
+      />
+    </>
+  )
+}
+
+function ReviewWorkspaceContext({
+  review,
+  continuousReview,
+  archive,
+  contextBarHidden,
+  inspectorOpen,
+  completed,
+  onReturnToMembers,
+  onToggleInspector,
+  onAbandon,
+}: {
+  review: ReviewSessionCoordinator
+  continuousReview: ContinuousReviewCoordinator | undefined
+  archive: ContinuousArchivePreview
+  contextBarHidden: boolean
+  inspectorOpen: boolean
+  completed: boolean
+  onReturnToMembers(entityIds: string[]): void
+  onToggleInspector(): void
+  onAbandon(): void
+}) {
+  const active = review.snapshot.phase === 'active'
+  if (contextBarHidden || (continuousReview === undefined && !active && !completed)) return null
   const members =
     continuousReview === undefined
       ? review.snapshot.members.flatMap((member) =>
@@ -105,142 +158,87 @@ export default function ReviewWorkspaceLayer({
       : (continuousReview.view?.current?.state.assets.flatMap((asset) =>
           asset.sourceEntityId === null ? [] : [asset.sourceEntityId],
         ) ?? [])
-  const continuousFeedbackCount = continuousReview?.view?.current?.state.feedback.length
   const archiveUnavailable =
     continuousReview === undefined ||
     continuousReview.currentSnapshotId === null ||
     continuousReview.hasUncommittedInput ||
-    archiveBusy
+    archive.busy
+  return (
+    <ReviewContextBar
+      protocol={continuousReview === undefined ? 'legacy' : 'continuous'}
+      snapshot={review.snapshot}
+      inspectorOpen={inspectorOpen}
+      onReturnToMembers={() => onReturnToMembers(members)}
+      onToggleInspector={onToggleInspector}
+      onPrepareCompletion={() =>
+        review.requestDiscard('context_replacement', () => void review.prepareCompletion())
+      }
+      onRequestAbandon={onAbandon}
+      onArchive={continuousReview === undefined ? undefined : () => void archive.open()}
+      continuousFeedbackCount={continuousReview?.view?.current?.state.feedback.length}
+      archiveDisabled={archiveUnavailable}
+      archiveNotice={archive.notice}
+    />
+  )
+}
 
-  async function openArchive() {
-    if (continuousReview === undefined) return
-    if (continuousReview.hasUncommittedInput) {
-      setArchiveNotice('请先保存或取消正在编辑的意见。')
-      return
-    }
-    const selection =
-      archiveSelection === undefined
-        ? unknownArchiveSelection(continuousReview)
-        : structuredClone(archiveSelection)
-    if (selection === null) {
-      setArchiveNotice('当前没有可存档的意见。')
-      return
-    }
-    if (!selection.groups.some((group) => group.targets.length > 0)) {
-      setArchiveNotice('当前没有可存档的意见。')
-      return
-    }
-    if (selection.expectedSnapshotId !== continuousReview.currentSnapshotId) {
-      setArchiveNotice('意见已变化，请重新查看存档范围')
-      return
-    }
-    const requestSessionKey = archiveSessionKey
-    setArchiveBusy(true)
-    setArchiveError(null)
-    try {
-      const preview = await continuousReview.previewArchive(selection)
-      if (archiveSessionKeyRef.current !== requestSessionKey) return
-      setArchiveDialog({ sessionKey: requestSessionKey, preview, selection })
-    } catch (cause) {
-      if (archiveSessionKeyRef.current === requestSessionKey)
-        setArchiveNotice(archiveErrorMessage(cause))
-    } finally {
-      if (archiveSessionKeyRef.current === requestSessionKey) setArchiveBusy(false)
-    }
-  }
+function ReviewProgressNotice({ review }: { review: ReviewSessionCoordinator }) {
+  if (review.progress === null) return null
+  return (
+    <div className="review-progress" role="status" aria-live="polite">
+      <span>
+        正在准备评审 {review.progress.completed}/{review.progress.total}
+      </span>
+      {review.progress.cancellable && (
+        <ViewerButton tone="quiet" onClick={() => void review.cancelTask()}>
+          取消
+        </ViewerButton>
+      )}
+    </div>
+  )
+}
 
-  async function changeArchiveSelection(selection: ReviewArchiveSelection) {
-    if (continuousReview === undefined || archiveDialog === null) return
-    if (archiveDialog.sessionKey !== archiveSessionKey) return
-    const requestSessionKey = archiveSessionKey
-    setArchiveBusy(true)
-    setArchiveError(null)
-    try {
-      const preview = await continuousReview.previewArchive(selection)
-      if (archiveSessionKeyRef.current !== requestSessionKey) return
-      setArchiveDialog({ sessionKey: requestSessionKey, preview, selection })
-    } catch (cause) {
-      if (archiveSessionKeyRef.current === requestSessionKey)
-        setArchiveError(archiveErrorMessage(cause))
-    } finally {
-      if (archiveSessionKeyRef.current === requestSessionKey) setArchiveBusy(false)
-    }
-  }
+function ReviewWorkspaceInspector({
+  review,
+  selectedEntityIds,
+  contextBarHidden,
+  inspectorOpen,
+  active,
+  completed,
+  onClose,
+}: {
+  review: ReviewSessionCoordinator
+  selectedEntityIds: string[]
+  contextBarHidden: boolean
+  inspectorOpen: boolean
+  active: boolean
+  completed: boolean
+  onClose(): void
+}) {
+  if (contextBarHidden || !inspectorOpen || (!active && !completed)) return null
+  return (
+    <ReviewInspector
+      review={review}
+      selectedEntityIds={selectedEntityIds}
+      readOnly={completed}
+      onClose={onClose}
+    />
+  )
+}
 
-  async function confirmArchive() {
-    if (continuousReview === undefined || archiveDialog === null) return
-    if (archiveDialog.sessionKey !== archiveSessionKey) return
-    if (continuousReview.hasUncommittedInput) {
-      setArchiveError('请先保存或取消正在编辑的意见。')
-      return
-    }
-    if (continuousReview.currentSnapshotId !== archiveDialog.preview.expectedSnapshotId) {
-      setArchiveError('意见已变化，请重新查看存档范围')
-      return
-    }
-    const requestSessionKey = archiveSessionKey
-    setArchiveBusy(true)
-    setArchiveError(null)
-    try {
-      await continuousReview.commitArchive()
-      if (archiveSessionKeyRef.current !== requestSessionKey) return
-      setArchiveDialog(null)
-      setArchiveNotice('意见已移入历史；如有需要可在历史中撤销。')
-    } catch (cause) {
-      if (archiveSessionKeyRef.current === requestSessionKey)
-        setArchiveError(archiveErrorMessage(cause))
-    } finally {
-      if (archiveSessionKeyRef.current === requestSessionKey) setArchiveBusy(false)
-    }
-  }
-
+function ReviewWorkspaceDialogs({
+  review,
+  archive,
+  abandonOpen,
+  onCloseAbandon,
+}: {
+  review: ReviewSessionCoordinator
+  archive: ContinuousArchivePreview
+  abandonOpen: boolean
+  onCloseAbandon(): void
+}) {
   return (
     <>
-      <ReviewRecoveryNotice review={review} projectAccess={projectAccess} />
-      {!contextBarHidden && (continuousReview !== undefined || active || completed) && (
-        <ReviewContextBar
-          protocol={continuousReview === undefined ? 'legacy' : 'continuous'}
-          snapshot={review.snapshot}
-          inspectorOpen={inspectorOpen}
-          onReturnToMembers={() => onReturnToMembers(members)}
-          onToggleInspector={() => {
-            if (inspectorOpen) {
-              review.requestDiscard('inspector_close', () => setInspectorOpen(false))
-            } else {
-              if (!completed) review.beginCreate()
-              setInspectorOpen(true)
-            }
-          }}
-          onPrepareCompletion={() =>
-            review.requestDiscard('context_replacement', () => void review.prepareCompletion())
-          }
-          onRequestAbandon={() => setAbandonOpen(true)}
-          onArchive={continuousReview === undefined ? undefined : () => void openArchive()}
-          continuousFeedbackCount={continuousFeedbackCount}
-          archiveDisabled={archiveUnavailable}
-          archiveNotice={archiveNotice}
-        />
-      )}
-      {review.progress !== null && (
-        <div className="review-progress" role="status" aria-live="polite">
-          <span>
-            正在准备评审 {review.progress.completed}/{review.progress.total}
-          </span>
-          {review.progress.cancellable && (
-            <ViewerButton tone="quiet" onClick={() => void review.cancelTask()}>
-              取消
-            </ViewerButton>
-          )}
-        </div>
-      )}
-      {!contextBarHidden && inspectorOpen && (active || completed) && (
-        <ReviewInspector
-          review={review}
-          selectedEntityIds={selectedEntityIds}
-          readOnly={completed}
-          onClose={() => setInspectorOpen(false)}
-        />
-      )}
       {review.proposal !== null && (
         <ReviewStartDialog
           proposal={review.proposal}
@@ -257,42 +255,166 @@ export default function ReviewWorkspaceLayer({
           onCancel={review.dismissCompletion}
         />
       )}
-      {archiveDialog !== null && archiveDialog.sessionKey === archiveSessionKey && (
+      {archive.dialog !== null && (
         <ReviewArchiveDialog
-          preview={archiveDialog.preview}
-          selection={archiveDialog.selection}
-          busy={archiveBusy}
-          error={archiveError}
-          onSelectionChange={(selection) => void changeArchiveSelection(selection)}
-          onConfirm={() => void confirmArchive()}
-          onCancel={() => {
-            if (!archiveBusy) {
-              setArchiveDialog(null)
-              setArchiveError(null)
-            }
-          }}
+          preview={archive.dialog.preview}
+          selection={archive.dialog.selection}
+          busy={archive.busy}
+          error={archive.error}
+          onSelectionChange={(selection) => void archive.changeSelection(selection)}
+          onConfirm={() => void archive.confirm()}
+          onCancel={archive.cancel}
         />
       )}
-      {abandonOpen && <ReviewAbandonDialog review={review} onClose={() => setAbandonOpen(false)} />}
-      {review.discardConfirmation !== null && (
-        <ModalSheet
-          title="放弃未保存的意见？"
-          destructive
-          onCancel={review.cancelDiscard}
-          footer={
-            <>
-              <ViewerButton onClick={review.cancelDiscard}>继续编辑</ViewerButton>
-              <ViewerButton tone="danger" onClick={review.confirmDiscard}>
-                放弃未保存内容
-              </ViewerButton>
-            </>
-          }
-        >
-          <p>当前自然语言意见尚未保存，离开后无法恢复。</p>
-        </ModalSheet>
-      )}
+      {abandonOpen && <ReviewAbandonDialog review={review} onClose={onCloseAbandon} />}
+      {review.discardConfirmation !== null && <ReviewDiscardDialog review={review} />}
     </>
   )
+}
+
+function ReviewDiscardDialog({ review }: { review: ReviewSessionCoordinator }) {
+  return (
+    <ModalSheet
+      title="放弃未保存的意见？"
+      destructive
+      onCancel={review.cancelDiscard}
+      footer={
+        <>
+          <ViewerButton onClick={review.cancelDiscard}>继续编辑</ViewerButton>
+          <ViewerButton tone="danger" onClick={review.confirmDiscard}>
+            放弃未保存内容
+          </ViewerButton>
+        </>
+      }
+    >
+      <p>当前自然语言意见尚未保存，离开后无法恢复。</p>
+    </ModalSheet>
+  )
+}
+
+function useContinuousArchivePreview(
+  coordinator: ContinuousReviewCoordinator | undefined,
+  suppliedSelection: ReviewArchiveSelection | undefined,
+) {
+  const [dialog, setDialog] = useState<ArchiveDialogState | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
+  const sessionKey = coordinator?.workbenchSessionKey ?? null
+  const sessionKeyRef = useRef(sessionKey)
+
+  useLayoutEffect(() => {
+    if (sessionKeyRef.current === sessionKey) return
+    sessionKeyRef.current = sessionKey
+    setDialog(null)
+    setBusy(false)
+    setError(null)
+    setNotice(null)
+  }, [sessionKey])
+
+  function active(requestSessionKey: string | null) {
+    return sessionKeyRef.current === requestSessionKey
+  }
+
+  async function preview(
+    selection: ReviewArchiveSelection,
+    requestSessionKey: string | null,
+    reportError: (message: string) => void,
+  ) {
+    if (coordinator === undefined) return
+    setBusy(true)
+    setError(null)
+    try {
+      const plan = await coordinator.previewArchive(selection)
+      if (active(requestSessionKey))
+        setDialog({ sessionKey: requestSessionKey, preview: plan, selection })
+    } catch (cause) {
+      if (active(requestSessionKey)) reportError(archiveErrorMessage(cause))
+    } finally {
+      if (active(requestSessionKey)) setBusy(false)
+    }
+  }
+
+  async function open() {
+    if (coordinator === undefined) return
+    if (coordinator.hasUncommittedInput) {
+      setNotice('请先保存或取消正在编辑的意见。')
+      return
+    }
+    const selection =
+      suppliedSelection === undefined
+        ? unknownArchiveSelection(coordinator)
+        : structuredClone(suppliedSelection)
+    if (!hasArchiveTargets(selection)) {
+      setNotice('当前没有可存档的意见。')
+      return
+    }
+    if (selection.expectedSnapshotId !== coordinator.currentSnapshotId) {
+      setNotice('意见已变化，请重新查看存档范围')
+      return
+    }
+    await preview(selection, sessionKey, setNotice)
+  }
+
+  async function changeSelection(selection: ReviewArchiveSelection) {
+    if (dialog === null || dialog.sessionKey !== sessionKey) return
+    if (!hasArchiveTargets(selection)) {
+      setDialog({ ...dialog, selection })
+      setError(null)
+      return
+    }
+    await preview(selection, sessionKey, setError)
+  }
+
+  async function confirm() {
+    if (coordinator === undefined || dialog === null || dialog.sessionKey !== sessionKey) return
+    if (coordinator.hasUncommittedInput) {
+      setError('请先保存或取消正在编辑的意见。')
+      return
+    }
+    if (coordinator.currentSnapshotId !== dialog.preview.expectedSnapshotId) {
+      setError('意见已变化，请重新查看存档范围')
+      return
+    }
+    const requestSessionKey = sessionKey
+    setBusy(true)
+    setError(null)
+    try {
+      await coordinator.commitArchive()
+      if (active(requestSessionKey)) {
+        setDialog(null)
+        setNotice('意见已移入历史；如有需要可在历史中撤销。')
+      }
+    } catch (cause) {
+      if (active(requestSessionKey)) setError(archiveErrorMessage(cause))
+    } finally {
+      if (active(requestSessionKey)) setBusy(false)
+    }
+  }
+
+  function cancel() {
+    if (!busy) {
+      setDialog(null)
+      setError(null)
+    }
+  }
+
+  return {
+    dialog: dialog?.sessionKey === sessionKey ? dialog : null,
+    busy,
+    error,
+    notice,
+    open,
+    changeSelection,
+    confirm,
+    cancel,
+  }
+}
+
+function hasArchiveTargets(
+  selection: ReviewArchiveSelection | null,
+): selection is ReviewArchiveSelection {
+  return selection?.groups.some((group) => group.targets.length > 0) ?? false
 }
 
 function unknownArchiveSelection(

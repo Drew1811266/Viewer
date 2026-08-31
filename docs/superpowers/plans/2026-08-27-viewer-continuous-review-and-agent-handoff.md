@@ -12,12 +12,12 @@
 
 > Status: Active
 >
-> 执行状态：阶段 A–D（任务 1–16）及阶段 E 的 Task 17–19 已完成，累计 19 / 23。
+> 执行状态：阶段 A–D（任务 1–16）及阶段 E 的 Task 17–20 已完成，累计 20 / 23。
 > 阶段 C 最终实现 `21edbf6` 已通过完整 `pnpm verify:clean` 和只读独立复验，检查点 C 完成。
 > 2026-08-28 获批的“Node 入口 + Rust 只读核心”已实现：`7863439`，并发修正 `76726a1`；完整门禁及只读独立复核通过。
 > Task 16 桥接 `db456ef`、审阅修正 `384d4cc` 已通过完整门禁与只读独立复验；阶段 D 完成。
 > 2026-08-28 Task 17 实现 `da1dcff`、修正 `d69a36a` 已通过完整门禁与独立复验，见[协调器记录](../../reviews/2026-08-28-continuous-review-coordinator-task17.md)。
-> 2026-08-30 Task 18 实现 `c6d5d11` 已通过完整门禁与独立复验，见[工作台记录](../../reviews/2026-08-30-continuous-review-workbench-task18.md)。Task 19 实现 `d869049`、安全修正 `9a722dc`、架构拆分 `a3305bd` 及精确空选择修正 `e96831d`、`4537cba` 已通过完整门禁与独立复验，见[存档 UI 记录](../../reviews/2026-08-30-continuous-review-archive-ui-task19.md)。下一步 Task 20；Task 20–23 未开始，新 UI 仍未启用。
+> 2026-08-30 Task 18 实现 `c6d5d11` 已通过完整门禁与独立复验，见[工作台记录](../../reviews/2026-08-30-continuous-review-workbench-task18.md)。Task 19 实现 `d869049`、安全修正 `9a722dc`、架构拆分 `a3305bd` 及精确空选择修正 `e96831d`、`4537cba` 已通过完整门禁与独立复验，见[存档 UI 记录](../../reviews/2026-08-30-continuous-review-archive-ui-task19.md)。Task 20 实现 `e567900`，经恢复授权、事务生命周期、来源失效和依赖边界修正 `25b619a`、`19e8b98`、`7f9daa3`、`38a6a8f` 后通过完整门禁与独立复验，见[历史恢复 UI 记录](../../reviews/2026-08-31-continuous-review-history-restore-ui-task20.md)。下一步 Task 21；Task 21–23 未开始，新 UI 仍未启用。
 > 阶段 D 既有状态见[Task 16 契约检查点](../../progress/2026-08-28-continuous-review-task16-contract-checkpoint.md)及[阶段 D 桥接记录](../../reviews/2026-08-28-continuous-review-bridge-phase-d.md)；读取器结果见[阶段 D 读取器记录](../../reviews/2026-08-28-continuous-review-reader-phase-d.md)。
 > 应用用例、声明、迁移、Agent 读取器和新桥接仅在隔离工程验证；新桌面接口已组装，旧 UI 未切换，真实工程未迁移。
 >
@@ -857,7 +857,7 @@ if (currentSnapshotId !== preview.expectedSnapshotId) {
 
 **Interfaces:** HistoryPanel 消费 typed `HistoryViewDto`（selector、role=history、旧原文、证据能力、目标引用、可恢复操作）和 `onContinue(HistoryRef)`／`onRestore(RestoreDecision[])`；SourceConfirmation 消费旧 AssetVersion、核验后的候选和原 Anchor，输出 `SourceBindingDecisionDto`，必须明确选择目标并确认位置。历史预览 URL 只来自 getEvidence，不拼 `.viewer` 路径。
 
-- [ ] **Step 1 — RED：恢复不能静默覆盖已有修改。** 以同 Target ID 的旧文字和新文字渲染恢复冲突。
+- [x] **Step 1 — RED：恢复不能静默覆盖已有修改。** 以同 Target ID 的旧文字和新文字渲染恢复冲突。
 
 ```tsx
 expect(screen.getByText('保留当前意见')).toBeVisible()
@@ -866,17 +866,17 @@ expect(screen.getByText('作为新意见继续提出')).toBeVisible()
 expect(screen.getByRole('button', { name: '确认恢复' })).toBeDisabled()
 ```
 
-- [ ] **Step 2 — RED。** `pnpm --dir ui test src/components/review/ReviewHistoryPanel.test.tsx src/components/review/ReviewSourceConfirmation.test.tsx`。
-- [ ] **Step 3 — 接通精确恢复／继续提出。** 无后续修改也追加恢复状态，不回写历史 JSON；后续已有变化逐项选择。历史定位基于旧证据，换新素材时保留原文并要求用户确认 Anchor。
+- [x] **Step 2 — RED。** `pnpm --dir ui test src/components/review/ReviewHistoryPanel.test.tsx src/components/review/ReviewSourceConfirmation.test.tsx`。
+- [x] **Step 3 — 接通精确恢复／继续提出。** 无后续修改也追加恢复状态，不回写历史 JSON；后续已有变化逐项选择。历史定位基于旧证据，换新素材时保留原文并要求用户确认 Anchor。
 
 ```ts
 const canConfirm = selectedAssetVersionId !== null && positionConfirmed && unresolvedConflicts === 0
 ```
 
 位置确认不等于意见已执行；源文件 Missing 时仍能看旧证据，必需证据损坏则显示完整性错误，不假装空历史。legacy 缺失则显示能力限制。
-- [ ] **Step 4 — 测试立即撤销、部分恢复、已恢复重复动作、历史继续提出使用新 ID、同路径新图／歧义候选／独立新图、过期 source confirmation、关闭会话 token 失效和重启恢复。** 不生成自动“改回原色”等反向意见。
-- [ ] **Step 5 — GREEN。** `pnpm --dir ui test src/components/review/ReviewHistoryPanel.test.tsx src/components/review/ReviewSourceConfirmation.test.tsx src/app/review/useContinuousReviewCoordinator.test.tsx`。
-- [ ] **Step 6 — 提交。** `git commit -m "feat(review): restore history with explicit source confirmation"`。
+- [x] **Step 4 — 测试立即撤销、部分恢复、已恢复重复动作、历史继续提出使用新 ID、同路径新图／歧义候选／独立新图、过期 source confirmation、关闭会话 token 失效和重启恢复。** 不生成自动“改回原色”等反向意见。另覆盖恢复 plan 冻结、snapshot 单键引用、legacy 内容、单一 modal、读／写事务分离、实体变化撤销未提交来源确认和完整性错误优先级。
+- [x] **Step 5 — GREEN。** Task 20 聚焦 5 文件／56 项、UI 全仓 145 文件／1290 项通过 + 1 项既有跳过；最终 `pnpm verify:clean`、`pnpm test:policy`、UI check/build、Rust workspace、协议／闭环、架构／安全／许可证全部通过。趋势维持 47 项既有非阻断告警，无 Task 20 新增告警，未修改趋势基线。
+- [x] **Step 6 — 提交。** `e567900`（`feat(review): restore history with explicit source confirmation`）；修正 `25b619a`、`19e8b98`、`7f9daa3`、`38a6a8f`。仅隔离分支，未合并或推送。
 
 ### Task 21: 可选声明／迁移入口与完整流程切换
 

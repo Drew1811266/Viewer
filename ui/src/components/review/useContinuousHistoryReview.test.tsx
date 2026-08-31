@@ -473,6 +473,48 @@ it('releases UI busy state and drops candidates when the selected entity changes
   expect(rendered.result.current.source).toBeNull()
 })
 
+it('revokes an unsubmitted source confirmation when the selected entities change', async () => {
+  const current = coordinator({
+    prepareAssets: vi.fn().mockResolvedValue([
+      {
+        asset: {
+          id: 'asset-new',
+          sourceEntityId: 'new-entity',
+          relativePath: 'new.png',
+          evidence: { sizeBytes: 2, modifiedNs: '2', blake3: 'b'.repeat(64) },
+          media: { kind: 'image', width: 10, height: 10 },
+          producerAssetId: null,
+          parentAssetVersionId: 'asset-old',
+        },
+        preview: null,
+      },
+    ]),
+    continueHistorical: vi.fn().mockResolvedValue(undefined),
+  })
+  const rendered = renderHook(
+    ({ entities }) =>
+      useContinuousHistoryReview(current, entities, { kind: 'archive', archiveId: 'archive-1' }),
+    { initialProps: { entities: ['new-entity'] } },
+  )
+  await act(() => rendered.result.current.open())
+  const reference = rendered.result.current.panel?.historyRef
+  if (reference === null || reference === undefined)
+    throw new Error('Fixture requires a history reference')
+  await act(() => rendered.result.current.continueHistorical(reference))
+  await waitFor(() => expect(rendered.result.current.source).not.toBeNull())
+  const decision = {
+    targetKey,
+    newAssetVersionId: 'asset-new',
+    anchor: { kind: 'asset' as const },
+    confirmation: { kind: 'user_confirmed' as const },
+  }
+
+  rendered.rerender({ entities: [] })
+  expect(rendered.result.current.source).toBeNull()
+  await act(() => rendered.result.current.confirmSource(decision))
+  expect(current.continueHistorical).not.toHaveBeenCalled()
+})
+
 it('keeps a submitted restore transaction locked across an entity change and reports its final result', async () => {
   const pendingRestore = deferred<void>()
   const current = coordinator({

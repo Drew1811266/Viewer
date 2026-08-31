@@ -53,6 +53,7 @@ function useHistoryLifecycle(
   setSource: Dispatch<SetStateAction<SourceConfirmationState | null>>,
   invalidatePresentation: () => void,
   invalidateSourcePreparation: () => void,
+  transactionPending: () => boolean,
   setError: Dispatch<SetStateAction<ReviewWorkspaceError | null>>,
   setNotice: Dispatch<SetStateAction<string | null>>,
 ) {
@@ -85,6 +86,9 @@ function useHistoryLifecycle(
     if (entity.current === entityKey) return
     entity.current = entityKey
     ++source.current
+    if (transactionPending()) return
+    setSource(null)
+    setError(null)
     invalidateSourcePreparation()
   }, [entityKey])
 }
@@ -411,6 +415,7 @@ export function useContinuousHistoryReview(
     setSource,
     invalidatePresentation,
     invalidateSourcePreparation,
+    transactionPending,
     setError,
     setNotice,
   )

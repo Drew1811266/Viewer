@@ -28,6 +28,14 @@ it('changes the workbench session identity when the coordinator session instance
   expect(hook.result.current.workbenchSessionKey).not.toBe(firstIdentity)
 })
 
+it('exposes the current snapshot ID for an archive preview guard', async () => {
+  const port = reviewPort(workspace('archive-head'))
+  const { result } = renderHook(() => useContinuousReviewCoordinator({ ...session, port }))
+  await waitFor(() => expect(result.current.state.kind).toBe('ready'))
+
+  expect(result.current.currentSnapshotId).toBe('archive-head')
+})
+
 it('retains text after a lost receipt and retries the complete original envelope, installing the reread head', async () => {
   const port = reviewPort()
   const onError = vi.fn()

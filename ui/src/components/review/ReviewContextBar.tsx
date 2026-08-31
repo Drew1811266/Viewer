@@ -11,6 +11,9 @@ interface ReviewContextBarProps {
   onRequestAbandon(): void
   onArchive?: () => void
   onHistory?: () => void
+  continuousFeedbackCount?: number
+  archiveDisabled?: boolean
+  archiveNotice?: string | null
 }
 
 export default function ReviewContextBar({
@@ -23,13 +26,16 @@ export default function ReviewContextBar({
   onRequestAbandon,
   onArchive,
   onHistory,
+  continuousFeedbackCount,
+  archiveDisabled = false,
+  archiveNotice = null,
 }: ReviewContextBarProps) {
   if (protocol === 'continuous') {
     return (
       <section className="review-context-bar" aria-label="持续评审上下文">
         <div className="review-context-bar__identity">
           <strong>持续评审</strong>
-          <span>当前意见 {snapshot.counts.feedbackItems}</span>
+          <span>当前意见 {continuousFeedbackCount ?? snapshot.counts.feedbackItems}</span>
         </div>
         <div className="review-context-bar__actions">
           <ViewerButton tone="quiet" onClick={onReturnToMembers}>
@@ -38,10 +44,19 @@ export default function ReviewContextBar({
           <ViewerButton tone="secondary" onClick={onHistory} disabled={onHistory === undefined}>
             历史
           </ViewerButton>
-          <ViewerButton tone="primary" onClick={onArchive} disabled={onArchive === undefined}>
+          <ViewerButton
+            tone="primary"
+            onClick={onArchive}
+            disabled={onArchive === undefined || archiveDisabled}
+          >
             存档意见
           </ViewerButton>
         </div>
+        {archiveNotice !== null && (
+          <span className="review-context-bar__notice" role="status">
+            {archiveNotice}
+          </span>
+        )}
       </section>
     )
   }

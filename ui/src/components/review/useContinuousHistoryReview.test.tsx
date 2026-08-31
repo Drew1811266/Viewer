@@ -472,3 +472,100 @@ it('releases UI busy state and drops candidates when the selected entity changes
   expect(rendered.result.current.busy).toBe(false)
   expect(rendered.result.current.source).toBeNull()
 })
+
+it('keeps a submitted restore transaction locked across an entity change and reports its final result', async () => {
+  const pendingRestore = deferred<void>()
+  const current = coordinator({
+    previewRestore: vi.fn().mockResolvedValue({
+      expectedSnapshotId: 'current',
+      restored: [targetKey],
+      conflicts: [],
+      coverageReversals: [],
+      requiresSourceCheck: [],
+    }),
+    restore: vi.fn().mockReturnValue(pendingRestore.promise),
+  })
+  const rendered = renderHook(
+    ({ entities }) =>
+      useContinuousHistoryReview(current, entities, { kind: 'archive', archiveId: 'archive-1' }),
+    { initialProps: { entities: ['entity-a'] } },
+  )
+  const decisions = [{ historicalKey: targetKey, choice: { kind: 'use_historical' as const } }]
+  await act(() => rendered.result.current.open())
+  await act(() => rendered.result.current.restore(decisions))
+  act(() => void rendered.result.current.restore(decisions))
+  await waitFor(() => expect(current.restore).toHaveBeenCalledOnce())
+
+  rendered.rerender({ entities: ['entity-b'] })
+  expect(rendered.result.current.transactionBusy).toBe(true)
+  expect(rendered.result.current.canClose).toBe(false)
+  act(() => void rendered.result.current.restore(decisions))
+  expect(current.restore).toHaveBeenCalledOnce()
+
+  await act(async () => {
+    pendingRestore.resolve()
+    await pendingRestore.promise
+  })
+  expect(rendered.result.current.transactionBusy).toBe(false)
+  expect(rendered.result.current.notice).toBe('已追加恢复状态；历史记录没有被改写。')
+})
+
+it('keeps a submitted continuation transaction locked across selector and entity changes', async () => {
+  const pendingContinue = deferred<void>()
+  const current = coordinator({
+    prepareAssets: vi.fn().mockResolvedValue([
+      {
+        asset: {
+          id: 'asset-new',
+          sourceEntityId: 'entity-a',
+          relativePath: 'new.png',
+          evidence: { sizeBytes: 2, modifiedNs: '2', blake3: 'b'.repeat(64) },
+          media: { kind: 'image', width: 10, height: 10 },
+          producerAssetId: null,
+          parentAssetVersionId: 'asset-old',
+        },
+        preview: null,
+      },
+    ]),
+    continueHistorical: vi.fn().mockReturnValue(pendingContinue.promise),
+  })
+  const initialSelector: ReviewHistorySelector = { kind: 'archive', archiveId: 'archive-1' }
+  const rendered = renderHook<
+    ReturnType<typeof useContinuousHistoryReview>,
+    { entities: string[]; selector: ReviewHistorySelector }
+  >(
+    ({ entities, selector }: { entities: string[]; selector: ReviewHistorySelector }) =>
+      useContinuousHistoryReview(current, entities, selector),
+    { initialProps: { entities: ['entity-a'], selector: initialSelector } },
+  )
+  await act(() => rendered.result.current.open())
+  const reference = rendered.result.current.panel?.historyRef
+  if (reference === null || reference === undefined)
+    throw new Error('Fixture requires a history reference')
+  await act(() => rendered.result.current.continueHistorical(reference))
+  await waitFor(() => expect(rendered.result.current.source).not.toBeNull())
+  const decision = {
+    targetKey,
+    newAssetVersionId: 'asset-new',
+    anchor: { kind: 'asset' as const },
+    confirmation: { kind: 'user_confirmed' as const },
+  }
+  act(() => void rendered.result.current.confirmSource(decision))
+  await waitFor(() => expect(current.continueHistorical).toHaveBeenCalledOnce())
+
+  rendered.rerender({
+    entities: ['entity-b'],
+    selector: { kind: 'snapshot', snapshot: { snapshotId: 'next', blake3: 'n'.repeat(64) } },
+  })
+  expect(rendered.result.current.transactionBusy).toBe(true)
+  expect(rendered.result.current.canClose).toBe(false)
+  act(() => void rendered.result.current.confirmSource(decision))
+  expect(current.continueHistorical).toHaveBeenCalledOnce()
+
+  await act(async () => {
+    pendingContinue.resolve()
+    await pendingContinue.promise
+  })
+  expect(rendered.result.current.transactionBusy).toBe(false)
+  expect(rendered.result.current.notice).toBe('已基于历史原文继续提出；新意见身份由协调器生成。')
+})

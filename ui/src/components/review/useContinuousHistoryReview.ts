@@ -26,10 +26,16 @@ interface HistoryPanelState {
   restorePreview: { decisions: ReviewRestoreDecision[]; plan: ReviewRestorePlan } | null
 }
 
-type HistoryBusyKind = 'history' | 'evidence' | 'source' | 'restore_preview' | 'restore_commit'
-interface HistoryBusyOperation {
+type PresentationKind = 'history' | 'evidence' | 'source' | 'restore_preview'
+interface PresentationOperation {
   token: number
-  kind: HistoryBusyKind
+  kind: PresentationKind
+}
+type TransactionKind = 'restore_commit' | 'continue_commit'
+interface TransactionOperation {
+  token: number
+  kind: TransactionKind
+  sessionKey: string | null
 }
 
 function useHistoryLifecycle(
@@ -41,11 +47,12 @@ function useHistoryLifecycle(
   entity: MutableRefObject<string>,
   history: MutableRefObject<number>,
   evidence: MutableRefObject<number>,
-  restore: MutableRefObject<number>,
+  restorePreview: MutableRefObject<number>,
   source: MutableRefObject<number>,
   setPanel: Dispatch<SetStateAction<HistoryPanelState | null>>,
   setSource: Dispatch<SetStateAction<SourceConfirmationState | null>>,
-  invalidateBusy: () => void,
+  invalidatePresentation: () => void,
+  invalidateSourcePreparation: () => void,
   setError: Dispatch<SetStateAction<ReviewWorkspaceError | null>>,
   setNotice: Dispatch<SetStateAction<string | null>>,
 ) {
@@ -54,12 +61,12 @@ function useHistoryLifecycle(
     session.current = sessionKey
     setPanel(null)
     setSource(null)
-    invalidateBusy()
+    invalidatePresentation()
     setError(null)
     setNotice(null)
     ++history.current
     ++evidence.current
-    ++restore.current
+    ++restorePreview.current
     ++source.current
   }, [sessionKey])
   useLayoutEffect(() => {
@@ -67,19 +74,18 @@ function useHistoryLifecycle(
     selector.current = selectorKey
     ++history.current
     ++evidence.current
-    ++restore.current
+    ++restorePreview.current
     ++source.current
     setPanel(null)
     setSource(null)
-    invalidateBusy()
+    invalidatePresentation()
     setError(null)
   }, [selectorKey])
   useLayoutEffect(() => {
     if (entity.current === entityKey) return
     entity.current = entityKey
     ++source.current
-    setSource(null)
-    invalidateBusy()
+    invalidateSourcePreparation()
   }, [entityKey])
 }
 
@@ -92,16 +98,17 @@ function useHistoryReadActions(
   historySequence: MutableRefObject<number>,
   evidenceSequence: MutableRefObject<number>,
   setPanel: Dispatch<SetStateAction<HistoryPanelState | null>>,
-  beginBusy: (kind: HistoryBusyKind) => HistoryBusyOperation,
-  finishBusy: (operation: HistoryBusyOperation) => void,
+  transactionPending: () => boolean,
+  beginPresentation: (kind: PresentationKind) => PresentationOperation,
+  finishPresentation: (operation: PresentationOperation) => void,
   setError: Dispatch<SetStateAction<ReviewWorkspaceError | null>>,
   setNotice: Dispatch<SetStateAction<string | null>>,
 ) {
   async function open() {
-    if (!coordinator || !selector) return
+    if (!coordinator || !selector || transactionPending()) return
     const key = sessionKey
     const sequence = ++historySequence.current
-    const operation = beginBusy('history')
+    const operation = beginPresentation('history')
     setError(null)
     setNotice(null)
     try {
@@ -121,14 +128,14 @@ function useHistoryReadActions(
       if (active(key) && sequence === historySequence.current)
         setError(asReviewError(cause, '无法读取历史意见。'))
     } finally {
-      finishBusy(operation)
+      finishPresentation(operation)
     }
   }
   async function requestEvidence(assetVersionId: string, role: 'base' | 'annotated') {
-    if (!coordinator || !panel || panel.sessionKey !== sessionKey) return
+    if (!coordinator || !panel || panel.sessionKey !== sessionKey || transactionPending()) return
     const key = sessionKey
     const sequence = ++evidenceSequence.current
-    const operation = beginBusy('evidence')
+    const operation = beginPresentation('evidence')
     setError(null)
     try {
       const image = await coordinator.getEvidence(panel.selector, assetVersionId, role)
@@ -151,7 +158,7 @@ function useHistoryReadActions(
       if (active(key) && sequence === evidenceSequence.current)
         setError(asReviewError(cause, '历史证据无法读取。'))
     } finally {
-      finishBusy(operation)
+      finishPresentation(operation)
     }
   }
   return { open, requestEvidence }
@@ -173,61 +180,80 @@ function useHistoryWriteActions(
   sessionKey: string | null,
   selectedEntityIds: string[],
   active: (key: string | null) => boolean,
-  restoreSequence: MutableRefObject<number>,
-  sourceSequence: MutableRefObject<number>,
-  beginBusy: (kind: HistoryBusyKind) => HistoryBusyOperation,
-  finishBusy: (operation: HistoryBusyOperation) => void,
+  restorePreviewSequence: MutableRefObject<number>,
+  sourcePreparationSequence: MutableRefObject<number>,
+  transactionPending: () => boolean,
+  beginPresentation: (kind: PresentationKind) => PresentationOperation,
+  finishPresentation: (operation: PresentationOperation) => void,
+  beginTransaction: (kind: TransactionKind) => TransactionOperation | null,
+  finishTransaction: (operation: TransactionOperation) => void,
   setPanel: Dispatch<SetStateAction<HistoryPanelState | null>>,
   setSource: Dispatch<SetStateAction<SourceConfirmationState | null>>,
   setError: Dispatch<SetStateAction<ReviewWorkspaceError | null>>,
   setNotice: Dispatch<SetStateAction<string | null>>,
 ) {
-  async function restore(decisions: ReviewRestoreDecision[]) {
-    if (coordinator === undefined || panel === null) return
-    const requestSessionKey = sessionKey
-    const sequence = ++restoreSequence.current
-    const operation = beginBusy(
-      panel.restorePreview === null ? 'restore_preview' : 'restore_commit',
-    )
+  async function previewRestore(
+    currentPanel: HistoryPanelState,
+    decisions: ReviewRestoreDecision[],
+    requestSessionKey: string | null,
+  ) {
+    if (coordinator === undefined || currentPanel.selector.kind !== 'archive') return
+    const sequence = ++restorePreviewSequence.current
+    const operation = beginPresentation('restore_preview')
     setError(null)
     try {
-      const outcome = await runHistoryRestore(
-        coordinator,
-        panel,
-        requestSessionKey,
-        active,
-        decisions,
+      const plan = await coordinator.previewRestore(currentPanel.selector.archiveId, decisions)
+      if (!active(requestSessionKey) || sequence !== restorePreviewSequence.current) return
+      setPanel((current) =>
+        current?.sessionKey === requestSessionKey
+          ? { ...current, restorePreview: { decisions: structuredClone(decisions), plan } }
+          : current,
       )
-      if (sequence !== restoreSequence.current || outcome.kind === 'ignored') return
-      if (outcome.kind === 'preview') {
-        setPanel((current) =>
-          current?.sessionKey === requestSessionKey
-            ? {
-                ...current,
-                restorePreview: { decisions: structuredClone(decisions), plan: outcome.plan },
-              }
-            : current,
-        )
-        return
-      }
-      if (outcome.kind === 'empty') {
-        setPanel(null)
-        setNotice('未恢复任何历史目标；当前意见保持不变。')
-        return
-      }
+    } catch (cause) {
+      if (active(requestSessionKey) && sequence === restorePreviewSequence.current)
+        setError(asReviewError(cause, '无法预览或恢复历史意见。'))
+    } finally {
+      finishPresentation(operation)
+    }
+  }
+
+  async function commitRestore(requestSessionKey: string | null) {
+    if (coordinator === undefined) return
+    const operation = beginTransaction('restore_commit')
+    if (operation === null) return
+    setError(null)
+    try {
+      await coordinator.restore()
+      if (!active(requestSessionKey)) return
       setPanel(null)
       setNotice('已追加恢复状态；历史记录没有被改写。')
     } catch (cause) {
-      if (active(requestSessionKey) && sequence === restoreSequence.current)
-        setError(asReviewError(cause, '无法预览或恢复历史意见。'))
+      if (active(requestSessionKey)) setError(asReviewError(cause, '无法预览或恢复历史意见。'))
     } finally {
-      finishBusy(operation)
+      finishTransaction(operation)
     }
+  }
+
+  async function restore(decisions: ReviewRestoreDecision[]) {
+    if (coordinator === undefined || panel === null || transactionPending()) return
+    const requestSessionKey = sessionKey
+    if (panel.sessionKey !== requestSessionKey || panel.selector.kind !== 'archive') return
+    const preview = panel.restorePreview
+    if (preview === null || !sameRestoreDecisions(preview.decisions, decisions)) {
+      await previewRestore(panel, decisions, requestSessionKey)
+      return
+    }
+    if (preview.plan.restored.length === 0) {
+      setPanel(null)
+      setNotice('未恢复任何历史目标；当前意见保持不变。')
+      return
+    }
+    await commitRestore(requestSessionKey)
   }
 
   async function continueHistorical(historyRef: ReviewHistoryRef) {
     const sourceRef = historyRef.source
-    if (coordinator === undefined) return
+    if (coordinator === undefined || transactionPending()) return
     if (sourceRef.kind !== 'snapshot' || sourceRef.keys.length !== 1) {
       setError(reviewWorkspaceError('invalid_data', '历史目标不完整，不能继续提出。', false))
       return
@@ -252,12 +278,12 @@ function useHistoryWriteActions(
       return
     }
     const requestSessionKey = sessionKey
-    const sequence = ++sourceSequence.current
-    const operation = beginBusy('source')
+    const sequence = ++sourcePreparationSequence.current
+    const operation = beginPresentation('source')
     setError(null)
     try {
       const prepared = await coordinator.prepareAssets(selectedEntityIds)
-      if (!active(requestSessionKey) || sequence !== sourceSequence.current) return
+      if (!active(requestSessionKey) || sequence !== sourcePreparationSequence.current) return
       setSource({
         sessionKey: requestSessionKey,
         historyRef: structuredClone(historyRef),
@@ -267,31 +293,36 @@ function useHistoryWriteActions(
         candidates: prepared.map((entry) => entry.asset),
       })
     } catch (cause) {
-      if (active(requestSessionKey) && sequence === sourceSequence.current)
+      if (active(requestSessionKey) && sequence === sourcePreparationSequence.current)
         setError(asReviewError(cause, '无法核验当前素材候选。'))
     } finally {
-      finishBusy(operation)
+      finishPresentation(operation)
     }
   }
 
   async function confirmSource(decision: ReviewSourceBindingDecision) {
-    if (coordinator === undefined || source === null || source.sessionKey !== sessionKey) return
+    if (
+      coordinator === undefined ||
+      source === null ||
+      source.sessionKey !== sessionKey ||
+      transactionPending()
+    )
+      return
     const requestSessionKey = sessionKey
-    const sequence = ++sourceSequence.current
-    const operation = beginBusy('restore_commit')
+    const operation = beginTransaction('continue_commit')
+    if (operation === null) return
     setError(null)
     try {
       await coordinator.continueHistorical(source.historyRef, [decision])
-      if (active(requestSessionKey) && sequence === sourceSequence.current) {
+      if (active(requestSessionKey)) {
         setSource(null)
         setPanel(null)
         setNotice('已基于历史原文继续提出；新意见身份由协调器生成。')
       }
     } catch (cause) {
-      if (active(requestSessionKey) && sequence === sourceSequence.current)
-        setError(asReviewError(cause, '无法继续提出历史意见。'))
+      if (active(requestSessionKey)) setError(asReviewError(cause, '无法继续提出历史意见。'))
     } finally {
-      finishBusy(operation)
+      finishTransaction(operation)
     }
   }
 
@@ -306,34 +337,63 @@ export function useContinuousHistoryReview(
 ) {
   const [panel, setPanel] = useState<HistoryPanelState | null>(null)
   const [source, setSource] = useState<SourceConfirmationState | null>(null)
-  const [busyOperation, setBusyOperation] = useState<HistoryBusyOperation | null>(null)
+  const [presentationOperation, setPresentationOperation] = useState<PresentationOperation | null>(
+    null,
+  )
+  const [transactionOperation, setTransactionOperation] = useState<TransactionOperation | null>(
+    null,
+  )
   const [error, setError] = useState<ReviewWorkspaceError | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const sessionKey = coordinator?.workbenchSessionKey ?? null
   const sessionKeyRef = useRef(sessionKey)
   const historySequence = useRef(0)
   const evidenceSequence = useRef(0)
-  const restoreSequence = useRef(0)
-  const sourceSequence = useRef(0)
-  const busySequence = useRef(0)
+  const restorePreviewSequence = useRef(0)
+  const sourcePreparationSequence = useRef(0)
+  const presentationSequence = useRef(0)
+  const transactionSequence = useRef(0)
+  const transactionRef = useRef<TransactionOperation | null>(null)
   const selectorKey = selector === undefined ? null : JSON.stringify(selector)
   const selectorKeyRef = useRef(selectorKey)
   const entityKey = selectedEntityIds.join('\u0000')
   const entityKeyRef = useRef(entityKey)
 
-  function beginBusy(kind: HistoryBusyKind): HistoryBusyOperation {
-    const operation = { token: ++busySequence.current, kind }
-    setBusyOperation(operation)
+  function beginPresentation(kind: PresentationKind): PresentationOperation {
+    const operation = { token: ++presentationSequence.current, kind }
+    setPresentationOperation(operation)
     return operation
   }
 
-  function finishBusy(operation: HistoryBusyOperation) {
-    setBusyOperation((current) => (current?.token === operation.token ? null : current))
+  function finishPresentation(operation: PresentationOperation) {
+    setPresentationOperation((current) => (current?.token === operation.token ? null : current))
   }
 
-  function invalidateBusy() {
-    ++busySequence.current
-    setBusyOperation(null)
+  function invalidatePresentation() {
+    ++presentationSequence.current
+    setPresentationOperation(null)
+  }
+
+  function invalidateSourcePreparation() {
+    setPresentationOperation((current) => (current?.kind === 'source' ? null : current))
+  }
+
+  function transactionPending() {
+    return transactionRef.current !== null
+  }
+
+  function beginTransaction(kind: TransactionKind): TransactionOperation | null {
+    if (transactionRef.current !== null) return null
+    const operation = { token: ++transactionSequence.current, kind, sessionKey }
+    transactionRef.current = operation
+    setTransactionOperation(operation)
+    return operation
+  }
+
+  function finishTransaction(operation: TransactionOperation) {
+    if (transactionRef.current?.token !== operation.token) return
+    transactionRef.current = null
+    setTransactionOperation((current) => (current?.token === operation.token ? null : current))
   }
 
   useHistoryLifecycle(
@@ -345,11 +405,12 @@ export function useContinuousHistoryReview(
     entityKeyRef,
     historySequence,
     evidenceSequence,
-    restoreSequence,
-    sourceSequence,
+    restorePreviewSequence,
+    sourcePreparationSequence,
     setPanel,
     setSource,
-    invalidateBusy,
+    invalidatePresentation,
+    invalidateSourcePreparation,
     setError,
     setNotice,
   )
@@ -365,17 +426,19 @@ export function useContinuousHistoryReview(
     historySequence,
     evidenceSequence,
     setPanel,
-    beginBusy,
-    finishBusy,
+    transactionPending,
+    beginPresentation,
+    finishPresentation,
     setError,
     setNotice,
   )
   const { close, closeSource } = useHistoryCloseActions(
-    invalidateBusy,
+    invalidatePresentation,
+    transactionPending,
     historySequence,
     evidenceSequence,
-    restoreSequence,
-    sourceSequence,
+    restorePreviewSequence,
+    sourcePreparationSequence,
     setPanel,
     setSource,
     setError,
@@ -388,10 +451,13 @@ export function useContinuousHistoryReview(
     sessionKey,
     selectedEntityIds,
     active,
-    restoreSequence,
-    sourceSequence,
-    beginBusy,
-    finishBusy,
+    restorePreviewSequence,
+    sourcePreparationSequence,
+    transactionPending,
+    beginPresentation,
+    finishPresentation,
+    beginTransaction,
+    finishTransaction,
     setPanel,
     setSource,
     setError,
@@ -402,14 +468,17 @@ export function useContinuousHistoryReview(
     available: coordinator !== undefined && selector !== undefined,
     panel: panel?.sessionKey === sessionKey ? panel : null,
     source: source?.sessionKey === sessionKey ? source : null,
-    busy: busyOperation !== null,
-    canClose: busyOperation?.kind !== 'restore_commit',
+    busy: presentationOperation !== null || transactionOperation !== null,
+    presentationBusy: presentationOperation !== null,
+    transactionBusy: transactionOperation !== null,
+    canClose: transactionOperation === null,
     error,
     notice,
     open,
     close,
     closeSource,
     invalidateRestorePreview: () => {
+      if (transactionPending()) return
       setPanel((current) =>
         current?.sessionKey === sessionKey && current.restorePreview !== null
           ? { ...current, restorePreview: null }
@@ -423,35 +492,9 @@ export function useContinuousHistoryReview(
   }
 }
 
-async function runHistoryRestore(
-  coordinator: ContinuousReviewCoordinator,
-  panel: HistoryPanelState,
-  sessionKey: string | null,
-  active: (key: string | null) => boolean,
-  decisions: ReviewRestoreDecision[],
-): Promise<
-  | { kind: 'ignored' }
-  | { kind: 'preview'; plan: ReviewRestorePlan }
-  | { kind: 'empty' }
-  | { kind: 'restored' }
-> {
-  if (panel.sessionKey !== sessionKey || panel.selector.kind !== 'archive')
-    return { kind: 'ignored' }
-  if (
-    panel.restorePreview === null ||
-    !sameRestoreDecisions(panel.restorePreview.decisions, decisions)
-  ) {
-    const plan = await coordinator.previewRestore(panel.selector.archiveId, decisions)
-    if (!active(sessionKey)) return { kind: 'ignored' }
-    return { kind: 'preview', plan }
-  }
-  if (panel.restorePreview.plan.restored.length === 0) return { kind: 'empty' }
-  await coordinator.restore()
-  return active(sessionKey) ? { kind: 'restored' } : { kind: 'ignored' }
-}
-
 function useHistoryCloseActions(
-  invalidateBusy: () => void,
+  invalidatePresentation: () => void,
+  transactionPending: () => boolean,
   history: MutableRefObject<number>,
   evidence: MutableRefObject<number>,
   restore: MutableRefObject<number>,
@@ -462,18 +505,20 @@ function useHistoryCloseActions(
 ) {
   return {
     close: () => {
+      if (transactionPending()) return
       ++history.current
       ++evidence.current
       ++restore.current
       ++source.current
-      invalidateBusy()
+      invalidatePresentation()
       setPanel(null)
       setSource(null)
       setError(null)
     },
     closeSource: () => {
+      if (transactionPending()) return
       ++source.current
-      invalidateBusy()
+      invalidatePresentation()
       setSource(null)
       setError(null)
     },

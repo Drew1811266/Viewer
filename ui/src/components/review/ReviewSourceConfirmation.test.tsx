@@ -145,3 +145,39 @@ it('clears an unavailable selected candidate and its position confirmation when 
   expect(screen.getByLabelText('我已确认该位置适用于所选素材')).not.toBeChecked()
   expect(screen.getByRole('button', { name: '确认素材与位置' })).toBeDisabled()
 })
+
+it('synchronously blocks a stale candidate or target from confirming before effects can reset local state', () => {
+  const confirm = vi.fn()
+  const rendered = render(
+    <ReviewSourceConfirmation
+      oldAsset={oldAsset}
+      candidates={[samePathNewImage]}
+      originalAnchor={{ kind: 'asset' }}
+      targetKey={targetKey}
+      busy={false}
+      error={null}
+      onCancel={vi.fn()}
+      onConfirm={confirm}
+    />,
+  )
+  fireEvent.click(screen.getByLabelText(/images\/look.png/))
+  fireEvent.click(screen.getByLabelText('我已确认该位置适用于所选素材'))
+  expect(screen.getByRole('button', { name: '确认素材与位置' })).toBeEnabled()
+
+  rendered.rerender(
+    <ReviewSourceConfirmation
+      oldAsset={oldAsset}
+      candidates={[]}
+      originalAnchor={{ kind: 'asset' }}
+      targetKey={{ ...targetKey, targetRevisionId: 'changed-target' }}
+      busy={false}
+      error={null}
+      onCancel={vi.fn()}
+      onConfirm={confirm}
+    />,
+  )
+  const button = screen.getByRole('button', { name: '确认素材与位置' })
+  expect(button).toBeDisabled()
+  fireEvent.click(button)
+  expect(confirm).not.toHaveBeenCalled()
+})

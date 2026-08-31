@@ -33,23 +33,29 @@ export default function ReviewSourceConfirmation({
   onConfirm,
 }: ReviewSourceConfirmationProps) {
   const cancelRef = useRef<HTMLButtonElement>(null)
-  const [selectedAssetVersionId, setSelectedAssetVersionId] = useState<string | null>(null)
+  const [selection, setSelection] = useState<{
+    assetVersionId: string
+    targetIdentity: string
+  } | null>(null)
   const [positionConfirmed, setPositionConfirmed] = useState(false)
   const candidateIds = candidates.map((candidate) => candidate.id).join('\u0000')
   const targetIdentity = `${targetKey.feedbackId}\u0000${targetKey.textRevisionId}\u0000${targetKey.targetId}\u0000${targetKey.targetRevisionId}`
+  const selectedAssetVersionId =
+    selection?.targetIdentity === targetIdentity ? selection.assetVersionId : null
+  const selectedCandidate = candidates.find((candidate) => candidate.id === selectedAssetVersionId)
 
   useEffect(() => {
     if (selectedAssetVersionId === null) return
     if (candidates.some((candidate) => candidate.id === selectedAssetVersionId)) return
-    setSelectedAssetVersionId(null)
+    setSelection(null)
     setPositionConfirmed(false)
   }, [candidateIds, selectedAssetVersionId])
 
   useEffect(() => {
-    setSelectedAssetVersionId(null)
+    setSelection(null)
     setPositionConfirmed(false)
   }, [targetIdentity])
-  const canConfirm = selectedAssetVersionId !== null && positionConfirmed
+  const canConfirm = selectedCandidate !== undefined && positionConfirmed
 
   return (
     <ModalSheet
@@ -68,10 +74,14 @@ export default function ReviewSourceConfirmation({
             loading={busy}
             disabled={!canConfirm}
             onClick={() => {
-              if (selectedAssetVersionId === null) return
+              if (!canConfirm || selectedCandidate === undefined) {
+                setSelection(null)
+                setPositionConfirmed(false)
+                return
+              }
               onConfirm({
                 targetKey,
-                newAssetVersionId: selectedAssetVersionId,
+                newAssetVersionId: selectedCandidate.id,
                 anchor: originalAnchor,
                 confirmation: { kind: 'user_confirmed' },
               })
@@ -101,7 +111,7 @@ export default function ReviewSourceConfirmation({
                 name="source-candidate"
                 checked={selectedAssetVersionId === candidate.id}
                 onChange={() => {
-                  setSelectedAssetVersionId(candidate.id)
+                  setSelection({ assetVersionId: candidate.id, targetIdentity })
                   setPositionConfirmed(false)
                 }}
               />

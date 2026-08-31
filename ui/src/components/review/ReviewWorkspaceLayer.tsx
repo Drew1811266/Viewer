@@ -173,7 +173,10 @@ function ReviewWorkspaceContext({
           asset.sourceEntityId === null ? [] : [asset.sourceEntityId],
         ) ?? [])
   const archiveUnavailable =
-    continuousReview === undefined || continuousReview.currentSnapshotId === null || archive.busy
+    continuousReview === undefined ||
+    continuousReview.currentSnapshotId === null ||
+    archive.busy ||
+    history.transactionBusy
   return (
     <ReviewContextBar
       protocol={continuousReview === undefined ? 'legacy' : 'continuous'}
@@ -189,7 +192,8 @@ function ReviewWorkspaceContext({
       onHistory={history.available ? () => void history.open() : undefined}
       continuousFeedbackCount={continuousReview?.view?.current?.state.feedback.length}
       archiveDisabled={archiveUnavailable}
-      archiveNotice={archive.notice ?? history.notice ?? history.error?.message ?? null}
+      historyDisabled={history.transactionBusy}
+      archiveNotice={history.error?.message ?? archive.notice ?? history.notice ?? null}
     />
   )
 }

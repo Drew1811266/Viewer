@@ -13,6 +13,7 @@ interface ReviewContextBarProps {
   onHistory?: () => void
   continuousFeedbackCount?: number
   archiveDisabled?: boolean
+  historyDisabled?: boolean
   archiveNotice?: string | null
 }
 
@@ -28,6 +29,7 @@ export default function ReviewContextBar({
   onHistory,
   continuousFeedbackCount,
   archiveDisabled = false,
+  historyDisabled = false,
   archiveNotice = null,
 }: ReviewContextBarProps) {
   if (protocol === 'continuous') {
@@ -41,7 +43,11 @@ export default function ReviewContextBar({
           <ViewerButton tone="quiet" onClick={onReturnToMembers}>
             返回素材
           </ViewerButton>
-          <ViewerButton tone="secondary" onClick={onHistory} disabled={onHistory === undefined}>
+          <ViewerButton
+            tone="secondary"
+            onClick={onHistory}
+            disabled={onHistory === undefined || historyDisabled}
+          >
             历史
           </ViewerButton>
           <ViewerButton

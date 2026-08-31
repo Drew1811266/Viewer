@@ -484,6 +484,31 @@ describe('review workspace components', () => {
     expect(continuous.commitArchive).not.toHaveBeenCalled()
   })
 
+  it('prioritizes a failed initial history read above an earlier dirty archive notice', async () => {
+    const continuous = continuousArchiveCoordinator('continuous-c', {
+      hasUncommittedInput: true,
+      getHistory: vi.fn().mockRejectedValue({
+        code: 'integrity',
+        message: '历史记录完整性损坏',
+        retryable: false,
+      }),
+    })
+    render(
+      <ReviewWorkspaceLayer
+        review={coordinator(active())}
+        selectedEntityIds={[]}
+        projectAccess="read_write"
+        continuousReview={continuous}
+        historySelector={{ kind: 'archive', archiveId: 'archive-1' }}
+        onReturnToMembers={vi.fn()}
+      />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: '存档意见' }))
+    expect(screen.getByRole('status')).toHaveTextContent('请先保存或取消正在编辑的意见。')
+    fireEvent.click(screen.getByRole('button', { name: '历史' }))
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('历史记录完整性损坏'))
+  })
+
   it('previews a supplied exact known basis instead of replacing it with an unknown selection', async () => {
     const selection: ReviewArchiveSelection = {
       expectedSnapshotId: 'snapshot-c',

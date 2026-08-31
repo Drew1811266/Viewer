@@ -1,7 +1,11 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { createRef } from 'react'
 import { describe, expect, it, vi } from 'vitest'
-import type { ReviewArchivePlan, ReviewArchiveSelection } from '../../api/reviewWorkspaceTypes'
+import type {
+  ReviewArchivePlan,
+  ReviewArchiveSelection,
+  ReviewHistoryView,
+} from '../../api/reviewWorkspaceTypes'
 import type {
   ReviewCompletionProposal,
   ReviewScopeRequest,
@@ -226,6 +230,58 @@ function continuousArchiveCoordinator(
   } as unknown as ContinuousReviewCoordinator
 }
 
+function historyForLayer(): ReviewHistoryView {
+  return {
+    selector: { kind: 'archive', archiveId: 'archive-1' },
+    entries: [
+      {
+        snapshot: { snapshotId: 'snapshot-old', blake3: 'a'.repeat(64) },
+        feedback: [
+          {
+            id: 'history-feedback',
+            textRevisionId: 'history-text',
+            text: '历史原文',
+            createdAtMs: 1,
+            historyRef: null,
+            targets: [
+              {
+                id: 'history-target',
+                revisionId: 'history-target-revision',
+                assetVersionId: 'asset-old',
+                anchor: { kind: 'asset' },
+                availability: { kind: 'ready' },
+              },
+            ],
+          },
+        ],
+        assets: [
+          {
+            id: 'asset-old',
+            sourceEntityId: null,
+            relativePath: 'old.png',
+            evidence: { sizeBytes: 1, modifiedNs: '1', blake3: 'a'.repeat(64) },
+            media: { kind: 'image', width: 10, height: 10 },
+            producerAssetId: null,
+            parentAssetVersionId: null,
+          },
+        ],
+        evidence: [],
+        selected: [
+          {
+            feedbackId: 'history-feedback',
+            textRevisionId: 'history-text',
+            targetId: 'history-target',
+            targetRevisionId: 'history-target-revision',
+          },
+        ],
+      },
+    ],
+    legacy: null,
+    limitations: ['background_only'],
+    restoreActions: [],
+  }
+}
+
 function deferred<T>() {
   let resolve!: (value: T) => void
   let reject!: (cause: unknown) => void
@@ -343,6 +399,89 @@ describe('review workspace components', () => {
     fireEvent.click(within(context).getByRole('button', { name: '历史' }))
     expect(archive).toHaveBeenCalledOnce()
     expect(history).toHaveBeenCalledOnce()
+  })
+
+  it('keeps history and source confirmation mutually modal and returns to the original history panel', async () => {
+    const continuous = continuousArchiveCoordinator('continuous-c', {
+      getHistory: vi.fn().mockResolvedValue(historyForLayer()),
+      prepareAssets: vi.fn().mockResolvedValue([
+        {
+          asset: {
+            id: 'asset-new',
+            sourceEntityId: 'new-entity',
+            relativePath: 'new.png',
+            evidence: { sizeBytes: 2, modifiedNs: '2', blake3: 'b'.repeat(64) },
+            media: { kind: 'image', width: 10, height: 10 },
+            producerAssetId: null,
+            parentAssetVersionId: 'asset-old',
+          },
+          preview: null,
+        },
+      ]),
+    })
+    render(
+      <ReviewWorkspaceLayer
+        review={coordinator(active())}
+        selectedEntityIds={['new-entity']}
+        projectAccess="read_write"
+        continuousReview={continuous}
+        historySelector={{ kind: 'archive', archiveId: 'archive-1' }}
+        onReturnToMembers={vi.fn()}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: '历史' }))
+    await waitFor(() => expect(screen.getByRole('dialog', { name: '历史意见' })).toBeVisible())
+    fireEvent.click(screen.getByRole('button', { name: '继续提出' }))
+    await waitFor(() =>
+      expect(screen.getByRole('dialog', { name: '确认素材适用性' })).toBeVisible(),
+    )
+    expect(document.querySelectorAll('[aria-modal="true"]')).toHaveLength(1)
+    fireEvent.click(screen.getByRole('button', { name: '返回历史' }))
+    expect(screen.getByRole('dialog', { name: '历史意见' })).toBeVisible()
+    expect(screen.getAllByText('历史原文')).not.toHaveLength(0)
+  })
+
+  it('surfaces a failed initial history read in the continuous context bar', async () => {
+    const continuous = continuousArchiveCoordinator('continuous-c', {
+      getHistory: vi.fn().mockRejectedValue({
+        code: 'integrity',
+        message: '历史记录完整性损坏',
+        retryable: false,
+      }),
+    })
+    render(
+      <ReviewWorkspaceLayer
+        review={coordinator(active())}
+        selectedEntityIds={[]}
+        projectAccess="read_write"
+        continuousReview={continuous}
+        historySelector={{ kind: 'archive', archiveId: 'archive-1' }}
+        onReturnToMembers={vi.fn()}
+      />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: '历史' }))
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('历史记录完整性损坏'))
+    expect(screen.queryByRole('dialog', { name: '历史意见' })).toBeNull()
+  })
+
+  it('lets the internal continuous archive action explain dirty input without submitting it', () => {
+    const continuous = continuousArchiveCoordinator('continuous-c', { hasUncommittedInput: true })
+    render(
+      <ReviewWorkspaceLayer
+        review={coordinator(active())}
+        selectedEntityIds={[]}
+        projectAccess="read_write"
+        continuousReview={continuous}
+        onReturnToMembers={vi.fn()}
+      />,
+    )
+    const archiveButton = screen.getByRole('button', { name: '存档意见' })
+    expect(archiveButton).toBeEnabled()
+    fireEvent.click(archiveButton)
+    expect(screen.getByRole('status')).toHaveTextContent('请先保存或取消正在编辑的意见。')
+    expect(continuous.previewArchive).not.toHaveBeenCalled()
+    expect(continuous.commitArchive).not.toHaveBeenCalled()
   })
 
   it('previews a supplied exact known basis instead of replacing it with an unknown selection', async () => {

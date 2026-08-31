@@ -111,6 +111,26 @@ it('keeps every selected target as a separate typed continuation candidate', () 
   ])
 })
 
+it('derives one snapshot continuation reference per visible target when the snapshot has no selected keys', () => {
+  const snapshotHistory = structuredClone(history)
+  const entry = firstEntry(snapshotHistory)
+  snapshotHistory.selector = { kind: 'snapshot', snapshot: entry.snapshot }
+  entry.selected = []
+
+  expect(historyRefsForEntries(snapshotHistory, 'project-1', 'stream-1')).toEqual([
+    {
+      projectId: 'project-1',
+      streamId: 'stream-1',
+      source: { kind: 'snapshot', snapshot: entry.snapshot, keys: [historicalKey] },
+    },
+    {
+      projectId: 'project-1',
+      streamId: 'stream-1',
+      source: { kind: 'snapshot', snapshot: entry.snapshot, keys: [anotherHistoricalKey] },
+    },
+  ])
+})
+
 function firstEntry(value: ReviewHistoryView) {
   const entry = value.entries[0]
   if (entry === undefined) throw new Error('Fixture requires one history entry')

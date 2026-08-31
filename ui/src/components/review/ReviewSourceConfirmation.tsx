@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type {
   ReviewAssetVersion,
   ReviewSourceBindingDecision,
@@ -35,6 +35,20 @@ export default function ReviewSourceConfirmation({
   const cancelRef = useRef<HTMLButtonElement>(null)
   const [selectedAssetVersionId, setSelectedAssetVersionId] = useState<string | null>(null)
   const [positionConfirmed, setPositionConfirmed] = useState(false)
+  const candidateIds = candidates.map((candidate) => candidate.id).join('\u0000')
+  const targetIdentity = `${targetKey.feedbackId}\u0000${targetKey.textRevisionId}\u0000${targetKey.targetId}\u0000${targetKey.targetRevisionId}`
+
+  useEffect(() => {
+    if (selectedAssetVersionId === null) return
+    if (candidates.some((candidate) => candidate.id === selectedAssetVersionId)) return
+    setSelectedAssetVersionId(null)
+    setPositionConfirmed(false)
+  }, [candidateIds, selectedAssetVersionId])
+
+  useEffect(() => {
+    setSelectedAssetVersionId(null)
+    setPositionConfirmed(false)
+  }, [targetIdentity])
   const canConfirm = selectedAssetVersionId !== null && positionConfirmed
 
   return (

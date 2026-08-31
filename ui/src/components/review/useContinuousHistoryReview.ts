@@ -14,6 +14,7 @@ import type {
 } from '../../api/reviewWorkspaceTypes'
 import { reviewWorkspaceError } from '../../app/review/continuousReviewModel'
 import type { ContinuousReviewCoordinator } from '../../app/review/useContinuousReviewCoordinator'
+import { historyRefsForEntries } from './reviewHistoryModel'
 
 interface HistoryPanelState {
   sessionKey: string | null
@@ -22,7 +23,13 @@ interface HistoryPanelState {
   historyRef: ReviewHistoryRef | null
   historyRefs: ReviewHistoryRef[]
   evidence: ReviewEvidenceImage[]
-  restorePlan: ReviewRestorePlan | null
+  restorePreview: { decisions: ReviewRestoreDecision[]; plan: ReviewRestorePlan } | null
+}
+
+type HistoryBusyKind = 'history' | 'evidence' | 'source' | 'restore_preview' | 'restore_commit'
+interface HistoryBusyOperation {
+  token: number
+  kind: HistoryBusyKind
 }
 
 function useHistoryLifecycle(
@@ -38,7 +45,7 @@ function useHistoryLifecycle(
   source: MutableRefObject<number>,
   setPanel: Dispatch<SetStateAction<HistoryPanelState | null>>,
   setSource: Dispatch<SetStateAction<SourceConfirmationState | null>>,
-  setBusy: Dispatch<SetStateAction<boolean>>,
+  invalidateBusy: () => void,
   setError: Dispatch<SetStateAction<ReviewWorkspaceError | null>>,
   setNotice: Dispatch<SetStateAction<string | null>>,
 ) {
@@ -47,7 +54,7 @@ function useHistoryLifecycle(
     session.current = sessionKey
     setPanel(null)
     setSource(null)
-    setBusy(false)
+    invalidateBusy()
     setError(null)
     setNotice(null)
     ++history.current
@@ -64,6 +71,7 @@ function useHistoryLifecycle(
     ++source.current
     setPanel(null)
     setSource(null)
+    invalidateBusy()
     setError(null)
   }, [selectorKey])
   useLayoutEffect(() => {
@@ -71,6 +79,7 @@ function useHistoryLifecycle(
     entity.current = entityKey
     ++source.current
     setSource(null)
+    invalidateBusy()
   }, [entityKey])
 }
 
@@ -83,7 +92,8 @@ function useHistoryReadActions(
   historySequence: MutableRefObject<number>,
   evidenceSequence: MutableRefObject<number>,
   setPanel: Dispatch<SetStateAction<HistoryPanelState | null>>,
-  setBusy: Dispatch<SetStateAction<boolean>>,
+  beginBusy: (kind: HistoryBusyKind) => HistoryBusyOperation,
+  finishBusy: (operation: HistoryBusyOperation) => void,
   setError: Dispatch<SetStateAction<ReviewWorkspaceError | null>>,
   setNotice: Dispatch<SetStateAction<string | null>>,
 ) {
@@ -91,7 +101,7 @@ function useHistoryReadActions(
     if (!coordinator || !selector) return
     const key = sessionKey
     const sequence = ++historySequence.current
-    setBusy(true)
+    const operation = beginBusy('history')
     setError(null)
     setNotice(null)
     try {
@@ -105,20 +115,20 @@ function useHistoryReadActions(
         historyRef: refs[0] ?? null,
         historyRefs: refs,
         evidence: [],
-        restorePlan: null,
+        restorePreview: null,
       })
     } catch (cause) {
       if (active(key) && sequence === historySequence.current)
         setError(asReviewError(cause, '无法读取历史意见。'))
     } finally {
-      if (active(key) && sequence === historySequence.current) setBusy(false)
+      finishBusy(operation)
     }
   }
   async function requestEvidence(assetVersionId: string, role: 'base' | 'annotated') {
     if (!coordinator || !panel || panel.sessionKey !== sessionKey) return
     const key = sessionKey
     const sequence = ++evidenceSequence.current
-    setBusy(true)
+    const operation = beginBusy('evidence')
     setError(null)
     try {
       const image = await coordinator.getEvidence(panel.selector, assetVersionId, role)
@@ -141,7 +151,7 @@ function useHistoryReadActions(
       if (active(key) && sequence === evidenceSequence.current)
         setError(asReviewError(cause, '历史证据无法读取。'))
     } finally {
-      if (active(key) && sequence === evidenceSequence.current) setBusy(false)
+      finishBusy(operation)
     }
   }
   return { open, requestEvidence }
@@ -156,77 +166,29 @@ interface SourceConfirmationState {
   candidates: ReviewAssetVersion[]
 }
 
-/** Session-scoped history and source binding coordination kept out of the legacy workbench hook. */
-export function useContinuousHistoryReview(
+function useHistoryWriteActions(
   coordinator: ContinuousReviewCoordinator | undefined,
+  panel: HistoryPanelState | null,
+  source: SourceConfirmationState | null,
+  sessionKey: string | null,
   selectedEntityIds: string[],
-  selector: ReviewHistorySelector | undefined,
+  active: (key: string | null) => boolean,
+  restoreSequence: MutableRefObject<number>,
+  sourceSequence: MutableRefObject<number>,
+  beginBusy: (kind: HistoryBusyKind) => HistoryBusyOperation,
+  finishBusy: (operation: HistoryBusyOperation) => void,
+  setPanel: Dispatch<SetStateAction<HistoryPanelState | null>>,
+  setSource: Dispatch<SetStateAction<SourceConfirmationState | null>>,
+  setError: Dispatch<SetStateAction<ReviewWorkspaceError | null>>,
+  setNotice: Dispatch<SetStateAction<string | null>>,
 ) {
-  const [panel, setPanel] = useState<HistoryPanelState | null>(null)
-  const [source, setSource] = useState<SourceConfirmationState | null>(null)
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<ReviewWorkspaceError | null>(null)
-  const [notice, setNotice] = useState<string | null>(null)
-  const sessionKey = coordinator?.workbenchSessionKey ?? null
-  const sessionKeyRef = useRef(sessionKey)
-  const historySequence = useRef(0)
-  const evidenceSequence = useRef(0)
-  const restoreSequence = useRef(0)
-  const sourceSequence = useRef(0)
-  const selectorKey = selector === undefined ? null : JSON.stringify(selector)
-  const selectorKeyRef = useRef(selectorKey)
-  const entityKey = selectedEntityIds.join('\u0000')
-  const entityKeyRef = useRef(entityKey)
-
-  useHistoryLifecycle(
-    sessionKey,
-    selectorKey,
-    entityKey,
-    sessionKeyRef,
-    selectorKeyRef,
-    entityKeyRef,
-    historySequence,
-    evidenceSequence,
-    restoreSequence,
-    sourceSequence,
-    setPanel,
-    setSource,
-    setBusy,
-    setError,
-    setNotice,
-  )
-
-  const active = (requestSessionKey: string | null) => sessionKeyRef.current === requestSessionKey
-
-  const { open, requestEvidence } = useHistoryReadActions(
-    coordinator,
-    selector,
-    panel,
-    sessionKey,
-    active,
-    historySequence,
-    evidenceSequence,
-    setPanel,
-    setBusy,
-    setError,
-    setNotice,
-  )
-  const { close, closeSource } = useHistoryCloseActions(
-    busy,
-    historySequence,
-    evidenceSequence,
-    restoreSequence,
-    sourceSequence,
-    setPanel,
-    setSource,
-    setError,
-  )
-
   async function restore(decisions: ReviewRestoreDecision[]) {
     if (coordinator === undefined || panel === null) return
     const requestSessionKey = sessionKey
     const sequence = ++restoreSequence.current
-    setBusy(true)
+    const operation = beginBusy(
+      panel.restorePreview === null ? 'restore_preview' : 'restore_commit',
+    )
     setError(null)
     try {
       const outcome = await runHistoryRestore(
@@ -240,7 +202,10 @@ export function useContinuousHistoryReview(
       if (outcome.kind === 'preview') {
         setPanel((current) =>
           current?.sessionKey === requestSessionKey
-            ? { ...current, restorePlan: outcome.plan }
+            ? {
+                ...current,
+                restorePreview: { decisions: structuredClone(decisions), plan: outcome.plan },
+              }
             : current,
         )
         return
@@ -256,30 +221,26 @@ export function useContinuousHistoryReview(
       if (active(requestSessionKey) && sequence === restoreSequence.current)
         setError(asReviewError(cause, '无法预览或恢复历史意见。'))
     } finally {
-      if (active(requestSessionKey) && sequence === restoreSequence.current) setBusy(false)
+      finishBusy(operation)
     }
   }
 
   async function continueHistorical(historyRef: ReviewHistoryRef) {
     const sourceRef = historyRef.source
-    if (coordinator === undefined || sourceRef.kind !== 'snapshot') return
-    const currentPanel = panel
-    if (currentPanel === null || currentPanel.sessionKey !== sessionKey) return
-    const selectedKey = sourceRef.keys[0]
-    if (selectedKey === undefined) {
+    if (coordinator === undefined) return
+    if (sourceRef.kind !== 'snapshot' || sourceRef.keys.length !== 1) {
       setError(reviewWorkspaceError('invalid_data', '历史目标不完整，不能继续提出。', false))
       return
     }
-    const target = historicalTarget(
-      currentPanel.history,
-      sourceRef.snapshot.snapshotId,
-      selectedKey,
-    )
+    if (panel === null || panel.sessionKey !== sessionKey) return
+    const selectedKey = sourceRef.keys[0]
+    if (selectedKey === undefined) return
+    const target = historicalTarget(panel.history, sourceRef.snapshot.snapshotId, selectedKey)
     if (target === null) {
       setError(reviewWorkspaceError('invalid_data', '历史目标不完整，不能继续提出。', false))
       return
     }
-    const oldAsset = currentPanel.history.entries
+    const oldAsset = panel.history.entries
       .find((entry) => entry.snapshot.snapshotId === sourceRef.snapshot.snapshotId)
       ?.assets.find((asset) => asset.id === target.assetVersionId)
     if (oldAsset === undefined) {
@@ -292,7 +253,7 @@ export function useContinuousHistoryReview(
     }
     const requestSessionKey = sessionKey
     const sequence = ++sourceSequence.current
-    setBusy(true)
+    const operation = beginBusy('source')
     setError(null)
     try {
       const prepared = await coordinator.prepareAssets(selectedEntityIds)
@@ -309,7 +270,7 @@ export function useContinuousHistoryReview(
       if (active(requestSessionKey) && sequence === sourceSequence.current)
         setError(asReviewError(cause, '无法核验当前素材候选。'))
     } finally {
-      if (active(requestSessionKey) && sequence === sourceSequence.current) setBusy(false)
+      finishBusy(operation)
     }
   }
 
@@ -317,10 +278,9 @@ export function useContinuousHistoryReview(
     if (coordinator === undefined || source === null || source.sessionKey !== sessionKey) return
     const requestSessionKey = sessionKey
     const sequence = ++sourceSequence.current
-    setBusy(true)
+    const operation = beginBusy('restore_commit')
     setError(null)
     try {
-      // The backend prepare envelope, not this UI, owns the new Feedback/Target identities.
       await coordinator.continueHistorical(source.historyRef, [decision])
       if (active(requestSessionKey) && sequence === sourceSequence.current) {
         setSource(null)
@@ -331,20 +291,131 @@ export function useContinuousHistoryReview(
       if (active(requestSessionKey) && sequence === sourceSequence.current)
         setError(asReviewError(cause, '无法继续提出历史意见。'))
     } finally {
-      if (active(requestSessionKey) && sequence === sourceSequence.current) setBusy(false)
+      finishBusy(operation)
     }
   }
+
+  return { restore, continueHistorical, confirmSource }
+}
+
+/** Session-scoped history and source binding coordination kept out of the legacy workbench hook. */
+export function useContinuousHistoryReview(
+  coordinator: ContinuousReviewCoordinator | undefined,
+  selectedEntityIds: string[],
+  selector: ReviewHistorySelector | undefined,
+) {
+  const [panel, setPanel] = useState<HistoryPanelState | null>(null)
+  const [source, setSource] = useState<SourceConfirmationState | null>(null)
+  const [busyOperation, setBusyOperation] = useState<HistoryBusyOperation | null>(null)
+  const [error, setError] = useState<ReviewWorkspaceError | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
+  const sessionKey = coordinator?.workbenchSessionKey ?? null
+  const sessionKeyRef = useRef(sessionKey)
+  const historySequence = useRef(0)
+  const evidenceSequence = useRef(0)
+  const restoreSequence = useRef(0)
+  const sourceSequence = useRef(0)
+  const busySequence = useRef(0)
+  const selectorKey = selector === undefined ? null : JSON.stringify(selector)
+  const selectorKeyRef = useRef(selectorKey)
+  const entityKey = selectedEntityIds.join('\u0000')
+  const entityKeyRef = useRef(entityKey)
+
+  function beginBusy(kind: HistoryBusyKind): HistoryBusyOperation {
+    const operation = { token: ++busySequence.current, kind }
+    setBusyOperation(operation)
+    return operation
+  }
+
+  function finishBusy(operation: HistoryBusyOperation) {
+    setBusyOperation((current) => (current?.token === operation.token ? null : current))
+  }
+
+  function invalidateBusy() {
+    ++busySequence.current
+    setBusyOperation(null)
+  }
+
+  useHistoryLifecycle(
+    sessionKey,
+    selectorKey,
+    entityKey,
+    sessionKeyRef,
+    selectorKeyRef,
+    entityKeyRef,
+    historySequence,
+    evidenceSequence,
+    restoreSequence,
+    sourceSequence,
+    setPanel,
+    setSource,
+    invalidateBusy,
+    setError,
+    setNotice,
+  )
+
+  const active = (requestSessionKey: string | null) => sessionKeyRef.current === requestSessionKey
+
+  const { open, requestEvidence } = useHistoryReadActions(
+    coordinator,
+    selector,
+    panel,
+    sessionKey,
+    active,
+    historySequence,
+    evidenceSequence,
+    setPanel,
+    beginBusy,
+    finishBusy,
+    setError,
+    setNotice,
+  )
+  const { close, closeSource } = useHistoryCloseActions(
+    invalidateBusy,
+    historySequence,
+    evidenceSequence,
+    restoreSequence,
+    sourceSequence,
+    setPanel,
+    setSource,
+    setError,
+  )
+
+  const { restore, continueHistorical, confirmSource } = useHistoryWriteActions(
+    coordinator,
+    panel,
+    source,
+    sessionKey,
+    selectedEntityIds,
+    active,
+    restoreSequence,
+    sourceSequence,
+    beginBusy,
+    finishBusy,
+    setPanel,
+    setSource,
+    setError,
+    setNotice,
+  )
 
   return {
     available: coordinator !== undefined && selector !== undefined,
     panel: panel?.sessionKey === sessionKey ? panel : null,
     source: source?.sessionKey === sessionKey ? source : null,
-    busy,
+    busy: busyOperation !== null,
+    canClose: busyOperation?.kind !== 'restore_commit',
     error,
     notice,
     open,
     close,
     closeSource,
+    invalidateRestorePreview: () => {
+      setPanel((current) =>
+        current?.sessionKey === sessionKey && current.restorePreview !== null
+          ? { ...current, restorePreview: null }
+          : current,
+      )
+    },
     requestEvidence,
     restore,
     continueHistorical,
@@ -366,16 +437,21 @@ async function runHistoryRestore(
 > {
   if (panel.sessionKey !== sessionKey || panel.selector.kind !== 'archive')
     return { kind: 'ignored' }
-  const plan = await coordinator.previewRestore(panel.selector.archiveId, decisions)
-  if (!active(sessionKey)) return { kind: 'ignored' }
-  if (panel.restorePlan === null || plan.conflicts.length > 0) return { kind: 'preview', plan }
-  if (plan.restored.length === 0) return { kind: 'empty' }
+  if (
+    panel.restorePreview === null ||
+    !sameRestoreDecisions(panel.restorePreview.decisions, decisions)
+  ) {
+    const plan = await coordinator.previewRestore(panel.selector.archiveId, decisions)
+    if (!active(sessionKey)) return { kind: 'ignored' }
+    return { kind: 'preview', plan }
+  }
+  if (panel.restorePreview.plan.restored.length === 0) return { kind: 'empty' }
   await coordinator.restore()
   return active(sessionKey) ? { kind: 'restored' } : { kind: 'ignored' }
 }
 
 function useHistoryCloseActions(
-  busy: boolean,
+  invalidateBusy: () => void,
   history: MutableRefObject<number>,
   evidence: MutableRefObject<number>,
   restore: MutableRefObject<number>,
@@ -386,22 +462,20 @@ function useHistoryCloseActions(
 ) {
   return {
     close: () => {
-      if (!busy) {
-        ++history.current
-        ++evidence.current
-        ++restore.current
-        ++source.current
-        setPanel(null)
-        setSource(null)
-        setError(null)
-      }
+      ++history.current
+      ++evidence.current
+      ++restore.current
+      ++source.current
+      invalidateBusy()
+      setPanel(null)
+      setSource(null)
+      setError(null)
     },
     closeSource: () => {
-      if (!busy) {
-        ++source.current
-        setSource(null)
-        setError(null)
-      }
+      ++source.current
+      invalidateBusy()
+      setSource(null)
+      setError(null)
     },
   }
 }
@@ -412,17 +486,11 @@ function historyRefsFor(
 ): ReviewHistoryRef[] {
   const current = coordinator.view?.current
   if (current === undefined || current === null) return []
-  return history.entries.flatMap((entry) =>
-    entry.selected.map((key) => ({
-      projectId: current.state.projectId,
-      streamId: current.state.streamId,
-      source: {
-        kind: 'snapshot' as const,
-        snapshot: structuredClone(entry.snapshot),
-        keys: [structuredClone(key)],
-      },
-    })),
-  )
+  return historyRefsForEntries(history, current.state.projectId, current.state.streamId)
+}
+
+function sameRestoreDecisions(left: ReviewRestoreDecision[], right: ReviewRestoreDecision[]) {
+  return JSON.stringify(left) === JSON.stringify(right)
 }
 
 function historicalTarget(

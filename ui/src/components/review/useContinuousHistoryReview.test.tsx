@@ -232,7 +232,7 @@ it('does not commit a restore when the confirmed preview restores no targets', a
       { historicalKey: targetKey, choice: { kind: 'use_historical' } },
     ]),
   )
-  expect(rendered.result.current.panel?.restorePlan).not.toBeNull()
+  expect(rendered.result.current.panel?.restorePreview?.plan).not.toBeNull()
   await act(() =>
     rendered.result.current.restore([
       { historicalKey: targetKey, choice: { kind: 'use_historical' } },
@@ -272,6 +272,103 @@ it('commits only after an explicitly reconfirmed partial restore preview', async
   expect(rendered.result.current.notice).toBe('已追加恢复状态；历史记录没有被改写。')
 })
 
+it('never commits a restore plan after the user changes the decisions that were previewed', async () => {
+  const current = coordinator({
+    previewRestore: vi.fn().mockResolvedValue({
+      expectedSnapshotId: 'current',
+      restored: [targetKey],
+      conflicts: [],
+      coverageReversals: [],
+      requiresSourceCheck: [],
+    }),
+    restore: vi.fn().mockResolvedValue(undefined),
+  })
+  const rendered = renderHook(() =>
+    useContinuousHistoryReview(current, [], { kind: 'archive', archiveId: 'archive-1' }),
+  )
+  await act(() => rendered.result.current.open())
+  await act(() =>
+    rendered.result.current.restore([
+      { historicalKey: targetKey, choice: { kind: 'use_historical' } },
+    ]),
+  )
+  await act(() =>
+    rendered.result.current.restore([
+      {
+        historicalKey: targetKey,
+        choice: {
+          kind: 'continue_as_new',
+          feedbackId: 'new-feedback',
+          textRevisionId: 'new-text',
+          targetId: 'new-target',
+          targetRevisionId: 'new-target-revision',
+          targetAssetVersionId: 'asset-old',
+          confirmedAnchor: null,
+          createdAtMs: 2,
+        },
+      },
+    ]),
+  )
+
+  expect(current.previewRestore).toHaveBeenCalledTimes(2)
+  expect(current.restore).not.toHaveBeenCalled()
+})
+
+it('invalidates a reviewed restore plan when the panel selection changes', async () => {
+  const current = coordinator({
+    previewRestore: vi.fn().mockResolvedValue({
+      expectedSnapshotId: 'current',
+      restored: [targetKey],
+      conflicts: [],
+      coverageReversals: [],
+      requiresSourceCheck: [],
+    }),
+  })
+  const rendered = renderHook(() =>
+    useContinuousHistoryReview(current, [], { kind: 'archive', archiveId: 'archive-1' }),
+  )
+  await act(() => rendered.result.current.open())
+  await act(() =>
+    rendered.result.current.restore([
+      { historicalKey: targetKey, choice: { kind: 'use_historical' } },
+    ]),
+  )
+  expect(rendered.result.current.panel?.restorePreview).not.toBeNull()
+
+  act(() => rendered.result.current.invalidateRestorePreview())
+  expect(rendered.result.current.panel?.restorePreview).toBeNull()
+})
+
+it('rejects a continuation ref with zero or multiple snapshot keys instead of selecting keys[0]', async () => {
+  const prepareAssets = vi.fn()
+  const current = coordinator({ prepareAssets })
+  const rendered = renderHook(() =>
+    useContinuousHistoryReview(current, ['new-entity'], {
+      kind: 'archive',
+      archiveId: 'archive-1',
+    }),
+  )
+  await act(() => rendered.result.current.open())
+  const reference = rendered.result.current.panel?.historyRef
+  if (reference === null || reference === undefined || reference.source.kind !== 'snapshot')
+    throw new Error('Fixture requires a snapshot history reference')
+  const snapshot = reference.source.snapshot
+
+  await act(() =>
+    rendered.result.current.continueHistorical({
+      ...reference,
+      source: {
+        kind: 'snapshot',
+        snapshot,
+        keys: [targetKey, { ...targetKey, targetId: 'other' }],
+      },
+    }),
+  )
+
+  expect(prepareAssets).not.toHaveBeenCalled()
+  expect(rendered.result.current.error).toMatchObject({ code: 'invalid_data' })
+})
+
 it('drops a stale source-candidate response when the history selector changes', async () => {
   const pendingAssets =
     deferred<Awaited<ReturnType<ContinuousReviewCoordinator['prepareAssets']>>>()
@@ -296,11 +393,34 @@ it('drops a stale source-candidate response when the history selector changes', 
   rendered.rerender({
     selector: { kind: 'snapshot', snapshot: { snapshotId: 'new', blake3: 'n'.repeat(64) } },
   })
+  expect(rendered.result.current.busy).toBe(false)
   await act(async () => {
     pendingAssets.resolve([])
     await pendingAssets.promise
   })
   expect(rendered.result.current.source).toBeNull()
+})
+
+it('releases UI busy state when a pending source preparation is closed', async () => {
+  const pendingAssets =
+    deferred<Awaited<ReturnType<ContinuousReviewCoordinator['prepareAssets']>>>()
+  const current = coordinator({ prepareAssets: vi.fn().mockReturnValue(pendingAssets.promise) })
+  const rendered = renderHook(() =>
+    useContinuousHistoryReview(current, ['new-entity'], {
+      kind: 'archive',
+      archiveId: 'archive-1',
+    }),
+  )
+  await act(() => rendered.result.current.open())
+  const reference = rendered.result.current.panel?.historyRef
+  if (reference === null || reference === undefined)
+    throw new Error('Fixture requires a history reference')
+  act(() => void rendered.result.current.continueHistorical(reference))
+  await waitFor(() => expect(rendered.result.current.busy).toBe(true))
+
+  act(() => rendered.result.current.close())
+  expect(rendered.result.current.busy).toBe(false)
+  expect(rendered.result.current.panel).toBeNull()
 })
 
 it('drops a pending source-candidate result after the workbench session is replaced', async () => {
@@ -323,10 +443,32 @@ it('drops a pending source-candidate result after the workbench session is repla
   act(() => void rendered.result.current.continueHistorical(reference))
   await waitFor(() => expect(old.prepareAssets).toHaveBeenCalledOnce())
   rendered.rerender({ value: next })
+  expect(rendered.result.current.busy).toBe(false)
   await act(async () => {
     pendingAssets.resolve([])
     await pendingAssets.promise
   })
   expect(rendered.result.current.panel).toBeNull()
+  expect(rendered.result.current.source).toBeNull()
+})
+
+it('releases UI busy state and drops candidates when the selected entity changes', async () => {
+  const pendingAssets =
+    deferred<Awaited<ReturnType<ContinuousReviewCoordinator['prepareAssets']>>>()
+  const current = coordinator({ prepareAssets: vi.fn().mockReturnValue(pendingAssets.promise) })
+  const rendered = renderHook(
+    ({ entities }) =>
+      useContinuousHistoryReview(current, entities, { kind: 'archive', archiveId: 'archive-1' }),
+    { initialProps: { entities: ['new-entity'] } },
+  )
+  await act(() => rendered.result.current.open())
+  const reference = rendered.result.current.panel?.historyRef
+  if (reference === null || reference === undefined)
+    throw new Error('Fixture requires a history reference')
+  act(() => void rendered.result.current.continueHistorical(reference))
+  await waitFor(() => expect(rendered.result.current.busy).toBe(true))
+
+  rendered.rerender({ entities: ['replacement-entity'] })
+  expect(rendered.result.current.busy).toBe(false)
   expect(rendered.result.current.source).toBeNull()
 })

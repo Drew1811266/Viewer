@@ -30,10 +30,12 @@ export interface ReviewHistoryPanelProps {
   currentFeedback: ReviewVersionedFeedback[]
   evidence?: ReviewEvidenceImage[]
   busy: boolean
+  canClose?: boolean
   error: ReviewWorkspaceError | null
   onClose(): void
   onContinue(historyRef: ReviewHistoryRef): void
   onRestore(decisions: RestoreDecisionDto[]): void
+  onInvalidateRestorePreview?(): void
   onRequestEvidence(assetVersionId: string, role: 'base' | 'annotated'): void
 }
 
@@ -46,10 +48,12 @@ export default function ReviewHistoryPanel({
   currentFeedback,
   evidence = [],
   busy,
+  canClose = !busy,
   error,
   onClose,
   onContinue,
   onRestore,
+  onInvalidateRestorePreview,
   onRequestEvidence,
 }: ReviewHistoryPanelProps) {
   const closeRef = useRef<HTMLButtonElement>(null)
@@ -59,6 +63,7 @@ export default function ReviewHistoryPanel({
     currentFeedback,
     restorePlan,
     continuationRefs,
+    onInvalidateRestorePreview,
   )
 
   return (
@@ -66,12 +71,13 @@ export default function ReviewHistoryPanel({
       title="历史意见"
       size="large"
       onCancel={() => {
-        if (!busy) onClose()
+        if (canClose) onClose()
       }}
       initialFocusRef={closeRef}
       footer={
         <HistoryPanelFooter
           busy={busy}
+          canClose={canClose}
           closeRef={closeRef}
           restorePlan={restorePlan}
           selectedContinuation={selection.selectedContinuation}
@@ -103,7 +109,7 @@ export default function ReviewHistoryPanel({
         busy={busy}
         onRequestEvidence={onRequestEvidence}
       />
-      {history.legacy !== null && <p>此历史记录来自旧协议，只能作为背景查看。</p>}
+      {history.legacy !== null && <LegacyHistoryRecord history={history} />}
       {history.restoreActions.length === 0 && <p role="status">这批历史没有可恢复目标。</p>}
       {selection.targets.alreadyCurrent.length > 0 && (
         <p role="status">以下历史目标已在当前意见中，不会重复恢复。</p>
@@ -129,6 +135,7 @@ function useHistoryPanelSelection(
   currentFeedback: ReviewVersionedFeedback[],
   restorePlan: ReviewRestorePlan | null,
   continuationRefs: ReviewHistoryRef[],
+  invalidateRestorePreview: (() => void) | undefined,
 ) {
   const [choices, setChoices] = useState<Record<string, ReviewRestoreChoice>>({})
   const [selectedForRestore, setSelectedForRestore] = useState<Record<string, boolean>>({})
@@ -151,8 +158,14 @@ function useHistoryPanelSelection(
     submission,
     selectedContinuation,
     setContinuationRefKey,
-    setSelectedForRestore,
+    setSelectedForRestore: (
+      change: (previous: Record<string, boolean>) => Record<string, boolean>,
+    ) => {
+      invalidateRestorePreview?.()
+      setSelectedForRestore(change)
+    },
     setChoice: (key: ReviewTargetVersionKey, choice: ReviewRestoreChoice) => {
+      invalidateRestorePreview?.()
       setChoices((previous) => ({ ...previous, [targetKey(key)]: choice }))
       setSelectedForRestore((previous) => ({ ...previous, [targetKey(key)]: true }))
     },
@@ -191,6 +204,7 @@ function HistoryEntries({
 
 function HistoryPanelFooter({
   busy,
+  canClose,
   closeRef,
   restorePlan,
   selectedContinuation,
@@ -200,6 +214,7 @@ function HistoryPanelFooter({
   onRestore,
 }: {
   busy: boolean
+  canClose: boolean
   closeRef: RefObject<HTMLButtonElement | null>
   restorePlan: ReviewRestorePlan | null
   selectedContinuation: ReviewHistoryRef | null
@@ -211,7 +226,7 @@ function HistoryPanelFooter({
   const disabled = busy || submission.kind !== 'preview'
   return (
     <>
-      <ViewerButton ref={closeRef} disabled={busy} onClick={onClose}>
+      <ViewerButton ref={closeRef} disabled={!canClose} onClick={onClose}>
         关闭历史
       </ViewerButton>
       <ViewerButton
@@ -317,6 +332,35 @@ function HistoryFeedback({
   )
 }
 
+function LegacyHistoryRecord({ history }: { history: ReviewHistoryView }) {
+  const legacy = history.legacy
+  if (legacy === null) return null
+  const record = legacy.contents.record
+  return (
+    <section className="review-history-panel__entry" aria-label="旧协议历史内容">
+      <h3>旧协议历史</h3>
+      {record.feedback.map((feedback) => (
+        <article key={feedback.id}>
+          <h4>历史原文</h4>
+          <p>{feedback.text}</p>
+          {feedback.targets.map((target) => (
+            <span key={`${target.assetVersionId}:${JSON.stringify(target.anchor)}`}>
+              目标素材 {target.assetVersionId}
+            </span>
+          ))}
+        </article>
+      ))}
+      {record.assets.map((asset) => (
+        <span key={asset.id}>素材 {asset.relativePath}</span>
+      ))}
+      <p>此历史记录来自旧协议，只能作为背景查看。</p>
+      {history.limitations.includes('legacy_evidence_absent') && (
+        <p role="status">旧协议没有历史证据，这是证据能力限制。</p>
+      )}
+    </section>
+  )
+}
+
 function RestoreOptions({
   history,
   restorePlan,
@@ -363,26 +407,52 @@ function RestoreOptions({
           ))}
         </section>
       )}
-      {restorePlan !== null && (
+      {(restorePlan !== null || conflicts.some((key) => selected[targetKey(key)])) && (
         <section className="review-history-panel__restore" aria-label="恢复冲突">
           <h3>恢复选择</h3>
-          {conflicts.map((key) => (
-            <RestoreConflict
-              key={targetKey(key)}
-              history={history}
-              currentFeedback={currentFeedback}
-              item={key}
-              choice={choices[targetKey(key)]}
-              busy={busy}
-              onChoice={onChoice}
-            />
-          ))}
-          {restorePlan.requiresSourceCheck.length > 0 && (
-            <p>恢复后仍需重新核验素材；这不会使意见自动可执行。</p>
-          )}
+          {conflicts
+            .filter((key) => restorePlan !== null || selected[targetKey(key)])
+            .map((key) => (
+              <RestoreConflict
+                key={targetKey(key)}
+                history={history}
+                currentFeedback={currentFeedback}
+                item={key}
+                choice={choices[targetKey(key)]}
+                busy={busy}
+                onChoice={onChoice}
+              />
+            ))}
+          {restorePlan !== null && <RestoreImpact plan={restorePlan} />}
         </section>
       )}
     </>
+  )
+}
+
+function RestoreImpact({ plan }: { plan: ReviewRestorePlan }) {
+  return (
+    <section aria-label="已预览的恢复影响">
+      <h4>已预览的恢复影响</h4>
+      {plan.restored.length === 0 ? (
+        <p>此预览不会恢复任何目标。</p>
+      ) : (
+        plan.restored.map((item) => (
+          <p key={targetKey(item.historicalKey)}>
+            将恢复目标 {item.target.id}（历史目标 {item.historicalKey.targetId}）
+          </p>
+        ))
+      )}
+      {plan.coverageReversals.map((reversal) => (
+        <p key={`${reversal.archiveId}:${targetKey(reversal.key)}`}>
+          将{reversal.active ? '重新启用' : '撤销'}存档覆盖 {reversal.archiveId}：目标{' '}
+          {reversal.key.targetId}
+        </p>
+      ))}
+      {plan.requiresSourceCheck.length > 0 && (
+        <p>恢复后需重新核验素材：{plan.requiresSourceCheck.join('、')}；这不会使意见自动可执行。</p>
+      )}
+    </section>
   )
 }
 

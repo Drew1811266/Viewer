@@ -173,10 +173,7 @@ function ReviewWorkspaceContext({
           asset.sourceEntityId === null ? [] : [asset.sourceEntityId],
         ) ?? [])
   const archiveUnavailable =
-    continuousReview === undefined ||
-    continuousReview.currentSnapshotId === null ||
-    continuousReview.hasUncommittedInput ||
-    archive.busy
+    continuousReview === undefined || continuousReview.currentSnapshotId === null || archive.busy
   return (
     <ReviewContextBar
       protocol={continuousReview === undefined ? 'legacy' : 'continuous'}
@@ -192,7 +189,7 @@ function ReviewWorkspaceContext({
       onHistory={history.available ? () => void history.open() : undefined}
       continuousFeedbackCount={continuousReview?.view?.current?.state.feedback.length}
       archiveDisabled={archiveUnavailable}
-      archiveNotice={archive.notice ?? history.notice}
+      archiveNotice={archive.notice ?? history.notice ?? history.error?.message ?? null}
     />
   )
 }
@@ -285,19 +282,21 @@ function ReviewWorkspaceDialogs({
           onCancel={archive.cancel}
         />
       )}
-      {history.panel !== null && (
+      {history.panel !== null && history.source === null && (
         <ReviewHistoryPanel
           history={history.panel.history}
           historyRef={history.panel.historyRef}
           historyRefs={history.panel.historyRefs}
-          restorePlan={history.panel.restorePlan}
+          restorePlan={history.panel.restorePreview?.plan ?? null}
           currentFeedback={continuousReview?.view?.current?.state.feedback ?? []}
           evidence={history.panel.evidence}
           busy={history.busy}
+          canClose={history.canClose}
           error={history.error}
           onClose={history.close}
           onContinue={(reference) => void history.continueHistorical(reference)}
           onRestore={(decisions) => void history.restore(decisions)}
+          onInvalidateRestorePreview={history.invalidateRestorePreview}
           onRequestEvidence={(assetVersionId, role) =>
             void history.requestEvidence(assetVersionId, role)
           }

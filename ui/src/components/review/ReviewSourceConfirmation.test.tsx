@@ -111,3 +111,37 @@ it('does not infer a binding from a same-path replacement or from no independent
   expect(screen.getByText(/没有可确认的候选素材/)).toBeVisible()
   expect(screen.getByRole('button', { name: '确认素材与位置' })).toBeDisabled()
 })
+
+it('clears an unavailable selected candidate and its position confirmation when candidate props change', () => {
+  const rendered = render(
+    <ReviewSourceConfirmation
+      oldAsset={oldAsset}
+      candidates={[samePathNewImage, anotherCandidate]}
+      originalAnchor={{ kind: 'asset' }}
+      targetKey={targetKey}
+      busy={false}
+      error={null}
+      onCancel={vi.fn()}
+      onConfirm={vi.fn()}
+    />,
+  )
+  fireEvent.click(screen.getByLabelText(/images\/look.png/))
+  fireEvent.click(screen.getByLabelText('我已确认该位置适用于所选素材'))
+  expect(screen.getByRole('button', { name: '确认素材与位置' })).toBeEnabled()
+
+  rendered.rerender(
+    <ReviewSourceConfirmation
+      oldAsset={oldAsset}
+      candidates={[anotherCandidate]}
+      originalAnchor={{ kind: 'asset' }}
+      targetKey={{ ...targetKey, targetRevisionId: 'target-2' }}
+      busy={false}
+      error={null}
+      onCancel={vi.fn()}
+      onConfirm={vi.fn()}
+    />,
+  )
+
+  expect(screen.getByLabelText('我已确认该位置适用于所选素材')).not.toBeChecked()
+  expect(screen.getByRole('button', { name: '确认素材与位置' })).toBeDisabled()
+})

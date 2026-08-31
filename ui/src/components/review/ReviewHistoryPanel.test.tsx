@@ -141,6 +141,179 @@ it('requires an explicit conflict choice before historical text can restore over
   ])
 })
 
+it('shows local conflicts before the first restore preview and requires a choice before previewing', () => {
+  const onRestore = vi.fn()
+  render(
+    <ReviewHistoryPanel
+      history={history}
+      historyRef={historyRef}
+      restorePlan={null}
+      currentFeedback={[
+        {
+          id: 'feedback-current',
+          textRevisionId: 'text-current',
+          text: '新文字：保留袖口褶皱',
+          createdAtMs: 2,
+          historyRef: null,
+          targets: [
+            {
+              id: key.targetId,
+              revisionId: 'target-current',
+              assetVersionId: 'asset-current',
+              anchor: { kind: 'asset' },
+              availability: { kind: 'ready' },
+            },
+          ],
+        },
+      ]}
+      busy={false}
+      error={null}
+      onClose={vi.fn()}
+      onContinue={vi.fn()}
+      onRestore={onRestore}
+      onRequestEvidence={vi.fn()}
+    />,
+  )
+
+  fireEvent.click(screen.getByLabelText(/Target ID target-shared/))
+  expect(screen.getByText('保留当前意见')).toBeVisible()
+  expect(screen.getByText('使用历史意见')).toBeVisible()
+  expect(screen.getByText('作为新意见继续提出')).toBeVisible()
+  expect(screen.getByRole('button', { name: '查看恢复影响' })).toBeDisabled()
+  fireEvent.click(screen.getByLabelText('使用历史意见'))
+  expect(screen.getByRole('button', { name: '查看恢复影响' })).toBeEnabled()
+  fireEvent.click(screen.getByRole('button', { name: '查看恢复影响' }))
+  expect(onRestore).toHaveBeenCalledOnce()
+})
+
+it('shows the exact restored targets, coverage reversals, and source checks from a reviewed plan', () => {
+  const firstAsset = firstEntry(history).assets[0]
+  if (firstAsset === undefined) throw new Error('Fixture requires one asset')
+  const plan = {
+    ...restorePlan,
+    restored: [
+      {
+        historicalKey: key,
+        feedback: {
+          id: key.feedbackId,
+          textRevisionId: key.textRevisionId,
+          text: '旧文字：收紧袖口',
+          createdAtMs: 1,
+          historyRef: null,
+        },
+        target: {
+          id: key.targetId,
+          revisionId: key.targetRevisionId,
+          assetVersionId: 'asset-old',
+          anchor: { kind: 'asset' as const },
+          availability: { kind: 'ready' as const },
+        },
+        asset: firstAsset,
+        continuedAsNew: false,
+      },
+    ],
+    coverageReversals: [{ archiveId: 'archive-1', key, active: false }],
+    requiresSourceCheck: ['asset-old'],
+  }
+  render(
+    <ReviewHistoryPanel
+      history={history}
+      historyRef={historyRef}
+      restorePlan={plan}
+      currentFeedback={[]}
+      busy={false}
+      error={null}
+      onClose={vi.fn()}
+      onContinue={vi.fn()}
+      onRestore={vi.fn()}
+      onRequestEvidence={vi.fn()}
+    />,
+  )
+
+  expect(screen.getByText(/将恢复目标.*target-shared/)).toBeVisible()
+  expect(screen.getByText(/将撤销存档覆盖.*archive-1/)).toBeVisible()
+  expect(screen.getByText(/恢复后需重新核验素材：asset-old/)).toBeVisible()
+  expect(screen.getByText(/不会使意见自动可执行/)).toBeVisible()
+})
+
+it('renders real legacy records as background content even when entries are empty', () => {
+  const firstAsset = firstEntry(history).assets[0]
+  if (firstAsset === undefined) throw new Error('Fixture requires one asset')
+  const legacy = structuredClone(history)
+  legacy.entries = []
+  legacy.restoreActions = []
+  legacy.legacy = {
+    reference: {
+      streamId: 'legacy-stream',
+      roundId: 'legacy-round',
+      protocol: 'viewer.review/2',
+      isDraft: false,
+      blake3: 'f'.repeat(64),
+    },
+    contents: {
+      kind: 'completed',
+      record: {
+        projectId: 'project-1',
+        reviewStreamId: 'legacy-stream',
+        reviewRoundId: 'legacy-round',
+        production: null,
+        previousCompletedRoundId: null,
+        createdAtMs: 1,
+        completedAtMs: 2,
+        assets: [firstAsset],
+        feedback: [
+          {
+            id: 'legacy-feedback',
+            text: '旧协议原文',
+            createdAtMs: 1,
+            targets: [{ assetVersionId: 'asset-old', anchor: { kind: 'asset' } }],
+          },
+        ],
+        outcomes: [],
+      },
+    },
+  }
+  render(
+    <ReviewHistoryPanel
+      history={legacy}
+      historyRef={null}
+      restorePlan={null}
+      currentFeedback={[]}
+      busy={false}
+      error={null}
+      onClose={vi.fn()}
+      onContinue={vi.fn()}
+      onRestore={vi.fn()}
+      onRequestEvidence={vi.fn()}
+    />,
+  )
+  expect(screen.getByText('旧协议原文')).toBeVisible()
+  expect(screen.getByText('目标素材 asset-old')).toBeVisible()
+  expect(screen.getByText('素材 old.png')).toBeVisible()
+  expect(screen.getByText('此历史记录来自旧协议，只能作为背景查看。')).toBeVisible()
+})
+
+it('allows a pending read-only history operation to close without presenting it as a cancelled write', () => {
+  const onClose = vi.fn()
+  render(
+    <ReviewHistoryPanel
+      history={history}
+      historyRef={historyRef}
+      restorePlan={null}
+      currentFeedback={[]}
+      busy
+      canClose
+      error={null}
+      onClose={onClose}
+      onContinue={vi.fn()}
+      onRestore={vi.fn()}
+      onRequestEvidence={vi.fn()}
+    />,
+  )
+  fireEvent.click(screen.getByRole('button', { name: '关闭历史' }))
+  expect(onClose).toHaveBeenCalledOnce()
+})
+
 it('shows legacy evidence absence as a limitation but treats broken required evidence as an integrity error', () => {
   const legacy = structuredClone(history)
   legacy.limitations = ['background_only', 'legacy_evidence_absent']

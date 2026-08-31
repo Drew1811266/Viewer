@@ -11,21 +11,18 @@ export function displayHistoryFeedback(
   history: ReviewHistoryView,
   entry: ReviewHistoryView['entries'][number],
 ) {
-  const selected = new Set(entry.selected.map(historyTargetKey))
-  const wholeSnapshot = history.selector.kind === 'snapshot' && selected.size === 0
+  const selected = new Set(visibleHistoryKeys(history, entry).map(historyTargetKey))
   return entry.feedback.flatMap((feedback) => {
-    const targets = wholeSnapshot
-      ? feedback.targets
-      : feedback.targets.filter((target) =>
-          selected.has(
-            historyTargetKey({
-              feedbackId: feedback.id,
-              textRevisionId: feedback.textRevisionId,
-              targetId: target.id,
-              targetRevisionId: target.revisionId,
-            }),
-          ),
-        )
+    const targets = feedback.targets.filter((target) =>
+      selected.has(
+        historyTargetKey({
+          feedbackId: feedback.id,
+          textRevisionId: feedback.textRevisionId,
+          targetId: target.id,
+          targetRevisionId: target.revisionId,
+        }),
+      ),
+    )
     return targets.length === 0 ? [] : [{ ...feedback, targets }]
   })
 }
@@ -74,7 +71,7 @@ export function historyRefsForEntries(
   streamId: string,
 ): ReviewHistoryRef[] {
   return history.entries.flatMap((entry) =>
-    entry.selected.map((key) => ({
+    visibleHistoryKeys(history, entry).map((key) => ({
       projectId,
       streamId,
       source: {
@@ -82,6 +79,22 @@ export function historyRefsForEntries(
         snapshot: structuredClone(entry.snapshot),
         keys: [structuredClone(key)],
       },
+    })),
+  )
+}
+
+/** Snapshot reads with no explicit key selection expose every visible target as its own continuation. */
+export function visibleHistoryKeys(
+  history: ReviewHistoryView,
+  entry: ReviewHistoryView['entries'][number],
+): ReviewTargetVersionKey[] {
+  if (history.selector.kind !== 'snapshot' || entry.selected.length > 0) return entry.selected
+  return entry.feedback.flatMap((feedback) =>
+    feedback.targets.map((target) => ({
+      feedbackId: feedback.id,
+      textRevisionId: feedback.textRevisionId,
+      targetId: target.id,
+      targetRevisionId: target.revisionId,
     })),
   )
 }

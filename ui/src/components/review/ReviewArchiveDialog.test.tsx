@@ -108,6 +108,61 @@ it('does not allow an empty selection to create an archive', () => {
   expect(screen.getByRole('button', { name: '确认存档' })).toBeDisabled()
 })
 
+it('treats a selection covered by an existing archive as a no-op', () => {
+  const { preview, selection } = fixture()
+  render(
+    <ReviewArchiveDialog
+      preview={{ ...preview, groups: [], removed: [], alreadyCovered: [imageOne] }}
+      selection={selection}
+      busy={false}
+      error={null}
+      onSelectionChange={vi.fn()}
+      onConfirm={vi.fn()}
+      onCancel={vi.fn()}
+    />,
+  )
+
+  expect(screen.getByText('没有新的可存档内容')).toBeVisible()
+  expect(screen.getByRole('button', { name: '确认存档' })).toBeDisabled()
+})
+
+it('describes each retention disposition without calling removed or absent targets later edits', () => {
+  const { preview, selection } = fixture()
+  const removedCurrent = target('feedback-2', 'text-b', 'image-2-target', 'target-b')
+  const absent = target('feedback-3', 'text-b', 'image-3-target', 'target-b')
+  render(
+    <ReviewArchiveDialog
+      preview={{
+        ...preview,
+        retained: [
+          ...preview.retained,
+          { basis: removedCurrent, current: removedCurrent, disposition: 'remove_current' },
+          { basis: absent, current: null, disposition: 'already_absent' },
+        ],
+      }}
+      selection={selection}
+      busy={false}
+      error={null}
+      onSelectionChange={vi.fn()}
+      onConfirm={vi.fn()}
+      onCancel={vi.fn()}
+    />,
+  )
+
+  expect(screen.getByRole('heading', { name: '保留后补意见' }).parentElement).toHaveTextContent(
+    'image-1-target',
+  )
+  expect(screen.getByRole('heading', { name: '保留后补意见' }).parentElement).not.toHaveTextContent(
+    'image-2-target',
+  )
+  expect(screen.getByRole('heading', { name: '将移入历史' }).parentElement).toHaveTextContent(
+    'image-2-target',
+  )
+  expect(screen.getByRole('heading', { name: '当前已不存在' }).parentElement).toHaveTextContent(
+    'image-3-target',
+  )
+})
+
 it('marks a declared handoff as verified without claiming that any agent read or executed it', () => {
   const { preview, selection } = fixture()
   const declared = {

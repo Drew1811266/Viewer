@@ -33,9 +33,25 @@ export default function ReviewArchiveDialog({
   const cancelRef = useRef<HTMLButtonElement>(null)
   const selected = selectedKeys(selection)
   const groups = availableGroups(preview, selection)
+  const retainedLaterEdits = preview.retained.filter(
+    (retention) => retention.disposition === 'retain_later_edit',
+  )
+  const movedFromCurrent = uniqueTargets([
+    ...preview.removed,
+    ...preview.retained
+      .filter((retention) => retention.disposition === 'remove_current')
+      .map((retention) => retention.current ?? retention.basis),
+  ])
+  const alreadyAbsent = preview.retained.filter(
+    (retention) => retention.disposition === 'already_absent',
+  )
+  const allSelectedCovered =
+    selected.size > 0 &&
+    [...selected].every((key) =>
+      preview.alreadyCovered.some((covered) => targetKey(covered) === key),
+    )
   const archiveable =
-    selection.groups.some((group) => group.targets.length > 0) &&
-    preview.groups.some((group) => group.targets.length > 0)
+    selection.groups.some((group) => group.targets.length > 0) && !allSelectedCovered
 
   function toggle(basis: ReviewArchiveBasis, key: ReviewTargetVersionKey, checked: boolean) {
     const nextGroups = selection.groups
@@ -79,6 +95,7 @@ export default function ReviewArchiveDialog({
       <p className="review-archive-dialog__snapshot">
         当前预览绑定的意见版本：<code>{preview.expectedSnapshotId}</code>
       </p>
+      {allSelectedCovered && <p role="status">没有新的可存档内容</p>}
       {error !== null && (
         <p className="review-archive-dialog__error" role="alert">
           {error}
@@ -110,16 +127,16 @@ export default function ReviewArchiveDialog({
       </section>
       <ArchiveKeyList
         title="将移入历史"
-        keys={preview.removed}
+        keys={movedFromCurrent}
         empty="当前选择没有会移入历史的意见。"
       />
       <section className="review-archive-dialog__section" aria-labelledby="archive-retained-title">
         <h3 id="archive-retained-title">保留后补意见</h3>
-        {preview.retained.length === 0 ? (
+        {retainedLaterEdits.length === 0 ? (
           <p>没有后补意见需要保留。</p>
         ) : (
           <ul>
-            {preview.retained.map((retention) => (
+            {retainedLaterEdits.map((retention) => (
               <li key={`${targetKey(retention.basis)}:${retention.disposition}`}>
                 <span>{formatTarget(retention.basis)}</span>
                 {retention.current !== null && (
@@ -130,6 +147,19 @@ export default function ReviewArchiveDialog({
           </ul>
         )}
       </section>
+      {alreadyAbsent.length > 0 && (
+        <section className="review-archive-dialog__section" aria-labelledby="archive-absent-title">
+          <h3 id="archive-absent-title">当前已不存在</h3>
+          <p>这些目标当前已不在意见中；选中的历史依据仍会按预览记录。</p>
+          <ul>
+            {alreadyAbsent.map((retention) => (
+              <li key={`${targetKey(retention.basis)}:${retention.disposition}`}>
+                {formatTarget(retention.basis)}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
       <ArchiveKeyList
         title="未选素材"
         keys={groups
@@ -187,6 +217,12 @@ function availableGroups(preview: ArchivePlanDto, selection: ArchiveSelectionDto
 
 function selectedKeys(selection: ArchiveSelectionDto) {
   return new Set(selection.groups.flatMap((group) => group.targets.map(targetKey)))
+}
+
+function uniqueTargets(keys: ReviewTargetVersionKey[]) {
+  return keys.filter(
+    (key, index) => keys.findIndex((candidate) => sameTarget(candidate, key)) === index,
+  )
 }
 
 function basisLabel(basis: ReviewArchiveBasis) {

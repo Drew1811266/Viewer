@@ -1,11 +1,13 @@
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { createRef } from 'react'
 import { describe, expect, it, vi } from 'vitest'
+import type { ReviewArchivePlan, ReviewArchiveSelection } from '../../api/reviewWorkspaceTypes'
 import type {
   ReviewCompletionProposal,
   ReviewScopeRequest,
   ReviewSessionSnapshot,
 } from '../../app/review/reviewModel'
+import type { ContinuousReviewCoordinator } from '../../app/review/useContinuousReviewCoordinator'
 import type { ReviewSessionCoordinator } from '../../app/review/useReviewSessionCoordinator'
 import ReviewCompletionDialog from './ReviewCompletionDialog'
 import ReviewContextBar from './ReviewContextBar'
@@ -153,6 +155,87 @@ function coordinator(
   }
 }
 
+const archiveTarget = {
+  feedbackId: 'feedback-c',
+  textRevisionId: 'text-c',
+  targetId: 'target-c',
+  targetRevisionId: 'target-c-revision',
+}
+
+function archivePlan(selection: ReviewArchiveSelection): ReviewArchivePlan {
+  return {
+    ...structuredClone(selection),
+    removed: structuredClone(selection.groups.flatMap((group) => group.targets)),
+    retained: [],
+    alreadyCovered: [],
+  }
+}
+
+function continuousArchiveCoordinator(
+  workbenchSessionKey: string,
+  overrides: Partial<ContinuousReviewCoordinator> = {},
+): ContinuousReviewCoordinator {
+  return {
+    workbenchSessionKey,
+    currentSnapshotId: 'snapshot-c',
+    hasUncommittedInput: false,
+    view: {
+      current: {
+        reference: { snapshotId: 'snapshot-c', blake3: 'c'.repeat(64) },
+        production: null,
+        state: {
+          projectId: 'project-c',
+          streamId: 'stream-c',
+          snapshotId: 'snapshot-c',
+          parent: null,
+          assets: [],
+          feedback: [
+            {
+              id: archiveTarget.feedbackId,
+              textRevisionId: archiveTarget.textRevisionId,
+              text: '袖口收紧',
+              createdAtMs: 1,
+              historyRef: null,
+              targets: [
+                {
+                  id: archiveTarget.targetId,
+                  revisionId: archiveTarget.targetRevisionId,
+                  assetVersionId: 'asset-c',
+                  anchor: { kind: 'asset' },
+                  availability: { kind: 'ready' },
+                },
+              ],
+            },
+          ],
+        },
+        commandId: 'command-c',
+        payloadDigest: 'd'.repeat(64),
+        changes: [],
+        evidence: [],
+      },
+      streamId: 'stream-c',
+      sourceChecks: [],
+      projection: { actionable: [], needsConfirmation: [] },
+      recovery: [],
+      migration: null,
+      capabilities: { continuousEditing: true, usageImport: true, migration: false },
+    },
+    previewArchive: vi.fn(async (selection: ReviewArchiveSelection) => archivePlan(selection)),
+    commitArchive: vi.fn(async () => undefined),
+    ...overrides,
+  } as unknown as ContinuousReviewCoordinator
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  let reject!: (cause: unknown) => void
+  const promise = new Promise<T>((done, fail) => {
+    resolve = done
+    reject = fail
+  })
+  return { promise, resolve, reject }
+}
+
 describe('review workspace components', () => {
   it('keeps start review visible in the main toolbar and explains disabled search scope', () => {
     const review = coordinator()
@@ -260,6 +343,194 @@ describe('review workspace components', () => {
     fireEvent.click(within(context).getByRole('button', { name: '历史' }))
     expect(archive).toHaveBeenCalledOnce()
     expect(history).toHaveBeenCalledOnce()
+  })
+
+  it('previews a supplied exact known basis instead of replacing it with an unknown selection', async () => {
+    const selection: ReviewArchiveSelection = {
+      expectedSnapshotId: 'snapshot-c',
+      groups: [
+        {
+          basis: {
+            kind: 'known',
+            snapshot: { snapshotId: 'snapshot-b', blake3: 'b'.repeat(64) },
+            source: { kind: 'agent_declared', usageId: 'usage-b' },
+          },
+          targets: [structuredClone(archiveTarget)],
+        },
+      ],
+    }
+    const original = structuredClone(selection)
+    const pending = deferred<ReviewArchivePlan>()
+    const continuous = continuousArchiveCoordinator('continuous-c', {
+      previewArchive: vi.fn(() => pending.promise),
+    })
+    render(
+      <ReviewWorkspaceLayer
+        review={coordinator(active())}
+        selectedEntityIds={[]}
+        projectAccess="read_write"
+        continuousReview={continuous}
+        archiveSelection={selection}
+        onReturnToMembers={vi.fn()}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: '存档意见' }))
+    await waitFor(() => expect(continuous.previewArchive).toHaveBeenCalledOnce())
+    const suppliedTarget = selection.groups[0]?.targets[0]
+    if (suppliedTarget === undefined) throw new Error('Missing supplied archive target')
+    suppliedTarget.targetId = 'mutated-target'
+    expect(continuous.previewArchive).toHaveBeenCalledWith(original)
+    await act(async () => {
+      pending.resolve(archivePlan(original))
+      await pending.promise
+    })
+    expect(screen.getByText('已核对交接版本')).toBeVisible()
+  })
+
+  it('preserves a manually selected B basis as an exact archive selection', async () => {
+    const selection: ReviewArchiveSelection = {
+      expectedSnapshotId: 'snapshot-c',
+      groups: [
+        {
+          basis: {
+            kind: 'known',
+            snapshot: { snapshotId: 'snapshot-b', blake3: 'b'.repeat(64) },
+            source: { kind: 'user_selected' },
+          },
+          targets: [structuredClone(archiveTarget)],
+        },
+      ],
+    }
+    const continuous = continuousArchiveCoordinator('continuous-c')
+    render(
+      <ReviewWorkspaceLayer
+        review={coordinator(active())}
+        selectedEntityIds={[]}
+        projectAccess="read_write"
+        continuousReview={continuous}
+        archiveSelection={selection}
+        onReturnToMembers={vi.fn()}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: '存档意见' }))
+    await waitFor(() => expect(continuous.previewArchive).toHaveBeenCalledWith(selection))
+    expect(screen.getByText('已核对交接版本')).toBeVisible()
+  })
+
+  it('rejects a supplied selection that is no longer bound to the current C snapshot', () => {
+    const continuous = continuousArchiveCoordinator('continuous-c')
+    render(
+      <ReviewWorkspaceLayer
+        review={coordinator(active())}
+        selectedEntityIds={[]}
+        projectAccess="read_write"
+        continuousReview={continuous}
+        archiveSelection={{
+          expectedSnapshotId: 'snapshot-before-c',
+          groups: [{ basis: { kind: 'unknown' }, targets: [structuredClone(archiveTarget)] }],
+        }}
+        onReturnToMembers={vi.fn()}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: '存档意见' }))
+    expect(continuous.previewArchive).not.toHaveBeenCalled()
+    expect(screen.getByRole('status')).toHaveTextContent('意见已变化，请重新查看存档范围')
+  })
+
+  it('does not preview an empty supplied selection', () => {
+    const continuous = continuousArchiveCoordinator('continuous-c')
+    render(
+      <ReviewWorkspaceLayer
+        review={coordinator(active())}
+        selectedEntityIds={[]}
+        projectAccess="read_write"
+        continuousReview={continuous}
+        archiveSelection={{ expectedSnapshotId: 'snapshot-c', groups: [] }}
+        onReturnToMembers={vi.fn()}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: '存档意见' }))
+    expect(continuous.previewArchive).not.toHaveBeenCalled()
+    expect(screen.getByRole('status')).toHaveTextContent('当前没有可存档的意见。')
+  })
+
+  it('does not show an old session preview after the coordinator session changes', async () => {
+    const pending = deferred<ReviewArchivePlan>()
+    const oldCoordinator = continuousArchiveCoordinator('continuous-old', {
+      previewArchive: vi.fn(() => pending.promise),
+    })
+    const rendered = render(
+      <ReviewWorkspaceLayer
+        review={coordinator(active())}
+        selectedEntityIds={[]}
+        projectAccess="read_write"
+        continuousReview={oldCoordinator}
+        onReturnToMembers={vi.fn()}
+      />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: '存档意见' }))
+    await waitFor(() => expect(oldCoordinator.previewArchive).toHaveBeenCalledOnce())
+
+    const replacement = continuousArchiveCoordinator('continuous-new')
+    rendered.rerender(
+      <ReviewWorkspaceLayer
+        review={coordinator(active())}
+        selectedEntityIds={[]}
+        projectAccess="read_write"
+        continuousReview={replacement}
+        onReturnToMembers={vi.fn()}
+      />,
+    )
+    await act(async () => {
+      pending.resolve(
+        archivePlan({
+          expectedSnapshotId: 'snapshot-c',
+          groups: [{ basis: { kind: 'unknown' }, targets: [structuredClone(archiveTarget)] }],
+        }),
+      )
+      await pending.promise
+    })
+
+    expect(screen.queryByRole('dialog', { name: '确认存档范围' })).toBeNull()
+    expect(replacement.commitArchive).not.toHaveBeenCalled()
+  })
+
+  it('does not carry an old session preview error into the replacement context bar', async () => {
+    const pending = deferred<ReviewArchivePlan>()
+    const oldCoordinator = continuousArchiveCoordinator('continuous-old', {
+      previewArchive: vi.fn(() => pending.promise),
+    })
+    const rendered = render(
+      <ReviewWorkspaceLayer
+        review={coordinator(active())}
+        selectedEntityIds={[]}
+        projectAccess="read_write"
+        continuousReview={oldCoordinator}
+        onReturnToMembers={vi.fn()}
+      />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: '存档意见' }))
+    await waitFor(() => expect(oldCoordinator.previewArchive).toHaveBeenCalledOnce())
+
+    rendered.rerender(
+      <ReviewWorkspaceLayer
+        review={coordinator(active())}
+        selectedEntityIds={[]}
+        projectAccess="read_write"
+        continuousReview={continuousArchiveCoordinator('continuous-new')}
+        onReturnToMembers={vi.fn()}
+      />,
+    )
+    await act(async () => {
+      pending.reject({ message: 'old preview failure' })
+      await pending.promise.catch(() => undefined)
+    })
+
+    expect(screen.queryByText('old preview failure')).toBeNull()
   })
 
   it('supports natural-language create/edit/delete with frozen member targets and Command-Enter', () => {

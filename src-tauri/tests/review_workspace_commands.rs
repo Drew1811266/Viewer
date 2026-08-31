@@ -449,7 +449,7 @@ async fn review_workspace_explicit_usage_selection_is_project_relative_and_exclu
 
     assert_eq!(
         runtime
-            .inspect_review_usage_selection(session, generation, declaration)
+            .inspect_review_usage_selection(session, generation, declaration.clone())
             .await
             .unwrap_err()
             .code,
@@ -458,13 +458,40 @@ async fn review_workspace_explicit_usage_selection_is_project_relative_and_exclu
     );
     assert_eq!(
         runtime
-            .inspect_review_usage_selection(session, generation, downloads)
+            .inspect_review_usage_selection(session, generation, downloads.clone())
             .await
             .unwrap_err()
             .code,
         ReviewWorkspaceErrorCode::WrongContext,
         "Viewer never scans or accepts a Downloads declaration outside the project"
     );
+    assert_eq!(
+        runtime
+            .inspect_review_usage_selection(
+                session,
+                generation,
+                declaration.parent().unwrap().to_path_buf(),
+            )
+            .await
+            .unwrap_err()
+            .code,
+        ReviewWorkspaceErrorCode::UnsafeSource,
+        "an explicit picker selection must be a regular file"
+    );
+    #[cfg(unix)]
+    {
+        let escaped = root.path().join("handoff/escaped-review-usage.json");
+        std::os::unix::fs::symlink(&downloads, &escaped).unwrap();
+        assert_eq!(
+            runtime
+                .inspect_review_usage_selection(session, generation, escaped)
+                .await
+                .unwrap_err()
+                .code,
+            ReviewWorkspaceErrorCode::WrongContext,
+            "a selected symlink cannot escape the project root"
+        );
+    }
     let reserved = root.path().join(".viewer/review-usage.json");
     fs::write(&reserved, b"{}").unwrap();
     assert_eq!(

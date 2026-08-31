@@ -9,6 +9,7 @@ import {
 } from '@testing-library/react'
 import { afterEach, describe, expect, expectTypeOf, it, vi } from 'vitest'
 import App from './App'
+import type { ReviewWorkspaceView } from './api/reviewWorkspaceTypes'
 import type { FolderWorkspace, ReviewSessionSnapshot } from './api/types'
 import type { ProjectDropEvent, ViewerBridge } from './api/viewer'
 import {
@@ -345,6 +346,111 @@ describe('Viewer empty state', () => {
     expect(screen.queryByRole('button', { name: '完成本轮评审' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '放弃本轮' })).not.toBeInTheDocument()
     expect(viewer.reviewPreviewStart).not.toHaveBeenCalled()
+  })
+
+  it('uses only the continuous current snapshot as the visible feedback-count owner', async () => {
+    const viewer = bridge()
+    vi.mocked(viewer.queryFolder).mockResolvedValue(contentWorkspace())
+    vi.mocked(viewer.reviewStatus).mockResolvedValue(legacySnapshotWithFeedback(2))
+    const reviewWorkspace = reviewPort(continuousWorkspaceWithFeedback(1, 'snapshot-1'))
+
+    render(<App bridge={viewer} reviewWorkspacePort={reviewWorkspace} />)
+    fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
+
+    expect(await screen.findByText('返工 · 1 条')).toBeVisible()
+    expect(screen.queryByText('返工 · 2 条')).not.toBeInTheDocument()
+    expect(viewer.reviewStatus).not.toHaveBeenCalled()
+  })
+
+  it('retains legacy count ownership when no continuous desktop boundary is present', async () => {
+    const viewer = bridge()
+    vi.mocked(viewer.queryFolder).mockResolvedValue(contentWorkspace())
+    vi.mocked(viewer.reviewStatus).mockResolvedValue(legacySnapshotWithFeedback(2))
+
+    render(<App bridge={viewer} />)
+    fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
+
+    expect(await screen.findByText('返工 · 2 条')).toBeVisible()
+    expect(viewer.reviewStatus).toHaveBeenCalled()
+  })
+
+  it('updates the grid count from a continuous image save without starting legacy ownership', async () => {
+    const viewer = bridge()
+    vi.mocked(viewer.queryFolder).mockResolvedValue(contentWorkspace())
+    const reviewWorkspace = reviewPort(continuousWorkspaceWithFeedback(0, 'snapshot-1'))
+    vi.mocked(reviewWorkspace.prepareAssets).mockResolvedValue([preparedFrontAsset()])
+    vi.mocked(reviewWorkspace.applyCommand).mockImplementation(async ({ envelope }) => ({
+      receipt: {
+        commandId: envelope.commandId,
+        payloadDigest: envelope.payloadDigest,
+        snapshot: { snapshotId: 'snapshot-2', blake3: '56'.repeat(32) },
+      },
+      view: continuousWorkspaceWithFeedback(1, 'snapshot-2'),
+    }))
+
+    render(<App bridge={viewer} reviewWorkspacePort={reviewWorkspace} />)
+    fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
+    fireEvent.doubleClick(await screen.findByRole('option', { name: 'front.jpg' }))
+    const wholeImageFeedback = await screen.findByRole('button', { name: '整图意见' })
+    await waitFor(() => expect(wholeImageFeedback).toBeEnabled())
+    fireEvent.click(wholeImageFeedback)
+    fireEvent.change(screen.getByRole('textbox', { name: '标注意见' }), {
+      target: { value: '持续评审意见' },
+    })
+    fireEvent.click(
+      within(screen.getByRole('region', { name: '整图意见编辑器' })).getByRole('button', {
+        name: '保存',
+      }),
+    )
+
+    await waitFor(() => expect(reviewWorkspace.applyCommand).toHaveBeenCalledOnce())
+    fireEvent.click(screen.getByRole('button', { name: '返回网格' }))
+    expect(await screen.findByText('返工 · 1 条')).toBeVisible()
+    expect(viewer.reviewStatus).not.toHaveBeenCalled()
+  })
+
+  it('does not leak legacy counts when switching from a current project to a migration project', async () => {
+    const viewer = bridge()
+    vi.mocked(viewer.queryFolder).mockResolvedValue(contentWorkspace())
+    vi.mocked(viewer.reviewStatus).mockResolvedValue(legacySnapshotWithFeedback(2))
+    vi.mocked(viewer.openProject)
+      .mockResolvedValueOnce({
+        projectId: 'project-new',
+        sessionId: 'session-new',
+        generation: 1,
+        displayName: 'New project',
+        access: 'read_write',
+      })
+      .mockResolvedValueOnce({
+        projectId: 'project-old',
+        sessionId: 'session-old',
+        generation: 2,
+        displayName: 'Old project',
+        access: 'read_write',
+      })
+    const current = continuousWorkspaceWithFeedback(1, 'snapshot-new')
+    const migration = {
+      ...workspace(),
+      migration: migrationInspection(),
+      capabilities: { continuousEditing: false, usageImport: false, migration: true },
+    }
+    const reviewWorkspace = reviewPort()
+    vi.mocked(reviewWorkspace.getWorkspace).mockImplementation(async ({ sessionId }) =>
+      sessionId === 'session-new' ? current : migration,
+    )
+
+    render(<App bridge={viewer} reviewWorkspacePort={reviewWorkspace} />)
+    fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
+    expect(await screen.findByText('返工 · 1 条')).toBeVisible()
+
+    closeProjectFromMenu()
+    await screen.findByRole('button', { name: '选择项目文件夹' })
+    fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
+
+    expect(await screen.findByRole('dialog', { name: '迁移旧评审记录' })).toBeVisible()
+    expect(screen.queryByText('返工 · 1 条')).not.toBeInTheDocument()
+    expect(screen.queryByText('返工 · 2 条')).not.toBeInTheDocument()
+    expect(viewer.reviewStatus).not.toHaveBeenCalled()
   })
 
   it('blocks all review writes when the verified continuous project is read-only', async () => {
@@ -3284,6 +3390,76 @@ function activeImageReviewSnapshot(): ReviewSessionSnapshot {
     counts: { total: 1, feedbackItems: 0, revise: 0, unreviewable: 0, pass: 0 },
     error: null,
   }
+}
+
+function legacySnapshotWithFeedback(count: number): ReviewSessionSnapshot {
+  const snapshot = activeImageReviewSnapshot()
+  snapshot.feedback = Array.from({ length: count }, (_, index) => ({
+    feedbackId: `legacy-feedback-${index}`,
+    text: `旧意见 ${index + 1}`,
+    createdAtMs: index + 1,
+    targetCount: 1,
+    targetEntityIds: ['image-1'],
+    targets: [
+      {
+        assetVersionId: 'legacy-asset-1',
+        entityId: 'image-1',
+        anchor: { kind: 'asset' },
+      },
+    ],
+  }))
+  snapshot.counts.feedbackItems = count
+  return snapshot
+}
+
+function preparedFrontAsset() {
+  return {
+    asset: {
+      id: 'asset-1',
+      sourceEntityId: 'image-1',
+      relativePath: 'id/front.jpg',
+      evidence: { sizeBytes: 100, modifiedNs: '1', blake3: '12'.repeat(32) },
+      media: { kind: 'image' as const, width: 640, height: 480 },
+      producerAssetId: null,
+      parentAssetVersionId: null,
+    },
+    preview: {
+      assetVersionId: 'asset-1',
+      role: 'base' as const,
+      url: 'viewer-review-image://localhost/asset-1',
+      width: 640,
+      height: 480,
+      sourceWidth: 640,
+      sourceHeight: 480,
+    },
+  }
+}
+
+function continuousWorkspaceWithFeedback(count: number, snapshotId: string): ReviewWorkspaceView {
+  const view = workspace(snapshotId)
+  if (view.current === null) throw new Error('Expected current continuous review fixture')
+  const prepared = preparedFrontAsset()
+  view.current.state.assets = [prepared.asset]
+  view.current.state.feedback = Array.from({ length: count }, (_, index) => ({
+    id: `continuous-feedback-${index}`,
+    textRevisionId: `continuous-text-${index}`,
+    text: `持续意见 ${index + 1}`,
+    createdAtMs: index + 1,
+    historyRef: null,
+    targets: [
+      {
+        id: `continuous-target-${index}`,
+        revisionId: `continuous-revision-${index}`,
+        assetVersionId: prepared.asset.id,
+        anchor: { kind: 'asset' },
+        availability: { kind: 'ready' },
+      },
+    ],
+  }))
+  view.projection.actionable = view.current.state.feedback.flatMap((item) =>
+    item.targets.map((target) => target.id),
+  )
+  return view
 }
 
 function videoContentWorkspace() {

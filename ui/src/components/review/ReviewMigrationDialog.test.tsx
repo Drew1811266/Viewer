@@ -73,41 +73,48 @@ function inspection(): ReviewMigrationInspection {
 }
 
 describe('ReviewMigrationDialog', () => {
-  it('defaults active Draft targets into the explicit continuation plan but not Completed history', () => {
+  it('makes every active Draft target mandatory while completed history stays explicitly optional', () => {
     const onConfirm = vi.fn()
     render(
       <ReviewMigrationDialog inspection={inspection()} onConfirm={onConfirm} onCancel={vi.fn()} />,
     )
 
     const dialog = screen.getByRole('dialog', { name: '迁移旧评审记录' })
-    expect(within(dialog).getByRole('checkbox', { name: /活动草稿意见/ })).toBeChecked()
+    expect(within(dialog).getByText('活动草稿意见')).toBeVisible()
+    expect(within(dialog).queryByRole('checkbox', { name: /活动草稿意见/ })).toBeNull()
+    expect(within(dialog).getByText('确认迁移时，活动草稿中的全部意见都会迁入。')).toBeVisible()
+    expect(within(dialog).getByRole('heading', { name: '已完成的历史记录（可选）' })).toBeVisible()
     expect(within(dialog).getByRole('checkbox', { name: /历史完成意见/ })).not.toBeChecked()
     expect(within(dialog).getByText('源素材缺失，需要重新确认')).toBeVisible()
     expect(within(dialog).getByText('使用情况未确认')).toBeVisible()
 
-    fireEvent.click(within(dialog).getByRole('button', { name: '继续选中意见' }))
+    fireEvent.click(within(dialog).getByRole('checkbox', { name: /历史完成意见/ }))
+    fireEvent.click(within(dialog).getByRole('button', { name: '迁移草稿和选中的历史意见' }))
     expect(onConfirm).toHaveBeenCalledWith({
       inspectionDigest: '34'.repeat(32),
       choice: {
         kind: 'continue_selected',
-        legacyTargets: [{ roundId: 'draft-round', feedbackId: 'draft-feedback', targetIndex: 0 }],
+        legacyTargets: [
+          { roundId: 'completed-round', feedbackId: 'completed-feedback', targetIndex: 0 },
+        ],
         bindings: [],
       },
     })
   })
 
-  it('can preserve all legacy data as history without publishing it as current feedback', () => {
+  it('states that KeepHistoryOnly still migrates the mandatory active Draft', () => {
     const onConfirm = vi.fn()
     const onCancel = vi.fn()
     render(
       <ReviewMigrationDialog inspection={inspection()} onConfirm={onConfirm} onCancel={onCancel} />,
     )
 
-    fireEvent.click(screen.getByRole('button', { name: '仅保留历史' }))
+    fireEvent.click(screen.getByRole('button', { name: '迁移草稿，已完成记录仅作历史' }))
     expect(onConfirm).toHaveBeenCalledWith({
       inspectionDigest: '34'.repeat(32),
       choice: { kind: 'keep_history_only' },
     })
+    expect(screen.getByText('活动草稿会成为当前持续评审意见。')).toBeVisible()
     expect(screen.queryByText('已修复')).not.toBeInTheDocument()
 
     fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' })
@@ -119,8 +126,8 @@ describe('ReviewMigrationDialog', () => {
     const rendered = render(
       <ReviewMigrationDialog inspection={first} onConfirm={vi.fn()} onCancel={vi.fn()} />,
     )
-    fireEvent.click(screen.getByRole('checkbox', { name: /活动草稿意见/ }))
-    expect(screen.getByRole('checkbox', { name: /活动草稿意见/ })).not.toBeChecked()
+    fireEvent.click(screen.getByRole('checkbox', { name: /历史完成意见/ }))
+    expect(screen.getByRole('checkbox', { name: /历史完成意见/ })).toBeChecked()
 
     const replacement = inspection()
     replacement.inspectionDigest = '90'.repeat(32)
@@ -137,6 +144,8 @@ describe('ReviewMigrationDialog', () => {
       <ReviewMigrationDialog inspection={replacement} onConfirm={vi.fn()} onCancel={vi.fn()} />,
     )
 
-    expect(screen.getByRole('checkbox', { name: /新项目活动意见/ })).toBeChecked()
+    expect(screen.getByText('新项目活动意见')).toBeVisible()
+    expect(screen.queryByRole('checkbox', { name: /新项目活动意见/ })).toBeNull()
+    expect(screen.getByRole('checkbox', { name: /历史完成意见/ })).not.toBeChecked()
   })
 })

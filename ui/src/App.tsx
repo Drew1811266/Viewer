@@ -3,6 +3,7 @@ import { useCallback, useMemo, useRef } from 'react'
 import type { ReviewWorkspacePort } from './api/reviewWorkspaceTypes'
 import type { ViewerBridge } from './api/viewer'
 import { tauriReviewWorkspaceBridge, tauriViewerBridge } from './api/viewer'
+import { visibleReviewFeedbackCounts } from './app/review/reviewFeedbackCounts'
 import { deriveReviewScope } from './app/review/reviewModel'
 import { useReviewSessionCoordinator } from './app/review/useReviewSessionCoordinator'
 import { useReviewWorkspaceActivation } from './app/review/useReviewWorkspaceActivation'
@@ -104,17 +105,17 @@ function ViewerWorkspace({
   const reviewSelectedEntityIds = state.search.showResults
     ? state.selectedEntityIds
     : organization.selectedFiles.map((file) => file.entityId)
+  const continuousReview = useReviewWorkspaceActivation({
+    port: reviewWorkspacePort,
+    sessionId: state.project?.sessionId,
+    generation: state.project?.generation,
+  })
   const review = useReviewSessionCoordinator({
     port: ports.review,
     sessionId: state.project?.sessionId ?? 'no-session',
     generation: state.project?.generation ?? 0,
     selectedEntityIds: reviewSelectedEntityIds,
-    enabled: state.project !== null,
-  })
-  const continuousReview = useReviewWorkspaceActivation({
-    port: reviewWorkspacePort,
-    sessionId: state.project?.sessionId,
-    generation: state.project?.generation,
+    enabled: state.project !== null && !continuousReview.enabled,
   })
   const reviewScope = deriveReviewScope(
     state.search.showResults
@@ -128,19 +129,12 @@ function ViewerWorkspace({
         },
   )
   const feedbackCountByEntityId = useMemo(() => {
-    const counts = new Map<string, number>()
-    for (const feedbackItem of review.snapshot.feedback) {
-      const targetEntityIds = new Set(
-        feedbackItem.targets.flatMap((target) =>
-          target.entityId === null ? [] : [target.entityId],
-        ),
-      )
-      for (const entityId of targetEntityIds) {
-        counts.set(entityId, (counts.get(entityId) ?? 0) + 1)
-      }
-    }
-    return counts
-  }, [review.snapshot.feedback])
+    return visibleReviewFeedbackCounts({
+      continuousEnabled: continuousReview.enabled,
+      continuousView: continuousReview.presentation?.view ?? null,
+      legacyFeedback: review.snapshot.feedback,
+    })
+  }, [continuousReview.enabled, continuousReview.presentation?.view, review.snapshot.feedback])
   const returnToReviewMembers = useCallback(
     async (entityIds: string[]) => {
       controller.returnToFolderContext()

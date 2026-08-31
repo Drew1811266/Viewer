@@ -43,11 +43,10 @@ function ReviewMigrationDialogContent({
   onCancel,
 }: ReviewMigrationDialogProps) {
   const candidates = useMemo(() => migrationCandidates(inspection), [inspection])
-  const [selected, setSelected] = useState<Set<string>>(
-    () => new Set(candidates.filter((candidate) => candidate.source === 'draft').map((c) => c.key)),
-  )
+  const [selected, setSelected] = useState<Set<string>>(() => new Set())
+  const hasActiveDraft = inspection.activeDraft !== null
   const selectedTargets = candidates
-    .filter((candidate) => selected.has(candidate.key))
+    .filter((candidate) => candidate.source === 'completed' && selected.has(candidate.key))
     .map((candidate) => structuredClone(candidate.target))
 
   function toggle(key: string) {
@@ -76,7 +75,7 @@ function ReviewMigrationDialogContent({
               })
             }
           >
-            仅保留历史
+            {hasActiveDraft ? '迁移草稿，已完成记录仅作历史' : '仅保留历史'}
           </ViewerButton>
           <ViewerButton
             tone="primary"
@@ -92,7 +91,7 @@ function ReviewMigrationDialogContent({
               })
             }
           >
-            继续选中意见
+            {hasActiveDraft ? '迁移草稿和选中的历史意见' : '继续选中意见'}
           </ViewerButton>
         </>
       }
@@ -104,19 +103,27 @@ function ReviewMigrationDialogContent({
       {inspection.limitations.includes('usage_unconfirmed') && (
         <p className="review-migration__notice">使用情况未确认</p>
       )}
+      {hasActiveDraft && (
+        <>
+          <p>确认迁移时，活动草稿中的全部意见都会迁入。</p>
+          <p>活动草稿会成为当前持续评审意见。</p>
+        </>
+      )}
       <MigrationCandidates
         title="活动草稿"
         empty="没有活动草稿。"
         candidates={candidates.filter((candidate) => candidate.source === 'draft')}
         selected={selected}
         onToggle={toggle}
+        selectable={false}
       />
       <MigrationCandidates
-        title="已完成的历史记录"
+        title="已完成的历史记录（可选）"
         empty="没有已完成的历史记录。"
         candidates={candidates.filter((candidate) => candidate.source === 'completed')}
         selected={selected}
         onToggle={toggle}
+        selectable
       />
     </ModalSheet>
   )
@@ -128,12 +135,14 @@ function MigrationCandidates({
   candidates,
   selected,
   onToggle,
+  selectable,
 }: {
   title: string
   empty: string
   candidates: MigrationCandidate[]
   selected: ReadonlySet<string>
   onToggle(key: string): void
+  selectable: boolean
 }) {
   return (
     <section className="review-migration__section">
@@ -144,14 +153,18 @@ function MigrationCandidates({
         <ul className="review-migration__list">
           {candidates.map((candidate) => (
             <li key={candidate.key}>
-              <label>
-                <input
-                  type="checkbox"
-                  checked={selected.has(candidate.key)}
-                  onChange={() => onToggle(candidate.key)}
-                />
+              {selectable ? (
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={selected.has(candidate.key)}
+                    onChange={() => onToggle(candidate.key)}
+                  />
+                  <span>{candidate.text}</span>
+                </label>
+              ) : (
                 <span>{candidate.text}</span>
-              </label>
+              )}
               {candidate.pendingFailure !== null && (
                 <span className="review-migration__pending">
                   {legacyFailureMessage(candidate.pendingFailure)}

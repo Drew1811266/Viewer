@@ -5,7 +5,6 @@ import type {
   ReviewTargetVersionKey,
   ReviewWorkspaceError,
 } from '../../api/reviewWorkspaceTypes'
-import type { ReviewAnchor } from '../../api/types'
 import ModalSheet from '../ModalSheet'
 import ViewerButton from '../ui/ViewerButton'
 
@@ -14,7 +13,7 @@ export type SourceBindingDecisionDto = ReviewSourceBindingDecision
 export interface ReviewSourceConfirmationProps {
   oldAsset: ReviewAssetVersion
   candidates: ReviewAssetVersion[]
-  originalAnchor: ReviewAnchor
+  originalAnchor: ReviewSourceBindingDecision['anchor']
   targetKey: ReviewTargetVersionKey
   busy: boolean
   error: ReviewWorkspaceError | null

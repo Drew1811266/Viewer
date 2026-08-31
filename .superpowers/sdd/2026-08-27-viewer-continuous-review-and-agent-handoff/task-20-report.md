@@ -80,3 +80,22 @@ protocol, or `useImageReviewWorkbench` changes were made.
   contracts), `pnpm architecture:trends`, and `git diff --check` passed.
 - Trends reports 47 non-blocking existing warnings and no new Task 20 warning. Production remains
   inactive; no Rust, protocol, `useImageReviewWorkbench`, or original-media write changes.
+
+## Fix round 3
+
+修复提交：`7f9daa38829e5e30957ec5f9bd977d83ebd56eee`
+
+- An unsubmitted source confirmation is revoked immediately when `selectedEntityIds` changes:
+  source preparation is invalidated, its confirmation state and related error are cleared, and a
+  retained old decision cannot reach `continueHistorical`.
+- A submitted continuation remains a transaction, not a presentation state. Entity changes do not
+  release its guard or permit duplication; the coordinator result remains visible in the same
+  session after settlement.
+
+### Fix round 3 verification
+
+- RED observed: an already-open confirmation survived an entity change. GREEN regression proves
+  immediate source removal and coordinator non-invocation from the retained decision.
+- Focused: 5 files / 56 tests. Full UI: 145 files / 1290 passed, 1 skipped.
+- `pnpm --dir ui check`, `pnpm --dir ui build`, boundaries/contracts, trends, and diff check
+  passed. Trends remain 47 non-blocking existing warnings, with no new Task 20 warning.

@@ -57,3 +57,22 @@ session/close busy 生命周期的失败测试；随后最小实现转绿。
   通过；`git diff --check` 通过。
 - `pnpm architecture:trends` exit 0，47 项既有/非阻断告警；拆分 restore 预览/提交路径后没有新增
   Task 20 trend warning。
+
+## Fix round 3 — 2026-08-31
+
+修复提交：`7f9daa38829e5e30957ec5f9bd977d83ebd56eee`
+
+- 未提交的来源确认现在绑定当前 selected entities。实体切换会立即撤销已展示的候选确认、清除其
+  相关错误并推进 source preparation token；即使调用方仍持有旧 decision，`confirmSource` 也不能
+  调用 coordinator。
+- 已提交的 continue transaction 不受此撤销影响：transaction guard 仍到 promise settle，重复操作
+  与误导性的关闭保持拒绝，且同 session 的最终结果仍显示。
+
+### Fix round 3 verification
+
+- RED：来源确认已打开后切换到空 entities 时 source 未清除；GREEN：回归证明 source 立即清除且旧
+  decision 无法写入。
+- 聚焦回归：5 个文件、56 项通过；UI 全仓：145 个文件、1290 项通过，1 项既有跳过。
+- `pnpm --dir ui check`、`pnpm --dir ui build`、`pnpm architecture:boundaries`（含 contracts）、
+  `pnpm architecture:trends` 与 `git diff --check` 通过；trends 为 47 项既有/非阻断告警，无新增
+  Task 20 warning。

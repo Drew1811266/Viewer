@@ -489,6 +489,64 @@ describe('review workspace components', () => {
     expect(screen.getByRole('button', { name: '确认存档' })).toBeEnabled()
   })
 
+  it('preserves a selection-only covered choice for a fresh preview after deselection', async () => {
+    const selection: ReviewArchiveSelection = {
+      expectedSnapshotId: 'snapshot-c',
+      groups: [
+        {
+          basis: {
+            kind: 'known',
+            snapshot: { snapshotId: 'snapshot-b', blake3: 'b'.repeat(64) },
+            source: { kind: 'agent_declared', usageId: 'usage-b' },
+          },
+          targets: [structuredClone(archiveTarget)],
+        },
+      ],
+    }
+    const previewArchive = vi.fn(async (requested: ReviewArchiveSelection) =>
+      archivePlan(requested),
+    )
+    previewArchive.mockResolvedValueOnce({
+      expectedSnapshotId: 'snapshot-c',
+      groups: [],
+      removed: [],
+      retained: [],
+      alreadyCovered: [structuredClone(archiveTarget)],
+    })
+    const continuous = continuousArchiveCoordinator('continuous-c', { previewArchive })
+    render(
+      <ReviewWorkspaceLayer
+        review={coordinator(active())}
+        selectedEntityIds={[]}
+        projectAccess="read_write"
+        continuousReview={continuous}
+        archiveSelection={selection}
+        onReturnToMembers={vi.fn()}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: '存档意见' }))
+    await waitFor(() => expect(previewArchive).toHaveBeenCalledOnce())
+
+    const targetName =
+      /Feedback ID feedback-c · Text revision text-c · Target ID target-c · Target revision target-c-revision/
+    expect(screen.getByRole('checkbox', { name: targetName })).toBeChecked()
+    expect(screen.getByRole('button', { name: '确认存档' })).toBeDisabled()
+
+    fireEvent.click(screen.getByRole('checkbox', { name: targetName }))
+
+    expect(screen.getByRole('checkbox', { name: targetName })).not.toBeChecked()
+    expect(screen.queryByText('没有新的可存档内容')).toBeNull()
+    expect(previewArchive).toHaveBeenCalledOnce()
+
+    fireEvent.click(screen.getByRole('checkbox', { name: targetName }))
+    await waitFor(() => expect(previewArchive).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(screen.getByRole('button', { name: '确认存档' })).toBeEnabled())
+    const moved = screen.getByRole('heading', { name: '将移入历史' }).parentElement
+    if (moved === null) throw new Error('Missing moved-to-history section')
+    expect(within(moved).getByText(targetName)).toBeVisible()
+  })
+
   it('does not show an old session preview after the coordinator session changes', async () => {
     const pending = deferred<ReviewArchivePlan>()
     const oldCoordinator = continuousArchiveCoordinator('continuous-old', {

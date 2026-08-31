@@ -9,7 +9,7 @@ import type { ContinuousReviewCoordinator } from '../../app/review/useContinuous
 import type { ReviewSessionCoordinator } from '../../app/review/useReviewSessionCoordinator'
 import ModalSheet from '../ModalSheet'
 import ViewerButton from '../ui/ViewerButton'
-import ReviewArchiveDialog from './ReviewArchiveDialog'
+import ReviewArchiveDialog, { availableArchiveGroups } from './ReviewArchiveDialog'
 import ReviewCompletionDialog from './ReviewCompletionDialog'
 import ReviewContextBar from './ReviewContextBar'
 import ReviewInspector from './ReviewInspector'
@@ -361,7 +361,7 @@ function useContinuousArchivePreview(
     if (!hasArchiveTargets(selection)) {
       setDialog({
         ...dialog,
-        preview: emptyArchivePlan(dialog.preview),
+        preview: emptyArchivePlan(dialog.preview, dialog.selection),
         selection,
       })
       setError(null)
@@ -421,10 +421,13 @@ function hasArchiveTargets(
   return selection?.groups.some((group) => group.targets.length > 0) ?? false
 }
 
-function emptyArchivePlan(preview: ReviewArchivePlan): ReviewArchivePlan {
+function emptyArchivePlan(
+  preview: ReviewArchivePlan,
+  priorSelection: ReviewArchiveSelection,
+): ReviewArchivePlan {
   return {
     expectedSnapshotId: preview.expectedSnapshotId,
-    groups: structuredClone(preview.groups),
+    groups: structuredClone(availableArchiveGroups(preview, priorSelection)),
     removed: [],
     retained: [],
     alreadyCovered: [],

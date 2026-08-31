@@ -32,7 +32,7 @@ export default function ReviewArchiveDialog({
 }: ReviewArchiveDialogProps) {
   const cancelRef = useRef<HTMLButtonElement>(null)
   const selected = selectedKeys(selection)
-  const groups = availableGroups(preview, selection)
+  const groups = availableArchiveGroups(preview, selection)
   const retainedLaterEdits = preview.retained.filter(
     (retention) => retention.disposition === 'retain_later_edit',
   )
@@ -200,7 +200,7 @@ function ArchiveKeyList({
   )
 }
 
-function availableGroups(preview: ArchivePlanDto, selection: ArchiveSelectionDto) {
+export function availableArchiveGroups(preview: ArchivePlanDto, selection: ArchiveSelectionDto) {
   const groups = preview.groups.map((group) => ({ ...group, targets: [...group.targets] }))
   for (const selected of selection.groups) {
     const existing = groups.find((group) => sameBasis(group.basis, selected.basis))

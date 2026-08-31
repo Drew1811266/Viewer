@@ -458,6 +458,37 @@ describe('review workspace components', () => {
     expect(screen.getByRole('status')).toHaveTextContent('当前没有可存档的意见。')
   })
 
+  it('clears the exact preview when deselecting the final archive target', async () => {
+    const continuous = continuousArchiveCoordinator('continuous-c')
+    render(
+      <ReviewWorkspaceLayer
+        review={coordinator(active())}
+        selectedEntityIds={[]}
+        projectAccess="read_write"
+        continuousReview={continuous}
+        onReturnToMembers={vi.fn()}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: '存档意见' }))
+    await waitFor(() => expect(continuous.previewArchive).toHaveBeenCalledOnce())
+
+    const targetName =
+      /Feedback ID feedback-c · Text revision text-c · Target ID target-c · Target revision target-c-revision/
+    fireEvent.click(screen.getByRole('checkbox', { name: targetName }))
+
+    const moved = screen.getByRole('heading', { name: '将移入历史' }).parentElement
+    if (moved === null) throw new Error('Missing moved-to-history section')
+    expect(within(moved).queryByText(targetName)).toBeNull()
+    expect(screen.getByRole('checkbox', { name: targetName })).not.toBeChecked()
+    expect(screen.getByRole('button', { name: '确认存档' })).toBeDisabled()
+    expect(continuous.previewArchive).toHaveBeenCalledOnce()
+
+    fireEvent.click(screen.getByRole('checkbox', { name: targetName }))
+    await waitFor(() => expect(continuous.previewArchive).toHaveBeenCalledTimes(2))
+    expect(screen.getByRole('button', { name: '确认存档' })).toBeEnabled()
+  })
+
   it('does not show an old session preview after the coordinator session changes', async () => {
     const pending = deferred<ReviewArchivePlan>()
     const oldCoordinator = continuousArchiveCoordinator('continuous-old', {

@@ -359,7 +359,11 @@ function useContinuousArchivePreview(
   async function changeSelection(selection: ReviewArchiveSelection) {
     if (dialog === null || dialog.sessionKey !== sessionKey) return
     if (!hasArchiveTargets(selection)) {
-      setDialog({ ...dialog, selection })
+      setDialog({
+        ...dialog,
+        preview: emptyArchivePlan(dialog.preview),
+        selection,
+      })
       setError(null)
       return
     }
@@ -415,6 +419,16 @@ function hasArchiveTargets(
   selection: ReviewArchiveSelection | null,
 ): selection is ReviewArchiveSelection {
   return selection?.groups.some((group) => group.targets.length > 0) ?? false
+}
+
+function emptyArchivePlan(preview: ReviewArchivePlan): ReviewArchivePlan {
+  return {
+    expectedSnapshotId: preview.expectedSnapshotId,
+    groups: structuredClone(preview.groups),
+    removed: [],
+    retained: [],
+    alreadyCovered: [],
+  }
 }
 
 function unknownArchiveSelection(

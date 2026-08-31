@@ -256,6 +256,7 @@ pub fn run() {
             commands::review_workspace::preview_review_restore,
             commands::review_workspace::get_review_history,
             commands::review_workspace::inspect_review_usage,
+            commands::review_workspace::inspect_review_usage_selection,
             commands::review_workspace::inspect_review_migration,
             commands::review_workspace::get_review_evidence,
             commands::review_workspace::cancel_review_workspace_task,

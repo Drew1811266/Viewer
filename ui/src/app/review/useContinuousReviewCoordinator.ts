@@ -6,6 +6,7 @@ export interface ContinuousReviewCoordinatorOptions {
   sessionId: string
   generation: number
   port: ReviewWorkspacePort
+  enabled?: boolean
   onError?: (cause: ReviewWorkspaceError) => void
 }
 
@@ -13,6 +14,7 @@ export function useContinuousReviewCoordinator({
   sessionId,
   generation,
   port,
+  enabled = true,
   onError,
 }: ContinuousReviewCoordinatorOptions) {
   const onErrorRef = useRef(onError)
@@ -31,11 +33,12 @@ export function useContinuousReviewCoordinator({
   )
   const snapshot = useSyncExternalStore(session.subscribe, session.getSnapshot)
   useEffect(() => {
+    if (!enabled) return undefined
     const stop = session.start(handoverRef.current)
     return () => {
       handoverRef.current = stop()
     }
-  }, [session])
+  }, [enabled, session])
   return {
     ...snapshot,
     workbenchSessionKey,

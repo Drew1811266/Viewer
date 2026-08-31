@@ -11,6 +11,17 @@ export const tauriReviewWorkspaceBridge: ReviewWorkspacePort = {
   previewRestore: (request) => invoke('preview_review_restore', { request }),
   getHistory: (request) => invoke('get_review_history', { request }),
   inspectUsage: (request) => invoke('inspect_review_usage', { request }),
+  async selectUsage(request) {
+    const selected = await open({
+      title: '选择返工依据声明',
+      directory: false,
+      multiple: false,
+      canCreateDirectories: false,
+      filters: [{ name: 'JSON 声明', extensions: ['json'] }],
+    })
+    if (typeof selected !== 'string') return null
+    return invoke('inspect_review_usage_selection', { request, selectedPath: selected })
+  },
   inspectMigration: (request) => invoke('inspect_review_migration', { request }),
   getEvidence: (request) => invoke('get_review_evidence', { request }),
   cancelTask: (request) => invoke('cancel_review_workspace_task', { request }),

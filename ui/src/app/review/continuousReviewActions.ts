@@ -168,6 +168,7 @@ export function continuousReviewActions(
       driver.submit({ kind: 'adopt_usage', declarationId }, currentId()),
     inspectUsage: (entityId: string) =>
       driver.query('usage', (scope) => port.inspectUsage({ ...scope, entityId })),
+    selectUsage: () => driver.query('usage-selection', (scope) => port.selectUsage(scope)),
     inspectMigration: async () => {
       migration = null
       const version = driver.version()

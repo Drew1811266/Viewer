@@ -1,5 +1,6 @@
 use super::*;
 use crate::dto::review_workspace::{PreparedReviewAssetDto, ReviewEvidenceImageDto};
+use std::path::{Path, PathBuf};
 use viewer_application::review_evidence::{BoundReviewImage, EvidenceRole, HistorySelector};
 use viewer_domain::{
     AssetVersionId, ReviewArchiveId,
@@ -195,4 +196,45 @@ impl DesktopRuntime {
             .await;
         self.finish_review(id, generation, result, None).await
     }
+
+    pub async fn inspect_review_usage_selection(
+        &self,
+        id: SessionId,
+        generation: Generation,
+        selected: PathBuf,
+    ) -> Result<UsageImportPreview, Error> {
+        let session = self.continuous_session(id, generation, false).await?;
+        let source = explicit_usage_relative_path(&session.config.root, &selected)?;
+        let result = session
+            .run(move |b, cancel| async move {
+                check_cancelled(&cancel)?;
+                let value = b.service.inspect_usage(source).await?;
+                check_cancelled(&cancel)?;
+                Ok(value)
+            })
+            .await;
+        self.finish_review(id, generation, result, None).await
+    }
+}
+
+fn explicit_usage_relative_path(root: &Path, selected: &Path) -> Result<RelativePath, Error> {
+    let root = std::fs::canonicalize(root).map_err(|_| Error::new(Code::Internal))?;
+    let selected = std::fs::canonicalize(selected).map_err(|_| Error::new(Code::UnsafeSource))?;
+    if !selected.is_file() {
+        return Err(Error::new(Code::UnsafeSource));
+    }
+    let relative = selected
+        .strip_prefix(&root)
+        .map_err(|_| Error::new(Code::WrongContext))?;
+    if relative
+        .components()
+        .next()
+        .is_some_and(|component| component.as_os_str() == ".viewer")
+    {
+        return Err(Error::new(Code::UnsafeSource));
+    }
+    let relative = relative
+        .to_str()
+        .ok_or_else(|| Error::new(Code::UnsafeSource))?;
+    RelativePath::parse(relative).map_err(|_| Error::new(Code::UnsafeSource))
 }

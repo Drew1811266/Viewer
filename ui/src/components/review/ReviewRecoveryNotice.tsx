@@ -1,13 +1,28 @@
 import type { ProjectAccess } from '../../app/review/reviewModel'
+import type { ContinuousReviewCoordinator } from '../../app/review/useContinuousReviewCoordinator'
 import type { ReviewSessionCoordinator } from '../../app/review/useReviewSessionCoordinator'
 import ViewerButton from '../ui/ViewerButton'
+import ContinuousReviewRecoveryNotice from './ContinuousReviewRecoveryNotice'
 
 interface ReviewRecoveryNoticeProps {
   review: ReviewSessionCoordinator
   projectAccess: ProjectAccess
+  continuousReview?: ContinuousReviewCoordinator
 }
 
-export default function ReviewRecoveryNotice({ review, projectAccess }: ReviewRecoveryNoticeProps) {
+export default function ReviewRecoveryNotice({
+  review,
+  projectAccess,
+  continuousReview,
+}: ReviewRecoveryNoticeProps) {
+  if (continuousReview !== undefined) {
+    return (
+      <ContinuousReviewRecoveryNotice
+        coordinator={continuousReview}
+        projectAccess={projectAccess}
+      />
+    )
+  }
   const { snapshot } = review
   if (snapshot.resume !== null) {
     return (

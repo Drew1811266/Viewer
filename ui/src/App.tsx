@@ -1,9 +1,11 @@
-import type { MutableRefObject } from 'react'
+import type { ComponentProps, MutableRefObject } from 'react'
 import { useCallback, useMemo, useRef } from 'react'
+import type { ReviewWorkspacePort } from './api/reviewWorkspaceTypes'
 import type { ViewerBridge } from './api/viewer'
-import { tauriViewerBridge } from './api/viewer'
+import { tauriReviewWorkspaceBridge, tauriViewerBridge } from './api/viewer'
 import { deriveReviewScope } from './app/review/reviewModel'
 import { useReviewSessionCoordinator } from './app/review/useReviewSessionCoordinator'
+import { useReviewWorkspaceActivation } from './app/review/useReviewWorkspaceActivation'
 import type { WorkspaceIntentSink } from './app/workspace/intents'
 import { createWorkspacePorts } from './app/workspace/ports'
 import { useFeedbackCoordinator } from './app/workspace/useFeedbackCoordinator'
@@ -20,22 +22,31 @@ import { useViewerController } from './state/useViewerController'
 
 interface AppProps {
   bridge?: ViewerBridge
+  reviewWorkspacePort?: ReviewWorkspacePort
 }
 
-export default function App({ bridge = tauriViewerBridge }: AppProps) {
+export default function App({ bridge = tauriViewerBridge, reviewWorkspacePort }: AppProps) {
   const pointerClientPoint = useLatestPointerClientPoint()
+  const activeReviewWorkspacePort =
+    reviewWorkspacePort ?? (bridge === tauriViewerBridge ? tauriReviewWorkspaceBridge : null)
   return (
     <ViewerSettingsProvider bridge={bridge}>
-      <ViewerWorkspace bridge={bridge} pointerClientPoint={pointerClientPoint} />
+      <ViewerWorkspace
+        bridge={bridge}
+        reviewWorkspacePort={activeReviewWorkspacePort}
+        pointerClientPoint={pointerClientPoint}
+      />
     </ViewerSettingsProvider>
   )
 }
 
 function ViewerWorkspace({
   bridge,
+  reviewWorkspacePort,
   pointerClientPoint,
 }: {
   bridge: ViewerBridge
+  reviewWorkspacePort: ReviewWorkspacePort | null
   pointerClientPoint: MutableRefObject<Point | null>
 }) {
   const settings = useViewerSettings()
@@ -100,6 +111,11 @@ function ViewerWorkspace({
     selectedEntityIds: reviewSelectedEntityIds,
     enabled: state.project !== null,
   })
+  const continuousReview = useReviewWorkspaceActivation({
+    port: reviewWorkspacePort,
+    sessionId: state.project?.sessionId,
+    generation: state.project?.generation,
+  })
   const reviewScope = deriveReviewScope(
     state.search.showResults
       ? { kind: 'search', selectedEntityIds: reviewSelectedEntityIds }
@@ -142,7 +158,6 @@ function ViewerWorkspace({
   const reselectProject = useCallback(() => {
     review.requestDiscard('context_replacement', () => void controller.reselectProject())
   }, [controller.reselectProject, review.requestDiscard])
-
   intentTargetRef.current = (intent) => {
     switch (intent.kind) {
       case 'open-preview':
@@ -168,7 +183,6 @@ function ViewerWorkspace({
         review.requestDiscard('project_close', () => void controller.closeProject())
     }
   }
-
   if (state.project === null) {
     return (
       <EmptyProject
@@ -197,12 +211,15 @@ function ViewerWorkspace({
       pointerClientPoint={pointerClientPoint}
       review={{
         coordinator: review,
+        protocol: continuousReview.protocol,
+        continuousCoordinator: continuousReview.presentation,
         capturedScope: reviewScope,
         feedbackCountByEntityId,
         onReturnToMembers: (entityIds) => void returnToReviewMembers(entityIds),
       }}
       reviewToolbarAction={
-        <ReviewToolbarAction
+        <ActivatedReviewToolbar
+          enabled={continuousReview.enabled}
           review={review}
           scope={reviewScope}
           projectAccess={state.project.access}
@@ -214,10 +231,19 @@ function ViewerWorkspace({
           selectedEntityIds={reviewSelectedEntityIds}
           projectAccess={state.project.access}
           contextBarHidden={viewing.activePreview !== null}
+          continuousReview={continuousReview.coordinator}
           onReturnToMembers={(entityIds) => void returnToReviewMembers(entityIds)}
         />
       }
       onReselectProject={reselectProject}
     />
   )
+}
+
+function ActivatedReviewToolbar({
+  enabled,
+  ...props
+}: ComponentProps<typeof ReviewToolbarAction> & { enabled: boolean }) {
+  if (enabled) return null
+  return <ReviewToolbarAction {...props} />
 }

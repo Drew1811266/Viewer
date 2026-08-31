@@ -1,24 +1,16 @@
-import { useId, useLayoutEffect, useRef, useState } from 'react'
-import type {
-  ReviewArchivePlan,
-  ReviewArchiveSelection,
-  ReviewHistorySelector,
-  ReviewWorkspaceError,
-} from '../../api/reviewWorkspaceTypes'
+import { useId, useRef, useState } from 'react'
+import type { ReviewArchiveSelection, ReviewHistorySelector } from '../../api/reviewWorkspaceTypes'
 import type { ProjectAccess, ReviewScopeRequest } from '../../app/review/reviewModel'
 import type { ContinuousReviewCoordinator } from '../../app/review/useContinuousReviewCoordinator'
 import type { ReviewSessionCoordinator } from '../../app/review/useReviewSessionCoordinator'
 import ModalSheet from '../ModalSheet'
 import ViewerButton from '../ui/ViewerButton'
-import ReviewArchiveDialog, { availableArchiveGroups } from './ReviewArchiveDialog'
+import ContinuousReviewWorkspaceLayer from './ContinuousReviewWorkspaceLayer'
 import ReviewCompletionDialog from './ReviewCompletionDialog'
 import ReviewContextBar from './ReviewContextBar'
-import ReviewHistoryPanel from './ReviewHistoryPanel'
 import ReviewInspector from './ReviewInspector'
 import ReviewRecoveryNotice from './ReviewRecoveryNotice'
-import ReviewSourceConfirmation from './ReviewSourceConfirmation'
 import ReviewStartDialog from './ReviewStartDialog'
-import { useContinuousHistoryReview } from './useContinuousHistoryReview'
 
 interface ReviewWorkspaceLayerProps {
   review: ReviewSessionCoordinator
@@ -33,15 +25,6 @@ interface ReviewWorkspaceLayerProps {
   historySelector?: ReviewHistorySelector
   onReturnToMembers(entityIds: string[]): void
 }
-
-interface ArchiveDialogState {
-  sessionKey: string | null
-  preview: ReviewArchivePlan
-  selection: ReviewArchiveSelection
-}
-
-type ContinuousArchivePreview = ReturnType<typeof useContinuousArchivePreview>
-type ContinuousHistoryReview = ReturnType<typeof useContinuousHistoryReview>
 
 interface ReviewToolbarActionProps {
   review: ReviewSessionCoordinator
@@ -89,10 +72,40 @@ export default function ReviewWorkspaceLayer({
   historySelector,
   onReturnToMembers,
 }: ReviewWorkspaceLayerProps) {
+  if (continuousReview !== undefined) {
+    return (
+      <ContinuousReviewWorkspaceLayer
+        review={review}
+        coordinator={continuousReview}
+        selectedEntityIds={selectedEntityIds}
+        projectAccess={projectAccess}
+        contextBarHidden={contextBarHidden}
+        archiveSelection={archiveSelection}
+        historySelector={historySelector}
+        onReturnToMembers={onReturnToMembers}
+      />
+    )
+  }
+  return (
+    <LegacyReviewWorkspaceLayer
+      review={review}
+      selectedEntityIds={selectedEntityIds}
+      projectAccess={projectAccess}
+      contextBarHidden={contextBarHidden}
+      onReturnToMembers={onReturnToMembers}
+    />
+  )
+}
+
+function LegacyReviewWorkspaceLayer({
+  review,
+  selectedEntityIds,
+  projectAccess,
+  contextBarHidden = false,
+  onReturnToMembers,
+}: Omit<ReviewWorkspaceLayerProps, 'continuousReview' | 'archiveSelection' | 'historySelector'>) {
   const [inspectorOpen, setInspectorOpen] = useState(false)
   const [abandonOpen, setAbandonOpen] = useState(false)
-  const archive = useContinuousArchivePreview(continuousReview, archiveSelection)
-  const history = useContinuousHistoryReview(continuousReview, selectedEntityIds, historySelector)
   const active = review.snapshot.phase === 'active'
   const completed = review.snapshot.phase === 'completed_read_only'
 
@@ -101,9 +114,6 @@ export default function ReviewWorkspaceLayer({
       <ReviewRecoveryNotice review={review} projectAccess={projectAccess} />
       <ReviewWorkspaceContext
         review={review}
-        continuousReview={continuousReview}
-        archive={archive}
-        history={history}
         contextBarHidden={contextBarHidden}
         inspectorOpen={inspectorOpen}
         completed={completed}
@@ -129,9 +139,6 @@ export default function ReviewWorkspaceLayer({
       />
       <ReviewWorkspaceDialogs
         review={review}
-        archive={archive}
-        history={history}
-        continuousReview={continuousReview}
         abandonOpen={abandonOpen}
         onCloseAbandon={() => setAbandonOpen(false)}
       />
@@ -141,9 +148,6 @@ export default function ReviewWorkspaceLayer({
 
 function ReviewWorkspaceContext({
   review,
-  continuousReview,
-  archive,
-  history,
   contextBarHidden,
   inspectorOpen,
   completed,
@@ -152,9 +156,6 @@ function ReviewWorkspaceContext({
   onAbandon,
 }: {
   review: ReviewSessionCoordinator
-  continuousReview: ContinuousReviewCoordinator | undefined
-  archive: ContinuousArchivePreview
-  history: ContinuousHistoryReview
   contextBarHidden: boolean
   inspectorOpen: boolean
   completed: boolean
@@ -163,23 +164,12 @@ function ReviewWorkspaceContext({
   onAbandon(): void
 }) {
   const active = review.snapshot.phase === 'active'
-  if (contextBarHidden || (continuousReview === undefined && !active && !completed)) return null
-  const members =
-    continuousReview === undefined
-      ? review.snapshot.members.flatMap((member) =>
-          member.entityId === null ? [] : [member.entityId],
-        )
-      : (continuousReview.view?.current?.state.assets.flatMap((asset) =>
-          asset.sourceEntityId === null ? [] : [asset.sourceEntityId],
-        ) ?? [])
-  const archiveUnavailable =
-    continuousReview === undefined ||
-    continuousReview.currentSnapshotId === null ||
-    archive.busy ||
-    history.transactionBusy
+  if (contextBarHidden || (!active && !completed)) return null
+  const members = review.snapshot.members.flatMap((member) =>
+    member.entityId === null ? [] : [member.entityId],
+  )
   return (
     <ReviewContextBar
-      protocol={continuousReview === undefined ? 'legacy' : 'continuous'}
       snapshot={review.snapshot}
       inspectorOpen={inspectorOpen}
       onReturnToMembers={() => onReturnToMembers(members)}
@@ -188,12 +178,6 @@ function ReviewWorkspaceContext({
         review.requestDiscard('context_replacement', () => void review.prepareCompletion())
       }
       onRequestAbandon={onAbandon}
-      onArchive={continuousReview === undefined ? undefined : () => void archive.open()}
-      onHistory={history.available ? () => void history.open() : undefined}
-      continuousFeedbackCount={continuousReview?.view?.current?.state.feedback.length}
-      archiveDisabled={archiveUnavailable}
-      historyDisabled={history.transactionBusy}
-      archiveNotice={history.error?.message ?? archive.notice ?? history.notice ?? null}
     />
   )
 }
@@ -244,16 +228,10 @@ function ReviewWorkspaceInspector({
 
 function ReviewWorkspaceDialogs({
   review,
-  archive,
-  history,
-  continuousReview,
   abandonOpen,
   onCloseAbandon,
 }: {
   review: ReviewSessionCoordinator
-  archive: ContinuousArchivePreview
-  history: ContinuousHistoryReview
-  continuousReview: ContinuousReviewCoordinator | undefined
   abandonOpen: boolean
   onCloseAbandon(): void
 }) {
@@ -273,49 +251,6 @@ function ReviewWorkspaceDialogs({
           busy={review.snapshot.phase === 'completing'}
           onConfirm={() => void review.confirmCompletion()}
           onCancel={review.dismissCompletion}
-        />
-      )}
-      {archive.dialog !== null && (
-        <ReviewArchiveDialog
-          preview={archive.dialog.preview}
-          selection={archive.dialog.selection}
-          busy={archive.busy}
-          error={archive.error}
-          onSelectionChange={(selection) => void archive.changeSelection(selection)}
-          onConfirm={() => void archive.confirm()}
-          onCancel={archive.cancel}
-        />
-      )}
-      {history.panel !== null && history.source === null && (
-        <ReviewHistoryPanel
-          history={history.panel.history}
-          historyRef={history.panel.historyRef}
-          historyRefs={history.panel.historyRefs}
-          restorePlan={history.panel.restorePreview?.plan ?? null}
-          currentFeedback={continuousReview?.view?.current?.state.feedback ?? []}
-          evidence={history.panel.evidence}
-          busy={history.busy}
-          canClose={history.canClose}
-          error={history.error}
-          onClose={history.close}
-          onContinue={(reference) => void history.continueHistorical(reference)}
-          onRestore={(decisions) => void history.restore(decisions)}
-          onInvalidateRestorePreview={history.invalidateRestorePreview}
-          onRequestEvidence={(assetVersionId, role) =>
-            void history.requestEvidence(assetVersionId, role)
-          }
-        />
-      )}
-      {history.source !== null && (
-        <ReviewSourceConfirmation
-          oldAsset={history.source.oldAsset}
-          candidates={history.source.candidates}
-          originalAnchor={history.source.originalAnchor}
-          targetKey={history.source.targetKey}
-          busy={history.busy}
-          error={history.error}
-          onCancel={history.closeSource}
-          onConfirm={(decision) => void history.confirmSource(decision)}
         />
       )}
       {abandonOpen && <ReviewAbandonDialog review={review} onClose={onCloseAbandon} />}
@@ -342,177 +277,6 @@ function ReviewDiscardDialog({ review }: { review: ReviewSessionCoordinator }) {
       <p>当前自然语言意见尚未保存，离开后无法恢复。</p>
     </ModalSheet>
   )
-}
-
-function useContinuousArchivePreview(
-  coordinator: ContinuousReviewCoordinator | undefined,
-  suppliedSelection: ReviewArchiveSelection | undefined,
-) {
-  const [dialog, setDialog] = useState<ArchiveDialogState | null>(null)
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [notice, setNotice] = useState<string | null>(null)
-  const sessionKey = coordinator?.workbenchSessionKey ?? null
-  const sessionKeyRef = useRef(sessionKey)
-
-  useLayoutEffect(() => {
-    if (sessionKeyRef.current === sessionKey) return
-    sessionKeyRef.current = sessionKey
-    setDialog(null)
-    setBusy(false)
-    setError(null)
-    setNotice(null)
-  }, [sessionKey])
-
-  function active(requestSessionKey: string | null) {
-    return sessionKeyRef.current === requestSessionKey
-  }
-
-  async function preview(
-    selection: ReviewArchiveSelection,
-    requestSessionKey: string | null,
-    reportError: (message: string) => void,
-  ) {
-    if (coordinator === undefined) return
-    setBusy(true)
-    setError(null)
-    try {
-      const plan = await coordinator.previewArchive(selection)
-      if (active(requestSessionKey))
-        setDialog({ sessionKey: requestSessionKey, preview: plan, selection })
-    } catch (cause) {
-      if (active(requestSessionKey)) reportError(archiveErrorMessage(cause))
-    } finally {
-      if (active(requestSessionKey)) setBusy(false)
-    }
-  }
-
-  async function open() {
-    if (coordinator === undefined) return
-    if (coordinator.hasUncommittedInput) {
-      setNotice('请先保存或取消正在编辑的意见。')
-      return
-    }
-    const selection =
-      suppliedSelection === undefined
-        ? unknownArchiveSelection(coordinator)
-        : structuredClone(suppliedSelection)
-    if (!hasArchiveTargets(selection)) {
-      setNotice('当前没有可存档的意见。')
-      return
-    }
-    if (selection.expectedSnapshotId !== coordinator.currentSnapshotId) {
-      setNotice('意见已变化，请重新查看存档范围')
-      return
-    }
-    await preview(selection, sessionKey, setNotice)
-  }
-
-  async function changeSelection(selection: ReviewArchiveSelection) {
-    if (dialog === null || dialog.sessionKey !== sessionKey) return
-    if (!hasArchiveTargets(selection)) {
-      setDialog({
-        ...dialog,
-        preview: emptyArchivePlan(dialog.preview, dialog.selection),
-        selection,
-      })
-      setError(null)
-      return
-    }
-    await preview(selection, sessionKey, setError)
-  }
-
-  async function confirm() {
-    if (coordinator === undefined || dialog === null || dialog.sessionKey !== sessionKey) return
-    if (coordinator.hasUncommittedInput) {
-      setError('请先保存或取消正在编辑的意见。')
-      return
-    }
-    if (coordinator.currentSnapshotId !== dialog.preview.expectedSnapshotId) {
-      setError('意见已变化，请重新查看存档范围')
-      return
-    }
-    const requestSessionKey = sessionKey
-    setBusy(true)
-    setError(null)
-    try {
-      await coordinator.commitArchive()
-      if (active(requestSessionKey)) {
-        setDialog(null)
-        setNotice('意见已移入历史；如有需要可在历史中撤销。')
-      }
-    } catch (cause) {
-      if (active(requestSessionKey)) setError(archiveErrorMessage(cause))
-    } finally {
-      if (active(requestSessionKey)) setBusy(false)
-    }
-  }
-
-  function cancel() {
-    if (!busy) {
-      setDialog(null)
-      setError(null)
-    }
-  }
-
-  return {
-    dialog: dialog?.sessionKey === sessionKey ? dialog : null,
-    busy,
-    error,
-    notice,
-    open,
-    changeSelection,
-    confirm,
-    cancel,
-  }
-}
-
-function hasArchiveTargets(
-  selection: ReviewArchiveSelection | null,
-): selection is ReviewArchiveSelection {
-  return selection?.groups.some((group) => group.targets.length > 0) ?? false
-}
-
-function emptyArchivePlan(
-  preview: ReviewArchivePlan,
-  priorSelection: ReviewArchiveSelection,
-): ReviewArchivePlan {
-  return {
-    expectedSnapshotId: preview.expectedSnapshotId,
-    groups: structuredClone(availableArchiveGroups(preview, priorSelection)),
-    removed: [],
-    retained: [],
-    alreadyCovered: [],
-  }
-}
-
-function unknownArchiveSelection(
-  coordinator: ContinuousReviewCoordinator,
-): ReviewArchiveSelection | null {
-  const current = coordinator.view?.current
-  if (current === undefined || current === null) return null
-  const targets = current.state.feedback.flatMap((feedback) =>
-    feedback.targets.map((target) => ({
-      feedbackId: feedback.id,
-      textRevisionId: feedback.textRevisionId,
-      targetId: target.id,
-      targetRevisionId: target.revisionId,
-    })),
-  )
-  if (targets.length === 0) return null
-  return {
-    expectedSnapshotId: current.reference.snapshotId,
-    groups: [{ basis: { kind: 'unknown' }, targets }],
-  }
-}
-
-function archiveErrorMessage(cause: unknown) {
-  if (isReviewWorkspaceError(cause)) return cause.message
-  return '无法预览或存档意见，请重试。'
-}
-
-function isReviewWorkspaceError(cause: unknown): cause is ReviewWorkspaceError {
-  return typeof cause === 'object' && cause !== null && 'message' in cause
 }
 
 export function ReviewAbandonDialog({ review, onClose }: ReviewAbandonDialogProps) {

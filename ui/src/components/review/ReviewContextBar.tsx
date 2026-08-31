@@ -11,6 +11,7 @@ interface ReviewContextBarProps {
   onRequestAbandon(): void
   onArchive?: () => void
   onHistory?: () => void
+  onUsageImport?: () => void
   continuousFeedbackCount?: number
   archiveDisabled?: boolean
   historyDisabled?: boolean
@@ -27,6 +28,7 @@ export default function ReviewContextBar({
   onRequestAbandon,
   onArchive,
   onHistory,
+  onUsageImport,
   continuousFeedbackCount,
   archiveDisabled = false,
   historyDisabled = false,
@@ -50,6 +52,11 @@ export default function ReviewContextBar({
           >
             历史
           </ViewerButton>
+          {onUsageImport !== undefined && (
+            <ViewerButton tone="secondary" onClick={onUsageImport}>
+              导入声明
+            </ViewerButton>
+          )}
           <ViewerButton
             tone="primary"
             onClick={onArchive}

@@ -10,7 +10,11 @@ import ViewerButton from '../../components/ui/ViewerButton'
 import { isPreviewableImage } from '../../fileKinds'
 import type { ViewerSettingsContextValue } from '../../settings/ViewerSettingsProvider'
 import type { ViewerState } from '../../state/viewerState'
-import { legacyImageReviewWorkbenchAdapter } from '../review/imageReviewWorkbenchAdapter'
+import {
+  continuousImageReviewWorkbenchAdapter,
+  legacyImageReviewWorkbenchAdapter,
+} from '../review/imageReviewWorkbenchAdapter'
+import type { ContinuousReviewCoordinator } from '../review/useContinuousReviewCoordinator'
 import {
   type ImageReviewWorkbenchController,
   useImageReviewWorkbench,
@@ -23,6 +27,8 @@ type ProjectAccess = NonNullable<ViewerState['project']>['access']
 
 export interface WorkspaceReviewPresentation {
   coordinator: ReviewSessionCoordinator
+  protocol?: 'legacy' | 'continuous'
+  continuousCoordinator?: ContinuousReviewCoordinator
   capturedScope: ReviewScopeRequest | null
   feedbackCountByEntityId: ReadonlyMap<string, number>
   onReturnToMembers(entityIds: string[]): void
@@ -73,15 +79,22 @@ export interface WorkspaceImageReviewPreviewProps {
 }
 
 export default function WorkspaceImageReviewPreview(props: WorkspaceImageReviewPreviewProps) {
+  const continuous = props.review.continuousCoordinator
+  const protocol = props.review.protocol ?? (continuous === undefined ? 'legacy' : 'continuous')
   const route = resolveImageReviewRoute({
+    protocol,
     snapshot: props.review.coordinator.snapshot,
     file: props.file,
     capturedScope: props.review.capturedScope,
     projectAccess: props.projectAccess,
   })
 
-  if (route === 'workbench' && props.review.capturedScope !== null) {
-    return <ImageReviewOverlay {...props} scope={props.review.capturedScope} />
+  if (protocol === 'continuous' && continuous === undefined)
+    return <OrdinaryImagePreview {...props} />
+  if (route === 'workbench' && (continuous !== undefined || props.review.capturedScope !== null)) {
+    return (
+      <ImageReviewOverlay {...props} scope={props.review.capturedScope} continuous={continuous} />
+    )
   }
   if (route === 'outside_scope') return <OutsideScopeImagePreview {...props} />
   return <OrdinaryImagePreview {...props} />
@@ -117,11 +130,18 @@ function ImageReviewOverlay({
   emitIntent,
   activeControllerRef,
   scope,
-}: WorkspaceImageReviewPreviewProps & { scope: ReviewScopeRequest }) {
+  continuous,
+}: WorkspaceImageReviewPreviewProps & {
+  scope: ReviewScopeRequest | null
+  continuous: ContinuousReviewCoordinator | undefined
+}) {
   const [abandonOpen, setAbandonOpen] = useState(false)
   const adapter = useMemo(
-    () => legacyImageReviewWorkbenchAdapter(review.coordinator, scope),
-    [review.coordinator, scope],
+    () =>
+      continuous === undefined
+        ? legacyImageReviewWorkbenchAdapter(review.coordinator, definedScope(scope))
+        : continuousImageReviewWorkbenchAdapter(continuous),
+    [continuous, review.coordinator, scope],
   )
   const leave = useCallback(
     (intent: Parameters<ImageReviewWorkbenchController['requestLeave']>[0]) => {
@@ -199,6 +219,11 @@ function ImageReviewOverlay({
       )}
     </>
   )
+}
+
+function definedScope(scope: ReviewScopeRequest | null): ReviewScopeRequest {
+  if (scope === null) throw new Error('Legacy review workbench requires a fixed scope')
+  return scope
 }
 
 function OutsideScopeImagePreview(props: WorkspaceImageReviewPreviewProps) {

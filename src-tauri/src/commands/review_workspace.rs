@@ -1,4 +1,5 @@
 use crate::{dto::review_workspace::*, state::DesktopRuntime};
+use std::path::PathBuf;
 use std::sync::Arc;
 use tauri::State;
 use viewer_application::review_workspace::{MigrationInspection, UsageImportPreview};
@@ -122,6 +123,22 @@ pub async fn inspect_review_usage(
             request.session_id,
             Generation::new(request.generation),
             request.entity_id,
+        )
+        .await
+        .map(Into::into)
+        .and_then(|value| review_response(value, None))
+}
+#[tauri::command]
+pub async fn inspect_review_usage_selection(
+    runtime: State<'_, Arc<DesktopRuntime>>,
+    request: ReviewWorkspaceSessionRequestDto,
+    selected_path: PathBuf,
+) -> Result<ReviewWire<UsageImportPreview>, ReviewWorkspaceErrorDto> {
+    runtime
+        .inspect_review_usage_selection(
+            request.session_id,
+            Generation::new(request.generation),
+            selected_path,
         )
         .await
         .map(Into::into)

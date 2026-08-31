@@ -427,3 +427,57 @@ async fn review_workspace_archive_and_restore_previews_are_read_only_and_keep_hi
     );
     runtime.close_project().await.unwrap();
 }
+
+#[tokio::test]
+async fn review_workspace_explicit_usage_selection_is_project_relative_and_excludes_viewer_data() {
+    let root = project();
+    let cache = tempfile::tempdir().unwrap();
+    let outside = tempfile::tempdir().unwrap();
+    let runtime = DesktopRuntime::new(
+        cache.path().to_path_buf(),
+        Arc::new(Probe(ProjectAccess::ReadWrite)),
+    );
+    let (session, generation, _) = open(&runtime, root.path()).await;
+    let declaration = root.path().join("handoff/review-usage.json");
+    fs::create_dir_all(declaration.parent().unwrap()).unwrap();
+    fs::write(&declaration, b"{}").unwrap();
+    let manifest = root.path().join("viewer-production.json");
+    fs::write(&manifest, b"production-manifest-must-not-change").unwrap();
+    let downloads = outside.path().join("Downloads/review-usage.json");
+    fs::create_dir_all(downloads.parent().unwrap()).unwrap();
+    fs::write(&downloads, b"{}").unwrap();
+
+    assert_eq!(
+        runtime
+            .inspect_review_usage_selection(session, generation, declaration)
+            .await
+            .unwrap_err()
+            .code,
+        ReviewWorkspaceErrorCode::UsageInvalid,
+        "the selected in-project file reaches the existing declaration inspector"
+    );
+    assert_eq!(
+        runtime
+            .inspect_review_usage_selection(session, generation, downloads)
+            .await
+            .unwrap_err()
+            .code,
+        ReviewWorkspaceErrorCode::WrongContext,
+        "Viewer never scans or accepts a Downloads declaration outside the project"
+    );
+    let reserved = root.path().join(".viewer/review-usage.json");
+    fs::write(&reserved, b"{}").unwrap();
+    assert_eq!(
+        runtime
+            .inspect_review_usage_selection(session, generation, reserved)
+            .await
+            .unwrap_err()
+            .code,
+        ReviewWorkspaceErrorCode::UnsafeSource
+    );
+    assert_eq!(
+        fs::read(&manifest).unwrap(),
+        b"production-manifest-must-not-change"
+    );
+    runtime.close_project().await.unwrap();
+}

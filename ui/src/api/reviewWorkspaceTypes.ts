@@ -242,6 +242,8 @@ export interface ReviewWorkspacePort {
   previewRestore(request: PreviewReviewRestoreRequest): Promise<ReviewRestorePlan>
   getHistory(request: ReviewHistoryRequest): Promise<ReviewHistoryView>
   inspectUsage(request: InspectReviewUsageRequest): Promise<ReviewUsageImportPreview>
+  /** Opens one native picker and inspects only its explicit selection. */
+  selectUsage(request: ReviewWorkspaceSessionRequest): Promise<ReviewUsageImportPreview | null>
   inspectMigration(
     request: ReviewWorkspaceSessionRequest,
   ): Promise<ReviewMigrationInspection | null>

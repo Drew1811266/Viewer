@@ -176,6 +176,7 @@ export function reviewPort(view = workspace()): ReviewWorkspacePort {
     previewRestore: vi.fn(unsupported),
     getHistory: vi.fn(unsupported),
     inspectUsage: vi.fn(unsupported),
+    selectUsage: vi.fn(unsupported),
     inspectMigration: vi.fn(unsupported),
     getEvidence: vi.fn(unsupported),
     cancelTask: vi.fn().mockResolvedValue(0),

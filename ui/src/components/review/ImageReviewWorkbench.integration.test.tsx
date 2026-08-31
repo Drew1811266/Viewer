@@ -710,6 +710,9 @@ function continuousPort() {
     inspectUsage: vi.fn(async () => {
       throw new Error('Unexpected usage')
     }),
+    selectUsage: vi.fn(async () => {
+      throw new Error('Unexpected usage selection')
+    }),
     inspectMigration: vi.fn(async () => null),
     getEvidence: vi.fn(async () => {
       throw new Error('Unexpected evidence')

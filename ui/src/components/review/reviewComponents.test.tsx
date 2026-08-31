@@ -181,6 +181,7 @@ function continuousArchiveCoordinator(
 ): ContinuousReviewCoordinator {
   return {
     workbenchSessionKey,
+    state: { kind: 'ready' },
     currentSnapshotId: 'snapshot-c',
     hasUncommittedInput: false,
     view: {
@@ -507,6 +508,40 @@ describe('review workspace components', () => {
     expect(screen.getByRole('status')).toHaveTextContent('请先保存或取消正在编辑的意见。')
     fireEvent.click(screen.getByRole('button', { name: '历史' }))
     await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('历史记录完整性损坏'))
+  })
+
+  it('keeps an unknown basis available after an invalid declaration is skipped', async () => {
+    const continuous = continuousArchiveCoordinator('continuous-c', {
+      selectUsage: vi.fn().mockRejectedValue({
+        code: 'usage_invalid',
+        message: 'invalid declaration',
+        retryable: false,
+        committedReceipt: null,
+      }),
+    })
+    render(
+      <ReviewWorkspaceLayer
+        review={coordinator(active())}
+        selectedEntityIds={[]}
+        projectAccess="read_write"
+        continuousReview={continuous}
+        onReturnToMembers={vi.fn()}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: '导入声明' }))
+    fireEvent.click(screen.getByRole('button', { name: '选择声明文件' }))
+    expect(await screen.findByText('声明内容无效或无法核验')).toBeVisible()
+    fireEvent.click(screen.getByRole('button', { name: '不使用声明' }))
+    fireEvent.click(screen.getByRole('button', { name: '存档意见' }))
+
+    await waitFor(() =>
+      expect(continuous.previewArchive).toHaveBeenCalledWith({
+        expectedSnapshotId: 'snapshot-c',
+        groups: [{ basis: { kind: 'unknown' }, targets: [archiveTarget] }],
+      }),
+    )
+    expect(screen.getByText('交接版本未确认')).toBeVisible()
   })
 
   it('previews a supplied exact known basis instead of replacing it with an unknown selection', async () => {

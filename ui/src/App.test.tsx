@@ -11,6 +11,11 @@ import { afterEach, describe, expect, expectTypeOf, it, vi } from 'vitest'
 import App from './App'
 import type { FolderWorkspace, ReviewSessionSnapshot } from './api/types'
 import type { ProjectDropEvent, ViewerBridge } from './api/viewer'
+import {
+  migrationInspection,
+  reviewPort,
+  workspace,
+} from './app/review/continuousReviewTestFixtures'
 import { type AppShellState, useAppShellState } from './app/useAppShellState'
 import {
   type OperationDialogsState,
@@ -256,6 +261,124 @@ describe('Viewer empty state', () => {
     expect(within(toolbar).getByRole('button', { name: '更多' })).toBeVisible()
     expect(within(toolbar).queryByRole('button', { name: '软件设置' })).not.toBeInTheDocument()
     expect(within(toolbar).queryByRole('button', { name: '项目菜单' })).not.toBeInTheDocument()
+  })
+
+  it('routes a verified legacy project to explicit migration without exposing legacy completion', async () => {
+    const viewer = bridge()
+    const inspection = migrationInspection()
+    const reviewWorkspace = reviewPort({
+      ...workspace(),
+      migration: inspection,
+      capabilities: { continuousEditing: false, usageImport: false, migration: true },
+    })
+    render(<App bridge={viewer} reviewWorkspacePort={reviewWorkspace} />)
+    fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
+
+    expect(await screen.findByRole('dialog', { name: '迁移旧评审记录' })).toBeVisible()
+    expect(screen.queryByText('持续评审为只读')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '开始评审' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '完成本轮评审' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '暂不迁移' }))
+    expect(screen.queryByRole('dialog', { name: '迁移旧评审记录' })).not.toBeInTheDocument()
+    expect(reviewWorkspace.prepareCommand).not.toHaveBeenCalled()
+    expect(reviewWorkspace.applyCommand).not.toHaveBeenCalled()
+  })
+
+  it('keeps explicit migration available when migration preparation is interrupted', async () => {
+    const viewer = bridge()
+    const reviewWorkspace = reviewPort({
+      ...workspace(),
+      migration: migrationInspection(),
+      capabilities: { continuousEditing: false, usageImport: false, migration: true },
+    })
+    vi.mocked(reviewWorkspace.prepareCommand).mockRejectedValue({
+      code: 'io',
+      message: 'migration preparation interrupted',
+      retryable: true,
+      committedReceipt: null,
+    })
+    render(<App bridge={viewer} reviewWorkspacePort={reviewWorkspace} />)
+    fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
+
+    fireEvent.click(
+      within(await screen.findByRole('dialog', { name: '迁移旧评审记录' })).getByRole('button', {
+        name: '仅保留历史',
+      }),
+    )
+
+    expect(await screen.findByText('migration preparation interrupted')).toBeVisible()
+    expect(screen.getByRole('dialog', { name: '迁移旧评审记录' })).toBeVisible()
+    expect(reviewWorkspace.applyCommand).not.toHaveBeenCalled()
+  })
+
+  it('routes every writable image through the verified continuous adapter without starting a legacy round', async () => {
+    const viewer = bridge()
+    vi.mocked(viewer.queryFolder).mockResolvedValue(contentWorkspace())
+    const reviewWorkspace = reviewPort(workspace('snapshot-1'))
+    vi.mocked(reviewWorkspace.prepareAssets).mockResolvedValue([
+      {
+        asset: {
+          id: 'asset-1',
+          sourceEntityId: 'image-1',
+          relativePath: 'front.jpg',
+          evidence: { sizeBytes: 10, modifiedNs: '1', blake3: '12'.repeat(32) },
+          media: { kind: 'image', width: 640, height: 480 },
+          producerAssetId: null,
+          parentAssetVersionId: null,
+        },
+        preview: null,
+      },
+    ])
+    render(<App bridge={viewer} reviewWorkspacePort={reviewWorkspace} />)
+    fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
+    fireEvent.doubleClick(await screen.findByRole('option', { name: 'front.jpg' }))
+
+    await waitFor(() =>
+      expect(reviewWorkspace.prepareAssets).toHaveBeenCalledWith({
+        sessionId: 'session-1',
+        generation: 1,
+        entityIds: ['image-1'],
+      }),
+    )
+    expect(await screen.findByRole('toolbar', { name: '图片评审工具' })).toBeVisible()
+    expect(screen.queryByRole('button', { name: '开始评审' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '完成本轮评审' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '放弃本轮' })).not.toBeInTheDocument()
+    expect(viewer.reviewPreviewStart).not.toHaveBeenCalled()
+  })
+
+  it('blocks all review writes when the verified continuous project is read-only', async () => {
+    const viewer = bridge('read_only')
+    const readOnlyView = workspace('snapshot-1')
+    readOnlyView.capabilities = { continuousEditing: false, usageImport: false, migration: false }
+    render(<App bridge={viewer} reviewWorkspacePort={reviewPort(readOnlyView)} />)
+    fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
+
+    expect(await screen.findByText('持续评审为只读')).toBeVisible()
+    expect(screen.queryByRole('button', { name: '开始评审' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '导入声明' })).not.toBeInTheDocument()
+  })
+
+  it('does not fall back to legacy writes for an unknown future review protocol', async () => {
+    const viewer = bridge()
+    vi.mocked(viewer.queryFolder).mockResolvedValue(contentWorkspace())
+    const reviewWorkspace = reviewPort()
+    vi.mocked(reviewWorkspace.getWorkspace).mockRejectedValue({
+      code: 'unsupported_protocol',
+      message: 'viewer.review/99 is not supported',
+      retryable: false,
+      committedReceipt: null,
+    })
+    render(<App bridge={viewer} reviewWorkspacePort={reviewWorkspace} />)
+    fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
+
+    expect(await screen.findByText('评审协议版本暂不支持')).toBeVisible()
+    expect(screen.queryByRole('button', { name: '开始评审' })).not.toBeInTheDocument()
+    fireEvent.doubleClick(screen.getByRole('option', { name: 'front.jpg' }))
+    expect(await screen.findByRole('dialog', { name: '图片预览 front.jpg' })).toBeVisible()
+    expect(screen.queryByRole('toolbar', { name: '图片评审工具' })).not.toBeInTheDocument()
+    expect(reviewWorkspace.prepareAssets).not.toHaveBeenCalled()
+    expect(viewer.reviewPreviewStart).not.toHaveBeenCalled()
   })
 
   it('previews a selected fixed review scope through the typed bridge', async () => {

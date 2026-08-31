@@ -1,12 +1,17 @@
 import { beforeEach, expect, it, vi } from 'vitest'
 
 const invoke = vi.hoisted(() => vi.fn())
+const open = vi.hoisted(() => vi.fn())
 vi.mock('@tauri-apps/api/core', () => ({ invoke }))
+vi.mock('@tauri-apps/plugin-dialog', () => ({ open }))
 
 import type { PreparedReviewCommand, ReviewWorkspaceError } from './reviewWorkspaceTypes'
 import { tauriReviewWorkspaceBridge } from './viewer'
 
-beforeEach(() => invoke.mockReset())
+beforeEach(() => {
+  invoke.mockReset()
+  open.mockReset()
+})
 const session = { sessionId: '00000000-0000-0000-0000-000000000001', generation: 2 }
 const envelope: PreparedReviewCommand = {
   context: { projectId: 'project', streamId: 'stream', production: null },
@@ -99,4 +104,31 @@ it('preserves a committed receipt on rejection so callers do not manufacture a r
     failure,
   )
   expect(invoke).toHaveBeenCalledTimes(1)
+})
+
+it('inspects only the declaration explicitly returned by the native file picker', async () => {
+  open.mockResolvedValue('/project/handoff/review-usage.json')
+  invoke.mockResolvedValue({ source: 'handoff/review-usage.json' })
+
+  await expect(tauriReviewWorkspaceBridge.selectUsage(session)).resolves.toEqual({
+    source: 'handoff/review-usage.json',
+  })
+
+  expect(open).toHaveBeenCalledWith({
+    title: '选择返工依据声明',
+    directory: false,
+    multiple: false,
+    canCreateDirectories: false,
+    filters: [{ name: 'JSON 声明', extensions: ['json'] }],
+  })
+  expect(invoke).toHaveBeenCalledWith('inspect_review_usage_selection', {
+    request: session,
+    selectedPath: '/project/handoff/review-usage.json',
+  })
+})
+
+it('does not invoke desktop inspection when the native declaration picker is cancelled', async () => {
+  open.mockResolvedValue(null)
+  await expect(tauriReviewWorkspaceBridge.selectUsage(session)).resolves.toBeNull()
+  expect(invoke).not.toHaveBeenCalled()
 })

@@ -34,3 +34,26 @@ session/close busy 生命周期的失败测试；随后最小实现转绿。
 - `git diff --check` 通过。
 
 持续评审生产入口仍未启用；未修改 Rust、协议或 `useImageReviewWorkbench`。
+
+## Fix round 2 — 2026-08-30
+
+修复提交：`19e8b98fb4e358796735a0e4756197d572beafdd`
+
+- 展示读取与 coordinator 写事务拆为独立的 `presentationOperation` 与
+  `transactionOperation`。selector 可以隐藏旧展示并失效读取；entity 只失效素材准备。
+  已提交的 restore/continue 写事务以同步 guard 保持到 promise settle，拒绝重复、关闭和其他
+  公共历史操作，不把写入误称为取消。
+- 同一 session 即使 selector/entity 改变仍报告写入成功或失败；真正 session 替换不会把旧结果
+  带入新 session。新增 pending restore/continue 跨 lifecycle、重复调用和最终结果回归。
+- context bar 现在优先显示 history integrity error，不被较早的 dirty archive notice 覆盖。
+- 来源确认同步派生候选与 target identity 的有效性，并在点击时再次验证；候选移除或 target
+  替换的瞬时渲染不能继续确认。
+
+### Fix round 2 verification
+
+- 聚焦回归：5 个文件、55 项通过。
+- UI 全仓：145 个文件、1289 项通过，1 项既有跳过。
+- `pnpm --dir ui check`、`pnpm --dir ui build`、`pnpm architecture:boundaries`（含 contracts）
+  通过；`git diff --check` 通过。
+- `pnpm architecture:trends` exit 0，47 项既有/非阻断告警；拆分 restore 预览/提交路径后没有新增
+  Task 20 trend warning。

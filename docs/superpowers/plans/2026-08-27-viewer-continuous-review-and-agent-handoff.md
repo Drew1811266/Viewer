@@ -12,12 +12,12 @@
 
 > Status: Active
 >
-> 执行状态：阶段 A–D（任务 1–16）及阶段 E 的 Task 17–18 已完成，累计 18 / 23。
+> 执行状态：阶段 A–D（任务 1–16）及阶段 E 的 Task 17–19 已完成，累计 19 / 23。
 > 阶段 C 最终实现 `21edbf6` 已通过完整 `pnpm verify:clean` 和只读独立复验，检查点 C 完成。
 > 2026-08-28 获批的“Node 入口 + Rust 只读核心”已实现：`7863439`，并发修正 `76726a1`；完整门禁及只读独立复核通过。
 > Task 16 桥接 `db456ef`、审阅修正 `384d4cc` 已通过完整门禁与只读独立复验；阶段 D 完成。
 > 2026-08-28 Task 17 实现 `da1dcff`、修正 `d69a36a` 已通过完整门禁与独立复验，见[协调器记录](../../reviews/2026-08-28-continuous-review-coordinator-task17.md)。
-> 2026-08-30 Task 18 实现 `c6d5d11` 已通过完整门禁与独立复验，见[工作台记录](../../reviews/2026-08-30-continuous-review-workbench-task18.md)。下一步 Task 19；Task 19–23 未开始，新 UI 仍未启用。
+> 2026-08-30 Task 18 实现 `c6d5d11` 已通过完整门禁与独立复验，见[工作台记录](../../reviews/2026-08-30-continuous-review-workbench-task18.md)。Task 19 实现 `d869049`、安全修正 `9a722dc`、架构拆分 `a3305bd` 及精确空选择修正 `e96831d`、`4537cba` 已通过完整门禁与独立复验，见[存档 UI 记录](../../reviews/2026-08-30-continuous-review-archive-ui-task19.md)。下一步 Task 20；Task 20–23 未开始，新 UI 仍未启用。
 > 阶段 D 既有状态见[Task 16 契约检查点](../../progress/2026-08-28-continuous-review-task16-contract-checkpoint.md)及[阶段 D 桥接记录](../../reviews/2026-08-28-continuous-review-bridge-phase-d.md)；读取器结果见[阶段 D 读取器记录](../../reviews/2026-08-28-continuous-review-reader-phase-d.md)。
 > 应用用例、声明、迁移、Agent 读取器和新桥接仅在隔离工程验证；新桌面接口已组装，旧 UI 未切换，真实工程未迁移。
 >
@@ -828,7 +828,7 @@ onArchive 由父层注入 Task 19 的预览入口；未接通前仅用于组件�
 
 **Interfaces:** `ReviewArchiveDialogProps { preview: ArchivePlanDto, selection: ArchiveSelectionDto, busy, error, onSelectionChange, onConfirm, onCancel }`；两 DTO 对应 Task 3 原字段。依据显示“已核对交接版本”或“交接版本未确认”；默认不猜 Agent 实际读取过哪个技术版本。明确列出将移入历史、保留的后补意见、未选素材，绑定 expectedSnapshotId。
 
-- [ ] **Step 1 — RED：图 1 存档而图 2 和后补保留。** 用 B/C fixture 渲染预览；选择图 1 的一个目标，另一个共享目标仍属于图 2。
+- [x] **Step 1 — RED：图 1 存档而图 2 和后补保留。** 用 B/C fixture 渲染预览；选择图 1 的一个目标，另一个共享目标仍属于图 2。
 
 ```tsx
 expect(screen.getByText('交接版本未确认')).toBeVisible()
@@ -836,8 +836,8 @@ expect(screen.getByText('保留后补意见')).toBeVisible()
 expect(screen.getByRole('button', { name: '确认存档' })).toBeEnabled()
 ```
 
-- [ ] **Step 2 — RED。** `pnpm --dir ui test src/components/review/ReviewArchiveDialog.test.tsx`。
-- [ ] **Step 3 — 展示版本差集，确认只提交固定 selection。** 不把“整批”解释成自动包含 future additions；编辑中需先保存或取消输入，不能把 recovery 当已提交依据。
+- [x] **Step 2 — RED。** `pnpm --dir ui test src/components/review/ReviewArchiveDialog.test.tsx`；组件缺失、空范围可确认、错误 disposition、已覆盖 no-op、已知依据被替换、跨会话旧结果及最终取消选择等均留下预期失败证据。
+- [x] **Step 3 — 展示版本差集，确认只提交固定 selection。** 不把“整批”解释成自动包含 future additions；编辑中需先保存或取消输入，不能把 recovery 当已提交依据。
 
 ```ts
 if (currentSnapshotId !== preview.expectedSnapshotId) {
@@ -847,9 +847,9 @@ if (currentSnapshotId !== preview.expectedSnapshotId) {
 ```
 
 后端仍是最终版本守卫；前端守卫只是及时反馈。空范围／已有效覆盖不创建空存档；存档成功后提示可撤销，不显示“已修复”。
-- [ ] **Step 4 — 测试有效声明预选、无声明、手动选 B、预览后新增／删除／重绘、重复点击、取消、保存失败、共同目标拆分及误选恢复入口。** Unknown 始终有清晰确认，不用虚构“最新已处理版本”。
-- [ ] **Step 5 — GREEN。** `pnpm --dir ui test src/components/review/ReviewArchiveDialog.test.tsx src/app/review/useContinuousReviewCoordinator.test.tsx && pnpm --dir ui typecheck`。
-- [ ] **Step 6 — 提交。** `git commit -m "feat(review): preview exact manual archive scope"`。
+- [x] **Step 4 — 测试有效声明预选、无声明、手动选 B、预览后新增／删除／重绘、重复点击、取消、保存失败、共同目标拆分及误选恢复入口。** Unknown 始终有清晰确认，不用虚构“最新已处理版本”。补充覆盖 selection-only 已覆盖目标、空选择重新勾选、会话替换和旧异步结果失效；集成断言放入既有 `reviewComponents.test.tsx`。
+- [x] **Step 5 — GREEN。** 聚焦 3 文件 / 37 项、UI 全仓 141 文件 / 1251 项通过 + 1 项既有跳过；UI check/build、架构边界、完整 `pnpm verify:clean` exit 0。趋势 47 项非阻断既有分支告警；本任务曾新增的 `ReviewWorkspaceLayer` 长函数／决策复杂度告警已通过职责拆分消除，未改趋势基线。
+- [x] **Step 6 — 提交。** `d869049`（`feat(review): preview exact manual archive scope`）；修正 `9a722dc`、`a3305bd`、`e96831d`、`4537cba`。仅隔离分支，未合并或推送。
 
 ### Task 20: 历史查看、选择恢复与素材适用性确认
 

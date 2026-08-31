@@ -2,6 +2,7 @@ import { useId, useLayoutEffect, useRef, useState } from 'react'
 import type {
   ReviewArchivePlan,
   ReviewArchiveSelection,
+  ReviewHistorySelector,
   ReviewWorkspaceError,
 } from '../../api/reviewWorkspaceTypes'
 import type { ProjectAccess, ReviewScopeRequest } from '../../app/review/reviewModel'
@@ -12,9 +13,12 @@ import ViewerButton from '../ui/ViewerButton'
 import ReviewArchiveDialog, { availableArchiveGroups } from './ReviewArchiveDialog'
 import ReviewCompletionDialog from './ReviewCompletionDialog'
 import ReviewContextBar from './ReviewContextBar'
+import ReviewHistoryPanel from './ReviewHistoryPanel'
 import ReviewInspector from './ReviewInspector'
 import ReviewRecoveryNotice from './ReviewRecoveryNotice'
+import ReviewSourceConfirmation from './ReviewSourceConfirmation'
 import ReviewStartDialog from './ReviewStartDialog'
+import { useContinuousHistoryReview } from './useContinuousHistoryReview'
 
 interface ReviewWorkspaceLayerProps {
   review: ReviewSessionCoordinator
@@ -25,6 +29,8 @@ interface ReviewWorkspaceLayerProps {
   continuousReview?: ContinuousReviewCoordinator
   /** Optional verified or user-selected B basis. It is never inferred from an Agent claim. */
   archiveSelection?: ReviewArchiveSelection
+  /** Internal typed selector only; the production entry remains inactive until Task 21. */
+  historySelector?: ReviewHistorySelector
   onReturnToMembers(entityIds: string[]): void
 }
 
@@ -35,6 +41,7 @@ interface ArchiveDialogState {
 }
 
 type ContinuousArchivePreview = ReturnType<typeof useContinuousArchivePreview>
+type ContinuousHistoryReview = ReturnType<typeof useContinuousHistoryReview>
 
 interface ReviewToolbarActionProps {
   review: ReviewSessionCoordinator
@@ -79,11 +86,13 @@ export default function ReviewWorkspaceLayer({
   contextBarHidden = false,
   continuousReview,
   archiveSelection,
+  historySelector,
   onReturnToMembers,
 }: ReviewWorkspaceLayerProps) {
   const [inspectorOpen, setInspectorOpen] = useState(false)
   const [abandonOpen, setAbandonOpen] = useState(false)
   const archive = useContinuousArchivePreview(continuousReview, archiveSelection)
+  const history = useContinuousHistoryReview(continuousReview, selectedEntityIds, historySelector)
   const active = review.snapshot.phase === 'active'
   const completed = review.snapshot.phase === 'completed_read_only'
 
@@ -94,6 +103,7 @@ export default function ReviewWorkspaceLayer({
         review={review}
         continuousReview={continuousReview}
         archive={archive}
+        history={history}
         contextBarHidden={contextBarHidden}
         inspectorOpen={inspectorOpen}
         completed={completed}
@@ -120,6 +130,8 @@ export default function ReviewWorkspaceLayer({
       <ReviewWorkspaceDialogs
         review={review}
         archive={archive}
+        history={history}
+        continuousReview={continuousReview}
         abandonOpen={abandonOpen}
         onCloseAbandon={() => setAbandonOpen(false)}
       />
@@ -131,6 +143,7 @@ function ReviewWorkspaceContext({
   review,
   continuousReview,
   archive,
+  history,
   contextBarHidden,
   inspectorOpen,
   completed,
@@ -141,6 +154,7 @@ function ReviewWorkspaceContext({
   review: ReviewSessionCoordinator
   continuousReview: ContinuousReviewCoordinator | undefined
   archive: ContinuousArchivePreview
+  history: ContinuousHistoryReview
   contextBarHidden: boolean
   inspectorOpen: boolean
   completed: boolean
@@ -175,9 +189,10 @@ function ReviewWorkspaceContext({
       }
       onRequestAbandon={onAbandon}
       onArchive={continuousReview === undefined ? undefined : () => void archive.open()}
+      onHistory={history.available ? () => void history.open() : undefined}
       continuousFeedbackCount={continuousReview?.view?.current?.state.feedback.length}
       archiveDisabled={archiveUnavailable}
-      archiveNotice={archive.notice}
+      archiveNotice={archive.notice ?? history.notice}
     />
   )
 }
@@ -229,11 +244,15 @@ function ReviewWorkspaceInspector({
 function ReviewWorkspaceDialogs({
   review,
   archive,
+  history,
+  continuousReview,
   abandonOpen,
   onCloseAbandon,
 }: {
   review: ReviewSessionCoordinator
   archive: ContinuousArchivePreview
+  history: ContinuousHistoryReview
+  continuousReview: ContinuousReviewCoordinator | undefined
   abandonOpen: boolean
   onCloseAbandon(): void
 }) {
@@ -264,6 +283,36 @@ function ReviewWorkspaceDialogs({
           onSelectionChange={(selection) => void archive.changeSelection(selection)}
           onConfirm={() => void archive.confirm()}
           onCancel={archive.cancel}
+        />
+      )}
+      {history.panel !== null && (
+        <ReviewHistoryPanel
+          history={history.panel.history}
+          historyRef={history.panel.historyRef}
+          historyRefs={history.panel.historyRefs}
+          restorePlan={history.panel.restorePlan}
+          currentFeedback={continuousReview?.view?.current?.state.feedback ?? []}
+          evidence={history.panel.evidence}
+          busy={history.busy}
+          error={history.error}
+          onClose={history.close}
+          onContinue={(reference) => void history.continueHistorical(reference)}
+          onRestore={(decisions) => void history.restore(decisions)}
+          onRequestEvidence={(assetVersionId, role) =>
+            void history.requestEvidence(assetVersionId, role)
+          }
+        />
+      )}
+      {history.source !== null && (
+        <ReviewSourceConfirmation
+          oldAsset={history.source.oldAsset}
+          candidates={history.source.candidates}
+          originalAnchor={history.source.originalAnchor}
+          targetKey={history.source.targetKey}
+          busy={history.busy}
+          error={history.error}
+          onCancel={history.closeSource}
+          onConfirm={(decision) => void history.confirmSource(decision)}
         />
       )}
       {abandonOpen && <ReviewAbandonDialog review={review} onClose={onCloseAbandon} />}

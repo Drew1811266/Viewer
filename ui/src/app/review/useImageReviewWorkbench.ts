@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
-import type { ReviewAnchor, ReviewScopeRequest, ReviewSessionSnapshot } from '../../api/types'
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
+import type { ReviewAnchor } from '../../api/types'
 import {
   type AnnotationEditorAction,
   type AnnotationEditorState,
@@ -9,16 +9,17 @@ import {
   initialAnnotationEditorState,
   isValidAnnotationAnchor,
 } from './annotationModel'
-import {
-  type ImageReviewReadOnlyReason,
-  imageFeedbackForEntity,
-  imageReviewReadOnlyReason,
-  type SavedImageFeedback,
-} from './reviewModel'
-import type { ReviewSessionCoordinator } from './useReviewSessionCoordinator'
+import type {
+  ImageReviewPreparation,
+  ImageReviewWorkbenchAdapter,
+  ImageReviewWorkbenchFeedback,
+  ImageReviewWorkbenchView,
+} from './imageReviewWorkbenchAdapter'
+import type { ImageReviewReadOnlyReason } from './reviewModel'
 
 export type { ReviewAnchor } from '../../api/types'
-export type { AnnotationEditorState, AnnotationTool, SavedImageFeedback }
+export type { AnnotationEditorState, AnnotationTool }
+export type SavedImageFeedback = ImageReviewWorkbenchFeedback
 
 export type ReviewLeaveIntent =
   | { kind: 'navigate'; offset: -1 | 1 }
@@ -28,39 +29,47 @@ export type ReviewLeaveIntent =
   | { kind: 'abandon_review' }
 
 export interface UseImageReviewWorkbenchOptions {
-  coordinator: ReviewSessionCoordinator
+  adapter: ImageReviewWorkbenchAdapter
   entityId: string
-  scope: ReviewScopeRequest
   onLeave?: (intent: ReviewLeaveIntent) => void | Promise<void>
 }
 
 export interface ImageReviewWorkbenchController {
+  protocol: ImageReviewWorkbenchAdapter['protocol']
   tool: AnnotationTool
   editor: AnnotationEditorState
   dirty: boolean
   feedback: ReadonlyArray<SavedImageFeedback>
-  selectedFeedbackId: string | null
-  redrawFeedbackId: string | null
+  selectedItemId: string | null
+  redrawItemId: string | null
   railOpen: boolean
   readOnlyReason: ImageReviewReadOnlyReason
-  restorableFeedbackId: string | null
+  restorableItemId: string | null
+  statusMessage: string | null
+  preparedImage: {
+    entityId: string
+    assetVersionId: string
+    url: string
+    width: number
+    height: number
+  } | null
   leaveConfirmation: ReviewLeaveIntent | null
   setTool(tool: AnnotationTool): void
   setTemporaryPan(active: boolean): void
   beginAnnotation(anchor: ReviewAnchor): void
-  beginDrawing(anchor: ReviewAnchor, feedbackId?: string): boolean
+  beginDrawing(anchor: ReviewAnchor, itemId?: string): boolean
   finishDrawing(anchor: ReviewAnchor | null): Promise<void>
-  beginFeedbackTextEdit(feedbackId: string): void
-  beginRedraw(feedbackId: string): void
-  stageFeedbackAnchor(feedbackId: string, anchor: ReviewAnchor): boolean
+  beginFeedbackTextEdit(itemId: string): void
+  beginRedraw(itemId: string): void
+  stageFeedbackAnchor(itemId: string, anchor: ReviewAnchor): boolean
   updateDraftAnchor(anchor: ReviewAnchor): void
   updateDraftText(text: string): void
   saveDraft(): Promise<void>
   cancelDraft(): void
-  selectFeedback(feedbackId: string | null): void
-  replaceFeedbackAnchor(feedbackId: string, anchor: ReviewAnchor): Promise<void>
-  deleteFeedback(feedbackId: string): Promise<void>
-  restoreDeletedFeedback(feedbackId: string): Promise<void>
+  selectFeedback(itemId: string | null): void
+  replaceFeedbackAnchor(itemId: string, anchor: ReviewAnchor): Promise<void>
+  deleteFeedback(itemId: string): Promise<void>
+  restoreDeletedFeedback(itemId: string): Promise<void>
   setRailOpen(open: boolean): void
   requestLeave(intent: ReviewLeaveIntent): Promise<'proceeded' | 'blocked'>
   cancelLeave(): void
@@ -68,9 +77,8 @@ export interface ImageReviewWorkbenchController {
 }
 
 export function useImageReviewWorkbench({
-  coordinator,
+  adapter,
   entityId,
-  scope,
   onLeave,
 }: UseImageReviewWorkbenchOptions): ImageReviewWorkbenchController {
   const [editor, reduce] = useReducer(
@@ -78,19 +86,25 @@ export function useImageReviewWorkbench({
     undefined,
     initialAnnotationEditorState,
   )
-  const [snapshot, setSnapshot] = useState(coordinator.snapshot)
+  const [preparation, setPreparation] = useState<ImageReviewPreparation | null>(null)
+  const [workbenchView, setWorkbenchView] = useState<ImageReviewWorkbenchView>(() =>
+    adapter.view(entityId, null),
+  )
   const [railOpen, setRailOpen] = useState(true)
-  const [redrawFeedbackId, setRedrawFeedbackId] = useState<string | null>(null)
+  const [redrawItemId, setRedrawItemId] = useState<string | null>(null)
   const [leaveConfirmation, setLeaveConfirmation] = useState<ReviewLeaveIntent | null>(null)
-  const coordinatorRef = useRef(coordinator)
+  const adapterRef = useRef(adapter)
+  const preparationRef = useRef<ImageReviewPreparation | null>(null)
   const editorRef = useRef(editor)
+  const editorEntityRef = useRef<string | null>(null)
+  const editorPreparationKeyRef = useRef<string | null>(null)
+  const editorAssetVersionIdRef = useRef<string | null>(null)
+  const editorItemRef = useRef<ImageReviewWorkbenchFeedback | null>(null)
+  const statusMessageRef = useRef<{ entityId: string; message: string } | null>(null)
   const onLeaveRef = useRef(onLeave)
-  const capturedScopeRef = useRef(cloneReviewScope(scope))
-  const previewRequestedRef = useRef(false)
-  const previewPromiseRef = useRef<Promise<void> | null>(null)
   const pendingLeaveRef = useRef<ReviewLeaveIntent | null>(null)
 
-  coordinatorRef.current = coordinator
+  adapterRef.current = adapter
   editorRef.current = editor
   onLeaveRef.current = onLeave
   // Synchronous ownership also guards back-to-back pointer/leave/save commands
@@ -100,18 +114,37 @@ export function useImageReviewWorkbench({
     reduce(action)
   }, [])
 
-  useEffect(() => setSnapshot(coordinator.snapshot), [coordinator.snapshot])
+  const preparationKey = adapter.preparationKey(entityId)
+  const viewKey = adapter.viewKey(entityId)
+  useEffect(() => {
+    let active = true
+    preparationRef.current = null
+    setPreparation(null)
+    setWorkbenchView(adapterRef.current.view(entityId, null))
+    void adapterRef.current.prepareEntity(entityId).then(
+      (next) => {
+        if (!active || next.key !== preparationKey) return
+        preparationRef.current = next
+        setPreparation(next)
+        setWorkbenchView(adapterRef.current.view(entityId, next))
+      },
+      (cause) => {
+        if (!active) return
+        setWorkbenchView((current) => ({
+          ...current,
+          readOnlyReason: 'source_confirmation',
+          statusMessage: reviewErrorMessage(cause),
+        }))
+      },
+    )
+    return () => {
+      active = false
+    }
+  }, [entityId, preparationKey])
 
   useEffect(() => {
-    if (snapshot.phase !== 'idle' || previewRequestedRef.current) return
-    previewRequestedRef.current = true
-    previewPromiseRef.current = coordinatorRef.current.captureStart(capturedScopeRef.current)
-  }, [snapshot.phase])
-
-  const installSnapshot = useCallback((next: ReviewSessionSnapshot | null) => {
-    if (next !== null) setSnapshot(next)
-    return next
-  }, [])
+    setWorkbenchView(adapterRef.current.view(entityId, preparationRef.current))
+  }, [entityId, preparation, viewKey])
 
   const saveDraft = useCallback(async () => {
     const draft = editorRef.current
@@ -125,103 +158,131 @@ export function useImageReviewWorkbench({
     const frozen = {
       text: draft.text,
       anchor: cloneReviewAnchor(draft.draftAnchor),
-      sourceFeedbackId: draft.sourceFeedbackId,
-      operation: draft.operation,
+      sourceItemId: draft.sourceItemId,
+      operation: draft.operation ?? 'text',
     }
-    const existingIds = new Set(
-      imageFeedbackForEntity(snapshot, entityId).map((item) => item.feedbackId),
-    )
+    const currentPreparation = preparationRef.current
+    if (
+      editorEntityRef.current !== entityId ||
+      editorPreparationKeyRef.current !== adapterRef.current.preparationKey(entityId) ||
+      (adapterRef.current.protocol === 'continuous' &&
+        (currentPreparation?.key !== editorPreparationKeyRef.current ||
+          (currentPreparation?.prepared?.asset.id ?? null) !== editorAssetVersionIdRef.current))
+    ) {
+      dispatch({ type: 'request_save' })
+      dispatch({
+        type: 'save_failed',
+        message: '这条未保存意见属于上一素材版本或评审会话，请返回原上下文或放弃后重画。',
+      })
+      return
+    }
+    statusMessageRef.current = null
+    const existingIds = new Set(workbenchView.feedback.map((item) => item.itemId))
+    const item = frozen.sourceItemId === null ? null : editorItemRef.current
+    if (frozen.sourceItemId !== null && item === null) {
+      dispatch({ type: 'request_save' })
+      dispatch({ type: 'save_failed', message: '意见已变化，请重新选择。' })
+      return
+    }
     dispatch({ type: 'request_save' })
     try {
-      let next: ReviewSessionSnapshot | null
-      if (frozen.sourceFeedbackId !== null) {
-        next =
-          frozen.operation === 'geometry'
-            ? await coordinatorRef.current.replaceAnchoredFeedbackAnchor(
-                frozen.sourceFeedbackId,
-                entityId,
-                frozen.anchor,
-              )
-            : await coordinatorRef.current.updateAnchoredFeedbackText(
-                frozen.sourceFeedbackId,
-                frozen.text,
-              )
-      } else if (snapshot.phase === 'active') {
-        next = await coordinatorRef.current.addAnchoredFeedback({
-          entityId,
-          text: frozen.text,
-          anchor: frozen.anchor,
-        })
-      } else {
-        await previewPromiseRef.current
-        next = await coordinatorRef.current.startWithFeedback({
-          entityId,
-          text: frozen.text,
-          anchor: frozen.anchor,
-        })
-      }
-      const installed = installSnapshot(next)
+      const installed = await adapterRef.current.saveFeedback({
+        entityId,
+        item,
+        operation: frozen.operation,
+        text: frozen.text,
+        anchor: frozen.anchor,
+        preparation: preparationRef.current ?? {
+          key: adapterRef.current.preparationKey(entityId),
+          prepared: null,
+        },
+      })
+      setWorkbenchView(installed)
+      if (installed.statusMessage !== null)
+        statusMessageRef.current = { entityId, message: installed.statusMessage }
       const saved =
-        installed === null
-          ? null
-          : frozen.sourceFeedbackId === null
-            ? imageFeedbackForEntity(installed, entityId).find(
-                (item) => !existingIds.has(item.feedbackId),
-              )
-            : imageFeedbackForEntity(installed, entityId).find(
-                (feedback) => feedback.feedbackId === frozen.sourceFeedbackId,
-              )
-      if (saved === null || saved === undefined) throw new Error('Saved feedback unavailable')
-      dispatch({ type: 'save_succeeded', feedbackId: saved.feedbackId })
-      setRedrawFeedbackId(null)
+        frozen.sourceItemId === null
+          ? installed.feedback.find((feedback) => !existingIds.has(feedback.itemId))
+          : installed.feedback.find((feedback) => feedback.itemId === frozen.sourceItemId)
+      if (saved === undefined) throw new Error('Saved feedback unavailable')
+      dispatch({ type: 'save_succeeded', itemId: saved.itemId })
+      clearEditorOwnership(
+        editorEntityRef,
+        editorPreparationKeyRef,
+        editorAssetVersionIdRef,
+        editorItemRef,
+      )
+      setRedrawItemId(null)
     } catch (cause) {
       dispatch({ type: 'save_failed', message: reviewErrorMessage(cause) })
     }
-  }, [dispatch, entityId, installSnapshot, snapshot])
+  }, [dispatch, entityId, workbenchView.feedback])
 
   const beginDrawing = useCallback(
-    (anchor: ReviewAnchor, feedbackId?: string) => {
-      if (
-        hasUnsavedAnnotation(editorRef.current) ||
-        imageReviewReadOnlyReason(snapshot, entityId) !== null
-      )
+    (anchor: ReviewAnchor, itemId?: string) => {
+      if (hasUnsavedAnnotation(editorRef.current) || workbenchView.readOnlyReason !== null)
         return false
-      dispatch({ type: 'begin_drawing', anchor: cloneReviewAnchor(anchor), feedbackId })
+      dispatch({ type: 'begin_drawing', anchor: cloneReviewAnchor(anchor), itemId })
+      if (editorRef.current.status === 'drawing') {
+        captureEditorOwnership(
+          adapterRef.current,
+          entityId,
+          preparationRef.current,
+          editorEntityRef,
+          editorPreparationKeyRef,
+          editorAssetVersionIdRef,
+        )
+        editorItemRef.current =
+          itemId === undefined
+            ? null
+            : cloneWorkbenchFeedback(
+                workbenchView.feedback.find((feedback) => feedback.itemId === itemId) ?? null,
+              )
+        statusMessageRef.current = null
+      }
       return editorRef.current.status === 'drawing'
     },
-    [dispatch, entityId, snapshot],
+    [dispatch, entityId, workbenchView.feedback, workbenchView.readOnlyReason],
   )
 
   const replaceFeedbackAnchor = useCallback(
-    async (feedbackId: string, anchor: ReviewAnchor) => {
+    async (itemId: string, anchor: ReviewAnchor) => {
       const state = editorRef.current
-      if (
-        state.status !== 'idle' &&
-        !(state.status === 'drawing' && state.sourceFeedbackId === feedbackId)
-      )
+      if (state.status !== 'idle' && !(state.status === 'drawing' && state.sourceItemId === itemId))
         return
-      const feedback = imageFeedbackForEntity(snapshot, entityId).find(
-        (item) => item.feedbackId === feedbackId,
-      )
-      if (feedback === undefined || imageReviewReadOnlyReason(snapshot, entityId) !== null) return
+      const feedback = workbenchView.feedback.find((item) => item.itemId === itemId)
+      if (feedback === undefined || workbenchView.readOnlyReason !== null) return
       dispatch({
         type: 'begin_edit',
-        feedbackId,
+        itemId,
         anchor: cloneReviewAnchor(anchor),
         text: feedback.text,
         operation: 'geometry',
       })
+      captureEditorOwnership(
+        adapterRef.current,
+        entityId,
+        preparationRef.current,
+        editorEntityRef,
+        editorPreparationKeyRef,
+        editorAssetVersionIdRef,
+      )
+      editorItemRef.current = cloneWorkbenchFeedback(feedback)
       await saveDraft()
     },
-    [dispatch, entityId, saveDraft, snapshot],
+    [dispatch, saveDraft, workbenchView.feedback, workbenchView.readOnlyReason],
   )
 
   const applySavedMutation = useCallback(
-    async (operation: () => Promise<ReviewSessionSnapshot | null>) => {
+    async (operation: () => Promise<ImageReviewWorkbenchView>) => {
       if (hasUnsavedAnnotation(editorRef.current)) return
-      installSnapshot(await operation())
+      statusMessageRef.current = null
+      const next = await operation()
+      if (next.statusMessage !== null)
+        statusMessageRef.current = { entityId, message: next.statusMessage }
+      setWorkbenchView(next)
     },
-    [installSnapshot],
+    [entityId],
   )
 
   const requestLeave = useCallback(async (intent: ReviewLeaveIntent) => {
@@ -234,28 +295,48 @@ export function useImageReviewWorkbench({
     return 'proceeded' as const
   }, [])
 
+  const preparedImage = useMemo(
+    () => preparedImageForEntity(entityId, preparation),
+    [entityId, preparation],
+  )
+
   return {
+    protocol: adapter.protocol,
     tool: editor.tool,
     editor,
     dirty: hasUnsavedAnnotation(editor),
-    feedback: imageFeedbackForEntity(snapshot, entityId),
-    selectedFeedbackId: editor.selectedFeedbackId,
-    redrawFeedbackId,
+    feedback: workbenchView.feedback,
+    selectedItemId: editor.selectedItemId,
+    redrawItemId,
     railOpen,
-    readOnlyReason: imageReviewReadOnlyReason(snapshot, entityId),
-    restorableFeedbackId: snapshot.restorableFeedbackId,
+    readOnlyReason: workbenchView.readOnlyReason,
+    restorableItemId: workbenchView.restorableItemId,
+    statusMessage: workbenchStatusMessage(entityId, workbenchView, statusMessageRef.current),
+    preparedImage,
     leaveConfirmation,
     setTool(tool) {
       if (hasUnsavedAnnotation(editorRef.current)) return
-      setRedrawFeedbackId(null)
+      setRedrawItemId(null)
       dispatch({ type: 'set_tool', tool })
     },
     setTemporaryPan(active) {
       dispatch({ type: active ? 'temporary_pan_start' : 'temporary_pan_end' })
     },
     beginAnnotation(anchor) {
-      if (imageReviewReadOnlyReason(snapshot, entityId) !== null) return
+      if (hasUnsavedAnnotation(editorRef.current) || workbenchView.readOnlyReason !== null) return
       dispatch({ type: 'begin_annotation', anchor })
+      if (editorRef.current.status === 'editing') {
+        captureEditorOwnership(
+          adapterRef.current,
+          entityId,
+          preparationRef.current,
+          editorEntityRef,
+          editorPreparationKeyRef,
+          editorAssetVersionIdRef,
+        )
+        editorItemRef.current = null
+        statusMessageRef.current = null
+      }
     },
     beginDrawing,
     async finishDrawing(anchor) {
@@ -263,54 +344,62 @@ export function useImageReviewWorkbench({
       if (state.status !== 'drawing') return
       if (anchor === null || !isValidAnnotationAnchor(anchor)) {
         dispatch({ type: 'cancel_draft' })
-      } else if (state.sourceFeedbackId !== undefined) {
-        await replaceFeedbackAnchor(state.sourceFeedbackId, anchor)
+        clearEditorOwnership(
+          editorEntityRef,
+          editorPreparationKeyRef,
+          editorAssetVersionIdRef,
+          editorItemRef,
+        )
+      } else if (state.sourceItemId !== undefined) {
+        await replaceFeedbackAnchor(state.sourceItemId, anchor)
       } else {
         dispatch({ type: 'update_draft_anchor', anchor })
         dispatch({ type: 'complete_drawing' })
       }
     },
-    beginFeedbackTextEdit(feedbackId) {
-      if (
-        hasUnsavedAnnotation(editorRef.current) ||
-        imageReviewReadOnlyReason(snapshot, entityId) !== null
-      )
-        return
-      const feedback = imageFeedbackForEntity(snapshot, entityId).find(
-        (item) => item.feedbackId === feedbackId,
-      )
+    beginFeedbackTextEdit(itemId) {
+      if (hasUnsavedAnnotation(editorRef.current) || workbenchView.readOnlyReason !== null) return
+      const feedback = workbenchView.feedback.find((feedback) => feedback.itemId === itemId)
       if (feedback !== undefined)
         dispatch({
           type: 'begin_edit',
-          feedbackId,
+          itemId,
           anchor: feedback.anchor,
           text: feedback.text,
           operation: 'text',
         })
+      if (feedback !== undefined) {
+        captureEditorOwnership(
+          adapterRef.current,
+          entityId,
+          preparationRef.current,
+          editorEntityRef,
+          editorPreparationKeyRef,
+          editorAssetVersionIdRef,
+        )
+        editorItemRef.current = cloneWorkbenchFeedback(feedback)
+        statusMessageRef.current = null
+      }
     },
-    beginRedraw(feedbackId) {
+    beginRedraw(itemId) {
+      if (hasUnsavedAnnotation(editorRef.current) || workbenchView.readOnlyReason !== null) return
       if (
-        hasUnsavedAnnotation(editorRef.current) ||
-        imageReviewReadOnlyReason(snapshot, entityId) !== null
-      )
-        return
-      if (
-        !imageFeedbackForEntity(snapshot, entityId).some(
-          (item) => item.feedbackId === feedbackId && item.anchor.kind === 'image_stroke',
+        !workbenchView.feedback.some(
+          (feedback) => feedback.itemId === itemId && feedback.anchor.kind === 'image_stroke',
         )
       )
         return
-      dispatch({ type: 'select_feedback', feedbackId })
+      dispatch({ type: 'select_feedback', itemId })
       dispatch({ type: 'set_tool', tool: 'brush' })
-      setRedrawFeedbackId(feedbackId)
+      setRedrawItemId(itemId)
     },
-    stageFeedbackAnchor(feedbackId, anchor) {
+    stageFeedbackAnchor(itemId, anchor) {
       const state = editorRef.current
       if (state.status === 'idle') {
         dispatch({ type: 'set_tool', tool: anchor.kind === 'image_stroke' ? 'brush' : 'rectangle' })
-        return beginDrawing(anchor, feedbackId)
+        return beginDrawing(anchor, itemId)
       }
-      if (state.status !== 'drawing' || state.sourceFeedbackId !== feedbackId) return false
+      if (state.status !== 'drawing' || state.sourceItemId !== itemId) return false
       dispatch({ type: 'update_draft_anchor', anchor })
       return true
     },
@@ -322,18 +411,45 @@ export function useImageReviewWorkbench({
     },
     saveDraft,
     cancelDraft() {
+      if (!adapterRef.current.discardPendingInput()) return
       dispatch({ type: 'cancel_draft' })
-      setRedrawFeedbackId(null)
+      if (editorRef.current.status === 'idle') {
+        clearEditorOwnership(
+          editorEntityRef,
+          editorPreparationKeyRef,
+          editorAssetVersionIdRef,
+          editorItemRef,
+        )
+      }
+      setRedrawItemId(null)
     },
-    selectFeedback(feedbackId) {
-      dispatch({ type: 'select_feedback', feedbackId })
+    selectFeedback(itemId) {
+      dispatch({ type: 'select_feedback', itemId })
     },
     replaceFeedbackAnchor,
-    deleteFeedback(feedbackId) {
-      return applySavedMutation(() => coordinatorRef.current.deleteFeedback(feedbackId))
+    deleteFeedback(itemId) {
+      const item = workbenchView.feedback.find((feedback) => feedback.itemId === itemId)
+      return item === undefined
+        ? Promise.resolve()
+        : applySavedMutation(() =>
+            adapterRef.current.deleteFeedback({
+              entityId,
+              item,
+              preparation: preparationRef.current ?? {
+                key: adapterRef.current.preparationKey(entityId),
+                prepared: null,
+              },
+            }),
+          )
     },
-    restoreDeletedFeedback(feedbackId) {
-      return applySavedMutation(() => coordinatorRef.current.restoreDeletedFeedback(feedbackId))
+    restoreDeletedFeedback(itemId) {
+      return applySavedMutation(() =>
+        adapterRef.current.restoreDeletedFeedback({
+          entityId,
+          itemId,
+          preparation: preparationRef.current,
+        }),
+      )
     },
     setRailOpen,
     requestLeave,
@@ -345,11 +461,18 @@ export function useImageReviewWorkbench({
       // A committed write cannot be discarded mid-flight. Keep the confirmation
       // and ownership until it settles, then allow explicit discard/retry.
       if (editorRef.current.status === 'saving') return
+      if (!adapterRef.current.discardPendingInput()) return
       const pending = pendingLeaveRef.current
       pendingLeaveRef.current = null
       setLeaveConfirmation(null)
       dispatch({ type: 'cancel_draft' })
-      setRedrawFeedbackId(null)
+      clearEditorOwnership(
+        editorEntityRef,
+        editorPreparationKeyRef,
+        editorAssetVersionIdRef,
+        editorItemRef,
+      )
+      setRedrawItemId(null)
       if (pending !== null) await onLeaveRef.current?.(pending)
     },
   }
@@ -361,10 +484,68 @@ function cloneReviewAnchor(anchor: ReviewAnchor): ReviewAnchor {
     : { ...anchor }
 }
 
-function cloneReviewScope(scope: ReviewScopeRequest): ReviewScopeRequest {
-  return scope.kind === 'selection'
-    ? { kind: 'selection', entityIds: [...scope.entityIds] }
-    : { ...scope }
+function cloneWorkbenchFeedback(
+  feedback: ImageReviewWorkbenchFeedback | null,
+): ImageReviewWorkbenchFeedback | null {
+  return feedback === null
+    ? null
+    : {
+        ...feedback,
+        targetKey: feedback.targetKey === null ? null : { ...feedback.targetKey },
+        anchor: cloneReviewAnchor(feedback.anchor),
+      }
+}
+
+function captureEditorOwnership(
+  adapter: ImageReviewWorkbenchAdapter,
+  entityId: string,
+  preparation: ImageReviewPreparation | null,
+  entityRef: { current: string | null },
+  preparationKeyRef: { current: string | null },
+  assetVersionIdRef: { current: string | null },
+) {
+  entityRef.current = entityId
+  preparationKeyRef.current = preparation?.key ?? adapter.preparationKey(entityId)
+  assetVersionIdRef.current = preparation?.prepared?.asset.id ?? null
+}
+
+function clearEditorOwnership(
+  entityRef: { current: string | null },
+  preparationKeyRef: { current: string | null },
+  assetVersionIdRef: { current: string | null },
+  itemRef: { current: ImageReviewWorkbenchFeedback | null },
+) {
+  entityRef.current = null
+  preparationKeyRef.current = null
+  assetVersionIdRef.current = null
+  itemRef.current = null
+}
+
+function preparedImageForEntity(entityId: string, preparation: ImageReviewPreparation | null) {
+  const prepared = preparation?.prepared ?? null
+  const preview = prepared?.preview ?? null
+  return prepared?.asset.sourceEntityId === entityId &&
+    preview?.assetVersionId === prepared.asset.id
+    ? {
+        entityId,
+        assetVersionId: prepared.asset.id,
+        url: preview.url,
+        width: preview.width,
+        height: preview.height,
+      }
+    : null
+}
+
+function workbenchStatusMessage(
+  entityId: string,
+  view: ImageReviewWorkbenchView,
+  retained: { entityId: string; message: string } | null,
+) {
+  if (view.statusMessage !== null) return view.statusMessage
+  if (retained?.entityId !== entityId) return null
+  return view.readOnlyReason === null || retained.message === '已保存，待确认'
+    ? retained.message
+    : null
 }
 
 function reviewErrorMessage(error: unknown): string {
@@ -376,6 +557,15 @@ function reviewErrorMessage(error: unknown): string {
     error.userMessage.length > 0
   ) {
     return error.userMessage
+  }
+  if (
+    typeof error === 'object' &&
+    error !== null &&
+    'message' in error &&
+    typeof error.message === 'string' &&
+    error.message.length > 0
+  ) {
+    return error.message
   }
   return '意见尚未保存，请重试。'
 }

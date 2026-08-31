@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef } from 'react'
+import { useCallback, useLayoutEffect, useRef } from 'react'
 import type { ImageReviewWorkbenchController } from '../../app/review/useImageReviewWorkbench'
 import ImagePreviewSurface, {
   type ImagePreviewSurfaceProps,
@@ -12,10 +12,14 @@ import ReviewFeedbackRail from './ReviewFeedbackRail'
 export interface ImageReviewWorkspaceProps
   extends Omit<ImagePreviewSurfaceProps, 'slots' | 'onNavigate'> {
   controller: ImageReviewWorkbenchController
+  onArchive?: () => void
+  onHistory?: () => void
 }
 
 export default function ImageReviewWorkspace({
   controller,
+  onArchive,
+  onHistory,
   ...surfaceProps
 }: ImageReviewWorkspaceProps) {
   const compactDefaultEntity = useRef<string | null>(null)
@@ -31,10 +35,29 @@ export default function ImageReviewWorkspace({
   }, [controller, surfaceProps.file.entityId])
 
   const metadata = surfaceProps.file.imageMetadata
+  const requestImage = useCallback<ImagePreviewSurfaceProps['requestImage']>(
+    async (file, representation, signal) => {
+      if (controller.protocol !== 'continuous')
+        return surfaceProps.requestImage(file, representation, signal)
+      const prepared = controller.preparedImage
+      if (prepared === null || prepared.entityId !== file.entityId)
+        throw new Error('当前评审素材版本尚未准备完成')
+      return {
+        cacheKey: `review:${prepared.assetVersionId}:${JSON.stringify(representation)}`,
+        url: prepared.url,
+        width: prepared.width,
+        height: prepared.height,
+        backend: 'image_io',
+      }
+    },
+    [controller.preparedImage, controller.protocol, surfaceProps.requestImage],
+  )
 
   return (
     <ImagePreviewSurface
       {...surfaceProps}
+      requestImage={requestImage}
+      prefetchFit={controller.protocol !== 'continuous'}
       onNavigate={(file) => {
         const currentIndex = surfaceProps.files.findIndex(
           (candidate) => candidate.entityId === surfaceProps.file.entityId,
@@ -63,39 +86,18 @@ export default function ImageReviewWorkspace({
           </>
         ),
         toolbarActions: (
-          <>
-            <AnnotationToolbar controller={controller} />
-            {controller.readOnlyReason === null && (
-              <>
-                <ViewerButton
-                  tone="quiet"
-                  onClick={() => void controller.requestLeave({ kind: 'finish_review' })}
-                >
-                  完成本轮评审
-                </ViewerButton>
-                <ViewerButton
-                  tone="quiet"
-                  onClick={() => void controller.requestLeave({ kind: 'abandon_review' })}
-                >
-                  放弃本轮
-                </ViewerButton>
-              </>
-            )}
-            <ViewerButton
-              tone="quiet"
-              className="preview-complete-action"
-              onClick={() => void controller.requestLeave({ kind: 'return_grid' })}
-            >
-              返回网格
-            </ViewerButton>
-          </>
+          <WorkbenchToolbarActions
+            controller={controller}
+            onArchive={onArchive}
+            onHistory={onHistory}
+          />
         ),
         stageOverlay: (projection) => (
           <>
             <AnnotationCanvas projection={projection} controller={controller} />
             {controller.editor.status !== 'idle' &&
               controller.editor.status !== 'drawing' &&
-              controller.editor.sourceFeedbackId === null &&
+              controller.editor.sourceItemId === null &&
               controller.editor.draftAnchor.kind !== 'asset' && (
                 <InlineFeedbackEditor
                   controller={controller}
@@ -108,6 +110,56 @@ export default function ImageReviewWorkspace({
         sidePanel: <ReviewFeedbackRail controller={controller} />,
       }}
     />
+  )
+}
+
+function WorkbenchToolbarActions({
+  controller,
+  onArchive,
+  onHistory,
+}: Pick<ImageReviewWorkspaceProps, 'controller' | 'onArchive' | 'onHistory'>) {
+  return (
+    <>
+      <AnnotationToolbar controller={controller} />
+      {controller.protocol === 'continuous' ? (
+        <>
+          <ViewerButton
+            tone="quiet"
+            disabled={
+              onArchive === undefined || controller.readOnlyReason !== null || controller.dirty
+            }
+            onClick={onArchive}
+          >
+            存档意见
+          </ViewerButton>
+          <ViewerButton tone="quiet" disabled={onHistory === undefined} onClick={onHistory}>
+            历史
+          </ViewerButton>
+        </>
+      ) : controller.readOnlyReason === null ? (
+        <>
+          <ViewerButton
+            tone="quiet"
+            onClick={() => void controller.requestLeave({ kind: 'finish_review' })}
+          >
+            完成本轮评审
+          </ViewerButton>
+          <ViewerButton
+            tone="quiet"
+            onClick={() => void controller.requestLeave({ kind: 'abandon_review' })}
+          >
+            放弃本轮
+          </ViewerButton>
+        </>
+      ) : null}
+      <ViewerButton
+        tone="quiet"
+        className="preview-complete-action"
+        onClick={() => void controller.requestLeave({ kind: 'return_grid' })}
+      >
+        返回网格
+      </ViewerButton>
+    </>
   )
 }
 

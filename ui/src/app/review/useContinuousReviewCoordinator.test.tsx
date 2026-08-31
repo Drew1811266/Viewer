@@ -13,6 +13,21 @@ import {
 } from './continuousReviewTestFixtures'
 import { useContinuousReviewCoordinator } from './useContinuousReviewCoordinator'
 
+it('changes the workbench session identity when the coordinator session instance is replaced', async () => {
+  const firstPort = reviewPort()
+  const replacementPort = reviewPort()
+  const hook = renderHook(({ port }) => useContinuousReviewCoordinator({ ...session, port }), {
+    initialProps: { port: firstPort },
+  })
+  await waitFor(() => expect(hook.result.current.state.kind).toBe('ready'))
+  const firstIdentity = hook.result.current.workbenchSessionKey
+
+  hook.rerender({ port: replacementPort })
+  await waitFor(() => expect(replacementPort.getWorkspace).toHaveBeenCalledOnce())
+
+  expect(hook.result.current.workbenchSessionKey).not.toBe(firstIdentity)
+})
+
 it('retains text after a lost receipt and retries the complete original envelope, installing the reread head', async () => {
   const port = reviewPort()
   const onError = vi.fn()

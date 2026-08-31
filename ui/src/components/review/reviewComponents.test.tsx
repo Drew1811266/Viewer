@@ -8,6 +8,7 @@ import type {
 } from '../../app/review/reviewModel'
 import type { ReviewSessionCoordinator } from '../../app/review/useReviewSessionCoordinator'
 import ReviewCompletionDialog from './ReviewCompletionDialog'
+import ReviewContextBar from './ReviewContextBar'
 import ReviewInspector from './ReviewInspector'
 import ReviewRecoveryNotice from './ReviewRecoveryNotice'
 import ReviewStartDialog from './ReviewStartDialog'
@@ -234,6 +235,31 @@ describe('review workspace components', () => {
     fireEvent.click(within(context).getByRole('button', { name: '完成本轮评审' }))
     expect(review.requestDiscard).toHaveBeenCalledWith('context_replacement', expect.any(Function))
     expect(review.prepareCompletion).toHaveBeenCalledOnce()
+  })
+
+  it('presents continuous review as current feedback plus archive/history, never round completion', () => {
+    const archive = vi.fn()
+    const history = vi.fn()
+    render(
+      <ReviewContextBar
+        protocol="continuous"
+        snapshot={active()}
+        inspectorOpen={false}
+        onReturnToMembers={vi.fn()}
+        onToggleInspector={vi.fn()}
+        onPrepareCompletion={vi.fn()}
+        onRequestAbandon={vi.fn()}
+        onArchive={archive}
+        onHistory={history}
+      />,
+    )
+    const context = screen.getByRole('region', { name: '持续评审上下文' })
+    expect(context).toHaveTextContent('当前意见 1')
+    expect(within(context).queryByRole('button', { name: '完成本轮评审' })).toBeNull()
+    fireEvent.click(within(context).getByRole('button', { name: '存档意见' }))
+    fireEvent.click(within(context).getByRole('button', { name: '历史' }))
+    expect(archive).toHaveBeenCalledOnce()
+    expect(history).toHaveBeenCalledOnce()
   })
 
   it('supports natural-language create/edit/delete with frozen member targets and Command-Enter', () => {

@@ -16,15 +16,16 @@ function controller(
   overrides: Partial<ImageReviewWorkbenchController> = {},
 ): ImageReviewWorkbenchController {
   return {
+    protocol: 'legacy',
     tool: 'browse',
     editor: {
       status: 'idle',
       tool: 'browse',
       temporarilyPanning: false,
-      selectedFeedbackId: null,
+      selectedItemId: null,
     },
     dirty: false,
-    redrawFeedbackId: null,
+    redrawItemId: null,
     beginDrawing: vi.fn(() => true),
     finishDrawing: vi.fn(async () => undefined),
     beginFeedbackTextEdit: vi.fn(),
@@ -32,17 +33,22 @@ function controller(
     stageFeedbackAnchor: vi.fn(() => true),
     feedback: [
       {
+        itemId: 'target-1',
         feedbackId: 'feedback-1',
+        targetKey: null,
+        assetVersionId: 'asset-1',
         ordinal: 1,
         text: '调整领口',
         createdAtMs: 1,
         anchor: { kind: 'image_rect', x: 0.1, y: 0.2, width: 0.3, height: 0.4 },
       },
     ],
-    selectedFeedbackId: null,
+    selectedItemId: null,
     railOpen: true,
     readOnlyReason: null,
-    restorableFeedbackId: null,
+    restorableItemId: null,
+    statusMessage: null,
+    preparedImage: null,
     leaveConfirmation: null,
     setTool: vi.fn(),
     setTemporaryPan: vi.fn(),
@@ -92,8 +98,8 @@ describe('AnnotationCanvas', () => {
             status: 'save_error',
             tool: 'rectangle',
             temporarilyPanning: false,
-            selectedFeedbackId: null,
-            sourceFeedbackId: null,
+            selectedItemId: null,
+            sourceItemId: null,
             draftAnchor: { kind: 'image_rect', x: 0.1, y: 0.2, width: 0.2, height: 0.3 },
             text: '保留未保存区域',
             message: '请重试',
@@ -110,7 +116,7 @@ describe('AnnotationCanvas', () => {
     expect(rect[3]).toBeCloseTo(144)
   })
   it('selects a numbered marker and provides keyboard rectangle movement', () => {
-    const review = controller({ selectedFeedbackId: 'feedback-1' })
+    const review = controller({ selectedItemId: 'target-1' })
     const parentKeyDown = vi.fn()
     const parentPointerDown = vi.fn()
     render(
@@ -121,12 +127,12 @@ describe('AnnotationCanvas', () => {
 
     const marker = screen.getByRole('button', { name: '意见 1：调整领口' })
     fireEvent.click(marker)
-    expect(review.selectFeedback).toHaveBeenCalledWith('feedback-1')
+    expect(review.selectFeedback).toHaveBeenCalledWith('target-1')
     fireEvent.pointerDown(marker, { clientX: 266, clientY: 116, pointerId: 7 })
     expect(parentPointerDown).not.toHaveBeenCalled()
     fireEvent.pointerUp(window, { clientX: 266, clientY: 116, pointerId: 7 })
     fireEvent.keyDown(marker, { key: 'ArrowRight' })
-    expect(review.replaceFeedbackAnchor).toHaveBeenCalledWith('feedback-1', {
+    expect(review.replaceFeedbackAnchor).toHaveBeenCalledWith('target-1', {
       kind: 'image_rect',
       x: 0.1 + 1 / 640,
       y: 0.2,
@@ -136,7 +142,7 @@ describe('AnnotationCanvas', () => {
     expect(screen.getAllByRole('button', { name: /调整意见 1/ })).toHaveLength(4)
     const handle = screen.getByRole('button', { name: '调整意见 1 右下角' })
     fireEvent.keyDown(handle, { key: 'ArrowRight', shiftKey: true })
-    expect(review.replaceFeedbackAnchor).toHaveBeenLastCalledWith('feedback-1', {
+    expect(review.replaceFeedbackAnchor).toHaveBeenLastCalledWith('target-1', {
       kind: 'image_rect',
       x: 0.1,
       y: 0.2,
@@ -152,7 +158,7 @@ describe('AnnotationCanvas', () => {
       resolve = done
     })
     const review = controller({
-      selectedFeedbackId: 'feedback-1',
+      selectedItemId: 'target-1',
       replaceFeedbackAnchor: vi.fn(() => pending),
     })
     render(<AnnotationCanvas projection={PROJECTION} controller={review} />)
@@ -165,7 +171,7 @@ describe('AnnotationCanvas', () => {
     if (replacement?.kind !== 'image_rect') throw new Error('expected rectangle replacement')
     expect(replacement.x).toBeCloseTo(0.2)
     expect(replacement.y).toBeCloseTo(0.3)
-    expect(review.stageFeedbackAnchor).toHaveBeenCalledWith('feedback-1', replacement)
+    expect(review.stageFeedbackAnchor).toHaveBeenCalledWith('target-1', replacement)
     resolve()
     await pending
     await waitFor(() =>
@@ -175,13 +181,13 @@ describe('AnnotationCanvas', () => {
 
   it('renders a controller-owned failed geometry candidate beside the server geometry', async () => {
     const review = controller({
-      selectedFeedbackId: 'feedback-1',
+      selectedItemId: 'target-1',
       editor: {
         status: 'save_error',
         tool: 'rectangle',
         temporarilyPanning: false,
-        selectedFeedbackId: 'feedback-1',
-        sourceFeedbackId: 'feedback-1',
+        selectedItemId: 'target-1',
+        sourceItemId: 'feedback-1',
         operation: 'geometry',
         draftAnchor: { kind: 'image_rect', x: 0.2, y: 0.3, width: 0.3, height: 0.4 },
         text: '调整领口',
@@ -196,7 +202,7 @@ describe('AnnotationCanvas', () => {
   })
 
   it('moves a selected rectangle when its visible marker starts outside the image', () => {
-    const review = controller({ selectedFeedbackId: 'feedback-1' })
+    const review = controller({ selectedItemId: 'target-1' })
     const projection = createImagePreviewProjection(
       { left: 0, top: 0, width: 640, height: 480 },
       { mode: 'fit', zoom: 1, rotation: 0, offset: { x: 0, y: 0 } },
@@ -241,11 +247,14 @@ describe('AnnotationCanvas', () => {
   it('redraws a selected brush path without changing feedback identity or text', () => {
     const review = controller({
       tool: 'brush',
-      selectedFeedbackId: 'feedback-2',
-      redrawFeedbackId: 'feedback-2',
+      selectedItemId: 'feedback-2',
+      redrawItemId: 'feedback-2',
       feedback: [
         {
+          itemId: 'feedback-2',
           feedbackId: 'feedback-2',
+          targetKey: null,
+          assetVersionId: 'asset-1',
           ordinal: 2,
           text: '保留原文字',
           createdAtMs: 2,
@@ -281,7 +290,10 @@ describe('AnnotationCanvas', () => {
     const review = controller({
       feedback: [
         {
+          itemId: 'whole',
           feedbackId: 'whole',
+          targetKey: null,
+          assetVersionId: 'asset-1',
           ordinal: null,
           text: '整图意见',
           createdAtMs: 1,

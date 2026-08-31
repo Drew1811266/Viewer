@@ -1,3 +1,4 @@
+import type { ReviewTargetVersionKey } from '../../api/reviewWorkspaceTypes'
 import type {
   ProjectAccess,
   ReviewAnchor,
@@ -31,7 +32,10 @@ export type ReviewScopeContext =
   | { kind: 'search'; selectedEntityIds: string[] }
 
 export interface SavedImageFeedback {
+  itemId: string
   feedbackId: string
+  targetKey: ReviewTargetVersionKey | null
+  assetVersionId: string
   text: string
   createdAtMs: number
   ordinal: number | null
@@ -42,6 +46,10 @@ export type ImageReviewReadOnlyReason =
   | 'outside_scope'
   | 'write_unavailable'
   | 'recovery_required'
+  | 'loading'
+  | 'saving'
+  | 'source_confirmation'
+  | 'migration_required'
   | null
 
 export function deriveReviewScope(context: ReviewScopeContext): ReviewScopeRequest | null {
@@ -124,7 +132,10 @@ export function imageFeedbackForEntity(
       }
       return [
         {
+          itemId: feedback.feedbackId,
           feedbackId: feedback.feedbackId,
+          targetKey: null,
+          assetVersionId: target.assetVersionId,
           text: feedback.text,
           createdAtMs: feedback.createdAtMs,
           ordinal,

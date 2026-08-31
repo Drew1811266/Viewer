@@ -25,6 +25,10 @@ export function useContinuousReviewCoordinator({
       ),
     [port, sessionId, generation],
   )
+  const workbenchSessionKey = useMemo(
+    () => `${sessionId}:${generation}:${crypto.randomUUID()}`,
+    [session, sessionId, generation],
+  )
   const snapshot = useSyncExternalStore(session.subscribe, session.getSnapshot)
   useEffect(() => {
     const stop = session.start(handoverRef.current)
@@ -34,6 +38,8 @@ export function useContinuousReviewCoordinator({
   }, [session])
   return {
     ...snapshot,
+    workbenchSessionKey,
+    getSnapshot: session.getSnapshot,
     beginEditor: session.beginEditor,
     saveFeedback: session.saveFeedback,
     retry: session.retry,

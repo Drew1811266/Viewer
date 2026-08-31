@@ -19,9 +19,10 @@ const TEST_PROJECTION: ImagePreviewProjection = {
 }
 
 vi.mock('../imagePreview/ImagePreviewSurface', () => ({
-  default: ({ slots, onEscape }: ImagePreviewSurfaceProps) => (
+  default: ({ slots, onEscape, prefetchFit }: ImagePreviewSurfaceProps) => (
     <section
       data-testid="preview-surface"
+      data-prefetch-fit={prefetchFit === false ? 'false' : 'true'}
       className="image-preview"
       onKeyDown={(event) => event.key === 'Escape' && onEscape?.()}
     >
@@ -75,7 +76,10 @@ function savedRect(
   height: number,
 ): SavedImageFeedback {
   return {
+    itemId: feedbackId,
     feedbackId,
+    targetKey: null,
+    assetVersionId: 'asset-1',
     ordinal,
     text,
     createdAtMs: ordinal,
@@ -90,7 +94,10 @@ function savedStroke(
   points: ReadonlyArray<{ x: number; y: number }>,
 ): SavedImageFeedback {
   return {
+    itemId: feedbackId,
     feedbackId,
+    targetKey: null,
+    assetVersionId: 'asset-1',
     ordinal,
     text,
     createdAtMs: ordinal,
@@ -102,25 +109,28 @@ function controllerFixture(
   feedback: ReadonlyArray<SavedImageFeedback>,
 ): ImageReviewWorkbenchController {
   return {
+    protocol: 'legacy',
     tool: 'browse',
     editor: {
       status: 'idle',
       tool: 'browse',
       temporarilyPanning: false,
-      selectedFeedbackId: null,
+      selectedItemId: null,
     },
     dirty: false,
-    redrawFeedbackId: null,
+    redrawItemId: null,
     beginDrawing: vi.fn(() => true),
     finishDrawing: vi.fn(async () => undefined),
     beginFeedbackTextEdit: vi.fn(),
     beginRedraw: vi.fn(),
     stageFeedbackAnchor: vi.fn(() => true),
     feedback,
-    selectedFeedbackId: null,
+    selectedItemId: null,
     railOpen: true,
     readOnlyReason: null,
-    restorableFeedbackId: null,
+    restorableItemId: null,
+    statusMessage: null,
+    preparedImage: null,
     leaveConfirmation: null,
     setTool: vi.fn(),
     setTemporaryPan: vi.fn(),
@@ -166,8 +176,8 @@ describe('ImageReviewWorkspace', () => {
       status: 'saving',
       tool: 'rectangle',
       temporarilyPanning: false,
-      selectedFeedbackId: null,
-      sourceFeedbackId: null,
+      selectedItemId: null,
+      sourceItemId: null,
       draftAnchor: { kind: 'image_rect', x: 0.1, y: 0.1, width: 0.2, height: 0.2 },
       text: '保留文字',
     }
@@ -254,6 +264,29 @@ describe('ImageReviewWorkspace', () => {
     })
   })
 
+  it('uses ongoing-review archive and history actions without a completed-round lock', () => {
+    const controller = controllerFixture([])
+    controller.protocol = 'continuous'
+    const onArchive = vi.fn()
+    const onHistory = vi.fn()
+    render(
+      <ImageReviewWorkspace
+        {...surfaceFixture()}
+        controller={controller}
+        onArchive={onArchive}
+        onHistory={onHistory}
+      />,
+    )
+
+    expect(screen.queryByRole('button', { name: '完成本轮评审' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '放弃本轮' })).not.toBeInTheDocument()
+    expect(screen.getByTestId('preview-surface')).toHaveAttribute('data-prefetch-fit', 'false')
+    fireEvent.click(screen.getByRole('button', { name: '存档意见' }))
+    fireEvent.click(screen.getByRole('button', { name: '历史' }))
+    expect(onArchive).toHaveBeenCalledOnce()
+    expect(onHistory).toHaveBeenCalledOnce()
+  })
+
   it('keeps editing keyboard-safe, announces save failures, and restores focus after cancel', () => {
     const idle = controllerFixture([])
     const rendered = render(<ImageReviewWorkspace {...surfaceFixture()} controller={idle} />)
@@ -266,8 +299,8 @@ describe('ImageReviewWorkspace', () => {
       status: 'save_error',
       tool: 'rectangle',
       temporarilyPanning: false,
-      selectedFeedbackId: null,
-      sourceFeedbackId: null,
+      selectedItemId: null,
+      sourceItemId: null,
       draftAnchor: { kind: 'image_rect', x: 0.1, y: 0.1, width: 0.2, height: 0.2 },
       text: '修正领口',
       message: '意见尚未保存，请重试。',

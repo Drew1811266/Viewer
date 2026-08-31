@@ -42,7 +42,7 @@ describe('annotation editor model', () => {
         status: 'editing',
         draftAnchor: RECT,
         text: '',
-        sourceFeedbackId: null,
+        sourceItemId: null,
       }),
     )
   })
@@ -82,13 +82,13 @@ describe('annotation editor model', () => {
     )
     const saved = annotationEditorReducer(saving, {
       type: 'save_succeeded',
-      feedbackId: 'feedback-1',
+      itemId: 'feedback-1',
     })
     expect(saved).toEqual(
       expect.objectContaining({
         status: 'idle',
         tool: 'browse',
-        selectedFeedbackId: 'feedback-1',
+        selectedItemId: 'feedback-1',
       }),
     )
 
@@ -97,7 +97,7 @@ describe('annotation editor model', () => {
       { type: 'escape' },
     )
     expect(escapedDraft).toEqual(
-      expect.objectContaining({ status: 'idle', tool: 'browse', selectedFeedbackId: 'feedback-1' }),
+      expect.objectContaining({ status: 'idle', tool: 'browse', selectedItemId: 'feedback-1' }),
     )
     expect(annotationEditorReducer({ ...saved, tool: 'rectangle' }, { type: 'escape' })).toEqual(
       expect.objectContaining({ status: 'idle', tool: 'browse' }),

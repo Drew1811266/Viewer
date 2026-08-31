@@ -1,5 +1,5 @@
 import type { MutableRefObject } from 'react'
-import { useCallback, useLayoutEffect, useState } from 'react'
+import { useCallback, useLayoutEffect, useMemo, useState } from 'react'
 import type { BrowserFile, ReviewScopeRequest, ReviewSessionSnapshot } from '../../api/types'
 import ImagePreview from '../../components/ImagePreview'
 import type { Point } from '../../components/imagePreview/imageGeometry'
@@ -10,6 +10,7 @@ import ViewerButton from '../../components/ui/ViewerButton'
 import { isPreviewableImage } from '../../fileKinds'
 import type { ViewerSettingsContextValue } from '../../settings/ViewerSettingsProvider'
 import type { ViewerState } from '../../state/viewerState'
+import { legacyImageReviewWorkbenchAdapter } from '../review/imageReviewWorkbenchAdapter'
 import {
   type ImageReviewWorkbenchController,
   useImageReviewWorkbench,
@@ -30,19 +31,23 @@ export interface WorkspaceReviewPresentation {
 export type ImageReviewRoute = 'workbench' | 'outside_scope' | 'ordinary'
 
 export function resolveImageReviewRoute({
+  protocol = 'legacy',
   snapshot,
   file,
   capturedScope,
   projectAccess,
 }: {
+  protocol?: 'legacy' | 'continuous'
   snapshot: ReviewSessionSnapshot
   file: BrowserFile
   capturedScope: ReviewScopeRequest | null
   projectAccess: ProjectAccess
 }): ImageReviewRoute {
-  if (!isPreviewableImage(file) || projectAccess === 'read_only' || capturedScope === null) {
+  if (!isPreviewableImage(file) || projectAccess === 'read_only') {
     return 'ordinary'
   }
+  if (protocol === 'continuous') return 'workbench'
+  if (capturedScope === null) return 'ordinary'
   if (snapshot.reviewRoundId === null) {
     return snapshot.phase === 'idle' && snapshot.resume === null ? 'workbench' : 'ordinary'
   }
@@ -114,6 +119,10 @@ function ImageReviewOverlay({
   scope,
 }: WorkspaceImageReviewPreviewProps & { scope: ReviewScopeRequest }) {
   const [abandonOpen, setAbandonOpen] = useState(false)
+  const adapter = useMemo(
+    () => legacyImageReviewWorkbenchAdapter(review.coordinator, scope),
+    [review.coordinator, scope],
+  )
   const leave = useCallback(
     (intent: Parameters<ImageReviewWorkbenchController['requestLeave']>[0]) => {
       switch (intent.kind) {
@@ -141,9 +150,8 @@ function ImageReviewOverlay({
     [emitIntent, file.entityId, files, onClose, onNavigate, review.coordinator],
   )
   const controller = useImageReviewWorkbench({
-    coordinator: review.coordinator,
+    adapter,
     entityId: file.entityId,
-    scope,
     onLeave: leave,
   })
 

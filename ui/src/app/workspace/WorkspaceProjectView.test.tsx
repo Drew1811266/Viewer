@@ -68,6 +68,23 @@ describe('resolveImageReviewRoute', () => {
     ).toBe('outside_scope')
   })
 
+  it('routes every writable image through the continuous workbench without a fixed member scope', () => {
+    expect(
+      resolveImageReviewRoute({
+        protocol: 'continuous',
+        snapshot: {
+          ...idleReviewSnapshot(),
+          phase: 'active',
+          reviewRoundId: 'legacy-round-that-must-not-fix-v3-scope',
+          members: [],
+        },
+        file: IMAGE_A,
+        capturedScope: null,
+        projectAccess: 'read_write',
+      } as Parameters<typeof resolveImageReviewRoute>[0]),
+    ).toBe('workbench')
+  })
+
   it('retains ordinary preview when review is unavailable or the project is read-only', () => {
     for (const input of [
       { capturedScope: null, projectAccess: 'read_write' as const },

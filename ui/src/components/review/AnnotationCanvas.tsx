@@ -81,7 +81,7 @@ export default function AnnotationCanvas({ projection, controller }: AnnotationC
       controller.tool === 'rectangle'
         ? { kind: 'image_rect', x: point.x, y: point.y, width: 0, height: 0 }
         : { kind: 'image_stroke', points: [point] }
-    if (!controller.beginDrawing(initial, controller.redrawFeedbackId ?? undefined)) return
+    if (!controller.beginDrawing(initial, controller.redrawItemId ?? undefined)) return
     event.currentTarget.setPointerCapture?.(event.pointerId)
     if (controller.tool === 'rectangle') {
       gesture.current = { kind: 'rectangle', start: point }
@@ -162,18 +162,18 @@ export default function AnnotationCanvas({ projection, controller }: AnnotationC
       <div className="annotation-markers">
         {controller.feedback.map((feedback) => (
           <AnnotationMarker
-            key={feedback.feedbackId}
+            key={feedback.itemId}
             feedback={feedback}
             projection={projection}
-            selected={feedback.feedbackId === controller.selectedFeedbackId}
+            selected={feedback.itemId === controller.selectedItemId}
             readOnly={
               controller.readOnlyReason !== null ||
               (controller.dirty && controller.editor.status !== 'drawing')
             }
             drawing={controller.editor.status === 'drawing'}
-            onSelect={() => controller.selectFeedback(feedback.feedbackId)}
-            onReplace={(anchor) => controller.replaceFeedbackAnchor(feedback.feedbackId, anchor)}
-            onCandidate={(anchor) => controller.stageFeedbackAnchor(feedback.feedbackId, anchor)}
+            onSelect={() => controller.selectFeedback(feedback.itemId)}
+            onReplace={(anchor) => controller.replaceFeedbackAnchor(feedback.itemId, anchor)}
+            onCandidate={(anchor) => controller.stageFeedbackAnchor(feedback.itemId, anchor)}
             onCancel={controller.cancelDraft}
           />
         ))}

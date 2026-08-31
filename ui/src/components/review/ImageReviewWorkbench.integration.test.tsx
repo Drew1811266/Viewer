@@ -1,10 +1,22 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { useState } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type {
+  PreparedReviewCommand,
+  ReviewApplyResult,
+  ReviewWorkspacePort,
+  ReviewWorkspaceView,
+} from '../../api/reviewWorkspaceTypes'
+import {
+  continuousImageReviewWorkbenchAdapter,
+  legacyImageReviewWorkbenchAdapter,
+} from '../../app/review/imageReviewWorkbenchAdapter'
 import {
   emptyReviewEditor,
   idleReviewSnapshot,
   type ReviewSessionSnapshot,
 } from '../../app/review/reviewModel'
+import { useContinuousReviewCoordinator } from '../../app/review/useContinuousReviewCoordinator'
 import {
   type ImageReviewWorkbenchController,
   type ReviewAnchor,
@@ -142,6 +154,10 @@ function reviewCoordinator(anchor: ReviewAnchor | null = RECT): ReviewSessionCoo
 async function mount(review = reviewCoordinator()) {
   let controller!: ImageReviewWorkbenchController
   const leave = vi.fn(async () => undefined)
+  const adapter = legacyImageReviewWorkbenchAdapter(review, {
+    kind: 'selection',
+    entityIds: ['image-2'],
+  })
   const requestImage = vi.fn(async (file: BrowserFile) => ({
     cacheKey: file.entityId,
     url: `viewer-image://localhost/${file.entityId}`,
@@ -151,9 +167,8 @@ async function mount(review = reviewCoordinator()) {
   }))
   function Harness() {
     controller = useImageReviewWorkbench({
-      coordinator: review,
+      adapter,
       entityId: 'image-2',
-      scope: { kind: 'selection', entityIds: ['image-2'] },
       onLeave: leave,
     })
     return (
@@ -473,3 +488,245 @@ describe('real image workbench editing ownership', () => {
     expect(screen.getByRole('textbox')).toHaveValue('未保存文字')
   })
 })
+
+describe('continuous image review routing', () => {
+  it('saves image one, opens a newly prepared image two, and keeps annotation tools available', async () => {
+    const { port, requests } = continuousPort()
+    const ordinaryRequest = vi.fn(async () => ({
+      cacheKey: 'ordinary',
+      url: 'viewer-image://localhost/ordinary',
+      width: 640,
+      height: 480,
+      backend: 'image_io' as const,
+    }))
+    let controller!: ImageReviewWorkbenchController
+
+    function Harness() {
+      const [index, setIndex] = useState(0)
+      const file = defined(files[index])
+      const review = useContinuousReviewCoordinator({
+        sessionId: 'session-1',
+        generation: 1,
+        port,
+      })
+      const adapter = continuousImageReviewWorkbenchAdapter(review)
+      controller = useImageReviewWorkbench({
+        adapter,
+        entityId: file.entityId,
+        onLeave: (intent) => {
+          if (intent.kind === 'navigate') setIndex((current) => current + intent.offset)
+        },
+      })
+      return (
+        <>
+          <button type="button" onClick={() => setIndex(1)}>
+            打开图2
+          </button>
+          <ImageReviewWorkspace
+            controller={controller}
+            file={file}
+            files={files}
+            magnifier={{ shape: 'circle', magnification: 2, area: 'small' }}
+            pointerClientPoint={{ current: null }}
+            requestImage={ordinaryRequest}
+            onArchive={vi.fn()}
+            onHistory={vi.fn()}
+          />
+        </>
+      )
+    }
+
+    render(<Harness />)
+    await waitFor(() => expect(screen.getByRole('button', { name: '矩形' })).toBeEnabled())
+    await waitFor(() => expect(document.querySelector('.image-preview-image')).not.toBeNull())
+    const firstImage = document.querySelector('.image-preview-image')
+    if (firstImage === null) throw new Error('Expected prepared first preview')
+    expect(firstImage).toHaveAttribute('src', expect.stringContaining('asset-1'))
+    fireEvent.load(firstImage)
+    fireEvent.click(screen.getByRole('button', { name: '矩形' }))
+    draw()
+    fireEvent.change(screen.getByRole('textbox', { name: '标注意见' }), {
+      target: { value: '图1修正领口' },
+    })
+    fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Enter', metaKey: true })
+    await waitFor(() => expect(controller.dirty).toBe(false))
+    expect(requests[0]).toMatchObject({
+      command: {
+        kind: 'save_feedback',
+        feedbackId: null,
+        text: '图1修正领口',
+        targets: [{ kind: 'add', assetVersionId: 'asset-1' }],
+      },
+    })
+    expect(screen.getByRole('status')).toHaveTextContent('已保存，可供外部读取')
+
+    fireEvent.click(screen.getByRole('button', { name: '打开图2' }))
+    await waitFor(() => expect(screen.getByText('2.png')).toBeVisible())
+    await waitFor(() => expect(screen.getByRole('button', { name: '画笔' })).toBeEnabled())
+    expect(screen.getByRole('button', { name: '矩形' })).toBeEnabled()
+    expect(screen.queryByRole('button', { name: '完成本轮评审' })).not.toBeInTheDocument()
+    await waitFor(() =>
+      expect(document.querySelector('.image-preview-image')).toHaveAttribute(
+        'src',
+        expect.stringContaining('asset-2'),
+      ),
+    )
+    const secondImage = document.querySelector('.image-preview-image')
+    if (secondImage === null) throw new Error('Expected prepared second preview')
+    expect(secondImage).toHaveAttribute('src', expect.stringContaining('asset-2'))
+    expect(ordinaryRequest).not.toHaveBeenCalled()
+    expect(screen.queryByText('已保存，可供外部读取')).not.toBeInTheDocument()
+  })
+})
+
+function continuousPort() {
+  let snapshot = 0
+  let current = continuousView()
+  const requests: Array<{ command: PreparedReviewCommand['command'] }> = []
+  const port: ReviewWorkspacePort = {
+    getWorkspace: vi.fn(async () => current),
+    prepareAssets: vi.fn(async ({ entityIds }) =>
+      entityIds.map((entityId: string) => {
+        const suffix = entityId.at(-1) ?? '0'
+        const assetVersionId = `asset-${suffix}`
+        return {
+          asset: {
+            id: assetVersionId,
+            sourceEntityId: entityId,
+            relativePath: `${suffix}.png`,
+            evidence: { sizeBytes: 100, modifiedNs: '1', blake3: 'ab'.repeat(32) },
+            media: { kind: 'image' as const, width: 640, height: 480 },
+            producerAssetId: null,
+            parentAssetVersionId: null,
+          },
+          preview: {
+            assetVersionId,
+            role: 'base' as const,
+            url: `viewer-review-image://localhost/${assetVersionId}`,
+            width: 640,
+            height: 480,
+            sourceWidth: 640,
+            sourceHeight: 480,
+          },
+        }
+      }),
+    ),
+    prepareCommand: vi.fn(async (request) => {
+      requests.push({ command: structuredClone(request.command) })
+      const ordinal = requests.length
+      return {
+        context: { projectId: 'project-1', streamId: 'stream-1', production: null },
+        commandId: request.commandId,
+        expectedSnapshotId: request.expectedSnapshotId,
+        payloadDigest: `${ordinal}`.padStart(64, '0'),
+        generated: {
+          snapshotId: `snapshot-${ordinal}`,
+          feedbackId: `feedback-${ordinal}`,
+          textRevisionId: `text-${ordinal}`,
+          archiveId: `archive-${ordinal}`,
+          targets: [{ targetId: `target-${ordinal}`, targetRevisionId: `revision-${ordinal}` }],
+          migration: [],
+          createdAtMs: ordinal,
+        },
+        usageSelections: [],
+        command: structuredClone(request.command),
+      }
+    }),
+    applyCommand: vi.fn(async ({ envelope }): Promise<ReviewApplyResult> => {
+      snapshot += 1
+      const before = current.current?.state
+      const command = envelope.command
+      if (command.kind !== 'save_feedback' || command.targets[0]?.kind !== 'add')
+        throw new Error('Unexpected workbench command')
+      const target = command.targets[0]
+      const entityId = `image-${target.assetVersionId.at(-1)}`
+      const preparedAsset = await port.prepareAssets({
+        sessionId: 'session-1',
+        generation: 1,
+        entityIds: [entityId],
+      })
+      const asset = defined(preparedAsset[0]).asset
+      const targetId = defined(envelope.generated.targets[0]).targetId
+      const targetRevisionId = defined(envelope.generated.targets[0]).targetRevisionId
+      current = {
+        ...current,
+        current: {
+          reference: { snapshotId: `snapshot-${snapshot}`, blake3: 'cd'.repeat(32) },
+          production: null,
+          state: {
+            projectId: 'project-1',
+            streamId: 'stream-1',
+            snapshotId: `snapshot-${snapshot}`,
+            parent: current.current?.reference ?? null,
+            assets: [...(before?.assets ?? []), asset],
+            feedback: [
+              ...(before?.feedback ?? []),
+              {
+                id: envelope.generated.feedbackId,
+                textRevisionId: envelope.generated.textRevisionId,
+                text: command.text,
+                createdAtMs: envelope.generated.createdAtMs,
+                historyRef: null,
+                targets: [
+                  {
+                    id: targetId,
+                    revisionId: targetRevisionId,
+                    assetVersionId: target.assetVersionId,
+                    anchor: target.anchor,
+                    availability: { kind: 'ready' },
+                  },
+                ],
+              },
+            ],
+          },
+          commandId: envelope.commandId,
+          payloadDigest: envelope.payloadDigest,
+          changes: [],
+          evidence: [],
+        },
+        projection: {
+          actionable: [...current.projection.actionable, targetId],
+          needsConfirmation: [],
+        },
+      }
+      return {
+        receipt: {
+          commandId: envelope.commandId,
+          payloadDigest: envelope.payloadDigest,
+          snapshot: defined(current.current).reference,
+        },
+        view: current,
+      }
+    }),
+    previewArchive: vi.fn(async () => {
+      throw new Error('Unexpected archive')
+    }),
+    previewRestore: vi.fn(async () => {
+      throw new Error('Unexpected restore')
+    }),
+    getHistory: vi.fn(async () => {
+      throw new Error('Unexpected history')
+    }),
+    inspectUsage: vi.fn(async () => {
+      throw new Error('Unexpected usage')
+    }),
+    inspectMigration: vi.fn(async () => null),
+    getEvidence: vi.fn(async () => {
+      throw new Error('Unexpected evidence')
+    }),
+    cancelTask: vi.fn(async () => 0),
+  }
+  return { port, requests }
+}
+
+function continuousView(): ReviewWorkspaceView {
+  return {
+    streamId: 'stream-1',
+    current: null,
+    sourceChecks: [],
+    projection: { actionable: [], needsConfirmation: [] },
+    recovery: [],
+    migration: null,
+    capabilities: { continuousEditing: true, usageImport: true, migration: false },
+  }
+}

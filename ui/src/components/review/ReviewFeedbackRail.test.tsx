@@ -8,15 +8,16 @@ function controller(
   overrides: Partial<ImageReviewWorkbenchController> = {},
 ): ImageReviewWorkbenchController {
   return {
+    protocol: 'legacy',
     tool: 'browse',
     editor: {
       status: 'idle',
       tool: 'browse',
       temporarilyPanning: false,
-      selectedFeedbackId: null,
+      selectedItemId: null,
     },
     dirty: false,
-    redrawFeedbackId: null,
+    redrawItemId: null,
     beginDrawing: vi.fn(() => true),
     finishDrawing: vi.fn(async () => undefined),
     beginFeedbackTextEdit: vi.fn(),
@@ -24,24 +25,32 @@ function controller(
     stageFeedbackAnchor: vi.fn(() => true),
     feedback: [
       {
+        itemId: 'target-1',
         feedbackId: 'feedback-1',
+        targetKey: null,
+        assetVersionId: 'asset-1',
         ordinal: 1,
         text: '调整领口',
         createdAtMs: 1,
         anchor: { kind: 'image_rect', x: 0.1, y: 0.2, width: 0.3, height: 0.4 },
       },
       {
+        itemId: 'feedback-2',
         feedbackId: 'feedback-2',
+        targetKey: null,
+        assetVersionId: 'asset-1',
         ordinal: null,
         text: '整体降低饱和度',
         createdAtMs: 2,
         anchor: { kind: 'asset' },
       },
     ],
-    selectedFeedbackId: null,
+    selectedItemId: null,
     railOpen: true,
     readOnlyReason: null,
-    restorableFeedbackId: 'feedback-3',
+    restorableItemId: 'feedback-3',
+    statusMessage: null,
+    preparedImage: null,
     leaveConfirmation: null,
     setTool: vi.fn(),
     setTemporaryPan: vi.fn(),
@@ -68,9 +77,9 @@ describe('ReviewFeedbackRail', () => {
     const rendered = render(<ReviewFeedbackRail controller={review} />)
 
     fireEvent.click(screen.getByRole('button', { name: '选择意见 1：调整领口' }))
-    expect(review.selectFeedback).toHaveBeenCalledWith('feedback-1')
+    expect(review.selectFeedback).toHaveBeenCalledWith('target-1')
     fireEvent.click(screen.getByRole('button', { name: '编辑意见 1 文字' }))
-    expect(review.beginFeedbackTextEdit).toHaveBeenCalledWith('feedback-1')
+    expect(review.beginFeedbackTextEdit).toHaveBeenCalledWith('target-1')
     rendered.rerender(
       <ReviewFeedbackRail
         controller={{
@@ -79,8 +88,8 @@ describe('ReviewFeedbackRail', () => {
             status: 'editing',
             tool: 'browse',
             temporarilyPanning: false,
-            selectedFeedbackId: 'feedback-1',
-            sourceFeedbackId: 'feedback-1',
+            selectedItemId: 'target-1',
+            sourceItemId: 'target-1',
             text: '调整领口',
             draftAnchor: defined(review.feedback[0]).anchor,
           },
@@ -101,7 +110,7 @@ describe('ReviewFeedbackRail', () => {
     fireEvent.click(screen.getByRole('button', { name: '调整意见 1 区域' }))
     expect(review.setTool).toHaveBeenCalledWith('rectangle')
     fireEvent.click(screen.getByRole('button', { name: '删除意见 1' }))
-    expect(review.deleteFeedback).toHaveBeenCalledWith('feedback-1')
+    expect(review.deleteFeedback).toHaveBeenCalledWith('target-1')
     fireEvent.click(screen.getByRole('button', { name: '撤销删除' }))
     expect(review.restoreDeletedFeedback).toHaveBeenCalledWith('feedback-3')
   })
@@ -124,8 +133,8 @@ describe('ReviewFeedbackRail', () => {
         status: 'save_error',
         tool: 'browse',
         temporarilyPanning: false,
-        selectedFeedbackId: 'feedback-1',
-        sourceFeedbackId: 'feedback-1',
+        selectedItemId: 'target-1',
+        sourceItemId: 'target-1',
         draftAnchor: { kind: 'image_rect', x: 0.1, y: 0.2, width: 0.3, height: 0.4 },
         text: '保留这段修改',
         message: '意见尚未保存，请重试。',
@@ -138,5 +147,16 @@ describe('ReviewFeedbackRail', () => {
 
     expect(await screen.findByRole('status')).toHaveTextContent('意见尚未保存，请重试。')
     expect(input).toHaveValue('保留这段修改')
+  })
+
+  it('explains why annotation actions are temporarily unavailable', () => {
+    render(
+      <ReviewFeedbackRail
+        controller={controller({ protocol: 'continuous', readOnlyReason: 'source_confirmation' })}
+      />,
+    )
+    expect(screen.getByRole('status')).toHaveTextContent('素材来源或版本需要确认')
+    expect(screen.getByRole('button', { name: '整图意见' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: '编辑意见 1 文字' })).toBeDisabled()
   })
 })

@@ -11,35 +11,35 @@ interface AnnotationEditorInteraction {
 export type AnnotationEditorState =
   | (AnnotationEditorInteraction & {
       status: 'idle'
-      selectedFeedbackId: string | null
+      selectedItemId: string | null
     })
   | (AnnotationEditorInteraction & {
       status: 'drawing'
       tool: 'brush' | 'rectangle'
       draftAnchor: ReviewAnchor
-      sourceFeedbackId?: string
-      selectedFeedbackId: string | null
+      sourceItemId?: string
+      selectedItemId: string | null
     })
   | (AnnotationEditorInteraction & {
       status: 'editing'
       draftAnchor: ReviewAnchor
       text: string
-      sourceFeedbackId: string | null
-      selectedFeedbackId: string | null
+      sourceItemId: string | null
+      selectedItemId: string | null
     })
   | (AnnotationEditorInteraction & {
       status: 'saving'
       draftAnchor: ReviewAnchor
       text: string
-      sourceFeedbackId: string | null
-      selectedFeedbackId: string | null
+      sourceItemId: string | null
+      selectedItemId: string | null
     })
   | (AnnotationEditorInteraction & {
       status: 'save_error'
       draftAnchor: ReviewAnchor
       text: string
-      sourceFeedbackId: string | null
-      selectedFeedbackId: string | null
+      sourceItemId: string | null
+      selectedItemId: string | null
       message: string
     })
 
@@ -47,13 +47,13 @@ export type AnnotationEditorAction =
   | { type: 'set_tool'; tool: AnnotationTool }
   | { type: 'temporary_pan_start' }
   | { type: 'temporary_pan_end' }
-  | { type: 'begin_drawing'; anchor: ReviewAnchor; feedbackId?: string }
+  | { type: 'begin_drawing'; anchor: ReviewAnchor; itemId?: string }
   | { type: 'update_draft_anchor'; anchor: ReviewAnchor }
   | { type: 'complete_drawing' }
   | { type: 'begin_annotation'; anchor: ReviewAnchor }
   | {
       type: 'begin_edit'
-      feedbackId: string
+      itemId: string
       anchor: ReviewAnchor
       text: string
       operation?: 'text' | 'geometry'
@@ -61,8 +61,8 @@ export type AnnotationEditorAction =
   | { type: 'update_text'; text: string }
   | { type: 'request_save' }
   | { type: 'save_failed'; message: string }
-  | { type: 'save_succeeded'; feedbackId: string }
-  | { type: 'select_feedback'; feedbackId: string | null }
+  | { type: 'save_succeeded'; itemId: string }
+  | { type: 'select_feedback'; itemId: string | null }
   | { type: 'cancel_draft' }
   | { type: 'escape' }
 
@@ -71,7 +71,7 @@ export function initialAnnotationEditorState(): AnnotationEditorState {
     status: 'idle',
     tool: 'browse',
     temporarilyPanning: false,
-    selectedFeedbackId: null,
+    selectedItemId: null,
   }
 }
 
@@ -96,8 +96,8 @@ export function annotationEditorReducer(
         tool: state.tool,
         temporarilyPanning: false,
         draftAnchor: action.anchor,
-        sourceFeedbackId: action.feedbackId,
-        selectedFeedbackId: selectedFeedbackId(state),
+        sourceItemId: action.itemId,
+        selectedItemId: selectedItemId(state),
       }
     case 'update_draft_anchor':
       return state.status === 'drawing' ||
@@ -114,10 +114,10 @@ export function annotationEditorReducer(
             temporarilyPanning: false,
             draftAnchor: state.draftAnchor,
             text: '',
-            sourceFeedbackId: null,
-            selectedFeedbackId: state.selectedFeedbackId,
+            sourceItemId: null,
+            selectedItemId: state.selectedItemId,
           }
-        : idleState(state.selectedFeedbackId)
+        : idleState(state.selectedItemId)
     case 'begin_annotation':
       if (state.status !== 'idle' || !isValidAnnotationAnchor(action.anchor)) return state
       return {
@@ -126,13 +126,13 @@ export function annotationEditorReducer(
         temporarilyPanning: false,
         draftAnchor: action.anchor,
         text: '',
-        sourceFeedbackId: null,
-        selectedFeedbackId: selectedFeedbackId(state),
+        sourceItemId: null,
+        selectedItemId: selectedItemId(state),
       }
     case 'begin_edit':
       if (
         state.status !== 'idle' &&
-        !(state.status === 'drawing' && state.sourceFeedbackId === action.feedbackId)
+        !(state.status === 'drawing' && state.sourceItemId === action.itemId)
       )
         return state
       if (!isValidAnnotationAnchor(action.anchor)) return state
@@ -142,9 +142,9 @@ export function annotationEditorReducer(
         temporarilyPanning: false,
         draftAnchor: action.anchor,
         text: action.text,
-        sourceFeedbackId: action.feedbackId,
+        sourceItemId: action.itemId,
         operation: action.operation,
-        selectedFeedbackId: action.feedbackId,
+        selectedItemId: action.itemId,
       }
     case 'update_text':
       if (state.status === 'editing') return { ...state, text: action.text }
@@ -171,15 +171,15 @@ export function annotationEditorReducer(
         ? { ...state, status: 'save_error', message: action.message }
         : state
     case 'save_succeeded':
-      return state.status === 'saving' ? idleState(action.feedbackId) : state
+      return state.status === 'saving' ? idleState(action.itemId) : state
     case 'select_feedback':
-      return state.status === 'idle' ? { ...state, selectedFeedbackId: action.feedbackId } : state
+      return state.status === 'idle' ? { ...state, selectedItemId: action.itemId } : state
     case 'cancel_draft':
       return state.status !== 'saving' && hasUnsavedAnnotation(state)
-        ? idleState(selectedFeedbackId(state))
+        ? idleState(selectedItemId(state))
         : state
     case 'escape':
-      if (state.status !== 'idle') return idleState(selectedFeedbackId(state))
+      if (state.status !== 'idle') return idleState(selectedItemId(state))
       return { ...state, tool: 'browse', temporarilyPanning: false }
   }
 }
@@ -235,17 +235,17 @@ export function isValidAnnotationAnchor(anchor: ReviewAnchor): boolean {
   }
 }
 
-function idleState(selectedFeedbackId: string | null): AnnotationEditorState {
+function idleState(selectedItemId: string | null): AnnotationEditorState {
   return {
     status: 'idle',
     tool: 'browse',
     temporarilyPanning: false,
-    selectedFeedbackId,
+    selectedItemId,
   }
 }
 
-function selectedFeedbackId(state: AnnotationEditorState): string | null {
-  return state.selectedFeedbackId
+function selectedItemId(state: AnnotationEditorState): string | null {
+  return state.selectedItemId
 }
 
 function finiteNormalized(value: number): boolean {

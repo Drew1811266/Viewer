@@ -36,6 +36,7 @@ export interface ImagePreviewSurfaceProps {
   magnifier: MagnifierPreferences
   pointerClientPoint: MutableRefObject<Point | null>
   unavailableEntityIds?: ReadonlySet<string>
+  prefetchFit?: boolean
   requestImage: (
     file: BrowserFile,
     representation: ImageRepresentationRequest,
@@ -58,6 +59,7 @@ export default function ImagePreviewSurface({
   magnifier,
   pointerClientPoint,
   unavailableEntityIds = EMPTY_ENTITY_IDS,
+  prefetchFit = true,
   requestImage,
   onNavigate,
   onDimensions,
@@ -142,6 +144,12 @@ export default function ImagePreviewSurface({
   }, [scalePercent])
 
   useEffect(() => {
+    if (!prefetchFit) {
+      allowedWindow.current = new Set([file.entityId])
+      fitCache.current.clear()
+      pendingFit.current.clear()
+      return
+    }
     const windowFiles = files.slice(Math.max(0, currentIndex - 1), currentIndex + 2)
     const allowed = new Set(
       windowFiles
@@ -184,7 +192,7 @@ export default function ImagePreviewSurface({
         },
       )
     }
-  }, [currentIndex, file.entityId, files, requestImage, unavailableEntityIds])
+  }, [currentIndex, file.entityId, files, prefetchFit, requestImage, unavailableEntityIds])
 
   useLayoutEffect(() => {
     viewport.setMeasurements(stageSize, sourceDimensions)

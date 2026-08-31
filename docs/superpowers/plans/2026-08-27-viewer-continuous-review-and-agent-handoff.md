@@ -12,11 +12,12 @@
 
 > Status: Active
 >
-> 执行状态：阶段 A–D（任务 1–16）及阶段 E 的 Task 17 已完成，累计 17 / 23。
+> 执行状态：阶段 A–D（任务 1–16）及阶段 E 的 Task 17–18 已完成，累计 18 / 23。
 > 阶段 C 最终实现 `21edbf6` 已通过完整 `pnpm verify:clean` 和只读独立复验，检查点 C 完成。
 > 2026-08-28 获批的“Node 入口 + Rust 只读核心”已实现：`7863439`，并发修正 `76726a1`；完整门禁及只读独立复核通过。
 > Task 16 桥接 `db456ef`、审阅修正 `384d4cc` 已通过完整门禁与只读独立复验；阶段 D 完成。
-> 2026-08-28 Task 17 实现 `da1dcff`、修正 `d69a36a` 已通过完整门禁与独立复验，见[协调器记录](../../reviews/2026-08-28-continuous-review-coordinator-task17.md)。下一步 Task 18；Task 18–23 未开始，新 UI 仍未启用。
+> 2026-08-28 Task 17 实现 `da1dcff`、修正 `d69a36a` 已通过完整门禁与独立复验，见[协调器记录](../../reviews/2026-08-28-continuous-review-coordinator-task17.md)。
+> 2026-08-30 Task 18 实现 `c6d5d11` 已通过完整门禁与独立复验，见[工作台记录](../../reviews/2026-08-30-continuous-review-workbench-task18.md)。下一步 Task 19；Task 19–23 未开始，新 UI 仍未启用。
 > 阶段 D 既有状态见[Task 16 契约检查点](../../progress/2026-08-28-continuous-review-task16-contract-checkpoint.md)及[阶段 D 桥接记录](../../reviews/2026-08-28-continuous-review-bridge-phase-d.md)；读取器结果见[阶段 D 读取器记录](../../reviews/2026-08-28-continuous-review-reader-phase-d.md)。
 > 应用用例、声明、迁移、Agent 读取器和新桥接仅在隔离工程验证；新桌面接口已组装，旧 UI 未切换，真实工程未迁移。
 >
@@ -801,7 +802,7 @@ if (savedInputRevision === inputRevision.current) clearEditorInput()
 
 **Interfaces:** workbench 消费 Task 17 coordinator 的窄 adapter，不直接 import viewer bridge；编辑对象带 Feedback ID 和 Target ID，显示编号独立。工具禁用原因只允许 loading／saving冲突／源待确认／只读目录／recovery_required，不含“已完成本轮”。preview resolver 对 v3 新图返回可新建意见的 workbench，而非 outside_scope。legacy 明确保留迁移入口，不假装已采用新协议。
 
-- [ ] **Step 1 — RED：图 1 保存后打开图 2 仍能画框评审。** 在现有 integration fixture 中注入 v3 coordinator，依次绘制矩形、填文字、保存、导航，再点击画笔。
+- [x] **Step 1 — RED：图 1 保存后打开图 2 仍能画框评审。** 在现有 integration fixture 中注入 v3 coordinator，依次绘制矩形、填文字、保存、导航，再点击画笔。
 
 ```tsx
 expect(screen.getByRole('button', { name: '画笔' })).toBeEnabled()
@@ -809,17 +810,17 @@ expect(screen.getByRole('button', { name: '矩形' })).toBeEnabled()
 expect(screen.queryByRole('button', { name: '完成本轮评审' })).not.toBeInTheDocument()
 ```
 
-- [ ] **Step 2 — RED。** `pnpm --dir ui test src/components/review/ImageReviewWorkbench.integration.test.tsx src/app/review/useImageReviewWorkbench.test.tsx`。
-- [ ] **Step 3 — 接入成功保存／失败／待确认提示。** 保留画笔、矩形、整图意见、就地文字编辑、重绘、删除和脏输入离开确认。v3 工具栏显示“存档意见”“历史”，当前意见成功保存提示“已保存，可供外部读取”，不能声称 Agent 已读。
+- [x] **Step 2 — RED。** `pnpm --dir ui test src/components/review/ImageReviewWorkbench.integration.test.tsx src/app/review/useImageReviewWorkbench.test.tsx`。
+- [x] **Step 3 — 接入成功保存／失败／待确认提示。** 保留画笔、矩形、整图意见、就地文字编辑、重绘、删除和脏输入离开确认。v3 工具栏显示“存档意见”“历史”，当前意见成功保存提示“已保存，可供外部读取”，不能声称 Agent 已读。
 
 ```tsx
 <ViewerButton onClick={onArchive} disabled={hasUncommittedInput}>存档意见</ViewerButton>
 ```
 
 onArchive 由父层注入 Task 19 的预览入口；未接通前仅用于组件测试载体。通用 ImagePreviewSurface／几何投影不新增协议依赖；网格只浏览不创建反馈。
-- [ ] **Step 4 — 测试四处标注、编辑／重绘／删除后编号同步、批量共同意见、缩放／旋转／适应窗口／导航、键盘操作及 1024×720 紧凑布局。** 工具启用时核对预览表示与已准备素材版本，不一致要求刷新；画完再发生同路径覆写时保存不能静默重绑。存档历史只读不会禁用当前新意见工具；删除最后一条不显示“全部通过”。
-- [ ] **Step 5 — GREEN。** `pnpm --dir ui test src/app/review src/components/review && pnpm --dir ui check && pnpm architecture:boundaries`。
-- [ ] **Step 6 — 提交。** `git commit -m "feat(review): enable continuous feedback in the image workbench"`。
+- [x] **Step 4 — 测试四处标注、编辑／重绘／删除后编号同步、批量共同意见、缩放／旋转／适应窗口／导航、键盘操作及 1024×720 紧凑布局。** 工具启用时核对预览表示与已准备素材版本，不一致要求刷新；画完再发生同路径覆写时保存不能静默重绑。存档历史只读不会禁用当前新意见工具；删除最后一条不显示“全部通过”。
+- [x] **Step 5 — GREEN。** 评审目录 18 文件 / 157 项通过；UI 全仓 140 文件 / 1235 通过 + 1 个既有跳过；UI check、完整 `pnpm verify:clean`、架构边界／contracts 通过。独立复验确认所有 Important 和 Minor 已解决，无剩余阻断；趋势 48 项非阻断告警，未改基线。
+- [x] **Step 6 — 提交。** `c6d5d11`（`feat(review): enable continuous feedback in the image workbench`）。仅隔离分支，未合并或推送。
 
 ### Task 19: 手动存档预览、部分范围与后补保护 UI
 

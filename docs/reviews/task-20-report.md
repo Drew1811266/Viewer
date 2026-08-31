@@ -76,3 +76,29 @@ session/close busy 生命周期的失败测试；随后最小实现转绿。
 - `pnpm --dir ui check`、`pnpm --dir ui build`、`pnpm architecture:boundaries`（含 contracts）、
   `pnpm architecture:trends` 与 `git diff --check` 通过；trends 为 47 项既有/非阻断告警，无新增
   Task 20 warning。
+
+## Fix round 4 — 2026-08-31
+
+修复提交：`38a6a8f`
+
+- 根因是来源确认面板直接从通用 transport 层导入 `ReviewAnchor`，违反 review component 的单向
+  依赖边界。移除该导入，`originalAnchor` 改由允许的 `ReviewSourceBindingDecision['anchor']`
+  派生；运行时行为与协议保持不变。
+
+### Fix round 4 verification
+
+- RED：`node --test --test-name-pattern='manual review transport and dependency boundaries remain one-way'`
+  稳定复现 `ReviewSourceConfirmation.tsx imports transport DTOs`。
+- GREEN：同一精确 policy test 通过；`ReviewSourceConfirmation` focused 为 1 文件/5 测试通过，
+  Task 20 五文件 focused 为 5 文件/56 测试通过。
+- `pnpm --dir ui check`、`pnpm --dir ui build`、`pnpm test:policy`（33 项通过，48 项 scope
+  requirements 精确映射）通过。
+- `pnpm architecture:boundaries`（含 contracts）与 `pnpm architecture:trends` 通过；trends 为
+  47 项既有/非阻断告警，无新增 Task 20 warning。`git diff --check` 通过。
+- 完整 `pnpm verify:clean` 通过：review protocol 54 项、manual loop 7 项、视频 packaging 30
+  项、UI 全仓 145 文件/1290 通过/1 跳过、Rust workspace 全量测试、security、npm license
+  与 video license 均通过；验证过程无工作区漂移。仅有既有 Biome/canvas/chunk-size/Cargo
+  dependency duplicate warnings。
+
+持续评审生产入口仍未启用；本轮仅修改 UI 类型导入，未修改 Rust、协议、`useImageReviewWorkbench`
+或生产激活。

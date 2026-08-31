@@ -99,3 +99,32 @@ protocol, or `useImageReviewWorkbench` changes were made.
 - Focused: 5 files / 56 tests. Full UI: 145 files / 1290 passed, 1 skipped.
 - `pnpm --dir ui check`, `pnpm --dir ui build`, boundaries/contracts, trends, and diff check
   passed. Trends remain 47 non-blocking existing warnings, with no new Task 20 warning.
+
+## Fix round 4
+
+Fix commit: `38a6a8f` (`fix(review): derive source confirmation anchor type`)
+
+- Root cause: `ReviewSourceConfirmation` imported `ReviewAnchor` directly from the generic transport
+  DTO module, violating the one-way dependency boundary for review components. The import was removed
+  and `originalAnchor` now derives from the allowed `ReviewSourceBindingDecision['anchor']` type;
+  runtime behavior and protocol contracts are unchanged.
+
+### Fix round 4 verification
+
+- RED: the exact policy test
+  `node --test --test-name-pattern='manual review transport and dependency boundaries remain one-way'`
+  reproduced `ReviewSourceConfirmation.tsx imports transport DTOs`.
+- GREEN: the same exact policy test passed; SourceConfirmation focused passed (1 file / 5 tests), and
+  the five-file Task 20 focused suite passed (5 files / 56 tests).
+- `pnpm --dir ui check`, `pnpm --dir ui build`, and `pnpm test:policy` passed (33 policy tests;
+  48 scope requirements mapped exactly).
+- `pnpm architecture:boundaries` (including contracts), `pnpm architecture:trends`, and
+  `git diff --check` passed. Trends reported 47 existing non-blocking warnings and no new Task 20
+  warning.
+- Full `pnpm verify:clean` passed: review protocol 54 tests, manual review loop 7 tests, video
+  packaging 30 tests, full UI 145 files / 1290 passed / 1 skipped, all Rust workspace tests,
+  security, npm license, and video license checks. Verification produced no worktree drift. Existing
+  Biome/canvas/chunk-size/Cargo duplicate-dependency warnings remain non-blocking.
+
+Production review activation remains unchanged; no Rust, protocol, `useImageReviewWorkbench`, or
+production activation files were modified in this round.

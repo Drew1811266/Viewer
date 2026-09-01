@@ -11,6 +11,7 @@ import ViewerButton from '../ui/ViewerButton'
 import ReviewArchiveDialog from './ReviewArchiveDialog'
 import ReviewContextBar from './ReviewContextBar'
 import ReviewHistoryPanel from './ReviewHistoryPanel'
+import ReviewHistorySelectorDialog from './ReviewHistorySelectorDialog'
 import ReviewMigrationDialog from './ReviewMigrationDialog'
 import ReviewRecoveryNotice from './ReviewRecoveryNotice'
 import ReviewSourceConfirmation from './ReviewSourceConfirmation'
@@ -47,7 +48,8 @@ export default function ContinuousReviewWorkspaceLayer({
     coordinator,
     archiveSelection ?? adoptedSelection ?? undefined,
   )
-  const history = useContinuousHistoryReview(coordinator, selectedEntityIds, historySelector)
+  const historyCatalog = useHistoryCatalog(coordinator, selectedEntityIds, historySelector)
+  const history = historyCatalog.history
 
   useLayoutEffect(() => {
     setUsageOpen(false)
@@ -89,7 +91,7 @@ export default function ContinuousReviewWorkspaceLayer({
           onPrepareCompletion={() => undefined}
           onRequestAbandon={() => undefined}
           onArchive={() => void archive.open()}
-          onHistory={history.available ? () => void history.open() : undefined}
+          onHistory={historyCatalog.available ? historyCatalog.open : undefined}
           onUsageImport={
             coordinator.view?.capabilities.usageImport ? () => setUsageOpen(true) : undefined
           }
@@ -104,6 +106,7 @@ export default function ContinuousReviewWorkspaceLayer({
       {migration === null && (
         <ContinuousDialogs archive={archive} history={history} coordinator={coordinator} />
       )}
+      <HistoryCatalogDialog catalog={historyCatalog} />
       {usageOpen && (
         <ReviewUsageImport
           onSelect={coordinator.selectUsage}
@@ -118,6 +121,80 @@ export default function ContinuousReviewWorkspaceLayer({
       )}
     </>
   )
+}
+
+function useHistoryCatalog(
+  coordinator: ContinuousReviewCoordinator,
+  selectedEntityIds: string[],
+  override: ReviewHistorySelector | undefined,
+) {
+  const [choiceOpen, setChoiceOpen] = useState(false)
+  const [choice, setChoice] = useState<{ catalogKey: string; index: number } | null>(null)
+  const selectors = override === undefined ? (coordinator.view?.historySelectors ?? []) : [override]
+  const catalogKey = selectors.map(historySelectorKey).join('\u0000')
+  const selector =
+    selectors.length === 1
+      ? selectors[0]
+      : choice?.catalogKey === catalogKey
+        ? selectors[choice.index]
+        : undefined
+  const history = useContinuousHistoryReview(coordinator, selectedEntityIds, selector)
+
+  useLayoutEffect(() => {
+    setChoiceOpen(false)
+    setChoice(null)
+  }, [coordinator.workbenchSessionKey])
+
+  function open() {
+    if (selectors.length === 1) {
+      void history.open()
+      return
+    }
+    setChoice(null)
+    setChoiceOpen(true)
+  }
+
+  function cancel() {
+    setChoiceOpen(false)
+    setChoice(null)
+  }
+
+  function confirm() {
+    if (!history.available) return
+    setChoiceOpen(false)
+    void history.open()
+  }
+
+  return {
+    available: selectors.length > 0,
+    choiceOpen,
+    history,
+    selectors,
+    selectedIndex: choice?.catalogKey === catalogKey ? choice.index : null,
+    select: (index: number) => setChoice({ catalogKey, index }),
+    open,
+    cancel,
+    confirm,
+  }
+}
+
+function HistoryCatalogDialog({ catalog }: { catalog: ReturnType<typeof useHistoryCatalog> }) {
+  if (!catalog.choiceOpen || catalog.selectors.length <= 1) return null
+  return (
+    <ReviewHistorySelectorDialog
+      selectors={catalog.selectors}
+      selectedIndex={catalog.selectedIndex}
+      onSelect={catalog.select}
+      onCancel={catalog.cancel}
+      onConfirm={catalog.confirm}
+    />
+  )
+}
+
+function historySelectorKey(selector: ReviewHistorySelector): string {
+  if (selector.kind === 'archive') return `archive:${selector.archiveId}`
+  if (selector.kind === 'legacy') return `legacy:${selector.roundId}`
+  return `snapshot:${selector.snapshot.snapshotId}`
 }
 
 function ContinuousDialogs({

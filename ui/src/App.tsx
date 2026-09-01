@@ -1,6 +1,10 @@
 import type { ComponentProps, MutableRefObject } from 'react'
 import { useCallback, useMemo, useRef } from 'react'
-import type { ReviewWorkspacePort } from './api/reviewWorkspaceTypes'
+import type {
+  ReviewArchiveSelection,
+  ReviewHistorySelector,
+  ReviewWorkspacePort,
+} from './api/reviewWorkspaceTypes'
 import type { ViewerBridge } from './api/viewer'
 import { tauriReviewWorkspaceBridge, tauriViewerBridge } from './api/viewer'
 import { visibleReviewFeedbackCounts } from './app/review/reviewFeedbackCounts'
@@ -24,9 +28,17 @@ import { useViewerController } from './state/useViewerController'
 interface AppProps {
   bridge?: ViewerBridge
   reviewWorkspacePort?: ReviewWorkspacePort
+  reviewWorkspacePresentation?: {
+    archiveSelection?: ReviewArchiveSelection
+    historySelector?: ReviewHistorySelector
+  }
 }
 
-export default function App({ bridge = tauriViewerBridge, reviewWorkspacePort }: AppProps) {
+export default function App({
+  bridge = tauriViewerBridge,
+  reviewWorkspacePort,
+  reviewWorkspacePresentation,
+}: AppProps) {
   const pointerClientPoint = useLatestPointerClientPoint()
   const activeReviewWorkspacePort =
     reviewWorkspacePort ?? (bridge === tauriViewerBridge ? tauriReviewWorkspaceBridge : null)
@@ -35,6 +47,7 @@ export default function App({ bridge = tauriViewerBridge, reviewWorkspacePort }:
       <ViewerWorkspace
         bridge={bridge}
         reviewWorkspacePort={activeReviewWorkspacePort}
+        reviewWorkspacePresentation={reviewWorkspacePresentation}
         pointerClientPoint={pointerClientPoint}
       />
     </ViewerSettingsProvider>
@@ -44,10 +57,12 @@ export default function App({ bridge = tauriViewerBridge, reviewWorkspacePort }:
 function ViewerWorkspace({
   bridge,
   reviewWorkspacePort,
+  reviewWorkspacePresentation,
   pointerClientPoint,
 }: {
   bridge: ViewerBridge
   reviewWorkspacePort: ReviewWorkspacePort | null
+  reviewWorkspacePresentation?: AppProps['reviewWorkspacePresentation']
   pointerClientPoint: MutableRefObject<Point | null>
 }) {
   const settings = useViewerSettings()
@@ -226,6 +241,8 @@ function ViewerWorkspace({
           projectAccess={state.project.access}
           contextBarHidden={viewing.activePreview !== null}
           continuousReview={continuousReview.coordinator}
+          archiveSelection={reviewWorkspacePresentation?.archiveSelection}
+          historySelector={reviewWorkspacePresentation?.historySelector}
           onReturnToMembers={(entityIds) => void returnToReviewMembers(entityIds)}
         />
       }

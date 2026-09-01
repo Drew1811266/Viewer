@@ -318,8 +318,16 @@ fn fill_state(
 
 #[test]
 fn selected_completed_targets_get_new_identity_and_unselected_history_stays_background() {
+    use viewer_application::review_evidence::HistorySelector;
+
     let (_root, provider, context, _) = legacy();
     let inspection = provider.inspect_migration().unwrap().unwrap();
+    let expected_history = inspection
+        .legacy_records
+        .iter()
+        .filter(|reference| reference.stream_id == context.stream_id)
+        .map(|reference| HistorySelector::Legacy(reference.round_id))
+        .collect::<Vec<_>>();
     let old = &inspection.completed_candidates[0];
     let selected = LegacyTargetRef {
         round_id: old.review_round_id,
@@ -351,6 +359,10 @@ fn selected_completed_targets_get_new_identity_and_unselected_history_stays_back
     assert_eq!(
         history.contents,
         LegacyReviewContents::Completed(old.clone())
+    );
+    assert_eq!(
+        reader.load_history_selectors(context.stream_id).unwrap(),
+        expected_history
     );
 }
 

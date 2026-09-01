@@ -196,6 +196,12 @@ impl ContinuousReviewAssetPort for IndexedReviewAssetCatalog {
                 status,
             });
         }
+        let mut state = self.continuous_state()?;
+        for (asset, check) in assets.iter().zip(&result) {
+            if check.status == SourceCheckStatus::Match {
+                state.register(asset)?;
+            }
+        }
         Ok(result)
     }
 

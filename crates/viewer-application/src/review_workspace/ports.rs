@@ -203,6 +203,10 @@ pub enum ReviewCommitError {
 }
 
 pub trait ContinuousReviewRepositoryPort: Send + Sync {
+    fn load_history_selectors(
+        &self,
+        stream_id: ReviewStreamId,
+    ) -> Result<Vec<crate::review_evidence::HistorySelector>, ReviewCommitError>;
     fn load_unresolved_recovery(
         &self,
         stream: ReviewStreamId,

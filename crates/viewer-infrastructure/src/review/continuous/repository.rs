@@ -174,6 +174,36 @@ impl ContinuousReviewRepository {
 }
 
 impl ContinuousReviewRepositoryPort for ContinuousReviewRepository {
+    fn load_history_selectors(
+        &self,
+        stream_id: ReviewStreamId,
+    ) -> Result<Vec<viewer_application::review_evidence::HistorySelector>, ReviewCommitError> {
+        use viewer_application::review_evidence::HistorySelector;
+
+        let Some(view) = self.view()? else {
+            return Ok(vec![]);
+        };
+        let Some(stream) = view
+            .index
+            .streams
+            .iter()
+            .find(|stream| stream.review_stream_id == stream_id)
+        else {
+            return Ok(vec![]);
+        };
+        let mut selectors =
+            Vec::with_capacity(stream.archive_refs.len() + stream.legacy_refs.len());
+        for reference in &stream.archive_refs {
+            history::archive(&view, stream_id, reference.archive_id)?;
+            selectors.push(HistorySelector::Archive(reference.archive_id));
+        }
+        for reference in &stream.legacy_refs {
+            super::legacy::load(&view, stream_id, reference.round_id)?;
+            selectors.push(HistorySelector::Legacy(reference.round_id));
+        }
+        Ok(selectors)
+    }
+
     fn load_unresolved_recovery(
         &self,
         stream: ReviewStreamId,

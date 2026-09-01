@@ -338,6 +338,39 @@ async fn additions_preserve_previous_tracking_and_always_hash_source_content() {
     assert_eq!(original, before);
 }
 
+#[tokio::test]
+async fn fresh_catalog_reuses_the_checked_current_asset_identity_for_the_same_source_version() {
+    let fixture = Fixture::new();
+    let node = fixture.write("restart.png", b"persisted pixels");
+    let captured = fixture
+        .catalog()
+        .prepare_additions(&[node.entity_id], ReviewTaskCancellation::default())
+        .await
+        .unwrap()
+        .remove(0)
+        .asset;
+
+    let restarted = fixture.catalog();
+    assert_eq!(
+        restarted
+            .check_sources(
+                std::slice::from_ref(&captured),
+                ReviewTaskCancellation::default(),
+            )
+            .await
+            .unwrap()[0]
+            .status,
+        SourceCheckStatus::Match,
+    );
+    let reopened = restarted
+        .prepare_additions(&[node.entity_id], ReviewTaskCancellation::default())
+        .await
+        .unwrap()
+        .remove(0);
+
+    assert_eq!(reopened.asset, captured);
+}
+
 fn relocation(node: &FileNode, previous: Option<ReviewSourceLocator>) -> SourceRelocationDecision {
     SourceRelocationDecision {
         previous,

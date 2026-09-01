@@ -607,6 +607,18 @@ async fn partial_archive_restore_and_empty_current_keep_exact_identities() {
         .unwrap();
     let archive = command.generated.archive_id;
     let empty = service.apply(command).await.unwrap();
+    assert_eq!(
+        empty.view.history_selectors,
+        vec![viewer_application::review_evidence::HistorySelector::Archive(archive)]
+    );
+    assert_eq!(
+        service
+            .view(ReviewStreamId::from_u128(2))
+            .await
+            .unwrap()
+            .history_selectors,
+        empty.view.history_selectors
+    );
     assert!(
         empty
             .view

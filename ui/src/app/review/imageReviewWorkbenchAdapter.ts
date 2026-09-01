@@ -363,6 +363,25 @@ function continuousReadOnlyReason(
   if (preparation === null) return 'loading'
   const asset = preparedAsset(entityId, preparation)
   if (asset === null) return 'source_confirmation'
+  const current = snapshot.view.current?.state
+  const assetVersionsForEntity = new Set(
+    current?.assets
+      .filter((candidate) => candidate.sourceEntityId === entityId)
+      .map((candidate) => candidate.id) ?? [],
+  )
+  const referencedAssetVersionsForEntity = new Set(
+    current?.feedback.flatMap((feedback) =>
+      feedback.targets
+        .map((target) => target.assetVersionId)
+        .filter((assetVersionId) => assetVersionsForEntity.has(assetVersionId)),
+    ) ?? [],
+  )
+  if (
+    [...referencedAssetVersionsForEntity].some(
+      (assetVersionId) => assetVersionId !== asset.asset.id,
+    )
+  )
+    return 'source_confirmation'
   if (
     snapshot.view.sourceChecks.some(
       (check) => check.assetVersionId === asset.asset.id && check.status !== 'match',

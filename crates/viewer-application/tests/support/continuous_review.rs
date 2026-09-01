@@ -23,6 +23,7 @@ pub struct MemoryRepository {
     states: Mutex<Vec<StoredContinuousSnapshot>>,
     recovery: Mutex<HashMap<ReviewCommandId, RecoveryDraft>>,
     archives: Mutex<HashMap<ReviewArchiveId, ArchiveCheckpoint>>,
+    archive_order: Mutex<Vec<ReviewArchiveId>>,
     pub fail_commit: Mutex<Option<ReviewCommitError>>,
     pub fail_view_after_commit: Mutex<bool>,
     pub cancel_after_commit: Mutex<Option<ReviewTaskCancellation>>,
@@ -37,6 +38,7 @@ impl MemoryRepository {
         archive: ArchiveCheckpoint,
     ) {
         *self.states.lock().unwrap() = states;
+        self.archive_order.lock().unwrap().push(archive.archive_id);
         self.archives
             .lock()
             .unwrap()
@@ -47,6 +49,34 @@ impl MemoryRepository {
     }
 }
 impl ContinuousReviewRepositoryPort for MemoryRepository {
+    fn load_history_selectors(
+        &self,
+        stream: ReviewStreamId,
+    ) -> Result<Vec<HistorySelector>, ReviewCommitError> {
+        let archive_order = self.archive_order.lock().unwrap().clone();
+        let archives = self.archives.lock().unwrap();
+        let mut selectors = archive_order
+            .iter()
+            .map(|id| {
+                archives
+                    .get(id)
+                    .filter(|archive| archive.stream_id == stream)
+                    .map(|_| HistorySelector::Archive(*id))
+                    .ok_or(ReviewCommitError::Integrity)
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        if let Some(inspection) = self.legacy.lock().unwrap().as_ref() {
+            selectors.extend(
+                inspection
+                    .legacy_records
+                    .iter()
+                    .filter(|reference| reference.stream_id == stream)
+                    .map(|reference| HistorySelector::Legacy(reference.round_id)),
+            );
+        }
+        Ok(selectors)
+    }
+
     fn load_legacy(
         &self,
         stream: ReviewStreamId,
@@ -237,6 +267,7 @@ impl ContinuousReviewRepositoryPort for MemoryRepository {
         }
         state.parent = r.expected;
         for archive in r.archives {
+            self.archive_order.lock().unwrap().push(archive.archive_id);
             self.archives
                 .lock()
                 .unwrap()

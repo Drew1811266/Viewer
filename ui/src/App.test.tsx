@@ -9,7 +9,11 @@ import {
 } from '@testing-library/react'
 import { afterEach, describe, expect, expectTypeOf, it, vi } from 'vitest'
 import App from './App'
-import type { ReviewWorkspaceView } from './api/reviewWorkspaceTypes'
+import type {
+  ReviewHistorySelector,
+  ReviewHistoryView,
+  ReviewWorkspaceView,
+} from './api/reviewWorkspaceTypes'
 import type { FolderWorkspace, ReviewSessionSnapshot } from './api/types'
 import type { ProjectDropEvent, ViewerBridge } from './api/viewer'
 import {
@@ -285,6 +289,66 @@ describe('Viewer empty state', () => {
     expect(reviewWorkspace.applyCommand).not.toHaveBeenCalled()
   })
 
+  it('opens persisted history from the typed production workspace view without presentation injection', async () => {
+    const viewer = bridge()
+    const selector: ReviewHistorySelector = { kind: 'archive', archiveId: 'archive-1' }
+    const reviewWorkspace = reviewPort(workspaceWithHistorySelectors([selector]))
+    vi.mocked(reviewWorkspace.getHistory).mockResolvedValue(emptyHistory(selector))
+
+    render(<App bridge={viewer} reviewWorkspacePort={reviewWorkspace} />)
+    fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
+
+    const history = await screen.findByRole('button', { name: '历史' })
+    expect(history).toBeEnabled()
+    fireEvent.click(history)
+
+    expect(await screen.findByRole('dialog', { name: '历史意见' })).toBeVisible()
+    expect(reviewWorkspace.getHistory).toHaveBeenCalledWith({
+      sessionId: 'session-1',
+      generation: 1,
+      selector,
+    })
+  })
+
+  it('keeps persisted history disabled when the typed workspace catalog is empty', async () => {
+    const viewer = bridge()
+    const reviewWorkspace = reviewPort(workspaceWithHistorySelectors([]))
+
+    render(<App bridge={viewer} reviewWorkspacePort={reviewWorkspace} />)
+    fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
+
+    expect(await screen.findByRole('button', { name: '历史' })).toBeDisabled()
+    expect(reviewWorkspace.getHistory).not.toHaveBeenCalled()
+  })
+
+  it('requires an explicit visible choice and reads the exact selected history entry', async () => {
+    const viewer = bridge()
+    const archive: ReviewHistorySelector = { kind: 'archive', archiveId: 'archive-1' }
+    const legacy: ReviewHistorySelector = { kind: 'legacy', roundId: 'round-2' }
+    const reviewWorkspace = reviewPort(workspaceWithHistorySelectors([archive, legacy]))
+    vi.mocked(reviewWorkspace.getHistory).mockResolvedValue(emptyHistory(legacy))
+
+    render(<App bridge={viewer} reviewWorkspacePort={reviewWorkspace} />)
+    fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
+    fireEvent.click(await screen.findByRole('button', { name: '历史' }))
+
+    const choice = await screen.findByRole('dialog', { name: '选择历史记录' })
+    expect(within(choice).getByRole('radio', { name: '存档历史 1' })).toBeVisible()
+    expect(within(choice).getByRole('radio', { name: '旧评审记录 2' })).toBeVisible()
+    expect(reviewWorkspace.getHistory).not.toHaveBeenCalled()
+
+    fireEvent.click(within(choice).getByRole('radio', { name: '旧评审记录 2' }))
+    fireEvent.click(within(choice).getByRole('button', { name: '查看所选历史' }))
+
+    expect(await screen.findByRole('dialog', { name: '历史意见' })).toBeVisible()
+    expect(reviewWorkspace.getHistory).toHaveBeenCalledOnce()
+    expect(reviewWorkspace.getHistory).toHaveBeenCalledWith({
+      sessionId: 'session-1',
+      generation: 1,
+      selector: legacy,
+    })
+  })
+
   it('keeps explicit migration available when migration preparation is interrupted', async () => {
     const viewer = bridge()
     const reviewWorkspace = reviewPort({
@@ -346,6 +410,99 @@ describe('Viewer empty state', () => {
     expect(screen.queryByRole('button', { name: '完成本轮评审' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '放弃本轮' })).not.toBeInTheDocument()
     expect(viewer.reviewPreviewStart).not.toHaveBeenCalled()
+  })
+
+  it('hydrates four saved continuous targets into the fresh App workbench rail and geometry', async () => {
+    installPreviewStageBounds()
+    const viewer = bridge()
+    vi.mocked(viewer.queryFolder).mockResolvedValue(contentWorkspace())
+    const current = continuousWorkspaceWithFeedback(4, 'snapshot-restarted')
+    if (current.current === null) throw new Error('Expected current continuous review fixture')
+    const anchors = [
+      { kind: 'image_rect' as const, x: 0.1, y: 0.1, width: 0.2, height: 0.2 },
+      { kind: 'image_rect' as const, x: 0.5, y: 0.1, width: 0.2, height: 0.2 },
+      {
+        kind: 'image_stroke' as const,
+        points: [
+          { x: 0.2, y: 0.6 },
+          { x: 0.4, y: 0.7 },
+        ],
+      },
+      {
+        kind: 'image_stroke' as const,
+        points: [
+          { x: 0.6, y: 0.6 },
+          { x: 0.8, y: 0.7 },
+        ],
+      },
+    ]
+    current.current.state.feedback.forEach((feedback, index) => {
+      const target = feedback.targets[0]
+      const anchor = anchors[index]
+      if (target === undefined || anchor === undefined) throw new Error('Missing feedback fixture')
+      target.anchor = anchor
+    })
+    const reviewWorkspace = reviewPort(current)
+    vi.mocked(reviewWorkspace.prepareAssets).mockResolvedValue([preparedFrontAsset()])
+
+    render(<App bridge={viewer} reviewWorkspacePort={reviewWorkspace} />)
+    fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
+    fireEvent.doubleClick(await screen.findByRole('option', { name: 'front.jpg' }))
+
+    const rail = await screen.findByRole('complementary', { name: '评审意见' })
+    expect(rail).toHaveTextContent('4 条')
+    expect(within(rail).getByRole('button', { name: '选择意见 1：持续意见 1' })).toBeVisible()
+    expect(within(rail).getByRole('button', { name: '选择意见 4：持续意见 4' })).toBeVisible()
+    expect(await screen.findAllByTestId('annotation-marker')).toHaveLength(4)
+  })
+
+  it('does not silently bind saved targets to a different prepared asset version', async () => {
+    const viewer = bridge()
+    vi.mocked(viewer.queryFolder).mockResolvedValue(contentWorkspace())
+    const reviewWorkspace = reviewPort(continuousWorkspaceWithFeedback(4, 'snapshot-restarted'))
+    const replacement = preparedFrontAsset()
+    replacement.asset.id = 'asset-replaced'
+    replacement.asset.evidence.blake3 = '34'.repeat(32)
+    replacement.preview.assetVersionId = 'asset-replaced'
+    replacement.preview.url = 'viewer-review-image://localhost/asset-replaced'
+    vi.mocked(reviewWorkspace.prepareAssets).mockResolvedValue([replacement])
+
+    render(<App bridge={viewer} reviewWorkspacePort={reviewWorkspace} />)
+    fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
+    fireEvent.doubleClick(await screen.findByRole('option', { name: 'front.jpg' }))
+
+    const rail = await screen.findByRole('complementary', { name: '评审意见' })
+    expect(rail).toHaveTextContent('0 条')
+    expect(screen.queryByTestId('annotation-marker')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '画笔' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: '矩形' })).toBeDisabled()
+    expect(screen.getByText('素材来源或版本需要确认，刷新确认后可继续评审。')).toBeVisible()
+  })
+
+  it('keeps mixed referenced asset versions fail-closed when opening the prepared current version', async () => {
+    const viewer = bridge()
+    vi.mocked(viewer.queryFolder).mockResolvedValue(contentWorkspace())
+    const current = continuousWorkspaceWithFeedback(4, 'snapshot-mixed-versions')
+    if (current.current === null) throw new Error('Expected current continuous review fixture')
+    const replacement = preparedFrontAsset()
+    replacement.asset.id = 'asset-replaced'
+    replacement.asset.evidence.blake3 = '34'.repeat(32)
+    replacement.preview.assetVersionId = 'asset-replaced'
+    replacement.preview.url = 'viewer-review-image://localhost/asset-replaced'
+    current.current.state.assets.push(replacement.asset)
+    const reviewWorkspace = reviewPort(current)
+    vi.mocked(reviewWorkspace.prepareAssets).mockResolvedValue([replacement])
+
+    render(<App bridge={viewer} reviewWorkspacePort={reviewWorkspace} />)
+    fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
+    fireEvent.doubleClick(await screen.findByRole('option', { name: 'front.jpg' }))
+
+    const rail = await screen.findByRole('complementary', { name: '评审意见' })
+    expect(rail).toHaveTextContent('0 条')
+    expect(screen.queryByTestId('annotation-marker')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '画笔' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: '矩形' })).toBeDisabled()
+    expect(screen.getByText('素材来源或版本需要确认，刷新确认后可继续评审。')).toBeVisible()
   })
 
   it('uses only the continuous current snapshot as the visible feedback-count owner', async () => {
@@ -3460,6 +3617,20 @@ function continuousWorkspaceWithFeedback(count: number, snapshotId: string): Rev
     item.targets.map((target) => target.id),
   )
   return view
+}
+
+function workspaceWithHistorySelectors(selectors: ReviewHistorySelector[]): ReviewWorkspaceView {
+  return Object.assign(workspace('snapshot-1'), { historySelectors: structuredClone(selectors) })
+}
+
+function emptyHistory(selector: ReviewHistorySelector): ReviewHistoryView {
+  return {
+    selector: structuredClone(selector),
+    entries: [],
+    legacy: null,
+    limitations: ['background_only'],
+    restoreActions: [],
+  }
 }
 
 function videoContentWorkspace() {

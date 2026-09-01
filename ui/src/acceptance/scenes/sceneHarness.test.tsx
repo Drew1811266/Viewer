@@ -108,6 +108,19 @@ describe('acceptance product scene readiness', () => {
     expect(workspaceVisualsSettled(root)).toBe(true)
   })
 
+  it('accepts the real review workbench after its image has rendered', () => {
+    const root = document.createElement('div')
+    root.innerHTML = `
+      <main class="viewer-shell">
+        <section class="image-preview">
+          <img class="image-preview-image" alt="商品-01.jpg" />
+        </section>
+      </main>
+    `
+
+    expect(workspaceVisualsSettled(root)).toBe(true)
+  })
+
   it('does not accept an overview while its rows are still skeletons', () => {
     const root = document.createElement('div')
     root.innerHTML = `

@@ -1,4 +1,13 @@
 import type {
+  PreparedReviewCommand,
+  ReviewArchivePlan,
+  ReviewHistoryView,
+  ReviewMigrationInspection,
+  ReviewRestorePlan,
+  ReviewTargetVersionKey,
+  ReviewWorkspaceView,
+} from '../api/reviewWorkspaceTypes'
+import type {
   BrowserFile,
   ContentFolderCard,
   FolderTreeItem,
@@ -449,3 +458,269 @@ function acceptanceVideo(
     },
   }
 }
+
+export const ACCEPTANCE_CONTINUOUS_TARGET: ReviewTargetVersionKey = {
+  feedbackId: 'acceptance-continuous-feedback',
+  textRevisionId: 'acceptance-continuous-text-c',
+  targetId: 'acceptance-continuous-target-1',
+  targetRevisionId: 'acceptance-continuous-target-revision-c',
+}
+
+export const ACCEPTANCE_CONTINUOUS_OLD_TARGET: ReviewTargetVersionKey = {
+  ...ACCEPTANCE_CONTINUOUS_TARGET,
+  textRevisionId: 'acceptance-continuous-text-b',
+  targetRevisionId: 'acceptance-continuous-target-revision-b',
+}
+
+const continuousAsset = {
+  id: 'acceptance-continuous-asset-1',
+  sourceEntityId: ACCEPTANCE_FILES[0]?.entityId ?? 'acceptance-image-01',
+  relativePath: ACCEPTANCE_FILES[0]?.relativePath ?? '衣服/A01/商品-01.jpg',
+  evidence: { sizeBytes: 32768, modifiedNs: FIXTURE_MODIFIED_NS, blake3: '11'.repeat(32) },
+  media: { kind: 'image' as const, width: IMAGE_WIDTH, height: IMAGE_HEIGHT },
+  producerAssetId: null,
+  parentAssetVersionId: null,
+}
+
+const replacedContinuousAsset = {
+  ...continuousAsset,
+  id: 'acceptance-continuous-asset-2',
+  sourceEntityId: ACCEPTANCE_FILES[1]?.entityId ?? 'acceptance-image-02',
+  relativePath: ACCEPTANCE_FILES[1]?.relativePath ?? '衣服/A01/商品-02.jpg',
+  parentAssetVersionId: continuousAsset.id,
+}
+
+export function acceptanceContinuousReviewView(id: string): ReviewWorkspaceView {
+  const emptyCurrent = id === 'RVW-32'
+  const migration = id === 'RVW-31' ? acceptanceContinuousMigration() : null
+  return {
+    streamId: 'acceptance-continuous-stream',
+    historySelectors: [],
+    current:
+      migration !== null
+        ? null
+        : {
+            reference: { snapshotId: 'acceptance-snapshot-c', blake3: 'ab'.repeat(32) },
+            production: null,
+            state: {
+              projectId: ACCEPTANCE_PROJECT_SNAPSHOT.projectId,
+              streamId: 'acceptance-continuous-stream',
+              snapshotId: 'acceptance-snapshot-c',
+              parent: { snapshotId: 'acceptance-snapshot-b', blake3: 'bc'.repeat(32) },
+              assets: emptyCurrent ? [] : [continuousAsset, replacedContinuousAsset],
+              feedback: emptyCurrent
+                ? []
+                : [
+                    {
+                      id: ACCEPTANCE_CONTINUOUS_TARGET.feedbackId,
+                      textRevisionId: ACCEPTANCE_CONTINUOUS_TARGET.textRevisionId,
+                      text:
+                        id === 'RVW-29'
+                          ? '图二的新意见，不可覆盖'
+                          : '袖口收紧，保留褶皱；新图继续独立评审。',
+                      createdAtMs: 1_767_600_000_000,
+                      targets: [
+                        {
+                          id: ACCEPTANCE_CONTINUOUS_TARGET.targetId,
+                          revisionId: ACCEPTANCE_CONTINUOUS_TARGET.targetRevisionId,
+                          assetVersionId: continuousAsset.id,
+                          anchor: { kind: 'image_rect', x: 0.2, y: 0.2, width: 0.3, height: 0.3 },
+                          availability:
+                            id === 'RVW-28'
+                              ? { kind: 'needs_confirmation', reasons: ['source_changed'] }
+                              : { kind: 'ready' },
+                        },
+                      ],
+                      historyRef: null,
+                    },
+                  ],
+            },
+            commandId: 'acceptance-command-c',
+            payloadDigest: 'cd'.repeat(32),
+            changes: [],
+            evidence: [],
+          },
+    sourceChecks:
+      id === 'RVW-28'
+        ? [
+            {
+              assetVersionId: continuousAsset.id,
+              checkedAtMs: 1_767_600_001_000,
+              status: 'changed',
+            },
+          ]
+        : [],
+    projection: {
+      actionable: emptyCurrent || id === 'RVW-28' ? [] : [ACCEPTANCE_CONTINUOUS_TARGET.targetId],
+      needsConfirmation: id === 'RVW-28' ? [ACCEPTANCE_CONTINUOUS_TARGET.targetId] : [],
+    },
+    recovery: [],
+    migration,
+    capabilities: { continuousEditing: true, usageImport: true, migration: migration !== null },
+  }
+}
+
+export function acceptanceContinuousArchivePlan(id: string): ReviewArchivePlan {
+  const basis = id === 'RVW-27' ? ACCEPTANCE_CONTINUOUS_OLD_TARGET : ACCEPTANCE_CONTINUOUS_TARGET
+  const groups = [
+    {
+      basis: { kind: 'unknown' as const },
+      targets:
+        id === 'RVW-26'
+          ? [
+              basis,
+              {
+                feedbackId: 'acceptance-continuous-feedback-shared',
+                textRevisionId: 'acceptance-continuous-text-shared',
+                targetId: 'acceptance-continuous-target-2',
+                targetRevisionId: 'acceptance-continuous-target-revision-2',
+              },
+            ]
+          : [basis],
+    },
+  ]
+  return {
+    expectedSnapshotId: 'acceptance-snapshot-c',
+    groups,
+    removed: id === 'RVW-27' ? [] : [basis],
+    retained:
+      id === 'RVW-27'
+        ? [{ basis, current: ACCEPTANCE_CONTINUOUS_TARGET, disposition: 'retain_later_edit' }]
+        : [],
+    alreadyCovered: [],
+  }
+}
+
+export function acceptanceContinuousHistory(): ReviewHistoryView {
+  return {
+    selector: { kind: 'archive', archiveId: 'acceptance-archive-b' },
+    entries: [
+      {
+        snapshot: { snapshotId: 'acceptance-snapshot-b', blake3: 'bc'.repeat(32) },
+        feedback: [
+          {
+            id: ACCEPTANCE_CONTINUOUS_OLD_TARGET.feedbackId,
+            textRevisionId: ACCEPTANCE_CONTINUOUS_OLD_TARGET.textRevisionId,
+            text: '袖口收紧',
+            createdAtMs: 1_767_599_000_000,
+            targets: [
+              {
+                id: ACCEPTANCE_CONTINUOUS_OLD_TARGET.targetId,
+                revisionId: ACCEPTANCE_CONTINUOUS_OLD_TARGET.targetRevisionId,
+                assetVersionId: continuousAsset.id,
+                anchor: { kind: 'image_rect', x: 0.2, y: 0.2, width: 0.3, height: 0.3 },
+                availability: { kind: 'ready' },
+              },
+            ],
+            historyRef: null,
+          },
+        ],
+        assets: [continuousAsset],
+        evidence: [
+          {
+            assetVersionId: continuousAsset.id,
+            capability: {
+              kind: 'image',
+              base: { blake3: '21'.repeat(32), sizeBytes: 1234, width: 560, height: 373 },
+              annotated: {
+                blake3: '22'.repeat(32),
+                sizeBytes: 1456,
+                width: 560,
+                height: 373,
+              },
+              annotations: [{ ordinal: 1, key: ACCEPTANCE_CONTINUOUS_OLD_TARGET }],
+            },
+          },
+        ],
+        selected: [ACCEPTANCE_CONTINUOUS_OLD_TARGET],
+      },
+    ],
+    legacy: null,
+    limitations: ['background_only'],
+    restoreActions: [ACCEPTANCE_CONTINUOUS_OLD_TARGET],
+  }
+}
+
+export function acceptanceContinuousRestorePlan(): ReviewRestorePlan {
+  return {
+    expectedSnapshotId: 'acceptance-snapshot-c',
+    restored: [],
+    conflicts: [ACCEPTANCE_CONTINUOUS_OLD_TARGET],
+    coverageReversals: [],
+    requiresSourceCheck: [],
+  }
+}
+
+export function acceptanceContinuousMigration(): ReviewMigrationInspection {
+  const completed = {
+    projectId: ACCEPTANCE_PROJECT_SNAPSHOT.projectId,
+    reviewStreamId: 'acceptance-continuous-stream',
+    reviewRoundId: 'acceptance-legacy-round',
+    production: null,
+    previousCompletedRoundId: null,
+    createdAtMs: 1_767_500_000_000,
+    completedAtMs: 1_767_500_001_000,
+    assets: [continuousAsset],
+    feedback: [
+      {
+        id: 'acceptance-legacy-feedback',
+        text: '旧记录只作为历史保留',
+        createdAtMs: 1_767_500_000_000,
+        targets: [{ assetVersionId: continuousAsset.id, anchor: { kind: 'asset' as const } }],
+      },
+    ],
+    outcomes: [
+      {
+        assetVersionId: continuousAsset.id,
+        kind: 'revise' as const,
+        feedbackIds: ['acceptance-legacy-feedback'],
+        failure: null,
+      },
+    ],
+  }
+  return {
+    legacyProtocol: 'viewer.review/1',
+    indexDigest: '31'.repeat(32),
+    inspectionDigest: '32'.repeat(32),
+    legacyRecords: [
+      {
+        streamId: 'acceptance-continuous-stream',
+        roundId: completed.reviewRoundId,
+        protocol: 'viewer.review/1',
+        isDraft: false,
+        blake3: '33'.repeat(32),
+      },
+    ],
+    activeDraft: null,
+    completedCandidates: [completed],
+    limitations: ['background_only', 'legacy_evidence_absent', 'usage_unconfirmed'],
+  }
+}
+
+export function acceptancePreparedContinuousCommand(
+  command: PreparedReviewCommand['command'],
+): PreparedReviewCommand {
+  return {
+    context: {
+      projectId: ACCEPTANCE_PROJECT_SNAPSHOT.projectId,
+      streamId: 'acceptance-continuous-stream',
+      production: null,
+    },
+    commandId: 'acceptance-prepared-command',
+    expectedSnapshotId: 'acceptance-snapshot-c',
+    payloadDigest: '41'.repeat(32),
+    generated: {
+      snapshotId: 'acceptance-snapshot-d',
+      feedbackId: 'acceptance-feedback-d',
+      textRevisionId: 'acceptance-text-d',
+      archiveId: 'acceptance-archive-d',
+      targets: [],
+      migration: [],
+      createdAtMs: 1_767_600_002_000,
+    },
+    usageSelections: [],
+    command,
+  }
+}
+
+export const ACCEPTANCE_CONTINUOUS_ASSETS = [continuousAsset, replacedContinuousAsset] as const

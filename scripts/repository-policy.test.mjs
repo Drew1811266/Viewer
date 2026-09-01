@@ -737,7 +737,7 @@ test('CI defines independent deterministic quality and security gates', async ()
   assert.equal(packageJson.scripts['build:review-reader'], 'cargo build --locked --offline -p viewer-infrastructure --bin viewer-review-reader')
   assert.equal(
     packageJson.scripts['test:review-loop'],
-    'node --test scripts/review-protocol/manual-round-e2e.test.mjs',
+    'node --test scripts/review-protocol/manual-round-e2e.test.mjs scripts/review-protocol/continuous-review-e2e.test.mjs',
   )
   assert.match(packageJson.scripts.quality, /^pnpm test:policy &&/)
   assert.match(
@@ -831,7 +831,7 @@ test('manual review transport and dependency boundaries remain one-way', async (
   const packageJson = JSON.parse(await read('package.json'))
   assert.equal(
     packageJson.scripts['test:review-loop'],
-    'node --test scripts/review-protocol/manual-round-e2e.test.mjs',
+    'node --test scripts/review-protocol/manual-round-e2e.test.mjs scripts/review-protocol/continuous-review-e2e.test.mjs',
   )
   assert.match(
     packageJson.scripts.quality,

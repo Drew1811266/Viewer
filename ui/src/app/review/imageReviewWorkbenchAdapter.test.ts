@@ -49,6 +49,7 @@ function prepared(entityId: string, id: string): PreparedReviewAsset {
 function view(): ReviewWorkspaceView {
   return {
     streamId: 'stream-1',
+    historySelectors: [],
     current: {
       reference: { snapshotId: 'snapshot-1', blake3: 'cd'.repeat(32) },
       production: null,
@@ -166,6 +167,38 @@ it('adds a newly opened image with its prepared asset instead of a fixed member 
     feedbackId: null,
     text: '修正袖口',
     targets: [{ kind: 'add', assetVersionId: 'asset-2', anchor: RECT }],
+  })
+  expect(review.value.saveFeedback).toHaveBeenCalledOnce()
+})
+
+it('keeps an orphaned retained asset version from blocking the prepared current version', async () => {
+  const orphaned = view()
+  if (orphaned.current === null) throw new Error('Expected current continuous review fixture')
+  orphaned.current.state.assets = [asset('image-1', 'asset-old')]
+  orphaned.current.state.feedback = []
+  orphaned.projection = { actionable: [], needsConfirmation: [] }
+  const review = coordinator(orphaned)
+  const adapter = continuousImageReviewWorkbenchAdapter(review.value)
+  const preparation = await adapter.prepareEntity('image-1')
+
+  expect(adapter.view('image-1', preparation)).toMatchObject({
+    feedback: [],
+    readOnlyReason: null,
+  })
+  await adapter.saveFeedback({
+    entityId: 'image-1',
+    item: null,
+    operation: 'text',
+    text: '新版本可正常编辑',
+    anchor: RECT,
+    preparation,
+  })
+
+  expect(review.value.beginEditor).toHaveBeenCalledWith({
+    contextKey: 'new:image-1',
+    feedbackId: null,
+    text: '新版本可正常编辑',
+    targets: [{ kind: 'add', assetVersionId: 'asset-1', anchor: RECT }],
   })
   expect(review.value.saveFeedback).toHaveBeenCalledOnce()
 })

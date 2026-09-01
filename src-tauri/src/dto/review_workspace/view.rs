@@ -12,6 +12,8 @@ struct View {
     #[serde(with = "wire")]
     stream_id: ReviewStreamId,
     #[serde(with = "wire")]
+    history_selectors: Vec<viewer_application::review_evidence::HistorySelector>,
+    #[serde(with = "wire")]
     current: Option<StoredContinuousSnapshot>,
     #[serde(with = "wire")]
     source_checks: Vec<SourceCheck>,

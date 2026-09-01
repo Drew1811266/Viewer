@@ -4,7 +4,7 @@ use viewer_application::review_workspace::*;
 use viewer_application::{ProjectAccess, ReviewRepositoryProviderPort};
 use viewer_domain::review::continuous::*;
 use viewer_domain::{FeedbackId, ReviewTargetId, ReviewTargetRevisionId, ReviewTextRevisionId};
-use viewer_domain::{ProjectId, ReviewCommandId, ReviewSnapshotId, ReviewStreamId};
+use viewer_domain::{ProjectId, ReviewCommandId, ReviewRoundId, ReviewSnapshotId, ReviewStreamId};
 #[path = "support/continuous_review.rs"]
 mod support;
 use support::*;
@@ -197,6 +197,115 @@ fn reader_is_side_effect_free_and_observes_first_atomic_commit() {
     assert_eq!(current.reference, receipt.snapshot);
     assert_eq!(current.state.snapshot_id, ReviewSnapshotId::from_u128(3));
     assert!(current.state.feedback.is_empty());
+}
+
+#[test]
+fn committed_history_catalog_survives_a_cold_repository_reopen() {
+    use viewer_application::review_evidence::HistorySelector;
+
+    let (root, provider) = setup();
+    let writer = provider.continuous_writer().unwrap();
+    writer.commit(feedback_request()).unwrap();
+    let before = writer
+        .load_current(ReviewStreamId::from_u128(2))
+        .unwrap()
+        .unwrap();
+    let request = archive_request(&before, &before, 4);
+    let archive_id = request.archives[0].archive_id;
+    writer.commit(request).unwrap();
+
+    let expected = vec![HistorySelector::Archive(archive_id)];
+    assert_eq!(
+        writer
+            .load_history_selectors(ReviewStreamId::from_u128(2))
+            .unwrap(),
+        expected
+    );
+    drop(writer);
+    drop(provider);
+
+    let reopened = ProjectReviewRepositoryProvider::new(root.path(), ProjectId::from_u128(1));
+    assert_eq!(
+        reopened
+            .continuous_reader()
+            .unwrap()
+            .load_history_selectors(ReviewStreamId::from_u128(2))
+            .unwrap(),
+        expected
+    );
+}
+
+#[test]
+fn history_catalog_rejects_a_wrong_stream_committed_archive() {
+    let (root, provider) = setup();
+    let writer = provider.continuous_writer().unwrap();
+    writer.commit(feedback_request()).unwrap();
+    let before = writer
+        .load_current(ReviewStreamId::from_u128(2))
+        .unwrap()
+        .unwrap();
+    let request = archive_request(&before, &before, 4);
+    let archive_id = request.archives[0].archive_id;
+    writer.commit(request).unwrap();
+
+    let archive_path = root
+        .path()
+        .join(format!(".viewer/reviews/archives/{archive_id}.json"));
+    let mut archive: serde_json::Value =
+        serde_json::from_slice(&fs::read(&archive_path).unwrap()).unwrap();
+    archive["reviewStreamId"] = ReviewStreamId::from_u128(999).to_string().into();
+    let archive_bytes = serde_json::to_vec(&archive).unwrap();
+    fs::write(&archive_path, &archive_bytes).unwrap();
+    let index_path = root.path().join(".viewer/reviews/index.json");
+    let mut index: serde_json::Value =
+        serde_json::from_slice(&fs::read(&index_path).unwrap()).unwrap();
+    index["streams"][0]["archiveRefs"][0]["blake3"] =
+        blake3::hash(&archive_bytes).to_hex().to_string().into();
+    fs::write(index_path, serde_json::to_vec(&index).unwrap()).unwrap();
+    assert_eq!(
+        writer.load_history_selectors(ReviewStreamId::from_u128(2)),
+        Err(ReviewCommitError::Integrity)
+    );
+}
+
+#[test]
+fn history_catalog_rejects_duplicate_and_unsupported_index_references() {
+    let (root, provider) = setup();
+    let writer = provider.continuous_writer().unwrap();
+    writer.commit(feedback_request()).unwrap();
+    let before = writer
+        .load_current(ReviewStreamId::from_u128(2))
+        .unwrap()
+        .unwrap();
+    writer.commit(archive_request(&before, &before, 4)).unwrap();
+    let index_path = root.path().join(".viewer/reviews/index.json");
+    let original = fs::read(&index_path).unwrap();
+    let mut duplicate: serde_json::Value = serde_json::from_slice(&original).unwrap();
+    let archive = duplicate["streams"][0]["archiveRefs"][0].clone();
+    duplicate["streams"][0]["archiveRefs"]
+        .as_array_mut()
+        .unwrap()
+        .push(archive);
+    fs::write(&index_path, serde_json::to_vec(&duplicate).unwrap()).unwrap();
+    assert!(
+        writer
+            .load_history_selectors(ReviewStreamId::from_u128(2))
+            .is_err(),
+        "a duplicate committed history reference must fail closed"
+    );
+
+    let mut unsupported: serde_json::Value = serde_json::from_slice(&original).unwrap();
+    unsupported["streams"][0]["legacyRefs"] = serde_json::json!([{
+        "roundId": ReviewRoundId::from_u128(99).to_string(),
+        "protocolVersion": "viewer.review/999",
+        "location": format!("rounds/{}.json", ReviewRoundId::from_u128(99)),
+        "blake3": "11".repeat(32)
+    }]);
+    fs::write(&index_path, serde_json::to_vec(&unsupported).unwrap()).unwrap();
+    assert_eq!(
+        writer.load_history_selectors(ReviewStreamId::from_u128(2)),
+        Err(ReviewCommitError::UnsupportedProtocol)
+    );
 }
 
 #[test]

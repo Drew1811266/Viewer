@@ -85,6 +85,7 @@ export const input = {
 export function workspace(snapshotId: string | null = null): ReviewWorkspaceView {
   return {
     streamId: 'stream-1',
+    historySelectors: [],
     current:
       snapshotId === null
         ? null

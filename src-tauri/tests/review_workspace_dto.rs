@@ -137,6 +137,14 @@ fn review_workspace_result_preserves_commit_receipt_and_empty_current_is_not_his
     assert_eq!(value["committedReceipt"]["snapshot"]["snapshotId"], id(4));
     let view = ReviewWorkspaceView {
         stream_id: ReviewStreamId::from_u128(2),
+        history_selectors: vec![
+            viewer_application::review_evidence::HistorySelector::Archive(
+                ReviewArchiveId::from_u128(7),
+            ),
+            viewer_application::review_evidence::HistorySelector::Legacy(ReviewRoundId::from_u128(
+                8,
+            )),
+        ],
         current: None,
         source_checks: vec![],
         projection: CurrentReviewProjection {
@@ -153,6 +161,13 @@ fn review_workspace_result_preserves_commit_receipt_and_empty_current_is_not_his
     };
     let value = serde_json::to_value(ReviewWorkspaceViewDto::from(view)).unwrap();
     assert!(value["current"].is_null());
+    assert_eq!(
+        value["historySelectors"],
+        json!([
+            {"kind":"archive", "archiveId":id(7)},
+            {"kind":"legacy", "roundId":id(8)}
+        ])
+    );
     assert_eq!(value["projection"]["actionable"], json!([]));
     let history = HistoryView {
         selector: viewer_application::review_evidence::HistorySelector::Archive(

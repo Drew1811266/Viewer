@@ -676,6 +676,30 @@
   grid-template-columns: auto minmax(0, 1fr);
 }
 
+.review-history-selector__choices {
+  border: 0;
+  display: grid;
+  gap: var(--viewer-space-2);
+  margin: var(--viewer-space-3) 0 0;
+  padding: 0;
+}
+
+.review-history-selector__choices legend {
+  font-size: 13px;
+  font-weight: 650;
+  margin-bottom: var(--viewer-space-2);
+}
+
+.review-history-selector__choices label {
+  align-items: center;
+  border: 1px solid var(--viewer-border);
+  border-radius: var(--viewer-radius-2);
+  display: grid;
+  gap: var(--viewer-space-2);
+  grid-template-columns: auto minmax(0, 1fr);
+  padding: var(--viewer-space-3);
+}
+
 .review-feedback-rail__item-actions .viewer-button,
 .review-feedback-rail__text-editor .viewer-button {
   min-height: 28px;

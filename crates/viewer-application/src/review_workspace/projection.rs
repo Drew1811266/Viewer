@@ -30,6 +30,7 @@ impl ContinuousReviewService {
             super::preview::check_cancelled(&cancellation)?;
             return Ok(ReviewWorkspaceView {
                 stream_id: stream,
+                history_selectors: vec![],
                 current: None,
                 source_checks: vec![],
                 projection: CurrentReviewProjection {
@@ -46,11 +47,12 @@ impl ContinuousReviewService {
             });
         }
         let provider = self.provider.clone();
-        let (current, recovery) = super::service::io(move || {
+        let (current, history_selectors, recovery) = super::service::io(move || {
             let reader = provider.open_reader()?;
             let current = reader.load_current(stream)?;
+            let history_selectors = reader.load_history_selectors(stream)?;
             let recovery = reader.load_unresolved_recovery(stream)?;
-            Ok((current, recovery))
+            Ok((current, history_selectors, recovery))
         })
         .await?;
         super::preview::check_cancelled(&cancellation)?;
@@ -78,6 +80,7 @@ impl ContinuousReviewService {
         super::preview::check_cancelled(&cancellation)?;
         Ok(ReviewWorkspaceView {
             stream_id: stream,
+            history_selectors,
             current,
             source_checks,
             projection,

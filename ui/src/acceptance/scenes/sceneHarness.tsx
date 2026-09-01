@@ -1,5 +1,10 @@
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 import App from '../../App'
+import type {
+  ReviewArchiveSelection,
+  ReviewHistorySelector,
+  ReviewWorkspacePort,
+} from '../../api/reviewWorkspaceTypes'
 import type { ViewerBridge } from '../../api/viewer'
 import { type AcceptanceBridgeOverrides, createAcceptanceBridge } from '../acceptanceBridge'
 
@@ -9,11 +14,18 @@ export default function AcceptanceProductScene({
   children,
   ready,
   bridgeOverrides = EMPTY_BRIDGE_OVERRIDES,
+  reviewWorkspacePort,
+  reviewWorkspacePresentation,
   attributes = {},
 }: {
   children: ReactNode
   ready(): boolean
   bridgeOverrides?: AcceptanceBridgeOverrides
+  reviewWorkspacePort?: ReviewWorkspacePort
+  reviewWorkspacePresentation?: {
+    archiveSelection?: ReviewArchiveSelection
+    historySelector?: ReviewHistorySelector
+  }
   attributes?: Record<string, string>
 }) {
   const bridge = useMemo(
@@ -94,7 +106,11 @@ export default function AcceptanceProductScene({
       style={{ width: '100%', height: '100%' }}
       {...attributes}
     >
-      <App bridge={bridge as ViewerBridge} />
+      <App
+        bridge={bridge as ViewerBridge}
+        reviewWorkspacePort={reviewWorkspacePort}
+        reviewWorkspacePresentation={reviewWorkspacePresentation}
+      />
       {children}
     </div>
   )
@@ -112,7 +128,11 @@ export function workspaceVisualsSettled(root: Document | Element): boolean {
   }
   const thumbnails = [...shell.querySelectorAll<HTMLElement>('.aspect-thumbnail')]
   if (thumbnails.length === 0) {
-    return shell.querySelector('.folder-overview, .content-browser') !== null
+    return (
+      shell.querySelector(
+        '.folder-overview, .content-browser, .image-preview .image-preview-image',
+      ) !== null
+    )
   }
   return thumbnails.every((thumbnail) => {
     if (thumbnail.dataset.thumbnailState === 'failed') {

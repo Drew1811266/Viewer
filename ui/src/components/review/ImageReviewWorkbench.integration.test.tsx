@@ -725,6 +725,7 @@ function continuousPort() {
 function continuousView(): ReviewWorkspaceView {
   return {
     streamId: 'stream-1',
+    historySelectors: [],
     current: null,
     sourceChecks: [],
     projection: { actionable: [], needsConfirmation: [] },

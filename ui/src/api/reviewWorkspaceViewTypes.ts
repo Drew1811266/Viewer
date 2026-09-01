@@ -120,6 +120,8 @@ export interface ReviewSourceCheck {
 }
 export interface ReviewWorkspaceView {
   streamId: string
+  /** Repository-validated committed history in stable presentation order. */
+  historySelectors: ReviewHistorySelector[]
   current: ReviewStoredSnapshot | null
   sourceChecks: ReviewSourceCheck[]
   projection: { actionable: string[]; needsConfirmation: string[] }

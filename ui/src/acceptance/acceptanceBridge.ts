@@ -1,13 +1,20 @@
+import type { ReviewWorkspacePort } from '../api/reviewWorkspaceTypes'
 import type { BrowserFile, Marker, SearchHit } from '../api/types'
 import type { ViewerBridge } from '../api/viewer'
 import {
+  ACCEPTANCE_CONTINUOUS_ASSETS,
   ACCEPTANCE_FILES,
   ACCEPTANCE_FOLDER_TREE,
   ACCEPTANCE_PROJECT_SNAPSHOT,
   ACCEPTANCE_TEXT_FILES,
   ACCEPTANCE_UNSUPPORTED_FILE,
   ACCEPTANCE_VIDEO_FILES,
+  acceptanceContinuousArchivePlan,
+  acceptanceContinuousHistory,
+  acceptanceContinuousRestorePlan,
+  acceptanceContinuousReviewView,
   acceptanceFile,
+  acceptancePreparedContinuousCommand,
   acceptanceWorkspace,
   imageRepresentation,
 } from './acceptanceFixtures'
@@ -306,6 +313,84 @@ export function createAcceptanceBridge(overrides: AcceptanceBridgeOverrides = {}
   } satisfies ViewerBridge
 
   return { ...bridge, ...overrides }
+}
+
+export function createAcceptanceReviewWorkspacePort(id: string): ReviewWorkspacePort {
+  const unsupported = (method: string) =>
+    Promise.reject(new Error(`Unexpected acceptance review call: ${method}`))
+  return {
+    async getWorkspace() {
+      return structuredClone(acceptanceContinuousReviewView(id))
+    },
+    async prepareAssets({ entityIds }) {
+      return entityIds.map((entityId, index) => {
+        const asset = ACCEPTANCE_CONTINUOUS_ASSETS[index % ACCEPTANCE_CONTINUOUS_ASSETS.length]
+        if (asset === undefined) throw new Error(`No acceptance asset for ${entityId}`)
+        return {
+          asset: { ...structuredClone(asset), sourceEntityId: entityId },
+          preview: {
+            assetVersionId: asset.id,
+            role: 'base',
+            url: '/商品-01.jpg',
+            width: 560,
+            height: 373,
+            sourceWidth: 560,
+            sourceHeight: 373,
+          },
+        }
+      })
+    },
+    async prepareCommand(request) {
+      return {
+        ...acceptancePreparedContinuousCommand(request.command),
+        commandId: request.commandId,
+        expectedSnapshotId: request.expectedSnapshotId,
+      }
+    },
+    async applyCommand({ envelope }) {
+      return {
+        receipt: {
+          commandId: envelope.commandId,
+          payloadDigest: envelope.payloadDigest,
+          snapshot: { snapshotId: envelope.generated.snapshotId, blake3: '51'.repeat(32) },
+        },
+        view: structuredClone(acceptanceContinuousReviewView(id)),
+      }
+    },
+    async previewArchive() {
+      return structuredClone(acceptanceContinuousArchivePlan(id))
+    },
+    async previewRestore() {
+      return structuredClone(acceptanceContinuousRestorePlan())
+    },
+    async getHistory() {
+      const history = structuredClone(acceptanceContinuousHistory())
+      return id === 'RVW-32' ? { ...history, restoreActions: [] } : history
+    },
+    async inspectUsage() {
+      return unsupported('inspectUsage')
+    },
+    async selectUsage() {
+      return null
+    },
+    async inspectMigration() {
+      return structuredClone(acceptanceContinuousReviewView(id).migration)
+    },
+    async getEvidence({ assetVersionId, role }) {
+      return {
+        assetVersionId,
+        role,
+        url: '/商品-01.jpg',
+        width: 560,
+        height: 373,
+        sourceWidth: 560,
+        sourceHeight: 373,
+      }
+    },
+    async cancelTask() {
+      return 0
+    },
+  }
 }
 
 function allFiles(): BrowserFile[] {

@@ -1,4 +1,5 @@
 import type { AcceptanceSceneRegistry } from '../AcceptanceApp'
+import { CONTINUOUS_REVIEW_SCENES } from './continuousReviewScenes'
 import { DIALOG_SCENES } from './dialogScenes'
 import { FEEDBACK_SCENES } from './feedbackScenes'
 import { REVIEW_SCENES } from './reviewScenes'
@@ -15,4 +16,5 @@ export const ACCEPTANCE_SCENES: AcceptanceSceneRegistry = {
   ...VIDEO_FEASIBILITY_SCENES,
   ...VIDEO_SCENES,
   ...REVIEW_SCENES,
+  ...CONTINUOUS_REVIEW_SCENES,
 }

@@ -45,10 +45,18 @@ const REVIEW_ACCEPTANCE_STATES = [
   ['RVW-18', 'review-annotation-save-error'],
   ['RVW-19', 'review-rectangle-edit'],
   ['RVW-20', 'review-brush-redraw'],
-  ['RVW-21', 'review-outside-scope-read-only'],
+  ['RVW-21', 'legacy-review-fixed-scope-outside-read-only'],
   ['RVW-22', 'review-unsaved-leave-guard'],
   ['RVW-23', 'review-grid-feedback-badges'],
   ['RVW-24', 'review-workbench-zoom-200'],
+  ['RVW-25', 'continuous-review-current-edit-and-new-image'],
+  ['RVW-26', 'continuous-review-partial-archive-preview'],
+  ['RVW-27', 'continuous-review-retain-later-edit'],
+  ['RVW-28', 'continuous-review-old-evidence-source-confirmation'],
+  ['RVW-29', 'continuous-review-restore-conflict'],
+  ['RVW-30', 'continuous-review-archive-unknown-basis'],
+  ['RVW-31', 'continuous-review-legacy-migration'],
+  ['RVW-32', 'continuous-review-empty-current-with-history'],
 ] as const
 
 function ledgerStates(): LedgerState[] {
@@ -110,7 +118,7 @@ describe('Viewer visual acceptance state catalog', () => {
 
     expect(videos.map(({ id }) => id)).toEqual(VIDEO_ACCEPTANCE_SCENE_IDS)
     expect(videos.map(({ referenceState }) => referenceState)).toEqual(VIDEO_ACCEPTANCE_SCENE_IDS)
-    expect(new Set(ACCEPTANCE_STATE_DEFINITIONS.map(({ id }) => id)).size).toBe(128)
+    expect(new Set(ACCEPTANCE_STATE_DEFINITIONS.map(({ id }) => id)).size).toBe(136)
   })
 
   it('adds the exact exception-driven review acceptance states as a separate catalog group', () => {
@@ -120,8 +128,8 @@ describe('Viewer visual acceptance state catalog', () => {
       REVIEW_ACCEPTANCE_STATES,
     )
     expect(reviews.every(({ wave }) => wave === 4)).toBe(true)
-    expect(ACCEPTANCE_STATE_DEFINITIONS).toHaveLength(128)
-    expect(new Set(ACCEPTANCE_STATE_DEFINITIONS.map(({ id }) => id)).size).toBe(128)
+    expect(ACCEPTANCE_STATE_DEFINITIONS).toHaveLength(136)
+    expect(new Set(ACCEPTANCE_STATE_DEFINITIONS.map(({ id }) => id)).size).toBe(136)
   })
 
   it('declares browser zoom once for both review zoom states and preserves existing accessibility zoom', () => {

@@ -2,80 +2,69 @@
 
 ## 状态与范围
 
-本文档是 **Active 的协议与集成边界**。Viewer 当前提供手动评审轮次、图片矩形／画笔标注、
-自然语言意见、Draft 恢复及 Completed 发布，并使用本协议保存结果；Production Manifest
-执行、返工版本关系和具体 Agent 集成仍属于未来阶段。
+本文档是 **Active 的协议与集成边界**。Viewer 当前产品使用 `viewer.review/3` 持续评审：
+图片矩形／画笔标注与自然语言意见在成功保存后形成完整 current，用户手动把上一轮要求存档，
+外部工具通过独立 current/history 读取器消费。旧 `viewer.review/1`、`viewer.review/2` 的固定范围
+Completed Round 只保留为显式迁移和历史兼容，不再是新建项目的主流程。Production Manifest
+执行、自动 lineage 判断、视频时间段标注和具体 Agent 集成仍属于未来阶段。
 
 Viewer 目前仍处于开发初期。本协议基础工作不产生签名、公证、正式安装包、发售或销售任务；后续普通功能开发也不应默认列出这些发布阶段事项，除非项目明确进入相应阶段并由用户另行授权。
 
 ## 所有权边界
 
-- 生产工具或 AI Agent 拥有项目中的 `viewer-production.json`，使用 `viewer.production/1` 描述一次生产任务及其素材清单。
-- Viewer 独占写入 `.viewer/reviews/`，新建轮次使用 `viewer.review/2`；已有
-  `viewer.review/1` 记录保持可读，不为迁移而重写历史 Completed 文件。
-- 当前手动入口由 Viewer 自身根据用户明确选择或当前浏览范围固定素材，写入一个无
-  Production Scope 的手动 Review Stream；它不会读取或执行 `viewer-production.json`。
-- Agent、自动化脚本和第三方集成只能把已被 `index.json` 收录的 Completed Round 当作返工指令来源。
-- `.viewer/reviews/drafts/` 中的数据用于 Viewer 自身恢复编辑状态，**永远不是有效的 Agent 指令**，即使 Draft 的时间或 Round ID 更新。
+- Viewer 独占写入 `.viewer/reviews/`。UI、Agent 和第三方工具都不得直接拼装或改写协议 JSON。
+- 当前产品在项目中维护一个无 Production Scope 的手动 Review Stream；它不会读取或执行
+  `viewer-production.json`，也不会主动启动 Agent。
+- 生产工具可选择在项目内提供 `viewer.review.usage/1` 返工依据声明。只有用户明确选择、核验并
+  采用后才进入 Viewer 记录；声明不证明执行、产出来源或素材 lineage。
+- 外部读取方以一个精确 Stream 的 current 作为当前待办，以显式 history 选择器读取背景；
+  recovery、临时文件、目录顺序、mtime 和未索引记录都不是指令来源。
 
 ```text
 project/
-├── viewer-production.json                 # Producer / Agent owns
+├── optional-review-usage.json             # Producer-owned optional declaration, user selects explicitly
 └── .viewer/reviews/                       # Viewer owns
-    ├── index.json                         # Per-Stream completed history
+    ├── index.json                         # Exact Streams and current/history references
     ├── write.lock                         # One-writer advisory lease
-    ├── drafts/{reviewRoundId}.json         # Recoverable, never instructions
-    └── rounds/
-        ├── {legacyRoundId}.json           # Immutable v1 Completed record
-        └── {reviewRoundId}/               # Immutable v2 Completed bundle
-            ├── round.json                # Feedback, anchors, outcomes, artifact records
-            └── artifacts/
-                └── {assetVersionId}-annotation.png
+    ├── states/{snapshotId}.json            # Immutable complete current-state snapshots
+    ├── archives/{archiveId}.json           # Immutable manual archive checkpoints
+    ├── evidence/{blake3}.png               # Immutable verified image evidence
+    ├── usage/{declarationId}.json           # Adopted verified declaration copies, when used
+    └── recovery/                           # Bounded private recovery input / legacy-index backups
 ```
 
-## 评审语义
+## 当前 v3 持续评审语义
 
-每个 Round 冻结一组可评审的素材版本。用户主要以自然语言记录需要返工的例外；显式完成 Round 时，没有反馈且能够评审的素材得到 `pass`，有反馈的素材得到 `revise`，无法渲染或读取的素材得到 `unreviewable`。自然语言 Feedback 是返工意图的权威表达；结构化 Target 和 Anchor 只负责把文字关联到素材、图片区域或视频时间位置。
-
-Completed Round 的 Outcome 只有三种：
-
-- `pass`：本轮没有要求返工；
-- `revise`：引用一条或多条自然语言 Feedback；
-- `unreviewable`：素材无法完成审查，并记录稳定失败类别。
-
-Draft 不包含 Outcome，也不能推进 Completed head。Completed Round 只创建一次。v2 发布先在
-临时目录中写入并核验 `round.json` 与标注预览，持久化后提交整个 bundle，再原子更新
-`index.json`。索引未提交前，Agent 不得将 bundle 或 Draft 当作返工指令。中断恢复只接受
-`previousCompletedRoundId` 构成的唯一线性链，遇到分叉或无法连接的孤儿记录时停止并要求显式恢复。
-
-v2 图片局部意见使用 `imageRect` 或 `imageStroke`，坐标相对经过方向校正后的完整图片归一化到
-`[0, 1]`。矩形必须具有正宽高且不越界；画笔为 2–2048 个有效点，横纵范围均须非零。
-自然语言文字原样保留。每张带局部意见的图片只生成一张 PNG 标注预览，原图不被修改；
-`artifacts[].annotations` 用从 1 开始的连续编号关联 `feedbackId`。编号按意见创建时间、再按
-Feedback ID 稳定排序。预览用于辅助定位，文字和结构化 Anchor 仍是评审事实。
-一个 Round 的全部画笔点合计不得超过 200,000，避免大量局部意见绕过单个画笔上限。
-
-当前手动工作流主要记录需要返工的例外。批量网格曝光和打开图片／视频预览具有同等资格；
-协议不记录浏览次数、停留时间、滚动位置或播放行为。完成前如果固定素材被替换、移动、删除
-或内容身份改变，Viewer 会阻止发布，避免把未经核验的新内容默认为通过。稳定、已确认的技术
-失败可以成为 `unreviewable`；尚未完成探测或普通缩略图失败不能被静默归入该结果。
-
-手动素材可以携带可选 `sourceEntityId`，用于把固定版本关联到 Viewer 已验证的本地实体身份。
-旧版 v1 文档没有该字段时仍可读取。可评审图片继续保存完整宽高；仅在图片已确认不可评审时，
-宽高可以成对省略，禁止只提供其中一个值。
+- `current` 是某一 Review Stream 现在仍有效的**完整自然语言要求集合**。成功保存即产生新的
+  不可变状态并原子更新索引；没有“完成本轮”门槛，也不生成默认 `pass`。
+- 用户没有评价的素材不产生意见记录。批量网格和大图预览都不记录“已浏览”；曝光、停留、
+  滚动或播放行为不能被读取方解释为通过。
+- Feedback 文字是返工意图的权威表达；版本化 Target/Anchor 只把文字关联到精确素材版本、
+  整图、图片矩形或图片画笔。矩形和画笔坐标相对方向校正后的完整图片归一化到 `[0, 1]`；
+  画笔为 2–2048 个有效点，原图永不被标注写回。
+- 文字编辑、重绘、删除和后补意见形成新 revision/state。withdrawal 是类型化移除事实，不会
+  自动生成“把改蓝色改回去”之类反向自然语言。
+- 手动 archive 记录精确 Feedback/Text/Target revisions 及其依据。部分存档移走所选目标，同时
+  保留未选目标和 basis 之后的编辑／新增；archive 不证明 Agent 已读取、执行或修复，也不证明通过。
+- history 没有 `actionable`。继续提出会创建新身份并保留 `HistoryRef`；恢复会显式追加新当前
+  状态。两者都不修改旧 history。素材换版时必须确认已核验候选和位置，不按路径猜测绑定。
+- 每次读取都会重新形成 `sourceChecks`。`match` 只证明检查时刻；`changed`、`missing`、
+  `unreadable` 或待确认不会删除原文，执行方在返工前仍须核对目标版本。
+- recovery 仅用于 Viewer 恢复未发布输入或处理已提交但回执不确定的操作；它不是 current，
+  也不能授权重放。当前实现不自动清理历史、证据或恢复输入，容量到限时失败关闭。
 
 ## Review Stream 选择
 
-“最新完成结果”只存在于一个 Review Stream 内，协议没有、也不得推导项目级全局 latest。读取方必须使用以下一种方式选择恰好一个 Stream：
+current 与 history 都属于一个 Review Stream。协议没有、也不得推导项目级全局 latest。读取方必须使用以下一种方式选择恰好一个 Stream：
 
 - 精确 `reviewStreamId`；
 - 精确的 `taskId` 与 `batchId` 组合；
 - 仅当项目中恰好有一个 Stream 时省略选择器。
 
-选择结果为零或多个时，读取方必须报错，不能根据文件时间、Round ID、Draft 或目录顺序猜测。
+选择结果为零或多个时，读取方必须报错，不能根据文件时间、Snapshot/Archive ID、恢复输入或目录顺序猜测。
 
-Viewer 当前在一个项目中维护至多一个无 Production Scope 的手动 Stream，后续手动 Round
-追加到该 Stream。带 `taskId`／`batchId` 的 Production Stream 仍由未来阶段生产，不能被当前
+Viewer 当前在一个项目中维护至多一个无 Production Scope 的手动 Stream，后续保存和存档都
+属于该 Stream。带 `taskId`／`batchId` 的 Production Stream 仍由未来阶段生产，不能被当前
 手动入口误认或改写。
 
 ## 版本与兼容性
@@ -89,15 +78,25 @@ Viewer 当前在一个项目中维护至多一个无 Production Scope 的手动 
 - [`viewer-review-index-v2.schema.json`](viewer-review-index-v2.schema.json)
 - [`viewer-review-draft-v2.schema.json`](viewer-review-draft-v2.schema.json)
 - [`viewer-review-round-v2.schema.json`](viewer-review-round-v2.schema.json)
+- [`viewer-review-index-v3.schema.json`](viewer-review-index-v3.schema.json)
+- [`viewer-review-state-v3.schema.json`](viewer-review-state-v3.schema.json)
+- [`viewer-review-archive-v3.schema.json`](viewer-review-archive-v3.schema.json)
+- [`viewer-review-read-result-v3.schema.json`](viewer-review-read-result-v3.schema.json)
+- [`viewer-review-usage-v1.schema.json`](viewer-review-usage-v1.schema.json)
 
 v1 索引保留 `completedRoundIds`。v2 索引以 `completedRounds` 保存每个历史 Round 的
 `reviewRoundId`、`protocolVersion`、相对 `location` 和文件字节的 `blake3`，因此同一 Stream
 可以包含 v1 文件与 v2 bundle。索引的主版本不等于所有历史 Round 的版本；读取方必须按
-记录声明分派。v1 `imageRegion` 仅按 v1 规则读取，不得当作 v2 Anchor 静默改写。
+记录声明分派。v1 `imageRegion` 仅按 v1 规则读取，不得当作 v2/v3 Anchor 静默改写。含旧数据
+的项目必须通过 Viewer 的显式迁移检查；旧字节和历史证据保持不变，旧 Completed 不自动成为 v3 current。
 
 ## Agent 无关参考读取器
 
-[`scripts/review-protocol/read-latest.mjs`](../../scripts/review-protocol/read-latest.mjs) 的 Node 入口只使用内置模块，文件访问与协议验证由本地 Rust 只读核心完成，不依赖 Codex、Claude、OpenCode 或其他特定 Agent。它不联网、不启动 Viewer、不启动 Agent、不写项目文件，也不枚举 Draft 作为结果。
+[`read-current.mjs`](../../scripts/review-protocol/read-current.mjs) 和
+[`read-history.mjs`](../../scripts/review-protocol/read-history.mjs) 的 Node 入口只使用内置模块，
+文件访问与协议验证由本地 Rust 只读核心完成，不依赖 Codex、Claude、OpenCode 或其他特定
+Agent。它们不联网、不启动 Viewer、不启动 Agent、不写项目文件，也不把 recovery 或 history
+伪装成 current。
 
 开发者先显式执行 `pnpm build:review-reader`。默认使用本工作树 `target/debug/viewer-review-reader`；
 也可用调用者设置的绝对路径 `VIEWER_REVIEW_READER` 指定可信二进制。读取时不自动构建／下载，
@@ -105,55 +104,45 @@ v1 索引保留 `completedRoundIds`。v2 索引以 `completedRounds` 保存每�
 内部是有界的一次性 stdin/stdout JSON 调用，不是常驻服务；没有安装包或签名要求。
 
 ```bash
-node scripts/review-protocol/read-latest.mjs \
-  --project /absolute/project \
+node scripts/review-protocol/read-current.mjs \
+  --project /absolute/test-project \
   --stream 00000000-0000-4000-8000-000000000102
 
-node scripts/review-protocol/read-latest.mjs \
-  --project /absolute/project \
-  --task task-b \
-  --batch batch-b
+node scripts/review-protocol/read-history.mjs \
+  --project /absolute/test-project \
+  --stream 00000000-0000-4000-8000-000000000102 \
+  --archive 00000000-0000-4000-8000-000000000601
 
-node scripts/review-protocol/read-latest.mjs \
-  --project /absolute/project \
+node scripts/review-protocol/read-current.mjs \
+  --project /absolute/test-project \
   --list
 ```
 
-读取器先读取固定的 `.viewer/reviews/index.json`，再读取所选 Stream 的 Completed head。
-对于 v2 索引，它在解析 Round JSON **之前**核验索引声明的 BLAKE3；这同样适用于索引中的
-v1 历史记录。旧 v1 索引没有摘要字段，继续按原契约验证身份和内容。
+上面的绝对路径和 UUID 是命令语法示例，不声称该目录或记录真实存在。实际调用必须使用 Viewer
+返回或 `--list` 发现的精确 Stream ID；历史还必须在 `--snapshot`、`--archive`、
+`--legacy-round` 中恰选一个。current 支持 `--since SNAPSHOT_UUID` 取得可选净变化；也支持
+成对 `--task`／`--batch`。任何选择结果为零或多个都返回错误，没有隐式 latest。
 
-所有 Round／artifact 位置逐级检查，拒绝越界路径、符号链接和非普通文件。v2 bundle 还须
-具有完整且无额外文件的 artifact 清单；每个 PNG 均核验摘要、PNG 签名、宽高、媒体类型及
-编号到意见的完整映射。索引最多 16 MiB，Round JSON 和单个 PNG 最多各 64 MiB，单个 PNG
-最多 16,777,216 像素，bundle 中 PNG 总量最多 4 GiB。读取过程本身有字节与目录项上限，
-不是读完以后才判断大小。
+成功的 current 输出包括完整 `feedback`、`assets`、`evidence`、`actionable`、`sourceChecks`、
+`snapshotRef` 和可选 `delta`。调用方必须用这份完整 current 替换自己的旧待办，不能与之前
+读取或 history 不断累加。空 current 不回退历史，也不表示全部通过；`actionable` 只是该次
+source check 下可执行的目标集合，执行前仍要核对目标素材版本。
 
-成功时输出原始自然语言意见、Anchor 和已验证的相对 artifact 路径，不返回绝对素材路径或
-缓存路径；失败时写入 stderr 并以状态码 `1` 退出。摘要提供内容完整性校验，不代表对评审
-意见来源的身份认证。读取器不自动执行意见、不修改项目，也不猜测尚未完成的结果。
+history 输出原始自然语言、精确目标/revision、选择器和可用证据，但没有 `actionable`。它仅供
+背景、继续提出或显式恢复；存档不证明 Agent 已读、已执行、已修复或用户已验收。撤回记录只
+说明要求从 current 移除，不是要求 Agent 执行一条反向自然语言。
 
-## v3 持续评审读取入口（开发中，尚未接入产品 UI）
+每次读取固定一版 index。并发保存不会让一次调用混合新旧 head；delta 只描述已提交净变化，
+不携带旧原文，无法证明起点或超过 10,000 节点时返回 unavailable，完整 current 仍可使用。
+CLI 成功 JSON 写 stdout；typed error JSON 写 stderr 并 exit 1。库函数接受独立第二参数
+`{ signal: AbortSignal }`；取消结束本次子进程读取，不返回部分成功，也不触发项目写入。
 
-隔离分支提供 `read-current.mjs` 和 `read-history.mjs`，使用相同只读核心。旧入口遇到 v3
-明确拒绝并提示当前入口；当前入口遇到旧协议要求显式迁移，绝不把旧 Completed 当作新任务。
+所有索引、state、archive、usage、legacy 与 evidence 位置都经描述符边界、普通文件身份、
+大小、摘要、媒体和引用关系检查。成功结果不返回绝对素材／缓存路径。摘要证明内容完整性，
+不认证是谁写下意见或谁执行了返工。读取器永远不自动执行意见、不修改项目。
 
-```bash
-node scripts/review-protocol/read-current.mjs --project /absolute/test-project
-node scripts/review-protocol/read-current.mjs --project /absolute/test-project --stream STREAM_UUID --since SNAPSHOT_UUID
-node scripts/review-protocol/read-history.mjs --project /absolute/test-project --stream STREAM_UUID --archive ARCHIVE_UUID
-```
+### Legacy v1/v2 读取兼容
 
-当前支持 `--list`、单个 `--stream` 或成对 `--task`／`--batch`；历史必须指定 Stream，并在
-`--snapshot`、`--archive`、`--legacy-round` 中恰选一个，没有隐式 latest。v3 成功 JSON 写
-stdout，typed error JSON 写 stderr、exit 1。库入口对预期读取错误返回 `status: error`；
-legacy 库入口仍抛错，CLI 仍使用 `error: …` stderr。错误码稳定，底层解析诊断文字不是机器契约。
-
-v3 库函数接受独立的第二参数 `{ signal: AbortSignal }`。取消会结束本次子进程读取，返回
-typed IO error，不返回部分成功清单；signal 不进入协议请求，也不会触发项目写入。
-
-每次读取固定一版 index：并发保存不会将已打开的旧版本重选为新版本。完整 current 是本次
-待办清单的权威输入，空 current 不回退历史、不等于“全部通过”；Agent 应以它替换缓存待办，
-不能把历次结果不断追加。sourceChecks 只证明检查时刻，执行前仍应核对目标内容版本。
-delta 只描述已提交净变化，不携带旧原文；无法证明起点或超过 10,000 节点时返回 unavailable，
-完整 current 仍可单独使用。history 没有 actionable，也不证明 Agent 已执行或问题已解决。
+[`read-latest.mjs`](../../scripts/review-protocol/read-latest.mjs) 仅服务尚未迁移的 v1/v2
+Completed 数据。它不会读取 v3 current；v3 入口遇到旧协议也要求显式迁移。旧记录按其原协议
+验证并保持字节不变，不能被时间戳选择、降级重写或自动复活为当前要求。

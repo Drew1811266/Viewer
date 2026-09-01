@@ -10,16 +10,16 @@
 
 **Spec:** [已批准设计](../specs/2026-08-27-viewer-continuous-review-and-agent-handoff-design.md)，完整设计与技术细化于 2026-08-27 获用户确认。
 
-> Status: Active
+> Status: Complete — Tasks 1–23 verified on 2026-08-31
 >
-> 执行状态：阶段 A–D（任务 1–16）及阶段 E 的 Task 17–20 已完成，累计 20 / 23。
+> 执行状态：六个阶段、23 个任务均已完成；最终开发验证与边界见[持续评审验证报告](../../quality/2026-08-27-continuous-review-validation.md)。
 > 阶段 C 最终实现 `21edbf6` 已通过完整 `pnpm verify:clean` 和只读独立复验，检查点 C 完成。
 > 2026-08-28 获批的“Node 入口 + Rust 只读核心”已实现：`7863439`，并发修正 `76726a1`；完整门禁及只读独立复核通过。
 > Task 16 桥接 `db456ef`、审阅修正 `384d4cc` 已通过完整门禁与只读独立复验；阶段 D 完成。
 > 2026-08-28 Task 17 实现 `da1dcff`、修正 `d69a36a` 已通过完整门禁与独立复验，见[协调器记录](../../reviews/2026-08-28-continuous-review-coordinator-task17.md)。
-> 2026-08-30 Task 18 实现 `c6d5d11` 已通过完整门禁与独立复验，见[工作台记录](../../reviews/2026-08-30-continuous-review-workbench-task18.md)。Task 19 实现 `d869049`、安全修正 `9a722dc`、架构拆分 `a3305bd` 及精确空选择修正 `e96831d`、`4537cba` 已通过完整门禁与独立复验，见[存档 UI 记录](../../reviews/2026-08-30-continuous-review-archive-ui-task19.md)。Task 20 实现 `e567900`，经恢复授权、事务生命周期、来源失效和依赖边界修正 `25b619a`、`19e8b98`、`7f9daa3`、`38a6a8f` 后通过完整门禁与独立复验，见[历史恢复 UI 记录](../../reviews/2026-08-31-continuous-review-history-restore-ui-task20.md)。下一步 Task 21；Task 21–23 未开始，新 UI 仍未启用。
+> 2026-08-30 Task 18 实现 `c6d5d11` 已通过完整门禁与独立复验，见[工作台记录](../../reviews/2026-08-30-continuous-review-workbench-task18.md)。Task 19 实现 `d869049`、安全修正 `9a722dc`、架构拆分 `a3305bd` 及精确空选择修正 `e96831d`、`4537cba` 已通过完整门禁与独立复验，见[存档 UI 记录](../../reviews/2026-08-30-continuous-review-archive-ui-task19.md)。Task 20 实现 `e567900`，经恢复授权、事务生命周期、来源失效和依赖边界修正 `25b619a`、`19e8b98`、`7f9daa3`、`38a6a8f` 后通过完整门禁与独立复验，见[历史恢复 UI 记录](../../reviews/2026-08-31-continuous-review-history-restore-ui-task20.md)。Task 21 由 `2c973df` 激活完整流程、`cd1230e` 修正迁移与展示所有权；Task 22 由 `b46e11b` 完成 Rust→Node、UI acceptance、独立读取与受控原生多轮验收。
 > 阶段 D 既有状态见[Task 16 契约检查点](../../progress/2026-08-28-continuous-review-task16-contract-checkpoint.md)及[阶段 D 桥接记录](../../reviews/2026-08-28-continuous-review-bridge-phase-d.md)；读取器结果见[阶段 D 读取器记录](../../reviews/2026-08-28-continuous-review-reader-phase-d.md)。
-> 应用用例、声明、迁移、Agent 读取器和新桥接仅在隔离工程验证；新桌面接口已组装，旧 UI 未切换，真实工程未迁移。
+> 当前持续评审 v3 已在生产组合根启用；声明仍可选，旧项目必须显式迁移。受控验收只操作 Viewer 所有的测试副本，不迁移或改写用户原始工程。
 >
 > 计划基线：`a539f8df5f3e0f3239110df44515ba7cb583e308`；实施基线：`d7abb9961f377ae257c3283ef7893218ec0c53f9`。
 > 阶段 A 在用户授权的 `.worktrees/continuous-review-domain`、`codex/continuous-review-domain` 内实施；原分支未改动。
@@ -884,7 +884,7 @@ const canConfirm = selectedAssetVersionId !== null && positionConfirmed && unres
 
 **Interfaces:** UsageImport 输出用户显式选择的项目内声明相对路径，原生选择器使用既有 dialog 能力；桌面命令核验位于当前项目且不在 `.viewer` 内，UI 不自行读取文件。MigrationDialog 展示 MigrationInspection，明确“继续选中意见”或“仅保留历史”，回传 Task 13 的 MigrationPlan。Root 依据已核验 protocol/capabilities 选择 coordinator；不能因 UI flag 而跳过迁移确认。
 
-- [ ] **Step 1 — RED：拒绝声明后仍能无声明存档。** 使用错误项目声明触发错误，关导入面板再进入存档预览。
+- [x] **Step 1 — RED：拒绝声明后仍能无声明存档。** 使用错误项目声明触发错误，关导入面板再进入存档预览。
 
 ```tsx
 expect(screen.getByText('声明不属于当前项目')).toBeVisible()
@@ -892,17 +892,17 @@ fireEvent.click(screen.getByRole('button', { name: '不使用声明' }))
 expect(screen.getByText('交接版本未确认')).toBeVisible()
 ```
 
-- [ ] **Step 2 — RED。** `pnpm --dir ui test src/components/review/ReviewUsageImport.test.tsx src/components/review/ReviewMigrationDialog.test.tsx`。
-- [ ] **Step 3 — 在阶段 E 所有测试通过后启用新流程。** 新项目第一次成功保存创建 v3；旧项目明确提示迁移，取消保持旧数据。历史 Completed 不自动全选成新要求；活动 Draft 的迁入结果和待确认原因可见。
+- [x] **Step 2 — RED。** `pnpm --dir ui test src/components/review/ReviewUsageImport.test.tsx src/components/review/ReviewMigrationDialog.test.tsx`。
+- [x] **Step 3 — 在阶段 E 所有测试通过后启用新流程。** 新项目第一次成功保存创建 v3；旧项目明确提示迁移，取消保持旧数据。历史 Completed 不自动全选成新要求；活动 Draft 的迁入结果和待确认原因可见。
 
 ```tsx
 if (view.migration !== null) return <ReviewMigrationDialog inspection={view.migration} onConfirm={migrate} onCancel={closeMigration} />
 ```
 
 MigrationDialogProps 在本任务定义为 `{ inspection, onConfirm(MigrationPlanDto), onCancel() }`；选择保存于面板内部。新流程不再渲染完成／放弃轮次入口；legacy adapter 暂留供历史和兼容测试，不做无关大规模删除。
-- [ ] **Step 4 — 测试不自动扫描 Downloads、不修改 production manifest、导入取消、未知主版本、只读目录、迁移中断、旧软件拒写及新旧项目切换。** 用户不提供声明也可完成完整多轮流程；不增加 Agent 连接配置步骤。
-- [ ] **Step 5 — GREEN／检查点 E。** `pnpm --dir ui test && pnpm --dir ui check && pnpm --dir ui build && pnpm architecture:boundaries`，并执行 Rust migration／usage／desktop 聚焦测试。再用隔离工程检查新入口，不能拿用户原工程做首次迁移实验。
-- [ ] **Step 6 — 提交。** `git commit -m "feat(review): activate continuous review with explicit migration"`。
+- [x] **Step 4 — 测试不自动扫描 Downloads、不修改 production manifest、导入取消、未知主版本、只读目录、迁移中断、旧软件拒写及新旧项目切换。** 用户不提供声明也可完成完整多轮流程；不增加 Agent 连接配置步骤。
+- [x] **Step 5 — GREEN／检查点 E。** `pnpm --dir ui test && pnpm --dir ui check && pnpm --dir ui build && pnpm architecture:boundaries`，并执行 Rust migration／usage／desktop 聚焦测试。再用隔离工程检查新入口，不能拿用户原工程做首次迁移实验。
+- [x] **Step 6 — 提交。** `2c973df`（`feat(review): activate continuous review with explicit migration`）；复审修正 `cd1230e`。
 
 ### Task 22: Rust→Node 多轮闭环与真实工作台验收
 
@@ -912,7 +912,7 @@ MigrationDialogProps 在本任务定义为 `{ inspection, onConfirm(MigrationPla
 
 验收载体新增 RVW-25 持续编辑／新图、26 部分存档预览、27 后补保留、28 旧证据与换版确认、29 恢复冲突、30 无声明存档、31 旧数据迁移、32 空当前有历史；复用真实组件与 typed port，不绘制截图替身。既有 RVW-17 四标注／24 缩放继续回归；RVW-21 明确成为 legacy 固定范围场景，不用其旧文案证明 v3 行为。
 
-- [ ] **Step 1 — RED：交接后补意见不能被历史覆盖。** harness 建立 B，读取 B 后模拟用户改为 C，覆写返回图 1，按 B 只存档图 1，再读当前与历史。
+- [x] **Step 1 — RED：交接后补意见不能被历史覆盖。** harness 建立 B，读取 B 后模拟用户改为 C，覆写返回图 1，按 B 只存档图 1，再读当前与历史。
 
 ```js
 assert.equal(current.snapshotRef.snapshotId, result.currentSnapshotId)
@@ -922,8 +922,8 @@ assert.equal(history.feedback.find(item => item.id === result.editedFeedbackId).
 ```
 
 `current.feedback` 是完整保存内容；actionable 另由 sourceChecks 决定，测试不能因为 source 已覆写就丢弃仍在待确认的后补原文。
-- [ ] **Step 2 — RED。** `node --test scripts/review-protocol/continuous-review-e2e.test.mjs` 和 `pnpm --dir ui test src/acceptance/scenes/continuousReviewScenes.test.tsx`。
-- [ ] **Step 3 — 串接真实写入、独立读取与场景适配。** 两轮均走保存→读取→外部文件变化→手动存档→新意见；不让 Node reader 写回执，外部声明文件由测试 producer 显式创建。
+- [x] **Step 2 — RED。** `node --test scripts/review-protocol/continuous-review-e2e.test.mjs` 和 `pnpm --dir ui test src/acceptance/scenes/continuousReviewScenes.test.tsx`。
+- [x] **Step 3 — 串接真实写入、独立读取与场景适配。** 两轮均走保存→读取→外部文件变化→手动存档→新意见；不让 Node reader 写回执，外部声明文件由测试 producer 显式创建。
 
 ```js
 const current = await readCurrentReview({ projectRoot, reviewStreamId: result.streamId })
@@ -931,9 +931,9 @@ const history = await readReviewHistory({ projectRoot, reviewStreamId: result.st
 ```
 
 把新 e2e 加入 test:review-loop；每个场景结束前校验原 fixture 无变化。临时目录只按创建时返回的精确所有权路径清理，不操作用户“下载/测试图”原目录。
-- [ ] **Step 4 — 运行全部 scenario，捕获 RVW-17／24–32 的 1024×720 与宽窗口截图。** `pnpm accept:visual --id RVW-17 --id RVW-24 --id RVW-25 --id RVW-26 --id RVW-27 --id RVW-28 --id RVW-29 --id RVW-30 --id RVW-31 --id RVW-32 --output-root target/viewer-visual-acceptance/continuous-review`。随后用用户“下载/测试图”的已核对受控副本做原生四处标注、保存、重启、换版、存档、再编辑；记录精确命令、截图路径与结果。需要操作本机 UI 时先按 computer-use 技能读取并执行其约束。
-- [ ] **Step 5 — GREEN。** `pnpm test:review-protocol && pnpm test:review-loop && pnpm test:visual-acceptance && pnpm --dir ui test src/acceptance`；截图逐张检查文字、按钮可点、编号／几何一致，原生验证不能仅由浏览器截图代替。
-- [ ] **Step 6 — 提交。** `git commit -m "test(review): cover continuous review and agent handoff end to end"`。
+- [x] **Step 4 — 运行全部 scenario，捕获 RVW-17／24–32 的 1024×720 与宽窗口截图。** `pnpm accept:visual --id RVW-17 --id RVW-24 --id RVW-25 --id RVW-26 --id RVW-27 --id RVW-28 --id RVW-29 --id RVW-30 --id RVW-31 --id RVW-32 --output-root target/viewer-visual-acceptance/continuous-review`。随后用用户“下载/测试图”的已核对受控副本做原生四处标注、保存、重启、换版、存档、再编辑；记录精确命令、截图路径与结果。需要操作本机 UI 时先按 computer-use 技能读取并执行其约束。
+- [x] **Step 5 — GREEN。** `pnpm test:review-protocol && pnpm test:review-loop && pnpm test:visual-acceptance && pnpm --dir ui test src/acceptance`；截图逐张检查文字、按钮可点、编号／几何一致，原生验证不能仅由浏览器截图代替。
+- [x] **Step 6 — 提交。** `b46e11b`（`test(review): cover continuous review and agent handoff end to end`）。
 
 ### Task 23: 旧功能回归、产品事实同步与最终门禁
 
@@ -941,8 +941,8 @@ const history = await readReviewHistory({ projectRoot, reviewStreamId: result.st
 
 **Interfaces:** 没有新运行时 API。产物为准确的 Current 产品／协议说明、部分替代关系和可复核验证报告。报告必须区分已执行／失败／未执行，不以计划勾选代替日志；公开 Rust API baseline 仅记录真正新增的端口，不放宽冻结的文件／网络安全边界。
 
-- [ ] **Step 1 — 核对闭环验收与旧功能清单。** 逐项勾核本计划第 4 节；运行已有图片预览、视频播放、搜索、文件整理／撤销、网格／大图导航和只读工程聚焦测试。对需要交互证明的项目记录实际操作，发现问题先按 systematic-debugging 定位，不能无证据宣布全功能可用。
-- [ ] **Step 2 — 同步已实现事实。** 用户指南明确无需“完成本轮”、成功保存才可读、存档非已解决、无声明主流程、部分存档／后补保留、历史继续提出与源确认。协议示例只给已运行通过的命令：
+- [x] **Step 1 — 核对闭环验收与旧功能清单。** 逐项勾核本计划第 4 节；运行已有图片预览、视频播放、搜索、文件整理／撤销、网格／大图导航和只读工程聚焦测试。对需要交互证明的项目记录实际操作，发现问题先按 systematic-debugging 定位，不能无证据宣布全功能可用。
+- [x] **Step 2 — 同步已实现事实。** 用户指南明确无需“完成本轮”、成功保存才可读、存档非已解决、无声明主流程、部分存档／后补保留、历史继续提出与源确认。协议示例只给已运行通过的命令：
 
 ```sh
 node scripts/review-protocol/read-current.mjs --project /absolute/test-project --stream 00000000-0000-4000-8000-000000000102
@@ -950,8 +950,8 @@ node scripts/review-protocol/read-history.mjs --project /absolute/test-project -
 ```
 
 上述绝对路径是文档语法示例；实际验证使用临时工程返回的路径／ID，不声称示例工程已存在。读取说明要求完整当前清单替换旧待办、执行前核对目标版本，撤回不等于逆向修改。隐私说明列出本地证据／技术快照留存和没有自动清理，不宣称完整原图／视频备份。
-- [ ] **Step 3 — 审核兼容与范围文案。** 旧设计只将固定范围、完成锁定、默认通过及旧 latest 当前语义标为被本设计替代，其余几何／安全约束继续有效；不整体作废已完成历史计划。保留开发早期政策，不新增签名、公证、正式安装包或发售待办。CHANGELOG 写本次功能事实，不改版本号。
-- [ ] **Step 4 — 运行最终门禁并保存结果。**
+- [x] **Step 3 — 审核兼容与范围文案。** 旧设计只将固定范围、完成锁定、默认通过及旧 latest 当前语义标为被本设计替代，其余几何／安全约束继续有效；不整体作废已完成历史计划。保留开发早期政策，不新增签名、公证、正式安装包或发售待办。CHANGELOG 写本次功能事实，不改版本号。
+- [x] **Step 4 — 运行最终门禁并保存结果。**
 
 ```sh
 git diff --check
@@ -962,8 +962,8 @@ pnpm verify:clean
 ```
 
 architecture:trends 是非阻塞报告，新增趋势需解释，不更新基线隐藏问题。其余应 exit 0；native 四标注／两轮流程证据单独列明，不能把既有 packaging 脚本的通过解读成产品发布准备。门禁运行中定期回报真实进展。
-- [ ] **Step 5 — 检查点 F 与用户交付。** 只有 Tasks 1–22、完整验收矩阵、原生回归及门禁均有证据时，将实施状态标为完成；若有缺项明确停在对应任务，不写“全部可用”。按 requesting-code-review 与 verification-before-completion 技能完成必要检查；若需要代理审阅先遵守当时的授权和技能要求。
-- [ ] **Step 6 — 提交已核验文档。** `git commit -m "docs(review): document continuous review and validated handoff workflow"`；仅暂存本任务文件，随后核对 git status 与最终 commit。合并／推送／发布不在本计划授权内。
+- [x] **Step 5 — 检查点 F 与用户交付。** Tasks 1–22、完整验收矩阵、受控原生多轮流程与最终门禁均有证据；整分支复核没有遗留 Critical／Important／Minor 发现。已按 requesting-code-review 与 verification-before-completion 要求复核。
+- [x] **Step 6 — 提交已核验文档。** 使用 `docs(review): document continuous review and validated handoff workflow` 提交本任务文件；提交后核对状态。合并／推送／发布不在本计划授权内。
 
 ## 4. 设计覆盖与验收矩阵
 

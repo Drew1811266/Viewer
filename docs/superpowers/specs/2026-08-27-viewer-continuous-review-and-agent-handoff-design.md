@@ -1,16 +1,17 @@
 # Viewer 持续评审、手动存档与 Agent 交接设计
 
-> Status: Active
+> Status: Implemented — Tasks 1–23 completed and verified on 2026-08-31
 >
 > 日期：2026-08-27
 >
 > 设计审阅状态：三组产品规则已逐节确认；本完整设计及技术细化已于 2026-08-27 获用户确认。
 >
-> 实施状态：用户授权的阶段 A–D（任务 1–16）及阶段 E 的 Task 17 已完成，累计 17 / 23；各自通过全仓门禁与独立复审。
-> 2026-08-28 获批的 Node 入口 + Rust 只读核心和 Task 16 桌面桥接均已验收，见[桥接记录](../../reviews/2026-08-28-continuous-review-bridge-phase-d.md)。Task 17 协调器实现及复核修正已通过完整门禁与独立复验，见[协调器记录](../../reviews/2026-08-28-continuous-review-coordinator-task17.md)；下一步 Task 18，Task 18–23 未开始，新 UI 未启用，未迁移真实工程。
-> 见[阶段 D 读取器记录](../../reviews/2026-08-28-continuous-review-reader-phase-d.md)及[架构检查点](../../progress/2026-08-27-continuous-review-phase-d-architecture-checkpoint.md)。本文仍不是当前产品行为说明，不表示新协议或 UI 已启用。
+> 实施状态：用户授权的 Tasks 1–23 已完成。Tasks 1–22 的运行时、协议、读取器、桌面/UI、
+> Rust→Node 多轮闭环、独立复审与受控原生验收均通过；Task 23 完成旧功能回归、产品事实同步
+> 与最终门禁。当前产品事实见 [`PRODUCT_SPEC.md`](../../PRODUCT_SPEC.md)，验证证据见
+> [持续评审验证报告](../../quality/2026-08-27-continuous-review-validation.md)。
 >
-> 核对基线：`b2eaad0`，分支 `codex/image-annotation-review-workbench`。
+> 运行时核对基线：`b46e11b`，分支 `codex/continuous-review-domain`。
 
 ## 1. 结论与阅读入口
 
@@ -29,8 +30,9 @@
 实际采用了这些意见，不证明修改完成，也不证明用户验收通过。
 
 产品规则见第 4–8 节；模块职责、数据一致性和协议兼容见第 9–13 节；验收要求见第 14 节。
-已落地的纯规则、协议仓储及应用用例见[实施计划](../plans/2026-08-27-viewer-continuous-review-and-agent-handoff.md)
-和[阶段 C 记录](../../reviews/2026-08-27-continuous-review-application-phase-c.md)；对外读取、桌面和 UI 接入仍是拟实施契约。
+完整实现见[实施计划](../plans/2026-08-27-viewer-continuous-review-and-agent-handoff.md)、
+[验证报告](../../quality/2026-08-27-continuous-review-validation.md)和分阶段评审记录；对外读取、
+桌面和 UI 已接通，未来具体 Agent 连接器仍不在当前范围。
 
 ## 2. 问题、现状与范围
 
@@ -519,11 +521,9 @@ latest”或把新历史复制成旧可执行结果。已保存于外部的旧�
 本文把三组已确认产品规则收敛为一套设计；目标级部分归档、一次性迁移处理、显式声明导入、
 后台版本留存和模块划分随整篇于 2026-08-27 获用户确认。
 
-设计和规划阶段只更新文档，不改变当前协议、运行代码、素材或产品已实现状态。
-对应[实施计划](../plans/2026-08-27-viewer-continuous-review-and-agent-handoff.md)按纯规则、
-持久化协议、应用用例、对外边界、用户流程和闭环验收分为六个阶段、23 个任务。
-设计确认时尚未开始编码；当前实施进度以文首验收状态和实施计划为准。
-设计批准和计划成文不等于功能已经实现，底层验收也不表示新 UI 已接通。
+本文最初批准时只形成设计与计划；随后按[实施计划](../plans/2026-08-27-viewer-continuous-review-and-agent-handoff.md)
+的六个阶段、23 个任务完成实现和验收。历史段落中的“当前实现”“待实施”描述的是当时基线，
+不得覆盖文首实施状态、当前产品规格和最终验证报告。
 
 ## 16. 设计依据与相关资料
 

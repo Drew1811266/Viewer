@@ -94,6 +94,26 @@
 `crates/viewer-infrastructure/src/portable/markers.rs`；测试见 `MarkerControls.test.tsx`、
 `FolderOverview.test.tsx` 和 `src-tauri/src/commands/markers.rs`。
 
+## 6.1 持续评审、手动存档与 Agent 交接
+
+**状态：** 当前可用；图片区域工作台和本地 current/history 读取已通过原生多轮验收。
+
+**用户行为：** 用户在大图中用矩形、画笔或整图意见记录自然语言返工要求。成功保存后，
+当前 Review Stream 的完整 current 即可由外部读取器消费，不需要“完成本轮”。文字、区域和
+意见可继续编辑、重绘或删除。收到返工素材后，用户手动预览并存档精确意见版本；部分存档
+保留未选目标及后来新增／修改的意见。历史可以查看证据、继续提出或显式恢复，原记录不改写。
+
+**边界与失败：** 网格浏览和大图浏览都不生成“已通过”事实；空 current 不代表全部通过。
+存档不证明 Agent 已读取、执行、修复或获得用户验收。可选返工依据声明不证明 lineage；无
+声明也能完成保存、读取和存档。源文件换版、历史继续或恢复都按精确素材版本失败关闭，需要
+用户确认候选与位置。只读、未来协议、迁移未完成、保存中断或已提交但视图暂不可用均保留
+类型化状态，不从时间戳、目录或路径猜测结果。当前没有视频时间段标注和内置 Agent 执行器。
+
+**维护证据：** `ui/src/components/review/`、`ui/src/app/review/`、
+`crates/viewer-application/src/review_workspace/`、`crates/viewer-infrastructure/src/review/continuous/`、
+`src-tauri/src/commands/review_workspace.rs`；验证见
+[`../quality/2026-08-27-continuous-review-validation.md`](../quality/2026-08-27-continuous-review-validation.md)。
+
 ## 7. 图片预览与放大镜
 
 **状态：** 当前可用。

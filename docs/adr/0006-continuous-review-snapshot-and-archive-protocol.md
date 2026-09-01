@@ -2,16 +2,16 @@
 
 > Status: Active
 >
-> Decision: Phases A–D (Tasks 1–16) verified. Native reader and desktop amendments implemented and independently reviewed on 2026-08-28; UI integration remains pending.
+> Decision: Tasks 1–22 verified. The v3 continuous-review path, native reader, desktop boundary and production UI are active as of 2026-08-31.
 >
 > Date: 2026-08-27
 
 ## Context
 
 Viewer is an early-development AI material review tool. Users keep editing natural-language feedback
-and manually archive previous iteration requirements. Archiving does not prove execution, resolution
-or approval. The existing Completed round remains the active product behavior until the new chain is
-implemented and explicitly connected.
+and manually archive previous-iteration requirements. Archiving does not prove execution, resolution
+or approval. The v3 continuous chain is now the production path for compatible projects; v1/v2 fixed
+Completed rounds remain explicit migration/compatibility input and do not automatically become current.
 
 The approved [design](../superpowers/specs/2026-08-27-viewer-continuous-review-and-agent-handoff-design.md)
 and [implementation plan](../superpowers/plans/2026-08-27-viewer-continuous-review-and-agent-handoff.md)
@@ -144,6 +144,33 @@ not authorize execution of feedback on disk.
 
 No protocol bytes, original materials, product UI or version number are changed in Phase A. Signing,
 notarization, formal installers, publication and sales are outside the current development scope.
+
+## Final activation decision — Tasks 17–22
+
+- `ContinuousReviewService` is the sole presentation owner for verified v3 workspaces. Legacy completion
+  and abandonment stay confined to explicit legacy/migration compatibility paths.
+- A successful save publishes a complete current snapshot. No completion action, frozen round, default
+  pass or browsing-derived outcome exists in v3.
+- Production UI provides image rectangle, brush and whole-asset natural-language feedback; edit, redraw
+  and delete remain available after prior saves and handoffs.
+- Manual archive accepts an explicit selection with known or unknown usage basis. Partial archive keeps
+  unselected targets and later revisions current. Optional usage declarations are user-selected inputs,
+  not execution receipts or lineage authority.
+- Production history discovery comes only from the repository-validated, exact-stream typed selector
+  catalog. Zero selectors disables history, one opens directly, and multiple require explicit user choice;
+  UI never parses `.viewer` or guesses latest from time/path/order.
+- History remains background-only. Continue-as-new creates new identities and `HistoryRef`; restore appends
+  a guarded current state. Neither rewrites archive bytes or implies a fix.
+- Fresh source checks and exact AssetVersion identity gate workbench hydration. A replaced source fails
+  closed; confirmed source/anchor decisions are explicit and never inferred from equal path or metadata.
+- The external v3 reader returns complete current or explicitly selected history. Consumers replace cached
+  tasks with current, recheck target versions before execution, and never translate withdrawal into reverse prose.
+- Product activation was proven through the real App/coordinator/typed-port path, Rust→Node multi-round
+  scenarios, independent readers and a controlled native cold-restart/source-replacement/archive/re-edit flow.
+  Detailed evidence is in [the validation report](../quality/2026-08-27-continuous-review-validation.md).
+
+This activation adds no Agent execution, cloud/network authority, automatic history cleanup, video time-range
+annotation, signing, notarization, formal installer, listing, public release or sale commitment.
 
 ## Verification
 

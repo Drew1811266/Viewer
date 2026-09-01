@@ -26,6 +26,7 @@
 | [OPEN_SOURCE_RESEARCH.md](OPEN_SOURCE_RESEARCH.md) | Active | — |
 | [protocol/README.md](protocol/README.md) | Active | — |
 | [quality/DEPENDENCY_HEALTH.md](quality/DEPENDENCY_HEALTH.md) | Active | — |
+| [quality/2026-08-27-continuous-review-validation.md](quality/2026-08-27-continuous-review-validation.md) | Development evidence | — |
 | [architecture/viewer-0.1-api-baseline.md](architecture/viewer-0.1-api-baseline.md) | Active | — |
 | [2026-08-24-viewer-architecture-governance-and-workspace-orchestration-design.md](superpowers/specs/2026-08-24-viewer-architecture-governance-and-workspace-orchestration-design.md) | Active | — |
 | [2026-08-25-viewer-ai-material-review-workflow-design.md](superpowers/specs/2026-08-25-viewer-ai-material-review-workflow-design.md) | Active | — |
@@ -48,23 +49,22 @@
 AI 素材评审路线阶段 2 已于 2026-08-26 完成：设计文档内部状态为 `Implemented`，实施计划
 内部状态为 `Complete`。两份文档继续以 Active 治理资料保留，用于约束未来阶段的依赖边界。
 
-持续评审与 Agent 交接完整设计已于 2026-08-27 获用户确认；实施计划已拆为六个阶段、23 个
-任务；阶段 A 的纯 Domain 任务 1–5 已在授权的独立分支完成并通过复审，证据见
-[阶段记录](reviews/2026-08-27-continuous-review-domain-phase-a.md)。阶段 B、C 现也已完成：
-任务 1–17 已通过各自全仓门禁与独立复验，累计 17 / 23。2026-08-28 已完成获批的
-Node 入口 + Rust 只读核心，见[阶段 D 读取器记录](reviews/2026-08-28-continuous-review-reader-phase-d.md)；
-Task 16 桥接及审阅修正已验收，见[Task 16 检查点](progress/2026-08-28-continuous-review-task16-contract-checkpoint.md)及[桥接验证记录](reviews/2026-08-28-continuous-review-bridge-phase-d.md)。
-阶段 D 已完成，阶段 E 的 Task 17 实现及复核修正已验收，见[协调器记录](reviews/2026-08-28-continuous-review-coordinator-task17.md)；下一步 Task 18，Task 18–23 未开始，新 UI 尚未启用，未迁移真实工程。架构调整及原失败事实见
-[阶段 D 架构检查点](progress/2026-08-27-continuous-review-phase-d-architecture-checkpoint.md)。此前已通过结果见
-[阶段 C 记录](reviews/2026-08-27-continuous-review-application-phase-c.md)，阶段 B 结果见
-[阶段 B 记录](reviews/2026-08-27-continuous-review-persistence-phase-b.md)，此前暂停状态见
-[暂停检查点](progress/2026-08-27-continuous-review-phase-b-paused-checkpoint.md)。任务 6
+持续评审与 Agent 交接完整设计已于 2026-08-27 获用户确认；六个阶段、23 个任务已在授权的
+独立分支完成实现与开发验证。阶段 A–D 的 Domain、持久化、应用、读取器与桌面桥接证据分别见
+[阶段 A 记录](reviews/2026-08-27-continuous-review-domain-phase-a.md)、
+[阶段 B 记录](reviews/2026-08-27-continuous-review-persistence-phase-b.md)、
+[阶段 C 记录](reviews/2026-08-27-continuous-review-application-phase-c.md)、
+[阶段 D 读取器记录](reviews/2026-08-28-continuous-review-reader-phase-d.md)与
+[桥接验证记录](reviews/2026-08-28-continuous-review-bridge-phase-d.md)。阶段 E 的协调器、工作台、
+手动存档、历史恢复及完整流程切换已经启用；阶段 F 的 Rust→Node、多轮原生交互、旧功能回归
+及最终门禁见[持续评审验证报告](quality/2026-08-27-continuous-review-validation.md)。任务 6
 新增 [v3 状态 Schema](protocol/viewer-review-state-v3.schema.json)、
 [索引 Schema](protocol/viewer-review-index-v3.schema.json)、
 [存档 Schema](protocol/viewer-review-archive-v3.schema.json)、
 [读取结果 Schema](protocol/viewer-review-read-result-v3.schema.json)与
-[使用声明 Schema](protocol/viewer-review-usage-v1.schema.json)，均为 Active 工程契约。
-Active 不表示产品已解除完成锁定或切换到新协议；迁移与对外读取器仅在隔离工程验证，新桌面接口已组装，旧 UI 尚未切换。
+[使用声明 Schema](protocol/viewer-review-usage-v1.schema.json)，均为 Active 工程契约。当前新建
+项目使用持续评审 v3；v1/v2 只保留显式迁移和历史兼容。这里的完成仅指开发计划和已列验证，
+不代表正式发行或外部 Agent 已实际执行意见。
 
 ## 历史目标、设计与实施资料
 

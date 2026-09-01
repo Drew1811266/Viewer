@@ -1,10 +1,17 @@
 # Viewer 例外驱动基础评审闭环设计
 
-> Status: Implemented — 2026-08-26 已完成实现与验证
+> Status: Implemented historical foundation — lifecycle partially superseded on 2026-08-31
 >
 > Date: 2026-08-25
 >
 > Product phase: AI 素材评审路线阶段 2
+
+> 当前解释：本文仍记录阶段 2 已实现的固定范围 Draft/Completed 兼容基础。其“固定本轮素材”、
+> “完成后锁定”、未评价素材默认 `pass`、Draft 不可供外部读取，以及按 Stream 的旧 Completed
+> head/latest 语义，已被[持续评审设计](2026-08-27-viewer-continuous-review-and-agent-handoff-design.md)
+> 和 [ADR 0006](../../adr/0006-continuous-review-snapshot-and-archive-protocol.md)替代。项目/Stream
+> 身份、安全文件边界、单写入者、原子提交、旧记录只读兼容、自然语言权威和浏览不等于逐项
+> 打开等约束继续有效。本文后续“当前”“必须”等措辞均按这一替代范围阅读，不整体作废历史实现。
 
 ## 1. 背景
 
@@ -565,9 +572,9 @@ Application Session；Completed 文件和 index 不受此入口影响。
 
 ## 16. 后续阶段边界
 
-阶段 2 稳定后，阶段 3 才设计 Production Manifest、Revision Relation、返工版本和多轮对照
-复审。阶段 4 才实现图片区域和视频时间 Anchor 的交互。阶段 5 才实现 CLI、MCP、本地 API
-和具体 Agent 适配器。
+后续持续评审阶段已经实现图片区域 Anchor、完整 current/history 本地参考读取器、手动存档、
+历史继续／恢复和源版本确认。Production Manifest 自动执行、自动 Revision Relation、视频时间
+Anchor、MCP、本地 API 和具体 Agent 适配器仍未实现。
 
-未来适配器必须调用本设计的 `ReviewSessionService` 用例，不得直接写 `.viewer/reviews/` 或在
-某个 Agent 插件中复制 Review Domain。
+未来适配器必须调用当前持续评审应用边界，不得直接写 `.viewer/reviews/` 或在某个 Agent
+插件中复制 Review Domain。legacy `ReviewSessionService` 只服务显式兼容/迁移路径。

@@ -1,14 +1,16 @@
 # Viewer 图片标注评审工作台设计
 
-> Status: Active
+> Status: Implemented foundation — lifecycle partially superseded on 2026-08-31
 >
 > 日期：2026-08-26
 >
 > 类型：AI 素材评审路线阶段 3 架构与交互设计
 >
-> 当前事实边界：本文描述下一轮待实施能力，不表示 Viewer 当前已经支持图片画笔、区域
-> 标注、标注预览图或 `viewer.review/2`。当前行为仍以
-> [`PRODUCT_SPEC.md`](../../PRODUCT_SPEC.md) 为准。
+> 当前事实边界：图片画笔、矩形、整图意见、编号标记、可收起意见栏、编辑、重绘、删除和
+> 不修改原图的证据已经实现。本文继承阶段 2 的“固定名单”“完成锁定”“默认通过”和旧
+> Completed/latest 语义已被[持续评审设计](2026-08-27-viewer-continuous-review-and-agent-handoff-design.md)
+> 替代；标注几何、输入所有权、保存原子性、安全资源边界和原生证据约束继续有效。当前产品
+> 行为以 [`PRODUCT_SPEC.md`](../../PRODUCT_SPEC.md) 为准。
 
 ## 1. 背景与问题
 
@@ -395,9 +397,7 @@ Round Bundle 已发布但 Catalog 尚未更新时，它是可验证孤儿。下�
 
 ## 14. 文档影响
 
-实施完成前，本文保持 Active 设计状态，当前产品文档不得把图片区域标注写成已实现。
-
-实施完成后至少同步：
+图片区域工作台和后续持续评审生命周期已经实现；当前文档同步范围至少包括：
 
 - `docs/PRODUCT_SPEC.md`；
 - `docs/protocol/README.md` 和 v2 JSON Schema；

@@ -2,7 +2,7 @@
 
 > Status: Current
 >
-> 当前开发版本：`0.1.6`
+> 当前开发版本：`0.1.7`
 
 本规范用于功能新增、调整、重构或版本推进后同步产品文档。原则是先审计运行代码和测试，再更新
 当前产品描述；历史规划继续保留为历史证据，不能反向覆盖新版本事实。
@@ -98,13 +98,13 @@
 ```bash
 node --test scripts/repository-policy.test.mjs scripts/scope-coverage.test.mjs
 node scripts/check-scope-coverage.mjs
-rg -n '当前开发版本：`0\.1\.6`' docs/PRODUCT_SPEC.md docs/product/*.md
+rg -n '当前开发版本：`0\.1\.7`' docs/PRODUCT_SPEC.md docs/product/*.md
 rg -n '\]\([^)]*\.md(?:#[^)]*)?\)' README.md docs/PRODUCT_SPEC.md docs/product docs/README.md
 git diff --check
 pnpm verify
 ```
 
-推进版本时，把示例中的 `0.1.6` 改成新版本。完整验证失败时先修复第一个真实根因；不要通过删除
+推进版本时，把示例中的 `0.1.7` 改成新版本。完整验证失败时先修复第一个真实根因；不要通过删除
 现有测试、降低策略或把 Current 文档改成模糊措辞来绕过不一致。
 
 ## 7. 评审清单

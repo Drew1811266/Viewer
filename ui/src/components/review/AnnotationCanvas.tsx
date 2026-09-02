@@ -1,5 +1,5 @@
 import type { PointerEvent as ReactPointerEvent } from 'react'
-import { useEffect, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { rectFromDrag, simplifyNormalizedStroke } from '../../app/review/annotationGeometry'
 import type {
   ImageReviewWorkbenchController,
@@ -7,6 +7,11 @@ import type {
   SavedImageFeedback,
 } from '../../app/review/useImageReviewWorkbench'
 import type { ImagePreviewProjection } from '../imagePreview/ImagePreviewSurface'
+import {
+  annotationMarkerPoint,
+  buildAnnotationScene,
+  paintAnnotationScene,
+} from './annotationScene'
 
 interface AnnotationCanvasProps {
   projection: ImagePreviewProjection
@@ -31,6 +36,16 @@ export default function AnnotationCanvas({ projection, controller }: AnnotationC
     controller.editor.status === 'idle' || controller.editor.status === 'drawing'
       ? null
       : controller.editor.draftAnchor
+  const transientAnchor = candidate ?? draftAnchor
+  const scene = useMemo(
+    () =>
+      buildAnnotationScene({
+        feedback: controller.feedback,
+        selectedItemId: controller.selectedItemId,
+        transientAnchor,
+      }),
+    [controller.feedback, controller.selectedItemId, transientAnchor],
+  )
   const drawingEnabled =
     controller.readOnlyReason === null &&
     (controller.editor.status === 'idle' || controller.editor.status === 'drawing') &&
@@ -58,19 +73,28 @@ export default function AnnotationCanvas({ projection, controller }: AnnotationC
     if (context === null) return
     context.setTransform(ratio, 0, 0, ratio, 0, 0)
     context.clearRect(0, 0, projection.stageRect.width, projection.stageRect.height)
-    context.lineCap = 'round'
-    context.lineJoin = 'round'
-    context.lineWidth = 2
-    context.strokeStyle = annotationColor(element)
-    for (const feedback of controller.feedback) drawAnchor(context, feedback.anchor, projection)
-    const transientAnchor = candidate ?? draftAnchor
-    if (transientAnchor !== null) {
-      context.save()
-      context.setLineDash([6, 4])
-      drawAnchor(context, transientAnchor, projection)
-      context.restore()
-    }
-  }, [candidate, controller.feedback, draftAnchor, projection])
+    paintAnnotationScene(
+      context,
+      scene,
+      {
+        normalizedToLocal(point) {
+          const projected = projection.normalizedToStage(point)
+          return projected === null
+            ? null
+            : {
+                x: projected.x - projection.stageRect.left,
+                y: projected.y - projection.stageRect.top,
+              }
+        },
+      },
+      {
+        color: annotationColor(element),
+        lineWidth: 2,
+        drawOrdinals: false,
+        ordinalRadius: 14,
+      },
+    )
+  }, [projection, scene])
 
   function beginDrawing(event: ReactPointerEvent<HTMLCanvasElement>) {
     if (!drawingEnabled) return
@@ -211,7 +235,8 @@ function AnnotationMarker({
   }, [drawing])
   useEffect(() => () => pointerCleanup.current?.(), [])
   if (feedback.anchor.kind === 'asset' || feedback.ordinal === null) return null
-  const point = markerPoint(feedback.anchor)
+  const point = annotationMarkerPoint(feedback.anchor)
+  if (point === null) return null
   const projected = projection.normalizedToStage(point)
   if (projected === null) return null
   const local = {
@@ -400,49 +425,6 @@ function beginRectPointerEdit(
   window.addEventListener('pointerup', finish)
   window.addEventListener('pointercancel', cancel)
   return cleanup
-}
-
-function drawAnchor(
-  context: CanvasRenderingContext2D,
-  anchor: ReviewAnchor,
-  projection: ImagePreviewProjection,
-) {
-  if (anchor.kind === 'image_rect') {
-    const start = localPoint(projection.normalizedToStage({ x: anchor.x, y: anchor.y }), projection)
-    const end = localPoint(
-      projection.normalizedToStage({ x: anchor.x + anchor.width, y: anchor.y + anchor.height }),
-      projection,
-    )
-    if (start !== null && end !== null)
-      context.strokeRect(start.x, start.y, end.x - start.x, end.y - start.y)
-    return
-  }
-  if (anchor.kind !== 'image_stroke') return
-  context.beginPath()
-  let started = false
-  for (const point of anchor.points) {
-    const projected = localPoint(projection.normalizedToStage(point), projection)
-    if (projected === null) continue
-    if (!started) {
-      context.moveTo(projected.x, projected.y)
-      started = true
-    } else {
-      context.lineTo(projected.x, projected.y)
-    }
-  }
-  if (started) context.stroke()
-}
-
-function localPoint(point: { x: number; y: number } | null, projection: ImagePreviewProjection) {
-  return point === null
-    ? null
-    : { x: point.x - projection.stageRect.left, y: point.y - projection.stageRect.top }
-}
-
-function markerPoint(anchor: ReviewAnchor) {
-  if (anchor.kind === 'image_rect') return { x: anchor.x + anchor.width, y: anchor.y }
-  if (anchor.kind === 'image_stroke') return anchor.points.at(-1) as { x: number; y: number }
-  return { x: 0.5, y: 0.5 }
 }
 
 function handlePoint(anchor: Extract<ReviewAnchor, { kind: 'image_rect' }>, handle: RectHandle) {

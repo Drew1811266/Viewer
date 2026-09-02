@@ -3,6 +3,7 @@ import type { ReviewAnchor, SavedImageFeedback } from '../../app/review/useImage
 import {
   annotationMarkerPoint,
   buildAnnotationScene,
+  createAnnotationMagnifierPainter,
   paintAnnotationScene,
 } from './annotationScene'
 
@@ -142,6 +143,57 @@ describe('annotation scene', () => {
       ),
     ).toBe(1)
   })
+
+  it.each([
+    [1, 2],
+    [2, 4],
+    [4, 5],
+  ])('scales and clamps lens strokes at %ix magnification', (magnification, lineWidth) => {
+    const context = canvasContext()
+    context.value.canvas.style.setProperty('--review-annotation', '#d92d20')
+    const projection = {
+      lensSize: { width: 200, height: 200 },
+      normalizedToLens: vi.fn(({ x, y }: { x: number; y: number }) => ({
+        x: x * 200,
+        y: y * 100,
+      })),
+    }
+
+    const painted = createAnnotationMagnifierPainter(
+      buildAnnotationScene({
+        feedback: [feedback('rect', 1, RECT)],
+        selectedItemId: null,
+        transientAnchor: null,
+      }),
+    )(context.value, { projection, magnification, pixelRatio: 2 })
+
+    expect(painted).toBe(1)
+    expect(context.value.lineWidth).toBe(lineWidth)
+    expect(context.value.strokeStyle).toBe('#d92d20')
+    expect(context.arc).toHaveBeenCalledWith(80, 20, 14, 0, Math.PI * 2)
+    expect(projection.normalizedToLens).toHaveBeenCalled()
+  })
+
+  it('uses the CanvasText fallback and retains transient dash geometry in the lens', () => {
+    const context = canvasContext()
+    createAnnotationMagnifierPainter(
+      buildAnnotationScene({
+        feedback: [],
+        selectedItemId: null,
+        transientAnchor: RECT,
+      }),
+    )(context.value, {
+      projection: {
+        lensSize: { width: 200, height: 200 },
+        normalizedToLens: ({ x, y }) => ({ x: x * 200, y: y * 100 }),
+      },
+      magnification: 2,
+      pixelRatio: 1,
+    })
+
+    expect(context.value.strokeStyle).toBe('CanvasText')
+    expect(context.setLineDash).toHaveBeenCalledWith([6, 4])
+  })
 })
 
 const PROJECTION = {
@@ -183,6 +235,7 @@ function canvasContext() {
     ...methods,
     value: {
       ...methods,
+      canvas: document.createElement('canvas'),
       lineCap: 'butt',
       lineJoin: 'miter',
       lineWidth: 1,

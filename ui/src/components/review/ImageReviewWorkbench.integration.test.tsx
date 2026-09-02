@@ -154,6 +154,7 @@ function reviewCoordinator(anchor: ReviewAnchor | null = RECT): ReviewSessionCoo
 async function mount(review = reviewCoordinator()) {
   let controller!: ImageReviewWorkbenchController
   const leave = vi.fn(async () => undefined)
+  const pointerClientPoint: { current: { x: number; y: number } | null } = { current: null }
   const adapter = legacyImageReviewWorkbenchAdapter(review, {
     kind: 'selection',
     entityIds: ['image-2'],
@@ -177,16 +178,22 @@ async function mount(review = reviewCoordinator()) {
         file={defined(files[1])}
         files={files}
         magnifier={{ shape: 'circle', magnification: 2, area: 'small' }}
-        pointerClientPoint={{ current: null }}
+        pointerClientPoint={pointerClientPoint}
         requestImage={requestImage}
       />
     )
   }
   render(<Harness />)
-  await waitFor(() => expect(document.querySelector('.image-preview-image')).not.toBeNull())
+  await waitFor(() =>
+    expect(document.querySelector('.image-preview-image')).toHaveAttribute(
+      'data-representation',
+      'original',
+    ),
+  )
   const previewImage = document.querySelector('.image-preview-image')
   if (previewImage === null) throw new Error('Expected loaded preview image')
   fireEvent.load(previewImage)
+  await waitFor(() => expect(previewImage).toHaveAttribute('data-visible', 'true'))
   await screen.findByTestId('annotation-canvas')
   return { current: () => controller, review, leave }
 }
@@ -228,6 +235,39 @@ afterEach(() => {
 })
 
 describe('real image workbench editing ownership', () => {
+  it('keeps the composite lens current while the annotation canvas owns a drawing gesture', async () => {
+    const frames: FrameRequestCallback[] = []
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+      frames.push(callback)
+      return frames.length
+    })
+    vi.stubGlobal('cancelAnimationFrame', vi.fn())
+    const context = reviewCanvasContext()
+    vi.mocked(HTMLCanvasElement.prototype.getContext).mockReturnValue(context)
+    await mount()
+
+    fireEvent.click(screen.getByRole('button', { name: '放大镜' }))
+    fireEvent.click(screen.getByRole('button', { name: '矩形' }))
+    const canvas = screen.getByTestId('annotation-canvas')
+    fireEvent.pointerDown(canvas, { pointerId: 5, clientX: 180, clientY: 140 })
+    fireEvent.pointerMove(canvas, { pointerId: 5, clientX: 300, clientY: 240 })
+    expect(document.querySelector('.image-preview-stage')).toHaveAttribute(
+      'data-magnifier-over-image',
+      'true',
+    )
+    expect(frames.length).toBeGreaterThan(0)
+    act(() => {
+      while (frames.length > 0) frames.shift()?.(0)
+    })
+
+    expect(screen.getByTestId('image-magnifier')).toHaveAttribute('data-visible', 'true')
+    expect(screen.getByTestId('image-magnifier-overlay')).toHaveAttribute(
+      'data-has-content',
+      'true',
+    )
+    expect(context.setLineDash).toHaveBeenCalledWith([6, 4])
+  })
+
   it('guards every rail text leave intent and explicitly discards local text', async () => {
     const work = await mount()
     fireEvent.click(screen.getByRole('button', { name: '编辑意见 1 文字' }))
@@ -488,6 +528,33 @@ describe('real image workbench editing ownership', () => {
     expect(screen.getByRole('textbox')).toHaveValue('未保存文字')
   })
 })
+
+function reviewCanvasContext(): CanvasRenderingContext2D {
+  return {
+    canvas: document.createElement('canvas'),
+    setTransform: vi.fn(),
+    clearRect: vi.fn(),
+    save: vi.fn(),
+    restore: vi.fn(),
+    setLineDash: vi.fn(),
+    beginPath: vi.fn(),
+    moveTo: vi.fn(),
+    lineTo: vi.fn(),
+    stroke: vi.fn(),
+    strokeRect: vi.fn(),
+    arc: vi.fn(),
+    fill: vi.fn(),
+    fillText: vi.fn(),
+    lineCap: 'butt',
+    lineJoin: 'miter',
+    lineWidth: 1,
+    strokeStyle: '#000',
+    fillStyle: '#000',
+    font: '',
+    textAlign: 'start',
+    textBaseline: 'alphabetic',
+  } as unknown as CanvasRenderingContext2D
+}
 
 describe('continuous image review routing', () => {
   it('saves image one, opens a newly prepared image two, and keeps annotation tools available', async () => {

@@ -888,6 +888,22 @@ describe('workspace style contracts', () => {
     ).toBe('CanvasText')
   })
 
+  it('keeps the composite lens above review geometry and below the inline editor', () => {
+    const rules = parseRules(viewerStyleSources)
+    const lens = rules.find(({ selector }) => selector === '.image-magnifier')
+    const annotation = rules.find(({ selector }) => selector === '.annotation-canvas-layer')
+    const editor = rules.find(({ selector }) => selector === '.inline-feedback-editor')
+    const reviewOverlay = rules.find(
+      ({ selector }) =>
+        selector === '.image-preview-stage:has(.annotation-canvas-layer) .image-magnifier__overlay',
+    )
+
+    expect(annotation?.declarations['z-index']).toBe('3')
+    expect(lens?.declarations['z-index']).toBe('4')
+    expect(editor?.declarations['z-index']).toBe('5')
+    expect(reviewOverlay?.declarations['--review-annotation']).toBe('var(--viewer-danger-strong)')
+  })
+
   it('renders image comparison from the shared light preview theme', () => {
     const rules = parseRules(viewerStyleSources)
     const declaration = (selector: string, property: string) =>

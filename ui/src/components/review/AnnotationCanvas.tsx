@@ -1,5 +1,5 @@
 import type { PointerEvent as ReactPointerEvent } from 'react'
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useRef } from 'react'
 import { rectFromDrag, simplifyNormalizedStroke } from '../../app/review/annotationGeometry'
 import type {
   ImageReviewWorkbenchController,
@@ -8,6 +8,7 @@ import type {
 } from '../../app/review/useImageReviewWorkbench'
 import type { ImagePreviewProjection } from '../imagePreview/ImagePreviewSurface'
 import {
+  type AnnotationSceneItem,
   annotationMarkerPoint,
   buildAnnotationScene,
   paintAnnotationScene,
@@ -16,6 +17,7 @@ import {
 interface AnnotationCanvasProps {
   projection: ImagePreviewProjection
   controller: ImageReviewWorkbenchController
+  scene?: ReadonlyArray<AnnotationSceneItem>
 }
 
 type DrawingGesture =
@@ -24,7 +26,7 @@ type DrawingGesture =
 
 type RectHandle = 'north_west' | 'north_east' | 'south_east' | 'south_west'
 
-export default function AnnotationCanvas({ projection, controller }: AnnotationCanvasProps) {
+export default function AnnotationCanvas({ projection, controller, scene }: AnnotationCanvasProps) {
   const canvas = useRef<HTMLCanvasElement>(null)
   const gesture = useRef<DrawingGesture | null>(null)
   const candidate =
@@ -37,15 +39,13 @@ export default function AnnotationCanvas({ projection, controller }: AnnotationC
       ? null
       : controller.editor.draftAnchor
   const transientAnchor = candidate ?? draftAnchor
-  const scene = useMemo(
-    () =>
-      buildAnnotationScene({
-        feedback: controller.feedback,
-        selectedItemId: controller.selectedItemId,
-        transientAnchor,
-      }),
-    [controller.feedback, controller.selectedItemId, transientAnchor],
-  )
+  const renderedScene =
+    scene ??
+    buildAnnotationScene({
+      feedback: controller.feedback,
+      selectedItemId: controller.selectedItemId,
+      transientAnchor,
+    })
   const drawingEnabled =
     controller.readOnlyReason === null &&
     (controller.editor.status === 'idle' || controller.editor.status === 'drawing') &&
@@ -75,7 +75,7 @@ export default function AnnotationCanvas({ projection, controller }: AnnotationC
     context.clearRect(0, 0, projection.stageRect.width, projection.stageRect.height)
     paintAnnotationScene(
       context,
-      scene,
+      renderedScene,
       {
         normalizedToLocal(point) {
           const projected = projection.normalizedToStage(point)
@@ -94,7 +94,7 @@ export default function AnnotationCanvas({ projection, controller }: AnnotationC
         ordinalRadius: 14,
       },
     )
-  }, [projection, scene])
+  }, [projection, renderedScene])
 
   function beginDrawing(event: ReactPointerEvent<HTMLCanvasElement>) {
     if (!drawingEnabled) return

@@ -318,15 +318,7 @@ export default function ImagePreviewSurface({
     })
   }
 
-  function sampleMagnifier(event: PointerEvent<HTMLDivElement>) {
-    gestures.onPointerMove(event)
-    const point = recordPointer(event)
-    lastStagePoint.current = point
-    placeMagnifier(point)
-  }
-
-  function startPointer(event: PointerEvent<HTMLDivElement>) {
-    gestures.onPointerDown(event)
+  function trackMagnifierPointer(event: PointerEvent<HTMLDivElement>) {
     const point = recordPointer(event)
     lastStagePoint.current = point
     placeMagnifier(point)
@@ -404,9 +396,11 @@ export default function ImagePreviewSurface({
     <div
       ref={stage}
       className="image-preview-stage"
-      onPointerDown={startPointer}
-      onPointerMove={sampleMagnifier}
-      onPointerEnter={sampleMagnifier}
+      onPointerDownCapture={trackMagnifierPointer}
+      onPointerMoveCapture={trackMagnifierPointer}
+      onPointerDown={gestures.onPointerDown}
+      onPointerMove={gestures.onPointerMove}
+      onPointerEnter={trackMagnifierPointer}
       onPointerLeave={stopMagnifier}
       onPointerUp={gestures.onPointerUp}
       onPointerCancel={gestures.onPointerCancel}

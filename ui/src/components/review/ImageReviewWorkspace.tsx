@@ -1,4 +1,4 @@
-import { useCallback, useLayoutEffect, useRef } from 'react'
+import { useCallback, useLayoutEffect, useMemo, useRef } from 'react'
 import type { ImageReviewWorkbenchController } from '../../app/review/useImageReviewWorkbench'
 import ImagePreviewSurface, {
   type ImagePreviewSurfaceProps,
@@ -6,6 +6,7 @@ import ImagePreviewSurface, {
 import ViewerButton from '../ui/ViewerButton'
 import AnnotationCanvas from './AnnotationCanvas'
 import AnnotationToolbar from './AnnotationToolbar'
+import { buildAnnotationScene, createAnnotationMagnifierPainter } from './annotationScene'
 import InlineFeedbackEditor from './InlineFeedbackEditor'
 import ReviewFeedbackRail from './ReviewFeedbackRail'
 
@@ -24,6 +25,20 @@ export default function ImageReviewWorkspace({
 }: ImageReviewWorkspaceProps) {
   const compactDefaultEntity = useRef<string | null>(null)
   const identity = useRef<HTMLElement | null>(null)
+  const transientAnchor = controller.editor.status === 'idle' ? null : controller.editor.draftAnchor
+  const annotationScene = useMemo(
+    () =>
+      buildAnnotationScene({
+        feedback: controller.feedback,
+        selectedItemId: controller.selectedItemId,
+        transientAnchor,
+      }),
+    [controller.feedback, controller.selectedItemId, transientAnchor],
+  )
+  const magnifierOverlayPainter = useMemo(
+    () => createAnnotationMagnifierPainter(annotationScene),
+    [annotationScene],
+  )
 
   useLayoutEffect(() => {
     if (compactDefaultEntity.current === surfaceProps.file.entityId) return
@@ -75,6 +90,7 @@ export default function ImageReviewWorkspace({
       ariaLabel={`图片评审 ${surfaceProps.file.name}`}
       toolbarLabel="图片评审工具"
       slots={{
+        magnifierOverlayPainter,
         toolbarLeading: (
           <>
             <strong ref={identity}>{surfaceProps.file.name}</strong>
@@ -94,7 +110,11 @@ export default function ImageReviewWorkspace({
         ),
         stageOverlay: (projection) => (
           <>
-            <AnnotationCanvas projection={projection} controller={controller} />
+            <AnnotationCanvas
+              projection={projection}
+              controller={controller}
+              scene={annotationScene}
+            />
             {controller.editor.status !== 'idle' &&
               controller.editor.status !== 'drawing' &&
               controller.editor.sourceItemId === null &&

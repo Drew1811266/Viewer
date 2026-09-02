@@ -23,6 +23,7 @@ vi.mock('../imagePreview/ImagePreviewSurface', () => ({
     <section
       data-testid="preview-surface"
       data-prefetch-fit={prefetchFit === false ? 'false' : 'true'}
+      data-has-magnifier-overlay={slots?.magnifierOverlayPainter !== undefined || undefined}
       className="image-preview"
       onKeyDown={(event) => event.key === 'Escape' && onEscape?.()}
     >
@@ -219,6 +220,10 @@ describe('ImageReviewWorkspace', () => {
     expect(screen.getAllByTestId('annotation-marker')).toHaveLength(4)
     expect(screen.getAllByRole('listitem', { name: /意见/ })).toHaveLength(4)
     expect(screen.queryAllByTestId('permanent-text-bubble')).toHaveLength(0)
+    expect(screen.getByTestId('preview-surface')).toHaveAttribute(
+      'data-has-magnifier-overlay',
+      'true',
+    )
   })
 
   it('routes tool shortcuts, suppresses them in text input, and keeps completion separate', () => {

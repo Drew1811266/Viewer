@@ -1,5 +1,6 @@
 import type { ReviewAnchor, SavedImageFeedback } from '../../app/review/useImageReviewWorkbench'
 import type { Point } from '../imagePreview/imageGeometry'
+import type { MagnifierOverlayPainter } from '../imagePreview/magnifierOverlay'
 
 export type AnnotationSceneAppearance = 'saved' | 'selected' | 'transient'
 
@@ -81,6 +82,23 @@ export function annotationMarkerPoint(anchor: ReviewAnchor): Point | null {
   return null
 }
 
+export function createAnnotationMagnifierPainter(
+  scene: ReadonlyArray<AnnotationSceneItem>,
+): MagnifierOverlayPainter {
+  return (context, frame) =>
+    paintAnnotationScene(
+      context,
+      scene,
+      { normalizedToLocal: frame.projection.normalizedToLens },
+      {
+        color: annotationCanvasColor(context.canvas),
+        lineWidth: clamp(2 * frame.magnification, 2, 5),
+        drawOrdinals: true,
+        ordinalRadius: 14,
+      },
+    )
+}
+
 function isImageAnchor(
   anchor: ReviewAnchor,
 ): anchor is Extract<ReviewAnchor, { kind: 'image_rect' | 'image_stroke' }> {
@@ -138,4 +156,16 @@ function paintOrdinal(
   context.textAlign = 'center'
   context.textBaseline = 'middle'
   context.fillText(String(ordinal), projected.x, projected.y)
+}
+
+function annotationCanvasColor(canvas: HTMLCanvasElement): string {
+  try {
+    return getComputedStyle(canvas).getPropertyValue('--review-annotation').trim() || 'CanvasText'
+  } catch {
+    return 'CanvasText'
+  }
+}
+
+function clamp(value: number, minimum: number, maximum: number): number {
+  return Math.max(minimum, Math.min(maximum, value))
 }

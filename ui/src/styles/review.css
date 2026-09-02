@@ -494,6 +494,10 @@
   z-index: 3;
 }
 
+.image-preview-stage:has(.annotation-canvas-layer) .image-magnifier__overlay {
+  --review-annotation: var(--viewer-danger-strong);
+}
+
 .annotation-canvas {
   inset: 0;
   pointer-events: none;

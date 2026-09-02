@@ -82,31 +82,35 @@ export default function ContinuousReviewWorkspaceLayer({
           <ViewerButton onClick={() => setMigrationDismissed(false)}>查看迁移选项</ViewerButton>
         </section>
       )}
-      {migration === null && coordinator.state.kind === 'ready' && !contextBarHidden && (
-        <ViewerToolbarReviewPortal>
-          <ReviewContextBar
-            protocol="continuous"
-            placement="toolbar"
-            snapshot={review.snapshot}
-            inspectorOpen={false}
-            onReturnToMembers={() => onReturnToMembers(currentEntityIds(coordinator))}
-            onToggleInspector={() => undefined}
-            onPrepareCompletion={() => undefined}
-            onRequestAbandon={() => undefined}
-            onArchive={() => void archive.open()}
-            onHistory={historyCatalog.available ? historyCatalog.open : undefined}
-            onUsageImport={
-              coordinator.view?.capabilities.usageImport ? () => setUsageOpen(true) : undefined
-            }
-            continuousFeedbackCount={coordinator.view?.current?.state.feedback.length}
-            archiveDisabled={
-              coordinator.currentSnapshotId === null || archive.busy || history.transactionBusy
-            }
-            historyDisabled={history.transactionBusy}
-            archiveNotice={history.error?.message ?? archive.notice ?? history.notice ?? null}
-          />
-        </ViewerToolbarReviewPortal>
-      )}
+      {migration === null &&
+        (coordinator.state.kind === 'ready' ||
+          coordinator.state.kind === 'saved_pending_publication' ||
+          coordinator.state.kind === 'publication_blocked') &&
+        !contextBarHidden && (
+          <ViewerToolbarReviewPortal>
+            <ReviewContextBar
+              protocol="continuous"
+              placement="toolbar"
+              snapshot={review.snapshot}
+              inspectorOpen={false}
+              onReturnToMembers={() => onReturnToMembers(currentEntityIds(coordinator))}
+              onToggleInspector={() => undefined}
+              onPrepareCompletion={() => undefined}
+              onRequestAbandon={() => undefined}
+              onArchive={() => void archive.open()}
+              onHistory={historyCatalog.available ? historyCatalog.open : undefined}
+              onUsageImport={
+                coordinator.view?.capabilities.usageImport ? () => setUsageOpen(true) : undefined
+              }
+              continuousFeedbackCount={coordinator.view?.current?.authoring.state.feedback.length}
+              archiveDisabled={
+                coordinator.currentSnapshotId === null || archive.busy || history.transactionBusy
+              }
+              historyDisabled={history.transactionBusy}
+              archiveNotice={history.error?.message ?? archive.notice ?? history.notice ?? null}
+            />
+          </ViewerToolbarReviewPortal>
+        )}
       {migration === null && (
         <ContinuousDialogs archive={archive} history={history} coordinator={coordinator} />
       )}
@@ -229,7 +233,7 @@ function ContinuousDialogs({
           historyRef={history.panel.historyRef}
           historyRefs={history.panel.historyRefs}
           restorePlan={history.panel.restorePreview?.plan ?? null}
-          currentFeedback={coordinator.view?.current?.state.feedback ?? []}
+          currentFeedback={coordinator.view?.current?.authoring.state.feedback ?? []}
           evidence={history.panel.evidence}
           busy={history.busy}
           canClose={history.canClose}
@@ -261,7 +265,7 @@ function ContinuousDialogs({
 
 function currentEntityIds(coordinator: ContinuousReviewCoordinator): string[] {
   return (
-    coordinator.view?.current?.state.assets.flatMap((asset) =>
+    coordinator.view?.current?.authoring.state.assets.flatMap((asset) =>
       asset.sourceEntityId === null ? [] : [asset.sourceEntityId],
     ) ?? []
   )

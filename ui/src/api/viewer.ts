@@ -7,6 +7,7 @@ export const tauriReviewWorkspaceBridge: ReviewWorkspacePort = {
   prepareAssets: (request) => invoke('prepare_review_assets', { request }),
   prepareCommand: (request) => invoke('prepare_review_command', { request }),
   applyCommand: (request) => invoke('apply_review_command', { request }),
+  getPublicationStatus: (request) => invoke('get_review_publication_status', { request }),
   previewArchive: (request) => invoke('preview_review_archive', { request }),
   previewRestore: (request) => invoke('preview_review_restore', { request }),
   getHistory: (request) => invoke('get_review_history', { request }),

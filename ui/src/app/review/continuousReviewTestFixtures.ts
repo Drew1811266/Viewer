@@ -2,9 +2,9 @@ import { vi } from 'vitest'
 import type {
   PreparedReviewCommand,
   PrepareReviewCommandRequest,
-  ReviewApplyResult,
   ReviewArchivePlan,
   ReviewArchiveSelection,
+  ReviewAuthoringApplyResult,
   ReviewMigrationInspection,
   ReviewRecoveryDraft,
   ReviewRestorePlan,
@@ -90,19 +90,18 @@ export function workspace(snapshotId: string | null = null): ReviewWorkspaceView
       snapshotId === null
         ? null
         : {
-            reference: { snapshotId, blake3: 'ab'.repeat(32) },
-            production: null,
-            state: {
-              projectId: context.projectId,
-              streamId: context.streamId,
-              snapshotId,
-              parent: null,
-              assets: [],
-              feedback: [],
+            authoring: {
+              head: { sequence: 1, snapshotId },
+              state: {
+                projectId: context.projectId,
+                streamId: context.streamId,
+                snapshotId,
+                parent: null,
+                assets: [],
+                feedback: [],
+              },
             },
-            commandId: 'previous-command',
-            payloadDigest: 'cd'.repeat(32),
-            changes: [],
+            publishedRef: { snapshotId, blake3: 'ab'.repeat(32) },
             evidence: [],
           },
     sourceChecks: [],
@@ -145,14 +144,33 @@ export function prepared(request: PrepareReviewCommandRequest): PreparedReviewCo
 export function applied(
   envelope: PreparedReviewCommand,
   view = workspace('saved-snapshot'),
-): ReviewApplyResult {
+  sequence = envelope.expectedSnapshotId === null ? 1 : 2,
+): ReviewAuthoringApplyResult {
+  const current = view.current
+  if (current === null) throw new Error('Applied fixture requires a current authoring state')
   return {
     receipt: {
       commandId: envelope.commandId,
       payloadDigest: envelope.payloadDigest,
-      snapshot: { snapshotId: envelope.generated.snapshotId, blake3: '56'.repeat(32) },
+      head: { ...current.authoring.head, sequence },
     },
-    view,
+    patch: {
+      projectId: context.projectId,
+      streamId: context.streamId,
+      parent:
+        envelope.expectedSnapshotId === null
+          ? null
+          : { snapshotId: envelope.expectedSnapshotId, blake3: 'ab'.repeat(32) },
+      basisSnapshotId: envelope.expectedSnapshotId,
+      head: { ...current.authoring.head, sequence },
+      upsertAssets: current.authoring.state.assets,
+      removeAssetVersionIds: [],
+      upsertFeedback: current.authoring.state.feedback,
+      removeFeedbackIds: [],
+      projection: view.projection,
+      historySelectors: null,
+    },
+    publication: { kind: 'ready' },
   }
 }
 
@@ -160,11 +178,18 @@ export function failure(
   code: ReviewWorkspaceError['code'],
   retryable = true,
 ): ReviewWorkspaceError {
-  return { code, message: code, retryable, committedReceipt: null }
+  return {
+    code,
+    message: code,
+    retryable,
+    committedReceipt: null,
+    committedAuthoringReceipt: null,
+  }
 }
 
 // Only the desktop boundary is replaced. The coordinator and its input/state logic are real.
 export function reviewPort(view = workspace()): ReviewWorkspacePort {
+  let sequence = view.current?.authoring.head.sequence ?? 0
   const unsupported = async () => {
     throw new Error('Unexpected desktop operation in this test')
   }
@@ -172,7 +197,11 @@ export function reviewPort(view = workspace()): ReviewWorkspacePort {
     getWorkspace: vi.fn().mockResolvedValue(view),
     prepareAssets: vi.fn(unsupported),
     prepareCommand: vi.fn(async (request) => prepared(request)),
-    applyCommand: vi.fn(async ({ envelope }) => applied(envelope)),
+    applyCommand: vi.fn(async ({ envelope }) => {
+      sequence = Math.max(sequence + 1, envelope.expectedSnapshotId === null ? 1 : 2)
+      return applied(envelope, undefined, sequence)
+    }),
+    getPublicationStatus: vi.fn(async () => ({ kind: 'ready' as const })),
     previewArchive: vi.fn(unsupported),
     previewRestore: vi.fn(unsupported),
     getHistory: vi.fn(unsupported),

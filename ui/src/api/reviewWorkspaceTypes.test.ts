@@ -66,6 +66,7 @@ it('maps all eleven continuous review operations without dropping the full retry
   await tauriReviewWorkspaceBridge.getWorkspace(session)
   await tauriReviewWorkspaceBridge.prepareAssets(assets)
   await tauriReviewWorkspaceBridge.applyCommand(apply)
+  await tauriReviewWorkspaceBridge.getPublicationStatus(session)
   await tauriReviewWorkspaceBridge.previewArchive(archive)
   await tauriReviewWorkspaceBridge.previewRestore(restore)
   await tauriReviewWorkspaceBridge.getHistory(history)
@@ -78,6 +79,7 @@ it('maps all eleven continuous review operations without dropping the full retry
     ['get_review_workspace', { request: session }],
     ['prepare_review_assets', { request: assets }],
     ['apply_review_command', { request: apply }],
+    ['get_review_publication_status', { request: session }],
     ['preview_review_archive', { request: archive }],
     ['preview_review_restore', { request: restore }],
     ['get_review_history', { request: history }],
@@ -98,6 +100,7 @@ it('preserves a committed receipt on rejection so callers do not manufacture a r
       payloadDigest: envelope.payloadDigest,
       snapshot: { snapshotId: 'snapshot', blake3: 'cd'.repeat(32) },
     },
+    committedAuthoringReceipt: null,
   }
   invoke.mockRejectedValueOnce(failure)
   await expect(tauriReviewWorkspaceBridge.applyCommand({ ...session, envelope })).rejects.toEqual(

@@ -17,6 +17,7 @@ import type {
 import type { FolderWorkspace, ReviewSessionSnapshot } from './api/types'
 import type { ProjectDropEvent, ViewerBridge } from './api/viewer'
 import {
+  applied,
   migrationInspection,
   reviewPort,
   workspace,
@@ -379,6 +380,7 @@ describe('Viewer empty state', () => {
       message: 'migration preparation interrupted',
       retryable: true,
       committedReceipt: null,
+      committedAuthoringReceipt: null,
     })
     render(<App bridge={viewer} reviewWorkspacePort={reviewWorkspace} />)
     fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
@@ -454,7 +456,7 @@ describe('Viewer empty state', () => {
         ],
       },
     ]
-    current.current.state.feedback.forEach((feedback, index) => {
+    current.current.authoring.state.feedback.forEach((feedback, index) => {
       const target = feedback.targets[0]
       const anchor = anchors[index]
       if (target === undefined || anchor === undefined) throw new Error('Missing feedback fixture')
@@ -507,7 +509,7 @@ describe('Viewer empty state', () => {
     replacement.asset.evidence.blake3 = '34'.repeat(32)
     replacement.preview.assetVersionId = 'asset-replaced'
     replacement.preview.url = 'viewer-review-image://localhost/asset-replaced'
-    current.current.state.assets.push(replacement.asset)
+    current.current.authoring.state.assets.push(replacement.asset)
     const reviewWorkspace = reviewPort(current)
     vi.mocked(reviewWorkspace.prepareAssets).mockResolvedValue([replacement])
 
@@ -554,14 +556,9 @@ describe('Viewer empty state', () => {
     vi.mocked(viewer.queryFolder).mockResolvedValue(contentWorkspace())
     const reviewWorkspace = reviewPort(continuousWorkspaceWithFeedback(0, 'snapshot-1'))
     vi.mocked(reviewWorkspace.prepareAssets).mockResolvedValue([preparedFrontAsset()])
-    vi.mocked(reviewWorkspace.applyCommand).mockImplementation(async ({ envelope }) => ({
-      receipt: {
-        commandId: envelope.commandId,
-        payloadDigest: envelope.payloadDigest,
-        snapshot: { snapshotId: 'snapshot-2', blake3: '56'.repeat(32) },
-      },
-      view: continuousWorkspaceWithFeedback(1, 'snapshot-2'),
-    }))
+    vi.mocked(reviewWorkspace.applyCommand).mockImplementation(async ({ envelope }) =>
+      applied(envelope, continuousWorkspaceWithFeedback(1, 'snapshot-2')),
+    )
 
     render(<App bridge={viewer} reviewWorkspacePort={reviewWorkspace} />)
     fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
@@ -649,6 +646,7 @@ describe('Viewer empty state', () => {
       message: 'viewer.review/99 is not supported',
       retryable: false,
       committedReceipt: null,
+      committedAuthoringReceipt: null,
     })
     render(<App bridge={viewer} reviewWorkspacePort={reviewWorkspace} />)
     fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
@@ -3614,8 +3612,8 @@ function continuousWorkspaceWithFeedback(count: number, snapshotId: string): Rev
   const view = workspace(snapshotId)
   if (view.current === null) throw new Error('Expected current continuous review fixture')
   const prepared = preparedFrontAsset()
-  view.current.state.assets = [prepared.asset]
-  view.current.state.feedback = Array.from({ length: count }, (_, index) => ({
+  view.current.authoring.state.assets = [prepared.asset]
+  view.current.authoring.state.feedback = Array.from({ length: count }, (_, index) => ({
     id: `continuous-feedback-${index}`,
     textRevisionId: `continuous-text-${index}`,
     text: `持续意见 ${index + 1}`,
@@ -3631,7 +3629,7 @@ function continuousWorkspaceWithFeedback(count: number, snapshotId: string): Rev
       },
     ],
   }))
-  view.projection.actionable = view.current.state.feedback.flatMap((item) =>
+  view.projection.actionable = view.current.authoring.state.feedback.flatMap((item) =>
     item.targets.map((target) => target.id),
   )
   return view

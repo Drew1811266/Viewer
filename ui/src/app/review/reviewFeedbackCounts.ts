@@ -21,11 +21,11 @@ function continuousFeedbackCounts(view: ReviewWorkspaceView | null) {
   const counts = new Map<string, number>()
   if (view === null || view.migration !== null || view.current === null) return counts
   const entityByAssetVersion = new Map(
-    view.current.state.assets.flatMap((asset) =>
+    view.current.authoring.state.assets.flatMap((asset) =>
       asset.sourceEntityId === null ? [] : [[asset.id, asset.sourceEntityId] as const],
     ),
   )
-  for (const feedback of view.current.state.feedback) {
+  for (const feedback of view.current.authoring.state.feedback) {
     const entityIds = new Set(
       feedback.targets.flatMap((target) => {
         const entityId = entityByAssetVersion.get(target.assetVersionId)

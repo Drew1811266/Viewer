@@ -105,7 +105,7 @@ it.each(operations)(
       expectedSnapshotId: 'base',
       command,
     })
-    expect(result.current.view?.current?.reference.snapshotId).toBe('saved-snapshot')
+    expect(result.current.view?.current?.authoring.head.snapshotId).toBe('saved-snapshot')
   },
 )
 
@@ -259,7 +259,7 @@ it('history, evidence and asset preparation do not replace the current snapshot 
     role: 'base',
   })
   expect(port.prepareAssets).toHaveBeenCalledWith({ ...session, entityIds: ['image-1'] })
-  expect(result.current.view?.current?.reference.snapshotId).toBe('base')
+  expect(result.current.view?.current?.authoring.head.snapshotId).toBe('base')
   expect(port.prepareCommand).not.toHaveBeenCalled()
 })
 

@@ -500,44 +500,43 @@ export function acceptanceContinuousReviewView(id: string): ReviewWorkspaceView 
       migration !== null
         ? null
         : {
-            reference: { snapshotId: 'acceptance-snapshot-c', blake3: 'ab'.repeat(32) },
-            production: null,
-            state: {
-              projectId: ACCEPTANCE_PROJECT_SNAPSHOT.projectId,
-              streamId: 'acceptance-continuous-stream',
-              snapshotId: 'acceptance-snapshot-c',
-              parent: { snapshotId: 'acceptance-snapshot-b', blake3: 'bc'.repeat(32) },
-              assets: emptyCurrent ? [] : [continuousAsset, replacedContinuousAsset],
-              feedback: emptyCurrent
-                ? []
-                : [
-                    {
-                      id: ACCEPTANCE_CONTINUOUS_TARGET.feedbackId,
-                      textRevisionId: ACCEPTANCE_CONTINUOUS_TARGET.textRevisionId,
-                      text:
-                        id === 'RVW-29'
-                          ? '图二的新意见，不可覆盖'
-                          : '袖口收紧，保留褶皱；新图继续独立评审。',
-                      createdAtMs: 1_767_600_000_000,
-                      targets: [
-                        {
-                          id: ACCEPTANCE_CONTINUOUS_TARGET.targetId,
-                          revisionId: ACCEPTANCE_CONTINUOUS_TARGET.targetRevisionId,
-                          assetVersionId: continuousAsset.id,
-                          anchor: { kind: 'image_rect', x: 0.2, y: 0.2, width: 0.3, height: 0.3 },
-                          availability:
-                            id === 'RVW-28'
-                              ? { kind: 'needs_confirmation', reasons: ['source_changed'] }
-                              : { kind: 'ready' },
-                        },
-                      ],
-                      historyRef: null,
-                    },
-                  ],
+            authoring: {
+              head: { sequence: 3, snapshotId: 'acceptance-snapshot-c' },
+              state: {
+                projectId: ACCEPTANCE_PROJECT_SNAPSHOT.projectId,
+                streamId: 'acceptance-continuous-stream',
+                snapshotId: 'acceptance-snapshot-c',
+                parent: { snapshotId: 'acceptance-snapshot-b', blake3: 'bc'.repeat(32) },
+                assets: emptyCurrent ? [] : [continuousAsset, replacedContinuousAsset],
+                feedback: emptyCurrent
+                  ? []
+                  : [
+                      {
+                        id: ACCEPTANCE_CONTINUOUS_TARGET.feedbackId,
+                        textRevisionId: ACCEPTANCE_CONTINUOUS_TARGET.textRevisionId,
+                        text:
+                          id === 'RVW-29'
+                            ? '图二的新意见，不可覆盖'
+                            : '袖口收紧，保留褶皱；新图继续独立评审。',
+                        createdAtMs: 1_767_600_000_000,
+                        targets: [
+                          {
+                            id: ACCEPTANCE_CONTINUOUS_TARGET.targetId,
+                            revisionId: ACCEPTANCE_CONTINUOUS_TARGET.targetRevisionId,
+                            assetVersionId: continuousAsset.id,
+                            anchor: { kind: 'image_rect', x: 0.2, y: 0.2, width: 0.3, height: 0.3 },
+                            availability:
+                              id === 'RVW-28'
+                                ? { kind: 'needs_confirmation', reasons: ['source_changed'] }
+                                : { kind: 'ready' },
+                          },
+                        ],
+                        historyRef: null,
+                      },
+                    ],
+              },
             },
-            commandId: 'acceptance-command-c',
-            payloadDigest: 'cd'.repeat(32),
-            changes: [],
+            publishedRef: { snapshotId: 'acceptance-snapshot-c', blake3: 'ab'.repeat(32) },
             evidence: [],
           },
     sourceChecks:

@@ -1,5 +1,6 @@
 import type {
   ReviewArchiveGroup,
+  ReviewAuthoringHead,
   ReviewCommitReceipt,
   ReviewHistoryRef,
   ReviewHistorySelector,
@@ -113,6 +114,19 @@ export interface ReviewStoredSnapshot {
   changes: ReviewChange[]
   evidence: ReviewEvidenceBinding[]
 }
+/**
+ * UI-facing authoring state. The desktop wire value contains additional durable bookkeeping,
+ * but the client intentionally depends only on fields that can be advanced by a compact patch.
+ */
+export interface ReviewStoredAuthoringState {
+  head: ReviewAuthoringHead
+  state: ReviewContinuousState
+}
+export interface ReviewWorkspaceCurrent {
+  authoring: ReviewStoredAuthoringState
+  publishedRef: ReviewSnapshotRef | null
+  evidence: ReviewEvidenceBinding[]
+}
 export interface ReviewSourceCheck {
   assetVersionId: string
   checkedAtMs: number
@@ -122,7 +136,7 @@ export interface ReviewWorkspaceView {
   streamId: string
   /** Repository-validated committed history in stable presentation order. */
   historySelectors: ReviewHistorySelector[]
-  current: ReviewStoredSnapshot | null
+  current: ReviewWorkspaceCurrent | null
   sourceChecks: ReviewSourceCheck[]
   projection: { actionable: string[]; needsConfirmation: string[] }
   recovery: ReviewRecoveryDraft[]

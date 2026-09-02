@@ -52,7 +52,7 @@ export function continuousReviewActions(
       : reviewWorkspaceError('needs_confirmation', '请先保存或放弃未提交输入', false)
   const previewRequired = () =>
     reviewWorkspaceError('preview_required', '请重新查看并确认操作范围', false)
-  const currentId = () => driver.getSnapshot().view?.current?.reference.snapshotId ?? null
+  const currentId = () => driver.getSnapshot().view?.current?.authoring.head.snapshotId ?? null
 
   return {
     previewArchive: async (selection: ReviewArchiveSelection): Promise<ReviewArchivePlan> => {

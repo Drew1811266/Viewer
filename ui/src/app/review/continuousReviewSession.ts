@@ -1,7 +1,8 @@
 import type {
   PreparedReviewCommand,
   PrepareReviewCommandRequest,
-  ReviewCommitReceipt,
+  ReviewAuthoringReceipt,
+  ReviewPublicationStatus,
   ReviewWorkspaceCommand,
   ReviewWorkspaceError,
   ReviewWorkspacePort,
@@ -19,6 +20,7 @@ import {
   reviewWorkspaceError,
   sameReviewValue,
 } from './continuousReviewModel'
+import { applyReviewWorkspacePatch, ReviewPatchMismatch } from './reviewWorkspacePatch'
 
 interface PendingCommand {
   request: PrepareReviewCommandRequest
@@ -36,6 +38,7 @@ export class ContinuousReviewSession {
     editorInput: emptyContinuousEditor(),
     pendingEnvelope: null,
     lastReceipt: null,
+    lastChangedAssetVersionIds: [],
     error: null,
   }
   private listeners = new Set<() => void>()
@@ -55,6 +58,8 @@ export class ContinuousReviewSession {
   private readonly onError: (error: ReviewWorkspaceError) => void
   private viewVersion = 0
   private querySequences = new Map<string, number>()
+  private publicationPoll = 0
+  private publicationTimer: ReturnType<typeof setTimeout> | null = null
   readonly actions: ReturnType<typeof continuousReviewActions>
 
   constructor(
@@ -94,6 +99,7 @@ export class ContinuousReviewSession {
     void (barrier === null ? load() : barrier.then(load)).catch(() => {})
     return () => {
       this.active = false
+      this.stopPublicationPolling()
       this.epoch += 1
       this.loadSequence += 1
       this.closing = Promise.allSettled([
@@ -106,10 +112,10 @@ export class ContinuousReviewSession {
   private isActive(epoch = this.epoch) {
     return this.active && epoch === this.epoch
   }
-  private stale(receipt: ReviewCommitReceipt | null = null): ReviewWorkspaceError {
+  private stale(receipt: ReviewAuthoringReceipt | null = null): ReviewWorkspaceError {
     return {
       ...reviewWorkspaceError('stale_session', '评审会话已切换或关闭', false),
-      committedReceipt: receipt,
+      committedAuthoringReceipt: receipt,
     }
   }
   private notify(error: ReviewWorkspaceError) {
@@ -160,6 +166,7 @@ export class ContinuousReviewSession {
       return this.reject(reviewWorkspaceError('busy', '操作尚未结束', true))
     const epoch = this.epoch
     const sequence = ++this.loadSequence
+    this.stopPublicationPolling()
     this.viewVersion += 1
     this.loading = true
     if (this.pending === null) this.update({ state: { kind: 'loading' }, error: null })
@@ -169,14 +176,29 @@ export class ContinuousReviewSession {
       if (sequence !== this.loadSequence)
         throw reviewWorkspaceError('cancelled', '已由后续读取替代', true)
       const error = this.pending?.error ?? null
+      let readyState = continuousReviewState(view)
+      let publication: ReviewPublicationStatus | null = null
+      if (readyState.kind === 'ready') {
+        try {
+          publication = await this.port.getPublicationStatus(this.scope)
+          if (!this.isActive(epoch)) throw this.stale()
+          if (sequence !== this.loadSequence)
+            throw reviewWorkspaceError('cancelled', '已由后续读取替代', true)
+          readyState = publicationState(publication)
+        } catch (cause) {
+          const statusError = normalizeReviewWorkspaceError(cause)
+          if (statusError.code === 'stale_session' || statusError.code === 'cancelled') throw cause
+        }
+      }
       this.update({
         view,
         error,
-        state: error === null ? continuousReviewState(view) : this.failureState(error),
+        state: error === null ? readyState : this.failureState(error),
       })
+      if (error === null && publication !== null) this.trackPublication(publication)
     } catch (cause) {
       if (!this.isActive(epoch))
-        throw this.stale(normalizeReviewWorkspaceError(cause).committedReceipt)
+        throw this.stale(normalizeReviewWorkspaceError(cause).committedAuthoringReceipt)
       const error = normalizeReviewWorkspaceError(cause)
       if (sequence === this.loadSequence) {
         this.update({
@@ -238,7 +260,7 @@ export class ContinuousReviewSession {
     this.update({
       editorInput: {
         ...structuredClone(input),
-        baseSnapshotId: this.snapshot.view?.current?.reference.snapshotId ?? null,
+        baseSnapshotId: this.snapshot.view?.current?.authoring.head.snapshotId ?? null,
       },
     })
     this.inputRevision += 1
@@ -276,7 +298,7 @@ export class ContinuousReviewSession {
     this.update({
       editorInput: {
         ...this.snapshot.editorInput,
-        baseSnapshotId: this.snapshot.view?.current?.reference.snapshotId ?? null,
+        baseSnapshotId: this.snapshot.view?.current?.authoring.head.snapshotId ?? null,
       },
     })
     return true
@@ -294,11 +316,20 @@ export class ContinuousReviewSession {
       editorInput: emptyContinuousEditor(),
       pendingEnvelope: null,
       error: null,
-      state: this.snapshot.view ? continuousReviewState(this.snapshot.view) : { kind: 'loading' },
+      state: this.snapshot.view ? this.stableViewState() : { kind: 'loading' },
     })
     return true
   }
   hasUncommittedInput = () => this.snapshot.editorInput.contextKey !== null
+
+  private stableViewState(): ContinuousReviewSnapshot['state'] {
+    return this.snapshot.state.kind === 'saved_pending_publication' ||
+      this.snapshot.state.kind === 'publication_blocked'
+      ? this.snapshot.state
+      : this.snapshot.view
+        ? continuousReviewState(this.snapshot.view)
+        : { kind: 'loading' }
+  }
 
   saveFeedback = () => {
     const blocked = this.editingError()
@@ -377,7 +408,8 @@ export class ContinuousReviewSession {
     if (
       this.pending?.error &&
       !this.pending.error.retryable &&
-      this.pending.error.committedReceipt === null
+      this.pending.error.committedReceipt === null &&
+      this.pending.error.committedAuthoringReceipt === null
     ) {
       return this.reject(this.pending.error)
     }
@@ -406,7 +438,7 @@ export class ContinuousReviewSession {
     const epoch = this.epoch
     try {
       this.update({
-        state: { kind: 'saving', stage: pending.envelope !== null ? 'applying' : 'preparing' },
+        state: { kind: 'saving_authoring' },
         error: null,
       })
       pending.envelope ??= deepFreezeReviewValue(
@@ -415,11 +447,52 @@ export class ContinuousReviewSession {
       if (!this.isActive(epoch)) throw this.stale()
       this.update({
         pendingEnvelope: pending.envelope,
-        state: { kind: 'saving', stage: 'applying' },
+        state: { kind: 'saving_authoring' },
       })
       if (this.cancelRequested) throw reviewWorkspaceError('cancelled', '已取消，输入仍保留', true)
       const reply = await this.port.applyCommand({ ...this.scope, envelope: pending.envelope })
       if (!this.isActive(epoch)) throw this.stale(reply.receipt)
+      let nextView: NonNullable<ContinuousReviewSnapshot['view']>
+      try {
+        if (
+          reply.patch.head.sequence !== reply.receipt.head.sequence ||
+          reply.patch.head.snapshotId !== reply.receipt.head.snapshotId
+        ) {
+          throw new ReviewPatchMismatch('invalid_patch')
+        }
+        nextView = applyReviewWorkspacePatch(
+          this.snapshot.view ?? emptyWorkspaceView(pending.envelope.context.streamId),
+          reply.patch,
+        )
+      } catch (cause) {
+        if (!(cause instanceof ReviewPatchMismatch)) throw cause
+        try {
+          nextView = await this.port.getWorkspace(this.scope)
+        } catch {
+          throw {
+            ...reviewWorkspaceError(
+              'committed_view_unavailable',
+              '评审已保存，但当前视图无法同步',
+              true,
+            ),
+            committedAuthoringReceipt: reply.receipt,
+          }
+        }
+        if (!this.isActive(epoch)) throw this.stale(reply.receipt)
+        if (
+          nextView.current?.authoring.head.sequence !== reply.receipt.head.sequence ||
+          nextView.current.authoring.head.snapshotId !== reply.receipt.head.snapshotId
+        ) {
+          throw {
+            ...reviewWorkspaceError(
+              'committed_view_unavailable',
+              '评审已保存，但当前视图尚未同步到提交版本',
+              true,
+            ),
+            committedAuthoringReceipt: reply.receipt,
+          }
+        }
+      }
       const inputChanged =
         pending.inputRevision !== null && pending.inputRevision !== this.inputRevision
       const nextInput =
@@ -431,29 +504,64 @@ export class ContinuousReviewSession {
               ...this.snapshot.editorInput,
               feedbackId: pending.frozenInput.feedbackId ?? pending.envelope.generated.feedbackId,
               targets: [],
-              baseSnapshotId: reply.receipt.snapshot.snapshotId,
+              baseSnapshotId: reply.receipt.head.snapshotId,
             }
           : emptyContinuousEditor()
       this.pending = null
       this.update({
-        view: reply.view,
-        state: continuousReviewState(reply.view),
+        view: nextView,
+        state: publicationState(reply.publication),
         pendingEnvelope: null,
         lastReceipt: reply.receipt,
+        lastChangedAssetVersionIds: changedAssetVersionIds(reply.patch),
         editorInput: nextInput,
         error: null,
       })
+      this.trackPublication(reply.publication)
     } catch (cause) {
       const error = normalizeReviewWorkspaceError(cause)
-      if (!this.isActive(epoch)) throw this.stale(error.committedReceipt)
+      if (!this.isActive(epoch)) throw this.stale(error.committedAuthoringReceipt)
       pending.error = error
       this.update({
         error,
-        lastReceipt: error.committedReceipt ?? this.snapshot.lastReceipt,
+        lastReceipt: error.committedAuthoringReceipt ?? this.snapshot.lastReceipt,
         state: this.failureState(error),
       })
       this.notify(error)
       throw error
+    }
+  }
+
+  private trackPublication(status: ReviewPublicationStatus) {
+    this.stopPublicationPolling()
+    if (status.kind !== 'pending') return
+    const token = this.publicationPoll
+    const delays = [250, 500, 1_000]
+    let attempt = 0
+    const schedule = () => {
+      const delay = delays[attempt] ?? 2_000
+      attempt += 1
+      this.publicationTimer = setTimeout(async () => {
+        this.publicationTimer = null
+        if (!this.isActive() || token !== this.publicationPoll) return
+        try {
+          const next = await this.port.getPublicationStatus(this.scope)
+          if (!this.isActive() || token !== this.publicationPoll) return
+          this.update({ state: publicationState(next) })
+          if (next.kind === 'pending') schedule()
+        } catch {
+          if (this.isActive() && token === this.publicationPoll) schedule()
+        }
+      }, delay)
+    }
+    schedule()
+  }
+
+  private stopPublicationPolling() {
+    this.publicationPoll += 1
+    if (this.publicationTimer !== null) {
+      clearTimeout(this.publicationTimer)
+      this.publicationTimer = null
     }
   }
   private failureState(error: ReviewWorkspaceError): ContinuousReviewSnapshot['state'] {
@@ -493,4 +601,38 @@ export class ContinuousReviewSession {
       throw error
     }
   }
+}
+
+function publicationState(status: ReviewPublicationStatus): ContinuousReviewSnapshot['state'] {
+  switch (status.kind) {
+    case 'ready':
+      return { kind: 'ready' }
+    case 'pending':
+      return { kind: 'saved_pending_publication', pendingRevisions: status.pendingRevisions }
+    case 'blocked':
+      return { kind: 'publication_blocked', code: status.code }
+  }
+}
+
+function emptyWorkspaceView(streamId: string): NonNullable<ContinuousReviewSnapshot['view']> {
+  return {
+    streamId,
+    historySelectors: [],
+    current: null,
+    sourceChecks: [],
+    projection: { actionable: [], needsConfirmation: [] },
+    recovery: [],
+    migration: null,
+    capabilities: { continuousEditing: true, usageImport: true, migration: false },
+  }
+}
+
+function changedAssetVersionIds(patch: Parameters<typeof applyReviewWorkspacePatch>[1]): string[] {
+  return [
+    ...new Set(
+      patch.upsertFeedback.flatMap((feedback) =>
+        feedback.targets.map((target) => target.assetVersionId),
+      ),
+    ),
+  ]
 }

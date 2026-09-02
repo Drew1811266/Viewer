@@ -3,7 +3,8 @@ import { useState } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type {
   PreparedReviewCommand,
-  ReviewApplyResult,
+  ReviewAuthoringApplyResult,
+  ReviewPublicationStatus,
   ReviewWorkspacePort,
   ReviewWorkspaceView,
 } from '../../api/reviewWorkspaceTypes'
@@ -644,11 +645,65 @@ describe('continuous image review routing', () => {
     expect(ordinaryRequest).not.toHaveBeenCalled()
     expect(screen.queryByText('已保存，可供外部读取')).not.toBeInTheDocument()
   })
+
+  it('keeps the zoomed canvas and saved marker while Agent publication completes', async () => {
+    const reviewPort = continuousPort({ kind: 'pending', pendingRevisions: 1 })
+    let controller!: ImageReviewWorkbenchController
+
+    function Harness() {
+      const review = useContinuousReviewCoordinator({
+        sessionId: 'session-1',
+        generation: 1,
+        port: reviewPort.port,
+      })
+      const adapter = continuousImageReviewWorkbenchAdapter(review)
+      controller = useImageReviewWorkbench({ adapter, entityId: 'image-1' })
+      return (
+        <ImageReviewWorkspace
+          controller={controller}
+          file={defined(files[0])}
+          files={files}
+          magnifier={{ shape: 'circle', magnification: 2, area: 'small' }}
+          pointerClientPoint={{ current: null }}
+          requestImage={vi.fn()}
+        />
+      )
+    }
+
+    render(<Harness />)
+    await waitFor(() => expect(screen.getByRole('button', { name: '矩形' })).toBeEnabled())
+    await waitFor(() => expect(document.querySelector('.image-preview-image')).not.toBeNull())
+    const image = document.querySelector('.image-preview-image')
+    if (image === null) throw new Error('Expected prepared image')
+    fireEvent.load(image)
+    fireEvent.click(screen.getByRole('button', { name: '放大' }))
+    expect(document.querySelector('.preview-scale-label')).toHaveTextContent('125%')
+    fireEvent.click(screen.getByRole('button', { name: '矩形' }))
+    draw()
+    fireEvent.change(screen.getByRole('textbox', { name: '标注意见' }), {
+      target: { value: 'logo有错误' },
+    })
+    fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Enter', metaKey: true })
+
+    await waitFor(() => expect(controller.dirty).toBe(false))
+    expect(screen.getAllByTestId('annotation-marker')).toHaveLength(1)
+    expect(document.querySelector('.preview-scale-label')).toHaveTextContent('125%')
+    expect(screen.getByText('已保存，Agent 数据生成中')).toBeVisible()
+    expect(reviewPort.port.getWorkspace).toHaveBeenCalledTimes(1)
+
+    reviewPort.setPublication({ kind: 'ready' })
+    await waitFor(() => expect(screen.getByText('已保存，可供外部读取')).toBeVisible(), {
+      timeout: 1_500,
+    })
+    expect(screen.getAllByTestId('annotation-marker')).toHaveLength(1)
+    expect(document.querySelector('.preview-scale-label')).toHaveTextContent('125%')
+    expect(reviewPort.port.getWorkspace).toHaveBeenCalledTimes(1)
+  })
 })
 
-function continuousPort() {
-  let snapshot = 0
+function continuousPort(initialPublication: ReviewPublicationStatus = { kind: 'ready' }) {
   let current = continuousView()
+  let publication: ReviewPublicationStatus = { kind: 'ready' }
   const requests: Array<{ command: PreparedReviewCommand['command'] }> = []
   const port: ReviewWorkspacePort = {
     getWorkspace: vi.fn(async () => current),
@@ -699,9 +754,10 @@ function continuousPort() {
         command: structuredClone(request.command),
       }
     }),
-    applyCommand: vi.fn(async ({ envelope }): Promise<ReviewApplyResult> => {
-      snapshot += 1
-      const before = current.current?.state
+    applyCommand: vi.fn(async ({ envelope }): Promise<ReviewAuthoringApplyResult> => {
+      publication = initialPublication
+      const before = current.current?.authoring.state
+      const previousHead = current.current?.authoring.head
       const command = envelope.command
       if (command.kind !== 'save_feedback' || command.targets[0]?.kind !== 'add')
         throw new Error('Unexpected workbench command')
@@ -715,41 +771,42 @@ function continuousPort() {
       const asset = defined(preparedAsset[0]).asset
       const targetId = defined(envelope.generated.targets[0]).targetId
       const targetRevisionId = defined(envelope.generated.targets[0]).targetRevisionId
+      const feedback = {
+        id: envelope.generated.feedbackId,
+        textRevisionId: envelope.generated.textRevisionId,
+        text: command.text,
+        createdAtMs: envelope.generated.createdAtMs,
+        historyRef: null,
+        targets: [
+          {
+            id: targetId,
+            revisionId: targetRevisionId,
+            assetVersionId: target.assetVersionId,
+            anchor: target.anchor,
+            availability: { kind: 'ready' as const },
+          },
+        ],
+      }
+      const head = {
+        sequence: (previousHead?.sequence ?? 0) + 1,
+        snapshotId: envelope.generated.snapshotId,
+      }
       current = {
         ...current,
         current: {
-          reference: { snapshotId: `snapshot-${snapshot}`, blake3: 'cd'.repeat(32) },
-          production: null,
-          state: {
-            projectId: 'project-1',
-            streamId: 'stream-1',
-            snapshotId: `snapshot-${snapshot}`,
-            parent: current.current?.reference ?? null,
-            assets: [...(before?.assets ?? []), asset],
-            feedback: [
-              ...(before?.feedback ?? []),
-              {
-                id: envelope.generated.feedbackId,
-                textRevisionId: envelope.generated.textRevisionId,
-                text: command.text,
-                createdAtMs: envelope.generated.createdAtMs,
-                historyRef: null,
-                targets: [
-                  {
-                    id: targetId,
-                    revisionId: targetRevisionId,
-                    assetVersionId: target.assetVersionId,
-                    anchor: target.anchor,
-                    availability: { kind: 'ready' },
-                  },
-                ],
-              },
-            ],
+          authoring: {
+            head,
+            state: {
+              projectId: 'project-1',
+              streamId: 'stream-1',
+              snapshotId: head.snapshotId,
+              parent: current.current?.publishedRef ?? null,
+              assets: [...(before?.assets ?? []), asset],
+              feedback: [...(before?.feedback ?? []), feedback],
+            },
           },
-          commandId: envelope.commandId,
-          payloadDigest: envelope.payloadDigest,
-          changes: [],
-          evidence: [],
+          publishedRef: current.current?.publishedRef ?? null,
+          evidence: current.current?.evidence ?? [],
         },
         projection: {
           actionable: [...current.projection.actionable, targetId],
@@ -760,11 +817,28 @@ function continuousPort() {
         receipt: {
           commandId: envelope.commandId,
           payloadDigest: envelope.payloadDigest,
-          snapshot: defined(current.current).reference,
+          head,
         },
-        view: current,
+        patch: {
+          projectId: 'project-1',
+          streamId: 'stream-1',
+          parent:
+            envelope.expectedSnapshotId === null
+              ? null
+              : { snapshotId: envelope.expectedSnapshotId, blake3: 'cd'.repeat(32) },
+          basisSnapshotId: envelope.expectedSnapshotId,
+          head,
+          upsertAssets: [asset],
+          removeAssetVersionIds: [],
+          upsertFeedback: [feedback],
+          removeFeedbackIds: [],
+          projection: current.projection,
+          historySelectors: null,
+        },
+        publication,
       }
     }),
+    getPublicationStatus: vi.fn(async () => publication),
     previewArchive: vi.fn(async () => {
       throw new Error('Unexpected archive')
     }),
@@ -786,7 +860,14 @@ function continuousPort() {
     }),
     cancelTask: vi.fn(async () => 0),
   }
-  return { port, requests }
+  return {
+    port,
+    requests,
+    setPublication(next: ReviewPublicationStatus) {
+      initialPublication = next
+      publication = next
+    },
+  }
 }
 
 function continuousView(): ReviewWorkspaceView {

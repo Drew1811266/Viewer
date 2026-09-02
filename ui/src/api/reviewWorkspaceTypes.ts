@@ -1,6 +1,5 @@
 import type {
   PreparedReviewAsset,
-  ReviewApplyResult,
   ReviewArchivePlan,
   ReviewEvidenceImage,
   ReviewHistoryView,
@@ -166,6 +165,46 @@ export interface ReviewCommitReceipt {
   payloadDigest: string
   snapshot: ReviewSnapshotRef
 }
+export interface ReviewAuthoringHead {
+  sequence: number
+  snapshotId: string
+}
+export interface ReviewAuthoringReceipt {
+  commandId: string
+  payloadDigest: string
+  head: ReviewAuthoringHead
+}
+export type ReviewBarrierKind = 'none' | 'archive' | 'restore' | 'migration'
+export type ReviewMaterializationFailure =
+  | 'source_changed'
+  | 'source_missing'
+  | 'source_unreadable'
+  | 'render_failed'
+  | 'integrity'
+  | 'limit_exceeded'
+  | 'io'
+export type ReviewPublicationStatus =
+  | { kind: 'ready' }
+  | { kind: 'pending'; pendingRevisions: number }
+  | { kind: 'blocked'; code: ReviewMaterializationFailure }
+export interface ReviewWorkspacePatch {
+  projectId: string
+  streamId: string
+  parent: ReviewSnapshotRef | null
+  basisSnapshotId: string | null
+  head: ReviewAuthoringHead
+  upsertAssets: import('./reviewWorkspaceViewTypes').ReviewAssetVersion[]
+  removeAssetVersionIds: string[]
+  upsertFeedback: import('./reviewWorkspaceViewTypes').ReviewVersionedFeedback[]
+  removeFeedbackIds: string[]
+  projection: { actionable: string[]; needsConfirmation: string[] }
+  historySelectors: ReviewHistorySelector[] | null
+}
+export interface ReviewAuthoringApplyResult {
+  receipt: ReviewAuthoringReceipt
+  patch: ReviewWorkspacePatch
+  publication: ReviewPublicationStatus
+}
 export type ReviewWorkspaceErrorCode =
   | 'invalid_data'
   | 'stale_session'
@@ -202,6 +241,7 @@ export interface ReviewWorkspaceError {
   message: string
   retryable: boolean
   committedReceipt: ReviewCommitReceipt | null
+  committedAuthoringReceipt: ReviewAuthoringReceipt | null
 }
 export interface PrepareReviewAssetsRequest extends ReviewWorkspaceSessionRequest {
   entityIds: string[]
@@ -237,7 +277,8 @@ export interface ReviewWorkspacePort {
   getWorkspace(request: ReviewWorkspaceSessionRequest): Promise<ReviewWorkspaceView>
   prepareAssets(request: PrepareReviewAssetsRequest): Promise<PreparedReviewAsset[]>
   prepareCommand(request: PrepareReviewCommandRequest): Promise<PreparedReviewCommand>
-  applyCommand(request: ApplyReviewCommandRequest): Promise<ReviewApplyResult>
+  applyCommand(request: ApplyReviewCommandRequest): Promise<ReviewAuthoringApplyResult>
+  getPublicationStatus(request: ReviewWorkspaceSessionRequest): Promise<ReviewPublicationStatus>
   previewArchive(request: PreviewReviewArchiveRequest): Promise<ReviewArchivePlan>
   previewRestore(request: PreviewReviewRestoreRequest): Promise<ReviewRestorePlan>
   getHistory(request: ReviewHistoryRequest): Promise<ReviewHistoryView>

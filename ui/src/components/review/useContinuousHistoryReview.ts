@@ -536,7 +536,11 @@ function historyRefsFor(
 ): ReviewHistoryRef[] {
   const current = coordinator.view?.current
   if (current === undefined || current === null) return []
-  return historyRefsForEntries(history, current.state.projectId, current.state.streamId)
+  return historyRefsForEntries(
+    history,
+    current.authoring.state.projectId,
+    current.authoring.state.streamId,
+  )
 }
 
 function sameRestoreDecisions(left: ReviewRestoreDecision[], right: ReviewRestoreDecision[]) {

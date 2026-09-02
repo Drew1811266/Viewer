@@ -1,8 +1,8 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { expect, it, vi } from 'vitest'
 import type {
-  ReviewApplyResult,
   ReviewArchivePlan,
+  ReviewAuthoringApplyResult,
   ReviewRestorePlan,
 } from '../../api/reviewWorkspaceTypes'
 import { ContinuousReviewSession } from './continuousReviewSession'
@@ -23,7 +23,7 @@ import { useContinuousReviewCoordinator } from './useContinuousReviewCoordinator
 
 it('freezes the exact archive selection, coalesces double confirmation, and rejects competing commands', async () => {
   const port = reviewPort(workspace('base'))
-  const writing = deferred<ReviewApplyResult>()
+  const writing = deferred<ReviewAuthoringApplyResult>()
   vi.mocked(port.previewArchive).mockImplementation(async ({ selection }) => archivePlan(selection))
   vi.mocked(port.applyCommand).mockReturnValueOnce(writing.promise)
   const { result } = renderHook(() => useContinuousReviewCoordinator({ ...session, port }))

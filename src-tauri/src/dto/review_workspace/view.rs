@@ -151,6 +151,12 @@ remote_output!(ReviewWorkspaceCurrent, AuthoringCurrent);
 #[derive(Serialize)]
 #[serde(remote = "ReviewWorkspacePatch", rename_all = "camelCase")]
 struct Patch {
+    #[serde(with = "wire", getter = "ReviewWorkspacePatch::project_id")]
+    project_id: ProjectId,
+    #[serde(with = "wire", getter = "ReviewWorkspacePatch::stream_id")]
+    stream_id: ReviewStreamId,
+    #[serde(with = "wire", getter = "ReviewWorkspacePatch::parent")]
+    parent: Option<SnapshotRef>,
     #[serde(with = "wire")]
     basis_snapshot_id: Option<ReviewSnapshotId>,
     #[serde(with = "wire")]

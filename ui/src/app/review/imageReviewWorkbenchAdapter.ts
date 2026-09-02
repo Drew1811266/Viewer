@@ -82,17 +82,18 @@ export function continuousImageReviewWorkbenchAdapter(
     const asset = preparedAsset(entityId, preparation)
     const status =
       asset === null ? undefined : operationStatus.get(statusMessageKey(entityId, asset.asset.id))
+    const savedHere = asset !== null && snapshot.lastChangedAssetVersionIds.includes(asset.asset.id)
     return {
       feedback: continuousFeedback(snapshot, asset?.asset.id ?? null),
       readOnlyReason: continuousReadOnlyReason(snapshot, entityId, preparation),
       restorableItemId: null,
       statusMessage:
-        status === 'saved'
+        status === 'saved' || savedHere
           ? pendingTargetForAsset(snapshot, asset?.asset.id ?? null)
             ? '已保存，待确认'
-            : '已保存，可供外部读取'
+            : publicationMessage(snapshot)
           : status === 'deleted'
-            ? '已删除，可供外部读取'
+            ? publicationMessage(snapshot, '已删除，可供外部读取')
             : null,
     }
   }
@@ -180,7 +181,7 @@ function continuousFeedback(
   assetVersionId: string | null,
 ) {
   let ordinal = 0
-  return [...(snapshot.view?.current?.state.feedback ?? [])]
+  return [...(snapshot.view?.current?.authoring.state.feedback ?? [])]
     .sort(
       (left, right) =>
         left.createdAtMs - right.createdAtMs ||
@@ -343,8 +344,11 @@ function continuousReadOnlyReason(
   switch (snapshot.state.kind) {
     case 'loading':
       return 'loading'
-    case 'saving':
+    case 'saving_authoring':
       return 'saving'
+    case 'saved_pending_publication':
+    case 'publication_blocked':
+      break
     case 'recovery_required':
       return 'recovery_required'
     case 'migration_required':
@@ -363,7 +367,7 @@ function continuousReadOnlyReason(
   if (preparation === null) return 'loading'
   const asset = preparedAsset(entityId, preparation)
   if (asset === null) return 'source_confirmation'
-  const current = snapshot.view.current?.state
+  const current = snapshot.view.current?.authoring.state
   const assetVersionsForEntity = new Set(
     current?.assets
       .filter((candidate) => candidate.sourceEntityId === entityId)
@@ -386,7 +390,7 @@ function continuousReadOnlyReason(
     snapshot.view.sourceChecks.some(
       (check) => check.assetVersionId === asset.asset.id && check.status !== 'match',
     ) ||
-    snapshot.view.current?.state.feedback.some((feedback) =>
+    snapshot.view.current?.authoring.state.feedback.some((feedback) =>
       feedback.targets.some(
         (target) =>
           target.assetVersionId === asset.asset.id &&
@@ -430,7 +434,7 @@ function continuousViewKey(coordinator: ContinuousReviewCoordinator, entityId: s
   return JSON.stringify({
     entityId,
     state: snapshot.state.kind,
-    snapshotId: snapshot.view?.current?.reference.snapshotId ?? null,
+    snapshotId: snapshot.view?.current?.authoring.head.snapshotId ?? null,
     sourceChecks: snapshot.view?.sourceChecks ?? [],
     projection: snapshot.view?.projection ?? null,
     recovery: snapshot.view?.recovery.map((draft) => draft.commandId) ?? [],
@@ -446,12 +450,28 @@ function pendingTargetForAsset(
   if (assetVersionId === null) return false
   const pending = new Set(snapshot.view?.projection.needsConfirmation ?? [])
   return (
-    snapshot.view?.current?.state.feedback.some((feedback) =>
+    snapshot.view?.current?.authoring.state.feedback.some((feedback) =>
       feedback.targets.some(
         (target) => target.assetVersionId === assetVersionId && pending.has(target.id),
       ),
     ) ?? false
   )
+}
+
+function publicationMessage(
+  snapshot: ReturnType<ContinuousReviewCoordinator['getSnapshot']>,
+  readyMessage = '已保存，可供外部读取',
+) {
+  switch (snapshot.state.kind) {
+    case 'saving_authoring':
+      return '正在保存意见，请稍候。'
+    case 'saved_pending_publication':
+      return '已保存，Agent 数据生成中'
+    case 'publication_blocked':
+      return '评审已保存，Agent 数据生成失败'
+    default:
+      return readyMessage
+  }
 }
 
 function cloneScope(scope: ReviewScopeRequest): ReviewScopeRequest {

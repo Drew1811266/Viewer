@@ -50,7 +50,7 @@ describe('continuous review acceptance scenes', () => {
       needsConfirmation: [expect.any(String)],
     })
     expect(migration.migration).toMatchObject({ legacyProtocol: 'viewer.review/1' })
-    expect(empty.current?.state.feedback).toEqual([])
+    expect(empty.current?.authoring.state.feedback).toEqual([])
   })
 
   for (const id of ['RVW-26', 'RVW-27', 'RVW-30'] as const) {

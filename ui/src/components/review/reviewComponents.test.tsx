@@ -186,39 +186,39 @@ function continuousArchiveCoordinator(
     hasUncommittedInput: false,
     view: {
       current: {
-        reference: { snapshotId: 'snapshot-c', blake3: 'c'.repeat(64) },
-        production: null,
-        state: {
-          projectId: 'project-c',
-          streamId: 'stream-c',
-          snapshotId: 'snapshot-c',
-          parent: null,
-          assets: [],
-          feedback: [
-            {
-              id: archiveTarget.feedbackId,
-              textRevisionId: archiveTarget.textRevisionId,
-              text: '袖口收紧',
-              createdAtMs: 1,
-              historyRef: null,
-              targets: [
-                {
-                  id: archiveTarget.targetId,
-                  revisionId: archiveTarget.targetRevisionId,
-                  assetVersionId: 'asset-c',
-                  anchor: { kind: 'asset' },
-                  availability: { kind: 'ready' },
-                },
-              ],
-            },
-          ],
+        authoring: {
+          head: { sequence: 1, snapshotId: 'snapshot-c' },
+          state: {
+            projectId: 'project-c',
+            streamId: 'stream-c',
+            snapshotId: 'snapshot-c',
+            parent: null,
+            assets: [],
+            feedback: [
+              {
+                id: archiveTarget.feedbackId,
+                textRevisionId: archiveTarget.textRevisionId,
+                text: '袖口收紧',
+                createdAtMs: 1,
+                historyRef: null,
+                targets: [
+                  {
+                    id: archiveTarget.targetId,
+                    revisionId: archiveTarget.targetRevisionId,
+                    assetVersionId: 'asset-c',
+                    anchor: { kind: 'asset' },
+                    availability: { kind: 'ready' },
+                  },
+                ],
+              },
+            ],
+          },
         },
-        commandId: 'command-c',
-        payloadDigest: 'd'.repeat(64),
-        changes: [],
+        publishedRef: { snapshotId: 'snapshot-c', blake3: 'c'.repeat(64) },
         evidence: [],
       },
       streamId: 'stream-c',
+      historySelectors: [],
       sourceChecks: [],
       projection: { actionable: [], needsConfirmation: [] },
       recovery: [],
@@ -541,6 +541,7 @@ describe('review workspace components', () => {
         message: 'invalid declaration',
         retryable: false,
         committedReceipt: null,
+        committedAuthoringReceipt: null,
       }),
     })
     render(

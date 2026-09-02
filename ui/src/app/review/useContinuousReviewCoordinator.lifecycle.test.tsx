@@ -3,7 +3,7 @@ import { StrictMode } from 'react'
 import { expect, it, vi } from 'vitest'
 import type {
   PreparedReviewCommand,
-  ReviewApplyResult,
+  ReviewAuthoringApplyResult,
   ReviewWorkspaceView,
 } from '../../api/reviewWorkspaceTypes'
 import {
@@ -65,7 +65,7 @@ it('switching generation cancels the old session and prevents a late preparation
 
 it('a late committed reply cannot overwrite the next project but its caller still receives the receipt', async () => {
   const port = reviewPort(workspace('original'))
-  const writing = deferred<ReviewApplyResult>()
+  const writing = deferred<ReviewAuthoringApplyResult>()
   const onError = vi.fn()
   vi.mocked(port.applyCommand).mockReturnValueOnce(writing.promise)
   const hook = renderHook(
@@ -87,16 +87,16 @@ it('a late committed reply cannot overwrite the next project but its caller stil
   vi.mocked(port.getWorkspace).mockResolvedValue(workspace('other-project'))
   hook.rerender({ sessionId: 'session-2' })
   await waitFor(() =>
-    expect(hook.result.current.view?.current?.reference.snapshotId).toBe('other-project'),
+    expect(hook.result.current.view?.current?.authoring.head.snapshotId).toBe('other-project'),
   )
   await act(async () => {
     writing.resolve(applied(envelope))
     expect(await saveResult).toMatchObject({
       code: 'stale_session',
-      committedReceipt: { commandId: envelope.commandId },
+      committedAuthoringReceipt: { commandId: envelope.commandId },
     })
   })
-  expect(hook.result.current.view?.current?.reference.snapshotId).toBe('other-project')
+  expect(hook.result.current.view?.current?.authoring.head.snapshotId).toBe('other-project')
   expect(hook.result.current.lastReceipt).toBeNull()
   await expect(oldSave()).rejects.toMatchObject({ code: 'stale_session' })
   expect(onError).not.toHaveBeenCalled()
@@ -132,11 +132,13 @@ it('ignores the disposed StrictMode load even if it arrives after the replacemen
   const { result } = renderHook(() => useContinuousReviewCoordinator({ ...session, port }), {
     wrapper: StrictMode,
   })
-  await waitFor(() => expect(result.current.view?.current?.reference.snapshotId).toBe('new-head'))
+  await waitFor(() =>
+    expect(result.current.view?.current?.authoring.head.snapshotId).toBe('new-head'),
+  )
   await act(async () => {
     oldLoad.resolve(workspace('old-head'))
   })
-  expect(result.current.view?.current?.reference.snapshotId).toBe('new-head')
+  expect(result.current.view?.current?.authoring.head.snapshotId).toBe('new-head')
 })
 
 it('a replacement transport waits for the previous coordinator cancellation before loading', async () => {
@@ -154,7 +156,7 @@ it('a replacement transport waits for the previous coordinator cancellation befo
     acknowledgement.resolve(0)
   })
   await waitFor(() =>
-    expect(hook.result.current.view?.current?.reference.snapshotId).toBe('new-head'),
+    expect(hook.result.current.view?.current?.authoring.head.snapshotId).toBe('new-head'),
   )
 })
 
@@ -188,7 +190,7 @@ it('cancel during prepare retains the envelope for retry but does not start appl
 
 it('cancel is not rollback: an apply that already committed still updates the saved view', async () => {
   const port = reviewPort()
-  const writing = deferred<ReviewApplyResult>()
+  const writing = deferred<ReviewAuthoringApplyResult>()
   vi.mocked(port.applyCommand).mockReturnValueOnce(writing.promise)
   const { result } = renderHook(() => useContinuousReviewCoordinator({ ...session, port }))
   await waitFor(() => expect(result.current.state.kind).toBe('ready'))
@@ -203,12 +205,12 @@ it('cancel is not rollback: an apply that already committed still updates the sa
   const envelope = vi.mocked(port.applyCommand).mock.calls[0]?.[0].envelope
   if (!envelope) throw new Error('Missing envelope')
   await act(() => result.current.cancel())
-  expect(result.current.state.kind).toBe('saving')
+  expect(result.current.state.kind).toBe('saving_authoring')
   await act(async () => {
     writing.resolve(applied(envelope))
     await saving
   })
-  expect(result.current.view?.current?.reference.snapshotId).toBe('saved-snapshot')
+  expect(result.current.view?.current?.authoring.head.snapshotId).toBe('saved-snapshot')
   expect(result.current.lastReceipt?.commandId).toBe(envelope.commandId)
 })
 
@@ -229,7 +231,7 @@ it('read-only capabilities block new input and all submission before desktop pre
 
 it('does not silently replace newer typing with a queued second save', async () => {
   const port = reviewPort()
-  const writing = deferred<ReviewApplyResult>()
+  const writing = deferred<ReviewAuthoringApplyResult>()
   vi.mocked(port.applyCommand).mockReturnValueOnce(writing.promise)
   const { result } = renderHook(() => useContinuousReviewCoordinator({ ...session, port }))
   await waitFor(() => expect(result.current.state.kind).toBe('ready'))
@@ -255,4 +257,86 @@ it('does not silently replace newer typing with a queued second save', async () 
   })
   expect(result.current.editorInput.text).toBe('新文字')
   expect(port.applyCommand).toHaveBeenCalledOnce()
+})
+
+it('backs off publication polling and keeps the committed authoring view when publication blocks', async () => {
+  const port = reviewPort()
+  vi.mocked(port.applyCommand).mockImplementationOnce(async ({ envelope }) => ({
+    ...applied(envelope),
+    publication: { kind: 'pending', pendingRevisions: 2 },
+  }))
+  vi.mocked(port.getPublicationStatus)
+    .mockResolvedValueOnce({ kind: 'ready' })
+    .mockResolvedValueOnce({ kind: 'pending', pendingRevisions: 1 })
+    .mockResolvedValueOnce({ kind: 'blocked', code: 'source_changed' })
+  const { result } = renderHook(() => useContinuousReviewCoordinator({ ...session, port }))
+  await waitFor(() => expect(result.current.state.kind).toBe('ready'))
+  act(() => {
+    result.current.beginEditor(input)
+  })
+
+  await act(() => result.current.saveFeedback())
+  expect(result.current.state).toEqual({
+    kind: 'saved_pending_publication',
+    pendingRevisions: 2,
+  })
+  expect(result.current.editorInput.contextKey).toBeNull()
+  await waitFor(
+    () =>
+      expect(result.current.state).toEqual({
+        kind: 'publication_blocked',
+        code: 'source_changed',
+      }),
+    { timeout: 1_500 },
+  )
+  expect(result.current.view?.current?.authoring.head.snapshotId).toBe('saved-snapshot')
+  expect(port.getWorkspace).toHaveBeenCalledOnce()
+  expect(port.getPublicationStatus).toHaveBeenCalledTimes(3)
+})
+
+it('stops publication polling when the owning coordinator unmounts', async () => {
+  const port = reviewPort()
+  vi.mocked(port.applyCommand).mockImplementationOnce(async ({ envelope }) => ({
+    ...applied(envelope),
+    publication: { kind: 'pending', pendingRevisions: 1 },
+  }))
+  const hook = renderHook(() => useContinuousReviewCoordinator({ ...session, port }))
+  await waitFor(() => expect(hook.result.current.state.kind).toBe('ready'))
+  act(() => {
+    hook.result.current.beginEditor(input)
+  })
+  await act(() => hook.result.current.saveFeedback())
+  const callsBeforeUnmount = vi.mocked(port.getPublicationStatus).mock.calls.length
+
+  hook.unmount()
+  await new Promise((resolve) => setTimeout(resolve, 350))
+
+  expect(port.getPublicationStatus).toHaveBeenCalledTimes(callsBeforeUnmount)
+})
+
+it('stops publication polling when a replacement coordinator takes ownership', async () => {
+  const oldPort = reviewPort()
+  vi.mocked(oldPort.applyCommand).mockImplementationOnce(async ({ envelope }) => ({
+    ...applied(envelope),
+    publication: { kind: 'pending', pendingRevisions: 1 },
+  }))
+  const nextPort = reviewPort(workspace('replacement-head'))
+  const hook = renderHook(({ port }) => useContinuousReviewCoordinator({ ...session, port }), {
+    initialProps: { port: oldPort },
+  })
+  await waitFor(() => expect(hook.result.current.state.kind).toBe('ready'))
+  act(() => {
+    hook.result.current.beginEditor(input)
+  })
+  await act(() => hook.result.current.saveFeedback())
+  expect(hook.result.current.state.kind).toBe('saved_pending_publication')
+  const callsBeforeReplacement = vi.mocked(oldPort.getPublicationStatus).mock.calls.length
+
+  hook.rerender({ port: nextPort })
+  await waitFor(() =>
+    expect(hook.result.current.view?.current?.authoring.head.snapshotId).toBe('replacement-head'),
+  )
+  await new Promise((resolve) => setTimeout(resolve, 350))
+
+  expect(oldPort.getPublicationStatus).toHaveBeenCalledTimes(callsBeforeReplacement)
 })

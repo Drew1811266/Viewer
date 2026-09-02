@@ -347,6 +347,7 @@ it('shows legacy evidence absence as a limitation but treats broken required evi
         message: '必需历史证据损坏',
         retryable: false,
         committedReceipt: null,
+        committedAuthoringReceipt: null,
       }}
       onClose={vi.fn()}
       onContinue={vi.fn()}

@@ -158,7 +158,7 @@ function unknownArchiveSelection(
 ): ReviewArchiveSelection | null {
   const current = coordinator.view?.current
   if (current === undefined || current === null) return null
-  const targets = current.state.feedback.flatMap((feedback) =>
+  const targets = current.authoring.state.feedback.flatMap((feedback) =>
     feedback.targets.map((target) => ({
       feedbackId: feedback.id,
       textRevisionId: feedback.textRevisionId,
@@ -168,7 +168,7 @@ function unknownArchiveSelection(
   )
   if (targets.length === 0) return null
   return {
-    expectedSnapshotId: current.reference.snapshotId,
+    expectedSnapshotId: current.authoring.head.snapshotId,
     groups: [{ basis: { kind: 'unknown' }, targets }],
   }
 }

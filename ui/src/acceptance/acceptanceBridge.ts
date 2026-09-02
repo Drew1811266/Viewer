@@ -348,14 +348,41 @@ export function createAcceptanceReviewWorkspacePort(id: string): ReviewWorkspace
       }
     },
     async applyCommand({ envelope }) {
+      const view = structuredClone(acceptanceContinuousReviewView(id))
+      const current = view.current
       return {
         receipt: {
           commandId: envelope.commandId,
           payloadDigest: envelope.payloadDigest,
-          snapshot: { snapshotId: envelope.generated.snapshotId, blake3: '51'.repeat(32) },
+          head: {
+            sequence: (current?.authoring.head.sequence ?? 0) + 1,
+            snapshotId: envelope.generated.snapshotId,
+          },
         },
-        view: structuredClone(acceptanceContinuousReviewView(id)),
+        patch: {
+          projectId: ACCEPTANCE_PROJECT_SNAPSHOT.projectId,
+          streamId: 'acceptance-continuous-stream',
+          parent:
+            envelope.expectedSnapshotId === null
+              ? null
+              : { snapshotId: envelope.expectedSnapshotId, blake3: '51'.repeat(32) },
+          basisSnapshotId: envelope.expectedSnapshotId,
+          head: {
+            sequence: (current?.authoring.head.sequence ?? 0) + 1,
+            snapshotId: envelope.generated.snapshotId,
+          },
+          upsertAssets: current?.authoring.state.assets ?? [],
+          removeAssetVersionIds: [],
+          upsertFeedback: current?.authoring.state.feedback ?? [],
+          removeFeedbackIds: [],
+          projection: view.projection,
+          historySelectors: null,
+        },
+        publication: { kind: 'ready' as const },
       }
+    },
+    async getPublicationStatus() {
+      return { kind: 'ready' as const }
     },
     async previewArchive() {
       return structuredClone(acceptanceContinuousArchivePlan(id))

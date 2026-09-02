@@ -46,6 +46,7 @@ describe('ReviewUsageImport', () => {
       message: 'usage declaration belongs to another context',
       retryable: false,
       committedReceipt: null,
+      committedAuthoringReceipt: null,
     })
     const onCancel = vi.fn()
     render(<ReviewUsageImport onSelect={onSelect} onConfirm={vi.fn()} onCancel={onCancel} />)
@@ -80,6 +81,7 @@ describe('ReviewUsageImport', () => {
           message: 'project is read only',
           retryable: false,
           committedReceipt: null,
+          committedAuthoringReceipt: null,
         })}
         onCancel={vi.fn()}
       />,

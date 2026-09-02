@@ -42,7 +42,7 @@ export function useContinuousReviewCoordinator({
   return {
     ...snapshot,
     workbenchSessionKey,
-    currentSnapshotId: snapshot.view?.current?.reference.snapshotId ?? null,
+    currentSnapshotId: snapshot.view?.current?.authoring.head.snapshotId ?? null,
     getSnapshot: session.getSnapshot,
     beginEditor: session.beginEditor,
     saveFeedback: session.saveFeedback,

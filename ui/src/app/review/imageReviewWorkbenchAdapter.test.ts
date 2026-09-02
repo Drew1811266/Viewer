@@ -51,36 +51,35 @@ function view(): ReviewWorkspaceView {
     streamId: 'stream-1',
     historySelectors: [],
     current: {
-      reference: { snapshotId: 'snapshot-1', blake3: 'cd'.repeat(32) },
-      production: null,
-      state: {
-        projectId: 'project-1',
-        streamId: 'stream-1',
-        snapshotId: 'snapshot-1',
-        parent: null,
-        assets: [asset('image-1', 'asset-1')],
-        feedback: [
-          {
-            id: KEY.feedbackId,
-            textRevisionId: KEY.textRevisionId,
-            text: '调整领口',
-            createdAtMs: 10,
-            historyRef: null,
-            targets: [
-              {
-                id: KEY.targetId,
-                revisionId: KEY.targetRevisionId,
-                assetVersionId: 'asset-1',
-                anchor: RECT,
-                availability: { kind: 'ready' },
-              },
-            ],
-          },
-        ],
+      authoring: {
+        head: { sequence: 1, snapshotId: 'snapshot-1' },
+        state: {
+          projectId: 'project-1',
+          streamId: 'stream-1',
+          snapshotId: 'snapshot-1',
+          parent: null,
+          assets: [asset('image-1', 'asset-1')],
+          feedback: [
+            {
+              id: KEY.feedbackId,
+              textRevisionId: KEY.textRevisionId,
+              text: '调整领口',
+              createdAtMs: 10,
+              historyRef: null,
+              targets: [
+                {
+                  id: KEY.targetId,
+                  revisionId: KEY.targetRevisionId,
+                  assetVersionId: 'asset-1',
+                  anchor: RECT,
+                  availability: { kind: 'ready' },
+                },
+              ],
+            },
+          ],
+        },
       },
-      commandId: 'command-1',
-      payloadDigest: 'ef'.repeat(32),
-      changes: [],
+      publishedRef: { snapshotId: 'snapshot-1', blake3: 'cd'.repeat(32) },
       evidence: [],
     },
     sourceChecks: [],
@@ -104,6 +103,7 @@ function coordinator(currentView = view(), workbenchSessionKey = 'session-1:1:in
     },
     pendingEnvelope: null,
     lastReceipt: null,
+    lastChangedAssetVersionIds: [],
     error: null,
   }
   return {
@@ -174,8 +174,8 @@ it('adds a newly opened image with its prepared asset instead of a fixed member 
 it('keeps an orphaned retained asset version from blocking the prepared current version', async () => {
   const orphaned = view()
   if (orphaned.current === null) throw new Error('Expected current continuous review fixture')
-  orphaned.current.state.assets = [asset('image-1', 'asset-old')]
-  orphaned.current.state.feedback = []
+  orphaned.current.authoring.state.assets = [asset('image-1', 'asset-old')]
+  orphaned.current.authoring.state.feedback = []
   orphaned.projection = { actionable: [], needsConfirmation: [] }
   const review = coordinator(orphaned)
   const adapter = continuousImageReviewWorkbenchAdapter(review.value)
@@ -312,6 +312,7 @@ it('retries the retained editor input without regenerating its identity or targe
         message: '写入失败',
         retryable: true,
         committedReceipt: null,
+        committedAuthoringReceipt: null,
       },
     },
     editorInput: {
@@ -355,7 +356,13 @@ it('turns an explicit text change after a definite failure into a new retained p
     ...review.value.getSnapshot(),
     state: {
       kind: 'save_failed',
-      error: { code: 'io', message: '写入失败', retryable: true, committedReceipt: null },
+      error: {
+        code: 'io',
+        message: '写入失败',
+        retryable: true,
+        committedReceipt: null,
+        committedAuthoringReceipt: null,
+      },
     },
     editorInput: {
       contextKey: 'target-1',
@@ -402,14 +409,14 @@ it('discards retained definite-failure input but preserves reconciliation input'
 it('reports a saved target that still needs confirmation without claiming agent consumption', async () => {
   const initial = view()
   if (initial.current === null) throw new Error('Missing current snapshot')
-  initial.current.state.feedback = []
+  initial.current.authoring.state.feedback = []
   initial.projection = { actionable: [], needsConfirmation: [] }
   const review = coordinator(initial)
   const adapter = continuousImageReviewWorkbenchAdapter(review.value)
   const preparation = await adapter.prepareEntity('image-1')
   vi.mocked(review.value.saveFeedback).mockImplementationOnce(async () => {
     const pending = view()
-    const target = pending.current?.state.feedback[0]?.targets[0]
+    const target = pending.current?.authoring.state.feedback[0]?.targets[0]
     if (!target) throw new Error('Missing pending target')
     target.availability = {
       kind: 'needs_confirmation',
@@ -458,6 +465,46 @@ it('never carries one entity save status into another entity view', async () => 
   expect(adapter.view('image-1', firstPreparation).statusMessage).toBe('已保存，可供外部读取')
   expect(adapter.view('image-2', secondPreparation).statusMessage).toBeNull()
   expect(adapter.view('image-1', replacementVersion).statusMessage).toBeNull()
+})
+
+it('maps publication progress for the saved asset to the exact Agent-facing status copy', async () => {
+  const review = coordinator()
+  const adapter = continuousImageReviewWorkbenchAdapter(review.value)
+  const preparation = await adapter.prepareEntity('image-1')
+  const base = review.value.getSnapshot()
+
+  review.setSnapshot({
+    ...base,
+    state: { kind: 'saved_pending_publication', pendingRevisions: 2 },
+    lastChangedAssetVersionIds: ['asset-1'],
+  })
+  expect(adapter.view('image-1', preparation).statusMessage).toBe('已保存，Agent 数据生成中')
+
+  review.setSnapshot({
+    ...review.value.getSnapshot(),
+    state: { kind: 'publication_blocked', code: 'source_changed' },
+  })
+  expect(adapter.view('image-1', preparation).statusMessage).toBe('评审已保存，Agent 数据生成失败')
+
+  review.setSnapshot({ ...review.value.getSnapshot(), state: { kind: 'ready' } })
+  expect(adapter.view('image-1', preparation).statusMessage).toBe('已保存，可供外部读取')
+})
+
+it('never claims a deletion is Agent-readable while publication is still pending', async () => {
+  const review = coordinator()
+  const adapter = continuousImageReviewWorkbenchAdapter(review.value)
+  const preparation = await adapter.prepareEntity('image-1')
+  const item = adapter.view('image-1', preparation).feedback[0]
+  if (!item) throw new Error('Missing feedback item')
+  review.setSnapshot({
+    ...review.value.getSnapshot(),
+    state: { kind: 'saved_pending_publication', pendingRevisions: 1 },
+  })
+
+  const result = await adapter.deleteFeedback({ entityId: 'image-1', item, preparation })
+
+  expect(result.statusMessage).toBe('已保存，Agent 数据生成中')
+  expect(result.statusMessage).not.toContain('可供外部读取')
 })
 
 it('refuses to delete an item retained from a previously opened asset', async () => {
@@ -510,7 +557,7 @@ it('rejects a text edit when the target or text revision changed after editing b
   const frozenItem = adapter.view('image-1', preparation).feedback[0]
   if (!frozenItem) throw new Error('Missing feedback item')
   const refreshed = view()
-  const refreshedFeedback = refreshed.current?.state.feedback[0]
+  const refreshedFeedback = refreshed.current?.authoring.state.feedback[0]
   const refreshedTarget = refreshedFeedback?.targets[0]
   if (!refreshedFeedback || !refreshedTarget) throw new Error('Missing refreshed target')
   refreshedFeedback.textRevisionId = 'text-2'
@@ -541,6 +588,7 @@ it('turns a same-path source change failure into an explicit confirmation state'
         message: '素材已被覆盖',
         retryable: false,
         committedReceipt: null,
+        committedAuthoringReceipt: null,
       },
     },
   })

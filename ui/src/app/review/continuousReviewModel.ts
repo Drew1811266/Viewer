@@ -1,6 +1,8 @@
 import type {
   PreparedReviewCommand,
+  ReviewAuthoringReceipt,
   ReviewCommitReceipt,
+  ReviewMaterializationFailure,
   ReviewTargetEdit,
   ReviewWorkspaceError,
   ReviewWorkspaceView,
@@ -9,7 +11,9 @@ import type {
 export type ContinuousReviewState =
   | { kind: 'loading' }
   | { kind: 'ready' }
-  | { kind: 'saving'; stage: 'preparing' | 'applying' }
+  | { kind: 'saving_authoring' }
+  | { kind: 'saved_pending_publication'; pendingRevisions: number }
+  | { kind: 'publication_blocked'; code: ReviewMaterializationFailure }
   | { kind: 'save_failed'; error: ReviewWorkspaceError }
   | { kind: 'recovery_required'; error: ReviewWorkspaceError | null }
   | { kind: 'migration_required' }
@@ -29,7 +33,8 @@ export interface ContinuousReviewSnapshot {
   view: ReviewWorkspaceView | null
   editorInput: ContinuousReviewEditorInput
   pendingEnvelope: PreparedReviewCommand | null
-  lastReceipt: ReviewCommitReceipt | null
+  lastReceipt: ReviewAuthoringReceipt | null
+  lastChangedAssetVersionIds: string[]
   error: ReviewWorkspaceError | null
 }
 
@@ -51,7 +56,13 @@ export function reviewWorkspaceError(
   message: string,
   retryable: boolean,
 ): ReviewWorkspaceError {
-  return { code, message, retryable, committedReceipt: null }
+  return {
+    code,
+    message,
+    retryable,
+    committedReceipt: null,
+    committedAuthoringReceipt: null,
+  }
 }
 
 const errorCodes = new Set<ReviewWorkspaceError['code']>([
@@ -95,13 +106,16 @@ export function normalizeReviewWorkspaceError(cause: unknown): ReviewWorkspaceEr
       errorCodes.has(candidate.code as ReviewWorkspaceError['code']) &&
       typeof candidate.message === 'string' &&
       typeof candidate.retryable === 'boolean' &&
-      (candidate.committedReceipt === null || isCommitReceipt(candidate.committedReceipt))
+      (candidate.committedReceipt === null || isCommitReceipt(candidate.committedReceipt)) &&
+      (candidate.committedAuthoringReceipt === null ||
+        isAuthoringReceipt(candidate.committedAuthoringReceipt))
     ) {
       return {
         code: candidate.code as ReviewWorkspaceError['code'],
         message: candidate.message,
         retryable: candidate.retryable,
         committedReceipt: candidate.committedReceipt ?? null,
+        committedAuthoringReceipt: candidate.committedAuthoringReceipt ?? null,
       }
     }
   }
@@ -130,9 +144,23 @@ function isCommitReceipt(value: unknown): value is ReviewCommitReceipt {
   )
 }
 
+function isAuthoringReceipt(value: unknown): value is ReviewAuthoringReceipt {
+  if (typeof value !== 'object' || value === null) return false
+  const receipt = value as Partial<ReviewAuthoringReceipt>
+  return (
+    typeof receipt.commandId === 'string' &&
+    typeof receipt.payloadDigest === 'string' &&
+    typeof receipt.head === 'object' &&
+    receipt.head !== null &&
+    typeof receipt.head.sequence === 'number' &&
+    typeof receipt.head.snapshotId === 'string'
+  )
+}
+
 export function requiresReviewReconciliation(error: ReviewWorkspaceError): boolean {
   return (
     error.committedReceipt !== null ||
+    error.committedAuthoringReceipt !== null ||
     [
       'outcome_unknown',
       'lookup_unavailable',

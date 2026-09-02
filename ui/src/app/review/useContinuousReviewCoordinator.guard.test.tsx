@@ -1,6 +1,9 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { expect, it, vi } from 'vitest'
-import type { ReviewApplyResult, ReviewWorkspaceView } from '../../api/reviewWorkspaceTypes'
+import type {
+  ReviewAuthoringApplyResult,
+  ReviewWorkspaceView,
+} from '../../api/reviewWorkspaceTypes'
 import {
   applied,
   deferred,
@@ -122,8 +125,8 @@ it('retry waits for an in-flight refresh before applying the retained envelope',
   await act(() => result.current.retry())
   expect(port.prepareCommand).toHaveBeenCalledOnce()
   expect(vi.mocked(port.applyCommand).mock.calls[1]?.[0].envelope).toBe(retained)
-  expect(result.current.view?.current?.reference.snapshotId).toBe('saved-snapshot')
-  expect(result.current.lastReceipt?.snapshot.snapshotId).toBe('saved-snapshot')
+  expect(result.current.view?.current?.authoring.head.snapshotId).toBe('saved-snapshot')
+  expect(result.current.lastReceipt?.head.snapshotId).toBe('saved-snapshot')
 })
 
 it('late refresh responses neither roll back the view nor overwrite a newer load error', async () => {
@@ -143,7 +146,7 @@ it('late refresh responses neither roll back the view nor overwrite a newer load
     oldRead.resolve(workspace('old-head'))
     expect(await first).toMatchObject({ code: 'cancelled' })
   })
-  expect(result.current.view?.current?.reference.snapshotId).toBe('new-head')
+  expect(result.current.view?.current?.authoring.head.snapshotId).toBe('new-head')
   expect(result.current.state.kind).toBe('ready')
   expect(result.current.error).toBeNull()
 })
@@ -168,7 +171,7 @@ it('cancelling a refresh exits loading while preserving the last verified view a
     read.resolve(workspace('too-late'))
     expect(await reading).toMatchObject({ code: 'cancelled' })
   })
-  expect(result.current.view?.current?.reference.snapshotId).toBe('base')
+  expect(result.current.view?.current?.authoring.head.snapshotId).toBe('base')
   expect(result.current.editorInput.text).toBe(input.text)
 })
 
@@ -199,7 +202,7 @@ it('does not start a fresh command while cancellation acknowledgement is still i
 
 it('a late cancellation acknowledgement cannot relabel an already successful save as cancelled', async () => {
   const port = reviewPort()
-  const writing = deferred<ReviewApplyResult>()
+  const writing = deferred<ReviewAuthoringApplyResult>()
   const cancelling = deferred<number>()
   vi.mocked(port.applyCommand).mockReturnValueOnce(writing.promise)
   vi.mocked(port.cancelTask).mockReturnValueOnce(cancelling.promise)
@@ -228,7 +231,7 @@ it('a late cancellation acknowledgement cannot relabel an already successful sav
     await cancellation
   })
   expect(result.current.error).toBeNull()
-  expect(result.current.lastReceipt?.snapshot.snapshotId).toBe('saved-snapshot')
+  expect(result.current.lastReceipt?.head.snapshotId).toBe('saved-snapshot')
 })
 
 it.each(['save', 'retry'] as const)(
@@ -301,7 +304,10 @@ it('reconciles the same uncertain command without inventing a new envelope after
   if (!retained) throw new Error('Missing envelope')
   const view = workspace('later-head')
   view.recovery = [{ ...recoveryDraft(retained.commandId), payloadDigest: retained.payloadDigest }]
-  vi.mocked(port.getWorkspace).mockResolvedValue(view)
+  const reconciled = workspace('saved-snapshot')
+  if (reconciled.current === null) throw new Error('Missing reconciled authoring state')
+  reconciled.current.authoring.head.sequence = 2
+  vi.mocked(port.getWorkspace).mockResolvedValueOnce(view).mockResolvedValue(reconciled)
   await act(() => result.current.refresh())
   await act(() => result.current.retry())
   expect(port.prepareCommand).toHaveBeenCalledOnce()
@@ -317,7 +323,7 @@ it('reconciles a known migration receipt even after refresh no longer requires m
   vi.mocked(port.applyCommand).mockImplementationOnce(async ({ envelope }) => {
     throw {
       ...failure('committed_view_unavailable', false),
-      committedReceipt: applied(envelope).receipt,
+      committedAuthoringReceipt: applied(envelope).receipt,
     }
   })
   const { result } = renderHook(() => useContinuousReviewCoordinator({ ...session, port }))

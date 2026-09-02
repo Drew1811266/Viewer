@@ -3,10 +3,10 @@ use std::collections::HashSet;
 use super::*;
 use crate::review_evidence::HistorySelector;
 use viewer_domain::{
-    AssetVersionId, FeedbackId, ReviewSnapshotId,
+    AssetVersionId, FeedbackId, ProjectId, ReviewSnapshotId, ReviewStreamId,
     review::{
         AssetVersion,
-        continuous::{CurrentReviewProjection, ReviewAvailability, VersionedFeedback},
+        continuous::{CurrentReviewProjection, ReviewAvailability, SnapshotRef, VersionedFeedback},
     },
 };
 
@@ -32,6 +32,22 @@ pub enum ReviewPatchError {
 }
 
 impl ReviewWorkspacePatch {
+    /// Project identity required by presentation reducers when the first authoring patch creates
+    /// a current state from an empty workspace.
+    pub fn project_id(&self) -> ProjectId {
+        self.target.state.project_id
+    }
+
+    /// Stream identity lets presentation reducers reject a patch routed to the wrong workspace.
+    pub fn stream_id(&self) -> ReviewStreamId {
+        self.target.state.stream_id
+    }
+
+    /// Logical parent fingerprint for the next authoring state. This is not a published v3 ref.
+    pub fn parent(&self) -> Option<SnapshotRef> {
+        self.target.state.parent
+    }
+
     pub fn between(
         before: Option<&ReviewWorkspaceCurrent>,
         after: &ReviewWorkspaceCurrent,

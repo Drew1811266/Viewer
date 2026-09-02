@@ -1,6 +1,9 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { expect, it, vi } from 'vitest'
-import type { PreparedReviewCommand, ReviewApplyResult } from '../../api/reviewWorkspaceTypes'
+import type {
+  PreparedReviewCommand,
+  ReviewAuthoringApplyResult,
+} from '../../api/reviewWorkspaceTypes'
 import {
   applied,
   deferred,
@@ -63,8 +66,8 @@ it('retains text after a lost receipt and retries the complete original envelope
     vi.mocked(port.applyCommand).mock.calls[0]?.[0],
   )
   expect(port.prepareCommand).toHaveBeenCalledOnce()
-  expect(result.current.view?.current?.reference.snapshotId).toBe('later-head')
-  expect(result.current.lastReceipt?.snapshot.snapshotId).toBe('saved-snapshot')
+  expect(result.current.view?.current?.authoring.head.snapshotId).toBe('later-head')
+  expect(result.current.lastReceipt?.head.snapshotId).toBe('later-head')
   expect(result.current.editorInput.text).toBe('')
   expect(result.current.pendingEnvelope).toBeNull()
 })
@@ -101,7 +104,7 @@ it('coalesces double saves before preparation finishes instead of minting a seco
 
 it('retains newer typing on save and associates it with the saved feedback identity for the next edit', async () => {
   const port = reviewPort()
-  const writing = deferred<ReviewApplyResult>()
+  const writing = deferred<ReviewAuthoringApplyResult>()
   vi.mocked(port.applyCommand).mockReturnValueOnce(writing.promise)
   const { result } = renderHook(() => useContinuousReviewCoordinator({ ...session, port }))
   await waitFor(() => expect(result.current.state.kind).toBe('ready'))
@@ -143,7 +146,7 @@ it('retains newer typing on save and associates it with the saved feedback ident
 
 it('freezes geometry and input ownership while saving, but permits further typing', async () => {
   const port = reviewPort()
-  const writing = deferred<ReviewApplyResult>()
+  const writing = deferred<ReviewAuthoringApplyResult>()
   vi.mocked(port.applyCommand).mockReturnValueOnce(writing.promise)
   const { result } = renderHook(() => useContinuousReviewCoordinator({ ...session, port }))
   await waitFor(() => expect(result.current.state.kind).toBe('ready'))
@@ -258,7 +261,10 @@ it('allows an explicitly changed payload after a definite failure, retaining its
 it('distinguishes a known committed write with failed refresh from an unsaved failure', async () => {
   const port = reviewPort(workspace('base'))
   vi.mocked(port.applyCommand).mockImplementationOnce(async ({ envelope }) => {
-    throw { ...failure('committed_view_unavailable'), committedReceipt: applied(envelope).receipt }
+    throw {
+      ...failure('committed_view_unavailable'),
+      committedAuthoringReceipt: applied(envelope).receipt,
+    }
   })
   const { result } = renderHook(() => useContinuousReviewCoordinator({ ...session, port }))
   await waitFor(() => expect(result.current.state.kind).toBe('ready'))
@@ -270,8 +276,8 @@ it('distinguishes a known committed write with failed refresh from an unsaved fa
       code: 'committed_view_unavailable',
     })
   })
-  expect(result.current.lastReceipt?.snapshot.snapshotId).toBe('saved-snapshot')
-  expect(result.current.view?.current?.reference.snapshotId).toBe('base')
+  expect(result.current.lastReceipt?.head.snapshotId).toBe('saved-snapshot')
+  expect(result.current.view?.current?.authoring.head.snapshotId).toBe('base')
   expect(result.current.state.kind).toBe('recovery_required')
   expect(result.current.editorInput.text).toBe(input.text)
   await act(() => result.current.retry())
@@ -314,4 +320,30 @@ it('requires explicit discard before changing a dirty editor to another image', 
   })
   expect(result.current.editorInput.contextKey).toBe('image-2')
   expect(port.prepareCommand).not.toHaveBeenCalled()
+})
+
+it('performs one full reconciliation read only when a committed patch basis is stale', async () => {
+  const port = reviewPort(workspace('base'))
+  const reconciled = workspace('saved-snapshot')
+  if (reconciled.current === null) throw new Error('Missing reconciled current')
+  reconciled.current.authoring.head.sequence = 2
+  vi.mocked(port.getWorkspace)
+    .mockResolvedValueOnce(workspace('base'))
+    .mockResolvedValueOnce(reconciled)
+  vi.mocked(port.applyCommand).mockImplementationOnce(async ({ envelope }) => {
+    const reply = applied(envelope, workspace('saved-snapshot'), 2)
+    reply.patch.basisSnapshotId = 'unexpected-base'
+    return reply
+  })
+  const { result } = renderHook(() => useContinuousReviewCoordinator({ ...session, port }))
+  await waitFor(() => expect(result.current.state.kind).toBe('ready'))
+  act(() => {
+    result.current.beginEditor(input)
+  })
+
+  await act(() => result.current.saveFeedback())
+
+  expect(port.getWorkspace).toHaveBeenCalledTimes(2)
+  expect(result.current.view?.current?.authoring.head.snapshotId).toBe('saved-snapshot')
+  expect(result.current.editorInput.contextKey).toBeNull()
 })

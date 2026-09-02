@@ -76,12 +76,16 @@ export function stageToNormalized(
 export function displayScale(state: ImageViewportState, geometry: ImageViewportGeometry): number {
   if (!hasArea(geometry.stage) || !hasArea(geometry.source)) return 0
   const quarterTurn = state.rotation === 90 || state.rotation === 270
-  const sourceWidth = quarterTurn ? geometry.source.height : geometry.source.width
-  const sourceHeight = quarterTurn ? geometry.source.width : geometry.source.height
-  const fitScale = Math.min(
-    (geometry.stage.width * geometry.fitInset) / sourceWidth,
-    (geometry.stage.height * geometry.fitInset) / sourceHeight,
-  )
+  const orientedWidth = quarterTurn ? geometry.source.height : geometry.source.width
+  const orientedHeight = quarterTurn ? geometry.source.width : geometry.source.height
+  const aspectRatio = orientedWidth / orientedHeight
+  const availableWidth = geometry.stage.width * geometry.fitInset
+  const availableHeight = geometry.stage.height * geometry.fitInset
+  const displayedOrientedWidth = Math.min(availableWidth, availableHeight * aspectRatio)
+  const displayedSourceWidth = quarterTurn
+    ? displayedOrientedWidth / aspectRatio
+    : displayedOrientedWidth
+  const fitScale = displayedSourceWidth / geometry.source.width
   return fitScale * (state.mode === 'free' ? state.zoom : 1)
 }
 

@@ -92,7 +92,13 @@ function usePreviewPointerPan({ disabled, panBounds, panBy }: PreviewGestureOpti
 
   const onPointerDown = useCallback<PointerEventHandler<HTMLDivElement>>(
     (event) => {
-      if (disabled || event.button !== 0 || (panBounds.x === 0 && panBounds.y === 0)) return
+      if (
+        disabled ||
+        event.button !== 0 ||
+        (panBounds.x === 0 && panBounds.y === 0) ||
+        isInteractiveTarget(event.target)
+      )
+        return
       drag.current = {
         pointerId: event.pointerId,
         point: { x: event.clientX, y: event.clientY },
@@ -160,4 +166,13 @@ function accumulateWheelAction(
 
 function isToolbarTarget(target: EventTarget | null): boolean {
   return target instanceof Element && target.closest('[role="toolbar"]') !== null
+}
+
+function isInteractiveTarget(target: EventTarget | null): boolean {
+  return (
+    target instanceof Element &&
+    target.closest(
+      'a[href], button, input, select, textarea, [contenteditable]:not([contenteditable="false"]), [role="button"], [role="link"], [role="textbox"]',
+    ) !== null
+  )
 }

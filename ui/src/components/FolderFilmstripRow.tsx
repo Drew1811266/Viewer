@@ -316,7 +316,12 @@ export default function FolderFilmstripRow({
                       onBlur={() =>
                         setFocusedImageIndex((current) => (current === index ? null : current))
                       }
-                      onClick={() => onPreview(file, state.images)}
+                      onDoubleClick={() => onPreview(file, state.images)}
+                      onKeyDown={(event) => {
+                        if (event.key !== 'Enter' && event.key !== ' ') return
+                        event.preventDefault()
+                        onPreview(file, state.images)
+                      }}
                     >
                       {isPreviewableImage(file) ? (
                         <AspectThumbnail

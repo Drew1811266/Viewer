@@ -188,12 +188,27 @@ describe('FolderFilmstripRow', () => {
       '预览 image-2.jpg',
       '预览 image-3.jpg',
     ])
-    fireEvent.click(defined(buttons[1], 'Expected second filmstrip image button'))
+    const secondImage = defined(buttons[1], 'Expected second filmstrip image button')
+    fireEvent.click(secondImage)
+    expect(preview).not.toHaveBeenCalled()
+    fireEvent.doubleClick(secondImage)
     fireEvent.click(screen.getByRole('button', { name: '打开 B01' }))
 
     expect(loadImages).toHaveBeenCalledWith('folder-b01', false)
     expect(preview).toHaveBeenCalledWith(mixedImages[1], mixedImages)
     expect(select).toHaveBeenCalledWith('folder-b01')
+  })
+
+  it('keeps Enter and Space as accessible preview actions', async () => {
+    const preview = vi.fn()
+    renderRow({ onPreview: preview })
+    const imageButton = await screen.findByRole('button', { name: '预览 image-1.jpg' })
+
+    fireEvent.keyDown(imageButton, { key: 'Enter' })
+    fireEvent.keyDown(imageButton, { key: ' ' })
+
+    expect(preview).toHaveBeenNthCalledWith(1, mixedImages[0], mixedImages)
+    expect(preview).toHaveBeenNthCalledWith(2, mixedImages[0], mixedImages)
   })
 
   it('renders empty rows and retries only the failed row request', async () => {
@@ -272,7 +287,7 @@ describe('FolderFilmstripRow', () => {
     await waitFor(() => expect(requestThumbnail).toHaveBeenCalled())
     expect(requestThumbnail.mock.calls.map(([file]) => file.entityId)).toEqual([supported.entityId])
     expect(within(filmstrip).getByLabelText('raw.cr2 .CR2 暂不支持预览')).toBeVisible()
-    fireEvent.click(within(filmstrip).getByRole('button', { name: '预览 raw.cr2' }))
+    fireEvent.doubleClick(within(filmstrip).getByRole('button', { name: '预览 raw.cr2' }))
     expect(onPreview).toHaveBeenCalledWith(unsupported, [supported, unsupported])
   })
 
@@ -308,7 +323,7 @@ describe('FolderFilmstripRow', () => {
       within(filmstrip).queryByRole('button', { name: '预览 image-100.jpg' }),
     ).not.toBeInTheDocument()
 
-    fireEvent.click(within(filmstrip).getByRole('button', { name: '预览 image-501.jpg' }))
+    fireEvent.doubleClick(within(filmstrip).getByRole('button', { name: '预览 image-501.jpg' }))
     expect(preview).toHaveBeenCalledWith(files[500], files)
 
     fireEvent.blur(focused)

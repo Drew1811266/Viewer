@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useLayoutEffect, useMemo, useState } from 'react'
 import {
   clampOffset,
   displayScale,
@@ -7,7 +7,6 @@ import {
   type Point,
   type PreviewRotation,
   panBounds,
-  type Size,
   zoomAtAnchor,
 } from './imageGeometry'
 
@@ -28,13 +27,20 @@ export interface ImageViewport {
   zoomBy: (factor: number, anchor: Point) => void
   panBy: (delta: Point) => void
   rotateClockwise: () => void
-  setMeasurements: (stage: Size, source: Size) => void
   resetForEntity: () => void
 }
 
-export function useImageViewport(initialGeometry: ImageViewportGeometry): ImageViewport {
-  const [geometry, setGeometry] = useState(initialGeometry)
+export function useImageViewport(geometry: ImageViewportGeometry): ImageViewport {
   const [state, setState] = useState<ImageViewportState>(DEFAULT_STATE)
+
+  useLayoutEffect(() => {
+    setState((current) => {
+      const offset = clampOffset(current.offset, panBounds(current, geometry))
+      return offset.x === current.offset.x && offset.y === current.offset.y
+        ? current
+        : { ...current, offset }
+    })
+  }, [geometry])
 
   const setFit = useCallback(() => {
     setState((current) => ({ ...current, mode: 'fit', zoom: 1, offset: { x: 0, y: 0 } }))
@@ -68,18 +74,6 @@ export function useImageViewport(initialGeometry: ImageViewportGeometry): ImageV
     })
   }, [geometry])
 
-  const setMeasurements = useCallback(
-    (stage: Size, source: Size) => {
-      const nextGeometry = { stage, source, fitInset: initialGeometry.fitInset }
-      setGeometry(nextGeometry)
-      setState((current) => ({
-        ...current,
-        offset: clampOffset(current.offset, panBounds(current, nextGeometry)),
-      }))
-    },
-    [initialGeometry.fitInset],
-  )
-
   const resetForEntity = useCallback(() => setState(DEFAULT_STATE), [])
   const scale = displayScale(state, geometry)
   const bounds = panBounds(state, geometry)
@@ -99,7 +93,6 @@ export function useImageViewport(initialGeometry: ImageViewportGeometry): ImageV
     zoomBy,
     panBy,
     rotateClockwise,
-    setMeasurements,
     resetForEntity,
   }
 }

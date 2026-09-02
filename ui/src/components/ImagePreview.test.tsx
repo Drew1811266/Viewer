@@ -393,6 +393,34 @@ describe('ImagePreview', () => {
     expect(screen.getByTestId('image-preview-loading')).toHaveAttribute('data-visible', 'false')
   })
 
+  it('pins the image layout box to source geometry when WebKit downsamples a large decode', async () => {
+    initialPreviewStage = { width: 960, height: 600 }
+    const target = {
+      ...image(1),
+      imageMetadata: { width: 6570, height: 4380 },
+    }
+    const request = vi.fn(async () => loaded('webkit-subsampled-original', 4096, 2731))
+
+    render(
+      <ImagePreview
+        file={target}
+        files={[target]}
+        magnifier={MAGNIFIER}
+        pointerClientPoint={POINTER_CLIENT_POINT}
+        requestImage={request}
+        onNavigate={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    )
+
+    const preview = await revealPreviewImage('1.jpg')
+    const scale = Number(preview.getAttribute('style')?.match(/scale\(([^)]+)\)/)?.[1])
+
+    expect(preview).toHaveStyle({ width: '6570px', height: '4380px' })
+    expect(6570 * scale).toBeCloseTo(810, 6)
+    expect(4380 * scale).toBeCloseTo(540, 6)
+  })
+
   it('reveals a loaded fit preview only after the original reaches a terminal failure', async () => {
     const fit = deferred<ImageRepresentation>()
     const original = deferred<ImageRepresentation>()
@@ -1023,6 +1051,9 @@ describe('ImagePreview', () => {
     )
     const preview = await revealPreviewImage('1.jpg')
     const stage = view.container.querySelector('.image-preview-stage') as HTMLElement
+    act(() => {
+      while (frames.length > 0) frames.shift()?.(0)
+    })
     vi.spyOn(stage, 'getBoundingClientRect').mockReturnValue({
       x: 0,
       y: 0,

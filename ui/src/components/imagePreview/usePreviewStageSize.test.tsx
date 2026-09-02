@@ -33,6 +33,107 @@ describe('usePreviewStageSize', () => {
     expect(screen.getByRole('status')).toHaveTextContent('1280×720')
   })
 
+  it('remeasures after the mounted stage finishes its next-frame layout', () => {
+    installResizeObserver()
+    let bounds = rect(640, 480)
+    let nextFrame: FrameRequestCallback | undefined
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(() => bounds)
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+      nextFrame = callback
+      return 1
+    })
+    vi.stubGlobal('cancelAnimationFrame', vi.fn())
+
+    render(<StageHarness />)
+    expect(screen.getByRole('status')).toHaveTextContent('640×480')
+
+    bounds = rect(1280, 720)
+    act(() => nextFrame?.(0))
+
+    expect(screen.getByRole('status')).toHaveTextContent('1280×720')
+  })
+
+  it('keeps measuring while the review layout expands across later frames', () => {
+    installResizeObserver()
+    let bounds = rect(625, 416)
+    const frames: FrameRequestCallback[] = []
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(() => bounds)
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+      frames.push(callback)
+      return frames.length
+    })
+    vi.stubGlobal('cancelAnimationFrame', vi.fn())
+
+    render(<StageHarness />)
+    expect(screen.getByRole('status')).toHaveTextContent('625×416')
+
+    act(() => frames.shift()?.(0))
+    expect(screen.getByRole('status')).toHaveTextContent('625×416')
+
+    bounds = rect(800, 520)
+    act(() => frames.shift()?.(16))
+    expect(screen.getByRole('status')).toHaveTextContent('800×520')
+
+    bounds = rect(960, 664)
+    act(() => frames.shift()?.(32))
+    expect(screen.getByRole('status')).toHaveTextContent('960×664')
+  })
+
+  it('self-corrects on window resize when the stage observer misses a layout change', () => {
+    installResizeObserver()
+    let bounds = rect(640, 480)
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(() => bounds)
+
+    render(<StageHarness />)
+    expect(screen.getByRole('status')).toHaveTextContent('640×480')
+
+    bounds = rect(1280, 720)
+    act(() => window.dispatchEvent(new Event('resize')))
+
+    expect(screen.getByRole('status')).toHaveTextContent('1280×720')
+  })
+
+  it('remeasures the stage when its review-layout parent reports a resize', () => {
+    const resize = installResizeObserver()
+    let bounds = rect(625, 416)
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(() => bounds)
+    vi.stubGlobal(
+      'requestAnimationFrame',
+      vi.fn(() => 1),
+    )
+    vi.stubGlobal('cancelAnimationFrame', vi.fn())
+
+    render(<StageHarness />)
+    const stage = screen.getByTestId('preview-stage')
+    const layout = stage.parentElement
+    if (layout === null) throw new Error('Expected a review-layout parent')
+    expect(screen.getByRole('status')).toHaveTextContent('625×416')
+
+    bounds = rect(960, 664)
+    resize.trigger(layout, 1280, 720)
+
+    expect(screen.getByRole('status')).toHaveTextContent('960×664')
+  })
+
+  it('never substitutes parent dimensions for a stage that has not completed layout', () => {
+    const resize = installResizeObserver()
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue(rect(0, 0))
+    vi.stubGlobal(
+      'requestAnimationFrame',
+      vi.fn(() => 1),
+    )
+    vi.stubGlobal('cancelAnimationFrame', vi.fn())
+
+    render(<StageHarness />)
+    const stage = screen.getByTestId('preview-stage')
+    const layout = stage.parentElement
+    if (layout === null) throw new Error('Expected a review-layout parent')
+
+    resize.trigger(layout, 1280, 720)
+
+    expect(screen.getByRole('status')).toHaveTextContent('0×0')
+  })
+
   it('disconnects the stage observer on unmount', () => {
     const resize = installResizeObserver()
     vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue(rect(0, 0))
@@ -62,7 +163,7 @@ function installResizeObserver() {
   const callbacks = new Map<Element, ResizeObserverCallback>()
   const disconnects = new Map<Element, number>()
   class Observer {
-    private node: Element | null = null
+    private readonly nodes = new Set<Element>()
     private readonly callback: ResizeObserverCallback
 
     constructor(callback: ResizeObserverCallback) {
@@ -70,15 +171,16 @@ function installResizeObserver() {
     }
 
     observe(node: Element) {
-      this.node = node
+      this.nodes.add(node)
       callbacks.set(node, this.callback)
     }
 
     disconnect() {
-      if (this.node === null) return
-      callbacks.delete(this.node)
-      disconnects.set(this.node, (disconnects.get(this.node) ?? 0) + 1)
-      this.node = null
+      for (const node of this.nodes) {
+        callbacks.delete(node)
+        disconnects.set(node, (disconnects.get(node) ?? 0) + 1)
+      }
+      this.nodes.clear()
     }
   }
   vi.stubGlobal('ResizeObserver', Observer)

@@ -3,6 +3,7 @@ import ViewerButton from '../ui/ViewerButton'
 
 interface ReviewContextBarProps {
   protocol?: 'legacy' | 'continuous'
+  placement?: 'workspace' | 'toolbar'
   snapshot: ReviewSessionSnapshot
   inspectorOpen: boolean
   onReturnToMembers(): void
@@ -20,6 +21,7 @@ interface ReviewContextBarProps {
 
 export default function ReviewContextBar({
   protocol = 'legacy',
+  placement = 'workspace',
   snapshot,
   inspectorOpen,
   onReturnToMembers,
@@ -35,13 +37,42 @@ export default function ReviewContextBar({
   archiveNotice = null,
 }: ReviewContextBarProps) {
   if (protocol === 'continuous') {
+    const toolbar = placement === 'toolbar'
+    const feedbackCount = continuousFeedbackCount ?? snapshot.counts.feedbackItems
     return (
-      <section className="review-context-bar" aria-label="持续评审上下文">
-        <div className="review-context-bar__identity">
+      <section
+        className={toolbar ? 'continuous-review-toolbar' : 'review-context-bar'}
+        aria-label="持续评审上下文"
+      >
+        <div
+          className={toolbar ? 'continuous-review-toolbar__status' : 'review-context-bar__identity'}
+          aria-label={toolbar ? '持续评审状态' : undefined}
+        >
           <strong>持续评审</strong>
-          <span>当前意见 {continuousFeedbackCount ?? snapshot.counts.feedbackItems}</span>
+          {toolbar ? (
+            <span
+              className="continuous-review-toolbar__count"
+              aria-label={`当前意见 ${feedbackCount}`}
+            >
+              <span className="continuous-review-toolbar__count-label">当前意见</span>
+              <span className="continuous-review-toolbar__compact-label">评审</span>
+              <b>{feedbackCount}</b>
+            </span>
+          ) : (
+            <span>当前意见 {feedbackCount}</span>
+          )}
+          {toolbar && archiveNotice !== null && (
+            <span className="continuous-review-toolbar__notice" role="status">
+              {archiveNotice}
+            </span>
+          )}
         </div>
-        <div className="review-context-bar__actions">
+        {toolbar && <span className="continuous-review-toolbar__divider" aria-hidden="true" />}
+        <div
+          className={toolbar ? 'continuous-review-toolbar__actions' : 'review-context-bar__actions'}
+          role={toolbar ? 'group' : undefined}
+          aria-label={toolbar ? '持续评审操作' : undefined}
+        >
           <ViewerButton tone="quiet" onClick={onReturnToMembers}>
             返回素材
           </ViewerButton>
@@ -65,7 +96,7 @@ export default function ReviewContextBar({
             存档意见
           </ViewerButton>
         </div>
-        {archiveNotice !== null && (
+        {!toolbar && archiveNotice !== null && (
           <span className="review-context-bar__notice" role="status">
             {archiveNotice}
           </span>

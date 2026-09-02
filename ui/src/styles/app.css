@@ -290,6 +290,14 @@ summary,
   padding: 0 12px;
 }
 
+.workspace-review-toolbar-slot {
+  align-items: center;
+  display: flex;
+  flex: 0 0 auto;
+  margin-left: auto;
+  min-width: 0;
+}
+
 .read-only-banner {
   align-items: center;
   background: var(--viewer-warning-soft);
@@ -335,10 +343,16 @@ summary,
 .search-toolbar {
   align-items: center;
   display: flex;
-  flex: 1 1 auto;
+  flex: 1 1 520px;
   gap: 7px;
   min-width: 0;
   position: relative;
+}
+
+.search-options-panel,
+.workspace-view-menu,
+.workspace-more-menu {
+  flex: 0 0 auto;
 }
 
 .search-field {
@@ -347,9 +361,9 @@ summary,
   border: 1px solid transparent;
   border-radius: 10px;
   display: flex;
-  flex: 1 1 360px;
+  flex: 1 1 320px;
   gap: 6px;
-  max-width: 640px;
+  max-width: 460px;
   min-height: 34px;
   padding: 0 8px;
 }

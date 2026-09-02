@@ -26,6 +26,10 @@ import UnsupportedFilePreview from '../../components/UnsupportedFilePreview'
 import ViewerButton, { ViewerIconButton } from '../../components/ui/ViewerButton'
 import ViewerEmptyState from '../../components/ui/ViewerEmptyState'
 import ViewerStatusTag from '../../components/ui/ViewerStatusTag'
+import {
+  ViewerToolbarReviewSlot,
+  ViewerToolbarReviewSlotProvider,
+} from '../../components/ui/ViewerToolbarReviewSlot'
 import VideoPreview from '../../components/VideoPreview'
 import WorkspaceLoadingState from '../../components/WorkspaceLoadingState'
 import WorkspaceMoreMenu from '../../components/WorkspaceMoreMenu'
@@ -126,48 +130,50 @@ export default function WorkspaceProjectView(props: WorkspaceProjectViewProps) {
   }, [props.emitIntent])
 
   return (
-    <main
-      className="viewer-shell"
-      data-video-preview-open={
-        viewing.activePreviewFile !== null && isVideoFile(viewing.activePreviewFile)
-          ? true
-          : undefined
-      }
-      data-organization-drag-active={organization.organizationDragView ? true : undefined}
-      style={
-        {
-          '--viewer-sidebar-width': `${shell.effectiveSidebarCollapsed ? 52 : shell.sidebarWidth}px`,
-        } as CSSProperties
-      }
-    >
-      <WorkspaceHeader
-        {...props}
-        viewContext={viewContext}
-        moreMenuTriggerRef={moreMenuTriggerRef}
-        onCloseProject={requestCloseProject}
-      />
-      {project.access === 'read_only' && (
-        <ReadOnlyBanner
-          busy={state.status === 'closing'}
-          onOpenSettings={() => void commands.openPermissionSettings()}
-          onReselect={props.onReselectProject}
+    <ViewerToolbarReviewSlotProvider>
+      <main
+        className="viewer-shell"
+        data-video-preview-open={
+          viewing.activePreviewFile !== null && isVideoFile(viewing.activePreviewFile)
+            ? true
+            : undefined
+        }
+        data-organization-drag-active={organization.organizationDragView ? true : undefined}
+        style={
+          {
+            '--viewer-sidebar-width': `${shell.effectiveSidebarCollapsed ? 52 : shell.sidebarWidth}px`,
+          } as CSSProperties
+        }
+      >
+        <WorkspaceHeader
+          {...props}
+          viewContext={viewContext}
+          moreMenuTriggerRef={moreMenuTriggerRef}
+          onCloseProject={requestCloseProject}
         />
-      )}
-      {props.reviewLayer}
-      <WorkspaceColumns
-        {...props}
-        displayedFolderId={displayedFolderId}
-        projectionProgressVisible={projectionProgressVisible}
-        pendingRecoveryReport={pendingRecoveryReport}
-        selectFolderTarget={selectFolderTarget}
-      />
-      <WorkspaceFeedbackLayers {...props} />
-      <WorkspaceOverlays
-        {...props}
-        moreMenuTriggerRef={moreMenuTriggerRef}
-        activeImageReviewControllerRef={activeImageReviewControllerRef}
-      />
-    </main>
+        {project.access === 'read_only' && (
+          <ReadOnlyBanner
+            busy={state.status === 'closing'}
+            onOpenSettings={() => void commands.openPermissionSettings()}
+            onReselect={props.onReselectProject}
+          />
+        )}
+        {props.reviewLayer}
+        <WorkspaceColumns
+          {...props}
+          displayedFolderId={displayedFolderId}
+          projectionProgressVisible={projectionProgressVisible}
+          pendingRecoveryReport={pendingRecoveryReport}
+          selectFolderTarget={selectFolderTarget}
+        />
+        <WorkspaceFeedbackLayers {...props} />
+        <WorkspaceOverlays
+          {...props}
+          moreMenuTriggerRef={moreMenuTriggerRef}
+          activeImageReviewControllerRef={activeImageReviewControllerRef}
+        />
+      </main>
+    </ViewerToolbarReviewSlotProvider>
   )
 }
 
@@ -252,7 +258,7 @@ function WorkspaceHeader({
           onRemoveFilter={commands.removeSearchFilter}
           onClearFilters={commands.clearSearchFilters}
         />
-        {reviewToolbarAction}
+        <ViewerToolbarReviewSlot>{reviewToolbarAction}</ViewerToolbarReviewSlot>
         <WorkspaceViewMenu
           context={viewContext}
           open={shell.toolbarPopover.openPopover === 'view'}

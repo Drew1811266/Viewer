@@ -23,7 +23,7 @@ function Harness({
   return (
     <div ref={stage} data-testid="stage" {...pointer}>
       <button type="button" role="toolbar" data-testid="toolbar">
-        工具
+        <span>工具</span>
       </button>
     </div>
   )
@@ -200,6 +200,28 @@ describe('usePreviewGestures', () => {
 
     fireEvent.pointerDown(stage, { button: 2, pointerId: 8, clientX: 0, clientY: 0 })
     expect(setPointerCapture).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps nested controls interactive while the image stage is pannable', () => {
+    const actions = { panBy: vi.fn(), zoomBy: vi.fn() }
+    render(<Harness actions={actions} />)
+    const stage = screen.getByTestId('stage')
+    const setPointerCapture = vi.fn()
+    Object.defineProperty(stage, 'setPointerCapture', {
+      configurable: true,
+      value: setPointerCapture,
+    })
+
+    fireEvent.pointerDown(screen.getByText('工具'), {
+      button: 0,
+      pointerId: 10,
+      clientX: 100,
+      clientY: 80,
+    })
+    fireEvent.pointerMove(stage, { pointerId: 10, clientX: 126, clientY: 65 })
+
+    expect(setPointerCapture).not.toHaveBeenCalled()
+    expect(actions.panBy).not.toHaveBeenCalled()
   })
 
   it('ignores disabled, non-cancelable, and unpannable input', () => {

@@ -21,7 +21,7 @@ export function useReviewWorkspaceActivation({
     enabled,
   })
   const presentation =
-    enabled && coordinator.state.kind === 'ready' && coordinator.view?.migration === null
+    enabled && coordinator.view !== null && coordinator.view.migration === null
       ? coordinator
       : undefined
   return {

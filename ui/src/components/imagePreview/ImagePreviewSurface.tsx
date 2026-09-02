@@ -1,5 +1,5 @@
 import type { KeyboardEvent, MutableRefObject, PointerEvent, ReactNode } from 'react'
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type {
   BrowserFile,
   ImageRepresentation,
@@ -84,9 +84,6 @@ export default function ImagePreviewSurface({
   const currentIndex = files.findIndex((candidate) => candidate.entityId === file.entityId)
   const unavailable = unavailableEntityIds.has(file.entityId)
   const transformsDisabled = unavailable || !isPreviewableImage(file)
-  const viewport = useImageViewport({ stage: EMPTY_STAGE, source: EMPTY_STAGE, fitInset: 0.9 })
-  const scalePercent = Math.round((viewport.state.mode === 'free' ? viewport.state.zoom : 1) * 100)
-  const [announcedScalePercent, setAnnouncedScalePercent] = useState(scalePercent)
   const original = useCurrentOriginal({
     file,
     available: !transformsDisabled,
@@ -105,6 +102,13 @@ export default function ImagePreviewSurface({
   const displayCandidateKey =
     displayRepresentation === null ? null : `${file.entityId}:${displayRepresentation.cacheKey}`
   const sourceDimensions: Size = file.imageMetadata ?? displayRepresentation ?? EMPTY_STAGE
+  const viewportGeometry = useMemo(
+    () => ({ stage: stageSize, source: sourceDimensions, fitInset: 0.9 }),
+    [sourceDimensions, stageSize],
+  )
+  const viewport = useImageViewport(viewportGeometry)
+  const scalePercent = Math.round((viewport.state.mode === 'free' ? viewport.state.zoom : 1) * 100)
+  const [announcedScalePercent, setAnnouncedScalePercent] = useState(scalePercent)
   const geometryReady =
     isPositiveSize(stageSize) &&
     isPositiveSize(sourceDimensions) &&
@@ -193,10 +197,6 @@ export default function ImagePreviewSurface({
       )
     }
   }, [currentIndex, file.entityId, files, prefetchFit, requestImage, unavailableEntityIds])
-
-  useLayoutEffect(() => {
-    viewport.setMeasurements(stageSize, sourceDimensions)
-  }, [sourceDimensions, stageSize, viewport.setMeasurements])
 
   useEffect(() => {
     if (originalRepresentation !== null) {
@@ -432,7 +432,11 @@ export default function ImagePreviewSurface({
           onLoad={() => {
             if (displayCandidateKey !== null) setBrowserLoadedCandidateKey(displayCandidateKey)
           }}
-          style={{ transform: viewport.transform }}
+          style={{
+            width: renderedSource.width || sourceDimensions.width,
+            height: renderedSource.height || sourceDimensions.height,
+            transform: viewport.transform,
+          }}
         />
       ) : null}
       {!unavailable && isPreviewableImage(file) && !fatalImageFailure && (

@@ -8,6 +8,7 @@ import type { ProjectAccess } from '../../app/review/reviewModel'
 import type { ContinuousReviewCoordinator } from '../../app/review/useContinuousReviewCoordinator'
 import type { ReviewSessionCoordinator } from '../../app/review/useReviewSessionCoordinator'
 import ViewerButton from '../ui/ViewerButton'
+import { ViewerToolbarReviewPortal } from '../ui/ViewerToolbarReviewSlot'
 import ReviewArchiveDialog from './ReviewArchiveDialog'
 import ReviewContextBar from './ReviewContextBar'
 import ReviewHistoryPanel from './ReviewHistoryPanel'
@@ -82,26 +83,29 @@ export default function ContinuousReviewWorkspaceLayer({
         </section>
       )}
       {migration === null && coordinator.state.kind === 'ready' && !contextBarHidden && (
-        <ReviewContextBar
-          protocol="continuous"
-          snapshot={review.snapshot}
-          inspectorOpen={false}
-          onReturnToMembers={() => onReturnToMembers(currentEntityIds(coordinator))}
-          onToggleInspector={() => undefined}
-          onPrepareCompletion={() => undefined}
-          onRequestAbandon={() => undefined}
-          onArchive={() => void archive.open()}
-          onHistory={historyCatalog.available ? historyCatalog.open : undefined}
-          onUsageImport={
-            coordinator.view?.capabilities.usageImport ? () => setUsageOpen(true) : undefined
-          }
-          continuousFeedbackCount={coordinator.view?.current?.state.feedback.length}
-          archiveDisabled={
-            coordinator.currentSnapshotId === null || archive.busy || history.transactionBusy
-          }
-          historyDisabled={history.transactionBusy}
-          archiveNotice={history.error?.message ?? archive.notice ?? history.notice ?? null}
-        />
+        <ViewerToolbarReviewPortal>
+          <ReviewContextBar
+            protocol="continuous"
+            placement="toolbar"
+            snapshot={review.snapshot}
+            inspectorOpen={false}
+            onReturnToMembers={() => onReturnToMembers(currentEntityIds(coordinator))}
+            onToggleInspector={() => undefined}
+            onPrepareCompletion={() => undefined}
+            onRequestAbandon={() => undefined}
+            onArchive={() => void archive.open()}
+            onHistory={historyCatalog.available ? historyCatalog.open : undefined}
+            onUsageImport={
+              coordinator.view?.capabilities.usageImport ? () => setUsageOpen(true) : undefined
+            }
+            continuousFeedbackCount={coordinator.view?.current?.state.feedback.length}
+            archiveDisabled={
+              coordinator.currentSnapshotId === null || archive.busy || history.transactionBusy
+            }
+            historyDisabled={history.transactionBusy}
+            archiveNotice={history.error?.message ?? archive.notice ?? history.notice ?? null}
+          />
+        </ViewerToolbarReviewPortal>
       )}
       {migration === null && (
         <ContinuousDialogs archive={archive} history={history} coordinator={coordinator} />

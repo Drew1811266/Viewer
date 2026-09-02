@@ -259,13 +259,31 @@ describe('Viewer empty state', () => {
     fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
     await screen.findByRole('heading', { name: 'Catalog' })
 
-    const toolbar = screen.getByRole('toolbar', { name: 'Viewer 工具栏' })
+    const toolbar = await screen.findByRole('toolbar', { name: 'Viewer 工具栏' })
     expect(within(toolbar).getByRole('button', { name: /^筛选/ })).toBeVisible()
     expect(within(toolbar).getByRole('button', { name: '开始评审' })).toBeVisible()
     expect(within(toolbar).getByRole('button', { name: '视图' })).toBeVisible()
     expect(within(toolbar).getByRole('button', { name: '更多' })).toBeVisible()
     expect(within(toolbar).queryByRole('button', { name: '软件设置' })).not.toBeInTheDocument()
     expect(within(toolbar).queryByRole('button', { name: '项目菜单' })).not.toBeInTheDocument()
+  })
+
+  it('places ready continuous review controls inside the Viewer toolbar', async () => {
+    const viewer = bridge()
+    render(<App bridge={viewer} reviewWorkspacePort={reviewPort(workspace())} />)
+    fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
+
+    const toolbar = await screen.findByRole('toolbar', { name: 'Viewer 工具栏' })
+    const reviewControls = await within(toolbar).findByRole('region', {
+      name: '持续评审上下文',
+    })
+
+    expect(within(reviewControls).getByLabelText('当前意见 0')).toBeVisible()
+    expect(within(reviewControls).getByRole('button', { name: '返回素材' })).toBeVisible()
+    expect(within(reviewControls).getByRole('button', { name: '历史' })).toBeVisible()
+    expect(within(reviewControls).getByRole('button', { name: '导入声明' })).toBeVisible()
+    expect(within(reviewControls).getByRole('button', { name: '存档意见' })).toBeVisible()
+    expect(screen.getAllByRole('region', { name: '持续评审上下文' })).toEqual([reviewControls])
   })
 
   it('routes a verified legacy project to explicit migration without exposing legacy completion', async () => {
@@ -1285,7 +1303,7 @@ describe('Viewer empty state', () => {
 
     const front = await screen.findByRole('button', { name: '预览 front.jpg' })
     front.focus()
-    fireEvent.click(front)
+    fireEvent.doubleClick(front)
 
     const preview = screen.getByRole('dialog', { name: /^图片评审 / })
     expect(preview).toHaveTextContent('front.jpg')
@@ -1520,7 +1538,7 @@ describe('Viewer empty state', () => {
     render(<App bridge={viewer} />)
     await waitFor(() => expect(receiveProjectChanged).toBeDefined())
     fireEvent.click(screen.getByRole('button', { name: '选择项目文件夹' }))
-    fireEvent.click(await screen.findByRole('button', { name: '预览 front.jpg' }))
+    fireEvent.doubleClick(await screen.findByRole('button', { name: '预览 front.jpg' }))
     expect(screen.getByRole('dialog', { name: /^图片评审 / })).toHaveTextContent('1 / 2')
 
     act(() => {
@@ -1544,7 +1562,7 @@ describe('Viewer empty state', () => {
     fireEvent.keyDown(window, { key: 'ArrowRight' })
     expect(screen.queryByText('back.jpg')).not.toBeInTheDocument()
 
-    fireEvent.click(updated)
+    fireEvent.doubleClick(updated)
     expect(screen.getByRole('dialog', { name: /^图片评审 / })).toHaveTextContent('1 / 1')
   })
 

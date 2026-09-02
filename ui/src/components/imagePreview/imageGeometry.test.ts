@@ -82,6 +82,20 @@ describe('image viewport geometry', () => {
     expect(proxyGeometry.source.width * scale).toBeGreaterThan(1300)
   })
 
+  it('gives every image with the same aspect ratio the same fitted display size', () => {
+    const stage = { width: 960, height: 600 }
+    const lowResolution = { stage, source: { width: 1_500, height: 1_000 }, fitInset: 0.9 }
+    const highResolution = { stage, source: { width: 6_300, height: 4_200 }, fitInset: 0.9 }
+
+    const lowScale = displayScale(state(), lowResolution)
+    const highScale = displayScale(state(), highResolution)
+
+    expect(lowResolution.source.width * lowScale).toBeCloseTo(810)
+    expect(lowResolution.source.height * lowScale).toBeCloseTo(540)
+    expect(highResolution.source.width * highScale).toBeCloseTo(810)
+    expect(highResolution.source.height * highScale).toBeCloseTo(540)
+  })
+
   it('treats fitted display as the only 100% baseline', () => {
     expect(displayScale(state(), GEOMETRY)).toBeCloseTo(0.45)
     expect(displayScale(state({ mode: 'free', zoom: 1.5 }), GEOMETRY)).toBeCloseTo(0.675)

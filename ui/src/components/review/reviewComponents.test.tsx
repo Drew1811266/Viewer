@@ -402,6 +402,30 @@ describe('review workspace components', () => {
     expect(history).toHaveBeenCalledOnce()
   })
 
+  it('isolates the toolbar presentation from the stackable workspace review bar', () => {
+    render(
+      <ReviewContextBar
+        protocol="continuous"
+        placement="toolbar"
+        snapshot={active()}
+        inspectorOpen={false}
+        onReturnToMembers={vi.fn()}
+        onToggleInspector={vi.fn()}
+        onPrepareCompletion={vi.fn()}
+        onRequestAbandon={vi.fn()}
+        onArchive={vi.fn()}
+        onHistory={vi.fn()}
+      />,
+    )
+
+    const toolbar = screen.getByRole('region', { name: '持续评审上下文' })
+    expect(toolbar).toHaveClass('continuous-review-toolbar')
+    expect(toolbar).not.toHaveClass('review-context-bar')
+    const status = within(toolbar).getByLabelText('持续评审状态')
+    expect(within(status).getByLabelText('当前意见 1')).toBeInTheDocument()
+    expect(within(toolbar).getByRole('group', { name: '持续评审操作' })).toBeInTheDocument()
+  })
+
   it('keeps history and source confirmation mutually modal and returns to the original history panel', async () => {
     const continuous = continuousArchiveCoordinator('continuous-c', {
       getHistory: vi.fn().mockResolvedValue(historyForLayer()),

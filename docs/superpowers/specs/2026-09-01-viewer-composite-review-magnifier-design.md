@@ -1,6 +1,6 @@
 # Viewer 复合评审放大镜设计
 
-> Status: Selected design — awaiting written review
+> Status: Approved
 >
 > 日期：2026-09-01
 >
@@ -169,4 +169,3 @@ Review Controller snapshot
 - `review/AnnotationCanvas.tsx`：复用共享场景，保留交互层职责；
 - `review/ImageReviewWorkspace.tsx`：在组合层注入评审 Painter；
 - 对应单元、组件、集成和视觉验收测试。
-

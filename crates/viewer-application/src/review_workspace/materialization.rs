@@ -50,6 +50,9 @@ pub enum ReviewMaterializationOutcome {
 }
 
 pub trait ReviewMaterializationQueuePort: Send + Sync {
+    fn heads(&self, _stream: ReviewStreamId) -> Result<ReviewHeads, ReviewCommitError> {
+        Err(ReviewCommitError::LookupUnavailable)
+    }
     fn next(&self, now_ms: i64) -> Result<Option<ClaimedReviewMaterialization>, ReviewCommitError>;
     fn retry(
         &self,
@@ -390,7 +393,7 @@ fn exact_assets(
 }
 
 pub struct ReviewMaterializationService {
-    queue: Arc<dyn ReviewMaterializationQueuePort>,
+    pub(super) queue: Arc<dyn ReviewMaterializationQueuePort>,
     publication: Arc<dyn ReviewPublicationPort>,
     clock: Arc<dyn ClockPort>,
     run_gate: AsyncMutex<()>,

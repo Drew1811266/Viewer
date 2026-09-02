@@ -14,7 +14,7 @@ use viewer_application::{
     review_workspace::{
         AuthoringCommandLookup, ClaimedReviewMaterialization, ContinuousReviewAuthoringStorePort,
         ReviewAuthoringCommitRequest, ReviewAuthoringHead, ReviewAuthoringReceipt,
-        ReviewCommitError, ReviewHeads, ReviewMaterializationFailure,
+        ReviewBarrierKind, ReviewCommitError, ReviewHeads, ReviewMaterializationFailure,
         ReviewMaterializationQueuePort, ReviewPublicationReceipt, ReviewPublicationStatus,
         ReviewWorkspaceError, StoredAuthoringState,
     },
@@ -220,6 +220,10 @@ impl ContinuousReviewAuthoringStorePort for SqliteContinuousReviewAuthoringStore
 }
 
 impl ReviewMaterializationQueuePort for SqliteContinuousReviewAuthoringStore {
+    fn heads(&self, stream: ReviewStreamId) -> Result<ReviewHeads, ReviewCommitError> {
+        self.load_heads(stream)
+    }
+
     fn next(&self, now_ms: i64) -> Result<Option<ClaimedReviewMaterialization>, ReviewCommitError> {
         if !self.writable {
             return Err(ReviewCommitError::ReadOnly);
@@ -230,7 +234,7 @@ impl ReviewMaterializationQueuePort for SqliteContinuousReviewAuthoringStore {
             .map_err(map_database_error)?;
         let row = transaction
             .query_row(
-                "SELECT job.stream_id, job.target_seq, job.attempt_count, job.lease_epoch
+                "SELECT job.stream_id, job.target_seq
                  FROM review_materialization_jobs AS job
                  WHERE job.status IN ('queued', 'retryable')
                    AND job.next_attempt_at_ms <= ?1
@@ -243,44 +247,168 @@ impl ReviewMaterializationQueuePort for SqliteContinuousReviewAuthoringStore {
                  ORDER BY job.next_attempt_at_ms, job.stream_id, job.target_seq
                  LIMIT 1",
                 [now_ms],
-                |row| {
-                    Ok((
-                        row.get::<_, String>(0)?,
-                        row.get::<_, i64>(1)?,
-                        row.get::<_, i64>(2)?,
-                        row.get::<_, i64>(3)?,
-                    ))
-                },
+                |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)),
             )
             .optional()
             .map_err(map_database_error)?;
-        let Some((stream_text, target_seq, attempt_count, lease_epoch)) = row else {
+        let Some((stream_text, target_seq)) = row else {
             transaction.commit().map_err(map_database_error)?;
             return Ok(None);
         };
         let stream = parse_id::<ReviewStreamId>(&stream_text)?;
-        let target = load_snapshot_from(&transaction, self.project_id, stream, target_seq as u64)?;
+        let first = load_snapshot_from(&transaction, self.project_id, stream, target_seq as u64)?;
+        let mut selected_sequence = target_seq as u64;
+        if first.barrier == ReviewBarrierKind::None {
+            let pending = {
+                let mut statement = transaction
+                    .prepare(
+                        "SELECT target_seq, status, next_attempt_at_ms
+                         FROM review_materialization_jobs
+                         WHERE stream_id = ?1 AND target_seq >= ?2
+                         ORDER BY target_seq",
+                    )
+                    .map_err(map_database_error)?;
+                statement
+                    .query_map(params![stream_text, target_seq], |row| {
+                        Ok((
+                            row.get::<_, i64>(0)?,
+                            row.get::<_, String>(1)?,
+                            row.get::<_, i64>(2)?,
+                        ))
+                    })
+                    .map_err(map_database_error)?
+                    .collect::<Result<Vec<_>, _>>()
+                    .map_err(map_database_error)?
+            };
+            let mut expected = target_seq;
+            for (sequence, status, ready_at) in pending {
+                if sequence != expected {
+                    return Err(ReviewCommitError::Integrity);
+                }
+                if !matches!(status.as_str(), "queued" | "retryable") || ready_at > now_ms {
+                    break;
+                }
+                let candidate =
+                    load_snapshot_from(&transaction, self.project_id, stream, sequence as u64)?;
+                if candidate.barrier != ReviewBarrierKind::None {
+                    break;
+                }
+                selected_sequence = sequence as u64;
+                expected = expected
+                    .checked_add(1)
+                    .ok_or(ReviewCommitError::LimitExceeded)?;
+            }
+        }
+
+        let heads = load_heads_from(&transaction, stream)?;
+        let published_sequence = heads.published.map_or(0, |head| head.sequence);
+        if selected_sequence <= published_sequence || target_seq as u64 != published_sequence + 1 {
+            return Err(ReviewCommitError::Integrity);
+        }
+        if selected_sequence - published_sequence > 10_000 {
+            return Err(ReviewCommitError::LimitExceeded);
+        }
+        let mut targets = Vec::with_capacity((selected_sequence - published_sequence) as usize);
+        for sequence in published_sequence + 1..=selected_sequence {
+            targets.push(load_snapshot_from(
+                &transaction,
+                self.project_id,
+                stream,
+                sequence,
+            )?);
+        }
+        let mut target = targets
+            .last()
+            .cloned()
+            .ok_or(ReviewCommitError::Integrity)?;
+        if target.barrier == ReviewBarrierKind::None {
+            let published = match heads.published {
+                Some(head) => {
+                    let state =
+                        load_snapshot_from(&transaction, self.project_id, stream, head.sequence)?;
+                    if state.head != head {
+                        return Err(ReviewCommitError::Integrity);
+                    }
+                    state
+                }
+                None => {
+                    let mut empty = target.clone();
+                    empty.state = viewer_domain::review::continuous::ContinuousReviewState::empty(
+                        self.project_id,
+                        stream,
+                        ReviewSnapshotId::from_u128(0),
+                    );
+                    empty
+                }
+            };
+            target.changes = viewer_application::review_workspace::fold_public_changes(
+                &published.state,
+                &targets,
+            )
+            .map_err(|error| match error {
+                viewer_application::review_workspace::ReviewWorkspaceError::Repository(error) => {
+                    error
+                }
+                _ => ReviewCommitError::Integrity,
+            })?;
+            target.state.parent =
+                heads
+                    .published
+                    .map(|_| viewer_domain::review::continuous::SnapshotRef {
+                        snapshot_id: published.head.snapshot_id,
+                        blake3: published.payload_digest,
+                    });
+            let mut usages = Vec::new();
+            let mut seen = std::collections::HashMap::new();
+            for declaration in targets.iter().flat_map(|state| &state.adopted_usage) {
+                if let Some(existing) = seen.get(&declaration.id) {
+                    if *existing != declaration {
+                        return Err(ReviewCommitError::Integrity);
+                    }
+                } else {
+                    seen.insert(declaration.id, declaration);
+                    usages.push(declaration.clone());
+                }
+            }
+            target.adopted_usage = usages;
+        } else if selected_sequence != target_seq as u64 {
+            return Err(ReviewCommitError::Integrity);
+        }
+        let (attempt_count, lease_epoch) = transaction
+            .query_row(
+                "SELECT attempt_count, lease_epoch
+                 FROM review_materialization_jobs
+                 WHERE stream_id = ?1 AND target_seq = ?2",
+                params![stream_text, selected_sequence as i64],
+                |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)),
+            )
+            .map_err(map_database_error)?;
         let next_attempt = attempt_count
             .checked_add(1)
             .ok_or(ReviewCommitError::LimitExceeded)?;
         let next_epoch = lease_epoch
             .checked_add(1)
             .ok_or(ReviewCommitError::LimitExceeded)?;
-        transaction
+        let claimed = transaction
             .execute(
                 "UPDATE review_materialization_jobs
-                 SET status = 'running', attempt_count = ?3, lease_epoch = ?4,
+                 SET status = 'running', attempt_count = attempt_count + 1, lease_epoch = ?4,
                      next_attempt_at_ms = ?5, error_code = NULL
-                 WHERE stream_id = ?1 AND target_seq = ?2",
+                 WHERE stream_id = ?1 AND target_seq > ?2 AND target_seq <= ?3
+                   AND status IN ('queued', 'retryable') AND next_attempt_at_ms <= ?6",
                 params![
                     stream_text,
-                    target_seq,
-                    next_attempt,
+                    published_sequence as i64,
+                    selected_sequence as i64,
                     next_epoch,
                     now_ms.saturating_add(MATERIALIZATION_LEASE_MS),
+                    now_ms,
                 ],
             )
             .map_err(map_database_error)?;
+        if claimed as u64 != selected_sequence - published_sequence {
+            return Err(ReviewCommitError::LeaseBusy);
+        }
         transaction.commit().map_err(map_database_error)?;
         Ok(Some(ClaimedReviewMaterialization {
             stream_id: stream,
@@ -334,6 +462,24 @@ impl ReviewMaterializationQueuePort for SqliteContinuousReviewAuthoringStore {
                 .is_some_and(|head| head.sequence > claim.target.head.sequence)
         {
             return Err(ReviewCommitError::Integrity);
+        }
+        let published_sequence = heads.published.map_or(0, |head| head.sequence);
+        let claimed_count: i64 = transaction
+            .query_row(
+                "SELECT COUNT(*) FROM review_materialization_jobs
+                 WHERE stream_id = ?1 AND target_seq > ?2 AND target_seq <= ?3
+                   AND status = 'running' AND lease_epoch = ?4",
+                params![
+                    claim.stream_id.to_string(),
+                    published_sequence as i64,
+                    claim.target.head.sequence as i64,
+                    claim.lease_epoch as i64,
+                ],
+                |row| row.get(0),
+            )
+            .map_err(map_database_error)?;
+        if claimed_count as u64 != claim.target.head.sequence - published_sequence {
+            return Err(ReviewCommitError::StaleSnapshot);
         }
         transaction
             .execute(
@@ -420,28 +566,75 @@ impl SqliteContinuousReviewAuthoringStore {
         if next_attempt_at_ms < 0 {
             return Err(ReviewCommitError::Integrity);
         }
-        let connection = self.connection()?;
-        let updated = connection
-            .execute(
-                "UPDATE review_materialization_jobs
-                 SET status = ?4, error_code = ?5, next_attempt_at_ms = ?6
-                 WHERE stream_id = ?1 AND target_seq = ?2
-                   AND status = 'running' AND lease_epoch = ?3",
-                params![
-                    claim.stream_id.to_string(),
-                    claim.target.head.sequence as i64,
-                    claim.lease_epoch as i64,
-                    status,
-                    code.map(failure_code),
-                    next_attempt_at_ms,
-                ],
-            )
-            .map_err(map_database_error)?;
-        if updated == 1 {
-            Ok(())
-        } else {
-            Err(ReviewCommitError::StaleSnapshot)
+        if !matches!(status, "retryable" | "blocked") || code.is_none() {
+            return Err(ReviewCommitError::Integrity);
         }
+        let mut connection = self.connection()?;
+        let transaction = connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(map_database_error)?;
+        require_claim(&transaction, claim)?;
+        let heads = load_heads_from(&transaction, claim.stream_id)?;
+        let published_sequence = heads.published.map_or(0, |head| head.sequence);
+        let expected = claim
+            .target
+            .head
+            .sequence
+            .checked_sub(published_sequence)
+            .ok_or(ReviewCommitError::Integrity)?;
+        let stream = claim.stream_id.to_string();
+        let updated = if status == "retryable" {
+            transaction
+                .execute(
+                    "UPDATE review_materialization_jobs
+                     SET status = 'retryable', error_code = ?5, next_attempt_at_ms = ?6
+                     WHERE stream_id = ?1 AND target_seq > ?2 AND target_seq <= ?3
+                       AND status = 'running' AND lease_epoch = ?4",
+                    params![
+                        stream,
+                        published_sequence as i64,
+                        claim.target.head.sequence as i64,
+                        claim.lease_epoch as i64,
+                        code.map(failure_code),
+                        next_attempt_at_ms,
+                    ],
+                )
+                .map_err(map_database_error)?
+        } else {
+            let released = transaction
+                .execute(
+                    "UPDATE review_materialization_jobs
+                     SET status = 'queued', error_code = NULL, next_attempt_at_ms = 0
+                     WHERE stream_id = ?1 AND target_seq > ?2 AND target_seq < ?3
+                       AND status = 'running' AND lease_epoch = ?4",
+                    params![
+                        stream,
+                        published_sequence as i64,
+                        claim.target.head.sequence as i64,
+                        claim.lease_epoch as i64,
+                    ],
+                )
+                .map_err(map_database_error)?;
+            let blocked = transaction
+                .execute(
+                    "UPDATE review_materialization_jobs
+                     SET status = 'blocked', error_code = ?4, next_attempt_at_ms = 0
+                     WHERE stream_id = ?1 AND target_seq = ?2
+                       AND status = 'running' AND lease_epoch = ?3",
+                    params![
+                        stream,
+                        claim.target.head.sequence as i64,
+                        claim.lease_epoch as i64,
+                        code.map(failure_code),
+                    ],
+                )
+                .map_err(map_database_error)?;
+            released.saturating_add(blocked)
+        };
+        if updated as u64 != expected {
+            return Err(ReviewCommitError::StaleSnapshot);
+        }
+        transaction.commit().map_err(map_database_error)
     }
 }
 

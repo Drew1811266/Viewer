@@ -2,6 +2,7 @@
 mod archiving;
 mod authoring;
 mod authoring_service;
+mod barrier;
 mod budget;
 mod diagnostics;
 mod editing;
@@ -26,6 +27,7 @@ mod transition;
 mod usage;
 
 pub use authoring::*;
+pub use barrier::fold_public_changes;
 pub use diagnostics::*;
 pub use evidence_action::*;
 pub use materialization::*;

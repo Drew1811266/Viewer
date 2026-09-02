@@ -351,7 +351,7 @@ async fn restart_after_immutable_state_write_retries_without_advancing_the_head_
 }
 
 #[tokio::test]
-async fn consecutive_pending_revisions_bind_to_the_actual_published_parent() {
+async fn consecutive_pending_revisions_compact_to_one_public_snapshot() {
     let fixture = Fixture::new();
     let second_target = commit_second_target(&fixture);
 
@@ -363,14 +363,14 @@ async fn consecutive_pending_revisions_bind_to_the_actual_published_parent() {
             .unwrap(),
         ReviewMaterializationOutcome::Published { .. }
     ));
-    assert!(matches!(
+    assert_eq!(
         fixture
             .service(fixture.provider.clone(), 2_001)
             .run_one(ReviewTaskCancellation::default())
             .await
             .unwrap(),
-        ReviewMaterializationOutcome::Published { .. }
-    ));
+        ReviewMaterializationOutcome::Idle
+    );
 
     let current = fixture
         .provider
@@ -380,10 +380,7 @@ async fn consecutive_pending_revisions_bind_to_the_actual_published_parent() {
         .unwrap()
         .unwrap();
     assert_eq!(current.state.snapshot_id, second_target.head.snapshot_id);
-    assert_eq!(
-        current.state.parent.unwrap().snapshot_id,
-        fixture.target.head.snapshot_id
-    );
+    assert_eq!(current.state.parent, None);
     let heads = fixture.authoring.load_heads(fixture.stream).unwrap();
     assert_eq!(heads.authoring, heads.published);
 }
@@ -494,12 +491,12 @@ async fn restart_before_published_head_reconciles_without_rewriting_v3() {
 }
 
 #[test]
-fn a_retry_delay_on_the_oldest_revision_prevents_newer_revision_from_skipping_it() {
+fn a_retry_delay_on_a_compacted_segment_prevents_any_revision_from_skipping_it() {
     let fixture = Fixture::new();
     commit_second_target(&fixture);
 
     let oldest = fixture.authoring.next(2_000).unwrap().unwrap();
-    assert_eq!(oldest.target.head.sequence, 1);
+    assert_eq!(oldest.target.head.sequence, 2);
     fixture
         .authoring
         .retry(&oldest, ReviewMaterializationFailure::Io, 10_000)

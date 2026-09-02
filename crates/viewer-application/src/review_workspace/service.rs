@@ -16,7 +16,7 @@ pub struct ContinuousReviewService {
     pub(super) assets: Arc<dyn ContinuousReviewAssetPort>,
     pub(super) evidence: Arc<dyn ReviewEvidencePort>,
     pub(super) codec: Arc<dyn ReviewCommandCodecPort>,
-    clock: Arc<dyn ClockPort>,
+    pub(super) clock: Arc<dyn ClockPort>,
     save_observer: Arc<dyn ReviewSaveObserverPort>,
     pub(super) prepared: Mutex<HashMap<AssetVersionId, PreparedReviewAsset>>,
     pub(super) envelopes: Mutex<HashMap<ReviewCommandId, ReviewCommandEnvelope>>,

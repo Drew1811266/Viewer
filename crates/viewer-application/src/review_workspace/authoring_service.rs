@@ -44,12 +44,37 @@ impl ContinuousReviewService {
             return Err(ReviewCommitError::StaleSnapshot.into());
         }
 
+        let barrier = barrier_for(&envelope.command);
+        if barrier != ReviewBarrierKind::None
+            && let Some(basis) = current.as_ref()
+        {
+            let materializer = ReviewMaterializationService::new(
+                store.clone(),
+                Arc::new(ContinuousReviewPublication::new(
+                    stream,
+                    self.provider.clone(),
+                    self.assets.clone(),
+                    self.evidence.clone(),
+                )),
+                self.clock.clone(),
+            );
+            materializer
+                .flush_through(stream, basis.head, cancellation.clone())
+                .await?;
+            let heads_store = store.clone();
+            let heads = super::service::io(move || heads_store.load_heads(stream)).await?;
+            if heads.authoring != Some(basis.head) || heads.published != Some(basis.head) {
+                return Err(ReviewCommitError::Integrity.into());
+            }
+        }
+
         // Only commands whose semantics explicitly reference published history or usage open the
         // old repository, and they do so before the SQLite write transaction begins.
         let needs_published_reader = matches!(
             envelope.command,
             ReviewWorkspaceCommand::Archive(_)
                 | ReviewWorkspaceCommand::Restore { .. }
+                | ReviewWorkspaceCommand::Migrate(_)
                 | ReviewWorkspaceCommand::ContinueHistorical { .. }
                 | ReviewWorkspaceCommand::ContinueLegacy { .. }
         ) || super::usage::requires_repository(&envelope.command);
@@ -58,6 +83,33 @@ impl ContinuousReviewService {
             Some(super::service::io(move || provider.open_reader()).await?)
         } else {
             None
+        };
+
+        let current_published = if barrier != ReviewBarrierKind::None {
+            match current.as_ref() {
+                Some(authoring) => {
+                    let repository = published
+                        .as_ref()
+                        .cloned()
+                        .ok_or(ReviewWorkspaceError::CapabilityUnavailable)?;
+                    let published = super::service::io(move || repository.load_current(stream))
+                        .await?
+                        .ok_or(ReviewCommitError::Integrity)?;
+                    let mut logical = published.state.clone();
+                    logical.parent = authoring.state.parent;
+                    if logical != authoring.state
+                        || published.production != authoring.production
+                        || published.command_id != authoring.command_id
+                        || published.payload_digest != authoring.payload_digest
+                    {
+                        return Err(ReviewCommitError::Integrity.into());
+                    }
+                    Some(published)
+                }
+                None => None,
+            }
+        } else {
+            current.as_ref().map(as_published_state)
         };
 
         let usages = if super::usage::requires_repository(&envelope.command) {
@@ -99,7 +151,6 @@ impl ContinuousReviewService {
                 archives: vec![],
             }
         } else {
-            let current_published = current.as_ref().map(as_published_state);
             let empty = ContinuousReviewState::empty(
                 self.context.project_id,
                 stream,
@@ -148,7 +199,7 @@ impl ContinuousReviewService {
                 .iter()
                 .map(|value| value.declaration.clone())
                 .collect(),
-            barrier: barrier_for(&envelope.command),
+            barrier,
         };
         let expected_snapshot_id = envelope.expected_snapshot_id;
         let request = ReviewAuthoringCommitRequest {

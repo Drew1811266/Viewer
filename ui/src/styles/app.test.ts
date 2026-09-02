@@ -824,6 +824,7 @@ describe('workspace style contracts', () => {
     const source = rules.find(
       ({ selector }) => selector === '.image-preview-stage .image-magnifier__source',
     )
+    const overlay = rules.find(({ selector }) => selector === '.image-magnifier__overlay')
     const previewImage = rules.find(
       ({ selector }) => selector === '.image-preview-stage > .image-preview-image',
     )
@@ -841,6 +842,14 @@ describe('workspace style contracts', () => {
       'transform-origin': 'var(--magnifier-shell-origin-x) var(--magnifier-shell-origin-y)',
       visibility: 'hidden',
       'will-change': 'opacity, transform',
+      'z-index': '4',
+    })
+    expect(overlay?.declarations).toMatchObject({
+      height: '100%',
+      inset: '0',
+      'pointer-events': 'none',
+      position: 'absolute',
+      width: '100%',
     })
     expect(lens?.declarations.transition).toContain('140ms')
     expect(visible?.declarations.opacity).toBe('1')

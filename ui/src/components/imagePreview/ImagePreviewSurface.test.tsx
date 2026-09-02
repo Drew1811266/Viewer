@@ -6,4 +6,10 @@ describe('ImagePreviewSurface architecture', () => {
     const source = readFileSync('src/components/imagePreview/ImagePreviewSurface.tsx', 'utf8')
     expect(source).not.toMatch(/app\/review|api\/viewer|components\/review/)
   })
+
+  it('exposes an optional generic magnifier overlay painter slot', () => {
+    const source = readFileSync('src/components/imagePreview/ImagePreviewSurface.tsx', 'utf8')
+    expect(source).toContain('magnifierOverlayPainter?: MagnifierOverlayPainter')
+    expect(source).toContain('overlayPainter={slots?.magnifierOverlayPainter}')
+  })
 })

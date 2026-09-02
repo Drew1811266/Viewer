@@ -16,6 +16,7 @@ import ImageMagnifier, { type ImageMagnifierHandle } from './ImageMagnifier'
 import ImagePreviewLoading from './ImagePreviewLoading'
 import { type Point, remapSourcePoint, type Size, sourcePointAtStagePoint } from './imageGeometry'
 import { createImagePreviewProjection, type ImagePreviewProjection } from './imagePreviewProjection'
+import type { MagnifierOverlayPainter } from './magnifierOverlay'
 import { type CurrentOriginalState, useCurrentOriginal } from './useCurrentOriginal'
 import { useImageViewport } from './useImageViewport'
 import { usePreviewGestures } from './usePreviewGestures'
@@ -28,6 +29,7 @@ export interface ImagePreviewSurfaceSlots {
   toolbarActions?: ReactNode
   stageOverlay?: (projection: ImagePreviewProjection) => ReactNode
   sidePanel?: ReactNode
+  magnifierOverlayPainter?: MagnifierOverlayPainter
 }
 
 export interface ImagePreviewSurfaceProps {
@@ -462,6 +464,7 @@ export default function ImagePreviewSurface({
         rotation={viewport.state.rotation}
         fileName={file.name}
         original={currentOriginal}
+        overlayPainter={slots?.magnifierOverlayPainter}
       />
       {magnifierAnnouncement(magnifierEnabled, currentOriginal.status)}
       {magnifierAnnounced && (

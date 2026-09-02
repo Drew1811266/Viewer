@@ -3,10 +3,12 @@ import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef } from 
 import type { MagnifierArea, MagnifierMagnification, MagnifierShape } from '../../api/types'
 import type { Point, PreviewRotation, Size } from './imageGeometry'
 import {
+  createMagnifierContentProjection,
   lensDimensions,
   magnifierShellPlacement,
   magnifierSourcePlacement,
 } from './magnifierGeometry'
+import type { MagnifierOverlayPainter } from './magnifierOverlay'
 import type { CurrentOriginalState } from './useCurrentOriginal'
 
 export interface MagnifierPlacement {
@@ -28,6 +30,7 @@ interface ImageMagnifierProps {
   rotation: PreviewRotation
   fileName: string
   original: CurrentOriginalState
+  overlayPainter?: MagnifierOverlayPainter
 }
 
 interface MagnifierConfiguration {
@@ -41,12 +44,25 @@ interface MagnifierConfiguration {
 
 const ImageMagnifier = forwardRef<ImageMagnifierHandle, ImageMagnifierProps>(
   function ImageMagnifier(
-    { shape, area, magnification, sourceScale, stageSize, rotation, fileName, original },
+    {
+      shape,
+      area,
+      magnification,
+      sourceScale,
+      stageSize,
+      rotation,
+      fileName,
+      original,
+      overlayPainter,
+    },
     forwardedRef,
   ) {
     const lens = useRef<HTMLDivElement>(null)
     const sourceImage = useRef<HTMLImageElement>(null)
+    const overlayCanvas = useRef<HTMLCanvasElement>(null)
     const latestPlacement = useRef<MagnifierPlacement | null>(null)
+    const latestOriginal = useRef(original)
+    const latestOverlayPainter = useRef(overlayPainter)
     const frame = useRef<number | null>(null)
     const configuration = useRef<MagnifierConfiguration>({
       shape,
@@ -56,6 +72,8 @@ const ImageMagnifier = forwardRef<ImageMagnifierHandle, ImageMagnifierProps>(
       stageSize,
       rotation,
     })
+    latestOriginal.current = original
+    latestOverlayPainter.current = overlayPainter
     configuration.current = { shape, area, magnification, sourceScale, stageSize, rotation }
     const dimensions = lensDimensions(shape, area)
 
@@ -89,6 +107,16 @@ const ImageMagnifier = forwardRef<ImageMagnifierHandle, ImageMagnifierProps>(
         String(current.sourceScale * current.magnification),
       )
       element.style.setProperty('--magnifier-rotation', `${current.rotation}deg`)
+      paintOverlay(
+        overlayCanvas.current,
+        latestOverlayPainter.current,
+        latestOriginal.current,
+        placement.sourcePoint,
+        currentDimensions,
+        current.sourceScale * current.magnification,
+        current.magnification,
+        current.rotation,
+      )
       element.dataset.visible = 'true'
     }, [])
 
@@ -116,6 +144,17 @@ const ImageMagnifier = forwardRef<ImageMagnifierHandle, ImageMagnifierProps>(
     useEffect(() => {
       if (latestPlacement.current !== null && lens.current?.dataset.visible === 'true') schedule()
     }, [area, magnification, rotation, schedule, shape, sourceScale, stageSize])
+
+    useEffect(() => {
+      clearOverlay(overlayCanvas.current)
+      if (latestPlacement.current !== null && lens.current?.dataset.visible === 'true') schedule()
+    }, [
+      original.entityId,
+      original.representation?.cacheKey,
+      original.status,
+      overlayPainter,
+      schedule,
+    ])
 
     useEffect(
       () => () => {
@@ -156,6 +195,13 @@ const ImageMagnifier = forwardRef<ImageMagnifierHandle, ImageMagnifierProps>(
         ) : (
           <span className="image-magnifier__status">{statusCopy(original.status)}</span>
         )}
+        {overlayPainter !== undefined && (
+          <canvas
+            ref={overlayCanvas}
+            className="image-magnifier__overlay"
+            data-testid="image-magnifier-overlay"
+          />
+        )}
       </div>
     )
   },
@@ -171,4 +217,78 @@ function statusCopy(status: CurrentOriginalState['status']): string {
   if (status === 'budget_error') return '原图超出安全预览限制'
   if (status === 'error') return '无法载入原图'
   return '正在载入原图'
+}
+
+function paintOverlay(
+  canvas: HTMLCanvasElement | null,
+  painter: MagnifierOverlayPainter | undefined,
+  original: CurrentOriginalState,
+  sourcePoint: Point,
+  lensSize: Size,
+  contentScale: number,
+  magnification: MagnifierMagnification,
+  rotation: PreviewRotation,
+) {
+  if (
+    canvas === null ||
+    painter === undefined ||
+    original.status !== 'ready' ||
+    original.representation === null
+  ) {
+    clearOverlay(canvas)
+    return
+  }
+  const ratio = canvasPixelRatio()
+  canvas.style.width = `${lensSize.width}px`
+  canvas.style.height = `${lensSize.height}px`
+  canvas.width = Math.max(1, Math.round(lensSize.width * ratio))
+  canvas.height = Math.max(1, Math.round(lensSize.height * ratio))
+  let context: CanvasRenderingContext2D | null = null
+  try {
+    context = canvas.getContext('2d')
+    if (context === null) {
+      canvas.removeAttribute('data-has-content')
+      return
+    }
+    context.setTransform(ratio, 0, 0, ratio, 0, 0)
+    context.clearRect(0, 0, lensSize.width, lensSize.height)
+    const count = painter(context, {
+      projection: createMagnifierContentProjection({
+        sourceSize: original.representation,
+        sourcePoint,
+        lensSize,
+        contentScale,
+        rotation,
+      }),
+      magnification,
+      pixelRatio: ratio,
+    })
+    if (count > 0) canvas.dataset.hasContent = 'true'
+    else canvas.removeAttribute('data-has-content')
+  } catch {
+    canvas.removeAttribute('data-has-content')
+    try {
+      context?.setTransform(1, 0, 0, 1, 0, 0)
+      context?.clearRect(0, 0, canvas.width, canvas.height)
+    } catch {
+      // The image-only lens remains usable when Canvas is unavailable.
+    }
+  }
+}
+
+function clearOverlay(canvas: HTMLCanvasElement | null) {
+  if (canvas === null) return
+  canvas.removeAttribute('data-has-content')
+  try {
+    const context = canvas.getContext('2d')
+    context?.setTransform(1, 0, 0, 1, 0, 0)
+    context?.clearRect(0, 0, canvas.width, canvas.height)
+  } catch {
+    // Clearing is best-effort; stale identity is still hidden by the data attribute.
+  }
+}
+
+function canvasPixelRatio(): number {
+  const ratio = Number.isFinite(window.devicePixelRatio) ? window.devicePixelRatio : 1
+  return Math.min(4, Math.max(1, ratio))
 }

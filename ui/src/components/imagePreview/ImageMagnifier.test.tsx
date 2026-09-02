@@ -115,7 +115,124 @@ describe('ImageMagnifier imperative placement', () => {
     vi.stubGlobal('cancelAnimationFrame', (frame: number) => canceled.push(frame))
   })
 
-  afterEach(() => vi.unstubAllGlobals())
+  afterEach(() => {
+    vi.restoreAllMocks()
+    vi.unstubAllGlobals()
+  })
+
+  it('paints a high-DPI overlay through the same scheduled placement frame', () => {
+    vi.stubGlobal('devicePixelRatio', 2)
+    const context = overlayContext()
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(context.value)
+    const painter = vi.fn(() => 2)
+    const ref = createRef<ImageMagnifierHandle>()
+    render(
+      <ImageMagnifier
+        ref={ref}
+        shape="circle"
+        area="small"
+        magnification={2}
+        sourceScale={0.25}
+        stageSize={{ width: 640, height: 480 }}
+        rotation={0}
+        fileName="detail.jpg"
+        original={currentOriginal('ready', ORIGINAL)}
+        overlayPainter={painter}
+      />,
+    )
+
+    act(() => {
+      ref.current?.place({ stagePoint: { x: 200, y: 150 }, sourcePoint: { x: 1600, y: 1140 } })
+      frames.shift()?.(0)
+    })
+
+    const overlay = screen.getByTestId('image-magnifier-overlay')
+    expect(overlay).toHaveAttribute('width', '400')
+    expect(overlay).toHaveAttribute('height', '400')
+    expect(overlay).toHaveAttribute('data-has-content', 'true')
+    expect(painter).toHaveBeenCalledWith(
+      context.value,
+      expect.objectContaining({ magnification: 2, pixelRatio: 2 }),
+    )
+    expect(screen.getByTestId('image-magnifier')).toHaveAttribute('data-visible', 'true')
+  })
+
+  it('keeps the image lens visible when the optional overlay painter fails', () => {
+    const context = overlayContext()
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(context.value)
+    const ref = createRef<ImageMagnifierHandle>()
+    render(
+      <ImageMagnifier
+        ref={ref}
+        shape="circle"
+        area="small"
+        magnification={2}
+        sourceScale={0.25}
+        stageSize={{ width: 640, height: 480 }}
+        rotation={0}
+        fileName="detail.jpg"
+        original={currentOriginal('ready', ORIGINAL)}
+        overlayPainter={() => {
+          throw new Error('painter failed')
+        }}
+      />,
+    )
+
+    expect(() => {
+      act(() => {
+        ref.current?.place({ stagePoint: { x: 200, y: 150 }, sourcePoint: { x: 1600, y: 1140 } })
+        frames.shift()?.(0)
+      })
+    }).not.toThrow()
+    expect(screen.getByTestId('image-magnifier')).toHaveAttribute('data-visible', 'true')
+    expect(screen.getByTestId('image-magnifier-overlay')).not.toHaveAttribute('data-has-content')
+  })
+
+  it('clears old overlay content as soon as the original identity becomes unavailable', () => {
+    const context = overlayContext()
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(context.value)
+    const ref = createRef<ImageMagnifierHandle>()
+    const view = render(
+      <ImageMagnifier
+        ref={ref}
+        shape="circle"
+        area="small"
+        magnification={2}
+        sourceScale={0.25}
+        stageSize={{ width: 640, height: 480 }}
+        rotation={0}
+        fileName="detail.jpg"
+        original={currentOriginal('ready', ORIGINAL)}
+        overlayPainter={() => 1}
+      />,
+    )
+    act(() => {
+      ref.current?.place({ stagePoint: { x: 200, y: 150 }, sourcePoint: { x: 1600, y: 1140 } })
+      frames.shift()?.(0)
+    })
+    expect(screen.getByTestId('image-magnifier-overlay')).toHaveAttribute(
+      'data-has-content',
+      'true',
+    )
+
+    view.rerender(
+      <ImageMagnifier
+        ref={ref}
+        shape="circle"
+        area="small"
+        magnification={2}
+        sourceScale={0.25}
+        stageSize={{ width: 640, height: 480 }}
+        rotation={0}
+        fileName="next.jpg"
+        original={{ status: 'loading', entityId: 'image-two', representation: null }}
+        overlayPainter={() => 1}
+      />,
+    )
+
+    expect(screen.getByTestId('image-magnifier-overlay')).not.toHaveAttribute('data-has-content')
+    expect(context.clearRect).toHaveBeenCalled()
+  })
 
   it('applies only the latest placement per animation frame', () => {
     const ref = createRef<ImageMagnifierHandle>()
@@ -210,3 +327,15 @@ describe('ImageMagnifier imperative placement', () => {
     expect(canceled).toEqual([1, 2])
   })
 })
+
+function overlayContext() {
+  const clearRect = vi.fn()
+  return {
+    clearRect,
+    value: {
+      canvas: document.createElement('canvas'),
+      clearRect,
+      setTransform: vi.fn(),
+    } as unknown as CanvasRenderingContext2D,
+  }
+}

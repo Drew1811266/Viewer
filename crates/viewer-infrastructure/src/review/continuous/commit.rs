@@ -86,7 +86,12 @@ pub(super) fn install(
     view: &View,
     prepared: &PreparedCommit,
 ) -> Result<(), ReviewCommitError> {
-    super::evidence::install(view, &prepared.record.evidence, &prepared.staged)?;
+    super::evidence::install(
+        view,
+        &prepared.record.evidence,
+        &prepared.staged,
+        &prepared.reusable_evidence,
+    )?;
     repository
         .faults
         .check(ReviewCommitFaultPoint::AfterEvidence)?;
@@ -142,7 +147,7 @@ pub(super) fn validate_installed(
     prepared: &PreparedCommit,
 ) -> Result<(), ReviewCommitError> {
     let id = prepared.record.state.stream_id;
-    history::read_state(view, id, &prepared.reference)?;
+    history::read_state_for_materialization(view, id, &prepared.reference)?;
     for archive in &history::stream(view, id)?.archive_refs {
         history::archive(view, id, archive.archive_id)?;
     }

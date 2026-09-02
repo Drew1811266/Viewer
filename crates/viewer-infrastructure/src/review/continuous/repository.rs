@@ -315,6 +315,29 @@ impl ContinuousReviewRepositoryPort for ContinuousReviewRepository {
         Ok(Some(mapping::stored(record, reference, stream)?))
     }
 
+    fn load_current_for_materialization(
+        &self,
+        stream_id: ReviewStreamId,
+    ) -> Result<Option<StoredContinuousSnapshot>, ReviewCommitError> {
+        let Some(view) = self.view()? else {
+            return Ok(None);
+        };
+        let Some(stream) = view
+            .index
+            .streams
+            .iter()
+            .find(|value| value.review_stream_id == stream_id)
+        else {
+            return Ok(None);
+        };
+        let Some(reference) = stream.current_ref else {
+            return Ok(None);
+        };
+        let record = history::read_state_for_materialization(&view, stream_id, &reference)?;
+        super::references::feedback_origins(&view, &record)?;
+        Ok(Some(mapping::stored(record, reference, stream)?))
+    }
+
     fn load_snapshot(
         &self,
         stream_id: ReviewStreamId,

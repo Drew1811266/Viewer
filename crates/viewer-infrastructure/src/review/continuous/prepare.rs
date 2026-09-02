@@ -4,6 +4,7 @@ use super::{
     history, mapping, references,
     repository::{View, protocol_error},
 };
+use std::collections::HashMap;
 use viewer_application::review_workspace::*;
 use viewer_domain::review::continuous::{
     ArchiveCheckpoint, SnapshotRef, diff_review, validate_shared_identities,
@@ -17,6 +18,7 @@ pub(super) struct PreparedCommit {
     pub archives: Vec<ArchiveCheckpoint>,
     pub usages: Vec<v3::ReviewUsageRecord>,
     pub staged: Vec<PreparedEvidenceFile>,
+    pub reusable_evidence: HashMap<[u8; 32], v3::EvidenceRef>,
 }
 
 pub(super) fn prepare(
@@ -30,7 +32,11 @@ pub(super) fn prepare(
     request.next.state.parent = request.expected;
     let record: v3::ReviewStateRecord = request.next.into();
     let bytes = v3::encode_state_v3(&record).map_err(protocol_error)?;
-    validate_chain(view, &record)?;
+    let previous = validate_chain(view, &record)?;
+    let reusable_evidence = super::evidence::reusable_references(
+        previous.as_ref().map(|value| value.evidence.as_slice()),
+        &record.evidence,
+    );
     super::coverage::require_uncovered(view, record.state.stream_id, &request.archives)?;
     super::archives::validate_commit(view, &record, &request.archives)?;
     references::feedback_origins(view, &record)?;
@@ -66,6 +72,7 @@ pub(super) fn prepare(
         archives: request.archives,
         usages,
         staged: request.staged_evidence,
+        reusable_evidence,
     })
 }
 
@@ -104,9 +111,13 @@ fn prepare_stream(
     })
 }
 
-fn validate_chain(view: &View, record: &v3::ReviewStateRecord) -> Result<(), ReviewCommitError> {
+fn validate_chain(
+    view: &View,
+    record: &v3::ReviewStateRecord,
+) -> Result<Option<v3::ReviewStateRecord>, ReviewCommitError> {
     if let Some(expected) = record.state.parent {
-        let before = history::read_state(view, record.state.stream_id, &expected)?;
+        let before =
+            history::read_state_for_materialization(view, record.state.stream_id, &expected)?;
         diff_review(&before.state, &record.state, &record.changes)
             .map_err(|_| ReviewCommitError::Integrity)?;
         history::walk(view, record.state.stream_id, |_, historical| {
@@ -115,8 +126,9 @@ fn validate_chain(view: &View, record: &v3::ReviewStateRecord) -> Result<(), Rev
             references::evidence_identity(record, &historical)?;
             Ok(false)
         })?;
+        return Ok(Some(before));
     }
-    Ok(())
+    Ok(None)
 }
 
 fn add_usage_refs(

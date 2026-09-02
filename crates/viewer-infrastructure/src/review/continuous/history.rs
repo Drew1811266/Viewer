@@ -28,6 +28,14 @@ pub(super) fn read_state(
     Ok(record)
 }
 
+pub(super) fn read_state_for_materialization(
+    view: &View,
+    stream_id: ReviewStreamId,
+    reference: &SnapshotRef,
+) -> Result<v3::ReviewStateRecord, ReviewCommitError> {
+    read_document(view, stream_id, reference)
+}
+
 fn read_document(
     view: &View,
     stream_id: ReviewStreamId,

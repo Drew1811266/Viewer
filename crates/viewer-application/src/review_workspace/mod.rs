@@ -6,6 +6,7 @@ mod budget;
 mod diagnostics;
 mod editing;
 mod evidence;
+mod evidence_action;
 mod history;
 mod legacy_history;
 mod materialization;
@@ -26,6 +27,7 @@ mod usage;
 
 pub use authoring::*;
 pub use diagnostics::*;
+pub use evidence_action::*;
 pub use materialization::*;
 pub use migration_state::prepare_migration_state;
 pub use model::*;

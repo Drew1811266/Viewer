@@ -9,6 +9,7 @@ use std::{
     collections::HashMap,
     sync::{Arc, Mutex},
 };
+use tokio::sync::Mutex as AsyncMutex;
 use viewer_domain::AssetVersionId;
 use viewer_domain::{ReviewStreamId, review::continuous::SnapshotRef};
 
@@ -95,12 +96,15 @@ pub struct ContinuousReviewPublication {
     provider: Arc<dyn ContinuousReviewRepositoryProviderPort>,
     assets: Arc<dyn ContinuousReviewAssetPort>,
     evidence: Arc<dyn ReviewEvidencePort>,
+    evidence_cache: Arc<dyn ReviewEvidenceActionCachePort>,
+    evidence_policy: ReviewEvidenceActionPolicy,
     staged: Mutex<Option<StagedPublication>>,
 }
 
 struct StagedPublication {
     target: ReviewAuthoringHead,
     leases: Vec<Arc<dyn ReviewEvidenceStaging>>,
+    cache_actions: Vec<CachedReviewEvidenceAction>,
 }
 
 impl ContinuousReviewPublication {
@@ -110,11 +114,31 @@ impl ContinuousReviewPublication {
         assets: Arc<dyn ContinuousReviewAssetPort>,
         evidence: Arc<dyn ReviewEvidencePort>,
     ) -> Self {
+        Self::new_with_cache(
+            stream_id,
+            provider,
+            assets,
+            evidence,
+            Arc::new(NoReviewEvidenceActionCache),
+            CURRENT_REVIEW_EVIDENCE_ACTION_POLICY,
+        )
+    }
+
+    pub fn new_with_cache(
+        stream_id: ReviewStreamId,
+        provider: Arc<dyn ContinuousReviewRepositoryProviderPort>,
+        assets: Arc<dyn ContinuousReviewAssetPort>,
+        evidence: Arc<dyn ReviewEvidencePort>,
+        evidence_cache: Arc<dyn ReviewEvidenceActionCachePort>,
+        evidence_policy: ReviewEvidenceActionPolicy,
+    ) -> Self {
         Self {
             stream_id,
             provider,
             assets,
             evidence,
+            evidence_cache,
+            evidence_policy,
             staged: Mutex::new(None),
         }
     }
@@ -148,7 +172,7 @@ impl ReviewPublicationPort for ContinuousReviewPublication {
         let stream = target.state.stream_id;
         let (reader, previous) = super::service::io(move || {
             let reader = provider.open_reader()?;
-            let previous = reader.load_current(stream)?;
+            let previous = reader.load_current_for_materialization(stream)?;
             Ok((reader, previous))
         })
         .await?;
@@ -165,16 +189,38 @@ impl ReviewPublicationPort for ContinuousReviewPublication {
         let mut public_state = target.state.clone();
         public_state.parent = expected;
 
+        let previous_authoring = previous
+            .clone()
+            .map(ReviewWorkspaceCurrent::from_published)
+            .map(|current| current.authoring);
+        let dirty_ids: std::collections::HashSet<_> =
+            dirty_evidence_assets(previous_authoring.as_ref(), &target, self.evidence_policy)?
+                .into_iter()
+                .collect();
+        let dirty_assets: Vec<_> = target
+            .state
+            .assets
+            .iter()
+            .filter(|asset| dirty_ids.contains(&asset.id))
+            .cloned()
+            .collect();
         let reopened = self
             .assets
-            .reopen_exact(&target.state.assets, cancellation.clone())
+            .reopen_exact(&dirty_assets, cancellation.clone())
             .await?;
-        let prepared = exact_assets(&target, reopened)?;
-        let evidence = super::evidence::prepare(
+        let prepared = exact_assets(&dirty_assets, reopened)?;
+        let evidence = super::evidence::prepare_materialized(
             self.evidence.as_ref(),
+            super::evidence::EvidenceActionCacheContext {
+                port: self.evidence_cache.clone(),
+                policy: self.evidence_policy,
+            },
             reader,
             previous.as_ref(),
-            &public_state,
+            &StoredAuthoringState {
+                state: public_state.clone(),
+                ..target.clone()
+            },
             &prepared,
             cancellation.clone(),
         )
@@ -199,6 +245,7 @@ impl ReviewPublicationPort for ContinuousReviewPublication {
         *staged = Some(StagedPublication {
             target: target.head,
             leases: evidence.leases,
+            cache_actions: evidence.cache_actions,
         });
         Ok(PreparedReviewPublication {
             target: target.head,
@@ -233,6 +280,26 @@ impl ReviewPublicationPort for ContinuousReviewPublication {
         if receipt.snapshot.snapshot_id != target.snapshot_id {
             return Err(ReviewCommitError::Integrity.into());
         }
+        let cache_actions = {
+            let staged = self.staged.lock().map_err(|_| ReviewCommitError::Io)?;
+            staged
+                .as_ref()
+                .filter(|value| value.target == target)
+                .map(|value| value.cache_actions.clone())
+                .unwrap_or_default()
+        };
+        if !cache_actions.is_empty() {
+            let cache = self.evidence_cache.clone();
+            // Cache installation is a non-authoritative optimization. Publication is already
+            // durable, so a cache write failure must not turn a successful save into failure.
+            let _ = super::service::io(move || {
+                for action in &cache_actions {
+                    cache.store_verified(action)?;
+                }
+                Ok::<_, ReviewCommitError>(())
+            })
+            .await;
+        }
         self.clear_staging(target);
         Ok(ReviewPublicationReceipt {
             target,
@@ -253,7 +320,10 @@ impl ReviewPublicationPort for ContinuousReviewPublication {
             }
             let reader = provider.open_writer()?;
             reader.sync_publication()?;
-            let current = reader.load_current(stream)?;
+            // Publication already verifies every newly-created or cache-reused dirty object while
+            // installing it. Reconciliation only needs canonical state/index identity here;
+            // native/Agent reads retain the complete evidence-object verification boundary.
+            let current = reader.load_current_for_materialization(stream)?;
             if let Some(current) = &current
                 && current.state.snapshot_id == expected.head.snapshot_id
             {
@@ -300,17 +370,15 @@ impl ReviewPublicationPort for ContinuousReviewPublication {
 }
 
 fn exact_assets(
-    target: &StoredAuthoringState,
+    expected_assets: &[viewer_domain::review::AssetVersion],
     reopened: Vec<PreparedReviewAsset>,
 ) -> Result<HashMap<AssetVersionId, PreparedReviewAsset>, ReviewWorkspaceError> {
-    if reopened.len() != target.state.assets.len() {
+    if reopened.len() != expected_assets.len() {
         return Err(ReviewAssetError::Unavailable.into());
     }
     let mut prepared = HashMap::with_capacity(reopened.len());
     for value in reopened {
-        let expected = target
-            .state
-            .assets
+        let expected = expected_assets
             .iter()
             .find(|asset| asset.id == value.asset.id)
             .ok_or(ReviewAssetError::SourceChanged)?;
@@ -325,6 +393,7 @@ pub struct ReviewMaterializationService {
     queue: Arc<dyn ReviewMaterializationQueuePort>,
     publication: Arc<dyn ReviewPublicationPort>,
     clock: Arc<dyn ClockPort>,
+    run_gate: AsyncMutex<()>,
 }
 
 impl ReviewMaterializationService {
@@ -337,6 +406,7 @@ impl ReviewMaterializationService {
             queue,
             publication,
             clock,
+            run_gate: AsyncMutex::new(()),
         }
     }
 
@@ -344,6 +414,9 @@ impl ReviewMaterializationService {
         &self,
         cancellation: ReviewTaskCancellation,
     ) -> Result<ReviewMaterializationOutcome, ReviewWorkspaceError> {
+        // A service is project-scoped by construction. Serialize its queue consumer so two UI
+        // wakeups cannot concurrently materialize the same project's images.
+        let _run = self.run_gate.lock().await;
         let now_ms = self.clock.unix_millis();
         let queue = self.queue.clone();
         super::service::io(move || queue.requeue_expired(now_ms)).await?;

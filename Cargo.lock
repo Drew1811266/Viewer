@@ -4113,6 +4113,7 @@ name = "viewer-application"
 version = "0.1.7"
 dependencies = [
  "async-trait",
+ "blake3",
  "serde",
  "tempfile",
  "thiserror 2.0.18",

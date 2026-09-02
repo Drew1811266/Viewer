@@ -1,7 +1,10 @@
 use super::*;
 use crate::review_evidence::*;
 use crate::{PreparedReviewAsset, ReviewTaskCancellation};
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
 use viewer_domain::{
     AssetVersionId,
     review::{FeedbackAnchor, ReviewMedia, continuous::*},
@@ -11,6 +14,12 @@ pub(super) struct EvidencePreparation {
     pub bindings: Vec<ReviewEvidenceBinding>,
     pub files: Vec<PreparedEvidenceFile>,
     pub leases: Vec<Arc<dyn ReviewEvidenceStaging>>,
+    pub cache_actions: Vec<CachedReviewEvidenceAction>,
+}
+
+pub(super) struct EvidenceActionCacheContext {
+    pub port: Arc<dyn ReviewEvidenceActionCachePort>,
+    pub policy: ReviewEvidenceActionPolicy,
 }
 pub(super) async fn prepare(
     renderer: &dyn ReviewEvidencePort,
@@ -27,6 +36,39 @@ pub(super) async fn prepare(
         next,
         prepared_assets,
         cancellation,
+        None,
+    )
+    .await
+}
+
+pub(super) async fn prepare_materialized(
+    renderer: &dyn ReviewEvidencePort,
+    cache: EvidenceActionCacheContext,
+    repository: Arc<dyn ContinuousReviewRepositoryPort>,
+    previous: Option<&StoredContinuousSnapshot>,
+    target: &StoredAuthoringState,
+    prepared_assets: &HashMap<AssetVersionId, PreparedReviewAsset>,
+    cancellation: ReviewTaskCancellation,
+) -> Result<EvidencePreparation, ReviewWorkspaceError> {
+    let previous_authoring = previous
+        .cloned()
+        .map(ReviewWorkspaceCurrent::from_published)
+        .map(|current| current.authoring);
+    let dirty = dirty_evidence_assets(previous_authoring.as_ref(), target, cache.policy)?
+        .into_iter()
+        .collect();
+    prepare_inner(
+        renderer,
+        Some(repository),
+        previous,
+        &target.state,
+        prepared_assets,
+        cancellation,
+        Some(CachePreparation {
+            cache: cache.port,
+            policy: cache.policy,
+            dirty,
+        }),
     )
     .await
 }
@@ -37,7 +79,22 @@ pub(super) async fn prepare_new(
     prepared_assets: &HashMap<AssetVersionId, PreparedReviewAsset>,
     cancellation: ReviewTaskCancellation,
 ) -> Result<EvidencePreparation, ReviewWorkspaceError> {
-    prepare_inner(renderer, None, None, next, prepared_assets, cancellation).await
+    prepare_inner(
+        renderer,
+        None,
+        None,
+        next,
+        prepared_assets,
+        cancellation,
+        None,
+    )
+    .await
+}
+
+struct CachePreparation {
+    cache: Arc<dyn ReviewEvidenceActionCachePort>,
+    policy: ReviewEvidenceActionPolicy,
+    dirty: HashSet<AssetVersionId>,
 }
 
 async fn prepare_inner(
@@ -47,11 +104,13 @@ async fn prepare_inner(
     next: &ContinuousReviewState,
     prepared_assets: &HashMap<AssetVersionId, PreparedReviewAsset>,
     cancellation: ReviewTaskCancellation,
+    cache: Option<CachePreparation>,
 ) -> Result<EvidencePreparation, ReviewWorkspaceError> {
     let mut result = EvidencePreparation {
         bindings: vec![],
         files: vec![],
         leases: vec![],
+        cache_actions: vec![],
     };
     let old_bindings: HashMap<_, _> = previous
         .into_iter()
@@ -96,12 +155,54 @@ async fn prepare_inner(
                 key: a.key,
             })
             .collect();
+        if let Some(cache) = &cache {
+            if !cache.dirty.contains(&asset.id) {
+                let binding = old.ok_or(ReviewCommitError::Integrity)?;
+                let EvidenceCapability::Image {
+                    base, annotated, ..
+                } = &binding.capability
+                else {
+                    return Err(ReviewCommitError::Integrity.into());
+                };
+                result.bindings.push(ReviewEvidenceBinding {
+                    asset_version_id: asset.id,
+                    capability: EvidenceCapability::Image {
+                        base: base.clone(),
+                        annotated: annotated.clone(),
+                        annotations: mapping,
+                    },
+                });
+                continue;
+            }
+            let action_key = evidence_action_key(next, asset.id, cache.policy)?;
+            let action_cache = cache.cache.clone();
+            let cached = super::service::io(move || action_cache.load_verified(action_key)).await?;
+            if let Some(cached) = cached {
+                let usable = cached.renderer_version == cache.policy.renderer_version
+                    && cached.output_policy_version == cache.policy.output_policy_version
+                    && cached.annotated.is_some() == !mapping.is_empty();
+                if usable {
+                    result.bindings.push(ReviewEvidenceBinding {
+                        asset_version_id: asset.id,
+                        capability: EvidenceCapability::Image {
+                            base: cached.base,
+                            annotated: cached.annotated,
+                            annotations: mapping,
+                        },
+                    });
+                    continue;
+                }
+                let action_cache = cache.cache.clone();
+                super::service::io(move || action_cache.remove(action_key)).await?;
+            }
+        }
         if let Some(binding) = old {
-            if let EvidenceCapability::Image {
-                annotations: old_mapping,
-                base,
-                annotated,
-            } = &binding.capability
+            if cache.is_none()
+                && let EvidenceCapability::Image {
+                    annotations: old_mapping,
+                    base,
+                    annotated,
+                } = &binding.capability
             {
                 if old_mapping.len() == mapping.len()
                     && old_mapping.iter().zip(&mapping).all(|(a, b)| {
@@ -121,7 +222,7 @@ async fn prepare_inner(
                     });
                     continue;
                 }
-            } else {
+            } else if cache.is_none() {
                 result.bindings.push(binding.clone());
                 continue;
             }
@@ -144,9 +245,15 @@ async fn prepare_inner(
             let prepared = prepared_assets
                 .get(&asset.id)
                 .ok_or(ReviewWorkspaceError::PreviewRequired)?;
-            renderer
-                .capture_base(prepared.clone(), cancellation.clone())
-                .await?
+            if cache.is_some() {
+                renderer
+                    .capture_prewarmed_base(prepared.clone(), cancellation.clone())
+                    .await?
+            } else {
+                renderer
+                    .capture_base(prepared.clone(), cancellation.clone())
+                    .await?
+            }
         };
         if base.asset() != asset {
             return Err(crate::ReviewArtifactError::SourceChanged.into());
@@ -164,13 +271,22 @@ async fn prepare_inner(
         result.bindings.push(ReviewEvidenceBinding {
             asset_version_id: asset.id,
             capability: EvidenceCapability::Image {
-                base: rendered.base_ref,
-                annotated: rendered.annotated_ref,
+                base: rendered.base_ref.clone(),
+                annotated: rendered.annotated_ref.clone(),
                 annotations: rendered.annotations,
             },
         });
         result.files.extend_from_slice(rendered.staging.files());
         result.leases.push(rendered.staging);
+        if let Some(cache) = &cache {
+            result.cache_actions.push(CachedReviewEvidenceAction {
+                action_key: evidence_action_key(next, asset.id, cache.policy)?,
+                base: rendered.base_ref,
+                annotated: rendered.annotated_ref,
+                renderer_version: cache.policy.renderer_version,
+                output_policy_version: cache.policy.output_policy_version,
+            });
+        }
     }
     Ok(result)
 }

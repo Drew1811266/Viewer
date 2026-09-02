@@ -1,7 +1,7 @@
 use std::{
     ffi::CString,
     fs::{self, File, OpenOptions},
-    io::{Read, Write},
+    io::Write,
     os::{
         fd::{AsRawFd, FromRawFd},
         unix::fs::{MetadataExt, OpenOptionsExt},
@@ -76,44 +76,18 @@ impl Scratch {
         self.verify()?;
         Ok(self.path.join(name))
     }
-    pub fn read(&self, name: &str, limit: u64) -> Result<Vec<u8>, Error> {
+    pub fn encode(
+        &self,
+        name: &str,
+        image: &objc2_core_graphics::CGImage,
+        limit: u64,
+    ) -> Result<super::super::encode::EncodedPng, Error> {
         self.verify()?;
-        let mut file = open_at(&self.directory, &leaf(name)?, libc::O_RDONLY)?;
-        let before = file.metadata().map_err(|_| Error::Unavailable)?;
-        if !before.is_file() || before.nlink() != 1 {
-            return Err(Error::UnsafeSource);
-        }
-        if before.len() > limit {
-            return Err(Error::LimitExceeded);
-        }
-        let mut bytes = Vec::new();
-        (&mut file)
-            .take(limit + 1)
-            .read_to_end(&mut bytes)
-            .map_err(|_| Error::Unavailable)?;
-        if bytes.len() as u64 > limit {
-            return Err(Error::LimitExceeded);
-        }
-        if before.len() != bytes.len() as u64
-            || !same_contents(&before, &file.metadata().map_err(|_| Error::Unavailable)?)
-        {
-            return Err(Error::Unavailable);
-        }
-        verify_path(&self.path.join(name), &file, false)?;
-        self.verify()?;
-        Ok(bytes)
-    }
-    pub fn encode(&self, name: &str, image: &objc2_core_graphics::CGImage) -> Result<(), Error> {
-        self.verify()?;
-        let _ = leaf(name)?;
-        let path = self.path.join(name);
-        // encode_png is only given a fresh name inside this owned 0700 directory.
-        if fs::symlink_metadata(&path).is_ok() {
-            return Err(Error::UnsafeSource);
-        }
-        super::super::encode::encode_png(image, &path)
+        let file = self.create(name)?;
+        let encoded = super::super::encode::encode_png_streaming(image, file, limit)
             .map_err(super::super::review_annotation::map_image_error)?;
-        self.verify()
+        self.verify()?;
+        Ok(encoded)
     }
 }
 impl Drop for Scratch {

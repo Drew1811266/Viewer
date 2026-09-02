@@ -4,7 +4,11 @@ use crate::portable::{PortablePersistenceMode, PortableProjectMetadata};
 use rusqlite::{
     Connection, ErrorCode, OptionalExtension, Transaction, TransactionBehavior, params,
 };
-use std::{path::Path, str::FromStr, sync::Mutex};
+use std::{
+    path::{Path, PathBuf},
+    str::FromStr,
+    sync::Mutex,
+};
 use viewer_application::{
     ProjectAccess,
     review_workspace::{
@@ -21,6 +25,7 @@ pub struct SqliteContinuousReviewAuthoringStore {
     connection: Mutex<Connection>,
     pub(super) project_id: ProjectId,
     pub(super) writable: bool,
+    pub(super) project_root: PathBuf,
     persistence_mode: PortablePersistenceMode,
 }
 
@@ -59,6 +64,7 @@ impl SqliteContinuousReviewAuthoringStore {
             connection: Mutex::new(connection),
             project_id,
             writable,
+            project_root: project_root.to_path_buf(),
             persistence_mode,
         })
     }

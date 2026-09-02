@@ -40,9 +40,13 @@ impl ContinuousReviewService {
                     .get(&asset.id)
                     .cloned()
                     .ok_or(ReviewWorkspaceError::PreviewRequired)?;
+                self.evidence
+                    .prewarm_base_evidence(prepared.clone(), cancellation.clone())
+                    .await?;
+                check_cancelled(&cancellation)?;
                 let image = self
                     .evidence
-                    .capture_base(prepared, cancellation.clone())
+                    .capture_prewarmed_base(prepared, cancellation.clone())
                     .await?;
                 check_cancelled(&cancellation)?;
                 if image.asset() != &asset || image.role() != EvidenceRole::Base {

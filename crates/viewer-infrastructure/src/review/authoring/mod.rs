@@ -1,5 +1,6 @@
 mod bootstrap;
 mod codec;
+mod evidence_cache;
 mod queue;
 mod store;
 

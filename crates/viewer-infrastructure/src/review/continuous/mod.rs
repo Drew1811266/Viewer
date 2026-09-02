@@ -24,6 +24,7 @@ mod usage_import;
 mod usage_source;
 
 pub use command::ContinuousReviewCommandCodec;
+pub(in crate::review) use evidence::verify_cached_evidence;
 pub use faults::{NoReviewCommitFaults, ReviewCommitFaultInjector, ReviewCommitFaultPoint};
 pub use reader::run_review_reader;
 pub(super) use repository::ContinuousReviewRepository;

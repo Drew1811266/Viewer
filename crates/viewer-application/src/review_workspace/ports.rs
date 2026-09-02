@@ -265,6 +265,15 @@ pub trait ContinuousReviewRepositoryPort: Send + Sync {
         &self,
         stream_id: ReviewStreamId,
     ) -> Result<Option<StoredContinuousSnapshot>, ReviewCommitError>;
+    /// Internal publication reads may reuse evidence already named by the verified public state.
+    /// Implementations can avoid reopening every immutable PNG while still verifying the state
+    /// document, identity graph, and all newly introduced evidence during commit.
+    fn load_current_for_materialization(
+        &self,
+        stream_id: ReviewStreamId,
+    ) -> Result<Option<StoredContinuousSnapshot>, ReviewCommitError> {
+        self.load_current(stream_id)
+    }
     fn load_snapshot(
         &self,
         stream_id: ReviewStreamId,

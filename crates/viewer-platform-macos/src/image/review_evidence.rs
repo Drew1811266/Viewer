@@ -11,14 +11,82 @@ use async_trait::async_trait;
 use objc2_core_graphics::CGImage;
 use scratch::{Root, Scratch};
 use source::CapturedSource;
-use std::{path::Path, sync::Arc};
+use std::{
+    collections::{HashMap, VecDeque},
+    path::Path,
+    sync::{Arc, Mutex, OnceLock},
+};
+use tokio::sync::Semaphore;
 use viewer_application::{
     MAX_REVIEW_ARTIFACT_BYTES, NumberedImageAnnotation, PreparedReviewAsset,
     REVIEW_ANNOTATION_MAX_EDGE, ReviewArtifactError as Error, ReviewTaskCancellation,
     review_evidence::*,
     review_workspace::{EvidenceAnnotation, EvidenceRef, PreparedEvidenceFile},
 };
-use viewer_domain::{image::ImageFormat, review::ReviewMedia};
+use viewer_domain::{AssetVersionId, image::ImageFormat, review::ReviewMedia};
+
+const MAX_PREWARMED_BASES: usize = 128;
+
+fn image_encode_permits() -> Arc<Semaphore> {
+    static PERMITS: OnceLock<Arc<Semaphore>> = OnceLock::new();
+    PERMITS.get_or_init(|| Arc::new(Semaphore::new(2))).clone()
+}
+
+#[derive(Default)]
+struct BaseEvidenceCache {
+    entries: HashMap<AssetVersionId, BoundReviewImage>,
+    order: VecDeque<AssetVersionId>,
+    retained_bytes: u64,
+}
+
+impl BaseEvidenceCache {
+    fn get(&mut self, asset: &PreparedReviewAsset, limit: u64) -> Option<BoundReviewImage> {
+        let id = asset.asset.id;
+        let image = self
+            .entries
+            .get(&id)
+            .filter(|image| image.asset() == &asset.asset && image.reference().size_bytes <= limit)
+            .cloned();
+        if image.is_some() {
+            self.order.retain(|candidate| *candidate != id);
+            self.order.push_back(id);
+        } else if self.entries.contains_key(&id) {
+            self.remove(id);
+        }
+        image
+    }
+
+    fn insert(&mut self, image: BoundReviewImage) {
+        let id = image.asset().id;
+        self.remove(id);
+        self.retained_bytes = self
+            .retained_bytes
+            .saturating_add(image.reference().size_bytes);
+        self.entries.insert(id, image);
+        self.order.push_back(id);
+        while self.entries.len() > MAX_PREWARMED_BASES
+            || self.retained_bytes > MAX_REVIEW_ARTIFACT_BYTES
+        {
+            let Some(oldest) = self.order.pop_front() else {
+                break;
+            };
+            if let Some(removed) = self.entries.remove(&oldest) {
+                self.retained_bytes = self
+                    .retained_bytes
+                    .saturating_sub(removed.reference().size_bytes);
+            }
+        }
+    }
+
+    fn remove(&mut self, id: AssetVersionId) {
+        self.order.retain(|candidate| *candidate != id);
+        if let Some(removed) = self.entries.remove(&id) {
+            self.retained_bytes = self
+                .retained_bytes
+                .saturating_sub(removed.reference().size_bytes);
+        }
+    }
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum Checkpoint {
@@ -35,6 +103,7 @@ pub struct MacReviewEvidenceRenderer {
     root: Arc<Root>,
     limit: u64,
     hook: Hook,
+    base_cache: Mutex<BaseEvidenceCache>,
 }
 impl MacReviewEvidenceRenderer {
     pub fn new(root: &Path) -> Result<Self, Error> {
@@ -42,7 +111,49 @@ impl MacReviewEvidenceRenderer {
             root: Root::open(root)?,
             limit: MAX_REVIEW_ARTIFACT_BYTES,
             hook: Arc::new(|_| {}),
+            base_cache: Mutex::new(BaseEvidenceCache::default()),
         })
+    }
+
+    fn cached_base(&self, asset: &PreparedReviewAsset) -> Result<Option<BoundReviewImage>, Error> {
+        self.base_cache
+            .lock()
+            .map_err(|_| Error::Unavailable)
+            .map(|mut cache| cache.get(asset, self.limit))
+    }
+
+    fn retain_base(&self, image: BoundReviewImage) -> Result<(), Error> {
+        self.base_cache
+            .lock()
+            .map_err(|_| Error::Unavailable)?
+            .insert(image);
+        Ok(())
+    }
+
+    async fn capture_fresh(
+        &self,
+        asset: PreparedReviewAsset,
+        cancellation: ReviewTaskCancellation,
+    ) -> Result<BoundReviewImage, Error> {
+        if cancellation.is_cancelled() {
+            return Err(Error::Cancelled);
+        }
+        let permit = image_encode_permits()
+            .acquire_owned()
+            .await
+            .map_err(|_| Error::Unavailable)?;
+        if cancellation.is_cancelled() {
+            return Err(Error::Cancelled);
+        }
+        let root = self.root.clone();
+        let hook = self.hook.clone();
+        let limit = self.limit;
+        tokio::task::spawn_blocking(move || {
+            let _permit = permit;
+            Self::capture(root, limit, hook, asset, cancellation)
+        })
+        .await
+        .map_err(|_| Error::Unavailable)?
     }
     fn capture(
         root: Arc<Root>,
@@ -78,13 +189,12 @@ impl MacReviewEvidenceRenderer {
             .map_err(map_image_error)?;
         check(&cancellation, &hook, Checkpoint::CaptureDecoded)?;
         source.verify(&asset)?;
-        scratch.encode("base.png", &image)?;
-        let png = scratch.read("base.png", limit)?;
+        let png = scratch.encode("base.png", &image, limit)?;
         let reference = reference(&image, &png)?;
         // Encoding can take time too; refuse a source changed during that interval.
         source.verify(&asset)?;
         check(&cancellation, &hook, Checkpoint::Return)?;
-        BoundReviewImage::from_verified_png(asset.asset, reference, EvidenceRole::Base, png)
+        BoundReviewImage::from_verified_png(asset.asset, reference, EvidenceRole::Base, png.bytes)
     }
     fn render_sync(
         root: Arc<Root>,
@@ -129,8 +239,7 @@ impl MacReviewEvidenceRenderer {
                 .collect::<Vec<_>>();
             let rendered = draw_annotations(&image, base_ref.width, base_ref.height, &annotations)?;
             check(&request.cancellation, &hook, Checkpoint::RenderDrawn)?;
-            scratch.encode("annotated.png", &rendered)?;
-            let png = scratch.read("annotated.png", limit)?;
+            let png = scratch.encode("annotated.png", &rendered, limit)?;
             let reference = reference(&rendered, &png)?;
             files.push(PreparedEvidenceFile {
                 path: scratch.path.join("annotated.png"),
@@ -169,10 +278,10 @@ impl ReviewEvidenceStaging for Staging {
         &self.files
     }
 }
-fn reference(image: &CGImage, png: &[u8]) -> Result<EvidenceRef, Error> {
+fn reference(image: &CGImage, png: &super::encode::EncodedPng) -> Result<EvidenceRef, Error> {
     Ok(EvidenceRef {
-        blake3: *blake3::hash(png).as_bytes(),
-        size_bytes: png.len() as u64,
+        blake3: png.digest,
+        size_bytes: png.size_bytes,
         width: CGImage::width(Some(image))
             .try_into()
             .map_err(|_| Error::LimitExceeded)?,
@@ -195,25 +304,62 @@ fn check(
 }
 #[async_trait]
 impl ReviewEvidencePort for MacReviewEvidenceRenderer {
+    async fn prewarm_base_evidence(
+        &self,
+        asset: PreparedReviewAsset,
+        cancellation: ReviewTaskCancellation,
+    ) -> Result<(), Error> {
+        if cancellation.is_cancelled() {
+            return Err(Error::Cancelled);
+        }
+        if self.cached_base(&asset)?.is_none() {
+            let image = self.capture_fresh(asset, cancellation).await?;
+            self.retain_base(image)?;
+        }
+        Ok(())
+    }
+
+    async fn capture_prewarmed_base(
+        &self,
+        asset: PreparedReviewAsset,
+        cancellation: ReviewTaskCancellation,
+    ) -> Result<BoundReviewImage, Error> {
+        if cancellation.is_cancelled() {
+            return Err(Error::Cancelled);
+        }
+        if let Some(cached) = self.cached_base(&asset)? {
+            return Ok(cached);
+        }
+        self.capture_fresh(asset, cancellation).await
+    }
+
     async fn capture_base(
         &self,
         asset: PreparedReviewAsset,
         cancellation: ReviewTaskCancellation,
     ) -> Result<BoundReviewImage, Error> {
-        let root = self.root.clone();
-        let hook = self.hook.clone();
-        let limit = self.limit;
-        tokio::task::spawn_blocking(move || Self::capture(root, limit, hook, asset, cancellation))
-            .await
-            .map_err(|_| Error::Unavailable)?
+        self.capture_fresh(asset, cancellation).await
     }
     async fn render(&self, request: ReviewEvidenceRequest) -> Result<ReviewEvidenceResult, Error> {
+        if request.cancellation.is_cancelled() {
+            return Err(Error::Cancelled);
+        }
+        let permit = image_encode_permits()
+            .acquire_owned()
+            .await
+            .map_err(|_| Error::Unavailable)?;
+        if request.cancellation.is_cancelled() {
+            return Err(Error::Cancelled);
+        }
         let root = self.root.clone();
         let hook = self.hook.clone();
         let limit = self.limit;
-        tokio::task::spawn_blocking(move || Self::render_sync(root, limit, hook, request))
-            .await
-            .map_err(|_| Error::Unavailable)?
+        tokio::task::spawn_blocking(move || {
+            let _permit = permit;
+            Self::render_sync(root, limit, hook, request)
+        })
+        .await
+        .map_err(|_| Error::Unavailable)?
     }
 }
 

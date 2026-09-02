@@ -184,6 +184,26 @@ impl ReviewEvidenceResult {
 }
 #[async_trait]
 pub trait ReviewEvidencePort: Send + Sync {
+    /// Opportunistically retain the exact clean base that an interactive preview already
+    /// authorized. The default is deliberately a no-op so adapters without a bounded cache do
+    /// not decode the same image twice.
+    async fn prewarm_base_evidence(
+        &self,
+        _asset: PreparedReviewAsset,
+        _cancellation: ReviewTaskCancellation,
+    ) -> Result<(), ReviewArtifactError> {
+        Ok(())
+    }
+    /// Reuses a prewarmed exact base when the caller has just authorized or reopened the same
+    /// `PreparedReviewAsset`. General save paths must use `capture_base`, which independently
+    /// revalidates the live source.
+    async fn capture_prewarmed_base(
+        &self,
+        asset: PreparedReviewAsset,
+        cancellation: ReviewTaskCancellation,
+    ) -> Result<BoundReviewImage, ReviewArtifactError> {
+        self.capture_base(asset, cancellation).await
+    }
     async fn capture_base(
         &self,
         asset: PreparedReviewAsset,

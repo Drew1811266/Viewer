@@ -10,13 +10,25 @@ use super::{
 use std::{
     collections::HashMap,
     fs::File,
-    io::{self, Read, Seek, Write},
+    io::{self, Read, Write},
     os::unix::fs::MetadataExt,
 };
 use viewer_application::{
     MAX_REVIEW_ARTIFACT_BYTES,
-    review_workspace::{PreparedEvidenceFile, ReviewCommitError},
+    review_workspace::{EvidenceRef, PreparedEvidenceFile, ReviewCommitError},
 };
+
+pub(in crate::review) fn verify_cached_evidence(
+    project_root: &std::path::Path,
+    reference: &EvidenceRef,
+) -> Result<(), ReviewCommitError> {
+    let root = Directory::open_anchored(project_root)?;
+    let directory = root
+        .required_child(".viewer")?
+        .required_child("reviews")?
+        .required_child("evidence")?;
+    verify_file(&directory, &reference.clone().into())
+}
 
 fn references(bindings: &[v3::EvidenceBinding]) -> HashMap<[u8; 32], &v3::EvidenceRef> {
     let mut refs = HashMap::new();
@@ -32,6 +44,18 @@ fn references(bindings: &[v3::EvidenceBinding]) -> HashMap<[u8; 32], &v3::Eviden
         }
     }
     refs
+}
+
+pub(super) fn reusable_references(
+    previous: Option<&[v3::EvidenceBinding]>,
+    next: &[v3::EvidenceBinding],
+) -> HashMap<[u8; 32], v3::EvidenceRef> {
+    let previous = previous.map(references).unwrap_or_default();
+    references(next)
+        .into_iter()
+        .filter(|(digest, reference)| previous.get(digest).copied() == Some(*reference))
+        .map(|(digest, reference)| (digest, reference.clone()))
+        .collect()
 }
 
 fn name(reference: &v3::EvidenceRef) -> String {
@@ -71,6 +95,7 @@ pub(super) fn install(
     view: &View,
     bindings: &[v3::EvidenceBinding],
     staged: &[PreparedEvidenceFile],
+    reusable: &HashMap<[u8; 32], v3::EvidenceRef>,
 ) -> Result<(), ReviewCommitError> {
     let references = references(bindings);
     let mut sources = HashMap::new();
@@ -90,6 +115,9 @@ pub(super) fn install(
         .child("evidence", true)?
         .ok_or(ReviewCommitError::Integrity)?;
     for reference in references.values() {
+        if reusable.get(&reference.blake3) == Some(*reference) {
+            continue;
+        }
         if directory.regular(&name(reference), false)?.is_some() {
             verify_file(&directory, reference)?;
             continue;
@@ -106,16 +134,13 @@ pub(super) fn install(
         let mut input = parent
             .regular(leaf, false)?
             .ok_or(ReviewCommitError::Integrity)?;
-        copy_png(&mut input, reference, &mut io::sink())?;
-        input.rewind().map_err(map_io)?;
         let publication = atomic_create_once_with(&directory.file, &name(reference), |output| {
             copy_png(&mut input, reference, output)
                 .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))
         });
         match publication {
-            Ok(()) | Err(AtomicCreateOnceError::AlreadyExists) => {
-                verify_file(&directory, reference)?
-            }
+            Ok(()) => {}
+            Err(AtomicCreateOnceError::AlreadyExists) => verify_file(&directory, reference)?,
             Err(AtomicCreateOnceError::Io(error)) => return Err(map_io(error)),
         }
         parent.verify()?;

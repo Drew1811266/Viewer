@@ -341,6 +341,7 @@ async fn transient_renderer_failure_uses_bounded_retry_then_blocks() {
         ReviewMaterializationOutcome::Retrying {
             target: target.head,
             attempt_count: 1,
+            next_attempt_at_ms: 1_100,
         }
     );
     assert_eq!(

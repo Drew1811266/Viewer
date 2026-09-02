@@ -13,7 +13,7 @@ struct View {
     stream_id: ReviewStreamId,
     #[serde(with = "wire")]
     history_selectors: Vec<viewer_application::review_evidence::HistorySelector>,
-    #[serde(serialize_with = "serialize_legacy_current")]
+    #[serde(with = "wire")]
     current: Option<ReviewWorkspaceCurrent>,
     #[serde(with = "wire")]
     source_checks: Vec<SourceCheck>,
@@ -55,6 +55,164 @@ struct Receipt {
     snapshot: SnapshotRef,
 }
 remote_output!(ReviewCommitReceipt, Receipt);
+
+#[derive(Serialize)]
+#[serde(remote = "ReviewAuthoringHead", rename_all = "camelCase")]
+struct AuthoringHead {
+    #[serde(with = "wire")]
+    sequence: u64,
+    #[serde(with = "wire")]
+    snapshot_id: ReviewSnapshotId,
+}
+remote_output!(ReviewAuthoringHead, AuthoringHead);
+
+#[derive(Serialize)]
+#[serde(remote = "ReviewAuthoringReceipt", rename_all = "camelCase")]
+struct AuthoringReceipt {
+    #[serde(with = "wire")]
+    command_id: ReviewCommandId,
+    #[serde(with = "wire")]
+    payload_digest: [u8; 32],
+    #[serde(with = "wire")]
+    head: ReviewAuthoringHead,
+}
+remote_output!(ReviewAuthoringReceipt, AuthoringReceipt);
+
+#[derive(Serialize)]
+#[serde(remote = "ReviewBarrierKind", rename_all = "snake_case")]
+enum Barrier {
+    None,
+    Archive,
+    Restore,
+    Migration,
+}
+remote_output!(ReviewBarrierKind, Barrier);
+
+#[derive(Serialize)]
+#[serde(remote = "ArchiveCheckpoint", rename_all = "camelCase")]
+struct Checkpoint {
+    #[serde(with = "wire")]
+    project_id: ProjectId,
+    #[serde(with = "wire")]
+    stream_id: ReviewStreamId,
+    #[serde(with = "wire")]
+    archive_id: ReviewArchiveId,
+    #[serde(with = "wire")]
+    created_at_ms: i64,
+    #[serde(with = "wire")]
+    before: SnapshotRef,
+    #[serde(with = "wire")]
+    groups: Vec<ArchiveGroup>,
+    #[serde(with = "wire")]
+    removed: Vec<TargetVersionKey>,
+    #[serde(with = "wire")]
+    retained: Vec<ArchiveRetention>,
+}
+remote_output!(ArchiveCheckpoint, Checkpoint);
+
+#[derive(Serialize)]
+#[serde(remote = "StoredAuthoringState", rename_all = "camelCase")]
+struct AuthoringState {
+    #[serde(with = "wire")]
+    head: ReviewAuthoringHead,
+    #[serde(with = "wire")]
+    production: Option<ProductionScope>,
+    #[serde(with = "wire")]
+    state: ContinuousReviewState,
+    #[serde(with = "wire")]
+    command_id: ReviewCommandId,
+    #[serde(with = "wire")]
+    payload_digest: [u8; 32],
+    #[serde(with = "wire")]
+    generated: GeneratedReviewIds,
+    #[serde(with = "wire")]
+    changes: Vec<ReviewChange>,
+    #[serde(with = "wire")]
+    archives: Vec<ArchiveCheckpoint>,
+    #[serde(with = "wire")]
+    adopted_usage: Vec<ReviewUsageDeclaration>,
+    #[serde(with = "wire")]
+    barrier: ReviewBarrierKind,
+}
+remote_output!(StoredAuthoringState, AuthoringState);
+
+#[derive(Serialize)]
+#[serde(remote = "ReviewWorkspaceCurrent", rename_all = "camelCase")]
+struct AuthoringCurrent {
+    #[serde(with = "wire")]
+    authoring: StoredAuthoringState,
+    #[serde(with = "wire")]
+    published_ref: Option<SnapshotRef>,
+    #[serde(with = "wire")]
+    evidence: Vec<ReviewEvidenceBinding>,
+}
+remote_output!(ReviewWorkspaceCurrent, AuthoringCurrent);
+
+#[derive(Serialize)]
+#[serde(remote = "ReviewWorkspacePatch", rename_all = "camelCase")]
+struct Patch {
+    #[serde(with = "wire")]
+    basis_snapshot_id: Option<ReviewSnapshotId>,
+    #[serde(with = "wire")]
+    head: ReviewAuthoringHead,
+    #[serde(with = "wire")]
+    upsert_assets: Vec<AssetVersion>,
+    #[serde(with = "wire")]
+    remove_asset_version_ids: Vec<AssetVersionId>,
+    #[serde(with = "wire")]
+    upsert_feedback: Vec<VersionedFeedback>,
+    #[serde(with = "wire")]
+    remove_feedback_ids: Vec<FeedbackId>,
+    #[serde(with = "wire")]
+    projection: CurrentReviewProjection,
+    #[serde(with = "wire")]
+    history_selectors: Option<Vec<viewer_application::review_evidence::HistorySelector>>,
+}
+remote_output!(ReviewWorkspacePatch, Patch);
+
+#[derive(Serialize)]
+#[serde(remote = "ReviewAuthoringApplyResult", rename_all = "camelCase")]
+struct AuthoringApply {
+    #[serde(with = "wire")]
+    receipt: ReviewAuthoringReceipt,
+    #[serde(with = "wire")]
+    patch: ReviewWorkspacePatch,
+    #[serde(with = "wire")]
+    publication: ReviewPublicationStatus,
+}
+remote_output!(ReviewAuthoringApplyResult, AuthoringApply);
+
+#[derive(Serialize)]
+#[serde(
+    remote = "ReviewPublicationStatus",
+    tag = "kind",
+    rename_all = "snake_case",
+    rename_all_fields = "camelCase"
+)]
+enum PublicationStatus {
+    Ready,
+    Pending {
+        pending_revisions: u32,
+    },
+    Blocked {
+        #[serde(with = "wire")]
+        code: ReviewMaterializationFailure,
+    },
+}
+remote_output!(ReviewPublicationStatus, PublicationStatus);
+
+#[derive(Serialize)]
+#[serde(remote = "ReviewMaterializationFailure", rename_all = "snake_case")]
+enum MaterializationFailure {
+    SourceChanged,
+    SourceMissing,
+    SourceUnreadable,
+    RenderFailed,
+    Integrity,
+    LimitExceeded,
+    Io,
+}
+remote_output!(ReviewMaterializationFailure, MaterializationFailure);
 #[derive(Serialize)]
 #[serde(remote = "StoredContinuousSnapshot", rename_all = "camelCase")]
 struct Stored {
@@ -75,30 +233,6 @@ struct Stored {
 }
 remote_output!(StoredContinuousSnapshot, Stored);
 
-fn serialize_legacy_current<S: serde::Serializer>(
-    current: &Option<ReviewWorkspaceCurrent>,
-    serializer: S,
-) -> Result<S::Ok, S::Error> {
-    let current = current
-        .as_ref()
-        .map(|current| {
-            Ok(StoredContinuousSnapshot {
-                reference: current.published_ref.ok_or_else(|| {
-                    serde::ser::Error::custom(
-                        "synchronous review response is missing its published reference",
-                    )
-                })?,
-                production: current.authoring.production.clone(),
-                state: current.authoring.state.clone(),
-                command_id: current.authoring.command_id,
-                payload_digest: current.authoring.payload_digest,
-                changes: current.authoring.changes.clone(),
-                evidence: current.evidence.clone(),
-            })
-        })
-        .transpose()?;
-    wire::serialize(&current, serializer)
-}
 #[derive(Serialize)]
 #[serde(remote = "ContinuousReviewState", rename_all = "camelCase")]
 struct State {

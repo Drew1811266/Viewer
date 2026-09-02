@@ -386,6 +386,7 @@ impl DesktopRuntime {
                 changes: review_changes.clone(),
                 clock: self.clock.clone(),
                 staging: cache.review_artifact_root(),
+                pipeline: self.review_save_pipeline,
             },
         ));
         *session = Some(DesktopSession {
@@ -422,8 +423,8 @@ impl DesktopRuntime {
         // guarded by this token must not start after close has taken ownership.
         self.coordinator.cancel_session(session.active.session_id);
         self.active_image_session.set(None);
-        session.review_workspace.tasks.revoke();
-        session.review_workspace.tasks.close().await;
+        session.review_workspace.revoke();
+        session.review_workspace.close().await;
         session.review.shutdown().await;
         session.review_changes.clear();
         let video_lifecycle = self

@@ -192,7 +192,8 @@ async fn review_workspace_project_close_revokes_previews_and_waits_for_renderer_
             .set(Arc::new(Initialized {
                 service,
                 provider,
-                context
+                context,
+                materializer: None,
             }))
             .is_ok()
     );

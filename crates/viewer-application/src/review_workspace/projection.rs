@@ -13,8 +13,9 @@ impl ContinuousReviewService {
             return Err(ReviewWorkspaceError::WrongContext);
         }
         let provider = self.provider.clone();
-        super::service::io(move || {
-            let store = provider.open_authoring_reader()?;
+        let lookup_provider = provider.clone();
+        let loaded = super::service::io(move || {
+            let store = lookup_provider.open_authoring_reader()?;
             let heads = store.load_heads(stream)?;
             let Some(authoring) = store.load_current(stream)? else {
                 return Ok(None);
@@ -22,26 +23,87 @@ impl ContinuousReviewService {
             if heads.authoring != Some(authoring.head) {
                 return Err(ReviewCommitError::Integrity);
             }
-            let published_ref = heads
-                .published
-                .map(|head| {
-                    let published = store.load_snapshot(stream, head.sequence)?;
-                    if published.head != head {
-                        return Err(ReviewCommitError::Integrity);
-                    }
-                    Ok(SnapshotRef {
-                        snapshot_id: head.snapshot_id,
-                        blake3: published.payload_digest,
-                    })
-                })
-                .transpose()?;
-            Ok(Some(ReviewWorkspaceCurrent {
-                authoring,
-                published_ref,
-                evidence: vec![],
-            }))
+            Ok(Some((authoring, heads)))
         })
-        .await
+        .await?;
+        let Some((authoring, heads)) = loaded else {
+            return Ok(None);
+        };
+        let (published_ref, evidence) = if let Some(published_head) = heads.published {
+            let provider = provider.clone();
+            super::service::io(move || {
+                let current = provider
+                    .open_reader()?
+                    .load_current_for_materialization(stream)?
+                    .ok_or(ReviewCommitError::Integrity)?;
+                if current.state.snapshot_id != published_head.snapshot_id {
+                    return Err(ReviewCommitError::Integrity);
+                }
+                Ok((Some(current.reference), current.evidence))
+            })
+            .await?
+        } else {
+            (None, vec![])
+        };
+        Ok(Some(ReviewWorkspaceCurrent {
+            authoring,
+            published_ref,
+            evidence,
+        }))
+    }
+
+    /// UI projection for the authoring/outbox pipeline. It reads the logical head even while the
+    /// external v3 reader is deliberately gated as `publication_pending`.
+    pub async fn view_authoring_with_cancellation(
+        &self,
+        stream: viewer_domain::ReviewStreamId,
+        cancellation: ReviewTaskCancellation,
+    ) -> Result<ReviewWorkspaceView, ReviewWorkspaceError> {
+        super::preview::check_cancelled(&cancellation)?;
+        if self.inspect_migration().await?.is_some() {
+            return self.view_with_cancellation(stream, cancellation).await;
+        }
+        let current = self.view_authoring_current(stream).await?;
+        let provider = self.provider.clone();
+        let (history_selectors, recovery) = super::service::io(move || {
+            let reader = provider.open_reader()?;
+            Ok((
+                reader.load_history_selectors(stream)?,
+                reader.load_unresolved_recovery(stream)?,
+            ))
+        })
+        .await?;
+        let (source_checks, projection) = if let Some(current) = &current {
+            let checks = self
+                .assets
+                .check_sources(&current.authoring.state.assets, cancellation.clone())
+                .await?;
+            let projection = project_current(&current.authoring.state, &checks)?;
+            (checks, projection)
+        } else {
+            (
+                vec![],
+                CurrentReviewProjection {
+                    actionable: vec![],
+                    needs_confirmation: vec![],
+                },
+            )
+        };
+        super::preview::check_cancelled(&cancellation)?;
+        Ok(ReviewWorkspaceView {
+            stream_id: stream,
+            history_selectors,
+            current,
+            source_checks,
+            projection,
+            recovery,
+            migration: None,
+            capabilities: ReviewWorkspaceCapabilities {
+                continuous_editing: true,
+                usage_import: self.usage_importer.is_some(),
+                migration: false,
+            },
+        })
     }
 
     pub async fn view(

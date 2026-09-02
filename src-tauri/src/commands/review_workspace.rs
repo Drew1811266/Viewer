@@ -54,18 +54,28 @@ pub async fn prepare_review_command(
 pub async fn apply_review_command(
     runtime: State<'_, Arc<DesktopRuntime>>,
     request: ApplyReviewCommandRequestDto,
-) -> Result<ReviewApplyResultDto, ReviewWorkspaceErrorDto> {
+) -> Result<ReviewAuthoringApplyResultDto, ReviewWorkspaceErrorDto> {
     runtime
-        .apply_review_command(
+        .apply_review_authoring_command(
             request.session_id,
             Generation::new(request.generation),
             request.envelope,
         )
         .await
-        .and_then(|value| {
-            let receipt = value.receipt;
-            review_response(value.into(), Some(receipt))
-        })
+        .map(Into::into)
+        .and_then(|value| review_response(value, None))
+}
+
+#[tauri::command]
+pub async fn get_review_publication_status(
+    runtime: State<'_, Arc<DesktopRuntime>>,
+    request: ReviewWorkspaceSessionRequestDto,
+) -> Result<ReviewPublicationStatusDto, ReviewWorkspaceErrorDto> {
+    runtime
+        .get_review_publication_status(request.session_id, Generation::new(request.generation))
+        .await
+        .map(Into::into)
+        .and_then(|value| review_response(value, None))
 }
 #[tauri::command]
 pub async fn preview_review_archive(

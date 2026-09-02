@@ -1,5 +1,6 @@
 use super::{
     check_cancelled,
+    materialization::ReviewMaterializationRuntime,
     tasks::{ReviewWorkspaceTasks, TaskError},
 };
 use crate::dto::review_workspace::{
@@ -20,10 +21,11 @@ use viewer_infrastructure::{
     video_probe::VideoMetadataProbe,
 };
 
-// Bootstrap must switch on in the same release step as the authoring command path. Enabling it
-// while the legacy synchronous writer is still active would allow that writer to advance v3
-// without advancing the authoring head.
-const ASYNC_REVIEW_SAVE_PIPELINE_ENABLED: bool = false;
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ReviewSavePipeline {
+    SynchronousV3,
+    AuthoringOutbox,
+}
 
 #[cfg(test)]
 mod tests;
@@ -39,17 +41,20 @@ pub(in crate::state) struct ReviewWorkspaceConfig {
     pub changes: ReviewChangeLedger,
     pub clock: Arc<dyn ClockPort>,
     pub staging: PathBuf,
+    pub pipeline: ReviewSavePipeline,
 }
 pub(super) struct Initialized {
     pub service: ContinuousReviewService,
     pub provider: Arc<ProjectReviewRepositoryProvider>,
     pub context: ReviewWorkspaceContext,
+    pub materializer: Option<Arc<ReviewMaterializationService>>,
 }
 pub(in crate::state) struct ReviewWorkspaceSession {
     pub tasks: Arc<ReviewWorkspaceTasks>,
     pub config: ReviewWorkspaceConfig,
     initialized: OnceCell<Arc<Initialized>>,
     gate: Mutex<()>,
+    materialization: ReviewMaterializationRuntime,
 }
 impl ReviewWorkspaceSession {
     /// Pure session registration: legacy project open does not initialize or migrate v3 storage.
@@ -59,6 +64,7 @@ impl ReviewWorkspaceSession {
             config,
             initialized: OnceCell::new(),
             gate: Mutex::new(()),
+            materialization: ReviewMaterializationRuntime::default(),
         }
     }
     pub(super) async fn run<
@@ -108,6 +114,12 @@ impl ReviewWorkspaceSession {
                     })
                     .await?
                     .clone();
+                if let Some(materializer) = &initialized.materializer {
+                    owner
+                        .materialization
+                        .start(materializer.clone(), owner.config.clock.clone())
+                        .await;
+                }
                 if !reconcile_commit {
                     check_cancelled(&cancel)?;
                 }
@@ -121,6 +133,21 @@ impl ReviewWorkspaceSession {
                     TaskError::WorkerFailed => Code::Internal,
                 })
             })?
+    }
+
+    pub fn wake_materializer(&self) {
+        self.materialization.wake();
+    }
+
+    pub fn revoke(&self) {
+        self.tasks.revoke();
+        self.materialization.revoke();
+    }
+
+    pub async fn close(&self) {
+        self.revoke();
+        self.tasks.close().await;
+        self.materialization.close().await;
     }
 }
 
@@ -138,7 +165,9 @@ fn initialize(config: ReviewWorkspaceConfig) -> Result<Arc<Initialized>, Error> 
         stream_id: stream,
         production: None,
     };
-    if ASYNC_REVIEW_SAVE_PIPELINE_ENABLED && config.access == ProjectAccess::ReadWrite {
+    if config.pipeline == ReviewSavePipeline::AuthoringOutbox
+        && config.access == ProjectAccess::ReadWrite
+    {
         provider
             .bootstrap_authoring(stream)
             .map_err(ReviewWorkspaceError::from)?;
@@ -165,16 +194,41 @@ fn initialize(config: ReviewWorkspaceConfig) -> Result<Arc<Initialized>, Error> 
     let service = ContinuousReviewService::new(
         context.clone(),
         provider.clone(),
-        assets,
-        evidence,
+        assets.clone(),
+        evidence.clone(),
         Arc::new(ContinuousReviewCommandCodec),
-        config.clock,
+        config.clock.clone(),
     )
     .with_usage_importer(importer);
+    let materializer = if config.pipeline == ReviewSavePipeline::AuthoringOutbox
+        && config.access == ProjectAccess::ReadWrite
+    {
+        let store = provider
+            .authoring_writer()
+            .map_err(ReviewWorkspaceError::from)?;
+        store
+            .requeue_expired(config.clock.unix_millis())
+            .map_err(ReviewWorkspaceError::from)?;
+        Some(Arc::new(ReviewMaterializationService::new(
+            store.clone(),
+            Arc::new(ContinuousReviewPublication::new_with_cache(
+                stream,
+                provider.clone(),
+                assets,
+                evidence,
+                store,
+                CURRENT_REVIEW_EVIDENCE_ACTION_POLICY,
+            )),
+            config.clock.clone(),
+        )))
+    } else {
+        None
+    };
     Ok(Arc::new(Initialized {
         service,
         provider,
         context,
+        materializer,
     }))
 }
 

@@ -42,6 +42,7 @@ pub enum ReviewMaterializationOutcome {
     Retrying {
         target: ReviewAuthoringHead,
         attempt_count: u32,
+        next_attempt_at_ms: i64,
     },
     Blocked {
         target: ReviewAuthoringHead,
@@ -541,6 +542,7 @@ impl ReviewMaterializationService {
         Ok(ReviewMaterializationOutcome::Retrying {
             target: claim.target.head,
             attempt_count: claim.attempt_count,
+            next_attempt_at_ms,
         })
     }
 }

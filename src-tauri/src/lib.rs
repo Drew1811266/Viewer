@@ -252,6 +252,7 @@ pub fn run() {
             commands::review_workspace::prepare_review_assets,
             commands::review_workspace::prepare_review_command,
             commands::review_workspace::apply_review_command,
+            commands::review_workspace::get_review_publication_status,
             commands::review_workspace::preview_review_archive,
             commands::review_workspace::preview_review_restore,
             commands::review_workspace::get_review_history,

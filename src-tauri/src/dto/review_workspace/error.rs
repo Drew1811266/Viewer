@@ -44,6 +44,7 @@ pub struct ReviewWorkspaceErrorDto {
     pub message: String,
     pub retryable: bool,
     pub committed_receipt: Option<Box<ReviewWire<ReviewCommitReceipt>>>,
+    pub committed_authoring_receipt: Option<Box<ReviewWire<ReviewAuthoringReceipt>>>,
 }
 impl ReviewWorkspaceErrorDto {
     pub fn new(code: ReviewWorkspaceErrorCode) -> Self {
@@ -68,6 +69,13 @@ impl ReviewWorkspaceErrorDto {
                 Cancelled | Busy | LeaseBusy | Io | OutcomeUnknown | CommittedViewUnavailable
             ),
             committed_receipt: None,
+            committed_authoring_receipt: None,
+        }
+    }
+    pub fn stale_with_authoring_receipt(receipt: Option<ReviewAuthoringReceipt>) -> Self {
+        Self {
+            committed_authoring_receipt: receipt.map(|value| Box::new(value.into())),
+            ..Self::new(ReviewWorkspaceErrorCode::StaleSession)
         }
     }
     pub fn stale_with_receipt(receipt: Option<ReviewCommitReceipt>) -> Self {
@@ -87,9 +95,11 @@ impl From<ReviewWorkspaceError> for ReviewWorkspaceErrorDto {
                     ..Self::new(Code::CommittedViewUnavailable)
                 };
             }
-            // The async authoring route remains gated until its dedicated receipt DTO lands.
-            ReviewWorkspaceError::CommittedAuthoringPatchUnavailable(_) => {
-                Code::CommittedViewUnavailable
+            ReviewWorkspaceError::CommittedAuthoringPatchUnavailable(receipt) => {
+                return Self {
+                    committed_authoring_receipt: Some(Box::new(receipt.into())),
+                    ..Self::new(Code::CommittedViewUnavailable)
+                };
             }
             ReviewWorkspaceError::Repository(e) => match e {
                 ReviewCommitError::MigrationRequired => Code::MigrationRequired,

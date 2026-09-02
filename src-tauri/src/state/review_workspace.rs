@@ -1,3 +1,4 @@
+mod materialization;
 mod previews;
 mod session;
 mod tasks;
@@ -5,6 +6,7 @@ use super::*;
 use crate::dto::review_workspace::{
     ReviewWorkspaceErrorCode as Code, ReviewWorkspaceErrorDto as Error,
 };
+pub use session::ReviewSavePipeline;
 pub(super) use session::{ReviewWorkspaceConfig, ReviewWorkspaceSession};
 use viewer_application::{ReviewTaskCancellation, review_workspace::*};
 use viewer_domain::{ReviewCommandId, ReviewSnapshotId};
@@ -60,12 +62,21 @@ impl DesktopRuntime {
     ) -> Result<ReviewWorkspaceView, Error> {
         let session = self.continuous_session(id, generation, false).await?;
         let writable = session.config.access == ProjectAccess::ReadWrite;
+        let pipeline = session.config.pipeline;
         let result = session
             .run(move |b, cancel| async move {
-                let mut view = b
-                    .service
-                    .view_with_cancellation(b.context.stream_id, cancel)
-                    .await?;
+                let mut view = match pipeline {
+                    ReviewSavePipeline::SynchronousV3 => {
+                        b.service
+                            .view_with_cancellation(b.context.stream_id, cancel)
+                            .await?
+                    }
+                    ReviewSavePipeline::AuthoringOutbox => {
+                        b.service
+                            .view_authoring_with_cancellation(b.context.stream_id, cancel)
+                            .await?
+                    }
+                };
                 view.capabilities.continuous_editing &= writable;
                 view.capabilities.migration &= writable;
                 view.capabilities.usage_import &= writable;
@@ -109,6 +120,64 @@ impl DesktopRuntime {
             .await;
         let receipt = result.as_ref().ok().map(|r| r.receipt);
         self.finish_review(id, generation, result, receipt).await
+    }
+
+    pub async fn apply_review_authoring_command(
+        &self,
+        id: SessionId,
+        generation: Generation,
+        envelope: ReviewCommandEnvelope,
+    ) -> Result<ReviewAuthoringApplyResult, Error> {
+        let session = self.continuous_session(id, generation, true).await?;
+        if session.config.pipeline != ReviewSavePipeline::AuthoringOutbox {
+            return Err(Error::new(Code::CapabilityUnavailable));
+        }
+        let result = session
+            .run_apply(move |b, cancel| async move {
+                b.service
+                    .apply_authoring_with_cancellation(envelope, cancel)
+                    .await
+                    .map_err(Into::into)
+            })
+            .await;
+        if result.is_ok() {
+            session.wake_materializer();
+        }
+        if self.ensure_project_current(id, generation).await.is_err() {
+            return match result {
+                Ok(value) => Err(Error::stale_with_authoring_receipt(Some(value.receipt))),
+                Err(error) => Err(error),
+            };
+        }
+        result
+    }
+
+    pub async fn get_review_publication_status(
+        &self,
+        id: SessionId,
+        generation: Generation,
+    ) -> Result<ReviewPublicationStatus, Error> {
+        let session = self.continuous_session(id, generation, false).await?;
+        if session.config.pipeline != ReviewSavePipeline::AuthoringOutbox {
+            return Ok(ReviewPublicationStatus::Ready);
+        }
+        let result = session
+            .run(move |b, cancel| async move {
+                check_cancelled(&cancel)?;
+                let provider = b.provider.clone();
+                let stream = b.context.stream_id;
+                tokio::task::spawn_blocking(move || {
+                    let store = provider
+                        .authoring_reader()
+                        .map_err(ReviewWorkspaceError::from)?;
+                    store.status(stream).map_err(ReviewWorkspaceError::from)
+                })
+                .await
+                .map_err(|_| Error::new(Code::Internal))?
+                .map_err(Into::into)
+            })
+            .await;
+        self.finish_review(id, generation, result, None).await
     }
     pub async fn cancel_review_workspace_task(
         &self,

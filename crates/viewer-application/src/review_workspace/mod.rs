@@ -1,6 +1,7 @@
 //! Continuous-review application contracts, independent of wire formats and storage paths.
 mod archiving;
 mod budget;
+mod diagnostics;
 mod editing;
 mod evidence;
 mod history;
@@ -19,6 +20,7 @@ mod service;
 mod transition;
 mod usage;
 
+pub use diagnostics::*;
 pub use migration_state::prepare_migration_state;
 pub use model::*;
 pub use ports::*;

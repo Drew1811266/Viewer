@@ -17,6 +17,7 @@ pub struct ContinuousReviewService {
     pub(super) evidence: Arc<dyn ReviewEvidencePort>,
     pub(super) codec: Arc<dyn ReviewCommandCodecPort>,
     clock: Arc<dyn ClockPort>,
+    save_observer: Arc<dyn ReviewSaveObserverPort>,
     pub(super) prepared: Mutex<HashMap<AssetVersionId, PreparedReviewAsset>>,
     envelopes: Mutex<HashMap<ReviewCommandId, ReviewCommandEnvelope>>,
     gate: Mutex<()>,
@@ -40,6 +41,7 @@ impl ContinuousReviewService {
             evidence,
             codec,
             clock,
+            save_observer: Arc::new(NoReviewSaveObserver),
             prepared: Mutex::new(HashMap::new()),
             envelopes: Mutex::new(HashMap::new()),
             gate: Mutex::new(()),
@@ -47,6 +49,11 @@ impl ContinuousReviewService {
             usage_previews: Mutex::new(HashMap::new()),
             migration_inspection: Mutex::new(None),
         }
+    }
+
+    pub fn with_save_observer(mut self, observer: Arc<dyn ReviewSaveObserverPort>) -> Self {
+        self.save_observer = observer;
+        self
     }
 
     /// Called before displaying the review preview. Saving only references these captured IDs;
@@ -248,6 +255,10 @@ impl ContinuousReviewService {
             if cancellation.is_cancelled() {
                 return Err(ReviewWorkspaceError::Cancelled);
             }
+            let evidence_span = ReviewSaveSpan::start(
+                self.save_observer.clone(),
+                ReviewSaveStage::EvidenceMaterialization,
+            );
             let evidence = super::evidence::prepare(
                 self.evidence.as_ref(),
                 writer.clone(),
@@ -257,6 +268,7 @@ impl ContinuousReviewService {
                 cancellation.clone(),
             )
             .await?;
+            drop(evidence_span);
             self.assets
                 .check_sources(&next.assets, cancellation.clone())
                 .await?;
@@ -278,7 +290,10 @@ impl ContinuousReviewService {
                 staged_evidence: evidence.files,
             };
             let repository = writer.clone();
+            let publish_span =
+                ReviewSaveSpan::start(self.save_observer.clone(), ReviewSaveStage::PublicV3Publish);
             let receipt = io(move || repository.commit(request)).await?;
+            drop(publish_span);
             drop(evidence.leases);
             Ok(receipt)
         }
@@ -307,11 +322,16 @@ impl ContinuousReviewService {
         receipt: ReviewCommitReceipt,
         cancellation: ReviewTaskCancellation,
     ) -> Result<ReviewApplyResult, ReviewWorkspaceError> {
+        let refresh_span = ReviewSaveSpan::start(
+            self.save_observer.clone(),
+            ReviewSaveStage::WorkspaceRefresh,
+        );
         self.envelopes.lock().await.remove(&receipt.command_id);
         let view = self
             .view_with_cancellation(self.context.stream_id, cancellation)
             .await
             .map_err(|_| ReviewWorkspaceError::CommittedViewUnavailable(receipt))?;
+        drop(refresh_span);
         Ok(ReviewApplyResult { receipt, view })
     }
 }

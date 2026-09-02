@@ -19,8 +19,8 @@ pub struct ContinuousReviewService {
     clock: Arc<dyn ClockPort>,
     save_observer: Arc<dyn ReviewSaveObserverPort>,
     pub(super) prepared: Mutex<HashMap<AssetVersionId, PreparedReviewAsset>>,
-    envelopes: Mutex<HashMap<ReviewCommandId, ReviewCommandEnvelope>>,
-    gate: Mutex<()>,
+    pub(super) envelopes: Mutex<HashMap<ReviewCommandId, ReviewCommandEnvelope>>,
+    pub(super) gate: Mutex<()>,
     pub(super) usage_importer: Option<Arc<dyn UsageImportPort>>,
     pub(super) usage_previews: Mutex<HashMap<ReviewUsageId, UsageImportPreview>>,
     pub(super) migration_inspection: Mutex<Option<MigrationInspection>>,
@@ -238,7 +238,7 @@ impl ContinuousReviewService {
             let usages = adopted_usage.clone();
             let transition = work(move || {
                 super::transition::prepare(
-                    repository.as_ref(),
+                    Some(repository.as_ref()),
                     saved.as_ref(),
                     &empty_state,
                     &request,

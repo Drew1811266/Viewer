@@ -88,6 +88,15 @@ impl ContinuousReviewAuthoringStorePort for SqliteContinuousReviewAuthoringStore
         load_current_from(&connection, self.project_id, stream)
     }
 
+    fn load_snapshot(
+        &self,
+        stream: ReviewStreamId,
+        sequence: u64,
+    ) -> Result<StoredAuthoringState, ReviewCommitError> {
+        let connection = self.connection()?;
+        load_snapshot_from(&connection, self.project_id, stream, sequence)
+    }
+
     fn find_command(
         &self,
         stream: ReviewStreamId,

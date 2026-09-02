@@ -4,7 +4,7 @@ use std::{
     hash::{Hash, Hasher},
     sync::{
         Arc, Mutex,
-        atomic::{AtomicUsize, Ordering},
+        atomic::{AtomicBool, AtomicUsize, Ordering},
     },
 };
 use viewer_application::{
@@ -30,6 +30,8 @@ pub struct MemoryRepository {
     usage: Mutex<HashMap<ReviewUsageId, ReviewUsageDeclaration>>,
     pub migration: Mutex<Option<MigrationInspection>>,
     legacy: Mutex<Option<MigrationInspection>>,
+    fail_open: AtomicBool,
+    opens: AtomicUsize,
 }
 impl MemoryRepository {
     pub fn seed_history_fixture(
@@ -46,6 +48,12 @@ impl MemoryRepository {
     }
     pub fn current(&self) -> Option<StoredContinuousSnapshot> {
         self.states.lock().unwrap().last().cloned()
+    }
+    pub fn fail_if_opened(&self) {
+        self.fail_open.store(true, Ordering::Release);
+    }
+    pub fn opens(&self) -> usize {
+        self.opens.load(Ordering::Acquire)
     }
 }
 impl ContinuousReviewRepositoryPort for MemoryRepository {
@@ -292,7 +300,136 @@ impl ContinuousReviewRepositoryPort for MemoryRepository {
         }
     }
 }
-struct Provider(Arc<MemoryRepository>);
+#[derive(Default)]
+pub struct MemoryAuthoringRepository {
+    states: Mutex<Vec<StoredAuthoringState>>,
+}
+
+impl ContinuousReviewAuthoringStorePort for MemoryAuthoringRepository {
+    fn load_heads(&self, _: ReviewStreamId) -> Result<ReviewHeads, ReviewCommitError> {
+        Ok(ReviewHeads {
+            authoring: self.states.lock().unwrap().last().map(|value| value.head),
+            published: None,
+        })
+    }
+
+    fn load_current(
+        &self,
+        _: ReviewStreamId,
+    ) -> Result<Option<StoredAuthoringState>, ReviewCommitError> {
+        Ok(self.states.lock().unwrap().last().cloned())
+    }
+
+    fn load_snapshot(
+        &self,
+        _: ReviewStreamId,
+        sequence: ReviewAuthoringSequence,
+    ) -> Result<StoredAuthoringState, ReviewCommitError> {
+        self.states
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|value| value.head.sequence == sequence)
+            .cloned()
+            .ok_or(ReviewCommitError::Integrity)
+    }
+
+    fn find_command(
+        &self,
+        _: ReviewStreamId,
+        command: ReviewCommandId,
+    ) -> Result<AuthoringCommandLookup, ReviewCommitError> {
+        Ok(self
+            .states
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|value| value.command_id == command)
+            .map_or(AuthoringCommandLookup::Absent, |value| {
+                AuthoringCommandLookup::Found(ReviewAuthoringReceipt {
+                    command_id: value.command_id,
+                    payload_digest: value.payload_digest,
+                    head: value.head,
+                })
+            }))
+    }
+
+    fn commit(
+        &self,
+        _: ReviewStreamId,
+        command: ReviewCommandId,
+        payload_digest: [u8; 32],
+        prepare: &mut dyn FnMut(
+            Option<&StoredAuthoringState>,
+        )
+            -> Result<ReviewAuthoringCommitRequest, ReviewWorkspaceError>,
+    ) -> Result<ReviewAuthoringReceipt, ReviewWorkspaceError> {
+        let mut states = self.states.lock().unwrap();
+        if let Some(value) = states.iter().find(|value| value.command_id == command) {
+            if value.payload_digest != payload_digest {
+                return Err(ReviewCommitError::CommandConflict.into());
+            }
+            return Ok(ReviewAuthoringReceipt {
+                command_id: value.command_id,
+                payload_digest: value.payload_digest,
+                head: value.head,
+            });
+        }
+        let request = prepare(states.last())?;
+        if request.expected_snapshot_id != states.last().map(|value| value.head.snapshot_id)
+            || request.next.head.sequence != states.len() as u64 + 1
+            || request.next.command_id != command
+            || request.next.payload_digest != payload_digest
+        {
+            return Err(ReviewCommitError::Integrity.into());
+        }
+        let receipt = ReviewAuthoringReceipt {
+            command_id: request.next.command_id,
+            payload_digest: request.next.payload_digest,
+            head: request.next.head,
+        };
+        states.push(request.next);
+        Ok(receipt)
+    }
+}
+
+impl ReviewMaterializationQueuePort for MemoryAuthoringRepository {
+    fn next(&self, _: i64) -> Result<Option<ClaimedReviewMaterialization>, ReviewCommitError> {
+        Ok(None)
+    }
+    fn retry(
+        &self,
+        _: &ClaimedReviewMaterialization,
+        _: ReviewMaterializationFailure,
+        _: i64,
+    ) -> Result<(), ReviewCommitError> {
+        Err(ReviewCommitError::LookupUnavailable)
+    }
+    fn block(
+        &self,
+        _: &ClaimedReviewMaterialization,
+        _: ReviewMaterializationFailure,
+    ) -> Result<(), ReviewCommitError> {
+        Err(ReviewCommitError::LookupUnavailable)
+    }
+    fn mark_published(
+        &self,
+        _: &ClaimedReviewMaterialization,
+        _: ReviewPublicationReceipt,
+    ) -> Result<(), ReviewCommitError> {
+        Err(ReviewCommitError::LookupUnavailable)
+    }
+    fn status(&self, _: ReviewStreamId) -> Result<ReviewPublicationStatus, ReviewCommitError> {
+        Ok(ReviewPublicationStatus::Pending {
+            pending_revisions: self.states.lock().unwrap().len() as u32,
+        })
+    }
+    fn requeue_expired(&self, _: i64) -> Result<u32, ReviewCommitError> {
+        Ok(0)
+    }
+}
+
+struct Provider(Arc<MemoryRepository>, Arc<MemoryAuthoringRepository>);
 impl ContinuousReviewRepositoryProviderPort for Provider {
     fn save_migration_recovery(&self, draft: &RecoveryDraft) -> Result<(), ReviewCommitError> {
         self.0.save_recovery(draft)
@@ -335,21 +472,51 @@ impl ContinuousReviewRepositoryProviderPort for Provider {
         result
     }
     fn open_reader(&self) -> Result<Arc<dyn ContinuousReviewRepositoryPort>, ReviewCommitError> {
+        self.0.opens.fetch_add(1, Ordering::AcqRel);
+        assert!(
+            !self.0.fail_open.load(Ordering::Acquire),
+            "v3 repository opened"
+        );
         if self.0.migration.lock().unwrap().is_some() {
             return Err(ReviewCommitError::MigrationRequired);
         }
         Ok(self.0.clone())
     }
     fn open_writer(&self) -> Result<Arc<dyn ContinuousReviewRepositoryPort>, ReviewCommitError> {
+        self.0.opens.fetch_add(1, Ordering::AcqRel);
+        assert!(
+            !self.0.fail_open.load(Ordering::Acquire),
+            "v3 repository opened"
+        );
         if self.0.migration.lock().unwrap().is_some() {
             return Err(ReviewCommitError::MigrationRequired);
         }
         Ok(self.0.clone())
     }
+    fn open_authoring_reader(
+        &self,
+    ) -> Result<Arc<dyn ContinuousReviewAuthoringRepositoryPort>, ReviewCommitError> {
+        Ok(self.1.clone())
+    }
+    fn open_authoring_writer(
+        &self,
+    ) -> Result<Arc<dyn ContinuousReviewAuthoringRepositoryPort>, ReviewCommitError> {
+        Ok(self.1.clone())
+    }
 }
 #[derive(Default)]
 pub struct Assets {
     pub changed: Mutex<bool>,
+    fail_source_check: AtomicBool,
+    source_checks: AtomicUsize,
+}
+impl Assets {
+    pub fn fail_if_sources_checked(&self) {
+        self.fail_source_check.store(true, Ordering::Release);
+    }
+    pub fn source_checks(&self) -> usize {
+        self.source_checks.load(Ordering::Acquire)
+    }
 }
 #[async_trait]
 impl ContinuousReviewAssetPort for Assets {
@@ -377,6 +544,11 @@ impl ContinuousReviewAssetPort for Assets {
         assets: &[AssetVersion],
         cancel: ReviewTaskCancellation,
     ) -> Result<Vec<SourceCheck>, ReviewAssetError> {
+        self.source_checks.fetch_add(1, Ordering::AcqRel);
+        assert!(
+            !self.fail_source_check.load(Ordering::Acquire),
+            "review sources checked"
+        );
         if cancel.is_cancelled() {
             return Err(ReviewAssetError::Cancelled);
         }
@@ -440,13 +612,16 @@ fn png(asset: AssetVersion) -> BoundReviewImage {
     .unwrap()
 }
 #[derive(Default)]
-pub struct Evidence(AtomicUsize, AtomicUsize);
+pub struct Evidence(AtomicUsize, AtomicUsize, AtomicBool);
 impl Evidence {
     pub fn captures(&self) -> usize {
         self.0.load(Ordering::Relaxed)
     }
     pub fn renders(&self) -> usize {
         self.1.load(Ordering::Relaxed)
+    }
+    pub fn fail_if_called(&self) {
+        self.2.store(true, Ordering::Release);
     }
 }
 struct Staging;
@@ -462,6 +637,7 @@ impl ReviewEvidencePort for Evidence {
         asset: PreparedReviewAsset,
         cancel: ReviewTaskCancellation,
     ) -> Result<BoundReviewImage, ReviewArtifactError> {
+        assert!(!self.2.load(Ordering::Acquire), "review evidence captured");
         if cancel.is_cancelled() {
             return Err(ReviewArtifactError::Cancelled);
         }
@@ -472,6 +648,7 @@ impl ReviewEvidencePort for Evidence {
         &self,
         r: ReviewEvidenceRequest,
     ) -> Result<ReviewEvidenceResult, ReviewArtifactError> {
+        assert!(!self.2.load(Ordering::Acquire), "review evidence rendered");
         r.validate()?;
         self.1.fetch_add(1, Ordering::Relaxed);
         Ok(ReviewEvidenceResult {
@@ -519,6 +696,7 @@ impl ReviewCommandCodecPort for Codec {
 }
 pub struct Fixture {
     pub repository: Arc<MemoryRepository>,
+    pub authoring: Arc<MemoryAuthoringRepository>,
     pub evidence: Arc<Evidence>,
     pub assets: Arc<Assets>,
 }
@@ -605,6 +783,7 @@ impl Fixture {
     pub fn new() -> Self {
         Self {
             repository: Arc::default(),
+            authoring: Arc::default(),
             evidence: Arc::default(),
             assets: Arc::default(),
         }
@@ -616,11 +795,14 @@ impl Fixture {
                 stream_id: ReviewStreamId::from_u128(2),
                 production: None,
             },
-            Arc::new(Provider(self.repository.clone())),
+            Arc::new(Provider(self.repository.clone(), self.authoring.clone())),
             self.assets.clone(),
             self.evidence.clone(),
             Arc::new(Codec),
             Arc::new(Clock),
         )
+    }
+    pub fn authoring_service(&self) -> ContinuousReviewService {
+        self.service()
     }
 }

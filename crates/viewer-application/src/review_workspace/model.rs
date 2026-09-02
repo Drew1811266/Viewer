@@ -132,6 +132,10 @@ pub enum ReviewWorkspaceError {
     PreviewRequired,
     #[error("review committed, but refreshing the current view failed; retain the receipt")]
     CommittedViewUnavailable(ReviewCommitReceipt),
+    #[error(
+        "review authoring commit succeeded, but its patch could not be reconstructed; retain the receipt"
+    )]
+    CommittedAuthoringPatchUnavailable(ReviewAuthoringReceipt),
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

@@ -9,7 +9,7 @@ pub(super) struct Transition {
 }
 
 pub(super) fn prepare(
-    repository: &dyn ContinuousReviewRepositoryPort,
+    repository: Option<&dyn ContinuousReviewRepositoryPort>,
     current: Option<&StoredContinuousSnapshot>,
     empty: &ContinuousReviewState,
     envelope: &ReviewCommandEnvelope,
@@ -38,6 +38,7 @@ pub(super) fn prepare(
             )?
         }
         ReviewWorkspaceCommand::Archive(selection) => {
+            let repository = repository.ok_or(ReviewWorkspaceError::CapabilityUnavailable)?;
             let current = current.ok_or(ContinuousReviewError::MissingReference)?;
             let (_, bases, coverage) =
                 super::archiving::archive_plan(repository, current, selection)?;
@@ -60,6 +61,7 @@ pub(super) fn prepare(
             archive_id,
             decisions,
         } => {
+            let repository = repository.ok_or(ReviewWorkspaceError::CapabilityUnavailable)?;
             let archive = repository.load_archive(before.stream_id, *archive_id)?;
             let bases = super::archiving::bases(
                 repository,
@@ -101,9 +103,11 @@ pub(super) fn prepare(
             next
         }
         ReviewWorkspaceCommand::ContinueHistorical { .. } => {
+            let repository = repository.ok_or(ReviewWorkspaceError::CapabilityUnavailable)?;
             super::history::continue_historical(repository, before, envelope, assets, usages)?
         }
         ReviewWorkspaceCommand::ContinueLegacy { .. } => {
+            let repository = repository.ok_or(ReviewWorkspaceError::CapabilityUnavailable)?;
             super::legacy_history::continue_legacy(repository, before, envelope, assets)?
         }
         ReviewWorkspaceCommand::ConfirmSource(decision) => {

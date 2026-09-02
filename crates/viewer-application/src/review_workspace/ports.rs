@@ -300,4 +300,14 @@ pub trait ContinuousReviewRepositoryProviderPort: Send + Sync {
     }
     fn open_reader(&self) -> Result<Arc<dyn ContinuousReviewRepositoryPort>, ReviewCommitError>;
     fn open_writer(&self) -> Result<Arc<dyn ContinuousReviewRepositoryPort>, ReviewCommitError>;
+    fn open_authoring_reader(
+        &self,
+    ) -> Result<Arc<dyn super::ContinuousReviewAuthoringRepositoryPort>, ReviewCommitError> {
+        Err(ReviewCommitError::LookupUnavailable)
+    }
+    fn open_authoring_writer(
+        &self,
+    ) -> Result<Arc<dyn super::ContinuousReviewAuthoringRepositoryPort>, ReviewCommitError> {
+        Err(ReviewCommitError::LookupUnavailable)
+    }
 }

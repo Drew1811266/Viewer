@@ -3,6 +3,47 @@ use crate::ReviewTaskCancellation;
 use viewer_domain::review::continuous::*;
 
 impl ContinuousReviewService {
+    /// Loads only the authoritative logical head. This is the reconciliation source for patch
+    /// tests and, after activation, for UI patch mismatches; it never performs source checks.
+    pub async fn view_authoring_current(
+        &self,
+        stream: viewer_domain::ReviewStreamId,
+    ) -> Result<Option<ReviewWorkspaceCurrent>, ReviewWorkspaceError> {
+        if stream != self.context.stream_id {
+            return Err(ReviewWorkspaceError::WrongContext);
+        }
+        let provider = self.provider.clone();
+        super::service::io(move || {
+            let store = provider.open_authoring_reader()?;
+            let heads = store.load_heads(stream)?;
+            let Some(authoring) = store.load_current(stream)? else {
+                return Ok(None);
+            };
+            if heads.authoring != Some(authoring.head) {
+                return Err(ReviewCommitError::Integrity);
+            }
+            let published_ref = heads
+                .published
+                .map(|head| {
+                    let published = store.load_snapshot(stream, head.sequence)?;
+                    if published.head != head {
+                        return Err(ReviewCommitError::Integrity);
+                    }
+                    Ok(SnapshotRef {
+                        snapshot_id: head.snapshot_id,
+                        blake3: published.payload_digest,
+                    })
+                })
+                .transpose()?;
+            Ok(Some(ReviewWorkspaceCurrent {
+                authoring,
+                published_ref,
+                evidence: vec![],
+            }))
+        })
+        .await
+    }
+
     pub async fn view(
         &self,
         stream: viewer_domain::ReviewStreamId,

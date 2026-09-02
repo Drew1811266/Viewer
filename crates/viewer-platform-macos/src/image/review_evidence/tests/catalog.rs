@@ -167,7 +167,7 @@ async fn review_workspace_native_save_archive_restore_and_preview_version_guard(
         .await
         .unwrap();
     let first = service.apply(e).await.unwrap();
-    let state = &first.view.current.as_ref().unwrap().state;
+    let state = &first.view.current.as_ref().unwrap().authoring.state;
     assert_eq!(first.view.projection.actionable.len(), 4);
     let reader = provider.continuous_reader().unwrap();
     let base = reader

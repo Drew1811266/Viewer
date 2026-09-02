@@ -130,6 +130,69 @@ impl ContinuousReviewAssetPort for IndexedReviewAssetCatalog {
         Ok(prepared)
     }
 
+    async fn reopen_exact(
+        &self,
+        assets: &[AssetVersion],
+        cancellation: ReviewTaskCancellation,
+    ) -> Result<Vec<PreparedReviewAsset>, ReviewAssetError> {
+        if assets.len() > MAX_ASSETS_PER_ROUND {
+            return Err(ReviewAssetError::LimitExceeded);
+        }
+        let mut seen = HashSet::new();
+        if assets.iter().any(|asset| !seen.insert(asset.id)) {
+            return Err(ReviewAssetError::InvalidScope);
+        }
+        let mut reopened = Vec::with_capacity(assets.len());
+        for asset in assets {
+            if cancellation.is_cancelled() {
+                return Err(ReviewAssetError::Cancelled);
+            }
+            let locator = {
+                let state = self.continuous_state()?;
+                if state
+                    .assets
+                    .get(&asset.id)
+                    .is_some_and(|stored| stored != asset)
+                {
+                    return Err(ReviewAssetError::InvalidScope);
+                }
+                state.locators.get(&asset.id).cloned().or_else(|| {
+                    asset.source_entity_id.map(|entity_id| ReviewSourceLocator {
+                        entity_id,
+                        relative_path: asset.relative_path.clone(),
+                    })
+                })
+            }
+            .ok_or(ReviewAssetError::Unavailable)?;
+            let status = source::check(
+                self.project_root.clone(),
+                locator.clone(),
+                asset.clone(),
+                cancellation.clone(),
+            )
+            .await?;
+            if status != SourceCheckStatus::Match {
+                return Err(match status {
+                    SourceCheckStatus::Missing => ReviewAssetError::NotFound,
+                    SourceCheckStatus::Changed => ReviewAssetError::SourceChanged,
+                    _ => ReviewAssetError::Unavailable,
+                });
+            }
+            reopened.push(PreparedReviewAsset {
+                entity_id: locator.entity_id,
+                asset: asset.clone(),
+                failure: None,
+                change_revision: self.changes.revision(locator.entity_id),
+                source_path: self.project_root.join(locator.relative_path.as_str()),
+            });
+        }
+        let mut state = self.continuous_state()?;
+        for item in &reopened {
+            state.register(&item.asset)?;
+        }
+        Ok(reopened)
+    }
+
     async fn check_sources(
         &self,
         assets: &[AssetVersion],

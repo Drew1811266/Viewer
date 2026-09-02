@@ -299,6 +299,10 @@ fn usage_ids(command: &ReviewWorkspaceCommand) -> Vec<viewer_domain::ReviewUsage
     ids
 }
 
+pub(super) fn requires_repository(command: &ReviewWorkspaceCommand) -> bool {
+    !usage_ids(command).is_empty()
+}
+
 pub(super) fn selection_bytes(selections: &[PreparedUsageSelection]) -> usize {
     selections.iter().fold(0_usize, |sum, s| {
         sum.saturating_add(256)

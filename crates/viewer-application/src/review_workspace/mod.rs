@@ -1,6 +1,7 @@
 //! Continuous-review application contracts, independent of wire formats and storage paths.
 mod archiving;
 mod authoring;
+mod authoring_service;
 mod budget;
 mod diagnostics;
 mod editing;

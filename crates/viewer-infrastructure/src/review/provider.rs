@@ -4,7 +4,8 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use viewer_application::review_workspace::{
-    ContinuousReviewRepositoryPort, ContinuousReviewRepositoryProviderPort, ReviewCommitError,
+    ContinuousReviewAuthoringRepositoryPort, ContinuousReviewRepositoryPort,
+    ContinuousReviewRepositoryProviderPort, ReviewCommitError,
 };
 use viewer_application::{
     PersistedReviewDraft, ProjectAccess, ReviewCatalog, ReviewPublication, ReviewRepositoryError,
@@ -204,6 +205,16 @@ impl ContinuousReviewRepositoryProviderPort for ProjectReviewRepositoryProvider 
     }
     fn open_writer(&self) -> Result<Arc<dyn ContinuousReviewRepositoryPort>, ReviewCommitError> {
         self.continuous_writer()
+    }
+    fn open_authoring_reader(
+        &self,
+    ) -> Result<Arc<dyn ContinuousReviewAuthoringRepositoryPort>, ReviewCommitError> {
+        Ok(self.authoring_reader()?)
+    }
+    fn open_authoring_writer(
+        &self,
+    ) -> Result<Arc<dyn ContinuousReviewAuthoringRepositoryPort>, ReviewCommitError> {
+        Ok(self.authoring_writer()?)
     }
 }
 

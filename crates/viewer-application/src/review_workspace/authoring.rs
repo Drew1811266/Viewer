@@ -136,6 +136,13 @@ pub trait ContinuousReviewAuthoringStorePort: Send + Sync {
         &self,
         stream: ReviewStreamId,
     ) -> Result<Option<StoredAuthoringState>, ReviewCommitError>;
+    /// Loads one exact immutable logical revision. This is required to reconstruct the
+    /// same UI patch for an idempotent command retry without rerunning the command.
+    fn load_snapshot(
+        &self,
+        stream: ReviewStreamId,
+        sequence: ReviewAuthoringSequence,
+    ) -> Result<StoredAuthoringState, ReviewCommitError>;
     fn find_command(
         &self,
         stream: ReviewStreamId,
@@ -151,4 +158,17 @@ pub trait ContinuousReviewAuthoringStorePort: Send + Sync {
         )
             -> Result<ReviewAuthoringCommitRequest, ReviewWorkspaceError>,
     ) -> Result<ReviewAuthoringReceipt, ReviewWorkspaceError>;
+}
+
+/// One authoring connection owns both the logical store and its transactional outbox view.
+/// Keeping these capabilities together prevents the foreground service from observing queue
+/// status through a different database connection or persistence implementation.
+pub trait ContinuousReviewAuthoringRepositoryPort:
+    ContinuousReviewAuthoringStorePort + ReviewMaterializationQueuePort
+{
+}
+
+impl<T> ContinuousReviewAuthoringRepositoryPort for T where
+    T: ContinuousReviewAuthoringStorePort + ReviewMaterializationQueuePort
+{
 }

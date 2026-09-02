@@ -151,6 +151,15 @@ pub trait ContinuousReviewAssetPort: Send + Sync {
         entity_ids: &[EntityId],
         cancellation: ReviewTaskCancellation,
     ) -> Result<Vec<PreparedReviewAsset>, ReviewAssetError>;
+    /// Reopens only the exact persisted versions. Implementations must fail when the current
+    /// path no longer matches; they must never substitute a newer file at that path.
+    async fn reopen_exact(
+        &self,
+        _assets: &[AssetVersion],
+        _cancellation: ReviewTaskCancellation,
+    ) -> Result<Vec<PreparedReviewAsset>, ReviewAssetError> {
+        Err(ReviewAssetError::Unavailable)
+    }
     async fn check_sources(
         &self,
         assets: &[AssetVersion],

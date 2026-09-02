@@ -87,6 +87,10 @@ impl From<ReviewWorkspaceError> for ReviewWorkspaceErrorDto {
                     ..Self::new(Code::CommittedViewUnavailable)
                 };
             }
+            // The async authoring route remains gated until its dedicated receipt DTO lands.
+            ReviewWorkspaceError::CommittedAuthoringPatchUnavailable(_) => {
+                Code::CommittedViewUnavailable
+            }
             ReviewWorkspaceError::Repository(e) => match e {
                 ReviewCommitError::MigrationRequired => Code::MigrationRequired,
                 ReviewCommitError::UnsupportedProtocol => Code::UnsupportedProtocol,

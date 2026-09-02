@@ -277,7 +277,7 @@ async fn run_two_iteration_step(
                 .view
                 .current
                 .as_ref()
-                .and_then(|current| current.state.feedback.first())
+                .and_then(|current| current.authoring.state.feedback.first())
                 .ok_or("first cycle save omitted feedback")?
                 .id;
             let mut result = composition.result(
@@ -293,18 +293,23 @@ async fn run_two_iteration_step(
         TwoIterationStep::ArchiveFirst => {
             let before = composition.service.view(composition.stream_id).await?;
             let basis = before.current.ok_or("first cycle basis is missing")?;
+            let basis_ref = basis
+                .published_ref
+                .ok_or("first cycle published basis is missing")?;
             let feedback = basis
+                .authoring
                 .state
                 .feedback
                 .first()
                 .ok_or("first cycle feedback is missing")?;
             let key = basis
+                .authoring
                 .state
                 .target_key(feedback.targets[0].id)
                 .ok_or("first cycle target key is missing")?;
             let edited = apply(
                 &composition.service,
-                Some(basis.reference.snapshot_id),
+                Some(basis_ref.snapshot_id),
                 ReviewWorkspaceCommand::SaveFeedback {
                     feedback_id: Some(feedback.id),
                     text: "袖口收紧，保留褶皱".into(),
@@ -316,7 +321,7 @@ async fn run_two_iteration_step(
                 expected_snapshot_id: edited.receipt.snapshot.snapshot_id,
                 groups: vec![ArchiveGroup {
                     basis: ArchiveBasis::Known {
-                        snapshot: basis.reference,
+                        snapshot: basis_ref,
                         source: ArchiveBasisSource::UserSelected,
                     },
                     targets: vec![key],
@@ -342,7 +347,7 @@ async fn run_two_iteration_step(
             let mut result = composition.result(
                 scenario,
                 "tests/fixtures/images/srgb.jpg",
-                basis.reference.snapshot_id,
+                basis_ref.snapshot_id,
                 archived.receipt.snapshot.snapshot_id,
                 HarnessChecks {
                     current_preserved_later_edit: true,
@@ -373,21 +378,26 @@ async fn run_two_iteration_step(
         TwoIterationStep::ArchiveSecond => {
             let before = composition.service.view(composition.stream_id).await?;
             let current = before.current.ok_or("second cycle current is missing")?;
+            let current_ref = current
+                .published_ref
+                .ok_or("second cycle published current is missing")?;
             let feedback = current
+                .authoring
                 .state
                 .feedback
                 .iter()
                 .find(|feedback| feedback.text == "第二轮待归档意见")
                 .ok_or("second cycle feedback is missing")?;
             let key = current
+                .authoring
                 .state
                 .target_key(feedback.targets[0].id)
                 .ok_or("second cycle target key is missing")?;
             let selection = ArchiveSelection {
-                expected_snapshot_id: current.reference.snapshot_id,
+                expected_snapshot_id: current_ref.snapshot_id,
                 groups: vec![ArchiveGroup {
                     basis: ArchiveBasis::Known {
-                        snapshot: current.reference,
+                        snapshot: current_ref,
                         source: ArchiveBasisSource::UserSelected,
                     },
                     targets: vec![key],
@@ -397,7 +407,7 @@ async fn run_two_iteration_step(
                 .service
                 .prepare(
                     ReviewCommandId::new(),
-                    Some(current.reference.snapshot_id),
+                    Some(current_ref.snapshot_id),
                     ReviewWorkspaceCommand::Archive(selection),
                 )
                 .await?;
@@ -411,7 +421,7 @@ async fn run_two_iteration_step(
             let mut result = composition.result(
                 scenario,
                 "tests/fixtures/images/rotated-6.jpg",
-                current.reference.snapshot_id,
+                current_ref.snapshot_id,
                 archived.receipt.snapshot.snapshot_id,
                 HarnessChecks {
                     source_replacement_detected,
@@ -506,6 +516,7 @@ async fn run_partial_shared(
         .current
         .as_ref()
         .ok_or("missing shared state")?
+        .authoring
         .state;
     let feedback = first_state
         .feedback
@@ -538,6 +549,7 @@ async fn run_partial_shared(
         .current
         .as_ref()
         .ok_or("missing partial current")?
+        .authoring
         .state;
     let history = composition
         .service
@@ -599,8 +611,8 @@ async fn run_source_replaced(
         .source_checks
         .iter()
         .any(|check| check.status == SourceCheckStatus::Changed);
-    let snapshot_stayed_fixed = current.reference == saved.receipt.snapshot
-        && current.state.feedback[0].text == "保留已保存的原始意见";
+    let snapshot_stayed_fixed = current.published_ref == Some(saved.receipt.snapshot)
+        && current.authoring.state.feedback[0].text == "保留已保存的原始意见";
     if !source_replacement_detected || !snapshot_stayed_fixed {
         return Err("source replacement changed committed review facts".into());
     }
@@ -608,14 +620,17 @@ async fn run_source_replaced(
         scenario,
         "tests/fixtures/images/srgb.jpg",
         saved.receipt.snapshot.snapshot_id,
-        current.reference.snapshot_id,
+        current
+            .published_ref
+            .ok_or("missing replaced published current")?
+            .snapshot_id,
         HarnessChecks {
             source_replacement_detected,
             snapshot_stayed_fixed,
             ..HarnessChecks::empty()
         },
     );
-    result.edited_feedback_id = Some(current.state.feedback[0].id.to_string());
+    result.edited_feedback_id = Some(current.authoring.state.feedback[0].id.to_string());
     Ok(result)
 }
 
@@ -655,7 +670,7 @@ async fn run_unknown_basis(
             .view
             .current
             .as_ref()
-            .is_some_and(|current| current.state.feedback.is_empty());
+            .is_some_and(|current| current.authoring.state.feedback.is_empty());
     if !unknown_basis_preserved {
         return Err("manual archive invented a usage basis".into());
     }
@@ -720,7 +735,7 @@ async fn run_restore_conflict(
         .view
         .current
         .as_ref()
-        .and_then(|current| current.state.feedback.first())
+        .and_then(|current| current.authoring.state.feedback.first())
         .ok_or("missing retained shared feedback")?;
     let edited = apply(
         &composition.service,
@@ -789,7 +804,8 @@ async fn run_restore_conflict(
         .as_ref()
         .ok_or("missing conflict current")?;
     let restore_conflict_detected = plan.conflicts == vec![first_key];
-    let current_text_unchanged = current.state.feedback[0].text == "图二的新意见，不可覆盖";
+    let current_text_unchanged =
+        current.authoring.state.feedback[0].text == "图二的新意见，不可覆盖";
     let restore_applied = restored.receipt.command_id != edited.receipt.command_id;
     if !restore_conflict_detected
         || !current_text_unchanged
@@ -818,7 +834,11 @@ async fn run_restore_conflict(
     result.edited_feedback_id = Some(current_feedback.id.to_string());
     result.shared_feedback_id = Some(current_feedback.id.to_string());
     result.archived_target_id = Some(first_key.target_id.to_string());
-    result.retained_target_id = Some(current.state.feedback[0].targets[0].id.to_string());
+    result.retained_target_id = Some(
+        current.authoring.state.feedback[0].targets[0]
+            .id
+            .to_string(),
+    );
     result.restore_receipt_snapshot_id = Some(restored.receipt.snapshot.snapshot_id.to_string());
     result.restore_decision = Some("continue_as_new");
     Ok(result)
@@ -915,8 +935,8 @@ async fn run_lost_receipt(
     let retry = composition.service.apply(envelope).await?;
     let retried_receipt_stable = retry.receipt == recovered.receipt;
     let current_did_not_roll_back = retry.view.current.as_ref().is_some_and(|current| {
-        current.reference == later.receipt.snapshot
-            && current.state.feedback[0].text == "回执丢失后的后续意见"
+        current.published_ref == Some(later.receipt.snapshot)
+            && current.authoring.state.feedback[0].text == "回执丢失后的后续意见"
     });
     if !retried_receipt_stable || !current_did_not_roll_back {
         return Err("lost receipt retry rolled the current head back".into());
@@ -1022,7 +1042,7 @@ async fn run_migration(
         .map_err(|error| format!("reread legacy draft {}: {error}", draft_path.display()))?
         == legacy_draft;
     let active_draft_became_current = migrated.view.current.as_ref().is_some_and(|current| {
-        current.state.feedback.iter().any(|feedback| {
+        current.authoring.state.feedback.iter().any(|feedback| {
             feedback.id == legacy_draft_feedback_id
                 && feedback.text == "人物手部需要修正，整体光线保持不变。"
         })
@@ -1098,7 +1118,7 @@ async fn save_new(
         .view(composition.stream_id)
         .await?
         .current
-        .map(|current| current.reference.snapshot_id);
+        .and_then(|current| current.published_ref.map(|reference| reference.snapshot_id));
     let asset = composition
         .prepare_named_assets(&["source-1.jpg"])
         .await?
@@ -1126,6 +1146,7 @@ fn first_target_key(
         .current
         .as_ref()
         .ok_or("missing current state")?
+        .authoring
         .state;
     state
         .feedback

@@ -28,7 +28,11 @@ const CONTINUOUS_REVIEW_IDS = [
 describe('continuous review acceptance scenes', () => {
   it('registers the approved RVW-25 through RVW-32 acceptance matrix', () => {
     const catalogIds = ACCEPTANCE_STATE_DEFINITIONS.map(({ id }) => id)
-    expect(catalogIds.slice(-CONTINUOUS_REVIEW_IDS.length)).toEqual(CONTINUOUS_REVIEW_IDS)
+    expect(
+      catalogIds.filter((catalogId) =>
+        CONTINUOUS_REVIEW_IDS.some((continuousReviewId) => continuousReviewId === catalogId),
+      ),
+    ).toEqual(CONTINUOUS_REVIEW_IDS)
     expect(CONTINUOUS_REVIEW_IDS.every((id) => ACCEPTANCE_SCENES[id] !== undefined)).toBe(true)
     expect(CONTINUOUS_REVIEW_ACCEPTANCE_SCENE_IDS).toEqual(CONTINUOUS_REVIEW_IDS)
     expect(Object.keys(CONTINUOUS_REVIEW_SCENES)).toEqual(CONTINUOUS_REVIEW_IDS)

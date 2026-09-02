@@ -194,6 +194,25 @@ describe('brush-redraw acceptance readiness', () => {
 })
 
 describe('composite magnifier acceptance readiness', () => {
+  it('samples the first rectangle edge and ordinal inside the lens', () => {
+    const scene = compositeMagnifierScene()
+    const stage = scene.query<HTMLElement>('.image-preview-stage')
+    delete stage.dataset.acceptanceMagnifierPointer
+    const sampledPoints: Array<{ x: number; y: number }> = []
+    stage.addEventListener(
+      'pointermove',
+      (event) => {
+        sampledPoints.push({ x: event.clientX, y: event.clientY })
+      },
+      { once: true },
+    )
+
+    expect(scene.ready()).toBe(false)
+    expect(sampledPoints).toHaveLength(1)
+    expect(sampledPoints[0]?.x).toBeCloseTo(40 + 624 * 0.57)
+    expect(sampledPoints[0]?.y).toBeCloseTo(100 + 416 * 0.09)
+  })
+
   it('requires the visible lens, painted overlay, ordinary annotations, and idle workbench', () => {
     const scene = compositeMagnifierScene()
     expect(scene.ready()).toBe(true)

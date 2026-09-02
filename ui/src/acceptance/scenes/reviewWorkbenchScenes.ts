@@ -272,8 +272,8 @@ function compositeMagnifierReady() {
       new PointerEvent('pointermove', {
         bubbles: true,
         pointerId: 33,
-        clientX: bounds.left + bounds.width * 0.5,
-        clientY: bounds.top + bounds.height * 0.15,
+        clientX: bounds.left + bounds.width * 0.57,
+        clientY: bounds.top + bounds.height * 0.09,
       }),
     )
     return false

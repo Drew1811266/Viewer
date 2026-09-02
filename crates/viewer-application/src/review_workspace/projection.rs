@@ -81,7 +81,7 @@ impl ContinuousReviewService {
         Ok(ReviewWorkspaceView {
             stream_id: stream,
             history_selectors,
-            current,
+            current: current.map(ReviewWorkspaceCurrent::from_published),
             source_checks,
             projection,
             recovery,

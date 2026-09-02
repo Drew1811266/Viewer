@@ -538,7 +538,7 @@ impl UsageImportPort for Importer {
     }
 }
 pub fn usage_importer(result: &ReviewApplyResult) -> Arc<Importer> {
-    let state = &result.view.current.as_ref().unwrap().state;
+    let state = &result.view.current.as_ref().unwrap().authoring.state;
     let target = state.target_key(state.feedback[0].targets[0].id).unwrap();
     Arc::new(Importer(Mutex::new(UsageImportPreview {
         declaration: ReviewUsageDeclaration {

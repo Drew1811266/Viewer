@@ -119,7 +119,7 @@ async fn review_workspace_prebind_save_history_and_restart_retry_use_one_committ
         .await
         .unwrap();
     assert_eq!(
-        result.view.current.as_ref().unwrap().state.assets[0],
+        result.view.current.as_ref().unwrap().authoring.state.assets[0],
         preview.asset.0
     );
     assert_eq!(result.view.projection.actionable.len(), 1);
@@ -165,7 +165,10 @@ async fn review_workspace_prebind_save_history_and_restart_retry_use_one_committ
         .await
         .unwrap();
     assert_eq!(retried.receipt, result.receipt);
-    assert_eq!(retried.view.current.unwrap().state.feedback.len(), 1);
+    assert_eq!(
+        retried.view.current.unwrap().authoring.state.feedback.len(),
+        1
+    );
     assert_eq!(
         fs::read_dir(root.path().join(".viewer/reviews/states"))
             .unwrap()
@@ -328,7 +331,7 @@ async fn review_workspace_archive_and_restore_previews_are_read_only_and_keep_hi
         .apply_review_command(session, generation, command)
         .await
         .unwrap();
-    let state = &saved.view.current.as_ref().unwrap().state;
+    let state = &saved.view.current.as_ref().unwrap().authoring.state;
     let key = state.target_key(state.feedback[0].targets[0].id).unwrap();
     let index = root.path().join(".viewer/reviews/index.json");
     let before = fs::read(&index).unwrap();
@@ -366,6 +369,7 @@ async fn review_workspace_archive_and_restore_previews_are_read_only_and_keep_hi
             .current
             .as_ref()
             .unwrap()
+            .authoring
             .state
             .feedback
             .is_empty()
@@ -413,6 +417,7 @@ async fn review_workspace_archive_and_restore_previews_are_read_only_and_keep_hi
             .current
             .as_ref()
             .unwrap()
+            .authoring
             .state
             .target_key(key.target_id),
         Some(key)

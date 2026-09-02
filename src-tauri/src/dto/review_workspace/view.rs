@@ -13,8 +13,8 @@ struct View {
     stream_id: ReviewStreamId,
     #[serde(with = "wire")]
     history_selectors: Vec<viewer_application::review_evidence::HistorySelector>,
-    #[serde(with = "wire")]
-    current: Option<StoredContinuousSnapshot>,
+    #[serde(serialize_with = "serialize_legacy_current")]
+    current: Option<ReviewWorkspaceCurrent>,
     #[serde(with = "wire")]
     source_checks: Vec<SourceCheck>,
     #[serde(with = "wire")]
@@ -74,6 +74,31 @@ struct Stored {
     evidence: Vec<ReviewEvidenceBinding>,
 }
 remote_output!(StoredContinuousSnapshot, Stored);
+
+fn serialize_legacy_current<S: serde::Serializer>(
+    current: &Option<ReviewWorkspaceCurrent>,
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    let current = current
+        .as_ref()
+        .map(|current| {
+            Ok(StoredContinuousSnapshot {
+                reference: current.published_ref.ok_or_else(|| {
+                    serde::ser::Error::custom(
+                        "synchronous review response is missing its published reference",
+                    )
+                })?,
+                production: current.authoring.production.clone(),
+                state: current.authoring.state.clone(),
+                command_id: current.authoring.command_id,
+                payload_digest: current.authoring.payload_digest,
+                changes: current.authoring.changes.clone(),
+                evidence: current.evidence.clone(),
+            })
+        })
+        .transpose()?;
+    wire::serialize(&current, serializer)
+}
 #[derive(Serialize)]
 #[serde(remote = "ContinuousReviewState", rename_all = "camelCase")]
 struct State {

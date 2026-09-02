@@ -145,7 +145,7 @@ pub struct ReviewWorkspaceView {
     pub stream_id: ReviewStreamId,
     /// Ordered committed history selectors supplied by the repository; never inferred by UI.
     pub history_selectors: Vec<HistorySelector>,
-    pub current: Option<StoredContinuousSnapshot>,
+    pub current: Option<ReviewWorkspaceCurrent>,
     pub source_checks: Vec<SourceCheck>,
     pub projection: CurrentReviewProjection,
     pub recovery: Vec<RecoveryDraft>,

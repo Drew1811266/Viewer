@@ -40,7 +40,10 @@ async fn first_feedback_is_current_and_next_asset_needs_no_completion() {
         .unwrap();
     let second = service.apply(second_command).await.unwrap();
     assert_ne!(first.receipt.snapshot, second.receipt.snapshot);
-    assert_eq!(second.view.current.unwrap().state.feedback.len(), 2);
+    assert_eq!(
+        second.view.current.unwrap().authoring.state.feedback.len(),
+        2
+    );
     assert_eq!(fixture.evidence.captures(), 2);
 }
 
@@ -214,7 +217,7 @@ async fn migration_explicit_fresh_binding_captures_new_evidence_and_cancellation
     assert_eq!(f.evidence.captures(), 1);
     let current = result.view.current.unwrap();
     assert_eq!(
-        current.state.feedback[0].targets[0].asset_version_id,
+        current.authoring.state.feedback[0].targets[0].asset_version_id,
         new.id
     );
     assert!(matches!(
@@ -289,7 +292,7 @@ async fn migrated_legacy_history_can_be_continued_later_using_legacy_keys_and_fr
         .await
         .unwrap();
     let result = service.apply(envelope).await.unwrap();
-    let state = result.view.current.unwrap().state;
+    let state = result.view.current.unwrap().authoring.state;
     assert_eq!(state.feedback.len(), 2);
     assert_ne!(state.feedback[1].id, old.feedback[0].id);
     assert_eq!(state.feedback[1].text, old.feedback[0].text);
@@ -322,7 +325,9 @@ async fn prepared_usage_cannot_be_substituted_by_same_id_after_service_restart()
         changed.declaration.outputs.push(UsageOutput {
             relative_path: RelativePath::parse("different.png").unwrap(),
             blake3: [7; 32],
-            previous_asset_version_id: first.view.current.as_ref().unwrap().state.assets[0].id,
+            previous_asset_version_id: first.view.current.as_ref().unwrap().authoring.state.assets
+                [0]
+            .id,
         });
         changed.canonical_digest = [99; 32];
         changed.source_digest = [98; 32];
@@ -344,7 +349,7 @@ async fn restored_pending_target_can_be_explicitly_confirmed_on_the_same_asset_v
     let f = Fixture::new();
     let service = f.service();
     let first = first(&f, &service).await;
-    let asset = first.view.current.as_ref().unwrap().state.assets[0].id;
+    let asset = first.view.current.as_ref().unwrap().authoring.state.assets[0].id;
     let archived = service
         .apply(
             service
@@ -416,7 +421,16 @@ async fn restored_pending_target_can_be_explicitly_confirmed_on_the_same_asset_v
         .unwrap();
     assert_eq!(result.view.projection.actionable.len(), 1);
     assert_eq!(
-        result.view.current.as_ref().unwrap().state.feedback[0].targets[0].asset_version_id,
+        result
+            .view
+            .current
+            .as_ref()
+            .unwrap()
+            .authoring
+            .state
+            .feedback[0]
+            .targets[0]
+            .asset_version_id,
         asset
     );
     assert_ne!(
@@ -463,7 +477,7 @@ async fn archive_history_coalesces_groups_of_the_same_exact_snapshot() {
         )
         .await
         .unwrap();
-    let state = &first.view.current.as_ref().unwrap().state;
+    let state = &first.view.current.as_ref().unwrap().authoring.state;
     let groups = state.feedback[0]
         .targets
         .iter()
@@ -509,7 +523,8 @@ async fn archive_history_coalesces_groups_of_the_same_exact_snapshot() {
 async fn archive_history_enforces_an_aggregate_budget_across_distinct_snapshots() {
     let f = Fixture::new();
     let service = f.service();
-    let initial = first(&f, &service).await.view.current.unwrap();
+    first(&f, &service).await;
+    let initial = f.repository.current().unwrap();
     let mut states = vec![];
     let mut groups = vec![];
     for _ in 0..3 {
@@ -576,7 +591,7 @@ async fn first(f: &Fixture, service: &ContinuousReviewService) -> ReviewApplyRes
     result
 }
 fn key(result: &ReviewApplyResult) -> TargetVersionKey {
-    let state = &result.view.current.as_ref().unwrap().state;
+    let state = &result.view.current.as_ref().unwrap().authoring.state;
     state.target_key(state.feedback[0].targets[0].id).unwrap()
 }
 fn unknown(result: &ReviewApplyResult) -> ArchiveSelection {
@@ -625,6 +640,7 @@ async fn partial_archive_restore_and_empty_current_keep_exact_identities() {
             .current
             .as_ref()
             .unwrap()
+            .authoring
             .state
             .feedback
             .is_empty()
@@ -701,7 +717,7 @@ async fn old_basis_archive_retains_later_text_and_deduplicates_coverage() {
         .unwrap();
     let d = service.apply(command).await.unwrap();
     assert_eq!(
-        d.view.current.as_ref().unwrap().state.feedback[0].text,
+        d.view.current.as_ref().unwrap().authoring.state.feedback[0].text,
         "后补要求"
     );
     let mut repeated = selection;
@@ -750,7 +766,7 @@ async fn shared_text_revision_updates_all_targets_and_partial_archive_only_remov
         .unwrap();
     let b = service.apply(e).await.unwrap();
     assert_ne!(key(&a).text_revision_id, key(&b).text_revision_id);
-    let state = &b.view.current.as_ref().unwrap().state;
+    let state = &b.view.current.as_ref().unwrap().authoring.state;
     assert_eq!(state.feedback[0].targets.len(), 2);
     assert_eq!(
         state
@@ -769,7 +785,7 @@ async fn shared_text_revision_updates_all_targets_and_partial_archive_only_remov
         .unwrap();
     let c = service.apply(e).await.unwrap();
     assert_eq!(
-        c.view.current.as_ref().unwrap().state.feedback[0]
+        c.view.current.as_ref().unwrap().authoring.state.feedback[0]
             .targets
             .len(),
         1
@@ -818,7 +834,7 @@ async fn retry_returns_original_receipt_without_rolling_current_back() {
     let retry = service.apply(e).await.unwrap();
     assert_eq!(retry.receipt, c.receipt);
     assert_eq!(
-        retry.view.current.as_ref().unwrap().reference,
+        retry.view.current.as_ref().unwrap().published_ref.unwrap(),
         d.receipt.snapshot
     );
 }
@@ -899,7 +915,7 @@ async fn historical_continue_creates_new_identity_and_explicit_origin() {
         RecoveryTargetOrigin::Snapshot { key: key(&b) }
     );
     let c = service.apply(e).await.unwrap();
-    let new = &c.view.current.as_ref().unwrap().state.feedback[1];
+    let new = &c.view.current.as_ref().unwrap().authoring.state.feedback[1];
     assert_ne!(new.id, key(&b).feedback_id);
     assert_eq!(new.history_ref, Some(history_ref));
     assert_eq!(new.text, "原文保留");
@@ -1036,7 +1052,10 @@ async fn changed_source_is_pending_without_changing_snapshot_and_text_stays_edit
     let b = first(&f, &service).await;
     *f.assets.changed.lock().unwrap() = true;
     let view = service.view(ReviewStreamId::from_u128(2)).await.unwrap();
-    assert_eq!(view.current.as_ref().unwrap().reference, b.receipt.snapshot);
+    assert_eq!(
+        view.current.as_ref().unwrap().published_ref.unwrap(),
+        b.receipt.snapshot
+    );
     assert!(view.projection.actionable.is_empty());
     assert_eq!(view.projection.needs_confirmation.len(), 1);
     let e = service
@@ -1355,7 +1374,16 @@ async fn selected_usage_is_adopted_atomically_with_archive_but_never_inferred() 
         .is_none()
     );
     let c = service.apply(e).await.unwrap();
-    assert!(c.view.current.as_ref().unwrap().state.feedback.is_empty());
+    assert!(
+        c.view
+            .current
+            .as_ref()
+            .unwrap()
+            .authoring
+            .state
+            .feedback
+            .is_empty()
+    );
     assert!(
         ContinuousReviewRepositoryPort::load_usage(
             f.repository.as_ref(),
@@ -1465,7 +1493,8 @@ async fn verified_producer_mapping_still_requires_an_explicit_selected_binding()
         .await
         .unwrap()
         .remove(0);
-    let previous = b.view.current.as_ref().unwrap().state.feedback[0].targets[0].asset_version_id;
+    let previous =
+        b.view.current.as_ref().unwrap().authoring.state.feedback[0].targets[0].asset_version_id;
     importer.0.lock().unwrap().declaration.outputs = vec![UsageOutput {
         relative_path: new.relative_path.clone(),
         blake3: new.evidence.blake3.unwrap(),
@@ -1526,11 +1555,11 @@ async fn verified_producer_mapping_still_requires_an_explicit_selected_binding()
     );
     let c = service.apply(e).await.unwrap();
     assert_eq!(
-        c.view.current.as_ref().unwrap().state.feedback[0].targets[0].asset_version_id,
+        c.view.current.as_ref().unwrap().authoring.state.feedback[0].targets[0].asset_version_id,
         new.id
     );
     assert_eq!(
-        c.view.current.as_ref().unwrap().state.feedback[0].text,
+        c.view.current.as_ref().unwrap().authoring.state.feedback[0].text,
         "原文保留"
     );
     assert_eq!(c.view.projection.actionable.len(), 1);
@@ -1590,7 +1619,7 @@ async fn prebound_preview_has_the_exact_asset_that_save_accepts() {
         .unwrap();
     let result = service.apply(envelope).await.unwrap();
     assert_eq!(
-        result.view.current.unwrap().state.assets,
+        result.view.current.unwrap().authoring.state.assets,
         vec![preview.asset.clone()]
     );
 }

@@ -1,4 +1,4 @@
-use super::{Failure, ReadErrorCode};
+use super::{Failure, ReadErrorCode, heads::PinnedReviewHeads};
 use crate::review::MAX_REVIEW_INDEX_BYTES;
 use crate::review::continuous::owned_io::Directory;
 use crate::review::{
@@ -12,10 +12,15 @@ pub(super) struct Project {
     pub root: Directory,
     pub directory: Option<Directory>,
     pub index: Option<Vec<u8>>,
+    pub heads: Option<PinnedReviewHeads>,
 }
 impl Project {
-    pub fn open(path: &str) -> Result<Self, Failure> {
+    pub fn open(path: &str, pin_heads: bool) -> Result<Self, Failure> {
         let root = Directory::open_anchored(Path::new(path))?;
+        let heads = pin_heads
+            .then(|| PinnedReviewHeads::open(&root))
+            .transpose()?
+            .flatten();
         let directory = match root.child(".viewer", false)? {
             Some(viewer) => viewer.child("reviews", false)?,
             None => None,
@@ -31,6 +36,7 @@ impl Project {
             root,
             directory,
             index,
+            heads,
         })
     }
     pub fn required(&self) -> Result<(&Directory, &[u8]), Failure> {
@@ -67,9 +73,13 @@ impl Project {
             if let Some(backup) = &index.legacy_index {
                 migration::verify_backup(&directory, backup, index.project_id)?;
             }
+            if let Some(heads) = &self.heads {
+                heads.require_project(index.project_id)?;
+            }
             return Ok(CurrentProject {
                 root: self.root,
                 project_id: index.project_id,
+                heads: self.heads,
                 view: Some(View {
                     directory,
                     index,
@@ -100,9 +110,14 @@ impl Project {
                 "project identity version or timestamp is invalid",
             ));
         }
+        let project_id = super::request::parse_id(&identity.project_id)?;
+        if let Some(heads) = &self.heads {
+            heads.require_project(project_id)?;
+        }
         Ok(CurrentProject {
             root: self.root,
-            project_id: super::request::parse_id(&identity.project_id)?,
+            project_id,
+            heads: self.heads,
             view: None,
         })
     }
@@ -111,5 +126,6 @@ impl Project {
 pub(super) struct CurrentProject {
     pub root: Directory,
     pub project_id: ProjectId,
+    pub heads: Option<PinnedReviewHeads>,
     pub view: Option<View>,
 }

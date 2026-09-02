@@ -16,6 +16,19 @@ pub(super) struct Directory {
 }
 
 impl Directory {
+    pub(super) fn path(&self) -> &Path {
+        &self.path
+    }
+
+    pub(super) fn verify_regular_name(
+        &self,
+        file: &File,
+        name: &str,
+    ) -> Result<(), ReviewCommitError> {
+        self.verify_open_name(file, name)?;
+        self.verify()
+    }
+
     pub fn entries(&self, limit: usize) -> Result<Vec<String>, ReviewCommitError> {
         self.verify()?;
         let names = descriptor_entries(&self.file, limit)?;

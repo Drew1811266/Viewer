@@ -1,6 +1,7 @@
 //! External readers share native repository validation, but have no writer capability.
 mod current;
 mod delta;
+mod heads;
 mod history;
 mod legacy;
 mod project;
@@ -31,6 +32,12 @@ impl Failure {
     }
     fn integrity(message: &str) -> Self {
         Self::new(ReadErrorCode::Integrity, message)
+    }
+    fn publication_pending() -> Self {
+        Self::new(
+            ReadErrorCode::PublicationPending,
+            "review publication is still being generated",
+        )
     }
 }
 impl From<ReviewProtocolError> for Failure {
@@ -94,7 +101,11 @@ fn read_request(input: impl Read) -> Result<Value, Failure> {
     let request: request::Request = serde_json::from_slice(&bytes)
         .map_err(|_| Failure::integrity("invalid or unsupported closed reader request"))?;
     request.validate()?;
-    let project = project::Project::open(&request.project_root)?;
+    let gate_current = matches!(
+        request.operation,
+        request::Operation::Current | request::Operation::List
+    );
+    let project = project::Project::open(&request.project_root, gate_current)?;
     match request.operation {
         request::Operation::LegacyLatest | request::Operation::LegacyList => {
             legacy::read(&project, &request)

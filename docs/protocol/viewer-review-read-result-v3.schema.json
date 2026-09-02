@@ -210,6 +210,7 @@
         },
         "code": {
           "enum": [
+            "publication_pending",
             "migration_required",
             "unsupported_version",
             "integrity",

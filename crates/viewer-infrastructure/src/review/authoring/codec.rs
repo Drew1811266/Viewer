@@ -199,6 +199,21 @@ pub(super) fn encode_production_scope(
     encode_bounded(&value.map(ProductionWire::from), 1024)
 }
 
+pub(in crate::review) fn decode_production_scope(
+    bytes: &[u8],
+) -> Result<Option<ProductionScope>, ReviewCommitError> {
+    if bytes.len() > 1024 {
+        return Err(ReviewCommitError::LimitExceeded);
+    }
+    let wire: Option<ProductionWire> =
+        serde_json::from_slice(bytes).map_err(|_| ReviewCommitError::Integrity)?;
+    let value = wire.map(ProductionWire::try_into_domain).transpose()?;
+    if encode_production_scope(value.as_ref())? != bytes {
+        return Err(ReviewCommitError::Integrity);
+    }
+    Ok(value)
+}
+
 pub(super) fn decode(
     expected_project: ProjectId,
     expected_stream: ReviewStreamId,

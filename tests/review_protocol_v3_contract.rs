@@ -582,6 +582,7 @@ fn no_state_and_error_cannot_contain_success_instructions() {
     for mut doc in [
         json!({"protocolVersion":"viewer.review/3","status":"no_review_state","role":"current","projectId":image_document()["projectId"],"reviewStreamId":null}),
         json!({"protocolVersion":"viewer.review/3","status":"error","code":"migration_required","message":"legacy project"}),
+        json!({"protocolVersion":"viewer.review/3","status":"error","code":"publication_pending","message":"review publication is still being generated"}),
     ] {
         assert!(decode_read_result_v3(&serde_json::to_vec(&doc).unwrap()).is_ok());
         doc["actionable"] = json!([]);

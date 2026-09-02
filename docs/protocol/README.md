@@ -35,8 +35,9 @@ project/
 
 ## 当前 v3 持续评审语义
 
-- `current` 是某一 Review Stream 现在仍有效的**完整自然语言要求集合**。成功保存即产生新的
-  不可变状态并原子更新索引；没有“完成本轮”门槛，也不生成默认 `pass`。
+- `current` 是某一 Review Stream 现在仍有效的**完整自然语言要求集合**。成功保存先在本地
+  authoring 控制面持久化完整逻辑状态，再由后台任务生成证据并原子发布公开索引；没有“完成本轮”
+  门槛，也不生成默认 `pass`。
 - 用户没有评价的素材不产生意见记录。批量网格和大图预览都不记录“已浏览”；曝光、停留、
   滚动或播放行为不能被读取方解释为通过。
 - Feedback 文字是返工意图的权威表达；版本化 Target/Anchor 只把文字关联到精确素材版本、
@@ -127,6 +128,12 @@ node scripts/review-protocol/read-current.mjs \
 `snapshotRef` 和可选 `delta`。调用方必须用这份完整 current 替换自己的旧待办，不能与之前
 读取或 history 不断累加。空 current 不回退历史，也不表示全部通过；`actionable` 只是该次
 source check 下可执行的目标集合，执行前仍要核对目标素材版本。
+
+保存确认到公开证据生成完成之间，authoring head 会暂时领先 published head。`current` 和
+`--list` 在同一个只读事务中固定这两个 head；只要它们不相等，就只返回 typed error
+`publication_pending`，不附带旧 `feedback`、`actionable` 或任何“最新”成功载荷。Agent 集成应
+使用有上限的退避重新读取；不得退回缓存的 latest、旧 current、mtime 或目录顺序来猜测新意见。
+明确指定的已发布 history 在此期间仍可读取，因为它不会被解释成当前待办。
 
 history 输出原始自然语言、精确目标/revision、选择器和可用证据，但没有 `actionable`。它仅供
 背景、继续提出或显式恢复；存档不证明 Agent 已读、已执行、已修复或用户已验收。撤回记录只

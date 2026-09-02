@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url'
 const protocolVersion = 'viewer.review.reader/1'
 const maxRequestBytes = 64 * 1024
 const maxResponseBytes = 64 * 1024 * 1024
-const codes = new Set(['migration_required', 'unsupported_version', 'integrity', 'unsafe_path',
+const codes = new Set(['publication_pending', 'migration_required', 'unsupported_version', 'integrity', 'unsafe_path',
   'limit_exceeded', 'ambiguous_stream', 'unknown_stream', 'unknown_history', 'io'])
 
 function failure(code, message) { return Object.assign(new Error(message), { code }) }

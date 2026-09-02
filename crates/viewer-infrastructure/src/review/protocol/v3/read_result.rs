@@ -95,6 +95,7 @@ pub(super) enum HistoryRole {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ReadErrorCode {
+    PublicationPending,
     MigrationRequired,
     UnsupportedVersion,
     Integrity,

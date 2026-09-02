@@ -85,6 +85,13 @@ pub fn open_database(path: &Path, writable: bool) -> Result<Connection, Portable
     Ok(connection)
 }
 
+pub(crate) fn open_readonly_database(path: &Path) -> Result<Connection, PortableSchemaError> {
+    validate_database_path(path)?;
+    let connection = open_connection(path, false, false)?;
+    configure(&connection, false)?;
+    Ok(connection)
+}
+
 fn open_connection(
     path: &Path,
     writable: bool,

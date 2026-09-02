@@ -33,7 +33,9 @@
 | [2026-08-25-viewer-exception-driven-review-loop-design.md](superpowers/specs/2026-08-25-viewer-exception-driven-review-loop-design.md) | Active | — |
 | [2026-08-26-viewer-image-annotation-review-workbench-design.md](superpowers/specs/2026-08-26-viewer-image-annotation-review-workbench-design.md) | Active | — |
 | [2026-08-27-viewer-continuous-review-and-agent-handoff-design.md](superpowers/specs/2026-08-27-viewer-continuous-review-and-agent-handoff-design.md) | Active | — |
+| [2026-09-01-viewer-composite-review-magnifier-design.md](superpowers/specs/2026-09-01-viewer-composite-review-magnifier-design.md) | Active | — |
 | [2026-08-27-viewer-continuous-review-and-agent-handoff.md](superpowers/plans/2026-08-27-viewer-continuous-review-and-agent-handoff.md) | Active | — |
+| [2026-09-01-viewer-composite-review-magnifier.md](superpowers/plans/2026-09-01-viewer-composite-review-magnifier.md) | Active | — |
 | [2026-08-26-viewer-image-annotation-review-workbench.md](superpowers/plans/2026-08-26-viewer-image-annotation-review-workbench.md) | Active | — |
 | [2026-08-25-viewer-exception-driven-review-loop.md](superpowers/plans/2026-08-25-viewer-exception-driven-review-loop.md) | Active | — |
 | [2026-08-25-viewer-open-review-protocol-foundation.md](superpowers/plans/2026-08-25-viewer-open-review-protocol-foundation.md) | Active | — |

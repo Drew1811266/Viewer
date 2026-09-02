@@ -120,13 +120,18 @@
 
 **用户行为：** JPEG/PNG 可进入适合窗口的单图预览，支持缩放、平移、顺逆时针旋转、前后
 导航和恢复适合窗口。放大镜可用 Q 开关，并按设置使用圆形或圆角矩形、2×/3×/4×和三档面积。
+在图片评审工作台中，图片区域矩形、画笔轨迹、意见编号和正在绘制的草稿会与图片使用同一
+取样点、缩放和旋转投影，一起出现在放大镜内。
 
 **边界与失败：** 原图请求失败时显示局部错误，不使用模糊缩略图冒充原图。图片切换会撤销
-旧请求；关闭预览会重置预览变换和放大镜会话状态。
+旧请求；关闭预览会重置预览变换和放大镜会话状态。镜片和镜片内的评审覆盖层不接收指针
+操作；用户仍通过镜片外的普通标记进行选择、绘制和编辑。覆盖层绘制失败时退化为纯图片
+放大镜，不改变意见保存、存档或 Agent 读取数据。
 
 **维护证据：** `ui/src/components/ImagePreview.tsx`、`ui/src/components/imagePreview/ImageMagnifier.tsx`、
-`src-tauri/src/commands/browse.rs`；测试见 `ui/src/components/ImagePreview.test.tsx` 和
-`ui/src/components/imagePreview/ImageMagnifier.test.tsx`。
+`ui/src/components/imagePreview/magnifierGeometry.ts`、`ui/src/components/review/annotationScene.ts`、
+`src-tauri/src/commands/browse.rs`；测试见 `ui/src/components/ImagePreview.test.tsx`、
+`ui/src/components/imagePreview/ImageMagnifier.test.tsx` 和视觉验收状态 `RVW-33`。
 
 ## 8. 文本预览
 

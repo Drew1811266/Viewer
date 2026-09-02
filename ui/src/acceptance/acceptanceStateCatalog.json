@@ -134,5 +134,6 @@
   { "id": "RVW-29", "wave": 4, "referenceState": "continuous-review-restore-conflict", "sceneGroup": "review", "components": ["App", "ReviewHistoryPanel"] },
   { "id": "RVW-30", "wave": 4, "referenceState": "continuous-review-archive-unknown-basis", "sceneGroup": "review", "components": ["App", "ReviewArchiveDialog"] },
   { "id": "RVW-31", "wave": 4, "referenceState": "continuous-review-legacy-migration", "sceneGroup": "review", "components": ["App", "ReviewMigrationDialog"] },
-  { "id": "RVW-32", "wave": 4, "referenceState": "continuous-review-empty-current-with-history", "sceneGroup": "review", "components": ["App", "ReviewHistoryPanel"] }
+  { "id": "RVW-32", "wave": 4, "referenceState": "continuous-review-empty-current-with-history", "sceneGroup": "review", "components": ["App", "ReviewHistoryPanel"] },
+  { "id": "RVW-33", "wave": 4, "referenceState": "review-composite-magnifier", "sceneGroup": "review", "components": ["App", "ImageReviewWorkspace", "ImageMagnifier", "AnnotationCanvas"] }
 ]

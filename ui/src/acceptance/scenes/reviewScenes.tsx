@@ -38,6 +38,7 @@ export const REVIEW_ACCEPTANCE_SCENE_IDS = [
   'RVW-22',
   'RVW-23',
   'RVW-24',
+  'RVW-33',
 ] as const
 
 export const REVIEW_SCENES: AcceptanceSceneRegistry = Object.fromEntries(

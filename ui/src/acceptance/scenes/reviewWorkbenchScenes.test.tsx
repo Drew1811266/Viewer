@@ -85,6 +85,45 @@ function redrawScene() {
   return { ready, canvas, layer, query, commit }
 }
 
+function compositeMagnifierScene() {
+  const ready = defined(REVIEW_WORKBENCH_SCENES['RVW-33'], 'composite magnifier readiness')
+  const { container } = render(
+    <section className="image-preview">
+      <header className="viewer-toolbar">
+        <button type="button" aria-label="放大镜" aria-pressed="true">
+          放大镜
+        </button>
+      </header>
+      <div className="image-preview-stage" data-acceptance-magnifier-pointer="true">
+        <img className="image-preview-image" data-visible="true" alt="fixture" />
+        <div className="annotation-canvas-layer">
+          {[1, 2, 3, 4].map((ordinal) => (
+            <button key={ordinal} type="button" className="annotation-marker">
+              {ordinal}
+            </button>
+          ))}
+        </div>
+        <div className="image-magnifier" data-visible="true">
+          <canvas className="image-magnifier__overlay" data-has-content="true" />
+        </div>
+        <nav className="preview-navigation-float" />
+      </div>
+      <aside className="review-feedback-rail" />
+    </section>,
+  )
+  const query = <T extends Element>(selector: string) =>
+    defined(container.querySelector<T>(selector), selector)
+  const image = query<HTMLImageElement>('img')
+  Object.defineProperties(image, { complete: { value: true }, naturalWidth: { value: 560 } })
+  query<HTMLElement>('header').getBoundingClientRect = () => new DOMRect(0, 0, 1024, 50)
+  query<HTMLElement>('header button').getBoundingClientRect = () => new DOMRect(10, 10, 80, 30)
+  query<HTMLElement>('.image-preview-stage').getBoundingClientRect = () =>
+    new DOMRect(0, 50, 704, 670)
+  image.getBoundingClientRect = () => new DOMRect(40, 100, 624, 416)
+  query<HTMLElement>('nav').getBoundingClientRect = () => new DOMRect(250, 650, 150, 40)
+  return { ready, query }
+}
+
 describe('brush-redraw acceptance readiness', () => {
   it('accepts the committed replacement in Browse with its original identity and text', async () => {
     const scene = redrawScene()
@@ -151,5 +190,35 @@ describe('brush-redraw acceptance readiness', () => {
     }
     pending.remove()
     expect(scene.ready()).toBe(true)
+  })
+})
+
+describe('composite magnifier acceptance readiness', () => {
+  it('requires the visible lens, painted overlay, ordinary annotations, and idle workbench', () => {
+    const scene = compositeMagnifierScene()
+    expect(scene.ready()).toBe(true)
+
+    const overlay = scene.query<HTMLCanvasElement>('.image-magnifier__overlay')
+    overlay.removeAttribute('data-has-content')
+    expect(scene.ready()).toBe(false)
+    overlay.dataset.hasContent = 'true'
+
+    const lens = scene.query<HTMLElement>('.image-magnifier')
+    lens.removeAttribute('data-visible')
+    expect(scene.ready()).toBe(false)
+    lens.dataset.visible = 'true'
+
+    scene.query('.annotation-marker').remove()
+    expect(scene.ready()).toBe(false)
+  })
+
+  it('rejects pending work and an open inline editor', () => {
+    const scene = compositeMagnifierScene()
+    const pending = document.createElement('div')
+    scene.query('.image-preview-stage').append(pending)
+    pending.className = 'task-bar'
+    expect(scene.ready()).toBe(false)
+    pending.className = 'inline-feedback-editor'
+    expect(scene.ready()).toBe(false)
   })
 })

@@ -43,7 +43,7 @@ describe('review acceptance scenes', () => {
     second.getBoundingClientRect = () => new DOMRect(950, 10, 100, 30)
     expect(workbenchToolbarFits()).toBe(false)
   })
-  it('registers nine semantic workbench recipes that never settle on empty markup', () => {
+  it('registers ten semantic workbench recipes that never settle on empty markup', () => {
     expect(Object.keys(REVIEW_WORKBENCH_SCENES)).toEqual([
       'RVW-16',
       'RVW-17',
@@ -54,6 +54,7 @@ describe('review acceptance scenes', () => {
       'RVW-22',
       'RVW-23',
       'RVW-24',
+      'RVW-33',
     ])
     for (const [id, recipe] of Object.entries(REVIEW_WORKBENCH_SCENES)) {
       expect(REVIEW_SCENES[id]).toBeDefined()
@@ -171,7 +172,8 @@ describe('review acceptance scenes', () => {
 
   it('registers every review catalog state exactly once and in approved order', () => {
     const catalogIds = ACCEPTANCE_STATE_DEFINITIONS.filter(
-      ({ sceneGroup, id }) => sceneGroup === 'review' && Number(id.slice(4)) <= 24,
+      ({ sceneGroup, id }) =>
+        sceneGroup === 'review' && (Number(id.slice(4)) <= 24 || id === 'RVW-33'),
     ).map(({ id }) => id)
 
     expect(REVIEW_ACCEPTANCE_SCENE_IDS).toEqual(catalogIds)

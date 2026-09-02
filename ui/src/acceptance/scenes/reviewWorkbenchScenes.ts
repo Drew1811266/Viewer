@@ -186,6 +186,7 @@ export const REVIEW_WORKBENCH_SCENES: Readonly<Record<string, () => boolean>> = 
     )
   },
   'RVW-24': () => fourAnnotationsReady(),
+  'RVW-33': () => compositeMagnifierReady(),
 }
 
 function noPendingWork() {
@@ -245,6 +246,46 @@ function fourAnnotationsReady() {
     navigation.right <= stage.right &&
     document.querySelectorAll('.annotation-marker').length === 4 &&
     document.querySelector('.review-feedback-rail') !== null
+  )
+}
+
+function compositeMagnifierReady() {
+  if (!fourAnnotationsReady()) return false
+  const magnifierButton = [...document.querySelectorAll<HTMLButtonElement>('button')].find(
+    (button) => button.getAttribute('aria-label') === '放大镜',
+  )
+  if (magnifierButton?.getAttribute('aria-pressed') !== 'true') {
+    clickEnabled('放大镜', 'enable-composite-magnifier')
+    return false
+  }
+
+  const stage = document.querySelector<HTMLElement>('.image-preview-stage')
+  const image = document.querySelector<HTMLImageElement>(
+    '.image-preview-image[data-visible="true"]',
+  )
+  if (stage === null || image === null) return false
+  if (stage.dataset.acceptanceMagnifierPointer !== 'true') {
+    const bounds = image.getBoundingClientRect()
+    if (bounds.width <= 0 || bounds.height <= 0) return false
+    stage.dataset.acceptanceMagnifierPointer = 'true'
+    stage.dispatchEvent(
+      new PointerEvent('pointermove', {
+        bubbles: true,
+        pointerId: 33,
+        clientX: bounds.left + bounds.width * 0.5,
+        clientY: bounds.top + bounds.height * 0.15,
+      }),
+    )
+    return false
+  }
+
+  return (
+    document.querySelector('.image-magnifier[data-visible="true"]') !== null &&
+    document.querySelector('.image-magnifier__overlay[data-has-content="true"]') !== null &&
+    document.querySelectorAll('.annotation-marker').length === 4 &&
+    document.querySelector(
+      '.task-bar, .inline-feedback-editor, .review-feedback-rail__error, [aria-busy="true"]',
+    ) === null
   )
 }
 

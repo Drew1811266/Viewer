@@ -103,6 +103,59 @@ fn read_only_open_reads_existing_metadata_but_never_creates_it() {
 }
 
 #[test]
+fn clean_wal_metadata_opens_read_only_without_creating_sidecars() {
+    let sandbox = TempDir::new().unwrap();
+    let project = sandbox.path().join("project #? 资料");
+    fs::create_dir(&project).unwrap();
+    let writable = PortableProjectMetadata::open(&project, ProjectAccess::ReadWrite, 1).unwrap();
+    let database = writable.database_path().unwrap().to_path_buf();
+    let expected = writable.project_id();
+    drop(writable);
+
+    assert!(!sqlite_sidecar(&database, "-wal").exists());
+    assert!(!sqlite_sidecar(&database, "-shm").exists());
+
+    let readonly = PortableProjectMetadata::open(&project, ProjectAccess::ReadOnly, 2).unwrap();
+    assert_eq!(readonly.project_id(), expected);
+    let store = PortableMarkerStore::open(readonly.database_path().unwrap(), false).unwrap();
+    assert!(store.markers_for_paths(&[]).unwrap().is_empty());
+    drop(store);
+    drop(readonly);
+
+    assert!(!sqlite_sidecar(&database, "-wal").exists());
+    assert!(!sqlite_sidecar(&database, "-shm").exists());
+}
+
+#[test]
+fn read_only_connections_keep_pending_wal_transactions_visible() {
+    let project = TempDir::new().unwrap();
+    let writer = writable_marker_store(&project);
+    let target = marker_target("pending.txt", FileKind::Text);
+    writer
+        .apply_batch(
+            std::slice::from_ref(&target),
+            MarkerPatch {
+                review: ReviewPatch::Set(ReviewState::Keep),
+                favorite: FavoritePatch::Unchanged,
+            },
+            2,
+        )
+        .unwrap();
+    let database = project.path().join(".viewer/metadata.sqlite");
+    assert!(sqlite_sidecar(&database, "-wal").exists());
+
+    let readonly = PortableMarkerStore::open(&database, false).unwrap();
+    assert_eq!(
+        readonly
+            .markers_for_paths(std::slice::from_ref(&target.relative_path))
+            .unwrap()[0]
+            .marker
+            .review_state,
+        Some(ReviewState::Keep)
+    );
+}
+
+#[test]
 fn read_only_schema_v2_uses_marker_adapter_without_migrating_portable_bytes() {
     let project = TempDir::new().unwrap();
     let writable =
@@ -322,6 +375,12 @@ fn marker_target(path: &str, kind: FileKind) -> MarkerTarget {
         size: if kind == FileKind::Directory { 0 } else { 128 },
         modified_ns: 9,
     }
+}
+
+fn sqlite_sidecar(database: &std::path::Path, suffix: &str) -> std::path::PathBuf {
+    let mut path = database.as_os_str().to_os_string();
+    path.push(suffix);
+    path.into()
 }
 
 fn writable_marker_store(project: &TempDir) -> PortableMarkerStore {

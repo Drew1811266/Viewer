@@ -90,6 +90,14 @@ fn open_connection(
     writable: bool,
     create: bool,
 ) -> Result<Connection, rusqlite::Error> {
+    if !writable && !has_recovery_journal(path) {
+        return Connection::open_with_flags(
+            immutable_database_uri(path),
+            OpenFlags::SQLITE_OPEN_READ_ONLY
+                | OpenFlags::SQLITE_OPEN_URI
+                | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+        );
+    }
     let mut flags = if writable {
         OpenFlags::SQLITE_OPEN_READ_WRITE
     } else {
@@ -99,6 +107,31 @@ fn open_connection(
         flags |= OpenFlags::SQLITE_OPEN_CREATE;
     }
     Connection::open_with_flags(path, flags)
+}
+
+fn has_recovery_journal(path: &Path) -> bool {
+    ["-wal", "-journal"]
+        .into_iter()
+        .map(|suffix| {
+            let mut sidecar = path.as_os_str().to_os_string();
+            sidecar.push(suffix);
+            PathBuf::from(sidecar)
+        })
+        .any(|sidecar| sidecar.exists())
+}
+
+fn immutable_database_uri(path: &Path) -> String {
+    let mut uri = String::from("file:");
+    for byte in path.as_os_str().as_encoded_bytes() {
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'/' | b':' | b'.' | b'-' | b'_' | b'~' => {
+                uri.push(char::from(*byte))
+            }
+            byte => uri.push_str(&format!("%{byte:02X}")),
+        }
+    }
+    uri.push_str("?immutable=1");
+    uri
 }
 
 fn configure(

@@ -159,7 +159,27 @@ async fn read_only_projects_browse_and_preview_without_creating_or_mutating_meta
         );
         runtime.close_project().await.unwrap();
 
-        assert_eq!(tree_snapshot(project.path()), before);
+        let after = tree_snapshot(project.path());
+        if after != before {
+            let changed = before
+                .iter()
+                .filter_map(|(path, expected)| {
+                    let actual = after.get(path)?;
+                    (actual != expected).then(|| {
+                        let first_difference = expected
+                            .iter()
+                            .zip(actual)
+                            .position(|(left, right)| left != right);
+                        (path.clone(), expected.len(), actual.len(), first_difference)
+                    })
+                })
+                .collect::<Vec<_>>();
+            panic!(
+                "read-only project mutated existing files: {changed:?}; before={:?}; after={:?}",
+                before.keys().collect::<Vec<_>>(),
+                after.keys().collect::<Vec<_>>()
+            );
+        }
         assert_eq!(project.path().join(".viewer").exists(), existing_metadata);
         assert_eq!(fs::read_dir(cache.path()).unwrap().count(), 0);
     }

@@ -56,7 +56,7 @@ pub async fn apply_review_command(
     request: ApplyReviewCommandRequestDto,
 ) -> Result<ReviewAuthoringApplyResultDto, ReviewWorkspaceErrorDto> {
     runtime
-        .apply_review_authoring_command(
+        .apply_review_command(
             request.session_id,
             Generation::new(request.generation),
             request.envelope,

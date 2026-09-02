@@ -36,15 +36,6 @@ struct Capabilities {
 }
 remote_output!(ReviewWorkspaceCapabilities, Capabilities);
 #[derive(Serialize)]
-#[serde(remote = "ReviewApplyResult", rename_all = "camelCase")]
-struct Apply {
-    #[serde(with = "wire")]
-    receipt: ReviewCommitReceipt,
-    #[serde(with = "wire")]
-    view: ReviewWorkspaceView,
-}
-remote_output!(ReviewApplyResult, Apply);
-#[derive(Serialize)]
 #[serde(remote = "ReviewCommitReceipt", rename_all = "camelCase")]
 struct Receipt {
     #[serde(with = "wire")]

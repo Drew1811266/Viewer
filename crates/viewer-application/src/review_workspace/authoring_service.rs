@@ -13,7 +13,6 @@ impl ContinuousReviewService {
         cancellation: ReviewTaskCancellation,
     ) -> Result<ReviewAuthoringApplyResult, ReviewWorkspaceError> {
         let _guard = self.gate.lock().await;
-        super::preview::check_cancelled(&cancellation)?;
         if envelope.context != self.context {
             return Err(ReviewWorkspaceError::WrongContext);
         }
@@ -37,6 +36,9 @@ impl ContinuousReviewService {
             }
             AuthoringCommandLookup::Absent => {}
         }
+        // Cancellation may stop a new mutation, but it must not hide a durable receipt for an
+        // idempotent retry that was already committed before this invocation was accepted.
+        super::preview::check_cancelled(&cancellation)?;
 
         let current_store = store.clone();
         let current = super::service::io(move || current_store.load_current(stream)).await?;
@@ -244,7 +246,11 @@ impl ContinuousReviewService {
         receipt: ReviewAuthoringReceipt,
         cancellation: ReviewTaskCancellation,
     ) -> Result<ReviewAuthoringApplyResult, ReviewWorkspaceError> {
-        super::preview::check_cancelled(&cancellation)?;
+        if cancellation.is_cancelled() {
+            return Err(ReviewWorkspaceError::CommittedAuthoringPatchUnavailable(
+                receipt,
+            ));
+        }
         let stream = self.context.stream_id;
         let target_store = store.clone();
         let target = super::service::io(move || {

@@ -21,12 +21,6 @@ use viewer_infrastructure::{
     video_probe::VideoMetadataProbe,
 };
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum ReviewSavePipeline {
-    SynchronousV3,
-    AuthoringOutbox,
-}
-
 #[cfg(test)]
 mod tests;
 
@@ -41,7 +35,6 @@ pub(in crate::state) struct ReviewWorkspaceConfig {
     pub changes: ReviewChangeLedger,
     pub clock: Arc<dyn ClockPort>,
     pub staging: PathBuf,
-    pub pipeline: ReviewSavePipeline,
 }
 pub(super) struct Initialized {
     pub service: ContinuousReviewService,
@@ -165,12 +158,11 @@ fn initialize(config: ReviewWorkspaceConfig) -> Result<Arc<Initialized>, Error> 
         stream_id: stream,
         production: None,
     };
-    if config.pipeline == ReviewSavePipeline::AuthoringOutbox
-        && config.access == ProjectAccess::ReadWrite
-    {
-        provider
-            .bootstrap_authoring(stream)
-            .map_err(ReviewWorkspaceError::from)?;
+    if config.access == ProjectAccess::ReadWrite {
+        match provider.bootstrap_authoring(stream) {
+            Ok(_) | Err(ReviewCommitError::MigrationRequired) => {}
+            Err(error) => return Err(ReviewWorkspaceError::from(error).into()),
+        }
     }
     let assets = Arc::new(
         IndexedReviewAssetCatalog::new(
@@ -200,9 +192,7 @@ fn initialize(config: ReviewWorkspaceConfig) -> Result<Arc<Initialized>, Error> 
         config.clock.clone(),
     )
     .with_usage_importer(importer);
-    let materializer = if config.pipeline == ReviewSavePipeline::AuthoringOutbox
-        && config.access == ProjectAccess::ReadWrite
-    {
+    let materializer = if config.access == ProjectAccess::ReadWrite {
         let store = provider
             .authoring_writer()
             .map_err(ReviewWorkspaceError::from)?;

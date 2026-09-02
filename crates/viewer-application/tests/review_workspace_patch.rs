@@ -261,8 +261,7 @@ fn history_is_replaced_only_for_an_explicit_barrier() {
         snapshot_id: ReviewSnapshotId::from_u128(700),
         blake3: [7; 32],
     });
-    let barrier =
-        ReviewWorkspacePatch::between(Some(&before), &after, Some(vec![selector.clone()]));
+    let barrier = ReviewWorkspacePatch::between(Some(&before), &after, Some(vec![selector]));
 
     assert_eq!(normal.history_selectors, None);
     assert_eq!(barrier.history_selectors, Some(vec![selector]));

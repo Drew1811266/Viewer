@@ -1,4 +1,4 @@
-use std::{fs, path::Path, sync::Arc};
+use std::{fs, path::Path, sync::Arc, time::Duration};
 use viewer_application::{
     ProjectAccess, ProjectProbeError, ProjectProbePort, review_evidence::*, review_workspace::*,
 };
@@ -27,6 +27,47 @@ fn project() -> tempfile::TempDir {
     .unwrap();
     root
 }
+
+fn legacy_project() -> tempfile::TempDir {
+    let root = project();
+    let fixture = |name: &str| {
+        fs::read(
+            Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../tests/fixtures/review-protocol")
+                .join(name),
+        )
+        .unwrap()
+    };
+    let round_bytes = fixture("review-round-v1.valid.json");
+    let round = viewer_infrastructure::review::decode_completed(&round_bytes).unwrap();
+    let mut index: serde_json::Value =
+        serde_json::from_slice(&fixture("review-index-v1.valid.json")).unwrap();
+    index["streams"].as_array_mut().unwrap().remove(0);
+    let viewer = root.path().join(".viewer");
+    let reviews = viewer.join("reviews");
+    fs::create_dir_all(reviews.join("rounds")).unwrap();
+    fs::write(
+        viewer.join("project.json"),
+        serde_json::to_vec_pretty(&serde_json::json!({
+            "schemaVersion": 1,
+            "projectId": round.project_id.to_string(),
+            "createdAtMs": 0
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+    fs::write(
+        reviews.join("index.json"),
+        serde_json::to_vec(&index).unwrap(),
+    )
+    .unwrap();
+    fs::write(
+        reviews.join(format!("rounds/{}.json", round.review_round_id)),
+        round_bytes,
+    )
+    .unwrap();
+    root
+}
 async fn open(runtime: &DesktopRuntime, path: &Path) -> (SessionId, Generation, EntityId) {
     let opened = runtime.open_project(path).await.unwrap();
     runtime.wait_for_scan().await.unwrap();
@@ -49,6 +90,27 @@ fn save(asset: AssetVersionId) -> ReviewWorkspaceCommand {
             anchor: FeedbackAnchor::Asset,
         }],
     }
+}
+
+async fn wait_for_publication(
+    runtime: &DesktopRuntime,
+    session: SessionId,
+    generation: Generation,
+) -> ReviewPublicationStatus {
+    tokio::time::timeout(Duration::from_secs(10), async {
+        loop {
+            let status = runtime
+                .get_review_publication_status(session, generation)
+                .await
+                .unwrap();
+            if !matches!(status, ReviewPublicationStatus::Pending { .. }) {
+                return status;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("review publication reaches a terminal state")
 }
 
 #[tokio::test]
@@ -118,16 +180,29 @@ async fn review_workspace_prebind_save_history_and_restart_retry_use_one_committ
         .apply_review_command(session, generation, envelope.clone())
         .await
         .unwrap();
+    assert!(matches!(
+        result.publication,
+        ReviewPublicationStatus::Pending { .. }
+    ));
     assert_eq!(
-        result.view.current.as_ref().unwrap().authoring.state.assets[0],
+        wait_for_publication(&runtime, session, generation).await,
+        ReviewPublicationStatus::Ready
+    );
+    let saved_view = runtime
+        .get_review_workspace(session, generation)
+        .await
+        .unwrap();
+    assert_eq!(
+        saved_view.current.as_ref().unwrap().authoring.state.assets[0],
         preview.asset.0
     );
-    assert_eq!(result.view.projection.actionable.len(), 1);
+    assert_eq!(saved_view.projection.actionable.len(), 1);
+    let published = saved_view.current.as_ref().unwrap().published_ref.unwrap();
     let image = runtime
         .get_review_evidence(
             session,
             generation,
-            HistorySelector::Snapshot(result.receipt.snapshot),
+            HistorySelector::Snapshot(published),
             preview.asset.0.id,
             EvidenceRole::Base,
         )
@@ -135,11 +210,7 @@ async fn review_workspace_prebind_save_history_and_restart_retry_use_one_committ
         .unwrap();
     assert_eq!((image.width, image.height), (640, 480));
     let history = runtime
-        .get_review_history(
-            session,
-            generation,
-            HistorySelector::Snapshot(result.receipt.snapshot),
-        )
+        .get_review_history(session, generation, HistorySelector::Snapshot(published))
         .await
         .unwrap();
     assert_eq!(history.entries[0].feedback[0].text, "袖口收紧，保留材质");
@@ -165,8 +236,12 @@ async fn review_workspace_prebind_save_history_and_restart_retry_use_one_committ
         .await
         .unwrap();
     assert_eq!(retried.receipt, result.receipt);
+    let retried_view = runtime
+        .get_review_workspace(reopened, new_generation)
+        .await
+        .unwrap();
     assert_eq!(
-        retried.view.current.unwrap().authoring.state.feedback.len(),
+        retried_view.current.unwrap().authoring.state.feedback.len(),
         1
     );
     assert_eq!(
@@ -224,25 +299,26 @@ async fn review_workspace_unprepared_and_changed_source_never_silently_rebind() 
         root.path().join("image.png"),
     )
     .unwrap();
+    let saved = runtime
+        .apply_review_command(session, generation, envelope)
+        .await
+        .unwrap();
+    assert_eq!(saved.patch.upsert_feedback.len(), 1);
     assert_eq!(
-        runtime
-            .apply_review_command(session, generation, envelope)
-            .await
-            .unwrap_err()
-            .code,
-        ReviewWorkspaceErrorCode::SourceChanged
+        wait_for_publication(&runtime, session, generation).await,
+        ReviewPublicationStatus::Blocked {
+            code: ReviewMaterializationFailure::SourceChanged,
+        }
     );
     let failed = runtime
         .get_review_workspace(session, generation)
         .await
         .unwrap();
-    assert!(failed.current.is_none());
-    assert!(
-        failed
-            .recovery
-            .iter()
-            .any(|d| d.editor_input.text == "袖口收紧，保留材质")
+    assert_eq!(
+        failed.current.as_ref().unwrap().authoring.state.feedback[0].text,
+        "袖口收紧，保留材质"
     );
+    assert!(failed.recovery.is_empty());
     runtime.close_project().await.unwrap();
     let (reopened, new_generation, _) = open(&runtime, root.path()).await;
     let resumed = runtime
@@ -254,7 +330,10 @@ async fn review_workspace_unprepared_and_changed_source_never_silently_rebind() 
         "a failed first save has no committed index but still owns recovery input"
     );
     assert_eq!(resumed.recovery, failed.recovery);
-    assert!(resumed.current.is_none());
+    assert_eq!(
+        resumed.current.unwrap().authoring.state.feedback[0].text,
+        "袖口收紧，保留材质"
+    );
     runtime.close_project().await.unwrap();
 }
 
@@ -288,6 +367,57 @@ async fn review_workspace_read_only_browsing_does_not_enable_or_create_review_wr
     );
     runtime.close_project().await.unwrap();
     assert!(!root.path().join(".viewer").exists());
+}
+
+#[tokio::test]
+async fn review_workspace_legacy_migration_activates_authoring_without_sync_save_fallback() {
+    let root = legacy_project();
+    let cache = tempfile::tempdir().unwrap();
+    let runtime = DesktopRuntime::new(
+        cache.path().to_path_buf(),
+        Arc::new(Probe(ProjectAccess::ReadWrite)),
+    );
+    let (session, generation, _) = open(&runtime, root.path()).await;
+    let inspection = runtime
+        .inspect_review_migration(session, generation)
+        .await
+        .unwrap()
+        .expect("legacy data requires explicit migration");
+    let command = runtime
+        .prepare_review_command(
+            session,
+            generation,
+            ReviewCommandId::new(),
+            None,
+            ReviewWorkspaceCommand::Migrate(MigrationPlan {
+                inspection_digest: inspection.inspection_digest,
+                choice: MigrationChoice::KeepHistoryOnly,
+            }),
+        )
+        .await
+        .unwrap();
+    let migrated = runtime
+        .apply_review_command(session, generation, command)
+        .await
+        .unwrap();
+    assert_eq!(migrated.publication, ReviewPublicationStatus::Ready);
+    assert!(migrated.patch.history_selectors.is_some());
+    let view = runtime
+        .get_review_workspace(session, generation)
+        .await
+        .unwrap();
+    assert!(view.migration.is_none());
+    let current = view
+        .current
+        .expect("migration creates the v3/authoring head");
+    assert_eq!(current.authoring.head, migrated.receipt.head);
+    assert!(current.authoring.state.feedback.is_empty());
+    let migrated_index: serde_json::Value =
+        serde_json::from_slice(&fs::read(root.path().join(".viewer/reviews/index.json")).unwrap())
+            .unwrap();
+    assert_eq!(migrated_index["protocolVersion"], "viewer.review/3");
+    assert!(migrated_index["legacyIndex"].is_object());
+    runtime.close_project().await.unwrap();
 }
 
 #[tokio::test]
@@ -331,12 +461,20 @@ async fn review_workspace_archive_and_restore_previews_are_read_only_and_keep_hi
         .apply_review_command(session, generation, command)
         .await
         .unwrap();
-    let state = &saved.view.current.as_ref().unwrap().authoring.state;
+    assert_eq!(
+        wait_for_publication(&runtime, session, generation).await,
+        ReviewPublicationStatus::Ready
+    );
+    let saved_view = runtime
+        .get_review_workspace(session, generation)
+        .await
+        .unwrap();
+    let state = &saved_view.current.as_ref().unwrap().authoring.state;
     let key = state.target_key(state.feedback[0].targets[0].id).unwrap();
     let index = root.path().join(".viewer/reviews/index.json");
     let before = fs::read(&index).unwrap();
     let selection = ArchiveSelection {
-        expected_snapshot_id: saved.receipt.snapshot.snapshot_id,
+        expected_snapshot_id: saved.receipt.head.snapshot_id,
         groups: vec![ArchiveGroup {
             basis: ArchiveBasis::Unknown,
             targets: vec![key],
@@ -353,7 +491,7 @@ async fn review_workspace_archive_and_restore_previews_are_read_only_and_keep_hi
             session,
             generation,
             ReviewCommandId::new(),
-            Some(saved.receipt.snapshot.snapshot_id),
+            Some(saved.receipt.head.snapshot_id),
             ReviewWorkspaceCommand::Archive(selection),
         )
         .await
@@ -363,9 +501,12 @@ async fn review_workspace_archive_and_restore_previews_are_read_only_and_keep_hi
         .apply_review_command(session, generation, command)
         .await
         .unwrap();
+    let archived_view = runtime
+        .get_review_workspace(session, generation)
+        .await
+        .unwrap();
     assert!(
-        archived
-            .view
+        archived_view
             .current
             .as_ref()
             .unwrap()
@@ -374,7 +515,11 @@ async fn review_workspace_archive_and_restore_previews_are_read_only_and_keep_hi
             .feedback
             .is_empty()
     );
-    assert!(archived.view.projection.actionable.is_empty());
+    assert!(archived_view.projection.actionable.is_empty());
+    assert_eq!(
+        wait_for_publication(&runtime, session, generation).await,
+        ReviewPublicationStatus::Ready
+    );
     let history = runtime
         .get_review_history(session, generation, HistorySelector::Archive(archive))
         .await
@@ -398,7 +543,7 @@ async fn review_workspace_archive_and_restore_previews_are_read_only_and_keep_hi
             session,
             generation,
             ReviewCommandId::new(),
-            Some(archived.receipt.snapshot.snapshot_id),
+            Some(archived.receipt.head.snapshot_id),
             ReviewWorkspaceCommand::Restore {
                 archive_id: archive,
                 decisions,
@@ -406,14 +551,21 @@ async fn review_workspace_archive_and_restore_previews_are_read_only_and_keep_hi
         )
         .await
         .unwrap();
-    let restored = runtime
+    runtime
         .apply_review_command(session, generation, command)
         .await
         .unwrap();
-    assert_eq!(restored.view.projection.actionable.len(), 1);
     assert_eq!(
-        restored
-            .view
+        wait_for_publication(&runtime, session, generation).await,
+        ReviewPublicationStatus::Ready
+    );
+    let restored_view = runtime
+        .get_review_workspace(session, generation)
+        .await
+        .unwrap();
+    assert_eq!(restored_view.projection.actionable.len(), 1);
+    assert_eq!(
+        restored_view
             .current
             .as_ref()
             .unwrap()

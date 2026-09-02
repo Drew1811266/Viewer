@@ -91,7 +91,7 @@ async fn review_workspace_cancelled_queued_retry_still_reports_the_committed_rec
     drop(gate);
     let error = retry.await.unwrap().unwrap_err();
     assert_eq!(error.code, Code::CommittedViewUnavailable);
-    assert_eq!(error.committed_receipt.unwrap().0, saved.receipt);
+    assert_eq!(error.committed_authoring_receipt.unwrap().0, saved.receipt);
     runtime.close_project().await.unwrap();
 }
 struct GatedRenderer {
@@ -161,6 +161,8 @@ async fn review_workspace_project_close_revokes_previews_and_waits_for_renderer_
         &config.root,
         config.project_id,
     ));
+    provider.bootstrap_authoring(context.stream_id).unwrap();
+    let authoring = provider.authoring_writer().unwrap();
     let assets = Arc::new(
         IndexedReviewAssetCatalog::new(
             &config.root,
@@ -181,11 +183,23 @@ async fn review_workspace_project_close_revokes_previews_and_waits_for_renderer_
     let service = ContinuousReviewService::new(
         context.clone(),
         provider.clone(),
-        assets,
-        renderer,
+        assets.clone(),
+        renderer.clone(),
         Arc::new(ContinuousReviewCommandCodec),
-        config.clock,
+        config.clock.clone(),
     );
+    let materializer = Arc::new(ReviewMaterializationService::new(
+        authoring.clone(),
+        Arc::new(ContinuousReviewPublication::new_with_cache(
+            context.stream_id,
+            provider.clone(),
+            assets,
+            renderer,
+            authoring,
+            CURRENT_REVIEW_EVIDENCE_ACTION_POLICY,
+        )),
+        config.clock,
+    ));
     assert!(
         session
             .initialized
@@ -193,7 +207,7 @@ async fn review_workspace_project_close_revokes_previews_and_waits_for_renderer_
                 service,
                 provider,
                 context,
-                materializer: None,
+                materializer: Some(materializer),
             }))
             .is_ok()
     );
@@ -247,7 +261,7 @@ async fn review_workspace_project_close_revokes_previews_and_waits_for_renderer_
             .is_err()
     );
     release.notify_one();
-    assert_eq!(saving.await.unwrap().unwrap_err().code, Code::Cancelled);
+    assert!(saving.await.unwrap().is_ok());
     closing.await.unwrap().unwrap();
     assert!(!staging.exists());
     assert!(!root.path().join(".viewer/reviews/index.json").exists());

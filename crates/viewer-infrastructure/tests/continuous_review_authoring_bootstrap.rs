@@ -286,20 +286,17 @@ fn legacy_review_data_still_requires_explicit_migration() {
         serde_json::to_vec(&index).unwrap(),
     )
     .unwrap();
-    for name in ["review-round-v1.valid.json"] {
-        let bytes = fs::read(
-            Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join("../../tests/fixtures/review-protocol")
-                .join(name),
-        )
-        .unwrap();
-        let round = viewer_infrastructure::review::decode_completed(&bytes).unwrap();
-        fs::write(
-            reviews.join(format!("rounds/{}.json", round.review_round_id)),
-            bytes,
-        )
-        .unwrap();
-    }
+    let bytes = fs::read(
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../tests/fixtures/review-protocol/review-round-v1.valid.json"),
+    )
+    .unwrap();
+    let round = viewer_infrastructure::review::decode_completed(&bytes).unwrap();
+    fs::write(
+        reviews.join(format!("rounds/{}.json", round.review_round_id)),
+        bytes,
+    )
+    .unwrap();
     let metadata = PortableProjectMetadata::open(root.path(), ProjectAccess::ReadWrite, 1).unwrap();
     drop(metadata);
     let provider = ProjectReviewRepositoryProvider::new(root.path(), project_id);

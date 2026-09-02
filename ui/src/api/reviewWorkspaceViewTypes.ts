@@ -1,7 +1,6 @@
 import type {
   ReviewArchiveGroup,
   ReviewAuthoringHead,
-  ReviewCommitReceipt,
   ReviewHistoryRef,
   ReviewHistorySelector,
   ReviewMigrationPlan,
@@ -142,10 +141,6 @@ export interface ReviewWorkspaceView {
   recovery: ReviewRecoveryDraft[]
   migration: ReviewMigrationInspection | null
   capabilities: { continuousEditing: boolean; usageImport: boolean; migration: boolean }
-}
-export interface ReviewApplyResult {
-  receipt: ReviewCommitReceipt
-  view: ReviewWorkspaceView
 }
 export interface ReviewArchiveRetention {
   basis: ReviewTargetVersionKey

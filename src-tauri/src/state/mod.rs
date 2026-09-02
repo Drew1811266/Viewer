@@ -102,7 +102,6 @@ use viewer_platform_macos::{
 };
 
 pub use crate::dto::ScanEventDto;
-pub use review_workspace::ReviewSavePipeline;
 
 pub trait DesktopEventSink: Send + Sync {
     fn emit_scan(&self, event: ScanEventDto);
@@ -334,7 +333,6 @@ pub struct DesktopRuntime {
     image_requests: Arc<StdMutex<preview::ImageRequestLifecycles>>,
     video_lifecycle: StdMutex<Option<Arc<dyn VideoClosePort>>>,
     video_project_gate: Arc<RwLock<()>>,
-    review_save_pipeline: ReviewSavePipeline,
     session: Mutex<Option<DesktopSession>>,
 }
 
@@ -510,16 +508,8 @@ impl DesktopRuntime {
             image_requests: Arc::new(StdMutex::new(preview::ImageRequestLifecycles::default())),
             video_lifecycle: StdMutex::new(None),
             video_project_gate: Arc::new(RwLock::new(())),
-            review_save_pipeline: ReviewSavePipeline::SynchronousV3,
             session: Mutex::new(None),
         }
-    }
-
-    /// Internal rollout control used by tests and release activation. It is fixed before a
-    /// project opens and is never exposed as a user preference.
-    pub fn with_review_save_pipeline(mut self, pipeline: ReviewSavePipeline) -> Self {
-        self.review_save_pipeline = pipeline;
-        self
     }
 
     pub fn register_video_lifecycle(&self, lifecycle: Arc<dyn VideoClosePort>) {

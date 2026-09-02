@@ -386,7 +386,6 @@ impl DesktopRuntime {
                 changes: review_changes.clone(),
                 clock: self.clock.clone(),
                 staging: cache.review_artifact_root(),
-                pipeline: self.review_save_pipeline,
             },
         ));
         *session = Some(DesktopSession {

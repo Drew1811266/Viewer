@@ -22,7 +22,6 @@ pub type PreparedReviewCommandDto =
 pub type ReviewWorkspaceViewDto =
     ReviewWire<viewer_application::review_workspace::ReviewWorkspaceView>;
 pub type ReviewHistoryViewDto = ReviewWire<viewer_application::review_workspace::HistoryView>;
-pub type ReviewApplyResultDto = ReviewWire<viewer_application::review_workspace::ReviewApplyResult>;
 pub type ReviewAuthoringApplyResultDto =
     ReviewWire<viewer_application::review_workspace::ReviewAuthoringApplyResult>;
 pub type ReviewPublicationStatusDto =

@@ -4,7 +4,7 @@
 >
 > 当前开发版本：`0.1.7`
 >
-> 事实日期：2026-08-31
+> 事实日期：2026-09-01
 
 这里是 Viewer 0.1.7 当前产品文档入口。文档面向开发版使用者、产品维护者和开发测试
 人员，内容以 `v0.1.7` 对应的实际代码与测试为准，不把历史规划描述成已实现功能。
@@ -56,6 +56,7 @@ Viewer 目前处于开发初期，只以源码开发和内部开发验证为当�
 | [文档维护规范](DOCUMENTATION_MAINTENANCE.md) | Current / 0.1.7 | 后续版本的同步和验证流程 |
 | [开发版本记录](../../CHANGELOG.md) | Current | 从 0.1.6 开始的开发基线变化 |
 | [持续评审验证报告](../quality/2026-08-27-continuous-review-validation.md) | Development evidence | 多轮闭环、原生工作台与旧功能回归证据 |
+| [快速保存与后台发布验证](../reviews/2026-09-01-review-save-pipeline-verification.md) | Development evidence | 作者态延迟、真实素材、故障矩阵与回归证据 |
 
 ## 状态含义
 

@@ -6,7 +6,6 @@ use super::*;
 use crate::dto::review_workspace::{
     ReviewWorkspaceErrorCode as Code, ReviewWorkspaceErrorDto as Error,
 };
-pub use session::ReviewSavePipeline;
 pub(super) use session::{ReviewWorkspaceConfig, ReviewWorkspaceSession};
 use viewer_application::{ReviewTaskCancellation, review_workspace::*};
 use viewer_domain::{ReviewCommandId, ReviewSnapshotId};
@@ -62,20 +61,18 @@ impl DesktopRuntime {
     ) -> Result<ReviewWorkspaceView, Error> {
         let session = self.continuous_session(id, generation, false).await?;
         let writable = session.config.access == ProjectAccess::ReadWrite;
-        let pipeline = session.config.pipeline;
         let result = session
             .run(move |b, cancel| async move {
-                let mut view = match pipeline {
-                    ReviewSavePipeline::SynchronousV3 => {
-                        b.service
-                            .view_with_cancellation(b.context.stream_id, cancel)
-                            .await?
-                    }
-                    ReviewSavePipeline::AuthoringOutbox => {
-                        b.service
-                            .view_authoring_with_cancellation(b.context.stream_id, cancel)
-                            .await?
-                    }
+                let mut view = if writable {
+                    b.service
+                        .view_authoring_with_cancellation(b.context.stream_id, cancel)
+                        .await?
+                } else {
+                    // A read-only project cannot bootstrap the local authoring database. Reading
+                    // the immutable published workspace remains valid and never enables writes.
+                    b.service
+                        .view_with_cancellation(b.context.stream_id, cancel)
+                        .await?
                 };
                 view.capabilities.continuous_editing &= writable;
                 view.capabilities.migration &= writable;
@@ -108,32 +105,13 @@ impl DesktopRuntime {
         id: SessionId,
         generation: Generation,
         envelope: ReviewCommandEnvelope,
-    ) -> Result<ReviewApplyResult, Error> {
-        let session = self.continuous_session(id, generation, true).await?;
-        let result = session
-            .run_apply(move |b, cancel| async move {
-                b.service
-                    .apply_with_cancellation(envelope, cancel)
-                    .await
-                    .map_err(Into::into)
-            })
-            .await;
-        let receipt = result.as_ref().ok().map(|r| r.receipt);
-        self.finish_review(id, generation, result, receipt).await
-    }
-
-    pub async fn apply_review_authoring_command(
-        &self,
-        id: SessionId,
-        generation: Generation,
-        envelope: ReviewCommandEnvelope,
     ) -> Result<ReviewAuthoringApplyResult, Error> {
         let session = self.continuous_session(id, generation, true).await?;
-        if session.config.pipeline != ReviewSavePipeline::AuthoringOutbox {
-            return Err(Error::new(Code::CapabilityUnavailable));
-        }
         let result = session
             .run_apply(move |b, cancel| async move {
+                if matches!(envelope.command, ReviewWorkspaceCommand::Migrate(_)) {
+                    return apply_verified_migration(b, envelope, cancel).await;
+                }
                 b.service
                     .apply_authoring_with_cancellation(envelope, cancel)
                     .await
@@ -158,9 +136,6 @@ impl DesktopRuntime {
         generation: Generation,
     ) -> Result<ReviewPublicationStatus, Error> {
         let session = self.continuous_session(id, generation, false).await?;
-        if session.config.pipeline != ReviewSavePipeline::AuthoringOutbox {
-            return Ok(ReviewPublicationStatus::Ready);
-        }
         let result = session
             .run(move |b, cancel| async move {
                 check_cancelled(&cancel)?;
@@ -194,4 +169,50 @@ impl DesktopRuntime {
         }
         Ok(session.review_workspace.tasks.cancel())
     }
+}
+
+async fn apply_verified_migration(
+    initialized: Arc<session::Initialized>,
+    envelope: ReviewCommandEnvelope,
+    cancel: ReviewTaskCancellation,
+) -> Result<ReviewAuthoringApplyResult, Error> {
+    let migrated = initialized
+        .service
+        .apply_with_cancellation(envelope, cancel)
+        .await
+        .map_err(Error::from)?;
+    let committed = migrated.receipt;
+    let provider = initialized.provider.clone();
+    let stream = initialized.context.stream_id;
+    tokio::task::spawn_blocking(move || provider.bootstrap_authoring(stream))
+        .await
+        .map_err(|_| Error::from(ReviewWorkspaceError::CommittedViewUnavailable(committed)))?
+        .map_err(|_| Error::from(ReviewWorkspaceError::CommittedViewUnavailable(committed)))?;
+    let view = initialized
+        .service
+        .view_authoring_with_cancellation(stream, ReviewTaskCancellation::default())
+        .await
+        .map_err(|_| Error::from(ReviewWorkspaceError::CommittedViewUnavailable(committed)))?;
+    let current = view
+        .current
+        .as_ref()
+        .ok_or_else(|| Error::from(ReviewWorkspaceError::CommittedViewUnavailable(committed)))?;
+    if current.authoring.command_id != committed.command_id
+        || current.authoring.payload_digest != committed.payload_digest
+        || current.authoring.head.snapshot_id != committed.snapshot.snapshot_id
+    {
+        return Err(Error::from(ReviewWorkspaceError::CommittedViewUnavailable(
+            committed,
+        )));
+    }
+    let receipt = ReviewAuthoringReceipt {
+        command_id: committed.command_id,
+        payload_digest: committed.payload_digest,
+        head: current.authoring.head,
+    };
+    Ok(ReviewAuthoringApplyResult {
+        receipt,
+        patch: ReviewWorkspacePatch::between(None, current, Some(view.history_selectors)),
+        publication: ReviewPublicationStatus::Ready,
+    })
 }

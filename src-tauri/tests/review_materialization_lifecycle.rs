@@ -7,7 +7,7 @@ use viewer_application::{
 };
 use viewer_desktop::{
     dto::{FolderWorkspaceDto, review_workspace::ReviewAuthoringApplyResultDto},
-    state::{DesktopRuntime, ReviewSavePipeline},
+    state::DesktopRuntime,
 };
 use viewer_domain::{
     AssetVersionId, EntityId, ReviewCommandId, SessionId, review::FeedbackAnchor,
@@ -82,8 +82,7 @@ async fn wait_for_terminal_status(
 async fn authoring_apply_returns_pending_patch_and_status_converges_without_a_view_reload() {
     let root = project();
     let cache = tempfile::tempdir().unwrap();
-    let runtime = DesktopRuntime::new(cache.path().to_path_buf(), Arc::new(Probe))
-        .with_review_save_pipeline(ReviewSavePipeline::AuthoringOutbox);
+    let runtime = DesktopRuntime::new(cache.path().to_path_buf(), Arc::new(Probe));
     let (session, generation, entity) = open(&runtime, root.path()).await;
     let initial = runtime
         .get_review_workspace(session, generation)
@@ -109,7 +108,7 @@ async fn authoring_apply_returns_pending_patch_and_status_converges_without_a_vi
         .unwrap();
 
     let reply = runtime
-        .apply_review_authoring_command(session, generation, envelope)
+        .apply_review_command(session, generation, envelope)
         .await
         .unwrap();
 
@@ -135,8 +134,7 @@ async fn authoring_apply_returns_pending_patch_and_status_converges_without_a_vi
 async fn source_replacement_blocks_publication_but_keeps_the_saved_authoring_marker() {
     let root = project();
     let cache = tempfile::tempdir().unwrap();
-    let runtime = DesktopRuntime::new(cache.path().to_path_buf(), Arc::new(Probe))
-        .with_review_save_pipeline(ReviewSavePipeline::AuthoringOutbox);
+    let runtime = DesktopRuntime::new(cache.path().to_path_buf(), Arc::new(Probe));
     let (session, generation, entity) = open(&runtime, root.path()).await;
     let asset = runtime
         .prepare_review_assets(session, generation, vec![entity])
@@ -162,7 +160,7 @@ async fn source_replacement_blocks_publication_but_keeps_the_saved_authoring_mar
     .unwrap();
 
     let reply = runtime
-        .apply_review_authoring_command(session, generation, envelope)
+        .apply_review_command(session, generation, envelope)
         .await
         .unwrap();
     assert_eq!(reply.patch.upsert_feedback.len(), 1);

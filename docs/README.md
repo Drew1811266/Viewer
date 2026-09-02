@@ -34,8 +34,10 @@
 | [2026-08-26-viewer-image-annotation-review-workbench-design.md](superpowers/specs/2026-08-26-viewer-image-annotation-review-workbench-design.md) | Active | — |
 | [2026-08-27-viewer-continuous-review-and-agent-handoff-design.md](superpowers/specs/2026-08-27-viewer-continuous-review-and-agent-handoff-design.md) | Active | — |
 | [2026-09-01-viewer-composite-review-magnifier-design.md](superpowers/specs/2026-09-01-viewer-composite-review-magnifier-design.md) | Active | — |
+| [2026-09-01-review-save-pipeline-design.md](superpowers/specs/2026-09-01-review-save-pipeline-design.md) | Active | — |
 | [2026-08-27-viewer-continuous-review-and-agent-handoff.md](superpowers/plans/2026-08-27-viewer-continuous-review-and-agent-handoff.md) | Active | — |
 | [2026-09-01-viewer-composite-review-magnifier.md](superpowers/plans/2026-09-01-viewer-composite-review-magnifier.md) | Active | — |
+| [2026-09-01-review-save-pipeline.md](superpowers/plans/2026-09-01-review-save-pipeline.md) | Active | — |
 | [2026-08-26-viewer-image-annotation-review-workbench.md](superpowers/plans/2026-08-26-viewer-image-annotation-review-workbench.md) | Active | — |
 | [2026-08-25-viewer-exception-driven-review-loop.md](superpowers/plans/2026-08-25-viewer-exception-driven-review-loop.md) | Active | — |
 | [2026-08-25-viewer-open-review-protocol-foundation.md](superpowers/plans/2026-08-25-viewer-open-review-protocol-foundation.md) | Active | — |
@@ -214,6 +216,7 @@ AI 素材评审路线阶段 2 已于 2026-08-26 完成：设计文档内部状�
 | [2026-08-27-continuous-review-domain-phase-a.md](reviews/2026-08-27-continuous-review-domain-phase-a.md) | Development evidence | — |
 | [2026-08-27-continuous-review-persistence-phase-b.md](reviews/2026-08-27-continuous-review-persistence-phase-b.md) | Development evidence | — |
 | [2026-08-27-continuous-review-application-phase-c.md](reviews/2026-08-27-continuous-review-application-phase-c.md) | Development evidence | — |
+| [2026-09-01-review-save-pipeline-verification.md](reviews/2026-09-01-review-save-pipeline-verification.md) | Development evidence | — |
 | [2026-08-05-viewer-progressive-loading-acceptance.md](reviews/2026-08-05-viewer-progressive-loading-acceptance.md) | Development evidence | — |
 | [2026-08-10-video-preview-acceptance.md](reviews/2026-08-10-video-preview-acceptance.md) | Development evidence | — |
 | [2026-08-10-video-render-feasibility.md](reviews/2026-08-10-video-render-feasibility.md) | Development evidence | — |

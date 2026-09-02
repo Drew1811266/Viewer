@@ -4,7 +4,9 @@ use std::{error::Error, fs, os::unix::fs::MetadataExt, path::Path, str::FromStr,
 
 use tempfile::TempDir;
 use viewer_application::{
-    BrowseIndexPort, ImagePort, ReviewTaskCancellation,
+    BrowseIndexPort, ClockPort, ImagePort, ProjectAccess, ReviewTaskCancellation,
+    review_assets::ContinuousReviewAssetPort,
+    review_evidence::ReviewEvidencePort,
     review_workspace::{
         ContinuousReviewRepositoryProviderPort, ContinuousReviewService, ReviewWorkspaceContext,
     },
@@ -17,6 +19,7 @@ use viewer_domain::{
 };
 use viewer_infrastructure::{
     SystemClock,
+    portable::PortableProjectMetadata,
     review::{
         ContinuousReviewCommandCodec, IndexedReviewAssetCatalog, ProjectReviewRepositoryProvider,
         ReviewChangeLedger,
@@ -34,7 +37,11 @@ pub struct Composition {
     _cache: TempDir,
     pub provider: Arc<ProjectReviewRepositoryProvider>,
     pub service: ContinuousReviewService,
+    pub assets: Arc<dyn ContinuousReviewAssetPort>,
+    pub evidence: Arc<dyn ReviewEvidencePort>,
+    pub clock: Arc<dyn ClockPort>,
     pub nodes: Vec<FileNode>,
+    pub project_id: ProjectId,
     pub stream_id: ReviewStreamId,
 }
 
@@ -64,6 +71,31 @@ pub fn build_composition(project: &Path) -> Result<Composition, Box<dyn Error>> 
         service_provider,
         ReviewWorkspaceContext {
             project_id: project_id(),
+            stream_id,
+            production: None,
+        },
+    )
+}
+
+/// Builds the same persistent project identity boundary used by the desktop session before the
+/// review provider is created. Performance harnesses use this instead of the deterministic
+/// protocol-fixture identity so the authoring SQLite store is exercised realistically.
+pub fn build_portable_composition(project: &Path) -> Result<Composition, Box<dyn Error>> {
+    let metadata = PortableProjectMetadata::open(project, ProjectAccess::ReadWrite, 0)?;
+    let persistent_project_id = metadata.project_id();
+    drop(metadata);
+    let provider = Arc::new(ProjectReviewRepositoryProvider::new(
+        project,
+        persistent_project_id,
+    ));
+    let service_provider: Arc<dyn ContinuousReviewRepositoryProviderPort> = provider.clone();
+    let stream_id = provider.manual_review_stream()?;
+    build_composition_with_context(
+        project,
+        provider,
+        service_provider,
+        ReviewWorkspaceContext {
+            project_id: persistent_project_id,
             stream_id,
             production: None,
         },
@@ -102,7 +134,7 @@ pub fn build_composition_with_context(
     index.upsert_batch(&nodes, Generation::new(1))?;
     let browse: Arc<dyn BrowseIndexPort> = index;
     let image: Arc<dyn ImagePort> = Arc::new(MacImagePort::new(cache.path().join("images"))?);
-    let catalog = Arc::new(IndexedReviewAssetCatalog::new(
+    let catalog: Arc<dyn ContinuousReviewAssetPort> = Arc::new(IndexedReviewAssetCatalog::new(
         project,
         browse,
         image,
@@ -111,19 +143,26 @@ pub fn build_composition_with_context(
     )?);
     let evidence_root = cache.path().join("continuous-evidence");
     fs::create_dir(&evidence_root)?;
+    let evidence: Arc<dyn ReviewEvidencePort> =
+        Arc::new(MacReviewEvidenceRenderer::new(&evidence_root)?);
+    let clock: Arc<dyn ClockPort> = Arc::new(SystemClock);
     let service = ContinuousReviewService::new(
         context.clone(),
         service_provider,
-        catalog,
-        Arc::new(MacReviewEvidenceRenderer::new(&evidence_root)?),
+        catalog.clone(),
+        evidence.clone(),
         Arc::new(ContinuousReviewCommandCodec),
-        Arc::new(SystemClock),
+        clock.clone(),
     );
     Ok(Composition {
         _cache: cache,
         provider,
         service,
+        assets: catalog,
+        evidence,
+        clock,
         nodes,
+        project_id: context.project_id,
         stream_id: context.stream_id,
     })
 }

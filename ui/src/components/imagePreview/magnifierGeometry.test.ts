@@ -1,11 +1,69 @@
 import { describe, expect, it } from 'vitest'
 import {
+  createMagnifierContentProjection,
   lensDimensions,
   magnifierShellPlacement,
   magnifierSourcePlacement,
 } from './magnifierGeometry'
 
 describe('magnifier geometry', () => {
+  it.each([
+    [0, { x: 140, y: 80 }],
+    [90, { x: 120, y: 100 }],
+    [180, { x: 100, y: 80 }],
+    [270, { x: 120, y: 60 }],
+  ] as const)('projects normalized geometry at %i°', (rotation, expected) => {
+    const projection = createMagnifierContentProjection({
+      sourceSize: { width: 100, height: 50 },
+      sourcePoint: { x: 50, y: 25 },
+      lensSize: { width: 240, height: 160 },
+      contentScale: 2,
+      rotation,
+    })
+
+    expect(projection.normalizedToLens({ x: 0.6, y: 0.5 })).toEqual(expected)
+    expect(projection.normalizedToLens({ x: 0.5, y: 0.5 })).toEqual({ x: 120, y: 80 })
+  })
+
+  it.each([
+    [{ width: 0, height: 50 }, { width: 240, height: 160 }, 2],
+    [{ width: 100, height: -1 }, { width: 240, height: 160 }, 2],
+    [{ width: 100, height: 50 }, { width: 0, height: 160 }, 2],
+    [{ width: 100, height: 50 }, { width: 240, height: Number.NaN }, 2],
+    [{ width: 100, height: 50 }, { width: 240, height: 160 }, 0],
+  ])('rejects invalid source, lens, or scale input', (sourceSize, lensSize, contentScale) => {
+    const projection = createMagnifierContentProjection({
+      sourceSize,
+      sourcePoint: { x: 50, y: 25 },
+      lensSize,
+      contentScale,
+      rotation: 0,
+    })
+
+    expect(projection.normalizedToLens({ x: 0.5, y: 0.5 })).toBeNull()
+  })
+
+  it('rejects non-finite source and normalized points', () => {
+    const invalidSource = createMagnifierContentProjection({
+      sourceSize: { width: 100, height: 50 },
+      sourcePoint: { x: Number.POSITIVE_INFINITY, y: 25 },
+      lensSize: { width: 240, height: 160 },
+      contentScale: 2,
+      rotation: 0,
+    })
+    const projection = createMagnifierContentProjection({
+      sourceSize: { width: 100, height: 50 },
+      sourcePoint: { x: 50, y: 25 },
+      lensSize: { width: 240, height: 160 },
+      contentScale: 2,
+      rotation: 0,
+    })
+
+    expect(invalidSource.normalizedToLens({ x: 0.5, y: 0.5 })).toBeNull()
+    expect(projection.normalizedToLens({ x: Number.NaN, y: 0.5 })).toBeNull()
+    expect(projection.normalizedToLens({ x: 0.5, y: Number.NEGATIVE_INFINITY })).toBeNull()
+  })
+
   it('uses the six approved fixed shape and area dimensions', () => {
     expect(lensDimensions('circle', 'small')).toEqual({ width: 200, height: 200 })
     expect(lensDimensions('circle', 'medium')).toEqual({ width: 280, height: 280 })

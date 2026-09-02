@@ -1,5 +1,5 @@
 import type { MagnifierArea, MagnifierShape } from '../../api/types'
-import type { Point, Size } from './imageGeometry'
+import type { Point, PreviewRotation, Size } from './imageGeometry'
 
 const LENS_DIMENSIONS: Record<MagnifierArea, Record<MagnifierShape, Size>> = {
   small: {
@@ -32,6 +32,19 @@ export interface MagnifierSourcePlacement {
   transformOriginY: number
 }
 
+export interface MagnifierContentProjection {
+  lensSize: Size
+  normalizedToLens(point: Point): Point | null
+}
+
+export interface MagnifierContentProjectionInput {
+  sourceSize: Size
+  sourcePoint: Point
+  lensSize: Size
+  contentScale: number
+  rotation: PreviewRotation
+}
+
 export function lensDimensions(shape: MagnifierShape, area: MagnifierArea): Size {
   return LENS_DIMENSIONS[area][shape]
 }
@@ -61,6 +74,58 @@ export function magnifierSourcePlacement(
     transformOriginX: sourcePoint.x,
     transformOriginY: sourcePoint.y,
   }
+}
+
+export function createMagnifierContentProjection({
+  sourceSize,
+  sourcePoint,
+  lensSize,
+  contentScale,
+  rotation,
+}: MagnifierContentProjectionInput): MagnifierContentProjection {
+  const validConfiguration =
+    isPositiveSize(sourceSize) &&
+    isPositiveSize(lensSize) &&
+    isFinitePoint(sourcePoint) &&
+    Number.isFinite(contentScale) &&
+    contentScale > 0
+
+  return {
+    lensSize,
+    normalizedToLens(point) {
+      if (!validConfiguration || !isFinitePoint(point)) return null
+      const source = {
+        x: point.x * sourceSize.width,
+        y: point.y * sourceSize.height,
+      }
+      const scaled = {
+        x: (source.x - sourcePoint.x) * contentScale,
+        y: (source.y - sourcePoint.y) * contentScale,
+      }
+      const rotated = rotate(scaled, rotation)
+      return {
+        x: lensSize.width / 2 + rotated.x,
+        y: lensSize.height / 2 + rotated.y,
+      }
+    },
+  }
+}
+
+function rotate(delta: Point, rotation: PreviewRotation): Point {
+  if (rotation === 90) return { x: -delta.y, y: delta.x }
+  if (rotation === 180) return { x: -delta.x, y: -delta.y }
+  if (rotation === 270) return { x: delta.y, y: -delta.x }
+  return delta
+}
+
+function isFinitePoint(point: Point): boolean {
+  return Number.isFinite(point.x) && Number.isFinite(point.y)
+}
+
+function isPositiveSize(size: Size): boolean {
+  return (
+    Number.isFinite(size.width) && Number.isFinite(size.height) && size.width > 0 && size.height > 0
+  )
 }
 
 function placeAxis<Positive extends 'right' | 'below', Negative extends 'left' | 'above'>(

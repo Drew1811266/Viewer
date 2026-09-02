@@ -122,6 +122,14 @@ impl ContinuousReviewService {
         super::preview::check_cancelled(&cancellation)?;
 
         let before = current.clone();
+        let mut logical_state = next.state;
+        // This is a control-plane parent fingerprint, not a public v3 object reference. The
+        // materializer matches the snapshot identity and replaces the digest with the exact
+        // verified v3 parent digest once evidence and the immutable state bytes exist.
+        logical_state.parent = current.as_ref().map(|value| SnapshotRef {
+            snapshot_id: value.head.snapshot_id,
+            blake3: value.payload_digest,
+        });
         let next_state = StoredAuthoringState {
             head: ReviewAuthoringHead {
                 sequence: current
@@ -130,7 +138,7 @@ impl ContinuousReviewService {
                 snapshot_id: envelope.generated.snapshot_id,
             },
             production: self.context.production.clone(),
-            state: next.state,
+            state: logical_state,
             command_id: envelope.command_id,
             payload_digest: envelope.payload_digest,
             generated: envelope.generated.clone(),

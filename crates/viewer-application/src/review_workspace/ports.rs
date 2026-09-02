@@ -203,6 +203,10 @@ pub enum ReviewCommitError {
 }
 
 pub trait ContinuousReviewRepositoryPort: Send + Sync {
+    /// Re-establishes the filesystem durability barrier for an already-visible publication.
+    /// Materialization recovery calls this before advancing its independent SQLite head.
+    fn sync_publication(&self) -> Result<(), ReviewCommitError>;
+
     fn load_history_selectors(
         &self,
         stream_id: ReviewStreamId,

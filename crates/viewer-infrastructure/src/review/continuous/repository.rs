@@ -174,6 +174,15 @@ impl ContinuousReviewRepository {
 }
 
 impl ContinuousReviewRepositoryPort for ContinuousReviewRepository {
+    fn sync_publication(&self) -> Result<(), ReviewCommitError> {
+        let writer = self.writer.as_ref().ok_or(ReviewCommitError::ReadOnly)?;
+        let _guard = writer.gate.lock().map_err(|_| ReviewCommitError::Io)?;
+        let directory = self
+            .checked_directory()?
+            .ok_or(ReviewCommitError::Integrity)?;
+        directory.file.sync_all().map_err(map_io)
+    }
+
     fn load_history_selectors(
         &self,
         stream_id: ReviewStreamId,

@@ -224,10 +224,17 @@ impl ReviewMaterializationQueuePort for SqliteContinuousReviewAuthoringStore {
             .map_err(map_database_error)?;
         let row = transaction
             .query_row(
-                "SELECT stream_id, target_seq, attempt_count, lease_epoch
-                 FROM review_materialization_jobs
-                 WHERE status IN ('queued', 'retryable') AND next_attempt_at_ms <= ?1
-                 ORDER BY next_attempt_at_ms, stream_id, target_seq
+                "SELECT job.stream_id, job.target_seq, job.attempt_count, job.lease_epoch
+                 FROM review_materialization_jobs AS job
+                 WHERE job.status IN ('queued', 'retryable')
+                   AND job.next_attempt_at_ms <= ?1
+                   AND NOT EXISTS (
+                       SELECT 1
+                       FROM review_materialization_jobs AS predecessor
+                       WHERE predecessor.stream_id = job.stream_id
+                         AND predecessor.target_seq < job.target_seq
+                   )
+                 ORDER BY job.next_attempt_at_ms, job.stream_id, job.target_seq
                  LIMIT 1",
                 [now_ms],
                 |row| {
@@ -482,6 +489,8 @@ fn validate_next(
         || next.state.stream_id != stream
         || next.state.snapshot_id != next.head.snapshot_id
         || next.generated.snapshot_id != next.head.snapshot_id
+        || next.state.parent.map(|value| value.snapshot_id)
+            != current.map(|value| value.head.snapshot_id)
         || current.is_some_and(|value| value.production != next.production)
     {
         return Err(ReviewCommitError::Integrity);

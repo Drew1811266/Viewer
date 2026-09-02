@@ -57,6 +57,10 @@ impl MemoryRepository {
     }
 }
 impl ContinuousReviewRepositoryPort for MemoryRepository {
+    fn sync_publication(&self) -> Result<(), ReviewCommitError> {
+        Ok(())
+    }
+
     fn load_history_selectors(
         &self,
         stream: ReviewStreamId,

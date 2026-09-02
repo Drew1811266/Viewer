@@ -193,6 +193,12 @@ pub(super) fn encode(
     })
 }
 
+pub(super) fn encode_production_scope(
+    value: Option<&ProductionScope>,
+) -> Result<Vec<u8>, ReviewCommitError> {
+    encode_bounded(&value.map(ProductionWire::from), 1024)
+}
+
 pub(super) fn decode(
     expected_project: ProjectId,
     expected_stream: ReviewStreamId,

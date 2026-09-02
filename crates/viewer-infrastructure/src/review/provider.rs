@@ -20,6 +20,21 @@ pub struct ProjectReviewRepositoryProvider {
 }
 
 impl ProjectReviewRepositoryProvider {
+    pub fn bootstrap_authoring(
+        &self,
+        stream: ReviewStreamId,
+    ) -> Result<viewer_application::review_workspace::ReviewHeads, ReviewCommitError> {
+        if self.project_access != ProjectAccess::ReadWrite {
+            return Err(ReviewCommitError::ReadOnly);
+        }
+        let authoring = self.authoring_writer()?;
+        let writer = self.continuous_writer()?;
+        let current = writer
+            .load_current(stream)?
+            .map(super::authoring::from_published);
+        authoring.bootstrap_published(stream, current)
+    }
+
     pub fn authoring_reader(
         &self,
     ) -> Result<Arc<super::SqliteContinuousReviewAuthoringStore>, ReviewCommitError> {

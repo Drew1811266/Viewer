@@ -20,6 +20,11 @@ use viewer_infrastructure::{
     video_probe::VideoMetadataProbe,
 };
 
+// Bootstrap must switch on in the same release step as the authoring command path. Enabling it
+// while the legacy synchronous writer is still active would allow that writer to advance v3
+// without advancing the authoring head.
+const ASYNC_REVIEW_SAVE_PIPELINE_ENABLED: bool = false;
+
 #[cfg(test)]
 mod tests;
 
@@ -133,6 +138,11 @@ fn initialize(config: ReviewWorkspaceConfig) -> Result<Arc<Initialized>, Error> 
         stream_id: stream,
         production: None,
     };
+    if ASYNC_REVIEW_SAVE_PIPELINE_ENABLED && config.access == ProjectAccess::ReadWrite {
+        provider
+            .bootstrap_authoring(stream)
+            .map_err(ReviewWorkspaceError::from)?;
+    }
     let assets = Arc::new(
         IndexedReviewAssetCatalog::new(
             &config.root,

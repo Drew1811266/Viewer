@@ -19,8 +19,8 @@ use viewer_domain::{ProjectId, ReviewCommandId, ReviewSnapshotId, ReviewStreamId
 
 pub struct SqliteContinuousReviewAuthoringStore {
     connection: Mutex<Connection>,
-    project_id: ProjectId,
-    writable: bool,
+    pub(super) project_id: ProjectId,
+    pub(super) writable: bool,
     persistence_mode: PortablePersistenceMode,
 }
 
@@ -67,7 +67,9 @@ impl SqliteContinuousReviewAuthoringStore {
         self.persistence_mode
     }
 
-    fn connection(&self) -> Result<std::sync::MutexGuard<'_, Connection>, ReviewCommitError> {
+    pub(super) fn connection(
+        &self,
+    ) -> Result<std::sync::MutexGuard<'_, Connection>, ReviewCommitError> {
         self.connection.lock().map_err(|_| ReviewCommitError::Io)
     }
 }
@@ -421,7 +423,7 @@ impl SqliteContinuousReviewAuthoringStore {
     }
 }
 
-fn ensure_stream(
+pub(super) fn ensure_stream(
     transaction: &Transaction<'_>,
     project_id: ProjectId,
     stream: ReviewStreamId,
@@ -478,7 +480,7 @@ fn validate_next(
     Ok(())
 }
 
-fn load_heads_from(
+pub(super) fn load_heads_from(
     connection: &Connection,
     stream: ReviewStreamId,
 ) -> Result<ReviewHeads, ReviewCommitError> {
@@ -709,7 +711,9 @@ where
     Ok(parsed)
 }
 
-fn barrier_code(value: viewer_application::review_workspace::ReviewBarrierKind) -> &'static str {
+pub(super) fn barrier_code(
+    value: viewer_application::review_workspace::ReviewBarrierKind,
+) -> &'static str {
     use viewer_application::review_workspace::ReviewBarrierKind::*;
     match value {
         None => "none",
@@ -719,7 +723,7 @@ fn barrier_code(value: viewer_application::review_workspace::ReviewBarrierKind) 
     }
 }
 
-fn map_database_error(error: rusqlite::Error) -> ReviewCommitError {
+pub(super) fn map_database_error(error: rusqlite::Error) -> ReviewCommitError {
     match &error {
         rusqlite::Error::SqliteFailure(failure, _)
             if matches!(

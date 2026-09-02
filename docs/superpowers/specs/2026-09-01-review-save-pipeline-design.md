@@ -1,6 +1,6 @@
 # Viewer 快速评审保存与后台发布设计
 
-> Status: Approved direction, pending written-spec review
+> Status: Approved for implementation planning
 >
 > Date: 2026-09-01
 >

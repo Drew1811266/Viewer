@@ -1022,7 +1022,7 @@ mod tests {
     }
 
     #[test]
-    fn operation_journal_uses_delete_full_and_foreign_keys() {
+    fn operation_journal_uses_supported_atomic_mode_full_and_foreign_keys() {
         let directory = tempfile::tempdir().unwrap();
         let journal = OperationJournal::open(directory.path().join("metadata.sqlite")).unwrap();
         let connection = journal
@@ -1043,7 +1043,12 @@ mod tests {
             .query_row("PRAGMA busy_timeout", [], |row| row.get(0))
             .unwrap();
 
-        assert_eq!(journal_mode, "delete");
+        let selected = crate::portable::schema::persistence_mode(&connection).unwrap();
+        assert!(matches!(
+            (journal_mode.as_str(), selected),
+            ("wal", crate::portable::PortablePersistenceMode::Wal)
+                | ("delete", crate::portable::PortablePersistenceMode::Rollback)
+        ));
         assert_eq!(synchronous, 2);
         assert_eq!(foreign_keys, 1);
         assert_eq!(busy_timeout, 5_000);

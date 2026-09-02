@@ -1,5 +1,6 @@
 mod assets;
 mod atomic;
+mod authoring;
 mod bundle;
 mod catalog;
 mod change_ledger;
@@ -10,6 +11,7 @@ mod provider;
 mod repository;
 
 pub use assets::IndexedReviewAssetCatalog;
+pub use authoring::SqliteContinuousReviewAuthoringStore;
 pub use change_ledger::ReviewChangeLedger;
 pub use continuous::{
     ContinuousReviewCommandCodec, NoReviewCommitFaults, ReviewCommitFaultInjector,

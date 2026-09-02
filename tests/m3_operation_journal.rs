@@ -85,12 +85,12 @@ fn complete_plan_registration_is_atomic_even_when_a_late_item_conflicts() {
 }
 
 #[test]
-fn schema_v3_is_exact_and_enforces_lifecycle_constraints() {
+fn schema_v4_is_exact_and_enforces_lifecycle_constraints() {
     let directory = tempfile::tempdir().unwrap();
     let database = directory.path().join("metadata.sqlite");
     drop(OperationJournal::open(&database).unwrap());
 
-    assert_eq!(schema_versions(&database), vec![1, 2, 3]);
+    assert_eq!(schema_versions(&database), vec![1, 2, 3, 4]);
     let connection = Connection::open(&database).unwrap();
     assert!(
         connection
@@ -161,7 +161,7 @@ fn version_two_migrates_once_with_a_sanitized_immutable_v2_backup() {
 
     drop(OperationJournal::open(&database).unwrap());
 
-    assert_eq!(schema_versions(&database), vec![1, 2, 3]);
+    assert_eq!(schema_versions(&database), vec![1, 2, 3, 4]);
     let migrated = Connection::open(&database).unwrap();
     let (result_code, error_code): (String, String) = migrated
         .query_row(
@@ -217,7 +217,7 @@ fn interrupted_truncated_backup_is_atomically_rebuilt_before_migration() {
 
     drop(OperationJournal::open(&database).unwrap());
 
-    assert_eq!(schema_versions(&database), vec![1, 2, 3]);
+    assert_eq!(schema_versions(&database), vec![1, 2, 3, 4]);
     assert_eq!(schema_versions(&backup), vec![1, 2]);
     let integrity: String = Connection::open(&backup)
         .unwrap()

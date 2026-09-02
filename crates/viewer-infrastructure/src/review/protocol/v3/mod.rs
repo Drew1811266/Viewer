@@ -36,6 +36,24 @@ pub fn decode_state_v3(bytes: &[u8]) -> Result<ReviewStateRecord, ReviewProtocol
     Ok(record)
 }
 
+/// Canonical logical-state transport used only by the private authoring control plane.
+/// Unlike a published v3 state it deliberately has no evidence bindings.
+pub(in crate::review) fn encode_authoring_state(
+    record: &ReviewStateRecord,
+) -> Result<Vec<u8>, ReviewProtocolError> {
+    validate::authoring_state(record)?;
+    encode_document(&wire::State::from(record), MAX_REVIEW_DOCUMENT_BYTES)
+}
+
+pub(in crate::review) fn decode_authoring_state(
+    bytes: &[u8],
+) -> Result<ReviewStateRecord, ReviewProtocolError> {
+    let wire: wire::State = decode_document(bytes, MAX_REVIEW_DOCUMENT_BYTES, REVIEW_PROTOCOL_V3)?;
+    let record = wire.into_record();
+    validate::authoring_state(&record)?;
+    Ok(record)
+}
+
 pub fn encode_index_v3(record: &ReviewIndexV3) -> Result<Vec<u8>, ReviewProtocolError> {
     validate::index(record)?;
     encode_document(&catalog_wire::Index::from(record), MAX_REVIEW_INDEX_BYTES)

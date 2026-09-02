@@ -10,7 +10,15 @@ const PORTABLE_MIGRATION_V1: &str = include_str!("../../migrations/portable/0001
 const PORTABLE_MIGRATION_V2: &str = include_str!("../../migrations/portable/0002_markers.sql");
 const PORTABLE_MIGRATION_V3: &str =
     include_str!("../../migrations/portable/0003_operation_results.sql");
-pub const LATEST_PORTABLE_SCHEMA_VERSION: i64 = 3;
+const PORTABLE_MIGRATION_V4: &str =
+    include_str!("../../migrations/portable/0004_review_authoring.sql");
+pub const LATEST_PORTABLE_SCHEMA_VERSION: i64 = 4;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum PortablePersistenceMode {
+    Wal,
+    Rollback,
+}
 
 #[derive(Debug, thiserror::Error)]
 pub enum PortableSchemaError {
@@ -41,6 +49,7 @@ pub fn open_database(path: &Path, writable: bool) -> Result<Connection, Portable
         connection.execute_batch(PORTABLE_MIGRATION_V1)?;
         connection.execute_batch(PORTABLE_MIGRATION_V2)?;
         connection.execute_batch(PORTABLE_MIGRATION_V3)?;
+        connection.execute_batch(PORTABLE_MIGRATION_V4)?;
         return Ok(connection);
     }
 
@@ -62,6 +71,10 @@ pub fn open_database(path: &Path, writable: bool) -> Result<Connection, Portable
         sanitize_legacy_error_codes(path)?;
         backup_schema(path, 2)?;
         apply_migration(path, PORTABLE_MIGRATION_V3)?;
+    }
+    if version <= 3 {
+        backup_schema(path, 3)?;
+        apply_migration(path, PORTABLE_MIGRATION_V4)?;
     }
     if writable {
         sanitize_retained_backups(path)?;
@@ -88,16 +101,46 @@ fn open_connection(
     Connection::open_with_flags(path, flags)
 }
 
-fn configure(connection: &Connection, writable: bool) -> Result<(), rusqlite::Error> {
+fn configure(
+    connection: &Connection,
+    writable: bool,
+) -> Result<PortablePersistenceMode, rusqlite::Error> {
     connection.busy_timeout(Duration::from_secs(5))?;
     if writable {
-        connection.execute_batch(
-            "PRAGMA foreign_keys = ON; PRAGMA journal_mode = DELETE; PRAGMA synchronous = FULL;",
-        )?;
+        connection.execute_batch("PRAGMA foreign_keys = ON;")?;
+        let mode = match set_journal_mode(connection, "WAL") {
+            Ok(value) if value.eq_ignore_ascii_case("wal") => PortablePersistenceMode::Wal,
+            _ => {
+                let value = set_journal_mode(connection, "DELETE")?;
+                if !value.eq_ignore_ascii_case("delete") {
+                    return Err(rusqlite::Error::InvalidQuery);
+                }
+                PortablePersistenceMode::Rollback
+            }
+        };
+        connection.execute_batch("PRAGMA synchronous = FULL;")?;
+        Ok(mode)
     } else {
         connection.execute_batch("PRAGMA foreign_keys = ON;")?;
+        persistence_mode(connection)
     }
-    Ok(())
+}
+
+fn set_journal_mode(connection: &Connection, mode: &str) -> Result<String, rusqlite::Error> {
+    connection.query_row(&format!("PRAGMA journal_mode = {mode}"), [], |row| {
+        row.get(0)
+    })
+}
+
+pub fn persistence_mode(
+    connection: &Connection,
+) -> Result<PortablePersistenceMode, rusqlite::Error> {
+    let value: String = connection.query_row("PRAGMA journal_mode", [], |row| row.get(0))?;
+    Ok(if value.eq_ignore_ascii_case("wal") {
+        PortablePersistenceMode::Wal
+    } else {
+        PortablePersistenceMode::Rollback
+    })
 }
 
 fn inspect_version(path: &Path) -> Result<i64, PortableSchemaError> {
@@ -122,6 +165,7 @@ fn inspect_version(path: &Path) -> Result<i64, PortableSchemaError> {
         [1] => Ok(1),
         [1, 2] => Ok(2),
         [1, 2, 3] => Ok(3),
+        [1, 2, 3, 4] => Ok(4),
         [] => Err(PortableSchemaError::UnsupportedSchema(0)),
         _ if versions
             .last()

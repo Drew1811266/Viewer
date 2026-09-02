@@ -199,6 +199,71 @@ pub(super) fn state(record: &ReviewStateRecord) -> Result<(), ReviewProtocolErro
     Ok(())
 }
 
+pub(in crate::review) fn authoring_state(
+    record: &ReviewStateRecord,
+) -> Result<(), ReviewProtocolError> {
+    use ReviewProtocolError::*;
+    if !record.evidence.is_empty() {
+        return Err(InvalidData);
+    }
+    record.state.validate().map_err(domain_error)?;
+    portable_assets(&record.state.assets)?;
+    for item in &record.state.feedback {
+        if item.created_at_ms < 0 || item.created_at_ms as u64 > MAX_SAFE_INTEGER {
+            return Err(LimitExceeded);
+        }
+        for target in &item.targets {
+            if matches!(target.anchor,FeedbackAnchor::VideoPoint {position_us} if position_us > MAX_SAFE_INTEGER)
+                || matches!(target.anchor,FeedbackAnchor::VideoRange {end_us,..} if end_us > MAX_SAFE_INTEGER)
+            {
+                return Err(LimitExceeded);
+            }
+        }
+    }
+    if record.changes.len() > 100_000_000 {
+        return Err(LimitExceeded);
+    }
+    let mut target_keys = HashMap::new();
+    for feedback in &record.state.feedback {
+        for target in &feedback.targets {
+            target_keys.insert(
+                target.id,
+                viewer_domain::review::continuous::TargetVersionKey {
+                    feedback_id: feedback.id,
+                    text_revision_id: feedback.text_revision_id,
+                    target_id: target.id,
+                    target_revision_id: target.revision_id,
+                },
+            );
+        }
+    }
+    let mut final_keys = HashMap::new();
+    let mut transitions = HashSet::new();
+    for change in &record.changes {
+        change.validate().map_err(domain_error)?;
+        if let Some(previous) = final_keys.insert(change.target_id, change.after)
+            && previous != change.before
+        {
+            return Err(InvalidData);
+        }
+        if !transitions.insert((
+            change.target_id,
+            change.before,
+            change.after,
+            change.archive_id,
+            change.historical_key,
+        )) {
+            return Err(InvalidData);
+        }
+    }
+    for (id, key) in final_keys {
+        if target_keys.get(&id).copied() != key {
+            return Err(InvalidData);
+        }
+    }
+    Ok(())
+}
+
 pub(super) fn evidence_ref(value: &EvidenceRef) -> Result<(), ReviewProtocolError> {
     if value.width == 0 || value.height == 0 || value.size_bytes < 33 {
         return Err(ReviewProtocolError::InvalidData);

@@ -20,6 +20,29 @@ pub struct ProjectReviewRepositoryProvider {
 }
 
 impl ProjectReviewRepositoryProvider {
+    pub fn authoring_reader(
+        &self,
+    ) -> Result<Arc<super::SqliteContinuousReviewAuthoringStore>, ReviewCommitError> {
+        Ok(Arc::new(super::SqliteContinuousReviewAuthoringStore::open(
+            &self.project_root,
+            self.project_id,
+            ProjectAccess::ReadOnly,
+        )?))
+    }
+
+    pub fn authoring_writer(
+        &self,
+    ) -> Result<Arc<super::SqliteContinuousReviewAuthoringStore>, ReviewCommitError> {
+        if self.project_access != ProjectAccess::ReadWrite {
+            return Err(ReviewCommitError::ReadOnly);
+        }
+        Ok(Arc::new(super::SqliteContinuousReviewAuthoringStore::open(
+            &self.project_root,
+            self.project_id,
+            ProjectAccess::ReadWrite,
+        )?))
+    }
+
     /// Resolves the unique manual stream, or a stable empty context before the first commit.
     /// Never creates metadata or acquires a write lease.
     pub fn manual_review_stream(&self) -> Result<ReviewStreamId, ReviewCommitError> {

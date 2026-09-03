@@ -206,7 +206,7 @@ function draw() {
   fireEvent.pointerUp(canvas, { pointerId: 1, clientX: 350, clientY: 280 })
 }
 
-function selectMarkupTool(label: '画笔' | '矩形') {
+function selectMarkupTool(label: '箭头' | '画笔' | '矩形') {
   if (screen.queryByRole('menu') === null) {
     fireEvent.click(screen.getByRole('button', { name: '标记' }))
   }
@@ -345,8 +345,9 @@ describe('real image workbench editing ownership', () => {
     expect(work.current().editor).toEqual(before)
   })
 
-  it('retains failed rectangle replacement with retry/cancel and guards in-flight persistence', async () => {
-    const review = reviewCoordinator()
+  it('retains failed extended geometry with retry/cancel and guards in-flight persistence', async () => {
+    const originalPoint: ReviewAnchor = { kind: 'image_point', x: 0.2, y: 0.2 }
+    const review = reviewCoordinator(originalPoint)
     let reject!: (error: Error) => void
     vi.mocked(review.replaceAnchoredFeedbackAnchor).mockImplementationOnce(
       () =>
@@ -367,15 +368,21 @@ describe('real image workbench editing ownership', () => {
     })
     fireEvent.click(screen.getByRole('button', { name: '重试保存标记' }))
     await waitFor(() => expect(work.current().dirty).toBe(false))
-    expect(defined(work.current().feedback[0]).anchor).toEqual({ ...RECT, x: 0.2 + 1 / 640 })
-    vi.mocked(review.replaceAnchoredFeedbackAnchor).mockRejectedValueOnce(
+    expect(defined(work.current().feedback[0]).anchor).toEqual({
+      ...originalPoint,
+      x: 0.2 + 1 / 640,
+    })
+    vi.mocked(work.review.replaceAnchoredFeedbackAnchor).mockRejectedValueOnce(
       new Error('disk unavailable'),
     )
     fireEvent.keyDown(screen.getByRole('button', { name: '意见 1：原意见' }), { key: 'ArrowRight' })
     await screen.findByRole('button', { name: '取消标记修改' })
     fireEvent.click(screen.getByRole('button', { name: '取消标记修改' }))
     expect(work.current().dirty).toBe(false)
-    expect(defined(work.current().feedback[0]).anchor).toEqual({ ...RECT, x: 0.2 + 1 / 640 })
+    expect(defined(work.current().feedback[0]).anchor).toEqual({
+      ...originalPoint,
+      x: 0.2 + 1 / 640,
+    })
   })
 
   it.each(['inline', 'rail'] as const)(
@@ -587,6 +594,7 @@ function reviewCanvasContext(): CanvasRenderingContext2D {
     stroke: vi.fn(),
     strokeRect: vi.fn(),
     arc: vi.fn(),
+    ellipse: vi.fn(),
     fill: vi.fn(),
     fillText: vi.fn(),
     lineCap: 'butt',
@@ -689,7 +697,7 @@ describe('continuous image review routing', () => {
     expect(screen.queryByText('已保存，可供外部读取')).not.toBeInTheDocument()
   })
 
-  it('keeps the zoomed canvas and saved marker while Agent publication completes', async () => {
+  it('keeps the zoomed preview identity and extended marker while Agent publication completes', async () => {
     const reviewPort = continuousPort({ kind: 'pending', pendingRevisions: 1 })
     let controller!: ImageReviewWorkbenchController
 
@@ -716,12 +724,14 @@ describe('continuous image review routing', () => {
     render(<Harness />)
     await waitForMarkupTools()
     await waitFor(() => expect(document.querySelector('.image-preview-image')).not.toBeNull())
-    const image = document.querySelector('.image-preview-image')
+    const image = document.querySelector<HTMLImageElement>('.image-preview-image')
     if (image === null) throw new Error('Expected prepared image')
     fireEvent.load(image)
     fireEvent.click(screen.getByRole('button', { name: '放大' }))
     expect(document.querySelector('.preview-scale-label')).toHaveTextContent('125%')
-    fireEvent.click(screen.getByRole('menuitemradio', { name: /矩形/ }))
+    const transformBeforeSave = image.style.transform
+    const scaleBeforeSave = document.querySelector('.preview-scale-label')?.textContent
+    fireEvent.click(screen.getByRole('menuitemradio', { name: /箭头/ }))
     draw()
     fireEvent.change(screen.getByRole('textbox', { name: '标注意见' }), {
       target: { value: 'logo有错误' },
@@ -730,7 +740,16 @@ describe('continuous image review routing', () => {
 
     await waitFor(() => expect(controller.dirty).toBe(false))
     expect(screen.getAllByTestId('annotation-marker')).toHaveLength(1)
-    expect(document.querySelector('.preview-scale-label')).toHaveTextContent('125%')
+    expect(screen.queryByText('正在加载')).not.toBeInTheDocument()
+    expect(document.querySelector('.image-preview-image')).toBe(image)
+    expect(image.style.transform).toBe(transformBeforeSave)
+    expect(document.querySelector('.preview-scale-label')?.textContent).toBe(scaleBeforeSave)
+    expect(reviewPort.requests[0]).toMatchObject({
+      command: {
+        kind: 'save_feedback',
+        targets: [{ anchor: { kind: 'image_arrow' } }],
+      },
+    })
     expect(screen.getByText('已保存，Agent 数据生成中')).toBeVisible()
     expect(reviewPort.port.getWorkspace).toHaveBeenCalledTimes(1)
 

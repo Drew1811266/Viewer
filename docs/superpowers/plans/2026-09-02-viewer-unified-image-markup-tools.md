@@ -1150,7 +1150,7 @@ git commit -m "feat: magnify the complete markup scene"
 - Consumes: extended Anchor save commands, authoring Patch, outbox, and v4 materializer.
 - Produces: regression proof for foreground latency, last-write ordering, failure retention, and stable preview state.
 
-- [ ] **Step 1: Add failing performance and failure cases for an ellipse/arrow save**
+- [x] **Step 1: Add failing performance and failure cases for an ellipse/arrow save**
 
 ```rust
 let harness = Harness::new().await;
@@ -1192,20 +1192,20 @@ expect(document.querySelector('.preview-scale-label')?.textContent).toBe(scaleBe
 expect(screen.getByTestId('annotation-marker')).toBeVisible()
 ```
 
-- [ ] **Step 2: Run save and lifecycle suites**
+- [x] **Step 2: Run save and lifecycle suites**
 
 Run: `cargo test --locked -p viewer-desktop --test review_save_performance --test review_materialization_lifecycle && cargo test --locked -p viewer-infrastructure --test continuous_review_costs --test continuous_review_dirty_evidence && pnpm --dir ui exec vitest run src/app/review/reviewWorkspacePatch.test.ts src/app/review/useContinuousReviewCoordinator.operations.test.tsx src/components/review/ImageReviewWorkbench.integration.test.tsx`
 
 Expected: FAIL until new anchor cost/action classification and UI assertions are complete.
 
-- [ ] **Step 3: Keep new anchors on the existing incremental path**
+- [x] **Step 3: Keep new anchors on the existing incremental path**
 
 Update evidence-action classification so point/arrow/ellipse geometry changes dirty only the affected image
 evidence. Do not rebuild unrelated evidence and do not add a second queue. Ensure multiple authoring revisions
 for one Feedback cannot publish an older state after a newer state; the materializer may coalesce superseded
 non-barrier revisions using existing sequence rules.
 
-- [ ] **Step 4: Verify typed failure behavior**
+- [x] **Step 4: Verify typed failure behavior**
 
 Inject foreground transaction failure and assert geometry/text remain in `save_error`. Inject render failure and
 assert logical state is durable, publication is pending/blocked, current Agent read returns
@@ -1213,13 +1213,13 @@ assert logical state is durable, publication is pending/blocked, current Agent r
 foreground-result path with an extended anchor: retry with the same command ID must recover the original receipt
 and must not create a second Feedback or target revision.
 
-- [ ] **Step 5: Run all save and publication tests**
+- [x] **Step 5: Run all save and publication tests**
 
 Run: `cargo test --locked -p viewer-desktop --test review_save_performance --test review_materialization_lifecycle && cargo test --locked -p viewer-infrastructure --test continuous_review_costs --test continuous_review_dirty_evidence && pnpm --dir ui exec vitest run src/app/review/reviewWorkspacePatch.test.ts src/app/review/useContinuousReviewCoordinator.operations.test.tsx src/components/review/ImageReviewWorkbench.integration.test.tsx`
 
 Expected: PASS with no full workspace reload on save.
 
-- [ ] **Step 6: Commit save-path verification**
+- [x] **Step 6: Commit save-path verification**
 
 ```bash
 git add src-tauri/tests/review_save_performance.rs src-tauri/tests/review_materialization_lifecycle.rs \

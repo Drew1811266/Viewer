@@ -53,6 +53,70 @@ it('advances only the authoring view and preserves last-known publication eviden
   expect(after.current?.evidence).toBe(evidence)
 })
 
+it('patches extended geometry in place without replacing publication or unrelated workspace state', () => {
+  const before = workspace('base')
+  if (before.current === null) throw new Error('Expected current workspace')
+  before.current.authoring.state.feedback = [
+    {
+      id: 'feedback-1',
+      textRevisionId: 'text-1',
+      text: '调整箭头方向',
+      createdAtMs: 1,
+      historyRef: null,
+      targets: [
+        {
+          id: 'target-1',
+          revisionId: 'revision-1',
+          assetVersionId: 'asset-1',
+          anchor: { kind: 'image_point', x: 0.2, y: 0.3 },
+          availability: { kind: 'ready' },
+        },
+      ],
+    },
+  ]
+  before.projection.actionable = ['target-1']
+  const originalFeedback = before.current.authoring.state.feedback[0]
+  const originalTarget = originalFeedback?.targets[0]
+  if (originalFeedback === undefined || originalTarget === undefined)
+    throw new Error('Expected feedback target')
+  const delta = patch()
+  delta.projection.actionable = ['target-1']
+  delta.upsertFeedback = [
+    {
+      ...originalFeedback,
+      targets: [
+        {
+          ...originalTarget,
+          revisionId: 'revision-2',
+          anchor: {
+            kind: 'image_arrow',
+            tail: { x: 0.2, y: 0.3 },
+            head: { x: 0.7, y: 0.6 },
+          },
+        },
+      ],
+    },
+  ]
+  const publishedRef = before.current.publishedRef
+  const evidence = before.current.evidence
+
+  const after = applyReviewWorkspacePatch(before, delta)
+
+  expect(after.current?.authoring.state.feedback[0]).toMatchObject({
+    id: 'feedback-1',
+    textRevisionId: 'text-1',
+    targets: [
+      {
+        id: 'target-1',
+        revisionId: 'revision-2',
+        anchor: { kind: 'image_arrow' },
+      },
+    ],
+  })
+  expect(after.current?.publishedRef).toBe(publishedRef)
+  expect(after.current?.evidence).toBe(evidence)
+})
+
 it('rejects stale bases and conflicting identities without partially changing the view', () => {
   const before = workspace('base')
   expect(() => applyReviewWorkspacePatch(before, patch('stale'))).toThrow(ReviewPatchMismatch)

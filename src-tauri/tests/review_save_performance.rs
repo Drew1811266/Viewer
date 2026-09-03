@@ -21,8 +21,8 @@ use viewer_application::{
 };
 use viewer_desktop::dto::review_workspace::ReviewAuthoringApplyResultDto;
 use viewer_domain::{
-    AssetVersionId, EntityId, FeedbackId, ReviewCommandId,
-    review::{AssetVersion, FeedbackAnchor, NormalizedRect},
+    AssetVersionId, EntityId, FeedbackId, ReviewCommandId, ReviewStreamId,
+    review::{AssetVersion, FeedbackAnchor, NormalizedArrow, NormalizedPoint, NormalizedRect},
 };
 use viewer_infrastructure::{
     SystemClock,
@@ -171,6 +171,7 @@ struct Harness {
     _root: tempfile::TempDir,
     service: ContinuousReviewService,
     store: Arc<dyn ContinuousReviewAuthoringRepositoryPort>,
+    stream: ReviewStreamId,
     asset: AssetVersionId,
     spies: Arc<ForegroundSpies>,
 }
@@ -227,6 +228,7 @@ impl Harness {
             _root: root,
             service,
             store,
+            stream,
             asset: prepared.asset.id,
             spies,
         }
@@ -272,6 +274,34 @@ impl Harness {
             0
         );
     }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn extended_anchor_save_advances_only_the_authoring_head_within_budget() {
+    let harness = Harness::new().await;
+    let arrow = NormalizedArrow::new(
+        NormalizedPoint::new(0.2, 0.3).unwrap(),
+        NormalizedPoint::new(0.7, 0.6).unwrap(),
+    )
+    .unwrap();
+    let (saved, elapsed) = harness
+        .save(
+            None,
+            None,
+            "调整箭头指向处".into(),
+            vec![TargetEdit::Add {
+                asset_version_id: harness.asset,
+                anchor: FeedbackAnchor::ImageArrow(arrow),
+            }],
+        )
+        .await;
+
+    let heads = harness.store.load_heads(harness.stream).unwrap();
+    assert!(elapsed <= Duration::from_millis(300), "elapsed={elapsed:?}");
+    assert_eq!(heads.authoring.unwrap(), saved.receipt.head);
+    assert_ne!(heads.authoring, heads.published);
+    assert_eq!(saved.patch.upsert_feedback.len(), 1);
+    harness.assert_foreground_is_logical_only();
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

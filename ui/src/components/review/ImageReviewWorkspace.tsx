@@ -25,6 +25,8 @@ export default function ImageReviewWorkspace({
 }: ImageReviewWorkspaceProps) {
   const compactDefaultEntity = useRef<string | null>(null)
   const identity = useRef<HTMLElement | null>(null)
+  const preparedImageRef = useRef(controller.preparedImage)
+  preparedImageRef.current = controller.preparedImage
   const editorPhase = controller.editor.phase
   const transientAnchor = editorPhase.status === 'idle' ? null : editorPhase.draftAnchor
   const annotationScene = useMemo(
@@ -51,12 +53,16 @@ export default function ImageReviewWorkspace({
   }, [controller, surfaceProps.file.entityId])
 
   const metadata = surfaceProps.file.imageMetadata
-  const requestImage = useCallback<ImagePreviewSurfaceProps['requestImage']>(
+  const preparedAssetVersionId = controller.preparedImage?.assetVersionId ?? null
+  const requestContinuousImage = useCallback<ImagePreviewSurfaceProps['requestImage']>(
     async (file, representation, signal) => {
-      if (controller.protocol !== 'continuous')
-        return surfaceProps.requestImage(file, representation, signal)
-      const prepared = controller.preparedImage
-      if (prepared === null || prepared.entityId !== file.entityId)
+      signal?.throwIfAborted()
+      const prepared = preparedImageRef.current
+      if (
+        prepared === null ||
+        prepared.entityId !== file.entityId ||
+        prepared.assetVersionId !== preparedAssetVersionId
+      )
         throw new Error('当前评审素材版本尚未准备完成')
       return {
         cacheKey: `review:${prepared.assetVersionId}:${JSON.stringify(representation)}`,
@@ -66,8 +72,10 @@ export default function ImageReviewWorkspace({
         backend: 'image_io',
       }
     },
-    [controller.preparedImage, controller.protocol, surfaceProps.requestImage],
+    [preparedAssetVersionId],
   )
+  const requestImage =
+    controller.protocol === 'continuous' ? requestContinuousImage : surfaceProps.requestImage
 
   return (
     <ImagePreviewSurface

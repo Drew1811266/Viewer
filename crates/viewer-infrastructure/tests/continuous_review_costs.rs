@@ -3,7 +3,49 @@
 mod support;
 use std::time::Instant;
 use support::*;
-use viewer_domain::{review::continuous::*, *};
+use viewer_application::review_workspace::{
+    CURRENT_REVIEW_EVIDENCE_ACTION_POLICY, evidence_action_key,
+};
+use viewer_domain::{
+    review::{FeedbackAnchor, NormalizedArrow, NormalizedPoint, continuous::*},
+    *,
+};
+
+#[test]
+fn measure_extended_anchor_action_key_cost_and_stability() {
+    let (root, _) = setup();
+    let mut request = image_request(&root);
+    let asset = request.next.state.assets[0].id;
+    request.next.state.feedback[0].targets[0].anchor = FeedbackAnchor::ImageArrow(
+        NormalizedArrow::new(
+            NormalizedPoint::new(0.2, 0.3).unwrap(),
+            NormalizedPoint::new(0.7, 0.6).unwrap(),
+        )
+        .unwrap(),
+    );
+    let expected = evidence_action_key(
+        &request.next.state,
+        asset,
+        CURRENT_REVIEW_EVIDENCE_ACTION_POLICY,
+    )
+    .unwrap();
+    let started = Instant::now();
+    for _ in 0..1_000 {
+        assert_eq!(
+            evidence_action_key(
+                &request.next.state,
+                asset,
+                CURRENT_REVIEW_EVIDENCE_ACTION_POLICY,
+            )
+            .unwrap(),
+            expected
+        );
+    }
+    eprintln!(
+        "extended_anchor_action_key_1000={}us",
+        started.elapsed().as_micros()
+    );
+}
 
 #[test]
 #[ignore = "archive-heavy IO measurement; run explicitly with --ignored --nocapture"]

@@ -10,7 +10,8 @@ use viewer_desktop::{
     state::DesktopRuntime,
 };
 use viewer_domain::{
-    AssetVersionId, EntityId, ReviewCommandId, SessionId, review::FeedbackAnchor,
+    AssetVersionId, EntityId, ReviewCommandId, SessionId,
+    review::{FeedbackAnchor, NormalizedArrow, NormalizedPoint},
     search::Generation,
 };
 
@@ -53,6 +54,23 @@ fn save(asset_version_id: AssetVersionId) -> ReviewWorkspaceCommand {
         targets: vec![TargetEdit::Add {
             asset_version_id,
             anchor: FeedbackAnchor::Asset,
+        }],
+    }
+}
+
+fn save_arrow(asset_version_id: AssetVersionId) -> ReviewWorkspaceCommand {
+    ReviewWorkspaceCommand::SaveFeedback {
+        feedback_id: None,
+        text: "沿箭头方向调整".into(),
+        targets: vec![TargetEdit::Add {
+            asset_version_id,
+            anchor: FeedbackAnchor::ImageArrow(
+                NormalizedArrow::new(
+                    NormalizedPoint::new(0.2, 0.3).unwrap(),
+                    NormalizedPoint::new(0.7, 0.6).unwrap(),
+                )
+                .unwrap(),
+            ),
         }],
     }
 }
@@ -102,7 +120,7 @@ async fn authoring_apply_returns_pending_patch_and_status_converges_without_a_vi
             generation,
             ReviewCommandId::new(),
             None,
-            save(asset),
+            save_arrow(asset),
         )
         .await
         .unwrap();
@@ -114,6 +132,10 @@ async fn authoring_apply_returns_pending_patch_and_status_converges_without_a_vi
 
     assert_eq!(reply.patch.basis_snapshot_id, None);
     assert_eq!(reply.patch.upsert_feedback.len(), 1);
+    assert!(matches!(
+        reply.patch.upsert_feedback[0].targets[0].anchor,
+        FeedbackAnchor::ImageArrow(_)
+    ));
     assert!(matches!(
         reply.publication,
         ReviewPublicationStatus::Pending {

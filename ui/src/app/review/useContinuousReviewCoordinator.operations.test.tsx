@@ -293,3 +293,47 @@ it('unresolved recovery remains unpublished and blocks new writes without automa
   expect(port.prepareCommand).not.toHaveBeenCalled()
   expect(port.applyCommand).not.toHaveBeenCalled()
 })
+
+it('retries one uncertain extended-anchor command without changing its identity or payload', async () => {
+  const port = reviewPort()
+  vi.mocked(port.applyCommand).mockRejectedValueOnce(failure('outcome_unknown'))
+  const { result } = renderHook(() => useContinuousReviewCoordinator({ ...session, port }))
+  await waitFor(() => expect(result.current.state.kind).toBe('ready'))
+  const arrowInput = {
+    ...input,
+    text: '调整箭头指向处',
+    targets: [
+      {
+        kind: 'add' as const,
+        assetVersionId: 'asset-1',
+        anchor: {
+          kind: 'image_arrow' as const,
+          tail: { x: 0.2, y: 0.3 },
+          head: { x: 0.7, y: 0.6 },
+        },
+      },
+    ],
+  }
+  act(() => {
+    expect(result.current.beginEditor(arrowInput)).toBe(true)
+  })
+  await act(async () => {
+    await expect(result.current.saveFeedback()).rejects.toMatchObject({
+      code: 'outcome_unknown',
+    })
+  })
+  const retained = result.current.pendingEnvelope
+  if (retained === null) throw new Error('Expected uncertain envelope to remain retryable')
+
+  await act(() => result.current.retry())
+
+  expect(port.prepareCommand).toHaveBeenCalledOnce()
+  expect(vi.mocked(port.applyCommand).mock.calls[1]?.[0].envelope).toBe(retained)
+  expect(retained.command).toMatchObject({
+    kind: 'save_feedback',
+    text: '调整箭头指向处',
+    targets: [{ anchor: { kind: 'image_arrow' } }],
+  })
+  expect(result.current.pendingEnvelope).toBeNull()
+  expect(result.current.view?.current?.authoring.head.snapshotId).toBe('saved-snapshot')
+})

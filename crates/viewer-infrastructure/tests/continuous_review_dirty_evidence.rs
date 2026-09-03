@@ -3,10 +3,15 @@ use viewer_application::{
     ProjectAccess,
     review_evidence::{EvidenceRole, HistorySelector},
     review_workspace::{
-        CURRENT_REVIEW_EVIDENCE_ACTION_POLICY, CachedReviewEvidenceAction, EvidenceCapability,
-        ReviewEvidenceActionCachePort, ReviewEvidenceActionKey, ReviewEvidenceActionPolicy,
+        CURRENT_REVIEW_EVIDENCE_ACTION_POLICY, CachedReviewEvidenceAction,
+        ContinuousReviewAuthoringStorePort, EvidenceCapability, ReviewEvidenceActionCachePort,
+        ReviewEvidenceActionKey, ReviewEvidenceActionPolicy, dirty_evidence_assets,
         evidence_action_key,
     },
+};
+use viewer_domain::{
+    AssetVersionId, RelativePath, ReviewStreamId,
+    review::{FeedbackAnchor, NormalizedArrow, NormalizedPoint, NormalizedRect},
 };
 use viewer_infrastructure::{
     portable::PortableProjectMetadata, review::ProjectReviewRepositoryProvider,
@@ -163,5 +168,48 @@ fn keyed_lookup_does_not_scan_other_rows_and_corrupt_object_evicts_only_its_row(
             )
             .unwrap(),
         999
+    );
+}
+
+#[test]
+fn extended_geometry_changes_dirty_only_its_own_image_evidence() {
+    let (_root, provider, _) = fixture();
+    let stream = ReviewStreamId::from_u128(2);
+    provider.bootstrap_authoring(stream).unwrap();
+    let store = provider.authoring_reader().unwrap();
+    let mut point = store.load_current(stream).unwrap().unwrap();
+    let affected = point.state.assets[0].id;
+    let mut unaffected_asset = point.state.assets[0].clone();
+    unaffected_asset.id = AssetVersionId::from_u128(999);
+    unaffected_asset.relative_path = RelativePath::parse("unaffected.png").unwrap();
+    point.state.assets.push(unaffected_asset);
+    point.state.feedback[0].targets[0].anchor =
+        FeedbackAnchor::ImagePoint(NormalizedPoint::new(0.2, 0.3).unwrap());
+
+    let mut arrow = point.clone();
+    arrow.state.feedback[0].targets[0].anchor = FeedbackAnchor::ImageArrow(
+        NormalizedArrow::new(
+            NormalizedPoint::new(0.2, 0.3).unwrap(),
+            NormalizedPoint::new(0.7, 0.6).unwrap(),
+        )
+        .unwrap(),
+    );
+    let mut ellipse = arrow.clone();
+    ellipse.state.feedback[0].targets[0].anchor =
+        FeedbackAnchor::ImageEllipse(NormalizedRect::new(0.1, 0.2, 0.3, 0.4).unwrap());
+
+    assert_eq!(
+        dirty_evidence_assets(Some(&point), &arrow, CURRENT_REVIEW_EVIDENCE_ACTION_POLICY,)
+            .unwrap(),
+        vec![affected]
+    );
+    assert_eq!(
+        dirty_evidence_assets(
+            Some(&arrow),
+            &ellipse,
+            CURRENT_REVIEW_EVIDENCE_ACTION_POLICY,
+        )
+        .unwrap(),
+        vec![affected]
     );
 }

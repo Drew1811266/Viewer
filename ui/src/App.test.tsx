@@ -494,8 +494,15 @@ describe('Viewer empty state', () => {
     const rail = await screen.findByRole('complementary', { name: '评审意见' })
     expect(rail).toHaveTextContent('0 条')
     expect(screen.queryByTestId('annotation-marker')).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '画笔' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: '矩形' })).toBeDisabled()
+    fireEvent.click(screen.getByRole('button', { name: '标记' }))
+    expect(screen.getByRole('menuitemradio', { name: /画笔/ })).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    )
+    expect(screen.getByRole('menuitemradio', { name: /矩形/ })).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    )
     expect(screen.getByText('素材来源或版本需要确认，刷新确认后可继续评审。')).toBeVisible()
   })
 
@@ -520,8 +527,15 @@ describe('Viewer empty state', () => {
     const rail = await screen.findByRole('complementary', { name: '评审意见' })
     expect(rail).toHaveTextContent('0 条')
     expect(screen.queryByTestId('annotation-marker')).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '画笔' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: '矩形' })).toBeDisabled()
+    fireEvent.click(screen.getByRole('button', { name: '标记' }))
+    expect(screen.getByRole('menuitemradio', { name: /画笔/ })).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    )
+    expect(screen.getByRole('menuitemradio', { name: /矩形/ })).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    )
     expect(screen.getByText('素材来源或版本需要确认，刷新确认后可继续评审。')).toBeVisible()
   })
 

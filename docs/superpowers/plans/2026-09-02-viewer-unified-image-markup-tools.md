@@ -1006,7 +1006,7 @@ git commit -m "feat: unify image markup tools in one menu"
 - Consumes: pure geometry helpers, hit testing, extended controller state, and `ImagePreviewProjection`.
 - Produces: pointer-captured creation and editing for all five local image Anchor types.
 
-- [ ] **Step 1: Add failing gesture tests for all new tools**
+- [x] **Step 1: Add failing gesture tests for all new tools**
 
 ```ts
 fireEvent.pointerDown(canvas, { clientX: 74, clientY: 68, pointerId: 1 })
@@ -1019,13 +1019,13 @@ cancel, and pointer release outside the Canvas. Add editing tests for point drag
 move, and four ellipse handles. Saving any geometry edit must call the controller with the existing Feedback ID;
 the rail item's ordinal and selection identity must remain unchanged after the returned Patch.
 
-- [ ] **Step 2: Run Canvas tests and verify missing gesture support**
+- [x] **Step 2: Run Canvas tests and verify missing gesture support**
 
 Run: `pnpm --dir ui exec vitest run src/components/review/AnnotationCanvas.test.tsx src/components/review/ImageReviewWorkbench.integration.test.tsx`
 
 Expected: FAIL because drawing is enabled only for brush/rectangle.
 
-- [ ] **Step 3: Route one pointer lifecycle through tool gesture kinds**
+- [x] **Step 3: Route one pointer lifecycle through tool gesture kinds**
 
 ```ts
 type DrawingGesture =
@@ -1039,7 +1039,7 @@ On pointer down, capture the pointer and store the normalized start plus CSS-pix
 controller-owned candidate. On release, use CSS-pixel distance to reject arrows below 6 px and boxes below
 6 × 6 px; never save a viewport threshold. Point completes from the down/up location without a drag.
 
-- [ ] **Step 4: Add selection and editing handles with deterministic ownership**
+- [x] **Step 4: Add selection and editing handles with deterministic ownership**
 
 Use hit-test results to select/move geometry. Render DOM controls only for the selected item:
 
@@ -1052,19 +1052,19 @@ Window-level move/up listeners must be installed and removed by one helper per a
 checks and cleanup on unmount/cancel. Geometry candidates go through `stageFeedbackAnchor`; pointer release
 calls `replaceFeedbackAnchor` exactly once.
 
-- [ ] **Step 5: Keep the editor in the screen-space overlay**
+- [x] **Step 5: Keep the editor in the screen-space overlay**
 
 Anchor `InlineFeedbackEditor` through the existing candidate-to-screen projection and edge-clamping logic.
 It remains above the Canvas and magnifier, is never scaled with the image, and retains clickable Save/Cancel
 after zoom or pan.
 
-- [ ] **Step 6: Run Canvas and end-to-end workbench tests**
+- [x] **Step 6: Run Canvas and end-to-end workbench tests**
 
 Run: `pnpm --dir ui exec vitest run src/components/review/AnnotationCanvas.test.tsx src/components/review/ImageReviewWorkbench.integration.test.tsx src/components/review/ImageReviewWorkspace.test.tsx`
 
 Expected: PASS for new and existing brush/rectangle flows.
 
-- [ ] **Step 7: Commit Canvas interaction**
+- [x] **Step 7: Commit Canvas interaction**
 
 ```bash
 git add ui/src/components/review/AnnotationCanvas* ui/src/components/review/ImageReviewWorkbench.integration.test.tsx \

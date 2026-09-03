@@ -109,11 +109,21 @@ function editorPosition(anchor: ReviewAnchor, projection?: ImagePreviewProjectio
 }
 
 function anchorPoint(anchor: ReviewAnchor) {
-  if (anchor.kind === 'image_rect') {
-    return { x: anchor.x + anchor.width / 2, y: anchor.y + anchor.height / 2 }
+  switch (anchor.kind) {
+    case 'image_point':
+      return { x: anchor.x, y: anchor.y }
+    case 'image_arrow':
+      return anchor.head
+    case 'image_rect':
+    case 'image_ellipse':
+      return { x: anchor.x + anchor.width / 2, y: anchor.y + anchor.height / 2 }
+    case 'image_stroke':
+      return anchor.points.at(-1) ?? null
+    case 'asset':
+    case 'video_point':
+    case 'video_range':
+      return null
   }
-  if (anchor.kind === 'image_stroke') return anchor.points.at(-1) ?? null
-  return null
 }
 
 function clamp(value: number, minimum: number, maximum: number) {

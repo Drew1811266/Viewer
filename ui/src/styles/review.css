@@ -569,8 +569,11 @@
 }
 
 .annotation-canvas[data-interactive='true'] {
-  cursor: crosshair;
   pointer-events: auto;
+}
+
+.annotation-canvas[data-drawing='true'] {
+  cursor: crosshair;
 }
 
 .annotation-markers {
@@ -580,7 +583,7 @@
 }
 
 .annotation-marker,
-.annotation-rect-handle {
+.annotation-geometry-handle {
   position: absolute;
   transform: translate(-50%, -50%);
 }
@@ -607,17 +610,39 @@
   outline-offset: 2px;
 }
 
-.annotation-marker[data-selected='true'][data-anchor-kind='image_rect'] {
+.annotation-marker[data-selected='true'][data-anchor-kind='image_rect'],
+.annotation-marker[data-selected='true'][data-anchor-kind='image_ellipse'] {
   transform: translate(8px, calc(-100% - 8px));
 }
 
-.annotation-rect-handle {
+.annotation-geometry-handle {
   background: var(--viewer-surface);
   border: 2px solid var(--viewer-danger-strong);
-  border-radius: 2px;
-  height: 12px;
+  border-radius: 50%;
+  box-sizing: border-box;
+  height: 24px;
   pointer-events: auto;
-  width: 12px;
+  width: 24px;
+  z-index: 3;
+}
+
+.annotation-geometry-handle[data-handle^='north_'],
+.annotation-geometry-handle[data-handle^='south_'] {
+  border-radius: 3px;
+}
+
+.annotation-box-move-target {
+  background: transparent;
+  border: 0;
+  cursor: move;
+  padding: 0;
+  pointer-events: auto;
+  position: absolute;
+  z-index: 1;
+}
+
+.annotation-marker {
+  z-index: 4;
 }
 
 .inline-feedback-editor {

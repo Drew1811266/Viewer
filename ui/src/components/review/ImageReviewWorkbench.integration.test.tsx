@@ -206,6 +206,24 @@ function draw() {
   fireEvent.pointerUp(canvas, { pointerId: 1, clientX: 350, clientY: 280 })
 }
 
+function selectMarkupTool(label: '画笔' | '矩形') {
+  if (screen.queryByRole('menu') === null) {
+    fireEvent.click(screen.getByRole('button', { name: '标记' }))
+  }
+  fireEvent.click(screen.getByRole('menuitemradio', { name: new RegExp(label) }))
+}
+
+async function waitForMarkupTools() {
+  if (screen.queryByRole('menu') === null) {
+    fireEvent.click(screen.getByRole('button', { name: '标记' }))
+  }
+  await waitFor(() =>
+    expect(screen.getByRole('menuitemradio', { name: /矩形/ })).not.toHaveAttribute(
+      'aria-disabled',
+    ),
+  )
+}
+
 beforeEach(() => {
   vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null)
   vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
@@ -248,7 +266,7 @@ describe('real image workbench editing ownership', () => {
     await mount()
 
     fireEvent.click(screen.getByRole('button', { name: '放大镜' }))
-    fireEvent.click(screen.getByRole('button', { name: '矩形' }))
+    selectMarkupTool('矩形')
     const canvas = screen.getByTestId('annotation-canvas')
     fireEvent.pointerDown(canvas, { pointerId: 5, clientX: 180, clientY: 140 })
     fireEvent.pointerMove(canvas, { pointerId: 5, clientX: 300, clientY: 240 })
@@ -300,7 +318,7 @@ describe('real image workbench editing ownership', () => {
 
   it('guards active drawing and refuses to replace dirty inline work', async () => {
     const work = await mount()
-    fireEvent.click(screen.getByRole('button', { name: '画笔' }))
+    selectMarkupTool('画笔')
     fireEvent.pointerDown(screen.getByTestId('annotation-canvas'), {
       pointerId: 1,
       clientX: 200,
@@ -316,7 +334,7 @@ describe('real image workbench editing ownership', () => {
       clientY: 250,
     })
     expect(work.current().dirty).toBe(false)
-    fireEvent.click(screen.getByRole('button', { name: '矩形' }))
+    selectMarkupTool('矩形')
     draw()
     fireEvent.change(screen.getByRole('textbox', { name: '标注意见' }), {
       target: { value: '不能丢失' },
@@ -366,7 +384,7 @@ describe('real image workbench editing ownership', () => {
       const work = await mount()
       if (kind === 'rail') fireEvent.click(screen.getByRole('button', { name: '编辑意见 1 文字' }))
       else {
-        fireEvent.click(screen.getByRole('button', { name: '矩形' }))
+        selectMarkupTool('矩形')
         draw()
       }
       const input = screen.getByRole('textbox')
@@ -395,7 +413,7 @@ describe('real image workbench editing ownership', () => {
   it('creates two independent brush opinions and only explicit redraw replaces identity', async () => {
     const work = await mount(reviewCoordinator(null))
     for (const text of ['第一条', '第二条']) {
-      fireEvent.click(screen.getByRole('button', { name: '画笔' }))
+      selectMarkupTool('画笔')
       draw()
       fireEvent.change(screen.getByRole('textbox'), { target: { value: text } })
       fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Enter', metaKey: true })
@@ -451,6 +469,31 @@ describe('real image workbench editing ownership', () => {
     expect(work.review.replaceAnchoredFeedbackAnchor).toHaveBeenCalledOnce()
     expect(work.current().dirty).toBe(false)
     expect(defined(work.current().feedback[0]).anchor).toEqual(moved)
+  })
+
+  it('patches extended geometry without changing feedback identity, ordinal, or selection', async () => {
+    const originalAnchor: ReviewAnchor = { kind: 'image_point', x: 0.2, y: 0.2 }
+    const work = await mount(reviewCoordinator(originalAnchor))
+    const original = defined(work.current().feedback[0])
+    const marker = screen.getByRole('button', { name: '意见 1：原意见' })
+    fireEvent.click(marker)
+    fireEvent.pointerDown(marker, { pointerId: 17, clientX: 180, clientY: 140 })
+    fireEvent.pointerMove(window, { pointerId: 17, clientX: 220, clientY: 180 })
+    fireEvent.pointerUp(window, { pointerId: 17, clientX: 220, clientY: 180 })
+
+    await waitFor(() => expect(work.current().dirty).toBe(false))
+    expect(work.review.replaceAnchoredFeedbackAnchor).toHaveBeenCalledWith(
+      original.feedbackId,
+      'image-2',
+      expect.objectContaining({ kind: 'image_point' }),
+    )
+    expect(work.current().feedback).toHaveLength(1)
+    expect(defined(work.current().feedback[0])).toMatchObject({
+      itemId: original.itemId,
+      feedbackId: original.feedbackId,
+      ordinal: original.ordinal,
+    })
+    expect(work.current().selectedItemId).toBe(original.itemId)
   })
 
   it('keeps failed explicit redraw retryable and guards every leave intent', async () => {
@@ -605,13 +648,13 @@ describe('continuous image review routing', () => {
     }
 
     render(<Harness />)
-    await waitFor(() => expect(screen.getByRole('button', { name: '矩形' })).toBeEnabled())
+    await waitForMarkupTools()
     await waitFor(() => expect(document.querySelector('.image-preview-image')).not.toBeNull())
     const firstImage = document.querySelector('.image-preview-image')
     if (firstImage === null) throw new Error('Expected prepared first preview')
     expect(firstImage).toHaveAttribute('src', expect.stringContaining('asset-1'))
     fireEvent.load(firstImage)
-    fireEvent.click(screen.getByRole('button', { name: '矩形' }))
+    fireEvent.click(screen.getByRole('menuitemradio', { name: /矩形/ }))
     draw()
     fireEvent.change(screen.getByRole('textbox', { name: '标注意见' }), {
       target: { value: '图1修正领口' },
@@ -630,8 +673,8 @@ describe('continuous image review routing', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '打开图2' }))
     await waitFor(() => expect(screen.getByText('2.png')).toBeVisible())
-    await waitFor(() => expect(screen.getByRole('button', { name: '画笔' })).toBeEnabled())
-    expect(screen.getByRole('button', { name: '矩形' })).toBeEnabled()
+    await waitForMarkupTools()
+    expect(screen.getByRole('menuitemradio', { name: /画笔/ })).not.toHaveAttribute('aria-disabled')
     expect(screen.queryByRole('button', { name: '完成本轮评审' })).not.toBeInTheDocument()
     await waitFor(() =>
       expect(document.querySelector('.image-preview-image')).toHaveAttribute(
@@ -671,14 +714,14 @@ describe('continuous image review routing', () => {
     }
 
     render(<Harness />)
-    await waitFor(() => expect(screen.getByRole('button', { name: '矩形' })).toBeEnabled())
+    await waitForMarkupTools()
     await waitFor(() => expect(document.querySelector('.image-preview-image')).not.toBeNull())
     const image = document.querySelector('.image-preview-image')
     if (image === null) throw new Error('Expected prepared image')
     fireEvent.load(image)
     fireEvent.click(screen.getByRole('button', { name: '放大' }))
     expect(document.querySelector('.preview-scale-label')).toHaveTextContent('125%')
-    fireEvent.click(screen.getByRole('button', { name: '矩形' }))
+    fireEvent.click(screen.getByRole('menuitemradio', { name: /矩形/ }))
     draw()
     fireEvent.change(screen.getByRole('textbox', { name: '标注意见' }), {
       target: { value: 'logo有错误' },

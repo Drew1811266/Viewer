@@ -248,6 +248,185 @@ describe('AnnotationCanvas', () => {
     expect(parentPointerDown).not.toHaveBeenCalled()
   })
 
+  it('creates point and directional arrow anchors through one pointer lifecycle', () => {
+    const pointReview = controller({ tool: 'point' })
+    const pointView = render(<AnnotationCanvas projection={PROJECTION} controller={pointReview} />)
+    let canvas = screen.getByTestId('annotation-canvas')
+    fireEvent.pointerDown(canvas, { clientX: 74, clientY: 68, pointerId: 10 })
+    fireEvent.pointerUp(window, { clientX: 74, clientY: 68, pointerId: 10 })
+    expect(pointReview.finishDrawing).toHaveBeenCalledWith({ kind: 'image_point', x: 0.1, y: 0.1 })
+
+    pointView.unmount()
+    const arrowReview = controller({ tool: 'arrow' })
+    render(<AnnotationCanvas projection={PROJECTION} controller={arrowReview} />)
+    canvas = screen.getByTestId('annotation-canvas')
+    fireEvent.pointerDown(canvas, { clientX: 74, clientY: 68, pointerId: 11 })
+    fireEvent.pointerMove(window, { clientX: 330, clientY: 260, pointerId: 11 })
+    fireEvent.pointerUp(window, { clientX: 330, clientY: 260, pointerId: 11 })
+    expect(arrowReview.finishDrawing).toHaveBeenCalledWith({
+      kind: 'image_arrow',
+      tail: { x: 0.1, y: 0.1 },
+      head: { x: 0.5, y: 0.5 },
+    })
+  })
+
+  it('rejects a sub-6px arrow and keeps outside release and pointer cancel deterministic', () => {
+    const review = controller({ tool: 'arrow' })
+    render(<AnnotationCanvas projection={PROJECTION} controller={review} />)
+    const canvas = screen.getByTestId('annotation-canvas')
+
+    fireEvent.pointerDown(canvas, { clientX: 74, clientY: 68, pointerId: 12 })
+    fireEvent.pointerUp(window, { clientX: 79, clientY: 68, pointerId: 12 })
+    expect(review.finishDrawing).toHaveBeenLastCalledWith(null)
+
+    fireEvent.pointerDown(canvas, { clientX: 74, clientY: 68, pointerId: 13 })
+    fireEvent.pointerUp(window, { clientX: 714, clientY: 548, pointerId: 13 })
+    expect(review.finishDrawing).toHaveBeenLastCalledWith({
+      kind: 'image_arrow',
+      tail: { x: 0.1, y: 0.1 },
+      head: { x: 1, y: 1 },
+    })
+
+    fireEvent.pointerDown(canvas, { clientX: 74, clientY: 68, pointerId: 14 })
+    fireEvent.pointerCancel(window, { clientX: 202, clientY: 164, pointerId: 14 })
+    expect(review.cancelDraft).toHaveBeenCalledOnce()
+  })
+
+  it('creates free ellipses and constrains Shift to a visual circle on a non-square image', () => {
+    const review = controller({ tool: 'ellipse' })
+    render(<AnnotationCanvas projection={PROJECTION} controller={review} />)
+    const canvas = screen.getByTestId('annotation-canvas')
+
+    fireEvent.pointerDown(canvas, { clientX: 74, clientY: 68, pointerId: 15 })
+    fireEvent.pointerUp(window, { clientX: 330, clientY: 260, pointerId: 15 })
+    expect(review.finishDrawing).toHaveBeenLastCalledWith({
+      kind: 'image_ellipse',
+      x: 0.1,
+      y: 0.1,
+      width: 0.4,
+      height: 0.4,
+    })
+
+    fireEvent.pointerDown(canvas, { clientX: 74, clientY: 68, pointerId: 16 })
+    fireEvent.pointerUp(window, {
+      clientX: 330,
+      clientY: 260,
+      pointerId: 16,
+      shiftKey: true,
+    })
+    expect(review.finishDrawing).toHaveBeenLastCalledWith({
+      kind: 'image_ellipse',
+      x: 0.1,
+      y: 0.1,
+      width: 0.3,
+      height: 0.4,
+    })
+  })
+
+  it('moves a selected point and exposes both arrow endpoint controls', () => {
+    const pointReview = controller({
+      selectedItemId: 'point-item',
+      feedback: [
+        {
+          itemId: 'point-item',
+          feedbackId: 'point-feedback',
+          targetKey: null,
+          assetVersionId: 'asset-1',
+          ordinal: 1,
+          text: '修正这个点',
+          createdAtMs: 1,
+          anchor: { kind: 'image_point', x: 0.2, y: 0.2 },
+        },
+      ],
+    })
+    const pointView = render(<AnnotationCanvas projection={PROJECTION} controller={pointReview} />)
+    const marker = screen.getByRole('button', { name: '意见 1：修正这个点' })
+    fireEvent.pointerDown(marker, { clientX: 138, clientY: 116, pointerId: 20 })
+    fireEvent.pointerMove(window, { clientX: 202, clientY: 164, pointerId: 20 })
+    fireEvent.pointerUp(window, { clientX: 202, clientY: 164, pointerId: 20 })
+    expect(pointReview.replaceFeedbackAnchor).toHaveBeenCalledWith('point-item', {
+      kind: 'image_point',
+      x: 0.3,
+      y: 0.3,
+    })
+
+    pointView.unmount()
+    const arrowReview = controller({
+      selectedItemId: 'arrow-item',
+      feedback: [
+        {
+          itemId: 'arrow-item',
+          feedbackId: 'arrow-feedback',
+          targetKey: null,
+          assetVersionId: 'asset-1',
+          ordinal: 2,
+          text: '改变箭头方向',
+          createdAtMs: 2,
+          anchor: {
+            kind: 'image_arrow',
+            tail: { x: 0.2, y: 0.2 },
+            head: { x: 0.5, y: 0.5 },
+          },
+        },
+      ],
+    })
+    render(<AnnotationCanvas projection={PROJECTION} controller={arrowReview} />)
+    const tail = screen.getByRole('button', { name: '调整意见 2 箭尾' })
+    const head = screen.getByRole('button', { name: '调整意见 2 箭头' })
+    fireEvent.pointerDown(tail, { clientX: 138, clientY: 116, pointerId: 21 })
+    fireEvent.pointerMove(window, { clientX: 202, clientY: 164, pointerId: 21 })
+    fireEvent.pointerUp(window, { clientX: 202, clientY: 164, pointerId: 21 })
+    expect(arrowReview.replaceFeedbackAnchor).toHaveBeenLastCalledWith('arrow-item', {
+      kind: 'image_arrow',
+      tail: { x: 0.3, y: 0.3 },
+      head: { x: 0.5, y: 0.5 },
+    })
+    expect(head).toBeVisible()
+  })
+
+  it('moves and resizes a selected ellipse through its interior and four handles', () => {
+    const review = controller({
+      selectedItemId: 'ellipse-item',
+      feedback: [
+        {
+          itemId: 'ellipse-item',
+          feedbackId: 'ellipse-feedback',
+          targetKey: null,
+          assetVersionId: 'asset-1',
+          ordinal: 3,
+          text: '调整脸部范围',
+          createdAtMs: 3,
+          anchor: { kind: 'image_ellipse', x: 0.1, y: 0.1, width: 0.4, height: 0.4 },
+        },
+      ],
+    })
+    render(<AnnotationCanvas projection={PROJECTION} controller={review} />)
+    const moveTarget = screen.getByRole('button', { name: '移动意见 3 区域' })
+    fireEvent.pointerDown(moveTarget, { clientX: 202, clientY: 164, pointerId: 22 })
+    fireEvent.pointerMove(window, { clientX: 266, clientY: 212, pointerId: 22 })
+    fireEvent.pointerUp(window, { clientX: 266, clientY: 212, pointerId: 22 })
+    expect(review.replaceFeedbackAnchor).toHaveBeenLastCalledWith('ellipse-item', {
+      kind: 'image_ellipse',
+      x: 0.2,
+      y: 0.2,
+      width: 0.4,
+      height: 0.4,
+    })
+
+    expect(screen.getAllByRole('button', { name: /调整意见 3/ })).toHaveLength(4)
+    const handle = screen.getByRole('button', { name: '调整意见 3 右下角' })
+    fireEvent.pointerDown(handle, { clientX: 330, clientY: 260, pointerId: 23 })
+    fireEvent.pointerMove(window, { clientX: 394, clientY: 308, pointerId: 23 })
+    fireEvent.pointerUp(window, { clientX: 394, clientY: 308, pointerId: 23 })
+    expect(review.replaceFeedbackAnchor).toHaveBeenLastCalledWith('ellipse-item', {
+      kind: 'image_ellipse',
+      x: 0.1,
+      y: 0.1,
+      width: 0.5,
+      height: 0.5,
+    })
+  })
+
   it('redraws a selected brush path without changing feedback identity or text', () => {
     const review = controller({
       tool: 'brush',

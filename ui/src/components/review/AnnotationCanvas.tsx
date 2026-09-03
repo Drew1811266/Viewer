@@ -1,6 +1,18 @@
 import type { PointerEvent as ReactPointerEvent } from 'react'
 import { useEffect, useRef } from 'react'
-import { rectFromDrag, simplifyNormalizedStroke } from '../../app/review/annotationGeometry'
+import {
+  arrowFromDrag,
+  type BoxHandle,
+  ellipseFromDrag,
+  type ImageAnchor,
+  moveAnchor,
+  type NormalizedPoint,
+  pointAnchor,
+  rectFromDrag,
+  resizeBoxAnchor,
+  simplifyNormalizedStroke,
+} from '../../app/review/annotationGeometry'
+import { type AnnotationHandle, hitTestAnnotation } from '../../app/review/annotationHitTest'
 import type {
   ImageReviewWorkbenchController,
   ReviewAnchor,
@@ -9,7 +21,6 @@ import type {
 import type { ImagePreviewProjection } from '../imagePreview/ImagePreviewSurface'
 import {
   type AnnotationSceneItem,
-  annotationMarkerPoint,
   buildAnnotationScene,
   paintAnnotationScene,
 } from './annotationScene'
@@ -21,14 +32,41 @@ interface AnnotationCanvasProps {
 }
 
 type DrawingGesture =
-  | { kind: 'rectangle'; start: { x: number; y: number } }
-  | { kind: 'brush'; points: Array<{ x: number; y: number }> }
+  | {
+      kind: 'point'
+      pointerId: number
+      point: NormalizedPoint
+      startClient: NormalizedPoint
+    }
+  | {
+      kind: 'arrow'
+      pointerId: number
+      start: NormalizedPoint
+      startClient: NormalizedPoint
+    }
+  | {
+      kind: 'brush'
+      pointerId: number
+      points: NormalizedPoint[]
+      startClient: NormalizedPoint
+    }
+  | {
+      kind: 'box'
+      pointerId: number
+      shape: 'rectangle' | 'ellipse'
+      start: NormalizedPoint
+      startClient: NormalizedPoint
+    }
 
-type RectHandle = 'north_west' | 'north_east' | 'south_east' | 'south_west'
+type GeometryEdit = 'move' | AnnotationHandle
+
+const MINIMUM_DRAG_CSS_PX = 6
+const MINIMUM_EDIT_CSS_PX = 1
 
 export default function AnnotationCanvas({ projection, controller, scene }: AnnotationCanvasProps) {
   const canvas = useRef<HTMLCanvasElement>(null)
   const gesture = useRef<DrawingGesture | null>(null)
+  const pointerCleanup = useRef<(() => void) | null>(null)
   const editorPhase = controller.editor.phase
   const candidate =
     editorPhase.status === 'drawing' ||
@@ -51,11 +89,27 @@ export default function AnnotationCanvas({ projection, controller, scene }: Anno
     controller.readOnlyReason === null &&
     (editorPhase.status === 'idle' || editorPhase.status === 'drawing') &&
     !controller.editor.temporarilyPanning &&
-    (controller.tool === 'brush' || controller.tool === 'rectangle')
+    controller.tool !== 'browse'
+  const selectionEnabled =
+    controller.readOnlyReason === null &&
+    editorPhase.status === 'idle' &&
+    !controller.editor.temporarilyPanning &&
+    controller.tool === 'browse' &&
+    controller.feedback.some((feedback) => isImageAnchor(feedback.anchor))
 
   useEffect(() => {
-    if (editorPhase.status !== 'drawing') gesture.current = null
+    if (editorPhase.status === 'drawing') return
+    gesture.current = null
+    pointerCleanup.current?.()
+    pointerCleanup.current = null
   }, [editorPhase.status])
+
+  useEffect(
+    () => () => {
+      pointerCleanup.current?.()
+    },
+    [],
+  )
 
   useEffect(() => {
     const element = canvas.current
@@ -97,69 +151,79 @@ export default function AnnotationCanvas({ projection, controller, scene }: Anno
     )
   }, [projection, renderedScene])
 
-  function beginDrawing(event: ReactPointerEvent<HTMLCanvasElement>) {
-    if (!drawingEnabled) return
-    event.stopPropagation()
+  function beginCanvasPointer(event: ReactPointerEvent<HTMLCanvasElement>) {
+    if (drawingEnabled) {
+      beginCreation(event)
+      return
+    }
+    if (!selectionEnabled) return
     const point = projection.stageToNormalized({ x: event.clientX, y: event.clientY })
     if (point === null) return
-    const initial: ReviewAnchor =
-      controller.tool === 'rectangle'
-        ? { kind: 'image_rect', x: point.x, y: point.y, width: 0, height: 0 }
-        : { kind: 'image_stroke', points: [point] }
+    const hit = hitTestAnnotation({
+      point,
+      imageSizeCss: projectedImageSize(projection),
+      items: controller.feedback.flatMap((feedback) => {
+        if (!isImageAnchor(feedback.anchor) || feedback.ordinal === null) return []
+        return [
+          {
+            itemId: feedback.itemId,
+            ordinal: feedback.ordinal,
+            selected: feedback.itemId === controller.selectedItemId,
+            anchor: feedback.anchor,
+            ordinalPoint: markerPoint(feedback.anchor),
+          },
+        ]
+      }),
+    })
+    if (hit === null) return
+    event.preventDefault()
+    event.stopPropagation()
+    controller.selectFeedback(hit.itemId)
+    if (hit.itemId !== controller.selectedItemId || hit.part === 'ordinal') return
+    const feedback = controller.feedback.find((item) => item.itemId === hit.itemId)
+    if (feedback === undefined || !isImageAnchor(feedback.anchor)) return
+    const edit = geometryEditForHit(feedback.anchor, hit.handle)
+    if (edit === null) return
+    pointerCleanup.current = beginAnchorPointerEdit({
+      event,
+      anchor: feedback.anchor,
+      edit,
+      projection,
+      onCandidate: (anchor) => controller.stageFeedbackAnchor(feedback.itemId, anchor),
+      onReplace: (anchor) => controller.replaceFeedbackAnchor(feedback.itemId, anchor),
+      onCancel: controller.cancelDraft,
+    })
+  }
+
+  function beginCreation(event: ReactPointerEvent<HTMLCanvasElement>) {
+    const point = projection.stageToNormalized({ x: event.clientX, y: event.clientY })
+    if (point === null) return
+    const current = creationGesture(controller.tool, event.pointerId, point, event)
+    if (current === null) return
+    const initial = initialAnchor(current)
     if (!controller.beginDrawing(initial, controller.redrawItemId ?? undefined)) return
-    event.currentTarget.setPointerCapture?.(event.pointerId)
-    if (controller.tool === 'rectangle') {
-      gesture.current = { kind: 'rectangle', start: point }
-      return
-    }
-    gesture.current = {
-      kind: 'brush',
-      points: [point],
-    }
-  }
-
-  function continueDrawing(event: ReactPointerEvent<HTMLCanvasElement>) {
-    const current = gesture.current
-    if (current === null) return
+    event.preventDefault()
     event.stopPropagation()
-    const point = projection.stageToNormalized({ x: event.clientX, y: event.clientY })
-    if (point === null) return
-    if (current.kind === 'rectangle') {
-      const rect = rectFromDrag(current.start, point)
-      if (rect !== null) controller.updateDraftAnchor({ kind: 'image_rect', ...rect })
-      return
-    }
-    current.points.push(point)
-    const points = simplifyNormalizedStroke(current.points, {
-      sourceWidth: projection.sourceSize.width,
-      sourceHeight: projection.sourceSize.height,
-      maxPoints: 2_048,
+    event.currentTarget.setPointerCapture?.(event.pointerId)
+    gesture.current = current
+    pointerCleanup.current?.()
+    pointerCleanup.current = bindWindowPointerSession(event.pointerId, {
+      move(pointer) {
+        const anchor = drawingAnchor(current, pointer, projection)
+        if (anchor !== null) controller.updateDraftAnchor(anchor)
+      },
+      finish(pointer) {
+        const anchor = completedDrawingAnchor(current, pointer, projection)
+        gesture.current = null
+        pointerCleanup.current = null
+        void controller.finishDrawing(anchor)
+      },
+      cancel() {
+        gesture.current = null
+        pointerCleanup.current = null
+        controller.cancelDraft()
+      },
     })
-    if (points !== null) controller.updateDraftAnchor({ kind: 'image_stroke', points })
-  }
-
-  function finishDrawing(event: ReactPointerEvent<HTMLCanvasElement>) {
-    continueDrawing(event)
-    const current = gesture.current
-    gesture.current = null
-    if (current === null) return
-    if (current.kind === 'rectangle') {
-      const end = projection.stageToNormalized({ x: event.clientX, y: event.clientY })
-      const rect = end === null ? null : rectFromDrag(current.start, end)
-      void controller.finishDrawing(rect === null ? null : { kind: 'image_rect', ...rect })
-      return
-    }
-    const points = simplifyNormalizedStroke(current.points, {
-      sourceWidth: projection.sourceSize.width,
-      sourceHeight: projection.sourceSize.height,
-      maxPoints: 2_048,
-    })
-    if (points === null) {
-      void controller.finishDrawing(null)
-      return
-    }
-    const anchor: ReviewAnchor = { kind: 'image_stroke', points }
-    void controller.finishDrawing(anchor)
   }
 
   return (
@@ -172,17 +236,11 @@ export default function AnnotationCanvas({ projection, controller, scene }: Anno
         ref={canvas}
         className="annotation-canvas"
         data-testid="annotation-canvas"
-        data-interactive={drawingEnabled || undefined}
+        data-interactive={drawingEnabled || selectionEnabled || undefined}
+        data-drawing={drawingEnabled || undefined}
         data-has-candidate={candidate !== null || undefined}
         data-has-draft-anchor={(draftAnchor !== null && draftAnchor.kind !== 'asset') || undefined}
-        onPointerDown={beginDrawing}
-        onPointerMove={continueDrawing}
-        onPointerUp={finishDrawing}
-        onPointerCancel={(event) => {
-          if (gesture.current !== null) event.stopPropagation()
-          gesture.current = null
-          controller.cancelDraft()
-        }}
+        onPointerDown={beginCanvasPointer}
       />
       <div className="annotation-markers">
         {controller.feedback.map((feedback) => (
@@ -235,33 +293,58 @@ function AnnotationMarker({
     if (!drawing) pointerCleanup.current?.()
   }, [drawing])
   useEffect(() => () => pointerCleanup.current?.(), [])
-  if (feedback.anchor.kind === 'asset' || feedback.ordinal === null) return null
-  const point = annotationMarkerPoint(feedback.anchor)
-  if (point === null) return null
+  if (!isImageAnchor(feedback.anchor) || feedback.ordinal === null) return null
+  const anchor = feedback.anchor
+  const point = markerPoint(anchor)
   const projected = projection.normalizedToStage(point)
   if (projected === null) return null
-  const local = {
-    left: projected.x - projection.stageRect.left,
-    top: projected.y - projection.stageRect.top,
-  }
+  const local = localPoint(projected, projection)
   const ordinal = feedback.ordinal
 
+  function beginEdit(event: ReactPointerEvent<HTMLElement>, edit: GeometryEdit) {
+    if (readOnly) return
+    pointerCleanup.current = beginAnchorPointerEdit({
+      event,
+      anchor,
+      edit,
+      projection,
+      onCandidate,
+      onReplace,
+      onCancel,
+    })
+  }
+
   function keyDown(event: React.KeyboardEvent<HTMLButtonElement>) {
-    if (readOnly || feedback.anchor.kind !== 'image_rect') return
-    const moved = rectFromArrow(feedback.anchor, event.key, event.shiftKey, projection.sourceSize)
-    if (moved === null) return
+    if (readOnly || anchor.kind === 'image_stroke') return
+    const direction = arrowDirection(event.key)
+    if (direction === null) return
     event.preventDefault()
     event.stopPropagation()
-    void onReplace(moved)
+    const multiplier = event.shiftKey ? 10 : 1
+    void onReplace(
+      moveAnchor(anchor, {
+        x: (direction.x * multiplier) / projection.sourceSize.width,
+        y: (direction.y * multiplier) / projection.sourceSize.height,
+      }),
+    )
   }
 
   return (
     <>
+      {selected && isBoxAnchor(anchor) && (
+        <BoxMoveTarget
+          ordinal={ordinal}
+          anchor={anchor}
+          projection={projection}
+          readOnly={readOnly}
+          onPointerDown={(event) => beginEdit(event, 'move')}
+        />
+      )}
       <button
         type="button"
         className="annotation-marker"
         data-testid="annotation-marker"
-        data-anchor-kind={feedback.anchor.kind}
+        data-anchor-kind={anchor.kind}
         data-selected={selected || undefined}
         aria-label={`意见 ${ordinal}：${feedback.text}`}
         style={local}
@@ -269,28 +352,37 @@ function AnnotationMarker({
         onKeyDown={keyDown}
         onPointerDown={(event) => {
           event.stopPropagation()
-          if (!selected || readOnly || feedback.anchor.kind !== 'image_rect') return
-          pointerCleanup.current = beginRectPointerEdit(
-            event,
-            feedback.anchor,
-            null,
-            projection,
-            onCandidate,
-            onReplace,
-            onCancel,
-          )
+          if (!selected || readOnly) return
+          const edit = markerEdit(anchor)
+          if (edit !== null) beginEdit(event, edit)
         }}
       >
         {ordinal}
       </button>
       {selected &&
-        feedback.anchor.kind === 'image_rect' &&
+        isBoxAnchor(anchor) &&
         (['north_west', 'north_east', 'south_east', 'south_west'] as const).map((handle) => (
-          <RectHandleButton
+          <GeometryHandleButton
             key={handle}
             handle={handle}
             ordinal={ordinal}
-            anchor={feedback.anchor as Extract<ReviewAnchor, { kind: 'image_rect' }>}
+            anchor={anchor as Extract<ImageAnchor, { kind: 'image_rect' | 'image_ellipse' }>}
+            projection={projection}
+            readOnly={readOnly}
+            drawing={drawing}
+            onCandidate={onCandidate}
+            onReplace={onReplace}
+            onCancel={onCancel}
+          />
+        ))}
+      {selected &&
+        anchor.kind === 'image_arrow' &&
+        (['tail', 'head'] as const).map((handle) => (
+          <GeometryHandleButton
+            key={handle}
+            handle={handle}
+            ordinal={ordinal}
+            anchor={anchor as Extract<ImageAnchor, { kind: 'image_arrow' }>}
             projection={projection}
             readOnly={readOnly}
             drawing={drawing}
@@ -303,19 +395,43 @@ function AnnotationMarker({
   )
 }
 
-interface RectHandleButtonProps {
-  handle: RectHandle
+function BoxMoveTarget({
+  ordinal,
+  anchor,
+  projection,
+  readOnly,
+  onPointerDown,
+}: {
   ordinal: number
-  anchor: Extract<ReviewAnchor, { kind: 'image_rect' }>
+  anchor: Extract<ImageAnchor, { kind: 'image_rect' | 'image_ellipse' }>
   projection: ImagePreviewProjection
   readOnly: boolean
-  drawing: boolean
-  onCandidate(anchor: ReviewAnchor): boolean
-  onReplace(anchor: ReviewAnchor): Promise<void>
-  onCancel(): void
+  onPointerDown(event: ReactPointerEvent<HTMLButtonElement>): void
+}) {
+  const start = projection.normalizedToStage({ x: anchor.x, y: anchor.y })
+  const end = projection.normalizedToStage({
+    x: anchor.x + anchor.width,
+    y: anchor.y + anchor.height,
+  })
+  if (start === null || end === null) return null
+  return (
+    <button
+      type="button"
+      className="annotation-box-move-target"
+      aria-label={`移动意见 ${ordinal} 区域`}
+      disabled={readOnly}
+      style={{
+        left: Math.min(start.x, end.x) - projection.stageRect.left,
+        top: Math.min(start.y, end.y) - projection.stageRect.top,
+        width: Math.max(24, Math.abs(end.x - start.x)),
+        height: Math.max(24, Math.abs(end.y - start.y)),
+      }}
+      onPointerDown={onPointerDown}
+    />
+  )
 }
 
-function RectHandleButton({
+function GeometryHandleButton({
   handle,
   ordinal,
   anchor,
@@ -325,7 +441,17 @@ function RectHandleButton({
   onCandidate,
   onReplace,
   onCancel,
-}: RectHandleButtonProps) {
+}: {
+  handle: BoxHandle | 'tail' | 'head'
+  ordinal: number
+  anchor: Extract<ImageAnchor, { kind: 'image_rect' | 'image_ellipse' | 'image_arrow' }>
+  projection: ImagePreviewProjection
+  readOnly: boolean
+  drawing: boolean
+  onCandidate(anchor: ReviewAnchor): boolean
+  onReplace(anchor: ReviewAnchor): Promise<void>
+  onCancel(): void
+}) {
   const pointerCleanup = useRef<(() => void) | null>(null)
   useEffect(() => {
     if (!drawing) pointerCleanup.current?.()
@@ -337,167 +463,350 @@ function RectHandleButton({
   return (
     <button
       type="button"
-      className="annotation-rect-handle"
+      className="annotation-geometry-handle"
       data-handle={handle}
       aria-label={`调整意见 ${ordinal} ${handleLabel(handle)}`}
       disabled={readOnly}
-      style={{
-        left: projected.x - projection.stageRect.left,
-        top: projected.y - projection.stageRect.top,
-      }}
+      style={localPoint(projected, projection)}
       onPointerDown={(event) => {
-        if (!readOnly)
-          pointerCleanup.current = beginRectPointerEdit(
-            event,
-            anchor,
-            handle,
-            projection,
-            onCandidate,
-            onReplace,
-            onCancel,
-          )
+        if (readOnly) return
+        pointerCleanup.current = beginAnchorPointerEdit({
+          event,
+          anchor,
+          edit: handle,
+          projection,
+          onCandidate,
+          onReplace,
+          onCancel,
+        })
       }}
       onKeyDown={(event) => {
-        const resized = resizeRectFromArrow(
-          anchor,
-          handle,
-          event.key,
-          event.shiftKey,
-          projection.sourceSize,
-        )
-        if (resized === null) return
+        if (readOnly) return
+        const direction = arrowDirection(event.key)
+        if (direction === null) return
         event.preventDefault()
         event.stopPropagation()
-        void onReplace(resized)
+        const multiplier = event.shiftKey ? 10 : 1
+        const movedPoint = {
+          x: point.x + (direction.x * multiplier) / projection.sourceSize.width,
+          y: point.y + (direction.y * multiplier) / projection.sourceSize.height,
+        }
+        const resized = anchorForHandle(anchor, handle, movedPoint)
+        if (resized !== null) void onReplace(resized)
       }}
     />
   )
 }
 
-function beginRectPointerEdit(
-  event: ReactPointerEvent<HTMLElement>,
-  anchor: Extract<ReviewAnchor, { kind: 'image_rect' }>,
-  handle: RectHandle | null,
-  projection: ImagePreviewProjection,
-  onCandidate: (anchor: ReviewAnchor) => boolean,
-  onReplace: (anchor: ReviewAnchor) => Promise<void>,
-  onCancel: () => void,
-) {
+function beginAnchorPointerEdit({
+  event,
+  anchor,
+  edit,
+  projection,
+  onCandidate,
+  onReplace,
+  onCancel,
+}: {
+  event: ReactPointerEvent<HTMLElement>
+  anchor: ImageAnchor
+  edit: GeometryEdit
+  projection: ImagePreviewProjection
+  onCandidate(anchor: ReviewAnchor): boolean
+  onReplace(anchor: ReviewAnchor): Promise<void>
+  onCancel(): void
+}) {
   event.preventDefault()
   event.stopPropagation()
   const start = projection.stageToNormalized(
     { x: event.clientX, y: event.clientY },
     { allowOutsideImage: true },
   )
-  if (start === null || !onCandidate(anchor)) return null
+  if (start === null) return null
   const startPoint = start
-  let candidate: Extract<ReviewAnchor, { kind: 'image_rect' }> = anchor
+  event.currentTarget.setPointerCapture?.(event.pointerId)
+  const startClient = { x: event.clientX, y: event.clientY }
+  let candidate = anchor
+  let staged = onCandidate(anchor)
+  let moved = false
+  if (!staged) return null
 
-  function move(pointer: PointerEvent) {
+  function update(pointer: PointerEvent) {
+    if (clientDistance(startClient, pointer) < MINIMUM_EDIT_CSS_PX) return
     const point = projection.stageToNormalized(
       { x: pointer.clientX, y: pointer.clientY },
       { allowOutsideImage: true },
     )
     if (point === null) return
-    candidate =
-      handle === null
-        ? moveRect(anchor, point.x - startPoint.x, point.y - startPoint.y)
-        : resizeRect(anchor, handle, point)
-    onCandidate(candidate)
+    const next = anchorForEdit(anchor, edit, startPoint, point)
+    if (next === null) return
+    if (onCandidate(next)) {
+      candidate = next
+      staged = true
+      moved = true
+    }
   }
 
+  return bindWindowPointerSession(event.pointerId, {
+    move: update,
+    finish(pointer) {
+      update(pointer)
+      if (staged && moved) void onReplace(candidate)
+      else if (staged) onCancel()
+    },
+    cancel() {
+      if (staged) onCancel()
+    },
+  })
+}
+
+function creationGesture(
+  tool: ImageReviewWorkbenchController['tool'],
+  pointerId: number,
+  point: NormalizedPoint,
+  event: ReactPointerEvent<HTMLElement>,
+): DrawingGesture | null {
+  const startClient = { x: event.clientX, y: event.clientY }
+  switch (tool) {
+    case 'browse':
+      return null
+    case 'point':
+      return { kind: 'point', pointerId, point, startClient }
+    case 'arrow':
+      return { kind: 'arrow', pointerId, start: point, startClient }
+    case 'brush':
+      return { kind: 'brush', pointerId, points: [point], startClient }
+    case 'rectangle':
+    case 'ellipse':
+      return { kind: 'box', pointerId, shape: tool, start: point, startClient }
+  }
+}
+
+function initialAnchor(gesture: DrawingGesture): ReviewAnchor {
+  switch (gesture.kind) {
+    case 'point':
+      return pointAnchor(gesture.point) as NonNullable<ReturnType<typeof pointAnchor>>
+    case 'arrow':
+      return { kind: 'image_arrow', tail: gesture.start, head: gesture.start }
+    case 'brush':
+      return { kind: 'image_stroke', points: [gesture.points[0] as NormalizedPoint] }
+    case 'box':
+      return {
+        kind: gesture.shape === 'rectangle' ? 'image_rect' : 'image_ellipse',
+        x: gesture.start.x,
+        y: gesture.start.y,
+        width: 0,
+        height: 0,
+      }
+  }
+}
+
+function drawingAnchor(
+  gesture: DrawingGesture,
+  pointer: PointerEvent,
+  projection: ImagePreviewProjection,
+): ReviewAnchor | null {
+  const point = projection.stageToNormalized(
+    { x: pointer.clientX, y: pointer.clientY },
+    { allowOutsideImage: true },
+  )
+  if (point === null) return null
+  switch (gesture.kind) {
+    case 'point':
+      return pointAnchor(clampedPoint(point))
+    case 'arrow':
+      return arrowFromDrag(gesture.start, point)
+    case 'brush': {
+      gesture.points.push(point)
+      const points = simplifyNormalizedStroke(gesture.points, strokeOptions(projection))
+      return points === null ? null : { kind: 'image_stroke', points }
+    }
+    case 'box':
+      return boxAnchor(gesture, point, pointer.shiftKey, projection)
+  }
+}
+
+function completedDrawingAnchor(
+  gesture: DrawingGesture,
+  pointer: PointerEvent,
+  projection: ImagePreviewProjection,
+): ReviewAnchor | null {
+  if (
+    gesture.kind !== 'point' &&
+    clientDistance(gesture.startClient, pointer) < MINIMUM_DRAG_CSS_PX
+  ) {
+    return null
+  }
+  if (
+    gesture.kind === 'box' &&
+    (Math.abs(pointer.clientX - gesture.startClient.x) < MINIMUM_DRAG_CSS_PX ||
+      Math.abs(pointer.clientY - gesture.startClient.y) < MINIMUM_DRAG_CSS_PX)
+  ) {
+    return null
+  }
+  return drawingAnchor(gesture, pointer, projection)
+}
+
+function boxAnchor(
+  gesture: Extract<DrawingGesture, { kind: 'box' }>,
+  point: NormalizedPoint,
+  constrainCircle: boolean,
+  projection: ImagePreviewProjection,
+): ReviewAnchor | null {
+  if (gesture.shape === 'ellipse') {
+    return ellipseFromDrag(gesture.start, point, {
+      constrainCircle,
+      sourceWidth: projection.sourceSize.width,
+      sourceHeight: projection.sourceSize.height,
+    })
+  }
+  const rect = rectFromDrag(gesture.start, point)
+  return rect === null ? null : { kind: 'image_rect', ...rect }
+}
+
+function strokeOptions(projection: ImagePreviewProjection) {
+  return {
+    sourceWidth: projection.sourceSize.width,
+    sourceHeight: projection.sourceSize.height,
+    maxPoints: 2_048,
+  }
+}
+
+function geometryEditForHit(anchor: ImageAnchor, handle?: AnnotationHandle): GeometryEdit | null {
+  if (handle !== undefined) return handle
+  return anchor.kind === 'image_stroke' ? null : 'move'
+}
+
+function markerEdit(anchor: ImageAnchor): GeometryEdit | null {
+  switch (anchor.kind) {
+    case 'image_point':
+      return 'point'
+    case 'image_arrow':
+    case 'image_rect':
+    case 'image_ellipse':
+      return 'move'
+    case 'image_stroke':
+      return null
+  }
+}
+
+function anchorForEdit(
+  anchor: ImageAnchor,
+  edit: GeometryEdit,
+  start: NormalizedPoint,
+  point: NormalizedPoint,
+): ImageAnchor | null {
+  if (edit === 'move' || edit === 'point') {
+    return moveAnchor(anchor, { x: point.x - start.x, y: point.y - start.y })
+  }
+  return anchorForHandle(anchor, edit, point)
+}
+
+function anchorForHandle(
+  anchor: ImageAnchor,
+  handle: Exclude<AnnotationHandle, 'point'>,
+  point: NormalizedPoint,
+): ImageAnchor | null {
+  if (anchor.kind === 'image_arrow' && handle === 'tail') {
+    return arrowFromDrag(point, anchor.head)
+  }
+  if (anchor.kind === 'image_arrow' && handle === 'head') {
+    return arrowFromDrag(anchor.tail, point)
+  }
+  if (isBoxAnchor(anchor) && isBoxHandle(handle)) {
+    return resizeBoxAnchor(anchor, handle, point)
+  }
+  return null
+}
+
+function bindWindowPointerSession(
+  pointerId: number,
+  handlers: {
+    move(pointer: PointerEvent): void
+    finish(pointer: PointerEvent): void
+    cancel(pointer: PointerEvent): void
+  },
+) {
+  let active = true
+  function owns(pointer: PointerEvent) {
+    return pointer.pointerId === pointerId
+  }
+  function move(pointer: PointerEvent) {
+    if (active && owns(pointer)) handlers.move(pointer)
+  }
   function finish(pointer: PointerEvent) {
-    move(pointer)
+    if (!active || !owns(pointer)) return
     cleanup()
-    void onReplace(candidate)
+    handlers.finish(pointer)
   }
-
+  function cancel(pointer: PointerEvent) {
+    if (!active || !owns(pointer)) return
+    cleanup()
+    handlers.cancel(pointer)
+  }
   function cleanup() {
+    if (!active) return
+    active = false
     window.removeEventListener('pointermove', move)
     window.removeEventListener('pointerup', finish)
     window.removeEventListener('pointercancel', cancel)
   }
-  function cancel() {
-    cleanup()
-    onCancel()
-  }
-
   window.addEventListener('pointermove', move)
   window.addEventListener('pointerup', finish)
   window.addEventListener('pointercancel', cancel)
   return cleanup
 }
 
-function handlePoint(anchor: Extract<ReviewAnchor, { kind: 'image_rect' }>, handle: RectHandle) {
+function handlePoint(
+  anchor: Extract<ImageAnchor, { kind: 'image_rect' | 'image_ellipse' | 'image_arrow' }>,
+  handle: BoxHandle | 'tail' | 'head',
+): NormalizedPoint {
+  if (anchor.kind === 'image_arrow') return handle === 'tail' ? anchor.tail : anchor.head
   return {
     x: handle === 'north_west' || handle === 'south_west' ? anchor.x : anchor.x + anchor.width,
     y: handle === 'north_west' || handle === 'north_east' ? anchor.y : anchor.y + anchor.height,
   }
 }
 
-function moveRect(
-  anchor: Extract<ReviewAnchor, { kind: 'image_rect' }>,
-  deltaX: number,
-  deltaY: number,
-) {
-  return {
-    ...anchor,
-    x: clamp(anchor.x + deltaX, 0, 1 - anchor.width),
-    y: clamp(anchor.y + deltaY, 0, 1 - anchor.height),
+function markerPoint(anchor: ImageAnchor): NormalizedPoint {
+  switch (anchor.kind) {
+    case 'image_point':
+      return { x: anchor.x, y: anchor.y }
+    case 'image_arrow':
+      return anchor.head
+    case 'image_rect':
+    case 'image_ellipse':
+      return { x: anchor.x + anchor.width, y: anchor.y }
+    case 'image_stroke':
+      return anchor.points.at(-1) as NormalizedPoint
   }
 }
 
-function resizeRect(
-  anchor: Extract<ReviewAnchor, { kind: 'image_rect' }>,
-  handle: RectHandle,
-  point: { x: number; y: number },
-) {
-  const opposite = handlePoint(anchor, oppositeHandle(handle))
-  const rect = rectFromDrag(opposite, point)
-  return rect === null ? anchor : { kind: 'image_rect' as const, ...rect }
+function isImageAnchor(anchor: ReviewAnchor): anchor is ImageAnchor {
+  return anchor.kind.startsWith('image_')
 }
 
-function rectFromArrow(
-  anchor: Extract<ReviewAnchor, { kind: 'image_rect' }>,
-  key: string,
-  resize: boolean,
-  source: { width: number; height: number },
-) {
-  const direction = arrowDirection(key)
-  if (direction === null) return null
-  if (resize) {
-    const stepX = 10 / source.width
-    const stepY = 10 / source.height
-    return resizeRectFromDelta(anchor, direction.x * stepX, direction.y * stepY)
-  }
-  return moveRect(anchor, direction.x / source.width, direction.y / source.height)
+function isBoxAnchor(
+  anchor: ImageAnchor,
+): anchor is Extract<ImageAnchor, { kind: 'image_rect' | 'image_ellipse' }> {
+  return anchor.kind === 'image_rect' || anchor.kind === 'image_ellipse'
 }
 
-function resizeRectFromArrow(
-  anchor: Extract<ReviewAnchor, { kind: 'image_rect' }>,
-  handle: RectHandle,
-  key: string,
-  coarse: boolean,
-  source: { width: number; height: number },
-) {
-  const direction = arrowDirection(key)
-  if (direction === null) return null
-  const multiplier = coarse ? 10 : 1
-  const point = handlePoint(anchor, handle)
-  return resizeRect(anchor, handle, {
-    x: point.x + (direction.x * multiplier) / source.width,
-    y: point.y + (direction.y * multiplier) / source.height,
-  })
+function isBoxHandle(handle: AnnotationHandle): handle is BoxHandle {
+  return (
+    handle === 'north_west' ||
+    handle === 'north_east' ||
+    handle === 'south_east' ||
+    handle === 'south_west'
+  )
 }
 
-function resizeRectFromDelta(
-  anchor: Extract<ReviewAnchor, { kind: 'image_rect' }>,
-  deltaX: number,
-  deltaY: number,
-) {
-  const width = clamp(anchor.width + deltaX, 1 / 65_536, 1 - anchor.x)
-  const height = clamp(anchor.height + deltaY, 1 / 65_536, 1 - anchor.y)
-  return { ...anchor, width, height }
+function handleLabel(handle: BoxHandle | 'tail' | 'head') {
+  if (handle === 'tail') return '箭尾'
+  if (handle === 'head') return '箭头'
+  if (handle === 'north_west') return '左上角'
+  if (handle === 'north_east') return '右上角'
+  if (handle === 'south_east') return '右下角'
+  return '左下角'
 }
 
 function arrowDirection(key: string) {
@@ -508,18 +817,35 @@ function arrowDirection(key: string) {
   return null
 }
 
-function oppositeHandle(handle: RectHandle): RectHandle {
-  if (handle === 'north_west') return 'south_east'
-  if (handle === 'north_east') return 'south_west'
-  if (handle === 'south_east') return 'north_west'
-  return 'north_east'
+function projectedImageSize(projection: ImagePreviewProjection) {
+  const origin = projection.normalizedToStage({ x: 0, y: 0 })
+  const horizontal = projection.normalizedToStage({ x: 1, y: 0 })
+  const vertical = projection.normalizedToStage({ x: 0, y: 1 })
+  if (origin === null || horizontal === null || vertical === null) {
+    return { width: projection.stageRect.width, height: projection.stageRect.height }
+  }
+  return {
+    width: Math.hypot(horizontal.x - origin.x, horizontal.y - origin.y),
+    height: Math.hypot(vertical.x - origin.x, vertical.y - origin.y),
+  }
 }
 
-function handleLabel(handle: RectHandle) {
-  if (handle === 'north_west') return '左上角'
-  if (handle === 'north_east') return '右上角'
-  if (handle === 'south_east') return '右下角'
-  return '左下角'
+function localPoint(point: NormalizedPoint, projection: ImagePreviewProjection) {
+  return {
+    left: point.x - projection.stageRect.left,
+    top: point.y - projection.stageRect.top,
+  }
+}
+
+function clientDistance(
+  start: NormalizedPoint,
+  pointer: Pick<PointerEvent, 'clientX' | 'clientY'>,
+) {
+  return Math.hypot(pointer.clientX - start.x, pointer.clientY - start.y)
+}
+
+function clampedPoint(point: NormalizedPoint): NormalizedPoint {
+  return { x: clamp(point.x, 0, 1), y: clamp(point.y, 0, 1) }
 }
 
 function annotationColor(element: HTMLElement) {

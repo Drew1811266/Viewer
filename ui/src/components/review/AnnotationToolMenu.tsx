@@ -127,7 +127,12 @@ export default function AnnotationToolMenu({
           aria-describedby={disabledReason === null ? undefined : disabledMessageId}
           style={position}
           onKeyDown={(event) => {
-            if (event.key === 'ArrowDown') {
+            if (event.key === 'Escape') {
+              event.preventDefault()
+              event.stopPropagation()
+              setOpen(false)
+              triggerRef.current?.focus()
+            } else if (event.key === 'ArrowDown') {
               event.preventDefault()
               moveFocus(focusIndex + 1)
             } else if (event.key === 'ArrowUp') {

@@ -78,8 +78,9 @@ describe('AnnotationToolMenu', () => {
 
   it('supports roving focus, closes on Escape, and dismisses outside without changing tools', () => {
     const select = vi.fn()
+    const escapeFromParent = vi.fn()
     render(
-      <div>
+      <div onKeyDown={(event) => event.key === 'Escape' && escapeFromParent()}>
         <AnnotationToolMenu activeTool="arrow" onSelect={select} />
         <button type="button">菜单外</button>
       </div>,
@@ -95,6 +96,7 @@ describe('AnnotationToolMenu', () => {
     fireEvent.keyDown(screen.getByRole('menu'), { key: 'Escape' })
     expect(screen.queryByRole('menu')).not.toBeInTheDocument()
     expect(trigger).toHaveFocus()
+    expect(escapeFromParent).not.toHaveBeenCalled()
 
     fireEvent.click(trigger)
     fireEvent.pointerDown(screen.getByRole('button', { name: '菜单外' }))

@@ -1,6 +1,6 @@
 # Viewer 原生 wgpu／Metal 图片渲染架构设计
 
-> Status: Design approved; written review pending
+> Status: Approved
 >
 > 日期：2026-09-03
 >

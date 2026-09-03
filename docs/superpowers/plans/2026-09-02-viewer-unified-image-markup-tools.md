@@ -724,7 +724,7 @@ git commit -m "feat: read review v4 without weakening agent gates"
 - Consumes: Tauri `snake_case` Anchor DTO contract.
 - Produces: `AnnotationTool`, tool descriptors, pure gesture geometry, and deterministic hit-test results.
 
-- [ ] **Step 1: Write failing geometry and registry tests**
+- [x] **Step 1: Write failing geometry and registry tests**
 
 ```ts
 expect(arrowFromDrag({ x: 0.1, y: 0.2 }, { x: 0.7, y: 0.8 })).toEqual({
@@ -743,13 +743,13 @@ expect(toolForShortcut('o')?.id).toBe('ellipse')
 Add hit tests proving that a fixed 8 CSS px tolerance selects the same normalized arrow endpoint at 50%,
 100%, and 400% zoom, and that overlap priority is handle > selected > ordinal > nearest > later item.
 
-- [ ] **Step 2: Run focused tests and verify missing functions/types**
+- [x] **Step 2: Run focused tests and verify missing functions/types**
 
 Run: `pnpm --dir ui exec vitest run src/app/review/annotationGeometry.test.ts src/app/review/annotationHitTest.test.ts src/app/review/annotationToolRegistry.test.ts src/api/viewer.test.ts`
 
 Expected: FAIL because extended Anchor variants and helper modules do not exist.
 
-- [ ] **Step 3: Extend the TypeScript union exactly**
+- [x] **Step 3: Extend the TypeScript union exactly**
 
 ```ts
 export interface ReviewPoint { x: number; y: number }
@@ -769,7 +769,7 @@ Use the same nested `tail`/`head` names as Tauri. Update bridge fixtures to prov
 In `annotationGeometry.ts`, define `export type NormalizedPoint = ReviewPoint`; the API layer must not import
 from the application layer.
 
-- [ ] **Step 4: Implement pure geometry and hit testing**
+- [x] **Step 4: Implement pure geometry and hit testing**
 
 Export these exact functions:
 
@@ -791,7 +791,7 @@ Circle constraint must compare oriented source pixels (`dx * sourceWidth`, `dy *
 converting the resulting box back to normalized values. Geometry creation clamps to the image; whole-shape
 movement preserves size while constraining position.
 
-- [ ] **Step 5: Implement the compile-time tool registry**
+- [x] **Step 5: Implement the compile-time tool registry**
 
 ```ts
 export type MarkupTool = 'point' | 'arrow' | 'brush' | 'rectangle' | 'ellipse'
@@ -808,13 +808,13 @@ export const ANNOTATION_TOOLS = [
 
 Tests must enforce unique IDs, shortcuts, and menu positions so future additions cannot silently collide.
 
-- [ ] **Step 6: Run focused UI foundations**
+- [x] **Step 6: Run focused UI foundations**
 
 Run: `pnpm --dir ui exec vitest run src/api/viewer.test.ts src/app/review/annotationGeometry.test.ts src/app/review/annotationHitTest.test.ts src/app/review/annotationToolRegistry.test.ts && pnpm --dir ui typecheck`
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit UI foundations**
+- [x] **Step 7: Commit UI foundations**
 
 ```bash
 git add ui/src/api/types.ts ui/src/api/viewer.test.ts ui/src/app/review/annotationGeometry* \

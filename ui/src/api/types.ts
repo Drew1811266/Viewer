@@ -657,10 +657,18 @@ export interface ReviewStartRequest extends ReviewSessionRequest {
   proposalId: number
 }
 
+export interface ReviewPoint {
+  x: number
+  y: number
+}
+
 export type ReviewAnchor =
   | { kind: 'asset' }
+  | { kind: 'image_point'; x: number; y: number }
+  | { kind: 'image_arrow'; tail: ReviewPoint; head: ReviewPoint }
   | { kind: 'image_rect'; x: number; y: number; width: number; height: number }
-  | { kind: 'image_stroke'; points: ReadonlyArray<{ x: number; y: number }> }
+  | { kind: 'image_stroke'; points: ReadonlyArray<ReviewPoint> }
+  | { kind: 'image_ellipse'; x: number; y: number; width: number; height: number }
   | { kind: 'video_point'; positionUs: number }
   | { kind: 'video_range'; startUs: number; endUs: number }
 

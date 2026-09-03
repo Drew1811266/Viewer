@@ -197,7 +197,18 @@ export function isValidAnnotationAnchor(anchor: ReviewAnchor): boolean {
   switch (anchor.kind) {
     case 'asset':
       return true
+    case 'image_point':
+      return finiteNormalized(anchor.x) && finiteNormalized(anchor.y)
+    case 'image_arrow':
+      return (
+        finiteNormalized(anchor.tail.x) &&
+        finiteNormalized(anchor.tail.y) &&
+        finiteNormalized(anchor.head.x) &&
+        finiteNormalized(anchor.head.y) &&
+        (anchor.tail.x !== anchor.head.x || anchor.tail.y !== anchor.head.y)
+      )
     case 'image_rect':
+    case 'image_ellipse':
       return (
         finiteNormalized(anchor.x) &&
         finiteNormalized(anchor.y) &&

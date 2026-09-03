@@ -4,11 +4,39 @@ import {
   annotationEditorReducer,
   hasUnsavedAnnotation,
   initialAnnotationEditorState,
+  isValidAnnotationAnchor,
 } from './annotationModel'
 
 const RECT: ReviewAnchor = { kind: 'image_rect', x: 0.1, y: 0.2, width: 0.3, height: 0.4 }
 
 describe('annotation editor model', () => {
+  it('validates every extended image anchor without viewport-dependent thresholds', () => {
+    expect(isValidAnnotationAnchor({ kind: 'image_point', x: 0, y: 1 })).toBe(true)
+    expect(
+      isValidAnnotationAnchor({
+        kind: 'image_arrow',
+        tail: { x: 0.1, y: 0.2 },
+        head: { x: 0.8, y: 0.7 },
+      }),
+    ).toBe(true)
+    expect(
+      isValidAnnotationAnchor({
+        kind: 'image_arrow',
+        tail: { x: 0.1, y: 0.2 },
+        head: { x: 0.1, y: 0.2 },
+      }),
+    ).toBe(false)
+    expect(
+      isValidAnnotationAnchor({
+        kind: 'image_ellipse',
+        x: 0.2,
+        y: 0.3,
+        width: 0.4,
+        height: 0.5,
+      }),
+    ).toBe(true)
+  })
+
   it('switches tools and treats Space as temporary pan without losing the selected tool', () => {
     let state = annotationEditorReducer(initialAnnotationEditorState(), {
       type: 'set_tool',

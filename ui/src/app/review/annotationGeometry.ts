@@ -1,6 +1,17 @@
-export interface NormalizedPoint {
-  x: number
-  y: number
+import type { ReviewAnchor, ReviewPoint } from '../../api/types'
+
+export type NormalizedPoint = ReviewPoint
+export type ImageAnchor = Extract<ReviewAnchor, { kind: `image_${string}` }>
+export type ImagePointAnchor = Extract<ReviewAnchor, { kind: 'image_point' }>
+export type ImageArrowAnchor = Extract<ReviewAnchor, { kind: 'image_arrow' }>
+export type ImageRectAnchor = Extract<ReviewAnchor, { kind: 'image_rect' }>
+export type ImageEllipseAnchor = Extract<ReviewAnchor, { kind: 'image_ellipse' }>
+export type BoxHandle = 'north_west' | 'north_east' | 'south_east' | 'south_west'
+
+export interface EllipseOptions {
+  constrainCircle: boolean
+  sourceWidth: number
+  sourceHeight: number
 }
 
 export interface StrokeSimplificationOptions {
@@ -14,6 +25,107 @@ export interface NormalizedRect {
   y: number
   width: number
   height: number
+}
+
+export function pointAnchor(point: NormalizedPoint): ImagePointAnchor | null {
+  if (!isNormalizedPoint(point)) return null
+  return { kind: 'image_point', x: roundNormalized(point.x), y: roundNormalized(point.y) }
+}
+
+export function arrowFromDrag(
+  start: NormalizedPoint,
+  end: NormalizedPoint,
+): ImageArrowAnchor | null {
+  if (!isFinitePoint(start) || !isFinitePoint(end)) return null
+  const tail = clampedPoint(start)
+  const head = clampedPoint(end)
+  if (tail.x === head.x && tail.y === head.y) return null
+  return { kind: 'image_arrow', tail, head }
+}
+
+export function ellipseFromDrag(
+  start: NormalizedPoint,
+  end: NormalizedPoint,
+  options: EllipseOptions,
+): ImageEllipseAnchor | null {
+  if (!isFinitePoint(start) || !isFinitePoint(end)) return null
+  const origin = clampedPoint(start)
+  let destination = clampedPoint(end)
+  if (options.constrainCircle) {
+    if (
+      !Number.isFinite(options.sourceWidth) ||
+      !Number.isFinite(options.sourceHeight) ||
+      options.sourceWidth <= 0 ||
+      options.sourceHeight <= 0
+    ) {
+      return null
+    }
+    const deltaX = destination.x - origin.x
+    const deltaY = destination.y - origin.y
+    const sidePixels = Math.min(
+      Math.abs(deltaX) * options.sourceWidth,
+      Math.abs(deltaY) * options.sourceHeight,
+    )
+    if (sidePixels <= 0) return null
+    destination = {
+      x: origin.x + Math.sign(deltaX) * (sidePixels / options.sourceWidth),
+      y: origin.y + Math.sign(deltaY) * (sidePixels / options.sourceHeight),
+    }
+  }
+  const rect = rectFromDrag(origin, destination)
+  return rect === null ? null : { kind: 'image_ellipse', ...rect }
+}
+
+export function moveAnchor(anchor: ImageAnchor, delta: NormalizedPoint): ImageAnchor {
+  if (!isFinitePoint(delta)) return cloneAnchor(anchor)
+  switch (anchor.kind) {
+    case 'image_point': {
+      const point = clampedPoint({ x: anchor.x + delta.x, y: anchor.y + delta.y })
+      return { kind: anchor.kind, ...point }
+    }
+    case 'image_arrow': {
+      const movement = constrainedMovement([anchor.tail, anchor.head], delta)
+      return {
+        kind: anchor.kind,
+        tail: translatedPoint(anchor.tail, movement),
+        head: translatedPoint(anchor.head, movement),
+      }
+    }
+    case 'image_stroke': {
+      const movement = constrainedMovement(anchor.points, delta)
+      return {
+        kind: anchor.kind,
+        points: anchor.points.map((point) => translatedPoint(point, movement)),
+      }
+    }
+    case 'image_rect':
+    case 'image_ellipse': {
+      const movement = constrainedMovement(
+        [
+          { x: anchor.x, y: anchor.y },
+          { x: anchor.x + anchor.width, y: anchor.y + anchor.height },
+        ],
+        delta,
+      )
+      return {
+        ...anchor,
+        x: roundNormalized(anchor.x + movement.x),
+        y: roundNormalized(anchor.y + movement.y),
+      }
+    }
+  }
+}
+
+export function resizeBoxAnchor<T extends ImageRectAnchor | ImageEllipseAnchor>(
+  anchor: T,
+  handle: BoxHandle,
+  point: NormalizedPoint,
+): T | null {
+  if (!isFinitePoint(point)) return null
+  const active = clampedPoint(point)
+  const opposite = oppositeCorner(anchor, handle)
+  const rect = rectFromDrag(opposite, active)
+  return rect === null ? null : ({ kind: anchor.kind, ...rect } as T)
 }
 
 export function rectFromDrag(start: NormalizedPoint, end: NormalizedPoint): NormalizedRect | null {
@@ -185,6 +297,66 @@ function squaredDistance(left: NormalizedPoint, right: NormalizedPoint): number 
 
 function isFinitePoint(point: NormalizedPoint): boolean {
   return Number.isFinite(point.x) && Number.isFinite(point.y)
+}
+
+function isNormalizedPoint(point: NormalizedPoint): boolean {
+  return isFinitePoint(point) && point.x >= 0 && point.x <= 1 && point.y >= 0 && point.y <= 1
+}
+
+function clampedPoint(point: NormalizedPoint): NormalizedPoint {
+  return { x: roundNormalized(clamp01(point.x)), y: roundNormalized(clamp01(point.y)) }
+}
+
+function translatedPoint(point: NormalizedPoint, delta: NormalizedPoint): NormalizedPoint {
+  return {
+    x: roundNormalized(point.x + delta.x),
+    y: roundNormalized(point.y + delta.y),
+  }
+}
+
+function constrainedMovement(
+  points: ReadonlyArray<NormalizedPoint>,
+  delta: NormalizedPoint,
+): NormalizedPoint {
+  const minimumX = Math.min(...points.map((point) => point.x))
+  const maximumX = Math.max(...points.map((point) => point.x))
+  const minimumY = Math.min(...points.map((point) => point.y))
+  const maximumY = Math.max(...points.map((point) => point.y))
+  return {
+    x: roundNormalized(Math.max(-minimumX, Math.min(1 - maximumX, delta.x))),
+    y: roundNormalized(Math.max(-minimumY, Math.min(1 - maximumY, delta.y))),
+  }
+}
+
+function oppositeCorner(
+  anchor: ImageRectAnchor | ImageEllipseAnchor,
+  handle: BoxHandle,
+): NormalizedPoint {
+  const left = anchor.x
+  const top = anchor.y
+  const right = anchor.x + anchor.width
+  const bottom = anchor.y + anchor.height
+  switch (handle) {
+    case 'north_west':
+      return { x: right, y: bottom }
+    case 'north_east':
+      return { x: left, y: bottom }
+    case 'south_east':
+      return { x: left, y: top }
+    case 'south_west':
+      return { x: right, y: top }
+  }
+}
+
+function cloneAnchor(anchor: ImageAnchor): ImageAnchor {
+  switch (anchor.kind) {
+    case 'image_arrow':
+      return { kind: anchor.kind, tail: { ...anchor.tail }, head: { ...anchor.head } }
+    case 'image_stroke':
+      return { kind: anchor.kind, points: anchor.points.map((point) => ({ ...point })) }
+    default:
+      return { ...anchor }
+  }
 }
 
 function clamp01(value: number): number {

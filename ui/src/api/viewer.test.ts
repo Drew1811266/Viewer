@@ -82,6 +82,18 @@ describe('tauriViewerBridge', () => {
         },
       },
     })
+    await tauriViewerBridge.reviewReplaceFeedbackAnchor({
+      ...guard,
+      feedbackId: 'feedback-1',
+      target: {
+        entityId: 'image-1',
+        anchor: {
+          kind: 'image_arrow',
+          tail: { x: 0.2, y: 0.3 },
+          head: { x: 0.7, y: 0.6 },
+        },
+      },
+    })
     await tauriViewerBridge.reviewDeleteFeedback({ ...guard, feedbackId: 'feedback-1' })
     await tauriViewerBridge.reviewRestoreDeletedFeedback({ ...guard, feedbackId: 'feedback-1' })
     await tauriViewerBridge.reviewCompletionSummary(guard)
@@ -160,6 +172,23 @@ describe('tauriViewerBridge', () => {
                   { x: 0.2, y: 0.3 },
                   { x: 0.7, y: 0.6 },
                 ],
+              },
+            },
+          },
+        },
+      ],
+      [
+        'review_replace_feedback_anchor',
+        {
+          request: {
+            ...guard,
+            feedbackId: 'feedback-1',
+            target: {
+              entityId: 'image-1',
+              anchor: {
+                kind: 'image_arrow',
+                tail: { x: 0.2, y: 0.3 },
+                head: { x: 0.7, y: 0.6 },
               },
             },
           },

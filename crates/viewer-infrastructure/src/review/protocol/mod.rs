@@ -1,15 +1,18 @@
 mod common;
+mod continuous_version;
 #[cfg(test)]
 mod tests;
 pub mod v1;
 pub mod v2;
 pub mod v3;
+pub mod v4;
 
 pub const PRODUCTION_PROTOCOL_V1: &str = "viewer.production/1";
 pub const REVIEW_PROTOCOL_V1: &str = "viewer.review/1";
 pub const REVIEW_PROTOCOL_V2: &str = "viewer.review/2";
 
 pub use common::{MAX_REVIEW_DOCUMENT_BYTES, MAX_REVIEW_INDEX_BYTES, ReviewProtocolError};
+pub use continuous_version::ContinuousReviewProtocol;
 pub use v1::{
     decode_catalog, decode_completed, decode_draft, decode_production_manifest, encode_catalog,
     encode_completed, encode_draft,

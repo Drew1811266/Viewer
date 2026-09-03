@@ -61,11 +61,13 @@ pub struct EvidenceBinding {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct ReviewIndexV3 {
+pub struct ReviewIndexRecord {
     pub project_id: ProjectId,
-    pub streams: Vec<ReviewStreamV3>,
+    pub streams: Vec<ReviewStreamRecord>,
     pub legacy_index: Option<LegacyIndexRef>,
 }
+
+pub type ReviewIndexV3 = ReviewIndexRecord;
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -76,7 +78,7 @@ pub struct LegacyIndexRef {
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct ReviewStreamV3 {
+pub struct ReviewStreamRecord {
     #[serde(deserialize_with = "super::wire::canonical_id")]
     pub review_stream_id: ReviewStreamId,
     #[serde(deserialize_with = "super::wire::required_option")]
@@ -89,6 +91,8 @@ pub struct ReviewStreamV3 {
     pub legacy_refs: Vec<LegacyRecordRef>,
     pub usage_refs: Vec<UsageRecordRef>,
 }
+
+pub type ReviewStreamV3 = ReviewStreamRecord;
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]

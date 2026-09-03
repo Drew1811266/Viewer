@@ -1,9 +1,10 @@
 use super::*;
+use crate::review::protocol::ContinuousReviewProtocol;
 
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(in crate::review::protocol::v3) struct State {
-    protocol_version: Protocol,
+    protocol_version: ContinuousReviewProtocol,
     kind: StateKind,
     #[serde(deserialize_with = "canonical_id")]
     project_id: ProjectId,
@@ -26,21 +27,16 @@ pub(in crate::review::protocol::v3) struct State {
     evidence: Vec<EvidenceBinding>,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
-pub(in crate::review::protocol::v3) enum Protocol {
-    #[serde(rename = "viewer.review/3")]
-    V3,
-}
 #[derive(Serialize, Deserialize)]
 enum StateKind {
     #[serde(rename = "state")]
     State,
 }
 
-impl From<&ReviewStateRecord> for State {
-    fn from(v: &ReviewStateRecord) -> Self {
+impl State {
+    pub fn from_record(v: &ReviewStateRecord, protocol: ContinuousReviewProtocol) -> Self {
         Self {
-            protocol_version: Protocol::V3,
+            protocol_version: protocol,
             kind: StateKind::State,
             project_id: v.state.project_id,
             review_stream_id: v.state.stream_id,
@@ -54,8 +50,7 @@ impl From<&ReviewStateRecord> for State {
             evidence: v.evidence.clone(),
         }
     }
-}
-impl State {
+
     pub fn into_record(self) -> ReviewStateRecord {
         ReviewStateRecord {
             state: ContinuousReviewState {

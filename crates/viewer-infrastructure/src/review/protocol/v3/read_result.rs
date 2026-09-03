@@ -1,6 +1,7 @@
 use super::super::common::ReviewProtocolError;
 pub use super::history_result::*;
 use super::{EvidenceBinding, ReviewStateRecord, validate, wire};
+use crate::review::protocol::ContinuousReviewProtocol;
 use serde::{Deserialize, Serialize};
 use viewer_domain::review::AssetVersion;
 use viewer_domain::review::continuous::{
@@ -23,7 +24,7 @@ pub enum ReviewReadResult {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CurrentReadResult {
-    protocol_version: wire::Protocol,
+    protocol_version: ContinuousReviewProtocol,
     status: OkStatus,
     role: CurrentRole,
     #[serde(deserialize_with = "wire::canonical_id")]
@@ -50,7 +51,7 @@ pub struct CurrentReadResult {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct NoReviewStateResult {
-    protocol_version: wire::Protocol,
+    protocol_version: ContinuousReviewProtocol,
     status: NoStateStatus,
     role: CurrentRole,
     #[serde(deserialize_with = "wire::canonical_id")]
@@ -61,7 +62,7 @@ pub struct NoReviewStateResult {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ReadErrorResult {
-    protocol_version: wire::Protocol,
+    protocol_version: ContinuousReviewProtocol,
     status: ErrorStatus,
     pub code: ReadErrorCode,
     pub message: String,
@@ -177,6 +178,15 @@ pub enum DeltaUnavailableReason {
 }
 
 impl ReviewReadResult {
+    pub(super) fn set_protocol(&mut self, protocol: ContinuousReviewProtocol) {
+        match self {
+            Self::Current(value) => value.protocol_version = protocol,
+            Self::History(value) => value.set_protocol(protocol),
+            Self::NoReviewState(value) => value.protocol_version = protocol,
+            Self::Error(value) => value.protocol_version = protocol,
+        }
+    }
+
     pub(in crate::review) fn validate(&self) -> Result<(), ReviewProtocolError> {
         use ReviewProtocolError::*;
         let (project_id, stream_id, reference, assets, feedback, evidence) = match self {
@@ -315,7 +325,7 @@ impl CurrentReadResult {
             }
         }
         Ok(Self {
-            protocol_version: wire::Protocol::V3,
+            protocol_version: ContinuousReviewProtocol::V3,
             status: OkStatus::Ok,
             role: CurrentRole::Current,
             project_id: record.state.project_id,
@@ -338,7 +348,7 @@ impl NoReviewStateResult {
         review_stream_id: Option<ReviewStreamId>,
     ) -> Self {
         Self {
-            protocol_version: wire::Protocol::V3,
+            protocol_version: ContinuousReviewProtocol::V3,
             status: NoStateStatus::NoState,
             role: CurrentRole::Current,
             project_id,

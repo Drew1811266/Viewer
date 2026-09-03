@@ -1,5 +1,6 @@
 use super::ReviewArchiveRecord;
-use super::wire::{self, Protocol};
+use super::wire;
+use crate::review::protocol::ContinuousReviewProtocol;
 use serde::{Deserialize, Serialize};
 use viewer_domain::review::continuous::*;
 use viewer_domain::{ProjectId, ReviewArchiveId, ReviewSnapshotId, ReviewStreamId, ReviewUsageId};
@@ -7,7 +8,7 @@ use viewer_domain::{ProjectId, ReviewArchiveId, ReviewSnapshotId, ReviewStreamId
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(super) struct Archive {
-    protocol_version: Protocol,
+    protocol_version: ContinuousReviewProtocol,
     kind: ArchiveKind,
     #[serde(deserialize_with = "wire::canonical_id")]
     project_id: ProjectId,
@@ -73,11 +74,11 @@ enum Disposition {
     AlreadyAbsent,
 }
 
-impl From<&ReviewArchiveRecord> for Archive {
-    fn from(record: &ReviewArchiveRecord) -> Self {
+impl Archive {
+    pub fn from_record(record: &ReviewArchiveRecord, protocol: ContinuousReviewProtocol) -> Self {
         let v = &record.checkpoint;
         Self {
-            protocol_version: Protocol::V3,
+            protocol_version: protocol,
             kind: ArchiveKind::Archive,
             project_id: v.project_id,
             review_stream_id: v.stream_id,
@@ -122,8 +123,7 @@ impl From<&ReviewArchiveRecord> for Archive {
                 .collect(),
         }
     }
-}
-impl Archive {
+
     pub fn into_record(self) -> ReviewArchiveRecord {
         ReviewArchiveRecord {
             result_snapshot_id: self.result_snapshot_id,

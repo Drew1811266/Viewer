@@ -79,10 +79,7 @@ pub struct NormalizedArrow {
 }
 
 impl NormalizedArrow {
-    pub fn new(
-        tail: NormalizedPoint,
-        head: NormalizedPoint,
-    ) -> Result<Self, ReviewValueError> {
+    pub fn new(tail: NormalizedPoint, head: NormalizedPoint) -> Result<Self, ReviewValueError> {
         (tail != head)
             .then_some(Self { tail, head })
             .ok_or(ReviewValueError::InvalidNumber)

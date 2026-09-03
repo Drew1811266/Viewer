@@ -1,5 +1,6 @@
-use super::wire::{self, Protocol};
-use super::{ReviewIndexV3, ReviewStreamV3, ReviewUsageRecord, UsageOutputRecord};
+use super::wire;
+use super::{ReviewIndexRecord, ReviewStreamRecord, ReviewUsageRecord, UsageOutputRecord};
+use crate::review::protocol::ContinuousReviewProtocol;
 use serde::{Deserialize, Serialize};
 use viewer_domain::review::continuous::{SnapshotRef, TargetVersionKey};
 use viewer_domain::{ProjectId, ReviewStreamId, ReviewUsageId};
@@ -7,11 +8,11 @@ use viewer_domain::{ProjectId, ReviewStreamId, ReviewUsageId};
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(super) struct Index {
-    protocol_version: Protocol,
+    protocol_version: ContinuousReviewProtocol,
     kind: IndexKind,
     #[serde(deserialize_with = "wire::canonical_id")]
     project_id: ProjectId,
-    streams: Vec<ReviewStreamV3>,
+    streams: Vec<ReviewStreamRecord>,
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
@@ -30,20 +31,19 @@ enum IndexKind {
     #[serde(rename = "index")]
     Index,
 }
-impl From<&ReviewIndexV3> for Index {
-    fn from(value: &ReviewIndexV3) -> Self {
+impl Index {
+    pub fn from_record(value: &ReviewIndexRecord, protocol: ContinuousReviewProtocol) -> Self {
         Self {
-            protocol_version: Protocol::V3,
+            protocol_version: protocol,
             kind: IndexKind::Index,
             project_id: value.project_id,
             streams: value.streams.clone(),
             legacy_index: value.legacy_index.clone(),
         }
     }
-}
-impl Index {
-    pub fn into_record(self) -> ReviewIndexV3 {
-        ReviewIndexV3 {
+
+    pub fn into_record(self) -> ReviewIndexRecord {
+        ReviewIndexRecord {
             project_id: self.project_id,
             streams: self.streams,
             legacy_index: self.legacy_index,

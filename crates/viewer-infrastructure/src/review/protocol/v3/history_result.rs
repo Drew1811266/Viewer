@@ -5,6 +5,7 @@ use super::{
     EvidenceBinding, EvidenceRef, LegacyRecordRef, ReviewIndexV3, ReviewStateRecord,
     ReviewStreamV3, validate, wire,
 };
+use crate::review::protocol::ContinuousReviewProtocol;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use viewer_domain::review::continuous::{
@@ -19,7 +20,7 @@ use viewer_domain::{
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct HistoryReadResult {
-    protocol_version: wire::Protocol,
+    protocol_version: ContinuousReviewProtocol,
     status: OkStatus,
     role: HistoryRole,
     #[serde(deserialize_with = "wire::canonical_id")]
@@ -108,7 +109,7 @@ impl HistoryReadResult {
         limitations: Vec<HistoryLimitation>,
     ) -> Self {
         Self {
-            protocol_version: wire::Protocol::V3,
+            protocol_version: ContinuousReviewProtocol::V3,
             status: OkStatus::Ok,
             role: HistoryRole::History,
             project_id,
@@ -117,6 +118,10 @@ impl HistoryReadResult {
             entries,
             limitations,
         }
+    }
+
+    pub(super) fn set_protocol(&mut self, protocol: ContinuousReviewProtocol) {
+        self.protocol_version = protocol;
     }
 
     pub(super) fn validate(&self) -> Result<(), ReviewProtocolError> {

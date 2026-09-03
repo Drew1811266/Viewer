@@ -165,7 +165,7 @@ git commit -m "design: define unified image markup delivery"
 - Consumes: existing `ReviewStateRecord`, `ReviewIndexV3`, `ReviewArchiveRecord`, and `ReviewReadResult`.
 - Produces: `ContinuousReviewProtocol::{V3,V4}`, `v4::encode_*_v4`, and `v4::decode_*_v4`.
 
-- [ ] **Step 1: Add failing version-isolation tests**
+- [x] **Step 1: Add failing version-isolation tests**
 
 ```rust
 #[test]
@@ -192,13 +192,13 @@ let decoded = decode_state_v3(&before).unwrap();
 assert_eq!(encode_state_v3(&decoded).unwrap(), before);
 ```
 
-- [ ] **Step 2: Run the protocol tests and verify v4 is missing**
+- [x] **Step 2: Run the protocol tests and verify v4 is missing**
 
 Run: `cargo test --locked -p viewer-infrastructure review::protocol`
 
 Expected: FAIL because module `v4` and its functions do not exist.
 
-- [ ] **Step 3: Add the version enum and parameterize wire construction**
+- [x] **Step 3: Add the version enum and parameterize wire construction**
 
 ```rust
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -229,7 +229,7 @@ keeping `pub type ReviewIndexV3 = ReviewIndexRecord` and `pub type ReviewStreamV
 existing callers and tests remain source-compatible. Re-export the same records as `ReviewIndexV4` and
 `ReviewStreamV4` from the v4 wrapper.
 
-- [ ] **Step 4: Add thin v4 wrappers without duplicating the wire model**
+- [x] **Step 4: Add thin v4 wrappers without duplicating the wire model**
 
 ```rust
 pub const REVIEW_PROTOCOL_V4: &str = "viewer.review/4";
@@ -246,13 +246,13 @@ pub fn decode_state_v4(bytes: &[u8]) -> Result<ReviewStateRecord, ReviewProtocol
 Provide the same thin pair for index, archive, and read-result records. Keep `encode_usage_v1` and
 `decode_usage_v1` in the existing usage protocol because their wire contract does not contain Anchor.
 
-- [ ] **Step 5: Run protocol and workspace compilation checks**
+- [x] **Step 5: Run protocol and workspace compilation checks**
 
 Run: `cargo test --locked -p viewer-infrastructure review::protocol && cargo check --locked --workspace --all-targets`
 
 Expected: PASS, and the v3 fixture bytes remain identical.
 
-- [ ] **Step 6: Commit the version boundary**
+- [x] **Step 6: Commit the version boundary**
 
 ```bash
 git add crates/viewer-infrastructure/src/review/protocol

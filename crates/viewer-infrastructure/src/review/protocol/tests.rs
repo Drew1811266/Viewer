@@ -209,3 +209,39 @@ fn v2_accepts_complete_artifact_annotation_mappings() {
 
     assert!(decode_v2_value(&value).is_ok());
 }
+
+#[test]
+fn v3_and_v4_emit_distinct_protocol_versions_for_the_same_legacy_state() {
+    let fixture = include_bytes!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../tests/fixtures/review-protocol/review-state-v3.valid.json"
+    ));
+    let record = super::v3::decode_state_v3(fixture).unwrap();
+
+    let v3 = super::v3::encode_state_v3(&record).unwrap();
+    let v4 = super::v4::encode_state_v4(&record).unwrap();
+
+    assert_eq!(
+        serde_json::from_slice::<Value>(&v3).unwrap()["protocolVersion"],
+        "viewer.review/3"
+    );
+    assert_eq!(
+        serde_json::from_slice::<Value>(&v4).unwrap()["protocolVersion"],
+        "viewer.review/4"
+    );
+    assert!(super::v3::decode_state_v3(&v4).is_err());
+    assert!(super::v4::decode_state_v4(&v3).is_err());
+}
+
+#[test]
+fn v3_state_reencoding_remains_canonical() {
+    let fixture = include_bytes!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../tests/fixtures/review-protocol/review-state-v3.valid.json"
+    ));
+    let record = super::v3::decode_state_v3(fixture).unwrap();
+    let before = super::v3::encode_state_v3(&record).unwrap();
+    let decoded = super::v3::decode_state_v3(&before).unwrap();
+
+    assert_eq!(super::v3::encode_state_v3(&decoded).unwrap(), before);
+}

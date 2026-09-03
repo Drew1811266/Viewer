@@ -3,8 +3,8 @@ mod catalog;
 use std::{fs, os::unix::fs::MetadataExt, path::Path};
 use viewer_application::{PreparedReviewAsset, ReviewTaskCancellation};
 use viewer_domain::review::{
-    AssetEvidence, AssetVersion, FeedbackAnchor, ImageStroke, NormalizedPoint, NormalizedRect,
-    ReviewMedia, continuous::TargetVersionKey,
+    AssetEvidence, AssetVersion, FeedbackAnchor, ImageStroke, NormalizedArrow, NormalizedPoint,
+    NormalizedRect, ReviewMedia, continuous::TargetVersionKey,
 };
 use viewer_domain::{
     AssetVersionId, EntityId, FeedbackId, RelativePath, ReviewTargetId, ReviewTargetRevisionId,
@@ -108,6 +108,77 @@ async fn review_evidence_redraw_uses_captured_bytes_after_source_overwrite() {
     assert_eq!(rendered.annotations.len(), 4);
     assert_eq!(rendered.files().len(), 2);
     assert_ne!(rendered.annotated_ref.as_ref().unwrap().blake3, before_hash);
+    for file in rendered.files() {
+        assert_eq!(
+            *blake3::hash(&fs::read(&file.path).unwrap()).as_bytes(),
+            file.reference.blake3
+        );
+    }
+}
+
+#[tokio::test]
+async fn review_evidence_renders_extended_anchors_and_preserves_mapping() {
+    let root = tempfile::tempdir().unwrap();
+    let output = tempfile::tempdir().unwrap();
+    let source = root.path().join("source.png");
+    fs::copy(
+        viewer_test_support::image_fixtures::image_fixture("alpha.png"),
+        &source,
+    )
+    .unwrap();
+    let renderer = MacReviewEvidenceRenderer::new(output.path()).unwrap();
+    let base = renderer
+        .capture_base(
+            prepared(&source, 640, 480),
+            ReviewTaskCancellation::default(),
+        )
+        .await
+        .unwrap();
+    let anchors = [
+        FeedbackAnchor::ImagePoint(NormalizedPoint::new(0.2, 0.3).unwrap()),
+        FeedbackAnchor::ImageArrow(
+            NormalizedArrow::new(
+                NormalizedPoint::new(0.35, 0.35).unwrap(),
+                NormalizedPoint::new(0.65, 0.55).unwrap(),
+            )
+            .unwrap(),
+        ),
+        FeedbackAnchor::ImageEllipse(NormalizedRect::new(0.55, 0.15, 0.25, 0.3).unwrap()),
+    ];
+    let annotations = anchors
+        .into_iter()
+        .enumerate()
+        .map(|(index, anchor)| NumberedTargetAnnotation {
+            ordinal: index as u32 + 1,
+            key: TargetVersionKey {
+                feedback_id: FeedbackId::from_u128(30),
+                text_revision_id: ReviewTextRevisionId::from_u128(31),
+                target_id: ReviewTargetId::from_u128(index as u128 + 32),
+                target_revision_id: ReviewTargetRevisionId::from_u128(index as u128 + 42),
+            },
+            anchor,
+        })
+        .collect::<Vec<_>>();
+    let expected_mapping = annotations
+        .iter()
+        .map(|annotation| EvidenceAnnotation {
+            ordinal: annotation.ordinal,
+            key: annotation.key,
+        })
+        .collect::<Vec<_>>();
+
+    let rendered = renderer
+        .render(ReviewEvidenceRequest {
+            base,
+            annotations,
+            cancellation: ReviewTaskCancellation::default(),
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(rendered.annotations, expected_mapping);
+    assert!(rendered.annotated_ref.is_some());
+    assert_eq!(rendered.files().len(), 2);
     for file in rendered.files() {
         assert_eq!(
             *blake3::hash(&fs::read(&file.path).unwrap()).as_bytes(),

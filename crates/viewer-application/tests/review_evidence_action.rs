@@ -1,6 +1,7 @@
 use viewer_application::review_workspace::{
-    GeneratedReviewIds, ReviewAuthoringHead, ReviewBarrierKind, ReviewEvidenceActionPolicy,
-    StoredAuthoringState, dirty_evidence_assets, evidence_action_key,
+    CURRENT_REVIEW_EVIDENCE_ACTION_POLICY, GeneratedReviewIds, ReviewAuthoringHead,
+    ReviewBarrierKind, ReviewEvidenceActionPolicy, StoredAuthoringState, dirty_evidence_assets,
+    evidence_action_key,
 };
 use viewer_domain::{
     AssetVersionId, FeedbackId, ProjectId, RelativePath, ReviewArchiveId, ReviewCommandId,
@@ -19,6 +20,25 @@ fn policy(renderer_version: u32, output_policy_version: u32) -> ReviewEvidenceAc
         renderer_version,
         output_policy_version,
     }
+}
+
+#[test]
+fn current_policy_invalidates_evidence_from_the_previous_renderer() {
+    assert_eq!(CURRENT_REVIEW_EVIDENCE_ACTION_POLICY.renderer_version, 2);
+    assert_ne!(
+        evidence_action_key(
+            &state("文字", [1; 32], 0.1),
+            AssetVersionId::from_u128(1),
+            policy(1, 1),
+        )
+        .unwrap(),
+        evidence_action_key(
+            &state("文字", [1; 32], 0.1),
+            AssetVersionId::from_u128(1),
+            CURRENT_REVIEW_EVIDENCE_ACTION_POLICY,
+        )
+        .unwrap(),
+    );
 }
 
 fn state(text: &str, digest: [u8; 32], rect_x: f64) -> ContinuousReviewState {

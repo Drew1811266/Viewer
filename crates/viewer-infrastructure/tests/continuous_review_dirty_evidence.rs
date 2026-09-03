@@ -1,9 +1,11 @@
 use rusqlite::params;
 use viewer_application::{
     ProjectAccess,
+    review_evidence::{EvidenceRole, HistorySelector},
     review_workspace::{
-        CachedReviewEvidenceAction, EvidenceCapability, ReviewEvidenceActionCachePort,
-        ReviewEvidenceActionKey,
+        CURRENT_REVIEW_EVIDENCE_ACTION_POLICY, CachedReviewEvidenceAction, EvidenceCapability,
+        ReviewEvidenceActionCachePort, ReviewEvidenceActionKey, ReviewEvidenceActionPolicy,
+        evidence_action_key,
     },
 };
 use viewer_infrastructure::{
@@ -55,6 +57,52 @@ fn verified_action_cache_round_trips_exact_evidence() {
         cache.load_verified(action.action_key).unwrap(),
         Some(action)
     );
+}
+
+#[test]
+fn previous_renderer_cache_is_not_reused_and_historical_evidence_remains_readable() {
+    let (_root, provider, reference) = fixture();
+    let stream = viewer_domain::ReviewStreamId::from_u128(2);
+    let reader = provider.continuous_reader().unwrap();
+    let historical_snapshot = reader.load_current(stream).unwrap().unwrap();
+    let asset_id = historical_snapshot.state.assets[0].id;
+    let previous_policy = ReviewEvidenceActionPolicy {
+        renderer_version: 1,
+        output_policy_version: 1,
+    };
+    let previous_key =
+        evidence_action_key(&historical_snapshot.state, asset_id, previous_policy).unwrap();
+    let current_key = evidence_action_key(
+        &historical_snapshot.state,
+        asset_id,
+        CURRENT_REVIEW_EVIDENCE_ACTION_POLICY,
+    )
+    .unwrap();
+    assert_ne!(previous_key, current_key);
+
+    let cache = provider.authoring_writer().unwrap();
+    cache
+        .store_verified(&CachedReviewEvidenceAction {
+            action_key: previous_key,
+            base: reference.clone(),
+            annotated: None,
+            renderer_version: previous_policy.renderer_version,
+            output_policy_version: previous_policy.output_policy_version,
+        })
+        .unwrap();
+
+    assert!(cache.load_verified(current_key).unwrap().is_none());
+    assert!(cache.load_verified(previous_key).unwrap().is_some());
+    let historical = reader
+        .load_evidence(
+            stream,
+            &HistorySelector::Snapshot(historical_snapshot.reference),
+            asset_id,
+            EvidenceRole::Base,
+        )
+        .unwrap();
+    assert_eq!(historical.blake3(), reference.blake3);
+    assert_eq!(*blake3::hash(historical.png()).as_bytes(), reference.blake3);
 }
 
 #[test]

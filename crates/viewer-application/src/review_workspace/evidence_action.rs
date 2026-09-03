@@ -24,7 +24,7 @@ pub struct ReviewEvidenceActionPolicy {
 
 pub const CURRENT_REVIEW_EVIDENCE_ACTION_POLICY: ReviewEvidenceActionPolicy =
     ReviewEvidenceActionPolicy {
-        renderer_version: 1,
+        renderer_version: 2,
         output_policy_version: 1,
     };
 

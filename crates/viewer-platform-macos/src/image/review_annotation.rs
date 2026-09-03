@@ -24,7 +24,7 @@ use viewer_application::{
     REVIEW_ANNOTATION_MAX_EDGE, ReviewArtifactAnnotation, ReviewArtifactError, ReviewArtifactPort,
     ReviewArtifactRenderRequest, ReviewRenderedArtifact,
 };
-use viewer_domain::review::{FeedbackAnchor, ReviewMedia};
+use viewer_domain::review::{FeedbackAnchor, NormalizedPoint, NormalizedRect, ReviewMedia};
 
 const REVIEW_RED: (f64, f64, f64) = (0.443, 0.302, 0.0);
 
@@ -344,20 +344,13 @@ pub(super) fn draw_annotations(
     for annotation in annotations {
         let marker = match &annotation.anchor {
             FeedbackAnchor::ImageRect(rect) => {
-                let region = CGRect::new(
-                    CGPoint::new(
-                        rect.x() * f64::from(width),
-                        (1.0 - rect.y() - rect.height()) * f64::from(height),
-                    ),
-                    CGSize::new(
-                        rect.width() * f64::from(width),
-                        rect.height() * f64::from(height),
-                    ),
-                );
+                let region = source_rect(*rect, width, height);
                 CGContext::stroke_rect_with_width(Some(&context), region, line_width);
-                CGPoint::new(
-                    rect.x() * f64::from(width),
-                    (1.0 - rect.y()) * f64::from(height),
+                source_point(
+                    NormalizedPoint::new(rect.x(), rect.y())
+                        .map_err(|_| ReviewArtifactError::InvalidRequest)?,
+                    width,
+                    height,
                 )
             }
             FeedbackAnchor::ImageStroke(stroke) => {
@@ -365,29 +358,37 @@ pub(super) fn draw_annotations(
                     .points()
                     .first()
                     .ok_or(ReviewArtifactError::InvalidRequest)?;
+                let first = source_point(*first, width, height);
                 CGContext::begin_path(Some(&context));
-                CGContext::move_to_point(
-                    Some(&context),
-                    first.x() * f64::from(width),
-                    (1.0 - first.y()) * f64::from(height),
-                );
+                CGContext::move_to_point(Some(&context), first.x, first.y);
                 for point in &stroke.points()[1..] {
-                    CGContext::add_line_to_point(
-                        Some(&context),
-                        point.x() * f64::from(width),
-                        (1.0 - point.y()) * f64::from(height),
-                    );
+                    let point = source_point(*point, width, height);
+                    CGContext::add_line_to_point(Some(&context), point.x, point.y);
                 }
                 CGContext::stroke_path(Some(&context));
-                CGPoint::new(
-                    first.x() * f64::from(width),
-                    (1.0 - first.y()) * f64::from(height),
+                first
+            }
+            FeedbackAnchor::ImagePoint(point) => {
+                let target = source_point(*point, width, height);
+                draw_point(&context, target, line_width);
+                target
+            }
+            FeedbackAnchor::ImageArrow(arrow) => {
+                let tail = source_point(arrow.tail(), width, height);
+                let head = source_point(arrow.head(), width, height);
+                draw_arrow(&context, tail, head, line_width, width, height);
+                tail
+            }
+            FeedbackAnchor::ImageEllipse(rect) => {
+                draw_ellipse(&context, *rect, width, height, line_width);
+                source_point(
+                    NormalizedPoint::new(rect.x(), rect.y())
+                        .map_err(|_| ReviewArtifactError::InvalidRequest)?,
+                    width,
+                    height,
                 )
             }
-            FeedbackAnchor::ImagePoint(_)
-            | FeedbackAnchor::ImageArrow(_)
-            | FeedbackAnchor::ImageEllipse(_)
-            | FeedbackAnchor::Asset
+            FeedbackAnchor::Asset
             | FeedbackAnchor::VideoPoint { .. }
             | FeedbackAnchor::VideoRange { .. } => {
                 return Err(ReviewArtifactError::InvalidRequest);
@@ -396,6 +397,91 @@ pub(super) fn draw_annotations(
         draw_marker(&context, marker, annotation.ordinal, width, height);
     }
     CGBitmapContextCreateImage(Some(&context)).ok_or(ReviewArtifactError::Unavailable)
+}
+
+fn source_point(point: NormalizedPoint, width: u32, height: u32) -> CGPoint {
+    CGPoint::new(
+        point.x() * f64::from(width),
+        (1.0 - point.y()) * f64::from(height),
+    )
+}
+
+fn source_rect(rect: NormalizedRect, width: u32, height: u32) -> CGRect {
+    CGRect::new(
+        CGPoint::new(
+            rect.x() * f64::from(width),
+            (1.0 - rect.y() - rect.height()) * f64::from(height),
+        ),
+        CGSize::new(
+            rect.width() * f64::from(width),
+            rect.height() * f64::from(height),
+        ),
+    )
+}
+
+fn draw_point(context: &CGContext, target: CGPoint, line_width: f64) {
+    let radius = (line_width * 1.25).max(4.0);
+    let target_dot = CGRect::new(
+        CGPoint::new(target.x - radius, target.y - radius),
+        CGSize::new(radius * 2.0, radius * 2.0),
+    );
+    CGContext::set_rgb_fill_color(Some(context), REVIEW_RED.0, REVIEW_RED.1, REVIEW_RED.2, 1.0);
+    CGContext::fill_ellipse_in_rect(Some(context), target_dot);
+}
+
+fn draw_ellipse(
+    context: &CGContext,
+    rect: NormalizedRect,
+    width: u32,
+    height: u32,
+    line_width: f64,
+) {
+    CGContext::set_line_width(Some(context), line_width);
+    CGContext::stroke_ellipse_in_rect(Some(context), source_rect(rect, width, height));
+}
+
+fn draw_arrow(
+    context: &CGContext,
+    tail: CGPoint,
+    head: CGPoint,
+    line_width: f64,
+    width: u32,
+    height: u32,
+) {
+    let dx = head.x - tail.x;
+    let dy = head.y - tail.y;
+    let distance = dx.hypot(dy);
+    if distance <= f64::EPSILON {
+        return;
+    }
+    let unit_x = dx / distance;
+    let unit_y = dy / distance;
+    let head_length = (f64::from(width.min(height)) * 0.035)
+        .clamp(12.0, 36.0)
+        .max(line_width * 2.0)
+        .min(distance * 0.45);
+    let wing = head_length * 0.55;
+    let base_x = head.x - unit_x * head_length;
+    let base_y = head.y - unit_y * head_length;
+    let perpendicular_x = -unit_y;
+    let perpendicular_y = unit_x;
+
+    CGContext::begin_path(Some(context));
+    CGContext::move_to_point(Some(context), tail.x, tail.y);
+    CGContext::add_line_to_point(Some(context), head.x, head.y);
+    CGContext::move_to_point(Some(context), head.x, head.y);
+    CGContext::add_line_to_point(
+        Some(context),
+        base_x + perpendicular_x * wing,
+        base_y + perpendicular_y * wing,
+    );
+    CGContext::move_to_point(Some(context), head.x, head.y);
+    CGContext::add_line_to_point(
+        Some(context),
+        base_x - perpendicular_x * wing,
+        base_y - perpendicular_y * wing,
+    );
+    CGContext::stroke_path(Some(context));
 }
 
 fn draw_marker(context: &CGContext, center: CGPoint, ordinal: u32, width: u32, height: u32) {
@@ -914,6 +1000,93 @@ pub(super) mod tests {
     }
 
     #[tokio::test]
+    async fn renderer_draws_every_extended_anchor_at_its_normalized_target() {
+        let source_root = tempfile::tempdir().unwrap();
+        let source_path = source_root.path().join("source.png");
+        asymmetric_source(&source_path, 600, 800, 1);
+        let original = fs::read(&source_path).unwrap();
+        let cache = tempfile::tempdir().unwrap();
+        let renderer = MacReviewArtifactRenderer::new(cache.path()).unwrap();
+        let annotations = vec![
+            NumberedImageAnnotation {
+                ordinal: 1,
+                feedback_id: FeedbackId::from_u128(11),
+                anchor: FeedbackAnchor::ImagePoint(NormalizedPoint::new(0.20, 0.25).unwrap()),
+            },
+            NumberedImageAnnotation {
+                ordinal: 2,
+                feedback_id: FeedbackId::from_u128(12),
+                anchor: FeedbackAnchor::ImageArrow(
+                    NormalizedArrow::new(
+                        NormalizedPoint::new(0.50, 0.30).unwrap(),
+                        NormalizedPoint::new(0.75, 0.30).unwrap(),
+                    )
+                    .unwrap(),
+                ),
+            },
+            NumberedImageAnnotation {
+                ordinal: 3,
+                feedback_id: FeedbackId::from_u128(13),
+                anchor: FeedbackAnchor::ImageEllipse(
+                    NormalizedRect::new(0.20, 0.70, 0.20, 0.15).unwrap(),
+                ),
+            },
+            NumberedImageAnnotation {
+                ordinal: 4,
+                feedback_id: FeedbackId::from_u128(14),
+                anchor: FeedbackAnchor::ImageRect(
+                    NormalizedRect::new(0.55, 0.55, 0.10, 0.10).unwrap(),
+                ),
+            },
+            NumberedImageAnnotation {
+                ordinal: 5,
+                feedback_id: FeedbackId::from_u128(15),
+                anchor: FeedbackAnchor::ImageStroke(
+                    ImageStroke::new(vec![
+                        NormalizedPoint::new(0.70, 0.65).unwrap(),
+                        NormalizedPoint::new(0.85, 0.75).unwrap(),
+                    ])
+                    .unwrap(),
+                ),
+            },
+        ];
+
+        let rendered = renderer
+            .render(request(
+                source_path.clone(),
+                ReviewTaskCancellation::default(),
+                annotations,
+            ))
+            .await
+            .unwrap();
+        assert_eq!(rendered.annotations.len(), 5);
+        assert_eq!(rendered.annotations[0].ordinal, 1);
+        let source_pixels = decoded_rgba(&source_path, 600, 800);
+        let rendered_pixels = decoded_rgba(&rendered.temporary_path, 600, 800);
+        let pixel = |bytes: &[u8], (x, y): (usize, usize)| {
+            let offset = (y * 600 + x) * 4;
+            [bytes[offset], bytes[offset + 1], bytes[offset + 2]]
+        };
+        let normalized_pixel =
+            |x: f64, y: f64| ((x * 599.0).round() as usize, (y * 799.0).round() as usize);
+        let changed_near = |center: (usize, usize), radius: usize| {
+            let (cx, cy) = center;
+            (cy - radius..=cy + radius).any(|y| {
+                (cx - radius..=cx + radius)
+                    .any(|x| pixel(&rendered_pixels, (x, y)) != pixel(&source_pixels, (x, y)))
+            })
+        };
+        for target in [
+            normalized_pixel(0.20, 0.25),
+            normalized_pixel(0.75, 0.30),
+            normalized_pixel(0.30, 0.70),
+        ] {
+            assert!(changed_near(target, 6));
+        }
+        assert_eq!(fs::read(&source_path).unwrap(), original);
+    }
+
+    #[tokio::test]
     async fn renderer_rejects_changed_symlinked_and_non_image_sources() {
         let cache = tempfile::tempdir().unwrap();
         let renderer = MacReviewArtifactRenderer::new(cache.path()).unwrap();
@@ -1001,30 +1174,20 @@ pub(super) mod tests {
         let cache = tempfile::tempdir().unwrap();
         let source_path = fixture("rotated-6.jpg");
         let renderer = MacReviewArtifactRenderer::new(cache.path()).unwrap();
-        let point = NormalizedPoint::new(0.2, 0.3).unwrap();
-        for anchor in [
-            FeedbackAnchor::Asset,
-            FeedbackAnchor::ImagePoint(point),
-            FeedbackAnchor::ImageArrow(
-                NormalizedArrow::new(point, NormalizedPoint::new(0.8, 0.7).unwrap()).unwrap(),
-            ),
-            FeedbackAnchor::ImageEllipse(NormalizedRect::new(0.1, 0.2, 0.3, 0.4).unwrap()),
-        ] {
-            assert_eq!(
-                renderer
-                    .render(request(
-                        source_path.clone(),
-                        ReviewTaskCancellation::default(),
-                        vec![NumberedImageAnnotation {
-                            ordinal: 1,
-                            feedback_id: FeedbackId::from_u128(1),
-                            anchor,
-                        }],
-                    ))
-                    .await,
-                Err(ReviewArtifactError::InvalidRequest),
-            );
-        }
+        assert_eq!(
+            renderer
+                .render(request(
+                    source_path.clone(),
+                    ReviewTaskCancellation::default(),
+                    vec![NumberedImageAnnotation {
+                        ordinal: 1,
+                        feedback_id: FeedbackId::from_u128(1),
+                        anchor: FeedbackAnchor::Asset,
+                    }],
+                ))
+                .await,
+            Err(ReviewArtifactError::InvalidRequest),
+        );
 
         let points_per_stroke = viewer_domain::review::MAX_IMAGE_STROKE_POINTS;
         let stroke_count = MAX_IMAGE_STROKE_POINTS_PER_ROUND / points_per_stroke + 1;

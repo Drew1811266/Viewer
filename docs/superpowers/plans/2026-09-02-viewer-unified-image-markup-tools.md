@@ -920,7 +920,7 @@ git commit -m "refactor: separate markup tool and editor lifecycle"
 - Consumes: `ANNOTATION_TOOLS`, `toolForShortcut`, controller `tool`, `setTool`, and `readOnlyReason`.
 - Produces: one fixed “标记” toolbar button and an accessible single-selection tool menu.
 
-- [ ] **Step 1: Write failing menu and shortcut tests**
+- [x] **Step 1: Write failing menu and shortcut tests**
 
 ```tsx
 fireEvent.click(screen.getByRole('button', { name: '标记' }))
@@ -939,18 +939,18 @@ Test outside click closes without calling `setTool`, reopening checks the active
 the trigger, arrow keys move roving focus, and text inputs, editable elements, modifier chords, and IME
 composition suppress `P/A/B/R/O/V`.
 
-- [ ] **Step 2: Run component tests and verify the old separate buttons fail**
+- [x] **Step 2: Run component tests and verify the old separate buttons fail**
 
 Run: `pnpm --dir ui exec vitest run src/components/review/AnnotationToolMenu.test.tsx src/components/review/ImageReviewWorkspace.test.tsx`
 
 Expected: FAIL because no “标记” trigger/menu exists.
 
-- [ ] **Step 3: Add the official icon asset and register it**
+- [x] **Step 3: Add the official icon asset and register it**
 
 Copy the official Lucide `arrow-up-right.svg` asset under the existing Lucide license, then add
 `'arrow-up-right'` to `VIEWER_ICON_NAMES`. Do not draw an arrow using text, CSS borders, or inline SVG.
 
-- [ ] **Step 4: Implement the fixed trigger and accessible menu**
+- [x] **Step 4: Implement the fixed trigger and accessible menu**
 
 Use a wrapper anchored inside the current toolbar:
 
@@ -972,19 +972,19 @@ Use a wrapper anchored inside the current toolbar:
 The menu contains visible labels and shortcut hints. Use `menuitemradio` with `aria-checked`, roving `tabIndex`,
 and focus restoration. In read-only mode, retain discoverability but disable selection with the existing reason.
 
-- [ ] **Step 5: Add adaptive styling using existing tokens**
+- [x] **Step 5: Add adaptive styling using existing tokens**
 
 Position the menu below the trigger, flip/shift within the viewport, use current surface/border/shadow/radius
 tokens, and keep each row at least 32 px high. Preserve the adjacent Browse and Opinion Rail buttons. Remove
 the separate Brush and Rectangle top-level buttons.
 
-- [ ] **Step 6: Run menu, workspace, accessibility, and type checks**
+- [x] **Step 6: Run menu, workspace, accessibility, and type checks**
 
 Run: `pnpm --dir ui exec vitest run src/components/review/AnnotationToolMenu.test.tsx src/components/review/ImageReviewWorkspace.test.tsx && pnpm --dir ui check`
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit the unified menu**
+- [x] **Step 7: Commit the unified menu**
 
 ```bash
 git add ui/src/components/review/AnnotationToolMenu* ui/src/components/review/AnnotationToolbar.tsx \

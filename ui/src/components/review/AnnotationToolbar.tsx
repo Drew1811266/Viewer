@@ -1,6 +1,8 @@
 import { useEffect } from 'react'
+import { toolForShortcut } from '../../app/review/annotationToolRegistry'
 import type { ImageReviewWorkbenchController } from '../../app/review/useImageReviewWorkbench'
 import ViewerButton from '../ui/ViewerButton'
+import AnnotationToolMenu from './AnnotationToolMenu'
 
 interface AnnotationToolbarProps {
   controller: ImageReviewWorkbenchController
@@ -66,24 +68,11 @@ export default function AnnotationToolbar({ controller }: AnnotationToolbarProps
       >
         浏览
       </ViewerButton>
-      <ViewerButton
-        leadingIcon="pencil"
-        tone="quiet"
-        active={controller.tool === 'brush'}
-        disabled={readOnly}
-        onClick={() => controller.setTool('brush')}
-      >
-        画笔
-      </ViewerButton>
-      <ViewerButton
-        leadingIcon="maximize"
-        tone="quiet"
-        active={controller.tool === 'rectangle'}
-        disabled={readOnly}
-        onClick={() => controller.setTool('rectangle')}
-      >
-        矩形
-      </ViewerButton>
+      <AnnotationToolMenu
+        activeTool={controller.tool}
+        disabledReason={annotationDisabledReason(controller)}
+        onSelect={controller.setTool}
+      />
       <ViewerButton
         leadingIcon="panel-right"
         tone="quiet"
@@ -98,9 +87,7 @@ export default function AnnotationToolbar({ controller }: AnnotationToolbarProps
 
 function shortcutTool(key: string) {
   if (key.toLowerCase() === 'v') return 'browse' as const
-  if (key.toLowerCase() === 'b') return 'brush' as const
-  if (key.toLowerCase() === 'r') return 'rectangle' as const
-  return null
+  return toolForShortcut(key)?.id ?? null
 }
 
 function ownsTextInput(target: EventTarget | null): boolean {
@@ -110,4 +97,10 @@ function ownsTextInput(target: EventTarget | null): boolean {
     target instanceof HTMLSelectElement ||
     (target instanceof HTMLElement && target.isContentEditable)
   )
+}
+
+function annotationDisabledReason(controller: ImageReviewWorkbenchController): string | null {
+  if (controller.readOnlyReason !== null) return '当前素材暂时不可修改标记。'
+  if (controller.dirty) return '请先保存或取消当前意见，再切换标记工具。'
+  return null
 }

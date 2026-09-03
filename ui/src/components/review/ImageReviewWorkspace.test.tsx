@@ -212,6 +212,20 @@ describe('ImageReviewWorkspace', () => {
     render(<ImageReviewWorkspace {...surfaceFixture()} controller={controller} />)
     expect(controller.setRailOpen).toHaveBeenCalledWith(false)
   })
+  it('keeps one fixed markup trigger beside Browse and the Opinion Rail', () => {
+    const controller = controllerFixture([])
+    render(<ImageReviewWorkspace {...surfaceFixture()} controller={controller} />)
+
+    expect(screen.getByRole('button', { name: '浏览' })).toBeVisible()
+    expect(screen.getByRole('button', { name: '标记' })).toBeVisible()
+    expect(screen.getByRole('button', { name: '意见栏' })).toBeVisible()
+    expect(screen.queryByRole('button', { name: '画笔' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '矩形' })).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: '标记' }))
+    fireEvent.click(screen.getByRole('menuitemradio', { name: /箭头/ }))
+    expect(controller.setTool).toHaveBeenCalledWith('arrow')
+  })
   it('shows four independent numbered comments without permanent text bubbles', () => {
     const controller = controllerFixture([
       savedRect('feedback-1', 1, '衣领边缘需要更平整', 0.1, 0.1, 0.2, 0.15),

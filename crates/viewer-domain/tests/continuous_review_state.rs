@@ -114,6 +114,29 @@ fn anchor_and_media_validation_cannot_be_bypassed() {
 }
 
 #[test]
+fn every_extended_image_anchor_requires_confirmed_image_dimensions() {
+    let point = NormalizedPoint::new(0.2, 0.3).unwrap();
+    let arrow = NormalizedArrow::new(point, NormalizedPoint::new(0.8, 0.7).unwrap()).unwrap();
+    let bounds = NormalizedRect::new(0.1, 0.2, 0.3, 0.4).unwrap();
+
+    for anchor in [
+        FeedbackAnchor::ImagePoint(point),
+        FeedbackAnchor::ImageArrow(arrow),
+        FeedbackAnchor::ImageEllipse(bounds),
+    ] {
+        let mut valid = state();
+        valid.feedback[0].targets[0].anchor = anchor.clone();
+        assert_eq!(valid.validate(), Ok(()));
+
+        valid.assets[0].media = ReviewMedia::Image {
+            width: None,
+            height: None,
+        };
+        assert_eq!(valid.validate(), Err(ContinuousReviewError::InvalidData));
+    }
+}
+
+#[test]
 fn malformed_asset_dimensions_and_self_parent_are_rejected() {
     let mut state = state();
     state.assets[0].media = ReviewMedia::Image {

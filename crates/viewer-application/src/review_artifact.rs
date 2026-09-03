@@ -36,7 +36,11 @@ impl ReviewArtifactRenderRequest {
                 item.ordinal != u32::try_from(index + 1).unwrap_or(u32::MAX)
                     || !matches!(
                         item.anchor,
-                        FeedbackAnchor::ImageRect(_) | FeedbackAnchor::ImageStroke(_)
+                        FeedbackAnchor::ImagePoint(_)
+                            | FeedbackAnchor::ImageArrow(_)
+                            | FeedbackAnchor::ImageStroke(_)
+                            | FeedbackAnchor::ImageRect(_)
+                            | FeedbackAnchor::ImageEllipse(_)
                     )
             })
         {
@@ -115,4 +119,56 @@ pub struct ReviewPublication {
     pub protocol_version: ReviewProtocolVersion,
     pub snapshot: ReviewSnapshot,
     pub artifacts: Vec<ReviewRenderedArtifact>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use viewer_domain::RelativePath;
+    use viewer_domain::review::{
+        AssetEvidence, NormalizedArrow, NormalizedPoint, NormalizedRect, ReviewMedia,
+    };
+
+    fn request(anchor: FeedbackAnchor) -> ReviewArtifactRenderRequest {
+        ReviewArtifactRenderRequest {
+            source_path: PathBuf::from("image.png"),
+            expected_asset: AssetVersion {
+                id: AssetVersionId::from_u128(1),
+                source_entity_id: None,
+                relative_path: RelativePath::parse("image.png").unwrap(),
+                evidence: AssetEvidence {
+                    size_bytes: 100,
+                    modified_ns: 1,
+                    blake3: Some([1; 32]),
+                },
+                media: ReviewMedia::Image {
+                    width: Some(100),
+                    height: Some(100),
+                },
+                producer_asset_id: None,
+                parent_asset_version_id: None,
+            },
+            cancellation: ReviewTaskCancellation::default(),
+            annotations: vec![NumberedImageAnnotation {
+                ordinal: 1,
+                feedback_id: FeedbackId::from_u128(2),
+                anchor,
+            }],
+        }
+    }
+
+    #[test]
+    fn render_requests_accept_all_extended_image_anchor_shapes() {
+        let point = NormalizedPoint::new(0.2, 0.3).unwrap();
+        let arrow = NormalizedArrow::new(point, NormalizedPoint::new(0.8, 0.7).unwrap()).unwrap();
+        let ellipse = NormalizedRect::new(0.1, 0.2, 0.3, 0.4).unwrap();
+
+        for anchor in [
+            FeedbackAnchor::ImagePoint(point),
+            FeedbackAnchor::ImageArrow(arrow),
+            FeedbackAnchor::ImageEllipse(ellipse),
+        ] {
+            assert_eq!(request(anchor).validate(), Ok(()));
+        }
+    }
 }

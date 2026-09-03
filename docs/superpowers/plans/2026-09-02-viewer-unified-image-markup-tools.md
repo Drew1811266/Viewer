@@ -291,7 +291,7 @@ git commit -m "refactor: isolate continuous review protocol versions"
 - Consumes: `NormalizedPoint`, `NormalizedArrow`, `NormalizedRect`, and `ContinuousReviewProtocol`.
 - Produces: `FeedbackAnchor::{ImagePoint,ImageArrow,ImageEllipse}` and strict UI/Tauri/wire mappings.
 
-- [ ] **Step 1: Write failing Domain, DTO, and Schema tests**
+- [x] **Step 1: Write failing Domain, DTO, and Schema tests**
 
 ```rust
 assert_eq!(
@@ -320,13 +320,13 @@ assert.equal(stateV3.$defs.anchor.oneOf.some(entry => entry.properties.kind.cons
 Add DTO cases that deserialize `image_point`, `image_arrow`, and `image_ellipse`, then round-trip them back
 without swapping arrow endpoints.
 
-- [ ] **Step 2: Run focused tests and confirm missing variants/schemas**
+- [x] **Step 2: Run focused tests and confirm missing variants/schemas**
 
 Run: `cargo test --locked -p viewer-domain --test review_round && cargo test --locked -p viewer-desktop --test review_workspace_dto && node --test scripts/review-protocol/schema-contract.test.mjs`
 
 Expected: FAIL on the new variants and missing v4 schema files.
 
-- [ ] **Step 3: Add the three Domain variants and all mathematical validation**
+- [x] **Step 3: Add the three Domain variants and all mathematical validation**
 
 ```rust
 pub enum FeedbackAnchor {
@@ -355,7 +355,7 @@ FeedbackAnchor::ImageEllipse(r) => self.field(&(
 )),
 ```
 
-- [ ] **Step 4: Add strict DTO and version-gated wire mappings**
+- [x] **Step 4: Add strict DTO and version-gated wire mappings**
 
 Use nested points for arrows at both Tauri and persisted boundaries:
 
@@ -379,7 +379,7 @@ encoders must reject unsupported extended anchors, evidence/bundle classificatio
 anchors, and cost accounting must remain bounded (only strokes contribute point-array bytes). Do not weaken old
 protocol decoders or silently coerce a new anchor into an old shape.
 
-- [ ] **Step 5: Add all four v4 schemas with closed objects**
+- [x] **Step 5: Add all four v4 schemas with closed objects**
 
 Each new Anchor branch must use `additionalProperties: false`. The arrow branch is:
 
@@ -399,13 +399,13 @@ Each new Anchor branch must use `additionalProperties: false`. The arrow branch 
 Define `normalizedPoint` with required `x`, `y`, numeric minimum `0`, maximum `1`, and no extra fields.
 Retain every existing document/array/string bound from the corresponding v3 schema.
 
-- [ ] **Step 6: Run backend contract checks**
+- [x] **Step 6: Run backend contract checks**
 
 Run: `cargo test --locked -p viewer-domain && cargo test --locked -p viewer-desktop --test review_workspace_dto && cargo test --locked -p viewer-infrastructure review::protocol && node --test scripts/review-protocol/schema-contract.test.mjs && cargo check --locked --workspace --all-targets`
 
 Expected: PASS; v3 rejects extended anchors and v4 round-trips all of them.
 
-- [ ] **Step 7: Commit the backend Anchor contract**
+- [x] **Step 7: Commit the backend Anchor contract**
 
 ```bash
 git add crates/viewer-domain crates/viewer-application/src/review_artifact.rs \

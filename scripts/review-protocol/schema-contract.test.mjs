@@ -50,6 +50,56 @@ test('v3 golden documents validate, while unknown fields and wrong roles are rej
   assert.equal(await validateFixture({ ...value, role: 'history' }, definition), false)
 })
 
+test('v4 adds the complete image markup anchor set without weakening v3', async () => {
+  const [stateV3, stateV4] = await Promise.all([
+    schema('viewer-review-state-v3.schema.json'),
+    schema('viewer-review-state-v4.schema.json'),
+  ])
+  const kinds = stateV4.$defs.anchor.oneOf.map(entry => entry.properties.kind.const)
+
+  assert.deepEqual(kinds, [
+    'asset', 'imagePoint', 'imageArrow', 'imageStroke',
+    'imageRect', 'imageEllipse', 'videoPoint', 'videoRange',
+  ])
+  assert.equal(
+    stateV3.$defs.anchor.oneOf.some(entry => entry.properties.kind.const === 'imagePoint'),
+    false,
+  )
+
+  const legacyState = JSON.parse(
+    await readFile('tests/fixtures/review-protocol/review-state-v3.valid.json', 'utf8'),
+  )
+  const v4State = structuredClone(legacyState)
+  v4State.protocolVersion = 'viewer.review/4'
+  v4State.feedback[0].targets[0].anchor = {
+    kind: 'imageArrow',
+    tail: { x: 0.1, y: 0.2 },
+    head: { x: 0.8, y: 0.7 },
+  }
+  assert.equal(await validateFixture(v4State, stateV4), true)
+  assert.equal(await validateFixture(v4State, stateV3), false)
+
+  const malformedArrow = structuredClone(v4State)
+  malformedArrow.feedback[0].targets[0].anchor.viewportX = 20
+  assert.equal(await validateFixture(malformedArrow, stateV4), false)
+
+  for (const [file, schemaName] of [
+    ['review-index-v3', 'viewer-review-index-v4'],
+    ['review-archive-v3', 'viewer-review-archive-v4'],
+    ['review-read-result-v3', 'viewer-review-read-result-v4'],
+  ]) {
+    const value = JSON.parse(
+      await readFile(`tests/fixtures/review-protocol/${file}.valid.json`, 'utf8'),
+    )
+    value.protocolVersion = 'viewer.review/4'
+    assert.equal(
+      await validateFixture(value, await schema(`${schemaName}.schema.json`)),
+      true,
+      schemaName,
+    )
+  }
+})
+
 test('owned v3 cases have real content-addressed references and clean up without changing legacy fixtures', async () => {
   const legacyPath = 'tests/fixtures/review-protocol/project-v2-mixed/.viewer/reviews/index.json'
   const legacyBefore = await readFile(legacyPath)

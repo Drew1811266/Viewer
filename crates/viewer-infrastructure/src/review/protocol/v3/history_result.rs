@@ -271,6 +271,18 @@ impl HistoryReadResult {
         }
         Ok(())
     }
+
+    pub(super) fn validate_anchors_for(
+        &self,
+        protocol: ContinuousReviewProtocol,
+    ) -> Result<(), ReviewProtocolError> {
+        for entry in &self.entries {
+            if let HistoryEntry::Snapshot { feedback, .. } = entry {
+                validate::feedback_for(protocol, feedback)?;
+            }
+        }
+        Ok(())
+    }
 }
 
 fn validate_legacy_evidence(

@@ -47,6 +47,28 @@ fn review_workspace_complete_envelope_roundtrip_preserves_retry_identity() {
 }
 
 #[test]
+fn review_workspace_roundtrips_extended_image_anchor_geometry() {
+    for anchor in [
+        json!({"kind":"image_point","x":0.2,"y":0.3}),
+        json!({
+            "kind":"image_arrow",
+            "tail":{"x":0.1,"y":0.2},
+            "head":{"x":0.8,"y":0.7}
+        }),
+        json!({
+            "kind":"image_ellipse",
+            "x":0.1,"y":0.2,"width":0.3,"height":0.4
+        }),
+    ] {
+        let mut value = envelope();
+        value["command"]["targets"][0]["anchor"] = anchor;
+        let dto: PreparedReviewCommandDto = serde_json::from_value(value.clone()).unwrap();
+
+        assert_eq!(serde_json::to_value(dto).unwrap(), value);
+    }
+}
+
+#[test]
 fn review_workspace_rejects_partial_ambiguous_and_forged_wire_fields() {
     for field in [
         "context",

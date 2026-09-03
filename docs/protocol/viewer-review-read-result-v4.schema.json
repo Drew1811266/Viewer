@@ -1,0 +1,233 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://viewer.local/protocol/viewer-review-read-result-v4.schema.json",
+  "title": "viewer-review-read-result-v4",
+  "description": "Active engineering contract; not yet connected to the product. Cross-reference integrity, UTF-8 byte limits and aggregate PNG budgets are enforced by codecs/repositories.",
+  "oneOf": [
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "protocolVersion",
+        "status",
+        "role",
+        "projectId",
+        "reviewStreamId",
+        "snapshotRef",
+        "assets",
+        "feedback",
+        "evidence",
+        "sourceChecks",
+        "actionable",
+        "needsConfirmation",
+        "historyRefs",
+        "delta"
+      ],
+      "properties": {
+        "protocolVersion": {
+          "const": "viewer.review/4"
+        },
+        "status": {
+          "const": "ok"
+        },
+        "role": {
+          "const": "current"
+        },
+        "projectId": {
+          "$ref": "viewer-review-state-v4.schema.json#/$defs/uuid"
+        },
+        "reviewStreamId": {
+          "$ref": "viewer-review-state-v4.schema.json#/$defs/uuid"
+        },
+        "snapshotRef": {
+          "$ref": "viewer-review-state-v4.schema.json#/$defs/snapshotRef"
+        },
+        "assets": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 50000,
+          "items": {
+            "$ref": "viewer-review-state-v4.schema.json#/$defs/asset"
+          }
+        },
+        "feedback": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 10000,
+          "items": {
+            "$ref": "viewer-review-state-v4.schema.json#/$defs/feedback"
+          }
+        },
+        "evidence": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 50000,
+          "items": {
+            "$ref": "viewer-review-state-v4.schema.json#/$defs/evidence"
+          }
+        },
+        "sourceChecks": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 50000,
+          "items": {
+            "$ref": "viewer-review-state-v4.schema.json#/$defs/sourceCheck"
+          }
+        },
+        "actionable": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 100000000,
+          "items": {
+            "$ref": "viewer-review-state-v4.schema.json#/$defs/uuid"
+          }
+        },
+        "needsConfirmation": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 100000000,
+          "items": {
+            "$ref": "viewer-review-state-v4.schema.json#/$defs/uuid"
+          }
+        },
+        "historyRefs": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 10000,
+          "items": {
+            "$ref": "viewer-review-state-v4.schema.json#/$defs/history"
+          }
+        },
+        "delta": {
+          "$ref": "viewer-review-state-v4.schema.json#/$defs/delta"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "protocolVersion",
+        "status",
+        "role",
+        "projectId",
+        "reviewStreamId",
+        "selector",
+        "entries",
+        "limitations"
+      ],
+      "properties": {
+        "protocolVersion": {
+          "const": "viewer.review/4"
+        },
+        "status": {
+          "const": "ok"
+        },
+        "role": {
+          "const": "history"
+        },
+        "projectId": {
+          "$ref": "viewer-review-state-v4.schema.json#/$defs/uuid"
+        },
+        "reviewStreamId": {
+          "$ref": "viewer-review-state-v4.schema.json#/$defs/uuid"
+        },
+        "selector": {
+          "$ref": "viewer-review-state-v4.schema.json#/$defs/historySelector"
+        },
+        "entries": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 10000,
+          "items": {
+            "$ref": "viewer-review-state-v4.schema.json#/$defs/historyEntry"
+          }
+        },
+        "limitations": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 2,
+          "items": {
+            "enum": [
+              "legacyEvidenceAbsent",
+              "legacyUsageUnknown"
+            ]
+          },
+          "uniqueItems": true
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "protocolVersion",
+        "status",
+        "role",
+        "projectId",
+        "reviewStreamId"
+      ],
+      "properties": {
+        "protocolVersion": {
+          "const": "viewer.review/4"
+        },
+        "status": {
+          "const": "no_review_state"
+        },
+        "role": {
+          "const": "current"
+        },
+        "projectId": {
+          "$ref": "viewer-review-state-v4.schema.json#/$defs/uuid"
+        },
+        "reviewStreamId": {
+          "oneOf": [
+            {
+              "$ref": "viewer-review-state-v4.schema.json#/$defs/uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "protocolVersion",
+        "status",
+        "code",
+        "message"
+      ],
+      "properties": {
+        "protocolVersion": {
+          "const": "viewer.review/4"
+        },
+        "status": {
+          "const": "error"
+        },
+        "code": {
+          "enum": [
+            "publication_pending",
+            "migration_required",
+            "unsupported_version",
+            "integrity",
+            "unsafe_path",
+            "limit_exceeded",
+            "ambiguous_stream",
+            "unknown_stream",
+            "unknown_history",
+            "io"
+          ]
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096
+        }
+      }
+    }
+  ]
+}

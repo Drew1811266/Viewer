@@ -384,7 +384,14 @@ pub(super) fn draw_annotations(
                     (1.0 - first.y()) * f64::from(height),
                 )
             }
-            _ => return Err(ReviewArtifactError::InvalidRequest),
+            FeedbackAnchor::ImagePoint(_)
+            | FeedbackAnchor::ImageArrow(_)
+            | FeedbackAnchor::ImageEllipse(_)
+            | FeedbackAnchor::Asset
+            | FeedbackAnchor::VideoPoint { .. }
+            | FeedbackAnchor::VideoRange { .. } => {
+                return Err(ReviewArtifactError::InvalidRequest);
+            }
         };
         draw_marker(&context, marker, annotation.ordinal, width, height);
     }
@@ -547,7 +554,8 @@ pub(super) mod tests {
     };
     use viewer_domain::review::{
         AssetEvidence, AssetVersion, FeedbackAnchor, ImageStroke,
-        MAX_IMAGE_STROKE_POINTS_PER_ROUND, NormalizedPoint, NormalizedRect, ReviewMedia,
+        MAX_IMAGE_STROKE_POINTS_PER_ROUND, NormalizedArrow, NormalizedPoint, NormalizedRect,
+        ReviewMedia,
     };
     use viewer_domain::{AssetVersionId, FeedbackId, RelativePath};
 
@@ -993,20 +1001,30 @@ pub(super) mod tests {
         let cache = tempfile::tempdir().unwrap();
         let source_path = fixture("rotated-6.jpg");
         let renderer = MacReviewArtifactRenderer::new(cache.path()).unwrap();
-        assert_eq!(
-            renderer
-                .render(request(
-                    source_path.clone(),
-                    ReviewTaskCancellation::default(),
-                    vec![NumberedImageAnnotation {
-                        ordinal: 1,
-                        feedback_id: FeedbackId::from_u128(1),
-                        anchor: FeedbackAnchor::Asset,
-                    }],
-                ))
-                .await,
-            Err(ReviewArtifactError::InvalidRequest),
-        );
+        let point = NormalizedPoint::new(0.2, 0.3).unwrap();
+        for anchor in [
+            FeedbackAnchor::Asset,
+            FeedbackAnchor::ImagePoint(point),
+            FeedbackAnchor::ImageArrow(
+                NormalizedArrow::new(point, NormalizedPoint::new(0.8, 0.7).unwrap()).unwrap(),
+            ),
+            FeedbackAnchor::ImageEllipse(NormalizedRect::new(0.1, 0.2, 0.3, 0.4).unwrap()),
+        ] {
+            assert_eq!(
+                renderer
+                    .render(request(
+                        source_path.clone(),
+                        ReviewTaskCancellation::default(),
+                        vec![NumberedImageAnnotation {
+                            ordinal: 1,
+                            feedback_id: FeedbackId::from_u128(1),
+                            anchor,
+                        }],
+                    ))
+                    .await,
+                Err(ReviewArtifactError::InvalidRequest),
+            );
+        }
 
         let points_per_stroke = viewer_domain::review::MAX_IMAGE_STROKE_POINTS;
         let stroke_count = MAX_IMAGE_STROKE_POINTS_PER_ROUND / points_per_stroke + 1;

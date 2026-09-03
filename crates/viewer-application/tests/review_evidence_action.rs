@@ -6,7 +6,8 @@ use viewer_domain::{
     AssetVersionId, FeedbackId, ProjectId, RelativePath, ReviewArchiveId, ReviewCommandId,
     ReviewSnapshotId, ReviewStreamId, ReviewTargetId, ReviewTargetRevisionId, ReviewTextRevisionId,
     review::{
-        AssetEvidence, AssetVersion, FeedbackAnchor, NormalizedRect, ReviewMedia,
+        AssetEvidence, AssetVersion, FeedbackAnchor, NormalizedArrow, NormalizedPoint,
+        NormalizedRect, ReviewMedia,
         continuous::{
             ContinuousReviewState, ReviewAvailability, VersionedFeedback, VersionedTarget,
         },
@@ -134,6 +135,32 @@ fn source_geometry_renderer_and_output_policy_each_invalidate_the_key() {
         key,
         evidence_action_key(&base, AssetVersionId::from_u128(1), policy(1, 2)).unwrap()
     );
+}
+
+#[test]
+fn extended_anchor_kinds_and_geometry_have_distinct_action_keys() {
+    let mut point = state("文字", [1; 32], 0.1);
+    point.feedback[0].targets[0].anchor =
+        FeedbackAnchor::ImagePoint(NormalizedPoint::new(0.2, 0.3).unwrap());
+    let mut arrow = point.clone();
+    arrow.feedback[0].targets[0].anchor = FeedbackAnchor::ImageArrow(
+        NormalizedArrow::new(
+            NormalizedPoint::new(0.2, 0.3).unwrap(),
+            NormalizedPoint::new(0.8, 0.7).unwrap(),
+        )
+        .unwrap(),
+    );
+    let mut ellipse = point.clone();
+    ellipse.feedback[0].targets[0].anchor =
+        FeedbackAnchor::ImageEllipse(NormalizedRect::new(0.1, 0.2, 0.3, 0.4).unwrap());
+
+    let keys = [&point, &arrow, &ellipse]
+        .map(|value| {
+            evidence_action_key(value, AssetVersionId::from_u128(1), policy(1, 1)).unwrap()
+        })
+        .into_iter()
+        .collect::<std::collections::HashSet<_>>();
+    assert_eq!(keys.len(), 3);
 }
 
 #[test]

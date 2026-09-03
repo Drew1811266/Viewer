@@ -12,7 +12,7 @@ use viewer_application::{
 };
 use viewer_domain::review::{
     FeedbackAnchor, ImageStroke, MAX_ASSETS_PER_ROUND, MAX_FEEDBACK_TEXT_BYTES,
-    MAX_TARGETS_PER_FEEDBACK, NormalizedPoint, NormalizedRect, ReviewAssetKind,
+    MAX_TARGETS_PER_FEEDBACK, NormalizedArrow, NormalizedPoint, NormalizedRect, ReviewAssetKind,
     ReviewabilityFailure,
 };
 use viewer_domain::search::Generation;
@@ -136,7 +136,21 @@ impl ReviewGuardRequestDto {
 )]
 pub enum ReviewAnchorDto {
     Asset,
+    ImagePoint {
+        x: f64,
+        y: f64,
+    },
+    ImageArrow {
+        tail: ReviewPointDto,
+        head: ReviewPointDto,
+    },
     ImageRect {
+        x: f64,
+        y: f64,
+        width: f64,
+        height: f64,
+    },
+    ImageEllipse {
         x: f64,
         y: f64,
         width: f64,
@@ -158,6 +172,18 @@ impl ReviewAnchorDto {
     fn try_into_anchor(self) -> Result<FeedbackAnchor, CommandError> {
         match self {
             Self::Asset => Ok(FeedbackAnchor::Asset),
+            Self::ImagePoint { x, y } => NormalizedPoint::new(x, y)
+                .map(FeedbackAnchor::ImagePoint)
+                .map_err(|_| review_invalid_data()),
+            Self::ImageArrow { tail, head } => {
+                let tail =
+                    NormalizedPoint::new(tail.x, tail.y).map_err(|_| review_invalid_data())?;
+                let head =
+                    NormalizedPoint::new(head.x, head.y).map_err(|_| review_invalid_data())?;
+                NormalizedArrow::new(tail, head)
+                    .map(FeedbackAnchor::ImageArrow)
+                    .map_err(|_| review_invalid_data())
+            }
             Self::ImageRect {
                 x,
                 y,
@@ -165,6 +191,14 @@ impl ReviewAnchorDto {
                 height,
             } => NormalizedRect::new(x, y, width, height)
                 .map(FeedbackAnchor::ImageRect)
+                .map_err(|_| review_invalid_data()),
+            Self::ImageEllipse {
+                x,
+                y,
+                width,
+                height,
+            } => NormalizedRect::new(x, y, width, height)
+                .map(FeedbackAnchor::ImageEllipse)
                 .map_err(|_| review_invalid_data()),
             Self::ImageStroke { points } => points
                 .into_iter()
@@ -190,7 +224,27 @@ impl From<FeedbackAnchor> for ReviewAnchorDto {
     fn from(anchor: FeedbackAnchor) -> Self {
         match anchor {
             FeedbackAnchor::Asset => Self::Asset,
+            FeedbackAnchor::ImagePoint(point) => Self::ImagePoint {
+                x: point.x(),
+                y: point.y(),
+            },
+            FeedbackAnchor::ImageArrow(arrow) => Self::ImageArrow {
+                tail: ReviewPointDto {
+                    x: arrow.tail().x(),
+                    y: arrow.tail().y(),
+                },
+                head: ReviewPointDto {
+                    x: arrow.head().x(),
+                    y: arrow.head().y(),
+                },
+            },
             FeedbackAnchor::ImageRect(rect) => Self::ImageRect {
+                x: rect.x(),
+                y: rect.y(),
+                width: rect.width(),
+                height: rect.height(),
+            },
+            FeedbackAnchor::ImageEllipse(rect) => Self::ImageEllipse {
                 x: rect.x(),
                 y: rect.y(),
                 width: rect.width(),
@@ -380,7 +434,13 @@ impl ReviewReplaceFeedbackAnchorRequestDto {
         let mut targets = parse_feedback_targets(vec![self.target])?;
         if !matches!(
             targets.first().map(|target| &target.anchor),
-            Some(FeedbackAnchor::ImageRect(_) | FeedbackAnchor::ImageStroke(_))
+            Some(
+                FeedbackAnchor::ImagePoint(_)
+                    | FeedbackAnchor::ImageArrow(_)
+                    | FeedbackAnchor::ImageStroke(_)
+                    | FeedbackAnchor::ImageRect(_)
+                    | FeedbackAnchor::ImageEllipse(_)
+            )
         ) {
             return Err(review_invalid_data());
         }

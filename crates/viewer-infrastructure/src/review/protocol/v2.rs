@@ -703,7 +703,7 @@ impl StoredTargetV2 {
     fn from_domain(target: &FeedbackTarget) -> Result<Self, ReviewProtocolError> {
         Ok(Self {
             asset_version_id: target.asset_version_id.to_string(),
-            anchor: StoredAnchorV2::from_domain(&target.anchor),
+            anchor: StoredAnchorV2::from_domain(&target.anchor)?,
         })
     }
 
@@ -743,8 +743,8 @@ enum StoredAnchorV2 {
 }
 
 impl StoredAnchorV2 {
-    fn from_domain(anchor: &FeedbackAnchor) -> Self {
-        match anchor {
+    fn from_domain(anchor: &FeedbackAnchor) -> Result<Self, ReviewProtocolError> {
+        Ok(match anchor {
             FeedbackAnchor::Asset => Self::Asset,
             FeedbackAnchor::ImageRect(rect) => Self::ImageRect {
                 x: rect.x(),
@@ -769,7 +769,10 @@ impl StoredAnchorV2 {
                 start_us: *start_us,
                 end_us: *end_us,
             },
-        }
+            FeedbackAnchor::ImagePoint(_)
+            | FeedbackAnchor::ImageArrow(_)
+            | FeedbackAnchor::ImageEllipse(_) => return Err(ReviewProtocolError::InvalidData),
+        })
     }
 
     fn into_domain(self) -> Result<FeedbackAnchor, ReviewProtocolError> {

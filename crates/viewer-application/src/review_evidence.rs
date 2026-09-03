@@ -154,7 +154,10 @@ impl ReviewEvidenceRequest {
                 return Err(ReviewArtifactError::InvalidRequest);
             }
             match &annotation.anchor {
-                FeedbackAnchor::ImageRect(_) => {}
+                FeedbackAnchor::ImagePoint(_)
+                | FeedbackAnchor::ImageArrow(_)
+                | FeedbackAnchor::ImageRect(_)
+                | FeedbackAnchor::ImageEllipse(_) => {}
                 FeedbackAnchor::ImageStroke(stroke) => points += stroke.points().len(),
                 _ => return Err(ReviewArtifactError::InvalidRequest),
             }

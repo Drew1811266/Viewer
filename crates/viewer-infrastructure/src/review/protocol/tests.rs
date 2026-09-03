@@ -4,7 +4,7 @@ use super::{
 };
 use serde_json::{Value, json};
 use viewer_application::ReviewProtocolVersion;
-use viewer_domain::review::FeedbackAnchor;
+use viewer_domain::review::{FeedbackAnchor, NormalizedPoint};
 
 #[test]
 fn v1_round_fixture_round_trips_byte_for_byte() {
@@ -244,4 +244,58 @@ fn v3_state_reencoding_remains_canonical() {
     let decoded = super::v3::decode_state_v3(&before).unwrap();
 
     assert_eq!(super::v3::encode_state_v3(&decoded).unwrap(), before);
+}
+
+#[test]
+fn extended_image_anchors_require_v4_for_encoding_and_decoding() {
+    let fixture = include_bytes!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../tests/fixtures/review-protocol/review-state-v3.valid.json"
+    ));
+    let mut record = super::v3::decode_state_v3(fixture).unwrap();
+    record.state.feedback[0].targets[0].anchor =
+        FeedbackAnchor::ImagePoint(NormalizedPoint::new(0.2, 0.3).unwrap());
+    let key = viewer_domain::review::continuous::TargetVersionKey {
+        feedback_id: record.state.feedback[0].id,
+        text_revision_id: record.state.feedback[0].text_revision_id,
+        target_id: record.state.feedback[0].targets[0].id,
+        target_revision_id: record.state.feedback[0].targets[0].revision_id,
+    };
+    if let super::v3::EvidenceCapability::Image {
+        base,
+        annotated,
+        annotations,
+    } = &mut record.evidence[0].capability
+    {
+        *annotated = Some(base.clone());
+        *annotations = vec![super::v3::EvidenceAnnotation { ordinal: 1, key }];
+    } else {
+        panic!("fixture image evidence changed shape");
+    }
+
+    assert!(super::v3::encode_state_v3(&record).is_err());
+    let v4 = super::v4::encode_state_v4(&record).unwrap();
+    assert!(super::v4::decode_state_v4(&v4).is_ok());
+
+    let mut mislabeled: Value = serde_json::from_slice(&v4).unwrap();
+    mislabeled["protocolVersion"] = json!("viewer.review/3");
+    assert!(super::v3::decode_state_v3(&serde_json::to_vec(&mislabeled).unwrap()).is_err());
+}
+
+#[test]
+fn legacy_review_protocols_reject_extended_image_anchors() {
+    let point = FeedbackAnchor::ImagePoint(NormalizedPoint::new(0.2, 0.3).unwrap());
+    let mut v1_round = v1::decode_completed(include_bytes!(
+        "../../../../../tests/fixtures/review-protocol/review-round-v1.valid.json"
+    ))
+    .unwrap();
+    v1_round.feedback[0].targets[0].anchor = point.clone();
+    assert!(v1::encode_completed(&v1_round).is_err());
+
+    let mut v2_round = v2::decode_completed(include_bytes!(
+        "../../../../../tests/fixtures/review-protocol/review-round-v2.valid.json"
+    ))
+    .unwrap();
+    v2_round.feedback[0].targets[0].anchor = point;
+    assert!(v2::encode_completed(&v2_round).is_err());
 }

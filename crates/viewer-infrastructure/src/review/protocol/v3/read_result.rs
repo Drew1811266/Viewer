@@ -299,6 +299,18 @@ impl ReviewReadResult {
         }
         Ok(())
     }
+
+    pub(super) fn validate_for(
+        &self,
+        protocol: ContinuousReviewProtocol,
+    ) -> Result<(), ReviewProtocolError> {
+        self.validate()?;
+        match self {
+            Self::Current(value) => validate::feedback_for(protocol, &value.feedback),
+            Self::History(value) => value.validate_anchors_for(protocol),
+            Self::NoReviewState(_) | Self::Error(_) => Ok(()),
+        }
+    }
 }
 
 impl CurrentReadResult {

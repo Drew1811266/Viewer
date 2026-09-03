@@ -1,3 +1,4 @@
+use super::super::ContinuousReviewProtocol;
 use super::super::common::ReviewProtocolError;
 use super::{
     EvidenceCapability, EvidenceRef, ReviewArchiveRecord, ReviewIndexV3, ReviewStateRecord,
@@ -81,7 +82,11 @@ pub(super) fn state(record: &ReviewStateRecord) -> Result<(), ReviewProtocolErro
             target_keys.insert(target.id, key);
             if matches!(
                 target.anchor,
-                FeedbackAnchor::ImageRect(_) | FeedbackAnchor::ImageStroke(_)
+                FeedbackAnchor::ImagePoint(_)
+                    | FeedbackAnchor::ImageArrow(_)
+                    | FeedbackAnchor::ImageStroke(_)
+                    | FeedbackAnchor::ImageRect(_)
+                    | FeedbackAnchor::ImageEllipse(_)
             ) {
                 local_keys
                     .entry(target.asset_version_id)
@@ -197,6 +202,29 @@ pub(super) fn state(record: &ReviewStateRecord) -> Result<(), ReviewProtocolErro
         }
     }
     Ok(())
+}
+
+pub(super) fn state_for(
+    protocol: ContinuousReviewProtocol,
+    record: &ReviewStateRecord,
+) -> Result<(), ReviewProtocolError> {
+    state(record)?;
+    feedback_for(protocol, &record.state.feedback)
+}
+
+pub(super) fn feedback_for(
+    protocol: ContinuousReviewProtocol,
+    feedback: &[viewer_domain::review::continuous::VersionedFeedback],
+) -> Result<(), ReviewProtocolError> {
+    if feedback
+        .iter()
+        .flat_map(|item| &item.targets)
+        .any(|target| !protocol.supports_anchor(&target.anchor))
+    {
+        Err(ReviewProtocolError::InvalidData)
+    } else {
+        Ok(())
+    }
 }
 
 pub(in crate::review) fn authoring_state(

@@ -276,7 +276,11 @@ fn expected_image_annotations(
         for target in &feedback.targets {
             if matches!(
                 target.anchor,
-                FeedbackAnchor::ImageRect(_) | FeedbackAnchor::ImageStroke(_)
+                FeedbackAnchor::ImagePoint(_)
+                    | FeedbackAnchor::ImageArrow(_)
+                    | FeedbackAnchor::ImageStroke(_)
+                    | FeedbackAnchor::ImageRect(_)
+                    | FeedbackAnchor::ImageEllipse(_)
             ) && !expected
                 .entry(target.asset_version_id)
                 .or_default()

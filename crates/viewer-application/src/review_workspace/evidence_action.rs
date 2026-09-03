@@ -135,7 +135,11 @@ fn image_targets(state: &ContinuousReviewState) -> HashMap<AssetVersionId, Vec<&
         for target in &feedback.targets {
             if matches!(
                 target.anchor,
-                FeedbackAnchor::ImageRect(_) | FeedbackAnchor::ImageStroke(_)
+                FeedbackAnchor::ImagePoint(_)
+                    | FeedbackAnchor::ImageArrow(_)
+                    | FeedbackAnchor::ImageStroke(_)
+                    | FeedbackAnchor::ImageRect(_)
+                    | FeedbackAnchor::ImageEllipse(_)
             ) {
                 targets
                     .entry(target.asset_version_id)
@@ -184,6 +188,18 @@ fn key_for_asset(
         hasher.update(target.id.to_string().as_bytes());
         hasher.update(target.revision_id.to_string().as_bytes());
         match &target.anchor {
+            FeedbackAnchor::ImagePoint(point) => {
+                hasher.update(&[3]);
+                hasher.update(&canonical_coordinate(point.x())?.to_be_bytes());
+                hasher.update(&canonical_coordinate(point.y())?.to_be_bytes());
+            }
+            FeedbackAnchor::ImageArrow(arrow) => {
+                hasher.update(&[4]);
+                for point in [arrow.tail(), arrow.head()] {
+                    hasher.update(&canonical_coordinate(point.x())?.to_be_bytes());
+                    hasher.update(&canonical_coordinate(point.y())?.to_be_bytes());
+                }
+            }
             FeedbackAnchor::ImageRect(rect) => {
                 hasher.update(&[1]);
                 for value in [rect.x(), rect.y(), rect.width(), rect.height()] {
@@ -198,6 +214,12 @@ fn key_for_asset(
                 for point in stroke.points() {
                     hasher.update(&canonical_coordinate(point.x())?.to_be_bytes());
                     hasher.update(&canonical_coordinate(point.y())?.to_be_bytes());
+                }
+            }
+            FeedbackAnchor::ImageEllipse(rect) => {
+                hasher.update(&[5]);
+                for value in [rect.x(), rect.y(), rect.width(), rect.height()] {
+                    hasher.update(&canonical_coordinate(value)?.to_be_bytes());
                 }
             }
             _ => return Err(ReviewArtifactError::InvalidRequest.into()),

@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use viewer_domain::review::FeedbackAnchor;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum ContinuousReviewProtocol {
@@ -14,5 +15,15 @@ impl ContinuousReviewProtocol {
             Self::V3 => "viewer.review/3",
             Self::V4 => "viewer.review/4",
         }
+    }
+
+    pub(crate) fn supports_anchor(self, anchor: &FeedbackAnchor) -> bool {
+        self == Self::V4
+            || !matches!(
+                anchor,
+                FeedbackAnchor::ImagePoint(_)
+                    | FeedbackAnchor::ImageArrow(_)
+                    | FeedbackAnchor::ImageEllipse(_)
+            )
     }
 }

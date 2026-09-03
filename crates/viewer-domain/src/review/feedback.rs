@@ -141,8 +141,11 @@ fn normalized_bounds(points: &[NormalizedPoint]) -> (f64, f64, f64, f64) {
 #[derive(Clone, Debug, PartialEq)]
 pub enum FeedbackAnchor {
     Asset,
-    ImageRect(NormalizedRect),
+    ImagePoint(NormalizedPoint),
+    ImageArrow(NormalizedArrow),
     ImageStroke(ImageStroke),
+    ImageRect(NormalizedRect),
+    ImageEllipse(NormalizedRect),
     VideoPoint { position_us: u64 },
     VideoRange { start_us: u64, end_us: u64 },
 }
@@ -151,8 +154,11 @@ impl FeedbackAnchor {
     pub fn kind_name(&self) -> &'static str {
         match self {
             Self::Asset => "asset",
-            Self::ImageRect(_) => "imageRect",
+            Self::ImagePoint(_) => "imagePoint",
+            Self::ImageArrow(_) => "imageArrow",
             Self::ImageStroke(_) => "imageStroke",
+            Self::ImageRect(_) => "imageRect",
+            Self::ImageEllipse(_) => "imageEllipse",
             Self::VideoPoint { .. } => "videoPoint",
             Self::VideoRange { .. } => "videoRange",
         }

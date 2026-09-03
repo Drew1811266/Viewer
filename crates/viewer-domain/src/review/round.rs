@@ -297,11 +297,19 @@ pub(super) fn validate_anchor(
                 width: Some(width),
                 height: Some(height),
             },
-            FeedbackAnchor::ImageRect(_) | FeedbackAnchor::ImageStroke(_),
+            FeedbackAnchor::ImagePoint(_)
+            | FeedbackAnchor::ImageArrow(_)
+            | FeedbackAnchor::ImageStroke(_)
+            | FeedbackAnchor::ImageRect(_)
+            | FeedbackAnchor::ImageEllipse(_),
         ) if *width > 0 && *height > 0 => Ok(()),
         (
             ReviewMedia::Image { .. },
-            FeedbackAnchor::ImageRect(_) | FeedbackAnchor::ImageStroke(_),
+            FeedbackAnchor::ImagePoint(_)
+            | FeedbackAnchor::ImageArrow(_)
+            | FeedbackAnchor::ImageStroke(_)
+            | FeedbackAnchor::ImageRect(_)
+            | FeedbackAnchor::ImageEllipse(_),
         ) => Err(ReviewRoundError::AnchorUnavailable),
         (ReviewMedia::Video { duration_us, .. }, FeedbackAnchor::VideoPoint { position_us }) => {
             if duration_us.is_some_and(|duration| *position_us > duration) {

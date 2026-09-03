@@ -33,7 +33,7 @@ pub(in crate::review::protocol) fn encode_state_for(
     protocol: ContinuousReviewProtocol,
     record: &ReviewStateRecord,
 ) -> Result<Vec<u8>, ReviewProtocolError> {
-    validate::state(record)?;
+    validate::state_for(protocol, record)?;
     encode_document(
         &wire::State::from_record(record, protocol),
         MAX_REVIEW_DOCUMENT_BYTES,
@@ -50,7 +50,7 @@ pub(in crate::review::protocol) fn decode_state_for(
 ) -> Result<ReviewStateRecord, ReviewProtocolError> {
     let wire: wire::State = decode_document(bytes, MAX_REVIEW_DOCUMENT_BYTES, protocol.as_str())?;
     let record = wire.into_record();
-    validate::state(&record)?;
+    validate::state_for(protocol, &record)?;
     Ok(record)
 }
 
@@ -151,7 +151,7 @@ pub(in crate::review::protocol) fn encode_read_result_for(
 ) -> Result<Vec<u8>, ReviewProtocolError> {
     let mut versioned = record.clone();
     versioned.set_protocol(protocol);
-    versioned.validate()?;
+    versioned.validate_for(protocol)?;
     encode_document(&versioned, MAX_REVIEW_DOCUMENT_BYTES)
 }
 pub fn decode_read_result_v3(bytes: &[u8]) -> Result<ReviewReadResult, ReviewProtocolError> {
@@ -163,6 +163,6 @@ pub(in crate::review::protocol) fn decode_read_result_for(
 ) -> Result<ReviewReadResult, ReviewProtocolError> {
     let record: ReviewReadResult =
         decode_document(bytes, MAX_REVIEW_DOCUMENT_BYTES, protocol.as_str())?;
-    record.validate()?;
+    record.validate_for(protocol)?;
     Ok(record)
 }

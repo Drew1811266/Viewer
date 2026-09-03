@@ -145,6 +145,14 @@ vector_adapter!(targets, VersionedTarget, Target);
 )]
 pub(super) enum Anchor {
     Asset {},
+    ImagePoint {
+        x: f64,
+        y: f64,
+    },
+    ImageArrow {
+        tail: Point,
+        head: Point,
+    },
     ImageRect {
         x: f64,
         y: f64,
@@ -153,6 +161,12 @@ pub(super) enum Anchor {
     },
     ImageStroke {
         points: Vec<Point>,
+    },
+    ImageEllipse {
+        x: f64,
+        y: f64,
+        width: f64,
+        height: f64,
     },
     VideoPoint {
         position_us: u64,
@@ -172,6 +186,17 @@ impl From<&FeedbackAnchor> for Anchor {
     fn from(v: &FeedbackAnchor) -> Self {
         match v {
             FeedbackAnchor::Asset => Self::Asset {},
+            FeedbackAnchor::ImagePoint(p) => Self::ImagePoint { x: p.x(), y: p.y() },
+            FeedbackAnchor::ImageArrow(a) => Self::ImageArrow {
+                tail: Point {
+                    x: a.tail().x(),
+                    y: a.tail().y(),
+                },
+                head: Point {
+                    x: a.head().x(),
+                    y: a.head().y(),
+                },
+            },
             FeedbackAnchor::ImageRect(r) => Self::ImageRect {
                 x: r.x(),
                 y: r.y(),
@@ -184,6 +209,12 @@ impl From<&FeedbackAnchor> for Anchor {
                     .iter()
                     .map(|p| Point { x: p.x(), y: p.y() })
                     .collect(),
+            },
+            FeedbackAnchor::ImageEllipse(r) => Self::ImageEllipse {
+                x: r.x(),
+                y: r.y(),
+                width: r.width(),
+                height: r.height(),
             },
             FeedbackAnchor::VideoPoint { position_us } => Self::VideoPoint {
                 position_us: *position_us,
@@ -200,6 +231,18 @@ impl TryFrom<Anchor> for FeedbackAnchor {
     fn try_from(v: Anchor) -> Result<Self, Self::Error> {
         Ok(match v {
             Anchor::Asset {} => Self::Asset,
+            Anchor::ImagePoint { x, y } => Self::ImagePoint(
+                NormalizedPoint::new(x, y).map_err(|_| ReviewProtocolError::InvalidData)?,
+            ),
+            Anchor::ImageArrow { tail, head } => Self::ImageArrow(
+                NormalizedArrow::new(
+                    NormalizedPoint::new(tail.x, tail.y)
+                        .map_err(|_| ReviewProtocolError::InvalidData)?,
+                    NormalizedPoint::new(head.x, head.y)
+                        .map_err(|_| ReviewProtocolError::InvalidData)?,
+                )
+                .map_err(|_| ReviewProtocolError::InvalidData)?,
+            ),
             Anchor::ImageRect {
                 x,
                 y,
@@ -218,6 +261,15 @@ impl TryFrom<Anchor> for FeedbackAnchor {
                         .map_err(|_| ReviewProtocolError::InvalidData)?,
                 )
                 .map_err(|_| ReviewProtocolError::InvalidData)?,
+            ),
+            Anchor::ImageEllipse {
+                x,
+                y,
+                width,
+                height,
+            } => Self::ImageEllipse(
+                NormalizedRect::new(x, y, width, height)
+                    .map_err(|_| ReviewProtocolError::InvalidData)?,
             ),
             Anchor::VideoPoint { position_us } => Self::VideoPoint { position_us },
             Anchor::VideoRange { start_us, end_us } => Self::VideoRange { start_us, end_us },

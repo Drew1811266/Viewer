@@ -5,7 +5,9 @@ use serde::{
 };
 use std::{fmt, marker::PhantomData, str::FromStr};
 use viewer_domain::{
-    review::{FeedbackAnchor, ImageStroke, NormalizedPoint, NormalizedRect, ProductionId},
+    review::{
+        FeedbackAnchor, ImageStroke, NormalizedArrow, NormalizedPoint, NormalizedRect, ProductionId,
+    },
     *,
 };
 
@@ -229,6 +231,14 @@ impl WireValue for std::sync::Arc<str> {
 )]
 enum Anchor {
     Asset {},
+    ImagePoint {
+        x: f64,
+        y: f64,
+    },
+    ImageArrow {
+        tail: Point,
+        head: Point,
+    },
     ImageRect {
         x: f64,
         y: f64,
@@ -238,6 +248,12 @@ enum Anchor {
     ImageStroke {
         #[serde(with = "self")]
         points: Vec<Point>,
+    },
+    ImageEllipse {
+        x: f64,
+        y: f64,
+        width: f64,
+        height: f64,
     },
     VideoPoint {
         #[serde(with = "self")]
@@ -285,6 +301,16 @@ impl WireValue for FeedbackAnchor {
         let invalid = |_| de::Error::custom("invalid review anchor");
         match Anchor::deserialize(d)? {
             Anchor::Asset {} => Ok(Self::Asset),
+            Anchor::ImagePoint { x, y } => NormalizedPoint::new(x, y)
+                .map(Self::ImagePoint)
+                .map_err(invalid),
+            Anchor::ImageArrow { tail, head } => {
+                let tail = NormalizedPoint::new(tail.x, tail.y).map_err(invalid)?;
+                let head = NormalizedPoint::new(head.x, head.y).map_err(invalid)?;
+                NormalizedArrow::new(tail, head)
+                    .map(Self::ImageArrow)
+                    .map_err(invalid)
+            }
             Anchor::ImageRect {
                 x,
                 y,
@@ -303,6 +329,14 @@ impl WireValue for FeedbackAnchor {
                     .map(Self::ImageStroke)
                     .map_err(invalid)
             }
+            Anchor::ImageEllipse {
+                x,
+                y,
+                width,
+                height,
+            } => NormalizedRect::new(x, y, width, height)
+                .map(Self::ImageEllipse)
+                .map_err(invalid),
             Anchor::VideoPoint { position_us } => Ok(Self::VideoPoint { position_us }),
             Anchor::VideoRange { start_us, end_us } if start_us < end_us => {
                 Ok(Self::VideoRange { start_us, end_us })

@@ -99,6 +99,13 @@ impl Encoder {
         self.field(&a.kind_name())?;
         match a {
             FeedbackAnchor::Asset => Ok(()),
+            FeedbackAnchor::ImagePoint(p) => self.field(&(canonical(p.x()), canonical(p.y()))),
+            FeedbackAnchor::ImageArrow(a) => self.field(&(
+                canonical(a.tail().x()),
+                canonical(a.tail().y()),
+                canonical(a.head().x()),
+                canonical(a.head().y()),
+            )),
             FeedbackAnchor::ImageRect(r) => self.field(&(
                 canonical(r.x()),
                 canonical(r.y()),
@@ -112,6 +119,12 @@ impl Encoder {
                 }
                 Ok(())
             }
+            FeedbackAnchor::ImageEllipse(r) => self.field(&(
+                canonical(r.x()),
+                canonical(r.y()),
+                canonical(r.width()),
+                canonical(r.height()),
+            )),
             FeedbackAnchor::VideoPoint { position_us } => self.field(position_us),
             FeedbackAnchor::VideoRange { start_us, end_us } => self.field(&(start_us, end_us)),
         }

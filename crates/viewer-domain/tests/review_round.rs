@@ -122,6 +122,23 @@ fn image_anchors_accept_normalized_rectangles_and_strokes() {
 }
 
 #[test]
+fn image_point_arrow_and_ellipse_preserve_their_semantic_kinds() {
+    let tail = NormalizedPoint::new(0.1, 0.2).unwrap();
+    let head = NormalizedPoint::new(0.8, 0.7).unwrap();
+    let ellipse = NormalizedRect::new(0.1, 0.2, 0.3, 0.4).unwrap();
+
+    assert_eq!(FeedbackAnchor::ImagePoint(tail).kind_name(), "imagePoint");
+    assert_eq!(
+        FeedbackAnchor::ImageArrow(NormalizedArrow::new(tail, head).unwrap()).kind_name(),
+        "imageArrow"
+    );
+    assert_eq!(
+        FeedbackAnchor::ImageEllipse(ellipse).kind_name(),
+        "imageEllipse"
+    );
+}
+
+#[test]
 fn image_strokes_reject_invalid_coordinates_and_unbounded_payloads() {
     assert_eq!(
         NormalizedPoint::new(f64::NAN, 0.2),

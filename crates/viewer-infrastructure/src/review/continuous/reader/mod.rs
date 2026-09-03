@@ -8,7 +8,7 @@ mod project;
 mod request;
 mod source;
 
-use crate::review::{ReviewProtocolError, v3};
+use crate::review::{ContinuousReviewProtocol, ReviewProtocolError, v3};
 use serde::Serialize;
 use serde_json::Value;
 use std::io::{Read, Write};
@@ -22,13 +22,23 @@ const MAX_REQUEST_BYTES: u64 = 64 * 1024;
 struct Failure {
     code: ReadErrorCode,
     message: String,
+    #[serde(rename = "protocolVersion")]
+    protocol: ContinuousReviewProtocol,
 }
 impl Failure {
     fn new(code: ReadErrorCode, message: &str) -> Self {
         Self {
             code,
             message: message.into(),
+            protocol: ContinuousReviewProtocol::V3,
         }
+    }
+    fn with_protocol(
+        mut self,
+        protocol: viewer_application::review_workspace::ReviewPublicationProtocol,
+    ) -> Self {
+        self.protocol = protocol.into();
+        self
     }
     fn integrity(message: &str) -> Self {
         Self::new(ReadErrorCode::Integrity, message)
@@ -106,7 +116,8 @@ fn read_request(input: impl Read) -> Result<Value, Failure> {
         request::Operation::Current | request::Operation::List
     );
     let project = project::Project::open(&request.project_root, gate_current)?;
-    match request.operation {
+    let publication_protocol = project.publication_protocol();
+    let result = match request.operation {
         request::Operation::LegacyLatest | request::Operation::LegacyList => {
             legacy::read(&project, &request)
         }
@@ -114,7 +125,8 @@ fn read_request(input: impl Read) -> Result<Value, Failure> {
         request::Operation::Current | request::Operation::List => {
             current::read(&project.into_current()?, &request)
         }
-    }
+    };
+    result.map_err(|error| error.with_protocol(publication_protocol))
 }
 
 /// Process a single bounded request. Errors are JSON too; no partial success is emitted.

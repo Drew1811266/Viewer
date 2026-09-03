@@ -5,11 +5,12 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
 import { readCurrentReview, listCurrentReviewStreams } from './read-current.mjs'
-import { createProjectV3Case } from './v3-fixtures.mjs'
+import { createProjectV3Case, createProjectV4Case } from './v3-fixtures.mjs'
 import { blake3Hex } from './blake3.mjs'
 import { validateFixture } from './schema-fixture-validation.mjs'
 
 const schema = JSON.parse(await readFile(new URL('../../docs/protocol/viewer-review-read-result-v3.schema.json', import.meta.url)))
+const v4Schema = JSON.parse(await readFile(new URL('../../docs/protocol/viewer-review-read-result-v4.schema.json', import.meta.url)))
 const id = n => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`
 async function fixture(t, name = 'current_nonempty') {
   const value = await createProjectV3Case(name)
@@ -28,6 +29,52 @@ async function editCurrent(f, mutate) {
   await writeFile(file, bytes)
   await writeFile(path.join(base, 'index.json'), JSON.stringify(index))
 }
+
+test('current selects v4 exactly and preserves the complete arrow geometry', async t => {
+  const fixture = await createProjectV4Case()
+  t.after(fixture.cleanup)
+
+  const current = await readCurrentReview({
+    projectRoot: fixture.projectRoot,
+    reviewStreamId: fixture.streamId,
+  })
+
+  assert.equal(current.protocolVersion, 'viewer.review/4')
+  assert.equal(current.feedback[0].targets[0].anchor.kind, 'imageArrow')
+  assert.deepEqual(current.feedback[0].targets[0].anchor.head, { x: 0.7, y: 0.25 })
+  assert.equal(await validateFixture(current, v4Schema), true)
+})
+
+test('v4 index controls no-state and integrity result protocol versions', async t => {
+  const empty = await createProjectV4Case()
+  t.after(empty.cleanup)
+  const emptyBase = path.join(empty.projectRoot, '.viewer/reviews')
+  const emptyIndex = JSON.parse(await readFile(path.join(emptyBase, 'index.json')))
+  emptyIndex.streams[0].currentRef = null
+  await writeFile(path.join(emptyBase, 'index.json'), JSON.stringify(emptyIndex))
+
+  const noState = await readCurrentReview({
+    projectRoot: empty.projectRoot,
+    reviewStreamId: empty.streamId,
+  })
+  assert.equal(noState.protocolVersion, 'viewer.review/4')
+  assert.equal(noState.status, 'no_review_state')
+  assert.equal(await validateFixture(noState, v4Schema), true)
+
+  const corrupt = await createProjectV4Case()
+  t.after(corrupt.cleanup)
+  await editCurrent(corrupt, state => {
+    state.feedback[0].targets[0].anchor.head = state.feedback[0].targets[0].anchor.tail
+  })
+  const error = await readCurrentReview({
+    projectRoot: corrupt.projectRoot,
+    reviewStreamId: corrupt.streamId,
+  })
+  assert.equal(error.protocolVersion, 'viewer.review/4')
+  assert.equal(error.status, 'error')
+  assert.equal(error.code, 'integrity')
+  assert.equal(await validateFixture(error, v4Schema), true)
+})
 
 test('empty current remains a committed current snapshot and never returns archived instructions', async t => {
   const f = await fixture(t, 'current_empty')

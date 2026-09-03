@@ -1,5 +1,6 @@
 export function readError(error) {
-  return { protocolVersion: 'viewer.review/3', status: 'error', code: error.code ?? 'io',
+  const protocolVersion = error.protocolVersion === 'viewer.review/4' ? error.protocolVersion : 'viewer.review/3'
+  return { protocolVersion, status: 'error', code: error.code ?? 'io',
     message: error instanceof Error ? error.message : 'review reader failed' }
 }
 

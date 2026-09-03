@@ -5,9 +5,9 @@ use super::{
 };
 use crate::review::{
     continuous::{evidence, history, legacy, mapping, references, repository::View},
-    v3,
+    v3, v4,
 };
-use viewer_application::review_workspace::LegacyReviewContents;
+use viewer_application::review_workspace::{LegacyReviewContents, ReviewPublicationProtocol};
 use viewer_domain::{
     ReviewSnapshotId, ReviewStreamId,
     review::{
@@ -30,14 +30,15 @@ pub(super) fn read(
         .ok_or_else(|| Failure::new(ReadErrorCode::UnknownStream, "review stream was not found"))?;
     let stream_id = stream.review_stream_id;
     let mut limitations = vec![];
-    let (selector, entries) = if let Some(id) = &request.snapshot_id {
+    let (protocol, selector, entries) = if let Some(id) = &request.snapshot_id {
         let (reference, record) = snapshot(view, stream_id, parse_id(id)?)?;
         let keys = keys(&record);
         (
+            record.protocol,
             v3::ReadHistorySelector::Snapshot {
                 snapshot: reference,
             },
-            vec![entry(reference, record, keys, &mut limitations)],
+            vec![entry(reference, record.record, keys, &mut limitations)],
         )
     } else if let Some(id) = &request.archive_id {
         let id = parse_id(id)?;
@@ -62,19 +63,31 @@ pub(super) fn read(
         }
         let mut retained_bytes = 0_u64;
         let mut entries = vec![];
+        let mut protocol = ReviewPublicationProtocol::V3;
         for (reference, keys) in groups {
             let record = history::reachable(view, stream_id, &reference)?;
             references::feedback_origins(view, &record)?;
-            retained_bytes += v3::encode_state_v3(&record)?.len() as u64;
+            let encoded = match record.protocol {
+                ReviewPublicationProtocol::V3 => v3::encode_state_v3(&record.record),
+                ReviewPublicationProtocol::V4 => v4::encode_state_v4(&record.record),
+            }?;
+            retained_bytes += encoded.len() as u64;
             if retained_bytes > crate::review::MAX_REVIEW_DOCUMENT_BYTES {
                 return Err(Failure::new(
                     ReadErrorCode::LimitExceeded,
                     "history result exceeds retained document limit",
                 ));
             }
+            if record.protocol == ReviewPublicationProtocol::V4 {
+                protocol = ReviewPublicationProtocol::V4;
+            }
             entries.push(entry(reference, record.record, keys, &mut limitations));
         }
-        (v3::ReadHistorySelector::Archive { archive_id: id }, entries)
+        (
+            protocol,
+            v3::ReadHistorySelector::Archive { archive_id: id },
+            entries,
+        )
     } else {
         let id = parse_id(
             request
@@ -108,6 +121,7 @@ pub(super) fn read(
             limitations.push(v3::HistoryLimitation::LegacyEvidenceAbsent);
         }
         (
+            ReviewPublicationProtocol::V3,
             v3::ReadHistorySelector::Legacy { round_id: id },
             vec![v3::HistoryEntry::Legacy {
                 reference: reference.clone(),
@@ -118,22 +132,23 @@ pub(super) fn read(
         )
     };
     project.root.verify()?;
-    super::current::result(v3::ReviewReadResult::History(
-        v3::HistoryReadResult::from_verified(
+    super::current::result(
+        protocol,
+        v3::ReviewReadResult::History(v3::HistoryReadResult::from_verified(
             project.project_id,
             stream_id,
             selector,
             entries,
             limitations,
-        ),
-    ))
+        )),
+    )
 }
 
 fn snapshot(
     view: &View,
     stream: ReviewStreamId,
     id: ReviewSnapshotId,
-) -> Result<(SnapshotRef, v3::ReviewStateRecord), Failure> {
+) -> Result<(SnapshotRef, history::VersionedReviewState), Failure> {
     let mut found = None;
     history::walk(view, stream, |reference, record| {
         if reference.snapshot_id != id {
@@ -141,7 +156,7 @@ fn snapshot(
         }
         evidence::verify(view, &record.evidence)?;
         references::feedback_origins(view, &record)?;
-        found = Some((reference, record.record));
+        found = Some((reference, record));
         Ok(true)
     })?;
     found.ok_or_else(|| {

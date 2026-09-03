@@ -8,7 +8,9 @@ const maxResponseBytes = 64 * 1024 * 1024
 const codes = new Set(['publication_pending', 'migration_required', 'unsupported_version', 'integrity', 'unsafe_path',
   'limit_exceeded', 'ambiguous_stream', 'unknown_stream', 'unknown_history', 'io'])
 
-function failure(code, message) { return Object.assign(new Error(message), { code }) }
+function failure(code, message, protocolVersion = 'viewer.review/3') {
+  return Object.assign(new Error(message), { code, protocolVersion })
+}
 
 export function readerExecutable(environment = process.env) {
   const override = environment.VIEWER_REVIEW_READER
@@ -64,7 +66,7 @@ export async function invokeReader(operation, options = {}, { signal } = {}) {
         if (exitCode === 1 && Object.keys(response).sort().join(',') === 'error,protocolVersion'
             && codes.has(response.error?.code) && typeof response.error.message === 'string'
             && response.error.message.length > 0 && Buffer.byteLength(response.error.message) <= 4096) {
-          throw failure(response.error.code, response.error.message)
+          throw failure(response.error.code, response.error.message, response.error.protocolVersion)
         }
         throw failure('io', 'reader exited without a valid result')
       } catch (error) { fail(codes.has(error.code) ? error : failure('io', 'reader returned invalid JSON')) }

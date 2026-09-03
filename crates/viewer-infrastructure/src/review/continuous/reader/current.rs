@@ -4,11 +4,15 @@ use super::{
     request::{Operation, Request},
 };
 use crate::review::{
+    ContinuousReviewProtocol,
     continuous::{history, references, repository::View},
-    v3,
+    v3, v4,
 };
 use serde_json::{Value, json};
-use viewer_application::{ReviewStreamLocator, review_workspace::ReviewHeads};
+use viewer_application::{
+    ReviewStreamLocator,
+    review_workspace::{ReviewHeads, ReviewPublicationProtocol},
+};
 use viewer_domain::review::continuous::SnapshotRef;
 
 pub(super) fn selected<'a>(
@@ -47,8 +51,13 @@ pub(super) fn read(project: &CurrentProject, request: &Request) -> Result<Value,
             "reviewStreamId": s.review_stream_id, "taskId": s.task_id, "batchId": s.batch_id,
             "currentRef": s.current_ref.map(|r| json!({"snapshotId": r.snapshot_id, "blake3": blake3::Hash::from(r.blake3).to_hex().as_str()})),
         })).collect()).unwrap_or_default();
+        let protocol: ContinuousReviewProtocol = project
+            .view
+            .as_ref()
+            .map_or(ReviewPublicationProtocol::V3, |view| view.index.protocol)
+            .into();
         return Ok(
-            json!({"protocolVersion": "viewer.review/3", "status": "ok", "projectId": project.project_id, "streams": streams}),
+            json!({"protocolVersion": protocol.as_str(), "status": "ok", "projectId": project.project_id, "streams": streams}),
         );
     }
     let Some(view) = &project.view else {
@@ -59,9 +68,13 @@ pub(super) fn read(project: &CurrentProject, request: &Request) -> Result<Value,
                 "project has no review stream",
             ));
         }
-        return result(v3::ReviewReadResult::NoReviewState(
-            v3::NoReviewStateResult::new(project.project_id, None),
-        ));
+        return result(
+            ReviewPublicationProtocol::V3,
+            v3::ReviewReadResult::NoReviewState(v3::NoReviewStateResult::new(
+                project.project_id,
+                None,
+            )),
+        );
     };
     let explicit = controlled_for_locator(project, request)?;
     if explicit.is_some_and(|stream| stream.heads.authoring != stream.heads.published) {
@@ -94,18 +107,28 @@ pub(super) fn read(project: &CurrentProject, request: &Request) -> Result<Value,
         return Err(Failure::publication_pending());
     }
     let Some((stream, reference)) = stream.and_then(|s| s.current_ref.map(|r| (s, r))) else {
-        return result(v3::ReviewReadResult::NoReviewState(
-            v3::NoReviewStateResult::new(project.project_id, stream.map(|s| s.review_stream_id)),
-        ));
+        return result(
+            view.index.protocol,
+            v3::ReviewReadResult::NoReviewState(v3::NoReviewStateResult::new(
+                project.project_id,
+                stream.map(|s| s.review_stream_id),
+            )),
+        );
     };
     let record = history::read_state(view, stream.review_stream_id, &reference)?;
     references::feedback_origins(view, &record)?;
     let source_checks = super::source::check(&project.root, &record.state.assets);
-    let delta = super::delta::read(view, &record, request.since_snapshot_id.as_deref())?;
+    let delta = super::delta::read(view, &record.record, request.since_snapshot_id.as_deref())?;
     project.root.verify()?;
-    result(v3::ReviewReadResult::Current(
-        v3::CurrentReadResult::from_verified(reference, record.record, source_checks, delta)?,
-    ))
+    result(
+        record.protocol,
+        v3::ReviewReadResult::Current(v3::CurrentReadResult::from_verified(
+            reference,
+            record.record,
+            source_checks,
+            delta,
+        )?),
+    )
 }
 
 fn controlled_for_locator<'a>(
@@ -213,8 +236,14 @@ fn gate_stream(
     }
 }
 
-pub(super) fn result(value: v3::ReviewReadResult) -> Result<Value, Failure> {
-    value.validate()?;
-    serde_json::to_value(value)
+pub(super) fn result(
+    protocol: ReviewPublicationProtocol,
+    value: v3::ReviewReadResult,
+) -> Result<Value, Failure> {
+    let bytes = match protocol {
+        ReviewPublicationProtocol::V3 => v3::encode_read_result_v3(&value),
+        ReviewPublicationProtocol::V4 => v4::encode_read_result_v4(&value),
+    }?;
+    serde_json::from_slice(&bytes)
         .map_err(|_| Failure::integrity("cannot encode verified read result"))
 }

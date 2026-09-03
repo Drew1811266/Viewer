@@ -4,7 +4,7 @@ import path from 'node:path'
 import test from 'node:test'
 import { readReviewHistory } from './read-history.mjs'
 import { readCurrentReview } from './read-current.mjs'
-import { createProjectV3Case } from './v3-fixtures.mjs'
+import { createProjectV3Case, createProjectV4Case } from './v3-fixtures.mjs'
 import { readLatestCompletedReview } from './read-latest.mjs'
 import { validateFixture } from './schema-fixture-validation.mjs'
 import { blake3Hex } from './blake3.mjs'
@@ -37,6 +37,20 @@ test('legacy history numbering is independent of feedback storage order', async 
 })
 
 const schema = JSON.parse(await readFile(new URL('../../docs/protocol/viewer-review-read-result-v3.schema.json', import.meta.url)))
+
+test('mixed history uses the immutable selected snapshot protocol rather than the v4 index', async t => {
+  const fixture = await createProjectV4Case()
+  t.after(fixture.cleanup)
+
+  const history = await readReviewHistory({
+    projectRoot: fixture.projectRoot,
+    reviewStreamId: fixture.streamId,
+    snapshotId: fixture.v3SnapshotId,
+  })
+
+  assert.equal(history.protocolVersion, 'viewer.review/3')
+  assert.equal(await validateFixture(history, schema), true)
+})
 
 test('explicit migrated v2 draft history reports absent evidence without inventing an annotated PNG', async t => {
   const f = await createProjectV3Case('legacy_mixed')

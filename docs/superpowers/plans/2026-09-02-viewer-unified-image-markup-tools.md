@@ -651,7 +651,7 @@ git commit -m "feat: publish extended anchors through review v4"
 - Consumes: versioned repository records and `authoring_head`/`published_head` gate.
 - Produces: v3 results for v3 selections and v4 results for v4 selections, with no fallback.
 
-- [ ] **Step 1: Add failing reader tests for current and mixed history**
+- [x] **Step 1: Add failing reader tests for current and mixed history**
 
 ```javascript
 const current = await readCurrent(v4Project)
@@ -666,13 +666,13 @@ assert.equal(history.protocolVersion, 'viewer.review/3')
 Keep the existing pending-publication case and assert it returns `publication_pending` instead of the older
 v3 head after a v4 authoring save.
 
-- [ ] **Step 2: Run reader suites and verify protocol mismatch failures**
+- [x] **Step 2: Run reader suites and verify protocol mismatch failures**
 
 Run: `cargo test --locked -p viewer-infrastructure continuous_review_reader && pnpm build:review-reader && node --test scripts/review-protocol/native-reader.test.mjs scripts/review-protocol/read-current.test.mjs scripts/review-protocol/read-history.test.mjs`
 
 Expected: FAIL because reader result construction is hard-coded to v3.
 
-- [ ] **Step 3: Thread the exact selected protocol through result construction**
+- [x] **Step 3: Thread the exact selected protocol through result construction**
 
 ```rust
 pub fn encode_read_result(
@@ -691,13 +691,13 @@ emit `viewer.review/3`, preserving the existing contract. Exact history uses the
 protocol, not the newest index protocol. Preserve all source, evidence, digest, path, size, ambiguity, and
 head-equality checks.
 
-- [ ] **Step 4: Run the complete protocol gate**
+- [x] **Step 4: Run the complete protocol gate**
 
 Run: `pnpm test:review-protocol && pnpm test:review-loop`
 
 Expected: PASS for existing v3 fixtures plus new v4 and mixed-history fixtures.
 
-- [ ] **Step 5: Commit native Agent reading**
+- [x] **Step 5: Commit native Agent reading**
 
 ```bash
 git add crates/viewer-infrastructure/src/review/continuous/reader \

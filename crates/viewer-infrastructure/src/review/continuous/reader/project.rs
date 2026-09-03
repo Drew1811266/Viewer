@@ -1,6 +1,6 @@
 use super::{Failure, ReadErrorCode, heads::PinnedReviewHeads};
-use crate::review::MAX_REVIEW_INDEX_BYTES;
 use crate::review::continuous::owned_io::Directory;
+use crate::review::{MAX_REVIEW_INDEX_BYTES, detect_continuous_review_protocol};
 use crate::review::{
     continuous::{
         migration,
@@ -50,6 +50,13 @@ impl Project {
             .zip(self.index.as_deref())
             .ok_or_else(|| Failure::new(ReadErrorCode::Io, "review index is missing"))
     }
+    pub fn publication_protocol(&self) -> ReviewPublicationProtocol {
+        self.index
+            .as_deref()
+            .and_then(|bytes| detect_continuous_review_protocol(bytes, MAX_REVIEW_INDEX_BYTES).ok())
+            .map(Into::into)
+            .unwrap_or(ReviewPublicationProtocol::V3)
+    }
     pub fn into_current(self) -> Result<CurrentProject, Failure> {
         if self.index.is_none()
             && let Some(directory) = &self.directory
@@ -73,13 +80,13 @@ impl Project {
                     "legacy review requires explicit Viewer migration; no current instructions returned",
                 ));
             }
-            let (protocol, index) = match version.protocol_version.as_str() {
-                "viewer.review/3" => (ReviewPublicationProtocol::V3, v3::decode_index_v3(&bytes)?),
-                "viewer.review/4" => (ReviewPublicationProtocol::V4, v4::decode_index_v4(&bytes)?),
-                _ => {
-                    return Err(Failure::integrity("review index protocol is unsupported"));
-                }
+            let wire_protocol = detect_continuous_review_protocol(&bytes, MAX_REVIEW_INDEX_BYTES)?;
+            let protocol: ReviewPublicationProtocol = wire_protocol.into();
+            let index = match wire_protocol {
+                crate::review::ContinuousReviewProtocol::V3 => v3::decode_index_v3(&bytes),
+                crate::review::ContinuousReviewProtocol::V4 => v4::decode_index_v4(&bytes),
             };
+            let index = index?;
             if let Some(backup) = &index.legacy_index {
                 migration::verify_backup(&directory, backup, index.project_id)?;
             }

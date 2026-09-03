@@ -1,7 +1,10 @@
 use serde_json::{Value, json};
 use std::{fs, process::Command};
 use viewer_application::{ProjectAccess, review_workspace::*};
-use viewer_domain::{ReviewSnapshotId, ReviewStreamId, review::continuous::*};
+use viewer_domain::{
+    ReviewSnapshotId, ReviewStreamId,
+    review::{FeedbackAnchor, NormalizedArrow, NormalizedPoint, continuous::*},
+};
 use viewer_infrastructure::{
     portable::PortableProjectMetadata,
     review::{ProjectReviewRepositoryProvider, run_review_reader, v3},
@@ -169,6 +172,56 @@ fn core_read(root: &std::path::Path, fields: Value) -> Value {
     core_operation(root, "current", fields)
 }
 
+fn v4_arrow_request(root: &tempfile::TempDir) -> ReviewCommitRequest {
+    let mut request = image_request(root);
+    request.next.publication_protocol = ReviewPublicationProtocol::V4;
+    request.next.state.feedback[0].targets[0].anchor = FeedbackAnchor::ImageArrow(
+        NormalizedArrow::new(
+            NormalizedPoint::new(0.2, 0.2).unwrap(),
+            NormalizedPoint::new(0.7, 0.25).unwrap(),
+        )
+        .unwrap(),
+    );
+    let key = request
+        .next
+        .state
+        .target_key(request.next.state.feedback[0].targets[0].id)
+        .unwrap();
+    let EvidenceCapability::Image {
+        base,
+        annotated,
+        annotations,
+    } = &mut request.next.evidence[0].capability
+    else {
+        panic!("image fixture must own image evidence")
+    };
+    *annotated = Some(base.clone());
+    *annotations = vec![EvidenceAnnotation { ordinal: 1, key }];
+    request
+}
+
+#[test]
+fn native_current_reader_emits_v4_with_complete_arrow_geometry() {
+    let (root, provider) = setup();
+    provider
+        .continuous_writer()
+        .unwrap()
+        .commit(v4_arrow_request(&root))
+        .unwrap();
+
+    let value = core_read(root.path(), json!({}));
+
+    assert_eq!(value["result"]["protocolVersion"], "viewer.review/4");
+    assert_eq!(
+        value["result"]["feedback"][0]["targets"][0]["anchor"],
+        json!({
+            "kind": "imageArrow",
+            "tail": {"x": 0.2, "y": 0.2},
+            "head": {"x": 0.7, "y": 0.25},
+        })
+    );
+}
+
 fn published_project_with_metadata() -> (
     tempfile::TempDir,
     ProjectReviewRepositoryProvider,
@@ -203,6 +256,7 @@ fn advance_authoring(provider: &ProjectReviewRepositoryProvider, stream: ReviewS
     let authoring = provider.authoring_writer().unwrap();
     let current = authoring.load_current(stream).unwrap().unwrap();
     let mut next = current.clone();
+    next.publication_protocol = ReviewPublicationProtocol::V4;
     next.head = ReviewAuthoringHead {
         sequence: current.head.sequence + 1,
         snapshot_id: ReviewSnapshotId::from_u128(90),
@@ -235,6 +289,7 @@ fn current_and_list_return_no_payload_when_authoring_is_ahead() {
     for operation in ["current", "list"] {
         let value = core_operation(root.path(), operation, json!({}));
         assert_eq!(value["error"]["code"], "publication_pending");
+        assert_eq!(value["error"]["protocolVersion"], "viewer.review/3");
         assert!(value.get("result").is_none());
     }
     let node = node_read(root.path(), "current", json!({}));

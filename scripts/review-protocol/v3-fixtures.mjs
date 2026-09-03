@@ -109,3 +109,62 @@ export async function createProjectV3Case(name) {
     throw error
   }
 }
+
+export async function createProjectV4Case() {
+  const fixture = await createProjectV3Case('current_nonempty')
+  try {
+    const repository = join(fixture.projectRoot, '.viewer/reviews')
+    const indexPath = join(repository, 'index.json')
+    const index = JSON.parse(await readFile(indexPath, 'utf8'))
+    const v3Ref = index.streams[0].currentRef
+    const v3StatePath = join(repository, 'states', `${v3Ref.snapshotId}.json`)
+    const current = JSON.parse(await readFile(v3StatePath, 'utf8'))
+    const before = keysOf(current)[0]
+    current.protocolVersion = 'viewer.review/4'
+    current.parent = v3Ref
+    current.snapshotId = id(502)
+    current.commandId = id(702)
+    current.payloadDigest = blake3Hex(bytesOf({ name: 'v4_arrow', snapshot: current.snapshotId }))
+    current.feedback[0].targets[0].anchor = {
+      kind: 'imageArrow',
+      tail: { x: 0.2, y: 0.2 },
+      head: { x: 0.7, y: 0.25 },
+    }
+    current.feedback[0].targets[0].targetRevisionId = id(431)
+    const feedback = current.feedback[0]
+    const target = feedback.targets[0]
+    const after = {
+      feedbackId: feedback.feedbackId,
+      textRevisionId: feedback.textRevisionId,
+      targetId: target.targetId,
+      targetRevisionId: target.targetRevisionId,
+    }
+    current.changes = [{
+      targetId: target.targetId,
+      before,
+      after,
+      kind: 'edited',
+      archiveId: null,
+      historicalKey: null,
+    }]
+    const capability = current.evidence.find(item => item.assetVersionId === target.assetVersionId).capability
+    capability.annotated = structuredClone(capability.base)
+    capability.annotations = [{
+      ordinal: 1,
+      key: after,
+    }]
+    const stateBytes = bytesOf(current)
+    await writeFile(join(repository, 'states', `${current.snapshotId}.json`), stateBytes, { flag: 'wx' })
+    index.streams[0].currentRef = { snapshotId: current.snapshotId, blake3: blake3Hex(stateBytes) }
+    index.protocolVersion = 'viewer.review/4'
+    await writeFile(indexPath, bytesOf(index))
+    return {
+      ...fixture,
+      snapshotIds: [...fixture.snapshotIds, current.snapshotId],
+      v3SnapshotId: v3Ref.snapshotId,
+    }
+  } catch (error) {
+    await fixture.cleanup()
+    throw error
+  }
+}

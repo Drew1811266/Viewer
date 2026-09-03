@@ -17,6 +17,7 @@ const OPINIONS = [
   '右袖边缘有伪影，请重画这一段。',
   '左侧接缝需要拉直。',
   '裤脚颜色请与衣身统一。',
+  '右下区域需要改为更平滑的椭圆轮廓。',
 ]
 const ANCHORS: ReviewAnchor[] = [
   { kind: 'image_rect', x: 0.4, y: 0.06, width: 0.2, height: 0.18 },
@@ -30,8 +31,13 @@ const ANCHORS: ReviewAnchor[] = [
       { x: 0.7, y: 0.52 },
     ],
   },
-  { kind: 'image_rect', x: 0.31, y: 0.45, width: 0.12, height: 0.3 },
-  { kind: 'image_rect', x: 0.48, y: 0.77, width: 0.21, height: 0.16 },
+  { kind: 'image_point', x: 0.36, y: 0.57 },
+  {
+    kind: 'image_arrow',
+    tail: { x: 0.5, y: 0.78 },
+    head: { x: 0.66, y: 0.62 },
+  },
+  { kind: 'image_ellipse', x: 0.76, y: 0.7, width: 0.2, height: 0.22 },
 ]
 const FIRST_ENTITY = 'acceptance-image-01'
 const FIRST_VERSION = 'acceptance-asset-version-1'
@@ -91,7 +97,7 @@ export function workbenchBridgeOverrides(id: string): AcceptanceBridgeOverrides 
           unreviewable: [],
           counts: { total: 0, feedbackItems: 0, revise: 0, unreviewable: 0, pass: 0 },
         })
-      : annotatedSnapshot()
+      : annotatedSnapshot(isExtendedMarkupScene(id) ? 5 : 4)
   if (id === 'RVW-20') brushRedrawSnapshot = snapshot
   function save(text: string, targets: ReadonlyArray<ReviewFeedbackTargetInput>) {
     const first = targets[0]
@@ -187,6 +193,14 @@ export const REVIEW_WORKBENCH_SCENES: Readonly<Record<string, () => boolean>> = 
   },
   'RVW-24': () => fourAnnotationsReady(),
   'RVW-33': () => compositeMagnifierReady(),
+  'RVW-34': () => markupMenuReady('wide'),
+  'RVW-35': () => markupMenuReady('compact'),
+  'RVW-36': () => selectedExtendedShapeReady('image_arrow', 2),
+  'RVW-37': () => selectedExtendedShapeReady('image_ellipse', 4),
+}
+
+function isExtendedMarkupScene(id: string) {
+  return id === 'RVW-34' || id === 'RVW-35' || id === 'RVW-36' || id === 'RVW-37'
 }
 
 function noPendingWork() {
@@ -287,6 +301,52 @@ function compositeMagnifierReady() {
       '.task-bar, .inline-feedback-editor, .review-feedback-rail__error, [aria-busy="true"]',
     ) === null
   )
+}
+
+function allMarkupReady() {
+  if (!previewReady()) return false
+  const anchors = [...document.querySelectorAll<HTMLElement>('[data-anchor-kind]')]
+  const kinds = new Set(anchors.map((anchor) => anchor.dataset.anchorKind))
+  return (
+    anchors.length === 5 &&
+    ['image_point', 'image_arrow', 'image_stroke', 'image_rect', 'image_ellipse'].every((kind) =>
+      kinds.has(kind),
+    ) &&
+    document.querySelector('.review-feedback-rail') !== null
+  )
+}
+
+function markupMenuReady(layout: 'wide' | 'compact') {
+  if (!allMarkupReady()) return false
+  const menu = document.querySelector('[role="menu"][aria-label="标记工具"]')
+  if (menu === null) {
+    clickEnabled('标记', `open-markup-menu-${layout}`)
+    return false
+  }
+  const entries = [...menu.querySelectorAll('[role="menuitemradio"]')]
+  return (
+    entries.length === 5 &&
+    ['点', '箭头', '画笔', '矩形', '椭圆'].every((label) =>
+      entries.some((entry) => entry.textContent?.includes(label)),
+    )
+  )
+}
+
+function selectedExtendedShapeReady(kind: 'image_arrow' | 'image_ellipse', handleCount: number) {
+  if (!allMarkupReady()) return false
+  const marker = document.querySelector<HTMLButtonElement>(`[data-anchor-kind="${kind}"]`)
+  if (marker === null) return false
+  if (marker.dataset.selected !== 'true') {
+    if (marker.dataset.acceptanceAction !== `select-${kind}`) {
+      marker.dataset.acceptanceAction = `select-${kind}`
+      marker.click()
+    }
+    return false
+  }
+  const handles = [...marker.querySelectorAll<HTMLButtonElement>('.annotation-geometry-handle')]
+  const edgeHandle = handles.at(-1)
+  if (edgeHandle !== undefined && document.activeElement !== edgeHandle) edgeHandle.focus()
+  return handles.length === handleCount && document.activeElement === edgeHandle
 }
 
 function firstAnnotation() {

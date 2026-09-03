@@ -2,8 +2,8 @@
 
 ## 状态与范围
 
-本文档是 **Active 的协议与集成边界**。Viewer 当前产品使用 `viewer.review/3` 持续评审：
-图片矩形／画笔标注与自然语言意见在成功保存后形成完整 current，用户手动把上一轮要求存档，
+本文档是 **Active 的协议与集成边界**。Viewer 当前持续评审同时支持 `viewer.review/3` 和
+`viewer.review/4`：图片点／箭头／画笔／矩形／椭圆标注与自然语言意见在成功保存后形成完整 current，用户手动把上一轮要求存档，
 外部工具通过独立 current/history 读取器消费。旧 `viewer.review/1`、`viewer.review/2` 的固定范围
 Completed Round 只保留为显式迁移和历史兼容，不再是新建项目的主流程。Production Manifest
 执行、自动 lineage 判断、视频时间段标注和具体 Agent 集成仍属于未来阶段。
@@ -33,16 +33,17 @@ project/
     └── recovery/                           # Bounded private recovery input / legacy-index backups
 ```
 
-## 当前 v3 持续评审语义
+## 当前 v3/v4 持续评审语义
 
 - `current` 是某一 Review Stream 现在仍有效的**完整自然语言要求集合**。成功保存先在本地
   authoring 控制面持久化完整逻辑状态，再由后台任务生成证据并原子发布公开索引；没有“完成本轮”
   门槛，也不生成默认 `pass`。
 - 用户没有评价的素材不产生意见记录。批量网格和大图预览都不记录“已浏览”；曝光、停留、
   滚动或播放行为不能被读取方解释为通过。
-- Feedback 文字是返工意图的权威表达；版本化 Target/Anchor 只把文字关联到精确素材版本、
-  整图、图片矩形或图片画笔。矩形和画笔坐标相对方向校正后的完整图片归一化到 `[0, 1]`；
-  画笔为 2–2048 个有效点，原图永不被标注写回。
+- Feedback 文字是返工意图的权威表达；版本化 Target/Anchor 只把文字关联到精确素材版本和
+  几何。v3 支持整图、图片矩形和图片画笔；v4 还支持图片点、箭头和椭圆。所有图片坐标都相对
+  方向校正后的完整图片归一化到 `[0, 1]`；画笔为 2–2048 个有效点。`imageArrow.tail` 是箭尾，
+  `imageArrow.head` 是箭头指向、需要关注的目标位置，读取方不得把两端对调。原图永不被标注写回。
 - 文字编辑、重绘、删除和后补意见形成新 revision/state。withdrawal 是类型化移除事实，不会
   自动生成“把改蓝色改回去”之类反向自然语言。
 - 手动 archive 记录精确 Feedback/Text/Target revisions 及其依据。部分存档移走所选目标，同时
@@ -83,13 +84,19 @@ Viewer 当前在一个项目中维护至多一个无 Production Scope 的手动 
 - [`viewer-review-state-v3.schema.json`](viewer-review-state-v3.schema.json)
 - [`viewer-review-archive-v3.schema.json`](viewer-review-archive-v3.schema.json)
 - [`viewer-review-read-result-v3.schema.json`](viewer-review-read-result-v3.schema.json)
+- [`viewer-review-index-v4.schema.json`](viewer-review-index-v4.schema.json)
+- [`viewer-review-state-v4.schema.json`](viewer-review-state-v4.schema.json)
+- [`viewer-review-archive-v4.schema.json`](viewer-review-archive-v4.schema.json)
+- [`viewer-review-read-result-v4.schema.json`](viewer-review-read-result-v4.schema.json)
 - [`viewer-review-usage-v1.schema.json`](viewer-review-usage-v1.schema.json)
 
 v1 索引保留 `completedRoundIds`。v2 索引以 `completedRounds` 保存每个历史 Round 的
 `reviewRoundId`、`protocolVersion`、相对 `location` 和文件字节的 `blake3`，因此同一 Stream
 可以包含 v1 文件与 v2 bundle。索引的主版本不等于所有历史 Round 的版本；读取方必须按
-记录声明分派。v1 `imageRegion` 仅按 v1 规则读取，不得当作 v2/v3 Anchor 静默改写。含旧数据
-的项目必须通过 Viewer 的显式迁移检查；旧字节和历史证据保持不变，旧 Completed 不自动成为 v3 current。
+记录声明分派。v3 Stream 在首次保存点、箭头或椭圆时单向提升为 v4；一旦提升，后来删除扩展
+几何也不会降回 v3。v3 状态和历史仍按 v3 原样读取，v3 解码器拒绝 v4 文档，v4 解码器也不把
+v3 文档冒充 v4。v1 `imageRegion` 仅按 v1 规则读取，不得当作 v2/v3/v4 Anchor 静默改写。含旧数据
+的项目必须通过 Viewer 的显式迁移检查；旧字节和历史证据保持不变，旧 Completed 不自动成为持续评审 current。
 
 ## Agent 无关参考读取器
 
@@ -151,5 +158,5 @@ CLI 成功 JSON 写 stdout；typed error JSON 写 stderr 并 exit 1。库函数�
 ### Legacy v1/v2 读取兼容
 
 [`read-latest.mjs`](../../scripts/review-protocol/read-latest.mjs) 仅服务尚未迁移的 v1/v2
-Completed 数据。它不会读取 v3 current；v3 入口遇到旧协议也要求显式迁移。旧记录按其原协议
+Completed 数据。它不会读取 v3/v4 current；持续评审入口遇到旧协议也要求显式迁移。旧记录按其原协议
 验证并保持字节不变，不能被时间戳选择、降级重写或自动复活为当前要求。

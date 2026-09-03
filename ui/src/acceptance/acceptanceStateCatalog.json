@@ -135,5 +135,9 @@
   { "id": "RVW-30", "wave": 4, "referenceState": "continuous-review-archive-unknown-basis", "sceneGroup": "review", "components": ["App", "ReviewArchiveDialog"] },
   { "id": "RVW-31", "wave": 4, "referenceState": "continuous-review-legacy-migration", "sceneGroup": "review", "components": ["App", "ReviewMigrationDialog"] },
   { "id": "RVW-32", "wave": 4, "referenceState": "continuous-review-empty-current-with-history", "sceneGroup": "review", "components": ["App", "ReviewHistoryPanel"] },
-  { "id": "RVW-33", "wave": 4, "referenceState": "review-composite-magnifier", "sceneGroup": "review", "components": ["App", "ImageReviewWorkspace", "ImageMagnifier", "AnnotationCanvas"] }
+  { "id": "RVW-33", "wave": 4, "referenceState": "review-composite-magnifier", "sceneGroup": "review", "components": ["App", "ImageReviewWorkspace", "ImageMagnifier", "AnnotationCanvas"] },
+  { "id": "RVW-34", "wave": 4, "referenceState": "review-markup-menu-wide", "sceneGroup": "review", "components": ["App", "ImageReviewWorkspace", "AnnotationToolMenu", "AnnotationCanvas"] },
+  { "id": "RVW-35", "wave": 4, "referenceState": "review-markup-menu-compact", "sceneGroup": "review", "components": ["App", "ImageReviewWorkspace", "AnnotationToolMenu", "AnnotationCanvas"] },
+  { "id": "RVW-36", "wave": 4, "referenceState": "review-arrow-selected", "sceneGroup": "review", "components": ["App", "ImageReviewWorkspace", "AnnotationCanvas", "ReviewFeedbackRail"] },
+  { "id": "RVW-37", "wave": 4, "referenceState": "review-ellipse-edge-edit", "sceneGroup": "review", "components": ["App", "ImageReviewWorkspace", "AnnotationCanvas", "ReviewFeedbackRail"] }
 ]

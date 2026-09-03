@@ -1248,7 +1248,7 @@ git commit -m "test: protect extended markup save performance"
 - Consumes: completed UI/protocol behavior.
 - Produces: canonical product documentation and deterministic visual/native acceptance coverage.
 
-- [ ] **Step 1: Add failing acceptance assertions**
+- [x] **Step 1: Add failing acceptance assertions**
 
 Extend the review-workbench scene with point, arrow, ellipse, rectangle, stroke, an open marker menu, and one
 selected editable shape. Assert scene invariants:
@@ -1262,13 +1262,13 @@ expect(document.querySelector('[data-anchor-kind="image_arrow"]')).not.toBeNull(
 Add visual acceptance IDs for wide and compact widths, menu open, arrow selected, ellipse editor near an edge,
 and composite magnifier over overlapping annotations.
 
-- [ ] **Step 2: Run acceptance tests and verify new states are absent**
+- [x] **Step 2: Run acceptance tests and verify new states are absent**
 
 Run: `pnpm test:visual-acceptance && pnpm build:visual-acceptance`
 
 Expected: FAIL until scenes and baselines describe the new states.
 
-- [ ] **Step 3: Update product and protocol facts**
+- [x] **Step 3: Update product and protocol facts**
 
 Document:
 
@@ -1281,13 +1281,13 @@ Document:
 
 Do not describe automatic Agent notification, automatic success judgment, or unimplemented video annotation.
 
-- [ ] **Step 4: Run product/visual policy checks**
+- [x] **Step 4: Run product/visual policy checks**
 
 Run: `pnpm test:visual-acceptance && pnpm build:visual-acceptance && pnpm test:policy`
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit documentation and acceptance coverage**
+- [x] **Step 5: Commit documentation and acceptance coverage**
 
 ```bash
 git add ui/src/acceptance scripts/viewer-visual-acceptance.test.mjs \

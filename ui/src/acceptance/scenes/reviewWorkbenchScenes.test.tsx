@@ -193,6 +193,27 @@ describe('brush-redraw acceptance readiness', () => {
   })
 })
 
+describe('unified markup acceptance fixtures', () => {
+  it('seeds point, arrow, brush, rectangle, and ellipse anchors together', async () => {
+    const bridge = defined(workbenchBridgeOverrides('RVW-34'), 'unified markup bridge')
+    const snapshot = await defined(
+      bridge.reviewStatus,
+      'review status',
+    )({
+      sessionId: 'acceptance-session',
+      generation: 1,
+    })
+
+    expect(snapshot.feedback.map((feedback) => feedback.targets[0]?.anchor.kind)).toEqual([
+      'image_rect',
+      'image_stroke',
+      'image_point',
+      'image_arrow',
+      'image_ellipse',
+    ])
+  })
+})
+
 describe('composite magnifier acceptance readiness', () => {
   it('samples the first rectangle edge and ordinal inside the lens', () => {
     const scene = compositeMagnifierScene()

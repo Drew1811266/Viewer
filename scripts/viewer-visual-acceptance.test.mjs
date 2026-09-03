@@ -89,6 +89,13 @@ describe('changed-state selection', () => {
     ])
   })
 
+  it('selects every unified markup state when the tool menu changes', () => {
+    assert.deepEqual(
+      affectedAcceptanceIds(['ui/src/components/review/AnnotationToolMenu.tsx']),
+      ['RVW-34', 'RVW-35'],
+    )
+  })
+
   it('selects all states for global visual styles', () => {
     for (const file of [
       'ui/src/styles/tokens.css',

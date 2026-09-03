@@ -58,6 +58,10 @@ const REVIEW_ACCEPTANCE_STATES = [
   ['RVW-31', 'continuous-review-legacy-migration'],
   ['RVW-32', 'continuous-review-empty-current-with-history'],
   ['RVW-33', 'review-composite-magnifier'],
+  ['RVW-34', 'review-markup-menu-wide'],
+  ['RVW-35', 'review-markup-menu-compact'],
+  ['RVW-36', 'review-arrow-selected'],
+  ['RVW-37', 'review-ellipse-edge-edit'],
 ] as const
 
 function ledgerStates(): LedgerState[] {
@@ -119,7 +123,7 @@ describe('Viewer visual acceptance state catalog', () => {
 
     expect(videos.map(({ id }) => id)).toEqual(VIDEO_ACCEPTANCE_SCENE_IDS)
     expect(videos.map(({ referenceState }) => referenceState)).toEqual(VIDEO_ACCEPTANCE_SCENE_IDS)
-    expect(new Set(ACCEPTANCE_STATE_DEFINITIONS.map(({ id }) => id)).size).toBe(137)
+    expect(new Set(ACCEPTANCE_STATE_DEFINITIONS.map(({ id }) => id)).size).toBe(141)
   })
 
   it('adds the exact exception-driven review acceptance states as a separate catalog group', () => {
@@ -129,8 +133,8 @@ describe('Viewer visual acceptance state catalog', () => {
       REVIEW_ACCEPTANCE_STATES,
     )
     expect(reviews.every(({ wave }) => wave === 4)).toBe(true)
-    expect(ACCEPTANCE_STATE_DEFINITIONS).toHaveLength(137)
-    expect(new Set(ACCEPTANCE_STATE_DEFINITIONS.map(({ id }) => id)).size).toBe(137)
+    expect(ACCEPTANCE_STATE_DEFINITIONS).toHaveLength(141)
+    expect(new Set(ACCEPTANCE_STATE_DEFINITIONS.map(({ id }) => id)).size).toBe(141)
   })
 
   it('declares browser zoom once for both review zoom states and preserves existing accessibility zoom', () => {

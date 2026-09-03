@@ -98,10 +98,12 @@
 
 **状态：** 当前可用；图片区域工作台和本地 current/history 读取已通过原生多轮验收。
 
-**用户行为：** 用户在大图中用矩形、画笔或整图意见记录自然语言返工要求。作者态保存成功后
+**用户行为：** 用户在大图中通过统一“标记”菜单选择点、箭头、画笔、矩形或椭圆，也可用整图意见记录
+自然语言返工要求。点用于精确位置，箭头从说明起点拖向问题点，画笔用于不规则轮廓，矩形和椭圆用于区域；
+按住 Shift 绘制椭圆会按源图像素比例约束成视觉圆。作者态保存成功后
 界面立即保留意见和标记；后台生成并验证 Agent 数据，界面显示“已保存，可供外部读取”后，
-当前 Review Stream 的完整 current 才可由外部读取器消费，不需要“完成本轮”。文字、区域和
-意见可继续编辑、重绘或删除。收到返工素材后，用户手动预览并存档精确意见版本；部分存档
+当前 Review Stream 的完整 current 才可由外部读取器消费，不需要“完成本轮”。保存后当前标记工具保持不变，
+便于连续添加同类意见；当前文字和几何仍可编辑、重绘或删除，已存档历史保持不可变。收到返工素材后，用户手动预览并存档精确意见版本；部分存档
 保留未选目标及后来新增／修改的意见。历史可以查看证据、继续提出或显式恢复，原记录不改写。
 
 **边界与失败：** 网格浏览和大图浏览都不生成“已通过”事实；空 current 不代表全部通过。
@@ -122,7 +124,7 @@
 
 **用户行为：** JPEG/PNG 可进入适合窗口的单图预览，支持缩放、平移、顺逆时针旋转、前后
 导航和恢复适合窗口。放大镜可用 Q 开关，并按设置使用圆形或圆角矩形、2×/3×/4×和三档面积。
-在图片评审工作台中，图片区域矩形、画笔轨迹、意见编号和正在绘制的草稿会与图片使用同一
+在图片评审工作台中，点、箭头、画笔轨迹、矩形、椭圆、意见编号和正在绘制的草稿会与图片使用同一
 取样点、缩放和旋转投影，一起出现在放大镜内。
 
 **边界与失败：** 原图请求失败时显示局部错误，不使用模糊缩略图冒充原图。图片切换会撤销
@@ -133,7 +135,7 @@
 **维护证据：** `ui/src/components/ImagePreview.tsx`、`ui/src/components/imagePreview/ImageMagnifier.tsx`、
 `ui/src/components/imagePreview/magnifierGeometry.ts`、`ui/src/components/review/annotationScene.ts`、
 `src-tauri/src/commands/browse.rs`；测试见 `ui/src/components/ImagePreview.test.tsx`、
-`ui/src/components/imagePreview/ImageMagnifier.test.tsx` 和视觉验收状态 `RVW-33`。
+`ui/src/components/imagePreview/ImageMagnifier.test.tsx` 和视觉验收状态 `RVW-33`～`RVW-37`。
 
 ## 8. 文本预览
 

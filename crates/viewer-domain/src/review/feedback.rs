@@ -72,6 +72,31 @@ impl NormalizedPoint {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct NormalizedArrow {
+    tail: NormalizedPoint,
+    head: NormalizedPoint,
+}
+
+impl NormalizedArrow {
+    pub fn new(
+        tail: NormalizedPoint,
+        head: NormalizedPoint,
+    ) -> Result<Self, ReviewValueError> {
+        (tail != head)
+            .then_some(Self { tail, head })
+            .ok_or(ReviewValueError::InvalidNumber)
+    }
+
+    pub fn tail(&self) -> NormalizedPoint {
+        self.tail
+    }
+
+    pub fn head(&self) -> NormalizedPoint {
+        self.head
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct ImageStroke {
     points: Vec<NormalizedPoint>,

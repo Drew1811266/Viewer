@@ -1,8 +1,9 @@
 use viewer_domain::review::{
     AssetEvidence, AssetVersion, Feedback, FeedbackAnchor, FeedbackTarget, ImageStroke,
     MAX_ASSETS_PER_ROUND, MAX_FEEDBACK_ITEMS_PER_ROUND, MAX_IMAGE_STROKE_POINTS,
-    MAX_IMAGE_STROKE_POINTS_PER_ROUND, NormalizedPoint, NormalizedRect, ReviewDraft, ReviewMedia,
-    ReviewOutcomeKind, ReviewRoundError, ReviewValueError, ReviewabilityFailure,
+    MAX_IMAGE_STROKE_POINTS_PER_ROUND, NormalizedArrow, NormalizedPoint, NormalizedRect,
+    ReviewDraft, ReviewMedia, ReviewOutcomeKind, ReviewRoundError, ReviewValueError,
+    ReviewabilityFailure,
 };
 use viewer_domain::{
     AssetVersionId, EntityId, FeedbackId, ProjectId, RelativePath, ReviewRoundId, ReviewStreamId,
@@ -88,6 +89,20 @@ fn diagonal_stroke(point_count: usize) -> ImageStroke {
             .collect(),
     )
     .unwrap()
+}
+
+#[test]
+fn normalized_arrows_preserve_direction_and_reject_zero_length() {
+    let tail = NormalizedPoint::new(0.1, 0.2).unwrap();
+    let head = NormalizedPoint::new(0.8, 0.7).unwrap();
+    let arrow = NormalizedArrow::new(tail, head).unwrap();
+
+    assert_eq!(arrow.tail(), tail);
+    assert_eq!(arrow.head(), head);
+    assert_eq!(
+        NormalizedArrow::new(head, head),
+        Err(ReviewValueError::InvalidNumber)
+    );
 }
 
 #[test]

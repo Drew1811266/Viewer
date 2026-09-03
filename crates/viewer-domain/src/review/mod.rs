@@ -7,7 +7,8 @@ pub use asset::{
     AssetEvidence, AssetVersion, ProductionId, ProductionScope, ReviewAssetKind, ReviewMedia,
 };
 pub use feedback::{
-    Feedback, FeedbackAnchor, FeedbackTarget, ImageStroke, NormalizedPoint, NormalizedRect,
+    Feedback, FeedbackAnchor, FeedbackTarget, ImageStroke, NormalizedArrow, NormalizedPoint,
+    NormalizedRect,
 };
 pub use round::{
     ReviewDraft, ReviewOutcome, ReviewOutcomeKind, ReviewRoundError, ReviewSnapshot,

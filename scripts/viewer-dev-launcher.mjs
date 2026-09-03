@@ -5,6 +5,8 @@ import path from 'node:path'
 import { promisify } from 'node:util'
 import { fileURLToPath } from 'node:url'
 
+import { prepareDevelopmentVideoRuntime } from './development-video-runtime.mjs'
+
 const execFileAsync = promisify(execFile)
 
 /**
@@ -15,6 +17,9 @@ const execFileAsync = promisify(execFile)
  *   logPath: string,
  *   executablePath: string,
  *   legacyWrapperPath: string,
+ *   videoRuntimeSourcePath: string,
+ *   videoRuntimeDestinationPath: string,
+ *   videoRuntimeVerifierPath: string,
  * }} LauncherPaths
  *
  * @typedef {{
@@ -47,6 +52,25 @@ export function buildLauncherPaths(moduleUrl) {
     logPath: path.join(stateDir, 'tauri-dev.log'),
     executablePath: path.join(repoRoot, 'target', 'debug', 'viewer-desktop'),
     legacyWrapperPath: path.join(stateDir, 'current-dev-wrapper'),
+    videoRuntimeSourcePath: path.join(
+      repoRoot,
+      'target',
+      'viewer-video-runtime',
+      'universal-apple-darwin',
+      'ViewerVideoRuntime',
+    ),
+    videoRuntimeDestinationPath: path.join(
+      repoRoot,
+      'target',
+      'debug',
+      'ViewerVideoRuntime',
+    ),
+    videoRuntimeVerifierPath: path.join(
+      repoRoot,
+      'scripts',
+      'video',
+      'verify-runtime.sh',
+    ),
   }
 }
 
@@ -315,6 +339,13 @@ export function createSystemRuntime(paths, { env = process.env } = {}) {
           cause: error,
         })
       }
+
+      await prepareDevelopmentVideoRuntime({
+        sourcePath: paths.videoRuntimeSourcePath,
+        destinationPath: paths.videoRuntimeDestinationPath,
+        verifierPath: paths.videoRuntimeVerifierPath,
+        env,
+      })
 
       await mkdir(paths.stateDir, { recursive: true })
       const logFile = await open(paths.logPath, 'w')

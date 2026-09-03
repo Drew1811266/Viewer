@@ -739,10 +739,18 @@ test('CI defines independent deterministic quality and security gates', async ()
     packageJson.scripts['test:review-loop'],
     'node --test scripts/review-protocol/manual-round-e2e.test.mjs scripts/review-protocol/continuous-review-e2e.test.mjs',
   )
+  assert.equal(
+    packageJson.scripts['test:dev-launcher'],
+    'node --test scripts/development-video-runtime.test.mjs scripts/viewer-dev-launcher.test.mjs',
+  )
   assert.match(packageJson.scripts.quality, /^pnpm test:policy &&/)
   assert.match(
     packageJson.scripts.quality,
     /pnpm test:policy && pnpm test:review-protocol && pnpm test:review-loop &&/,
+  )
+  assert.match(
+    packageJson.scripts.quality,
+    /pnpm test:video:packaging && pnpm test:dev-launcher &&/,
   )
   assert.match(packageJson.scripts.quality, /scripts\/verify-clean\.test\.mjs/)
   assert.match(packageJson.scripts.quality, /pnpm --dir ui check/)

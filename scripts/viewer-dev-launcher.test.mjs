@@ -6,6 +6,7 @@ import {
   mkdtemp,
   readFile,
   rm,
+  stat,
   writeFile,
 } from 'node:fs/promises'
 import os from 'node:os'
@@ -28,6 +29,46 @@ import {
 
 const repoRoot = '/Users/example/Project/Viewer'
 
+async function createVideoRuntimePrerequisite(temporaryRoot) {
+  const sourcePath = path.join(
+    temporaryRoot,
+    'target',
+    'viewer-video-runtime',
+    'universal-apple-darwin',
+    'ViewerVideoRuntime',
+  )
+  const verifierPath = path.join(temporaryRoot, 'verify-runtime.sh')
+
+  await mkdir(path.join(sourcePath, 'bin'), { recursive: true })
+  await writeFile(path.join(sourcePath, 'bin', 'ffmpeg'), 'reviewed runtime\n', {
+    mode: 0o755,
+  })
+  await writeFile(path.join(sourcePath, 'runtime.inventory.sha256'), 'fixture inventory\n')
+  await writeFile(path.join(sourcePath, 'runtime.lock.json'), '{"fixture":true}\n')
+  await writeFile(
+    verifierPath,
+    [
+      '#!/bin/sh',
+      'set -eu',
+      'test -x "$VIEWER_VIDEO_STAGE_DIR/bin/ffmpeg"',
+      'test -f "$VIEWER_VIDEO_STAGE_DIR/runtime.inventory.sha256"',
+      '',
+    ].join('\n'),
+    { mode: 0o755 },
+  )
+
+  return {
+    videoRuntimeSourcePath: sourcePath,
+    videoRuntimeDestinationPath: path.join(
+      temporaryRoot,
+      'target',
+      'debug',
+      'ViewerVideoRuntime',
+    ),
+    videoRuntimeVerifierPath: verifierPath,
+  }
+}
+
 describe('buildLauncherPaths', () => {
   it('derives repository and runtime paths from the module URL', () => {
     const paths = buildLauncherPaths(
@@ -43,12 +84,111 @@ describe('buildLauncherPaths', () => {
       paths.legacyWrapperPath,
       `${repoRoot}/target/dev-launcher/current-dev-wrapper`,
     )
+    assert.equal(
+      paths.videoRuntimeSourcePath,
+      `${repoRoot}/target/viewer-video-runtime/universal-apple-darwin/ViewerVideoRuntime`,
+    )
+    assert.equal(
+      paths.videoRuntimeDestinationPath,
+      `${repoRoot}/target/debug/ViewerVideoRuntime`,
+    )
+    assert.equal(
+      paths.videoRuntimeVerifierPath,
+      `${repoRoot}/scripts/video/verify-runtime.sh`,
+    )
   })
 })
 
 describe('createSystemRuntime', () => {
+  it('materializes a verified video runtime before spawning from a clean target', async () => {
+    const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), 'viewer-launcher-runtime-'))
+    const fakeBin = path.join(temporaryRoot, 'fake-bin')
+    const stateDir = path.join(temporaryRoot, 'target', 'dev-launcher')
+    const sourcePath = path.join(
+      temporaryRoot,
+      'target',
+      'viewer-video-runtime',
+      'universal-apple-darwin',
+      'ViewerVideoRuntime',
+    )
+    const destinationPath = path.join(temporaryRoot, 'target', 'debug', 'ViewerVideoRuntime')
+    const verifierPath = path.join(temporaryRoot, 'verify-runtime.sh')
+    const verifierLogPath = path.join(temporaryRoot, 'verifier.log')
+    const paths = {
+      repoRoot: temporaryRoot,
+      stateDir,
+      statePath: path.join(stateDir, 'session.json'),
+      logPath: path.join(stateDir, 'tauri-dev.log'),
+      executablePath: path.join(temporaryRoot, 'target', 'debug', 'viewer-desktop'),
+      legacyWrapperPath: path.join(stateDir, 'current-dev-wrapper'),
+      videoRuntimeSourcePath: sourcePath,
+      videoRuntimeDestinationPath: destinationPath,
+      videoRuntimeVerifierPath: verifierPath,
+    }
+    let child
+
+    try {
+      await mkdir(path.join(temporaryRoot, 'src-tauri'), { recursive: true })
+      await mkdir(path.join(sourcePath, 'bin'), { recursive: true })
+      await mkdir(fakeBin, { recursive: true })
+      await writeFile(path.join(temporaryRoot, 'package.json'), '{}\n')
+      await writeFile(path.join(sourcePath, 'bin', 'ffmpeg'), 'reviewed runtime\n', {
+        mode: 0o755,
+      })
+      await writeFile(path.join(sourcePath, 'runtime.inventory.sha256'), 'fixture inventory\n')
+      await writeFile(path.join(sourcePath, 'runtime.lock.json'), '{"fixture":true}\n')
+      await writeFile(
+        verifierPath,
+        [
+          '#!/bin/sh',
+          'set -eu',
+          'test -x "$VIEWER_VIDEO_STAGE_DIR/bin/ffmpeg"',
+          'test -f "$VIEWER_VIDEO_STAGE_DIR/runtime.inventory.sha256"',
+          'printf \'%s\\n\' "$VIEWER_VIDEO_STAGE_DIR" >> "$VIEWER_TEST_VERIFIER_LOG"',
+          '',
+        ].join('\n'),
+        { mode: 0o755 },
+      )
+      await writeFile(
+        path.join(fakeBin, 'pnpm'),
+        '#!/bin/sh\nexec /bin/sleep 30\n',
+        { mode: 0o755 },
+      )
+
+      const runtime = createSystemRuntime(paths, {
+        env: {
+          ...process.env,
+          PATH: `${fakeBin}:${process.env.PATH}`,
+          VIEWER_TEST_VERIFIER_LOG: verifierLogPath,
+        },
+      })
+      child = await runtime.spawn()
+
+      assert.equal(
+        await readFile(path.join(destinationPath, 'bin', 'ffmpeg'), 'utf8'),
+        'reviewed runtime\n',
+      )
+      assert.notEqual((await stat(path.join(destinationPath, 'bin', 'ffmpeg'))).mode & 0o111, 0)
+
+      const verifiedPaths = (await readFile(verifierLogPath, 'utf8')).trim().split('\n')
+      assert.equal(verifiedPaths.length, 2)
+      assert.equal(verifiedPaths[0], sourcePath)
+      assert.notEqual(verifiedPaths[1], destinationPath)
+    } finally {
+      if (child) {
+        await createSystemRuntime(paths).stop({
+          kind: 'group',
+          id: child.pgid,
+          viewerPid: child.pid,
+        })
+      }
+      await rm(temporaryRoot, { recursive: true, force: true })
+    }
+  })
+
   it('passes an acceptance viewport config through the canonical dev launcher', async () => {
     const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), 'viewer-launcher-config-'))
+    const videoRuntimePaths = await createVideoRuntimePrerequisite(temporaryRoot)
     const fakeBin = path.join(temporaryRoot, 'fake-bin')
     const argsPath = path.join(temporaryRoot, 'spawn-args.txt')
     const configPath = path.join(temporaryRoot, 'target', 'acceptance-1440.json')
@@ -60,6 +200,7 @@ describe('createSystemRuntime', () => {
       logPath: path.join(stateDir, 'tauri-dev.log'),
       executablePath: path.join(temporaryRoot, 'target', 'debug', 'viewer-desktop'),
       legacyWrapperPath: path.join(stateDir, 'current-dev-wrapper'),
+      ...videoRuntimePaths,
     }
     let child
 
@@ -111,6 +252,7 @@ describe('createSystemRuntime', () => {
 
   it('launches, records, observes, logs, and stops a detached process group', async () => {
     const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), 'viewer-launcher-'))
+    const videoRuntimePaths = await createVideoRuntimePrerequisite(temporaryRoot)
     const fakeBin = path.join(temporaryRoot, 'fake-bin')
     const stateDir = path.join(temporaryRoot, 'target', 'dev-launcher')
     const executablePath = path.join(temporaryRoot, 'target', 'debug', 'viewer-desktop')
@@ -123,6 +265,7 @@ describe('createSystemRuntime', () => {
       logPath: path.join(stateDir, 'tauri-dev.log'),
       executablePath,
       legacyWrapperPath,
+      ...videoRuntimePaths,
     }
     let child
 

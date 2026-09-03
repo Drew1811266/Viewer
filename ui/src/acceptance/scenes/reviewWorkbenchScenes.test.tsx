@@ -212,6 +212,49 @@ describe('unified markup acceptance fixtures', () => {
       'image_ellipse',
     ])
   })
+
+  it('accepts arrow handles rendered beside the selected marker in the annotation layer', () => {
+    const ready = defined(REVIEW_WORKBENCH_SCENES['RVW-36'], 'selected arrow readiness')
+    const { container } = render(
+      <section className="image-preview">
+        <header className="viewer-toolbar">
+          <button type="button">浏览</button>
+        </header>
+        <div className="image-preview-stage">
+          <img className="image-preview-image" data-visible="true" alt="fixture" />
+          <div className="annotation-canvas-layer">
+            {['image_rect', 'image_stroke', 'image_point', 'image_arrow', 'image_ellipse'].map(
+              (kind) => (
+                <button
+                  key={kind}
+                  type="button"
+                  className="annotation-marker"
+                  data-anchor-kind={kind}
+                  data-selected={kind === 'image_arrow' ? 'true' : undefined}
+                >
+                  {kind}
+                </button>
+              ),
+            )}
+            <button type="button" className="annotation-geometry-handle" data-handle="tail" />
+            <button type="button" className="annotation-geometry-handle" data-handle="head" />
+          </div>
+        </div>
+        <aside className="review-feedback-rail" />
+      </section>,
+    )
+    const image = defined(container.querySelector<HTMLImageElement>('img'), 'preview image')
+    Object.defineProperties(image, { complete: { value: true }, naturalWidth: { value: 560 } })
+    const toolbar = defined(container.querySelector<HTMLElement>('header'), 'toolbar')
+    toolbar.getBoundingClientRect = () => new DOMRect(0, 0, 1024, 50)
+    defined(toolbar.querySelector<HTMLElement>('button'), 'toolbar button').getBoundingClientRect =
+      () => new DOMRect(10, 10, 60, 30)
+
+    expect(ready()).toBe(true)
+    expect(document.activeElement).toBe(
+      defined(container.querySelector<HTMLButtonElement>('[data-handle="head"]'), 'head handle'),
+    )
+  })
 })
 
 describe('composite magnifier acceptance readiness', () => {

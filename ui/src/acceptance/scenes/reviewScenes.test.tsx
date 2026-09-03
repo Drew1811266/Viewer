@@ -43,6 +43,29 @@ describe('review acceptance scenes', () => {
     second.getBoundingClientRect = () => new DOMRect(950, 10, 100, 30)
     expect(workbenchToolbarFits()).toBe(false)
   })
+
+  it('measures toolbar controls without treating an open markup popover as toolbar overflow', () => {
+    const { container } = render(
+      <section className="image-preview">
+        <header className="viewer-toolbar">
+          <button type="button">标记</button>
+          <div className="annotation-tool-menu__popover">
+            <button type="button">点</button>
+            <button type="button">箭头</button>
+          </div>
+        </header>
+      </section>,
+    )
+    const header = defined(container.querySelector<HTMLElement>('header'), 'toolbar')
+    header.getBoundingClientRect = () => new DOMRect(0, 0, 1000, 50)
+    const [trigger, point, arrow] = container.querySelectorAll<HTMLButtonElement>('button')
+    defined(trigger, 'markup trigger').getBoundingClientRect = () => new DOMRect(400, 10, 100, 30)
+    defined(point, 'point menu item').getBoundingClientRect = () => new DOMRect(400, 60, 100, 30)
+    defined(arrow, 'arrow menu item').getBoundingClientRect = () => new DOMRect(400, 90, 100, 30)
+
+    expect(workbenchToolbarFits()).toBe(true)
+  })
+
   it('registers the complete semantic workbench recipes that never settle on empty markup', () => {
     expect(Object.keys(REVIEW_WORKBENCH_SCENES)).toEqual([
       'RVW-16',

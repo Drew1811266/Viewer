@@ -223,9 +223,9 @@ export function workbenchToolbarFits(): boolean {
   const toolbar = document.querySelector<HTMLElement>('.image-preview > .viewer-toolbar')
   if (toolbar === null) return false
   const bounds = toolbar.getBoundingClientRect()
-  const controls = [...toolbar.querySelectorAll('button')].map((button) =>
-    button.getBoundingClientRect(),
-  )
+  const controls = [...toolbar.querySelectorAll('button')]
+    .filter((button) => button.closest('.annotation-tool-menu__popover') === null)
+    .map((button) => button.getBoundingClientRect())
   return (
     controls.length > 0 &&
     controls.every(
@@ -343,7 +343,10 @@ function selectedExtendedShapeReady(kind: 'image_arrow' | 'image_ellipse', handl
     }
     return false
   }
-  const handles = [...marker.querySelectorAll<HTMLButtonElement>('.annotation-geometry-handle')]
+  const layer = marker.closest('.annotation-canvas-layer')
+  const handles = [
+    ...(layer?.querySelectorAll<HTMLButtonElement>('.annotation-geometry-handle') ?? []),
+  ]
   const edgeHandle = handles.at(-1)
   if (edgeHandle !== undefined && document.activeElement !== edgeHandle) edgeHandle.focus()
   return handles.length === handleCount && document.activeElement === edgeHandle

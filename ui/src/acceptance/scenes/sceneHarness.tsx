@@ -42,6 +42,7 @@ export default function AcceptanceProductScene({
   const completed = useRef(false)
   useEffect(() => {
     let observer: MutationObserver | undefined
+    let probeFrame: number | undefined
     let firstFrame: number | undefined
     let secondFrame: number | undefined
     const cancelStablePaint = () => {
@@ -49,6 +50,17 @@ export default function AcceptanceProductScene({
       if (secondFrame !== undefined) cancelAnimationFrame(secondFrame)
       firstFrame = undefined
       secondFrame = undefined
+    }
+    const cancelProbe = () => {
+      if (probeFrame !== undefined) cancelAnimationFrame(probeFrame)
+      probeFrame = undefined
+    }
+    const scheduleProbe = () => {
+      if (probeFrame !== undefined) return
+      probeFrame = requestAnimationFrame(() => {
+        probeFrame = undefined
+        attempt()
+      })
     }
     const invalidate = () => {
       cancelStablePaint()
@@ -71,8 +83,10 @@ export default function AcceptanceProductScene({
       }
       if (!visuallyReady()) {
         invalidate()
+        scheduleProbe()
         return
       }
+      cancelProbe()
       if (completed.current || firstFrame !== undefined || secondFrame !== undefined) return
       firstFrame = requestAnimationFrame(() => {
         firstFrame = undefined
@@ -96,6 +110,7 @@ export default function AcceptanceProductScene({
     attempt()
     return () => {
       observer?.disconnect()
+      cancelProbe()
       cancelStablePaint()
     }
   }, [ready])

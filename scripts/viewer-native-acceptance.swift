@@ -360,7 +360,7 @@ private func validateRequestPayload(_ request: RequestEnvelope) throws {
                       "leftDown", "leftDrag", "leftUp",
                       "rightDown", "rightDrag", "rightUp",
                   ].contains(kind),
-                  !["move", "leftUp", "rightUp"].contains(kind) || modifiers.isEmpty,
+                  kind != "move" || modifiers.isEmpty,
                   Set(modifiers).count == modifiers.count,
                   Set(modifiers).isSubset(of: allowedModifiers)
             else {

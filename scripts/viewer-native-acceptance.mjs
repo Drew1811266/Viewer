@@ -1847,7 +1847,7 @@ function validatePayload(command, payload, window) {
         const modifiers = withModifiers ? payload.modifiers : []
         if (
           !Array.isArray(modifiers) ||
-          (['move', 'leftUp', 'rightUp'].includes(payload.kind) && modifiers.length > 0) ||
+          (payload.kind === 'move' && modifiers.length > 0) ||
           new Set(modifiers).size !== modifiers.length ||
           modifiers.some((modifier) => !ALLOWED_MODIFIERS.has(modifier))
         ) {

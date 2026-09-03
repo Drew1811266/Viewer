@@ -65,6 +65,26 @@ describe('acceptance product scene readiness', () => {
     })
     act(() => runNextFrame(frames, 32))
     act(() => runNextFrame(frames, 48))
+    act(() => runNextFrame(frames, 64))
+    expect(root).toHaveAttribute('data-acceptance-scene-ready', 'true')
+  })
+
+  it('rechecks asynchronous readiness without requiring a DOM mutation', async () => {
+    let resourceReady = false
+    const { container } = render(
+      <AcceptanceProductScene ready={() => resourceReady}>{null}</AcceptanceProductScene>,
+    )
+    const root = container.querySelector<HTMLElement>('.acceptance-scene-root')
+
+    await act(async () => {
+      await Promise.resolve()
+    })
+    expect(frames).toHaveLength(1)
+
+    resourceReady = true
+    act(() => runNextFrame(frames, 0))
+    act(() => runNextFrame(frames, 16))
+    act(() => runNextFrame(frames, 32))
     expect(root).toHaveAttribute('data-acceptance-scene-ready', 'true')
   })
 

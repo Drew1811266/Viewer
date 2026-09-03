@@ -2768,7 +2768,11 @@ describe('protocol schema', () => {
         point: { x: 300, y: 400 },
         modifiers: ['option'],
       },
-      { kind: 'leftUp', point: { x: 300, y: 400 } },
+      {
+        kind: 'leftUp',
+        point: { x: 300, y: 400 },
+        modifiers: ['shift'],
+      },
       { kind: 'rightDown', point: { x: 200, y: 300 } },
       { kind: 'rightDrag', point: { x: 300, y: 400 } },
       { kind: 'rightUp', point: { x: 300, y: 400 } },
@@ -2795,7 +2799,6 @@ describe('protocol schema', () => {
     assert.deepEqual(validateCommand(dragRequest, { window }), dragRequest)
 
     for (const payload of [
-      { kind: 'leftUp', point: { x: 300, y: 400 }, modifiers: ['option'] },
       { kind: 'leftDrag', point: { x: 300, y: 400 }, modifiers: ['option', 'option'] },
     ]) {
       assert.throws(

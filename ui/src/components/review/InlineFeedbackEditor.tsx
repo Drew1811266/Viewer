@@ -22,9 +22,10 @@ export default function InlineFeedbackEditor({
   const input = useRef<HTMLTextAreaElement>(null)
   const previousFocus = useRef<HTMLElement | null>(null)
   const editor = controller.editor
-  const text = editor.status === 'idle' || editor.status === 'drawing' ? '' : editor.text
-  const saving = editor.status === 'saving'
-  const error = editor.status === 'save_error' ? editor.message : null
+  const phase = editor.phase
+  const text = phase.status === 'idle' || phase.status === 'drawing' ? '' : phase.text
+  const saving = phase.status === 'saving'
+  const error = phase.status === 'save_error' ? phase.message : null
 
   useEffect(() => {
     previousFocus.current =
@@ -36,8 +37,8 @@ export default function InlineFeedbackEditor({
   }, [])
 
   useEffect(() => {
-    if (editor.status === 'save_error') input.current?.focus()
-  }, [editor.status])
+    if (phase.status === 'save_error') input.current?.focus()
+  }, [phase.status])
 
   return (
     <section

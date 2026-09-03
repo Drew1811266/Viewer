@@ -8,6 +8,13 @@ import {
 } from './annotationModel'
 
 const RECT: ReviewAnchor = { kind: 'image_rect', x: 0.1, y: 0.2, width: 0.3, height: 0.4 }
+const ELLIPSE: ReviewAnchor = {
+  kind: 'image_ellipse',
+  x: 0.2,
+  y: 0.2,
+  width: 0.3,
+  height: 0.4,
+}
 
 describe('annotation editor model', () => {
   it('validates every extended image anchor without viewport-dependent thresholds', () => {
@@ -43,9 +50,13 @@ describe('annotation editor model', () => {
       tool: 'brush',
     })
     state = annotationEditorReducer(state, { type: 'temporary_pan_start' })
-    expect(state).toEqual(expect.objectContaining({ tool: 'brush', temporarilyPanning: true }))
+    expect(state).toEqual(
+      expect.objectContaining({ activeTool: 'brush', temporarilyPanning: true }),
+    )
     state = annotationEditorReducer(state, { type: 'temporary_pan_end' })
-    expect(state).toEqual(expect.objectContaining({ tool: 'brush', temporarilyPanning: false }))
+    expect(state).toEqual(
+      expect.objectContaining({ activeTool: 'brush', temporarilyPanning: false }),
+    )
   })
 
   it('cancels an empty pointer gesture and opens the editor for a valid mark', () => {
@@ -60,12 +71,12 @@ describe('annotation editor model', () => {
       },
     )
 
-    expect(annotationEditorReducer(drawing, { type: 'complete_drawing' }).status).toBe('idle')
+    expect(annotationEditorReducer(drawing, { type: 'complete_drawing' }).phase.status).toBe('idle')
     const validDrawing = annotationEditorReducer(drawing, {
       type: 'update_draft_anchor',
       anchor: RECT,
     })
-    expect(annotationEditorReducer(validDrawing, { type: 'complete_drawing' })).toEqual(
+    expect(annotationEditorReducer(validDrawing, { type: 'complete_drawing' }).phase).toEqual(
       expect.objectContaining({
         status: 'editing',
         draftAnchor: RECT,
@@ -80,13 +91,13 @@ describe('annotation editor model', () => {
       type: 'begin_annotation',
       anchor: RECT,
     })
-    expect(annotationEditorReducer(state, { type: 'request_save' }).status).toBe('editing')
+    expect(annotationEditorReducer(state, { type: 'request_save' }).phase.status).toBe('editing')
 
     state = annotationEditorReducer(state, { type: 'update_text', text: '  修正袖口  ' })
     state = annotationEditorReducer(state, { type: 'request_save' })
-    expect(state.status).toBe('saving')
+    expect(state.phase.status).toBe('saving')
     state = annotationEditorReducer(state, { type: 'save_failed', message: '写入失败' })
-    expect(state).toEqual(
+    expect(state.phase).toEqual(
       expect.objectContaining({
         status: 'save_error',
         draftAnchor: RECT,
@@ -97,38 +108,56 @@ describe('annotation editor model', () => {
     expect(hasUnsavedAnnotation(state)).toBe(true)
   })
 
-  it('selects the saved feedback and Escape cancels unsaved work or returns to Browse', () => {
+  it('preserves the active tool after save and uses two-stage Escape', () => {
     const saving = annotationEditorReducer(
       annotationEditorReducer(
-        annotationEditorReducer(initialAnnotationEditorState(), {
-          type: 'begin_annotation',
-          anchor: RECT,
-        }),
-        { type: 'update_text', text: '修正袖口' },
+        annotationEditorReducer(
+          annotationEditorReducer(initialAnnotationEditorState(), {
+            type: 'set_tool',
+            tool: 'ellipse',
+          }),
+          { type: 'begin_drawing', anchor: ELLIPSE },
+        ),
+        { type: 'complete_drawing' },
       ),
-      { type: 'request_save' },
+      { type: 'update_text', text: '调整脸部轮廓' },
     )
-    const saved = annotationEditorReducer(saving, {
+    const requested = annotationEditorReducer(saving, { type: 'request_save' })
+    const saved = annotationEditorReducer(requested, {
       type: 'save_succeeded',
       itemId: 'feedback-1',
     })
-    expect(saved).toEqual(
-      expect.objectContaining({
-        status: 'idle',
-        tool: 'browse',
-        selectedItemId: 'feedback-1',
-      }),
-    )
+    expect(saved.activeTool).toBe('ellipse')
+    expect(saved.phase.status).toBe('idle')
+    expect(saved.selectedItemId).toBe('feedback-1')
 
     const escapedDraft = annotationEditorReducer(
-      annotationEditorReducer(saved, { type: 'begin_annotation', anchor: RECT }),
+      annotationEditorReducer(saved, {
+        type: 'begin_annotation',
+        anchor: RECT,
+      }),
       { type: 'escape' },
     )
     expect(escapedDraft).toEqual(
-      expect.objectContaining({ status: 'idle', tool: 'browse', selectedItemId: 'feedback-1' }),
+      expect.objectContaining({
+        activeTool: 'ellipse',
+        selectedItemId: 'feedback-1',
+        phase: { status: 'idle' },
+      }),
     )
-    expect(annotationEditorReducer({ ...saved, tool: 'rectangle' }, { type: 'escape' })).toEqual(
-      expect.objectContaining({ status: 'idle', tool: 'browse' }),
+    expect(annotationEditorReducer(escapedDraft, { type: 'escape' })).toEqual(
+      expect.objectContaining({ activeTool: 'browse', phase: { status: 'idle' } }),
     )
+  })
+
+  it('refuses to switch tools while a draft contains geometry or text', () => {
+    const dirty = annotationEditorReducer(
+      annotationEditorReducer(initialAnnotationEditorState(), {
+        type: 'set_tool',
+        tool: 'rectangle',
+      }),
+      { type: 'begin_annotation', anchor: RECT },
+    )
+    expect(annotationEditorReducer(dirty, { type: 'set_tool', tool: 'ellipse' })).toBe(dirty)
   })
 })

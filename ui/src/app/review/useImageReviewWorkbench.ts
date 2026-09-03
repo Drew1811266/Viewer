@@ -147,7 +147,7 @@ export function useImageReviewWorkbench({
   }, [entityId, preparation, viewKey])
 
   const saveDraft = useCallback(async () => {
-    const draft = editorRef.current
+    const draft = editorRef.current.phase
     if (
       (draft.status !== 'editing' && draft.status !== 'save_error') ||
       draft.text.trim().length === 0 ||
@@ -223,7 +223,7 @@ export function useImageReviewWorkbench({
       if (hasUnsavedAnnotation(editorRef.current) || workbenchView.readOnlyReason !== null)
         return false
       dispatch({ type: 'begin_drawing', anchor: cloneReviewAnchor(anchor), itemId })
-      if (editorRef.current.status === 'drawing') {
+      if (editorRef.current.phase.status === 'drawing') {
         captureEditorOwnership(
           adapterRef.current,
           entityId,
@@ -240,14 +240,14 @@ export function useImageReviewWorkbench({
               )
         statusMessageRef.current = null
       }
-      return editorRef.current.status === 'drawing'
+      return editorRef.current.phase.status === 'drawing'
     },
     [dispatch, entityId, workbenchView.feedback, workbenchView.readOnlyReason],
   )
 
   const replaceFeedbackAnchor = useCallback(
     async (itemId: string, anchor: ReviewAnchor) => {
-      const state = editorRef.current
+      const state = editorRef.current.phase
       if (state.status !== 'idle' && !(state.status === 'drawing' && state.sourceItemId === itemId))
         return
       const feedback = workbenchView.feedback.find((item) => item.itemId === itemId)
@@ -302,7 +302,7 @@ export function useImageReviewWorkbench({
 
   return {
     protocol: adapter.protocol,
-    tool: editor.tool,
+    tool: editor.activeTool,
     editor,
     dirty: hasUnsavedAnnotation(editor),
     feedback: workbenchView.feedback,
@@ -325,7 +325,7 @@ export function useImageReviewWorkbench({
     beginAnnotation(anchor) {
       if (hasUnsavedAnnotation(editorRef.current) || workbenchView.readOnlyReason !== null) return
       dispatch({ type: 'begin_annotation', anchor })
-      if (editorRef.current.status === 'editing') {
+      if (editorRef.current.phase.status === 'editing') {
         captureEditorOwnership(
           adapterRef.current,
           entityId,
@@ -340,7 +340,7 @@ export function useImageReviewWorkbench({
     },
     beginDrawing,
     async finishDrawing(anchor) {
-      const state = editorRef.current
+      const state = editorRef.current.phase
       if (state.status !== 'drawing') return
       if (anchor === null || !isValidAnnotationAnchor(anchor)) {
         dispatch({ type: 'cancel_draft' })
@@ -394,9 +394,9 @@ export function useImageReviewWorkbench({
       setRedrawItemId(itemId)
     },
     stageFeedbackAnchor(itemId, anchor) {
-      const state = editorRef.current
+      const state = editorRef.current.phase
       if (state.status === 'idle') {
-        dispatch({ type: 'set_tool', tool: anchor.kind === 'image_stroke' ? 'brush' : 'rectangle' })
+        dispatch({ type: 'set_tool', tool: markupToolForAnchor(anchor) })
         return beginDrawing(anchor, itemId)
       }
       if (state.status !== 'drawing' || state.sourceItemId !== itemId) return false
@@ -413,7 +413,7 @@ export function useImageReviewWorkbench({
     cancelDraft() {
       if (!adapterRef.current.discardPendingInput()) return
       dispatch({ type: 'cancel_draft' })
-      if (editorRef.current.status === 'idle') {
+      if (editorRef.current.phase.status === 'idle') {
         clearEditorOwnership(
           editorEntityRef,
           editorPreparationKeyRef,
@@ -460,7 +460,7 @@ export function useImageReviewWorkbench({
     async discardUnsavedAndProceed() {
       // A committed write cannot be discarded mid-flight. Keep the confirmation
       // and ownership until it settles, then allow explicit discard/retry.
-      if (editorRef.current.status === 'saving') return
+      if (editorRef.current.phase.status === 'saving') return
       if (!adapterRef.current.discardPendingInput()) return
       const pending = pendingLeaveRef.current
       pendingLeaveRef.current = null
@@ -479,9 +479,44 @@ export function useImageReviewWorkbench({
 }
 
 function cloneReviewAnchor(anchor: ReviewAnchor): ReviewAnchor {
-  return anchor.kind === 'image_stroke'
-    ? { kind: 'image_stroke', points: anchor.points.map((point) => ({ ...point })) }
-    : { ...anchor }
+  switch (anchor.kind) {
+    case 'asset':
+      return { kind: 'asset' }
+    case 'image_point':
+      return { ...anchor }
+    case 'image_arrow':
+      return { kind: anchor.kind, tail: { ...anchor.tail }, head: { ...anchor.head } }
+    case 'image_stroke':
+      return { kind: anchor.kind, points: anchor.points.map((point) => ({ ...point })) }
+    case 'image_rect':
+    case 'image_ellipse':
+    case 'video_point':
+    case 'video_range':
+      return { ...anchor }
+    default:
+      return assertNever(anchor)
+  }
+}
+
+function markupToolForAnchor(anchor: ReviewAnchor): AnnotationTool {
+  switch (anchor.kind) {
+    case 'image_point':
+      return 'point'
+    case 'image_arrow':
+      return 'arrow'
+    case 'image_stroke':
+      return 'brush'
+    case 'image_rect':
+      return 'rectangle'
+    case 'image_ellipse':
+      return 'ellipse'
+    case 'asset':
+    case 'video_point':
+    case 'video_range':
+      return 'browse'
+    default:
+      return assertNever(anchor)
+  }
 }
 
 function cloneWorkbenchFeedback(
@@ -568,4 +603,8 @@ function reviewErrorMessage(error: unknown): string {
     return error.message
   }
   return '意见尚未保存，请重试。'
+}
+
+function assertNever(value: never): never {
+  throw new Error(`Unsupported review anchor: ${JSON.stringify(value)}`)
 }

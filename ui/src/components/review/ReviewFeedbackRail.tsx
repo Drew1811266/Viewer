@@ -14,12 +14,13 @@ export default function ReviewFeedbackRail({ controller }: ReviewFeedbackRailPro
   const readOnly = controller.readOnlyReason !== null
   const statusMessage = controller.statusMessage ?? readOnlyMessage(controller.readOnlyReason)
   const editor = controller.editor
-  const editingText = editor.status === 'idle' || editor.status === 'drawing' ? '' : editor.text
+  const phase = editor.phase
+  const editingText = phase.status === 'idle' || phase.status === 'drawing' ? '' : phase.text
   const editingItemId =
-    editor.status === 'idle' || editor.status === 'drawing' || editor.operation === 'geometry'
+    phase.status === 'idle' || phase.status === 'drawing' || phase.operation === 'geometry'
       ? null
-      : editor.sourceItemId
-  const saving = editor.status === 'saving'
+      : phase.sourceItemId
+  const saving = phase.status === 'saving'
   useEffect(() => {
     if (editingItemId !== null && !saving) input.current?.focus()
   }, [editingItemId, saving])
@@ -123,7 +124,7 @@ function RailNotices({
   operationError: string | null
   statusMessage: string | null
 }) {
-  const editor = controller.editor
+  const phase = controller.editor.phase
   return (
     <>
       {operationError !== null && (
@@ -136,10 +137,10 @@ function RailNotices({
           {statusMessage}
         </p>
       )}
-      {editor.status === 'save_error' && editor.sourceItemId !== null && (
+      {phase.status === 'save_error' && phase.sourceItemId !== null && (
         <div className="review-feedback-rail__error" role="status" aria-live="polite">
-          {editor.message}
-          {editor.operation === 'geometry' && (
+          {phase.message}
+          {phase.operation === 'geometry' && (
             <>
               <ViewerButton aria-label="重试保存标记" onClick={() => void controller.saveDraft()}>
                 重试
@@ -156,15 +157,15 @@ function RailNotices({
 }
 
 function AssetFeedbackEditor({ controller }: ReviewFeedbackRailProps) {
-  const editor = controller.editor
+  const phase = controller.editor.phase
   if (
-    editor.status === 'idle' ||
-    editor.status === 'drawing' ||
-    editor.sourceItemId !== null ||
-    editor.draftAnchor.kind !== 'asset'
+    phase.status === 'idle' ||
+    phase.status === 'drawing' ||
+    phase.sourceItemId !== null ||
+    phase.draftAnchor.kind !== 'asset'
   )
     return null
-  return <InlineFeedbackEditor controller={controller} anchor={editor.draftAnchor} embedded />
+  return <InlineFeedbackEditor controller={controller} anchor={phase.draftAnchor} embedded />
 }
 
 function FeedbackList({

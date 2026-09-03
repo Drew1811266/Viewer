@@ -113,10 +113,10 @@ function controllerFixture(
     protocol: 'legacy',
     tool: 'browse',
     editor: {
-      status: 'idle',
-      tool: 'browse',
+      activeTool: 'browse',
       temporarilyPanning: false,
       selectedItemId: null,
+      phase: { status: 'idle' },
     },
     dirty: false,
     redrawItemId: null,
@@ -174,25 +174,35 @@ describe('ImageReviewWorkspace', () => {
   it('returns keyboard focus to the retained opinion after a failed write', () => {
     const controller = controllerFixture([])
     controller.editor = {
-      status: 'saving',
-      tool: 'rectangle',
+      activeTool: 'rectangle',
       temporarilyPanning: false,
       selectedItemId: null,
-      sourceItemId: null,
-      draftAnchor: { kind: 'image_rect', x: 0.1, y: 0.1, width: 0.2, height: 0.2 },
-      text: '保留文字',
+      phase: {
+        status: 'saving',
+        sourceItemId: null,
+        draftAnchor: { kind: 'image_rect', x: 0.1, y: 0.1, width: 0.2, height: 0.2 },
+        text: '保留文字',
+      },
     }
-    const rendered = render(
-      <InlineFeedbackEditor controller={controller} anchor={controller.editor.draftAnchor} />,
-    )
+    const draftAnchor =
+      controller.editor.phase.status === 'idle' ? null : controller.editor.phase.draftAnchor
+    if (draftAnchor === null) throw new Error('expected saving draft')
+    const rendered = render(<InlineFeedbackEditor controller={controller} anchor={draftAnchor} />)
     expect(screen.getByRole('textbox')).toBeDisabled()
     const failed: ImageReviewWorkbenchController = {
       ...controller,
-      editor: { ...controller.editor, status: 'save_error', message: '请重试' },
+      editor: {
+        ...controller.editor,
+        phase: {
+          status: 'save_error',
+          sourceItemId: null,
+          draftAnchor,
+          text: '保留文字',
+          message: '请重试',
+        },
+      },
     }
-    rendered.rerender(
-      <InlineFeedbackEditor controller={failed} anchor={controller.editor.draftAnchor} />,
-    )
+    rendered.rerender(<InlineFeedbackEditor controller={failed} anchor={draftAnchor} />)
     expect(screen.getByRole('textbox')).toHaveFocus()
   })
   it('collapses the rail from the actual logical surface width at 200% zoom', () => {
@@ -301,14 +311,16 @@ describe('ImageReviewWorkspace', () => {
     const editing = controllerFixture([])
     editing.dirty = true
     editing.editor = {
-      status: 'save_error',
-      tool: 'rectangle',
+      activeTool: 'rectangle',
       temporarilyPanning: false,
       selectedItemId: null,
-      sourceItemId: null,
-      draftAnchor: { kind: 'image_rect', x: 0.1, y: 0.1, width: 0.2, height: 0.2 },
-      text: '修正领口',
-      message: '意见尚未保存，请重试。',
+      phase: {
+        status: 'save_error',
+        sourceItemId: null,
+        draftAnchor: { kind: 'image_rect', x: 0.1, y: 0.1, width: 0.2, height: 0.2 },
+        text: '修正领口',
+        message: '意见尚未保存，请重试。',
+      },
     }
     rendered.rerender(<ImageReviewWorkspace {...surfaceFixture()} controller={editing} />)
     const input = screen.getByRole('textbox', { name: '标注意见' })

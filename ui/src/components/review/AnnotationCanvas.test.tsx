@@ -19,10 +19,10 @@ function controller(
     protocol: 'legacy',
     tool: 'browse',
     editor: {
-      status: 'idle',
-      tool: 'browse',
+      activeTool: 'browse',
       temporarilyPanning: false,
       selectedItemId: null,
+      phase: { status: 'idle' },
     },
     dirty: false,
     redrawItemId: null,
@@ -95,14 +95,16 @@ describe('AnnotationCanvas', () => {
         controller={controller({
           feedback: [],
           editor: {
-            status: 'save_error',
-            tool: 'rectangle',
+            activeTool: 'rectangle',
             temporarilyPanning: false,
             selectedItemId: null,
-            sourceItemId: null,
-            draftAnchor: { kind: 'image_rect', x: 0.1, y: 0.2, width: 0.2, height: 0.3 },
-            text: '保留未保存区域',
-            message: '请重试',
+            phase: {
+              status: 'save_error',
+              sourceItemId: null,
+              draftAnchor: { kind: 'image_rect', x: 0.1, y: 0.2, width: 0.2, height: 0.3 },
+              text: '保留未保存区域',
+              message: '请重试',
+            },
           },
         })}
       />,
@@ -183,15 +185,17 @@ describe('AnnotationCanvas', () => {
     const review = controller({
       selectedItemId: 'target-1',
       editor: {
-        status: 'save_error',
-        tool: 'rectangle',
+        activeTool: 'rectangle',
         temporarilyPanning: false,
         selectedItemId: 'target-1',
-        sourceItemId: 'feedback-1',
-        operation: 'geometry',
-        draftAnchor: { kind: 'image_rect', x: 0.2, y: 0.3, width: 0.3, height: 0.4 },
-        text: '调整领口',
-        message: '请重试',
+        phase: {
+          status: 'save_error',
+          sourceItemId: 'feedback-1',
+          operation: 'geometry',
+          draftAnchor: { kind: 'image_rect', x: 0.2, y: 0.3, width: 0.3, height: 0.4 },
+          text: '调整领口',
+          message: '请重试',
+        },
       },
     })
     render(<AnnotationCanvas projection={PROJECTION} controller={review} />)

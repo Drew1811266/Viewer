@@ -25,7 +25,8 @@ export default function ImageReviewWorkspace({
 }: ImageReviewWorkspaceProps) {
   const compactDefaultEntity = useRef<string | null>(null)
   const identity = useRef<HTMLElement | null>(null)
-  const transientAnchor = controller.editor.status === 'idle' ? null : controller.editor.draftAnchor
+  const editorPhase = controller.editor.phase
+  const transientAnchor = editorPhase.status === 'idle' ? null : editorPhase.draftAnchor
   const annotationScene = useMemo(
     () =>
       buildAnnotationScene({
@@ -115,13 +116,13 @@ export default function ImageReviewWorkspace({
               controller={controller}
               scene={annotationScene}
             />
-            {controller.editor.status !== 'idle' &&
-              controller.editor.status !== 'drawing' &&
-              controller.editor.sourceItemId === null &&
-              controller.editor.draftAnchor.kind !== 'asset' && (
+            {editorPhase.status !== 'idle' &&
+              editorPhase.status !== 'drawing' &&
+              editorPhase.sourceItemId === null &&
+              editorPhase.draftAnchor.kind !== 'asset' && (
                 <InlineFeedbackEditor
                   controller={controller}
-                  anchor={controller.editor.draftAnchor}
+                  anchor={editorPhase.draftAnchor}
                   projection={projection}
                 />
               )}

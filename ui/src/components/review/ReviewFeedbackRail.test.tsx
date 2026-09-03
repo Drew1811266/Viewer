@@ -11,10 +11,10 @@ function controller(
     protocol: 'legacy',
     tool: 'browse',
     editor: {
-      status: 'idle',
-      tool: 'browse',
+      activeTool: 'browse',
       temporarilyPanning: false,
       selectedItemId: null,
+      phase: { status: 'idle' },
     },
     dirty: false,
     redrawItemId: null,
@@ -85,13 +85,15 @@ describe('ReviewFeedbackRail', () => {
         controller={{
           ...review,
           editor: {
-            status: 'editing',
-            tool: 'browse',
+            activeTool: 'browse',
             temporarilyPanning: false,
             selectedItemId: 'target-1',
-            sourceItemId: 'target-1',
-            text: '调整领口',
-            draftAnchor: defined(review.feedback[0]).anchor,
+            phase: {
+              status: 'editing',
+              sourceItemId: 'target-1',
+              text: '调整领口',
+              draftAnchor: defined(review.feedback[0]).anchor,
+            },
           },
         }}
       />,
@@ -130,14 +132,16 @@ describe('ReviewFeedbackRail', () => {
   it('displays controller-owned retained text and persistence failure', async () => {
     const review = controller({
       editor: {
-        status: 'save_error',
-        tool: 'browse',
+        activeTool: 'browse',
         temporarilyPanning: false,
         selectedItemId: 'target-1',
-        sourceItemId: 'target-1',
-        draftAnchor: { kind: 'image_rect', x: 0.1, y: 0.2, width: 0.3, height: 0.4 },
-        text: '保留这段修改',
-        message: '意见尚未保存，请重试。',
+        phase: {
+          status: 'save_error',
+          sourceItemId: 'target-1',
+          draftAnchor: { kind: 'image_rect', x: 0.1, y: 0.2, width: 0.3, height: 0.4 },
+          text: '保留这段修改',
+          message: '意见尚未保存，请重试。',
+        },
       },
     })
     render(<ReviewFeedbackRail controller={review} />)

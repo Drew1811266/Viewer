@@ -836,7 +836,7 @@ git commit -m "feat: add normalized markup geometry foundations"
 - Consumes: `AnnotationTool` and extended `ReviewAnchor`.
 - Produces: `AnnotationInteractionState { activeTool, temporarilyPanning, selectedItemId, phase }` and a controller whose `tool` remains stable across saves.
 
-- [ ] **Step 1: Write failing reducer and controller lifecycle tests**
+- [x] **Step 1: Write failing reducer and controller lifecycle tests**
 
 ```ts
 let state = initialAnnotationState()
@@ -858,13 +858,13 @@ returns to browse. Test Space temporarily pans and returns to the exact prior to
 navigation guard with an extended anchor and prove image switching, returning to the grid, and closing the
 window each require the established explicit save/discard decision.
 
-- [ ] **Step 2: Run state/controller tests and verify the current reset-to-browse failure**
+- [x] **Step 2: Run state/controller tests and verify the current reset-to-browse failure**
 
 Run: `pnpm --dir ui exec vitest run src/app/review/annotationModel.test.ts src/app/review/useImageReviewWorkbench.test.tsx`
 
 Expected: FAIL because `idleState()` currently hard-codes `tool: 'browse'`.
 
-- [ ] **Step 3: Replace the coupled union with orthogonal state**
+- [x] **Step 3: Replace the coupled union with orthogonal state**
 
 ```ts
 export interface AnnotationInteractionState {
@@ -885,19 +885,19 @@ export type AnnotationEditorPhase =
 Reducer save/cancel helpers modify `phase` only. `set_tool` refuses to discard a dirty phase. Update the
 workbench ownership refs and feedback-rail redraw/adjust actions to consume `phase` explicitly.
 
-- [ ] **Step 4: Extend frontend validation and cloning exhaustively**
+- [x] **Step 4: Extend frontend validation and cloning exhaustively**
 
 `isValidAnnotationAnchor` accepts finite normalized points, different arrow endpoints, positive bounded
 ellipse boxes, and all existing variants. `cloneReviewAnchor` deep-clones arrow points and stroke arrays.
 Use exhaustive `never` checks so later Anchor additions fail compilation at every semantic boundary.
 
-- [ ] **Step 5: Run workbench and rail tests**
+- [x] **Step 5: Run workbench and rail tests**
 
 Run: `pnpm --dir ui exec vitest run src/app/review/annotationModel.test.ts src/app/review/useImageReviewWorkbench.test.tsx src/components/review/ReviewFeedbackRail.test.tsx`
 
 Expected: PASS, including retry preserving geometry/text and save preserving the active tool.
 
-- [ ] **Step 6: Commit the state model**
+- [x] **Step 6: Commit the state model**
 
 ```bash
 git add ui/src/app/review/annotationModel* ui/src/app/review/useImageReviewWorkbench* \

@@ -1,47 +1,44 @@
 import type { ReviewAnchor } from '../../api/types'
+import type { AnnotationTool, MarkupTool } from './annotationToolRegistry'
 
-export type AnnotationTool = 'browse' | 'brush' | 'rectangle'
+export type { AnnotationTool } from './annotationToolRegistry'
 
-interface AnnotationEditorInteraction {
-  tool: AnnotationTool
-  temporarilyPanning: boolean
-  operation?: 'text' | 'geometry'
-}
+type AnnotationOperation = 'text' | 'geometry'
 
-export type AnnotationEditorState =
-  | (AnnotationEditorInteraction & {
-      status: 'idle'
-      selectedItemId: string | null
-    })
-  | (AnnotationEditorInteraction & {
-      status: 'drawing'
-      tool: 'brush' | 'rectangle'
-      draftAnchor: ReviewAnchor
-      sourceItemId?: string
-      selectedItemId: string | null
-    })
-  | (AnnotationEditorInteraction & {
+export type AnnotationEditorPhase =
+  | { status: 'idle' }
+  | { status: 'drawing'; draftAnchor: ReviewAnchor; sourceItemId?: string }
+  | {
       status: 'editing'
       draftAnchor: ReviewAnchor
       text: string
       sourceItemId: string | null
-      selectedItemId: string | null
-    })
-  | (AnnotationEditorInteraction & {
+      operation?: AnnotationOperation
+    }
+  | {
       status: 'saving'
       draftAnchor: ReviewAnchor
       text: string
       sourceItemId: string | null
-      selectedItemId: string | null
-    })
-  | (AnnotationEditorInteraction & {
+      operation?: AnnotationOperation
+    }
+  | {
       status: 'save_error'
       draftAnchor: ReviewAnchor
       text: string
       sourceItemId: string | null
-      selectedItemId: string | null
+      operation?: AnnotationOperation
       message: string
-    })
+    }
+
+export interface AnnotationInteractionState {
+  activeTool: AnnotationTool
+  temporarilyPanning: boolean
+  selectedItemId: string | null
+  phase: AnnotationEditorPhase
+}
+
+export type AnnotationEditorState = AnnotationInteractionState
 
 export type AnnotationEditorAction =
   | { type: 'set_tool'; tool: AnnotationTool }
@@ -56,7 +53,7 @@ export type AnnotationEditorAction =
       itemId: string
       anchor: ReviewAnchor
       text: string
-      operation?: 'text' | 'geometry'
+      operation?: AnnotationOperation
     }
   | { type: 'update_text'; text: string }
   | { type: 'request_save' }
@@ -66,131 +63,140 @@ export type AnnotationEditorAction =
   | { type: 'cancel_draft' }
   | { type: 'escape' }
 
-export function initialAnnotationEditorState(): AnnotationEditorState {
+export function initialAnnotationEditorState(): AnnotationInteractionState {
   return {
-    status: 'idle',
-    tool: 'browse',
+    activeTool: 'browse',
     temporarilyPanning: false,
     selectedItemId: null,
+    phase: idlePhase(),
   }
 }
 
 export function annotationEditorReducer(
-  state: AnnotationEditorState,
+  state: AnnotationInteractionState,
   action: AnnotationEditorAction,
-): AnnotationEditorState {
+): AnnotationInteractionState {
   switch (action.type) {
     case 'set_tool':
-      return state.status === 'drawing' || state.status === 'saving'
-        ? state
-        : { ...state, tool: action.tool, temporarilyPanning: false }
+      return state.phase.status === 'idle'
+        ? { ...state, activeTool: action.tool, temporarilyPanning: false }
+        : state
     case 'temporary_pan_start':
       return { ...state, temporarilyPanning: true }
     case 'temporary_pan_end':
       return { ...state, temporarilyPanning: false }
     case 'begin_drawing':
-      if (state.status !== 'idle') return state
-      if (state.tool !== 'brush' && state.tool !== 'rectangle') return state
+      if (
+        state.phase.status !== 'idle' ||
+        state.activeTool === 'browse' ||
+        !toolOwnsAnchor(state.activeTool, action.anchor)
+      ) {
+        return state
+      }
       return {
-        status: 'drawing',
-        tool: state.tool,
+        ...state,
         temporarilyPanning: false,
-        draftAnchor: action.anchor,
-        sourceItemId: action.itemId,
-        selectedItemId: selectedItemId(state),
+        phase: {
+          status: 'drawing',
+          draftAnchor: action.anchor,
+          sourceItemId: action.itemId,
+        },
       }
     case 'update_draft_anchor':
-      return state.status === 'drawing' ||
-        state.status === 'editing' ||
-        state.status === 'save_error'
-        ? { ...state, draftAnchor: action.anchor }
+      return state.phase.status === 'drawing' ||
+        state.phase.status === 'editing' ||
+        state.phase.status === 'save_error'
+        ? { ...state, phase: { ...state.phase, draftAnchor: action.anchor } }
         : state
     case 'complete_drawing':
-      if (state.status !== 'drawing') return state
-      return isValidAnnotationAnchor(state.draftAnchor)
-        ? {
-            status: 'editing',
-            tool: state.tool,
-            temporarilyPanning: false,
-            draftAnchor: state.draftAnchor,
-            text: '',
-            sourceItemId: null,
-            selectedItemId: state.selectedItemId,
-          }
-        : idleState(state.selectedItemId)
-    case 'begin_annotation':
-      if (state.status !== 'idle' || !isValidAnnotationAnchor(action.anchor)) return state
+      if (state.phase.status !== 'drawing') return state
       return {
-        status: 'editing',
-        tool: state.tool,
+        ...state,
+        phase: isValidAnnotationAnchor(state.phase.draftAnchor)
+          ? {
+              status: 'editing',
+              draftAnchor: state.phase.draftAnchor,
+              text: '',
+              sourceItemId: null,
+            }
+          : idlePhase(),
+      }
+    case 'begin_annotation':
+      if (state.phase.status !== 'idle' || !isValidAnnotationAnchor(action.anchor)) return state
+      return {
+        ...state,
         temporarilyPanning: false,
-        draftAnchor: action.anchor,
-        text: '',
-        sourceItemId: null,
-        selectedItemId: selectedItemId(state),
+        phase: {
+          status: 'editing',
+          draftAnchor: action.anchor,
+          text: '',
+          sourceItemId: null,
+        },
       }
     case 'begin_edit':
       if (
-        state.status !== 'idle' &&
-        !(state.status === 'drawing' && state.sourceItemId === action.itemId)
-      )
+        state.phase.status !== 'idle' &&
+        !(state.phase.status === 'drawing' && state.phase.sourceItemId === action.itemId)
+      ) {
         return state
+      }
       if (!isValidAnnotationAnchor(action.anchor)) return state
       return {
-        status: 'editing',
-        tool: state.tool,
+        ...state,
         temporarilyPanning: false,
-        draftAnchor: action.anchor,
-        text: action.text,
-        sourceItemId: action.itemId,
-        operation: action.operation,
         selectedItemId: action.itemId,
+        phase: {
+          status: 'editing',
+          draftAnchor: action.anchor,
+          text: action.text,
+          sourceItemId: action.itemId,
+          operation: action.operation,
+        },
       }
     case 'update_text':
-      if (state.status === 'editing') return { ...state, text: action.text }
-      if (state.status === 'save_error') {
-        const { message: _message, ...editing } = state
-        return { ...editing, status: 'editing', text: action.text }
+      if (state.phase.status === 'editing') {
+        return { ...state, phase: { ...state.phase, text: action.text } }
+      }
+      if (state.phase.status === 'save_error') {
+        const { message: _message, ...editing } = state.phase
+        return { ...state, phase: { ...editing, status: 'editing', text: action.text } }
       }
       return state
     case 'request_save':
       if (
-        (state.status !== 'editing' && state.status !== 'save_error') ||
-        state.text.trim().length === 0 ||
-        !isValidAnnotationAnchor(state.draftAnchor)
+        (state.phase.status !== 'editing' && state.phase.status !== 'save_error') ||
+        state.phase.text.trim().length === 0 ||
+        !isValidAnnotationAnchor(state.phase.draftAnchor)
       ) {
         return state
       }
-      if (state.status === 'save_error') {
-        const { message: _message, ...saving } = state
-        return { ...saving, status: 'saving' }
+      if (state.phase.status === 'save_error') {
+        const { message: _message, ...saving } = state.phase
+        return { ...state, phase: { ...saving, status: 'saving' } }
       }
-      return { ...state, status: 'saving' }
+      return { ...state, phase: { ...state.phase, status: 'saving' } }
     case 'save_failed':
-      return state.status === 'saving'
-        ? { ...state, status: 'save_error', message: action.message }
+      return state.phase.status === 'saving'
+        ? { ...state, phase: { ...state.phase, status: 'save_error', message: action.message } }
         : state
     case 'save_succeeded':
-      return state.status === 'saving' ? idleState(action.itemId) : state
+      return state.phase.status === 'saving'
+        ? { ...state, selectedItemId: action.itemId, phase: idlePhase() }
+        : state
     case 'select_feedback':
-      return state.status === 'idle' ? { ...state, selectedItemId: action.itemId } : state
+      return state.phase.status === 'idle' ? { ...state, selectedItemId: action.itemId } : state
     case 'cancel_draft':
-      return state.status !== 'saving' && hasUnsavedAnnotation(state)
-        ? idleState(selectedItemId(state))
+      return state.phase.status !== 'saving' && hasUnsavedAnnotation(state)
+        ? { ...state, phase: idlePhase() }
         : state
     case 'escape':
-      if (state.status !== 'idle') return idleState(selectedItemId(state))
-      return { ...state, tool: 'browse', temporarilyPanning: false }
+      if (state.phase.status !== 'idle') return { ...state, phase: idlePhase() }
+      return { ...state, activeTool: 'browse', temporarilyPanning: false }
   }
 }
 
-export function hasUnsavedAnnotation(state: AnnotationEditorState): boolean {
-  return (
-    state.status === 'drawing' ||
-    state.status === 'editing' ||
-    state.status === 'saving' ||
-    state.status === 'save_error'
-  )
+export function hasUnsavedAnnotation(state: AnnotationInteractionState): boolean {
+  return state.phase.status !== 'idle'
 }
 
 export function isValidAnnotationAnchor(anchor: ReviewAnchor): boolean {
@@ -243,22 +249,34 @@ export function isValidAnnotationAnchor(anchor: ReviewAnchor): boolean {
         anchor.startUs >= 0 &&
         anchor.endUs > anchor.startUs
       )
+    default:
+      return assertNever(anchor)
   }
 }
 
-function idleState(selectedItemId: string | null): AnnotationEditorState {
-  return {
-    status: 'idle',
-    tool: 'browse',
-    temporarilyPanning: false,
-    selectedItemId,
-  }
+function idlePhase(): Extract<AnnotationEditorPhase, { status: 'idle' }> {
+  return { status: 'idle' }
 }
 
-function selectedItemId(state: AnnotationEditorState): string | null {
-  return state.selectedItemId
+function toolOwnsAnchor(tool: MarkupTool, anchor: ReviewAnchor): boolean {
+  switch (tool) {
+    case 'point':
+      return anchor.kind === 'image_point'
+    case 'arrow':
+      return anchor.kind === 'image_arrow'
+    case 'brush':
+      return anchor.kind === 'image_stroke'
+    case 'rectangle':
+      return anchor.kind === 'image_rect'
+    case 'ellipse':
+      return anchor.kind === 'image_ellipse'
+  }
 }
 
 function finiteNormalized(value: number): boolean {
   return Number.isFinite(value) && value >= 0 && value <= 1
+}
+
+function assertNever(value: never): never {
+  throw new Error(`Unsupported annotation anchor: ${JSON.stringify(value)}`)
 }

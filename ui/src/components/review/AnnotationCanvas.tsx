@@ -29,15 +29,16 @@ type RectHandle = 'north_west' | 'north_east' | 'south_east' | 'south_west'
 export default function AnnotationCanvas({ projection, controller, scene }: AnnotationCanvasProps) {
   const canvas = useRef<HTMLCanvasElement>(null)
   const gesture = useRef<DrawingGesture | null>(null)
+  const editorPhase = controller.editor.phase
   const candidate =
-    controller.editor.status === 'drawing' ||
-    (controller.editor.status !== 'idle' && controller.editor.operation === 'geometry')
-      ? controller.editor.draftAnchor
+    editorPhase.status === 'drawing' ||
+    (editorPhase.status !== 'idle' && editorPhase.operation === 'geometry')
+      ? editorPhase.draftAnchor
       : null
   const draftAnchor =
-    controller.editor.status === 'idle' || controller.editor.status === 'drawing'
+    editorPhase.status === 'idle' || editorPhase.status === 'drawing'
       ? null
-      : controller.editor.draftAnchor
+      : editorPhase.draftAnchor
   const transientAnchor = candidate ?? draftAnchor
   const renderedScene =
     scene ??
@@ -48,13 +49,13 @@ export default function AnnotationCanvas({ projection, controller, scene }: Anno
     })
   const drawingEnabled =
     controller.readOnlyReason === null &&
-    (controller.editor.status === 'idle' || controller.editor.status === 'drawing') &&
+    (editorPhase.status === 'idle' || editorPhase.status === 'drawing') &&
     !controller.editor.temporarilyPanning &&
     (controller.tool === 'brush' || controller.tool === 'rectangle')
 
   useEffect(() => {
-    if (controller.editor.status !== 'drawing') gesture.current = null
-  }, [controller.editor.status])
+    if (editorPhase.status !== 'drawing') gesture.current = null
+  }, [editorPhase.status])
 
   useEffect(() => {
     const element = canvas.current
@@ -192,9 +193,9 @@ export default function AnnotationCanvas({ projection, controller, scene }: Anno
             selected={feedback.itemId === controller.selectedItemId}
             readOnly={
               controller.readOnlyReason !== null ||
-              (controller.dirty && controller.editor.status !== 'drawing')
+              (controller.dirty && editorPhase.status !== 'drawing')
             }
-            drawing={controller.editor.status === 'drawing'}
+            drawing={editorPhase.status === 'drawing'}
             onSelect={() => controller.selectFeedback(feedback.itemId)}
             onReplace={(anchor) => controller.replaceFeedbackAnchor(feedback.itemId, anchor)}
             onCandidate={(anchor) => controller.stageFeedbackAnchor(feedback.itemId, anchor)}

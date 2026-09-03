@@ -596,7 +596,25 @@ function reviewErrorMessage(error: unknown): string {
 }
 
 function cloneReviewAnchor(anchor: ReviewAnchor): ReviewAnchor {
-  return anchor.kind === 'image_stroke'
-    ? { kind: 'image_stroke', points: anchor.points.map((point) => ({ ...point })) }
-    : { ...anchor }
+  switch (anchor.kind) {
+    case 'asset':
+      return { kind: 'asset' }
+    case 'image_point':
+      return { ...anchor }
+    case 'image_arrow':
+      return { kind: anchor.kind, tail: { ...anchor.tail }, head: { ...anchor.head } }
+    case 'image_stroke':
+      return { kind: anchor.kind, points: anchor.points.map((point) => ({ ...point })) }
+    case 'image_rect':
+    case 'image_ellipse':
+    case 'video_point':
+    case 'video_range':
+      return { ...anchor }
+    default:
+      return assertNeverAnchor(anchor)
+  }
+}
+
+function assertNeverAnchor(value: never): never {
+  throw new Error(`Unsupported review anchor: ${JSON.stringify(value)}`)
 }

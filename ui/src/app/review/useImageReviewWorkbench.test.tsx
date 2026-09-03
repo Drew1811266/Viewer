@@ -10,6 +10,20 @@ import { useImageReviewWorkbench } from './useImageReviewWorkbench'
 import type { ReviewSessionCoordinator } from './useReviewSessionCoordinator'
 
 const RECT: ReviewAnchor = { kind: 'image_rect', x: 0.1, y: 0.2, width: 0.3, height: 0.4 }
+const ELLIPSE: ReviewAnchor = {
+  kind: 'image_ellipse',
+  x: 0.2,
+  y: 0.2,
+  width: 0.3,
+  height: 0.4,
+}
+const STROKE: ReviewAnchor = {
+  kind: 'image_stroke',
+  points: [
+    { x: 0.1, y: 0.2 },
+    { x: 0.3, y: 0.4 },
+  ],
+}
 
 function snapshot(
   phase: ReviewSessionSnapshot['phase'] = 'idle',
@@ -131,9 +145,32 @@ describe('useImageReviewWorkbench', () => {
       expect.objectContaining({ feedbackId: 'feedback-1', text: '服务端意见', anchor: RECT }),
     ])
     expect(hook.result.current.editor).toEqual(
-      expect.objectContaining({ status: 'idle', selectedItemId: 'feedback-1' }),
+      expect.objectContaining({
+        selectedItemId: 'feedback-1',
+        phase: { status: 'idle' },
+      }),
     )
     expect(hook.result.current.statusMessage).toBeNull()
+  })
+
+  it('keeps an extended markup tool active after its feedback saves', async () => {
+    const review = coordinator()
+    const adapter = legacyImageReviewWorkbenchAdapter(review, {
+      kind: 'selection',
+      entityIds: ['image-1'],
+    })
+    const hook = renderHook(() => useImageReviewWorkbench({ adapter, entityId: 'image-1' }))
+
+    act(() => {
+      hook.result.current.setTool('ellipse')
+      expect(hook.result.current.beginDrawing(ELLIPSE)).toBe(true)
+    })
+    await act(() => hook.result.current.finishDrawing(ELLIPSE))
+    act(() => hook.result.current.updateDraftText('调整脸部轮廓'))
+    await act(() => hook.result.current.saveDraft())
+
+    expect(hook.result.current.tool).toBe('ellipse')
+    expect(hook.result.current.editor.phase.status).toBe('idle')
   })
 
   it('keeps unsaved text and anchor after a command failure', async () => {
@@ -157,7 +194,7 @@ describe('useImageReviewWorkbench', () => {
     })
     await act(() => hook.result.current.saveDraft())
 
-    expect(hook.result.current.editor).toEqual(
+    expect(hook.result.current.editor.phase).toEqual(
       expect.objectContaining({
         status: 'save_error',
         draftAnchor: RECT,
@@ -181,7 +218,7 @@ describe('useImageReviewWorkbench', () => {
         onLeave,
       }),
     )
-    act(() => hook.result.current.beginAnnotation(RECT))
+    act(() => hook.result.current.beginAnnotation(ELLIPSE))
 
     for (const intent of [
       { kind: 'navigate', offset: 1 },
@@ -204,7 +241,7 @@ describe('useImageReviewWorkbench', () => {
 
     await act(() => hook.result.current.discardUnsavedAndProceed())
     expect(onLeave).toHaveBeenCalledWith({ kind: 'finish_review' })
-    expect(hook.result.current.editor.status).toBe('idle')
+    expect(hook.result.current.editor.phase.status).toBe('idle')
   })
 
   it('never rebinds retained draft geometry when the opened entity changes underneath it', async () => {
@@ -224,7 +261,7 @@ describe('useImageReviewWorkbench', () => {
     await act(() => hook.result.current.saveDraft())
 
     expect(review.addAnchoredFeedback).not.toHaveBeenCalled()
-    expect(hook.result.current.editor).toMatchObject({
+    expect(hook.result.current.editor.phase).toMatchObject({
       status: 'save_error',
       text: '只属于图1',
       draftAnchor: RECT,
@@ -252,10 +289,10 @@ describe('useImageReviewWorkbench', () => {
       hook.result.current.updateDraftText('第一条失败意见')
     })
     await act(() => hook.result.current.saveDraft())
-    expect(hook.result.current.editor.status).toBe('save_error')
+    expect(hook.result.current.editor.phase.status).toBe('save_error')
     act(() => hook.result.current.cancelDraft())
     expect(discardPendingInput).toHaveBeenCalledOnce()
-    expect(hook.result.current.editor.status).toBe('idle')
+    expect(hook.result.current.editor.phase.status).toBe('idle')
 
     act(() => {
       hook.result.current.beginAnnotation(RECT)
@@ -263,7 +300,7 @@ describe('useImageReviewWorkbench', () => {
     })
     await act(() => hook.result.current.saveDraft())
     expect(review.addAnchoredFeedback).toHaveBeenCalledTimes(2)
-    expect(hook.result.current.editor.status).toBe('idle')
+    expect(hook.result.current.editor.phase.status).toBe('idle')
   })
 
   it('keeps the complete item revision frozen while a text editor is open', async () => {
@@ -383,9 +420,17 @@ describe('useImageReviewWorkbench', () => {
 
     act(() => {
       hook.result.current.setTool('brush')
-      expect(hook.result.current.beginDrawing(RECT, 'target-1')).toBe(true)
+      expect(hook.result.current.beginDrawing(STROKE, 'target-1')).toBe(true)
     })
-    await act(() => hook.result.current.finishDrawing({ ...RECT, x: 0.2 }))
+    await act(() =>
+      hook.result.current.finishDrawing({
+        kind: 'image_stroke',
+        points: [
+          { x: 0.2, y: 0.2 },
+          { x: 0.4, y: 0.4 },
+        ],
+      }),
+    )
 
     expect(saveFeedback).toHaveBeenCalledTimes(2)
     expect(saveFeedback.mock.calls[1]?.[0].item?.targetKey?.textRevisionId).toBe('text-revision-2')
@@ -409,7 +454,7 @@ describe('useImageReviewWorkbench', () => {
     await act(() => hook.result.current.saveDraft())
 
     expect(replacement.saveFeedback).not.toHaveBeenCalled()
-    expect(hook.result.current.editor).toMatchObject({
+    expect(hook.result.current.editor.phase).toMatchObject({
       status: 'save_error',
       text: '只属于会话 A',
       message: '这条未保存意见属于上一素材版本或评审会话，请返回原上下文或放弃后重画。',

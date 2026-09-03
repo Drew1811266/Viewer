@@ -250,6 +250,39 @@ describe('ImageReviewWorkspace', () => {
     )
   })
 
+  it('shares extended markup with the magnifier while keeping edit controls in the stage overlay', () => {
+    const controller = controllerFixture([
+      {
+        ...savedRect('point-1', 1, '修正这个点', 0.2, 0.2, 0.1, 0.1),
+        anchor: { kind: 'image_point', x: 0.2, y: 0.2 },
+      },
+      {
+        ...savedRect('arrow-2', 2, '沿箭头调整', 0.2, 0.3, 0.5, 0.3),
+        anchor: {
+          kind: 'image_arrow',
+          tail: { x: 0.2, y: 0.3 },
+          head: { x: 0.7, y: 0.6 },
+        },
+      },
+      {
+        ...savedRect('ellipse-3', 3, '调整椭圆区域', 0.3, 0.2, 0.4, 0.5),
+        anchor: { kind: 'image_ellipse', x: 0.3, y: 0.2, width: 0.4, height: 0.5 },
+      },
+    ])
+    controller.selectedItemId = 'ellipse-3'
+    controller.editor = { ...controller.editor, selectedItemId: 'ellipse-3' }
+
+    render(<ImageReviewWorkspace {...surfaceFixture()} controller={controller} />)
+
+    expect(screen.getByTestId('preview-surface')).toHaveAttribute(
+      'data-has-magnifier-overlay',
+      'true',
+    )
+    expect(screen.getAllByTestId('annotation-marker')).toHaveLength(3)
+    expect(screen.getByTestId('annotation-canvas')).toBeVisible()
+    expect(screen.getAllByRole('button', { name: /调整意见 3/ })).toHaveLength(4)
+  })
+
   it('routes tool shortcuts, suppresses them in text input, and keeps completion separate', () => {
     const controller = controllerFixture([])
     render(<ImageReviewWorkspace {...surfaceFixture()} controller={controller} />)

@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type { ReviewAnchor, SavedImageFeedback } from '../../app/review/useImageReviewWorkbench'
 import {
   annotationMarkerPoint,
+  annotationOrdinalPoint,
   buildAnnotationScene,
   createAnnotationMagnifierPainter,
   paintAnnotationScene,
@@ -20,6 +21,19 @@ const STROKE: ReviewAnchor = {
     { x: 0.2, y: 0.3 },
     { x: 0.4, y: 0.5 },
   ],
+}
+const POINT: ReviewAnchor = { kind: 'image_point', x: 0.25, y: 0.4 }
+const ARROW: ReviewAnchor = {
+  kind: 'image_arrow',
+  tail: { x: 0.2, y: 0.3 },
+  head: { x: 0.8, y: 0.7 },
+}
+const ELLIPSE: ReviewAnchor = {
+  kind: 'image_ellipse',
+  x: 0.35,
+  y: 0.15,
+  width: 0.4,
+  height: 0.5,
 }
 
 describe('annotation scene', () => {
@@ -78,6 +92,33 @@ describe('annotation scene', () => {
     expect(context.value.strokeStyle).toBe('#b42318')
   })
 
+  it('paints point, directional arrow, and ellipse geometry through the shared scene', () => {
+    const context = canvasContext()
+    const scene = buildAnnotationScene({
+      feedback: [
+        feedback('point', 1, POINT),
+        feedback('arrow', 2, ARROW),
+        feedback('ellipse', 3, ELLIPSE),
+      ],
+      selectedItemId: null,
+      transientAnchor: null,
+    })
+
+    expect(
+      paintAnnotationScene(context.value, scene, PROJECTION, {
+        color: '#b42318',
+        lineWidth: 3,
+        drawOrdinals: false,
+        ordinalRadius: 14,
+      }),
+    ).toBe(3)
+    expect(context.arc).toHaveBeenCalledWith(50, 40, 7, 0, Math.PI * 2)
+    expect(context.moveTo).toHaveBeenCalledWith(40, 30)
+    expect(context.lineTo).toHaveBeenCalledWith(160, 70)
+    expect(context.lineTo.mock.calls).toHaveLength(3)
+    expect(context.ellipse).toHaveBeenCalledWith(110, 40, 40, 25, 0, 0, Math.PI * 2)
+  })
+
   it('uses dashed transient geometry and restores canvas state', () => {
     const context = canvasContext()
     const scene = buildAnnotationScene({
@@ -114,12 +155,36 @@ describe('annotation scene', () => {
       ordinalRadius: 15,
     })
 
+    expect(annotationMarkerPoint(POINT)).toEqual({ x: 0.25, y: 0.4 })
+    expect(annotationMarkerPoint(ARROW)).toEqual({ x: 0.2, y: 0.3 })
     expect(annotationMarkerPoint(RECT)).toEqual({ x: 0.4, y: 0.2 })
+    expect(annotationMarkerPoint(ELLIPSE)).toEqual({ x: 0.75, y: 0.15 })
     expect(annotationMarkerPoint(STROKE)).toEqual({ x: 0.4, y: 0.5 })
     expect(context.arc).toHaveBeenNthCalledWith(1, 80, 20, 15, 0, Math.PI * 2)
     expect(context.arc).toHaveBeenNthCalledWith(2, 80, 50, 15, 0, Math.PI * 2)
     expect(context.fillText).toHaveBeenNthCalledWith(1, '7', 80, 20)
     expect(context.fillText).toHaveBeenNthCalledWith(2, '8', 80, 50)
+  })
+
+  it('chooses an in-bounds ordinal candidate that clears target geometry', () => {
+    const projection = {
+      ...PROJECTION,
+      localBounds: { width: 200, height: 100 },
+    }
+
+    expect(
+      annotationOrdinalPoint({ kind: 'image_point', x: 0.95, y: 0.05 }, projection, {
+        lineWidth: 2,
+        ordinalRadius: 14,
+      }),
+    ).toEqual({ x: 170, y: 25 })
+    expect(
+      annotationOrdinalPoint(
+        { kind: 'image_arrow', tail: { x: 0.2, y: 0.3 }, head: { x: 0.8, y: 0.7 } },
+        projection,
+        { lineWidth: 2, ordinalRadius: 14 },
+      ),
+    ).toEqual({ x: 20, y: 50 })
   })
 
   it('counts only geometry whose projection can be painted', () => {
@@ -170,8 +235,49 @@ describe('annotation scene', () => {
     expect(painted).toBe(1)
     expect(context.value.lineWidth).toBe(lineWidth)
     expect(context.value.strokeStyle).toBe('#d92d20')
-    expect(context.arc).toHaveBeenCalledWith(80, 20, 14, 0, Math.PI * 2)
+    const ordinalClearance = 14 + lineWidth + 4
+    expect(context.arc).toHaveBeenCalledWith(
+      80 + ordinalClearance,
+      60 + ordinalClearance,
+      14,
+      0,
+      Math.PI * 2,
+    )
     expect(projection.normalizedToLens).toHaveBeenCalled()
+  })
+
+  it('projects every extended anchor into the compound magnifier scene', () => {
+    const context = canvasContext()
+    const normalizedToLens = vi.fn(({ x, y }: { x: number; y: number }) => ({
+      x: x * 200,
+      y: y * 100,
+    }))
+    const painted = createAnnotationMagnifierPainter(
+      buildAnnotationScene({
+        feedback: [
+          feedback('point', 1, POINT),
+          feedback('arrow', 2, ARROW),
+          feedback('ellipse', 3, ELLIPSE),
+        ],
+        selectedItemId: 'ellipse',
+        transientAnchor: { kind: 'image_point', x: 0.5, y: 0.5 },
+      }),
+    )(context.value, {
+      projection: {
+        lensSize: { width: 200, height: 100 },
+        normalizedToLens,
+      },
+      magnification: 2,
+      pixelRatio: 2,
+    })
+
+    expect(painted).toBe(4)
+    expect(normalizedToLens).toHaveBeenCalledWith({ x: 0.25, y: 0.4 })
+    expect(normalizedToLens).toHaveBeenCalledWith(ARROW.tail)
+    expect(normalizedToLens).toHaveBeenCalledWith(ARROW.head)
+    expect(normalizedToLens).toHaveBeenCalledWith({ x: 0.35, y: 0.15 })
+    expect(normalizedToLens).toHaveBeenCalledWith({ x: 0.75, y: 0.65 })
+    expect(context.value.lineWidth).toBe(4)
   })
 
   it('uses the CanvasText fallback and retains transient dash geometry in the lens', () => {
@@ -228,6 +334,7 @@ function canvasContext() {
     stroke: vi.fn(),
     strokeRect: vi.fn(),
     arc: vi.fn(),
+    ellipse: vi.fn(),
     fill: vi.fn(),
     fillText: vi.fn(),
   }

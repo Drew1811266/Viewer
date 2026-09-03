@@ -26,6 +26,7 @@ describe('ViewerIcon', () => {
       'alert-triangle',
       'arrow-down',
       'arrow-up',
+      'arrow-up-right',
       'check',
       'chevron-down',
       'chevron-left',

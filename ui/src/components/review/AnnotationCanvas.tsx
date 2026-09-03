@@ -21,6 +21,9 @@ import type {
 import type { ImagePreviewProjection } from '../imagePreview/ImagePreviewSurface'
 import {
   type AnnotationSceneItem,
+  type AnnotationSceneProjection,
+  annotationMarkerPoint,
+  annotationOrdinalPoint,
   buildAnnotationScene,
   paintAnnotationScene,
 } from './annotationScene'
@@ -128,27 +131,12 @@ export default function AnnotationCanvas({ projection, controller, scene }: Anno
     if (context === null) return
     context.setTransform(ratio, 0, 0, ratio, 0, 0)
     context.clearRect(0, 0, projection.stageRect.width, projection.stageRect.height)
-    paintAnnotationScene(
-      context,
-      renderedScene,
-      {
-        normalizedToLocal(point) {
-          const projected = projection.normalizedToStage(point)
-          return projected === null
-            ? null
-            : {
-                x: projected.x - projection.stageRect.left,
-                y: projected.y - projection.stageRect.top,
-              }
-        },
-      },
-      {
-        color: annotationColor(element),
-        lineWidth: 2,
-        drawOrdinals: false,
-        ordinalRadius: 14,
-      },
-    )
+    paintAnnotationScene(context, renderedScene, stageAnnotationProjection(projection), {
+      color: annotationColor(element),
+      lineWidth: 2,
+      drawOrdinals: false,
+      ordinalRadius: 14,
+    })
   }, [projection, renderedScene])
 
   function beginCanvasPointer(event: ReactPointerEvent<HTMLCanvasElement>) {
@@ -164,13 +152,14 @@ export default function AnnotationCanvas({ projection, controller, scene }: Anno
       imageSizeCss: projectedImageSize(projection),
       items: controller.feedback.flatMap((feedback) => {
         if (!isImageAnchor(feedback.anchor) || feedback.ordinal === null) return []
+        const ordinalPoint = annotationMarkerPoint(feedback.anchor)
         return [
           {
             itemId: feedback.itemId,
             ordinal: feedback.ordinal,
             selected: feedback.itemId === controller.selectedItemId,
             anchor: feedback.anchor,
-            ordinalPoint: markerPoint(feedback.anchor),
+            ...(ordinalPoint === null ? {} : { ordinalPoint }),
           },
         ]
       }),
@@ -295,10 +284,11 @@ function AnnotationMarker({
   useEffect(() => () => pointerCleanup.current?.(), [])
   if (!isImageAnchor(feedback.anchor) || feedback.ordinal === null) return null
   const anchor = feedback.anchor
-  const point = markerPoint(anchor)
-  const projected = projection.normalizedToStage(point)
-  if (projected === null) return null
-  const local = localPoint(projected, projection)
+  const local = annotationOrdinalPoint(anchor, stageAnnotationProjection(projection), {
+    lineWidth: 2,
+    ordinalRadius: 14,
+  })
+  if (local === null) return null
   const ordinal = feedback.ordinal
 
   function beginEdit(event: ReactPointerEvent<HTMLElement>, edit: GeometryEdit) {
@@ -347,7 +337,7 @@ function AnnotationMarker({
         data-anchor-kind={anchor.kind}
         data-selected={selected || undefined}
         aria-label={`意见 ${ordinal}：${feedback.text}`}
-        style={local}
+        style={{ left: local.x, top: local.y }}
         onClick={onSelect}
         onKeyDown={keyDown}
         onPointerDown={(event) => {
@@ -767,20 +757,6 @@ function handlePoint(
   }
 }
 
-function markerPoint(anchor: ImageAnchor): NormalizedPoint {
-  switch (anchor.kind) {
-    case 'image_point':
-      return { x: anchor.x, y: anchor.y }
-    case 'image_arrow':
-      return anchor.head
-    case 'image_rect':
-    case 'image_ellipse':
-      return { x: anchor.x + anchor.width, y: anchor.y }
-    case 'image_stroke':
-      return anchor.points.at(-1) as NormalizedPoint
-  }
-}
-
 function isImageAnchor(anchor: ReviewAnchor): anchor is ImageAnchor {
   return anchor.kind.startsWith('image_')
 }
@@ -834,6 +810,24 @@ function localPoint(point: NormalizedPoint, projection: ImagePreviewProjection) 
   return {
     left: point.x - projection.stageRect.left,
     top: point.y - projection.stageRect.top,
+  }
+}
+
+function stageAnnotationProjection(projection: ImagePreviewProjection): AnnotationSceneProjection {
+  return {
+    localBounds: {
+      width: projection.stageRect.width,
+      height: projection.stageRect.height,
+    },
+    normalizedToLocal(point) {
+      const projected = projection.normalizedToStage(point)
+      return projected === null
+        ? null
+        : {
+            x: projected.x - projection.stageRect.left,
+            y: projected.y - projection.stageRect.top,
+          }
+    },
   }
 }
 

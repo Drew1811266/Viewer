@@ -610,11 +610,6 @@
   outline-offset: 2px;
 }
 
-.annotation-marker[data-selected='true'][data-anchor-kind='image_rect'],
-.annotation-marker[data-selected='true'][data-anchor-kind='image_ellipse'] {
-  transform: translate(8px, calc(-100% - 8px));
-}
-
 .annotation-geometry-handle {
   background: var(--viewer-surface);
   border: 2px solid var(--viewer-danger-strong);

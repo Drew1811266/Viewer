@@ -1085,7 +1085,7 @@ git commit -m "feat: create and edit extended image markup"
 - Consumes: every image Anchor and existing `MagnifierOverlayPainter`.
 - Produces: one deterministic paint path for stage, transient candidates, magnifier, and ordinals.
 
-- [ ] **Step 1: Add failing scene paint tests**
+- [x] **Step 1: Add failing scene paint tests**
 
 ```ts
 expect(paintAnnotationScene(context, sceneWithPointArrowEllipse, PROJECTION, OPTIONS)).toBe(3)
@@ -1097,13 +1097,13 @@ expect(context.lineTo).toHaveBeenCalledWith(expectedArrowHeadX, expectedArrowHea
 Run the same scene through `createAnnotationMagnifierPainter` and assert `normalizedToLens` is used for the
 arrow tail/head, ellipse bounds, and point. Assert control handles and the editor do not appear in the scene.
 
-- [ ] **Step 2: Run scene/magnifier tests and verify missing paint branches**
+- [x] **Step 2: Run scene/magnifier tests and verify missing paint branches**
 
 Run: `pnpm --dir ui exec vitest run src/components/review/annotationScene.test.ts src/components/imagePreview/ImageMagnifier.test.tsx src/components/review/ImageReviewWorkspace.test.tsx`
 
 Expected: FAIL because `isImageAnchor`, `paintAnchor`, and `annotationMarkerPoint` know only rectangle/stroke.
 
-- [ ] **Step 3: Add pure paint branches and ordinal candidates**
+- [x] **Step 3: Add pure paint branches and ordinal candidates**
 
 ```ts
 case 'image_point': paintPoint(context, anchor, projection); break
@@ -1115,19 +1115,19 @@ Place arrow ordinals near `tail`, never `head`. Generate ordered screen-space or
 and box corners, then choose the first candidate inside stage bounds that does not overlap the target geometry.
 Keep appearance style separate from Anchor data.
 
-- [ ] **Step 4: Verify the compound magnifier rules**
+- [x] **Step 4: Verify the compound magnifier rules**
 
 The injected Painter receives saved and transient anchors, draws them after the magnified image, clamps line
 width to 2–5 CSS px, and draws fixed-size ordinals. `ImageMagnifier` remains `pointer-events: none`; handles,
 menu, editor, and rail remain outside the painter.
 
-- [ ] **Step 5: Run shared-rendering and full UI tests**
+- [x] **Step 5: Run shared-rendering and full UI tests**
 
 Run: `pnpm --dir ui exec vitest run src/components/review/annotationScene.test.ts src/components/imagePreview/ImageMagnifier.test.tsx src/components/review/ImageReviewWorkspace.test.tsx && pnpm test:ui`
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit shared rendering**
+- [x] **Step 6: Commit shared rendering**
 
 ```bash
 git add ui/src/components/review/annotationScene* ui/src/components/review/ImageReviewWorkspace* \

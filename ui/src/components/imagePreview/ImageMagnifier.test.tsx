@@ -73,6 +73,28 @@ describe('ImageMagnifier', () => {
     expect(source).toHaveAttribute('draggable', 'false')
   })
 
+  it('keeps the compound overlay visual-only and outside the interaction tree', () => {
+    render(
+      <ImageMagnifier
+        ref={createRef<ImageMagnifierHandle>()}
+        shape="circle"
+        area="small"
+        magnification={2}
+        sourceScale={0.25}
+        stageSize={{ width: 640, height: 480 }}
+        rotation={0}
+        fileName="detail.jpg"
+        original={currentOriginal('ready', ORIGINAL)}
+        overlayPainter={() => 3}
+      />,
+    )
+
+    expect(screen.getByTestId('image-magnifier')).toHaveAttribute('aria-hidden', 'true')
+    expect(screen.getByTestId('image-magnifier-overlay')).not.toHaveAttribute('tabindex')
+    expect(screen.queryByRole('button')).not.toBeInTheDocument()
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
+  })
+
   it.each([
     ['idle', '正在载入原图'],
     ['loading', '正在载入原图'],

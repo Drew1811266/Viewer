@@ -221,6 +221,7 @@ mod tests {
                 sequence: 1,
                 snapshot_id,
             },
+            publication_protocol: ReviewPublicationProtocol::V3,
             production: None,
             state: ContinuousReviewState::empty(project, stream, snapshot_id),
             command_id: ReviewCommandId::from_u128(4),

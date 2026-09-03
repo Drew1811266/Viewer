@@ -216,6 +216,7 @@ mod tests {
                 expected: None,
                 production: None,
                 next: PreparedContinuousSnapshot {
+                    publication_protocol: ReviewPublicationProtocol::V3,
                     state: ContinuousReviewState::empty(project_id, stream, snapshot_id),
                     command_id: ReviewCommandId::from_u128(4),
                     payload_digest: [5; 32],

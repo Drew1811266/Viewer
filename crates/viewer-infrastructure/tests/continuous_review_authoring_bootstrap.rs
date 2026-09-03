@@ -72,6 +72,7 @@ impl BootstrapFixture {
                 expected: None,
                 production: None,
                 next: PreparedContinuousSnapshot {
+                    publication_protocol: ReviewPublicationProtocol::V3,
                     state,
                     command_id: ReviewCommandId::from_u128(4),
                     payload_digest: [5; 32],

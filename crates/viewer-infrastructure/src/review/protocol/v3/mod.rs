@@ -59,9 +59,17 @@ pub(in crate::review::protocol) fn decode_state_for(
 pub(in crate::review) fn encode_authoring_state(
     record: &ReviewStateRecord,
 ) -> Result<Vec<u8>, ReviewProtocolError> {
+    encode_authoring_state_for(ContinuousReviewProtocol::V3, record)
+}
+
+pub(in crate::review::protocol) fn encode_authoring_state_for(
+    protocol: ContinuousReviewProtocol,
+    record: &ReviewStateRecord,
+) -> Result<Vec<u8>, ReviewProtocolError> {
     validate::authoring_state(record)?;
+    validate::feedback_for(protocol, &record.state.feedback)?;
     encode_document(
-        &wire::State::from_record(record, ContinuousReviewProtocol::V3),
+        &wire::State::from_record(record, protocol),
         MAX_REVIEW_DOCUMENT_BYTES,
     )
 }
@@ -69,9 +77,17 @@ pub(in crate::review) fn encode_authoring_state(
 pub(in crate::review) fn decode_authoring_state(
     bytes: &[u8],
 ) -> Result<ReviewStateRecord, ReviewProtocolError> {
-    let wire: wire::State = decode_document(bytes, MAX_REVIEW_DOCUMENT_BYTES, REVIEW_PROTOCOL_V3)?;
+    decode_authoring_state_for(ContinuousReviewProtocol::V3, bytes)
+}
+
+pub(in crate::review::protocol) fn decode_authoring_state_for(
+    protocol: ContinuousReviewProtocol,
+    bytes: &[u8],
+) -> Result<ReviewStateRecord, ReviewProtocolError> {
+    let wire: wire::State = decode_document(bytes, MAX_REVIEW_DOCUMENT_BYTES, protocol.as_str())?;
     let record = wire.into_record();
     validate::authoring_state(&record)?;
+    validate::feedback_for(protocol, &record.state.feedback)?;
     Ok(record)
 }
 

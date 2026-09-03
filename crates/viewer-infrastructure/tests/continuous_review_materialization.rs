@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use std::path::PathBuf;
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
@@ -9,14 +10,22 @@ use viewer_application::{
     ReviewTaskCancellation,
     review_assets::{ContinuousReviewAssetPort, SourceRelocationDecision},
     review_evidence::{
-        BoundReviewImage, ReviewEvidencePort, ReviewEvidenceRequest, ReviewEvidenceResult,
+        BoundReviewImage, EvidenceRole, ReviewEvidencePort, ReviewEvidenceRequest,
+        ReviewEvidenceResult, ReviewEvidenceStaging,
     },
     review_workspace::*,
 };
 use viewer_domain::{
-    FeedbackId, ProjectId, ReviewArchiveId, ReviewCommandId, ReviewSnapshotId, ReviewStreamId,
+    AssetVersionId, EntityId, FeedbackId, ProjectId, RelativePath, ReviewArchiveId,
+    ReviewCommandId, ReviewSnapshotId, ReviewStreamId, ReviewTargetId, ReviewTargetRevisionId,
     ReviewTextRevisionId,
-    review::{AssetVersion, continuous::ContinuousReviewState},
+    review::{
+        AssetEvidence, AssetVersion, FeedbackAnchor, NormalizedPoint, ReviewMedia,
+        continuous::{
+            ContinuousReviewState, ReviewAvailability, ReviewChange, ReviewChangeKind,
+            TargetVersionKey, VersionedFeedback, VersionedTarget,
+        },
+    },
 };
 use viewer_infrastructure::{
     portable::PortableProjectMetadata,
@@ -80,6 +89,100 @@ impl ReviewEvidencePort for Evidence {
         _: ReviewEvidenceRequest,
     ) -> Result<ReviewEvidenceResult, ReviewArtifactError> {
         panic!("empty target has no evidence")
+    }
+}
+
+struct PointAssets(PathBuf);
+#[async_trait]
+impl ContinuousReviewAssetPort for PointAssets {
+    async fn prepare_additions(
+        &self,
+        _: &[EntityId],
+        _: ReviewTaskCancellation,
+    ) -> Result<Vec<PreparedReviewAsset>, ReviewAssetError> {
+        panic!("materializer never prepares new identities")
+    }
+    async fn reopen_exact(
+        &self,
+        assets: &[AssetVersion],
+        _: ReviewTaskCancellation,
+    ) -> Result<Vec<PreparedReviewAsset>, ReviewAssetError> {
+        Ok(assets
+            .iter()
+            .cloned()
+            .map(|asset| PreparedReviewAsset {
+                entity_id: asset.source_entity_id.unwrap(),
+                asset,
+                failure: None,
+                change_revision: 1,
+                source_path: self.0.clone(),
+            })
+            .collect())
+    }
+    async fn check_sources(
+        &self,
+        _: &[AssetVersion],
+        _: ReviewTaskCancellation,
+    ) -> Result<Vec<viewer_domain::review::continuous::SourceCheck>, ReviewAssetError> {
+        panic!("materializer uses reopen_exact")
+    }
+    async fn confirm_relocation(
+        &self,
+        _: &AssetVersion,
+        _: SourceRelocationDecision,
+        _: ReviewTaskCancellation,
+    ) -> Result<(), ReviewAssetError> {
+        panic!("materializer never confirms relocation")
+    }
+}
+
+struct PointStaging(Vec<PreparedEvidenceFile>);
+impl ReviewEvidenceStaging for PointStaging {
+    fn files(&self) -> &[PreparedEvidenceFile] {
+        &self.0
+    }
+}
+
+struct PointEvidence(PathBuf);
+#[async_trait]
+impl ReviewEvidencePort for PointEvidence {
+    async fn capture_base(
+        &self,
+        asset: PreparedReviewAsset,
+        _: ReviewTaskCancellation,
+    ) -> Result<BoundReviewImage, ReviewArtifactError> {
+        let bytes = std::fs::read(&self.0).unwrap();
+        let reference = EvidenceRef {
+            blake3: *blake3::hash(&bytes).as_bytes(),
+            size_bytes: bytes.len() as u64,
+            width: 640,
+            height: 480,
+        };
+        BoundReviewImage::from_verified_png(asset.asset, reference, EvidenceRole::Base, bytes)
+    }
+
+    async fn render(
+        &self,
+        request: ReviewEvidenceRequest,
+    ) -> Result<ReviewEvidenceResult, ReviewArtifactError> {
+        request.validate()?;
+        let reference = request.base.reference().clone();
+        Ok(ReviewEvidenceResult {
+            base_ref: reference.clone(),
+            annotated_ref: Some(reference.clone()),
+            annotations: request
+                .annotations
+                .iter()
+                .map(|annotation| EvidenceAnnotation {
+                    ordinal: annotation.ordinal,
+                    key: annotation.key,
+                })
+                .collect(),
+            staging: Arc::new(PointStaging(vec![PreparedEvidenceFile {
+                path: self.0.clone(),
+                reference,
+            }])),
+        })
     }
 }
 
@@ -169,6 +272,12 @@ struct Fixture {
 }
 impl Fixture {
     fn new() -> Self {
+        Self::with_target(logical_target)
+    }
+
+    fn with_target(
+        build_target: impl FnOnce(ProjectId, ReviewStreamId) -> StoredAuthoringState,
+    ) -> Self {
         let root = TempDir::new().unwrap();
         let metadata = PortableProjectMetadata::open(root.path(), ProjectAccess::ReadWrite, 1)
             .expect("create portable metadata");
@@ -181,7 +290,7 @@ impl Fixture {
         ));
         provider.bootstrap_authoring(stream).unwrap();
         let authoring = provider.authoring_writer().unwrap();
-        let target = logical_target(project_id, stream);
+        let target = build_target(project_id, stream);
         let command = target.command_id;
         let digest = target.payload_digest;
         let request = ReviewAuthoringCommitRequest {
@@ -218,9 +327,72 @@ impl Fixture {
     }
 }
 
+fn point_source() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/images/alpha.png")
+}
+
+fn logical_point_target(project_id: ProjectId, stream: ReviewStreamId) -> StoredAuthoringState {
+    let mut target = logical_target(project_id, stream);
+    target.publication_protocol = ReviewPublicationProtocol::V4;
+    let bytes = std::fs::read(point_source()).unwrap();
+    let asset_id = AssetVersionId::from_u128(30);
+    let entity_id = EntityId::from_u128(31);
+    target.state.assets = vec![AssetVersion {
+        id: asset_id,
+        source_entity_id: Some(entity_id),
+        relative_path: RelativePath::parse("alpha.png").unwrap(),
+        evidence: AssetEvidence {
+            size_bytes: bytes.len() as u64,
+            modified_ns: 1,
+            blake3: Some(*blake3::hash(&bytes).as_bytes()),
+        },
+        media: ReviewMedia::Image {
+            width: Some(640),
+            height: Some(480),
+        },
+        producer_asset_id: None,
+        parent_asset_version_id: None,
+    }];
+    let feedback_id = FeedbackId::from_u128(32);
+    let text_revision_id = ReviewTextRevisionId::from_u128(33);
+    let target_id = ReviewTargetId::from_u128(34);
+    let target_revision_id = ReviewTargetRevisionId::from_u128(35);
+    let key = TargetVersionKey {
+        feedback_id,
+        text_revision_id,
+        target_id,
+        target_revision_id,
+    };
+    target.state.feedback = vec![VersionedFeedback {
+        id: feedback_id,
+        text_revision_id,
+        text: "点标记".into(),
+        created_at_ms: 1_000,
+        history_ref: None,
+        targets: vec![VersionedTarget {
+            id: target_id,
+            revision_id: target_revision_id,
+            asset_version_id: asset_id,
+            anchor: FeedbackAnchor::ImagePoint(NormalizedPoint::new(0.25, 0.4).unwrap()),
+            availability: ReviewAvailability::Ready,
+        }],
+    }];
+    target.generated.targets = vec![(target_id, target_revision_id)];
+    target.changes = vec![ReviewChange {
+        target_id,
+        before: None,
+        after: Some(key),
+        kind: ReviewChangeKind::Added,
+        archive_id: None,
+        historical_key: None,
+    }];
+    target
+}
+
 fn logical_target(project_id: ProjectId, stream: ReviewStreamId) -> StoredAuthoringState {
     let snapshot_id = ReviewSnapshotId::from_u128(10);
     StoredAuthoringState {
+        publication_protocol: ReviewPublicationProtocol::V3,
         head: ReviewAuthoringHead {
             sequence: 1,
             snapshot_id,
@@ -315,6 +487,52 @@ async fn real_v3_publication_advances_the_database_head_only_after_verification(
     assert_eq!(v3.state, fixture.target.state);
     assert_eq!(v3.command_id, fixture.target.command_id);
     assert_eq!(v3.payload_digest, fixture.target.payload_digest);
+}
+
+#[tokio::test]
+async fn first_point_materialization_publishes_v4_state_and_atomically_promotes_the_index() {
+    let fixture = Fixture::with_target(logical_point_target);
+    let source = point_source();
+    let materializer = ReviewMaterializationService::new(
+        fixture.authoring.clone(),
+        Arc::new(ContinuousReviewPublication::new(
+            fixture.stream,
+            fixture.provider.clone(),
+            Arc::new(PointAssets(source.clone())),
+            Arc::new(PointEvidence(source)),
+        )),
+        Arc::new(Clock(2_000)),
+    );
+
+    assert!(matches!(
+        materializer
+            .run_one(ReviewTaskCancellation::default())
+            .await
+            .unwrap(),
+        ReviewMaterializationOutcome::Published { .. }
+    ));
+    let current = fixture
+        .provider
+        .continuous_reader()
+        .unwrap()
+        .load_current(fixture.stream)
+        .unwrap()
+        .unwrap();
+    assert_eq!(current.publication_protocol, ReviewPublicationProtocol::V4);
+    let index: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(fixture._root.path().join(".viewer/reviews/index.json")).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(index["protocolVersion"], "viewer.review/4");
+    let state: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(fixture._root.path().join(format!(
+            ".viewer/reviews/states/{}.json",
+            current.state.snapshot_id
+        )))
+        .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(state["protocolVersion"], "viewer.review/4");
 }
 
 #[tokio::test]

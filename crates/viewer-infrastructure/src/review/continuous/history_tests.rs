@@ -17,6 +17,7 @@ fn repeated_ancestry_proofs_reuse_only_the_operation_local_verified_edges() {
                 expected,
                 production: None,
                 next: PreparedContinuousSnapshot {
+                    publication_protocol: ReviewPublicationProtocol::V3,
                     state: ContinuousReviewState::empty(
                         project,
                         stream_id,
@@ -99,6 +100,7 @@ fn recovery_resolution_walks_committed_history_once_for_all_input_records() {
                     expected,
                     production: None,
                     next: PreparedContinuousSnapshot {
+                        publication_protocol: ReviewPublicationProtocol::V3,
                         state: ContinuousReviewState::empty(
                             project,
                             stream,

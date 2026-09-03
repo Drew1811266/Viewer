@@ -289,6 +289,7 @@ impl ContinuousReviewRepositoryPort for MemoryRepository {
         }
         states.push(StoredContinuousSnapshot {
             reference,
+            publication_protocol: r.next.publication_protocol,
             production: r.production,
             state,
             command_id: receipt.command_id,

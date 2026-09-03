@@ -200,6 +200,33 @@ fn reader_is_side_effect_free_and_observes_first_atomic_commit() {
 }
 
 #[test]
+fn opening_and_reading_an_untouched_v3_project_does_not_rewrite_its_index() {
+    let (root, provider) = setup();
+    provider
+        .continuous_writer()
+        .unwrap()
+        .commit(request(3, None))
+        .unwrap();
+    let index_path = root.path().join(".viewer/reviews/index.json");
+    let before_bytes = fs::read(&index_path).unwrap();
+    let before_modified = fs::metadata(&index_path).unwrap().modified().unwrap();
+
+    let current = provider
+        .continuous_reader()
+        .unwrap()
+        .load_current(ReviewStreamId::from_u128(2))
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(current.publication_protocol, ReviewPublicationProtocol::V3);
+    assert_eq!(fs::read(&index_path).unwrap(), before_bytes);
+    assert_eq!(
+        fs::metadata(&index_path).unwrap().modified().unwrap(),
+        before_modified
+    );
+}
+
+#[test]
 fn committed_history_catalog_survives_a_cold_repository_reopen() {
     use viewer_application::review_evidence::HistorySelector;
 

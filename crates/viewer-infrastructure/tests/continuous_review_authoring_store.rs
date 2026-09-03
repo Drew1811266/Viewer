@@ -6,8 +6,8 @@ use viewer_application::{
     review_workspace::{
         ContinuousReviewAuthoringStorePort, GeneratedReviewIds, ReviewAuthoringCommitRequest,
         ReviewAuthoringHead, ReviewBarrierKind, ReviewCommitError, ReviewMaterializationFailure,
-        ReviewMaterializationQueuePort, ReviewPublicationReceipt, ReviewPublicationStatus,
-        ReviewWorkspaceError, StoredAuthoringState,
+        ReviewMaterializationQueuePort, ReviewPublicationProtocol, ReviewPublicationReceipt,
+        ReviewPublicationStatus, ReviewWorkspaceError, StoredAuthoringState,
     },
 };
 use viewer_domain::{
@@ -55,6 +55,22 @@ impl AuthoringFixture {
         text: &str,
     ) -> Result<viewer_application::review_workspace::ReviewAuthoringReceipt, ReviewWorkspaceError>
     {
+        self.commit_with_protocol(
+            command,
+            expected_snapshot_id,
+            text,
+            ReviewPublicationProtocol::V3,
+        )
+    }
+
+    fn commit_with_protocol(
+        &self,
+        command: u128,
+        expected_snapshot_id: Option<ReviewSnapshotId>,
+        text: &str,
+        publication_protocol: ReviewPublicationProtocol,
+    ) -> Result<viewer_application::review_workspace::ReviewAuthoringReceipt, ReviewWorkspaceError>
+    {
         let command_id = ReviewCommandId::from_u128(command);
         let payload_digest = *blake3::hash(text.as_bytes()).as_bytes();
         let mut prepare = |current: Option<&StoredAuthoringState>| {
@@ -63,6 +79,7 @@ impl AuthoringFixture {
             Ok(ReviewAuthoringCommitRequest {
                 expected_snapshot_id,
                 next: StoredAuthoringState {
+                    publication_protocol,
                     head: ReviewAuthoringHead {
                         sequence,
                         snapshot_id,
@@ -110,6 +127,81 @@ impl AuthoringFixture {
             .collect::<Result<Vec<_>, _>>()
             .unwrap()
     }
+}
+
+#[test]
+fn new_authoring_snapshots_canonically_persist_the_publication_protocol() {
+    let fixture = AuthoringFixture::new();
+    fixture.commit(7, None, "第一条").unwrap();
+    let connection = Connection::open(fixture.root.path().join(".viewer/metadata.sqlite")).unwrap();
+    let (logical, transition): (Vec<u8>, Vec<u8>) = connection
+        .query_row(
+            "SELECT logical_state, transition FROM review_authoring_snapshots WHERE stream_id = ?1 AND seq = 1",
+            [fixture.stream.to_string()],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .unwrap();
+
+    let logical: serde_json::Value = serde_json::from_slice(&logical).unwrap();
+    let transition: serde_json::Value = serde_json::from_slice(&transition).unwrap();
+    assert_eq!(logical["publicationProtocol"], serde_json::json!("v3"));
+    assert_eq!(transition["publicationProtocol"], serde_json::json!("v3"));
+}
+
+#[test]
+fn legacy_authoring_snapshot_without_publication_protocol_decodes_as_canonical_v3() {
+    let fixture = AuthoringFixture::new();
+    fixture.commit(7, None, "第一条").unwrap();
+    let connection = Connection::open(fixture.root.path().join(".viewer/metadata.sqlite")).unwrap();
+    let (logical, transition): (Vec<u8>, Vec<u8>) = connection
+        .query_row(
+            "SELECT logical_state, transition FROM review_authoring_snapshots WHERE stream_id = ?1 AND seq = 1",
+            [fixture.stream.to_string()],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .unwrap();
+    let logical = std::str::from_utf8(&logical)
+        .unwrap()
+        .replace(",\"publicationProtocol\":\"v3\"", "")
+        .into_bytes();
+    let transition = std::str::from_utf8(&transition)
+        .unwrap()
+        .replace(",\"publicationProtocol\":\"v3\"", "")
+        .into_bytes();
+    connection
+        .execute(
+            "UPDATE review_authoring_snapshots SET logical_state = ?2, transition = ?3 WHERE stream_id = ?1 AND seq = 1",
+            params![
+                fixture.stream.to_string(),
+                logical,
+                transition,
+            ],
+        )
+        .unwrap();
+    drop(connection);
+
+    let current = fixture.store.load_current(fixture.stream).unwrap().unwrap();
+    assert_eq!(current.publication_protocol, ReviewPublicationProtocol::V3);
+}
+
+#[test]
+fn duplicate_command_keeps_the_original_v4_protocol() {
+    let fixture = AuthoringFixture::new();
+    let original = fixture
+        .commit_with_protocol(7, None, "第一条", ReviewPublicationProtocol::V4)
+        .unwrap();
+    let duplicate = fixture.commit(7, None, "第一条").unwrap();
+
+    assert_eq!(duplicate, original);
+    assert_eq!(
+        fixture
+            .store
+            .load_current(fixture.stream)
+            .unwrap()
+            .unwrap()
+            .publication_protocol,
+        ReviewPublicationProtocol::V4
+    );
 }
 
 #[test]

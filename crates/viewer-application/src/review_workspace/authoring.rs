@@ -1,5 +1,10 @@
 use super::*;
-use viewer_domain::{review::ProductionScope, review::continuous::*, *};
+use serde::{Deserialize, Serialize};
+use viewer_domain::{
+    review::continuous::*,
+    review::{FeedbackAnchor, ProductionScope},
+    *,
+};
 
 pub type ReviewAuthoringSequence = u64;
 
@@ -23,9 +28,40 @@ pub enum ReviewBarrierKind {
     Migration,
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ReviewPublicationProtocol {
+    #[default]
+    V3,
+    V4,
+}
+
+impl ReviewPublicationProtocol {
+    pub fn promote_for(self, state: &ContinuousReviewState) -> Self {
+        let requires_v4 = state
+            .feedback
+            .iter()
+            .flat_map(|item| &item.targets)
+            .any(|target| {
+                matches!(
+                    &target.anchor,
+                    FeedbackAnchor::ImagePoint(_)
+                        | FeedbackAnchor::ImageArrow(_)
+                        | FeedbackAnchor::ImageEllipse(_)
+                )
+            });
+        if self == Self::V4 || requires_v4 {
+            Self::V4
+        } else {
+            Self::V3
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct StoredAuthoringState {
     pub head: ReviewAuthoringHead,
+    pub publication_protocol: ReviewPublicationProtocol,
     pub production: Option<ProductionScope>,
     pub state: ContinuousReviewState,
     pub command_id: ReviewCommandId,
@@ -73,6 +109,7 @@ impl ReviewWorkspaceCurrent {
     pub(crate) fn from_published(value: StoredContinuousSnapshot) -> Self {
         let StoredContinuousSnapshot {
             reference,
+            publication_protocol,
             production,
             state,
             command_id,
@@ -87,6 +124,7 @@ impl ReviewWorkspaceCurrent {
                     sequence: 1,
                     snapshot_id,
                 },
+                publication_protocol,
                 production,
                 state,
                 command_id,

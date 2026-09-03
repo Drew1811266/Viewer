@@ -1,9 +1,9 @@
-use crate::review::{ReviewProtocolError, v3};
+use crate::review::{ReviewProtocolError, v3, v4};
 use serde::{Deserialize, Serialize};
 use std::{collections::HashSet, fmt::Display, str::FromStr};
 use viewer_application::review_workspace::{
     GeneratedReviewIds, MigrationFeedbackIds, ReviewBarrierKind, ReviewCommitError,
-    StoredAuthoringState,
+    ReviewPublicationProtocol, StoredAuthoringState,
 };
 use viewer_domain::{
     FeedbackId, ProjectId, ReviewRoundId, ReviewSnapshotId, ReviewStreamId, ReviewTargetId,
@@ -30,6 +30,8 @@ struct AuthoringRecordV1 {
     review_stream_id: String,
     sequence: u64,
     snapshot_id: String,
+    #[serde(default = "default_v3_publication_protocol")]
+    publication_protocol: ReviewPublicationProtocol,
     production: Option<ProductionWire>,
     state: serde_json::Value,
     generated: GeneratedIdsWire,
@@ -103,11 +105,45 @@ struct TransitionRecordV1<'a> {
     protocol_version: &'static str,
     command_id: String,
     payload_digest: String,
+    publication_protocol: ReviewPublicationProtocol,
     generated: &'a GeneratedIdsWire,
     changes: &'a serde_json::Value,
     archives: &'a [serde_json::Value],
     adopted_usage: &'a [serde_json::Value],
     barrier_kind: BarrierWire,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LegacyAuthoringRecordV1<'a> {
+    protocol_version: &'a AuthoringProtocol,
+    project_id: &'a str,
+    review_stream_id: &'a str,
+    sequence: u64,
+    snapshot_id: &'a str,
+    production: &'a Option<ProductionWire>,
+    state: &'a serde_json::Value,
+    generated: &'a GeneratedIdsWire,
+    archives: &'a [serde_json::Value],
+    adopted_usage: &'a [serde_json::Value],
+    barrier_kind: BarrierWire,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LegacyTransitionRecordV1<'a> {
+    protocol_version: &'static str,
+    command_id: String,
+    payload_digest: String,
+    generated: &'a GeneratedIdsWire,
+    changes: &'a serde_json::Value,
+    archives: &'a [serde_json::Value],
+    adopted_usage: &'a [serde_json::Value],
+    barrier_kind: BarrierWire,
+}
+
+fn default_v3_publication_protocol() -> ReviewPublicationProtocol {
+    ReviewPublicationProtocol::V3
 }
 
 pub(super) fn encode(
@@ -116,13 +152,17 @@ pub(super) fn encode(
     value: &StoredAuthoringState,
 ) -> Result<EncodedAuthoringState, ReviewCommitError> {
     validate_context(project_id, stream_id, value)?;
-    let state_bytes = v3::encode_authoring_state(&v3::ReviewStateRecord {
+    let state_record = v3::ReviewStateRecord {
         state: value.state.clone(),
         command_id: value.command_id,
         payload_digest: value.payload_digest,
         changes: value.changes.clone(),
         evidence: vec![],
-    })
+    };
+    let state_bytes = match value.publication_protocol {
+        ReviewPublicationProtocol::V3 => v3::encode_authoring_state(&state_record),
+        ReviewPublicationProtocol::V4 => v4::encode_authoring_state(&state_record),
+    }
     .map_err(protocol_error)?;
     let state: serde_json::Value =
         serde_json::from_slice(&state_bytes).map_err(|_| ReviewCommitError::Integrity)?;
@@ -132,10 +172,14 @@ pub(super) fn encode(
         .archives
         .iter()
         .map(|checkpoint| {
-            v3::encode_archive_v3(&v3::ReviewArchiveRecord {
+            let record = v3::ReviewArchiveRecord {
                 checkpoint: checkpoint.clone(),
                 result_snapshot_id: value.head.snapshot_id,
-            })
+            };
+            match value.publication_protocol {
+                ReviewPublicationProtocol::V3 => v3::encode_archive_v3(&record),
+                ReviewPublicationProtocol::V4 => v4::encode_archive_v4(&record),
+            }
             .map_err(protocol_error)
             .and_then(json_value)
         })
@@ -158,6 +202,7 @@ pub(super) fn encode(
         review_stream_id: stream_id.to_string(),
         sequence: value.head.sequence,
         snapshot_id: value.head.snapshot_id.to_string(),
+        publication_protocol: value.publication_protocol,
         production: value.production.as_ref().map(ProductionWire::from),
         state,
         generated,
@@ -174,6 +219,7 @@ pub(super) fn encode(
             protocol_version: TRANSITION_PROTOCOL_V1,
             command_id: value.command_id.to_string(),
             payload_digest: encode_digest(value.payload_digest),
+            publication_protocol: value.publication_protocol,
             generated: &record.generated,
             changes,
             archives: &record.archives,
@@ -191,6 +237,67 @@ pub(super) fn encode(
         generated_ids,
         production_scope,
     })
+}
+
+pub(super) fn matches_canonical_encoding(
+    project_id: ProjectId,
+    stream_id: ReviewStreamId,
+    value: &StoredAuthoringState,
+    logical_state: &[u8],
+    transition: &[u8],
+    generated_ids: &[u8],
+    production_scope: &[u8],
+) -> Result<bool, ReviewCommitError> {
+    let current = encode(project_id, stream_id, value)?;
+    if logical_state == current.logical_state
+        && transition == current.transition
+        && generated_ids == current.generated_ids
+        && production_scope == current.production_scope
+    {
+        return Ok(true);
+    }
+    if value.publication_protocol != ReviewPublicationProtocol::V3
+        || generated_ids != current.generated_ids
+        || production_scope != current.production_scope
+    {
+        return Ok(false);
+    }
+    let record: AuthoringRecordV1 =
+        serde_json::from_slice(&current.logical_state).map_err(|_| ReviewCommitError::Integrity)?;
+    let changes = record
+        .state
+        .get("changes")
+        .ok_or(ReviewCommitError::Integrity)?;
+    let legacy_logical_state = encode_bounded(
+        &LegacyAuthoringRecordV1 {
+            protocol_version: &record.protocol_version,
+            project_id: &record.project_id,
+            review_stream_id: &record.review_stream_id,
+            sequence: record.sequence,
+            snapshot_id: &record.snapshot_id,
+            production: &record.production,
+            state: &record.state,
+            generated: &record.generated,
+            archives: &record.archives,
+            adopted_usage: &record.adopted_usage,
+            barrier_kind: record.barrier_kind,
+        },
+        MAX_AUTHORING_STATE_BYTES,
+    )?;
+    let legacy_transition = encode_bounded(
+        &LegacyTransitionRecordV1 {
+            protocol_version: TRANSITION_PROTOCOL_V1,
+            command_id: value.command_id.to_string(),
+            payload_digest: encode_digest(value.payload_digest),
+            generated: &record.generated,
+            changes,
+            archives: &record.archives,
+            adopted_usage: &record.adopted_usage,
+            barrier_kind: record.barrier_kind,
+        },
+        MAX_AUTHORING_TRANSITION_BYTES,
+    )?;
+    Ok(logical_state == legacy_logical_state && transition == legacy_transition)
 }
 
 pub(super) fn encode_production_scope(
@@ -230,9 +337,12 @@ pub(super) fn decode(
     if project_id != expected_project || stream_id != expected_stream || record.sequence == 0 {
         return Err(ReviewCommitError::Integrity);
     }
-    let state_record = v3::decode_authoring_state(
-        &serde_json::to_vec(&record.state).map_err(|_| ReviewCommitError::Integrity)?,
-    )
+    let state_bytes =
+        serde_json::to_vec(&record.state).map_err(|_| ReviewCommitError::Integrity)?;
+    let state_record = match record.publication_protocol {
+        ReviewPublicationProtocol::V3 => v3::decode_authoring_state(&state_bytes),
+        ReviewPublicationProtocol::V4 => v4::decode_authoring_state(&state_bytes),
+    }
     .map_err(protocol_error)?;
     let generated = record.generated.try_into_domain()?;
     validate_generated(&generated)?;
@@ -240,9 +350,11 @@ pub(super) fn decode(
         .archives
         .into_iter()
         .map(|value| {
-            v3::decode_archive_v3(
-                &serde_json::to_vec(&value).map_err(|_| ReviewCommitError::Integrity)?,
-            )
+            let bytes = serde_json::to_vec(&value).map_err(|_| ReviewCommitError::Integrity)?;
+            match record.publication_protocol {
+                ReviewPublicationProtocol::V3 => v3::decode_archive_v3(&bytes),
+                ReviewPublicationProtocol::V4 => v4::decode_archive_v4(&bytes),
+            }
             .map_err(protocol_error)
         })
         .collect::<Result<Vec<_>, _>>()?;
@@ -268,6 +380,7 @@ pub(super) fn decode(
             sequence: record.sequence,
             snapshot_id,
         },
+        publication_protocol: record.publication_protocol,
         production: record
             .production
             .map(ProductionWire::try_into_domain)
@@ -299,6 +412,7 @@ fn validate_context(
         || value.state.project_id != project_id
         || value.state.stream_id != stream_id
         || value.generated.created_at_ms < 0
+        || value.publication_protocol.promote_for(&value.state) != value.publication_protocol
     {
         return Err(ReviewCommitError::Integrity);
     }

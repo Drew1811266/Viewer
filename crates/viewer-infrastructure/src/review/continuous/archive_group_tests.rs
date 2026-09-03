@@ -72,6 +72,7 @@ fn shared_known_archive_basis_reads_one_state_per_checkpoint_without_reordering_
             expected: None,
             production: None,
             next: PreparedContinuousSnapshot {
+                publication_protocol: ReviewPublicationProtocol::V3,
                 state: state.clone(),
                 command_id: ReviewCommandId::new(),
                 payload_digest: [1; 32],
@@ -141,6 +142,7 @@ fn shared_known_archive_basis_reads_one_state_per_checkpoint_without_reordering_
             expected: Some(first.snapshot),
             production: None,
             next: PreparedContinuousSnapshot {
+                publication_protocol: ReviewPublicationProtocol::V3,
                 state: next,
                 command_id: ReviewCommandId::new(),
                 payload_digest: [2; 32],

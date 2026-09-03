@@ -1,3 +1,4 @@
+use super::ReviewPublicationProtocol;
 use std::{path::PathBuf, sync::Arc};
 use viewer_domain::review::{ProductionScope, continuous::*};
 use viewer_domain::{
@@ -74,6 +75,7 @@ pub enum ReviewRecoveryFailure {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct PreparedContinuousSnapshot {
+    pub publication_protocol: ReviewPublicationProtocol,
     pub state: ContinuousReviewState,
     pub command_id: ReviewCommandId,
     pub payload_digest: [u8; 32],
@@ -84,6 +86,7 @@ pub struct PreparedContinuousSnapshot {
 #[derive(Clone, Debug, PartialEq)]
 pub struct StoredContinuousSnapshot {
     pub reference: SnapshotRef,
+    pub publication_protocol: ReviewPublicationProtocol,
     pub production: Option<ProductionScope>,
     pub state: ContinuousReviewState,
     pub command_id: ReviewCommandId,

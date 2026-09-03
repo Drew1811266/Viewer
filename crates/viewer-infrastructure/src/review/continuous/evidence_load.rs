@@ -22,9 +22,11 @@ pub(super) fn load(
     role: EvidenceRole,
 ) -> Result<BoundReviewImage, Error> {
     let binding = match *selector {
-        HistorySelector::Snapshot(reference) => {
-            select(&history::reachable(view, stream, &reference)?, asset, role)?
-        }
+        HistorySelector::Snapshot(reference) => select(
+            &history::reachable(view, stream, &reference)?.record,
+            asset,
+            role,
+        )?,
         HistorySelector::Archive(id) => {
             let archive = history::archive(view, stream, id)?;
             let mut selected = None;
@@ -46,7 +48,7 @@ pub(super) fn load(
                 if !relevant {
                     continue;
                 }
-                let binding = select(&state, asset, role)?;
+                let binding = select(&state.record, asset, role)?;
                 if selected.as_ref().is_some_and(|old| old != &binding) {
                     return Err(Error::AmbiguousEvidence);
                 }

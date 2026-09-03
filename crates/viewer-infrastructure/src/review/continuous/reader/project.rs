@@ -2,10 +2,14 @@ use super::{Failure, ReadErrorCode, heads::PinnedReviewHeads};
 use crate::review::MAX_REVIEW_INDEX_BYTES;
 use crate::review::continuous::owned_io::Directory;
 use crate::review::{
-    continuous::{migration, repository::View},
-    v3,
+    continuous::{
+        migration,
+        repository::{VersionedReviewIndex, View},
+    },
+    v3, v4,
 };
 use std::path::Path;
+use viewer_application::review_workspace::ReviewPublicationProtocol;
 use viewer_domain::ProjectId;
 
 pub(super) struct Project {
@@ -69,7 +73,13 @@ impl Project {
                     "legacy review requires explicit Viewer migration; no current instructions returned",
                 ));
             }
-            let index = v3::decode_index_v3(&bytes)?;
+            let (protocol, index) = match version.protocol_version.as_str() {
+                "viewer.review/3" => (ReviewPublicationProtocol::V3, v3::decode_index_v3(&bytes)?),
+                "viewer.review/4" => (ReviewPublicationProtocol::V4, v4::decode_index_v4(&bytes)?),
+                _ => {
+                    return Err(Failure::integrity("review index protocol is unsupported"));
+                }
+            };
             if let Some(backup) = &index.legacy_index {
                 migration::verify_backup(&directory, backup, index.project_id)?;
             }
@@ -82,7 +92,10 @@ impl Project {
                 heads: self.heads,
                 view: Some(View {
                     directory,
-                    index,
+                    index: VersionedReviewIndex {
+                        protocol,
+                        record: index,
+                    },
                     index_bytes: Some(bytes),
                     ancestry: Default::default(),
                 }),

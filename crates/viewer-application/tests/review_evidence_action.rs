@@ -1,7 +1,7 @@
 use viewer_application::review_workspace::{
     CURRENT_REVIEW_EVIDENCE_ACTION_POLICY, GeneratedReviewIds, ReviewAuthoringHead,
-    ReviewBarrierKind, ReviewEvidenceActionPolicy, StoredAuthoringState, dirty_evidence_assets,
-    evidence_action_key,
+    ReviewBarrierKind, ReviewEvidenceActionPolicy, ReviewPublicationProtocol, StoredAuthoringState,
+    dirty_evidence_assets, evidence_action_key,
 };
 use viewer_domain::{
     AssetVersionId, FeedbackId, ProjectId, RelativePath, ReviewArchiveId, ReviewCommandId,
@@ -93,6 +93,7 @@ fn authoring(state: ContinuousReviewState) -> StoredAuthoringState {
             sequence: 1,
             snapshot_id: state.snapshot_id,
         },
+        publication_protocol: ReviewPublicationProtocol::V3,
         production: None,
         command_id: ReviewCommandId::from_u128(10),
         payload_digest: [11; 32],

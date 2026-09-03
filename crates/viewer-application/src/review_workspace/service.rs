@@ -279,6 +279,12 @@ impl ContinuousReviewService {
                 expected: current.as_ref().map(|s| s.reference),
                 production: self.context.production.clone(),
                 next: PreparedContinuousSnapshot {
+                    publication_protocol: current
+                        .as_ref()
+                        .map_or(ReviewPublicationProtocol::V3, |value| {
+                            value.publication_protocol
+                        })
+                        .promote_for(&next),
                     state: next,
                     command_id: command,
                     payload_digest: envelope.payload_digest,

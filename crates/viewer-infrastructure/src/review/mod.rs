@@ -23,8 +23,9 @@ pub use protocol::{
     MAX_REVIEW_DOCUMENT_BYTES, MAX_REVIEW_INDEX_BYTES, PRODUCTION_PROTOCOL_V1, REVIEW_PROTOCOL_V1,
     REVIEW_PROTOCOL_V2, ReviewProtocolError, decode_catalog, decode_catalog_versioned,
     decode_completed, decode_completed_versioned, decode_draft, decode_draft_versioned,
-    decode_production_manifest, detect_review_protocol, encode_catalog, encode_catalog_v2,
-    encode_completed, encode_completed_v2, encode_draft, encode_draft_v2,
+    decode_production_manifest, detect_continuous_review_protocol, detect_review_protocol,
+    encode_catalog, encode_catalog_v2, encode_completed, encode_completed_v2, encode_draft,
+    encode_draft_v2,
 };
 pub use provider::ProjectReviewRepositoryProvider;
 pub use repository::{

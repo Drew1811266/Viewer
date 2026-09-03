@@ -183,6 +183,12 @@ impl ContinuousReviewService {
             snapshot_id: value.head.snapshot_id,
             blake3: value.payload_digest,
         });
+        let publication_protocol = current
+            .as_ref()
+            .map_or(ReviewPublicationProtocol::V3, |value| {
+                value.publication_protocol
+            })
+            .promote_for(&logical_state);
         let next_state = StoredAuthoringState {
             head: ReviewAuthoringHead {
                 sequence: current
@@ -190,6 +196,7 @@ impl ContinuousReviewService {
                     .map_or(1, |value| value.head.sequence.saturating_add(1)),
                 snapshot_id: envelope.generated.snapshot_id,
             },
+            publication_protocol,
             production: self.context.production.clone(),
             state: logical_state,
             command_id: envelope.command_id,
@@ -204,17 +211,23 @@ impl ContinuousReviewService {
             barrier,
         };
         let expected_snapshot_id = envelope.expected_snapshot_id;
-        let request = ReviewAuthoringCommitRequest {
-            expected_snapshot_id,
-            next: next_state.clone(),
-        };
         let commit_store = store.clone();
         let payload_digest = envelope.payload_digest;
+        let transaction_next_state = next_state.clone();
         let mut prepare = move |transaction_current: Option<&StoredAuthoringState>| {
             if transaction_current.map(|value| value.head.snapshot_id) != expected_snapshot_id {
                 return Err(ReviewCommitError::StaleSnapshot.into());
             }
-            Ok(request.clone())
+            let mut next = transaction_next_state.clone();
+            next.publication_protocol = transaction_current
+                .map_or(ReviewPublicationProtocol::V3, |value| {
+                    value.publication_protocol
+                })
+                .promote_for(&next.state);
+            Ok(ReviewAuthoringCommitRequest {
+                expected_snapshot_id,
+                next,
+            })
         };
         let receipt = super::service::work(move || {
             commit_store.commit(stream, command, payload_digest, &mut prepare)
@@ -348,6 +361,7 @@ fn as_published_state(value: &StoredAuthoringState) -> StoredContinuousSnapshot 
             snapshot_id: value.head.snapshot_id,
             blake3: value.payload_digest,
         },
+        publication_protocol: value.publication_protocol,
         production: value.production.clone(),
         state: value.state.clone(),
         command_id: value.command_id,

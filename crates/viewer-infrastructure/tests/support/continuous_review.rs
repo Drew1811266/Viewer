@@ -14,6 +14,7 @@ pub fn request(sequence: u128, expected: Option<SnapshotRef>) -> ReviewCommitReq
         expected,
         production: None,
         next: PreparedContinuousSnapshot {
+            publication_protocol: ReviewPublicationProtocol::V3,
             state: ContinuousReviewState::empty(
                 ProjectId::from_u128(1),
                 ReviewStreamId::from_u128(2),

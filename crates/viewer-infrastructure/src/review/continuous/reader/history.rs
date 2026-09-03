@@ -72,7 +72,7 @@ pub(super) fn read(
                     "history result exceeds retained document limit",
                 ));
             }
-            entries.push(entry(reference, record, keys, &mut limitations));
+            entries.push(entry(reference, record.record, keys, &mut limitations));
         }
         (v3::ReadHistorySelector::Archive { archive_id: id }, entries)
     } else {
@@ -141,7 +141,7 @@ fn snapshot(
         }
         evidence::verify(view, &record.evidence)?;
         references::feedback_origins(view, &record)?;
-        found = Some((reference, record));
+        found = Some((reference, record.record));
         Ok(true)
     })?;
     found.ok_or_else(|| {

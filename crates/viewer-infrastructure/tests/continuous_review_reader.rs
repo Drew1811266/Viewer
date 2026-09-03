@@ -331,6 +331,7 @@ fn first_authoring_revision_is_pending_even_before_a_public_stream_exists() {
     let authoring = provider.authoring_writer().unwrap();
     let snapshot_id = ReviewSnapshotId::from_u128(70);
     let target = StoredAuthoringState {
+        publication_protocol: ReviewPublicationProtocol::V3,
         head: ReviewAuthoringHead {
             sequence: 1,
             snapshot_id,

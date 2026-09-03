@@ -5,16 +5,24 @@ use continuous_review::Fixture;
 use viewer_application::{ReviewTaskCancellation, review_workspace::*};
 use viewer_domain::{
     EntityId, ReviewCommandId,
-    review::{FeedbackAnchor, NormalizedRect},
+    review::{FeedbackAnchor, NormalizedPoint, NormalizedRect},
 };
 
 fn save(asset_version_id: viewer_domain::AssetVersionId, text: &str) -> ReviewWorkspaceCommand {
+    save_anchor(asset_version_id, text, FeedbackAnchor::Asset)
+}
+
+fn save_anchor(
+    asset_version_id: viewer_domain::AssetVersionId,
+    text: &str,
+    anchor: FeedbackAnchor,
+) -> ReviewWorkspaceCommand {
     ReviewWorkspaceCommand::SaveFeedback {
         feedback_id: None,
         text: text.to_owned(),
         targets: vec![TargetEdit::Add {
             asset_version_id,
-            anchor: FeedbackAnchor::Asset,
+            anchor,
         }],
     }
 }
@@ -29,6 +37,92 @@ async fn prepared_asset(service: &ContinuousReviewService) -> viewer_domain::Ass
         .unwrap()
         .remove(0)
         .id
+}
+
+#[tokio::test]
+async fn extended_anchor_promotes_publication_to_v4_without_later_downgrade() {
+    let fixture = Fixture::new();
+    let service = fixture.authoring_service();
+    let asset = prepared_asset(&service).await;
+    let first = service
+        .apply_authoring_with_cancellation(
+            service
+                .prepare(
+                    ReviewCommandId::from_u128(70),
+                    None,
+                    save(asset, "整图意见"),
+                )
+                .await
+                .unwrap(),
+            ReviewTaskCancellation::default(),
+        )
+        .await
+        .unwrap();
+    let first_view = first.patch.apply(None).unwrap();
+    assert_eq!(
+        first_view.authoring.publication_protocol,
+        ReviewPublicationProtocol::V3
+    );
+
+    let second = service
+        .apply_authoring_with_cancellation(
+            service
+                .prepare(
+                    ReviewCommandId::from_u128(71),
+                    Some(first_view.authoring.head.snapshot_id),
+                    save_anchor(
+                        asset,
+                        "点标记",
+                        FeedbackAnchor::ImagePoint(NormalizedPoint::new(0.25, 0.4).unwrap()),
+                    ),
+                )
+                .await
+                .unwrap(),
+            ReviewTaskCancellation::default(),
+        )
+        .await
+        .unwrap();
+    let second_view = second.patch.apply(Some(first_view)).unwrap();
+    assert_eq!(
+        second_view.authoring.publication_protocol,
+        ReviewPublicationProtocol::V4
+    );
+    let point_feedback = second_view
+        .authoring
+        .state
+        .feedback
+        .iter()
+        .find(|feedback| matches!(feedback.targets[0].anchor, FeedbackAnchor::ImagePoint(_)))
+        .unwrap();
+    let point_target = &point_feedback.targets[0];
+    let point_key = viewer_domain::review::continuous::TargetVersionKey {
+        feedback_id: point_feedback.id,
+        text_revision_id: point_feedback.text_revision_id,
+        target_id: point_target.id,
+        target_revision_id: point_target.revision_id,
+    };
+
+    let third = service
+        .apply_authoring_with_cancellation(
+            service
+                .prepare(
+                    ReviewCommandId::from_u128(72),
+                    Some(second_view.authoring.head.snapshot_id),
+                    ReviewWorkspaceCommand::Withdraw {
+                        targets: vec![point_key],
+                    },
+                )
+                .await
+                .unwrap(),
+            ReviewTaskCancellation::default(),
+        )
+        .await
+        .unwrap();
+    let third_view = third.patch.apply(Some(second_view)).unwrap();
+    assert_eq!(
+        third_view.authoring.publication_protocol,
+        ReviewPublicationProtocol::V4
+    );
 }
 
 #[tokio::test]

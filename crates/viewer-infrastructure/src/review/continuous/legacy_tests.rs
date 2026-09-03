@@ -20,30 +20,33 @@ fn shared_legacy_origins_are_verified_once_per_current_operation() {
     let digest = *blake3::hash(&bytes).as_bytes();
     let view = View {
         directory: Directory::open(root.path()).unwrap(),
-        index: v3::ReviewIndexV3 {
-            project_id: old.project_id,
-            legacy_index: None,
-            streams: vec![v3::ReviewStreamV3 {
-                review_stream_id: old.review_stream_id,
-                task_id: old
-                    .production
-                    .as_ref()
-                    .map(|s| s.task_id.as_str().to_owned()),
-                batch_id: old
-                    .production
-                    .as_ref()
-                    .map(|s| s.batch_id.as_str().to_owned()),
-                current_ref: None,
-                archive_refs: vec![],
-                usage_refs: vec![],
-                legacy_refs: vec![v3::LegacyRecordRef {
-                    kind: v3::LegacyRecordKind::Completed,
-                    round_id: old.review_round_id,
-                    protocol_version: protocol::REVIEW_PROTOCOL_V1.into(),
-                    location: format!("rounds/{}.json", old.review_round_id),
-                    blake3: digest,
+        index: super::super::repository::VersionedReviewIndex {
+            protocol: viewer_application::review_workspace::ReviewPublicationProtocol::V3,
+            record: v3::ReviewIndexV3 {
+                project_id: old.project_id,
+                legacy_index: None,
+                streams: vec![v3::ReviewStreamV3 {
+                    review_stream_id: old.review_stream_id,
+                    task_id: old
+                        .production
+                        .as_ref()
+                        .map(|s| s.task_id.as_str().to_owned()),
+                    batch_id: old
+                        .production
+                        .as_ref()
+                        .map(|s| s.batch_id.as_str().to_owned()),
+                    current_ref: None,
+                    archive_refs: vec![],
+                    usage_refs: vec![],
+                    legacy_refs: vec![v3::LegacyRecordRef {
+                        kind: v3::LegacyRecordKind::Completed,
+                        round_id: old.review_round_id,
+                        protocol_version: protocol::REVIEW_PROTOCOL_V1.into(),
+                        location: format!("rounds/{}.json", old.review_round_id),
+                        blake3: digest,
+                    }],
                 }],
-            }],
+            },
         },
         index_bytes: None,
         ancestry: Default::default(),

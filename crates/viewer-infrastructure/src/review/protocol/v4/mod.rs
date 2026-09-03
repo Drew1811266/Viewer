@@ -17,6 +17,18 @@ pub fn decode_state_v4(bytes: &[u8]) -> Result<ReviewStateRecord, ReviewProtocol
     super::v3::decode_state_for(ContinuousReviewProtocol::V4, bytes)
 }
 
+pub(in crate::review) fn encode_authoring_state(
+    record: &ReviewStateRecord,
+) -> Result<Vec<u8>, ReviewProtocolError> {
+    super::v3::encode_authoring_state_for(ContinuousReviewProtocol::V4, record)
+}
+
+pub(in crate::review) fn decode_authoring_state(
+    bytes: &[u8],
+) -> Result<ReviewStateRecord, ReviewProtocolError> {
+    super::v3::decode_authoring_state_for(ContinuousReviewProtocol::V4, bytes)
+}
+
 pub fn encode_index_v4(record: &ReviewIndexV4) -> Result<Vec<u8>, ReviewProtocolError> {
     super::v3::encode_index_for(ContinuousReviewProtocol::V4, record)
 }

@@ -1,5 +1,7 @@
 use super::{migration, migration_inspect, owned_io::Directory};
-use crate::review::{MAX_REVIEW_INDEX_BYTES, v3};
+use crate::review::{
+    ContinuousReviewProtocol, MAX_REVIEW_INDEX_BYTES, detect_continuous_review_protocol, v3, v4,
+};
 use std::path::Path;
 use viewer_application::review_workspace::ReviewCommitError;
 use viewer_domain::{ProjectId, ReviewStreamId};
@@ -30,7 +32,12 @@ pub(in crate::review) fn resolve(
         return Ok(None);
     };
     let bytes = reviews.read("index.json", MAX_REVIEW_INDEX_BYTES)?;
-    let index = match bytes.as_deref().map(v3::decode_index_v3) {
+    let index = match bytes.as_deref().map(|bytes| {
+        match detect_continuous_review_protocol(bytes, MAX_REVIEW_INDEX_BYTES)? {
+            ContinuousReviewProtocol::V3 => v3::decode_index_v3(bytes),
+            ContinuousReviewProtocol::V4 => v4::decode_index_v4(bytes),
+        }
+    }) {
         Some(Ok(index)) => {
             if let Some(backup) = &index.legacy_index {
                 migration::verify_backup(&reviews, backup, project)?;

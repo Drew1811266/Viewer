@@ -1,6 +1,6 @@
 use viewer_application::review_workspace::{
-    GeneratedReviewIds, ReviewAuthoringHead, ReviewBarrierKind, StoredAuthoringState,
-    fold_public_changes,
+    GeneratedReviewIds, ReviewAuthoringHead, ReviewBarrierKind, ReviewPublicationProtocol,
+    StoredAuthoringState, fold_public_changes,
 };
 use viewer_domain::{
     AssetVersionId, FeedbackId, ProjectId, RelativePath, ReviewArchiveId, ReviewCommandId,
@@ -87,6 +87,7 @@ fn authoring(
             sequence,
             snapshot_id: state.snapshot_id,
         },
+        publication_protocol: ReviewPublicationProtocol::V3,
         production: None,
         command_id: ReviewCommandId::from_u128(100 + u128::from(sequence)),
         payload_digest: [sequence as u8; 32],

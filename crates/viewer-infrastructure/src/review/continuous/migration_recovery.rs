@@ -3,7 +3,7 @@ use super::{
     migration_inspect,
     owned_io::Directory,
     recovery,
-    repository::{ContinuousReviewRepository, View},
+    repository::{ContinuousReviewRepository, VersionedReviewIndex, View},
 };
 use std::{path::Path, sync::Arc};
 use viewer_application::review_workspace::*;
@@ -62,7 +62,10 @@ fn legacy_view(
     Ok(
         migration_inspect::scan(&directory, project)?.map(|legacy| View {
             directory,
-            index: legacy.index,
+            index: VersionedReviewIndex {
+                protocol: ReviewPublicationProtocol::V3,
+                record: legacy.index,
+            },
             index_bytes: Some(legacy.index_bytes),
             ancestry: Default::default(),
         }),

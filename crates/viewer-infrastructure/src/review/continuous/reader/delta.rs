@@ -35,11 +35,11 @@ fn compute(
     history::walk(view, current.state.stream_id, |reference, record| {
         visited += 1;
         if reference.snapshot_id == since {
-            basis = Some(record.state);
+            basis = Some(record.record.state);
             return Ok(true);
         }
         verify_archival_changes(view, &record)?;
-        append_changes(&mut changes, record.changes, 64 * 1024 * 1024)?;
+        append_changes(&mut changes, record.record.changes, 64 * 1024 * 1024)?;
         Ok(false)
     })
     .map_err(reason)?;

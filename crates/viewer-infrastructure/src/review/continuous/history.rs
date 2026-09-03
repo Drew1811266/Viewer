@@ -1,11 +1,29 @@
-use super::super::{MAX_REVIEW_DOCUMENT_BYTES, v3};
+use super::super::{
+    ContinuousReviewProtocol, MAX_REVIEW_DOCUMENT_BYTES, detect_continuous_review_protocol, v3, v4,
+};
 use super::repository::{View, protocol_error};
 use std::collections::HashSet;
-use viewer_application::review_workspace::{CommandLookup, ReviewCommitError, ReviewCommitReceipt};
+use viewer_application::review_workspace::{
+    CommandLookup, ReviewCommitError, ReviewCommitReceipt, ReviewPublicationProtocol,
+};
 use viewer_domain::review::continuous::SnapshotRef;
 use viewer_domain::{ReviewArchiveId, ReviewCommandId, ReviewStreamId};
 
 const MAX_HISTORY_NODES: usize = 10_000;
+
+#[derive(Debug, PartialEq)]
+pub(super) struct VersionedReviewState {
+    pub protocol: ReviewPublicationProtocol,
+    pub record: v3::ReviewStateRecord,
+}
+
+impl std::ops::Deref for VersionedReviewState {
+    type Target = v3::ReviewStateRecord;
+
+    fn deref(&self) -> &Self::Target {
+        &self.record
+    }
+}
 
 pub(super) fn stream(
     view: &View,
@@ -22,7 +40,7 @@ pub(super) fn read_state(
     view: &View,
     stream_id: ReviewStreamId,
     reference: &SnapshotRef,
-) -> Result<v3::ReviewStateRecord, ReviewCommitError> {
+) -> Result<VersionedReviewState, ReviewCommitError> {
     let record = read_document(view, stream_id, reference)?;
     super::evidence::verify(view, &record.evidence)?;
     Ok(record)
@@ -32,7 +50,7 @@ pub(super) fn read_state_for_materialization(
     view: &View,
     stream_id: ReviewStreamId,
     reference: &SnapshotRef,
-) -> Result<v3::ReviewStateRecord, ReviewCommitError> {
+) -> Result<VersionedReviewState, ReviewCommitError> {
     read_document(view, stream_id, reference)
 }
 
@@ -40,7 +58,7 @@ fn read_document(
     view: &View,
     stream_id: ReviewStreamId,
     reference: &SnapshotRef,
-) -> Result<v3::ReviewStateRecord, ReviewCommitError> {
+) -> Result<VersionedReviewState, ReviewCommitError> {
     #[cfg(test)]
     DOCUMENT_READS.with(|count| count.set(count.get() + 1));
     let states = view.directory.required_child("states")?;
@@ -51,7 +69,13 @@ fn read_document(
         )?
         .ok_or(ReviewCommitError::Integrity)?;
     verify_digest(&bytes, &reference.blake3)?;
-    let record = v3::decode_state_v3(&bytes).map_err(protocol_error)?;
+    let protocol = detect_continuous_review_protocol(&bytes, MAX_REVIEW_DOCUMENT_BYTES)
+        .map_err(protocol_error)?;
+    let record = match protocol {
+        ContinuousReviewProtocol::V3 => v3::decode_state_v3(&bytes),
+        ContinuousReviewProtocol::V4 => v4::decode_state_v4(&bytes),
+    }
+    .map_err(protocol_error)?;
     if record.state.project_id != view.index.project_id
         || record.state.stream_id != stream_id
         || record.state.snapshot_id != reference.snapshot_id
@@ -70,7 +94,10 @@ fn read_document(
     if ancestry.len() < MAX_HISTORY_NODES {
         ancestry.insert(key, record.state.parent);
     }
-    Ok(record)
+    Ok(VersionedReviewState {
+        protocol: protocol.into(),
+        record,
+    })
 }
 
 #[cfg(test)]
@@ -93,7 +120,7 @@ pub(super) fn verify_digest(bytes: &[u8], digest: &[u8; 32]) -> Result<(), Revie
 pub(super) fn walk(
     view: &View,
     stream_id: ReviewStreamId,
-    visit: impl FnMut(SnapshotRef, v3::ReviewStateRecord) -> Result<bool, ReviewCommitError>,
+    visit: impl FnMut(SnapshotRef, VersionedReviewState) -> Result<bool, ReviewCommitError>,
 ) -> Result<(), ReviewCommitError> {
     walk_from(view, stream_id, stream(view, stream_id)?.current_ref, visit)
 }
@@ -102,7 +129,7 @@ fn walk_from(
     view: &View,
     stream_id: ReviewStreamId,
     mut next: Option<SnapshotRef>,
-    mut visit: impl FnMut(SnapshotRef, v3::ReviewStateRecord) -> Result<bool, ReviewCommitError>,
+    mut visit: impl FnMut(SnapshotRef, VersionedReviewState) -> Result<bool, ReviewCommitError>,
 ) -> Result<(), ReviewCommitError> {
     let mut seen = HashSet::new();
     while let Some(reference) = next {
@@ -125,7 +152,7 @@ pub(super) fn reachable(
     view: &View,
     stream_id: ReviewStreamId,
     requested: &SnapshotRef,
-) -> Result<v3::ReviewStateRecord, ReviewCommitError> {
+) -> Result<VersionedReviewState, ReviewCommitError> {
     reachable_from(
         view,
         stream_id,
@@ -139,7 +166,7 @@ pub(super) fn reachable_from(
     stream_id: ReviewStreamId,
     start: Option<SnapshotRef>,
     requested: &SnapshotRef,
-) -> Result<v3::ReviewStateRecord, ReviewCommitError> {
+) -> Result<VersionedReviewState, ReviewCommitError> {
     let found = find_reference(view, stream_id, start, requested.snapshot_id)?;
     if found != *requested {
         return Err(ReviewCommitError::Integrity);
@@ -234,7 +261,13 @@ pub(super) fn archive_with_plan(
         .read(&format!("{archive_id}.json"), MAX_REVIEW_DOCUMENT_BYTES)?
         .ok_or(ReviewCommitError::Integrity)?;
     verify_digest(&bytes, &reference.blake3)?;
-    let record = v3::decode_archive_v3(&bytes).map_err(protocol_error)?;
+    let protocol = detect_continuous_review_protocol(&bytes, MAX_REVIEW_DOCUMENT_BYTES)
+        .map_err(protocol_error)?;
+    let record = match protocol {
+        ContinuousReviewProtocol::V3 => v3::decode_archive_v3(&bytes),
+        ContinuousReviewProtocol::V4 => v4::decode_archive_v4(&bytes),
+    }
+    .map_err(protocol_error)?;
     if record.checkpoint.project_id != view.index.project_id
         || record.checkpoint.stream_id != stream_id
         || record.checkpoint.archive_id != archive_id

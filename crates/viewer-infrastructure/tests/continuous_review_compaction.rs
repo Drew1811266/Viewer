@@ -5,8 +5,8 @@ use viewer_application::{
     review_workspace::{
         ContinuousReviewAuthoringStorePort, GeneratedReviewIds, ReviewAuthoringCommitRequest,
         ReviewAuthoringHead, ReviewBarrierKind, ReviewMaterializationFailure,
-        ReviewMaterializationQueuePort, ReviewPublicationReceipt, ReviewPublicationStatus,
-        StoredAuthoringState,
+        ReviewMaterializationQueuePort, ReviewPublicationProtocol, ReviewPublicationReceipt,
+        ReviewPublicationStatus, StoredAuthoringState,
     },
 };
 use viewer_domain::{
@@ -58,6 +58,7 @@ impl Fixture {
             blake3: parent.payload_digest,
         });
         let next = StoredAuthoringState {
+            publication_protocol: ReviewPublicationProtocol::V3,
             head: ReviewAuthoringHead {
                 sequence,
                 snapshot_id,

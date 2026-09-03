@@ -235,6 +235,7 @@ impl ReviewPublicationPort for ContinuousReviewPublication {
             expected,
             production: target.production.clone(),
             next: PreparedContinuousSnapshot {
+                publication_protocol: target.publication_protocol,
                 state: public_state,
                 command_id: target.command_id,
                 payload_digest: target.payload_digest,

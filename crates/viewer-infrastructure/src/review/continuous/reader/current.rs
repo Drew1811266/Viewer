@@ -104,7 +104,7 @@ pub(super) fn read(project: &CurrentProject, request: &Request) -> Result<Value,
     let delta = super::delta::read(view, &record, request.since_snapshot_id.as_deref())?;
     project.root.verify()?;
     result(v3::ReviewReadResult::Current(
-        v3::CurrentReadResult::from_verified(reference, record, source_checks, delta)?,
+        v3::CurrentReadResult::from_verified(reference, record.record, source_checks, delta)?,
     ))
 }
 

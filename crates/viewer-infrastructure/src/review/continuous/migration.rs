@@ -3,7 +3,7 @@ use super::{
     faults::{NoReviewCommitFaults, ReviewCommitFaultInjector, ReviewCommitFaultPoint},
     history, migration_inspect,
     owned_io::Directory,
-    repository::{ContinuousReviewRepository, View, protocol_error},
+    repository::{ContinuousReviewRepository, VersionedReviewIndex, View, protocol_error},
 };
 use crate::review::{MAX_REVIEW_INDEX_BYTES, atomic::atomic_replace_at_with_barrier, v3};
 use std::{path::Path, sync::Arc};
@@ -79,7 +79,10 @@ pub(in crate::review) fn migrate(
     validate_evidence(plan, &request.next)?;
     let mut view = View {
         directory,
-        index: inspected.index,
+        index: VersionedReviewIndex {
+            protocol: ReviewPublicationProtocol::V3,
+            record: inspected.index,
+        },
         index_bytes: Some(inspected.index_bytes.clone()),
         ancestry: Default::default(),
     };

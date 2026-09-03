@@ -535,7 +535,7 @@ git commit -m "feat: render extended review evidence"
 - Consumes: v3/v4 codecs and extended Anchors.
 - Produces: `ReviewPublicationProtocol::{V3,V4}` on authoring state and version-aware repository snapshots.
 
-- [ ] **Step 1: Write failing one-way promotion tests**
+- [x] **Step 1: Write failing one-way promotion tests**
 
 In `continuous_review_authoring_service.rs`, extend the existing `save(asset_version_id, text)` helper with a
 `save_anchor(asset_version_id, text, anchor)` variant. Start from the existing `Fixture`, save an asset-only
@@ -548,13 +548,13 @@ Add a repository test that opening and reading an untouched v3 fixture leaves `i
 unchanged. Add a materialization test that the first point save produces a v4 state and atomically switches
 the index to `viewer.review/4`.
 
-- [ ] **Step 2: Run focused authoring/materialization tests**
+- [x] **Step 2: Run focused authoring/materialization tests**
 
 Run: `cargo test --locked -p viewer-application continuous_review_authoring_service && cargo test --locked -p viewer-infrastructure continuous_review_materialization`
 
 Expected: FAIL because `StoredAuthoringState` has no publication protocol.
 
-- [ ] **Step 3: Add the application-owned publication protocol**
+- [x] **Step 3: Add the application-owned publication protocol**
 
 ```rust
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -580,7 +580,7 @@ Add `publication_protocol` to `StoredAuthoringState` and `StoredContinuousSnapsh
 published record as V3 and a v4 record as V4. During authoring, compute the new value from the transaction's
 current state, not from stale UI state.
 
-- [ ] **Step 4: Persist the protocol in the private authoring record compatibly**
+- [x] **Step 4: Persist the protocol in the private authoring record compatibly**
 
 ```rust
 #[serde(default = "default_v3_publication_protocol")]
@@ -591,7 +591,7 @@ Encode the field on all new authoring snapshots. Decode old authoring bytes with
 field in canonical re-encoding checks, and ensure an idempotent command retry returns the original protocol.
 No SQLite schema column is needed because the immutable logical snapshot already owns this fact.
 
-- [ ] **Step 5: Make repository views and commits version-aware**
+- [x] **Step 5: Make repository views and commits version-aware**
 
 Replace `View.index: ReviewIndexV3` with a versioned record:
 
@@ -612,13 +612,13 @@ encodes state/archive/index using `request.next.publication_protocol`; history r
 document's own protocol. When a v4 state follows a v3 state, validate the parent and identity chain normally.
 When a v3 state attempts to follow v4, return `ReviewCommitError::Integrity`.
 
-- [ ] **Step 6: Run authoring, repository, migration, and materialization suites**
+- [x] **Step 6: Run authoring, repository, migration, and materialization suites**
 
 Run: `cargo test --locked -p viewer-application continuous_review && cargo test --locked -p viewer-infrastructure continuous_review_authoring && cargo test --locked -p viewer-infrastructure continuous_review_materialization && cargo test --locked -p viewer-infrastructure continuous_review_repository && cargo test --locked -p viewer-infrastructure continuous_review_migration`
 
 Expected: PASS; v3 reads are side-effect free and promotion never downgrades.
 
-- [ ] **Step 7: Commit sticky v4 publication**
+- [x] **Step 7: Commit sticky v4 publication**
 
 ```bash
 git add crates/viewer-application/src/review_workspace \

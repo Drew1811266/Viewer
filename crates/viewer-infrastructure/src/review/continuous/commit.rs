@@ -1,7 +1,7 @@
 use super::super::{
     MAX_REVIEW_DOCUMENT_BYTES,
     atomic::{AtomicCreateOnceError, atomic_create_once_at, atomic_replace_at_with_barrier},
-    v3,
+    v3, v4,
 };
 use super::faults::ReviewCommitFaultPoint;
 use super::{
@@ -117,10 +117,15 @@ pub(super) fn install(
                 checkpoint: checkpoint.clone(),
                 result_snapshot_id: prepared.reference.snapshot_id,
             };
+            let bytes = match prepared.protocol {
+                ReviewPublicationProtocol::V3 => v3::encode_archive_v3(&record),
+                ReviewPublicationProtocol::V4 => v4::encode_archive_v4(&record),
+            }
+            .map_err(protocol_error)?;
             create_record(
                 &directory,
                 &format!("{}.json", checkpoint.archive_id),
-                &v3::encode_archive_v3(&record).map_err(protocol_error)?,
+                &bytes,
             )?;
         }
     }

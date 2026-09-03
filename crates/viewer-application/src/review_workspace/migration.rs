@@ -132,6 +132,7 @@ impl ContinuousReviewService {
             })
             .collect();
         let next = PreparedContinuousSnapshot {
+            publication_protocol: ReviewPublicationProtocol::V3,
             state,
             command_id: envelope.command_id,
             payload_digest: envelope.payload_digest,

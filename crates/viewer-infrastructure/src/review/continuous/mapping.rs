@@ -1,6 +1,24 @@
-use super::super::v3;
+use super::super::{ContinuousReviewProtocol, v3};
 use viewer_application::review_workspace as app;
 use viewer_domain::review::{ProductionId, ProductionScope, continuous::SnapshotRef};
+
+impl From<app::ReviewPublicationProtocol> for ContinuousReviewProtocol {
+    fn from(value: app::ReviewPublicationProtocol) -> Self {
+        match value {
+            app::ReviewPublicationProtocol::V3 => Self::V3,
+            app::ReviewPublicationProtocol::V4 => Self::V4,
+        }
+    }
+}
+
+impl From<ContinuousReviewProtocol> for app::ReviewPublicationProtocol {
+    fn from(value: ContinuousReviewProtocol) -> Self {
+        match value {
+            ContinuousReviewProtocol::V3 => Self::V3,
+            ContinuousReviewProtocol::V4 => Self::V4,
+        }
+    }
+}
 
 impl From<app::EvidenceRef> for v3::EvidenceRef {
     fn from(value: app::EvidenceRef) -> Self {
@@ -89,12 +107,14 @@ impl From<app::PreparedContinuousSnapshot> for v3::ReviewStateRecord {
 }
 
 pub(super) fn stored(
+    protocol: app::ReviewPublicationProtocol,
     record: v3::ReviewStateRecord,
     reference: SnapshotRef,
     stream: &v3::ReviewStreamV3,
 ) -> Result<app::StoredContinuousSnapshot, app::ReviewCommitError> {
     Ok(app::StoredContinuousSnapshot {
         reference,
+        publication_protocol: protocol,
         production: scope(stream)?,
         state: record.state,
         command_id: record.command_id,

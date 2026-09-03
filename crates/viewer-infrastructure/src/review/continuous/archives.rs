@@ -43,6 +43,7 @@ pub(super) fn verify_checkpoint(
                     Some(checkpoint.before),
                     &snapshot,
                 )?
+                .record
                 .state,
             ],
             None => vec![],
@@ -88,7 +89,9 @@ pub(super) fn validate_commit(
         return Ok(());
     }
     let previous_ref = next.state.parent.ok_or(ReviewCommitError::Integrity)?;
-    let before = history::read_state(view, next.state.stream_id, &previous_ref)?.state;
+    let before = history::read_state(view, next.state.stream_id, &previous_ref)?
+        .record
+        .state;
     let mut ids = std::collections::HashSet::new();
     let mut targets = vec![];
     let mut changes = vec![];

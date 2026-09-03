@@ -28,6 +28,21 @@ pub fn detect_review_protocol(bytes: &[u8]) -> Result<&'static str, ReviewProtoc
     )
 }
 
+pub fn detect_continuous_review_protocol(
+    bytes: &[u8],
+    max_bytes: u64,
+) -> Result<ContinuousReviewProtocol, ReviewProtocolError> {
+    match common::detect_protocol(
+        bytes,
+        max_bytes,
+        &[v3::REVIEW_PROTOCOL_V3, v4::REVIEW_PROTOCOL_V4],
+    )? {
+        v3::REVIEW_PROTOCOL_V3 => Ok(ContinuousReviewProtocol::V3),
+        v4::REVIEW_PROTOCOL_V4 => Ok(ContinuousReviewProtocol::V4),
+        _ => Err(ReviewProtocolError::UnsupportedVersion),
+    }
+}
+
 pub fn decode_draft_versioned(
     bytes: &[u8],
 ) -> Result<DecodedReview<ReviewDraft>, ReviewProtocolError> {

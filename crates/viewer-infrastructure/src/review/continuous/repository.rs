@@ -1,4 +1,7 @@
-use super::super::{MAX_REVIEW_INDEX_BYTES, ReviewProtocolError, lease::ProjectReviewLease, v3};
+use super::super::{
+    ContinuousReviewProtocol, MAX_REVIEW_INDEX_BYTES, ReviewProtocolError,
+    detect_continuous_review_protocol, lease::ProjectReviewLease, v3, v4,
+};
 use super::faults::{NoReviewCommitFaults, ReviewCommitFaultInjector};
 use super::{
     history, mapping,
@@ -27,12 +30,31 @@ pub(in crate::review) struct ContinuousReviewRepository {
 
 pub(super) struct View {
     pub directory: Directory,
-    pub index: v3::ReviewIndexV3,
+    pub index: VersionedReviewIndex,
     pub index_bytes: Option<Vec<u8>>,
     /// Hash-verified parent facts for this one operation, never retained on the repository.
     pub ancestry: std::cell::RefCell<
         std::collections::HashMap<(ReviewStreamId, SnapshotRef), Option<SnapshotRef>>,
     >,
+}
+
+pub(super) struct VersionedReviewIndex {
+    pub protocol: ReviewPublicationProtocol,
+    pub record: v3::ReviewIndexRecord,
+}
+
+impl std::ops::Deref for VersionedReviewIndex {
+    type Target = v3::ReviewIndexRecord;
+
+    fn deref(&self) -> &Self::Target {
+        &self.record
+    }
+}
+
+impl std::ops::DerefMut for VersionedReviewIndex {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.record
+    }
 }
 
 impl ContinuousReviewRepository {
@@ -136,12 +158,20 @@ impl ContinuousReviewRepository {
         };
         let index_bytes = directory.read("index.json", MAX_REVIEW_INDEX_BYTES)?;
         let index = match &index_bytes {
-            Some(bytes) => match v3::decode_index_v3(bytes) {
-                Ok(index) => {
-                    if let Some(backup) = &index.legacy_index {
+            Some(bytes) => match detect_continuous_review_protocol(bytes, MAX_REVIEW_INDEX_BYTES) {
+                Ok(protocol) => {
+                    let record = match protocol {
+                        ContinuousReviewProtocol::V3 => v3::decode_index_v3(bytes),
+                        ContinuousReviewProtocol::V4 => v4::decode_index_v4(bytes),
+                    }
+                    .map_err(protocol_error)?;
+                    if let Some(backup) = &record.legacy_index {
                         super::migration::verify_backup(&directory, backup, self.project_id)?;
                     }
-                    index
+                    VersionedReviewIndex {
+                        protocol: protocol.into(),
+                        record,
+                    }
                 }
                 Err(error) => {
                     let legacy = super::migration_inspect::scan(&directory, self.project_id)?
@@ -149,15 +179,21 @@ impl ContinuousReviewRepository {
                     if legacy.has_data() {
                         return Err(ReviewCommitError::MigrationRequired);
                     }
-                    legacy.index
+                    VersionedReviewIndex {
+                        protocol: ReviewPublicationProtocol::V3,
+                        record: legacy.index,
+                    }
                 }
             },
             None => {
                 super::migration_inspect::scan(&directory, self.project_id)?;
-                v3::ReviewIndexV3 {
-                    legacy_index: None,
-                    project_id: self.project_id,
-                    streams: vec![],
+                VersionedReviewIndex {
+                    protocol: ReviewPublicationProtocol::V3,
+                    record: v3::ReviewIndexRecord {
+                        legacy_index: None,
+                        project_id: self.project_id,
+                        streams: vec![],
+                    },
                 }
             }
         };
@@ -312,7 +348,12 @@ impl ContinuousReviewRepositoryPort for ContinuousReviewRepository {
         };
         let record = history::read_state(&view, stream_id, &reference)?;
         super::references::feedback_origins(&view, &record)?;
-        Ok(Some(mapping::stored(record, reference, stream)?))
+        Ok(Some(mapping::stored(
+            record.protocol,
+            record.record,
+            reference,
+            stream,
+        )?))
     }
 
     fn load_current_for_materialization(
@@ -335,7 +376,12 @@ impl ContinuousReviewRepositoryPort for ContinuousReviewRepository {
         };
         let record = history::read_state_for_materialization(&view, stream_id, &reference)?;
         super::references::feedback_origins(&view, &record)?;
-        Ok(Some(mapping::stored(record, reference, stream)?))
+        Ok(Some(mapping::stored(
+            record.protocol,
+            record.record,
+            reference,
+            stream,
+        )?))
     }
 
     fn load_snapshot(
@@ -347,7 +393,7 @@ impl ContinuousReviewRepositoryPort for ContinuousReviewRepository {
         let stream = history::stream(&view, stream_id)?;
         let record = history::reachable(&view, stream_id, reference)?;
         super::references::feedback_origins(&view, &record)?;
-        mapping::stored(record, *reference, stream)
+        mapping::stored(record.protocol, record.record, *reference, stream)
     }
 
     fn load_archive(

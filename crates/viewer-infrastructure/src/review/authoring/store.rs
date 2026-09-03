@@ -797,7 +797,6 @@ fn load_snapshot_from(
         )
         .map_err(map_database_error)?;
     let value = codec::decode(project_id, stream, &row.logical_state)?;
-    let encoded = codec::encode(project_id, stream, &value)?;
     let expected_parent = (sequence > 1).then_some((sequence - 1) as i64);
     let stored_production: Vec<u8> = connection
         .query_row(
@@ -818,10 +817,15 @@ fn load_snapshot_from(
         || row.parent_seq != expected_parent
         || row.barrier_kind != barrier_code(value.barrier)
         || row.created_at_ms != value.generated.created_at_ms
-        || row.logical_state != encoded.logical_state
-        || row.transition != encoded.transition
-        || row.generated_ids != encoded.generated_ids
-        || stored_production != encoded.production_scope
+        || !codec::matches_canonical_encoding(
+            project_id,
+            stream,
+            &value,
+            &row.logical_state,
+            &row.transition,
+            &row.generated_ids,
+            &stored_production,
+        )?
     {
         return Err(ReviewCommitError::Integrity);
     }

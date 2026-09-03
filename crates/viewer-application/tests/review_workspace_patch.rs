@@ -2,7 +2,8 @@ use viewer_application::{
     review_evidence::HistorySelector,
     review_workspace::{
         GeneratedReviewIds, ReviewAuthoringHead, ReviewBarrierKind, ReviewPatchError,
-        ReviewWorkspaceCurrent, ReviewWorkspacePatch, StoredAuthoringState,
+        ReviewPublicationProtocol, ReviewWorkspaceCurrent, ReviewWorkspacePatch,
+        StoredAuthoringState,
     },
 };
 use viewer_domain::{
@@ -67,6 +68,7 @@ fn workspace_current(
                 sequence,
                 snapshot_id,
             },
+            publication_protocol: ReviewPublicationProtocol::V3,
             production: None,
             state: ContinuousReviewState {
                 project_id: ProjectId::from_u128(1),

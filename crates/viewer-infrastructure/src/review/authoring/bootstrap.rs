@@ -93,6 +93,7 @@ impl SqliteContinuousReviewAuthoringStore {
 
 pub(in crate::review) fn from_published(value: StoredContinuousSnapshot) -> StoredAuthoringState {
     let StoredContinuousSnapshot {
+        publication_protocol,
         production,
         state,
         command_id,
@@ -147,6 +148,7 @@ pub(in crate::review) fn from_published(value: StoredContinuousSnapshot) -> Stor
             sequence: 1,
             snapshot_id,
         },
+        publication_protocol,
         production,
         state,
         command_id,

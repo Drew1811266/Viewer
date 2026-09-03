@@ -1,5 +1,5 @@
 //! Validates a complete transaction before publishing any immutable object.
-use super::super::v3;
+use super::super::{v3, v4};
 use super::{
     history, mapping, references,
     repository::{View, protocol_error},
@@ -11,6 +11,7 @@ use viewer_domain::review::continuous::{
 };
 
 pub(super) struct PreparedCommit {
+    pub protocol: ReviewPublicationProtocol,
     pub record: v3::ReviewStateRecord,
     pub bytes: Vec<u8>,
     pub reference: SnapshotRef,
@@ -30,11 +31,18 @@ pub(super) fn prepare(
         return Err(ReviewCommitError::Integrity);
     }
     request.next.state.parent = request.expected;
+    let protocol = request.next.publication_protocol;
     let record: v3::ReviewStateRecord = request.next.into();
-    let bytes = v3::encode_state_v3(&record).map_err(protocol_error)?;
-    let previous = validate_chain(view, &record)?;
+    let bytes = match protocol {
+        ReviewPublicationProtocol::V3 => v3::encode_state_v3(&record),
+        ReviewPublicationProtocol::V4 => v4::encode_state_v4(&record),
+    }
+    .map_err(protocol_error)?;
+    let previous = validate_chain(view, protocol, &record)?;
     let reusable_evidence = super::evidence::reusable_references(
-        previous.as_ref().map(|value| value.evidence.as_slice()),
+        previous
+            .as_ref()
+            .map(|value| value.record.evidence.as_slice()),
         &record.evidence,
     );
     super::coverage::require_uncovered(view, record.state.stream_id, &request.archives)?;
@@ -52,7 +60,12 @@ pub(super) fn prepare(
         references::declared_usage(view, checkpoint, &usages)?;
     }
     add_usage_refs(view, &mut stream, &usages)?;
-    add_archive_refs(&mut stream, &request.archives, reference.snapshot_id)?;
+    add_archive_refs(
+        &mut stream,
+        &request.archives,
+        reference.snapshot_id,
+        protocol,
+    )?;
     if let Some(existing) = view
         .index
         .streams
@@ -63,8 +76,16 @@ pub(super) fn prepare(
     } else {
         view.index.streams.push(stream);
     }
-    let index_bytes = v3::encode_index_v3(&view.index).map_err(protocol_error)?;
+    if protocol == ReviewPublicationProtocol::V4 {
+        view.index.protocol = ReviewPublicationProtocol::V4;
+    }
+    let index_bytes = match view.index.protocol {
+        ReviewPublicationProtocol::V3 => v3::encode_index_v3(&view.index.record),
+        ReviewPublicationProtocol::V4 => v4::encode_index_v4(&view.index.record),
+    }
+    .map_err(protocol_error)?;
     Ok(PreparedCommit {
+        protocol,
         record,
         bytes,
         reference,
@@ -113,11 +134,17 @@ fn prepare_stream(
 
 fn validate_chain(
     view: &View,
+    protocol: ReviewPublicationProtocol,
     record: &v3::ReviewStateRecord,
-) -> Result<Option<v3::ReviewStateRecord>, ReviewCommitError> {
+) -> Result<Option<history::VersionedReviewState>, ReviewCommitError> {
     if let Some(expected) = record.state.parent {
         let before =
             history::read_state_for_materialization(view, record.state.stream_id, &expected)?;
+        if protocol == ReviewPublicationProtocol::V3
+            && before.protocol == ReviewPublicationProtocol::V4
+        {
+            return Err(ReviewCommitError::Integrity);
+        }
         diff_review(&before.state, &record.state, &record.changes)
             .map_err(|_| ReviewCommitError::Integrity)?;
         history::walk(view, record.state.stream_id, |_, historical| {
@@ -163,12 +190,17 @@ fn add_archive_refs(
     stream: &mut v3::ReviewStreamV3,
     checkpoints: &[ArchiveCheckpoint],
     result_snapshot_id: viewer_domain::ReviewSnapshotId,
+    protocol: ReviewPublicationProtocol,
 ) -> Result<(), ReviewCommitError> {
     for checkpoint in checkpoints {
-        let encoded = v3::encode_archive_v3(&v3::ReviewArchiveRecord {
+        let record = v3::ReviewArchiveRecord {
             checkpoint: checkpoint.clone(),
             result_snapshot_id,
-        })
+        };
+        let encoded = match protocol {
+            ReviewPublicationProtocol::V3 => v3::encode_archive_v3(&record),
+            ReviewPublicationProtocol::V4 => v4::encode_archive_v4(&record),
+        }
         .map_err(protocol_error)?;
         stream.archive_refs.push(v3::ArchiveRecordRef {
             archive_id: checkpoint.archive_id,

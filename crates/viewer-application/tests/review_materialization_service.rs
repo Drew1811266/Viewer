@@ -90,6 +90,7 @@ impl ReviewPublicationPort for RejectingPublication {
                 expected: target.state.parent,
                 production: target.production,
                 next: PreparedContinuousSnapshot {
+                    publication_protocol: target.publication_protocol,
                     state: target.state,
                     command_id: target.command_id,
                     payload_digest: target.payload_digest,
@@ -125,6 +126,7 @@ fn target() -> StoredAuthoringState {
             sequence: 1,
             snapshot_id,
         },
+        publication_protocol: ReviewPublicationProtocol::V3,
         production: None,
         state: ContinuousReviewState::empty(
             ProjectId::from_u128(1),
@@ -188,6 +190,7 @@ impl ReviewPublicationPort for Publication {
                 expected: target.state.parent,
                 production: target.production,
                 next: PreparedContinuousSnapshot {
+                    publication_protocol: target.publication_protocol,
                     state: target.state,
                     command_id: target.command_id,
                     payload_digest: target.payload_digest,

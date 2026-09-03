@@ -77,6 +77,7 @@ fn keep_request(
     };
     envelope.payload_digest = ContinuousReviewCommandCodec.digest(&envelope).unwrap();
     let next = PreparedContinuousSnapshot {
+        publication_protocol: ReviewPublicationProtocol::V3,
         state: ContinuousReviewState::empty(
             context.project_id,
             context.stream_id,
@@ -631,6 +632,7 @@ fn empty_legacy_catalog_remains_without_current_until_the_first_successful_save(
             expected: None,
             production: context.production,
             next: PreparedContinuousSnapshot {
+                publication_protocol: ReviewPublicationProtocol::V3,
                 state,
                 command_id: ReviewCommandId::new(),
                 payload_digest: [1; 32],

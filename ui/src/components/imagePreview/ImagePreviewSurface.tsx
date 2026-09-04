@@ -5,7 +5,10 @@ import type {
   ImageRepresentationRequest,
   MagnifierPreferences,
 } from '../../api/types'
-import type { ImageRendererPort } from '../../rendering/imageRendererTypes'
+import type {
+  ImageRendererPort,
+  ImageRendererViewportBinding,
+} from '../../rendering/imageRendererTypes'
 import type { Point } from './imageGeometry'
 import type { ImagePreviewProjection } from './imagePreviewProjection'
 import type { MagnifierOverlayPainter } from './magnifierOverlay'
@@ -18,6 +21,7 @@ export interface ImagePreviewSurfaceSlots {
   toolbarLeading?: ReactNode
   toolbarActions?: ReactNode
   stageOverlay?: (projection: ImagePreviewProjection) => ReactNode
+  nativeStageOverlay?: (projection: ImagePreviewProjection) => ReactNode
   sidePanel?: ReactNode
   magnifierOverlayPainter?: MagnifierOverlayPainter
 }
@@ -41,6 +45,7 @@ export interface ImagePreviewSurfaceProps {
   onEscape?: () => void
   slots?: ImagePreviewSurfaceSlots
   renderer?: ImageRendererPort
+  nativeBinding?: ImageRendererViewportBinding
 }
 
 export default function ImagePreviewSurface(props: ImagePreviewSurfaceProps) {

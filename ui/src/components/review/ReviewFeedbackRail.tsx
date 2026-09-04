@@ -6,9 +6,13 @@ import InlineFeedbackEditor from './InlineFeedbackEditor'
 
 interface ReviewFeedbackRailProps {
   controller: ImageReviewWorkbenchController
+  nativeGeometryEditing?: boolean
 }
 
-export default function ReviewFeedbackRail({ controller }: ReviewFeedbackRailProps) {
+export default function ReviewFeedbackRail({
+  controller,
+  nativeGeometryEditing = false,
+}: ReviewFeedbackRailProps) {
   const input = useRef<HTMLTextAreaElement>(null)
   const [operationError, setOperationError] = useState<string | null>(null)
   const readOnly = controller.readOnlyReason !== null
@@ -77,6 +81,7 @@ export default function ReviewFeedbackRail({ controller }: ReviewFeedbackRailPro
         readOnly={readOnly}
         clearError={() => setOperationError(null)}
         runMutation={runMutation}
+        nativeGeometryEditing={nativeGeometryEditing}
       />
     </aside>
   )
@@ -177,6 +182,7 @@ function FeedbackList({
   readOnly,
   clearError,
   runMutation,
+  nativeGeometryEditing,
 }: {
   controller: ImageReviewWorkbenchController
   input: RefObject<HTMLTextAreaElement | null>
@@ -186,6 +192,7 @@ function FeedbackList({
   readOnly: boolean
   clearError(): void
   runMutation(operation: () => Promise<void>): Promise<void>
+  nativeGeometryEditing: boolean
 }) {
   return (
     <ol className="review-feedback-rail__list" aria-label="本图意见">
@@ -261,8 +268,11 @@ function FeedbackList({
                     aria-label={`调整意见 ${label} 区域`}
                     disabled={readOnly || controller.dirty}
                     onClick={() => {
-                      controller.selectFeedback(feedback.itemId)
-                      controller.setTool('rectangle')
+                      if (nativeGeometryEditing) controller.beginRedraw(feedback.itemId)
+                      else {
+                        controller.selectFeedback(feedback.itemId)
+                        controller.setTool('rectangle')
+                      }
                     }}
                   >
                     调整区域

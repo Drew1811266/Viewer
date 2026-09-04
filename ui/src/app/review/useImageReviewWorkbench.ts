@@ -54,6 +54,7 @@ export interface ImageReviewWorkbenchController {
     height: number
   } | null
   leaveConfirmation: ReviewLeaveIntent | null
+  pendingMutationId?: string | null
   setTool(tool: AnnotationTool): void
   setTemporaryPan(active: boolean): void
   beginAnnotation(anchor: ReviewAnchor): void
@@ -93,6 +94,7 @@ export function useImageReviewWorkbench({
   const [railOpen, setRailOpen] = useState(true)
   const [redrawItemId, setRedrawItemId] = useState<string | null>(null)
   const [leaveConfirmation, setLeaveConfirmation] = useState<ReviewLeaveIntent | null>(null)
+  const [pendingMutationId, setPendingMutationId] = useState<string | null>(null)
   const adapterRef = useRef(adapter)
   const preparationRef = useRef<ImageReviewPreparation | null>(null)
   const editorRef = useRef(editor)
@@ -103,6 +105,7 @@ export function useImageReviewWorkbench({
   const statusMessageRef = useRef<{ entityId: string; message: string } | null>(null)
   const onLeaveRef = useRef(onLeave)
   const pendingLeaveRef = useRef<ReviewLeaveIntent | null>(null)
+  const pendingMutationIdRef = useRef<string | null>(null)
 
   adapterRef.current = adapter
   editorRef.current = editor
@@ -185,9 +188,13 @@ export function useImageReviewWorkbench({
       return
     }
     dispatch({ type: 'request_save' })
+    const clientMutationId = pendingMutationIdRef.current ?? nextReviewClientMutationId(entityId)
+    pendingMutationIdRef.current = clientMutationId
+    setPendingMutationId(clientMutationId)
     try {
       const installed = await adapterRef.current.saveFeedback({
         entityId,
+        clientMutationId,
         item,
         operation: frozen.operation,
         text: frozen.text,
@@ -212,6 +219,8 @@ export function useImageReviewWorkbench({
         editorAssetVersionIdRef,
         editorItemRef,
       )
+      pendingMutationIdRef.current = null
+      setPendingMutationId(null)
       setRedrawItemId(null)
     } catch (cause) {
       dispatch({ type: 'save_failed', message: reviewErrorMessage(cause) })
@@ -314,6 +323,7 @@ export function useImageReviewWorkbench({
     statusMessage: workbenchStatusMessage(entityId, workbenchView, statusMessageRef.current),
     preparedImage,
     leaveConfirmation,
+    pendingMutationId,
     setTool(tool) {
       if (hasUnsavedAnnotation(editorRef.current)) return
       setRedrawItemId(null)
@@ -383,14 +393,10 @@ export function useImageReviewWorkbench({
     },
     beginRedraw(itemId) {
       if (hasUnsavedAnnotation(editorRef.current) || workbenchView.readOnlyReason !== null) return
-      if (
-        !workbenchView.feedback.some(
-          (feedback) => feedback.itemId === itemId && feedback.anchor.kind === 'image_stroke',
-        )
-      )
-        return
+      const feedback = workbenchView.feedback.find((feedback) => feedback.itemId === itemId)
+      if (feedback === undefined || !feedback.anchor.kind.startsWith('image_')) return
       dispatch({ type: 'select_feedback', itemId })
-      dispatch({ type: 'set_tool', tool: 'brush' })
+      dispatch({ type: 'set_tool', tool: markupToolForAnchor(feedback.anchor) })
       setRedrawItemId(itemId)
     },
     stageFeedbackAnchor(itemId, anchor) {
@@ -420,6 +426,8 @@ export function useImageReviewWorkbench({
           editorAssetVersionIdRef,
           editorItemRef,
         )
+        pendingMutationIdRef.current = null
+        setPendingMutationId(null)
       }
       setRedrawItemId(null)
     },
@@ -472,10 +480,20 @@ export function useImageReviewWorkbench({
         editorAssetVersionIdRef,
         editorItemRef,
       )
+      pendingMutationIdRef.current = null
+      setPendingMutationId(null)
       setRedrawItemId(null)
       if (pending !== null) await onLeaveRef.current?.(pending)
     },
   }
+}
+
+let reviewClientMutationSequence = 0
+
+function nextReviewClientMutationId(entityId: string): string {
+  reviewClientMutationSequence =
+    reviewClientMutationSequence >= Number.MAX_SAFE_INTEGER ? 1 : reviewClientMutationSequence + 1
+  return `${entityId}:${reviewClientMutationSequence}`
 }
 
 function cloneReviewAnchor(anchor: ReviewAnchor): ReviewAnchor {

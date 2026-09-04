@@ -846,6 +846,7 @@ struct RendererActor {
     content_frames: ContentFrameGate,
     scene: SceneSnapshot,
     interaction: InteractionController,
+    editor_anchor: Option<NormalizedPoint>,
     pending_camera_event: Option<ImageRenderEventDto>,
     pending_draft_event: Option<ImageRenderEventDto>,
     pending_editor_placement_event: Option<ImageRenderEventDto>,
@@ -912,6 +913,7 @@ impl RendererActor {
             content_frames: ContentFrameGate::default(),
             scene,
             interaction: InteractionController::new(InteractionMode::Browse),
+            editor_anchor: None,
             pending_camera_event: None,
             pending_draft_event: None,
             pending_editor_placement_event: None,
@@ -1031,10 +1033,12 @@ impl RendererActor {
                 }
             }
             AuthorizedImageRenderCommand::SetScene { scene } => {
+                self.editor_anchor = scene_editor_anchor(&scene);
                 self.scene = scene;
                 if renderer.apply_scene(&self.scene).is_err() {
                     self.publish_failure("image_render_scene_failed", true);
                 }
+                self.queue_editor_placement();
             }
             AuthorizedImageRenderCommand::Camera { camera } => {
                 self.camera = camera;
@@ -1073,6 +1077,7 @@ impl RendererActor {
         self.pending_camera_event = None;
         self.pending_draft_event = None;
         self.pending_editor_placement_event = None;
+        self.editor_anchor = None;
         if renderer.begin_asset_generation(generation).is_err() {
             self.publish_failure("image_render_generation_failed", true);
             return;
@@ -1188,6 +1193,7 @@ impl RendererActor {
                 }
                 self.transform = Some(transform);
                 self.update_magnifier(renderer);
+                self.queue_editor_placement();
                 true
             }
             Err(_) => {
@@ -1278,6 +1284,7 @@ impl RendererActor {
             }
             InteractionEvent::DraftCompleted(geometry) => {
                 self.pending_draft_event = None;
+                self.editor_anchor = Some(annotation_editor_anchor(&geometry));
                 self.apply_native_draft(renderer, geometry.clone());
                 ImageRenderEventDto::DraftCompleted {
                     session_id: session_id.0,
@@ -1287,6 +1294,7 @@ impl RendererActor {
             }
             InteractionEvent::DraftCancelled => {
                 self.pending_draft_event = None;
+                self.editor_anchor = None;
                 if renderer.apply_scene(&self.scene).is_err() {
                     self.publish_failure("image_render_scene_failed", true);
                 }
@@ -1335,6 +1343,24 @@ impl RendererActor {
         }
     }
 
+    fn queue_editor_placement(&mut self) {
+        let Some(session_id) = self.session_id else {
+            return;
+        };
+        let Some(position) = self
+            .editor_anchor
+            .zip(self.transform)
+            .map(|(anchor, transform)| transform.image_to_view(anchor))
+        else {
+            return;
+        };
+        self.pending_editor_placement_event = Some(ImageRenderEventDto::EditorPlacementChanged {
+            session_id: session_id.0,
+            asset_generation: self.generation.0,
+            position: point_dto(position.x, position.y),
+        });
+    }
+
     fn apply_native_selection(
         &self,
         renderer: &mut WgpuImageRenderer,
@@ -1379,6 +1405,30 @@ impl RendererActor {
                 retryable,
             });
         }
+    }
+}
+
+fn scene_editor_anchor(scene: &SceneSnapshot) -> Option<NormalizedPoint> {
+    scene
+        .draft()
+        .or_else(|| scene.annotations().iter().find(|node| node.draft))
+        .map(|node| annotation_editor_anchor(&node.geometry))
+}
+
+fn annotation_editor_anchor(geometry: &AnnotationGeometry) -> NormalizedPoint {
+    match geometry {
+        AnnotationGeometry::Point { position } => *position,
+        AnnotationGeometry::Arrow { head, .. } => *head,
+        AnnotationGeometry::Rectangle { rect } | AnnotationGeometry::Ellipse { rect } => {
+            NormalizedPoint {
+                x: rect.x + rect.width / 2.0,
+                y: rect.y + rect.height / 2.0,
+            }
+        }
+        AnnotationGeometry::Stroke { points } => points
+            .last()
+            .copied()
+            .expect("validated stroke geometry always contains points"),
     }
 }
 

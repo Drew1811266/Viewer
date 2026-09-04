@@ -59,6 +59,7 @@ export default function NativeImageViewport({
   toolbarLabel = '图片预览工具',
   onEscape,
   slots,
+  nativeBinding,
   ...webOnlyProps
 }: NativeImageViewportProps) {
   const stage = useRef<HTMLDivElement>(null)
@@ -66,11 +67,14 @@ export default function NativeImageViewport({
   const sessionId = useRef(nextRendererSessionId())
   const generation = useRef(0)
   const session = useRef<ImageRendererSession | null>(null)
+  const nativeBindingRef = useRef(nativeBinding)
+  nativeBindingRef.current = nativeBinding
   const resourceReadyGeneration = useRef<number | null>(null)
   const lastAppliedSurface = useRef<(ImageRendererRect & { scaleFactor: number }) | null>(null)
   const pendingSurface = useRef<(ImageRendererRect & { scaleFactor: number }) | null>(null)
   const lastAppliedExclusions = useRef<ImageRendererRect[] | null>(null)
   const pendingExclusions = useRef<ImageRendererRect[] | null>(null)
+  const sceneRevision = useRef(0)
   const [activeGeneration, setActiveGeneration] = useState(0)
   const [sessionEpoch, setSessionEpoch] = useState(0)
   const [camera, setCamera] = useState<ImageViewportState>(DEFAULT_CAMERA)
@@ -118,6 +122,7 @@ export default function NativeImageViewport({
     pendingSurface.current = null
     lastAppliedExclusions.current = null
     pendingExclusions.current = null
+    sceneRevision.current = 0
     let disposed = false
     let stopListening: (() => void) | undefined
     let opened: ImageRendererSession | undefined
@@ -147,6 +152,7 @@ export default function NativeImageViewport({
       } else if (event.type === 'failed') {
         setError(nativeFailureCopy(event.code))
       }
+      nativeBindingRef.current?.onEvent(event)
     }
 
     void (async () => {
@@ -182,6 +188,58 @@ export default function NativeImageViewport({
     }
   }, [file.entityId, metadataHeight, metadataWidth, onDimensions, renderer, transformsDisabled])
 
+  useEffect(() => {
+    if (
+      fallbackToWeb ||
+      transformsDisabled ||
+      activeGeneration === 0 ||
+      nativeBinding === undefined
+    )
+      return
+    const current = session.current
+    if (current === null) return
+    const revision = Math.max(sceneRevision.current + 1, nativeBinding.sceneRevision)
+    sceneRevision.current = revision
+    let disposed = false
+    void dispatch(current, { type: 'set_scene', scene: nativeBinding.scene }, revision).then(
+      (ack) => {
+        if (disposed) return
+        sceneRevision.current = Math.max(sceneRevision.current, ack.acceptedRevision)
+        if (ack.backend === 'web') setFallbackToWeb(true)
+      },
+      (cause) => {
+        if (!disposed) setError(nativeFailureCopy(errorCode(cause)))
+      },
+    )
+    return () => {
+      disposed = true
+    }
+  }, [
+    activeGeneration,
+    fallbackToWeb,
+    nativeBinding?.scene,
+    nativeBinding?.sceneRevision,
+    sessionEpoch,
+    transformsDisabled,
+  ])
+
+  useEffect(() => {
+    if (
+      fallbackToWeb ||
+      transformsDisabled ||
+      activeGeneration === 0 ||
+      nativeBinding === undefined
+    )
+      return
+    const current = session.current
+    if (current === null) return
+    void dispatch(
+      current,
+      { type: 'set_tool', tool: nativeBinding.tool },
+      sceneRevision.current,
+    ).catch((cause) => setError(nativeFailureCopy(errorCode(cause))))
+  }, [activeGeneration, fallbackToWeb, nativeBinding?.tool, sessionEpoch, transformsDisabled])
+
   useLayoutEffect(() => {
     if (fallbackToWeb || transformsDisabled || activeGeneration === 0) return
     const node = stage.current
@@ -202,14 +260,28 @@ export default function NativeImageViewport({
       }
 
       const navigationBounds = navigationElement.current?.getBoundingClientRect()
-      const exclusions = navigationBounds === undefined ? [] : [rectFromBounds(navigationBounds)]
+      const root = node.closest('.image-preview')
+      const editorBounds =
+        root === null
+          ? []
+          : Array.from(root.querySelectorAll<HTMLElement>('[data-native-input-exclusion="true"]'))
+              .map((element) => rectFromBounds(element.getBoundingClientRect()))
+              .filter(validRect)
+      const exclusions = [
+        ...(navigationBounds === undefined ? [] : [rectFromBounds(navigationBounds)]),
+        ...editorBounds,
+      ]
       if (
         exclusions.every(validRect) &&
         !sameRects(lastAppliedExclusions.current, exclusions) &&
         !sameRects(pendingExclusions.current, exclusions)
       ) {
         pendingExclusions.current = exclusions
-        void dispatch(current, { type: 'set_input_exclusions', exclusions }).then(
+        void dispatch(
+          current,
+          { type: 'set_input_exclusions', exclusions },
+          sceneRevision.current,
+        ).then(
           (ack) => {
             if (disposed) return
             if (sameRects(pendingExclusions.current, exclusions)) pendingExclusions.current = null
@@ -232,7 +304,7 @@ export default function NativeImageViewport({
           !sameSurface(pendingSurface.current, surface)
         ) {
           pendingSurface.current = surface
-          void dispatch(current, { type: 'set_surface', surface }).then(
+          void dispatch(current, { type: 'set_surface', surface }, sceneRevision.current).then(
             (ack) => {
               if (disposed) return
               if (sameSurface(pendingSurface.current, surface)) pendingSurface.current = null
@@ -255,6 +327,11 @@ export default function NativeImageViewport({
     const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(sync)
     observer?.observe(node)
     if (navigationElement.current !== null) observer?.observe(navigationElement.current)
+    for (const element of node
+      .closest('.image-preview')
+      ?.querySelectorAll<HTMLElement>('[data-native-input-exclusion="true"]') ?? []) {
+      observer?.observe(element)
+    }
     window.addEventListener('resize', sync)
     window.visualViewport?.addEventListener('resize', sync)
     return () => {
@@ -263,12 +340,23 @@ export default function NativeImageViewport({
       window.removeEventListener('resize', sync)
       window.visualViewport?.removeEventListener('resize', sync)
     }
-  }, [activeGeneration, fallbackToWeb, sessionEpoch, transformsDisabled])
+  }, [
+    activeGeneration,
+    fallbackToWeb,
+    nativeBinding?.inputExclusionRevision,
+    sessionEpoch,
+    transformsDisabled,
+  ])
 
   const sendCamera = useCallback((next: ImageViewportState) => {
     setCamera(next)
     const current = session.current
-    if (current !== null) void dispatch(current, { type: 'camera', camera: toRendererCamera(next) })
+    if (current !== null)
+      void dispatch(
+        current,
+        { type: 'camera', camera: toRendererCamera(next) },
+        sceneRevision.current,
+      )
   }, [])
 
   const navigate = useCallback(
@@ -285,10 +373,14 @@ export default function NativeImageViewport({
       const next = !enabled
       const current = session.current
       if (current !== null) {
-        void dispatch(current, {
-          type: 'set_magnifier',
-          magnifier: next ? nativeMagnifierPreferences(magnifier) : null,
-        })
+        void dispatch(
+          current,
+          {
+            type: 'set_magnifier',
+            magnifier: next ? nativeMagnifierPreferences(magnifier) : null,
+          },
+          sceneRevision.current,
+        )
       }
       return next
     })
@@ -437,7 +529,7 @@ export default function NativeImageViewport({
           {magnifierEnabled ? '放大镜已开启' : '放大镜已关闭'}
         </span>
       )}
-      {slots?.stageOverlay?.(
+      {(slots?.nativeStageOverlay ?? slots?.stageOverlay)?.(
         createImagePreviewProjection(
           stage.current?.getBoundingClientRect() ?? null,
           camera,
@@ -498,8 +590,12 @@ export function nativeFittedImageRect(source: Size, viewport: Size) {
   }
 }
 
-function dispatch(session: ImageRendererSession, command: ImageRendererCommand['command']) {
-  return session.dispatch({ sceneRevision: 0, command })
+function dispatch(
+  session: ImageRendererSession,
+  command: ImageRendererCommand['command'],
+  sceneRevision: number,
+) {
+  return session.dispatch({ sceneRevision, command })
 }
 
 function nextRendererSessionId(): string {

@@ -101,8 +101,10 @@ fn rectangle_drag_emits_normalized_draft_then_completion() {
         changed.as_slice(),
         [InteractionEvent::DraftChanged(_)]
     ));
-    let [InteractionEvent::DraftCompleted(AnnotationGeometry::Rectangle { rect })] =
-        completed.as_slice()
+    let [
+        InteractionEvent::DraftCompleted(AnnotationGeometry::Rectangle { rect }),
+        InteractionEvent::EditorPlacementChanged(position),
+    ] = completed.as_slice()
     else {
         panic!("expected one completed rectangle")
     };
@@ -110,6 +112,7 @@ fn rectangle_drag_emits_normalized_draft_then_completion() {
     assert!((rect.y - 0.3).abs() < 1e-12);
     assert!((rect.width - 0.4).abs() < 1e-12);
     assert!((rect.height - 0.4).abs() < 1e-12);
+    assert_eq!(*position, LogicalPoint::new(400.0, 500.0).unwrap());
 }
 
 #[test]

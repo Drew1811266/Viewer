@@ -68,6 +68,14 @@ export interface ImageRendererScene {
   draft: ImageRendererAnnotation | null
 }
 
+export interface ImageRendererViewportBinding {
+  sceneRevision: number
+  scene: ImageRendererScene
+  tool: ImageRendererTool
+  inputExclusionRevision: number
+  onEvent(event: ImageRendererEvent): void
+}
+
 export type ImageRendererScenePatch =
   | { type: 'upsert'; baseRevision: number; node: ImageRendererAnnotation }
   | { type: 'remove'; baseRevision: number; id: string }

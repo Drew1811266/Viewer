@@ -277,12 +277,16 @@ impl InteractionController {
                 {
                     points.push(current);
                 }
-                complete_geometry(self.mode, start, current, points)
-                    .map(InteractionEvent::DraftCompleted)
-                    .map_or_else(
-                        || vec![InteractionEvent::DraftCancelled],
-                        |event| vec![event],
-                    )
+                complete_geometry(self.mode, start, current, points).map_or_else(
+                    || vec![InteractionEvent::DraftCancelled],
+                    |geometry| {
+                        let placement = transform.image_to_view(editor_anchor(&geometry));
+                        vec![
+                            InteractionEvent::DraftCompleted(geometry),
+                            InteractionEvent::EditorPlacementChanged(placement),
+                        ]
+                    },
+                )
             }
         }
     }
@@ -292,6 +296,23 @@ impl InteractionController {
             Some(Capture::Draw { .. }) => vec![InteractionEvent::DraftCancelled],
             Some(Capture::Pan { .. }) | None => Vec::new(),
         }
+    }
+}
+
+fn editor_anchor(geometry: &AnnotationGeometry) -> NormalizedPoint {
+    match geometry {
+        AnnotationGeometry::Point { position } => *position,
+        AnnotationGeometry::Arrow { head, .. } => *head,
+        AnnotationGeometry::Rectangle { rect } | AnnotationGeometry::Ellipse { rect } => {
+            NormalizedPoint {
+                x: rect.x + rect.width / 2.0,
+                y: rect.y + rect.height / 2.0,
+            }
+        }
+        AnnotationGeometry::Stroke { points } => points
+            .last()
+            .copied()
+            .expect("a completed stroke always contains points"),
     }
 }
 

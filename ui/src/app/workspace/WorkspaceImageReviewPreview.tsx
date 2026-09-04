@@ -134,6 +134,7 @@ function ImageReviewOverlay({
   activeControllerRef,
   scope,
   continuous,
+  imageRenderer,
 }: WorkspaceImageReviewPreviewProps & {
   scope: ReviewScopeRequest | null
   continuous: ContinuousReviewCoordinator | undefined
@@ -196,6 +197,7 @@ function ImageReviewOverlay({
         requestImage={requestImage}
         onDimensions={onDimensions}
         controller={controller}
+        renderer={imageRenderer}
       />
       {controller.leaveConfirmation !== null && (
         <ModalSheet

@@ -3,6 +3,7 @@ import type {
   ImageReviewWorkbenchController,
   ReviewAnchor,
 } from '../../app/review/useImageReviewWorkbench'
+import type { ImageRendererPoint } from '../../rendering/imageRendererTypes'
 import type { ImagePreviewProjection } from '../imagePreview/ImagePreviewSurface'
 import ViewerButton from '../ui/ViewerButton'
 
@@ -10,6 +11,7 @@ interface InlineFeedbackEditorProps {
   controller: ImageReviewWorkbenchController
   anchor: ReviewAnchor
   projection?: ImagePreviewProjection
+  nativePosition?: ImageRendererPoint | null
   embedded?: boolean
 }
 
@@ -17,6 +19,7 @@ export default function InlineFeedbackEditor({
   controller,
   anchor,
   projection,
+  nativePosition,
   embedded = false,
 }: InlineFeedbackEditorProps) {
   const input = useRef<HTMLTextAreaElement>(null)
@@ -44,11 +47,18 @@ export default function InlineFeedbackEditor({
     <section
       className="inline-feedback-editor"
       data-embedded={embedded || undefined}
+      data-native-input-exclusion={!embedded || undefined}
       data-compact={
         (!embedded && projection !== undefined && projection.stageRect.height < 200) || undefined
       }
       aria-label={anchor.kind === 'asset' ? '整图意见编辑器' : '标注意见编辑器'}
-      style={embedded ? undefined : editorPosition(anchor, projection)}
+      style={
+        embedded
+          ? undefined
+          : nativePosition === undefined || nativePosition === null
+            ? editorPosition(anchor, projection)
+            : nativeEditorPosition(nativePosition, projection)
+      }
     >
       <label>
         <span>返工意见</span>
@@ -87,6 +97,15 @@ export default function InlineFeedbackEditor({
       </div>
     </section>
   )
+}
+
+function nativeEditorPosition(position: ImageRendererPoint, projection?: ImagePreviewProjection) {
+  const maximumLeft = Math.max(8, (projection?.stageRect.width ?? position.x + 304) - 288)
+  const maximumTop = Math.max(8, (projection?.stageRect.height ?? position.y + 192) - 176)
+  return {
+    left: clamp(position.x + 16, 8, maximumLeft),
+    top: clamp(position.y + 16, 8, maximumTop),
+  }
 }
 
 function editorPosition(anchor: ReviewAnchor, projection?: ImagePreviewProjection) {

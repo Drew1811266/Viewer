@@ -42,6 +42,7 @@ export interface ImageReviewWorkbenchView {
 
 export interface ImageReviewSaveRequest {
   entityId: string
+  clientMutationId?: string
   item: ImageReviewWorkbenchFeedback | null
   operation: 'text' | 'geometry'
   text: string
@@ -233,7 +234,11 @@ function continuousEditorSeed(
     ]
   }
   return {
-    contextKey: request.item?.itemId ?? `new:${request.entityId}`,
+    contextKey:
+      request.item?.itemId ??
+      (request.clientMutationId === undefined
+        ? `new:${request.entityId}`
+        : `new:${request.entityId}:${request.clientMutationId}`),
     feedbackId: request.item?.feedbackId ?? null,
     text: request.text,
     targets,

@@ -19,11 +19,12 @@ const TEST_PROJECTION: ImagePreviewProjection = {
 }
 
 vi.mock('../imagePreview/ImagePreviewSurface', () => ({
-  default: ({ slots, onEscape, prefetchFit }: ImagePreviewSurfaceProps) => (
+  default: ({ slots, onEscape, prefetchFit, nativeBinding }: ImagePreviewSurfaceProps) => (
     <section
       data-testid="preview-surface"
       data-prefetch-fit={prefetchFit === false ? 'false' : 'true'}
       data-has-magnifier-overlay={slots?.magnifierOverlayPainter !== undefined || undefined}
+      data-has-native-binding={nativeBinding !== undefined || undefined}
       className="image-preview"
       onKeyDown={(event) => event.key === 'Escape' && onEscape?.()}
     >
@@ -31,7 +32,11 @@ vi.mock('../imagePreview/ImagePreviewSurface', () => ({
         {slots?.toolbarLeading}
         {slots?.toolbarActions}
       </header>
-      <div>{slots?.stageOverlay?.(TEST_PROJECTION)}</div>
+      <div>
+        {(nativeBinding === undefined ? slots?.stageOverlay : slots?.nativeStageOverlay)?.(
+          TEST_PROJECTION,
+        )}
+      </div>
       {slots?.sidePanel}
     </section>
   ),
@@ -248,6 +253,9 @@ describe('ImageReviewWorkspace', () => {
       'data-has-magnifier-overlay',
       'true',
     )
+    fireEvent.click(screen.getByRole('button', { name: '调整意见 1 区域' }))
+    expect(controller.selectFeedback).toHaveBeenCalledWith('feedback-1')
+    expect(controller.setTool).toHaveBeenCalledWith('rectangle')
   })
 
   it('shares extended markup with the magnifier while keeping edit controls in the stage overlay', () => {
@@ -281,6 +289,31 @@ describe('ImageReviewWorkspace', () => {
     expect(screen.getAllByTestId('annotation-marker')).toHaveLength(3)
     expect(screen.getByTestId('annotation-canvas')).toBeVisible()
     expect(screen.getAllByRole('button', { name: /调整意见 3/ })).toHaveLength(4)
+  })
+
+  it('uses only the retained native scene when the native backend is active', () => {
+    const controller = controllerFixture([
+      savedRect('feedback-1', 1, '衣领边缘需要更平整', 0.1, 0.1, 0.2, 0.15),
+    ])
+    const renderer = {
+      backend: 'native' as const,
+      open: vi.fn(),
+      listen: vi.fn(),
+    }
+
+    render(
+      <ImageReviewWorkspace {...surfaceFixture()} controller={controller} renderer={renderer} />,
+    )
+
+    expect(screen.getByTestId('preview-surface')).toHaveAttribute('data-has-native-binding', 'true')
+    expect(screen.queryByTestId('annotation-canvas')).not.toBeInTheDocument()
+    expect(screen.getByTestId('preview-surface')).toHaveAttribute(
+      'data-has-magnifier-overlay',
+      'true',
+    )
+    fireEvent.click(screen.getByRole('button', { name: '调整意见 1 区域' }))
+    expect(controller.beginRedraw).toHaveBeenCalledWith('feedback-1')
+    expect(controller.setTool).not.toHaveBeenCalledWith('rectangle')
   })
 
   it('routes tool shortcuts, suppresses them in text input, and keeps completion separate', () => {

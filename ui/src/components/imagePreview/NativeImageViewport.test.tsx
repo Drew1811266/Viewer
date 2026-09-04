@@ -7,6 +7,7 @@ import type {
   ImageRendererEvent,
   ImageRendererPort,
   ImageRendererSession,
+  ImageRendererViewportBinding,
 } from '../../rendering/imageRendererTypes'
 import NativeImageViewport, { nativeFittedImageRect } from './NativeImageViewport'
 
@@ -21,6 +22,7 @@ beforeEach(() => {
   ) {
     if (this.classList.contains('image-preview-stage')) return stageRect
     if (this.classList.contains('preview-navigation-float')) return rect(520, 620, 160, 48)
+    if (this.dataset.nativeInputExclusion === 'true') return rect(360, 240, 288, 176)
     return rect(0, 0, this.clientWidth, this.clientHeight)
   })
   vi.stubGlobal('devicePixelRatio', 2)
@@ -171,7 +173,9 @@ describe('NativeImageViewport', () => {
 
   it('switches to the complete Web viewport only after backend activation is published', async () => {
     const harness = rendererHarness()
-    renderPreview(harness.port)
+    renderPreview(harness.port, reviewBinding())
+    expect(screen.getByText('原生编辑器')).toBeInTheDocument()
+    expect(screen.queryByText('Web 评审层')).not.toBeInTheDocument()
     await waitFor(() => expect(harness.request).not.toBeNull())
 
     act(() =>
@@ -186,6 +190,8 @@ describe('NativeImageViewport', () => {
     await waitFor(() =>
       expect(screen.queryByTestId('native-image-viewport')).not.toBeInTheDocument(),
     )
+    expect(screen.getByText('Web 评审层')).toBeInTheDocument()
+    expect(screen.queryByText('原生编辑器')).not.toBeInTheDocument()
   })
 
   it('sends only magnifier preferences and leaves pointer tracking to the native actor', async () => {
@@ -206,9 +212,61 @@ describe('NativeImageViewport', () => {
       },
     })
   })
+
+  it('installs one retained review scene, semantic tool and editor input exclusion', async () => {
+    const harness = rendererHarness()
+    const onEvent = vi.fn()
+    const binding: ImageRendererViewportBinding = {
+      sceneRevision: 4,
+      scene: {
+        annotations: [
+          {
+            id: 'target-1',
+            ordinal: 1,
+            geometry: { type: 'point', position: { x: 0.2, y: 0.3 } },
+            style: { color: [0.7, 0.13, 0.09, 1], lineWidthPx: 2, dashed: false },
+            selected: false,
+            draft: false,
+            visible: true,
+          },
+        ],
+        draft: null,
+      },
+      tool: 'point',
+      inputExclusionRevision: 4,
+      onEvent,
+    }
+    renderPreview(harness.port, binding)
+
+    await waitFor(() => expect(sceneCommands(harness.commands)).toHaveLength(1))
+    expect(sceneCommands(harness.commands)[0]).toMatchObject({
+      sceneRevision: 4,
+      command: { type: 'set_scene', scene: binding.scene },
+    })
+    await waitFor(() => expect(toolCommands(harness.commands)).toHaveLength(1))
+    expect(toolCommands(harness.commands)[0]?.command).toEqual({ type: 'set_tool', tool: 'point' })
+    await waitFor(() =>
+      expect(inputExclusionCommands(harness.commands).at(-1)?.exclusions).toContainEqual({
+        left: 360,
+        top: 240,
+        width: 288,
+        height: 176,
+      }),
+    )
+
+    act(() =>
+      harness.publish({
+        type: 'selection_changed',
+        sessionId: harness.request?.sessionId ?? '',
+        assetGeneration: harness.request?.assetGeneration ?? 0,
+        annotationId: 'target-1',
+      }),
+    )
+    expect(onEvent).toHaveBeenCalledWith(expect.objectContaining({ type: 'selection_changed' }))
+  })
 })
 
-function renderPreview(renderer: ImageRendererPort) {
+function renderPreview(renderer: ImageRendererPort, nativeBinding?: ImageRendererViewportBinding) {
   const file: BrowserFile = {
     entityId: 'image-1',
     relativePath: 'images/one.jpg',
@@ -237,11 +295,27 @@ function renderPreview(renderer: ImageRendererPort) {
       }))}
       onNavigate={vi.fn()}
       onEscape={vi.fn()}
+      nativeBinding={nativeBinding}
       slots={{
         toolbarActions: <button type="button">返回网格</button>,
+        stageOverlay: nativeBinding === undefined ? undefined : () => <section>Web 评审层</section>,
+        nativeStageOverlay:
+          nativeBinding === undefined
+            ? undefined
+            : () => <section data-native-input-exclusion="true">原生编辑器</section>,
       }}
     />,
   )
+}
+
+function reviewBinding(): ImageRendererViewportBinding {
+  return {
+    sceneRevision: 1,
+    scene: { annotations: [], draft: null },
+    tool: 'browse',
+    inputExclusionRevision: 1,
+    onEvent: vi.fn(),
+  }
 }
 
 function rendererHarness() {
@@ -304,6 +378,14 @@ function inputExclusionCommands(commands: ImageRendererCommand[]) {
 
 function magnifierCommands(commands: ImageRendererCommand[]) {
   return commands.flatMap(({ command }) => (command.type === 'set_magnifier' ? [command] : []))
+}
+
+function sceneCommands(commands: ImageRendererCommand[]) {
+  return commands.filter(({ command }) => command.type === 'set_scene')
+}
+
+function toolCommands(commands: ImageRendererCommand[]) {
+  return commands.filter(({ command }) => command.type === 'set_tool')
 }
 
 function rect(left: number, top: number, width: number, height: number): DOMRect {

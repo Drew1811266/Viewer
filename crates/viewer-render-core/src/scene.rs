@@ -50,6 +50,7 @@ pub struct AnnotationNode {
     pub style: AnnotationStyle,
     pub selected: bool,
     pub draft: bool,
+    pub visible: bool,
 }
 
 impl AnnotationNode {
@@ -66,6 +67,7 @@ impl AnnotationNode {
             style: AnnotationStyle::default(),
             selected: false,
             draft: false,
+            visible: true,
         })
     }
 }

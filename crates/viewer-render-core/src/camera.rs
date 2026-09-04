@@ -134,6 +134,14 @@ impl TransformSnapshot {
         Some(self.camera.rotation.unorient(oriented))
     }
 
+    pub fn view_to_image_clamped(self, point: LogicalPoint) -> NormalizedPoint {
+        let oriented = self.view_to_oriented_unclamped(point);
+        self.camera.rotation.unorient(NormalizedPoint {
+            x: oriented.x.clamp(0.0, 1.0),
+            y: oriented.y.clamp(0.0, 1.0),
+        })
+    }
+
     pub fn zoom_at(self, factor: f64, anchor: LogicalPoint) -> Result<CameraState, GeometryError> {
         if !factor.is_finite() || factor <= 0.0 {
             return Err(GeometryError::NonPositive("zoom factor"));

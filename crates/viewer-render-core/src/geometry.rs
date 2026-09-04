@@ -87,6 +87,32 @@ pub struct NormalizedPoint {
     pub y: f64,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct NormalizedRect {
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+}
+
+impl NormalizedRect {
+    pub fn new(x: f64, y: f64, width: f64, height: f64) -> Result<Self, GeometryError> {
+        require_unit("normalized rect x", x)?;
+        require_unit("normalized rect y", y)?;
+        require_positive("normalized rect width", width)?;
+        require_positive("normalized rect height", height)?;
+        if x + width > 1.0 || y + height > 1.0 {
+            return Err(GeometryError::OutOfRange("normalized rect bounds"));
+        }
+        Ok(Self {
+            x,
+            y,
+            width,
+            height,
+        })
+    }
+}
+
 impl NormalizedPoint {
     pub fn new(x: f64, y: f64) -> Result<Self, GeometryError> {
         require_unit("normalized point x", x)?;

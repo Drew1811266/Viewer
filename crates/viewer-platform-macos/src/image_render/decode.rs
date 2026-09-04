@@ -249,6 +249,16 @@ impl MacImageResourceProvider {
         generation: AssetGeneration,
         request: PreviewRequest,
     ) -> Result<DecodedResource, ImageResourceError> {
+        self.probe_and_request_preview(source, generation, request)
+            .map(|(_, resource)| resource)
+    }
+
+    pub fn probe_and_request_preview(
+        &self,
+        source: &AuthorizedImageSource,
+        generation: AssetGeneration,
+        request: PreviewRequest,
+    ) -> Result<(ImageProbe, DecodedResource), ImageResourceError> {
         self.begin_request(generation)?;
         let probe = self.probe(source)?;
         let (source_width, source_height) = oriented_dimensions(&probe);
@@ -272,7 +282,7 @@ impl MacImageResourceProvider {
                 .load(&key, generation, kind, ResourcePriority::Visible)?
         {
             self.check_cancelled(generation)?;
-            return Ok(resource);
+            return Ok((probe, resource));
         }
 
         self.check_cancelled(generation)?;
@@ -290,7 +300,7 @@ impl MacImageResourceProvider {
             self.cache.remove(&resource.cache_key)?;
             return Err(ImageResourceError::Cancelled);
         }
-        Ok(resource)
+        Ok((probe, resource))
     }
 
     pub fn request_tiles(

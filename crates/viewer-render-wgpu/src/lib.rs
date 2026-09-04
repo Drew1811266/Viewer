@@ -14,8 +14,8 @@ mod scheduler;
 
 pub use annotation_mesh::{
     AnnotationMesh, AnnotationMeshBuilder, AnnotationMeshCache, AnnotationMeshFragment,
-    AnnotationVertex, BufferCapacityPlan, GlyphAtlasError, GlyphMetrics, MeshError, MeshUpdate,
-    OrdinalGlyphAtlas, OrdinalLabel, VertexKind,
+    AnnotationMeshLayers, AnnotationVertex, BufferCapacityPlan, GlyphAtlasError, GlyphMetrics,
+    MeshError, MeshUpdate, OrdinalGlyphAtlas, OrdinalLabel, VertexKind,
 };
 pub use annotation_pass::AnnotationPass;
 pub use device::{

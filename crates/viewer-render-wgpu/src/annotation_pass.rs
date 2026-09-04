@@ -4,8 +4,8 @@ use bytemuck::{Pod, Zeroable};
 use viewer_render_core::{SceneSnapshot, TransformSnapshot};
 
 use crate::{
-    AnnotationBufferIdentity, AnnotationMeshCache, BufferCapacityPlan, GlyphAtlasError, MeshError,
-    MeshUpdate, OrdinalGlyphAtlas, VertexKind,
+    AnnotationBufferIdentity, AnnotationMeshCache, AnnotationMeshLayers, AnnotationVertex,
+    BufferCapacityPlan, GlyphAtlasError, MeshError, MeshUpdate, OrdinalGlyphAtlas, VertexKind,
 };
 
 const ANNOTATION_VERTEX_ATTRIBUTES: [wgpu::VertexAttribute; 7] = [
@@ -144,9 +144,11 @@ pub struct AnnotationPass {
     glyph_layout: wgpu::BindGroupLayout,
     camera_buffer: wgpu::Buffer,
     camera_bind_group: wgpu::BindGroup,
-    mesh_cache: AnnotationMeshCache,
+    mesh_layers: AnnotationMeshLayers,
     capacity: BufferCapacityPlan,
+    draft_capacity: BufferCapacityPlan,
     retained: Option<RetainedBuffers>,
+    draft: Option<RetainedBuffers>,
     glyph_texture: Option<GlyphTexture>,
     glyph_buffer: Option<GlyphBuffer>,
     buffer_identity: u64,
@@ -272,9 +274,11 @@ impl AnnotationPass {
             glyph_layout,
             camera_buffer,
             camera_bind_group,
-            mesh_cache: AnnotationMeshCache::default(),
+            mesh_layers: AnnotationMeshLayers::default(),
             capacity: BufferCapacityPlan::default(),
+            draft_capacity: BufferCapacityPlan::default(),
             retained: None,
+            draft: None,
             glyph_texture: None,
             glyph_buffer: None,
             buffer_identity: 0,
@@ -287,67 +291,96 @@ impl AnnotationPass {
         queue: &wgpu::Queue,
         scene: &SceneSnapshot,
     ) -> Result<MeshUpdate, MeshError> {
-        let update = self.mesh_cache.update(scene)?;
+        let update = self.mesh_layers.update_authoritative(scene)?;
+        let result = self.upload_scene_update(device, queue, update);
+        self.clear_draft_overlay();
+        result
+    }
+
+    pub fn prepare_transient_scene(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        scene: &SceneSnapshot,
+    ) -> Result<MeshUpdate, MeshError> {
+        let update = self.mesh_layers.update_transient_authoritative(scene)?;
+        let result = self.upload_scene_update(device, queue, update);
+        self.clear_draft_overlay();
+        result
+    }
+
+    /// Uploads only renderer-owned draft geometry. The authoritative retained
+    /// scene is neither tessellated nor rewritten on high-frequency pointer
+    /// updates.
+    pub fn prepare_draft_overlay(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        scene: &SceneSnapshot,
+    ) -> Result<MeshUpdate, MeshError> {
+        let update = self.mesh_layers.update_draft(scene)?;
         if update == MeshUpdate::Reused {
             return Ok(update);
         }
-        let mesh = self.mesh_cache.mesh().expect("rebuilt mesh must exist");
-        let vertices = mesh
-            .vertices()
-            .iter()
-            .map(|vertex| GpuAnnotationVertex {
-                source_position: vertex.source_position,
-                neighbor_position: vertex.neighbor_position,
-                screen_offset_px: vertex.screen_offset_px,
-                color: vertex.color,
-                kind: match vertex.kind {
-                    VertexKind::Segment => 0.0,
-                    VertexKind::ScreenOffset => 1.0,
-                    VertexKind::ArrowHead => 2.0,
-                },
-                dashed: if vertex.dashed { 1.0 } else { 0.0 },
-                segment_factor: vertex.segment_factor,
-                _padding: 0.0,
-            })
-            .collect::<Vec<_>>();
+        let mesh = self
+            .mesh_layers
+            .draft()
+            .mesh()
+            .expect("rebuilt draft mesh must exist");
+        let vertices = gpu_vertices(mesh.vertices());
         let indices = mesh.indices();
-        self.capacity.ensure(vertices.len(), indices.len());
-        if vertices.is_empty() || indices.is_empty() {
-            if let Some(retained) = self.retained.as_mut() {
-                retained.index_count = 0;
-            }
-            self.rebuild_glyph_buffer(device, queue);
+        self.draft_capacity.ensure(vertices.len(), indices.len());
+        upload_mesh_buffers(
+            device,
+            queue,
+            &vertices,
+            indices,
+            self.draft_capacity,
+            &mut self.draft,
+            "Viewer draft annotation",
+        )?;
+        Ok(update)
+    }
+
+    pub fn clear_draft_overlay(&mut self) {
+        if let Some(draft) = self.draft.as_mut() {
+            draft.index_count = 0;
+        }
+    }
+
+    fn upload_scene_update(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        update: MeshUpdate,
+    ) -> Result<MeshUpdate, MeshError> {
+        if update == MeshUpdate::Reused {
             return Ok(update);
         }
+        let mesh = self
+            .mesh_layers
+            .authoritative()
+            .mesh()
+            .expect("rebuilt mesh must exist");
+        let vertices = gpu_vertices(mesh.vertices());
+        let indices = mesh.indices();
+        self.capacity.ensure(vertices.len(), indices.len());
         let must_allocate = self.retained.as_ref().is_none_or(|buffers| {
             buffers.vertex_capacity < self.capacity.vertex_capacity
                 || buffers.index_capacity < self.capacity.index_capacity
         });
-        if must_allocate {
+        if must_allocate && !vertices.is_empty() && !indices.is_empty() {
             self.buffer_identity = self.buffer_identity.saturating_add(1);
-            self.retained = Some(RetainedBuffers {
-                vertices: device.create_buffer(&wgpu::BufferDescriptor {
-                    label: Some("Viewer retained annotation vertices"),
-                    size: (self.capacity.vertex_capacity * mem::size_of::<GpuAnnotationVertex>())
-                        as u64,
-                    usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-                    mapped_at_creation: false,
-                }),
-                indices: device.create_buffer(&wgpu::BufferDescriptor {
-                    label: Some("Viewer retained annotation indices"),
-                    size: (self.capacity.index_capacity * mem::size_of::<u32>()) as u64,
-                    usage: wgpu::BufferUsages::INDEX | wgpu::BufferUsages::COPY_DST,
-                    mapped_at_creation: false,
-                }),
-                vertex_capacity: self.capacity.vertex_capacity,
-                index_capacity: self.capacity.index_capacity,
-                index_count: 0,
-            });
         }
-        let retained = self.retained.as_mut().expect("buffers were allocated");
-        queue.write_buffer(&retained.vertices, 0, bytemuck::cast_slice(&vertices));
-        queue.write_buffer(&retained.indices, 0, bytemuck::cast_slice(indices));
-        retained.index_count = u32::try_from(indices.len()).map_err(|_| MeshError::MeshTooLarge)?;
+        upload_mesh_buffers(
+            device,
+            queue,
+            &vertices,
+            indices,
+            self.capacity,
+            &mut self.retained,
+            "Viewer retained annotation",
+        )?;
         self.rebuild_glyph_buffer(device, queue);
         Ok(update)
     }
@@ -458,6 +491,12 @@ impl AnnotationPass {
             render_pass.set_index_buffer(retained.indices.slice(..), wgpu::IndexFormat::Uint32);
             render_pass.draw_indexed(0..retained.index_count, 0, 0..1);
         }
+        encode_annotation_buffers(
+            render_pass,
+            &self.pipeline,
+            &self.camera_bind_group,
+            self.draft.as_ref(),
+        );
         if let (Some(glyph_texture), Some(glyph_buffer)) = (&self.glyph_texture, &self.glyph_buffer)
         {
             render_pass.set_pipeline(&self.glyph_pipeline);
@@ -476,7 +515,12 @@ impl AnnotationPass {
         let glyph_buffer_bytes = self.glyph_buffer.as_ref().map_or(0, |buffer| {
             (buffer.capacity * mem::size_of::<GpuGlyphVertex>()) as u64
         });
+        let draft_buffer_bytes = self.draft.as_ref().map_or(0, |draft| {
+            (draft.vertex_capacity * mem::size_of::<GpuAnnotationVertex>()
+                + draft.index_capacity * mem::size_of::<u32>()) as u64
+        });
         buffer_bytes
+            + draft_buffer_bytes
             + glyph_buffer_bytes
             + self
                 .glyph_texture
@@ -485,7 +529,7 @@ impl AnnotationPass {
     }
 
     pub const fn mesh_cache(&self) -> &AnnotationMeshCache {
-        &self.mesh_cache
+        self.mesh_layers.authoritative()
     }
 
     pub const fn glyph_layout(&self) -> &wgpu::BindGroupLayout {
@@ -512,6 +556,12 @@ impl AnnotationPass {
             render_pass.set_index_buffer(retained.indices.slice(..), wgpu::IndexFormat::Uint32);
             render_pass.draw_indexed(0..retained.index_count, 0, 0..1);
         }
+        encode_annotation_buffers(
+            render_pass,
+            annotation_pipeline,
+            camera_bind_group,
+            self.draft.as_ref(),
+        );
         if let (Some(glyph_texture), Some(glyph_buffer)) = (&self.glyph_texture, &self.glyph_buffer)
         {
             render_pass.set_pipeline(glyph_pipeline);
@@ -526,7 +576,7 @@ impl AnnotationPass {
         let Some(glyph_texture) = &self.glyph_texture else {
             return;
         };
-        let Some(mesh) = self.mesh_cache.mesh() else {
+        let Some(mesh) = self.mesh_layers.authoritative().mesh() else {
             return;
         };
         let mut vertices = Vec::new();
@@ -593,6 +643,87 @@ impl AnnotationPass {
         queue.write_buffer(&buffer.vertices, 0, bytemuck::cast_slice(&vertices));
         buffer.vertex_count = vertices.len() as u32;
     }
+}
+
+fn gpu_vertices(vertices: &[AnnotationVertex]) -> Vec<GpuAnnotationVertex> {
+    vertices
+        .iter()
+        .map(|vertex| GpuAnnotationVertex {
+            source_position: vertex.source_position,
+            neighbor_position: vertex.neighbor_position,
+            screen_offset_px: vertex.screen_offset_px,
+            color: vertex.color,
+            kind: match vertex.kind {
+                VertexKind::Segment => 0.0,
+                VertexKind::ScreenOffset => 1.0,
+                VertexKind::ArrowHead => 2.0,
+            },
+            dashed: if vertex.dashed { 1.0 } else { 0.0 },
+            segment_factor: vertex.segment_factor,
+            _padding: 0.0,
+        })
+        .collect()
+}
+
+fn upload_mesh_buffers(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    vertices: &[GpuAnnotationVertex],
+    indices: &[u32],
+    capacity: BufferCapacityPlan,
+    buffers: &mut Option<RetainedBuffers>,
+    label: &'static str,
+) -> Result<(), MeshError> {
+    if vertices.is_empty() || indices.is_empty() {
+        if let Some(buffers) = buffers.as_mut() {
+            buffers.index_count = 0;
+        }
+        return Ok(());
+    }
+    let must_allocate = buffers.as_ref().is_none_or(|buffers| {
+        buffers.vertex_capacity < capacity.vertex_capacity
+            || buffers.index_capacity < capacity.index_capacity
+    });
+    if must_allocate {
+        *buffers = Some(RetainedBuffers {
+            vertices: device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some(label),
+                size: (capacity.vertex_capacity * mem::size_of::<GpuAnnotationVertex>()) as u64,
+                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            }),
+            indices: device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some(label),
+                size: (capacity.index_capacity * mem::size_of::<u32>()) as u64,
+                usage: wgpu::BufferUsages::INDEX | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            }),
+            vertex_capacity: capacity.vertex_capacity,
+            index_capacity: capacity.index_capacity,
+            index_count: 0,
+        });
+    }
+    let buffers = buffers.as_mut().expect("mesh buffers were allocated");
+    queue.write_buffer(&buffers.vertices, 0, bytemuck::cast_slice(vertices));
+    queue.write_buffer(&buffers.indices, 0, bytemuck::cast_slice(indices));
+    buffers.index_count = u32::try_from(indices.len()).map_err(|_| MeshError::MeshTooLarge)?;
+    Ok(())
+}
+
+fn encode_annotation_buffers<'pass>(
+    render_pass: &mut wgpu::RenderPass<'pass>,
+    pipeline: &'pass wgpu::RenderPipeline,
+    camera_bind_group: &'pass wgpu::BindGroup,
+    buffers: Option<&'pass RetainedBuffers>,
+) {
+    let Some(buffers) = buffers else {
+        return;
+    };
+    render_pass.set_pipeline(pipeline);
+    render_pass.set_bind_group(0, camera_bind_group, &[]);
+    render_pass.set_vertex_buffer(0, buffers.vertices.slice(..));
+    render_pass.set_index_buffer(buffers.indices.slice(..), wgpu::IndexFormat::Uint32);
+    render_pass.draw_indexed(0..buffers.index_count, 0, 0..1);
 }
 
 fn glyph_vertex(

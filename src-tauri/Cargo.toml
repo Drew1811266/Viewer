@@ -11,7 +11,7 @@ crate-type = ["lib", "cdylib", "staticlib"]
 
 [features]
 default = []
-video-feasibility = ["dep:dispatch2", "tauri/macos-private-api"]
+video-feasibility = ["tauri/macos-private-api"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
@@ -38,7 +38,7 @@ viewer-render-wgpu = { path = "../crates/viewer-render-wgpu" }
 viewer-video-mpv = { path = "../crates/viewer-video-mpv" }
 
 [target.'cfg(target_os = "macos")'.dependencies]
-dispatch2 = { workspace = true, optional = true }
+dispatch2.workspace = true
 objc2.workspace = true
 
 [dev-dependencies]
@@ -92,3 +92,11 @@ path = "../tests/video_resource_lifecycle.rs"
 [[test]]
 name = "video_performance_gate"
 path = "../tests/video_performance_gate.rs"
+
+[[test]]
+name = "image_render_runtime"
+path = "../tests/image_render_runtime.rs"
+
+[[test]]
+name = "image_render_security_boundaries"
+path = "../tests/image_render_security_boundaries.rs"

@@ -319,6 +319,38 @@ impl WgpuImageRenderer {
         Ok(())
     }
 
+    /// Applies renderer-owned interaction feedback without advancing or
+    /// claiming the product scene revision. The next authoritative scene is
+    /// always rebuilt, even when it has the same revision as this projection.
+    pub fn apply_transient_scene(&mut self, scene: &SceneSnapshot) -> Result<(), RenderError> {
+        self.ensure_owner()?;
+        self.annotation_pass
+            .prepare_transient_scene(&self.device, &self.queue, scene)?;
+        self.frame_scheduler
+            .frame_state()
+            .invalidate_scene(scene.revision());
+        Ok(())
+    }
+
+    /// Updates the small renderer-owned draft layer independently from the
+    /// authoritative annotation buffers.
+    pub fn apply_draft_overlay(&mut self, scene: &SceneSnapshot) -> Result<(), RenderError> {
+        self.ensure_owner()?;
+        self.annotation_pass
+            .prepare_draft_overlay(&self.device, &self.queue, scene)?;
+        self.frame_scheduler
+            .frame_state()
+            .invalidate_scene(scene.revision());
+        Ok(())
+    }
+
+    pub fn clear_draft_overlay(&mut self) -> Result<(), RenderError> {
+        self.ensure_owner()?;
+        self.annotation_pass.clear_draft_overlay();
+        self.frame_scheduler.frame_state().invalidate_resource();
+        Ok(())
+    }
+
     pub fn set_transform(&mut self, transform: TransformSnapshot) -> Result<(), RenderError> {
         self.ensure_owner()?;
         self.transform = Some(transform);

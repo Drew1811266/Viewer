@@ -1,4 +1,5 @@
 mod browse;
+mod image_render;
 mod markers;
 mod operations;
 mod preview;
@@ -10,6 +11,7 @@ mod settings;
 mod video;
 
 pub use browse::*;
+pub use image_render::*;
 pub use markers::*;
 pub use operations::*;
 pub use preview::*;

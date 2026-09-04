@@ -470,15 +470,63 @@ pub struct AnnotationMeshCache {
     mesh: Option<AnnotationMesh>,
     rebuild_count: u64,
     builder: AnnotationMeshBuilder,
+    authoritative: bool,
+}
+
+/// Keeps high-frequency renderer-owned draft geometry physically separate
+/// from the retained authoritative scene. Updating a draft therefore cannot
+/// invalidate or rebuild hundreds of committed annotations.
+#[derive(Clone, Debug, Default)]
+pub struct AnnotationMeshLayers {
+    authoritative: AnnotationMeshCache,
+    draft: AnnotationMeshCache,
+}
+
+impl AnnotationMeshLayers {
+    pub fn update_authoritative(&mut self, scene: &SceneSnapshot) -> Result<MeshUpdate, MeshError> {
+        self.authoritative.update(scene)
+    }
+
+    pub fn update_transient_authoritative(
+        &mut self,
+        scene: &SceneSnapshot,
+    ) -> Result<MeshUpdate, MeshError> {
+        self.authoritative.update_transient(scene)
+    }
+
+    pub fn update_draft(&mut self, scene: &SceneSnapshot) -> Result<MeshUpdate, MeshError> {
+        self.draft.update_transient(scene)
+    }
+
+    pub const fn authoritative(&self) -> &AnnotationMeshCache {
+        &self.authoritative
+    }
+
+    pub const fn draft(&self) -> &AnnotationMeshCache {
+        &self.draft
+    }
 }
 
 impl AnnotationMeshCache {
     pub fn update(&mut self, scene: &SceneSnapshot) -> Result<MeshUpdate, MeshError> {
-        if self.mesh.as_ref().map(AnnotationMesh::revision) == Some(scene.revision()) {
+        if self.authoritative
+            && self.mesh.as_ref().map(AnnotationMesh::revision) == Some(scene.revision())
+        {
             return Ok(MeshUpdate::Reused);
         }
         self.mesh = Some(self.builder.build(scene)?);
         self.rebuild_count = self.rebuild_count.saturating_add(1);
+        self.authoritative = true;
+        Ok(MeshUpdate::Rebuilt)
+    }
+
+    /// Rebuilds a renderer-owned interaction projection without claiming the
+    /// authoritative scene revision. A later authoritative snapshot with the
+    /// same revision must therefore rebuild instead of reusing this mesh.
+    pub fn update_transient(&mut self, scene: &SceneSnapshot) -> Result<MeshUpdate, MeshError> {
+        self.mesh = Some(self.builder.build(scene)?);
+        self.rebuild_count = self.rebuild_count.saturating_add(1);
+        self.authoritative = false;
         Ok(MeshUpdate::Rebuilt)
     }
 

@@ -1,3 +1,4 @@
+use std::time::Duration;
 use viewer_platform_macos::image_render::{
     DisplayTickSignal, ImageRenderHostState, MacImageRenderHost, SurfaceError, SurfaceLayout,
     system_ordinal_glyph_atlas,
@@ -81,4 +82,29 @@ fn display_tick_signal_preserves_the_full_timestamp_range() {
 
     assert_eq!(signal.take_latest(), Some(u64::MAX));
     assert_eq!(signal.take_latest(), None);
+}
+
+#[test]
+fn display_tick_wakes_a_parked_renderer_without_a_polling_timer() {
+    let signal = DisplayTickSignal::default();
+    let worker_signal = signal.clone();
+    let (ready_sender, ready_receiver) = std::sync::mpsc::sync_channel(1);
+    let (result_sender, result_receiver) = std::sync::mpsc::sync_channel(1);
+    let worker = std::thread::spawn(move || {
+        assert!(worker_signal.bind_current_thread());
+        ready_sender.send(()).unwrap();
+        std::thread::park();
+        result_sender.send(worker_signal.take_latest()).unwrap();
+    });
+    ready_receiver.recv_timeout(Duration::from_secs(1)).unwrap();
+
+    signal.publish(42);
+
+    assert_eq!(
+        result_receiver
+            .recv_timeout(Duration::from_secs(1))
+            .unwrap(),
+        Some(42)
+    );
+    worker.join().unwrap();
 }

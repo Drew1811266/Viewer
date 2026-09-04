@@ -6,8 +6,8 @@ use viewer_render_core::{
     ViewportLayout,
 };
 use viewer_render_wgpu::{
-    AnnotationMeshCache, BufferCapacityPlan, GlyphMetrics, MeshUpdate, OrdinalGlyphAtlas,
-    RendererDescriptor, WgpuImageRenderer,
+    AnnotationMeshCache, AnnotationMeshLayers, BufferCapacityPlan, GlyphMetrics, MeshUpdate,
+    OrdinalGlyphAtlas, RendererDescriptor, WgpuImageRenderer,
 };
 
 fn scene(revision: u64) -> SceneSnapshot {
@@ -52,6 +52,71 @@ fn unchanged_scene_revision_reuses_retained_mesh_across_camera_changes() {
 
     assert_eq!(cache.rebuild_count(), 1);
     assert_eq!(cache.mesh().unwrap().vertices(), vertices);
+}
+
+#[test]
+fn transient_projection_never_claims_the_authoritative_scene_revision() {
+    let mut cache = AnnotationMeshCache::default();
+    let authoritative = scene(8);
+    let mut selected = authoritative.annotations()[0].clone();
+    selected.selected = true;
+    let transient = SceneSnapshot::new(SceneRevision(8), vec![selected], None).unwrap();
+
+    assert_eq!(cache.update(&authoritative).unwrap(), MeshUpdate::Rebuilt);
+    assert_eq!(
+        cache.update_transient(&transient).unwrap(),
+        MeshUpdate::Rebuilt
+    );
+    assert_eq!(cache.update(&authoritative).unwrap(), MeshUpdate::Rebuilt);
+    assert_eq!(cache.update(&authoritative).unwrap(), MeshUpdate::Reused);
+    assert_eq!(cache.rebuild_count(), 3);
+}
+
+#[test]
+fn continuous_draft_updates_do_not_rebuild_a_500_marker_retained_scene() {
+    let annotations = (0..500)
+        .map(|ordinal| {
+            AnnotationNode::new(
+                AnnotationId::new(format!("marker-{ordinal}")).unwrap(),
+                ordinal + 1,
+                AnnotationGeometry::Point {
+                    position: NormalizedPoint::new(0.5, 0.5).unwrap(),
+                },
+            )
+            .unwrap()
+        })
+        .collect();
+    let retained = SceneSnapshot::new(SceneRevision(12), annotations, None).unwrap();
+    let mut layers = AnnotationMeshLayers::default();
+    assert_eq!(
+        layers.update_authoritative(&retained).unwrap(),
+        MeshUpdate::Rebuilt
+    );
+
+    for step in 1..=120 {
+        let mut draft = AnnotationNode::new(
+            AnnotationId::new("draft").unwrap(),
+            0,
+            AnnotationGeometry::Rectangle {
+                rect: viewer_render_core::NormalizedRect::new(
+                    0.1,
+                    0.1,
+                    f64::from(step) / 240.0,
+                    0.25,
+                )
+                .unwrap(),
+            },
+        )
+        .unwrap();
+        draft.draft = true;
+        let overlay = SceneSnapshot::new(SceneRevision(12), Vec::new(), Some(draft)).unwrap();
+        layers.update_draft(&overlay).unwrap();
+    }
+
+    assert_eq!(layers.authoritative().rebuild_count(), 1);
+    assert!(layers.authoritative().mesh().unwrap().vertices().len() > 5_000);
+    assert_eq!(layers.draft().rebuild_count(), 120);
+    assert!(layers.draft().mesh().unwrap().vertices().len() < 100);
 }
 
 #[test]

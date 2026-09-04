@@ -4,9 +4,10 @@ use std::{
     ffi::c_void,
     ptr::{NonNull, null_mut},
     sync::{
-        Arc,
+        Arc, OnceLock,
         atomic::{AtomicBool, AtomicU64, Ordering},
     },
+    thread::Thread,
 };
 
 use objc2_core_foundation::CFRetained;
@@ -21,6 +22,7 @@ pub struct DisplayTickSignal {
     latest_ns: Arc<AtomicU64>,
     pending: Arc<AtomicBool>,
     closed: Arc<AtomicBool>,
+    waker: Arc<OnceLock<Thread>>,
 }
 
 impl Default for DisplayTickSignal {
@@ -29,6 +31,7 @@ impl Default for DisplayTickSignal {
             latest_ns: Arc::new(AtomicU64::new(0)),
             pending: Arc::new(AtomicBool::new(false)),
             closed: Arc::new(AtomicBool::new(false)),
+            waker: Arc::new(OnceLock::new()),
         }
     }
 }
@@ -38,6 +41,19 @@ impl DisplayTickSignal {
         if !self.closed.load(Ordering::Acquire) {
             self.latest_ns.store(timestamp_ns, Ordering::Release);
             self.pending.store(true, Ordering::Release);
+            self.wake();
+        }
+    }
+
+    /// Binds the signal to its renderer actor. A display callback or queued
+    /// command can then wake the actor without a timer-driven polling loop.
+    pub fn bind_current_thread(&self) -> bool {
+        self.waker.set(std::thread::current()).is_ok()
+    }
+
+    pub fn wake(&self) {
+        if let Some(thread) = self.waker.get() {
+            thread.unpark();
         }
     }
 
@@ -59,6 +75,7 @@ impl DisplayTickSignal {
     pub fn close(&self) {
         self.closed.store(true, Ordering::Release);
         self.pending.store(false, Ordering::Release);
+        self.wake();
     }
 
     pub fn is_closed(&self) -> bool {

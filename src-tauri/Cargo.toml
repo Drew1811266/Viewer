@@ -33,6 +33,8 @@ viewer-application = { path = "../crates/viewer-application" }
 viewer-domain = { path = "../crates/viewer-domain" }
 viewer-infrastructure = { path = "../crates/viewer-infrastructure" }
 viewer-platform-macos = { path = "../crates/viewer-platform-macos" }
+viewer-render-core = { path = "../crates/viewer-render-core" }
+viewer-render-wgpu = { path = "../crates/viewer-render-wgpu" }
 viewer-video-mpv = { path = "../crates/viewer-video-mpv" }
 
 [target.'cfg(target_os = "macos")'.dependencies]

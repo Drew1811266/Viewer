@@ -7,6 +7,8 @@ import { pathToFileURL } from 'node:url'
 
 export const PRODUCTION_DEPENDENCY_TARGETS = new Map([
   ['viewer-domain', new Set()],
+  ['viewer-render-core', new Set()],
+  ['viewer-render-wgpu', new Set(['viewer-render-core'])],
   ['viewer-application', new Set(['viewer-domain'])],
   ['viewer-infrastructure', new Set([
     'viewer-application',
@@ -16,6 +18,8 @@ export const PRODUCTION_DEPENDENCY_TARGETS = new Map([
   ['viewer-platform-macos', new Set([
     'viewer-application',
     'viewer-domain',
+    'viewer-render-core',
+    'viewer-render-wgpu',
     'viewer-video-mpv',
   ])],
   ['viewer-video-mpv', new Set()],
@@ -25,6 +29,8 @@ export const PRODUCTION_DEPENDENCY_TARGETS = new Map([
     'viewer-domain',
     'viewer-infrastructure',
     'viewer-platform-macos',
+    'viewer-render-core',
+    'viewer-render-wgpu',
     'viewer-video-mpv',
   ])],
 ])

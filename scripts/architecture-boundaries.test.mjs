@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import test from 'node:test'
 
 import {
+  PRODUCTION_DEPENDENCY_TARGETS,
   collectProductionUiFiles,
   collectWorkspaceDependencyEdges,
   findForbiddenTauriImports,
@@ -13,6 +14,41 @@ import {
   readCargoMetadata,
   runArchitectureBoundariesCli,
 } from './architecture-boundaries.mjs'
+
+test('declares the native image renderer workspace boundaries', () => {
+  assert.equal(PRODUCTION_DEPENDENCY_TARGETS.has('viewer-render-core'), true)
+  assert.equal(PRODUCTION_DEPENDENCY_TARGETS.has('viewer-render-wgpu'), true)
+  assert.deepEqual(
+    [...(PRODUCTION_DEPENDENCY_TARGETS.get('viewer-render-core') ?? [])],
+    [],
+  )
+  assert.deepEqual(
+    [...(PRODUCTION_DEPENDENCY_TARGETS.get('viewer-render-wgpu') ?? [])],
+    ['viewer-render-core'],
+  )
+  assert.deepEqual(
+    [...(PRODUCTION_DEPENDENCY_TARGETS.get('viewer-platform-macos') ?? [])].sort(),
+    [
+      'viewer-application',
+      'viewer-domain',
+      'viewer-render-core',
+      'viewer-render-wgpu',
+      'viewer-video-mpv',
+    ],
+  )
+  assert.deepEqual(
+    [...(PRODUCTION_DEPENDENCY_TARGETS.get('viewer-desktop') ?? [])].sort(),
+    [
+      'viewer-application',
+      'viewer-domain',
+      'viewer-infrastructure',
+      'viewer-platform-macos',
+      'viewer-render-core',
+      'viewer-render-wgpu',
+      'viewer-video-mpv',
+    ],
+  )
+})
 
 const metadataWithDependencies = (dependencies) => ({
   workspace_members: ['domain', 'application'],

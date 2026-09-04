@@ -38,6 +38,7 @@
 - Modify: `crates/viewer-platform-macos/Cargo.toml`
 - Modify: `src-tauri/Cargo.toml`
 - Modify: `scripts/architecture-boundaries.mjs`
+- Modify: `scripts/architecture-boundaries.test.mjs`
 - Modify: `scripts/repository-policy.test.mjs`
 - Modify: `THIRD_PARTY_NOTICES.md`
 

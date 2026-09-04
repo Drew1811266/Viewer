@@ -9,6 +9,27 @@ use wgpu::util::DeviceExt;
 
 use crate::ResourceHandle;
 
+const IMAGE_VERTEX_ATTRIBUTES: [wgpu::VertexAttribute; 2] = [
+    wgpu::VertexAttribute {
+        format: wgpu::VertexFormat::Float32x2,
+        offset: 0,
+        shader_location: 0,
+    },
+    wgpu::VertexAttribute {
+        format: wgpu::VertexFormat::Float32x2,
+        offset: 8,
+        shader_location: 1,
+    },
+];
+
+pub(crate) fn image_vertex_layout() -> wgpu::VertexBufferLayout<'static> {
+    wgpu::VertexBufferLayout {
+        array_stride: mem::size_of::<ImageVertex>() as u64,
+        step_mode: wgpu::VertexStepMode::Vertex,
+        attributes: &IMAGE_VERTEX_ATTRIBUTES,
+    }
+}
+
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Pod, Zeroable)]
 pub struct ImageVertex {
@@ -277,22 +298,7 @@ impl ImagePass {
                 module: &shader,
                 entry_point: Some("vs_main"),
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
-                buffers: &[Some(wgpu::VertexBufferLayout {
-                    array_stride: mem::size_of::<ImageVertex>() as u64,
-                    step_mode: wgpu::VertexStepMode::Vertex,
-                    attributes: &[
-                        wgpu::VertexAttribute {
-                            format: wgpu::VertexFormat::Float32x2,
-                            offset: 0,
-                            shader_location: 0,
-                        },
-                        wgpu::VertexAttribute {
-                            format: wgpu::VertexFormat::Float32x2,
-                            offset: 8,
-                            shader_location: 1,
-                        },
-                    ],
-                })],
+                buffers: &[Some(image_vertex_layout())],
             },
             primitive: wgpu::PrimitiveState::default(),
             depth_stencil: None,
@@ -363,6 +369,22 @@ impl ImagePass {
     ) {
         render_pass.set_pipeline(&self.pipeline);
         render_pass.set_bind_group(0, &self.camera_bind_group, &[]);
+        for resource in &visible.items {
+            render_pass.set_bind_group(1, resource.texture_bind_group, &[]);
+            render_pass.set_vertex_buffer(0, resource.vertex_buffer.slice(..));
+            render_pass.draw(0..6, 0..1);
+        }
+    }
+
+    pub(crate) fn encode_with<'pass>(
+        &'pass self,
+        render_pass: &mut wgpu::RenderPass<'pass>,
+        pipeline: &'pass wgpu::RenderPipeline,
+        camera_bind_group: &'pass wgpu::BindGroup,
+        visible: &'pass VisibleResources<'pass>,
+    ) {
+        render_pass.set_pipeline(pipeline);
+        render_pass.set_bind_group(0, camera_bind_group, &[]);
         for resource in &visible.items {
             render_pass.set_bind_group(1, resource.texture_bind_group, &[]);
             render_pass.set_vertex_buffer(0, resource.vertex_buffer.slice(..));

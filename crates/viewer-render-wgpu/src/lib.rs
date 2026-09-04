@@ -8,7 +8,9 @@ mod device;
 mod diagnostics;
 mod frame;
 mod image_pass;
+mod magnifier_pass;
 mod resources;
+mod scheduler;
 
 pub use annotation_mesh::{
     AnnotationMesh, AnnotationMeshBuilder, AnnotationMeshCache, AnnotationMeshFragment,
@@ -27,7 +29,12 @@ pub use image_pass::{
     ImagePass, ImagePassPlan, ImagePlanError, ImageTileDraw, ImageVertex, VisibleImageResource,
     VisibleResources,
 };
+pub use magnifier_pass::{
+    AnnotationBufferIdentity, MagnifierConfig, MagnifierConfigError, MagnifierPass,
+    MagnifierPassPlan, MagnifierShape, RetainedSceneResources,
+};
 pub use resources::{
     DecodedResource, ResourceGenerationGate, ResourceHandle, ResourceKey, ResourceRegistry,
     UploadDisposition, UploadError, UploadLayout,
 };
+pub use scheduler::FrameScheduler;

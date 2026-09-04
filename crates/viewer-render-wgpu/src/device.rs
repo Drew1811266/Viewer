@@ -15,8 +15,9 @@ use viewer_render_core::{
 };
 
 use crate::{
-    AnnotationPass, DecodedResource, FrameReceipt, FrameRequest, FrameRing, FrameState,
-    GlyphAtlasError, ImagePass, MeshError, OrdinalGlyphAtlas, ResourceHandle, ResourceRegistry,
+    AnnotationPass, DecodedResource, FrameReceipt, FrameRequest, FrameRing, FrameScheduler,
+    FrameState, GlyphAtlasError, ImagePass, MagnifierConfig, MagnifierPass, MeshError,
+    OrdinalGlyphAtlas, ResourceHandle, ResourceRegistry, RetainedSceneResources,
     SurfaceAcquireFailure, SurfaceRecovery, UploadError,
     diagnostics::{GpuFault, GpuFaultState},
     surface_recovery,
@@ -100,11 +101,13 @@ pub struct WgpuImageRenderer {
     logical_size: LogicalSize,
     physical_size: PhysicalSize,
     scale_factor: f64,
-    frame_state: FrameState,
+    frame_scheduler: FrameScheduler,
     frame_ring: FrameRing,
     next_frame_index: u64,
     image_pass: ImagePass,
     annotation_pass: AnnotationPass,
+    magnifier_pass: MagnifierPass,
+    magnifier: Option<MagnifierConfig>,
     resources: ResourceRegistry,
     transform: Option<TransformSnapshot>,
     owner: ThreadId,
@@ -176,6 +179,12 @@ impl WgpuImageRenderer {
                 .map_or(wgpu::TextureFormat::Bgra8UnormSrgb, |config| config.format);
             let image_pass = ImagePass::new(&device, target_format);
             let annotation_pass = AnnotationPass::new(&device, target_format);
+            let magnifier_pass = MagnifierPass::new(
+                &device,
+                target_format,
+                image_pass.texture_layout(),
+                annotation_pass.glyph_layout(),
+            );
             let resources = ResourceRegistry::new(
                 &device,
                 &queue,
@@ -193,11 +202,13 @@ impl WgpuImageRenderer {
                 logical_size: descriptor.logical_size,
                 physical_size: descriptor.physical_size,
                 scale_factor: descriptor.scale_factor,
-                frame_state: FrameState::default(),
+                frame_scheduler: FrameScheduler::default(),
                 frame_ring: FrameRing::default(),
                 next_frame_index: 0,
                 image_pass,
                 annotation_pass,
+                magnifier_pass,
+                magnifier: None,
                 resources,
                 transform: None,
                 owner: thread::current().id(),
@@ -212,7 +223,11 @@ impl WgpuImageRenderer {
     }
 
     pub fn frame_state(&mut self) -> &mut FrameState {
-        &mut self.frame_state
+        self.frame_scheduler.frame_state()
+    }
+
+    pub fn on_display_tick(&mut self, timestamp_ns: u64) -> Option<FrameRequest> {
+        self.frame_scheduler.on_display_tick(timestamp_ns)
     }
 
     pub fn resize(
@@ -232,7 +247,7 @@ impl WgpuImageRenderer {
             config.height = physical_size.height;
             surface.configure(&self.device, config);
         }
-        self.frame_state.invalidate_surface();
+        self.frame_scheduler.frame_state().invalidate_surface();
         Ok(())
     }
 
@@ -240,14 +255,23 @@ impl WgpuImageRenderer {
         self.ensure_owner()?;
         self.annotation_pass
             .prepare_scene(&self.device, &self.queue, scene)?;
-        self.frame_state.invalidate_scene(scene.revision());
+        self.frame_scheduler
+            .frame_state()
+            .invalidate_scene(scene.revision());
         Ok(())
     }
 
     pub fn set_transform(&mut self, transform: TransformSnapshot) -> Result<(), RenderError> {
         self.ensure_owner()?;
         self.transform = Some(transform);
-        self.frame_state.invalidate_camera();
+        self.frame_scheduler.frame_state().invalidate_camera();
+        Ok(())
+    }
+
+    pub fn set_magnifier(&mut self, magnifier: Option<MagnifierConfig>) -> Result<(), RenderError> {
+        self.ensure_owner()?;
+        self.magnifier = magnifier;
+        self.frame_scheduler.frame_state().invalidate_camera();
         Ok(())
     }
 
@@ -257,7 +281,7 @@ impl WgpuImageRenderer {
     ) -> Result<ResourceHandle, RenderError> {
         self.ensure_owner()?;
         let handle = self.resources.upsert(resource)?;
-        self.frame_state.invalidate_resource();
+        self.frame_scheduler.frame_state().invalidate_resource();
         Ok(handle)
     }
 
@@ -268,12 +292,26 @@ impl WgpuImageRenderer {
         self.ensure_owner()?;
         self.annotation_pass
             .set_ordinal_glyph_atlas(&self.device, &self.queue, atlas)?;
-        self.frame_state.invalidate_resource();
+        self.frame_scheduler.frame_state().invalidate_resource();
         Ok(())
     }
 
     pub fn gpu_resource_bytes(&self) -> u64 {
         self.resources.gpu_bytes() + self.annotation_pass.gpu_bytes()
+    }
+
+    pub fn retained_scene_resources(&self) -> RetainedSceneResources {
+        let revision = self
+            .annotation_pass
+            .mesh_cache()
+            .mesh()
+            .map_or(viewer_render_core::SceneRevision(0), |mesh| mesh.revision());
+        let visible = self.resources.visible_all();
+        RetainedSceneResources::new(
+            revision,
+            visible.handles().collect(),
+            self.annotation_pass.buffer_identity(),
+        )
     }
 
     pub fn render(&mut self, request: FrameRequest) -> Result<FrameReceipt, RenderError> {
@@ -407,7 +445,7 @@ impl WgpuImageRenderer {
             let texture = match surface.get_current_texture() {
                 wgpu::CurrentSurfaceTexture::Success(texture) => texture,
                 wgpu::CurrentSurfaceTexture::Suboptimal(texture) => {
-                    self.frame_state.invalidate_surface();
+                    self.frame_scheduler.frame_state().invalidate_surface();
                     texture
                 }
                 wgpu::CurrentSurfaceTexture::Timeout => {
@@ -471,6 +509,9 @@ impl WgpuImageRenderer {
         if let Some(transform) = &self.transform {
             self.image_pass.prepare_camera(&self.queue, transform);
             self.annotation_pass.prepare_camera(&self.queue, transform);
+            if let Some(config) = self.magnifier {
+                self.magnifier_pass.prepare(&self.queue, transform, config);
+            }
         }
         let visible = self.resources.visible_all();
         let color_attachments = [Some(wgpu::RenderPassColorAttachment {
@@ -498,6 +539,14 @@ impl WgpuImageRenderer {
         if let Some(transform) = &self.transform {
             self.image_pass.encode(&mut pass, transform, &visible);
             self.annotation_pass.encode(&mut pass);
+            if self.magnifier.is_some() {
+                self.magnifier_pass.encode(
+                    &mut pass,
+                    &self.image_pass,
+                    &visible,
+                    &self.annotation_pass,
+                );
+            }
         }
     }
 

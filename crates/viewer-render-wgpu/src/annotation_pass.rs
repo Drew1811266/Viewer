@@ -4,9 +4,86 @@ use bytemuck::{Pod, Zeroable};
 use viewer_render_core::{SceneSnapshot, TransformSnapshot};
 
 use crate::{
-    AnnotationMeshCache, BufferCapacityPlan, GlyphAtlasError, MeshError, MeshUpdate,
-    OrdinalGlyphAtlas, VertexKind,
+    AnnotationBufferIdentity, AnnotationMeshCache, BufferCapacityPlan, GlyphAtlasError, MeshError,
+    MeshUpdate, OrdinalGlyphAtlas, VertexKind,
 };
+
+const ANNOTATION_VERTEX_ATTRIBUTES: [wgpu::VertexAttribute; 7] = [
+    wgpu::VertexAttribute {
+        format: wgpu::VertexFormat::Float32x2,
+        offset: 0,
+        shader_location: 0,
+    },
+    wgpu::VertexAttribute {
+        format: wgpu::VertexFormat::Float32x2,
+        offset: 8,
+        shader_location: 1,
+    },
+    wgpu::VertexAttribute {
+        format: wgpu::VertexFormat::Float32x2,
+        offset: 16,
+        shader_location: 2,
+    },
+    wgpu::VertexAttribute {
+        format: wgpu::VertexFormat::Float32x4,
+        offset: 24,
+        shader_location: 3,
+    },
+    wgpu::VertexAttribute {
+        format: wgpu::VertexFormat::Float32,
+        offset: 40,
+        shader_location: 4,
+    },
+    wgpu::VertexAttribute {
+        format: wgpu::VertexFormat::Float32,
+        offset: 44,
+        shader_location: 5,
+    },
+    wgpu::VertexAttribute {
+        format: wgpu::VertexFormat::Float32,
+        offset: 48,
+        shader_location: 6,
+    },
+];
+
+const GLYPH_VERTEX_ATTRIBUTES: [wgpu::VertexAttribute; 4] = [
+    wgpu::VertexAttribute {
+        format: wgpu::VertexFormat::Float32x2,
+        offset: 0,
+        shader_location: 0,
+    },
+    wgpu::VertexAttribute {
+        format: wgpu::VertexFormat::Float32x2,
+        offset: 8,
+        shader_location: 1,
+    },
+    wgpu::VertexAttribute {
+        format: wgpu::VertexFormat::Float32x2,
+        offset: 16,
+        shader_location: 2,
+    },
+    wgpu::VertexAttribute {
+        format: wgpu::VertexFormat::Float32x4,
+        offset: 24,
+        shader_location: 3,
+    },
+];
+
+pub(crate) fn annotation_vertex_layout() -> wgpu::VertexBufferLayout<'static> {
+    wgpu::VertexBufferLayout {
+        array_stride: mem::size_of::<GpuAnnotationVertex>() as u64,
+        step_mode: wgpu::VertexStepMode::Vertex,
+        attributes: &ANNOTATION_VERTEX_ATTRIBUTES,
+    }
+}
+
+pub(crate) fn glyph_vertex_layout() -> wgpu::VertexBufferLayout<'static> {
+    wgpu::VertexBufferLayout {
+        array_stride: mem::size_of::<GpuGlyphVertex>() as u64,
+        step_mode: wgpu::VertexStepMode::Vertex,
+        attributes: &GLYPH_VERTEX_ATTRIBUTES,
+    }
+}
 
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable)]
@@ -72,6 +149,7 @@ pub struct AnnotationPass {
     retained: Option<RetainedBuffers>,
     glyph_texture: Option<GlyphTexture>,
     glyph_buffer: Option<GlyphBuffer>,
+    buffer_identity: u64,
 }
 
 impl AnnotationPass {
@@ -137,47 +215,7 @@ impl AnnotationPass {
                 module: &shader,
                 entry_point: Some("vs_main"),
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
-                buffers: &[Some(wgpu::VertexBufferLayout {
-                    array_stride: mem::size_of::<GpuAnnotationVertex>() as u64,
-                    step_mode: wgpu::VertexStepMode::Vertex,
-                    attributes: &[
-                        wgpu::VertexAttribute {
-                            format: wgpu::VertexFormat::Float32x2,
-                            offset: 0,
-                            shader_location: 0,
-                        },
-                        wgpu::VertexAttribute {
-                            format: wgpu::VertexFormat::Float32x2,
-                            offset: 8,
-                            shader_location: 1,
-                        },
-                        wgpu::VertexAttribute {
-                            format: wgpu::VertexFormat::Float32x2,
-                            offset: 16,
-                            shader_location: 2,
-                        },
-                        wgpu::VertexAttribute {
-                            format: wgpu::VertexFormat::Float32x4,
-                            offset: 24,
-                            shader_location: 3,
-                        },
-                        wgpu::VertexAttribute {
-                            format: wgpu::VertexFormat::Float32,
-                            offset: 40,
-                            shader_location: 4,
-                        },
-                        wgpu::VertexAttribute {
-                            format: wgpu::VertexFormat::Float32,
-                            offset: 44,
-                            shader_location: 5,
-                        },
-                        wgpu::VertexAttribute {
-                            format: wgpu::VertexFormat::Float32,
-                            offset: 48,
-                            shader_location: 6,
-                        },
-                    ],
-                })],
+                buffers: &[Some(annotation_vertex_layout())],
             },
             primitive: wgpu::PrimitiveState::default(),
             depth_stencil: None,
@@ -210,32 +248,7 @@ impl AnnotationPass {
                 module: &glyph_shader,
                 entry_point: Some("vs_main"),
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
-                buffers: &[Some(wgpu::VertexBufferLayout {
-                    array_stride: mem::size_of::<GpuGlyphVertex>() as u64,
-                    step_mode: wgpu::VertexStepMode::Vertex,
-                    attributes: &[
-                        wgpu::VertexAttribute {
-                            format: wgpu::VertexFormat::Float32x2,
-                            offset: 0,
-                            shader_location: 0,
-                        },
-                        wgpu::VertexAttribute {
-                            format: wgpu::VertexFormat::Float32x2,
-                            offset: 8,
-                            shader_location: 1,
-                        },
-                        wgpu::VertexAttribute {
-                            format: wgpu::VertexFormat::Float32x2,
-                            offset: 16,
-                            shader_location: 2,
-                        },
-                        wgpu::VertexAttribute {
-                            format: wgpu::VertexFormat::Float32x4,
-                            offset: 24,
-                            shader_location: 3,
-                        },
-                    ],
-                })],
+                buffers: &[Some(glyph_vertex_layout())],
             },
             primitive: wgpu::PrimitiveState::default(),
             depth_stencil: None,
@@ -264,6 +277,7 @@ impl AnnotationPass {
             retained: None,
             glyph_texture: None,
             glyph_buffer: None,
+            buffer_identity: 0,
         }
     }
 
@@ -310,6 +324,7 @@ impl AnnotationPass {
                 || buffers.index_capacity < self.capacity.index_capacity
         });
         if must_allocate {
+            self.buffer_identity = self.buffer_identity.saturating_add(1);
             self.retained = Some(RetainedBuffers {
                 vertices: device.create_buffer(&wgpu::BufferDescriptor {
                     label: Some("Viewer retained annotation vertices"),
@@ -471,6 +486,40 @@ impl AnnotationPass {
 
     pub const fn mesh_cache(&self) -> &AnnotationMeshCache {
         &self.mesh_cache
+    }
+
+    pub const fn glyph_layout(&self) -> &wgpu::BindGroupLayout {
+        &self.glyph_layout
+    }
+
+    pub fn buffer_identity(&self) -> Option<AnnotationBufferIdentity> {
+        self.retained
+            .as_ref()
+            .map(|_| AnnotationBufferIdentity(self.buffer_identity))
+    }
+
+    pub(crate) fn encode_with<'pass>(
+        &'pass self,
+        render_pass: &mut wgpu::RenderPass<'pass>,
+        annotation_pipeline: &'pass wgpu::RenderPipeline,
+        glyph_pipeline: &'pass wgpu::RenderPipeline,
+        camera_bind_group: &'pass wgpu::BindGroup,
+    ) {
+        if let Some(retained) = &self.retained {
+            render_pass.set_pipeline(annotation_pipeline);
+            render_pass.set_bind_group(0, camera_bind_group, &[]);
+            render_pass.set_vertex_buffer(0, retained.vertices.slice(..));
+            render_pass.set_index_buffer(retained.indices.slice(..), wgpu::IndexFormat::Uint32);
+            render_pass.draw_indexed(0..retained.index_count, 0, 0..1);
+        }
+        if let (Some(glyph_texture), Some(glyph_buffer)) = (&self.glyph_texture, &self.glyph_buffer)
+        {
+            render_pass.set_pipeline(glyph_pipeline);
+            render_pass.set_bind_group(0, camera_bind_group, &[]);
+            render_pass.set_bind_group(1, &glyph_texture.bind_group, &[]);
+            render_pass.set_vertex_buffer(0, glyph_buffer.vertices.slice(..));
+            render_pass.draw(0..glyph_buffer.vertex_count, 0..1);
+        }
     }
 
     fn rebuild_glyph_buffer(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) {

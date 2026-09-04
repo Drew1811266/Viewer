@@ -10,10 +10,13 @@ use std::{
 };
 
 use thiserror::Error;
-use viewer_render_core::{LogicalSize, PhysicalSize, SceneSnapshot, TileCoordinate};
+use viewer_render_core::{
+    AssetGeneration, LogicalSize, PhysicalSize, SceneSnapshot, TransformSnapshot,
+};
 
 use crate::{
-    FrameReceipt, FrameRequest, FrameRing, FrameState, SurfaceAcquireFailure, SurfaceRecovery,
+    DecodedResource, FrameReceipt, FrameRequest, FrameRing, FrameState, ImagePass, ResourceHandle,
+    ResourceRegistry, SurfaceAcquireFailure, SurfaceRecovery, UploadError,
     diagnostics::{GpuFault, GpuFaultState},
     surface_recovery,
 };
@@ -99,6 +102,9 @@ pub struct WgpuImageRenderer {
     frame_state: FrameState,
     frame_ring: FrameRing,
     next_frame_index: u64,
+    image_pass: ImagePass,
+    resources: ResourceRegistry,
+    transform: Option<TransformSnapshot>,
     owner: ThreadId,
     gpu_faults: GpuFaultState,
     _not_send_sync: PhantomData<Rc<()>>,
@@ -163,6 +169,16 @@ impl WgpuImageRenderer {
             if let (Some(surface), Some(config)) = (&surface, &surface_config) {
                 surface.configure(&device, config);
             }
+            let target_format = surface_config
+                .as_ref()
+                .map_or(wgpu::TextureFormat::Bgra8UnormSrgb, |config| config.format);
+            let image_pass = ImagePass::new(&device, target_format);
+            let resources = ResourceRegistry::new(
+                &device,
+                &queue,
+                image_pass.texture_layout(),
+                AssetGeneration(0),
+            );
 
             Ok(Self {
                 _instance: instance,
@@ -177,6 +193,9 @@ impl WgpuImageRenderer {
                 frame_state: FrameState::default(),
                 frame_ring: FrameRing::default(),
                 next_frame_index: 0,
+                image_pass,
+                resources,
+                transform: None,
                 owner: thread::current().id(),
                 gpu_faults,
                 _not_send_sync: PhantomData,
@@ -219,10 +238,25 @@ impl WgpuImageRenderer {
         Ok(())
     }
 
-    pub fn upload_resource(&mut self, _tile: TileCoordinate) -> Result<(), RenderError> {
+    pub fn set_transform(&mut self, transform: TransformSnapshot) -> Result<(), RenderError> {
         self.ensure_owner()?;
-        self.frame_state.invalidate_resource();
+        self.transform = Some(transform);
+        self.frame_state.invalidate_camera();
         Ok(())
+    }
+
+    pub fn upload_resource(
+        &mut self,
+        resource: DecodedResource,
+    ) -> Result<ResourceHandle, RenderError> {
+        self.ensure_owner()?;
+        let handle = self.resources.upsert(resource)?;
+        self.frame_state.invalidate_resource();
+        Ok(handle)
+    }
+
+    pub const fn gpu_resource_bytes(&self) -> u64 {
+        self.resources.gpu_bytes()
     }
 
     pub fn render(&mut self, request: FrameRequest) -> Result<FrameReceipt, RenderError> {
@@ -268,14 +302,40 @@ impl WgpuImageRenderer {
                     return Err(RenderError::Surface(SurfaceAcquireFailure::Validation));
                 }
             };
+            let view = texture
+                .texture
+                .create_view(&wgpu::TextureViewDescriptor::default());
+            let mut encoder = self
+                .device
+                .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some("Viewer image frame"),
+                });
+            self.encode_target(&mut encoder, &view);
+            self.queue.submit([encoder.finish()]);
             self.queue.present(texture);
             true
         } else {
-            let encoder = self
+            let target = self.device.create_texture(&wgpu::TextureDescriptor {
+                label: Some("Viewer headless render target"),
+                size: wgpu::Extent3d {
+                    width: self.physical_size.width,
+                    height: self.physical_size.height,
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: wgpu::TextureFormat::Bgra8UnormSrgb,
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+                view_formats: &[],
+            });
+            let view = target.create_view(&wgpu::TextureViewDescriptor::default());
+            let mut encoder = self
                 .device
                 .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                     label: Some("Viewer headless frame"),
                 });
+            self.encode_target(&mut encoder, &view);
             self.queue.submit([encoder.finish()]);
             false
         };
@@ -287,8 +347,41 @@ impl WgpuImageRenderer {
             scene_revision: request.scene_revision,
             cpu_time_ns: u64::try_from(started.elapsed().as_nanos()).unwrap_or(u64::MAX),
             gpu_time_ns: 0,
+            gpu_resource_bytes: self.resources.gpu_bytes(),
             presented,
         })
+    }
+
+    fn encode_target(&self, encoder: &mut wgpu::CommandEncoder, view: &wgpu::TextureView) {
+        if let Some(transform) = &self.transform {
+            self.image_pass.prepare_camera(&self.queue, transform);
+        }
+        let visible = self.resources.visible_all();
+        let color_attachments = [Some(wgpu::RenderPassColorAttachment {
+            view,
+            depth_slice: None,
+            resolve_target: None,
+            ops: wgpu::Operations {
+                load: wgpu::LoadOp::Clear(wgpu::Color {
+                    r: 0.95,
+                    g: 0.95,
+                    b: 0.95,
+                    a: 1.0,
+                }),
+                store: wgpu::StoreOp::Store,
+            },
+        })];
+        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("Viewer image render pass"),
+            color_attachments: &color_attachments,
+            depth_stencil_attachment: None,
+            timestamp_writes: None,
+            occlusion_query_set: None,
+            multiview_mask: None,
+        });
+        if let Some(transform) = &self.transform {
+            self.image_pass.encode(&mut pass, transform, &visible);
+        }
     }
 
     fn ensure_owner(&self) -> Result<(), RenderError> {
@@ -330,6 +423,8 @@ pub enum RenderError {
     Surface(SurfaceAcquireFailure),
     #[error("GPU memory exhausted; renderer must terminate without fallback")]
     OutOfMemory,
+    #[error("image resource upload failed: {0}")]
+    Upload(#[from] UploadError),
     #[error("wgpu reported an uncaptured validation error")]
     GpuValidation,
     #[error("wgpu reported an internal GPU error")]
@@ -344,6 +439,7 @@ impl RenderError {
             Self::WrongThread
             | Self::FramesBusy
             | Self::InvalidResize(_)
+            | Self::Upload(_)
             | Self::GpuValidation
             | Self::GpuInternal => None,
         }

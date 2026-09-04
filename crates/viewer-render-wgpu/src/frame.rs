@@ -28,6 +28,7 @@ pub struct FrameReceipt {
     pub scene_revision: SceneRevision,
     pub cpu_time_ns: u64,
     pub gpu_time_ns: u64,
+    pub gpu_resource_bytes: u64,
     pub presented: bool,
 }
 

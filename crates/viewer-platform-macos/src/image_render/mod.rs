@@ -1,9 +1,18 @@
+mod color;
+mod decode;
 mod display_link;
 mod glyph_atlas;
 mod host;
 mod input;
+mod memory_pressure;
 mod surface;
+mod tile_cache;
 
+pub use color::{DecodedPixels, PixelFormat};
+pub use decode::{
+    AuthorizedImageSource, DecodedResource, DecodedResourceKind, ImageResourceError,
+    MacImageResourceProvider, PreviewRequest, SourceFingerprint,
+};
 pub use display_link::{DisplayTickSignal, MacDisplayLink};
 pub use glyph_atlas::system_ordinal_glyph_atlas;
 pub use host::{ImageRenderHostState, MacImageRenderHost};
@@ -11,6 +20,11 @@ pub use input::{
     InputExclusionRect, InputRect, InputRoutingError, MacInputMonitor, MacInputRouter,
     NativeInputSink, RouteDecision, WindowInput,
 };
+pub use memory_pressure::{MacMemoryPressureMonitor, MemoryPressureSink, pressure_level_for_flags};
 pub use surface::{
     AppKitFrame, MacImageSurface, SurfaceError, SurfaceLayout, appkit_frame, backing_pixels,
+};
+pub use tile_cache::{
+    CACHE_SCHEMA_VERSION, CacheReclaimReport, CacheUsage, DerivedCacheKey, DerivedRegion,
+    MacImageTileCache,
 };

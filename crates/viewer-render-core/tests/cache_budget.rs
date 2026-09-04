@@ -187,3 +187,33 @@ fn critical_pressure_preserves_non_rebuildable_entries() {
     );
     assert!(cache.contains(&"source"));
 }
+
+#[test]
+fn explicit_removal_updates_only_the_target_tier_accounting() {
+    let mut cache = BudgetedLru::new(budget());
+    cache
+        .insert(entry(
+            "first",
+            CacheTier::DiskDerived,
+            100,
+            1,
+            ResourcePriority::Resident,
+        ))
+        .unwrap();
+    cache
+        .insert(entry(
+            "second",
+            CacheTier::DiskDerived,
+            120,
+            1,
+            ResourcePriority::Resident,
+        ))
+        .unwrap();
+
+    let removed = cache.remove(&"first").unwrap();
+
+    assert_eq!(removed.key, "first");
+    assert!(!cache.contains(&"first"));
+    assert!(cache.contains(&"second"));
+    assert_eq!(cache.usage(CacheTier::DiskDerived), 120);
+}

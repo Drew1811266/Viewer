@@ -188,6 +188,10 @@ impl<K: Clone + Ord> BudgetedLru<K> {
         self.entries.contains_key(key)
     }
 
+    pub fn remove(&mut self, key: &K) -> Option<CacheEntry<K>> {
+        self.remove_entry(key)
+    }
+
     pub const fn usage(&self, tier: CacheTier) -> u64 {
         self.usage[tier.index()]
     }

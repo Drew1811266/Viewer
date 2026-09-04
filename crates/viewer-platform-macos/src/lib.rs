@@ -2,6 +2,8 @@
 pub mod files;
 #[cfg(target_os = "macos")]
 pub mod image;
+#[cfg(target_os = "macos")]
+pub mod image_render;
 pub mod settings;
 #[cfg(target_os = "macos")]
 pub mod video;

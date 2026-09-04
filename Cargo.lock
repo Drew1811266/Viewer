@@ -2318,7 +2318,9 @@ version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d425caf1df73233f29fd8a5c3e5edbc30d2d4307870f802d18f00d83dc5141a6"
 dependencies = [
+ "bitflags 2.13.1",
  "objc2-core-foundation",
+ "objc2-core-graphics",
 ]
 
 [[package]]
@@ -2389,6 +2391,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "663ef60fd5ddeefb1ddf50be71517ce0f7c782ed22f9569edbed00d5aadefb0d"
 dependencies = [
  "objc2",
+ "objc2-app-kit",
+ "objc2-core-foundation",
  "objc2-foundation",
  "objc2-metal",
 ]
@@ -4453,6 +4457,7 @@ name = "viewer-render-wgpu"
 version = "0.1.7"
 dependencies = [
  "bytemuck",
+ "raw-window-metal",
  "thiserror 2.0.18",
  "viewer-render-core",
  "wgpu",

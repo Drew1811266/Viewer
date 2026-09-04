@@ -9,6 +9,9 @@ use std::{
     time::{Duration, Instant},
 };
 
+#[cfg(target_os = "macos")]
+use std::{ffi::c_void, ptr::NonNull};
+
 use thiserror::Error;
 use viewer_render_core::{
     AssetGeneration, LogicalSize, PhysicalSize, SceneSnapshot, TransformSnapshot,
@@ -24,15 +27,44 @@ use crate::{
 };
 
 pub struct SurfaceHandles {
-    target: wgpu::SurfaceTarget<'static>,
+    target: SurfaceTarget,
+}
+
+enum SurfaceTarget {
+    Window(wgpu::SurfaceTarget<'static>),
+    #[cfg(target_os = "macos")]
+    CoreAnimationLayer(raw_window_metal::Layer),
 }
 
 impl SurfaceHandles {
     pub fn new(target: impl Into<wgpu::SurfaceTarget<'static>>) -> Self {
         Self {
-            target: target.into(),
+            target: SurfaceTarget::Window(target.into()),
         }
     }
+
+    /// Captures a retained Core Animation layer from an AppKit view.
+    ///
+    /// # Safety
+    ///
+    /// `ns_view` must point to a live `NSView`, and this function must be
+    /// called on the AppKit main thread. The returned handle retains the
+    /// `CAMetalLayer`, so no unwrapped AppKit pointer escapes into the renderer.
+    #[cfg(target_os = "macos")]
+    pub unsafe fn from_appkit_view(ns_view: NonNull<c_void>) -> Self {
+        // SAFETY: The caller supplies the NSView validity and main-thread
+        // invariants required by raw-window-metal. Its `Layer` retains the
+        // resulting CAMetalLayer independently of the source view.
+        let layer = unsafe { raw_window_metal::Layer::from_ns_view(ns_view) };
+        Self {
+            target: SurfaceTarget::CoreAnimationLayer(layer),
+        }
+    }
+}
+
+struct SurfaceLifetime {
+    #[cfg(target_os = "macos")]
+    _layer: raw_window_metal::Layer,
 }
 
 pub struct RendererDescriptor {
@@ -97,6 +129,9 @@ pub struct WgpuImageRenderer {
     device: wgpu::Device,
     queue: wgpu::Queue,
     surface: Option<wgpu::Surface<'static>>,
+    // Struct fields are dropped in declaration order. The wgpu surface must
+    // release its drawable before the retained CAMetalLayer owner is released.
+    _surface_lifetime: Option<SurfaceLifetime>,
     surface_config: Option<wgpu::SurfaceConfiguration>,
     logical_size: LogicalSize,
     physical_size: PhysicalSize,
@@ -129,11 +164,33 @@ impl WgpuImageRenderer {
                 backends: wgpu::Backends::METAL,
                 ..wgpu::InstanceDescriptor::new_without_display_handle()
             });
-            let surface = descriptor
-                .surface
-                .map(|handles| instance.create_surface(handles.target))
-                .transpose()
-                .map_err(|error| RendererInitError::SurfaceCreation(error.to_string()))?;
+            let (surface, surface_lifetime) =
+                match descriptor.surface {
+                    Some(SurfaceHandles {
+                        target: SurfaceTarget::Window(target),
+                    }) => (
+                        Some(instance.create_surface(target).map_err(|error| {
+                            RendererInitError::SurfaceCreation(error.to_string())
+                        })?),
+                        None,
+                    ),
+                    Some(SurfaceHandles {
+                        target: SurfaceTarget::CoreAnimationLayer(layer),
+                    }) => {
+                        let layer_pointer = layer.as_ptr().as_ptr();
+                        // SAFETY: SurfaceHandles owns a retained CAMetalLayer and
+                        // transfers that owner into `surface_lifetime` below. The
+                        // renderer drops the wgpu surface before that owner.
+                        let surface = unsafe {
+                            instance.create_surface_unsafe(
+                                wgpu::SurfaceTargetUnsafe::CoreAnimationLayer(layer_pointer),
+                            )
+                        }
+                        .map_err(|error| RendererInitError::SurfaceCreation(error.to_string()))?;
+                        (Some(surface), Some(SurfaceLifetime { _layer: layer }))
+                    }
+                    None => (None, None),
+                };
             let adapter = block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
                 power_preference: wgpu::PowerPreference::HighPerformance,
                 force_fallback_adapter: false,
@@ -198,6 +255,7 @@ impl WgpuImageRenderer {
                 device,
                 queue,
                 surface,
+                _surface_lifetime: surface_lifetime,
                 surface_config,
                 logical_size: descriptor.logical_size,
                 physical_size: descriptor.physical_size,

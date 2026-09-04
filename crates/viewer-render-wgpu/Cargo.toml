@@ -10,3 +10,6 @@ bytemuck.workspace = true
 thiserror.workspace = true
 viewer-render-core = { path = "../viewer-render-core" }
 wgpu.workspace = true
+
+[target.'cfg(target_os = "macos")'.dependencies]
+raw-window-metal.workspace = true

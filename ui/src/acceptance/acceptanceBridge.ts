@@ -232,6 +232,9 @@ export function createAcceptanceBridge(overrides: AcceptanceBridgeOverrides = {}
     async reviewCancelTask() {
       return false
     },
+    async imageRenderCommand() {
+      return unexpected('imageRenderCommand')
+    },
     async videoOpen() {
       return unexpected('videoOpen')
     },
@@ -299,6 +302,9 @@ export function createAcceptanceBridge(overrides: AcceptanceBridgeOverrides = {}
       return noOpUnlisten
     },
     async listenReviewProgress() {
+      return noOpUnlisten
+    },
+    async listenImageRender() {
       return noOpUnlisten
     },
     async listenProjectClosed() {

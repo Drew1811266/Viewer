@@ -1,3 +1,4 @@
+use std::cell::Cell;
 use std::ptr::NonNull;
 
 use objc2::{MainThreadMarker, MainThreadOnly, msg_send, rc::Retained};
@@ -46,12 +47,15 @@ pub enum SurfaceError {
     DisplayLink(i32),
     #[error("the system font glyph atlas could not be created")]
     GlyphAtlasUnavailable,
+    #[error("the native image input monitor could not be installed or accessed")]
+    InputMonitorUnavailable,
 }
 
 pub struct MacImageSurface {
     view: Retained<MTKView>,
     parent: Retained<NSView>,
     webview: Retained<NSView>,
+    layout: Cell<SurfaceLayout>,
     mounted: bool,
 }
 
@@ -95,6 +99,7 @@ impl MacImageSurface {
             view,
             parent,
             webview,
+            layout: Cell::new(layout),
             mounted: true,
         })
     }
@@ -105,12 +110,15 @@ impl MacImageSurface {
             return Err(SurfaceError::Unmounted);
         }
         let frame = ns_frame(layout, self.webview.bounds().size.height)?;
+        let (backing_width, backing_height) =
+            backing_pixels(layout).ok_or(SurfaceError::InvalidGeometry)?;
         self.view.setFrame(frame);
         self.view
             .setDrawableSize(objc2_core_foundation::CGSize::new(
-                layout.width * layout.scale_factor,
-                layout.height * layout.scale_factor,
+                f64::from(backing_width),
+                f64::from(backing_height),
             ));
+        self.layout.set(layout);
         Ok(())
     }
 
@@ -169,6 +177,31 @@ impl MacImageSurface {
 
     pub fn parent(&self) -> &NSView {
         &self.parent
+    }
+
+    pub const fn layout(&self) -> SurfaceLayout {
+        self.layout.get()
+    }
+
+    pub(super) fn native_window(&self) -> Result<Retained<NSWindow>, SurfaceError> {
+        MainThreadMarker::new().ok_or(SurfaceError::NotMainThread)?;
+        if !self.mounted {
+            return Err(SurfaceError::Unmounted);
+        }
+        self.view.window().ok_or(SurfaceError::WindowUnavailable)
+    }
+
+    pub(super) fn content_height(&self) -> Result<f64, SurfaceError> {
+        MainThreadMarker::new().ok_or(SurfaceError::NotMainThread)?;
+        if !self.mounted {
+            return Err(SurfaceError::Unmounted);
+        }
+        let height = self.parent.bounds().size.height;
+        if height.is_finite() && height > 0.0 {
+            Ok(height)
+        } else {
+            Err(SurfaceError::InvalidGeometry)
+        }
     }
 }
 

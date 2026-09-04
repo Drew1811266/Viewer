@@ -1,6 +1,10 @@
 use tauri::{Runtime, WebviewWindow};
+use viewer_render_core::InteractionMode;
 
-use super::{DisplayTickSignal, MacDisplayLink, MacImageSurface, SurfaceError, SurfaceLayout};
+use super::{
+    DisplayTickSignal, InputExclusionRect, InputRect, MacDisplayLink, MacImageSurface,
+    MacInputMonitor, NativeInputSink, SurfaceError, SurfaceLayout,
+};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ImageRenderHostState {
@@ -86,6 +90,7 @@ pub struct MacImageRenderHost {
     surface: MacImageSurface,
     display_link: Option<MacDisplayLink>,
     display_signal: Option<DisplayTickSignal>,
+    input_monitor: Option<MacInputMonitor>,
     state: ImageRenderHostState,
 }
 
@@ -98,12 +103,16 @@ impl MacImageRenderHost {
             surface: MacImageSurface::mount(window, layout)?,
             display_link: None,
             display_signal: None,
+            input_monitor: None,
             state: ImageRenderHostState::mounted(),
         })
     }
 
     pub fn set_layout(&mut self, layout: SurfaceLayout) -> Result<(), SurfaceError> {
         self.surface.set_layout(layout)?;
+        if let Some(monitor) = self.input_monitor.as_ref() {
+            monitor.update_geometry(input_rect(layout)?, self.surface.content_height()?)?;
+        }
         self.rebuild_display_link_if_needed()
     }
 
@@ -171,14 +180,66 @@ impl MacImageRenderHost {
         result
     }
 
+    pub fn start_input_monitor(
+        &mut self,
+        exclusions: Vec<InputExclusionRect>,
+        tool: InteractionMode,
+        sink: NativeInputSink,
+    ) -> Result<(), SurfaceError> {
+        if !self.state.is_mounted() {
+            return Err(SurfaceError::Unmounted);
+        }
+        if let Some(monitor) = self.input_monitor.as_ref() {
+            monitor.set_exclusions(exclusions)?;
+            monitor.set_tool(tool)?;
+            return Ok(());
+        }
+        let window = self.surface.native_window()?;
+        let monitor = MacInputMonitor::install(
+            &window,
+            input_rect(self.surface.layout())?,
+            self.surface.content_height()?,
+            exclusions,
+            tool,
+            sink,
+        )?;
+        self.input_monitor = Some(monitor);
+        Ok(())
+    }
+
+    pub fn set_input_exclusions(
+        &self,
+        exclusions: Vec<InputExclusionRect>,
+    ) -> Result<(), SurfaceError> {
+        self.input_monitor
+            .as_ref()
+            .ok_or(SurfaceError::InputMonitorUnavailable)?
+            .set_exclusions(exclusions)
+    }
+
+    pub fn set_input_tool(&self, tool: InteractionMode) -> Result<(), SurfaceError> {
+        self.input_monitor
+            .as_ref()
+            .ok_or(SurfaceError::InputMonitorUnavailable)?
+            .set_tool(tool)
+    }
+
+    pub fn stop_input_monitor(&mut self) -> Result<(), SurfaceError> {
+        self.input_monitor
+            .take()
+            .map(|mut monitor| monitor.stop())
+            .unwrap_or(Ok(()))
+    }
+
     pub fn unmount(&mut self) -> Result<(), SurfaceError> {
         if !self.state.is_mounted() {
             return Ok(());
         }
-        self.stop_display_link()?;
-        self.surface.unmount()?;
+        let input_result = self.stop_input_monitor();
+        let display_result = self.stop_display_link();
+        let surface_result = self.surface.unmount();
         self.state.unmount();
-        Ok(())
+        input_result.and(display_result).and(surface_result)
     }
 
     pub const fn state(&self) -> ImageRenderHostState {
@@ -188,6 +249,11 @@ impl MacImageRenderHost {
     pub fn surface(&self) -> &MacImageSurface {
         &self.surface
     }
+}
+
+fn input_rect(layout: SurfaceLayout) -> Result<InputRect, SurfaceError> {
+    InputRect::new(layout.left, layout.top, layout.width, layout.height)
+        .map_err(|_| SurfaceError::InvalidGeometry)
 }
 
 impl Drop for MacImageRenderHost {

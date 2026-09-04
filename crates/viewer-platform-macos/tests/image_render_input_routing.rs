@@ -2,8 +2,8 @@ use viewer_platform_macos::image_render::{
     InputExclusionRect, InputRect, MacInputRouter, RouteDecision, WindowInput,
 };
 use viewer_render_core::{
-    InteractionMode, LogicalPoint, MagnifySample, Modifiers, NativeInput, PointerButton,
-    PointerPhase, PointerSample, ScrollSample,
+    HoverSample, InteractionMode, LogicalPoint, MagnifySample, Modifiers, NativeInput,
+    PointerButton, PointerPhase, PointerSample, ScrollSample,
 };
 
 #[allow(dead_code)]
@@ -71,7 +71,11 @@ fn stage_routes_to_renderer_while_chrome_and_editor_stay_in_webview() {
                 PointerButton::None,
                 2,
             )),
-            RouteDecision::WebView,
+            RouteDecision::Observe(NativeInput::Hover(HoverSample {
+                location: point(620.0, 40.0),
+                active: false,
+                timestamp_ns: 2,
+            })),
             "editor exclusion must win in {mode:?} mode"
         );
         assert_eq!(
@@ -81,7 +85,11 @@ fn stage_routes_to_renderer_while_chrome_and_editor_stay_in_webview() {
                 PointerButton::None,
                 3,
             )),
-            RouteDecision::WebView,
+            RouteDecision::Observe(NativeInput::Hover(HoverSample {
+                location: point(-70.0, -50.0),
+                active: false,
+                timestamp_ns: 3,
+            })),
             "window chrome must stay in WebView in {mode:?} mode"
         );
     }
@@ -131,7 +139,11 @@ fn renderer_capture_survives_leaving_the_stage_until_pointer_up() {
             PointerButton::None,
             13,
         )),
-        RouteDecision::WebView
+        RouteDecision::Observe(NativeInput::Hover(HoverSample {
+            location: point(850.0, 660.0),
+            active: false,
+            timestamp_ns: 13,
+        }))
     );
 }
 
@@ -154,7 +166,11 @@ fn webview_capture_is_not_stolen_when_pointer_crosses_into_stage() {
             PointerButton::Primary,
             21,
         )),
-        RouteDecision::WebView
+        RouteDecision::Observe(NativeInput::Hover(HoverSample {
+            location: point(200.0, 220.0),
+            active: false,
+            timestamp_ns: 21,
+        }))
     );
     assert_eq!(
         router.classify(pointer(

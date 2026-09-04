@@ -20,13 +20,18 @@ use viewer_platform_macos::image_render::{
 };
 use viewer_render_core::{
     AnnotationGeometry, AnnotationId, AnnotationNode, AssetGeneration, CameraState, DraftGeometry,
-    InteractionController, InteractionEvent, InteractionMode, LogicalSize, MemoryBudget,
-    NativeInput, NormalizedPoint, NormalizedRect, PointerPhase, Rotation, SceneRevision,
-    SceneSnapshot, SourceSize, TransformSnapshot, ViewportLayout,
+    InteractionController, InteractionEvent, InteractionMode, LogicalPoint, LogicalSize,
+    MemoryBudget, NativeInput, NormalizedPoint, NormalizedRect, PointerPhase, Rotation,
+    SceneRevision, SceneSnapshot, SourceSize, TransformSnapshot, ViewportLayout,
 };
-use viewer_render_wgpu::{DecodedResource, RendererDescriptor, SurfaceHandles, WgpuImageRenderer};
+use viewer_render_wgpu::{
+    DecodedResource, MagnifierConfig, RendererDescriptor, SurfaceHandles, WgpuImageRenderer,
+};
 
-use super::{AuthorizedImageRenderCommand, ImageRenderDriver, ImageRenderRuntimeError};
+use super::{
+    AuthorizedImageRenderCommand, ImageRenderDriver, ImageRenderMagnifierPreferences,
+    ImageRenderRuntimeError,
+};
 use crate::{
     dto::{
         ImageRenderAnnotationGeometryDto, ImageRenderCameraDto, ImageRenderCameraModeDto,
@@ -35,10 +40,11 @@ use crate::{
     image_render_events::ImageRenderEventPort,
 };
 
-const FIT_INSET: f64 = 0.94;
+const FIT_INSET: f64 = 0.9;
 const ACTOR_START_TIMEOUT: Duration = Duration::from_secs(15);
 const ACTOR_MAILBOX_CAPACITY: usize = 256;
 const INPUT_BOUNDARY_CAPACITY: usize = 32;
+const MAGNIFIER_POINTER_GAP: f64 = 18.0;
 
 pub struct NativeImageRenderDriver {
     cache_root: PathBuf,
@@ -648,6 +654,10 @@ impl NativeInputAccumulator {
                     true
                 }
             },
+            input @ NativeInput::Hover(_) => {
+                state.pointer_move = Some(input);
+                false
+            }
             NativeInput::Scroll(mut sample) => {
                 if let Some(NativeInput::Scroll(previous)) = state.scroll.take() {
                     sample.delta.x += previous.delta.x;
@@ -830,11 +840,34 @@ struct RendererActor {
     source_size: Option<SourceSize>,
     camera: CameraState,
     transform: Option<TransformSnapshot>,
+    magnifier_preferences: Option<ImageRenderMagnifierPreferences>,
+    magnifier_pointer: Option<LogicalPoint>,
+    applied_magnifier: Option<MagnifierConfig>,
+    content_frames: ContentFrameGate,
     scene: SceneSnapshot,
     interaction: InteractionController,
     pending_camera_event: Option<ImageRenderEventDto>,
     pending_draft_event: Option<ImageRenderEventDto>,
     pending_editor_placement_event: Option<ImageRenderEventDto>,
+}
+
+#[derive(Default)]
+struct ContentFrameGate {
+    installed_generation: Option<AssetGeneration>,
+}
+
+impl ContentFrameGate {
+    fn begin_generation(&mut self) {
+        self.installed_generation = None;
+    }
+
+    fn install(&mut self, generation: AssetGeneration) {
+        self.installed_generation = Some(generation);
+    }
+
+    fn can_publish(&self, generation: AssetGeneration) -> bool {
+        self.installed_generation == Some(generation)
+    }
 }
 
 impl RendererActor {
@@ -870,6 +903,13 @@ impl RendererActor {
             source_size: None,
             camera: CameraState::fit(Rotation::Deg0),
             transform: None,
+            magnifier_preferences: None,
+            magnifier_pointer: Some(LogicalPoint {
+                x: viewport.logical_size.width / 2.0,
+                y: viewport.logical_size.height / 2.0,
+            }),
+            applied_magnifier: None,
+            content_frames: ContentFrameGate::default(),
             scene,
             interaction: InteractionController::new(InteractionMode::Browse),
             pending_camera_event: None,
@@ -917,7 +957,9 @@ impl RendererActor {
                 if let Some(request) = renderer.on_display_tick(timestamp_ns) {
                     match renderer.render(request) {
                         Ok(receipt) if receipt.presented => {
-                            if let Some(session_id) = self.session_id {
+                            if let Some(session_id) = self.session_id
+                                && self.content_frames.can_publish(self.generation)
+                            {
                                 self.events.publish(ImageRenderEventDto::FramePresented {
                                     session_id: session_id.0,
                                     asset_generation: self.generation.0,
@@ -999,9 +1041,8 @@ impl RendererActor {
                 self.update_transform(renderer);
             }
             AuthorizedImageRenderCommand::SetMagnifier { magnifier } => {
-                if renderer.set_magnifier(magnifier).is_err() {
-                    self.publish_failure("image_render_magnifier_failed", true);
-                }
+                self.magnifier_preferences = magnifier;
+                self.update_magnifier(renderer);
             }
         }
     }
@@ -1020,11 +1061,22 @@ impl RendererActor {
         self.generation = generation;
         self.source_size = None;
         self.transform = None;
+        self.magnifier_preferences = None;
+        self.applied_magnifier = None;
+        self.content_frames.begin_generation();
+        self.magnifier_pointer = Some(LogicalPoint {
+            x: self.viewport.logical_size.width / 2.0,
+            y: self.viewport.logical_size.height / 2.0,
+        });
         self.camera = CameraState::fit(Rotation::Deg0);
         self.scene = SceneSnapshot::empty(SceneRevision(0));
         self.pending_camera_event = None;
         self.pending_draft_event = None;
         self.pending_editor_placement_event = None;
+        if renderer.begin_asset_generation(generation).is_err() {
+            self.publish_failure("image_render_generation_failed", true);
+            return;
+        }
         if renderer.apply_scene(&self.scene).is_err() {
             self.publish_failure("image_render_scene_failed", true);
         }
@@ -1091,7 +1143,10 @@ impl RendererActor {
             return;
         }
         self.source_size = Some(source_size);
-        self.update_transform(renderer);
+        if !self.update_transform(renderer) {
+            return;
+        }
+        self.content_frames.install(generation);
         self.events.publish(ImageRenderEventDto::Ready {
             session_id: session_id.0,
             asset_generation: generation.0,
@@ -1120,22 +1175,45 @@ impl RendererActor {
         self.update_transform(renderer);
     }
 
-    fn update_transform(&mut self, renderer: &mut WgpuImageRenderer) {
+    fn update_transform(&mut self, renderer: &mut WgpuImageRenderer) -> bool {
         let Some(source_size) = self.source_size else {
-            return;
+            return false;
         };
         match TransformSnapshot::new(source_size, self.viewport, self.camera) {
             Ok(transform) => {
-                self.transform = Some(transform);
                 if renderer.set_transform(transform).is_err() {
+                    self.transform = None;
                     self.publish_failure("image_render_transform_failed", true);
+                    return false;
                 }
+                self.transform = Some(transform);
+                self.update_magnifier(renderer);
+                true
             }
-            Err(_) => self.publish_failure("image_render_transform_invalid", false),
+            Err(_) => {
+                self.transform = None;
+                self.publish_failure("image_render_transform_invalid", false);
+                false
+            }
         }
     }
 
     fn handle_input(&mut self, renderer: &mut WgpuImageRenderer, input: NativeInput) {
+        match input {
+            NativeInput::Pointer(sample) => {
+                self.magnifier_pointer = Some(sample.location);
+                self.update_magnifier(renderer);
+            }
+            NativeInput::Hover(sample) => {
+                self.magnifier_pointer = sample.active.then_some(sample.location);
+                self.update_magnifier(renderer);
+            }
+            NativeInput::Cancel => {
+                self.magnifier_pointer = None;
+                self.update_magnifier(renderer);
+            }
+            NativeInput::Scroll(_) | NativeInput::Magnify(_) => {}
+        }
         let Some(transform) = self.transform else {
             return;
         };
@@ -1144,6 +1222,24 @@ impl RendererActor {
             .handle_input(input, &transform, &self.scene)
         {
             self.publish_interaction(renderer, event);
+        }
+    }
+
+    fn update_magnifier(&mut self, renderer: &mut WgpuImageRenderer) {
+        let config = self
+            .magnifier_preferences
+            .zip(self.magnifier_pointer)
+            .zip(self.transform)
+            .and_then(|((preferences, pointer), transform)| {
+                magnifier_config_at_pointer(preferences, pointer, transform)
+            });
+        if config == self.applied_magnifier {
+            return;
+        }
+        if renderer.set_magnifier(config).is_err() {
+            self.publish_failure("image_render_magnifier_failed", true);
+        } else {
+            self.applied_magnifier = config;
         }
     }
 
@@ -1307,6 +1403,43 @@ fn viewport_layout(layout: SurfaceLayout) -> Result<ViewportLayout, ImageRenderR
         .map_err(|_| ImageRenderRuntimeError::InvalidCommand)
 }
 
+fn magnifier_config_at_pointer(
+    preferences: ImageRenderMagnifierPreferences,
+    pointer: LogicalPoint,
+    transform: TransformSnapshot,
+) -> Option<MagnifierConfig> {
+    let focus = transform.view_to_image(pointer)?;
+    let viewport = transform.viewport().logical_size;
+    let center = LogicalPoint {
+        x: place_magnifier_axis(pointer.x, viewport.width, preferences.width_px),
+        y: place_magnifier_axis(pointer.y, viewport.height, preferences.height_px),
+    };
+    MagnifierConfig::new(
+        focus,
+        center,
+        preferences.width_px,
+        preferences.height_px,
+        preferences.magnification,
+        preferences.shape,
+    )
+    .ok()
+}
+
+fn place_magnifier_axis(pointer: f64, stage: f64, lens: f64) -> f64 {
+    let positive_start = pointer + MAGNIFIER_POINTER_GAP;
+    let negative_start = pointer - MAGNIFIER_POINTER_GAP - lens;
+    let positive_fits = positive_start + lens <= stage;
+    let negative_fits = negative_start >= 0.0;
+    let use_positive = positive_fits || (!negative_fits && stage - pointer >= pointer);
+    let start = if use_positive {
+        positive_start
+    } else {
+        negative_start
+    }
+    .clamp(0.0, (stage - lens).max(0.0));
+    start + lens / 2.0
+}
+
 fn camera_dto(camera: CameraState) -> ImageRenderCameraDto {
     ImageRenderCameraDto {
         mode: match camera.mode {
@@ -1428,8 +1561,8 @@ fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
 mod tests {
     use super::*;
     use viewer_render_core::{
-        CameraMode, LogicalPoint, MagnifySample, Modifiers, PointerButton, PointerSample,
-        ScrollSample,
+        CameraMode, HoverSample, LogicalPoint, MagnifySample, Modifiers, PhysicalSize,
+        PointerButton, PointerSample, ScrollSample,
     };
 
     fn pointer(phase: PointerPhase, x: f64) -> NativeInput {
@@ -1536,6 +1669,86 @@ mod tests {
             [NativeInput::Cancel]
         ));
         assert!(inputs.take_continuous().is_empty());
+    }
+
+    #[test]
+    fn hover_samples_are_coalesced_without_crossing_the_ui_bridge() {
+        let inputs = NativeInputAccumulator::default();
+        assert!(!inputs.push(NativeInput::Hover(HoverSample {
+            location: LogicalPoint { x: 20.0, y: 30.0 },
+            active: true,
+            timestamp_ns: 1,
+        })));
+        assert!(!inputs.push(NativeInput::Hover(HoverSample {
+            location: LogicalPoint { x: 40.0, y: 50.0 },
+            active: false,
+            timestamp_ns: 2,
+        })));
+
+        assert_eq!(
+            inputs.take_continuous(),
+            vec![NativeInput::Hover(HoverSample {
+                location: LogicalPoint { x: 40.0, y: 50.0 },
+                active: false,
+                timestamp_ns: 2,
+            })]
+        );
+    }
+
+    #[test]
+    fn native_magnifier_tracks_pointer_and_preserves_rectangular_size() {
+        let transform = TransformSnapshot::new(
+            SourceSize::new(1_000, 600).unwrap(),
+            ViewportLayout::new(LogicalSize::new(1_000.0, 600.0).unwrap(), 2.0, FIT_INSET).unwrap(),
+            CameraState::fit(Rotation::Deg0),
+        )
+        .unwrap();
+        assert_eq!(
+            transform.physical_viewport(),
+            PhysicalSize {
+                width: 2_000,
+                height: 1_200,
+            }
+        );
+        let preferences = ImageRenderMagnifierPreferences {
+            width_px: 300.0,
+            height_px: 200.0,
+            magnification: 2.0,
+            shape: viewer_render_wgpu::MagnifierShape::RoundedRectangle,
+        };
+
+        let first = magnifier_config_at_pointer(
+            preferences,
+            LogicalPoint { x: 500.0, y: 300.0 },
+            transform,
+        )
+        .unwrap();
+        let second = magnifier_config_at_pointer(
+            preferences,
+            LogicalPoint { x: 800.0, y: 300.0 },
+            transform,
+        )
+        .unwrap();
+
+        assert_eq!((first.width_px, first.height_px), (300.0, 200.0));
+        assert_ne!(first.focus, second.focus);
+        assert_ne!(first.center, second.center);
+        assert!(magnifier_config_at_pointer(preferences, LogicalPoint::ZERO, transform,).is_none());
+    }
+
+    #[test]
+    fn content_frame_gate_rejects_clear_and_stale_frames() {
+        let mut gate = ContentFrameGate::default();
+        gate.begin_generation();
+        assert!(!gate.can_publish(AssetGeneration(4)));
+
+        gate.install(AssetGeneration(4));
+        assert!(!gate.can_publish(AssetGeneration(3)));
+        assert!(gate.can_publish(AssetGeneration(4)));
+
+        gate.begin_generation();
+        assert!(!gate.can_publish(AssetGeneration(4)));
+        assert!(!gate.can_publish(AssetGeneration(5)));
     }
 
     #[test]

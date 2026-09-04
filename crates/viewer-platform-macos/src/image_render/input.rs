@@ -4,14 +4,14 @@ use std::sync::{Arc, Mutex};
 use block2::RcBlock;
 use objc2::{MainThreadMarker, rc::Retained, runtime::AnyObject};
 use objc2_app_kit::{
-    NSEvent, NSEventMask, NSEventType, NSWindow, NSWindowDidBecomeKeyNotification,
+    NSEvent, NSEventMask, NSEventType, NSView, NSWindow, NSWindowDidBecomeKeyNotification,
     NSWindowDidResignKeyNotification,
 };
-use objc2_foundation::{NSNotification, NSNotificationCenter, NSOperationQueue};
+use objc2_foundation::{NSNotification, NSNotificationCenter, NSOperationQueue, NSPoint};
 use thiserror::Error;
 use viewer_render_core::{
-    InteractionMode, LogicalPoint, MagnifySample, Modifiers, NativeInput, PointerButton,
-    PointerPhase, PointerSample, ScrollSample,
+    HoverSample, InteractionMode, LogicalPoint, MagnifySample, Modifiers, NativeInput,
+    PointerButton, PointerPhase, PointerSample, ScrollSample,
 };
 
 use super::SurfaceError;
@@ -113,6 +113,7 @@ pub enum WindowInput {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum RouteDecision {
     Render(NativeInput),
+    Observe(NativeInput),
     WebView,
     Ignore,
 }
@@ -283,7 +284,15 @@ impl MacInputRouter {
             },
             timestamp_ns,
         });
-        let decision = self.route_native(route, native);
+        let decision = if phase == PointerPhase::Move && route == CaptureOwner::WebView {
+            RouteDecision::Observe(NativeInput::Hover(HoverSample {
+                location: self.surface.local_point(location),
+                active: false,
+                timestamp_ns,
+            }))
+        } else {
+            self.route_native(route, native)
+        };
         if phase == PointerPhase::Up && button == PointerButton::Primary {
             self.capture = None;
         }
@@ -334,7 +343,6 @@ pub type NativeInputSink = Arc<dyn Fn(NativeInput) + Send + Sync + 'static>;
 
 struct MonitorState {
     router: MacInputRouter,
-    content_height: f64,
 }
 
 pub struct MacInputMonitor {
@@ -348,20 +356,16 @@ pub struct MacInputMonitor {
 impl MacInputMonitor {
     pub fn install(
         window: &NSWindow,
+        webview: Retained<NSView>,
         surface: InputRect,
-        content_height: f64,
         exclusions: Vec<InputExclusionRect>,
         tool: InteractionMode,
         sink: NativeInputSink,
     ) -> Result<Self, SurfaceError> {
         MainThreadMarker::new().ok_or(SurfaceError::NotMainThread)?;
-        if !content_height.is_finite() || content_height <= 0.0 {
-            return Err(SurfaceError::InvalidGeometry);
-        }
 
         let state = Arc::new(Mutex::new(MonitorState {
             router: MacInputRouter::new(surface, exclusions, tool),
-            content_height,
         }));
         let window_number = window.windowNumber();
         let event_state = Arc::clone(&state);
@@ -377,7 +381,7 @@ impl MacInputMonitor {
             let Ok(mut state) = event_state.lock() else {
                 return original;
             };
-            let Some(input) = window_input_from_event(event, state.content_height) else {
+            let Some(input) = window_input_from_event(event, &webview) else {
                 return original;
             };
             match state.router.classify(input) {
@@ -385,6 +389,11 @@ impl MacInputMonitor {
                     drop(state);
                     event_sink(input);
                     std::ptr::null_mut()
+                }
+                RouteDecision::Observe(input) => {
+                    drop(state);
+                    event_sink(input);
+                    original
                 }
                 RouteDecision::WebView | RouteDecision::Ignore => original,
             }
@@ -451,21 +460,13 @@ impl MacInputMonitor {
         })
     }
 
-    pub fn update_geometry(
-        &self,
-        surface: InputRect,
-        content_height: f64,
-    ) -> Result<(), SurfaceError> {
+    pub fn update_geometry(&self, surface: InputRect) -> Result<(), SurfaceError> {
         MainThreadMarker::new().ok_or(SurfaceError::NotMainThread)?;
-        if !content_height.is_finite() || content_height <= 0.0 {
-            return Err(SurfaceError::InvalidGeometry);
-        }
         {
             let mut state = self
                 .state
                 .lock()
                 .map_err(|_| SurfaceError::InputMonitorUnavailable)?;
-            state.content_height = content_height;
             state.router.set_surface(surface);
         }
         Ok(())
@@ -537,13 +538,17 @@ impl Drop for MacInputMonitor {
     }
 }
 
-fn window_input_from_event(event: &NSEvent, content_height: f64) -> Option<WindowInput> {
+fn window_input_from_event(event: &NSEvent, webview: &NSView) -> Option<WindowInput> {
     let timestamp_ns = seconds_to_nanoseconds(event.timestamp());
-    let appkit_location = event.locationInWindow();
-    let location = LogicalPoint {
-        x: appkit_location.x,
-        y: content_height - appkit_location.y,
-    };
+    let webview_location = webview.convertPoint_fromView(event.locationInWindow(), None);
+    let safe_area = webview.safeAreaInsets();
+    let location = top_left_webview_location(
+        webview_location,
+        webview.bounds().size.height,
+        webview.isFlipped(),
+        safe_area.left,
+        safe_area.top,
+    )?;
     match event.r#type() {
         NSEventType::LeftMouseDown => Some(WindowInput::Pointer {
             phase: PointerPhase::Down,
@@ -601,6 +606,34 @@ fn window_input_from_event(event: &NSEvent, content_height: f64) -> Option<Windo
     }
 }
 
+fn top_left_webview_location(
+    point: NSPoint,
+    webview_height: f64,
+    webview_is_flipped: bool,
+    content_left: f64,
+    content_top: f64,
+) -> Option<LogicalPoint> {
+    if !point.x.is_finite()
+        || !point.y.is_finite()
+        || !webview_height.is_finite()
+        || webview_height <= 0.0
+        || !content_left.is_finite()
+        || content_left < 0.0
+        || !content_top.is_finite()
+        || content_top < 0.0
+    {
+        return None;
+    }
+    Some(LogicalPoint {
+        x: point.x - content_left,
+        y: if webview_is_flipped {
+            point.y - content_top
+        } else {
+            webview_height - point.y - content_top
+        },
+    })
+}
+
 fn seconds_to_nanoseconds(seconds: f64) -> u64 {
     if !seconds.is_finite() || seconds <= 0.0 {
         return 0;
@@ -610,5 +643,41 @@ fn seconds_to_nanoseconds(seconds: f64) -> u64 {
         u64::MAX
     } else {
         nanoseconds.round() as u64
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use objc2_foundation::NSPoint;
+    use viewer_render_core::LogicalPoint;
+
+    use super::top_left_webview_location;
+
+    #[test]
+    fn maps_flipped_and_unflipped_webview_points_to_the_same_dom_coordinates() {
+        assert_eq!(
+            top_left_webview_location(NSPoint::new(328.0, 116.0), 932.0, true, 8.0, 32.0),
+            Some(LogicalPoint { x: 320.0, y: 84.0 })
+        );
+        assert_eq!(
+            top_left_webview_location(NSPoint::new(328.0, 816.0), 932.0, false, 8.0, 32.0),
+            Some(LogicalPoint { x: 320.0, y: 84.0 })
+        );
+    }
+
+    #[test]
+    fn rejects_invalid_webview_coordinate_spaces() {
+        assert_eq!(
+            top_left_webview_location(NSPoint::new(10.0, 10.0), f64::NAN, false, 0.0, 0.0),
+            None
+        );
+        assert_eq!(
+            top_left_webview_location(NSPoint::new(f64::INFINITY, 10.0), 900.0, true, 0.0, 0.0,),
+            None
+        );
+        assert_eq!(
+            top_left_webview_location(NSPoint::new(10.0, 10.0), 900.0, true, 0.0, -1.0),
+            None
+        );
     }
 }

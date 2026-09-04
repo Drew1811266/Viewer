@@ -365,6 +365,23 @@ impl WgpuImageRenderer {
         Ok(())
     }
 
+    /// Starts an asset generation before its decode completes. Previous image
+    /// resources and transforms are removed atomically from renderer state so
+    /// a clearing frame can never redraw stale content under the new
+    /// generation.
+    pub fn begin_asset_generation(
+        &mut self,
+        generation: AssetGeneration,
+    ) -> Result<(), RenderError> {
+        self.ensure_owner()?;
+        self.resources.begin_generation(generation)?;
+        self.transform = None;
+        self.magnifier = None;
+        self.frame_scheduler.frame_state().invalidate_resource();
+        self.frame_scheduler.frame_state().invalidate_camera();
+        Ok(())
+    }
+
     pub fn upload_resource(
         &mut self,
         resource: DecodedResource,

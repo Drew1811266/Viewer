@@ -189,7 +189,8 @@ impl MagnifierPass {
         );
         let physical = transform.physical_viewport();
         let scale = viewport.scale_factor as f32;
-        let half = config.diameter_px as f32 * scale / 2.0;
+        let half_width = config.width_px as f32 * scale / 2.0;
+        let half_height = config.height_px as f32 * scale / 2.0;
         let uniform = MagnifierUniform {
             origin: [origin[0], origin[1], 0.0, 0.0],
             axis_x: [
@@ -208,16 +209,16 @@ impl MagnifierPass {
             clip: [
                 config.center.x as f32 * scale,
                 config.center.y as f32 * scale,
-                half,
+                half_width,
+                half_height,
+            ],
+            style: [
+                config.width_px.min(config.height_px) as f32 * scale * 0.12,
+                2.0 * scale,
                 match config.shape {
                     MagnifierShape::Circle => 0.0,
                     MagnifierShape::RoundedRectangle => 1.0,
                 },
-            ],
-            style: [
-                config.diameter_px as f32 * scale * 0.12,
-                2.0 * scale,
-                0.0,
                 0.0,
             ],
         };
@@ -337,7 +338,8 @@ pub enum MagnifierShape {
 pub struct MagnifierConfig {
     pub focus: NormalizedPoint,
     pub center: LogicalPoint,
-    pub diameter_px: f64,
+    pub width_px: f64,
+    pub height_px: f64,
     pub magnification: f64,
     pub shape: MagnifierShape,
 }
@@ -346,12 +348,13 @@ impl MagnifierConfig {
     pub fn new(
         focus: NormalizedPoint,
         center: LogicalPoint,
-        diameter_px: f64,
+        width_px: f64,
+        height_px: f64,
         magnification: f64,
         shape: MagnifierShape,
     ) -> Result<Self, MagnifierConfigError> {
-        if !diameter_px.is_finite() || diameter_px <= 0.0 {
-            return Err(MagnifierConfigError::InvalidDiameter);
+        if !width_px.is_finite() || width_px <= 0.0 || !height_px.is_finite() || height_px <= 0.0 {
+            return Err(MagnifierConfigError::InvalidSize);
         }
         if !magnification.is_finite() || magnification <= 0.0 {
             return Err(MagnifierConfigError::InvalidMagnification);
@@ -359,7 +362,8 @@ impl MagnifierConfig {
         Ok(Self {
             focus,
             center,
-            diameter_px,
+            width_px,
+            height_px,
             magnification,
             shape,
         })
@@ -368,14 +372,14 @@ impl MagnifierConfig {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum MagnifierConfigError {
-    InvalidDiameter,
+    InvalidSize,
     InvalidMagnification,
 }
 
 impl fmt::Display for MagnifierConfigError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::InvalidDiameter => formatter.write_str("magnifier diameter must be positive"),
+            Self::InvalidSize => formatter.write_str("magnifier size must be positive"),
             Self::InvalidMagnification => {
                 formatter.write_str("magnifier magnification must be positive")
             }
@@ -464,16 +468,17 @@ impl MagnifierPassPlan {
     }
 
     pub fn clip_contains(&self, point: LogicalPoint) -> bool {
-        let half = self.config.diameter_px / 2.0;
+        let half_width = self.config.width_px / 2.0;
+        let half_height = self.config.height_px / 2.0;
         let x = (point.x - self.config.center.x).abs();
         let y = (point.y - self.config.center.y).abs();
         match self.config.shape {
-            MagnifierShape::Circle => x.hypot(y) <= half,
+            MagnifierShape::Circle => x.hypot(y) <= half_width.min(half_height),
             MagnifierShape::RoundedRectangle => {
-                let corner_radius = self.config.diameter_px * 0.12;
-                let corner_x = (x - (half - corner_radius)).max(0.0);
-                let corner_y = (y - (half - corner_radius)).max(0.0);
-                x <= half && y <= half && corner_x.hypot(corner_y) <= corner_radius
+                let corner_radius = self.config.width_px.min(self.config.height_px) * 0.12;
+                let corner_x = (x - (half_width - corner_radius)).max(0.0);
+                let corner_y = (y - (half_height - corner_radius)).max(0.0);
+                x <= half_width && y <= half_height && corner_x.hypot(corner_y) <= corner_radius
             }
         }
     }

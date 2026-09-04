@@ -90,9 +90,8 @@ export type ImageRendererSessionCommand =
   | {
       type: 'set_magnifier'
       magnifier: {
-        focus: ImageRendererPoint
-        center: ImageRendererPoint
-        diameterPx: number
+        widthPx: number
+        heightPx: number
         magnification: number
         shape: 'circle' | 'rounded_rectangle'
       } | null
@@ -132,6 +131,10 @@ export type ImageRendererEvent =
     })
   | (ImageRendererEventBase & { type: 'recovering'; reason: string })
   | (ImageRendererEventBase & {
+      type: 'backend_activated'
+      backend: ImageRendererBackend
+    })
+  | (ImageRendererEventBase & {
       type: 'failed'
       code: string
       retryable: boolean
@@ -143,6 +146,7 @@ export interface ImageRendererBridge {
 }
 
 export interface ImageRendererSession {
+  readonly backend: ImageRendererBackend
   readonly sessionId: string
   readonly assetGeneration: number
   dispatch(command: ImageRendererCommand): Promise<ImageRendererAck>

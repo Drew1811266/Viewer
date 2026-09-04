@@ -58,6 +58,42 @@ fn old_generation_completion_is_discarded_without_reopening_it() {
 }
 
 #[test]
+fn beginning_a_generation_drops_previous_image_resources_before_decode_completes() {
+    if std::env::var_os("VIEWER_RUN_METAL_TESTS").is_none() || !cfg!(target_os = "macos") {
+        return;
+    }
+    let logical = LogicalSize::new(64.0, 64.0).unwrap();
+    let physical = PhysicalSize {
+        width: 64,
+        height: 64,
+    };
+    let mut renderer =
+        WgpuImageRenderer::new(RendererDescriptor::headless(logical, physical, 1.0).unwrap())
+            .unwrap();
+    let source_size = SourceSize::new(1, 1).unwrap();
+    renderer
+        .upload_resource(DecodedResource::WholeImage {
+            generation: AssetGeneration(1),
+            level: 0,
+            source_size,
+            width: 1,
+            height: 1,
+            pixels: vec![0, 0, 255, 255],
+        })
+        .unwrap();
+
+    renderer.begin_asset_generation(AssetGeneration(2)).unwrap();
+
+    assert_eq!(renderer.gpu_resource_bytes(), 0);
+    assert!(
+        renderer
+            .retained_scene_resources()
+            .image_handles()
+            .is_empty()
+    );
+}
+
+#[test]
 fn metal_upload_and_headless_draw_smoke_test_is_explicitly_opt_in() {
     if std::env::var_os("VIEWER_RUN_METAL_TESTS").is_none() || !cfg!(target_os = "macos") {
         return;
@@ -137,4 +173,61 @@ fn metal_upload_and_headless_draw_smoke_test_is_explicitly_opt_in() {
     assert_eq!(receipt.scene_revision, SceneRevision(0));
     assert_eq!(receipt.gpu_resource_bytes, 4);
     assert!(!receipt.presented);
+}
+
+#[test]
+fn metal_draw_preserves_top_to_bottom_pixel_order() {
+    if std::env::var_os("VIEWER_RUN_METAL_TESTS").is_none() || !cfg!(target_os = "macos") {
+        return;
+    }
+    let logical = LogicalSize::new(64.0, 64.0).unwrap();
+    let source_size = SourceSize::new(1, 2).unwrap();
+    let mut renderer = WgpuImageRenderer::new(
+        RendererDescriptor::headless(
+            logical,
+            PhysicalSize {
+                width: 64,
+                height: 64,
+            },
+            1.0,
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    renderer
+        .set_transform(
+            TransformSnapshot::new(
+                source_size,
+                ViewportLayout::new(logical, 1.0, 1.0).unwrap(),
+                CameraState::fit(Rotation::Deg0),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+    renderer
+        .upload_resource(DecodedResource::WholeImage {
+            generation: AssetGeneration(1),
+            level: 0,
+            source_size,
+            width: 1,
+            height: 2,
+            // Decoded resources are top-row first: red above blue.
+            pixels: vec![0, 0, 255, 255, 255, 0, 0, 255],
+        })
+        .unwrap();
+
+    let request = renderer.frame_state().take_request().unwrap();
+    let (_, pixels) = renderer.render_headless_capture(request).unwrap();
+    let pixel = |x: usize, y: usize| &pixels[((y * 64 + x) * 4)..((y * 64 + x) * 4 + 4)];
+    let top = pixel(32, 8);
+    let bottom = pixel(32, 56);
+
+    assert!(
+        top[2] > 200 && top[0] < 40,
+        "expected red at the top, got BGRA {top:?}"
+    );
+    assert!(
+        bottom[0] > 200 && bottom[2] < 40,
+        "expected blue at the bottom, got BGRA {bottom:?}"
+    );
 }

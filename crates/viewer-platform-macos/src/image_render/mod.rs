@@ -22,7 +22,8 @@ pub use input::{
 };
 pub use memory_pressure::{MacMemoryPressureMonitor, MemoryPressureSink, pressure_level_for_flags};
 pub use surface::{
-    AppKitFrame, MacImageSurface, SurfaceError, SurfaceLayout, appkit_frame, backing_pixels,
+    AppKitFrame, MacImageSurface, SurfaceError, SurfaceLayout, appkit_frame,
+    appkit_frame_with_content_origin, backing_pixels, local_view_frame_with_content_origin,
 };
 pub use tile_cache::{
     CACHE_SCHEMA_VERSION, CacheReclaimReport, CacheUsage, DerivedCacheKey, DerivedRegion,

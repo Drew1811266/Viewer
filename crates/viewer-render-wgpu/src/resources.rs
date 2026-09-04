@@ -318,6 +318,15 @@ impl ResourceRegistry {
         Ok(handle)
     }
 
+    pub fn begin_generation(&mut self, generation: AssetGeneration) -> Result<(), UploadError> {
+        if self.generation.admit(generation) == UploadDisposition::DiscardedStale {
+            return Err(UploadError::StaleGeneration);
+        }
+        self.resources.clear();
+        self.gpu_bytes = 0;
+        Ok(())
+    }
+
     pub const fn gpu_bytes(&self) -> u64 {
         self.gpu_bytes
     }

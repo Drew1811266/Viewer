@@ -22,6 +22,8 @@ import EmptyProject from './components/EmptyProject'
 import type { Point } from './components/imagePreview/imageGeometry'
 import { useLatestPointerClientPoint } from './components/imagePreview/useLatestPointerClientPoint'
 import ReviewWorkspaceLayer, { ReviewToolbarAction } from './components/review/ReviewWorkspaceLayer'
+import { createImageRendererPort } from './rendering/imageRendererPort'
+import { createReactWebImageRendererAdapter } from './rendering/reactWebImageRendererAdapter'
 import { useViewerSettings, ViewerSettingsProvider } from './settings/ViewerSettingsProvider'
 import { useViewerController } from './state/useViewerController'
 
@@ -74,6 +76,17 @@ function ViewerWorkspace({
     intentTargetRef.current(intent)
   }, [])
   const ports = useMemo(() => createWorkspacePorts(bridge), [bridge])
+  const imageRenderer = useMemo(
+    () =>
+      createImageRendererPort({
+        bridge,
+        migrationPolicy: {
+          initialBackend: bridge === tauriViewerBridge ? 'native' : 'web',
+          legacyWeb: createReactWebImageRendererAdapter(),
+        },
+      }),
+    [bridge],
+  )
   const shell = useWorkspaceShellCoordinator({
     projectSessionId,
     videoProjectSessionId: state.project?.sessionId ?? null,
@@ -247,6 +260,7 @@ function ViewerWorkspace({
         />
       }
       onReselectProject={reselectProject}
+      imageRenderer={imageRenderer}
     />
   )
 }

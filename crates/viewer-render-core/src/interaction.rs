@@ -59,8 +59,16 @@ pub struct MagnifySample {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
+pub struct HoverSample {
+    pub location: LogicalPoint,
+    pub active: bool,
+    pub timestamp_ns: u64,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum NativeInput {
     Pointer(PointerSample),
+    Hover(HoverSample),
     Scroll(ScrollSample),
     Magnify(MagnifySample),
     Cancel,
@@ -136,6 +144,7 @@ impl InteractionController {
     ) -> Vec<InteractionEvent> {
         match input {
             NativeInput::Cancel => self.cancel(),
+            NativeInput::Hover(_) => Vec::new(),
             NativeInput::Scroll(sample) => transform
                 .pan_by(sample.delta)
                 .map(InteractionEvent::CameraChanged)

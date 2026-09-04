@@ -66,16 +66,6 @@ pub(super) fn normalize_to_bgra_srgb(image: &CGImage) -> Result<DecodedPixels, I
     CGContext::draw_image(Some(&context), bounds, Some(image));
     drop(context);
 
-    // Bitmap contexts expose their first row at Quartz y=0 (the bottom).
-    // Renderer UVs use a top-left origin, so normalize the row order once at
-    // decode time rather than adding a second coordinate convention.
-    let row_len = bytes_per_row as usize;
-    for top in 0..height as usize / 2 {
-        let bottom = height as usize - 1 - top;
-        let (head, tail) = pixels.split_at_mut(bottom * row_len);
-        head[top * row_len..(top + 1) * row_len].swap_with_slice(&mut tail[..row_len]);
-    }
-
     Ok(DecodedPixels {
         width,
         height,
@@ -83,4 +73,51 @@ pub(super) fn normalize_to_bgra_srgb(image: &CGImage) -> Result<DecodedPixels, I
         pixel_format: PixelFormat::Bgra8PremultipliedSrgb,
         pixels,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use std::ptr;
+
+    use objc2_core_foundation::CFData;
+    use objc2_core_graphics::{
+        CGBitmapInfo, CGColorRenderingIntent, CGColorSpace, CGDataProvider, CGImage,
+        CGImageAlphaInfo,
+    };
+
+    use super::normalize_to_bgra_srgb;
+
+    #[test]
+    fn normalization_preserves_top_to_bottom_cgimage_scanlines() {
+        let rgba = [
+            255, 0, 0, 255, // top row: red
+            0, 0, 255, 255, // bottom row: blue
+        ];
+        let data = CFData::from_bytes(&rgba);
+        let provider = CGDataProvider::with_cf_data(Some(&data)).unwrap();
+        let color_space = CGColorSpace::new_device_rgb().unwrap();
+        // SAFETY: The provider owns two complete RGBA scanlines and `decode`
+        // is null as permitted by Core Graphics for the default channel map.
+        let image = unsafe {
+            CGImage::new(
+                1,
+                2,
+                8,
+                32,
+                4,
+                Some(&color_space),
+                CGBitmapInfo::from_bits_retain(CGImageAlphaInfo::PremultipliedLast.0),
+                Some(&provider),
+                ptr::null(),
+                false,
+                CGColorRenderingIntent::RenderingIntentDefault,
+            )
+        }
+        .unwrap();
+
+        let decoded = normalize_to_bgra_srgb(&image).unwrap();
+
+        assert_eq!(&decoded.pixels[..4], &[0, 0, 255, 255]);
+        assert_eq!(&decoded.pixels[4..8], &[255, 0, 0, 255]);
+    }
 }

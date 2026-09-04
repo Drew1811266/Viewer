@@ -238,7 +238,8 @@ describe('ImageRendererPort', () => {
     await session.close()
     await session.close()
 
-    expect(port.backend).toBe('web')
+    expect(port.backend).toBe('native')
+    expect(session.backend).toBe('web')
     expect(legacyWeb.open).toHaveBeenCalledWith(openRequest)
     expect(webSession.close).toHaveBeenCalledOnce()
   })
@@ -265,7 +266,8 @@ describe('ImageRendererPort', () => {
     const ack = await session.dispatch(surface)
 
     expect(ack).toEqual(applied(0, 'web'))
-    expect(port.backend).toBe('web')
+    expect(port.backend).toBe('native')
+    expect(session.backend).toBe('web')
     expect(legacyWeb.open).toHaveBeenCalledWith(openRequest)
     expect(webSession.dispatch).toHaveBeenCalledWith(surface)
   })
@@ -277,7 +279,8 @@ describe('ImageRendererPort', () => {
     const session = await port.open(openRequest)
     await session.dispatch(surface)
 
-    expect(port.backend).toBe('web')
+    expect(port.backend).toBe('native')
+    expect(session.backend).toBe('web')
     expect(legacyWeb.open).toHaveBeenCalledWith(openRequest)
   })
 
@@ -336,9 +339,41 @@ describe('ImageRendererPort', () => {
       code: 'resource_recovery_failed',
       retryable: true,
     })
-    await vi.waitFor(() => expect(port.backend).toBe('web'))
+    await vi.waitFor(() => expect(session.backend).toBe('web'))
+    expect(port.backend).toBe('native')
     expect(legacyWeb.open).toHaveBeenCalledWith({ ...openRequest, assetGeneration: 2 })
     expect(webSession.dispatch).toHaveBeenCalledWith(surface)
+  })
+
+  it('does not treat decode readiness as a successfully presented recovery frame', async () => {
+    const { port, emitNative, legacyWeb } = fixture()
+    const session = await port.open(openRequest)
+    await session.dispatch(surface)
+
+    emitNative({
+      type: 'failed',
+      sessionId: '41',
+      assetGeneration: 1,
+      code: 'resource_recovery_failed',
+      retryable: true,
+    })
+    emitNative({
+      type: 'ready',
+      sessionId: '41',
+      assetGeneration: 1,
+      width: 900,
+      height: 600,
+    })
+    emitNative({
+      type: 'failed',
+      sessionId: '41',
+      assetGeneration: 1,
+      code: 'resource_recovery_failed',
+      retryable: true,
+    })
+
+    await vi.waitFor(() => expect(session.backend).toBe('web'))
+    expect(legacyWeb.open).toHaveBeenCalledWith(openRequest)
   })
 
   it('buffers Web events emitted while a recovery fallback is opening', async () => {
@@ -367,7 +402,7 @@ describe('ImageRendererPort', () => {
     await vi.waitFor(() => expect(legacyWeb.open).toHaveBeenCalledOnce())
     emitWeb({ type: 'ready', sessionId: '41', assetGeneration: 1, width: 900, height: 600 })
     pendingWebOpen.resolve(webSession)
-    await vi.waitFor(() => expect(port.backend).toBe('web'))
+    await vi.waitFor(() => expect(session.backend).toBe('web'))
 
     expect(handler).toHaveBeenCalledWith({
       type: 'ready',
@@ -424,12 +459,52 @@ describe('ImageRendererPort', () => {
     expect(handler).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'frame_presented' }))
 
     pendingNativeClose.resolve(applied(0))
-    await vi.waitFor(() => expect(port.backend).toBe('web'))
-    await vi.waitFor(() => expect(handler).toHaveBeenCalledTimes(4))
+    await vi.waitFor(() => expect(session.backend).toBe('web'))
+    await vi.waitFor(() => expect(handler).toHaveBeenCalledTimes(5))
 
-    expect(handler.mock.calls.slice(-2).map(([event]) => event.type)).toEqual([
+    expect(handler.mock.calls.slice(-3).map(([event]) => event.type)).toEqual([
+      'backend_activated',
       'ready',
       'frame_presented',
     ])
+  })
+
+  it('publishes backend activation after transition and retries native for the next session', async () => {
+    const { port, emitNative, imageRenderCommand, legacyWeb } = fixture()
+    const handler = vi.fn()
+    await port.listen(handler)
+    const first = await port.open(openRequest)
+    await first.dispatch(surface)
+
+    emitNative({
+      type: 'failed',
+      sessionId: '41',
+      assetGeneration: 1,
+      code: 'resource_recovery_failed',
+      retryable: true,
+    })
+    emitNative({
+      type: 'failed',
+      sessionId: '41',
+      assetGeneration: 1,
+      code: 'resource_recovery_failed',
+      retryable: true,
+    })
+    await vi.waitFor(() => expect(first.backend).toBe('web'))
+    expect(handler).toHaveBeenCalledWith({
+      type: 'backend_activated',
+      sessionId: '41',
+      assetGeneration: 1,
+      backend: 'web',
+    })
+
+    await first.close()
+    const second = await port.open({ ...openRequest, assetGeneration: 2 })
+
+    expect(second.backend).toBe('native')
+    expect(legacyWeb.open).toHaveBeenCalledTimes(1)
+    expect(
+      imageRenderCommand.mock.calls.filter(([command]) => command.command.type === 'open'),
+    ).toHaveLength(2)
   })
 })

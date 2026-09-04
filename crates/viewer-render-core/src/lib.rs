@@ -25,8 +25,9 @@ pub use ids::{
     AnnotationId, AssetGeneration, CommandId, IdentifierError, RenderSessionId, SceneRevision,
 };
 pub use interaction::{
-    DraftGeometry, InteractionController, InteractionEvent, InteractionMode, MagnifySample,
-    Modifiers, NativeInput, PointerButton, PointerPhase, PointerSample, ScrollSample,
+    DraftGeometry, HoverSample, InteractionController, InteractionEvent, InteractionMode,
+    MagnifySample, Modifiers, NativeInput, PointerButton, PointerPhase, PointerSample,
+    ScrollSample,
 };
 pub use protocol::{RenderCommand, RenderEnvelope, RevisionDecision, RevisionGate};
 pub use resources::{

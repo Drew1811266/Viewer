@@ -13,7 +13,9 @@ use super::{
     DecodedResource, DecodedResourceKind, ImageResourceError, PixelFormat, SourceFingerprint,
 };
 
-pub const CACHE_SCHEMA_VERSION: u32 = 1;
+// Version 2 fixes the canonical scanline orientation. Keeping it in the cache
+// key prevents version-1 bottom-up previews from surviving the decoder change.
+pub const CACHE_SCHEMA_VERSION: u32 = 2;
 const CACHE_MAGIC: &[u8; 8] = b"VWBGRA01";
 const CACHE_HEADER_BYTES: usize = 28;
 

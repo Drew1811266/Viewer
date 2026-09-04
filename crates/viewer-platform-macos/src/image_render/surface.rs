@@ -80,7 +80,7 @@ impl MacImageSurface {
             return Err(SurfaceError::MissingWebview);
         }
         let webview = subviews.objectAtIndex(0);
-        let frame = ns_frame(layout, webview.bounds().size.height)?;
+        let frame = ns_frame(layout, &webview, &parent)?;
         let (backing_width, backing_height) =
             backing_pixels(layout).ok_or(SurfaceError::InvalidGeometry)?;
         configure_transparent_webview(&webview)?;
@@ -109,7 +109,7 @@ impl MacImageSurface {
         if !self.mounted {
             return Err(SurfaceError::Unmounted);
         }
-        let frame = ns_frame(layout, self.webview.bounds().size.height)?;
+        let frame = ns_frame(layout, &self.webview, &self.parent)?;
         let (backing_width, backing_height) =
             backing_pixels(layout).ok_or(SurfaceError::InvalidGeometry)?;
         self.view.setFrame(frame);
@@ -191,17 +191,12 @@ impl MacImageSurface {
         self.view.window().ok_or(SurfaceError::WindowUnavailable)
     }
 
-    pub(super) fn content_height(&self) -> Result<f64, SurfaceError> {
+    pub(super) fn input_view(&self) -> Result<Retained<NSView>, SurfaceError> {
         MainThreadMarker::new().ok_or(SurfaceError::NotMainThread)?;
         if !self.mounted {
             return Err(SurfaceError::Unmounted);
         }
-        let height = self.parent.bounds().size.height;
-        if height.is_finite() && height > 0.0 {
-            Ok(height)
-        } else {
-            Err(SurfaceError::InvalidGeometry)
-        }
+        Ok(self.webview.clone())
     }
 }
 
@@ -232,15 +227,47 @@ impl Drop for MacImageSurface {
     }
 }
 
-fn ns_frame(layout: SurfaceLayout, container_height: f64) -> Result<CGRect, SurfaceError> {
-    let frame = appkit_frame(layout, container_height).ok_or(SurfaceError::InvalidGeometry)?;
-    Ok(NSRect::new(
+fn ns_frame(
+    layout: SurfaceLayout,
+    webview: &NSView,
+    parent: &NSView,
+) -> Result<CGRect, SurfaceError> {
+    let safe_area = webview.safeAreaInsets();
+    let frame = local_view_frame_with_content_origin(
+        layout,
+        webview.bounds().size.height,
+        safe_area.left,
+        safe_area.top,
+        webview.isFlipped(),
+    )
+    .ok_or(SurfaceError::InvalidGeometry)?;
+    let webview_frame = NSRect::new(
         NSPoint::new(frame.x, frame.y),
         NSSize::new(frame.width, frame.height),
-    ))
+    );
+    Ok(webview.convertRect_toView(webview_frame, Some(parent)))
 }
 
 pub fn appkit_frame(layout: SurfaceLayout, container_height: f64) -> Option<AppKitFrame> {
+    appkit_frame_with_content_origin(layout, container_height, 0.0, 0.0)
+}
+
+pub fn appkit_frame_with_content_origin(
+    layout: SurfaceLayout,
+    container_height: f64,
+    content_left: f64,
+    content_top: f64,
+) -> Option<AppKitFrame> {
+    local_view_frame_with_content_origin(layout, container_height, content_left, content_top, false)
+}
+
+pub fn local_view_frame_with_content_origin(
+    layout: SurfaceLayout,
+    container_height: f64,
+    content_left: f64,
+    content_top: f64,
+    view_is_flipped: bool,
+) -> Option<AppKitFrame> {
     let values = [
         layout.left,
         layout.top,
@@ -248,6 +275,8 @@ pub fn appkit_frame(layout: SurfaceLayout, container_height: f64) -> Option<AppK
         layout.height,
         layout.scale_factor,
         container_height,
+        content_left,
+        content_top,
     ];
     if values.iter().any(|value| !value.is_finite())
         || layout.left < 0.0
@@ -256,12 +285,18 @@ pub fn appkit_frame(layout: SurfaceLayout, container_height: f64) -> Option<AppK
         || layout.height <= 0.0
         || layout.scale_factor <= 0.0
         || container_height <= 0.0
+        || content_left < 0.0
+        || content_top < 0.0
     {
         return None;
     }
     Some(AppKitFrame {
-        x: layout.left,
-        y: container_height - layout.top - layout.height,
+        x: content_left + layout.left,
+        y: if view_is_flipped {
+            content_top + layout.top
+        } else {
+            container_height - content_top - layout.top - layout.height
+        },
         width: layout.width,
         height: layout.height,
     })

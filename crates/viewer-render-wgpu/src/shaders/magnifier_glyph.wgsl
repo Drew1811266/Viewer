@@ -32,13 +32,14 @@ fn source_to_clip(source: vec2<f32>) -> vec2<f32> {
 
 fn inside_clip(position: vec2<f32>) -> bool {
     let delta = abs(position - magnifier.clip.xy);
-    if magnifier.clip.w < 0.5 {
-        return length(delta) <= magnifier.clip.z;
+    if magnifier.style.z < 0.5 {
+        return length(delta) <= min(magnifier.clip.z, magnifier.clip.w);
     }
     let radius = magnifier.style.x;
-    let corner = max(delta - vec2<f32>(magnifier.clip.z - radius), vec2<f32>(0.0));
-    return delta.x <= magnifier.clip.z
-        && delta.y <= magnifier.clip.z
+    let half_size = magnifier.clip.zw;
+    let corner = max(delta - (half_size - vec2<f32>(radius)), vec2<f32>(0.0));
+    return delta.x <= half_size.x
+        && delta.y <= half_size.y
         && length(corner) <= radius;
 }
 

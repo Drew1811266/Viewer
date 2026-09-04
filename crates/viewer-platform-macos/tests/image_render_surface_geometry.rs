@@ -1,5 +1,6 @@
 use viewer_platform_macos::image_render::{
-    AppKitFrame, SurfaceLayout, appkit_frame, backing_pixels,
+    AppKitFrame, SurfaceLayout, appkit_frame, appkit_frame_with_content_origin, backing_pixels,
+    local_view_frame_with_content_origin,
 };
 
 #[test]
@@ -22,6 +23,36 @@ fn converts_dom_top_origin_layout_to_appkit_bottom_origin_frame() {
         })
     );
     assert_eq!(backing_pixels(layout), Some((1_920, 1_080)));
+}
+
+#[test]
+fn offsets_dom_layout_from_the_webview_safe_content_origin() {
+    let layout = SurfaceLayout {
+        left: 72.0,
+        top: 52.0,
+        width: 960.0,
+        height: 716.0,
+        scale_factor: 2.0,
+    };
+
+    assert_eq!(
+        appkit_frame_with_content_origin(layout, 800.0, 0.0, 32.0),
+        Some(AppKitFrame {
+            x: 72.0,
+            y: 0.0,
+            width: 960.0,
+            height: 716.0,
+        })
+    );
+    assert_eq!(
+        local_view_frame_with_content_origin(layout, 800.0, 0.0, 32.0, true),
+        Some(AppKitFrame {
+            x: 72.0,
+            y: 84.0,
+            width: 960.0,
+            height: 716.0,
+        })
+    );
 }
 
 #[test]

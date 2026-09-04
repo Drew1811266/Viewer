@@ -14,7 +14,7 @@ use viewer_render_core::{
     RenderCommand, RenderEnvelope, RenderSessionId, RevisionDecision, RevisionGate, Rotation,
     ScenePatch, SceneRevision, SceneSnapshot,
 };
-use viewer_render_wgpu::{MagnifierConfig, MagnifierShape};
+use viewer_render_wgpu::MagnifierShape;
 
 use crate::dto::{
     ImageRenderAckDto, ImageRenderAnnotationDto, ImageRenderAnnotationGeometryDto,
@@ -77,8 +77,16 @@ pub enum AuthorizedImageRenderCommand {
         camera: CameraState,
     },
     SetMagnifier {
-        magnifier: Option<MagnifierConfig>,
+        magnifier: Option<ImageRenderMagnifierPreferences>,
     },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ImageRenderMagnifierPreferences {
+    pub width_px: f64,
+    pub height_px: f64,
+    pub magnification: f64,
+    pub shape: MagnifierShape,
 }
 
 pub trait ImageRenderDriver: Send + Sync {
@@ -531,18 +539,25 @@ const fn rotation(dto: ImageRenderRotationDto) -> Rotation {
 
 fn magnifier_config(
     dto: ImageRenderMagnifierDto,
-) -> Result<MagnifierConfig, ImageRenderRuntimeError> {
-    MagnifierConfig::new(
-        normalized_point(dto.focus)?,
-        logical_point(dto.center)?,
-        dto.diameter_px,
-        dto.magnification,
-        match dto.shape {
+) -> Result<ImageRenderMagnifierPreferences, ImageRenderRuntimeError> {
+    if !dto.width_px.is_finite()
+        || dto.width_px <= 0.0
+        || !dto.height_px.is_finite()
+        || dto.height_px <= 0.0
+        || !dto.magnification.is_finite()
+        || dto.magnification <= 0.0
+    {
+        return Err(ImageRenderRuntimeError::InvalidCommand);
+    }
+    Ok(ImageRenderMagnifierPreferences {
+        width_px: dto.width_px,
+        height_px: dto.height_px,
+        magnification: dto.magnification,
+        shape: match dto.shape {
             ImageRenderMagnifierShapeDto::Circle => MagnifierShape::Circle,
             ImageRenderMagnifierShapeDto::RoundedRectangle => MagnifierShape::RoundedRectangle,
         },
-    )
-    .map_err(|_| ImageRenderRuntimeError::InvalidCommand)
+    })
 }
 
 fn scene_snapshot(

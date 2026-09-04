@@ -19,6 +19,7 @@ fn magnifier_reuses_main_scene_handles_revision_and_annotation_buffers() {
         NormalizedPoint::new(0.25, 0.75).unwrap(),
         LogicalPoint::new(640.0, 360.0).unwrap(),
         280.0,
+        280.0,
         3.0,
         MagnifierShape::Circle,
     )
@@ -40,8 +41,19 @@ fn magnifier_configuration_rejects_non_finite_or_non_positive_geometry() {
     let focus = NormalizedPoint::new(0.5, 0.5).unwrap();
     let center = LogicalPoint::new(10.0, 10.0).unwrap();
 
-    assert!(MagnifierConfig::new(focus, center, 0.0, 2.0, MagnifierShape::Circle).is_err());
-    assert!(MagnifierConfig::new(focus, center, 100.0, f64::NAN, MagnifierShape::Circle).is_err());
+    assert!(MagnifierConfig::new(focus, center, 0.0, 100.0, 2.0, MagnifierShape::Circle).is_err());
+    assert!(MagnifierConfig::new(focus, center, 100.0, 0.0, 2.0, MagnifierShape::Circle).is_err());
+    assert!(
+        MagnifierConfig::new(
+            focus,
+            center,
+            100.0,
+            100.0,
+            f64::NAN,
+            MagnifierShape::Circle
+        )
+        .is_err()
+    );
 }
 
 #[test]
@@ -55,6 +67,7 @@ fn rounded_rectangle_remains_a_clip_shape_not_a_second_scene() {
         NormalizedPoint::new(0.5, 0.5).unwrap(),
         LogicalPoint::new(100.0, 120.0).unwrap(),
         240.0,
+        120.0,
         2.0,
         MagnifierShape::RoundedRectangle,
     )
@@ -63,6 +76,8 @@ fn rounded_rectangle_remains_a_clip_shape_not_a_second_scene() {
     let plan = MagnifierPassPlan::new(&retained, config);
 
     assert_eq!(plan.config().shape, MagnifierShape::RoundedRectangle);
+    assert!(plan.clip_contains(LogicalPoint::new(219.0, 120.0).unwrap()));
+    assert!(!plan.clip_contains(LogicalPoint::new(100.0, 181.0).unwrap()));
     assert_eq!(plan.additional_full_image_texture_bytes(), 0);
 }
 
@@ -73,6 +88,7 @@ fn magnifier_projects_the_shared_scene_around_focus_without_reinterpreting_ancho
     let config = MagnifierConfig::new(
         focus,
         LogicalPoint::new(80.0, 20.0).unwrap(),
+        40.0,
         40.0,
         3.0,
         MagnifierShape::Circle,
@@ -160,6 +176,7 @@ fn magnifier_gpu_composition_is_explicitly_opt_in() {
             MagnifierConfig::new(
                 NormalizedPoint::new(0.25, 0.5).unwrap(),
                 LogicalPoint::new(48.0, 12.0).unwrap(),
+                24.0,
                 24.0,
                 2.0,
                 MagnifierShape::Circle,

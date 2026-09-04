@@ -48,6 +48,7 @@ export class WebImageRenderer implements ImageRendererPort {
 }
 
 class WebImageRendererSession implements ImageRendererSession {
+  readonly backend = 'web' as const
   readonly sessionId: string
   readonly assetGeneration: number
   private readonly lane = new OrderedCommandLane()

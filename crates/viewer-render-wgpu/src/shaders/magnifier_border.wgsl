@@ -14,13 +14,13 @@ struct VertexOutput {
 };
 
 fn signed_distance(position: vec2<f32>, inset: f32) -> f32 {
-    let half_size = magnifier.clip.z - inset;
+    let half_size = magnifier.clip.zw - vec2<f32>(inset);
     let delta = abs(position - magnifier.clip.xy);
-    if magnifier.clip.w < 0.5 {
-        return length(delta) - half_size;
+    if magnifier.style.z < 0.5 {
+        return length(delta) - min(half_size.x, half_size.y);
     }
     let radius = max(magnifier.style.x - inset, 0.0);
-    let corner = max(delta - vec2<f32>(half_size - radius), vec2<f32>(0.0));
+    let corner = max(delta - (half_size - vec2<f32>(radius)), vec2<f32>(0.0));
     return length(corner) - radius;
 }
 
@@ -34,7 +34,7 @@ fn vs_main(@builtin(vertex_index) vertex_index: u32) -> VertexOutput {
         vec2<f32>(1.0, 1.0),
         vec2<f32>(-1.0, 1.0),
     );
-    let physical = magnifier.clip.xy + corners[vertex_index] * magnifier.clip.z;
+    let physical = magnifier.clip.xy + corners[vertex_index] * magnifier.clip.zw;
     let clip = vec2<f32>(
         physical.x * 2.0 / magnifier.viewport_physical.x - 1.0,
         1.0 - physical.y * 2.0 / magnifier.viewport_physical.y,

@@ -48,6 +48,7 @@ export class NativeImageRenderer implements ImageRendererPort {
 }
 
 class NativeImageRendererSession implements ImageRendererSession {
+  readonly backend = 'native' as const
   readonly sessionId: string
   readonly assetGeneration: number
   private readonly numericId: number

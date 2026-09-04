@@ -111,7 +111,7 @@ impl MacImageRenderHost {
     pub fn set_layout(&mut self, layout: SurfaceLayout) -> Result<(), SurfaceError> {
         self.surface.set_layout(layout)?;
         if let Some(monitor) = self.input_monitor.as_ref() {
-            monitor.update_geometry(input_rect(layout)?, self.surface.content_height()?)?;
+            monitor.update_geometry(input_rect(layout)?)?;
         }
         self.rebuild_display_link_if_needed()
     }
@@ -197,8 +197,8 @@ impl MacImageRenderHost {
         let window = self.surface.native_window()?;
         let monitor = MacInputMonitor::install(
             &window,
+            self.surface.input_view()?,
             input_rect(self.surface.layout())?,
-            self.surface.content_height()?,
             exclusions,
             tool,
             sink,

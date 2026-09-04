@@ -57,7 +57,7 @@ class MigratingImageRendererPort implements ImageRendererPort {
   }
 
   get backend(): ImageRendererBackend {
-    return this.active?.backend ?? this.initialBackend
+    return this.initialBackend
   }
 
   open(request: OpenImageRendererRequest): Promise<ImageRendererSession> {
@@ -106,6 +106,9 @@ class MigratingImageRendererPort implements ImageRendererPort {
       backend,
       this.web,
       (event) => this.receive('web', event),
+      (closed) => {
+        if (this.active === closed) this.active = undefined
+      },
     )
     this.active = migrating
     this.finishOpening(opened.opening)
@@ -226,6 +229,7 @@ class MigratingImageRendererSession implements ImageRendererSession {
   private readonly request: OpenImageRendererRequest
   private readonly web: ImageRendererPort
   private readonly publishWebEvent: (event: ImageRendererEvent) => void
+  private readonly onClosed: (session: MigratingImageRendererSession) => void
   private nativeInitialized: boolean
   private switchingToWeb = false
   private readonly transitionEvents: ImageRendererEvent[] = []
@@ -236,6 +240,7 @@ class MigratingImageRendererSession implements ImageRendererSession {
     backend: ImageRendererBackend,
     web: ImageRendererPort,
     publishWebEvent: (event: ImageRendererEvent) => void,
+    onClosed: (session: MigratingImageRendererSession) => void,
   ) {
     this.request = request
     this.web = web
@@ -245,6 +250,7 @@ class MigratingImageRendererSession implements ImageRendererSession {
     this.currentBackend = backend
     this.nativeInitialized = backend !== 'native'
     this.publishWebEvent = publishWebEvent
+    this.onClosed = onClosed
   }
 
   get backend(): ImageRendererBackend {
@@ -298,12 +304,18 @@ class MigratingImageRendererSession implements ImageRendererSession {
   close(): Promise<void> {
     if (this.closePromise !== undefined) return this.closePromise
     this.closing = true
-    this.closePromise = this.lane.enqueue(() => this.current.close())
+    this.closePromise = this.lane.enqueue(async () => {
+      try {
+        await this.current.close()
+      } finally {
+        this.onClosed(this)
+      }
+    })
     return this.closePromise
   }
 
   observe(event: ImageRendererEvent): void {
-    if (event.type === 'ready' || event.type === 'frame_presented') {
+    if (event.type === 'frame_presented') {
       this.recoveryFailures = 0
       return
     }
@@ -351,6 +363,12 @@ class MigratingImageRendererSession implements ImageRendererSession {
     } finally {
       this.switchingToWeb = false
     }
+    this.publishWebEvent({
+      type: 'backend_activated',
+      sessionId: this.sessionId,
+      assetGeneration: this.assetGeneration,
+      backend: 'web',
+    })
     for (const event of this.transitionEvents.splice(0)) this.publishWebEvent(event)
   }
 }

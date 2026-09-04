@@ -117,9 +117,8 @@ pub enum ImageRenderMagnifierShapeDto {
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ImageRenderMagnifierDto {
-    pub focus: ImageRenderPointDto,
-    pub center: ImageRenderPointDto,
-    pub diameter_px: f64,
+    pub width_px: f64,
+    pub height_px: f64,
     pub magnification: f64,
     pub shape: ImageRenderMagnifierShapeDto,
 }

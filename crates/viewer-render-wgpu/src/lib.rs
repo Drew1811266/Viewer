@@ -2,12 +2,20 @@
 
 //! wgpu implementation of Viewer image rendering.
 
+mod annotation_mesh;
+mod annotation_pass;
 mod device;
 mod diagnostics;
 mod frame;
 mod image_pass;
 mod resources;
 
+pub use annotation_mesh::{
+    AnnotationMesh, AnnotationMeshBuilder, AnnotationMeshCache, AnnotationMeshFragment,
+    AnnotationVertex, BufferCapacityPlan, GlyphAtlasError, GlyphMetrics, MeshError, MeshUpdate,
+    OrdinalGlyphAtlas, OrdinalLabel, VertexKind,
+};
+pub use annotation_pass::AnnotationPass;
 pub use device::{
     RenderError, RendererDescriptor, RendererInitError, SurfaceHandles, WgpuImageRenderer,
 };
